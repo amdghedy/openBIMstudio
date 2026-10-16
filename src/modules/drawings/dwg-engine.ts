@@ -322,11 +322,10 @@ export async function importDxfFile(
  */
 export async function tryImportDwg(file: File): Promise<DrawingDocument | null> {
   try {
-    // Optional peer dependency - may not be installed
-    // Optional peer; not listed in package.json - dynamic string avoids TS2307
-    const pkg = "@mlightcad/" + "libredwg-web";
+    // Optional peer dependency
+    // Must be a bare specifier WITHOUT @vite-ignore so Vite can resolve + prebundle it.
     // @ts-ignore optional dependency
-    const mod: Any = await import(/* @vite-ignore */ pkg);
+    const mod: Any = await import("@mlightcad/libredwg-web");
     const LibreDwg = mod.LibreDwg ?? mod.default?.LibreDwg;
     const Dwg_File_Type = mod.Dwg_File_Type ?? mod.default?.Dwg_File_Type;
     if (!LibreDwg?.create) {
