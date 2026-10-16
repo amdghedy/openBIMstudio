@@ -407,7 +407,9 @@ export function setupGridToggle(): void {
       "border:1px solid #2a2e3a;border-radius:6px;" +
       "font:600 11px system-ui;cursor:pointer;user-select:none";
     btn.addEventListener("click", () => applyGridVisible(!gridVisible));
-    ctx.rightHost.appendChild(btn);
+    const host = (ctx.rightHost as HTMLElement) ?? document.getElementById("viewport") ?? document.body;
+    if (!host) { console.warn("[section] no host for grid button, retrying later"); return; }
+    host.appendChild(btn);
   } catch (e) { console.warn("[section] grid button", e); }
 
   window.addEventListener("keydown", (e) => {
