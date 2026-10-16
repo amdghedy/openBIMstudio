@@ -15,6 +15,7 @@ export async function setupViewer() {
   leftHost.style.cssText = "min-width:320px;height:100%;overflow:auto;background:#1D1E24;border-right:1px solid #2a2a35";
   const rightHost = document.createElement("div");
   rightHost.style.cssText = "flex:1;height:100%;position:relative;overflow:hidden";
+  rightHost.id = "viewport";
   appEl.append(leftHost, rightHost);
 
   const components = new OBC.Components();
