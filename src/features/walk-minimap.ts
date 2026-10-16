@@ -184,7 +184,7 @@ function computeTransform() {
   // This means higher world Z = lower in the box (down).
   const toSvg = (x: number, z: number): [number, number] => [
     offX + (x - minX) * scale,
-    offY + (z - minZ) * scale,
+    offY + (maxZ - z) * scale,
   ];
 
   return { bounds, toSvg };
