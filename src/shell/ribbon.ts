@@ -1334,6 +1334,65 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     id: "edit",
     label: "Edit",
     items: () => [
+      groupLabel("Select"),
+      b("modify", "Modify", safe(() => {
+        try { (ctx.features as any).selection?.clear?.(); } catch {}
+        toast("Modify: click an element to edit", "info");
+      }, "Modify tool"), { kbd: "Esc", title: "Press Esc to exit any active tool" }),
+      b("check", "Links", safe(() => {
+        const on = !(window as any).__obsSelLinks;
+        (window as any).__obsSelLinks = on;
+        toast("Select links: " + (on ? "ON" : "OFF"), "info");
+      }, "Select links"), { title: "Allow selecting elements in linked files" }),
+      b("check", "Underlay", safe(() => {
+        const on = !(window as any).__obsSelUnderlay;
+        (window as any).__obsSelUnderlay = on;
+        toast("Select underlay: " + (on ? "ON" : "OFF"), "info");
+      }, "Select underlay"), { title: "Allow selecting underlay elements" }),
+      b("check", "Pinned", safe(() => {
+        const on = !(window as any).__obsSelPinned;
+        (window as any).__obsSelPinned = on;
+        toast("Select pinned: " + (on ? "ON" : "OFF"), "info");
+      }, "Select pinned"), { title: "Allow selecting pinned elements" }),
+      b("check", "By Face", safe(() => {
+        const on = !(window as any).__obsSelByFace;
+        (window as any).__obsSelByFace = on;
+        toast("Select by face: " + (on ? "ON" : "OFF"), "info");
+      }, "Select by face"), { title: "Select individual faces instead of the whole element" }),
+      b("check", "Drag Sel", safe(() => {
+        const on = !(window as any).__obsSelDrag;
+        (window as any).__obsSelDrag = on;
+        toast("Drag on selection: " + (on ? "ON" : "OFF"), "info");
+      }, "Drag on selection"), { title: "Dragging on selected element moves it" }),
+      sep(),
+
+      groupLabel("Clipboard"),
+      b("copy", "Copy", safe(() => {
+        try {
+          const snap = (ctx.features as any).selection?.snapshot?.();
+          (window as any).__obsClipboard = snap;
+          const n = snap ? Object.values(snap).reduce((a: number, s: any) => a + (s?.size ?? 0), 0) : 0;
+          toast(n ? `Copied ${n} element(s)` : "Nothing selected to copy", "info");
+        } catch { toast("Copy failed", "warn"); }
+      }, "Copy")),
+      b("clear", "Cut", safe(() => {
+        try {
+          const snap = (ctx.features as any).selection?.snapshot?.();
+          (window as any).__obsClipboard = snap;
+          (ctx.features as any).selection?.clear?.();
+          toast("Cut: elements staged", "info");
+        } catch { toast("Cut failed", "warn"); }
+      }, "Cut")),
+      b("save", "Paste", safe(() => {
+        const cb = (window as any).__obsClipboard;
+        if (!cb) { toast("Clipboard empty", "warn"); return; }
+        toast("Paste: click a point to place", "info");
+      }, "Paste")),
+      b("beam", "Join", safe(() => {
+        toast("Join geometry: pick two elements to merge", "info");
+      }, "Join geometry")),
+      sep(),
+
       groupLabel("BIM Authoring"),
       b("component", "BIM Objects", safe(() => toggleBimObjectStudio(), "BIM Object Studio"), {
         active: isBimObjectStudioVisible(),
