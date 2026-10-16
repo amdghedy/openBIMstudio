@@ -48,7 +48,10 @@ export async function setupViewer() {
   const sun = new THREE.DirectionalLight(0xffffff, 1.35);
   sun.position.set(50, 100, 40);
   world.scene.three.add(sun);
-  components.get(OBC.Grids).create(world);
+  const grids = components.get(OBC.Grids);
+  const grid = grids.create(world);
+  (ctx as any).grid = grid;
+  (ctx as any).grids = grids;
 
   const groundPlane = new THREE.Mesh(
     new THREE.PlaneGeometry(1000, 1000),

@@ -118,6 +118,28 @@ function getTarget(out = new THREE.Vector3()): THREE.Vector3 {
   return out.set(0, 0, 0);
 }
 
+let cachedSelectionCenter: THREE.Vector3 | null = null;
+let selectionCenterToken = 0;
+
+async function refreshSelectionCenterCache(): Promise<void> {
+  const myToken = ++selectionCenterToken;
+  try {
+    const box = await (ctx.features as any)?.selection?.boundingBox?.();
+    if (myToken !== selectionCenterToken) return;
+    if (box && !box.isEmpty()) {
+      cachedSelectionCenter = box.getCenter(new THREE.Vector3());
+      return;
+    }
+  } catch { /* */ }
+  if (myToken !== selectionCenterToken) return;
+  cachedSelectionCenter = null;
+}
+
+function getOrbitPivot(): THREE.Vector3 {
+  if (cachedSelectionCenter) return cachedSelectionCenter.clone();
+  return getTarget();
+}
+
 function beginPan(e: PointerEvent): void {
   const cam = camera();
   const rect = ctx.rightHost.getBoundingClientRect();
@@ -344,6 +366,12 @@ export function setupNavigation(): void {
   disableNativeCameraMouse();
   try { forceResumeCameraControls(); } catch { /* */ }
 
+  try {
+    const sel: any = (ctx.features as any).selection;
+    sel?.onChange?.(() => { void refreshSelectionCenterCache(); });
+    void refreshSelectionCenterCache();
+  } catch { /* */ }
+
   const safetyEnd = () => {
     endNavGesture();
   };
@@ -366,13 +394,14 @@ export function setupNavigation(): void {
       try { forceResumeCameraControls(); } catch { /* */ }
       const wantOrbit = shiftHeld || ctrlHeld || g.mods.shift || g.mods.ctrl || g.mods.meta;
       if (wantOrbit) {
-        beginOrbitSync(g.event, getTarget());
+        const pivot = getOrbitPivot();
+        beginOrbitSync(g.event, pivot);
         ctx.rightHost.style.cursor = "grabbing";
-        if (g.mods.ctrl || g.mods.meta || ctrlHeld) {
-          void selectionCenter().then((pivot) => {
-            if (state.kind === "orbit") {
-              beginOrbitSync(g.event, pivot);
-            }
+        if (!cachedSelectionCenter) {
+          void selectionCenter().then((p) => {
+            if (state.kind !== "orbit") return;
+            if (p.distanceTo(state.pivot) < 1e-3) return;
+            beginOrbitSync(g.event, p);
           });
         }
       } else {
@@ -385,7 +414,7 @@ export function setupNavigation(): void {
     if (g.kind === "drag-move" && g.button === 1) {
       const wantOrbit = shiftHeld || g.mods.shift || ctrlHeld || g.mods.ctrl || g.mods.meta;
       if (wantOrbit && state.kind === "pan") {
-        beginOrbitSync(g.event, getTarget());
+        beginOrbitSync(g.event, getOrbitPivot());
         ctx.rightHost.style.cursor = "grabbing";
       }
       if (state.kind === "pan") {
