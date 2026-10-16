@@ -1449,7 +1449,7 @@ function renderPlan(plan: PlanView) {
   // -- Arcs (door swings + MEP elbows) --
   if (planDisplayModel) for (const a of plan.arcs) {
     const isDoor = a.kind === "door-swing";
-    const steps = isDoor ? 24 : 36;
+    const steps = isDoor ? 24 : 72;
     let d = "";
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
@@ -1469,7 +1469,7 @@ function renderPlan(plan: PlanView) {
     } else {
       // MEP fitting: solid, matching the duct edge thickness
       path.setAttribute("stroke", "#111827");
-      path.setAttribute("stroke-width", String(2.0 * (zoomedW / 1200)));
+      path.setAttribute("stroke-width", String(4.0 * (zoomedW / 1200)));
       path.setAttribute("stroke-linecap", "round");
     }
     g.appendChild(path);
