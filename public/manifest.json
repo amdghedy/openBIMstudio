@@ -1,0 +1,8 @@
+{
+  "plugins": [
+    {
+      "name": "Hello Plugin",
+      "url": "/plugins/hello.js"
+    }
+  ]
+}

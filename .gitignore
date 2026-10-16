@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.bak-*
+server/data/
+OpenBIMStudio-bundle.txt
+errors.txt
+
+# --- OpenBIM Studio auto-ignore ---
+*.bak
+*.bak-*
+*.disabled
+*.orig
+.DS_Store

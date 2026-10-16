@@ -1,0 +1,149 @@
+﻿/* ============================================================
+ * obs-family-editor.css
+ * Modal family editor. Revit-like dark theme.
+ * ============================================================ */
+
+.obs-fe-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55);
+  z-index: 2147483600; display: none;
+  align-items: center; justify-content: center;
+  font: 12px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #d6dae2;
+}
+.obs-fe-backdrop.is-open { display: flex; }
+
+.obs-fe-modal {
+  width: 960px; max-width: 96vw;
+  height: 640px; max-height: 92vh;
+  background: #14171e;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  display: flex; flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0,0,0,.6);
+  overflow: hidden;
+}
+
+.obs-fe-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  background: #1a1d24;
+  border-bottom: 1px solid #2a2f3a;
+}
+.obs-fe-head h2 { margin: 0; font-size: 13px; color: #9cf; letter-spacing: .04em; text-transform: uppercase; }
+.obs-fe-head .obs-fe-close {
+  background: transparent; border: 0; color: #8892a0; font-size: 20px;
+  cursor: pointer; padding: 0 6px; line-height: 1;
+}
+.obs-fe-head .obs-fe-close:hover { color: #fff; }
+
+.obs-fe-body {
+  flex: 1; display: grid; grid-template-columns: 1fr 320px;
+  overflow: hidden;
+}
+
+.obs-fe-left  { padding: 12px 14px; overflow: auto; border-right: 1px solid #232830; }
+.obs-fe-right { padding: 12px 14px; overflow: auto; background: #10131a; }
+
+.obs-fe-section { margin-bottom: 18px; }
+.obs-fe-section h3 {
+  margin: 0 0 8px; font-size: 11px; color: #7f8a9a;
+  letter-spacing: .1em; text-transform: uppercase; font-weight: 600;
+}
+
+.obs-fe-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+
+.obs-fe-input, .obs-fe-select {
+  background: #0b0d12; border: 1px solid #2a2f3a; color: #e6e8ee;
+  padding: 5px 8px; border-radius: 4px; font-size: 12px; font-family: inherit;
+  outline: none;
+}
+.obs-fe-input:focus, .obs-fe-select:focus { border-color: #2563eb; }
+.obs-fe-input::placeholder { color: #4a5563; }
+
+.obs-fe-btn {
+  background: #2563eb; color: #fff; border: 0;
+  padding: 6px 12px; border-radius: 4px; cursor: pointer;
+  font-size: 12px; font-family: inherit;
+}
+.obs-fe-btn:hover { background: #1d4ed8; }
+.obs-fe-btn.sec { background: #2a2f3a; }
+.obs-fe-btn.sec:hover { background: #353b47; }
+.obs-fe-btn.danger { background: #7f1d1d; }
+.obs-fe-btn.danger:hover { background: #991b1b; }
+.obs-fe-btn:disabled { opacity: .5; cursor: default; }
+
+/* parameter table */
+.obs-fe-table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+  background: #0b0d12; border-radius: 4px; overflow: hidden;
+}
+.obs-fe-table th {
+  background: #1a1d24; color: #7f8a9a; font-weight: 600;
+  padding: 6px 8px; text-align: left; font-size: 10px;
+  text-transform: uppercase; letter-spacing: .06em;
+  border-bottom: 1px solid #232830;
+}
+.obs-fe-table td {
+  padding: 4px 6px; border-bottom: 1px solid #1a1d24;
+  vertical-align: middle;
+}
+.obs-fe-table tr:last-child td { border-bottom: 0; }
+.obs-fe-table input, .obs-fe-table select {
+  width: 100%; background: transparent; border: 0;
+  color: inherit; font-size: 12px; font-family: inherit;
+  outline: none; padding: 3px 4px;
+}
+.obs-fe-table input:focus, .obs-fe-table select:focus {
+  background: #0b0d12; border-radius: 3px;
+}
+.obs-fe-table .col-del { width: 30px; }
+.obs-fe-table .col-del button {
+  background: transparent; border: 0; color: #8892a0;
+  cursor: pointer; font-size: 14px; padding: 0 4px;
+}
+.obs-fe-table .col-del button:hover { color: #f87171; }
+.obs-fe-table .col-kind { width: 100px; }
+.obs-fe-table .col-scope { width: 72px; text-align: center; }
+.obs-fe-table .col-formula { min-width: 180px; }
+.obs-fe-table .formula-invalid { color: #f87171; }
+
+/* constraint list */
+.obs-fe-constraint {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; background: #0b0d12; border-radius: 4px;
+  margin-bottom: 6px; font-size: 12px;
+}
+.obs-fe-constraint select { flex: 0 0 90px; }
+.obs-fe-constraint .obs-fe-cons-target { flex: 1; min-width: 0; }
+.obs-fe-constraint .obs-fe-cons-params { flex: 1; min-width: 0; }
+.obs-fe-constraint button {
+  background: transparent; border: 0; color: #8892a0; cursor: pointer;
+}
+.obs-fe-constraint button:hover { color: #f87171; }
+
+/* status / preview */
+.obs-fe-preview {
+  background: #0b0d12; border: 1px solid #232830; border-radius: 4px;
+  padding: 8px 10px; font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px; color: #9aa4b2; white-space: pre-wrap;
+  max-height: 260px; overflow: auto;
+}
+.obs-fe-preview .k { color: #7f8a9a; }
+.obs-fe-preview .v { color: #9cf; }
+.obs-fe-preview .err { color: #f87171; }
+
+.obs-fe-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; background: #1a1d24;
+  border-top: 1px solid #2a2f3a;
+}
+.obs-fe-foot .obs-fe-hint { color: #7f8a9a; font-size: 11px; }
+.obs-fe-foot .obs-fe-actions { display: flex; gap: 8px; }
+
+/* geometry recipe area */
+.obs-fe-geo-badge {
+  display: inline-block; padding: 3px 8px; border-radius: 12px;
+  background: #1a1d24; color: #9cf; font-size: 11px;
+  border: 1px solid #2a2f3a;
+}
+.obs-fe-geo-badge.empty { color: #7f8a9a; }

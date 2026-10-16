@@ -1,0 +1,6 @@
+D:\Automation\Open BIM Studio\OpenBIMStudio\NavisworksGLBExporter\obj\Release\NavisworksGLBExporter.csproj.AssemblyReference.cache
+D:\Automation\Open BIM Studio\OpenBIMStudio\NavisworksGLBExporter\obj\Release\NavisworksGLBExporter.csproj.CoreCompileInputs.cache
+D:\Automation\Open BIM Studio\OpenBIMStudio\build\NavisworksGLBExporter.dll
+D:\Automation\Open BIM Studio\OpenBIMStudio\build\NavisworksGLBExporter.pdb
+D:\Automation\Open BIM Studio\OpenBIMStudio\NavisworksGLBExporter\obj\Release\NavisworksGLBExporter.dll
+D:\Automation\Open BIM Studio\OpenBIMStudio\NavisworksGLBExporter\build\NavisworksGLBExporter.dll

@@ -1,0 +1,102 @@
+{
+  "meta": { "name": "English", "nativeName": "English", "dir": "ltr" },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "Loading…",
+    "ready": "Ready",
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "ok": "OK",
+    "search": "Search",
+    "clear": "Clear",
+    "apply": "Apply",
+    "reset": "Reset",
+    "loadingModel": "Loading model…",
+    "noSelection": "No selection"
+  },
+  "clash": {
+    "title": "Clash Detective",
+    "status": {
+      "selectModels": "Select models in A and B, then Run Test.",
+      "running": "Running {test} … {method}…",
+      "found": { "one": "1 clash found.", "other": "{count} clashes found." },
+      "none": "No clashes found.",
+      "cancelled": "Test cancelled.",
+      "failed": "Failed: {message}",
+      "cleared": "Cleared.",
+      "nothingToClear": "Nothing to clear."
+    },
+    "scope": {
+      "all": "All model elements",
+      "viewport": "Viewport selection only",
+      "aOnly": "Selection A only",
+      "bOnly": "Selection B only",
+      "both": "Selection A … B only (recommended)"
+    },
+    "kinds": {
+      "intersect": "Intersect",
+      "touching": "Touching",
+      "clearance": "Clearance",
+      "duplicate": "Duplicate"
+    },
+    "statuses": {
+      "new": "New",
+      "active": "Active",
+      "reviewed": "Reviewed",
+      "approved": "Approved",
+      "resolved": "Resolved"
+    },
+    "actions": {
+      "run": "Run Test",
+      "cancel": "Cancel",
+      "clear": "Clear Results",
+      "isolate": "Isolate",
+      "focus": "Focus",
+      "showAll": "Show All",
+      "next": "Next",
+      "previous": "Previous"
+    }
+  },
+  "authoring": {
+    "toolActive": "Active Tool: {tool}",
+    "noTool": "Active Tool: None",
+    "created": "{type} placed",
+    "createdWithFittings": "{type} placed (+ fittings)",
+    "cancelled": "Cancelled … Select",
+    "repeat": "Repeat: {cmd}",
+    "noPreviousCommand": "No previous command to repeat … pick a tool first",
+    "nativeTwinCreated": "Editable Native Twin created: {name}",
+    "nativeTwinFailed": "Native Twin could not be created for {modelId} / {localId}."
+  },
+  "camera": {
+    "homeSaved": "Home view saved",
+    "homeRestored": "Restored home view",
+    "screenshotSaved": "Screenshot saved",
+    "screenshotFailed": "Screenshot failed: {message}"
+  },
+  "cost": {
+    "title": "5D Cost",
+    "tabs": {
+      "takeoff": "Takeoff",
+      "items": "Cost Items",
+      "summary": "Summary"
+    },
+    "totals": {
+      "grand": "Total Project Cost",
+      "assigned": "{assigned} of {total} rows assigned … {items} cost items"
+    }
+  },
+  "options": {
+    "title": "Options",
+    "language": "Language & Region",
+    "nav": "Navigation",
+    "diagnostics": "Diagnostics",
+    "units": "Units",
+    "currency": "Currency"
+  }
+}
