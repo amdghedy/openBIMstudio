@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
  *  OpenBIMstudio - Autodesk Viewer Importer  (no APS credentials required)
  *  --------------------------------------------------------------------------
  *  Adds a floating "Import from Autodesk" button. Clicking it opens a modal:
@@ -350,3 +350,69 @@
 
 
 
+
+/* ─────────────────────────────────────────────────────────────
+   Relocate the blue Autodesk button into the Insert tab.
+   ───────────────────────────────────────────────────────────── */
+(function () {
+  'use strict';
+  var BTN_ID = 'obim-autodesk-btn';
+
+  var style = document.createElement('style');
+  style.textContent = [
+    '#' + BTN_ID + '.obim-in-ribbon{position:static!important;left:auto!important;',
+    'bottom:auto!important;top:auto!important;right:auto!important;',
+    'padding:6px 10px!important;border-radius:4px!important;',
+    'font:600 11px/1.2 system-ui,sans-serif!important;',
+    'background:#0a84ff!important;box-shadow:none!important;',
+    'transform:none!important;display:inline-flex!important;',
+    'align-items:center!important;gap:4px!important;',
+    'margin:2px 4px!important;white-space:nowrap!important;}',
+    '#' + BTN_ID + '.obim-in-ribbon:hover{transform:none!important;',
+    'background:#0066cc!important;box-shadow:none!important;}'
+  ].join('');
+  document.head.appendChild(style);
+
+  function findInsertPanel() {
+    var explicit = document.querySelector('[data-tab="insert"], [data-ribbon="insert"]');
+    if (explicit) return explicit;
+
+    var all = document.querySelectorAll('button, a, [role="tab"], [class*="tab"], [class*="Tab"]');
+    for (var i = 0; i < all.length; i++) {
+      var t = (all[i].textContent || '').trim();
+      if (t !== 'Insert') continue;
+
+      var aria = all[i].getAttribute('aria-controls');
+      if (aria) {
+        var p = document.getElementById(aria);
+        if (p) return p;
+      }
+      var sib = all[i].nextElementSibling;
+      while (sib) {
+        if (sib.className && /ribbon|panel|content|tab/i.test(sib.className)) return sib;
+        sib = sib.nextElementSibling;
+      }
+      var parent = all[i].parentElement;
+      if (parent && parent.nextElementSibling) return parent.nextElementSibling;
+    }
+    return null;
+  }
+
+  var tries = 0;
+  function relocate() {
+    var btn = document.getElementById(BTN_ID);
+    if (!btn) return false;
+    var panel = findInsertPanel();
+    if (!panel) return false;
+    if (btn.parentElement === panel) return true;
+    panel.appendChild(btn);
+    btn.classList.add('obim-in-ribbon');
+    console.info('[OpenBIMStudio] Autodesk button relocated to Insert tab');
+    return true;
+  }
+
+  var iv = setInterval(function () {
+    tries++;
+    if (relocate() || tries > 120) clearInterval(iv);
+  }, 250);
+})();

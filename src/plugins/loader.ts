@@ -1,27 +1,39 @@
-export async function loadPlugins() {
-  const resp = await fetch('/manifest.json');
-  if (!resp.ok) return console.warn('No manifest found');
-  const manifest = await resp.json();
-  const pluginsTab = document.querySelector('#plugins-tab .ribbon-tab-content');
+/**
+ * Plugin loader — loads runtime plugins from /public/plugins/*.js
+ *
+ * Plugins live in public/ so they can be authored/replaced without a
+ * rebuild. Vite serves them as-is, so we load them with <script> tags
+ * rather than import(), which would trip Vite's "public files are not
+ * importable" rule.
+ */
 
-  for (const entry of manifest.plugins) {
+const loaded = new Set<string>();
+
+function loadScript(url: string, name: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (loaded.has(name)) return resolve();
+
+    const s = document.createElement("script");
+    s.src = url;
+    s.async = true;
+    s.dataset.obsPlugin = name;
+    s.onload = () => {
+      loaded.add(name);
+      resolve();
+    };
+    s.onerror = () => reject(new Error(`Failed to load plugin: ${url}`));
+    document.head.appendChild(s);
+  });
+}
+
+export async function loadPlugins(): Promise<void> {
+  const plugins = ["hello"]; // names in public/plugins/*.js
+  for (const p of plugins) {
     try {
-      const mod = await import(entry.url);
-      if (typeof mod.register === 'function') {
-        mod.register({
-          api: (window as any).bimAPI,
-          store: (window as any).bimStore,
-          addRibbonButton: (label: string, onClick: () => void) => {
-            const btn = document.createElement('button');
-            btn.textContent = label;
-            btn.onclick = onClick;
-            pluginsTab?.appendChild(btn);
-          },
-        });
-        console.log(`Plugin ${entry.name} loaded`);
-      }
+      await loadScript(`/plugins/${p}.js`, p);
+      console.log(`[plugins] loaded ${p}`);
     } catch (e) {
-      console.error('Failed to load plugin', entry.name, e);
+      console.warn("[plugins]", e);
     }
   }
 }

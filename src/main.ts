@@ -318,8 +318,6 @@ export function pushCommand(cmd: Command): void {
 }
 export function undo(): void { void history.undo(); }
 export function redo(): void { void history.redo(); }
-import { select as storeSelect } from './main.tsx';
-export const select = storeSelect;
 
 
 

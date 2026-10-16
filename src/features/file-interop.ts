@@ -1,4 +1,4 @@
-?/** Universal file opening: converts everything the browser can, guides for the rest. */
+/** Universal file opening: converts everything the browser can, guides for the rest. */
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { computeSceneBounds, fitAll } from "./camera-tools";
