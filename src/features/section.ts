@@ -128,6 +128,46 @@ export function setSectionPlanes(planes: SectionPlaneState[] | undefined | null)
 // ═══════════════════════════════════════════════════════════════════════════
 // Setup
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// resetSection -- clear all planes, disable mode, uncheck the panel toggle
+// ═══════════════════════════════════════════════════════════════════════════
+export function resetSection(): number {
+  let removed = 0;
+  try {
+    const clipper: any = ctx.clipper;
+    if (clipper) {
+      removed = getSectionPlanes().length;
+      if (typeof clipper.deleteAll === "function") clipper.deleteAll();
+      if (clipper.list && typeof clipper.list.clear === "function") clipper.list.clear();
+    }
+  } catch (e) { console.warn("[section] reset deleteAll failed", e); }
+
+  setSectionOn(false);
+
+  try {
+    const hosts: HTMLElement[] = [ctx.leftHost as any, document.body];
+    for (const host of hosts) {
+      if (!host) continue;
+      const labels = Array.from(host.querySelectorAll("label")) as HTMLLabelElement[];
+      for (const label of labels) {
+        const txt = (label.textContent || "").toLowerCase();
+        if (txt.includes("enable section")) {
+          const input = label.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+          if (input) input.checked = false;
+        }
+      }
+      const el = host.querySelector("bim-checkbox[data-section]") as any;
+      if (el) el.checked = false;
+    }
+    if (checkboxEl) checkboxEl.checked = false;
+  } catch { /* */ }
+
+  try { (ctx.features as any).sectionCutInteraction?.cancel?.(); } catch { /* */ }
+  try { (ctx.features as any).sectionCutInteraction?.disable?.(); } catch { /* */ }
+  try { (ctx.features as any).sectionBox?.disable?.(); } catch { /* */ }
+
+  return removed;
+}
 export function setupSection() {
   ctx.rightHost.addEventListener("dblclick", () => {
     if (isDrawingActive() || isMeasureEnabled() || !enabled) return;
@@ -142,5 +182,14 @@ export function setupSection() {
     toggle: toggleSection,
     getPlanes: getSectionPlanes,
     setPlanes: setSectionPlanes,
+    reset: resetSection,
+    deleteAllPlanes: resetSection,
+  };
+  (window as any).__obsSection = {
+    reset: resetSection,
+    getPlanes: getSectionPlanes,
+    toggle: toggleSection,
+    isEnabled: isSectionOn,
+    setOn: setSectionOn,
   };
 }
