@@ -196,6 +196,18 @@ function fieldRow(
     }
   }
 
+  if (field.readOnly) {
+    try {
+      const inp2: any = input;
+      if (inp2.tagName === "INPUT" || inp2.tagName === "SELECT") {
+        inp2.disabled = true;
+        inp2.style.opacity = "0.65";
+        inp2.style.cursor = "not-allowed";
+        inp2.title = "Read-only (computed from geometry)";
+      }
+    } catch { /* */ }
+  }
+
   wrap.appendChild(input);
   if (field.unit) {
     const u = document.createElement("span");
@@ -247,7 +259,9 @@ function sectionBlock(
     list.appendChild(
       fieldRow(
         f,
-        () => readValue(f.target, element, typeKey, f.key),
+        () => (typeof (f as any).compute === "function" && element)
+          ? (f as any).compute(element)
+          : readValue(f.target, element, typeKey, f.key),
         (v) => writeValue(f.target, element, typeKey, f.key, v),
       ),
     );

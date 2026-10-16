@@ -28,6 +28,8 @@ export interface PropertyField {
   target: FieldTarget;
   default?: string | number | boolean;
   helpText?: string;
+  readOnly?: boolean;
+  compute?: (el: any) => string | number | boolean;
 }
 
 export interface ElementSchema {
@@ -42,6 +44,8 @@ const DIMENSIONS = "Dimensions";
 const CONSTRAINTS = "Constraints";
 const IDENTITY = "Identity Data";
 const MATERIALS = "Materials";
+const STRUCTURAL = "Structural";
+const PHASING = "Phasing";
 const CONSTRUCTION = "Construction";
 
 const num = (
@@ -110,60 +114,64 @@ const commentsField = (): PropertyField => ({
 export const SCHEMAS: Partial<Record<ElementType, ElementSchema>> = {
   wall: {
     type: "wall",
-    label: "Wall",
+    label: "Basic Wall",
     icon: "wall",
-    groups: [DIMENSIONS, CONSTRAINTS, CONSTRUCTION, IDENTITY, MATERIALS],
+    groups: [STRUCTURAL, DIMENSIONS, IDENTITY, PHASING],
     fields: [
-      num("height", "Height", DIMENSIONS, 0.1, 0.01),
-      num("thickness", "Thickness", DIMENSIONS, 0.05, 0.01),
-      elev(),
-      {
-        key: "locationLine",
-        label: "Location Line",
-        group: CONSTRAINTS,
-        type: "select",
-        target: "properties",
+      { key: "structural", label: "Structural", group: STRUCTURAL, type: "boolean", target: "properties", default: false },
+      { key: "enableAnalytical", label: "Enable Analytical Model", group: STRUCTURAL, type: "boolean", target: "properties", default: false },
+      { key: "structuralUsage", label: "Structural Usage", group: STRUCTURAL, type: "select", target: "properties",
         options: [
-          { value: "wall-centerline", label: "Wall Centerline" },
-          { value: "core-centerline", label: "Core Centerline" },
-          { value: "finish-exterior", label: "Finish Face: Exterior" },
-          { value: "finish-interior", label: "Finish Face: Interior" },
-          { value: "core-exterior", label: "Core Face: Exterior" },
-          { value: "core-interior", label: "Core Face: Interior" },
-        ],
-        default: "wall-centerline",
-      },
-      {
-        key: "joinStatus",
-        label: "Join Status",
-        group: CONSTRUCTION,
-        type: "select",
-        target: "properties",
+          { value: "bearing", label: "Bearing" },
+          { value: "non-bearing", label: "Non-bearing" },
+          { value: "shear", label: "Shear" },
+          { value: "combined", label: "Combined" },
+          { value: "cantilever", label: "Cantilever" },
+        ], default: "non-bearing" },
+      { key: "rebarCoverExterior", label: "Rebar Cover - Exterior", group: STRUCTURAL, type: "select", target: "properties",
         options: [
-          { value: "allow", label: "Allow" },
-          { value: "disallow", label: "Disallow" },
-          { value: "extended", label: "Extended" },
-          { value: "chamfer", label: "Chamfer" },
-          { value: "butt", label: "Butt" },
-        ],
-        default: "allow",
-      },
-      {
-        key: "chain",
-        label: "Chain",
-        group: CONSTRAINTS,
-        type: "boolean",
-        target: "properties",
-        default: true,
-      },
-      nameField(),
-      typeMarkField(),
-      fireField(),
-      commentsField(),
-      colorField(),
+          { value: "none", label: "None" },
+          { value: "25", label: "Rebar Cover 1 <25 mm>" },
+          { value: "40", label: "Rebar Cover 2 <40 mm>" },
+          { value: "50", label: "Rebar Cover 3 <50 mm>" },
+        ], default: "25" },
+      { key: "rebarCoverInterior", label: "Rebar Cover - Interior", group: STRUCTURAL, type: "select", target: "properties",
+        options: [
+          { value: "none", label: "None" },
+          { value: "25", label: "Rebar Cover 1 <25 mm>" },
+          { value: "40", label: "Rebar Cover 2 <40 mm>" },
+          { value: "50", label: "Rebar Cover 3 <50 mm>" },
+        ], default: "25" },
+      { key: "rebarCoverOther", label: "Rebar Cover - Other", group: STRUCTURAL, type: "select", target: "properties",
+        options: [
+          { value: "none", label: "None" },
+          { value: "25", label: "Rebar Cover 1 <25 mm>" },
+          { value: "40", label: "Rebar Cover 2 <40 mm>" },
+          { value: "50", label: "Rebar Cover 3 <50 mm>" },
+        ], default: "25" },
+      { key: "length", label: "Length", group: DIMENSIONS, type: "number", unit: "m", step: 0.001, target: "params", readOnly: true,
+        compute: (el: any) => { const a = el?.params?.start, b = el?.params?.end; if (!a || !b) return 0; return Math.hypot(b[0]-a[0], b[1]-a[1]); } },
+      { key: "area", label: "Area", group: DIMENSIONS, type: "number", unit: "m2", step: 0.001, target: "params", readOnly: true,
+        compute: (el: any) => { const a = el?.params?.start, b = el?.params?.end; const h = el?.params?.height ?? 0; if (!a || !b) return 0; return Math.hypot(b[0]-a[0], b[1]-a[1]) * h; } },
+      { key: "volume", label: "Volume", group: DIMENSIONS, type: "number", unit: "m3", step: 0.001, target: "params", readOnly: true,
+        compute: (el: any) => { const a = el?.params?.start, b = el?.params?.end; const h = el?.params?.height ?? 0; const t = el?.params?.thickness ?? 0; if (!a || !b) return 0; return Math.hypot(b[0]-a[0], b[1]-a[1]) * h * t; } },
+      { key: "image", label: "Image", group: IDENTITY, type: "text", target: "properties" },
+      { key: "comments", label: "Comments", group: IDENTITY, type: "text", target: "properties" },
+      { key: "mark", label: "Mark", group: IDENTITY, type: "text", target: "properties" },
+      { key: "phaseCreated", label: "Phase Created", group: PHASING, type: "select", target: "properties",
+        options: [
+          { value: "new", label: "New Construction" },
+          { value: "existing", label: "Existing" },
+          { value: "demo", label: "Demolition" },
+        ], default: "new" },
+      { key: "phaseDemolished", label: "Phase Demolished", group: PHASING, type: "select", target: "properties",
+        options: [
+          { value: "none", label: "None" },
+          { value: "new", label: "New Construction" },
+          { value: "existing", label: "Existing" },
+        ], default: "none" },
     ],
   },
-
   slab: {
     type: "slab",
     label: "Slab",
