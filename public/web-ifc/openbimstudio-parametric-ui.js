@@ -12,7 +12,7 @@
   style.textContent = [
     '#obs-param-panel{position:fixed;right:16px;bottom:16px;width:320px;max-height:70vh;overflow:auto;',
     'background:#0f1116;color:#e6e8ee;font:12px/1.4 -apple-system,Segoe UI,sans-serif;',
-    'border:1px solid #2a2f3a;border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.35);z-index:2147483647;}',
+    'border:1px solid #2a2f3a;border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.35);z-index:2147483647;display:none;}',
     '#obs-param-panel header{padding:8px 10px;background:#161a22;border-bottom:1px solid #2a2f3a;',
     'cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:600;color:#9cf;}',
     '#obs-param-panel .body{padding:10px;}',
@@ -37,6 +37,38 @@
     +   '<div id="obs-param-content"><div class="empty">Waiting for a model...</div></div>'
     + '</div>';
   document.body.appendChild(panel);
+
+  // ── Show/Hide control ──
+  function showPanel() {
+    panel.style.display = 'block';
+    panel.classList.remove('collapsed');
+    var t = document.getElementById('obs-param-toggle');
+    if (t) t.textContent = '[ - ]';
+  }
+  function hidePanel() {
+    panel.style.display = 'none';
+  }
+  function togglePanel() {
+    if (panel.style.display === 'none') showPanel();
+    else hidePanel();
+  }
+  window.OpenBIMStudio = window.OpenBIMStudio || {};
+  window.OpenBIMStudio.parametric = window.OpenBIMStudio.parametric || {};
+  window.OpenBIMStudio.parametric.show = showPanel;
+  window.OpenBIMStudio.parametric.hide = hidePanel;
+  window.OpenBIMStudio.parametric.toggle = togglePanel;
+
+  // Auto-show when a parametric ribbon command fires
+  window.addEventListener('obs:param-ribbon-command', function (e) {
+    var cmd = (e.detail && e.detail.command) || '';
+    if (/^(fam-|prm-|geo-)/.test(cmd)) showPanel();
+    if (cmd === 'prm-hide') hidePanel();
+  });
+
+  // Esc closes the panel
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && panel.style.display !== 'none') hidePanel();
+  });
 
   document.querySelector('#obs-param-panel header').addEventListener('click', function () {
     panel.classList.toggle('collapsed');
