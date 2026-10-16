@@ -587,7 +587,7 @@ function emitAuthoredSymbol(
       const kind = String((p as any).fittingKind || "elbow");
       const aIn = p.angleIn ?? 0;
       const aOut = p.angleOut ?? Math.PI / 2;
-      const t = p.thickness ?? 0.3;
+      const t = (p.thickness ?? 0.3) * 2;
       const t2 = Math.max(0.02, t);
       const isRound = parentType === "pipe" || parentType === "conduit";
       // Enforce Revit-style minimum: centerline bend radius >= duct width.
