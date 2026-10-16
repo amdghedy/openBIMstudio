@@ -591,7 +591,7 @@ function emitAuthoredSymbol(
       const t2 = Math.max(0.02, t);
       const isRound = parentType === "pipe" || parentType === "conduit";
       // Enforce Revit-style minimum: centerline bend radius >= duct width.
-      const ductWidth = Math.max(t * 2, 0.05);
+      const ductWidth = Math.max(t, 0.05);
       const baseR = Number(p.bendRadius);
       const r = Math.max(ductWidth, Number.isFinite(baseR) && baseR > 0
         ? baseR
