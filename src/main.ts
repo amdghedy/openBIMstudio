@@ -65,6 +65,7 @@ import { setupModelTreePanel } from "./features/model-tree-panel";
 import { setupPlanViewPanel } from "./features/plan-view-panel";
 import { setupSchedulesPanel } from "./features/schedules-panel";
 import { setupWalkMode } from "./features/walk-mode";
+import { setupWalkMinimap } from "./features/walk-minimap";
 import { setupCommandPalette } from "./features/command-palette";
 import { setupSavedViews } from "./features/saved-views";
 import { setupCursorTracker } from "./features/cursor-tracker";
@@ -222,6 +223,7 @@ await step("saved-views", () => setupSavedViews());
 await step("cursor-tracker", () => setupCursorTracker());
 await step("command-palette", () => setupCommandPalette());
 await step("walk-mode", () => setupWalkMode());
+await step("walk-minimap", () => setupWalkMinimap());
 
 await step("selection", () => { (ctx.features as any).selection = selection; });
 await step("selection-click", () => { setupClickToSelect(); });

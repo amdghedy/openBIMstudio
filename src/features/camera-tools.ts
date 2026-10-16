@@ -89,7 +89,15 @@ function fitOrthoFrustum(ortho: THREE.OrthographicCamera, radius: number): void 
 function applyClipping(near: number, far: number) {
   for (const cam of allCameras()) {
     if (isOrthoCam(cam)) {
-      const ortho = cam as THREE.OrthographicCamera;
+      let ortho = cam as THREE.OrthographicCamera;
+    if (!(ortho as any).isOrthographicCamera) {
+      const _c: any = ctx.world.camera;
+      const _cands = [_c.orthographicCamera, _c.orthoCamera];
+      for (const c of _cands) {
+        const t: any = c?.three ?? c;
+        if (t?.isOrthographicCamera) { ortho = t; break; }
+      }
+    }
       const safeFar = Math.max(Math.abs(far), sceneRadius * 4, 2000);
       let changed = false;
       // Ortho can use a negative near plane safely — this eliminates
@@ -386,40 +394,20 @@ export function zoomBy(factor: number, focusPoint?: THREE.Vector3) {
 
   // ── ORTHOGRAPHIC ─────────────────────────────────────────────────
   if (isOrthoCam(cam)) {
-    const ortho = cam as THREE.OrthographicCamera;
+    let ortho = cam as THREE.OrthographicCamera;
+    if (!(ortho as any).isOrthographicCamera) {
+      const _c: any = ctx.world.camera;
+      const _cands = [_c.orthographicCamera, _c.orthoCamera];
+      for (const c of _cands) {
+        const t: any = c?.three ?? c;
+        if (t?.isOrthographicCamera) { ortho = t; break; }
+      }
+    }
     const oldZoom = Math.max(1e-3, ortho.zoom || 1);
     const newZoom = Math.max(0.01, Math.min(5000, oldZoom / factor));
-
-    // Move target + camera so the cursor world point stays under the cursor.
-    let delta = new THREE.Vector3();
-    if (focusPoint && Number.isFinite(focusPoint.x)) {
-      const viewDir = new THREE.Vector3();
-      cam.getWorldDirection(viewDir);
-      const offset = focusPoint.clone().sub(target);
-      const along = offset.dot(viewDir);
-      // Only the perpendicular component matters for screen anchoring.
-      const perp = offset.clone().sub(viewDir.clone().multiplyScalar(along));
-      // Cursor world point should land at the same screen position.
-      // See derivation in header comment: delta = perp * (1 - 1/factor).
-      delta = perp.multiplyScalar(1 - 1 / factor);
-    }
-
-    const newPos = cam.position.clone().add(delta);
-    const newTarget = target.clone().add(delta);
-
     ortho.zoom = newZoom;
     ortho.updateProjectionMatrix();
 
-    try {
-      controls.setLookAt(
-        newPos.x, newPos.y, newPos.z,
-        newTarget.x, newTarget.y, newTarget.z,
-        false,
-      );
-      try { controls.update?.(0); } catch { /* */ }
-    } catch {
-      cam.position.copy(newPos);
-    }
     updateClipping();
     return;
   }
@@ -890,7 +878,15 @@ export function fitAll() {
   if (isOrthoCam(cam)) {
     // Orthographic: the frustum IS the fit. Position the camera a
     // comfortable distance from the scene center along the look dir.
-    const ortho = cam as THREE.OrthographicCamera;
+    let ortho = cam as THREE.OrthographicCamera;
+    if (!(ortho as any).isOrthographicCamera) {
+      const _c: any = ctx.world.camera;
+      const _cands = [_c.orthographicCamera, _c.orthoCamera];
+      for (const c of _cands) {
+        const t: any = c?.three ?? c;
+        if (t?.isOrthographicCamera) { ortho = t; break; }
+      }
+    }
     const dist = Math.max(sceneRadius * 1.5, 5);
     controls.setLookAt(
       sceneCenter.x + dir.x * dist,
