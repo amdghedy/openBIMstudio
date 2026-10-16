@@ -1,0 +1,11 @@
+#!/bin/sh
+# Reject commits containing UTF-8-read-as-CP1252 mojibake
+BAD=$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '\.(ts|tsx|js|mjs|cjs|json|css|html|md)$' \
+  | xargs -r grep -lE 'â€|âœ|â”|â•|Ã¢' 2>/dev/null)
+if [ -n "$BAD" ]; then
+  echo "Mojibake detected in:"
+  echo "$BAD"
+  exit 1
+fi
+exit 0
