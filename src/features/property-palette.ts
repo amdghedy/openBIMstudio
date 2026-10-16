@@ -879,11 +879,23 @@ export function setupPropertyPalette(): void {
     render();
   });
 
-  // Keep palette visible and on top when selection changes.
+  // Revit-style auto-open: when a single element is selected, open the
+  // palette and switch it to edit mode for that element.
   try {
     selection.onChange(() => {
-      if (!visible) return;
-      render();
+      try {
+        const auth: any = (ctx.features as any).authoring;
+        const selIds: string[] = auth?.getSelectedIds?.() ?? [];
+        if (selIds.length === 1) {
+          const el = getElements().find((x) => x.id === selIds[0]);
+          if (el) {
+            setPaletteTarget({ mode: "edit", type: el.type as any, elementId: el.id });
+            if (!visible) openPropertyPalette(); else render();
+            return;
+          }
+        }
+      } catch (err) { console.warn("[property-palette] auto-open failed", err); }
+      if (visible) render();
     });
   } catch { /* */ }
 
