@@ -501,19 +501,67 @@ function emitAuthoredSymbol(
       emitLinearThick(push, el, elevKind, p.thickness ?? 0.2);
       break;
 
-    // MEP categories — flat thickness, fitting covers the corner
+    // MEP elbow v3 - trim run back to the fitting tangent point so the
+    // arc completes the joint (Revit behaviour).
     case "duct":
-      emitLinearThick(push, el, elevKind, p.thickness ?? 0.6);
-      break;
-    case "pipe":
-      emitLinearThick(push, el, elevKind, Math.max(0.08, p.thickness ?? 0.1));
-      break;
     case "cable-tray":
-      emitLinearThick(push, el, elevKind, p.thickness ?? 0.3);
+    case "pipe":
+    case "conduit": {
+      if (!p.start || !p.end) return;
+      const [ax, az] = p.start;
+      const [bx, bz] = p.end;
+      const dx = bx - ax, dz = bz - az;
+      const L = Math.hypot(dx, dz);
+      if (L < 0.02) return;
+      const ux = dx / L, uz = dz / L;
+      const nx = -uz, nz = ux;
+
+      const rawThick = Number(p.thickness);
+      const defaultThick =
+        el.type === "duct"       ? 0.6  :
+        el.type === "cable-tray" ? 0.3  :
+        el.type === "pipe"       ? 0.1  :
+        el.type === "conduit"    ? 0.05 : 0.2;
+      const w  = Number.isFinite(rawThick) && rawThick > 0.001 ? rawThick : defaultThick;
+      const t2 = Math.max(0.02, w / 2);
+
+      const all = getElements();
+      const findFitting = (ex: number, ez: number): AuthoredElement | null => {
+        const tol = Math.max(0.10, w * 0.6);
+        let best: AuthoredElement | null = null;
+        let bestD = tol;
+        for (const o of all) {
+          if (o.type !== "fitting") continue;
+          const px = o.params.point?.[0];
+          const pz = o.params.point?.[1];
+          if (px == null || pz == null) continue;
+          const d = Math.hypot(px - ex, pz - ez);
+          if (d < bestD) { bestD = d; best = o; }
+        }
+        return best;
+      };
+
+      const fitA = findFitting(ax, az);
+      const fitB = findFitting(bx, bz);
+
+      const tanA = fitA ? Math.max(w, Number(fitA.params.bendRadius) || 0) - Math.hypot(ax - (fitA.params.point ? fitA.params.point[0] : ax), az - (fitA.params.point ? fitA.params.point[1] : az)) : 0;
+      const tanB = fitB ? Math.max(w, Number(fitB.params.bendRadius) || 0) - Math.hypot(bx - (fitB.params.point ? fitB.params.point[0] : bx), bz - (fitB.params.point ? fitB.params.point[1] : bz)) : 0;
+
+      const maxTrim = L * 0.45;
+      const trimA = Math.min(tanA, maxTrim);
+      const trimB = Math.min(tanB, maxTrim);
+
+      const axT = ax + ux * trimA, azT = az + uz * trimA;
+      const bxT = bx - ux * trimB, bzT = bz - uz * trimB;
+
+      push({ x1: axT + nx * t2, z1: azT + nz * t2, x2: bxT + nx * t2, z2: bzT + nz * t2, kind: elevKind, source: el.id });
+      push({ x1: axT - nx * t2, z1: azT - nz * t2, x2: bxT - nx * t2, z2: bzT - nz * t2, kind: elevKind, source: el.id });
+
+      if (!fitA) push({ x1: axT + nx * t2, z1: azT + nz * t2, x2: axT - nx * t2, z2: azT - nz * t2, kind: elevKind, source: el.id });
+      if (!fitB) push({ x1: bxT + nx * t2, z1: bzT + nz * t2, x2: bxT - nx * t2, z2: bzT - nz * t2, kind: elevKind, source: el.id });
       break;
-    case "conduit":
-      emitLinearThick(push, el, elevKind, Math.max(0.05, p.thickness ?? 0.05));
-      break;
+    }
+
     case "fitting": {
       // MEP elbow v1: render the fitting as two concentric arcs matching
       // the 3D buildFitting geometry. Revit draws duct/pipe elbows as
@@ -540,10 +588,10 @@ function emitAuthoredSymbol(
       const aIn = p.angleIn ?? 0;
       const aOut = p.angleOut ?? Math.PI / 2;
       const t = p.thickness ?? 0.3;
-      const t2 = Math.max(0.02, t / 2);
+      const t2 = Math.max(0.02, t);
       const isRound = parentType === "pipe" || parentType === "conduit";
       // Enforce Revit-style minimum: centerline bend radius >= duct width.
-      const ductWidth = Math.max(t, 0.05);
+      const ductWidth = Math.max(t * 2, 0.05);
       const baseR = Number(p.bendRadius);
       const r = Math.max(ductWidth, Number.isFinite(baseR) && baseR > 0
         ? baseR
