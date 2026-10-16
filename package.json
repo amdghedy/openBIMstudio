@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.54.0",
   "type": "module",
-  "description": "Open BIM Studio â€” professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
+  "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build --target esnext",

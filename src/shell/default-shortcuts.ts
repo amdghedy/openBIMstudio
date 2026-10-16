@@ -1,11 +1,11 @@
 /** Default keyboard shortcuts (Revit + Blender hybrid + AccuDraw).
  *
- * Two-letter sequences for tools (WA, SL, CM â€¦), single-letter modals for
+ * Two-letter sequences for tools (WA, SL, CM …), single-letter modals for
  * the gizmo (G, R, S, Q), modifier combos for app commands (Ctrl+S, Ctrl+O,
  * Ctrl+N, Ctrl+Z, Ctrl+Y, Ctrl+A, F5), and AccuDraw axis reservation
  * (X / Z / Y / Tab while a base point is active).
  *
- * Walk mode owns W A S D Shift Ctrl Space C â€” every shortcut registered
+ * Walk mode owns W A S D Shift Ctrl Space C — every shortcut registered
  * here is filtered by the walk handler when it fires.
  */
 import { ctx } from "../core/context";
@@ -28,7 +28,7 @@ export function registerDefaultShortcuts(): void {
     (window as any).__obs_setGizmo?.(m);
   };
 
-  /* â”€â”€ App / file â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── App / file ───────────────────────────────────────────────────── */
   shortcuts.register({
     id: "app-save", label: "Save project", keys: "ctrl+s", category: "app",
     handler: () => { void saveProject(); },
@@ -77,7 +77,7 @@ export function registerDefaultShortcuts(): void {
     },
   });
 
-  /* â”€â”€ Edit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Edit ─────────────────────────────────────────────────────────── */
   shortcuts.register({
     id: "undo", label: "Undo", keys: "ctrl+z", category: "edit",
     handler: () => {
@@ -105,7 +105,7 @@ export function registerDefaultShortcuts(): void {
     handler: () => { void history.redo(); },
   });
 
-  /* â”€â”€ Selection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Selection ────────────────────────────────────────────────────── */
   shortcuts.register({
     id: "select-all", label: "Select all", keys: "ctrl+a", category: "select",
     handler: () => { void selection.selectAll(); },
@@ -122,7 +122,7 @@ export function registerDefaultShortcuts(): void {
         if ((window as any).__obsPlanVisible?.()) return;
       } catch { /* */ }
       // Revit-style Esc:
-      // 1) Cancel active authoring tool (wall, duct, moveâ€¦) â†’ Select
+      // 1) Cancel active authoring tool (wall, duct, move…) → Select
       // 2) If already Select, clear selection
       try {
         const auth = (ctx.features as any).authoring;
@@ -134,7 +134,7 @@ export function registerDefaultShortcuts(): void {
           if (last && auth.setLastCommand) auth.setLastCommand(last);
           try {
             window.dispatchEvent(
-              new CustomEvent("obs-toast", { detail: { message: "Cancelled â€” Select", kind: "info" } }),
+              new CustomEvent("obs-toast", { detail: { message: "Cancelled — Select", kind: "info" } }),
             );
           } catch { /* */ }
           try { (window as any).obsRefreshRibbon?.(); } catch { /* */ }
@@ -181,13 +181,13 @@ export function registerDefaultShortcuts(): void {
     },
   });
 
-  /* â”€â”€ Modal gizmo (Blender) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Modal gizmo (Blender) ────────────────────────────────────────── */
   shortcuts.register({ id: "gizmo-move",   label: "Move gizmo",     keys: "g", category: "modal", handler: () => setGizmo("move") });
   shortcuts.register({ id: "gizmo-rotate", label: "Rotate gizmo",   keys: "r", category: "modal", handler: () => setGizmo("rotate") });
   shortcuts.register({ id: "gizmo-scale",  label: "Scale gizmo",    keys: "s", category: "modal", handler: () => setGizmo("scale") });
   shortcuts.register({ id: "gizmo-none",   label: "Selection mode", keys: "q", category: "modal", handler: () => setGizmo("none") });
 
-  /* â”€â”€ Authoring two-letter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Authoring two-letter ────────────────────────────────────────── */
   const authoring = () => (ctx.features as any).authoring;
   const setTool = (tool: string | null) => authoring()?.setAuthoringTool?.(tool);
 
@@ -214,7 +214,7 @@ export function registerDefaultShortcuts(): void {
     });
   }
 
-    /* â”€â”€ Direct Modeling (SketchUp-parity) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    /* ── Direct Modeling (SketchUp-parity) ─────────────────────────────── */
   shortcuts.register({
     id: "push-pull-shortcut",
     label: "Push/Pull",
@@ -245,7 +245,7 @@ export function registerDefaultShortcuts(): void {
       try { (ctx.features as any).primitives?.activateCircle?.(); } catch { /* */ }
     },
   });
-/* â”€â”€ View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── View ─────────────────────────────────────────────────────────── */
   shortcuts.register({
     id: "fit", label: "Fit to view", keys: "f", category: "view",
     handler: () => {
@@ -263,7 +263,7 @@ export function registerDefaultShortcuts(): void {
     },
   });
 
-  /* â”€â”€ Snap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Snap ─────────────────────────────────────────────────────────── */
   shortcuts.register({
     id: "snap-toggle", label: "Toggle snapping", keys: "shift+s", category: "tool",
     handler: () => {
@@ -272,20 +272,20 @@ export function registerDefaultShortcuts(): void {
     },
   });
 
-  /* â”€â”€ Ortho hold â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Ortho hold ─────────────────────────────────────────────────── */
   window.addEventListener("keyup", (e) => {
     if (e.key === "Shift") snapping.clearOrtho();
   });
 
-  /* â”€â”€ Live gizmo refresh on selection changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Live gizmo refresh on selection changes ─────────────────────── */
   selection.onChange(() => {
     if (gizmo.getMode() !== "none") void gizmo.refresh();
   });
 
-  /* â”€â”€ Walk mode toggled from anywhere â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Walk mode toggled from anywhere ─────────────────────────────── */
   window.addEventListener("obs:walk-mode-changed", () => { /* ribbon re-renders itself */ });
 
-  /* â”€â”€ AccuDraw key reservation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── AccuDraw key reservation ─────────────────────────────────────── */
   // AccuDraw's own keydown listener runs in capture phase and stops
   // propagation for X / Z / Y / Tab while a base point is active. The
   // registrations below are belt-and-braces: they prevent the app-level

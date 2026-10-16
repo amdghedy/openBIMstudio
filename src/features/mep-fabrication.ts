@@ -1,5 +1,5 @@
 /**
- * MEP Fabrication Parts â€” catalog browser for placing prefabricated parts.
+ * MEP Fabrication Parts — catalog browser for placing prefabricated parts.
  *
  * Groups parts by system. Clicking a part activates the corresponding
  * authoring tool (duct-fitting, pipe-fitting, etc.) so the user can place

@@ -1,4 +1,4 @@
-﻿/** Universal file opening: converts everything the browser can, guides for the rest. */
+?/** Universal file opening: converts everything the browser can, guides for the rest. */
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { computeSceneBounds, fitAll } from "./camera-tools";
@@ -9,10 +9,10 @@ export const ACCEPT_ALL =
   ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.dwg,.dxf,.skp";
 
 const DESKTOP_ONLY: Record<string, string> = {
-  rvt: "Revit files cannot be converted in the browser.\n\nIn Revit: File â†’ Export â†’ IFC â†’ export the model, then import the .ifc here.",
+  rvt: "Revit files cannot be converted in the browser.\n\nIn Revit: File → Export → IFC → export the model, then import the .ifc here.",
   rfa: "Revit families cannot be converted in the browser.\n\nLoad the family into a Revit project, then export the project as IFC and import it here.",
   dwg: "DWG cannot be converted in the browser.\n\nIn AutoCAD: save as DXF, or better export the model as IFC / OBJ, then import here.",
-  skp: "SketchUp files cannot be converted in the browser.\n\nIn SketchUp: File â†’ Export â†’ IFC / OBJ / DAE (3D model), then import here.",
+  skp: "SketchUp files cannot be converted in the browser.\n\nIn SketchUp: File → Export → IFC / OBJ / DAE (3D model), then import here.",
 };
 
 const auxGroup = new THREE.Group();
@@ -37,7 +37,7 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 8000);
 }
 
-// â”€â”€ Aux object lifecycle â”€â”€
+// ── Aux object lifecycle ──
 export function getAuxBox(): THREE.Box3 | null {
   if (!auxGroup.children.length) return null;
   return new THREE.Box3().setFromObject(auxGroup);
@@ -57,8 +57,8 @@ export function clearAux() {
   auxIds.length = 0;
 }
 
-// â”€â”€â”€ Revit-style isometric view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Positions the camera at 45Â° azimuth, ~35Â° elevation looking at
+// ─── Revit-style isometric view ─────────────────────────────────
+// Positions the camera at 45° azimuth, ~35° elevation looking at
 // the scene center. This mimics the default 3D View in Revit.
 function applyRevitIsoView() {
   try {
@@ -89,9 +89,9 @@ function applyRevitIsoView() {
 
     // Revit default 3D view: SE isometric. In a Y-up system this is:
     // +X to the right, +Z toward viewer, +Y up.
-    // Azimuth 45Â°, elevation ~35.264Â° (true isometric).
-    const az = Math.PI / 4;              // 45Â°
-    const el = Math.atan(1 / Math.SQRT2); // â‰ˆ 35.26Â°
+    // Azimuth 45°, elevation ~35.264° (true isometric).
+    const az = Math.PI / 4;              // 45°
+    const el = Math.atan(1 / Math.SQRT2); // ≈ 35.26°
 
     const dx = Math.cos(el) * Math.sin(az);
     const dy = Math.sin(el);
@@ -180,7 +180,7 @@ async function parseModelBytes(buf: ArrayBuffer, name: string): Promise<THREE.Ob
   return null;
 }
 
-// â”€â”€ Router â”€â”€
+// ── Router ──
 export async function importFiles(files: File[]) {
   for (const file of files) {
     const e = ext(file.name);
@@ -218,7 +218,7 @@ export async function importFiles(files: File[]) {
 
       if (DESKTOP_ONLY[e]) { alert(DESKTOP_ONLY[e]); continue; }
 
-      // Everything else â†’ try as a 3D model (glb/gltf/obj/stl/ply/fbx/dae/3ds)
+      // Everything else → try as a 3D model (glb/gltf/obj/stl/ply/fbx/dae/3ds)
       const buf = await file.arrayBuffer();
       const obj = await parseModelBytes(buf, file.name);
       if (obj) {
@@ -237,7 +237,7 @@ export async function importFiles(files: File[]) {
 
 export function pickAndImport() { pickFilesLocal(ACCEPT_ALL, importFiles); }
 
-// â”€â”€ Setup â”€â”€
+// ── Setup ──
 export function setupFileInterop() {
   ctx.world.scene.three.add(auxGroup);
   ctx.features.fileInterop = {
@@ -245,7 +245,7 @@ export function setupFileInterop() {
     getAuxBox, getAuxObjects, clearAux, restoreAux,
   };
 
-  // ─── Autodesk dialog event bridge ────────────────────────────────
+  // --- Autodesk dialog event bridge --------------------------------
   // The "Import from Autodesk Viewer" dialog dispatches a CustomEvent
   // after a file drop. We catch it here and route it into importFiles().
   const dialogDropHandler = (evt: Event) => {

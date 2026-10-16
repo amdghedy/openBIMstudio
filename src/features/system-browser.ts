@@ -1,5 +1,5 @@
 /**
- * System Browser â€” MEP systems tree.
+ * System Browser — MEP systems tree.
  *
  * Scans the loaded fragment models for MEP categories and groups them
  * into systems (Supply Air, Return Air, Domestic Cold Water, Sanitary,

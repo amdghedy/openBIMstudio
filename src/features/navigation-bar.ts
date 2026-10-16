@@ -1,5 +1,5 @@
 /**
- * Navigation Bar â€” floating view-control toolbar.
+ * Navigation Bar — floating view-control toolbar.
  *
  * Positioned under the ViewCube on the right side of the viewport.
  * Provides Home, Fit, Walk, Orbit, Pan, Zoom buttons that mirror the

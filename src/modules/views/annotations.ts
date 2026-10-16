@@ -1,5 +1,5 @@
 /**
- * Annotation types â€” dimensions and tags that live in a VIEW, not in the
+ * Annotation types — dimensions and tags that live in a VIEW, not in the
  * element model. Every annotation references the element(s) it describes
  * through the Reference system so it follows element motion.
  */

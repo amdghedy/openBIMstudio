@@ -50,8 +50,8 @@ title.textContent = "Families";
 title.style.cssText = "font-weight:700;flex:1;letter-spacing:.2px";
 
 const newBtn = mkHeaderBtn("+ Family", "Duplicate the current family under a new name", () => onNewFamily());
-const refreshBtn = mkHeaderBtn("â†»", "Reload from storage", () => reloadAll());
-const closeBtn = mkHeaderBtn("âœ•", "Close", () => closeFamilyBrowser());
+const refreshBtn = mkHeaderBtn("↻", "Reload from storage", () => reloadAll());
+const closeBtn = mkHeaderBtn("✕", "Close", () => closeFamilyBrowser());
 header.append(title, newBtn, refreshBtn, closeBtn);
 
 function mkHeaderBtn(label: string, tooltip: string, onclick: () => void): HTMLButtonElement {
@@ -77,7 +77,7 @@ toolbar.style.cssText =
 
 const searchInput = document.createElement("input");
 searchInput.type = "text";
-searchInput.placeholder = "Search families, types, IFC entityâ€¦";
+searchInput.placeholder = "Search families, types, IFC entity…";
 searchInput.style.cssText =
   "flex:1;padding:5px 9px;background:#0f1118;border:1px solid var(--border-default,#2a2e3a);" +
   "border-radius:5px;color:var(--text-primary,#e8eaf0);font:11.5px system-ui;outline:none";
@@ -147,7 +147,7 @@ function reloadAll(): void {
   if (!selectedFamilyId && list.length) selectedFamilyId = list[0].id;
 
   const totalTypes = list.reduce((n, f) => n + f.types.length, 0);
-  statusBar.textContent = list.length + " families Â· " + totalTypes + " types Â· obs.families.v1";
+  statusBar.textContent = list.length + " families · " + totalTypes + " types · obs.families.v1";
   renderTree();
   renderDetail();
 }
@@ -217,7 +217,7 @@ function renderTree(): void {
       };
 
       const icon = document.createElement("span");
-      icon.textContent = fam.builtIn ? "â—" : "â—‹";
+      icon.textContent = fam.builtIn ? "●" : "○";
       icon.style.cssText = "font-size:9px;color:" + (fam.builtIn ? "#38bdf8" : "#a855f7");
 
       const name = document.createElement("span");
@@ -251,7 +251,7 @@ function renderTree(): void {
             renderDetail();
           };
           const bullet = document.createElement("span");
-          bullet.textContent = "â–¸";
+          bullet.textContent = "▸";
           bullet.style.cssText = "font-size:8px;opacity:.6";
           const tname = document.createElement("span");
           tname.textContent = t.name;
@@ -713,7 +713,7 @@ function buildInstancesSection(fam: FamilyDefinition): HTMLElement {
 }
 
 function formatParamValue(p: any, v: any): string {
-  if (v === undefined || v === null) return "â€”";
+  if (v === undefined || v === null) return "—";
   if (p.type === "length" && typeof v === "number") return v.toFixed(3) + " m";
   if (p.type === "angle"  && typeof v === "number") return v.toFixed(3) + " rad";
   if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(3);
@@ -801,7 +801,7 @@ function buildPreviewSvg(obj: THREE.Object3D): SVGSVGElement {
   dims.setAttribute("font-size", "9.5");
   dims.setAttribute("fill", "#64748b");
   dims.textContent =
-    size.x.toFixed(2) + " Ã— " + size.y.toFixed(2) + " Ã— " + size.z.toFixed(2) + " m";
+    size.x.toFixed(2) + " × " + size.y.toFixed(2) + " × " + size.z.toFixed(2) + " m";
   svg.appendChild(dims);
 
   return svg;
@@ -842,7 +842,7 @@ function onPlace(fam: FamilyDefinition): void {
       try { auth.setActiveFamily?.(fam.id, selectedTypeId); } catch { /* */ }
       auth.setAuthoringTool(sourceType);
       const t = selectedTypeId ? fam.types.find((x) => x.id === selectedTypeId) : null;
-      toast("Place " + fam.name + (t ? " Â· " + t.name : "") + " â€” click in the viewport", "success");
+      toast("Place " + fam.name + (t ? " · " + t.name : "") + " — click in the viewport", "success");
     } else {
       toast("Authoring not ready.", "warn");
     }
@@ -930,7 +930,7 @@ function onDelete(fam: FamilyDefinition): void {
   const s = svc();
   if (!s) return;
   if (fam.builtIn) { toast("Built-in families cannot be deleted.", "warn"); return; }
-  if (!confirm("Delete family â€œ" + fam.name + "â€ and all its types?")) return;
+  if (!confirm("Delete family “" + fam.name + "” and all its types?")) return;
   if (s.remove(fam.id)) {
     if (selectedFamilyId === fam.id) {
       selectedFamilyId = null;
@@ -980,7 +980,7 @@ function onRemoveType(fam: FamilyDefinition): void {
   if (fam.types.length <= 1) { toast("A family must keep at least one type.", "warn"); return; }
   const t = fam.types.find((x) => x.id === selectedTypeId);
   if (!t) return;
-  if (!confirm("Delete type â€œ" + t.name + "â€?")) return;
+  if (!confirm("Delete type “" + t.name + "”?")) return;
   if (s.removeType(fam.id, t.id)) {
     selectedTypeId = fam.types[0]?.id ?? null;
     toast("Type removed.", "info");

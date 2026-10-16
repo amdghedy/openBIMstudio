@@ -1,5 +1,5 @@
 /**
- * P&ID Modeler â€” 2D Process & Instrumentation Diagram sketch pad.
+ * P&ID Modeler — 2D Process & Instrumentation Diagram sketch pad.
  *
  * A lightweight SVG canvas where the user can place P&ID symbols
  * (pumps, valves, tanks, instruments) and connect them with process

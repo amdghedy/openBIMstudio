@@ -1,5 +1,5 @@
 /**
- * Sheet layout â€” transforms between scene (world metre) coordinates and
+ * Sheet layout — transforms between scene (world metre) coordinates and
  * sheet millimeter coordinates.
  *
  * A viewport on a sheet has an x/y/width/height in mm. The view inside it

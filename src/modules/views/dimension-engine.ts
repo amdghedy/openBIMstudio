@@ -191,9 +191,9 @@ function resolveLinear(
   style: DimensionStyle,
   viewScale: number,
 ): ResolvedDimension {
-  // In 2D views the cut plane is Xâ€“Z. For plan, use X and Z directly. For
-  // section, the generators map (along, Y) â†’ (x, z). The dimension engine is
-  // view-agnostic â€” it works on the view's 2D coordinates, so the caller is
+  // In 2D views the cut plane is X–Z. For plan, use X and Z directly. For
+  // section, the generators map (along, Y) → (x, z). The dimension engine is
+  // view-agnostic — it works on the view's 2D coordinates, so the caller is
   // expected to have already swapped the reference to view coordinates when
   // it created the dimension.
 

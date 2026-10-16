@@ -1,5 +1,5 @@
 /**
- * Sheets 2D panel â€” renders sheets with live viewport content.
+ * Sheets 2D panel — renders sheets with live viewport content.
  *
  * Composes:
  *   - the sheets store (list/create/delete sheets, add/remove viewports)

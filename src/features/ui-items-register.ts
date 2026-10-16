@@ -19,7 +19,7 @@ export function registerUiItems(): void {
     persistItem(id, true);
   };
 
-  // â”€â”€ ViewCube â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── ViewCube ─────────────────────────────────────────────────────
   registerUiItem({
     id: "viewcube",
     label: "ViewCube",
@@ -41,18 +41,18 @@ export function registerUiItems(): void {
     },
   });
 
-  // â”€â”€ Navigation Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Navigation Bar ───────────────────────────────────────────────
   registerUiItem({
     id: "nav-bar",
     label: "Navigation Bar",
     group: "panels",
     available: false,
-    unavailableHint: "The Navigation Bar is on the roadmap â€” the ViewCube and view ribbon cover this for now.",
+    unavailableHint: "The Navigation Bar is on the roadmap — the ViewCube and view ribbon cover this for now.",
     isVisible: () => false,
     toggle: () => {},
   });
 
-  // â”€â”€ Project Browser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Project Browser ──────────────────────────────────────────────
   registerUiItem({
     id: "project-browser",
     label: "Project Browser",
@@ -66,7 +66,7 @@ export function registerUiItems(): void {
     },
   });
 
-  // â”€â”€ System Browser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── System Browser ───────────────────────────────────────────────
   registerUiItem({
     id: "system-browser",
     label: "System Browser",
@@ -77,7 +77,7 @@ export function registerUiItems(): void {
     toggle: () => {},
   });
 
-  // â”€â”€ Properties
+  // ── Properties
   registerUiItem({
     id: "family-browser",
     label: "Family Browser",
@@ -104,7 +104,7 @@ export function registerUiItems(): void {
     },
   });
 
-  // â”€â”€ MEP Fabrication Parts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── MEP Fabrication Parts ────────────────────────────────────────
   registerUiItem({
     id: "mep-fabrication",
     label: "MEP Fabrication Parts",
@@ -115,7 +115,7 @@ export function registerUiItems(): void {
     toggle: () => {},
   });
 
-  // â”€â”€ P&ID Modeler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── P&ID Modeler ─────────────────────────────────────────────────
   registerUiItem({
     id: "pid-modeler",
     label: "P&ID Modeler",
@@ -126,7 +126,7 @@ export function registerUiItems(): void {
     toggle: () => {},
   });
 
-  // â”€â”€ Status Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Status Bar ───────────────────────────────────────────────────
   // ---- Advanced / Critical Gaps toolbar (open / close) -----------------
   // The [D] [H] [S] [A] [L] [C] [R] [P] toolbar. Starts hidden.
   registerUiItem({
@@ -167,7 +167,7 @@ export function registerUiItems(): void {
     },
   });
 
-  // â”€â”€ Status Bar Â· Worksets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Status Bar · Worksets ────────────────────────────────────────
   registerUiItem({
     id: "status-bar-worksets",
     label: "Status Bar - Worksets",
@@ -184,7 +184,7 @@ export function registerUiItems(): void {
     },
   });
 
-  // â”€â”€ Status Bar Â· Design Options â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Status Bar · Design Options ──────────────────────────────────
   registerUiItem({
     id: "status-bar-design-options",
     label: "Status Bar - Design Options",

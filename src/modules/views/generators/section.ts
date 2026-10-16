@@ -1,5 +1,5 @@
 /**
- * Section view generator â€” analytic vertical cut.
+ * Section view generator — analytic vertical cut.
  *
  *   section-2D X = distance along the cut line
  *   section-2D Z = world Y (elevation)

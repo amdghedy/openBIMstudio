@@ -1,5 +1,5 @@
 /**
- * Plan view generator â€” wraps the existing plan-generator.ts and adapts
+ * Plan view generator — wraps the existing plan-generator.ts and adapts
  * its PlanView output to the general Scene2D format.
  */
 

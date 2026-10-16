@@ -1,5 +1,5 @@
 /**
- * View store â€” CRUD + persistence for ViewDef.
+ * View store — CRUD + persistence for ViewDef.
  */
 
 import type { ViewDef, ViewKind, Discipline } from "./types";

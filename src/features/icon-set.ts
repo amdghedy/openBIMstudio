@@ -4,8 +4,8 @@
  * Every icon is a `<svg>` string with `stroke="currentColor"` so it inherits
  * the button color and hover/active states. No emoji, no font dependency.
  *
- * Each path is designed on a 24Ã—24 grid, drawn with a 1.8 px stroke.
- * All icons are visually distinct â€” no two glyphs are identical, even where
+ * Each path is designed on a 24×24 grid, drawn with a 1.8 px stroke.
+ * All icons are visually distinct — no two glyphs are identical, even where
  * the underlying concept is similar (e.g. view directions).
  */
 export type IconName =
@@ -67,7 +67,7 @@ export type IconName =
     | "system";
 
 const PATHS: Record<IconName, string> = {
-  // â”€â”€ App / file â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── App / file ──────────────────────────────────────────────────────
   menu: `<path d="M4 7h16M4 12h16M4 17h16"/>`,
   home: `<path d="M4 11 L12 4 L20 11 M6 10 V20 H18 V10"/>`,
   save: `<path d="M5 5 H17 L19 7 V19 H5 Z"/><path d="M9 5 V9 H15 V5"/><path d="M9 19 V13 H15 V19"/>`,
@@ -87,7 +87,7 @@ const PATHS: Record<IconName, string> = {
   csv: `<path d="M5 4 H19 V20 H5 Z"/><path d="M8 9 H16 M8 13 H16 M8 17 H12"/>`,
   "cost-takeoff": `<rect x="5" y="5" width="14" height="14"/><circle cx="12" cy="12" r="3"/>`,
 
-  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Build ───────────────────────────────────────────────────────────
   wall: `<rect x="3" y="6" width="18" height="12"/><path d="M3 10 H21 M3 14 H21 M7 6 V10 M11 10 V14 M15 14 V18 M19 10 V14"/>`,
   floor: `<path d="M3 15 L12 20 L21 15 L12 10 Z"/>`,
   roof: `<path d="M3 14 L12 5 L21 14"/><path d="M6 12 V18 H18 V12"/>`,
@@ -102,14 +102,14 @@ const PATHS: Record<IconName, string> = {
   slab: `<path d="M3 8 H21 V16 H3 Z"/><path d="M3 12 H21"/>`,
   equipment: `<rect x="4" y="4" width="16" height="12"/><path d="M8 16 V20 M16 16 V20 M4 20 H20"/>`,
 
-  // â”€â”€ Openings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Openings ────────────────────────────────────────────────────────
   door: `<path d="M6 4 H18 V20"/><path d="M6 4 V20"/><circle cx="15" cy="12" r="1"/>`,
   window: `<rect x="5" y="5" width="14" height="14"/><path d="M12 5 V19 M5 12 H19"/>`,
   opening: `<path d="M4 5 H20 V19 H4 Z"/><path d="M8 9 L16 15 M16 9 L8 15"/>`,
   circle: `<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.9"/>`,
   shaft: `<path d="M6 4 H18 V20 H6 Z"/><path d="M6 12 H18 M12 4 V20"/>`,
 
-  // â”€â”€ MEP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── MEP ─────────────────────────────────────────────────────────────
   duct: `<path d="M3 8 H21 V16 H3 Z"/><path d="M3 12 H21"/>`,
   "duct-fitting": `<path d="M4 8 H12 L20 4 V20 L12 16 H4 Z"/>`,
   "air-terminal": `<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8 H16 M8 12 H16 M8 16 H16"/>`,
@@ -137,7 +137,7 @@ const PATHS: Record<IconName, string> = {
   transformer: `<rect x="4" y="6" width="16" height="12"/><path d="M8 6 V4 M16 6 V4 M8 18 V20 M16 18 V20"/>`,
   generator: `<rect x="4" y="6" width="16" height="12"/><path d="M8 12 L11 9 M11 15 L15 11 M16 14 L17 15"/>`,
 
-  // â”€â”€ Structure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Structure ───────────────────────────────────────────────────────
   rebar: `<path d="M4 6 H20 M4 12 H20 M4 18 H20"/><path d="M6 4 V8 M12 4 V8 M18 4 V8"/>`,
   "area-rebar": `<rect x="4" y="4" width="16" height="16"/><path d="M4 8 H20 M4 12 H20 M4 16 H20 M8 4 V20 M12 4 V20 M16 4 V20"/>`,
   "path-rebar": `<path d="M4 6 H20 M4 10 H20 M4 14 H20 M4 18 H20"/>`,
@@ -147,22 +147,22 @@ const PATHS: Record<IconName, string> = {
   anchor: `<path d="M12 3 V16"/><path d="M8 16 L12 20 L16 16"/>`,
   pile: `<path d="M12 3 V21"/><path d="M8 6 H16 M8 10 H16"/>`,
 
-  // â”€â”€ Circulation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Circulation ─────────────────────────────────────────────────────
   stairs: `<path d="M3 20 H7 V17 H11 V14 H15 V11 H19 V8 H21"/><path d="M3 20 V8"/>`,
   railing: `<path d="M3 12 H21"/><path d="M5 12 V20 M9 12 V20 M13 12 V20 M17 12 V20"/>`,
   ramp: `<path d="M3 18 L21 8"/><path d="M3 15 L3 18 L6 18"/>`,
 
-  // â”€â”€ Datum â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Datum ───────────────────────────────────────────────────────────
   grid: `<path d="M3 8 H21 M3 12 H21 M3 16 H21 M8 3 V21 M12 3 V21 M16 3 V21"/>`,
   level: `<path d="M3 12 H21"/><path d="M6 8 L12 12 L18 8"/>`,
   "ref-plane": `<path d="M3 4 L21 20"/><circle cx="6" cy="6" r="1.5"/><circle cx="18" cy="18" r="1.5"/>`,
 
-  // â”€â”€ Room â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Room ────────────────────────────────────────────────────────────
   room: `<rect x="4" y="4" width="16" height="16"/><path d="M8 12 H16"/>`,
   area: `<path d="M4 4 H20 V20 H4 Z"/><path d="M4 4 L20 20" stroke-dasharray="2 2"/>`,
   "room-tag": `<path d="M4 12 L12 4 L20 12 L12 20 Z"/><circle cx="12" cy="12" r="2"/>`,
 
-  // â”€â”€ Modify â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Modify ──────────────────────────────────────────────────────────
   move: `<path d="M12 3 V21 M3 12 H21"/><path d="M9 6 L12 3 L15 6 M9 18 L12 21 L15 18 M6 9 L3 12 L6 15 M18 9 L21 12 L18 15"/>`,
   copy: `<rect x="6" y="6" width="12" height="12"/><path d="M9 3 H21 V15"/>`,
   rotate: `<path d="M4 12 A8 8 0 0 1 20 12"/><path d="M20 12 L17 9 M20 12 L23 9" transform="translate(-3 0)"/>`,
@@ -175,7 +175,7 @@ const PATHS: Record<IconName, string> = {
   "show-all": `<path d="M3 12 Q12 4 21 12 Q12 20 3 12 Z"/><circle cx="12" cy="12" r="3"/>`,
   "select-all": `<rect x="4" y="4" width="16" height="16" stroke-dasharray="3 2"/><path d="M8 12 L11 15 L16 9"/>`,
 
-  // â”€â”€ View â€” cube seen from each side, distinctly â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── View — cube seen from each side, distinctly ─────────────────────
   perspective: `<circle cx="12" cy="12" r="8"/><path d="M12 4 V20 M4 12 H20" stroke-dasharray="2 2"/>`,
   orthographic: `<rect x="4" y="4" width="16" height="16"/><path d="M4 8 H20 M4 12 H20 M4 16 H20 M8 4 V20 M12 4 V20 M16 4 V20"/>`,
   fit: `<path d="M4 8 V4 H8 M16 4 H20 V8 M20 16 V20 H16 M8 20 H4 V16"/>`,
@@ -196,10 +196,10 @@ const PATHS: Record<IconName, string> = {
   bounds: `<path d="M4 4 H20 V20 H4 Z" stroke-dasharray="2 2"/><path d="M4 8 H20 M4 16 H20 M8 4 V20 M16 4 V20"/>`,
   camera: `<rect x="3" y="7" width="18" height="12" rx="2"/><circle cx="12" cy="13" r="3"/><path d="M8 7 L9 5 H15 L16 7"/>`,
 
-  // Walk mode â€” walking stick figure
+  // Walk mode — walking stick figure
   walk: `<circle cx="12" cy="4.5" r="1.9"/><path d="M12 7 V13"/><path d="M12 9 L8.5 11 M12 9 L15.5 11"/><path d="M12 13 L9.5 20 M12 13 L14.5 20"/>`,
 
-  // â”€â”€ Panels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Panels ──────────────────────────────────────────────────────────
   tree: `<path d="M12 3 V7 M12 7 V21"/><path d="M12 7 L6 11 M12 7 L18 11"/><circle cx="12" cy="3" r="1.5"/><circle cx="6" cy="13" r="1.5"/><circle cx="18" cy="13" r="1.5"/>`,
   plan: `<rect x="3" y="4" width="18" height="16"/><path d="M3 12 H21 M12 4 V20"/>`,
   schedules: `<rect x="3" y="4" width="18" height="16"/><path d="M3 9 H21 M3 14 H21 M9 4 V20"/>`,
@@ -207,7 +207,7 @@ const PATHS: Record<IconName, string> = {
   cost: `<circle cx="12" cy="12" r="8"/><path d="M9 9 H13 Q15 9 15 11 Q15 13 13 13 H9 M9 13 H14 Q16 13 16 15 Q16 17 14 17 H9 M12 7 V9 M12 17 V19"/>`,
   "tools-panel": `<rect x="4" y="4" width="4" height="16"/><rect x="10" y="4" width="10" height="7"/><rect x="10" y="13" width="10" height="7"/>`,
 
-  // â”€â”€ Clash / Coordinate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Clash / Coordinate ──────────────────────────────────────────────
   measure: `<path d="M3 17 L17 3"/><path d="M6 14 L9 17 M10 10 L13 13 M14 6 L17 9"/>`,
   section: `<path d="M3 7 L12 3 L21 7 V17 L12 21 L3 17 Z" opacity="0.35"/><path d="M3 12 L12 16 L21 12" stroke-dasharray="2 2"/><path d="M12 3 V21" opacity="0.4"/>`,
   clash: `<path d="M4 4 L20 20 M20 4 L4 20"/><circle cx="12" cy="12" r="4"/>`,
@@ -225,7 +225,7 @@ const PATHS: Record<IconName, string> = {
   "acquire-coords": `<circle cx="12" cy="12" r="8"/><path d="M8 12 L11 15 L16 9"/>`,
   "specify-coords": `<circle cx="12" cy="12" r="8"/><path d="M12 8 V16 M9 11 L12 8 L15 11"/>`,
 
-  // â”€â”€ Annotation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Annotation ──────────────────────────────────────────────────────
   "dim-aligned": `<path d="M3 18 L21 6"/><path d="M3 15 V21 M21 3 V9"/>`,
   "dim-linear": `<path d="M4 12 H20"/><path d="M4 8 V16 M20 8 V16"/>`,
   "dim-angular": `<path d="M4 20 L4 4 M4 20 L20 20"/><path d="M10 20 A6 6 0 0 0 4 14"/>`,
@@ -247,7 +247,7 @@ const PATHS: Record<IconName, string> = {
   symbol: `<circle cx="12" cy="12" r="8"/><path d="M12 4 L12 20 M4 12 L20 12"/>`,
   "color-legend": `<rect x="4" y="4" width="16" height="16"/><path d="M4 10 H20 M4 14 H20 M4 18 H20" stroke-width="3"/>`,
 
-  // â”€â”€ Reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Reports ─────────────────────────────────────────────────────────
   report: `<rect x="4" y="4" width="16" height="16"/><path d="M7 10 H17 M7 13 H17 M7 16 H13"/>`,
   check: `<path d="M4 12 L10 18 L20 6"/>`,
   energy: `<path d="M13 3 L5 14 H11 L10 21 L19 10 H13 Z"/>`,
@@ -255,7 +255,7 @@ const PATHS: Record<IconName, string> = {
   schedule: `<rect x="3" y="4" width="18" height="16"/><path d="M3 9 H21 M9 4 V20"/>`,
   quantification: `<path d="M4 20 V10 M9 20 V6 M14 20 V13 M19 20 V4"/>`,
 
-  // â”€â”€ Massing & Site â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Massing & Site ─────────────────────────────────────────────────
   mass: `<path d="M4 20 L12 4 L20 20 Z"/>`,
   "mass-floor": `<path d="M4 8 L12 4 L20 8 L12 12 Z"/><path d="M4 16 L12 20 L20 16" stroke-dasharray="2 2"/>`,
   toposurface: `<path d="M3 18 Q8 12 12 16 Q16 20 21 14"/>`,
@@ -268,7 +268,7 @@ const PATHS: Record<IconName, string> = {
   "split-surface": `<path d="M3 18 Q12 4 21 18"/><path d="M12 4 V20" stroke-dasharray="2 2"/>`,
   "site-settings": `<circle cx="12" cy="12" r="3"/><path d="M12 3 V5 M12 19 V21 M3 12 H5 M19 12 H21 M5 5 L7 7 M17 17 L19 19 M5 19 L7 17 M17 7 L19 5"/>`,
 
-  // â”€â”€ System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── System ──────────────────────────────────────────────────────────
   // Aliases
   undo: `<path d="M9 14 L4 9 L9 4 M4 9 H14 A5 5 0 0 1 14 19 H10"/>`,
   mline: `<path d="M3 17 L21 7"/>`,
@@ -280,7 +280,7 @@ const PATHS: Record<IconName, string> = {
 
 /**
  * Return an inline SVG string for a given icon name.
- * Sized 16Ã—16 to fit the compact ribbon button (default --rbb-icon: 16px).
+ * Sized 16×16 to fit the compact ribbon button (default --rbb-icon: 16px).
  */
 export function svgIcon(name: IconName): string {
   const p = PATHS[name] ?? PATHS.system;

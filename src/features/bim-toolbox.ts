@@ -1,5 +1,5 @@
 /**
- * BIM Command Center â€” cross-discipline Revit-style behavior layer.
+ * BIM Command Center — cross-discipline Revit-style behavior layer.
  *
  * This is deliberately broader than a single discipline ribbon: it groups
  * the command order users expect while authoring and documenting BIM:
@@ -110,7 +110,7 @@ function makeSection(id: string, label: string, subtitle?: string, open = true):
   function apply() {
     const isOpen = root.dataset.open !== "0";
     content.style.display = isOpen ? "grid" : "none";
-    caret.textContent = isOpen ? "â–¾" : "â–¸";
+    caret.textContent = isOpen ? "▾" : "▸";
   }
   root.dataset.open = open ? "1" : "0";
   button.onclick = () => { root.dataset.open = root.dataset.open === "0" ? "1" : "0"; apply(); };
@@ -133,7 +133,7 @@ function action(label: string, run: () => void | Promise<void>, accent = false):
   b.onmouseleave = () => { b.style.background = accent ? "var(--accent-dim)" : "var(--bg-inset)"; b.style.color = accent ? "var(--accent)" : "var(--text-secondary)"; };
   b.onclick = async () => {
     try { await run(); refresh(); }
-    catch (err) { console.error("[bim-toolbox] action failed", err); toast("Action failed â€” see console.", "warn"); }
+    catch (err) { console.error("[bim-toolbox] action failed", err); toast("Action failed — see console.", "warn"); }
   };
   return b;
 }
@@ -187,14 +187,14 @@ function setPlanTool(tool: string): void {
   pv?.setTool?.(tool);
 }
 
-const modeling = makeSection("modeling", "1 Â· Modeling Orders", "place â†’ constrain â†’ modify");
+const modeling = makeSection("modeling", "1 · Modeling Orders", "place → constrain → modify");
 modeling.content.append(
   row(
     action("Select / Esc", () => setAuthoringTool("select"), true),
     action("Repeat Last", () => { const cmd = getLastCommand(); if (cmd) setAuthoringTool(cmd); else toast("No previous command to repeat."); }),
   ),
   row(
-    action("Create Similar", () => { const type = createSimilarFromSelection(); if (!type) toast("Select one authored element first.", "warn"); else toast(`Create Similar â†’ ${type}`, "success"); }),
+    action("Create Similar", () => { const type = createSimilarFromSelection(); if (!type) toast("Select one authored element first.", "warn"); else toast(`Create Similar → ${type}`, "success"); }),
     action("Finish / Cancel", () => setAuthoringTool(null)),
   ),
   row(
@@ -231,7 +231,7 @@ modeling.content.append(
   ),
 );
 
-const constraints = makeSection("constraints", "2 Â· Constraints & Hosts", "Revit-style placement behavior");
+const constraints = makeSection("constraints", "2 · Constraints & Hosts", "Revit-style placement behavior");
 constraints.content.append(
   row(
     select("Wall Location Line", getWallLocationLine(), [
@@ -264,7 +264,7 @@ constraints.content.append(
   ),
 );
 
-const modify = makeSection("modify", "3 Â· Modify & Constraints", "selection aware");
+const modify = makeSection("modify", "3 · Modify & Constraints", "selection aware");
 modify.content.append(
   row(
     action("Pin Selected", () => { const n = pinSelected(true); toast(n ? `Pinned ${n} element(s).` : "Select authored element(s).", n ? "success" : "warn"); }),
@@ -284,7 +284,7 @@ modify.content.append(
   ),
 );
 
-const annotation = makeSection("annotation", "4 Â· Annotation & Dimensioning", "document the model");
+const annotation = makeSection("annotation", "4 · Annotation & Dimensioning", "document the model");
 annotation.content.append(
   row(
     action("Aligned Dimension", () => setPlanTool("dim-aligned"), true),
@@ -312,7 +312,7 @@ annotation.content.append(
   ),
 );
 
-const graphics = makeSection("graphics", "5 Â· View & Visual Appearance", "presentation / QA");
+const graphics = makeSection("graphics", "5 · View & Visual Appearance", "presentation / QA");
 graphics.content.append(
   row(
     select<VisualPreset>("Visual Style", getVisualPreset(), [
@@ -345,7 +345,7 @@ graphics.content.append(
   ),
 );
 
-const visibility = makeSection("visibility", "6 Â· Visibility & Selection", "temporary review controls");
+const visibility = makeSection("visibility", "6 · Visibility & Selection", "temporary review controls");
 visibility.content.append(
   row(
     action("Select All", async () => { const r = await selectAllObjects(); toast(`Selected ${r.fragments + r.authored} objects.`, "success"); }),
@@ -369,7 +369,7 @@ visibility.content.append(
   ),
 );
 
-const production = makeSection("production", "7 Â· BIM Delivery", "information â†’ sheets â†’ handover", false);
+const production = makeSection("production", "7 · BIM Delivery", "information → sheets → handover", false);
 production.content.append(
   row(
     action("Project Browser", () => { if (!isProjectBrowserVisible()) toggleProjectBrowser(); }),
@@ -409,10 +409,10 @@ function refresh(): void {
 
   const first = authored[0];
   selectionInfo.textContent = first
-    ? `Selection: ${first.name} Â· category=${first.type} Â· ${first.properties?.pinned ? "PINNED" : "editable"}`
+    ? `Selection: ${first.name} · category=${first.type} · ${first.properties?.pinned ? "PINNED" : "editable"}`
     : selection.size()
       ? `Selection: ${selection.size()} federated object(s) across ${selection.modelCount()} model(s)`
-      : "Selection: none Â· Start with Select, then place / modify / annotate in order.";
+      : "Selection: none · Start with Select, then place / modify / annotate in order.";
 }
 
 export function toggleBimToolbox(): void {

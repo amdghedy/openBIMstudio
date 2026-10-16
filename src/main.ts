@@ -1,11 +1,11 @@
 import "./critical-gaps-boot";
 /**
- * Open BIM Studio v52 â€” main entry point.
+ * Open BIM Studio v52 — main entry point.
  *
  * Heavy-duty open BIM production platform:
  * parametric-ready authoring, sheets/production docs, 4D simulation,
  * clash detective, IDS, schedules, 5D cost, automation rules, materials,
- * BCF, AI â€” engineered to compete with Revit, Navisworks, Bentley,
+ * BCF, AI — engineered to compete with Revit, Navisworks, Bentley,
  * BricsCAD BIM, Forma and Renga as the open standards monster of AEC.
  */
 import { setupViewer } from "./core/setup";
@@ -132,7 +132,7 @@ function showError(title: string, err: unknown) {
   errOverlay.innerHTML = "";
   const pre = document.createElement("pre");
   pre.style.cssText = "margin:0;white-space:pre-wrap;font:inherit";
-  pre.textContent = `âœ– ${title}\n${msg}`;
+  pre.textContent = `✖ ${title}\n${msg}`;
   const dismiss = document.createElement("button");
   dismiss.textContent = "Dismiss";
   dismiss.style.cssText =
@@ -171,7 +171,7 @@ function step(name: string, fn: () => unknown | Promise<unknown>) {
   return (async () => {
     try {
       await fn();
-      console.log(`[TOC boot] âœ“ ${name}`);
+      console.log(`[TOC boot] ✓ ${name}`);
     } catch (err) {
       showError(`Step failed: ${name} (viewer continues without it)`, err);
     }
@@ -180,7 +180,7 @@ function step(name: string, fn: () => unknown | Promise<unknown>) {
 
 await step("setupViewer (core)", async () => {
   if (!document.getElementById("app")) {
-    throw new Error('index.html has no <div id="app"> â€” check your HTML entry.');
+    throw new Error('index.html has no <div id="app"> — check your HTML entry.');
   }
   try {
     await setupViewer();
@@ -201,7 +201,7 @@ await step("setupViewer (core)", async () => {
 });
 
 if (!ctx.world) {
-  console.error("[Open BIM Studio] Viewer failed to initialize â€” aborting remaining boot steps.");
+  console.error("[Open BIM Studio] Viewer failed to initialize — aborting remaining boot steps.");
   throw new Error("Boot aborted: viewer is not available.");
 }
 
@@ -305,7 +305,7 @@ computeSceneBounds();
 try { dumpServiceRegistry(); } catch { /* */ }
 
 console.log(
-  "[Open BIM Studio v52] Professional openBIM delivery platform online · sheets · 4D · automation · clash · IDS · BCF · schedules · 5D · authoring · materials · AI",
+  "[Open BIM Studio v52] Professional openBIM delivery platform online � sheets � 4D � automation � clash � IDS � BCF � schedules � 5D � authoring � materials � AI",
 );
 
 

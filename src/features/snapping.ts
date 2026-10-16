@@ -3,12 +3,12 @@
  *
  * Each snap type has:
  *   - A priority level. Higher priority wins over a closer low-priority
- *     snap â€” same as Revit. Endpoint (100) beats Nearest (55) even if
+ *     snap — same as Revit. Endpoint (100) beats Nearest (55) even if
  *     Nearest is a few pixels closer.
  *   - A distinctive SVG marker drawn at the snapped point.
  *   - A short label shown next to the marker.
  *
- * Snaps are gated by the current tool â€” dims prefer endpoints/corners/faces;
+ * Snaps are gated by the current tool — dims prefer endpoints/corners/faces;
  * wall placement prefers grid/endpoint/midpoint.
  */
 import * as THREE from "three";
@@ -36,7 +36,7 @@ export interface SnapResult {
   screenDist: number;
 }
 
-/** Priority table â€” higher wins. Matches Revit's hierarchy. */
+/** Priority table — higher wins. Matches Revit's hierarchy. */
 const SNAP_PRIORITY: Record<SnapType, number> = {
   endpoint:      100,
   intersection:   95,
@@ -60,7 +60,7 @@ const ALL_TYPES: SnapType[] = [
   "nearest", "parallel", "extension", "grid",
 ];
 
-/* Revit-style SVG markers â€” 32Ã—32 viewBox. */
+/* Revit-style SVG markers — 32×32 viewBox. */
 const SVG_MARKER: Record<SnapType, string> = {
   endpoint:
     `<rect x="9" y="9" width="14" height="14" fill="#F59E0B" stroke="#0B0D12" stroke-width="2"/>`,
@@ -310,7 +310,7 @@ class SnapManager {
         this.collectAuthoredSnaps(el, add, authored);
       }
 
-      // Raycast â€” nearest + vertex
+      // Raycast — nearest + vertex
       if (this.types.has("nearest") || this.types.has("vertex") || this.types.has("face")) {
         try {
           const ray = new THREE.Raycaster();
@@ -331,7 +331,7 @@ class SnapManager {
         } catch { /* raycast can fail on disposed geometry */ }
       }
 
-      // Ortho constraint â€” project candidates onto the axis
+      // Ortho constraint — project candidates onto the axis
       if (this.orthoOn && this.orthoBase) {
         for (const c of candidates) {
           const d = c.point.clone().sub(this.orthoBase);
@@ -353,7 +353,7 @@ class SnapManager {
 
       if (!candidates.length) return null;
 
-      // Priority-aware sort â€” a higher-priority snap wins over a closer
+      // Priority-aware sort — a higher-priority snap wins over a closer
       // lower-priority one, exactly like Revit.
       candidates.sort((a, b) => {
         const pa = SNAP_PRIORITY[a.type] ?? 0;
@@ -395,7 +395,7 @@ class SnapManager {
           add(new THREE.Vector3((a.x + b.x) / 2, y, (a.z + b.z) / 2), "midpoint");
         }
 
-        // Corner â€” this endpoint coincides with another element's endpoint
+        // Corner — this endpoint coincides with another element's endpoint
         if (this.types.has("corner")) {
           const tol = 0.2;
           for (const endpoint of [a, b]) {
@@ -414,7 +414,7 @@ class SnapManager {
           }
         }
 
-        // Face â€” sample points along both faces of a wall-like element
+        // Face — sample points along both faces of a wall-like element
         if (this.types.has("face")) {
           const half = Math.max(0.02, (p.thickness ?? 0.2) / 2);
           const faceTypes = new Set(["wall", "duct", "pipe", "cable-tray", "conduit", "beam", "strip"]);
@@ -428,10 +428,10 @@ class SnapManager {
           }
         }
 
-        // Tangent â€” only meaningful for arc-based elements; skip silently
+        // Tangent — only meaningful for arc-based elements; skip silently
         // for linear elements. Activate when arc elements exist.
 
-        // Extension â€” points slightly beyond each end
+        // Extension — points slightly beyond each end
         if (this.types.has("extension")) {
           add(a.clone().addScaledVector(new THREE.Vector3(ux, 0, uz), -0.5), "extension");
           add(b.clone().addScaledVector(new THREE.Vector3(ux, 0, uz), 0.5), "extension");
@@ -540,7 +540,7 @@ function renderSnapPanel() {
   snapPanel.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #334155;font-weight:600">' +
       '<span>Object Snaps</span>' +
-      '<button type="button" id="obs-snap-close" style="background:none;border:none;color:#94a3b8;font-size:16px;cursor:pointer">Ã—</button>' +
+      '<button type="button" id="obs-snap-close" style="background:none;border:none;color:#94a3b8;font-size:16px;cursor:pointer">×</button>' +
     '</div>' +
     '<div style="padding:10px 12px">' +
       '<div style="display:flex;gap:6px;margin-bottom:8px">' +

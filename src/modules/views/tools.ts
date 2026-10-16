@@ -45,7 +45,7 @@ class ToolStateImpl {
   getHint(): string {
     switch (this.active) {
       case "select":
-        return "Select mode â€” click a row on the left to switch view.";
+        return "Select mode — click a row on the left to switch view.";
       case "dim-aligned":
       case "dim-linear":
         return this.pendingRef
@@ -80,7 +80,7 @@ class ToolStateImpl {
     const elements = getElements();
     const ref = pickReference(elements, worldX, worldZ, { tolerance: toleranceWorld });
     if (!ref) {
-      return { feedback: "No reference nearby â€” click closer to an element." };
+      return { feedback: "No reference nearby — click closer to an element." };
     }
 
     if (this.active === "section-line") {

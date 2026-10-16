@@ -1,8 +1,8 @@
 /**
- * Scene2D â€” renderer-agnostic description of a 2D view.
+ * Scene2D — renderer-agnostic description of a 2D view.
  *
  * Every view generator produces a Scene2D. Every renderer consumes one.
- * Units are world metres. Stroke widths are paper points â€” converted to
+ * Units are world metres. Stroke widths are paper points — converted to
  * world units by paperToWorld() at render time.
  */
 

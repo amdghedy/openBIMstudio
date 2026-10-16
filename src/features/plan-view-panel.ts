@@ -16,18 +16,18 @@ import {
 import type { PlanView } from "../modules/drawings/plan-types";
 import { getSchema, type PropertyField } from "./property-schema";
 
-/* ═════════════════════════════════════════════════════════════════════════
+/* -------------------------------------------------------------------------
    State
-   ═════════════════════════════════════════════════════════════════════════ */
+   ------------------------------------------------------------------------- */
 let currentPlan: PlanView | null = null;
 let currentZoom = 1;
 let panX = 0, panY = 0;
 let generating = false;
 let cancelHandle: { cancelled: boolean } | null = null;
 
-/* ═════════════════════════════════════════════════════════════════════════
+/* -------------------------------------------------------------------------
    DOM
-   ═════════════════════════════════════════════════════════════════════════ */
+   ------------------------------------------------------------------------- */
 const overlay = document.createElement("div");
 overlay.className = "obs-plan-overlay";
 /** Under the ribbon so Architecture / Annotate / Dimension tabs stay usable (Revit-style). */
@@ -37,14 +37,14 @@ overlay.style.cssText =
   "font:13px system-ui,sans-serif;user-select:none;border-top:1px solid #2a2e3a";
 overlay.addEventListener("mousedown", (e) => e.stopPropagation());
 
-/* ── Header ── */
+/* -- Header -- */
 const header = document.createElement("div");
 header.style.cssText =
   "display:flex;align-items:center;gap:10px;padding:8px 12px;" +
   "background:var(--bg-surface,#12141b);border-bottom:1px solid var(--border-default,#2a2e3a);" +
   "height:44px;flex:none";
 
-/* ── Main canvas ── */
+/* -- Main canvas -- */
 const canvasWrap = document.createElement("div");
 canvasWrap.style.cssText =
   "flex:1;position:relative;overflow:hidden;background:#f7f7f5;" +
@@ -55,21 +55,21 @@ svg.style.cssText = "width:100%;height:100%;display:block";
 svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 canvasWrap.appendChild(svg);
 
-/* ── Footer ── */
+/* -- Footer -- */
 const footer = document.createElement("div");
 footer.style.cssText =
   "display:flex;align-items:center;gap:12px;padding:6px 12px;" +
   "background:var(--bg-surface,#12141b);border-top:1px solid var(--border-default,#2a2e3a);" +
   "height:30px;flex:none;font:11px system-ui";
 
-/* ── Loading overlay ── */
+/* -- Loading overlay -- */
 const loading = document.createElement("div");
 loading.style.cssText =
   "position:absolute;inset:0;display:none;align-items:center;justify-content:center;" +
   "flex-direction:column;gap:12px;background:rgba(11,13,18,0.85);color:#e8eaf0;z-index:10";
 const loadingText = document.createElement("div");
 loadingText.style.cssText = "font:14px system-ui";
-loadingText.textContent = "Generating plan…";
+loadingText.textContent = "Generating plan�";
 const loadingBar = document.createElement("div");
 loadingBar.style.cssText =
   "width:300px;height:6px;background:#1e2029;border-radius:3px;overflow:hidden";
@@ -87,7 +87,7 @@ canvasWrap.appendChild(loading);
 
 canvasWrap.appendChild(loading);
 
-/* ── Revit-style Properties panel (left of plan) ── */
+/* -- Revit-style Properties panel (left of plan) -- */
 const planBody = document.createElement("div");
 planBody.style.cssText = "flex:1;display:flex;min-height:0;overflow:hidden";
 
@@ -130,8 +130,8 @@ interface DimensionStyle {
 }
 
 const DEFAULT_DIMENSION_STYLES: DimensionStyle[] = [
-  { id: "revit-aligned", name: "Aligned — 2.5 mm", unit: "mm", precision: 0, textSize: 2.5, color: "#1d4ed8", tick: "diagonal" },
-  { id: "revit-engineering", name: "Engineering — 3 mm", unit: "mm", precision: 0, textSize: 3, color: "#1e40af", tick: "diagonal" },
+  { id: "revit-aligned", name: "Aligned � 2.5 mm", unit: "mm", precision: 0, textSize: 2.5, color: "#1d4ed8", tick: "diagonal" },
+  { id: "revit-engineering", name: "Engineering � 3 mm", unit: "mm", precision: 0, textSize: 3, color: "#1e40af", tick: "diagonal" },
   { id: "decimal-m", name: "Decimal Meters", unit: "m", precision: 3, textSize: 2.5, color: "#1d4ed8", tick: "arrow" },
 ];
 const DIM_STYLE_KEY = "obs.revit.dimension-styles.v1";
@@ -172,7 +172,7 @@ function planFieldValue(field: PropertyField, el: any, typeKey: string): string 
 
 function renderPlanViewProperties() {
   planPropsBody.innerHTML = "";
-  planPropsHeader.innerHTML = `<span style="flex:1">Floor Plan — View Properties</span>`;
+  planPropsHeader.innerHTML = `<span style="flex:1">Floor Plan � View Properties</span>`;
 
   const section = (title: string) => {
     const h = document.createElement("div");
@@ -242,7 +242,7 @@ function renderPlanProperties() {
   if (planMode === "dim" || planMode === "tag" || planMode === "text") typeKey = "wall";
   if (planSelectedId) {
     try {
-      // dynamic import avoided — getElements from window cache via async earlier
+      // dynamic import avoided � getElements from window cache via async earlier
     } catch { /* */ }
   }
   // Use sync path via stored selection. Multi-select shows a compact summary.
@@ -268,7 +268,7 @@ function renderPlanProperties() {
 
   const schema = getSchema(typeKey);
   const title = el
-    ? `${schema?.label ?? typeKey} — ${el.name ?? el.id}`
+    ? `${schema?.label ?? typeKey} � ${el.name ?? el.id}`
     : `${schema?.label ?? typeKey} (type defaults)`;
   planPropsHeader.innerHTML = `<span style="flex:1">${title}</span>`;
 
@@ -348,7 +348,7 @@ function renderPlanProperties() {
 async function applyPlanField(field: PropertyField, raw: string, el: any, typeKey: string) {
   try {
     if (!el) {
-      // Type defaults → placement options
+      // Type defaults ? placement options
       if (field.key === "thickness") {
         planWidth = Number(raw) || planWidth;
         const wi = widthInp.querySelector("input") as HTMLInputElement | null;
@@ -424,7 +424,7 @@ function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggl
 function nearestAuthoredAt(hit: { x: number; z: number }): { element: any | null; distance: number } {
   const els = ((window as any).__obsAuthoredElements ?? []) as any[];
   let best: any = null;
-  let bestD = 1.25; // meters — generous so thick ducts/walls are easy to click
+  let bestD = 1.25; // meters � generous so thick ducts/walls are easy to click
   for (const el of els) {
     const p = el?.params ?? {};
     const half = Math.max(0.04, Number(p.thickness ?? p.width ?? 0.2) * 0.55);
@@ -694,9 +694,9 @@ function renderTemporaryDimensions(g: SVGGElement, dimScale: number, b: any) {
 }
 
 
-/* ═════════════════════════════════════════════════════════════════════════
+/* -------------------------------------------------------------------------
    Header controls
-   ═════════════════════════════════════════════════════════════════════════ */
+   ------------------------------------------------------------------------- */
 const levelSelect = document.createElement("select");
 levelSelect.className = "obs-input";
 levelSelect.style.cssText =
@@ -734,7 +734,7 @@ scaleSelect.onchange = () => {
   try { localStorage.setItem(PLAN_SCALE_KEY, String(planViewScale)); } catch {}
   renderPlanProperties();
   if (currentPlan) renderPlan(currentPlan);
-  footerStatus(`View Scale 1:${planViewScale} · annotation/dimension graphics updated`);
+  footerStatus(`View Scale 1:${planViewScale} � annotation/dimension graphics updated`);
 };
 
 const dimTypeSelect = compactSelect(DEFAULT_DIMENSION_STYLES.map((d) => [d.id, d.name]), 190);
@@ -782,14 +782,14 @@ const btn = (label: string, onclick: () => void, primary = false) => {
   return b;
 };
 
-const renderBtn = btn("⟳ Regenerate", () => void regenerate(), true);
-const cadBtn = btn("📎 Link CAD", () => void linkCadUnderlay());
+const renderBtn = btn("? Regenerate", () => void regenerate(), true);
+const cadBtn = btn("?? Link CAD", () => void linkCadUnderlay());
 const clearCadBtn = btn("Clear CAD", () => clearCadUnderlay());
-const printBtn = btn("🖨 Print", () => printPlan());
-const exportBtn = btn("⬇ SVG", () => exportSvg());
-const closeBtn = btn("✕ Close", () => togglePlanView());
+const printBtn = btn("?? Print", () => printPlan());
+const exportBtn = btn("? SVG", () => exportSvg());
+const closeBtn = btn("? Close", () => togglePlanView());
 
-/* ── Plan modeling state (tools come from ribbon tabs only) ── */
+/* -- Plan modeling state (tools come from ribbon tabs only) -- */
 type PlanMode = "pan" | "select" | "navigate" | "move" | "linear" | "point" | "dim" | "tag" | "text";
 type LinearKind = "wall" | "beam" | "strip" | "duct" | "pipe" | "cable-tray" | "conduit" | "mline" | "brace" | "truss";
 type PointKind = "column" | "footing" | "equipment";
@@ -810,16 +810,16 @@ let planPointType: PointKind = "column";
 let planPointPreset: string | null = null;
 let planDrawStart: { x: number; z: number } | null = null;
 let planDimStartRef: PlanDimensionRef | null = null;
-/** Continuous path like Revit Place Duct / Wall (click–click–click…). */
+/** Continuous path like Revit Place Duct / Wall (click�click�click�). */
 let planChain: { x: number; z: number }[] = [];
 let planCursor: { x: number; z: number } | null = null;
 let __planCursorOverlay: HTMLDivElement | null = null;
 let __planCursorSvg: SVGSVGElement | null = null;
 let __lastSnapKind = "";
 let planSnap: { x: number; z: number; kind: string; ref?: PlanDimensionRef } | null = null;
-/** Placement options bar (Revit Modify | Place …). */
-let planWidth = 0.3;   // m — duct/wall thickness in plan
-let planHeight = 0.3;  // m — extrusion height
+/** Placement options bar (Revit Modify | Place �). */
+let planWidth = 0.3;   // m � duct/wall thickness in plan
+let planHeight = 0.3;  // m � extrusion height
 let planElevOffset = 0; // m above level
 
 type PlanBoundaryKind = "linear-side" | "linear-cap" | "point-edge" | "point-corner" | "static-boundary";
@@ -838,13 +838,13 @@ export interface PlanDimensionRef {
   dz?: number;
   side?: "left" | "right" | "start" | "end" | "top" | "bottom";
 }
-/** Revit dimension kinds — placement sequence differs per style. */
+/** Revit dimension kinds � placement sequence differs per style. */
 type PlanDimKind =
   | "aligned"      // 2 refs: distance along connecting line
   | "linear"       // 2 refs: force H or V
   | "angular"      // 2 segments: interior angle at intersection
-  | "radial"       // center + edge: R = …
-  | "diameter"     // edge through center: ⌀ = …
+  | "radial"       // center + edge: R = �
+  | "diameter"     // edge through center: ? = �
   | "arc"          // 2 points along arc length
   | "elevation"    // 1 click: spot elevation
   | "coordinate";  // 1 click: spot X / Z
@@ -1026,7 +1026,7 @@ spacer.style.cssText = "flex:1";
 
 const toolHint = document.createElement("span");
 toolHint.style.cssText = "font:11px system-ui;color:#94a3b8;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
-toolHint.textContent = "Use Architecture / Annotate tabs to model · snaps ON";
+toolHint.textContent = "Use Architecture / Annotate tabs to model � snaps ON";
 
 /* Revit-like placement options: Width / Height / Elevation */
 function numInput(label: string, value: number, onChange: (v: number) => void, step = 0.05) {
@@ -1055,7 +1055,7 @@ const elevInp = numInput("Elev", planElevOffset * 1000, (v) => { planElevOffset 
 (heightInp.querySelector("span") as HTMLElement).textContent = "H(mm)";
 (elevInp.querySelector("span") as HTMLElement).textContent = "Elev(mm)";
 
-/* Wall options — Location Line + Join (Revit Place Wall) */
+/* Wall options � Location Line + Join (Revit Place Wall) */
 const locSelect = document.createElement("select");
 locSelect.title = "Location Line";
 locSelect.style.cssText =
@@ -1112,11 +1112,11 @@ chainChk.append(chainInput, document.createTextNode("Chain"));
 
 const wallOptsWrap = document.createElement("div");
 wallOptsWrap.style.cssText = "display:none;align-items:center;gap:6px";
-// Revit Place Wall options order: Location Line → Join Status → Chain
+// Revit Place Wall options order: Location Line ? Join Status ? Chain
 wallOptsWrap.append(locSelect, joinSelect, chainChk);
 locSelect.title = "Location Line (Revit)";
 joinSelect.title = "Wall Join Status";
-chainChk.title = "Chain — continuous wall path";
+chainChk.title = "Chain � continuous wall path";
 
 function showWallOpts(on: boolean) {
   wallOptsWrap.style.display = on ? "flex" : "none";
@@ -1147,7 +1147,7 @@ header.style.cssText =
 const titleEl = document.createElement("div");
 titleEl.style.cssText = "font:700 12px system-ui;color:var(--text-primary,#e8eaf0);padding:0 10px 0 4px;white-space:nowrap;border-right:1px solid var(--border-subtle,#2a2e3a);height:100%;display:flex;align-items:center;";
 titleEl.textContent = "Floor Plan";
-titleEl.title = "2D Floor Plan — international BIM drafting environment";
+titleEl.title = "2D Floor Plan � international BIM drafting environment";
 
 header.append(
   titleEl,
@@ -1166,7 +1166,7 @@ if (lastG) lastG.style.borderRight = "none";
 canvasWrap.style.background = "#ffffff";
 overlay.style.background = "#1a1d27";
 
-/* ── CAD / DWG underlay for tracing & modeling ─────────────────────────── */
+/* -- CAD / DWG underlay for tracing & modeling --------------------------- */
 let cadUnderlayUrl: string | null = null;
 let cadUnderlayOpacity = 0.45;
 let cadImageEl: SVGImageElement | null = null;
@@ -1185,7 +1185,7 @@ async function loadCadFileAsUnderlay(file: File) {
     cadUnderlayUrl = URL.createObjectURL(file);
   }
   applyCadUnderlay();
-  footerStatus(`CAD underlay linked: ${file.name} — trace walls/columns on top`);
+  footerStatus(`CAD underlay linked: ${file.name} � trace walls/columns on top`);
 }
 
 async function linkCadUnderlay() {
@@ -1263,7 +1263,7 @@ function applyCadUnderlay() {
   }
 }
 
-/** Minimal DXF → SVG converter for LINE and LWPOLYLINE (modeling underlay). */
+/** Minimal DXF ? SVG converter for LINE and LWPOLYLINE (modeling underlay). */
 function dxfToSvgUnderlay(dxf: string): string {
   const lines: string[] = [];
   const rows = dxf.split(/\r?\n/);
@@ -1356,9 +1356,9 @@ function divider() {
   return d;
 }
 
-/* ═════════════════════════════════════════════════════════════════════════
+/* -------------------------------------------------------------------------
    SVG rendering
-   ═════════════════════════════════════════════════════════════════════════ */
+   ------------------------------------------------------------------------- */
 const STYLE = {
   cut:       { stroke: "#111827", width: 2.2, dash: "" },
   overhead:  { stroke: "#6b7280", width: 1.0, dash: "6 4" },
@@ -1373,7 +1373,7 @@ function screen(x: number, z: number) {
   return { x, y: -z };
 }
 
-/** Map client mouse position → world XZ on the plan. */
+/** Map client mouse position ? world XZ on the plan. */
 function clientToWorld(clientX: number, clientY: number): { x: number; z: number } | null {
   try {
     const pt = svg.createSVGPoint();
@@ -1423,7 +1423,7 @@ function renderPlan(plan: PlanView) {
   const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
   svg.appendChild(g);
 
-  // ── Segments ──
+  // -- Segments --
   if (planDisplayModel) for (const s of plan.segments) {
     const st = STYLE[s.kind] ?? STYLE.cut;
     const detailWeight = planDetailLevel === "Coarse" ? 0.8 : planDetailLevel === "Fine" ? 1.15 : 1;
@@ -1446,7 +1446,7 @@ function renderPlan(plan: PlanView) {
     g.appendChild(line);
   }
 
-  // ── Arcs (door swings + MEP elbows) ──
+  // -- Arcs (door swings + MEP elbows) --
   if (planDisplayModel) for (const a of plan.arcs) {
     const isDoor = a.kind === "door-swing";
     const steps = isDoor ? 24 : 36;
@@ -1475,7 +1475,7 @@ function renderPlan(plan: PlanView) {
     g.appendChild(path);
   }
 
-  // ── Selected element feedback (Revit-style blue selection) ──
+  // -- Selected element feedback (Revit-style blue selection) --
   const selectedPlans = (((window as any).__obsPlanSelectedEls ?? []) as any[]).filter((x) => planSelectedIds.has(x.id));
   for (const selectedPlan of selectedPlans) {
     if (!selectedPlan?.params) continue;
@@ -1490,7 +1490,7 @@ function renderPlan(plan: PlanView) {
     }
   }
 
-  // ── Text ──
+  // -- Text --
   for (const t of plan.texts) {
     const p = screen(t.x, t.z);
     const el = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -1527,7 +1527,7 @@ function renderPlan(plan: PlanView) {
     }
   }
 
-  // ── Paper background + light grid ──
+  // -- Paper background + light grid --
   const paper = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   paper.setAttribute("x", String(vbMinX - 50));
   paper.setAttribute("y", String(vbMinY - 50));
@@ -1558,7 +1558,7 @@ function renderPlan(plan: PlanView) {
     g.insertBefore(gl, paper.nextSibling);
   }
 
-  // ── Plan dimensions — Revit style (all kinds) ──
+  // -- Plan dimensions � Revit style (all kinds) --
   const dimStyle = getDimensionStyle();
   const sw = dimensionWorldStroke(dimStyle);
   for (const d of planDims) {
@@ -1592,7 +1592,7 @@ function renderPlan(plan: PlanView) {
       arc.setAttribute("stroke", dimStyle.color);
       arc.setAttribute("stroke-width", String(sw));
       g.appendChild(arc);
-      g.appendChild(makeSvgText(c.x + r * 0.3, c.y - r * 0.3, d.label ?? `${(d.value ?? 0).toFixed(1)}°`, dimStyle, dimScale));
+      g.appendChild(makeSvgText(c.x + r * 0.3, c.y - r * 0.3, d.label ?? `${(d.value ?? 0).toFixed(1)}�`, dimStyle, dimScale));
       continue;
     }
     // Radial / Diameter
@@ -1609,7 +1609,7 @@ function renderPlan(plan: PlanView) {
       g.appendChild(makeSvgText(mid.x, mid.y - paperMmToWorld(2), d.label ?? "", dimStyle, dimScale));
       continue;
     }
-    // Arc length — curved-looking chord with arc mark
+    // Arc length � curved-looking chord with arc mark
     if (d.style === "arc") {
       const a = screen(d.x1, d.z1);
       const b = screen(d.x2, d.z2);
@@ -1690,10 +1690,10 @@ function renderPlan(plan: PlanView) {
     g.appendChild(makeSvgText(mid.x, mid.y, formatPlanDimension(len, dimStyle), dimStyle, dimScale));
   }
 
-  // ── Temporary dimensions for selected elements ──
+  // -- Temporary dimensions for selected elements --
   renderTemporaryDimensions(g, dimScale, b);
 
-  // ── Tags ──
+  // -- Tags --
   for (const t of planTags) {
     const p = screen(t.x, t.z);
     const tagColor = "#0f766e";
@@ -1717,7 +1717,7 @@ function renderPlan(plan: PlanView) {
     lab.textContent = t.text; g.appendChild(lab);
   }
 
-  // ── Text notes ──
+  // -- Text notes --
   for (const n of planNotes) {
     const p = screen(n.x, n.z);
     const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -1740,11 +1740,11 @@ function renderPlan(plan: PlanView) {
     tip.setAttribute("font-size", String(0.4 * dimScale));
     tip.setAttribute("text-anchor", "middle");
     tip.setAttribute("font-family", "system-ui,sans-serif");
-    tip.textContent = "Floor Plan — use Wall tool to draw · Link CAD to trace · or load an IFC model";
+    tip.textContent = "Floor Plan � use Wall tool to draw � Link CAD to trace � or load an IFC model";
     g.appendChild(tip);
   }
 
-  // ── Live dimension preview (Revit dimension placement behavior) ──
+  // -- Live dimension preview (Revit dimension placement behavior) --
   if (planMode === "dim" && planCursor) {
     const ds = getDimensionStyle();
     const dsw = dimensionWorldStroke(ds);
@@ -1776,7 +1776,7 @@ function renderPlan(plan: PlanView) {
       const r = Math.hypot(planCursor.x - planDrawStart.x, planCursor.z - planDrawStart.z);
       const label = planDimStyle === "radial"
         ? `R ${formatPlanDimension(r, ds)}`
-        : `⌀ ${formatPlanDimension(r * 2, ds)}`;
+        : `? ${formatPlanDimension(r * 2, ds)}`;
       const mid = screen((planDrawStart.x + planCursor.x) / 2, (planDrawStart.z + planCursor.z) / 2);
       g.appendChild(makeSvgText(mid.x, mid.y - paperMmToWorld(2), label, ds, dimScale));
     }
@@ -1804,7 +1804,7 @@ function renderPlan(plan: PlanView) {
         line.setAttribute("opacity", "0.8");
         g.appendChild(line);
         const mid = screen((a.x+b2.x)/2 + nx*0.12, (a.z+b2.z)/2 + nz*0.12);
-        const prefix = planDimStyle === "arc" ? "⌒ " : "";
+        const prefix = planDimStyle === "arc" ? "? " : "";
         g.appendChild(makeSvgText(mid.x, mid.y, prefix + formatPlanDimension(len, ds), ds, dimScale));
       }
     }
@@ -1821,7 +1821,7 @@ function renderPlan(plan: PlanView) {
     }
   }
 
-  // ── Live draw preview + snap marker (Revit Place Duct style) ──
+  // -- Live draw preview + snap marker (Revit Place Duct style) --
   if (planDrawStart && planCursor && planMode !== "dim") {
     const a = screen(planDrawStart.x, planDrawStart.z);
     const c = screen(planCursor.x, planCursor.z);
@@ -1878,7 +1878,7 @@ function renderPlan(plan: PlanView) {
   }
     // Snap marker now rendered by updateSnapOverlay()
 
-  // ── Title block (bottom-right of drawn extents) ──
+  // -- Title block (bottom-right of drawn extents) --
   const titleX = b.maxX - 6;
   const titleZ = b.minZ + 0.5;
   const p = screen(titleX, titleZ);
@@ -1889,30 +1889,30 @@ function renderPlan(plan: PlanView) {
   tt.setAttribute("fill", "#333");
   tt.setAttribute("font-family", "system-ui, sans-serif");
   tt.setAttribute("text-anchor", "end");
-  tt.textContent = `Plan: ${plan.level.name}  ·  Cut +${plan.cutElevation.toFixed(2)} m`;
+  tt.textContent = `Plan: ${plan.level.name}  �  Cut +${plan.cutElevation.toFixed(2)} m`;
   g.appendChild(tt);
 
-  // ── Footer ──
+  // -- Footer --
   footer.innerHTML = "";
   const info = document.createElement("span");
   info.style.cssText = "opacity:.7";
   info.textContent =
-    `${plan.stats.authoredElements} authored · ` +
-    `${plan.stats.fragmentElements} fragments · ` +
-    `${plan.segments.length} segments · ` +
+    `${plan.stats.authoredElements} authored � ` +
+    `${plan.stats.fragmentElements} fragments � ` +
+    `${plan.segments.length} segments � ` +
     `zoom ${(currentZoom * 100).toFixed(0)}%` +
-    (plan.truncated ? " · ⚠ truncated" : "");
+    (plan.truncated ? " � ? truncated" : "");
   const hint = document.createElement("span");
   hint.style.cssText = "margin-left:auto;opacity:.55";
-  hint.textContent = "Wheel: zoom · MMB pan · Shift+LMB pan · Dbl-click: fit · Esc: cancel";
+  hint.textContent = "Wheel: zoom � MMB pan � Shift+LMB pan � Dbl-click: fit � Esc: cancel";
   footer.append(info, hint);
   updateSnapOverlay();
   updateSnapOverlay();
 }
 
-/* ═════════════════════════════════════════════════════════════════════════
-   Interaction — zoom + pan
-   ═════════════════════════════════════════════════════════════════════════ */
+/* -------------------------------------------------------------------------
+   Interaction � zoom + pan
+   ------------------------------------------------------------------------- */
 let panning = false;
 let lastMouse = { x: 0, y: 0 };
 
@@ -1924,7 +1924,7 @@ async function placeWallInPlan(x1: number, z1: number, x2: number, z2: number) {
     auth.setLevel(selected.elevation);
     auth.setAuthoringTool("wall");
     // Direct create via synthetic clicks is hard; use public API if available
-    // Fallback: set tool and rely on 3D — here we push geometry via internal rebuild path
+    // Fallback: set tool and rely on 3D � here we push geometry via internal rebuild path
     const els = auth.getElements();
     const before = els.length;
     // Use history-free direct injection through setAuthoringTool + programmatic create
@@ -1935,7 +1935,7 @@ async function placeWallInPlan(x1: number, z1: number, x2: number, z2: number) {
     } else {
       // Minimal: activate wall tool in 3D at this level and toast guidance
       auth.setAuthoringTool("wall");
-      footerStatus(`Wall tool ready at ${selected.name} — draw in 3D or click two points again in plan`);
+      footerStatus(`Wall tool ready at ${selected.name} � draw in 3D or click two points again in plan`);
     }
     void before;
   } catch (err) {
@@ -1943,7 +1943,7 @@ async function placeWallInPlan(x1: number, z1: number, x2: number, z2: number) {
   }
 }
 
-/** Linear segment from plan → 3D (keeps placement tool active for chain). */
+/** Linear segment from plan ? 3D (keeps placement tool active for chain). */
 async function createAuthoredLinear(x1: number, z1: number, x2: number, z2: number) {
   try {
     const { addLinearElement, setLevel } = await import("./authoring");
@@ -1977,11 +1977,11 @@ async function createAuthoredLinear(x1: number, z1: number, x2: number, z2: numb
       await regenerate();
     }
     footerStatus(
-      `${t} · ${Math.hypot(x2 - x1, z2 - z1).toFixed(2)} m · click next point (Enter/Esc to finish)`,
+      `${t} � ${Math.hypot(x2 - x1, z2 - z1).toFixed(2)} m � click next point (Enter/Esc to finish)`,
     );
   } catch (err) {
     console.error("[plan] create linear failed", err);
-    footerStatus("Could not place element — see console");
+    footerStatus("Could not place element � see console");
   }
 }
 
@@ -2027,11 +2027,11 @@ function computeOverlayViewBox(): string {
   return fmx + " " + fmy + " " + zw + " " + zh;
 }
 
-/* ═════════════════════════════════════════════════════════════════════════
-   Snap marker symbols — identical visual language to the 3D viewer.
-   These are the same 32×32 SVG paths used by features/snapping.ts, so
+/* -------------------------------------------------------------------------
+   Snap marker symbols � identical visual language to the 3D viewer.
+   These are the same 32�32 SVG paths used by features/snapping.ts, so
    the user sees consistent feedback in 2D and 3D. Keep in sync.
-   ═════════════════════════════════════════════════════════════════════════ */
+   ------------------------------------------------------------------------- */
 const SNAP_MARKERS_LOCAL: Record<string, string> = {
   endpoint:
     `<rect x="9" y="9" width="14" height="14" fill="#F59E0B" stroke="#0B0D12" stroke-width="2"/>`,
@@ -2229,7 +2229,7 @@ function updateSnapOverlay(): void {
 }
 
 /**
- * Debug helper â€” run in the browser console:
+ * Debug helper — run in the browser console:
  *   __obsSnapDebug()
  * to see what the snap engine sees at the current cursor position.
  */
@@ -2270,8 +2270,8 @@ function finishPlanChain() {
   void import("./authoring").then((m) => m.clearLastPlanLinear?.()).catch(() => {});
   // Revit behavior: path finished but tool stays active for next chain until Esc
   if (planMode === "linear") {
-    footerStatus(`${planLinearType} path finished — click start of next path · Esc = Modify`);
-    toolHint.textContent = `Place ${planLinearType} — continuous path · Enter finish · Esc cancel`;
+    footerStatus(`${planLinearType} path finished � click start of next path � Esc = Modify`);
+    toolHint.textContent = `Place ${planLinearType} � continuous path � Enter finish � Esc cancel`;
   } else {
     footerStatus(`${planLinearType} path finished`);
   }
@@ -2300,7 +2300,7 @@ function applyDefaultSizeForTool(tool: string) {
 }
 
 
-/** Point element from plan → 3D. */
+/** Point element from plan ? 3D. */
 async function createAuthoredPoint(x: number, z: number) {
   try {
     const auth = await import("./authoring");
@@ -2324,7 +2324,7 @@ async function createAuthoredPoint(x: number, z: number) {
     }
     auth.setAuthoringTool("select");
     await regenerate();
-    footerStatus(`${planPointPreset || planPointType} placed · synced to 3D`);
+    footerStatus(`${planPointPreset || planPointType} placed � synced to 3D`);
   } catch (err) {
     console.error("[plan] create point failed", err);
     footerStatus("Could not place point element");
@@ -2332,7 +2332,7 @@ async function createAuthoredPoint(x: number, z: number) {
 }
 
 
-/* ── 2D plan box selection + move helpers (Revit window/crossing) ── */
+/* -- 2D plan box selection + move helpers (Revit window/crossing) -- */
 function ensurePlanBoxOverlay(): SVGRectElement {
   if (planBoxOverlay && planBoxOverlay.parentNode) return planBoxOverlay;
   planBoxOverlay = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -2340,7 +2340,7 @@ function ensurePlanBoxOverlay(): SVGRectElement {
   planBoxOverlay.setAttribute("stroke-width", "1");
   planBoxOverlay.setAttribute("pointer-events", "none");
   planBoxOverlay.style.display = "none";
-  // Append to svg after render — store and re-attach in drawPlanBox
+  // Append to svg after render � store and re-attach in drawPlanBox
   return planBoxOverlay;
 }
 
@@ -2360,7 +2360,7 @@ function drawPlanBox() {
   el.setAttribute("y", String(y));
   el.setAttribute("width", String(Math.max(w, 0.001)));
   el.setAttribute("height", String(Math.max(h, 0.001)));
-  // Window (L→R): solid blue; Crossing (R→L): dashed green
+  // Window (L?R): solid blue; Crossing (R?L): dashed green
   const crossing = planBoxCur.x < planBoxStart.x;
   if (crossing) {
     el.setAttribute("fill", "#22c55e");
@@ -2414,7 +2414,7 @@ async function commitPlanBoxSelect(additive: boolean) {
   if (!a || !b) { clearPlanBox(); return; }
   const dx = Math.abs(planBoxCur.x - planBoxStart.x);
   const dy = Math.abs(planBoxCur.y - planBoxStart.y);
-  // Tiny drag → single click select at start
+  // Tiny drag ? single click select at start
   if (dx < 6 && dy < 6) {
     const hit = a;
     try {
@@ -2449,10 +2449,10 @@ async function commitPlanBoxSelect(additive: boolean) {
       }
       if (best) {
         setPlanSelectedElement(best, additive ? "toggle" : "replace");
-        footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} selected` : `Selected ${best.type}${best.name ? " · " + best.name : ""}`);
+        footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} selected` : `Selected ${best.type}${best.name ? " � " + best.name : ""}`);
       } else if (!additive) {
         setPlanSelectedElement(null);
-        footerStatus("Nothing selected — click a wall, duct, or object");
+        footerStatus("Nothing selected � click a wall, duct, or object");
       }
     } catch (err) {
       console.warn("[plan] click select", err);
@@ -2474,7 +2474,7 @@ async function commitPlanBoxSelect(additive: boolean) {
     setSelectedAuthored(ids, additive ? "add" : "replace");
     footerStatus(
       `${crossing ? "Crossing" : "Window"}: ${ids.length} element(s)` +
-      (planSelectedIds.size > ids.length ? ` · total ${planSelectedIds.size}` : ""),
+      (planSelectedIds.size > ids.length ? ` � total ${planSelectedIds.size}` : ""),
     );
     renderPlanProperties();
   } catch (err) {
@@ -2560,7 +2560,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
     }
 
     if (planMode === "dim") {
-      // ── Spot Elevation / Coordinate: single click (Revit Spot tools) ──
+      // -- Spot Elevation / Coordinate: single click (Revit Spot tools) --
       if (planDimStyle === "elevation" || planDimStyle === "coordinate") {
         const pt = findNearestPointElement(w) ?? { x: w.x, z: w.z, elev: (() => {
           try {
@@ -2578,11 +2578,11 @@ canvasWrap.addEventListener("mousedown", (e) => {
           label, value: planDimStyle === "elevation" ? pt.elev : undefined,
         });
         if (currentPlan) renderPlan(currentPlan);
-        footerStatus(`${planDimStyle === "elevation" ? "Spot Elevation" : "Spot Coordinate"}: ${label} · click next · Esc = Select`);
+        footerStatus(`${planDimStyle === "elevation" ? "Spot Elevation" : "Spot Coordinate"}: ${label} � click next � Esc = Select`);
         return;
       }
 
-      // ── Angular: pick two linear segments (Revit Angular Dimension) ──
+      // -- Angular: pick two linear segments (Revit Angular Dimension) --
       if (planDimStyle === "angular") {
         const seg = findNearestSegment(w);
         if (!seg) {
@@ -2601,18 +2601,18 @@ canvasWrap.addEventListener("mousedown", (e) => {
             x2: s2.x1, z2: s2.z1,
             style: "angular", offsetMm: DIM_OFFSET_MM,
             value: deg, vx, vz,
-            label: `${deg.toFixed(1)}°`,
+            label: `${deg.toFixed(1)}�`,
           });
           planDimSeg1 = null;
           planDrawStart = null;
           planDimStartRef = null;
           if (currentPlan) renderPlan(currentPlan);
-          footerStatus(`Angular ${deg.toFixed(1)}° · click next first edge · Esc = Select`);
+          footerStatus(`Angular ${deg.toFixed(1)}� � click next first edge � Esc = Select`);
         }
         return;
       }
 
-      // ── Radial / Diameter: center then edge (or edge of round element) ──
+      // -- Radial / Diameter: center then edge (or edge of round element) --
       if (planDimStyle === "radial" || planDimStyle === "diameter") {
         if (!planDrawStart) {
           const center = findNearestPointElement(w) ?? { x: w.x, z: w.z, elev: 0 };
@@ -2621,14 +2621,14 @@ canvasWrap.addEventListener("mousedown", (e) => {
         } else {
           const r = Math.hypot(w.x - planDrawStart.x, w.z - planDrawStart.z);
           if (r < 0.001) {
-            footerStatus("Radius is zero — pick a different point");
+            footerStatus("Radius is zero � pick a different point");
             return;
           }
           const isRad = planDimStyle === "radial";
           const val = isRad ? r : r * 2;
           const label = isRad
             ? `R ${formatPlanDimension(r, getDimensionStyle())}`
-            : `⌀ ${formatPlanDimension(val, getDimensionStyle())}`;
+            : `? ${formatPlanDimension(val, getDimensionStyle())}`;
           planDims.push({
             x1: planDrawStart.x, z1: planDrawStart.z,
             x2: w.x, z2: w.z,
@@ -2637,12 +2637,12 @@ canvasWrap.addEventListener("mousedown", (e) => {
           });
           planDrawStart = null;
           if (currentPlan) renderPlan(currentPlan);
-          footerStatus(`${label} · click next center · Esc = Select`);
+          footerStatus(`${label} � click next center � Esc = Select`);
         }
         return;
       }
 
-      // ── Arc length: two points along a segment (approx chord length) ──
+      // -- Arc length: two points along a segment (approx chord length) --
       if (planDimStyle === "arc") {
         const hit = findDimensionBoundary(w) ?? (findNearestSegment(w) ? {
           point: w,
@@ -2662,19 +2662,19 @@ canvasWrap.addEventListener("mousedown", (e) => {
         } else {
           const len = Math.hypot(pt.x - planDrawStart.x, pt.z - planDrawStart.z);
           if (len < 0.001) {
-            footerStatus("Arc length is zero — pick a different point");
+            footerStatus("Arc length is zero � pick a different point");
             return;
           }
           planDims.push({
             x1: planDrawStart.x, z1: planDrawStart.z, x2: pt.x, z2: pt.z,
             style: "arc", offsetMm: DIM_OFFSET_MM,
             ref1: planDimStartRef, ref2: ref as PlanDimensionRef,
-            value: len, label: `⌒ ${formatPlanDimension(len, getDimensionStyle())}`,
+            value: len, label: `? ${formatPlanDimension(len, getDimensionStyle())}`,
           });
           planDrawStart = null;
           planDimStartRef = null;
           if (currentPlan) renderPlan(currentPlan);
-          footerStatus(`Arc ${formatPlanDimension(len, getDimensionStyle())} · click next · Esc = Select`);
+          footerStatus(`Arc ${formatPlanDimension(len, getDimensionStyle())} � click next � Esc = Select`);
         }
         return;
       }
@@ -2803,7 +2803,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
     return;
   }
 
-  // ── Navigate (Pan tool): left-drag pans without resetting zoom ──
+  // -- Navigate (Pan tool): left-drag pans without resetting zoom --
   if (planMode === "navigate") {
     panning = true;
     lastMouse = { x: e.clientX, y: e.clientY };
@@ -2812,7 +2812,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
     return;
   }
 
-  // ── Move tool: drag selected elements ──
+  // -- Move tool: drag selected elements --
   if (planMode === "move") {
     const hit = clientToWorld(e.clientX, e.clientY);
     if (!hit) return;
@@ -2823,11 +2823,11 @@ canvasWrap.addEventListener("mousedown", (e) => {
     planMoveDragging = true;
     planMoveLast = hit;
     e.preventDefault();
-    footerStatus(`Moving ${planSelectedIds.size} element(s)…`);
+    footerStatus(`Moving ${planSelectedIds.size} element(s)�`);
     return;
   }
 
-  // ── Select: click OR start box (window L→R / crossing R→L) ──
+  // -- Select: click OR start box (window L?R / crossing R?L) --
   if (planMode === "select" || planMode === "pan") {
     // Refresh authored cache so click always sees latest elements
     try {
@@ -2872,7 +2872,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
         if (best) {
           const mode = e.ctrlKey || e.metaKey ? "toggle" : "replace";
           setPlanSelectedElement(best, mode);
-          footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} elements selected` : `Selected ${best.type} · ${best.name ?? best.id}`);
+          footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} elements selected` : `Selected ${best.type} � ${best.name ?? best.id}`);
         } else {
           if (!e.ctrlKey && !e.metaKey && !e.shiftKey) setPlanSelectedElement(null);
           footerStatus(planSelectedIds.size ? `${planSelectedIds.size} elements selected` : "Nothing selected");
@@ -2905,7 +2905,7 @@ canvasWrap.addEventListener("mouseup", (e) => {
 window.addEventListener("mousemove", (e) => {
   if (!currentPlan) return;
 
-  // 1. Pan first (MMB / Shift+LMB / Navigate tool) â€” never blocked by tools
+  // 1. Pan first (MMB / Shift+LMB / Navigate tool) — never blocked by tools
   if (panning) {
     const dx = e.clientX - lastMouse.x;
     const dy = e.clientY - lastMouse.y;
@@ -2986,7 +2986,7 @@ window.addEventListener("mouseup", (e) => {
   if (planMoveDragging) {
     planMoveDragging = false;
     planMoveLast = null;
-    footerStatus(planSelectedIds.size ? `Moved · ${planSelectedIds.size} selected · Ctrl+Z undo` : "Move done");
+    footerStatus(planSelectedIds.size ? `Moved � ${planSelectedIds.size} selected � Ctrl+Z undo` : "Move done");
     void regenerate(); // sync 3D; zoom/pan preserved
   }
 });
@@ -2998,7 +2998,7 @@ canvasWrap.addEventListener(
     e.preventDefault();
     e.stopPropagation();
 
-    // Zoom toward cursor (CAD / Revit plan behavior — not fixed to center)
+    // Zoom toward cursor (CAD / Revit plan behavior � not fixed to center)
     const rect = canvasWrap.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return;
     const ratioX = (e.clientX - rect.left) / rect.width;
@@ -3036,9 +3036,9 @@ canvasWrap.addEventListener("dblclick", () => {
   footerStatus("Fit view");
 });
 
-/* ═════════════════════════════════════════════════════════════════════════
+/* -------------------------------------------------------------------------
    Generation
-   ═════════════════════════════════════════════════════════════════════════ */
+   ------------------------------------------------------------------------- */
 async function regenerate() {
   if (generating) return;
   generating = true;
@@ -3069,7 +3069,7 @@ async function regenerate() {
       const { getElements } = await import("./authoring");
       (window as any).__obsAuthoredElements = getElements();
     } catch { /* authored layer optional */ }
-    // Preserve zoom/pan (Revit: regenerating plan does NOT fit — only explicit Fit / first open)
+    // Preserve zoom/pan (Revit: regenerating plan does NOT fit � only explicit Fit / first open)
     if (!planViewUserAdjusted) {
       currentZoom = 1;
       panX = 0;
@@ -3079,7 +3079,7 @@ async function regenerate() {
     applyCadUnderlay();
   } catch (err) {
     console.error("[plan] generation failed", err);
-    alert("Plan generation failed — see console. Check model is loaded.");
+    alert("Plan generation failed � see console. Check model is loaded.");
   } finally {
     generating = false;
     loading.style.display = "none";
@@ -3087,9 +3087,9 @@ async function regenerate() {
   }
 }
 
-/* ═════════════════════════════════════════════════════════════════════════
+/* -------------------------------------------------------------------------
    Level dropdown population
-   ═════════════════════════════════════════════════════════════════════════ */
+   ------------------------------------------------------------------------- */
 function populateLevels() {
   const levels = listAvailableLevels();
   levelSelect.innerHTML = levels
@@ -3097,9 +3097,9 @@ function populateLevels() {
     .join("");
 }
 
-/* ═════════════════════════════════════════════════════════════════════════
+/* -------------------------------------------------------------------------
    Print / Export
-   ═════════════════════════════════════════════════════════════════════════ */
+   ------------------------------------------------------------------------- */
 function printPlan() {
   if (!currentPlan) {
     alert("Generate a plan first.");
@@ -3107,7 +3107,7 @@ function printPlan() {
   }
   const svgMarkup = svg.outerHTML;
   const html = `
-    <!doctype html><html><head><title>Plan — ${currentPlan.level.name}</title>
+    <!doctype html><html><head><title>Plan � ${currentPlan.level.name}</title>
     <style>
       body { margin:0; padding:16px; font:12px system-ui; background:#fff; }
       svg { width:100%; height:auto; max-height:calc(100vh - 60px); }
@@ -3146,9 +3146,9 @@ function exportSvg() {
   setTimeout(() => URL.revokeObjectURL(url), 8000);
 }
 
-/* ═════════════════════════════════════════════════════════════════════════
+/* -------------------------------------------------------------------------
    Public
-   ═════════════════════════════════════════════════════════════════════════ */
+   ------------------------------------------------------------------------- */
 function layoutUnderRibbon() {
   // Measure ribbon so plan viewport sits exactly under tabs (like Revit).
   // Respects minimized (flat) ribbon: only tabs height remains.
@@ -3188,14 +3188,14 @@ export function togglePlanView() {
     planDrawStart = null;
     planChain = [];
     canvasWrap.style.cursor = "default";
-    toolHint.textContent = "Modify | Select — click object · drag box · Delete · Ctrl+Z";
+    toolHint.textContent = "Modify | Select � click object � drag box � Delete � Ctrl+Z";
     // Sync from 3D model into 2D
     void regenerate();
     renderPlanProperties();
     try {
       window.dispatchEvent(new CustomEvent("obs-toast", {
         detail: {
-          message: "Floor Plan — Properties on the left · ribbon tools model in plan",
+          message: "Floor Plan � Properties on the left � ribbon tools model in plan",
           kind: "success",
         },
       }));
@@ -3260,9 +3260,9 @@ export function setPlanToolFromRibbon(tool: string) {
     planDrawStart = null;
     applyDefaultSizeForTool(tool === "brace" || tool === "truss" ? "beam" : tool);
     canvasWrap.style.cursor = "crosshair";
-    // Revit Place order: Type active → click start → click end → continue chain
-    toolHint.textContent = `Modify | Place ${tool} · Enter finish path · Esc cancel · Space repeat`;
-    footerStatus(`Place ${tool}: click to enter start point · snaps ON`);
+    // Revit Place order: Type active ? click start ? click end ? continue chain
+    toolHint.textContent = `Modify | Place ${tool} � Enter finish path � Esc cancel � Space repeat`;
+    footerStatus(`Place ${tool}: click to enter start point � snaps ON`);
     setPlanSelectedElement(null);
     renderPlanProperties();
     try {
@@ -3274,35 +3274,35 @@ export function setPlanToolFromRibbon(tool: string) {
     planPointType = points[tool].type;
     planPointPreset = points[tool].preset ?? null;
     canvasWrap.style.cursor = "crosshair";
-    toolHint.textContent = `${tool} — click to place · Esc cancel · Backspace repeat`;
+    toolHint.textContent = `${tool} � click to place � Esc cancel � Backspace repeat`;
     footerStatus(`Plan ${tool}: click to place`);
     setPlanSelectedElement(null);
     renderPlanProperties();
     try { showWallOpts(false); } catch { /* */ }
   } else if (tool === "pan" || tool === "navigate") {
-    // Revit Pan: only changes navigation mode — NEVER resets zoom/fit
+    // Revit Pan: only changes navigation mode � NEVER resets zoom/fit
     planMode = "navigate";
     planChain = [];
     planDrawStart = null;
     canvasWrap.style.cursor = "grab";
-    toolHint.textContent = "Pan — drag to pan · wheel zoom · view kept";
-    footerStatus("Pan mode — view is not reset");
+    toolHint.textContent = "Pan � drag to pan � wheel zoom � view kept";
+    footerStatus("Pan mode � view is not reset");
     try { showWallOpts(false); } catch { /* */ }
   } else if (tool === "select" || tool === "copy") {
     planMode = "select";
     planChain = [];
     planDrawStart = null;
     canvasWrap.style.cursor = "default";
-    toolHint.textContent = "Modify | Select — click · drag box · Ctrl add · Delete remove";
-    footerStatus("Select — ready · L→R window · R→L crossing");
+    toolHint.textContent = "Modify | Select � click � drag box � Ctrl add � Delete remove";
+    footerStatus("Select � ready � L?R window � R?L crossing");
     try { showWallOpts(false); } catch { /* */ }
   } else if (tool === "move") {
     planMode = "move";
     planChain = [];
     planDrawStart = null;
     canvasWrap.style.cursor = "move";
-    toolHint.textContent = "Modify | Move — drag selected elements in plan";
-    footerStatus(planSelectedIds.size ? `Move ${planSelectedIds.size} element(s) — drag` : "Select elements first, then Move");
+    toolHint.textContent = "Modify | Move � drag selected elements in plan";
+    footerStatus(planSelectedIds.size ? `Move ${planSelectedIds.size} element(s) � drag` : "Select elements first, then Move");
     try { showWallOpts(false); } catch { /* */ }
   } else if (
     tool === "dim-aligned" || tool === "measure" ||
@@ -3322,46 +3322,46 @@ export function setPlanToolFromRibbon(tool: string) {
 
     if (tool === "dim-linear" || tool === "dim-horizontal" || tool === "dim-vertical") {
       planDimStyle = "linear";
-      toolHint.textContent = "Modify | Place Linear Dimension — 2 boundaries · H/V";
+      toolHint.textContent = "Modify | Place Linear Dimension � 2 boundaries � H/V";
       footerStatus("Linear: pick first model boundary");
     } else if (tool === "dim-angular") {
       planDimStyle = "angular";
-      toolHint.textContent = "Modify | Place Angular Dimension — 2 edges";
+      toolHint.textContent = "Modify | Place Angular Dimension � 2 edges";
       footerStatus("Angular: pick first line / wall edge");
     } else if (tool === "dim-radial") {
       planDimStyle = "radial";
-      toolHint.textContent = "Modify | Place Radial Dimension — center then edge";
+      toolHint.textContent = "Modify | Place Radial Dimension � center then edge";
       footerStatus("Radial: pick center point");
     } else if (tool === "dim-diameter") {
       planDimStyle = "diameter";
-      toolHint.textContent = "Modify | Place Diameter Dimension — center then edge";
+      toolHint.textContent = "Modify | Place Diameter Dimension � center then edge";
       footerStatus("Diameter: pick center point");
     } else if (tool === "dim-arc" || tool === "arc-length") {
       planDimStyle = "arc";
-      toolHint.textContent = "Modify | Place Arc Length Dimension — 2 points on arc";
+      toolHint.textContent = "Modify | Place Arc Length Dimension � 2 points on arc";
       footerStatus("Arc length: pick first point on edge");
     } else if (tool === "spot-elev" || tool === "elevation") {
       planDimStyle = "elevation";
-      toolHint.textContent = "Modify | Spot Elevation — click a point";
+      toolHint.textContent = "Modify | Spot Elevation � click a point";
       footerStatus("Spot Elevation: click model point or free location");
     } else if (tool === "spot-coord" || tool === "coordinate") {
       planDimStyle = "coordinate";
-      toolHint.textContent = "Modify | Spot Coordinate — click a point";
+      toolHint.textContent = "Modify | Spot Coordinate � click a point";
       footerStatus("Spot Coordinate: click to place X / Z label");
     } else {
       planDimStyle = "aligned";
-      toolHint.textContent = "Modify | Place Aligned Dimension — 2 boundaries · snaps ON";
+      toolHint.textContent = "Modify | Place Aligned Dimension � 2 boundaries � snaps ON";
       footerStatus("Aligned: pick first model boundary");
     }
   } else if (tool === "tag" || tool === "room-tag" || tool === "tag-all" || tool === "material-tag") {
     planMode = "tag";
     (window as any).__obsPlanTagMode = tool === "room-tag" ? "room" : tool === "material-tag" ? "material" : "category";
     canvasWrap.style.cursor = "crosshair";
-    toolHint.textContent = `${tool === "room-tag" ? "Room Tag" : tool === "material-tag" ? "Material Tag" : "Tag"} — click near element`;
+    toolHint.textContent = `${tool === "room-tag" ? "Room Tag" : tool === "material-tag" ? "Material Tag" : "Tag"} � click near element`;
   } else if (tool === "text" || tool === "model-text" || tool === "text-3d") {
     planMode = "text";
     canvasWrap.style.cursor = "crosshair";
-    toolHint.textContent = "Text — click to place note";
+    toolHint.textContent = "Text � click to place note";
   } else if (tool === "clear-annotations" || tool === "clear") {
     planDims.length = 0;
     planTags.length = 0;
@@ -3400,7 +3400,7 @@ try {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea") return;
 
-    // Enter — finish continuous path
+    // Enter � finish continuous path
     if (e.key === "Enter" && planMode === "linear" && planChain.length > 0) {
       finishPlanChain();
       e.preventDefault();
@@ -3408,7 +3408,7 @@ try {
       return;
     }
 
-    // Space — repeat last command (Revit). Backspace repeats only if nothing selected.
+    // Space � repeat last command (Revit). Backspace repeats only if nothing selected.
     if (e.key === " " || (e.key === "Backspace" && planSelectedIds.size === 0)) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -3434,9 +3434,9 @@ try {
       return;
     }
 
-    // Delete / Backspace on selection — remove selected authored elements
+    // Delete / Backspace on selection � remove selected authored elements
     if ((e.key === "Delete" || e.key === "Backspace") && planSelectedIds.size > 0 && planMode !== "linear") {
-      // Backspace also used for repeat when nothing selected — handled above when size==0
+      // Backspace also used for repeat when nothing selected � handled above when size==0
       if (e.key === "Backspace" && planSelectedIds.size === 0) {
         /* fall through to repeat */
       } else {
@@ -3451,7 +3451,7 @@ try {
             deleteSelectedElement();
             planSelectedIds.clear();
             renderPlanProperties();
-            footerStatus(`Deleted ${n} element(s) · Ctrl+Z undo`);
+            footerStatus(`Deleted ${n} element(s) � Ctrl+Z undo`);
             void regenerate();
           } catch (err) {
             console.warn("[plan] delete", err);
@@ -3461,10 +3461,10 @@ try {
       }
     }
 
-    // Esc — Revit order cancel:
+    // Esc � Revit order cancel:
     //  1) Cancel in-progress path (discard unfinished chain) stay in tool if had segments
-    //  2) Exit tool → Modify / Select
-    //  3) Already Select → close Floor Plan
+    //  2) Exit tool ? Modify / Select
+    //  3) Already Select ? close Floor Plan
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -3479,19 +3479,19 @@ try {
         if (currentPlan) renderPlan(currentPlan);
         if (hadSegments) {
           // Revit: Esc after some segments keeps Place Wall active
-          footerStatus(`Place ${planLinearType}: cancelled path — click start of next · Esc = Modify`);
-          toolHint.textContent = `Modify | Place ${planLinearType} · Esc cancel · Space repeat`;
+          footerStatus(`Place ${planLinearType}: cancelled path � click start of next � Esc = Modify`);
+          toolHint.textContent = `Modify | Place ${planLinearType} � Esc cancel � Space repeat`;
         } else {
-          // No segments yet → exit to Select
+          // No segments yet ? exit to Select
           planMode = "select";
           canvasWrap.style.cursor = "default";
-          toolHint.textContent = "Modify | Select — click · box · Delete · Ctrl+Z";
-          footerStatus("Cancelled — Select");
+          toolHint.textContent = "Modify | Select � click � box � Delete � Ctrl+Z";
+          footerStatus("Cancelled � Select");
           try { showWallOpts(false); } catch { /* */ }
         }
         return;
       }
-      // 2) Cancel active tool (dim/point/tag/text/linear idle) → Select
+      // 2) Cancel active tool (dim/point/tag/text/linear idle) ? Select
       if (planMode !== "pan" || planDrawStart) {
         planMode = "select";
         planDrawStart = null;
@@ -3501,17 +3501,17 @@ try {
         planSnap = null;
         planCursor = null;
         canvasWrap.style.cursor = "default";
-        toolHint.textContent = "Modify | Select — click · box · Delete · Ctrl+Z";
-        footerStatus("Cancelled — Select");
+        toolHint.textContent = "Modify | Select � click � box � Delete � Ctrl+Z";
+        footerStatus("Cancelled � Select");
         try { showWallOpts(false); } catch { /* */ }
         try {
           window.dispatchEvent(new CustomEvent("obs-toast", {
-            detail: { message: "Cancelled — Select", kind: "info" },
+            detail: { message: "Cancelled � Select", kind: "info" },
           }));
         } catch { /* */ }
         return;
       }
-      // 3) Already Select → close Floor Plan (back to 3D)
+      // 3) Already Select ? close Floor Plan (back to 3D)
       togglePlanView();
     }
   }, true);
@@ -3520,7 +3520,7 @@ try {
     if (isPlanViewVisible()) layoutUnderRibbon();
   });
 
-  // 3D → 2D live sync when authored geometry changes
+  // 3D ? 2D live sync when authored geometry changes
   try {
     import("./authoring").then(({ onAuthoringChange }) => {
       onAuthoringChange(() => {
