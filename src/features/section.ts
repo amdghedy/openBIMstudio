@@ -435,3 +435,57 @@ export function setupGridToggle(): void {
     }
   }, 250);
 })();
+// ============================================================================
+// Hide ALL section visual planes (clipper + section-box + cut-interaction)
+// ============================================================================
+function hideAllSectionVisuals(): number {
+  let n = 0;
+  try {
+    const scene = (ctx as any)?.world?.scene?.three;
+    if (scene) {
+      scene.traverse((obj: any) => {
+        const name = String(obj?.name ?? "").toLowerCase();
+        const cls = String(obj?.constructor?.name ?? "").toLowerCase();
+        const isSectionLike =
+          name.includes("section") || name.includes("clip") ||
+          name.includes("cut") || name.includes("box") ||
+          cls.includes("section") || cls.includes("clip");
+        if (!isSectionLike) return;
+        if ("visible" in obj) { obj.visible = false; n++; }
+        const mat: any = obj.material;
+        if (mat) {
+          if (Array.isArray(mat)) mat.forEach((m: any) => { m.opacity = 0; m.transparent = true; });
+          else { mat.opacity = 0; mat.transparent = true; }
+        }
+      });
+    }
+  } catch (e) { console.warn("[section] hideAllSectionVisuals", e); }
+
+  // Also hide any direct section-box helpers
+  try {
+    const sb: any = (ctx.features as any).sectionBox;
+    if (sb) {
+      if (typeof sb.hideVisual === "function") { sb.hideVisual(); n++; }
+      if (typeof sb.setVisible === "function") { sb.setVisible(false); n++; }
+    }
+  } catch { /* */ }
+
+  // And the section-cut-interaction plane
+  try {
+    const sci: any = (ctx.features as any).sectionCutInteraction;
+    if (sci && typeof sci.hidePlane === "function") { sci.hidePlane(); n++; }
+    if (sci && typeof sci.setVisible === "function") { sci.setVisible(false); n++; }
+  } catch { /* */ }
+
+  return n;
+}
+
+(function autoHideAll() {
+  setInterval(() => { hideAllSectionVisuals(); }, 400);
+})();
+
+try {
+  const sec: any = (window as any).__obsSection ?? {};
+  sec.hideAll = hideAllSectionVisuals;
+  (window as any).__obsSection = sec;
+} catch { /* */ }
