@@ -11,3 +11,15 @@ errors.txt
 *.disabled
 *.orig
 .DS_Store
+
+# Build artifacts
+NavisworksGLBExporter/obj/
+NavisworksGLBExporter/build/
+*.dll
+*.pdb
+
+# Code-export folder (duplicate)
+_export/
+
+# Vendor wasm blobs (fetched via npm scripts)
+public/web-ifc/*.wasm
