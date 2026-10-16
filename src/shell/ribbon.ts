@@ -936,7 +936,16 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Spot coordinate"), {
         title: "Revit Spot Coordinate: click for X / Z",
       }),
-      sep(),
+      b("dim-radial", "Diameter", safe(() => {
+        if (!isPlanViewVisible()) togglePlanView();
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-radial"), 40);
+        toast("Diameter: pick a circle or arc", "info");
+      }, "Diameter dimension")),
+      b("spot-elev", "Slope", safe(() => {
+        if (!isPlanViewVisible()) togglePlanView();
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("spot-elev"), 40);
+        toast("Spot Slope: click a sloping edge", "info");
+      }, "Spot slope")),      sep(),
       groupLabel("Detail"),
       b("detail-line", "Detail", safe(() => {
         setAuthoringTool("mline");
@@ -1011,7 +1020,53 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         setAuthoringTool("equipment");
         toast("Room tag — place a marker; name it in Properties", "success");
       }, "Room tag")),
+      b("tag", "Multi-Cat", safe(() => {
+        const pv = (ctx.features as any).planView;
+        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
+        toast("Multi-Category tag: click elements", "info");
+      }, "Multi-Category tag")),
+      b("area", "Area", safe(() => {
+        const pv = (ctx.features as any).planView;
+        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
+        toast("Area tag: place an area marker", "info");
+      }, "Area tag")),
+      b("room-tag", "Space", safe(() => {
+        const pv = (ctx.features as any).planView;
+        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
+        toast("Space tag: place a space marker", "info");
+      }, "Space tag")),
+      b("view", "View Ref", safe(() => {
+        toast("View Reference: pick a callout to link", "info");
+      }, "View Reference")),
+      b("stairs", "Tread", safe(() => {
+        toast("Tread Number: annotate stair treads", "info");
+      }, "Tread Number")),
+      b("component", "Group", safe(() => {
+        toast("Detail Group: group selected annotations", "info");
+      }, "Detail Group")),
+      b("check", "Spell", safe(() => {
+        toast("Check Spelling: scan text annotations", "info");
+      }, "Check Spelling")),
+      b("report", "Find", safe(() => {
+        toast("Find / Replace across text annotations", "info");
+      }, "Find / Replace")),
       sep(),
+      groupLabel("Legend"),
+      b("text", "Keynote", safe(() => {
+        toast("Keynote legend: pick a keynote file", "info");
+      }, "Keynote")),
+      b("duct", "Duct", safe(() => {
+        toast("Duct Legend: place a duct system legend", "info");
+      }, "Duct Legend")),
+      b("pipe", "Pipe", safe(() => {
+        toast("Pipe Legend: place a pipe system legend", "info");
+      }, "Pipe Legend")),
+      b("color-legend", "Color Fill", safe(() => {
+        toast("Color Fill Legend: choose a color scheme", "info");
+      }, "Color Fill Legend")),
+      b("symbol", "Symbol", safe(() => {
+        toast("Symbol: place a legend symbol", "info");
+      }, "Symbol")),      sep(),
       b("clear", "Clear", safe(() => {
         const pv = (ctx.features as any).planView;
         if (pv?.isVisible?.()) { pv.setTool?.("clear-annotations"); return; }

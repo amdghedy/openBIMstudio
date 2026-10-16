@@ -405,7 +405,7 @@
     var panel = findInsertPanel();
     if (!panel) return false;
     if (btn.parentElement === panel) return true;
-    /* disabled: panel.appendChild(btn); */
+    /* disabled: /* disabled: panel.appendChild(btn); */ */
     btn.classList.add('obim-in-ribbon');
     console.info('[OpenBIMStudio] Autodesk button relocated to Insert tab');
     return true;
