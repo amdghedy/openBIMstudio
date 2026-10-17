@@ -788,8 +788,15 @@ export function focusOnBox(box: THREE.Box3): void {
   }
   updateClipping();
 
-  // Pin the orbit rotation centre to the element's bounding-box centre
-  setTimeout(() => { try { setOrbitPivot(box.getCenter(new THREE.Vector3())); } catch { /* ignore */ } }, 220);
+  // Pin the orbit rotation centre to the element's bounding-box centre.
+  // Route through selection-orbit-pivot.applyOrbitPivot so the
+  // __OBS_HAS_SELECTION_PIVOT / __OBS_ORBIT_PIVOT globals are set too -
+  // without them nav-selection-pivot-patch.ts disables Shift+MMB reseeding.
+  setTimeout(() => {
+    void import("./selection-orbit-pivot").then(({ applyOrbitPivot }) => {
+      try { applyOrbitPivot(box.getCenter(new THREE.Vector3())); } catch { /* */ }
+    }).catch(() => { /* */ });
+  }, 220);
 }
 
 /**

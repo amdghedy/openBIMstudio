@@ -433,7 +433,9 @@ function focusBoxManual(box: THREE.Box3): boolean {
         target.z,
         true,
       );
-  setOrbitPivot(center);
+  void import("./selection-orbit-pivot")
+    .then(({ applyOrbitPivot }) => { try { applyOrbitPivot(center); } catch { /* */ } })
+    .catch(() => { /* */ });
 
       controls.update?.(0);
     } else {
