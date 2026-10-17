@@ -1126,11 +1126,47 @@ function buildWallWithOpenings(
   const eR = toLocal(endFaces.right[0],   endFaces.right[1]);
 
   const shape = new THREE.Shape();
-  shape.moveTo(sL[0], sL[1]);
-  shape.lineTo(eL[0], eL[1]);
-  shape.lineTo(eR[0], eR[1]);
-  shape.lineTo(sR[0], sR[1]);
-  shape.closePath();
+  const arcH = Number((p as any).arcHeight ?? 0);
+
+  if (Math.abs(arcH) > 0.05 && L > 0.5) {
+    // Curved wall (segmented arc)
+    const h = Math.abs(arcH);
+    const R = (h * h + (L / 2) * (L / 2)) / (2 * h);
+    const sign = Math.sign(arcH);
+    const theta = 2 * Math.asin((L / 2) / R);
+    const startAngle = -theta / 2;
+    const segments = Math.max(12, Math.ceil(theta * 10));
+    const cX = L / 2;
+    const cY = T / 2 - sign * R;
+
+    // Left face (start to end)
+    shape.moveTo(0, T);
+    for (let i = 1; i <= segments; i++) {
+      const a = startAngle + (i / segments) * theta;
+      const px = cX + (R + T / 2) * Math.sin(a);
+      const py = cY + sign * (R + T / 2) * Math.cos(a);
+      shape.lineTo(px, py);
+    }
+    shape.lineTo(L, T);
+    shape.lineTo(L, 0);
+
+    // Right face (end to start)
+    for (let i = segments; i >= 0; i--) {
+      const a = startAngle + (i / segments) * theta;
+      const px = cX + (R - T / 2) * Math.sin(a);
+      const py = cY + sign * (R - T / 2) * Math.cos(a);
+      shape.lineTo(px, py);
+    }
+    shape.lineTo(0, 0);
+    shape.closePath();
+  } else {
+    // Straight wall
+    shape.moveTo(sL[0], sL[1]);
+    shape.lineTo(eL[0], eL[1]);
+    shape.lineTo(eR[0], eR[1]);
+    shape.lineTo(sR[0], sR[1]);
+    shape.closePath();
+  }
 
   const geo = new THREE.ExtrudeGeometry(shape, { depth: H, bevelEnabled: false });
   const mat = new THREE.MeshLambertMaterial({
