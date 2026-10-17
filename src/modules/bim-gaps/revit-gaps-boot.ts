@@ -62,7 +62,7 @@ export async function exportIfc(schema: IfcSchema = "IFC4"): Promise<void> {
       `${schema}: ${r.stats.elements} element(s), ${r.stats.spaces} room(s), ${r.stats.openings} opening(s)` + (skipped ? ` - ${skipped} not exported (see console)` : ""), { timeout: 4500 });
     if (skipped) console.table(r.stats.skipped);
   } catch (e) {
-    console.error("[revit-gaps] IFC export failed", e);
+    console.error("[bim-gaps] IFC export failed", e);
     notify("error", "IFC export failed: " + (e instanceof Error ? e.message : String(e)));
   }
 }
@@ -73,12 +73,12 @@ async function step(name: string, fn: () => unknown): Promise<void> {
     status.push({ name, ok: r?.ok !== false, detail: r?.detail ?? "started" });
   } catch (e) {
     status.push({ name, ok: false, detail: e instanceof Error ? e.message : String(e) });
-    console.error(`[revit-gaps] ${name} failed`, e);
+    console.error(`[bim-gaps] ${name} failed`, e);
   }
 }
 
 let booted = false;
-export async function setupBIMGaps(): Promise<StepStatus[]> {
+export async function setupBimGaps(): Promise<StepStatus[]> {
   if (booted) return status;
   booted = true;
 
@@ -134,7 +134,7 @@ export async function setupBIMGaps(): Promise<StepStatus[]> {
     visibility: { hideSelection, isolateSelection, reset: resetTemporaryVisibility, tagSelection, getSelectedKeys, apply: () => applyAuthored(true) },
   };
   const failed = status.filter((s) => !s.ok);
-  console.log(`[revit-gaps] ${REVIT_GAPS_VERSION}: ${status.length - failed.length}/${status.length} steps started` + (failed.length ? ` - FAILED: ${failed.map((f) => `${f.name} (${f.detail})`).join("; ")}` : ""));
+  console.log(`[bim-gaps] ${REVIT_GAPS_VERSION}: ${status.length - failed.length}/${status.length} steps started` + (failed.length ? ` - FAILED: ${failed.map((f) => `${f.name} (${f.detail})`).join("; ")}` : ""));
   if (failed.length) notify("warn", `BIM gaps: ${failed.length} step(s) failed - see console`);
   return status;
 }

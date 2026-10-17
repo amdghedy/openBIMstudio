@@ -92,7 +92,7 @@ import { setupAutomationPanel } from "./features/automation-panel";
 import { setupProjectBrowser } from "./features/project-browser";
 import { setupBimToolbox } from "./features/bim-toolbox";
 import { refreshViewGraphics } from "./features/view-graphics";
-import { setupBIMExperience } from "./features/revit-experience";
+import { setupBimExperience } from "./features/bim-experience";
 import { setupBimObjectStudio } from "./features/bim-object-studio";
 import { setupLevelChip } from "./features/level-chip";
 import { setupWorkspaceLayout } from "./features/workspace-boot";
@@ -330,7 +330,7 @@ await step("views-panel", () => setupViewsPanel());
 await step("sheets-2d-panel", () => setupSheets2dPanel());
 
 await step("view-graphics", () => refreshViewGraphics());
-await step("revit-experience", () => setupBIMExperience());
+await step("bim-experience", () => setupBimExperience());
 await step("bim-object-studio", () => setupBimObjectStudio());
 await step("level-chip", () => setupLevelChip());
 await step("shell", () => setupShell());

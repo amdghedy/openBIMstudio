@@ -151,13 +151,13 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./features/ui-items-register-patch");
     m.registerClosedGapUiItems?.();
   });
-  await safe("revit-parity-bridge", async () => {
-    const m: Any = await import("./features/revit-parity-bridge");
-    m.setupBIMParityBridge?.();
+  await safe("bim-parity-bridge", async () => {
+    const m: Any = await import("./features/bim-parity-bridge");
+    m.setupBimParityBridge?.();
   });
-  await safe("revit-command-center", async () => {
-    const m: Any = await import("./features/revit-command-center");
-    m.setupBIMCommandCenter?.();
+  await safe("bim-command-center", async () => {
+    const m: Any = await import("./features/bim-command-center");
+    m.setupBimCommandCenter?.();
   });
   await safe("selection-orbit-pivot", async () => {
     const m: Any = await import("./features/selection-orbit-pivot");
@@ -171,9 +171,9 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./features/nav-selection-pivot-patch");
     m.setupNavSelectionPivotPatch?.();
   });
-  await safe("revit-input-parity", async () => {
-    const m: Any = await import("./features/revit-input-parity");
-    m.setupBIMInputParity?.();
+  await safe("bim-input-parity", async () => {
+    const m: Any = await import("./features/bim-input-parity");
+    m.setupBimInputParity?.();
   });
   await safe("cad-parity", async () => {
     const m: Any = await import("./features/cad-parity");

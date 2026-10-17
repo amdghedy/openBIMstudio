@@ -1,4 +1,4 @@
-// src/services/revitRoundTrip.ts
+// src/services/bimRoundTrip.ts
 import axios from 'axios';
 import { IfcAPI } from 'web-ifc';
 

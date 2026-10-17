@@ -19,7 +19,7 @@ export function buildM2Mesh(el: Any): THREE.Object3D | null {
   let geo;
   try { geo = buildElementGeo(el as never); }
   catch (e) {
-    if (!warned.has(el.id)) { warned.add(el.id); console.warn(`[revit-gaps] ${el.type} ${el.id}: ${e instanceof Error ? e.message : e}`); }
+    if (!warned.has(el.id)) { warned.add(el.id); console.warn(`[bim-gaps] ${el.type} ${el.id}: ${e instanceof Error ? e.message : e}`); }
     return null;
   }
   if (!geo) return null;

@@ -218,7 +218,7 @@ async function registerBIMShortcuts(): Promise<void> {
     keys: "ma",
     category: "tool",
     handler: () => {
-      (window as Any).__obsBIMParity?.matchPropertiesPickSource?.();
+      (window as Any).__obsBimParity?.matchPropertiesPickSource?.();
     },
   });
   reg({
@@ -227,7 +227,7 @@ async function registerBIMShortcuts(): Promise<void> {
     keys: "cs",
     category: "tool",
     handler: () => {
-      (window as Any).__obsBIMParity?.createSimilar?.();
+      (window as Any).__obsBimParity?.createSimilar?.();
     },
   });
   reg({
@@ -283,7 +283,7 @@ async function registerBIMShortcuts(): Promise<void> {
     handler: () => toggleInputHelp(),
   });
 
-  console.log("[revit-input-parity] BIM shortcuts registered");
+  console.log("[bim-input-parity] BIM shortcuts registered");
 }
 
 /* -- Mouse / CameraControls guard ------------------------------------------ */
@@ -465,7 +465,7 @@ export function toggleInputHelp(): void {
 
 /* -- Setup ----------------------------------------------------------------- */
 
-export function setupBIMInputParity(): void {
+export function setupBimInputParity(): void {
   void registerBIMShortcuts();
 
   // Re-assert nav ownership after boot (CameraControls can re-enable)
@@ -504,5 +504,5 @@ export function setupBIMInputParity(): void {
     } catch { /* */ }
   })();
 
-  console.log("[revit-input-parity] ready - Ctrl+/ for mouse & keyboard map");
+  console.log("[bim-input-parity] ready - Ctrl+/ for mouse & keyboard map");
 }

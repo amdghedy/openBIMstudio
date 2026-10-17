@@ -53,7 +53,7 @@ import {
   toggleOptionsBar, isOptionsBarVisible,
   toggleContextualBar, isContextualBarVisible,
   toggleViewBar, isViewBarVisible,
-} from "../features/revit-experience";
+} from "../features/bim-experience";
 import { toggleSchedules, isSchedulesVisible } from "../features/schedules-panel";
 import { toggleWalkMode, isWalkModeEnabled } from "../features/walk-mode";
 import { togglePalette } from "../features/command-palette";

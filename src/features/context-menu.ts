@@ -803,7 +803,7 @@ async function openCtxMenu(e: MouseEvent) {
 // ─── Context-menu visibility helpers ──────────────────────────────────
 async function ctxHide(): Promise<void> {
   try {
-    const m: any = await import("../modules/revit-gaps/visibility-bridge");
+    const m: any = await import("../modules/bim-gaps/visibility-bridge");
     if (typeof m.hideSelection === "function") { m.hideSelection(); return; }
   } catch { /* fall back below */ }
   try {
@@ -815,7 +815,7 @@ async function ctxHide(): Promise<void> {
 
 async function ctxIsolate(): Promise<void> {
   try {
-    const m: any = await import("../modules/revit-gaps/visibility-bridge");
+    const m: any = await import("../modules/bim-gaps/visibility-bridge");
     if (typeof m.isolateSelection === "function") { m.isolateSelection(); return; }
   } catch { /* */ }
   try {
@@ -827,7 +827,7 @@ async function ctxIsolate(): Promise<void> {
 
 async function ctxShowAll(): Promise<void> {
   try {
-    const m: any = await import("../modules/revit-gaps/visibility-bridge");
+    const m: any = await import("../modules/bim-gaps/visibility-bridge");
     if (typeof m.resetTemporaryVisibility === "function") { m.resetTemporaryVisibility(); return; }
   } catch { /* */ }
   try {

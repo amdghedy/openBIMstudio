@@ -168,20 +168,20 @@ function buildBody(host: HTMLElement): void {
   host.appendChild(
     section("Architecture", [
       btn("Straight Stair", "Parametric run", async () => {
-        await (window as Any).__obsBIMParity?.placeStair?.("straight");
-      }, has("__obsStairs") || has("__obsBIMParity")),
+        await (window as Any).__obsBimParity?.placeStair?.("straight");
+      }, has("__obsStairs") || has("__obsBimParity")),
       btn("L-Stair", "Landing turn", async () => {
-        await (window as Any).__obsBIMParity?.placeStair?.("l-shape");
-      }, has("__obsStairs") || has("__obsBIMParity")),
+        await (window as Any).__obsBimParity?.placeStair?.("l-shape");
+      }, has("__obsStairs") || has("__obsBimParity")),
       btn("U-Stair", "Switchback", async () => {
-        await (window as Any).__obsBIMParity?.placeStair?.("u-shape");
-      }, has("__obsStairs") || has("__obsBIMParity")),
+        await (window as Any).__obsBimParity?.placeStair?.("u-shape");
+      }, has("__obsStairs") || has("__obsBimParity")),
       btn("Railing", "Path + balusters", async () => {
-        await (window as Any).__obsBIMParity?.placeRailing?.();
-      }, has("__obsRailings") || has("__obsBIMParity")),
+        await (window as Any).__obsBimParity?.placeRailing?.();
+      }, has("__obsRailings") || has("__obsBimParity")),
       btn("Curtain Wall", "Mullions + panels", async () => {
-        await (window as Any).__obsBIMParity?.placeCurtainWall?.();
-      }, has("__obsCurtainWall") || has("__obsBIMParity")),
+        await (window as Any).__obsBimParity?.placeCurtainWall?.();
+      }, has("__obsCurtainWall") || has("__obsBimParity")),
       btn("Parametric Fam", "Ctrl+Shift+F", () => {
         (window as Any).__obsParamFamilyPanel?.toggle?.();
       }, true),
@@ -216,12 +216,12 @@ function buildBody(host: HTMLElement): void {
         toast(n ? `Distributed ${n}` : "Need 3+ selected", n ? "success" : "info");
       }, has("__obsAlign")),
       btn("Match Props", "Pick source", () => {
-        (window as Any).__obsBIMParity?.matchPropertiesPickSource?.();
-      }, has("__obsBIMParity")),
+        (window as Any).__obsBimParity?.matchPropertiesPickSource?.();
+      }, has("__obsBimParity")),
       btn("Paint Props", "Apply to selection", () => {
-        const n = (window as Any).__obsBIMParity?.matchPropertiesApply?.() ?? 0;
+        const n = (window as Any).__obsBimParity?.matchPropertiesApply?.() ?? 0;
         toast(n ? `Painted ${n}` : "Pick source first", n ? "success" : "info");
-      }, has("__obsBIMParity")),
+      }, has("__obsBimParity")),
       btn("Create Group", "From selection", () => {
         const ids = selIds();
         if (!ids.length) {
@@ -233,7 +233,7 @@ function buildBody(host: HTMLElement): void {
         toast(g ? `Group "${name}" created` : "Groups not ready", g ? "success" : "warn");
       }, has("__obsGroups")),
       btn("Create Similar", "Same type tool", () => {
-        (window as Any).__obsBIMParity?.createSimilar?.();
+        (window as Any).__obsBimParity?.createSimilar?.();
       }, true),
     ]),
   );
@@ -393,24 +393,24 @@ function makeDraggable(el: HTMLElement, handle: HTMLElement): void {
   });
 }
 
-export function openBIMCommandCenter(): void {
+export function openBimCommandCenter(): void {
   if (!panel) return;
   buildBody(panel.querySelector(".rcc-body") as HTMLElement);
   panel.classList.add("is-open");
   visible = true;
 }
 
-export function closeBIMCommandCenter(): void {
+export function closeBimCommandCenter(): void {
   panel?.classList.remove("is-open");
   visible = false;
 }
 
-export function toggleBIMCommandCenter(): void {
-  if (visible) closeBIMCommandCenter();
-  else openBIMCommandCenter();
+export function toggleBimCommandCenter(): void {
+  if (visible) closeBimCommandCenter();
+  else openBimCommandCenter();
 }
 
-export function setupBIMCommandCenter(): void {
+export function setupBimCommandCenter(): void {
   if (panel) return;
   installCss();
 
@@ -427,7 +427,7 @@ export function setupBIMCommandCenter(): void {
 
   const hdr = panel.querySelector(".rcc-hdr") as HTMLElement;
   makeDraggable(panel, hdr);
-  panel.querySelector(".rcc-close")?.addEventListener("click", () => closeBIMCommandCenter());
+  panel.querySelector(".rcc-close")?.addEventListener("click", () => closeBimCommandCenter());
 
   // Keyboard: Ctrl+Shift+R
   window.addEventListener("keydown", (e) => {
@@ -435,7 +435,7 @@ export function setupBIMCommandCenter(): void {
       const t = e.target as HTMLElement;
       if (t?.closest?.("input,textarea,[contenteditable]")) return;
       e.preventDefault();
-      toggleBIMCommandCenter();
+      toggleBimCommandCenter();
     }
   });
 
@@ -456,7 +456,7 @@ export function setupBIMCommandCenter(): void {
   launch.onmouseleave = () => {
     launch.style.background = "rgba(56,189,248,.16)";
   };
-  launch.onclick = () => toggleBIMCommandCenter();
+  launch.onclick = () => toggleBimCommandCenter();
   document.body.appendChild(launch);
 
   // Palette command
@@ -468,15 +468,15 @@ export function setupBIMCommandCenter(): void {
         label: "Command Center",
         category: "Panels",
         kbd: "Ctrl+Shift+R",
-        run: () => toggleBIMCommandCenter(),
+        run: () => toggleBimCommandCenter(),
       });
     } catch { /* */ }
   })();
 
   (window as Any).__obsBIMCC = {
-    open: openBIMCommandCenter,
-    close: closeBIMCommandCenter,
-    toggle: toggleBIMCommandCenter,
+    open: openBimCommandCenter,
+    close: closeBimCommandCenter,
+    toggle: toggleBimCommandCenter,
   };
 
   // First-run: open once so the user sees every function grouped clearly
@@ -484,10 +484,10 @@ export function setupBIMCommandCenter(): void {
     const key = "obs.rcc.autoOpened.v1";
     if (!sessionStorage.getItem(key)) {
       sessionStorage.setItem(key, "1");
-      window.setTimeout(() => openBIMCommandCenter(), 800);
+      window.setTimeout(() => openBimCommandCenter(), 800);
     }
   } catch { /* */ }
 
-  console.log("[revit-command-center] ready - Ctrl+Shift+R or RC button");
+  console.log("[bim-command-center] ready - Ctrl+Shift+R or RC button");
 }
 

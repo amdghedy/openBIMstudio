@@ -83,7 +83,7 @@ export type ExperienceMode =
   | "query"
   | "review";
 
-export interface BIMCommand {
+export interface BimCommand {
   id: string;
   label: string;
   ribbon?: string;
@@ -131,7 +131,7 @@ const state: ExperienceState = {
   crop: true,
 };
 
-const commands = new Map<string, BIMCommand>();
+const commands = new Map<string, BimCommand>();
 const listeners = new Set<() => void>();
 
 let optionsBar: HTMLDivElement | null = null;
@@ -147,7 +147,7 @@ function emit() {
   for (const cb of listeners) {
     try { cb(); } catch { /* UI listener must never crash authoring */ }
   }
-  window.dispatchEvent(new CustomEvent("obs:revit-experience", { detail: { ...state } }));
+  window.dispatchEvent(new CustomEvent("obs:bim-experience", { detail: { ...state } }));
 }
 
 export function onBIMExperienceChange(cb: () => void): () => void {
@@ -155,13 +155,13 @@ export function onBIMExperienceChange(cb: () => void): () => void {
   return () => listeners.delete(cb);
 }
 
-export function registerBIMCommand(command: BIMCommand): void {
+export function registerBimCommand(command: BimCommand): void {
   commands.set(command.id, command);
 }
-export function registerBIMCommands(list: BIMCommand[]): void {
-  for (const command of list) registerBIMCommand(command);
+export function registerBimCommands(list: BimCommand[]): void {
+  for (const command of list) registerBimCommand(command);
 }
-export function listBIMCommands(): BIMCommand[] { return [...commands.values()]; }
+export function listBimCommands(): BimCommand[] { return [...commands.values()]; }
 
 function toast(message: string, kind: "info" | "success" | "warn" = "info", ms = 1800) {
   window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message, kind, ms } }));
@@ -192,7 +192,7 @@ function button(label: string, icon: IconName | string, onclick: () => void | Pr
   }
   b.onclick = async (e) => {
     e.stopPropagation();
-    try { await onclick(); } catch (err) { console.error("[revit-experience] command", label, err); toast(`${label} failed`, "warn", 2500); }
+    try { await onclick(); } catch (err) { console.error("[bim-experience] command", label, err); toast(`${label} failed`, "warn", 2500); }
     refresh();
   };
   return b;
@@ -587,7 +587,7 @@ function trimExtendSelected(): number {
 
 function createCommandCatalog() {
   const regTool = (tool: string, label: string, ribbon: string, group = "Create", shortcut?: string) =>
-    registerBIMCommand({ id: `tool.${tool}`, label, ribbon, group, shortcut, run: () => activateTool(tool), keywords: [label, ribbon, "create", "place"] });
+    registerBimCommand({ id: `tool.${tool}`, label, ribbon, group, shortcut, run: () => activateTool(tool), keywords: [label, ribbon, "create", "place"] });
 
   const architecture: [string, string, string][] = [
     ["wall", "Wall", "Architecture"], ["slab", "Floor", "Architecture"], ["roof", "Roof", "Architecture"],
@@ -612,20 +612,20 @@ function createCommandCatalog() {
     ["move", "Move", "Modify"], ["copy", "Copy", "Modify"], ["rotate", "Rotate", "Modify"],
     ["mirror", "Mirror", "Modify"], ["array", "Array", "Modify"], ["offset", "Offset", "Modify"],
   ];
-  for (const [tool, label, ribbon] of modify) registerBIMCommand({
+  for (const [tool, label, ribbon] of modify) registerBimCommand({
     id: `modify.${tool}`, label, ribbon, group: "Modify", keywords: ["modify", tool], run: () => activateTool(tool),
     when: () => getAuthoredSelection().length > 0 || !selection.isEmpty(),
   });
 
-  registerBIMCommand({ id: "modify.alignX", label: "Align — Horizontal", ribbon: "Modify", group: "Modify", keywords: ["align", "horizontal"], run: () => { const n = alignSelectedAxis("x"); toast(n ? "Aligned selected elements" : "Select two or more authored elements", n ? "success" : "warn"); } });
-  registerBIMCommand({ id: "modify.alignZ", label: "Align — Vertical", ribbon: "Modify", group: "Modify", keywords: ["align", "vertical"], run: () => { const n = alignSelectedAxis("z"); toast(n ? "Aligned selected elements" : "Select two or more authored elements", n ? "success" : "warn"); } });
-  registerBIMCommand({ id: "modify.split", label: "Split Element — Midpoint", ribbon: "Modify", group: "Modify", keywords: ["split", "break"], run: () => toast(splitSelectedAtMidpoint() ? "Element split" : "Select a line-based authored element", "info") });
-  registerBIMCommand({ id: "modify.join", label: "Join / Heal Walls", ribbon: "Modify", group: "Modify", keywords: ["join", "wall", "heal"], run: () => toast(joinSelectedWalls() ? "Wall joins processed" : "Select joinable walls", "info") });
-  registerBIMCommand({ id: "modify.pin", label: "Pin", ribbon: "Modify", group: "Constraints", keywords: ["pin", "lock"], run: () => toast(pinSelected(true) ? "Pinned" : "Nothing to pin", "success") });
-  registerBIMCommand({ id: "modify.unpin", label: "Unpin", ribbon: "Modify", group: "Constraints", keywords: ["unpin", "unlock"], run: () => toast(pinSelected(false) ? "Unpinned" : "Nothing to unpin", "success") });
-  registerBIMCommand({ id: "modify.createSimilar", label: "Create Similar", ribbon: "Modify", group: "Create", keywords: ["similar", "duplicate", "place same type"], run: () => toast(createSimilarFromSelection() ? "Create Similar — click to place the same type" : "Select an authored element first", "info") });
-  registerBIMCommand({ id: "modify.delete", label: "Delete", ribbon: "Modify", group: "Modify", shortcut: "Del", keywords: ["delete", "remove"], run: () => deleteSelectedElement() });
-  registerBIMCommand({ id: "modify.trimExtend", label: "Trim / Extend to Corner", ribbon: "Modify", group: "Modify", keywords: ["trim", "extend", "corner"], run: () => { trimExtendSelected(); }, when: () => getAuthoredSelection().length === 2 });
+  registerBimCommand({ id: "modify.alignX", label: "Align — Horizontal", ribbon: "Modify", group: "Modify", keywords: ["align", "horizontal"], run: () => { const n = alignSelectedAxis("x"); toast(n ? "Aligned selected elements" : "Select two or more authored elements", n ? "success" : "warn"); } });
+  registerBimCommand({ id: "modify.alignZ", label: "Align — Vertical", ribbon: "Modify", group: "Modify", keywords: ["align", "vertical"], run: () => { const n = alignSelectedAxis("z"); toast(n ? "Aligned selected elements" : "Select two or more authored elements", n ? "success" : "warn"); } });
+  registerBimCommand({ id: "modify.split", label: "Split Element — Midpoint", ribbon: "Modify", group: "Modify", keywords: ["split", "break"], run: () => toast(splitSelectedAtMidpoint() ? "Element split" : "Select a line-based authored element", "info") });
+  registerBimCommand({ id: "modify.join", label: "Join / Heal Walls", ribbon: "Modify", group: "Modify", keywords: ["join", "wall", "heal"], run: () => toast(joinSelectedWalls() ? "Wall joins processed" : "Select joinable walls", "info") });
+  registerBimCommand({ id: "modify.pin", label: "Pin", ribbon: "Modify", group: "Constraints", keywords: ["pin", "lock"], run: () => toast(pinSelected(true) ? "Pinned" : "Nothing to pin", "success") });
+  registerBimCommand({ id: "modify.unpin", label: "Unpin", ribbon: "Modify", group: "Constraints", keywords: ["unpin", "unlock"], run: () => toast(pinSelected(false) ? "Unpinned" : "Nothing to unpin", "success") });
+  registerBimCommand({ id: "modify.createSimilar", label: "Create Similar", ribbon: "Modify", group: "Create", keywords: ["similar", "duplicate", "place same type"], run: () => toast(createSimilarFromSelection() ? "Create Similar — click to place the same type" : "Select an authored element first", "info") });
+  registerBimCommand({ id: "modify.delete", label: "Delete", ribbon: "Modify", group: "Modify", shortcut: "Del", keywords: ["delete", "remove"], run: () => deleteSelectedElement() });
+  registerBimCommand({ id: "modify.trimExtend", label: "Trim / Extend to Corner", ribbon: "Modify", group: "Modify", keywords: ["trim", "extend", "corner"], run: () => { trimExtendSelected(); }, when: () => getAuthoredSelection().length === 2 });
 
   // Annotation family — every entry maps to the plan tool where supported.
   const annotate: [string, string][] = [
@@ -633,59 +633,59 @@ function createCommandCatalog() {
     ["spot-elevation", "Spot Elevation"], ["tag", "Tag by Category"], ["room-tag", "Room Tag"],
     ["material-tag", "Material Tag"], ["text", "Text Note"], ["mline", "Detail Line"],
   ];
-  for (const [tool, label] of annotate) registerBIMCommand({
+  for (const [tool, label] of annotate) registerBimCommand({
     id: `annotate.${tool}`, label, ribbon: "Annotate", group: "Annotation", keywords: ["annotation", label],
     run: () => { const pv = (ctx.features as any).planView; if (pv?.isVisible?.()) pv.setTool?.(tool); else activateTool(tool); },
   });
 
   // View / review.
-  registerBIMCommand({ id: "view.properties", label: "Properties", ribbon: "View", group: "Windows", shortcut: "PP", run: () => openPropertyPalette() });
-  registerBIMCommand({ id: "view.projectBrowser", label: "Project Browser", ribbon: "View", group: "Windows", run: () => toggleProjectBrowser() });
-  registerBIMCommand({ id: "view.modelTree", label: "Model Categories / Browser", ribbon: "View", group: "Windows", run: () => toggleModelTreePanel() });
-  registerBIMCommand({ id: "view.plan", label: "Floor Plan", ribbon: "View", group: "Create Views", run: () => togglePlanView() });
-  registerBIMCommand({ id: "view.schedule", label: "Schedule / Quantities", ribbon: "View", group: "Create Views", run: () => toggleSchedules() });
-  registerBIMCommand({ id: "view.sheet", label: "Sheet", ribbon: "View", group: "Create Views", run: () => toggleSheetsPanel() });
-  registerBIMCommand({ id: "view.issues", label: "Issues / BCF", ribbon: "Collaborate", group: "Coordination", run: () => toggleIssuesPanel() });
-  registerBIMCommand({ id: "view.ids", label: "IDS Validation", ribbon: "Manage", group: "QA", run: () => toggleIdsPanel() });
-  registerBIMCommand({ id: "view.timeline", label: "Phasing / 4D", ribbon: "View", group: "Coordination", run: () => toggleTimelinePanel() });
-  registerBIMCommand({ id: "view.graphics", label: "Visibility / Graphics", ribbon: "View", group: "Graphics", run: openVisibilityGraphics });
-  registerBIMCommand({ id: "view.templates", label: "View Templates", ribbon: "View", group: "Graphics", run: openViewTemplates });
-  registerBIMCommand({ id: "modify.typeProperties", label: "Type Properties", ribbon: "Modify", group: "Properties", run: openTypeProperties });
-  registerBIMCommand({ id: "view.fit", label: "Zoom to Fit", ribbon: "View", group: "Navigation", shortcut: "ZF", run: () => fitAll() });
-  registerBIMCommand({ id: "view.home", label: "Default 3D View", ribbon: "View", group: "Navigation", shortcut: "3D", run: () => goHome() });
-  registerBIMCommand({ id: "view.top", label: "Top / Plan Orientation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 1, 0)) });
-  registerBIMCommand({ id: "view.front", label: "Front Elevation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 0, 1)) });
-  registerBIMCommand({ id: "view.ortho", label: "Orthographic", ribbon: "View", group: "Projection", run: () => { void setProjection("orthographic"); } });
-  registerBIMCommand({ id: "view.perspective", label: "Perspective", ribbon: "View", group: "Projection", run: () => { void setProjection("perspective"); } });
+  registerBimCommand({ id: "view.properties", label: "Properties", ribbon: "View", group: "Windows", shortcut: "PP", run: () => openPropertyPalette() });
+  registerBimCommand({ id: "view.projectBrowser", label: "Project Browser", ribbon: "View", group: "Windows", run: () => toggleProjectBrowser() });
+  registerBimCommand({ id: "view.modelTree", label: "Model Categories / Browser", ribbon: "View", group: "Windows", run: () => toggleModelTreePanel() });
+  registerBimCommand({ id: "view.plan", label: "Floor Plan", ribbon: "View", group: "Create Views", run: () => togglePlanView() });
+  registerBimCommand({ id: "view.schedule", label: "Schedule / Quantities", ribbon: "View", group: "Create Views", run: () => toggleSchedules() });
+  registerBimCommand({ id: "view.sheet", label: "Sheet", ribbon: "View", group: "Create Views", run: () => toggleSheetsPanel() });
+  registerBimCommand({ id: "view.issues", label: "Issues / BCF", ribbon: "Collaborate", group: "Coordination", run: () => toggleIssuesPanel() });
+  registerBimCommand({ id: "view.ids", label: "IDS Validation", ribbon: "Manage", group: "QA", run: () => toggleIdsPanel() });
+  registerBimCommand({ id: "view.timeline", label: "Phasing / 4D", ribbon: "View", group: "Coordination", run: () => toggleTimelinePanel() });
+  registerBimCommand({ id: "view.graphics", label: "Visibility / Graphics", ribbon: "View", group: "Graphics", run: openVisibilityGraphics });
+  registerBimCommand({ id: "view.templates", label: "View Templates", ribbon: "View", group: "Graphics", run: openViewTemplates });
+  registerBimCommand({ id: "modify.typeProperties", label: "Type Properties", ribbon: "Modify", group: "Properties", run: openTypeProperties });
+  registerBimCommand({ id: "view.fit", label: "Zoom to Fit", ribbon: "View", group: "Navigation", shortcut: "ZF", run: () => fitAll() });
+  registerBimCommand({ id: "view.home", label: "Default 3D View", ribbon: "View", group: "Navigation", shortcut: "3D", run: () => goHome() });
+  registerBimCommand({ id: "view.top", label: "Top / Plan Orientation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 1, 0)) });
+  registerBimCommand({ id: "view.front", label: "Front Elevation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 0, 1)) });
+  registerBimCommand({ id: "view.ortho", label: "Orthographic", ribbon: "View", group: "Projection", run: () => { void setProjection("orthographic"); } });
+  registerBimCommand({ id: "view.perspective", label: "Perspective", ribbon: "View", group: "Projection", run: () => { void setProjection("perspective"); } });
 
   // Temporary review / graphics.
-  registerBIMCommand({ id: "review.isolate", label: "Temporary Isolate", ribbon: "View", group: "Temporary", run: isolateSelection });
-  registerBIMCommand({ id: "review.hide", label: "Temporary Hide", ribbon: "View", group: "Temporary", run: hideSelection });
-  registerBIMCommand({ id: "review.reveal", label: "Reveal Hidden Elements", ribbon: "View", group: "Temporary", run: revealAll });
-  registerBIMCommand({ id: "review.focus", label: "Zoom to Selection", ribbon: "View", group: "Navigation", run: focusSelection });
+  registerBimCommand({ id: "review.isolate", label: "Temporary Isolate", ribbon: "View", group: "Temporary", run: isolateSelection });
+  registerBimCommand({ id: "review.hide", label: "Temporary Hide", ribbon: "View", group: "Temporary", run: hideSelection });
+  registerBimCommand({ id: "review.reveal", label: "Reveal Hidden Elements", ribbon: "View", group: "Temporary", run: revealAll });
+  registerBimCommand({ id: "review.focus", label: "Zoom to Selection", ribbon: "View", group: "Navigation", run: focusSelection });
 
   // Global orders.
-  registerBIMCommand({ id: "global.select", label: "Modify / Select", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
-  registerBIMCommand({ id: "global.repeat", label: "Repeat Last Command", ribbon: "Modify", group: "Selection", shortcut: "Space", run: repeatLast });
-  registerBIMCommand({ id: "global.cancel", label: "Cancel Current Command", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
-  registerBIMCommand({ id: "global.selectAll", label: "Select All", ribbon: "Modify", group: "Selection", shortcut: "Ctrl+A", run: () => void selection.selectAll() });
-  registerBIMCommand({ id: "global.clearSelection", label: "Clear Selection", ribbon: "Modify", group: "Selection", run: clearSelection });
-  registerBIMCommand({ id: "global.undo", label: "Undo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Z", run: () => void history.undo() });
-  registerBIMCommand({ id: "global.redo", label: "Redo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Y", run: () => void history.redo() });
+  registerBimCommand({ id: "global.select", label: "Modify / Select", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
+  registerBimCommand({ id: "global.repeat", label: "Repeat Last Command", ribbon: "Modify", group: "Selection", shortcut: "Space", run: repeatLast });
+  registerBimCommand({ id: "global.cancel", label: "Cancel Current Command", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
+  registerBimCommand({ id: "global.selectAll", label: "Select All", ribbon: "Modify", group: "Selection", shortcut: "Ctrl+A", run: () => void selection.selectAll() });
+  registerBimCommand({ id: "global.clearSelection", label: "Clear Selection", ribbon: "Modify", group: "Selection", run: clearSelection });
+  registerBimCommand({ id: "global.undo", label: "Undo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Z", run: () => void history.undo() });
+  registerBimCommand({ id: "global.redo", label: "Redo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Y", run: () => void history.redo() });
 }
 
 function createOrAlias(tool: string, label: string, ribbon: string, regTool: (tool: string, label: string, ribbon: string, group?: string, shortcut?: string) => void) {
   if (tool === "roof" || tool === "ceiling") {
-    registerBIMCommand({ id: `tool.${tool}`, label, ribbon, group: "Build", run: () => activateTool(tool) });
+    registerBimCommand({ id: `tool.${tool}`, label, ribbon, group: "Build", run: () => activateTool(tool) });
     return;
   }
   regTool(tool, label, ribbon, "Build");
 }
 
-function contextActions(): BIMCommand[] {
+function contextActions(): BimCommand[] {
   const s = selectionSummary();
   if (!s.authored && !s.fragments) return [];
-  const out: BIMCommand[] = [];
+  const out: BimCommand[] = [];
   const add = (id: string) => {
     const c = commands.get(id);
     if (c) out.push(c);
@@ -1001,7 +1001,7 @@ function authoringChanged() {
   refresh();
 }
 
-export function setupBIMExperience() {
+export function setupBimExperience() {
   if (installed) return;
   installed = true;
   createCommandCatalog();
@@ -1111,5 +1111,5 @@ export function isViewBarVisible(): boolean {
   return !!(viewBar && viewBar.dataset.visible !== "0");
 }
 
-export function getBIMExperienceState(): ExperienceState { return { ...state }; }
-export function executeBIMCommand(id: string): void { execute(id); }
+export function getBimExperienceState(): ExperienceState { return { ...state }; }
+export function executeBimCommand(id: string): void { execute(id); }

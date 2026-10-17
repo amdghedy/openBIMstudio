@@ -95,7 +95,7 @@ function registerPaletteCommands(): void {
       }
     }
 
-    // Also expose a simple map for revit-parity-bridge consumers
+    // Also expose a simple map for bim-parity-bridge consumers
     const map = ((window as Any).__obsPaletteCommands ??= {});
     for (const c of cmds) map[c.id] = c;
   } catch (e) {

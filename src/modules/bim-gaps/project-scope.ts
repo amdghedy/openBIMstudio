@@ -30,7 +30,7 @@ const KEYS = [
   "obs.ref-planes.v1", "obs.shared-params.v1", "obs.project-params.v1", "obs.copy-monitor.v1",
 ];
 const STORES: Any[] = [roomsStore, phasesStore, designOptionsStore, groupsStore, refPlanesStore, sharedParamsStore, copyMonitorStore];
-const ADOPTED_FLAG = "obs.revit-gaps.scope-adopted";
+const ADOPTED_FLAG = "obs.bim-gaps.scope-adopted";
 
 export interface BIMStoresPayload { v: 1; data: Record<string, string> }
 

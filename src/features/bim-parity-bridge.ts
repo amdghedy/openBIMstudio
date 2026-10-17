@@ -6,7 +6,7 @@
  *   4. Applies visibility filter on authoring rebuild events
  *   5. Exposes Match Properties + Create Similar helpers
  *
- * Call setupBIMParityBridge() from critical-gaps-boot (already wired).
+ * Call setupBimParityBridge() from critical-gaps-boot (already wired).
  */
 
 import * as THREE from "three";
@@ -440,12 +440,12 @@ async function registerCommands(): Promise<void> {
       register(c);
     } catch { /* */ }
   }
-  console.log(`[revit-parity-bridge] registered ${cmds.length} commands`);
+  console.log(`[bim-parity-bridge] registered ${cmds.length} commands`);
 }
 
 /* -- Setup --------------------------------------------------------------- */
 
-export function setupBIMParityBridge(): void {
+export function setupBimParityBridge(): void {
   hookTempDims();
   hookVisibility();
   void registerCommands();
@@ -458,7 +458,7 @@ export function setupBIMParityBridge(): void {
     matchPropertiesApply,
     createSimilar,
   };
-  (window as Any).__obsBIMParity = (ctx.features as Any).revitParity;
+  (window as Any).__obsBimParity = (ctx.features as Any).revitParity;
 
-  console.log("[revit-parity-bridge] ready");
+  console.log("[bim-parity-bridge] ready");
 }
