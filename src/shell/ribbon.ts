@@ -652,7 +652,16 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       cdeButton(),
       sep(),
       groupLabel("Export"),
+      b("file", "IFC4", safe(async () => {
+        const mod = await import("../modules/bim-gaps/bim-gaps-boot");
+        await mod.exportIfc("IFC4");
+      }, "Export IFC4"), { title: "Export the authored model as IFC4 STEP file" }),
+      b("file", "IFC2X3", safe(async () => {
+        const mod = await import("../modules/bim-gaps/bim-gaps-boot");
+        await mod.exportIfc("IFC2X3");
+      }, "Export IFC2X3"), { title: "Export the authored model as IFC2X3 STEP file" }),
       b("cost-takeoff", "Cost", safe(() => recalculateTakeoff(), "Cost")),
+      b("issues", "Issues", safe(() => toggleIssuesPanel(), "Issues"), { active: isIssuesPanelVisible() }),
       b("issues", "Issues", safe(() => toggleIssuesPanel(), "Issues"), { active: isIssuesPanelVisible() }),
       sep(),
       groupLabel("Doc"),
