@@ -45,7 +45,8 @@ type Tool =
   | "wall" | "slab" | "column" | "beam" | "brace" | "truss" | "footing" | "strip" | "mline"
   | "duct" | "pipe" | "cable-tray" | "conduit" | "equipment"
   | "door" | "window" | "curtain-wall"
-  | "grid" | "level";
+  | "grid" | "level"
+  | "terrain";
 
 interface GripSpec {
   elementId: string;
@@ -383,7 +384,7 @@ const DRAW_TOOLS = new Set<Tool>([
   "wall", "slab", "column", "beam", "brace", "truss",
   "footing", "strip", "mline",
   "duct", "pipe", "cable-tray", "conduit", "equipment",
-  "door", "window", "curtain-wall",
+  "door", "window", "curtain-wall", "terrain",
 ]);
 
 /** Element types whose chains get an auto-fitting at every bend. */
@@ -1609,6 +1610,26 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
     mesh = memberMesh(a, b, p.thickness, p.thickness, mat);
   }
 
+  if (!mesh && el.type === "terrain" && p.polygon && p.polygon.length >= 3) {
+    const shape = new THREE.Shape();
+    p.polygon.forEach(([x, z], i) => (i === 0 ? shape.moveTo(x, -z) : shape.lineTo(x, -z)));
+    shape.closePath();
+    const thickness = p.thickness ?? 1.0;
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+    mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x8b5a2b }));
+    mesh.rotation.x = -Math.PI / 2;
+    const slopeDeg = Number(el.properties?.slope ?? 0);
+    const dirDeg = Number(el.properties?.slopeDirection ?? 0);
+    if (slopeDeg > 0) {
+      const slopeRad = THREE.MathUtils.degToRad(slopeDeg);
+      const dirRad = THREE.MathUtils.degToRad(dirDeg);
+      const axis = new THREE.Vector3(Math.cos(dirRad), 0, Math.sin(dirRad));
+      const q = new THREE.Quaternion().setFromAxisAngle(axis, slopeRad);
+      mesh.applyQuaternion(q);
+    }
+    mesh.position.y = p.elevation;
+  }
+
   if (!mesh && el.type === "slab" && p.polygon && p.polygon.length >= 3) {
     const shape = new THREE.Shape();
     p.polygon.forEach(([x, z], i) => (i === 0 ? shape.moveTo(x, -z) : shape.lineTo(x, -z)));
@@ -2177,7 +2198,8 @@ function deleteElements(ids: string[]) {
 // ═══════════════════════════════════════════════════════════════════════════
 function finishSlab() {
   if (poly.length >= 3) {
-    void createElement("slab", { polygon: poly.map((p) => [snap(p.x), snap(p.z)] as Vec2) });
+    const type = activeTool === "terrain" ? "terrain" : "slab";
+    void createElement(type as any, { polygon: poly.map((p) => [snap(p.x), snap(p.z)] as Vec2) });
   }
   poly = [];
   clearPreviews();
@@ -2359,6 +2381,7 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
       }
       break;
     case "slab":
+    case "terrain":
       if (poly.length && pt.distanceTo(poly[0]) < 0.3) {
         finishSlab();
         return;
@@ -3172,7 +3195,8 @@ function refreshEditor() {
       addNum("Pad thickness (m)", "height", 0.05); addNum("Width (m)", "thickness", 0.05); addNum("Depth (m)", "depth", 0.05);
       break;
     case "strip": addNum("Height (m)", "height", 0.05); addNum("Width (m)", "thickness", 0.05); break;
-    case "slab": addNum("Thickness (m)", "height", 0.05); break;
+    case "slab":
+    case "terrain": addNum("Thickness (m)", "height", 0.05); break;
     case "fitting":
       addNum("Height (m)", "height", 0.05);
       addNum("Width/diameter (m)", "thickness", 0.05);

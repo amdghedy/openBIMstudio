@@ -581,6 +581,29 @@ if (SCHEMAS.beam) {
   );
 }
 
+// ── Auto-injected Curved Wall field ─────────────────────────────────
+if (SCHEMAS.wall) {
+  SCHEMAS.wall.fields.push(
+    { key: "arcHeight", label: "Arc Height (0=straight)", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.1, default: 0 }
+  );
+}
+
+// ── Terrain Schema ────────────────────────────────────────────────────
+if (!SCHEMAS.terrain) {
+  SCHEMAS.terrain = {
+    type: "terrain" as any,
+    label: "Topography",
+    icon: "site-component",
+    groups: ["Dimensions", "Constraints"],
+    fields: [
+      { key: "thickness", label: "Thickness", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.1, default: 1.0 },
+      { key: "elevation", label: "Elevation", group: "Constraints", type: "number", target: "params", unit: "m", step: 0.1, default: 0 },
+      { key: "slope", label: "Slope", group: "Dimensions", type: "number", target: "properties", unit: "deg", step: 1, default: 0 },
+      { key: "slopeDirection", label: "Slope Direction", group: "Dimensions", type: "number", target: "properties", unit: "deg", step: 15, default: 0 }
+    ]
+  };
+}
+
 export function hasSchema(type: ElementType | string | null | undefined): boolean {
   if (!type) return false;
   return !!SCHEMAS[type as ElementType];

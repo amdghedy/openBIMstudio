@@ -28,7 +28,7 @@ export type ElementType =
   | "ramp"
   | "room"
   | "area"
-  | "ceiling"
+  | "ceiling" | "terrain"
   | "curtain-wall"
   | "grid"
   | "level"
