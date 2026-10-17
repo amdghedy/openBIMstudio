@@ -239,6 +239,11 @@ async function runOnce(): Promise<void> {
     m.setupRevitMousePolicy?.();
   });
 
+  await safe("m4-view-dims", async () => {
+    const m: Any = await import("./features/m4-view-dims-boot");
+    await m.setupM4ViewDims?.();
+  });
+
   console.log("[critical-gaps-boot] all critical gaps wired");
 }
 
