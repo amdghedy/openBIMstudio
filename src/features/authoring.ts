@@ -3523,6 +3523,15 @@ export function removeElementById(id: string): boolean {
   return true;
 }
 
+export function setElementVisibility(id: string, visible: boolean): void {
+  const group = getAuthoredGroup();
+  group.traverse((obj: any) => {
+    if (obj.userData.elementId === id) {
+      obj.visible = visible;
+    }
+  });
+}
+
 export function getElementById(id: string): AuthoredElement | null {
   return elements.find((el) => el.id === id) ?? null;
 }
@@ -4564,6 +4573,7 @@ export function setupAuthoring() {
     getActivePreset, getLastCommand, setLastCommand,
     getElementCount, getElements, getSelectedIds,
     getElementById,
+    setElementVisibility,
     pickAuthoredElementAt,
     deleteSelectedElement, clearAllElements, clearDatums,
     rebuildAuthored, transformElements,

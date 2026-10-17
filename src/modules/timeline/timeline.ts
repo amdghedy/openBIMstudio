@@ -178,92 +178,52 @@ function applyElementStyle(
   mode: "hidden" | "ghost" | "visible" | "complete" | "active",
   phaseColor: string,
 ) {
-  // Try authored elements first via a global if present
+  const isVisible = mode !== "hidden";
+
+  // 1. Check if it's a locally authored element
   const auth = (window as any).__obsAuthoring;
-  if (auth?.setElementVisibility) {
-    const visible = mode !== "hidden";
-    auth.setElementVisibility(id, visible);
-    if (mode === "ghost" && auth.setElementOpacity) auth.setElementOpacity(id, 0.25);
-    if ((mode === "active" || mode === "complete") && auth.setElementColor) {
-      auth.setElementColor(id, mode === "active" ? phaseColor : "#94a3b8");
-    }
+  const el = auth?.getElementById?.(id);
+  if (el) {
+    if (auth.setElementVisibility) auth.setElementVisibility(id, isVisible);
+    return;
   }
 
-  // Fragments / scene objects — best-effort via name or userData
-  if (!ctx.world?.scene?.three) return;
-  ctx.world.scene.three.traverse((obj: THREE.Object3D) => {
-    const match =
-      obj.name === id ||
-      (obj.userData && (obj.userData.expressID === id || obj.userData.id === id || obj.userData.guid === id));
-    if (!match) return;
-
-    if (!original.has(id)) {
-      const mesh = obj as THREE.Mesh;
-      const mat = mesh.material as THREE.MeshStandardMaterial | THREE.MeshLambertMaterial | undefined;
-      original.set(id, {
-        visible: obj.visible,
-        color: mat?.color?.getHex?.(),
-        opacity: mat?.opacity,
-      });
-    }
-
-    if (mode === "hidden") {
-      obj.visible = false;
-      return;
-    }
-    obj.visible = true;
-    const mesh = obj as THREE.Mesh;
-    const mat = mesh.material as any;
-    if (!mat) return;
-    if (mode === "ghost") {
-      mat.transparent = true;
-      mat.opacity = 0.2;
-      mat.needsUpdate = true;
-    } else if (mode === "active") {
-      mat.transparent = false;
-      mat.opacity = 1;
-      if (mat.color) mat.color.set(phaseColor);
-      mat.needsUpdate = true;
-    } else if (mode === "complete") {
-      mat.transparent = false;
-      mat.opacity = 1;
-      if (mat.color) mat.color.set("#94a3b8");
-      mat.needsUpdate = true;
-    } else {
-      // visible — restore original if we have it
-      const o = original.get(id);
-      if (o) {
-        mat.transparent = (o.opacity ?? 1) < 1;
-        mat.opacity = o.opacity ?? 1;
-        if (mat.color && o.color != null) mat.color.setHex(o.color);
-        mat.needsUpdate = true;
+  // 2. Fragments / imported models (format: "modelId:localId")
+  const parts = id.split(":");
+  if (parts.length === 2) {
+    const modelId = parts[0];
+    const localId = Number(parts[1]);
+    if (!isNaN(localId) && ctx.hider) {
+      const map = { [modelId]: new Set([localId]) };
+      if (isVisible) {
+        (ctx.hider as any).set(map, true);
+      } else {
+        (ctx.hider as any).set(map, false);
       }
     }
-  });
+  }
 }
 
 function restoreAll() {
-  if (!ctx.world?.scene?.three) return;
-  for (const [id, o] of original) {
-    ctx.world.scene.three.traverse((obj: THREE.Object3D) => {
-      const match =
-        obj.name === id ||
-        (obj.userData && (obj.userData.expressID === id || obj.userData.id === id));
-      if (!match) return;
-      obj.visible = o.visible;
-      const mesh = obj as THREE.Mesh;
-      const mat = mesh.material as any;
-      if (mat && o.color != null && mat.color) {
-        mat.color.setHex(o.color);
-        mat.opacity = o.opacity ?? 1;
-        mat.transparent = (o.opacity ?? 1) < 1;
-        mat.needsUpdate = true;
-      }
+  // 1. Restore Fragments (show everything)
+  if (ctx.hider) {
+    if (typeof (ctx.hider as any).showAll === 'function') {
+      (ctx.hider as any).showAll();
+    } else if (typeof (ctx.hider as any).set === 'function') {
+      (ctx.hider as any).set(true);
+    }
+  }
+
+  // 2. Restore authored elements
+  const auth = (window as any).__obsAuthoring;
+  if (auth?.getAuthoredGroup) {
+    auth.getAuthoredGroup().traverse((obj: any) => {
+      obj.visible = true;
     });
   }
+  
   original.clear();
 }
-
 export function resetTimeline() {
   setPlaying(false);
   state.progress = 0;

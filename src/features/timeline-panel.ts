@@ -167,6 +167,14 @@ function render() {
             ids.push(`${modelId}:${localId}`);
           }
         }
+        
+        const auth = (window as any).__obsAuthoring;
+        if (auth?.getSelectedIds) {
+          for (const authId of auth.getSelectedIds()) {
+            ids.push(authId);
+          }
+        }
+
         if (!ids.length) {
           alert("Select elements in the model first, then click Assign.");
           return;
