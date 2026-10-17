@@ -1477,6 +1477,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
 
       // ── Presentation ────────────────────────────────────────────────
       groupLabel("Presentation"),
+      b("system", "Theme", safe(async () => {
+        const m = await import("../core/theme");
+        m.toggleTheme();
+      }, "Theme"), { title: "Toggle Dark / Light (Paper) Mode" }),
       b("camera", "Render", safe(() => takeScreenshot(), "Render / screenshot"), {
         title: `Capture view (${getScreenshotPreset().toUpperCase()})`,
       }),

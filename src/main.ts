@@ -1,4 +1,4 @@
-﻿import { setupManageLinks } from "./features/manage-links";
+import { setupManageLinks } from "./features/manage-links";
 import "./critical-gaps-boot";
 /**
  * Open BIM Studio v52 — main entry point.
@@ -104,6 +104,7 @@ import type { Dispatch } from 'react';
 import { Command } from './commands/CommandBase';
 import { installGlobalErrorHandlers, renderBootFailure, logError } from "./core/errors";
 import { dumpServiceRegistry } from "./core/services";
+import { bootTheme } from "./core/theme";
 import { setupExtras } from "./features/_extras";
 
 // Install global error handlers before anything else boots.
@@ -217,6 +218,7 @@ if (!ctx.world) {
 
 await step("diagnostics", () => setupDiagnostics());
 await step("options", () => setupOptions());
+bootTheme();
 await step("input-router", () => setupInputRouter());
 await step("camera-tools", () => setupCameraTools());
 await step("navigation", () => setupNavigation());
