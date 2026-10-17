@@ -6,7 +6,7 @@
 
 The validator is additive. It does not mutate, repair, delete or block existing model data by itself.
 
-## Current checks
+## Authoring operation gate\n\nMove, copy, rotate, mirror, and linear array now validate candidate model states before applying edits. Blocking errors are shown in a toast and rejected candidates are not committed to the model or undo history. Array creation uses a base point plus a separate direction point, accepts 1–500 copies, and requires positive spacing. Pinned elements remain excluded from modification operations.\n\nThe current automated suite includes validator behavior tests and source-level wiring checks for the authoring gate; interactive browser-level transform tests remain a future improvement.\n\n## Current checks
 
 - Stable, unique authored element IDs and non-empty categories/names.
 - Finite elevation, height, thickness, width and depth values; positive dimensions.
