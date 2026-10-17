@@ -1,10 +1,9 @@
 import { getProjection } from "../features/camera-tools";
-/** Blender-style thin status bar (bottom) — cursor readout + project state. */
 import { ctx } from "../core/context";
 import {
   getCurrentProject, isDirty, getDetachedModelCount, onProjectChanged,
 } from "../modules/projects/projects";
-import { getActiveTool, getElementCount } from "../features/authoring";
+import { getActiveTool, getElementCount, getLevel } from "../features/authoring";
 
 const bar = document.createElement("div");
 bar.className = "bb-status";
@@ -54,7 +53,13 @@ function kbd(label: string) {
 
 function update() {
   const tool = getActiveTool();
-  left.innerHTML = tool
+  const levelVal = getLevel();
+  
+  const elevHtml = tool && tool !== "select" 
+    ? `<span class="bb-status__seg" style="background:#38bdf8;color:#0b0d12;padding:2px 6px;border-radius:4px;margin-right:8px;font-weight:700;display:inline-block">Elev: ${levelVal.toFixed(2)}m</span>` 
+    : "";
+
+  const toolHtml = tool
     ? `<span class="bb-status__accent">${esc(TOOL_LABELS[tool] ?? tool)}</span>` +
       `<span style="opacity:.6">·</span>` +
       `<span>LMB confirm · Esc cancel · Enter end chain</span>`
@@ -64,6 +69,8 @@ function update() {
       `${kbd("Wheel")}<span>Zoom</span>` +
       `${kbd("RMB")}<span>Menu</span>` +
       `${kbd("LMB drag")}<span>Window / Crossing</span>`;
+
+  left.innerHTML = elevHtml + toolHtml;
 
   const models = ctx.fragments.list.size;
   const objects = getElementCount();
@@ -88,7 +95,7 @@ function update() {
           : ` <span style="color:#7bb040">● saved</span>`)
       : `<span style="opacity:.55">No project</span>`) +
     `<span style="opacity:.4">·</span>` +
-    `<span style="opacity:.55">Open BIM Studio v52</span>`;
+    `<span style="opacity:.55">Open BIM Studio v54</span>`;
 }
 
 export function setupStatusBar() {

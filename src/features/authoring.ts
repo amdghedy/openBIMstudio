@@ -4511,6 +4511,16 @@ export function setupAuthoring() {
 
     try { if ((window as any).__obsPlanVisible?.()) return; } catch { /* */ }
 
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && activeTool && activeTool !== "select") {
+      const step = e.shiftKey ? 0.1 : 0.5;
+      const delta = e.key === "ArrowUp" ? step : -step;
+      setLevel(level + delta);
+      notify("info", `Elevation: ${level.toFixed(1)} m`);
+      try { updateLabel(); } catch { /* */ }
+      e.preventDefault();
+      return;
+    }
+
     if (e.key === "Backspace" || e.code === "Space" || e.key === " ") {
       if (tag === "button") return;
       e.preventDefault();
