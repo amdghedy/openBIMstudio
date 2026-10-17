@@ -35,3 +35,6 @@ Project_Part_*.txt
 *.bak-*
 *.bak
 *.disabled
+
+# Bundle artifacts (local diagnostics only)
+obs-p*-*.txt
