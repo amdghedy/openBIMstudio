@@ -1,8 +1,11 @@
+﻿<p align="center">
+  <img src="openBIMstudio.png" alt="OpenBIMStudio Banner" width="700">
+</p>
 <div align="center">
 
 # OpenBiMStudio
 
-**Professional, local-first openBIM authoring, coordination & documentation — running entirely in the browser.**
+**Professional, local-first openBIM authoring, coordination & documentation â€” running entirely in the browser.**
 
 ![Version](https://img.shields.io/badge/version-0.54.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -14,17 +17,17 @@
 
 ## Overview
 
-**OpenBiMStudio** is a web-native, local-first building information modelling (BIM) platform built on open standards. It loads, edits, coordinates and documents IFC models without any desktop installation — the entire authoring environment, 3D viewer, documentation engine and collaboration server run in the browser and on a single lightweight Node.js backend.
+**OpenBiMStudio** is a web-native, local-first building information modelling (BIM) platform built on open standards. It loads, edits, coordinates and documents IFC models without any desktop installation â€” the entire authoring environment, 3D viewer, documentation engine and collaboration server run in the browser and on a single lightweight Node.js backend.
 
 Models stay on your machine. Federated IFC files, project files, family definitions and everything else persist in the browser (IndexedDB / OPFS), so nothing is uploaded unless you explicitly connect to a collaboration server.
 
-The platform is designed for AEC professionals who need a productive BIM authoring and coordination workflow that respects open standards — **IFC as the interchange format, BCF for issue exchange, IDS for validation, and buildingSMART-defined schemas throughout.**
+The platform is designed for AEC professionals who need a productive BIM authoring and coordination workflow that respects open standards â€” **IFC as the interchange format, BCF for issue exchange, IDS for validation, and buildingSMART-defined schemas throughout.**
 
 ## Why OpenBIMStudio
 
 - **Truly local-first.** Every project, model, family and setting lives in your browser. No account, no cloud, no vendor lock-in.
 - **Open by design.** IFC2X3 and IFC4 in, IFC2X3 and IFC4 out. Native BCF 2.1, IDS, COBie, DXF, DWG (via libredwg-web) and glTF.
-- **Full authoring loop.** Not just a viewer — parametric families, compound walls, hosted doors and windows with real openings, MEP routing with auto-fittings, slabs, roofs, stairs, railings, curtain walls, ceilings, rooms and grids.
+- **Full authoring loop.** Not just a viewer â€” parametric families, compound walls, hosted doors and windows with real openings, MEP routing with auto-fittings, slabs, roofs, stairs, railings, curtain walls, ceilings, rooms and grids.
 - **Federation-ready.** Load multiple IFC models at once with per-model positioning, shared coordinates, isolation and coordinated clash detection.
 - **Production documentation.** Plans, sections and elevations generated from live model geometry, driven into sheet sets with title blocks, schedules, dimensions and tags.
 - **Engineered to scale.** Web Worker-offloaded clash detection with BVH acceleration, streaming IFC to FRAG conversion, LOD management and bounded-concurrency bulk operations.
@@ -33,48 +36,48 @@ The platform is designed for AEC professionals who need a productive BIM authori
 
 ### Authoring & Parametric Families
 
-- **Parametric family engine** — formula-driven parameter graphs with topological sort, cycle detection, dimensional constraints, nested families, arrays and reporting parameters.
-- **Compound walls** — layer-based construction (e.g. `Brick:0.1, Insulation:0.05, Gypsum:0.015`) with location-line placement and automatic L-corner mitering.
-- **Hosted elements** — doors and windows with real openings carved from the host wall, sill height, frame thickness and clamped offset along host.
-- **MEP routing** — ducts, pipes, cable trays and conduits with auto-generated elbow, tee, cross, wye, cap, transition and union fittings at every bend.
-- **Structural elements** — beams, braces, trusses, footings and strip foundations with configurable section profiles.
-- **Direct modelling** — push/pull faces, primitive solids (box, cylinder, sphere, cone) and boolean subtract via CSG.
+- **Parametric family engine** â€” formula-driven parameter graphs with topological sort, cycle detection, dimensional constraints, nested families, arrays and reporting parameters.
+- **Compound walls** â€” layer-based construction (e.g. `Brick:0.1, Insulation:0.05, Gypsum:0.015`) with location-line placement and automatic L-corner mitering.
+- **Hosted elements** â€” doors and windows with real openings carved from the host wall, sill height, frame thickness and clamped offset along host.
+- **MEP routing** â€” ducts, pipes, cable trays and conduits with auto-generated elbow, tee, cross, wye, cap, transition and union fittings at every bend.
+- **Structural elements** â€” beams, braces, trusses, footings and strip foundations with configurable section profiles.
+- **Direct modelling** â€” push/pull faces, primitive solids (box, cylinder, sphere, cone) and boolean subtract via CSG.
 
 ### Clash Detection & Coordination
 
-- **Eight detection methods** — triangle-accurate (BVH), conservative bounding box, convex hull (GJK), bounding sphere, center-in-volume, clearance band, duplicate detection and penetration depth.
-- **Web Worker execution** — a dedicated worker keeps the UI responsive while clash runs traverse millions of triangle pairs.
-- **Federated A vs B** — build selection groups from loaded models, add the current selection to A or B, run the test, then navigate clashes and crop to each pair.
-- **Grouping and reporting** — union-find grouping by shared element, per-status review workflow (new, active, reviewed, approved, resolved), and CSV / HTML / XLS report export.
-- **Scenarios** — save and reload complete clash rules, selections, statuses and comments as a named scenario.
+- **Eight detection methods** â€” triangle-accurate (BVH), conservative bounding box, convex hull (GJK), bounding sphere, center-in-volume, clearance band, duplicate detection and penetration depth.
+- **Web Worker execution** â€” a dedicated worker keeps the UI responsive while clash runs traverse millions of triangle pairs.
+- **Federated A vs B** â€” build selection groups from loaded models, add the current selection to A or B, run the test, then navigate clashes and crop to each pair.
+- **Grouping and reporting** â€” union-find grouping by shared element, per-status review workflow (new, active, reviewed, approved, resolved), and CSV / HTML / XLS report export.
+- **Scenarios** â€” save and reload complete clash rules, selections, statuses and comments as a named scenario.
 
 ### Documentation
 
-- **True 2D views** — plans, sections, elevations, RCPs and details generated from live geometry.
-- **Sheet production** —@0 to A4, ANSI and Arch sheet sizes with title blocks, viewports at arbitrary scales and PDF export.
-- **Schedules** — element schedules, quantity take-offs and material take-offs with formula columns, grouping, subtotals and conditional formatting.
-- **Dimensions & tags** — aligned, linear, angular, radial, diameter, arc length, spot elevation and spot coordinate dimensions. Element tags, room tags and material tags with leader shapes.
-- **Automatic drawing content** — wall poche broken at door and window openings, room boundaries, stair symbols, riser lines, mullion ticks, ridge lines, door and window marks.
+- **True 2D views** â€” plans, sections, elevations, RCPs and details generated from live geometry.
+- **Sheet production** â€”@0 to A4, ANSI and Arch sheet sizes with title blocks, viewports at arbitrary scales and PDF export.
+- **Schedules** â€” element schedules, quantity take-offs and material take-offs with formula columns, grouping, subtotals and conditional formatting.
+- **Dimensions & tags** â€” aligned, linear, angular, radial, diameter, arc length, spot elevation and spot coordinate dimensions. Element tags, room tags and material tags with leader shapes.
+- **Automatic drawing content** â€” wall poche broken at door and window openings, room boundaries, stair symbols, riser lines, mullion ticks, ridge lines, door and window marks.
 
 ### Coordination & Data
 
-- **IFC export** — IFC2X3 and IFC4 STEP files with valid GlobalIds, property sets (`OpenBIMStudio`, Pset_*Common`), material assignments, element quantities and storey-relative placement.
-- **BCF 2.1** — issue import and export with viewpoints that capture camera state, section planes, cropped boxes and element selection.
-- **IDS validation** — run Information Delivery Specification checks against loaded IFC models.
-- **COBie** — export a COBie spreadsheet from the current model state.
+- **IFC export** â€” IFC2X3 and IFC4 STEP files with valid GlobalIds, property sets (`OpenBIMStudio`, Pset_*Common`), material assignments, element quantities and storey-relative placement.
+- **BCF 2.1** â€” issue import and export with viewpoints that capture camera state, section planes, cropped boxes and element selection.
+- **IDS validation** â€” run Information Delivery Specification checks against loaded IFC models.
+- **COBie** â€” export a COBie spreadsheet from the current model state.
 
 ### 4D, 5D and Automation
 
-- **4D construction simulation** — a timeline editor that sequences element appearance and demolition across project phases.
-- **5D cost** — quantity take-off driven by `Qto_*` properties where present, geometric measurement otherwise, mapped to configurable cost items and exported as CSV.
-- **Automation rules** — a JSON rule engine that reacts to model events (element created, phase changed, property assigned) and applies actions.
-- **Standards rule packs** — an extensible rule framework with shipped packs for accessibility, fire egress, QA and structural checks.
+- **4D construction simulation** â€” a timeline editor that sequences element appearance and demolition across project phases.
+- **5D cost** â€” quantity take-off driven by `Qto_*` properties where present, geometric measurement otherwise, mapped to configurable cost items and exported as CSV.
+- **Automation rules** â€” a JSON rule engine that reacts to model events (element created, phase changed, property assigned) and applies actions.
+- **Standards rule packs** â€” an extensible rule framework with shipped packs for accessibility, fire egress, QA and structural checks.
 
 ### Collaboration
 
-- **Real-time co-presence** — Yjs over WebSockets for live cursors, named presence and shared state.
-- **Worksharing client** — element-level locking and synchronisation against a central server.
-- **Local-first with optional server** — the Node.js backend in `server/` provides a projects API, SSE-based presence feed and per-room change log. Skip it entirely for a fully offline workflow.
+- **Real-time co-presence** â€” Yjs over WebSockets for live cursors, named presence and shared state.
+- **Worksharing client** â€” element-level locking and synchronisation against a central server.
+- **Local-first with optional server** â€” the Node.js backend in `server/` provides a projects API, SSE-based presence feed and per-room change log. Skip it entirely for a fully offline workflow.
 
 ### Interoperability
 
@@ -226,3 +229,4 @@ Distributed under the MIT License. See `LICENSE` for details.
 -
  The **Three.js** community.
 - Everyone who has contributed to the open standards that make a project like this possible.
+
