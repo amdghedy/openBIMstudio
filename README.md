@@ -1,21 +1,23 @@
 # openBIMstudio
 
-**A web-native, open-source BIM authoring platform with a focus on Revit-parity workflows and reliable IFC interoperability.**
+![openBIMstudio](openBIMstudio.png)
 
-openBIMstudio is an ambitious project to bring professional-grade BIM authoring to the browser. It is built for architects, engineers, and developers who want a lightweight, collaborative, and fully open alternative to traditional desktop software.
+**A web-native, open-source BIM authoring platform focused on professional modeling workflows and reliable IFC interoperability.**
 
-> **Status:** Early-stage / Active Development. The core authoring engine, parametric families, and IFC export are functional. We are actively closing feature gaps documented in our [`docs/`](./docs) roadmap.
+openBIMstudio brings building information modeling into the browser. It is designed for architects, engineers, and developers seeking a lightweight, collaborative, open platform for creating and coordinating building models.
+
+> **Status:** Early-stage / Active Development. The core authoring engine, parametric families, and IFC export are functional. Development is continuing against the capability gaps documented in the project roadmap.
 
 ---
 
 ## Key Features
 
 - **Parametric Modeling:** Families with formulas, constraints, nested families, arrays, and type catalogs.
-- **Architectural Tools:** Walls, slabs, roofs, stairs, railings, curtain walls, rooms and areas, and hosted elements.
-- **Revit-Style Workflow:** Revit Command Center UI, command palette (Ctrl+P), align/distribute, match properties, phasing.
-- **Interoperability:** Export to IFC4 and IFC2X3 with stable GlobalIds. Designed for round-tripping.
-- **Modern UI:** Walkthrough minimap, notification system that prevents hard crashes.
-- **Modular Architecture:** Boot system loads modules safely.
+- **Architectural Tools:** Walls, slabs, roofs, stairs, railings, curtain walls, rooms, areas, and hosted elements.
+- **Efficient Authoring Workflow:** Command center, command palette (Ctrl+P), align and distribute, match properties, and phasing.
+- **Interoperability:** Export to IFC4 and IFC2X3 with stable GlobalIds, designed to support model exchange and round-tripping.
+- **Modern Interface:** Walkthrough minimap, notifications, and resilient error handling.
+- **Modular Architecture:** A boot system that loads modules safely.
 
 For a detailed capability matrix, see [docs/CRITICAL_GAPS_CLOSURE.md](./docs/CRITICAL_GAPS_CLOSURE.md).
 
@@ -33,32 +35,30 @@ npm run typecheck
 npm run dev
 ```
 
-The entry point (main.ts) already imports ./critical-gaps-boot - no extra wiring needed.
+The entry point (`main.ts`) already imports `./critical-gaps-boot`; no extra wiring is required.
 
 ### Quick UI Tour
 
-- **Revit Command Center:** Opens on first load, or click **RC** in the bottom-left.
-- **Command Palette:** Ctrl+P (Cmd+P on macOS) to search tools.
-- **Bottom Toolbar:** Draft, Hosts, Solve, generators, visibility, panels.
+- **Command Center:** Opens on first load, or click **RC** in the bottom-left.
+- **Command Palette:** Press Ctrl+P (Cmd+P on macOS) to search for tools.
+- **Bottom Toolbar:** Drafting, hosts, solving, generators, visibility, and panels.
 
-See [docs/INSTALL_AND_UX.md](./docs/INSTALL_AND_UX.md) for the full UX map.
+See [docs/INSTALL_AND_UX.md](./docs/INSTALL_AND_UX.md) for the full interface guide.
 
 ---
 
 ## Roadmap
 
-- [docs/REVIT_GAPS_M1.md](./docs/REVIT_GAPS_M1.md) - Milestone 1
-- [docs/REVIT_GAPS_M2.md](./docs/REVIT_GAPS_M2.md) - Milestone 2
-- [docs/REVIT_GAPS_M3.md](./docs/REVIT_GAPS_M3.md) - Milestone 3
-- [docs/CRITICAL_GAPS_CLOSURE.md](./docs/CRITICAL_GAPS_CLOSURE.md) - Capability matrix
+- [Capability Matrix and Improvement Plan](./docs/CRITICAL_GAPS_CLOSURE.md)
+- [Documentation and Installation Guide](./docs/INSTALL_AND_UX.md)
 
 ---
 
 ## Contributing
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md). Pick a task from docs/. Open an issue or draft PR to discuss.
+Read [CONTRIBUTING.md](./CONTRIBUTING.md). Pick a task from `docs/`, then open an issue or draft pull request to discuss it.
 
-Please note this project is released with a [Contributor Code of Conduct](./CODE_OF_CONDUCT.md).
+Please follow the project's [Contributor Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ---
 
