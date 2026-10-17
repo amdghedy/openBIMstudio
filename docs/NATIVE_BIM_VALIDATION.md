@@ -39,3 +39,15 @@ The test imports TypeScript through the repository's installed TypeScript compil
 ## Scope limitations
 
 This module is a validation foundation, not a complete constraint solver, IFC certification, collision engine or substitute for discipline-specific engineering review. Hosted-element bounds are deliberately warnings where wall opening/host geometry is not yet available to the validator.
+
+## 2D documentation QA
+
+The Sheets workspace Model QA panel also validates the drawing set using
+`src/modules/native-bim/documentation-validation.ts`. Checks include duplicate
+sheet numbers and IDs, unsupported sheet sizes, missing view references,
+invalid viewport dimensions, viewports outside the physical sheet, invalid
+scale notation, and viewport overlap. Overlap and sheet-bound conditions are
+warnings so intentional layouts remain possible; missing view links and
+invalid scales are errors. The report export includes both model and
+documentation diagnostics. These checks do not replace drawing review or
+verify discipline-specific annotation completeness.
