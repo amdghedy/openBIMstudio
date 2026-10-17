@@ -66,7 +66,7 @@ type PendingOp =
   | { kind: "move-copy"; mode: "move" | "copy"; id: string | null; base: THREE.Vector3 | null }
   | { kind: "rotate"; ids: string[]; center: THREE.Vector3 | null; ref: THREE.Vector3 | null }
   | { kind: "mirror"; ids: string[]; axisA: THREE.Vector3 | null; axisB: THREE.Vector3 | null }
-  | { kind: "array"; ids: string[]; mode: "linear" | "radial"; base: THREE.Vector3 | null }
+  | { kind: "array"; ids: string[]; mode: "linear" | "radial"; base: THREE.Vector3 | null; count?: number; spacing?: number }
   | { kind: "offset"; id: string | null; base: THREE.Vector3 | null; side: 1 | -1 | null };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2131,6 +2131,25 @@ function finishSlab() {
   try { accuDraw.end(); } catch { /* */ }
 }
 
+
+function rejectInvalidOperation(
+  candidateElements: AuthoredElement[],
+  affectedIds: Set<string>,
+  operation: string,
+): boolean {
+  const diagnostics = validateNativeModel({ elements: candidateElements, levels, grids })
+    .filter((diagnostic) => affectedIds.has(diagnostic.elementId) && diagnostic.severity === "error");
+  if (!diagnostics.length) return false;
+  const details = diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`).join("\\n");
+  window.dispatchEvent(new CustomEvent("obs-toast", {
+    detail: {
+      message: `Cannot ${operation}. The operation would create invalid geometry.\\n${details}`,
+      kind: "error",
+    },
+  }));
+  return true;
+}
+
 function shiftParams(el: AuthoredElement, dx: number, dz: number) {
   if (el.params.start) el.params.start = [el.params.start[0] + dx, el.params.start[1] + dz];
   if (el.params.end) el.params.end = [el.params.end[0] + dx, el.params.end[1] + dz];
@@ -2360,22 +2379,27 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
           clone.name = `${src.name} (copy)`;
           if (clone.hostId) clone.hostId = undefined;
           shiftParams(clone, dx, dz);
-          history.exec({
-            label: `Copy ${src.name}`,
-            apply: () => { elements.push(clone); rebuild(); markDirty(); },
-            revert: () => { const i = elements.indexOf(clone); if (i >= 0) elements.splice(i, 1); rebuild(); markDirty(); },
-          });
+          if (!rejectInvalidOperation([...elements, clone], new Set([clone.id]), `copy ${src.name}`)) {
+            history.exec({
+              label: `Copy ${src.name}`,
+              apply: () => { elements.push(clone); rebuild(); markDirty(); },
+              revert: () => { const i = elements.indexOf(clone); if (i >= 0) elements.splice(i, 1); rebuild(); markDirty(); },
+            });
+          }
         } else {
-          const snapshot = JSON.parse(JSON.stringify(src.params));
-          shiftParams(src, dx, dz);
-          const final = JSON.parse(JSON.stringify(src.params));
-          history.push({
-            label: `Move ${src.name}`,
-            apply: () => { src.params = JSON.parse(JSON.stringify(final)); rebuild(); markDirty(); },
-            revert: () => { src.params = JSON.parse(JSON.stringify(snapshot)); rebuild(); markDirty(); },
-          });
-          rebuild();
-          markDirty();
+          const candidate: AuthoredElement = JSON.parse(JSON.stringify(src));
+          shiftParams(candidate, dx, dz);
+          if (!rejectInvalidOperation(elements.map((item) => item.id === src.id ? candidate : item), new Set([src.id]), `move ${src.name}`)) {
+            const snapshot = JSON.parse(JSON.stringify(src.params));
+            const final = JSON.parse(JSON.stringify(candidate.params));
+            history.push({
+              label: `Move ${src.name}`,
+              apply: () => { src.params = JSON.parse(JSON.stringify(final)); rebuild(); markDirty(); },
+              revert: () => { src.params = JSON.parse(JSON.stringify(snapshot)); rebuild(); markDirty(); },
+            });
+            rebuild();
+            markDirty();
+          }
         }
       }
       pendingOp = { kind: "move-copy", mode: op.mode, id: null, base: null };
@@ -2390,17 +2414,25 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
       const v1 = new THREE.Vector2(pt.x - op.center.x, pt.z - op.center.z);
       const angle = Math.atan2(v1.y, v1.x) - Math.atan2(v0.y, v0.x);
       const targets = elements.filter((el) => op.ids.includes(el.id) && !el.properties?.pinned);
-      const before = targets.map((t) => JSON.parse(JSON.stringify(t.params)));
-      const after: any[] = [];
-      for (const t of targets) rotateElement(t, op.center, angle);
-      for (const t of targets) after.push(JSON.parse(JSON.stringify(t.params)));
-      history.push({
-        label: `Rotate ${targets.length} element(s)`,
-        apply: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(after[i])))); rebuild(); markDirty(); },
-        revert: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(before[i])))); rebuild(); markDirty(); },
+      const candidates = targets.map((t) => {
+        const candidate: AuthoredElement = JSON.parse(JSON.stringify(t));
+        rotateElement(candidate, op.center!, angle);
+        return candidate;
       });
-      rebuild();
-      markDirty();
+      const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+      const candidateElements = elements.map((item) => candidateById.get(item.id) ?? item);
+      if (!rejectInvalidOperation(candidateElements, new Set(candidates.map((candidate) => candidate.id)), "rotate selected elements")) {
+        const before = targets.map((t) => JSON.parse(JSON.stringify(t.params)));
+        const after = candidates.map((candidate) => JSON.parse(JSON.stringify(candidate.params)));
+        history.push({
+          label: `Rotate ${targets.length} element(s)`,
+          apply: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(after[i])))); rebuild(); markDirty(); },
+          revert: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(before[i])))); rebuild(); markDirty(); },
+        });
+        targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(after[i]))));
+        rebuild();
+        markDirty();
+      }
       pendingOp = { kind: "none" };
       updateLabel();
       break;
@@ -2420,11 +2452,16 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
           mirrorElement(c, op.axisA, op.axisB);
           clones.push(c);
         }
-        history.exec({
-          label: `Mirror ${clones.length} element(s)`,
-          apply: () => { for (const c of clones) elements.push(c); rebuild(); markDirty(); },
-          revert: () => { for (const c of clones) { const i = elements.indexOf(c); if (i >= 0) elements.splice(i, 1); } rebuild(); markDirty(); },
-        });
+        const axisLength = Math.hypot(op.axisB.x - op.axisA.x, op.axisB.z - op.axisA.z);
+        if (axisLength < 1e-6) {
+          window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Mirror axis must have a non-zero length.", kind: "error" } }));
+        } else if (!rejectInvalidOperation([...elements, ...clones], new Set(clones.map((clone) => clone.id)), "mirror selected elements")) {
+          history.exec({
+            label: `Mirror ${clones.length} element(s)`,
+            apply: () => { for (const c of clones) elements.push(c); rebuild(); markDirty(); },
+            revert: () => { for (const c of clones) { const i = elements.indexOf(c); if (i >= 0) elements.splice(i, 1); } rebuild(); markDirty(); },
+          });
+        }
         pendingOp = { kind: "none" };
         updateLabel();
       }
@@ -2436,33 +2473,65 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
         op.base = pt.clone();
         const countStr = prompt("Array: number of copies?", "3");
         if (!countStr) { pendingOp = { kind: "none" }; updateLabel(); return; }
-        const count = Math.max(1, parseInt(countStr, 10) || 1);
+        const count = Math.floor(Number(countStr));
         const spacingStr = prompt("Spacing (m)?", "3.0");
-        const spacing = parseFloat(spacingStr ?? "3") || 3;
-        const dir = new THREE.Vector2(pt.x - op.base.x, pt.z - op.base.z);
-        dir.normalize();
-        const targets = elements.filter((el) => op.ids.includes(el.id) && !el.properties?.pinned);
-        const clones: AuthoredElement[] = [];
-        for (let i = 1; i <= count; i++) {
-          const dx = dir.x * spacing * i;
-          const dz = dir.y * spacing * i;
-          for (const t of targets) {
-            const c: AuthoredElement = JSON.parse(JSON.stringify(t));
-            c.id = uid();
-            c.name = `${t.name} (${i})`;
-            if (c.hostId) c.hostId = undefined;
-            shiftParams(c, dx, dz);
-            clones.push(c);
-          }
+        const spacing = Number(spacingStr);
+        if (!Number.isFinite(count) || count < 1 || count > 500 ||
+            !Number.isFinite(spacing) || spacing <= 0) {
+          window.dispatchEvent(new CustomEvent("obs-toast", {
+            detail: { message: "Array requires 1–500 copies and a positive spacing.", kind: "error" },
+          }));
+          pendingOp = { kind: "none" };
+          updateLabel();
+          return;
         }
+        op.count = count;
+        op.spacing = spacing;
+        updateLabel();
+        return;
+      }
+
+      const dxRaw = pt.x - op.base.x;
+      const dzRaw = pt.z - op.base.z;
+      const length = Math.hypot(dxRaw, dzRaw);
+      if (length < 1e-6) {
+        window.dispatchEvent(new CustomEvent("obs-toast", {
+          detail: { message: "Choose a direction point different from the array base point.", kind: "error" },
+        }));
+        pendingOp = { kind: "none" };
+        updateLabel();
+        return;
+      }
+
+      const count = op.count ?? 3;
+      const spacing = op.spacing ?? 3;
+      const dirX = dxRaw / length;
+      const dirZ = dzRaw / length;
+      const targets = elements.filter((el) => op.ids.includes(el.id) && !el.properties?.pinned);
+      const clones: AuthoredElement[] = [];
+      for (let i = 1; i <= count; i++) {
+        for (const t of targets) {
+          const c: AuthoredElement = JSON.parse(JSON.stringify(t));
+          c.id = uid();
+          c.name = `${t.name} (${i})`;
+          if (c.hostId) c.hostId = undefined;
+          shiftParams(c, dirX * spacing * i, dirZ * spacing * i);
+          clones.push(c);
+        }
+      }
+      if (!clones.length) {
+        window.dispatchEvent(new CustomEvent("obs-toast", {
+          detail: { message: "Select at least one unpinned element before creating an array.", kind: "info" },
+        }));
+      } else if (!rejectInvalidOperation([...elements, ...clones], new Set(clones.map((clone) => clone.id)), "array selected elements")) {
         history.exec({
           label: `Array ${targets.length} element(s) × ${count}`,
           apply: () => { for (const c of clones) elements.push(c); rebuild(); markDirty(); },
           revert: () => { for (const c of clones) { const i = elements.indexOf(c); if (i >= 0) elements.splice(i, 1); } rebuild(); markDirty(); },
         });
-        pendingOp = { kind: "none" };
-        updateLabel();
       }
+      pendingOp = { kind: "none" };
+      updateLabel();
       break;
     }
     case "offset": {
@@ -3143,6 +3212,7 @@ function updateLabel() {
       break;
     case "array":
       if (!pendingOp.base) suffix = " — click base point";
+      else suffix = " — click direction point";
       break;
     case "offset":
       if (!pendingOp.id) suffix = " — click a wall/line";
