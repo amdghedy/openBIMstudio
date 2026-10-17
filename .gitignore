@@ -1,10 +1,43 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 _export/
-*.log
-.DS_Store
-Thumbs.db
 *.tsbuildinfo
 coverage/
+
+# Logs
+*.log
+errors.txt
+
+# Backups / editor
+*.bak
+*.bak-*
+*.disabled
+*.orig
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor folders
 .vscode/
 .idea/
+
+# Server data
+server/data/
+
+# Bundle exports
+OpenBIMStudio-bundle.txt
+
+# Build artifacts
+NavisworksGLBExporter/obj/
+NavisworksGLBExporter/build/
+*.dll
+*.pdb
+
+# Vendor wasm blobs (fetched via npm scripts)
+public/web-ifc/*.wasm
+
+
