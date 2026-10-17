@@ -12,6 +12,7 @@
     "verify:v50": "node scripts/verify-v50.mjs",
     "verify:v52": "node scripts/verify-v52.mjs",
     "verify:v54": "node scripts/verify-v54.mjs",
+    "test:native-bim": "node tests/native-bim-validation.test.mjs",
     "server": "node server/index.mjs",
     "verify": "node scripts/verify-input-focus.mjs"
   },

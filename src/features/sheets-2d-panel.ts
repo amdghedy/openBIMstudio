@@ -27,6 +27,8 @@ import { computeViewportTransform } from "../modules/views/sheet-layout";
 import { downloadSingleSheetPdf, exportAllSheetsToPdf } from "../modules/export/sheet-pdf";
 import type { ViewDef } from "../modules/views/types";
 import type { SheetDef, SheetViewport } from "../modules/projects/types";
+import { getElements, getGrids, getLevels } from "./authoring";
+import { validateNativeModel, summarizeDiagnostics } from "../modules/native-bim/model-validation";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PANEL_ID = "obs-sheets-2d-panel";
@@ -52,6 +54,7 @@ interface DragState {
 }
 let drag: DragState | null = null;
 
+let qaPanel: HTMLDivElement | null = null;
 let pendingRender = false;
 function scheduleRender(): void {
   if (pendingRender) return;
@@ -124,6 +127,8 @@ export function setupSheets2dPanel(): void {
     selectedVpId = null;
     render();
   });
+  const qaBtn = mkBtn("Model QA", () => toggleModelQa());
+
   const exportBtn = mkBtn("Export SVG", () => exportSheet());
 
   const pdfBtn = mkBtn("Export PDF", () => {
@@ -148,7 +153,7 @@ export function setupSheets2dPanel(): void {
 
   const closeBtn = mkBtn("Close", () => toggleSheets2dPanel());
 
-  header.append(title, viewPicker, addVpBtn, newSheetBtn, delSheetBtn, delVpBtn, exportBtn, pdfBtn, pdfAllBtn, closeBtn);
+  header.append(title, viewPicker, addVpBtn, newSheetBtn, delSheetBtn, delVpBtn, qaBtn, exportBtn, pdfBtn, pdfAllBtn, closeBtn);
 
   const body = document.createElement("div");
   body.style.cssText = "flex:1;display:flex;min-height:0";
@@ -186,6 +191,120 @@ export function setupSheets2dPanel(): void {
     isVisible: () => visible,
     invalidateCache: () => sceneCache.clear(),
   };
+}
+
+function toggleModelQa(): void {
+  if (qaPanel) {
+    qaPanel.remove();
+    qaPanel = null;
+    return;
+  }
+  if (!panel) return;
+  qaPanel = document.createElement("div");
+  qaPanel.style.cssText = [
+    "position:absolute", "inset:42px 0 0 0", "z-index:5",
+    "display:flex", "flex-direction:column", "min-height:0",
+    "background:#11151f", "color:#e8eaf0", "border-top:1px solid #343b4a",
+    "box-shadow:0 8px 30px rgba(0,0,0,.35)", "font:12px system-ui,sans-serif"
+  ].join(";");
+  const head = document.createElement("div");
+  head.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #2a2e3a";
+  const heading = document.createElement("strong");
+  heading.textContent = "Native Model QA";
+  const close = mkBtn("Close QA", () => { qaPanel?.remove(); qaPanel = null; });
+  head.append(heading, close);
+  const content = document.createElement("div");
+  content.style.cssText = "overflow:auto;padding:12px 14px;flex:1";
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:10px";
+  const refresh = mkBtn("Run validation", () => renderModelQa(content));
+  const exportReport = mkBtn("Export report JSON", () => {
+    const snapshot = { elements: getElements(), levels: getLevels(), grids: getGrids() };
+    const diagnostics = validateNativeModel(snapshot);
+    const report = { generatedAt: new Date().toISOString(), elementCount: snapshot.elements.length, levelCount: snapshot.levels.length, gridCount: snapshot.grids.length, summary: summarizeDiagnostics(diagnostics), diagnostics };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "openbimstudio-model-qa.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  actions.append(refresh, exportReport);
+  content.append(actions);
+  qaPanel.append(head, content);
+  panel.appendChild(qaPanel);
+  renderModelQa(content);
+}
+
+function renderModelQa(content: HTMLDivElement): void {
+  // Keep action buttons in place while refreshing only the results section.
+  const old = content.querySelector("[data-qa-results]");
+  old?.remove();
+  const snapshot = { elements: getElements(), levels: getLevels(), grids: getGrids() };
+  const diagnostics = validateNativeModel(snapshot);
+  const summary = summarizeDiagnostics(diagnostics);
+  const results = document.createElement("div");
+  results.dataset.qaResults = "true";
+  const metrics = document.createElement("div");
+  metrics.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 14px";
+  const metric = (label: string, value: number, color: string) => {
+    const item = document.createElement("div");
+    item.style.cssText = "padding:8px 12px;border:1px solid #303848;border-radius:6px;min-width:86px";
+    const strong = document.createElement("strong");
+    strong.textContent = String(value);
+    strong.style.cssText = "display:block;font-size:18px;color:" + color;
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    caption.style.cssText = "color:#9aa7bb";
+    item.append(strong, caption);
+    metrics.appendChild(item);
+  };
+  metric("Elements", snapshot.elements.length, "#e8eaf0");
+  metric("Levels", snapshot.levels.length, "#e8eaf0");
+  metric("Grids", snapshot.grids.length, "#e8eaf0");
+  metric("Errors", summary.errors, summary.errors ? "#fb7185" : "#34d399");
+  metric("Warnings", summary.warnings, summary.warnings ? "#fbbf24" : "#34d399");
+  results.appendChild(metrics);
+  const status = document.createElement("p");
+  status.style.cssText = "margin:0 0 12px;color:" + (summary.errors ? "#fb7185" : "#34d399");
+  status.textContent = summary.errors ? "Validation found blocking errors. Review the diagnostics below." : "No blocking errors detected by the current validation rules.";
+  results.appendChild(status);
+  if (!diagnostics.length) {
+    const clean = document.createElement("p");
+    clean.textContent = "No warnings or errors were reported. This is a rule-based check, not an engineering approval or IFC certification.";
+    clean.style.cssText = "color:#9aa7bb";
+    results.appendChild(clean);
+  } else {
+    const table = document.createElement("table");
+    table.style.cssText = "width:100%;border-collapse:collapse;text-align:left";
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    for (const label of ["Severity", "Code", "Element", "Message"]) {
+      const th = document.createElement("th");
+      th.textContent = label;
+      th.style.cssText = "padding:8px;border-bottom:1px solid #394254;color:#9aa7bb";
+      headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    for (const d of diagnostics) {
+      const tr = document.createElement("tr");
+      const values = [d.severity.toUpperCase(), d.code, d.elementId ?? "—", d.message + (d.path ? " (" + d.path + ")" : "")];
+      values.forEach((value, i) => {
+        const td = document.createElement("td");
+        td.textContent = value;
+        td.style.cssText = "padding:8px;border-bottom:1px solid #252c39;vertical-align:top;overflow-wrap:anywhere";
+        if (i === 0) td.style.color = d.severity === "error" ? "#fb7185" : d.severity === "warning" ? "#fbbf24" : "#93c5fd";
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    results.appendChild(table);
+  }
+  content.appendChild(results);
 }
 
 function mkBtn(label: string, onclick: () => void): HTMLButtonElement {
