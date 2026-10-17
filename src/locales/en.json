@@ -1,5 +1,5 @@
 {
-  "meta": { "name": "English", "nativeName": "English", "dir": "ltr" },
+  "standards": { "title": "Standards" }, "meta": { "name": "English", "nativeName": "English", "dir": "ltr" },
   "app": {
     "name": "Open BIM Studio",
     "loading": "Loading…",

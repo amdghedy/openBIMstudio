@@ -14,6 +14,7 @@
  *   - Property palette state is published via onAuthoringChange.
  */
 import * as THREE from "three";
+import { CSG } from "three-csg-ts";
 import { ctx } from "../core/context";
 import { register, type AuthoringService } from "../core/services";
 import { inputRouter, type Gesture, type Mods } from "../core/input-router";
@@ -1097,8 +1098,6 @@ function buildWallWithOpenings(
   const H = p.height;
   const T = p.thickness;
 
-  if (openings.length) return buildWallWithOpeningsLegacy(el, openings);
-
   const dirX = (bx - ax) / L;
   const dirZ = (bz - az) / L;
   const halfT = T / 2;
@@ -1137,7 +1136,7 @@ function buildWallWithOpenings(
   const mat = new THREE.MeshLambertMaterial({
     color: new THREE.Color(el.color || COLORS[el.type] || COLORS.wall),
   });
-  const mesh = new THREE.Mesh(geo, mat);
+  let mesh: THREE.Mesh = new THREE.Mesh(geo, mat);
 
   const wallDirV = new THREE.Vector3(dirX, 0, dirZ);
   const normalV  = new THREE.Vector3(normalX, 0, normalZ);
@@ -1145,61 +1144,33 @@ function buildWallWithOpenings(
   const basis    = new THREE.Matrix4().makeBasis(wallDirV, normalV, upV);
   mesh.quaternion.setFromRotationMatrix(basis);
   mesh.position.set(posX, p.elevation, posZ);
+  mesh.updateMatrixWorld(true);
 
-  mesh.userData.elementId = el.id;
-  mesh.userData.baseColor = el.color || COLORS.wall;
-  return mesh;
-}
+  if (openings.length) {
+    for (const op of openings) {
+      const holeGeo = new THREE.BoxGeometry(op.width, op.height, T + 0.2);
+      const holeMat = new THREE.MeshLambertMaterial({ visible: false });
+      const holeMesh = new THREE.Mesh(holeGeo, holeMat);
+      
+      const cx = ax + dirX * op.offset;
+      const cz = az + dirZ * op.offset;
+      const cy = p.elevation + op.sill + op.height / 2;
+      
+      holeMesh.position.set(cx, cy, cz);
+      holeMesh.quaternion.copy(mesh.quaternion);
+      holeMesh.updateMatrixWorld(true);
 
-function buildWallWithOpeningsLegacy(
-  el: AuthoredElement,
-  openings: WallOpening[],
-): THREE.Mesh | null {
-  const p = el.params;
-  if (!p.start || !p.end) return null;
-  const [ax, az] = p.start;
-  const [bx, bz] = p.end;
-  const L = Math.hypot(bx - ax, bz - az);
-  if (L < 0.05) return null;
-  const H = p.height;
-  const T = p.thickness;
-
-  const shape = new THREE.Shape();
-  shape.moveTo(0, 0);
-  shape.lineTo(L, 0);
-  shape.lineTo(L, H);
-  shape.lineTo(0, H);
-  shape.closePath();
-
-  for (const op of openings) {
-    const u0 = Math.max(0, op.offset - op.width / 2);
-    const u1 = Math.min(L, op.offset + op.width / 2);
-    const v0 = Math.max(0, op.sill);
-    const v1 = Math.min(H, op.sill + op.height);
-    if (u1 - u0 < 0.02 || v1 - v0 < 0.02) continue;
-    const hole = new THREE.Path();
-    hole.moveTo(u0, v0);
-    hole.lineTo(u0, v1);
-    hole.lineTo(u1, v1);
-    hole.lineTo(u1, v0);
-    hole.closePath();
-    shape.holes.push(hole);
+      try {
+        const bspA = CSG.fromMesh(mesh);
+        const bspB = CSG.fromMesh(holeMesh);
+        const resultBsp = bspA.subtract(bspB);
+        mesh = CSG.toMesh(resultBsp, mesh.matrix, mat);
+        mesh.updateMatrixWorld(true);
+      } catch (err) {
+        console.warn("[CSG] door subtraction failed", err);
+      }
+    }
   }
-
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false });
-  const mat = new THREE.MeshLambertMaterial({
-    color: new THREE.Color(el.color || COLORS[el.type] || COLORS.wall),
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-
-  const wallDir = new THREE.Vector3((bx - ax) / L, 0, (bz - az) / L);
-  const up = new THREE.Vector3(0, 1, 0);
-  const normal = new THREE.Vector3().crossVectors(up, wallDir).normalize();
-  const basis = new THREE.Matrix4().makeBasis(wallDir, up, normal);
-  mesh.quaternion.setFromRotationMatrix(basis);
-
-  const offset = normal.clone().multiplyScalar(-T / 2);
-  mesh.position.set(ax + offset.x, p.elevation, az + offset.z);
 
   mesh.userData.elementId = el.id;
   mesh.userData.baseColor = el.color || COLORS.wall;
