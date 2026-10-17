@@ -1,12 +1,21 @@
 // openbim-step1:family-foundation
-// Family system foundation - in-memory store with localStorage persistence.
+// Family system foundation - in-memory store with project-scoped persistence.
 //
-// Mirrors the pattern used by core/options-registry.ts. Every mutation
-// notifies subscribers so the UI (or verify scripts) can react.
+// Custom families are stored per-project so they don't leak between different
+// projects. When no project is open, it falls back to a global library.
 
 import type { FamilyDefinition, FamilyType } from "./types";
+import { getCurrentProject, onProjectChanged } from "../projects/projects";
 
-const STORAGE_KEY = "obs.families.v1";
+const DEFAULT_STORAGE_KEY = "obs.families.v1.global";
+
+function getStorageKey(): string {
+  try {
+    const proj = getCurrentProject();
+    if (proj && proj.id) return `obs.families.v1.${proj.id}`;
+  } catch { /* projects not ready yet */ }
+  return DEFAULT_STORAGE_KEY;
+}
 
 function uid(): string {
   return (crypto as any).randomUUID?.()
@@ -22,9 +31,23 @@ class FamilyStore {
     if (this.booted) return;
     this.booted = true;
 
+    try {
+      onProjectChanged(() => {
+        this.byId.clear();
+        this.load(seedBuiltIns);
+        this.emit();
+      });
+    } catch (err) {
+      console.warn("[families] could not hook into project changes", err);
+    }
+
+    this.load(seedBuiltIns);
+  }
+
+  private load(seedBuiltIns: FamilyDefinition[]): void {
     let restored: FamilyDefinition[] | null = null;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(getStorageKey());
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) restored = parsed;
@@ -136,7 +159,7 @@ class FamilyStore {
   reset(): void {
     this.byId.clear();
     this.booted = false;
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+    try { localStorage.removeItem(getStorageKey()); } catch { /* */ }
   }
 
   onChange(cb: () => void): () => void {
@@ -151,7 +174,7 @@ class FamilyStore {
   private persist(): void {
     try {
       const arr = [...this.byId.values()];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+      localStorage.setItem(getStorageKey(), JSON.stringify(arr));
     } catch (err) {
       console.warn("[families] persist failed", err);
     }
