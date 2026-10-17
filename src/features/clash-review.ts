@@ -321,6 +321,8 @@ function render(): void {
       <button id="ocr-showall" style="padding:5px 12px;background:var(--bg-elevated,#181a23);
         color:var(--text-primary,#e8eaf0);border:1px solid var(--border-default,#2a2e3a);
         border-radius:5px;cursor:pointer;font:600 11px system-ui">👁 Show all</button>
+      <button id="ocr-bcf" style="padding:5px 12px;background:#2563eb;color:#fff;
+        border:none;border-radius:5px;cursor:pointer;font:600 11px system-ui">📋 Create Issue</button>
     </div>
 
     <label style="display:flex;align-items:center;gap:6px;font-size:11px;
@@ -365,6 +367,41 @@ function render(): void {
   (body.querySelector("#ocr-isolate") as HTMLElement).onclick = async () => {
     await isolateClashPair(c);
   };
+  (body.querySelector("#ocr-bcf") as HTMLElement).onclick = async () => {
+    try {
+      const { createIssue, captureViewpoint } = await import("../modules/issues/issues");
+      
+      // Capture the current view
+      const vp = captureViewpoint();
+      
+      // Override the selection to highlight the two clashing elements
+      vp.selection = {
+        [c.a.modelId]: [c.a.localId],
+        [c.b.modelId]: [c.b.localId]
+      };
+
+      // Create the issue
+      createIssue(
+        `Clash: ${c.a.name} vs ${c.b.name}`,
+        `Auto-generated from Clash Detective.\n\nElement A: ${c.a.name} (${c.a.cat})\nElement B: ${c.b.name} (${c.b.cat})\nOverlap: ${c.depthVol > 0 ? (c.depthVol * 1e6).toFixed(1) + ' cm³' : (c.minGap * 1000).toFixed(1) + ' mm'}`,
+        vp
+      );
+
+      // Notify the user and open the Issues panel
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: { message: "BCF Issue created successfully", kind: "success" }
+      }));
+
+      const issuesPanel = (ctx.features as any).issuesPanel;
+      if (issuesPanel && !issuesPanel.isVisible()) {
+        issuesPanel.toggle();
+      }
+    } catch (err) {
+      console.error("[clash-review] Failed to create BCF issue", err);
+      alert("Failed to create BCF issue. Check the console.");
+    }
+  };
+
   (body.querySelector("#ocr-showall") as HTMLElement).onclick = async () => {
     try {
       const hider: any = (await import("../core/context")).ctx.hider;
