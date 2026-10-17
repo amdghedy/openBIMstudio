@@ -192,9 +192,19 @@ export function validateNativeModel(snapshot: NativeModelSnapshot): ModelDiagnos
     const host = byId.get(el.hostId);
     if (!host) add("HOST_REFERENCE_MISSING", "error", `Host element "${el.hostId}" does not exist in the model.`, el.id, el.hostId, "hostId");
     else if (host.type !== "wall") add("HOST_NOT_WALL", "error", "Door/window host must be a wall.", el.id, host.id, "hostId");
-    else if (finite(el.params.offsetAlongHost) && finite(host.params.height) && finite(el.params.height) &&
-      (el.params.sillHeight ?? 0) + el.params.height > host.params.height + 1e-6) {
-      add("HOSTED_ELEMENT_EXCEEDS_HOST_HEIGHT", "warning", "Hosted element extends above the host wall height.", el.id, host.id, "params.height");
+    else {
+      const hostLength = host.params.start && host.params.end
+        ? distance2(host.params.start, host.params.end)
+        : 0;
+      const centerOffset = finite(el.params.offsetAlongHost) ? el.params.offsetAlongHost : hostLength / 2;
+      const halfWidth = finite(el.params.width) ? el.params.width / 2 : 0;
+      if (hostLength > 0 && (centerOffset - halfWidth < -1e-6 || centerOffset + halfWidth > hostLength + 1e-6)) {
+        add("HOSTED_ELEMENT_EXCEEDS_HOST_LENGTH", "error", "Door/window width and center offset must fit entirely within the host wall length.", el.id, host.id, "params.offsetAlongHost");
+      }
+      if (finite(el.params.offsetAlongHost) && finite(host.params.height) && finite(el.params.height) &&
+        (el.params.sillHeight ?? 0) + el.params.height > host.params.height + 1e-6) {
+        add("HOSTED_ELEMENT_EXCEEDS_HOST_HEIGHT", "warning", "Hosted element extends above the host wall height.", el.id, host.id, "params.height");
+      }
     }
   }
 

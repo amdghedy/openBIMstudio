@@ -34,6 +34,7 @@ import type {
   Vec2,
   WindowPanelType,
 } from "../modules/projects/types";
+import { validateNativeModel } from "../modules/native-bim/model-validation";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -1988,7 +1989,7 @@ async function createElement(
   params: Partial<AuthoredElement["params"]>,
   props?: Record<string, unknown>,
   hostId?: string,
-): Promise<AuthoredElement> {
+): Promise<AuthoredElement | null> {
   const presetKey = activePreset && DEFAULTS[activePreset] ? activePreset : type;
   const baseDefaults = DEFAULTS[presetKey] ?? DEFAULTS[type] ?? { height: 1, thickness: 0.2 };
   const userDefaults = getTypeDefaults(type);
@@ -2044,6 +2045,19 @@ async function createElement(
       ...(props ?? {}),
     },
   };
+  const validation = validateNativeModel({ elements: [...elements, el], levels, grids })
+    .filter((diagnostic) => diagnostic.elementId === el.id && diagnostic.severity === "error");
+  if (validation.length) {
+    const details = validation.map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`).join("\n");
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: {
+        message: `Cannot create ${el.name}. Correct the placement or dimensions first.\n${details}`,
+        kind: "error",
+      },
+    }));
+    return null;
+  }
+
   await history.exec({
     label: `Create ${cap(type)}`,
     apply: () => {

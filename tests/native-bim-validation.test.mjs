@@ -22,6 +22,16 @@ const door = {
 };
 const valid = { elements: [wall, door], levels: [{ id: "L0", name: "Ground", elevation: 0 }] };
 assert.equal(isNativeModelValid(valid), true, "valid hosted wall/door should pass");
+const doorBeyondHost = {
+  ...door,
+  id: "door-too-wide",
+  params: { ...door.params, width: 1.2, offsetAlongHost: 0.2 },
+};
+const hostExtentIssues = validateNativeModel({ elements: [wall, doorBeyondHost] });
+assert.ok(hostExtentIssues.some(d => d.code === "HOSTED_ELEMENT_EXCEEDS_HOST_LENGTH" && d.elementId === "door-too-wide"),
+  "hosted opening that extends beyond the wall end must be blocked");
+assert.equal(isNativeModelValid({ elements: [wall, doorBeyondHost] }), false,
+  "hosted opening outside the wall must fail blocking validation");
 assert.deepEqual(summarizeDiagnostics(validateNativeModel(valid)), { total: 0, errors: 0, warnings: 0, info: 0 });
 
 const badLinear = { ...wall, params: { ...wall.params, end: [0, 0] } };

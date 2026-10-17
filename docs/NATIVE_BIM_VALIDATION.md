@@ -51,3 +51,15 @@ warnings so intentional layouts remain possible; missing view links and
 invalid scales are errors. The report export includes both model and
 documentation diagnostics. These checks do not replace drawing review or
 verify discipline-specific annotation completeness.
+
+
+## Authoring placement gate
+
+Native authoring now validates each proposed element against the current authored
+model before the create transaction is recorded. Blocking errors on the new
+candidate prevent placement and produce an error toast; existing unrelated
+model issues do not prevent a valid new element from being created. Hosted
+doors and windows must fit within the host wall plan length, using the
+opening width and center offset. This is a placement gate, not a full
+constraint solver; moving, copying, mirroring and editing existing elements
+remain separate follow-up integration targets.
