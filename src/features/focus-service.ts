@@ -1,3 +1,4 @@
+import { setOrbitPivot } from './camera-tools';
 import * as THREE from "three";
 import { ctx } from "../core/context";
 
@@ -432,6 +433,7 @@ function focusBoxManual(box: THREE.Box3): boolean {
         target.z,
         true,
       );
+  setOrbitPivot(center);
 
       controls.update?.(0);
     } else {
