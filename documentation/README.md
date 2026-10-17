@@ -16,11 +16,11 @@ This directory contains user, developer and tool-reference documentation for Ope
 - [Parametric engine](../docs/PARAMETRIC_ENGINE.md)
 - [Drawing DWG engine](../docs/DRAWINGS_DWG_ENGINE.md)
 - [M4 view templates and automatic dimensions](../docs/M4_VIEW_TEMPLATES_AUTO_DIMS.md)
-- [Revit gap reviews: M1](../docs/REVIT_GAPS_M1.md), [M2](../docs/REVIT_GAPS_M2.md), [M3](../docs/REVIT_GAPS_M3.md)
+- Existing engineering gap reviews and milestone notes in the repository's legacy documentation.
 - [Critical gaps closure](../docs/CRITICAL_GAPS_CLOSURE.md)
 - [CAD gaps closure](../docs/CAD_GAPS_CLOSURE.md)
-- [Revit input parity](../docs/REVIT_INPUT_PARITY.md)
-- [Parametric Revit closure](../docs/PARAMETRIC_REVIT_CLOSURE.md)
+- Input interaction and parity notes in the repository's legacy documentation.
+- Parametric implementation gap notes in the repository's legacy documentation.
 
 ## Documentation policy
 
