@@ -68,30 +68,33 @@ function renderTabs() {
 // ── Takeoff tab ──
 function renderTakeoff() {
   const rows = getRows();
-  if (recalculating) { body.innerHTML = `<div style="opacity:.6;padding:14px">Computing quantities…</div>`; return; }
+  if (recalculating) { body.innerHTML = `<div style="opacity:.6;padding:14px">Computing quantities...</div>`; return; }
   if (!rows.length) {
     body.innerHTML = `<div style="opacity:.55;text-align:center;padding:20px;border:1px dashed #34353f;border-radius:8px">
-      No quantities yet. Import models or draw objects, then click <b>🔄 Recalculate</b>.</div>`;
+      No quantities yet. Import models or draw objects, then click <b>Recalculate</b>.</div>`;
     return;
   }
   const items = getItems();
   const table = document.createElement("table");
   table.style.cssText = "width:100%;border-collapse:collapse;font-size:11px";
   table.innerHTML = `<thead><tr style="position:sticky;top:0;background:#1b1c26">
-    ${["Element / Category", "Info", "Pcs", "m", "m²", "m³", "Cost item", "Override qty", "Line"].map((h) =>
+    ${["Element / Category", "Info", "Pcs", "m", "m²", "m³", "Cost item", "Rate", "Override qty", "Line"].map((h) =>
       `<th style="text-align:left;padding:5px 6px;border-bottom:1px solid #2a2a35;font-weight:600">${h}</th>`).join("")}
   </tr></thead>`;
   const tbody = document.createElement("tbody");
+  let grandTotal = 0;
+
   for (const row of rows) {
     const a = getAssignment(row.key);
     const line = computeLine(row);
+    grandTotal += line.lineCost;
     const tr = document.createElement("tr");
     tr.style.cssText = "border-bottom:1px solid #20212b";
 
     const tdLabel = document.createElement("td");
     tdLabel.style.cssText = "padding:4px 6px;font-weight:600";
     tdLabel.textContent = row.label;
-    const srcDot = row.source === "authored" ? "🟩" : "🟦";
+    const srcDot = row.source === "authored" ? "🟩" : "🟨";
     tdLabel.prepend(document.createTextNode(srcDot + " "));
 
     const tdInfo = document.createElement("td");
@@ -111,6 +114,21 @@ function renderTakeoff() {
       items.map((i) => `<option value="${i.id}" ${a.costItemId === i.id ? "selected" : ""}>${esc(i.code)} · ${esc(i.name)} (${i.unit})</option>`).join("");
     sel.onchange = () => { setAssignment(row.key, sel.value || null); renderBody(); };
 
+    const tdRate = document.createElement("td");
+    tdRate.style.cssText = "padding:4px 6px";
+    const rateInput = document.createElement("input");
+    rateInput.type = "number";
+    rateInput.style.cssText = INP + ";width:70px";
+    rateInput.value = line.item ? String(line.rate) : "";
+    rateInput.disabled = !line.item;
+    rateInput.onchange = () => {
+      if (line.item) {
+        updateCostItem(line.item.id, { rate: Number(rateInput.value) || 0 });
+        renderBody();
+      }
+    };
+    tdRate.appendChild(rateInput);
+
     const ov = document.createElement("input");
     ov.type = "number"; ov.style.cssText = INP + ";width:70px";
     ov.placeholder = "auto"; ov.value = a.qtyOverride != null ? String(a.qtyOverride) : "";
@@ -124,15 +142,28 @@ function renderTakeoff() {
     tr.append(tdLabel, tdInfo, td(row.count), td(row.length), td(row.area), td(row.volume));
     const tdSel = document.createElement("td"); tdSel.style.cssText = "padding:4px 6px"; tdSel.appendChild(sel);
     const tdOv = document.createElement("td"); tdOv.style.cssText = "padding:4px 6px"; tdOv.appendChild(ov);
-    tr.append(tdSel, tdOv, tdLine);
+    tr.append(tdSel, tdRate, tdOv, tdLine);
     tbody.appendChild(tr);
   }
+
+  const trTotal = document.createElement("tr");
+  trTotal.style.cssText = "background:#1b1c26;font-weight:700;border-top:1px solid #2a2a35";
+  const tdTotalLabel = document.createElement("td");
+  tdTotalLabel.colSpan = 9;
+  tdTotalLabel.style.cssText = "padding:8px 6px;text-align:right;color:#e2e8f0";
+  tdTotalLabel.textContent = "Grand Total:";
+  const tdTotalVal = document.createElement("td");
+  tdTotalVal.style.cssText = "padding:8px 6px;color:#22c55e;font-size:13px";
+  tdTotalVal.textContent = money(grandTotal);
+  trTotal.append(tdTotalLabel, tdTotalVal);
+  tbody.appendChild(trTotal);
+
   table.appendChild(tbody);
   body.innerHTML = "";
   body.appendChild(table);
   const legend = document.createElement("div");
   legend.style.cssText = "margin-top:8px;font-size:10px;opacity:.5";
-  legend.textContent = "🟩 authored (exact) · 🟦 IFC (bbox approximation) — assign a cost item per row; override qty if the auto quantity isn't what you bill.";
+  legend.textContent = "🟩 authored (exact) · 🟨 IFC (bbox approximation) — assign a cost item per row; override qty if the auto quantity isn't what you bill.";
   body.appendChild(legend);
 }
 
