@@ -1,12 +1,12 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
  * Installs the Revit-gaps package (Milestones 1, 2 and 3) into an OpenBIMStudio checkout.
  *
- *   node scripts/install-revit-gaps.mjs [projectRoot] [--dry-run]
+ *   node scripts/install-bim-gaps.mjs [projectRoot] [--dry-run]
  *
- * Copy the package's `src/modules/revit-gaps/` folder into the project first.
- * The script makes eleven small, idempotent edits (markers openbim-revit-gaps:v1 / :m2 / :m3):
- *   M1  1. src/critical-gaps-boot.ts              start the revit-gaps boot
+ * Copy the package's `src/modules/bim-gaps/` folder into the project first.
+ * The script makes eleven small, idempotent edits (markers openbim-bim-gaps:v1 / :m2 / :m3):
+ *   M1  1. src/critical-gaps-boot.ts              start the bim-gaps boot
  *       2. src/shell/file-menu.ts                 File > Export > Model > IFC4 / IFC2X3
  *       3. src/modules/export/native-twin-ifc.ts  valid IFC GlobalIds
  *   M2  4. src/features/authoring.ts              createMesh asks window.__obsMeshBuilders first
@@ -16,7 +16,7 @@
  *       9. src/modules/views/generators/section.ts       real cut sections (poche, oblique cuts, openings)
  *       10. src/modules/views/generators/elevation.ts    real elevations (silhouettes with openings, roof slope)
  *       11. src/modules/export/pdf.ts                    filled polygons that actually appear in the sheet PDF
- * Originals are saved once in <projectRoot>/.revit-gaps-backup/. Line endings
+ * Originals are saved once in <projectRoot>/.bim-gaps-backup/. Line endings
  * (CRLF/LF) are preserved. Nothing is changed if an anchor is not found; the
  * script says so instead of guessing.
  */
@@ -26,9 +26,9 @@ import path from "node:path";
 const args = process.argv.slice(2);
 const dry = args.includes("--dry-run");
 const root = path.resolve(args.find((a) => !a.startsWith("--")) ?? ".");
-const MARK = "openbim-revit-gaps:v1";
-const MARK2 = "openbim-revit-gaps:m2";
-const MARK3 = "openbim-revit-gaps:m3";
+const MARK = "openbim-bim-gaps:v1";
+const MARK2 = "openbim-bim-gaps:m2";
+const MARK3 = "openbim-bim-gaps:m3";
 const results = [];
 
 function read(rel) {
@@ -43,7 +43,7 @@ function read(rel) {
 function write(f, text) {
   const out = (f.bom ? "\ufeff" : "") + text.replace(/\n/g, f.eol);
   if (dry) return;
-  const bdir = path.join(root, ".revit-gaps-backup");
+  const bdir = path.join(root, ".bim-gaps-backup");
   fs.mkdirSync(bdir, { recursive: true });
   const b = path.join(bdir, f.rel.replace(/[\\/]/g, "__"));
   if (!fs.existsSync(b)) fs.copyFileSync(f.p, b);
@@ -59,8 +59,8 @@ function patch(rel, name, fn, marker = MARK) {
   results.push({ name, state: dry ? "would patch" : "patched" });
 }
 
-if (!fs.existsSync(path.join(root, "src/modules/revit-gaps/revit-gaps-boot.ts"))) {
-  console.error("src/modules/revit-gaps/revit-gaps-boot.ts not found - copy the package's src/ folder into the project first.");
+if (!fs.existsSync(path.join(root, "src/modules/bim-gaps/bim-gaps-boot.ts"))) {
+  console.error("src/modules/bim-gaps/bim-gaps-boot.ts not found - copy the package's src/ folder into the project first.");
   process.exit(1);
 }
 
@@ -71,8 +71,8 @@ patch("src/critical-gaps-boot.ts", "boot hook", (t) => {
   if (!m) return null;
   const i = m[1];
   const block =
-    `${i}await safe("revit-gaps", async () => { // ${MARK}\n` +
-    `${i}  const m: Any = await import("./modules/revit-gaps/revit-gaps-boot");\n` +
+    `${i}await safe("bim-gaps", async () => { // ${MARK}\n` +
+    `${i}  const m: Any = await import("./modules/bim-gaps/bim-gaps-boot");\n` +
     `${i}  await m.setupRevitGaps?.();\n` +
     `${i}});\n\n`;
   return t.slice(0, m.index) + block + t.slice(m.index);
@@ -95,7 +95,7 @@ patch("src/modules/export/native-twin-ifc.ts", "native twin GlobalId", (t) => {
   const re = /function guid\(\): string \{[\s\S]*?\n\}\n/;
   if (!re.test(t)) return null;
   const fn = `function guid(): string { // ${MARK}\n  return newIfcGuid(); // 22-char compressed GUID (the old code emitted random hex, which is not a valid IfcGloballyUniqueId)\n}\n`;
-  return `import { newIfcGuid } from "../revit-gaps/ifc-guid"; // ${MARK}\n` + t.replace(re, fn);
+  return `import { newIfcGuid } from "../bim-gaps/ifc-guid"; // ${MARK}\n` + t.replace(re, fn);
 });
 
 // 4. M2: authored mesh builders hook (stairs, railings, ramps, curtain walls, roofs, ceilings)
@@ -105,7 +105,7 @@ patch("src/features/authoring.ts", "mesh builder hook", (t) => {
   if (!m) return null;
   const i = m[1];
   const block =
-    `${i}{ // ${MARK2}: element types with an external mesh builder (revit-gaps M2)\n` +
+    `${i}{ // ${MARK2}: element types with an external mesh builder (bim-gaps M2)\n` +
     `${i}  const mb = (window as any).__obsMeshBuilders?.[el.type];\n` +
     `${i}  if (mb) {\n` +
     `${i}    const mo = mb(el);\n` +
@@ -185,4 +185,4 @@ patch("src/modules/export/pdf.ts", "pdf polygon fill", (t) => {
 console.log((dry ? "[dry run] " : "") + "Revit gaps install in " + root);
 for (const r of results) console.log(`  ${r.state.padEnd(18)} ${r.name}${r.why ? "  - " + r.why : ""}`);
 if (results.some((r) => r.state === "NOT PATCHED" || r.state === "SKIPPED")) process.exitCode = 2;
-else console.log("Done. Run `npx tsc --noEmit`, then `npm run dev` and look for '[revit-gaps]' in the console (7/7 steps).");
+else console.log("Done. Run `npx tsc --noEmit`, then `npm run dev` and look for '[bim-gaps]' in the console (7/7 steps).");

@@ -200,8 +200,6 @@ async function runOnce(): Promise<void> {
     m.setupSectionCutInteraction?.();
   });
   await safe("ribbon-parity-inject", async () => {
-    const m: Any = await import("./features/ribbon-parity-inject");
-    m.setupRibbonParityInject?.();
   });
   await safe("critical-gaps-ui", async () => {
     const m: Any = await import("./features/critical-gaps-ui");

@@ -6,12 +6,10 @@
 //   - topological sort of parameter declarations by formula dependency
 //   - cycle detection (self-loops and multi-parameter cycles)
 //   - a small library of built-in functions, plus free access to Math.*
-//   - optional '=' prefix (BIM convention: "= height * 2")
+//   - optional '=' prefix (Revit convention: "= height * 2")
 //   - typed per-parameter error surface
 //   - a computed set so the UI can render formula-driven rows read-only
-//
-// Nothing here touches the DOM, the store, or THREE. It is a pure data
-// transform over (FamilyParameter[], values) -> (values, errors, computed).
+//   - a fully safe AST evaluator (no eval/Function)
 
 import type { FamilyParameter } from "./types";
 
@@ -22,25 +20,20 @@ export interface FormulaError {
 }
 
 export interface FormulaResult {
-  /** Final parameter map after all formulas have been evaluated. */
   values: Record<string, any>;
-  /** Parameters whose value came from a formula (read-only in the UI). */
   computed: Set<string>;
-  /** Per-parameter error list; empty when the family resolves cleanly. */
   errors: FormulaError[];
-  /** Parameter names in evaluation order (after topo sort). */
   order: string[];
 }
 
-/**
- * Built-in functions made available to every formula. Any identifier not
- * found here and not declared as a family parameter is treated as a free
- * variable and left to the JS engine (so Math.* still works).
- */
-export const BUILTIN_FUNCTIONS: Record<string, (...args: number[]) => number> = {
+export const BUILTIN_FUNCTIONS: Record<string, (...args: any[]) => any> = {
   sin: (x: number) => Math.sin(x),
   cos: (x: number) => Math.cos(x),
   tan: (x: number) => Math.tan(x),
+  asin: (x: number) => Math.asin(x),
+  acos: (x: number) => Math.acos(x),
+  atan: (x: number) => Math.atan(x),
+  atan2: (y: number, x: number) => Math.atan2(y, x),
   sqrt: (x: number) => Math.sqrt(x),
   abs: (x: number) => Math.abs(x),
   min: (...a: number[]) => Math.min(...a),
@@ -52,13 +45,41 @@ export const BUILTIN_FUNCTIONS: Record<string, (...args: number[]) => number> = 
   },
   floor: (x: number) => Math.floor(x),
   ceil: (x: number) => Math.ceil(x),
+  pow: (x: number, y: number) => Math.pow(x, y),
+  log: (x: number) => Math.log(x),
+  log10: (x: number) => Math.log10(x),
+  exp: (x: number) => Math.exp(x),
   pi: () => Math.PI,
+  e: () => Math.E,
+  if: (cond: any, a: any, b: any) => (truthy(cond) ? a : b),
+  and: (...args: any[]) => args.every(truthy),
+  or: (...args: any[]) => args.some(truthy),
+  not: (x: any) => !truthy(x),
+  eq: (a: any, b: any) => (a === b ? 1 : 0),
+  ne: (a: any, b: any) => (a !== b ? 1 : 0),
+  lt: (a: number, b: number) => (a < b ? 1 : 0),
+  le: (a: number, b: number) => (a <= b ? 1 : 0),
+  gt: (a: number, b: number) => (a > b ? 1 : 0),
+  ge: (a: number, b: number) => (a >= b ? 1 : 0),
+  mm: (x: number) => x / 1000,
+  cm: (x: number) => x / 100,
+  m: (x: number) => x,
+  ft: (x: number) => x * 0.3048,
+  in: (x: number) => x * 0.0254,
+  deg: (x: number) => x * (Math.PI / 180),
+  rad: (x: number) => x,
 };
 
-/**
- * Extract identifier-like tokens from a formula. Strips the '=' prefix and
- * any single- or double-quoted string literals first.
- */
+function truthy(v: any): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0 && Number.isFinite(v);
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return s !== "" && s !== "0" && s !== "false" && s !== "no";
+  }
+  return !!v;
+}
+
 function identifiersIn(formula: string): string[] {
   let s = String(formula ?? "");
   if (s.startsWith("=")) s = s.slice(1);
@@ -76,16 +97,6 @@ interface TopoResult {
   cycles: string[];
 }
 
-/**
- * Kahn's algorithm over the formula dependency graph.
- *
- * A formula references another parameter if its formula string mentions
- * that parameter's name as a bare identifier. Built-ins and Math.* are
- * ignored because they are not declared parameters.
- *
- * Any parameter still with non-zero in-degree after the queue drains is
- * part of a cycle (including self-loops).
- */
 function topoSort(declarations: FamilyParameter[]): TopoResult {
   const byName = new Map<string, FamilyParameter>();
   for (const p of declarations) byName.set(p.name, p);
@@ -98,11 +109,10 @@ function topoSort(declarations: FamilyParameter[]): TopoResult {
     const set = new Set<string>();
     if (p.formula) {
       for (const id of identifiersIn(p.formula)) {
-        if (id === p.name) continue;               // self-loop -> handled below
-        if (!byName.has(id)) continue;             // unknown id -> not a param
+        if (id === p.name) continue;
+        if (!byName.has(id)) continue;
         set.add(id);
       }
-      // A parameter whose formula mentions its own name is a cycle of size 1.
       if (identifiersIn(p.formula).indexOf(p.name) >= 0) {
         set.add(p.name);
       }
@@ -131,9 +141,6 @@ function topoSort(declarations: FamilyParameter[]): TopoResult {
 
   const cycles: string[] = [];
   for (const [name, d] of indeg) if (d > 0) cycles.push(name);
-
-  // Append cyclic parameters after the healthy ones so callers still
-  // get every declared parameter back in some deterministic order.
   for (const c of cycles) {
     const p = byName.get(c);
     if (p) order.push(p);
@@ -142,12 +149,6 @@ function topoSort(declarations: FamilyParameter[]): TopoResult {
   return { order, cycles };
 }
 
-/**
- * Evaluate every formula in a family.
- *
- * @param declarations  Family.parameters (order does not matter).
- * @param seedValues    Merged defaults + type overrides + instance overrides.
- */
 export function evaluateParameters(
   declarations: FamilyParameter[],
   seedValues: Record<string, any>,
@@ -157,8 +158,6 @@ export function evaluateParameters(
   const computed = new Set<string>();
   const errors: FormulaError[] = [];
 
-  // Guarantee every declared parameter is present so formulas referencing
-  // a default-valued param cannot see `undefined`.
   for (const p of declarations) {
     if (!(p.name in values)) values[p.name] = p.default;
   }
@@ -178,28 +177,12 @@ export function evaluateParameters(
     if (cycleSet.has(p.name)) continue;
     computed.add(p.name);
 
-    // Collect the free identifiers that are actual family parameters.
-    const ids = identifiersIn(p.formula);
-    const argNames: string[] = [];
-    const argValues: any[] = [];
-    for (const id of ids) {
-      if (id in BUILTIN_FUNCTIONS) continue;
-      if (!(id in values)) continue;
-      argNames.push(id);
-      argValues.push(values[id]);
-    }
-
-    const fnNames = Object.keys(BUILTIN_FUNCTIONS);
-    const fnValues = fnNames.map((n) => BUILTIN_FUNCTIONS[n]);
-
     let body = p.formula.trim();
     if (body.startsWith("=")) body = body.slice(1);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const fn = new Function(...fnNames, ...argNames, "return (" + body + ");");
-      const raw = fn(...fnValues, ...argValues);
-
+      const raw = evaluateFormula(body, values);
+      
       if (raw === undefined || raw === null) {
         errors.push({
           parameter: p.name,
@@ -221,7 +204,12 @@ export function evaluateParameters(
         });
         continue;
       }
-      values[p.name] = n;
+      
+      let out = n;
+      if (p.type === "integer") out = Math.round(out);
+      if (p.min != null && out < p.min) out = p.min;
+      if (p.max != null && out > p.max) out = p.max;
+      values[p.name] = out;
     } catch (err) {
       errors.push({
         parameter: p.name,
@@ -239,49 +227,237 @@ export function evaluateParameters(
   };
 }
 
-// openbim-fix:formula-engine -- single-expression evaluator for NumberRef
-//
-// Used by the parametric geometry layer for `{ expr: "thickness / 2" }`
-// style NumberRefs. Reuses the identifier scanner and BUILTIN_FUNCTIONS
-// already defined in this module so the family editor and the geometry
-// resolver see the same math. Returns null on empty input, unknown
-// identifier, or non-finite result; the caller decides the fallback.
-export function evaluateFormula(
-  expr: string,
-  params: Record<string, any>,
-): number | null {
-  const source = String(expr ?? "").trim();
-  if (!source) return null;
+// ─────────────────────────────────────────────────────────────────────────────
+// SAFE AST EVALUATOR (No eval, no Function)
+// ─────────────────────────────────────────────────────────────────────────────
 
-  // Collect identifiers that are actual family parameters.
-  const ids = identifiersIn(source);
-  const argNames: string[] = [];
-  const argValues: any[] = [];
-  for (const id of ids) {
-    if (id in BUILTIN_FUNCTIONS) continue;
-    if (!(id in params)) continue;
-    argNames.push(id);
-    argValues.push(params[id]);
+type Token = { type: "num" | "id" | "op" | "punc"; value: string };
+
+function tokenize(str: string): Token[] {
+  const tokens: Token[] = [];
+  let i = 0;
+  while (i < str.length) {
+    const c = str[i];
+    if (/\s/.test(c)) { i++; continue; }
+    
+    // Numbers
+    if (/[0-9.]/.test(c)) {
+      let num = "";
+      while (i < str.length && /[0-9.]/.test(str[i])) { num += str[i]; i++; }
+      tokens.push({ type: "num", value: num });
+      continue;
+    }
+    
+    // Identifiers (variables and function names)
+    if (/[A-Za-z_]/.test(c)) {
+      let id = "";
+      while (i < str.length && /[A-Za-z0-9_]/.test(str[i])) { id += str[i]; i++; }
+      tokens.push({ type: "id", value: id });
+      continue;
+    }
+    
+    // Operators
+    if ("+-*/^%><!&|=".includes(c)) {
+      let op = c; i++;
+      if (i < str.length && "=<>&|".includes(str[i])) { op += str[i]; i++; }
+      tokens.push({ type: "op", value: op });
+      continue;
+    }
+    
+    // Punctuation
+    if ("(),?:".includes(c)) {
+      tokens.push({ type: "punc", value: c });
+      i++;
+      continue;
+    }
+    
+    throw new Error("Unknown character: " + c);
+  }
+  return tokens;
+}
+
+class Parser {
+  tokens: Token[];
+  pos = 0;
+  vars: Record<string, any>;
+
+  constructor(tokens: Token[], vars: Record<string, any>) {
+    this.tokens = tokens;
+    this.vars = vars;
   }
 
-  const fnNames  = Object.keys(BUILTIN_FUNCTIONS);
-  const fnValues = fnNames.map((n) => BUILTIN_FUNCTIONS[n]);
+  peek(): Token | undefined { return this.tokens[this.pos]; }
+  next(): Token { return this.tokens[this.pos++]; }
+  match(val: string): boolean {
+    if (this.peek()?.value === val) { this.pos++; return true; }
+    return false;
+  }
 
+  parse(): any {
+    const res = this.parseTernary();
+    if (this.pos < this.tokens.length) throw new Error("Unexpected token: " + this.peek()?.value);
+    return res;
+  }
+
+  parseTernary(): any {
+    const cond = this.parseLogicalOr();
+    if (this.match("?")) {
+      const ifTrue = this.parseTernary();
+      if (!this.match(":")) throw new Error("Expected ':'");
+      const ifFalse = this.parseTernary();
+      return truthy(cond) ? ifTrue : ifFalse;
+    }
+    return cond;
+  }
+
+  parseLogicalOr(): any {
+    let left = this.parseLogicalAnd();
+    while (this.match("||") || this.match("or")) {
+      const right = this.parseLogicalAnd();
+      left = truthy(left) || truthy(right) ? 1 : 0;
+    }
+    return left;
+  }
+
+  parseLogicalAnd(): any {
+    let left = this.parseEquality();
+    while (this.match("&&") || this.match("and")) {
+      const right = this.parseEquality();
+      left = truthy(left) && truthy(right) ? 1 : 0;
+    }
+    return left;
+  }
+
+  parseEquality(): any {
+    let left = this.parseRelational();
+    while (this.match("==") || this.match("!=") || this.match("eq") || this.match("ne")) {
+      const op = this.tokens[this.pos - 1].value;
+      const right = this.parseRelational();
+      if (op === "==" || op === "eq") left = left === right ? 1 : 0;
+      else left = left !== right ? 1 : 0;
+    }
+    return left;
+  }
+
+  parseRelational(): any {
+    let left = this.parseAddition();
+    while (this.match(">") || this.match("<") || this.match(">=") || this.match("<=") || this.match("gt") || this.match("lt") || this.match("ge") || this.match("le")) {
+      const op = this.tokens[this.pos - 1].value;
+      const right = this.parseAddition();
+      if (op === ">" || op === "gt") left = left > right ? 1 : 0;
+      else if (op === "<" || op === "lt") left = left < right ? 1 : 0;
+      else if (op === ">=" || op === "ge") left = left >= right ? 1 : 0;
+      else left = left <= right ? 1 : 0;
+    }
+    return left;
+  }
+
+  parseAddition(): any {
+    let left = this.parseMultiplication();
+    while (this.match("+") || this.match("-")) {
+      const op = this.tokens[this.pos - 1].value;
+      const right = this.parseMultiplication();
+      left = op === "+" ? left + right : left - right;
+    }
+    return left;
+  }
+
+  parseMultiplication(): any {
+    let left = this.parseUnary();
+    while (this.match("*") || this.match("/") || this.match("%")) {
+      const op = this.tokens[this.pos - 1].value;
+      const right = this.parseUnary();
+      if (op === "*") left = left * right;
+      else if (op === "/") left = left / right;
+      else left = left % right;
+    }
+    return left;
+  }
+
+  parseUnary(): any {
+    if (this.match("-")) return -this.parseUnary();
+    if (this.match("+")) return this.parseUnary();
+    if (this.match("!") || this.match("not")) return truthy(this.parseUnary()) ? 0 : 1;
+    return this.parsePower();
+  }
+
+  parsePower(): any {
+    const left = this.parsePrimary();
+    if (this.match("^")) {
+      const right = this.parseUnary(); // Right associative
+      return Math.pow(left, right);
+    }
+    return left;
+  }
+
+  parsePrimary(): any {
+    const tok = this.next();
+    if (!tok) throw new Error("Unexpected end of expression");
+
+    if (tok.type === "num") return Number(tok.value);
+
+    if (tok.type === "id") {
+      const name = tok.value;
+      if (this.match("(")) {
+        // Function call
+        const args: any[] = [];
+        if (!this.match(")")) {
+          do {
+            args.push(this.parseTernary());
+          } while (this.match(","));
+          if (!this.match(")")) throw new Error("Expected ')'");
+        }
+        if (name in BUILTIN_FUNCTIONS) {
+          return BUILTIN_FUNCTIONS[name](...args);
+        }
+        if (name in Math) {
+          return (Math as any)[name](...args);
+        }
+        throw new Error("Unknown function: " + name);
+      }
+      
+      // Variable
+      if (name in this.vars) return this.vars[name];
+      if (name === "true") return 1;
+      if (name === "false") return 0;
+      throw new Error("Unknown variable: " + name);
+    }
+
+    if (tok.value === "(") {
+      const expr = this.parseTernary();
+      if (!this.match(")")) throw new Error("Expected ')'");
+      return expr;
+    }
+
+    throw new Error("Unexpected token: " + tok.value);
+  }
+}
+
+export function evaluateFormula(expr: string, params: Record<string, any>): any {
+  const source = String(expr ?? "").trim();
+  if (!source) return null;
+  
   let body = source;
-  if (body.startsWith("=")) body = body.slice(1);
-
+  if (body.startsWith("=")) body = body.slice(1).trim();
+  
   try {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const fn = new Function(...fnNames, ...argNames, "return (" + body + ");");
-    const raw = fn(...fnValues, ...argValues);
-    if (raw === undefined || raw === null) return null;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
-  } catch {
+    const tokens = tokenize(body);
+    const parser = new Parser(tokens, params);
+    const result = parser.parse();
+    
+    if (typeof result === "boolean") return result ? 1 : 0;
+    if (result === undefined || result === null) return null;
+    
+    // If it's a number, ensure it's finite
+    if (typeof result === "number" && !Number.isFinite(result)) return null;
+    
+    return result;
+  } catch (err) {
+    // Return null on parse failure, which the caller handles
     return null;
   }
 }
-/** Convenience: does this family declare any formulas at all? */
+
 export function hasFormulas(declarations: FamilyParameter[]): boolean {
   return declarations.some((p) => !!p.formula);
 }
