@@ -15,6 +15,7 @@ import {
   onSheetsChange,
   getSheetSizeMm,
 } from "../modules/sheets/sheets";
+import { exportAllSheetsToPdf, downloadSingleSheetPdf } from "../modules/export/sheet-pdf";
 import type { SheetDef } from "../modules/projects/types";
 
 let panel: HTMLElement | null = null;
@@ -46,6 +47,7 @@ function render() {
         <button type="button" data-act="new">+ Sheet</button>
         <button type="button" data-act="defaults">Default set</button>
         <button type="button" data-act="export" ${active ? "" : "disabled"}>Export SVG</button>
+        <button type="button" data-act="publish-pdf" style="background:#16a34a;color:#fff;border-color:#16a34a">📄 Publish PDF</button>
       </div>
       <div class="obs-sheets__list">
         ${sheets.length === 0
@@ -98,6 +100,24 @@ function render() {
           title: "Plan View",
         });
         render();
+        return;
+      }
+      if (act === "publish-pdf") {
+        const sheets = listSheets();
+        if (!sheets.length) { alert("No sheets to publish."); return; }
+        void (async () => {
+          try {
+            if (activeId) {
+              await downloadSingleSheetPdf(activeId);
+            } else {
+              await exportAllSheetsToPdf(sheets);
+            }
+            window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "PDF published successfully", kind: "success" } }));
+          } catch (e) {
+            console.error("[sheets] PDF publish failed", e);
+            alert("PDF export failed. See console.");
+          }
+        })();
         return;
       }
       if (act === "rename" && activeId) {
