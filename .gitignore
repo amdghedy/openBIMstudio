@@ -1,25 +1,10 @@
 node_modules/
 dist/
-*.bak-*
-server/data/
-OpenBIMStudio-bundle.txt
-errors.txt
-
-# --- OpenBIM Studio auto-ignore ---
-*.bak
-*.bak-*
-*.disabled
-*.orig
-.DS_Store
-
-# Build artifacts
-NavisworksGLBExporter/obj/
-NavisworksGLBExporter/build/
-*.dll
-*.pdb
-
-# Code-export folder (duplicate)
 _export/
-
-# Vendor wasm blobs (fetched via npm scripts)
-public/web-ifc/*.wasm
+*.log
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
+coverage/
+.vscode/
+.idea/
