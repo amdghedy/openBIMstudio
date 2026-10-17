@@ -83,6 +83,8 @@ function readValue(
   return (d.properties as any)?.[key] ?? "";
 }
 
+import { isElementLocked, getLockOwner } from "../modules/collaboration/workshare-locks";
+
 function writeValue(
   target: FieldTarget,
   element: AuthoredElement | null,
@@ -91,6 +93,10 @@ function writeValue(
   value: string | number | boolean,
 ): void {
   if (element) {
+    if (isElementLocked(element.id)) {
+      alert(`Cannot edit: this element is currently locked by ${getLockOwner(element.id)}.`);
+      return;
+    }
     // 1. Snapshot the "before" state for Undo
     const before = JSON.parse(JSON.stringify(element));
 

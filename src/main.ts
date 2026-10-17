@@ -75,6 +75,7 @@ import { setupWalkMode } from "./features/walk-mode";
 import { setupWalkMinimap } from "./features/walk-minimap";
 import { setupCommandPalette } from "./features/command-palette";
 import { setupCollaborationPanel } from "./features/collaboration-panel";
+import { setupWorkshareLocks } from "./modules/collaboration/workshare-locks";
 import { setupSavedViews } from "./features/saved-views";
 import { setupCursorTracker } from "./features/cursor-tracker";
 import { setupFragEdit } from "./features/frag-edit";
@@ -234,6 +235,7 @@ await step("saved-views", () => setupSavedViews());
 await step("cursor-tracker", () => setupCursorTracker());
 await step("command-palette", () => setupCommandPalette());
 await step("collaboration-panel", () => setupCollaborationPanel());
+await step("workshare-locks", () => setupWorkshareLocks());
 await step("walk-mode", () => setupWalkMode());
 await step("walk-minimap", () => setupWalkMinimap());
 
