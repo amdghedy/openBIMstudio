@@ -24,7 +24,7 @@ Do not promote a feature to production-ready based only on its filename or impor
 | Shared context and services | src/core/context.ts; src/core/services.ts | Service contracts, lifecycle, missing-service behavior. |
 | Diagnostics and notifications | src/core/diagnostics.ts; src/core/notify.ts | Diagnostic data, severity, user feedback. |
 | Input router | src/core/input-router.ts | Pointer/keyboard routing and conflict handling. |
-| Revit mouse policy | src/core/revit-mouse-policy.ts | Actual camera and pointer bindings; verify orthographic and perspective modes. |
+| Mouse interaction policy | Core input policy module | Actual camera and pointer bindings; verify orthographic and perspective modes. |
 | Wheel arbitration | src/core/wheel-arbiter.ts | View zoom versus panel scrolling, modifier keys. |
 | Camera gate | src/core/camera-gate.ts | Camera interaction state and recovery after tools close. |
 | Options registry | src/core/options-registry.ts | Defaults, option scope, persistence. |
@@ -177,7 +177,7 @@ Treat quantities and costs as estimates until reconciled with approved measureme
 | Format/workflow | Source reference | Important boundary |
 |---|---|---|
 | IFC import | src/features/importer.ts; src/features/file-interop.ts; web-ifc dependency | Confirm versions, geometry, properties, placement and units. |
-| Authored IFC | src/modules/bim-gaps/authored-ifc.ts; src/modules/bim-gaps/ifc-guid.ts; src/modules/export/native-twin-ifc.ts | Milestone notes describe a defined IFC4/IFC2X3 subset and list unsupported classes. Read ../docs/REVIT_GAPS_M1.md before promising full export. |
+| Authored IFC | src/modules/bim-gaps/authored-ifc.ts; src/modules/bim-gaps/ifc-guid.ts; src/modules/export/native-twin-ifc.ts | Existing engineering gap notes describe a defined IFC4/IFC2X3 subset and list unsupported classes. Review those limitations before promising full export. |
 | COBie | src/modules/export/cobie.ts | Validate required fields and worksheet/schema completeness. |
 | BCF | src/modules/export/bcf21.ts | Validate version and import/export symmetry. |
 | DWG/DXF | src/modules/drawings/; src/commands/ExportDWGCommand.ts | Layers, blocks, dimensions, fonts, units and unsupported entities. |
@@ -263,4 +263,4 @@ Create docs/tools/<tool-name>.md with:
 
 ## 14. Scope boundary
 
-OpenBIMstudio is an evolving project. This catalogue intentionally does not claim that every module is equivalent to Revit, Navisworks, ACC or other commercial BIM systems. Read source code, tests and runtime evidence together when assessing maturity.
+OpenBIMstudio is an evolving project. This catalogue intentionally does not claim that every module is equivalent to established commercial BIM platforms. Read source code, tests and runtime evidence together when assessing maturity. Read source code, tests and runtime evidence together when assessing maturity.
