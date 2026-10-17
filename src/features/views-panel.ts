@@ -8,8 +8,10 @@
 
 import { ctx } from "../core/context";
 import {
-  bootViewsStore, listViews, getView, createView, deleteView, onViewsChange,
+  bootViewsStore, listViews, getView, createView, deleteView, onViewsChange, updateView,
 } from "../modules/views/store";
+import { viewTemplatesStore } from "../modules/view-templates/view-templates-store";
+import { openVgDialog } from "../modules/view-templates/vg-dialog";
 import type { ViewDef, ViewKind } from "../modules/views/types";
 import { generatePlanScene } from "../modules/views/generators/plan";
 import { generateSectionScene } from "../modules/views/generators/section";
@@ -30,6 +32,7 @@ let currentViewId: string | null = null;
 let visible = false;
 
 const toolButtonEls = new Map<ActiveTool, HTMLButtonElement>();
+let templateSelectEl: HTMLSelectElement | null = null;
 let toolbarHint: HTMLSpanElement | null = null;
 let statusLine: HTMLSpanElement | null = null;
 
@@ -106,7 +109,30 @@ export function setupViewsPanel(): void {
     render();
   }, true);
 
-  header.append(title, typeSelect, newBtn);
+  templateSelectEl = document.createElement("select");
+  templateSelectEl.style.cssText =
+    "padding:4px 8px;background:#0e1017;border:1px solid #2a2e3a;border-radius:4px;" +
+    "color:#e8eaf0;font:11px system-ui;cursor:pointer;max-width:150px";
+  templateSelectEl.title = "Assign a View Template";
+  
+  templateSelectEl.onchange = () => {
+    if (!currentViewId) return;
+    updateView(currentViewId, { templateId: templateSelectEl!.value || undefined });
+    void renderCurrent();
+  };
+
+  const vgBtn = mkButton("VG", () => {
+    if (!currentViewId) return alert("Select a view first");
+    openVgDialog({ viewId: currentViewId });
+  });
+
+  const editTmplBtn = mkButton("Edit Tmpl", () => {
+    const tId = templateSelectEl?.value;
+    if (!tId) return alert("Select a template first");
+    openVgDialog({ templateId: tId });
+  });
+
+  header.append(title, typeSelect, newBtn, templateSelectEl, vgBtn, editTmplBtn);
 
   const toolbar = document.createElement("div");
   toolbar.style.cssText =
@@ -196,6 +222,20 @@ function render(): void {
   if (!panel || !sidebar) return;
   const views = listViews();
   sidebar.innerHTML = "";
+
+  // Update template dropdown for the active view
+  if (templateSelectEl && currentViewId) {
+    const view = getView(currentViewId);
+    templateSelectEl.innerHTML = `<option value="">-- Template --</option>`;
+    const templates = viewTemplatesStore.listTemplates();
+    for (const t of templates) {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name;
+      if (view?.templateId === t.id) opt.selected = true;
+      templateSelectEl.appendChild(opt);
+    }
+  }
   for (const v of views) {
     const row = document.createElement("div");
     const active = v.id === currentViewId;
