@@ -6,7 +6,6 @@ import {
   settingsBox, queueSummaryEl, queueButtons, queueListEl, loadStatusEl,
   positioningSelect,
 } from "./importer";
-import { cubeHost } from "./viewcube";
 import {
   setProjection, saveHome, goHome, fitAll, takeScreenshot,
   recenterSceneNow, resetOffsets, showBoundsHelpers, boundsInfoEl,
@@ -71,11 +70,7 @@ export function buildPanel() {
         </bim-panel-section>
 
         <bim-panel-section label="View" icon="mdi:rotate-3d" collapsed>
-          <bim-checkbox label="Show ViewCube"
-            checked
-            @change=${({ target }: any) => {
-              cubeHost.style.display = target.checked ? "block" : "none";
-            }}></bim-checkbox>
+
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 10px">
             <bim-button label="Perspective" @click=${() => setProjection("perspective")}></bim-button>
             <bim-button label="Orthographic" @click=${() => setProjection("orthographic")}></bim-button>
