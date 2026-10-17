@@ -1,6 +1,8 @@
-# openBIMstudio
+<p align="center">
+  <img src="./openBIMstudio.png" alt="openBIMstudio platform logo" width="240">
+</p>
 
-![openBIMstudio](openBIMstudio.png)
+<h1 align="center">openBIMstudio</h1>
 
 **A web-native, open-source BIM authoring platform focused on professional modeling workflows and reliable IFC interoperability.**
 
