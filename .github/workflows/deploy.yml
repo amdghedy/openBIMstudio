@@ -8,6 +8,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096"
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -19,13 +21,13 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Project
         run: npm run build
 
       - name: Deploy to Vercel
-        run: npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
+        run: npx vercel deploy --yes --prod --token="${{ secrets.VERCEL_TOKEN }}"
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
