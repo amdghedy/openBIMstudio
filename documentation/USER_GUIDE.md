@@ -133,7 +133,7 @@ Format coverage and round-trip fidelity vary by entity and implementation. For e
 5. Record unsupported entities and warnings.
 6. Repeat with a production-sized file.
 
-The [Revit Gaps — Milestone 1](../docs/REVIT_GAPS_M1.md) document describes a defined authored IFC subset and lists unsupported classes and checks still required. Read it before relying on authored IFC export for delivery.
+The existing engineering gap review describes a defined authored IFC subset and lists unsupported classes and checks still required. Review those limitations before relying on authored IFC export for delivery.
 
 ## 12. AI and automation
 
@@ -194,5 +194,5 @@ Include:
 - [Master Tool Catalogue](MASTER_TOOL_CATALOG.md)
 - [Developer Guide](DEVELOPER_GUIDE.md)
 - [Tool page index/template](tools/README.md)
-- [Revit Gaps — Milestone 1](../docs/REVIT_GAPS_M1.md)
+- Existing authored-IFC implementation and limitation notes.
 - [Install and UX notes](../docs/INSTALL_AND_UX.md)
