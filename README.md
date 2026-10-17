@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./openBIMstudio.png" alt="openBIMstudio platform logo" width="480">
+  <img src="./openBIMstudio.png" alt="openBIMstudio platform logo" width="720">
 </p>
 
 <h1 align="center">openBIMstudio</h1>
