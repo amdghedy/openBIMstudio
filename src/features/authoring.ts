@@ -44,7 +44,7 @@ type Tool =
   | "select" | "move" | "copy" | "rotate" | "mirror" | "array" | "offset"
   | "wall" | "slab" | "column" | "beam" | "brace" | "truss" | "footing" | "strip" | "mline"
   | "duct" | "pipe" | "cable-tray" | "conduit" | "equipment"
-  | "door" | "window"
+  | "door" | "window" | "curtain-wall"
   | "grid" | "level";
 
 interface GripSpec {
@@ -297,7 +297,7 @@ export const TOOL_ALIASES: Record<string, Tool> = {
   stairs: "equipment",
   railing: "equipment",
   ramp: "equipment",
-  "curtain-wall": "wall",
+  "curtain-wall": "curtain-wall" as any,
   pad: "footing",
   pile: "footing",
   opening: "door",
@@ -383,7 +383,7 @@ const DRAW_TOOLS = new Set<Tool>([
   "wall", "slab", "column", "beam", "brace", "truss",
   "footing", "strip", "mline",
   "duct", "pipe", "cable-tray", "conduit", "equipment",
-  "door", "window",
+  "door", "window", "curtain-wall",
 ]);
 
 /** Element types whose chains get an auto-fitting at every bend. */
@@ -1604,7 +1604,26 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
     mesh.position.set(p.point[0], p.elevation - p.height / 2, p.point[1]);
   }
 
-  if (!mesh) return null;
+  if (!mesh) {
+    try {
+      const __builders = (window as any).__obsMeshBuilders;
+      if (__builders && typeof __builders[el.type] === "function") {
+        const __custom = __builders[el.type](el);
+        if (__custom) {
+          __custom.traverse((m: any) => {
+            if (m.isMesh) {
+              m.userData.elementId = el.id;
+              m.userData.baseColor = el.color || COLORS[el.type] || "#cccccc";
+            }
+          });
+          return __custom;
+        }
+      }
+    } catch (err) {
+      console.warn("[authoring] custom mesh builder failed for " + el.type, err);
+    }
+    return null;
+  }
   mesh.userData.elementId = el.id;
   mesh.userData.baseColor = "#" + color.getHexString();
   return mesh;
@@ -2222,6 +2241,7 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
 
   switch (activeTool) {
     case "wall":
+    case "curtain-wall":
     case "strip":
     case "beam":
     case "mline":
