@@ -1077,98 +1077,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
   },
 
   // ════════════════════════════ BIM TOOLS ═════════════════════════════
-  {
-    id: "bim-tools",
-    label: "BIM Tools",
-    items: () => [
-      groupLabel("Command Order"),
-      b("tools-panel", "BIM Center", safe(() => toggleBimToolbox(), "BIM Command Center"), { active: isBimToolboxVisible() }),
-      toolBtn("select-all", "Select", "select", "Esc"),
-      b("settings", "Repeat", safe(() => {
-        const cmd = getLastCommand();
-        if (cmd) setAuthoringTool(cmd); else toast("No previous command to repeat.", "info");
-      }, "Repeat last command"), { title: "Repeat the last authoring order" }),
-      b("close", "Cancel", safe(() => setAuthoringTool(null), "Cancel current order"), { title: "Cancel active command and return to Select" }),
-      sep(),
-      groupLabel("Modify"),
-      toolBtn("move", "Move", "move", "G"),
-      toolBtn("copy", "Copy", "copy"),
-      toolBtn("rotate", "Rotate", "rotate", "R"),
-      toolBtn("mirror", "Mirror", "mirror"),
-      toolBtn("array", "Array", "array"),
-      toolBtn("offset", "Offset", "offset"),
-      b("anchor", "Pin", safe(() => { const n = pinSelected(true); toast(n ? `Pinned ${n} element(s).` : "Select authored elements.", n ? "success" : "warn"); }, "Pin selected elements")),
-      b("anchor", "Unpin", safe(() => { const n = pinSelected(false); toast(n ? `Unpinned ${n} element(s).` : "No authored selection.", n ? "success" : "warn"); }, "Unpin selected elements")),
-      sep(),
-      groupLabel("Annotation"),
-      b("dim-aligned", "Aligned Dim", safe(() => { if (!isPlanViewVisible()) togglePlanView(); (ctx.features as any).planView?.setTool?.("dim-aligned"); }, "Aligned dimension")),
-      b("dim-linear", "Linear Dim", safe(() => { if (!isPlanViewVisible()) togglePlanView(); (ctx.features as any).planView?.setTool?.("dim-linear"); }, "Linear dimension")),
-      b("tag", "Tag", safe(() => { if (!isPlanViewVisible()) togglePlanView(); (ctx.features as any).planView?.setTool?.("tag"); }, "Tag")),
-      b("text", "Text", safe(() => { if (!isPlanViewVisible()) togglePlanView(); (ctx.features as any).planView?.setTool?.("text"); }, "Text note")),
-      sep(),
-      groupLabel("Graphics"),
-      b("tools-panel", "Graphics", safe(() => toggleBimToolbox(), "View & Visual Appearance"), { active: isBimToolboxVisible() }),
-      b("system", "MEP Colors", safe(() => toggleMepColors(), "MEP discipline colors"), { active: isMepColoringActive() }),
-      b("plan", "Plan", safe(() => togglePlanView(), "Plan workspace"), { active: isPlanViewVisible() }),
-      sep(),
-      groupLabel("Delivery"),
-      b("folder", "Browser", safe(() => { toggleProjectBrowser(); }, "Project Browser"), { active: isProjectBrowserVisible() }),
-      b("new-sheet", "Sheets", safe(() => toggleSheetsPanel(), "Sheets"), { active: isSheetsPanelVisible() }),
-      b("folder-recent", "Views", safe(() => toggleSavedViewsPanel(), "Saved views"), { active: isSavedViewsPanelVisible() }),
-    ],
-  },
+
 
   // ════════════════════════════ ANALYZE ════════════════════════════════
-  {
-    id: "analyze",
-    label: "Analyze",
-    items: () => [
-      groupLabel("Validation"),
-      idsButton(),
-      b("cost", "Quantities", safe(() => toggleCostPanel(), "Quantities"), { active: isCostPanelVisible() }),
-      modelHealthButton(),
-      schedulesButton(),
-      sep(),
-      groupLabel("4D / Time"),
-      b("schedule", "4D Sim", safe(() => toggleTimelinePanel(), "4D construction simulation"), {
-        active: isTimelinePanelVisible(),
-      }),
-      sep(),
-      groupLabel("Clash"),
-      b("clash", "Clash Detective", safe(() => {
-        // Jump to dedicated Clash Detective tab instead of duplicating controls
-        const tab = document.querySelector('[data-tab="clash"]') as HTMLElement | null;
-        tab?.click();
-        void runElementClashDetection();
-      }, "Open Clash Detective")),
-    ],
-  },
+
 
   // ═════════════════════════ MASSING & SITE ════════════════════════════
-  {
-    id: "site",
-    label: "Massing & Site",
-    items: () => [
-      groupLabel("Mass"),
-      b("mass", "In-place", safe(() => { setAuthoringTool("slab"); toast("Concept Mass: sketch a closed volume footprint", "success"); }, "In-place Mass")),
-      b("mass", "Load Mass", safe(() => { openComponentLibrary(); toast("Mass / component library opened", "info"); }, "Load Mass")),
-      b("mass-floor", "Floor", safe(() => { setAuthoringTool("slab"); toast("Mass Floor: sketch the mass footprint", "success"); }, "Mass Floor")),
-      b("opening", "Opening", safe(() => { setAuthoringTool("door"); toast("Mass Opening: place on the mass host", "success"); }, "Mass Opening")),
-      sep(),
-      groupLabel("Topography"),
-      b("toposurface", "Toposurface", safe(() => void linkTopography(), "Toposurface")),
-      b("building-pad", "Pad", safe(() => { setAuthoringTool("footing"); toast("Building Pad: place a site foundation footprint", "success"); }, "Building Pad")),
-      b("property-line", "Property", safe(() => { setAuthoringTool("mline"); toast("Property Line: draw a closed site boundary", "success"); }, "Property Line")),
-      b("site-component", "Component", safe(() => void openComponentLibrary(), "Site Component")),
-      b("parking", "Parking", safe(() => { setAuthoringTool("equipment"); toast("Parking Component: place and edit in Properties", "success"); }, "Parking")),
-      sep(),
-      groupLabel("Site"),
-      b("graded-region", "Region", safe(() => { setAuthoringTool("slab"); toast("Graded Region: sketch the site region", "success"); }, "Graded Region")),
-      b("subregion", "Subregion", safe(() => { setAuthoringTool("mline"); toast("Subregion boundary: draw within the topography", "success"); }, "Subregion")),
-      b("split-surface", "Split", safe(() => { setAuthoringTool("mline"); toast("Split Surface: sketch the split line", "success"); }, "Split Surface")),
-      b("site-settings", "Settings", safe(() => void openProjectInfo(), "Site Settings")),
-    ],
-  },
+
 
   // ════════════════════════════ COORDINATE ═════════════════════════════
   {
@@ -1868,8 +1783,7 @@ function renderTabs() {
   tabsRow.appendChild(brand);
 
   for (const t of TABS) {
-    // Removed tabs: BIM Tools, Analyze, Massing & Site
-    if (t.id === "bim-tools" || t.id === "analyze" || t.id === "site") continue;
+
     const btn = document.createElement("button");
     btn.className = "obs-ribbon__tab" + (t.id === "file" ? " obs-ribbon__tab--file" : "");
     btn.textContent = t.label;

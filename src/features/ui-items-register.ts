@@ -20,28 +20,7 @@ export function registerUiItems(): void {
   };
 
   // ── ViewCube ─────────────────────────────────────────────────────
-  registerUiItem({
-    id: "viewcube",
-    label: "ViewCube",
-    group: "panels",
-    available: true,
-    isVisible: () => {
-      try { return !!(F.viewcube && F.viewcube.host && F.viewcube.host.style.display !== "none"); }
-      catch { return false; }
-    },
-    toggle: () => {
-      try {
-        const h = F.viewcube?.host as HTMLElement | undefined;
-        if (!h) return;
-        h.style.display = h.style.display === "none" ? "block" : "none";
-        if (F.viewcube?.host?.parentElement) {
-          h.style.display = h.style.display === "block" ? "block" : "none";
-        }
-      } catch { /* */ }
-    },
-  });
-
-  // ── Navigation Bar ───────────────────────────────────────────────
+// ── Navigation Bar ───────────────────────────────────────────────
   registerUiItem({
     id: "nav-bar",
     label: "Navigation Bar",

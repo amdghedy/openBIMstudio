@@ -355,7 +355,7 @@ function isUiTarget(e: Event): boolean {
   return !!t.closest(
     "input,select,textarea,button,label,a,[contenteditable]," +
       ".obs-revit-options,.obs-revit-contextual,.obs-revit-viewbar," +
-      ".obs-plan-overlay,#obs-ai-chat,#obs-command-palette,#obs-viewcube," +
+      ".obs-plan-overlay,#obs-ai-chat,#obs-command-palette," +
       "[data-obs-panel],.obs-panel,.bb-status,.obs-toast-host",
   );
 }
