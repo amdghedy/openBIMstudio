@@ -555,6 +555,32 @@ export const SCHEMAS: Partial<Record<ElementType, ElementSchema>> = {
   },
 };
 
+
+// ── Auto-injected MEP & Structural Fields ─────────────────────────────
+if (SCHEMAS.duct) {
+  SCHEMAS.duct.fields.push(
+    { key: "width", label: "Duct Width", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.05 },
+    { key: "height", label: "Duct Height", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.05 }
+  );
+}
+if (SCHEMAS.pipe) {
+  SCHEMAS.pipe.fields.push(
+    { key: "diameter", label: "Pipe Diameter", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.01 }
+  );
+}
+if (SCHEMAS["cable-tray"]) {
+  SCHEMAS["cable-tray"].fields.push(
+    { key: "width", label: "Tray Width", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.05 },
+    { key: "height", label: "Tray Depth", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.01 }
+  );
+}
+if (SCHEMAS.beam) {
+  SCHEMAS.beam.fields.push(
+    { key: "height", label: "Beam Depth", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.05 },
+    { key: "thickness", label: "Beam Width", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.05 }
+  );
+}
+
 export function hasSchema(type: ElementType | string | null | undefined): boolean {
   if (!type) return false;
   return !!SCHEMAS[type as ElementType];

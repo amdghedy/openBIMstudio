@@ -91,6 +91,10 @@ function writeValue(
   value: string | number | boolean,
 ): void {
   if (element) {
+    // 1. Snapshot the "before" state for Undo
+    const before = JSON.parse(JSON.stringify(element));
+
+    // 2. Apply the new value
     if (target === "root") {
       (element as any)[key] = value;
     } else if (target === "params") {
@@ -98,10 +102,34 @@ function writeValue(
     } else {
       element.properties = { ...(element.properties ?? {}), [key]: value };
     }
-    rebuildAuthored();
-    markAuthoringDirty();
-  } else {
-    setTypeDefault(typeKey, target, key, value);
+
+    // 3. Snapshot the "after" state for Redo
+    const after = JSON.parse(JSON.stringify(element));
+
+    // 4. Instantly rebuild the 3D geometry so the user sees the change
+    try {
+      import("./authoring").then((m) => {
+        m.rebuildAuthored();
+        m.markAuthoringDirty();
+      });
+    } catch (e) { /* */ }
+
+    // 5. Push to History so Ctrl+Z works
+    try {
+      import("./history").then((m) => {
+        m.history.push({
+          label: `Edit ${key} · ${element.name || element.id}`,
+          apply: () => {
+            Object.assign(element, after);
+            import("./authoring").then(m => m.rebuildAuthored());
+          },
+          revert: () => {
+            Object.assign(element, before);
+            import("./authoring").then(m => m.rebuildAuthored());
+          }
+        });
+      });
+    } catch (e) { /* */ }
   }
 }
 
