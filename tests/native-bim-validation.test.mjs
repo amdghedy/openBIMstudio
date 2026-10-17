@@ -91,3 +91,16 @@ assert.deepEqual(summarizeDocumentationDiagnostics(docIssues), {
   warnings: docIssues.filter(d => d.severity === "warning").length,
 });
 console.log("PASS documentation QA: valid layout, viewport overlap, missing views, sheet bounds and scales");
+
+
+// Authoring operation gates are wired to the shared validator. These source-level
+// checks protect the UI integration until browser-driven operation tests are available.
+const authoring = fs.readFileSync(path.join(root, "src/features/authoring.ts"), "utf8");
+assert.match(authoring, /function rejectInvalidOperation\(/);
+assert.match(authoring, /rejectInvalidOperation\(elements\.map\(\(item\) => item\.id === src\.id \? candidate : item\)/);
+assert.match(authoring, /"rotate selected elements"/);
+assert.match(authoring, /"mirror selected elements"/);
+assert.match(authoring, /"array selected elements"/);
+assert.match(authoring, /click direction point/);
+assert.match(authoring, /Array requires 1–500 copies and a positive spacing/);
+console.log("Native BIM authoring operation gate checks passed.");
