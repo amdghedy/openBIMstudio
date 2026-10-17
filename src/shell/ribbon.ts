@@ -1651,6 +1651,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     id: "manage",
     label: "Manage",
     items: () => [
+      groupLabel("Collaboration"),
+      b("system", "Live Sync", safe(() => (ctx.features as any).collaborationPanel?.toggle?.(), "Collaboration"), { title: "Join a real-time collaboration session" }),
+      sep(),
       groupLabel("Links"),
       b("folder-recent", "Manage Links", () => (window as any).__obsManageLinks?.(), { title: "Manage external links (IFC, DWG, BIM)" }),
       sep(),

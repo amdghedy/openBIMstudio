@@ -1,4 +1,4 @@
-import { setupManageLinks } from "./features/manage-links";
+﻿import { setupManageLinks } from "./features/manage-links";
 import "./critical-gaps-boot";
 /**
  * Open BIM Studio v52 — main entry point.
@@ -74,6 +74,7 @@ import { setupSchedulesPanel } from "./features/schedules-panel";
 import { setupWalkMode } from "./features/walk-mode";
 import { setupWalkMinimap } from "./features/walk-minimap";
 import { setupCommandPalette } from "./features/command-palette";
+import { setupCollaborationPanel } from "./features/collaboration-panel";
 import { setupSavedViews } from "./features/saved-views";
 import { setupCursorTracker } from "./features/cursor-tracker";
 import { setupFragEdit } from "./features/frag-edit";
@@ -191,7 +192,8 @@ await step("setupViewer (core)", async () => {
     throw new Error('index.html has no <div id="app"> — check your HTML entry.');
   }
   try {
-    await setupViewer();
+    await setupViewer();
+
     setupExtras();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -229,6 +231,7 @@ await step("wall-handles", () => setupWallHandles());
 await step("saved-views", () => setupSavedViews());
 await step("cursor-tracker", () => setupCursorTracker());
 await step("command-palette", () => setupCommandPalette());
+await step("collaboration-panel", () => setupCollaborationPanel());
 await step("walk-mode", () => setupWalkMode());
 await step("walk-minimap", () => setupWalkMinimap());
 
