@@ -51,3 +51,33 @@ const badGrid = { id: "grid-1", label: "A", start: [1, 1], end: [1, 1] };
 assert.ok(validateNativeModel({ elements: [], grids: [badGrid] }).some((d) => d.code === "GRID_LENGTH_ZERO"));
 
 console.log("PASS native BIM validation: valid model, degenerate geometry, hosted relationships, IFC identity, mesh payload, transforms and grids");
+
+const { validateDocumentationSet, summarizeDocumentationDiagnostics } = await import(
+  "data:text/javascript;base64," + Buffer.from(ts.transpileModule(
+    fs.readFileSync(path.join(root, "src/modules/native-bim/documentation-validation.ts"), "utf8"),
+    { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }
+  ).outputText).toString("base64")
+);
+const docBase = {
+  sheets: [{ id: "s1", number: "A-101", name: "Ground Plan", size: "A1", orientation: "landscape", viewports: [
+    { id: "vp1", viewId: "v1", x: 20, y: 20, width: 300, height: 200, scale: "1:100" },
+    { id: "vp2", viewId: "v2", x: 250, y: 100, width: 300, height: 200, scale: "1:50" },
+  ] }],
+  views: [{ id: "v1", name: "Ground Plan", scale: 100 }, { id: "v2", name: "Section A-A", scale: 50 }],
+  sheetSizesMm: { s1: { w: 841, h: 594 } },
+};
+assert.ok(validateDocumentationSet(docBase).some(d => d.code === "VIEWPORT_OVERLAP"), "overlapping viewports should be reported");
+assert.equal(validateDocumentationSet({ ...docBase, sheets: [{ ...docBase.sheets[0], viewports: [docBase.sheets[0].viewports[0]] }] }).length, 0, "valid documentation set should pass");
+const brokenDoc = { ...docBase, sheets: [{ ...docBase.sheets[0], number: "A-101", viewports: [
+  { id: "bad-vp", viewId: "missing-view", x: 900, y: 10, width: 20, height: 20, scale: "0:0" }
+] }] };
+const docIssues = validateDocumentationSet(brokenDoc);
+for (const code of ["VIEWPORT_VIEW_MISSING", "VIEWPORT_OUTSIDE_SHEET", "VIEWPORT_SCALE_INVALID"]) {
+  assert.ok(docIssues.some(d => d.code === code), "expected documentation diagnostic " + code);
+}
+assert.deepEqual(summarizeDocumentationDiagnostics(docIssues), {
+  total: docIssues.length,
+  errors: docIssues.filter(d => d.severity === "error").length,
+  warnings: docIssues.filter(d => d.severity === "warning").length,
+});
+console.log("PASS documentation QA: valid layout, viewport overlap, missing views, sheet bounds and scales");

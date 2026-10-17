@@ -29,6 +29,7 @@ import type { ViewDef } from "../modules/views/types";
 import type { SheetDef, SheetViewport } from "../modules/projects/types";
 import { getElements, getGrids, getLevels } from "./authoring";
 import { validateNativeModel, summarizeDiagnostics } from "../modules/native-bim/model-validation";
+import { validateDocumentationSet, summarizeDocumentationDiagnostics } from "../modules/native-bim/documentation-validation";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PANEL_ID = "obs-sheets-2d-panel";
@@ -193,6 +194,21 @@ export function setupSheets2dPanel(): void {
   };
 }
 
+function getDocumentationDiagnostics() {
+  const sheets = listSheets();
+  const views = listViews();
+  const sheetSizesMm: Record<string, { w: number; h: number }> = {};
+  for (const sheet of sheets) sheetSizesMm[sheet.id] = getSheetSizeMm(sheet.size, sheet.orientation);
+  return validateDocumentationSet({
+    sheets: sheets.map(sheet => ({
+      id: sheet.id, number: sheet.number, name: sheet.name, size: sheet.size,
+      orientation: sheet.orientation, viewports: sheet.viewports,
+    })),
+    views: views.map(view => ({ id: view.id, name: view.name, scale: view.scale })),
+    sheetSizesMm,
+  });
+}
+
 function toggleModelQa(): void {
   if (qaPanel) {
     qaPanel.remove();
@@ -221,7 +237,8 @@ function toggleModelQa(): void {
   const exportReport = mkBtn("Export report JSON", () => {
     const snapshot = { elements: getElements(), levels: getLevels(), grids: getGrids() };
     const diagnostics = validateNativeModel(snapshot);
-    const report = { generatedAt: new Date().toISOString(), elementCount: snapshot.elements.length, levelCount: snapshot.levels.length, gridCount: snapshot.grids.length, summary: summarizeDiagnostics(diagnostics), diagnostics };
+    const documentation = getDocumentationDiagnostics();
+    const report = { generatedAt: new Date().toISOString(), elementCount: snapshot.elements.length, levelCount: snapshot.levels.length, gridCount: snapshot.grids.length, modelSummary: summarizeDiagnostics(diagnostics), modelDiagnostics: diagnostics, documentationSummary: summarizeDocumentationDiagnostics(documentation), documentationDiagnostics: documentation };
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -242,8 +259,12 @@ function renderModelQa(content: HTMLDivElement): void {
   const old = content.querySelector("[data-qa-results]");
   old?.remove();
   const snapshot = { elements: getElements(), levels: getLevels(), grids: getGrids() };
-  const diagnostics = validateNativeModel(snapshot);
-  const summary = summarizeDiagnostics(diagnostics);
+  const modelDiagnostics = validateNativeModel(snapshot);
+  const documentationDiagnostics = getDocumentationDiagnostics();
+  const diagnostics = [...modelDiagnostics.map(d => ({ ...d, scope: "Model" })), ...documentationDiagnostics.map(d => ({ code: d.code, severity: d.severity, message: d.message, elementId: d.viewportId ?? d.sheetId, relatedId: d.relatedId, path: d.sheetId ? "sheet:" + d.sheetId : undefined, scope: "Documentation" }))];
+  const modelSummary = summarizeDiagnostics(modelDiagnostics);
+  const docSummary = summarizeDocumentationDiagnostics(documentationDiagnostics);
+  const summary = { errors: modelSummary.errors + docSummary.errors, warnings: modelSummary.warnings + docSummary.warnings };
   const results = document.createElement("div");
   results.dataset.qaResults = "true";
   const metrics = document.createElement("div");
@@ -265,6 +286,8 @@ function renderModelQa(content: HTMLDivElement): void {
   metric("Grids", snapshot.grids.length, "#e8eaf0");
   metric("Errors", summary.errors, summary.errors ? "#fb7185" : "#34d399");
   metric("Warnings", summary.warnings, summary.warnings ? "#fbbf24" : "#34d399");
+  metric("Sheets", listSheets().length, "#e8eaf0");
+  metric("Views", listViews().length, "#e8eaf0");
   results.appendChild(metrics);
   const status = document.createElement("p");
   status.style.cssText = "margin:0 0 12px;color:" + (summary.errors ? "#fb7185" : "#34d399");
@@ -280,7 +303,7 @@ function renderModelQa(content: HTMLDivElement): void {
     table.style.cssText = "width:100%;border-collapse:collapse;text-align:left";
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
-    for (const label of ["Severity", "Code", "Element", "Message"]) {
+    for (const label of ["Scope", "Severity", "Code", "Element / Viewport", "Message"]) {
       const th = document.createElement("th");
       th.textContent = label;
       th.style.cssText = "padding:8px;border-bottom:1px solid #394254;color:#9aa7bb";
@@ -291,7 +314,7 @@ function renderModelQa(content: HTMLDivElement): void {
     const tbody = document.createElement("tbody");
     for (const d of diagnostics) {
       const tr = document.createElement("tr");
-      const values = [d.severity.toUpperCase(), d.code, d.elementId ?? "—", d.message + (d.path ? " (" + d.path + ")" : "")];
+      const values = [d.scope, d.severity.toUpperCase(), d.code, d.elementId ?? "—", d.message + (d.path ? " (" + d.path + ")" : "")];
       values.forEach((value, i) => {
         const td = document.createElement("td");
         td.textContent = value;
