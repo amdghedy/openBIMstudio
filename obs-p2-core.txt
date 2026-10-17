@@ -1,0 +1,2916 @@
+﻿
+===== FILE: src/core/input-router.ts =====
+/**
+ * Single authoritative pointer / wheel / Escape router for the 3D viewport.
+ *
+ * Key properties:
+ *   â€¢ Gesture ownership â€” the first handler to accept a `drag-start` owns
+ *     that gesture. Only the owner sees `drag-move` and `drag-end`.
+ *   â€¢ Priority ordering â€” higher priority runs first. Gizmo (100) beats
+ *     box-select (50) beats context-menu (20) beats authoring (10).
+ *   â€¢ Cancel registration â€” Escape handlers run in reverse registration
+ *     order; the first to return true consumes the key.
+ *   â€¢ Camera auto-pause â€” the router pauses CameraControls for the duration
+ *     of any claimed drag and releases it on drag-end.
+ *   â€¢ Hover â€” throttled to one dispatch per frame; all subscribers receive it.
+ *
+ * The router attaches capture-phase listeners to the host so it sees events
+ * before anything else, but only calls preventDefault / stopPropagation when
+ * a handler claims the gesture. Unclaimed input falls through to the camera
+ * controls and any legacy listeners still present.
+ */
+import { ctx } from "./context";
+import { pauseCameraControls, forceResumeCameraControls } from "./camera-gate";
+
+export type PointerButton = 0 | 1 | 2;
+
+export interface Mods {
+  ctrl: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+}
+
+export type Gesture =
+  | { kind: "click"; button: PointerButton; mods: Mods; event: PointerEvent }
+  | { kind: "dblclick"; button: PointerButton; mods: Mods; event: PointerEvent }
+  | { kind: "drag-start"; button: PointerButton; mods: Mods; event: PointerEvent }
+  | { kind: "drag-move"; button: PointerButton; mods: Mods; dx: number; dy: number; event: PointerEvent }
+  | { kind: "drag-end"; button: PointerButton; mods: Mods; dx: number; dy: number; moved: boolean; event: PointerEvent }
+  | { kind: "rmb-click"; mods: Mods; event: PointerEvent }
+  | { kind: "wheel"; event: WheelEvent; mods: Mods };
+
+export type GestureHandler = (g: Gesture) => boolean;
+export type HoverHandler = (e: PointerEvent) => void;
+export type CancelHandler = () => boolean;
+
+
+/** True when the event originated on a floating panel / form control â€” not the canvas. */
+function isUiEventTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  if (!el || !el.closest) return false;
+  if (el.closest(
+    "input,textarea,select,button,label,a," +
+    "[contenteditable=true],[data-obs-window-controls]",
+  )) return true;
+  // Any dockable / floating panel shell
+  if (el.closest(
+    '#obs-ai-chat,#obs-bim-toolbox,[id^="obs-"],[data-obs-panel],.obs-panel,.obs-toast-host',
+  )) {
+    // Still allow canvas-like surfaces inside panels (e.g. plan view)
+    if (el.closest("canvas")) return false;
+    return true;
+  }
+  // Generic: if it's not the WebGL canvas, treat as UI when inside rightHost children that are not the canvas parent
+  const tag = el.tagName;
+  if (tag === "CANVAS") return false;
+  return false;
+}
+
+const DRAG_THRESHOLD = 4;
+const DBLCLICK_MS = 320;
+const DBLCLICK_PX = 6;
+
+interface Sub { fn: GestureHandler; priority: number; order: number; }
+
+class InputRouterImpl {
+  private host: HTMLElement | null = null;
+  private subs: Sub[] = [];
+  private hoverHandlers: HoverHandler[] = [];
+  private cancelHandlers: CancelHandler[] = [];
+  private orderCounter = 0;
+
+  private down: {
+    x: number; y: number;
+    button: PointerButton;
+    mods: Mods;
+    moved: boolean;
+    id: number;
+  } | null = null;
+
+  private owner: GestureHandler | null = null;
+  private releaseCamera: (() => void) | null = null;
+
+  private lastClick: { t: number; x: number; y: number; button: PointerButton } | null = null;
+
+  private hoverPending = false;
+  private lastHoverEvent: PointerEvent | null = null;
+
+  /* â”€â”€ Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  attach(host: HTMLElement): void {
+    if (this.host === host) return;
+    this.detach();
+    this.host = host;
+    host.addEventListener("pointerdown", this.onDown, { capture: true });
+    host.addEventListener("pointermove", this.onMove, { capture: true });
+    host.addEventListener("pointerup", this.onUp, { capture: true });
+    host.addEventListener("pointercancel", this.onUp, { capture: true });
+    host.addEventListener("wheel", this.onWheel, { capture: true, passive: false });
+    host.addEventListener("contextmenu", this.onContextMenu, { capture: true });
+    window.addEventListener("keydown", this.onKeyDown, { capture: true });
+  }
+
+  detach(): void {
+    const host = this.host;
+    if (host) {
+      host.removeEventListener("pointerdown", this.onDown, true);
+      host.removeEventListener("pointermove", this.onMove, true);
+      host.removeEventListener("pointerup", this.onUp, true);
+      host.removeEventListener("pointercancel", this.onUp, true);
+      host.removeEventListener("wheel", this.onWheel, true);
+      host.removeEventListener("contextmenu", this.onContextMenu, true);
+    }
+    window.removeEventListener("keydown", this.onKeyDown, true);
+    this.host = null;
+    this.down = null;
+    this.releaseOwner();
+  }
+
+  /* â”€â”€ Subscription â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  subscribe(h: GestureHandler, priority = 0): () => void {
+    const sub: Sub = { fn: h, priority, order: this.orderCounter++ };
+    this.subs.push(sub);
+    this.subs.sort((a, b) => b.priority - a.priority || a.order - b.order);
+    return () => {
+      const i = this.subs.indexOf(sub);
+      if (i >= 0) this.subs.splice(i, 1);
+    };
+  }
+
+  subscribeHover(h: HoverHandler): () => void {
+    this.hoverHandlers.push(h);
+    return () => {
+      const i = this.hoverHandlers.indexOf(h);
+      if (i >= 0) this.hoverHandlers.splice(i, 1);
+    };
+  }
+
+  registerCancel(h: CancelHandler): () => void {
+    this.cancelHandlers.push(h);
+    return () => {
+      const i = this.cancelHandlers.indexOf(h);
+      if (i >= 0) this.cancelHandlers.splice(i, 1);
+    };
+  }
+
+  hasOwner(): boolean { return this.owner !== null; }
+
+  /* â”€â”€ Internals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  private mods(e: MouseEvent | WheelEvent | PointerEvent): Mods {
+    return { ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey };
+  }
+
+  private dispatch(g: Gesture): GestureHandler | null {
+    for (const s of this.subs) {
+      try {
+        if (s.fn(g)) return s.fn;
+      } catch (err) {
+        console.error("[input-router] handler threw", err);
+      }
+    }
+    return null;
+  }
+
+  private releaseOwner(): void {
+    this.owner = null;
+    if (this.releaseCamera) {
+      try { this.releaseCamera(); } catch { /* */ }
+      this.releaseCamera = null;
+    }
+  }
+
+  private scheduleHover(e: PointerEvent): void {
+    this.lastHoverEvent = e;
+    if (this.hoverPending) return;
+    this.hoverPending = true;
+    requestAnimationFrame(() => {
+      this.hoverPending = false;
+      const ev = this.lastHoverEvent;
+      if (!ev) return;
+      for (const h of this.hoverHandlers) {
+        try { h(ev); } catch (err) { console.error("[input-router] hover threw", err); }
+      }
+    });
+  }
+
+  /* â”€â”€ Pointer events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  private onDown = (e: PointerEvent): void => {
+    if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+    if (isUiEventTarget(e.target)) return;
+    if (this.down && this.down.id !== e.pointerId) return;
+    this.down = {
+      x: e.clientX, y: e.clientY,
+      button: e.button as PointerButton,
+      mods: this.mods(e),
+      moved: false,
+      id: e.pointerId,
+    };
+    this.owner = null;
+  };
+
+  private onMove = (e: PointerEvent): void => {
+    if (!this.down) { this.scheduleHover(e); return; }
+    if (this.down.id !== e.pointerId) return;
+
+    const dx = e.clientX - this.down.x;
+    const dy = e.clientY - this.down.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (!this.down.moved && dist >= DRAG_THRESHOLD) {
+      this.down.moved = true;
+      const owner = this.dispatch({
+        kind: "drag-start",
+        button: this.down.button,
+        mods: this.mods(e),
+        event: e,
+      });
+      if (owner) {
+        this.owner = owner;
+        this.releaseCamera = pauseCameraControls();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+
+    if (this.owner) {
+      try {
+        this.owner({
+          kind: "drag-move",
+          button: this.down.button,
+          mods: this.mods(e),
+          dx, dy,
+          event: e,
+        });
+      } catch (err) {
+        console.error("[input-router] owner drag-move threw", err);
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  private onUp = (e: PointerEvent): void => {
+    if (!this.down || this.down.id !== e.pointerId) return;
+    const d = this.down;
+    this.down = null;
+
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    const moved = d.moved || Math.hypot(dx, dy) >= DRAG_THRESHOLD;
+
+    if (this.owner) {
+      try {
+        this.owner({
+          kind: "drag-end",
+          button: d.button,
+          mods: this.mods(e),
+          dx, dy,
+          moved: true,
+          event: e,
+        });
+      } catch (err) {
+        console.error("[input-router] owner drag-end threw", err);
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      this.releaseOwner();
+      return;
+    }
+
+    if (moved) {
+      // Drag completed but nothing claimed it â€” reset double-click timing.
+      this.lastClick = null;
+      return;
+    }
+
+    if (d.button === 2) {
+      if (this.dispatch({ kind: "rmb-click", mods: this.mods(e), event: e })) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      this.lastClick = null;
+      return;
+    }
+
+    const now = performance.now();
+    const isDbl = !!this.lastClick
+      && now - this.lastClick.t < DBLCLICK_MS
+      && Math.hypot(e.clientX - this.lastClick.x, e.clientY - this.lastClick.y) < DBLCLICK_PX
+      && this.lastClick.button === d.button;
+
+    const g: Gesture = isDbl
+      ? { kind: "dblclick", button: d.button, mods: this.mods(e), event: e }
+      : { kind: "click", button: d.button, mods: this.mods(e), event: e };
+
+    if (this.dispatch(g)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    this.lastClick = { t: now, x: e.clientX, y: e.clientY, button: d.button };
+  };
+
+  private onWheel = (e: WheelEvent): void => {
+    if (isUiEventTarget(e.target)) return;
+    if (this.dispatch({ kind: "wheel", event: e, mods: this.mods(e) })) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  private onContextMenu = (e: MouseEvent): void => {
+    // The application owns the menu. Never let the browser default leak
+    // through over the viewport.
+    e.preventDefault();
+  };
+
+  private onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== "Escape") return;
+    for (let i = this.cancelHandlers.length - 1; i >= 0; i--) {
+      try {
+        if (this.cancelHandlers[i]()) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          // Always clear a stuck camera pause after cancel.
+          forceResumeCameraControls();
+          this.releaseOwner();
+          return;
+        }
+      } catch (err) {
+        console.error("[input-router] cancel handler threw", err);
+      }
+    }
+    // Escape with no cancel handler: still unstick camera if a drag left it paused.
+    forceResumeCameraControls();
+    this.releaseOwner();
+  };
+}
+
+export const inputRouter = new InputRouterImpl();
+
+export function setupInputRouter(): () => void {
+  if (!ctx.rightHost) {
+    console.warn("[input-router] rightHost not ready");
+    return () => {};
+  }
+  inputRouter.attach(ctx.rightHost);
+  (ctx.features as any).inputRouter = inputRouter;
+  console.log("[input-router] attached");
+  return () => inputRouter.detach();
+}
+
+
+===== FILE: src/core/options-registry.ts =====
+/**
+ * Options Registry â€” central place for app-level preferences.
+ */
+import { ctx } from "./context";
+import { diagnostics } from "./diagnostics";
+
+export type OptionType = "boolean" | "number" | "string" | "select";
+
+export interface OptionBase {
+  id: string;
+  group: string;
+  label: string;
+  description?: string;
+  type: OptionType;
+  default: boolean | number | string;
+  apply?: (value: any) => void;
+}
+
+export interface BooleanOption extends OptionBase {
+  type: "boolean";
+  default: boolean;
+}
+export interface NumberOption extends OptionBase {
+  type: "number";
+  default: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+}
+export interface StringOption extends OptionBase {
+  type: "string";
+  default: string;
+  placeholder?: string;
+}
+export interface SelectOption extends OptionBase {
+  type: "select";
+  default: string;
+  choices: Array<{ value: string; label: string }>;
+}
+
+export type OptionDef = BooleanOption | NumberOption | StringOption | SelectOption;
+
+const STORAGE_KEY = "obs.options.v1";
+const registry = new Map<string, OptionDef>();
+const values = new Map<string, any>();
+const listeners = new Set<(id: string, value: any) => void>();
+
+function loadPersisted(): Record<string, any> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persist(): void {
+  try {
+    const out: Record<string, any> = {};
+    for (const [id, v] of values) out[id] = v;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
+  } catch (err) {
+    diagnostics.warn("options.persist", "could not save options", err);
+  }
+}
+
+function validate(def: OptionDef, v: any): boolean {
+  switch (def.type) {
+    case "boolean":
+      return typeof v === "boolean";
+    case "number":
+      return typeof v === "number" && Number.isFinite(v);
+    case "string":
+      return typeof v === "string";
+    case "select":
+      return def.choices.some((c) => c.value === v);
+  }
+}
+
+export function registerOption(def: OptionDef): void {
+  if (registry.has(def.id)) {
+    diagnostics.warn("options.register", `duplicate option id "${def.id}"`);
+    return;
+  }
+  registry.set(def.id, def);
+}
+
+export function listOptions(group?: string): OptionDef[] {
+  const all = [...registry.values()];
+  return group ? all.filter((o) => o.group === group) : all;
+}
+
+export function getOption<T = any>(id: string): T {
+  if (values.has(id)) return values.get(id) as T;
+  const def = registry.get(id);
+  if (!def) return undefined as any;
+  const persisted = loadPersisted();
+  const v =
+    id in persisted && validate(def, persisted[id]) ? persisted[id] : def.default;
+  values.set(id, v);
+  return v as T;
+}
+
+export function setOption(id: string, value: any): void {
+  const def = registry.get(id);
+  if (!def) {
+    diagnostics.warn("options.set", `unknown option "${id}"`);
+    return;
+  }
+  if (!validate(def, value)) {
+    diagnostics.warn("options.set", `invalid value for "${id}"`, value);
+    return;
+  }
+  values.set(id, value);
+  try {
+    def.apply?.(value);
+  } catch (err) {
+    diagnostics.warn(`options.apply.${id}`, "apply threw", err);
+  }
+  persist();
+  for (const l of listeners) {
+    try {
+      l(id, value);
+    } catch {
+      /* */
+    }
+  }
+}
+
+export function onOptionChanged(cb: (id: string, value: any) => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
+
+export function applyAllOptions(): void {
+  for (const def of registry.values()) {
+    const v = getOption(def.id);
+    try {
+      def.apply?.(v);
+    } catch (err) {
+      diagnostics.warn(`options.apply.${def.id}`, "apply threw", err);
+    }
+  }
+}
+
+let dialog: HTMLDivElement | null = null;
+let currentGroup: string | null = null;
+
+function ensureDialog(): HTMLDivElement {
+  if (dialog) return dialog;
+  dialog = document.createElement("div");
+  dialog.id = "obs-options-dialog";
+  dialog.style.cssText =
+    "position:fixed;inset:0;z-index:9000;display:none;align-items:center;" +
+    "justify-content:center;background:rgba(8,9,12,.55)";
+  dialog.addEventListener("mousedown", (e) => {
+    if (e.target === dialog) hideOptions();
+  });
+
+  const card = document.createElement("div");
+  card.style.cssText =
+    "width:min(760px,94vw);max-height:82vh;display:flex;flex-direction:column;" +
+    "background:#1c1e28;border:1px solid #2a2e3a;border-radius:12px;" +
+    "box-shadow:0 30px 80px rgba(0,0,0,.55);overflow:hidden;color:#e8eaf0;" +
+    "font:12.5px system-ui,sans-serif";
+
+  const header = document.createElement("div");
+  header.style.cssText =
+    "display:flex;align-items:center;gap:8px;padding:12px 14px;" +
+    "border-bottom:1px solid #1e2029;background:#181a23";
+  header.innerHTML = `<span style="font-weight:700;font-size:14px;flex:1">Options</span>`;
+  const close = document.createElement("button");
+  close.textContent = "âœ•";
+  close.style.cssText =
+    "padding:4px 9px;background:transparent;color:#9ca3af;" +
+    "border:1px solid #2a2e3a;border-radius:5px;cursor:pointer";
+  close.onclick = () => hideOptions();
+  header.appendChild(close);
+
+  const body = document.createElement("div");
+  body.style.cssText = "display:flex;flex:1;min-height:0";
+
+  const sidebar = document.createElement("div");
+  sidebar.dataset.role = "sidebar";
+  sidebar.style.cssText =
+    "width:200px;flex:none;border-right:1px solid #1e2029;padding:10px 6px;overflow-y:auto;background:#181a23";
+
+  const content = document.createElement("div");
+  content.dataset.role = "content";
+  content.style.cssText = "flex:1;padding:14px 18px;overflow-y:auto";
+
+  body.append(sidebar, content);
+  card.append(header, body);
+  dialog.appendChild(card);
+  document.body.appendChild(dialog);
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && dialog?.style.display === "flex") hideOptions();
+  });
+
+  return dialog;
+}
+
+export function showOptions(group?: string): void {
+  const d = ensureDialog();
+  d.style.display = "flex";
+  renderOptions(group);
+}
+
+export function hideOptions(): void {
+  if (dialog) dialog.style.display = "none";
+}
+
+export function toggleOptions(): void {
+  if (dialog?.style.display === "flex") hideOptions();
+  else showOptions();
+}
+
+function renderOptions(group?: string): void {
+  if (!dialog) return;
+  const sidebar = dialog.querySelector('[data-role="sidebar"]') as HTMLElement;
+  const content = dialog.querySelector('[data-role="content"]') as HTMLElement;
+  if (!sidebar || !content) return;
+
+  const groups = [...new Set(listOptions().map((o) => o.group))].sort();
+  if (!currentGroup || (group && groups.includes(group))) {
+    currentGroup = group ?? groups[0] ?? null;
+  }
+
+  sidebar.innerHTML = "";
+  for (const g of groups) {
+    const b = document.createElement("button");
+    b.textContent = g;
+    const active = g === currentGroup;
+    b.style.cssText =
+      "display:block;width:100%;padding:7px 10px;margin-bottom:2px;text-align:left;" +
+      `background:${active ? "rgba(56,189,248,.14)" : "transparent"};` +
+      `color:${active ? "#38bdf8" : "#e8eaf0"};border:none;border-radius:6px;cursor:pointer;font:inherit`;
+    b.onclick = () => {
+      currentGroup = g;
+      renderOptions();
+    };
+    sidebar.appendChild(b);
+  }
+
+  content.innerHTML = "";
+  if (!currentGroup) {
+    content.innerHTML =
+      `<div style="color:#6b7280;text-align:center;padding:40px">No options registered.</div>`;
+    return;
+  }
+
+  for (const def of listOptions(currentGroup)) {
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start;" +
+      "padding:10px 0;border-bottom:1px solid #1e2029";
+
+    const labelWrap = document.createElement("div");
+    const label = document.createElement("div");
+    label.textContent = def.label;
+    label.style.cssText = "font-weight:600";
+    labelWrap.appendChild(label);
+    if (def.description) {
+      const desc = document.createElement("div");
+      desc.textContent = def.description;
+      desc.style.cssText = "font-size:11px;color:#6b7280;margin-top:3px;line-height:1.45";
+      labelWrap.appendChild(desc);
+    }
+
+    const control = createControl(def);
+    row.append(labelWrap, control);
+    content.appendChild(row);
+  }
+}
+
+function createControl(def: OptionDef): HTMLElement {
+  const value = getOption(def.id);
+
+  if (def.type === "boolean") {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !!value;
+    cb.style.cssText = "cursor:pointer;transform:scale(1.2);accent-color:#38bdf8";
+    cb.onchange = () => setOption(def.id, cb.checked);
+    return cb;
+  }
+
+  if (def.type === "number") {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "display:flex;gap:6px;align-items:center";
+    const inp = document.createElement("input");
+    inp.type = "number";
+    inp.value = String(value);
+    if (def.min != null) inp.min = String(def.min);
+    if (def.max != null) inp.max = String(def.max);
+    if (def.step != null) inp.step = String(def.step);
+    inp.style.cssText =
+      "width:110px;padding:5px 8px;background:#0e1017;border:1px solid #2a2e3a;" +
+      "border-radius:5px;color:#e8eaf0;font:inherit";
+    inp.onchange = () => {
+      const v = Number(inp.value);
+      if (Number.isFinite(v)) setOption(def.id, v);
+    };
+    wrap.appendChild(inp);
+    if (def.unit) {
+      const u = document.createElement("span");
+      u.textContent = def.unit;
+      u.style.cssText = "font-size:11px;color:#6b7280";
+      wrap.appendChild(u);
+    }
+    return wrap;
+  }
+
+  if (def.type === "string") {
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.value = String(value);
+    inp.style.cssText =
+      "min-width:220px;padding:5px 8px;background:#0e1017;border:1px solid #2a2e3a;" +
+      "border-radius:5px;color:#e8eaf0;font:inherit";
+    inp.oninput = () => setOption(def.id, inp.value);
+    return inp;
+  }
+
+  if (def.type === "select") {
+    const sel = document.createElement("select");
+    sel.style.cssText =
+      "min-width:180px;padding:5px 8px;background:#0e1017;border:1px solid #2a2e3a;" +
+      "border-radius:5px;color:#e8eaf0;font:inherit;cursor:pointer";
+    for (const c of def.choices) {
+      const opt = document.createElement("option");
+      opt.value = c.value;
+      opt.textContent = c.label;
+      if (c.value === value) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.onchange = () => setOption(def.id, sel.value);
+    return sel;
+  }
+
+  return document.createElement("div");
+}
+
+export function setupOptions(): void {
+  registerOption({
+    id: "nav.smoothTime",
+    group: "Navigation",
+    label: "Camera smoothing",
+    description: "Time constant for smoothing camera motion. Lower = snappier.",
+    type: "number",
+    default: 0.04,
+    min: 0,
+    max: 0.5,
+    step: 0.01,
+    unit: "s",
+    apply: (v) => {
+      try {
+        const c: any = ctx.world?.camera?.controls;
+        if (c && "smoothTime" in c) c.smoothTime = v;
+      } catch {
+        /* */
+      }
+    },
+  });
+
+  registerOption({
+    id: "nav.draggingSmoothTime",
+    group: "Navigation",
+    label: "Drag smoothing",
+    description: "Smoothing while dragging. Lower = more responsive.",
+    type: "number",
+    default: 0.02,
+    min: 0,
+    max: 0.5,
+    step: 0.01,
+    unit: "s",
+    apply: (v) => {
+      try {
+        const c: any = ctx.world?.camera?.controls;
+        if (c && "draggingSmoothTime" in c) c.draggingSmoothTime = v;
+      } catch {
+        /* */
+      }
+    },
+  });
+
+  registerOption({
+    id: "nav.invertOrbit",
+    group: "Navigation",
+    label: "Invert orbit direction",
+    type: "boolean",
+    default: false,
+    apply: () => {},
+  });
+
+  registerOption({
+    id: "nav.wheelZoomMultiplier",
+    group: "Navigation",
+    label: "Wheel zoom multiplier",
+    type: "number",
+    default: 1,
+    min: 0.25,
+    max: 5,
+    step: 0.25,
+    apply: () => {},
+  });
+
+  registerOption({
+    id: "diagnostics.showBadge",
+    group: "Diagnostics",
+    label: "Show warning badge",
+    type: "boolean",
+    default: true,
+    apply: (v) => {
+      const el = document.getElementById("obs-diag-badge");
+      if (!el) return;
+      if (!v) el.style.display = "none";
+    },
+  });
+
+  applyAllOptions();
+
+  (ctx.features as any).options = {
+    show: showOptions,
+    hide: hideOptions,
+    toggle: toggleOptions,
+    register: registerOption,
+    list: listOptions,
+    get: getOption,
+    set: setOption,
+    onChanged: onOptionChanged,
+  };
+
+  console.log("[options] ready");
+}
+
+
+===== FILE: src/core/notify.ts =====
+/**
+ * Centralised notification + history event bus.
+ *
+ * Every feature previously dispatched `obs-toast` and `obs-history` from a
+ * dozen modules with slightly different shapes. Listeners (the status bar,
+ * the ribbon, the toast host) now only need one subscription each.
+ */
+export type NotifyKind = "info" | "success" | "warn" | "error";
+
+export interface NotifyOptions {
+  /** Auto-dismiss delay in ms. 0 keeps the toast until dismissed. */
+  timeout?: number;
+  /** Optional inline action button. */
+  action?: { label: string; run: () => void };
+}
+
+const TOAST_EVENT = "obs-toast";
+const HISTORY_EVENT = "obs-history";
+
+export function notify(
+  kind: NotifyKind,
+  message: string,
+  opts: NotifyOptions = {},
+): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent(TOAST_EVENT, { detail: { kind, message, ...opts } }),
+    );
+  } catch {
+    /* non-browser env */
+  }
+}
+
+export function notifyHistory(action: "undo" | "redo", label: string): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent(HISTORY_EVENT, { detail: { action, label } }),
+    );
+  } catch {
+    /* */
+  }
+}
+
+/* â”€â”€ Compatibility shim â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   Some call sites still use `detail.kind` and `detail.message`; some use
+   `detail.message` and `detail.kind`. The host listener reads both.
+   Nothing else needs to change here.                                */
+
+export type ToastHandler = (kind: NotifyKind, message: string, opts: NotifyOptions) => void;
+const toastHandlers = new Set<ToastHandler>();
+
+export function onNotify(cb: ToastHandler): () => void {
+  toastHandlers.add(cb);
+  return () => toastHandlers.delete(cb);
+}
+
+/** Called by the toast host when a `obs-toast` event arrives. */
+export function __dispatchToSubscribers(
+  kind: NotifyKind,
+  message: string,
+  opts: NotifyOptions,
+): void {
+  for (const cb of toastHandlers) {
+    try { cb(kind, message, opts); } catch { /* */ }
+  }
+}
+
+
+===== FILE: src/core/i18n.ts =====
+/**
+ * Locale-aware translation service.
+ *
+ * Design goals:
+ *   - Zero dependencies â€” works with plain JSON catalogs
+ *   - Namespaced keys via dot notation: t("clash.status.selectModels")
+ *   - Plural rules via Intl.PluralRules â€” no ICU parser needed
+ *   - Variable interpolation with {name} syntax
+ *   - RTL detection and Direction state
+ *   - Feature/plugin catalogs can register at runtime
+ *   - Locale change fires an event so UI can re-render
+ *
+ * Catalog shape:
+ *   {
+ *     "meta": { "name": "English", "nativeName": "English", "dir": "ltr" },
+ *     "clash": {
+ *       "status": {
+ *         "selectModels": "Select models in A and B, then Run Test.",
+ *         "found": { "one": "1 clash found.", "other": "{count} clashes found." }
+ *       }
+ *     }
+ *   }
+ */
+import { diagnostics } from "./diagnostics";
+
+export type Locale =
+  | "en" | "ar" | "de" | "fr" | "es" | "pt-BR" | "it"
+  | "zh-CN" | "zh-TW" | "ja" | "ko"
+  | "ru" | "tr" | "pl" | "nl"
+  | "hi" | "he" | "fa" | "ur";
+
+export type TextDirection = "ltr" | "rtl";
+
+const RTL_LOCALES: ReadonlySet<Locale> = new Set<Locale>([
+  "ar", "he", "fa", "ur",
+]);
+
+export interface CatalogMeta {
+  name: string;
+  nativeName: string;
+  dir: TextDirection;
+}
+
+export type CatalogLeaf = string | PluralForms;
+export type PluralForms = Partial<Record<
+  Intl.LDMLPluralRule | "other",
+  string
+>>;
+export type CatalogNode = CatalogLeaf | { [key: string]: CatalogNode };
+
+/* -------------------------------------------------------------------- */
+
+const STORAGE_KEY = "obs.locale";
+const FALLBACK_LOCALE: Locale = "en";
+const MISSING_MARKER = "\u2400";
+
+type ChangeListener = (locale: Locale) => void;
+
+class I18nService {
+  private catalogs = new Map<Locale, Catalog>();
+  private current: Locale = FALLBACK_LOCALE;
+  private listeners = new Set<ChangeListener>();
+  private pluralRulesCache = new Map<Locale, Intl.PluralRules>();
+  private missingKeys = new Set<string>();
+  private booted = false;
+
+  /* -- Registration --------------------------------------------------- */
+
+  register(locale: Locale, catalog: Partial<Catalog>): void {
+    const existing = this.catalogs.get(locale);
+    if (!existing) {
+      this.catalogs.set(locale, catalog as Catalog);
+      return;
+    }
+    const merged = deepMerge(existing, catalog);
+    this.catalogs.set(locale, merged as Catalog);
+  }
+
+  registerAll(bundle: Partial<Record<Locale, Partial<Catalog>>>): void {
+    for (const [locale, cat] of Object.entries(bundle)) {
+      if (!cat) continue;
+      this.register(locale as Locale, cat);
+    }
+  }
+
+  /* -- Lifecycle ------------------------------------------------------ */
+
+  boot(): void {
+    if (this.booted) return;
+    this.booted = true;
+
+    let saved: Locale | null = null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) saved = raw as Locale;
+    } catch { /* */ }
+
+    const detected = saved ?? this.detectBrowserLocale();
+    this.setLocale(detected, { silent: !saved });
+  }
+
+  private detectBrowserLocale(): Locale {
+    const langs = navigator.languages?.length
+      ? navigator.languages
+      : [navigator.language];
+    for (const l of langs) {
+      const exact = l as Locale;
+      if (this.catalogs.has(exact)) return exact;
+
+      // Keep the raw string so we can compare against values that are
+      // intentionally not in the Locale union (e.g. "zh").
+      const baseStr = l.split("-")[0];
+      const base = baseStr as Locale;
+      if (this.catalogs.has(base)) return base;
+
+      // Special case for Chinese: "zh" â†’ "zh-CN"
+      if (baseStr === "zh") return "zh-CN";
+    }
+    return FALLBACK_LOCALE;
+  }
+
+  getLocale(): Locale {
+    return this.current;
+  }
+
+  getDirection(): TextDirection {
+    const cat = this.catalogs.get(this.current);
+    return cat?.meta?.dir ?? (RTL_LOCALES.has(this.current) ? "rtl" : "ltr");
+  }
+
+  isRTL(): boolean {
+    return this.getDirection() === "rtl";
+  }
+
+  listLocales(): Array<{ id: Locale; meta: CatalogMeta }> {
+    const out: Array<{ id: Locale; meta: CatalogMeta }> = [];
+    for (const [id, cat] of this.catalogs) {
+      out.push({ id, meta: cat.meta });
+    }
+    out.sort((a, b) => a.meta.name.localeCompare(b.meta.name));
+    return out;
+  }
+
+  setLocale(locale: Locale, opts: { silent?: boolean } = {}): void {
+    if (!this.catalogs.has(locale)) {
+      diagnostics.warn(
+        "i18n.setLocale",
+        `locale "${locale}" not registered â€” falling back to en`,
+      );
+      locale = FALLBACK_LOCALE;
+    }
+    if (this.current === locale && this.booted) return;
+    this.current = locale;
+
+    try {
+      localStorage.setItem(STORAGE_KEY, locale);
+    } catch { /* */ }
+
+    this.applyDocumentAttributes();
+
+    if (!opts.silent) {
+      for (const cb of this.listeners) {
+        try {
+          cb(locale);
+        } catch (err) {
+          diagnostics.warn("i18n.listener", "listener threw", err);
+        }
+      }
+    }
+  }
+
+  private applyDocumentAttributes(): void {
+    if (typeof document === "undefined") return;
+    const dir = this.getDirection();
+    document.documentElement.lang = this.current;
+    document.documentElement.dir = dir;
+    document.body?.setAttribute("data-locale", this.current);
+    document.body?.setAttribute("data-dir", dir);
+  }
+
+  onChange(cb: ChangeListener): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  /* -- Translation ---------------------------------------------------- */
+
+  t(key: string, vars?: Record<string, string | number>): string {
+    const value =
+      this.lookup(this.current, key) ??
+      this.lookup(FALLBACK_LOCALE, key);
+
+    if (value === undefined) {
+      if (!this.missingKeys.has(key)) {
+        this.missingKeys.add(key);
+        diagnostics.warn(
+          "i18n.missing",
+          `missing key "${key}" for locale "${this.current}"`,
+        );
+      }
+      return key;
+    }
+
+    if (typeof value === "string") {
+      return interpolate(value, vars);
+    }
+
+    const count = vars?.count;
+    const n = typeof count === "number" ? count : Number(count ?? 0);
+    const rule = this.pluralRule(this.current, n);
+    const chosen =
+      value[rule] ??
+      value.other ??
+      value.one ??
+      Object.values(value)[0] ??
+      key;
+    return interpolate(chosen, vars);
+  }
+
+  has(key: string): boolean {
+    return (
+      this.lookup(this.current, key) !== undefined ||
+      this.lookup(FALLBACK_LOCALE, key) !== undefined
+    );
+  }
+
+  clearMissing(): void {
+    this.missingKeys.clear();
+  }
+
+  listMissing(): string[] {
+    return [...this.missingKeys].sort();
+  }
+
+  private pluralRule(locale: Locale, count: number): Intl.LDMLPluralRule {
+    let rules = this.pluralRulesCache.get(locale);
+    if (!rules) {
+      try {
+        rules = new Intl.PluralRules(locale);
+      } catch {
+        rules = new Intl.PluralRules(FALLBACK_LOCALE);
+      }
+      this.pluralRulesCache.set(locale, rules);
+    }
+    return rules.select(count);
+  }
+
+  private lookup(locale: Locale, key: string): CatalogLeaf | undefined {
+    const cat = this.catalogs.get(locale);
+    if (!cat) return undefined;
+    const parts = key.split(".");
+    let node: CatalogNode | undefined = cat as unknown as CatalogNode;
+    for (const p of parts) {
+      if (node === undefined || typeof node === "string") return undefined;
+      if (isPluralForms(node)) return undefined;
+      node = node[p];
+    }
+    if (node === undefined) return undefined;
+    if (typeof node === "string" || isPluralForms(node)) return node;
+    return undefined;
+  }
+}
+
+function isPluralForms(v: unknown): v is PluralForms {
+  if (!v || typeof v !== "object") return false;
+  const keys = Object.keys(v);
+  if (!keys.length) return false;
+  return keys.every((k) =>
+    ["zero", "one", "two", "few", "many", "other"].includes(k),
+  );
+}
+
+function interpolate(
+  template: string,
+  vars?: Record<string, string | number>,
+): string {
+  if (!vars) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name) => {
+    const v = vars[name];
+    if (v === undefined) return match;
+    return String(v);
+  });
+}
+
+function deepMerge<T extends Record<string, unknown>>(
+  a: T,
+  b: Partial<T>,
+): T {
+  const out: Record<string, unknown> = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    const prev = out[k];
+    if (
+      v && typeof v === "object" && !Array.isArray(v) &&
+      prev && typeof prev === "object" && !Array.isArray(prev)
+    ) {
+      out[k] = deepMerge(
+        prev as Record<string, unknown>,
+        v as Record<string, unknown>,
+      );
+    } else {
+      out[k] = v;
+    }
+  }
+  return out as T;
+}
+
+/* -- Singleton + convenience exports ---------------------------------- */
+
+export const i18n = new I18nService();
+
+export const t = (
+  key: string,
+  vars?: Record<string, string | number>,
+): string => i18n.t(key, vars);
+
+export function scoped(prefix: string) {
+  return (key: string, vars?: Record<string, string | number>): string =>
+    i18n.t(`${prefix}.${key}`, vars);
+}
+
+export const MISSING_KEY_MARKER = MISSING_MARKER;
+
+export interface Catalog {
+  meta: CatalogMeta;
+  [namespace: string]: CatalogNode | CatalogMeta;
+}
+
+===== FILE: src/core/units.ts =====
+// openbim-fix:v3:applied -- do not re-apply the earlier fix scripts
+/**
+ * Unit system service.
+ *
+ * Internal storage is always SI: metres, mÂ², mÂ³, kilograms, radians, kelvin.
+ * Display conversion happens only at the UI boundary via this module.
+ *
+ * Two independent axes:
+ *   â€¢ LengthUnit â€” the length display unit (mm, cm, m, ft, ft-in)
+ *   â€¢ UnitSystem â€” a bundle that pins every kind to a coherent family
+ *
+ * Most projects only need to set the UnitSystem; power users can override
+ * individual kinds.
+ */
+import { i18n, type Locale } from "./i18n";
+
+export type UnitSystem =
+  | "metric-mm"      // mm / mÂ² / mÂ³ / kg â€” common in EU, CN, JP
+  | "metric-cm"      // cm / mÂ² / mÂ³ / kg â€” common in FR, ES, IT
+  | "metric-m"       // m / mÂ² / mÂ³ / kg  â€” international, IFC-native
+  | "imperial-in"    // in / ftÂ² / ftÂ³ / lb
+  | "imperial-ft";   // ft / ftÂ² / ftÂ³ / lb
+
+export type LengthUnit = "mm" | "cm" | "m" | "ft" | "in" | "ft-in";
+export type AreaUnit = "mm2" | "cm2" | "m2" | "ft2" | "in2";
+export type VolumeUnit = "mm3" | "cm3" | "m3" | "ft3" | "in3" | "l";
+export type MassUnit = "g" | "kg" | "t" | "lb" | "oz";
+export type AngleUnit = "deg" | "rad" | "grad";
+export type TemperatureUnit = "C" | "F" | "K";
+
+export type UnitKind = "length" | "area" | "volume" | "mass" | "angle" | "temperature";
+
+export interface UnitConfig {
+  length: LengthUnit;
+  area: AreaUnit;
+  volume: VolumeUnit;
+  mass: MassUnit;
+  angle: AngleUnit;
+  temperature: TemperatureUnit;
+}
+
+export interface DisplayOptions {
+  /** Fixed decimal places. Omit for auto. */
+  precision?: number;
+  /** Show the unit suffix. Default true. */
+  withUnit?: boolean;
+  /** Force a specific unit, overriding the current config. */
+  unit?: LengthUnit | AreaUnit | VolumeUnit | MassUnit | AngleUnit | TemperatureUnit;
+  /** For ft-in: show trailing inches as fractions (default true). */
+  fractions?: boolean;
+  /** For ft-in: fraction denominator (2, 4, 8, 16, 32, 64). Default 16. */
+  fractionDenominator?: number;
+}
+
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+const STORAGE_SYSTEM = "obs.units.system";
+const STORAGE_CONFIG = "obs.units.config";
+
+const SYSTEM_PRESETS: Record<UnitSystem, UnitConfig> = {
+  "metric-mm":    { length: "mm", area: "m2",  volume: "m3",  mass: "kg", angle: "deg", temperature: "C" },
+  "metric-cm":    { length: "cm", area: "m2",  volume: "m3",  mass: "kg", angle: "deg", temperature: "C" },
+  "metric-m":     { length: "m",  area: "m2",  volume: "m3",  mass: "kg", angle: "deg", temperature: "C" },
+  "imperial-in":  { length: "in", area: "ft2", volume: "ft3", mass: "lb", angle: "deg", temperature: "F" },
+  "imperial-ft":  { length: "ft", area: "ft2", volume: "ft3", mass: "lb", angle: "deg", temperature: "F" },
+};
+
+/* â”€â”€ Conversion factors to SI (metres, mÂ², mÂ³, kilograms, radians, kelvin) */
+
+const LENGTH_TO_M: Record<Exclude<LengthUnit, "ft-in">, number> = {
+  mm: 1e-3,
+  cm: 1e-2,
+  m: 1,
+  in: 0.0254,
+  ft: 0.3048,
+};
+const AREA_TO_M2: Record<AreaUnit, number> = {
+  mm2: 1e-6,
+  cm2: 1e-4,
+  m2: 1,
+  ft2: 0.09290304,
+  in2: 0.00064516,
+};
+const VOLUME_TO_M3: Record<VolumeUnit, number> = {
+  mm3: 1e-9,
+  cm3: 1e-6,
+  m3: 1,
+  ft3: 0.028316846592,
+  in3: 1.6387064e-5,
+  l:   1e-3,
+};
+const MASS_TO_KG: Record<MassUnit, number> = {
+  g: 1e-3,
+  kg: 1,
+  t: 1000,
+  lb: 0.45359237,
+  oz: 0.028349523125,
+};
+const ANGLE_TO_RAD: Record<AngleUnit, number> = {
+  deg: Math.PI / 180,
+  rad: 1,
+  grad: Math.PI / 200,
+};
+
+/* Unit suffix strings per locale. Kept here because they are not language
+   strings â€” they are notation, and mostly identical across locales. The
+   differences (e.g. "m" vs "Ð¼" in Cyrillic) are handled by the formatter. */
+const LENGTH_SUFFIX: Record<LengthUnit, string> = {
+  mm: "mm", cm: "cm", m: "m", ft: "ft", in: "in", "ft-in": "",
+};
+const AREA_SUFFIX: Record<AreaUnit, string> = {
+  mm2: "mmÂ²", cm2: "cmÂ²", m2: "mÂ²", ft2: "ftÂ²", in2: "inÂ²",
+};
+const VOLUME_SUFFIX: Record<VolumeUnit, string> = {
+  mm3: "mmÂ³", cm3: "cmÂ³", m3: "mÂ³", ft3: "ftÂ³", in3: "inÂ³", l: "L",
+};
+const MASS_SUFFIX: Record<MassUnit, string> = {
+  g: "g", kg: "kg", t: "t", lb: "lb", oz: "oz",
+};
+const ANGLE_SUFFIX: Record<AngleUnit, string> = {
+  deg: "Â°", rad: "rad", grad: "grad",
+};
+const TEMP_SUFFIX: Record<TemperatureUnit, string> = {
+  C: "Â°C", F: "Â°F", K: "K",
+};
+
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+type ChangeListener = (config: UnitConfig, system: UnitSystem) => void;
+
+class UnitsService {
+  private system: UnitSystem = "metric-m";
+  private config: UnitConfig = { ...SYSTEM_PRESETS["metric-m"] };
+  private listeners = new Set<ChangeListener>();
+  private booted = false;
+
+  /* â”€â”€ Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+  boot(): void {
+    if (this.booted) return;
+    this.booted = true;
+    try {
+      const sys = localStorage.getItem(STORAGE_SYSTEM) as UnitSystem | null;
+      if (sys && sys in SYSTEM_PRESETS) {
+        this.system = sys;
+        this.config = { ...SYSTEM_PRESETS[sys] };
+      }
+      const rawCfg = localStorage.getItem(STORAGE_CONFIG);
+      if (rawCfg) {
+        const parsed = JSON.parse(rawCfg) as Partial<UnitConfig>;
+        this.config = { ...this.config, ...parsed };
+      }
+    } catch { /* */ }
+  }
+
+  getSystem(): UnitSystem { return this.system; }
+
+  setSystem(system: UnitSystem): void {
+    if (!(system in SYSTEM_PRESETS)) return;
+    this.system = system;
+    this.config = { ...SYSTEM_PRESETS[system] };
+    this.persist();
+    this.emit();
+  }
+
+  getConfig(): UnitConfig { return { ...this.config }; }
+
+  setLengthUnit(u: LengthUnit): void { this.config.length = u; this.persist(); this.emit(); }
+  setAreaUnit(u: AreaUnit): void     { this.config.area = u; this.persist(); this.emit(); }
+  setVolumeUnit(u: VolumeUnit): void { this.config.volume = u; this.persist(); this.emit(); }
+  setMassUnit(u: MassUnit): void     { this.config.mass = u; this.persist(); this.emit(); }
+  setAngleUnit(u: AngleUnit): void   { this.config.angle = u; this.persist(); this.emit(); }
+  setTemperatureUnit(u: TemperatureUnit): void { this.config.temperature = u; this.persist(); this.emit(); }
+
+  onChange(cb: ChangeListener): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  private emit(): void {
+    for (const cb of this.listeners) {
+      try { cb(this.config, this.system); } catch { /* */ }
+    }
+  }
+
+  private persist(): void {
+    try {
+      localStorage.setItem(STORAGE_SYSTEM, this.system);
+      localStorage.setItem(STORAGE_CONFIG, JSON.stringify(this.config));
+    } catch { /* */ }
+  }
+
+  /* â”€â”€ Display â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+  formatLength(meters: number, opts: DisplayOptions = {}): string {
+    const unit = (opts.unit as LengthUnit) ?? this.config.length;
+    const precision = opts.precision ?? defaultLengthPrecision(unit);
+    const showUnit = opts.withUnit !== false;
+
+    if (unit === "ft-in") {
+      return formatFeetInches(meters, {
+        precision,
+        showUnit,
+        fractions: opts.fractions !== false,
+        denominator: opts.fractionDenominator ?? 16,
+      });
+    }
+
+    const value = meters / LENGTH_TO_M[unit];
+    const num = formatNumberLocale(value, precision);
+    if (!showUnit) return num;
+    return `${num}\u2009${LENGTH_SUFFIX[unit]}`;
+  }
+
+  formatArea(m2: number, opts: DisplayOptions = {}): string {
+    const unit = (opts.unit as AreaUnit) ?? this.config.area;
+    const precision = opts.precision ?? 2;
+    const value = m2 / AREA_TO_M2[unit];
+    const num = formatNumberLocale(value, precision);
+    if (opts.withUnit === false) return num;
+    return `${num}\u2009${AREA_SUFFIX[unit]}`;
+  }
+
+  formatVolume(m3: number, opts: DisplayOptions = {}): string {
+    const unit = (opts.unit as VolumeUnit) ?? this.config.volume;
+    const precision = opts.precision ?? 3;
+    const value = m3 / VOLUME_TO_M3[unit];
+    const num = formatNumberLocale(value, precision);
+    if (opts.withUnit === false) return num;
+    return `${num}\u2009${VOLUME_SUFFIX[unit]}`;
+  }
+
+  formatMass(kg: number, opts: DisplayOptions = {}): string {
+    const unit = (opts.unit as MassUnit) ?? this.config.mass;
+    const precision = opts.precision ?? 2;
+    const value = kg / MASS_TO_KG[unit];
+    const num = formatNumberLocale(value, precision);
+    if (opts.withUnit === false) return num;
+    return `${num}\u2009${MASS_SUFFIX[unit]}`;
+  }
+
+  /** Angles stored in radians. */
+  formatAngle(radians: number, opts: DisplayOptions = {}): string {
+    const unit = (opts.unit as AngleUnit) ?? this.config.angle;
+    const precision = opts.precision ?? 2;
+    const value = radians / ANGLE_TO_RAD[unit];
+    const num = formatNumberLocale(value, precision);
+    if (opts.withUnit === false) return num;
+    return `${num}\u2009${ANGLE_SUFFIX[unit]}`;
+  }
+
+  /** Temperatures stored in kelvin. */
+  formatTemperature(kelvin: number, opts: DisplayOptions = {}): string {
+    const unit = (opts.unit as TemperatureUnit) ?? this.config.temperature;
+    const value =
+      unit === "C" ? kelvin - 273.15 :
+      unit === "F" ? (kelvin - 273.15) * 9 / 5 + 32 :
+      kelvin;
+    const precision = opts.precision ?? 1;
+    const num = formatNumberLocale(value, precision);
+    if (opts.withUnit === false) return num;
+    return `${num}\u2009${TEMP_SUFFIX[unit]}`;
+  }
+
+  /* â”€â”€ Parse (user input â†’ SI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+  parseLength(input: string): number | null {
+    return parseDimension(input, this.config.length);
+  }
+  parseArea(input: string): number | null {
+    const r = parseDimension(input, this.config.area);
+    if (r == null) return null;
+    return r;
+  }
+  parseVolume(input: string): number | null {
+    return parseDimension(input, this.config.volume);
+  }
+  parseMass(input: string): number | null {
+    return parseDimension(input, this.config.mass);
+  }
+  parseAngle(input: string): number | null {
+    const r = parseDimension(input, this.config.angle);
+    if (r == null) return null;
+    return r;
+  }
+
+  /** Revit-style: interpret a user-typed length against the display unit,
+   *  or against an explicit suffix if the user typed one.
+   *  Returns metres. */
+  parseLengthInput(input: string, fallbackUnit?: LengthUnit): number | null {
+    const cleaned = String(input ?? "").trim();
+    if (!cleaned) return null;
+    return parseLengthString(cleaned, fallbackUnit ?? this.config.length);
+  }
+
+  /* â”€â”€ Unit metadata for UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+  lengthUnits(): LengthUnit[] { return ["mm", "cm", "m", "ft", "in", "ft-in"]; }
+  areaUnits(): AreaUnit[] { return ["mm2", "cm2", "m2", "ft2", "in2"]; }
+  volumeUnits(): VolumeUnit[] { return ["mm3", "cm3", "m3", "ft3", "in3", "l"]; }
+  massUnits(): MassUnit[] { return ["g", "kg", "t", "lb", "oz"]; }
+  angleUnits(): AngleUnit[] { return ["deg", "rad", "grad"]; }
+
+  systems(): UnitSystem[] {
+    return ["metric-mm", "metric-cm", "metric-m", "imperial-in", "imperial-ft"];
+  }
+}
+
+/* â”€â”€ Formatting helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+function formatNumberLocale(value: number, precision: number): string {
+  if (!Number.isFinite(value)) return "â€”";
+  const locale = i18n.getLocale();
+  try {
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: precision,
+      useGrouping: Math.abs(value) >= 10000,
+    }).format(value);
+  } catch {
+    return value.toFixed(precision);
+  }
+}
+
+function defaultLengthPrecision(unit: LengthUnit): number {
+  switch (unit) {
+    case "mm":    return 0;
+    case "cm":    return 1;
+    case "m":     return 3;
+    case "ft":    return 2;
+    case "in":    return 1;
+    case "ft-in": return 2;
+  }
+}
+
+/**
+ * Revit-style feet-inches. Precision is the inch fraction denominator:
+ *   fractionDenominator = 16 â†’ "5'-6 1/2""
+ *   showUnit = false       â†’ omit the trailing double-quote
+ */
+function formatFeetInches(
+  meters: number,
+  opts: { precision: number; showUnit: boolean; fractions: boolean; denominator: number },
+): string {
+  if (!Number.isFinite(meters)) return "â€”";
+  const negative = meters < 0;
+  const totalInches = Math.abs(meters) / LENGTH_TO_M.in;
+  const sign = negative ? "-" : "";
+
+  let feet = Math.floor(totalInches / 12);
+  let inches = totalInches - feet * 12;
+
+  if (opts.fractions) {
+    const denom = Math.max(2, Math.min(64, opts.denominator));
+    let numerator = Math.round((inches - Math.floor(inches)) * denom);
+    let whole = Math.floor(inches);
+    if (numerator === denom) { whole += 1; numerator = 0; }
+    if (whole === 12) { feet += 1; whole = 0; }
+
+    let inchStr = String(whole);
+    if (numerator > 0) {
+      const g = gcd(numerator, denom);
+      inchStr += ` ${numerator / g}/${denom / g}`;
+    }
+
+    const feetStr = `${feet}'`;
+    if (opts.showUnit) return `${sign}${feetStr}-${inchStr}"`;
+    return `${sign}${feetStr}-${inchStr}`;
+  }
+
+  const inchesRounded = Math.round(inches * 100) / 100;
+  const inchStr = formatNumberLocale(inchesRounded, opts.precision);
+  const feetStr = `${feet}'`;
+  return opts.showUnit ? `${sign}${feetStr}-${inchStr}"` : `${sign}${feetStr}-${inchStr}`;
+}
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+/**
+ * Parse a string like "12.5m", "500 mm", "5'-6\"", "3,20 m" into a
+ * value in the base SI unit of the given kind.
+ */
+// openbim-fix: units.ts -- suffix matchers for non-length kinds
+function matchAreaSuffix(s: string): AreaUnit | null {
+  switch (s) {
+    case "mm2": case "mmÂ²": return "mm2";
+    case "cm2": case "cmÂ²": return "cm2";
+    case "m2":  case "mÂ²":  return "m2";
+    case "ft2": case "ftÂ²": return "ft2";
+    case "in2": case "inÂ²": return "in2";
+    default: return null;
+  }
+}
+function matchVolumeSuffix(s: string): VolumeUnit | null {
+  switch (s) {
+    case "mm3": case "mmÂ³": return "mm3";
+    case "cm3": case "cmÂ³": return "cm3";
+    case "m3":  case "mÂ³":  return "m3";
+    case "ft3": case "ftÂ³": return "ft3";
+    case "in3": case "inÂ³": return "in3";
+    case "l": case "ltr": return "l";
+    default: return null;
+  }
+}
+function matchMassSuffix(s: string): MassUnit | null {
+  switch (s) {
+    case "g": return "g";
+    case "kg": return "kg";
+    case "t": return "t";
+    case "lb": case "lbs": return "lb";
+    case "oz": return "oz";
+    default: return null;
+  }
+}
+function matchAngleSuffix(s: string): AngleUnit | null {
+  switch (s) {
+    case "deg": case "Â°": return "deg";
+    case "rad": return "rad";
+    case "grad": return "grad";
+    default: return null;
+  }
+}
+
+function parseDimension(input: string, unit: string): number | null {
+  const cleaned = String(input ?? "").trim();
+  if (!cleaned) return null;
+
+  // Feet-inches notation
+  if (/^-?\d+'/i.test(cleaned)) {
+    return parseFeetInches(cleaned);
+  }
+
+  // [number][optional whitespace][suffix]
+  const m = cleaned.match(/^(-?[\d.,\u00A0\u202F ]+)\s*([a-zA-ZÂ°'"Â²Â³]+)?$/);
+  if (!m) return null;
+
+  const numStr = m[1].replace(/\s|\u00A0|\u202F/g, "");
+  const value = parseNumberLocale(numStr);
+  if (value == null) return null;
+
+  const suffix = (m[2] ?? "").toLowerCase();
+
+  switch (unit) {
+    case "mm": case "cm": case "m":
+    case "ft": case "in": case "ft-in": {
+      const explicit = suffix ? matchLengthSuffix(suffix) : null;
+      const u = explicit ?? (unit as LengthUnit);
+      if (u === "ft-in") return parseFeetInches(`${value}'`) ?? value * LENGTH_TO_M.ft;
+      return value * LENGTH_TO_M[u as Exclude<LengthUnit, "ft-in">];
+    }
+    case "mm2": case "cm2": case "m2": case "ft2": case "in2": {
+      const u = (suffix ? matchAreaSuffix(suffix) : null) ?? (unit as AreaUnit);
+      return value * AREA_TO_M2[u];
+    }
+    case "mm3": case "cm3": case "m3": case "ft3": case "in3": case "l": {
+      const u = (suffix ? matchVolumeSuffix(suffix) : null) ?? (unit as VolumeUnit);
+      return value * VOLUME_TO_M3[u];
+    }
+    case "g": case "kg": case "t": case "lb": case "oz": {
+      const u = (suffix ? matchMassSuffix(suffix) : null) ?? (unit as MassUnit);
+      return value * MASS_TO_KG[u];
+    }
+    case "deg": case "rad": case "grad": {
+      const u = (suffix ? matchAngleSuffix(suffix) : null) ?? (unit as AngleUnit);
+      return value * ANGLE_TO_RAD[u];
+    }
+    default:
+      return value;
+  }
+}
+
+function parseLengthString(input: string, fallback: LengthUnit): number | null {
+  const suffixMatch = input.match(/([a-zA-ZÂ°'"]+)\s*$/);
+  if (suffixMatch) {
+    const found = matchLengthSuffix(suffixMatch[1].toLowerCase());
+    if (found) {
+      const r = parseDimension(input, found);
+      if (r != null) return r;
+    }
+  }
+  return parseDimension(input, fallback);
+}
+
+function matchLengthSuffix(s: string): LengthUnit | null {
+  switch (s) {
+    case "mm": return "mm";
+    case "cm": return "cm";
+    case "m":  return "m";
+    case "ft": case "'": return "ft";
+    case "in": case '"': return "in";
+    default: return null;
+  }
+}
+
+function parseFeetInches(input: string): number | null {
+  // e.g. 5'-6 1/2"  |  5' 6"  |  5'
+  const s = input.trim().replace(/[\u2019\u02BC]/g, "'");
+  const ftIn = s.match(/^(-?\d+(?:[.,]\d+)?)\s*'\s*(?:-\s*)?(.*)$/);
+  if (!ftIn) return null;
+  const feet = parseNumberLocale(ftIn[1].replace(",", "."));
+  if (feet == null) return null;
+
+  const rest = ftIn[2].replace(/["â€³]/g, "").trim();
+  if (!rest) return feet * LENGTH_TO_M.ft;
+
+  // Possible fraction: "6 1/2" or "6-1/2"
+  const frac = rest.match(/^(\d+(?:[.,]\d+)?)(?:\s+|[-])(\d+)\s*\/\s*(\d+)$/);
+  if (frac) {
+    const whole = parseNumberLocale(frac[1].replace(",", ".")) ?? 0;
+    const num = parseFloat(frac[2]);
+    const den = parseFloat(frac[3]);
+    const inches = whole + (den ? num / den : 0);
+    return feet * LENGTH_TO_M.ft + inches * LENGTH_TO_M.in;
+  }
+  const plain = parseNumberLocale(rest.replace(",", "."));
+  if (plain == null) return feet * LENGTH_TO_M.ft;
+  return feet * LENGTH_TO_M.ft + plain * LENGTH_TO_M.in;
+}
+
+/** Locale-aware number parse: accepts "1.234,56", "1,234.56", "1 234,56". */
+function parseNumberLocale(s: string): number | null {
+  if (!s) return null;
+  // Heuristic: if there's a single comma with digits after, treat as decimal.
+  // If both, the last one wins.
+  const lastComma = s.lastIndexOf(",");
+  const lastDot = s.lastIndexOf(".");
+  let normalized: string;
+
+  if (lastComma === -1 && lastDot === -1) normalized = s;
+  else if (lastComma === -1) normalized = s;
+  else if (lastDot === -1) normalized = s.replace(",", ".");
+  else if (lastComma > lastDot) normalized = s.replace(/\./g, "").replace(",", ".");
+  else normalized = s.replace(/,/g, "");
+
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+/* â”€â”€ Singleton + convenience â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+export const units = new UnitsService();
+
+/** Convenience aliases used widely by feature code. */
+export const fmtLength = (m: number, o?: DisplayOptions) => units.formatLength(m, o);
+export const fmtArea   = (m2: number, o?: DisplayOptions) => units.formatArea(m2, o);
+export const fmtVolume = (m3: number, o?: DisplayOptions) => units.formatVolume(m3, o);
+export const fmtMass   = (kg: number, o?: DisplayOptions) => units.formatMass(kg, o);
+export const fmtAngle  = (rad: number, o?: DisplayOptions) => units.formatAngle(rad, o);
+export const fmtTemp   = (k: number, o?: DisplayOptions) => units.formatTemperature(k, o);
+
+===== FILE: src/core/spatial-hash.ts =====
+/**
+ * Uniform 3D spatial hash for broadphase candidate lookup.
+ *
+ * Cell size is chosen from the median item diagonal. Each item is inserted
+ * into every cell its AABB overlaps. Queries return the union of items in
+ * the same cells â€” a superset of the true AABB-overlap set, so the caller
+ * must still do the actual Box3 test (which is cheap).
+ */
+import * as THREE from "three";
+
+export class SpatialHash {
+  private readonly cellSize: number;
+  private readonly buckets = new Map<string, number[]>();
+  private readonly itemBoxes: THREE.Box3[] = [];
+
+  constructor(cellSize: number) {
+    this.cellSize = Math.max(cellSize, 1e-3);
+  }
+
+  get size(): number {
+    return this.itemBoxes.length;
+  }
+
+  get cell(): number {
+    return this.cellSize;
+  }
+
+  /** Insert an item's world-space AABB and get its index back. */
+  insert(box: THREE.Box3): number {
+    const idx = this.itemBoxes.length;
+    this.itemBoxes.push(box.clone());
+
+    const i0 = Math.floor(box.min.x / this.cellSize);
+    const i1 = Math.floor(box.max.x / this.cellSize);
+    const j0 = Math.floor(box.min.y / this.cellSize);
+    const j1 = Math.floor(box.max.y / this.cellSize);
+    const k0 = Math.floor(box.min.z / this.cellSize);
+    const k1 = Math.floor(box.max.z / this.cellSize);
+
+    const cells = (i1 - i0 + 1) * (j1 - j0 + 1) * (k1 - k0 + 1);
+    if (!Number.isFinite(cells) || cells > 4096) {
+      const arr = this.buckets.get("*") ?? [];
+      arr.push(idx);
+      this.buckets.set("*", arr);
+      return idx;
+    }
+
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        for (let k = k0; k <= k1; k++) {
+          const key = `${i},${j},${k}`;
+          const arr = this.buckets.get(key);
+          if (arr) arr.push(idx);
+          else this.buckets.set(key, [idx]);
+        }
+      }
+    }
+    return idx;
+  }
+
+  /**
+   * Fill `out` with candidate indices whose cells overlap the query box.
+   * `out` is cleared first. Excludes `selfIdx` if it appears.
+   */
+  query(box: THREE.Box3, out: Set<number>, selfIdx = -1): void {
+    out.clear();
+
+    const i0 = Math.floor(box.min.x / this.cellSize);
+    const i1 = Math.floor(box.max.x / this.cellSize);
+    const j0 = Math.floor(box.min.y / this.cellSize);
+    const j1 = Math.floor(box.max.y / this.cellSize);
+    const k0 = Math.floor(box.min.z / this.cellSize);
+    const k1 = Math.floor(box.max.z / this.cellSize);
+
+    const cells = (i1 - i0 + 1) * (j1 - j0 + 1) * (k1 - k0 + 1);
+    if (!Number.isFinite(cells) || cells > 4096) {
+      for (let i = 0; i < this.itemBoxes.length; i++) {
+        if (i !== selfIdx) out.add(i);
+      }
+      return;
+    }
+
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        for (let k = k0; k <= k1; k++) {
+          const arr = this.buckets.get(`${i},${j},${k}`);
+          if (!arr) continue;
+          for (const idx of arr) {
+            if (idx !== selfIdx) out.add(idx);
+          }
+        }
+      }
+    }
+
+    const global = this.buckets.get("*");
+    if (global) {
+      for (const idx of global) {
+        if (idx !== selfIdx) out.add(idx);
+      }
+    }
+  }
+
+  boxAt(idx: number): THREE.Box3 | undefined {
+    return this.itemBoxes[idx];
+  }
+
+  /** Choose a sensible cell size from a sample of item sizes. */
+  static suggestCellSize(boxes: readonly THREE.Box3[], fallback = 2): number {
+    if (boxes.length === 0) return fallback;
+    const sample = boxes.slice(0, Math.min(boxes.length, 512));
+    const diag = new THREE.Vector3();
+    const sizes: number[] = [];
+    for (const b of sample) {
+      b.getSize(diag);
+      const d = Math.hypot(diag.x, diag.y, diag.z);
+      if (Number.isFinite(d) && d > 0) sizes.push(d);
+    }
+    if (!sizes.length) return fallback;
+    sizes.sort((a, b) => a - b);
+    const median = sizes[Math.floor(sizes.length / 2)];
+    return Math.max(0.25, Math.min(median * 1.5, 25));
+  }
+}
+
+
+===== FILE: src/core/performance-optimizer.ts =====
+type Any = Record<string, any>;
+
+let installed = false;
+let enabled = true;
+
+function getScene(): Any | null {
+  const c = (globalThis as Any).__OBS_CTX__ || null;
+  const ctxAny = c as Any;
+
+  const world = ctxAny?.world as Any;
+
+  return world?.scene?.three ?? world?.scene ?? null;
+}
+
+function applyCulling(next: boolean): void {
+  const scene = getScene();
+
+  if (!scene || typeof scene.traverse !== "function") {
+    return;
+  }
+
+  scene.traverse((obj: Any) => {
+    if (obj?.isMesh) {
+      obj.frustumCulled = next;
+    }
+  });
+}
+
+export function setPerformanceCullingEnabled(next: boolean): boolean {
+  enabled = !!next;
+  applyCulling(enabled);
+  return enabled;
+}
+
+export function isPerformanceCullingEnabled(): boolean {
+  return enabled;
+}
+
+export function setupPerformanceOptimizer(): void {
+  if (installed) {
+    return;
+  }
+
+  installed = true;
+
+  applyCulling(enabled);
+
+  const w = window as Any;
+
+  w.__obsPerfOptimizer = {
+    setEnabled: setPerformanceCullingEnabled,
+    isEnabled: isPerformanceCullingEnabled,
+  };
+
+  console.log("[performance-optimizer] Revit-safe frustum culling ready");
+}
+
+===== FILE: src/core/camera-gate.ts =====
+/**
+ * Camera-controls gating.
+ *
+ * Different @thatopen/components versions expose the underlying
+ * CameraControls instance at different paths. This module probes once,
+ * caches the reference, and provides a reference-counted pause so multiple
+ * features (gizmo, box-select, authoring grip drag) can hold the camera
+ * paused simultaneously without one re-enabling it while another still
+ * needs it disabled.
+ */
+import { ctx } from "./context";
+
+let cached: any = null;
+let cacheAttempted = false;
+
+function findControls(): any {
+  if (cacheAttempted) return cached;
+  cacheAttempted = true;
+  try {
+    const cam: any = (ctx.world as any)?.camera;
+    if (!cam) return (cached = null);
+
+    // Prefer an object that exposes `.enabled` directly (the actual controls).
+    if (cam.controls && typeof cam.controls === "object") {
+      if (typeof cam.controls.enabled === "boolean") return (cached = cam.controls);
+      if (cam.controls.controls && typeof cam.controls.controls.enabled === "boolean") {
+        return (cached = cam.controls.controls);
+      }
+    }
+    if (cam.cameraControls && typeof cam.cameraControls.enabled === "boolean") {
+      return (cached = cam.cameraControls);
+    }
+  } catch {
+    /* swallow â€” a missing controls object is a valid state during boot */
+  }
+  return (cached = null);
+}
+
+export function resetCameraGateCache(): void {
+  cached = null;
+  cacheAttempted = false;
+  holders = 0;
+  lastEnabled = null;
+}
+
+let holders = 0;
+let lastEnabled: boolean | null = null;
+
+function applyEnabled(on: boolean): void {
+  if (lastEnabled === on) return;
+  const c = findControls();
+  if (c) c.enabled = on;
+  lastEnabled = on;
+}
+
+/**
+ * Pause camera interaction. Returns a release function. Callers must call
+ * the release exactly once. Nested calls are supported via refcount.
+ */
+export function pauseCameraControls(): () => void {
+  holders++;
+  applyEnabled(false);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holders = Math.max(0, holders - 1);
+    if (holders === 0) applyEnabled(true);
+  };
+}
+
+export function cameraControlsPaused(): boolean {
+  return holders > 0;
+}
+
+/** Force-reset the gate â€” used by recovery code after a stuck gesture. */
+export function forceResumeCameraControls(): void {
+  holders = 0;
+  applyEnabled(true);
+}
+
+
+===== FILE: src/core/wheel-arbiter.ts =====
+import * as THREE from "three";
+import { ctx } from "./context";
+
+type Any = Record<string, any>;
+
+/*
+ * Single authoritative wheel-zoom owner for the 3D viewport.
+ *
+ * Why this exists:
+ *   navigation.ts (router wheel branch) AND a secondary ortho/plan handler
+ *   both consumed wheel events, producing double-zoom / jitter, and the raw
+ *   deltaY sign was not normalized across deltaMode (pixel/line/page), so
+ *   "up" vs "down" felt inverted on some devices. Middle-mouse pan also let
+ *   wheel leak through.
+ *
+ * This module:
+ *   - normalizes deltaY (deltaMode + clamp) and applies Revit convention
+ *     (wheel up = zoom in). setInvert(true) flips it for reversed devices.
+ *   - Shift = x3, plus the registered nav.wheelZoomMultiplier option.
+ *   - ignores wheel while __OBS_MMB_HELD (no zoom during pan).
+ *   - ignores wheel over panels / ribbon / property palette / plan SVG /
+ *     text inputs, so 2D plan zoom and UI scrolling are not stolen.
+ *   - stopImmediatePropagation() so no secondary module double-zooms.
+ *   - sets window.__OBS_WHEEL_AUTHORITY = true permanently after install,
+ *     which navigation.ts reads to no-op its router wheel branch (this is
+ *     order-independent: the flag is set once at boot, not per-event).
+ *
+ * It does NOT touch CameraControls mouse mapping (navigation owns that).
+ */
+
+let installed = false;
+let enabled = true;
+let invert = false;
+let multiplier = 1;
+
+const UI_BLOCK =
+  ".obs-panel,[data-obs-panel],#obs-ai-chat,#obs-bim-toolbox,.obs-ribbon," +
+  ".obs-property,.obs-dialog,.obs-adv-toolbar,.obs-plan-view,#plan-svg," +
+  "input,textarea,select,button,label,a,[contenteditable=true]";
+
+function w(): Any { return window as Any; }
+
+function readMultiplier(): number {
+  try {
+    const reg: Any = (w().__obsOptionsRegistry ?? null);
+    const v = reg?.get?.("nav.wheelZoomMultiplier");
+    if (typeof v === "number" && v > 0) return v;
+  } catch { /* registry optional */ }
+  return multiplier;
+}
+
+function normalizeDelta(e: WheelEvent): number {
+  let d = e.deltaY;
+  if (e.deltaMode === 1) d *= 16;        // DOM_DELTA_LINE
+  else if (e.deltaMode === 2) d *= 100;  // DOM_DELTA_PAGE
+  // clamp trackpad momentum spikes
+  if (d > 600) d = 600;
+  if (d < -600) d = -600;
+  return d;
+}
+
+function isOverViewport(target: EventTarget | null): boolean {
+  const el = target as Any;
+  if (!el) return false;
+  if (typeof el.closest === "function" && el.closest(UI_BLOCK)) return false;
+  // must be inside the 3D host / canvas, not a side panel
+  const c = ctx as Any;
+  const host: Any = c.rightHost;
+  if (host && host.contains && !host.contains(el)) {
+    // allow the canvas itself even if rightHost ref is stale
+    const tag = String(el.tagName ?? "").toUpperCase();
+    if (tag !== "CANVAS") return false;
+  }
+  return true;
+}
+
+function applyZoom(ndelta: number, shift: boolean): void {
+  const c = ctx as Any;
+  const cam: Any = c.world?.camera?.three;
+  const controls: Any = c.world?.camera?.controls;
+  if (!cam) return;
+
+  const speed = 0.0016 * readMultiplier() * (shift ? 3 : 1);
+  // Revit: wheel up (ndelta < 0) => zoom in => factor > 1
+  const signed = invert ? -ndelta : ndelta;
+  const factor = Math.exp(-signed * speed);
+  if (!Number.isFinite(factor) || factor <= 0) return;
+
+  const isOrtho = cam.isOrthographicCamera === true;
+
+  if (isOrtho) {
+    cam.zoom = Math.max(1e-4, cam.zoom * factor);
+    cam.updateProjectionMatrix();
+  } else {
+    const target = new THREE.Vector3();
+    let got = false;
+    try { if (typeof controls?.getTarget === "function") { controls.getTarget(target); got = true; } } catch { /* */ }
+    if (!got) {
+      const fwd = new THREE.Vector3();
+      cam.getWorldDirection(fwd);
+      target.copy(cam.position).addScaledVector(fwd, 10);
+    }
+    const dir = new THREE.Vector3().subVectors(cam.position, target);
+    const dist = dir.length();
+    if (dist < 1e-6) return;
+    const newDist = Math.max(1e-4, dist / factor);
+    dir.normalize().multiplyScalar(newDist);
+    const np = new THREE.Vector3().addVectors(target, dir);
+    try {
+      controls.setLookAt(np.x, np.y, np.z, target.x, target.y, target.z, false);
+      controls.update?.(0);
+    } catch {
+      cam.position.copy(np);
+    }
+  }
+
+  try { window.dispatchEvent(new CustomEvent("obs:camera-changed")); } catch { /* */ }
+}
+
+function onWheel(e: WheelEvent): void {
+  if (!enabled) return;
+  if ((w() as Any).__OBS_MMB_HELD) return;          // panning: no zoom
+  if (!isOverViewport(e.target)) return;            // panels / UI / plan svg
+  const nd = normalizeDelta(e);
+  if (nd === 0) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  applyZoom(nd, !!e.shiftKey);
+}
+
+export function setWheelInvert(next: boolean): boolean {
+  invert = !!next;
+  return invert;
+}
+export function setWheelMultiplier(next: number): number {
+  multiplier = Number.isFinite(next) && next > 0 ? next : 1;
+  return multiplier;
+}
+export function setWheelEnabled(next: boolean): boolean {
+  enabled = !!next;
+  return enabled;
+}
+export function isWheelEnabled(): boolean { return enabled; }
+
+export function setupWheelArbiter(): void {
+  if (installed) return;
+  installed = true;
+
+  // Permanent flag read by navigation.ts router-wheel branch (order-independent).
+  (w() as Any).__OBS_WHEEL_AUTHORITY = true;
+
+  window.addEventListener("wheel", onWheel, { capture: true, passive: false });
+
+  (w() as Any).__obsWheelFix = {
+    setInvert: setWheelInvert,
+    setMultiplier: setWheelMultiplier,
+    setEnabled: setWheelEnabled,
+    isEnabled: isWheelEnabled,
+    getState: () => ({ enabled, invert, multiplier: readMultiplier() }),
+  };
+
+  console.log(
+    "[wheel-arbiter] single owner ready: Revit direction (up=zoom-in), " +
+    "deltaMode normalized, Shift=x3, ignored while MMB held / over panels. " +
+    "Flip direction with __obsWheelFix.setInvert(true) if your device is reversed.",
+  );
+}
+
+===== FILE: src/core/revit-mouse-policy.ts =====
+import { ctx } from "./context";
+
+type Any = Record<string, any>;
+
+/*
+ * Input arbiter.
+ *
+ * This module does NOT install its own pan/orbit/zoom behaviour and does NOT
+ * mutate CameraControls mouse buttons (navigation.ts already forces those OFF
+ * and is the single driver). Instead it maintains a few WINDOW-LEVEL FLAGS that
+ * navigation.ts and the rest of the app read, plus a couple of capture-phase
+ * guards that are safe regardless of listener registration order:
+ *
+ *   __OBS_MMB_HELD   : true while middle button is down
+ *   __OBS_MMB_MOVED  : true once the MMB drag exceeded a few pixels
+ *   __OBS_MMB_DOWN_T : timestamp of MMB down (watchdog)
+ *   __OBS_BLOCK_MMB_CLICK : swallow the synthetic click after a dragged MMB
+ *
+ * Why flags instead of stopPropagation? Because navigation.ts / selection.ts
+ * register their window capture listeners during app boot, i.e. BEFORE this
+ * arbiter is imported by critical-gaps-boot. A later capture listener cannot
+ * cancel an earlier one. Flags, however, are simply *read* by the earlier
+ * handlers at the moment they run, so coordination works in any order.
+ *
+ * The only things we actively suppress at capture phase are:
+ *   - wheel events while __OBS_MMB_HELD (no zoom-out during a pan)
+ *   - the click that the browser synthesises after a DRAGGED MMB (so a pan
+ *     never also selects / focuses / fits)
+ * Both are safe to suppress because they are never legitimate during those
+ * states under the documented Revit map.
+ */
+
+let installed = false;
+
+const MMB_MOVE_THRESHOLD = 3;     // px before a press becomes a drag
+const MMB_CLICK_WINDOW = 380;     // ms for a genuine double-MMB (kept for fit)
+const WATCHDOG_MS = 8000;         // clear stuck HELD if no up arrived
+
+function w(): Any { return window as Any; }
+
+function clearMMB(): void {
+  const W = w();
+  W.__OBS_MMB_HELD = false;
+  W.__OBS_MMB_MOVED = false;
+  W.__OBS_MMB_DOWN_T = 0;
+}
+
+function isTextInput(target: EventTarget | null): boolean {
+  const el = target as Any;
+  if (!el) return false;
+  const tag = String(el.tagName ?? "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (el.isContentEditable) return true;
+  if (typeof el.closest === "function" &&
+      el.closest('input, textarea, select, [contenteditable="true"]')) return true;
+  return false;
+}
+
+function activeAuthoringTool(): string | null {
+  const c = ctx as Any;
+  const a = (c.features as Any)?.authoring as Any;
+  const t =
+    a?.getActiveTool?.() ?? a?.activeTool ?? a?.currentTool ?? null;
+  if (typeof t === "string" && t && t !== "select") return t;
+  return null;
+}
+
+function cancelActiveOperation(): boolean {
+  let canceled = false;
+  const W = w();
+
+  // 1) drafting overlay (left-mouse tool)
+  const d = W.__obsDrafting2D;
+  if (d && typeof d.getTool === "function" && d.getTool()) {
+    d.setTool(null);
+    canceled = true;
+  }
+
+  // 2) authoring placement tool
+  const c = ctx as Any;
+  const a = (c.features as Any)?.authoring as Any;
+  if (activeAuthoringTool()) {
+    if (typeof a?.setAuthoringTool === "function") {
+      a.setAuthoringTool(null);
+      canceled = true;
+    }
+  }
+
+  // 3) measure / section / walk (best effort through known globals)
+  const m = W.__obsMeasure;
+  if (m && (typeof m.isEnabled === "function" ? m.isEnabled() : m.enabled)) {
+    m.setMeasureEnabled?.(false); m.disable?.(); canceled = true;
+  }
+  const s = W.__obsSection;
+  if (s && (typeof s.isSectionOn === "function" ? s.isSectionOn() : s.enabled)) {
+    s.setSectionOn?.(false); s.disable?.(); canceled = true;
+  }
+  const wk = W.__obsWalkMode;
+  if (wk && (typeof wk.isActive === "function" ? wk.isActive() : wk.enabled)) {
+    wk.disable?.(); wk.setActive?.(false); canceled = true;
+  }
+
+  // 4) always drop MMB arbitration state on a cancel
+  clearMMB();
+
+  if (canceled) {
+    try { window.dispatchEvent(new CustomEvent("obs:operation-cancelled")); } catch { /* */ }
+  }
+  return canceled;
+}
+
+function installArbiter(): void {
+  const W = w();
+
+  // ---- pointer tracking (capture; we never stopPropagation on down/move so
+  //      navigation.ts still receives the gesture and can pan/orbit) ----
+  window.addEventListener("pointerdown", (e: PointerEvent) => {
+    if (e.button !== 1) return;            // middle only
+    W.__OBS_MMB_HELD = true;
+    W.__OBS_MMB_MOVED = false;
+    W.__OBS_MMB_DOWN_T = performance.now();
+    W.__OBS_MMB_START_X = e.clientX;
+    W.__OBS_MMB_START_Y = e.clientY;
+  }, true);
+
+  window.addEventListener("pointermove", (e: PointerEvent) => {
+    if (!W.__OBS_MMB_HELD) return;
+    const dx = e.clientX - (W.__OBS_MMB_START_X ?? e.clientX);
+    const dy = e.clientY - (W.__OBS_MMB_START_Y ?? e.clientY);
+    if (Math.hypot(dx, dy) > MMB_MOVE_THRESHOLD) {
+      W.__OBS_MMB_MOVED = true;
+    }
+  }, true);
+
+  const onUp = (e: PointerEvent | MouseEvent) => {
+    const be = e as PointerEvent;
+    if (typeof be.button === "number" && be.button !== 1) return;
+    const moved = !!W.__OBS_MMB_MOVED;
+    const downT = Number(W.__OBS_MMB_DOWN_T || 0);
+    clearMMB();
+    // A dragged MMB must not also produce a select / focus / fit click.
+    if (moved) {
+      W.__OBS_BLOCK_MMB_CLICK = true;
+      window.setTimeout(() => { W.__OBS_BLOCK_MMB_CLICK = false; }, 0);
+    }
+    // remember a clean (no-move) MMB click time for genuine double-MMB fit
+    if (!moved && downT > 0) {
+      W.__OBS_LAST_MMB_CLICK_T = performance.now();
+    }
+  };
+  window.addEventListener("pointerup", onUp as any, true);
+  window.addEventListener("pointercancel", onUp as any, true);
+  window.addEventListener("mouseup", onUp as any, true);   // backup
+  window.addEventListener("blur", () => clearMMB(), true);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) clearMMB();
+  });
+
+  // ---- wheel guard: no zoom while panning (capture; safe to suppress) ----
+  window.addEventListener("wheel", (e: WheelEvent) => {
+    if (W.__OBS_MMB_HELD) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, { capture: true, passive: false });
+
+  // ---- swallow the synthetic click after a dragged MMB ----
+  window.addEventListener("click", (e: MouseEvent) => {
+    if (e.button === 1 && W.__OBS_BLOCK_MMB_CLICK) {
+      e.preventDefault();
+      e.stopPropagation();
+      W.__OBS_BLOCK_MMB_CLICK = false;
+    }
+  }, true);
+
+  // ---- watchdog: never leave HELD stuck if an up was missed ----
+  window.setInterval(() => {
+    if (W.__OBS_MMB_HELD && W.__OBS_MMB_DOWN_T &&
+        performance.now() - Number(W.__OBS_MMB_DOWN_T) > WATCHDOG_MS) {
+      clearMMB();
+    }
+  }, 1000);
+
+  // ---- keyboard / right-click cancel (Revit behaviour) ----
+  window.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (isTextInput(e.target)) return;
+    if (e.key === "Escape") {
+      if (cancelActiveOperation()) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+  }, true);
+
+  window.addEventListener("contextmenu", (e: MouseEvent) => {
+    // Only cancel when an operation is actually active; otherwise let
+    // navigation.ts open its right-click context menu untouched.
+    if (cancelActiveOperation()) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+
+  W.__obsRevitMousePolicy = {
+    cancelOperation: cancelActiveOperation,
+    isMMBHeld: () => !!w().__OBS_MMB_HELD,
+    isMMBMoved: () => !!w().__OBS_MMB_MOVED,
+    clearMMB,
+  };
+}
+
+export function setupRevitMousePolicy(): void {
+  if (installed) return;
+  installed = true;
+
+  // NOTE: we deliberately do NOT call any disableNativeCameraMouse() here.
+  // navigation.ts already forces CameraControls mouse/touch OFF and re-asserts
+  // it via forceResumeCameraControls(); a second writer raced with it and was a
+  // source of the rotate/zoom-on-release artefact.
+
+  installArbiter();
+
+  console.log(
+    "[revit-mouse-policy] arbiter ready: flags-only coordination; " +
+    "wheel blocked while MMB held; dragged-MMB click suppressed; " +
+    "Esc / RMB cancel active tool; navigation.ts remains sole MMB/wheel owner",
+  );
+}
+
+===== FILE: src/core/diagnostics.ts =====
+/**
+ * Diagnostics â€” ring-buffered warn/error capture for the whole app.
+ */
+import { ctx } from "./context";
+
+export type DiagLevel = "info" | "warn" | "error";
+
+export interface DiagEvent {
+  id: number;
+  ts: number;
+  level: DiagLevel;
+  scope: string;
+  message: string;
+  error?: unknown;
+}
+
+const MAX_EVENTS = 500;
+const listeners = new Set<(e: DiagEvent) => void>();
+
+let counter = 0;
+let events: DiagEvent[] = [];
+
+function record(
+  level: DiagLevel,
+  scope: string,
+  message: unknown,
+  error?: unknown,
+): DiagEvent {
+  const ev: DiagEvent = {
+    id: ++counter,
+    ts: Date.now(),
+    level,
+    scope,
+    message: typeof message === "string" ? message : String(message ?? ""),
+    error,
+  };
+  events.push(ev);
+  if (events.length > MAX_EVENTS) events.shift();
+
+  const fn =
+    level === "error" ? console.error : level === "warn" ? console.warn : console.info;
+  if (error !== undefined) fn(`[${scope}]`, message, error);
+  else fn(`[${scope}]`, message);
+
+  for (const l of listeners) {
+    try {
+      l(ev);
+    } catch {
+      /* */
+    }
+  }
+  refreshBadge();
+  return ev;
+}
+
+export const diagnostics = {
+  info: (scope: string, message: unknown) => record("info", scope, message),
+  warn: (scope: string, message: unknown, error?: unknown) =>
+    record("warn", scope, message, error),
+  error: (scope: string, message: unknown, error?: unknown) =>
+    record("error", scope, message, error),
+  list: (): readonly DiagEvent[] => events,
+  clear: () => {
+    events = [];
+    refreshBadge();
+  },
+  counts: (): { info: number; warn: number; error: number } => {
+    const out = { info: 0, warn: 0, error: 0 };
+    for (const e of events) out[e.level]++;
+    return out;
+  },
+  onEvent: (cb: (e: DiagEvent) => void): (() => void) => {
+    listeners.add(cb);
+    return () => listeners.delete(cb);
+  },
+  installGlobalHandlers: () => {
+    // main.ts already shows an overlay; we only ring-buffer here.
+    window.addEventListener("error", (ev) => {
+      record("error", "window.error", ev.message, ev.error);
+    });
+    window.addEventListener("unhandledrejection", (ev) => {
+      const reason = (ev as PromiseRejectionEvent).reason ?? "unhandled rejection";
+      record("error", "window.unhandledrejection", reason);
+    });
+  },
+};
+
+let badge: HTMLDivElement | null = null;
+let badgeClickInstalled = false;
+
+function ensureBadge(): HTMLDivElement {
+  if (badge) return badge;
+  badge = document.createElement("div");
+  badge.id = "obs-diag-badge";
+  badge.style.cssText =
+    "position:absolute;right:14px;bottom:40px;z-index:57;display:none;" +
+    "min-width:22px;height:20px;padding:0 6px;border-radius:10px;" +
+    "background:rgba(239,68,68,.85);color:#fff;" +
+    "font:700 10.5px/20px ui-monospace,monospace;text-align:center;" +
+    "cursor:pointer;pointer-events:auto;box-shadow:0 4px 12px rgba(0,0,0,.4)";
+  badge.title = "Diagnostics";
+  if (ctx.rightHost) ctx.rightHost.appendChild(badge);
+  return badge;
+}
+
+function refreshBadge(): void {
+  try {
+    if (!ctx.rightHost) return;
+    const el = ensureBadge();
+    const c = diagnostics.counts();
+    const n = c.warn + c.error;
+    if (n === 0) {
+      el.style.display = "none";
+      return;
+    }
+    el.style.display = "block";
+    el.textContent = String(n);
+    el.style.background =
+      c.error > 0 ? "rgba(239,68,68,.85)" : "rgba(245,158,11,.85)";
+  } catch {
+    /* */
+  }
+}
+
+function installBadgeClick(): void {
+  if (badgeClickInstalled) return;
+  badgeClickInstalled = true;
+  ensureBadge().addEventListener("click", () => openDiagnosticsPanel());
+}
+
+let panel: HTMLDivElement | null = null;
+
+function openDiagnosticsPanel(): void {
+  if (panel) {
+    panel.style.display = "flex";
+    renderPanel();
+    return;
+  }
+  if (!ctx.rightHost) return;
+  panel = document.createElement("div");
+  panel.id = "obs-diag-panel";
+  panel.style.cssText =
+    "position:absolute;right:14px;top:14px;bottom:64px;width:420px;z-index:58;" +
+    "display:flex;flex-direction:column;background:#1c1e28;" +
+    "border:1px solid #2a2e3a;border-radius:10px;" +
+    "box-shadow:0 16px 44px rgba(0,0,0,.55);color:#e8eaf0;" +
+    "font:12px system-ui,sans-serif;overflow:hidden";
+  panel.addEventListener("mousedown", (e) => e.stopPropagation());
+
+  const header = document.createElement("div");
+  header.style.cssText =
+    "display:flex;align-items:center;gap:8px;padding:9px 10px;" +
+    "border-bottom:1px solid #1e2029;background:#181a23;flex-shrink:0";
+  header.innerHTML = `<span style="font-weight:700;flex:1">Diagnostics</span>`;
+  const clearBtn = document.createElement("button");
+  clearBtn.textContent = "Clear";
+  clearBtn.style.cssText =
+    "padding:3px 9px;background:transparent;color:#9ca3af;" +
+    "border:1px solid #2a2e3a;border-radius:5px;cursor:pointer;font-size:10.5px";
+  clearBtn.onclick = () => {
+    diagnostics.clear();
+    renderPanel();
+  };
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "âœ•";
+  closeBtn.style.cssText =
+    "padding:3px 8px;background:transparent;color:#9ca3af;" +
+    "border:1px solid #2a2e3a;border-radius:5px;cursor:pointer;font-size:11px";
+  closeBtn.onclick = () => {
+    if (panel) panel.style.display = "none";
+  };
+  header.append(clearBtn, closeBtn);
+
+  const body = document.createElement("div");
+  body.style.cssText = "flex:1;overflow-y:auto;padding:8px";
+
+  panel.append(header, body);
+  ctx.rightHost.appendChild(panel);
+  renderPanel();
+}
+
+function renderPanel(): void {
+  if (!panel) return;
+  const body = panel.querySelector("div:nth-child(2)") as HTMLElement;
+  if (!body) return;
+  body.innerHTML = "";
+
+  const list = diagnostics.list();
+  if (!list.length) {
+    body.innerHTML =
+      `<div style="padding:30px;text-align:center;color:#6b7280">No diagnostics recorded.</div>`;
+    return;
+  }
+
+  for (const e of list.slice().reverse()) {
+    const row = document.createElement("div");
+    const color = e.level === "error" ? "#ef4444" : e.level === "warn" ? "#f59e0b" : "#38bdf8";
+    row.style.cssText =
+      "padding:7px 9px;margin-bottom:5px;border-radius:6px;" +
+      `border-left:3px solid ${color};background:rgba(255,255,255,.02);font-size:11px;line-height:1.4`;
+    const time = new Date(e.ts).toLocaleTimeString();
+    const msg = String(e.message)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    row.innerHTML =
+      `<div style="display:flex;gap:6px;align-items:baseline;font-size:10px;color:#6b7280">` +
+      `<b style="color:${color}">${e.level.toUpperCase()}</b>` +
+      `<span style="font-family:monospace">${e.scope}</span>` +
+      `<span style="margin-left:auto">${time}</span></div>` +
+      `<div style="margin-top:3px;word-break:break-word">${msg}</div>`;
+    body.appendChild(row);
+  }
+}
+
+export function setupDiagnostics(): void {
+  ensureBadge();
+  installBadgeClick();
+  diagnostics.installGlobalHandlers();
+  refreshBadge();
+  (ctx.features as any).diagnostics = diagnostics;
+  console.log("[diagnostics] ready");
+}
+
+
+===== FILE: src/core/errors.ts =====
+/**
+ * Error handling: a global reporter, a ring-buffer log, and a boot-failure
+ * screen. Replaces ad-hoc `console.error` + `alert()` calls with a single
+ * entry point that surfaces failures in the UI instead of hiding them in
+ * the dev-tools console.
+ */
+import { notify, type NotifyKind } from "./notify";
+
+export interface ErrorEntry {
+  time: number;
+  message: string;
+  stack?: string;
+  context?: string;
+}
+
+const LOG_LIMIT = 200;
+const log: ErrorEntry[] = [];
+
+export function logError(err: unknown, context?: string): ErrorEntry {
+  const entry: ErrorEntry = {
+    time: Date.now(),
+    message: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+    context,
+  };
+  log.push(entry);
+  if (log.length > LOG_LIMIT) log.shift();
+  // eslint-disable-next-line no-console
+  console.error(`[obs-error]${context ? ` ${context}:` : ""}`, err);
+  return entry;
+}
+
+export function recentErrors(): readonly ErrorEntry[] {
+  return log;
+}
+
+export function clearErrorLog(): void {
+  log.length = 0;
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Global handlers
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+const BENIGN = [
+  /Fragments\s*:?\s*Model not found/i,
+  /ResizeObserver loop/i,
+  /Loading CSS chunk/i,
+  /Script error\.?/i,
+  /cancelled/i,
+  /AbortError/i,
+];
+
+function isBenign(msg: string): boolean {
+  return BENIGN.some((re) => re.test(msg));
+}
+
+export function installGlobalErrorHandlers(): void {
+  window.addEventListener("error", (e) => {
+    const msg = String(e.error?.message ?? e.message ?? "");
+    if (isBenign(msg)) {
+      e.preventDefault();
+      return;
+    }
+    logError(e.error ?? e.message, "window.error");
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    const reason = e.reason;
+    const msg =
+      reason instanceof Error ? reason.message
+      : typeof reason === "string" ? reason
+      : String((reason as { message?: string })?.message ?? reason ?? "");
+    if (isBenign(msg)) {
+      console.warn("[suppressed benign] " + msg);
+      e.preventDefault();
+      return;
+    }
+    logError(e.reason, "unhandled-rejection");
+  });
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Boot failure screen
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+export interface BootFailure {
+  title: string;
+  message: string;
+  hint?: string;
+  details?: string;
+}
+
+export function renderBootFailure(failure: BootFailure): void {
+  // Remove any prior screen (idempotent).
+  document.getElementById("obs-boot-failure")?.remove();
+
+  const app = document.getElementById("app");
+  if (!app) {
+    notify("error", `${failure.title}: ${failure.message}`);
+    return;
+  }
+
+  const screen = document.createElement("div");
+  screen.id = "obs-boot-failure";
+  screen.style.cssText =
+    "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;" +
+    "justify-content:center;background:#0b0d12;color:#e8eaf0;" +
+    "font:14px/1.6 system-ui,sans-serif;padding:24px;overflow:auto";
+
+  const card = document.createElement("div");
+  card.style.cssText =
+    "max-width:640px;width:100%;background:#1c1e28;" +
+    "border:1px solid #2a2e3a;border-left:4px solid #ef4444;" +
+    "border-radius:12px;padding:24px 26px;" +
+    "box-shadow:0 24px 60px rgba(0,0,0,.55)";
+
+  const title = document.createElement("h1");
+  title.textContent = failure.title;
+  title.style.cssText = "margin:0 0 8px;font-size:19px;color:#fca5a5";
+
+  const msg = document.createElement("p");
+  msg.textContent = failure.message;
+  msg.style.cssText = "margin:0 0 12px;color:#cbd5e1";
+
+  card.append(title, msg);
+
+  if (failure.hint) {
+    const hint = document.createElement("div");
+    hint.style.cssText =
+      "padding:12px 14px;border-radius:8px;background:rgba(56,189,248,.08);" +
+      "border:1px solid rgba(56,189,248,.35);color:#bae6fd;font-size:13px;" +
+      "line-height:1.6;margin-bottom:14px";
+    hint.textContent = failure.hint;
+    card.appendChild(hint);
+  }
+
+  if (failure.details) {
+    const details = document.createElement("details");
+    details.style.cssText = "margin-bottom:16px";
+    const summary = document.createElement("summary");
+    summary.textContent = "Technical details";
+    summary.style.cssText = "cursor:pointer;color:#94a3b8;font-size:12px";
+    const pre = document.createElement("pre");
+    pre.textContent = failure.details;
+    pre.style.cssText =
+      "margin:8px 0 0;padding:10px 12px;background:#0e1017;border-radius:6px;" +
+      "font-size:11.5px;line-height:1.5;white-space:pre-wrap;overflow:auto;" +
+      "max-height:240px;color:#cbd5e1";
+    details.append(summary, pre);
+    card.appendChild(details);
+  }
+
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+
+  const reload = document.createElement("button");
+  reload.textContent = "Reload";
+  reload.style.cssText = btnCss("#38bdf8", "#0b0d12");
+  reload.onclick = () => location.reload();
+
+  const copy = document.createElement("button");
+  copy.textContent = "Copy diagnostics";
+  copy.style.cssText = btnCss("transparent", "#cbd5e1", "#2a2e3a");
+  copy.onclick = () => {
+    const diag = [
+      `Message: ${failure.message}`,
+      failure.hint ? `Hint: ${failure.hint}` : "",
+      failure.details ? `Details: ${failure.details}` : "",
+      `User agent: ${navigator.userAgent}`,
+      `URL: ${location.href}`,
+    ].filter(Boolean).join("\n");
+    void navigator.clipboard.writeText(diag).then(
+      () => { copy.textContent = "Copied âœ“"; setTimeout(() => (copy.textContent = "Copy diagnostics"), 1200); },
+      () => { copy.textContent = "Copy failed"; },
+    );
+  };
+
+  actions.append(reload, copy);
+  card.appendChild(actions);
+
+  screen.appendChild(card);
+  document.body.appendChild(screen);
+}
+
+function btnCss(bg: string, fg: string, border = "transparent"): string {
+  return (
+    `padding:9px 18px;border-radius:6px;font:600 13px system-ui,sans-serif;` +
+    `background:${bg};color:${fg};border:1px solid ${border};cursor:pointer`
+  );
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Convenience: run a block with structured error reporting
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+export async function guarded<T>(
+  fn: () => Promise<T> | T,
+  context: string,
+  kind: NotifyKind = "error",
+): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (err) {
+    const entry = logError(err, context);
+    notify(kind, `${context}: ${entry.message}`);
+    return null;
+  }
+}
+
+
+===== FILE: src/core/p-map.ts =====
+/**
+ * Bounded-concurrency async map.
+ *
+ * Runs at most `concurrency` tasks in parallel. Preserves input order in the
+ * result array. Aborts early if the signal fires, rejecting with an
+ * AbortError so the caller can distinguish a cancelled run from a failure.
+ */
+export class AbortError extends Error {
+  constructor(message = "Aborted") {
+    super(message);
+    this.name = "AbortError";
+  }
+}
+
+export interface PMapOptions {
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number) => void;
+  /** Stop scheduling new work after this many failures. Default: reject fast. */
+  continueOnError?: boolean;
+}
+
+export async function pMap<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+  opts: PMapOptions = {},
+): Promise<R[]> {
+  const total = items.length;
+  if (total === 0) return [];
+
+  const limit = Math.max(1, Math.min(concurrency, total));
+  const out: R[] = new Array(total);
+  let cursor = 0;
+  let done = 0;
+  let firstError: unknown = null;
+
+  const runWorker = async (): Promise<void> => {
+    for (;;) {
+      if (opts.signal?.aborted) throw new AbortError();
+      if (firstError && !opts.continueOnError) throw firstError;
+
+      const i = cursor++;
+      if (i >= total) return;
+
+      try {
+        out[i] = await fn(items[i], i);
+      } catch (err) {
+        if (firstError === null) firstError = err;
+        if (!opts.continueOnError) throw err;
+      } finally {
+        done++;
+        opts.onProgress?.(done, total);
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: limit }, () => runWorker()));
+  if (firstError && !opts.continueOnError) throw firstError;
+  return out;
+}
+
+

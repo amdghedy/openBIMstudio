@@ -1,0 +1,3530 @@
+﻿
+===== FILE: src/modules/families/index.ts =====
+// openbim-step1:family-foundation
+// Family system foundation - public entry point.
+//
+// Importing this module installs the family service in the typed service
+// registry and mounts it on ctx.features.family. Call setupFamilies()
+// once during boot; it is idempotent.
+
+import { ctx } from "../../core/context";
+import { register } from "../../core/services";
+import { familyStore } from "./store";
+import { createFamilyService } from "./registry";
+import { createBuiltInFamilies } from "./builtin-families";
+import type { FamilyService } from "./types";
+
+export * from "./types";
+export { familyStore } from "./store";
+export {
+  buildParametricGeometry,
+  registerCustomBuilder,
+  resolveNumber,
+  resolveTransform,
+} from "./parametric-geometry";
+export {
+  createFamilyService,
+  buildFamilyPreview,
+} from "./registry";
+export { createBuiltInFamilies } from "./builtin-families";
+
+let installed = false;
+
+export function setupFamilies(): FamilyService {
+  if (installed) {
+    return (ctx.features as any).family as FamilyService;
+  }
+  installed = true;
+
+  // Seed built-ins on first boot, then load any persisted user families.
+  const builtins = createBuiltInFamilies();
+  familyStore.boot(builtins);
+
+  const svc = createFamilyService();
+
+  register("family", svc);
+  (ctx.features as any).family = svc;
+  try { (window as any).__obsFamily = svc; } catch { /* */ }
+
+  // Diagnostics.
+  const list = svc.list();
+  console.log(
+    "[families] ready. " + list.length + " family definition(s), " +
+    list.reduce((n, f) => n + f.types.length, 0) + " type(s)."
+  );
+
+  return svc;
+}
+
+/** True after setupFamilies() has run. */
+export function isFamilySystemReady(): boolean {
+  return installed;
+}
+
+
+===== FILE: src/modules/families/types.ts =====
+// openbim-step1:family-foundation
+// Family system foundation - type definitions.
+//
+// A FamilyDefinition is a data-driven, user-extensible description of a
+// parametric BIM family: named parameters, a geometry recipe, and one or
+// more named types. Nothing in this file imports runtime code, so it is
+// safe to use as a type-only dependency from services.ts.
+
+import type * as THREE from "three";
+
+export type FamilyCategory =
+  | "wall" | "slab" | "column" | "beam" | "brace" | "truss" | "footing"
+  | "strip" | "mline" | "door" | "window" | "duct" | "pipe"
+  | "cable-tray" | "conduit" | "equipment" | "fitting"
+  | "curtain-wall" | "stairs" | "railing" | "ramp" | "roof" | "ceiling"
+  | "generic";
+
+export type ParameterType =
+  | "length" | "angle" | "number" | "integer" | "text"
+  | "area" | "volume"
+  | "boolean" | "material" | "colour" | "family-type";
+
+export type ParameterScope = "instance" | "type";
+
+export interface FamilyParameter {
+  name: string;
+  /** Human-readable label for the UI. Falls back to `name` when absent. */
+  label?: string;
+  type: ParameterType;
+  scope: ParameterScope;
+  default: any;
+  editable: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  group?: string;
+  description?: string;
+  /** Formula referencing other parameter names, evaluated in declaration order. */
+  formula?: string;
+}
+
+export interface FamilyType {
+  id: string;
+  name: string;
+  /** Type-scope parameter overrides. */
+  values: Record<string, any>;
+}
+
+export type NumberRef =
+  | { ref: string }
+  | { const: number }
+  /**
+   * Safe arithmetic over parameter names, e.g. "thickness / 2" or
+   * "(width + height) * 0.5". Evaluated by the same expression engine that
+   * powers family parameter formulas -- see modules/families/formula-engine.
+   */
+  | { expr: string };
+
+export type ProfileSpec =
+  | { kind: "rect"; w: NumberRef; h: NumberRef }
+  | { kind: "circle"; r: NumberRef; segments?: number }
+  | { kind: "polygon"; points: [number, number][] };
+
+export interface TransformSpec {
+  /** Translation in metres, [x, y, z]. */
+  translate?: [NumberRef, NumberRef, NumberRef];
+  /** Rotation in radians, [x, y, z]. */
+  rotate?: [NumberRef, NumberRef, NumberRef];
+  /** Scale, [x, y, z]. */
+  scale?: [NumberRef, NumberRef, NumberRef];
+}
+
+export type FamilyGeometrySpec =
+  | { kind: "box"; w: NumberRef; d: NumberRef; h: NumberRef; transform?: TransformSpec }
+  | { kind: "cylinder"; r: NumberRef; h: NumberRef; segments?: number; transform?: TransformSpec }
+  | { kind: "extrusion"; profile: ProfileSpec; depth: NumberRef; holes?: ProfileSpec[]; transform?: TransformSpec }
+  | { kind: "composed"; parts: FamilyGeometrySpec[] }
+  | { kind: "custom"; builder: string };
+
+export interface FamilyDefinition {
+  id: string;
+  name: string;
+  category: FamilyCategory;
+  /** IFC entity this family maps to on export. E.g. "IfcWall". */
+  ifcEntity: string;
+  /** Schema version for future migration. */
+  schemaVersion: number;
+  /** The element type in the current hardcoded system this family mirrors. */
+  sourceElementType?: string;
+  parameters: FamilyParameter[];
+  geometry: FamilyGeometrySpec;
+  types: FamilyType[];
+  /** Optional grouping in the browser. */
+  group?: string;
+  /** Whether this family was shipped with the app. */
+  builtIn: boolean;
+}
+
+export type CustomGeometryBuilder = (
+  params: Record<string, any>,
+  resolveNumber: (ref: NumberRef) => number,
+  resolveTransform: (t: TransformSpec | undefined) => THREE.Object3D,
+) => THREE.Object3D | null;
+
+/** Public family service contract. */
+export interface FamilyService {
+  list(): FamilyDefinition[];
+  get(id: string): FamilyDefinition | null;
+  getByElementType(elementType: string): FamilyDefinition | null;
+
+  create(def: Omit<FamilyDefinition, "id" | "schemaVersion" | "builtIn">): FamilyDefinition;
+  update(id: string, patch: Partial<FamilyDefinition>): FamilyDefinition | null;
+  remove(id: string): boolean;
+  duplicate(id: string, newName: string): FamilyDefinition | null;
+
+  createType(familyId: string, name: string, values?: Record<string, any>): FamilyType | null;
+  updateType(familyId: string, typeId: string, patch: Partial<FamilyType>): FamilyType | null;
+  removeType(familyId: string, typeId: string): boolean;
+
+  resolveParams(
+    familyId: string,
+    typeId: string | null,
+    overrides?: Record<string, any>,
+  ): Record<string, any> | null;
+
+  buildGeometry(
+    familyId: string,
+    typeId: string | null,
+    overrides?: Record<string, any>,
+  ): THREE.Object3D | null;
+
+  registerCustomBuilder(name: string, fn: CustomGeometryBuilder): void;
+
+  onChange(cb: () => void): () => void;
+  reset(): void;
+}
+
+
+===== FILE: src/modules/families/types-extended.ts =====
+/**
+ * Additive type extensions for the Revit-competitive parametric engine.
+ * Import alongside ./types - does not break existing FamilyDefinition consumers.
+ */
+
+import type {
+  FamilyGeometrySpec,
+  NumberRef,
+  ProfileSpec,
+  TransformSpec,
+} from "./types";
+import type { Constraint } from "./constraint-graph";
+
+/** Extended geometry kinds that the parametric engine understands. */
+export type ExtendedGeometrySpec =
+  | FamilyGeometrySpec
+  | SweepSpec
+  | RevolveSpec
+  | LoftSpec
+  | VoidSpec
+  | ConditionalSpec
+  | NestedSpec
+  | ArrayGeomSpec;
+
+export interface SweepSpec {
+  kind: "sweep";
+  profile: ProfileSpec;
+  path: [NumberRef, NumberRef, NumberRef][];
+  closed?: boolean;
+  transform?: TransformSpec;
+  visibleWhen?: string;
+}
+
+export interface RevolveSpec {
+  kind: "revolve";
+  profile: ProfileSpec;
+  axis: "x" | "y" | "z";
+  angle: NumberRef;
+  segments?: number;
+  transform?: TransformSpec;
+  visibleWhen?: string;
+}
+
+export interface LoftSpec {
+  kind: "loft";
+  profiles: ProfileSpec[];
+  segments?: number;
+  transform?: TransformSpec;
+  visibleWhen?: string;
+}
+
+export interface VoidSpec {
+  kind: "void";
+  solid: FamilyGeometrySpec;
+  transform?: TransformSpec;
+  visibleWhen?: string;
+}
+
+export interface ConditionalSpec {
+  kind: "conditional";
+  when: string;
+  then: FamilyGeometrySpec | ExtendedGeometrySpec;
+  else?: FamilyGeometrySpec | ExtendedGeometrySpec;
+}
+
+export interface NestedSpec {
+  kind: "nested";
+  familyId: string;
+  typeId?: string;
+  paramMap?: Record<string, NumberRef | string>;
+  transform?: TransformSpec;
+  visibleWhen?: string;
+  shared?: boolean;
+}
+
+export interface ArrayGeomSpec {
+  kind: "array";
+  of: FamilyGeometrySpec | ExtendedGeometrySpec;
+  count: NumberRef;
+  step: [NumberRef, NumberRef, NumberRef];
+  rotateStep?: [NumberRef, NumberRef, NumberRef];
+  visibleWhen?: string;
+}
+
+/**
+ * Optional constraint set stored on a FamilyDefinition (via extension field).
+ * Existing families without constraints continue to work unchanged.
+ */
+export interface FamilyConstraints {
+  constraints?: Constraint[];
+}
+
+/**
+ * Shared / project parameter definition (Revit Shared Parameter analogue).
+ * Stored at project level; bound onto families by name.
+ */
+export interface SharedParameter {
+  guid: string;
+  name: string;
+  type: import("./types").ParameterType;
+  group: string;
+  description?: string;
+  /** When true, appears in schedules as a project parameter. */
+  instance: boolean;
+}
+
+
+===== FILE: src/modules/families/parametric-engine.ts =====
+/**
+ * Open BIM Studio - Parametric Engine (Revit-competitive core)
+ *
+ * Orchestrates:
+ *   1. Formula evaluation (topo-sorted, units-aware, conditional)
+ *   2. Dimensional + geometric constraint solving
+ *   3. Nested family instances & array expansion
+ *   4. Geometry build (extrude / sweep / revolve / loft / void / conditional)
+ *   5. Change propagation (type - instance - nested children)
+ *
+ * Public API is pure / side-effect free except for registered custom builders.
+ * Authoring, UI, and store sit on top of this module.
+ */
+
+import * as THREE from "three";
+import type {
+  FamilyDefinition,
+  FamilyGeometrySpec,
+  FamilyParameter,
+  FamilyType,
+  NumberRef,
+  ProfileSpec,
+  TransformSpec,
+} from "./types";
+import {
+  evaluateParameters,
+  type FormulaResult,
+} from "./formula-engine";
+import {
+  buildParametricGeometry,
+  resolveNumber,
+  resolveTransform,
+  registerCustomBuilder,
+  getCustomBuilder,
+  tintObject,
+} from "./parametric-geometry";
+import {
+  solveConstraints,
+  type Constraint,
+  type ConstraintResult,
+} from "./constraint-graph";
+import {
+  expandArrays,
+  type ArraySpec,
+  type ExpandedPart,
+} from "./array-expander";
+import {
+  resolveNested,
+  type NestedFamilyRef,
+} from "./nested-families";
+
+/* ---------------------------------------------------------------------------
+   Extended geometry kinds (additive - existing kinds still work)
+   --------------------------------------------------------------------------- */
+
+export type ExtendedGeometrySpec =
+  | FamilyGeometrySpec
+  | {
+      kind: "sweep";
+      profile: ProfileSpec;
+      path: [NumberRef, NumberRef, NumberRef][];
+      closed?: boolean;
+      transform?: TransformSpec;
+      /** Parameter name controlling visibility (truthy - show). */
+      visibleWhen?: string;
+    }
+  | {
+      kind: "revolve";
+      profile: ProfileSpec;
+      axis: "x" | "y" | "z";
+      angle: NumberRef;
+      segments?: number;
+      transform?: TransformSpec;
+      visibleWhen?: string;
+    }
+  | {
+      kind: "loft";
+      profiles: ProfileSpec[];
+      segments?: number;
+      transform?: TransformSpec;
+      visibleWhen?: string;
+    }
+  | {
+      kind: "void";
+      /** Positive solid that will be subtracted from siblings in a composed group. */
+      solid: FamilyGeometrySpec;
+      transform?: TransformSpec;
+      visibleWhen?: string;
+    }
+  | {
+      kind: "conditional";
+      /** Parameter name (boolean / number). Truthy - thenSpec, else - elseSpec. */
+      when: string;
+      then: FamilyGeometrySpec;
+      else?: FamilyGeometrySpec;
+    }
+  | {
+      kind: "nested";
+      familyId: string;
+      typeId?: string;
+      paramMap?: Record<string, NumberRef | string>;
+      transform?: TransformSpec;
+      visibleWhen?: string;
+    }
+  | {
+      kind: "array";
+      of: FamilyGeometrySpec;
+      count: NumberRef;
+      /** Translation step between instances [dx, dy, dz]. */
+      step: [NumberRef, NumberRef, NumberRef];
+      /** Optional rotation step [rx, ry, rz] radians. */
+      rotateStep?: [NumberRef, NumberRef, NumberRef];
+      visibleWhen?: string;
+    };
+
+export interface ParametricBuildOptions {
+  /** Extra instance overrides (already merged by caller if desired). */
+  overrides?: Record<string, any>;
+  /** Project / shared parameter values (lowest priority after defaults). */
+  sharedParams?: Record<string, any>;
+  /** Constraints to solve after formula evaluation. */
+  constraints?: Constraint[];
+  /** Lookup for nested families (id - definition). */
+  familyLookup?: (id: string) => FamilyDefinition | null;
+  /** Lookup nested type values. */
+  typeLookup?: (familyId: string, typeId: string) => FamilyType | null;
+  /** Material / colour override applied to all meshes. */
+  colour?: string | THREE.Color;
+  /** When true, skip void CSG (faster preview). */
+  preview?: boolean;
+}
+
+export interface ParametricBuildResult {
+  object: THREE.Object3D | null;
+  params: Record<string, any>;
+  formula: FormulaResult;
+  constraints: ConstraintResult | null;
+  errors: string[];
+  warnings: string[];
+}
+
+/* ---------------------------------------------------------------------------
+   Parameter pipeline
+   --------------------------------------------------------------------------- */
+
+/**
+ * Full parameter resolution pipeline matching Revit's order of operations:
+ *   defaults - shared/project - type - instance overrides - formulas - constraints
+ */
+export function resolveParametricValues(
+  family: FamilyDefinition,
+  type: FamilyType | null,
+  options: ParametricBuildOptions = {},
+): { values: Record<string, any>; formula: FormulaResult; constraints: ConstraintResult | null; errors: string[] } {
+  const errors: string[] = [];
+  const values: Record<string, any> = {};
+
+  // 1. Family defaults
+  for (const p of family.parameters) {
+    values[p.name] = p.default;
+  }
+
+  // 2. Shared / project parameters (only keys that exist on the family)
+  if (options.sharedParams) {
+    for (const p of family.parameters) {
+      if (p.name in options.sharedParams) {
+        values[p.name] = options.sharedParams[p.name];
+      }
+    }
+  }
+
+  // 3. Type overrides
+  if (type) {
+    for (const [k, v] of Object.entries(type.values)) {
+      values[k] = v;
+    }
+  }
+
+  // 4. Instance overrides
+  if (options.overrides) {
+    for (const [k, v] of Object.entries(options.overrides)) {
+      values[k] = v;
+    }
+  }
+
+  // 5. Clamp numeric parameters to min/max before formulas
+  for (const p of family.parameters) {
+    if (typeof values[p.name] === "number") {
+      let n = values[p.name] as number;
+      if (p.min != null && n < p.min) n = p.min;
+      if (p.max != null && n > p.max) n = p.max;
+      if (p.type === "integer") n = Math.round(n);
+      values[p.name] = n;
+    }
+  }
+
+  // 6. Formula evaluation (topo-sorted, cycle-safe)
+  const formula = evaluateParameters(family.parameters, values);
+  Object.assign(values, formula.values);
+  for (const e of formula.errors) {
+    errors.push(`formula:${e.parameter}: ${e.message}`);
+  }
+
+  // 7. Constraint solve (equality / ratio / sum / distance)
+  let constraints: ConstraintResult | null = null;
+  if (options.constraints && options.constraints.length) {
+    constraints = solveConstraints(values, options.constraints);
+    Object.assign(values, constraints.values);
+    for (const e of constraints.errors) {
+      errors.push(`constraint:${e}`);
+    }
+  }
+
+  // 8. Final clamp after constraints
+  for (const p of family.parameters) {
+    if (typeof values[p.name] === "number") {
+      let n = values[p.name] as number;
+      if (p.min != null && n < p.min) n = p.min;
+      if (p.max != null && n > p.max) n = p.max;
+      values[p.name] = n;
+    }
+  }
+
+  return { values, formula, constraints, errors };
+}
+
+/* ---------------------------------------------------------------------------
+   Visibility helper
+   --------------------------------------------------------------------------- */
+
+function isVisible(spec: { visibleWhen?: string }, params: Record<string, any>): boolean {
+  if (!spec.visibleWhen) return true;
+  const v = params[spec.visibleWhen];
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  if (typeof v === "string") return v.length > 0 && v !== "0" && v.toLowerCase() !== "false";
+  return !!v;
+}
+
+/* ---------------------------------------------------------------------------
+   Extended geometry builders
+   --------------------------------------------------------------------------- */
+
+function buildSweep(
+  profile: ProfileSpec,
+  path: [NumberRef, NumberRef, NumberRef][],
+  closed: boolean,
+  params: Record<string, any>,
+): THREE.Object3D | null {
+  if (path.length < 2) return null;
+  const shape = profileToShapeLocal(profile, params);
+  const curvePts = path.map(([x, y, z]) =>
+    new THREE.Vector3(resolveNumber(x, params), resolveNumber(y, params), resolveNumber(z, params)),
+  );
+  const curve = new THREE.CatmullRomCurve3(curvePts, closed);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    steps: Math.max(2, curvePts.length * 4),
+    bevelEnabled: false,
+    extrudePath: curve,
+  });
+  return new THREE.Mesh(geo);
+}
+
+function buildRevolve(
+  profile: ProfileSpec,
+  axis: "x" | "y" | "z",
+  angle: NumberRef,
+  segments: number,
+  params: Record<string, any>,
+): THREE.Object3D | null {
+  const shape = profileToShapeLocal(profile, params);
+  const theta = resolveNumber(angle, params);
+  if (!Number.isFinite(theta) || Math.abs(theta) < 1e-6) return null;
+  const geo = new THREE.LatheGeometry(
+    shape.getPoints(64).map((p) => new THREE.Vector2(p.x, p.y)),
+    Math.max(3, segments),
+    0,
+    theta,
+  );
+  const mesh = new THREE.Mesh(geo);
+  if (axis === "x") mesh.rotation.z = Math.PI / 2;
+  if (axis === "z") mesh.rotation.x = Math.PI / 2;
+  return mesh;
+}
+
+function buildLoft(
+  profiles: ProfileSpec[],
+  segments: number,
+  params: Record<string, any>,
+): THREE.Object3D | null {
+  if (profiles.length < 2) return null;
+  // Approximate loft by stacking extruded slices between consecutive profiles.
+  // Full NURBS loft is future work; this gives editable parametric massing.
+  const group = new THREE.Group();
+  const n = Math.max(1, segments);
+  for (let i = 0; i < profiles.length - 1; i++) {
+    const a = profileToShapeLocal(profiles[i], params).getPoints(32);
+    const b = profileToShapeLocal(profiles[i + 1], params).getPoints(32);
+    const count = Math.min(a.length, b.length);
+    for (let s = 0; s < n; s++) {
+      const t0 = s / n;
+      const t1 = (s + 1) / n;
+      const shape = new THREE.Shape();
+      const pts: THREE.Vector2[] = [];
+      for (let k = 0; k < count; k++) {
+        const x = a[k].x * (1 - t0) + b[k].x * t0;
+        const y = a[k].y * (1 - t0) + b[k].y * t0;
+        pts.push(new THREE.Vector2(x, y));
+      }
+      if (pts.length < 3) continue;
+      shape.moveTo(pts[0].x, pts[0].y);
+      for (let k = 1; k < pts.length; k++) shape.lineTo(pts[k].x, pts[k].y);
+      shape.closePath();
+      const depth = 1 / (n * (profiles.length - 1));
+      const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+      const mesh = new THREE.Mesh(geo);
+      mesh.position.z = (i + t0) / (profiles.length - 1);
+      group.add(mesh);
+    }
+  }
+  return group.children.length ? group : null;
+}
+
+function profileToShapeLocal(profile: ProfileSpec, params: Record<string, any>): THREE.Shape {
+  const shape = new THREE.Shape();
+  if (profile.kind === "rect") {
+    const w = resolveNumber(profile.w, params);
+    const h = resolveNumber(profile.h, params);
+    shape.moveTo(-w / 2, -h / 2);
+    shape.lineTo(w / 2, -h / 2);
+    shape.lineTo(w / 2, h / 2);
+    shape.lineTo(-w / 2, h / 2);
+    shape.closePath();
+  } else if (profile.kind === "circle") {
+    const r = resolveNumber(profile.r, params);
+    shape.absarc(0, 0, Math.max(1e-6, r), 0, Math.PI * 2, false);
+  } else if (profile.kind === "polygon") {
+    const pts = profile.points;
+    if (pts.length >= 3) {
+      shape.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
+      shape.closePath();
+    }
+  }
+  return shape;
+}
+
+/**
+ * Recursively build geometry from an extended (or classic) spec.
+ */
+export function buildExtendedGeometry(
+  spec: ExtendedGeometrySpec,
+  params: Record<string, any>,
+  options: ParametricBuildOptions = {},
+): THREE.Object3D | null {
+  // Visibility gate (shared by most extended kinds)
+  if ("visibleWhen" in spec && !isVisible(spec as any, params)) {
+    return null;
+  }
+
+  switch (spec.kind) {
+    case "box":
+    case "cylinder":
+    case "extrusion":
+    case "composed":
+    case "custom":
+      return buildParametricGeometry(spec as FamilyGeometrySpec, params);
+
+    case "sweep": {
+      const mesh = buildSweep(spec.profile, spec.path, !!spec.closed, params);
+      if (!mesh) return null;
+      const wrap = resolveTransform(spec.transform, params);
+      wrap.add(mesh);
+      return wrap;
+    }
+
+    case "revolve": {
+      const mesh = buildRevolve(
+        spec.profile,
+        spec.axis,
+        spec.angle,
+        spec.segments ?? 32,
+        params,
+      );
+      if (!mesh) return null;
+      const wrap = resolveTransform(spec.transform, params);
+      wrap.add(mesh);
+      return wrap;
+    }
+
+    case "loft": {
+      const obj = buildLoft(spec.profiles, spec.segments ?? 4, params);
+      if (!obj) return null;
+      const wrap = resolveTransform(spec.transform, params);
+      wrap.add(obj);
+      return wrap;
+    }
+
+    case "void": {
+      // Mark as void; CSG subtraction is applied at composed-group level.
+      const solid = buildParametricGeometry(spec.solid, params);
+      if (!solid) return null;
+      solid.userData.isVoid = true;
+      const wrap = resolveTransform(spec.transform, params);
+      wrap.add(solid);
+      wrap.userData.isVoid = true;
+      return wrap;
+    }
+
+    case "conditional": {
+      const v = params[spec.when];
+      const truthy =
+        typeof v === "boolean" ? v :
+        typeof v === "number" ? v !== 0 :
+        !!v;
+      const branch = truthy ? spec.then : spec.else;
+      if (!branch) return null;
+      return buildExtendedGeometry(branch as ExtendedGeometrySpec, params, options);
+    }
+
+    case "nested": {
+      if (!options.familyLookup) {
+        console.warn("[parametric-engine] nested family requires familyLookup");
+        return null;
+      }
+      const nestedFam = options.familyLookup(spec.familyId);
+      if (!nestedFam) return null;
+      const nestedType = spec.typeId
+        ? options.typeLookup?.(spec.familyId, spec.typeId) ?? null
+        : null;
+
+      // Map parent params - nested overrides
+      const nestedOverrides: Record<string, any> = {};
+      if (spec.paramMap) {
+        for (const [childKey, ref] of Object.entries(spec.paramMap)) {
+          if (typeof ref === "string") {
+            nestedOverrides[childKey] = params[ref];
+          } else {
+            nestedOverrides[childKey] = resolveNumber(ref, params);
+          }
+        }
+      }
+
+      const nested = buildParametricFamily(nestedFam, nestedType, {
+        ...options,
+        overrides: nestedOverrides,
+      });
+      if (!nested.object) return null;
+      const wrap = resolveTransform(spec.transform, params);
+      wrap.add(nested.object);
+      return wrap;
+    }
+
+    case "array": {
+      const count = Math.max(0, Math.floor(resolveNumber(spec.count, params)));
+      if (count === 0) return null;
+      const dx = resolveNumber(spec.step[0], params);
+      const dy = resolveNumber(spec.step[1], params);
+      const dz = resolveNumber(spec.step[2], params);
+      const rx = spec.rotateStep ? resolveNumber(spec.rotateStep[0], params) : 0;
+      const ry = spec.rotateStep ? resolveNumber(spec.rotateStep[1], params) : 0;
+      const rz = spec.rotateStep ? resolveNumber(spec.rotateStep[2], params) : 0;
+
+      const group = new THREE.Group();
+      for (let i = 0; i < count; i++) {
+        const child = buildExtendedGeometry(spec.of as ExtendedGeometrySpec, params, options);
+        if (!child) continue;
+        child.position.set(dx * i, dy * i, dz * i);
+        if (rx || ry || rz) child.rotation.set(rx * i, ry * i, rz * i);
+        group.add(child);
+      }
+      return group.children.length ? group : null;
+    }
+
+    default:
+      return null;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Public: build a complete parametric family instance
+   --------------------------------------------------------------------------- */
+
+export function buildParametricFamily(
+  family: FamilyDefinition,
+  type: FamilyType | null,
+  options: ParametricBuildOptions = {},
+): ParametricBuildResult {
+  const warnings: string[] = [];
+  const { values, formula, constraints, errors } = resolveParametricValues(
+    family,
+    type,
+    options,
+  );
+
+  let object: THREE.Object3D | null = null;
+  try {
+    object = buildExtendedGeometry(
+      family.geometry as ExtendedGeometrySpec,
+      values,
+      options,
+    );
+  } catch (err) {
+    errors.push(
+      `geometry: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  if (object) {
+    object.userData.familyId = family.id;
+    object.userData.familyTypeId = type?.id ?? null;
+    object.userData.familyParams = { ...values };
+    object.userData.ifcEntity = family.ifcEntity;
+    if (options.colour) tintObject(object, options.colour);
+  }
+
+  return {
+    object,
+    params: values,
+    formula,
+    constraints,
+    errors,
+    warnings,
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   Parameter change propagation (type edit - all instances)
+   --------------------------------------------------------------------------- */
+
+export interface InstanceParamBinding {
+  elementId: string;
+  familyId: string;
+  typeId: string | null;
+  /** Instance-level overrides only (type values live on the type). */
+  overrides: Record<string, any>;
+}
+
+/**
+ * Given a type parameter change, recompute every bound instance's effective
+ * parameter map. Does not touch the scene - caller applies geometry rebuild.
+ */
+export function propagateTypeChange(
+  family: FamilyDefinition,
+  type: FamilyType,
+  instances: InstanceParamBinding[],
+  options: ParametricBuildOptions = {},
+): Map<string, Record<string, any>> {
+  const out = new Map<string, Record<string, any>>();
+  for (const inst of instances) {
+    if (inst.familyId !== family.id) continue;
+    if (inst.typeId !== type.id) continue;
+    const { values } = resolveParametricValues(family, type, {
+      ...options,
+      overrides: inst.overrides,
+    });
+    out.set(inst.elementId, values);
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------------
+   Reporting parameters (read-only, derived, shown in schedules)
+   --------------------------------------------------------------------------- */
+
+export function collectReportingValues(
+  family: FamilyDefinition,
+  values: Record<string, any>,
+): Record<string, any> {
+  const report: Record<string, any> = {};
+  for (const p of family.parameters) {
+    // Convention: group === "Reporting" or name starts with "Report_"
+    if (p.group === "Reporting" || p.name.startsWith("Report_") || !p.editable) {
+      if (p.formula || p.group === "Reporting") {
+        report[p.name] = values[p.name];
+      }
+    }
+  }
+  return report;
+}
+
+/* ---------------------------------------------------------------------------
+   Re-exports for a single import path
+   --------------------------------------------------------------------------- */
+
+export {
+  evaluateParameters,
+  buildParametricGeometry,
+  resolveNumber,
+  resolveTransform,
+  registerCustomBuilder,
+  getCustomBuilder,
+  tintObject,
+  solveConstraints,
+  expandArrays,
+  resolveNested,
+};
+
+export type {
+  FormulaResult,
+  Constraint,
+  ConstraintResult,
+  ArraySpec,
+  ExpandedPart,
+  NestedFamilyRef,
+};
+
+
+===== FILE: src/modules/families/parametric-geometry.ts =====
+// openbim-step1:family-foundation
+// Family system foundation - parametric geometry resolver.
+//
+// Walks a FamilyGeometrySpec together with a resolved parameter map and
+// returns a THREE.Object3D. All primitives are built from scratch with
+// THREE geometry classes; this module has no dependency on authoring.ts.
+
+import * as THREE from "three";
+import { evaluateFormula } from "./formula-engine";
+import type {
+  CustomGeometryBuilder,
+  FamilyGeometrySpec,
+  NumberRef,
+  ProfileSpec,
+  TransformSpec,
+} from "./types";
+
+const CUSTOM_BUILDERS = new Map<string, CustomGeometryBuilder>();
+
+export function registerCustomBuilder(name: string, fn: CustomGeometryBuilder): void {
+  CUSTOM_BUILDERS.set(name, fn);
+}
+
+export function getCustomBuilder(name: string): CustomGeometryBuilder | null {
+  return CUSTOM_BUILDERS.get(name) ?? null;
+}
+
+/** Resolve a NumberRef to a concrete number given the parameter map. */
+export function resolveNumber(ref: NumberRef, params: Record<string, any>): number {
+  if ("const" in ref) return ref.const;
+  if ("expr" in ref) {
+    const n = evaluateFormula(ref.expr, params);
+    if (n === null) {
+      console.warn("[families] NumberRef expr '" + ref.expr + "' failed to evaluate; using 0");
+      return 0;
+    }
+    return n;
+  }
+  const v = params[ref.ref];
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) {
+    console.warn("[families] NumberRef '" + ref.ref + "' resolved to non-number; using 0");
+    return 0;
+  }
+  return n;
+}
+
+/** Build a Transform matrix from a TransformSpec. */
+export function resolveTransform(
+  spec: TransformSpec | undefined,
+  params: Record<string, any>,
+): THREE.Object3D {
+  const wrapper = new THREE.Group();
+  if (!spec) return wrapper;
+  if (spec.translate) {
+    wrapper.position.set(
+      resolveNumber(spec.translate[0], params),
+      resolveNumber(spec.translate[1], params),
+      resolveNumber(spec.translate[2], params),
+    );
+  }
+  if (spec.rotate) {
+    wrapper.rotation.set(
+      resolveNumber(spec.rotate[0], params),
+      resolveNumber(spec.rotate[1], params),
+      resolveNumber(spec.rotate[2], params),
+    );
+  }
+  if (spec.scale) {
+    wrapper.scale.set(
+      resolveNumber(spec.scale[0], params),
+      resolveNumber(spec.scale[1], params),
+      resolveNumber(spec.scale[2], params),
+    );
+  }
+  return wrapper;
+}
+
+function profileToShape(profile: ProfileSpec, params: Record<string, any>): THREE.Shape {
+  const shape = new THREE.Shape();
+  if (profile.kind === "rect") {
+    const w = resolveNumber(profile.w, params);
+    const h = resolveNumber(profile.h, params);
+    shape.moveTo(-w / 2, -h / 2);
+    shape.lineTo( w / 2, -h / 2);
+    shape.lineTo( w / 2,  h / 2);
+    shape.lineTo(-w / 2,  h / 2);
+    shape.closePath();
+  } else if (profile.kind === "circle") {
+    const r = resolveNumber(profile.r, params);
+    shape.absarc(0, 0, r, 0, Math.PI * 2, false);
+  } else if (profile.kind === "polygon") {
+    const pts = profile.points;
+    if (pts.length < 3) return shape;
+    shape.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
+    shape.closePath();
+  }
+  return shape;
+}
+
+function profileToHole(profile: ProfileSpec, params: Record<string, any>): THREE.Path {
+  const shape = profileToShape(profile, params);
+  const path = new THREE.Path();
+  const pts = shape.getPoints(64);
+  if (pts.length < 3) return path;
+  path.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) path.lineTo(pts[i].x, pts[i].y);
+  path.closePath();
+  return path;
+}
+
+/**
+ * Build a THREE.Object3D from a FamilyGeometrySpec + resolved parameters.
+ * Returns null on unsupported spec or empty geometry.
+ */
+export function buildParametricGeometry(
+  spec: FamilyGeometrySpec,
+  params: Record<string, any>,
+): THREE.Object3D | null {
+  switch (spec.kind) {
+    case "box": {
+      const w = resolveNumber(spec.w, params);
+      const d = resolveNumber(spec.d, params);
+      const h = resolveNumber(spec.h, params);
+      if (w <= 0 || d <= 0 || h <= 0) return null;
+      const geo = new THREE.BoxGeometry(w, h, d);
+      const mesh = new THREE.Mesh(geo);
+      const wrap = resolveTransform(spec.transform, params);
+      wrap.add(mesh);
+      return wrap;
+    }
+
+    case "cylinder": {
+      const r = resolveNumber(spec.r, params);
+      const h = resolveNumber(spec.h, params);
+      const seg = spec.segments ?? 24;
+      if (r <= 0 || h <= 0) return null;
+      const geo = new THREE.CylinderGeometry(r, r, h, seg);
+      const mesh = new THREE.Mesh(geo);
+      const wrap = resolveTransform(spec.transform, params);
+      wrap.add(mesh);
+      return wrap;
+    }
+
+    case "extrusion": {
+      const shape = profileToShape(spec.profile, params);
+      if (spec.holes && spec.holes.length) {
+        for (const h of spec.holes) shape.holes.push(profileToHole(h, params));
+      }
+      const depth = resolveNumber(spec.depth, params);
+      if (depth <= 0) return null;
+      const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+      // Extrusion runs along +Z; centre it on Z so the transform origin is
+      // the mid-depth of the solid. Caller can override with transform.
+      geo.translate(0, 0, -depth / 2);
+      const mesh = new THREE.Mesh(geo);
+      const wrap = resolveTransform(spec.transform, params);
+      wrap.add(mesh);
+      return wrap;
+    }
+
+    case "composed": {
+      const group = new THREE.Group();
+      for (const part of spec.parts) {
+        const child = buildParametricGeometry(part, params);
+        if (child) group.add(child);
+      }
+      return group.children.length ? group : null;
+    }
+
+    case "custom": {
+      const builder = CUSTOM_BUILDERS.get(spec.builder);
+      if (!builder) {
+        console.warn("[families] custom builder '" + spec.builder + "' is not registered");
+        return null;
+      }
+      return builder(params, (ref) => resolveNumber(ref, params), (t) => resolveTransform(t, params));
+    }
+  }
+
+  return null;
+}
+
+/** Colour every mesh in the tree with the given THREE colour. */
+export function tintObject(root: THREE.Object3D, colour: THREE.Color | string): void {
+  const c = colour instanceof THREE.Color ? colour : new THREE.Color(colour);
+  root.traverse((obj: any) => {
+    if (!obj.isMesh) return;
+    if (!obj.material) obj.material = new THREE.MeshLambertMaterial({ color: c });
+    else if (obj.material.color) obj.material.color.copy(c);
+  });
+}
+
+
+===== FILE: src/modules/families/formula-engine.ts =====
+// openbim-families:formula-engine
+// Parametric family formula engine.
+//
+// Replaces the one-pass, declaration-order evaluator that used to live
+// inside registry.ts. Adds:
+//   - topological sort of parameter declarations by formula dependency
+//   - cycle detection (self-loops and multi-parameter cycles)
+//   - a small library of built-in functions, plus free access to Math.*
+//   - optional '=' prefix (Revit convention: "= height * 2")
+//   - typed per-parameter error surface
+//   - a computed set so the UI can render formula-driven rows read-only
+//
+// Nothing here touches the DOM, the store, or THREE. It is a pure data
+// transform over (FamilyParameter[], values) -> (values, errors, computed).
+
+import type { FamilyParameter } from "./types";
+
+export interface FormulaError {
+  parameter: string;
+  message: string;
+  formula: string;
+}
+
+export interface FormulaResult {
+  /** Final parameter map after all formulas have been evaluated. */
+  values: Record<string, any>;
+  /** Parameters whose value came from a formula (read-only in the UI). */
+  computed: Set<string>;
+  /** Per-parameter error list; empty when the family resolves cleanly. */
+  errors: FormulaError[];
+  /** Parameter names in evaluation order (after topo sort). */
+  order: string[];
+}
+
+/**
+ * Built-in functions made available to every formula. Any identifier not
+ * found here and not declared as a family parameter is treated as a free
+ * variable and left to the JS engine (so Math.* still works).
+ */
+export const BUILTIN_FUNCTIONS: Record<string, (...args: number[]) => number> = {
+  sin: (x: number) => Math.sin(x),
+  cos: (x: number) => Math.cos(x),
+  tan: (x: number) => Math.tan(x),
+  sqrt: (x: number) => Math.sqrt(x),
+  abs: (x: number) => Math.abs(x),
+  min: (...a: number[]) => Math.min(...a),
+  max: (...a: number[]) => Math.max(...a),
+  round: (x: number, digits?: number) => {
+    const d = Number.isFinite(digits) ? Number(digits) : 0;
+    const f = Math.pow(10, d);
+    return Math.round(x * f) / f;
+  },
+  floor: (x: number) => Math.floor(x),
+  ceil: (x: number) => Math.ceil(x),
+  pi: () => Math.PI,
+};
+
+/**
+ * Extract identifier-like tokens from a formula. Strips the '=' prefix and
+ * any single- or double-quoted string literals first.
+ */
+function identifiersIn(formula: string): string[] {
+  let s = String(formula ?? "");
+  if (s.startsWith("=")) s = s.slice(1);
+  s = s.replace(/"[^"]*"|'[^']*'/g, " ");
+
+  const out = new Set<string>();
+  const re = /[A-Za-z_][A-Za-z0-9_]*/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) out.add(m[0]);
+  return Array.from(out);
+}
+
+interface TopoResult {
+  order: FamilyParameter[];
+  cycles: string[];
+}
+
+/**
+ * Kahn's algorithm over the formula dependency graph.
+ *
+ * A formula references another parameter if its formula string mentions
+ * that parameter's name as a bare identifier. Built-ins and Math.* are
+ * ignored because they are not declared parameters.
+ *
+ * Any parameter still with non-zero in-degree after the queue drains is
+ * part of a cycle (including self-loops).
+ */
+function topoSort(declarations: FamilyParameter[]): TopoResult {
+  const byName = new Map<string, FamilyParameter>();
+  for (const p of declarations) byName.set(p.name, p);
+
+  const deps = new Map<string, Set<string>>();
+  const indeg = new Map<string, number>();
+  for (const p of declarations) indeg.set(p.name, 0);
+
+  for (const p of declarations) {
+    const set = new Set<string>();
+    if (p.formula) {
+      for (const id of identifiersIn(p.formula)) {
+        if (id === p.name) continue;               // self-loop -> handled below
+        if (!byName.has(id)) continue;             // unknown id -> not a param
+        set.add(id);
+      }
+      // A parameter whose formula mentions its own name is a cycle of size 1.
+      if (identifiersIn(p.formula).indexOf(p.name) >= 0) {
+        set.add(p.name);
+      }
+    }
+    deps.set(p.name, set);
+    for (const _d of set) {
+      indeg.set(p.name, (indeg.get(p.name) ?? 0) + 1);
+    }
+  }
+
+  const queue: string[] = [];
+  for (const [name, d] of indeg) if (d === 0) queue.push(name);
+
+  const order: FamilyParameter[] = [];
+  while (queue.length) {
+    const name = queue.shift() as string;
+    const p = byName.get(name);
+    if (p) order.push(p);
+    for (const [other, depsOf] of deps) {
+      if (!depsOf.has(name)) continue;
+      const next = (indeg.get(other) ?? 0) - 1;
+      indeg.set(other, next);
+      if (next === 0) queue.push(other);
+    }
+  }
+
+  const cycles: string[] = [];
+  for (const [name, d] of indeg) if (d > 0) cycles.push(name);
+
+  // Append cyclic parameters after the healthy ones so callers still
+  // get every declared parameter back in some deterministic order.
+  for (const c of cycles) {
+    const p = byName.get(c);
+    if (p) order.push(p);
+  }
+
+  return { order, cycles };
+}
+
+/**
+ * Evaluate every formula in a family.
+ *
+ * @param declarations  Family.parameters (order does not matter).
+ * @param seedValues    Merged defaults + type overrides + instance overrides.
+ */
+export function evaluateParameters(
+  declarations: FamilyParameter[],
+  seedValues: Record<string, any>,
+): FormulaResult {
+  const { order, cycles } = topoSort(declarations);
+  const values: Record<string, any> = { ...seedValues };
+  const computed = new Set<string>();
+  const errors: FormulaError[] = [];
+
+  // Guarantee every declared parameter is present so formulas referencing
+  // a default-valued param cannot see `undefined`.
+  for (const p of declarations) {
+    if (!(p.name in values)) values[p.name] = p.default;
+  }
+
+  const cycleSet = new Set(cycles);
+  for (const c of cycles) {
+    const p = declarations.find((x) => x.name === c);
+    errors.push({
+      parameter: c,
+      message: "Cycle detected in formula references",
+      formula: p?.formula ?? "",
+    });
+  }
+
+  for (const p of order) {
+    if (!p.formula) continue;
+    if (cycleSet.has(p.name)) continue;
+    computed.add(p.name);
+
+    // Collect the free identifiers that are actual family parameters.
+    const ids = identifiersIn(p.formula);
+    const argNames: string[] = [];
+    const argValues: any[] = [];
+    for (const id of ids) {
+      if (id in BUILTIN_FUNCTIONS) continue;
+      if (!(id in values)) continue;
+      argNames.push(id);
+      argValues.push(values[id]);
+    }
+
+    const fnNames = Object.keys(BUILTIN_FUNCTIONS);
+    const fnValues = fnNames.map((n) => BUILTIN_FUNCTIONS[n]);
+
+    let body = p.formula.trim();
+    if (body.startsWith("=")) body = body.slice(1);
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const fn = new Function(...fnNames, ...argNames, "return (" + body + ");");
+      const raw = fn(...fnValues, ...argValues);
+
+      if (raw === undefined || raw === null) {
+        errors.push({
+          parameter: p.name,
+          message: "Formula returned no value",
+          formula: p.formula,
+        });
+        continue;
+      }
+      if (typeof raw === "boolean" || typeof raw === "string") {
+        values[p.name] = raw;
+        continue;
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n)) {
+        errors.push({
+          parameter: p.name,
+          message: "Formula returned a non-finite number",
+          formula: p.formula,
+        });
+        continue;
+      }
+      values[p.name] = n;
+    } catch (err) {
+      errors.push({
+        parameter: p.name,
+        message: err instanceof Error ? err.message : String(err),
+        formula: p.formula,
+      });
+    }
+  }
+
+  return {
+    values,
+    computed,
+    errors,
+    order: order.map((p) => p.name),
+  };
+}
+
+// openbim-fix:formula-engine -- single-expression evaluator for NumberRef
+//
+// Used by the parametric geometry layer for `{ expr: "thickness / 2" }`
+// style NumberRefs. Reuses the identifier scanner and BUILTIN_FUNCTIONS
+// already defined in this module so the family editor and the geometry
+// resolver see the same math. Returns null on empty input, unknown
+// identifier, or non-finite result; the caller decides the fallback.
+export function evaluateFormula(
+  expr: string,
+  params: Record<string, any>,
+): number | null {
+  const source = String(expr ?? "").trim();
+  if (!source) return null;
+
+  // Collect identifiers that are actual family parameters.
+  const ids = identifiersIn(source);
+  const argNames: string[] = [];
+  const argValues: any[] = [];
+  for (const id of ids) {
+    if (id in BUILTIN_FUNCTIONS) continue;
+    if (!(id in params)) continue;
+    argNames.push(id);
+    argValues.push(params[id]);
+  }
+
+  const fnNames  = Object.keys(BUILTIN_FUNCTIONS);
+  const fnValues = fnNames.map((n) => BUILTIN_FUNCTIONS[n]);
+
+  let body = source;
+  if (body.startsWith("=")) body = body.slice(1);
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const fn = new Function(...fnNames, ...argNames, "return (" + body + ");");
+    const raw = fn(...fnValues, ...argValues);
+    if (raw === undefined || raw === null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+/** Convenience: does this family declare any formulas at all? */
+export function hasFormulas(declarations: FamilyParameter[]): boolean {
+  return declarations.some((p) => !!p.formula);
+}
+
+===== FILE: src/modules/families/formula-engine-enhanced.ts =====
+/**
+ * Enhanced parametric formula engine (drop-in supersession of formula-engine.ts).
+ *
+ * Adds on top of the baseline engine:
+ *   - Conditional expressions:  if(cond, a, b)   and  cond ? a : b
+ *   - Boolean operators: and, or, not, xor
+ *   - Comparison helpers: eq, ne, lt, le, gt, ge
+ *   - Unit conversion helpers: mm, cm, m, ft, in, deg, rad
+ *   - String / boolean return values (for Yes/No and text parameters)
+ *   - Reporting of dependency graph for UI tooltips
+ *
+ * Safe evaluation: formulas run in a Function sandbox with only the
+ * declared parameter names + the built-in library in scope. No access
+ * to globalThis, document, or imports.
+ */
+
+import type { FamilyParameter } from "./types";
+
+export interface FormulaError {
+  parameter: string;
+  message: string;
+  formula: string;
+}
+
+export interface FormulaResult {
+  values: Record<string, any>;
+  computed: Set<string>;
+  errors: FormulaError[];
+  order: string[];
+  /** name - list of parameter names it depends on */
+  dependencies: Record<string, string[]>;
+}
+
+/* -- Built-in library ------------------------------------------------ */
+
+const DEG2RAD = Math.PI / 180;
+const RAD2DEG = 180 / Math.PI;
+
+export const BUILTIN_FUNCTIONS: Record<string, (...args: any[]) => any> = {
+  // Trig (radians)
+  sin: (x: number) => Math.sin(x),
+  cos: (x: number) => Math.cos(x),
+  tan: (x: number) => Math.tan(x),
+  asin: (x: number) => Math.asin(x),
+  acos: (x: number) => Math.acos(x),
+  atan: (x: number) => Math.atan(x),
+  atan2: (y: number, x: number) => Math.atan2(y, x),
+
+  // Trig (degrees - Revit-style convenience)
+  sind: (x: number) => Math.sin(x * DEG2RAD),
+  cosd: (x: number) => Math.cos(x * DEG2RAD),
+  tand: (x: number) => Math.tan(x * DEG2RAD),
+
+  // Arithmetic
+  sqrt: (x: number) => Math.sqrt(x),
+  abs: (x: number) => Math.abs(x),
+  min: (...a: number[]) => Math.min(...a),
+  max: (...a: number[]) => Math.max(...a),
+  round: (x: number, digits?: number) => {
+    const d = Number.isFinite(digits as number) ? Number(digits) : 0;
+    const f = Math.pow(10, d);
+    return Math.round(x * f) / f;
+  },
+  floor: (x: number) => Math.floor(x),
+  ceil: (x: number) => Math.ceil(x),
+  pow: (x: number, y: number) => Math.pow(x, y),
+  log: (x: number) => Math.log(x),
+  log10: (x: number) => Math.log10(x),
+  exp: (x: number) => Math.exp(x),
+  pi: () => Math.PI,
+  e: () => Math.E,
+
+  // Conditionals
+  if: (cond: any, a: any, b: any) => (truthy(cond) ? a : b),
+  and: (...args: any[]) => args.every(truthy),
+  or: (...args: any[]) => args.some(truthy),
+  not: (x: any) => !truthy(x),
+  xor: (a: any, b: any) => truthy(a) !== truthy(b),
+
+  // Comparisons (return 1/0 so they compose in arithmetic formulas)
+  eq: (a: any, b: any) => (a === b ? 1 : 0),
+  ne: (a: any, b: any) => (a !== b ? 1 : 0),
+  lt: (a: number, b: number) => (a < b ? 1 : 0),
+  le: (a: number, b: number) => (a <= b ? 1 : 0),
+  gt: (a: number, b: number) => (a > b ? 1 : 0),
+  ge: (a: number, b: number) => (a >= b ? 1 : 0),
+
+  // Unit conversion - internal metres / radians
+  mm: (x: number) => x / 1000,
+  cm: (x: number) => x / 100,
+  m: (x: number) => x,
+  ft: (x: number) => x * 0.3048,
+  in: (x: number) => x * 0.0254,
+  deg: (x: number) => x * DEG2RAD,
+  rad: (x: number) => x,
+
+  // Unit conversion - internal
+  to_mm: (x: number) => x * 1000,
+  to_cm: (x: number) => x * 100,
+  to_ft: (x: number) => x / 0.3048,
+  to_in: (x: number) => x / 0.0254,
+  to_deg: (x: number) => x * RAD2DEG,
+};
+
+function truthy(v: any): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0 && Number.isFinite(v);
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return s !== "" && s !== "0" && s !== "false" && s !== "no";
+  }
+  return !!v;
+}
+
+/* -- Identifier extraction ------------------------------------------- */
+
+function identifiersIn(formula: string): string[] {
+  let s = String(formula ?? "");
+  if (s.startsWith("=")) s = s.slice(1);
+  s = s.replace(/"[^"]*"|'[^']*'/g, " ");
+  const out = new Set<string>();
+  const re = /[A-Za-z_][A-Za-z0-9_]*/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) out.add(m[0]);
+  return Array.from(out);
+}
+
+/* -- Topological sort ------------------------------------------------ */
+
+interface TopoResult {
+  order: FamilyParameter[];
+  cycles: string[];
+  dependencies: Record<string, string[]>;
+}
+
+function topoSort(declarations: FamilyParameter[]): TopoResult {
+  const byName = new Map<string, FamilyParameter>();
+  for (const p of declarations) byName.set(p.name, p);
+
+  const deps = new Map<string, Set<string>>();
+  const indeg = new Map<string, number>();
+  const dependencies: Record<string, string[]> = {};
+  for (const p of declarations) indeg.set(p.name, 0);
+
+  for (const p of declarations) {
+    const set = new Set<string>();
+    if (p.formula) {
+      for (const id of identifiersIn(p.formula)) {
+        if (!byName.has(id)) continue;
+        set.add(id);
+      }
+    }
+    deps.set(p.name, set);
+    dependencies[p.name] = Array.from(set);
+    for (const _d of set) {
+      indeg.set(p.name, (indeg.get(p.name) ?? 0) + 1);
+    }
+  }
+
+  const queue: string[] = [];
+  for (const [name, d] of indeg) if (d === 0) queue.push(name);
+
+  const order: FamilyParameter[] = [];
+  while (queue.length) {
+    const name = queue.shift() as string;
+    const p = byName.get(name);
+    if (p) order.push(p);
+    for (const [other, depsOf] of deps) {
+      if (!depsOf.has(name)) continue;
+      const next = (indeg.get(other) ?? 0) - 1;
+      indeg.set(other, next);
+      if (next === 0) queue.push(other);
+    }
+  }
+
+  const cycles: string[] = [];
+  for (const [name, d] of indeg) if (d > 0) cycles.push(name);
+  for (const c of cycles) {
+    const p = byName.get(c);
+    if (p) order.push(p);
+  }
+
+  return { order, cycles, dependencies };
+}
+
+/* -- Safe formula evaluation ----------------------------------------- */
+
+/**
+ * Rewrite ternary operators so the Function body stays valid JS.
+ * Already valid JS ternary is left alone; we just strip the optional '='.
+ */
+function normalizeBody(formula: string): string {
+  let body = formula.trim();
+  if (body.startsWith("=")) body = body.slice(1).trim();
+  return body;
+}
+
+export function evaluateParameters(
+  declarations: FamilyParameter[],
+  seedValues: Record<string, any>,
+): FormulaResult {
+  const { order, cycles, dependencies } = topoSort(declarations);
+  const values: Record<string, any> = { ...seedValues };
+  const computed = new Set<string>();
+  const errors: FormulaError[] = [];
+
+  for (const p of declarations) {
+    if (!(p.name in values)) values[p.name] = p.default;
+  }
+
+  const cycleSet = new Set(cycles);
+  for (const c of cycles) {
+    const p = declarations.find((x) => x.name === c);
+    errors.push({
+      parameter: c,
+      message: "Cycle detected in formula references",
+      formula: p?.formula ?? "",
+    });
+  }
+
+  const fnNames = Object.keys(BUILTIN_FUNCTIONS);
+  const fnValues = fnNames.map((n) => BUILTIN_FUNCTIONS[n]);
+
+  for (const p of order) {
+    if (!p.formula) continue;
+    if (cycleSet.has(p.name)) continue;
+    computed.add(p.name);
+
+    const ids = identifiersIn(p.formula);
+    const argNames: string[] = [];
+    const argValues: any[] = [];
+    for (const id of ids) {
+      if (id in BUILTIN_FUNCTIONS) continue;
+      if (!(id in values)) continue;
+      argNames.push(id);
+      argValues.push(values[id]);
+    }
+
+    const body = normalizeBody(p.formula);
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const fn = new Function(
+        ...fnNames,
+        ...argNames,
+        `"use strict"; return (${body});`,
+      );
+      const raw = fn(...fnValues, ...argValues);
+
+      if (raw === undefined || raw === null) {
+        errors.push({
+          parameter: p.name,
+          message: "Formula returned no value",
+          formula: p.formula,
+        });
+        continue;
+      }
+
+      if (typeof raw === "boolean" || typeof raw === "string") {
+        values[p.name] = raw;
+        continue;
+      }
+
+      const n = Number(raw);
+      if (!Number.isFinite(n)) {
+        errors.push({
+          parameter: p.name,
+          message: "Formula returned a non-finite number",
+          formula: p.formula,
+        });
+        continue;
+      }
+
+      // Honour integer type + min/max after evaluation
+      let out: number = n;
+      if (p.type === "integer") out = Math.round(out);
+      if (p.min != null && out < p.min) out = p.min;
+      if (p.max != null && out > p.max) out = p.max;
+      values[p.name] = out;
+    } catch (err) {
+      errors.push({
+        parameter: p.name,
+        message: err instanceof Error ? err.message : String(err),
+        formula: p.formula,
+      });
+    }
+  }
+
+  return {
+    values,
+    computed,
+    errors,
+    order: order.map((p) => p.name),
+    dependencies,
+  };
+}
+
+export function hasFormulas(declarations: FamilyParameter[]): boolean {
+  return declarations.some((p) => !!p.formula);
+}
+
+/** Return parameters that depend on `name` (directly or transitively). */
+export function dependentsOf(
+  declarations: FamilyParameter[],
+  name: string,
+): string[] {
+  const { dependencies } = topoSort(declarations);
+  const result = new Set<string>();
+  const visit = (n: string) => {
+    for (const [param, deps] of Object.entries(dependencies)) {
+      if (deps.includes(n) && !result.has(param)) {
+        result.add(param);
+        visit(param);
+      }
+    }
+  };
+  visit(name);
+  return Array.from(result);
+}
+
+
+===== FILE: src/modules/families/constraint-graph.ts =====
+/**
+ * Dimensional constraint graph for parametric families.
+ *
+ * Supports the constraint kinds that drive most Revit family behaviour:
+ *   - equality:     a = b
+ *   - offset:       a = b + delta
+ *   - ratio:        a = b * k
+ *   - sum:          a = b + c + ...
+ *   - difference:   a = b - c
+ *   - fixed:        a = constant
+ *   - distance:     |a - b| = d  (keeps a or b fixed based on priority)
+ *
+ * Solver is iterative Gauss-Seidel over a dependency-ordered constraint list.
+ * Cycles that cannot be reduced produce errors rather than infinite loops.
+ */
+
+export type Constraint =
+  | { kind: "equality"; a: string; b: string; priority?: number }
+  | { kind: "offset"; a: string; b: string; delta: number; priority?: number }
+  | { kind: "ratio"; a: string; b: string; k: number; priority?: number }
+  | { kind: "sum"; a: string; terms: string[]; priority?: number }
+  | { kind: "difference"; a: string; b: string; c: string; priority?: number }
+  | { kind: "fixed"; a: string; value: number; priority?: number }
+  | {
+      kind: "distance";
+      a: string;
+      b: string;
+      distance: number;
+      /** Which variable is driven (default "a"). */
+      drive?: "a" | "b";
+      priority?: number;
+    };
+
+export interface ConstraintResult {
+  values: Record<string, any>;
+  errors: string[];
+  applied: number;
+  iterations: number;
+}
+
+const MAX_ITER = 32;
+const TOL = 1e-9;
+
+function num(v: any): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function applyOne(
+  c: Constraint,
+  values: Record<string, any>,
+): boolean {
+  switch (c.kind) {
+    case "fixed": {
+      const before = num(values[c.a]);
+      values[c.a] = c.value;
+      return Math.abs(before - c.value) > TOL;
+    }
+    case "equality": {
+      const bv = num(values[c.b]);
+      const before = num(values[c.a]);
+      values[c.a] = bv;
+      return Math.abs(before - bv) > TOL;
+    }
+    case "offset": {
+      const target = num(values[c.b]) + c.delta;
+      const before = num(values[c.a]);
+      values[c.a] = target;
+      return Math.abs(before - target) > TOL;
+    }
+    case "ratio": {
+      const target = num(values[c.b]) * c.k;
+      const before = num(values[c.a]);
+      values[c.a] = target;
+      return Math.abs(before - target) > TOL;
+    }
+    case "sum": {
+      let total = 0;
+      for (const t of c.terms) total += num(values[t]);
+      const before = num(values[c.a]);
+      values[c.a] = total;
+      return Math.abs(before - total) > TOL;
+    }
+    case "difference": {
+      const target = num(values[c.b]) - num(values[c.c]);
+      const before = num(values[c.a]);
+      values[c.a] = target;
+      return Math.abs(before - target) > TOL;
+    }
+    case "distance": {
+      const av = num(values[c.a]);
+      const bv = num(values[c.b]);
+      const drive = c.drive ?? "a";
+      if (drive === "a") {
+        // Keep sign of (a - b)
+        const sign = av >= bv ? 1 : -1;
+        const target = bv + sign * c.distance;
+        values[c.a] = target;
+        return Math.abs(av - target) > TOL;
+      } else {
+        const sign = bv >= av ? 1 : -1;
+        const target = av + sign * c.distance;
+        values[c.b] = target;
+        return Math.abs(bv - target) > TOL;
+      }
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * Sort constraints by priority (higher first), then stable declaration order.
+ */
+function sortConstraints(list: Constraint[]): Constraint[] {
+  return [...list].sort((x, y) => (y.priority ?? 0) - (x.priority ?? 0));
+}
+
+/**
+ * Solve a set of dimensional constraints against a mutable value map.
+ * Returns a new values object; does not mutate the input.
+ */
+export function solveConstraints(
+  seed: Record<string, any>,
+  constraints: Constraint[],
+): ConstraintResult {
+  const values: Record<string, any> = { ...seed };
+  const errors: string[] = [];
+  if (!constraints.length) {
+    return { values, errors, applied: 0, iterations: 0 };
+  }
+
+  const ordered = sortConstraints(constraints);
+  let applied = 0;
+  let iter = 0;
+
+  for (; iter < MAX_ITER; iter++) {
+    let changed = false;
+    for (const c of ordered) {
+      try {
+        if (applyOne(c, values)) {
+          changed = true;
+          applied++;
+        }
+      } catch (err) {
+        errors.push(
+          `${c.kind}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    if (!changed) break;
+  }
+
+  if (iter >= MAX_ITER) {
+    errors.push("Constraint solver hit iteration limit (possible under-constrained cycle)");
+  }
+
+  return { values, errors, applied, iterations: iter + 1 };
+}
+
+/**
+ * Validate that every constraint references known parameter names.
+ */
+export function validateConstraints(
+  constraints: Constraint[],
+  paramNames: Set<string>,
+): string[] {
+  const errors: string[] = [];
+  const check = (name: string, ctx: string) => {
+    if (!paramNames.has(name)) {
+      errors.push(`${ctx}: unknown parameter '${name}'`);
+    }
+  };
+  for (const c of constraints) {
+    switch (c.kind) {
+      case "fixed":
+        check(c.a, "fixed");
+        break;
+      case "equality":
+      case "offset":
+      case "ratio":
+      case "distance":
+        check(c.a, c.kind);
+        check(c.b, c.kind);
+        break;
+      case "sum":
+        check(c.a, "sum");
+        for (const t of c.terms) check(t, "sum");
+        break;
+      case "difference":
+        check(c.a, "difference");
+        check(c.b, "difference");
+        check(c.c, "difference");
+        break;
+    }
+  }
+  return errors;
+}
+
+
+===== FILE: src/modules/families/array-expander.ts =====
+/**
+ * Parametric array expansion.
+ *
+ * Turns an ArraySpec + resolved parameter map into a list of concrete
+ * transform instances. Used by the parametric engine's "array" geometry
+ * kind and by authoring when placing arrayed hosted elements (e.g. studs,
+ * mullions, light fixtures).
+ */
+
+import type { NumberRef } from "./types";
+
+export interface ArraySpec {
+  /** Number of instances (resolved from NumberRef). */
+  count: NumberRef;
+  /** Linear step [dx, dy, dz] in metres. */
+  step: [NumberRef, NumberRef, NumberRef];
+  /** Optional angular step [rx, ry, rz] in radians. */
+  rotateStep?: [NumberRef, NumberRef, NumberRef];
+  /** Optional scale step [sx, sy, sz] (multiplicative per index). */
+  scaleStep?: [NumberRef, NumberRef, NumberRef];
+  /** Group spacing: every `groupSize` instances add `groupGap` extra translation. */
+  groupSize?: NumberRef;
+  groupGap?: [NumberRef, NumberRef, NumberRef];
+  /** Mirror every other instance around the local Y axis. */
+  alternateMirror?: boolean;
+}
+
+export interface ExpandedPart {
+  index: number;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
+  mirrored: boolean;
+}
+
+type Resolve = (ref: NumberRef) => number;
+
+/**
+ * Expand an ArraySpec into concrete instance transforms.
+ * Count is clamped to [0, 10_000] to protect the renderer.
+ */
+export function expandArrays(spec: ArraySpec, resolve: Resolve): ExpandedPart[] {
+  const rawCount = Math.floor(resolve(spec.count));
+  const count = Math.max(0, Math.min(10_000, rawCount));
+  if (count === 0) return [];
+
+  const dx = resolve(spec.step[0]);
+  const dy = resolve(spec.step[1]);
+  const dz = resolve(spec.step[2]);
+
+  const rx = spec.rotateStep ? resolve(spec.rotateStep[0]) : 0;
+  const ry = spec.rotateStep ? resolve(spec.rotateStep[1]) : 0;
+  const rz = spec.rotateStep ? resolve(spec.rotateStep[2]) : 0;
+
+  const sx = spec.scaleStep ? resolve(spec.scaleStep[0]) : 1;
+  const sy = spec.scaleStep ? resolve(spec.scaleStep[1]) : 1;
+  const sz = spec.scaleStep ? resolve(spec.scaleStep[2]) : 1;
+
+  const groupSize = spec.groupSize ? Math.max(1, Math.floor(resolve(spec.groupSize))) : 0;
+  const gx = spec.groupGap ? resolve(spec.groupGap[0]) : 0;
+  const gy = spec.groupGap ? resolve(spec.groupGap[1]) : 0;
+  const gz = spec.groupGap ? resolve(spec.groupGap[2]) : 0;
+
+  const parts: ExpandedPart[] = [];
+  for (let i = 0; i < count; i++) {
+    const groupsBefore = groupSize > 0 ? Math.floor(i / groupSize) : 0;
+    parts.push({
+      index: i,
+      position: [
+        dx * i + gx * groupsBefore,
+        dy * i + gy * groupsBefore,
+        dz * i + gz * groupsBefore,
+      ],
+      rotation: [rx * i, ry * i, rz * i],
+      scale: [
+        Math.pow(sx, i),
+        Math.pow(sy, i),
+        Math.pow(sz, i),
+      ],
+      mirrored: !!(spec.alternateMirror && i % 2 === 1),
+    });
+  }
+  return parts;
+}
+
+
+===== FILE: src/modules/families/nested-families.ts =====
+/**
+ * Nested family resolution.
+ *
+ * A nested family is a FamilyDefinition embedded inside another family's
+ * geometry tree (kind: "nested"). Parameter maps bind parent parameters
+ * (or constants) onto the child's instance overrides - the same model
+ * Revit uses for nested shared / non-shared families.
+ */
+
+import type { FamilyDefinition, FamilyType, NumberRef } from "./types";
+
+export interface NestedFamilyRef {
+  familyId: string;
+  typeId?: string | null;
+  /** parentParamName - childParamName  OR  childParamName - NumberRef */
+  paramMap?: Record<string, string | NumberRef>;
+  /** When true, nested instance is shared (schedulable as its own type). */
+  shared?: boolean;
+  label?: string;
+}
+
+export interface ResolvedNested {
+  family: FamilyDefinition;
+  type: FamilyType | null;
+  overrides: Record<string, any>;
+  shared: boolean;
+  label: string;
+}
+
+type FamilyLookup = (id: string) => FamilyDefinition | null;
+type TypeLookup = (familyId: string, typeId: string) => FamilyType | null;
+
+function resolveRef(
+  ref: string | NumberRef,
+  parentParams: Record<string, any>,
+): any {
+  if (typeof ref === "string") {
+    return parentParams[ref];
+  }
+  if ("const" in ref) return (ref as { const: number }).const;
+  if ("ref" in ref) return parentParams[(ref as { ref: string }).ref];
+  if ("expr" in ref) return parentParams[(ref as { expr: string }).expr];
+  return undefined;
+}
+
+/**
+ * Resolve a nested family reference against parent parameters.
+ * Returns null when the target family cannot be found.
+ */
+export function resolveNested(
+  ref: NestedFamilyRef,
+  parentParams: Record<string, any>,
+  familyLookup: FamilyLookup,
+  typeLookup?: TypeLookup,
+): ResolvedNested | null {
+  const family = familyLookup(ref.familyId);
+  if (!family) return null;
+
+  const type =
+    ref.typeId && typeLookup
+      ? typeLookup(ref.familyId, ref.typeId) ?? null
+      : ref.typeId
+        ? family.types.find((t) => t.id === ref.typeId) ?? null
+        : null;
+
+  const overrides: Record<string, any> = {};
+  if (ref.paramMap) {
+    for (const [key, binding] of Object.entries(ref.paramMap)) {
+      // Convention: key is the CHILD parameter name.
+      overrides[key] = resolveRef(binding, parentParams);
+    }
+  }
+
+  return {
+    family,
+    type,
+    overrides,
+    shared: !!ref.shared,
+    label: ref.label ?? family.name,
+  };
+}
+
+/**
+ * Collect every nested family id referenced by a geometry tree (depth-first).
+ * Useful for load-order / dependency graphs.
+ */
+export function collectNestedFamilyIds(
+  geometry: any,
+  out: Set<string> = new Set(),
+): Set<string> {
+  if (!geometry || typeof geometry !== "object") return out;
+  if (geometry.kind === "nested" && typeof geometry.familyId === "string") {
+    out.add(geometry.familyId);
+  }
+  if (geometry.kind === "composed" && Array.isArray(geometry.parts)) {
+    for (const p of geometry.parts) collectNestedFamilyIds(p, out);
+  }
+  if (geometry.kind === "array" && geometry.of) {
+    collectNestedFamilyIds(geometry.of, out);
+  }
+  if (geometry.kind === "conditional") {
+    if (geometry.then) collectNestedFamilyIds(geometry.then, out);
+    if (geometry.else) collectNestedFamilyIds(geometry.else, out);
+  }
+  if (geometry.kind === "void" && geometry.solid) {
+    collectNestedFamilyIds(geometry.solid, out);
+  }
+  return out;
+}
+
+
+===== FILE: src/modules/families/registry.ts =====
+// openbim-step1:family-foundation
+// Family system foundation - registry that ties store + geometry + params.
+
+import * as THREE from "three";
+import { familyStore } from "./store";
+import { buildParametricGeometry, registerCustomBuilder } from "./parametric-geometry";
+import { evaluateParameters } from "./formula-engine";
+import type {
+  CustomGeometryBuilder,
+  FamilyDefinition,
+  FamilyParameter,
+  FamilyService,
+  FamilyType,
+} from "./types";
+
+/** Resolve parameters for a family/type, applying instance overrides last. */
+function resolveParameters(
+  family: FamilyDefinition,
+  type: FamilyType | null,
+  overrides: Record<string, any> | undefined,
+): Record<string, any> {
+  const values: Record<string, any> = {};
+
+  // 1. Family defaults.
+  for (const p of family.parameters) {
+    values[p.name] = p.default;
+  }
+
+  // 2. Type-scope overrides.
+  if (type) {
+    for (const [k, v] of Object.entries(type.values)) {
+      values[k] = v;
+    }
+  }
+
+  // 3. Instance overrides.
+  if (overrides) {
+    for (const [k, v] of Object.entries(overrides)) {
+      values[k] = v;
+    }
+  }
+
+  // 4. Formula pass -- delegated to the formula engine so a formula that
+  //    references a later-declared parameter, or a cycle, or a typo, is
+  //    surfaced instead of silently dropped.
+  const result = evaluateParameters(family.parameters, values);
+  if (result.errors.length) {
+    for (const e of result.errors) {
+      console.warn(
+        "[families] formula error -- " + e.parameter + ": " + e.message,
+      );
+    }
+  }
+  return result.values;
+}
+
+export function createFamilyService(): FamilyService {
+  const svc: FamilyService = {
+    list: () => familyStore.list(),
+    get: (id) => familyStore.get(id),
+    getByElementType: (et) => familyStore.getByElementType(et),
+
+    create: (def) => familyStore.create(def),
+    update: (id, patch) => familyStore.update(id, patch),
+    remove: (id) => familyStore.remove(id),
+    duplicate: (id, name) => familyStore.duplicate(id, name),
+
+    createType: (fid, name, values) => familyStore.createType(fid, name, values),
+    updateType: (fid, tid, patch) => familyStore.updateType(fid, tid, patch),
+    removeType: (fid, tid) => familyStore.removeType(fid, tid),
+
+    resolveParams: (fid, tid, overrides) => {
+      const fam = familyStore.get(fid);
+      if (!fam) return null;
+      const type = tid ? fam.types.find((t) => t.id === tid) ?? null : null;
+      return resolveParameters(fam, type, overrides);
+    },
+
+    buildGeometry: (fid, tid, overrides) => {
+      const fam = familyStore.get(fid);
+      if (!fam) return null;
+      const type = tid ? fam.types.find((t) => t.id === tid) ?? null : null;
+      const params = resolveParameters(fam, type, overrides);
+      const obj = buildParametricGeometry(fam.geometry, params);
+      if (!obj) return null;
+      obj.userData.familyId = fam.id;
+      obj.userData.familyTypeId = tid;
+      obj.userData.familyParams = params;
+      return obj;
+    },
+
+    registerCustomBuilder: (name, fn) => registerCustomBuilder(name, fn),
+
+    onChange: (cb) => familyStore.onChange(cb),
+    reset: () => familyStore.reset(),
+  };
+  return svc;
+}
+
+/** Type-guard helper used by built-in family definitions. */
+export function isFamilyParameter(v: any): v is FamilyParameter {
+  return v && typeof v === "object" && typeof v.name === "string" && typeof v.type === "string";
+}
+
+/** Expose the raw geometry builder for tests / editor previews. */
+export { buildParametricGeometry, resolveParameters };
+
+/** Convenience: build a bare THREE.Group from a family + type. */
+export function buildFamilyPreview(
+  svc: FamilyService,
+  familyId: string,
+  typeId: string | null,
+): THREE.Object3D | null {
+  return svc.buildGeometry(familyId, typeId, undefined);
+}
+
+// Re-export the register hook so modules can install custom builders without
+// importing parametric-geometry directly.
+export type { CustomGeometryBuilder };
+
+
+===== FILE: src/modules/families/registry-parametric.ts =====
+/**
+ * Parametric-aware family service wrapper.
+ *
+ * Drop-in enhancement of createFamilyService() that routes geometry builds
+ * through the full parametric engine (formulas - constraints - nested /
+ * array / sweep / revolve / conditional visibility).
+ *
+ * Usage in index.ts:
+ *   import { createParametricFamilyService } from "./registry-parametric";
+ *   const svc = createParametricFamilyService();
+ */
+
+import * as THREE from "three";
+import { familyStore } from "./store";
+import { registerCustomBuilder } from "./parametric-geometry";
+import {
+  buildParametricFamily,
+  resolveParametricValues,
+  propagateTypeChange,
+  collectReportingValues,
+  type ParametricBuildOptions,
+  type InstanceParamBinding,
+} from "./parametric-engine";
+import type {
+  CustomGeometryBuilder,
+  FamilyDefinition,
+  FamilyService,
+  FamilyType,
+} from "./types";
+import type { Constraint } from "./constraint-graph";
+
+export interface ParametricFamilyService extends FamilyService {
+  /** Full parametric build with constraints / nested / arrays. */
+  buildParametric(
+    familyId: string,
+    typeId: string | null,
+    options?: ParametricBuildOptions,
+  ): ReturnType<typeof buildParametricFamily>;
+
+  /** Resolve params with formula + constraint pipeline. */
+  resolveParametric(
+    familyId: string,
+    typeId: string | null,
+    options?: ParametricBuildOptions,
+  ): Record<string, any> | null;
+
+  /** Propagate a type-parameter edit to all bound instances. */
+  propagateType(
+    familyId: string,
+    typeId: string,
+    instances: InstanceParamBinding[],
+    options?: ParametricBuildOptions,
+  ): Map<string, Record<string, any>>;
+
+  /** Collect reporting (schedule) values for an instance. */
+  reportingValues(
+    familyId: string,
+    typeId: string | null,
+    overrides?: Record<string, any>,
+  ): Record<string, any> | null;
+
+  /** Attach dimensional constraints to a family (persisted in memory). */
+  setConstraints(familyId: string, constraints: Constraint[]): boolean;
+  getConstraints(familyId: string): Constraint[];
+}
+
+/** Per-family constraint store (not in FamilyDefinition schema yet). */
+const constraintMap = new Map<string, Constraint[]>();
+
+export function createParametricFamilyService(): ParametricFamilyService {
+  const familyLookup = (id: string) => familyStore.get(id);
+  const typeLookup = (fid: string, tid: string) => {
+    const f = familyStore.get(fid);
+    return f?.types.find((t) => t.id === tid) ?? null;
+  };
+
+  const baseOptions = (): ParametricBuildOptions => ({
+    familyLookup,
+    typeLookup,
+  });
+
+  const svc: ParametricFamilyService = {
+    list: () => familyStore.list(),
+    get: (id) => familyStore.get(id),
+    getByElementType: (et) => familyStore.getByElementType(et),
+
+    create: (def) => familyStore.create(def),
+    update: (id, patch) => familyStore.update(id, patch),
+    remove: (id) => {
+      constraintMap.delete(id);
+      return familyStore.remove(id);
+    },
+    duplicate: (id, name) => familyStore.duplicate(id, name),
+
+    createType: (fid, name, values) => familyStore.createType(fid, name, values),
+    updateType: (fid, tid, patch) => familyStore.updateType(fid, tid, patch),
+    removeType: (fid, tid) => familyStore.removeType(fid, tid),
+
+    resolveParams: (fid, tid, overrides) => {
+      return svc.resolveParametric(fid, tid, { overrides });
+    },
+
+    buildGeometry: (fid, tid, overrides) => {
+      const result = svc.buildParametric(fid, tid, { overrides });
+      return result.object;
+    },
+
+    registerCustomBuilder: (name, fn) => registerCustomBuilder(name, fn),
+
+    onChange: (cb) => familyStore.onChange(cb),
+    reset: () => {
+      constraintMap.clear();
+      familyStore.reset();
+    },
+
+    // -- Parametric extensions --------------------------------------
+
+    buildParametric(familyId, typeId, options = {}) {
+      const fam = familyStore.get(familyId);
+      if (!fam) {
+        return {
+          object: null,
+          params: {},
+          formula: { values: {}, computed: new Set(), errors: [], order: [] },
+          constraints: null,
+          errors: [`Family not found: ${familyId}`],
+          warnings: [],
+        };
+      }
+      const type = typeId
+        ? fam.types.find((t) => t.id === typeId) ?? null
+        : null;
+      const constraints = constraintMap.get(familyId);
+      return buildParametricFamily(fam, type, {
+        ...baseOptions(),
+        ...options,
+        constraints: options.constraints ?? constraints,
+      });
+    },
+
+    resolveParametric(familyId, typeId, options = {}) {
+      const fam = familyStore.get(familyId);
+      if (!fam) return null;
+      const type = typeId
+        ? fam.types.find((t) => t.id === typeId) ?? null
+        : null;
+      const constraints = constraintMap.get(familyId);
+      const { values } = resolveParametricValues(fam, type, {
+        ...baseOptions(),
+        ...options,
+        constraints: options.constraints ?? constraints,
+      });
+      return values;
+    },
+
+    propagateType(familyId, typeId, instances, options = {}) {
+      const fam = familyStore.get(familyId);
+      if (!fam) return new Map();
+      const type = fam.types.find((t) => t.id === typeId);
+      if (!type) return new Map();
+      return propagateTypeChange(fam, type, instances, {
+        ...baseOptions(),
+        ...options,
+        constraints: constraintMap.get(familyId),
+      });
+    },
+
+    reportingValues(familyId, typeId, overrides) {
+      const values = svc.resolveParametric(familyId, typeId, { overrides });
+      if (!values) return null;
+      const fam = familyStore.get(familyId);
+      if (!fam) return null;
+      return collectReportingValues(fam, values);
+    },
+
+    setConstraints(familyId, constraints) {
+      if (!familyStore.get(familyId)) return false;
+      constraintMap.set(familyId, constraints);
+      return true;
+    },
+
+    getConstraints(familyId) {
+      return constraintMap.get(familyId) ?? [];
+    },
+  };
+
+  return svc;
+}
+
+export type { CustomGeometryBuilder, InstanceParamBinding };
+
+
+===== FILE: src/modules/families/store.ts =====
+// openbim-step1:family-foundation
+// Family system foundation - in-memory store with localStorage persistence.
+//
+// Mirrors the pattern used by core/options-registry.ts. Every mutation
+// notifies subscribers so the UI (or verify scripts) can react.
+
+import type { FamilyDefinition, FamilyType } from "./types";
+
+const STORAGE_KEY = "obs.families.v1";
+
+function uid(): string {
+  return (crypto as any).randomUUID?.()
+    ?? ("fam-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8));
+}
+
+class FamilyStore {
+  private byId = new Map<string, FamilyDefinition>();
+  private listeners = new Set<() => void>();
+  private booted = false;
+
+  boot(seedBuiltIns: FamilyDefinition[]): void {
+    if (this.booted) return;
+    this.booted = true;
+
+    let restored: FamilyDefinition[] | null = null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) restored = parsed;
+      }
+    } catch { /* */ }
+
+    if (restored && restored.length) {
+      for (const d of restored) this.byId.set(d.id, d);
+    } else {
+      for (const d of seedBuiltIns) this.byId.set(d.id, d);
+      this.persist();
+    }
+  }
+
+  list(): FamilyDefinition[] {
+    return [...this.byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  get(id: string): FamilyDefinition | null {
+    return this.byId.get(id) ?? null;
+  }
+
+  getByElementType(elementType: string): FamilyDefinition | null {
+    for (const d of this.byId.values()) {
+      if (d.sourceElementType === elementType) return d;
+    }
+    return null;
+  }
+
+  create(def: Omit<FamilyDefinition, "id" | "schemaVersion" | "builtIn">): FamilyDefinition {
+    const family: FamilyDefinition = {
+      ...def,
+      id: uid(),
+      schemaVersion: 1,
+      builtIn: false,
+    };
+    this.byId.set(family.id, family);
+    this.persist();
+    this.emit();
+    return family;
+  }
+
+  update(id: string, patch: Partial<FamilyDefinition>): FamilyDefinition | null {
+    const cur = this.byId.get(id);
+    if (!cur) return null;
+    const next: FamilyDefinition = { ...cur, ...patch, id: cur.id };
+    this.byId.set(id, next);
+    this.persist();
+    this.emit();
+    return next;
+  }
+
+  remove(id: string): boolean {
+    const cur = this.byId.get(id);
+    if (!cur) return false;
+    if (cur.builtIn) return false;
+    const ok = this.byId.delete(id);
+    if (ok) { this.persist(); this.emit(); }
+    return ok;
+  }
+
+  duplicate(id: string, newName: string): FamilyDefinition | null {
+    const cur = this.byId.get(id);
+    if (!cur) return null;
+    const clone: FamilyDefinition = {
+      ...JSON.parse(JSON.stringify(cur)),
+      id: uid(),
+      name: newName,
+      builtIn: false,
+    };
+    this.byId.set(clone.id, clone);
+    this.persist();
+    this.emit();
+    return clone;
+  }
+
+  createType(familyId: string, name: string, values: Record<string, any> = {}): FamilyType | null {
+    const fam = this.byId.get(familyId);
+    if (!fam) return null;
+    const t: FamilyType = { id: uid(), name, values };
+    fam.types.push(t);
+    this.persist();
+    this.emit();
+    return t;
+  }
+
+  updateType(familyId: string, typeId: string, patch: Partial<FamilyType>): FamilyType | null {
+    const fam = this.byId.get(familyId);
+    if (!fam) return null;
+    const idx = fam.types.findIndex((t) => t.id === typeId);
+    if (idx < 0) return null;
+    fam.types[idx] = { ...fam.types[idx], ...patch, id: typeId };
+    this.persist();
+    this.emit();
+    return fam.types[idx];
+  }
+
+  removeType(familyId: string, typeId: string): boolean {
+    const fam = this.byId.get(familyId);
+    if (!fam) return false;
+    const before = fam.types.length;
+    fam.types = fam.types.filter((t) => t.id !== typeId);
+    if (fam.types.length === before) return false;
+    this.persist();
+    this.emit();
+    return true;
+  }
+
+  reset(): void {
+    this.byId.clear();
+    this.booted = false;
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+  }
+
+  onChange(cb: () => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  private emit(): void {
+    for (const cb of this.listeners) { try { cb(); } catch { /* */ } }
+  }
+
+  private persist(): void {
+    try {
+      const arr = [...this.byId.values()];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+    } catch (err) {
+      console.warn("[families] persist failed", err);
+    }
+  }
+}
+
+export const familyStore = new FamilyStore();
+
+
+===== FILE: src/modules/families/placement.ts =====
+// openbim-family-placement
+// Family-to-instance bridge.
+//
+// Owns two things:
+//   1. When a family is active, which parameters should a NEW element be
+//      born with? Precedence: family default < type override < caller
+//      override. Only geometry-shaped keys reach element.params; anything
+//      else (formulas, derived values, labels) stays in the family.
+//   2. When the user edits a single parameter on a family-backed element,
+//      does that edit belong to the instance or to the type? Instance
+//      edits touch this element only; type edits update the family type
+//      and re-sync every instance of that type.
+
+import { ctx } from "../../core/context";
+import type { AuthoredElement } from "../projects/types";
+import type { FamilyService, FamilyParameter } from "./types";
+
+/**
+ * Keys that AuthoredElement.params actually stores. Anything outside
+ * this set is a family-level concept and must not pollute the element.
+ */
+export const GEOMETRY_KEYS: readonly string[] = [
+  "height", "thickness", "width", "depth",
+  "elevation", "sillHeight", "frameThickness",
+  "offsetAlongHost",
+];
+
+export interface PlacementParams {
+  /** Filtered to geometry keys only. */
+  params: Partial<AuthoredElement["params"]>;
+  /** Full resolved map, including non-geometry parameters. */
+  resolved: Record<string, any>;
+}
+
+function familyService(): FamilyService | null {
+  const svc = (ctx.features as any)?.family as FamilyService | undefined;
+  return svc ?? null;
+}
+
+/**
+ * Resolve placement parameters for a new element.
+ * Returns null if the family system is not ready.
+ */
+export function resolvePlacement(
+  familyId: string,
+  familyTypeId: string | null,
+  callerOverrides?: Record<string, any>,
+): PlacementParams | null {
+  const svc = familyService();
+  if (!svc) return null;
+  const resolved = svc.resolveParams(familyId, familyTypeId, callerOverrides);
+  if (!resolved) return null;
+
+  const params: Record<string, any> = {};
+  for (const key of GEOMETRY_KEYS) {
+    const v = resolved[key];
+    if (typeof v === "number" && Number.isFinite(v)) params[key] = v;
+  }
+  return { params: params as Partial<AuthoredElement["params"]>, resolved };
+}
+
+/**
+ * Apply a resolved parameter map to an existing element instance.
+ * Only geometry keys are touched. Returns true if anything changed.
+ */
+export function applyResolvedParams(
+  element: AuthoredElement,
+  resolved: Record<string, any>,
+): boolean {
+  let changed = false;
+  const p = element.params as Record<string, any>;
+  for (const key of GEOMETRY_KEYS) {
+    const v = resolved[key];
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    if (p[key] !== v) { p[key] = v; changed = true; }
+  }
+  return changed;
+}
+
+export interface EditResult {
+  applied: "instance" | "type" | "none";
+  instancesSynced: number;
+}
+
+/**
+ * Route a single parameter edit to the right place based on the
+ * family's declared scope for that parameter.
+ */
+export function editFamilyParameter(
+  element: AuthoredElement,
+  paramName: string,
+  value: any,
+): EditResult {
+  const svc = familyService();
+  if (!svc || !element.familyId) return { applied: "none", instancesSynced: 0 };
+
+  const family = svc.get(element.familyId);
+  if (!family) return { applied: "none", instancesSynced: 0 };
+
+  const param = family.parameters.find((p: FamilyParameter) => p.name === paramName);
+  if (!param) return { applied: "none", instancesSynced: 0 };
+
+  if (param.scope === "instance") {
+    (element.params as Record<string, any>)[paramName] = value;
+    return { applied: "instance", instancesSynced: 0 };
+  }
+
+  // Type-scope edit. The explicit check (rather than a fall-through) keeps
+  // the two-valued ParameterScope enum honest: a future third scope value
+  // will hit the trailing "none" return instead of silently being treated
+  // as a type edit.
+  if (param.scope === "type") {
+    const typeId = element.familyTypeId;
+    if (!typeId) {
+      (element.params as Record<string, any>)[paramName] = value;
+      return { applied: "instance", instancesSynced: 0 };
+    }
+
+    const familyType = family.types.find((t) => t.id === typeId);
+    if (!familyType) return { applied: "none", instancesSynced: 0 };
+
+    const nextValues = { ...(familyType.values ?? {}), [paramName]: value };
+    svc.updateType(family.id, typeId, { values: nextValues });
+
+    // Re-resolve every instance of this type.
+    const auth: any = (ctx.features as any).authoring;
+    const instancesSynced = auth?.syncFamilyInstances?.(family.id, typeId) ?? 0;
+
+    return { applied: "type", instancesSynced };
+  }
+
+  return { applied: "none", instancesSynced: 0 };
+}
+
+===== FILE: src/modules/families/families-parametric-boot.ts =====
+/**
+ * Parametric families boot - upgrades the live FamilyService to the full
+ * parametric engine and seeds a sample Revit-style parametric door.
+ *
+ * Safe to call after setupFamilies() (main.ts already does that).
+ * Idempotent.
+ */
+
+import { ctx } from "../../core/context";
+import { familyStore } from "./store";
+import { createParametricFamilyService } from "./registry-parametric";
+import { createParametricDoorFamily } from "./sample-parametric-door";
+import { PARAMETRIC_DOOR_CONSTRAINTS } from "./sample-parametric-door";
+import { register } from "../../core/services";
+
+type Any = Record<string, any>;
+
+let upgraded = false;
+
+export function setupParametricFamilies(): void {
+  if (upgraded) return;
+  upgraded = true;
+
+  try {
+    // Ensure store is booted (no-op if main already called setupFamilies)
+    try {
+      if (!(familyStore as Any).booted && typeof (familyStore as Any).boot === "function") {
+        (familyStore as Any).boot([]);
+      }
+    } catch { /* */ }
+
+    const svc = createParametricFamilyService();
+
+    // Seed parametric door if missing
+    const door = createParametricDoorFamily();
+    const existing = familyStore.list().find(
+      (f) => f.name === door.name || (f.name.includes("Parametric") && f.category === "door"),
+    );
+    let doorId = existing?.id ?? null;
+    if (!existing) {
+      try {
+        const { id: _id, schemaVersion: _sv, builtIn: _bi, ...rest } = door as Any;
+        const created = familyStore.create(rest as any);
+        doorId = created.id;
+      } catch (e) {
+        console.warn("[parametric-families] seed door skipped", e);
+      }
+    }
+    if (doorId) {
+      svc.setConstraints(doorId, PARAMETRIC_DOOR_CONSTRAINTS);
+    }
+
+    register("family", svc);
+    (ctx.features as Any).family = svc;
+    (window as Any).__obsFamily = svc;
+    (window as Any).__obsFamilyParametric = svc;
+
+    const list = svc.list();
+    console.log(
+      `[parametric-families] upgraded service - ${list.length} families, parametric build active`,
+    );
+  } catch (e) {
+    console.warn("[parametric-families] upgrade failed (base family service remains)", e);
+  }
+}
+
+
+===== FILE: src/modules/families/builtin-families.ts =====
+// openbim-step1:family-foundation
+// Built-in families mirroring the current hardcoded element types in
+// authoring.ts. When authoring is later refactored to consult this
+// registry, the behaviour must stay identical for these ten families.
+
+import type { FamilyDefinition } from "./types";
+
+const REF = (name: string) => ({ ref: name });
+const CONST = (n: number) => ({ const: n });
+
+export function createBuiltInFamilies(): FamilyDefinition[] {
+  const families: FamilyDefinition[] = [];
+  let seq = 0;
+  const id = (name: string) => "builtin-" + name + "-" + (++seq);
+
+  // ---- wall ---------------------------------------------------------------
+  families.push({
+    id: id("wall"),
+    name: "Basic Wall",
+    category: "wall",
+    ifcEntity: "IfcWall",
+    schemaVersion: 1,
+    sourceElementType: "wall",
+    builtIn: true,
+    parameters: [
+      { name: "height",    type: "length", scope: "instance", default: 3.0, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "thickness", type: "length", scope: "instance", default: 0.2, editable: true, step: 0.01, unit: "m", group: "Dimensions" },
+      { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
+      // openbim-families:formula-editor
+      { name: "areaPerMeter", type: "area",   scope: "instance", default: 0, editable: false, unit: "m2", group: "Computed", formula: "= thickness * height" },
+      { name: "slenderness",  type: "number", scope: "instance", default: 0, editable: false, group: "Computed", formula: "= height / thickness" },
+    ],
+    geometry: {
+      kind: "box",
+      w: CONST(1),
+      d: REF("thickness"),
+      h: REF("height"),
+      transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
+    },
+    types: [
+      { id: id("wall-100"), name: "Generic 100 mm", values: { thickness: 0.1 } },
+      { id: id("wall-200"), name: "Generic 200 mm", values: { thickness: 0.2 } },
+      { id: id("wall-300"), name: "Generic 300 mm", values: { thickness: 0.3 } },
+    ],
+  });
+
+  // ---- slab ---------------------------------------------------------------
+  families.push({
+    id: id("slab"),
+    name: "Basic Floor",
+    category: "slab",
+    ifcEntity: "IfcSlab",
+    schemaVersion: 1,
+    sourceElementType: "slab",
+    builtIn: true,
+    parameters: [
+      { name: "height", label: "Thickness", type: "length", scope: "instance", default: 0.2, editable: true, step: 0.01, unit: "m", group: "Dimensions" },
+      { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
+    ],
+    geometry: {
+      kind: "box",
+      w: CONST(1),
+      d: CONST(1),
+      h: REF("height"),
+      transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
+    },
+    types: [
+      { id: id("slab-150"), name: "Concrete 150 mm", values: { thickness: 0.15 } },
+      { id: id("slab-200"), name: "Concrete 200 mm", values: { thickness: 0.2 } },
+      { id: id("slab-250"), name: "Concrete 250 mm", values: { thickness: 0.25 } },
+    ],
+  });
+
+  // ---- column -------------------------------------------------------------
+  families.push({
+    id: id("column"),
+    name: "Basic Column",
+    category: "column",
+    ifcEntity: "IfcColumn",
+    schemaVersion: 1,
+    sourceElementType: "column",
+    builtIn: true,
+    parameters: [
+      { name: "height",    type: "length", scope: "instance", default: 3.0, editable: true, step: 0.1, unit: "m", group: "Dimensions" },
+      { name: "thickness", type: "length", scope: "instance", default: 0.3, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "depth",     type: "length", scope: "instance", default: 0.3, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
+      // openbim-families:formula-editor
+      { name: "concreteVolume", type: "volume", scope: "instance", default: 0, editable: false, unit: "m3", group: "Computed", formula: "= thickness * depth * height" },
+      { name: "slenderness",    type: "number", scope: "instance", default: 0, editable: false, group: "Computed", formula: "= height / min(thickness, depth)" },
+    ],
+    geometry: {
+      kind: "box",
+      w: REF("thickness"),
+      d: REF("depth"),
+      h: REF("height"),
+      transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
+    },
+    types: [
+      { id: id("col-300"), name: "300 x 300", values: { thickness: 0.3, depth: 0.3 } },
+      { id: id("col-400"), name: "400 x 400", values: { thickness: 0.4, depth: 0.4 } },
+    ],
+  });
+
+  // ---- beam ---------------------------------------------------------------
+  families.push({
+    id: id("beam"),
+    name: "Basic Beam",
+    category: "beam",
+    ifcEntity: "IfcBeam",
+    schemaVersion: 1,
+    sourceElementType: "beam",
+    builtIn: true,
+    parameters: [
+      { name: "height",    type: "length", scope: "instance", default: 0.5, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "thickness", type: "length", scope: "instance", default: 0.25, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
+      // openbim-families:formula-editor
+      { name: "sectionArea",    type: "area",   scope: "instance", default: 0, editable: false, unit: "m2", group: "Computed", formula: "= thickness * height" },
+      { name: "sectionInertia", type: "number", scope: "instance", default: 0, editable: false, group: "Computed", formula: "= (thickness * height * height * height) / 12" },
+    ],
+    geometry: {
+      kind: "box",
+      w: CONST(1),
+      d: REF("thickness"),
+      h: REF("height"),
+      transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
+    },
+    types: [
+      { id: id("beam-300x500"), name: "300 x 500", values: { thickness: 0.3, height: 0.5 } },
+      { id: id("beam-250x500"), name: "250 x 500", values: { thickness: 0.25, height: 0.5 } },
+    ],
+  });
+
+  // ---- door ---------------------------------------------------------------
+  families.push({
+    id: id("door"),
+    name: "Basic Door",
+    category: "door",
+    ifcEntity: "IfcDoor",
+    schemaVersion: 1,
+    sourceElementType: "door",
+    builtIn: true,
+    parameters: [
+      { name: "width",           type: "length",  scope: "type",     default: 0.9,  editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "height",          type: "length",  scope: "type",     default: 2.1,  editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "frameThickness",  type: "length",  scope: "type",     default: 0.06, editable: true, step: 0.005, unit: "m", group: "Construction" },
+      { name: "sillHeight",      type: "length",  scope: "instance", default: 0.0,  editable: true, step: 0.05, unit: "m", group: "Constraints" },
+      { name: "offsetAlongHost", type: "length",  scope: "instance", default: 0.0,  editable: true, step: 0.05, unit: "m", group: "Constraints" },
+    ],
+    geometry: {
+      kind: "box",
+      w: REF("width"),
+      d: CONST(0.04),
+      h: REF("height"),
+      transform: {
+        translate: [CONST(0), { ref: "sillHeight" }, CONST(0)],
+      },
+    },
+    types: [
+      { id: id("door-900"), name: "Single 900 x 2100", values: { width: 0.9, height: 2.1 } },
+      { id: id("door-1000"), name: "Single 1000 x 2100", values: { width: 1.0, height: 2.1 } },
+      { id: id("door-double"), name: "Double 1800 x 2100", values: { width: 1.8, height: 2.1 } },
+    ],
+  });
+
+  // ---- window -------------------------------------------------------------
+  families.push({
+    id: id("window"),
+    name: "Basic Window",
+    category: "window",
+    ifcEntity: "IfcWindow",
+    schemaVersion: 1,
+    sourceElementType: "window",
+    builtIn: true,
+    parameters: [
+      { name: "width",           type: "length", scope: "type",     default: 1.2,  editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "height",          type: "length", scope: "type",     default: 1.4,  editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "frameThickness",  type: "length", scope: "type",     default: 0.05, editable: true, step: 0.005, unit: "m", group: "Construction" },
+      { name: "sillHeight",      type: "length", scope: "instance", default: 0.9,  editable: true, step: 0.05, unit: "m", group: "Constraints" },
+      { name: "offsetAlongHost", type: "length", scope: "instance", default: 0.0,  editable: true, step: 0.05, unit: "m", group: "Constraints" },
+    ],
+    geometry: {
+      kind: "box",
+      w: REF("width"),
+      d: CONST(0.03),
+      h: REF("height"),
+      transform: { translate: [CONST(0), { ref: "sillHeight" }, CONST(0)] },
+    },
+    types: [
+      { id: id("win-1200x1400"), name: "1200 x 1400", values: { width: 1.2, height: 1.4 } },
+      { id: id("win-1500x1500"), name: "1500 x 1500", values: { width: 1.5, height: 1.5 } },
+    ],
+  });
+
+  // ---- duct ---------------------------------------------------------------
+  families.push({
+    id: id("duct"),
+    name: "Rectangular Duct",
+    category: "duct",
+    ifcEntity: "IfcDuctSegment",
+    schemaVersion: 1,
+    sourceElementType: "duct",
+    builtIn: true,
+    parameters: [
+      { name: "thickness", label: "Width",     type: "length", scope: "type",     default: 0.6, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "height",    type: "length", scope: "type",     default: 0.4, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
+    ],
+    geometry: {
+      kind: "box",
+      w: CONST(1),
+      d: REF("thickness"),
+      h: REF("height"),
+      transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
+    },
+    types: [
+      { id: id("duct-600x400"), name: "600 x 400", values: { thickness: 0.6, height: 0.4 } },
+      { id: id("duct-400x300"), name: "400 x 300", values: { thickness: 0.4, height: 0.3 } },
+    ],
+  });
+
+  // ---- pipe ---------------------------------------------------------------
+  families.push({
+    id: id("pipe"),
+    name: "Round Pipe",
+    category: "pipe",
+    ifcEntity: "IfcPipeSegment",
+    schemaVersion: 1,
+    sourceElementType: "pipe",
+    builtIn: true,
+    parameters: [
+      { name: "thickness", label: "Diameter",  type: "length", scope: "type",     default: 0.1, editable: true, step: 0.005, unit: "m", group: "Dimensions" },
+      { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
+      // openbim-families:formula-editor
+      { name: "circumference",    type: "length", scope: "instance", default: 0, editable: false, unit: "m",  group: "Computed", formula: "= pi() * diameter" },
+      { name: "crossSectionArea", type: "area",   scope: "instance", default: 0, editable: false, unit: "m2", group: "Computed", formula: "= pi() * (diameter / 2) * (diameter / 2)" },
+    ],
+    geometry: {
+      kind: "cylinder",
+      r: { expr: "thickness / 2" },
+      h: CONST(1),
+      segments: 16,
+      transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
+    },
+    types: [
+      { id: id("pipe-dn50"),  name: "DN 50",  values: { thickness: 0.05 } },
+      { id: id("pipe-dn100"), name: "DN 100", values: { thickness: 0.1 } },
+      { id: id("pipe-dn150"), name: "DN 150", values: { thickness: 0.15 } },
+    ],
+  });
+
+  // ---- cable tray ---------------------------------------------------------
+  families.push({
+    id: id("cable-tray"),
+    name: "Cable Tray",
+    category: "cable-tray",
+    ifcEntity: "IfcCableCarrierSegment",
+    schemaVersion: 1,
+    sourceElementType: "cable-tray",
+    builtIn: true,
+    parameters: [
+      { name: "thickness", label: "Width",     type: "length", scope: "type",     default: 0.3, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "height", label: "Depth",     type: "length", scope: "type",     default: 0.1, editable: true, step: 0.01, unit: "m", group: "Dimensions" },
+      { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
+    ],
+    geometry: {
+      kind: "box",
+      w: CONST(1),
+      d: REF("thickness"),
+      h: REF("height"),
+      transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
+    },
+    types: [
+      { id: id("tray-300"), name: "300 mm", values: { thickness: 0.3, height: 0.1 } },
+      { id: id("tray-450"), name: "450 mm", values: { thickness: 0.45, height: 0.1 } },
+    ],
+  });
+
+  // ---- conduit ------------------------------------------------------------
+  families.push({
+    id: id("conduit"),
+    name: "Conduit",
+    category: "conduit",
+    ifcEntity: "IfcCableCarrierSegment",
+    schemaVersion: 1,
+    sourceElementType: "conduit",
+    builtIn: true,
+    parameters: [
+      { name: "thickness", label: "Diameter",  type: "length", scope: "type",     default: 0.025, editable: true, step: 0.005, unit: "m", group: "Dimensions" },
+      { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
+    ],
+    geometry: {
+      kind: "cylinder",
+      r: { expr: "thickness / 2" },
+      h: CONST(1),
+      segments: 12,
+      transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
+    },
+    types: [
+      { id: id("conduit-20"), name: "20 mm", values: { thickness: 0.02 } },
+      { id: id("conduit-25"), name: "25 mm", values: { thickness: 0.025 } },
+    ],
+  });
+
+  // ---- equipment (generic placeholder family) ----------------------------
+  families.push({
+    id: id("equipment"),
+    name: "Generic Equipment",
+    category: "equipment",
+    ifcEntity: "IfcBuildingElementProxy",
+    schemaVersion: 1,
+    sourceElementType: "equipment",
+    builtIn: true,
+    parameters: [
+      { name: "thickness", label: "Width",     type: "length", scope: "type",     default: 0.8, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "depth",     type: "length", scope: "type",     default: 0.8, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "height",    type: "length", scope: "type",     default: 1.2, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
+    ],
+    geometry: {
+      kind: "box",
+      w: REF("thickness"),
+      d: REF("depth"),
+      h: REF("height"),
+      transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
+    },
+    types: [
+      { id: id("equip-generic"), name: "Generic 800 x 800 x 1200", values: { thickness: 0.8, depth: 0.8, height: 1.2 } },
+    ],
+  });
+
+  return families;
+}
+
+
+===== FILE: src/modules/families/sample-parametric-door.ts =====
+/**
+ * Sample parametric door family - demonstrates formulas, constraints,
+ * conditional geometry, and arrays. Seed this via familyStore.create()
+ * or merge into createBuiltInFamilies().
+ */
+
+import type { FamilyDefinition } from "./types";
+import type { ExtendedGeometrySpec } from "./types-extended";
+import type { Constraint } from "./constraint-graph";
+
+const REF = (name: string) => ({ ref: name });
+const CONST = (n: number) => ({ const: n });
+
+export const PARAMETRIC_DOOR_CONSTRAINTS: Constraint[] = [
+  // Panel height tracks overall height minus frame
+  { kind: "offset", a: "PanelHeight", b: "Height", delta: -0.08, priority: 10 },
+  // Panel width tracks leaf count
+  // (formula also handles this; constraint is a safety net)
+  { kind: "ratio", a: "MullionSpacing", b: "Width", k: 0.5, priority: 5 },
+];
+
+export function createParametricDoorFamily(): FamilyDefinition {
+  const geometry: any = {
+    kind: "composed",
+    parts: [
+      // Outer frame (extruded rectangle with hole for leaf)
+      {
+        kind: "extrusion",
+        profile: { kind: "rect", w: REF("Width"), h: REF("Height") },
+        depth: REF("FrameDepth"),
+        holes: [
+          {
+            kind: "rect",
+            w: REF("OpeningWidth"),
+            h: REF("OpeningHeight"),
+          },
+        ],
+      },
+      // Single leaf
+      {
+        kind: "conditional",
+        when: "IsSingle",
+        then: {
+          kind: "box",
+          w: REF("PanelWidth"),
+          d: REF("PanelThickness"),
+          h: REF("PanelHeight"),
+          transform: {
+            translate: [CONST(0), CONST(0), REF("PanelOffset")],
+          },
+        },
+      },
+      // Double leaf - left
+      {
+        kind: "conditional",
+        when: "IsDouble",
+        then: {
+          kind: "box",
+          w: REF("HalfPanelWidth"),
+          d: REF("PanelThickness"),
+          h: REF("PanelHeight"),
+          transform: {
+            translate: [REF("LeftPanelX"), CONST(0), REF("PanelOffset")],
+          },
+        },
+      },
+      // Double leaf - right
+      {
+        kind: "conditional",
+        when: "IsDouble",
+        then: {
+          kind: "box",
+          w: REF("HalfPanelWidth"),
+          d: REF("PanelThickness"),
+          h: REF("PanelHeight"),
+          transform: {
+            translate: [REF("RightPanelX"), CONST(0), REF("PanelOffset")],
+          },
+        },
+      },
+      // Optional vision panel (glazed rectangle on leaf)
+      {
+        kind: "conditional",
+        when: "HasVision",
+        then: {
+          kind: "box",
+          w: REF("VisionWidth"),
+          d: CONST(0.02),
+          h: REF("VisionHeight"),
+          transform: {
+            translate: [CONST(0), CONST(0), REF("VisionZ")],
+          },
+        },
+      },
+      // Handle cylinder
+      {
+        kind: "cylinder",
+        r: CONST(0.015),
+        h: CONST(0.08),
+        transform: {
+          translate: [REF("HandleX"), CONST(0), REF("HandleZ")],
+          rotate: [CONST(Math.PI / 2), CONST(0), CONST(0)],
+        },
+      },
+    ],
+  };
+
+  return {
+    id: "parametric-door-v1",
+    name: "Parametric Door",
+    category: "door",
+    ifcEntity: "IfcDoor",
+    schemaVersion: 2,
+    sourceElementType: "door",
+    builtIn: true,
+    group: "Architecture",
+    parameters: [
+      // -- Dimensions ----------------------------------------------
+      {
+        name: "Width",
+        type: "length",
+        scope: "type",
+        default: 0.9,
+        editable: true,
+        min: 0.5,
+        max: 3.0,
+        unit: "m",
+        group: "Dimensions",
+        description: "Overall door width",
+      },
+      {
+        name: "Height",
+        type: "length",
+        scope: "type",
+        default: 2.1,
+        editable: true,
+        min: 1.8,
+        max: 3.5,
+        unit: "m",
+        group: "Dimensions",
+      },
+      {
+        name: "FrameDepth",
+        type: "length",
+        scope: "type",
+        default: 0.1,
+        editable: true,
+        min: 0.05,
+        max: 0.3,
+        unit: "m",
+        group: "Dimensions",
+      },
+      {
+        name: "PanelThickness",
+        type: "length",
+        scope: "type",
+        default: 0.04,
+        editable: true,
+        min: 0.02,
+        max: 0.08,
+        unit: "m",
+        group: "Dimensions",
+      },
+      {
+        name: "SillHeight",
+        type: "length",
+        scope: "instance",
+        default: 0,
+        editable: true,
+        min: 0,
+        max: 0.3,
+        unit: "m",
+        group: "Placement",
+      },
+
+      // -- Configuration -------------------------------------------
+      {
+        name: "LeafCount",
+        type: "integer",
+        scope: "type",
+        default: 1,
+        editable: true,
+        min: 1,
+        max: 2,
+        group: "Configuration",
+        description: "1 = single, 2 = double",
+      },
+      {
+        name: "IsSingle",
+        type: "boolean",
+        scope: "type",
+        default: true,
+        editable: false,
+        formula: "= eq(LeafCount, 1)",
+        group: "Configuration",
+      },
+      {
+        name: "IsDouble",
+        type: "boolean",
+        scope: "type",
+        default: false,
+        editable: false,
+        formula: "= eq(LeafCount, 2)",
+        group: "Configuration",
+      },
+      {
+        name: "HasVision",
+        type: "boolean",
+        scope: "type",
+        default: false,
+        editable: true,
+        group: "Configuration",
+      },
+
+      // -- Derived (formulas) --------------------------------------
+      {
+        name: "OpeningWidth",
+        type: "length",
+        scope: "type",
+        default: 0.82,
+        editable: false,
+        formula: "= Width - 0.08",
+        group: "Derived",
+      },
+      {
+        name: "OpeningHeight",
+        type: "length",
+        scope: "type",
+        default: 2.02,
+        editable: false,
+        formula: "= Height - 0.08",
+        group: "Derived",
+      },
+      {
+        name: "PanelWidth",
+        type: "length",
+        scope: "type",
+        default: 0.82,
+        editable: false,
+        formula: "= OpeningWidth",
+        group: "Derived",
+      },
+      {
+        name: "PanelHeight",
+        type: "length",
+        scope: "type",
+        default: 2.02,
+        editable: false,
+        formula: "= OpeningHeight",
+        group: "Derived",
+      },
+      {
+        name: "HalfPanelWidth",
+        type: "length",
+        scope: "type",
+        default: 0.41,
+        editable: false,
+        formula: "= OpeningWidth / 2 - 0.01",
+        group: "Derived",
+      },
+      {
+        name: "LeftPanelX",
+        type: "length",
+        scope: "type",
+        default: -0.21,
+        editable: false,
+        formula: "= -HalfPanelWidth / 2 - 0.01",
+        group: "Derived",
+      },
+      {
+        name: "RightPanelX",
+        type: "length",
+        scope: "type",
+        default: 0.21,
+        editable: false,
+        formula: "= HalfPanelWidth / 2 + 0.01",
+        group: "Derived",
+      },
+      {
+        name: "PanelOffset",
+        type: "length",
+        scope: "type",
+        default: 0,
+        editable: false,
+        formula: "= 0",
+        group: "Derived",
+      },
+      {
+        name: "VisionWidth",
+        type: "length",
+        scope: "type",
+        default: 0.4,
+        editable: false,
+        formula: "= min(PanelWidth * 0.5, 0.5)",
+        group: "Derived",
+      },
+      {
+        name: "VisionHeight",
+        type: "length",
+        scope: "type",
+        default: 0.6,
+        editable: false,
+        formula: "= min(PanelHeight * 0.35, 0.8)",
+        group: "Derived",
+      },
+      {
+        name: "VisionZ",
+        type: "length",
+        scope: "type",
+        default: 0.4,
+        editable: false,
+        formula: "= PanelHeight * 0.55",
+        group: "Derived",
+      },
+      {
+        name: "HandleX",
+        type: "length",
+        scope: "type",
+        default: 0.35,
+        editable: false,
+        formula: "= if(IsDouble, RightPanelX + HalfPanelWidth * 0.35, PanelWidth * 0.4)",
+        group: "Derived",
+      },
+      {
+        name: "HandleZ",
+        type: "length",
+        scope: "type",
+        default: 1.0,
+        editable: false,
+        formula: "= 1.0",
+        group: "Derived",
+      },
+
+      // -- Reporting (schedules) ------------------------------------
+      {
+        name: "Report_Area",
+        type: "area",
+        scope: "type",
+        default: 0,
+        editable: false,
+        formula: "= Width * Height",
+        group: "Reporting",
+        unit: "m-",
+      },
+      {
+        name: "Report_LeafArea",
+        type: "area",
+        scope: "type",
+        default: 0,
+        editable: false,
+        formula: "= if(IsDouble, OpeningWidth * OpeningHeight, PanelWidth * PanelHeight)",
+        group: "Reporting",
+        unit: "m-",
+      },
+    ],
+    geometry,
+    types: [
+      {
+        id: "door-900x2100",
+        name: "900 - 2100 Single",
+        values: { Width: 0.9, Height: 2.1, LeafCount: 1 },
+      },
+      {
+        id: "door-1000x2100",
+        name: "1000 - 2100 Single",
+        values: { Width: 1.0, Height: 2.1, LeafCount: 1 },
+      },
+      {
+        id: "door-1800x2100-dbl",
+        name: "1800 - 2100 Double",
+        values: { Width: 1.8, Height: 2.1, LeafCount: 2 },
+      },
+      {
+        id: "door-900x2100-vision",
+        name: "900 - 2100 with Vision",
+        values: { Width: 0.9, Height: 2.1, LeafCount: 1, HasVision: true },
+      },
+    ],
+  };
+}
+
+

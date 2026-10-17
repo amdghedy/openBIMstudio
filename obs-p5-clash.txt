@@ -1,0 +1,3388 @@
+﻿
+===== FILE: src/modules/clash/clash-core.ts =====
+/**
+ * Pure clash math â€” geometry only, no I/O, no DOM, no Fragments.
+ *
+ * Imported by both the main-thread engine and the Web Worker.
+ * Must not reference `ctx`, `window`, `document`, or Fragments runtime types.
+ */
+import * as THREE from "three";
+import { PointCloudConvex, gjk } from "./gjk";
+import { meshFaceClash, meshFaceClashBVH, type Tri } from "./geometry";
+import { TriangleBVH } from "./triangle-bvh";
+import { SpatialHash } from "../../core/spatial-hash";
+
+/* â”€â”€ Public types (serializable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+export type ClashKind = "intersect" | "touching" | "clearance" | "duplicate";
+
+export type ClashPrecision =
+  | "triangles" | "bbox" | "hull" | "sphere" | "center" | "duplicate" | "depth";
+
+export type ClashMethod =
+  | "hard-triangle" | "hard-conservative" | "convex-gjk" | "sphere"
+  | "center-in-volume" | "clearance" | "duplicates" | "penetration-depth";
+
+export interface ClashRules {
+  tolerance: number;
+  clearance: number;
+  lowerBound: number;
+  minVolume: number;
+  ignoreIdentical: boolean;
+  ignoreSameCategory: boolean;
+}
+
+export const DEFAULT_CLASH_RULES: ClashRules = {
+  tolerance: 0.005,
+  clearance: 0,
+  lowerBound: 0,
+  minVolume: 1e-6,
+  ignoreIdentical: false,
+  ignoreSameCategory: false,
+};
+
+export interface ClashItemRef {
+  modelId: string;
+  localId: number;
+  name: string;
+  cat: string;
+}
+
+export interface ElementClash {
+  a: ClashItemRef;
+  b: ClashItemRef;
+  kind: ClashKind;
+  method: ClashMethod;
+  precision: ClashPrecision;
+  depthVol: number;
+  triPairs: number;
+  minGap: number;
+  boxA: THREE.Box3;
+  boxB: THREE.Box3;
+  point: THREE.Vector3 | null;
+}
+
+export interface ClashCoreItem {
+  modelId: string;
+  localId: number;
+  name: string;
+  category: string;
+  box: THREE.Box3;
+  /** Optional pre-extracted triangles (world space, 9 floats per tri). */
+  tris?: Tri[] | null;
+}
+
+export interface ClashProgress {
+  phase: "broadphase" | "narrowphase" | "done";
+  current: number;
+  total: number;
+  found: number;
+}
+
+export interface ClashCoreOptions {
+  rules: ClashRules;
+  method: ClashMethod;
+  /** Pre-partitioned groups of item indices to test. */
+  groups: number[][];
+  /** When true, also test every item against the other items in its own group. */
+  selfPairs: boolean;
+  onProgress?: (p: ClashProgress) => void;
+  shouldCancel?: () => boolean;
+  yieldEvery?: number;
+  yield?: () => Promise<void>;
+}
+
+export interface ClashMethodInfo {
+  id: ClashMethod;
+  label: string;
+  description: string;
+  usesTolerance: boolean;
+  usesClearance: boolean;
+}
+
+export const CLASH_METHODS: ClashMethodInfo[] = [
+  { id: "hard-triangle",     label: "Hard Â· Triangle (most accurate)", description: "True triangle-triangle intersection with BVH acceleration.", usesTolerance: true,  usesClearance: false },
+  { id: "hard-conservative", label: "Hard Â· Conservative (bbox)",       description: "Bounding-box intersection. Fast, over-reports.",              usesTolerance: true,  usesClearance: false },
+  { id: "convex-gjk",        label: "Convex Hull (GJK)",                description: "Convex hull tested with GJK distance.",                       usesTolerance: true,  usesClearance: false },
+  { id: "sphere",            label: "Bounding Sphere (fastest)",        description: "Sphere-vs-sphere. Instantaneous, heavily over-reports.",      usesTolerance: true,  usesClearance: false },
+  { id: "center-in-volume",  label: "Center in Volume",                 description: "One AABB centre inside the other AABB.",                      usesTolerance: false, usesClearance: false },
+  { id: "clearance",         label: "Clearance Band",                   description: "Close but not intersecting, within the clearance band.",      usesTolerance: false, usesClearance: true  },
+  { id: "duplicates",        label: "Duplicates",                       description: "Identical bounding boxes within tolerance.",                  usesTolerance: true,  usesClearance: false },
+  { id: "penetration-depth", label: "Penetration Depth",                description: "Overlap whose thinnest axis exceeds tolerance.",              usesTolerance: true,  usesClearance: false },
+];
+
+/* â”€â”€ Scratch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+const _inter = new THREE.Box3();
+const _isize = new THREE.Vector3();
+const _expanded = new THREE.Box3();
+const _centerA = new THREE.Vector3();
+const _centerB = new THREE.Vector3();
+
+interface RuntimeItem extends ClashCoreItem {
+  tris: Tri[] | null;
+  bvh: TriangleBVH | null;
+  hull: PointCloudConvex | null;
+}
+
+export function boxDistance(a: THREE.Box3, b: THREE.Box3): number {
+  if (a.intersectsBox(b)) return 0;
+  const dx = Math.max(0, Math.max(a.min.x - b.max.x, b.min.x - a.max.x));
+  const dy = Math.max(0, Math.max(a.min.y - b.max.y, b.min.y - a.max.y));
+  const dz = Math.max(0, Math.max(a.min.z - b.max.z, b.min.z - a.max.z));
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+export function overlapVolume(a: THREE.Box3, b: THREE.Box3): number {
+  if (!a.intersectsBox(b)) return 0;
+  _inter.copy(a).intersect(b);
+  if (_inter.isEmpty()) return 0;
+  _inter.getSize(_isize);
+  return Math.max(0, _isize.x * _isize.y * _isize.z);
+}
+
+function ensureBVH(it: RuntimeItem): void {
+  if (it.bvh !== null) return;
+  if (!it.tris || !it.tris.length) return;
+  try { it.bvh = new TriangleBVH(it.tris); }
+  catch { it.bvh = null; }
+}
+
+function ensureHull(it: RuntimeItem): void {
+  if (it.hull !== null) return;
+  if (!it.tris || !it.tris.length) return;
+  try { it.hull = PointCloudConvex.fromTriangles(it.tris); }
+  catch { it.hull = null; }
+}
+
+interface DetectionResult {
+  kind: ClashKind | null;
+  precision: ClashPrecision;
+  triPairs: number;
+  minGap: number;
+  depthVol: number;
+  point: THREE.Vector3 | null;
+}
+
+function detectPair(
+  ea: RuntimeItem,
+  eb: RuntimeItem,
+  method: ClashMethod,
+  rules: ClashRules,
+): DetectionResult {
+  const tol = Math.max(0, rules.tolerance);
+  const clearance = Math.max(0, rules.clearance);
+  const minVol = Math.max(0, rules.minVolume);
+
+  const boxGap = boxDistance(ea.box, eb.box);
+  const depthVol = overlapVolume(ea.box, eb.box);
+
+  const out: DetectionResult = {
+    kind: null, precision: "bbox", triPairs: 0, minGap: boxGap, depthVol, point: null,
+  };
+
+  switch (method) {
+    case "hard-triangle": {
+      if (!ea.tris?.length || !eb.tris?.length) {
+        out.precision = "bbox";
+        if (depthVol > minVol) out.kind = "intersect";
+        else if (boxGap <= tol) out.kind = "touching";
+        return out;
+      }
+      out.precision = "triangles";
+      ensureBVH(ea); ensureBVH(eb);
+      let usedBVH = false;
+      if (ea.bvh && eb.bvh) {
+        try {
+          const t = meshFaceClashBVH(ea.bvh, eb.bvh, tol);
+          out.triPairs = t.pairs; out.point = t.point; usedBVH = true;
+        } catch { /* fall through */ }
+      }
+      if (!usedBVH) {
+        try {
+          const t = meshFaceClash(ea.tris, eb.tris, ea.box, eb.box, tol);
+          out.triPairs = t.pairs; out.point = t.point;
+        } catch { /* */ }
+      }
+      if (out.triPairs > 0) { out.kind = "intersect"; out.minGap = 0; }
+      else if (tol > 0 && boxGap <= tol) out.kind = "touching";
+      return out;
+    }
+
+    case "hard-conservative":
+      out.precision = "bbox";
+      if (depthVol > minVol) { out.kind = "intersect"; out.triPairs = 1; out.minGap = 0; }
+      else if (boxGap <= tol) out.kind = "touching";
+      return out;
+
+    case "convex-gjk": {
+      ensureHull(ea); ensureHull(eb);
+      out.precision = "hull";
+      if (ea.hull && eb.hull) {
+        try {
+          const g = gjk(ea.hull, eb.hull);
+          out.minGap = g.intersect ? 0 : g.distance;
+          if (g.intersect) { out.kind = "intersect"; out.triPairs = 1; }
+          else if (g.distance <= tol) out.kind = "touching";
+          return out;
+        } catch { /* */ }
+      }
+      out.precision = "bbox";
+      if (depthVol > minVol) { out.kind = "intersect"; out.triPairs = 1; }
+      else if (boxGap <= tol) out.kind = "touching";
+      return out;
+    }
+
+    case "sphere": {
+      out.precision = "sphere";
+      ea.box.getCenter(_centerA);
+      eb.box.getCenter(_centerB);
+      const sa = new THREE.Vector3(); ea.box.getSize(sa);
+      const sb = new THREE.Vector3(); eb.box.getSize(sb);
+      const rA = sa.length() * 0.5;
+      const rB = sb.length() * 0.5;
+      const centerDist = _centerA.distanceTo(_centerB);
+      const sphereGap = centerDist - (rA + rB);
+      out.minGap = Math.max(0, sphereGap);
+      if (sphereGap <= 0) { out.kind = "intersect"; out.triPairs = 1; }
+      else if (sphereGap <= tol) out.kind = "touching";
+      return out;
+    }
+
+    case "center-in-volume": {
+      out.precision = "center";
+      ea.box.getCenter(_centerA);
+      eb.box.getCenter(_centerB);
+      const aInB = eb.box.containsPoint(_centerA);
+      const bInA = ea.box.containsPoint(_centerB);
+      if (aInB || bInA) {
+        out.kind = "intersect"; out.triPairs = 1; out.minGap = 0;
+        out.point = (aInB ? _centerA : _centerB).clone();
+      }
+      return out;
+    }
+
+    case "clearance": {
+      if (clearance <= 0 && tol <= 0) return out;
+      ensureHull(ea); ensureHull(eb);
+      let gap = boxGap;
+      out.precision = "bbox";
+      if (ea.hull && eb.hull) {
+        try {
+          const g = gjk(ea.hull, eb.hull);
+          out.precision = "hull";
+          if (g.intersect) {
+            out.kind = "intersect"; out.triPairs = 1; out.minGap = 0;
+            return out;
+          }
+          gap = g.distance;
+        } catch { /* */ }
+      }
+      out.minGap = gap;
+      if (gap <= tol) out.kind = "touching";
+      else if (gap <= clearance) out.kind = "clearance";
+      return out;
+    }
+
+    case "duplicates": {
+      out.precision = "duplicate";
+      ea.box.getCenter(_centerA);
+      eb.box.getCenter(_centerB);
+      const sizeA = new THREE.Vector3(); ea.box.getSize(sizeA);
+      const sizeB = new THREE.Vector3(); eb.box.getSize(sizeB);
+      const centerDist = _centerA.distanceTo(_centerB);
+      const sizeDiff =
+        Math.abs(sizeA.x - sizeB.x) +
+        Math.abs(sizeA.y - sizeB.y) +
+        Math.abs(sizeA.z - sizeB.z);
+      const matchTol = Math.max(tol, 0.001);
+      if (centerDist <= matchTol && sizeDiff <= matchTol * 3) {
+        out.kind = "duplicate"; out.triPairs = 1; out.minGap = 0;
+        out.point = _centerA.clone().add(_centerB).multiplyScalar(0.5);
+      }
+      return out;
+    }
+
+    case "penetration-depth": {
+      out.precision = "depth";
+      if (depthVol <= 0) return out;
+      _inter.copy(ea.box).intersect(eb.box);
+      _inter.getSize(_isize);
+      const depth = Math.min(_isize.x, _isize.y, _isize.z);
+      out.triPairs = 1; out.minGap = 0;
+      if (depth >= tol) out.kind = "intersect";
+      else if (depth > 0) out.kind = "touching";
+      return out;
+    }
+  }
+  return out;
+}
+
+/* â”€â”€ Broadphase + narrowphase loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+export async function runClashCore(
+  rawItems: ClashCoreItem[],
+  opts: ClashCoreOptions,
+): Promise<ElementClash[]> {
+  const results: ElementClash[] = [];
+  const rules = opts.rules;
+  const method = opts.method;
+  const onProg = opts.onProgress ?? (() => {});
+  const shouldCancel = opts.shouldCancel ?? (() => false);
+  const yieldEvery = opts.yieldEvery ?? 512;
+  const yieldFn = opts.yield ?? (() => Promise.resolve());
+
+  const items: RuntimeItem[] = rawItems.map((it) => ({
+    ...it,
+    tris: it.tris ?? null,
+    bvh: null,
+    hull: null,
+  }));
+
+  const reach = Math.max(
+    Math.max(0, rules.tolerance),
+    Math.max(0, rules.clearance),
+    method === "sphere" ? 1e9 : 0,
+  );
+
+  const cellSize = SpatialHash.suggestCellSize(items.map((it) => it.box));
+  const hash = new SpatialHash(cellSize);
+  for (const it of items) hash.insert(it.box);
+
+  const groupOf = new Map<number, number>();
+  opts.groups.forEach((g, gi) => {
+    for (const idx of g) groupOf.set(idx, gi);
+  });
+
+  let tested = 0;
+  let found = 0;
+  const candidates = new Set<number>();
+  const seen = new Set<string>();
+
+  let totalEstimate = 0;
+  for (const _idx of groupOf.keys()) totalEstimate++;
+  onProg({ phase: "broadphase", current: 0, total: totalEstimate, found: 0 });
+
+  const maxItemIdx = items.length;
+
+  for (let ai = 0; ai < maxItemIdx; ai++) {
+    if (shouldCancel()) return results;
+    const ea = items[ai];
+    if (!ea) continue;
+
+    const groupA = groupOf.get(ai);
+    if (groupA === undefined) continue;
+
+    const maxA = Math.max(
+      ea.box.max.x - ea.box.min.x,
+      ea.box.max.y - ea.box.min.y,
+      ea.box.max.z - ea.box.min.z,
+    );
+    if (rules.lowerBound > 0 && maxA < rules.lowerBound) continue;
+
+    _expanded.copy(ea.box).expandByScalar(reach);
+    hash.query(_expanded, candidates, ai);
+
+    for (const bi of candidates) {
+      if (bi <= ai) continue;
+      const eb = items[bi];
+      if (!eb) continue;
+
+      const groupB = groupOf.get(bi);
+      if (groupB === undefined) continue;
+
+      const sameGroup = groupA === groupB;
+      if (sameGroup && !opts.selfPairs) continue;
+
+      const key = `${ai}:${bi}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      tested++;
+
+      if ((tested & (yieldEvery - 1)) === 0) {
+        onProg({
+          phase: "broadphase",
+          current: tested,
+          total: Math.min(Math.max(totalEstimate, tested), tested * 2),
+          found,
+        });
+        await yieldFn();
+        if (shouldCancel()) return results;
+      }
+
+      const maxB = Math.max(
+        eb.box.max.x - eb.box.min.x,
+        eb.box.max.y - eb.box.min.y,
+        eb.box.max.z - eb.box.min.z,
+      );
+      if (rules.lowerBound > 0 && maxB < rules.lowerBound) continue;
+
+      if (method !== "sphere" && method !== "duplicates") {
+        _expanded.copy(ea.box).expandByScalar(reach);
+        if (!_expanded.intersectsBox(eb.box)) continue;
+      }
+
+      if (rules.ignoreIdentical && ea.name && ea.name === eb.name) continue;
+      if (
+        rules.ignoreSameCategory &&
+        ea.category === eb.category &&
+        ea.category !== "Unknown"
+      ) continue;
+
+      const d = detectPair(ea, eb, method, rules);
+      if (!d.kind) continue;
+
+      found++;
+      results.push({
+        a: { modelId: ea.modelId, localId: ea.localId, name: ea.name, cat: ea.category },
+        b: { modelId: eb.modelId, localId: eb.localId, name: eb.name, cat: eb.category },
+        kind: d.kind,
+        method,
+        precision: d.precision,
+        depthVol: d.depthVol,
+        triPairs: d.triPairs,
+        minGap: d.minGap,
+        boxA: ea.box.clone(),
+        boxB: eb.box.clone(),
+        point: d.point,
+      });
+    }
+  }
+
+  onProg({
+    phase: "done",
+    current: tested,
+    total: tested,
+    found: results.length,
+  });
+  return results;
+}
+
+
+===== FILE: src/modules/clash/geometry.ts =====
+// openbim-fix:v3:applied -- do not re-apply the earlier fix scripts
+/** Precise geometry: per-element world triangles + MÃ¶ller triangle-triangle intersection. */
+import * as THREE from "three";
+import { ctx } from "../../core/context";
+import { TriangleBVH } from "./triangle-bvh";
+
+export type Tri = Float32Array; // 9 floats: ax,ay,az, bx,by,bz, cx,cy,cz
+
+const MAX_TRIS_PER_ITEM = 2500;
+
+const cacheByModel = new WeakMap<object, Map<number, Tri[] | null>>();
+
+function getIdRanges(mesh: any): Map<number, { start: number; end: number }> | null {
+  const cands: any[] = [mesh.geometry?.userData, mesh.userData, mesh];
+  const keys = ["idRanges", "idsRanges", "idMap", "ranges"];
+  for (const ud of cands) {
+    if (!ud || typeof ud !== "object") continue;
+    for (const k of keys) {
+      const r = ud[k];
+      if (!r) continue;
+      if (r instanceof Map) {
+        if (r.size) return r as any;
+      } else if (typeof r === "object") {
+        const m = new Map<number, { start: number; end: number }>();
+        let ok = true;
+        for (const [kk, vv] of Object.entries(r as Record<string, any>)) {
+          const start = vv?.start ?? vv?.indexStart ?? vv?.[0];
+          const end = vv?.end ?? vv?.indexEnd ?? vv?.[1];
+          if (typeof start !== "number" || typeof end !== "number") {
+            ok = false;
+            break;
+          }
+          m.set(Number(kk), { start, end });
+        }
+        if (ok && m.size) return m;
+      }
+    }
+  }
+  return null;
+}
+
+/** Extract world-space triangles for one element (null â†’ fall back to bbox). */
+export function getElementTriangles(modelObj: any, localId: number): Tri[] | null {
+  if (!modelObj) return null;
+  let cache = cacheByModel.get(modelObj);
+  if (!cache) {
+    cache = new Map();
+    cacheByModel.set(modelObj, cache);
+  }
+  if (cache.has(localId)) return cache.get(localId) ?? null;
+
+  try {
+    ctx.world.scene.three.updateMatrixWorld(true);
+  } catch {
+    /* */
+  }
+
+  const out: Tri[] = [];
+  const m = new THREE.Matrix4();
+  const v = new THREE.Vector3();
+
+  modelObj.traverse((obj: any) => {
+    if (!obj?.isMesh) return;
+    const geo = obj.geometry;
+    if (!geo?.attributes?.position) return;
+
+    const ranges = getIdRanges(obj);
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const idx = geo.index as THREE.BufferAttribute | null;
+
+    const pushTri = (i0: number, i1: number, i2: number) => {
+      const t = new Float32Array(9);
+      for (let k = 0; k < 3; k++) {
+        const vi = k === 0 ? i0 : k === 1 ? i1 : i2;
+        v.fromBufferAttribute(pos, vi).applyMatrix4(m);
+        t[k * 3] = v.x;
+        t[k * 3 + 1] = v.y;
+        t[k * 3 + 2] = v.z;
+      }
+      out.push(t);
+    };
+
+    m.copy(obj.matrixWorld);
+
+    if (ranges) {
+      let range = ranges.get(localId);
+      if (!range) {
+        const alt = ranges.get(localId + 1);
+        if (alt) {
+          // openbim-fix: clash/geometry.ts -- 1-based idRanges fallback
+          console.warn("[geometry] 1-based idRanges fallback for localId=" + localId);
+          range = alt;
+        }
+      }
+      if (!range) return;
+      const start = Math.max(0, Math.floor(range.start));
+      const end = Math.min(idx ? idx.count : pos.count, Math.ceil(range.end));
+      const total = end - start;
+      if (total < 3) return;
+      const stride =
+        total > MAX_TRIS_PER_ITEM * 3
+          ? 3 * Math.ceil(total / (MAX_TRIS_PER_ITEM * 3))
+          : 3;
+      if (idx) {
+        for (let i = start; i + 2 < end; i += stride) {
+          pushTri(idx.getX(i), idx.getX(i + 1), idx.getX(i + 2));
+        }
+      } else {
+        for (let i = start; i + 2 < end; i += stride) {
+          pushTri(i, i + 1, i + 2);
+        }
+      }
+      return;
+    }
+
+    // Fallback for exporters that bake one element per mesh (no idRanges).
+    const triCount = idx ? idx.count / 3 : pos.count / 3;
+    if (triCount <= MAX_TRIS_PER_ITEM) {
+      if (idx) {
+        for (let i = 0; i + 2 < idx.count; i += 3) {
+          pushTri(idx.getX(i), idx.getX(i + 1), idx.getX(i + 2));
+        }
+      } else {
+        for (let i = 0; i + 2 < pos.count; i += 3) {
+          pushTri(i, i + 1, i + 2);
+        }
+      }
+    }
+  });
+
+  const result = out.length ? out : null;
+  cache.set(localId, result);
+  return result;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// BVH cache â€” lives alongside the triangle cache, same lifecycle.
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+const bvhByModel = new WeakMap<object, Map<number, TriangleBVH | null>>();
+
+/**
+ * Build (or reuse) the triangle BVH for one element.
+ * Returns null when triangles cannot be extracted (bbox-only fallback).
+ */
+export function getElementBVH(modelObj: any, localId: number): TriangleBVH | null {
+  if (!modelObj) return null;
+  const tris = getElementTriangles(modelObj, localId);
+  if (!tris || !tris.length) return null;
+
+  let cache = bvhByModel.get(modelObj);
+  if (!cache) {
+    cache = new Map();
+    bvhByModel.set(modelObj, cache);
+  }
+  if (cache.has(localId)) return cache.get(localId) ?? null;
+
+  let bvh: TriangleBVH | null = null;
+  try {
+    bvh = new TriangleBVH(tris);
+  } catch (err) {
+    console.warn("[geometry] BVH build failed", err);
+    bvh = null;
+  }
+  cache.set(localId, bvh);
+  return bvh;
+}
+
+/** Clear triangle + BVH caches (after models change). */
+export function clearTriangleCache() {
+  // WeakMaps clear with GC; no strong refs to clear.
+}
+
+// â”€â”€ vector helpers â”€â”€
+type V3 = [number, number, number];
+const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross = (a: V3, b: V3): V3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const eps = 1e-8;
+const tv = (t: Tri, i: 0 | 1 | 2): V3 => [t[i * 3], t[i * 3 + 1], t[i * 3 + 2]];
+
+function dominantAxis(n: V3): 0 | 1 | 2 {
+  const ax = Math.abs(n[0]);
+  const ay = Math.abs(n[1]);
+  const az = Math.abs(n[2]);
+  if (ax >= ay && ax >= az) return 0;
+  if (ay >= az) return 1;
+  return 2;
+}
+
+function pointInTri2D(
+  p: [number, number],
+  a: [number, number],
+  b: [number, number],
+  c: [number, number],
+) {
+  const sign = (p1: [number, number], p2: [number, number], p3: [number, number]) =>
+    (p1[0] - p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1]);
+  const b1 = sign(p, a, b) < 0;
+  const b2 = sign(p, b, c) < 0;
+  const b3 = sign(p, c, a) < 0;
+  return b1 === b2 && b2 === b3;
+}
+
+function edgesIntersect2D(
+  a: [number, number],
+  b: [number, number],
+  c: [number, number],
+  d: [number, number],
+) {
+  const orient = (p: [number, number], q: [number, number], r: [number, number]) =>
+    Math.sign((q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1]));
+  const o1 = orient(a, b, c);
+  const o2 = orient(a, b, d);
+  const o3 = orient(c, d, a);
+  const o4 = orient(c, d, b);
+  return o1 !== o2 && o3 !== o4;
+}
+
+function coplanar(T1: Tri, T2: Tri): boolean {
+  const p1 = tv(T1, 0);
+  const q1 = tv(T1, 1);
+  const r1 = tv(T1, 2);
+  const N = cross(sub(q1, p1), sub(r1, p1));
+  const drop = dominantAxis(N);
+  const proj = (p: V3): [number, number] => {
+    if (drop === 0) return [p[1], p[2]];
+    if (drop === 1) return [p[0], p[2]];
+    return [p[0], p[1]];
+  };
+  const A = [proj(tv(T1, 0)), proj(tv(T1, 1)), proj(tv(T1, 2))] as [
+    [number, number],
+    [number, number],
+    [number, number],
+  ];
+  const B = [proj(tv(T2, 0)), proj(tv(T2, 1)), proj(tv(T2, 2))] as [
+    [number, number],
+    [number, number],
+    [number, number],
+  ];
+  for (const p of A) if (pointInTri2D(p, B[0], B[1], B[2])) return true;
+  for (const p of B) if (pointInTri2D(p, A[0], A[1], A[2])) return true;
+  for (let i = 0; i < 3; i++) {
+    const a0 = A[i];
+    const a1 = A[(i + 1) % 3];
+    for (let j = 0; j < 3; j++) {
+      if (edgesIntersect2D(a0, a1, B[j], B[(j + 1) % 3])) return true;
+    }
+  }
+  return false;
+}
+
+function edgePlaneHit(
+  a: V3,
+  b: V3,
+  c: V3,
+  da: number,
+  db: number,
+  dc: number,
+): V3 | null {
+  if (Math.abs(da) < eps && Math.abs(db) < eps) return null;
+  const pick = (P: V3, Q: V3, dp: number, dq: number): V3 => {
+    const t = dp / (dp - dq + 1e-30);
+    return [P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1]), P[2] + t * (Q[2] - P[2])];
+  };
+  if ((da >= 0 && db < 0) || (da < 0 && db >= 0)) return pick(a, b, da, db);
+  if ((da >= 0 && dc < 0) || (da < 0 && dc >= 0)) return pick(a, c, da, dc);
+  if ((db >= 0 && dc < 0) || (db < 0 && dc >= 0)) return pick(b, c, db, dc);
+  return null;
+}
+
+/** MÃ¶ller-style triangleâ€“triangle intersection (includes coplanar overlap). */
+export function triTriIntersect(T1: Tri, T2: Tri): boolean {
+  const p1 = tv(T1, 0);
+  const q1 = tv(T1, 1);
+  const r1 = tv(T1, 2);
+  const p2 = tv(T2, 0);
+  const q2 = tv(T2, 1);
+  const r2 = tv(T2, 2);
+
+  const N1 = cross(sub(q1, p1), sub(r1, p1));
+  const d1 = -dot(N1, p1);
+  const du0 = dot(N1, p2) + d1;
+  const du1 = dot(N1, q2) + d1;
+  const du2 = dot(N1, r2) + d1;
+  if (Math.abs(du0) < eps && Math.abs(du1) < eps && Math.abs(du2) < eps) return false;
+  if (du0 * du1 > 0 && du0 * du2 > 0) return false;
+
+  const N2 = cross(sub(q2, p2), sub(r2, p2));
+  const d2 = -dot(N2, p2);
+  const dv0 = dot(N2, p1) + d2;
+  const dv1 = dot(N2, q1) + d2;
+  const dv2 = dot(N2, r1) + d2;
+  if (dv0 * dv1 > 0 && dv0 * dv2 > 0) return false;
+
+  const s1 = edgePlaneHit(p1, q1, r1, dv0, dv1, dv2);
+  const s2 = edgePlaneHit(p1, r1, q1, dv0, dv2, dv1);
+  const s3 = edgePlaneHit(p2, q2, r2, du0, du1, du2);
+  const s4 = edgePlaneHit(p2, r2, q2, du0, du2, du1);
+  if (!s1 || !s2 || !s3 || !s4) return false;
+
+  const D = cross(N1, N2);
+  const ax = Math.abs(D[0]);
+  const ay = Math.abs(D[1]);
+  const az = Math.abs(D[2]);
+  const key = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+  const i1 = Math.min(s1[key], s2[key]);
+  const i2 = Math.max(s1[key], s2[key]);
+  const j1 = Math.min(s3[key], s4[key]);
+  const j2 = Math.max(s3[key], s4[key]);
+  return i1 <= j2 + eps && j1 <= i2 + eps;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Narrowphase â€” brute force (kept for compatibility) and BVH (preferred)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+/**
+ * Face-accurate clash WITHOUT BVH. O(nÂ·m). Kept for backward compatibility.
+ * New code should call meshFaceClashBVH.
+ */
+export function meshFaceClash(
+  trisA: Tri[],
+  trisB: Tri[],
+  boxA: THREE.Box3,
+  boxB: THREE.Box3,
+  expand = 0,
+): { hit: boolean; pairs: number; point: THREE.Vector3 | null } {
+  const ba = boxA.clone();
+  const bb = boxB.clone();
+  if (expand > 0) {
+    ba.expandByScalar(expand);
+    bb.expandByScalar(expand);
+  }
+  if (!ba.intersectsBox(bb)) return { hit: false, pairs: 0, point: null };
+
+  const tBox = (t: Tri) => {
+    const b = new THREE.Box3();
+    b.min.set(
+      Math.min(t[0], t[3], t[6]),
+      Math.min(t[1], t[4], t[7]),
+      Math.min(t[2], t[5], t[8]),
+    );
+    b.max.set(
+      Math.max(t[0], t[3], t[6]),
+      Math.max(t[1], t[4], t[7]),
+      Math.max(t[2], t[5], t[8]),
+    );
+    return b;
+  };
+
+  let pairs = 0;
+  let point: THREE.Vector3 | null = null;
+  const maxPairsReport = 50;
+
+  for (let i = 0; i < trisA.length; i++) {
+    const ta = trisA[i];
+    const baT = tBox(ta);
+    if (expand > 0) baT.expandByScalar(expand);
+    if (!baT.intersectsBox(bb)) continue;
+    for (let j = 0; j < trisB.length; j++) {
+      const tb = trisB[j];
+      const bbT = tBox(tb);
+      if (expand > 0) bbT.expandByScalar(expand);
+      if (!baT.intersectsBox(bbT)) continue;
+      if (triTriIntersect(ta, tb)) {
+        pairs++;
+        if (!point) {
+          point = new THREE.Vector3(
+            (ta[0] + ta[3] + ta[6]) / 3,
+            (ta[1] + ta[4] + ta[7]) / 3,
+            (ta[2] + ta[5] + ta[8]) / 3,
+          );
+        }
+        if (pairs >= maxPairsReport) return { hit: true, pairs, point };
+      }
+    }
+  }
+  return { hit: pairs > 0, pairs, point };
+}
+
+/**
+ * Face-accurate clash WITH BVH traversal. This is what the clash engine
+ * uses. The BVH prunes the O(nÂ·m) grid down to a small candidate set â€”
+ * typically a 100â€“1,000Ã— reduction in tri-tri tests.
+ */
+export function meshFaceClashBVH(
+  bvhA: TriangleBVH,
+  bvhB: TriangleBVH,
+  tolerance = 0,
+  maxPairs = 50,
+): { hit: boolean; pairs: number; point: THREE.Vector3 | null } {
+  let pairs = 0;
+  let point: THREE.Vector3 | null = null;
+  const A = bvhA.tris;
+  const B = bvhB.tris;
+
+  bvhA.visitCandidatePairs(bvhB, tolerance, (ia, ib) => {
+    const ta = A[ia];
+    const tb = B[ib];
+    if (!triTriIntersect(ta, tb)) return true;
+    pairs++;
+    if (!point) {
+      point = new THREE.Vector3(
+        (ta[0] + ta[3] + ta[6]) / 3,
+        (ta[1] + ta[4] + ta[7]) / 3,
+        (ta[2] + ta[5] + ta[8]) / 3,
+      );
+    }
+    return pairs < maxPairs;
+  });
+
+  return { hit: pairs > 0, pairs, point };
+}
+
+/**
+ * Extract all available triangles for a single fragment element without the
+ * normal clash-detection decimation cap. This is intentionally used by the
+ * Native Twin reconstruction workflow, where geometry fidelity is preferred
+ * over clash-query performance.
+ */
+export function getElementTrianglesExact(modelObj: any, localId: number): Tri[] | null {
+  if (!modelObj) return null;
+  try { ctx.world.scene.three.updateMatrixWorld(true); } catch { /* */ }
+
+  const out: Tri[] = [];
+  const m = new THREE.Matrix4();
+  const v = new THREE.Vector3();
+
+  modelObj.traverse((obj: any) => {
+    if (!obj?.isMesh) return;
+    const geo = obj.geometry;
+    if (!geo?.attributes?.position) return;
+
+    const ranges = getIdRanges(obj);
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const idx = geo.index as THREE.BufferAttribute | null;
+    m.copy(obj.matrixWorld);
+
+    const pushTri = (i0: number, i1: number, i2: number) => {
+      const t = new Float32Array(9);
+      for (let k = 0; k < 3; k++) {
+        const vi = k === 0 ? i0 : k === 1 ? i1 : i2;
+        v.fromBufferAttribute(pos, vi).applyMatrix4(m);
+        t[k * 3] = v.x;
+        t[k * 3 + 1] = v.y;
+        t[k * 3 + 2] = v.z;
+      }
+      out.push(t);
+    };
+
+    if (ranges) {
+      let range = ranges.get(localId);
+      if (!range) {
+        const alt = ranges.get(localId + 1);
+        if (alt) {
+          // openbim-fix: clash/geometry.ts -- 1-based idRanges fallback
+          console.warn("[geometry] 1-based idRanges fallback for localId=" + localId);
+          range = alt;
+        }
+      }
+      if (!range) return;
+      const start = Math.max(0, Math.floor(range.start));
+      const end = Math.min(idx ? idx.count : pos.count, Math.ceil(range.end));
+      if (idx) {
+        for (let i = start; i + 2 < end; i += 3) pushTri(idx.getX(i), idx.getX(i + 1), idx.getX(i + 2));
+      } else {
+        for (let i = start; i + 2 < end; i += 3) pushTri(i, i + 1, i + 2);
+      }
+      return;
+    }
+
+    // Conservative fallback: only use a one-mesh model when there are no
+    // element ranges. This prevents accidentally cloning the entire model.
+    const meshLocalIds = obj.userData?.localId ?? obj.userData?.itemId ?? obj.userData?.expressID;
+    if (meshLocalIds != null && Number(meshLocalIds) !== localId && Number(meshLocalIds) !== localId + 1) return;
+    if (meshLocalIds == null && obj.parent?.children?.filter?.((c: any) => c?.isMesh)?.length > 1) return;
+
+    if (idx) {
+      for (let i = 0; i + 2 < idx.count; i += 3) pushTri(idx.getX(i), idx.getX(i + 1), idx.getX(i + 2));
+    } else {
+      for (let i = 0; i + 2 < pos.count; i += 3) pushTri(i, i + 1, i + 2);
+    }
+  });
+
+  return out.length ? out : null;
+}
+
+
+===== FILE: src/modules/clash/gjk.ts =====
+/**
+ * GJK (Gilbertâ€“Johnsonâ€“Keerthi) for convex shapes in 3D.
+ * - Intersection test
+ * - Approximate minimum distance (when separated)
+ * - Support mapping from triangle soups (convex hull of vertices)
+ *
+ * Used as mid-phase clash: AABB â†’ GJK(convex) â†’ optional triangle refine.
+ */
+
+import * as THREE from "three";
+import type { Tri } from "./geometry";
+
+export type Vec3 = { x: number; y: number; z: number };
+
+const EPS = 1e-8;
+const MAX_ITER = 32;
+
+// â”€â”€ vector ops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function v3(x = 0, y = 0, z = 0): Vec3 {
+  return { x, y, z };
+}
+function copy(a: Vec3): Vec3 {
+  return { x: a.x, y: a.y, z: a.z };
+}
+function set(out: Vec3, x: number, y: number, z: number): Vec3 {
+  out.x = x;
+  out.y = y;
+  out.z = z;
+  return out;
+}
+function add(a: Vec3, b: Vec3, out: Vec3 = v3()): Vec3 {
+  return set(out, a.x + b.x, a.y + b.y, a.z + b.z);
+}
+function sub(a: Vec3, b: Vec3, out: Vec3 = v3()): Vec3 {
+  return set(out, a.x - b.x, a.y - b.y, a.z - b.z);
+}
+function scale(a: Vec3, s: number, out: Vec3 = v3()): Vec3 {
+  return set(out, a.x * s, a.y * s, a.z * s);
+}
+function dot(a: Vec3, b: Vec3): number {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+function cross(a: Vec3, b: Vec3, out: Vec3 = v3()): Vec3 {
+  return set(
+    out,
+    a.y * b.z - a.z * b.y,
+    a.z * b.x - a.x * b.z,
+    a.x * b.y - a.y * b.x
+  );
+}
+function lenSq(a: Vec3): number {
+  return dot(a, a);
+}
+function len(a: Vec3): number {
+  return Math.sqrt(lenSq(a));
+}
+function normalize(a: Vec3, out: Vec3 = v3()): Vec3 {
+  const l = len(a);
+  if (l < EPS) return set(out, 0, 0, 0);
+  return scale(a, 1 / l, out);
+}
+function neg(a: Vec3, out: Vec3 = v3()): Vec3 {
+  return scale(a, -1, out);
+}
+function sameDir(a: Vec3, b: Vec3): boolean {
+  return dot(a, b) > 0;
+}
+
+// â”€â”€ Support mapping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+export interface ConvexShape {
+  /** Support point in direction d (world space). */
+  support(d: Vec3): Vec3;
+}
+
+/** Convex hull of a vertex set (e.g. triangle soup vertices). */
+export class PointCloudConvex implements ConvexShape {
+  readonly points: Vec3[];
+
+  constructor(points: Vec3[]) {
+    this.points = points.length ? points : [v3()];
+  }
+
+  static fromTriangles(tris: Tri[]): PointCloudConvex {
+    const pts: Vec3[] = [];
+    const seen = new Set<string>();
+    const key = (x: number, y: number, z: number) =>
+      `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
+    for (const t of tris) {
+      for (let i = 0; i < 3; i++) {
+        const x = t[i * 3],
+          y = t[i * 3 + 1],
+          z = t[i * 3 + 2];
+        const k = key(x, y, z);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        pts.push(v3(x, y, z));
+      }
+    }
+    return new PointCloudConvex(pts);
+  }
+
+  static fromBox(box: THREE.Box3): PointCloudConvex {
+    const min = box.min,
+      max = box.max;
+    return new PointCloudConvex([
+      v3(min.x, min.y, min.z),
+      v3(max.x, min.y, min.z),
+      v3(min.x, max.y, min.z),
+      v3(max.x, max.y, min.z),
+      v3(min.x, min.y, max.z),
+      v3(max.x, min.y, max.z),
+      v3(min.x, max.y, max.z),
+      v3(max.x, max.y, max.z),
+    ]);
+  }
+
+  support(d: Vec3): Vec3 {
+    let best = this.points[0];
+    let bestDot = -Infinity;
+    for (const p of this.points) {
+      const dd = dot(p, d);
+      if (dd > bestDot) {
+        bestDot = dd;
+        best = p;
+      }
+    }
+    return copy(best);
+  }
+}
+
+/** Minkowski difference support: S_A(d) - S_B(-d). */
+function supportDiff(a: ConvexShape, b: ConvexShape, d: Vec3): Vec3 {
+  const pa = a.support(d);
+  const pb = b.support(neg(d));
+  return sub(pa, pb);
+}
+
+// â”€â”€ Simplex â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+type Simplex = Vec3[];
+
+/**
+ * Evolve simplex toward origin. Returns true if origin is inside simplex (intersection).
+ * Updates `dir` to the next search direction.
+ */
+function doSimplex(simplex: Simplex, dir: Vec3): boolean {
+  const n = simplex.length;
+
+  if (n === 2) {
+    // Line: A = last, B = previous
+    const A = simplex[1];
+    const B = simplex[0];
+    const AB = sub(B, A);
+    const AO = neg(A);
+    if (sameDir(AB, AO)) {
+      cross(cross(AB, AO), AB, dir);
+    } else {
+      simplex.splice(0, 1); // keep A
+      set(dir, AO.x, AO.y, AO.z);
+    }
+    if (lenSq(dir) < EPS) return true;
+    return false;
+  }
+
+  if (n === 3) {
+    // Triangle
+    const A = simplex[2];
+    const B = simplex[1];
+    const C = simplex[0];
+    const AB = sub(B, A);
+    const AC = sub(C, A);
+    const AO = neg(A);
+    const ABC = cross(AB, AC);
+
+    const abPerp = cross(ABC, AB);
+    if (sameDir(abPerp, AO)) {
+      // AB edge region
+      if (sameDir(AB, AO)) {
+        simplex.splice(0, 1); // remove C â†’ [B,A] wait indices: C=0,B=1,A=2 â†’ keep B,A
+        simplex.splice(0, 1); // remove C, left [B,A]
+        cross(cross(AB, AO), AB, dir);
+      } else {
+        simplex.splice(0, 2); // keep A
+        set(dir, AO.x, AO.y, AO.z);
+      }
+      return false;
+    }
+
+    const acPerp = cross(AC, ABC);
+    if (sameDir(acPerp, AO)) {
+      if (sameDir(AC, AO)) {
+        // keep C, A â†’ remove B
+        simplex.splice(1, 1);
+        cross(cross(AC, AO), AC, dir);
+      } else {
+        simplex.splice(0, 2);
+        set(dir, AO.x, AO.y, AO.z);
+      }
+      return false;
+    }
+
+    // Above or below triangle
+    if (sameDir(ABC, AO)) {
+      set(dir, ABC.x, ABC.y, ABC.z);
+    } else {
+      // flip winding: swap B and C
+      const tmp = simplex[0];
+      simplex[0] = simplex[1];
+      simplex[1] = tmp;
+      set(dir, -ABC.x, -ABC.y, -ABC.z);
+    }
+    return false;
+  }
+
+  if (n === 4) {
+    // Tetrahedron: D=0, C=1, B=2, A=3 (A newest)
+    const A = simplex[3];
+    const B = simplex[2];
+    const C = simplex[1];
+    const D = simplex[0];
+    const AO = neg(A);
+    const AB = sub(B, A);
+    const AC = sub(C, A);
+    const AD = sub(D, A);
+
+    const ABC = cross(AB, AC);
+    const ACD = cross(AC, AD);
+    const ADB = cross(AD, AB);
+
+    if (sameDir(ABC, AO)) {
+      simplex.splice(0, 1); // remove D â†’ [C,B,A]
+      set(dir, ABC.x, ABC.y, ABC.z);
+      return false;
+    }
+    if (sameDir(ACD, AO)) {
+      // keep D,C,A â†’ remove B: [D,C,A]
+      simplex.splice(2, 1);
+      set(dir, ACD.x, ACD.y, ACD.z);
+      return false;
+    }
+    if (sameDir(ADB, AO)) {
+      // keep D,B,A â†’ remove C
+      simplex.splice(1, 1);
+      set(dir, ADB.x, ADB.y, ADB.z);
+      return false;
+    }
+    // Origin inside tetrahedron
+    return true;
+  }
+
+  return false;
+}
+
+export interface GjkResult {
+  /** True if convex shapes intersect. */
+  intersect: boolean;
+  /** Iterations used. */
+  iterations: number;
+  /**
+   * When separated: approximate distance between shapes (from simplex closest point to origin).
+   * When intersecting: 0.
+   */
+  distance: number;
+  /** Closest point on Minkowski difference to origin (â‰ˆ 0 if intersecting). */
+  closest: Vec3;
+}
+
+/**
+ * GJK intersection + distance between two convex shapes.
+ */
+export function gjk(a: ConvexShape, b: ConvexShape): GjkResult {
+  // Initial direction: difference of centers approximated by support along X then arbitrary
+  let dir = v3(1, 0, 0);
+  const simplex: Simplex = [];
+
+  // First support
+  let p = supportDiff(a, b, dir);
+  simplex.push(p);
+  if (lenSq(p) < EPS) {
+    return { intersect: true, iterations: 1, distance: 0, closest: v3() };
+  }
+  dir = neg(p);
+
+  let iterations = 1;
+  for (; iterations < MAX_ITER; iterations++) {
+    p = supportDiff(a, b, dir);
+    if (dot(p, dir) < 0) {
+      // No intersection â€” compute approx distance from simplex to origin
+      const closest = closestPointOnSimplex(simplex);
+      return {
+        intersect: false,
+        iterations,
+        distance: len(closest),
+        closest,
+      };
+    }
+    simplex.push(p);
+    if (doSimplex(simplex, dir)) {
+      return { intersect: true, iterations, distance: 0, closest: v3() };
+    }
+    if (lenSq(dir) < EPS) {
+      return { intersect: true, iterations, distance: 0, closest: v3() };
+    }
+  }
+
+  const closest = closestPointOnSimplex(simplex);
+  return {
+    intersect: len(closest) < 1e-5,
+    iterations,
+    distance: len(closest),
+    closest,
+  };
+}
+
+/** Closest point on current simplex to origin (for separation distance). */
+function closestPointOnSimplex(simplex: Simplex): Vec3 {
+  if (simplex.length === 0) return v3();
+  if (simplex.length === 1) return copy(simplex[0]);
+
+  if (simplex.length === 2) {
+    const A = simplex[0],
+      B = simplex[1];
+    const AB = sub(B, A);
+    const t = Math.max(0, Math.min(1, -dot(A, AB) / (lenSq(AB) + EPS)));
+    return add(A, scale(AB, t));
+  }
+
+  // Triangle or tetra: project origin onto triangle of last 3 points
+  const A = simplex[simplex.length - 1];
+  const B = simplex[simplex.length - 2];
+  const C = simplex[simplex.length - 3];
+  return closestPointOnTriangle(v3(), A, B, C);
+}
+
+function closestPointOnTriangle(p: Vec3, a: Vec3, b: Vec3, c: Vec3): Vec3 {
+  // Ericson â€” Real-Time Collision Detection
+  const ab = sub(b, a);
+  const ac = sub(c, a);
+  const ap = sub(p, a);
+  const d1 = dot(ab, ap);
+  const d2 = dot(ac, ap);
+  if (d1 <= 0 && d2 <= 0) return copy(a);
+
+  const bp = sub(p, b);
+  const d3 = dot(ab, bp);
+  const d4 = dot(ac, bp);
+  if (d3 >= 0 && d4 <= d3) return copy(b);
+
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+    const v = d1 / (d1 - d3 + EPS);
+    return add(a, scale(ab, v));
+  }
+
+  const cp = sub(p, c);
+  const d5 = dot(ab, cp);
+  const d6 = dot(ac, cp);
+  if (d6 >= 0 && d5 <= d6) return copy(c);
+
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+    const w = d2 / (d2 - d6 + EPS);
+    return add(a, scale(ac, w));
+  }
+
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+    const w = (d4 - d3) / (d4 - d3 + d5 - d6 + EPS);
+    return add(b, scale(sub(c, b), w));
+  }
+
+  const denom = 1 / (va + vb + vc + EPS);
+  const v = vb * denom;
+  const w = vc * denom;
+  return add(a, add(scale(ab, v), scale(ac, w)));
+}
+
+/**
+ * Convenience: GJK between two triangle soups treated as convex hulls.
+ */
+export function gjkTriangles(
+  trisA: Tri[],
+  trisB: Tri[]
+): GjkResult {
+  const a = PointCloudConvex.fromTriangles(trisA);
+  const b = PointCloudConvex.fromTriangles(trisB);
+  return gjk(a, b);
+}
+
+/**
+ * GJK between two AABB boxes (convex).
+ */
+export function gjkBoxes(boxA: THREE.Box3, boxB: THREE.Box3): GjkResult {
+  return gjk(PointCloudConvex.fromBox(boxA), PointCloudConvex.fromBox(boxB));
+}
+
+
+===== FILE: src/modules/clash/grouping.ts =====
+/**
+ * Clash grouping via union-find.
+ *
+ * Two clashes belong to the same group when they share an element
+ * (Navisworks-style grouping).
+ */
+import type { ElementClash, ClashItemRef } from "./clash-core";
+
+class DisjointSet {
+  private parent: number[];
+  private rank: number[];
+
+  constructor(size: number) {
+    this.parent = new Array(size);
+    this.rank = new Array(size).fill(0);
+    for (let i = 0; i < size; i++) this.parent[i] = i;
+  }
+
+  find(x: number): number {
+    let root = x;
+    while (this.parent[root] !== root) root = this.parent[root];
+    let cur = x;
+    while (this.parent[cur] !== cur) {
+      const next = this.parent[cur];
+      this.parent[cur] = root;
+      cur = next;
+    }
+    return root;
+  }
+
+  union(a: number, b: number): void {
+    const ra = this.find(a);
+    const rb = this.find(b);
+    if (ra === rb) return;
+    if (this.rank[ra] < this.rank[rb]) this.parent[ra] = rb;
+    else if (this.rank[ra] > this.rank[rb]) this.parent[rb] = ra;
+    else { this.parent[rb] = ra; this.rank[ra]++; }
+  }
+}
+
+export interface ClashGroup {
+  id: string;
+  head: ClashItemRef;
+  members: ElementClash[];
+  kinds: { intersect: number; touching: number; clearance: number; duplicate: number };
+  metric: { totalOverlap_m3: number; minGap_m: number };
+  worstPrecision: string;
+  methods: string[];
+}
+
+function elementKey(ref: ClashItemRef): string {
+  return `${ref.modelId}::${ref.localId}`;
+}
+
+export function groupClashes(
+  clashes: readonly ElementClash[],
+  opts: { preferLargerHead?: boolean } = {},
+): ClashGroup[] {
+  const n = clashes.length;
+  if (n === 0) return [];
+
+  const ds = new DisjointSet(n);
+  const firstSeen = new Map<string, number>();
+  for (let i = 0; i < n; i++) {
+    const c = clashes[i];
+    for (const ref of [c.a, c.b]) {
+      const k = elementKey(ref);
+      const prev = firstSeen.get(k);
+      if (prev === undefined) firstSeen.set(k, i);
+      else ds.union(prev, i);
+    }
+  }
+
+  const buckets = new Map<number, ElementClash[]>();
+  for (let i = 0; i < n; i++) {
+    const root = ds.find(i);
+    const arr = buckets.get(root);
+    if (arr) arr.push(clashes[i]);
+    else buckets.set(root, [clashes[i]]);
+  }
+
+  const groups: ClashGroup[] = [];
+  for (const members of buckets.values()) {
+    groups.push(buildGroup(members, opts));
+  }
+
+  groups.sort((a, b) => {
+    if (a.kinds.intersect !== b.kinds.intersect) return b.kinds.intersect - a.kinds.intersect;
+    if (a.kinds.touching !== b.kinds.touching) return b.kinds.touching - a.kinds.touching;
+    return b.metric.totalOverlap_m3 - a.metric.totalOverlap_m3;
+  });
+
+  return groups;
+}
+
+function buildGroup(
+  members: ElementClash[],
+  opts: { preferLargerHead?: boolean },
+): ClashGroup {
+  const counts = new Map<string, { ref: ClashItemRef; count: number }>();
+  for (const c of members) {
+    for (const ref of [c.a, c.b]) {
+      const k = elementKey(ref);
+      const e = counts.get(k);
+      if (e) e.count++;
+      else counts.set(k, { ref, count: 1 });
+    }
+  }
+
+  let headRef: ClashItemRef | null = null;
+  if (opts.preferLargerHead) {
+    let bestVol = -Infinity;
+    for (const [k, { ref }] of counts) {
+      const member = members.find((c) => elementKey(c.a) === k || elementKey(c.b) === k);
+      if (!member) continue;
+      const box = elementKey(member.a) === k ? member.boxA : member.boxB;
+      const size = { x: 0, y: 0, z: 0 };
+      try {
+        const s = box.getSize({ x: 0, y: 0, z: 0 } as any);
+        size.x = s.x; size.y = s.y; size.z = s.z;
+      } catch {
+        size.x = box.max.x - box.min.x;
+        size.y = box.max.y - box.min.y;
+        size.z = box.max.z - box.min.z;
+      }
+      const vol = size.x * size.y * size.z;
+      if (vol > bestVol) { bestVol = vol; headRef = ref; }
+    }
+  } else {
+    let best = -1;
+    for (const [, { ref, count }] of counts) {
+      if (count > best) { best = count; headRef = ref; }
+    }
+  }
+  if (!headRef) headRef = members[0].a;
+
+  const kinds = { intersect: 0, touching: 0, clearance: 0, duplicate: 0 };
+  let totalOverlap = 0;
+  let minGap = Infinity;
+  const methods = new Set<string>();
+  const precisionRank: Record<string, number> = {
+    triangles: 5, hull: 4, sphere: 3, bbox: 2, depth: 2, center: 1, duplicate: 1,
+  };
+  let worstPrecision = "bbox";
+  let worstRank = -1;
+
+  for (const c of members) {
+    kinds[c.kind]++;
+    totalOverlap += c.depthVol;
+    if (c.kind !== "intersect" && Number.isFinite(c.minGap)) {
+      if (c.minGap < minGap) minGap = c.minGap;
+    }
+    methods.add(c.method);
+    const r = precisionRank[c.precision] ?? 0;
+    if (r > worstRank) { worstRank = r; worstPrecision = c.precision; }
+  }
+  if (!Number.isFinite(minGap)) minGap = 0;
+
+  members.sort((a, b) => {
+    const order: Record<string, number> = { intersect: 0, touching: 1, clearance: 2, duplicate: 3 };
+    const d = (order[a.kind] ?? 9) - (order[b.kind] ?? 9);
+    if (d !== 0) return d;
+    if (a.kind === "intersect") return b.depthVol - a.depthVol;
+    return a.minGap - b.minGap;
+  });
+
+  return {
+    id: `grp-${elementKey(headRef).replace(/[^a-z0-9]+/gi, "-")}`,
+    head: headRef,
+    members,
+    kinds,
+    metric: { totalOverlap_m3: totalOverlap, minGap_m: minGap },
+    worstPrecision,
+    methods: [...methods],
+  };
+}
+
+export function flattenGroups(groups: readonly ClashGroup[]): ElementClash[] {
+  const out: ElementClash[] = [];
+  for (const g of groups) for (const c of g.members) out.push(c);
+  return out;
+}
+
+export function summarizeGroups(groups: readonly ClashGroup[]): {
+  groupCount: number;
+  clashCount: number;
+  intersectCount: number;
+  touchingCount: number;
+  clearanceCount: number;
+  duplicateCount: number;
+  largestGroup: { id: string; size: number } | null;
+} {
+  let clashCount = 0;
+  let intersect = 0, touching = 0, clearance = 0, duplicate = 0;
+  let largest: { id: string; size: number } | null = null;
+  for (const g of groups) {
+    clashCount += g.members.length;
+    intersect += g.kinds.intersect;
+    touching += g.kinds.touching;
+    clearance += g.kinds.clearance;
+    duplicate += g.kinds.duplicate;
+    if (!largest || g.members.length > largest.size) {
+      largest = { id: g.id, size: g.members.length };
+    }
+  }
+  return {
+    groupCount: groups.length,
+    clashCount,
+    intersectCount: intersect,
+    touchingCount: touching,
+    clearanceCount: clearance,
+    duplicateCount: duplicate,
+    largestGroup: largest,
+  };
+}
+
+
+===== FILE: src/modules/clash/triangle-bvh.ts =====
+/**
+ * Per-element triangle BVH.
+ *
+ * Purpose: replace the O(nÂ·m) double loop in meshFaceClash with an
+ * O(n log n + k) traversal where k is the number of candidate pairs that
+ * actually overlap in space. On two 2,500-triangle elements this is
+ * typically a 100â€“1,000Ã— reduction in tri-tri tests.
+ *
+ * Median split on the longest centroid axis. Iterative traversal.
+ * Node bounds are NOT expanded by tolerance â€” the caller expands when
+ * comparing, because tolerance is a per-query parameter, not a per-tree one.
+ */
+import * as THREE from "three";
+import type { Tri } from "./geometry";
+
+interface BVHNode {
+  box: THREE.Box3;
+  left: BVHNode | null;
+  right: BVHNode | null;
+  /** Leaf range: [start, end). Internal nodes have start === end === 0. */
+  start: number;
+  end: number;
+}
+
+const MAX_LEAF = 8;
+
+/** Scratch â€” used only inside build and traversal; never escapes. */
+const _tmpA = new THREE.Box3();
+const _tmpB = new THREE.Box3();
+const _v = new THREE.Vector3();
+
+export class TriangleBVH {
+  /** Public so meshFaceClashBVH can index triangles without a copy. */
+  readonly tris: Tri[];
+  private order: number[];
+  private root: BVHNode;
+
+  constructor(tris: Tri[]) {
+    this.tris = tris;
+    this.order = new Array(tris.length);
+    for (let i = 0; i < tris.length; i++) this.order[i] = i;
+    this.root = this.build(0, tris.length);
+  }
+
+  get triCount(): number {
+    return this.tris.length;
+  }
+
+  /** Depth-first triple count â€” useful for diagnostics. */
+  stats(): { triangles: number; depth: number; nodes: number; leaves: number } {
+    let depth = 0, nodes = 0, leaves = 0;
+    const walk = (n: BVHNode, d: number) => {
+      nodes++;
+      if (d > depth) depth = d;
+      if (!n.left && !n.right) {
+        leaves++;
+        return;
+      }
+      if (n.left) walk(n.left, d + 1);
+      if (n.right) walk(n.right, d + 1);
+    };
+    walk(this.root, 0);
+    return { triangles: this.tris.length, depth, nodes, leaves };
+  }
+
+  /**
+   * Visit every candidate (i, j) triangle pair whose world-space AABBs
+   * overlap within `tolerance` (expanded symmetrically on each side).
+   *
+   * `cb` returns true to continue, false to stop immediately.
+   */
+  visitCandidatePairs(
+    other: TriangleBVH,
+    tolerance: number,
+    cb: (i: number, j: number) => boolean,
+  ): void {
+    const half = tolerance > 0 ? tolerance / 2 : 0;
+    const stack: Array<[BVHNode | null, BVHNode | null]> = [[this.root, other.root]];
+
+    while (stack.length) {
+      const top = stack.pop()!;
+      const a = top[0];
+      const b = top[1];
+      if (!a || !b) continue;
+
+      // Bounds-overlap test with tolerance on each side.
+      _tmpA.copy(a.box);
+      _tmpB.copy(b.box);
+      if (half > 0) {
+        _tmpA.expandByScalar(half);
+        _tmpB.expandByScalar(half);
+      }
+      if (!_tmpA.intersectsBox(_tmpB)) continue;
+
+      const aLeaf = !a.left && !a.right;
+      const bLeaf = !b.left && !b.right;
+
+      if (aLeaf && bLeaf) {
+        // Emit every pair; per-triangle AABB test is cheap and further
+        // prunes before MÃ¶ller.
+        for (let i = a.start; i < a.end; i++) {
+          const ia = this.order[i];
+          const ta = this.tris[ia];
+          const aMinX = Math.min(ta[0], ta[3], ta[6]);
+          const aMaxX = Math.max(ta[0], ta[3], ta[6]);
+          const aMinY = Math.min(ta[1], ta[4], ta[7]);
+          const aMaxY = Math.max(ta[1], ta[4], ta[7]);
+          const aMinZ = Math.min(ta[2], ta[5], ta[8]);
+          const aMaxZ = Math.max(ta[2], ta[5], ta[8]);
+          for (let j = b.start; j < b.end; j++) {
+            const ib = other.order[j];
+            const tb = other.tris[ib];
+            const bMinX = Math.min(tb[0], tb[3], tb[6]);
+            const bMaxX = Math.max(tb[0], tb[3], tb[6]);
+            if (bMaxX + half < aMinX - half || aMaxX + half < bMinX - half) continue;
+            const bMinY = Math.min(tb[1], tb[4], tb[7]);
+            const bMaxY = Math.max(tb[1], tb[4], tb[7]);
+            if (bMaxY + half < aMinY - half || aMaxY + half < bMinY - half) continue;
+            const bMinZ = Math.min(tb[2], tb[5], tb[8]);
+            const bMaxZ = Math.max(tb[2], tb[5], tb[8]);
+            if (bMaxZ + half < aMinZ - half || aMaxZ + half < bMinZ - half) continue;
+            if (!cb(ia, ib)) return;
+          }
+        }
+      } else if (aLeaf) {
+        stack.push([a, b.left]);
+        stack.push([a, b.right]);
+      } else if (bLeaf) {
+        stack.push([a.left, b]);
+        stack.push([a.right, b]);
+      } else {
+        // Descend the larger node first to balance work.
+        const volA = a.box.getSize(_v).lengthSq();
+        const volB = b.box.getSize(_v).lengthSq();
+        if (volA >= volB) {
+          stack.push([a.left, b]);
+          stack.push([a.right, b]);
+        } else {
+          stack.push([a, b.left]);
+          stack.push([a, b.right]);
+        }
+      }
+    }
+  }
+
+  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  private triBox(i: number, out: THREE.Box3): THREE.Box3 {
+    const t = this.tris[i];
+    out.min.set(
+      Math.min(t[0], t[3], t[6]),
+      Math.min(t[1], t[4], t[7]),
+      Math.min(t[2], t[5], t[8]),
+    );
+    out.max.set(
+      Math.max(t[0], t[3], t[6]),
+      Math.max(t[1], t[4], t[7]),
+      Math.max(t[2], t[5], t[8]),
+    );
+    return out;
+  }
+
+  private build(start: number, end: number): BVHNode {
+    const box = new THREE.Box3();
+    const node: BVHNode = { box, left: null, right: null, start: 0, end: 0 };
+
+    // Compute aggregate bounds and centroid extent.
+    const centroidBox = new THREE.Box3();
+    for (let i = start; i < end; i++) {
+      const t = this.tris[this.order[i]];
+      box.expandByPoint(_v.set(t[0], t[1], t[2]));
+      box.expandByPoint(_v.set(t[3], t[4], t[5]));
+      box.expandByPoint(_v.set(t[6], t[7], t[8]));
+      _v.set(
+        (t[0] + t[3] + t[6]) / 3,
+        (t[1] + t[4] + t[7]) / 3,
+        (t[2] + t[5] + t[8]) / 3,
+      );
+      centroidBox.expandByPoint(_v);
+    }
+
+    const count = end - start;
+    if (count <= MAX_LEAF) {
+      node.start = start;
+      node.end = end;
+      return node;
+    }
+
+    // Split on the longest centroid axis.
+    const size = centroidBox.getSize(_v);
+    let axis: 0 | 1 | 2 = 0;
+    if (size.y > size.x) axis = 1;
+    if (size.z > (axis === 0 ? size.x : size.y)) axis = 2;
+
+    // Sort the subrange by centroid on `axis`. We only sort the slice
+    // needed at this node, keeping the global `order` array mutated
+    // in place. This is the standard approach for BVH build.
+    const sub = this.order.slice(start, end);
+    const key = (idx: number) => {
+      const t = this.tris[idx];
+      return (t[axis * 3] + t[axis * 3 + 3] + t[axis * 3 + 6]) / 3;
+    };
+    sub.sort((a, b) => key(a) - key(b));
+    for (let i = 0; i < sub.length; i++) this.order[start + i] = sub[i];
+
+    const mid = start + (count >> 1);
+    node.left = this.build(start, mid);
+    node.right = this.build(mid, end);
+    return node;
+  }
+}
+
+===== FILE: src/workers/clash.worker.ts =====
+/// <reference lib="webworker" />
+/**
+ * Dedicated clash worker.
+ * Receives serialized items (boxes + optional triangle arrays), runs pure
+ * engine, streams progress + results. Triangle buffers are transferred.
+ */
+import * as THREE from "three";
+import {
+  runClashCore,
+  type ClashCoreItem,
+  type ClashProgress,
+  type ClashMethod,
+  type ClashRules,
+  type ElementClash,
+} from "../modules/clash/clash-core";
+import type { Tri } from "../modules/clash/geometry";
+
+type InMessage =
+  | {
+      type: "run";
+      requestId: string;
+      items: SerializedItem[];
+      groups: number[][];
+      rules: ClashRules;
+      method: ClashMethod;
+      selfPairs: boolean;
+    }
+  | { type: "cancel"; requestId: string };
+
+type OutMessage =
+  | { type: "progress"; requestId: string; progress: ClashProgress }
+  | { type: "result"; requestId: string; clashes: SerializedClash[] }
+  | { type: "error"; requestId: string; message: string; stack?: string };
+
+interface SerializedItem {
+  modelId: string;
+  localId: number;
+  name: string;
+  category: string;
+  box: [number, number, number, number, number, number];
+  positions?: Float32Array;
+}
+
+interface SerializedClash {
+  a: ElementClash["a"];
+  b: ElementClash["b"];
+  kind: ElementClash["kind"];
+  method: ElementClash["method"];
+  precision: ElementClash["precision"];
+  depthVol: number;
+  triPairs: number;
+  minGap: number;
+  boxA: [number, number, number, number, number, number];
+  boxB: [number, number, number, number, number, number];
+  point: [number, number, number] | null;
+}
+
+const cancelled = new Set<string>();
+
+function deserializeItem(s: SerializedItem): ClashCoreItem {
+  const box = new THREE.Box3(
+    new THREE.Vector3(s.box[0], s.box[1], s.box[2]),
+    new THREE.Vector3(s.box[3], s.box[4], s.box[5]),
+  );
+
+  let tris: Tri[] | null = null;
+  if (s.positions && s.positions.length >= 9) {
+    const count = Math.floor(s.positions.length / 9);
+    tris = new Array(count);
+    for (let i = 0; i < count; i++) {
+      const tri = new Float32Array(9);
+      tri.set(s.positions.subarray(i * 9, i * 9 + 9));
+      tris[i] = tri;
+    }
+  }
+
+  return {
+    modelId: s.modelId,
+    localId: s.localId,
+    name: s.name,
+    category: s.category,
+    box,
+    tris,
+  };
+}
+
+function serializeClash(c: ElementClash): SerializedClash {
+  return {
+    a: c.a,
+    b: c.b,
+    kind: c.kind,
+    method: c.method,
+    precision: c.precision,
+    depthVol: c.depthVol,
+    triPairs: c.triPairs,
+    minGap: c.minGap,
+    boxA: [c.boxA.min.x, c.boxA.min.y, c.boxA.min.z, c.boxA.max.x, c.boxA.max.y, c.boxA.max.z],
+    boxB: [c.boxB.min.x, c.boxB.min.y, c.boxB.min.z, c.boxB.max.x, c.boxB.max.y, c.boxB.max.z],
+    point: c.point ? [c.point.x, c.point.y, c.point.z] : null,
+  };
+}
+
+function post(msg: OutMessage): void {
+  (self as DedicatedWorkerGlobalScope).postMessage(msg);
+}
+
+self.addEventListener("message", (event: MessageEvent<InMessage>) => {
+  const data = event.data;
+
+  if (data.type === "cancel") {
+    cancelled.add(data.requestId);
+    return;
+  }
+
+  if (data.type !== "run") return;
+
+  const { requestId } = data;
+  cancelled.delete(requestId);
+
+  void (async () => {
+    try {
+      const items = data.items.map(deserializeItem);
+
+      const clashes = await runClashCore(items, {
+        rules: data.rules,
+        method: data.method,
+        groups: data.groups,
+        selfPairs: data.selfPairs,
+        onProgress: (p) => post({ type: "progress", requestId, progress: p }),
+        shouldCancel: () => cancelled.has(requestId),
+        yield: () => Promise.resolve(),
+        yieldEvery: 1024,
+      });
+
+      post({
+        type: "result",
+        requestId,
+        clashes: clashes.map(serializeClash),
+      });
+    } catch (err) {
+      post({
+        type: "error",
+        requestId,
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    } finally {
+      cancelled.delete(requestId);
+    }
+  })();
+});
+
+
+===== FILE: src/features/clash-engine.ts =====
+/**
+ * Clash engine (main-thread orchestrator).
+ *
+ * Responsibility split:
+ *   â€¢ This file  â€” reads Fragments geometry for the requested model ids,
+ *                  prefetches metadata, and delegates pair math to clash-core.
+ *   â€¢ clash-core â€” pure math: broadphase (spatial hash) + narrowphase.
+ *   â€¢ clash.worker â€” runs clash-core off the main thread.
+ */
+import * as THREE from "three";
+import {
+  runClashCore,
+  DEFAULT_CLASH_RULES,
+  CLASH_METHODS,
+  type ClashCoreItem,
+  type ClashMethod,
+  type ClashRules,
+  type ElementClash,
+  type ClashProgress,
+} from "../modules/clash/clash-core";
+import { getElementTriangles, type Tri } from "../modules/clash/geometry";
+import { getElementWorldBoxes } from "../modules/geometry/world-box";
+
+export {
+  DEFAULT_CLASH_RULES,
+  CLASH_METHODS,
+};
+export type {
+  ClashKind,
+  ClashMethod,
+  ClashMethodInfo,
+  ClashPrecision,
+  ClashRules,
+  ElementClash,
+  ClashItemRef,
+  ClashProgress,
+} from "../modules/clash/clash-core";
+
+export interface ClashInput {
+  modelId: string;
+  model: any;
+  allowedIds?: Set<number> | "ALL" | null;
+}
+
+export interface ClashRunOptions {
+  rules?: Partial<ClashRules>;
+  method?: ClashMethod;
+  onProgress?: (p: ClashProgress) => void;
+  signal?: { cancelled: boolean };
+  allowSelfPairs?: boolean;
+  verbose?: boolean;
+  collectGeometry?: boolean;
+}
+
+async function prefetchMeta(
+  model: any,
+  ids: number[],
+): Promise<Map<number, { name: string; category: string }>> {
+  const out = new Map<number, { name: string; category: string }>();
+  if (!ids.length) return out;
+
+  try {
+    const data = await model.getItemsData(ids, {
+      attributesDefault: false,
+      attributes: ["Name", "ObjectType", "Tag"],
+    });
+    for (let i = 0; i < ids.length; i++) {
+      const d = (data as any)?.[i];
+      const name = String(
+        d?.Name?.value ?? d?.ObjectType?.value ?? d?.Tag?.value ?? `#${ids[i]}`,
+      );
+      out.set(ids[i], { name, category: "Unknown" });
+    }
+  } catch (err) {
+    console.warn("[clash] getItemsData failed â€” using placeholder names", err);
+    for (const id of ids) out.set(id, { name: `#${id}`, category: "Unknown" });
+  }
+
+  try {
+    const cats = (await model.getItemsOfCategories([/.+/])) as Record<string, number[]>;
+    for (const [cat, list] of Object.entries(cats)) {
+      for (const id of list || []) {
+        const e = out.get(id);
+        if (e) e.category = cat;
+      }
+    }
+  } catch { /* */ }
+  return out;
+}
+
+export interface CollectedItems {
+  items: ClashCoreItem[];
+  groups: number[][];
+  hasAllTriangles: boolean;
+}
+
+export async function collectItems(
+  inputs: ClashInput[],
+  opts: ClashRunOptions = {},
+): Promise<CollectedItems> {
+  const method: ClashMethod = opts.method ?? "hard-triangle";
+  const needsTriangles =
+    method === "hard-triangle" ||
+    method === "convex-gjk" ||
+    method === "clearance";
+  const wantGeometry = needsTriangles && (opts.collectGeometry ?? true);
+
+  const allItems: ClashCoreItem[] = [];
+  const groups: number[][] = [];
+  let hasAllTriangles = true;
+
+  for (let gi = 0; gi < inputs.length; gi++) {
+    const input = inputs[gi];
+    const { modelId, model, allowedIds } = input;
+    const group: number[] = [];
+
+    let ids: number[] = [];
+    try {
+      ids = (await model.getItemsIdsWithGeometry()) as number[];
+    } catch (err) {
+      console.error(`[clash] model "${modelId}": getItemsIdsWithGeometry failed`, err);
+      groups.push(group);
+      continue;
+    }
+    if (!ids?.length) { groups.push(group); continue; }
+
+    if (allowedIds && allowedIds !== "ALL") {
+      ids = ids.filter((id) => (allowedIds as Set<number>).has(id));
+      if (!ids.length) { groups.push(group); continue; }
+    }
+
+    const worldBoxes = await getElementWorldBoxes(model, ids, modelId);
+    if (!worldBoxes.length) {
+      console.warn(
+        `[clash] model "${modelId}": 0 boxes for ${ids.length} id(s)`,
+      );
+      groups.push(group);
+      continue;
+    }
+
+    const metaMap = await prefetchMeta(model, ids);
+
+    for (const wb of worldBoxes) {
+      if (opts.signal?.cancelled) {
+        groups.push(group);
+        return { items: allItems, groups, hasAllTriangles };
+      }
+
+      const size = new THREE.Vector3();
+      wb.box.getSize(size);
+      if (size.x * size.y * size.z > 1e9) continue;
+      if (size.x < 1e-6 && size.y < 1e-6 && size.z < 1e-6) continue;
+
+      const meta = metaMap.get(wb.id) ?? { name: `#${wb.id}`, category: "Unknown" };
+
+      let tris: Tri[] | null = null;
+      if (wantGeometry) {
+        try {
+          const extracted = getElementTriangles(model.object, wb.id);
+          if (extracted && extracted.length) tris = extracted;
+        } catch { /* */ }
+      }
+      if (wantGeometry && (!tris || !tris.length)) hasAllTriangles = false;
+
+      const idx = allItems.length;
+      group.push(idx);
+      allItems.push({
+        modelId,
+        localId: wb.id,
+        name: meta.name,
+        category: meta.category,
+        box: wb.box.clone(),
+        tris,
+      });
+    }
+
+    groups.push(group);
+    console.log(`[clash] model "${modelId}": ${group.length} item(s) collected`);
+  }
+
+  return { items: allItems, groups, hasAllTriangles };
+}
+
+export async function runClashEngine(
+  inputs: ClashInput[],
+  opts: ClashRunOptions = {},
+): Promise<ElementClash[]> {
+  const rules: ClashRules = { ...DEFAULT_CLASH_RULES, ...(opts.rules ?? {}) };
+  const method: ClashMethod = opts.method ?? "hard-triangle";
+  const allowSelfPairs = opts.allowSelfPairs ?? true;
+  const onProg = opts.onProgress ?? (() => {});
+
+  console.log(`[clash] method="${method}" Â· allowSelfPairs=${allowSelfPairs} Â· main-thread`);
+
+  const { items, groups } = await collectItems(inputs, opts);
+
+  if (!items.length) {
+    console.error("[clash] ABORT: no items collected");
+    onProg({ phase: "done", current: 0, total: 0, found: 0 });
+    return [];
+  }
+
+  return runClashCore(items, {
+    rules,
+    method,
+    groups,
+    selfPairs: allowSelfPairs,
+    onProgress: onProg,
+    shouldCancel: () => opts.signal?.cancelled === true,
+    yield: () => new Promise<void>((r) => setTimeout(r, 0)),
+  });
+}
+
+
+===== FILE: src/features/clash-worker-client.ts =====
+/**
+ * Clash worker client.
+ *
+ * Spawns the worker once, reuses it, falls back to main-thread engine if
+ * the worker cannot be created. Public API mirrors runClashEngine.
+ */
+import * as THREE from "three";
+import {
+  collectItems,
+  runClashEngine,
+  type ClashInput,
+  type ClashRunOptions,
+} from "./clash-engine";
+import {
+  DEFAULT_CLASH_RULES,
+  type ClashMethod,
+  type ClashProgress,
+  type ClashRules,
+  type ElementClash,
+} from "../modules/clash/clash-core";
+import type { ClashCoreItem } from "../modules/clash/clash-core";
+
+// -- Unified cancel signal -----------------------------------------------
+// Supports both W3C AbortSignal and the legacy { cancelled: boolean } shape
+// used by older ClashRunOptions callers.
+type CancelSignal =
+  | { cancelled: boolean }
+  | AbortSignal
+  | undefined;
+
+function isAbortSignal(s: CancelSignal): s is AbortSignal {
+  return !!s && typeof (s as AbortSignal).addEventListener === "function";
+}
+
+function isCancelled(s: CancelSignal): boolean {
+  if (!s) return false;
+  if (isAbortSignal(s)) return s.aborted;
+  return (s as { cancelled: boolean }).cancelled === true;
+}
+
+type InMessage =
+  | { type: "progress"; requestId: string; progress: ClashProgress }
+  | {
+      type: "result";
+      requestId: string;
+      clashes: Array<{
+        a: ElementClash["a"];
+        b: ElementClash["b"];
+        kind: ElementClash["kind"];
+        method: ElementClash["method"];
+        precision: ElementClash["precision"];
+        depthVol: number;
+        triPairs: number;
+        minGap: number;
+        boxA: [number, number, number, number, number, number];
+        boxB: [number, number, number, number, number, number];
+        point: [number, number, number] | null;
+      }>;
+    }
+  | { type: "error"; requestId: string; message: string; stack?: string };
+
+type OutMessage =
+  | {
+      type: "run";
+      requestId: string;
+      items: unknown[];
+      groups: unknown;
+      rules: ClashRules;
+      method: ClashMethod;
+      selfPairs: boolean;
+    }
+  | { type: "cancel"; requestId: string };
+
+interface Pending {
+  resolve: (clashes: ElementClash[]) => void;
+  reject: (err: unknown) => void;
+  onProgress?: (p: ClashProgress) => void;
+}
+
+let worker: Worker | null = null;
+let workerFailed = false;
+const pending = new Map<string, Pending>();
+let nextRequestId = 0;
+
+function spawnWorker(): Worker | null {
+  if (worker) return worker;
+  if (workerFailed) return null;
+  try {
+    worker = new Worker(new URL("../workers/clash.worker.ts", import.meta.url), {
+      type: "module",
+      name: "obs-clash-worker",
+    });
+    worker.addEventListener("message", onWorkerMessage);
+    worker.addEventListener("error", onWorkerError);
+    console.log("[clash-worker] spawned");
+    return worker;
+  } catch (err) {
+    workerFailed = true;
+    console.warn("[clash-worker] could not spawn â€” using main thread", err);
+    return null;
+  }
+}
+
+type SerializedClash = {
+  a: ElementClash["a"];
+  b: ElementClash["b"];
+  kind: ElementClash["kind"];
+  method: ElementClash["method"];
+  precision: ElementClash["precision"];
+  depthVol: number;
+  triPairs: number;
+  minGap: number;
+  boxA: [number, number, number, number, number, number];
+  boxB: [number, number, number, number, number, number];
+  point: [number, number, number] | null;
+};
+
+function rehydrateClash(s: SerializedClash): ElementClash {
+  const boxA = new THREE.Box3(
+    new THREE.Vector3(s.boxA[0], s.boxA[1], s.boxA[2]),
+    new THREE.Vector3(s.boxA[3], s.boxA[4], s.boxA[5]),
+  );
+  const boxB = new THREE.Box3(
+    new THREE.Vector3(s.boxB[0], s.boxB[1], s.boxB[2]),
+    new THREE.Vector3(s.boxB[3], s.boxB[4], s.boxB[5]),
+  );
+  const point = s.point
+    ? new THREE.Vector3(s.point[0], s.point[1], s.point[2])
+    : null;
+  return {
+    a: s.a,
+    b: s.b,
+    kind: s.kind,
+    method: s.method,
+    precision: s.precision,
+    depthVol: s.depthVol,
+    triPairs: s.triPairs,
+    minGap: s.minGap,
+    boxA,
+    boxB,
+    point,
+  };
+}
+
+function onWorkerMessage(e: MessageEvent<InMessage>): void {
+  const msg = e.data;
+  const p = pending.get(msg.requestId);
+  if (!p) return;
+
+  if (msg.type === "progress") {
+    p.onProgress?.(msg.progress);
+    return;
+  }
+  if (msg.type === "result") {
+    pending.delete(msg.requestId);
+    p.resolve(msg.clashes.map(rehydrateClash));
+    return;
+  }
+  if (msg.type === "error") {
+    pending.delete(msg.requestId);
+    console.error("[clash-worker] error from worker", msg.message, msg.stack);
+    p.reject(new Error(msg.message));
+  }
+}
+
+function onWorkerError(e: ErrorEvent): void {
+  console.error("[clash-worker] fatal worker error", e.message, e.error);
+  workerFailed = true;
+  worker?.terminate();
+  worker = null;
+  const reason = new Error(`Clash worker crashed: ${e.message}`);
+  for (const [, p] of pending) p.reject(reason);
+  pending.clear();
+}
+
+function serializeItem(item: ClashCoreItem): {
+  payload: unknown;
+  transfer: Transferable[];
+} {
+  const min = item.box.min;
+  const max = item.box.max;
+  const box: [number, number, number, number, number, number] = [
+    min.x, min.y, min.z, max.x, max.y, max.z,
+  ];
+
+  let positions: Float32Array | undefined;
+  const transfer: Transferable[] = [];
+
+  if (item.tris?.length) {
+    const total = item.tris.length * 9;
+    positions = new Float32Array(total);
+    let n = 0;
+    for (const t of item.tris) {
+      for (let i = 0; i < 9; i++) positions[n++] = t[i];
+    }
+    transfer.push(positions.buffer);
+  }
+
+  return {
+    payload: {
+      modelId: item.modelId,
+      localId: item.localId,
+      name: item.name,
+      category: item.category,
+      box,
+      positions,
+    },
+    transfer,
+  };
+}
+
+/**
+ * Run clash detection, preferring the worker. Falls back to main thread.
+ */
+export async function runClashOffThread(
+  inputs: ClashInput[],
+  opts: ClashRunOptions = {},
+): Promise<ElementClash[]> {
+  if ((globalThis as any).__obs_forceMainThread) {
+    return runClashEngine(inputs, opts);
+  }
+
+  const rules: ClashRules = { ...DEFAULT_CLASH_RULES, ...(opts.rules ?? {}) };
+  const method: ClashMethod = opts.method ?? "hard-triangle";
+  const allowSelfPairs = opts.allowSelfPairs ?? true;
+  const onProg = opts.onProgress ?? (() => {});
+
+  const w = spawnWorker();
+  if (!w) {
+    console.log("[clash-worker] fallback â†’ main thread");
+    return runClashEngine(inputs, opts);
+  }
+
+  onProg({ phase: "broadphase", current: 0, total: 0, found: 0 });
+  const collected = await collectItems(inputs, opts);
+  if (!collected.items.length) {
+    onProg({ phase: "done", current: 0, total: 0, found: 0 });
+    return [];
+  }
+
+  const payloadItems: unknown[] = [];
+  const transfer: Transferable[] = [];
+  for (const it of collected.items) {
+    const { payload, transfer: t } = serializeItem(it);
+    payloadItems.push(payload);
+    for (const b of t) transfer.push(b);
+  }
+
+  const requestId = `cr-${++nextRequestId}-${Date.now()}`;
+
+  return new Promise<ElementClash[]>((resolve, reject) => {
+    // Immediate cancel path â€” works with both AbortSignal and the legacy
+    // { cancelled: boolean } shape.
+    const sendCancel = (): void => {
+      try {
+        const msg: OutMessage = { type: "cancel", requestId };
+        w.postMessage(msg);
+      } catch { /* worker already gone */ }
+    };
+
+    const signal = opts.signal as CancelSignal;
+
+    if (isCancelled(signal)) {
+      reject(new DOMException("Clash cancelled", "AbortError"));
+      return;
+    }
+
+    // Only standard AbortSignal supports event-driven cancel; the legacy
+    // shape is polled in onProgress below.
+    const onAbort = (): void => sendCancel();
+    if (isAbortSignal(signal)) {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+
+    const cleanup = (): void => {
+      if (isAbortSignal(signal)) {
+        signal.removeEventListener("abort", onAbort);
+      }
+    };
+
+    pending.set(requestId, {
+      resolve: (r) => { cleanup(); resolve(r); },
+      reject:  (e) => { cleanup(); reject(e); },
+      onProgress: (p) => {
+        onProg(p);
+        // Belt-and-braces for both shapes: poll for cancel between ticks.
+        if (isCancelled(signal)) sendCancel();
+      },
+    });
+
+    try {
+      const runMsg: OutMessage = {
+        type: "run",
+        requestId,
+        items: payloadItems,
+        groups: collected.groups,
+        rules,
+        method,
+        selfPairs: allowSelfPairs,
+      };
+      w.postMessage(runMsg, transfer);
+    } catch (err) {
+      pending.delete(requestId);
+      console.warn("[clash-worker] postMessage failed â€” falling back", err);
+      // A single postMessage failure (e.g. detached buffer) is NOT a worker
+      // crash. Leave workerFailed alone so the next clash run still tries
+      // the worker.
+      void runClashEngine(inputs, opts).then(resolve, reject);
+    }
+  });
+}
+
+export function disposeClashWorker(): void {
+  if (worker) {
+    worker.removeEventListener("message", onWorkerMessage);
+    worker.removeEventListener("error", onWorkerError);
+    worker.terminate();
+    worker = null;
+  }
+  for (const [, p] of pending) {
+    p.reject(new Error("Clash worker disposed"));
+  }
+  pending.clear();
+  // Reset the failure flag so a subsequent run can respawn a fresh worker.
+  workerFailed = false;
+}
+
+// Vite HMR: tear the worker down when this module is hot-replaced.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    try { disposeClashWorker(); } catch { /* HMR best-effort */ }
+  });
+}
+
+
+===== FILE: src/features/clash-review.ts =====
+/**
+ * Clash Review â€” a dedicated floating window for fast clash navigation.
+ *
+ * Opens over the viewport, focuses the first clash automatically, and lets
+ * you walk through every clash with:
+ *
+ *   â–¼ Next (or â†“ / J / PageDown)
+ *   â–² Previous (or â†‘ / K / PageUp)
+ *   I       â†’ isolate the current pair
+ *   F       â†’ re-focus the current pair
+ *   Space   â†’ cycle the current clash's status
+ *   Esc     â†’ close the window
+ *
+ * The current pair is highlighted, cropped, and (optionally) isolated in the
+ * viewport every time you navigate. The cursor is fully synced with
+ * clash.ts's `activeClash`, so clicking a row in the left-panel list also
+ * moves the review cursor.
+ */
+import { inputRouter } from "../core/input-router";
+import { ctx } from "../core/context";
+import {
+  listClashes,
+  getActiveClashIndex,
+  focusClashByIndex,
+  isolateClashPair,
+  getClashState,
+  setClashStatus,
+  addClashComment,
+  type ClashStatus,
+} from "./clash";
+import type { ElementClash, ClashKind } from "./clash-engine";
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Constants
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+const POS_KEY = "obs.clashReview.position";
+const ISO_KEY = "obs.clashReview.autoIsolate";
+
+const STATUS_ORDER: ClashStatus[] = ["new", "active", "reviewed", "approved", "resolved"];
+
+const STATUS_COLOR: Record<ClashStatus, string> = {
+  new: "#38bdf8",
+  active: "#f59e0b",
+  reviewed: "#c084fc",
+  approved: "#22c55e",
+  resolved: "#6b7280",
+};
+
+const STATUS_LABEL: Record<ClashStatus, string> = {
+  new: "New",
+  active: "Active",
+  reviewed: "Reviewed",
+  approved: "Approved",
+  resolved: "Resolved",
+};
+
+const KIND_COLOR: Record<ClashKind, string> = {
+  intersect: "#ef4444",
+  touching: "#f59e0b",
+  clearance: "#38bdf8",
+  duplicate: "#a855f7",
+};
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   State
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+let panel: HTMLDivElement | null = null;
+let navLock = false;
+let autoIsolate = true;
+let pollTimer: number | null = null;
+let lastRenderedIndex = -1;
+
+try {
+  const v = localStorage.getItem(ISO_KEY);
+  if (v != null) autoIsolate = v === "1";
+} catch { /* */ }
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Utilities
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+const esc = (s: string) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as any)[c]);
+
+function shortCat(cat: string): string {
+  return cat.replace(/^IFC/i, "").replace(/STANDARDCASE$/i, "") || cat;
+}
+
+function fmtMetric(c: ElementClash): string {
+  if (c.kind === "intersect") {
+    const cm3 = c.depthVol * 1e6;
+    if (cm3 >= 1000) return `${(cm3 / 1000).toFixed(2)} dmÂ³ overlap`;
+    return `${cm3.toFixed(1)} cmÂ³ overlap`;
+  }
+  if (c.kind === "duplicate") {
+    return `Identical bounding box (Î” â‰¤ ${(c.minGap * 1000).toFixed(1)} mm)`;
+  }
+  const mm = c.minGap * 1000;
+  if (mm >= 1000) return `Gap ${(mm / 1000).toFixed(2)} m`;
+  return `Gap ${mm.toFixed(0)} mm`;
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Panel construction
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+function ensurePanel(): HTMLDivElement {
+  if (panel) return panel;
+
+  panel = document.createElement("div");
+  panel.id = "obs-clash-review";
+  panel.style.cssText =
+    "position:fixed;z-index:8000;width:440px;max-height:82vh;display:none;" +
+    "flex-direction:column;background:var(--bg-floating,#1c1e28);" +
+    "border:1px solid var(--border-default,#2a2e3a);border-radius:12px;" +
+    "box-shadow:0 24px 60px rgba(0,0,0,.65);" +
+    "font:12px system-ui,sans-serif;color:var(--text-primary,#e8eaf0);" +
+    "overflow:hidden;user-select:none";
+  panel.onmousedown = (e) => e.stopPropagation();
+
+  /* Position */
+  let px = 40, py = 120;
+  try {
+    const stored = localStorage.getItem(POS_KEY);
+    if (stored) {
+      const p = JSON.parse(stored);
+      px = Number(p.x) || px;
+      py = Number(p.y) || py;
+    }
+  } catch { /* */ }
+  panel.style.left = `${px}px`;
+  panel.style.top = `${py}px`;
+
+  panel.innerHTML = `
+    <div id="ocr-header" style="
+      display:flex;align-items:center;gap:8px;padding:10px 12px;
+      border-bottom:1px solid var(--border-subtle,#1e2029);
+      background:var(--bg-elevated,#181a23);cursor:move;user-select:none">
+      <span style="display:flex;color:var(--accent,#38bdf8);font-size:14px">â—†</span>
+      <div style="flex:1;font-weight:700;font-size:13px">Clash Review</div>
+      <div id="ocr-count-pill" style="
+        padding:2px 10px;border-radius:20px;font:600 11px var(--font-mono,monospace);
+        background:var(--accent-dim,rgba(56,189,248,.14));color:var(--accent,#38bdf8)">
+        0 / 0
+      </div>
+      <button id="ocr-close" title="Close (Esc)" style="
+        padding:4px 8px;background:transparent;color:var(--text-secondary,#a0a6b5);
+        border:1px solid var(--border-default,#2a2e3a);border-radius:5px;
+        cursor:pointer;font-size:11px">âœ•</button>
+    </div>
+
+    <div id="ocr-nav" style="display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border-subtle,#1e2029)">
+      <button id="ocr-prev" style="
+        flex:1;padding:12px;font:700 14px system-ui;cursor:pointer;
+        background:var(--bg-elevated,#181a23);color:var(--text-primary,#e8eaf0);
+        border:1px solid var(--border-default,#2a2e3a);border-radius:8px;
+        display:flex;align-items:center;justify-content:center;gap:8px;
+        transition:background .12s">â–² Previous</button>
+      <button id="ocr-next" style="
+        flex:1;padding:12px;font:700 14px system-ui;cursor:pointer;
+        background:var(--accent,#38bdf8);color:#0b0d12;border:none;
+        border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;
+        transition:background .12s">Next â–¼</button>
+    </div>
+
+    <div id="ocr-body" style="flex:1;overflow-y:auto;padding:12px"></div>
+
+    <div id="ocr-progress" style="
+      padding:8px 12px;border-top:1px solid var(--border-subtle,#1e2029);
+      background:var(--bg-elevated,#181a23);display:flex;flex-direction:column;gap:6px">
+      <div style="height:4px;background:var(--bg-inset,#0e1017);border-radius:2px;overflow:hidden">
+        <div id="ocr-progress-bar" style="height:100%;width:0%;
+          background:linear-gradient(90deg,#38bdf8,#818cf8);transition:width .2s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;
+        color:var(--text-tertiary,#6b7280);font-family:var(--font-mono,monospace)">
+        <span id="ocr-progress-text">0 / 0</span>
+        <span>â†‘â†“ navigate Â· I isolate Â· F focus Â· Space cycle Â· Esc close</span>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(panel);
+
+  /* â”€â”€ Wire controls â”€â”€ */
+  (panel.querySelector("#ocr-close") as HTMLElement).onclick = () => closeReview();
+  (panel.querySelector("#ocr-prev") as HTMLElement).onclick = () => void navigate(-1);
+  (panel.querySelector("#ocr-next") as HTMLElement).onclick = () => void navigate(+1);
+
+  /* â”€â”€ Draggable header â”€â”€ */
+  const header = panel.querySelector("#ocr-header") as HTMLElement;
+  let dragging = false;
+  let dragOffset = { x: 0, y: 0 };
+
+  header.addEventListener("pointerdown", (e) => {
+    if ((e.target as HTMLElement).id === "ocr-close") return;
+    dragging = true;
+    const r = panel!.getBoundingClientRect();
+    dragOffset = { x: e.clientX - r.left, y: e.clientY - r.top };
+    (e.target as Element).setPointerCapture(e.pointerId);
+    header.style.cursor = "grabbing";
+  });
+  header.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const x = Math.max(0, Math.min(window.innerWidth - 80, e.clientX - dragOffset.x));
+    const y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - dragOffset.y));
+    panel!.style.left = `${x}px`;
+    panel!.style.top = `${y}px`;
+  });
+  header.addEventListener("pointerup", (e) => {
+    if (!dragging) return;
+    dragging = false;
+    (e.target as Element).releasePointerCapture(e.pointerId);
+    header.style.cursor = "move";
+    try {
+      const r = panel!.getBoundingClientRect();
+      localStorage.setItem(POS_KEY, JSON.stringify({ x: r.left, y: r.top }));
+    } catch { /* */ }
+  });
+
+  return panel;
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Rendering
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+function render(): void {
+  if (!panel) return;
+  const clashes = listClashes();
+  const total = clashes.length;
+
+  if (total === 0) {
+    (panel.querySelector("#ocr-body") as HTMLElement).innerHTML =
+      `<div style="padding:30px 20px;text-align:center;color:#6b7280;line-height:1.6">
+         No clash results.<br>Run a clash test first.
+       </div>`;
+    (panel.querySelector("#ocr-count-pill") as HTMLElement).textContent = `0 / 0`;
+    (panel.querySelector("#ocr-progress-text") as HTMLElement).textContent = `0 / 0`;
+    (panel.querySelector("#ocr-progress-bar") as HTMLElement).style.width = "0%";
+    return;
+  }
+
+  const idx = Math.max(0, getActiveClashIndex());
+  const c = clashes[idx];
+  if (!c) return;
+
+  lastRenderedIndex = idx;
+
+  (panel.querySelector("#ocr-count-pill") as HTMLElement).textContent =
+    `${idx + 1} / ${total}`;
+  (panel.querySelector("#ocr-progress-text") as HTMLElement).textContent =
+    `${idx + 1} / ${total} Â· ${((idx + 1) / total * 100).toFixed(0)}%`;
+  (panel.querySelector("#ocr-progress-bar") as HTMLElement).style.width =
+    `${((idx + 1) / total) * 100}%`;
+
+  const state = getClashState(c);
+  const kindColor = KIND_COLOR[c.kind];
+
+  const body = panel.querySelector("#ocr-body") as HTMLElement;
+  body.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="background:${kindColor};color:#0f1117;padding:3px 8px;
+        border-radius:4px;font-size:10px;font-weight:800;letter-spacing:.4px">
+        ${c.kind.toUpperCase()}
+      </span>
+      <span style="font-size:10px;padding:2px 6px;border-radius:3px;
+        background:rgba(255,255,255,.06);color:#94a3b8;font-family:var(--font-mono,monospace)">
+        ${c.method}
+      </span>
+      <span style="font-size:10px;padding:2px 6px;border-radius:3px;
+        background:rgba(255,255,255,.06);color:#94a3b8;font-family:var(--font-mono,monospace)">
+        ${c.precision}
+      </span>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;color:${kindColor};margin-bottom:12px">
+      ${fmtMetric(c)}
+    </div>
+
+    <div style="border:1px solid var(--border-subtle,#1e2029);border-radius:8px;
+      overflow:hidden;margin-bottom:12px">
+      <div style="padding:8px 10px;background:rgba(59,130,246,.10);border-bottom:1px solid var(--border-subtle,#1e2029)">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span style="background:#3b82f6;color:#fff;padding:1px 6px;border-radius:3px;
+            font-size:9px;font-weight:800">A</span>
+          <span style="font-size:10px;color:#93c5fd;font-family:var(--font-mono,monospace)">
+            ${esc(shortCat(c.a.cat))} Â· #${c.a.localId}
+          </span>
+        </div>
+        <div style="font-weight:600;font-size:12px;line-height:1.4;word-break:break-word">
+          ${esc(c.a.name)}
+        </div>
+      </div>
+      <div style="padding:8px 10px;background:rgba(234,179,8,.10)">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span style="background:#eab308;color:#0f1117;padding:1px 6px;border-radius:3px;
+            font-size:9px;font-weight:800">B</span>
+          <span style="font-size:10px;color:#fde047;font-family:var(--font-mono,monospace)">
+            ${esc(shortCat(c.b.cat))} Â· #${c.b.localId}
+          </span>
+        </div>
+        <div style="font-weight:600;font-size:12px;line-height:1.4;word-break:break-word">
+          ${esc(c.b.name)}
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#a0a6b5">
+        Status
+      </label>
+      <select id="ocr-status" style="flex:1;padding:5px 8px;background:var(--bg-inset,#0e1017);
+        border:1px solid var(--border-default,#2a2e3a);border-radius:5px;
+        color:${STATUS_COLOR[state.status]};font:600 11px system-ui;cursor:pointer">
+        ${STATUS_ORDER.map((s) =>
+          `<option value="${s}" ${state.status === s ? "selected" : ""}>${STATUS_LABEL[s]}</option>`
+        ).join("")}
+      </select>
+      <button id="ocr-isolate" style="padding:5px 12px;background:var(--bg-elevated,#181a23);
+        color:var(--text-primary,#e8eaf0);border:1px solid var(--border-default,#2a2e3a);
+        border-radius:5px;cursor:pointer;font:600 11px system-ui">ðŸ” Isolate</button>
+      <button id="ocr-showall" style="padding:5px 12px;background:var(--bg-elevated,#181a23);
+        color:var(--text-primary,#e8eaf0);border:1px solid var(--border-default,#2a2e3a);
+        border-radius:5px;cursor:pointer;font:600 11px system-ui">ðŸ‘ Show all</button>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:6px;font-size:11px;
+      color:#a0a6b5;margin-bottom:12px;cursor:pointer">
+      <input type="checkbox" id="ocr-auto-iso" ${autoIsolate ? "checked" : ""}
+        style="cursor:pointer;margin:0">
+      Auto-isolate each clash when navigating
+    </label>
+
+    ${state.comments.length ? `
+      <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
+        color:#6b7280;margin-bottom:6px">Comments (${state.comments.length})</div>
+      <div style="border-left:2px solid var(--border-subtle,#1e2029);padding-left:8px;
+        margin-bottom:12px;display:flex;flex-direction:column;gap:6px">
+        ${state.comments.map((cm) => `
+          <div style="background:var(--bg-inset,#0e1017);border-radius:5px;padding:6px 8px">
+            <div style="font-size:9.5px;color:#6b7280;margin-bottom:3px">
+              <b style="color:#a0a6b5">${esc(cm.author)}</b> Â· ${new Date(cm.date).toLocaleString()}
+            </div>
+            <div style="font-size:11px;line-height:1.4;word-break:break-word">${esc(cm.text)}</div>
+          </div>
+        `).join("")}
+      </div>
+    ` : ""}
+
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <input id="ocr-comment-input" type="text" placeholder="Add commentâ€¦"
+        style="flex:1;padding:6px 9px;background:var(--bg-inset,#0e1017);
+        border:1px solid var(--border-default,#2a2e3a);border-radius:5px;
+        color:var(--text-primary,#e8eaf0);font:12px system-ui">
+      <button id="ocr-comment-add" style="padding:6px 14px;background:#2563eb;color:#fff;
+        border:none;border-radius:5px;cursor:pointer;font:600 11px system-ui">Add</button>
+    </div>
+  `;
+
+  /* â”€â”€ Body event wiring â”€â”€ */
+  (body.querySelector("#ocr-status") as HTMLSelectElement).onchange = (e) => {
+    const v = (e.target as HTMLSelectElement).value as ClashStatus;
+    setClashStatus(c, v);
+    render();
+  };
+  (body.querySelector("#ocr-isolate") as HTMLElement).onclick = async () => {
+    await isolateClashPair(c);
+  };
+  (body.querySelector("#ocr-showall") as HTMLElement).onclick = async () => {
+    try {
+      const hider: any = (await import("../core/context")).ctx.hider;
+      if (typeof hider.show === "function") await hider.show();
+      else if (typeof hider.set === "function") await hider.set(true);
+    } catch { /* */ }
+  };
+  (body.querySelector("#ocr-auto-iso") as HTMLInputElement).onchange = (e) => {
+    autoIsolate = (e.target as HTMLInputElement).checked;
+    try { localStorage.setItem(ISO_KEY, autoIsolate ? "1" : "0"); } catch { /* */ }
+  };
+  (body.querySelector("#ocr-comment-add") as HTMLElement).onclick = () => {
+    const inp = body.querySelector("#ocr-comment-input") as HTMLInputElement;
+    if (!inp.value.trim()) return;
+    addClashComment(c, inp.value);
+    inp.value = "";
+    render();
+  };
+  (body.querySelector("#ocr-comment-input") as HTMLInputElement).onkeydown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      (body.querySelector("#ocr-comment-add") as HTMLElement).click();
+    }
+    e.stopPropagation();
+  };
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Navigation
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+async function navigate(delta: number): Promise<void> {
+  if (navLock) return;
+  const clashes = listClashes();
+  if (!clashes.length) return;
+
+  navLock = true;
+  try {
+    const idx = Math.max(0, getActiveClashIndex());
+    const next = ((idx + delta) % clashes.length + clashes.length) % clashes.length;
+    await focusClashByIndex(next);
+
+    const c = clashes[next];
+    if (autoIsolate && c) {
+      try { await isolateClashPair(c); } catch { /* */ }
+    }
+    render();
+  } catch (err) {
+    console.warn("[clash-review] navigate failed", err);
+  } finally {
+    navLock = false;
+  }
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Keyboard
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+function isOpen(): boolean {
+  return !!panel && panel.style.display === "flex";
+}
+
+function onKeyDown(e: KeyboardEvent): void {
+  if (!isOpen()) return;
+
+  // Don't steal keys while typing.
+  const t = e.target as HTMLElement | null;
+  if (t) {
+    const tag = t.tagName?.toLowerCase();
+    if (tag === "input" || tag === "textarea" || t.isContentEditable) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        (t as HTMLElement).blur();
+        closeReview();
+      }
+      return;
+    }
+  }
+
+  const k = e.key.toLowerCase();
+
+  if (k === "escape") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    closeReview();
+    return;
+  }
+  if (k === "arrowdown" || k === "j" || k === "pagedown") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    void navigate(+1);
+    return;
+  }
+  if (k === "arrowup" || k === "k" || k === "pageup") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    void navigate(-1);
+    return;
+  }
+  if (k === "i") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const c = listClashes()[getActiveClashIndex()];
+    if (c) void isolateClashPair(c);
+    return;
+  }
+  if (k === "f") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const idx = Math.max(0, getActiveClashIndex());
+    void focusClashByIndex(idx);
+    return;
+  }
+  if (k === " ") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const c = listClashes()[getActiveClashIndex()];
+    if (c) {
+      const s = getClashState(c);
+      const i = STATUS_ORDER.indexOf(s.status);
+      const next = STATUS_ORDER[(i + 1) % STATUS_ORDER.length];
+      setClashStatus(c, next);
+      render();
+    }
+    return;
+  }
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Public API
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+export function openReview(): void {
+  ensurePanel();
+  if (!panel) return;
+  panel.style.display = "flex";
+
+  // Focus the first clash if nothing is active yet.
+  if (getActiveClashIndex() < 0 && listClashes().length) {
+    void focusClashByIndex(0).then(() => {
+      const c = listClashes()[0];
+      if (autoIsolate && c) void isolateClashPair(c).catch(() => {});
+      render();
+    });
+  } else {
+    render();
+  }
+
+  // Poll for changes to activeClash coming from elsewhere (left-panel list).
+  if (pollTimer == null) {
+    pollTimer = window.setInterval(() => {
+      if (!isOpen()) return;
+      const idx = getActiveClashIndex();
+      if (idx !== lastRenderedIndex) render();
+    }, 300);
+  }
+}
+
+export function closeReview(): void {
+  if (panel) panel.style.display = "none";
+  if (pollTimer != null) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+export function toggleReview(): void {
+  isOpen() ? closeReview() : openReview();
+}
+
+export function isReviewVisible(): boolean {
+  return isOpen();
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Setup
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+export function setupClashReview(): void {
+  // Escape goes through the input-router cancel stack (LIFO, first-consume-wins).
+  const unsubCancel = inputRouter.registerCancel(() => {
+    if (!isOpen()) return false;
+    const active = document.activeElement as HTMLElement | null;
+    if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
+      active.blur();
+    }
+    closeReview();
+    return true;
+  });
+
+  // Remaining navigation keys stay local â€” they only act when the review
+  // panel is open, so they don't conflict with the router.
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") return; // owned by registerCancel
+    onKeyDown(e);
+  }, true);
+
+  // Expose for the panel button and shortcuts.
+  (window as any).__obs_openClashReview = openReview;
+  (window as any).__obs_closeClashReview = closeReview;
+  (window as any).__obs_toggleClashReview = toggleReview;
+
+  (ctx.features as any).clashReview = { dispose: unsubCancel };
+
+  console.log("[clash-review] ready");
+}
+
+===== FILE: src/features/clash-report.ts =====
+/**
+ * Clash report export: rich HTML and Excel (XLS via HTML table).
+ *
+ * Both read the currently active clash run from clash.ts and produce a
+ * self-contained document with summary, per-status breakdown, and a full
+ * clash table with comments.
+ */
+import { ctx } from "../core/context";
+import {
+  listClashes,
+  testNameInput,
+  getClashState,
+  type ClashStatus,
+} from "./clash";
+import { getCurrentProject } from "../modules/projects/projects";
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Shared data extraction
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+
+interface Row {
+  index: number;
+  kind: string;
+  status: ClashStatus;
+  modelA: string;
+  idA: number;
+  nameA: string;
+  catA: string;
+  modelB: string;
+  idB: number;
+  nameB: string;
+  catB: string;
+  depthVol: number;   // mÂ³
+  minGap: number;     // m
+  precision: string;
+  triPairs: number;
+  comments: { author: string; date: number; text: string }[];
+}
+
+function collectRows(): Row[] {
+  const clashes = listClashes();
+  const out: Row[] = [];
+  for (let i = 0; i < clashes.length; i++) {
+    const c = clashes[i];
+    const s = getClashState(c);
+    out.push({
+      index: i + 1,
+      kind: c.kind,
+      status: s.status,
+      modelA: c.a.modelId,
+      idA: c.a.localId,
+      nameA: c.a.name,
+      catA: c.a.cat,
+      modelB: c.b.modelId,
+      idB: c.b.localId,
+      nameB: c.b.name,
+      catB: c.b.cat,
+      depthVol: c.depthVol,
+      minGap: c.minGap,
+      precision: c.precision,
+      triPairs: c.triPairs,
+      comments: s.comments.map((cm) => ({
+        author: cm.author,
+        date: cm.date,
+        text: cm.text,
+      })),
+    });
+  }
+  return out;
+}
+
+function summarize(rows: Row[]) {
+  const byStatus: Record<ClashStatus, number> = {
+    new: 0, active: 0, reviewed: 0, approved: 0, resolved: 0,
+  };
+  const byKind: Record<string, number> = { intersect: 0, touching: 0, clearance: 0 };
+  for (const r of rows) {
+    byStatus[r.status]++;
+    byKind[r.kind] = (byKind[r.kind] ?? 0) + 1;
+  }
+  return { byStatus, byKind, total: rows.length };
+}
+
+const esc = (s: string) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as any)[c]);
+
+const fmtDate = (t: number) => new Date(t).toLocaleString();
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   HTML report
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+
+export function buildClashReportHtml(): string {
+  const rows = collectRows();
+  const summary = summarize(rows);
+  const project = getCurrentProject();
+  const testName = testNameInput.value || "Clash Test";
+
+  const statusColor: Record<ClashStatus, string> = {
+    new: "#38BDF8",
+    active: "#F59E0B",
+    reviewed: "#C084FC",
+    approved: "#22C55E",
+    resolved: "#6B7280",
+  };
+
+  const kindColor: Record<string, string> = {
+    intersect: "#EF4444",
+    touching: "#F59E0B",
+    clearance: "#38BDF8",
+  };
+
+  let html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clash Report â€” ${esc(testName)}</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+         background: #f5f6f8; color: #1a1d23; margin: 0; padding: 32px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 32px 0 10px; color: #3d4250;
+       border-bottom: 1px solid #d5d8de; padding-bottom: 6px; }
+  .meta { color: #6b7280; font-size: 12px; margin-bottom: 24px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr));
+           gap: 12px; margin-bottom: 24px; }
+  .card { background: #fff; border: 1px solid #e3e6ea; border-radius: 8px;
+          padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .card .label { font-size: 10px; text-transform: uppercase; letter-spacing: .6px;
+                 color: #6b7280; }
+  .card .value { font-size: 22px; font-weight: 700; margin-top: 4px;
+                 font-family: ui-monospace, SFMono-Regular, monospace; }
+  table { width: 100%; border-collapse: collapse; background: #fff;
+          border: 1px solid #e3e6ea; border-radius: 8px; overflow: hidden;
+          font-size: 11px; }
+  th { background: #f0f2f5; text-align: left; padding: 8px 10px;
+       font-size: 10px; font-weight: 600; text-transform: uppercase;
+       letter-spacing: .4px; color: #4b5563; border-bottom: 1px solid #e3e6ea;
+       white-space: nowrap; }
+  td { padding: 7px 10px; border-bottom: 1px solid #eef0f3; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafbfc; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 3px;
+           font-size: 9px; font-weight: 700; letter-spacing: .3px;
+           text-transform: uppercase; }
+  .num { text-align: right; font-family: ui-monospace, monospace; }
+  .comment { border-left: 2px solid #e5e7eb; padding: 3px 8px; margin: 3px 0;
+             background: #f9fafb; font-size: 10px; color: #4b5563; }
+  .footer { margin-top: 40px; color: #9ca3af; font-size: 10px; text-align: center; }
+  @media print {
+    body { padding: 0; background: #fff; }
+    .card, table { box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<h1>${esc(testName)} â€” Clash Report</h1>
+<div class="meta">
+  ${project ? `Project: <b>${esc(project.name)}</b> Â· ` : ""}
+  Generated: ${fmtDate(Date.now())} Â·
+  ${summary.total} clash${summary.total === 1 ? "" : "es"}
+</div>
+
+<div class="cards">
+  <div class="card"><div class="label">Total</div><div class="value">${summary.total}</div></div>`;
+
+  for (const s of ["new", "active", "reviewed", "approved", "resolved"] as ClashStatus[]) {
+    html += `<div class="card"><div class="label" style="color:${statusColor[s]}">${s}</div>
+             <div class="value" style="color:${statusColor[s]}">${summary.byStatus[s]}</div></div>`;
+  }
+  for (const k of ["intersect", "touching", "clearance"]) {
+    html += `<div class="card"><div class="label" style="color:${kindColor[k]}">${k}</div>
+             <div class="value" style="color:${kindColor[k]}">${summary.byKind[k] ?? 0}</div></div>`;
+  }
+
+  html += `</div>
+
+<h2>Clashes</h2>
+<table>
+<thead><tr>
+  <th>#</th><th>Kind</th><th>Status</th>
+  <th>Model A</th><th>Element A</th>
+  <th>Model B</th><th>Element B</th>
+  <th>Gap / Overlap</th><th>Precision</th><th>Comments</th>
+</tr></thead>
+<tbody>`;
+
+  if (!rows.length) {
+    html += `<tr><td colspan="10" style="text-align:center;color:#9ca3af;padding:20px">
+             No clashes. Run a test first.</td></tr>`;
+  } else {
+    for (const r of rows) {
+      const gapText = r.kind === "intersect"
+        ? `${(r.depthVol * 1e6).toFixed(1)} cmÂ³`
+        : `${(r.minGap * 1000).toFixed(1)} mm`;
+      const cmt = r.comments.length
+        ? r.comments.map((c) =>
+            `<div class="comment"><b>${esc(c.author)}</b> Â· ${fmtDate(c.date)}<br/>${esc(c.text)}</div>`,
+          ).join("")
+        : `<span style="color:#9ca3af">â€”</span>`;
+
+      html += `<tr>
+        <td>${r.index}</td>
+        <td><span class="badge" style="background:${kindColor[r.kind]};color:#fff">${r.kind}</span></td>
+        <td><span class="badge" style="background:${statusColor[r.status]};color:#fff">${r.status}</span></td>
+        <td style="color:#6b7280;font-size:10px">${esc(r.modelA)}</td>
+        <td>${esc(r.nameA)}<br/><span style="color:#9ca3af;font-size:10px">${esc(r.catA)} Â· #${r.idA}</span></td>
+        <td style="color:#6b7280;font-size:10px">${esc(r.modelB)}</td>
+        <td>${esc(r.nameB)}<br/><span style="color:#9ca3af;font-size:10px">${esc(r.catB)} Â· #${r.idB}</span></td>
+        <td class="num">${gapText}</td>
+        <td style="font-size:10px;color:#6b7280">${r.precision}${r.triPairs ? ` Â· ${r.triPairs} pairs` : ""}</td>
+        <td>${cmt}</td>
+      </tr>`;
+    }
+  }
+
+  html += `</tbody></table>
+
+<div class="footer">
+  Open BIM Studio Â· Clash Detective report Â· generated ${fmtDate(Date.now())}
+</div>
+</body></html>`;
+
+  return html;
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Public: HTML download
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+
+export function exportClashReportHtml(): void {
+  const rows = collectRows();
+  if (!rows.length) {
+    alert("No clashes to report. Run a test first.");
+    return;
+  }
+  const html = buildClashReportHtml();
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `clash-report-${new Date().toISOString().slice(0, 10)}.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+}
+
+/** Open the HTML report in a new tab, for previewing / printing. */
+export function previewClashReportHtml(): void {
+  const rows = collectRows();
+  if (!rows.length) {
+    alert("No clashes to report. Run a test first.");
+    return;
+  }
+  const html = buildClashReportHtml();
+  const w = window.open("", "_blank");
+  if (!w) {
+    alert("Popup blocked â€” allow popups to preview.");
+    return;
+  }
+  w.document.write(html);
+  w.document.close();
+}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Excel (XLS via HTML table â€” opens natively in Excel / Numbers / LibreOffice)
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+
+export function exportClashReportXls(): void {
+  const rows = collectRows();
+  if (!rows.length) {
+    alert("No clashes to report. Run a test first.");
+    return;
+  }
+  const summary = summarize(rows);
+  const project = getCurrentProject();
+  const testName = testNameInput.value || "Clash Test";
+
+  let html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head><meta charset="utf-8">
+<!--[if gte mso 9]><xml>
+<x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>Clashes</x:Name><x:WorksheetOptions><x:DisplayGridlines/>
+</x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
+</xml><![endif]-->
+</head><body>
+<table border="1" cellspacing="0" cellpadding="4" style="font-family:Arial;font-size:11px">
+<tr><td colspan="10" style="font-size:14px;font-weight:bold">${esc(testName)} â€” Clash Report</td></tr>
+<tr><td colspan="10">${project ? `Project: ${esc(project.name)}` : ""} Â· Generated: ${fmtDate(Date.now())}</td></tr>
+<tr><td colspan="10">Total: ${summary.total} Â· New: ${summary.byStatus.new} Â· Active: ${summary.byStatus.active} Â· Reviewed: ${summary.byStatus.reviewed} Â· Approved: ${summary.byStatus.approved} Â· Resolved: ${summary.byStatus.resolved}</td></tr>
+<tr></tr>
+<tr style="background:#e8ebef;font-weight:bold">
+  <td>#</td><td>Kind</td><td>Status</td>
+  <td>Model A</td><td>Element A</td><td>Category A</td>
+  <td>Model B</td><td>Element B</td><td>Category B</td>
+  <td>Gap (mm) / Overlap (cm3)</td>
+</tr>`;
+
+  for (const r of rows) {
+    const gapText = r.kind === "intersect"
+      ? `${(r.depthVol * 1e6).toFixed(2)} cmÂ³`
+      : `${(r.minGap * 1000).toFixed(2)} mm`;
+    html += `<tr>
+      <td>${r.index}</td>
+      <td>${r.kind}</td>
+      <td>${r.status}</td>
+      <td>${esc(r.modelA)}</td>
+      <td>${esc(r.nameA)}</td>
+      <td>${esc(r.catA)}</td>
+      <td>${esc(r.modelB)}</td>
+      <td>${esc(r.nameB)}</td>
+      <td>${esc(r.catB)}</td>
+      <td>${gapText}</td>
+    </tr>`;
+  }
+
+  html += `</table></body></html>`;
+
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `clash-report-${new Date().toISOString().slice(0, 10)}.xls`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+}
+

@@ -32,3 +32,6 @@ desktop.ini
 
 # Old chunked text (keep out of the source tree)
 Project_Part_*.txt
+*.bak-*
+*.bak
+*.disabled
