@@ -1,0 +1,102 @@
+{
+  "meta": { "name": "German", "nativeName": "Deutsch", "dir": "ltr" },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "Wird geladen…",
+    "ready": "Bereit",
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "confirm": "Bestätigen",
+    "yes": "Ja",
+    "no": "Nein",
+    "ok": "OK",
+    "search": "Suchen",
+    "clear": "Leeren",
+    "apply": "Übernehmen",
+    "reset": "Zurücksetzen",
+    "loadingModel": "Modell wird geladen…",
+    "noSelection": "Keine Auswahl"
+  },
+  "clash": {
+    "title": "Kollisionsprüfung",
+    "status": {
+      "selectModels": "Modelle in A und B auswählen, dann Test starten.",
+      "running": "Läuft {test} · {method}…",
+      "found": { "one": "1 Kollision gefunden.", "other": "{count} Kollisionen gefunden." },
+      "none": "Keine Kollisionen gefunden.",
+      "cancelled": "Test abgebrochen.",
+      "failed": "Fehlgeschlagen: {message}",
+      "cleared": "Geleert.",
+      "nothingToClear": "Nichts zu leeren."
+    },
+    "scope": {
+      "all": "Alle Modellelemente",
+      "viewport": "Nur Ansichtsauswahl",
+      "aOnly": "Nur Auswahl A",
+      "bOnly": "Nur Auswahl B",
+      "both": "Nur Auswahl A × B (empfohlen)"
+    },
+    "kinds": {
+      "intersect": "Durchdringung",
+      "touching": "Berührung",
+      "clearance": "Abstand",
+      "duplicate": "Duplikat"
+    },
+    "statuses": {
+      "new": "Neu",
+      "active": "Aktiv",
+      "reviewed": "Geprüft",
+      "approved": "Freigegeben",
+      "resolved": "Gelöst"
+    },
+    "actions": {
+      "run": "Test starten",
+      "cancel": "Abbrechen",
+      "clear": "Ergebnisse leeren",
+      "isolate": "Isolieren",
+      "focus": "Fokussieren",
+      "showAll": "Alles anzeigen",
+      "next": "Weiter",
+      "previous": "Zurück"
+    }
+  },
+  "authoring": {
+    "toolActive": "Aktives Werkzeug: {tool}",
+    "noTool": "Aktives Werkzeug: Keines",
+    "created": "{type} platziert",
+    "createdWithFittings": "{type} platziert (+ Formteile)",
+    "cancelled": "Abgebrochen — Auswahl",
+    "repeat": "Wiederholen: {cmd}",
+    "noPreviousCommand": "Kein vorheriger Befehl — zuerst ein Werkzeug wählen",
+    "nativeTwinCreated": "Bearbeitbarer Native Twin erstellt: {name}",
+    "nativeTwinFailed": "Native Twin konnte nicht erstellt werden für {modelId} / {localId}."
+  },
+  "camera": {
+    "homeSaved": "Startansicht gespeichert",
+    "homeRestored": "Startansicht wiederhergestellt",
+    "screenshotSaved": "Screenshot gespeichert",
+    "screenshotFailed": "Screenshot fehlgeschlagen: {message}"
+  },
+  "cost": {
+    "title": "5D Kosten",
+    "tabs": {
+      "takeoff": "Mengenermittlung",
+      "items": "Kostenpositionen",
+      "summary": "Zusammenfassung"
+    },
+    "totals": {
+      "grand": "Gesamtprojektkosten",
+      "assigned": "{assigned} von {total} Zeilen zugewiesen · {items} Kostenpositionen"
+    }
+  },
+  "options": {
+    "title": "Optionen",
+    "language": "Sprache & Region",
+    "nav": "Navigation",
+    "diagnostics": "Diagnose",
+    "units": "Einheiten",
+    "currency": "Währung"
+  }
+}

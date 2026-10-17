@@ -1,0 +1,239 @@
+/**
+ * Walk-mode minimap.
+ *
+ * When Walk mode is active, renders a small top-down (plan) view of the
+ * scene in the top-right corner of the viewport, with a red heading
+ * triangle showing the walker position + facing direction.
+ *
+ * Implementation notes:
+ *   - Uses the MAIN WebGL renderer with a scissored viewport so we don't
+ *     need a second WebGL context. The scene / materials stay shared.
+ *   - Hooks `renderer.render` (bound to the original) so we can draw the
+ *     minimap right after each main render pass.
+ *   - A DOM overlay on top of the scissored region draws the border,
+ *     label, and heading triangle (cannot draw 2D SVG inside WebGL).
+ */
+import * as THREE from "three";
+import { ctx } from "../core/context";
+
+let installed = false;
+let enabled = false;
+
+const topCam = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 200000);
+topCam.up.set(0, 0, -1); // plan: -Z is "north" (top of minimap)
+topCam.position.set(0, 100, 0);
+topCam.lookAt(0, 0, 0);
+
+let overlay: HTMLDivElement | null = null;
+let border: HTMLDivElement | null = null;
+let headingEl: HTMLDivElement | null = null;
+let labelEl: HTMLDivElement | null = null;
+
+const MINIMAP_SIZE_PX = 320;
+const MINIMAP_MARGIN_PX = 24;
+
+function ensureOverlay(): HTMLDivElement | null {
+  if (overlay) return overlay;
+  const host = ctx.rightHost as HTMLElement | undefined;
+  if (!host) return null;
+
+  overlay = document.createElement("div");
+  overlay.id = "obs-walk-minimap";
+  overlay.style.cssText =
+    "position:absolute;pointer-events:none;z-index:61;display:none;" +
+    "user-select:none;font:11px system-ui,sans-serif;color:#e8eaf0;" +
+    "border-radius:6px";
+
+  border = document.createElement("div");
+  border.style.cssText =
+    "position:absolute;inset:0;border:1px solid rgba(56,189,248,.55);" +
+    "border-radius:6px;box-shadow:0 0 0 1px rgba(0,0,0,.4)";
+
+  labelEl = document.createElement("div");
+  labelEl.textContent = "WALK \u00b7 PLAN";
+  labelEl.style.cssText =
+    "position:absolute;top:-18px;left:0;font:700 10px system-ui,sans-serif;" +
+    "letter-spacing:.08em;color:#38bdf8;text-shadow:0 1px 2px rgba(0,0,0,.7)";
+
+  headingEl = document.createElement("div");
+  headingEl.innerHTML =
+    '<svg width="30" height="30" viewBox="0 0 28 28">' +
+    '<polygon points="14,3 22,23 14,19 6,23" ' +
+    'fill="#ef4444" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/>' +
+    "</svg>";
+  headingEl.style.cssText =
+    "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(0deg);" +
+    "transform-origin:50% 50%;will-change:transform";
+
+  overlay.append(border, labelEl, headingEl);
+  host.appendChild(overlay);
+  return overlay;
+}
+
+function placeOverlay() {
+  if (!overlay) return;
+  overlay.style.width = MINIMAP_SIZE_PX + "px";
+  overlay.style.height = MINIMAP_SIZE_PX + "px";
+  overlay.style.right = MINIMAP_MARGIN_PX + "px";
+  overlay.style.top = MINIMAP_MARGIN_PX + "px";
+}
+
+function isWalkOn(): boolean {
+  const wm: any = (ctx.features as any).walkMode;
+  if (!wm) return false;
+  if (typeof wm.isEnabled === "function") { try { return !!wm.isEnabled(); } catch { /* */ } }
+  if (typeof wm.isActive  === "function") { try { return !!wm.isActive(); }  catch { /* */ } }
+  if (typeof wm.getActive === "function") { try { return !!wm.getActive(); } catch { /* */ } }
+  return false;
+}
+
+function updateVisibility() {
+  const on = isWalkOn();
+  if (on === enabled) {
+    if (enabled) updateHeading();
+    return;
+  }
+  enabled = on;
+  if (enabled) {
+    ensureOverlay();
+    placeOverlay();
+    if (overlay) overlay.style.display = "block";
+    updateTopCam();
+  } else if (overlay) {
+    overlay.style.display = "none";
+  }
+}
+
+function updateTopCam() {
+  let box: THREE.Box3 | null = null;
+  try {
+    const b: any = (ctx.scene as any)?.box;
+    if (b instanceof THREE.Box3 && !b.isEmpty()) box = b;
+  } catch { /* */ }
+
+  if (!box) {
+    topCam.left = -10; topCam.right = 10;
+    topCam.top = 10; topCam.bottom = -10;
+    topCam.position.set(0, 100, 0);
+    topCam.up.set(0, 0, -1);
+    topCam.lookAt(0, 0, 0);
+    topCam.updateProjectionMatrix();
+    return;
+  }
+
+  const center = box.getCenter(new THREE.Vector3());
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const radius = Math.max(sphere.radius, 1) * 1.15;
+
+  topCam.up.set(0, 0, -1);
+  topCam.position.set(center.x, center.y + radius * 30, center.z);
+  topCam.lookAt(center.x, center.y, center.z);
+
+  topCam.left = -radius;
+  topCam.right = radius;
+  topCam.top = radius;
+  topCam.bottom = -radius;
+  topCam.near = 0.1;
+  topCam.far = radius * 200 + 5000;
+  topCam.updateProjectionMatrix();
+}
+
+function updateHeading() {
+  if (!headingEl) return;
+  try {
+    const cam = ctx.world.camera.three;
+    const dir = new THREE.Vector3();
+    cam.getWorldDirection(dir);
+    const angleRad = Math.atan2(dir.x, -dir.z);
+    const deg = (angleRad * 180) / Math.PI;
+    headingEl.style.transform = "translate(-50%,-50%) rotate(" + deg + "deg)";
+  } catch { /* */ }
+}
+
+function drawMinimap(renderer: THREE.WebGLRenderer, scene: THREE.Scene, origRender: (s: THREE.Scene, c: THREE.Camera) => void) {
+  if (!enabled) return;
+  updateTopCam();
+
+  const canvas = renderer.domElement as HTMLCanvasElement;
+  const dpr = renderer.getPixelRatio();
+  const w = canvas.width;
+  const h = canvas.height;
+  const size = Math.floor(MINIMAP_SIZE_PX * dpr);
+  const margin = Math.floor(MINIMAP_MARGIN_PX * dpr);
+
+  // WebGL viewport is y-up from bottom-left.
+  const x = w - size - margin;
+  const y = h - size - margin;
+
+  const prevViewport = renderer.getViewport(new THREE.Vector4());
+  const prevScissor = renderer.getScissor(new THREE.Vector4());
+  const prevScissorTest = renderer.getScissorTest();
+  const prevAutoClear = renderer.autoClear;
+  const prevClearColor = new THREE.Color();
+  renderer.getClearColor(prevClearColor);
+  const prevClearAlpha = renderer.getClearAlpha();
+
+  try {
+    renderer.setScissorTest(true);
+    renderer.setViewport(x, y, size, size);
+    renderer.setScissor(x, y, size, size);
+    renderer.setClearColor(0x0f1117, 1);
+    renderer.autoClear = true;
+    origRender(scene, topCam);
+  } catch (e) {
+    console.warn("[walk-minimap] draw failed", e);
+  } finally {
+    try {
+      renderer.setScissorTest(prevScissorTest);
+      renderer.setViewport(prevViewport);
+      renderer.setScissor(prevScissor);
+      renderer.setClearColor(prevClearColor, prevClearAlpha);
+      renderer.autoClear = prevAutoClear;
+    } catch { /* */ }
+  }
+}
+
+export function setupWalkMinimap(): void {
+  if (installed) return;
+  installed = true;
+
+  ensureOverlay();
+  placeOverlay();
+  window.addEventListener("resize", placeOverlay);
+
+  // Poll walk-mode state (cheap; every 150 ms)
+  setInterval(updateVisibility, 150);
+
+  // Poll for the renderer to appear, then hook it
+  let hooked = false;
+  const tryHook = () => {
+    if (hooked) return;
+    try {
+      const renderer = ctx.world.renderer.three as THREE.WebGLRenderer & { render: Function };
+      if (!renderer || typeof renderer.render !== "function") return;
+      const orig = renderer.render.bind(renderer);
+      renderer.render = function (scene: THREE.Scene, camera: THREE.Camera) {
+        const out = orig(scene, camera);
+        try { drawMinimap(renderer, scene, orig); } catch { /* */ }
+        return out;
+      };
+      hooked = true;
+      console.log("[walk-minimap] renderer hooked");
+    } catch (e) {
+      console.warn("[walk-minimap] hook failed", e);
+    }
+  };
+  tryHook();
+  if (!hooked) {
+    const iv = setInterval(() => { tryHook(); if (hooked) clearInterval(iv); }, 200);
+    setTimeout(() => clearInterval(iv), 30000);
+  }
+
+  (window as any).__obsWalkMinimap = {
+    show: () => { enabled = true; if (overlay) overlay.style.display = "block"; },
+    hide: () => { enabled = false; if (overlay) overlay.style.display = "none"; },
+    isEnabled: () => enabled,
+  };
+
+  console.log("[walk-minimap] ready");
+}

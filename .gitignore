@@ -1,0 +1,34 @@
+﻿# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Vite / env
+.env
+.env.*
+!.env.example
+
+# Logs & OS junk
+*.log
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Large BIM samples (uncomment if you have them)
+# samples/
+# *.ifc
+# *.ifcZIP
+
+# Old chunked text (keep out of the source tree)
+Project_Part_*.txt

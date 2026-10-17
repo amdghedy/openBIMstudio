@@ -1,0 +1,63 @@
+{
+  "name": "open-bim-studio",
+  "private": true,
+  "version": "0.54.0",
+  "type": "module",
+  "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build --target esnext",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "verify:v50": "node scripts/verify-v50.mjs",
+    "verify:v52": "node scripts/verify-v52.mjs",
+    "verify:v54": "node scripts/verify-v54.mjs",
+    "test:native-bim": "node tests/native-bim-validation.test.mjs",
+    "server": "node server/index.mjs",
+    "verify": "node scripts/verify-input-focus.mjs"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@mlightcad/libredwg-web": "^0.8.0",
+    "@mui/lab": "^5.0.0-alpha.165",
+    "@mui/material": "^5.15.12",
+    "@react-three/drei": "^9.106.0",
+    "@react-three/fiber": "^8.16.6",
+    "@reduxjs/toolkit": "^2.2.7",
+    "@thatopen/components": "^3.4.8",
+    "@thatopen/components-front": "^3.4.3",
+    "@thatopen/fragments": "^3.4.7",
+    "@thatopen/ui": "^3.4.0",
+    "@thatopen/ui-obc": "^3.4.2",
+    "@tldraw/editor": "^5.5.2",
+    "axios": "^1.7.4",
+    "file-saver": "^2.0.5",
+    "json-rules-engine": "^5.2.1",
+    "jszip": "^3.10.2",
+    "monaco-editor": "^0.49.0",
+    "nasjidwg": "^0.18.0",
+    "papaparse": "^5.4.1",
+    "pdf-lib": "^1.17.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-redux": "^9.1.2",
+    "three": "^0.182.0",
+    "three-csg-ts": "^3.2.0",
+    "three-mesh-bvh": "^0.7.7",
+    "web-ifc": "0.0.77",
+    "y-websocket": "^2.0.1",
+    "yjs": "^13.6.14"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.182.0",
+    "@vitejs/plugin-react": "^5.0.5",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.21"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}

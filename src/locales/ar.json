@@ -1,0 +1,109 @@
+{
+  "meta": { "name": "Arabic", "nativeName": "العربية", "dir": "rtl" },
+  "app": {
+    "name": "أوبن بي آي إم ستوديو",
+    "loading": "جارٍ التحميل…",
+    "ready": "جاهز",
+    "cancel": "إلغاء",
+    "close": "إغلاق",
+    "save": "حفظ",
+    "delete": "حذف",
+    "confirm": "تأكيد",
+    "yes": "نعم",
+    "no": "لا",
+    "ok": "موافق",
+    "search": "بحث",
+    "clear": "مسح",
+    "apply": "تطبيق",
+    "reset": "إعادة تعيين",
+    "loadingModel": "جارٍ تحميل النموذج…",
+    "noSelection": "لا يوجد تحديد"
+  },
+  "clash": {
+    "title": "كاشف التعارضات",
+    "status": {
+      "selectModels": "اختر النماذج في A و B ثم ابدأ الاختبار.",
+      "running": "جارٍ التشغيل {test} · {method}…",
+      "found": {
+        "zero": "لم يتم العثور على تعارضات.",
+        "one": "تم العثور على تعارض واحد.",
+        "two": "تم العثور على تعارضين.",
+        "few": "تم العثور على {count} تعارضات.",
+        "many": "تم العثور على {count} تعارضاً.",
+        "other": "تم العثور على {count} تعارض."
+      },
+      "none": "لم يتم العثور على تعارضات.",
+      "cancelled": "تم إلغاء الاختبار.",
+      "failed": "فشل: {message}",
+      "cleared": "تم المسح.",
+      "nothingToClear": "لا يوجد شيء لمسحه."
+    },
+    "scope": {
+      "all": "جميع عناصر النموذج",
+      "viewport": "التحديد في نافذة العرض فقط",
+      "aOnly": "التحديد A فقط",
+      "bOnly": "التحديد B فقط",
+      "both": "التحديد A × B فقط (موصى به)"
+    },
+    "kinds": {
+      "intersect": "تقاطع",
+      "touching": "تلامس",
+      "clearance": "خلوص",
+      "duplicate": "مكرر"
+    },
+    "statuses": {
+      "new": "جديد",
+      "active": "نشط",
+      "reviewed": "تمت المراجعة",
+      "approved": "تمت الموافقة",
+      "resolved": "تم الحل"
+    },
+    "actions": {
+      "run": "بدء الاختبار",
+      "cancel": "إلغاء",
+      "clear": "مسح النتائج",
+      "isolate": "عزل",
+      "focus": "تركيز",
+      "showAll": "عرض الكل",
+      "next": "التالي",
+      "previous": "السابق"
+    }
+  },
+  "authoring": {
+    "toolActive": "الأداة النشطة: {tool}",
+    "noTool": "الأداة النشطة: لا شيء",
+    "created": "تم وضع {type}",
+    "createdWithFittings": "تم وضع {type} (+ وصلات)",
+    "cancelled": "تم الإلغاء — تحديد",
+    "repeat": "تكرار: {cmd}",
+    "noPreviousCommand": "لا يوجد أمر سابق للتكرار — اختر أداة أولاً",
+    "nativeTwinCreated": "تم إنشاء نسخة أصلية قابلة للتحرير: {name}",
+    "nativeTwinFailed": "تعذر إنشاء النسخة الأصلية لـ {modelId} / {localId}."
+  },
+  "camera": {
+    "homeSaved": "تم حفظ العرض الرئيسي",
+    "homeRestored": "تم استعادة العرض الرئيسي",
+    "screenshotSaved": "تم حفظ لقطة الشاشة",
+    "screenshotFailed": "فشل حفظ لقطة الشاشة: {message}"
+  },
+  "cost": {
+    "title": "التكلفة 5D",
+    "tabs": {
+      "takeoff": "حصر الكميات",
+      "items": "بنود التكلفة",
+      "summary": "الملخص"
+    },
+    "totals": {
+      "grand": "إجمالي تكلفة المشروع",
+      "assigned": "{assigned} من {total} صفوف معيّنة · {items} بند تكلفة"
+    }
+  },
+  "options": {
+    "title": "الخيارات",
+    "language": "اللغة والمنطقة",
+    "nav": "التنقل",
+    "diagnostics": "التشخيص",
+    "units": "الوحدات",
+    "currency": "العملة"
+  }
+}

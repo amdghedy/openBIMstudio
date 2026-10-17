@@ -1,0 +1,39 @@
+name: Native BIM validation
+
+on:
+  pull_request:
+    paths:
+      - "src/modules/native-bim/**"
+      - "src/features/sheets-2d-panel.ts"
+      - "src/features/authoring.ts"
+      - "tests/native-bim-validation.test.mjs"
+      - "docs/NATIVE_BIM_VALIDATION.md"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/native-bim-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/modules/native-bim/**"
+      - "src/features/authoring.ts"
+      - "tests/native-bim-validation.test.mjs"
+      - "docs/NATIVE_BIM_VALIDATION.md"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/native-bim-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: node tests/native-bim-validation.test.mjs
+      - run: npm run verify:v54

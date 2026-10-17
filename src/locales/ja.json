@@ -1,0 +1,102 @@
+{
+  "meta": { "name": "Japanese", "nativeName": "日本語", "dir": "ltr" },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "読み込み中…",
+    "ready": "準備完了",
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "save": "保存",
+    "delete": "削除",
+    "confirm": "確認",
+    "yes": "はい",
+    "no": "いいえ",
+    "ok": "OK",
+    "search": "検索",
+    "clear": "クリア",
+    "apply": "適用",
+    "reset": "リセット",
+    "loadingModel": "モデルを読み込み中…",
+    "noSelection": "選択なし"
+  },
+  "clash": {
+    "title": "干渉チェック",
+    "status": {
+      "selectModels": "AとBでモデルを選択し、テストを実行してください。",
+      "running": "実行中 {test} · {method}…",
+      "found": { "one": "1件の干渉を検出しました。", "other": "{count}件の干渉を検出しました。" },
+      "none": "干渉は検出されませんでした。",
+      "cancelled": "テストがキャンセルされました。",
+      "failed": "失敗: {message}",
+      "cleared": "クリアしました。",
+      "nothingToClear": "クリアする項目がありません。"
+    },
+    "scope": {
+      "all": "モデル要素全体",
+      "viewport": "ビューポートの選択のみ",
+      "aOnly": "選択Aのみ",
+      "bOnly": "選択Bのみ",
+      "both": "選択A × Bのみ（推奨）"
+    },
+    "kinds": {
+      "intersect": "交差",
+      "touching": "接触",
+      "clearance": "クリアランス",
+      "duplicate": "重複"
+    },
+    "statuses": {
+      "new": "新規",
+      "active": "対応中",
+      "reviewed": "確認済み",
+      "approved": "承認済み",
+      "resolved": "解決済み"
+    },
+    "actions": {
+      "run": "テスト実行",
+      "cancel": "キャンセル",
+      "clear": "結果をクリア",
+      "isolate": "アイソレート",
+      "focus": "フォーカス",
+      "showAll": "すべて表示",
+      "next": "次へ",
+      "previous": "前へ"
+    }
+  },
+  "authoring": {
+    "toolActive": "アクティブツール: {tool}",
+    "noTool": "アクティブツール: なし",
+    "created": "{type}を配置しました",
+    "createdWithFittings": "{type}を配置しました（+継手）",
+    "cancelled": "キャンセル — 選択",
+    "repeat": "繰り返し: {cmd}",
+    "noPreviousCommand": "繰り返すコマンドがありません — 先にツールを選択してください",
+    "nativeTwinCreated": "編集可能なネイティブツインを作成しました: {name}",
+    "nativeTwinFailed": "{modelId} / {localId} のネイティブツインを作成できませんでした。"
+  },
+  "camera": {
+    "homeSaved": "ホームビューを保存しました",
+    "homeRestored": "ホームビューを復元しました",
+    "screenshotSaved": "スクリーンショットを保存しました",
+    "screenshotFailed": "スクリーンショットが失敗しました: {message}"
+  },
+  "cost": {
+    "title": "5Dコスト",
+    "tabs": {
+      "takeoff": "数量拾い",
+      "items": "コスト項目",
+      "summary": "集計"
+    },
+    "totals": {
+      "grand": "プロジェクト総コスト",
+      "assigned": "{total}行中{assigned}行を割り当て · {items}コスト項目"
+    }
+  },
+  "options": {
+    "title": "オプション",
+    "language": "言語と地域",
+    "nav": "ナビゲーション",
+    "diagnostics": "診断",
+    "units": "単位",
+    "currency": "通貨"
+  }
+}

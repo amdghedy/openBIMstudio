@@ -1,0 +1,334 @@
+/**
+ * Walk-mode minimap v3.
+ *
+ * - Fixed pixel size: 151 x 227 px (= 4cm x 6cm at 96 DPI).
+ *   Sizing is applied via style.setProperty(..,"important") so nothing
+ *   can override it.
+ * - Orthographic top-down camera. The view is computed to ALWAYS contain
+ *   both the scene bounds and the walker position, so the arrow is never
+ *   clamped to the border.
+ * - Red arrow at the walker's (x,z), rotated by camera heading.
+ * - Semi-transparent FOV cone shows view direction.
+ */
+import * as THREE from "three";
+import { ctx } from "../core/context";
+
+let installed = false;
+let enabled = false;
+
+// 4cm x 6cm at 96 DPI -> 151 x 227 px.
+// If your browser uses a different DPI, change these two numbers.
+const BOX_W_PX = 151;
+const BOX_H_PX = 227;
+const BOX_MARGIN_PX = 12;
+
+const topCam = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 500000);
+topCam.up.set(0, 0, -1);
+topCam.position.set(0, 500, 0);
+topCam.lookAt(0, 0, 0);
+
+const sceneCenter = new THREE.Vector3();
+let sceneRadius2D = 10;      // half-extent in XZ, meters
+
+let overlay: HTMLDivElement | null = null;
+let headingSvg: SVGSVGElement | null = null;
+let posGroup: SVGGElement | null = null;
+let labelEl: HTMLDivElement | null = null;
+
+function ensureOverlay(): HTMLDivElement | null {
+  if (overlay) return overlay;
+  const host = ctx.rightHost as HTMLElement | undefined;
+  if (!host) return null;
+
+  overlay = document.createElement("div");
+  overlay.id = "obs-walk-minimap";
+
+  // Force-set inline sizing with !important so nothing else can override.
+  const set = (k: string, v: string) => overlay!.style.setProperty(k, v, "important");
+  set("position", "absolute");
+  set("display", "none");
+  set("pointer-events", "none");
+  set("z-index", "9999");
+  set("width",  BOX_W_PX + "px");
+  set("height", BOX_H_PX + "px");
+  set("min-width",  BOX_W_PX + "px");
+  set("max-width",  BOX_W_PX + "px");
+  set("min-height", BOX_H_PX + "px");
+  set("max-height", BOX_H_PX + "px");
+  set("right", BOX_MARGIN_PX + "px");
+  set("top",   BOX_MARGIN_PX + "px");
+  set("border", "2px solid #38bdf8");
+  set("border-radius", "4px");
+  set("box-shadow", "0 8px 24px rgba(0,0,0,.6)");
+  set("overflow", "hidden");
+  set("background", "#0a0d14");
+  set("box-sizing", "border-box");
+
+  labelEl = document.createElement("div");
+  labelEl.textContent = "WALK \u00b7 PLAN";
+  labelEl.style.cssText =
+    "position:absolute;top:3px;left:5px;z-index:3;" +
+    "font:700 9px system-ui,sans-serif;letter-spacing:.08em;" +
+    "color:#38bdf8;text-shadow:0 1px 2px rgba(0,0,0,.9)";
+  overlay.appendChild(labelEl);
+
+  const NS = "http://www.w3.org/2000/svg";
+  headingSvg = document.createElementNS(NS, "svg") as SVGSVGElement;
+  headingSvg.setAttribute("viewBox", "0 0 100 100");
+  headingSvg.setAttribute("preserveAspectRatio", "none");
+  headingSvg.style.cssText =
+    "position:absolute;inset:0;width:100%;height:100%;z-index:2";
+
+  const cone = document.createElementNS(NS, "polygon") as SVGPolygonElement;
+  cone.setAttribute("points", "0,0 -20,-60 20,-60");
+  cone.setAttribute("fill", "rgba(239,68,68,0.20)");
+  cone.setAttribute("stroke", "none");
+
+  const ring = document.createElementNS(NS, "circle") as SVGCircleElement;
+  ring.setAttribute("cx", "0");
+  ring.setAttribute("cy", "0");
+  ring.setAttribute("r", "4");
+  ring.setAttribute("fill", "rgba(239,68,68,0.20)");
+  ring.setAttribute("stroke", "rgba(239,68,68,0.9)");
+  ring.setAttribute("stroke-width", "0.5");
+
+  const arrow = document.createElementNS(NS, "polygon") as SVGPolygonElement;
+  arrow.setAttribute("points", "0,-5 3,3.5 0,2 -3,3.5");
+  arrow.setAttribute("fill", "#ef4444");
+  arrow.setAttribute("stroke", "#ffffff");
+  arrow.setAttribute("stroke-width", "0.7");
+  arrow.setAttribute("stroke-linejoin", "round");
+
+  posGroup = document.createElementNS(NS, "g") as SVGGElement;
+  posGroup.appendChild(cone);
+  posGroup.appendChild(ring);
+  posGroup.appendChild(arrow);
+  headingSvg.appendChild(posGroup);
+  overlay.appendChild(headingSvg);
+
+  host.appendChild(overlay);
+
+  // Debug log — confirm size is exactly what we asked for.
+  requestAnimationFrame(() => {
+    const r = overlay!.getBoundingClientRect();
+    console.log(
+      "[walk-minimap] overlay size: " +
+        r.width.toFixed(1) + " x " + r.height.toFixed(1) + " px " +
+        "(requested " + BOX_W_PX + " x " + BOX_H_PX + ")",
+    );
+  });
+
+  return overlay;
+}
+
+function isWalkOn(): boolean {
+  const wm: any = (ctx.features as any).walkMode;
+  if (!wm) return false;
+  for (const m of ["isEnabled", "isActive", "getActive", "isOn"]) {
+    try { if (typeof wm[m] === "function" && wm[m]()) return true; } catch { /* */ }
+  }
+  return false;
+}
+
+function captureSceneBounds() {
+  let box: THREE.Box3 | null = null;
+  try {
+    const b: any = (ctx.scene as any)?.box;
+    if (b instanceof THREE.Box3 && !b.isEmpty()) box = b;
+  } catch { /* */ }
+  if (!box) {
+    sceneCenter.set(0, 0, 0);
+    sceneRadius2D = 10;
+    return;
+  }
+  box.getCenter(sceneCenter);
+  const size = box.getSize(new THREE.Vector3());
+  sceneRadius2D = Math.max(size.x, size.z) * 0.55;
+  if (!Number.isFinite(sceneRadius2D) || sceneRadius2D < 1) sceneRadius2D = 10;
+}
+
+/**
+ * Compute ortho frustum that contains:
+ *   - the scene (radius = sceneRadius2D, center = sceneCenter)
+ *   - the walker position
+ * so the arrow never clamps to the border.
+ */
+function updateTopCam(walkerX: number, walkerZ: number) {
+  // Center = midpoint between scene center and walker (weighted to scene)
+  const midX = (sceneCenter.x * 2 + walkerX) / 3;
+  const midZ = (sceneCenter.z * 2 + walkerZ) / 3;
+
+  // Radius = max distance from midpoint to scene edge or walker
+  const dScene = Math.hypot(midX - sceneCenter.x, midZ - sceneCenter.z) + sceneRadius2D;
+  const dWalker = Math.hypot(midX - walkerX, midZ - walkerZ);
+  let R = Math.max(dScene, dWalker) * 1.15;
+  if (!Number.isFinite(R) || R < 1) R = 10;
+
+  // Fit into portrait box (aspect = W/H < 1)
+  const aspect = BOX_W_PX / BOX_H_PX; // 0.665
+  const halfW = R * aspect;
+  const halfH = R;
+
+  topCam.left = -halfW;
+  topCam.right = halfW;
+  topCam.top = halfH;
+  topCam.bottom = -halfH;
+  topCam.near = 0.1;
+  topCam.far = R * 400 + 5000;
+  topCam.position.set(midX, sceneCenter.y + R * 30, midZ);
+  topCam.up.set(0, 0, -1);
+  topCam.lookAt(midX, sceneCenter.y, midZ);
+  topCam.updateProjectionMatrix();
+
+  return { R, midX, midZ, aspect };
+}
+
+function updateArrow(cam: THREE.Camera, box: { R: number; midX: number; midZ: number; aspect: number }) {
+  if (!posGroup) return;
+
+  const wp = (cam as any).position;
+  const halfW = box.R * box.aspect;
+  const halfH = box.R;
+
+  let u = (wp.x - box.midX) / (2 * halfW) + 0.5;
+  let v = (wp.z - box.midZ) / (2 * halfH) + 0.5;
+  u = Math.max(0.05, Math.min(0.95, u));
+  v = Math.max(0.05, Math.min(0.95, v));
+
+  const px = u * 100;
+  const py = v * 100;
+
+  const dir = new THREE.Vector3();
+  cam.getWorldDirection(dir);
+  const headingDeg = (Math.atan2(dir.x, -dir.z) * 180) / Math.PI;
+
+  // viewBox is stretched 100x100 -> 151x227 box, so yScale = 227/151 = 1.5.
+  // Compensate the arrow so it looks square on screen.
+  const yStretch = BOX_H_PX / BOX_W_PX; // 1.503
+  const inner = "translate(" + px + "," + py + ") " +
+                "scale(1," + yStretch.toFixed(3) + ") " +
+                "rotate(" + headingDeg.toFixed(2) + ") " +
+                "scale(1," + (1 / yStretch).toFixed(3) + ")";
+  posGroup.setAttribute("transform", inner);
+}
+
+function updateVisibility() {
+  const on = isWalkOn();
+  if (on !== enabled) {
+    enabled = on;
+    if (enabled) {
+      ensureOverlay();
+      captureSceneBounds();
+      if (overlay) overlay.style.display = "block";
+    } else if (overlay) {
+      overlay.style.display = "none";
+    }
+  }
+}
+
+function drawMinimap(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  origRender: (s: THREE.Scene, c: THREE.Camera) => void,
+) {
+  if (!enabled || !overlay) return;
+
+  const rect = overlay.getBoundingClientRect();
+  if (rect.width < 4 || rect.height < 4) return;
+
+  const dpr = renderer.getPixelRatio();
+  const bw = Math.round(rect.width  * dpr);
+  const bh = Math.round(rect.height * dpr);
+
+  const canvas = renderer.domElement as HTMLCanvasElement;
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  const host = ctx.rightHost as HTMLElement;
+  const hostRect = host.getBoundingClientRect();
+  const relX = rect.left - hostRect.left;
+  const relY = rect.top - hostRect.top;
+  const glX = Math.round(relX * dpr);
+  // Flip Y: WebGL viewport origin is bottom-left
+  const glY = Math.round((hostRect.height - (relY + rect.height)) * dpr);
+
+  const mainCam = ctx.world.camera.three;
+  const walkerX = mainCam.position.x;
+  const walkerZ = mainCam.position.z;
+
+  const box = updateTopCam(walkerX, walkerZ);
+  updateArrow(mainCam, box);
+
+  const prevViewport = renderer.getViewport(new THREE.Vector4());
+  const prevScissor = renderer.getScissor(new THREE.Vector4());
+  const prevScissorTest = renderer.getScissorTest();
+  const prevAutoClear = renderer.autoClear;
+  const prevClearColor = new THREE.Color();
+  renderer.getClearColor(prevClearColor);
+  const prevClearAlpha = renderer.getClearAlpha();
+
+  try {
+    renderer.setScissorTest(true);
+    renderer.setViewport(glX, glY, bw, bh);
+    renderer.setScissor(glX, glY, bw, bh);
+    renderer.setClearColor(0x0a0d14, 1);
+    renderer.autoClear = true;
+    origRender(scene, topCam);
+  } catch (e) {
+    console.warn("[walk-minimap] draw failed", e);
+  } finally {
+    try {
+      renderer.setScissorTest(prevScissorTest);
+      renderer.setViewport(prevViewport);
+      renderer.setScissor(prevScissor);
+      renderer.setClearColor(prevClearColor, prevClearAlpha);
+      renderer.autoClear = prevAutoClear;
+    } catch { /* */ }
+  }
+}
+
+export function setupWalkMinimap(): void {
+  if (installed) return;
+  installed = true;
+
+  ensureOverlay();
+  setInterval(updateVisibility, 100);
+
+  let hooked = false;
+  const tryHook = () => {
+    if (hooked) return;
+    try {
+      const renderer = ctx.world.renderer.three as THREE.WebGLRenderer & { render: Function };
+      if (!renderer || typeof renderer.render !== "function") return;
+      const orig = renderer.render.bind(renderer);
+      renderer.render = function (scene: THREE.Scene, camera: THREE.Camera) {
+        const out = orig(scene, camera);
+        try { drawMinimap(renderer, scene, orig); } catch { /* */ }
+        return out;
+      };
+      hooked = true;
+      console.log("[walk-minimap] renderer hooked");
+    } catch (e) {
+      console.warn("[walk-minimap] hook failed", e);
+    }
+  };
+  tryHook();
+  if (!hooked) {
+    const iv = setInterval(() => { tryHook(); if (hooked) clearInterval(iv); }, 200);
+    setTimeout(() => clearInterval(iv), 30000);
+  }
+
+  (window as any).__obsWalkMinimap = {
+    show: () => { enabled = true;  if (overlay) overlay.style.display = "block"; },
+    hide: () => { enabled = false; if (overlay) overlay.style.display = "none"; },
+    isEnabled: () => enabled,
+    refreshBounds: () => captureSceneBounds(),
+    debugSize: () => {
+      if (!overlay) return null;
+      const r = overlay.getBoundingClientRect();
+      return { w: r.width, h: r.height, top: r.top, right: r.right };
+    },
+  };
+
+  console.log("[walk-minimap] ready — box " + BOX_W_PX + "x" + BOX_H_PX + "px");
+}

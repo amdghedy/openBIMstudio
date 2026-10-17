@@ -1,0 +1,326 @@
+/**
+ * Walk-mode minimap v4 — landscape, locked to whole scene.
+ *
+ * - Fixed box: 227 x 151 px (= 6cm x 4cm at 96 DPI, landscape)
+ * - Orthographic top-down camera locked on the FULL scene. Never zooms
+ *   in on the walker; the model stays put.
+ * - Red arrow moves + rotates inside the box to show the walker position
+ *   and heading.
+ */
+import * as THREE from "three";
+import { ctx } from "../core/context";
+
+let installed = false;
+let enabled = false;
+
+// 6cm x 4cm landscape at 96 DPI.
+const BOX_W_PX = 227;
+const BOX_H_PX = 151;
+const BOX_MARGIN_PX = 12;
+
+const topCam = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 500000);
+topCam.up.set(0, 0, -1);
+topCam.position.set(0, 500, 0);
+topCam.lookAt(0, 0, 0);
+
+const sceneCenter = new THREE.Vector3();
+let sceneHalfX = 10;
+let sceneHalfZ = 10;
+
+let overlay: HTMLDivElement | null = null;
+let headingSvg: SVGSVGElement | null = null;
+let posGroup: SVGGElement | null = null;
+let labelEl: HTMLDivElement | null = null;
+
+function ensureOverlay(): HTMLDivElement | null {
+  if (overlay) return overlay;
+  const host = ctx.rightHost as HTMLElement | undefined;
+  if (!host) return null;
+
+  overlay = document.createElement("div");
+  overlay.id = "obs-walk-minimap";
+
+  const set = (k: string, v: string) => overlay!.style.setProperty(k, v, "important");
+  set("position", "absolute");
+  set("display", "none");
+  set("pointer-events", "none");
+  set("z-index", "9999");
+  set("width",  BOX_W_PX + "px");
+  set("height", BOX_H_PX + "px");
+  set("min-width",  BOX_W_PX + "px");
+  set("max-width",  BOX_W_PX + "px");
+  set("min-height", BOX_H_PX + "px");
+  set("max-height", BOX_H_PX + "px");
+  set("right", BOX_MARGIN_PX + "px");
+  set("top",   BOX_MARGIN_PX + "px");
+  set("border", "2px solid #38bdf8");
+  set("border-radius", "4px");
+  set("box-shadow", "0 8px 24px rgba(0,0,0,.6)");
+  set("overflow", "hidden");
+  set("background", "#0a0d14");
+  set("box-sizing", "border-box");
+
+  labelEl = document.createElement("div");
+  labelEl.textContent = "WALK \u00b7 PLAN";
+  labelEl.style.cssText =
+    "position:absolute;top:3px;left:5px;z-index:3;" +
+    "font:700 9px system-ui,sans-serif;letter-spacing:.08em;" +
+    "color:#38bdf8;text-shadow:0 1px 2px rgba(0,0,0,.9)";
+  overlay.appendChild(labelEl);
+
+  const NS = "http://www.w3.org/2000/svg";
+  headingSvg = document.createElementNS(NS, "svg") as SVGSVGElement;
+  // Match box aspect so positioning math is simple: viewBox = 227 x 151
+  headingSvg.setAttribute("viewBox", "0 0 " + BOX_W_PX + " " + BOX_H_PX);
+  headingSvg.setAttribute("preserveAspectRatio", "none");
+  headingSvg.style.cssText =
+    "position:absolute;inset:0;width:100%;height:100%;z-index:2";
+
+  const cone = document.createElementNS(NS, "polygon") as SVGPolygonElement;
+  cone.setAttribute("points", "0,0 -25,-70 25,-70");
+  cone.setAttribute("fill", "rgba(239,68,68,0.20)");
+  cone.setAttribute("stroke", "none");
+
+  const ring = document.createElementNS(NS, "circle") as SVGCircleElement;
+  ring.setAttribute("cx", "0");
+  ring.setAttribute("cy", "0");
+  ring.setAttribute("r", "5");
+  ring.setAttribute("fill", "rgba(239,68,68,0.20)");
+  ring.setAttribute("stroke", "rgba(239,68,68,0.9)");
+  ring.setAttribute("stroke-width", "0.8");
+
+  const arrow = document.createElementNS(NS, "polygon") as SVGPolygonElement;
+  arrow.setAttribute("points", "0,-7 4,4 0,2 -4,4");
+  arrow.setAttribute("fill", "#ef4444");
+  arrow.setAttribute("stroke", "#ffffff");
+  arrow.setAttribute("stroke-width", "0.9");
+  arrow.setAttribute("stroke-linejoin", "round");
+
+  posGroup = document.createElementNS(NS, "g") as SVGGElement;
+  posGroup.appendChild(cone);
+  posGroup.appendChild(ring);
+  posGroup.appendChild(arrow);
+  headingSvg.appendChild(posGroup);
+  overlay.appendChild(headingSvg);
+
+  host.appendChild(overlay);
+
+  requestAnimationFrame(() => {
+    const r = overlay!.getBoundingClientRect();
+    console.log(
+      "[walk-minimap] overlay size: " +
+        r.width.toFixed(1) + " x " + r.height.toFixed(1) + " px " +
+        "(requested " + BOX_W_PX + " x " + BOX_H_PX + ")",
+    );
+  });
+
+  return overlay;
+}
+
+function isWalkOn(): boolean {
+  const wm: any = (ctx.features as any).walkMode;
+  if (!wm) return false;
+  for (const m of ["isEnabled", "isActive", "getActive", "isOn"]) {
+    try { if (typeof wm[m] === "function" && wm[m]()) return true; } catch { /* */ }
+  }
+  return false;
+}
+
+function captureSceneBounds() {
+  let box: THREE.Box3 | null = null;
+  try {
+    const b: any = (ctx.scene as any)?.box;
+    if (b instanceof THREE.Box3 && !b.isEmpty()) box = b;
+  } catch { /* */ }
+  if (!box) {
+    sceneCenter.set(0, 0, 0);
+    sceneHalfX = 10;
+    sceneHalfZ = 10;
+    return;
+  }
+  box.getCenter(sceneCenter);
+  const size = box.getSize(new THREE.Vector3());
+  // half-extents in world XZ, padded slightly so model edges don't touch
+  sceneHalfX = Math.max(size.x * 0.55, 1);
+  sceneHalfZ = Math.max(size.z * 0.55, 1);
+}
+
+/**
+ * Locked ortho camera: fits the WHOLE scene into the landscape box.
+ * Never follows the walker. Only called when bounds change.
+ */
+function updateTopCamLocked() {
+  const aspect = BOX_W_PX / BOX_H_PX; // > 1 for landscape
+
+  // Fit both dimensions. World X maps to box width; world Z maps to
+  // box height (after the up = -Z orientation below).
+  // Need: (2 * halfW) >= (2 * sceneHalfX) AND (2 * halfH) >= (2 * sceneHalfZ).
+  // Where halfW = R * aspect, halfH = R.
+  // So R >= sceneHalfZ and R * aspect >= sceneHalfX => R >= sceneHalfX / aspect.
+  const R = Math.max(sceneHalfZ, sceneHalfX / aspect) * 1.08;
+
+  topCam.left = -R * aspect;
+  topCam.right = R * aspect;
+  topCam.top = R;
+  topCam.bottom = -R;
+  topCam.near = 0.1;
+  topCam.far = R * 400 + 5000;
+  topCam.position.set(sceneCenter.x, sceneCenter.y + R * 30, sceneCenter.z);
+  topCam.up.set(0, 0, -1);
+  topCam.lookAt(sceneCenter.x, sceneCenter.y, sceneCenter.z);
+  topCam.updateProjectionMatrix();
+}
+
+function updateArrow(cam: THREE.Camera) {
+  if (!posGroup) return;
+
+  const wp = (cam as any).position;
+
+  // World (x,z) -> box UV. World X → box U (left-to-right).
+  // With topCam.up = (0,0,-1) and lookAt down -Y, world +Z maps to
+  // screen UP, i.e. decreasing V in SVG (0=top). So:
+  //   u = (x - cx) / (2 * halfW) + 0.5
+  //   v = 0.5 - (z - cz) / (2 * halfH)
+  const aspect = BOX_W_PX / BOX_H_PX;
+  const R = Math.max(sceneHalfZ, sceneHalfX / aspect) * 1.08;
+  const halfW = R * aspect;
+  const halfH = R;
+
+  let u = (wp.x - sceneCenter.x) / (2 * halfW) + 0.5;
+  let v = 0.5 - (wp.z - sceneCenter.z) / (2 * halfH);
+
+  // Clamp so the arrow never disappears behind the border
+  u = Math.max(0.04, Math.min(0.96, u));
+  v = Math.max(0.04, Math.min(0.96, v));
+
+  const px = u * BOX_W_PX;
+  const py = v * BOX_H_PX;
+
+  // Heading: with up = -Z, angle 0 points "up" on the box (= world -Z).
+  const dir = new THREE.Vector3();
+  cam.getWorldDirection(dir);
+  const headingDeg = (Math.atan2(dir.x, -dir.z) * 180) / Math.PI;
+
+  posGroup.setAttribute(
+    "transform",
+    "translate(" + px.toFixed(2) + "," + py.toFixed(2) + ") " +
+    "rotate(" + headingDeg.toFixed(2) + ")",
+  );
+}
+
+function updateVisibility() {
+  const on = isWalkOn();
+  if (on !== enabled) {
+    enabled = on;
+    if (enabled) {
+      ensureOverlay();
+      captureSceneBounds();
+      updateTopCamLocked();
+      if (overlay) overlay.style.display = "block";
+    } else if (overlay) {
+      overlay.style.display = "none";
+    }
+  }
+}
+
+function drawMinimap(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  origRender: (s: THREE.Scene, c: THREE.Camera) => void,
+) {
+  if (!enabled || !overlay) return;
+
+  const rect = overlay.getBoundingClientRect();
+  if (rect.width < 4 || rect.height < 4) return;
+
+  const dpr = renderer.getPixelRatio();
+  const bw = Math.round(rect.width  * dpr);
+  const bh = Math.round(rect.height * dpr);
+
+  const host = ctx.rightHost as HTMLElement;
+  const hostRect = host.getBoundingClientRect();
+  const relX = rect.left - hostRect.left;
+  const relY = rect.top - hostRect.top;
+  const glX = Math.round(relX * dpr);
+  const glY = Math.round((hostRect.height - (relY + rect.height)) * dpr);
+
+  // Re-capture bounds occasionally (models may load after walk starts)
+  captureSceneBounds();
+  updateTopCamLocked();
+
+  const mainCam = ctx.world.camera.three;
+  updateArrow(mainCam);
+
+  const prevViewport = renderer.getViewport(new THREE.Vector4());
+  const prevScissor = renderer.getScissor(new THREE.Vector4());
+  const prevScissorTest = renderer.getScissorTest();
+  const prevAutoClear = renderer.autoClear;
+  const prevClearColor = new THREE.Color();
+  renderer.getClearColor(prevClearColor);
+  const prevClearAlpha = renderer.getClearAlpha();
+
+  try {
+    renderer.setScissorTest(true);
+    renderer.setViewport(glX, glY, bw, bh);
+    renderer.setScissor(glX, glY, bw, bh);
+    renderer.setClearColor(0x0a0d14, 1);
+    renderer.autoClear = true;
+    origRender(scene, topCam);
+  } catch (e) {
+    console.warn("[walk-minimap] draw failed", e);
+  } finally {
+    try {
+      renderer.setScissorTest(prevScissorTest);
+      renderer.setViewport(prevViewport);
+      renderer.setScissor(prevScissor);
+      renderer.setClearColor(prevClearColor, prevClearAlpha);
+      renderer.autoClear = prevAutoClear;
+    } catch { /* */ }
+  }
+}
+
+export function setupWalkMinimap(): void {
+  if (installed) return;
+  installed = true;
+
+  ensureOverlay();
+  setInterval(updateVisibility, 100);
+
+  let hooked = false;
+  const tryHook = () => {
+    if (hooked) return;
+    try {
+      const renderer = ctx.world.renderer.three as THREE.WebGLRenderer & { render: Function };
+      if (!renderer || typeof renderer.render !== "function") return;
+      const orig = renderer.render.bind(renderer);
+      renderer.render = function (scene: THREE.Scene, camera: THREE.Camera) {
+        const out = orig(scene, camera);
+        try { drawMinimap(renderer, scene, orig); } catch { /* */ }
+        return out;
+      };
+      hooked = true;
+      console.log("[walk-minimap] renderer hooked");
+    } catch (e) {
+      console.warn("[walk-minimap] hook failed", e);
+    }
+  };
+  tryHook();
+  if (!hooked) {
+    const iv = setInterval(() => { tryHook(); if (hooked) clearInterval(iv); }, 200);
+    setTimeout(() => clearInterval(iv), 30000);
+  }
+
+  (window as any).__obsWalkMinimap = {
+    show: () => { enabled = true;  if (overlay) overlay.style.display = "block"; },
+    hide: () => { enabled = false; if (overlay) overlay.style.display = "none"; },
+    isEnabled: () => enabled,
+    refreshBounds: () => captureSceneBounds(),
+    debugSize: () => {
+      if (!overlay) return null;
+      const r = overlay.getBoundingClientRect();
+      return { w: r.width, h: r.height, top: r.top, right: r.right };
+    },
+  };
+
+  console.log("[walk-minimap] ready — " + BOX_W_PX + "x" + BOX_H_PX + "px (landscape)");
+}

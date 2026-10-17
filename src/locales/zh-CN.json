@@ -1,0 +1,102 @@
+{
+  "meta": { "name": "Chinese (Simplified)", "nativeName": "简体中文", "dir": "ltr" },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "加载中…",
+    "ready": "就绪",
+    "cancel": "取消",
+    "close": "关闭",
+    "save": "保存",
+    "delete": "删除",
+    "confirm": "确认",
+    "yes": "是",
+    "no": "否",
+    "ok": "确定",
+    "search": "搜索",
+    "clear": "清除",
+    "apply": "应用",
+    "reset": "重置",
+    "loadingModel": "正在加载模型…",
+    "noSelection": "未选择"
+  },
+  "clash": {
+    "title": "碰撞检测",
+    "status": {
+      "selectModels": "在A和B中选择模型，然后运行测试。",
+      "running": "正在运行 {test} · {method}…",
+      "found": { "one": "发现1处碰撞。", "other": "发现{count}处碰撞。" },
+      "none": "未发现碰撞。",
+      "cancelled": "测试已取消。",
+      "failed": "失败：{message}",
+      "cleared": "已清除。",
+      "nothingToClear": "没有需要清除的内容。"
+    },
+    "scope": {
+      "all": "所有模型元素",
+      "viewport": "仅视口选择",
+      "aOnly": "仅选择A",
+      "bOnly": "仅选择B",
+      "both": "仅选择A × B（推荐）"
+    },
+    "kinds": {
+      "intersect": "相交",
+      "touching": "接触",
+      "clearance": "间隙",
+      "duplicate": "重复"
+    },
+    "statuses": {
+      "new": "新建",
+      "active": "处理中",
+      "reviewed": "已审核",
+      "approved": "已批准",
+      "resolved": "已解决"
+    },
+    "actions": {
+      "run": "运行测试",
+      "cancel": "取消",
+      "clear": "清除结果",
+      "isolate": "隔离",
+      "focus": "聚焦",
+      "showAll": "全部显示",
+      "next": "下一个",
+      "previous": "上一个"
+    }
+  },
+  "authoring": {
+    "toolActive": "当前工具：{tool}",
+    "noTool": "当前工具：无",
+    "created": "已放置{type}",
+    "createdWithFittings": "已放置{type}（+管件）",
+    "cancelled": "已取消 — 选择",
+    "repeat": "重复：{cmd}",
+    "noPreviousCommand": "没有可重复的命令 — 请先选择工具",
+    "nativeTwinCreated": "已创建可编辑的本机孪生：{name}",
+    "nativeTwinFailed": "无法为 {modelId} / {localId} 创建本机孪生。"
+  },
+  "camera": {
+    "homeSaved": "已保存主视图",
+    "homeRestored": "已恢复主视图",
+    "screenshotSaved": "截图已保存",
+    "screenshotFailed": "截图失败：{message}"
+  },
+  "cost": {
+    "title": "5D成本",
+    "tabs": {
+      "takeoff": "工程量统计",
+      "items": "成本项目",
+      "summary": "汇总"
+    },
+    "totals": {
+      "grand": "项目总成本",
+      "assigned": "{total}行中已分配{assigned}行 · {items}个成本项目"
+    }
+  },
+  "options": {
+    "title": "选项",
+    "language": "语言和地区",
+    "nav": "导航",
+    "diagnostics": "诊断",
+    "units": "单位",
+    "currency": "货币"
+  }
+}

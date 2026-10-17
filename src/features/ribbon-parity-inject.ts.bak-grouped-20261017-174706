@@ -1,0 +1,462 @@
+/**
+ * Parametric ribbon tab + parity tools.
+ * Adds a top-level "Parametric" tab to .obs-ribbon with:
+ *   Families | Constraints | Architecture generators | CAD 2D | Drawings DXF/DWG
+ * Hides bottom parity bars.
+ */
+
+type Any = Record<string, any>;
+
+let installed = false;
+let stripObserver: MutationObserver | null = null;
+let parametricActive = false;
+let savedStrip: Node[] | null = null;
+
+function hideBottomBars(): void {
+  const hide = (el: Element | null) => {
+    if (!el) return;
+    const h = el as HTMLElement;
+    h.style.display = "none";
+    h.setAttribute("data-parity-ribbon-migrated", "1");
+  };
+  hide(document.getElementById("obs-parity-tabs"));
+  hide(document.getElementById("obs-adv-toolbar"));
+  document.querySelectorAll(".obs-adv-toolbar").forEach(hide);
+  document.querySelectorAll("[id^=obs-][id$=-launch]").forEach(hide);
+}
+
+function clickAdv(id: string): void {
+  document.getElementById(id)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as Any)[c],
+  );
+}
+
+const OBS_ICONS_SVG: Record<string, string> = {
+  family:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M3 10l9-6 9 6v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 21v-6h6v6"/></svg>`,
+  door:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M4 21V5a2 2 0 012-2h12a2 2 0 012 2v16"/><path d="M4 21h16"/><circle cx="15" cy="13" r="1"/></svg>`,
+  solve:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>`,
+  host:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/><path d="M11 7h2v10h-2z"/></svg>`,
+  stair:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M3 20h4v-4h4v-4h4V8h4V4"/><path d="M3 20V4"/></svg>`,
+  railing:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M3 10h18M3 20h18M6 10v10M12 10v10M18 10v10"/></svg>`,
+  curtain:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><rect x="3" y="3" width="18" height="18"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>`,
+  room:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M3 12l9-9 9 9v9H3z"/><rect x="9" y="13" width="6" height="8"/></svg>`,
+  rooms:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>`,
+  phase:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>`,
+  option:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg>`,
+  group:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><rect x="3" y="3" width="18" height="18" stroke-dasharray="3 3"/><rect x="7" y="7" width="10" height="10"/></svg>`,
+  align:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M4 4v16M20 4v16M4 12h16"/></svg>`,
+  cad:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M14 7l3 3M5 19l10-10 3 3L8 22z"/></svg>`,
+  line:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M5 19L19 5"/></svg>`,
+  pline:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M3 20V8l6-5 12 8-4 9z"/></svg>`,
+  rect:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><rect x="4" y="6" width="16" height="12"/></svg>`,
+  circle:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><circle cx="12" cy="12" r="8"/></svg>`,
+  offset:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M3 8h10v8H3z"/><path d="M15 10h6v4h-6"/></svg>`,
+  trim:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 16L20 4M16 16L4 4"/></svg>`,
+  extend:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M3 12h18M15 6l6 6-6 6"/></svg>`,
+  fillet:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M4 20V8a4 4 0 014-4h12"/></svg>`,
+  mirror:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M12 3v18" stroke-dasharray="2 2"/><path d="M8 6L3 12l5 6zM16 6l5 6-5 6z"/></svg>`,
+  dot:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><circle cx="12" cy="12" r="4"/></svg>`,
+};
+
+function getIconForLabel(label: string): string {
+  const l = label.toLowerCase();
+  if (l.includes("family")) return OBS_ICONS_SVG.family;
+  if (l.includes("door")) return OBS_ICONS_SVG.door;
+  if (l.includes("solve")) return OBS_ICONS_SVG.solve;
+  if (l.includes("host")) return OBS_ICONS_SVG.host;
+  if (l.includes("stair")) return OBS_ICONS_SVG.stair;
+  if (l.includes("railing")) return OBS_ICONS_SVG.railing;
+  if (l.includes("curtain")) return OBS_ICONS_SVG.curtain;
+  if (l.includes("rooms") && l.includes("panel")) return OBS_ICONS_SVG.rooms;
+  if (l === "room" || l === "rooms") return OBS_ICONS_SVG.room;
+  if (l.includes("phase")) return OBS_ICONS_SVG.phase;
+  if (l.includes("option")) return OBS_ICONS_SVG.option;
+  if (l.includes("group")) return OBS_ICONS_SVG.group;
+  if (l.includes("align")) return OBS_ICONS_SVG.align;
+  if (l.includes("cad tool")) return OBS_ICONS_SVG.cad;
+  if (l.includes("pline")) return OBS_ICONS_SVG.pline;
+  if (l.includes("line")) return OBS_ICONS_SVG.line;
+  if (l.includes("rect")) return OBS_ICONS_SVG.rect;
+  if (l.includes("circle")) return OBS_ICONS_SVG.circle;
+  if (l.includes("offset")) return OBS_ICONS_SVG.offset;
+  if (l.includes("trim")) return OBS_ICONS_SVG.trim;
+  if (l.includes("extend")) return OBS_ICONS_SVG.extend;
+  if (l.includes("fillet")) return OBS_ICONS_SVG.fillet;
+  if (l.includes("mirror")) return OBS_ICONS_SVG.mirror;
+  return OBS_ICONS_SVG.dot;
+}
+
+function injectParametricCSS(): void {
+  if (document.getElementById("obs-parametric-css")) return;
+  const s = document.createElement("style");
+  s.id = "obs-parametric-css";
+  s.textContent = [
+    ".obs-parametric-grid-container {",
+    "  display: grid !important;",
+    "  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)) !important;",
+    "  grid-auto-rows: auto !important;",
+    "  gap: 2px !important;",
+    "  padding: 4px !important;",
+    "  overflow-x: auto !important;",
+    "  overflow-y: hidden !important;",
+    "  max-height: 104px !important;",
+    "  align-items: stretch !important;",
+    "}",
+    ".obs-parametric-grid-container .obs-rb {",
+    "  min-width: 52px !important;",
+    "  padding: 2px !important;",
+    "  height: auto !important;",
+    "}",
+    ".obs-parametric-grid-container .obs-rb__icon {",
+    "  display: flex !important;",
+    "  align-items: center !important;",
+    "  justify-content: center !important;",
+    "  width: 100% !important;",
+    "  height: 20px !important;",
+    "}",
+    ".obs-parametric-grid-container .obs-rb__icon svg {",
+    "  width: 16px !important;",
+    "  height: 16px !important;",
+    "}",
+    ".obs-parametric-grid-container .obs-rb__label {",
+    "  font-size: 9px !important;",
+    "  line-height: 1.1 !important;",
+    "  text-align: center !important;",
+    "}",
+    ".obs-parametric-grid-container .obs-rb-sep {",
+    "  display: none !important;",
+    "}",
+    ".obs-parametric-grid-container .obs-rb-group {",
+    "  grid-column: 1 / -1 !important;",
+    "  font-size: 8px !important;",
+    "  padding: 4px 2px 2px !important;",
+    "  border-bottom: 1px solid #2a2e3a !important;",
+    "  margin-bottom: 2px !important;",
+    "  align-self: center !important;",
+    "}",
+  ].join("\n");
+  document.head.appendChild(s);
+}
+
+function applyParametricGridLayout(): void {
+  injectParametricCSS();
+  const firstBtn = document.querySelector('[data-parametric="1"].obs-rb') as HTMLElement | null;
+  if (!firstBtn) return;
+  let parent: HTMLElement | null = firstBtn.parentElement;
+  let depth = 0;
+  while (parent && depth < 5) {
+    const count = parent.querySelectorAll('[data-parametric="1"]').length;
+    if (count > 3) {
+      parent.classList.add("obs-parametric-grid-container");
+      return;
+    }
+    parent = parent.parentElement;
+    depth++;
+  }
+}
+
+function makeBtn(label: string, title: string, onClick: () => void): HTMLButtonElement {
+  const el = document.createElement("button");
+  el.className = "obs-rb";
+  el.type = "button";
+  el.title = title || label;
+  el.setAttribute("aria-label", label);
+  el.dataset.parityInject = "1";
+  el.dataset.parametric = "1";
+  const iconSvg = getIconForLabel(label);
+  el.innerHTML =
+    `<span class="obs-rb__icon">${iconSvg}</span>` +
+    `<span class="obs-rb__label">${esc(label)}</span>`;
+  el.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      onClick();
+    } catch (err) {
+      console.warn("[parametric-tab]", err);
+    }
+  };
+  return el;
+}
+
+// Retry attaching the grid layout for 12 s after install (buttons render on tab activation)
+(function autoApplyParametricLayout() {
+  let tries = 0;
+  const iv = setInterval(() => {
+    tries++;
+    try { applyParametricGridLayout(); } catch { /* */ }
+    if (document.querySelector(".obs-parametric-grid-container") || tries > 30) {
+      clearInterval(iv);
+    }
+  }, 400);
+})();
+
+function sep(): HTMLElement {
+  const d = document.createElement("div");
+  d.className = "obs-rb-sep";
+  d.dataset.parityInject = "1";
+  d.dataset.parametric = "1";
+  d.style.cssText = "width:1px;align-self:stretch;background:#2a2e3a;margin:4px 6px";
+  return d;
+}
+
+function groupLabel(text: string): HTMLElement {
+  const s = document.createElement("span");
+  s.className = "obs-rb-group";
+  s.dataset.parityInject = "1";
+  s.dataset.parametric = "1";
+  s.textContent = text;
+  s.style.cssText =
+    "font:700 9px/1 Inter,system-ui;letter-spacing:.5px;text-transform:uppercase;color:#6b7280;padding:0 4px;align-self:center";
+  return s;
+}
+
+function parametricTools(): HTMLElement[] {
+  const out: HTMLElement[] = [];
+
+  // Families / parametric engine
+  out.push(groupLabel("Families"));
+  out.push(
+    makeBtn("Family Panel", "Parametric families (Ctrl+Shift+F)", () =>
+      (window as Any).__obsParamFamilyPanel?.toggle?.(),
+    ),
+  );
+  out.push(
+    makeBtn("Place Door", "Sample parametric door", () =>
+      (window as Any).__obsParamFamilyPanel?.placeSample?.() ??
+      clickAdv("obs-adv-stair"),
+    ),
+  );
+  out.push(
+    makeBtn("Solve", "Constraint / formula solver", () => clickAdv("obs-adv-solve")),
+  );
+  out.push(
+    makeBtn("Hosts", "Recompute hosted openings", () => clickAdv("obs-adv-hosts")),
+  );
+
+  out.push(sep());
+  out.push(groupLabel("Architecture"));
+  out.push(makeBtn("Stair", "Parametric stair", () => clickAdv("obs-adv-stair")));
+  out.push(makeBtn("Railing", "Parametric railing", () => clickAdv("obs-adv-rail")));
+  out.push(makeBtn("Curtain", "Curtain wall system", () => clickAdv("obs-adv-cw")));
+  out.push(makeBtn("Room", "Create room", () => clickAdv("obs-adv-room")));
+  out.push(makeBtn("Rooms", "Rooms panel", () => clickAdv("obs-adv-rooms-panel")));
+  out.push(makeBtn("Phases", "Phases", () => clickAdv("obs-adv-phases")));
+  out.push(makeBtn("Options", "Design options", () => clickAdv("obs-adv-opts")));
+  out.push(makeBtn("Group", "Model group", () => clickAdv("obs-adv-group")));
+  out.push(makeBtn("Align", "Align", () => clickAdv("obs-adv-align")));
+
+  out.push(sep());
+  out.push(groupLabel("2D CAD"));
+  out.push(
+    makeBtn("CAD Tools", "CAD command panel (Ctrl+Shift+D)", () =>
+      (window as Any).__obsCad?.open?.() ?? (window as Any).__obsCad?.toggle?.(),
+    ),
+  );
+  out.push(makeBtn("Line", "CAD line", () => (window as Any).__obsCad?.setTool?.("line")));
+  out.push(
+    makeBtn("PLine", "Polyline", () => (window as Any).__obsCad?.setTool?.("polyline")),
+  );
+  out.push(makeBtn("Rect", "Rectangle", () => (window as Any).__obsCad?.setTool?.("rect")));
+  out.push(makeBtn("Circle", "Circle", () => (window as Any).__obsCad?.setTool?.("circle")));
+  out.push(makeBtn("Offset", "Offset", () => (window as Any).__obsCad?.setTool?.("offset")));
+  out.push(makeBtn("Trim", "Trim", () => (window as Any).__obsCad?.setTool?.("trim")));
+  out.push(makeBtn("Extend", "Extend", () => (window as Any).__obsCad?.setTool?.("extend")));
+  out.push(makeBtn("Fillet", "Fillet", () => (window as Any).__obsCad?.setTool?.("fillet")));
+  out.push(makeBtn("Mirror", "Mirror", () => (window as Any).__obsCad?.setTool?.("mirror")));
+  out.push(
+    makeBtn("Draft 2D", "2D drafting overlay", () => clickAdv("obs-adv-draft")),
+  );
+
+  out.push(sep());
+  out.push(groupLabel("Drawings"));
+  out.push(
+    makeBtn("DXF / DWG", "Drawings panel (Ctrl+Shift+G)", () =>
+      (window as Any).__obsDrawingsPanel?.toggle?.(),
+    ),
+  );
+  out.push(
+    makeBtn("Export DXF", "Export CAD as DXF", () =>
+      (window as Any).__obsDrawings?.exportCadAsDxf?.(),
+    ),
+  );
+  out.push(
+    makeBtn("Import DXF", "Import DXF drawing", () =>
+      (window as Any).__obsDrawingsPanel?.open?.(),
+    ),
+  );
+
+  out.push(sep());
+  out.push(groupLabel("View"));
+  out.push(
+    makeBtn("3D Ortho", "Toggle orthographic (VO)", () =>
+      (window as Any).__obsSelPivot?.toggleOrtho?.(),
+    ),
+  );
+  out.push(
+    makeBtn("Zoom Sel", "Zoom to selection (ZO)", () =>
+      void (window as Any).__obsSelPivot?.zoomToSelection?.(),
+    ),
+  );
+  out.push(
+    makeBtn("Cmd Center", "Revit Command Center", () =>
+      (window as Any).__obsRevitCommandCenter?.toggle?.(),
+    ),
+  );
+
+  return out;
+}
+
+function ensureParametricTab(): HTMLButtonElement | null {
+  const tabsRow = document.querySelector(".obs-ribbon__tabs") as HTMLElement | null;
+  if (!tabsRow) return null;
+
+  let tab = tabsRow.querySelector('[data-tab="parametric"]') as HTMLButtonElement | null;
+  if (tab) return tab;
+
+  tab = document.createElement("button");
+  tab.type = "button";
+  tab.className = "obs-ribbon__tab";
+  tab.dataset.tab = "parametric";
+  tab.textContent = "Parametric";
+  tab.title = "Parametric families, CAD 2D, Drawings DXF/DWG";
+  tab.style.cssText = ""; // inherit ribbon tab styles
+
+  // Place after Architecture if present, else append
+  const arch = Array.from(tabsRow.querySelectorAll("button")).find((b) =>
+    /architecture/i.test(b.textContent || ""),
+  );
+  if (arch && arch.nextSibling) {
+    tabsRow.insertBefore(tab, arch.nextSibling);
+  } else {
+    tabsRow.appendChild(tab);
+  }
+
+  tab.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    activateParametricTab();
+  });
+
+  return tab;
+}
+
+function clearActiveTabs(): void {
+  document.querySelectorAll(".obs-ribbon__tabs button").forEach((b) => {
+    const el = b as HTMLElement;
+    el.removeAttribute("data-active");
+    el.dataset.active = "";
+    el.classList.remove("is-active", "active");
+  });
+}
+
+function activateParametricTab(): void {
+  parametricActive = true;
+  clearActiveTabs();
+  const tab = ensureParametricTab();
+  if (tab) {
+    tab.dataset.active = "1";
+    tab.setAttribute("data-active", "1");
+    tab.classList.add("is-active");
+  }
+
+  const strip = document.querySelector(".obs-ribbon__strip") as HTMLElement | null;
+  if (!strip) return;
+
+  // Clear strip and show parametric tools only
+  strip.innerHTML = "";
+  for (const el of parametricTools()) strip.appendChild(el);
+}
+
+function deactivateParametricIfOtherTab(e: Event): void {
+  const t = e.target as HTMLElement;
+  if (!t) return;
+  const btn = t.closest?.(".obs-ribbon__tabs button") as HTMLElement | null;
+  if (!btn) return;
+  if (btn.getAttribute("data-tab") === "parametric") return;
+  // Other tab clicked - leave parametric mode; ribbon will re-render its strip
+  parametricActive = false;
+  const tab = document.querySelector('.obs-ribbon__tabs [data-tab="parametric"]') as HTMLElement | null;
+  if (tab) {
+    tab.removeAttribute("data-active");
+    tab.dataset.active = "";
+    tab.classList.remove("is-active");
+  }
+}
+
+function inject(): void {
+  hideBottomBars();
+  ensureParametricTab();
+
+  if (parametricActive) {
+    activateParametricTab();
+    return;
+  }
+
+  // Do not inject parity tools into other tabs anymore - they live under Parametric
+  const strip = document.querySelector(".obs-ribbon__strip") as HTMLElement | null;
+  if (strip) {
+    strip.querySelectorAll("[data-parity-inject]").forEach((n) => n.remove());
+  }
+}
+
+function watchRibbon(): void {
+  const root = document.querySelector(".obs-ribbon") as HTMLElement | null;
+  if (!root) {
+    window.setTimeout(watchRibbon, 500);
+    return;
+  }
+
+  root.addEventListener("click", deactivateParametricIfOtherTab, true);
+  root.addEventListener(
+    "click",
+    () => {
+      window.setTimeout(inject, 40);
+      window.setTimeout(inject, 150);
+    },
+    true,
+  );
+
+  const strip = root.querySelector(".obs-ribbon__strip");
+  if (strip && !stripObserver) {
+    stripObserver = new MutationObserver(() => {
+      if (parametricActive) {
+        // Ribbon may wipe strip on re-render - restore parametric tools
+        if (!strip.querySelector("[data-parametric]")) {
+          window.setTimeout(() => activateParametricTab(), 20);
+        }
+      }
+    });
+    stripObserver.observe(strip, { childList: true });
+  }
+
+  inject();
+  window.setTimeout(inject, 600);
+  window.setTimeout(inject, 1800);
+}
+
+export function setupRibbonParityInject(): void {
+  if (installed) return;
+  installed = true;
+
+  hideBottomBars();
+  watchRibbon();
+
+  const mo = new MutationObserver(() => hideBottomBars());
+  mo.observe(document.body, { childList: true, subtree: true });
+
+  (window as Any).__obsRibbonParity = {
+    inject,
+    hideBottomBars,
+    openParametric: activateParametricTab,
+  };
+  (window as Any).__obsParametricTab = { open: activateParametricTab };
+
+  console.log(
+    "[ribbon-parity-inject] Parametric tab ready (families + CAD 2D + DXF/DWG)",
+  );
+}
