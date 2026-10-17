@@ -1,5 +1,5 @@
 /**
- * Model Groups - Revit-style element groups.
+ * Model Groups - BIM-style element groups.
  *
  * A group is a named set of authored element ids. Editing one instance
  * can optionally propagate to all instances of the same group type

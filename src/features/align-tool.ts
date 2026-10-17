@@ -1,5 +1,5 @@
 /**
- * Align Tool - Revit-style alignment of authored elements.
+ * Align Tool - BIM-style alignment of authored elements.
  *
  * Aligns selected elements to a target edge / point / ref plane along
  * X, Z (plan) or Y (elevation). Operates on AuthoredElement params

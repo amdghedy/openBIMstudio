@@ -1,5 +1,5 @@
 /**
- * Revit-style 3D rubber-band selection (query only).
+ * BIM-style 3D rubber-band selection (query only).
  * Gesture + overlay are owned by features/navigation.ts, which calls commit().
  */
 import * as THREE from "three";

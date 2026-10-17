@@ -7,7 +7,7 @@ type Any = Record<string, any>;
  *
  * IMPORTANT: this module intentionally does NOT register any input-router
  * gesture handler and does NOT listen to middle-mouse or wheel. The canonical
- * Revit navigation in src/features/navigation.ts is the SOLE owner of:
+ * BIM navigation in src/features/navigation.ts is the SOLE owner of:
  *   MMB drag = pan, Shift/Ctrl+MMB = orbit, Wheel = zoom-to-cursor.
  *
  * Duplicating those here was the cause of "view rotates / zooms out on MMB

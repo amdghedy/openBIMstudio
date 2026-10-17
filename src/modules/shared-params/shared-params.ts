@@ -1,5 +1,5 @@
 /**
- * Shared / Project Parameters - Revit Shared Parameter analogue.
+ * Shared / Project Parameters - BIM Shared Parameter analogue.
  *
  * Shared parameters are defined once (GUID + name + type) and can be
  * bound onto any family or project element. Project parameters are
@@ -213,7 +213,7 @@ class SharedParamsStore {
     return out;
   }
 
-  /** Export shared parameter definitions as a Revit-like text table. */
+  /** Export shared parameter definitions as a BIM-like text table. */
   exportSharedTxt(): string {
     const lines = [
       "# Open BIM Studio Shared Parameters",

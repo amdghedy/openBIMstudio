@@ -1,5 +1,5 @@
 /**
- * Visibility/Graphics dialog – Fluent light UI (Revit VG parity).
+ * Visibility/Graphics dialog – Fluent light UI (BIM VG parity).
  * Opens via Command Center, palette, or Ctrl+Shift+V.
  */
 

@@ -1,8 +1,8 @@
 // openbim-fix:v3:applied -- do not re-apply the earlier fix scripts
 /**
- * Revit-class 3D Navigation (reset / hardened)
+ * Industry-standard 3D Navigation (reset / hardened)
  *
- * Canonical Revit mouse map:
+ * Canonical BIM mouse map:
  *   MMB drag              Pan
  *   Shift + MMB drag      Orbit (around target)
  *   Ctrl + MMB drag       Orbit around selection
@@ -569,7 +569,7 @@ export function setupNavigation(): void {
     onNavDrag,
   };
 
-  console.log("[navigation] Revit-style navigation active");
+  console.log("[navigation] BIM-style navigation active");
 }
 
 export function getNavigationState(): NavState {

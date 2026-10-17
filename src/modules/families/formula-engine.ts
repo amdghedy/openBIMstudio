@@ -6,7 +6,7 @@
 //   - topological sort of parameter declarations by formula dependency
 //   - cycle detection (self-loops and multi-parameter cycles)
 //   - a small library of built-in functions, plus free access to Math.*
-//   - optional '=' prefix (Revit convention: "= height * 2")
+//   - optional '=' prefix (BIM convention: "= height * 2")
 //   - typed per-parameter error surface
 //   - a computed set so the UI can render formula-driven rows read-only
 //

@@ -24,7 +24,7 @@ coordsSeg.dataset.obsCoords = "1";
 coordsSeg.style.cssText =
   "font-family:var(--font-mono,monospace);font-size:10.5px;letter-spacing:.3px;" +
   "min-width:260px;justify-content:flex-end";
-coordsSeg.textContent = "X —   Y —   Z —  (Revit: Z↑)";
+coordsSeg.textContent = "X —   Y —   Z —  (BIM: Z↑)";
 
 const spacer2 = document.createElement("div");
 spacer2.className = "bb-status__spacer";

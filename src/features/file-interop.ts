@@ -9,8 +9,8 @@ export const ACCEPT_ALL =
   ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.dwg,.dxf,.skp";
 
 const DESKTOP_ONLY: Record<string, string> = {
-  rvt: "Revit files cannot be converted in the browser.\n\nIn Revit: File → Export → IFC → export the model, then import the .ifc here.",
-  rfa: "Revit families cannot be converted in the browser.\n\nLoad the family into a Revit project, then export the project as IFC and import it here.",
+  rvt: "BIM files cannot be converted in the browser.\n\nIn BIM: File → Export → IFC → export the model, then import the .ifc here.",
+  rfa: "BIM families cannot be converted in the browser.\n\nLoad the family into a BIM project, then export the project as IFC and import it here.",
   dwg: "DWG cannot be converted in the browser.\n\nIn AutoCAD: save as DXF, or better export the model as IFC / OBJ, then import here.",
   skp: "SketchUp files cannot be converted in the browser.\n\nIn SketchUp: File → Export → IFC / OBJ / DAE (3D model), then import here.",
 };
@@ -57,10 +57,10 @@ export function clearAux() {
   auxIds.length = 0;
 }
 
-// ─── Revit-style isometric view ─────────────────────────────────
+// ─── BIM-style isometric view ─────────────────────────────────
 // Positions the camera at 45° azimuth, ~35° elevation looking at
-// the scene center. This mimics the default 3D View in Revit.
-function applyRevitIsoView() {
+// the scene center. This mimics the default 3D View in BIM.
+function applyBIMIsoView() {
   try {
     const cam = (ctx.world.scene as any).camera as THREE.PerspectiveCamera | THREE.OrthographicCamera;
     const controls = (ctx.world.scene as any).controls;
@@ -87,7 +87,7 @@ function applyRevitIsoView() {
     const radius = Math.max(size.x, size.y, size.z) * 0.5 || 10;
     const dist = radius * 2.4; // pull back a bit for breathing room
 
-    // Revit default 3D view: SE isometric. In a Y-up system this is:
+    // BIM default 3D view: SE isometric. In a Y-up system this is:
     // +X to the right, +Z toward viewer, +Y up.
     // Azimuth 45°, elevation ~35.264° (true isometric).
     const az = Math.PI / 4;              // 45°
@@ -116,7 +116,7 @@ function applyRevitIsoView() {
     // Notify the app that the camera changed (some features listen for this)
     try { window.dispatchEvent(new CustomEvent("obs:camera-changed")); } catch { /* */ }
   } catch (err) {
-    console.warn("[file-interop] applyRevitIsoView failed:", err);
+    console.warn("[file-interop] applyBIMIsoView failed:", err);
   }
 }
 function addAuxObject(obj: THREE.Object3D, label: string) {
@@ -124,8 +124,8 @@ function addAuxObject(obj: THREE.Object3D, label: string) {
   auxGroup.add(obj);
   computeSceneBounds();
   fitAll();
-  // Override the default fit view with a Revit-style isometric view
-  setTimeout(() => applyRevitIsoView(), 0);
+  // Override the default fit view with a BIM-style isometric view
+  setTimeout(() => applyBIMIsoView(), 0);
   markDirty();
 }
 

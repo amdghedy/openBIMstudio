@@ -1,5 +1,5 @@
 /**
- * Phasing - Revit-style construction phases.
+ * Phasing - BIM-style construction phases.
  *
  * Every authored element / room can carry phaseCreated + phaseDemolished.
  * Views filter by phase + phase filter (Show Complete / Show New / Show Previous + New).

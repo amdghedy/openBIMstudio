@@ -1,5 +1,5 @@
 /**
- * Reference Planes & Reference Lines - Revit-style construction geometry.
+ * Reference Planes & Reference Lines - BIM-style construction geometry.
  *
  * Used as hosts for constraints, alignment targets, and work plane picks.
  * They are non-printing helper objects stored per project.

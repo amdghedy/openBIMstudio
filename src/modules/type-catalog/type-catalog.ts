@@ -1,5 +1,5 @@
 /**
- * Type Catalog - Revit-style .txt type catalogs for family types.
+ * Type Catalog - BIM-style .txt type catalogs for family types.
  *
  * Format (tab-separated):
  *   ,Width##length##meters,Height##length##meters,LeafCount##other##
@@ -56,7 +56,7 @@ function coerce(raw: string, col: CatalogColumn): number | string | boolean {
 }
 
 /**
- * Parse a Revit-compatible type catalog text.
+ * Parse a BIM-compatible type catalog text.
  */
 export function parseTypeCatalog(text: string, familyName = ""): TypeCatalog {
   const lines = text

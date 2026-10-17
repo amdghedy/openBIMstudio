@@ -1,5 +1,5 @@
 /**
- * Revit-style wall shape handles.
+ * BIM-style wall shape handles.
  *
  * When a single wall (or beam / duct / pipe / tray / conduit) is selected:
  *   - Two large blue circles appear at each end (shape handles)
@@ -9,7 +9,7 @@
  *   - Endpoints snap to other wall endpoints within tolerance
  *
  * The overlay is HTML/SVG on top of the canvas, so handles are pixel-sized
- * regardless of camera distance. This matches Revit's presentation exactly.
+ * regardless of camera distance. This matches BIM's presentation exactly.
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";

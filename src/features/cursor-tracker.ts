@@ -75,7 +75,7 @@ function doRaycast(): void {
   }
 
   hasPosition = true;
-  // Revit axes: X/Y horizontal, Z vertical (elevation). Engine is Y-up Three.js.
+  // BIM axes: X/Y horizontal, Z vertical (elevation). Engine is Y-up Three.js.
   coordsEl.textContent =
     `X ${fmt(hitPoint.x)}   Y ${fmt(hitPoint.z)}   Z ${fmt(hitPoint.y)}`;
 }

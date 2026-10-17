@@ -1,6 +1,6 @@
 /**
  * Parametric Family Panel - clear UI to inspect/edit family parameters,
- * formulas, constraints, and rebuild geometry (Revit family types feel).
+ * formulas, constraints, and rebuild geometry (BIM family types feel).
  */
 
 import { ctx } from "../core/context";

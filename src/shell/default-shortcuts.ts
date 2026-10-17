@@ -1,4 +1,4 @@
-/** Default keyboard shortcuts (Revit + Blender hybrid + AccuDraw).
+/** Default keyboard shortcuts (BIM + Blender hybrid + AccuDraw).
  *
  * Two-letter sequences for tools (WA, SL, CM …), single-letter modals for
  * the gizmo (G, R, S, Q), modifier combos for app commands (Ctrl+S, Ctrl+O,
@@ -121,7 +121,7 @@ export function registerDefaultShortcuts(): void {
       try {
         if ((window as any).__obsPlanVisible?.()) return;
       } catch { /* */ }
-      // Revit-style Esc:
+      // BIM-style Esc:
       // 1) Cancel active authoring tool (wall, duct, move…) → Select
       // 2) If already Select, clear selection
       try {

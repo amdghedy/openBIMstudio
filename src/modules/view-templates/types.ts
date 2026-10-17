@@ -1,5 +1,5 @@
 /**
- * View Templates + Visibility/Graphics – shared types (Revit parity).
+ * View Templates + Visibility/Graphics – shared types (BIM parity).
  * Compatible with existing VisibilityFilter category overrides.
  */
 
@@ -14,7 +14,7 @@ export type ViewKind =
   | "schedule"
   | "sheet";
 
-/** Graphic overrides for a single category (Revit VG row). */
+/** Graphic overrides for a single category (BIM VG row). */
 export interface CategoryGraphicOverride {
   visible: boolean;
   halftone: boolean;
@@ -23,7 +23,7 @@ export interface CategoryGraphicOverride {
   lineColor?: string | null;
   /** Optional surface colour. */
   surfaceColor?: string | null;
-  /** Line weight scale 1–16 (Revit-style). */
+  /** Line weight scale 1–16 (BIM-style). */
   lineWeight?: number | null;
   /** Pattern name or null = default. */
   surfacePattern?: string | null;
@@ -72,7 +72,7 @@ export interface ViewTemplate {
   /** Which view kinds this template may be applied to. */
   appliesTo: ViewKind[];
   vg: VisibilityGraphicsState;
-  /** When true, applied views cannot locally override VG (Revit “Include” lock). */
+  /** When true, applied views cannot locally override VG (BIM “Include” lock). */
   locked: boolean;
   /** Categories of settings included when applying the template. */
   includes: {

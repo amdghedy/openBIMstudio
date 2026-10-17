@@ -1,5 +1,5 @@
 /**
- * Undo / redo command stack (Revit/Blender class).
+ * Undo / redo command stack (BIM/Blender class).
  *
  * - Bounded depth (default 100 commands)
  * - Grouped transactions: nested pushes fold into one undoable command

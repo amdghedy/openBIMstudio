@@ -2,7 +2,7 @@
  * Full-screen plan view overlay.
  *
  * - Level dropdown (uses user levels or fallback set)
- * - Cut height slider (Revit default 1.2 m)
+ * - Cut height slider (BIM default 1.2 m)
  * - SVG rendering at world scale
  * - Wheel zoom, middle-mouse (or Shift+left) pan, left click selection/placement
  * - Print / Export SVG / Close
@@ -30,7 +30,7 @@ let cancelHandle: { cancelled: boolean } | null = null;
    ------------------------------------------------------------------------- */
 const overlay = document.createElement("div");
 overlay.className = "obs-plan-overlay";
-/** Under the ribbon so Architecture / Annotate / Dimension tabs stay usable (Revit-style). */
+/** Under the ribbon so Architecture / Annotate / Dimension tabs stay usable (BIM-style). */
 overlay.style.cssText =
   "position:fixed;left:0;right:0;bottom:0;top:88px;z-index:200;display:none;flex-direction:column;" +
   "background:#1a1d27;color:var(--text-primary,#e8eaf0);" +
@@ -87,7 +87,7 @@ canvasWrap.appendChild(loading);
 
 canvasWrap.appendChild(loading);
 
-/* -- Revit-style Properties panel (left of plan) -- */
+/* -- BIM-style Properties panel (left of plan) -- */
 const planBody = document.createElement("div");
 planBody.style.cssText = "flex:1;display:flex;min-height:0;overflow:hidden";
 
@@ -231,7 +231,7 @@ function renderPlanViewProperties() {
   const liveUnit = planPropsBody.lastElementChild?.querySelector("select") as HTMLSelectElement | null;
   if (liveUnit) { liveUnit.value=getDimensionStyle().unit; liveUnit.onchange=()=>{getDimensionStyle().unit=liveUnit.value as DimensionUnit;unitSelect.value=liveUnit.value;if(currentPlan)renderPlan(currentPlan);}; }
 
-  const note=document.createElement("div"); note.style.cssText="padding:10px;color:#6b7280;line-height:1.45"; note.textContent="Revit-style view properties: selection stays model-specific, dimensions and annotations are view-specific, and the active plan keeps its level/cut/graphics state."; planPropsBody.appendChild(note);
+  const note=document.createElement("div"); note.style.cssText="padding:10px;color:#6b7280;line-height:1.45"; note.textContent="BIM-style view properties: selection stays model-specific, dimensions and annotations are view-specific, and the active plan keeps its level/cut/graphics state."; planPropsBody.appendChild(note);
 }
 
 function renderPlanProperties() {
@@ -636,7 +636,7 @@ function formatPlanDimension(meters: number, style = getDimensionStyle()): strin
   return value.toFixed(style.precision) + (style.unit === "mm" ? "" : ` ${style.unit}`);
 }
 
-/** Revit-like annotation paper scale: a 2.5 mm text at 1:100 is 0.25 m in model space. */
+/** BIM-like annotation paper scale: a 2.5 mm text at 1:100 is 0.25 m in model space. */
 function paperMmToWorld(mm: number): number {
   return (Math.max(0.1, mm) / 1000) * Math.max(1, planViewScale);
 }
@@ -810,14 +810,14 @@ let planPointType: PointKind = "column";
 let planPointPreset: string | null = null;
 let planDrawStart: { x: number; z: number } | null = null;
 let planDimStartRef: PlanDimensionRef | null = null;
-/** Continuous path like Revit Place Duct / Wall (click�click�click�). */
+/** Continuous path like BIM Place Duct / Wall (click�click�click�). */
 let planChain: { x: number; z: number }[] = [];
 let planCursor: { x: number; z: number } | null = null;
 let __planCursorOverlay: HTMLDivElement | null = null;
 let __planCursorSvg: SVGSVGElement | null = null;
 let __lastSnapKind = "";
 let planSnap: { x: number; z: number; kind: string; ref?: PlanDimensionRef } | null = null;
-/** Placement options bar (Revit Modify | Place �). */
+/** Placement options bar (BIM Modify | Place �). */
 let planWidth = 0.3;   // m � duct/wall thickness in plan
 let planHeight = 0.3;  // m � extrusion height
 let planElevOffset = 0; // m above level
@@ -838,7 +838,7 @@ export interface PlanDimensionRef {
   dz?: number;
   side?: "left" | "right" | "start" | "end" | "top" | "bottom";
 }
-/** Revit dimension kinds � placement sequence differs per style. */
+/** BIM dimension kinds � placement sequence differs per style. */
 type PlanDimKind =
   | "aligned"      // 2 refs: distance along connecting line
   | "linear"       // 2 refs: force H or V
@@ -1028,7 +1028,7 @@ const toolHint = document.createElement("span");
 toolHint.style.cssText = "font:11px system-ui;color:#94a3b8;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
 toolHint.textContent = "Use Architecture / Annotate tabs to model � snaps ON";
 
-/* Revit-like placement options: Width / Height / Elevation */
+/* BIM-like placement options: Width / Height / Elevation */
 function numInput(label: string, value: number, onChange: (v: number) => void, step = 0.05) {
   const wrap = document.createElement("label");
   wrap.style.cssText = "display:flex;align-items:center;gap:4px;font:11px system-ui;color:#94a3b8";
@@ -1050,12 +1050,12 @@ function numInput(label: string, value: number, onChange: (v: number) => void, s
 const widthInp = numInput("Width", planWidth * 1000, (v) => { planWidth = v / 1000; }, 5);
 const heightInp = numInput("Height", planHeight * 1000, (v) => { planHeight = v / 1000; }, 5);
 const elevInp = numInput("Elev", planElevOffset * 1000, (v) => { planElevOffset = v / 1000; }, 10);
-// labels show mm like Revit
+// labels show mm like BIM
 (widthInp.querySelector("span") as HTMLElement).textContent = "W(mm)";
 (heightInp.querySelector("span") as HTMLElement).textContent = "H(mm)";
 (elevInp.querySelector("span") as HTMLElement).textContent = "Elev(mm)";
 
-/* Wall options � Location Line + Join (Revit Place Wall) */
+/* Wall options � Location Line + Join (BIM Place Wall) */
 const locSelect = document.createElement("select");
 locSelect.title = "Location Line";
 locSelect.style.cssText =
@@ -1112,9 +1112,9 @@ chainChk.append(chainInput, document.createTextNode("Chain"));
 
 const wallOptsWrap = document.createElement("div");
 wallOptsWrap.style.cssText = "display:none;align-items:center;gap:6px";
-// Revit Place Wall options order: Location Line ? Join Status ? Chain
+// BIM Place Wall options order: Location Line ? Join Status ? Chain
 wallOptsWrap.append(locSelect, joinSelect, chainChk);
-locSelect.title = "Location Line (Revit)";
+locSelect.title = "Location Line (BIM)";
 joinSelect.title = "Wall Join Status";
 chainChk.title = "Chain � continuous wall path";
 
@@ -1122,7 +1122,7 @@ function showWallOpts(on: boolean) {
   wallOptsWrap.style.display = on ? "flex" : "none";
 }
 
-/* Professional international 2D modeling toolbar layout (Revit / ArchiCAD / AutoCAD style)
+/* Professional international 2D modeling toolbar layout (BIM / ArchiCAD / AutoCAD style)
  * Groups: Identity | Level & Cut | Drawing scale & units | Active tool hint | Element params | Underlay & export
  */
 function makeGroupLabel(text: string): HTMLElement {
@@ -1475,7 +1475,7 @@ function renderPlan(plan: PlanView) {
     g.appendChild(path);
   }
 
-  // -- Selected element feedback (Revit-style blue selection) --
+  // -- Selected element feedback (BIM-style blue selection) --
   const selectedPlans = (((window as any).__obsPlanSelectedEls ?? []) as any[]).filter((x) => planSelectedIds.has(x.id));
   for (const selectedPlan of selectedPlans) {
     if (!selectedPlan?.params) continue;
@@ -1558,7 +1558,7 @@ function renderPlan(plan: PlanView) {
     g.insertBefore(gl, paper.nextSibling);
   }
 
-  // -- Plan dimensions � Revit style (all kinds) --
+  // -- Plan dimensions � BIM style (all kinds) --
   const dimStyle = getDimensionStyle();
   const sw = dimensionWorldStroke(dimStyle);
   for (const d of planDims) {
@@ -1627,7 +1627,7 @@ function renderPlan(plan: PlanView) {
     const r2 = resolvePlanDimensionRef(d.ref2);
     let x1 = r1?.x ?? d.x1, z1 = r1?.z ?? d.z1, x2 = r2?.x ?? d.x2, z2 = r2?.z ?? d.z2;
     if (d.style === "linear") {
-      // Strict horizontal or vertical only (Revit Linear)
+      // Strict horizontal or vertical only (Linear Dimension)
       if (Math.abs(x2 - x1) >= Math.abs(z2 - z1)) z2 = z1;
       else x2 = x1;
     }
@@ -1665,7 +1665,7 @@ function renderPlan(plan: PlanView) {
     dl.setAttribute("stroke", dimStyle.color);
     dl.setAttribute("stroke-width", String(sw));
     g.appendChild(dl);
-    // Revit-like dimension termini: diagonal tick / dot / arrowhead.
+    // BIM-like dimension termini: diagonal tick / dot / arrowhead.
     const tick = paperMmToWorld(2.5);
     for (const [cx, cz] of [[a0x, a0z], [a1x, a1z]] as number[][]) {
       if (dimStyle.tick === "dot") {
@@ -1744,7 +1744,7 @@ function renderPlan(plan: PlanView) {
     g.appendChild(tip);
   }
 
-  // -- Live dimension preview (Revit dimension placement behavior) --
+  // -- Live dimension preview (BIM dimension placement behavior) --
   if (planMode === "dim" && planCursor) {
     const ds = getDimensionStyle();
     const dsw = dimensionWorldStroke(ds);
@@ -1821,7 +1821,7 @@ function renderPlan(plan: PlanView) {
     }
   }
 
-  // -- Live draw preview + snap marker (Revit Place Duct style) --
+  // -- Live draw preview + snap marker (BIM Place Duct style) --
   if (planDrawStart && planCursor && planMode !== "dim") {
     const a = screen(planDrawStart.x, planDrawStart.z);
     const c = screen(planCursor.x, planCursor.z);
@@ -2268,7 +2268,7 @@ function finishPlanChain() {
   planCursor = null;
   planSnap = null;
   void import("./authoring").then((m) => m.clearLastPlanLinear?.()).catch(() => {});
-  // Revit behavior: path finished but tool stays active for next chain until Esc
+  // BIM behavior: path finished but tool stays active for next chain until Esc
   if (planMode === "linear") {
     footerStatus(`${planLinearType} path finished � click start of next path � Esc = Modify`);
     toolHint.textContent = `Place ${planLinearType} � continuous path � Enter finish � Esc cancel`;
@@ -2332,7 +2332,7 @@ async function createAuthoredPoint(x: number, z: number) {
 }
 
 
-/* -- 2D plan box selection + move helpers (Revit window/crossing) -- */
+/* -- 2D plan box selection + move helpers (BIM window/crossing) -- */
 function ensurePlanBoxOverlay(): SVGRectElement {
   if (planBoxOverlay && planBoxOverlay.parentNode) return planBoxOverlay;
   planBoxOverlay = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -2545,7 +2545,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
     e.stopPropagation();
 
     if (planMode === "linear") {
-      // Revit continuous path: each click adds a segment
+      // BIM continuous path: each click adds a segment
       if (planChain.length === 0) {
         planChain.push(w);
         planDrawStart = w;
@@ -2560,7 +2560,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
     }
 
     if (planMode === "dim") {
-      // -- Spot Elevation / Coordinate: single click (Revit Spot tools) --
+      // -- Spot Elevation / Coordinate: single click (BIM Spot tools) --
       if (planDimStyle === "elevation" || planDimStyle === "coordinate") {
         const pt = findNearestPointElement(w) ?? { x: w.x, z: w.z, elev: (() => {
           try {
@@ -2582,7 +2582,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
         return;
       }
 
-      // -- Angular: pick two linear segments (Revit Angular Dimension) --
+      // -- Angular: pick two linear segments (Angular Dimension Dimension) --
       if (planDimStyle === "angular") {
         const seg = findNearestSegment(w);
         if (!seg) {
@@ -2882,7 +2882,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
   }
 });
 
-// Middle-button pan (Revit), plus Shift+left drag. Always works regardless of tool.
+// Middle-button pan (BIM), plus Shift+left drag. Always works regardless of tool.
 canvasWrap.addEventListener("mousedown", (e) => {
   if (e.button !== 1 && !(e.button === 0 && e.shiftKey && planMode !== "select" && planMode !== "move")) return;
   if (!currentPlan) return;
@@ -2998,7 +2998,7 @@ canvasWrap.addEventListener(
     e.preventDefault();
     e.stopPropagation();
 
-    // Zoom toward cursor (CAD / Revit plan behavior � not fixed to center)
+    // Zoom toward cursor (CAD / BIM plan behavior � not fixed to center)
     const rect = canvasWrap.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return;
     const ratioX = (e.clientX - rect.left) / rect.width;
@@ -3069,7 +3069,7 @@ async function regenerate() {
       const { getElements } = await import("./authoring");
       (window as any).__obsAuthoredElements = getElements();
     } catch { /* authored layer optional */ }
-    // Preserve zoom/pan (Revit: regenerating plan does NOT fit � only explicit Fit / first open)
+    // Preserve zoom/pan (BIM: regenerating plan does NOT fit � only explicit Fit / first open)
     if (!planViewUserAdjusted) {
       currentZoom = 1;
       panX = 0;
@@ -3150,7 +3150,7 @@ function exportSvg() {
    Public
    ------------------------------------------------------------------------- */
 function layoutUnderRibbon() {
-  // Measure ribbon so plan viewport sits exactly under tabs (like Revit).
+  // Measure ribbon so plan viewport sits exactly under tabs (like BIM).
   // Respects minimized (flat) ribbon: only tabs height remains.
   try {
     const ribbon = document.querySelector(".obs-ribbon") as HTMLElement | null;
@@ -3260,7 +3260,7 @@ export function setPlanToolFromRibbon(tool: string) {
     planDrawStart = null;
     applyDefaultSizeForTool(tool === "brace" || tool === "truss" ? "beam" : tool);
     canvasWrap.style.cursor = "crosshair";
-    // Revit Place order: Type active ? click start ? click end ? continue chain
+    // BIM Place order: Type active ? click start ? click end ? continue chain
     toolHint.textContent = `Modify | Place ${tool} � Enter finish path � Esc cancel � Space repeat`;
     footerStatus(`Place ${tool}: click to enter start point � snaps ON`);
     setPlanSelectedElement(null);
@@ -3280,7 +3280,7 @@ export function setPlanToolFromRibbon(tool: string) {
     renderPlanProperties();
     try { showWallOpts(false); } catch { /* */ }
   } else if (tool === "pan" || tool === "navigate") {
-    // Revit Pan: only changes navigation mode � NEVER resets zoom/fit
+    // BIM Pan: only changes navigation mode � NEVER resets zoom/fit
     planMode = "navigate";
     planChain = [];
     planDrawStart = null;
@@ -3408,7 +3408,7 @@ try {
       return;
     }
 
-    // Space � repeat last command (Revit). Backspace repeats only if nothing selected.
+    // Space � repeat last command (BIM). Backspace repeats only if nothing selected.
     if (e.key === " " || (e.key === "Backspace" && planSelectedIds.size === 0)) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -3461,7 +3461,7 @@ try {
       }
     }
 
-    // Esc � Revit order cancel:
+    // Esc � BIM order cancel:
     //  1) Cancel in-progress path (discard unfinished chain) stay in tool if had segments
     //  2) Exit tool ? Modify / Select
     //  3) Already Select ? close Floor Plan
@@ -3478,7 +3478,7 @@ try {
         void import("./authoring").then((m) => m.clearLastPlanLinear?.()).catch(() => {});
         if (currentPlan) renderPlan(currentPlan);
         if (hadSegments) {
-          // Revit: Esc after some segments keeps Place Wall active
+          // BIM: Esc after some segments keeps Place Wall active
           footerStatus(`Place ${planLinearType}: cancelled path � click start of next � Esc = Modify`);
           toolHint.textContent = `Modify | Place ${planLinearType} � Esc cancel � Space repeat`;
         } else {

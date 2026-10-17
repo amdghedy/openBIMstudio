@@ -1,4 +1,4 @@
-// Revit-style live Section Box with 6-face crop and reset.
+// BIM-style live Section Box with 6-face crop and reset.
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getSceneBox } from "./camera-tools";

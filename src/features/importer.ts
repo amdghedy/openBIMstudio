@@ -1,5 +1,5 @@
 /**
- * IFC importer with 5 Revit-style positioning modes + live offset control.
+ * IFC importer with 5 BIM-style positioning modes + live offset control.
  *
  * Position pinning
  * ────────────────
@@ -706,7 +706,7 @@ async function processQueue() {
     updateQueueSummary();
 
     // Linking sequence from working OpenBIMStudio: apply positioning, then
-    // origin-to-origin identity placement (no forced recenter) — same as Revit links.
+    // origin-to-origin identity placement (no forced recenter) — same as BIM links.
     try { await applyPositioningMode(ifcSettings.positioning); } catch (e) { console.warn(e); }
     try {
       if (ifcSettings.positioning === "origin-to-origin" || ifcSettings.positioning === "shared-coordinates") {

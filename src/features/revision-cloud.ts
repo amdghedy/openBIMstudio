@@ -1,4 +1,4 @@
-// Revit-style revisions + revision clouds.
+// BIM-style revisions + revision clouds.
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
 

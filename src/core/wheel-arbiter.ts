@@ -14,7 +14,7 @@ type Any = Record<string, any>;
  *   wheel leak through.
  *
  * This module:
- *   - normalizes deltaY (deltaMode + clamp) and applies Revit convention
+ *   - normalizes deltaY (deltaMode + clamp) and applies BIM convention
  *     (wheel up = zoom in). setInvert(true) flips it for reversed devices.
  *   - Shift = x3, plus the registered nav.wheelZoomMultiplier option.
  *   - ignores wheel while __OBS_MMB_HELD (no zoom during pan).
@@ -81,7 +81,7 @@ function applyZoom(ndelta: number, shift: boolean): void {
   if (!cam) return;
 
   const speed = 0.0016 * readMultiplier() * (shift ? 3 : 1);
-  // Revit: wheel up (ndelta < 0) => zoom in => factor > 1
+  // BIM: wheel up (ndelta < 0) => zoom in => factor > 1
   const signed = invert ? -ndelta : ndelta;
   const factor = Math.exp(-signed * speed);
   if (!Number.isFinite(factor) || factor <= 0) return;
@@ -160,7 +160,7 @@ export function setupWheelArbiter(): void {
   };
 
   console.log(
-    "[wheel-arbiter] single owner ready: Revit direction (up=zoom-in), " +
+    "[wheel-arbiter] single owner ready: BIM direction (up=zoom-in), " +
     "deltaMode normalized, Shift=x3, ignored while MMB held / over panels. " +
     "Flip direction with __obsWheelFix.setInvert(true) if your device is reversed.",
   );

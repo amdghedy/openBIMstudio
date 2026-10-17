@@ -1,5 +1,5 @@
 /**
- * Rooms & Areas - Revit-competitive spatial elements.
+ * Rooms & Areas - BIM-competitive spatial elements.
  *
  * Rooms are 2.5D volumes bounded by walls (or an explicit polygon) on a level.
  * Areas are 2D regions used for gross/rentable area plans.

@@ -1,5 +1,5 @@
 /**
- * Curtain Wall System - grid of mullions + panels (Revit-style).
+ * Curtain Wall System - grid of mullions + panels (BIM-style).
  *
  * Defines a rectangular curtain wall on a vertical plane, subdivided by
  * horizontal and vertical grid lines. Generates mullion boxes + panel faces.

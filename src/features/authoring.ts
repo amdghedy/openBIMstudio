@@ -352,7 +352,7 @@ let activePreset: string | null = null;
 export function getActivePreset() { return activePreset; }
 
 /**
- * Last command for Space-bar repeat (Revit behaviour).
+ * Last command for Space-bar repeat (BIM behaviour).
  * Stores the tool/preset string the user last activated (not select/null).
  */
 let lastCommand: string | null = null;
@@ -407,7 +407,7 @@ function nextName(type: string) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 
-/* ── Wall placement options (Revit Modify | Place Wall) ───────────────── */
+/* ── Wall placement options (BIM Modify | Place Wall) ───────────────── */
 export type WallLocationLine =
   | "wall-centerline"
   | "core-centerline"
@@ -475,7 +475,7 @@ export function applyWallLocationOffset(
 }
 
 /**
- * Revit Join Status at a corner.
+ * BIM Join Status at a corner.
  * IMPORTANT: location-line endpoints must NOT shift for Allow/Disallow —
  * that caused walls to jog. Only snap both ends to the shared corner.
  * Extended/Chamfer may extend slightly for special cases.
@@ -514,9 +514,9 @@ function projectOntoSegment(
 }
 
 /**
- * Revit-style join for a NEWLY placed wall only.
+ * BIM-style join for a NEWLY placed wall only.
  *
- * CRITICAL RULE (matches Revit): existing walls are NEVER moved or rotated.
+ * CRITICAL RULE (matches BIM): existing walls are NEVER moved or rotated.
  * Only the new wall's start/end may snap onto:
  *   - an existing wall endpoint (corner / L-join)
  *   - a point on an existing wall centerline (T-join)
@@ -528,7 +528,7 @@ export function autoJoinWallToNeighbors(wallId: string): void {
   if (!wall || wall.type !== "wall" || !wall.params.start || !wall.params.end) return;
 
   const thick = wall.params.thickness ?? 0.2;
-  // Snap tolerance ≈ half thickness + small slack (Revit endpoint snap feel)
+  // Snap tolerance ≈ half thickness + small slack (BIM endpoint snap feel)
   const endTol = Math.max(0.12, thick * 0.85);
   const faceTol = Math.max(0.14, thick * 0.95);
 
@@ -738,7 +738,7 @@ function buildFitting(el: AuthoredElement): THREE.Object3D | null {
   });
   const r = Math.max(Number(p.bendRadius ?? ((isRound ? p.thickness : Math.max(p.thickness, p.height)) / 2)), 0.04);
 
-  // ── Revit-style MEP fittings ──────────────────────────────────────────
+  // ── BIM-style MEP fittings ──────────────────────────────────────────
   // Tee / Cross / Wye: continuous body + branch arms matching duct/pipe profile
   if (kind === "tee" || kind === "cross" || kind === "wye") {
     const g = new THREE.Group();
@@ -776,7 +776,7 @@ function buildFitting(el: AuthoredElement): THREE.Object3D | null {
       g.add(mesh);
     };
 
-    // Main run through + branch (Revit duct/pipe fitting orientation)
+    // Main run through + branch (BIM duct/pipe fitting orientation)
     placeArm(aIn);
     placeArm(aIn + Math.PI);
     placeArm(aOut);
@@ -829,7 +829,7 @@ function buildFitting(el: AuthoredElement): THREE.Object3D | null {
   const outEndX = cx + Math.cos(aOut) * bendR;
   const outEndZ = cz + Math.sin(aOut) * bendR;
 
-  // Smoother elbow (more segments = Revit-like curved fitting)
+  // Smoother elbow (more segments = BIM-like curved fitting)
   const N = isRound ? 16 : 14;
   const pts: THREE.Vector3[] = [];
   for (let i = 0; i <= N; i++) {
@@ -970,7 +970,7 @@ function openingsForWall(wallId: string): WallOpening[] {
   return out;
 }
 
-/* ── Revit-style wall join ─────────────────────────────────────────── */
+/* ── BIM-style wall join ─────────────────────────────────────────── */
 
 function computeWallEndFaces(
   endX: number,
@@ -1513,7 +1513,7 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
 
   if (el.type === "wall" && p.start && p.end) {
     const openings = openingsForWall(el.id);
-    // Revit-style compound wall hook
+    // BIM-style compound wall hook
     const __layerStr = (el.properties as any)?.layers as string | undefined;
     if (__layerStr) {
       try {
@@ -1534,7 +1534,7 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
   if (el.type === "beam" && p.start && p.end) {
     // Beams reuse the same mitered-linear builder as walls (with no
     // openings). Two beams meeting at an L-corner miter cleanly in both
-    // 2D plan and 3D, matching Revit's structural framing behaviour.
+    // 2D plan and 3D, matching BIM's structural framing behaviour.
     return buildWallWithOpenings(el, []);
   }
 
@@ -2597,7 +2597,7 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Previews + Revit-style dashed alignment guides
+// Previews + BIM-style dashed alignment guides
 // ═══════════════════════════════════════════════════════════════════════════
 const guideGroup = new THREE.Group();
 guideGroup.name = "obs-alignment-guides";
@@ -2621,7 +2621,7 @@ function clearPreviews() {
   clearGuides();
 }
 
-/** Dashed construction line (Revit-style). */
+/** Dashed construction line (BIM-style). */
 function dashedLine(
   a: THREE.Vector3,
   b: THREE.Vector3,
@@ -2645,7 +2645,7 @@ function dashedLine(
 }
 
 /**
- * Revit-like alignment guides while drawing:
+ * BIM-like alignment guides while drawing:
  *  - Orthogonal dashed tracks from start
  *  - Extension rays along the draft direction
  *  - Parallel / colinear guides from existing walls
@@ -2834,7 +2834,7 @@ function updatePreview(e: MouseEvent | null) {
       preview.position.set((a.x + pt.x) / 2, level + d.height / 2, (a.z + pt.z) / 2);
       (preview as THREE.Mesh).rotation.y = Math.atan2(-(pt.z - a.z), pt.x - a.x);
       previewGroup.add(preview);
-      // Revit-style dashed alignment / extension guides
+      // BIM-style dashed alignment / extension guides
       try { updateAlignmentGuides(a, pt); } catch { /* */ }
     }
   } else if (pt && activeTool === "brace" && chainStart) {
@@ -3327,13 +3327,13 @@ export function setAuthoringTool(tool: Tool | string | null) {
 export function getActiveTool() { return activeTool; }
 export function setLevel(v: number) {
   level = v;
-  // Revit-style: if a named level exists at this elevation, adopt it.
+  // BIM-style: if a named level exists at this elevation, adopt it.
   const hit = levels.find((l) => Math.abs(l.elevation - v) <= 0.001);
   if (hit) activeLevelId = hit.id;
 }
 export function getLevel() { return level; }
 
-/** Revit-style active level id. Null when no named level is selected. */
+/** BIM-style active level id. Null when no named level is selected. */
 export function getActiveLevelId(): string | null { return activeLevelId; }
 
 /** Activate a named level; also moves the numeric draw elevation to match. */
@@ -3346,13 +3346,13 @@ export function setActiveLevelById(id: string | null): void {
 }
 
 // openbim-families:instance-wiring
-/** Revit-style active family id. Null when no family is selected. */
+/** BIM-style active family id. Null when no family is selected. */
 export function getActiveFamilyId(): string | null { return activeFamilyId; }
 
-/** Revit-style active family type id. Null when no type is selected. */
+/** BIM-style active family type id. Null when no type is selected. */
 export function getActiveFamilyTypeId(): string | null { return activeFamilyTypeId; }
 
-/** Revit-style: the family/type the NEXT placed element will adopt. */
+/** BIM-style: the family/type the NEXT placed element will adopt. */
 export function setActiveFamily(familyId: string | null, familyTypeId: string | null): void {
   activeFamilyId = familyId;
   activeFamilyTypeId = familyTypeId;
@@ -4108,7 +4108,7 @@ export function transformElements(
 // ═══════════════════════════════════════════════════════════════════════════
 /* ── MEP fitting radius migration ─────────────────────────────────────
    Normalizes every elbow fitting's bendRadius to at least one duct
-   width (Revit default) and re-trims the two ducts that feed the
+   width (BIM default) and re-trims the two ducts that feed the
    fitting so their ends meet the new tangent points. Idempotent —
    safe to call repeatedly. Returns the number of fittings changed. */
 /* ── MEP fitting migration + connector enforcement ─────────────────────
@@ -4117,13 +4117,13 @@ export function transformElements(
    Two responsibilities, both idempotent:
 
    1. Radius normalisation — every elbow's bendRadius is bumped to at
-      least one duct width (Revit default). Fittings already at or above
+      least one duct width (BIM default). Fittings already at or above
       the floor are left alone.
 
    2. Connector enforcement — for every elbow, any same-type duct whose
       endpoint sits near the corner OR near either tangent point is
       snapped exactly onto the elbow's connection plane. This is what
-      Revit calls a connector: the duct terminates at the fitting, not at
+      BIM calls a connector: the duct terminates at the fitting, not at
       the corner, so the two never overlap.
 
    The duct snap uses a generous tolerance (max of 1.5× radius,

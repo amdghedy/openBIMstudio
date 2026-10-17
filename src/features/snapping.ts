@@ -1,9 +1,9 @@
 /**
- * Object snap system (AutoCAD / Revit class).
+ * Object snap system (AutoCAD / BIM class).
  *
  * Each snap type has:
  *   - A priority level. Higher priority wins over a closer low-priority
- *     snap — same as Revit. Endpoint (100) beats Nearest (55) even if
+ *     snap — same as BIM. Endpoint (100) beats Nearest (55) even if
  *     Nearest is a few pixels closer.
  *   - A distinctive SVG marker drawn at the snapped point.
  *   - A short label shown next to the marker.
@@ -36,7 +36,7 @@ export interface SnapResult {
   screenDist: number;
 }
 
-/** Priority table — higher wins. Matches Revit's hierarchy. */
+/** Priority table — higher wins. Matches BIM's hierarchy. */
 const SNAP_PRIORITY: Record<SnapType, number> = {
   endpoint:      100,
   intersection:   95,
@@ -60,7 +60,7 @@ const ALL_TYPES: SnapType[] = [
   "nearest", "parallel", "extension", "grid",
 ];
 
-/* Revit-style SVG markers — 32×32 viewBox. */
+/* BIM-style SVG markers — 32×32 viewBox. */
 const SVG_MARKER: Record<SnapType, string> = {
   endpoint:
     `<rect x="9" y="9" width="14" height="14" fill="#F59E0B" stroke="#0B0D12" stroke-width="2"/>`,
@@ -354,7 +354,7 @@ class SnapManager {
       if (!candidates.length) return null;
 
       // Priority-aware sort — a higher-priority snap wins over a closer
-      // lower-priority one, exactly like Revit.
+      // lower-priority one, exactly like BIM.
       candidates.sort((a, b) => {
         const pa = SNAP_PRIORITY[a.type] ?? 0;
         const pb = SNAP_PRIORITY[b.type] ?? 0;

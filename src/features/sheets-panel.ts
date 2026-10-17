@@ -40,7 +40,7 @@ function render() {
     <div class="obs-panel-body obs-sheets">
       <div class="obs-sheets__hint">
         Professional drawing sheets with titleblocks. Place plans, export SVG for print or PDF.
-        Competes with Revit / Bentley sheet production.
+        Competes with BIM / Bentley sheet production.
       </div>
       <div class="obs-sheets__toolbar">
         <button type="button" data-act="new">+ Sheet</button>

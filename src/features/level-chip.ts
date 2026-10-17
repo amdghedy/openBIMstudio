@@ -1,5 +1,5 @@
 // openbim-levels:ui-wired
-// Revit-style floating "current level" chip.
+// BIM-style floating "current level" chip.
 //
 // Layout: bottom-left of the viewport.
 // Shows:  "<diamond> Level 2 . +6.00 m"

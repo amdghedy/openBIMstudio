@@ -12,7 +12,7 @@
  *   face         - a surface offset from the wall centerline
  *   nearest      - the closest point on any linear element
  *
- * Priority-ordered like Revit: Endpoint (100) > Intersection (95) >
+ * Priority-ordered like BIM: Endpoint (100) > Intersection (95) >
  * Corner (92) > Midpoint (90) > Center (85) > Face (60) > Nearest (50).
  */
 

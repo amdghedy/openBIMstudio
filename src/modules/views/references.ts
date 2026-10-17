@@ -1,5 +1,5 @@
 /**
- * Reference system — the thing that makes Revit dimensions follow walls.
+ * Reference system — the thing that makes BIM dimensions follow walls.
  *
  * A Reference is an abstract pointer to a *feature* of an element:
  *   "the exterior face of Wall-4A"

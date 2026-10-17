@@ -1,5 +1,5 @@
 /**
- * Additive type extensions for the Revit-competitive parametric engine.
+ * Additive type extensions for the BIM-competitive parametric engine.
  * Import alongside ./types - does not break existing FamilyDefinition consumers.
  */
 
@@ -91,7 +91,7 @@ export interface FamilyConstraints {
 }
 
 /**
- * Shared / project parameter definition (Revit Shared Parameter analogue).
+ * Shared / project parameter definition (BIM Shared Parameter analogue).
  * Stored at project level; bound onto families by name.
  */
 export interface SharedParameter {

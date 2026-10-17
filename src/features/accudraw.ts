@@ -338,7 +338,7 @@ class AccuDrawManager {
     }
     if (k === "escape") {
       // Clear AccuDraw state but do NOT stop propagation —
-      // global Esc handler must still cancel the active tool (Revit-style).
+      // global Esc handler must still cancel the active tool (BIM-style).
       if (this.lock !== "free" || this.typedBuffer || this.basePoint !== null) {
         this.clearLock();
         this.typedBuffer = "";

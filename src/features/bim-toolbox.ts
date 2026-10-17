@@ -1,5 +1,5 @@
 /**
- * BIM Command Center — cross-discipline Revit-style behavior layer.
+ * BIM Command Center — cross-discipline BIM-style behavior layer.
  *
  * This is deliberately broader than a single discipline ribbon: it groups
  * the command order users expect while authoring and documenting BIM:
@@ -231,7 +231,7 @@ modeling.content.append(
   ),
 );
 
-const constraints = makeSection("constraints", "2 · Constraints & Hosts", "Revit-style placement behavior");
+const constraints = makeSection("constraints", "2 · Constraints & Hosts", "BIM-style placement behavior");
 constraints.content.append(
   row(
     select("Wall Location Line", getWallLocationLine(), [

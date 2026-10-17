@@ -1,7 +1,7 @@
 // openbim-fix:workspace-layout
 //
 // Persists which dockable panels are open across page reloads and
-// provides a "Reset Workspace" that returns to the clean Revit-like
+// provides a "Reset Workspace" that returns to the clean BIM-like
 // default (all panels closed).
 //
 // How it works:

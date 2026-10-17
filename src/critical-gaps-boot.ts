@@ -1,5 +1,5 @@
 /**
- * Critical Gaps Boot - wires every Revit-parity module.
+ * Critical Gaps Boot - wires every BIM-parity module.
  *
  * Import once from main.ts (`import "./critical-gaps-boot"`).
  *
@@ -68,7 +68,7 @@ async function runOnce(): Promise<void> {
   await safe("focus-service", async () => { await import("./features/focus-service"); });
   await safe("hosted-place-sync", async () => { await import("./features/hosted-place-sync"); });
 
-  // Core Revit-parity stores
+  // Core BIM-parity stores
   await safe("rooms", async () => {
     const m: Any = await import("./modules/rooms/rooms");
     m.setupRooms?.();
@@ -153,11 +153,11 @@ async function runOnce(): Promise<void> {
   });
   await safe("revit-parity-bridge", async () => {
     const m: Any = await import("./features/revit-parity-bridge");
-    m.setupRevitParityBridge?.();
+    m.setupBIMParityBridge?.();
   });
   await safe("revit-command-center", async () => {
     const m: Any = await import("./features/revit-command-center");
-    m.setupRevitCommandCenter?.();
+    m.setupBIMCommandCenter?.();
   });
   await safe("selection-orbit-pivot", async () => {
     const m: Any = await import("./features/selection-orbit-pivot");
@@ -173,7 +173,7 @@ async function runOnce(): Promise<void> {
   });
   await safe("revit-input-parity", async () => {
     const m: Any = await import("./features/revit-input-parity");
-    m.setupRevitInputParity?.();
+    m.setupBIMInputParity?.();
   });
   await safe("cad-parity", async () => {
     const m: Any = await import("./features/cad-parity");
@@ -236,7 +236,7 @@ async function runOnce(): Promise<void> {
   });
   await safe("revit-mouse-policy", async () => {
     const m: Any = await import("./core/revit-mouse-policy");
-    m.setupRevitMousePolicy?.();
+    m.setupBIMMousePolicy?.();
   });
 
   console.log("[critical-gaps-boot] all critical gaps wired");

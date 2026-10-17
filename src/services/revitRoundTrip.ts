@@ -3,17 +3,17 @@ import axios from 'axios';
 import { IfcAPI } from 'web-ifc';
 
 /**
- * Minimal stub for a Revit ↔ OpenBIMStudio round‑trip.
+ * Minimal stub for a BIM ↔ OpenBIMStudio round‑trip.
  * It uploads the current IFC model to Forge, triggers a translation back to RVT,
- * then downloads the resulting RVT file. The actual Revit add‑in would consume
- * that RVT. This demonstrates the flow; real‑world usage requires a Revit
+ * then downloads the resulting RVT file. The actual BIM add‑in would consume
+ * that RVT. This demonstrates the flow; real‑world usage requires a BIM
  * plugin to import the downloaded RVT.
  */
-export async function roundTripToRevit(api: IfcAPI) {
+export async function roundTripToBIM(api: IfcAPI) {
   const clientId = process.env.FORGE_CLIENT_ID;
   const clientSecret = process.env.FORGE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    console.warn('Forge credentials missing – Revit round‑trip unavailable');
+    console.warn('Forge credentials missing – BIM round‑trip unavailable');
     return;
   }
   // 1️⃣ Get auth token (same as in src/services/forge.ts)
@@ -54,5 +54,5 @@ export async function roundTripToRevit(api: IfcAPI) {
   // const rvtRes = await axios.get(`https://.../manifest/${urn}`, { headers: { Authorization: `Bearer ${token}` }, responseType: 'arraybuffer' });
   // fs.writeFileSync('model.rvt', rvtRes.data);
 
-  console.log('Round‑trip to Revit requested – check Forge manifest for completion.');
+  console.log('Round‑trip to BIM requested – check Forge manifest for completion.');
 }

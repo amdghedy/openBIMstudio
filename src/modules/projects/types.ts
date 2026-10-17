@@ -45,11 +45,11 @@ export interface AuthoredElement {
   color?: string;
   /** For hosted elements (door/window) — the id of the host wall. */
   hostId?: string;
-  /** Revit-style: the level this element was placed on. */
+  /** BIM-style: the level this element was placed on. */
   levelId?: string;
-  /** Revit-style: the family this element instantiates (optional). */
+  /** BIM-style: the family this element instantiates (optional). */
   familyId?: string;
-  /** Revit-style: the family type this element instantiates (optional). */
+  /** BIM-style: the family type this element instantiates (optional). */
   familyTypeId?: string;
   params: {
     start?: Vec2;
@@ -161,7 +161,7 @@ export interface ProjectModelMeta {
   position?: [number, number, number];
 }
 
-// ── Positioning (Revit-style linking modes) ───────────────────────────────
+// ── Positioning (BIM-style linking modes) ───────────────────────────────
 export type PositioningMode =
   | "origin-to-origin"
   | "shared-coordinates"
@@ -169,7 +169,7 @@ export type PositioningMode =
   | "project-base-to-project-base"
   | "manual";
 
-// ── Element Types / Parameters (Revit-style type system foundation) ───────
+// ── Element Types / Parameters (BIM-style type system foundation) ───────
 export type ParamDataType = "text" | "number" | "integer" | "yesno" | "length" | "area" | "volume" | "angle" | "material";
 
 export interface ParameterDef {
@@ -298,7 +298,7 @@ export interface ProjectDoc {
   /** Persisted positioning mode used when linking IFC / FRAG files. */
   positioningMode?: PositioningMode;
 
-  /** Revit-style: the level that was active when the project was saved. */
+  /** BIM-style: the level that was active when the project was saved. */
   activeLevelId?: string | null;
 
   /** Persisted FRAG/native twin edits (move / rotate / scale + copied BIM data). */

@@ -284,7 +284,7 @@ class UnitsService {
     return r;
   }
 
-  /** Revit-style: interpret a user-typed length against the display unit,
+  /** BIM-style: interpret a user-typed length against the display unit,
    *  or against an explicit suffix if the user typed one.
    *  Returns metres. */
   parseLengthInput(input: string, fallbackUnit?: LengthUnit): number | null {
@@ -334,7 +334,7 @@ function defaultLengthPrecision(unit: LengthUnit): number {
 }
 
 /**
- * Revit-style feet-inches. Precision is the inch fraction denominator:
+ * BIM-style feet-inches. Precision is the inch fraction denominator:
  *   fractionDenominator = 16 → "5'-6 1/2""
  *   showUnit = false       → omit the trailing double-quote
  */

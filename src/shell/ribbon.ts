@@ -1,4 +1,4 @@
-/** Top ribbon — pyRevit-style density, icon + label buttons.
+/** Top ribbon — pyBIM-style density, icon + label buttons.
  *
  * 16 tabs. File · Architecture · Structure · Mechanical · Electrical ·
  * Insert · Annotate · Analyze · Massing & Site · Coordinate ·
@@ -88,11 +88,11 @@ import { toggleSnapSettings, isSnapSettingsVisible, snapping } from "../features
 
 // ── Insert / Link tools (all activated) ────────────────────────────────
 import {
-  linkIfc, linkFrag, linkCad, linkRevit, linkPointCloud, linkTopography,
+  linkIfc, linkFrag, linkCad, linkBIM, linkPointCloud, linkTopography,
   openFamilyLibrary, openComponentLibrary, linkAutodesk,
 } from "../features/link-tools";
 
-// ── Project Browser + Properties (Revit-class) ─────────────────────────
+// ── Project Browser + Properties (Industry-standard) ─────────────────────────
 import {
   toggleProjectBrowser, isProjectBrowserVisible,
 } from "../features/project-browser";
@@ -176,7 +176,7 @@ strip.className = "obs-ribbon__strip";
 const pill = document.createElement("div");
 pill.className = "obs-ribbon__pill";
 
-/** Revit-style ribbon minimize: double-click a tab (or tabs row) to collapse the strip
+/** BIM-style ribbon minimize: double-click a tab (or tabs row) to collapse the strip
  *  so only the tab buttons remain (flat / shrunk). Double-click again to restore. */
 let ribbonMinimized = false;
 try {
@@ -302,7 +302,7 @@ function toolBtn(icon: IconName, label: string, tool: string, kbd = ""): HTMLBut
           toast(`${label} off`, "info", 1200);
         } else {
           setAuthoringTool(tool as any);
-          // If Floor Plan is open, route tool into 2D plan (Revit behaviour)
+          // If Floor Plan is open, route tool into 2D plan (BIM behaviour)
           try {
             const pv = (ctx.features as any).planView;
             if (pv?.isVisible?.()) {
@@ -550,7 +550,7 @@ function propertiesButton(): HTMLButtonElement {
     safe(() => togglePropertyPalette(), "Properties"),
     {
       active: isPropertyPaletteVisible(),
-      title: "Element & view properties (Revit-style)",
+      title: "Element & view properties (BIM-style)",
     },
   );
 }
@@ -834,12 +834,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Universal import (IFC / FRAG / OBJ / GLB / …)",
       }),
       sep(),
-      groupLabel("Link CAD / Revit"),
+      groupLabel("Link CAD / BIM"),
       b("system", "Link CAD", safe(() => linkCad(), "Link CAD underlay"), {
         title: "DXF / SVG / PNG underlay for plan tracing, or 3D CAD reference",
       }),
-      b("file", "Link Revit", safe(() => linkRevit(), "Link Revit via IFC"), {
-        title: "Export IFC from Revit, then link here",
+      b("file", "Link BIM", safe(() => linkBIM(), "Link BIM via IFC"), {
+        title: "Export IFC from BIM, then link here",
       }),
       b("component", "Point cloud", safe(() => linkPointCloud(), "Point cloud"), {
         title: "PLY / XYZ / PTS / PCD (multi-file)",
@@ -861,7 +861,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Placement"),
       b("home", "Origin↔Origin", safe(() => alignOriginToOrigin(), "Origin to origin"), {
-        title: "Force all linked models to identity (0,0,0) — Revit link style",
+        title: "Force all linked models to identity (0,0,0) — BIM link style",
       }),
       b("fit", "Recenter", safe(() => recenterSceneNow(), "Recenter scene"), {
         title: "Recenter first model to origin (optional)",
@@ -898,43 +898,43 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-aligned"), 40);
       }, "Aligned dimension"), {
-        kbd: "DI", title: "Revit Aligned: pick two model boundaries",
+        kbd: "DI", title: "Aligned Dimension: pick two model boundaries",
       }),
       b("dim-linear", "Linear", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-linear"), 40);
       }, "Linear dimension"), {
-        title: "Revit Linear: horizontal / vertical between two boundaries",
+        title: "Linear Dimension: horizontal / vertical between two boundaries",
       }),
       b("dim-angular", "Angular", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-angular"), 40);
       }, "Angular dimension"), {
-        title: "Revit Angular: pick two edges — interior angle",
+        title: "Angular Dimension: pick two edges — interior angle",
       }),
       b("dim-radial", "Radial", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-radial"), 40);
       }, "Radial dimension"), {
-        title: "Revit Radial: pick center then edge — R =",
+        title: "Radial Dimension: pick center then edge — R =",
       }),
       b("arc-length", "Arc", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-arc"), 40);
       }, "Arc length"), {
-        title: "Revit Arc Length: two points along an edge",
+        title: "Arc Length Dimension: two points along an edge",
       }),
       b("spot-elev", "Elevation", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("spot-elev"), 40);
       }, "Spot elevation"), {
-        title: "Revit Spot Elevation: click a point",
+        title: "Spot Elevation: click a point",
       }),
       b("spot-coord", "Coordinate", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("spot-coord"), 40);
       }, "Spot coordinate"), {
-        title: "Revit Spot Coordinate: click for X / Z",
+        title: "Spot Coordinate: click for X / Z",
       }),
       b("dim-radial", "Diameter", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
@@ -1233,7 +1233,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
 
       groupLabel("Coordinates"),
       b("origin", "Origin↔Origin", safe(() => alignOriginToOrigin(), "Origin"),
-        { title: "Keep shared project coordinates (Revit-style)" }),
+        { title: "Keep shared project coordinates (BIM-style)" }),
       b("recenter", "Recenter", safe(() => recenterSceneNow(), "Recenter"),
         { title: "Move the first model to the scene origin" }),
       b("reset-offsets", "Reset", safe(() => resetOffsets(), "Reset"),
@@ -1396,7 +1396,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
   },
 
   // ══════════════════════════════ VIEW ═════════════════════════════════
-  // Revit-class View ribbon: Graphics · Presentation · Create · Sheets · Windows
+  // Industry-standard View ribbon: Graphics · Presentation · Create · Sheets · Windows
   {
     id: "view",
     label: "View",
@@ -1582,7 +1582,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         refreshRibbon();
       }, "Options Bar"), {
         active: isOptionsBarVisible(),
-        title: "Show / hide the Options Bar under the ribbon (Revit Options Bar)",
+        title: "Show / hide the Options Bar under the ribbon (BIM Options Bar)",
       }),
       b("modify", "Modify bar", safe(() => {
         const on = toggleContextualBar();
@@ -1606,7 +1606,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       aiChatButton(),
       b("tools-panel", "BIM Center", safe(() => toggleBimToolbox(), "BIM Command Center"), {
         active: isBimToolboxVisible(),
-        title: "Revit-style modeling order, modify, annotation, dimensioning, visibility and graphics controls",
+        title: "BIM-style modeling order, modify, annotation, dimensioning, visibility and graphics controls",
       }),
       b("right", "Tile L", safe(() => {
         const api = (ctx.features as any).leftPanel;
@@ -1652,7 +1652,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "Manage",
     items: () => [
       groupLabel("Links"),
-      b("folder-recent", "Manage Links", () => (window as any).__obsManageLinks?.(), { title: "Manage external links (IFC, DWG, Revit)" }),
+      b("folder-recent", "Manage Links", () => (window as any).__obsManageLinks?.(), { title: "Manage external links (IFC, DWG, BIM)" }),
       sep(),
       groupLabel("Project"),
       b("settings", "Info", safe(() => openProjectInfo(), "Project information"), {
@@ -1687,7 +1687,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("tools-panel", "BIM Center", safe(() => toggleBimToolbox(), "BIM Command Center"), {
         active: isBimToolboxVisible(),
-        title: "Cross-discipline Revit-style BIM command order and graphics controls",
+        title: "Cross-discipline BIM-style BIM command order and graphics controls",
       }),
       sep(),
       groupLabel("Selection"),
@@ -1798,7 +1798,7 @@ function renderTabs() {
       renderTabs();
       renderStrip();
     };
-    // Double-click on tab → toggle minimize (Revit behavior: shrink ribbon so only tabs show)
+    // Double-click on tab → toggle minimize (BIM behavior: shrink ribbon so only tabs show)
     btn.ondblclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -2086,7 +2086,7 @@ export function setupRibbon() {
   activeTab = getWorkspaceDefinition(activeWorkspace).tab;
   renderTabs();
   renderStrip();
-  // Restore minimized state (Revit-style flat ribbon)
+  // Restore minimized state (BIM-style flat ribbon)
   applyRibbonMinimize(ribbonMinimized);
 
   window.addEventListener("obs-workspace", ((e: CustomEvent) => {

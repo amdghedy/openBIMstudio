@@ -1,7 +1,7 @@
 /**
  * Dimensional constraint graph for parametric families.
  *
- * Supports the constraint kinds that drive most Revit family behaviour:
+ * Supports the constraint kinds that drive most BIM family behaviour:
  *   - equality:     a = b
  *   - offset:       a = b + delta
  *   - ratio:        a = b * k

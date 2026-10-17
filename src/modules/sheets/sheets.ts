@@ -2,7 +2,7 @@
  * Sheets & Drawing Production — professional documentation engine.
  *
  * Places plan views, 3D views and schedules onto titleblocked sheets.
- * Designed to compete with Revit sheets / Bentley drawing production.
+ * Designed to compete with BIM sheets / Bentley drawing production.
  */
 import type { SheetDef, SheetViewport, TitleblockDef } from "../projects/types";
 

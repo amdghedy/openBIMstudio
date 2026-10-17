@@ -1,5 +1,5 @@
 /**
- * Per-project persistence for the "Revit parity" stores.
+ * Per-project persistence for the "BIM parity" stores.
  *
  * Problem this fixes: rooms, areas, phases, design options, groups, reference
  * planes, shared / project parameters and copy-monitor rules were saved only in
@@ -32,7 +32,7 @@ const KEYS = [
 const STORES: Any[] = [roomsStore, phasesStore, designOptionsStore, groupsStore, refPlanesStore, sharedParamsStore, copyMonitorStore];
 const ADOPTED_FLAG = "obs.revit-gaps.scope-adopted";
 
-export interface RevitStoresPayload { v: 1; data: Record<string, string> }
+export interface BIMStoresPayload { v: 1; data: Record<string, string> }
 
 let hydrating = false;
 let lastProjectId: string | null | undefined;
@@ -82,9 +82,9 @@ function syncToProject(): void {
   const doc = P.getCurrentProject();
   if (!doc) return;
   const snap = snapshotStores();
-  const prev = (doc.revitStores as RevitStoresPayload | undefined)?.data;
+  const prev = (doc.revitStores as BIMStoresPayload | undefined)?.data;
   if (prev && JSON.stringify(prev) === JSON.stringify(snap)) return;
-  doc.revitStores = { v: 1, data: snap } satisfies RevitStoresPayload;
+  doc.revitStores = { v: 1, data: snap } satisfies BIMStoresPayload;
   P.markDirty();
 }
 
@@ -96,14 +96,14 @@ function onProject(): void {
   const first = lastProjectId === undefined;
   lastProjectId = id;
   if (!doc) return;
-  const payload = doc.revitStores as RevitStoresPayload | undefined;
+  const payload = doc.revitStores as BIMStoresPayload | undefined;
   if (payload?.data) { hydrateStores(payload.data); return; }
   let adopted = false;
   try { adopted = localStorage.getItem(ADOPTED_FLAG) === "1"; } catch { /* */ }
   if (first && !adopted) {
     // Migration: the first project we ever see keeps the data that was already in localStorage.
     try { localStorage.setItem(ADOPTED_FLAG, "1"); } catch { /* */ }
-    doc.revitStores = { v: 1, data: snapshotStores() } satisfies RevitStoresPayload;
+    doc.revitStores = { v: 1, data: snapshotStores() } satisfies BIMStoresPayload;
     P.markDirty();
   } else {
     hydrateStores(null); // a project that has no saved data starts empty instead of inheriting another project's

@@ -1,5 +1,5 @@
 /**
- * Open BIM Studio v48 — Revit Experience Layer
+ * Open BIM Studio v48 — BIM Experience Layer
  *
  * This module is deliberately UI/interaction focused. Existing authoring,
  * selection, snapping, properties and plan engines remain the source of truth;
@@ -10,7 +10,7 @@
  * It adds:
  *   - command registry and command order semantics
  *   - selection-aware contextual commands
- *   - Revit-style options bar / type selector
+ *   - BIM-style options bar / type selector
  *   - modify contextual ribbon
  *   - temporary review states (hide/isolate/reveal)
  *   - view control bar
@@ -83,7 +83,7 @@ export type ExperienceMode =
   | "query"
   | "review";
 
-export interface RevitCommand {
+export interface BIMCommand {
   id: string;
   label: string;
   ribbon?: string;
@@ -131,7 +131,7 @@ const state: ExperienceState = {
   crop: true,
 };
 
-const commands = new Map<string, RevitCommand>();
+const commands = new Map<string, BIMCommand>();
 const listeners = new Set<() => void>();
 
 let optionsBar: HTMLDivElement | null = null;
@@ -150,18 +150,18 @@ function emit() {
   window.dispatchEvent(new CustomEvent("obs:revit-experience", { detail: { ...state } }));
 }
 
-export function onRevitExperienceChange(cb: () => void): () => void {
+export function onBIMExperienceChange(cb: () => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
 
-export function registerRevitCommand(command: RevitCommand): void {
+export function registerBIMCommand(command: BIMCommand): void {
   commands.set(command.id, command);
 }
-export function registerRevitCommands(list: RevitCommand[]): void {
-  for (const command of list) registerRevitCommand(command);
+export function registerBIMCommands(list: BIMCommand[]): void {
+  for (const command of list) registerBIMCommand(command);
 }
-export function listRevitCommands(): RevitCommand[] { return [...commands.values()]; }
+export function listBIMCommands(): BIMCommand[] { return [...commands.values()]; }
 
 function toast(message: string, kind: "info" | "success" | "warn" = "info", ms = 1800) {
   window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message, kind, ms } }));
@@ -384,7 +384,7 @@ function openDialog(title: string, subtitle: string, body: HTMLElement, footer?:
   const header = el("div", "obs-revit-dialog__header");
   const titleWrap = el("div");
   const eyebrow = el("div", "obs-revit-dialog__eyebrow");
-  eyebrow.textContent = "OPEN BIM STUDIO · REVIT EXPERIENCE";
+  eyebrow.textContent = "OPEN BIM STUDIO · BIM EXPERIENCE";
   const h = el("h2");
   h.textContent = title;
   const p = el("p");
@@ -587,7 +587,7 @@ function trimExtendSelected(): number {
 
 function createCommandCatalog() {
   const regTool = (tool: string, label: string, ribbon: string, group = "Create", shortcut?: string) =>
-    registerRevitCommand({ id: `tool.${tool}`, label, ribbon, group, shortcut, run: () => activateTool(tool), keywords: [label, ribbon, "create", "place"] });
+    registerBIMCommand({ id: `tool.${tool}`, label, ribbon, group, shortcut, run: () => activateTool(tool), keywords: [label, ribbon, "create", "place"] });
 
   const architecture: [string, string, string][] = [
     ["wall", "Wall", "Architecture"], ["slab", "Floor", "Architecture"], ["roof", "Roof", "Architecture"],
@@ -612,20 +612,20 @@ function createCommandCatalog() {
     ["move", "Move", "Modify"], ["copy", "Copy", "Modify"], ["rotate", "Rotate", "Modify"],
     ["mirror", "Mirror", "Modify"], ["array", "Array", "Modify"], ["offset", "Offset", "Modify"],
   ];
-  for (const [tool, label, ribbon] of modify) registerRevitCommand({
+  for (const [tool, label, ribbon] of modify) registerBIMCommand({
     id: `modify.${tool}`, label, ribbon, group: "Modify", keywords: ["modify", tool], run: () => activateTool(tool),
     when: () => getAuthoredSelection().length > 0 || !selection.isEmpty(),
   });
 
-  registerRevitCommand({ id: "modify.alignX", label: "Align — Horizontal", ribbon: "Modify", group: "Modify", keywords: ["align", "horizontal"], run: () => { const n = alignSelectedAxis("x"); toast(n ? "Aligned selected elements" : "Select two or more authored elements", n ? "success" : "warn"); } });
-  registerRevitCommand({ id: "modify.alignZ", label: "Align — Vertical", ribbon: "Modify", group: "Modify", keywords: ["align", "vertical"], run: () => { const n = alignSelectedAxis("z"); toast(n ? "Aligned selected elements" : "Select two or more authored elements", n ? "success" : "warn"); } });
-  registerRevitCommand({ id: "modify.split", label: "Split Element — Midpoint", ribbon: "Modify", group: "Modify", keywords: ["split", "break"], run: () => toast(splitSelectedAtMidpoint() ? "Element split" : "Select a line-based authored element", "info") });
-  registerRevitCommand({ id: "modify.join", label: "Join / Heal Walls", ribbon: "Modify", group: "Modify", keywords: ["join", "wall", "heal"], run: () => toast(joinSelectedWalls() ? "Wall joins processed" : "Select joinable walls", "info") });
-  registerRevitCommand({ id: "modify.pin", label: "Pin", ribbon: "Modify", group: "Constraints", keywords: ["pin", "lock"], run: () => toast(pinSelected(true) ? "Pinned" : "Nothing to pin", "success") });
-  registerRevitCommand({ id: "modify.unpin", label: "Unpin", ribbon: "Modify", group: "Constraints", keywords: ["unpin", "unlock"], run: () => toast(pinSelected(false) ? "Unpinned" : "Nothing to unpin", "success") });
-  registerRevitCommand({ id: "modify.createSimilar", label: "Create Similar", ribbon: "Modify", group: "Create", keywords: ["similar", "duplicate", "place same type"], run: () => toast(createSimilarFromSelection() ? "Create Similar — click to place the same type" : "Select an authored element first", "info") });
-  registerRevitCommand({ id: "modify.delete", label: "Delete", ribbon: "Modify", group: "Modify", shortcut: "Del", keywords: ["delete", "remove"], run: () => deleteSelectedElement() });
-  registerRevitCommand({ id: "modify.trimExtend", label: "Trim / Extend to Corner", ribbon: "Modify", group: "Modify", keywords: ["trim", "extend", "corner"], run: () => { trimExtendSelected(); }, when: () => getAuthoredSelection().length === 2 });
+  registerBIMCommand({ id: "modify.alignX", label: "Align — Horizontal", ribbon: "Modify", group: "Modify", keywords: ["align", "horizontal"], run: () => { const n = alignSelectedAxis("x"); toast(n ? "Aligned selected elements" : "Select two or more authored elements", n ? "success" : "warn"); } });
+  registerBIMCommand({ id: "modify.alignZ", label: "Align — Vertical", ribbon: "Modify", group: "Modify", keywords: ["align", "vertical"], run: () => { const n = alignSelectedAxis("z"); toast(n ? "Aligned selected elements" : "Select two or more authored elements", n ? "success" : "warn"); } });
+  registerBIMCommand({ id: "modify.split", label: "Split Element — Midpoint", ribbon: "Modify", group: "Modify", keywords: ["split", "break"], run: () => toast(splitSelectedAtMidpoint() ? "Element split" : "Select a line-based authored element", "info") });
+  registerBIMCommand({ id: "modify.join", label: "Join / Heal Walls", ribbon: "Modify", group: "Modify", keywords: ["join", "wall", "heal"], run: () => toast(joinSelectedWalls() ? "Wall joins processed" : "Select joinable walls", "info") });
+  registerBIMCommand({ id: "modify.pin", label: "Pin", ribbon: "Modify", group: "Constraints", keywords: ["pin", "lock"], run: () => toast(pinSelected(true) ? "Pinned" : "Nothing to pin", "success") });
+  registerBIMCommand({ id: "modify.unpin", label: "Unpin", ribbon: "Modify", group: "Constraints", keywords: ["unpin", "unlock"], run: () => toast(pinSelected(false) ? "Unpinned" : "Nothing to unpin", "success") });
+  registerBIMCommand({ id: "modify.createSimilar", label: "Create Similar", ribbon: "Modify", group: "Create", keywords: ["similar", "duplicate", "place same type"], run: () => toast(createSimilarFromSelection() ? "Create Similar — click to place the same type" : "Select an authored element first", "info") });
+  registerBIMCommand({ id: "modify.delete", label: "Delete", ribbon: "Modify", group: "Modify", shortcut: "Del", keywords: ["delete", "remove"], run: () => deleteSelectedElement() });
+  registerBIMCommand({ id: "modify.trimExtend", label: "Trim / Extend to Corner", ribbon: "Modify", group: "Modify", keywords: ["trim", "extend", "corner"], run: () => { trimExtendSelected(); }, when: () => getAuthoredSelection().length === 2 });
 
   // Annotation family — every entry maps to the plan tool where supported.
   const annotate: [string, string][] = [
@@ -633,59 +633,59 @@ function createCommandCatalog() {
     ["spot-elevation", "Spot Elevation"], ["tag", "Tag by Category"], ["room-tag", "Room Tag"],
     ["material-tag", "Material Tag"], ["text", "Text Note"], ["mline", "Detail Line"],
   ];
-  for (const [tool, label] of annotate) registerRevitCommand({
+  for (const [tool, label] of annotate) registerBIMCommand({
     id: `annotate.${tool}`, label, ribbon: "Annotate", group: "Annotation", keywords: ["annotation", label],
     run: () => { const pv = (ctx.features as any).planView; if (pv?.isVisible?.()) pv.setTool?.(tool); else activateTool(tool); },
   });
 
   // View / review.
-  registerRevitCommand({ id: "view.properties", label: "Properties", ribbon: "View", group: "Windows", shortcut: "PP", run: () => openPropertyPalette() });
-  registerRevitCommand({ id: "view.projectBrowser", label: "Project Browser", ribbon: "View", group: "Windows", run: () => toggleProjectBrowser() });
-  registerRevitCommand({ id: "view.modelTree", label: "Model Categories / Browser", ribbon: "View", group: "Windows", run: () => toggleModelTreePanel() });
-  registerRevitCommand({ id: "view.plan", label: "Floor Plan", ribbon: "View", group: "Create Views", run: () => togglePlanView() });
-  registerRevitCommand({ id: "view.schedule", label: "Schedule / Quantities", ribbon: "View", group: "Create Views", run: () => toggleSchedules() });
-  registerRevitCommand({ id: "view.sheet", label: "Sheet", ribbon: "View", group: "Create Views", run: () => toggleSheetsPanel() });
-  registerRevitCommand({ id: "view.issues", label: "Issues / BCF", ribbon: "Collaborate", group: "Coordination", run: () => toggleIssuesPanel() });
-  registerRevitCommand({ id: "view.ids", label: "IDS Validation", ribbon: "Manage", group: "QA", run: () => toggleIdsPanel() });
-  registerRevitCommand({ id: "view.timeline", label: "Phasing / 4D", ribbon: "View", group: "Coordination", run: () => toggleTimelinePanel() });
-  registerRevitCommand({ id: "view.graphics", label: "Visibility / Graphics", ribbon: "View", group: "Graphics", run: openVisibilityGraphics });
-  registerRevitCommand({ id: "view.templates", label: "View Templates", ribbon: "View", group: "Graphics", run: openViewTemplates });
-  registerRevitCommand({ id: "modify.typeProperties", label: "Type Properties", ribbon: "Modify", group: "Properties", run: openTypeProperties });
-  registerRevitCommand({ id: "view.fit", label: "Zoom to Fit", ribbon: "View", group: "Navigation", shortcut: "ZF", run: () => fitAll() });
-  registerRevitCommand({ id: "view.home", label: "Default 3D View", ribbon: "View", group: "Navigation", shortcut: "3D", run: () => goHome() });
-  registerRevitCommand({ id: "view.top", label: "Top / Plan Orientation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 1, 0)) });
-  registerRevitCommand({ id: "view.front", label: "Front Elevation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 0, 1)) });
-  registerRevitCommand({ id: "view.ortho", label: "Orthographic", ribbon: "View", group: "Projection", run: () => { void setProjection("orthographic"); } });
-  registerRevitCommand({ id: "view.perspective", label: "Perspective", ribbon: "View", group: "Projection", run: () => { void setProjection("perspective"); } });
+  registerBIMCommand({ id: "view.properties", label: "Properties", ribbon: "View", group: "Windows", shortcut: "PP", run: () => openPropertyPalette() });
+  registerBIMCommand({ id: "view.projectBrowser", label: "Project Browser", ribbon: "View", group: "Windows", run: () => toggleProjectBrowser() });
+  registerBIMCommand({ id: "view.modelTree", label: "Model Categories / Browser", ribbon: "View", group: "Windows", run: () => toggleModelTreePanel() });
+  registerBIMCommand({ id: "view.plan", label: "Floor Plan", ribbon: "View", group: "Create Views", run: () => togglePlanView() });
+  registerBIMCommand({ id: "view.schedule", label: "Schedule / Quantities", ribbon: "View", group: "Create Views", run: () => toggleSchedules() });
+  registerBIMCommand({ id: "view.sheet", label: "Sheet", ribbon: "View", group: "Create Views", run: () => toggleSheetsPanel() });
+  registerBIMCommand({ id: "view.issues", label: "Issues / BCF", ribbon: "Collaborate", group: "Coordination", run: () => toggleIssuesPanel() });
+  registerBIMCommand({ id: "view.ids", label: "IDS Validation", ribbon: "Manage", group: "QA", run: () => toggleIdsPanel() });
+  registerBIMCommand({ id: "view.timeline", label: "Phasing / 4D", ribbon: "View", group: "Coordination", run: () => toggleTimelinePanel() });
+  registerBIMCommand({ id: "view.graphics", label: "Visibility / Graphics", ribbon: "View", group: "Graphics", run: openVisibilityGraphics });
+  registerBIMCommand({ id: "view.templates", label: "View Templates", ribbon: "View", group: "Graphics", run: openViewTemplates });
+  registerBIMCommand({ id: "modify.typeProperties", label: "Type Properties", ribbon: "Modify", group: "Properties", run: openTypeProperties });
+  registerBIMCommand({ id: "view.fit", label: "Zoom to Fit", ribbon: "View", group: "Navigation", shortcut: "ZF", run: () => fitAll() });
+  registerBIMCommand({ id: "view.home", label: "Default 3D View", ribbon: "View", group: "Navigation", shortcut: "3D", run: () => goHome() });
+  registerBIMCommand({ id: "view.top", label: "Top / Plan Orientation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 1, 0)) });
+  registerBIMCommand({ id: "view.front", label: "Front Elevation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 0, 1)) });
+  registerBIMCommand({ id: "view.ortho", label: "Orthographic", ribbon: "View", group: "Projection", run: () => { void setProjection("orthographic"); } });
+  registerBIMCommand({ id: "view.perspective", label: "Perspective", ribbon: "View", group: "Projection", run: () => { void setProjection("perspective"); } });
 
   // Temporary review / graphics.
-  registerRevitCommand({ id: "review.isolate", label: "Temporary Isolate", ribbon: "View", group: "Temporary", run: isolateSelection });
-  registerRevitCommand({ id: "review.hide", label: "Temporary Hide", ribbon: "View", group: "Temporary", run: hideSelection });
-  registerRevitCommand({ id: "review.reveal", label: "Reveal Hidden Elements", ribbon: "View", group: "Temporary", run: revealAll });
-  registerRevitCommand({ id: "review.focus", label: "Zoom to Selection", ribbon: "View", group: "Navigation", run: focusSelection });
+  registerBIMCommand({ id: "review.isolate", label: "Temporary Isolate", ribbon: "View", group: "Temporary", run: isolateSelection });
+  registerBIMCommand({ id: "review.hide", label: "Temporary Hide", ribbon: "View", group: "Temporary", run: hideSelection });
+  registerBIMCommand({ id: "review.reveal", label: "Reveal Hidden Elements", ribbon: "View", group: "Temporary", run: revealAll });
+  registerBIMCommand({ id: "review.focus", label: "Zoom to Selection", ribbon: "View", group: "Navigation", run: focusSelection });
 
   // Global orders.
-  registerRevitCommand({ id: "global.select", label: "Modify / Select", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
-  registerRevitCommand({ id: "global.repeat", label: "Repeat Last Command", ribbon: "Modify", group: "Selection", shortcut: "Space", run: repeatLast });
-  registerRevitCommand({ id: "global.cancel", label: "Cancel Current Command", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
-  registerRevitCommand({ id: "global.selectAll", label: "Select All", ribbon: "Modify", group: "Selection", shortcut: "Ctrl+A", run: () => void selection.selectAll() });
-  registerRevitCommand({ id: "global.clearSelection", label: "Clear Selection", ribbon: "Modify", group: "Selection", run: clearSelection });
-  registerRevitCommand({ id: "global.undo", label: "Undo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Z", run: () => void history.undo() });
-  registerRevitCommand({ id: "global.redo", label: "Redo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Y", run: () => void history.redo() });
+  registerBIMCommand({ id: "global.select", label: "Modify / Select", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
+  registerBIMCommand({ id: "global.repeat", label: "Repeat Last Command", ribbon: "Modify", group: "Selection", shortcut: "Space", run: repeatLast });
+  registerBIMCommand({ id: "global.cancel", label: "Cancel Current Command", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
+  registerBIMCommand({ id: "global.selectAll", label: "Select All", ribbon: "Modify", group: "Selection", shortcut: "Ctrl+A", run: () => void selection.selectAll() });
+  registerBIMCommand({ id: "global.clearSelection", label: "Clear Selection", ribbon: "Modify", group: "Selection", run: clearSelection });
+  registerBIMCommand({ id: "global.undo", label: "Undo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Z", run: () => void history.undo() });
+  registerBIMCommand({ id: "global.redo", label: "Redo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Y", run: () => void history.redo() });
 }
 
 function createOrAlias(tool: string, label: string, ribbon: string, regTool: (tool: string, label: string, ribbon: string, group?: string, shortcut?: string) => void) {
   if (tool === "roof" || tool === "ceiling") {
-    registerRevitCommand({ id: `tool.${tool}`, label, ribbon, group: "Build", run: () => activateTool(tool) });
+    registerBIMCommand({ id: `tool.${tool}`, label, ribbon, group: "Build", run: () => activateTool(tool) });
     return;
   }
   regTool(tool, label, ribbon, "Build");
 }
 
-function contextActions(): RevitCommand[] {
+function contextActions(): BIMCommand[] {
   const s = selectionSummary();
   if (!s.authored && !s.fragments) return [];
-  const out: RevitCommand[] = [];
+  const out: BIMCommand[] = [];
   const add = (id: string) => {
     const c = commands.get(id);
     if (c) out.push(c);
@@ -934,7 +934,7 @@ function keydown(e: KeyboardEvent) {
   const tag = target?.tagName?.toLowerCase();
   if (tag === "input" || tag === "textarea" || target?.isContentEditable) return;
 
-  // Centralize common Revit-style global orders, while letting active authoring
+  // Centralize common BIM-style global orders, while letting active authoring
   // keep ownership of its detailed mouse/Enter/Escape state machine.
   if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "z") return;
   if (e.ctrlKey && e.key.toLowerCase() === "y") return;
@@ -1001,7 +1001,7 @@ function authoringChanged() {
   refresh();
 }
 
-export function setupRevitExperience() {
+export function setupBIMExperience() {
   if (installed) return;
   installed = true;
   createCommandCatalog();
@@ -1009,7 +1009,7 @@ export function setupRevitExperience() {
     registerPaletteCommand({
       id: `revit.${c.id}`,
       label: c.label,
-      category: c.ribbon ? `Revit ${c.ribbon}` : "Revit",
+      category: c.ribbon ? `BIM ${c.ribbon}` : "BIM",
       hint: c.group,
       kbd: c.shortcut,
       run: () => c.run(),
@@ -1053,7 +1053,7 @@ export function setupRevitExperience() {
     isOptionsBarVisible,
     isViewBarVisible,
   };
-  (window as any).__obsRevitExperience = {
+  (window as any).__obsBIMExperience = {
     execute,
     refresh,
     getState: () => ({ ...state }),
@@ -1061,11 +1061,11 @@ export function setupRevitExperience() {
     activateTool,
   };
   refresh();
-  console.log("[Revit Experience] v48 interaction layer online — command grammar + contextual UX + options bar + view control bar");
+  console.log("[BIM Experience] v48 interaction layer online — command grammar + contextual UX + options bar + view control bar");
 }
 
 
-/** Show / hide the Options Bar (Revit Options Bar under the ribbon). */
+/** Show / hide the Options Bar (BIM Options Bar under the ribbon). */
 export function toggleOptionsBar(force?: boolean): boolean {
   state.optionsVisible = force != null ? force : !state.optionsVisible;
   if (optionsBar) optionsBar.dataset.visible = state.optionsVisible ? "1" : "0";
@@ -1111,5 +1111,5 @@ export function isViewBarVisible(): boolean {
   return !!(viewBar && viewBar.dataset.visible !== "0");
 }
 
-export function getRevitExperienceState(): ExperienceState { return { ...state }; }
-export function executeRevitCommand(id: string): void { execute(id); }
+export function getBIMExperienceState(): ExperienceState { return { ...state }; }
+export function executeBIMCommand(id: string): void { execute(id); }

@@ -1,5 +1,5 @@
 /**
- * Views panel — Revit-style dockable views browser.
+ * Views panel — BIM-style dockable views browser.
  *
  * Lists ViewDefs on the left and renders the selected view on the right.
  * Includes interactive tools for dimensions, tags, and section lines.

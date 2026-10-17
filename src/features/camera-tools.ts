@@ -490,7 +490,7 @@ export function pickWorldPointUnderCursor(clientX: number, clientY: number): THR
 export type ExactView = "top" | "bottom" | "front" | "back" | "right" | "left";
 
 /**
- * Pure Revit-style cardinal view. Unlike gotoDir(), this deliberately ignores
+ * Pure BIM-style cardinal view. Unlike gotoDir(), this deliberately ignores
  * Project North and the current camera rotation so Top really means +Y,
  * Front +Z, Right +X, etc. All cube-face and explicit view commands should use
  * this function to guarantee identical camera behavior.
@@ -583,7 +583,7 @@ export function focusOnPoint(point: THREE.Vector3) {
     ).normalize();
   }
 
-  // Fit so the object fills ~60% of the view (Revit Focus)
+  // Fit so the object fills ~60% of the view (BIM Focus)
   computeSceneBounds();
   const targetDist = Math.max(sceneRadius * 0.12, 1.5, 0.5);
   const pos = point.clone().add(dir.multiplyScalar(targetDist * 1.8));

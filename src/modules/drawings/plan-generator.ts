@@ -6,7 +6,7 @@
  * projected to XZ, deduplicated at 1 mm resolution.
  *
  * Authored elements (walls, doors, windows, columns, beams, slabs) generate
- * parametric 2D symbols — real Revit-style plan representations, not
+ * parametric 2D symbols — real BIM-style plan representations, not
  * bounding boxes.
  *
  * Screen convention inside the plan: `screenX = worldX`, `screenY = -worldZ`.
@@ -41,7 +41,7 @@ function edgeKey(x1: number, z1: number, x2: number, z2: number): string {
 export async function generatePlanView(
   opts: PlanGenerationOptions,
 ): Promise<PlanView> {
-  // Revit-like view range: Top is above the cut plane; Bottom and View Depth
+  // BIM-like view range: Top is above the cut plane; Bottom and View Depth
   // control how far below the associated level the plan can see. Legacy cutDepth
   // remains the fallback for callers that only provide the original API.
   const lowDepth = Math.max(
@@ -281,12 +281,12 @@ function emitAuthoredSymbol(
     // miter-linear-v4
     // Only wall / beam / brace / strip share the mitered plan footprint.
     // MEP types use flat thickness so the corner is filled by the elbow
-    // fitting — matching Revit.
+    // fitting — matching BIM.
     case "wall":
     case "beam":
     case "brace":
     case "strip": {
-      // Revit-style linear join v2 - robust thickness, wider tolerance,
+      // BIM-style linear join v2 - robust thickness, wider tolerance,
       // perpendicularity preference, wider miter cap. Applies to walls
       // and beams; both miter identically at L-corners.
       if (!p.start || !p.end) return;
@@ -364,7 +364,7 @@ function emitAuthoredSymbol(
         const RR = lineHit(plainR.x, plainR.z, ux, uz, nRightX, nRightZ, nux, nuz);
 
         // miter-pair-LL-RR-v4
-        // Revit-style miter: for a perpendicular L-corner, the outer
+        // BIM-style miter: for a perpendicular L-corner, the outer
         // corner is always on the same "side" for both walls (both left
         // faces, or both right faces). Therefore the correct pairing is
         // ALWAYS left → LL, right → RR. The previous turn-sign logic
@@ -516,7 +516,7 @@ function emitAuthoredSymbol(
       break;
     case "fitting": {
       // MEP elbow v1: render the fitting as two concentric arcs matching
-      // the 3D buildFitting geometry. Revit draws duct/pipe elbows as
+      // the 3D buildFitting geometry. BIM draws duct/pipe elbows as
       // clean quarter (or half) circles in plan — not the tiny box the
       // previous placeholder produced.
       const cxF = p.point?.[0];
@@ -542,7 +542,7 @@ function emitAuthoredSymbol(
       const t = p.thickness ?? 0.3;
       const t2 = Math.max(0.02, t / 2);
       const isRound = parentType === "pipe" || parentType === "conduit";
-      // Enforce Revit-style minimum: centerline bend radius >= duct width.
+      // Enforce BIM-style minimum: centerline bend radius >= duct width.
       const ductWidth = Math.max(t, 0.05);
       const baseR = Number(p.bendRadius);
       const r = Math.max(ductWidth, Number.isFinite(baseR) && baseR > 0

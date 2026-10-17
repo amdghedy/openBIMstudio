@@ -1,4 +1,4 @@
-/** Revit-style File application menu: commands + Recent Documents. */
+/** BIM-style File application menu: commands + Recent Documents. */
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import * as store from "../modules/projects/store";

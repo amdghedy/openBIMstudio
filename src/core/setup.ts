@@ -101,7 +101,7 @@ export async function setupViewer() {
   // Selection A = blue, Selection B = yellow (clash focus)
   highlighter.styles.set("clashA", { color: new THREE.Color("#3b82f6"), opacity: 0.95, transparent: true, renderedFaces: 0 });
   highlighter.styles.set("clashB", { color: new THREE.Color("#eab308"), opacity: 0.95, transparent: true, renderedFaces: 0 });
-  // Revit-style preselection: hover feedback sits below selection priority.
+  // BIM-style preselection: hover feedback sits below selection priority.
   // Explicit selection style so linked-model selection is always visibly blue,
   // independent of the SDK default material definition. Keep it above preselection.
   highlighter.styles.set("select", {

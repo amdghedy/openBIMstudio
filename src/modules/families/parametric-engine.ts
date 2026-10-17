@@ -1,5 +1,5 @@
 /**
- * Open BIM Studio - Parametric Engine (Revit-competitive core)
+ * Open BIM Studio - Parametric Engine (BIM-competitive core)
  *
  * Orchestrates:
  *   1. Formula evaluation (topo-sorted, units-aware, conditional)
@@ -144,7 +144,7 @@ export interface ParametricBuildResult {
    --------------------------------------------------------------------------- */
 
 /**
- * Full parameter resolution pipeline matching Revit's order of operations:
+ * Full parameter resolution pipeline matching BIM's order of operations:
  *   defaults - shared/project - type - instance overrides - formulas - constraints
  */
 export function resolveParametricValues(

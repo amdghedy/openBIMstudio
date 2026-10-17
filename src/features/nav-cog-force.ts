@@ -324,7 +324,7 @@ function onGesture(g: Gesture): boolean {
     const wantOrbit =
       g.mods.shift || g.mods.ctrl || g.mods.meta;
     // Also claim plain MMB orbit if user holds shift on keyboard
-    // For Revit: Shift+MMB = orbit. Plain MMB = pan (leave to navigation).
+    // For BIM: Shift+MMB = orbit. Plain MMB = pan (leave to navigation).
     if (!wantOrbit) {
       // Still update target for pan consistency
       try {

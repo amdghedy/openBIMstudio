@@ -27,7 +27,7 @@ type Any = Record<string, any>;
  *   - the click that the browser synthesises after a DRAGGED MMB (so a pan
  *     never also selects / focuses / fits)
  * Both are safe to suppress because they are never legitimate during those
- * states under the documented Revit map.
+ * states under the documented BIM map.
  */
 
 let installed = false;
@@ -181,7 +181,7 @@ function installArbiter(): void {
     }
   }, 1000);
 
-  // ---- keyboard / right-click cancel (Revit behaviour) ----
+  // ---- keyboard / right-click cancel (BIM behaviour) ----
   window.addEventListener("keydown", (e: KeyboardEvent) => {
     if (isTextInput(e.target)) return;
     if (e.key === "Escape") {
@@ -201,7 +201,7 @@ function installArbiter(): void {
     }
   }, true);
 
-  W.__obsRevitMousePolicy = {
+  W.__obsBIMMousePolicy = {
     cancelOperation: cancelActiveOperation,
     isMMBHeld: () => !!w().__OBS_MMB_HELD,
     isMMBMoved: () => !!w().__OBS_MMB_MOVED,
@@ -209,7 +209,7 @@ function installArbiter(): void {
   };
 }
 
-export function setupRevitMousePolicy(): void {
+export function setupBIMMousePolicy(): void {
   if (installed) return;
   installed = true;
 

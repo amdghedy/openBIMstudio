@@ -1,5 +1,5 @@
 /**
- * Auto-Dimensions types – Revit-style aligned / linear / angular dimensions.
+ * Auto-Dimensions types – BIM-style aligned / linear / angular dimensions.
  */
 
 export type DimensionKind = "aligned" | "linear" | "angular" | "radial" | "arcLength";

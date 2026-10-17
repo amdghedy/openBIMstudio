@@ -1,5 +1,5 @@
 /**
- * Project Browser — Revit-class project organization panel.
+ * Project Browser — Industry-standard project organization panel.
  *
  * Hierarchy:
  *   Views (all)          → 3D, Plan, Saved views
@@ -11,7 +11,7 @@
  *   4D Phases            → construction phases
  *
  * Professional dark UI, expandable tree, double-click to open,
- * right-click actions. Competes with Revit Project Browser presentation.
+ * right-click actions. Competes with BIM Project Browser presentation.
  */
 import { ctx } from "../core/context";
 import { listSheets, createSheet, createDefaultSheetSet } from "../modules/sheets/sheets";

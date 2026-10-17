@@ -304,8 +304,8 @@ makeBtn("Place Door", "Sample parametric door", () =>
     ),
   );
   out.push(
-    makeBtn("Cmd Center", "Revit Command Center", () =>
-      (window as Any).__obsRevitCommandCenter?.toggle?.(),
+    makeBtn("Cmd Center", "Command Center", () =>
+      (window as Any).__obsBIMCommandCenter?.toggle?.(),
     ),
   );
 

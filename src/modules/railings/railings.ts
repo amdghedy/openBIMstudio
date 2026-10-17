@@ -1,5 +1,5 @@
 /**
- * Railing Generator - path-based railings with balusters (Revit-style).
+ * Railing Generator - path-based railings with balusters (BIM-style).
  */
 
 import * as THREE from "three";

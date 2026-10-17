@@ -80,7 +80,7 @@ export interface DockHandle {
   isVisible(): boolean;
   /** Reset size + position to defaults and reapply stored dock side. */
   reset(): void;
-  /** Cycle docked → floating → right, similar to Revit-style panel management. */
+  /** Cycle docked → floating → right, similar to BIM-style panel management. */
   cycleDock(): void;
   /** Collapse content while keeping the window header/controls visible. */
   minimize(): void;

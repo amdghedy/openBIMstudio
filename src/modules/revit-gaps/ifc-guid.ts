@@ -68,7 +68,7 @@ function cyrb128(str: string): [number, number, number, number] {
 /**
  * Deterministic GlobalId derived from a stable key (e.g. an authored element
  * id). Re-exporting the same element always yields the same GlobalId, which
- * is what Revit / BCF / change tracking need.
+ * is what BIM / BCF / change tracking need.
  */
 export function stableIfcGuid(key: string): string {
   const [a, b, c, d] = cyrb128("obs:" + key);

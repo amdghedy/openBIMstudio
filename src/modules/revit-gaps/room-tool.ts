@@ -1,5 +1,5 @@
 /**
- * Room tool (Revit "Room" / "Place Rooms Automatically").
+ * Room tool (BIM "Room" / "Place Rooms Automatically").
  *
  *  - Click inside an enclosed set of walls in the 3D view -> a room is created
  *    whose boundary follows the wall finish faces (see room-detect.ts).
@@ -20,7 +20,7 @@ import { detectAllRooms, detectRoomAt, interiorPoint, type DetectedRoom, type Ro
 
 type Any = Record<string, any>;
 const authoring = (): Any | null => ((ctx.features as Any).authoring ?? (window as Any).__obsAuthoring ?? null);
-const CUT_HEIGHT = 1.2; // plan cut plane above the level, like Revit's view range
+const CUT_HEIGHT = 1.2; // plan cut plane above the level, like BIM's view range
 
 /* ------------------------------------------------------------------ levels */
 

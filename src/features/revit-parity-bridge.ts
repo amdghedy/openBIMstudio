@@ -1,12 +1,12 @@
 /**
- * Revit Parity Bridge - single integration layer that:
+ * BIM Parity Bridge - single integration layer that:
  *   1. Registers palette / toolbox commands for every gap-closure module
  *   2. Places stairs, railings, curtain walls into the live THREE scene
  *   3. Hooks selection - temporary dimensions
  *   4. Applies visibility filter on authoring rebuild events
  *   5. Exposes Match Properties + Create Similar helpers
  *
- * Call setupRevitParityBridge() from critical-gaps-boot (already wired).
+ * Call setupBIMParityBridge() from critical-gaps-boot (already wired).
  */
 
 import * as THREE from "three";
@@ -445,7 +445,7 @@ async function registerCommands(): Promise<void> {
 
 /* -- Setup --------------------------------------------------------------- */
 
-export function setupRevitParityBridge(): void {
+export function setupBIMParityBridge(): void {
   hookTempDims();
   hookVisibility();
   void registerCommands();
@@ -458,7 +458,7 @@ export function setupRevitParityBridge(): void {
     matchPropertiesApply,
     createSimilar,
   };
-  (window as Any).__obsRevitParity = (ctx.features as Any).revitParity;
+  (window as Any).__obsBIMParity = (ctx.features as Any).revitParity;
 
   console.log("[revit-parity-bridge] ready");
 }

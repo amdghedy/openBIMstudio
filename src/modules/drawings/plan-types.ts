@@ -54,11 +54,11 @@ export interface PlanView {
 export interface PlanGenerationOptions {
   levelName: string;
   levelElevation: number;
-  /** Cut height above level (metres). Revit default: 1.2. */
+  /** Cut height above level (metres). BIM default: 1.2. */
   cutHeight: number;
-  /** Depth below level to include (metres). Revit default: 0.5. */
+  /** Depth below level to include (metres). BIM default: 0.5. */
   cutDepth: number;
-  /** Optional Revit-like view-range offsets relative to the associated level. */
+  /** Optional BIM-like view-range offsets relative to the associated level. */
   viewRangeTop?: number;
   viewRangeBottom?: number;
   viewDepth?: number;

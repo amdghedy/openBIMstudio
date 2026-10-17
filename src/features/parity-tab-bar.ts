@@ -54,7 +54,7 @@ function tabs(): TabDef[] {
           id: "cc",
           label: "Command Center",
           title: "Ctrl+Shift+R",
-          run: () => (window as Any).__obsRevitCommandCenter?.toggle?.(),
+          run: () => (window as Any).__obsBIMCommandCenter?.toggle?.(),
         },
         {
           id: "draft",
@@ -75,7 +75,7 @@ function tabs(): TabDef[] {
           id: "help",
           label: "Mouse Map",
           title: "Ctrl+/",
-          run: () => (window as Any).__obsRevitInput?.showHelp?.(),
+          run: () => (window as Any).__obsBIMInput?.showHelp?.(),
         },
       ],
     },

@@ -52,5 +52,5 @@ export function setupPerformanceOptimizer(): void {
     isEnabled: isPerformanceCullingEnabled,
   };
 
-  console.log("[performance-optimizer] Revit-safe frustum culling ready");
+  console.log("[performance-optimizer] BIM-safe frustum culling ready");
 }

@@ -2,7 +2,7 @@
  * Selection orbit pivot + Ortho zoom fix
  *
  * When elements are selected, camera orbit / pan / zoom revolve around the
- * selection center of gravity (bounding-box center). Matches Revit:
+ * selection center of gravity (bounding-box center). Matches BIM:
  *   - With selection: rotate, pan, zoom about selection COG
  *   - Without selection: existing target / cursor zoom
  *   - Orthographic: zoom via camera.zoom (works); orbit still about pivot

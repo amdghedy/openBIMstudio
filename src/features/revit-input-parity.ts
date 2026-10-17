@@ -1,10 +1,10 @@
 /**
- * Revit Input Parity - keyboard shortcuts + mouse/view help that match
- * typical Revit navigation and command keys.
+ * Input Parity - keyboard shortcuts + mouse/view help that match
+ * typical BIM navigation and command keys.
  *
- * Mouse map is owned by navigation.ts (already Revit-correct).
+ * Mouse map is owned by navigation.ts (already BIM-correct).
  * This module:
- *   1. Registers missing Revit-style two-letter + view shortcuts
+ *   1. Registers missing BIM-style two-letter + view shortcuts
  *   2. Re-asserts CameraControls mouse buttons stay OFF (nav owns them)
  *   3. Exposes a help overlay (Ctrl+/ or from Command Center)
  */
@@ -61,7 +61,7 @@ function selIds(): string[] {
 
 /* -- Shortcut registration ------------------------------------------------- */
 
-async function registerRevitShortcuts(): Promise<void> {
+async function registerBIMShortcuts(): Promise<void> {
   if (shortcutsRegistered) return;
   let register: ((s: Any) => void) | null = null;
   try {
@@ -79,10 +79,10 @@ async function registerRevitShortcuts(): Promise<void> {
     } catch { /* */ }
   };
 
-  // -- View / camera (Revit: ZA ZF ZE ZO ZI) ------------------------------
+  // -- View / camera (BIM: ZA ZF ZE ZO ZI) ------------------------------
   reg({
     id: "revit-za",
-    label: "Zoom All (Revit ZA)",
+    label: "Zoom All (BIM ZA)",
     keys: "za",
     category: "view",
     handler: async () => {
@@ -92,7 +92,7 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-zf",
-    label: "Zoom to Fit (Revit ZF)",
+    label: "Zoom to Fit (BIM ZF)",
     keys: "zf",
     category: "view",
     handler: async () => {
@@ -102,7 +102,7 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-ze",
-    label: "Zoom Extents (Revit ZE)",
+    label: "Zoom Extents (BIM ZE)",
     keys: "ze",
     category: "view",
     handler: async () => {
@@ -112,7 +112,7 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-zo",
-    label: "Zoom Out (Revit ZO)",
+    label: "Zoom Out (BIM ZO)",
     keys: "zo",
     category: "view",
     handler: async () => {
@@ -122,7 +122,7 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-zi",
-    label: "Zoom In (Revit ZI)",
+    label: "Zoom In (BIM ZI)",
     keys: "zi",
     category: "view",
     handler: async () => {
@@ -132,7 +132,7 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-vn",
-    label: "Default 3D View (Revit VN)",
+    label: "Default 3D View (BIM VN)",
     keys: "vn",
     category: "view",
     handler: async () => {
@@ -141,10 +141,10 @@ async function registerRevitShortcuts(): Promise<void> {
     },
   });
 
-  // -- Temporary hide / isolate (Revit HH HI HR) --------------------------
+  // -- Temporary hide / isolate (BIM HH HI HR) --------------------------
   reg({
     id: "revit-hh",
-    label: "Hide Element (Revit HH)",
+    label: "Hide Element (BIM HH)",
     keys: "hh",
     category: "view",
     handler: () => {
@@ -155,7 +155,7 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-hi",
-    label: "Isolate Element (Revit HI)",
+    label: "Isolate Element (BIM HI)",
     keys: "hi",
     category: "view",
     handler: () => {
@@ -166,7 +166,7 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-hr",
-    label: "Reset Temporary Hide/Isolate (Revit HR)",
+    label: "Reset Temporary Hide/Isolate (BIM HR)",
     keys: "hr",
     category: "view",
     handler: () => {
@@ -175,10 +175,10 @@ async function registerRevitShortcuts(): Promise<void> {
     },
   });
 
-  // -- Modify (Revit MV RO AL MA CS GP) -----------------------------------
+  // -- Modify (BIM MV RO AL MA CS GP) -----------------------------------
   reg({
     id: "revit-mv",
-    label: "Move (Revit MV)",
+    label: "Move (BIM MV)",
     keys: "mv",
     category: "tool",
     handler: () => {
@@ -191,7 +191,7 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-ro",
-    label: "Rotate (Revit RO)",
+    label: "Rotate (BIM RO)",
     keys: "ro",
     category: "tool",
     handler: () => {
@@ -204,7 +204,7 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-al",
-    label: "Align (Revit AL)",
+    label: "Align (BIM AL)",
     keys: "al",
     category: "tool",
     handler: () => {
@@ -214,25 +214,25 @@ async function registerRevitShortcuts(): Promise<void> {
   });
   reg({
     id: "revit-ma",
-    label: "Match Properties (Revit MA)",
+    label: "Match Properties (BIM MA)",
     keys: "ma",
     category: "tool",
     handler: () => {
-      (window as Any).__obsRevitParity?.matchPropertiesPickSource?.();
+      (window as Any).__obsBIMParity?.matchPropertiesPickSource?.();
     },
   });
   reg({
     id: "revit-cs",
-    label: "Create Similar (Revit CS)",
+    label: "Create Similar (BIM CS)",
     keys: "cs",
     category: "tool",
     handler: () => {
-      (window as Any).__obsRevitParity?.createSimilar?.();
+      (window as Any).__obsBIMParity?.createSimilar?.();
     },
   });
   reg({
     id: "revit-gp",
-    label: "Create Group (Revit GP)",
+    label: "Create Group (BIM GP)",
     keys: "gp",
     category: "tool",
     handler: () => {
@@ -247,7 +247,7 @@ async function registerRevitShortcuts(): Promise<void> {
     },
   });
 
-  // -- Architecture extras (Revit-like) -----------------------------------
+  // -- Architecture extras (BIM-like) -----------------------------------
   const tool = (keys: string, id: string, label: string, type: string) => {
     reg({
       id,
@@ -266,24 +266,24 @@ async function registerRevitShortcuts(): Promise<void> {
     });
   };
   // Already in default-shortcuts: WA SL CM BM DR WN GR LV ...
-  // Add a few more Revit-common ones if missing from defaults
-  tool("rf", "revit-tool-roof", "Roof (Revit RF)", "roof");
-  tool("cl", "revit-tool-ceiling", "Ceiling (Revit CL)", "ceiling");
-  tool("rm", "revit-tool-room", "Room (Revit RM)", "room");
-  tool("st", "revit-tool-stairs", "Stairs (Revit ST)", "stairs");
-  tool("ra", "revit-tool-railing", "Railing (Revit RA)", "railing");
-  tool("cw", "revit-tool-curtain", "Curtain Wall (Revit CW)", "curtain-wall");
+  // Add a few more BIM-common ones if missing from defaults
+  tool("rf", "revit-tool-roof", "Roof (BIM RF)", "roof");
+  tool("cl", "revit-tool-ceiling", "Ceiling (BIM CL)", "ceiling");
+  tool("rm", "revit-tool-room", "Room (BIM RM)", "room");
+  tool("st", "revit-tool-stairs", "Stairs (BIM ST)", "stairs");
+  tool("ra", "revit-tool-railing", "Railing (BIM RA)", "railing");
+  tool("cw", "revit-tool-curtain", "Curtain Wall (BIM CW)", "curtain-wall");
 
   // -- Help overlay -------------------------------------------------------
   reg({
     id: "revit-help-input",
-    label: "Mouse & Keyboard Help (Revit map)",
+    label: "Mouse & Keyboard Help (BIM map)",
     keys: "ctrl+/",
     category: "app",
     handler: () => toggleInputHelp(),
   });
 
-  console.log("[revit-input-parity] Revit shortcuts registered");
+  console.log("[revit-input-parity] BIM shortcuts registered");
 }
 
 /* -- Mouse / CameraControls guard ------------------------------------------ */
@@ -366,7 +366,7 @@ function installHelpStyle(): void {
 function buildHelpHtml(): string {
   return `
     <div class="ih-hdr">
-      <b>Revit-compatible Mouse &amp; Keyboard</b>
+      <b>BIM-compatible Mouse &amp; Keyboard</b>
       <button class="ih-close" type="button">-</button>
     </div>
     <div class="ih-body">
@@ -431,8 +431,8 @@ function buildHelpHtml(): string {
         </div>
       </div>
       <div class="ih-note">
-        Mouse behaviour matches Revit's default 3D navigation.
-        Two-letter keys work like Revit (type within ~800&nbsp;ms).
+        Mouse behaviour matches BIM's default 3D navigation.
+        Two-letter keys work like BIM (type within ~800&nbsp;ms).
         CameraControls mouse buttons stay off so only this map drives the view.
       </div>
     </div>
@@ -465,8 +465,8 @@ export function toggleInputHelp(): void {
 
 /* -- Setup ----------------------------------------------------------------- */
 
-export function setupRevitInputParity(): void {
-  void registerRevitShortcuts();
+export function setupBIMInputParity(): void {
+  void registerBIMShortcuts();
 
   // Re-assert nav ownership after boot (CameraControls can re-enable)
   enforceNavOwnership();
@@ -483,7 +483,7 @@ export function setupRevitInputParity(): void {
     true,
   );
 
-  (window as Any).__obsRevitInput = {
+  (window as Any).__obsBIMInput = {
     openHelp: openInputHelp,
     closeHelp: closeInputHelp,
     toggleHelp: toggleInputHelp,
@@ -496,7 +496,7 @@ export function setupRevitInputParity(): void {
       const cp: Any = await import("./command-palette");
       cp.registerCommand?.({
         id: "parity.inputHelp",
-        label: "Mouse & Keyboard Help (Revit map)",
+        label: "Mouse & Keyboard Help (BIM map)",
         category: "View",
         kbd: "Ctrl+/",
         run: () => toggleInputHelp(),

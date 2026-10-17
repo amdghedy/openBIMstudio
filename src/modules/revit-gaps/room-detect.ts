@@ -1,7 +1,7 @@
 /**
  * Wall-bounded room detection (pure geometry, no DOM / three.js).
  *
- * Revit places a room by clicking inside an enclosed area; the room boundary
+ * BIM places a room by clicking inside an enclosed area; the room boundary
  * follows the wall finish faces. This module does the same on a plan:
  *   1. node the wall centre-lines into a planar graph (snapping near-misses,
  *      T-junctions and crossings),
@@ -28,7 +28,7 @@ export interface RoomDetectOptions {
   snap?: number;
   /** Ignore faces smaller than this (m2) in detectAllRooms. Default 0.25. */
   minArea?: number;
-  /** "finish" offsets by half thickness (Revit default); "center" keeps centre-lines. */
+  /** "finish" offsets by half thickness (BIM default); "center" keeps centre-lines. */
   boundary?: "finish" | "center";
 }
 

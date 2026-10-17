@@ -1,6 +1,6 @@
 /**
  * Copy / Monitor - track elements from a linked (federated) model and
- * optionally copy them into the host, with change detection (Revit-style).
+ * optionally copy them into the host, with change detection (BIM-style).
  */
 
 import { ctx } from "../../core/context";

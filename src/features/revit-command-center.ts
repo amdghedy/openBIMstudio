@@ -1,5 +1,5 @@
 /**
- * Revit Command Center - clear, grouped UI for every parity tool.
+ * Command Center - clear, grouped UI for every parity tool.
  *
  * Dockable panel (top-left of viewport) with sections:
  *   Architecture - Modify - View - Project - Coordinate
@@ -168,20 +168,20 @@ function buildBody(host: HTMLElement): void {
   host.appendChild(
     section("Architecture", [
       btn("Straight Stair", "Parametric run", async () => {
-        await (window as Any).__obsRevitParity?.placeStair?.("straight");
-      }, has("__obsStairs") || has("__obsRevitParity")),
+        await (window as Any).__obsBIMParity?.placeStair?.("straight");
+      }, has("__obsStairs") || has("__obsBIMParity")),
       btn("L-Stair", "Landing turn", async () => {
-        await (window as Any).__obsRevitParity?.placeStair?.("l-shape");
-      }, has("__obsStairs") || has("__obsRevitParity")),
+        await (window as Any).__obsBIMParity?.placeStair?.("l-shape");
+      }, has("__obsStairs") || has("__obsBIMParity")),
       btn("U-Stair", "Switchback", async () => {
-        await (window as Any).__obsRevitParity?.placeStair?.("u-shape");
-      }, has("__obsStairs") || has("__obsRevitParity")),
+        await (window as Any).__obsBIMParity?.placeStair?.("u-shape");
+      }, has("__obsStairs") || has("__obsBIMParity")),
       btn("Railing", "Path + balusters", async () => {
-        await (window as Any).__obsRevitParity?.placeRailing?.();
-      }, has("__obsRailings") || has("__obsRevitParity")),
+        await (window as Any).__obsBIMParity?.placeRailing?.();
+      }, has("__obsRailings") || has("__obsBIMParity")),
       btn("Curtain Wall", "Mullions + panels", async () => {
-        await (window as Any).__obsRevitParity?.placeCurtainWall?.();
-      }, has("__obsCurtainWall") || has("__obsRevitParity")),
+        await (window as Any).__obsBIMParity?.placeCurtainWall?.();
+      }, has("__obsCurtainWall") || has("__obsBIMParity")),
       btn("Parametric Fam", "Ctrl+Shift+F", () => {
         (window as Any).__obsParamFamilyPanel?.toggle?.();
       }, true),
@@ -216,12 +216,12 @@ function buildBody(host: HTMLElement): void {
         toast(n ? `Distributed ${n}` : "Need 3+ selected", n ? "success" : "info");
       }, has("__obsAlign")),
       btn("Match Props", "Pick source", () => {
-        (window as Any).__obsRevitParity?.matchPropertiesPickSource?.();
-      }, has("__obsRevitParity")),
+        (window as Any).__obsBIMParity?.matchPropertiesPickSource?.();
+      }, has("__obsBIMParity")),
       btn("Paint Props", "Apply to selection", () => {
-        const n = (window as Any).__obsRevitParity?.matchPropertiesApply?.() ?? 0;
+        const n = (window as Any).__obsBIMParity?.matchPropertiesApply?.() ?? 0;
         toast(n ? `Painted ${n}` : "Pick source first", n ? "success" : "info");
-      }, has("__obsRevitParity")),
+      }, has("__obsBIMParity")),
       btn("Create Group", "From selection", () => {
         const ids = selIds();
         if (!ids.length) {
@@ -233,7 +233,7 @@ function buildBody(host: HTMLElement): void {
         toast(g ? `Group "${name}" created` : "Groups not ready", g ? "success" : "warn");
       }, has("__obsGroups")),
       btn("Create Similar", "Same type tool", () => {
-        (window as Any).__obsRevitParity?.createSimilar?.();
+        (window as Any).__obsBIMParity?.createSimilar?.();
       }, true),
     ]),
   );
@@ -273,8 +273,8 @@ function buildBody(host: HTMLElement): void {
         d.setTool(on ? null : "line");
         toast(on ? "Draft off" : "Draft on - draw lines", "info");
       }, true),
-      btn("Mouse & Keys", "Revit map - Ctrl+/", () => {
-        const h = (window as Any).__obsRevitInput;
+      btn("Mouse & Keys", "BIM map - Ctrl+/", () => {
+        const h = (window as Any).__obsBIMInput;
         if (h?.toggleHelp) h.toggleHelp();
         else toast("Input help loading...", "info");
       }, true),
@@ -393,24 +393,24 @@ function makeDraggable(el: HTMLElement, handle: HTMLElement): void {
   });
 }
 
-export function openRevitCommandCenter(): void {
+export function openBIMCommandCenter(): void {
   if (!panel) return;
   buildBody(panel.querySelector(".rcc-body") as HTMLElement);
   panel.classList.add("is-open");
   visible = true;
 }
 
-export function closeRevitCommandCenter(): void {
+export function closeBIMCommandCenter(): void {
   panel?.classList.remove("is-open");
   visible = false;
 }
 
-export function toggleRevitCommandCenter(): void {
-  if (visible) closeRevitCommandCenter();
-  else openRevitCommandCenter();
+export function toggleBIMCommandCenter(): void {
+  if (visible) closeBIMCommandCenter();
+  else openBIMCommandCenter();
 }
 
-export function setupRevitCommandCenter(): void {
+export function setupBIMCommandCenter(): void {
   if (panel) return;
   installCss();
 
@@ -418,7 +418,7 @@ export function setupRevitCommandCenter(): void {
   panel.id = "obs-revit-cc";
   panel.innerHTML = `
     <div class="rcc-hdr">
-      <b>Revit Command Center</b>
+      <b>Command Center</b>
       <button class="rcc-close" type="button" title="Close">-</button>
     </div>
     <div class="rcc-body"></div>
@@ -427,7 +427,7 @@ export function setupRevitCommandCenter(): void {
 
   const hdr = panel.querySelector(".rcc-hdr") as HTMLElement;
   makeDraggable(panel, hdr);
-  panel.querySelector(".rcc-close")?.addEventListener("click", () => closeRevitCommandCenter());
+  panel.querySelector(".rcc-close")?.addEventListener("click", () => closeBIMCommandCenter());
 
   // Keyboard: Ctrl+Shift+R
   window.addEventListener("keydown", (e) => {
@@ -435,7 +435,7 @@ export function setupRevitCommandCenter(): void {
       const t = e.target as HTMLElement;
       if (t?.closest?.("input,textarea,[contenteditable]")) return;
       e.preventDefault();
-      toggleRevitCommandCenter();
+      toggleBIMCommandCenter();
     }
   });
 
@@ -443,7 +443,7 @@ export function setupRevitCommandCenter(): void {
   const launch = document.createElement("button");
   launch.id = "obs-rcc-launch";
   launch.type = "button";
-  launch.title = "Revit Command Center (Ctrl+Shift+R)";
+  launch.title = "Command Center (Ctrl+Shift+R)";
   launch.textContent = "RC";
   launch.style.cssText =
     "position:fixed;left:16px;bottom:52px;z-index:10002;width:40px;height:40px;" +
@@ -456,7 +456,7 @@ export function setupRevitCommandCenter(): void {
   launch.onmouseleave = () => {
     launch.style.background = "rgba(56,189,248,.16)";
   };
-  launch.onclick = () => toggleRevitCommandCenter();
+  launch.onclick = () => toggleBIMCommandCenter();
   document.body.appendChild(launch);
 
   // Palette command
@@ -465,18 +465,18 @@ export function setupRevitCommandCenter(): void {
       const cp: Any = await import("./command-palette");
       cp.registerCommand?.({
         id: "parity.commandCenter",
-        label: "Revit Command Center",
+        label: "Command Center",
         category: "Panels",
         kbd: "Ctrl+Shift+R",
-        run: () => toggleRevitCommandCenter(),
+        run: () => toggleBIMCommandCenter(),
       });
     } catch { /* */ }
   })();
 
-  (window as Any).__obsRevitCC = {
-    open: openRevitCommandCenter,
-    close: closeRevitCommandCenter,
-    toggle: toggleRevitCommandCenter,
+  (window as Any).__obsBIMCC = {
+    open: openBIMCommandCenter,
+    close: closeBIMCommandCenter,
+    toggle: toggleBIMCommandCenter,
   };
 
   // First-run: open once so the user sees every function grouped clearly
@@ -484,7 +484,7 @@ export function setupRevitCommandCenter(): void {
     const key = "obs.rcc.autoOpened.v1";
     if (!sessionStorage.getItem(key)) {
       sessionStorage.setItem(key, "1");
-      window.setTimeout(() => openRevitCommandCenter(), 800);
+      window.setTimeout(() => openBIMCommandCenter(), 800);
     }
   } catch { /* */ }
 

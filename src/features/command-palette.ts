@@ -424,9 +424,9 @@ function bootstrapCommands(): void {
   registerCommand({ id: "panel.cde.open", label: "Open Common Data Environment", category: "Panels", run: () => (ctx.features as any).cdePanel?.open?.() });
   registerCommand({ id: "panel.modelHealth.toggle", label: "Toggle Model Health", category: "Panels", run: () => (ctx.features as any).modelHealthPanel?.toggle?.() });
   registerCommand({ id: "clash.review.toggle", label: "Toggle Clash Review window", category: "Clash", kbd: "Ctrl+Shift+C", run: () => (window as any).__obs_toggleClashReview?.() });
-  registerCommand({ id: "revit.contextualBar.toggle", label: "Toggle Modify Bar (contextual ribbon)", category: "Revit Experience", run: () => (ctx.features as any).revitExperience?.toggleContextualBar?.() });
-  registerCommand({ id: "revit.optionsBar.toggle", label: "Toggle Options Bar", category: "Revit Experience", run: () => (ctx.features as any).revitExperience?.toggleOptionsBar?.() });
-  registerCommand({ id: "revit.viewBar.toggle", label: "Toggle View Control Bar", category: "Revit Experience", run: () => (ctx.features as any).revitExperience?.toggleViewBar?.() });
+  registerCommand({ id: "revit.contextualBar.toggle", label: "Toggle Modify Bar (contextual ribbon)", category: "BIM Experience", run: () => (ctx.features as any).revitExperience?.toggleContextualBar?.() });
+  registerCommand({ id: "revit.optionsBar.toggle", label: "Toggle Options Bar", category: "BIM Experience", run: () => (ctx.features as any).revitExperience?.toggleOptionsBar?.() });
+  registerCommand({ id: "revit.viewBar.toggle", label: "Toggle View Control Bar", category: "BIM Experience", run: () => (ctx.features as any).revitExperience?.toggleViewBar?.() });
 
   // Recalc
   registerCommand({ id: "cost.recalculate", label: "Recalculate takeoff", category: "5D Cost", run: () => recalculateTakeoff() });

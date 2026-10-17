@@ -2,7 +2,7 @@
  * Insert / Link tools — professional federation & import helpers.
  *
  * Activates every Insert-tab action with stable, production behaviour:
- * Link IFC, Link CAD, Link Revit, Point cloud, Topography, Family, Library.
+ * Link IFC, Link CAD, Link BIM, Point cloud, Topography, Family, Library.
  */
 import { pickFiles, loadIfcFiles, loadFragFiles } from "./importer";
 import { pickAndImport, importFiles } from "./file-interop";
@@ -47,7 +47,7 @@ function toast(msg: string, kind: "info" | "warn" | "success" = "info", _ms = 24
  * Sequence taken from working Old OpenBIMStudio:
  *   pick → loadIfcFiles → queue convert → core.load (no offset when recenter OFF)
  *   → apply positioning / alignOriginToOrigin → fitAll
- * Same as Revit: origin-to-origin links stay coordinated.
+ * Same as BIM: origin-to-origin links stay coordinated.
  */
 export function linkIfc() {
   // Exact old path: pickFiles(".ifc", true, loadIfcFiles)
@@ -117,13 +117,13 @@ export function linkCad() {
   });
 }
 
-/** Link Revit models via IFC export guidance + IFC picker. */
-export function linkRevit() {
+/** Link BIM models via IFC export guidance + IFC picker. */
+export function linkBIM() {
   const go = confirm(
-    "Link Revit model\n\n" +
-    "Revit files (.rvt) cannot open directly in the browser.\n\n" +
+    "Link BIM model\n\n" +
+    "BIM files (.rvt) cannot open directly in the browser.\n\n" +
     "Professional workflow:\n" +
-    "1. In Revit: File → Export → IFC\n" +
+    "1. In BIM: File → Export → IFC\n" +
     "2. Use IFC 2x3 or IFC4 Coordination View\n" +
     "3. Click OK to pick the exported .ifc now\n\n" +
     "Cancel to dismiss.",
@@ -349,7 +349,7 @@ export function linkAutodesk() {
     "Autodesk formats (RVT, RFA, NWD, DWG)\n\n" +
     "Browser cannot open proprietary Autodesk binaries.\n\n" +
     "Recommended open workflow:\n" +
-    "• Revit → Export IFC → Link IFC here\n" +
+    "• BIM → Export IFC → Link IFC here\n" +
     "• Navisworks → Export IFC or exchange via BCF\n" +
     "• AutoCAD → DXF / IFC → Link CAD or Link IFC\n\n" +
     "OK = pick an IFC / FRAG / model file now.",

@@ -1,5 +1,5 @@
 /**
- * Stairs Generator - parametric straight / L-shaped stairs (Revit-style).
+ * Stairs Generator - parametric straight / L-shaped stairs (BIM-style).
  *
  * Produces a composed geometry spec + authored-element params from
  * riser/tread/width inputs. Integrates with the parametric family engine.

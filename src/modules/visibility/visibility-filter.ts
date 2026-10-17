@@ -1,6 +1,6 @@
 /**
  * Unified Visibility Filter - combines phasing, design options, and
- * temporary hide/isolate (Revit VG / Temporary Hide-Isolate).
+ * temporary hide/isolate (BIM VG / Temporary Hide-Isolate).
  */
 
 import { ctx } from "../../core/context";

@@ -1,5 +1,5 @@
 /**
- * User Interface dropdown menu — the Revit-style panel toggle menu.
+ * User Interface dropdown menu — the BIM-style panel toggle menu.
  *
  * Renders a floating dropdown below the ribbon button. Each row is a
  * checkbox bound to a UiItem from modules/ui-registry. Two footer items

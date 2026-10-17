@@ -11,10 +11,10 @@
  *   triangle winding and handedness are preserved.
  *
  * Schemas
- *   IFC4 (default) and IFC2X3. Revit 2020 reads IFC2X3 everywhere; use that
+ *   IFC4 (default) and IFC2X3. BIM 2020 reads IFC2X3 everywhere; use that
  *   when an IFC4 file is rejected.
  *
- * What is exported analytically (extruded solids, so Revit/BIM tools can edit
+ * What is exported analytically (extruded solids, so BIM/BIM tools can edit
  * them): wall, slab/roof/ceiling polygons, column, footing, beam, brace,
  * duct / pipe / cable-tray / conduit, door + window (with real openings in the
  * host wall), equipment (box proxy), rooms (IfcSpace). Native twins are

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { IfcAPI } from 'web-ifc';
 
 /**
- * Minimal stub for importing a Revit .rfa family.
+ * Minimal stub for importing a BIM .rfa family.
  * The real implementation would use Autodesk Forge's Model Derivative API to
  * translate the .rfa into IFC (or a custom JSON representation) and then ingest
  * that data into the current model.

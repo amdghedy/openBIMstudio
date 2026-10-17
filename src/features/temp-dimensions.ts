@@ -1,5 +1,5 @@
 /**
- * Temporary Dimensions - Revit-style live dimensions during edit/place.
+ * Temporary Dimensions - BIM-style live dimensions during edit/place.
  *
  * Shows pixel-space dimension strings between the active element's key
  * points and nearby references (walls, levels, ref planes) while a tool

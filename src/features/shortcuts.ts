@@ -1,7 +1,7 @@
 /**
- * Keyboard command registry (Revit + Blender hybrid).
+ * Keyboard command registry (BIM + Blender hybrid).
  *
- * Two-letter sequences (Revit-style): WA = Wall, CM = Column.
+ * Two-letter sequences (BIM-style): WA = Wall, CM = Column.
  * Single-letter modals (Blender-style): G = move gizmo, R = rotate, S = scale.
  * Standard modifiers: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, Ctrl+A, Delete, Esc.
  *

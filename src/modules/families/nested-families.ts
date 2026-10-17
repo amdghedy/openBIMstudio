@@ -4,7 +4,7 @@
  * A nested family is a FamilyDefinition embedded inside another family's
  * geometry tree (kind: "nested"). Parameter maps bind parent parameters
  * (or constants) onto the child's instance overrides - the same model
- * Revit uses for nested shared / non-shared families.
+ * BIM uses for nested shared / non-shared families.
  */
 
 import type { FamilyDefinition, FamilyType, NumberRef } from "./types";

@@ -46,7 +46,7 @@ export const BUILTIN_FUNCTIONS: Record<string, (...args: any[]) => any> = {
   atan: (x: number) => Math.atan(x),
   atan2: (y: number, x: number) => Math.atan2(y, x),
 
-  // Trig (degrees - Revit-style convenience)
+  // Trig (degrees - BIM-style convenience)
   sind: (x: number) => Math.sin(x * DEG2RAD),
   cosd: (x: number) => Math.cos(x * DEG2RAD),
   tand: (x: number) => Math.tan(x * DEG2RAD),

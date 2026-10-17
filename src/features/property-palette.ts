@@ -1,5 +1,5 @@
 /**
- * Revit-style Properties palette.
+ * BIM-style Properties palette.
  *
  * Two modes:
  *   • defaults — a tool is active; edits set the values applied to the next
@@ -370,7 +370,7 @@ function makeFamilyIdentityBlock(element: AuthoredElement): HTMLElement {
 
   // openbim-family-placement: instance-scope parameters edit this element
   // directly; type-scope parameters update the family type and re-sync
-  // every instance of that type. This is the Revit Type/Instance split.
+  // every instance of that type. This is the BIM Type/Instance split.
   try {
     const resolvedNow = familyService.resolveParams(
       fam.id,
@@ -583,7 +583,7 @@ function render() {
   }
 }
 
-/** Element types that carry a Revit-style "Base Constraint" (level). */
+/** Element types that carry a BIM-style "Base Constraint" (level). */
 const LEVEL_CONSTRAINED_TYPES = new Set<string>([
   "wall", "slab", "column", "beam", "brace", "truss",
   "footing", "strip",
@@ -756,7 +756,7 @@ export function togglePropertyPalette() {
   else openPropertyPalette();
 }
 
-/** Revit-style view / graphics properties when no element is selected. */
+/** BIM-style view / graphics properties when no element is selected. */
 function renderViewProperties() {
   try {
     renderHeader("defaults", "3D View", "Project view");
@@ -879,7 +879,7 @@ export function setupPropertyPalette(): void {
     render();
   });
 
-  // Revit-style auto-open: when a single element is selected, open the
+  // BIM-style auto-open: when a single element is selected, open the
   // palette and switch it to edit mode for that element.
   try {
     selection.onChange(() => {

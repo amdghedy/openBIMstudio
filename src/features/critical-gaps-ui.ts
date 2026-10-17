@@ -1,5 +1,5 @@
 /**
- * Critical Gaps UI - bottom toolbar with one-click access to Revit-parity tools.
+ * Critical Gaps UI - bottom toolbar with one-click access to BIM-parity tools.
  * Extends the original advanced toolbar with Architecture / Modify / View actions.
  */
 
@@ -70,8 +70,8 @@ export async function setupCriticalGapsUI(): Promise<void> {
   toolbar.className = "obs-adv-toolbar";
 
   // -- Command Center (primary entry) --------------------------------
-  const ccBtn = makeButton("obs-adv-cc", "Ctrl+ Command Center", "Open Revit Command Center (Ctrl+Shift+R)", () => {
-    const cc = (window as Any).__obsRevitCC;
+  const ccBtn = makeButton("obs-adv-cc", "Ctrl+ Command Center", "Open Command Center (Ctrl+Shift+R)", () => {
+    const cc = (window as Any).__obsBIMCC;
     if (cc?.toggle) cc.toggle();
     else window.dispatchEvent(new KeyboardEvent("keydown", { key: "R", ctrlKey: true, shiftKey: true }));
   });
@@ -113,15 +113,15 @@ export async function setupCriticalGapsUI(): Promise<void> {
 
   // -- Architecture generators ---------------------------------------
   const stairBtn = makeButton("obs-adv-stair", "Stair", "Place straight stair", () => {
-    void (window as Any).__obsRevitParity?.placeStair?.("straight");
+    void (window as Any).__obsBIMParity?.placeStair?.("straight");
     flash(stairBtn, "[OK]");
   });
   const railBtn = makeButton("obs-adv-rail", "Railing", "Place path railing", () => {
-    void (window as Any).__obsRevitParity?.placeRailing?.();
+    void (window as Any).__obsBIMParity?.placeRailing?.();
     flash(railBtn, "[OK]");
   });
   const cwBtn = makeButton("obs-adv-cw", "[C] Curtain", "Place curtain wall", () => {
-    void (window as Any).__obsRevitParity?.placeCurtainWall?.();
+    void (window as Any).__obsBIMParity?.placeCurtainWall?.();
     flash(cwBtn, "[OK]");
   });
   const roomBtn = makeButton("obs-adv-room", "[R] Room", "Create sample room", () => {
@@ -138,11 +138,11 @@ export async function setupCriticalGapsUI(): Promise<void> {
     flash(alignBtn, n ? `[OK] ${n}` : "[--]");
   });
   const matchBtn = makeButton("obs-adv-match", "Match", "Match properties (pick source)", () => {
-    (window as Any).__obsRevitParity?.matchPropertiesPickSource?.();
+    (window as Any).__obsBIMParity?.matchPropertiesPickSource?.();
     flash(matchBtn, "SRC");
   });
   const matchApplyBtn = makeButton("obs-adv-match-apply", "Paint", "Apply matched properties", () => {
-    const n = (window as Any).__obsRevitParity?.matchPropertiesApply?.() ?? 0;
+    const n = (window as Any).__obsBIMParity?.matchPropertiesApply?.() ?? 0;
     flash(matchApplyBtn, n ? `[OK] ${n}` : "[--]");
   });
   const groupBtn = makeButton("obs-adv-group", "Group", "Group selection", () => {

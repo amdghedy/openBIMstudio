@@ -1,6 +1,6 @@
 /**
  * Parametric families boot - upgrades the live FamilyService to the full
- * parametric engine and seeds a sample Revit-style parametric door.
+ * parametric engine and seeds a sample BIM-style parametric door.
  *
  * Safe to call after setupFamilies() (main.ts already does that).
  * Idempotent.

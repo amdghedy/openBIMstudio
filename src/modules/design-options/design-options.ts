@@ -1,5 +1,5 @@
 /**
- * Design Options - Revit-style alternative design sets.
+ * Design Options - BIM-style alternative design sets.
  *
  * Elements tagged with a designOptionId are visible only when that option
  * is active (or when viewing the primary/main model).

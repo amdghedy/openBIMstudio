@@ -6,7 +6,7 @@ import "./critical-gaps-boot";
  * Heavy-duty open BIM production platform:
  * parametric-ready authoring, sheets/production docs, 4D simulation,
  * clash detective, IDS, schedules, 5D cost, automation rules, materials,
- * BCF, AI — engineered to compete with Revit, Navisworks, Bentley,
+ * BCF, AI — engineered to compete with BIM, Navisworks, Bentley,
  * BricsCAD BIM, Forma and Renga as the open standards monster of AEC.
  */
 import { setupViewer } from "./core/setup";
@@ -92,7 +92,7 @@ import { setupAutomationPanel } from "./features/automation-panel";
 import { setupProjectBrowser } from "./features/project-browser";
 import { setupBimToolbox } from "./features/bim-toolbox";
 import { refreshViewGraphics } from "./features/view-graphics";
-import { setupRevitExperience } from "./features/revit-experience";
+import { setupBIMExperience } from "./features/revit-experience";
 import { setupBimObjectStudio } from "./features/bim-object-studio";
 import { setupLevelChip } from "./features/level-chip";
 import { setupWorkspaceLayout } from "./features/workspace-boot";
@@ -330,7 +330,7 @@ await step("views-panel", () => setupViewsPanel());
 await step("sheets-2d-panel", () => setupSheets2dPanel());
 
 await step("view-graphics", () => refreshViewGraphics());
-await step("revit-experience", () => setupRevitExperience());
+await step("revit-experience", () => setupBIMExperience());
 await step("bim-object-studio", () => setupBimObjectStudio());
 await step("level-chip", () => setupLevelChip());
 await step("shell", () => setupShell());

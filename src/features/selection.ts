@@ -109,7 +109,7 @@ class SelectionManager {
     localId: number,
     mods: { ctrl?: boolean; shift?: boolean; alt?: boolean },
   ): void {
-    // Revit-style selection modifiers:
+    // BIM-style selection modifiers:
     //   plain click  = replace
     //   Ctrl/Cmd     = add
     //   Shift        = remove
@@ -540,7 +540,7 @@ export function setupClickToSelect(): void {
 
       await clearHover();
       // A 3D viewport has one selection set: selecting a linked/fragment
-      // element clears any authored selection, just like Revit.
+      // element clears any authored selection, just like BIM.
       clearAuthoredSelection();
       selection.applyClick(hit.modelId, hit.localId, {
         ctrl: e.ctrlKey || e.metaKey,

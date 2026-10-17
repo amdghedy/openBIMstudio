@@ -1,5 +1,5 @@
 /**
- * Revit-gaps boot (Milestones 1, 2 and 3).
+ * BIM-gaps boot (Milestones 1, 2 and 3).
  *
  * Wires, in order: per-project store persistence, real visibility (authored +
  * Fragments), wall-bounded rooms, the M2 element types (stairs, railings, ramps,
@@ -78,7 +78,7 @@ async function step(name: string, fn: () => unknown): Promise<void> {
 }
 
 let booted = false;
-export async function setupRevitGaps(): Promise<StepStatus[]> {
+export async function setupBIMGaps(): Promise<StepStatus[]> {
   if (booted) return status;
   booted = true;
 
@@ -119,14 +119,14 @@ export async function setupRevitGaps(): Promise<StepStatus[]> {
       ["rg-phase-demolished", "Phase: set 'phase demolished' on selection", "Phasing", () => promptAssignPhase("demolished")],
       ["rg-design-option", "Design option: assign selection", "Phasing", promptAssignDesignOption],
       ["rg-export-ifc4", "Export: model to IFC4", "Export", () => exportIfc("IFC4")],
-      ["rg-export-ifc2x3", "Export: model to IFC2X3 (Revit 2020)", "Export", () => exportIfc("IFC2X3")],
-      ["rg-status", "Revit gaps: show status", "Help", () => { console.table(status); notify("info", status.map((s) => `${s.ok ? "OK" : "FAILED"} ${s.name}`).join(" | "), { timeout: 6000 }); }],
+      ["rg-export-ifc2x3", "Export: model to IFC2X3 (BIM 2020)", "Export", () => exportIfc("IFC2X3")],
+      ["rg-status", "BIM gaps: show status", "Help", () => { console.table(status); notify("info", status.map((s) => `${s.ok ? "OK" : "FAILED"} ${s.name}`).join(" | "), { timeout: 6000 }); }],
     ];
     for (const [id, label, category, run] of cmds) registerCommand({ id, label, category, run });
     return { ok: true, detail: `${cmds.length} commands` };
   });
 
-  (window as Any).__obsRevitGaps = {
+  (window as Any).__obsBIMGaps = {
     version: REVIT_GAPS_VERSION, status,
     exportIfc, buildModelIfc,
     placeRoomAt, placeRoomsAutomatically, startRoomTool, refreshRoomOverlay,
@@ -135,6 +135,6 @@ export async function setupRevitGaps(): Promise<StepStatus[]> {
   };
   const failed = status.filter((s) => !s.ok);
   console.log(`[revit-gaps] ${REVIT_GAPS_VERSION}: ${status.length - failed.length}/${status.length} steps started` + (failed.length ? ` - FAILED: ${failed.map((f) => `${f.name} (${f.detail})`).join("; ")}` : ""));
-  if (failed.length) notify("warn", `Revit gaps: ${failed.length} step(s) failed - see console`);
+  if (failed.length) notify("warn", `BIM gaps: ${failed.length} step(s) failed - see console`);
   return status;
 }
