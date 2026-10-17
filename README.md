@@ -206,6 +206,18 @@ src/
 
 OpenBiMStudio is under active development. The core authoring, parametric, coordination and documentation engines are functional and being hardened for production use. Breaking changes to the internal API are still possible between minor versions; the IFC import/export surface is stable.
 
+## Documentation
+
+The expanded documentation set is maintained under [`docs/`](docs/README.md):
+
+- [User Guide](docs/USER_GUIDE.md) — setup, workflows, troubleshooting and safe model validation.
+- [Master Tool Catalogue](docs/MASTER_TOOL_CATALOG.md) — source-mapped inventory of tool families and verification status.
+- [Developer Guide](docs/DEVELOPER_GUIDE.md) — architecture, module registration, persistence, testing and security.
+- [Tool Reference Template](docs/tools/README.md) — standard structure for documenting each command and workflow.
+- [Existing implementation and gap documents](docs/README.md) — parametric engine, IFC/native BIM validation, drawings and parity milestones.
+
+The catalogue deliberately distinguishes source presence from runtime verification. Review each tool's limitations and test evidence before treating it as production-ready.
+
 ## Contributing
 
 Contributions are welcome.
