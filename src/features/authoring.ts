@@ -2138,7 +2138,7 @@ function rejectInvalidOperation(
   operation: string,
 ): boolean {
   const diagnostics = validateNativeModel({ elements: candidateElements, levels, grids })
-    .filter((diagnostic) => affectedIds.has(diagnostic.elementId) && diagnostic.severity === "error");
+    .filter((diagnostic) => typeof diagnostic.elementId === "string" && affectedIds.has(diagnostic.elementId) && diagnostic.severity === "error");
   if (!diagnostics.length) return false;
   const details = diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`).join("\\n");
   window.dispatchEvent(new CustomEvent("obs-toast", {

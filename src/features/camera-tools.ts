@@ -787,6 +787,9 @@ export function focusOnBox(box: THREE.Box3): void {
     );
   }
   updateClipping();
+
+  // Pin the orbit rotation centre to the element's bounding-box centre
+  setTimeout(() => { try { setOrbitPivot(box.getCenter(new THREE.Vector3())); } catch { /* ignore */ } }, 220);
 }
 
 /**
