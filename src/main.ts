@@ -30,7 +30,7 @@ import { setupClash } from "./features/clash";
 import { setupClashCategories } from "./features/clash-categories";
 import { setupClashReview } from "./features/clash-review";
 import { setupModelAlign } from "./features/model-align";
-import { setupViewCube } from "./features/viewcube";
+
 import { setupContextMenu } from "./features/context-menu";
 import { setupProjects } from "./modules/projects/projects";
 import { setupAuthoring } from "./features/authoring";
@@ -287,7 +287,7 @@ await step("clash-categories", () => {
 });
 await step("clash-review", () => setupClashReview());
 
-await step("viewcube", () => setupViewCube());
+
 await step("context-menu", () => setupContextMenu());
 await step("viewport-toolbar", () => setupViewportToolbar());
 

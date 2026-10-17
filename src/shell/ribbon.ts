@@ -35,7 +35,7 @@ import {
   exportClashReportXls,
   previewClashReportHtml,
 } from "../features/clash-report";
-import { cubeHost } from "../features/viewcube";
+
 import {
   setAuthoringTool, getActiveTool, deleteSelectedElement, clearAllElements,
   setLevel, getLevel, getLastCommand, pinSelected,
