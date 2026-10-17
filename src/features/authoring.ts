@@ -927,35 +927,49 @@ function getHostedForWall(wallId: string): AuthoredElement[] {
   );
 }
 
-/** Compute the wall-clamped offset for a hosted door/window. Pure - no mutations. */
-function computeClampedOffset(el: AuthoredElement, wallLength: number): number {
-  const w = el.params.width ?? (el.type === "door" ? 0.9 : 1.2);
-  const half = w / 2;
-  const raw = el.params.offsetAlongHost ?? wallLength / 2;
-  if (wallLength <= w + 0.02) return wallLength / 2;
-  const clamped = Math.max(half, Math.min(wallLength - half, raw));
-  return Math.round(clamped * 1000) / 1000;
-}
-
 function openingsForWall(wallId: string): WallOpening[] {
+  // hosted-recut: clamp each opening to the host's CURRENT length so a moved or
+  // resized wall re-cuts its door/window holes in-bounds on every rebuild, and
+  // write the clamp back to the hosted element params so the door/window mesh
+  // (built from the same offsetAlongHost) stays glued to the wall in one pass.
+  // hosted-recut: skip full-face opening so a bad/degenerate opening can never
+  // hollow the wall solid into a thin frame (the door mesh still draws on top).
   const out: WallOpening[] = [];
   const wall = elements.find((e) => e.id === wallId);
   const wp = wall?.params;
   let L = 0;
+  let ax = 0, az = 0, dx = 0, dz = 0;
   if (wp && wp.start && wp.end) {
-    const ax = wp.start[0], az = wp.start[1];
-    const bx = wp.end[0],   bz = wp.end[1];
-    L = Math.hypot(bx - ax, bz - az);
+    ax = wp.start[0]; az = wp.start[1];
+    dx = wp.end[0] - ax; dz = wp.end[1] - az;
+    L = Math.hypot(dx, dz);
   }
+  const angle = L > 1e-6 ? Math.atan2(dz, dx) : 0;
   const H = Number(wp?.height ?? 3);
   for (const el of getHostedForWall(wallId)) {
     const p = el.params;
     const w = p.width ?? DEFAULTS[el.type]?.width ?? 0.9;
     const h = p.height;
     const sill = el.type === "window" ? (p.sillHeight ?? 0.9) : (p.sillHeight ?? 0);
-
-    const offset = computeClampedOffset(el, L);
-
+    let offset = p.offsetAlongHost ?? (L > 0 ? L / 2 : 0);
+    if (L > 1e-6) {
+      const half = w / 2;
+      if (L <= w + 0.02) offset = L / 2;
+      else offset = Math.max(half, Math.min(L - half, offset));
+      offset = Math.round(offset * 1000) / 1000;
+      p.offsetAlongHost = offset;
+      const t01 = offset / L;
+      const cx = ax + dx * t01;
+      const cz = az + dz * t01;
+      if ("x" in p) p.x = Math.round(cx * 1000) / 1000;
+      if ("z" in p) p.z = Math.round(cz * 1000) / 1000;
+      const hostAngle = Math.round(angle * 10000) / 10000;
+      if ("hostAngle" in p) (p as any).hostAngle = hostAngle;
+      if ("rotation" in p) (p as any).rotation = hostAngle;
+      if ("angle" in p) (p as any).angle = hostAngle;
+    }
+    // full-face skip: compute the hole rect exactly as the legacy builder does,
+    // and drop the opening if it would erase >= 90% of the wall face.
     const u0 = Math.max(0, offset - w / 2);
     const u1 = Math.min(L, offset + w / 2);
     const v0 = Math.max(0, sill);
@@ -1651,7 +1665,7 @@ function placeHostedElement(g: THREE.Group, el: AuthoredElement, host: AuthoredE
   const up = new THREE.Vector3(0, 1, 0);
   const normal = new THREE.Vector3().crossVectors(up, dir).normalize();
 
-  const offset = computeClampedOffset(el, L);
+  const offset = el.params.offsetAlongHost ?? L / 2;
   const sill = el.params.sillHeight ?? 0;
 
   const pos = new THREE.Vector3(
@@ -1685,32 +1699,6 @@ function disposeObj(obj: THREE.Object3D) {
   });
 }
 
-/** Write derived hosted-element params once per rebuild. The only place
- *  offsetAlongHost, x, z, hostAngle, rotation, angle are mutated. */
-function syncHostedPositions(): void {
-  for (const el of elements) {
-    if ((el.type !== "door" && el.type !== "window") || !el.hostId) continue;
-    const host = elements.find((e) => e.id === el.hostId);
-    if (!host?.params.start || !host?.params.end) continue;
-    const [ax, az] = host.params.start;
-    const [bx, bz] = host.params.end;
-    const dx = bx - ax, dz = bz - az;
-    const L = Math.hypot(dx, dz);
-    if (L < 1e-6) continue;
-    const offset = computeClampedOffset(el, L);
-    const t01 = offset / L;
-    const cx = ax + dx * t01;
-    const cz = az + dz * t01;
-    const hostAngle = Math.atan2(dz, dx);
-    el.params.offsetAlongHost = offset;
-    if ("x" in el.params)         (el.params as any).x         = Math.round(cx * 1000) / 1000;
-    if ("z" in el.params)         (el.params as any).z         = Math.round(cz * 1000) / 1000;
-    if ("hostAngle" in el.params) (el.params as any).hostAngle = Math.round(hostAngle * 10000) / 10000;
-    if ("rotation" in el.params)  (el.params as any).rotation  = Math.round(hostAngle * 10000) / 10000;
-    if ("angle" in el.params)     (el.params as any).angle     = Math.round(hostAngle * 10000) / 10000;
-  }
-}
-
 function rebuild() {
   while (group.children.length) {
     const ch = group.children[0];
@@ -1727,7 +1715,6 @@ function rebuild() {
     const m = createMesh(el);
     if (m) group.add(m);
   }
-  syncHostedPositions();
   applySelection();
   refreshGrips();
   // hosted-place-sync: reconcile hosted door/window mesh transforms to the

@@ -59,6 +59,9 @@ function isUiEventTarget(t: EventTarget | null): boolean {
     if (el.closest("canvas")) return false;
     return true;
   }
+  // Generic: if it's not the WebGL canvas, treat as UI when inside rightHost children that are not the canvas parent
+  const tag = el.tagName;
+  if (tag === "CANVAS") return false;
   return false;
 }
 
