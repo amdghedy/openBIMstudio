@@ -5,7 +5,7 @@ on:
     paths:
       - "src/modules/native-bim/**"
       - "src/features/sheets-2d-panel.ts"
-      - "src/features/sheets-2d-panel.ts"
+      - "src/features/authoring.ts"
       - "tests/native-bim-validation.test.mjs"
       - "docs/NATIVE_BIM_VALIDATION.md"
       - "package.json"
@@ -15,6 +15,7 @@ on:
     branches: [main]
     paths:
       - "src/modules/native-bim/**"
+      - "src/features/authoring.ts"
       - "tests/native-bim-validation.test.mjs"
       - "docs/NATIVE_BIM_VALIDATION.md"
       - "package.json"
