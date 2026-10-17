@@ -38,3 +38,7 @@ Project_Part_*.txt
 
 # Bundle artifacts (local diagnostics only)
 obs-p*-*.txt
+
+# Test & diagnostic artifacts
+*.ifc
+obs-*.txt
