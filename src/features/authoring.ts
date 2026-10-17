@@ -2872,8 +2872,30 @@ function historyNum(
   const coalesceKey = `edit-${el.id}-${getLabel()}`;
   return numInput(value, step, (v) => {
     const before = JSON.parse(JSON.stringify(el.params));
-    mutate(v);
-    const after = JSON.parse(JSON.stringify(el.params));
+    const candidate: AuthoredElement = { ...el, params: JSON.parse(JSON.stringify(el.params)) };
+    const originalParams = el.params;
+    try {
+      el.params = candidate.params;
+      mutate(v);
+      candidate.params = el.params;
+    } finally {
+      el.params = originalParams;
+    }
+    const diagnostics = validateNativeModel({
+      elements: elements.map((item) => item.id === el.id ? candidate : item),
+      levels,
+      grids,
+    }).filter((diagnostic) => diagnostic.elementId === el.id && diagnostic.severity === "error");
+    if (diagnostics.length) {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: {
+          message: "Cannot apply " + getLabel() + " to " + el.name + ".\n" + diagnostics.map((d) => d.code + ": " + d.message).join("\n"),
+          kind: "error",
+        },
+      }));
+      return;
+    }
+    const after = JSON.parse(JSON.stringify(candidate.params));
     history.push(
       {
         label: `Edit ${el.name} · ${getLabel()}`,
@@ -2882,6 +2904,7 @@ function historyNum(
       },
       coalesceKey,
     );
+    el.params = JSON.parse(JSON.stringify(after));
     rebuild();
     markDirty();
   });
