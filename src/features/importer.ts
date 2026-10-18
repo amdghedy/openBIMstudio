@@ -14,6 +14,7 @@
  */
 import * as THREE from "three";
 import * as FRAGS from "@thatopen/fragments";
+import * as WEBIFC from "web-ifc";
 import { ctx } from "../core/context";
 import {
   computeSceneBounds, fitAll,
@@ -154,24 +155,39 @@ let rejectActive: ((reason?: any) => void) | null = null;
 
 function getImporter(): any {
   const path = wasmPath();
+
+  // Force single-thread: under Vite/ESM document.currentScript is undefined
+  // and the multi-thread worker URL becomes "undefined" → SyntaxError '<'
+  try {
+    const proto = (WEBIFC as any).IfcAPI?.prototype;
+    if (proto && typeof proto.Init === "function" && !(proto.Init as any).__obsForcedST) {
+      const origInit = proto.Init;
+      proto.Init = function (handler?: any, _forceST?: boolean) {
+        // Always force single-thread
+        return origInit.call(this, handler, true);
+      };
+      (proto.Init as any).__obsForcedST = true;
+      console.log("[importer] web-ifc Init patched → forceSingleThread=true");
+    }
+  } catch (e) {
+    console.warn("[importer] could not patch web-ifc Init", e);
+  }
+
+  // Also make the page appear non-cross-origin-isolated during conversion
+  // so web-ifc never chooses the MT path
+  try {
+    if (typeof self !== "undefined" && self.crossOriginIsolated) {
+      Object.defineProperty(self, "crossOriginIsolated", {
+        get: () => false,
+        configurable: true,
+      });
+    }
+  } catch { /* ignore */ }
+
   if (!ifcImporter) {
     ifcImporter = new FRAGS.IfcImporter();
   }
   ifcImporter.wasm = { absolute: true, path };
-
-  // Force single-thread mode (fixes "http://localhost:3000/undefined")
-  try {
-    const anyImp = ifcImporter as any;
-    if (anyImp.webIfcSettings) {
-      anyImp.webIfcSettings = {
-        ...anyImp.webIfcSettings,
-        COORDINATE_TO_ORIGIN: true,
-      };
-    }
-    // Some versions expose this flag directly
-    anyImp.forceSingleThread = true;
-  } catch { /* ignore */ }
-
   return ifcImporter;
 }
 
