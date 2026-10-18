@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 var WebIFC = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -72653,7 +72653,7 @@ Originally allocated`);
      */
     async Init(customLocateFileHandler, forceSingleThread = false) {
       if (!WebIFCWasm) {
-        if (typeof self !== "undefined" && self.crossOriginIsolated && !forceSingleThread) {
+        if (typeof self !== "undefined" && false) {
           try {
             WebIFCWasm = require_web_ifc_mt();
           } catch (ex) {

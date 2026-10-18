@@ -1,4 +1,4 @@
-/**
+﻿/**
  * IFC importer with 5 BIM-style positioning modes + live offset control.
  *
  * Position pinning
@@ -154,8 +154,24 @@ let rejectActive: ((reason?: any) => void) | null = null;
 
 function getImporter(): any {
   const path = wasmPath();
-  if (!ifcImporter) ifcImporter = new FRAGS.IfcImporter();
+  if (!ifcImporter) {
+    ifcImporter = new FRAGS.IfcImporter();
+  }
   ifcImporter.wasm = { absolute: true, path };
+
+  // Force single-thread mode (fixes "http://localhost:3000/undefined")
+  try {
+    const anyImp = ifcImporter as any;
+    if (anyImp.webIfcSettings) {
+      anyImp.webIfcSettings = {
+        ...anyImp.webIfcSettings,
+        COORDINATE_TO_ORIGIN: true,
+      };
+    }
+    // Some versions expose this flag directly
+    anyImp.forceSingleThread = true;
+  } catch { /* ignore */ }
+
   return ifcImporter;
 }
 
