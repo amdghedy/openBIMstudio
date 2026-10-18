@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Walk mode — first-person navigation.
  *
  * Controls:
@@ -222,13 +222,17 @@ export function enableWalkMode(): void {
   if (getProjection() !== "perspective") {
     try { setProjection("perspective"); } catch { /* */ }
   }
-  cam.fov = 72;
+  cam.fov = 65;
+    cam.updateProjectionMatrix();
+    cam.near = 0.1;
+    cam.far = 1000;
+    cam.updateProjectionMatrix();
   cam.updateProjectionMatrix();
 
   // ── Derive initial yaw / pitch from the current view direction ──
   const viewDir = savedTarget.clone().sub(savedPos).normalize();
   state.pitch = Math.asin(THREE.MathUtils.clamp(viewDir.y, -1, 1));
-  state.yaw = Math.atan2(-viewDir.x, -viewDir.z);
+  state.yaw = Math.atan2(-viewDir.x, -viewDir.z) - (Math.PI / 2);
 
   // ── Position: keep the current XZ, snap Y to the ground under us ──
   state.pos.set(savedPos.x, savedPos.y, savedPos.z);
@@ -457,4 +461,91 @@ export function setupWalkMode(): void {
     disable: disableWalkMode,
     toggle: toggleWalkMode,
   };
+}
+// ── ADDED: Pre-Walk Adjustment Mode UI ──
+export function showWalkAdjustmentUI(onStartWalk: () => void) {
+  if (document.getElementById("walk-adjust-ui")) return;
+
+  const ui = document.createElement("div");
+  ui.id = "walk-adjust-ui";
+  ui.style.position = "fixed";
+  ui.style.bottom = "30px";
+  ui.style.left = "50%";
+  ui.style.transform = "translateX(-50%)";
+  ui.style.background = "rgba(20, 25, 30, 0.95)";
+  ui.style.border = "1px solid #00A3E0";
+  ui.style.borderRadius = "8px";
+  ui.style.padding = "20px";
+  ui.style.display = "flex";
+  ui.style.flexDirection = "column";
+  ui.style.alignItems = "center";
+  ui.style.gap = "15px";
+  ui.style.zIndex = "999999";
+  ui.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
+
+  const title = document.createElement("div");
+  title.textContent = "ADJUST STARTING POSITION";
+  title.style.color = "#00A3E0";
+  title.style.fontWeight = "bold";
+  title.style.fontFamily = "sans-serif";
+  title.style.letterSpacing = "1px";
+  ui.appendChild(title);
+
+  const dpad = document.createElement("div");
+  dpad.style.display = "grid";
+  dpad.style.gridTemplateColumns = "repeat(3, 40px)";
+  dpad.style.gridTemplateRows = "repeat(3, 40px)";
+  dpad.style.gap = "4px";
+
+  const createBtn = (label: string, gridArea: string, keyCode: string) => {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    btn.style.gridArea = gridArea;
+    btn.style.background = "rgba(255,255,255,0.1)";
+    btn.style.color = "white";
+    btn.style.border = "1px solid #555";
+    btn.style.borderRadius = "4px";
+    btn.style.cursor = "pointer";
+    btn.style.fontSize = "18px";
+    
+    const dispatchKey = (type: "keydown" | "keyup") => {
+      window.dispatchEvent(new KeyboardEvent(type, { code: keyCode, key: keyCode.replace("Key", "") }));
+    };
+    
+    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); dispatchKey("keydown"); });
+    btn.addEventListener("pointerup", (e) => { e.preventDefault(); dispatchKey("keyup"); });
+    btn.addEventListener("pointerleave", () => { dispatchKey("keyup"); });
+    return btn;
+  };
+
+  dpad.appendChild(createBtn("▲", "1 / 2", "KeyW"));
+  dpad.appendChild(createBtn("◀", "2 / 1", "KeyA"));
+  dpad.appendChild(createBtn("▼", "2 / 2", "KeyS"));
+  dpad.appendChild(createBtn("▶", "2 / 3", "KeyD"));
+  ui.appendChild(dpad);
+
+  const startBtn = document.createElement("button");
+  startBtn.textContent = "START WALK";
+  startBtn.style.padding = "10px 24px";
+  startBtn.style.background = "#00A3E0";
+  startBtn.style.color = "white";
+  startBtn.style.border = "none";
+  startBtn.style.borderRadius = "4px";
+  startBtn.style.fontWeight = "bold";
+  startBtn.style.cursor = "pointer";
+  startBtn.style.fontFamily = "sans-serif";
+  
+  startBtn.onclick = () => {
+    ui.remove();
+    onStartWalk();
+  };
+  
+  ui.appendChild(startBtn);
+  document.body.appendChild(ui);
+}
+
+
+// ── WRAPPER: Force the Adjustment UI before starting the walk ──
+export function startWalkMode() {
+  showWalkAdjustmentUI(enableWalkMode);
 }
