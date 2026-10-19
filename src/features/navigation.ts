@@ -639,6 +639,31 @@ function disableNativeCameraMouse(): void {
     try { if ("draggingSmoothTime" in c) c.draggingSmoothTime = 0; } catch { /* */ }
     try { if ("azimuthRotateSpeed" in c) c.azimuthRotateSpeed = 1; } catch { /* */ }
     try { if ("polarRotateSpeed" in c) c.polarRotateSpeed = 1; } catch { /* */ }
+
+    // CRITICAL: Lock mouseButtons.middle to ACTION.NONE via a property
+    // getter so @thatopen/components' OrthoPerspectiveCamera cannot
+    // re-enable it. OrthoPerspectiveCamera.setupOrthoCamera() and
+    // setPerspectiveCamera() both set mouseButtons.middle = ACTION.ZOOM
+    // or ACTION.DOLLY when switching projection modes, overriding our
+    // ACTION.NONE. This causes camera-controls to process MMB drag as
+    // its own dolly/zoom, competing with navigation.ts's pan and
+    // causing the view to change unexpectedly.
+    //
+    // By making the property read-only (getter always returns 0 = NONE),
+    // any subsequent assignment is silently ignored in non-strict mode
+    // or throws in strict mode (which we catch). In both cases, the
+    // value read by camera-controls' onPointerDown is always 0 = NONE.
+    try {
+      const NONE = ACTION?.NONE ?? 0;
+      const mb = c.mouseButtons;
+      if (mb && Object.getOwnPropertyDescriptor(mb, "middle")?.configurable !== false) {
+        Object.defineProperty(mb, "middle", {
+          get: () => NONE,
+          set: () => { /* silently ignore — navigation.ts owns MMB */ },
+          configurable: true,
+        });
+      }
+    } catch { /* property may already be locked */ }
   } catch (e) {
     console.warn("[navigation] disableNativeCameraMouse", e);
   }
