@@ -1,0 +1,126 @@
+{
+  "id": "seed-furn-139",
+  "name": "Sofa",
+  "category": "generic",
+  "ifcEntity": "IfcFurnishingElement",
+  "schemaVersion": 1,
+  "sourceElementType": "equipment",
+  "builtIn": false,
+  "group": "Furniture",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 0.8,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.6,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 0.45,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "elevation",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "footprint",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth",
+      "group": "Computed",
+      "unit": "m2"
+    },
+    {
+      "name": "volume",
+      "type": "volume",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth * height",
+      "group": "Computed",
+      "unit": "m3"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "elevation"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-furn-sofa-1-140",
+      "name": "2-Seater 1500",
+      "values": {
+        "width": 1.5,
+        "depth": 0.9,
+        "height": 0.85
+      }
+    },
+    {
+      "id": "seed-furn-sofa-2-141",
+      "name": "3-Seater 2000",
+      "values": {
+        "width": 2,
+        "depth": 0.9,
+        "height": 0.85
+      }
+    },
+    {
+      "id": "seed-furn-sofa-3-142",
+      "name": "L-Shape 2600 x 1800",
+      "values": {
+        "width": 2.6,
+        "depth": 1.8,
+        "height": 0.85
+      }
+    }
+  ]
+}

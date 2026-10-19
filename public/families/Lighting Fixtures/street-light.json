@@ -1,0 +1,117 @@
+{
+  "id": "seed-lighting-095",
+  "name": "Street Light",
+  "category": "equipment",
+  "ifcEntity": "IfcLightFixture",
+  "schemaVersion": 1,
+  "sourceElementType": "equipment",
+  "builtIn": false,
+  "group": "Lighting Fixtures",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 0.6,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.6,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 0.1,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "elevation",
+      "type": "length",
+      "scope": "instance",
+      "default": 2.7,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "lumens",
+      "type": "integer",
+      "scope": "type",
+      "default": 800,
+      "editable": true,
+      "step": 1,
+      "group": "Electrical"
+    },
+    {
+      "name": "colorTemp",
+      "type": "text",
+      "scope": "type",
+      "default": "4000K",
+      "editable": true,
+      "group": "Electrical"
+    },
+    {
+      "name": "footprint",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth",
+      "group": "Computed",
+      "unit": "m2"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "elevation"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-light-street-light-1-096",
+      "name": "Pole-Mount 600 x 200",
+      "values": {
+        "width": 0.6,
+        "depth": 0.2,
+        "height": 0.15,
+        "elevation": 5,
+        "lumens": 9000
+      }
+    }
+  ]
+}

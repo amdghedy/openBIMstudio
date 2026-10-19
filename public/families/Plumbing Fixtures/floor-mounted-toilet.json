@@ -1,0 +1,109 @@
+{
+  "id": "seed-plumbing-056",
+  "name": "Floor-Mounted Toilet",
+  "category": "equipment",
+  "ifcEntity": "IfcSanitaryTerminal",
+  "schemaVersion": 1,
+  "sourceElementType": "equipment",
+  "builtIn": false,
+  "group": "Plumbing Fixtures",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 0.4,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions",
+      "label": "Width"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.6,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions",
+      "label": "Depth"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 0.4,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions",
+      "label": "Height"
+    },
+    {
+      "name": "elevation",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "connectionSize",
+      "type": "text",
+      "scope": "type",
+      "default": "DN 15",
+      "editable": true,
+      "group": "Mechanical"
+    },
+    {
+      "name": "footprint",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth",
+      "group": "Computed",
+      "unit": "m2"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "elevation"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-plumb-floor-mounted-toilet-1-057",
+      "name": "Standard 400 x 700",
+      "values": {
+        "width": 0.4,
+        "depth": 0.7,
+        "height": 0.75
+      }
+    }
+  ]
+}

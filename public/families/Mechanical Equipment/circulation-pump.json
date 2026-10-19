@@ -1,0 +1,145 @@
+{
+  "id": "seed-mech-150",
+  "name": "Circulation Pump",
+  "category": "equipment",
+  "ifcEntity": "IfcMechanicalAppliance",
+  "schemaVersion": 1,
+  "sourceElementType": "equipment",
+  "builtIn": false,
+  "group": "Mechanical Equipment",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 1,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.8,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 0.9,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "elevation",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "powerWatts",
+      "type": "integer",
+      "scope": "type",
+      "default": 1500,
+      "editable": true,
+      "step": 1,
+      "group": "Electrical"
+    },
+    {
+      "name": "voltage",
+      "type": "integer",
+      "scope": "type",
+      "default": 230,
+      "editable": true,
+      "step": 1,
+      "group": "Electrical"
+    },
+    {
+      "name": "connectionSize",
+      "type": "text",
+      "scope": "type",
+      "default": "DN 50",
+      "editable": true,
+      "group": "Mechanical"
+    },
+    {
+      "name": "footprint",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth",
+      "group": "Computed",
+      "unit": "m2"
+    },
+    {
+      "name": "volume",
+      "type": "volume",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth * height",
+      "group": "Computed",
+      "unit": "m3"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "elevation"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-mech-circulation-pump-1-151",
+      "name": "Small 200 x 300",
+      "values": {
+        "width": 0.2,
+        "depth": 0.3,
+        "height": 0.3,
+        "powerWatts": 90
+      }
+    },
+    {
+      "id": "seed-mech-circulation-pump-2-152",
+      "name": "Medium 300 x 400",
+      "values": {
+        "width": 0.3,
+        "depth": 0.4,
+        "height": 0.4,
+        "powerWatts": 350
+      }
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "id": "seed-door-012",
+  "name": "Tall Door 2400mm",
+  "category": "door",
+  "ifcEntity": "IfcDoor",
+  "schemaVersion": 1,
+  "sourceElementType": "door",
+  "builtIn": false,
+  "group": "Doors",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 0.9,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 2.1,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "frameThickness",
+      "type": "length",
+      "scope": "type",
+      "default": 0.06,
+      "editable": true,
+      "step": 0.005,
+      "unit": "m",
+      "group": "Construction",
+      "label": "Frame Thickness"
+    },
+    {
+      "name": "sillHeight",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "offsetAlongHost",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "fireRating",
+      "type": "text",
+      "scope": "type",
+      "default": "None",
+      "editable": true,
+      "group": "Identity Data"
+    },
+    {
+      "name": "panelArea",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * height",
+      "group": "Computed",
+      "unit": "m2"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "const": 0.04
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "sillHeight"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-door-tall-door-2400mm-1-013",
+      "name": "900 x 2400",
+      "values": {
+        "width": 0.9,
+        "height": 2.4
+      }
+    },
+    {
+      "id": "seed-door-tall-door-2400mm-2-014",
+      "name": "1000 x 2400",
+      "values": {
+        "width": 1,
+        "height": 2.4
+      }
+    }
+  ]
+}

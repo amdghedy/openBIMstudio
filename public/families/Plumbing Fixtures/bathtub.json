@@ -1,0 +1,118 @@
+{
+  "id": "seed-plumbing-070",
+  "name": "Bathtub",
+  "category": "equipment",
+  "ifcEntity": "IfcSanitaryTerminal",
+  "schemaVersion": 1,
+  "sourceElementType": "equipment",
+  "builtIn": false,
+  "group": "Plumbing Fixtures",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 0.4,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions",
+      "label": "Width"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.6,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions",
+      "label": "Depth"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 0.4,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions",
+      "label": "Height"
+    },
+    {
+      "name": "elevation",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "connectionSize",
+      "type": "text",
+      "scope": "type",
+      "default": "DN 15",
+      "editable": true,
+      "group": "Mechanical"
+    },
+    {
+      "name": "footprint",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth",
+      "group": "Computed",
+      "unit": "m2"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "elevation"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-plumb-bathtub-1-071",
+      "name": "1700 x 750 Standard",
+      "values": {
+        "width": 1.7,
+        "depth": 0.75,
+        "height": 0.55
+      }
+    },
+    {
+      "id": "seed-plumb-bathtub-2-072",
+      "name": "1800 x 800 Large",
+      "values": {
+        "width": 1.8,
+        "depth": 0.8,
+        "height": 0.55
+      }
+    }
+  ]
+}

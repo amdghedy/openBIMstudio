@@ -1,0 +1,135 @@
+{
+  "id": "seed-furn-134",
+  "name": "Bed",
+  "category": "generic",
+  "ifcEntity": "IfcFurnishingElement",
+  "schemaVersion": 1,
+  "sourceElementType": "equipment",
+  "builtIn": false,
+  "group": "Furniture",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 0.8,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.6,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 0.45,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "elevation",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "footprint",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth",
+      "group": "Computed",
+      "unit": "m2"
+    },
+    {
+      "name": "volume",
+      "type": "volume",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth * height",
+      "group": "Computed",
+      "unit": "m3"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "elevation"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-furn-bed-1-135",
+      "name": "Single 900 x 1900",
+      "values": {
+        "width": 0.9,
+        "depth": 1.9,
+        "height": 0.45
+      }
+    },
+    {
+      "id": "seed-furn-bed-2-136",
+      "name": "Double 1400 x 1900",
+      "values": {
+        "width": 1.4,
+        "depth": 1.9,
+        "height": 0.45
+      }
+    },
+    {
+      "id": "seed-furn-bed-3-137",
+      "name": "Queen 1520 x 2030",
+      "values": {
+        "width": 1.52,
+        "depth": 2.03,
+        "height": 0.5
+      }
+    },
+    {
+      "id": "seed-furn-bed-4-138",
+      "name": "King 1800 x 2030",
+      "values": {
+        "width": 1.8,
+        "depth": 2.03,
+        "height": 0.5
+      }
+    }
+  ]
+}

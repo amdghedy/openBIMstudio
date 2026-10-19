@@ -1,0 +1,126 @@
+{
+  "id": "seed-furn-120",
+  "name": "Dining Table",
+  "category": "generic",
+  "ifcEntity": "IfcFurnishingElement",
+  "schemaVersion": 1,
+  "sourceElementType": "equipment",
+  "builtIn": false,
+  "group": "Furniture",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 0.8,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.6,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 0.45,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "elevation",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "footprint",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth",
+      "group": "Computed",
+      "unit": "m2"
+    },
+    {
+      "name": "volume",
+      "type": "volume",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth * height",
+      "group": "Computed",
+      "unit": "m3"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "elevation"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-furn-dining-table-1-121",
+      "name": "4-Seater 1200 x 800",
+      "values": {
+        "width": 1.2,
+        "depth": 0.8,
+        "height": 0.75
+      }
+    },
+    {
+      "id": "seed-furn-dining-table-2-122",
+      "name": "6-Seater 1800 x 900",
+      "values": {
+        "width": 1.8,
+        "depth": 0.9,
+        "height": 0.75
+      }
+    },
+    {
+      "id": "seed-furn-dining-table-3-123",
+      "name": "8-Seater 2400 x 1000",
+      "values": {
+        "width": 2.4,
+        "depth": 1,
+        "height": 0.75
+      }
+    }
+  ]
+}
