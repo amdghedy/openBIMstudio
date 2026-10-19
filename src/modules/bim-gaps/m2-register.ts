@@ -87,7 +87,7 @@ export function registerM2Schemas(): void {
   ]);
   S.roof = schema("roof" as never, "Roof", "roof", [
     num("thickness", "Thickness", D, 0.01, 0.03), elev("Eaves elevation"),
-    sel("roofType", "Roof type", K, [["gable", "Gable"], ["shed", "Shed (single slope)"]], "gable"),
+    sel("roofType", "Roof type", K, [["gable", "Gable"], ["shed", "Shed (single slope)"], ["hip", "Hip (all sides slope)"], ["valley", "Valley (intersecting gables)"]], "gable"),
     prop("slope", "Slope", K, 1, 1, 75, "deg", 30), prop("slopeDirection", "Slope direction (0 = +X)", K, 5, -360, 360, "deg", 0),
   ]);
   S.ceiling = schema("ceiling" as never, "Ceiling", "ceiling", [num("thickness", "Thickness", D, 0.005, 0.005), elev("Ceiling elevation")]);

@@ -392,7 +392,7 @@ export function buildRamp(p: RampParams): GeoResult {
 
 /* -------------------------------------------------------------------- roofs */
 
-export interface RoofParams { polygon: Vec2[]; elevation: number; thickness: number; slopeDeg: number; roofType?: "gable" | "shed"; dirDeg?: number; color?: string }
+export interface RoofParams { polygon: Vec2[]; elevation: number; thickness: number; slopeDeg: number; roofType?: "gable" | "shed" | "hip" | "valley"; dirDeg?: number; color?: string }
 
 function clipHalf(poly: Vec2[], f: (p: Vec2) => number): Vec2[] {
   // keep the part where f(p) >= 0 (Sutherland-Hodgman against one half-plane)
@@ -406,8 +406,194 @@ function clipHalf(poly: Vec2[], f: (p: Vec2) => number): Vec2[] {
   return out;
 }
 
+/**
+ * Signed distance from point q to the line through edge (a -> b).
+ * Positive = q is on the left of the edge (interior, for a CCW polygon).
+ * Negative = q is on the right (exterior).
+ */
+function edgeDistance(q: Vec2, a: Vec2, b: Vec2): number {
+  // Length of the edge
+  const dx = b[0] - a[0];
+  const dz = b[1] - a[1];
+  const len = Math.hypot(dx, dz) || 1;
+  // Perpendicular distance: cross product (b - a) x (q - a) / |b - a|
+  // Cross product sign: positive when q is on the left of a -> b
+  return ((dx * (q[1] - a[1]) - dz * (q[0] - a[0])) / len);
+}
+
+/**
+ * Minimum positive distance from q to any edge of the (CCW) polygon.
+ * This is the "inward distance" - the perpendicular distance from q to
+ * the nearest edge, measured from inside the polygon.
+ *
+ * Used for hip roofs: the top function at (x, z) is
+ *   elevation + slope * minInwardDistance(x, z)
+ * so the roof rises uniformly from every edge toward the centre.
+ *
+ * Returns 0 for points outside the polygon (or on its boundary).
+ */
+function minInwardDistance(q: Vec2, polygon: Vec2[]): number {
+  let minDist = Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    const d = edgeDistance(q, a, b);
+    if (d < minDist) minDist = d;
+  }
+  return Math.max(0, minDist);
+}
+
+/**
+ * Build a hip roof - all four (or N) sides slope up from every edge of the
+ * footprint polygon to a central ridge. For a rectangular footprint, the
+ * ridge is a line segment running along the long axis; for a square or
+ * equilateral polygon, the ridge degenerates to a single point (pyramid).
+ *
+ * Algorithm:
+ *   - For each point (x, z) inside the polygon, compute the minimum
+ *     perpendicular distance to any polygon edge.
+ *   - Top function = elevation + slope * minDist, clamped at the ridge
+ *     height (= elevation + slope * halfShortestSide).
+ *   - The bottom is flat at elevation - thickness.
+ *
+ * The resulting surface is a pyramid (square footprint) or a hipped
+ * prism (rectangular footprint with a ridge line).
+ *
+ * Watertightness: prismPlan triangulates the bottom + top using earClip
+ * and stitches the sides with quads. The top function is continuous
+ * across the polygon, so the resulting soup is closed and outward-wound.
+ */
+export function buildHipRoof(
+  p: RoofParams,
+): GeoResult {
+  if (p.polygon.length < 3) throw new Error("hip roof needs a footprint polygon");
+  const slope = Math.tan((Math.max(1, Math.min(75, p.slopeDeg)) * Math.PI) / 180);
+  const t = Math.max(0.03, p.thickness);
+  const elevation = p.elevation;
+
+  // Compute the shortest edge (for ridge height) + longest edge (for ridge length).
+  // For a rectangle W x L with W < L:
+  //   - ridge rise = slope * W/2 (maxRise)
+  //   - ridge length = L - W (longestEdge - shortestEdge; 0 for a square)
+  let shortestEdge = Infinity;
+  let longestEdge = 0;
+  for (let i = 0; i < p.polygon.length; i++) {
+    const a = p.polygon[i];
+    const b = p.polygon[(i + 1) % p.polygon.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < shortestEdge) shortestEdge = len;
+    if (len > longestEdge) longestEdge = len;
+  }
+  const maxRise = slope * (shortestEdge / 2);
+
+  const top = (x: number, z: number): number => {
+    const inward = minInwardDistance([x, z], p.polygon);
+    const rise = Math.min(inward * slope, maxRise);
+    return elevation + rise;
+  };
+
+  const soup = new Soup();
+  prismPlan(p.polygon, (_x: number, _z: number) => elevation - t, top, soup);
+
+  const ridgeLength = Math.max(0, longestEdge - shortestEdge);
+
+  return {
+    parts: [{ positions: soup.p, color: p.color ?? "#9a3412", role: "solid", name: "Hip Roof" }],
+    info: {
+      ridgeHeight: elevation + maxRise,
+      rise: maxRise,
+      ridgeLength,
+      shortestEdge,
+      planArea: Math.abs(area2(p.polygon)),
+      surfaceArea: Math.abs(area2(p.polygon)) / Math.cos(Math.atan(slope)),
+      roofType: "hip",
+    },
+  };
+}
+
+/**
+ * Build a valley roof - intersection of two perpendicular gable roofs.
+ * Common at L-shaped or T-shaped plan junctions where two roof sections
+ * meet and form a valley (internal gutter line).
+ *
+ * Algorithm: take the polygon and compute the top function as the maximum
+ * of two gable-height functions (each one rises along one of two
+ * perpendicular directions). The valley is the set of points where the
+ * two functions are equal - that's where the two roof surfaces meet
+ * at an internal crease.
+ *
+ * For simplicity, we use dirDeg as the direction of the first gable, and
+ * dirDeg + 90 as the direction of the second. The top function is:
+ *   top(x, z) = elevation + min(gable1_rise, gable2_rise)
+ * (taking the minimum so the roof surface is the lower of the two at
+ * every point - this is how intersecting gable roofs actually drain).
+ */
+export function buildValleyRoof(
+  p: RoofParams,
+): GeoResult {
+  if (p.polygon.length < 3) throw new Error("valley roof needs a footprint polygon");
+  const slope = Math.tan((Math.max(1, Math.min(75, p.slopeDeg)) * Math.PI) / 180);
+  const t = Math.max(0.03, p.thickness);
+  const elevation = p.elevation;
+
+  // First gable direction
+  const a1 = ((p.dirDeg ?? 0) * Math.PI) / 180;
+  const s1: Vec2 = [Math.cos(a1), Math.sin(a1)];
+  const proj1 = (q: Vec2) => q[0] * s1[0] + q[1] * s1[1];
+  const ps1 = p.polygon.map(proj1);
+  const min1 = Math.min(...ps1);
+  const max1 = Math.max(...ps1);
+  const mid1 = (min1 + max1) / 2;
+  const half1 = (max1 - min1) / 2;
+
+  // Second gable direction (perpendicular)
+  const a2 = a1 + Math.PI / 2;
+  const s2: Vec2 = [Math.cos(a2), Math.sin(a2)];
+  const proj2 = (q: Vec2) => q[0] * s2[0] + q[1] * s2[1];
+  const ps2 = p.polygon.map(proj2);
+  const min2 = Math.min(...ps2);
+  const max2 = Math.max(...ps2);
+  const mid2 = (min2 + max2) / 2;
+  const half2 = (max2 - min2) / 2;
+
+  // Top function: minimum of the two gable rises (lower roof wins at each point).
+  // This produces the valley line where gable1_rise == gable2_rise.
+  const top = (x: number, z: number): number => {
+    const d1 = x * s1[0] + z * s1[1];
+    const d2 = x * s2[0] + z * s2[1];
+    const r1 = slope * (half1 - Math.abs(d1 - mid1));
+    const r2 = slope * (half2 - Math.abs(d2 - mid2));
+    return elevation + Math.min(r1, r2);
+  };
+
+  const soup = new Soup();
+  prismPlan(p.polygon, (_x: number, _z: number) => elevation - t, top, soup);
+
+  const rise1 = slope * half1;
+  const rise2 = slope * half2;
+  const ridgeHeight = elevation + Math.min(rise1, rise2);
+
+  return {
+    parts: [{ positions: soup.p, color: p.color ?? "#9a3412", role: "solid", name: "Valley Roof" }],
+    info: {
+      ridgeHeight,
+      rise: Math.min(rise1, rise2),
+      rise1,
+      rise2,
+      gable1HalfWidth: half1,
+      gable2HalfWidth: half2,
+      planArea: Math.abs(area2(p.polygon)),
+      surfaceArea: Math.abs(area2(p.polygon)) / Math.cos(Math.atan(slope)),
+      roofType: "valley",
+    },
+  };
+}
+
 export function buildRoof(p: RoofParams): GeoResult {
   if (p.polygon.length < 3) throw new Error("roof needs a footprint polygon");
+  const type = p.roofType ?? "gable";
+  if (type === "hip") return buildHipRoof(p);
+  if (type === "valley") return buildValleyRoof(p);
   const slope = Math.tan((Math.max(1, Math.min(75, p.slopeDeg)) * Math.PI) / 180);
   const t = Math.max(0.03, p.thickness);
   const a = ((p.dirDeg ?? 0) * Math.PI) / 180;
@@ -415,7 +601,6 @@ export function buildRoof(p: RoofParams): GeoResult {
   const proj = (q: Vec2) => q[0] * s[0] + q[1] * s[1];
   const ps = p.polygon.map(proj);
   const pmin = Math.min(...ps), pmax = Math.max(...ps), mid = (pmin + pmax) / 2, half = (pmax - pmin) / 2;
-  const type = p.roofType ?? "gable";
   const top = (x: number, z: number): number => {
     const d = x * s[0] + z * s[1];
     return p.elevation + slope * (type === "shed" ? d - pmin : half - Math.abs(d - mid));
