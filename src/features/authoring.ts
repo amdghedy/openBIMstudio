@@ -1184,15 +1184,35 @@ function buildWallWithOpenings(
   mesh.updateMatrixWorld(true);
 
   if (openings.length) {
+    // CSG hole subtraction.
+    //
+    // The wall's local axes (after `mesh.quaternion` rotation) are:
+    //   local X  ->  wall direction (horizontal, along the wall length)
+    //   local Y  ->  wall normal    (horizontal, perpendicular to wall length)
+    //   local Z  ->  world up       (vertical)
+    //
+    // Therefore the hole box's three dimensions must be:
+    //   width  (along-wall)  -> opening width   (spans the wall length)
+    //   depth  (wall-normal) -> wall thickness  (cuts all the way through)
+    //   height (vertical)    -> opening height   (from sill to top)
+    //
+    // Previous code used `BoxGeometry(op.width, op.height, T+0.2)` which
+    // swapped the wall-normal and vertical axes — the box was taller than
+    // the wall and barely cut through its thickness, so doors/windows
+    // appeared in front of an uncut wall. This is the hosted-element
+    // recut regression: the opening was computed in the wrong plane.
     for (const op of openings) {
-      const holeGeo = new THREE.BoxGeometry(op.width, op.height, T + 0.2);
+      const holeGeo = new THREE.BoxGeometry(op.width, T + 0.2, op.height);
       const holeMat = new THREE.MeshLambertMaterial({ visible: false });
       const holeMesh = new THREE.Mesh(holeGeo, holeMat);
-      
+
+      // Centre of the opening, in WORLD coordinates:
+      //   cx, cz  : on the wall's centreline, at distance `op.offset` from start
+      //   cy      : elevation + sill + half opening height (vertical mid-point)
       const cx = ax + dirX * op.offset;
       const cz = az + dirZ * op.offset;
       const cy = p.elevation + op.sill + op.height / 2;
-      
+
       holeMesh.position.set(cx, cy, cz);
       holeMesh.quaternion.copy(mesh.quaternion);
       holeMesh.updateMatrixWorld(true);
