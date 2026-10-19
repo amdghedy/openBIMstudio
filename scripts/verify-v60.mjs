@@ -124,7 +124,7 @@ console.log("\npackage.json scripts:");
 const pkgChecks = [
   ["test:hatch script declared", "package.json", /"test:hatch":\s*"node tests\/hatch-patterns\.test\.cjs"/],
   ["verify:v60 script declared", "package.json", /"verify:v60":\s*"node scripts\/verify-v60\.mjs"/],
-  ["version bumped to >= 0.60", "package.json", /"version":\s*"0\.60\.0"/],
+  ["version bumped to >= 0.60", "package.json", /"version":\s*"0\.(6[0-9]|[7-9][0-9])\.[0-9]+"/],
 ];
 for (const [label, file, regex] of pkgChecks) {
   if (check(label, file, regex)) pass++; else fail++;

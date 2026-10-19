@@ -54,6 +54,18 @@ let state: NavState = { kind: "idle" };
 let shiftHeld = false;
 let ctrlHeld = false;
 
+/**
+ * Timestamp (ms, performance.now) of the most recent camera gesture end —
+ * pan, orbit, or wheel zoom. Used to suppress dblclick→fitAll snap-back
+ * when the user releases MMB and quickly re-clicks (within the input-router's
+ * dblclick window of 320 ms).
+ *
+ * The cooldown is intentionally longer than the dblclick window so a single
+ * MMB release + immediate re-click never accidentally fits the whole scene.
+ */
+let lastNavGestureAt = 0;
+const DOUBLE_CLICK_FIT_COOLDOWN_MS = 600;
+
 const blockers: Array<() => boolean> = [];
 
 export function whenNavigationBlocked(fn: () => boolean): () => void {
@@ -542,11 +554,26 @@ export function setupNavigation(): void {
       if ((window as any).__OBS_WHEEL_AUTHORITY) return false;
       const focus = pickWorldPointUnderCursor(g.event.clientX, g.event.clientY);
       zoomAtCursor(g.event.deltaY, mods, focus);
+      // Wheel zoom counts as a gesture for the dblclick→fitAll cooldown.
+      lastNavGestureAt = performance.now();
       return true;
     }
 
     if (g.kind === "dblclick" && g.button === 1) {
       if (blocked() || isUiTarget(g.event)) return false;
+      // Suppress the dblclick → fitAll snap-back when the user has just
+      // finished a camera gesture (pan/orbit/zoom). Without this cooldown,
+      // a quick MMB release + re-click (within ~320ms, the input-router's
+      // dblclick window) fires fitAll() and zooms the user out of the view
+      // they just composed. The user perceives this as "the camera snaps
+      // back to the old start view" — a high-friction UX bug.
+      //
+      // The cooldown is set on every drag-end and wheel zoom; it expires
+      // after DOUBLE_CLICK_FIT_COOLDOWN_MS. After expiry, a genuine
+      // double-MMB-click still fires fitAll (preserving the feature).
+      if (performance.now() - lastNavGestureAt < DOUBLE_CLICK_FIT_COOLDOWN_MS) {
+        return true; // swallow the dblclick without firing fitAll
+      }
       fitAll();
       return true;
     }
@@ -617,6 +644,11 @@ function endNavGesture(resetCursor = true): void {
     try { ctx.rightHost.style.cursor = ""; } catch { /* */ }
   }
   try { forceResumeCameraControls(); } catch { /* */ }
+  // Stamp the end of this gesture so the dblclick→fitAll handler can
+  // suppress itself for a brief cooldown. Without this, releasing MMB
+  // and quickly re-clicking fires fitAll() and snaps the camera back
+  // to the whole-scene view, discarding the user's composed view.
+  lastNavGestureAt = performance.now();
 }
 
 function __obsGetSceneRadiusFallback(): number {
