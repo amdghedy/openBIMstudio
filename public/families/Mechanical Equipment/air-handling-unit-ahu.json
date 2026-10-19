@@ -1,0 +1,155 @@
+{
+  "id": "seed-mech-143",
+  "name": "Air Handling Unit (AHU)",
+  "category": "equipment",
+  "ifcEntity": "IfcMechanicalAppliance",
+  "schemaVersion": 1,
+  "sourceElementType": "equipment",
+  "builtIn": false,
+  "group": "Mechanical Equipment",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 1,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.8,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 0.9,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "elevation",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "powerWatts",
+      "type": "integer",
+      "scope": "type",
+      "default": 1500,
+      "editable": true,
+      "step": 1,
+      "group": "Electrical"
+    },
+    {
+      "name": "voltage",
+      "type": "integer",
+      "scope": "type",
+      "default": 230,
+      "editable": true,
+      "step": 1,
+      "group": "Electrical"
+    },
+    {
+      "name": "connectionSize",
+      "type": "text",
+      "scope": "type",
+      "default": "DN 50",
+      "editable": true,
+      "group": "Mechanical"
+    },
+    {
+      "name": "footprint",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth",
+      "group": "Computed",
+      "unit": "m2"
+    },
+    {
+      "name": "volume",
+      "type": "volume",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth * height",
+      "group": "Computed",
+      "unit": "m3"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "elevation"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-mech-air-handling-unit-ahu--1-144",
+      "name": "Small 1000 x 800 x 900",
+      "values": {
+        "width": 1,
+        "depth": 0.8,
+        "height": 0.9,
+        "powerWatts": 750
+      }
+    },
+    {
+      "id": "seed-mech-air-handling-unit-ahu--2-145",
+      "name": "Medium 2000 x 1000 x 1500",
+      "values": {
+        "width": 2,
+        "depth": 1,
+        "height": 1.5,
+        "powerWatts": 2200
+      }
+    },
+    {
+      "id": "seed-mech-air-handling-unit-ahu--3-146",
+      "name": "Large 3000 x 1200 x 2000",
+      "values": {
+        "width": 3,
+        "depth": 1.2,
+        "height": 2,
+        "powerWatts": 5500
+      }
+    }
+  ]
+}

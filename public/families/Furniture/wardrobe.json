@@ -1,0 +1,126 @@
+{
+  "id": "seed-furn-130",
+  "name": "Wardrobe",
+  "category": "generic",
+  "ifcEntity": "IfcFurnishingElement",
+  "schemaVersion": 1,
+  "sourceElementType": "equipment",
+  "builtIn": false,
+  "group": "Furniture",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 0.8,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.6,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 0.45,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "elevation",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "footprint",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth",
+      "group": "Computed",
+      "unit": "m2"
+    },
+    {
+      "name": "volume",
+      "type": "volume",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * depth * height",
+      "group": "Computed",
+      "unit": "m3"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "elevation"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-furn-wardrobe-1-131",
+      "name": "600 x 600 x 2000",
+      "values": {
+        "width": 0.6,
+        "depth": 0.6,
+        "height": 2
+      }
+    },
+    {
+      "id": "seed-furn-wardrobe-2-132",
+      "name": "1000 x 600 x 2000",
+      "values": {
+        "width": 1,
+        "depth": 0.6,
+        "height": 2
+      }
+    },
+    {
+      "id": "seed-furn-wardrobe-3-133",
+      "name": "1800 x 600 x 2000",
+      "values": {
+        "width": 1.8,
+        "depth": 0.6,
+        "height": 2
+      }
+    }
+  ]
+}

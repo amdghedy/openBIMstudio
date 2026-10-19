@@ -1,1 +1,488 @@
-["Wall"]
+[
+  {
+    "id": "seed-door-001",
+    "name": "Single Flush Door",
+    "group": "Doors",
+    "category": "door",
+    "ifcEntity": "IfcDoor",
+    "typeCount": 3,
+    "path": "Doors/single-flush-door.json"
+  },
+  {
+    "id": "seed-door-005",
+    "name": "Double Door",
+    "group": "Doors",
+    "category": "door",
+    "ifcEntity": "IfcDoor",
+    "typeCount": 3,
+    "path": "Doors/double-door.json"
+  },
+  {
+    "id": "seed-door-009",
+    "name": "Interior Door 2100mm",
+    "group": "Doors",
+    "category": "door",
+    "ifcEntity": "IfcDoor",
+    "typeCount": 2,
+    "path": "Doors/interior-door-2100mm.json"
+  },
+  {
+    "id": "seed-door-012",
+    "name": "Tall Door 2400mm",
+    "group": "Doors",
+    "category": "door",
+    "ifcEntity": "IfcDoor",
+    "typeCount": 2,
+    "path": "Doors/tall-door-2400mm.json"
+  },
+  {
+    "id": "seed-door-015",
+    "name": "Fire Door EI30",
+    "group": "Doors",
+    "category": "door",
+    "ifcEntity": "IfcDoor",
+    "typeCount": 2,
+    "path": "Doors/fire-door-ei30.json"
+  },
+  {
+    "id": "seed-door-018",
+    "name": "Fire Door EI60",
+    "group": "Doors",
+    "category": "door",
+    "ifcEntity": "IfcDoor",
+    "typeCount": 2,
+    "path": "Doors/fire-door-ei60.json"
+  },
+  {
+    "id": "seed-door-021",
+    "name": "Sliding Glass Door",
+    "group": "Doors",
+    "category": "door",
+    "ifcEntity": "IfcDoor",
+    "typeCount": 2,
+    "path": "Doors/sliding-glass-door.json"
+  },
+  {
+    "id": "seed-door-024",
+    "name": "Pocket Door",
+    "group": "Doors",
+    "category": "door",
+    "ifcEntity": "IfcDoor",
+    "typeCount": 2,
+    "path": "Doors/pocket-door.json"
+  },
+  {
+    "id": "seed-window-027",
+    "name": "Casement Window",
+    "group": "Windows",
+    "category": "window",
+    "ifcEntity": "IfcWindow",
+    "typeCount": 3,
+    "path": "Windows/casement-window.json"
+  },
+  {
+    "id": "seed-window-031",
+    "name": "Sliding Window",
+    "group": "Windows",
+    "category": "window",
+    "ifcEntity": "IfcWindow",
+    "typeCount": 3,
+    "path": "Windows/sliding-window.json"
+  },
+  {
+    "id": "seed-window-035",
+    "name": "Fixed Glazing",
+    "group": "Windows",
+    "category": "window",
+    "ifcEntity": "IfcWindow",
+    "typeCount": 3,
+    "path": "Windows/fixed-glazing.json"
+  },
+  {
+    "id": "seed-window-039",
+    "name": "Awning Window",
+    "group": "Windows",
+    "category": "window",
+    "ifcEntity": "IfcWindow",
+    "typeCount": 2,
+    "path": "Windows/awning-window.json"
+  },
+  {
+    "id": "seed-window-042",
+    "name": "Curtain Wall Window",
+    "group": "Windows",
+    "category": "window",
+    "ifcEntity": "IfcWindow",
+    "typeCount": 2,
+    "path": "Windows/curtain-wall-window.json"
+  },
+  {
+    "id": "seed-window-045",
+    "name": "Pivot Window",
+    "group": "Windows",
+    "category": "window",
+    "ifcEntity": "IfcWindow",
+    "typeCount": 2,
+    "path": "Windows/pivot-window.json"
+  },
+  {
+    "id": "seed-window-048",
+    "name": "Skylight",
+    "group": "Windows",
+    "category": "window",
+    "ifcEntity": "IfcWindow",
+    "typeCount": 2,
+    "path": "Windows/skylight.json"
+  },
+  {
+    "id": "seed-window-051",
+    "name": "Bay Window",
+    "group": "Windows",
+    "category": "window",
+    "ifcEntity": "IfcWindow",
+    "typeCount": 2,
+    "path": "Windows/bay-window.json"
+  },
+  {
+    "id": "seed-plumbing-054",
+    "name": "Wall-Hung Toilet",
+    "group": "Plumbing Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcSanitaryTerminal",
+    "typeCount": 1,
+    "path": "Plumbing Fixtures/wall-hung-toilet.json"
+  },
+  {
+    "id": "seed-plumbing-056",
+    "name": "Floor-Mounted Toilet",
+    "group": "Plumbing Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcSanitaryTerminal",
+    "typeCount": 1,
+    "path": "Plumbing Fixtures/floor-mounted-toilet.json"
+  },
+  {
+    "id": "seed-plumbing-058",
+    "name": "Wall Urinal",
+    "group": "Plumbing Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcSanitaryTerminal",
+    "typeCount": 1,
+    "path": "Plumbing Fixtures/wall-urinal.json"
+  },
+  {
+    "id": "seed-plumbing-060",
+    "name": "Pedestal Sink",
+    "group": "Plumbing Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcSanitaryTerminal",
+    "typeCount": 2,
+    "path": "Plumbing Fixtures/pedestal-sink.json"
+  },
+  {
+    "id": "seed-plumbing-063",
+    "name": "Countertop Sink",
+    "group": "Plumbing Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcSanitaryTerminal",
+    "typeCount": 2,
+    "path": "Plumbing Fixtures/countertop-sink.json"
+  },
+  {
+    "id": "seed-plumbing-066",
+    "name": "Shower Tray",
+    "group": "Plumbing Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcSanitaryTerminal",
+    "typeCount": 3,
+    "path": "Plumbing Fixtures/shower-tray.json"
+  },
+  {
+    "id": "seed-plumbing-070",
+    "name": "Bathtub",
+    "group": "Plumbing Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcSanitaryTerminal",
+    "typeCount": 2,
+    "path": "Plumbing Fixtures/bathtub.json"
+  },
+  {
+    "id": "seed-plumbing-073",
+    "name": "Janitor Sink",
+    "group": "Plumbing Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcSanitaryTerminal",
+    "typeCount": 1,
+    "path": "Plumbing Fixtures/janitor-sink.json"
+  },
+  {
+    "id": "seed-lighting-075",
+    "name": "Recessed Downlight",
+    "group": "Lighting Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcLightFixture",
+    "typeCount": 3,
+    "path": "Lighting Fixtures/recessed-downlight.json"
+  },
+  {
+    "id": "seed-lighting-079",
+    "name": "Surface Mounted LED Panel",
+    "group": "Lighting Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcLightFixture",
+    "typeCount": 2,
+    "path": "Lighting Fixtures/surface-mounted-led-panel.json"
+  },
+  {
+    "id": "seed-lighting-082",
+    "name": "Pendant Lamp",
+    "group": "Lighting Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcLightFixture",
+    "typeCount": 2,
+    "path": "Lighting Fixtures/pendant-lamp.json"
+  },
+  {
+    "id": "seed-lighting-085",
+    "name": "Wall Sconce",
+    "group": "Lighting Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcLightFixture",
+    "typeCount": 1,
+    "path": "Lighting Fixtures/wall-sconce.json"
+  },
+  {
+    "id": "seed-lighting-087",
+    "name": "Track Spotlight",
+    "group": "Lighting Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcLightFixture",
+    "typeCount": 2,
+    "path": "Lighting Fixtures/track-spotlight.json"
+  },
+  {
+    "id": "seed-lighting-090",
+    "name": "Emergency Exit Sign",
+    "group": "Lighting Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcLightFixture",
+    "typeCount": 1,
+    "path": "Lighting Fixtures/emergency-exit-sign.json"
+  },
+  {
+    "id": "seed-lighting-092",
+    "name": "High Bay Light",
+    "group": "Lighting Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcLightFixture",
+    "typeCount": 2,
+    "path": "Lighting Fixtures/high-bay-light.json"
+  },
+  {
+    "id": "seed-lighting-095",
+    "name": "Street Light",
+    "group": "Lighting Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcLightFixture",
+    "typeCount": 1,
+    "path": "Lighting Fixtures/street-light.json"
+  },
+  {
+    "id": "seed-elec-097",
+    "name": "Single Socket",
+    "group": "Electrical Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcElectricAppliance",
+    "typeCount": 2,
+    "path": "Electrical Fixtures/single-socket.json"
+  },
+  {
+    "id": "seed-elec-100",
+    "name": "Double Socket",
+    "group": "Electrical Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcElectricAppliance",
+    "typeCount": 1,
+    "path": "Electrical Fixtures/double-socket.json"
+  },
+  {
+    "id": "seed-elec-102",
+    "name": "Light Switch",
+    "group": "Electrical Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcElectricAppliance",
+    "typeCount": 2,
+    "path": "Electrical Fixtures/light-switch.json"
+  },
+  {
+    "id": "seed-elec-105",
+    "name": "Data Outlet",
+    "group": "Electrical Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcElectricAppliance",
+    "typeCount": 2,
+    "path": "Electrical Fixtures/data-outlet.json"
+  },
+  {
+    "id": "seed-elec-108",
+    "name": "Distribution Board",
+    "group": "Electrical Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcElectricAppliance",
+    "typeCount": 2,
+    "path": "Electrical Fixtures/distribution-board.json"
+  },
+  {
+    "id": "seed-elec-111",
+    "name": "Ceiling Sensor",
+    "group": "Electrical Fixtures",
+    "category": "equipment",
+    "ifcEntity": "IfcElectricAppliance",
+    "typeCount": 1,
+    "path": "Electrical Fixtures/ceiling-sensor.json"
+  },
+  {
+    "id": "seed-furn-113",
+    "name": "Office Desk",
+    "group": "Furniture",
+    "category": "generic",
+    "ifcEntity": "IfcFurnishingElement",
+    "typeCount": 3,
+    "path": "Furniture/office-desk.json"
+  },
+  {
+    "id": "seed-furn-117",
+    "name": "Office Chair",
+    "group": "Furniture",
+    "category": "generic",
+    "ifcEntity": "IfcFurnishingElement",
+    "typeCount": 2,
+    "path": "Furniture/office-chair.json"
+  },
+  {
+    "id": "seed-furn-120",
+    "name": "Dining Table",
+    "group": "Furniture",
+    "category": "generic",
+    "ifcEntity": "IfcFurnishingElement",
+    "typeCount": 3,
+    "path": "Furniture/dining-table.json"
+  },
+  {
+    "id": "seed-furn-124",
+    "name": "Side Chair",
+    "group": "Furniture",
+    "category": "generic",
+    "ifcEntity": "IfcFurnishingElement",
+    "typeCount": 2,
+    "path": "Furniture/side-chair.json"
+  },
+  {
+    "id": "seed-furn-127",
+    "name": "Bookshelf",
+    "group": "Furniture",
+    "category": "generic",
+    "ifcEntity": "IfcFurnishingElement",
+    "typeCount": 2,
+    "path": "Furniture/bookshelf.json"
+  },
+  {
+    "id": "seed-furn-130",
+    "name": "Wardrobe",
+    "group": "Furniture",
+    "category": "generic",
+    "ifcEntity": "IfcFurnishingElement",
+    "typeCount": 3,
+    "path": "Furniture/wardrobe.json"
+  },
+  {
+    "id": "seed-furn-134",
+    "name": "Bed",
+    "group": "Furniture",
+    "category": "generic",
+    "ifcEntity": "IfcFurnishingElement",
+    "typeCount": 4,
+    "path": "Furniture/bed.json"
+  },
+  {
+    "id": "seed-furn-139",
+    "name": "Sofa",
+    "group": "Furniture",
+    "category": "generic",
+    "ifcEntity": "IfcFurnishingElement",
+    "typeCount": 3,
+    "path": "Furniture/sofa.json"
+  },
+  {
+    "id": "seed-mech-143",
+    "name": "Air Handling Unit (AHU)",
+    "group": "Mechanical Equipment",
+    "category": "equipment",
+    "ifcEntity": "IfcMechanicalAppliance",
+    "typeCount": 3,
+    "path": "Mechanical Equipment/air-handling-unit-ahu.json"
+  },
+  {
+    "id": "seed-mech-147",
+    "name": "Fan Coil Unit (FCU)",
+    "group": "Mechanical Equipment",
+    "category": "equipment",
+    "ifcEntity": "IfcMechanicalAppliance",
+    "typeCount": 2,
+    "path": "Mechanical Equipment/fan-coil-unit-fcu.json"
+  },
+  {
+    "id": "seed-mech-150",
+    "name": "Circulation Pump",
+    "group": "Mechanical Equipment",
+    "category": "equipment",
+    "ifcEntity": "IfcMechanicalAppliance",
+    "typeCount": 2,
+    "path": "Mechanical Equipment/circulation-pump.json"
+  },
+  {
+    "id": "seed-mech-153",
+    "name": "Boiler",
+    "group": "Mechanical Equipment",
+    "category": "equipment",
+    "ifcEntity": "IfcMechanicalAppliance",
+    "typeCount": 2,
+    "path": "Mechanical Equipment/boiler.json"
+  },
+  {
+    "id": "seed-mech-156",
+    "name": "Chiller",
+    "group": "Mechanical Equipment",
+    "category": "equipment",
+    "ifcEntity": "IfcMechanicalAppliance",
+    "typeCount": 2,
+    "path": "Mechanical Equipment/chiller.json"
+  },
+  {
+    "id": "seed-mech-159",
+    "name": "Heat Exchanger",
+    "group": "Mechanical Equipment",
+    "category": "equipment",
+    "ifcEntity": "IfcMechanicalAppliance",
+    "typeCount": 1,
+    "path": "Mechanical Equipment/heat-exchanger.json"
+  },
+  {
+    "id": "seed-mech-161",
+    "name": "Expansion Vessel",
+    "group": "Mechanical Equipment",
+    "category": "equipment",
+    "ifcEntity": "IfcMechanicalAppliance",
+    "typeCount": 2,
+    "path": "Mechanical Equipment/expansion-vessel.json"
+  },
+  {
+    "id": "seed-mech-164",
+    "name": "Water Heater",
+    "group": "Mechanical Equipment",
+    "category": "equipment",
+    "ifcEntity": "IfcMechanicalAppliance",
+    "typeCount": 2,
+    "path": "Mechanical Equipment/water-heater.json"
+  }
+]

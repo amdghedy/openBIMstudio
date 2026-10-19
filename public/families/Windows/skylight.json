@@ -1,0 +1,116 @@
+{
+  "id": "seed-window-048",
+  "name": "Skylight",
+  "category": "window",
+  "ifcEntity": "IfcWindow",
+  "schemaVersion": 1,
+  "sourceElementType": "window",
+  "builtIn": false,
+  "group": "Windows",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 1.2,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 1.4,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "frameThickness",
+      "type": "length",
+      "scope": "type",
+      "default": 0.05,
+      "editable": true,
+      "step": 0.005,
+      "unit": "m",
+      "group": "Construction",
+      "label": "Frame Thickness"
+    },
+    {
+      "name": "sillHeight",
+      "type": "length",
+      "scope": "instance",
+      "default": 0.9,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "offsetAlongHost",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "glazingArea",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * height",
+      "group": "Computed",
+      "unit": "m2"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "const": 0.03
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "sillHeight"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-window-skylight-1-049",
+      "name": "600 x 600 Skylight",
+      "values": {
+        "width": 0.6,
+        "height": 0.6
+      }
+    },
+    {
+      "id": "seed-window-skylight-2-050",
+      "name": "900 x 900 Skylight",
+      "values": {
+        "width": 0.9,
+        "height": 0.9
+      }
+    }
+  ]
+}

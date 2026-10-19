@@ -10,6 +10,7 @@ import { register } from "../../core/services";
 import { familyStore } from "./store";
 import { createFamilyService } from "./registry";
 import { createBuiltInFamilies } from "./builtin-families";
+import { loadSeedFamilyCatalogTracked } from "./library-loader";
 import type { FamilyService } from "./types";
 
 export * from "./types";
@@ -50,6 +51,23 @@ export function setupFamilies(): FamilyService {
     "[families] ready. " + list.length + " family definition(s), " +
     list.reduce((n, f) => n + f.types.length, 0) + " type(s)."
   );
+
+  // Async-load the larger seed catalog from public/families/*.json.
+  // This is non-blocking: builtins are available immediately, and the
+  // family browser will receive a change event when the catalog finishes.
+  // On fetch failure (offline, 404) the app stays usable with the builtins.
+  loadSeedFamilyCatalogTracked().then((added) => {
+    if (added > 0) {
+      const after = svc.list();
+      console.log(
+        "[families:library] catalog loaded. Now " + after.length +
+        " family definition(s), " + after.reduce((n, f) => n + f.types.length, 0) +
+        " type(s).",
+      );
+    }
+  }).catch((e) => {
+    console.warn("[families:library] catalog load failed:", e);
+  });
 
   return svc;
 }

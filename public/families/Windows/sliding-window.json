@@ -1,0 +1,124 @@
+{
+  "id": "seed-window-031",
+  "name": "Sliding Window",
+  "category": "window",
+  "ifcEntity": "IfcWindow",
+  "schemaVersion": 1,
+  "sourceElementType": "window",
+  "builtIn": false,
+  "group": "Windows",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 1.2,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "type",
+      "default": 1.4,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "frameThickness",
+      "type": "length",
+      "scope": "type",
+      "default": 0.05,
+      "editable": true,
+      "step": 0.005,
+      "unit": "m",
+      "group": "Construction",
+      "label": "Frame Thickness"
+    },
+    {
+      "name": "sillHeight",
+      "type": "length",
+      "scope": "instance",
+      "default": 0.9,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "offsetAlongHost",
+      "type": "length",
+      "scope": "instance",
+      "default": 0,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Constraints"
+    },
+    {
+      "name": "glazingArea",
+      "type": "area",
+      "scope": "instance",
+      "default": 0,
+      "editable": false,
+      "formula": "= width * height",
+      "group": "Computed",
+      "unit": "m2"
+    }
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "const": 0.03
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "ref": "sillHeight"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  },
+  "types": [
+    {
+      "id": "seed-window-sliding-window-1-032",
+      "name": "1200 x 1200",
+      "values": {
+        "width": 1.2,
+        "height": 1.2
+      }
+    },
+    {
+      "id": "seed-window-sliding-window-2-033",
+      "name": "1800 x 1200",
+      "values": {
+        "width": 1.8,
+        "height": 1.2
+      }
+    },
+    {
+      "id": "seed-window-sliding-window-3-034",
+      "name": "2400 x 1400",
+      "values": {
+        "width": 2.4,
+        "height": 1.4
+      }
+    }
+  ]
+}

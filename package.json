@@ -1,7 +1,7 @@
 {
   "name": "open-bim-studio",
   "private": true,
-  "version": "0.54.0",
+  "version": "0.56.0",
   "type": "module",
   "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
@@ -12,6 +12,9 @@
     "verify:v50": "node scripts/verify-v50.mjs",
     "verify:v52": "node scripts/verify-v52.mjs",
     "verify:v54": "node scripts/verify-v54.mjs",
+    "verify:v55": "node scripts/verify-v55.mjs",
+    "verify:v56": "node scripts/verify-v56.mjs",
+    "seed:families": "node scripts/seed-families.mjs",
     "test:native-bim": "node tests/native-bim-validation.test.mjs",
     "server": "node server/index.mjs",
     "verify": "node scripts/verify-input-focus.mjs"
