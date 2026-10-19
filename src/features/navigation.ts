@@ -404,7 +404,13 @@ export function setupNavigation(): void {
       if (blocked() || isUiTarget(g.event)) return false;
       disableNativeCameraMouse();
       try { forceResumeCameraControls(); } catch { /* */ }
-      const wantOrbit = shiftHeld || ctrlHeld || g.mods.shift || g.mods.ctrl || g.mods.meta;
+      // Use ONLY the live event mods — not the cached shiftHeld/ctrlHeld
+      // module state. The cached state can get stuck true when a keyup
+      // event is missed (Alt+Tab, DevTools focus, text input focus
+      // changes), causing every MMB drag to orbit instead of pan.
+      // The event's shiftKey/ctrlKey/metaKey are always accurate at
+      // the moment of the pointer event.
+      const wantOrbit = g.mods.shift || g.mods.ctrl || g.mods.meta;
       if (wantOrbit) {
         const pivot = getOrbitPivot();
         beginOrbitSync(g.event, pivot);
@@ -424,7 +430,8 @@ export function setupNavigation(): void {
     }
 
     if (g.kind === "drag-move" && g.button === 1) {
-      const wantOrbit = shiftHeld || g.mods.shift || ctrlHeld || g.mods.ctrl || g.mods.meta;
+      // Same fix as drag-start: use live event mods only, not cached state.
+      const wantOrbit = g.mods.shift || g.mods.ctrl || g.mods.meta;
       if (wantOrbit && state.kind === "pan") {
         beginOrbitSync(g.event, getOrbitPivot());
         ctx.rightHost.style.cursor = "grabbing";
