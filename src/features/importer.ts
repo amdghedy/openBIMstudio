@@ -188,6 +188,33 @@ function getImporter(): any {
     ifcImporter = new FRAGS.IfcImporter();
   }
   ifcImporter.wasm = { absolute: true, path };
+  // CRITICAL FIX: Force COORDINATE_TO_ORIGIN = false so web-ifc preserves
+  // absolute IFC world coordinates instead of recentering each file's
+  // geometry to its own first-element origin.
+  //
+  // The @thatopen/fragments IfcImporter defaults to
+  //   webIfcSettings: { COORDINATE_TO_ORIGIN: true }
+  // which tells web-ifc to translate every loaded IFC file so that its
+  // first element's placement becomes (0, 0, 0). This strips absolute
+  // world coordinates and breaks "Origin to Origin" linking — two IFC
+  // files exported from the same Revit project (linked origin-to-origin
+  // in Revit) end up at DIFFERENT local origins in openBIMstudio,
+  // appearing far apart.
+  //
+  // With COORDINATE_TO_ORIGIN = false, web-ifc preserves the absolute
+  // IFC ObjectPlacement coordinates. Two IFC files that share a Revit
+  // coordinate system will appear at the correct relative positions in
+  // openBIMstudio — matching Revit's "Origin to Origin" linking.
+  //
+  // Center-to-center positioning still works because it measures the
+  // actual mesh bounds after load (setModelOffset uses the bbox center).
+  // Manual positioning also still works (user picks an offset explicitly).
+  try {
+    ifcImporter.webIfcSettings = ifcImporter.webIfcSettings ?? {};
+    ifcImporter.webIfcSettings.COORDINATE_TO_ORIGIN = false;
+  } catch (e) {
+    console.warn("[importer] could not override COORDINATE_TO_ORIGIN", e);
+  }
   return ifcImporter;
 }
 
