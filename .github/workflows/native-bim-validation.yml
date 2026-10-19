@@ -4,9 +4,14 @@ on:
   pull_request:
     paths:
       - "src/modules/native-bim/**"
+      - "src/modules/mep/**"
+      - "src/modules/families/**"
+      - "src/plugins/**"
       - "src/features/sheets-2d-panel.ts"
       - "src/features/authoring.ts"
+      - "src/features/mep-fabrication.ts"
       - "tests/native-bim-validation.test.mjs"
+      - "tests/mep-router.test.cjs"
       - "docs/NATIVE_BIM_VALIDATION.md"
       - "package.json"
       - "package-lock.json"
@@ -15,8 +20,13 @@ on:
     branches: [main]
     paths:
       - "src/modules/native-bim/**"
+      - "src/modules/mep/**"
+      - "src/modules/families/**"
+      - "src/plugins/**"
       - "src/features/authoring.ts"
+      - "src/features/mep-fabrication.ts"
       - "tests/native-bim-validation.test.mjs"
+      - "tests/mep-router.test.cjs"
       - "docs/NATIVE_BIM_VALIDATION.md"
       - "package.json"
       - "package-lock.json"
@@ -36,4 +46,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: node tests/native-bim-validation.test.mjs
-      - run: npm run verify:v54
+      # Milestone verification — v58 supersedes v54 (which crashed on the
+      # missing src/features/viewcube.ts file). v58 covers Plugin SDK (v55),
+      # Family Library (v56), Hosted recut fix (v57), and MEP auto-routing (v58).
+      - run: npm run verify:v58
+      # MEP routing + sizing unit tests (compiles mep/*.ts to CJS + runs A* / ASHRAE assertions).
+      - run: npm run test:mep
