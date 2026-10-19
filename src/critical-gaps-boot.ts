@@ -112,6 +112,12 @@ async function runOnce(): Promise<void> {
     m.setupCurtainWall?.();
   });
 
+  // MEP auto-routing + ASHRAE sizing
+  await safe("mep", async () => {
+    const m: Any = await import("./modules/mep");
+    m.setupMep?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");

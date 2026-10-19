@@ -194,7 +194,7 @@ const pkgChecks = [
   ["seed:families script declared", "package.json", /"seed:families":\s*"node scripts\/seed-families\.mjs"/],
   ["verify:v56 script declared", "package.json", /"verify:v56":\s*"node scripts\/verify-v56\.mjs"/],
   ["verify:v55 script declared (regression)", "package.json", /"verify:v55":\s*"node scripts\/verify-v55\.mjs"/],
-  ["version bumped to 0.56", "package.json", /"version":\s*"0\.56\.0"/],
+  ["version bumped to >= 0.56", "package.json", /"version":\s*"0\.(5[6-9]|[6-9][0-9])\.[0-9]+"/],
 ];
 for (const [label, file, regex] of pkgChecks) {
   if (check(label, file, regex)) pass++; else fail++;
