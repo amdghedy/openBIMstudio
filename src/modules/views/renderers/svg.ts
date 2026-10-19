@@ -1,9 +1,15 @@
 /**
  * SVG renderer for Scene2D.
+ *
+ * Supports the `hatch` SceneEntity kind via SVG `<pattern>` defs. Each
+ * unique (pattern, color, scale) tuple produces one `<pattern>` element
+ * in the SVG `<defs>` block, referenced by `fill="url(#pattern-id)"`.
  */
 
 import type { Scene2D, SceneEntity, StrokeStyle } from "../scene";
 import { paperToWorld } from "../scene";
+import { getPattern as getHatchPattern } from "../hatch-patterns";
+import { generateHatchLines, generateHatchDots } from "../hatch-patterns";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -27,6 +33,31 @@ export function renderSceneToSvg(scene: Scene2D, opts: SvgRenderOptions): SVGSVG
   const vbH = (scene.bounds.maxZ - scene.bounds.minZ) + 2 * pad;
   svg.setAttribute("viewBox", `${vbMinX} ${vbMinY} ${vbW} ${vbH}`);
 
+  // Build <defs> block for any hatch patterns used in the scene.
+  const defs = document.createElementNS(SVG_NS, "defs");
+  svg.appendChild(defs);
+
+  // Track which patterns we've already defined to avoid duplicates.
+  const definedPatterns = new Set<string>();
+
+  // Pre-scan: collect all hatch entities and define their patterns up front.
+  const allEntities: SceneEntity[] = [
+    ...scene.layers.below,
+    ...scene.layers.grid,
+    ...scene.layers.project,
+    ...scene.layers.overhead,
+    ...scene.layers.cut,
+    ...scene.layers.symbols,
+    ...scene.layers.annotation,
+  ];
+  for (const e of allEntities) {
+    if (e.kind !== "hatch") continue;
+    const patternKey = `${e.pattern}-${e.color}-${e.scale}`;
+    if (definedPatterns.has(patternKey)) continue;
+    definedPatterns.add(patternKey);
+    defineHatchPattern(defs, e.pattern, e.color, e.scale, patternKey);
+  }
+
   const order: Array<[string, SceneEntity[]]> = [
     ["below", scene.layers.below],
     ["grid", scene.layers.grid],
@@ -45,6 +76,72 @@ export function renderSceneToSvg(scene: Scene2D, opts: SvgRenderOptions): SVGSVG
   }
 
   return svg;
+}
+
+/**
+ * Define an SVG <pattern> element for a hatch pattern + color + scale.
+ * The pattern is referenced via `fill="url(#patternKey)"`.
+ *
+ * Patterns tile across the SVG via patternUnits="userSpaceOnUse" so they
+ * stay aligned to the world coordinate system regardless of element position.
+ */
+function defineHatchPattern(
+  defs: SVGDefsElement,
+  patternId: string,
+  color: string,
+  scale: number,
+  patternKey: string,
+): void {
+  // The pattern library expects polygons in world coords; we need to compute
+  // the tile size and place line segments inside the tile.
+  const pattern = getHatchPattern(patternId);
+  if (!pattern) return;
+
+  const tileW = pattern.tile[0] * 0.001 * scale;
+  const tileH = pattern.tile[1] * 0.001 * scale;
+  if (tileW <= 0 || tileH <= 0) return;
+
+  // Note: SVG Y is flipped relative to world Z. We draw the pattern tile
+  // at (0, 0) with size (tileW, tileH) and let SVG flip via the polygon's
+  // path commands (which already use -z for Y).
+  const pat = document.createElementNS(SVG_NS, "pattern");
+  pat.setAttribute("id", patternKey);
+  pat.setAttribute("width", String(tileW));
+  pat.setAttribute("height", String(tileH));
+  pat.setAttribute("patternUnits", "userSpaceOnUse");
+
+  // Add line segments within the tile.
+  for (const seg of pattern.segments) {
+    const x0 = (seg[0] / pattern.tile[0]) * tileW;
+    const y0 = -(seg[1] / pattern.tile[1]) * tileH; // flip Y
+    const x1 = (seg[2] / pattern.tile[0]) * tileW;
+    const y1 = -(seg[3] / pattern.tile[1]) * tileH;
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("x1", String(x0));
+    line.setAttribute("y1", String(y0));
+    line.setAttribute("x2", String(x1));
+    line.setAttribute("y2", String(y1));
+    line.setAttribute("stroke", color);
+    line.setAttribute("stroke-width", String(pattern.strokeWidth));
+    pat.appendChild(line);
+  }
+
+  // Add dots within the tile.
+  if (pattern.dots) {
+    for (const dot of pattern.dots) {
+      const cx = (dot[0] / pattern.tile[0]) * tileW;
+      const cy = -(dot[1] / pattern.tile[1]) * tileH;
+      const r = dot[2] * 0.001 * scale;
+      const circle = document.createElementNS(SVG_NS, "circle");
+      circle.setAttribute("cx", String(cx));
+      circle.setAttribute("cy", String(cy));
+      circle.setAttribute("r", String(r));
+      circle.setAttribute("fill", color);
+      pat.appendChild(circle);
+    }
+  }
+
+  defs.appendChild(pat);
 }
 
 function drawEntity(parent: SVGGElement, e: SceneEntity, viewScale: number): void {
@@ -110,6 +207,27 @@ function drawEntity(parent: SVGGElement, e: SceneEntity, viewScale: number): voi
       el.setAttribute("font-size", String(paperToWorld(e.sizePt, viewScale)));
       if (e.rotation) el.setAttribute("transform", `rotate(${e.rotation} ${e.x} ${-e.z})`);
       el.textContent = e.text;
+      parent.appendChild(el);
+      break;
+    }
+    case "hatch": {
+      // Render a hatch polygon: draw the polygon outline, then fill it
+      // with the previously-defined SVG <pattern> via fill="url(#patternKey)".
+      // The pattern key matches what was registered in defineHatchPattern().
+      const patternKey = `${e.pattern}-${e.color}-${e.scale}`;
+      const d = e.polygon.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]} ${-p[1]}`).join(" ") + " Z";
+      const el = document.createElementNS(SVG_NS, "path");
+      el.setAttribute("d", d);
+      // If the pattern is "poche" (solid fill), use the color directly.
+      // Otherwise use the SVG pattern def.
+      if (e.pattern === "poche") {
+        el.setAttribute("fill", e.color);
+        el.setAttribute("fill-opacity", "1");
+      } else {
+        el.setAttribute("fill", `url(#${patternKey})`);
+      }
+      el.setAttribute("stroke", e.color);
+      el.setAttribute("stroke-width", "0");
       parent.appendChild(el);
       break;
     }

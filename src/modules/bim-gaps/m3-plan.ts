@@ -29,10 +29,16 @@ export interface PlanRoom {
 export interface PlanOptions {
   poche: boolean; pocheColor: string; roomTags: boolean; roomBoundaries: boolean;
   doorTags: boolean; stairSymbols: boolean; railingsAndRamps: boolean; curtainWalls: boolean; roofOutline: boolean;
+  /** When true, plan view emits hatch entities (cut walls = concrete hatch, etc.)
+   *  instead of solid poche fills. Falls back to solid poche when false. */
+  hatch: boolean;
+  /** View scale (used to size the hatch pattern tile). 1:100 -> 100. */
+  hatchScale: number;
 }
 export const DEFAULT_PLAN_OPTIONS: PlanOptions = {
   poche: true, pocheColor: "#4b5563", roomTags: true, roomBoundaries: false,
   doorTags: true, stairSymbols: true, railingsAndRamps: true, curtainWalls: true, roofOutline: true,
+  hatch: false, hatchScale: 100,
 };
 
 export interface PlanExtrasInput {
@@ -125,7 +131,7 @@ export function planExtras(input: PlanExtrasInput): PlanExtras {
     const spans = base <= cutY + 1e-6 && top >= cutY - 1e-6;
     if (SUPPRESSED.has(el.type)) out.suppressIds.add(el.id);
 
-    /* ---- poche ---- */
+    /* ---- poche (or hatch when enabled) ---- */
     if (o.poche && el.type === "wall" && p.start && p.end && spans) {
       const L = Math.hypot(p.end[0] - p.start[0], p.end[1] - p.start[1]);
       if (L > 0.05) {
@@ -136,13 +142,53 @@ export function planExtras(input: PlanExtrasInput): PlanExtras {
         const runs: Array<[number, number]> = [];
         for (const x of ops) { if (x.u0 - cursor > 1e-6) runs.push([cursor, x.u0]); cursor = Math.max(cursor, x.u1); }
         if (L - cursor > 1e-6) runs.push([cursor, L]);
-        for (const [u0, u1] of runs) out.under.push({ kind: "polyline", points: rectPoly(p.start, dir, u0, u1, num(p.thickness, 0.2) / 2), closed: true, stroke: { color: o.pocheColor, widthPt: 0, dash: null }, fill: { color: o.pocheColor, opacity: 1 } });
+        for (const [u0, u1] of runs) {
+          const poly = rectPoly(p.start, dir, u0, u1, num(p.thickness, 0.2) / 2);
+          if (o.hatch) {
+            // Emit a hatch entity: the SVG / PDF renderer will fill the polygon
+            // with the named pattern (concrete for walls).
+            out.under.push({
+              kind: "hatch",
+              polygon: poly,
+              pattern: "concrete",
+              color: o.pocheColor,
+              scale: o.hatchScale,
+            });
+          } else {
+            out.under.push({
+              kind: "polyline",
+              points: poly,
+              closed: true,
+              stroke: { color: o.pocheColor, widthPt: 0, dash: null },
+              fill: { color: o.pocheColor, opacity: 1 },
+            });
+          }
+        }
         out.stats.pocheWalls++;
       }
     }
     if (o.poche && (el.type === "column" || el.type === "footing") && p.point && spans) {
       const t = num(p.thickness, 0.3), d = num(p.depth, t), [x, z] = p.point;
-      out.under.push({ kind: "polyline", points: [[x - t / 2, z - d / 2], [x + t / 2, z - d / 2], [x + t / 2, z + d / 2], [x - t / 2, z + d / 2]], closed: true, stroke: { color: o.pocheColor, widthPt: 0, dash: null }, fill: { color: o.pocheColor, opacity: 1 } });
+      const poly: Array<[number, number]> = [
+        [x - t / 2, z - d / 2], [x + t / 2, z - d / 2], [x + t / 2, z + d / 2], [x - t / 2, z + d / 2],
+      ];
+      if (o.hatch) {
+        out.under.push({
+          kind: "hatch",
+          polygon: poly,
+          pattern: "concrete",
+          color: o.pocheColor,
+          scale: o.hatchScale,
+        });
+      } else {
+        out.under.push({
+          kind: "polyline",
+          points: poly,
+          closed: true,
+          stroke: { color: o.pocheColor, widthPt: 0, dash: null },
+          fill: { color: o.pocheColor, opacity: 1 },
+        });
+      }
     }
 
     /* ---- stairs ---- */
