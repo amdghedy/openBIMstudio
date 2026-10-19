@@ -1,0 +1,15 @@
+{
+  "id": "element-counter",
+  "name": "Element Counter",
+  "version": "1.0.0",
+  "author": "openBIMstudio Core Team",
+  "description": "Adds a status-bar widget showing live element counts by category (walls, doors, windows, etc.). Updates as the user authors or selects elements.",
+  "sdkVersion": 1,
+  "capabilities": [
+    "authoring.read",
+    "selection.read",
+    "ui.panel",
+    "ui.notification"
+  ],
+  "license": "MIT"
+}

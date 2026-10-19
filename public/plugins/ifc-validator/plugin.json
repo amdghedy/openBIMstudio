@@ -1,0 +1,16 @@
+{
+  "id": "ifc-validator",
+  "name": "IFC Validator",
+  "version": "1.0.0",
+  "author": "openBIMstudio Core Team",
+  "description": "Validates loaded IFC models against IFC4 schema conventions and basic IDS rules. Reports missing GlobalIds, dangling references, and units inconsistencies.",
+  "sdkVersion": 1,
+  "capabilities": [
+    "ifc.read",
+    "ui.command",
+    "ui.notification",
+    "ui.panel"
+  ],
+  "homepage": "https://github.com/amdghedy/openBIMstudio/tree/main/public/plugins/ifc-validator",
+  "license": "MIT"
+}

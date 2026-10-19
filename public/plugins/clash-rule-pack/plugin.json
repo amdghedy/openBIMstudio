@@ -1,0 +1,17 @@
+{
+  "id": "clash-rule-pack",
+  "name": "Custom Clash Rule Pack",
+  "version": "1.0.0",
+  "author": "openBIMstudio Core Team",
+  "description": "Adds custom clash detection rules: hard-clearance between MEP and structure, soft-clearance for access zones, and duplicate-detection by geometry hash. Plugs into the existing clash service.",
+  "sdkVersion": 1,
+  "capabilities": [
+    "clash.read",
+    "clash.write",
+    "authoring.read",
+    "ifc.read",
+    "ui.command",
+    "ui.notification"
+  ],
+  "license": "MIT"
+}

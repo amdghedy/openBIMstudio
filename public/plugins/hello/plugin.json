@@ -1,0 +1,13 @@
+{
+  "id": "hello",
+  "name": "Hello World (Sample Plugin)",
+  "version": "1.0.0",
+  "author": "openBIMstudio Core Team",
+  "description": "Sample plugin demonstrating the minimum-viable Plugin SDK lifecycle. Adds a 'Hello from Plugin' command that logs to the console.",
+  "sdkVersion": 1,
+  "capabilities": [
+    "ui.command",
+    "ui.notification"
+  ],
+  "license": "MIT"
+}

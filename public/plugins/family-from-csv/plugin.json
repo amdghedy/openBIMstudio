@@ -1,0 +1,16 @@
+{
+  "id": "family-from-csv",
+  "name": "Family Generator from CSV",
+  "version": "1.0.0",
+  "author": "openBIMstudio Core Team",
+  "description": "Generates a parametric family + type catalog from a CSV type-table. Reads column headers as parameters and rows as type instances. Targets the existing FamilyService schema.",
+  "sdkVersion": 1,
+  "capabilities": [
+    "family.read",
+    "family.write",
+    "ui.command",
+    "ui.notification",
+    "fs.local"
+  ],
+  "license": "MIT"
+}
