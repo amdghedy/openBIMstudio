@@ -1,5 +1,6 @@
 import { setupManageLinks } from "./features/manage-links";
 import "./critical-gaps-boot";
+import { setupPluginSystem } from "./plugins/boot";
 /**
  * Open BIM Studio v52 — main entry point.
  *
@@ -353,6 +354,12 @@ await step("panel", () => buildPanel());
 await step("workspace-layout", () => setupWorkspaceLayout());
 await step("ribbon-persist", () => setupRibbonPersist());
 await step("status-bar-extras", () => setupStatusBarExtras());
+
+// Plugin SDK boots last, after every service is registered and the viewport
+// is interactive. Plugins depend on `services.tryUse("authoring")` etc.
+// returning non-null. The boot function adds a small delay internally so
+// the viewport's initial render completes first.
+await step("plugins", () => setupPluginSystem());
 
 window.dispatchEvent(new Event("resize"));
 computeSceneBounds();

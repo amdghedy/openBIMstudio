@@ -1,0 +1,17 @@
+{
+  "id": "csv-takeoff",
+  "name": "CSV Quantity Take-Off",
+  "version": "1.0.0",
+  "author": "openBIMstudio Core Team",
+  "description": "Exports element quantities (count, length, area, volume) grouped by IFC class to a CSV file. Useful for cost estimation and quantity surveying workflows.",
+  "sdkVersion": 1,
+  "capabilities": [
+    "cost.read",
+    "authoring.read",
+    "ifc.read",
+    "ui.command",
+    "ui.notification",
+    "fs.local"
+  ],
+  "license": "MIT"
+}
