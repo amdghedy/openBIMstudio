@@ -67,7 +67,9 @@ export type IconName =
     | "system"
   // v40 additional icons
   | "bench" | "conn" | "crop" | "fire" | "generative" | "inspect"
-  | "lightpole" | "loads" | "pdf" | "property" | "topo" | "workset";
+  | "lightpole" | "loads" | "pdf" | "property" | "topo" | "workset"
+  // v0.66 additional icons
+  | "section-box";
 
 const PATHS: Record<IconName, string> = {
   // ── App / file ──────────────────────────────────────────────────────
@@ -296,6 +298,9 @@ const PATHS: Record<IconName, string> = {
   property: `<path d="M3 10 L12 4 L21 10 V20 H3 Z"/><path d="M9 20 V14 H15 V20"/>`,
   topo: `<path d="M3 18 L8 12 L12 16 L17 8 L21 14 V20 H3 Z"/><circle cx="8" cy="12" r="0.6"/><circle cx="17" cy="8" r="0.6"/>`,
   workset: `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9 H21 M9 5 V9 M15 5 V9"/>`,
+
+  // ── v0.66 additions ────────────────────────────────────────────────────
+  "section-box": `<path d="M3 5 V19 H21 V5 Z"/><path d="M3 5 L21 19 M21 5 L3 19" stroke-dasharray="2 1"/>`,
 };
 
 /**

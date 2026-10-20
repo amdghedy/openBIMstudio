@@ -1847,12 +1847,47 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     items: () => [
       groupLabel("Section"),
       b("section", "Section Cut", () => (window as any).__obsOpenSectionModal?.(), { title: "Open the interactive section cut window" }),
+      b("section-box", "Section Box", safe(() => {
+        (window as any).__obsSectionBox?.toggle?.();
+        refreshRibbon();
+      }, "Section box"), {
+        active: !!(window as any).__obsSectionBox?.isActive?.(),
+        title: "Toggle the 3D section box — drag cyan face handles to crop live",
+      }),
+      b("section-box", "Reset Box", safe(() => {
+        (window as any).__obsSectionBox?.reset?.();
+      }, "Reset box"), { title: "Reset section box to model bounds" }),
+      b("crop-expand", "Grow +", safe(() => {
+        (window as any).__obsSectionBox?.grow?.(0.5);
+      }, "Grow"), { title: "Grow section box by 0.5 m on all sides" }),
+      b("crop-shrink", "Shrink −", safe(() => {
+        (window as any).__obsSectionBox?.shrink?.(0.5);
+      }, "Shrink"), { title: "Shrink section box by 0.5 m on all sides" }),
       sep(),
       groupLabel("Crop"),
       b("crop", "Scope Box", safe(() => {
         (window as any).__obsScopeBox?.create?.({ name: `Scope Box ${((window as any).__obsScopeBox?.list?.() ?? []).length + 1}`, min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 4, z: 10 } });
-        toast("Scope box created (10×4×10 m) — apply to views via panel", "success");
-      }, "Scope box"), { title: "Create a scope box that crops multiple views" }),
+        (window as any).__obsScopeBoxViz?.enable?.();
+        toast("Scope box created (10×4×10 m) — visualizer ON, drag handles to resize", "success");
+      }, "Scope box"), { title: "Create a scope box + enable 3D visualizer with drag handles" }),
+      b("crop", "Show Boxes", safe(() => {
+        const on = (window as any).__obsScopeBoxViz?.toggle?.();
+        refreshRibbon();
+        toast(on ? "Scope Box visualizer ON — drag handles to resize" : "Scope Box visualizer OFF", "success");
+      }, "Show boxes"), {
+        active: !!(window as any).__obsScopeBoxViz?.isEnabled?.(),
+        title: "Toggle 3D visualization of all scope boxes (with corner/face/center handles)",
+      }),
+      b("crop", "List Boxes", safe(() => {
+        const list = (window as any).__obsScopeBox?.list?.() ?? [];
+        if (!list.length) { toast("No scope boxes — click Scope Box to create one", "warn"); return; }
+        console.table(list.map((sb: any) => ({
+          id: sb.id, name: sb.name,
+          size: `${(sb.max.x - sb.min.x).toFixed(1)}×${(sb.max.y - sb.min.y).toFixed(1)}×${(sb.max.z - sb.min.z).toFixed(1)} m`,
+          appliedTo: sb.appliedToViews.length,
+        })));
+        toast(`${list.length} scope box(es) — see console for details`, "info", 4000);
+      }, "List boxes"), { title: "List all scope boxes in console" }),
       b("crop", "Plan Region", safe(() => {
         (window as any).__obsPlanRegion?.build?.({
           outline: [{ x: 0, z: 0 }, { x: 5, z: 0 }, { x: 5, z: 5 }, { x: 0, z: 5 }],
@@ -1861,6 +1896,28 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         });
         toast("Plan region created — cut plane raised to 1.8 m inside region", "success");
       }, "Plan region"), { title: "Override cut plane in a 2D region of a plan view" }),
+      sep(),
+      groupLabel("Crop View"),
+      b("crop", "Toggle", safe(() => {
+        const viewId = "plan-view-1";
+        (window as any).__obsCropRegion?.setActive?.(viewId);
+        const on = (window as any).__obsCropRegion?.toggle?.(viewId);
+        toast(on ? `Crop region ON for "${viewId}" — drag cyan handles to resize` : `Crop region OFF`, "success");
+      }, "Crop toggle"), { title: "Toggle the 2D crop region overlay on the active plan view" }),
+      b("crop", "Reset", safe(() => {
+        (window as any).__obsCropRegion?.reset?.("plan-view-1");
+        toast("Crop region reset to 100×100 m default", "info");
+      }, "Reset crop"), { title: "Reset crop region to default size" }),
+      b("crop", "Size 50m", safe(() => {
+        (window as any).__obsCropRegion?.set?.("plan-view-1", { minX: -25, minY: -25, maxX: 25, maxY: 25, enabled: true });
+        (window as any).__obsCropRegion?.setActive?.("plan-view-1");
+        toast("Crop region set to 50×50 m around origin", "success");
+      }, "Size 50m"), { title: "Set crop region to 50×50 m around origin" }),
+      b("crop", "Size 100m", safe(() => {
+        (window as any).__obsCropRegion?.set?.("plan-view-1", { minX: -50, minY: -50, maxX: 50, maxY: 50, enabled: true });
+        (window as any).__obsCropRegion?.setActive?.("plan-view-1");
+        toast("Crop region set to 100×100 m around origin", "success");
+      }, "Size 100m"), { title: "Set crop region to 100×100 m around origin" }),
       b("view", "Dependent", safe(() => {
         (window as any).__obsDependentViews?.create?.("primary-view-1", { name: "Dependent View 1" });
         toast("Dependent view created from primary", "success");
