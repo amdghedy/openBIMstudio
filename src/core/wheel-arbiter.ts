@@ -3,6 +3,13 @@ import { ctx } from "./context";
 
 type Any = Record<string, any>;
 
+/**
+ * Wheel zoom for 3D viewport.
+ * Ortho: zoom on controls.camera (ThatOpen-safe) + wide near/far.
+ * Perspective: dolly toward cursor.
+ * Locks mouseButtons.wheel so Ortho toggle cannot re-enable native dolly.
+ */
+
 let installed = false;
 let enabled = true;
 let invert = false;
@@ -23,14 +30,18 @@ const _plane = new THREE.Plane();
 const _raycaster = new THREE.Raycaster();
 const _hit = new THREE.Vector3();
 
-function w(): Any { return window as Any; }
+function w(): Any {
+  return window as Any;
+}
 
 function readMultiplier(): number {
   try {
     const reg: Any = w().__obsOptionsRegistry ?? null;
     const v = reg?.get?.("nav.wheelZoomMultiplier");
     if (typeof v === "number" && v > 0) return v;
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   return multiplier;
 }
 
@@ -61,7 +72,9 @@ function getViewportRect(): DOMRect | null {
     if (host) return host.getBoundingClientRect();
     const canvas = document.querySelector("canvas");
     if (canvas) return canvas.getBoundingClientRect();
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   return null;
 }
 
@@ -73,52 +86,41 @@ function clientToNdc(clientX: number, clientY: number, out: THREE.Vector2): bool
   return true;
 }
 
-function collectCameras(): THREE.Camera[] {
-  const wrapper = (ctx as Any).world?.camera;
-  if (!wrapper) return [];
-  const out: THREE.Camera[] = [];
+function getControls(): Any {
+  return (ctx as Any).world?.camera?.controls ?? null;
+}
+
+/** Camera CameraControls is driving — required for visible Ortho zoom. */
+function resolveDrivenCamera(): THREE.Camera | null {
+  const controls = getControls();
+  try {
+    const cc = controls?.camera;
+    if (cc?.isCamera) return cc as THREE.Camera;
+  } catch {
+    /* */
+  }
+  const three = (ctx as Any).world?.camera?.three;
+  return three?.isCamera ? (three as THREE.Camera) : null;
+}
+
+function collectOrthoCameras(): THREE.OrthographicCamera[] {
+  const out: THREE.OrthographicCamera[] = [];
   const push = (x: any) => {
     if (!x) return;
-    if (x.isCamera) out.push(x);
-    else if (x.three?.isCamera) out.push(x.three);
+    const c = x.isCamera ? x : x.three;
+    if (c?.isOrthographicCamera) out.push(c as THREE.OrthographicCamera);
   };
+  const wrapper = (ctx as Any).world?.camera;
+  if (!wrapper) return out;
   push(wrapper.three);
-  push(wrapper.perspectiveCamera);
   push(wrapper.orthographicCamera);
   push(wrapper.orthoCamera);
+  push(getControls()?.camera);
   return Array.from(new Set(out));
 }
 
 function isOrthoCam(cam: THREE.Camera | null | undefined): boolean {
   return !!(cam as any)?.isOrthographicCamera;
-}
-
-function wantOrthographic(): boolean {
-  const wrapper = (ctx as Any).world?.camera;
-  if (!wrapper) return false;
-  try {
-    const t = wrapper.cameraType ?? wrapper.projection?.current ?? wrapper.projection;
-    if (typeof t === "string" && /ortho|plan/i.test(String(t))) return true;
-    if (typeof t === "string" && /persp|orbit/i.test(String(t))) return false;
-  } catch { /* */ }
-  return isOrthoCam(wrapper.three);
-}
-
-function resolveActiveCamera(): THREE.Camera | null {
-  const wrapper = (ctx as Any).world?.camera;
-  if (!wrapper?.three) return null;
-  if (wantOrthographic()) {
-    for (const cam of collectCameras()) {
-      if (isOrthoCam(cam)) return cam;
-    }
-  }
-  return wrapper.three as THREE.Camera;
-}
-
-function ensureControlsEnabled(controls: Any): void {
-  try {
-    if (controls && controls.enabled === false) controls.enabled = true;
-  } catch { /* */ }
 }
 
 function getOrbitTarget(controls: Any, cam: THREE.Camera, out: THREE.Vector3): void {
@@ -128,11 +130,18 @@ function getOrbitTarget(controls: Any, cam: THREE.Camera, out: THREE.Vector3): v
       controls.getTarget(out);
       got = Number.isFinite(out.x);
     }
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   if (!got) {
     try {
-      if (controls?.target?.isVector3) { out.copy(controls.target); got = true; }
-    } catch { /* */ }
+      if (controls?.target?.isVector3) {
+        out.copy(controls.target);
+        got = true;
+      }
+    } catch {
+      /* */
+    }
   }
   if (!got) {
     cam.getWorldDirection(_dir);
@@ -141,7 +150,11 @@ function getOrbitTarget(controls: Any, cam: THREE.Camera, out: THREE.Vector3): v
 }
 
 function focusUnderCursor(
-  cam: THREE.Camera, controls: Any, clientX: number, clientY: number, out: THREE.Vector3,
+  cam: THREE.Camera,
+  controls: Any,
+  clientX: number,
+  clientY: number,
+  out: THREE.Vector3,
 ): boolean {
   if (!clientToNdc(clientX, clientY, _ndc)) return false;
   getOrbitTarget(controls, cam, _target);
@@ -157,74 +170,119 @@ function focusUnderCursor(
         if (String((h.object as any)?.name ?? "") === "groundPlane") continue;
         const d = camPos.distanceTo(h.point);
         if (d < 0.01) continue;
-        if (d < targetDist * 4 + 80) { out.copy(h.point); return true; }
+        if (d < targetDist * 4 + 80) {
+          out.copy(h.point);
+          return true;
+        }
       }
     }
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   cam.getWorldDirection(_dir);
   _plane.setFromNormalAndCoplanarPoint(_dir, _target);
-  if (_raycaster.ray.intersectPlane(_plane, _hit)) { out.copy(_hit); return true; }
+  if (_raycaster.ray.intersectPlane(_plane, _hit)) {
+    out.copy(_hit);
+    return true;
+  }
   out.copy(_target);
   return true;
 }
 
-function applyLookAt(controls: Any, cam: THREE.Camera, pos: THREE.Vector3, target: THREE.Vector3): void {
+function applyLookAt(
+  controls: Any,
+  cam: THREE.Camera,
+  pos: THREE.Vector3,
+  target: THREE.Vector3,
+): void {
   try {
     if (controls && typeof controls.setLookAt === "function") {
       controls.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, false);
       controls.update?.(0);
       return;
     }
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   cam.position.copy(pos);
-  try { cam.lookAt(target); } catch { /* */ }
-}
-
-function ensureOrthoClip(ortho: THREE.OrthographicCamera): void {
-  const span = Math.max(Math.abs(ortho.right - ortho.left), Math.abs(ortho.top - ortho.bottom), 10);
-  const z = Math.max(ortho.zoom || 1, 0.01);
-  const far = Math.max(5000, (span / z) * 50);
-  ortho.near = -far;
-  ortho.far = far;
-  ortho.updateProjectionMatrix();
+  try {
+    cam.lookAt(target);
+  } catch {
+    /* */
+  }
 }
 
 function applyOrthoZoom(
-  ortho: THREE.OrthographicCamera, controls: Any, factor: number, clientX: number, clientY: number,
+  factor: number,
+  controls: Any,
+  clientX: number,
+  clientY: number,
 ): void {
-  const oldZoom = Math.max(1e-4, ortho.zoom || 1);
-  const newZoom = Math.max(0.01, Math.min(8000, oldZoom * factor));
-  if (Math.abs(newZoom - oldZoom) < 1e-12) return;
-
-  const hasFocus = focusUnderCursor(ortho, controls, clientX, clientY, _focus);
-  getOrbitTarget(controls, ortho, _target);
-  const focusBefore = _focus.clone();
-
-  ortho.zoom = newZoom;
-  ensureOrthoClip(ortho);
-  for (const cam of collectCameras()) {
-    if (cam !== ortho && isOrthoCam(cam)) {
-      const o = cam as THREE.OrthographicCamera;
-      o.zoom = newZoom;
-      ensureOrthoClip(o);
-    }
+  const driven = resolveDrivenCamera();
+  const orthos = collectOrthoCameras();
+  if (!orthos.length && driven && isOrthoCam(driven)) {
+    orthos.push(driven as THREE.OrthographicCamera);
+  }
+  if (!orthos.length) {
+    if (driven) applyPerspectiveZoom(driven, controls, factor, clientX, clientY);
+    return;
   }
 
-  if (hasFocus && clientToNdc(clientX, clientY, _ndc)) {
-    _raycaster.setFromCamera(_ndc, ortho);
-    ortho.getWorldDirection(_dir);
+  const primary =
+    (driven && isOrthoCam(driven) ? (driven as THREE.OrthographicCamera) : null) ??
+    orthos[0];
+
+  const hasFocus = focusUnderCursor(primary, controls, clientX, clientY, _focus);
+  getOrbitTarget(controls, primary, _target);
+  const focusBefore = _focus.clone();
+
+  for (const ortho of orthos) {
+    const oldZoom = Math.max(1e-4, ortho.zoom || 1);
+    const newZoom = Math.max(0.05, Math.min(8000, oldZoom * factor));
+    ortho.zoom = newZoom;
+
+    const span = Math.max(
+      Math.abs(ortho.right - ortho.left),
+      Math.abs(ortho.top - ortho.bottom),
+      10,
+    );
+    const worldSpan = span / Math.max(ortho.zoom || 1, 0.05);
+    const far = Math.max(5000, worldSpan * 80);
+    ortho.near = -far;
+    ortho.far = far;
+    ortho.updateProjectionMatrix();
+  }
+
+  try {
+    if (controls && typeof controls.update === "function") controls.update(0);
+  } catch {
+    /* */
+  }
+
+  if (hasFocus && clientToNdc(clientX, clientY, _ndc) && isOrthoCam(primary)) {
+    _raycaster.setFromCamera(_ndc, primary);
+    primary.getWorldDirection(_dir);
     _plane.setFromNormalAndCoplanarPoint(_dir, focusBefore);
     if (_raycaster.ray.intersectPlane(_plane, _after)) {
       _truck.subVectors(focusBefore, _after);
       if (_truck.lengthSq() > 1e-12) {
-        applyLookAt(controls, ortho, ortho.position.clone().add(_truck), _target.clone().add(_truck));
+        applyLookAt(
+          controls,
+          primary,
+          primary.position.clone().add(_truck),
+          _target.clone().add(_truck),
+        );
       }
     }
   }
 }
 
 function applyPerspectiveZoom(
-  cam: THREE.Camera, controls: Any, factor: number, clientX: number, clientY: number,
+  cam: THREE.Camera,
+  controls: Any,
+  factor: number,
+  clientX: number,
+  clientY: number,
 ): void {
   const hasFocus = focusUnderCursor(cam, controls, clientX, clientY, _focus);
   getOrbitTarget(controls, cam, _target);
@@ -235,6 +293,7 @@ function applyPerspectiveZoom(
   const newDist = Math.max(0.05, dist / factor);
   let newPos = _target.clone().add(viewDir.clone().multiplyScalar(newDist));
   let newTarget = _target.clone();
+
   if (hasFocus && Number.isFinite(_focus.x)) {
     const toFocus = _focus.clone().sub(_target);
     const along = toFocus.dot(viewDir);
@@ -248,31 +307,44 @@ function applyPerspectiveZoom(
 }
 
 function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: number): void {
-  const controls: Any = (ctx as Any).world?.camera?.controls;
-  const cam = resolveActiveCamera();
+  const controls = getControls();
+  const cam = resolveDrivenCamera();
   if (!cam) return;
-  ensureControlsEnabled(controls);
 
-  const speed = 0.0016 * readMultiplier() * (shift ? 3 : 1);
+  try {
+    if (controls && controls.enabled === false) controls.enabled = true;
+  } catch {
+    /* */
+  }
+
+  const speed = 0.0022 * readMultiplier() * (shift ? 3 : 1);
   const signed = invert ? -ndelta : ndelta;
   const factor = Math.exp(-signed * speed);
   if (!Number.isFinite(factor) || factor <= 0) return;
 
-  if (isOrthoCam(cam) || wantOrthographic()) {
-    let ortho = cam as THREE.OrthographicCamera;
-    if (!isOrthoCam(ortho)) {
-      for (const cand of collectCameras()) {
-        if (isOrthoCam(cand)) { ortho = cand as THREE.OrthographicCamera; break; }
-      }
+  let modeOrtho = isOrthoCam(cam);
+  if (!modeOrtho) {
+    try {
+      const wrap = (ctx as Any).world?.camera;
+      const t = wrap?.cameraType ?? wrap?.projection?.current ?? wrap?.projection;
+      if (typeof t === "string" && /ortho|plan/i.test(String(t))) modeOrtho = true;
+    } catch {
+      /* */
     }
-    if (isOrthoCam(ortho)) applyOrthoZoom(ortho, controls, factor, clientX, clientY);
-    else applyPerspectiveZoom(cam, controls, factor, clientX, clientY);
+  }
+  if (!modeOrtho && collectOrthoCameras().length > 0) modeOrtho = true;
+
+  if (modeOrtho) {
+    applyOrthoZoom(factor, controls, clientX, clientY);
   } else {
     applyPerspectiveZoom(cam, controls, factor, clientX, clientY);
   }
 
-  try { window.dispatchEvent(new CustomEvent("obs:camera-changed")); } catch { /* */ }
-  try { (ctx as Any).cam?.updateClipping?.(); } catch { /* */ }
+  try {
+    window.dispatchEvent(new CustomEvent("obs:camera-changed"));
+  } catch {
+    /* */
+  }
 }
 
 function onWheel(e: WheelEvent): void {
@@ -286,25 +358,71 @@ function onWheel(e: WheelEvent): void {
   applyZoom(nd, !!e.shiftKey, e.clientX, e.clientY);
 }
 
-export function setWheelInvert(next: boolean): boolean { invert = !!next; return invert; }
+/** Re-lock wheel after Ortho/Persp toggle (ThatOpen reassigns mouseButtons). */
+export function lockControlsWheel(): void {
+  try {
+    const controls = getControls();
+    const ACTION = controls?.constructor?.ACTION || (w() as Any).CameraControls?.ACTION;
+    const NONE = ACTION?.NONE ?? 0;
+    const mb = controls?.mouseButtons;
+    if (!mb) return;
+    try {
+      mb.wheel = NONE;
+    } catch {
+      /* */
+    }
+    try {
+      Object.defineProperty(mb, "wheel", {
+        get: () => NONE,
+        set: () => {
+          /* wheel-arbiter owns wheel */
+        },
+        configurable: true,
+      });
+    } catch {
+      /* */
+    }
+  } catch {
+    /* */
+  }
+}
+
+export function setWheelInvert(next: boolean): boolean {
+  invert = !!next;
+  return invert;
+}
 export function setWheelMultiplier(next: number): number {
   multiplier = Number.isFinite(next) && next > 0 ? next : 1;
   return multiplier;
 }
-export function setWheelEnabled(next: boolean): boolean { enabled = !!next; return enabled; }
-export function isWheelEnabled(): boolean { return enabled; }
+export function setWheelEnabled(next: boolean): boolean {
+  enabled = !!next;
+  return enabled;
+}
+export function isWheelEnabled(): boolean {
+  return enabled;
+}
 
 export function setupWheelArbiter(): void {
   if (installed) return;
   installed = true;
   (w() as Any).__OBS_WHEEL_AUTHORITY = true;
   window.addEventListener("wheel", onWheel, { capture: true, passive: false });
+  lockControlsWheel();
+  window.addEventListener("obs:camera-changed", () => {
+    try {
+      lockControlsWheel();
+    } catch {
+      /* */
+    }
+  });
   (w() as Any).__obsWheelFix = {
     setInvert: setWheelInvert,
     setMultiplier: setWheelMultiplier,
     setEnabled: setWheelEnabled,
     isEnabled: isWheelEnabled,
+    lockControlsWheel,
     getState: () => ({ enabled, invert, multiplier: readMultiplier() }),
   };
-  console.log("[wheel-arbiter] ortho+persp cursor zoom ready; Ortho no longer uses Plan lock");
+  console.log("[wheel-arbiter] Ortho zoom on controls.camera + wheel lock");
 }
