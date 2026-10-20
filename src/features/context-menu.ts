@@ -477,6 +477,30 @@ async function openCtxMenu(e: MouseEvent) {
       { type: "action", text: "Show All / Reset", icon: "", onclick: () => { void ctxShowAll(); } },
     ],
   });
+  // ── Selection Box + Crop to Selection (BIM right-click parity) ──
+  items.push({
+    type: "sub",
+    text: "Selection Box",
+    icon: "",
+    items: [
+      { type: "action", text: "Show Selection Box", icon: "", onclick: () => {
+        (window as any).__obsSelectionBox?.show?.({ padding: 0.5 });
+      } },
+      { type: "action", text: "Crop to Selection", icon: "", onclick: () => {
+        (window as any).__obsSelectionBox?.cropTo?.({ padding: 1.0 });
+      } },
+      { type: "action", text: "Zoom to Selection", icon: "", onclick: () => {
+        (window as any).__obsSelectionBox?.zoom?.();
+      } },
+      { type: "sep" },
+      { type: "action", text: "Isolate", icon: "", onclick: () => {
+        (window as any).__obsSelectionBox?.isolate?.();
+      } },
+      { type: "action", text: "Reset Isolation", icon: "", onclick: () => {
+        (window as any).__obsSelectionBox?.resetIsolation?.();
+      } },
+    ],
+  });
   items.push({ type: "sep" });
 
   // ── Authored edit operations ──

@@ -93,6 +93,11 @@ import {
   toggleSectionBox, enableSectionBox, disableSectionBox, resetSectionBox,
   isSectionBoxActive, growSectionBox, moveSectionBox,
 } from "../features/section-box";
+import {
+  showSelectionBox, cropToSelection, zoomToSelection,
+  isolateSelection, resetIsolation,
+  getSelectionWorldBox, getSelectionViewBbox, computeElementsBbox,
+} from "../features/selection-box";
 
 const w = window as any;
 
@@ -375,4 +380,24 @@ w.__obsSectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, view-filters, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, generative-design, point-cloud, pdf-underlay, worksets, scope-box-viz, crop-region, section-box");
+// ── Selection Box — auto-fit section box / crop region to selection ──────
+w.__obsSelectionBox = {
+  show: (opts?: any) => showSelectionBox(opts ?? { padding: 0.5 }),
+  cropTo: (opts?: any) => cropToSelection(opts ?? { padding: 1.0 }),
+  zoom: () => zoomToSelection(),
+  isolate: () => isolateSelection(),
+  resetIsolation: () => resetIsolation(),
+  getBbox: () => {
+    const b = getSelectionWorldBox();
+    if (!b) return null;
+    return { min: { x: b.min.x, y: b.min.y, z: b.min.z }, max: { x: b.max.x, y: b.max.y, z: b.max.z } };
+  },
+  getViewBbox: () => getSelectionViewBbox(),
+  computeBboxFor: (ids: string[]) => {
+    const b = computeElementsBbox(ids);
+    if (!b) return null;
+    return { min: { x: b.min.x, y: b.min.y, z: b.min.z }, max: { x: b.max.x, y: b.max.y, z: b.max.z } };
+  },
+};
+
+console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, view-filters, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, generative-design, point-cloud, pdf-underlay, worksets, scope-box-viz, crop-region, section-box, selection-box");
