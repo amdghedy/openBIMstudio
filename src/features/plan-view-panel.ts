@@ -1169,13 +1169,21 @@ overlay.style.background = "#1a1d27";
 /* -- CAD / DWG underlay for tracing & modeling --------------------------- */
 let cadUnderlayUrl: string | null = null;
 let cadUnderlayOpacity = 0.45;
+let cadUnderlayVisible = true;
 let cadImageEl: SVGImageElement | null = null;
+
+// Import the underlay snap module to store entity data for snap querying.
+// This enables the "trace over DWG" workflow: walls snap to DWG endpoints.
+import { storeUnderlayFromDxf, clearUnderlayData, setUnderlaySnapEnabled, isUnderlaySnapEnabled } from "./cad-underlay-snap";
 
 async function loadCadFileAsUnderlay(file: File) {
   if (cadUnderlayUrl) URL.revokeObjectURL(cadUnderlayUrl);
   const ext = (file.name.split(".").pop() ?? "").toLowerCase();
   if (ext === "dxf") {
     const text = await file.text();
+    // Store entity data for snap querying (lines, polylines, circles).
+    const snapCount = storeUnderlayFromDxf(text);
+    console.log(`[plan] CAD underlay: ${snapCount} snap points stored for tracing`);
     const svgContent = dxfToSvgUnderlay(text);
     const blob = new Blob([svgContent], { type: "image/svg+xml" });
     cadUnderlayUrl = URL.createObjectURL(blob);
@@ -1184,8 +1192,9 @@ async function loadCadFileAsUnderlay(file: File) {
   } else {
     cadUnderlayUrl = URL.createObjectURL(file);
   }
+  cadUnderlayVisible = true;
   applyCadUnderlay();
-  footerStatus(`CAD underlay linked: ${file.name} � trace walls/columns on top`);
+  footerStatus(`CAD underlay linked: ${file.name} — trace walls/columns on top (snap enabled)`);
 }
 
 async function linkCadUnderlay() {
@@ -1231,12 +1240,18 @@ function clearCadUnderlay() {
     cadUnderlayUrl = null;
     cadImageEl?.remove();
     cadImageEl = null;
-    footerStatus("CAD underlay cleared");
+    clearUnderlayData();
+    footerStatus("CAD underlay cleared (snap data removed)");
   } catch { /* */ }
 }
 
 function applyCadUnderlay() {
   if (!cadUnderlayUrl || !currentPlan) return;
+  if (!cadUnderlayVisible) {
+    cadImageEl?.remove();
+    cadImageEl = null;
+    return;
+  }
   try {
     cadImageEl?.remove();
     const b = currentPlan.bounds;
@@ -1261,6 +1276,22 @@ function applyCadUnderlay() {
   } catch (err) {
     console.warn("[plan] apply underlay failed", err);
   }
+}
+
+/** Toggle underlay visibility on/off. Returns the new state. */
+export function toggleUnderlayVisibility(): boolean {
+  cadUnderlayVisible = !cadUnderlayVisible;
+  applyCadUnderlay();
+  footerStatus(`CAD underlay: ${cadUnderlayVisible ? "visible" : "hidden"}`);
+  return cadUnderlayVisible;
+}
+
+/** Toggle snap-to-underlay on/off. Returns the new state. */
+export function toggleUnderlaySnap(): boolean {
+  const newState = !isUnderlaySnapEnabled();
+  setUnderlaySnapEnabled(newState);
+  footerStatus(`CAD underlay snap: ${newState ? "ON" : "OFF"}`);
+  return newState;
 }
 
 /** Minimal DXF ? SVG converter for LINE and LWPOLYLINE (modeling underlay). */

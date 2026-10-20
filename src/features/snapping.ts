@@ -310,6 +310,22 @@ class SnapManager {
         this.collectAuthoredSnaps(el, add, authored);
       }
 
+      // CAD underlay snaps — endpoints, centers, midpoints from DXF underlay.
+      // This enables the "trace over DWG" workflow: draw walls that snap to
+      // the DWG line endpoints instead of eyeballing.
+      if (cursorWorld) {
+        try {
+          const { getUnderlaySnapPoints } = await import("./cad-underlay-snap");
+          const underlayPoints = getUnderlaySnapPoints(
+            cursorWorld.x, cursorWorld.z, 0.15,
+          );
+          for (const p of underlayPoints) {
+            const pt = new THREE.Vector3(p.x, this.workPlaneY, p.z);
+            add(pt, p.type === "center" ? "center" : p.type === "midpoint" ? "midpoint" : "endpoint");
+          }
+        } catch { /* underlay snap module not loaded */ }
+      }
+
       // Raycast — nearest + vertex
       if (this.types.has("nearest") || this.types.has("vertex") || this.types.has("face")) {
         try {
