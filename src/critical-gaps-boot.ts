@@ -164,6 +164,30 @@ async function runOnce(): Promise<void> {
     m.setupModelCurves?.();
   });
 
+  // Filled regions & masking regions (2D detail annotation)
+  await safe("filled-regions", async () => {
+    const m: Any = await import("./modules/filled-regions");
+    m.setupFilledRegions?.();
+  });
+
+  // Material assignment engine (3D rendering + quantity takeoff)
+  await safe("material-assignment", async () => {
+    const m: Any = await import("./modules/material-assignment");
+    m.setupMaterialAssignment?.();
+  });
+
+  // Parametric constraints (lock dimensions, equality, alignment)
+  await safe("parametric-constraints", async () => {
+    const m: Any = await import("./modules/parametric-constraints");
+    m.setupParametricConstraints?.();
+  });
+
+  // Dimension chains (continuous + baseline)
+  await safe("dimension-chains", async () => {
+    const m: Any = await import("./modules/dimension-chains");
+    m.setupDimensionChains?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");
