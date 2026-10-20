@@ -146,6 +146,24 @@ async function runOnce(): Promise<void> {
     m.setupAreaPlans?.();
   });
 
+  // Detail components & repeating details
+  await safe("detail-components", async () => {
+    const m: Any = await import("./modules/detail-components");
+    m.setupDetailComponents?.();
+  });
+
+  // Keynotes
+  await safe("keynotes", async () => {
+    const m: Any = await import("./modules/keynotes");
+    m.setupKeynotes?.();
+  });
+
+  // Model curves on faces
+  await safe("model-curves", async () => {
+    const m: Any = await import("./modules/model-curves");
+    m.setupModelCurves?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");
