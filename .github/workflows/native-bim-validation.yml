@@ -49,6 +49,6 @@ jobs:
       # Milestone verification — v58 supersedes v54 (which crashed on the
       # missing src/features/viewcube.ts file). v58 covers Plugin SDK (v55),
       # Family Library (v56), Hosted recut fix (v57), and MEP auto-routing (v58).
-      - run: npm run verify:v58
+      - run: npm run verify:v65
       # MEP routing + sizing unit tests (compiles mep/*.ts to CJS + runs A* / ASHRAE assertions).
       - run: npm run test:mep
