@@ -118,6 +118,16 @@ async function runOnce(): Promise<void> {
     m.setupMep?.();
   });
 
+  // Rebar detailing engine + viewport integration
+  await safe("rebar-engine", async () => {
+    const m: Any = await import("./modules/rebar");
+    m.setupRebar?.();
+  });
+  await safe("rebar-viewport", async () => {
+    const m: Any = await import("./features/rebar-viewport");
+    m.setupRebarViewport?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");
