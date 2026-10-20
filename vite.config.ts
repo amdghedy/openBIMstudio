@@ -20,7 +20,36 @@ export default defineConfig({
     __WEB_IFC_SCRIPT_URL__: JSON.stringify('/web-ifc/web-ifc-api.js'),
   },
   esbuild: { target: "esnext" },
-  build: { target: "esnext" },
+  build: {
+    target: "esnext",
+    // Large vendors (web-ifc WASM, @thatopen/components, monaco) inherently
+    // exceed 1.5 MB; raise the limit so CI build logs stay clean.
+    chunkSizeWarningLimit: 4000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Group large vendor libs into separate chunks for better caching
+          // and to silence the > 500 KB build warning.
+          "react-vendor": ["react", "react-dom", "react-redux", "@reduxjs/toolkit"],
+          "mui-vendor": ["@mui/material", "@mui/lab", "@emotion/react", "@emotion/styled"],
+          "three-vendor": ["three", "three-mesh-bvh", "three-csg-ts"],
+          "thatopen-vendor": [
+            "@thatopen/components",
+            "@thatopen/components-front",
+            "@thatopen/fragments",
+            "@thatopen/ui",
+            "@thatopen/ui-obc",
+          ],
+          "tldraw-vendor": [
+            "@tldraw/editor",
+          ],
+          "monaco-vendor": ["monaco-editor"],
+          "ifc-vendor": ["web-ifc"],
+          "yjs-vendor": ["yjs", "y-websocket"],
+        },
+      },
+    },
+  },
   resolve: { dedupe: ["lit", "lit-html", "lit-element", "@lit/reactive-element"] },
   worker: {
     format: "es",

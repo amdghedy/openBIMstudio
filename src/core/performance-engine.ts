@@ -62,7 +62,7 @@ export function installBVH(): boolean {
     }
 
     bvhInstalled = true;
-    console.log("[perf] BVH acceleration installed (three-mesh-bvh 0.7.x)");
+    console.log("[perf] BVH acceleration installed (three-mesh-bvh 0.8.x)");
     return true;
   } catch (e) {
     console.warn("[perf] three-mesh-bvh not available, using linear raycast:", e);
