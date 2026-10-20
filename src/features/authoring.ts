@@ -1231,6 +1231,12 @@ function buildWallWithOpenings(
 
   mesh.userData.elementId = el.id;
   mesh.userData.baseColor = el.color || COLORS.wall;
+  // Accelerate this mesh with BVH for fast raycasting (selection, snapping).
+  try {
+    if ((window as any).__obsPerf?.accelerateMesh) {
+      (window as any).__obsPerf.accelerateMesh(mesh);
+    }
+  } catch { /* BVH not available yet — mesh still works, just slower raycast */ }
   return mesh;
 }
 function buildDoor(el: AuthoredElement, host: AuthoredElement): THREE.Group | null {

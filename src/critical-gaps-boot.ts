@@ -134,6 +134,12 @@ async function runOnce(): Promise<void> {
     m.setupWallSweeps?.();
   });
 
+  // Performance engine: BVH raycasting + InstancedMesh batching
+  await safe("perf-engine", async () => {
+    const m: Any = await import("./core/performance-engine");
+    m.setupPerformanceEngine?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");
