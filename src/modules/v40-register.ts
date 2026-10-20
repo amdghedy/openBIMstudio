@@ -46,6 +46,11 @@ import {
   type ScopeBox,
 } from "../modules/scope-box/scope-box";
 import {
+  enableScopeBoxVisualizer, disableScopeBoxVisualizer,
+  refreshScopeBoxVisualizer, toggleScopeBoxVisualizer,
+  isScopeBoxVisualizerEnabled,
+} from "../modules/scope-box/scope-box-visualizer";
+import {
   createViewFilter, listViewFilters, getViewFilter, deleteViewFilter,
   addFilterToView, removeFilterFromView, toggleFilterInView,
   matchesFilter, resolveOverride, resetViewFilters,
@@ -77,6 +82,17 @@ import {
   releaseElement, canEdit, setVisibility, isVisible, getWorksetSummary,
   resetWorksets, setCurrentUser,
 } from "../modules/worksets/worksets";
+
+// ── Crop Region + Section Box (interactive view crops) ───────────────────
+import {
+  getCropRegion, setCropRegion, setCropEnabled, toggleCrop, resetCropRegion,
+  pointInCrop, setActiveView, clearActiveView, listCropRegions,
+  deleteCropRegion, resetCropRegions,
+} from "../features/crop-region";
+import {
+  toggleSectionBox, enableSectionBox, disableSectionBox, resetSectionBox,
+  isSectionBoxActive, growSectionBox, moveSectionBox,
+} from "../features/section-box";
 
 const w = window as any;
 
@@ -189,6 +205,19 @@ w.__obsScopeBox = {
   applyToView, removeFromView,
 };
 
+// ── Scope Box Visualizer (3D handles + drag-to-resize) ───────────────────
+w.__obsScopeBoxViz = {
+  enable: () => { enableScopeBoxVisualizer(); toast("Scope Box visualizer ON — drag handles to resize", "success"); },
+  disable: () => { disableScopeBoxVisualizer(); toast("Scope Box visualizer OFF", "info"); },
+  toggle: () => {
+    const on = toggleScopeBoxVisualizer();
+    toast(on ? "Scope Box visualizer ON" : "Scope Box visualizer OFF", "success");
+    return on;
+  },
+  refresh: refreshScopeBoxVisualizer,
+  isEnabled: isScopeBoxVisualizerEnabled,
+};
+
 // ── View Filters ──────────────────────────────────────────────────────────
 w.__obsViewFilters = {
   create: createViewFilter, list: listViewFilters, get: getViewFilter,
@@ -299,4 +328,51 @@ w.__obsWorksets = {
   summary: getWorksetSummary,
 };
 
-console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, view-filters, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, generative-design, point-cloud, pdf-underlay, worksets");
+// ── Crop Region (2D plan/section/elevation crop with handles) ─────────────
+w.__obsCropRegion = {
+  get: getCropRegion,
+  set: (viewId: string, region: any) => {
+    setCropRegion(viewId, region);
+    toast(`Crop region set for view "${viewId}"`, "success");
+  },
+  toggle: (viewId: string) => {
+    const on = toggleCrop(viewId);
+    toast(on ? `Crop ON for view "${viewId}"` : `Crop OFF for view "${viewId}"`, "success");
+    return on;
+  },
+  reset: (viewId: string) => {
+    resetCropRegion(viewId);
+    toast(`Crop region reset to 100×100 m default`, "info");
+  },
+  setActive: setActiveView,
+  clearActive: clearActiveView,
+  list: listCropRegions,
+  pointIn: pointInCrop,
+};
+
+// ── Section Box (interactive 6-face handles) ─────────────────────────────
+w.__obsSectionBox = {
+  toggle: () => {
+    const on = toggleSectionBox();
+    toast(on ? "Section Box ON — drag cyan face handles" : "Section Box OFF", "success");
+    return on;
+  },
+  enable: (padding = 1.0) => enableSectionBox(padding),
+  disable: () => disableSectionBox(),
+  reset: () => { resetSectionBox(); toast("Section Box reset to model bounds", "info"); },
+  isActive: isSectionBoxActive,
+  grow: (m = 0.5) => {
+    growSectionBox(m);
+    toast(`Section Box grew by ${m} m on all sides`, "info");
+  },
+  shrink: (m = 0.5) => {
+    growSectionBox(-m);
+    toast(`Section Box shrank by ${m} m on all sides`, "info");
+  },
+  move: (x: number, y: number, z: number) => {
+    moveSectionBox(new THREE.Vector3(x, y, z));
+    toast(`Section Box moved to (${x}, ${y}, ${z})`, "info");
+  },
+};
+
+console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, view-filters, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, generative-design, point-cloud, pdf-underlay, worksets, scope-box-viz, crop-region, section-box");
