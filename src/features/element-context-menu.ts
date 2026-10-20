@@ -12,13 +12,17 @@
 
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { inputRouter } from "../core/input-router";
 import { tryUse } from "../core/services";
 import {
   getElementById,
   getSelectedIds,
-  selectElements,
-  deleteElements,
+  setSelectedAuthored,
+  selectAllAuthored,
+  removeElementById,
+  deleteSelectedElement,
+  setElementVisibility,
+  createSimilarFromSelection,
+  getElements,
 } from "./authoring";
 
 /* ── Design tokens (Fluent-inspired light) ─────────────────────────── */
@@ -72,7 +76,11 @@ function toast(message: string, kind: "info" | "success" | "warn" | "error" = "i
 }
 
 function getNativeElements(): Any[] {
-  return ((ctx as Any).elements as Any[]) ?? (window as Any).__obsElements ?? [];
+  try {
+    return getElements() as Any[];
+  } catch {
+    return ((ctx as Any).elements as Any[]) ?? (window as Any).__obsElements ?? [];
+  }
 }
 
 function resolveElementUnderCursor(
@@ -155,16 +163,19 @@ function ensureSelected(elementId: string | null) {
   const selected = getSelectedIds();
   if (selected.includes(elementId)) return;
   try {
-    selectElements([elementId]);
+    setSelectedAuthored([elementId], "replace");
   } catch {
-    // Fallback: authoring may use a different API
     try {
-      (tryUse("selection") as Any)?.applyClick?.(
-        "native",
-        Number(elementId) || elementId,
-        {},
-      );
-    } catch { /* */ }
+      selectAllAuthored([elementId]);
+    } catch {
+      try {
+        (tryUse("selection") as Any)?.applyClick?.(
+          "native",
+          Number(elementId) || elementId,
+          {},
+        );
+      } catch { /* */ }
+    }
   }
 }
 
@@ -234,12 +245,17 @@ function buildItems(elementId: string | null): CtxMenuItem[] {
     icon: "◌",
     disabled: !hasSelection,
     action: () => {
-      (window as Any).__obsVisibility?.hide?.(selected);
-      // Fallback: hide meshes
+      try {
+        (window as Any).__obsVisibility?.hide?.(selected);
+      } catch { /* */ }
       for (const id of selected) {
-        const e = getElementById(id);
-        const mesh = (e as Any)?.mesh ?? (ctx as Any).__obsGetElementMesh?.(id);
-        if (mesh) mesh.visible = false;
+        try {
+          setElementVisibility(id, false);
+        } catch {
+          const e = getElementById(id);
+          const mesh = (e as Any)?.mesh ?? (ctx as Any).__obsGetElementMesh?.(id);
+          if (mesh) mesh.visible = false;
+        }
       }
       toast(`Hidden ${selected.length} element(s)`, "info");
     },
@@ -300,8 +316,12 @@ function buildItems(elementId: string | null): CtxMenuItem[] {
     icon: "⧉",
     disabled: !hasSelection,
     action: () => {
-      (window as Any).__obsRevitParity?.createSimilar?.(elementId ?? selected[0]);
-      (window as Any).__obsBimParity?.createSimilar?.(elementId ?? selected[0]);
+      try {
+        createSimilarFromSelection();
+      } catch {
+        (window as Any).__obsRevitParity?.createSimilar?.(elementId ?? selected[0]);
+        (window as Any).__obsBimParity?.createSimilar?.(elementId ?? selected[0]);
+      }
       toast("Create Similar — place next instance", "info");
     },
   });
@@ -327,14 +347,13 @@ function buildItems(elementId: string | null): CtxMenuItem[] {
         if (sel?.selectSimilar && elementId) {
           await sel.selectSimilar("native", Number(elementId) || elementId);
         } else {
-          // Category-based fallback
           const src = getElementById(elementId ?? selected[0]);
           const cat = (src as Any)?.type ?? (src as Any)?.category;
           if (!cat) return;
           const all = getNativeElements().filter(
             (e) => (e.type ?? e.category) === cat,
           );
-          selectElements(all.map((e) => String(e.id)));
+          selectAllAuthored(all.map((e) => String(e.id)));
         }
         toast("Select Similar", "success");
       } catch (e) {
@@ -412,12 +431,17 @@ function buildItems(elementId: string | null): CtxMenuItem[] {
       const ids = selected.length ? selected : elementId ? [elementId] : [];
       if (!ids.length) return;
       try {
-        deleteElements(ids);
+        setSelectedAuthored(ids, "replace");
+        deleteSelectedElement();
       } catch {
         for (const id of ids) {
-          const e = getElementById(id);
-          const mesh = (e as Any)?.mesh;
-          if (mesh?.parent) mesh.parent.remove(mesh);
+          try {
+            removeElementById(id);
+          } catch {
+            const e = getElementById(id);
+            const mesh = (e as Any)?.mesh;
+            if (mesh?.parent) mesh.parent.remove(mesh);
+          }
         }
       }
       toast(`Deleted ${ids.length} element(s)`, "success");
