@@ -72,6 +72,13 @@ export function enableSectionBox(padding = 1.0): void {
 export function disableSectionBox(): void {
   if (!enabled) return;
   try { clipper()?.deleteAll?.(); } catch (e) { /* ignore */ }
+  try {
+    const renderer = (ctx as any).world?.renderer?.three;
+    if (renderer) {
+      renderer.clippingPlanes = [];
+      renderer.localClippingEnabled = false;
+    }
+  } catch { /* */ }
   detachPointerHandlers();
   if (faceGroup) {
     ctx.world.scene.three.remove(faceGroup);
@@ -162,26 +169,102 @@ function positionFaceHandles(): void {
   }
 }
 
+/**
+ * Apply 6 clipping planes for the current section box.
+ *
+ * ThatOpen Clipper.create() expects a *world*, not a THREE.Plane.
+ * Passing a Plane made the SDK construct a Casters/raycaster without a
+ * renderer → "A renderer is needed for the raycaster to work!".
+ *
+ * Correct APIs (same as features/section.ts):
+ *   1. createFromNormalAndCoplanarPoint(world, normal, coplanarPoint)
+ *   2. create(world) then mutate item.three.plane
+ * Fallback: assign THREE.WebGLRenderer.clippingPlanes directly.
+ */
 function applyClipping(): void {
   if (!box) return;
   const c = clipper();
-  if (!c) return;
+  const world = (ctx as any).world;
+  const min = box.min;
+  const max = box.max;
+
+  // Plane specs: outward normals so the *inside* of the box is kept.
+  // THREE.Plane: normal · x + constant = 0  →  constant = -normal · point
+  const specs: Array<{ normal: THREE.Vector3; point: THREE.Vector3 }> = [
+    { normal: new THREE.Vector3( 1, 0, 0), point: new THREE.Vector3(max.x, 0, 0) }, // +X face (keep x <= max.x)
+    { normal: new THREE.Vector3(-1, 0, 0), point: new THREE.Vector3(min.x, 0, 0) }, // -X
+    { normal: new THREE.Vector3( 0, 1, 0), point: new THREE.Vector3(0, max.y, 0) }, // +Y
+    { normal: new THREE.Vector3( 0,-1, 0), point: new THREE.Vector3(0, min.y, 0) }, // -Y
+    { normal: new THREE.Vector3( 0, 0, 1), point: new THREE.Vector3(0, 0, max.z) }, // +Z
+    { normal: new THREE.Vector3( 0, 0,-1), point: new THREE.Vector3(0, 0, min.z) }, // -Z
+  ];
+
+  // Clear existing clip planes
   try {
-    c.deleteAll?.();
-    const min = box.min;
-    const max = box.max;
-    const planes = [
-      new THREE.Plane(new THREE.Vector3(-1, 0, 0), max.x),
-      new THREE.Plane(new THREE.Vector3( 1, 0, 0), -min.x),
-      new THREE.Plane(new THREE.Vector3(0, -1, 0), max.y),
-      new THREE.Plane(new THREE.Vector3(0,  1, 0), -min.y),
-      new THREE.Plane(new THREE.Vector3(0, 0, -1), max.z),
-      new THREE.Plane(new THREE.Vector3(0, 0,  1), -min.z),
-    ];
-    for (const p of planes) c.create?.(p);
-  } catch (err) {
-    console.warn("[section-box] clipping failed", err);
+    if (c && typeof c.deleteAll === "function") c.deleteAll();
+  } catch { /* */ }
+
+  let applied = false;
+
+  // API 1 — preferred
+  if (c && world && typeof c.createFromNormalAndCoplanarPoint === "function") {
+    try {
+      for (const s of specs) {
+        c.createFromNormalAndCoplanarPoint(world, s.normal.clone(), s.point.clone());
+      }
+      applied = true;
+    } catch (err) {
+      console.warn("[section-box] createFromNormalAndCoplanarPoint failed", err);
+    }
   }
+
+  // API 2 — create(world) then set plane
+  if (!applied && c && world && typeof c.create === "function") {
+    try {
+      for (const s of specs) {
+        const item: any = c.create(world);
+        const plane: THREE.Plane | undefined =
+          item?.three?.plane ?? item?.plane ?? item?.three;
+        if (plane?.normal) {
+          plane.normal.copy(s.normal);
+          plane.constant = -s.point.dot(s.normal);
+        }
+      }
+      applied = true;
+    } catch (err) {
+      console.warn("[section-box] clipper.create(world) failed", err);
+    }
+  }
+
+  // Fallback — native WebGLRenderer clippingPlanes (no ThatOpen raycaster)
+  if (!applied) {
+    try {
+      const renderer =
+        (world as any)?.renderer?.three ??
+        (ctx as any).world?.renderer?.three;
+      if (renderer) {
+        const threePlanes = specs.map(
+          (s) => new THREE.Plane(s.normal.clone(), -s.point.dot(s.normal)),
+        );
+        renderer.clippingPlanes = threePlanes;
+        renderer.localClippingEnabled = true;
+        applied = true;
+      }
+    } catch (err) {
+      console.warn("[section-box] native clippingPlanes fallback failed", err);
+    }
+  }
+
+  if (!applied) {
+    console.warn(
+      "[section-box] could not apply clipping — clipper missing or world/renderer not ready",
+    );
+  }
+
+  // Ensure ThatOpen clipper is enabled when present
+  try {
+    if (c && "enabled" in c) c.enabled = true;
+  } catch { /* */ }
 }
 
 // ── Interactive face handle dragging ────────────────────────────────────
