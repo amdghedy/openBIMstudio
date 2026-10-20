@@ -402,6 +402,12 @@ async function runOnce(): Promise<void> {
     m.setupElementContextMenu?.();
   });
 
+  // ── Global Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z (capture-phase safety net) ───
+  await safe("global-undo", async () => {
+    const m: Any = await import("./features/global-undo");
+    m.setupGlobalUndo?.();
+  });
+
   console.log("[critical-gaps-boot] all critical gaps wired");
 }
 

@@ -3618,14 +3618,14 @@ export function updateNativeGeometryElement(
   return true;
 }
 
+/**
+ * Delete one authored element (undoable via history / Ctrl+Z).
+ * Delegates to deleteElements so host-cascade and the undo stack stay consistent.
+ */
 export function removeElementById(id: string): boolean {
   const idx = elements.findIndex((el) => el.id === id);
   if (idx < 0) return false;
-  elements.splice(idx, 1);
-  selectedIds.delete(id);
-  rebuild();
-  markDirty();
-  notifyAuthoringChange();
+  deleteElements([id]);
   return true;
 }
 

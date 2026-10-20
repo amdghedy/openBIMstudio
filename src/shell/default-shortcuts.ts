@@ -308,8 +308,10 @@ export function registerDefaultShortcuts(): void {
     id: "view.crop-to-selection", label: "Crop to Selection (2D)", keys: "ctrl+shift+r", category: "view",
     handler: () => { (window as any).__obsSelectionBox?.cropTo?.({ padding: 1.0 }); },
   });
+  // NOTE: Ctrl+Shift+Z is reserved for Redo (see "redo-ctrl-shift-z" above).
+  // Zoom-to-selection uses Ctrl+Shift+F so it never steals Redo.
   shortcuts.register({
-    id: "view.zoom-selection", label: "Zoom to Selection", keys: "ctrl+shift+z", category: "view",
+    id: "view.zoom-selection", label: "Zoom to Selection", keys: "ctrl+shift+f", category: "view",
     handler: () => { (window as any).__obsSelectionBox?.zoom?.(); },
   });
   shortcuts.register({
