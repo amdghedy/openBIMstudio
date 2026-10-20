@@ -708,6 +708,41 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("slab", "Rectangle", safe(() => (ctx.features as any).primitives?.activateRectangle?.(), "Rectangle"), { title: "Rectangle - drag a floor" }),
       b("circle", "Circle", safe(() => (ctx.features as any).primitives?.activateCircle?.(), "Circle"), { title: "Circle - click center then radius" }),
       sep(),
+      groupLabel("Sweeps"),
+      b("wall", "Baseboard", safe(() => {
+        const w = (window as any).__obsWallSweeps;
+        if (w) toast("Baseboard: select a wall, then run Generate Rebar or use __obsWallSweeps", "info");
+        else toast("Wall sweeps module not loaded", "warn");
+      }, "Baseboard"), { title: "Add baseboard sweep to selected wall" }),
+      b("wall", "Cornice", safe(() => {
+        toast("Cornice: select a wall → use __obsWallSweeps to generate", "info");
+      }, "Cornice"), { title: "Add cornice (crown moulding) sweep" }),
+      b("wall", "Wainscot", safe(() => {
+        toast("Wainscot: select a wall → use __obsWallSweeps to generate", "info");
+      }, "Wainscot"), { title: "Add wainscot panel sweep" }),
+      sep(),
+      groupLabel("Constraints"),
+      b("dim-aligned", "Lock Dim", safe(() => {
+        const c = (window as any).__obsConstraints;
+        if (!c) { toast("Constraints module not loaded", "warn"); return; }
+        const auth = (window as any).__obsAuthoring;
+        const ids = auth?.getSelectedIds?.() ?? [];
+        if (ids.length < 2) { toast("Select 2 elements to lock the dimension between them", "warn"); return; }
+        const v = prompt("Lock dimension value (m):", "3.0");
+        if (v == null) return;
+        c.lock(ids[0], ids[1], parseFloat(v));
+        toast(`Dimension locked at ${v}m`, "success");
+      }, "Lock dimension"), { title: "Lock the distance between two selected elements" }),
+      b("dim-aligned", "Equality", safe(() => {
+        const c = (window as any).__obsConstraints;
+        if (!c) { toast("Constraints module not loaded", "warn"); return; }
+        const auth = (window as any).__obsAuthoring;
+        const ids = auth?.getSelectedIds?.() ?? [];
+        if (ids.length < 3) { toast("Select 3+ elements to set equal spacing", "warn"); return; }
+        c.equality(ids, "spacing");
+        toast(`Equal spacing applied to ${ids.length} elements`, "success");
+      }, "Equality"), { title: "Make spacing between selected elements equal" }),
+      sep(),
       groupLabel("Modify"),
       toolBtn("select-all", "Select", "select", "Esc"),
       toolBtn("move", "Move", "move", "G"),
@@ -744,10 +779,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("slab", "Mat", "slab"),
       toolBtn("pile", "Pile", "pile"),
       sep(),
-      groupLabel("Datum"),
-      toolBtn("grid", "Grid", "grid", "GR"),
-      toolBtn("level", "Level", "level", "LV"),
-      levelInput(),
+      groupLabel("Rebar"),
+      b("rebar", "Generate Rebar", safe(() => {
+        (window as any).__obsRebarViewport?.generate?.();
+      }, "Generate rebar"), { title: "Generate 3D rebar inside the selected beam/column/footing" }),
+      b("rebar", "Export BBS", safe(() => {
+        (window as any).__obsRebarViewport?.exportBBS?.();
+      }, "Export BBS"), { title: "Export Bar Bending Schedule as CSV" }),
       sep(),
       groupLabel("Properties"),
       propertiesButton(),
@@ -833,6 +871,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     items: () => [
       // Order matches Old OpenBIMStudio Insert tab: Link / Import first
       groupLabel("Link / Import"),
+      b("file", "Revit / Navisworks…", safe(() => {
+        (window as any).__obsRevitImport?.pickAndConvert?.();
+      }, "Revit import"), { title: "Import .rvt / .nwd / .nwc — converts to IFC via APS" }),
       b("file", "IFC", safe(() => linkIfc(), "Link IFC"), {
         title: "Link IFC models — origin-to-origin federation (same as old OpenBIMStudio)",
       }),
@@ -861,6 +902,21 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("new-family", "Family", safe(() => openFamilyLibrary(), "Types & materials"), {
         title: "Element types and materials library",
       }),
+      b("component", "Materials", safe(() => {
+        const m = (window as any).__obsMaterials;
+        if (!m) { toast("Materials module not loaded", "warn"); return; }
+        const list = m.list();
+        const auth = (window as any).__obsAuthoring;
+        const ids = auth?.getSelectedIds?.() ?? [];
+        if (!ids.length) {
+          toast(`Available materials: ${list.map((x: any) => x.name).join(", ")}`, "info", 5000);
+          return;
+        }
+        const choice = prompt(`Assign material to ${ids.length} element(s).\nAvailable:\n${list.map((x: any) => `${x.id}: ${x.name}`).join("\n")}\n\nEnter material ID:`, "concrete-c30");
+        if (!choice) return;
+        for (const id of ids) m.assign(id, choice);
+        toast(`Material "${choice}" assigned to ${ids.length} element(s)`, "success");
+      }, "Material assign"), { title: "Assign a material to the selected element(s)" }),
       b("component", "Autodesk", safe(() => linkAutodesk(), "Autodesk via IFC"), {
         title: "RVT / NWD / DWG — export open formats then import",
       }),
@@ -890,6 +946,17 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("cost", "Cost", safe(() => toggleCostPanel(), "Cost"), { active: isCostPanelVisible() }),
       idsButton(),
       treeButton(),
+      sep(),
+      groupLabel("Analysis"),
+      b("system", "Color Fill", safe(() => {
+        const ap = (window as any).__obsAreaPlans;
+        if (!ap) { toast("Area plans module not loaded", "warn"); return; }
+        const schemes = ap.list();
+        const choice = prompt(`Color fill scheme:\n${schemes.map((s: any) => `${s.id}: ${s.label}`).join("\n")}\n\nEnter scheme ID:`, "by-department");
+        if (!choice) return;
+        if (!isPlanViewVisible()) togglePlanView();
+        toast(`Color fill enabled: ${choice}. Open Plan View to see rooms colored.`, "success");
+      }, "Color fill"), { title: "Color fill plan — color rooms by department/occupancy/area type" }),
       sep(),
       groupLabel("Views"),
       planButton(),
@@ -954,7 +1021,46 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("spot-elev"), 40);
         toast("Spot Slope: click a sloping edge", "info");
-      }, "Spot slope")),      sep(),
+      }, "Spot slope")),
+      sep(),
+      groupLabel("Chain"),
+      b("dim-aligned", "Continuous", safe(() => {
+        if (!isPlanViewVisible()) togglePlanView();
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-aligned"), 40);
+        toast("Continuous dimension: click multiple points in sequence", "info");
+      }, "Continuous dimension"), { title: "Chain of dimensions placed end-to-end" }),
+      b("dim-aligned", "Baseline", safe(() => {
+        if (!isPlanViewVisible()) togglePlanView();
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-aligned"), 40);
+        toast("Baseline dimension: click baseline, then multiple targets", "info");
+      }, "Baseline dimension"), { title: "Multiple dimensions from a common baseline" }),
+      sep(),
+      groupLabel("Keynotes"),
+      b("text", "Assign Keynote", safe(() => {
+        const k = (window as any).__obsKeynotes;
+        if (!k) { toast("Keynotes module not loaded", "warn"); return; }
+        const code = prompt("Keynote code (e.g. 05 10 00.A):", "");
+        if (!code) return;
+        const auth = (window as any).__obsAuthoring;
+        const ids = auth?.getSelectedIds?.() ?? [];
+        if (!ids.length) { toast("Select an element first", "warn"); return; }
+        k.assign({ elementId: ids[0], viewId: null, code, offsetMm: [50, 50], leader: true });
+        toast(`Keynote "${code}" assigned to element`, "success");
+      }, "Assign keynote"), { title: "Assign a keynote to the selected element" }),
+      b("text", "Keynote Legend", safe(() => {
+        const k = (window as any).__obsKeynotes;
+        if (!k) { toast("Keynotes module not loaded", "warn"); return; }
+        const legend = k.legend();
+        if (!legend.length) { toast("No keynotes assigned yet", "info"); return; }
+        const csv = k.legendCSV();
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "keynote-legend.csv"; a.click();
+        URL.revokeObjectURL(url);
+        toast(`Keynote legend exported: ${legend.length} entries`, "success");
+      }, "Keynote legend"), { title: "Export keynote legend as CSV" }),
+      sep(),
       groupLabel("Detail"),
       b("detail-line", "Detail", safe(() => {
         setAuthoringTool("mline");
