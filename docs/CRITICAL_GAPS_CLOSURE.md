@@ -1,4 +1,4 @@
-# Open BIM Studio ↔ Revit — Critical Gaps Closed
+# Open BIM Studio ↔ BIM — Critical Gaps Closed
 
 ## Install
 
@@ -15,7 +15,7 @@ npm run dev
 
 ## Complete capability matrix
 
-| Revit workflow | Open BIM Studio | Module |
+| BIM workflow | Open BIM Studio | Module |
 |----------------|-----------------|--------|
 | Parametric families + formulas | ✅ | `modules/families/parametric-engine.ts` |
 | Family constraints | ✅ | `modules/families/constraint-graph.ts` |
@@ -31,7 +31,7 @@ npm run dev
 | Railings | ✅ | `modules/railings/railings.ts` |
 | Curtain walls | ✅ | `modules/curtain-wall/curtain-wall.ts` |
 | Align / distribute | ✅ | `features/align-tool.ts` |
-| Match properties | ✅ | `features/revit-parity-bridge.ts` |
+| Match properties | ✅ | `features/bim-parity-bridge.ts` |
 | Create similar | ✅ | parity bridge → authoring |
 | Temporary dimensions | ✅ | `features/temp-dimensions.ts` |
 | Temporary hide / isolate | ✅ | `modules/visibility/visibility-filter.ts` |
@@ -85,7 +85,7 @@ Search categories **Architecture**, **Modify**, **View**, **Panels** for:
 | `__obsTypeCatalog` | Type catalogs |
 | `__obsAlign` | Align / distribute |
 | `__obsTempDims` | Temporary dimensions |
-| `__obsRevitParity` | Placement + match props bridge |
+| `__obsBIMParity` | Placement + match props bridge |
 | `__obsFamilyParametric` | Parametric family service |
 
 ---

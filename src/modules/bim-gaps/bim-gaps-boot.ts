@@ -23,7 +23,7 @@ import { setupM3, togglePlanOption, refreshViews } from "./m3-register";
 
 type Any = Record<string, any>;
 export interface StepStatus { name: string; ok: boolean; detail: string }
-export const REVIT_GAPS_VERSION = "1.2.0-m3";
+export const BIM_GAPS_VERSION = "1.2.0-m3";
 const status: StepStatus[] = [];
 
 const authoring = (): Any | null => ((ctx.features as Any).authoring ?? (window as Any).__obsAuthoring ?? null);
@@ -127,14 +127,14 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
   });
 
   (window as Any).__obsBIMGaps = {
-    version: REVIT_GAPS_VERSION, status,
+    version: BIM_GAPS_VERSION, status,
     exportIfc, buildModelIfc,
     placeRoomAt, placeRoomsAutomatically, startRoomTool, refreshRoomOverlay,
     m2: { start: startM2Tool, create: createM2Element, ceilingsFromRooms },
     visibility: { hideSelection, isolateSelection, reset: resetTemporaryVisibility, tagSelection, getSelectedKeys, apply: () => applyAuthored(true) },
   };
   const failed = status.filter((s) => !s.ok);
-  console.log(`[bim-gaps] ${REVIT_GAPS_VERSION}: ${status.length - failed.length}/${status.length} steps started` + (failed.length ? ` - FAILED: ${failed.map((f) => `${f.name} (${f.detail})`).join("; ")}` : ""));
+  console.log(`[bim-gaps] ${BIM_GAPS_VERSION}: ${status.length - failed.length}/${status.length} steps started` + (failed.length ? ` - FAILED: ${failed.map((f) => `${f.name} (${f.detail})`).join("; ")}` : ""));
   if (failed.length) notify("warn", `BIM gaps: ${failed.length} step(s) failed - see console`);
   return status;
 }

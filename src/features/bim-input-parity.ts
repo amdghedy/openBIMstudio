@@ -81,7 +81,7 @@ async function registerBIMShortcuts(): Promise<void> {
 
   // -- View / camera (BIM: ZA ZF ZE ZO ZI) ------------------------------
   reg({
-    id: "revit-za",
+    id: "bim-za",
     label: "Zoom All (BIM ZA)",
     keys: "za",
     category: "view",
@@ -91,7 +91,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-zf",
+    id: "bim-zf",
     label: "Zoom to Fit (BIM ZF)",
     keys: "zf",
     category: "view",
@@ -101,7 +101,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-ze",
+    id: "bim-ze",
     label: "Zoom Extents (BIM ZE)",
     keys: "ze",
     category: "view",
@@ -111,7 +111,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-zo",
+    id: "bim-zo",
     label: "Zoom Out (BIM ZO)",
     keys: "zo",
     category: "view",
@@ -121,7 +121,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-zi",
+    id: "bim-zi",
     label: "Zoom In (BIM ZI)",
     keys: "zi",
     category: "view",
@@ -131,7 +131,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-vn",
+    id: "bim-vn",
     label: "Default 3D View (BIM VN)",
     keys: "vn",
     category: "view",
@@ -143,7 +143,7 @@ async function registerBIMShortcuts(): Promise<void> {
 
   // -- Temporary hide / isolate (BIM HH HI HR) --------------------------
   reg({
-    id: "revit-hh",
+    id: "bim-hh",
     label: "Hide Element (BIM HH)",
     keys: "hh",
     category: "view",
@@ -154,7 +154,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-hi",
+    id: "bim-hi",
     label: "Isolate Element (BIM HI)",
     keys: "hi",
     category: "view",
@@ -165,7 +165,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-hr",
+    id: "bim-hr",
     label: "Reset Temporary Hide/Isolate (BIM HR)",
     keys: "hr",
     category: "view",
@@ -177,7 +177,7 @@ async function registerBIMShortcuts(): Promise<void> {
 
   // -- Modify (BIM MV RO AL MA CS GP) -----------------------------------
   reg({
-    id: "revit-mv",
+    id: "bim-mv",
     label: "Move (BIM MV)",
     keys: "mv",
     category: "tool",
@@ -190,7 +190,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-ro",
+    id: "bim-ro",
     label: "Rotate (BIM RO)",
     keys: "ro",
     category: "tool",
@@ -203,7 +203,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-al",
+    id: "bim-al",
     label: "Align (BIM AL)",
     keys: "al",
     category: "tool",
@@ -213,7 +213,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-ma",
+    id: "bim-ma",
     label: "Match Properties (BIM MA)",
     keys: "ma",
     category: "tool",
@@ -222,7 +222,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-cs",
+    id: "bim-cs",
     label: "Create Similar (BIM CS)",
     keys: "cs",
     category: "tool",
@@ -231,7 +231,7 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
   reg({
-    id: "revit-gp",
+    id: "bim-gp",
     label: "Create Group (BIM GP)",
     keys: "gp",
     category: "tool",
@@ -267,16 +267,16 @@ async function registerBIMShortcuts(): Promise<void> {
   };
   // Already in default-shortcuts: WA SL CM BM DR WN GR LV ...
   // Add a few more BIM-common ones if missing from defaults
-  tool("rf", "revit-tool-roof", "Roof (BIM RF)", "roof");
-  tool("cl", "revit-tool-ceiling", "Ceiling (BIM CL)", "ceiling");
-  tool("rm", "revit-tool-room", "Room (BIM RM)", "room");
-  tool("st", "revit-tool-stairs", "Stairs (BIM ST)", "stairs");
-  tool("ra", "revit-tool-railing", "Railing (BIM RA)", "railing");
-  tool("cw", "revit-tool-curtain", "Curtain Wall (BIM CW)", "curtain-wall");
+  tool("rf", "bim-tool-roof", "Roof (BIM RF)", "roof");
+  tool("cl", "bim-tool-ceiling", "Ceiling (BIM CL)", "ceiling");
+  tool("rm", "bim-tool-room", "Room (BIM RM)", "room");
+  tool("st", "bim-tool-stairs", "Stairs (BIM ST)", "stairs");
+  tool("ra", "bim-tool-railing", "Railing (BIM RA)", "railing");
+  tool("cw", "bim-tool-curtain", "Curtain Wall (BIM CW)", "curtain-wall");
 
   // -- Help overlay -------------------------------------------------------
   reg({
-    id: "revit-help-input",
+    id: "bim-help-input",
     label: "Mouse & Keyboard Help (BIM map)",
     keys: "ctrl+/",
     category: "app",

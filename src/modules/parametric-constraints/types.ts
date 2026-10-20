@@ -1,7 +1,7 @@
 /**
  * Parametric constraints — lock dimensions and equality constraints.
  *
- * Revit's parametric engine allows users to lock dimensions so that
+ * BIM's parametric engine allows users to lock dimensions so that
  * moving one element doesn't change the locked distance. Equality
  * constraints make a set of dimensions equal (e.g. equal spacing
  * between columns).

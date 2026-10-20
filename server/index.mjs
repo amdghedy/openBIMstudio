@@ -445,7 +445,7 @@ if (url.pathname === "/api/convert" && req.method === "POST") {
           "to enable automatic RVT→IFC conversion.",
         fileName,
         savedPath: savePath,
-        hint: "In Revit: File → Export → IFC, then import the .ifc here.",
+        hint: "In BIM: File → Export → IFC, then import the .ifc here.",
       });
     }
 

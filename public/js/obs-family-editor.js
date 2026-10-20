@@ -1,7 +1,7 @@
 ﻿/* ============================================================
  * obs-family-editor.js
  * Modal family editor driven by the Parametric ribbon commands.
- * Works headlessly against RevitParametricEngine.
+ * Works headlessly against BIMParametricEngine.
  * Families persist in localStorage and can be exported as JSON.
  * ============================================================ */
 (function () {
@@ -283,7 +283,7 @@
     inputEl.classList.remove('formula-invalid');
     if (!p.formula) return;
     try {
-      var RE = window.RevitParametricEngine;
+      var RE = window.BIMParametricEngine;
       if (!RE || !RE.FormulaEngine) return;
       var ctx = {};
       state.family.parameters.forEach(function (q) { ctx[q.name] = 1; });
@@ -396,8 +396,8 @@
 
   function renderPreview() {
     var hostEl = host.querySelector('#fe-preview');
-    var RE = window.RevitParametricEngine;
-    if (!RE) { hostEl.innerHTML = '<span class="err">RevitParametricEngine not loaded</span>'; return; }
+    var RE = window.BIMParametricEngine;
+    if (!RE) { hostEl.innerHTML = '<span class="err">BIMParametricEngine not loaded</span>'; return; }
 
     var engine = null;
     try {
@@ -413,7 +413,7 @@
     try {
       // Snapshot current families map, insert temp family, resolve, revert
       var famName = '__obs_preview__';
-      var tmpEngine = new RE.RevitParametricEngine(null, 0, { autoRegen: false });
+      var tmpEngine = new RE.BIMParametricEngine(null, 0, { autoRegen: false });
       var spec = {
         category: state.family.category,
         parameters: state.family.parameters.map(function (p) {
@@ -449,8 +449,8 @@
 
   // ---------------------------------------------------------------- actions
   function testInScene() {
-    var RE = window.RevitParametricEngine;
-    if (!RE) { alert('RevitParametricEngine not loaded'); return; }
+    var RE = window.BIMParametricEngine;
+    if (!RE) { alert('BIMParametricEngine not loaded'); return; }
     var engine = null;
     try {
       var p = window.OpenBIMStudio && window.OpenBIMStudio.parametric;

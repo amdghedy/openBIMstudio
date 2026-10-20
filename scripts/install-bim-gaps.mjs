@@ -1,6 +1,6 @@
 ﻿#!/usr/bin/env node
 /**
- * Installs the Revit-gaps package (Milestones 1, 2 and 3) into an OpenBIMStudio checkout.
+ * Installs the BIM-gaps package (Milestones 1, 2 and 3) into an OpenBIMStudio checkout.
  *
  *   node scripts/install-bim-gaps.mjs [projectRoot] [--dry-run]
  *
@@ -11,7 +11,7 @@
  *       3. src/modules/export/native-twin-ifc.ts  valid IFC GlobalIds
  *   M2  4. src/features/authoring.ts              createMesh asks window.__obsMeshBuilders first
  *       5. src/modules/cost/quantities.ts         takeoff rows for the new element types
- *       6. src/features/revit-parity-bridge.ts    Place Stair / Railing / Curtain Wall buttons start the click tools
+ *       6. src/features/bim-parity-bridge.ts    Place Stair / Railing / Curtain Wall buttons start the click tools
  *   M3  7. 8. src/modules/views/generators/plan.ts       drop base geometry of M2 types, then add poche, room tags, symbols, marks
  *       9. src/modules/views/generators/section.ts       real cut sections (poche, oblique cuts, openings)
  *       10. src/modules/views/generators/elevation.ts    real elevations (silhouettes with openings, roof slope)
@@ -54,7 +54,7 @@ function patch(rel, name, fn, marker = MARK) {
   if (!f) return results.push({ name, state: "SKIPPED", why: `${rel} not found` });
   if (f.text.includes(marker)) return results.push({ name, state: "already installed" });
   const next = fn(f.text);
-  if (!next) return results.push({ name, state: "NOT PATCHED", why: "anchor not found - apply by hand (see docs/REVIT_GAPS_M1.md)" });
+  if (!next) return results.push({ name, state: "NOT PATCHED", why: "anchor not found - apply by hand (see docs/BIM_GAPS_M1.md)" });
   write(f, next);
   results.push({ name, state: dry ? "would patch" : "patched" });
 }
@@ -73,7 +73,7 @@ patch("src/critical-gaps-boot.ts", "boot hook", (t) => {
   const block =
     `${i}await safe("bim-gaps", async () => { // ${MARK}\n` +
     `${i}  const m: Any = await import("./modules/bim-gaps/bim-gaps-boot");\n` +
-    `${i}  await m.setupRevitGaps?.();\n` +
+    `${i}  await m.setupBIMGaps?.();\n` +
     `${i}});\n\n`;
   return t.slice(0, m.index) + block + t.slice(m.index);
 });
@@ -85,8 +85,8 @@ patch("src/shell/file-menu.ts", "file menu", (t) => {
   if (!m) return null;
   const i = m[1];
   const add =
-    `${i}item("\\u{1F3D7}", "Model \\u2192 IFC4 (authored)", () => void (window as any).__obsRevitGaps?.exportIfc?.("IFC4")), // ${MARK}\n` +
-    `${i}item("\\u{1F3D7}", "Model \\u2192 IFC2X3 (Revit 2020)", () => void (window as any).__obsRevitGaps?.exportIfc?.("IFC2X3")), // ${MARK}\n`;
+    `${i}item("\\u{1F3D7}", "Model \\u2192 IFC4 (authored)", () => void (window as any).__obsBIMGaps?.exportIfc?.("IFC4")), // ${MARK}\n` +
+    `${i}item("\\u{1F3D7}", "Model \\u2192 IFC2X3 (BIM 2020)", () => void (window as any).__obsBIMGaps?.exportIfc?.("IFC2X3")), // ${MARK}\n`;
   return t.slice(0, m.index + m[0].length) + add + t.slice(m.index + m[0].length);
 });
 
@@ -130,7 +130,7 @@ patch("src/modules/cost/quantities.ts", "cost takeoff", (t) => {
 }, MARK2);
 
 // 6. M2: the parity buttons used to drop fixed-size objects at the origin
-patch("src/features/revit-parity-bridge.ts", "parity buttons", (t) => {
+patch("src/features/bim-parity-bridge.ts", "parity buttons", (t) => {
   const heads = [
     [/^(async function placeStair\([^)]*\)[^{\n]*\{\n)/m, `  if ((window as any).__obsM2?.start) { (window as any).__obsM2.start("stairs", runType === "l-shape" ? "L" : runType === "u-shape" ? "U" : "straight"); return; } // ${MARK2}\n`],
     [/^(async function placeRailing\([^)]*\)[^{\n]*\{\n)/m, `  if ((window as any).__obsM2?.start) { (window as any).__obsM2.start("railing"); return; } // ${MARK2}\n`],
@@ -182,7 +182,7 @@ patch("src/modules/export/pdf.ts", "pdf polygon fill", (t) => {
   return t.replace(re, `if (e.fill && pts.length >= 3 && !((window as any).__obsM3FillPolygon?.(ctx.page, pts, hexToRgb(e.fill.color), e.fill.opacity ?? 1))) { // ${MARK3}`);
 }, MARK3);
 
-console.log((dry ? "[dry run] " : "") + "Revit gaps install in " + root);
+console.log((dry ? "[dry run] " : "") + "BIM gaps install in " + root);
 for (const r of results) console.log(`  ${r.state.padEnd(18)} ${r.name}${r.why ? "  - " + r.why : ""}`);
 if (results.some((r) => r.state === "NOT PATCHED" || r.state === "SKIPPED")) process.exitCode = 2;
 else console.log("Done. Run `npx tsc --noEmit`, then `npm run dev` and look for '[bim-gaps]' in the console (7/7 steps).");

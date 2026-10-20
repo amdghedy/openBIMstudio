@@ -3,7 +3,7 @@
  *
  * Detail components are 2D symbols used in detail views (construction
  * documents): fasteners, anchors, expansion joints, repeating details
- * (bricks, blocks, decking profiles). Revit ships these as "Detail
+ * (bricks, blocks, decking profiles). BIM ships these as "Detail
  * Components" and "Repeating Details".
  *
  * A DetailComponent is a 2D line-art symbol defined in SVG-like

@@ -2,7 +2,7 @@
  * Area plans & color fill — types + color scheme engine.
  *
  * Enables spatial analysis: color rooms by department, occupancy,
- * area type, or custom property. Matches Revit's "Color Schemes"
+ * area type, or custom property. Matches BIM's "Color Schemes"
  * feature (Analyze > Color Fill Plans).
  *
  * The color fill is rendered as a semi-transparent polygon overlay

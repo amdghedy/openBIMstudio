@@ -1,10 +1,10 @@
 # M4 — View Templates + Visibility/Graphics + Auto-Dimensions
 
-Revit-parity package for **openBIMstudio**.
+BIM-parity package for **openBIMstudio**.
 
 ## What this adds
 
-| Capability | Revit equivalent | Module |
+| Capability | BIM equivalent | Module |
 |------------|------------------|--------|
 | View Templates (create / apply / lock-style) | View Templates | `modules/view-templates/` |
 | Visibility/Graphics dialog | VG (VV / VG) | `vg-dialog.ts` |
@@ -24,10 +24,10 @@ From the **openBIMstudio project root**:
 ```bash
 # Copy package next to the repo (or unzip)
 # Then:
-node path/to/revit-parity-m4/scripts/install-m4.mjs .
+node path/to/bim-parity-m4/scripts/install-m4.mjs .
 
 # Dry-run first (optional):
-node path/to/revit-parity-m4/scripts/install-m4.mjs . --dry-run
+node path/to/bim-parity-m4/scripts/install-m4.mjs . --dry-run
 
 npm run typecheck
 npm run dev

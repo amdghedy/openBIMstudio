@@ -2,7 +2,7 @@
  * Family-from-CSV plugin
  *
  * Generates a parametric family + named types from a CSV type catalog.
- * Mirrors Revit's "type catalog" pattern: a .txt file with parameter
+ * Mirrors BIM's "type catalog" pattern: a .txt file with parameter
  * column headers and one row per type.
  *
  * CSV format (first column is the type name):

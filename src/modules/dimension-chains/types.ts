@@ -1,7 +1,7 @@
 /**
  * Dimension chains — continuous + baseline dimension strings.
  *
- * Revit's dimension tools include:
+ * BIM's dimension tools include:
  *   - Aligned: single dimension between two points (already exists)
  *   - Linear: horizontal/vertical dimension (already exists)
  *   - Angular, Radial, Diameter, Spot (already exist)

@@ -1,4 +1,4 @@
-# Open BIM Studio — Revit Parity Package
+# Open BIM Studio — BIM Parity Package
 
 ## Install (one step)
 
@@ -6,7 +6,7 @@
 # From your OpenBIMStudio project root
 cp -r path/to/artifacts/src/* src/
 # or unzip:
-# unzip OpenBIMStudio-Revit-Parity.zip -d /tmp/parity && cp -r /tmp/parity/src/* src/
+# unzip OpenBIMStudio-BIM-Parity.zip -d /tmp/parity && cp -r /tmp/parity/src/* src/
 
 npm run typecheck
 npm run dev
@@ -35,7 +35,7 @@ Console success line:
 
 ## Clear UI — where every function lives
 
-### 1. Revit Command Center (primary)
+### 1. BIM Command Center (primary)
 
 Opens automatically once per session so you see the full tool map.
 
@@ -44,7 +44,7 @@ Opens automatically once per session so you see the full tool map.
 | Blue **RC** button | bottom-left |
 | **⌘ Command Center** | bottom toolbar |
 | **Ctrl+Shift+R** | keyboard |
-| **Ctrl+P** → “Revit Command Center” | palette |
+| **Ctrl+P** → “BIM Command Center” | palette |
 
 **Sections inside the panel**
 
@@ -86,7 +86,7 @@ Search: `Stair`, `Align`, `Match`, `Phase`, `Room`, `Hide`, `Curtain`, `Group`, 
 
 ## Capability matrix
 
-| Revit workflow | Status |
+| BIM workflow | Status |
 |----------------|--------|
 | Parametric families / formulas / constraints | ✅ |
 | Nested families / arrays | ✅ |

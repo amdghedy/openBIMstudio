@@ -221,7 +221,7 @@ export function setupBIMMousePolicy(): void {
   installArbiter();
 
   console.log(
-    "[revit-mouse-policy] arbiter ready: flags-only coordination; " +
+    "[bim-mouse-policy] arbiter ready: flags-only coordination; " +
     "wheel blocked while MMB held; dragged-MMB click suppressed; " +
     "Esc / RMB cancel active tool; navigation.ts remains sole MMB/wheel owner",
   );

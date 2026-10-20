@@ -365,7 +365,7 @@ let dialogHost: HTMLDivElement | null = null;
 
 function ensureDialogHost(): HTMLDivElement {
   if (dialogHost) return dialogHost;
-  dialogHost = el("div", "obs-revit-dialog-host");
+  dialogHost = el("div", "obs-bim-dialog-host");
   dialogHost.dataset.visible = "0";
   document.body.appendChild(dialogHost);
   return dialogHost;
@@ -380,21 +380,21 @@ function closeDialog() {
 function openDialog(title: string, subtitle: string, body: HTMLElement, footer?: HTMLElement): void {
   const host = ensureDialogHost();
   host.innerHTML = "";
-  const card = el("div", "obs-revit-dialog");
-  const header = el("div", "obs-revit-dialog__header");
+  const card = el("div", "obs-bim-dialog");
+  const header = el("div", "obs-bim-dialog__header");
   const titleWrap = el("div");
-  const eyebrow = el("div", "obs-revit-dialog__eyebrow");
+  const eyebrow = el("div", "obs-bim-dialog__eyebrow");
   eyebrow.textContent = "OPEN BIM STUDIO · BIM EXPERIENCE";
   const h = el("h2");
   h.textContent = title;
   const p = el("p");
   p.textContent = subtitle;
   titleWrap.append(eyebrow, h, p);
-  const close = el("button", "obs-revit-dialog__close");
+  const close = el("button", "obs-bim-dialog__close");
   close.textContent = "×";
   close.onclick = closeDialog;
   header.append(titleWrap, close);
-  const bodyWrap = el("div", "obs-revit-dialog__body");
+  const bodyWrap = el("div", "obs-bim-dialog__body");
   bodyWrap.appendChild(body);
   card.appendChild(header);
   card.appendChild(bodyWrap);
@@ -411,7 +411,7 @@ function openTypeProperties(): void {
     return;
   }
   const defaults = getTypeDefaults(type);
-  const body = el("div", "obs-revit-dialog-grid");
+  const body = el("div", "obs-bim-dialog-grid");
   const fields: Array<{ label: string; key: string; value: number; step: number }> = [
     { label: "Height", key: "height", value: Number(defaults.params.height ?? 3), step: 0.01 },
     { label: "Thickness / Depth", key: "thickness", value: Number(defaults.params.thickness ?? .2), step: 0.01 },
@@ -419,7 +419,7 @@ function openTypeProperties(): void {
     { label: "Elevation", key: "elevation", value: Number(defaults.params.elevation ?? 0), step: 0.01 },
   ];
   for (const f of fields) {
-    const row = el("label", "obs-revit-field");
+    const row = el("label", "obs-bim-field");
     const text = el("span");
     text.textContent = f.label;
     const input = el("input");
@@ -430,13 +430,13 @@ function openTypeProperties(): void {
     row.append(text, input);
     body.appendChild(row);
   }
-  const colorRow = el("label", "obs-revit-field");
+  const colorRow = el("label", "obs-bim-field");
   const colorText = el("span"); colorText.textContent = "Graphics color";
   const color = el("input"); color.type = "color"; color.value = defaults.color ?? "#cccccc";
   colorRow.append(colorText, color); body.appendChild(colorRow);
 
-  const footer = el("div", "obs-revit-dialog__footer");
-  const hint = el("span", "obs-revit-dialog__hint"); hint.textContent = `${type} type defaults • affects future placement`;
+  const footer = el("div", "obs-bim-dialog__footer");
+  const hint = el("span", "obs-bim-dialog__hint"); hint.textContent = `${type} type defaults • affects future placement`;
   const cancel = button("Cancel", "×", closeDialog);
   const apply = button("Apply", "✓", () => {
     for (const input of Array.from(body.querySelectorAll("input[type=number]"))) {
@@ -453,36 +453,36 @@ function openTypeProperties(): void {
 }
 
 function openVisibilityGraphics(): void {
-  const body = el("div", "obs-revit-dialog-grid");
-  const styleRow = el("div", "obs-revit-field");
+  const body = el("div", "obs-bim-dialog-grid");
+  const styleRow = el("div", "obs-bim-field");
   const styleText = el("span"); styleText.textContent = "Visual Style";
   const style = selectControl(getVisualPreset(), ["shaded", "shaded-edges", "wireframe", "hidden-line"], (v) => setVisualPreset(v as any), 180);
   styleRow.append(styleText, style); body.append(styleRow);
 
-  const bgRow = el("div", "obs-revit-field");
+  const bgRow = el("div", "obs-bim-field");
   const bgText = el("span"); bgText.textContent = "Background";
   const bg = selectControl(getSceneBackground(), ["studio", "paper", "night"], (v) => setSceneBackground(v as any), 180);
   bgRow.append(bgText, bg); body.append(bgRow);
 
-  const trRow = el("div", "obs-revit-field");
+  const trRow = el("div", "obs-bim-field");
   const trText = el("span"); trText.textContent = "Transparency";
   const tr = el("input"); tr.type = "range"; tr.min = "0"; tr.max = "90"; tr.step = "5"; tr.value = String(getSceneTransparency());
   trRow.append(trText, tr); body.append(trRow);
 
-  const sunRow = el("div", "obs-revit-field");
+  const sunRow = el("div", "obs-bim-field");
   const sunText = el("span"); sunText.textContent = "Sun / Shadows";
   const sun = el("input"); sun.type = "checkbox"; sun.checked = isSunEnabled();
   sunRow.append(sunText, sun); body.append(sunRow);
 
-  const cats = el("div", "obs-revit-vg-box");
+  const cats = el("div", "obs-bim-vg-box");
   const catTitle = el("b"); catTitle.textContent = "Model Categories"; cats.appendChild(catTitle);
-  const note = el("div", "obs-revit-dialog__hint"); note.textContent = "Category/object visibility remains available from the Model Tree; this dialog controls view-wide graphics in one place."; cats.appendChild(note);
+  const note = el("div", "obs-bim-dialog__hint"); note.textContent = "Category/object visibility remains available from the Model Tree; this dialog controls view-wide graphics in one place."; cats.appendChild(note);
   const openTree = button("Open Model Categories", "☰", () => { closeDialog(); toggleModelTreePanel(); }, false);
   cats.appendChild(openTree);
   body.appendChild(cats);
 
-  const footer = el("div", "obs-revit-dialog__footer");
-  const hint = el("span", "obs-revit-dialog__hint"); hint.textContent = "View-specific overrides";
+  const footer = el("div", "obs-bim-dialog__footer");
+  const hint = el("span", "obs-bim-dialog__hint"); hint.textContent = "View-specific overrides";
   const close = button("Close", "×", closeDialog);
   tr.oninput = () => setSceneTransparency(Number(tr.value));
   sun.onchange = () => setSunEnabled(sun.checked);
@@ -500,7 +500,7 @@ interface ViewTemplateSnapshot {
   detail: ExperienceState["detail"];
   discipline: ExperienceState["discipline"];
 }
-const VT_KEY = "obs.revit.view-templates.v1";
+const VT_KEY = "obs.bim.view-templates.v1";
 function loadViewTemplates(): ViewTemplateSnapshot[] {
   try {
     const raw = localStorage.getItem(VT_KEY);
@@ -512,17 +512,17 @@ function saveViewTemplates(list: ViewTemplateSnapshot[]) {
   try { localStorage.setItem(VT_KEY, JSON.stringify(list)); } catch { /* */ }
 }
 function openViewTemplates(): void {
-  const body = el("div", "obs-revit-template-list");
+  const body = el("div", "obs-bim-template-list");
   const list = loadViewTemplates();
   const render = () => {
     body.innerHTML = "";
     if (!list.length) {
-      const empty = el("div", "obs-revit-dialog__empty");
+      const empty = el("div", "obs-bim-dialog__empty");
       empty.textContent = "No view templates saved. Create one from the current view settings.";
       body.appendChild(empty);
     }
     for (const t of list) {
-      const row = el("div", "obs-revit-template-row");
+      const row = el("div", "obs-bim-template-row");
       const text = el("div");
       const n = el("b"); n.textContent = t.name;
       const d = el("span"); d.textContent = `${t.visual} · ${t.background} · ${t.detail} · ${t.discipline}`;
@@ -536,8 +536,8 @@ function openViewTemplates(): void {
     }
   };
   render();
-  const footer = el("div", "obs-revit-dialog__footer");
-  const name = el("input", "obs-revit-template-name") as HTMLInputElement;
+  const footer = el("div", "obs-bim-dialog__footer");
+  const name = el("input", "obs-bim-template-name") as HTMLInputElement;
   name.placeholder = "New view template name";
   const create = button("Create from Current View", "＋", () => {
     const n = name.value.trim(); if (!n) { toast("Enter a template name", "warn"); return; }
@@ -820,11 +820,11 @@ function ensureBars() {
   if (!ctx.rightHost) return;
   if (optionsBar) return;
 
-  optionsBar = el("div", "obs-revit-options");
-  contextualBar = el("div", "obs-revit-contextual");
-  viewBar = el("div", "obs-revit-viewbar");
-  promptBar = el("div", "obs-revit-prompt");
-  hoverCard = el("div", "obs-revit-hovercard");
+  optionsBar = el("div", "obs-bim-options");
+  contextualBar = el("div", "obs-bim-contextual");
+  viewBar = el("div", "obs-bim-viewbar");
+  promptBar = el("div", "obs-bim-prompt");
+  hoverCard = el("div", "obs-bim-hovercard");
 
   try {
     state.optionsVisible = localStorage.getItem("obs.optionsBar.visible") !== "0";
@@ -1007,7 +1007,7 @@ export function setupBimExperience() {
   createCommandCatalog();
   for (const c of commands.values()) {
     registerPaletteCommand({
-      id: `revit.${c.id}`,
+      id: `bim.${c.id}`,
       label: c.label,
       category: c.ribbon ? `BIM ${c.ribbon}` : "BIM",
       hint: c.group,
@@ -1036,12 +1036,12 @@ export function setupBimExperience() {
     openPropertyPalette();
     refresh();
   });
-  window.addEventListener("obs:revit-command", (e: Event) => {
+  window.addEventListener("obs:bim-command", (e: Event) => {
     const id = (e as CustomEvent).detail?.id as string | undefined;
     if (id) execute(id);
   });
 
-  (ctx.features as any).revitExperience = {
+  (ctx.features as any).bimExperience = {
     execute,
     refresh,
     activateTool,

@@ -4,7 +4,7 @@
  * Asserts the COORDINATE_TO_ORIGIN = false override is in place in
  * src/features/importer.ts so web-ifc preserves absolute IFC world
  * coordinates. Without this fix, two IFC files exported from the same
- * Revit project (linked origin-to-origin in Revit) end up at different
+ * BIM project (linked origin-to-origin in BIM) end up at different
  * local origins in openBIMstudio, appearing far apart.
  *
  * Run: `node scripts/verify-v62.mjs`

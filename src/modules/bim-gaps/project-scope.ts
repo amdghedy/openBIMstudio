@@ -8,7 +8,7 @@
  *
  * How it works (no edits to the stores or to projects.ts):
  *   - the stores keep using their localStorage keys as a working cache;
- *   - every store change copies those keys into `project.revitStores`
+ *   - every store change copies those keys into `project.bimStores`
  *     (the live project document, so saveProject() persists it);
  *   - when the open project changes (new / open), the keys are replaced with
  *     that project's data (or emptied) and every store is re-booted.
@@ -82,9 +82,9 @@ function syncToProject(): void {
   const doc = P.getCurrentProject();
   if (!doc) return;
   const snap = snapshotStores();
-  const prev = (doc.revitStores as BIMStoresPayload | undefined)?.data;
+  const prev = (doc.bimStores as BIMStoresPayload | undefined)?.data;
   if (prev && JSON.stringify(prev) === JSON.stringify(snap)) return;
-  doc.revitStores = { v: 1, data: snap } satisfies BIMStoresPayload;
+  doc.bimStores = { v: 1, data: snap } satisfies BIMStoresPayload;
   P.markDirty();
 }
 
@@ -96,14 +96,14 @@ function onProject(): void {
   const first = lastProjectId === undefined;
   lastProjectId = id;
   if (!doc) return;
-  const payload = doc.revitStores as BIMStoresPayload | undefined;
+  const payload = doc.bimStores as BIMStoresPayload | undefined;
   if (payload?.data) { hydrateStores(payload.data); return; }
   let adopted = false;
   try { adopted = localStorage.getItem(ADOPTED_FLAG) === "1"; } catch { /* */ }
   if (first && !adopted) {
     // Migration: the first project we ever see keeps the data that was already in localStorage.
     try { localStorage.setItem(ADOPTED_FLAG, "1"); } catch { /* */ }
-    doc.revitStores = { v: 1, data: snapshotStores() } satisfies BIMStoresPayload;
+    doc.bimStores = { v: 1, data: snapshotStores() } satisfies BIMStoresPayload;
     P.markDirty();
   } else {
     hydrateStores(null); // a project that has no saved data starts empty instead of inheriting another project's

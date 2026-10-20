@@ -917,9 +917,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     items: () => [
       // Order matches Old OpenBIMStudio Insert tab: Link / Import first
       groupLabel("Link / Import"),
-      b("file", "Revit / Navisworks…", safe(() => {
-        (window as any).__obsRevitImport?.pickAndConvert?.();
-      }, "Revit import"), { title: "Import .rvt / .nwd / .nwc — converts to IFC via APS" }),
+      b("file", "BIM / Navisworks…", safe(() => {
+        (window as any).__obsBIMImport?.pickAndConvert?.();
+      }, "BIM import"), { title: "Import .rvt / .nwd / .nwc — converts to IFC via APS" }),
       b("file", "IFC", safe(() => linkIfc(), "Link IFC"), {
         title: "Link IFC models — origin-to-origin federation (same as old OpenBIMStudio)",
       }),

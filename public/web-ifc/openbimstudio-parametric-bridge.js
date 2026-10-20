@@ -23,8 +23,8 @@
   function patchWasm() {
     if (!window.WebIFCWasm) return false;
     if (window.WebIFCWasm.__obsWrapped) return true;
-    if (!window.RevitParametricEngine) {
-      console.warn('[OBS-parametric] RevitParametricEngine not loaded yet - retrying');
+    if (!window.BIMParametricEngine) {
+      console.warn('[OBS-parametric] BIMParametricEngine not loaded yet - retrying');
       return false;
     }
 

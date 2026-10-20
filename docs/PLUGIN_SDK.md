@@ -186,7 +186,7 @@ Five real plugins ship with the host, demonstrating the SDK contract:
 | `hello` | `ui.command`, `ui.notification` | Minimum-viable lifecycle. Adds a "Hello from Plugin" command. |
 | `ifc-validator` | `ifc.read`, `ui.command`, `ui.notification` | Reads IFC entities, scans for missing GlobalIds, duplicates, unit inconsistencies. |
 | `csv-takeoff` | `cost.read`, `authoring.read`, `ifc.read`, `ui.command` | Aggregates quantities across authored + IFC entities, exports CSV via browser download. |
-| `family-from-csv` | `family.read`, `family.write`, `ui.command` | Builds a parametric family from a CSV type catalog; mirrors Revit's type-catalog pattern. |
+| `family-from-csv` | `family.read`, `family.write`, `ui.command` | Builds a parametric family from a CSV type catalog; mirrors BIM's type-catalog pattern. |
 | `clash-rule-pack` | `clash.read`, `clash.write`, `authoring.read`, `ifc.read` | Registers three custom clash scenarios: hard clearance, soft clearance, duplicate detection. |
 | `element-counter` | `authoring.read`, `selection.read`, `ui.panel` | Dockable panel that live-updates as the user authors elements. |
 

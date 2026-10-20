@@ -450,7 +450,7 @@ export function setupBimParityBridge(): void {
   hookVisibility();
   void registerCommands();
 
-  (ctx.features as Any).revitParity = {
+  (ctx.features as Any).bimParity = {
     placeStair,
     placeRailing,
     placeCurtainWall,
@@ -458,7 +458,7 @@ export function setupBimParityBridge(): void {
     matchPropertiesApply,
     createSimilar,
   };
-  (window as Any).__obsBimParity = (ctx.features as Any).revitParity;
+  (window as Any).__obsBimParity = (ctx.features as Any).bimParity;
 
   console.log("[bim-parity-bridge] ready");
 }

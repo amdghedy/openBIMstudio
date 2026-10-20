@@ -366,7 +366,7 @@ function fixIndexHtmlTitle() {
   const rel = "index.html";
   if (!exists(rel)) { log("SKIP", rel + " (missing)"); return; }
   let s = read(rel);
-  const want = "<title>Open BIM Studio - Professional Revit-style openBIM Platform</title>";
+  const want = "<title>Open BIM Studio - Professional BIM-style openBIM Platform</title>";
   if (s.indexOf(want) >= 0) { log("NOOP", rel + " (already ascii)"); return; }
   const re = /<title>[^<]*<\/title>/;
   if (!re.test(s)) { log("SKIP", rel + " (no <title>)"); return; }

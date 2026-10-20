@@ -1,5 +1,5 @@
 const assert = require("assert");
-const dir = process.env.OUT_DIR || "";            // .../modules/revit-gaps
+const dir = process.env.OUT_DIR || "";            // .../modules/bim-gaps
 const root = dir + "/../..";                       // compiled src root
 let passed = 0;
 async function t(name, fn) { try { await fn(); passed++; console.log("  ok  " + name); } catch (e) { console.log("  FAIL " + name + "\n       " + (e.stack || e.message).split("\n").slice(0, 3).join("\n       ")); process.exitCode = 1; } }
