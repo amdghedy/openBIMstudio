@@ -55,7 +55,7 @@ export type IconName =
   | "dim-aligned" | "dim-linear" | "dim-angular" | "dim-radial" | "arc-length"
   | "spot-elev" | "spot-coord"
   | "detail-line" | "detail-component" | "filled-region" | "masking-region"
-  | "insulation" | "revision-cloud"
+  | "insulation" | "revision-cloud" | "model-curve"
   | "text" | "model-text" | "tag" | "tag-all" | "material-tag" | "symbol" | "color-legend"
   // Reports
   | "report" | "check" | "energy" | "compare" | "schedule" | "quantification"
@@ -63,7 +63,7 @@ export type IconName =
   | "mass" | "mass-floor" | "toposurface" | "building-pad" | "property-line"
   | "site-component" | "parking" | "graded-region" | "subregion" | "split-surface" | "site-settings"
   // System
-| "undo" | "mline" | "modify" | "view"
+  | "undo" | "mline" | "modify" | "view" | "timeline"
     | "system";
 
 const PATHS: Record<IconName, string> = {
@@ -276,6 +276,8 @@ const PATHS: Record<IconName, string> = {
   view: `<path d="M3 12 Q12 4 21 12 Q12 20 3 12 Z"/><circle cx="12" cy="12" r="3"/>`,
 
   system: `<circle cx="12" cy="12" r="3"/><path d="M12 3 V6 M12 18 V21 M3 12 H6 M18 12 H21"/>`,
+  "model-curve": `<path d="M3 12 Q8 8 12 12 Q16 16 21 12" stroke="currentColor" fill="none"/><circle cx="3" cy="12" r="1.5"/><circle cx="21" cy="12" r="1.5"/>`,
+  timeline: `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5 V19 M13 5 V19" stroke-dasharray="2 2"/><path d="M5 9 H7 M11 13 H13 M15 8 H17" stroke-width="2"/>`,
 };
 
 /**

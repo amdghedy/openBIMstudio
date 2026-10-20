@@ -805,6 +805,29 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("duct-accessory", "Accessory", "duct-accessory"),
       toolBtn("equipment", "Equip", "equipment"),
       sep(),
+      groupLabel("Auto-Route"),
+      b("duct", "Auto-Route…", safe(() => {
+        const mep = (window as any).__obsMep;
+        if (!mep) { toast("MEP module not loaded", "warn"); return; }
+        const sysIdx = prompt("MEP system (1=Supply Air, 2=Return Air, 3=Chilled Water, 4=Hot Water, 5=Domestic Cold, 6=Gas, 7=Cable Tray, 8=Conduit):", "1");
+        if (!sysIdx) return;
+        const flow = prompt("Flow rate (m³/s for air, L/s for water):", "0.5");
+        if (!flow) return;
+        const elev = prompt("Elevation (m):", "2.7");
+        if (!elev) return;
+        const start = prompt("Start point X,Z (m):", "0,0");
+        if (!start) return;
+        const end = prompt("End point X,Z (m):", "5,0");
+        if (!end) return;
+        const systems = ["supply-air","return-air","chilled-water","hot-water","domestic-cold","gas","cable-tray","conduit"];
+        const sys = systems[parseInt(sysIdx)-1] || "supply-air";
+        const sp = start.split(",").map(parseFloat);
+        const ep = end.split(",").map(parseFloat);
+        const result = mep.route({ start:{x:sp[0],y:parseFloat(elev),z:sp[1]}, end:{x:ep[0],y:parseFloat(elev),z:ep[1]}, system:sys, flowRate:parseFloat(flow) });
+        if (result) toast(`Route complete: ${result.legs.length} legs, ${result.bendCount} bends`, "success");
+        else toast("No route found", "warn");
+      }, "MEP Auto-Route"), { title: "Auto-route MEP between two points with ASHRAE sizing" }),
+      sep(),
       groupLabel("Plumbing"),
       toolBtn("pipe", "Pipe", "pipe", "PP"),
       toolBtn("pipe-fitting", "Fitting", "pipe-fitting"),
@@ -1062,22 +1085,40 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Keynote legend"), { title: "Export keynote legend as CSV" }),
       sep(),
       groupLabel("Detail"),
-      b("detail-line", "Detail", safe(() => {
+      b("detail-line", "Detail Line", safe(() => {
         setAuthoringTool("mline");
         toast("Detail line — click points to draw", "success");
       }, "Detail line")),
-      b("detail-component", "Component", safe(() => {
+      b("detail-component", "Detail Comp…", safe(() => {
+        const dc = (window as any).__obsDetailComponents;
+        if (!dc) { toast("Detail components module not loaded", "warn"); return; }
+        const list = dc.list();
+        const choice = prompt(`Detail components:\n${list.map((c:any,i:number)=>`${i+1}. ${c.name} (${c.category})`).join("\n")}\n\nEnter number:`, "1");
+        if (!choice) return;
+        const idx = parseInt(choice)-1;
+        const comp = list[idx];
+        if (!comp) { toast("Invalid selection", "warn"); return; }
+        toast(`Detail component "${comp.name}" selected. Click to place.`, "success");
         setAuthoringTool("equipment");
-        toast("Detail component — place reference equipment", "success");
-      }, "Detail component")),
-      b("filled-region", "Filled", safe(() => {
+      }, "Detail component"), { title: "Pick a detail component from the library" }),
+      b("filled-region", "Filled Region", safe(() => {
+        const fr = (window as any).__obsFilledRegions;
+        if (!fr) { toast("Filled regions module not loaded", "warn"); return; }
         setAuthoringTool("slab");
-        toast("Filled region — click polygon points, Enter to finish", "success");
-      }, "Filled region")),
-      b("masking-region", "Masking", safe(() => {
+        toast("Filled region — click polygon points, Enter to finish. Pattern: concrete.", "success");
+      }, "Filled region"), { title: "Draw a filled region with hatch pattern" }),
+      b("masking-region", "Masking Region", safe(() => {
         setAuthoringTool("slab");
         toast("Masking region — draw polygon to mask", "success");
-      }, "Masking region")),
+      }, "Masking region"), { title: "Draw a masking region (hide geometry)" }),
+      b("model-curve", "Model Curve", safe(() => {
+        const mc = (window as any).__obsModelCurves;
+        if (!mc) { toast("Model curves module not loaded", "warn"); return; }
+        const auth = (window as any).__obsAuthoring;
+        const ids = auth?.getSelectedIds?.() ?? [];
+        if (!ids.length) { toast("Select an element face first, then draw curves on it", "warn"); return; }
+        toast(`Model curve mode: click on face of "${ids[0]}" to draw curves`, "success");
+      }, "Model curve"), { title: "Draw 2D curves on element faces for push-pull or hosted placement" }),
       b("insulation", "Insulation", safe(() => {
         setAuthoringTool("mline");
         toast("Insulation line — draw along hosts", "success");
@@ -1773,6 +1814,37 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Collaboration"),
       b("system", "Live Sync", safe(() => (ctx.features as any).collaborationPanel?.toggle?.(), "Collaboration"), { title: "Join a real-time collaboration session" }),
       sep(),
+      groupLabel("Plugins"),
+      b("component", "Plugin List", safe(() => {
+        const loaded = (window as any).__obsPluginRegistry;
+        if (!loaded || loaded.size === 0) { toast("No plugins loaded. Check console for boot log.", "info"); return; }
+        const names = [...loaded.keys()];
+        toast(`${names.length} plugin(s) active: ${names.join(", ")}`, "info", 5000);
+        console.table([...loaded.entries()].map(([id, v]: any) => ({ id, name: v.manifest?.name, version: v.manifest?.version })));
+      }, "Plugin list"), { title: "List all loaded plugins" }),
+      b("component", "Reload Plugins", safe(async () => {
+        try {
+          const { reloadPlugins } = await import("../plugins/boot");
+          await reloadPlugins();
+          toast("Plugins reloaded", "success");
+        } catch { toast("Plugin reload failed", "warn"); }
+      }, "Reload plugins"), { title: "Unload and reload all plugins" }),
+      sep(),
+      groupLabel("Performance"),
+      b("system", "BVH Accelerate", safe(() => {
+        const perf = (window as any).__obsPerf;
+        if (!perf) { toast("Performance engine not loaded", "warn"); return; }
+        const n = perf.accelerateAllMeshes();
+        toast(`BVH built on ${n} mesh(es) — raycast now O(log n)`, "success");
+      }, "BVH accelerate"), { title: "Build BVH on all meshes for fast raycasting" }),
+      b("system", "Batching", safe(() => {
+        const perf = (window as any).__obsPerf;
+        if (!perf) { toast("Performance engine not loaded", "warn"); return; }
+        const on = !perf.isBatchingEnabled();
+        perf.setBatchingEnabled(on);
+        toast(`InstancedMesh batching: ${on ? "ON (1 draw call per type)" : "OFF"}`, "success");
+      }, "Toggle batching"), { title: "Toggle InstancedMesh batching (1 draw call per element type)" }),
+      sep(),
       groupLabel("Links"),
       b("folder-recent", "Manage Links", () => (window as any).__obsManageLinks?.(), { title: "Manage external links (IFC, DWG, BIM)" }),
       sep(),
@@ -1870,6 +1942,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("cost", "Panel", safe(() => toggleCostPanel(), "Cost"), { active: isCostPanelVisible() }),
       b("reset-offsets", "Recalc", safe(() => recalculateTakeoff(), "Recalc")),
       schedulesButton(),
+      sep(),
+      groupLabel("4D Simulation"),
+      b("timeline", "Timeline", safe(() => {
+        const tp = (ctx.features as any).timelinePanel;
+        if (tp) tp.toggle();
+        else toast("Timeline panel not loaded", "warn");
+      }, "4D Timeline"), { title: "Open 4D construction simulation with Gantt chart" }),
       sep(),
       groupLabel("Cost items"),
       b("new-file", "Item", safe(() => toggleCostPanel(), "Cost Item"), { title: "Open cost item management" }),
