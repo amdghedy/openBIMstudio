@@ -755,6 +755,29 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("delete", "Delete", safe(() => deleteSelectedElement(), "Delete"), { kbd: "Del" }),
       b("clear", "Clear", safe(() => clearAllElements(), "Clear")),
       sep(),
+      groupLabel("Massing"),
+      b("mass", "In-Place Mass", safe(() => {
+        const mc = (window as any).__obsMass;
+        if (!mc) { toast("Mass module not loaded", "warn"); return; }
+        const w = prompt("Mass width (m):", "5");
+        const h = prompt("Mass height (m):", "10");
+        if (!w || !h) return;
+        const poly: Array<[number, number]> = [[0,0],[parseFloat(w),0],[parseFloat(w),parseFloat(w)],[0,parseFloat(w)]];
+        const m = mc.create(poly, parseFloat(h), `Mass ${mc.list().length + 1}`);
+        toast(`Created "${m.name}": ${parseFloat(w)}×${parseFloat(w)}×${h}m, area=${parseFloat(w)*parseFloat(w)}m²`, "success");
+      }, "In-place mass"), { title: "Create a conceptual mass element (extruded polygon)" }),
+      b("mass", "Mass Floors", safe(() => {
+        const mc = (window as any).__obsMass;
+        if (!mc) { toast("Mass module not loaded", "warn"); return; }
+        const masses = mc.list();
+        if (!masses.length) { toast("No masses created yet", "info"); return; }
+        for (const m of masses) {
+          const floors = mc.getFloors(m.id);
+          if (floors.length) console.table(floors);
+        }
+        toast(`${masses.length} mass(es) — see console for floor areas`, "info");
+      }, "Mass floors"), { title: "Extract mass floor areas from conceptual masses" }),
+      sep(),
       groupLabel("Properties"),
       propertiesButton(),
     ],
@@ -980,6 +1003,26 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         if (!isPlanViewVisible()) togglePlanView();
         toast(`Color fill enabled: ${choice}. Open Plan View to see rooms colored.`, "success");
       }, "Color fill"), { title: "Color fill plan — color rooms by department/occupancy/area type" }),
+      b("sun", "Sun Settings", safe(() => {
+        const sun = (window as any).__obsSun;
+        if (!sun) { toast("Sun settings module not loaded", "warn"); return; }
+        const s = sun.get();
+        const date = prompt("Date (YYYY-MM-DD):", s.date);
+        if (!date) return;
+        const time = prompt("Time (HH:MM, 24h):", s.time);
+        if (!time) return;
+        const lat = prompt("Latitude:", String(s.latitude));
+        if (!lat) return;
+        sun.set({ date, time, latitude: parseFloat(lat), enabled: true });
+        toast(`Sun set to ${date} ${time} at lat ${lat}°`, "success");
+      }, "Sun settings"), { title: "Configure sun position + shadows for solar study" }),
+      b("sun", "Shadows", safe(() => {
+        const sun = (window as any).__obsSun;
+        if (!sun) { toast("Sun settings not loaded", "warn"); return; }
+        const s = sun.get();
+        sun.set({ enabled: !s.enabled });
+        toast(`Shadows: ${!s.enabled ? "ON" : "OFF"}`, "success");
+      }, "Shadows"), { title: "Toggle sun shadows on/off" }),
       sep(),
       groupLabel("Views"),
       planButton(),
@@ -992,6 +1035,25 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     id: "annotate",
     label: "Annotate",
     items: () => [
+      groupLabel("Graphics"),
+      b("dim-linear", "Line Weights", safe(() => {
+        const lw = (window as any).__obsLineWeights;
+        if (!lw) { toast("Line weights module not loaded", "warn"); return; }
+        const list = lw.list();
+        const text = list.map((r: any) => `${r.elementType}: ${r.widthMm}mm ${r.color}`).join("\n");
+        toast(`${list.length} line weight rules. See console.`, "info");
+        console.table(list);
+      }, "Line weights"), { title: "View line weight assignments per element type" }),
+      b("grid", "Grid Bubbles", safe(() => {
+        const gb = (window as any).__obsGridBubbles;
+        if (!gb) { toast("Grid bubbles module not loaded", "warn"); return; }
+        const grids = gb.getGrids();
+        const levels = gb.getLevels();
+        toast(`${grids.length} grid bubble(s), ${levels.length} level marker(s). See console.`, "info");
+        console.table(grids);
+        console.table(levels);
+      }, "Grid bubbles"), { title: "View grid bubbles and level markers" }),
+      sep(),
       groupLabel("Dimension"),
       b("dim-aligned", "Aligned", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
@@ -1844,6 +1906,43 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         perf.setBatchingEnabled(on);
         toast(`InstancedMesh batching: ${on ? "ON (1 draw call per type)" : "OFF"}`, "success");
       }, "Toggle batching"), { title: "Toggle InstancedMesh batching (1 draw call per element type)" }),
+      sep(),
+      groupLabel("Analysis"),
+      b("connection", "Analytical", safe(() => {
+        const am = (window as any).__obsAnalytical;
+        if (!am) { toast("Analytical model not loaded", "warn"); return; }
+        const nodes = am.getNodes();
+        const members = am.getMembers();
+        toast(`Analytical model: ${nodes.length} nodes, ${members.length} members. See console.`, "info");
+        console.table(nodes);
+        console.table(members);
+      }, "Analytical model"), { title: "View structural analytical model (FEM nodes + members)" }),
+      b("energy", "Energy", safe(() => {
+        const en = (window as any).__obsEnergy;
+        if (!en) { toast("Energy analysis not loaded", "warn"); return; }
+        toast("Energy analysis ready. Use __obsEnergy.computeHeatLoss(zone) or exportGbXML(zones).", "info", 5000);
+      }, "Energy analysis"), { title: "Energy analysis: heat loss, solar gain, gbXML export" }),
+      sep(),
+      groupLabel("Marketplace"),
+      b("component", "Browse Plugins", safe(() => {
+        const mp = (window as any).__obsMarketplace;
+        if (!mp) { toast("Marketplace not loaded", "warn"); return; }
+        const list = mp.list();
+        console.table(list);
+        toast(`${list.length} plugins available. See console.`, "info");
+      }, "Browse marketplace"), { title: "Browse plugin marketplace" }),
+      b("component", "Install Plugin", safe(async () => {
+        const mp = (window as any).__obsMarketplace;
+        if (!mp) { toast("Marketplace not loaded", "warn"); return; }
+        const list = mp.list();
+        const choice = prompt(`Available plugins:\n${list.map((p:any,i:number)=>`${i+1}. ${p.name} (v${p.version}, ${p.downloads} downloads)`).join("\n")}\n\nEnter number:`, "1");
+        if (!choice) return;
+        const entry = list[parseInt(choice)-1];
+        if (!entry) { toast("Invalid selection", "warn"); return; }
+        toast(`Installing "${entry.name}"…`, "info");
+        const ok = await mp.install(entry.id);
+        toast(ok ? `"${entry.name}" installed successfully!` : `Install failed for "${entry.name}"`, ok ? "success" : "error");
+      }, "Install plugin"), { title: "Install a plugin from the marketplace" }),
       sep(),
       groupLabel("Links"),
       b("folder-recent", "Manage Links", () => (window as any).__obsManageLinks?.(), { title: "Manage external links (IFC, DWG, BIM)" }),

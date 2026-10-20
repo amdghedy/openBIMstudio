@@ -63,7 +63,7 @@ export type IconName =
   | "mass" | "mass-floor" | "toposurface" | "building-pad" | "property-line"
   | "site-component" | "parking" | "graded-region" | "subregion" | "split-surface" | "site-settings"
   // System
-  | "undo" | "mline" | "modify" | "view" | "timeline"
+  | "undo" | "mline" | "modify" | "view" | "timeline" | "sun" | "connection"
     | "system";
 
 const PATHS: Record<IconName, string> = {
@@ -278,6 +278,7 @@ const PATHS: Record<IconName, string> = {
   system: `<circle cx="12" cy="12" r="3"/><path d="M12 3 V6 M12 18 V21 M3 12 H6 M18 12 H21"/>`,
   "model-curve": `<path d="M3 12 Q8 8 12 12 Q16 16 21 12" stroke="currentColor" fill="none"/><circle cx="3" cy="12" r="1.5"/><circle cx="21" cy="12" r="1.5"/>`,
   timeline: `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5 V19 M13 5 V19" stroke-dasharray="2 2"/><path d="M5 9 H7 M11 13 H13 M15 8 H17" stroke-width="2"/>`,
+  sun: `<circle cx="12" cy="12" r="4"/><path d="M12 2 V5 M12 19 V22 M2 12 H5 M19 12 H22 M5 5 L7 7 M17 17 L19 19 M5 19 L7 17 M17 7 L19 5"/>`,
 };
 
 /**

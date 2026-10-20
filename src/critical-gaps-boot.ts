@@ -194,6 +194,48 @@ async function runOnce(): Promise<void> {
     m.setupRevitImport?.();
   });
 
+  // Sun settings & shadows (solar study)
+  await safe("sun-settings", async () => {
+    const m: Any = await import("./modules/sun-settings");
+    m.setupSunSettings?.();
+  });
+
+  // Line weights by element type
+  await safe("line-weights", async () => {
+    const m: Any = await import("./modules/line-weights");
+    m.setupLineWeights?.();
+  });
+
+  // Grid bubbles & level markers in views
+  await safe("grid-bubbles", async () => {
+    const m: Any = await import("./modules/grid-bubbles");
+    m.setupGridBubbles?.();
+  });
+
+  // In-place mass / freeform (conceptual massing)
+  await safe("in-place-mass", async () => {
+    const m: Any = await import("./modules/in-place-mass");
+    m.setupInPlaceMass?.();
+  });
+
+  // Structural analytical model (FEM nodes + members + loads)
+  await safe("analytical-model", async () => {
+    const m: Any = await import("./modules/analytical-model");
+    m.setupAnalyticalModel?.();
+  });
+
+  // Energy analysis (heat loss, solar gain, gbXML export)
+  await safe("energy-analysis", async () => {
+    const m: Any = await import("./modules/energy-analysis");
+    m.setupEnergyAnalysis?.();
+  });
+
+  // Plugin marketplace registry
+  await safe("plugin-marketplace", async () => {
+    const m: Any = await import("./modules/plugin-marketplace");
+    m.setupPluginMarketplace?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");
