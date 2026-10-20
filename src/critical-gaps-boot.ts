@@ -236,6 +236,30 @@ async function runOnce(): Promise<void> {
     m.setupPluginMarketplace?.();
   });
 
+  // Project base point & survey point (shared coordinates)
+  await safe("project-base-point", async () => {
+    const m: Any = await import("./modules/project-base-point");
+    m.setupProjectBasePoint?.();
+  });
+
+  // DWG linking (live CAD references)
+  await safe("dwg-linking", async () => {
+    const m: Any = await import("./modules/dwg-linking");
+    m.setupDwgLinking?.();
+  });
+
+  // Model groups (group + reuse elements)
+  await safe("model-groups", async () => {
+    const m: Any = await import("./modules/model-groups");
+    m.setupModelGroups?.();
+  });
+
+  // Work planes (set active sketch plane for modeling)
+  await safe("work-planes", async () => {
+    const m: Any = await import("./modules/work-planes");
+    m.setupWorkPlanes?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");

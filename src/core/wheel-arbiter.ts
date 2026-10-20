@@ -362,7 +362,7 @@ function onWheel(e: WheelEvent): void {
 export function lockControlsWheel(): void {
   try {
     const controls = getControls();
-    const ACTION = controls?.constructor?.ACTION || (w() as Any).CameraControls?.ACTION;
+    const ACTION = (controls?.constructor as any)?.ACTION || (w() as Any).CameraControls?.ACTION;
     const NONE = ACTION?.NONE ?? 0;
     const mb = controls?.mouseButtons;
     if (!mb) return;
