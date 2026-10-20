@@ -1918,6 +1918,23 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         (window as any).__obsCropRegion?.setActive?.("plan-view-1");
         toast("Crop region set to 100×100 m around origin", "success");
       }, "Size 100m"), { title: "Set crop region to 100×100 m around origin" }),
+      sep(),
+      groupLabel("Selection"),
+      b("section-box", "Sel. Box", safe(() => {
+        (window as any).__obsSelectionBox?.show?.({ padding: 0.5 });
+      }, "Selection box"), { title: "Wrap a 3D section box tightly around the selected element(s)" }),
+      b("crop", "Crop to Sel", safe(() => {
+        (window as any).__obsSelectionBox?.cropTo?.({ padding: 1.0 });
+      }, "Crop to selection"), { title: "Auto-fit the 2D crop region of the active plan view to the selected element(s)" }),
+      b("fit", "Zoom Sel", safe(() => {
+        (window as any).__obsSelectionBox?.zoom?.();
+      }, "Zoom to selection"), { title: "Fit camera frustum to selected element(s)" }),
+      b("isolate", "Isolate", safe(() => {
+        (window as any).__obsSelectionBox?.isolate?.();
+      }, "Isolate"), { title: "Hide everything except the selected element(s)" }),
+      b("isolate", "Reset Iso", safe(() => {
+        (window as any).__obsSelectionBox?.resetIsolation?.();
+      }, "Reset isolation"), { title: "Restore all hidden elements" }),
       b("view", "Dependent", safe(() => {
         (window as any).__obsDependentViews?.create?.("primary-view-1", { name: "Dependent View 1" });
         toast("Dependent view created from primary", "success");
