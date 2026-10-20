@@ -66,11 +66,41 @@ export interface TextNote {
   color: string;
   rotation: number;
   anchor: "start" | "middle" | "end";
+  /** Leader: arrow from the text to a target point. */
+  leader?: boolean;
+  /** Target point for the leader arrow (world x, z). */
+  leaderTarget?: [number, number];
+  /** Leader line shape. */
+  leaderShape?: "straight" | "curved" | "elbow";
+  /** Optional arrowhead at the target end. */
+  arrowhead?: boolean;
+}
+
+/** Section callout mark — appears on a plan view indicating a section cut.
+ *  Shows an arrow direction + section ID label (e.g. "Section A-A").
+ */
+export interface SectionCallout {
+  id: string;
+  viewId: string;
+  /** Cut line start point (world x, z). */
+  start: [number, number];
+  /** Cut line end point (world x, z). */
+  end: [number, number];
+  /** Direction the section looks toward: "left" or "right" of the cut line. */
+  direction: "left" | "right";
+  /** Section label (e.g. "A", "B", "1", "2"). */
+  label: string;
+  /** Optional: linked section view ID (for clickable navigation). */
+  linkedViewId?: string;
+  /** Display color. */
+  color: string;
+  createdAt: number;
 }
 
 const dimensionsByView = new Map<string, Dimension[]>();
 const tagsByView = new Map<string, Tag[]>();
 const notesByView = new Map<string, TextNote[]>();
+const calloutsByView = new Map<string, SectionCallout[]>();
 
 export function getDimensions(viewId: string): Dimension[] { return dimensionsByView.get(viewId) ?? []; }
 
@@ -146,4 +176,44 @@ export function addNote(n: TextNote): TextNote {
   arr.push(n);
   notesByView.set(n.viewId, arr);
   return n;
+}
+
+// ─── Section callouts ──────────────────────────────────────────────────
+
+export function getCallouts(viewId: string): SectionCallout[] {
+  return calloutsByView.get(viewId) ?? [];
+}
+
+export function setCallouts(viewId: string, arr: SectionCallout[]): void {
+  if (arr.length) calloutsByView.set(viewId, arr.slice());
+  else calloutsByView.delete(viewId);
+}
+
+export function addCallout(c: SectionCallout): SectionCallout {
+  const arr = calloutsByView.get(c.viewId) ?? [];
+  arr.push(c);
+  calloutsByView.set(c.viewId, arr);
+  return c;
+}
+
+export function removeCallout(viewId: string, id: string): void {
+  const arr = calloutsByView.get(viewId);
+  if (!arr) return;
+  calloutsByView.set(viewId, arr.filter((c) => c.id !== id));
+}
+
+export function updateCallout(viewId: string, id: string, patch: Partial<SectionCallout>): boolean {
+  const arr = calloutsByView.get(viewId);
+  if (!arr) return false;
+  const i = arr.findIndex((c) => c.id === id);
+  if (i < 0) return false;
+  arr[i] = { ...arr[i], ...patch };
+  return true;
+}
+
+/** Generate the next section label letter: A, B, C, ..., Z, AA, AB, ... */
+export function nextCalloutLabel(viewId: string): string {
+  const count = getCallouts(viewId).length;
+  if (count < 26) return String.fromCharCode(65 + count); // A-Z
+  return String.fromCharCode(65) + String.fromCharCode(65 + count - 26); // AA, AB, ...
 }
