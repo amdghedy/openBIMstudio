@@ -65,7 +65,7 @@ export function registerM2Schemas(): void {
   const S = SCHEMAS as Any;
   S.stairs = schema("stairs" as never, "Stair", "stairs", [
     num("height", "Total rise", D, 0.05, 0.3), num("width", "Run width", D, 0.05, 0.5), elev(),
-    sel("stairShape", "Shape", K, [["straight", "Straight run"], ["L", "L-shape (quarter turn)"], ["U", "U-shape (half turn)"]], "straight"),
+    sel("stairShape", "Shape", K, [["straight", "Straight run"], ["L", "L-shape (quarter turn)"], ["U", "U-shape (half turn)"], ["winder", "Winder (tapered corner)"], ["spiral", "Spiral (helical)"]], "straight"),
     sel("stairTurn", "Turn direction", K, [["left", "Left"], ["right", "Right"]], "left"),
     prop("maxRiser", "Max riser height", K, 0.005, 0.1, 0.25, "m", 0.175), prop("waist", "Waist thickness", K, 0.01, 0, 0.5, "m", 0.12),
     prop("run2", "Second flight length", K, 0.1, 0.5, undefined, "m"), prop("gap", "Gap between flights (U)", K, 0.05, 0, 1, "m", 0.1),

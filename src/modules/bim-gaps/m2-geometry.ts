@@ -191,8 +191,12 @@ function extrudeProfile(profile: Vec2[], origin: V3, dir: Vec2, lat: Vec2, width
 
 export interface StairParams {
   start: Vec2; end: Vec2; width: number; totalRise: number; elevation: number;
-  shape?: "straight" | "L" | "U"; turn?: "left" | "right"; maxRiser?: number;
+  shape?: "straight" | "L" | "U" | "winder" | "spiral"; turn?: "left" | "right"; maxRiser?: number;
   waist?: number; landingThickness?: number; run2?: number; gap?: number; color?: string;
+  /** Spiral only: inner radius (the central column). Default 0.1 m. */
+  innerRadius?: number;
+  /** Spiral only: number of full 360-degree turns. Default 1. */
+  spiralTurns?: number;
 }
 
 /**
@@ -268,7 +272,244 @@ export function stairLayout(p: StairParams): StairLayout {
   return { n, riserHeight: rh, width: w, flights, landings, info };
 }
 
+/**
+ * Winder stair: an L-shaped stair where the corner is filled with
+ * tapered treads (winders) instead of a flat landing. Each winder is
+ * wider at the outer edge and narrower at the inner pivot, allowing
+ * the stair to turn 90 degrees while continuing to rise.
+ *
+ * Layout: first flight goes straight for `L1` metres, then a series
+ * of (default 3) winders fill the corner, then a second flight
+ * continues for `L2` metres in the turn direction.
+ *
+ * The winders are generated as triangular wedges that fan out from
+ * the inner pivot point. Each winder's top is a horizontal slice at
+ * its riser height; the bottom is the previous winder's top. This
+ * produces a watertight solid.
+ *
+ * Compliance: building codes typically require winder treads to be
+ * at least 250 mm deep at the narrow end (measured 270 mm from the
+ * inner pivot). The geometry here does NOT enforce this — the user
+ * must size the stair appropriately. A future PR could add a
+ * compliance check to the info block.
+ */
+export function buildWinderStair(p: StairParams): GeoResult {
+  const dx = p.end[0] - p.start[0], dz = p.end[1] - p.start[1];
+  const L1 = Math.hypot(dx, dz);
+  if (L1 < 0.3) throw new Error("winder stair run is shorter than 0.3 m");
+  if (!(p.width > 0.1)) throw new Error("stair width must be > 0.1 m");
+  if (!(p.totalRise > 0.05)) throw new Error("stair rise must be > 0.05 m");
+
+  const dir: Vec2 = [dx / L1, dz / L1];
+  const leftPerp: Vec2 = [dir[1], -dir[0]];
+  const rightPerp: Vec2 = [-dir[1], dir[0]];
+  const turnDir = (p.turn ?? "left") === "left" ? leftPerp : rightPerp;
+  const w = p.width;
+  const maxRiser = p.maxRiser ?? 0.175;
+  const n = Math.max(6, Math.ceil(p.totalRise / maxRiser - 1e-9));
+  const rh = p.totalRise / n;
+  const waist = Math.max(0, p.waist ?? 0.12);
+
+  // Split risers: 40% first flight, 20% winders, 40% second flight.
+  const n1 = Math.max(2, Math.floor(n * 0.4));
+  const nWinders = Math.max(3, Math.floor(n * 0.2));
+  const n2 = Math.max(2, n - n1 - nWinders);
+
+  const L2 = Math.max(0.3, p.run2 ?? L1);
+  const soup = new Soup();
+
+  // Helper: extrude a flight profile (same as buildStair).
+  const at = (u: number, s: number, latDir: Vec2): Vec2 => [
+    p.start[0] + dir[0] * u + latDir[0] * s,
+    p.start[1] + dir[1] * u + latDir[1] * s,
+  ];
+
+  // Flight 1: straight from start along dir for L1 metres, n1 risers.
+  extrudeProfile(
+    flightProfile(n1, L1, rh, waist),
+    [p.start[0], p.elevation, p.start[1]],
+    dir, [dir[1], -dir[0]], w, soup,
+  );
+
+  // Winders: triangular wedges fanning out from the inner pivot.
+  // The pivot is at the inner corner: (L1, ±w/2) depending on turn direction.
+  // sign: +1 for left turn (pivot on left), -1 for right turn.
+  const sign = (p.turn ?? "left") === "left" ? 1 : -1;
+  const pivot: Vec2 = [p.start[0] + dir[0] * L1 + turnDir[0] * (sign * w / 2),
+                       p.start[1] + dir[1] * L1 + turnDir[1] * (sign * w / 2)];
+  // Outer corner: opposite the pivot.
+  const outer: Vec2 = [p.start[0] + dir[0] * L1 - turnDir[0] * (sign * w / 2),
+                       p.start[1] + dir[1] * L1 - turnDir[1] * (sign * w / 2)];
+
+  // The winders span 90 degrees of arc, divided into nWinders slices.
+  // Each winder goes from angle a0 to a1 (measured from the pivot).
+  // Angle 0 = along the first flight direction (back toward start);
+  // Angle 90 = along the second flight direction (forward in turnDir).
+  // Each winder's top is at h0 + i * rh; bottom is h0 + (i-1) * rh.
+  const h0 = n1 * rh;
+  for (let i = 0; i < nWinders; i++) {
+    const a0 = (i / nWinders) * (Math.PI / 2);
+    const a1 = ((i + 1) / nWinders) * (Math.PI / 2);
+    const yTop = p.elevation + h0 + (i + 1) * rh;
+    const yBot = p.elevation + h0 + i * rh;
+
+    // The winder polygon has 4 corners: inner-at-a0, outer-at-a0, outer-at-a1, inner-at-a1.
+    // Inner radius = 0 (at pivot); outer radius = distance from pivot to outer corner.
+    // Actually, for a proper winder, the inner edge has a small radius (the "waist").
+    const innerR = 0.02; // 20 mm inner radius to avoid degenerate triangles
+    const outerR = Math.hypot(outer[0] - pivot[0], outer[1] - pivot[1]);
+
+    // Compute the 4 corners in world (x, z) plan.
+    // Direction from pivot to outer corner:
+    const toOuter: Vec2 = [
+      (outer[0] - pivot[0]) / (outerR || 1),
+      (outer[1] - pivot[1]) / (outerR || 1),
+    ];
+    // Perpendicular to toOuter (rotate 90 deg in the turn direction):
+    const perp: Vec2 = sign > 0 ? [-toOuter[1], toOuter[0]] : [toOuter[1], -toOuter[0]];
+
+    // a0 direction: rotate toOuter by -a0 (toward first flight).
+    // a1 direction: rotate toOuter by -a1 (toward second flight).
+    const cos0 = Math.cos(-a0 + Math.PI / 2), sin0 = Math.sin(-a0 + Math.PI / 2);
+    const cos1 = Math.cos(-a1 + Math.PI / 2), sin1 = Math.sin(-a1 + Math.PI / 2);
+
+    // Rotate toOuter by angle around pivot.
+    const dir0: Vec2 = [
+      toOuter[0] * cos0 - toOuter[1] * sin0,
+      toOuter[0] * sin0 + toOuter[1] * cos0,
+    ];
+    const dir1: Vec2 = [
+      toOuter[0] * cos1 - toOuter[1] * sin1,
+      toOuter[0] * sin1 + toOuter[1] * cos1,
+    ];
+
+    const inner0: Vec2 = [pivot[0] + dir0[0] * innerR, pivot[1] + dir0[1] * innerR];
+    const outer0: Vec2 = [pivot[0] + dir0[0] * outerR, pivot[1] + dir0[1] * outerR];
+    const inner1: Vec2 = [pivot[0] + dir1[0] * innerR, pivot[1] + dir1[1] * innerR];
+    const outer1: Vec2 = [pivot[0] + dir1[0] * outerR, pivot[1] + dir1[1] * outerR];
+
+    // Build the winder as a prism: 4 corners at top + 4 at bottom.
+    const poly: Vec2[] = [inner0, outer0, outer1, inner1];
+    prismPlan(poly, yBot, yTop, soup);
+  }
+
+  // Flight 2: straight from the end of the winders along turnDir for L2 metres, n2 risers.
+  const flight2Start: Vec2 = [
+    pivot[0] + turnDir[0] * (w / 2 + L2 * 0) + dir[0] * 0,
+    pivot[1] + turnDir[1] * (w / 2 + L2 * 0) + dir[1] * 0,
+  ];
+  // Actually, the second flight starts at the outer corner of the winder
+  // and continues in the turnDir direction.
+  const flight2Origin: Vec2 = outer;
+  const h2 = h0 + nWinders * rh;
+  extrudeProfile(
+    flightProfile(n2, L2, rh, waist),
+    [flight2Origin[0], p.elevation + h2, flight2Origin[1]],
+    turnDir, [turnDir[1], -turnDir[0]], w, soup,
+  );
+
+  return {
+    parts: [{ positions: soup.p, color: p.color ?? "#b8b2a7", role: "solid", name: "Winder Stair" }],
+    info: {
+      risers: n, riserHeight: rh, totalRise: p.totalRise,
+      flights: 2, winderCount: nWinders,
+      treadDepth: L1 / n1, treadDepth2: L2 / n2,
+      pitchDeg: (Math.atan2(rh, L1 / n1) * 180) / Math.PI,
+      compliant: rh <= 0.19 + 1e-9 && (L1 / n1) >= 0.25 - 1e-9,
+      stairShape: "winder",
+    },
+  };
+}
+
+/**
+ * Spiral stair: a helical stair that wraps around a central column.
+ * The treads fan out from the inner radius to the outer radius,
+ * each at a progressively higher elevation. No landings needed —
+ * the stair turns continuously.
+ *
+ * Layout: the stair center is at `p.start`. The total rise is
+ * distributed over `spiralTurns` full 360-degree rotations. Each
+ * tread spans an angular slice (360 / n degrees) and rises by
+ * `totalRise / n` metres.
+ *
+ * The geometry is a series of wedge prisms, each from angle a0 to a1
+ * and from inner radius to outer radius, with top at h0+i*rh and
+ * bottom at h0+(i-1)*rh.
+ *
+ * Compliance: spiral stairs are generally not permitted as primary
+ * egress in residential codes but are common for secondary access
+ * (attics, lofts). Minimum tread depth at 270 mm from the inner
+ * pivot should be >= 190 mm (UK) or >= 7.5 in (US). Not enforced here.
+ */
+export function buildSpiralStair(p: StairParams): GeoResult {
+  if (!(p.width > 0.1)) throw new Error("spiral stair width must be > 0.1 m");
+  if (!(p.totalRise > 0.05)) throw new Error("stair rise must be > 0.05 m");
+
+  const innerR = Math.max(0.05, p.innerRadius ?? 0.1);
+  const outerR = innerR + p.width;
+  const turns = Math.max(0.5, p.spiralTurns ?? 1);
+  const maxRiser = p.maxRiser ?? 0.2; // spirals allow slightly taller risers
+  const totalAngle = turns * Math.PI * 2;
+  // Number of treads: total rise / max riser, at least 6.
+  const n = Math.max(6, Math.ceil(p.totalRise / maxRiser - 1e-9));
+  const rh = p.totalRise / n;
+  const center: Vec2 = p.start;
+  const soup = new Soup();
+
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * totalAngle;
+    const a1 = ((i + 1) / n) * totalAngle;
+    const yTop = p.elevation + (i + 1) * rh;
+    const yBot = p.elevation + i * rh;
+
+    // 4 corners of the wedge: inner-a0, outer-a0, outer-a1, inner-a1.
+    const inner0: Vec2 = [center[0] + innerR * Math.cos(a0), center[1] + innerR * Math.sin(a0)];
+    const outer0: Vec2 = [center[0] + outerR * Math.cos(a0), center[1] + outerR * Math.sin(a0)];
+    const outer1: Vec2 = [center[0] + outerR * Math.cos(a1), center[1] + outerR * Math.sin(a1)];
+    const inner1: Vec2 = [center[0] + innerR * Math.cos(a1), center[1] + innerR * Math.sin(a1)];
+
+    const poly: Vec2[] = [inner0, outer0, outer1, inner1];
+    prismPlan(poly, yBot, yTop, soup);
+  }
+
+  // Central column: a thin cylinder from elevation to totalRise.
+  const colH = p.totalRise;
+  const colSegs = 12;
+  for (let i = 0; i < colSegs; i++) {
+    const a0 = (i / colSegs) * Math.PI * 2;
+    const a1 = ((i + 1) / colSegs) * Math.PI * 2;
+    const r = innerR * 0.5; // column is half the inner radius
+    // Quad from (cos a0, sin a0) to (cos a1, sin a1) at top and bottom.
+    const x0 = center[0] + r * Math.cos(a0);
+    const z0 = center[1] + r * Math.sin(a0);
+    const x1 = center[0] + r * Math.cos(a1);
+    const z1 = center[1] + r * Math.sin(a1);
+    soup.quad(
+      [x0, p.elevation, z0],
+      [x1, p.elevation, z1],
+      [x1, p.elevation + colH, z1],
+      [x0, p.elevation + colH, z0],
+    );
+  }
+
+  return {
+    parts: [{ positions: soup.p, color: p.color ?? "#b8b2a7", role: "solid", name: "Spiral Stair" }],
+    info: {
+      risers: n, riserHeight: rh, totalRise: p.totalRise,
+      innerRadius: innerR, outerRadius: outerR,
+      turns, totalAngleDeg: (totalAngle * 180) / Math.PI,
+      treadAngle: ((totalAngle / n) * 180) / Math.PI,
+      pitchDeg: (Math.atan2(rh, (outerR - innerR)) * 180) / Math.PI,
+      compliant: rh <= 0.22 + 1e-9, // spirals allow up to 220 mm risers
+      stairShape: "spiral",
+    },
+  };
+}
+
 export function buildStair(p: StairParams): GeoResult {
+  const shape = p.shape ?? "straight";
+  if (shape === "winder") return buildWinderStair(p);
+  if (shape === "spiral") return buildSpiralStair(p);
   const lay = stairLayout(p);
   const waist = Math.max(0, p.waist ?? 0.12);
   const lt = Math.max(0.05, p.landingThickness ?? 0.15);
