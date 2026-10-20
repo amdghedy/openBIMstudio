@@ -70,6 +70,40 @@ function render() {
         <input type="range" min="1" max="100" value="${Math.round(st.speed * 50)}" data-act="speed" />
       </div>
 
+      <div class="obs-timeline__gantt" data-act="gantt">
+        <div class="obs-timeline__gantt-header">
+          <span class="obs-timeline__gantt-label">Gantt</span>
+          <span class="obs-timeline__gantt-axis">
+            ${phases.length > 0 ? phases.map((p) => `<span style="flex:1;text-align:center">${esc(String(p.order + 1))}</span>`).join("") : ""}
+          </span>
+        </div>
+        <div class="obs-timeline__gantt-body" data-act="gantt-body">
+          ${phases.length === 0
+            ? `<div class="obs-timeline__empty">No phases yet.</div>`
+            : phases.map((p) => {
+              const phaseCount = phases.length || 1;
+              const barWidth = 100 / phaseCount;
+              const barLeft = p.order * barWidth;
+              const isBefore = st.progress < p.order / phaseCount;
+              const isAfter = st.progress > (p.order + 1) / phaseCount;
+              const isCurrent = !isBefore && !isAfter;
+              const opacity = isBefore ? "0.35" : isCurrent ? "1" : "0.65";
+              return `
+                <div class="obs-timeline__gantt-row" data-id="${esc(p.id)}">
+                  <span class="obs-timeline__gantt-name">${esc(p.name)}</span>
+                  <div class="obs-timeline__gantt-track">
+                    <div class="obs-timeline__gantt-bar"
+                         style="left:${barLeft}%;width:${barWidth}%;background:${esc(p.color)};opacity:${opacity}"
+                         title="${esc(p.name)} (${p.elementIds.length} elements)">
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          <div class="obs-timeline__gantt-playhead" style="left:${Math.round(st.progress * 100)}%"></div>
+        </div>
+      </div>
+
       <div class="obs-timeline__actions">
         <button type="button" data-act="add">+ Phase</button>
         <button type="button" data-act="defaults">Default phases</button>
@@ -122,6 +156,17 @@ function render() {
         if (act === "scrub") setProgress(Number((el as HTMLInputElement).value) / 1000);
         if (act === "speed") setSpeed(Number((el as HTMLInputElement).value) / 50);
       });
+      return;
+    }
+
+    if (el.tagName === "DIV" && act === "gantt-body") {
+      el.addEventListener("click", ((ev: Event) => {
+        const me = ev as MouseEvent;
+        const rect = (el as HTMLElement).getBoundingClientRect();
+        const x = me.clientX - rect.left;
+        const progress = Math.max(0, Math.min(1, x / rect.width));
+        setProgress(progress);
+      }) as EventListener);
       return;
     }
 
@@ -207,6 +252,37 @@ function ensurePanel() {
     .obs-timeline__pct { width:36px; text-align:right; font-variant-numeric:tabular-nums; }
     .obs-timeline__speed { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:12px; }
     .obs-timeline__speed input { flex:1; }
+    .obs-timeline__gantt {
+      background:#0f172a; border:1px solid #334155; border-radius:8px; padding:8px; margin-bottom:12px;
+    }
+    .obs-timeline__gantt-header {
+      display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:10px; color:#64748b;
+    }
+    .obs-timeline__gantt-label { flex-shrink:0; font-weight:600; width:60px; }
+    .obs-timeline__gantt-axis { flex:1; display:flex; }
+    .obs-timeline__gantt-body {
+      position:relative; min-height:60px; padding:4px 0;
+    }
+    .obs-timeline__gantt-row {
+      display:flex; align-items:center; gap:6px; height:22px; margin-bottom:2px;
+    }
+    .obs-timeline__gantt-name {
+      width:60px; flex-shrink:0; font-size:10px; color:#94a3b8; overflow:hidden;
+      text-overflow:ellipsis; white-space:nowrap;
+    }
+    .obs-timeline__gantt-track {
+      flex:1; position:relative; height:18px; background:#1e293b; border-radius:3px;
+    }
+    .obs-timeline__gantt-bar {
+      position:absolute; top:2px; bottom:2px; border-radius:3px;
+      transition:opacity 0.2s; min-width:8px;
+    }
+    .obs-timeline__gantt-bar:hover { filter:brightness(1.2); }
+    .obs-timeline__gantt-playhead {
+      position:absolute; top:0; bottom:0; width:2px; background:#fbbf24;
+      pointer-events:none; z-index:10; transition:left 0.1s linear;
+      box-shadow:0 0 4px rgba(251,191,36,.5);
+    }
     .obs-timeline__actions { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
     .obs-timeline__actions button, .obs-timeline__transport button {
       background:#334155; border:1px solid #475569; color:#e2e8f0; border-radius:6px;
