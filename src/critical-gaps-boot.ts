@@ -385,6 +385,11 @@ async function runOnce(): Promise<void> {
     m.setupBIMMousePolicy?.();
   });
 
+  // ── v40 module globals ────────────────────────────────────────────────
+  await safe("v40-register", async () => {
+    await import("./modules/v40-register");
+  });
+
   console.log("[critical-gaps-boot] all critical gaps wired");
 }
 

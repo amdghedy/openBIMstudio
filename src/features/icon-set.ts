@@ -64,7 +64,10 @@ export type IconName =
   | "site-component" | "parking" | "graded-region" | "subregion" | "split-surface" | "site-settings"
   // System
   | "undo" | "mline" | "modify" | "view" | "timeline" | "sun" | "connection"
-    | "system";
+    | "system"
+  // v40 additional icons
+  | "bench" | "conn" | "crop" | "fire" | "generative" | "inspect"
+  | "lightpole" | "loads" | "pdf" | "property" | "topo" | "workset";
 
 const PATHS: Record<IconName, string> = {
   // ── App / file ──────────────────────────────────────────────────────
@@ -279,6 +282,20 @@ const PATHS: Record<IconName, string> = {
   "model-curve": `<path d="M3 12 Q8 8 12 12 Q16 16 21 12" stroke="currentColor" fill="none"/><circle cx="3" cy="12" r="1.5"/><circle cx="21" cy="12" r="1.5"/>`,
   timeline: `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5 V19 M13 5 V19" stroke-dasharray="2 2"/><path d="M5 9 H7 M11 13 H13 M15 8 H17" stroke-width="2"/>`,
   sun: `<circle cx="12" cy="12" r="4"/><path d="M12 2 V5 M12 19 V22 M2 12 H5 M19 12 H22 M5 5 L7 7 M17 17 L19 19 M5 19 L7 17 M17 7 L19 5"/>`,
+
+  // ── v40 additions ─────────────────────────────────────────────────────
+  bench: `<path d="M4 12 H20 V14 H4 Z"/><path d="M5 14 V18 M19 14 V18 M9 14 V18 M15 14 V18"/>`,
+  conn: `<circle cx="6" cy="12" r="3"/><circle cx="18" cy="12" r="3"/><path d="M9 12 H15"/>`,
+  crop: `<path d="M5 5 V19 H19 M5 5 H19 V19"/>`,
+  fire: `<path d="M12 3 Q7 8 9 13 Q11 11 11 14 Q11 18 8 19 H16 Q13 18 13 14 Q13 11 15 13 Q17 8 12 3 Z"/>`,
+  generative: `<circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="14" r="2"/><path d="M6 8 V12 Q6 14 8 14 H10 M18 8 V12 Q18 14 16 14 H14" stroke-dasharray="1 1"/>`,
+  inspect: `<circle cx="11" cy="11" r="6"/><path d="M15 15 L20 20"/>`,
+  lightpole: `<circle cx="12" cy="4" r="2"/><path d="M12 6 V18 M8 4 H16"/>`,
+  loads: `<path d="M12 4 V18 M6 8 L12 4 L18 8" stroke-width="2"/><path d="M4 20 H20"/>`,
+  pdf: `<path d="M6 3 H15 L19 7 V21 H6 Z"/><path d="M15 3 V7 H19"/><text x="12" y="17" font-size="6" text-anchor="middle">P</text>`,
+  property: `<path d="M3 10 L12 4 L21 10 V20 H3 Z"/><path d="M9 20 V14 H15 V20"/>`,
+  topo: `<path d="M3 18 L8 12 L12 16 L17 8 L21 14 V20 H3 Z"/><circle cx="8" cy="12" r="0.6"/><circle cx="17" cy="8" r="0.6"/>`,
+  workset: `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9 H21 M9 5 V9 M15 5 V9"/>`,
 };
 
 /**

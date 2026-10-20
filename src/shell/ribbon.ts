@@ -687,6 +687,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("component", "Comp", "equipment"),
       bimObjectStudioButton(),
       toolBtn("ceiling", "Ceiling", "ceiling"),
+      toolBtn("ramp", "Ramp", "ramp", "RM"),
       sep(),
       groupLabel("Openings"),
       toolBtn("door", "Door", "door", "DR"),
@@ -699,6 +700,20 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("level", "Level", "level", "LV"),
       toolBtn("ref-plane", "Ref plane", "ref-plane"),
       levelInput(),
+      sep(),
+      groupLabel("Circulation"),
+      b("stairs", "Stairs", safe(() => {
+        (window as any).__obsStairs?.buildStair?.({});
+        toast("Stairs created (straight run)", "success");
+      }, "Stairs"), { title: "Build a straight-run stair" }),
+      b("stairs", "Winder", safe(() => {
+        (window as any).__obsStairs?.buildStair?.({ runType: "winder" });
+        toast("Winder stair created", "success");
+      }, "Winder"), { title: "Build a winder stair" }),
+      b("stairs", "Spiral", safe(() => {
+        (window as any).__obsStairs?.buildStair?.({ runType: "spiral" });
+        toast("Spiral stair created", "success");
+      }, "Spiral"), { title: "Build a spiral stair" }),
       sep(),
       groupLabel("Direct Modeling"),
       b("move", "Push/Pull", safe(() => {
@@ -801,6 +816,46 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("strip", "Strip", "strip", "SF"),
       toolBtn("slab", "Mat", "slab"),
       toolBtn("pile", "Pile", "pile"),
+      sep(),
+      groupLabel("Connections"),
+      b("conn", "Moment", safe(() => {
+        (window as any).__obsStructuralConnection?.build?.({ type: "moment-flange-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        toast("Moment flange-plate connection placed", "success");
+      }, "Moment connection"), { title: "Moment flange-plate connection" }),
+      b("conn", "Shear", safe(() => {
+        (window as any).__obsStructuralConnection?.build?.({ type: "shear-end-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        toast("Shear end-plate connection placed", "success");
+      }, "Shear connection"), { title: "Shear end-plate connection" }),
+      b("conn", "Base Plate", safe(() => {
+        (window as any).__obsStructuralConnection?.build?.({ type: "base-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        toast("Base-plate connection placed", "success");
+      }, "Base plate"), { title: "Column base-plate connection" }),
+      b("conn", "Cap Plate", safe(() => {
+        (window as any).__obsStructuralConnection?.build?.({ type: "cap-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        toast("Cap-plate connection placed", "success");
+      }, "Cap plate"), { title: "Column cap-plate connection" }),
+      b("conn", "Splice", safe(() => {
+        (window as any).__obsStructuralConnection?.build?.({ type: "splice-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        toast("Splice-plate connection placed", "success");
+      }, "Splice"), { title: "Column-to-column splice-plate connection" }),
+      sep(),
+      groupLabel("Truss Builder"),
+      b("truss", "Pratt", safe(() => {
+        (window as any).__obsTruss?.build?.({ type: "pratt", span: 12, depth: 2, panelCount: 6 });
+        toast("Pratt truss built (12 m span, 6 panels)", "success");
+      }, "Pratt"), { title: "Build a Pratt truss" }),
+      b("truss", "Howe", safe(() => {
+        (window as any).__obsTruss?.build?.({ type: "howe", span: 12, depth: 2, panelCount: 6 });
+        toast("Howe truss built", "success");
+      }, "Howe"), { title: "Build a Howe truss" }),
+      b("truss", "Warren", safe(() => {
+        (window as any).__obsTruss?.build?.({ type: "warren", span: 12, depth: 2, panelCount: 6 });
+        toast("Warren truss built", "success");
+      }, "Warren"), { title: "Build a Warren truss" }),
+      b("truss", "Fink", safe(() => {
+        (window as any).__obsTruss?.build?.({ type: "fink", span: 12, depth: 2, panelCount: 6 });
+        toast("Fink truss built", "success");
+      }, "Fink"), { title: "Build a Fink truss" }),
       sep(),
       groupLabel("Rebar"),
       b("rebar", "Generate Rebar", safe(() => {
@@ -943,6 +998,24 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("toposurface", "Topography", safe(() => linkTopography(), "Topography"), {
         title: "Site mesh (OBJ / STL / PLY / GLB)",
       }),
+      b("pdf", "PDF Underlay", safe(() => {
+        (window as any).__obsPdfUnderlay?.load?.();
+      }, "PDF underlay"), { title: "Load PDF as plan-view raster underlay (snappable)" }),
+      sep(),
+      groupLabel("Fabrication"),
+      b("duct", "Duct Parts", safe(() => {
+        (window as any).__obsFabricationPart?.build?.({ type: "duct-straight", primarySize: 0.4, length: 1.5 });
+      }, "Duct parts"), { title: "Place SMACNA fabrication duct parts" }),
+      b("pipe", "Pipe Parts", safe(() => {
+        (window as any).__obsFabricationPart?.build?.({ type: "pipe-straight", primarySize: 0.05, length: 2.0 });
+      }, "Pipe parts"), { title: "Place ASTM fabrication pipe parts" }),
+      b("pipe", "Fittings", safe(() => {
+        const opts = ["duct-elbow-90", "duct-tee", "pipe-elbow-90", "pipe-reducer", "pipe-valve"];
+        const choice = prompt(`Choose fabrication fitting:\n${opts.map((o, i) => `${i + 1}. ${o}`).join("\n")}`, "1");
+        if (!choice) return;
+        const type = opts[parseInt(choice, 10) - 1] as any;
+        (window as any).__obsFabricationPart?.build?.({ type, primarySize: 0.1 });
+      }, "Fittings"), { title: "Pick a fabrication fitting by index" }),
       sep(),
       groupLabel("Load from Library"),
       b("new-family", "Family", safe(() => openFamilyLibrary(), "Types & materials"), {
@@ -1298,9 +1371,162 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
 
 
   // ════════════════════════════ ANALYZE ════════════════════════════════
-
+  {
+    id: "analyze",
+    label: "Analyze",
+    items: () => [
+      groupLabel("Model Checker"),
+      b("inspect", "Run Check", safe(() => {
+        const obs = (window as any).__obs;
+        const elements = obs?.elements ?? [];
+        if (!elements.length) {
+          toast("No loaded model elements to check — load an IFC first", "warn");
+          return;
+        }
+        const report = (window as any).__obsModelChecker.run(elements);
+        console.log("[model-checker]", report);
+      }, "Run model checker"), { title: "Run QA rules against loaded elements" }),
+      b("inspect", "List Rules", safe(() => {
+        const rules = (window as any).__obsModelChecker.listRules();
+        toast(`Shipped rules: ${rules.join(", ")}`, "info", 4000);
+      }, "List rules"), { title: "List shipped model-checker rule IDs" }),
+      sep(),
+      groupLabel("Daylight"),
+      b("sun", "Daylight", safe(() => {
+        const r = (window as any).__obsDaylighting.run({
+          room: { width: 6, depth: 4, height: 3 },
+          windowArea: 4,
+          visibleTransmittance: 0.7,
+          reflectances: { ceiling: 0.8, walls: 0.5, floor: 0.2 },
+          workplaneHeight: 0.8,
+          gridResolution: 0.5,
+          exteriorIlluminance: 10000,
+        });
+        console.log("[daylighting]", r);
+      }, "Daylight"), { title: "Compute daylight factor + sDA + ASE for default room" }),
+      b("sun", "Solar", safe(() => {
+        const sun = (window as any).__obsSun;
+        if (!sun) { toast("Sun module not loaded", "warn"); return; }
+        sun.set({ enabled: true });
+        toast("Sun enabled — use Sun panel to set date/time/lat", "info");
+      }, "Solar study"), { title: "Open solar study panel" }),
+      sep(),
+      groupLabel("Energy"),
+      b("energy", "Heat Loss", safe(() => {
+        (window as any).__obsEnergyAnalysis?.run?.();
+        toast("Energy analysis — heat loss per room", "info");
+      }, "Heat loss"), { title: "Run steady-state heat loss per room" }),
+      b("energy", "gbXML", safe(() => {
+        (window as any).__obsEnergyAnalysis?.exportGbxml?.();
+      }, "gbXML"), { title: "Export gbXML for external energy simulators" }),
+      sep(),
+      groupLabel("Loads"),
+      b("loads", "Load Cases", safe(() => {
+        (window as any).__obsStructuralLoads?.createCase?.({ name: "Dead Load", category: "dead", magnitude: 24, direction: { x: 0, y: -1, z: 0 } });
+        (window as any).__obsStructuralLoads?.createCase?.({ name: "Live Load", category: "live", magnitude: 2.5, direction: { x: 0, y: -1, z: 0 } });
+        toast("Dead + Live load cases created", "success");
+      }, "Load cases"), { title: "Create default dead + live load cases" }),
+      b("loads", "ASCE Combos", safe(() => {
+        const cases = (window as any).__obsStructuralLoads?.listCases?.() ?? [];
+        if (cases.length < 2) { toast("Create load cases first", "warn"); return; }
+        const combos = (window as any).__obsStructuralLoads?.generateDefaultLRFDCombinations?.();
+        toast(`Generated ${combos.length} LRFD combinations (ASCE 7-22)`, "success");
+      }, "Generate combos"), { title: "Generate ASCE 7 LRFD combinations" }),
+      sep(),
+      groupLabel("Generative"),
+      b("generative", "Run Study", safe(() => {
+        const result = (window as any).__obsGenerativeDesign.run({
+          name: "Window-to-Wall Ratio study",
+          variables: [
+            { name: "wwr", kind: "continuous", min: 0.1, max: 0.6 },
+            { name: "depth", kind: "continuous", min: 3, max: 8 },
+          ],
+          objectives: [
+            { name: "daylight", direction: "maximize", evaluate: (s: any) => s.wwr * 100 - s.depth * 2 },
+            { name: "energy", direction: "minimize", evaluate: (s: any) => s.depth * 5 + s.wwr * 30 },
+          ],
+          constraints: [
+            { name: "wwr-floor", check: (s: any) => s.wwr > 0.15 },
+          ],
+        });
+        console.log("[generative]", result);
+      }, "Run generative"), { title: "Run default generative design study" }),
+    ],
+  },
 
   // ═════════════════════════ MASSING & SITE ════════════════════════════
+  {
+    id: "massing-site",
+    label: "Massing & Site",
+    items: () => [
+      groupLabel("Topo"),
+      b("topo", "Toposurface", safe(() => {
+        const points = [];
+        const N = 8;
+        for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) {
+          const x = i * 1.0; const z = j * 1.0;
+          const y = Math.sin(x * 0.3) * 0.4 + Math.cos(z * 0.4) * 0.3;
+          points.push({ x, y, z });
+        }
+        (window as any).__obsToposurface.build({ points });
+      }, "Toposurface"), { title: "Create TIN toposurface from sample points" }),
+      b("topo", "Building Pad", safe(() => {
+        (window as any).__obsBuildingPad.build({
+          outline: [
+            { x: 2, z: 2 }, { x: 6, z: 2 }, { x: 6, z: 6 }, { x: 2, z: 6 },
+          ],
+          elevation: 0.3,
+          slopeAngle: 45,
+          maxRun: 4,
+        });
+      }, "Building pad"), { title: "Create building pad with cut/fill slopes" }),
+      sep(),
+      groupLabel("Property"),
+      b("property", "Property Line", safe(() => {
+        (window as any).__obsPropertyLine.build({
+          origin: { x: 0, z: 0 },
+          segments: [
+            { bearing: 90, distance: 30, label: "E 30 m" },
+            { bearing: 180, distance: 20, label: "S 20 m" },
+            { bearing: 270, distance: 30, label: "W 30 m" },
+            { bearing: 0, distance: 20, label: "N 20 m" },
+          ],
+        });
+      }, "Property line"), { title: "Create property line from bearings + distances" }),
+      b("property", "Subregion", safe(() => {
+        toast("Subregion: draw closed polyline on toposurface, then mark subregion", "info");
+      }, "Subregion"), { title: "Define a subregion within a toposurface" }),
+      sep(),
+      groupLabel("Site"),
+      b("parking", "Parking", safe(() => {
+        (window as any).__obsSiteComponent.build({ type: "parking", position: { x: 5, z: 5 }, elevation: 0.3 });
+      }, "Parking"), { title: "Place parking component" }),
+      b("tree", "Planting", safe(() => {
+        (window as any).__obsSiteComponent.build({ type: "tree", position: { x: 8, z: 4 }, elevation: 0.3 });
+      }, "Tree"), { title: "Place a tree" }),
+      b("tree", "Shrub", safe(() => {
+        (window as any).__obsSiteComponent.build({ type: "shrub", position: { x: 7, z: 4 }, elevation: 0.3 });
+      }, "Shrub"), { title: "Place a shrub" }),
+      b("bench", "Bench", safe(() => {
+        (window as any).__obsSiteComponent.build({ type: "bench", position: { x: 4, z: 7 }, elevation: 0.3, rotation: Math.PI / 2 });
+      }, "Bench"), { title: "Place a bench" }),
+      b("lightpole", "Light Pole", safe(() => {
+        (window as any).__obsSiteComponent.build({ type: "lightpole", position: { x: 1, z: 1 }, elevation: 0.3 });
+      }, "Light pole"), { title: "Place a light pole" }),
+      b("fire", "Fire Hydrant", safe(() => {
+        (window as any).__obsSiteComponent.build({ type: "firehydrant", position: { x: 0, z: 5 }, elevation: 0.3 });
+      }, "Fire hydrant"), { title: "Place a fire hydrant" }),
+      sep(),
+      groupLabel("Massing"),
+      b("mass", "In-Place Mass", safe(() => {
+        (window as any).__obsInPlaceMass?.create?.();
+        toast("In-Place Mass: extrude/sweep/revolve in viewport", "info");
+      }, "In-place mass"), { title: "Create an in-place massing form" }),
+      b("mass", "Mass Floors", safe(() => {
+        (window as any).__obsInPlaceMass?.massFloors?.();
+      }, "Mass floors"), { title: "Slice mass into mass floors per level" }),
+    ],
+  },
 
 
   // ════════════════════════════ COORDINATE ═════════════════════════════
@@ -1622,6 +1848,39 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Section"),
       b("section", "Section Cut", () => (window as any).__obsOpenSectionModal?.(), { title: "Open the interactive section cut window" }),
       sep(),
+      groupLabel("Crop"),
+      b("crop", "Scope Box", safe(() => {
+        (window as any).__obsScopeBox?.create?.({ name: `Scope Box ${((window as any).__obsScopeBox?.list?.() ?? []).length + 1}`, min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 4, z: 10 } });
+        toast("Scope box created (10×4×10 m) — apply to views via panel", "success");
+      }, "Scope box"), { title: "Create a scope box that crops multiple views" }),
+      b("crop", "Plan Region", safe(() => {
+        (window as any).__obsPlanRegion?.build?.({
+          outline: [{ x: 0, z: 0 }, { x: 5, z: 0 }, { x: 5, z: 5 }, { x: 0, z: 5 }],
+          viewCutPlane: 1.0,
+          regionCutPlane: 1.8,
+        });
+        toast("Plan region created — cut plane raised to 1.8 m inside region", "success");
+      }, "Plan region"), { title: "Override cut plane in a 2D region of a plan view" }),
+      b("view", "Dependent", safe(() => {
+        (window as any).__obsDependentViews?.create?.("primary-view-1", { name: "Dependent View 1" });
+        toast("Dependent view created from primary", "success");
+      }, "Dependent view"), { title: "Create a dependent view sharing primary geometry" }),
+      sep(),
+      groupLabel("Filters"),
+      b("system", "Create Filter", safe(() => {
+        (window as any).__obsViewFilters?.create?.({
+          name: "Fire-rated Walls",
+          categories: ["walls"],
+          rules: [{ parameter: "FireRating", operator: "not-equals", value: "0" }],
+          overrides: { projectionColor: 0xdc2626, cutColor: 0xdc2626, lineWeight: 4, surfacePattern: null, cutPattern: null, transparency: 0, halftone: false, visible: true },
+        });
+        toast("View filter created — add to views via console", "success");
+      }, "View filter"), { title: "Create a rule-based view graphics filter" }),
+      b("system", "Matchline", safe(() => {
+        (window as any).__obsMatchline?.build?.({ points: [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 12, z: 2 }] });
+        toast("Matchline created — used when splitting a view across sheets", "success");
+      }, "Matchline"), { title: "Draw a matchline for sheet-split views" }),
+      sep(),
       groupLabel("Schedules"),
       b("schedules", "Element Schedule", () => (window as any).__obsOpenSchedules?.(), { title: "View quantity takeoffs and schedules" }),
       sep(),
@@ -1875,6 +2134,33 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     items: () => [
       groupLabel("Collaboration"),
       b("system", "Live Sync", safe(() => (ctx.features as any).collaborationPanel?.toggle?.(), "Collaboration"), { title: "Join a real-time collaboration session" }),
+      sep(),
+      groupLabel("Worksets"),
+      b("workset", "Init", safe(() => {
+        (window as any).__obsWorksets?.init?.();
+      }, "Init worksets"), { title: "Initialise default worksets" }),
+      b("workset", "New", safe(() => {
+        const name = prompt("Workset name:", "Workset " + (((window as any).__obsWorksets?.list?.() ?? []).length + 1));
+        if (!name) return;
+        (window as any).__obsWorksets?.create?.(name);
+      }, "New workset"), { title: "Create a new workset" }),
+      b("workset", "List", safe(() => {
+        const list = (window as any).__obsWorksets?.list?.() ?? [];
+        const summary = (window as any).__obsWorksets?.summary?.();
+        toast(`${summary.total} worksets, ${summary.totalElements} elements, ${summary.ownedByUser} borrowed by you`, "info", 4000);
+        console.table(list.map((w: any) => ({ id: w.id, name: w.name, owner: w.owner, elements: w.elementIds.size })));
+      }, "List worksets"), { title: "List all worksets with element counts" }),
+      b("workset", "Borrow", safe(() => {
+        const ids = (window as any).__obsAuthoring?.getSelectedIds?.() ?? [];
+        if (!ids.length) { toast("Select an element first", "warn"); return; }
+        (window as any).__obsWorksets?.borrow?.(ids[0]);
+      }, "Borrow"), { title: "Borrow selected element for editing" }),
+      b("workset", "Release", safe(() => {
+        const ids = (window as any).__obsAuthoring?.getSelectedIds?.() ?? [];
+        if (!ids.length) { toast("Select an element first", "warn"); return; }
+        (window as any).__obsWorksets?.release?.(ids[0]);
+        toast(`Released element ${ids[0]}`, "success");
+      }, "Release"), { title: "Release borrowed element back to pool" }),
       sep(),
       groupLabel("Plugins"),
       b("component", "Plugin List", safe(() => {
