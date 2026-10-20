@@ -208,6 +208,43 @@ function drawEntity(parent: SVGGElement, e: SceneEntity, viewScale: number): voi
       if (e.rotation) el.setAttribute("transform", `rotate(${e.rotation} ${e.x} ${-e.z})`);
       el.textContent = e.text;
       parent.appendChild(el);
+
+      // Render leader line + arrowhead if the text note has a leader.
+      if (e.leader && e.leaderTarget) {
+        const [tx, tz] = e.leaderTarget;
+        const lineEl = document.createElementNS(SVG_NS, "line");
+        lineEl.setAttribute("x1", String(e.x));
+        lineEl.setAttribute("y1", String(-e.z));
+        lineEl.setAttribute("x2", String(tx));
+        lineEl.setAttribute("y2", String(-tz));
+        lineEl.setAttribute("stroke", e.color);
+        lineEl.setAttribute("stroke-width", String(paperToWorld(0.18, viewScale)));
+        parent.appendChild(lineEl);
+
+        // Arrowhead at target.
+        if (e.arrowhead) {
+          const dx = tx - e.x;
+          const dz = -tz - (-e.z);
+          const len = Math.hypot(dx, dz) || 1;
+          const ux = dx / len, uz = dz / len;
+          const arrowSize = paperToWorld(1.5, viewScale);
+          // Two arrowhead lines at ±30° from the leader direction.
+          for (const sign of [-1, 1]) {
+            const cos = Math.cos(sign * Math.PI / 6);
+            const sin = Math.sin(sign * Math.PI / 6);
+            const ax = tx - (ux * cos - uz * sin) * arrowSize;
+            const ay = -tz - (uz * cos + ux * sin) * arrowSize;
+            const arrow = document.createElementNS(SVG_NS, "line");
+            arrow.setAttribute("x1", String(tx));
+            arrow.setAttribute("y1", String(-tz));
+            arrow.setAttribute("x2", String(ax));
+            arrow.setAttribute("y2", String(ay));
+            arrow.setAttribute("stroke", e.color);
+            arrow.setAttribute("stroke-width", String(paperToWorld(0.18, viewScale)));
+            parent.appendChild(arrow);
+          }
+        }
+      }
       break;
     }
     case "hatch": {

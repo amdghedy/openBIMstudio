@@ -22,7 +22,7 @@ export type SceneEntity =
   | { kind: "polyline"; points: Array<[number, number]>; closed: boolean; stroke: StrokeStyle; fill?: FillStyle }
   | { kind: "arc"; cx: number; cz: number; r: number; a0: number; a1: number; stroke: StrokeStyle }
   | { kind: "circle"; cx: number; cz: number; r: number; stroke: StrokeStyle; fill?: FillStyle }
-  | { kind: "text"; x: number; z: number; text: string; anchor: "start" | "middle" | "end"; sizePt: number; rotation: number; color: string }
+  | { kind: "text"; x: number; z: number; text: string; anchor: "start" | "middle" | "end"; sizePt: number; rotation: number; color: string; leader?: boolean; leaderTarget?: [number, number]; arrowhead?: boolean }
   | { kind: "symbol"; x: number; z: number; name: string; size: number; rotation: number }
   | { kind: "hatch"; polygon: Array<[number, number]>; pattern: string; color: string; scale: number };
 

@@ -12,7 +12,7 @@
 
 import { getElements } from "../../features/authoring";
 import type { AuthoredElement } from "../projects/types";
-import { getDimensions, getTags, getNotes } from "./annotations";
+import { getDimensions, getTags, getNotes, getCallouts } from "./annotations";
 import { resolveDimension } from "./dimension-engine";
 import { resolveTag } from "./tag-engine";
 import type { SceneEntity } from "./scene";
@@ -24,6 +24,7 @@ export interface AnnotationStats {
   tags: number;
   tagsInvalid: number;
   notes: number;
+  callouts: number;
 }
 
 export interface AnnotationLayerResult {
@@ -43,6 +44,7 @@ export function buildAnnotationLayer(
     tags: 0,
     tagsInvalid: 0,
     notes: 0,
+    callouts: 0,
   };
 
   for (const dim of getDimensions(viewId)) {
@@ -67,6 +69,9 @@ export function buildAnnotationLayer(
 
   for (const note of getNotes(viewId)) {
     stats.notes += 1;
+    // Include leader + arrowhead data in the text entity.
+    // The SVG renderer checks for these optional fields and renders
+    // the leader line + arrowhead when present.
     entities.push({
       kind: "text",
       x: note.x,
@@ -76,6 +81,54 @@ export function buildAnnotationLayer(
       sizePt: note.sizePt,
       rotation: note.rotation,
       color: note.color,
+      leader: note.leader,
+      leaderTarget: note.leaderTarget,
+      arrowhead: note.arrowhead,
+    });
+  }
+
+  // Section callouts: render as a cut line + direction arrows + label.
+  for (const callout of getCallouts(viewId)) {
+    stats.callouts += 1;
+    const [sx, sz] = callout.start;
+    const [ex, ez] = callout.end;
+    const dx = ex - sx, dz = ez - sz;
+    const L = Math.hypot(dx, dz) || 1;
+    // Perpendicular direction (the direction the section looks toward).
+    const sign = callout.direction === "left" ? 1 : -1;
+    const px = -dz / L * sign;
+    const pz = dx / L * sign;
+
+    // Cut line.
+    entities.push({
+      kind: "line",
+      x1: sx, z1: sz, x2: ex, z2: ez,
+      stroke: { color: callout.color, widthPt: 0.35, dash: null },
+    });
+
+    // Direction arrows at both ends.
+    const arrowSize = paperToWorld(2.0, viewScale);
+    for (const [cx, cz] of [[sx, sz], [ex, ez]] as [number, number][]) {
+      const ax = cx + px * arrowSize;
+      const az = cz + pz * arrowSize;
+      entities.push({
+        kind: "line",
+        x1: cx, z1: cz, x2: ax, z2: az,
+        stroke: { color: callout.color, widthPt: 0.3, dash: null },
+      });
+    }
+
+    // Label text at the midpoint.
+    const mx = (sx + ex) / 2 + px * paperToWorld(3, viewScale);
+    const mz = (sz + ez) / 2 + pz * paperToWorld(3, viewScale);
+    entities.push({
+      kind: "text",
+      x: mx, z: mz,
+      text: `Section ${callout.label}`,
+      anchor: "middle",
+      sizePt: 3,
+      rotation: 0,
+      color: callout.color,
     });
   }
 
