@@ -328,30 +328,37 @@ export function setProjection(mode: Projection): boolean {
     return false;
   }
   const cam: any = ctx.world.camera;
+
+  // Prefer projection.set — keeps orbit/pan/zoom free.
+  // Do NOT use setCameraType("Plan") for Ortho: Plan locks navigation.
+  if (cam.projection?.set) {
+    try {
+      cam.projection.set(mode === "perspective" ? "Perspective" : "Orthographic");
+      try {
+        if (cam.controls && cam.controls.enabled === false) cam.controls.enabled = true;
+      } catch { /* */ }
+      afterProjectionChanged();
+      return true;
+    } catch { /* fall through */ }
+  }
+
   if (typeof cam.setCameraType === "function") {
     const attempts =
       mode === "perspective"
         ? ["Orbit", "OrbitCamera", "Perspective"]
-        : ["Plan", "PlanCamera", "Orthographic"];
+        : ["Orthographic", "Orbit", "OrbitCamera"];
     for (const t of attempts) {
       try {
         cam.setCameraType(t as any);
+        try {
+          if (cam.controls && cam.controls.enabled === false) cam.controls.enabled = true;
+        } catch { /* */ }
         afterProjectionChanged();
         return true;
-      } catch {
-        /* */
-      }
+      } catch { /* */ }
     }
   }
-  if (cam.projection?.set) {
-    try {
-      cam.projection.set(mode === "perspective" ? "Perspective" : "Orthographic");
-      afterProjectionChanged();
-      return true;
-    } catch {
-      /* */
-    }
-  }
+
   console.warn(
     "[projection] could not switch — unsupported camera API in this SDK version",
   );
