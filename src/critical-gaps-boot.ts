@@ -396,6 +396,12 @@ async function runOnce(): Promise<void> {
     m.setupViewToolsManager?.();
   });
 
+  // ── Element right-click context menu (native elements) ─────────────────
+  await safe("element-context-menu", async () => {
+    const m: Any = await import("./features/element-context-menu");
+    m.setupElementContextMenu?.();
+  });
+
   console.log("[critical-gaps-boot] all critical gaps wired");
 }
 
