@@ -23,6 +23,7 @@
     "verify:v63": "node scripts/verify-v63.mjs",
     "verify:v64": "node scripts/verify-v64.mjs",
     "verify:v65": "node scripts/verify-v65.mjs",
+    "verify:v66": "node scripts/verify-v66.mjs",
     "seed:families": "node scripts/seed-families.mjs",
     "test:native-bim": "node tests/native-bim-validation.test.mjs",
     "test:mep": "node tests/mep-router.test.cjs",

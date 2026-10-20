@@ -46,9 +46,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: node tests/native-bim-validation.test.mjs
-      # Milestone verification — v58 supersedes v54 (which crashed on the
-      # missing src/features/viewcube.ts file). v58 covers Plugin SDK (v55),
-      # Family Library (v56), Hosted recut fix (v57), and MEP auto-routing (v58).
-      - run: npm run verify:v65
+      # v66 milestone covers scope box + section box + crop region + all prior v40 modules
+      - run: npm run verify:v66
       # MEP routing + sizing unit tests (compiles mep/*.ts to CJS + runs A* / ASHRAE assertions).
       - run: npm run test:mep
