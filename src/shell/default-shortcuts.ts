@@ -299,5 +299,39 @@ export function registerDefaultShortcuts(): void {
   shortcuts.register({ id: "accu-noop-y",   label: "AccuDraw Y",   keys: "y",   category: "tool", when: accuActive, handler: () => { /* handled in accudraw.ts */ } });
   shortcuts.register({ id: "accu-noop-tab", label: "AccuDraw Tab", keys: "tab", category: "tool", when: accuActive, handler: () => { /* handled in accudraw.ts */ } });
 
+  /* ── v0.66 view-crop shortcuts ─────────────────────────────────────── */
+  shortcuts.register({
+    id: "view.selection-box", label: "Selection Box (3D)", keys: "ctrl+shift+b", category: "view",
+    handler: () => { (window as any).__obsSelectionBox?.show?.({ padding: 0.5 }); },
+  });
+  shortcuts.register({
+    id: "view.crop-to-selection", label: "Crop to Selection (2D)", keys: "ctrl+shift+r", category: "view",
+    handler: () => { (window as any).__obsSelectionBox?.cropTo?.({ padding: 1.0 }); },
+  });
+  shortcuts.register({
+    id: "view.zoom-selection", label: "Zoom to Selection", keys: "ctrl+shift+z", category: "view",
+    handler: () => { (window as any).__obsSelectionBox?.zoom?.(); },
+  });
+  shortcuts.register({
+    id: "view.section-box-toggle", label: "Section Box (toggle)", keys: "ctrl+b", category: "view",
+    handler: () => { (window as any).__obsSectionBox?.toggle?.(); },
+  });
+  shortcuts.register({
+    id: "view.scope-box-viz-toggle", label: "Scope Box Visualizer (toggle)", keys: "ctrl+shift+s", category: "view",
+    handler: () => { (window as any).__obsScopeBoxViz?.toggle?.(); },
+  });
+  shortcuts.register({
+    id: "view.isolate", label: "Isolate Selection", keys: "ctrl+i", category: "view",
+    handler: () => { (window as any).__obsSelectionBox?.isolate?.(); },
+  });
+  shortcuts.register({
+    id: "view.reset-isolation", label: "Reset Isolation", keys: "ctrl+shift+i", category: "view",
+    handler: () => { (window as any).__obsSelectionBox?.resetIsolation?.(); },
+  });
+  shortcuts.register({
+    id: "view.tools-manager", label: "View Tools Manager", keys: "ctrl+shift+v", category: "view",
+    handler: () => { (window as any).__obsOpenViewToolsManager?.(); },
+  });
+
   console.log("[shortcuts] registered", shortcuts.list().length, "commands");
 }

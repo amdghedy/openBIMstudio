@@ -737,16 +737,25 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Wainscot"), { title: "Add wainscot panel sweep" }),
       sep(),
       groupLabel("Constraints"),
-      b("dim-aligned", "Lock Dim", safe(() => {
+      b("dim-aligned", "Lock Dim", safe(async () => {
         const c = (window as any).__obsConstraints;
         if (!c) { toast("Constraints module not loaded", "warn"); return; }
         const auth = (window as any).__obsAuthoring;
         const ids = auth?.getSelectedIds?.() ?? [];
         if (ids.length < 2) { toast("Select 2 elements to lock the dimension between them", "warn"); return; }
-        const v = prompt("Lock dimension value (m):", "3.0");
+        const { promptLine } = await import("../features/form-modal");
+        const v = await promptLine(
+          "Lock Dimension",
+          "Distance between elements",
+          "3.0",
+          "m",
+          "Distance in metres (e.g. 3.0 = 3 m)",
+        );
         if (v == null) return;
-        c.lock(ids[0], ids[1], parseFloat(v));
-        toast(`Dimension locked at ${v}m`, "success");
+        const val = parseFloat(v);
+        if (isNaN(val)) { toast("Invalid number", "warn"); return; }
+        c.lock(ids[0], ids[1], val);
+        toast(`Dimension locked at ${val}m`, "success");
       }, "Lock dimension"), { title: "Lock the distance between two selected elements" }),
       b("dim-aligned", "Equality", safe(() => {
         const c = (window as any).__obsConstraints;
@@ -771,15 +780,26 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("clear", "Clear", safe(() => clearAllElements(), "Clear")),
       sep(),
       groupLabel("Massing"),
-      b("mass", "In-Place Mass", safe(() => {
+      b("mass", "In-Place Mass", safe(async () => {
         const mc = (window as any).__obsMass;
         if (!mc) { toast("Mass module not loaded", "warn"); return; }
-        const w = prompt("Mass width (m):", "5");
-        const h = prompt("Mass height (m):", "10");
-        if (!w || !h) return;
-        const poly: Array<[number, number]> = [[0,0],[parseFloat(w),0],[parseFloat(w),parseFloat(w)],[0,parseFloat(w)]];
-        const m = mc.create(poly, parseFloat(h), `Mass ${mc.list().length + 1}`);
-        toast(`Created "${m.name}": ${parseFloat(w)}×${parseFloat(w)}×${h}m, area=${parseFloat(w)*parseFloat(w)}m²`, "success");
+        const { openFormModal } = await import("../features/form-modal");
+        const r = await openFormModal({
+          title: "Create In-Place Mass",
+          subtitle: "Conceptual mass element (extruded polygon)",
+          fields: [
+            { kind: "number", key: "width", label: "Width", default: 5, unit: "m", step: 0.5, min: 0.5 },
+            { kind: "number", key: "height", label: "Height", default: 10, unit: "m", step: 0.5, min: 0.5 },
+          ],
+          submitLabel: "Create Mass",
+        });
+        if (!r) return;
+        const w = parseFloat(r.width);
+        const h = parseFloat(r.height);
+        if (isNaN(w) || isNaN(h)) { toast("Invalid input", "warn"); return; }
+        const poly: Array<[number, number]> = [[0, 0], [w, 0], [w, w], [0, w]];
+        const m = mc.create(poly, h, `Mass ${mc.list().length + 1}`);
+        toast(`Created "${m.name}": ${w}×${w}×${h}m, area=${w * w}m²`, "success");
       }, "In-place mass"), { title: "Create a conceptual mass element (extruded polygon)" }),
       b("mass", "Mass Floors", safe(() => {
         const mc = (window as any).__obsMass;
@@ -884,24 +904,48 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("equipment", "Equip", "equipment"),
       sep(),
       groupLabel("Auto-Route"),
-      b("duct", "Auto-Route…", safe(() => {
+      b("duct", "Auto-Route…", safe(async () => {
         const mep = (window as any).__obsMep;
         if (!mep) { toast("MEP module not loaded", "warn"); return; }
-        const sysIdx = prompt("MEP system (1=Supply Air, 2=Return Air, 3=Chilled Water, 4=Hot Water, 5=Domestic Cold, 6=Gas, 7=Cable Tray, 8=Conduit):", "1");
-        if (!sysIdx) return;
-        const flow = prompt("Flow rate (m³/s for air, L/s for water):", "0.5");
-        if (!flow) return;
-        const elev = prompt("Elevation (m):", "2.7");
-        if (!elev) return;
-        const start = prompt("Start point X,Z (m):", "0,0");
-        if (!start) return;
-        const end = prompt("End point X,Z (m):", "5,0");
-        if (!end) return;
-        const systems = ["supply-air","return-air","chilled-water","hot-water","domestic-cold","gas","cable-tray","conduit"];
-        const sys = systems[parseInt(sysIdx)-1] || "supply-air";
-        const sp = start.split(",").map(parseFloat);
-        const ep = end.split(",").map(parseFloat);
-        const result = mep.route({ start:{x:sp[0],y:parseFloat(elev),z:sp[1]}, end:{x:ep[0],y:parseFloat(elev),z:ep[1]}, system:sys, flowRate:parseFloat(flow) });
+        // Open a single form modal with all 5 inputs, instead of 5 sequential prompts.
+        const { openFormModal } = await import("../features/form-modal");
+        const r = await openFormModal({
+          title: "MEP Auto-Route",
+          subtitle: "Auto-route MEP between two points with ASHRAE sizing",
+          fields: [
+            { kind: "select", key: "system", label: "System", default: "supply-air",
+              options: [
+                ["supply-air", "1. Supply Air"], ["return-air", "2. Return Air"],
+                ["chilled-water", "3. Chilled Water"], ["hot-water", "4. Hot Water"],
+                ["domestic-cold", "5. Domestic Cold"], ["gas", "6. Gas"],
+                ["cable-tray", "7. Cable Tray"], ["conduit", "8. Conduit"],
+              ],
+            },
+            { kind: "number", key: "flow", label: "Flow rate", default: 0.5, unit: "m³/s (air) / L/s (water)", step: 0.1, min: 0.01,
+              hint: "Air: m³/s · Water: L/s",
+            },
+            { kind: "number", key: "elev", label: "Elevation", default: 2.7, unit: "m", step: 0.1 },
+            { kind: "text", key: "start", label: "Start point", default: "0,0", placeholder: "X,Z", hint: "Comma-separated X,Z (m)" },
+            { kind: "text", key: "end", label: "End point", default: "5,0", placeholder: "X,Z", hint: "Comma-separated X,Z (m)" },
+          ],
+          submitLabel: "Route",
+        });
+        if (!r) return;
+        const sys = String(r.system);
+        const flow = parseFloat(r.flow);
+        const elev = parseFloat(r.elev);
+        const sp = String(r.start).split(",").map(parseFloat);
+        const ep = String(r.end).split(",").map(parseFloat);
+        if (isNaN(flow) || isNaN(elev) || sp.length < 2 || ep.length < 2) {
+          toast("Invalid input — please check the form values", "warn");
+          return;
+        }
+        const result = mep.route({
+          start: { x: sp[0], y: elev, z: sp[1] },
+          end: { x: ep[0], y: elev, z: ep[1] },
+          system: sys,
+          flowRate: flow,
+        });
         if (result) toast(`Route complete: ${result.legs.length} legs, ${result.bendCount} bends`, "success");
         else toast("No route found", "warn");
       }, "MEP Auto-Route"), { title: "Auto-route MEP between two points with ASHRAE sizing" }),
@@ -1009,19 +1053,29 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("pipe", "Pipe Parts", safe(() => {
         (window as any).__obsFabricationPart?.build?.({ type: "pipe-straight", primarySize: 0.05, length: 2.0 });
       }, "Pipe parts"), { title: "Place ASTM fabrication pipe parts" }),
-      b("pipe", "Fittings", safe(() => {
-        const opts = ["duct-elbow-90", "duct-tee", "pipe-elbow-90", "pipe-reducer", "pipe-valve"];
-        const choice = prompt(`Choose fabrication fitting:\n${opts.map((o, i) => `${i + 1}. ${o}`).join("\n")}`, "1");
+      b("pipe", "Fittings", safe(async () => {
+        const opts: Array<[string, string]> = [
+          ["duct-elbow-90", "Duct Elbow 90°"],
+          ["duct-tee", "Duct Tee"],
+          ["pipe-elbow-90", "Pipe Elbow 90°"],
+          ["pipe-reducer", "Pipe Reducer"],
+          ["pipe-valve", "Pipe Valve"],
+        ];
+        const { pickFromList } = await import("../features/form-modal");
+        const choice = await pickFromList(
+          "Fabrication Fitting",
+          "Pick a fitting type",
+          opts.map(([value, label]) => ({ value, label })),
+        );
         if (!choice) return;
-        const type = opts[parseInt(choice, 10) - 1] as any;
-        (window as any).__obsFabricationPart?.build?.({ type, primarySize: 0.1 });
-      }, "Fittings"), { title: "Pick a fabrication fitting by index" }),
+        (window as any).__obsFabricationPart?.build?.({ type: choice, primarySize: 0.1 });
+      }, "Fittings"), { title: "Pick a fabrication fitting by type" }),
       sep(),
       groupLabel("Load from Library"),
       b("new-family", "Family", safe(() => openFamilyLibrary(), "Types & materials"), {
         title: "Element types and materials library",
       }),
-      b("component", "Materials", safe(() => {
+      b("component", "Materials", safe(async () => {
         const m = (window as any).__obsMaterials;
         if (!m) { toast("Materials module not loaded", "warn"); return; }
         const list = m.list();
@@ -1031,7 +1085,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           toast(`Available materials: ${list.map((x: any) => x.name).join(", ")}`, "info", 5000);
           return;
         }
-        const choice = prompt(`Assign material to ${ids.length} element(s).\nAvailable:\n${list.map((x: any) => `${x.id}: ${x.name}`).join("\n")}\n\nEnter material ID:`, "concrete-c30");
+        const { pickFromList } = await import("../features/form-modal");
+        const choice = await pickFromList(
+          "Assign Material",
+          `Assign to ${ids.length} element(s)`,
+          list.map((x: any) => ({ value: x.id, label: `${x.id} — ${x.name}` })),
+          list[0]?.id,
+        );
         if (!choice) return;
         for (const id of ids) m.assign(id, choice);
         toast(`Material "${choice}" assigned to ${ids.length} element(s)`, "success");
@@ -1067,26 +1127,42 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       treeButton(),
       sep(),
       groupLabel("Analysis"),
-      b("system", "Color Fill", safe(() => {
+      b("system", "Color Fill", safe(async () => {
         const ap = (window as any).__obsAreaPlans;
         if (!ap) { toast("Area plans module not loaded", "warn"); return; }
         const schemes = ap.list();
-        const choice = prompt(`Color fill scheme:\n${schemes.map((s: any) => `${s.id}: ${s.label}`).join("\n")}\n\nEnter scheme ID:`, "by-department");
+        const { pickFromList } = await import("../features/form-modal");
+        const choice = await pickFromList(
+          "Color Fill Scheme",
+          "Color rooms by which scheme?",
+          schemes.map((s: any) => ({ value: s.id, label: s.label })),
+          "by-department",
+        );
         if (!choice) return;
         if (!isPlanViewVisible()) togglePlanView();
         toast(`Color fill enabled: ${choice}. Open Plan View to see rooms colored.`, "success");
       }, "Color fill"), { title: "Color fill plan — color rooms by department/occupancy/area type" }),
-      b("sun", "Sun Settings", safe(() => {
+      b("sun", "Sun Settings", safe(async () => {
         const sun = (window as any).__obsSun;
         if (!sun) { toast("Sun settings module not loaded", "warn"); return; }
         const s = sun.get();
-        const date = prompt("Date (YYYY-MM-DD):", s.date);
-        if (!date) return;
-        const time = prompt("Time (HH:MM, 24h):", s.time);
-        if (!time) return;
-        const lat = prompt("Latitude:", String(s.latitude));
-        if (!lat) return;
-        sun.set({ date, time, latitude: parseFloat(lat), enabled: true });
+        const { openFormModal } = await import("../features/form-modal");
+        const r = await openFormModal({
+          title: "Sun Settings",
+          subtitle: "Configure sun position + shadows for solar study",
+          fields: [
+            { kind: "text", key: "date", label: "Date", default: s.date, placeholder: "YYYY-MM-DD", hint: "ISO date format" },
+            { kind: "text", key: "time", label: "Time", default: s.time, placeholder: "HH:MM (24h)", hint: "24-hour format" },
+            { kind: "number", key: "lat", label: "Latitude", default: s.latitude, unit: "°", step: 0.1, min: -90, max: 90, hint: "Negative = south hemisphere" },
+          ],
+          submitLabel: "Apply",
+        });
+        if (!r) return;
+        const date = String(r.date);
+        const time = String(r.time);
+        const lat = parseFloat(r.lat);
+        if (!date || !time || isNaN(lat)) { toast("Invalid input", "warn"); return; }
+        sun.set({ date, time, latitude: lat, enabled: true });
         toast(`Sun set to ${date} ${time} at lat ${lat}°`, "success");
       }, "Sun settings"), { title: "Configure sun position + shadows for solar study" }),
       b("sun", "Shadows", safe(() => {
@@ -1194,14 +1270,21 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Baseline dimension"), { title: "Multiple dimensions from a common baseline" }),
       sep(),
       groupLabel("Keynotes"),
-      b("text", "Assign Keynote", safe(() => {
+      b("text", "Assign Keynote", safe(async () => {
         const k = (window as any).__obsKeynotes;
         if (!k) { toast("Keynotes module not loaded", "warn"); return; }
-        const code = prompt("Keynote code (e.g. 05 10 00.A):", "");
-        if (!code) return;
         const auth = (window as any).__obsAuthoring;
         const ids = auth?.getSelectedIds?.() ?? [];
         if (!ids.length) { toast("Select an element first", "warn"); return; }
+        const { promptLine } = await import("../features/form-modal");
+        const code = await promptLine(
+          "Assign Keynote",
+          "Keynote code",
+          "",
+          "e.g. 05 10 00.A",
+          "MasterFormat / UniFormat code",
+        );
+        if (!code) return;
         k.assign({ elementId: ids[0], viewId: null, code, offsetMm: [50, 50], leader: true });
         toast(`Keynote "${code}" assigned to element`, "success");
       }, "Assign keynote"), { title: "Assign a keynote to the selected element" }),
@@ -1224,16 +1307,18 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         setAuthoringTool("mline");
         toast("Detail line — click points to draw", "success");
       }, "Detail line")),
-      b("detail-component", "Detail Comp…", safe(() => {
+      b("detail-component", "Detail Comp…", safe(async () => {
         const dc = (window as any).__obsDetailComponents;
         if (!dc) { toast("Detail components module not loaded", "warn"); return; }
         const list = dc.list();
-        const choice = prompt(`Detail components:\n${list.map((c:any,i:number)=>`${i+1}. ${c.name} (${c.category})`).join("\n")}\n\nEnter number:`, "1");
+        const { pickFromList } = await import("../features/form-modal");
+        const choice = await pickFromList(
+          "Detail Components",
+          "Pick a component to place",
+          list.map((c: any) => ({ value: c.name, label: `${c.name} (${c.category})` })),
+        );
         if (!choice) return;
-        const idx = parseInt(choice)-1;
-        const comp = list[idx];
-        if (!comp) { toast("Invalid selection", "warn"); return; }
-        toast(`Detail component "${comp.name}" selected. Click to place.`, "success");
+        toast(`Detail component "${choice}" selected. Click to place.`, "success");
         setAuthoringTool("equipment");
       }, "Detail component"), { title: "Pick a detail component from the library" }),
       b("filled-region", "Filled Region", safe(() => {
@@ -1274,14 +1359,26 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Revision cloud")),
       sep(),
       groupLabel("Text"),
-      b("text", "Text", safe(() => {
+      b("text", "Text", safe(async () => {
         const pv = (ctx.features as any).planView;
         if (pv?.isVisible?.()) { pv.setTool?.("text"); return; }
-        const t = prompt("Annotation text:", "Note");
+        const { promptLine } = await import("../features/form-modal");
+        const t = await promptLine(
+          "Text Note",
+          "Annotation text",
+          "Note",
+          "Type your note here",
+        );
         if (t != null && t.trim()) toast(`Text note saved: “${t.trim()}”`, "success");
       }, "Text note")),
-      b("model-text", "3D text", safe(() => {
-        const t = prompt("3D model text:", "ROOM");
+      b("model-text", "3D text", safe(async () => {
+        const { promptLine } = await import("../features/form-modal");
+        const t = await promptLine(
+          "3D Model Text",
+          "Text content",
+          "ROOM",
+          "e.g. ROOM, OFFICE, EXIT",
+        );
         if (t != null && t.trim()) {
           setAuthoringTool("equipment");
           toast(`3D text “${t.trim()}” — place equipment marker as host`, "info");
@@ -1555,19 +1652,28 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("clash", "Categories", () => (window as any).__obsOpenClashCategories?.(), { title: "Category Clash Rules" }),
       sep(),
       groupLabel("Tests"),
-      b("save", "Save", safe(() => {
-        const name = prompt("Scenario name:", "Scenario");
+      b("save", "Save", safe(async () => {
+        const { promptLine } = await import("../features/form-modal");
+        const name = await promptLine(
+          "Save Clash Scenario",
+          "Scenario name",
+          "Scenario",
+          "e.g. Mechanical-vs-Architecture",
+        );
         if (name == null) return;
         createScenario(name.trim() || "Scenario");
       }, "Save scenario"), { title: "Save current A/B + scope + rules + statuses as a scenario" }),
-      b("folder-recent", "Load", safe(() => {
+      b("folder-recent", "Load", safe(async () => {
         const list = listScenarios();
         if (!list.length) { toast("No saved scenarios.", "info"); return; }
-        const names = list.map((s, i) => `${i + 1}. ${s.name}`).join("\n");
-        const pick = prompt(`Load scenario (1-${list.length}):\n${names}`, "1");
-        if (!pick) return;
-        const idx = Math.max(0, Math.min(list.length - 1, parseInt(pick, 10) - 1));
-        void loadScenario(list[idx].id);
+        const { pickFromList } = await import("../features/form-modal");
+        const choice = await pickFromList(
+          "Load Clash Scenario",
+          "Pick a scenario",
+          list.map((s) => ({ value: s.id, label: s.name })),
+        );
+        if (!choice) return;
+        void loadScenario(choice);
       }, "Load scenario"), { title: "Load a saved clash scenario" }),
       b("csv", "Export", safe(() => exportScenariosJson(), "Export scenarios"),
         { title: "Export all saved scenarios to a JSON file" }),
@@ -1851,8 +1957,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         (window as any).__obsSectionBox?.toggle?.();
         refreshRibbon();
       }, "Section box"), {
+        kbd: "^B",
         active: !!(window as any).__obsSectionBox?.isActive?.(),
-        title: "Toggle the 3D section box — drag cyan face handles to crop live",
+        title: "Toggle the 3D section box — drag cyan face handles to crop live — Ctrl+B",
       }),
       b("section-box", "Reset Box", safe(() => {
         (window as any).__obsSectionBox?.reset?.();
@@ -1881,13 +1988,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("crop", "List Boxes", safe(() => {
         const list = (window as any).__obsScopeBox?.list?.() ?? [];
         if (!list.length) { toast("No scope boxes — click Scope Box to create one", "warn"); return; }
-        console.table(list.map((sb: any) => ({
-          id: sb.id, name: sb.name,
-          size: `${(sb.max.x - sb.min.x).toFixed(1)}×${(sb.max.y - sb.min.y).toFixed(1)}×${(sb.max.z - sb.min.z).toFixed(1)} m`,
-          appliedTo: sb.appliedToViews.length,
-        })));
-        toast(`${list.length} scope box(es) — see console for details`, "info", 4000);
-      }, "List boxes"), { title: "List all scope boxes in console" }),
+        // Open the unified View Tools Manager panel (replaces console.log dump).
+        (window as any).__obsOpenViewToolsManager?.();
+      }, "List boxes"), { title: "Open the View Tools Manager panel with all scope boxes / filters / crop regions" }),
       b("crop", "Plan Region", safe(() => {
         (window as any).__obsPlanRegion?.build?.({
           outline: [{ x: 0, z: 0 }, { x: 5, z: 0 }, { x: 5, z: 5 }, { x: 0, z: 5 }],
@@ -1922,19 +2025,19 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Selection"),
       b("section-box", "Sel. Box", safe(() => {
         (window as any).__obsSelectionBox?.show?.({ padding: 0.5 });
-      }, "Selection box"), { title: "Wrap a 3D section box tightly around the selected element(s)" }),
+      }, "Selection box"), { kbd: "^⇧B", title: "Wrap a 3D section box tightly around the selected element(s) — Ctrl+Shift+B" }),
       b("crop", "Crop to Sel", safe(() => {
         (window as any).__obsSelectionBox?.cropTo?.({ padding: 1.0 });
-      }, "Crop to selection"), { title: "Auto-fit the 2D crop region of the active plan view to the selected element(s)" }),
+      }, "Crop to selection"), { kbd: "^⇧R", title: "Auto-fit the 2D crop region of the active plan view to the selected element(s) — Ctrl+Shift+R" }),
       b("fit", "Zoom Sel", safe(() => {
         (window as any).__obsSelectionBox?.zoom?.();
-      }, "Zoom to selection"), { title: "Fit camera frustum to selected element(s)" }),
+      }, "Zoom to selection"), { kbd: "^⇧Z", title: "Fit camera frustum to selected element(s) — Ctrl+Shift+Z" }),
       b("isolate", "Isolate", safe(() => {
         (window as any).__obsSelectionBox?.isolate?.();
-      }, "Isolate"), { title: "Hide everything except the selected element(s)" }),
+      }, "Isolate"), { kbd: "^I", title: "Hide everything except the selected element(s) — Ctrl+I" }),
       b("isolate", "Reset Iso", safe(() => {
         (window as any).__obsSelectionBox?.resetIsolation?.();
-      }, "Reset isolation"), { title: "Restore all hidden elements" }),
+      }, "Reset isolation"), { kbd: "^⇧I", title: "Restore all hidden elements — Ctrl+Shift+I" }),
       b("view", "Dependent", safe(() => {
         (window as any).__obsDependentViews?.create?.("primary-view-1", { name: "Dependent View 1" });
         toast("Dependent view created from primary", "success");
@@ -2209,12 +2312,23 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Collaboration"),
       b("system", "Live Sync", safe(() => (ctx.features as any).collaborationPanel?.toggle?.(), "Collaboration"), { title: "Join a real-time collaboration session" }),
       sep(),
+      groupLabel("View Tools"),
+      b("crop", "View Tools", safe(() => {
+        (window as any).__obsOpenViewToolsManager?.();
+      }, "View tools manager"), { kbd: "^⇧V", title: "Open the View Tools Manager panel (scope boxes + filters + crop regions) — Ctrl+Shift+V" }),
+      sep(),
       groupLabel("Worksets"),
       b("workset", "Init", safe(() => {
         (window as any).__obsWorksets?.init?.();
       }, "Init worksets"), { title: "Initialise default worksets" }),
-      b("workset", "New", safe(() => {
-        const name = prompt("Workset name:", "Workset " + (((window as any).__obsWorksets?.list?.() ?? []).length + 1));
+      b("workset", "New", safe(async () => {
+        const { promptLine } = await import("../features/form-modal");
+        const name = await promptLine(
+          "Create Workset",
+          "Workset name",
+          `Workset ${((window as any).__obsWorksets?.list?.() ?? []).length + 1}`,
+          "e.g. Walls, Furniture, MEP",
+        );
         if (!name) return;
         (window as any).__obsWorksets?.create?.(name);
       }, "New workset"), { title: "Create a new workset" }),
@@ -2295,9 +2409,14 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         const mp = (window as any).__obsMarketplace;
         if (!mp) { toast("Marketplace not loaded", "warn"); return; }
         const list = mp.list();
-        const choice = prompt(`Available plugins:\n${list.map((p:any,i:number)=>`${i+1}. ${p.name} (v${p.version}, ${p.downloads} downloads)`).join("\n")}\n\nEnter number:`, "1");
+        const { pickFromList } = await import("../features/form-modal");
+        const choice = await pickFromList(
+          "Install Plugin",
+          "Pick a plugin to install",
+          list.map((p: any) => ({ value: p.id, label: `${p.name} (v${p.version}, ${p.downloads} downloads)` })),
+        );
         if (!choice) return;
-        const entry = list[parseInt(choice)-1];
+        const entry = list.find((p: any) => p.id === choice);
         if (!entry) { toast("Invalid selection", "warn"); return; }
         toast(`Installing "${entry.name}"…`, "info");
         const ok = await mp.install(entry.id);
