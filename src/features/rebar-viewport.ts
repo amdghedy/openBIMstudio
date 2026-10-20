@@ -17,12 +17,16 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { layoutRebar } from "../modules/rebar/layout";
 import { generateRebarMesh } from "../modules/rebar/geometry";
-import type { RebarHost, RebarLayoutConfig } from "../modules/rebar/types";
+import { generateBBS, bbsToCSV, bbsToText } from "../modules/rebar/schedule";
+import type { RebarHost, RebarLayoutConfig, RebarLayout } from "../modules/rebar/types";
 
 type Any = Record<string, any>;
 
 /** Track rebar groups by host element ID for cleanup. */
 const rebarGroups = new Map<string, THREE.Group>();
+
+/** Track rebar layouts by host element ID for BBS export. */
+const rebarLayouts = new Map<string, RebarLayout>();
 
 /**
  * Extract a RebarHost from an authored beam or column element.
@@ -170,6 +174,7 @@ export function generateRebarForSelection(): number {
     }
 
     rebarGroups.set(id, group);
+    rebarLayouts.set(id, layout);
     totalBars += layout.bars.length;
 
     console.log(
@@ -205,6 +210,7 @@ export function removeRebarForHost(hostId: string): void {
     ctx.world?.scene?.three?.remove(group);
   } catch { /* */ }
   rebarGroups.delete(hostId);
+  rebarLayouts.delete(hostId);
 }
 
 /** Remove all rebar meshes from the scene. */
@@ -226,10 +232,65 @@ export function hasRebar(hostId: string): boolean {
 }
 
 /**
+ * Export a Bar Bending Schedule (BBS) for all elements with rebar.
+ * Downloads a CSV file matching the standard BBS format.
+ */
+export function exportBBS(): void {
+  if (rebarLayouts.size === 0) {
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: { message: "No rebar generated yet. Select a beam/column → Generate Rebar first.", kind: "warn" },
+    }));
+    return;
+  }
+
+  const csvParts: string[] = [];
+  let totalBars = 0;
+  let totalMass = 0;
+
+  for (const [hostId, layout] of rebarLayouts.entries()) {
+    const auth = (ctx.features as any)?.authoring ?? (window as any).__obsAuthoring;
+    const el = auth?.getElementById?.(hostId);
+    const name = el?.name ?? hostId;
+    const bbs = generateBBS(layout, name);
+    csvParts.push(bbsToCSV(bbs));
+    csvParts.push(""); // blank line between elements
+    totalBars += bbs.totalBars;
+    totalMass += bbs.totalMass;
+  }
+
+  const csv = csvParts.join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `bar-bending-schedule-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  window.dispatchEvent(new CustomEvent("obs-toast", {
+    detail: {
+      message: `BBS exported: ${rebarLayouts.size} element(s), ${totalBars} bars, ${totalMass.toFixed(2)} kg total.`,
+      kind: "success",
+    },
+  }));
+
+  // Also print text table to console for quick review.
+  for (const [hostId, layout] of rebarLayouts.entries()) {
+    const auth = (ctx.features as any)?.authoring ?? (window as any).__obsAuthoring;
+    const el = auth?.getElementById?.(hostId);
+    const name = el?.name ?? hostId;
+    const bbs = generateBBS(layout, name);
+    console.log(bbsToText(bbs));
+  }
+}
+
+/**
  * Register the "Generate Rebar" command. Called from critical-gaps-boot.
  */
 export function setupRebarViewport(): void {
-  // Register the command via the command palette / UI items register.
+  // Register the commands via the command palette / UI items register.
   try {
     const w = window as any;
     if (w.__obsPlugins) {
@@ -238,6 +299,12 @@ export function setupRebarViewport(): void {
         label: "Generate Rebar (Selection)",
         hint: "Generate 3D rebar inside the selected beam/column/footing",
         run: () => { generateRebarForSelection(); },
+      });
+      w.__obsPlugins.set("command:rebar:bbs", {
+        id: "rebar.export-bbs",
+        label: "Export Bar Bending Schedule (CSV)",
+        hint: "Export rebar schedule for all elements with generated rebar",
+        run: () => { exportBBS(); },
       });
     }
   } catch { /* */ }
@@ -249,7 +316,8 @@ export function setupRebarViewport(): void {
     clear: clearAllRebar,
     list: listRebarHosts,
     has: hasRebar,
+    exportBBS: exportBBS,
   };
 
-  console.log("[rebar-viewport] ready. Select a beam/column → command palette → Generate Rebar.");
+  console.log("[rebar-viewport] ready. Select a beam/column → Generate Rebar. Then Export BBS for schedule.");
 }
