@@ -1,7 +1,7 @@
 {
   "name": "open-bim-studio",
   "private": true,
-  "version": "0.65.0",
+  "version": "0.65.1",
   "type": "module",
   "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
@@ -62,7 +62,7 @@
     "react-redux": "^9.1.2",
     "three": "^0.182.0",
     "three-csg-ts": "^3.2.0",
-    "three-mesh-bvh": "^0.7.7",
+    "three-mesh-bvh": "^0.8.3",
     "web-ifc": "0.0.77",
     "y-websocket": "^2.0.1",
     "yjs": "^13.6.14"
