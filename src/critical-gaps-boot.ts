@@ -188,10 +188,10 @@ async function runOnce(): Promise<void> {
     m.setupDimensionChains?.();
   });
 
-  // Revit / Navisworks import (RVT → IFC conversion via APS)
-  await safe("revit-import", async () => {
-    const m: Any = await import("./features/revit-import");
-    m.setupRevitImport?.();
+  // BIM / Navisworks import (RVT → IFC conversion via APS)
+  await safe("bim-import", async () => {
+    const m: Any = await import("./features/bim-import");
+    m.setupBIMImport?.();
   });
 
   // Sun settings & shadows (solar study)
@@ -356,8 +356,8 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./modules/collaboration/realtime-client");
     m.setupRealtimeClient?.();
   });
-  await safe("revit-mouse-policy", async () => {
-    const m: Any = await import("./core/revit-mouse-policy");
+  await safe("bim-mouse-policy", async () => {
+    const m: Any = await import("./core/bim-mouse-policy");
     m.setupBIMMousePolicy?.();
   });
 

@@ -32,8 +32,8 @@ export class Constraint {
   resolve(ctx: Record<string, number>, mutable: Set<string>): boolean;
 }
 
-export class RevitParametricEngine {
-  static attach(api: any, modelID: number, options?: any): RevitParametricEngine;
+export class BIMParametricEngine {
+  static attach(api: any, modelID: number, options?: any): BIMParametricEngine;
   units: any;
   families: Map<string, any>;
   instances: Map<number, any>;

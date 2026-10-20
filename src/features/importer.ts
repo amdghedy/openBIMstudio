@@ -197,14 +197,14 @@ function getImporter(): any {
   // which tells web-ifc to translate every loaded IFC file so that its
   // first element's placement becomes (0, 0, 0). This strips absolute
   // world coordinates and breaks "Origin to Origin" linking — two IFC
-  // files exported from the same Revit project (linked origin-to-origin
-  // in Revit) end up at DIFFERENT local origins in openBIMstudio,
+  // files exported from the same BIM project (linked origin-to-origin
+  // in BIM) end up at DIFFERENT local origins in openBIMstudio,
   // appearing far apart.
   //
   // With COORDINATE_TO_ORIGIN = false, web-ifc preserves the absolute
-  // IFC ObjectPlacement coordinates. Two IFC files that share a Revit
+  // IFC ObjectPlacement coordinates. Two IFC files that share a BIM
   // coordinate system will appear at the correct relative positions in
-  // openBIMstudio — matching Revit's "Origin to Origin" linking.
+  // openBIMstudio — matching BIM's "Origin to Origin" linking.
   //
   // Center-to-center positioning still works because it measures the
   // actual mesh bounds after load (setModelOffset uses the bbox center).

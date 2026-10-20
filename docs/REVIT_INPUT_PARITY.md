@@ -1,6 +1,6 @@
-# Revit Input Parity — Camera, View, Mouse, Keyboard
+# BIM Input Parity — Camera, View, Mouse, Keyboard
 
-## Mouse (matches Revit default 3D navigation)
+## Mouse (matches BIM default 3D navigation)
 
 | Action | Behaviour |
 |--------|-----------|
@@ -15,8 +15,8 @@
 | **LMB drag R→L** | Crossing select |
 | **RMB** | Context menu |
 
-Implemented in `navigation.ts` + `revit-mouse-policy.ts` + `input-router.ts`.  
-CameraControls mouse buttons are forced **OFF** so only this map drives the view (`revit-input-parity` re-asserts every 4s).
+Implemented in `navigation.ts` + `bim-mouse-policy.ts` + `input-router.ts`.  
+CameraControls mouse buttons are forced **OFF** so only this map drives the view (`bim-input-parity` re-asserts every 4s).
 
 ## Keyboard — view
 
@@ -62,7 +62,7 @@ CameraControls mouse buttons are forced **OFF** so only this map drives the view
 | **RF / CL** | Roof / Ceiling |
 | **DU / PP** | Duct / Pipe |
 
-Two-letter sequences use an ~800 ms buffer (same idea as Revit).
+Two-letter sequences use an ~800 ms buffer (same idea as BIM).
 
 ## Help UI
 
@@ -75,9 +75,9 @@ Two-letter sequences use an ~800 ms buffer (same idea as Revit).
 | File | Role |
 |------|------|
 | `features/navigation.ts` | MMB pan / Shift-orbit / wheel zoom (canonical) |
-| `core/revit-mouse-policy.ts` | MMB flags, no zoom during pan, block click after drag |
+| `core/bim-mouse-policy.ts` | MMB flags, no zoom during pan, block click after drag |
 | `core/input-router.ts` | Gesture ownership |
 | `core/wheel-arbiter.ts` | Wheel conflict resolution |
 | `features/selection-orbit.ts` | Pivot on LMB selection only |
 | `shell/default-shortcuts.ts` | Base tool + app shortcuts |
-| `features/revit-input-parity.ts` | Missing Revit keys + help overlay + nav guard |
+| `features/bim-input-parity.ts` | Missing BIM keys + help overlay + nav guard |

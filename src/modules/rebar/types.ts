@@ -5,7 +5,7 @@
  * the shape library, layout engine, geometry generator, and host
  * integration.
  *
- * Design follows Revit's rebar model:
+ * Design follows BIM's rebar model:
  *   - A RebarBar is a single length of steel with a shape (straight,
  *     L-bend, U-bar, stirrup) and a diameter.
  *   - A RebarLayout is a set of bars placed inside a host element

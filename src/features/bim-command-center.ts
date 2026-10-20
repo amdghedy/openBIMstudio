@@ -19,7 +19,7 @@ function installCss(): void {
   styleOk = true;
   const s = document.createElement("style");
   s.textContent = `
-#obs-revit-cc {
+#obs-bim-cc {
   position: fixed; top: 100px; left: 16px; width: 300px;
   max-height: calc(100vh - 160px); overflow: auto; z-index: 8600;
   background: linear-gradient(180deg, #1a1d27 0%, #12141c 100%);
@@ -28,58 +28,58 @@ function installCss(): void {
   color: #e8eaf0; font: 12px/1.4 Inter, system-ui, sans-serif;
   display: none; user-select: none;
 }
-#obs-revit-cc.is-open { display: flex; flex-direction: column; }
-#obs-revit-cc .rcc-hdr {
+#obs-bim-cc.is-open { display: flex; flex-direction: column; }
+#obs-bim-cc .rcc-hdr {
   display: flex; align-items: center; gap: 8px;
   padding: 11px 12px; border-bottom: 1px solid #1e2029;
   background: #181a23; cursor: grab; border-radius: 12px 12px 0 0;
 }
-#obs-revit-cc .rcc-hdr b {
+#obs-bim-cc .rcc-hdr b {
   flex: 1; font-size: 13px; letter-spacing: -.01em;
   background: linear-gradient(90deg, #e8eaf0, #7dd3fc);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-#obs-revit-cc .rcc-close {
+#obs-bim-cc .rcc-close {
   width: 26px; height: 26px; border-radius: 6px; border: 1px solid #2a2e3a;
   background: transparent; color: #94a3b8; cursor: pointer; font-size: 14px;
 }
-#obs-revit-cc .rcc-close:hover { background: #232633; color: #f8fafc; }
-#obs-revit-cc .rcc-body { padding: 8px 10px 12px; overflow: auto; }
-#obs-revit-cc .rcc-sec {
+#obs-bim-cc .rcc-close:hover { background: #232633; color: #f8fafc; }
+#obs-bim-cc .rcc-body { padding: 8px 10px 12px; overflow: auto; }
+#obs-bim-cc .rcc-sec {
   margin-bottom: 10px; border: 1px solid #1e2029; border-radius: 8px;
   background: #0e1017; overflow: hidden;
 }
-#obs-revit-cc .rcc-sec-title {
+#obs-bim-cc .rcc-sec-title {
   padding: 6px 10px; font: 700 9px/1 Inter, system-ui;
   letter-spacing: .7px; text-transform: uppercase; color: #6b7280;
   background: #151820; border-bottom: 1px solid #1e2029;
 }
-#obs-revit-cc .rcc-grid {
+#obs-bim-cc .rcc-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 6px;
 }
-#obs-revit-cc .rcc-btn {
+#obs-bim-cc .rcc-btn {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
   padding: 7px 8px; border-radius: 6px; border: 1px solid transparent;
   background: transparent; color: #cbd5e1; cursor: pointer; text-align: left;
   font: 600 11px/1.2 Inter, system-ui; transition: background .1s, border-color .1s;
 }
-#obs-revit-cc .rcc-btn:hover {
+#obs-bim-cc .rcc-btn:hover {
   background: #232633; border-color: #343847; color: #f1f5f9;
 }
-#obs-revit-cc .rcc-btn:active { transform: scale(.98); }
-#obs-revit-cc .rcc-btn[disabled] {
+#obs-bim-cc .rcc-btn:active { transform: scale(.98); }
+#obs-bim-cc .rcc-btn[disabled] {
   opacity: .4; cursor: not-allowed; transform: none;
 }
-#obs-revit-cc .rcc-btn small {
+#obs-bim-cc .rcc-btn small {
   font: 400 9px/1.2 Inter, system-ui; color: #6b7280; font-weight: 400;
 }
-#obs-revit-cc .rcc-btn:hover small { color: #94a3b8; }
-#obs-revit-cc .rcc-status {
+#obs-bim-cc .rcc-btn:hover small { color: #94a3b8; }
+#obs-bim-cc .rcc-status {
   margin: 0 10px 10px; padding: 7px 9px; border-radius: 6px;
   background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.2);
   color: #7dd3fc; font: 500 10.5px/1.35 Inter, system-ui;
 }
-#obs-revit-cc .rcc-kbd {
+#obs-bim-cc .rcc-kbd {
   display: inline-block; padding: 0 4px; margin-left: 4px;
   border: 1px solid #343847; border-radius: 3px; background: #1a1d28;
   font: 9px ui-monospace, monospace; color: #94a3b8;
@@ -415,7 +415,7 @@ export function setupBimCommandCenter(): void {
   installCss();
 
   panel = document.createElement("div");
-  panel.id = "obs-revit-cc";
+  panel.id = "obs-bim-cc";
   panel.innerHTML = `
     <div class="rcc-hdr">
       <b>Command Center</b>

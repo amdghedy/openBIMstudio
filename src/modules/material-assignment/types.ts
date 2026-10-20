@@ -3,7 +3,7 @@
  *
  * Materials drive: render appearance (color, roughness, metalness),
  * quantity takeoff (density, cost), thermal properties, and structural
- * properties. Revit's "Material" browser assigns materials per element
+ * properties. BIM's "Material" browser assigns materials per element
  * type or per instance.
  */
 

@@ -41,7 +41,7 @@ export async function setupM4ViewDims(): Promise<void> {
 
 function injectCommandCenterButtons(): void {
   const tryInject = () => {
-    const cc = document.getElementById("obs-revit-cc");
+    const cc = document.getElementById("obs-bim-cc");
     if (!cc) return false;
     const body = cc.querySelector(".rcc-body");
     if (!body) return false;

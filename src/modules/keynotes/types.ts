@@ -2,7 +2,7 @@
  * Keynotes — types + lookup system.
  *
  * Keynotes tag elements with standardized codes from a keynote file
- * (Revit's Keynote Legend feature). Each keynote has a code (e.g.
+ * (BIM's Keynote Legend feature). Each keynote has a code (e.g.
  * "05 10 00.A"), a title, and is organized hierarchically by
  * division → section → topic.
  *

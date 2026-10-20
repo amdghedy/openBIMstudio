@@ -9,7 +9,7 @@
  * configured (APS_CLIENT_ID, APS_CLIENT_SECRET).
  *
  * If APS credentials are not configured, the server saves the file
- * locally and instructs the user to export IFC from Revit manually.
+ * locally and instructs the user to export IFC from BIM manually.
  */
 
 import { ctx } from "../core/context";
@@ -37,7 +37,7 @@ const CONVERTIBLE_EXTS = [".rvt", ".rfa", ".nwd", ".nwc", ".dwg"];
  * Open a file picker for RVT/NWD/NWC/DWG files, upload to the server,
  * poll for conversion status, then load the resulting IFC.
  */
-export async function pickAndConvertRevitFile(): Promise<void> {
+export async function pickAndConvertBIMFile(): Promise<void> {
   // 1. File picker
   const input = document.createElement("input");
   input.type = "file";
@@ -95,7 +95,7 @@ export async function convertAndLoadFile(file: File): Promise<void> {
       showToast(toastId, "warn",
         `"${file.name}" saved to server. APS credentials not configured.\n` +
         `To enable auto-conversion: set APS_CLIENT_ID and APS_CLIENT_SECRET.\n` +
-        `Manual path: In Revit → File → Export → IFC → import the .ifc here.`,
+        `Manual path: In BIM → File → Export → IFC → import the .ifc here.`,
         8000
       );
       return;
@@ -180,12 +180,12 @@ function showToast(id: string, kind: string, message: string, timeout?: number):
 }
 
 /**
- * Register the "Import Revit/Navisworks File" command.
+ * Register the "Import BIM/Navisworks File" command.
  */
-export function setupRevitImport(): void {
+export function setupBIMImport(): void {
   // Expose global for console + command palette
-  (window as any).__obsRevitImport = {
-    pickAndConvert: pickAndConvertRevitFile,
+  (window as any).__obsBIMImport = {
+    pickAndConvert: pickAndConvertBIMFile,
     convertFile: convertAndLoadFile,
     setServer: setConvertServer,
     getServer: getConvertServer,
@@ -195,14 +195,14 @@ export function setupRevitImport(): void {
   try {
     const w = window as any;
     if (w.__obsPlugins) {
-      w.__obsPlugins.set("command:revit:import", {
-        id: "revit.import",
-        label: "Import Revit / Navisworks File…",
+      w.__obsPlugins.set("command:bim:import", {
+        id: "bim.import",
+        label: "Import BIM / Navisworks File…",
         hint: "Convert .rvt/.nwd/.nwc to IFC and load into viewport",
-        run: () => { pickAndConvertRevitFile(); },
+        run: () => { pickAndConvertBIMFile(); },
       });
     }
   } catch { /* */ }
 
-  console.log("[revit-import] ready. Use command palette → 'Import Revit / Navisworks File' or __obsRevitImport.pickAndConvert().");
+  console.log("[bim-import] ready. Use command palette → 'Import BIM / Navisworks File' or __obsBIMImport.pickAndConvert().");
 }

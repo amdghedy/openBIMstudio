@@ -2,7 +2,7 @@
  * Model curves on faces — draw 2D curves on element faces and use them
  * for push-pull (extrude) or hosted element placement.
  *
- * Revit's "Model Lines" feature lets users draw lines on any face of
+ * BIM's "Model Lines" feature lets users draw lines on any face of
  * a 3D element. These lines can then be used to:
  *   - Create hosted elements (doors, windows) along the line
  *   - Push-pull the face along the curve to create geometry

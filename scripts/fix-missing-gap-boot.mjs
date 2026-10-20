@@ -41,7 +41,7 @@ if (!src.includes(importRealtime)) {
 
 if (!src.includes(callWheel) || !src.includes(callRealtime)) {
   const anchor =
-    'await safe("revit-mouse-policy", setupRevitMousePolicy);';
+    'await safe("bim-mouse-policy", setupBIMMousePolicy);';
 
   if (src.includes(anchor)) {
     const replacement =

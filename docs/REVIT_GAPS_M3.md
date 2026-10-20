@@ -1,4 +1,4 @@
-# OpenBIMStudio - Revit gaps, Milestone 3 (part 1): drawings that show the model
+# OpenBIMStudio - BIM gaps, Milestone 3 (part 1): drawings that show the model
 
 M3 is the documentation milestone. Before building anything I traced the real drawing pipeline (views -> scene -> sheet SVG /
 PDF). Findings, then what this package changes.
@@ -37,10 +37,10 @@ what lies beyond is drawn as projection. "Right" / "left" look directions are ne
 
 ## Install
 
-1. Copy `src/modules/revit-gaps/` (now 15 files) over the project's folder.
-2. `node scripts/install-revit-gaps.mjs <projectRoot>` (`--dry-run` first if you like). It is idempotent, now eleven small edits in
+1. Copy `src/modules/bim-gaps/` (now 15 files) over the project's folder.
+2. `node scripts/install-bim-gaps.mjs <projectRoot>` (`--dry-run` first if you like). It is idempotent, now eleven small edits in
    ten files; the new ones are in `generators/plan.ts` (two lines), `section.ts`, `elevation.ts` and `export/pdf.ts`.
-3. `npx tsc --noEmit`, `npm run dev`. Console: `[revit-gaps] 1.2.0-m3: 7/7 steps started`.
+3. `npx tsc --noEmit`, `npm run dev`. Console: `[bim-gaps] 1.2.0-m3: 7/7 steps started`.
 4. Run the palette command **"Views: regenerate all views and sheets"** once (sheets cache scenes), then open a plan, section,
    elevation and a sheet.
 5. Tests: copy `tests/` next to `package.json`, `node tests/run-tests.mjs`.
@@ -77,4 +77,4 @@ NOT verified, please check:
 
 View templates and a Visibility/Graphics dialog (the `templateId` plumbing), automatic dimensions, schedules for rooms / doors /
 windows / the M2 types linked to the marks, section and elevation markers on plans, callouts / detail views, print preview and
-sheet checks. Then M4 (Revit 2020 round trip), M5 (worksharing), M6 (hardening).
+sheet checks. Then M4 (BIM 2020 round trip), M5 (worksharing), M6 (hardening).

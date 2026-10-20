@@ -26,7 +26,7 @@ let cmdLine: HTMLDivElement | null = null;
 
 
 const UI_SEL =
-  "button,input,select,textarea,[contenteditable],.obs-ribbon,.obs-panel,.obs-property,.obs-dialog,#obs-revit-cc,#obs-cad-panel,.obs-adv-toolbar";
+  "button,input,select,textarea,[contenteditable],.obs-ribbon,.obs-panel,.obs-property,.obs-dialog,#obs-bim-cc,#obs-cad-panel,.obs-adv-toolbar";
 
 function setCmd(msg: string): void {
   if (!cmdLine) {

@@ -5,7 +5,7 @@
  * details) with a hatch pattern fill. Masking regions hide underlying
  * geometry behind a solid or transparent mask.
  *
- * Revit: Annotate > Detail > Region > Filled Region / Masking Region.
+ * BIM: Annotate > Detail > Region > Filled Region / Masking Region.
  */
 
 /** Region type: filled (hatch pattern) or masking (hide geometry). */

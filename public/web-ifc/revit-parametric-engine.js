@@ -1,11 +1,11 @@
 ﻿/* ============================================================================
- * revit-parametric-engine.js
- * Revit-style parametric engine for web-ifc.
+ * bim-parametric-engine.js
+ * BIM-style parametric engine for web-ifc.
  * UMD. Attaches to window.WebIFCWasm when loaded in a browser.
  * ========================================================================== */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.RevitParametricEngine = factory();
+  else root.BIMParametricEngine = factory();
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
@@ -417,7 +417,7 @@
   Transaction.prototype.commit   = function(){ if (this.closed) return; this.closed = true; this.engine._history.push({ label: this.label, at: Date.now() }); };
 
   /* -------- engine -------- */
-  function RevitParametricEngine(api, modelID, options){
+  function BIMParametricEngine(api, modelID, options){
     this.api = api; this.modelID = modelID;
     this.options = Object.assign({ autoRegen: true, onRegenerate: null, onError: null }, options || {});
     this.units = api && modelID != null ? UnitSystem.detectFromIfc(api, modelID) : new UnitSystem();
@@ -425,11 +425,11 @@
     this.families = new Map(); this.instances = new Map();
     this._history = []; this._txn = null; this._dirty = new Set();
   }
-  RevitParametricEngine.prototype.loadFamilies = function(){
+  BIMParametricEngine.prototype.loadFamilies = function(){
     if (this.bridge) this.families = this.bridge.readFamilies();
     return this.families;
   };
-  RevitParametricEngine.prototype.defineFamily = function(name, spec){
+  BIMParametricEngine.prototype.defineFamily = function(name, spec){
     spec = spec || {};
     var fam = new Family(name, spec.category);
     var i;
@@ -444,14 +444,14 @@
     this.families.set(name, fam);
     return fam;
   };
-  RevitParametricEngine.prototype.defineType = function(familyName, typeName, overrides){
+  BIMParametricEngine.prototype.defineType = function(familyName, typeName, overrides){
     var fam = this.families.get(familyName); if (!fam) throw new Error('Unknown family: ' + familyName);
     var t = fam.types.get(typeName);
     if (!t) { t = new FamilyType(fam, typeName); fam.types.set(typeName, t); }
     if (overrides) for (var k in overrides) if (overrides.hasOwnProperty(k)) t.set(k, overrides[k]);
     return t;
   };
-  RevitParametricEngine.prototype.bindInstance = function(expressID, familyName, typeName){
+  BIMParametricEngine.prototype.bindInstance = function(expressID, familyName, typeName){
     var fam = this.families.get(familyName); if (!fam) throw new Error('Unknown family: ' + familyName);
     var t = fam.types.get(typeName) || this.defineType(familyName, typeName);
     var inst = new FamilyInstance(expressID, t);
@@ -460,7 +460,7 @@
     this._dirty.add(expressID);
     return inst;
   };
-  RevitParametricEngine.prototype._resolve = function(fam, type){
+  BIMParametricEngine.prototype._resolve = function(fam, type){
     var ctx = {};
     type.params.forEach(function(v, k){ ctx[k] = v; });
     fam.parameters.forEach(function(p, k){ if (!(k in ctx)) ctx[k] = p.value; });
@@ -481,14 +481,14 @@
     }
     return ctx;
   };
-  RevitParametricEngine.prototype.effectiveParameters = function(expressID){
+  BIMParametricEngine.prototype.effectiveParameters = function(expressID){
     var inst = this.instances.get(expressID); if (!inst) return null;
     var ctx = this._resolve(inst.type.family, inst.type);
     inst.overrides.forEach(function(v, k){ ctx[k] = v; });
     inst.type.family.instanceParameters.forEach(function(p, k){ if (!(k in ctx)) ctx[k] = p.value; });
     return ctx;
   };
-  RevitParametricEngine.prototype.setTypeParameter = function(familyName, typeName, paramName, value){
+  BIMParametricEngine.prototype.setTypeParameter = function(familyName, typeName, paramName, value){
     var fam = this.families.get(familyName); if (!fam) throw new Error('Unknown family: ' + familyName);
     var t = fam.types.get(typeName); if (!t) throw new Error('Unknown type: ' + typeName);
     var p = fam.parameters.get(paramName); if (!p) throw new Error('Unknown parameter: ' + paramName);
@@ -499,22 +499,22 @@
     this._maybeRegen();
     return t;
   };
-  RevitParametricEngine.prototype.setInstanceParameter = function(expressID, paramName, value){
+  BIMParametricEngine.prototype.setInstanceParameter = function(expressID, paramName, value){
     var inst = this.instances.get(expressID); if (!inst) throw new Error('Unknown instance: ' + expressID);
     inst.overrides.set(paramName, value);
     this._dirty.add(expressID);
     this._maybeRegen();
     return inst;
   };
-  RevitParametricEngine.prototype.addConstraint = function(familyName, c){
+  BIMParametricEngine.prototype.addConstraint = function(familyName, c){
     var fam = this.families.get(familyName); if (!fam) throw new Error('Unknown family: ' + familyName);
     fam.addConstraint(c);
     fam.types.forEach(function(t){ t.instances.forEach(this._dirty.add, this._dirty); }, this);
     this._maybeRegen();
     return fam;
   };
-  RevitParametricEngine.prototype._maybeRegen = function(){ if (this.options.autoRegen) this.regenerate(); };
-  RevitParametricEngine.prototype.regenerate = function(_opts){
+  BIMParametricEngine.prototype._maybeRegen = function(){ if (this.options.autoRegen) this.regenerate(); };
+  BIMParametricEngine.prototype.regenerate = function(_opts){
     var out = [], self = this;
     this._dirty.forEach(function(id){
       var inst = self.instances.get(id); if (!inst) return;
@@ -528,16 +528,16 @@
     if (this.options.onRegenerate) this.options.onRegenerate(out);
     return out;
   };
-  RevitParametricEngine.prototype.beginTransaction = function(label){
+  BIMParametricEngine.prototype.beginTransaction = function(label){
     if (this._txn) throw new Error('Transaction already open');
     this._txn = new Transaction(this, label || 'Edit');
     return this._txn;
   };
-  RevitParametricEngine.prototype.commit   = function(){ if (!this._txn) return; this._txn.commit();   this._txn = null; };
-  RevitParametricEngine.prototype.rollback = function(){ if (!this._txn) return; this._txn.rollback(); this._txn = null; this._dirty.clear(); };
-  RevitParametricEngine.prototype._snapshot = function(){ return { families: new Map(this.families), instances: new Map(this.instances) }; };
-  RevitParametricEngine.prototype._restore  = function(s){ this.families = s.families; this.instances = s.instances; };
-  RevitParametricEngine.prototype.listFamilies = function(){
+  BIMParametricEngine.prototype.commit   = function(){ if (!this._txn) return; this._txn.commit();   this._txn = null; };
+  BIMParametricEngine.prototype.rollback = function(){ if (!this._txn) return; this._txn.rollback(); this._txn = null; this._dirty.clear(); };
+  BIMParametricEngine.prototype._snapshot = function(){ return { families: new Map(this.families), instances: new Map(this.instances) }; };
+  BIMParametricEngine.prototype._restore  = function(s){ this.families = s.families; this.instances = s.instances; };
+  BIMParametricEngine.prototype.listFamilies = function(){
     var out = [];
     this.families.forEach(function(f, n){
       var params = [];
@@ -547,37 +547,37 @@
     });
     return out;
   };
-  RevitParametricEngine.prototype.listTypes = function(familyName){
+  BIMParametricEngine.prototype.listTypes = function(familyName){
     var f = this.families.get(familyName); return f ? Array.from(f.types.keys()) : [];
   };
-  RevitParametricEngine.prototype.listInstances = function(familyName, typeName){
+  BIMParametricEngine.prototype.listInstances = function(familyName, typeName){
     var f = this.families.get(familyName); if (!f) return [];
     var t = f.types.get(typeName); if (!t) return [];
     return Array.from(t.instances);
   };
 
-  RevitParametricEngine.attach = function(api, modelID, options){
-    var eng = new RevitParametricEngine(api, modelID, options);
+  BIMParametricEngine.attach = function(api, modelID, options){
+    var eng = new BIMParametricEngine(api, modelID, options);
     api.parametric = eng;
-    api.createParametricEngine = function(mid, opts){ return RevitParametricEngine.attach(api, mid == null ? modelID : mid, opts); };
+    api.createParametricEngine = function(mid, opts){ return BIMParametricEngine.attach(api, mid == null ? modelID : mid, opts); };
     return eng;
   };
 
-  if (root.WebIFCWasm && !root.WebIFCWasm.__revitParametricWrapped) {
+  if (root.WebIFCWasm && !root.WebIFCWasm.__bimParametricWrapped) {
     var orig = root.WebIFCWasm;
     var wrapped = async function(){
       var api = await orig.apply(null, arguments);
-      api.createParametricEngine = function(modelID, opts){ return RevitParametricEngine.attach(api, modelID, opts); };
+      api.createParametricEngine = function(modelID, opts){ return BIMParametricEngine.attach(api, modelID, opts); };
       return api;
     };
     Object.keys(orig).forEach(function(k){ try { wrapped[k] = orig[k]; } catch(e){} });
     wrapped.default = wrapped;
-    try { Object.defineProperty(wrapped, '__revitParametricWrapped', { value: true }); } catch(e){}
+    try { Object.defineProperty(wrapped, '__bimParametricWrapped', { value: true }); } catch(e){}
     root.WebIFCWasm = wrapped;
   }
 
   return {
-    RevitParametricEngine: RevitParametricEngine,
+    BIMParametricEngine: BIMParametricEngine,
     Family: Family, FamilyType: FamilyType, FamilyInstance: FamilyInstance,
     Parameter: Parameter, ParamKind: ParamKind, Constraint: Constraint,
     FormulaEngine: FormulaEngine, GeometryBuilder: GeometryBuilder,

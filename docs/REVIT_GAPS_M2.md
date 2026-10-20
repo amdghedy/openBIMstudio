@@ -1,4 +1,4 @@
-# OpenBIMStudio - Revit gaps, Milestone 2: real stairs, railings, ramps, curtain walls, roofs, ceilings
+# OpenBIMStudio - BIM gaps, Milestone 2: real stairs, railings, ramps, curtain walls, roofs, ceilings
 
 Before M2 these types had no mesh in the authoring engine. The ST / RA / CW / RF / CL shortcuts were aliased to a box
 ("equipment"), a plain wall or a flat slab, and the ribbon's Place Stair / Railing / Curtain Wall buttons dropped fixed-size
@@ -7,12 +7,12 @@ elements. This package is cumulative (M1 + M2).
 
 ## Install (upgrade from M1, or fresh)
 
-1. Copy `src/modules/revit-gaps/` over your project's folder (10 files, all plain ASCII).
-2. `node scripts/install-revit-gaps.mjs <projectRoot>` (use `--dry-run` first if you like). It is idempotent and now makes six
+1. Copy `src/modules/bim-gaps/` over your project's folder (10 files, all plain ASCII).
+2. `node scripts/install-bim-gaps.mjs <projectRoot>` (use `--dry-run` first if you like). It is idempotent and now makes six
    small edits (M1: boot hook, File menu, native-twin GlobalIds. M2: `createMesh` asks `window.__obsMeshBuilders` for unknown
    types, cost takeoff gets rows for the new types, the three parity buttons start the click tools). Originals go to
-   `.revit-gaps-backup/`; CRLF/LF is preserved; an anchor that is not found is reported, never guessed.
-3. `npx tsc --noEmit`, `npm run dev`. Console: `[revit-gaps] 1.1.0-m2: 6/6 steps started` (7/7 with M3).
+   `.bim-gaps-backup/`; CRLF/LF is preserved; an anchor that is not found is reported, never guessed.
+3. `npx tsc --noEmit`, `npm run dev`. Console: `[bim-gaps] 1.1.0-m2: 6/6 steps started` (7/7 with M3).
 4. Tests: copy `tests/` next to `package.json`, `node tests/run-tests.mjs` (works on Windows).
 
 ## Using it
@@ -68,7 +68,7 @@ from 10 to 14).
 
 NOT verified, please check on your machine:
 1. The click tools, preview and snapping were never run in a browser (the DOM / three.js parts are typechecked and covered with fakes).
-2. Open an exported IFC in Revit or another reader (my validator is my own; use the IFC2X3 item if Revit 2020 rejects IFC4).
+2. Open an exported IFC in BIM or another reader (my validator is my own; use the IFC2X3 item if BIM 2020 rejects IFC4).
 3. The 2D plan panel (156 KB, not read in this review): I did not check how it draws the new types.
 
 ## Limits (deliberately not done yet)
@@ -83,4 +83,4 @@ NOT verified, please check on your machine:
 
 Wall joins and profile edit (the engine already has corner join helpers; not touched), room placement and tags in the **plan panel**,
 phases / design options in the Properties palette (today: palette commands from M1), and shaft / floor openings for stairs.
-Next milestones are unchanged: M3 documentation (views, sheets, tags, schedules), M4 Revit 2020 round trip, M5 worksharing, M6 hardening.
+Next milestones are unchanged: M3 documentation (views, sheets, tags, schedules), M4 BIM 2020 round trip, M5 worksharing, M6 hardening.

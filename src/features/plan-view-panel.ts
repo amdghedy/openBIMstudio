@@ -130,18 +130,18 @@ interface DimensionStyle {
 }
 
 const DEFAULT_DIMENSION_STYLES: DimensionStyle[] = [
-  { id: "revit-aligned", name: "Aligned � 2.5 mm", unit: "mm", precision: 0, textSize: 2.5, color: "#1d4ed8", tick: "diagonal" },
-  { id: "revit-engineering", name: "Engineering � 3 mm", unit: "mm", precision: 0, textSize: 3, color: "#1e40af", tick: "diagonal" },
+  { id: "bim-aligned", name: "Aligned � 2.5 mm", unit: "mm", precision: 0, textSize: 2.5, color: "#1d4ed8", tick: "diagonal" },
+  { id: "bim-engineering", name: "Engineering � 3 mm", unit: "mm", precision: 0, textSize: 3, color: "#1e40af", tick: "diagonal" },
   { id: "decimal-m", name: "Decimal Meters", unit: "m", precision: 3, textSize: 2.5, color: "#1d4ed8", tick: "arrow" },
 ];
-const DIM_STYLE_KEY = "obs.revit.dimension-styles.v1";
+const DIM_STYLE_KEY = "obs.bim.dimension-styles.v1";
 function loadDimensionStyleId(): string {
   try { return localStorage.getItem(DIM_STYLE_KEY) ?? DEFAULT_DIMENSION_STYLES[0].id; } catch { return DEFAULT_DIMENSION_STYLES[0].id; }
 }
 let activeDimensionStyleId = loadDimensionStyleId();
 const getDimensionStyle = () => DEFAULT_DIMENSION_STYLES.find((d) => d.id === activeDimensionStyleId) ?? DEFAULT_DIMENSION_STYLES[0];
 
-const PLAN_SCALE_KEY = "obs.revit.plan-scale.v1";
+const PLAN_SCALE_KEY = "obs.bim.plan-scale.v1";
 let planViewScale = (() => {
   try {
     const v = Number(localStorage.getItem(PLAN_SCALE_KEY));

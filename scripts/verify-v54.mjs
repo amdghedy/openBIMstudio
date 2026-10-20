@@ -6,7 +6,7 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const checks = [
   ['3D Ctrl+LeftClick remains multi-select', read('src/features/selection.ts').includes('Ctrl+LeftClick is multi-selection')],
   ['2D Ctrl+LeftClick selection set exists', read('src/features/plan-view-panel.ts').includes('const planSelectedIds = new Set<string>()')],
-  ['1:100 plan scale persists and rerenders', /obs\.revit\.plan-scale\.v1[\s\S]*planViewScale/.test(read('src/features/plan-view-panel.ts'))],
+  ['1:100 plan scale persists and rerenders', /obs\.bim\.plan-scale\.v1[\s\S]*planViewScale/.test(read('src/features/plan-view-panel.ts'))],
   ['Pure cardinal camera command exists', read('src/features/camera-tools.ts').includes('export function gotoExactView')],
   ['Cube face uses exact cardinal camera commands', read('src/features/viewcube.ts').includes('gotoExactView("top")') && read('src/features/viewcube.ts').includes('gotoExactView("front")')],
   ['Dockable controls expose minimize/dock/close', read('src/features/dockable.ts').includes('makeControl("×"') && read('src/features/dockable.ts').includes('cycleDock()') && read('src/features/dockable.ts').includes('minimize(): void')],

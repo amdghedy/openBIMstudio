@@ -1,4 +1,4 @@
-# Revit + Parametric Engine — Gap Closure Complete
+# BIM + Parametric Engine — Gap Closure Complete
 
 ## Install
 
@@ -7,7 +7,7 @@ cp -r artifacts/src/* <OpenBIMStudio>/src/
 npm run typecheck && npm run dev
 ```
 
-## Parametric engine (Revit family core)
+## Parametric engine (BIM family core)
 
 | Feature | Module | Status |
 |---------|--------|--------|
@@ -52,7 +52,7 @@ svc.setConstraints(familyId, constraints)
 svc.propagateType(familyId, typeId, instances)
 ```
 
-## Revit platform gaps (also closed)
+## BIM platform gaps (also closed)
 
 | Area | Status |
 |------|--------|
@@ -61,7 +61,7 @@ svc.propagateType(familyId, typeId, instances)
 | Stairs / railings / curtain walls | ✅ |
 | Align / match props / temp dims / hide-isolate | ✅ |
 | Copy/Monitor | ✅ |
-| Mouse/keyboard Revit map | ✅ |
+| Mouse/keyboard BIM map | ✅ |
 | CAD + DXF/DWG drawings | ✅ |
 | Command Center UI | ✅ |
 

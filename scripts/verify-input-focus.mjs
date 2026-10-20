@@ -5,7 +5,7 @@ const root = process.argv[2] || process.cwd();
 
 const OWNED = [
   "src/core/performance-optimizer.ts",
-  "src/core/revit-mouse-policy.ts",
+  "src/core/bim-mouse-policy.ts",
   "src/core/wheel-arbiter.ts",
   "src/features/constraint-solver.ts",
   "src/features/hosted-openings.ts",
@@ -75,7 +75,7 @@ check("wheel", "selection-orbit does NOT subscribe to input-router", !/\.subscri
 check("wheel", "selection-orbit attaches NO wheel listener", !/addEventListener\(\s*["']wheel["']/.test(selOrbit));
 check("wheel", "selection-orbit handles NO rmb-click", !/rmb-click/.test(selOrbit));
 
-const policy = read("src/core/revit-mouse-policy.ts") || "";
+const policy = read("src/core/bim-mouse-policy.ts") || "";
 check("wheel", "policy sets MMB held flag", /__OBS_MMB_HELD\s*=\s*true/.test(policy));
 check("wheel", "policy exposes cancelActiveOperation", /cancelActiveOperation/.test(policy));
 check(
@@ -154,7 +154,7 @@ const REQUIRED_BOOT = [
   "setupLodManager",
   "focus-service",
   "setupCriticalGapsUI",
-  "setupRevitMousePolicy",
+  "setupBIMMousePolicy",
   "setupWheelArbiter",
   "setupRealtimeClient",
 ];

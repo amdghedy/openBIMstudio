@@ -1,4 +1,4 @@
-# Parametric Engine — Revit-competitive layer for Open BIM Studio
+# Parametric Engine — BIM-competitive layer for Open BIM Studio
 
 ## What you already had
 
@@ -123,7 +123,7 @@ for (const [elementId, params] of updated) {
 }
 ```
 
-## Parameter evaluation order (matches Revit intent)
+## Parameter evaluation order (matches BIM intent)
 
 1. Family defaults  
 2. Shared / project parameters (optional)  
@@ -157,9 +157,9 @@ for (const [elementId, params] of updated) {
 { kind: "distance", a: "X2", b: "X1", distance: 1.2, drive: "a" }
 ```
 
-## Gaps vs full Revit (honest roadmap)
+## Gaps vs full BIM (honest roadmap)
 
-| Revit feature | Status here |
+| BIM feature | Status here |
 |---------------|-------------|
 | Type / instance parameters + formulas | ✅ |
 | Nested families + param map | ✅ |
