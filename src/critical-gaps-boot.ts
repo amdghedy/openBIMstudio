@@ -140,6 +140,12 @@ async function runOnce(): Promise<void> {
     m.setupPerformanceEngine?.();
   });
 
+  // Area plans & color fill (spatial analysis: color rooms by department)
+  await safe("area-plans", async () => {
+    const m: Any = await import("./modules/area-plans");
+    m.setupAreaPlans?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");

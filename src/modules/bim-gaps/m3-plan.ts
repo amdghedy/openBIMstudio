@@ -34,11 +34,16 @@ export interface PlanOptions {
   hatch: boolean;
   /** View scale (used to size the hatch pattern tile). 1:100 -> 100. */
   hatchScale: number;
+  /** Color fill: color rooms by department/occupancy/area type. */
+  colorFill: boolean;
+  /** Color fill scheme: "by-department" | "by-occupancy" | "by-area-type" | "by-name". */
+  colorFillScheme: string;
 }
 export const DEFAULT_PLAN_OPTIONS: PlanOptions = {
   poche: true, pocheColor: "#4b5563", roomTags: true, roomBoundaries: false,
   doorTags: true, stairSymbols: true, railingsAndRamps: true, curtainWalls: true, roofOutline: true,
   hatch: false, hatchScale: 100,
+  colorFill: false, colorFillScheme: "by-department",
 };
 
 export interface PlanExtrasInput {
@@ -315,6 +320,37 @@ export function planExtras(input: PlanExtrasInput): PlanExtras {
   for (const r of input.rooms) {
     if (r.boundary.length < 3) continue;
     if (o.roomBoundaries) out.symbols.push({ kind: "polyline", points: r.boundary.map((b) => [b.x, b.z] as [number, number]), closed: true, stroke: { color: "#2563eb", widthPt: 0.12, dash: [2, 1] } });
+
+    // Color fill: if enabled, render a semi-transparent fill behind the room.
+    if (o.colorFill) {
+      try {
+        const { generateColorFill, getScheme } = require("../area-plans/types") as typeof import("../area-plans/types");
+        const scheme = getScheme(o.colorFillScheme);
+        if (scheme) {
+          // Use the room's properties for color fill.
+          const roomObj = {
+            name: r.name,
+            number: r.number,
+            boundary: r.boundary,
+            area: r.area,
+            department: (r as any).department,
+            occupancy: (r as any).occupancy,
+            properties: (r as any).properties ?? {},
+          };
+          const fills = generateColorFill([roomObj], scheme);
+          for (const fill of fills) {
+            out.under.push({
+              kind: "polyline",
+              points: fill.boundary,
+              closed: true,
+              stroke: { color: fill.color, widthPt: 0, dash: null },
+              fill: { color: fill.color, opacity: fill.opacity },
+            });
+          }
+        }
+      } catch { /* area-plans module not loaded */ }
+    }
+
     if (!o.roomTags) continue;
     const lp: Vec2 = r.labelPoint ?? [r.boundary.reduce((a, b) => a + b.x, 0) / r.boundary.length, r.boundary.reduce((a, b) => a + b.z, 0) / r.boundary.length];
     const lh = mm(3.4);
