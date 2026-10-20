@@ -128,6 +128,12 @@ async function runOnce(): Promise<void> {
     m.setupRebarViewport?.();
   });
 
+  // Wall sweeps & reveals (cornice, baseboard, wainscot, reveal)
+  await safe("wall-sweeps", async () => {
+    const m: Any = await import("./modules/wall-sweeps");
+    m.setupWallSweeps?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");
