@@ -188,6 +188,12 @@ async function runOnce(): Promise<void> {
     m.setupDimensionChains?.();
   });
 
+  // Revit / Navisworks import (RVT → IFC conversion via APS)
+  await safe("revit-import", async () => {
+    const m: Any = await import("./features/revit-import");
+    m.setupRevitImport?.();
+  });
+
   // Coordination
   await safe("copy-monitor", async () => {
     const m: Any = await import("./modules/copy-monitor/copy-monitor");
