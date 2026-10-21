@@ -155,6 +155,50 @@ export function openManageLinks() {
         }
       };
       
+      const mini = (t: string, tip: string, fn: () => void | Promise<void>) => {
+        const b = document.createElement("button");
+        b.textContent = t; b.title = tip;
+        b.style.cssText = "margin-right:4px;padding:4px 8px;background:#2a2e3a;color:#e8eaf0;border:1px solid #3a3f4d;border-radius:4px;cursor:pointer;font:12px system-ui;";
+        b.onclick = async () => { try { await fn(); renderTable(); } catch (e) { notify("error", e instanceof Error ? e.message : String(e)); } };
+        return b;
+      };
+      const imp = () => import("./importer");
+            actionTd.append(
+        mini("Offset", "Set X, Y, Z offset in metres", async () => {
+          const m = await imp();
+          const cur = m.getModelOffset(modelId) ?? [0, 0, 0];
+          const raw = prompt("Offset X, Y, Z in metres (X east, Y up, Z north):", cur.map((v) => +v.toFixed(3)).join(", "));
+          if (raw == null) return;
+          const v = raw.split(/[ ,;]+/).filter(Boolean).map(Number);
+          if (v.length !== 3 || v.some((n) => !Number.isFinite(n))) throw new Error("Enter three numbers: x, y, z");
+          m.registerModel(modelId);
+          m.setModelOffset(modelId, [v[0], v[1], v[2]]);
+          notify("info", `Offset set for ${modelId}`);
+        }),
+        mini("Centre to origin", "Move the model's plan centre to the project origin", async () => {
+          const m = await imp();
+          const bb = await m.getModelBBox(modelId);
+          if (!bb) throw new Error("Model has no geometry to centre");
+          const cur = m.getModelOffset(modelId) ?? [0, 0, 0];
+          const cx = (bb.min[0] + bb.max[0]) / 2, cz = (bb.min[2] + bb.max[2]) / 2;
+          m.registerModel(modelId);
+          m.setModelOffset(modelId, [cur[0] - cx, cur[1], cur[2] - cz]);
+        }),
+        mini("Reset", "Back to origin-to-origin (offset 0,0,0)", async () => {
+          const m = await imp();
+          m.registerModel(modelId);
+          m.setModelOffset(modelId, [0, 0, 0]);
+        }),
+        mini("Zoom", "Zoom to this model", async () => {
+          const m = await imp();
+          const bb = await m.getModelBBox(modelId);
+          if (!bb) throw new Error("Model has no geometry");
+          const THREE = await import("three");
+          const cam: any = await import("./camera-tools");
+          modalEl?.remove(); modalEl = null;
+          cam.focusOnBox(new THREE.Box3(new THREE.Vector3(...bb.min), new THREE.Vector3(...bb.max)));
+        }),
+      );
       actionTd.appendChild(unloadBtn);
       tr.appendChild(nameTd);
       tr.appendChild(statusTd);
