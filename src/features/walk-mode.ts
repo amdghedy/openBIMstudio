@@ -22,7 +22,8 @@
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { getLevel } from "./authoring";
+import { getLevel, getLevels } from "./authoring";
+import { clampSpeedFactor, isBlockingHit, nextLevelElevation, slideVelocity, yawFromDirection } from "./walk-physics";
 import { getProjection, setProjection } from "./camera-tools";
 
 // ── Tuning ──
@@ -38,6 +39,9 @@ const RAYCAST_INTERVAL = 6;      // frames between ground raycasts
 const GROUND_SMOOTH = 12.0;      // Y-follow smoothing
 const TARGET_DISTANCE = 5.0;     // metres in front of the eye for the controls target
 const GROUND_RAY_LENGTH = 500;   // how far down to look for the ground
+const MAX_STEP = 0.5;            // highest kerb/stair riser the walker steps up without a ramp
+const BODY_RADIUS = 0.3;         // collision radius against walls
+const COLLIDE_INTERVAL = 2;      // frames between wall checks
 
 interface SavedCamState {
   projection: "perspective" | "orthographic";
@@ -47,6 +51,7 @@ interface SavedCamState {
   fov: number;
   near?: number;
   far?: number;
+  up: THREE.Vector3;
 }
 
 interface WalkState {
@@ -61,6 +66,10 @@ interface WalkState {
   rafId: number | null;
   lastT: number;
   saved: SavedCamState | null;
+  speedFactor: number;
+  collideTick: number;
+  dragging: boolean;
+  hudTick: number;
 }
 
 const state: WalkState = {
@@ -75,6 +84,10 @@ const state: WalkState = {
   rafId: null,
   lastT: 0,
   saved: null,
+  speedFactor: 1,
+  collideTick: 0,
+  dragging: false,
+  hudTick: 0,
 };
 
 /** Keys walk mode owns exclusively — captured before the shortcut registry. */
@@ -82,7 +95,7 @@ const OWNED_KEYS = new Set([
   "w", "a", "s", "d",
   "arrowup", "arrowdown", "arrowleft", "arrowright",
   "shift", "control",
-  " ", "c",
+  " ", "c", "pageup", "pagedown",
 ]);
 
 const groundRay = new THREE.Raycaster();
@@ -92,6 +105,7 @@ let overlay: HTMLDivElement | null = null;
 let crosshair: HTMLDivElement | null = null;
 let hint: HTMLDivElement | null = null;
 let exitBtn: HTMLButtonElement | null = null;
+let statusEl: HTMLDivElement | null = null;
 
 function ensureOverlay(): HTMLDivElement {
   if (overlay) return overlay;
@@ -129,6 +143,7 @@ function ensureOverlay(): HTMLDivElement {
     `${kbd("W")}${kbd("A")}${kbd("S")}${kbd("D")} move · ` +
     `${kbd("Shift")} run · ${kbd("Ctrl")} crouch · ` +
     `${kbd("Space")}/${kbd("C")} up/down · ` +
+    `${kbd("PgUp")}/${kbd("PgDn")} level · wheel speed · ` +
     `${kbd("Esc")} exit · ` +
     `<span style="opacity:.65">Ctrl+S / Ctrl+Z still work</span>`;
 
@@ -141,7 +156,16 @@ function ensureOverlay(): HTMLDivElement {
     "font:12px system-ui,sans-serif;backdrop-filter:blur(6px)";
   exitBtn.onclick = () => disableWalkMode();
 
-  overlay.append(crosshair, hint, exitBtn);
+  statusEl = document.createElement("div");
+  statusEl.style.cssText =
+    "position:absolute;left:14px;bottom:14px;padding:6px 10px;border-radius:6px;" +
+    "background:rgba(20,22,30,.85);color:#c9d1d9;font:11px/1.5 ui-monospace,monospace;" +
+    "border:1px solid rgba(255,255,255,.12);pointer-events:none;white-space:pre";
+
+  overlay.addEventListener("mousedown", (e) => { if (e.button === 0) state.dragging = true; });
+  window.addEventListener("mouseup", () => { state.dragging = false; });
+
+  overlay.append(crosshair, hint, statusEl, exitBtn);
   ctx.rightHost.appendChild(overlay);
   return overlay;
 }
@@ -176,15 +200,67 @@ function raycastGround(x: number, z: number, fromY: number): number | null {
 }
 
 function updateGroundTarget() {
-  const found = raycastGround(state.pos.x, state.pos.z, state.pos.y + 0.6);
-  if (found != null) {
-    state.targetGroundY = found;
-    return;
-  }
-  // No surface — keep the last known ground; if we never had one, use level.
+  // Look for the floor from just above the current floor + step height, so
+  // ceilings, roofs and tables above the walker are never mistaken for the
+  // ground, and only risers up to MAX_STEP can be climbed.
+  const from = Math.max(state.targetGroundY, state.pos.y - EYE_HEIGHT) + MAX_STEP;
+  const found = raycastGround(state.pos.x, state.pos.z, from);
+  if (found != null) { state.targetGroundY = found; return; }
   if (!Number.isFinite(state.targetGroundY)) {
     state.targetGroundY = (() => { try { return getLevel(); } catch { return 0; } })();
   }
+}
+
+/** Block / slide the horizontal motion against walls. Returns true when blocked this frame. */
+function applyCollision(dt: number): void {
+  const speed = Math.hypot(state.vel.x, state.vel.z);
+  if (speed < 0.05) return;
+  const models: THREE.Object3D[] = [];
+  try { for (const [, m] of ctx.fragments.list) if (m?.object) models.push(m.object); } catch { /* */ }
+  if (!models.length) return;
+  const dir = new THREE.Vector3(state.vel.x / speed, 0, state.vel.z / speed);
+  const travel = speed * dt * COLLIDE_INTERVAL;
+  // Knee-above-step and chest height: low obstacles that can be stepped over are ignored.
+  const heights = [state.targetGroundY + MAX_STEP + 0.1, state.targetGroundY + 1.2];
+  for (const y of heights) {
+    groundRay.set(new THREE.Vector3(state.pos.x, y, state.pos.z), dir);
+    groundRay.far = BODY_RADIUS + travel + 0.05;
+    let hits: THREE.Intersection[] = [];
+    try { hits = groundRay.intersectObjects(models, true); } catch { /* */ }
+    for (const h of hits) {
+      if (!h.face) continue;
+      const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+      if (!isBlockingHit(h.distance, n.y, BODY_RADIUS, travel)) continue;
+      const [vx, vz] = slideVelocity(state.vel.x, state.vel.z, n.x, n.z);
+      state.vel.x = vx; state.vel.z = vz;
+      // Do not let the body penetrate: back off to the radius.
+      const pen = BODY_RADIUS - h.distance;
+      if (pen > 0) {
+        const hn = Math.hypot(n.x, n.z) || 1;
+        const sgn = (n.x * dir.x + n.z * dir.z) > 0 ? -1 : 1;
+        state.pos.x += (sgn * n.x / hn) * pen;
+        state.pos.z += (sgn * n.z / hn) * pen;
+      }
+      return;
+    }
+  }
+}
+
+function updateStatus(): void {
+  if (!statusEl) return;
+  let levelName = "";
+  try {
+    const lv: any[] = getLevels() ?? [];
+    let best: any = null;
+    for (const l of lv) if (l.elevation <= state.targetGroundY + 0.3 && (!best || l.elevation > best.elevation)) best = l;
+    if (best) levelName = best.name;
+  } catch { /* */ }
+  const f = (n: number) => n.toFixed(2).padStart(8);
+  const heading = ((((-state.yaw * 180) / Math.PI) % 360) + 360) % 360;
+  statusEl.textContent =
+    `X ${f(state.pos.x)} m   Z ${f(state.pos.z)} m   Eye ${f(state.pos.y)} m\n` +
+    `Heading ${heading.toFixed(0).padStart(3)}\u00b0   Speed \u00d7${state.speedFactor.toFixed(2)}` +
+    (levelName ? `   Level ${levelName}` : "");
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -220,30 +296,52 @@ export function enableWalkMode(): void {
     fov: cam.fov ?? 60,
     near: cam.near,
     far: cam.far,
+    up: cam.up.clone(),
   };
 
   // ── Force perspective for a natural walking FOV ──
   if (getProjection() !== "perspective") {
     try { setProjection("perspective"); } catch { /* */ }
   }
-  cam.fov = 65;
-  cam.near = 0.1;
-  cam.far = 1000;
-  cam.updateProjectionMatrix();
+  // The projection switch may replace the camera object: always use the live one.
+  const wcam = ctx.world.camera.three as THREE.PerspectiveCamera;
+  wcam.fov = 65;
+  wcam.near = 0.1;
+  wcam.far = 1000;
+  // Views like "Top" leave a non-vertical up vector; walking needs world-up.
+  wcam.up.set(0, 1, 0);
+  try { controls?.updateCameraUp?.(); } catch { /* */ }
+  wcam.updateProjectionMatrix();
+  if (controls) controls.enabled = false;
 
-  // ── Derive initial yaw / pitch from the current view direction ──
+  // ── Orientation: keep the current heading; pitch is level-ish when looking down from above ──
   const viewDir = savedTarget.clone().sub(savedPos).normalize();
-  state.pitch = Math.asin(THREE.MathUtils.clamp(viewDir.y, -1, 1));
-  // Same basis as the look vector in tick(): (-sin yaw, ., -cos yaw).
-  // (A stray "- PI/2" here used to turn the view 90 degrees on entry.)
-  state.yaw = Math.atan2(-viewDir.x, -viewDir.z);
+  state.pitch = THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(viewDir.y, -1, 1)), -0.35, 0.35);
+  state.yaw = yawFromDirection(viewDir.x, viewDir.z) ?? 0;
+  state.speedFactor = 1;
+  state.dragging = false;
 
-  // ── Position: keep the current XZ, snap Y to the ground under us ──
-  state.pos.set(savedPos.x, savedPos.y, savedPos.z);
-  const levelFallback = savedPos.y - EYE_HEIGHT;
-  const groundHit = raycastGround(savedPos.x, savedPos.z, savedPos.y + 2);
-  state.targetGroundY = groundHit ?? levelFallback;
-  state.pos.y = state.targetGroundY + EYE_HEIGHT;
+  // ── Position: stand where the view ray meets the model / ground (like picking a
+  //    start point), falling back to the camera's own XZ. Eye height is above that floor. ──
+  let startX = savedPos.x, startZ = savedPos.z, floorY: number | null = null;
+  let probeFrom = Math.max(savedPos.y, 0) + 1;
+  try {
+    const rc = new THREE.Raycaster(savedPos.clone(), viewDir.clone());
+    rc.far = 5000;
+    const targets = getWalkTargets();
+    const hit = targets.length ? rc.intersectObjects(targets, true)[0] : null;
+    if (hit) {
+      // Step back a little so the walker is not inside the wall that was clicked.
+      const back = Math.min(0.6, hit.distance * 0.5);
+      startX = hit.point.x - viewDir.x * back;
+      startZ = hit.point.z - viewDir.z * back;
+      probeFrom = hit.point.y + 1;
+    }
+  } catch { /* */ }
+  floorY = raycastGround(startX, startZ, probeFrom);
+  if (floorY == null) floorY = (() => { try { return getLevel(); } catch { return 0; } })();
+  state.targetGroundY = floorY;
+  state.pos.set(startX, floorY + EYE_HEIGHT, startZ);
   state.vel.set(0, 0, 0);
   state.keys.clear();
 
@@ -298,12 +396,18 @@ export function disableWalkMode(): void {
     if (Number.isFinite(saved.far)) cam.far = saved.far as number;
     cam.updateProjectionMatrix();
     if (controls) controls.enabled = saved.controlsEnabled;
+    try {
+      const live = ctx.world.camera.three as THREE.Camera;
+      live.up.copy(saved.up);
+      (controls as any)?.updateCameraUp?.();
+    } catch { /* */ }
     if (saved.projection !== "perspective") {
       try { setProjection(saved.projection); } catch { /* */ }
     }
   }
   state.saved = null;
   state.keys.clear();
+  state.dragging = false;
 
   if (overlay) overlay.style.display = "none";
 
@@ -343,11 +447,34 @@ function onKeyDown(e: KeyboardEvent) {
     return;
   }
 
+  if (k === "pageup" || k === "pagedown") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.repeat) return;
+    try {
+      const elevs = (getLevels() ?? []).map((l: any) => Number(l.elevation)).filter(Number.isFinite);
+      const next = nextLevelElevation(elevs, state.targetGroundY, k === "pageup" ? 1 : -1);
+      if (next != null) {
+        state.targetGroundY = next;
+        state.pos.y = next + EYE_HEIGHT;
+        state.vel.y = 0;
+      }
+    } catch { /* */ }
+    return;
+  }
+
   if (OWNED_KEYS.has(k)) {
     e.preventDefault();
     e.stopImmediatePropagation();
     state.keys.add(k === " " ? "space" : k);
   }
+}
+
+function onWheel(e: WheelEvent) {
+  if (!state.enabled) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  state.speedFactor = clampSpeedFactor(state.speedFactor * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
 }
 
 function onKeyUp(e: KeyboardEvent) {
@@ -357,7 +484,7 @@ function onKeyUp(e: KeyboardEvent) {
 
 function onPointerMove(e: MouseEvent) {
   if (!state.enabled) return;
-  if (!document.pointerLockElement) return;
+  if (!document.pointerLockElement && !state.dragging) return;
   state.yaw -= e.movementX * LOOK_SENS;
   state.pitch -= e.movementY * LOOK_SENS;
   state.pitch = THREE.MathUtils.clamp(state.pitch, -PITCH_LIMIT, PITCH_LIMIT);
@@ -393,11 +520,14 @@ function tick(now: number) {
 
   const running = state.keys.has("shift");
   const crouching = state.keys.has("control");
-  const speed = crouching ? CROUCH_SPEED : running ? RUN_SPEED : WALK_SPEED;
+  const speed = (crouching ? CROUCH_SPEED : running ? RUN_SPEED : WALK_SPEED) * state.speedFactor;
   const targetVel = input.multiplyScalar(speed);
 
   const alpha = 1 - Math.exp(-ACCEL * dt);
   state.vel.lerp(targetVel, alpha);
+
+  state.collideTick = (state.collideTick + 1) % COLLIDE_INTERVAL;
+  if (state.collideTick === 0) applyCollision(dt);
 
   state.pos.x += state.vel.x * dt;
   state.pos.z += state.vel.z * dt;
@@ -416,6 +546,9 @@ function tick(now: number) {
     const targetY = state.targetGroundY + eyeH;
     state.pos.y += (targetY - state.pos.y) * Math.min(1, GROUND_SMOOTH * dt);
   }
+
+  state.hudTick = (state.hudTick + 1) % 8;
+  if (state.hudTick === 0) updateStatus();
 
   // ── Camera look direction from yaw/pitch ──
   const look = new THREE.Vector3(
@@ -461,6 +594,7 @@ export function setupWalkMode(): void {
   // Never leave a movement key "stuck" if the window loses focus mid-walk.
   window.addEventListener("blur", () => state.keys.clear());
   window.addEventListener("mousemove", onPointerMove);
+  window.addEventListener("wheel", onWheel, { capture: true, passive: false });
   document.addEventListener("pointerlockchange", onPointerLockChange);
   document.addEventListener("pointerlockerror", onPointerLockError);
 
