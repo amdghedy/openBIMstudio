@@ -1197,9 +1197,18 @@ async function loadCadFileAsUnderlay(file: File) {
   footerStatus(`CAD underlay linked: ${file.name} — trace walls/columns on top (snap enabled)`);
 }
 
+async function linkCadVector(file: File): Promise<boolean> {
+  if (!/\.(dwg|dxf)$/i.test(file.name)) return false;
+  const m = await import("../modules/cad-link");
+  m.setupCadLinks();
+  await m.linkCadFileInteractive(file);
+  return true;
+}
+
 async function linkCadUnderlay() {
   try {
     const pending = (window as any).__obsPendingCadFile as File | undefined;
+    if (pending && await linkCadVector(pending)) { (window as any).__obsPendingCadFile = null; return; }
     if (pending) {
       try {
         (window as any).__obsPendingCadFile = null;
@@ -1211,11 +1220,12 @@ async function linkCadUnderlay() {
     }
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".dxf,.svg,.png,.jpg,.jpeg,.webp,.gif,image/*";
+    input.accept = ".dwg,.dxf,.svg,.png,.jpg,.jpeg,.webp,.gif,image/*";
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
       try {
+        if (await linkCadVector(file)) return;
         await loadCadFileAsUnderlay(file);
       } catch (err) {
         console.error("[plan] CAD link failed", err);
@@ -1230,6 +1240,7 @@ async function linkCadUnderlay() {
 
 try {
   (window as any).__obsAutoLinkCad = async (file: File) => {
+    if (await linkCadVector(file)) return;
     await loadCadFileAsUnderlay(file);
   };
 } catch { /* */ }

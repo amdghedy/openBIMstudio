@@ -285,3 +285,28 @@ export function snapSegments(geo: LinkGeometry, isVisible: (layer: string) => bo
   }
   return out;
 }
+
+export interface WallSeg { x1: number; z1: number; x2: number; z2: number; }
+
+/**
+ * World-plan segments of the chosen layers for "Walls from CAD": drops
+ * segments shorter than minLen (metres) and exact duplicates (either direction).
+ */
+export function collectLayerSegments(geo: LinkGeometry, layers: Set<string>, minLen = 0.05): WallSeg[] {
+  const out: WallSeg[] = [];
+  const seen = new Set<string>();
+  const k = (v: number) => Math.round(v * 1000);
+  for (const g of geo.groups) {
+    if (!layers.has(g.layer)) continue;
+    for (let i = 0; i < g.segs.length; i += 6) {
+      const x1 = g.segs[i], z1 = g.segs[i + 2], x2 = g.segs[i + 3], z2 = g.segs[i + 5];
+      if (Math.hypot(x2 - x1, z2 - z1) < minLen) continue;
+      const a = `${k(x1)},${k(z1)}`, b = `${k(x2)},${k(z2)}`;
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ x1, z1, x2, z2 });
+    }
+  }
+  return out;
+}

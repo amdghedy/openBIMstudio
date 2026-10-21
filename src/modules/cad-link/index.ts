@@ -12,7 +12,7 @@ import type { DxfDocument } from "../drawings/dxf-types";
 import { parseDxf } from "../drawings/dxf-reader";
 import { dwgDatabaseToDxfDocument } from "../drawings/dwg-convert";
 import {
-  buildGeometry, computePlacement, DEFAULT_LINK_OPTIONS, snapSegments,
+  buildGeometry, collectLayerSegments, computePlacement, DEFAULT_LINK_OPTIONS, snapSegments,
   type LinkGeometry, type LinkOptions, type Placement, type PlacementEnv, type Theme,
 } from "./core";
 import { surveyToProject } from "../project-base-point/types";
@@ -670,6 +670,61 @@ export async function editCadLinkInteractive(id: string): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Walls from CAD                                                      */
+/* ------------------------------------------------------------------ */
+/** Create walls (or beams) along the lines of chosen layers of a link. Returns the count created. */
+export async function createElementsFromCad(id: string): Promise<number> {
+  const l = links.get(id);
+  if (!l) return 0;
+  const names = l.geoPlan.groups.map((g) => g.layer).filter((v, i, a) => a.indexOf(v) === i);
+  const cfg = await new Promise<{ layers: Set<string>; type: string; thickness: number; height: number } | null>((resolve) => {
+    const back = document.createElement("div");
+    back.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font:13px system-ui,sans-serif";
+    const win = document.createElement("div");
+    win.style.cssText = "background:#1e2029;border:1px solid #2a2e3a;border-radius:8px;width:420px;max-width:92vw;max-height:90vh;overflow:auto;color:#e8eaf0;padding:16px";
+    win.innerHTML = `<div style="font-weight:700;font-size:15px;margin-bottom:8px">Create from CAD lines</div><div style="color:#8b949e;font-size:12px;margin-bottom:8px">Pick the layers whose lines become elements (placed on the link's level).</div>`;
+    const checks = new Map<string, HTMLInputElement>();
+    for (const n of names) {
+      const lab = document.createElement("label");
+      lab.style.cssText = "display:block;padding:2px 0";
+      const cb = document.createElement("input"); cb.type = "checkbox";
+      cb.checked = /wall|a-wall|mur|walls/i.test(n);
+      checks.set(n, cb); lab.append(cb, " " + n); win.appendChild(lab);
+    }
+    const row = (t: string, el: HTMLElement) => { const d = document.createElement("div"); d.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-top:8px"; d.append(t, el); win.appendChild(d); };
+    const css = "background:#0f1117;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px 6px;width:120px";
+    const type = document.createElement("select"); type.style.cssText = css;
+    for (const t of ["wall", "beam"]) { const o = document.createElement("option"); o.value = t; o.textContent = t; type.appendChild(o); }
+    const th = document.createElement("input"); th.type = "number"; th.step = "0.01"; th.value = "0.2"; th.style.cssText = css;
+    const ht = document.createElement("input"); ht.type = "number"; ht.step = "0.1"; ht.value = "3"; ht.style.cssText = css;
+    row("Create", type); row("Thickness (m)", th); row("Height (m)", ht);
+    const foot = document.createElement("div"); foot.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:14px";
+    const mk = (t: string, p: boolean) => { const b = document.createElement("button"); b.textContent = t; b.style.cssText = `padding:6px 16px;border:none;border-radius:4px;cursor:pointer;font:600 12px system-ui;background:${p ? "#38bdf8" : "#2a2e3a"};color:${p ? "#0b0d12" : "#e8eaf0"}`; return b; };
+    const c = mk("Cancel", false), ok = mk("Create", true);
+    c.onclick = () => { back.remove(); resolve(null); };
+    ok.onclick = () => {
+      back.remove();
+      resolve({ layers: new Set([...checks].filter(([, cb]) => cb.checked).map(([n]) => n)), type: type.value, thickness: Number(th.value) || 0.2, height: Number(ht.value) || 3 });
+    };
+    foot.append(c, ok); win.appendChild(foot); back.appendChild(win); document.body.appendChild(back);
+  });
+  if (!cfg || !cfg.layers.size) return 0;
+  const segs = collectLayerSegments(l.geoPlan, cfg.layers);
+  if (!segs.length) { toast("No lines on the chosen layers.", "warn"); return 0; }
+  if (segs.length > 500 && !confirm(`Create ${segs.length} elements?`)) return 0;
+  const auth: Any = (ctx.features as Any).authoring ?? await import("../../features/authoring");
+  let n = 0;
+  for (const s of segs) {
+    try {
+      await auth.addLinearElement(cfg.type, s.x1, s.z1, s.x2, s.z2, l.options.elevation, { thickness: cfg.thickness, height: cfg.height });
+      n++;
+    } catch (e) { console.warn("[cad-link] element failed", e); }
+  }
+  toast(`Created ${n} ${cfg.type}(s) from CAD.`, n ? "success" : "warn");
+  return n;
+}
+
+/* ------------------------------------------------------------------ */
 /* Setup                                                               */
 /* ------------------------------------------------------------------ */
 let installed = false;
@@ -682,7 +737,7 @@ export function setupCadLinks(): void {
     remove: removeCadLink, reload: reloadCadLink, setVisible: setCadLinkVisible,
     setLayerVisible: setCadLayerVisible, zoomTo: zoomToCadLink, getBox: getCadLinksBox,
     getPlanItems: getCadLinkPlanItems, getPlanBounds: getCadLinksPlanBounds,
-    linkFile: linkCadFileInteractive, edit: editCadLinkInteractive, refresh: refreshCadLinks,
+    linkFile: linkCadFileInteractive, createElements: createElementsFromCad, edit: editCadLinkInteractive, refresh: refreshCadLinks,
     restoreFromBlob: restoreCadLinkFromBlob, onChange: onCadLinksChanged,
   };
   (ctx.features as Any).cadLinks = api;

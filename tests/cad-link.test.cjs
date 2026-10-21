@@ -345,6 +345,23 @@ t("geometry: circles/arcs tessellate, text keeps world height and rotation", () 
   near(g.texts[0].height, 0.25); near(g.texts[0].rotation, 40);
 });
 
+t("collectLayerSegments filters layer, short and duplicate lines", () => {
+  const doc = {
+    layers: [{ name: "WALL", color: 1 }, { name: "X", color: 2 }], units: "m",
+    entities: [
+      { type: "LINE", layer: "WALL", start: { x: 0, y: 0 }, end: { x: 4, y: 0 } },
+      { type: "LINE", layer: "WALL", start: { x: 4, y: 0 }, end: { x: 0, y: 0 } },
+      { type: "LINE", layer: "WALL", start: { x: 0, y: 0 }, end: { x: 0.01, y: 0 } },
+      { type: "LINE", layer: "X", start: { x: 0, y: 1 }, end: { x: 4, y: 1 } },
+    ],
+  };
+  const pl = core.computePlacement(doc, opts({}), env);
+  const g = core.buildGeometry(doc, pl, opts({}), "light");
+  const r = core.collectLayerSegments(g, new Set(["WALL"]));
+  assert.strictEqual(r.length, 1);
+  near(Math.hypot(r[0].x2 - r[0].x1, r[0].z2 - r[0].z1), 4);
+});
+
 t("snap segments honour layer visibility", () => {
   const doc = {
     layers: [{ name: "A", color: 1 }, { name: "B", color: 2 }], units: "m",
