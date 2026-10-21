@@ -142,7 +142,23 @@ class HistoryManager {
     this.push(cmd, coalesce);
   }
 
-  async undo(): Promise<void> {
+  // Undo/redo run one at a time. Holding Ctrl+Z (key repeat) used to start
+  // overlapping async reverts that corrupted the executing flag and stacks.
+  private chain: Promise<void> = Promise.resolve();
+
+  undo(): Promise<void> {
+    const run = this.chain.then(() => this.doUndo());
+    this.chain = run.catch(() => { /* keep the queue alive after a failure */ });
+    return run;
+  }
+
+  redo(): Promise<void> {
+    const run = this.chain.then(() => this.doRedo());
+    this.chain = run.catch(() => { /* keep the queue alive after a failure */ });
+    return run;
+  }
+
+  private async doUndo(): Promise<void> {
     const cmd = this.undoStack.pop();
     if (!cmd) return;
     this.isExecuting = true;
@@ -165,7 +181,7 @@ class HistoryManager {
     this.emit();
   }
 
-  async redo(): Promise<void> {
+  private async doRedo(): Promise<void> {
     const cmd = this.redoStack.pop();
     if (!cmd) return;
     this.isExecuting = true;

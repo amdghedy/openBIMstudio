@@ -157,6 +157,9 @@ class TransformGizmo {
     this.unsubHover = inputRouter.subscribeHover((e) => this.handleHover(e));
 
     ctx.world.camera.controls.addEventListener("update", () => this.refreshScale());
+    // Orthographic wheel zoom changes camera.zoom without a controls "update"
+    // event, so also re-scale after any wheel input.
+    window.addEventListener("wheel", () => requestAnimationFrame(() => this.refreshScale()), { passive: true });
   }
 
   dispose(): void {
@@ -237,9 +240,17 @@ class TransformGizmo {
 
   private refreshScale(): void {
     if (!this.root.visible) return;
-    const cam = ctx.world.camera.three;
-    const dist = cam.position.distanceTo(this.root.position);
-    const f = dist * 0.15;
+    const cam: any = ctx.world.camera.three;
+    let f: number;
+    if (cam.isOrthographicCamera) {
+      // Orthographic size does not depend on distance but on zoom: keep the
+      // gizmo a constant fraction of the visible height (same ratio as the
+      // perspective case at ~60 deg FOV).
+      const visibleH = Math.abs(cam.top - cam.bottom) / Math.max(1e-3, cam.zoom || 1);
+      f = visibleH * 0.13;
+    } else {
+      f = cam.position.distanceTo(this.root.position) * 0.15;
+    }
     this.root.scale.setScalar(Math.max(0.2, f * this.baseScale));
   }
 

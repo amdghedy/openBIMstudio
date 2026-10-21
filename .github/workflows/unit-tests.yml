@@ -25,4 +25,5 @@ jobs:
       - run: npm run test:v40
       - run: npm run test:view-crop
       - run: npm run test:selection-box
+      - run: npm run test:history
       - run: npm run test:native-bim

@@ -45,6 +45,8 @@ interface SavedCamState {
   position: THREE.Vector3;
   target: THREE.Vector3;
   fov: number;
+  near?: number;
+  far?: number;
 }
 
 interface WalkState {
@@ -216,6 +218,8 @@ export function enableWalkMode(): void {
     position: savedPos,
     target: savedTarget,
     fov: cam.fov ?? 60,
+    near: cam.near,
+    far: cam.far,
   };
 
   // ── Force perspective for a natural walking FOV ──
@@ -223,16 +227,16 @@ export function enableWalkMode(): void {
     try { setProjection("perspective"); } catch { /* */ }
   }
   cam.fov = 65;
-    cam.updateProjectionMatrix();
-    cam.near = 0.1;
-    cam.far = 1000;
-    cam.updateProjectionMatrix();
+  cam.near = 0.1;
+  cam.far = 1000;
   cam.updateProjectionMatrix();
 
   // ── Derive initial yaw / pitch from the current view direction ──
   const viewDir = savedTarget.clone().sub(savedPos).normalize();
   state.pitch = Math.asin(THREE.MathUtils.clamp(viewDir.y, -1, 1));
-  state.yaw = Math.atan2(-viewDir.x, -viewDir.z) - (Math.PI / 2);
+  // Same basis as the look vector in tick(): (-sin yaw, ., -cos yaw).
+  // (A stray "- PI/2" here used to turn the view 90 degrees on entry.)
+  state.yaw = Math.atan2(-viewDir.x, -viewDir.z);
 
   // ── Position: keep the current XZ, snap Y to the ground under us ──
   state.pos.set(savedPos.x, savedPos.y, savedPos.z);
@@ -289,6 +293,9 @@ export function disableWalkMode(): void {
       cam.lookAt(saved.target);
     }
     cam.fov = saved.fov;
+    // Walk mode tightened the clip planes; put them back.
+    if (Number.isFinite(saved.near)) cam.near = saved.near as number;
+    if (Number.isFinite(saved.far)) cam.far = saved.far as number;
     cam.updateProjectionMatrix();
     if (controls) controls.enabled = saved.controlsEnabled;
     if (saved.projection !== "perspective") {
@@ -451,6 +458,8 @@ function tick(now: number) {
 export function setupWalkMode(): void {
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
+  // Never leave a movement key "stuck" if the window loses focus mid-walk.
+  window.addEventListener("blur", () => state.keys.clear());
   window.addEventListener("mousemove", onPointerMove);
   document.addEventListener("pointerlockchange", onPointerLockChange);
   document.addEventListener("pointerlockerror", onPointerLockError);
@@ -462,6 +471,34 @@ export function setupWalkMode(): void {
     toggle: toggleWalkMode,
   };
 }
+/** Slide the camera (and its target) horizontally before walk mode starts. */
+function nudgeStartPosition(keyCode: string, dt: number): void {
+  try {
+    const cam = ctx.world.camera.three as THREE.Camera;
+    const controls: any = ctx.world.camera.controls;
+    if (!controls?.setLookAt) return;
+    const forward = new THREE.Vector3();
+    cam.getWorldDirection(forward);
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
+    forward.normalize();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+    const step = 3 * dt;
+    const off = new THREE.Vector3();
+    if (keyCode === "KeyW") off.addScaledVector(forward, step);
+    else if (keyCode === "KeyS") off.addScaledVector(forward, -step);
+    else if (keyCode === "KeyD") off.addScaledVector(right, step);
+    else if (keyCode === "KeyA") off.addScaledVector(right, -step);
+    else return;
+    const t = new THREE.Vector3();
+    if (controls.target?.isVector3) t.copy(controls.target);
+    else t.copy(cam.position).add(forward.clone().multiplyScalar(TARGET_DISTANCE));
+    const p = cam.position.clone().add(off);
+    t.add(off);
+    controls.setLookAt(p.x, p.y, p.z, t.x, t.y, t.z, false);
+  } catch { /* adjustment is best-effort */ }
+}
+
 // ── ADDED: Pre-Walk Adjustment Mode UI ──
 export function showWalkAdjustmentUI(onStartWalk: () => void) {
   if (document.getElementById("walk-adjust-ui")) return;
@@ -508,13 +545,27 @@ export function showWalkAdjustmentUI(onStartWalk: () => void) {
     btn.style.cursor = "pointer";
     btn.style.fontSize = "18px";
     
-    const dispatchKey = (type: "keydown" | "keyup") => {
-      window.dispatchEvent(new KeyboardEvent(type, { code: keyCode, key: keyCode.replace("Key", "") }));
+    // Walk mode is not running yet, so synthetic key events were ignored and
+    // the pad did nothing. Move the camera directly while the button is held.
+    let raf: number | null = null;
+    let last = 0;
+    const stop = () => { if (raf != null) cancelAnimationFrame(raf); raf = null; };
+    const loop = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      nudgeStartPosition(keyCode, dt);
+      raf = requestAnimationFrame(loop);
     };
-    
-    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); dispatchKey("keydown"); });
-    btn.addEventListener("pointerup", (e) => { e.preventDefault(); dispatchKey("keyup"); });
-    btn.addEventListener("pointerleave", () => { dispatchKey("keyup"); });
+
+    btn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      stop();
+      last = performance.now();
+      raf = requestAnimationFrame(loop);
+    });
+    btn.addEventListener("pointerup", (e) => { e.preventDefault(); stop(); });
+    btn.addEventListener("pointerleave", stop);
+    btn.addEventListener("pointercancel", stop);
     return btn;
   };
 
