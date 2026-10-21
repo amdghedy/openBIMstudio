@@ -162,6 +162,13 @@ export function computeSceneBounds() {
     /* */
   }
 
+  try {
+    const cb = (ctx.features as any).cadLinks?.getBox?.();
+    if (cb && !cb.isEmpty()) lastSceneBox.union(cb);
+  } catch {
+    /* */
+  }
+
   if (lastSceneBox.isEmpty()) {
     sceneCenter.set(0, 0, 0);
     sceneRadius = 10;

@@ -36,6 +36,7 @@
     "test:v40": "node tests/v40-modules.test.cjs",
     "test:view-crop": "node tests/scope-box-section-box-crop.test.cjs",
     "test:selection-box": "node tests/selection-box.test.cjs",
+    "test:cad-link": "node tests/cad-link.test.cjs",
     "server": "node server/index.mjs",
     "verify": "node scripts/verify-input-focus.mjs"
   },

@@ -243,9 +243,9 @@ async function runOnce(): Promise<void> {
   });
 
   // DWG linking (live CAD references)
-  await safe("dwg-linking", async () => {
-    const m: Any = await import("./modules/dwg-linking");
-    m.setupDwgLinking?.();
+  await safe("cad-link", async () => {
+    const m: Any = await import("./modules/cad-link");
+    m.setupCadLinks?.();
   });
 
   // Model groups (group + reuse elements)

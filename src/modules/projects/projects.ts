@@ -294,7 +294,7 @@ export async function openProject(id: string) {
       loader?.set?.(`Loading model ${i + 1} / ${blobs.length} · ${b.name}`, pct);
       try {
         if (b.modelId.startsWith("aux-")) {
-          await (ctx.features as any).fileInterop?.restoreAux?.(b.blob, b.name);
+          await (ctx.features as any).fileInterop?.restoreAux?.(b.blob, b.name, b.modelId);
           loadedIds.add(b.modelId);
           continue;
         }

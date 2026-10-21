@@ -135,7 +135,13 @@ function geometryToMesh(geo: THREE.BufferGeometry, label: string): THREE.Mesh {
 }
 
 /** Re-load a persisted aux blob (called by projects.openProject). */
-export async function restoreAux(blob: Blob, name: string) {
+export async function restoreAux(blob: Blob, name: string, modelId?: string) {
+  if (/\.(dwg|dxf)$/i.test(name)) {
+    const m = await import("../modules/cad-link");
+    m.setupCadLinks();
+    await m.restoreCadLinkFromBlob(blob, name, modelId);
+    return;
+  }
   const buf = await blob.arrayBuffer();
   const obj = await parseModelBytes(buf, name);
   if (obj) addAuxObject(obj, name);
@@ -214,6 +220,13 @@ export async function importFiles(files: File[]) {
           await openProject(doc.id);
           continue;
         }
+      }
+
+      if (e === "dwg" || e === "dxf") {
+        const m = await import("../modules/cad-link");
+        m.setupCadLinks();
+        await m.linkCadFileInteractive(file);
+        continue;
       }
 
       if (DESKTOP_ONLY[e]) { alert(DESKTOP_ONLY[e]); continue; }

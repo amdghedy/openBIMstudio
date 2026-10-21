@@ -77,20 +77,16 @@ export function linkCad() {
     const file = files[0];
     const ext = (file.name.split(".").pop() ?? "").toLowerCase();
 
-    if (ext === "dwg") {
-      try {
-        // Use libredwg-web to read DWG and convert to SVG with full geometry
-        // Load libredwg-web with explicit locateFile to ensure WASM loads correctly in Vite
-        const lib = await import("@mlightcad/libredwg-web");
-        // Placeholder: actual DWG conversion not implemented in this stub.
-        toast(`DWG conversion placeholder for ${file.name}`,'info');
-      } catch (e) {
-        alert(`DWG conversion failed:\n${e instanceof Error ? e.message : String(e)}`);
+    if (ext === "dwg" || ext === "dxf") {
+      const m = await import("../modules/cad-link");
+      m.setupCadLinks();
+      for (const f of files) {
+        if (["dwg", "dxf"].includes((f.name.split(".").pop() ?? "").toLowerCase())) await m.linkCadFileInteractive(f);
       }
       return;
     }
 
-    if (["dxf", "svg", "png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
+    if (["svg", "png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
       // Open plan view — user clicks Link CAD there, or we stash file for plan
       try {
         (window as any).__obsPendingCadFile = file;

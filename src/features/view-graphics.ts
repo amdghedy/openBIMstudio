@@ -110,6 +110,7 @@ export function setSceneBackground(preset: BackgroundPreset): void {
   if (!ctx.world?.scene?.three) return;
   const color = preset === "paper" ? 0xf3f4f6 : preset === "night" ? 0x05070b : 0x0f1117;
   ctx.world.scene.three.background = new THREE.Color(color);
+  try { window.dispatchEvent(new CustomEvent("obs:scene-background", { detail: preset })); } catch { /* */ }
 }
 
 export function getSceneBackground(): BackgroundPreset { return background; }
