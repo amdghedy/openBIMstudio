@@ -1,0 +1,28 @@
+name: Unit tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:bim-gaps
+      - run: npm run test:mep
+      - run: npm run test:hip
+      - run: npm run test:hatch
+      - run: npm run test:stairs
+      - run: npm run test:rebar
+      - run: npm run test:v40
+      - run: npm run test:view-crop
+      - run: npm run test:selection-box
+      - run: npm run test:native-bim

@@ -222,6 +222,8 @@ The package manifest declares development/build/verification commands including:
 - npm run verify:v52
 - npm run verify:v54
 - npm run test:native-bim
+- npm run test:mep, test:hip, test:hatch, test:stairs, test:rebar, test:v40, test:view-crop, test:selection-box
+- node tests/run-tests.mjs (bim-gaps suites)
 
 The test tree includes geometry, IFC, M2 geometry/tools, M3 plan/register/views, M4 smoke, visibility, and a test runner. Read the actual script and assertions before treating a command as comprehensive. A typecheck is not a runtime test; a smoke test is not full interoperability validation.
 
@@ -263,4 +265,4 @@ Create docs/tools/<tool-name>.md with:
 
 ## 14. Scope boundary
 
-OpenBIMstudio is an evolving project. This catalogue intentionally does not claim that every module is equivalent to established commercial BIM platforms. Read source code, tests and runtime evidence together when assessing maturity. Read source code, tests and runtime evidence together when assessing maturity.
+OpenBIMstudio is an evolving project. This catalogue intentionally does not claim that every module is equivalent to established commercial BIM platforms. Read source code, tests and runtime evidence together when assessing maturity.

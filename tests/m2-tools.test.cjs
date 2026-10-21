@@ -105,7 +105,7 @@ ctx.features = { authoring: api };
       const keys = SCHEMAS[k].fields.map((f) => f.target + ":" + f.key);
       assert.ok(new Set(keys).size === keys.length, "duplicate field keys in " + k);
     }
-    assert.ok(SCHEMAS.stairs.fields.some((f) => f.key === "stairShape" && f.options.length === 3));
+    assert.ok(SCHEMAS.stairs.fields.some((f) => f.key === "stairShape" && f.options.length === 5));
     const q = window.__obsM2Quantities({ type: "curtain-wall", params: { height: 3.6, thickness: 0.1, elevation: 0, start: [0, 0], end: [6, 0] } });
     near(q.area, 21.6);
     assert.strictEqual(window.__obsM2Quantities({ type: "wall", params: {} }), null);

@@ -25,6 +25,7 @@
     "verify:v65": "node scripts/verify-v65.mjs",
     "verify:v66": "node scripts/verify-v66.mjs",
     "seed:families": "node scripts/seed-families.mjs",
+    "test:bim-gaps": "node tests/run-tests.mjs",
     "test:native-bim": "node tests/native-bim-validation.test.mjs",
     "test:mep": "node tests/mep-router.test.cjs",
     "test:hip": "node tests/hip-roof.test.cjs",
