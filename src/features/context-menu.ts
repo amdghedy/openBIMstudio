@@ -887,19 +887,28 @@ void (async () => {
     const authoredIdRaw = auth?.pickAuthoredElementAt?.(g.event as MouseEvent) ?? null;
     const hit = authoredIdRaw ? null : await selMod.pickFragmentAtPointer?.();
 
+    // Revit behaviour: right-clicking an element that is already selected
+    // keeps the whole selection; right-clicking an unselected element
+    // selects ONLY that element, so menu commands (Isolate, Hide, Zoom...)
+    // always act on what is under the cursor. Empty space keeps the selection.
     if (authoredIdRaw) {
       const id = String(authoredIdRaw);
 
-      if (!authIds.includes(id) && fragCount === 0) {
-        auth?.setSelectedAuthored?.([...authIds, id], "replace");
+      if (!authIds.includes(id)) {
+        if (fragCount > 0) {
+          selMod.selection.replace({});
+          await selMod.selection.applyToHighlighter?.();
+        }
+        auth?.setSelectedAuthored?.([id], "replace");
       }
     } else if (hit) {
       const modelKey = String(hit.modelId);
       const set = fragSelected[modelKey];
       const already = !!set && set.has(hit.localId);
 
-      if (!already && authIds.length === 0) {
-        selMod.selection.applyClick(hit.modelId, hit.localId, { ctrl: true });
+      if (!already) {
+        if (authIds.length > 0) auth?.setSelectedAuthored?.([], "replace");
+        selMod.selection.applyClick(hit.modelId, hit.localId, {});
         await selMod.selection.applyToHighlighter?.();
       }
     }

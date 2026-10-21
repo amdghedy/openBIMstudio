@@ -192,7 +192,12 @@ class InputRouterImpl {
   private onDown = (e: PointerEvent): void => {
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     if (isUiEventTarget(e.target)) return;
-    if (this.down && this.down.id !== e.pointerId) return;
+    // A second finger of a multi-touch gesture is ignored, but a new primary
+    // press always replaces a stale gesture whose pointerup was never seen
+    // (e.g. released outside the window) so input can never get stuck.
+    if (this.down && this.down.id !== e.pointerId && !e.isPrimary) return;
+    // Release any camera pause left behind by a gesture that never ended.
+    if (this.owner || this.releaseCamera) this.releaseOwner();
     this.down = {
       x: e.clientX, y: e.clientY,
       button: e.button as PointerButton,
@@ -222,6 +227,8 @@ class InputRouterImpl {
       if (owner) {
         this.owner = owner;
         this.releaseCamera = pauseCameraControls();
+        // Keep receiving move/up even if the cursor leaves the viewport.
+        try { this.host?.setPointerCapture(e.pointerId); } catch { /* */ }
         e.preventDefault();
         e.stopPropagation();
       }

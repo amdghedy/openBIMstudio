@@ -56,7 +56,67 @@ export function openManageLinks() {
     const tbody = table.querySelector("#obs-manage-links-body")!;
     let count = 0;
 
-    for (const [modelId] of ctx.fragments.list) {
+    if (activeTab.startsWith("CAD")) {
+      const api: any = (ctx.features as any).cadLinks;
+      const btn = (t: string, fn: () => void, danger = false) => {
+        const b = document.createElement("button");
+        b.textContent = t;
+        b.style.cssText = `margin-left:4px;padding:4px 8px;background:${danger ? "#3b0d0d" : "#2a2e3a"};color:${danger ? "#fca5a5" : "#e8eaf0"};border:1px solid ${danger ? "#7f1d1d" : "#3a3f4d"};border-radius:4px;cursor:pointer;font:12px system-ui;`;
+        b.onclick = fn;
+        return b;
+      };
+      for (const l of (api?.list?.() ?? [])) {
+        const tr = document.createElement("tr");
+        tr.style.cssText = "border-bottom:1px solid #1e2029;vertical-align:top;";
+        const nameTd = document.createElement("td");
+        nameTd.style.cssText = "padding:8px;";
+        nameTd.innerHTML = `<div>${l.name.replace(/</g, "&lt;")}</div><div style="color:#6b7280;font-size:11px">${l.placement.unitsUsed}${l.placement.unitsGuessed ? " (guessed)" : ""} · ${l.options.positioning} · level ${l.options.elevation} m</div>`;
+        const layers = document.createElement("details");
+        layers.innerHTML = `<summary style="cursor:pointer;color:#8b949e;font-size:11px">Layers (${l.doc.layers.length})</summary>`;
+        for (const ly of l.doc.layers) {
+          const lab = document.createElement("label");
+          lab.style.cssText = "display:block;font-size:11px;color:#c9d1d9";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = l.layerVisible[ly.name] !== false;
+          cb.onchange = () => api.setLayerVisible(l.id, ly.name, cb.checked);
+          lab.append(cb, " " + ly.name);
+          layers.appendChild(lab);
+        }
+        nameTd.appendChild(layers);
+        const st = document.createElement("td");
+        st.style.cssText = `padding:8px;color:${l.visible ? "#22c55e" : "#6b7280"};`;
+        st.textContent = l.visible ? "Shown" : "Hidden";
+        const ty = document.createElement("td");
+        ty.style.cssText = "padding:8px;color:#8b949e;";
+        ty.textContent = `CAD (${l.format.toUpperCase()})`;
+        const ac = document.createElement("td");
+        ac.style.cssText = "padding:8px;text-align:right;white-space:nowrap;";
+        ac.append(
+          btn(l.visible ? "Hide" : "Show", () => { api.setVisible(l.id, !l.visible); renderTable(); }),
+          btn("Zoom", () => { modalEl?.remove(); modalEl = null; void api.zoomTo(l.id); }),
+          btn("Settings", async () => { await api.edit(l.id); renderTable(); }),
+          btn("Reload", () => {
+            const i = document.createElement("input");
+            i.type = "file"; i.accept = ".dwg,.dxf";
+            i.onchange = async () => {
+              const f = i.files?.[0];
+              if (!f) return;
+              try { await api.reload(l.id, f); notify("info", `Reloaded ${f.name}`); }
+              catch (e) { notify("error", e instanceof Error ? e.message : String(e)); }
+              renderTable();
+            };
+            i.click();
+          }),
+          btn("Remove", () => { api.remove(l.id); renderTable(); }, true),
+        );
+        tr.append(nameTd, st, ty, ac);
+        tbody.appendChild(tr);
+        count++;
+      }
+    }
+
+    for (const [modelId] of (activeTab === "IFC" ? ctx.fragments.list : new Map())) {
       const tr = document.createElement("tr");
       tr.style.cssText = "border-bottom:1px solid #1e2029;";
       
@@ -70,7 +130,7 @@ export function openManageLinks() {
       
       const typeTd = document.createElement("td");
       typeTd.style.cssText = "padding:8px;color:#8b949e;";
-      typeTd.textContent = activeTab === "IFC" ? "IFC Model" : "CAD Underlay";
+      typeTd.textContent = "IFC Model";
 
       const actionTd = document.createElement("td");
       actionTd.style.cssText = "padding:8px;text-align:right;";

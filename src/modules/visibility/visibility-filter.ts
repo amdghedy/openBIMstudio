@@ -55,6 +55,8 @@ class VisibilityFilter {
   }
 
   isolateElements(ids: string[]): void {
+    // Isolating nothing must not hide the whole model (Revit: no-op).
+    if (!ids || ids.length === 0) return;
     this.tempIsolated = new Set(ids);
     this.emit();
   }
@@ -66,7 +68,9 @@ class VisibilityFilter {
   }
 
   isTemporarilyHidden(id: string): boolean {
-    if (this.tempIsolated) return !this.tempIsolated.has(id);
+    // Hide still works inside an isolated view: an element is hidden if it is
+    // outside the isolated set OR explicitly hidden.
+    if (this.tempIsolated && !this.tempIsolated.has(id)) return true;
     return this.tempHidden.has(id);
   }
 

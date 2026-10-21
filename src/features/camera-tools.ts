@@ -162,6 +162,13 @@ export function computeSceneBounds() {
     /* */
   }
 
+  try {
+    const cb = (ctx.features as any).cadLinks?.getBox?.();
+    if (cb && !cb.isEmpty()) lastSceneBox.union(cb);
+  } catch {
+    /* */
+  }
+
   if (lastSceneBox.isEmpty()) {
     sceneCenter.set(0, 0, 0);
     sceneRadius = 10;
@@ -301,7 +308,24 @@ export function getProjection(): Projection {
   return isOrthoCam(ctx.world.camera.three) ? "orthographic" : "perspective";
 }
 
-function afterProjectionChanged() {
+/** Visible world height at the orbit target, in the current projection. */
+function captureFraming(): { ortho: boolean; h: number } | null {
+  try {
+    const cam = ctx.world.camera.three as any;
+    if (isOrthoCam(cam)) {
+      const z = Math.max(1e-3, cam.zoom || 1);
+      return { ortho: true, h: (cam.top - cam.bottom) / z };
+    }
+    const target = getCamTarget(new THREE.Vector3());
+    const dist = Math.max(cam.position.distanceTo(target), 0.01);
+    const fov = THREE.MathUtils.degToRad(cam.fov ?? 60);
+    return { ortho: false, h: 2 * dist * Math.tan(fov / 2) };
+  } catch {
+    return null;
+  }
+}
+
+function afterProjectionChanged(prev: { ortho: boolean; h: number } | null = null) {
   currentProjection = getProjection();
   try {
     for (const [, model] of ctx.fragments.list) model.useCamera(ctx.world.camera.three);
@@ -317,7 +341,35 @@ function afterProjectionChanged() {
   if (currentProjection === "orthographic") {
     computeSceneBounds();
     const cam = ctx.world.camera.three as THREE.OrthographicCamera;
-    if (isOrthoCam(cam)) fitOrthoFrustum(cam, sceneRadius);
+    if (isOrthoCam(cam)) {
+      const keepZoom = prev?.ortho ? cam.zoom : null;
+      fitOrthoFrustum(cam, sceneRadius);
+      if (keepZoom != null && Number.isFinite(keepZoom)) {
+        // Already orthographic: don't throw away the user's zoom.
+        cam.zoom = keepZoom;
+        cam.updateProjectionMatrix();
+      } else if (prev && !prev.ortho && prev.h > 0 && Number.isFinite(prev.h)) {
+        // Perspective -> ortho: keep the same apparent size at the target.
+        cam.zoom = Math.max(0.01, Math.min(5000, (cam.top - cam.bottom) / prev.h));
+        cam.updateProjectionMatrix();
+      }
+    }
+  } else if (prev?.ortho && prev.h > 0 && Number.isFinite(prev.h)) {
+    // Ortho -> perspective: dolly to the distance that shows the same height.
+    try {
+      const cam = ctx.world.camera.three as any;
+      const controls: any = ctx.world.camera.controls;
+      const target = getCamTarget(new THREE.Vector3());
+      const fov = THREE.MathUtils.degToRad(cam.fov ?? 60);
+      const newDist = Math.max(0.05, prev.h / (2 * Math.tan(fov / 2)));
+      const dir = cam.position.clone().sub(target);
+      if (dir.lengthSq() > 1e-12) {
+        dir.normalize();
+        const p = target.clone().add(dir.multiplyScalar(newDist));
+        controls.setLookAt(p.x, p.y, p.z, target.x, target.y, target.z, false);
+        try { controls.update?.(0); } catch { /* */ }
+      }
+    } catch { /* keep whatever distance the SDK chose */ }
   }
   updateClipping();
 }
@@ -328,6 +380,8 @@ export function setProjection(mode: Projection): boolean {
     return false;
   }
   const cam: any = ctx.world.camera;
+  // Remember the current framing so the switch keeps the same view size.
+  const prevFraming = captureFraming();
 
   // Prefer projection.set — keeps orbit/pan/zoom free.
   // Do NOT use setCameraType("Plan") for Ortho: Plan locks navigation.
@@ -337,7 +391,7 @@ export function setProjection(mode: Projection): boolean {
       try {
         if (cam.controls && cam.controls.enabled === false) cam.controls.enabled = true;
       } catch { /* */ }
-      afterProjectionChanged();
+      afterProjectionChanged(prevFraming);
       return true;
     } catch { /* fall through */ }
   }
@@ -353,7 +407,7 @@ export function setProjection(mode: Projection): boolean {
         try {
           if (cam.controls && cam.controls.enabled === false) cam.controls.enabled = true;
         } catch { /* */ }
-        afterProjectionChanged();
+        afterProjectionChanged(prevFraming);
         return true;
       } catch { /* */ }
     }
@@ -412,8 +466,25 @@ export function zoomBy(factor: number, focusPoint?: THREE.Vector3) {
     }
     const oldZoom = Math.max(1e-3, ortho.zoom || 1);
     const newZoom = Math.max(0.01, Math.min(5000, oldZoom / factor));
+    const effFactor = oldZoom / newZoom; // actual factor after clamping
     ortho.zoom = newZoom;
     ortho.updateProjectionMatrix();
+
+    // Zoom toward the cursor (as in perspective): slide camera + target
+    // sideways so the point under the cursor stays fixed on screen.
+    if (focusPoint && Number.isFinite(focusPoint.x) && Math.abs(effFactor - 1) > 1e-6) {
+      try {
+        const viewDir = new THREE.Vector3();
+        cam.getWorldDirection(viewDir);
+        const toFocus = focusPoint.clone().sub(target);
+        const lateral = toFocus.sub(viewDir.clone().multiplyScalar(toFocus.dot(viewDir)));
+        const truck = lateral.multiplyScalar(1 - effFactor);
+        const p = cam.position.clone().add(truck);
+        const t2 = target.clone().add(truck);
+        controls.setLookAt(p.x, p.y, p.z, t2.x, t2.y, t2.z, false);
+        try { controls.update?.(0); } catch { /* */ }
+      } catch { /* zoom itself already applied */ }
+    }
 
     updateClipping();
     return;

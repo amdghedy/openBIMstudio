@@ -16,7 +16,8 @@ let sceneTransparency = 0;
 let sunEnabled = true;
 let background: BackgroundPreset = "studio";
 
-const original = new Map<THREE.Material, {
+// WeakMap: disposed materials must not be kept alive by this cache.
+const original = new WeakMap<THREE.Material, {
   opacity: number;
   transparent: boolean;
   wireframe?: boolean;
@@ -37,10 +38,19 @@ function remember(mat: THREE.Material): void {
   });
 }
 
+/** True for the transform gizmo and other viewport helpers (not model geometry). */
+function isUiHelper(obj: any): boolean {
+  for (let o = obj; o; o = o.parent) {
+    if (o.name === "obs-gizmo" || o.userData?.obsHelper) return true;
+  }
+  return false;
+}
+
 function eachMaterial(cb: (mat: THREE.Material) => void): void {
   if (!ctx.world?.scene?.three) return;
   ctx.world.scene.three.traverse((obj: any) => {
     if (!obj?.isMesh || !obj.material) return;
+    if (isUiHelper(obj)) return; // gizmo/overlays must not turn wireframe/transparent
     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
     for (const mat of mats) {
       if (!mat) continue;
@@ -100,6 +110,7 @@ export function setSceneBackground(preset: BackgroundPreset): void {
   if (!ctx.world?.scene?.three) return;
   const color = preset === "paper" ? 0xf3f4f6 : preset === "night" ? 0x05070b : 0x0f1117;
   ctx.world.scene.three.background = new THREE.Color(color);
+  try { window.dispatchEvent(new CustomEvent("obs:scene-background", { detail: preset })); } catch { /* */ }
 }
 
 export function getSceneBackground(): BackgroundPreset { return background; }

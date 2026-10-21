@@ -51,6 +51,8 @@ type NavState =
     };
 
 let state: NavState = { kind: "idle" };
+/** Latest pointer event of the current MMB drag (used to re-anchor the orbit). */
+let lastOrbitEvent: PointerEvent | null = null;
 let shiftHeld = false;
 let ctrlHeld = false;
 
@@ -419,7 +421,9 @@ export function setupNavigation(): void {
           void selectionCenter().then((p) => {
             if (state.kind !== "orbit") return;
             if (p.distanceTo(state.pivot) < 1e-3) return;
-            beginOrbitSync(g.event, p);
+            // Restart from the CURRENT pointer position; restarting from the
+            // original press point would apply the drag twice (view jump).
+            beginOrbitSync(lastOrbitEvent ?? g.event, p);
           });
         }
       } else {
@@ -430,6 +434,7 @@ export function setupNavigation(): void {
     }
 
     if (g.kind === "drag-move" && g.button === 1) {
+      lastOrbitEvent = g.event;
       // Same fix as drag-start: use live event mods only, not cached state.
       const wantOrbit = g.mods.shift || g.mods.ctrl || g.mods.meta;
       if (wantOrbit && state.kind === "pan") {
@@ -524,6 +529,9 @@ export function setupNavigation(): void {
       if (Math.abs(x2 - x1) < 3 && Math.abs(y2 - y1) < 3) return false;
 
       const mode: "window" | "crossing" = x2 >= x1 ? "window" : "crossing";
+      // Revit-style modifiers: Ctrl adds to the selection, Shift removes.
+      const modifier: "replace" | "add" | "remove" =
+        g.mods.ctrl || g.mods.meta ? "add" : g.mods.shift || g.mods.alt ? "remove" : "replace";
       void (ctx.features as any).boxSelection?.commit?.(
         {
           x1: Math.min(x1, x2),
@@ -532,6 +540,7 @@ export function setupNavigation(): void {
           y2: Math.max(y1, y2),
         },
         mode,
+        modifier,
       );
       return true;
     }

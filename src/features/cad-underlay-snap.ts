@@ -198,6 +198,18 @@ export function getUnderlaySnapPoints(
   return results;
 }
 
+/** Feed snap data from world-space segments (flat x1,z1,x2,z2) - used by the CAD link engine. */
+export function setUnderlaySegments(flat: number[]): void {
+  const points: UnderlaySnapPoint[] = [];
+  const segments: UnderlaySegment[] = [];
+  for (let i = 0; i + 3 < flat.length; i += 4) {
+    const [x1, z1, x2, z2] = [flat[i], flat[i + 1], flat[i + 2], flat[i + 3]];
+    segments.push({ x1, z1, x2, z2 });
+    points.push({ x: x1, z: z1, type: "endpoint" }, { x: x2, z: z2, type: "endpoint" });
+  }
+  underlayData = { points, segments, offsetX: 0, offsetZ: 0, scale: 1 };
+}
+
 /** Check whether any underlay snap data is loaded. */
 export function hasUnderlayData(): boolean {
   return underlayData !== null && underlayData.points.length > 0;

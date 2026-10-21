@@ -1245,6 +1245,12 @@ function clearCadUnderlay() {
   } catch { /* */ }
 }
 
+try {
+  window.addEventListener("obs:cad-links-changed", () => {
+    try { if (currentPlan && svg) renderPlan(currentPlan); } catch { /* plan not open */ }
+  });
+} catch { /* */ }
+
 function applyCadUnderlay() {
   if (!cadUnderlayUrl || !currentPlan) return;
   if (!cadUnderlayVisible) {
@@ -1429,6 +1435,17 @@ function renderPlan(plan: PlanView) {
   if (!isFinite(b.minX) || b.maxX - b.minX < 0.1) {
     b = { minX: -10, maxX: 10, minZ: -10, maxZ: 10 };
   }
+  // Linked CAD (true world coordinates) extends the visible area, like Revit.
+  const cadApi: any = (ctx.features as any).cadLinks;
+  const planElev = (plan as any).level?.elevation ?? (plan as any).elevation;
+  const cadBounds = cadApi?.getPlanBounds?.(typeof planElev === "number" ? planElev : undefined);
+  if (cadBounds) {
+    const empty = !isFinite(plan.bounds.minX) || plan.bounds.maxX - plan.bounds.minX < 0.1;
+    b = empty ? { ...cadBounds } : {
+      minX: Math.min(b.minX, cadBounds.minX), maxX: Math.max(b.maxX, cadBounds.maxX),
+      minZ: Math.min(b.minZ, cadBounds.minZ), maxZ: Math.max(b.maxZ, cadBounds.maxZ),
+    };
+  }
   const pad = 3;
   const vbMinX = b.minX - pad;
   const vbMinY = -(b.maxZ + pad);
@@ -1450,6 +1467,46 @@ function renderPlan(plan: PlanView) {
     "viewBox",
     `${finalMinX} ${finalMinY} ${zoomedW} ${zoomedH}`,
   );
+
+  // -- Linked CAD vectors (behind the model) --
+  if (cadApi) {
+    const NS = "http://www.w3.org/2000/svg";
+    const cg = document.createElementNS(NS, "g");
+    cg.setAttribute("data-obs-cad-link", "1");
+    cg.setAttribute("pointer-events", "none");
+    const lw = Math.max(zoomedW / 1500, 0.002);
+    for (const it of cadApi.getPlanItems(typeof planElev === "number" ? planElev : undefined)) {
+      for (const grp of it.geo.groups) {
+        if (!it.isLayerVisible(grp.layer)) continue;
+        let d = "";
+        const sg = grp.segs;
+        for (let i = 0; i < sg.length; i += 6) {
+          d += `M${sg[i]} ${-sg[i + 2]}L${sg[i + 3]} ${-sg[i + 5]}`;
+        }
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute("d", d);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "#" + grp.rgb.toString(16).padStart(6, "0"));
+        path.setAttribute("stroke-width", String(lw));
+        path.setAttribute("stroke-linecap", "round");
+        path.setAttribute("opacity", String(cadUnderlayOpacity));
+        cg.appendChild(path);
+      }
+      for (const t of it.geo.texts) {
+        if (!it.isLayerVisible(t.layer)) continue;
+        const el = document.createElementNS(NS, "text");
+        el.setAttribute("x", String(t.x));
+        el.setAttribute("y", String(-t.z));
+        el.setAttribute("font-size", String(t.height));
+        el.setAttribute("font-family", "system-ui, sans-serif");
+        el.setAttribute("fill", "#" + t.rgb.toString(16).padStart(6, "0"));
+        if (t.rotation) el.setAttribute("transform", `rotate(${-t.rotation} ${t.x} ${-t.z})`);
+        el.textContent = t.value;
+        cg.appendChild(el);
+      }
+    }
+    svg.appendChild(cg);
+  }
 
   const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
   svg.appendChild(g);

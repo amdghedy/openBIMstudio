@@ -19,6 +19,8 @@ export interface SavedView {
   pos: [number, number, number];
   target: [number, number, number];
   projection: "perspective" | "orthographic";
+  /** Orthographic zoom at save time (older saved views have none). */
+  orthoZoom?: number;
   createdAt: number;
 }
 
@@ -69,6 +71,7 @@ export function saveCurrentView(name?: string): SavedView | null {
     pos: [cam.position.x, cam.position.y, cam.position.z],
     target: [target.x, target.y, target.z],
     projection: getProjection(),
+    orthoZoom: (cam as any).isOrthographicCamera ? (cam as any).zoom : undefined,
     createdAt: Date.now(),
   };
 
@@ -100,6 +103,15 @@ export function restoreView(id: string): void {
     const cam = ctx.world.camera.three;
     cam.position.set(view.pos[0], view.pos[1], view.pos[2]);
     cam.lookAt(new THREE.Vector3(...view.target));
+  }
+
+  // An orthographic view is only reproduced if its zoom is restored too.
+  if (view.projection === "orthographic" && Number.isFinite(view.orthoZoom)) {
+    const cam: any = ctx.world.camera.three;
+    if (cam?.isOrthographicCamera) {
+      cam.zoom = view.orthoZoom;
+      cam.updateProjectionMatrix();
+    }
   }
 
   updateClipping();

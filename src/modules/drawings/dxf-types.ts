@@ -12,60 +12,64 @@ export interface DxfLayer {
   lineType?: string;
   frozen?: boolean;
   locked?: boolean;
+  /** Layer switched off (negative colour in DXF, "off" flag in DWG). */
+  off?: boolean;
+}
+
+/** Fields every entity carries. */
+interface DxfEntityBase {
+  layer: string;
+  /** ACI colour; undefined = BYLAYER. */
+  color?: number;
+  /** 24-bit true colour (0xRRGGBB) when the entity has one. */
+  rgb?: number;
 }
 
 export type DxfEntity =
-  | {
+  | (DxfEntityBase & {
       type: "LINE";
-      layer: string;
       start: DxfPoint;
       end: DxfPoint;
-      color?: number;
-    }
-  | {
+    })
+  | (DxfEntityBase & {
       type: "CIRCLE";
-      layer: string;
       center: DxfPoint;
       radius: number;
-      color?: number;
-    }
-  | {
+    })
+  | (DxfEntityBase & {
       type: "ARC";
-      layer: string;
       center: DxfPoint;
       radius: number;
-      startAngle: number; // degrees
+      startAngle: number; // degrees, counter-clockwise
       endAngle: number;
-      color?: number;
-    }
-  | {
+    })
+  | (DxfEntityBase & {
       type: "LWPOLYLINE";
-      layer: string;
       points: DxfPoint[];
       closed?: boolean;
-      color?: number;
-    }
-  | {
+    })
+  | (DxfEntityBase & {
       type: "TEXT";
-      layer: string;
       position: DxfPoint;
       height: number;
       value: string;
       rotation?: number;
-      color?: number;
-    }
-  | {
+    })
+  | (DxfEntityBase & {
       type: "POINT";
-      layer: string;
       position: DxfPoint;
-      color?: number;
-    };
+    });
+
+export type DxfUnits = "unitless" | "mm" | "cm" | "m" | "in" | "ft";
 
 export interface DxfDocument {
   layers: DxfLayer[];
   entities: DxfEntity[];
-  /** Drawing extents (model space). */
+  /** Drawing extents (model space), computed from the entities. */
   extents?: { min: DxfPoint; max: DxfPoint };
-  units?: "unitless" | "mm" | "m" | "in" | "ft";
+  /** Drawing units as declared by the file ($INSUNITS). */
+  units?: DxfUnits;
   sourceFormat?: "dxf" | "dwg" | "cad-engine" | "unknown";
+  /** Entity types that were present but not drawn, with counts. */
+  skipped?: Record<string, number>;
 }
