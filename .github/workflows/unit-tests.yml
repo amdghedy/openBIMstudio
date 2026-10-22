@@ -29,5 +29,6 @@ jobs:
       - run: npm run test:native-bim
       - run: npm run test:cad-link
       - run: npm run test:walk
+      - run: npm run test:plan-draw
       - run: npm run test:view-lock
       - run: npm run test:section-box
