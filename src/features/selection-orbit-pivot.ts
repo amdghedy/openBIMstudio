@@ -18,6 +18,7 @@
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { syncOrthoZoom } from "../core/ortho-zoom";
+import { setOrbitTargetKeepingView } from "../core/orbit-target";
 
 type Any = Record<string, any>;
 
@@ -181,27 +182,9 @@ export function applyOrbitPivot(point: THREE.Vector3): void {
     /* */
   }
 
-  // Direct controls write (always)
+  // Keep the view exactly as is: selecting must not rotate or move the camera.
   try {
-    const controls: Any = (ctx as Any).world?.camera?.controls;
-    const cam = (ctx as Any).world?.camera?.three as THREE.Camera;
-    if (controls) {
-      if (controls.target?.isVector3) {
-        controls.target.set(point.x, point.y, point.z);
-      }
-      if (typeof controls.setTarget === "function") {
-        controls.setTarget(point.x, point.y, point.z, false);
-      }
-      if (typeof controls.setLookAt === "function" && cam) {
-        const p = (cam as Any).position;
-        controls.setLookAt(p.x, p.y, p.z, point.x, point.y, point.z, false);
-        try {
-          controls.update?.(0);
-        } catch {
-          /* */
-        }
-      }
-    }
+    if (typeof (ctx.features as Any)?.cameraTools?.setOrbitPivot !== "function") setOrbitTargetKeepingView(point);
   } catch {
     /* */
   }
@@ -450,10 +433,9 @@ function installWheelPivotHook(): void {
       if (!hasPivot) return;
       if ((window as Any).__OBS_MMB_HELD) return;
       try {
-        const controls: Any = (ctx as Any).world?.camera?.controls;
-        if (controls?.target?.isVector3) {
-          controls.target.copy(lastPivot);
-        }
+        // Intentionally empty: forcing the controls target onto the pivot made
+        // every wheel tick rotate the camera towards it. Zoom keeps the view direction.
+        void lastPivot;
       } catch {
         /* */
       }

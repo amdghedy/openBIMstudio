@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { ctx } from "./context";
 import { syncOrthoZoom } from "./ortho-zoom";
+import { axisDistance, dollyTowards, targetAhead, type V3 } from "./view-lock";
 
 type Any = Record<string, any>;
 
@@ -236,6 +237,12 @@ function applyOrthoZoom(
   const hasFocus = focusUnderCursor(primary, controls, clientX, clientY, _focus);
   getOrbitTarget(controls, primary, _target);
   const focusBefore = _focus.clone();
+  const fwd0 = new THREE.Vector3();
+  primary.getWorldDirection(fwd0);
+  const dist0 = axisDistance(
+    [primary.position.x, primary.position.y, primary.position.z],
+    [_target.x, _target.y, _target.z], [fwd0.x, fwd0.y, fwd0.z], 1,
+  );
 
   for (const ortho of orthos) {
     const oldZoom = Math.max(1e-4, ortho.zoom || 1);
@@ -268,12 +275,12 @@ function applyOrthoZoom(
     if (_raycaster.ray.intersectPlane(_plane, _after)) {
       _truck.subVectors(focusBefore, _after);
       if (_truck.lengthSq() > 1e-12) {
-        applyLookAt(
-          controls,
-          primary,
-          primary.position.clone().add(_truck),
-          _target.clone().add(_truck),
+        // Translate only: target stays straight ahead along the unchanged view direction.
+        const newPos = primary.position.clone().add(_truck);
+        const nt = targetAhead(
+          [newPos.x, newPos.y, newPos.z], [fwd0.x, fwd0.y, fwd0.z], dist0,
         );
+        applyLookAt(controls, primary, newPos, new THREE.Vector3(nt[0], nt[1], nt[2]));
       }
     }
   }
@@ -286,26 +293,24 @@ function applyPerspectiveZoom(
   clientX: number,
   clientY: number,
 ): void {
+  // Zoom = pure translation of the eye towards the point under the cursor.
+  // The view direction is never changed (only orbit may rotate the camera).
   const hasFocus = focusUnderCursor(cam, controls, clientX, clientY, _focus);
   getOrbitTarget(controls, cam, _target);
-  const offset = new THREE.Vector3().subVectors(cam.position, _target);
-  const dist = offset.length();
-  if (dist < 1e-6) return;
-  const viewDir = offset.clone().multiplyScalar(1 / dist);
-  const newDist = Math.max(0.05, dist / factor);
-  let newPos = _target.clone().add(viewDir.clone().multiplyScalar(newDist));
-  let newTarget = _target.clone();
-
-  if (hasFocus && Number.isFinite(_focus.x)) {
-    const toFocus = _focus.clone().sub(_target);
-    const along = toFocus.dot(viewDir);
-    const focusOnPlane = _focus.clone().sub(viewDir.clone().multiplyScalar(along));
-    const lateral = focusOnPlane.clone().sub(_target);
-    const truck = lateral.multiplyScalar(1 - newDist / dist);
-    newPos.add(truck);
-    newTarget.add(truck);
-  }
-  applyLookAt(controls, cam, newPos, newTarget);
+  cam.getWorldDirection(_dir);
+  const fwd: V3 = [_dir.x, _dir.y, _dir.z];
+  const pos: V3 = [cam.position.x, cam.position.y, cam.position.z];
+  const dist = axisDistance(pos, [_target.x, _target.y, _target.z], fwd, 0.5);
+  const focus: V3 = hasFocus && Number.isFinite(_focus.x)
+    ? [_focus.x, _focus.y, _focus.z]
+    : targetAhead(pos, fwd, dist);
+  const np = dollyTowards(pos, focus, factor, 0.05);
+  const moved = Math.hypot(np[0] - pos[0], np[1] - pos[1], np[2] - pos[2]);
+  const along = (np[0] - pos[0]) * fwd[0] + (np[1] - pos[1]) * fwd[1] + (np[2] - pos[2]) * fwd[2];
+  const newDist = Math.max(dist - along, 0.5);
+  void moved;
+  const nt = targetAhead(np, fwd, newDist);
+  applyLookAt(controls, cam, new THREE.Vector3(...np), new THREE.Vector3(...nt));
 }
 
 function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: number): void {

@@ -5,6 +5,7 @@ import { forceResumeCameraControls } from "../core/camera-gate";
 import { register, type CameraService } from "../core/services";
 import { getElementWorldBoxes } from "../modules/geometry/world-box";
 import { syncOrthoZoom } from "../core/ortho-zoom";
+import { setOrbitTargetKeepingView } from "../core/orbit-target";
 
 // ── Scene placement state ──
 let recenterEnabled = false;
@@ -697,33 +698,9 @@ export function setOrbitPivot(point: THREE.Vector3): void {
   const cam = ctx.world.camera.three;
   const controls: any = ctx.world.camera.controls;
   if (!controls) return;
-  const pos = cam.position.clone();
-
-  // Direct write to the internal target first (works on all versions).
-  try {
-    if (controls.target?.isVector3) {
-      controls.target.set(point.x, point.y, point.z);
-    }
-  } catch { /* */ }
-
-  // Also tell camera-controls — this updates its interpolation endpoints.
-  try {
-    if (typeof controls.setTarget === "function") {
-      controls.setTarget(point.x, point.y, point.z, false);
-    }
-  } catch { /* */ }
-
-  // Force a look-at so the camera orientation matches the new target
-  // even in versions where setTarget only updates the end state.
-  try {
-    if (typeof controls.setLookAt === "function") {
-      controls.setLookAt(pos.x, pos.y, pos.z, point.x, point.y, point.z, false);
-    } else {
-      cam.lookAt(point);
-    }
-  } catch { /* */ }
-
-  try { controls.update?.(0); } catch { /* */ }
+  // Never re-aim: the target goes straight ahead at the pivot's depth.
+  void cam;
+  setOrbitTargetKeepingView(point);
   try { updateClipping(); } catch { /* */ }
 }
 
