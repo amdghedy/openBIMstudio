@@ -40,6 +40,7 @@
     "test:selection-box": "node tests/selection-box.test.cjs",
     "test:section-box": "node tests/section-box.test.cjs",
     "test:view-lock": "node tests/view-lock.test.cjs",
+    "test:plan-draw": "node tests/plan-draw.test.cjs",
     "test:walk": "node tests/walk-physics.test.cjs",
     "test:cad-link": "node tests/cad-link.test.cjs",
     "server": "node server/index.mjs",

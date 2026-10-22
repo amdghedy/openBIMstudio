@@ -7,6 +7,7 @@
  * - Wheel zoom, middle-mouse (or Shift+left) pan, left click selection/placement
  * - Print / Export SVG / Close
  */
+import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
@@ -153,6 +154,8 @@ let planDetailLevel: "Coarse" | "Medium" | "Fine" = "Medium";
 let planDisplayModel = true;
 let planCropView = false;
 const PLAN_CROP_ID = "plan-view-1";
+/** Typed length while drawing a linear element (Revit-style temporary dimension entry). */
+let planTypedLength = "";
 let planAnnotationCrop = false;
 let planUnderlay = "None";
 let planViewRangeBottom = 0;
@@ -2483,6 +2486,7 @@ function clearPlanCursorOverlay(): void {
   while (__planCursorSvg.firstChild) __planCursorSvg.removeChild(__planCursorSvg.firstChild);
 }
 function finishPlanChain() {
+  planTypedLength = "";
   planChain = [];
   planDrawStart = null;
   planCursor = null;
@@ -2745,6 +2749,36 @@ async function moveSelectedInPlan(dx: number, dz: number) {
 }
 
 
+// Right-click while placing (Revit): Finish chain / Cancel / Repeat. Never the browser menu.
+canvasWrap.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const placing = planMode === "linear" || planMode === "point" || planMode === "dim" || planMode === "tag" || planMode === "text";
+  document.getElementById("obs-plan-ctx")?.remove();
+  if (!placing) return;
+  const m = document.createElement("div");
+  m.id = "obs-plan-ctx";
+  m.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:100001;background:#fff;border:1px solid #cbd5e1;border-radius:4px;box-shadow:0 6px 18px rgba(0,0,0,.25);font:12px system-ui;min-width:190px;padding:3px 0;color:#111827`;
+  const key = (k: string) => window.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+  const item = (label: string, fn: () => void, enabled = true) => {
+    const d = document.createElement("div");
+    d.textContent = label;
+    d.style.cssText = `padding:6px 14px;cursor:${enabled ? "pointer" : "default"};opacity:${enabled ? 1 : 0.4}`;
+    if (enabled) {
+      d.onmouseenter = () => { d.style.background = "#e0f2fe"; };
+      d.onmouseleave = () => { d.style.background = ""; };
+      d.onclick = () => { m.remove(); fn(); };
+    }
+    m.appendChild(d);
+  };
+  item("Finish chain  (Enter)", () => finishPlanChain(), planMode === "linear" && planChain.length > 0);
+  item("Cancel  (Esc)", () => key("Escape"));
+  item("Repeat last command  (Space)", () => key(" "));
+  document.body.appendChild(m);
+  const close = (ev: Event) => { if (!m.contains(ev.target as Node)) { m.remove(); window.removeEventListener("pointerdown", close, true); } };
+  window.addEventListener("pointerdown", close, true);
+});
+
 canvasWrap.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
 
@@ -2769,9 +2803,14 @@ canvasWrap.addEventListener("mousedown", (e) => {
       if (planChain.length === 0) {
         planChain.push(w);
         planDrawStart = w;
-        footerStatus(`Click to enter ${planLinearType} next point`);
+        planTypedLength = "";
+        footerStatus(`Click to enter ${planLinearType} next point (Shift = ortho, type a length + Enter)`);
       } else {
         const prev = planChain[planChain.length - 1];
+        if (e.shiftKey) w = constrainOrtho(prev, w);
+        // Ignore a double click / zero-length segment.
+        if (Math.hypot(w.x - prev.x, w.z - prev.z) < 0.001) return;
+        planTypedLength = "";
         planChain.push(w);
         planDrawStart = w;
         void createAuthoredLinear(prev.x, prev.z, w.x, w.z);
@@ -3102,9 +3141,9 @@ canvasWrap.addEventListener("mousedown", (e) => {
   }
 });
 
-// Middle-button pan (BIM), plus Shift+left drag. Always works regardless of tool.
+// Middle-button pan (BIM). Shift+left drag pans only in Navigate/Pan: while placing, Shift = ortho constraint.
 canvasWrap.addEventListener("mousedown", (e) => {
-  if (e.button !== 1 && !(e.button === 0 && e.shiftKey && planMode !== "select" && planMode !== "move")) return;
+  if (e.button !== 1 && !(e.button === 0 && e.shiftKey && (planMode === "navigate" || planMode === "pan"))) return;
   if (!currentPlan) return;
   e.preventDefault();
   e.stopPropagation();
@@ -3187,6 +3226,13 @@ window.addEventListener("mousemove", (e) => {
         const sn = findPlanSnap(w.x, w.z);
         planSnap = sn;
         planCursor = sn ? { x: sn.x, z: sn.z } : w;
+        if (planMode === "linear" && planDrawStart) {
+          if (e.shiftKey) { planCursor = constrainOrtho(planDrawStart, planCursor); planSnap = null; }
+          if (!planTypedLength) {
+            const len = Math.hypot(planCursor.x - planDrawStart.x, planCursor.z - planDrawStart.z);
+            footerStatus(`${planLinearType}  length ${len.toFixed(3)} m  angle ${angleDeg(planDrawStart, planCursor).toFixed(1)}\u00b0${e.shiftKey ? "  (ortho)" : ""}`);
+          }
+        }
       }
       updateSnapOverlay();
     }
@@ -3619,6 +3665,42 @@ try {
     if (!isPlanViewVisible()) return;
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea") return;
+
+    // Typed length while a segment is being drawn: digits, then Enter places it
+    // along the current cursor direction (Revit temporary-dimension entry).
+    if (planMode === "linear" && planDrawStart && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const startsEntry = /^[0-9.,]$/.test(e.key);
+      if ((planTypedLength ? isLengthChar(e.key) : startsEntry)) {
+        planTypedLength += e.key;
+        footerStatus(`Length: ${planTypedLength}   (Enter = place, Esc = clear)`);
+        e.preventDefault(); e.stopImmediatePropagation();
+        return;
+      }
+      if (planTypedLength && e.key === "Backspace") {
+        planTypedLength = planTypedLength.slice(0, -1);
+        footerStatus(planTypedLength ? `Length: ${planTypedLength}` : "Length cleared");
+        e.preventDefault(); e.stopImmediatePropagation();
+        return;
+      }
+      if (planTypedLength && e.key === "Enter") {
+        const len = parseLength(planTypedLength);
+        planTypedLength = "";
+        e.preventDefault(); e.stopImmediatePropagation();
+        if (len == null) { footerStatus("Invalid length"); return; }
+        const prev = planChain[planChain.length - 1] ?? planDrawStart;
+        const p = pointAtLength(prev, planCursor ?? { x: prev.x + 1, z: prev.z }, len);
+        planChain.push(p);
+        planDrawStart = p;
+        void createAuthoredLinear(prev.x, prev.z, p.x, p.z);
+        return;
+      }
+      if (planTypedLength && e.key === "Escape") {
+        planTypedLength = "";
+        footerStatus("Length cleared");
+        e.preventDefault(); e.stopImmediatePropagation();
+        return;
+      }
+    }
 
     // Enter � finish continuous path
     if (e.key === "Enter" && planMode === "linear" && planChain.length > 0) {
