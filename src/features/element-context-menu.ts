@@ -583,6 +583,7 @@ function positionMenu(clientX: number, clientY: number) {
 }
 
 export function show(clientX: number, clientY: number, elementId: string | null) {
+  try { (ctx.features as Any).contextMenu?.close?.(); } catch { /* single menu at a time */ }
   ensureSelected(elementId);
   const items = buildItems(elementId);
   renderItems(items);
@@ -641,6 +642,13 @@ export function setupElementContextMenu(): void {
       // Ignore right-clicks that originate on UI chrome (ribbon, panels, etc.)
       const t = me.target as HTMLElement | null;
       if (t?.closest?.("#obs-element-ctx-menu, .obs-ribbon, .obs-panel, .obs-modal, [data-obs-ui]")) {
+        return;
+      }
+      // One right-click menu only: the main viewport menu (context-menu.ts) owns
+      // the gesture whenever it is installed. This menu stays available for
+      // programmatic use (showElementContextMenu) but never opens on its own then.
+      if ((ctx.features as Any).contextMenu) {
+        me.preventDefault();
         return;
       }
       me.preventDefault();
