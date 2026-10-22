@@ -9,6 +9,7 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { inputRouter, type Gesture } from "../core/input-router";
 import { forceResumeCameraControls } from "../core/camera-gate";
+import { syncOrthoZoom } from "../core/ortho-zoom";
 
 type Any = Record<string, any>;
 
@@ -373,6 +374,7 @@ function zoomAboutPivot(factor: number): void {
   if (cam.isOrthographicCamera) {
     const z = Math.max(1e-4, Number(cam.zoom) || 1);
     cam.zoom = Math.max(0.01, Math.min(8000, z * factor));
+    syncOrthoZoom(cam);
     cam.updateProjectionMatrix();
     try {
       c?.setLookAt?.(
@@ -416,6 +418,8 @@ function installWheel(): void {
     (e: WheelEvent) => {
       try {
         if ((window as Any).__OBS_MMB_HELD) return;
+        // One wheel authority: wheel-arbiter owns zoom (cursor-centred, ortho + perspective).
+        if ((window as Any).__OBS_WHEEL_AUTHORITY) return;
         const cam = camera();
         if (!cam) return;
 

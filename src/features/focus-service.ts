@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { ctx } from "../core/context";
+import { syncOrthoZoom } from "../core/ortho-zoom";
 
 type Any = Record<string, any>;
 
@@ -412,6 +413,8 @@ function focusBoxManual(box: THREE.Box3): boolean {
     const zoom = Math.min(zoomX, zoomY);
 
     cam.zoom = Math.max(0.0001, Math.min(100000, Number(zoom) || 1));
+
+    syncOrthoZoom(cam);
     cam.updateProjectionMatrix();
   } else {
     const fov = THREE.MathUtils.degToRad(Number(cam.fov) || 50);

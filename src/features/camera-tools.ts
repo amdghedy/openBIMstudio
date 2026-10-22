@@ -4,6 +4,7 @@ import { ctx, type Projection } from "../core/context";
 import { forceResumeCameraControls } from "../core/camera-gate";
 import { register, type CameraService } from "../core/services";
 import { getElementWorldBoxes } from "../modules/geometry/world-box";
+import { syncOrthoZoom } from "../core/ortho-zoom";
 
 // ── Scene placement state ──
 let recenterEnabled = false;
@@ -80,6 +81,7 @@ function fitOrthoFrustum(ortho: THREE.OrthographicCamera, radius: number): void 
   ortho.top = halfH;
   ortho.bottom = -halfH;
   ortho.zoom = 1;
+  syncOrthoZoom(ortho);
   ortho.near = -safeR * 50;
   ortho.far = safeR * 200 + 1000;
   ortho.updateProjectionMatrix();
@@ -347,10 +349,12 @@ function afterProjectionChanged(prev: { ortho: boolean; h: number } | null = nul
       if (keepZoom != null && Number.isFinite(keepZoom)) {
         // Already orthographic: don't throw away the user's zoom.
         cam.zoom = keepZoom;
+        syncOrthoZoom(cam);
         cam.updateProjectionMatrix();
       } else if (prev && !prev.ortho && prev.h > 0 && Number.isFinite(prev.h)) {
         // Perspective -> ortho: keep the same apparent size at the target.
         cam.zoom = Math.max(0.01, Math.min(5000, (cam.top - cam.bottom) / prev.h));
+        syncOrthoZoom(cam);
         cam.updateProjectionMatrix();
       }
     }
@@ -468,6 +472,7 @@ export function zoomBy(factor: number, focusPoint?: THREE.Vector3) {
     const newZoom = Math.max(0.01, Math.min(5000, oldZoom / factor));
     const effFactor = oldZoom / newZoom; // actual factor after clamping
     ortho.zoom = newZoom;
+    syncOrthoZoom(ortho);
     ortho.updateProjectionMatrix();
 
     // Zoom toward the cursor (as in perspective): slide camera + target
@@ -674,6 +679,7 @@ export function focusOnPoint(point: THREE.Vector3) {
   if (isOrthoCam(cam)) {
     fitOrthoFrustum(cam as THREE.OrthographicCamera, Math.max(targetDist * 0.55, 0.8));
     cam.zoom = Math.max(cam.zoom || 1, 1.4);
+    syncOrthoZoom(cam);
     cam.updateProjectionMatrix();
   }
   updateClipping();
@@ -905,6 +911,7 @@ export function restoreCameraSnapshot(snap: { pos: THREE.Vector3; target: THREE.
   }
   if (snap.zoom != null && isOrthoCam(cam)) {
     cam.zoom = snap.zoom;
+    syncOrthoZoom(cam);
     cam.updateProjectionMatrix();
   }
   updateClipping();
@@ -1383,6 +1390,7 @@ export function takeScreenshot(opts: ScreenshotOptions = {}): void {
         cam.top = prevOrtho.top;
         cam.bottom = prevOrtho.bottom;
         cam.zoom = prevOrtho.zoom;
+        syncOrthoZoom(cam);
         cam.updateProjectionMatrix();
       }
       try {

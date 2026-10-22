@@ -17,6 +17,7 @@
 
 import * as THREE from "three";
 import { ctx } from "../core/context";
+import { syncOrthoZoom } from "../core/ortho-zoom";
 
 type Any = Record<string, any>;
 
@@ -270,6 +271,7 @@ export function zoomTowardSelection(factor: number): void {
     const oldZ = Math.max(1e-3, cam.zoom || 1);
     // factor > 1 => zoom in (closer) => higher ortho.zoom
     cam.zoom = Math.max(0.01, Math.min(5000, oldZ * factor));
+    syncOrthoZoom(cam);
     cam.updateProjectionMatrix();
   } else {
     const dir = new THREE.Vector3().subVectors(cam.position, target);

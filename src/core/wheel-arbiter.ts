@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { ctx } from "./context";
+import { syncOrthoZoom } from "./ortho-zoom";
 
 type Any = Record<string, any>;
 
@@ -241,6 +242,7 @@ function applyOrthoZoom(
     const newZoom = Math.max(0.05, Math.min(8000, oldZoom * factor));
     ortho.zoom = newZoom;
 
+    syncOrthoZoom(ortho);
     const span = Math.max(
       Math.abs(ortho.right - ortho.left),
       Math.abs(ortho.top - ortho.bottom),
