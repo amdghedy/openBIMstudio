@@ -9,6 +9,7 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getProjection, setProjection, updateClipping } from "./camera-tools";
 import { getCurrentProject, onProjectChanged } from "../modules/projects/projects";
+import { syncOrthoZoom } from "../core/ortho-zoom";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Types + storage
@@ -110,6 +111,7 @@ export function restoreView(id: string): void {
     const cam: any = ctx.world.camera.three;
     if (cam?.isOrthographicCamera) {
       cam.zoom = view.orthoZoom;
+      syncOrthoZoom(cam);
       cam.updateProjectionMatrix();
     }
   }

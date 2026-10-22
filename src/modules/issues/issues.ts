@@ -10,6 +10,7 @@ import type {
   IssueStatus,
   IssueViewpoint,
 } from "./types";
+import { syncOrthoZoom } from "../../core/ortho-zoom";
 
 let issues: Issue[] = [];
 const listeners = new Set<() => void>();
@@ -206,6 +207,7 @@ export function goToViewpoint(vp: IssueViewpoint) {
     const ortho = ctx.world.camera.three as THREE.OrthographicCamera;
     const height = ortho.top - ortho.bottom;
     ortho.zoom = height / Math.max(0.0001, vp.orthoScale);
+    syncOrthoZoom(ortho);
     ortho.updateProjectionMatrix();
   }
 
