@@ -67,9 +67,9 @@ export function onCadLinksChanged(cb: () => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
-function emit() {
+function emit(kind: "added" | "changed" = "changed") {
   for (const cb of listeners) { try { cb(); } catch { /* */ } }
-  try { window.dispatchEvent(new CustomEvent("obs:cad-links-changed")); } catch { /* */ }
+  try { window.dispatchEvent(new CustomEvent("obs:cad-links-changed", { detail: { kind } })); } catch { /* */ }
 }
 
 /* ------------------------------------------------------------------ */
@@ -119,7 +119,19 @@ export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: 
   finally { try { lib.dwg_free?.(dwg); } catch { /* */ } }
 
   try { (window as Any).__obsLastDwgDb = db; } catch { /* kept for debugging */ }
-  return dwgDatabaseToDxfDocument(db);
+  const res = dwgDatabaseToDxfDocument(db);
+  if (!res.doc.entities.length) {
+    // Help diagnose converter/field-name mismatches: what did the file actually contain?
+    try {
+      const raw: Any[] = Array.isArray(db?.entities) ? db.entities : [];
+      const hist: Record<string, number> = {};
+      for (const e of raw) { const k = String(e?.type ?? e?.entityType ?? e?.name ?? "?"); hist[k] = (hist[k] ?? 0) + 1; }
+      const keys = Object.keys(db ?? {}).join(", ");
+      res.summary += ` | raw model entities: ${raw.length}${raw.length ? " (" + Object.entries(hist).map(([k, v]) => `${v}x${k}`).join(", ") + ")" : ""} | database keys: ${keys}`;
+      console.warn("[cad-link] DWG produced no drawable entities", { hist, keys });
+    } catch { /* */ }
+  }
+  return res;
 }
 
 export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {
@@ -377,7 +389,7 @@ export function addCadLink(input: AddLinkInput): CadLink {
   saveMeta(link);
   refreshSnap();
   markDirty();
-  emit();
+  emit("added");
   return link;
 }
 
