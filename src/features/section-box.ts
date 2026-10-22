@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getSceneBox } from "./camera-tools";
 import { registerCommand } from "./command-palette";
+import { closestParamOnLine, handleSize, moveBoxFace } from "./section-box-math";
 
 let box: THREE.Box3 | null = null;
 let helper: THREE.Box3Helper | null = null;
@@ -34,8 +35,11 @@ let faceDragState: {
   axis: "x" | "y" | "z";
   sign: 1 | -1;
   startBox: THREE.Box3;
-  startPointerWorld: THREE.Vector3;
-  dragPlane: THREE.Plane;
+  /** Axis parameter under the pointer at drag start, and the face value then. */
+  startParam: number;
+  startValue: number;
+  /** Camera controls state to restore when the drag ends. */
+  controlsWasEnabled: boolean | null;
 } | null = null;
 let raycaster: THREE.Raycaster | null = null;
 let pointerNDC: THREE.Vector2 | null = null;
@@ -67,6 +71,24 @@ export function enableSectionBox(padding = 1.0): void {
   window.dispatchEvent(new CustomEvent("obs-toast", {
     detail: { message: "Section Box ON — drag cyan face handles to crop", kind: "success" },
   }));
+}
+
+/** Enable the section box around an explicit world box (e.g. a selection), without needing loaded models. */
+export function enableSectionBoxWithBox(b: THREE.Box3): void {
+  if (!b || b.isEmpty()) return;
+  if (enabled) {
+    box = b.clone();
+    if (helper) helper.box.copy(box);
+    positionFaceHandles();
+    applyClipping();
+    return;
+  }
+  box = b.clone();
+  buildHelper();
+  buildFaceHandles();
+  applyClipping();
+  attachPointerHandlers();
+  enabled = true;
 }
 
 export function disableSectionBox(): void {
@@ -151,6 +173,7 @@ function buildFaceHandles(): void {
   }
   positionFaceHandles();
   ctx.world.scene.three.add(faceGroup);
+  updateHandleScale();
 }
 
 function positionFaceHandles(): void {
@@ -243,9 +266,12 @@ function applyClipping(): void {
         (world as any)?.renderer?.three ??
         (ctx as any).world?.renderer?.three;
       if (renderer) {
-        const threePlanes = specs.map(
-          (s) => new THREE.Plane(s.normal.clone(), -s.point.dot(s.normal)),
-        );
+        // THREE keeps the side the plane normal points to, so the outward
+        // normals above must be flipped to keep the INSIDE of the box.
+        const threePlanes = specs.map((s) => {
+          const n = s.normal.clone().negate();
+          return new THREE.Plane(n, -s.point.dot(n));
+        });
         renderer.clippingPlanes = threePlanes;
         renderer.localClippingEnabled = true;
         applied = true;
@@ -274,16 +300,17 @@ function attachPointerHandlers(): void {
   if (!canvas) return;
   raycaster = new THREE.Raycaster();
   pointerNDC = new THREE.Vector2();
-  canvas.addEventListener("pointerdown", onCanvasPointerDown);
+  canvas.addEventListener("pointerdown", onCanvasPointerDown, true);
   window.addEventListener("pointermove", onCanvasPointerMove);
   window.addEventListener("pointerup", onCanvasPointerUp);
 }
 
 function detachPointerHandlers(): void {
   const canvas = (ctx as any).world?.renderer?.three?.domElement as HTMLElement | undefined;
-  canvas?.removeEventListener("pointerdown", onCanvasPointerDown);
+  canvas?.removeEventListener("pointerdown", onCanvasPointerDown, true);
   window.removeEventListener("pointermove", onCanvasPointerMove);
   window.removeEventListener("pointerup", onCanvasPointerUp);
+  if (faceDragState && faceDragState.controlsWasEnabled !== false) setControls(true);
   faceDragState = null;
 }
 
@@ -305,80 +332,98 @@ function castRayOnHandles(ndc: THREE.Vector2): THREE.Object3D | null {
   return hits.length ? hits[0].object : null;
 }
 
-function getDragPointWorld(event: PointerEvent, plane: THREE.Plane): THREE.Vector3 {
-  const ndc = getNDC(event);
+function axisDir(axis: "x" | "y" | "z"): THREE.Vector3 {
+  return new THREE.Vector3(axis === "x" ? 1 : 0, axis === "y" ? 1 : 0, axis === "z" ? 1 : 0);
+}
+
+/** Parameter along the face axis (through the box centre) closest to the pointer ray. */
+function pointerAxisParam(event: PointerEvent, axis: "x" | "y" | "z"): number | null {
   const camera = (ctx as any).world?.camera?.three as THREE.Camera | undefined;
-  if (!raycaster || !camera) return new THREE.Vector3();
-  raycaster.setFromCamera(ndc, camera);
-  const target = new THREE.Vector3();
-  raycaster.ray.intersectPlane(plane, target);
-  return target;
+  if (!raycaster || !camera || !box) return null;
+  raycaster.setFromCamera(getNDC(event), camera);
+  const c = box.getCenter(new THREE.Vector3());
+  return closestParamOnLine(raycaster.ray.origin, raycaster.ray.direction, c, axisDir(axis));
+}
+
+function faceValue(b: THREE.Box3, axis: "x" | "y" | "z", sign: 1 | -1): number {
+  return sign < 0 ? b.min[axis] : b.max[axis];
+}
+
+function updateHandleScale(): void {
+  if (!faceGroup || !box) return;
+  const cam = (ctx as any).world?.camera?.three as THREE.Camera | undefined;
+  if (!cam) return;
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  for (const h of faceGroup.children) {
+    const d = cam.position.distanceTo(h.position);
+    const k = handleSize(d, maxDim) / 0.6;
+    h.scale.set(k, k, k);
+  }
+}
+
+function setControls(enabled: boolean): void {
+  try { const c: any = (ctx as any).world?.camera?.controls; if (c) c.enabled = enabled; } catch { /* */ }
 }
 
 function onCanvasPointerDown(event: PointerEvent): void {
+  if (event.button !== 0) return;
   const target = castRayOnHandles(getNDC(event));
   if (!target) return;
   const ud = target.userData;
-  if (ud?.kind !== "section-box-face") return;
-  // Build drag plane perpendicular to face normal.
-  const normal = new THREE.Vector3();
-  if (ud.axis === "x") normal.set(1, 0, 0);
-  else if (ud.axis === "y") normal.set(0, 1, 0);
-  else normal.set(0, 0, 1);
-  const plane = new THREE.Plane(normal, 0);
-  const startPointerWorld = getDragPointWorld(event, plane);
+  if (ud?.kind !== "section-box-face" || !box) return;
+  const startParam = pointerAxisParam(event, ud.axis);
+  if (startParam == null) return;
+  let wasEnabled: boolean | null = null;
+  try { wasEnabled = !!(ctx as any).world?.camera?.controls?.enabled; } catch { /* */ }
+  setControls(false);
   faceDragState = {
     axis: ud.axis,
     sign: ud.sign,
-    startBox: box!.clone(),
-    startPointerWorld,
-    dragPlane: plane,
+    startBox: box.clone(),
+    startParam,
+    startValue: faceValue(box, ud.axis, ud.sign),
+    controlsWasEnabled: wasEnabled,
   };
   (event.target as HTMLElement).style.cursor = "grabbing";
+  // Capture phase: keep the camera controls from also orbiting.
   event.preventDefault();
-  event.stopPropagation();
+  event.stopImmediatePropagation();
 }
 
 function onCanvasPointerMove(event: PointerEvent): void {
   if (!faceDragState) {
-    // Hover cursor for handles.
-    if (faceGroup && raycaster && pointerNDC) {
+    if (faceGroup && raycaster) {
+      updateHandleScale();
       const hit = castRayOnHandles(getNDC(event));
       const canvas = (ctx as any).world?.renderer?.three?.domElement as HTMLElement;
-      if (canvas) canvas.style.cursor = hit ? "grab" : "default";
+      if (canvas) canvas.style.cursor = hit ? "grab" : "";
     }
     return;
   }
-  const current = getDragPointWorld(event, faceDragState.dragPlane);
-  const delta = current.clone().sub(faceDragState.startPointerWorld).dot(
-    new THREE.Vector3(
-      faceDragState.axis === "x" ? 1 : 0,
-      faceDragState.axis === "y" ? 1 : 0,
-      faceDragState.axis === "z" ? 1 : 0,
-    ),
+  const p = pointerAxisParam(event, faceDragState.axis);
+  if (p == null) return;
+  const value = faceDragState.startValue + (p - faceDragState.startParam);
+  const nb = moveBoxFace(
+    { min: faceDragState.startBox.min, max: faceDragState.startBox.max },
+    faceDragState.axis, faceDragState.sign, value, 0.1,
   );
-  const newBox = faceDragState.startBox.clone();
-  const sign = faceDragState.sign;
-  if (faceDragState.axis === "x") {
-    if (sign < 0) newBox.min.x = Math.min(newBox.min.x + delta, newBox.max.x - 0.5);
-    else newBox.max.x = Math.max(newBox.max.x + delta, newBox.min.x + 0.5);
-  } else if (faceDragState.axis === "y") {
-    if (sign < 0) newBox.min.y = Math.min(newBox.min.y + delta, newBox.max.y - 0.5);
-    else newBox.max.y = Math.max(newBox.max.y + delta, newBox.min.y + 0.5);
-  } else {
-    if (sign < 0) newBox.min.z = Math.min(newBox.min.z + delta, newBox.max.z - 0.5);
-    else newBox.max.z = Math.max(newBox.max.z + delta, newBox.min.z + 0.5);
-  }
-  box = newBox;
-  if (helper) helper.box.copy(newBox);
+  box = new THREE.Box3(
+    new THREE.Vector3(nb.min.x, nb.min.y, nb.min.z),
+    new THREE.Vector3(nb.max.x, nb.max.y, nb.max.z),
+  );
+  if (helper) helper.box.copy(box);
   positionFaceHandles();
+  updateHandleScale();
   applyClipping();
 }
 
 function onCanvasPointerUp(): void {
   if (!faceDragState) return;
+  if (faceDragState.controlsWasEnabled !== false) setControls(true);
   faceDragState = null;
-  document.body.style.cursor = "default";
+  const canvas = (ctx as any).world?.renderer?.three?.domElement as HTMLElement | undefined;
+  if (canvas) canvas.style.cursor = "";
 }
 
 // ── Convenience APIs for ribbon + commands ───────────────────────────────
@@ -420,6 +465,7 @@ export function setupSectionBox(): void {
     },
     grow: growSectionBox,
     move: moveSectionBox,
+    enableWithBox: enableSectionBoxWithBox,
   };
 
   try {

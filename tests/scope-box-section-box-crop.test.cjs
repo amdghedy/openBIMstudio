@@ -328,6 +328,40 @@ t("deleteCropRegion removes from registry", () => {
   assert(cropRegion.listCropRegions().length === 0);
 });
 
+// ─── Crop drag + events ──────────────────────────────────────────────────
+console.log("\nCrop drag:");
+t("dragCropHandle moves edges and keeps min size", () => {
+  const st = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+  const e = cropRegion.dragCropHandle(st, "e", 3, 0);
+  near(e.maxX, 13); near(e.minX, 0);
+  const sw = cropRegion.dragCropHandle(st, "sw", 20, 20, 1);
+  near(sw.minX, 9); near(sw.minY, 9); // clamped 1 m from max
+  const mv = cropRegion.dragCropHandle(st, "move", 2, -3);
+  near(mv.minX, 2); near(mv.maxY, 7);
+});
+t("north handle moves maxY (world Z)", () => {
+  const n = cropRegion.dragCropHandle({ minX: 0, minY: 0, maxX: 10, maxY: 10 }, "n", 0, 4);
+  near(n.maxY, 14); near(n.minY, 0);
+});
+t("explicit bounds mark region custom; reset clears it", () => {
+  cropRegion.resetCropRegions();
+  assert(!cropRegion.getCropRegion("v").custom);
+  cropRegion.setCropRegion("v", { minX: 1, maxX: 5, minY: 1, maxY: 5, enabled: true });
+  assert(cropRegion.getCropRegion("v").custom === true);
+  cropRegion.resetCropRegion("v");
+  assert(cropRegion.getCropRegion("v").custom === false);
+});
+t("onCropChanged fires on set and toggle", () => {
+  cropRegion.resetCropRegions();
+  let n = 0;
+  const off = cropRegion.onCropChanged(() => n++);
+  cropRegion.setCropRegion("v", { enabled: true });
+  cropRegion.toggleCrop("v");
+  off();
+  cropRegion.toggleCrop("v");
+  assert(n === 2, "got " + n);
+});
+
 // ─── Summary ─────────────────────────────────────────────────────────────
 console.log(`\n=== Summary: ${pass} passed, ${fail} failed ===\n`);
 if (fail > 0) process.exit(1);
