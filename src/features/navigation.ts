@@ -34,6 +34,9 @@ type NavState =
       right: THREE.Vector3;
       up: THREE.Vector3;
       worldPerPx: number;
+      /** View direction and eye-to-target distance at pan start: pan never rotates the view. */
+      fwd: THREE.Vector3;
+      fwdDist: number;
     }
   | {
       kind: "orbit";
@@ -186,6 +189,8 @@ function beginPan(e: PointerEvent): void {
     right,
     up,
     worldPerPx,
+    fwd: cam.getWorldDirection(new THREE.Vector3()),
+    fwdDist: Math.max(target.clone().sub(cam.position).dot(cam.getWorldDirection(new THREE.Vector3())), 1),
   };
 }
 
@@ -200,7 +205,8 @@ function applyPan(dxTotal: number, dyTotal: number): void {
     .add(state.up.clone().multiplyScalar(dyTotal * state.worldPerPx));
 
   const newPos = state.startCam.clone().add(offset);
-  const newTarget = state.startTarget.clone().add(offset);
+  // Target straight ahead along the ORIGINAL view direction (pure translation).
+  const newTarget = newPos.clone().addScaledVector(state.fwd, state.fwdDist);
 
   try {
     if (c && c.enabled === false) c.enabled = true;

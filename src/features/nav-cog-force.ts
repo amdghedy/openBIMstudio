@@ -327,13 +327,7 @@ function onGesture(g: Gesture): boolean {
     // Also claim plain MMB orbit if user holds shift on keyboard
     // For BIM: Shift+MMB = orbit. Plain MMB = pan (leave to navigation).
     if (!wantOrbit) {
-      // Still update target for pan consistency
-      try {
-        const c = controls();
-        if (c?.target?.isVector3) c.target.copy(cog);
-      } catch {
-        /* */
-      }
+      // Pan must never re-aim the camera: leave the target alone.
       return false; // let navigation pan
     }
     beginOrbit(g.event, cog);
@@ -423,11 +417,7 @@ function installWheel(): void {
         const cam = camera();
         if (!cam) return;
 
-        // Keep target on COG for any zoom
-        if (hasCog) {
-          const c = controls();
-          if (c?.target?.isVector3) c.target.copy(cog);
-        }
+        // (Zoom never re-aims the camera: the target is not forced onto the COG here.)
 
         // Own zoom when: orthographic OR selection COG active
         const own = cam.isOrthographicCamera || hasCog;
