@@ -7,6 +7,7 @@
  * - Wheel zoom, middle-mouse (or Shift+left) pan, left click selection/placement
  * - Print / Export SVG / Close
  */
+import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
 import {
@@ -151,6 +152,7 @@ let planViewScale = (() => {
 let planDetailLevel: "Coarse" | "Medium" | "Fine" = "Medium";
 let planDisplayModel = true;
 let planCropView = false;
+const PLAN_CROP_ID = "plan-view-1";
 let planAnnotationCrop = false;
 let planUnderlay = "None";
 let planViewRangeBottom = 0;
@@ -211,7 +213,7 @@ function renderPlanViewProperties() {
 
   section("Graphics");
   row("Display Model", check(planDisplayModel, v=>{planDisplayModel=v; if(currentPlan) renderPlan(currentPlan);}));
-  row("Crop View", check(planCropView, v=>{planCropView=v; if(currentPlan) renderPlan(currentPlan);}));
+  row("Crop View", check(getCropRegion(PLAN_CROP_ID).enabled, v=>{planCropView=v; setCropRegion(PLAN_CROP_ID,{enabled:v}); if(v) setCropActiveView(PLAN_CROP_ID); if(currentPlan) renderPlan(currentPlan);}));
   row("Annotation Crop", check(planAnnotationCrop, v=>{planAnnotationCrop=v; if(currentPlan) renderPlan(currentPlan);}));
   row("Underlay", select([["None","None"],["Below","Below"],["Link CAD","CAD Underlay"]], planUnderlay, v=>{ planUnderlay=v; }));
 
@@ -1438,6 +1440,91 @@ function clientToWorld(clientX: number, clientY: number): { x: number; z: number
   }
 }
 
+function clientToPlan(e: { clientX: number; clientY: number }): { x: number; z: number } | null {
+  const m = svg.getScreenCTM();
+  if (!m) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(m.inverse());
+  return { x: p.x, z: -p.y };
+}
+
+/** Crop rectangle + drag handles, drawn in the plan SVG at true world coordinates. */
+function renderCropUi(crop: ReturnType<typeof getCropRegion>, zoomedW: number): void {
+  const NS = "http://www.w3.org/2000/svg";
+  const ui = document.createElementNS(NS, "g");
+  ui.setAttribute("data-obs-crop-ui", "1");
+  const lw = Math.max(zoomedW / 900, 0.003);
+  const rect = document.createElementNS(NS, "rect");
+  rect.setAttribute("x", String(crop.minX));
+  rect.setAttribute("y", String(-crop.maxY));
+  rect.setAttribute("width", String(crop.maxX - crop.minX));
+  rect.setAttribute("height", String(crop.maxY - crop.minY));
+  rect.setAttribute("fill", "none");
+  rect.setAttribute("stroke", "#0ea5e9");
+  rect.setAttribute("stroke-width", String(lw));
+  rect.setAttribute("stroke-dasharray", `${lw * 6} ${lw * 4}`);
+  rect.setAttribute("pointer-events", "none");
+  ui.appendChild(rect);
+  svg.appendChild(ui);
+  if (getActiveCropView() !== PLAN_CROP_ID) return;
+
+  const hs = Math.max(zoomedW / 110, 0.01);
+  const cx = (crop.minX + crop.maxX) / 2, cz = (crop.minY + crop.maxY) / 2;
+  const defs: Array<[string, number, number, string]> = [
+    ["nw", crop.minX, crop.maxY, "nwse-resize"], ["n", cx, crop.maxY, "ns-resize"], ["ne", crop.maxX, crop.maxY, "nesw-resize"],
+    ["e", crop.maxX, cz, "ew-resize"], ["se", crop.maxX, crop.minY, "nwse-resize"], ["s", cx, crop.minY, "ns-resize"],
+    ["sw", crop.minX, crop.minY, "nesw-resize"], ["w", crop.minX, cz, "ew-resize"],
+  ];
+  for (const [handle, x, z, cursor] of defs) {
+    const h = document.createElementNS(NS, "rect");
+    h.setAttribute("x", String(x - hs / 2));
+    h.setAttribute("y", String(-z - hs / 2));
+    h.setAttribute("width", String(hs));
+    h.setAttribute("height", String(hs));
+    h.setAttribute("fill", "#0ea5e9");
+    h.setAttribute("stroke", "#075985");
+    h.setAttribute("stroke-width", String(lw));
+    h.style.cursor = cursor;
+    h.addEventListener("pointerdown", (ev) => startCropDrag(ev, handle as any));
+    ui.appendChild(h);
+  }
+  // Drag the body of a thin invisible strip along each edge = move whole region.
+  const body = document.createElementNS(NS, "rect");
+  body.setAttribute("x", String(crop.minX)); body.setAttribute("y", String(-crop.maxY));
+  body.setAttribute("width", String(crop.maxX - crop.minX)); body.setAttribute("height", String(crop.maxY - crop.minY));
+  body.setAttribute("fill", "transparent");
+  body.setAttribute("pointer-events", "stroke");
+  body.setAttribute("stroke", "transparent");
+  body.setAttribute("stroke-width", String(hs));
+  body.style.cursor = "move";
+  body.addEventListener("pointerdown", (ev) => startCropDrag(ev, "move"));
+  ui.insertBefore(body, ui.children[1]);
+}
+
+function startCropDrag(ev: PointerEvent, handle: Parameters<typeof dragCropHandle>[1]): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const p0 = clientToPlan(ev);
+  if (!p0) return;
+  const start = { ...getCropRegion(PLAN_CROP_ID) };
+  const move = (e: PointerEvent) => {
+    const p = clientToPlan(e);
+    if (!p) return;
+    const r = dragCropHandle(start, handle, p.x - p0.x, p.z - p0.z, 1);
+    setCropRegion(PLAN_CROP_ID, {
+      minX: snapCrop(r.minX), maxX: snapCrop(r.maxX), minY: snapCrop(r.minY), maxY: snapCrop(r.maxY),
+    });
+  };
+  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+
+try {
+  onCropChanged(() => { try { if (currentPlan) renderPlan(currentPlan); } catch { /* plan not open */ } });
+} catch { /* */ }
+
 function renderPlan(plan: PlanView) {
   svg.innerHTML = "";
 
@@ -1455,6 +1542,18 @@ function renderPlan(plan: PlanView) {
     b = empty ? { ...cadBounds } : {
       minX: Math.min(b.minX, cadBounds.minX), maxX: Math.max(b.maxX, cadBounds.maxX),
       minZ: Math.min(b.minZ, cadBounds.minZ), maxZ: Math.max(b.maxZ, cadBounds.maxZ),
+    };
+  }
+  // Crop region (Revit "Crop View"): fit to the model on first use, keep it in view.
+  const crop = getCropRegion(PLAN_CROP_ID);
+  if (crop.enabled) {
+    const pb = plan.bounds;
+    if (!crop.custom && isFinite(pb.minX) && pb.maxX - pb.minX >= 0.1) {
+      crop.minX = pb.minX - 1; crop.maxX = pb.maxX + 1; crop.minY = pb.minZ - 1; crop.maxY = pb.maxZ + 1;
+    }
+    b = {
+      minX: Math.min(b.minX, crop.minX), maxX: Math.max(b.maxX, crop.maxX),
+      minZ: Math.min(b.minZ, crop.minY), maxZ: Math.max(b.maxZ, crop.maxY),
     };
   }
   const pad = 3;
@@ -1521,6 +1620,22 @@ function renderPlan(plan: PlanView) {
 
   const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
   svg.appendChild(g);
+  if (crop.enabled) {
+    const NSC = "http://www.w3.org/2000/svg";
+    const defs = document.createElementNS(NSC, "defs");
+    const cp = document.createElementNS(NSC, "clipPath");
+    cp.setAttribute("id", "obs-plan-crop-clip");
+    const cr = document.createElementNS(NSC, "rect");
+    cr.setAttribute("x", String(crop.minX));
+    cr.setAttribute("y", String(-crop.maxY));
+    cr.setAttribute("width", String(crop.maxX - crop.minX));
+    cr.setAttribute("height", String(crop.maxY - crop.minY));
+    cp.appendChild(cr); defs.appendChild(cp);
+    svg.insertBefore(defs, svg.firstChild);
+    g.setAttribute("clip-path", "url(#obs-plan-crop-clip)");
+    svg.querySelector("[data-obs-cad-link]")?.setAttribute("clip-path", "url(#obs-plan-crop-clip)");
+    renderCropUi(crop, zoomedW);
+  }
 
   // -- Segments --
   if (planDisplayModel) for (const s of plan.segments) {

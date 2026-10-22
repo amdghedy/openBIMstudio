@@ -14,10 +14,10 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getElementById, getElementWorldBox, getSelectedIds } from "./authoring";
 import {
-  enableSectionBox, disableSectionBox, isSectionBoxActive, growSectionBox,
+  enableSectionBox, disableSectionBox, isSectionBoxActive, growSectionBox, enableSectionBoxWithBox,
 } from "./section-box";
 import { getCropRegion, setCropRegion, setActiveView } from "./crop-region";
-import { fitAll } from "./camera-tools";
+import { fitAll, focusOnBox } from "./camera-tools";
 
 export interface SelectionBoxOptions {
   /** Padding (m) added around the selection's bbox on all sides. */
@@ -86,18 +86,16 @@ export function showSelectionBox(options: SelectionBoxOptions = {}): boolean {
   }
   // Apply padding on all sides.
   box.expandByScalar(padding);
-  // If section box is already on, swap its box; otherwise enable fresh.
-  if (!isSectionBoxActive()) enableSectionBox(0);
-  const sb = (ctx.features as any).sectionBox;
-  sb?.setBox?.(box);
+  // Works with or without loaded fragment models (authored elements only).
+  enableSectionBoxWithBox(box);
   if (options.fitCamera !== false) {
-    // Use a small timeout so the clipping planes update before fit.
-    setTimeout(() => fitAll(), 50);
+    // Frame the selection box itself (not the whole scene).
+    focusOnBox(box);
   }
   if (options.disable) disableSectionBox();
   window.dispatchEvent(new CustomEvent("obs-toast", {
     detail: {
-      message: `Selection Box ON — ${box.max.x - box.min.x}×${box.max.y - box.min.y}×${box.max.z - box.min.z} m (incl. ${padding} m padding)`,
+      message: `Selection Box ON — ${(box.max.x - box.min.x).toFixed(2)}×${(box.max.y - box.min.y).toFixed(2)}×${(box.max.z - box.min.z).toFixed(2)} m (incl. ${padding} m padding)`,
       kind: "success",
     },
   }));
@@ -153,13 +151,9 @@ export function zoomToSelection(): boolean {
     }));
     return false;
   }
-  // Use the existing fitAll() but first translate the box into the camera
-  // target. The simplest robust path is to call fitAll() — which already
-  // walks the scene. For a stricter "selection only" view, callers should
-  // use showSelectionBox() instead.
-  fitAll();
+  focusOnBox(box);
   window.dispatchEvent(new CustomEvent("obs-toast", {
-    detail: { message: "Zoomed to fit all visible geometry", kind: "info" },
+    detail: { message: "Zoomed to selection", kind: "info" },
   }));
   return true;
 }
@@ -176,6 +170,16 @@ export function isolateSelection(): boolean {
       detail: { message: "Select at least one element first.", kind: "warn" },
     }));
     return false;
+  }
+  // Prefer the app's single temporary-visibility mechanism so Reset works everywhere.
+  const vis = (ctx.features as any).visibility;
+  if (typeof vis?.isolateSelection === "function") {
+    const n = vis.isolateSelection();
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: { message: `Isolated ${ids.length} element(s)`, kind: "success" },
+    }));
+    void n;
+    return true;
   }
   const elements = (ctx as any).elements ?? [];
   let hiddenCount = 0;
@@ -198,6 +202,12 @@ export function isolateSelection(): boolean {
  * Reset Isolation — show all hidden elements again.
  */
 export function resetIsolation(): void {
+  const vis = (ctx.features as any).visibility;
+  if (typeof vis?.reset === "function") {
+    vis.reset();
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Isolation reset", kind: "info" } }));
+    return;
+  }
   const elements = (ctx as any).elements ?? [];
   let shown = 0;
   for (const el of elements) {

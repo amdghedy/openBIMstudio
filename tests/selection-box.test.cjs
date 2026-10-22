@@ -166,13 +166,14 @@ src = src.replace(/^import\s+\{[\s\S]+?\}\s+from\s+"\.\/section-box";/m, `
 function enableSectionBox(padding?: number): void {} function disableSectionBox(): void {}
 function isSectionBoxActive(): boolean { return false; }
 function growSectionBox(amount: number): void {}
+function enableSectionBoxWithBox(b: any): void { (globalThis as any).__testBoxSet = b; }
 `);
 src = src.replace(/^import\s+\{[^}]+\}\s+from\s+"\.\/crop-region";/m, `
 function getCropRegion(v: string): any { return { enabled: false, minX: -50, maxX: 50, minY: -50, maxY: 50, rotation: 0, viewId: v }; }
 function setCropRegion(viewId: string, region: any): any { (globalThis as any).__testLastCrop = { viewId, region }; }
 function setActiveView(viewId: string): void { (globalThis as any).__testActiveView = viewId; }
 `);
-src = src.replace(/^import\s+\{\s*fitAll\s*\}\s+from\s+"\.\/camera-tools";/m, `function fitAll(): void {}`);
+src = src.replace(/^import\s+\{\s*fitAll,\s*focusOnBox\s*\}\s+from\s+"\.\/camera-tools";/m, `function fitAll(): void {} function focusOnBox(b: any): void { (globalThis as any).__testFocused = b; }`);
 
 // Replace THREE.Box3 references with our local Box3 class (since we made THREE = { Box3, Vector3 }).
 src = src.replace(/THREE\.Box3/g, "Box3");
