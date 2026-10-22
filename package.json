@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
+    "predev": "node scripts/copy-libredwg-wasm.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-libredwg-wasm.mjs",
     "build": "tsc && vite build --target esnext",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

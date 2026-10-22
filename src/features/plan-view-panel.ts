@@ -1259,8 +1259,14 @@ function clearCadUnderlay() {
 }
 
 try {
-  window.addEventListener("obs:cad-links-changed", () => {
-    try { if (currentPlan && svg) renderPlan(currentPlan); } catch { /* plan not open */ }
+  window.addEventListener("obs:cad-links-changed", (ev) => {
+    const added = (ev as CustomEvent).detail?.kind === "added";
+    try {
+      if (added) { planViewUserAdjusted = false; currentZoom = 1; panX = 0; panY = 0; }
+      if (currentPlan && svg) renderPlan(currentPlan);
+      // Plan not generated yet (opened on an empty model): build it so the CAD shows.
+      else if (added && svg.isConnected) void regenerate();
+    } catch { /* plan not open */ }
   });
 } catch { /* */ }
 
