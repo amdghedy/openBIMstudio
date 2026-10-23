@@ -860,7 +860,9 @@ chainDimInput.checked = false;
 chainDimInput.style.cssText = "margin:0;cursor:pointer;accent-color:#38bdf8";
 chainDimInput.onchange = () => {
   planDimChain = chainDimInput.checked;
-  footerStatus(planDimChain ? "Chain dimension ON - previous end continues as next start" : "Chain dimension OFF");
+  planDimChainPts = [];
+  planDrawStart = null; planDimStartRef = null; planDimPendingRefs = null;
+  footerStatus(planDimChain ? "Chain dimension ON - pick all boundaries, then click empty space to place the chain" : "Chain dimension OFF");
 };
 chainDimLabel.append(chainDimInput, document.createTextNode("Chain"));
 
@@ -972,6 +974,8 @@ interface PlanDimension {
   /** Auto-dimension chains: "x" = horizontal line at z=linePos, "z" = vertical line at x=linePos. */
   axis?: "x" | "z";
   linePos?: number;
+  /** Fixed dimension line (chain placement): endpoints are projections onto this infinite line. */
+  fixedLine?: { ox: number; oz: number; ux: number; uz: number };
   auto?: boolean;
 }
 const planDims: PlanDimension[] = [];
@@ -984,6 +988,52 @@ interface PlanDimPending {
   kind: PlanDimKind;
 }
 let planDimPendingRefs: PlanDimPending | null = null;
+/** Chain dimension: boundaries picked so far. Nothing is drawn as a dimension until the line location is clicked. */
+let planDimChainPts: { x: number; z: number; ref: PlanDimensionRef }[] = [];
+
+function cancelDimChain(): void {
+  planDimChainPts = [];
+  if (currentPlan) renderPlan(currentPlan);
+}
+
+/** Commit the picked chain on one dimension line. `at` = clicked location; undefined = default paper offset. */
+function finishDimChain(at?: { x: number; z: number }): void {
+  const pts = planDimChainPts;
+  if (pts.length < 2) { footerStatus("Chain: pick at least two boundaries first"); return; }
+  const linear = planDimStyle === "linear";
+  const a = pts[0], b = pts[1];
+  let line: { ox: number; oz: number; ux: number; uz: number };
+  if (linear) {
+    const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.z - a.z);
+    if (horizontal) {
+      const z = at ? at.z : Math.min(...pts.map((q) => q.z)) - paperMmToWorld(DIM_OFFSET_MM);
+      line = { ox: 0, oz: z, ux: 1, uz: 0 };
+    } else {
+      const x = at ? at.x : Math.min(...pts.map((q) => q.x)) - paperMmToWorld(DIM_OFFSET_MM);
+      line = { ox: x, oz: 0, ux: 0, uz: 1 };
+    }
+  } else {
+    const L = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    const ux = (b.x - a.x) / L, uz = (b.z - a.z) / L, nx = -uz, nz = ux;
+    const off = at ? (at.x - a.x) * nx + (at.z - a.z) * nz : paperMmToWorld(DIM_OFFSET_MM);
+    line = { ox: a.x + nx * off, oz: a.z + nz * off, ux, uz };
+  }
+  let made = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const p = pts[i], q = pts[i + 1];
+    const len = Math.abs((q.x - p.x) * line.ux + (q.z - p.z) * line.uz);
+    if (len < 0.001) continue;
+    planDims.push({
+      x1: p.x, z1: p.z, x2: q.x, z2: q.z, style: linear ? "linear" : "aligned",
+      offsetMm: DIM_OFFSET_MM, ref1: p.ref, ref2: q.ref, fixedLine: line,
+    });
+    made++;
+  }
+  planDimChainPts = [];
+  planDrawStart = null; planDimStartRef = null; planDimPendingRefs = null;
+  if (currentPlan) renderPlan(currentPlan);
+  footerStatus(`Chain: ${made} dimension(s) placed - pick the first boundary of the next chain (Esc = Select)`);
+}
 /** Angular placement: first segment endpoints */
 let planDimSeg1: { x1: number; z1: number; x2: number; z2: number } | null = null;
 const DIM_OFFSET_MM = 12; // paper-space offset from geometry; converted by view scale
@@ -1990,7 +2040,7 @@ function renderPlan(plan: PlanView) {
     const r1 = resolvePlanDimensionRef(d.ref1);
     const r2 = resolvePlanDimensionRef(d.ref2);
     let x1 = r1?.x ?? d.x1, z1 = r1?.z ?? d.z1, x2 = r2?.x ?? d.x2, z2 = r2?.z ?? d.z2;
-    const axisDim = d.axis && d.linePos != null;
+    const axisDim = (d.axis && d.linePos != null) || !!d.fixedLine;
     if (d.style === "linear" && !axisDim) {
       // Strict horizontal or vertical only (Linear Dimension)
       if (Math.abs(x2 - x1) >= Math.abs(z2 - z1)) z2 = z1;
@@ -1999,7 +2049,15 @@ function renderPlan(plan: PlanView) {
     // aligned: keep actual x1,z1,x2,z2 so the dimension line is parallel to the object
     // Auto chains: the dimension line is fixed at linePos (model metres), witness lines run from the elements.
     let a0x: number, a0z: number, a1x: number, a1z: number;
-    if (axisDim) {
+    if (d.fixedLine) {
+      const fl = d.fixedLine;
+      const proj = (px: number, pz: number) => {
+        const t = (px - fl.ox) * fl.ux + (pz - fl.oz) * fl.uz;
+        return { x: fl.ox + fl.ux * t, z: fl.oz + fl.uz * t };
+      };
+      const pa = proj(x1, z1), pb = proj(x2, z2);
+      a0x = pa.x; a0z = pa.z; a1x = pb.x; a1z = pb.z;
+    } else if (axisDim) {
       if (d.axis === "x") { a0x = x1; a0z = d.linePos!; a1x = x2; a1z = d.linePos!; }
       else { a0x = d.linePos!; a0z = z1; a1x = d.linePos!; a1z = z2; }
     } else {
@@ -2115,6 +2173,31 @@ function renderPlan(plan: PlanView) {
     tip.setAttribute("font-family", "system-ui,sans-serif");
     tip.textContent = "Floor Plan � use Wall tool to draw � Link CAD to trace � or load an IFC model";
     g.appendChild(tip);
+  }
+
+  // -- Chain dimension: picked boundaries (markers only - the dimensions appear when the line is placed) --
+  if (planDimChainPts.length) {
+    const SVGNS = "http://www.w3.org/2000/svg";
+    const ds0 = getDimensionStyle();
+    if (planDimChainPts.length > 1) {
+      const pl = document.createElementNS(SVGNS, "polyline");
+      pl.setAttribute("points", planDimChainPts.map((q) => { const sp = screen(q.x, q.z); return `${sp.x},${sp.y}`; }).join(" "));
+      pl.setAttribute("fill", "none"); pl.setAttribute("stroke", "#2563eb");
+      pl.setAttribute("stroke-width", String(dimensionWorldStroke(ds0) * 0.6));
+      pl.setAttribute("stroke-dasharray", `${paperMmToWorld(1.5)} ${paperMmToWorld(1.2)}`);
+      pl.setAttribute("pointer-events", "none");
+      g.appendChild(pl);
+    }
+    planDimChainPts.forEach((q, i) => {
+      const sp = screen(q.x, q.z);
+      const c = document.createElementNS(SVGNS, "circle");
+      c.setAttribute("cx", String(sp.x)); c.setAttribute("cy", String(sp.y));
+      c.setAttribute("r", String(paperMmToWorld(1.3))); c.setAttribute("fill", "#2563eb");
+      c.setAttribute("stroke", "#fff"); c.setAttribute("stroke-width", String(dimensionWorldStroke(ds0) * 0.5));
+      c.setAttribute("pointer-events", "none");
+      g.appendChild(c);
+      g.appendChild(makeSvgText(sp.x + paperMmToWorld(2), sp.y - paperMmToWorld(2), String(i + 1), ds0, 1));
+    });
   }
 
   // -- Live dimension preview (BIM dimension placement behavior) --
@@ -3089,6 +3172,26 @@ canvasWrap.addEventListener("mousedown", (e) => {
         return;
       }
 
+      // Chain dimension: pick every boundary first; the dimensions appear only when an empty-space
+      // click places the chain line (Enter = default offset, Esc = cancel).
+      if (planDimChain && (planDimStyle === "aligned" || planDimStyle === "linear")) {
+        const chainHit = findDimensionBoundary(w);
+        if (chainHit) {
+          const last = planDimChainPts[planDimChainPts.length - 1];
+          if (last && Math.hypot(last.x - chainHit.point.x, last.z - chainHit.point.z) < 0.001) {
+            footerStatus("Chain: that boundary is already picked - pick the next one");
+            return;
+          }
+          planDimChainPts.push({ x: chainHit.point.x, z: chainHit.point.z, ref: chainHit.ref as PlanDimensionRef });
+          planDrawStart = null; planDimStartRef = null;
+          if (currentPlan) renderPlan(currentPlan);
+          footerStatus(`Chain: ${planDimChainPts.length} boundar${planDimChainPts.length === 1 ? "y" : "ies"} picked - ${planDimChainPts.length < 2 ? "pick the next boundary" : "pick more, or click empty space to place the chain (Enter = default, Esc = cancel)"}`);
+        } else {
+          finishDimChain({ x: w.x, z: w.z });
+        }
+        return;
+      }
+
       // Aligned / Linear: three-point flow (start, end, offset position)
       if (planDimPendingRefs && (planDimStyle === "aligned" || planDimStyle === "linear")) {
         const pr = planDimPendingRefs;
@@ -3731,6 +3834,7 @@ export function setPlanToolFromRibbon(tool: string) {
     tool === "spot-coord" || tool === "coordinate"
   ) {
     planMode = "dim";
+    planDimChainPts = [];
     planAutoPick = null;
     planDrawStart = null;
     planDimStartRef = null;
@@ -3832,6 +3936,11 @@ try {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea") return;
 
+    // Chain dimension: Enter places at the default offset, Esc discards the picked boundaries.
+    if (planMode === "dim" && planDimChain && planDimChainPts.length) {
+      if (e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); finishDimChain(undefined); return; }
+      if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); cancelDimChain(); footerStatus("Chain cancelled"); return; }
+    }
     // Auto Dimension: Enter places the chain 50 cm outside the picked elements.
     if (planMode === "dim" && planDimStyle === "auto" && planAutoPick?.p2 && e.key === "Enter") {
       e.preventDefault(); e.stopImmediatePropagation();
