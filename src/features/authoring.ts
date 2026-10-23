@@ -4215,12 +4215,13 @@ export function transformElements(
    elbow (endpoint further away) are never touched.
 
    Returns the total number of mutations (fittings + duct endpoints). */
-export function migrateMepFittingRadii(): number {
+export function migrateMepFittingRadii(onlyId?: string, forceRadius?: number): number {
   const mepTypes = new Set(["duct", "pipe", "cable-tray", "conduit"]);
   const fittings = elements.filter(
     (e) => e.type === "fitting" &&
            String((e.params as any).fittingKind || "elbow") === "elbow" &&
-           mepTypes.has(String((e.params as any).parentType ?? "duct")),
+           mepTypes.has(String((e.params as any).parentType ?? "duct")) &&
+           (!onlyId || e.id === onlyId),
   );
 
   let changedFittings = 0;
@@ -4230,8 +4231,10 @@ export function migrateMepFittingRadii(): number {
     const t = f.params.thickness ?? 0.3;
     const ductWidth = Math.max(t, 0.05);
     const stored = Number((f.params as any).bendRadius);
-    const oldR = Number.isFinite(stored) && stored > 0 ? stored : ductWidth / 2;
-    const newR = Math.max(oldR, ductWidth);
+    const legacy = !(Number.isFinite(stored) && stored > 0);
+    const oldR = legacy ? ductWidth / 2 : stored;
+    // Only legacy fittings (no stored radius) get the Revit default; an explicit radius is never overridden.
+    const newR = forceRadius != null && forceRadius > 0 ? forceRadius : legacy ? defaultBendRadius(ductWidth) : oldR;
 
     const cx = (f.params as any).point?.[0];
     const cz = (f.params as any).point?.[1];
@@ -4301,6 +4304,38 @@ export function migrateMepFittingRadii(): number {
   );
   return total;
 }
+/**
+ * Set an elbow's centreline bend radius (Properties > Bend Radius) and re-trim the
+ * connected runs onto the new tangent points. Refuses (returns false) if a run would
+ * become shorter than 5 cm. Undo-able as one step.
+ */
+export function setElbowBendRadius(fittingId: string, radius: number): boolean {
+  const f = elements.find((e) => e.id === fittingId && e.type === "fitting");
+  if (!f || !(radius > 0)) return false;
+  const mepTypes = ["duct", "pipe", "cable-tray", "conduit"];
+  const parentType = String((f.params as any).parentType ?? "duct");
+  const runs = elements.filter((e) => mepTypes.includes(e.type) && e.type === parentType && e.params.start && e.params.end);
+  const snap = runs.map((e) => ({ e, s: [...e.params.start!] as [number, number], en: [...e.params.end!] as [number, number] }));
+  const oldR = Number((f.params as any).bendRadius);
+  migrateMepFittingRadii(fittingId, radius);
+  const bad = snap.some(({ e }) => Math.hypot(e.params.end![0] - e.params.start![0], e.params.end![1] - e.params.start![1]) < 0.05);
+  if (bad) {
+    for (const x of snap) { x.e.params.start = x.s; x.e.params.end = x.en; }
+    (f.params as any).bendRadius = Number.isFinite(oldR) && oldR > 0 ? oldR : undefined;
+    rebuild(); markDirty();
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Bend radius too large for the connected runs.", kind: "warn" } }));
+    return false;
+  }
+  (f.params as any).bendRadius = radius;
+  rebuild(); markDirty(); notifyAuthoringChange();
+  history.push({
+    label: "Change bend radius",
+    apply: () => { migrateMepFittingRadii(fittingId, radius); (f.params as any).bendRadius = radius; rebuild(); markDirty(); },
+    revert: () => { for (const x of snap) { x.e.params.start = x.s; x.e.params.end = x.en; } (f.params as any).bendRadius = Number.isFinite(oldR) && oldR > 0 ? oldR : undefined; rebuild(); markDirty(); },
+  });
+  return true;
+}
+
 export function setupAuthoring() {
   ctx.world.scene.three.add(group);
   try { ctx.world.scene.three.add(guideGroup); } catch { /* */ }
@@ -4718,6 +4753,7 @@ export function setupAuthoring() {
 
     onAuthoringChange,
     migrateMepFittingRadii,
+    setElbowBendRadius,
   };
   ctx.features.authoring = api;
   register("authoring", api);

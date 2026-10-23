@@ -612,3 +612,148 @@ export function hasSchema(type: ElementType | string | null | undefined): boolea
 export function getSchema(type: ElementType | string): ElementSchema | null {
   return SCHEMAS[type as ElementType] ?? null;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Revit-style full parameter set
+   Every element schema gets the standard instance parameters (Constraints /
+   Identity Data / Phasing / IFC Parameters / Other), and fittings get the
+   mechanical + dimension parameters (angle, bend radius, tangent, arc length).
+   Fields already declared by a schema are never duplicated.
+   ══════════════════════════════════════════════════════════════════════ */
+const IFC_GROUP = "IFC Parameters";
+const OTHER_GROUP = "Other";
+const MECHANICAL = "Mechanical";
+
+type LevelRow = { id: string; name: string; elevation: number };
+let levelsProvider: () => LevelRow[] = () => [];
+/** Wired by the palette so computed Level / Offset fields can resolve datums. */
+export function setLevelsProvider(fn: () => LevelRow[]) { levelsProvider = fn; }
+function levelsList(): LevelRow[] {
+  try { return levelsProvider() ?? []; } catch { return []; }
+}
+
+function turnDeg(el: any): number {
+  const p = el?.params ?? {};
+  let d = (Number(p.angleOut ?? Math.PI / 2) - Number(p.angleIn ?? 0));
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d <= -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+function fittingRadius(el: any): number {
+  const p = el?.params ?? {};
+  const w = Math.max(Number(p.thickness ?? 0.3), 0.05);
+  const r = Number(p.bendRadius);
+  return r > 0 ? r : 1.5 * w;
+}
+
+const ro = (key: string, label: string, group: string, compute: (el: any) => string | number, unit?: string): PropertyField => ({
+  key, label, group, type: unit ? "number" : "text", unit, target: "params", readOnly: true, compute, step: 0.001,
+});
+const txt = (key: string, label: string, group: string, target: FieldTarget = "properties", helpText?: string): PropertyField => ({
+  key, label, group, type: "text", target, helpText,
+});
+
+function commonFields(schema: ElementSchema): PropertyField[] {
+  const has = (k: string) => schema.fields.some((f) => f.key === k);
+  const out: PropertyField[] = [];
+  const add = (f: PropertyField) => { if (!has(f.key) && !out.some((o) => o.key === f.key)) out.push(f); };
+
+  // Constraints
+  add(ro("levelName", "Level", CONSTRAINTS, (el) => {
+    const lv = levelsList();
+    const byId = lv.find((l) => l.id === el?.levelId);
+    if (byId) return byId.name;
+    const e = Number(el?.params?.elevation ?? 0);
+    const near = [...lv].filter((l) => l.elevation <= e + 0.01).sort((a, b) => b.elevation - a.elevation)[0];
+    return near ? near.name : "—";
+  }));
+  add(ro("offsetFromLevel", "Offset from Level", CONSTRAINTS, (el) => {
+    const lv = levelsList();
+    const e = Number(el?.params?.elevation ?? 0);
+    const byId = lv.find((l) => l.id === el?.levelId) ??
+      [...lv].filter((l) => l.elevation <= e + 0.01).sort((a, b) => b.elevation - a.elevation)[0];
+    return +(e - (byId?.elevation ?? 0)).toFixed(4);
+  }, "m"));
+
+  // Identity Data
+  add(txt("mark", "Mark", IDENTITY));
+  add(txt("description", "Description", IDENTITY));
+  add(txt("manufacturer", "Manufacturer", IDENTITY));
+  add(txt("model", "Model", IDENTITY));
+  add(txt("url", "URL", IDENTITY));
+  add(txt("keynote", "Keynote", IDENTITY));
+  add(txt("assemblyCode", "Assembly Code", IDENTITY));
+  add(txt("typeComments", "Type Comments", IDENTITY));
+  add(commentsField());
+  add(typeMarkField());
+
+  // Phasing
+  add(txt("phaseCreated", "Phase Created", PHASING));
+  add(txt("phaseDemolished", "Phase Demolished", PHASING));
+
+  // IFC Parameters
+  add({ key: "exportToIfc", label: "Export to IFC", group: IFC_GROUP, type: "boolean", target: "properties", default: true });
+  add(txt("ifcPredefinedType", "IFC Predefined Type", IFC_GROUP));
+  add({ key: "ifcType", label: "IFC Entity", group: IFC_GROUP, type: "text", target: "properties", readOnly: true });
+  add({ key: "globalId", label: "IfcGUID", group: IFC_GROUP, type: "text", target: "properties", readOnly: true,
+    compute: (el: any) => String(el?.properties?.globalId ?? el?.id ?? "") });
+
+  // Other
+  add(txt("workset", "Workset", OTHER_GROUP));
+  add(txt("designOption", "Design Option", OTHER_GROUP));
+  add({ key: "elementId", label: "Element ID", group: OTHER_GROUP, type: "text", target: "root", readOnly: true,
+    compute: (el: any) => String(el?.id ?? "") });
+  return out;
+}
+
+function ensureGroups(schema: ElementSchema, fields: PropertyField[]) {
+  for (const f of fields) if (!schema.groups.includes(f.group)) schema.groups.push(f.group);
+}
+
+// Fitting-specific (elbow / tee / cross / transition / cap / union) parameters.
+if (SCHEMAS.fitting) {
+  const f = SCHEMAS.fitting;
+  const fkind = (el: any) => String(el?.params?.fittingKind ?? el?.properties?.fittingKind ?? "elbow");
+  const parent = (el: any) => String(el?.params?.parentType ?? "duct");
+  const round = (el: any) => parent(el) === "pipe" || parent(el) === "conduit";
+  f.groups = [CONSTRAINTS, MECHANICAL, DIMENSIONS, IDENTITY, MATERIALS];
+  f.fields.push(
+    // Mechanical
+    { key: "systemType", label: "System Type", group: MECHANICAL, type: "select", target: "properties", default: "supply-air",
+      options: [
+        { value: "supply-air", label: "Supply Air" }, { value: "return-air", label: "Return Air" },
+        { value: "exhaust-air", label: "Exhaust Air" }, { value: "fresh-air", label: "Fresh Air" },
+        { value: "domestic-cold", label: "Domestic Cold Water" }, { value: "domestic-hot", label: "Domestic Hot Water" },
+        { value: "sanitary", label: "Sanitary" }, { value: "hydronic-supply", label: "Hydronic Supply" },
+        { value: "hydronic-return", label: "Hydronic Return" }, { value: "fire-protection", label: "Fire Protection" },
+        { value: "power", label: "Power" }, { value: "data", label: "Data / Communications" },
+      ] },
+    { key: "systemName", label: "System Name", group: MECHANICAL, type: "text", target: "properties" },
+    ro("classification", "Part Type", MECHANICAL, (el) => {
+      const k = fkind(el);
+      return ({ elbow: "Elbow", tee: "Tee", cross: "Cross", transition: "Transition", cap: "Cap", union: "Union", wye: "Junction" } as any)[k] ?? k;
+    }),
+    ro("parentSystem", "Fitting Of", MECHANICAL, (el) => ({ duct: "Duct", pipe: "Pipe", "cable-tray": "Cable Tray", conduit: "Conduit" } as any)[parent(el)] ?? parent(el)),
+    ro("size", "Size", MECHANICAL, (el) => {
+      const w = Number(el?.params?.thickness ?? 0), h = Number(el?.params?.height ?? w);
+      return round(el) ? `\u00d8 ${(w * 1000).toFixed(0)} mm` : `${(w * 1000).toFixed(0)} x ${(h * 1000).toFixed(0)} mm`;
+    }),
+    // Dimensions
+    ro("bendAngle", "Angle", DIMENSIONS, (el) => +(Math.abs(turnDeg(el)) * 180 / Math.PI).toFixed(2), "deg"),
+    { key: "bendRadius", label: "Bend Radius (centreline)", group: DIMENSIONS, type: "number", unit: "m", step: 0.01, min: 0.02, target: "params",
+      compute: (el: any) => +fittingRadius(el).toFixed(4),
+      helpText: "Default 1.5 x width. Connected runs are re-trimmed." },
+    ro("tangentLength", "Tangent Length", DIMENSIONS, (el) => +(fittingRadius(el) * Math.tan(Math.abs(turnDeg(el)) / 2)).toFixed(4), "m"),
+    ro("arcLength", "Arc Length", DIMENSIONS, (el) => +(fittingRadius(el) * Math.abs(turnDeg(el))).toFixed(4), "m"),
+    ro("outerRadius", "Outer Radius", DIMENSIONS, (el) => +(fittingRadius(el) + Number(el?.params?.thickness ?? 0) / 2).toFixed(4), "m"),
+    ro("innerRadius", "Inner Radius", DIMENSIONS, (el) => +Math.max(0, fittingRadius(el) - Number(el?.params?.thickness ?? 0) / 2).toFixed(4), "m"),
+  );
+}
+
+for (const key of Object.keys(SCHEMAS)) {
+  const schema = (SCHEMAS as any)[key] as ElementSchema | undefined;
+  if (!schema || key === "grid" || key === "level") continue;
+  const extra = commonFields(schema);
+  schema.fields.push(...extra);
+  ensureGroups(schema, extra);
+}

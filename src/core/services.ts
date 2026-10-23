@@ -162,7 +162,9 @@ export interface AuthoringService {
   /** Normalise every MEP elbow radius to >= one duct width and re-trim
    *  the two ducts feeding it. Idempotent; safe to call repeatedly.
    *  Returns the number of fittings changed. */
-  migrateMepFittingRadii(): number;
+  migrateMepFittingRadii(onlyId?: string, forceRadius?: number): number;
+  /** Set an elbow's bend radius and re-trim connected runs. False if it would collapse a run. */
+  setElbowBendRadius(fittingId: string, radius: number): boolean;
 }
 
 /* ══════════════════════════════════════════════════════════════════════
