@@ -1,243 +1,557 @@
-﻿<p align="center">
-  <img src="openBIMstudio.png" alt="OpenBIMStudio Banner" width="700">
+<p align="center">
+  <img src="openBIMstudio.png" alt="OpenBIMStudio platform logo" width="960">
 </p>
+
 <div align="center">
 
-# OpenBiMStudio
+# OpenBIMStudio
 
-**Professional, local-first openBIM authoring, coordination & documentation — running entirely in the browser.**
+**A local-first, openBIM platform for model authoring, federation, coordination, documentation, validation, and project delivery.**
 
 ![Version](https://img.shields.io/badge/version-0.66.2-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)
 ![IFC](https://img.shields.io/badge/IFC-IFC2X3%20%7C%20IFC4-3b82f6.svg)
-![Platform](https://img.shields.io/badge/platform-web%20%7C%20local--first-success.svg)
+![Platform](https://img.shields.io/badge/platform-browser%20%7C%20local--first-success.svg)
+
+[Features](#platform-capabilities) · [Quick start](#quick-start) · [Workflows](#typical-workflows) · [Formats](#interoperability) · [Documentation](#documentation) · [Testing](#quality-and-verification)
 
 </div>
 
+---
+
 ## Overview
 
-**OpenBiMStudio** is a web-native, local-first building information modelling (BIM) platform built on open standards. It loads, edits, coordinates and documents IFC models without any desktop installation — the entire authoring environment, 3D viewer, documentation engine and collaboration server run in the browser and on a single lightweight Node.js backend.
+OpenBIMStudio is a browser-based building information modelling platform focused on open data, practical authoring, and coordinated project delivery. It brings model creation and editing, parametric components, multi-model federation, clash review, issue exchange, drawing production, schedules, quantities, standards checks, and project automation into one workspace.
 
-Models stay on your machine. Federated IFC files, project files, family definitions and everything else persist in the browser (IndexedDB / OPFS), so nothing is uploaded unless you explicitly connect to a collaboration server.
+The platform is designed around open workflows: IFC for model exchange, BCF for coordination issues, IDS for information requirements, and structured project data for schedules and handover. It can run locally in a browser without requiring a hosted account. Project data can be stored in browser-local storage; optional collaboration services are available when configured.
 
-The platform is designed for AEC professionals who need a productive BIM authoring and coordination workflow that respects open standards — **IFC as the interchange format, BCF for issue exchange, IDS for validation, and buildingSMART-defined schemas throughout.**
+**Important:** OpenBIMStudio is actively evolving. Capabilities vary in maturity, and a source module or visible command does not by itself prove that a workflow is complete or production-verified. Use the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) and test the exact operations needed for your project.
 
 ## Why OpenBIMStudio
 
-- **Truly local-first.** Every project, model, family and setting lives in your browser. No account, no cloud, no vendor lock-in.
-- **Open by design.** IFC2X3 and IFC4 in, IFC2X3 and IFC4 out. Native BCF 2.1, IDS, COBie, DXF, DWG (via libredwg-web) and glTF.
-- **Full authoring loop.** Not just a viewer — parametric families, compound walls, hosted doors and windows with real openings, MEP routing with auto-fittings, slabs, roofs, stairs, railings, curtain walls, ceilings, rooms and grids.
-- **Federation-ready.** Load multiple IFC models at once with per-model positioning, shared coordinates, isolation and coordinated clash detection.
-- **Production documentation.** Plans, sections and elevations generated from live model geometry, driven into sheet sets with title blocks, schedules, dimensions and tags.
-- **Engineered to scale.** Web Worker-offloaded clash detection with BVH acceleration, streaming IFC to FRAG conversion, LOD management and bounded-concurrency bulk operations.
+- **Local-first workflow:** keep projects in browser storage and work without a remote service for supported local workflows.
+- **Open exchange:** work with IFC and coordination/documentation formats rather than relying on a single closed project format.
+- **Authoring plus coordination:** create and edit model content, then federate models, review clashes, manage issues, and validate deliverables.
+- **Model-linked documentation:** generate views and sheets from model geometry, and create schedules, dimensions, tags, and PDF outputs.
+- **Automation-ready:** use validation, rules, repeatable scripts, and structured data to support QA and delivery.
+- **Expandable architecture:** typed services, feature modules, commands, workers, and plugin infrastructure provide extension points for continued development.
 
-## Core Capabilities
+## Platform capabilities
 
-### Authoring & Parametric Families
+### 1. Model viewing, navigation, and project workspace
 
-- **Parametric family engine** — formula-driven parameter graphs with topological sort, cycle detection, dimensional constraints, nested families, arrays and reporting parameters.
-- **Compound walls** — layer-based construction (e.g. `Brick:0.1, Insulation:0.05, Gypsum:0.015`) with location-line placement and automatic L-corner mitering.
-- **Hosted elements** — doors and windows with real openings carved from the host wall, sill height, frame thickness and clamped offset along host.
-- **MEP routing** — ducts, pipes, cable trays and conduits with auto-generated elbow, tee, cross, wye, cap, transition and union fittings at every bend.
-- **Structural elements** — beams, braces, trusses, footings and strip foundations with configurable section profiles.
-- **Direct modelling** — push/pull faces, primitive solids (box, cylinder, sphere, cone) and boolean subtract via CSG.
+- Browser-based 3D viewport with perspective and orthographic viewing workflows.
+- Orbit, pan, zoom, fit/focus, selection, multi-selection, and box selection.
+- Selection synchronization between the viewport, model tree, and property palette where supported.
+- Hide, isolate, reset visibility, category visibility, section clipping, and section boxes.
+- Snapping, gizmo-based transforms, cursor coordinates, measurement, and temporary dimensions.
+- Saved views, view navigation, model alignment tools, LOD controls, and model health diagnostics.
+- Project creation/opening and project information/browser workflows.
+- Ribbon, viewport toolbar, context menus, command palette, status bar, and configurable workspace panels.
+- UI visibility and workspace preferences stored locally by the browser where implemented.
 
-### Clash Detection & Coordination
+### 2. BIM authoring and parametric modelling
 
-- **Eight detection methods** — triangle-accurate (BVH), conservative bounding box, convex hull (GJK), bounding sphere, center-in-volume, clearance band, duplicate detection and penetration depth.
-- **Web Worker execution** — a dedicated worker keeps the UI responsive while clash runs traverse millions of triangle pairs.
-- **Federated A vs B** — build selection groups from loaded models, add the current selection to A or B, run the test, then navigate clashes and crop to each pair.
-- **Grouping and reporting** — union-find grouping by shared element, per-status review workflow (new, active, reviewed, approved, resolved), and CSV / HTML / XLS report export.
-- **Scenarios** — save and reload complete clash rules, selections, statuses and comments as a named scenario.
+- **Direct geometry tools:** primitives, basic solid editing, push/pull workflows, and geometry modification tools.
+- **Parametric families:** formula-driven parameters, dependency graphs, constraint checks, nested components, arrays, and reporting parameters, subject to current implementation limits.
+- **Compound walls:** layered wall construction, placement controls, and corner joining/mitering workflows.
+- **Hosted doors and windows:** host-aware placement and wall-opening geometry for supported workflows.
+- **Structural modelling:** beams, braces, trusses, footings, strip foundations, and configurable section profiles.
+- **Building elements:** levels, rooms/areas, stairs, railings, roofs, curtain walls, materials, reference planes, groups, design options, and phases.
+- **MEP authoring:** ducts, pipes, cable trays, conduits, routing, fitting generation, fabrication-related tools, and P&ID-related workflows.
+- **Model data:** element properties, shared parameter definitions, type catalogues, and material assignments.
+- **Modification tools:** move/copy/rotate/mirror and array-style workflows where enabled, plus alignment, distribution, match-properties, paint, grouping, and create-similar commands.
+- **Host and relationship utilities:** hosted-element synchronization, solve-host tools, and copy/monitor-related workflows.
 
-### Documentation
+Element behavior is not uniform across every category. Verify whether an element is fully parametric, whether its relationships persist after reopening, and whether it is included in schedules and exports.
 
-- **True 2D views** — plans, sections, elevations, RCPs and details generated from live geometry.
-- **Sheet production** — A0 to A4, ANSI and Arch sheet sizes with title blocks, viewports at arbitrary scales and PDF export.
-- **Schedules** — element schedules, quantity take-offs and material take-offs with formula columns, grouping, subtotals and conditional formatting.
-- **Dimensions & tags** — aligned, linear, angular, radial, diameter, arc length, spot elevation and spot coordinate dimensions. Element tags, room tags and material tags with leader shapes.
-- **Automatic drawing content** — wall poche broken at door and window openings, room boundaries, stair symbols, riser lines, mullion ticks, ridge lines, door and window marks.
+### 3. Parametric family engine
 
-### Coordination & Data
+- Formula-based parameter evaluation and dependency ordering.
+- Cycle detection and parameter-graph checks.
+- Dimensional constraints and parameter reporting.
+- Nested family and array-oriented structures.
+- Family browsing and family-editing panels.
+- JSON family definitions and example content under `public/families/`.
 
-- **IFC export** — IFC2X3 and IFC4 STEP files with valid GlobalIds, property sets (`OpenBIMStudio`, `Pset_*Common`), material assignments, element quantities and storey-relative placement.
-- **BCF 2.1** — issue import and export with viewpoints that capture camera state, section planes, cropped boxes and element selection.
-- **IDS validation** — run Information Delivery Specification checks against loaded IFC models.
-- **COBie** — export a COBie spreadsheet from the current model state.
+The family engine and family content continue to evolve. Test representative type/instance changes, constraints, placement, save/reopen, and exchange-format behavior before relying on a family in a deliverable.
 
-### 4D, 5D and Automation
+### 4. Multi-model federation and coordination
 
-- **4D construction simulation** — a timeline editor that sequences element appearance and demolition across project phases.
-- **5D cost** — quantity take-off driven by `Qto_*` properties where present, geometric measurement otherwise, mapped to configurable cost items and exported as CSV.
-- **Automation rules** — a JSON rule engine that reacts to model events (element created, phase changed, property assigned) and applies actions.
-- **Standards rule packs** — an extensible rule framework with shipped packs for accessibility, fire egress, QA and structural checks.
+- Load and manage multiple models in a coordinated workspace.
+- Manage linked models and their transforms, visibility, and placement where supported.
+- Align models using known reference points and review units, origin, rotation, and elevation.
+- Build selection groups for A-versus-B coordination tests.
+- Review clash pairs, focus/crop to involved elements, group related findings, and manage issue statuses.
+- Save named clash scenarios with rule settings, selections, review statuses, and comments where supported.
+- Export clash and issue reports to supported report formats.
 
-### Collaboration
+### 5. Clash detection
 
-- **Real-time co-presence** — Yjs over WebSockets for live cursors, named presence and shared state.
-- **Worksharing client** — element-level locking and synchronisation against a central server.
-- **Local-first with optional server** — the Node.js backend in `server/` provides a projects API, SSE-based presence feed and per-room change log. Skip it entirely for a fully offline workflow.
+The coordination engine includes several detection approaches, selected according to the configured workflow:
 
-### Interoperability
+- Triangle-level intersection using BVH acceleration.
+- Conservative bounding-box checks.
+- Convex-hull/GJK checks.
+- Bounding-sphere checks.
+- Center-in-volume checks.
+- Clearance-band checks.
+- Duplicate detection.
+- Penetration-depth analysis.
 
-| Format | Import | Export |
-|---|---|---|
-| IFC 2X3 / IFC 4 | yes | yes |
-| FRAG (streaming mesh format) | yes | yes (via converter) |
-| BCF 2.1 | yes | yes |
-| IDS | yes | no |
-| COBie | no | yes |
-| DF | yes | yes |
-| DWG | yes (via libredwg-web) | no |
-| glTF / GLB | yes | yes |
-| OBJ / STL / PLY | yes | no |
+Clash work can use a Web Worker to reduce blocking of the main interface. Available methods, performance, and result fidelity depend on geometry, settings, and model size. Validate known clash and non-clash examples before using results for formal coordination.
 
-## Tech Stack
+### 6. Issues and openBIM coordination data
 
-| Layer | Technology |
+- Issue creation and review workflows.
+- BCF 2.1 import/export support in the implemented workflows.
+- Viewpoints intended to capture camera state, section planes, cropped areas, and selected elements.
+- Status, comments, and coordination-review information where supported.
+- IDS-based checks against loaded model information.
+- Standards/rule packs for areas such as accessibility, fire egress, QA, and structural review.
+
+Standards and IDS results are checks against configured requirements, not automatic certification or a substitute for discipline-specific professional review.
+
+### 7. Views, drawings, and sheets
+
+- Plan, section, elevation, reflected ceiling plan, and detail-view generation workflows.
+- 2D drafting and drawing tools.
+- Model-linked annotation layers, dimensions, and tags.
+- Linear, aligned, angular, radial, diameter, arc-length, spot-elevation, and spot-coordinate dimension workflows, subject to implementation.
+- Element, room, and material tags, including leader shapes where supported.
+- Drawing content such as wall poche, opening breaks, room boundaries, stair symbols, mullion ticks, ridge lines, and door/window marks.
+- Sheet layout with standard metric, ANSI, and architectural sheet sizes.
+- Viewports with configurable placement and scale.
+- Title-block and revision-related workflows.
+- PDF sheet export and CAD drawing import/export paths.
+- View templates and visibility/graphics controls.
+
+Always check page size, drawing scale, line weights, fonts, dimensions, title-block fields, revision data, and external-reader compatibility before issuing construction documents.
+
+### 8. Schedules, quantities, and cost
+
+- Element schedules and schedule-building workflows.
+- Quantity take-off and material take-off.
+- Formula-driven schedule columns.
+- Grouping, sorting, subtotals, and conditional formatting where implemented.
+- Quantity extraction from available model properties and geometric measurement.
+- Cost items and configurable mapping from quantities to rates.
+- CSV output for supported schedule/cost workflows.
+
+Quantities and costs are estimates until checked against the project's approved measurement rules. Confirm unit conversions, gross/net conventions, opening deductions, rate source/date, currency, rounding, and exclusions.
+
+### 9. 4D, phases, and automation
+
+- Timeline-based construction simulation.
+- Element appearance and demolition across project phases.
+- Phase metadata and phase-related workflows.
+- JSON automation rules triggered by supported model events.
+- Rule actions for supported property, phase, and element workflows.
+- Extensible standards rule packs and validation diagnostics.
+
+Confirm task dates, dependencies, element mapping, baseline, and progress rules before using 4D outputs for project reporting. Test automation against a copy and review side effects before applying rules to live project data.
+
+### 10. Native model and documentation QA
+
+The native BIM validation layer includes checks for:
+
+- Stable and unique authored element identifiers.
+- Required element categories/names and finite, positive dimensions.
+- Linear element endpoints and zero-length structural/MEP runs.
+- Polygon point counts, finite coordinates, and non-zero area.
+- Hosted door/window host references and basic placement bounds.
+- Level and grid references.
+- Triangle-buffer integrity and transform sanity.
+- Duplicate IFC GlobalIds and identity-divergence warnings.
+- Fitting parent types and bend-radius sanity.
+- Sheet identifiers/numbers, sheet sizes, view references, viewport dimensions, scale notation, and viewport placement/overlap.
+
+Validation reports provide diagnostic codes, severities, element references, and parameter paths where implemented. These checks are a QA foundation, not a full engineering solver or automatic model repair system.
+
+### 11. AI and intelligent assistance
+
+- AI chat interface and provider configuration modules.
+- Embedding-related workflows.
+- AI tool integration points.
+- Rule-based automation that can complement AI-assisted tasks.
+
+Provider availability depends on configuration. Before using AI with confidential information, identify where prompts and model data are sent, keep credentials out of source control, and review proposed actions before execution. AI suggestions should remain distinct from deterministic QA results.
+
+### 12. Collaboration and project services
+
+- Optional local Node.js backend.
+- Project API and room-oriented endpoints.
+- Server-Sent Events (SSE) presence feed and WebSocket-based collaboration paths.
+- Yjs-based co-presence and shared-state workflows where configured.
+- Worksharing client concepts including element-level locking and synchronization.
+- CDE/provider integration points that require provider-specific setup and live-operation testing.
+
+Local-only use does not require running the collaboration server. Before exposing the server outside localhost, inspect authentication, authorization, storage, network configuration, and deployment security.
+
+## Button and command function reference
+
+This table groups the platform's documented buttons, commands, panels, and tools by their purpose. Exact button labels and availability can vary by workspace, module registration, and application version. Some entries represent command families or panels rather than one single visible button; check the live interface and the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) before assuming every command is enabled or production-verified.
+
+### Project and file commands
+
+| Button / command | Main function |
 |---|---|
-| **Language** | TypeScript (strict) |
-| **Build** | Vite, esbuild (ESNext target) |
-| **3D** | Three.js, `@thatopen/components`, `@thatopen/fragments`, `@thatopen/ui` |
-| **IFC** | `web-ifc` (WASM), `@thatopen/fragments` (streaming) |
-| **UI shell** | Vanilla TypeScript + Web Components, MUI for legacy panels, Monaco for the formula editor |
-| **State** | Typed service registry, Redux Toolkit (legacy), Yjs (collaboration) |
-| **Backend** | Node.js, Server-Sent Events, WebSocket |
-| **Export** | `pdf-lib`, `file-saver`, JSZip |
-| **Testing** | Node test runner, TypeScript compilation |
+| **New Project** | Create a project workspace. |
+| **Open Project** | Open an existing project where supported. |
+| **Recent Projects / Project Browser** | Find and navigate available projects and project data. |
+| **Project Information** | Review or edit supported project metadata. |
+| **Import Model / Import File** | Load a supported model or exchange file. |
+| **Export Model / Export File** | Write model data to a supported exchange format. |
+| **Manage Links** | Review linked models, reload or detach links, and manage supported link transforms. |
+| **Federation** | Combine multiple models in one coordination workspace. |
+| **Save View** | Store a camera or view state for later use. |
 
-## Quick Start
+### Viewport and navigation
 
-**Prerequisites:** Node.js 20.11 or newer, npm 10 or newer.
+| Button / command | Main function |
+|---|---|
+| **Select** | Select an element in the viewport. |
+| **Multi-select** | Select multiple elements for inspection or supported bulk operations. |
+| **Box Select** | Select elements within a screen-space selection rectangle. |
+| **Select All** | Select all elements in the active selection scope. |
+| **Orbit** | Rotate the camera around a target. |
+| **Pan** | Move the camera view without changing its orientation. |
+| **Zoom** | Change the view magnification. |
+| **Fit / Zoom to Extents** | Frame the available model geometry in the viewport. |
+| **Focus on Selection** | Move the view focus to the selected element or elements. |
+| **Walk Mode / Minimap** | Navigate the model in a first-person style and use the minimap where available. |
+| **Model Tree** | Browse model hierarchy and select elements from the tree. |
+| **Properties** | Inspect supported element properties and edit fields that are enabled for editing. |
+| **Measure** | Measure distances between supported points or references. |
+| **Temporary Dimensions** | Display temporary dimensional feedback during supported interactions. |
+| **Cursor Coordinates** | Show cursor or placement coordinates in the active units. |
+| **Snapping** | Help align placement or edits to supported geometric references. |
+| **Transform Gizmo** | Move, rotate, or otherwise transform selected geometry using the available handles. |
+| **Section / Section Box** | Clip the model to inspect internal geometry. |
+| **Hide** | Hide selected elements from the current view. |
+| **Isolate** | Show selected elements while temporarily suppressing other geometry. |
+| **Reset Visibility** | Restore visibility after hide/isolate operations. |
+| **Category Visibility** | Show or hide supported element categories. |
+| **Saved Views** | Restore saved camera or view states. |
+| **LOD Controls** | Adjust supported level-of-detail display behavior. |
+| **Model Health** | Review model diagnostics and reported data/geometry issues. |
+
+### Create and modify model elements
+
+| Button / command | Main function |
+|---|---|
+| **BIM Object Studio / Toolbox** | Open the available element creation tools and category workflows. |
+| **Primitives** | Create supported basic geometry. |
+| **Push / Pull** | Modify supported geometry by pushing or pulling faces or profiles. |
+| **Wall** | Create wall geometry with supported placement and construction options. |
+| **Wall Handles** | Edit supported wall geometry using interactive handles. |
+| **Floor / Slab** | Create supported floor or slab geometry. |
+| **Roof** | Create supported roof forms. |
+| **Ceiling** | Access supported ceiling-authoring workflows where available. |
+| **Door / Window** | Place supported door or window components, including host-aware placement where implemented. |
+| **Levels** | Create or manage level references and elevations. |
+| **Grids / Plan Grid** | Work with grid references or plan-grid drawing tools. |
+| **Rooms / Areas** | Create or inspect supported room/area data and boundaries. |
+| **Stairs** | Create or edit supported stair geometry. |
+| **Railings** | Create supported railing elements. |
+| **Curtain Wall** | Create or edit supported curtain-wall grids, panels, and mullions. |
+| **Structural Members** | Access supported beam, brace, truss, footing, and foundation workflows. |
+| **Ducts / Pipes** | Create supported MEP runs. |
+| **Cable Trays / Conduits** | Create supported containment routes. |
+| **MEP Fittings / Routing** | Create or connect supported fittings and routing segments. |
+| **MEP Fabrication** | Access implemented fabrication-related workflows. |
+| **P&ID Modeler** | Work with supported process/instrumentation symbols and connectivity. |
+| **Materials** | Assign or manage supported material definitions and appearances. |
+| **Shared Parameters** | Manage supported parameter definitions and bindings. |
+| **Type Catalog** | Browse or manage supported element types. |
+| **Family Browser** | Browse available family content. |
+| **Parametric Family Editor** | Work with supported formulas, parameters, constraints, and nested/array structures. |
+| **Reference Planes** | Create and manage reference geometry for supported workflows. |
+| **Groups** | Organize supported elements into groups. |
+| **Design Options** | Manage supported alternative design sets. |
+| **Phases** | Assign or review supported phase information. |
+| **Copy / Monitor** | Set up or review supported monitored relationships between elements. |
+| **Move** | Translate selected elements. |
+| **Copy** | Duplicate selected elements. |
+| **Rotate** | Rotate selected elements around a supported axis or pivot. |
+| **Mirror** | Reflect selected elements across a supported axis or plane. |
+| **Array** | Create repeated copies in supported array workflows. |
+| **Align** | Align selected geometry to a supported reference. |
+| **Distribute** | Space selected elements using supported distribution behavior. |
+| **Match Properties** | Copy supported property values from one element to another. |
+| **Paint** | Apply supported material or appearance assignments. |
+| **Group / Ungroup** | Create or dissolve supported element groups. |
+| **Create Similar** | Start a new placement using the selected element's supported type or settings. |
+| **Constraint Solver** | Evaluate or apply supported geometric constraints. |
+| **AccuDraw / Precision Drawing** | Support coordinate-based drawing and precise placement where available. |
+
+### Drawings, annotation, and sheets
+
+| Button / command | Main function |
+|---|---|
+| **Plan View** | Generate or open a supported plan view. |
+| **Section View** | Generate or open a supported section view. |
+| **Elevation View** | Generate or open a supported elevation view. |
+| **Reflected Ceiling Plan** | Access supported ceiling-plan view workflows. |
+| **Detail View / Drafting** | Create supported detail or 2D drafting content. |
+| **Draw Line / 2D Drawing Tools** | Add supported 2D drafting geometry. |
+| **Dimension** | Create supported linear, aligned, angular, radial, diameter, or other implemented dimensions. |
+| **Spot Elevation / Spot Coordinate** | Annotate supported elevation or coordinate values. |
+| **Tag** | Place supported element, room, or material tags. |
+| **Text / Leader** | Add annotation text and supported leader geometry. |
+| **Revision Cloud** | Mark a drawing area for revision review. |
+| **View Templates / View Graphics** | Apply or manage supported view display settings. |
+| **Sheets** | Create or navigate drawing sheets. |
+| **Place Viewport** | Place a supported view onto a sheet and configure its placement/scale. |
+| **Title Block / Revision Data** | Manage supported title-block and revision fields. |
+| **Export PDF** | Export supported drawing or sheet output to PDF. |
+| **Import / Export CAD** | Use supported CAD exchange paths; verify entity and round-trip coverage. |
+
+### Coordination, issues, and compliance
+
+| Button / command | Main function |
+|---|---|
+| **Clash Detection** | Run configured clash checks between selected model groups or categories. |
+| **Clash Method / Tolerance** | Configure supported detection approach and clearance/tolerance settings. |
+| **Clash Review** | Inspect clash pairs and focus the view on involved elements. |
+| **Group Clashes** | Organize related clash findings into review groups. |
+| **Clash Report** | Generate a report from supported clash results. |
+| **Issues Panel** | Create, browse, and update coordination issues where supported. |
+| **Issue Viewpoint** | Capture or restore supported camera, section, crop, and element context for an issue. |
+| **BCF Import / Export** | Exchange supported coordination issues using BCF 2.1 workflows. |
+| **IDS Validation** | Check loaded model information against supported Information Delivery Specification requirements. |
+| **Standards Check** | Run configured rule packs and review diagnostic results. |
+| **Standards Report** | Review or export supported rule-check findings. |
+| **Native BIM Validation** | Check selected model and documentation integrity rules. |
+| **Model Alignment** | Adjust or review model placement using supported alignment references. |
+| **MEP Coloring** | Apply supported visual coloring rules to MEP systems. |
+
+### Schedules, quantities, project time, and automation
+
+| Button / command | Main function |
+|---|---|
+| **Schedules** | Create, browse, or refresh supported element schedules. |
+| **Schedule Builder** | Configure schedule fields and supported calculated columns. |
+| **Quantity Takeoff** | Extract supported model quantities using the available measurement rules. |
+| **Material Takeoff** | Summarize supported material quantities. |
+| **Cost Panel** | Map quantities to configured rates and prepare cost estimates. |
+| **Timeline / 4D** | Review task timelines and supported element-to-task simulation. |
+| **Phase Display** | Review supported element phase and phase-related display behavior. |
+| **Automation Rules** | Configure supported rule triggers and actions. |
+| **Validation Diagnostics** | Inspect errors, warnings, and rule findings where available. |
+| **Command Palette** | Search for and activate registered commands. |
+| **Shortcuts** | Review or use configured keyboard shortcuts. |
+| **Context Menu** | Access actions relevant to the selected item or current context. |
+| **Workspace / UI Settings** | Adjust supported panels and interface visibility preferences. |
+| **Notifications / Diagnostics** | Review messages, warnings, and diagnostic feedback. |
+
+### AI and collaboration
+
+| Button / command | Main function |
+|---|---|
+| **AI Chat** | Open the configured AI assistance interface. |
+| **AI Provider Settings** | Configure supported AI providers; review data handling and credentials. |
+| **Embeddings** | Access supported embedding-related workflows. |
+| **AI Tools** | Access configured AI tool integrations, subject to permissions and provider availability. |
+| **Collaboration / Worksharing** | Use supported shared-state, presence, locking, or synchronization workflows when the required server is configured. |
+| **CDE Panel** | Access configured Common Data Environment/provider integration points; provider operations require separate verification. |
+
+**Important interpretation:** the table is a functional guide, not a guarantee that every row is a visible, enabled button in every build. Some labels describe related commands or panels, and some workflows remain partial or need configuration. For exact source mappings and maturity notes, use the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md). Validate each workflow with a test project before relying on it for formal deliverables.
+
+## Interoperability
+
+The following table summarizes intended/currently implemented exchange paths. Format coverage and fidelity vary by entity type and workflow.
+
+| Format / workflow | Import | Export | Notes |
+|---|---:|---:|---|
+| IFC2X3 / IFC4 | Yes | Yes | Authored export covers a defined subset; verify classes, properties, units, and geometry. |
+| FRAG | Yes | Yes, via converter | Streaming geometry workflow. |
+| BCF 2.1 | Yes | Yes | Validate issue fields and viewpoint round trips. |
+| IDS | Yes | — | Used for information-requirement validation. |
+| COBie | — | Yes | Check worksheet and required-field completeness. |
+| DXF | Yes | Yes | Verify supported entities, layers, dimensions, fonts, and units. |
+| DWG | Yes, via browser-side bridge | Not fully confirmed | Check the actual output path before relying on export. |
+| glTF / GLB | Yes | Yes | Check materials, transforms, and element metadata. |
+| OBJ / STL / PLY | Yes | Not listed | Primarily geometry exchange; BIM semantics may not be preserved. |
+| PDF | — | Yes | Drawing/sheet output; validate printed scale and layout. |
+| CSV | — | Yes | Reports, quantities, schedules, and cost outputs where supported. |
+
+**Interoperability rule:** opening a file successfully does not prove complete round-trip fidelity. Keep a source copy and compare geometry, element counts, identifiers, properties, units, coordinates, and unsupported entities using representative test files.
+
+## Typical workflows
+
+### Start a project and inspect a model
+
+1. Start the application using the quick-start commands below.
+2. Create/open a project or import a supported model.
+3. Fit the model to the viewport.
+4. Select an element and inspect its properties.
+5. Use the model tree, visibility controls, and section tools to inspect the model.
+6. Save/export a test copy and validate the result.
+
+### Author and validate a building element
+
+1. Choose the appropriate authoring command and confirm its inputs and units.
+2. Create the element in a disposable test project.
+3. Check dimensions, level/host relationships, and constraints.
+4. Test modification, undo/redo, and save/reopen behavior.
+5. Confirm schedule inclusion and export behavior before using the element in a deliverable.
+
+### Coordinate discipline models
+
+1. Load the required models.
+2. Check units, origins, rotations, elevation offsets, and reference points.
+3. Configure clash groups A and B and select the detection method/tolerance.
+4. Run the test and review representative results.
+5. Create issues and export BCF/reports if needed.
+6. Verify issue viewpoints and identifiers after import into another compatible tool.
+
+### Produce a drawing set
+
+1. Generate or open plans, sections, and elevations.
+2. Check crop, view scale, dimensions, tags, and visibility.
+3. Place views on sheets and configure title blocks/revisions.
+4. Run documentation QA.
+5. Export PDF and inspect printed scale, page count, line weights, and text.
+
+### Prepare quantities and handover data
+
+1. Define the categories and schedule fields required.
+2. Confirm measurement rules and units.
+3. Review quantities, formulas, subtotals, and missing properties.
+4. Map approved rates for cost estimates if required.
+5. Export the required schedules/reports and validate exchange files independently.
+
+## Quick start
+
+### Requirements
+
+- Node.js 20.11 or newer is recommended by the project documentation.
+- npm 10 or newer.
+- A modern browser with WebAssembly support.
+- Additional network/provider configuration only for optional collaboration or AI services.
+
+### Run locally
 
 ```bash
-git clone https://github.com/amdghedy/openBIMstudio.git openbimstudio
-cd openbimstudio
+git clone https://github.com/amdghedy/openBIMstudio.git
+cd openBIMstudio
 npm install
 npm run dev
 ```
 
-The app runs at `http://localhost:3000`.
+Open the local address printed by the development server (the default Vite port is commonly `http://localhost:3000` in this project configuration).
 
-For a production build:
+### Type-check and build
 
 ```bash
+npm run typecheck
 npm run build
+npm run preview
 ```
 
-For the optional collaboration server (separate terminal):
+### Optional collaboration server
+
+Open a second terminal in the project root:
 
 ```bash
 npm run server
 ```
 
-The server listens on `http://localhost:4000` and exposes `/api/projects/:id` and `/api/rooms/:room`.
+The server is configured around `http://localhost:4000` and exposes project/room endpoints. Inspect the server implementation and its security configuration before making it reachable on a network.
 
-## Architecture at a glance
+## Quality and verification
 
-```
-Browser (Vite dev / prod)
-  index.html -> src/main.ts -> ~90 sequential boot steps
+The repository includes automated tests and verification scripts for selected geometry, authoring, selection, views, MEP routing, stairs, rebar, CAD links, native BIM validation, and other targeted workflows.
 
-  src/core/       typed service registry, input router,
-                  i18n, units, diagnostics, camera gate
+Useful commands include:
 
-  src/features/   authoring, navigation, selection,
-                  gizmo, snapping, measure, section,
-                  frag-edit, clash, importer, ribbon
-
-  src/modules/    families, clash, views, drawings,
-                  schedules, cost, standards, projects,
-                  issues, sheets, cde, model-tree,
-                  federation, timeline, phases, rooms
-
-  src/workers/    clash detection (BVH + GJK) off main thread
-
-           |                              |
-           v                              v
-   web-ifc (WASM)                    Node.js server
-   IFC -> FRAG                       projects, rooms
-                                     SSE + WebSocket
-```
-
-### Boot chain
-
-`main.ts` runs a fixed sequence of idempotent `setupXxx()` calls. Each step is wrapped so a failure in one module never prevents the rest of the app from loading. The ordered contract ensures that camera tools initialise before the input router, the router before navigation, and everything before the ribbon and workspace panels.
-
-### Service registry
-
-Cross-feature communication goes through a typed registry:
-
-```typescript
-services.selection.snapshot()        // throws if not registered
-services.tryUse("family")            // returns null if missing
-await services.ready("clash")        // resolves when registered
+```bash
+npm run typecheck
+npm run test:native-bim
+npm run test:mep
+npm run test:hip
+npm run test:hatch
+npm run test:stairs
+npm run test:rebar
+npm run test:view-crop
+npm run test:selection-box
+npm run test:section-box
+npm run test:view-lock
+npm run test:plan-draw
+npm run test:props
+npm run test:elbow
+npm run test:walk
+npm run test:cad-link
+npm run test:bim-gaps
+npm run verify
 ```
 
-This replaces ad-hoc window globals with a compile-time-checked contract while still supporting late registration.
+Additional versioned verification scripts are available in `package.json`. Read each script and its assertions to understand what it actually checks. A TypeScript check is not a runtime test; a smoke test is not proof of full interoperability.
 
-### Input router
-A single, priority-ordered router owns every pointer, wheel and Escape event on the 3D viewport. The first handler to accept a drag-start owns the gesture; nobody else sees its move or end events. Priorities: gizmo (100), box-select (50), navigation (30), context menu (20), authoring (10). This is what keeps a gizmo drag from accidentally orbiting the camera, or a rubber-band selection from placing a wall.
+### Suggested release checks
 
-## Project structure
+- [ ] The application starts without critical console errors.
+- [ ] Import and export work with representative small and large fixtures.
+- [ ] Element selection, properties, visibility, and model-tree synchronization work.
+- [ ] Authoring edits persist after save/reopen and behave safely with undo/redo.
+- [ ] Model alignment is checked against known reference points.
+- [ ] Clash tests include known positive and negative cases.
+- [ ] BCF/IFC/CAD/PDF outputs are validated independently.
+- [ ] Drawing scale, dimensions, sheet layout, and title-block fields are checked.
+- [ ] Quantities, costs, and standards checks are reviewed against project rules.
+- [ ] Known limitations and test evidence are documented for the release.
 
+## Architecture
+
+```text
+Browser application
+  src/core/        Typed services, input routing, units, diagnostics
+  src/features/    Viewer tools, authoring, ribbon, selection, commands
+  src/modules/     Families, federation, clash, views, sheets, schedules,
+                   cost, standards, issues, projects, phases, timeline
+  src/commands/    Undo-oriented command workflows
+  src/plugins/     Plugin loading and extension points
+  src/workers/     Off-main-thread coordination processing
+  src/locales/     Localization resources
+  server/          Optional project and collaboration services
 ```
-src/
-  core/           Typed services, context, routing, utilities
-  features/       User-facing features (authoring, selection, ribbon, ...)
-  modules/        Domain engines (families, clash, views, schedules, ...)
-    clash/        Triangle BVH, GJK, spatial hash
-    families/     Parametric engine, formula, constraints
-    views/        Scene2D pipeline, plan / section / elevation
-    drawings/     DXF reader / writer, DWG bridge
-    schedules/    Formula columns, grouping, subtotals
-    cost/         Quantity take-off, cost items
-    standards/    Rule packs (accessibility, fire, QA, structural)
-  shell/          Ribbon, file menu, status bar, home screen
-  commands/       Command pattern (undo-able operations)
-  plugins/        Plugin loader
-  locales/        i18n catalogs
-  workers/        Web Workers (clash detection)
-  main.ts         Boot sequence
-```
 
-## Status
-
-OpenBiMStudio is under active development. The core authoring, parametric, coordination and documentation engines are functional and being hardened for production use. Breaking changes to the internal API are still possible between minor versions; the IFC import/export surface is stable.
+The application boot sequence initializes feature modules in a defined order. Cross-feature communication uses a typed service registry, while a shared input router coordinates viewport interactions so tools do not unintentionally compete for pointer and keyboard events.
 
 ## Documentation
 
-The expanded documentation set is maintained under [`documentation/`](documentation/README.md):
+- [User Guide](documentation/USER_GUIDE.md) — setup, workflows, troubleshooting, and safe validation.
+- [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) — source-mapped feature inventory, maturity vocabulary, and verification guidance.
+- [Developer Guide](documentation/DEVELOPER_GUIDE.md) — architecture, module registration, persistence, testing, and security.
+- [Documentation index](documentation/README.md) — supporting technical notes and engineering gap reviews.
+- [BIM authoring guide](docs/02-authoring.md) — authoring concepts and parametric families.
+- [Coordination guide](docs/03-coordination.md) — clash workflow and issue exchange.
+- [Documentation guide](docs/04-documentation.md) — views, templates, and sheets.
+- [Native BIM validation](docs/NATIVE_BIM_VALIDATION.md) — validation checks and known boundaries.
+- [Plugin SDK](docs/PLUGIN_SDK.md) — extension development.
 
-- [User Guide](documentation/USER_GUIDE.md) — setup, workflows, troubleshooting and safe model validation.
-- [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) — source-mapped inventory of tool families and verification status.
-- [Developer Guide](documentation/DEVELOPER_GUIDE.md) — architecture, module registration, persistence, testing and security.
-- [Tool Reference Template](documentation/tools/README.md) — standard structure for documenting each command and workflow.
-- [Existing implementation and gap documents](documentation/README.md) — parametric engine, IFC/native BIM validation, drawings and parity milestones.
-
-The catalogue deliberately distinguishes source presence from runtime verification. Review each tool's limitations and test evidence before treating it as production-ready.
-
-## Contributing
+## Development and contribution
 
 Contributions are welcome.
 
 1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/your-feature`).
-3. Make your change, keeping the existing code style and running `npm run typecheck` before committing.
-4. Open a Pull Request describing what changed and why.
+2. Create a focused feature branch.
+3. Install dependencies with `npm install`.
+4. Run `npm run typecheck` and relevant targeted tests.
+5. Describe the change, verification performed, and any known limitations in your pull request.
 
-For significant changes, open an issue first to discuss the approach.
+For significant changes, open an issue first. Avoid committing project files, credentials, confidential model data, or provider tokens.
+
+## Scope and maturity
+
+OpenBIMStudio is under active development. The capabilities listed here describe the platform's current scope and documented implementation paths, not a guarantee that every command is fully wired, tested, or production-ready. Use the live UI, source code, test assertions, and Master Tool Catalogue together to establish the maturity of a specific workflow.
 
 ## License
 
-Distributed under the MIT License. See `LICENSE` for details.
+Distributed under the MIT License. See [LICENSE](LICENSE).
 
-## Acknowledgments
+## Open standards
 
-- The **buildingSMART** community for the IFC, IDS and BCF specifications.
-- The **That Open Company** team for `@thatopen/components` and `@thatopen/fragments`.
-- The **web-ifc** maintainers.
-- The **Three.js** community.
-- Everyone who has contributed to the open standards that make a project like this possible.
-
+OpenBIMStudio is built around open information exchange and benefits from the communities maintaining IFC, BCF, IDS, COBie, and related open standards.
