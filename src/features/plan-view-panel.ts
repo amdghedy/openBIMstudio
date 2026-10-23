@@ -10,7 +10,7 @@
 import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
-import { buildAutoDimensions } from "../modules/views/auto-dim-chains";
+import { buildAutoDimensions, buildRangeDimension } from "../modules/views/auto-dim-chains";
 import { resolveElementRef } from "../modules/views/element-snap-points";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
 import {
@@ -660,6 +660,51 @@ function resolvePlanDimensionRef(ref?: PlanDimensionRef): {x:number;z:number} | 
 }
 
 /** Dimension every column and wall: X and Y chains `offset` away from the model, plus overall rows. */
+/** Picks for the interactive Auto Dimension (first edge, last edge). */
+let planAutoPick: { p1?: { x: number; z: number; ref?: PlanDimensionRef }; p2?: { x: number; z: number; ref?: PlanDimensionRef }; axis?: "x" | "z" } | null = null;
+
+function finishAutoRange(linePos?: number): void {
+  const pk = planAutoPick;
+  if (!pk?.p1 || !pk.p2 || !pk.axis) return;
+  const auth: any = (ctx.features as any).authoring;
+  const els: any[] = (auth?.getElements?.() ?? ((window as any).__obsAuthoredElements ?? [])) as any[];
+  (window as any).__obsAuthoredElements = els;
+  const res = buildRangeDimension(els, { axis: pk.axis, p1: pk.p1 as any, p2: pk.p2 as any, linePos, offset: 0.5, stack: 0.5 });
+  planAutoPick = null;
+  if (!res.length) { footerStatus("Auto Dimension: nothing between those edges - pick the first edge again"); return; }
+  for (const r of res) {
+    planDims.push({
+      x1: r.x1, z1: r.z1, x2: r.x2, z2: r.z2, style: "linear", offsetMm: DIM_OFFSET_MM,
+      ref1: r.ref1 as PlanDimensionRef, ref2: r.ref2 as PlanDimensionRef,
+      axis: r.axis, linePos: r.linePos,
+    });
+  }
+  if (currentPlan) renderPlan(currentPlan);
+  const n = res.filter((r) => !r.overall).length;
+  footerStatus(`Auto Dimension: ${n} dimension(s) + overall - pick the next first edge (Esc = Select)`);
+}
+
+function handleAutoDimClick(w: { x: number; z: number }): void {
+  const hit = findDimensionBoundary(w);
+  const pt = hit ? { x: hit.point.x, z: hit.point.z, ref: hit.ref as PlanDimensionRef } : { x: w.x, z: w.z };
+  if (!planAutoPick || (!planAutoPick.p1)) {
+    planAutoPick = { p1: pt };
+    planDrawStart = { x: pt.x, z: pt.z };
+    footerStatus("Auto Dimension: pick the LAST edge");
+    return;
+  }
+  if (!planAutoPick.p2) {
+    const dx = pt.x - planAutoPick.p1.x, dz = pt.z - planAutoPick.p1.z;
+    if (Math.hypot(dx, dz) < 0.02) { footerStatus("Auto Dimension: last edge is the same as the first - pick another"); return; }
+    planAutoPick.p2 = pt;
+    planAutoPick.axis = Math.abs(dx) >= Math.abs(dz) ? "x" : "z";
+    footerStatus(`Auto Dimension (${planAutoPick.axis === "x" ? "horizontal" : "vertical"}): click to place the dimension line, or Enter for 50 cm outside`);
+    return;
+  }
+  finishAutoRange(planAutoPick.axis === "x" ? w.z : w.x);
+  planDrawStart = null;
+}
+
 async function runAutoDimension(): Promise<void> {
   try {
     const raw = window.prompt("Auto Dimension - distance from the outermost column / wall (cm):", "50");
@@ -906,6 +951,7 @@ type PlanDimKind =
   | "radial"       // center + edge: R = �
   | "diameter"     // edge through center: ? = �
   | "arc"          // 2 points along arc length
+  | "auto"         // pick first + last edge: dimension every wall / column / door / window between
   | "elevation"    // 1 click: spot elevation
   | "coordinate";  // 1 click: spot X / Z
 
@@ -2923,6 +2969,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
     }
 
     if (planMode === "dim") {
+      if (planDimStyle === "auto") { handleAutoDimClick(w); return; }
       // -- Spot Elevation / Coordinate: single click (BIM Spot tools) --
       if (planDimStyle === "elevation" || planDimStyle === "coordinate") {
         const pt = findNearestPointElement(w) ?? { x: w.x, z: w.z, elev: (() => {
@@ -3684,6 +3731,7 @@ export function setPlanToolFromRibbon(tool: string) {
     tool === "spot-coord" || tool === "coordinate"
   ) {
     planMode = "dim";
+    planAutoPick = null;
     planDrawStart = null;
     planDimStartRef = null;
     planDimSeg1 = null;
@@ -3725,6 +3773,17 @@ export function setPlanToolFromRibbon(tool: string) {
       footerStatus("Aligned: pick first model boundary");
     }
   } else if (tool === "auto-dim" || tool === "dim-auto") {
+    planMode = "dim";
+    planDimStyle = "auto";
+    planAutoPick = {};
+    planDrawStart = null;
+    planDimStartRef = null;
+    planChain = [];
+    canvasWrap.style.cursor = "crosshair";
+    try { showWallOpts(false); } catch { /* */ }
+    toolHint.textContent = "Modify | Auto Dimension \u2014 pick FIRST edge, LAST edge, then place";
+    footerStatus("Auto Dimension: pick the FIRST edge (wall, column, door or window face)");
+  } else if (tool === "auto-dim-all" || tool === "dim-auto-all") {
     void runAutoDimension();
   } else if (tool === "tag" || tool === "room-tag" || tool === "tag-all" || tool === "material-tag") {
     planMode = "tag";
@@ -3772,6 +3831,21 @@ try {
     if (!isPlanViewVisible()) return;
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea") return;
+
+    // Auto Dimension: Enter places the chain 50 cm outside the picked elements.
+    if (planMode === "dim" && planDimStyle === "auto" && planAutoPick?.p2 && e.key === "Enter") {
+      e.preventDefault(); e.stopImmediatePropagation();
+      finishAutoRange(undefined);
+      planDrawStart = null;
+      return;
+    }
+    if (planMode === "dim" && planDimStyle === "auto" && planAutoPick?.p1 && e.key === "Escape") {
+      planAutoPick = {};
+      planDrawStart = null;
+      footerStatus("Auto Dimension: pick the FIRST edge");
+      e.preventDefault(); e.stopImmediatePropagation();
+      return;
+    }
 
     // Typed length while a segment is being drawn: digits, then Enter places it
     // along the current cursor direction (Revit temporary-dimension entry).

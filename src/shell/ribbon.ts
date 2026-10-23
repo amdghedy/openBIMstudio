@@ -1220,7 +1220,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("auto-dim"), 40);
       }, "Auto dimension"), {
-        title: "Auto Dimension: X and Y dimension chains for all columns and walls, 50 cm outside the model",
+        title: "Auto Dimension: pick the first edge and the last edge - every wall, column, door and window between them is dimensioned",
+      }),
+      b("dim-auto", "Dim All", safe(() => {
+        if (!isPlanViewVisible()) togglePlanView();
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("auto-dim-all"), 40);
+      }, "Dimension all"), {
+        title: "Dimension All: X and Y chains for every column and wall, 50 cm outside the model",
       }),
       b("dim-angular", "Angular", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();

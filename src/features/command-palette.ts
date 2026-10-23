@@ -403,7 +403,7 @@ function bootstrapCommands(): void {
   // Tools
   registerCommand({ id: "tools.measure", label: toggleLabel("Measure", isMeasureEnabled), category: "Tools", kbd: "M", run: () => toggleMeasure() });
   registerCommand({ id: "tools.section", label: toggleLabel("Section plane", isSectionOn), category: "Tools", run: () => toggleSection() });
-  registerCommand({ id: "annotate.auto-dim", label: "Auto Dimension (columns + walls)", category: "Annotate", run: () => {
+  registerCommand({ id: "annotate.auto-dim", label: "Auto Dimension (pick first and last edge)", category: "Annotate", run: () => {
     try {
       const pv: any = (ctx.features as any).planView;
       if (!isPlanViewVisible()) togglePlanView();
