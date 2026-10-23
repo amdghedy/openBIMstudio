@@ -52,7 +52,7 @@ export type IconName =
   | "origin" | "recenter" | "reset-offsets" | "refresh"
   | "publish-coords" | "acquire-coords" | "specify-coords"
   // Annotation
-  | "dim-aligned" | "dim-linear" | "dim-angular" | "dim-radial" | "arc-length"
+  | "dim-aligned" | "dim-auto" | "dim-linear" | "dim-angular" | "dim-radial" | "arc-length"
   | "spot-elev" | "spot-coord"
   | "detail-line" | "detail-component" | "filled-region" | "masking-region"
   | "insulation" | "revision-cloud" | "model-curve"
@@ -232,6 +232,7 @@ const PATHS: Record<IconName, string> = {
 
   // ── Annotation ──────────────────────────────────────────────────────
   "dim-aligned": `<path d="M3 18 L21 6"/><path d="M3 15 V21 M21 3 V9"/>`,
+  "dim-auto": `<rect x="8" y="8" width="8" height="8"/><path d="M3 20 H21 M3 17 V23 M21 17 V23"/><path d="M3 4 V20 M0 4 H6"/>`,
   "dim-linear": `<path d="M4 12 H20"/><path d="M4 8 V16 M20 8 V16"/>`,
   "dim-angular": `<path d="M4 20 L4 4 M4 20 L20 20"/><path d="M10 20 A6 6 0 0 0 4 14"/>`,
   "dim-radial": `<circle cx="12" cy="12" r="8"/><path d="M12 12 L20 12"/><path d="M16 10 L20 12 L16 14"/>`,
