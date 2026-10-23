@@ -3403,6 +3403,8 @@ export function setLevel(v: number) {
   if (hit) activeLevelId = hit.id;
 }
 export function getLevel() { return level; }
+/** Root group of all authored (in-app modelled) geometry - used by walk mode for floors and collision. */
+export function getAuthoredGroup(): THREE.Object3D { return group; }
 
 /** BIM-style active level id. Null when no named level is selected. */
 export function getActiveLevelId(): string | null { return activeLevelId; }
