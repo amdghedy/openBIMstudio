@@ -1220,7 +1220,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("auto-dim"), 40);
       }, "Auto dimension"), {
-        kbd: "AD", title: "Auto Dimension: X and Y dimension chains for all columns and walls, 50 cm outside the model",
+        title: "Auto Dimension: X and Y dimension chains for all columns and walls, 50 cm outside the model",
       }),
       b("dim-angular", "Angular", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
