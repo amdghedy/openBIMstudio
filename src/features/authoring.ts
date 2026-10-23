@@ -13,6 +13,7 @@
  *     fragment and authored elements in one call.
  *   - Property palette state is published via onAuthoringChange.
  */
+import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
 import * as THREE from "three";
 import { CSG } from "three-csg-ts";
 import { ctx } from "../core/context";
@@ -825,22 +826,15 @@ function buildFitting(el: AuthoredElement): THREE.Object3D | null {
   // Elbow (default) — skip only if angles nearly equal (straight)
   if (Math.abs(((aIn - aOut + Math.PI) % (2 * Math.PI)) - Math.PI) < 0.05) return null;
 
-  const bendR = Math.max(r * 1.15, 0.06);
-  const inStartX = cx - Math.cos(aIn) * bendR;
-  const inStartZ = cz - Math.sin(aIn) * bendR;
-  const outEndX = cx + Math.cos(aOut) * bendR;
-  const outEndZ = cz + Math.sin(aOut) * bendR;
+  // True circular arc (same construction as the plan symbol and the duct trimming).
+  const widthForDefault = isRound ? p.thickness : Math.max(p.thickness, p.height);
+  const bendR = Number(p.bendRadius) > 0 ? Number(p.bendRadius) : defaultBendRadius(widthForDefault);
+  const eg = elbowGeometry([cx, cz], aIn, aOut, bendR);
+  if (!eg) return null;
 
   // Smoother elbow (more segments = BIM-like curved fitting)
-  const N = isRound ? 16 : 14;
-  const pts: THREE.Vector3[] = [];
-  for (let i = 0; i <= N; i++) {
-    const t = i / N;
-    const oneT = 1 - t;
-    const x = oneT * oneT * inStartX + 2 * oneT * t * cx + t * t * outEndX;
-    const z = oneT * oneT * inStartZ + 2 * oneT * t * cz + t * t * outEndZ;
-    pts.push(new THREE.Vector3(x, yCenter, z));
-  }
+  const N = isRound ? 20 : 18;
+  const pts: THREE.Vector3[] = elbowArcPoints(eg, N).map(([x, z]) => new THREE.Vector3(x, yCenter, z));
 
   if (isRound) {
     const curve = new THREE.CatmullRomCurve3(pts);
@@ -858,10 +852,10 @@ function buildFitting(el: AuthoredElement): THREE.Object3D | null {
   const rings: THREE.Vector3[][] = [];
 
   for (let i = 0; i < pts.length; i++) {
-    const t = i / N;
-    const oneT = 1 - t;
-    const dx = 2 * (oneT * (cx - inStartX) + t * (outEndX - cx));
-    const dz = 2 * (oneT * (cz - inStartZ) + t * (outEndZ - cz));
+    const prev = pts[Math.max(0, i - 1)];
+    const next = pts[Math.min(pts.length - 1, i + 1)];
+    const dx = next.x - prev.x;
+    const dz = next.z - prev.z;
     let tan = new THREE.Vector3(dx, 0, dz);
     if (tan.lengthSq() < 1e-9) tan.set(1, 0, 0);
     tan.normalize();
@@ -3960,15 +3954,18 @@ export async function addLinearElement(
             lastPlanLinear.end[1] - parent.params.start[1],
           );
           const nextLen = Math.hypot(ex - sx, ez - sz);
-          const baseRadius = Math.max(0.04, Math.max(thick, height) / 2);
-          // Keep enough straight run on both sides of the fitting.
-          const bendRadius = Math.max(0.025, Math.min(baseRadius, prevLen * 0.42, nextLen * 0.42));
+          // Revit-style elbow: centreline radius 1.5 x width, shrunk only when the
+          // adjoining runs are too short. Runs end at the true tangent points
+          // (tangent length = r * tan(turn / 2), not r, for non-90 degree bends).
           const bendX = lastPlanLinear.end[0];
           const bendZ = lastPlanLinear.end[1];
-          const inX = bendX - Math.cos(lastPlanLinear.dir) * bendRadius;
-          const inZ = bendZ - Math.sin(lastPlanLinear.dir) * bendRadius;
-          const outX = bendX + Math.cos(dir) * bendRadius;
-          const outZ = bendZ + Math.sin(dir) * bendRadius;
+          const turn = turnAngle(lastPlanLinear.dir, dir);
+          const bendRadius = clampBendRadius(defaultBendRadius(Math.max(thick, height)), turn, prevLen, nextLen);
+          const eg = elbowGeometry([bendX, bendZ], lastPlanLinear.dir, dir, bendRadius);
+          const inX = eg ? eg.T1[0] : bendX;
+          const inZ = eg ? eg.T1[1] : bendZ;
+          const outX = eg ? eg.T2[0] : bendX;
+          const outZ = eg ? eg.T2[1] : bendZ;
 
           // Trim the previous run back to the elbow's inlet connection.
           // The mutation is committed atomically with the fitting + new run below.
@@ -4242,10 +4239,13 @@ export function migrateMepFittingRadii(): number {
     const aIn  = Number((f.params as any).angleIn  ?? 0);
     const aOut = Number((f.params as any).angleOut ?? Math.PI / 2);
 
-    const oldT1: [number, number] = [cx - Math.cos(aIn)  * oldR, cz - Math.sin(aIn)  * oldR];
-    const oldT2: [number, number] = [cx + Math.cos(aOut) * oldR, cz + Math.sin(aOut) * oldR];
-    const newT1: [number, number] = [cx - Math.cos(aIn)  * newR, cz - Math.sin(aIn)  * newR];
-    const newT2: [number, number] = [cx + Math.cos(aOut) * newR, cz + Math.sin(aOut) * newR];
+    const oldG = elbowGeometry([cx, cz], aIn, aOut, oldR);
+    const newG = elbowGeometry([cx, cz], aIn, aOut, newR);
+    if (!oldG || !newG) continue;
+    const oldT1: [number, number] = oldG.T1;
+    const oldT2: [number, number] = oldG.T2;
+    const newT1: [number, number] = newG.T1;
+    const newT2: [number, number] = newG.T2;
 
     const parentType = String((f.params as any).parentType ?? "duct");
     const tol = Math.max(newR * 1.5, ductWidth * 2.5, 0.5);

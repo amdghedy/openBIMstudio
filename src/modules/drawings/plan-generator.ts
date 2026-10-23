@@ -12,6 +12,7 @@
  * Screen convention inside the plan: `screenX = worldX`, `screenY = -worldZ`.
  * The panel handles the flip when rendering SVG.
  */
+import { defaultBendRadius, elbowGeometry } from "../mep/elbow-geometry";
 import * as THREE from "three";
 import { ctx } from "../../core/context";
 import { getElementTriangles } from "../clash/geometry";
@@ -239,6 +240,24 @@ export async function generatePlanView(
 // Authored element plan symbols
 // ══════════════════════════════════════════════════════════════════════════
 
+/** True when an elbow fitting of the same system has a connection point at (x, z). */
+function connectedToFitting(el: AuthoredElement, x: number, z: number): boolean {
+  try {
+    for (const f of getElements()) {
+      if (f.type !== "fitting") continue;
+      const fp: any = f.params;
+      if (String(fp.parentType ?? "duct") !== el.type || !fp.point) continue;
+      if (String(fp.fittingKind ?? "elbow") !== "elbow") continue;
+      const t = fp.thickness ?? 0.3;
+      const r = Number(fp.bendRadius) > 0 ? Number(fp.bendRadius) : defaultBendRadius(Math.max(t, 0.05));
+      const eg = elbowGeometry([fp.point[0], fp.point[1]], fp.angleIn ?? 0, fp.angleOut ?? Math.PI / 2, r);
+      if (!eg) continue;
+      if (Math.hypot(eg.T1[0] - x, eg.T1[1] - z) < 0.03 || Math.hypot(eg.T2[0] - x, eg.T2[1] - z) < 0.03) return true;
+    }
+  } catch { /* */ }
+  return false;
+}
+
 function emitLinearThick(
   push: (s: PlanSegment) => void,
   el: AuthoredElement,
@@ -257,8 +276,14 @@ function emitLinearThick(
   const t2 = Math.max(0.02, thickness / 2);
   push({ x1: ax + nx * t2, z1: az + nz * t2, x2: bx + nx * t2, z2: bz + nz * t2, kind, source: el.id });
   push({ x1: ax - nx * t2, z1: az - nz * t2, x2: bx - nx * t2, z2: bz - nz * t2, kind, source: el.id });
-  push({ x1: ax + nx * t2, z1: az + nz * t2, x2: ax - nx * t2, z2: az - nz * t2, kind, source: el.id });
-  push({ x1: bx + nx * t2, z1: bz + nz * t2, x2: bx - nx * t2, z2: bz - nz * t2, kind, source: el.id });
+  // Runs joined to an elbow continue into the fitting outline: no end cap there (Revit).
+  const joinable = el.type === "duct" || el.type === "pipe" || el.type === "cable-tray" || el.type === "conduit";
+  if (!(joinable && connectedToFitting(el, ax, az))) {
+    push({ x1: ax + nx * t2, z1: az + nz * t2, x2: ax - nx * t2, z2: az - nz * t2, kind, source: el.id });
+  }
+  if (!(joinable && connectedToFitting(el, bx, bz))) {
+    push({ x1: bx + nx * t2, z1: bz + nz * t2, x2: bx - nx * t2, z2: bz - nz * t2, kind, source: el.id });
+  }
 }
 
 function emitAuthoredSymbol(
@@ -542,63 +567,18 @@ function emitAuthoredSymbol(
       const t = p.thickness ?? 0.3;
       const t2 = Math.max(0.02, t / 2);
       const isRound = parentType === "pipe" || parentType === "conduit";
-      // Enforce BIM-style minimum: centerline bend radius >= duct width.
+      // Same construction as the 3D fitting and the duct trimming (shared module).
       const ductWidth = Math.max(t, 0.05);
       const baseR = Number(p.bendRadius);
-      const r = Math.max(ductWidth, Number.isFinite(baseR) && baseR > 0
-        ? baseR
-        : ductWidth);
+      const r = Number.isFinite(baseR) && baseR > 0 ? baseR : defaultBendRadius(ductWidth);
 
       if (kind === "elbow") {
-        // MEP elbow v2 — correct circular-arc construction.
-        //
-        // Geometry, in order:
-        //   • Corner C is where the two centerlines meet.
-        //   • Tangent points T1, T2 sit r units back along each duct:
-        //         T1 = C − dir(aIn) * r
-        //         T2 = C + dir(aOut) * r
-        //   • Bend center O is r units from T1 perpendicular to aIn,
-        //     on the side that faces the outgoing duct. Because it is
-        //     also r units from T2 perpendicular to aOut, the two
-        //     perpendiculars intersect exactly at O.
-        //   • The outer boundary arc is at radius r + t/2 from O,
-        //     the inner boundary at r − t/2.
-        const inX  = cxF - Math.cos(aIn)  * r;
-        const inZ  = czF - Math.sin(aIn)  * r;
-        const outX = cxF + Math.cos(aOut) * r;
-        const outZ = czF + Math.sin(aOut) * r;
-
-        // Perpendicular unit vectors to aIn:
-        const perpA = { x: Math.sin(aIn), z: -Math.cos(aIn) };
-        const perpB = { x: -Math.sin(aIn), z: Math.cos(aIn) };
-        // Pick the perpendicular that points from T1 toward T2.
-        const toOut = { x: outX - inX, z: outZ - inZ };
-        const useA = (toOut.x * perpA.x + toOut.z * perpA.z) > 0;
-        const perp = useA ? perpA : perpB;
-
-        const CbX = inX + perp.x * r;
-        const CbZ = inZ + perp.z * r;
-
-        // Angles on the bend circle. Normalise sweep to (−π, π].
-        const inletAngle = Math.atan2(inZ - CbZ, inX - CbX);
-        let sweep = aOut - aIn;
-        while (sweep > Math.PI)  sweep -= 2 * Math.PI;
-        while (sweep < -Math.PI) sweep += 2 * Math.PI;
-        const arcEnd = inletAngle + sweep;
-
+        const eg = elbowGeometry([cxF, czF], aIn, aOut, r);
+        if (!eg) break;
         const rOuter = r + t2;
-        const rInner = Math.max(0.02, r - t2);
-
-        arcs.push({
-          cx: CbX, cz: CbZ, r: rOuter,
-          start: inletAngle, end: arcEnd,
-          kind: "fitting",
-        });
-        arcs.push({
-          cx: CbX, cz: CbZ, r: rInner,
-          start: inletAngle, end: arcEnd,
-          kind: "fitting",
-        });
+        const rInner = Math.max(0.01, r - t2);
+        arcs.push({ cx: eg.O[0], cz: eg.O[1], r: rOuter, start: eg.startAngle, end: eg.startAngle + eg.sweep, kind: "fitting" });
+        arcs.push({ cx: eg.O[0], cz: eg.O[1], r: rInner, start: eg.startAngle, end: eg.startAngle + eg.sweep, kind: "fitting" });
         break;
       }
 

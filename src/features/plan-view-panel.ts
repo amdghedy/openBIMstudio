@@ -1691,9 +1691,10 @@ function renderPlan(plan: PlanView) {
       path.setAttribute("stroke-dasharray", `${(0.5 * (zoomedW / 1200))} ${(0.5 * (zoomedW / 1200))}`);
     } else {
       // MEP fitting: solid, matching the duct edge thickness
-      path.setAttribute("stroke", "#111827");
-      path.setAttribute("stroke-width", String(4.0 * (zoomedW / 1200)));
-      path.setAttribute("stroke-linecap", "round");
+      // Same weight as the duct outline so the elbow reads as part of the run.
+      path.setAttribute("stroke", STYLE.cut.stroke);
+      path.setAttribute("stroke-width", String(STYLE.cut.width * (zoomedW / 1200)));
+      path.setAttribute("stroke-linecap", "butt");
     }
     g.appendChild(path);
   }
