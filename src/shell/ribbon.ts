@@ -1216,6 +1216,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Linear dimension"), {
         title: "Linear Dimension: horizontal / vertical between two boundaries",
       }),
+      b("dim-aligned", "Auto Dim", safe(() => {
+        if (!isPlanViewVisible()) togglePlanView();
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("auto-dim"), 40);
+      }, "Auto dimension"), {
+        title: "Auto Dimension: X and Y dimension chains for all columns and walls, 50 cm outside the model",
+      }),
       b("dim-angular", "Angular", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
         setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-angular"), 40);
