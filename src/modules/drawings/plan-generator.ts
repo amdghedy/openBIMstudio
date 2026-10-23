@@ -479,7 +479,7 @@ function emitAuthoredSymbol(
             cx: hingeX, cz: hingeZ, r: w,
             start: Math.atan2(nz, nx),
             end: Math.atan2(uz, ux),
-            kind: "door-swing",
+            kind: "door-swing", source: openingEl.id,
           });
           push({
             x1: hingeX, z1: hingeZ,
@@ -577,8 +577,8 @@ function emitAuthoredSymbol(
         if (!eg) break;
         const rOuter = r + t2;
         const rInner = Math.max(0.01, r - t2);
-        arcs.push({ cx: eg.O[0], cz: eg.O[1], r: rOuter, start: eg.startAngle, end: eg.startAngle + eg.sweep, kind: "fitting" });
-        arcs.push({ cx: eg.O[0], cz: eg.O[1], r: rInner, start: eg.startAngle, end: eg.startAngle + eg.sweep, kind: "fitting" });
+        arcs.push({ cx: eg.O[0], cz: eg.O[1], r: rOuter, start: eg.startAngle, end: eg.startAngle + eg.sweep, kind: "fitting", source: el.id });
+        arcs.push({ cx: eg.O[0], cz: eg.O[1], r: rInner, start: eg.startAngle, end: eg.startAngle + eg.sweep, kind: "fitting", source: el.id });
         break;
       }
 

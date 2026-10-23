@@ -23,6 +23,8 @@ export interface PlanArc {
   // "door-swing" → dashed thin indicator
   // "fitting"    → solid MEP elbow outer/inner boundary arc
   kind: "door-swing" | "fitting";
+  /** Authored element that produced this arc (for selection highlight). */
+  source?: string;
 }
 
 export interface PlanText {

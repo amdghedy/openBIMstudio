@@ -22,7 +22,7 @@ import {
   rebuildAuthored,
   markAuthoringDirty,
 } from "./authoring";
-import { getSchema, type PropertyField, type FieldTarget } from "./property-schema";
+import { getSchema, setLevelsProvider, type PropertyField, type FieldTarget } from "./property-schema";
 import { svgIcon, type IconName } from "./icon-set";
 import { levels } from "../modules/levels";
 import { makeDockable, type DockHandle } from "./dockable";
@@ -95,6 +95,11 @@ function writeValue(
   if (element) {
     if (isElementLocked(element.id)) {
       alert(`Cannot edit: this element is currently locked by ${getLockOwner(element.id)}.`);
+      return;
+    }
+    // Elbow bend radius re-trims connected runs through the authoring service.
+    if (key === "bendRadius" && element.type === "fitting") {
+      import("./authoring").then((m) => (m as any).setElbowBendRadius?.(element.id, Number(value)));
       return;
     }
     // 1. Snapshot the "before" state for Undo
@@ -887,6 +892,7 @@ function installPaletteTheme(): void {
   document.head.appendChild(style);
 }
 export function setupPropertyPalette(): void {
+  setLevelsProvider(() => ((ctx.features as any).authoring?.getLevels?.() ?? []) as any);
   installPaletteTheme();
   ctx.rightHost.appendChild(panel);
 

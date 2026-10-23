@@ -164,6 +164,12 @@ let planViewRangeDepth = 3;
 
 function planFieldValue(field: PropertyField, el: any, typeKey: string): string {
   if (el) {
+    if (typeof field.compute === "function") {
+      try {
+        const v = field.compute(el);
+        if (v !== undefined && v !== null) return String(v);
+      } catch { /* fall through to stored value */ }
+    }
     if (field.target === "root") return String((el as any)[field.key] ?? "");
     if (field.target === "params") return String((el.params as any)?.[field.key] ?? "");
     return String((el.properties as any)?.[field.key] ?? "");
@@ -303,7 +309,12 @@ function renderPlanProperties() {
 
       let input: HTMLElement;
       const val = planFieldValue(field, el, typeKey);
-      if (field.type === "select" && field.options) {
+      if (field.readOnly) {
+        const ro = document.createElement("div");
+        ro.textContent = val === "" ? "\u2014" : val;
+        ro.style.cssText = "width:100%;padding:3px 4px;font:12px system-ui;color:#6b7280;background:#f3f4f6;min-height:18px";
+        input = ro;
+      } else if (field.type === "select" && field.options) {
         const sel = document.createElement("select");
         sel.style.cssText = "width:100%;border:1px solid #e5e7eb;padding:3px;font:12px system-ui;background:#fff";
         for (const o of field.options) {
@@ -379,6 +390,14 @@ async function applyPlanField(field: PropertyField, raw: string, el: any, typeKe
       return;
     }
     // Edit selected element
+    if (field.key === "bendRadius" && el.type === "fitting") {
+      const auth = await import("./authoring");
+      const ok = (auth as any).setElbowBendRadius?.(el.id, Number(raw));
+      if (ok === false) footerStatus("Bend radius too large for the connected runs");
+      await regenerate();
+      renderPlanProperties();
+      return;
+    }
     if (field.target === "root") (el as any)[field.key] = field.type === "number" ? Number(raw) : raw;
     else if (field.target === "params") {
       (el.params as any)[field.key] = field.type === "number" ? Number(raw) : raw;
@@ -1697,6 +1716,41 @@ function renderPlan(plan: PlanView) {
       path.setAttribute("stroke-linecap", "butt");
     }
     g.appendChild(path);
+  }
+
+  // -- Selected element feedback: Revit-style blue outline of the whole element --
+  if (planDisplayModel && planSelectedIds.size) {
+    const SVGNS = "http://www.w3.org/2000/svg";
+    const hs = Math.max(zoomedW / 1200, 1e-6);
+    const hl = (ids: Set<string>, color: string, w: number, op: number) => {
+      for (const s of plan.segments) {
+        if (!s.source || !ids.has(s.source)) continue;
+        const p1 = screen(s.x1, s.z1), p2 = screen(s.x2, s.z2);
+        const ln = document.createElementNS(SVGNS, "line");
+        ln.setAttribute("x1", String(p1.x)); ln.setAttribute("y1", String(p1.y));
+        ln.setAttribute("x2", String(p2.x)); ln.setAttribute("y2", String(p2.y));
+        ln.setAttribute("stroke", color); ln.setAttribute("stroke-width", String(w * hs));
+        ln.setAttribute("stroke-opacity", String(op)); ln.setAttribute("stroke-linecap", "round");
+        ln.setAttribute("pointer-events", "none"); ln.setAttribute("data-obs-sel-hl", "1");
+        g.appendChild(ln);
+      }
+      for (const a of plan.arcs) {
+        if (!a.source || !ids.has(a.source)) continue;
+        let d = "";
+        for (let i = 0; i <= 48; i++) {
+          const ang = a.start + (a.end - a.start) * (i / 48);
+          const pt = screen(a.cx + Math.cos(ang) * a.r, a.cz + Math.sin(ang) * a.r);
+          d += `${i === 0 ? "M" : "L"}${pt.x} ${pt.y} `;
+        }
+        const pa = document.createElementNS(SVGNS, "path");
+        pa.setAttribute("d", d); pa.setAttribute("fill", "none");
+        pa.setAttribute("stroke", color); pa.setAttribute("stroke-width", String(w * hs));
+        pa.setAttribute("stroke-opacity", String(op)); pa.setAttribute("pointer-events", "none");
+        pa.setAttribute("data-obs-sel-hl", "1");
+        g.appendChild(pa);
+      }
+    };
+    hl(planSelectedIds, "#2563eb", 3.2, 0.9);
   }
 
   // -- Selected element feedback (BIM-style blue selection) --
