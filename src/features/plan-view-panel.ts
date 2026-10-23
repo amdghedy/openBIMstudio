@@ -10,6 +10,7 @@
 import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
+import { resolveElementRef } from "../modules/views/element-snap-points";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
 import {
   generatePlanView,
@@ -629,6 +630,9 @@ function resolvePlanDimensionRef(ref?: PlanDimensionRef): {x:number;z:number} | 
     return {x:Number(ref.x),z:Number(ref.z)};
   }
   if (!ref.elementId) return null;
+  if (ref.kind === "polygon-vertex" || ref.kind === "hosted") {
+    return resolveElementRef(ref as any, ((window as any).__obsAuthoredElements ?? []) as any[]);
+  }
   const els=((window as any).__obsAuthoredElements ?? []) as any[];
   const el=els.find((e)=>String(e?.id)===String(ref.elementId));
   if (!el?.params) return null;
@@ -840,13 +844,13 @@ let planCursor: { x: number; z: number } | null = null;
 let __planCursorOverlay: HTMLDivElement | null = null;
 let __planCursorSvg: SVGSVGElement | null = null;
 let __lastSnapKind = "";
-let planSnap: { x: number; z: number; kind: string; ref?: PlanDimensionRef } | null = null;
+let planSnap: { x: number; z: number; kind: string; label?: string; ref?: PlanDimensionRef } | null = null;
 /** Placement options bar (BIM Modify | Place �). */
 let planWidth = 0.3;   // m � duct/wall thickness in plan
 let planHeight = 0.3;  // m � extrusion height
 let planElevOffset = 0; // m above level
 
-type PlanBoundaryKind = "linear-side" | "linear-cap" | "point-edge" | "point-corner" | "static-boundary";
+type PlanBoundaryKind = "linear-side" | "linear-cap" | "point-edge" | "point-corner" | "static-boundary" | "polygon-vertex" | "hosted";
 
 export interface PlanDimensionRef {
   elementId?: string;
@@ -861,6 +865,8 @@ export interface PlanDimensionRef {
   dx?: number;
   dz?: number;
   side?: "left" | "right" | "start" | "end" | "top" | "bottom";
+  /** polygon-vertex: vertex index; hosted: -1 left jamb, 0 centre, 1 right jamb. */
+  index?: number;
 }
 /** BIM dimension kinds � placement sequence differs per style. */
 type PlanDimKind =
@@ -2415,7 +2421,7 @@ function renderPlanSnapMarker(): void {
   while (wrap.firstChild) g.appendChild(wrap.firstChild);
   __planCursorSvg.appendChild(g);
 
-  const label = SNAP_LABELS_LOCAL[kind];
+  const label = planSnap.label ?? SNAP_LABELS_LOCAL[kind];
   const color = SNAP_COLORS_LOCAL[kind] ?? "#FBBF24";
   if (label) {
     const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -3269,7 +3275,8 @@ window.addEventListener("mousemove", (e) => {
           planSnap = {
             x: hit.point.x,
             z: hit.point.z,
-            kind: String(h.label ?? "Boundary").toLowerCase(),
+            kind: String(h.kind ?? "face"),
+            label: h.label ? String(h.label) : undefined,
             ref: hit.ref,
           };
           planCursor = { x: hit.point.x, z: hit.point.z };

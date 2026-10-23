@@ -41,6 +41,7 @@
     "test:section-box": "node tests/section-box.test.cjs",
     "test:view-lock": "node tests/view-lock.test.cjs",
     "test:plan-draw": "node tests/plan-draw.test.cjs",
+    "test:snap-points": "node tests/element-snap-points.test.cjs",
     "test:props": "node tests/property-schema-revit.test.cjs",
     "test:elbow": "node tests/elbow-geometry.test.cjs",
     "test:walk": "node tests/walk-physics.test.cjs",
