@@ -189,6 +189,176 @@ Provider availability depends on configuration. Before using AI with confidentia
 
 Local-only use does not require running the collaboration server. Before exposing the server outside localhost, inspect authentication, authorization, storage, network configuration, and deployment security.
 
+## Button and command function reference
+
+This table groups the platform's documented buttons, commands, panels, and tools by their purpose. Exact button labels and availability can vary by workspace, module registration, and application version. Some entries represent command families or panels rather than one single visible button; check the live interface and the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) before assuming every command is enabled or production-verified.
+
+### Project and file commands
+
+| Button / command | Main function |
+|---|---|
+| **New Project** | Create a project workspace. |
+| **Open Project** | Open an existing project where supported. |
+| **Recent Projects / Project Browser** | Find and navigate available projects and project data. |
+| **Project Information** | Review or edit supported project metadata. |
+| **Import Model / Import File** | Load a supported model or exchange file. |
+| **Export Model / Export File** | Write model data to a supported exchange format. |
+| **Manage Links** | Review linked models, reload or detach links, and manage supported link transforms. |
+| **Federation** | Combine multiple models in one coordination workspace. |
+| **Save View** | Store a camera or view state for later use. |
+
+### Viewport and navigation
+
+| Button / command | Main function |
+|---|---|
+| **Select** | Select an element in the viewport. |
+| **Multi-select** | Select multiple elements for inspection or supported bulk operations. |
+| **Box Select** | Select elements within a screen-space selection rectangle. |
+| **Select All** | Select all elements in the active selection scope. |
+| **Orbit** | Rotate the camera around a target. |
+| **Pan** | Move the camera view without changing its orientation. |
+| **Zoom** | Change the view magnification. |
+| **Fit / Zoom to Extents** | Frame the available model geometry in the viewport. |
+| **Focus on Selection** | Move the view focus to the selected element or elements. |
+| **Walk Mode / Minimap** | Navigate the model in a first-person style and use the minimap where available. |
+| **Model Tree** | Browse model hierarchy and select elements from the tree. |
+| **Properties** | Inspect supported element properties and edit fields that are enabled for editing. |
+| **Measure** | Measure distances between supported points or references. |
+| **Temporary Dimensions** | Display temporary dimensional feedback during supported interactions. |
+| **Cursor Coordinates** | Show cursor or placement coordinates in the active units. |
+| **Snapping** | Help align placement or edits to supported geometric references. |
+| **Transform Gizmo** | Move, rotate, or otherwise transform selected geometry using the available handles. |
+| **Section / Section Box** | Clip the model to inspect internal geometry. |
+| **Hide** | Hide selected elements from the current view. |
+| **Isolate** | Show selected elements while temporarily suppressing other geometry. |
+| **Reset Visibility** | Restore visibility after hide/isolate operations. |
+| **Category Visibility** | Show or hide supported element categories. |
+| **Saved Views** | Restore saved camera or view states. |
+| **LOD Controls** | Adjust supported level-of-detail display behavior. |
+| **Model Health** | Review model diagnostics and reported data/geometry issues. |
+
+### Create and modify model elements
+
+| Button / command | Main function |
+|---|---|
+| **BIM Object Studio / Toolbox** | Open the available element creation tools and category workflows. |
+| **Primitives** | Create supported basic geometry. |
+| **Push / Pull** | Modify supported geometry by pushing or pulling faces or profiles. |
+| **Wall** | Create wall geometry with supported placement and construction options. |
+| **Wall Handles** | Edit supported wall geometry using interactive handles. |
+| **Floor / Slab** | Create supported floor or slab geometry. |
+| **Roof** | Create supported roof forms. |
+| **Ceiling** | Access supported ceiling-authoring workflows where available. |
+| **Door / Window** | Place supported door or window components, including host-aware placement where implemented. |
+| **Levels** | Create or manage level references and elevations. |
+| **Grids / Plan Grid** | Work with grid references or plan-grid drawing tools. |
+| **Rooms / Areas** | Create or inspect supported room/area data and boundaries. |
+| **Stairs** | Create or edit supported stair geometry. |
+| **Railings** | Create supported railing elements. |
+| **Curtain Wall** | Create or edit supported curtain-wall grids, panels, and mullions. |
+| **Structural Members** | Access supported beam, brace, truss, footing, and foundation workflows. |
+| **Ducts / Pipes** | Create supported MEP runs. |
+| **Cable Trays / Conduits** | Create supported containment routes. |
+| **MEP Fittings / Routing** | Create or connect supported fittings and routing segments. |
+| **MEP Fabrication** | Access implemented fabrication-related workflows. |
+| **P&ID Modeler** | Work with supported process/instrumentation symbols and connectivity. |
+| **Materials** | Assign or manage supported material definitions and appearances. |
+| **Shared Parameters** | Manage supported parameter definitions and bindings. |
+| **Type Catalog** | Browse or manage supported element types. |
+| **Family Browser** | Browse available family content. |
+| **Parametric Family Editor** | Work with supported formulas, parameters, constraints, and nested/array structures. |
+| **Reference Planes** | Create and manage reference geometry for supported workflows. |
+| **Groups** | Organize supported elements into groups. |
+| **Design Options** | Manage supported alternative design sets. |
+| **Phases** | Assign or review supported phase information. |
+| **Copy / Monitor** | Set up or review supported monitored relationships between elements. |
+| **Move** | Translate selected elements. |
+| **Copy** | Duplicate selected elements. |
+| **Rotate** | Rotate selected elements around a supported axis or pivot. |
+| **Mirror** | Reflect selected elements across a supported axis or plane. |
+| **Array** | Create repeated copies in supported array workflows. |
+| **Align** | Align selected geometry to a supported reference. |
+| **Distribute** | Space selected elements using supported distribution behavior. |
+| **Match Properties** | Copy supported property values from one element to another. |
+| **Paint** | Apply supported material or appearance assignments. |
+| **Group / Ungroup** | Create or dissolve supported element groups. |
+| **Create Similar** | Start a new placement using the selected element's supported type or settings. |
+| **Constraint Solver** | Evaluate or apply supported geometric constraints. |
+| **AccuDraw / Precision Drawing** | Support coordinate-based drawing and precise placement where available. |
+
+### Drawings, annotation, and sheets
+
+| Button / command | Main function |
+|---|---|
+| **Plan View** | Generate or open a supported plan view. |
+| **Section View** | Generate or open a supported section view. |
+| **Elevation View** | Generate or open a supported elevation view. |
+| **Reflected Ceiling Plan** | Access supported ceiling-plan view workflows. |
+| **Detail View / Drafting** | Create supported detail or 2D drafting content. |
+| **Draw Line / 2D Drawing Tools** | Add supported 2D drafting geometry. |
+| **Dimension** | Create supported linear, aligned, angular, radial, diameter, or other implemented dimensions. |
+| **Spot Elevation / Spot Coordinate** | Annotate supported elevation or coordinate values. |
+| **Tag** | Place supported element, room, or material tags. |
+| **Text / Leader** | Add annotation text and supported leader geometry. |
+| **Revision Cloud** | Mark a drawing area for revision review. |
+| **View Templates / View Graphics** | Apply or manage supported view display settings. |
+| **Sheets** | Create or navigate drawing sheets. |
+| **Place Viewport** | Place a supported view onto a sheet and configure its placement/scale. |
+| **Title Block / Revision Data** | Manage supported title-block and revision fields. |
+| **Export PDF** | Export supported drawing or sheet output to PDF. |
+| **Import / Export CAD** | Use supported CAD exchange paths; verify entity and round-trip coverage. |
+
+### Coordination, issues, and compliance
+
+| Button / command | Main function |
+|---|---|
+| **Clash Detection** | Run configured clash checks between selected model groups or categories. |
+| **Clash Method / Tolerance** | Configure supported detection approach and clearance/tolerance settings. |
+| **Clash Review** | Inspect clash pairs and focus the view on involved elements. |
+| **Group Clashes** | Organize related clash findings into review groups. |
+| **Clash Report** | Generate a report from supported clash results. |
+| **Issues Panel** | Create, browse, and update coordination issues where supported. |
+| **Issue Viewpoint** | Capture or restore supported camera, section, crop, and element context for an issue. |
+| **BCF Import / Export** | Exchange supported coordination issues using BCF 2.1 workflows. |
+| **IDS Validation** | Check loaded model information against supported Information Delivery Specification requirements. |
+| **Standards Check** | Run configured rule packs and review diagnostic results. |
+| **Standards Report** | Review or export supported rule-check findings. |
+| **Native BIM Validation** | Check selected model and documentation integrity rules. |
+| **Model Alignment** | Adjust or review model placement using supported alignment references. |
+| **MEP Coloring** | Apply supported visual coloring rules to MEP systems. |
+
+### Schedules, quantities, project time, and automation
+
+| Button / command | Main function |
+|---|---|
+| **Schedules** | Create, browse, or refresh supported element schedules. |
+| **Schedule Builder** | Configure schedule fields and supported calculated columns. |
+| **Quantity Takeoff** | Extract supported model quantities using the available measurement rules. |
+| **Material Takeoff** | Summarize supported material quantities. |
+| **Cost Panel** | Map quantities to configured rates and prepare cost estimates. |
+| **Timeline / 4D** | Review task timelines and supported element-to-task simulation. |
+| **Phase Display** | Review supported element phase and phase-related display behavior. |
+| **Automation Rules** | Configure supported rule triggers and actions. |
+| **Validation Diagnostics** | Inspect errors, warnings, and rule findings where available. |
+| **Command Palette** | Search for and activate registered commands. |
+| **Shortcuts** | Review or use configured keyboard shortcuts. |
+| **Context Menu** | Access actions relevant to the selected item or current context. |
+| **Workspace / UI Settings** | Adjust supported panels and interface visibility preferences. |
+| **Notifications / Diagnostics** | Review messages, warnings, and diagnostic feedback. |
+
+### AI and collaboration
+
+| Button / command | Main function |
+|---|---|
+| **AI Chat** | Open the configured AI assistance interface. |
+| **AI Provider Settings** | Configure supported AI providers; review data handling and credentials. |
+| **Embeddings** | Access supported embedding-related workflows. |
+| **AI Tools** | Access configured AI tool integrations, subject to permissions and provider availability. |
+| **Collaboration / Worksharing** | Use supported shared-state, presence, locking, or synchronization workflows when the required server is configured. |
+| **CDE Panel** | Access configured Common Data Environment/provider integration points; provider operations require separate verification. |
+
+**Important interpretation:** the table is a functional guide, not a guarantee that every row is a visible, enabled button in every build. Some labels describe related commands or panels, and some workflows remain partial or need configuration. For exact source mappings and maturity notes, use the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md). Validate each workflow with a test project before relying on it for formal deliverables.
+
 ## Interoperability
 
 The following table summarizes intended/currently implemented exchange paths. Format coverage and fidelity vary by entity type and workflow.
