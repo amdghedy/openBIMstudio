@@ -24,6 +24,7 @@ import { setupSection } from "./features/section";
 import { setupImporter } from "./features/importer";
 import { ctx } from "./core/context";
 import { setupSectionModal } from "./features/section-modal";
+import { setupSectionPlanePanel } from "./features/section-plane-panel";
 import { setupSchedulesUI } from "./features/schedules-ui";
 import { setupPlanAuthoringBridge } from "./features/plan-authoring-bridge";
 
@@ -257,6 +258,7 @@ await step("drawing", () => setupDrawing());
 await step("section", () => setupSection());
 await step("section-modal", () => {
   setupSectionModal();
+  setupSectionPlanePanel();
   import("./features/command-palette").then(m => {
     m.registerCommand({
       id: "section-modal",
