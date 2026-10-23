@@ -82,6 +82,8 @@ let activeFamilyId: string | null = null;
 let activeFamilyTypeId: string | null = null;
 
 const selectedIds = new Set<string>();
+/** Currently selected datum (grid line or level), if any. Mutually exclusive with element selection. */
+let selectedDatum: { kind: "grid" | "level"; id: string } | null = null;
 const elements: AuthoredElement[] = [];
 let grids: GridDatum[] = [];
 let levels: LevelDatum[] = [];
@@ -2976,30 +2978,140 @@ function rebuildDatums() {
     datumGroup.remove(ch);
     disposeObj(ch);
   }
+  const SEL = 0x2563eb;
+  const tag = (o: THREE.Object3D, kind: "grid" | "level", id: string) => { o.userData.datumKind = kind; o.userData.datumId = id; };
   for (const gr of grids) {
+    const sel = selectedDatum?.kind === "grid" && selectedDatum.id === gr.id;
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(gr.start[0], -5, gr.start[1]),
       new THREE.Vector3(gr.end[0], 15, gr.end[1]),
     ]);
-    const line = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 0.4, gapSize: 0.25 }));
+    const mat = sel
+      ? new THREE.LineBasicMaterial({ color: SEL, depthTest: false })
+      : new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 0.4, gapSize: 0.25 });
+    const line = new THREE.Line(geo, mat);
+    if (sel) line.renderOrder = 950;
     line.computeLineDistances();
+    tag(line, "grid", gr.id);
     datumGroup.add(line);
-    const spr = makeLabelSprite(gr.label);
+    const spr = makeLabelSprite(gr.label, sel ? "#60a5fa" : undefined);
     spr.position.set(gr.end[0], 15.6, gr.end[1]);
+    if (sel) spr.scale.set(1.3, 1.3, 1);
+    tag(spr, "grid", gr.id);
     datumGroup.add(spr);
   }
   for (const lv of levels) {
+    const sel = selectedDatum?.kind === "level" && selectedDatum.id === lv.id;
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(-25, lv.elevation, 0),
       new THREE.Vector3(25, lv.elevation, 0),
     ]);
-    const line = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: 0x22d3ee, dashSize: 0.5, gapSize: 0.25 }));
+    const mat = sel
+      ? new THREE.LineBasicMaterial({ color: SEL, depthTest: false })
+      : new THREE.LineDashedMaterial({ color: 0x22d3ee, dashSize: 0.5, gapSize: 0.25 });
+    const line = new THREE.Line(geo, mat);
+    if (sel) line.renderOrder = 950;
     line.computeLineDistances();
+    tag(line, "level", lv.id);
     datumGroup.add(line);
-    const spr = makeLabelSprite(lv.name.replace(/[^0-9]/g, "") || "L", "#22d3ee");
+    const spr = makeLabelSprite(lv.name.replace(/[^0-9]/g, "") || "L", sel ? "#60a5fa" : "#22d3ee");
     spr.position.set(25.8, lv.elevation, 0);
+    if (sel) spr.scale.set(1.3, 1.3, 1);
+    tag(spr, "level", lv.id);
     datumGroup.add(spr);
   }
+}
+
+/** Pick a grid line or level under the cursor (screen-space tolerance ~1% of view distance). */
+function datumAt(e: MouseEvent): { kind: "grid" | "level"; id: string } | null {
+  try {
+    if (!ctx.world?.camera?.three || !datumGroup.children.length) return null;
+    const cam = ctx.world.camera.three as THREE.Camera;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndcOf(e), cam);
+    let best: { kind: "grid" | "level"; id: string; d: number } | null = null;
+    const onRay = new THREE.Vector3(), onSeg = new THREE.Vector3();
+    for (const o of datumGroup.children) {
+      const kind = o.userData.datumKind, id = o.userData.datumId;
+      if (!kind || !id) continue;
+      let d = Infinity;
+      if ((o as THREE.Line).isLine) {
+        const pos = (o as THREE.Line).geometry.getAttribute("position");
+        const a = new THREE.Vector3().fromBufferAttribute(pos, 0);
+        const b = new THREE.Vector3().fromBufferAttribute(pos, 1);
+        const d2 = ray.ray.distanceSqToSegment(a, b, onRay, onSeg);
+        const tol = Math.max(0.05, onRay.distanceTo(ray.ray.origin) * 0.012);
+        if (d2 <= tol * tol) d = Math.sqrt(d2) / tol;
+      } else if ((o as THREE.Sprite).isSprite) {
+        const hit = ray.intersectObject(o, false)[0];
+        if (hit) d = 0.5;
+      }
+      if (d < Infinity && (!best || d < best.d)) best = { kind, id, d };
+    }
+    return best ? { kind: best.kind, id: best.id } : null;
+  } catch { return null; }
+}
+
+function setDatumSelection(sel: { kind: "grid" | "level"; id: string } | null): void {
+  const same = (!sel && !selectedDatum) || (sel && selectedDatum && sel.kind === selectedDatum.kind && sel.id === selectedDatum.id);
+  selectedDatum = sel;
+  if (!same) rebuildDatums();
+  refreshEditor();
+}
+
+export function getSelectedDatum() { return selectedDatum ? { ...selectedDatum } : null; }
+export function selectDatum(kind: "grid" | "level", id: string): boolean {
+  const exists = kind === "grid" ? grids.some((g) => g.id === id) : levels.some((l) => l.id === id);
+  if (!exists) return false;
+  selectedIds.clear();
+  applySelection(); refreshGrips();
+  setDatumSelection({ kind, id });
+  notifyAuthoringChange();
+  return true;
+}
+
+/** Delete a grid or level (undoable). Elements on a deleted level are kept but unconstrained. */
+export function deleteDatum(kind: "grid" | "level", id: string): boolean {
+  if (kind === "grid") {
+    const idx = grids.findIndex((g) => g.id === id);
+    if (idx < 0) return false;
+    const gr = grids[idx];
+    history.push({
+      label: `Delete grid ${gr.label}`,
+      apply: () => { const i = grids.findIndex((g) => g.id === id); if (i >= 0) grids.splice(i, 1); if (selectedDatum?.id === id) selectedDatum = null; rebuildDatums(); refreshEditor(); markDirty(); notifyAuthoringChange(); },
+      revert: () => { grids.splice(Math.min(idx, grids.length), 0, gr); rebuildDatums(); markDirty(); notifyAuthoringChange(); },
+    });
+    const i = grids.findIndex((g) => g.id === id); grids.splice(i, 1);
+    if (selectedDatum?.id === id) selectedDatum = null;
+    rebuildDatums(); refreshEditor(); markDirty(); notifyAuthoringChange();
+    notify("info", `Deleted grid ${gr.label}`);
+    return true;
+  }
+  const idx = levels.findIndex((l) => l.id === id);
+  if (idx < 0) return false;
+  const lv = levels[idx];
+  const wasActive = activeLevelId === id;
+  const owned = elements.filter((e) => e.levelId === id);
+  const doDelete = () => {
+    const i = levels.findIndex((l) => l.id === id); if (i >= 0) levels.splice(i, 1);
+    for (const e of owned) delete e.levelId;
+    if (activeLevelId === id) activeLevelId = null;
+    if (selectedDatum?.id === id) selectedDatum = null;
+    rebuildDatums(); refreshEditor(); markDirty(); notifyAuthoringChange();
+  };
+  history.push({
+    label: `Delete level ${lv.name}`,
+    apply: doDelete,
+    revert: () => {
+      levels.splice(Math.min(idx, levels.length), 0, lv);
+      for (const e of owned) e.levelId = id;
+      if (wasActive) activeLevelId = id;
+      rebuildDatums(); markDirty(); notifyAuthoringChange();
+    },
+  });
+  doDelete();
+  notify("info", owned.length ? `Deleted ${lv.name} (${owned.length} element(s) no longer constrained to it)` : `Deleted ${lv.name}`);
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3088,7 +3200,68 @@ function selectInput<T extends string>(
   return s;
 }
 
+function refreshDatumEditor(): void {
+  const sd = selectedDatum!;
+  editor.style.display = "block";
+  editor.innerHTML = "";
+  const title = document.createElement("div");
+  title.style.cssText = "font-weight:700;margin-bottom:8px";
+  editor.appendChild(title);
+  const del = document.createElement("button");
+  del.textContent = "\u{1F5D1} Delete " + sd.kind;
+  del.style.cssText = "width:100%;padding:6px;margin-top:4px;background:#3b0d0d;color:#fca5a5;border:1px solid #ef4444;border-radius:5px;cursor:pointer;font-size:11px";
+  del.onclick = () => deleteDatum(sd.kind, sd.id);
+  if (sd.kind === "grid") {
+    const gr = grids.find((g) => g.id === sd.id);
+    if (!gr) { editor.style.display = "none"; return; }
+    title.textContent = `Grid ${gr.label}`;
+    const lab = document.createElement("input"); lab.value = gr.label; lab.style.cssText = INP;
+    lab.onchange = () => {
+      const before = gr.label, after = lab.value.trim() || before;
+      history.push({ label: `Rename grid ${before}`,
+        apply: () => { gr.label = after; rebuildDatums(); markDirty(); notifyAuthoringChange(); },
+        revert: () => { gr.label = before; rebuildDatums(); markDirty(); notifyAuthoringChange(); } });
+      gr.label = after; rebuildDatums(); markDirty(); notifyAuthoringChange(); refreshEditor();
+    };
+    editor.appendChild(field("Name", lab));
+    const info = document.createElement("div");
+    const len = Math.hypot(gr.end[0] - gr.start[0], gr.end[1] - gr.start[1]);
+    info.style.cssText = "font-size:11px;opacity:.8;margin-bottom:6px;line-height:1.5";
+    info.textContent = `Start ${gr.start[0].toFixed(2)}, ${gr.start[1].toFixed(2)}  End ${gr.end[0].toFixed(2)}, ${gr.end[1].toFixed(2)}  Length ${len.toFixed(2)} m`;
+    editor.appendChild(info);
+  } else {
+    const lv = levels.find((l) => l.id === sd.id);
+    if (!lv) { editor.style.display = "none"; return; }
+    title.textContent = `Level \u2014 ${lv.name}`;
+    const nm = document.createElement("input"); nm.value = lv.name; nm.style.cssText = INP;
+    nm.onchange = () => {
+      const before = lv.name, after = nm.value.trim() || before;
+      history.push({ label: `Rename ${before}`,
+        apply: () => { lv.name = after; rebuildDatums(); markDirty(); notifyAuthoringChange(); },
+        revert: () => { lv.name = before; rebuildDatums(); markDirty(); notifyAuthoringChange(); } });
+      lv.name = after; rebuildDatums(); markDirty(); notifyAuthoringChange(); refreshEditor();
+    };
+    editor.appendChild(field("Name", nm));
+    editor.appendChild(field("Elevation (m)", numInput(lv.elevation, 0.05, (v) => {
+      if (!Number.isFinite(v)) return;
+      const before = lv.elevation;
+      history.push({ label: `Set ${lv.name} elevation`,
+        apply: () => { lv.elevation = v; if (activeLevelId === lv.id) level = v; rebuildDatums(); markDirty(); notifyAuthoringChange(); },
+        revert: () => { lv.elevation = before; if (activeLevelId === lv.id) level = before; rebuildDatums(); markDirty(); notifyAuthoringChange(); } });
+      lv.elevation = v; if (activeLevelId === lv.id) level = v; rebuildDatums(); markDirty(); notifyAuthoringChange();
+    })));
+    const act = document.createElement("button");
+    act.textContent = activeLevelId === lv.id ? "Active level" : "Make active level";
+    act.disabled = activeLevelId === lv.id;
+    act.style.cssText = "width:100%;padding:6px;margin-bottom:4px;background:#12131a;color:#e2e8f0;border:1px solid #3a3a4a;border-radius:5px;cursor:pointer;font-size:11px";
+    act.onclick = () => { setActiveLevelById(lv.id); notifyAuthoringChange(); refreshEditor(); };
+    editor.appendChild(act);
+  }
+  editor.appendChild(del);
+}
+
 function refreshEditor() {
+  if (selectedDatum && selectedIds.size === 0 && activeTool === "select") { refreshDatumEditor(); return; }
   if (selectedIds.size === 0 || activeTool !== "select") { editor.style.display = "none"; return; }
   editor.style.display = "block";
   editor.innerHTML = "";
@@ -3356,7 +3529,7 @@ export function setAuthoringTool(tool: Tool | string | null) {
     setMeasureEnabled(false);
     setSectionOn(false);
   }
-  if (activeTool !== "select") selectedIds.clear();
+  if (activeTool !== "select") { selectedIds.clear(); if (selectedDatum) setDatumSelection(null); }
   if (activeTool === "select" || activeTool === null) {
     try { accuDraw.end(); } catch { /* */ }
   }
@@ -3760,7 +3933,10 @@ export function alignSelectedAxis(axis: "x" | "z"): number {
   return targets.length - 1;
 }
 
-export function deleteSelectedElement() { deleteElements([...selectedIds]); }
+export function deleteSelectedElement() {
+  if (selectedDatum && selectedIds.size === 0) { deleteDatum(selectedDatum.kind, selectedDatum.id); return; }
+  deleteElements([...selectedIds]);
+}
 
 /**
  * Bulk-select authored elements by id, replacing the current authored
@@ -3819,12 +3995,14 @@ export function getGrids() { return grids; }
 export function setGrids(list: GridDatum[] | undefined | null) {
   grids = Array.isArray(list) ? list : [];
   gridIdx = grids.length;
+  if (selectedDatum?.kind === "grid" && !grids.some((g) => g.id === selectedDatum!.id)) selectedDatum = null;
   rebuildDatums();
 }
 export function getLevels() { return levels; }
 export function setLevels(list: LevelDatum[] | undefined | null) {
   levels = Array.isArray(list) ? list : [];
   levelIdx = levels.length;
+  if (selectedDatum?.kind === "level" && !levels.some((l) => l.id === selectedDatum!.id)) selectedDatum = null;
   rebuildDatums();
 }
 
@@ -4444,6 +4622,18 @@ export function setupAuthoring() {
     const ctrl = e.ctrlKey || e.metaKey;
     const shift = e.shiftKey;
     const alt = e.altKey;
+    const datumHit = hitId ? null : datumAt(e);
+    if (datumHit) {
+      selectedIds.clear();
+      try { const sel: any = (ctx.features as any).selection; sel?.replace?.({}); void sel?.applyToHighlighter?.(); } catch { /* */ }
+      if (activeTool && activeTool !== "select") { activeTool = "select"; activePreset = null; }
+      setDatumSelection(datumHit);
+      applySelection(); refreshGrips(); updateLabel();
+      paletteTarget = null;
+      notifyAuthoringChange();
+      return true;
+    }
+    if (selectedDatum) setDatumSelection(null);
     if (!hitId) {
       if (!ctrl && !shift) {
         selectedIds.clear();
@@ -4727,6 +4917,7 @@ export function setupAuthoring() {
     setElementVisibility,
     pickAuthoredElementAt,
     deleteSelectedElement, clearAllElements, clearDatums,
+    getSelectedDatum, selectDatum, deleteDatum,
     rebuildAuthored, transformElements,
     selectAllAuthored,
     setSelectedAuthored,

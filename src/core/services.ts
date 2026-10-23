@@ -126,6 +126,11 @@ export interface AuthoringService {
     mode: "replace" | "add" | "remove",
   ): void;
   deleteSelectedElement(): void;
+  /** Currently selected grid / level, or null. */
+  getSelectedDatum(): { kind: "grid" | "level"; id: string } | null;
+  selectDatum(kind: "grid" | "level", id: string): boolean;
+  /** Undoable delete of a grid line or level. */
+  deleteDatum(kind: "grid" | "level", id: string): boolean;
   clearAllElements(force?: boolean): void;
   clearDatums(): void;
 
