@@ -22,7 +22,7 @@
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { getLevel, getLevels } from "./authoring";
+import { getLevel, getLevels, getAuthoredGroup, getElements } from "./authoring";
 import { clampSpeedFactor, isBlockingHit, nextLevelElevation, slideVelocity, yawFromDirection } from "./walk-physics";
 import { getProjection, setProjection } from "./camera-tools";
 
@@ -180,8 +180,31 @@ function getWalkTargets(): THREE.Object3D[] {
       if (model?.object) out.push(model.object);
     }
   } catch { /* */ }
+  try { const ag = getAuthoredGroup(); if (ag) out.push(ag); } catch { /* */ }
   if (ctx.groundPlane) out.push(ctx.groundPlane);
   return out;
+}
+
+/** Wall-collision targets: linked models plus in-app authored geometry (no ground plane). */
+function getCollisionTargets(): THREE.Object3D[] {
+  const out: THREE.Object3D[] = [];
+  try { for (const [, m] of ctx.fragments.list) if (m?.object) out.push(m.object); } catch { /* */ }
+  try { const ag = getAuthoredGroup(); if (ag) out.push(ag); } catch { /* */ }
+  return out;
+}
+
+/** Ids of elements the walker may pass through (doors / openings). */
+function passableIds(): Set<string> {
+  const ids = new Set<string>();
+  try { for (const e of getElements() as any[]) if (e?.type === "door") ids.add(String(e.id)); } catch { /* */ }
+  return ids;
+}
+function hitElementId(o: THREE.Object3D | null): string | null {
+  for (let n: THREE.Object3D | null = o; n; n = n.parent) {
+    const id = (n.userData as any)?.elementId;
+    if (id != null) return String(id);
+  }
+  return null;
 }
 
 function raycastGround(x: number, z: number, fromY: number): number | null {
@@ -215,9 +238,9 @@ function updateGroundTarget() {
 function applyCollision(dt: number): void {
   const speed = Math.hypot(state.vel.x, state.vel.z);
   if (speed < 0.05) return;
-  const models: THREE.Object3D[] = [];
-  try { for (const [, m] of ctx.fragments.list) if (m?.object) models.push(m.object); } catch { /* */ }
+  const models = getCollisionTargets();
   if (!models.length) return;
+  const passable = passableIds();
   const dir = new THREE.Vector3(state.vel.x / speed, 0, state.vel.z / speed);
   const travel = speed * dt * COLLIDE_INTERVAL;
   // Knee-above-step and chest height: low obstacles that can be stepped over are ignored.
@@ -229,6 +252,9 @@ function applyCollision(dt: number): void {
     try { hits = groundRay.intersectObjects(models, true); } catch { /* */ }
     for (const h of hits) {
       if (!h.face) continue;
+      if (!h.object.visible) continue;
+      const hid = hitElementId(h.object);
+      if (hid && passable.has(hid)) continue;
       const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
       if (!isBlockingHit(h.distance, n.y, BODY_RADIUS, travel)) continue;
       const [vx, vz] = slideVelocity(state.vel.x, state.vel.z, n.x, n.z);
@@ -338,8 +364,11 @@ export function enableWalkMode(): void {
       probeFrom = hit.point.y + 1;
     }
   } catch { /* */ }
-  floorY = raycastGround(startX, startZ, probeFrom);
-  if (floorY == null) floorY = (() => { try { return getLevel(); } catch { return 0; } })();
+  // Stand on the ACTIVE level at that spot (not on the roof the view ray happened to hit).
+  const activeElev = (() => { try { const v = Number(getLevel()); return Number.isFinite(v) ? v : 0; } catch { return 0; } })();
+  void probeFrom;
+  floorY = raycastGround(startX, startZ, activeElev + MAX_STEP + 0.05);
+  if (floorY == null || Math.abs(floorY - activeElev) > 1.5) floorY = activeElev;
   state.targetGroundY = floorY;
   state.pos.set(startX, floorY + EYE_HEIGHT, startZ);
   state.vel.set(0, 0, 0);
