@@ -18,6 +18,7 @@
 
 import type { AuthoredElement } from "../projects/types";
 import type { PlanDimensionRef } from "../../features/plan-view-panel";
+import { collectElementSnapPoints, pickElementSnapPoint } from "./element-snap-points";
 
 export type PlanSnapKind =
   | "endpoint" | "corner" | "intersection" | "midpoint"
@@ -370,6 +371,29 @@ export function findPlanSnap(
   pz: number,
   tolerance: number,
 ): PlanSnapHit | null {
+  // 0. Element reference points (start / end / corners / vertices / jambs / centres)
+  //    for every element type - what dimensions anchor to.
+  {
+    const near = elements.filter((el: any) => {
+      const p = el?.params; if (!p) return false;
+      const pad0 = tolerance + 0.5;
+      if (p.start && p.end) {
+        return px >= Math.min(p.start[0], p.end[0]) - pad0 - (p.thickness ?? 0.3) && px <= Math.max(p.start[0], p.end[0]) + pad0 + (p.thickness ?? 0.3)
+          && pz >= Math.min(p.start[1], p.end[1]) - pad0 - (p.thickness ?? 0.3) && pz <= Math.max(p.start[1], p.end[1]) + pad0 + (p.thickness ?? 0.3);
+      }
+      return true; // polygon / point / hosted: cheap per-point test below
+    });
+    const pts = collectElementSnapPoints(near.length > 400 ? near.slice(0, 400) : near);
+    const hit = pickElementSnapPoint(pts, px, pz, tolerance);
+    if (hit) {
+      const kind: PlanSnapKind = hit.kind === "start" || hit.kind === "end" ? "endpoint"
+        : hit.kind === "center" ? "center" : hit.kind === "edge-mid" ? "midpoint" : "corner";
+      return {
+        x: hit.x, z: hit.z, kind, label: hit.label, color: COLOR[kind],
+        priority: PRIORITY[kind], distance: hit.distance, ref: hit.ref as PlanDimensionRef,
+      };
+    }
+  }
   const allSegs = linearSegments(elements);
   const pad = tolerance + 1;
 
