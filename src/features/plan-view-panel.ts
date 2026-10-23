@@ -10,6 +10,7 @@
 import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
+import { buildAutoDimensions } from "../modules/views/auto-dim-chains";
 import { resolveElementRef } from "../modules/views/element-snap-points";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
 import {
@@ -658,6 +659,35 @@ function resolvePlanDimensionRef(ref?: PlanDimensionRef): {x:number;z:number} | 
   return null;
 }
 
+/** Dimension every column and wall: X and Y chains `offset` away from the model, plus overall rows. */
+async function runAutoDimension(): Promise<void> {
+  try {
+    const raw = window.prompt("Auto Dimension - distance from the outermost column / wall (cm):", "50");
+    if (raw == null) return;
+    const cm = parseFloat(raw);
+    if (!Number.isFinite(cm) || cm < 0) { footerStatus("Auto Dimension: invalid distance"); return; }
+    const auth: any = (ctx.features as any).authoring;
+    const els: any[] = (auth?.getElements?.() ?? ((window as any).__obsAuthoredElements ?? [])) as any[];
+    (window as any).__obsAuthoredElements = els;
+    const res = buildAutoDimensions(els, { offset: cm / 100, stack: cm / 100, categories: ["column", "wall"] });
+    if (!res.length) { footerStatus("Auto Dimension: no columns or walls found"); return; }
+    for (let i = planDims.length - 1; i >= 0; i--) if (planDims[i].auto) planDims.splice(i, 1);
+    for (const r of res) {
+      planDims.push({
+        x1: r.x1, z1: r.z1, x2: r.x2, z2: r.z2, style: "linear", offsetMm: DIM_OFFSET_MM,
+        ref1: r.ref1 as PlanDimensionRef, ref2: r.ref2 as PlanDimensionRef,
+        axis: r.axis, linePos: r.linePos, auto: true,
+      });
+    }
+    if (currentPlan) renderPlan(currentPlan);
+    const nx = res.filter((r) => r.axis === "x" && !r.overall).length, nz = res.filter((r) => r.axis === "z" && !r.overall).length;
+    footerStatus(`Auto Dimension: ${nx} X + ${nz} Y dimensions at ${cm} cm (plus overall rows)`);
+    planMode = "select";
+  } catch (err) {
+    console.warn("[plan] auto dimension", err);
+  }
+}
+
 function formatPlanDimension(meters: number, style = getDimensionStyle()): string {
   const factor = style.unit === "m" ? 1 : style.unit === "cm" ? 100 : 1000;
   const value = meters * factor;
@@ -893,6 +923,10 @@ interface PlanDimension {
   /** Angular vertex (intersection) when known */
   vx?: number;
   vz?: number;
+  /** Auto-dimension chains: "x" = horizontal line at z=linePos, "z" = vertical line at x=linePos. */
+  axis?: "x" | "z";
+  linePos?: number;
+  auto?: boolean;
 }
 const planDims: PlanDimension[] = [];
 let planDimStyle: PlanDimKind = "aligned";
@@ -1910,25 +1944,34 @@ function renderPlan(plan: PlanView) {
     const r1 = resolvePlanDimensionRef(d.ref1);
     const r2 = resolvePlanDimensionRef(d.ref2);
     let x1 = r1?.x ?? d.x1, z1 = r1?.z ?? d.z1, x2 = r2?.x ?? d.x2, z2 = r2?.z ?? d.z2;
-    if (d.style === "linear") {
+    const axisDim = d.axis && d.linePos != null;
+    if (d.style === "linear" && !axisDim) {
       // Strict horizontal or vertical only (Linear Dimension)
       if (Math.abs(x2 - x1) >= Math.abs(z2 - z1)) z2 = z1;
       else x2 = x1;
     }
     // aligned: keep actual x1,z1,x2,z2 so the dimension line is parallel to the object
-    const dx = x2 - x1, dz = z2 - z1;
+    // Auto chains: the dimension line is fixed at linePos (model metres), witness lines run from the elements.
+    let a0x: number, a0z: number, a1x: number, a1z: number;
+    if (axisDim) {
+      if (d.axis === "x") { a0x = x1; a0z = d.linePos!; a1x = x2; a1z = d.linePos!; }
+      else { a0x = d.linePos!; a0z = z1; a1x = d.linePos!; a1z = z2; }
+    } else {
+      const ddx = x2 - x1, ddz = z2 - z1, ll = Math.hypot(ddx, ddz) || 1;
+      const offW = paperMmToWorld(d.offsetMm ?? DIM_OFFSET_MM);
+      a0x = x1 - (ddz / ll) * offW; a0z = z1 + (ddx / ll) * offW;
+      a1x = x2 - (ddz / ll) * offW; a1z = z2 + (ddx / ll) * offW;
+    }
+    const dx = a1x - a0x, dz = a1z - a0z;
     const len = Math.hypot(dx, dz);
     if (len < 1e-6) continue;
     const ux = dx / len, uz = dz / len;
     const nx = -uz, nz = ux;
-    const off = paperMmToWorld(d.offsetMm ?? DIM_OFFSET_MM);
-    // Dimension line offset from geometry
-    const a0x = x1 + nx * off, a0z = z1 + nz * off;
-    const a1x = x2 + nx * off, a1z = z2 + nz * off;
     const sa = screen(a0x, a0z);
     const sb = screen(a1x, a1z);
     // Witness lines from points to dim line
     for (const [px, pz, qx, qz] of [[x1, z1, a0x, a0z], [x2, z2, a1x, a1z]] as number[][]) {
+      if (Math.hypot(qx - px, qz - pz) < 1e-6) continue;
       const p = screen(px, pz); const q = screen(qx, qz);
       // slight gap from element
       const gap = 0.0;
@@ -3681,6 +3724,8 @@ export function setPlanToolFromRibbon(tool: string) {
       toolHint.textContent = "Modify | Place Aligned Dimension � 2 boundaries � snaps ON";
       footerStatus("Aligned: pick first model boundary");
     }
+  } else if (tool === "auto-dim" || tool === "dim-auto") {
+    void runAutoDimension();
   } else if (tool === "tag" || tool === "room-tag" || tool === "tag-all" || tool === "material-tag") {
     planMode = "tag";
     (window as any).__obsPlanTagMode = tool === "room-tag" ? "room" : tool === "material-tag" ? "material" : "category";
