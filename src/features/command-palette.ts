@@ -403,6 +403,13 @@ function bootstrapCommands(): void {
   // Tools
   registerCommand({ id: "tools.measure", label: toggleLabel("Measure", isMeasureEnabled), category: "Tools", kbd: "M", run: () => toggleMeasure() });
   registerCommand({ id: "tools.section", label: toggleLabel("Section plane", isSectionOn), category: "Tools", run: () => toggleSection() });
+  registerCommand({ id: "annotate.auto-dim", label: "Auto Dimension (columns + walls)", category: "Annotate", run: () => {
+    try {
+      const pv: any = (ctx.features as any).planView;
+      if (!isPlanViewVisible()) togglePlanView();
+      setTimeout(() => pv?.setTool?.("auto-dim"), 60);
+    } catch { /* */ }
+  } });
   registerCommand({ id: "tools.walk", label: toggleLabel("Walk mode", isWalkModeEnabled), category: "Tools", run: () => toggleWalkMode() });
   registerCommand({ id: "tools.clash", label: "Run clash detection", category: "Tools", kbd: "F5", run: () => void runElementClashDetection() });
   registerCommand({ id: "tools.clashClear", label: "Clear clash results", category: "Tools", run: () => void clearClash() });
