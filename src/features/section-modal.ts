@@ -1,10 +1,12 @@
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
+import { planeForAxis } from "./section-plane-math";
 
 let modalEl: HTMLDivElement | null = null;
 let activePlane: THREE.Plane | null = null;
 let activeHelper: THREE.Mesh | null = null;
+let reversed = false;
 
 export function setupSectionModal() {
   console.log("[section-modal] Module loaded.");
@@ -16,6 +18,7 @@ export function openSectionModal() {
 
   // Reset any existing section
   clearSection();
+  reversed = false;
 
   modalEl = document.createElement("div");
   modalEl.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font:13px system-ui,sans-serif;";
@@ -66,6 +69,20 @@ export function openSectionModal() {
   
   posRow.appendChild(posLabel);
   posRow.appendChild(posSlider);
+
+  // Exact dimension: type the cut position, and reverse the cut direction.
+  const exactRow = document.createElement("div");
+  exactRow.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:4px";
+  const exactInp = document.createElement("input");
+  exactInp.type = "number"; exactInp.step = "0.01"; exactInp.value = "0.00";
+  exactInp.title = "Exact cut position in metres";
+  exactInp.style.cssText = "flex:1;padding:5px 8px;background:#0b0d12;color:#e6e8ee;border:1px solid #2a2e3a;border-radius:4px;font:12px ui-monospace,monospace";
+  const revBtn = document.createElement("button");
+  const paintRev = () => { revBtn.textContent = reversed ? "\u21c4 Reversed (keeps lower side)" : "\u21c4 Reverse direction"; revBtn.style.borderColor = reversed ? "#ef4444" : "#3d4250"; };
+  revBtn.style.cssText = "padding:5px 10px;background:#2a2e3a;color:#e8eaf0;border:1px solid #3d4250;border-radius:4px;cursor:pointer;white-space:nowrap";
+  paintRev();
+  exactRow.append(exactInp, revBtn);
+  posRow.appendChild(exactRow);
   body.appendChild(posRow);
 
   // ── Apply buttons
@@ -75,12 +92,12 @@ export function openSectionModal() {
   const btnClear = document.createElement("button");
   btnClear.textContent = "Clear Section";
   btnClear.style.cssText = "padding:8px 12px;background:#3b0d0d;color:#fca5a5;border:1px solid #7f1d1d;border-radius:4px;cursor:pointer;font-weight:bold;";
-  btnClear.onclick = () => { clearSection(); posSlider.value = "0"; updatePosLabel(); };
+  btnClear.onclick = () => { clearSection(); posSlider.value = "0"; exactInp.value = "0.00"; reversed = false; paintRev(); updatePosLabel(); };
   
   const btnApply = document.createElement("button");
   btnApply.textContent = "Apply Section";
   btnApply.style.cssText = "padding:8px 12px;background:#2563eb;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;";
-  btnApply.onclick = () => applySection(axisSel.value as "x"|"y"|"z", parseFloat(posSlider.value));
+  btnApply.onclick = () => applySection(axisSel.value as "x"|"y"|"z", Number.isFinite(parseFloat(exactInp.value)) ? parseFloat(exactInp.value) : parseFloat(posSlider.value));
 
   btnRow.appendChild(btnClear);
   btnRow.appendChild(btnApply);
@@ -96,18 +113,33 @@ export function openSectionModal() {
   footer.appendChild(closeFooterBtn);
   win.appendChild(footer);
 
-  const updatePosLabel = () => {
+  const updatePosLabel = (v?: number) => {
     const el = document.getElementById("obs-sec-pos-val");
-    if (el) el.textContent = `${parseFloat(posSlider.value).toFixed(2)} m`;
+    if (el) el.textContent = `${(v ?? parseFloat(posSlider.value)).toFixed(2)} m`;
   };
 
+  const currentPos = () => parseFloat(exactInp.value);
+  exactInp.onkeydown = (e) => e.stopPropagation();
+  exactInp.oninput = () => {
+    const v = currentPos();
+    if (!Number.isFinite(v)) return;
+    posSlider.value = String(Math.max(-50, Math.min(50, v)));
+    updatePosLabel(v);
+    applySection(axisSel.value as "x"|"y"|"z", v);
+  };
+  revBtn.onclick = () => {
+    reversed = !reversed; paintRev();
+    const v = currentPos();
+    applySection(axisSel.value as "x"|"y"|"z", Number.isFinite(v) ? v : parseFloat(posSlider.value));
+  };
   posSlider.oninput = () => {
+    exactInp.value = parseFloat(posSlider.value).toFixed(2);
     updatePosLabel();
     applySection(axisSel.value as "x"|"y"|"z", parseFloat(posSlider.value));
   };
   
   axisSel.onchange = () => {
-    applySection(axisSel.value as "x"|"y"|"z", parseFloat(posSlider.value));
+    applySection(axisSel.value as "x"|"y"|"z", Number.isFinite(currentPos()) ? currentPos() : parseFloat(posSlider.value));
   };
 
   modalEl.appendChild(win);
@@ -117,12 +149,9 @@ export function openSectionModal() {
 function applySection(axis: "x"|"y"|"z", pos: number) {
   clearSection();
 
-  const normal = new THREE.Vector3(0,0,0);
-  normal[axis] = 1; // e.g. if axis is x, normal is (1,0,0)
-  
-  // THREE.Plane(normal, constant) -> normal.dot(point) + constant = 0
-  // So constant = -normal.dot(point). For axis=x, pos=10 -> 1*10 + c = 0 -> c = -10
-  activePlane = new THREE.Plane(normal, -pos);
+  // Plane keeps n.p + c >= 0. Reversed flips the normal so the opposite side is kept.
+  const pl = planeForAxis(axis, pos, reversed);
+  activePlane = new THREE.Plane(new THREE.Vector3(pl.normal.x, pl.normal.y, pl.normal.z), pl.constant);
 
   // Apply to the global Three.js renderer (clipping)
   const renderer = ctx.world.renderer.three as THREE.WebGLRenderer;
