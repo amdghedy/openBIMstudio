@@ -414,6 +414,19 @@ function bootstrapCommands(): void {
   registerCommand({ id: "file.save-as-file", label: "Save project as new file (copy / backup)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.saveProjectToFile(true)); } });
   registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
   registerCommand({ id: "tools.walk", label: toggleLabel("Walk mode", isWalkModeEnabled), category: "Tools", run: () => toggleWalkMode() });
+  registerCommand({
+    id: "tools.moveConnectedMep",
+    label: toggleLabel("Move connected MEP parts together", () => { try { return (window as any).__obsMoveConnected !== false; } catch { return true; } }),
+    category: "Tools",
+    run: () => {
+      void import("./authoring").then((a) => {
+        const on = !a.isMoveConnectedMep();
+        a.setMoveConnectedMep(on);
+        (window as any).__obsMoveConnected = on;
+        notify("info", on ? "Moving an MEP part now moves everything connected to it" : "MEP parts move independently");
+      });
+    },
+  });
   registerCommand({ id: "tools.clash", label: "Run clash detection", category: "Tools", kbd: "F5", run: () => void runElementClashDetection() });
   registerCommand({ id: "tools.clashClear", label: "Clear clash results", category: "Tools", run: () => void clearClash() });
 
