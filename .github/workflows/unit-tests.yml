@@ -33,6 +33,7 @@ jobs:
       - run: npm run test:props
       - run: npm run test:fitting-outline
       - run: npm run test:slope
+      - run: npm run test:boundary-edit
       - run: npm run test:project-file
       - run: npm run test:plan-tags
       - run: npm run test:dim-geometry
