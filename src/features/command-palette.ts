@@ -427,6 +427,7 @@ function bootstrapCommands(): void {
       });
     },
   });
+  registerCommand({ id: "app.install", label: "Install as desktop app (works offline)", category: "File", run: () => { void import("../core/pwa").then((m) => m.installApp()); } });
   registerCommand({ id: "tools.clash", label: "Run clash detection", category: "Tools", kbd: "F5", run: () => void runElementClashDetection() });
   registerCommand({ id: "tools.clashClear", label: "Clear clash results", category: "Tools", run: () => void clearClash() });
 

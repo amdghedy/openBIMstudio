@@ -302,6 +302,7 @@ await step("context-menu", () => setupContextMenu());
 await step("viewport-toolbar", () => setupViewportToolbar());
 
 await step("projects", async () => setupProjects());
+await step("pwa", async () => (await import("./core/pwa")).setupPwa());
 await step("project-file", async () => (await import("./modules/projects/project-file-io")).setupProjectFileIO());
 await step("authoring", () => setupAuthoring());
 await step("plan-authoring-bridge", () => setupPlanAuthoringBridge());

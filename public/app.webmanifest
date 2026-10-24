@@ -1,0 +1,28 @@
+{
+  "id": "/",
+  "name": "Open BIM Studio",
+  "short_name": "OpenBIM",
+  "description": "Local-first openBIM authoring, federation, coordination and documentation.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#0e1017",
+  "theme_color": "#0e1017",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "application/x-obsproj": [".obsproj"],
+        "application/x-step": [".ifc"],
+        "application/octet-stream": [".frag"]
+      }
+    }
+  ]
+}

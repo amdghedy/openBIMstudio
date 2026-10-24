@@ -10,6 +10,7 @@
     "prebuild": "node scripts/copy-libredwg-wasm.mjs",
     "build": "tsc && vite build --target esnext",
     "preview": "vite preview",
+    "start:local": "vite build --target esnext && vite preview --open",
     "typecheck": "tsc --noEmit",
     "verify:v50": "node scripts/verify-v50.mjs",
     "verify:v52": "node scripts/verify-v52.mjs",
