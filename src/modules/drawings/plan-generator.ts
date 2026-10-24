@@ -13,6 +13,7 @@
  * The panel handles the flip when rendering SVG.
  */
 import { defaultBendRadius, elbowGeometry } from "../mep/elbow-geometry";
+import { capOutlineSegments, fittingBranchAngles, openBranchInSegment, fittingArmAngles, fittingArmLength, fittingOutlineSegments } from "../mep/fitting-outline";
 import * as THREE from "three";
 import { ctx } from "../../core/context";
 import { getElementTriangles } from "../clash/geometry";
@@ -247,7 +248,13 @@ function connectedToFitting(el: AuthoredElement, x: number, z: number): boolean 
       if (f.type !== "fitting") continue;
       const fp: any = f.params;
       if (String(fp.parentType ?? "duct") !== el.type || !fp.point) continue;
-      if (String(fp.fittingKind ?? "elbow") !== "elbow") continue;
+      const fkind = String(fp.fittingKind ?? "elbow");
+      if (fkind === "tee" || fkind === "cross" || fkind === "wye" || fkind === "cap") {
+        // a run that ends at a junction / cap continues into the fitting outline: no end cap here
+        if (Math.hypot(fp.point[0] - x, fp.point[1] - z) < 0.03) return true;
+        continue;
+      }
+      if (fkind !== "elbow") continue;
       const t = fp.thickness ?? 0.3;
       const r = Number(fp.bendRadius) > 0 ? Number(fp.bendRadius) : defaultBendRadius(Math.max(t, 0.05));
       const eg = elbowGeometry([fp.point[0], fp.point[1]], fp.angleIn ?? 0, fp.angleOut ?? Math.PI / 2, r);
@@ -274,8 +281,45 @@ function emitLinearThick(
   const ux = dx / L, uz = dz / L;
   const nx = -uz, nz = ux;
   const t2 = Math.max(0.02, thickness / 2);
-  push({ x1: ax + nx * t2, z1: az + nz * t2, x2: bx + nx * t2, z2: bz + nz * t2, kind, source: el.id });
-  push({ x1: ax - nx * t2, z1: az - nz * t2, x2: bx - nx * t2, z2: bz - nz * t2, kind, source: el.id });
+  const sideA = { x1: ax + nx * t2, z1: az + nz * t2, x2: bx + nx * t2, z2: bz + nz * t2 };
+  const sideB = { x1: ax - nx * t2, z1: az - nz * t2, x2: bx - nx * t2, z2: bz - nz * t2 };
+  let piecesA = [sideA], piecesB = [sideB];
+  const runType = el.type;
+  if (runType === "duct" || runType === "pipe" || runType === "cable-tray" || runType === "conduit") {
+    // A tee / cross / wye on this run opens its side line where the branch joins (Revit).
+    try {
+      for (const f of getElements()) {
+        if (f.type !== "fitting") continue;
+        const fp: any = f.params;
+        const fk = String(fp.fittingKind ?? "");
+        if ((fk !== "tee" && fk !== "cross" && fk !== "wye") || !fp.point) continue;
+        if (String(fp.parentType ?? "duct") !== runType) continue;
+        const cx = fp.point[0], cz = fp.point[1];
+        const along = (cx - ax) * ux + (cz - az) * uz, across = Math.abs(-(cx - ax) * uz + (cz - az) * ux);
+        if (along < -0.02 || along > L + 0.02 || across > 0.02) continue;     // junction not on this run's centreline
+        const aIn = fp.angleIn ?? 0;
+        const ft0 = fp.thickness ?? thickness;
+        const armLen0 = fittingArmLength(ft0, fp.height ?? ft0, Number(fp.bendRadius), runType === "pipe" || runType === "conduit");
+        if (Math.abs(Math.sin(aIn - Math.atan2(uz, ux))) > 0.05) {
+          // A branch run ending at the junction: drop its sides inside the main run's body.
+          if (along < 0.03 || along > L - 0.03) {
+            for (const ang of [aIn, aIn + Math.PI]) {
+              piecesA = piecesA.flatMap((sg) => openBranchInSegment(sg, cx, cz, ang, armLen0, ft0));
+              piecesB = piecesB.flatMap((sg) => openBranchInSegment(sg, cx, cz, ang, armLen0, ft0));
+            }
+          }
+          continue;                                                             // not the main direction
+        }
+        const ft = fp.thickness ?? thickness;
+        const armLen = fittingArmLength(ft, fp.height ?? ft, Number(fp.bendRadius), runType === "pipe" || runType === "conduit");
+        for (const ang of fittingBranchAngles(fk as any, aIn, fp.angleOut ?? Math.PI / 2)) {
+          piecesA = piecesA.flatMap((sg) => openBranchInSegment(sg, cx, cz, ang, armLen, ft));
+          piecesB = piecesB.flatMap((sg) => openBranchInSegment(sg, cx, cz, ang, armLen, ft));
+        }
+      }
+    } catch { /* fittings optional */ }
+  }
+  for (const sg of [...piecesA, ...piecesB]) push({ ...sg, kind, source: el.id });
   // Runs joined to an elbow continue into the fitting outline: no end cap there (Revit).
   const joinable = el.type === "duct" || el.type === "pipe" || el.type === "cable-tray" || el.type === "conduit";
   if (!(joinable && connectedToFitting(el, ax, az))) {
@@ -582,7 +626,22 @@ function emitAuthoredSymbol(
         break;
       }
 
-      // Tee / cross / cap / transition: small box fallback
+      // Tee / cross / wye: true plan outline (run continues, branch opens into it)
+      if (kind === "tee" || kind === "cross" || kind === "wye") {
+        const armLen = fittingArmLength(t, p.height ?? t, Number(p.bendRadius), isRound);
+        for (const sg of fittingOutlineSegments(cxF, czF, fittingArmAngles(kind, aIn, aOut), t, armLen)) {
+          push({ ...sg, kind: elevKind, source: el.id });
+        }
+        break;
+      }
+      if (kind === "cap") {
+        for (const sg of capOutlineSegments(cxF, czF, aIn, t, Math.max(0.1, t * 0.4))) {
+          push({ ...sg, kind: elevKind, source: el.id });
+        }
+        break;
+      }
+
+      // Transition / union: small box fallback
       const s = t / 2;
       push({ x1: cxF - s, z1: czF - s, x2: cxF + s, z2: czF - s, kind: elevKind, source: el.id });
       push({ x1: cxF + s, z1: czF - s, x2: cxF + s, z2: czF + s, kind: elevKind, source: el.id });
