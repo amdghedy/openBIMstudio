@@ -51,4 +51,7 @@ t("host run side line is opened at the branch",()=>{
   const far={x1:-2,z1:-hw,x2:2,z2:-hw};assert.strictEqual(m.openBranchInSegment(far,0,0,Math.PI/2,L,W).length,1);
 });
 t("branch angles exclude the main run",()=>{assert.strictEqual(m.fittingBranchAngles("tee",0,1).length,1);assert.strictEqual(m.fittingBranchAngles("cross",0,1).length,2)});
+t("transition tapers from run width to 60%",()=>{const s=m.transitionOutlineSegments(0,0,0,0.5,1);near(s[0].z1,0.25);near(s[0].z2,0.15);near(s[1].z1,-0.25);near(s[1].z2,-0.15);near(s[0].x1,-0.5);near(s[0].x2,0.5)});
+t("transition rotates with the run",()=>{const s=m.transitionOutlineSegments(2,3,Math.PI/2,0.5,1);near(s[0].z1,2.5);near(s[0].z2,3.5)});
+t("union is a closed short body",()=>{const s=m.unionOutlineSegments(0,0,0,0.4,0.3);assert.strictEqual(s.length,4);near(len(s[2]),0.4*1.08)});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

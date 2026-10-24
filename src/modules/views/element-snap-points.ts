@@ -167,3 +167,28 @@ export function resolveElementRef(ref: SnapRef | undefined, elements: readonly a
   }
   return null;
 }
+
+/** All points within tol, best first (priority, then distance) - for Tab cycling between overlapping snaps. */
+export function rankElementSnapPoints(points: readonly ElementSnapPoint[], px: number, pz: number, tol: number): (ElementSnapPoint & { distance: number })[] {
+  const out: (ElementSnapPoint & { distance: number })[] = [];
+  for (const q of points) {
+    const d = Math.hypot(q.x - px, q.z - pz);
+    if (d <= tol) out.push({ ...q, distance: d });
+  }
+  out.sort((a, b) => b.priority - a.priority || a.distance - b.distance);
+  // drop exact duplicates (same spot, same kind of reference) so Tab always moves somewhere new
+  const seen = new Set<string>(), uniq: typeof out = [];
+  for (const q of out) {
+    const k = `${q.x.toFixed(4)},${q.z.toFixed(4)}`;
+    if (seen.has(k)) continue;
+    seen.add(k); uniq.push(q);
+  }
+  return uniq;
+}
+
+/** Pick the n-th ranked candidate (wraps around). */
+export function cycleSnapPoint<T>(ranked: readonly T[], index: number): { item: T; index: number; count: number } | null {
+  if (!ranked.length) return null;
+  const i = ((index % ranked.length) + ranked.length) % ranked.length;
+  return { item: ranked[i], index: i, count: ranked.length };
+}

@@ -46,6 +46,35 @@ let pointerNDC: THREE.Vector2 | null = null;
 
 function clipper(): any { return (ctx as any).clipper; }
 
+/** Clipper planes created by the section box itself - the Section tool's own planes are left alone. */
+let boxItems: any[] = [];
+let usedNativeClipping = false;
+
+function clipperItems(c: any): any[] {
+  try {
+    const list = c?.list;
+    if (!list) return [];
+    const entries: any[] = list[Symbol.iterator] ? [...list] : Object.values(list);
+    return entries.map((e) => (Array.isArray(e) ? e[1] : e)).filter(Boolean);
+  } catch { return []; }
+}
+
+function removeBoxItems(): void {
+  const c = clipper();
+  const world = (ctx as any).world;
+  for (const item of boxItems) {
+    try {
+      if (typeof c?.delete === "function") c.delete(world, item);
+      else item?.dispose?.();
+    } catch { try { item?.dispose?.(); } catch { /* */ } }
+  }
+  boxItems = [];
+  if (usedNativeClipping) {
+    try { const r = world?.renderer?.three; if (r) r.clippingPlanes = []; } catch { /* */ }
+    usedNativeClipping = false;
+  }
+}
+
 export function isSectionBoxActive(): boolean { return enabled; }
 
 export function toggleSectionBox(): boolean {
@@ -93,13 +122,11 @@ export function enableSectionBoxWithBox(b: THREE.Box3): void {
 
 export function disableSectionBox(): void {
   if (!enabled) return;
-  try { clipper()?.deleteAll?.(); } catch (e) { /* ignore */ }
+  removeBoxItems();
   try {
     const renderer = (ctx as any).world?.renderer?.three;
-    if (renderer) {
-      renderer.clippingPlanes = [];
-      renderer.localClippingEnabled = false;
-    }
+    // keep local clipping on while Section-tool planes still exist
+    if (renderer && clipperItems(clipper()).length === 0) renderer.localClippingEnabled = false;
   } catch { /* */ }
   detachPointerHandlers();
   if (faceGroup) {
@@ -222,10 +249,9 @@ function applyClipping(): void {
     { normal: new THREE.Vector3( 0, 0,-1), point: new THREE.Vector3(0, 0, min.z) }, // -Z
   ];
 
-  // Clear existing clip planes
-  try {
-    if (c && typeof c.deleteAll === "function") c.deleteAll();
-  } catch { /* */ }
+  // Replace only the box's own previous planes (Section-tool planes stay).
+  removeBoxItems();
+  const existingItems = new Set(clipperItems(c));
 
   let applied = false;
 
@@ -259,6 +285,8 @@ function applyClipping(): void {
     }
   }
 
+  if (applied) boxItems = clipperItems(c).filter((i) => !existingItems.has(i));
+
   // Fallback — native WebGLRenderer clippingPlanes (no ThatOpen raycaster)
   if (!applied) {
     try {
@@ -274,6 +302,7 @@ function applyClipping(): void {
         });
         renderer.clippingPlanes = threePlanes;
         renderer.localClippingEnabled = true;
+        usedNativeClipping = true;
         applied = true;
       }
     } catch (err) {

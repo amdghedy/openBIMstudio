@@ -95,3 +95,28 @@ export function openBranchInSegment(s: Seg, cx: number, cz: number, branchAngle:
 export function fittingBranchAngles(kind: ArmKind, aIn: number, aOut: number): number[] {
   return fittingArmAngles(kind, aIn, aOut).slice(2);
 }
+
+/** Reducer / transition: trapezoid from the full run width to `outRatio` of it, along `angle`. */
+export function transitionOutlineSegments(cx: number, cz: number, angle: number, width: number, length: number, outRatio = 0.6): Seg[] {
+  const dx = Math.cos(angle), dz = Math.sin(angle), nx = -dz, nz = dx;
+  const hw1 = Math.max(width, 0.01) / 2, hw2 = hw1 * outRatio, h = length / 2;
+  const a1 = { x: cx - dx * h + nx * hw1, z: cz - dz * h + nz * hw1 }, a2 = { x: cx - dx * h - nx * hw1, z: cz - dz * h - nz * hw1 };
+  const b1 = { x: cx + dx * h + nx * hw2, z: cz + dz * h + nz * hw2 }, b2 = { x: cx + dx * h - nx * hw2, z: cz + dz * h - nz * hw2 };
+  // sides only; the two ends join the connected runs (no end lines, like the other joined fittings)
+  return [
+    { x1: a1.x, z1: a1.z, x2: b1.x, z2: b1.z },
+    { x1: a2.x, z1: a2.z, x2: b2.x, z2: b2.z },
+  ];
+}
+
+/** Coupling / union: the run width over a short body, with two coupling rings across the run. */
+export function unionOutlineSegments(cx: number, cz: number, angle: number, width: number, length: number): Seg[] {
+  const dx = Math.cos(angle), dz = Math.sin(angle), nx = -dz, nz = dx;
+  const hw = Math.max(width, 0.01) / 2 * 1.08, h = length / 2;
+  const P = (u: number, v: number) => ({ x: cx + dx * u + nx * v, z: cz + dz * u + nz * v });
+  const seg = (a: { x: number; z: number }, b: { x: number; z: number }): Seg => ({ x1: a.x, z1: a.z, x2: b.x, z2: b.z });
+  return [
+    seg(P(-h, hw), P(h, hw)), seg(P(-h, -hw), P(h, -hw)),
+    seg(P(-h, hw), P(-h, -hw)), seg(P(h, hw), P(h, -hw)),
+  ];
+}
