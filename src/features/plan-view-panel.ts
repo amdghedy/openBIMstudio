@@ -1406,6 +1406,15 @@ function numInput(label: string, value: number, onChange: (v: number) => void, s
 const widthInp = numInput("Width", planWidth * 1000, (v) => { planWidth = v / 1000; }, 5);
 const heightInp = numInput("Height", planHeight * 1000, (v) => { planHeight = v / 1000; }, 5);
 const elevInp = numInput("Elev", planElevOffset * 1000, (v) => { planElevOffset = v / 1000; }, 10);
+const slopeInp = (() => {
+  const w = numInput("Slope", 0, () => {}, 0.1);
+  const inp = w.querySelector("input") as HTMLInputElement;
+  inp.min = "-100"; inp.title = "Slope % for pipes/ducts/trays/conduits while drawing (+ rises toward the end, 0 = flat)";
+  const apply = () => { void import("./authoring").then((a) => a.setDrawSlope(Number(inp.value) || 0)); };
+  inp.oninput = apply; inp.onchange = apply;
+  (w.querySelector("span") as HTMLElement).textContent = "Slope(%)";
+  return w;
+})();
 // labels show mm like BIM
 (widthInp.querySelector("span") as HTMLElement).textContent = "W(mm)";
 (heightInp.querySelector("span") as HTMLElement).textContent = "H(mm)";
@@ -1511,7 +1520,7 @@ header.append(
   makeGroup("Scale", scaleSelect, unitSelect),
   makeGroup("Dim", dimTypeSelect, chainDimLabel),
   makeGroup("", toolHint),
-  makeGroup("Params", widthInp, heightInp, elevInp, wallOptsWrap),
+  makeGroup("Params", widthInp, heightInp, elevInp, slopeInp, wallOptsWrap),
   spacer,
   makeGroup("", cadBtn, clearCadBtn, renderBtn, printBtn, exportBtn, closeBtn),
 );

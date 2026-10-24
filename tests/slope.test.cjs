@@ -1,0 +1,13 @@
+const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
+const out=fs.mkdtempSync(path.join(os.tmpdir(),"sl-"));
+execSync(`npx tsc src/modules/mep/slope.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`,{stdio:"inherit"});
+const m=require(path.join(out,"slope.js"));
+let pass=0,fail=0;const t=(n,f)=>{try{f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
+const near=(a,b,e=1e-9)=>assert.ok(Math.abs(a-b)<e,`${a}!=${b}`);
+t("2% over 10 m rises 0.2",()=>near(m.endElevationFromSlope(3,10,2),3.2));
+t("negative slope falls",()=>near(m.endElevationFromSlope(3,10,-1),2.9));
+t("percent round-trips",()=>near(m.slopePercent(3,m.endElevationFromSlope(3,7.5,1.5),7.5),1.5));
+t("flat when end elevation missing",()=>{near(m.slopePercent(3,undefined,10),0);const r=m.slopedRun(3,undefined,10);near(r.length,10);near(r.pitch,0);near(r.midElevation,3)});
+t("zero-length run is safe",()=>near(m.slopePercent(0,1,0),0));
+t("3-4-5 run",()=>{const r=m.slopedRun(0,3,4);near(r.length,5);near(r.pitch,Math.atan2(3,4));near(r.midElevation,1.5)});
+console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

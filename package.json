@@ -48,6 +48,7 @@
     "test:plan-tags": "node tests/plan-tags.test.cjs",
     "test:project-file": "node tests/project-file.test.cjs",
     "test:fitting-outline": "node tests/fitting-outline.test.cjs",
+    "test:slope": "node tests/slope.test.cjs",
     "test:props": "node tests/property-schema-revit.test.cjs",
     "test:elbow": "node tests/elbow-geometry.test.cjs",
     "test:walk": "node tests/walk-physics.test.cjs",

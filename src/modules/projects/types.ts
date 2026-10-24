@@ -61,6 +61,8 @@ export interface AuthoredElement {
     height: number;
     thickness: number;
     elevation: number;
+    /** Optional end elevation for sloped MEP runs (absolute, m). Absent = flat. */
+    endElevation?: number;
 
     // ── Hosted element (door/window) ──────────────────────────────────
     /** Distance in metres from the host wall's start to the element's centre. */
