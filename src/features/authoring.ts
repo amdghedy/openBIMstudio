@@ -28,6 +28,7 @@ import { history } from "./history";
 import { snapping } from "./snapping";
 import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
+import { expandConnected, isMepElement } from "../modules/mep/connectivity";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import type {
@@ -2516,16 +2517,19 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
             });
           }
         } else {
-          const candidate: AuthoredElement = JSON.parse(JSON.stringify(src));
-          shiftParams(candidate, dx, dz);
-          if (!rejectInvalidOperation(elements.map((item) => item.id === src.id ? candidate : item), new Set([src.id]), `move ${src.name}`)) {
-            const snapshot = JSON.parse(JSON.stringify(src.params));
-            const final = JSON.parse(JSON.stringify(candidate.params));
+          const movers = expandConnectedIds([src.id])
+            .map((mid) => elements.find((x) => x.id === mid))
+            .filter((x): x is AuthoredElement => !!x && !x.properties?.pinned);
+          const candidates = movers.map((m0) => { const c = JSON.parse(JSON.stringify(m0)) as AuthoredElement; shiftParams(c, dx, dz); return c; });
+          const candById = new Map(candidates.map((c) => [c.id, c]));
+          if (!rejectInvalidOperation(elements.map((item) => candById.get(item.id) ?? item), new Set(movers.map((m0) => m0.id)), `move ${src.name}`)) {
+            const snaps = movers.map((m0) => ({ el: m0, before: JSON.parse(JSON.stringify(m0.params)), after: JSON.parse(JSON.stringify(candById.get(m0.id)!.params)) }));
             history.push({
-              label: `Move ${src.name}`,
-              apply: () => { src.params = JSON.parse(JSON.stringify(final)); rebuild(); markDirty(); },
-              revert: () => { src.params = JSON.parse(JSON.stringify(snapshot)); rebuild(); markDirty(); },
+              label: movers.length > 1 ? `Move ${src.name} + ${movers.length - 1} connected` : `Move ${src.name}`,
+              apply: () => { for (const o of snaps) o.el.params = JSON.parse(JSON.stringify(o.after)); rebuild(); markDirty(); },
+              revert: () => { for (const o of snaps) o.el.params = JSON.parse(JSON.stringify(o.before)); rebuild(); markDirty(); },
             });
+            for (const o of snaps) o.el.params = JSON.parse(JSON.stringify(o.after));
             rebuild();
             markDirty();
           }
@@ -4113,6 +4117,24 @@ export function getElementWorldBox(el: AuthoredElement): THREE.Box3 | null {
 }
 export function rebuildAuthored(): void { rebuild(); markDirty(); }
 
+/** When on, moving an MEP part also moves everything connected to it (default on). */
+let moveConnectedMep = (() => { try { return localStorage.getItem("obs.moveConnectedMep") !== "0"; } catch { return true; } })();
+try { (window as any).__obsMoveConnected = moveConnectedMep; } catch { /* */ }
+export function isMoveConnectedMep(): boolean { return moveConnectedMep; }
+export function setMoveConnectedMep(on: boolean): void {
+  moveConnectedMep = on;
+  try { localStorage.setItem("obs.moveConnectedMep", on ? "1" : "0"); } catch { /* */ }
+}
+/** Ids to move together with `ids`: the connected MEP network when the option is on. */
+export function expandConnectedIds(ids: Iterable<string>): string[] {
+  const list = [...ids];
+  if (!moveConnectedMep) return list;
+  const mepStart = list.filter((id) => { const e = elements.find((x) => x.id === id); return e && isMepElement(e); });
+  if (!mepStart.length) return list;
+  const extra = expandConnected(mepStart, elements as any);
+  return [...new Set([...list, ...extra])];
+}
+
 /** Replace an element's boundary polygon (Edit Boundary), with undo/redo. Returns false if rejected. */
 export function setElementPolygon(id: string, polygon: Vec2[], label = "Edit boundary"): boolean {
   const el = elements.find((e) => e.id === id);
@@ -4596,12 +4618,14 @@ export function setupAuthoring() {
   });
 
   let gizmoBaseline: Record<string, AuthoredElement["params"]> | null = null;
+  let gizmoMoving = new Set<string>();
 
   gizmo.setCallbacks({
     onStart: () => {
       gizmoBaseline = {};
+      gizmoMoving = new Set(expandConnectedIds(selectedIds));
       for (const el of elements) {
-        if (selectedIds.has(el.id) && !el.properties?.pinned) {
+        if (gizmoMoving.has(el.id) && !el.properties?.pinned) {
           gizmoBaseline[el.id] = JSON.parse(JSON.stringify(el.params));
         }
       }
@@ -4609,7 +4633,7 @@ export function setupAuthoring() {
     onUpdate: (delta) => {
       if (!gizmoBaseline) return;
       for (const el of elements) {
-        if (!selectedIds.has(el.id) || !!el.properties?.pinned) continue;
+        if (!gizmoMoving.has(el.id) || !!el.properties?.pinned) continue;
         const base = gizmoBaseline[el.id];
         if (!base) continue;
         const p = JSON.parse(JSON.stringify(base)) as AuthoredElement["params"];
@@ -4630,7 +4654,7 @@ export function setupAuthoring() {
       const before = gizmoBaseline;
       const after: Record<string, AuthoredElement["params"]> = {};
       for (const el of elements) {
-        if (selectedIds.has(el.id)) after[el.id] = JSON.parse(JSON.stringify(el.params));
+        if (gizmoMoving.has(el.id) && before[el.id]) after[el.id] = JSON.parse(JSON.stringify(el.params));
       }
       for (const el of elements) {
         if (before[el.id]) el.params = JSON.parse(JSON.stringify(before[el.id]));

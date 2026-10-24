@@ -3310,9 +3310,10 @@ async function commitPlanBoxSelect(additive: boolean) {
 async function moveSelectedInPlan(dx: number, dz: number) {
   if (!planSelectedIds.size || (Math.abs(dx) < 1e-9 && Math.abs(dz) < 1e-9)) return;
   try {
-    const { getElements, rebuildAuthored, markAuthoringDirty } = await import("./authoring");
+    const { getElements, rebuildAuthored, markAuthoringDirty, expandConnectedIds } = await import("./authoring");
     const { history } = await import("./history");
-    const els = getElements().filter((el: any) => planSelectedIds.has(el.id));
+    const moveIds = new Set(expandConnectedIds(planSelectedIds));
+    const els = getElements().filter((el: any) => moveIds.has(el.id));
     const before = els.map((el: any) => ({ id: el.id, params: JSON.parse(JSON.stringify(el.params)) }));
     for (const el of els) {
       if (el.properties?.pinned) continue;
