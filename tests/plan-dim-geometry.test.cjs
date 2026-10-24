@@ -1,0 +1,16 @@
+const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
+const out=fs.mkdtempSync(path.join(os.tmpdir(),"pdg-"));
+execSync(`npx tsc src/modules/views/plan-dim-geometry.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`,{stdio:"inherit"});
+const m=require(path.join(out,"plan-dim-geometry.js"));
+let pass=0,fail=0;const t=(n,f)=>{try{f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
+const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-9,`${a}!=${b}`);
+t("aligned offset is perpendicular",()=>{const d={x1:0,z1:0,x2:4,z2:0,style:"aligned"};const e=m.dimLineEnds(d,{x:0,z:0},{x:4,z:0},0.5);near(e.a.z,0.5);near(e.b.x,4)});
+t("linear projects to horizontal",()=>{const d={x1:0,z1:0,x2:4,z2:1,style:"linear"};const e=m.dimLineEnds(d,{x:0,z:0},{x:4,z:1},0.3);near(e.a.z,0.3);near(e.b.z,0.3)});
+t("fixed line projects endpoints",()=>{const d={style:"linear",fixedLine:{ox:0,oz:-2,ux:1,uz:0}};const e=m.dimLineEnds(d,{x:1,z:5},{x:3,z:7},0);near(e.a.z,-2);near(e.b.x,3)});
+t("axis chain",()=>{const d={style:"linear",axis:"z",linePos:-1};const e=m.dimLineEnds(d,{x:2,z:0},{x:2,z:3},0);near(e.a.x,-1);near(e.b.z,3)});
+t("other styles null",()=>assert.strictEqual(m.dimLineEnds({style:"radial"},{x:0,z:0},{x:1,z:1},0),null));
+t("distToSegment",()=>{near(m.distToSegment({x:2,z:3},{x:0,z:0},{x:4,z:0}),3);near(m.distToSegment({x:6,z:0},{x:0,z:0},{x:4,z:0}),2)});
+t("move fixed line keeps direction",()=>{const d={style:"linear",fixedLine:{ox:0,oz:-2,ux:1,uz:0}};m.moveDimLineTo(d,{x:0,z:0},{x:1,z:0},{x:9,z:-5},100);near(d.fixedLine.oz,-5);near(d.fixedLine.ox,0)});
+t("move axis dim",()=>{const d={style:"linear",axis:"x",linePos:-1};m.moveDimLineTo(d,{x:0,z:0},{x:1,z:0},{x:3,z:-4},100);near(d.linePos,-4)});
+t("move offset dim: round-trips through dimLineEnds",()=>{const d={x1:0,z1:0,x2:4,z2:0,style:"aligned",offsetMm:12};m.moveDimLineTo(d,{x:0,z:0},{x:4,z:0},{x:2,z:1.5},100);const e=m.dimLineEnds(d,{x:0,z:0},{x:4,z:0},(d.offsetMm/1000)*100);near(e.a.z,1.5)});
+console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

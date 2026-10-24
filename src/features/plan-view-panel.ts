@@ -10,6 +10,8 @@
 import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
+import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan-dim-geometry";
+import { history as planHistory } from "./history";
 import { buildAutoDimensions, buildRangeDimension } from "../modules/views/auto-dim-chains";
 import { resolveElementRef } from "../modules/views/element-snap-points";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
@@ -423,6 +425,7 @@ applyBtn.onclick = () => {
 };
 
 function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggle" = "replace") {
+  if (el) planDimSel = null;
   if (mode === "replace") {
     planSelectedIds.clear();
     if (el?.id) planSelectedIds.add(el.id);
@@ -672,13 +675,16 @@ function finishAutoRange(linePos?: number): void {
   const res = buildRangeDimension(els, { axis: pk.axis, p1: pk.p1 as any, p2: pk.p2 as any, linePos, offset: 0.5, stack: 0.5 });
   planAutoPick = null;
   if (!res.length) { footerStatus("Auto Dimension: nothing between those edges - pick the first edge again"); return; }
+  const beforeSnap = dimSnapshot();
+  const cMain = newChainId(), cAll = newChainId();
   for (const r of res) {
     planDims.push({
       x1: r.x1, z1: r.z1, x2: r.x2, z2: r.z2, style: "linear", offsetMm: DIM_OFFSET_MM,
       ref1: r.ref1 as PlanDimensionRef, ref2: r.ref2 as PlanDimensionRef,
-      axis: r.axis, linePos: r.linePos,
+      axis: r.axis, linePos: r.linePos, chainId: r.overall ? cAll : cMain,
     });
   }
+  recordDims("Auto dimension", beforeSnap);
   if (currentPlan) renderPlan(currentPlan);
   const n = res.filter((r) => !r.overall).length;
   footerStatus(`Auto Dimension: ${n} dimension(s) + overall - pick the next first edge (Esc = Select)`);
@@ -716,14 +722,18 @@ async function runAutoDimension(): Promise<void> {
     (window as any).__obsAuthoredElements = els;
     const res = buildAutoDimensions(els, { offset: cm / 100, stack: cm / 100, categories: ["column", "wall"] });
     if (!res.length) { footerStatus("Auto Dimension: no columns or walls found"); return; }
+    const beforeSnap = dimSnapshot();
     for (let i = planDims.length - 1; i >= 0; i--) if (planDims[i].auto) planDims.splice(i, 1);
+    const cids: Record<string, string> = {};
     for (const r of res) {
+      const key = r.axis + (r.overall ? "o" : "");
       planDims.push({
         x1: r.x1, z1: r.z1, x2: r.x2, z2: r.z2, style: "linear", offsetMm: DIM_OFFSET_MM,
         ref1: r.ref1 as PlanDimensionRef, ref2: r.ref2 as PlanDimensionRef,
-        axis: r.axis, linePos: r.linePos, auto: true,
+        axis: r.axis, linePos: r.linePos, auto: true, chainId: (cids[key] ??= newChainId()),
       });
     }
+    recordDims("Dimension all", beforeSnap);
     if (currentPlan) renderPlan(currentPlan);
     const nx = res.filter((r) => r.axis === "x" && !r.overall).length, nz = res.filter((r) => r.axis === "z" && !r.overall).length;
     footerStatus(`Auto Dimension: ${nx} X + ${nz} Y dimensions at ${cm} cm (plus overall rows)`);
@@ -977,8 +987,84 @@ interface PlanDimension {
   /** Fixed dimension line (chain placement): endpoints are projections onto this infinite line. */
   fixedLine?: { ox: number; oz: number; ux: number; uz: number };
   auto?: boolean;
+  /** Segments placed together (chain) share an id: selecting one drags the whole chain. */
+  chainId?: string;
+  /** Text typed by the user instead of the measured value. */
+  textOverride?: string;
 }
 const planDims: PlanDimension[] = [];
+let planDimSel: PlanDimension | null = null;
+let planDimDrag: { members: PlanDimension[]; before: string; moved: boolean; sx: number; sy: number } | null = null;
+const newChainId = () => "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function dimSnapshot(): string { return JSON.stringify(planDims); }
+function restoreDims(json: string): void {
+  planDims.length = 0;
+  try { planDims.push(...(JSON.parse(json) as PlanDimension[])); } catch { /* */ }
+  planDimSel = null;
+  if (currentPlan) renderPlan(currentPlan);
+}
+/** Register an undo step for a dimension change that already happened. */
+function recordDims(label: string, before: string): void {
+  const after = dimSnapshot();
+  if (before === after) return;
+  try {
+    planHistory.push({ label, apply: () => restoreDims(after), revert: () => restoreDims(before) });
+  } catch { /* history optional */ }
+  markPlanDimsDirty();
+}
+function markPlanDimsDirty(): void { try { import("../modules/projects/projects").then((m: any) => m.markDirty?.()); } catch { /* */ } }
+
+/** Persist plan dimensions in the project document. */
+(window as any).__obsPlanDims = {
+  serialize: () => JSON.parse(JSON.stringify(planDims)),
+  load: (arr: unknown) => {
+    planDims.length = 0;
+    if (Array.isArray(arr)) planDims.push(...(arr as PlanDimension[]));
+    planDimSel = null;
+    if (currentPlan) renderPlan(currentPlan);
+  },
+};
+
+try {
+  const pend = (window as any).__obsPendingPlanDims;
+  if (Array.isArray(pend)) { planDims.push(...(pend as PlanDimension[])); (window as any).__obsPendingPlanDims = undefined; }
+} catch { /* */ }
+
+function resolvedDimPoints(d: PlanDimension): { p1: { x: number; z: number }; p2: { x: number; z: number } } {
+  const r1 = resolvePlanDimensionRef(d.ref1), r2 = resolvePlanDimensionRef(d.ref2);
+  return { p1: { x: r1?.x ?? d.x1, z: r1?.z ?? d.z1 }, p2: { x: r2?.x ?? d.x2, z: r2?.z ?? d.z2 } };
+}
+function dimEndsFor(d: PlanDimension) {
+  const { p1, p2 } = resolvedDimPoints(d);
+  return dimLineEnds(d, p1, p2, paperMmToWorld(d.offsetMm ?? DIM_OFFSET_MM));
+}
+function worldPerPixel(): number {
+  const rect = canvasWrap.getBoundingClientRect();
+  if (!currentPlan || rect.width < 1) return 0.02;
+  const b = currentPlan.bounds;
+  return (((b.maxX - b.minX) + 6) / currentZoom) / rect.width;
+}
+/** Topmost dimension within ~7 px of a world point. */
+function hitDimension(wx: number, wz: number): PlanDimension | null {
+  const tol = worldPerPixel() * 7;
+  const pt = { x: wx, z: wz };
+  for (let i = planDims.length - 1; i >= 0; i--) {
+    const d = planDims[i];
+    const ends = dimEndsFor(d);
+    if (ends) {
+      if (distToSegment(pt, ends.a, ends.b) <= tol) return d;
+      const mid = { x: (ends.a.x + ends.b.x) / 2, z: (ends.a.z + ends.b.z) / 2 };
+      if (Math.hypot(pt.x - mid.x, pt.z - mid.z) <= tol * 3) return d;
+    } else if (d.style === "radial" || d.style === "diameter" || d.style === "arc") {
+      if (distToSegment(pt, { x: d.x1, z: d.z1 }, { x: d.x2, z: d.z2 }) <= tol) return d;
+    } else if (Math.hypot(pt.x - d.x1, pt.z - d.z1) <= tol * 2) return d;
+  }
+  return null;
+}
+function dimMembers(d: PlanDimension): PlanDimension[] {
+  return d.chainId ? planDims.filter((x) => x.chainId === d.chainId) : [d];
+}
 let planDimStyle: PlanDimKind = "aligned";
 let planDimChain = false;
 interface PlanDimPending {
@@ -1019,16 +1105,19 @@ function finishDimChain(at?: { x: number; z: number }): void {
     line = { ox: a.x + nx * off, oz: a.z + nz * off, ux, uz };
   }
   let made = 0;
+  const beforeSnap = dimSnapshot();
+  const chainId = newChainId();
   for (let i = 0; i + 1 < pts.length; i++) {
     const p = pts[i], q = pts[i + 1];
     const len = Math.abs((q.x - p.x) * line.ux + (q.z - p.z) * line.uz);
     if (len < 0.001) continue;
     planDims.push({
       x1: p.x, z1: p.z, x2: q.x, z2: q.z, style: linear ? "linear" : "aligned",
-      offsetMm: DIM_OFFSET_MM, ref1: p.ref, ref2: q.ref, fixedLine: line,
+      offsetMm: DIM_OFFSET_MM, ref1: p.ref, ref2: q.ref, fixedLine: { ...line }, chainId,
     });
     made++;
   }
+  recordDims("Chain dimension", beforeSnap);
   planDimChainPts = [];
   planDrawStart = null; planDimStartRef = null; planDimPendingRefs = null;
   if (currentPlan) renderPlan(currentPlan);
@@ -2118,7 +2207,35 @@ function renderPlan(plan: PlanView) {
       }
     }
     const mid = screen((a0x + a1x) / 2 + nx * 0.12, (a0z + a1z) / 2 + nz * 0.12);
-    g.appendChild(makeSvgText(mid.x, mid.y, formatPlanDimension(len, dimStyle), dimStyle, dimScale));
+    g.appendChild(makeSvgText(mid.x, mid.y, d.textOverride ?? formatPlanDimension(len, dimStyle), dimStyle, dimScale));
+  }
+
+  // -- Selected dimension (blue) --
+  if (planDimSel && planDims.includes(planDimSel)) {
+    for (const m of dimMembers(planDimSel)) {
+      const isMain = m === planDimSel;
+      const ends = dimEndsFor(m);
+      const hp = resolvedDimPoints(m);
+      const a = ends ? ends.a : { x: m.x1, z: m.z1 }, b = ends ? ends.b : { x: m.x2, z: m.z2 };
+      const sa = screen(a.x, a.z), sb = screen(b.x, b.z);
+      const hl = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      hl.setAttribute("x1", String(sa.x)); hl.setAttribute("y1", String(sa.y));
+      hl.setAttribute("x2", String(sb.x)); hl.setAttribute("y2", String(sb.y));
+      hl.setAttribute("stroke", "#2563eb"); hl.setAttribute("stroke-opacity", isMain ? "0.55" : "0.25");
+      hl.setAttribute("stroke-width", String(paperMmToWorld(isMain ? 1.4 : 0.9)));
+      hl.setAttribute("stroke-linecap", "round"); hl.setAttribute("pointer-events", "none");
+      g.appendChild(hl);
+      if (isMain) {
+        for (const q of [a, b, hp.p1, hp.p2]) {
+          const sp = screen(q.x, q.z);
+          const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          c.setAttribute("cx", String(sp.x)); c.setAttribute("cy", String(sp.y));
+          c.setAttribute("r", String(paperMmToWorld(1.1))); c.setAttribute("fill", "#2563eb");
+          c.setAttribute("pointer-events", "none");
+          g.appendChild(c);
+        }
+      }
+    }
   }
 
   // -- Temporary dimensions for selected elements --
@@ -3216,7 +3333,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
           ref1: pr.ref1,
           ref2: pr.ref2,
         };
-        planDims.push(dim);
+        { const beforeSnap = dimSnapshot(); planDims.push(dim); recordDims("Place dimension", beforeSnap); }
         const shortLen = formatPlanDimension(LL, getDimensionStyle());
         const styleName = planDimStyle === "linear" ? "Linear" : "Aligned";
         if (planDimChain) {
@@ -3349,6 +3466,22 @@ canvasWrap.addEventListener("mousedown", (e) => {
       });
     } catch { /* */ }
     const hit = clientToWorld(e.clientX, e.clientY);
+    // Dimensions are selectable / draggable like Revit: click a dimension line or its text.
+    if (planMode === "select" && hit && e.button === 0) {
+      const dh = hitDimension(hit.x, hit.z);
+      if (dh) {
+        setPlanSelectedElement(null);
+        planDimSel = dh;
+        planDimDrag = { members: dimMembers(dh), before: dimSnapshot(), moved: false, sx: e.clientX, sy: e.clientY };
+        footerStatus(`Dimension selected${dh.chainId ? " (chain - drag moves the whole chain)" : ""} - Delete removes, double-click edits text, Esc deselects`);
+        if (currentPlan) renderPlan(currentPlan);
+        e.preventDefault();
+        return;
+      } else if (planDimSel) {
+        planDimSel = null;
+        if (currentPlan) renderPlan(currentPlan);
+      }
+    }
     planBoxDragging = true;
     planBoxStart = { x: e.clientX, y: e.clientY, wx: hit?.x ?? 0, wz: hit?.z ?? 0 };
     planBoxCur = { x: e.clientX, y: e.clientY };
@@ -3394,6 +3527,43 @@ canvasWrap.addEventListener("mousedown", (e) => {
     })();
   }
 });
+
+// Dimension drag (move the dimension line / whole chain) and text edit.
+window.addEventListener("mousemove", (e) => {
+  const dr = planDimDrag;
+  if (!dr || !currentPlan) return;
+  if (!dr.moved && Math.hypot(e.clientX - dr.sx, e.clientY - dr.sy) < 4) return;
+  const w = clientToWorld(e.clientX, e.clientY);
+  if (!w) return;
+  dr.moved = true;
+  for (const m of dr.members) {
+    const { p1, p2 } = resolvedDimPoints(m);
+    moveDimLineTo(m, p1, p2, w, planViewScale);
+  }
+  renderPlan(currentPlan);
+});
+window.addEventListener("mouseup", () => {
+  const dr = planDimDrag;
+  if (!dr) return;
+  planDimDrag = null;
+  if (dr.moved) { recordDims("Move dimension", dr.before); footerStatus("Dimension moved - Ctrl+Z undo"); }
+});
+canvasWrap.addEventListener("dblclick", (e) => {
+  if (planMode !== "select") return;
+  const w = clientToWorld(e.clientX, e.clientY);
+  const d = w ? hitDimension(w.x, w.z) : null;
+  if (!d) return;
+  e.preventDefault(); e.stopPropagation();
+  const cur = d.textOverride ?? "";
+  const next = window.prompt("Dimension text (leave empty to show the measured value):", cur);
+  if (next == null) return;
+  const beforeSnap = dimSnapshot();
+  const txt = next.trim();
+  if (txt) d.textOverride = txt; else delete d.textOverride;
+  recordDims("Edit dimension text", beforeSnap);
+  planDimSel = d;
+  if (currentPlan) renderPlan(currentPlan);
+}, true);
 
 // Middle-button pan (BIM). Shift+left drag pans only in Navigate/Pan: while placing, Shift = ortho constraint.
 canvasWrap.addEventListener("mousedown", (e) => {
@@ -3899,7 +4069,9 @@ export function setPlanToolFromRibbon(tool: string) {
     canvasWrap.style.cursor = "crosshair";
     toolHint.textContent = "Text � click to place note";
   } else if (tool === "clear-annotations" || tool === "clear") {
+    const beforeSnap = dimSnapshot();
     planDims.length = 0;
+    recordDims("Clear dimensions", beforeSnap);
     planTags.length = 0;
     planNotes.length = 0;
     if (currentPlan) renderPlan(currentPlan);
@@ -4024,6 +4196,22 @@ try {
         }
       })();
       return;
+    }
+
+    // Selected dimension: Delete removes it (Shift = whole chain), Esc deselects.
+    if (planDimSel && planMode !== "dim" && planMode !== "linear") {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault(); e.stopImmediatePropagation();
+        const beforeSnap = dimSnapshot();
+        const gone = new Set(e.shiftKey ? dimMembers(planDimSel) : [planDimSel]);
+        for (let i = planDims.length - 1; i >= 0; i--) if (gone.has(planDims[i])) planDims.splice(i, 1);
+        planDimSel = null;
+        recordDims("Delete dimension", beforeSnap);
+        if (currentPlan) renderPlan(currentPlan);
+        footerStatus(`Deleted ${gone.size} dimension(s) - Ctrl+Z undo`);
+        return;
+      }
+      if (e.key === "Escape") { e.preventDefault(); planDimSel = null; if (currentPlan) renderPlan(currentPlan); return; }
     }
 
     // Delete / Backspace on selection � remove selected authored elements

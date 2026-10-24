@@ -133,6 +133,11 @@ export async function saveProject(silent = false) {
     current.annotations = annot.serializeAll();
   } catch { /* annotations store optional */ }
 
+  try {
+    const pd = (window as any).__obsPlanDims?.serialize?.();
+    if (Array.isArray(pd)) current.planDimensions = pd;
+  } catch { /* plan dimensions optional */ }
+
   current.updatedAt = Date.now();
   await store.putProject(current);
   dirty = false;
@@ -364,6 +369,11 @@ export async function openProject(id: string) {
     try {
       const annot = await import("../views/annotation-store");
       annot.deserializeAll((doc.annotations as any) ?? null);
+    } catch { /* */ }
+    try {
+      const pdApi = (window as any).__obsPlanDims;
+      if (pdApi?.load) pdApi.load(doc.planDimensions ?? []);
+      else (window as any).__obsPendingPlanDims = doc.planDimensions ?? [];
     } catch { /* */ }
 
     // If no saved offsets, apply the saved positioning mode instead.
