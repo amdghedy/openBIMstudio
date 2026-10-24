@@ -410,6 +410,9 @@ function bootstrapCommands(): void {
       setTimeout(() => pv?.setTool?.("auto-dim"), 60);
     } catch { /* */ }
   } });
+  registerCommand({ id: "file.save-to-file", label: "Save project to file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.saveProjectToFile(false)); } });
+  registerCommand({ id: "file.save-as-file", label: "Save project as new file (copy / backup)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.saveProjectToFile(true)); } });
+  registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
   registerCommand({ id: "tools.walk", label: toggleLabel("Walk mode", isWalkModeEnabled), category: "Tools", run: () => toggleWalkMode() });
   registerCommand({ id: "tools.clash", label: "Run clash detection", category: "Tools", kbd: "F5", run: () => void runElementClashDetection() });
   registerCommand({ id: "tools.clashClear", label: "Clear clash results", category: "Tools", run: () => void clearClash() });

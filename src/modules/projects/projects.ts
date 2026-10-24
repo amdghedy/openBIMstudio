@@ -144,6 +144,7 @@ export async function saveProject(silent = false) {
   await store.putProject(current);
   dirty = false;
   notify();
+  try { window.dispatchEvent(new CustomEvent("obs:project-saved", { detail: { silent } })); } catch { /* */ }
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
