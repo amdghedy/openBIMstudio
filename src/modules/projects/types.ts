@@ -141,6 +141,8 @@ export interface LevelDatum {
 // ── Model metadata ────────────────────────────────────────────────────────
 export interface ProjectModelMeta {
   id: string;
+  /** Rotation about the vertical axis in degrees (linked-model rotation). */
+  rotationY?: number;
   name: string;
   bytes: number;
   /** Set when the model's blob was not found during project open. */
