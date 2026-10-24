@@ -15,6 +15,7 @@ import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan
 import { history as planHistory } from "./history";
 import { buildAutoDimensions, buildRangeDimension } from "../modules/views/auto-dim-chains";
 import { resolveElementRef } from "../modules/views/element-snap-points";
+import { edgeMidpoint, insertVertex, removeVertex, moveVertex, isValidBoundary } from "../modules/views/boundary-edit";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
 import {
   generatePlanView,
@@ -1894,6 +1895,94 @@ try {
   onCropChanged(() => { try { if (currentPlan) renderPlan(currentPlan); } catch { /* plan not open */ } });
 } catch { /* */ }
 
+
+/** Revit-style Edit Boundary: drag vertices, drag edge midpoints to add vertices, Shift+click a vertex to delete it. */
+function renderBoundaryUi(elId: string, zoomedW: number): void {
+  const NS = "http://www.w3.org/2000/svg";
+  const find = () => (((window as any).__obsAuthoredElements ?? []) as any[]).find((x) => x.id === elId);
+  const el0 = find();
+  if (!el0?.params?.polygon || el0.properties?.pinned) return;
+  const hs = Math.max(zoomedW / 130, 0.01);
+  const lw = Math.max(zoomedW / 900, 0.003);
+  const ui = document.createElementNS(NS, "g");
+  ui.setAttribute("data-obs-boundary-ui", "1");
+  svg.appendChild(ui);
+
+  const draw = (poly: Array<[number, number]>) => {
+    ui.innerHTML = "";
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", poly.map((q, k) => `${k ? "L" : "M"}${q[0]} ${-q[1]}`).join(" ") + " Z");
+    path.setAttribute("fill", "rgba(37,99,235,0.08)");
+    path.setAttribute("stroke", "#2563eb");
+    path.setAttribute("stroke-width", String(lw * 2));
+    path.setAttribute("pointer-events", "none");
+    ui.appendChild(path);
+    poly.forEach((_, k) => {
+      const m = edgeMidpoint(poly, k);
+      const c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", String(m[0])); c.setAttribute("cy", String(-m[1])); c.setAttribute("r", String(hs * 0.38));
+      c.setAttribute("fill", "#ffffff"); c.setAttribute("stroke", "#2563eb"); c.setAttribute("stroke-width", String(lw));
+      c.style.cursor = "copy";
+      const t = document.createElementNS(NS, "title"); t.textContent = "Drag to add a vertex"; c.appendChild(t);
+      c.addEventListener("pointerdown", (ev) => begin(ev, insertVertex(poly, k, m), k + 1, true));
+      ui.appendChild(c);
+    });
+    poly.forEach((q, k) => {
+      const r = document.createElementNS(NS, "rect");
+      r.setAttribute("x", String(q[0] - hs / 2)); r.setAttribute("y", String(-q[1] - hs / 2));
+      r.setAttribute("width", String(hs)); r.setAttribute("height", String(hs));
+      r.setAttribute("fill", "#2563eb"); r.setAttribute("stroke", "#ffffff"); r.setAttribute("stroke-width", String(lw));
+      r.style.cursor = "move";
+      const t = document.createElementNS(NS, "title"); t.textContent = "Drag to move \u00b7 Shift+click to delete"; r.appendChild(t);
+      r.addEventListener("pointerdown", (ev) => {
+        if (ev.shiftKey) {
+          ev.preventDefault(); ev.stopPropagation();
+          const next = removeVertex(poly, k);
+          if (!next) { footerStatus("A boundary needs at least 3 vertices"); return; }
+          void commit(next, "Delete boundary vertex");
+          return;
+        }
+        begin(ev, poly, k, false);
+      });
+      ui.appendChild(r);
+    });
+  };
+
+  const commit = async (poly: Array<[number, number]>, label: string) => {
+    const { setElementPolygon } = await import("./authoring");
+    if (!isValidBoundary(poly)) { footerStatus("Boundary would cross itself \u2014 change reverted"); void regenerate(); return; }
+    if (setElementPolygon(elId, poly, label)) footerStatus(`${label} \u00b7 Ctrl+Z to undo`);
+    (window as any).__obsAuthoredElements = (await import("./authoring")).getElements();
+    void regenerate();
+  };
+
+  const begin = (ev: PointerEvent, startPoly: Array<[number, number]>, idx: number, inserted: boolean) => {
+    ev.preventDefault(); ev.stopPropagation();
+    let poly = startPoly;
+    draw(poly);
+    let moved = inserted;
+    const move = (e: PointerEvent) => {
+      const w = clientToWorld(e.clientX, e.clientY);
+      if (!w) return;
+      const sn = findPlanSnap(w.x, w.z);
+      const pt: [number, number] = sn ? [sn.x, sn.z] : [Math.round(w.x * 100) / 100, Math.round(w.z * 100) / 100];
+      poly = moveVertex(poly, idx, pt);
+      moved = true;
+      draw(poly);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (moved) void commit(poly, inserted ? "Add boundary vertex" : "Move boundary vertex");
+      else draw(poly);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  draw((el0.params.polygon as Array<[number, number]>).map((q) => [q[0], q[1]] as [number, number]));
+}
+
 function renderPlan(plan: PlanView) {
   svg.innerHTML = "";
 
@@ -2107,6 +2196,11 @@ function renderPlan(plan: PlanView) {
       const sp=screen(x,z); const r=0.12*dimScale;
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle"); c.setAttribute("cx",String(sp.x));c.setAttribute("cy",String(sp.y));c.setAttribute("r",String(r));c.setAttribute("fill","none");c.setAttribute("stroke","#2563eb");c.setAttribute("stroke-width",String(Math.max(0.02,0.05*dimScale))); g.appendChild(c);
     }
+  }
+
+  // -- Edit Boundary handles for a single selected floor / roof / slab / terrain --
+  if (planMode === "select" && selectedPlans.length === 1 && Array.isArray(selectedPlans[0]?.params?.polygon)) {
+    renderBoundaryUi(selectedPlans[0].id, zoomedW);
   }
 
   // -- Text --
@@ -3225,6 +3319,7 @@ async function moveSelectedInPlan(dx: number, dz: number) {
       if (el.params.start) { el.params.start[0] += dx; el.params.start[1] += dz; }
       if (el.params.end) { el.params.end[0] += dx; el.params.end[1] += dz; }
       if (el.params.point) { el.params.point[0] += dx; el.params.point[1] += dz; }
+      if (el.params.polygon) el.params.polygon = el.params.polygon.map(([x, z]: [number, number]) => [x + dx, z + dz]);
     }
     rebuildAuthored();
     markAuthoringDirty?.();

@@ -28,6 +28,7 @@ import { history } from "./history";
 import { snapping } from "./snapping";
 import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
+import { isValidBoundary } from "../modules/views/boundary-edit";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import type {
   AuthoredElement,
@@ -4111,6 +4112,24 @@ export function getElementWorldBox(el: AuthoredElement): THREE.Box3 | null {
   return box.isEmpty() ? null : box;
 }
 export function rebuildAuthored(): void { rebuild(); markDirty(); }
+
+/** Replace an element's boundary polygon (Edit Boundary), with undo/redo. Returns false if rejected. */
+export function setElementPolygon(id: string, polygon: Vec2[], label = "Edit boundary"): boolean {
+  const el = elements.find((e) => e.id === id);
+  if (!el || !el.params.polygon || el.properties?.pinned) return false;
+  if (!isValidBoundary(polygon as Array<[number, number]>)) return false;
+  const before = JSON.parse(JSON.stringify(el.params.polygon)) as Vec2[];
+  const after = polygon.map((p) => [p[0], p[1]] as Vec2);
+  if (JSON.stringify(before) === JSON.stringify(after)) return true;
+  history.push({
+    label: `${label} · ${el.name}`,
+    apply: () => { el.params.polygon = after.map((p) => [p[0], p[1]] as Vec2); rebuild(); markDirty(); notifyAuthoringChange(); },
+    revert: () => { el.params.polygon = before.map((p) => [p[0], p[1]] as Vec2); rebuild(); markDirty(); notifyAuthoringChange(); },
+  });
+  el.params.polygon = after.map((p) => [p[0], p[1]] as Vec2);
+  rebuild(); markDirty(); notifyAuthoringChange();
+  return true;
+}
 
 /**
  * Place a linear authored element from plan coordinates (Floor Plan modeling).
