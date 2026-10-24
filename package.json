@@ -44,6 +44,7 @@
     "test:snap-points": "node tests/element-snap-points.test.cjs",
     "test:section-plane": "node tests/section-plane-math.test.cjs",
     "test:auto-dim": "node tests/auto-dim-chains.test.cjs",
+    "test:dim-geometry": "node tests/plan-dim-geometry.test.cjs",
     "test:props": "node tests/property-schema-revit.test.cjs",
     "test:elbow": "node tests/elbow-geometry.test.cjs",
     "test:walk": "node tests/walk-physics.test.cjs",
