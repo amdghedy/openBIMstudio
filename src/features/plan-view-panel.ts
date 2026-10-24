@@ -992,6 +992,8 @@ interface PlanDimension {
   chainId?: string;
   /** Text typed by the user instead of the measured value. */
   textOverride?: string;
+  /** Equality display: segments of the chain show "EQ" while they are all equal (Revit). */
+  eq?: boolean;
 }
 const planDims: PlanDimension[] = [];
 let planDimSel: PlanDimension | null = null;
@@ -1062,6 +1064,19 @@ function hitDimension(wx: number, wz: number): PlanDimension | null {
     } else if (Math.hypot(pt.x - d.x1, pt.z - d.z1) <= tol * 2) return d;
   }
   return null;
+}
+/** Length of a linear / aligned dimension along its dimension line. */
+function dimLength(d: PlanDimension): number {
+  const e = dimEndsFor(d);
+  return e ? Math.hypot(e.b.x - e.a.x, e.b.z - e.a.z) : 0;
+}
+/** True when the chain has equality display on and every segment is the same length (within 1 mm). */
+function dimShowsEq(d: PlanDimension): boolean {
+  if (!d.eq || !d.chainId) return false;
+  const segs = planDims.filter((x) => x.chainId === d.chainId);
+  if (segs.length < 2) return false;
+  const l0 = dimLength(segs[0]);
+  return segs.every((x) => Math.abs(dimLength(x) - l0) < 0.001);
 }
 function dimMembers(d: PlanDimension): PlanDimension[] {
   return d.chainId ? planDims.filter((x) => x.chainId === d.chainId) : [d];
@@ -2287,7 +2302,7 @@ function renderPlan(plan: PlanView) {
       }
     }
     const mid = screen((a0x + a1x) / 2 + nx * 0.12, (a0z + a1z) / 2 + nz * 0.12);
-    g.appendChild(makeSvgText(mid.x, mid.y, d.textOverride ?? formatPlanDimension(len, dimStyle), dimStyle, dimScale));
+    g.appendChild(makeSvgText(mid.x, mid.y, d.textOverride ?? (dimShowsEq(d) ? "EQ" : formatPlanDimension(len, dimStyle)), dimStyle, dimScale));
   }
 
   // -- Selected dimension (blue) --
@@ -3593,7 +3608,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
         setPlanSelectedElement(null);
         planDimSel = dh;
         planDimDrag = { members: dimMembers(dh), before: dimSnapshot(), moved: false, sx: e.clientX, sy: e.clientY };
-        footerStatus(`Dimension selected${dh.chainId ? " (chain - drag moves the whole chain)" : ""} - Delete removes, double-click edits text, Esc deselects`);
+        footerStatus(`Dimension selected${dh.chainId ? " (chain - drag moves it, E toggles EQ)" : ""} - Delete removes, double-click edits text, Esc deselects`);
         if (currentPlan) renderPlan(currentPlan);
         e.preventDefault();
         return;
@@ -4409,6 +4424,17 @@ try {
         return;
       }
       if (e.key === "Escape") { e.preventDefault(); planDimSel = null; if (currentPlan) renderPlan(currentPlan); return; }
+      if ((e.key === "e" || e.key === "E") && !e.ctrlKey && !e.metaKey && !e.altKey && planDimSel.chainId) {
+        // Toggle equality display (EQ) for the selected chain.
+        e.preventDefault(); e.stopImmediatePropagation();
+        const beforeSnap = dimSnapshot();
+        const on = !planDimSel.eq;
+        for (const m of dimMembers(planDimSel)) m.eq = on;
+        recordDims("Toggle EQ", beforeSnap);
+        if (currentPlan) renderPlan(currentPlan);
+        footerStatus(on ? (dimShowsEq(planDimSel) ? "EQ on - segments are equal" : "EQ on - shows when all segments are equal") : "EQ off");
+        return;
+      }
     }
 
     // Delete / Backspace on selection � remove selected authored elements

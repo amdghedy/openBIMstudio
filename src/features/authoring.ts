@@ -13,6 +13,7 @@
  *     fragment and authored elements in one call.
  *   - Property palette state is published via onAuthoringChange.
  */
+import { fittingArmLength } from "../modules/mep/fitting-outline";
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
 import * as THREE from "three";
 import { CSG } from "three-csg-ts";
@@ -760,7 +761,7 @@ function buildFitting(el: AuthoredElement): THREE.Object3D | null {
     body.userData.elementId = el.id;
     g.add(body);
 
-    const armLen = Math.max(r * 2.4, w * 1.6);
+    const armLen = fittingArmLength(p.thickness, p.height, Number(p.bendRadius), isRound);
     const placeArm = (angle: number) => {
       const ax = Math.cos(angle);
       const az = Math.sin(angle);
