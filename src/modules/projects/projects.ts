@@ -93,6 +93,8 @@ export async function saveProject(silent = false) {
     for (const meta of current.models ?? []) {
       const off = importer?.getModelOffset?.(meta.id);
       if (off) meta.position = [off[0], off[1], off[2]];
+      const rot = importer?.getModelRotation?.(meta.id);
+      if (rot) meta.rotationY = rot;
     }
   } catch (e) {
     console.warn("[projects] offset persistence failed", e);
@@ -314,6 +316,7 @@ export async function openProject(id: string) {
         const meta = doc.models?.find((m) => m.id === b.modelId);
         if (meta?.position) {
           importer?.setModelOffset?.(b.modelId, meta.position);
+          if (meta.rotationY) importer?.setModelRotation?.(b.modelId, meta.rotationY);
           console.log(
             `[projects] applied offset for "${b.modelId}" → ` +
               `(${meta.position[0].toFixed(3)}, ${meta.position[1].toFixed(3)}, ${meta.position[2].toFixed(3)})`,

@@ -336,6 +336,9 @@ export function onOffsetsChanged(cb: () => void): () => void {
 
 let pinLoopRunning = false;
 
+/** Per-model rotation about the world Y (up) axis, radians. */
+const modelRotations = new Map<string, number>();
+
 function enforcePins(): void {
   for (const [id, off] of modelOffsets) {
     const model: any = ctx.fragments.list.get(id);
@@ -343,6 +346,12 @@ function enforcePins(): void {
     if (!obj) continue;
     if (obj.matrixAutoUpdate === false) obj.matrixAutoUpdate = true;
     const p = obj.position;
+    const ry = modelRotations.get(id) ?? 0;
+    if (Math.abs(obj.rotation.y - ry) > 1e-9) {
+      obj.rotation.y = ry;
+      obj.updateMatrix();
+      obj.updateMatrixWorld(true);
+    }
     if (
       Math.abs(p.x - off.x) > 1e-6 ||
       Math.abs(p.y - off.y) > 1e-6 ||
@@ -417,6 +426,18 @@ export function setModelOffset(modelId: string, offset: [number, number, number]
   v.set(offset[0], offset[1], offset[2]);
   enforcePins();
   notifyOffsets();
+}
+
+/** Set a linked model's rotation about the vertical axis, in degrees. */
+export function setModelRotation(modelId: string, degrees: number): void {
+  modelRotations.set(modelId, (degrees * Math.PI) / 180);
+  if (!modelOffsets.has(modelId)) modelOffsets.set(modelId, new THREE.Vector3());
+  enforcePins();
+  notifyOffsets();
+}
+
+export function getModelRotation(modelId: string): number {
+  return ((modelRotations.get(modelId) ?? 0) * 180) / Math.PI;
 }
 
 export function getModelOffset(modelId: string): [number, number, number] | null {
@@ -1101,7 +1122,7 @@ export function setupImporter() {
     loadIfcFiles, loadFragFiles, cancelActiveConversion,
     getPositioningMode, setPositioningMode, applyPositioningMode,
     registerModel, unregisterModel, clearAllOffsets,
-    setModelOffset, getModelOffset, listRegisteredModels,
+    setModelOffset, getModelOffset, setModelRotation, getModelRotation, listRegisteredModels,
     getModelBBox, getModelBBoxCenter,
     onOffsetsChanged,
   };

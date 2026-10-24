@@ -175,6 +175,16 @@ export function openManageLinks() {
           m.setModelOffset(modelId, [v[0], v[1], v[2]]);
           notify("info", `Offset set for ${modelId}`);
         }),
+        mini("Rotate", "Rotate the link about the vertical axis (degrees, counter-clockwise from above)", async () => {
+          const m = await imp();
+          const raw = prompt("Rotation in degrees about the vertical axis:", String(+m.getModelRotation(modelId).toFixed(3)));
+          if (raw == null) return;
+          const d = Number(raw.trim());
+          if (!Number.isFinite(d)) throw new Error("Enter a number of degrees");
+          m.registerModel(modelId);
+          m.setModelRotation(modelId, d);
+          notify("info", `Rotation set for ${modelId}`);
+        }),
         mini("Centre to origin", "Move the model's plan centre to the project origin", async () => {
           const m = await imp();
           const bb = await m.getModelBBox(modelId);
@@ -188,6 +198,7 @@ export function openManageLinks() {
           const m = await imp();
           m.registerModel(modelId);
           m.setModelOffset(modelId, [0, 0, 0]);
+          m.setModelRotation(modelId, 0);
         }),
         mini("Zoom", "Zoom to this model", async () => {
           const m = await imp();
