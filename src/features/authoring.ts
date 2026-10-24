@@ -28,6 +28,7 @@ import { history } from "./history";
 import { snapping } from "./snapping";
 import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
+import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import type {
   AuthoredElement,
   DoorPanelType,
@@ -437,8 +438,13 @@ let lastPlanLinear: {
   thickness: number;
   height: number;
   elevation: number;
+  endElevation?: number;
   id: string;
 } | null = null;
+/** Slope (%) applied to newly drawn pipes/ducts/trays/conduits; 0 = flat. */
+let drawSlopePct = 0;
+export function setDrawSlope(pct: number) { drawSlopePct = Number.isFinite(pct) ? pct : 0; }
+export function getDrawSlope() { return drawSlopePct; }
 export function clearLastPlanLinear() { lastPlanLinear = null; }
 
 
@@ -601,6 +607,18 @@ function memberMesh(a: THREE.Vector3, b: THREE.Vector3, w: number, h: number, ma
   const dir = new THREE.Vector3().subVectors(b, a).normalize();
   mesh.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
   return mesh;
+}
+
+const MEP_LINEAR_TYPES = new Set(['duct', 'pipe', 'cable-tray', 'conduit']);
+
+/** Start/end elevation for a run being drawn, honouring the draw slope and chain continuity. */
+function slopedElevations(type: string, sx: number, sz: number, ex: number, ez: number): { elevation: number; endElevation?: number } {
+  if (!MEP_LINEAR_TYPES.has(type) || Math.abs(drawSlopePct) < 1e-9) return { elevation: level };
+  let start = level;
+  const prev = lastPlanLinear;
+  if (prev && prev.type === type && prev.endElevation != null &&
+      Math.hypot(prev.end[0] - sx, prev.end[1] - sz) < 0.002) start = prev.endElevation;
+  return { elevation: start, endElevation: endElevationFromSlope(start, Math.hypot(ex - sx, ez - sz), drawSlopePct) };
 }
 
 function buildTruss(el: AuthoredElement): THREE.Group {
@@ -1620,9 +1638,19 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
       ["wall", "duct", "pipe", "cable-tray", "conduit", "strip", "beam"].includes(el.type) &&
       len >= 0.05
     ) {
-      mesh = new THREE.Mesh(new THREE.BoxGeometry(len, p.height, p.thickness), mat);
-      mesh.position.set((ax + bx) / 2, p.elevation + p.height / 2, (az + bz) / 2);
-      mesh.rotation.y = Math.atan2(-(bz - az), bx - ax);
+      const sloped = p.endElevation != null && MEP_LINEAR_TYPES.has(el.type) &&
+        Math.abs(p.endElevation - p.elevation) > 1e-6;
+      if (sloped) {
+        const run = slopedRun(p.elevation, p.endElevation, len);
+        mesh = new THREE.Mesh(new THREE.BoxGeometry(run.length, p.height, p.thickness), mat);
+        mesh.position.set((ax + bx) / 2, run.midElevation + p.height / 2, (az + bz) / 2);
+        mesh.rotation.order = "YZX";
+        mesh.rotation.set(0, Math.atan2(-(bz - az), bx - ax), run.pitch);
+      } else {
+        mesh = new THREE.Mesh(new THREE.BoxGeometry(len, p.height, p.thickness), mat);
+        mesh.position.set((ax + bx) / 2, p.elevation + p.height / 2, (az + bz) / 2);
+        mesh.rotation.y = Math.atan2(-(bz - az), bx - ax);
+      }
     }
   }
 
@@ -1851,7 +1879,7 @@ function buildGripsFor(el: AuthoredElement): GripSpec[] {
 
   if (p.start && p.end) {
     addGrip("start", new THREE.Vector3(p.start[0], p.elevation, p.start[1]));
-    addGrip("end", new THREE.Vector3(p.end[0], p.elevation, p.end[1]));
+    addGrip("end", new THREE.Vector3(p.end[0], p.endElevation ?? p.elevation, p.end[1]));
   } else if (p.point) {
     addGrip("point", new THREE.Vector3(p.point[0], p.elevation, p.point[1]));
   } else if (p.polygon) {
@@ -3399,6 +3427,16 @@ function refreshEditor() {
 
   editor.appendChild(field("Elevation (m)", historyNum("elevation", el, (v) => (el.params.elevation = v), el.params.elevation, 0.1)));
 
+  if (MEP_LINEAR_TYPES.has(el.type) && el.params.start && el.params.end) {
+    const horiz = () => Math.hypot(el.params.end![0] - el.params.start![0], el.params.end![1] - el.params.start![1]);
+    editor.appendChild(field("Slope (%, + rises to end)", historyNum("slope", el, (v) => {
+      el.params.endElevation = Math.abs(v) < 1e-9 ? undefined : endElevationFromSlope(el.params.elevation, horiz(), v);
+    }, +slopePercent(el.params.elevation, el.params.endElevation, horiz()).toFixed(3), 0.1)));
+    editor.appendChild(field("End elevation (m)", historyNum("end-elevation", el, (v) => {
+      el.params.endElevation = Math.abs(v - el.params.elevation) < 1e-9 ? undefined : v;
+    }, el.params.endElevation ?? el.params.elevation, 0.1)));
+  }
+
   const color = document.createElement("input");
   color.type = "color";
   color.value = el.color ?? "#cccccc";
@@ -4248,7 +4286,7 @@ export async function addLinearElement(
         end: [ex, ez],
         height,
         thickness: thick,
-        elevation: level,
+        ...slopedElevations(type, sx, sz, ex, ez),
       }, props);
     });
   } else {
@@ -4257,7 +4295,7 @@ export async function addLinearElement(
       end: [ex, ez],
       height,
       thickness: thick,
-      elevation: level,
+      ...slopedElevations(type, sx, sz, ex, ez),
     }, props);
   }
 
@@ -4274,6 +4312,7 @@ export async function addLinearElement(
     thickness: thick,
     height,
     elevation: level,
+    endElevation: el.params.endElevation,
     id: el.id,
   };
 
@@ -4560,6 +4599,7 @@ export function setupAuthoring() {
         if (p.point) p.point = [p.point[0] + delta.x, p.point[1] + delta.z] as Vec2;
         if (p.polygon) p.polygon = p.polygon.map(([x, z]) => [x + delta.x, z + delta.z] as Vec2);
         p.elevation += delta.y;
+        if (p.endElevation != null) p.endElevation += delta.y;
         el.params = p;
       }
       rebuild();
