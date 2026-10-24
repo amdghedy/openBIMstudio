@@ -317,6 +317,8 @@ export interface ProjectDoc {
 
   /** Plan-view dimensions (aligned / linear / chains) drawn in the 2D floor plan. */
   planDimensions?: unknown[];
+  /** Plan-view tags and text notes. */
+  planAnnotations?: { tags: unknown[]; notes: unknown[] };
 
   /** Persisted 2D annotations (dimensions, tags, notes) keyed per view. */
   annotations?: {

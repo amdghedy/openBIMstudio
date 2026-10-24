@@ -10,6 +10,7 @@
 import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
+import { buildTagAll, elementAnchor, leaderEnd, pointInBox, tagLabel, textBox, type TagMode } from "../modules/views/plan-tags";
 import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan-dim-geometry";
 import { history as planHistory } from "./history";
 import { buildAutoDimensions, buildRangeDimension } from "../modules/views/auto-dim-chains";
@@ -425,7 +426,7 @@ applyBtn.onclick = () => {
 };
 
 function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggle" = "replace") {
-  if (el) planDimSel = null;
+  if (el) { planDimSel = null; planAnnoSel = null; }
   if (mode === "replace") {
     planSelectedIds.clear();
     if (el?.id) planSelectedIds.add(el.id);
@@ -1133,11 +1134,90 @@ interface PlanTag {
   text: string;
   elementId?: string;
   leader?: boolean;
-  mode?: "category" | "room" | "material" | "custom";
+  mode?: TagMode;
 }
+interface PlanNote { x: number; z: number; text: string; width?: number }
 
 const planTags: PlanTag[] = [];
-const planNotes: { x: number; z: number; text: string; width?: number }[] = [];
+const planNotes: PlanNote[] = [];
+
+// ── Annotation editing: select / drag / edit / delete / undo / save ──
+type PlanAnno = { kind: "tag"; obj: PlanTag } | { kind: "note"; obj: PlanNote };
+let planAnnoSel: PlanAnno | null = null;
+let planAnnoDrag: { sel: PlanAnno; dx: number; dz: number; before: string; moved: boolean; sx: number; sy: number } | null = null;
+
+function annoSnapshot(): string { return JSON.stringify({ tags: planTags, notes: planNotes }); }
+function restoreAnno(json: string): void {
+  try {
+    const o = JSON.parse(json);
+    planTags.length = 0; planTags.push(...(o.tags ?? []));
+    planNotes.length = 0; planNotes.push(...(o.notes ?? []));
+  } catch { /* */ }
+  planAnnoSel = null;
+  if (currentPlan) renderPlan(currentPlan);
+}
+function recordAnno(label: string, before: string): void {
+  const after = annoSnapshot();
+  if (before === after) return;
+  try { planHistory.push({ label, apply: () => restoreAnno(after), revert: () => restoreAnno(before) }); } catch { /* */ }
+  try { import("../modules/projects/projects").then((m: any) => m.markDirty?.()); } catch { /* */ }
+}
+(window as any).__obsPlanAnno = {
+  serialize: () => JSON.parse(annoSnapshot()),
+  load: (o: any) => {
+    planTags.length = 0; planNotes.length = 0;
+    if (o && typeof o === "object") { planTags.push(...(o.tags ?? [])); planNotes.push(...(o.notes ?? [])); }
+    planAnnoSel = null;
+    if (currentPlan) renderPlan(currentPlan);
+  },
+};
+try {
+  const pend = (window as any).__obsPendingPlanAnno;
+  if (pend) { planTags.push(...(pend.tags ?? [])); planNotes.push(...(pend.notes ?? [])); (window as any).__obsPendingPlanAnno = undefined; }
+} catch { /* */ }
+
+const TAG_H = () => paperMmToWorld(3.0);
+const NOTE_H = () => paperMmToWorld(2.5);
+function authoredEls(): any[] { return ((window as any).__obsAuthoredElements ?? []) as any[]; }
+/** Tag text follows the element (Mark, size, elevation...) unless it is a free-text tag. */
+function liveTagText(t: PlanTag): string {
+  if (t.elementId && t.mode && t.mode !== "custom") {
+    const el = authoredEls().find((e) => String(e?.id) === String(t.elementId));
+    if (el) return tagLabel(el, t.mode);
+  }
+  return t.text;
+}
+function annoBox(a: PlanAnno) {
+  return a.kind === "tag"
+    ? textBox(a.obj.x, a.obj.z, liveTagText(a.obj), TAG_H())
+    : textBox(a.obj.x, a.obj.z, a.obj.text, NOTE_H());
+}
+function hitAnnotation(wx: number, wz: number): PlanAnno | null {
+  const pad = worldPerPixel() * 5;
+  for (let i = planNotes.length - 1; i >= 0; i--) {
+    const a: PlanAnno = { kind: "note", obj: planNotes[i] };
+    if (pointInBox(wx, wz, annoBox(a), pad)) return a;
+  }
+  for (let i = planTags.length - 1; i >= 0; i--) {
+    const a: PlanAnno = { kind: "tag", obj: planTags[i] };
+    if (pointInBox(wx, wz, annoBox(a), pad)) return a;
+  }
+  return null;
+}
+function runTagAll(): void {
+  const raw = window.prompt("Tag All - label:\n1 = Mark / Name\n2 = Size\n3 = Elevation\n4 = Material", "1");
+  if (raw == null) return;
+  const mode: TagMode = ({ "1": "category", "2": "size", "3": "elevation", "4": "material" } as Record<string, TagMode>)[raw.trim()] ?? "category";
+  const els = authoredEls();
+  const only = planSelectedIds.size ? [...planSelectedIds] : undefined;
+  const before = annoSnapshot();
+  const added = buildTagAll(els, planTags, { mode, only });
+  if (!added.length) { footerStatus("Tag All: nothing new to tag"); return; }
+  planTags.push(...added);
+  recordAnno("Tag all", before);
+  if (currentPlan) renderPlan(currentPlan);
+  footerStatus(`Tag All: ${added.length} tag(s) placed${only ? " (selection)" : ""} - drag a tag to move it, double-click to edit, Delete to remove`);
+}
 
 const SNAP_TOL = 0.35; // meters
 
@@ -2241,41 +2321,80 @@ function renderPlan(plan: PlanView) {
   // -- Temporary dimensions for selected elements --
   renderTemporaryDimensions(g, dimScale, b);
 
-  // -- Tags --
-  for (const t of planTags) {
-    const p = screen(t.x, t.z);
+  // -- Tags (live text, halo, leader to the label edge) --
+  {
+    const SVGNS = "http://www.w3.org/2000/svg";
     const tagColor = "#0f766e";
-    if (t.leader && t.elementId) {
-      const els = ((window as any).__obsAuthoredElements ?? []) as any[];
-      const el = els.find((e) => e?.id === t.elementId);
-      const ep = el?.params?.point
-        ? screen(el.params.point[0], el.params.point[1])
-        : el?.params?.start && el?.params?.end
-          ? screen((el.params.start[0]+el.params.end[0])/2,(el.params.start[1]+el.params.end[1])/2)
-          : null;
-      if (ep) {
-        const leader=document.createElementNS("http://www.w3.org/2000/svg","line");
-        leader.setAttribute("x1",String(ep.x));leader.setAttribute("y1",String(ep.y));leader.setAttribute("x2",String(p.x));leader.setAttribute("y2",String(p.y));leader.setAttribute("stroke",tagColor);leader.setAttribute("stroke-width",String(0.022*dimScale));g.appendChild(leader);
+    const els = authoredEls();
+    for (const t of planTags) {
+      const text = liveTagText(t);
+      const box = textBox(t.x, t.z, text, TAG_H());
+      if (t.leader && t.elementId) {
+        const el = els.find((e) => e?.id === t.elementId);
+        const an = el ? elementAnchor(el) : null;
+        if (an) {
+          const end = leaderEnd(box, an);
+          const sa = screen(an.x, an.z), se = screen(end.x, end.z);
+          const ln = document.createElementNS(SVGNS, "line");
+          ln.setAttribute("x1", String(sa.x)); ln.setAttribute("y1", String(sa.y));
+          ln.setAttribute("x2", String(se.x)); ln.setAttribute("y2", String(se.y));
+          ln.setAttribute("stroke", tagColor); ln.setAttribute("stroke-width", String(dimensionWorldStroke(getDimensionStyle()) * 0.8));
+          g.appendChild(ln);
+          const dot = document.createElementNS(SVGNS, "circle");
+          dot.setAttribute("cx", String(sa.x)); dot.setAttribute("cy", String(sa.y));
+          dot.setAttribute("r", String(paperMmToWorld(0.7))); dot.setAttribute("fill", tagColor);
+          g.appendChild(dot);
+        }
       }
+      const p = screen(t.x, t.z);
+      const lines = text.split("\n");
+      const lab = document.createElementNS(SVGNS, "text");
+      lab.setAttribute("x", String(p.x)); lab.setAttribute("y", String(p.y));
+      lab.setAttribute("fill", tagColor); lab.setAttribute("font-size", String(TAG_H()));
+      lab.setAttribute("font-family", "Arial,system-ui,sans-serif"); lab.setAttribute("font-weight", "600");
+      lab.setAttribute("paint-order", "stroke"); lab.setAttribute("stroke", "#ffffff");
+      lab.setAttribute("stroke-width", String(TAG_H() * 0.22)); lab.setAttribute("stroke-linejoin", "round");
+      lines.forEach((ln, i) => {
+        const ts = document.createElementNS(SVGNS, "tspan");
+        ts.setAttribute("x", String(p.x)); ts.setAttribute("dy", i === 0 ? "0" : String(TAG_H() * 1.2));
+        ts.textContent = ln; lab.appendChild(ts);
+      });
+      g.appendChild(lab);
     }
-    const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    lab.setAttribute("x", String(p.x)); lab.setAttribute("y", String(p.y));
-    lab.setAttribute("fill", tagColor); lab.setAttribute("font-size", String(paperMmToWorld(3.0)));
-    lab.setAttribute("font-family", "Arial,system-ui,sans-serif"); lab.setAttribute("font-weight", "600");
-    lab.textContent = t.text; g.appendChild(lab);
   }
 
-  // -- Text notes --
+  // -- Text notes (multi-line, halo) --
   for (const n of planNotes) {
     const p = screen(n.x, n.z);
     const lab = document.createElementNS("http://www.w3.org/2000/svg", "text");
     lab.setAttribute("x", String(p.x));
     lab.setAttribute("y", String(p.y));
     lab.setAttribute("fill", "#334155");
-    lab.setAttribute("font-size", String(paperMmToWorld(2.5)));
+    lab.setAttribute("font-size", String(NOTE_H()));
     lab.setAttribute("font-family", "system-ui,sans-serif");
-    lab.textContent = n.text;
+    lab.setAttribute("paint-order", "stroke"); lab.setAttribute("stroke", "#ffffff");
+    lab.setAttribute("stroke-width", String(NOTE_H() * 0.2)); lab.setAttribute("stroke-linejoin", "round");
+    n.text.split("\n").forEach((ln, i) => {
+      const ts = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      ts.setAttribute("x", String(p.x)); ts.setAttribute("dy", i === 0 ? "0" : String(NOTE_H() * 1.2));
+      ts.textContent = ln; lab.appendChild(ts);
+    });
     g.appendChild(lab);
+  }
+
+  // -- Selected annotation: dashed blue box --
+  if (planAnnoSel && (planAnnoSel.kind === "tag" ? planTags.includes(planAnnoSel.obj as PlanTag) : planNotes.includes(planAnnoSel.obj as PlanNote))) {
+    const bx = annoBox(planAnnoSel);
+    const pad = paperMmToWorld(0.8);
+    const tl = screen(bx.minX - pad, bx.maxZ + pad), br = screen(bx.maxX + pad, bx.minZ - pad);
+    const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    r.setAttribute("x", String(Math.min(tl.x, br.x))); r.setAttribute("y", String(Math.min(tl.y, br.y)));
+    r.setAttribute("width", String(Math.abs(br.x - tl.x))); r.setAttribute("height", String(Math.abs(br.y - tl.y)));
+    r.setAttribute("fill", "rgba(37,99,235,0.08)"); r.setAttribute("stroke", "#2563eb");
+    r.setAttribute("stroke-width", String(paperMmToWorld(0.35)));
+    r.setAttribute("stroke-dasharray", `${paperMmToWorld(1.2)} ${paperMmToWorld(0.8)}`);
+    r.setAttribute("pointer-events", "none");
+    g.appendChild(r);
   }
 
   // Empty guidance
@@ -3407,13 +3526,14 @@ canvasWrap.addEventListener("mousedown", (e) => {
         const mark = hit.element.properties?.Mark ?? hit.element.properties?.mark ?? hit.element.name ?? hit.element.type;
         const material = hit.element.properties?.Material ?? hit.element.properties?.material ?? "Material";
         const label = mode === "material" ? String(material) : mode === "room" ? `Room ${hit.element.name ?? hit.element.id}` : String(mark);
-        planTags.push({ x:w.x, z:w.z, text:label, elementId:hit.element.id, leader:true, mode });
+        { const beforeAnno = annoSnapshot(); planTags.push({ x:w.x, z:w.z, text:label, elementId:hit.element.id, leader:true, mode }); recordAnno("Place tag", beforeAnno); }
+        if (currentPlan) renderPlan(currentPlan);
         setPlanSelectedElement(hit.element);
         footerStatus(`${mode === "room" ? "Room" : "Tag"}: ${label}`);
       } else {
         const label = prompt("Tag text:", "TAG");
         if (label != null && label.trim()) {
-          planTags.push({ x:w.x, z:w.z, text:label.trim(), mode:"custom" });
+          { const beforeAnno = annoSnapshot(); planTags.push({ x:w.x, z:w.z, text:label.trim(), mode:"custom" }); recordAnno("Place tag", beforeAnno); }
           if (currentPlan) renderPlan(currentPlan);
           footerStatus(`Tag: ${label.trim()}`);
         }
@@ -3422,9 +3542,9 @@ canvasWrap.addEventListener("mousedown", (e) => {
     }
 
     if (planMode === "text") {
-      const note = prompt("Text note:", "Note");
+      const note = prompt("Text note (use \\n for a new line):", "Note");
       if (note != null && note.trim()) {
-        planNotes.push({ x: w.x, z: w.z, text: note.trim() });
+        { const beforeAnno = annoSnapshot(); planNotes.push({ x: w.x, z: w.z, text: note.trim().replace(/\\n/g, "\n") }); recordAnno("Place note", beforeAnno); }
         if (currentPlan) renderPlan(currentPlan);
         footerStatus(`Text placed`);
       }
@@ -3479,6 +3599,20 @@ canvasWrap.addEventListener("mousedown", (e) => {
         return;
       } else if (planDimSel) {
         planDimSel = null;
+        if (currentPlan) renderPlan(currentPlan);
+      }
+      const ah = hitAnnotation(hit.x, hit.z);
+      if (ah) {
+        setPlanSelectedElement(null);
+        planDimSel = null;
+        planAnnoSel = ah;
+        planAnnoDrag = { sel: ah, dx: ah.obj.x - hit.x, dz: ah.obj.z - hit.z, before: annoSnapshot(), moved: false, sx: e.clientX, sy: e.clientY };
+        footerStatus(`${ah.kind === "tag" ? "Tag" : "Note"} selected - drag to move, double-click to edit, Delete removes`);
+        if (currentPlan) renderPlan(currentPlan);
+        e.preventDefault();
+        return;
+      } else if (planAnnoSel) {
+        planAnnoSel = null;
         if (currentPlan) renderPlan(currentPlan);
       }
     }
@@ -3542,6 +3676,22 @@ window.addEventListener("mousemove", (e) => {
   }
   renderPlan(currentPlan);
 });
+window.addEventListener("mousemove", (e) => {
+  const dr = planAnnoDrag;
+  if (!dr || !currentPlan) return;
+  if (!dr.moved && Math.hypot(e.clientX - dr.sx, e.clientY - dr.sy) < 4) return;
+  const w = clientToWorld(e.clientX, e.clientY);
+  if (!w) return;
+  dr.moved = true;
+  dr.sel.obj.x = w.x + dr.dx; dr.sel.obj.z = w.z + dr.dz;
+  renderPlan(currentPlan);
+});
+window.addEventListener("mouseup", () => {
+  const dr = planAnnoDrag;
+  if (!dr) return;
+  planAnnoDrag = null;
+  if (dr.moved) { recordAnno(dr.sel.kind === "tag" ? "Move tag" : "Move note", dr.before); footerStatus("Moved - Ctrl+Z undo"); }
+});
 window.addEventListener("mouseup", () => {
   const dr = planDimDrag;
   if (!dr) return;
@@ -3551,6 +3701,32 @@ window.addEventListener("mouseup", () => {
 canvasWrap.addEventListener("dblclick", (e) => {
   if (planMode !== "select") return;
   const w = clientToWorld(e.clientX, e.clientY);
+  const an = w ? hitAnnotation(w.x, w.z) : null;
+  if (an && w) {
+    e.preventDefault(); e.stopPropagation();
+    const beforeAnno = annoSnapshot();
+    if (an.kind === "note") {
+      const v = window.prompt("Note text (use \\n for a new line):", an.obj.text.replace(/\n/g, "\\n"));
+      if (v == null || !v.trim()) return;
+      an.obj.text = v.trim().replace(/\\n/g, "\n");
+    } else {
+      const t = an.obj;
+      const v = window.prompt(t.elementId && t.mode === "category" ? "Tag text (sets the element's Mark):" : "Tag text:", liveTagText(t));
+      if (v == null || !v.trim()) return;
+      const el = t.elementId ? authoredEls().find((x) => String(x?.id) === String(t.elementId)) : null;
+      if (el && t.mode === "category") {
+        el.properties = { ...(el.properties ?? {}), Mark: v.trim() };
+        try { import("./authoring").then((m: any) => m.markAuthoringDirty?.()); } catch { /* */ }
+      } else {
+        t.mode = "custom";
+      }
+      t.text = v.trim();
+    }
+    recordAnno("Edit annotation text", beforeAnno);
+    planAnnoSel = an;
+    if (currentPlan) renderPlan(currentPlan);
+    return;
+  }
   const d = w ? hitDimension(w.x, w.z) : null;
   if (!d) return;
   e.preventDefault(); e.stopPropagation();
@@ -4059,7 +4235,9 @@ export function setPlanToolFromRibbon(tool: string) {
     footerStatus("Auto Dimension: pick the FIRST edge (wall, column, door or window face)");
   } else if (tool === "auto-dim-all" || tool === "dim-auto-all") {
     void runAutoDimension();
-  } else if (tool === "tag" || tool === "room-tag" || tool === "tag-all" || tool === "material-tag") {
+  } else if (tool === "tag-all") {
+    runTagAll();
+  } else if (tool === "tag" || tool === "room-tag" || tool === "material-tag") {
     planMode = "tag";
     (window as any).__obsPlanTagMode = tool === "room-tag" ? "room" : tool === "material-tag" ? "material" : "category";
     canvasWrap.style.cursor = "crosshair";
@@ -4072,8 +4250,10 @@ export function setPlanToolFromRibbon(tool: string) {
     const beforeSnap = dimSnapshot();
     planDims.length = 0;
     recordDims("Clear dimensions", beforeSnap);
+    const beforeAnno = annoSnapshot();
     planTags.length = 0;
     planNotes.length = 0;
+    recordAnno("Clear annotations", beforeAnno);
     if (currentPlan) renderPlan(currentPlan);
     footerStatus("Annotations cleared");
   }
@@ -4196,6 +4376,23 @@ try {
         }
       })();
       return;
+    }
+
+    // Selected tag / note: Delete removes it, Esc deselects.
+    if (planAnnoSel && planMode !== "dim" && planMode !== "linear" && planMode !== "tag" && planMode !== "text") {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault(); e.stopImmediatePropagation();
+        const beforeAnno = annoSnapshot();
+        const sel = planAnnoSel;
+        const arr: any[] = sel.kind === "tag" ? planTags : planNotes;
+        const i = arr.indexOf(sel.obj); if (i >= 0) arr.splice(i, 1);
+        planAnnoSel = null;
+        recordAnno(sel.kind === "tag" ? "Delete tag" : "Delete note", beforeAnno);
+        if (currentPlan) renderPlan(currentPlan);
+        footerStatus(`${sel.kind === "tag" ? "Tag" : "Note"} deleted - Ctrl+Z undo`);
+        return;
+      }
+      if (e.key === "Escape") { e.preventDefault(); planAnnoSel = null; if (currentPlan) renderPlan(currentPlan); return; }
     }
 
     // Selected dimension: Delete removes it (Shift = whole chain), Esc deselects.
