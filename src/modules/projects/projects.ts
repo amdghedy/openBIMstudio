@@ -136,6 +136,8 @@ export async function saveProject(silent = false) {
   try {
     const pd = (window as any).__obsPlanDims?.serialize?.();
     if (Array.isArray(pd)) current.planDimensions = pd;
+    const pa = (window as any).__obsPlanAnno?.serialize?.();
+    if (pa) current.planAnnotations = pa;
   } catch { /* plan dimensions optional */ }
 
   current.updatedAt = Date.now();
@@ -374,6 +376,9 @@ export async function openProject(id: string) {
       const pdApi = (window as any).__obsPlanDims;
       if (pdApi?.load) pdApi.load(doc.planDimensions ?? []);
       else (window as any).__obsPendingPlanDims = doc.planDimensions ?? [];
+      const paApi = (window as any).__obsPlanAnno;
+      if (paApi?.load) paApi.load(doc.planAnnotations ?? null);
+      else (window as any).__obsPendingPlanAnno = doc.planAnnotations ?? null;
     } catch { /* */ }
 
     // If no saved offsets, apply the saved positioning mode instead.

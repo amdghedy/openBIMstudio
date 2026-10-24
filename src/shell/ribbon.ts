@@ -1404,8 +1404,8 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Tag")),
       b("tag-all", "Tag all", safe(() => {
         const pv = (ctx.features as any).planView;
-        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
-        toast("Tag all: open Schedules for bulk element tagging", "info");
+        if (pv?.isVisible?.()) { pv.setTool?.("tag-all"); return; }
+        toast("Tag all: open the plan view to tag every element, or use Schedules", "info");
         try { toggleSchedules(); } catch { /* */ }
       }, "Tag all")),
       b("material-tag", "Material", safe(() => {
