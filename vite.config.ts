@@ -1,6 +1,9 @@
 import { defineConfig } from "vite";
 
 import react from "@vitejs/plugin-react";
+import { readdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { createHash } from "node:crypto";
 /**
  * Vite config for Open BIM Studio.
  *
@@ -15,7 +18,7 @@ import react from "@vitejs/plugin-react";
  * directly — no proxy needed.
  */
 export default defineConfig({
-  plugins: [react(), crossOriginIsolation()],
+  plugins: [react(), crossOriginIsolation(), pwaPrecache()],
   define: {
     __WEB_IFC_SCRIPT_URL__: JSON.stringify('/web-ifc/web-ifc-api.js'),
   },
@@ -120,6 +123,34 @@ function crossOriginIsolation() {
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
         next();
       });
+    },
+  };
+}
+// --- OpenBIMStudio :: PWA — list every built file in the service worker so the app runs offline ---
+function pwaPrecache() {
+  let outDir = "dist";
+  return {
+    name: "obs-pwa-precache",
+    apply: "build" as const,
+    configResolved(cfg: { build: { outDir: string }; root: string }) { outDir = join(cfg.root, cfg.build.outDir); },
+    closeBundle() {
+      const swPath = join(outDir, "sw.js");
+      if (!existsSync(swPath)) return;
+      const files: string[] = [];
+      const walk = (dir: string) => {
+        for (const name of readdirSync(dir)) {
+          const full = join(dir, name);
+          if (statSync(full).isDirectory()) walk(full);
+          else files.push("/" + relative(outDir, full).split(sep).join("/"));
+        }
+      };
+      walk(outDir);
+      const list = files.filter((f) => f !== "/sw.js" && !f.endsWith(".map") && !f.endsWith(".html"));
+      const hash = createHash("sha1").update(list.join("|")).update(String(Date.now())).digest("hex").slice(0, 10);
+      const src = readFileSync(swPath, "utf8")
+        .replace("__OBS_BUILD__", hash)
+        .replace("/*__OBS_PRECACHE__*/ []", JSON.stringify(list));
+      writeFileSync(swPath, src);
     },
   };
 }
