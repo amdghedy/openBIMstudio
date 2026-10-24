@@ -25,6 +25,7 @@ import { ctx } from "../core/context";
 import { getLevel, getLevels, getAuthoredGroup, getElements } from "./authoring";
 import { clampSpeedFactor, isBlockingHit, nextLevelElevation, slideVelocity, yawFromDirection } from "./walk-physics";
 import { getProjection, setProjection } from "./camera-tools";
+import { notify } from "../core/notify";
 
 // ── Tuning ──
 const EYE_HEIGHT = 1.7;
@@ -163,6 +164,10 @@ function ensureOverlay(): HTMLDivElement {
     "border:1px solid rgba(255,255,255,.12);pointer-events:none;white-space:pre";
 
   overlay.addEventListener("mousedown", (e) => { if (e.button === 0) state.dragging = true; });
+  // If the browser refused the first pointer-lock request, a click on the view captures the mouse.
+  overlay.addEventListener("click", () => {
+    if (state.enabled && document.pointerLockElement !== overlay) { try { overlay!.requestPointerLock(); } catch { /* */ } }
+  });
   window.addEventListener("mouseup", () => { state.dragging = false; });
 
   overlay.append(crosshair, hint, statusEl, exitBtn);
@@ -298,6 +303,22 @@ export function isWalkModeEnabled(): boolean {
 
 export function enableWalkMode(): void {
   if (state.enabled) return;
+  try {
+    ensureOverlay();           // fail before touching the camera if the HUD cannot be created
+    enableWalkModeInner();
+  } catch (e) {
+    console.error("[walk] could not start", e);
+    // Leave the app exactly as it was: controls back on, no half-started mode.
+    try { const c: any = ctx.world.camera.controls; if (c) c.enabled = state.saved?.controlsEnabled ?? true; } catch { /* */ }
+    state.enabled = false;
+    state.saved = null;
+    if (state.rafId != null) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+    if (overlay) overlay.style.display = "none";
+    try { notify("error", "Walk mode could not start: " + (e instanceof Error ? e.message : String(e))); } catch { /* */ }
+  }
+}
+
+function enableWalkModeInner(): void {
 
   const cam = ctx.world.camera.three as THREE.PerspectiveCamera;
   const controls: any = ctx.world.camera.controls;
@@ -382,6 +403,7 @@ export function enableWalkMode(): void {
   state.raycastTick = 0;
 
   try { ov.requestPointerLock(); } catch (e) { console.warn("[walk] pointer lock failed", e); }
+  try { notify("info", "Walk mode: W A S D to move, mouse to look, Esc to exit. Click the view if the mouse isn't captured."); } catch { /* */ }
 
   state.rafId = requestAnimationFrame(tick);
 
@@ -528,11 +550,50 @@ function onPointerLockError() {
   console.warn("[walk] pointer lock rejected — WASD still works, mouse-look disabled");
 }
 
+
+let driveWarned = false;
+/** Place the camera for this frame. setLookAt + update(0) like the other navigation code, then verify
+ *  the camera really moved and fall back to setting it directly if something overrode it. */
+function driveCamera(pos: THREE.Vector3, target: THREE.Vector3): void {
+  const controls: any = ctx.world.camera.controls;
+  const three = ctx.world.camera.three as THREE.Camera;
+  const live: THREE.Camera = controls?.camera?.isCamera ? controls.camera : three;
+  let ok = false;
+  if (controls && typeof controls.setLookAt === "function") {
+    try {
+      controls.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, false);
+      controls.update?.(0);
+      ok = true;
+    } catch { /* fall through to the direct path */ }
+  }
+  if (!ok || live.position.distanceToSquared(pos) > 1e-3) {
+    if (!driveWarned) { driveWarned = true; console.warn("[walk] camera controls did not take the position; driving the camera directly"); }
+    live.position.copy(pos);
+    live.lookAt(target);
+    live.updateMatrixWorld(true);
+    if (live !== three) {
+      three.position.copy(pos);
+      three.lookAt(target);
+      three.updateMatrixWorld(true);
+    }
+  }
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    Main loop — drives the controls via setLookAt
    ═════════════════════════════════════════════════════════════════════════ */
 function tick(now: number) {
   if (!state.enabled) return;
+  try {
+    tickBody(now);
+  } catch (e) {
+    // A single bad frame must never freeze walk mode.
+    console.warn("[walk] frame error", e);
+  }
+  if (state.enabled) state.rafId = requestAnimationFrame(tick);
+}
+
+function tickBody(now: number) {
   const dt = Math.min((now - state.lastT) / 1000, 0.05);
   state.lastT = now;
 
@@ -560,6 +621,13 @@ function tick(now: number) {
 
   state.pos.x += state.vel.x * dt;
   state.pos.z += state.vel.z * dt;
+  if (!Number.isFinite(state.pos.x) || !Number.isFinite(state.pos.y) || !Number.isFinite(state.pos.z)) {
+    // never hand NaN to the camera: recover to the position walk mode started from
+    const sv = state.saved?.position;
+    state.pos.set(sv?.x ?? 0, (sv?.y ?? EYE_HEIGHT), sv?.z ?? 0);
+    state.vel.set(0, 0, 0);
+    if (!Number.isFinite(state.targetGroundY)) state.targetGroundY = 0;
+  }
 
   // Manual vertical (Space / C) overrides ground-follow this frame.
   const manualVertical = state.keys.has("space") || state.keys.has("c");
@@ -587,31 +655,10 @@ function tick(now: number) {
   );
   const target = state.pos.clone().add(look.clone().multiplyScalar(TARGET_DISTANCE));
 
-  // ── Drive the controls — this is what makes the camera actually move ──
-  const controls: any = ctx.world.camera.controls;
-  const cam = ctx.world.camera.three as THREE.PerspectiveCamera;
-
-  if (controls && typeof controls.setLookAt === "function") {
-    try {
-      controls.setLookAt(
-        state.pos.x, state.pos.y, state.pos.z,
-        target.x, target.y, target.z,
-        false,   // no transition — apply immediately
-      );
-    } catch (e) {
-      // If the controls reject, fall through and set the camera manually.
-      cam.position.copy(state.pos);
-      cam.lookAt(target);
-    }
-  } else {
-    cam.position.copy(state.pos);
-    cam.lookAt(target);
-  }
+  driveCamera(state.pos, target);
 
   // Keep Fragments in sync with the new camera.
   try { ctx.fragments.core.update(false); } catch { /* */ }
-
-  state.rafId = requestAnimationFrame(tick);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
