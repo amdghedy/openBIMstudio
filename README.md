@@ -443,6 +443,14 @@ npm run dev
 
 Open the local address printed by the development server (the default Vite port is commonly `http://localhost:3000` in this project configuration).
 
+### Working from a file on your computer
+
+Projects are stored in your browser's local database by default. To keep a real file:
+
+- **File tab -> Save to File** (or `Ctrl+Shift+S` for Save As): writes one `.obsproj` file containing the model blobs, elements, dimensions, tags and project data. In Chrome / Edge, `Ctrl+S` then keeps that file up to date (and the app re-writes it automatically every ~45 s while you work, once access has been granted). Other browsers download the file instead.
+- **File tab -> Open File** (also on the home screen): imports a `.obsproj` into this browser and opens it. Use this to move a project between the hosted web version and a local copy.
+- Use **Save As File** regularly to make backup copies.
+
 ### Type-check and build
 
 ```bash

@@ -67,6 +67,7 @@ function buildStatic() {
             ${Object.entries(TEMPLATE_LABELS).map(([id, t]) => `<option value="${id}">${esc(t.label)}</option>`).join("")}
           </select>
           <button class="obs-btn obs-btn--primary" id="obs-create-project">Create project</button>
+          <button class="obs-btn" id="obs-open-file" title="Open a .obsproj project file from your computer">Open file\u2026</button>
         </div>
         <div class="obs-create-hint" id="obs-template-note"></div>
       </div>
@@ -94,6 +95,9 @@ function buildStatic() {
   const template = inner.querySelector("#obs-template") as HTMLSelectElement;
   const note = inner.querySelector("#obs-template-note") as HTMLElement;
   const createBtn = inner.querySelector("#obs-create-project") as HTMLButtonElement;
+  (inner.querySelector("#obs-open-file") as HTMLButtonElement | null)?.addEventListener("click", () => {
+    void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile());
+  });
 
   const updateTemplateNote = () => {
     note.textContent = TEMPLATE_LABELS[template.value as ProjectTemplate]?.note ?? "";

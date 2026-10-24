@@ -637,6 +637,15 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("menu", "Menu", safe(() => toggleFileMenu(), "File menu"), { active: isFileMenuVisible() }),
       b("home", "Home", safe(() => showHome(), "Home")),
       b("save", "Save", safe(() => void saveProject(), "Save"), { kbd: "^S" }),
+      b("save", "Save to File", safe(async () => { (await import("../modules/projects/project-file-io")).saveProjectToFile(false); }, "Save to file"), {
+        title: "Save the whole project (models, dimensions, tags...) to a .obsproj file on your computer. Ctrl+S then keeps that file up to date.",
+      }),
+      b("save", "Save As File", safe(async () => { (await import("../modules/projects/project-file-io")).saveProjectToFile(true); }, "Save as file"), {
+        kbd: "^\u21e7S", title: "Save a copy of the project to a new .obsproj file (also a manual backup)",
+      }),
+      b("folder", "Open File", safe(async () => { (await import("../modules/projects/project-file-io")).openProjectFromFile(); }, "Open file"), {
+        title: "Open a .obsproj project file from your computer",
+      }),
       sep(),
       groupLabel("New"),
       b("home", "New Project", safe(() => showHome(), "New project")),
