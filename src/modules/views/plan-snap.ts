@@ -18,7 +18,7 @@
 
 import type { AuthoredElement } from "../projects/types";
 import type { PlanDimensionRef } from "../../features/plan-view-panel";
-import { collectElementSnapPoints, pickElementSnapPoint } from "./element-snap-points";
+import { collectElementSnapPoints, cycleSnapPoint, rankElementSnapPoints } from "./element-snap-points";
 
 export type PlanSnapKind =
   | "endpoint" | "corner" | "intersection" | "midpoint"
@@ -33,6 +33,8 @@ export interface PlanSnapHit {
   priority: number;
   ref?: PlanDimensionRef;
   distance: number;
+  /** Tab cycling: which candidate this is (1-based) out of how many overlap here. */
+  alt?: { index: number; count: number };
 }
 
 const PRIORITY: Record<PlanSnapKind, number> = {
@@ -370,6 +372,7 @@ export function findPlanSnap(
   px: number,
   pz: number,
   tolerance: number,
+  cycle = 0,
 ): PlanSnapHit | null {
   // 0. Element reference points (start / end / corners / vertices / jambs / centres)
   //    for every element type - what dimensions anchor to.
@@ -384,13 +387,15 @@ export function findPlanSnap(
       return true; // polygon / point / hosted: cheap per-point test below
     });
     const pts = collectElementSnapPoints(near.length > 400 ? near.slice(0, 400) : near);
-    const hit = pickElementSnapPoint(pts, px, pz, tolerance);
-    if (hit) {
+    const cyc = cycleSnapPoint(rankElementSnapPoints(pts, px, pz, tolerance), cycle);
+    const hit = cyc?.item;
+    if (hit && cyc) {
       const kind: PlanSnapKind = hit.kind === "start" || hit.kind === "end" ? "endpoint"
         : hit.kind === "center" ? "center" : hit.kind === "edge-mid" ? "midpoint" : "corner";
       return {
         x: hit.x, z: hit.z, kind, label: hit.label, color: COLOR[kind],
         priority: PRIORITY[kind], distance: hit.distance, ref: hit.ref as PlanDimensionRef,
+        alt: cyc.count > 1 ? { index: cyc.index + 1, count: cyc.count } : undefined,
       };
     }
   }

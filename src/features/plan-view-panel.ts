@@ -542,6 +542,17 @@ function pointBoundaryCandidate(el: any, point: { x: number; z: number }) {
 
 let __synthSnapCache: { at: number; els: any[] } | null = null;
 
+/** Tab cycles through overlapping snap points under the cursor (reset when the cursor moves away). */
+let planSnapCycle = 0;
+let planSnapCycleAt: { x: number; z: number } | null = null;
+function resetSnapCycleIfMoved(p: { x: number; z: number }): void {
+  const tol = worldPerPixel() * 6;
+  if (!planSnapCycleAt || Math.hypot(planSnapCycleAt.x - p.x, planSnapCycleAt.z - p.z) > tol) {
+    planSnapCycle = 0;
+    planSnapCycleAt = { x: p.x, z: p.z };
+  }
+}
+
 function findDimensionBoundary(point: { x: number; z: number }) {
   const auth: any = (ctx.features as any).authoring;
   let els: any[] = [];
@@ -587,7 +598,7 @@ function findDimensionBoundary(point: { x: number; z: number }) {
   const pixelWorldTol = zoomW / 800;
   const featureTol = Math.max(0.15, pixelWorldTol * 14);
 
-  const hit = findPlanFeatureSnap(els, point.x, point.z, featureTol);
+  const hit = findPlanFeatureSnap(els, point.x, point.z, featureTol, planSnapCycle);
   if (hit && hit.ref) {
     return {
       point: { x: hit.x, z: hit.z },
@@ -596,6 +607,7 @@ function findDimensionBoundary(point: { x: number; z: number }) {
       kind: hit.kind,
       label: hit.label,
       color: hit.color,
+      alt: hit.alt,
     };
   }
 
@@ -3823,6 +3835,7 @@ window.addEventListener("mousemove", (e) => {
     const w = clientToWorld(e.clientX, e.clientY);
     if (w) {
       if (planMode === "dim") {
+        resetSnapCycleIfMoved(w);
         const hit = findDimensionBoundary(w);
         if (hit) {
           const h = hit as any;
@@ -3830,7 +3843,7 @@ window.addEventListener("mousemove", (e) => {
             x: hit.point.x,
             z: hit.point.z,
             kind: String(h.kind ?? "face"),
-            label: h.label ? String(h.label) : undefined,
+            label: h.label ? String(h.label) + (h.alt ? `  (Tab ${h.alt.index}/${h.alt.count})` : "") : undefined,
             ref: hit.ref,
           };
           planCursor = { x: hit.point.x, z: hit.point.z };
@@ -3921,7 +3934,37 @@ canvasWrap.addEventListener("dblclick", () => {
 /* -------------------------------------------------------------------------
    Generation
    ------------------------------------------------------------------------- */
-async function regenerate() {
+/**
+ * Plan regeneration is coalesced: a burst of edits (drawing a chain of segments) triggers one rebuild,
+ * and edits made while a rebuild is running trigger exactly one follow-up instead of being dropped.
+ */
+let regenTimer: ReturnType<typeof setTimeout> | null = null;
+let regenWaiters: Array<() => void> = [];
+let regenPending = false;
+function regenerate(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    regenWaiters.push(resolve);
+    if (regenTimer) clearTimeout(regenTimer);
+    regenTimer = setTimeout(() => { regenTimer = null; void runRegenerate(); }, 40);
+  });
+}
+async function runRegenerate(): Promise<void> {
+  if (generating) { regenPending = true; return; }
+  const waiters = regenWaiters;
+  regenWaiters = [];
+  try {
+    await regenerateNow();
+  } finally {
+    for (const w of waiters) w();
+    if (regenPending || regenWaiters.length) {
+      regenPending = false;
+      if (regenTimer) clearTimeout(regenTimer);
+      regenTimer = setTimeout(() => { regenTimer = null; void runRegenerate(); }, 0);
+    }
+  }
+}
+
+async function regenerateNow() {
   if (generating) return;
   generating = true;
   loading.style.display = "flex";
@@ -4303,6 +4346,20 @@ try {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea") return;
 
+    // Tab: cycle through the overlapping snap points under the cursor (Revit).
+    if (e.key === "Tab" && planMode === "dim" && planCursor) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      planSnapCycle += e.shiftKey ? -1 : 1;
+      const hit = findDimensionBoundary(planCursor);
+      if (hit) {
+        const h = hit as any;
+        planSnap = { x: hit.point.x, z: hit.point.z, kind: String(h.kind ?? "face"),
+          label: h.label ? String(h.label) + (h.alt ? `  (Tab ${h.alt.index}/${h.alt.count})` : "") : undefined, ref: hit.ref };
+        updateSnapOverlay();
+        footerStatus(`Snap: ${h.label ?? "boundary"}${h.alt ? ` (${h.alt.index}/${h.alt.count}) - Tab for next` : ""}`);
+      }
+      return;
+    }
     // Chain dimension: Enter places at the default offset, Esc discards the picked boundaries.
     if (planMode === "dim" && planDimChain && planDimChainPts.length) {
       if (e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); finishDimChain(undefined); return; }

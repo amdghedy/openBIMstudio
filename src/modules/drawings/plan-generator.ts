@@ -13,7 +13,7 @@
  * The panel handles the flip when rendering SVG.
  */
 import { defaultBendRadius, elbowGeometry } from "../mep/elbow-geometry";
-import { capOutlineSegments, fittingBranchAngles, openBranchInSegment, fittingArmAngles, fittingArmLength, fittingOutlineSegments } from "../mep/fitting-outline";
+import { transitionOutlineSegments, unionOutlineSegments, capOutlineSegments, fittingBranchAngles, openBranchInSegment, fittingArmAngles, fittingArmLength, fittingOutlineSegments } from "../mep/fitting-outline";
 import * as THREE from "three";
 import { ctx } from "../../core/context";
 import { getElementTriangles } from "../clash/geometry";
@@ -249,7 +249,7 @@ function connectedToFitting(el: AuthoredElement, x: number, z: number): boolean 
       const fp: any = f.params;
       if (String(fp.parentType ?? "duct") !== el.type || !fp.point) continue;
       const fkind = String(fp.fittingKind ?? "elbow");
-      if (fkind === "tee" || fkind === "cross" || fkind === "wye" || fkind === "cap") {
+      if (fkind === "tee" || fkind === "cross" || fkind === "wye" || fkind === "cap" || fkind === "transition" || fkind === "union") {
         // a run that ends at a junction / cap continues into the fitting outline: no end cap here
         if (Math.hypot(fp.point[0] - x, fp.point[1] - z) < 0.03) return true;
         continue;
@@ -641,7 +641,16 @@ function emitAuthoredSymbol(
         break;
       }
 
-      // Transition / union: small box fallback
+      if (kind === "transition" || kind === "union") {
+        const rr = Math.max((isRound ? t : Math.max(t, p.height ?? t)) / 2, 0.04);
+        const segs = kind === "transition"
+          ? transitionOutlineSegments(cxF, czF, aIn, t, rr * 2.8)
+          : unionOutlineSegments(cxF, czF, aIn, t, Math.max(0.12, t * 0.35));
+        for (const sg of segs) push({ ...sg, kind: elevKind, source: el.id });
+        break;
+      }
+
+      // Unknown fitting kind: small box fallback
       const s = t / 2;
       push({ x1: cxF - s, z1: czF - s, x2: cxF + s, z2: czF - s, kind: elevKind, source: el.id });
       push({ x1: cxF + s, z1: czF - s, x2: cxF + s, z2: czF + s, kind: elevKind, source: el.id });

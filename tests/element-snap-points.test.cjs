@@ -19,4 +19,6 @@ t("pick prefers wall start over its corner",()=>{const h=m.pickElementSnapPoint(
 t("pick none out of tolerance",()=>assert.strictEqual(m.pickElementSnapPoint(pts,50,50,0.3),null));
 t("resolve polygon vertex follows edits",()=>{const r=m.collectElementSnapPoints(all).find(p=>p.ref.kind==="polygon-vertex"&&p.ref.index===2).ref;slab.params.polygon[2]=[6,3];const q=m.resolveElementRef(r,all);near(q.x,6)});
 t("resolve hosted follows wall move",()=>{const r=pts.find(p=>p.kind==="jamb").ref;wall.params.start=[10,0];wall.params.end=[15,0];const q=m.resolveElementRef(r,all);near(q.x,11.5)});
+t("rank lists overlapping candidates best first",()=>{const r=m.rankElementSnapPoints(pts,0.0,0.0,0.3);assert.ok(r.length>=2);assert.strictEqual(r[0].kind,"start");assert.ok(r.every((q,i)=>i===0||r[i-1].priority>=q.priority))});
+t("cycle wraps both ways",()=>{const r=[1,2,3];assert.strictEqual(m.cycleSnapPoint(r,3).item,1);assert.strictEqual(m.cycleSnapPoint(r,-1).item,3);assert.strictEqual(m.cycleSnapPoint([],0),null)});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);
