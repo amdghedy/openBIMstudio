@@ -43,7 +43,9 @@ export type ConstraintKind =
   | "angle"
   | "fixed"
   | "point-on-line"
-  | "midpoint";
+  | "midpoint"
+  | "tangent"
+  | "concentric";
 
 export interface Constraint {
   kind: ConstraintKind;
@@ -60,6 +62,9 @@ export interface Constraint {
    *   fixed           [a]
    *   point-on-line   [p, a, b]     — p on infinite line ab
    *   midpoint        [p, a, b]     — p at midpoint of ab
+   *   tangent         [a, b, c] + value (fixed radius), or [a, b, c, r]
+   *                     (radius = |c−r|) — line ab tangent to circle at c
+   *   concentric      [c1, c2]      — two circle centres coincide
    */
   pts: number[];
   /** Metres for distance, radians for angle. */
@@ -95,7 +100,10 @@ export function equationsFor(c: Constraint): number {
     case "equal-length":
     case "angle":
     case "point-on-line":
+    case "tangent":
       return 1;
+    case "concentric":
+      return 2;
   }
 }
 
@@ -180,6 +188,26 @@ export function residuals(
       }
       case "midpoint":
         out.push(px(a) - (px(b) + px(cc ?? b)) / 2, py(a) - (py(b) + py(cc ?? b)) / 2);
+        break;
+      case "tangent": {
+        // Line ab; circle centre c; radius either fixed (`value`) or given
+        // by a point r on the circle (pts[3]). Distance point-to-line via
+        // the cross-product form — smooth wherever ab is non-degenerate.
+        const abx = px(b) - px(a);
+        const aby = py(b) - py(a);
+        const n = Math.hypot(abx, aby);
+        const dist = n > EPS
+          ? Math.abs(abx * (py(a) - py(cc ?? b)) - aby * (px(a) - px(cc ?? b))) / n
+          : 0;
+        const radius = c.pts.length > 3
+          ? Math.hypot(px(cc ?? b) - px(c.pts[3]), py(cc ?? b) - py(c.pts[3]))
+          : (c.value ?? 0);
+        out.push(dist - radius);
+        break;
+      }
+      case "concentric":
+        // Concentric = centres coincide (two scalar equations).
+        out.push(px(a) - px(b ?? a), py(a) - py(b ?? a));
         break;
     }
   }
