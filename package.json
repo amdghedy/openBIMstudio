@@ -74,7 +74,7 @@
     "@react-three/fiber": "^9.8.2",
     "@reduxjs/toolkit": "^2.2.7",
     "@thatopen/components": "^3.4.9",
-    "@thatopen/components-front": "^3.4.3",
+    "@thatopen/components-front": "^3.4.5",
     "@thatopen/fragments": "^3.4.7",
     "@thatopen/ui": "^3.4.14",
     "@thatopen/ui-obc": "^3.4.3",
