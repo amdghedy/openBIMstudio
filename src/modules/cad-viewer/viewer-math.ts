@@ -343,3 +343,68 @@ export function countByType(entities: DxfEntity[]): Map<string, number> {
   for (const e of entities) m.set(e.type, (m.get(e.type) ?? 0) + 1);
   return m;
 }
+
+/* ───────────────────────── rectangle selection ───────────────────────── */
+
+export const boxContains = (outer: BBox, b: BBox) => b.minX >= outer.minX && b.maxX <= outer.maxX && b.minY >= outer.minY && b.maxY <= outer.maxY;
+export const boxesIntersect = (a: BBox, b: BBox) => !(a.maxX < b.minX || a.minX > b.maxX || a.maxY < b.minY || a.minY > b.maxY);
+
+function segHitsRect(a: Pt, b: Pt, r: BBox): boolean {
+  const inside = (p: Pt) => p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY && p.y <= r.maxY;
+  if (inside(a) || inside(b)) return true;
+  const c: Pt[] = [{ x: r.minX, y: r.minY }, { x: r.maxX, y: r.minY }, { x: r.maxX, y: r.maxY }, { x: r.minX, y: r.maxY }];
+  for (let i = 0; i < 4; i++) if (segSegIntersection(a, b, c[i], c[(i + 1) % 4])) return true;
+  return false;
+}
+
+/**
+ * Entities picked by a world-space rectangle.
+ * "window": entity must lie fully inside. "crossing": entity only has to touch the rectangle.
+ */
+export function selectInRect(idx: SpatialIndex, entities: DxfEntity[], rect: BBox, mode: "window" | "crossing", visible: (e: DxfEntity) => boolean = () => true): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < entities.length; i++) {
+    const b = idx.boxes[i], e = entities[i];
+    if (!visible(e)) continue;
+    if (mode === "window") { if (boxContains(rect, b)) out.push(i); continue; }
+    if (!boxesIntersect(b, rect)) continue;
+    const segs = entitySegments(e);
+    if (segs.length) { if (segs.some(([p, q]) => segHitsRect(p, q, rect))) out.push(i); }
+    else if (e.type === "CIRCLE" || e.type === "ARC") {
+      const cx = Math.max(rect.minX, Math.min(e.center.x, rect.maxX)), cy = Math.max(rect.minY, Math.min(e.center.y, rect.maxY));
+      const dNear = Math.hypot(cx - e.center.x, cy - e.center.y);
+      const dFar = Math.max(...[[rect.minX, rect.minY], [rect.maxX, rect.minY], [rect.maxX, rect.maxY], [rect.minX, rect.maxY]].map(([x, y]) => Math.hypot(x - e.center.x, y - e.center.y)));
+      if (dNear <= e.radius && dFar >= e.radius) { if (e.type === "CIRCLE" || boxesIntersect(b, rect)) out.push(i); }
+    } else out.push(i);
+  }
+  return out;
+}
+
+export const rectOf = (a: Pt, b: Pt): BBox => ({ minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y) });
+
+/** Bounding box of a set of entities, or null when empty. */
+export function bboxOfSet(idx: SpatialIndex, ids: Iterable<number>): BBox | null {
+  let r: BBox | null = null;
+  for (const i of ids) r = unionBBox(r, idx.boxes[i]);
+  return r;
+}
+
+/** Round scale-bar length (world units) whose on-screen width is close to `targetPx`. */
+export function niceScaleBar(scale: number, targetPx = 120): { length: number; px: number } {
+  const raw = targetPx / scale, pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / pow, step = n >= 5 ? 5 : n >= 2 ? 2 : 1;
+  const length = step * pow;
+  return { length, px: length * scale };
+}
+
+/** Grid spacing (world units) so lines stay roughly `minPx` apart. */
+export function gridStep(scale: number, minPx = 18): number {
+  const raw = minPx / scale, pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / pow;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow;
+}
+
+/** CSV text for a list of measurement result lines. */
+export function resultsToCsv(lines: string[]): string {
+  return "No,Measurement\n" + lines.map((l, i) => `${i + 1},"${l.replace(/"/g, '""')}"`).join("\n");
+}

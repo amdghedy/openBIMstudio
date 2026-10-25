@@ -8,7 +8,7 @@ import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import * as M from "../modules/cad-viewer/viewer-math";
 
-type Tool = "pan" | "select" | "dist" | "poly" | "area" | "angle" | "coord" | "radius" | "zoomwin" | "redline" | "note";
+type Tool = "pan" | "select" | "box" | "dist" | "poly" | "area" | "angle" | "coord" | "radius" | "zoomwin" | "redline" | "note";
 type ColorMode = "layer" | "bw" | "invert";
 interface Markup { kind: "line" | "note"; pts: M.Pt[]; text?: string }
 
@@ -53,7 +53,7 @@ function build(): void {
     </div>
     <div class="side">
       <h4>Layers</h4>
-      <div style="display:flex;gap:4px;padding:6px 8px"><button data-r="lon">All on</button><button data-r="loff">All off</button><button data-r="liso" title="Isolate the selected object's layer">Isolate</button></div>
+      <div style="padding:6px 8px 0"><input data-r="lf" placeholder="Filter layers…" style="width:100%;box-sizing:border-box"></div><div style="display:flex;gap:4px;padding:6px 8px"><button data-r="lon">All on</button><button data-r="loff">All off</button><button data-r="liso" title="Isolate the selected object's layer">Isolate</button></div>
       <div class="sc" data-r="layers" style="flex:1"></div>
       <h4>Properties</h4><div class="sc" data-r="props" style="max-height:34%;padding-bottom:4px"></div>
       <h4>Measurements</h4><div class="sc" data-r="meas" style="max-height:24%;padding:4px 8px"></div>
@@ -79,7 +79,8 @@ function build(): void {
   let markups: Markup[] = []; let hits: M.TextHit[] = [], hitI = -1;
   let dragging: { x: number; y: number } | null = null, winStart: { x: number; y: number } | null = null, winNow: { x: number; y: number } | null = null;
   let raf = 0;
-  let press: { x: number; y: number; moved: boolean; id: number } | null = null;
+  let press: { x: number; y: number; moved: boolean; id: number; band?: boolean; add?: boolean } | null = null;
+  const sel = new Set<number>(); let showGrid = false; let rband: { a: M.Pt; b: M.Pt } | null = null; let layerFilter = "";
   const ptrs = new Map<number, M.Pt>(); let pinch = 0;
 
   const inv = () => cmode === "invert";
@@ -126,13 +127,14 @@ function build(): void {
   function render(c: CanvasRenderingContext2D, v: M.View, withUi: boolean): void {
     c.save(); c.fillStyle = BG[bg]; c.fillRect(0, 0, v.w, v.h);
     if (!doc) { c.restore(); return; }
+    if (withUi && showGrid) paintGrid(c, v);
     c.lineWidth = lw; c.lineJoin = "round";
     ents.forEach((e, i) => {
-      if (!visible(e) || i === selected) return;
-      if (idx && !M.bboxVisible(idx.boxes[i], v)) return;
+      if (!visible(e) || sel.has(i)) return;
+      if (idx) { const bb = idx.boxes[i]; if (!M.bboxVisible(bb, v)) return; if (e.type !== "POINT" && (bb.maxX - bb.minX) * v.scale < 0.4 && (bb.maxY - bb.minY) * v.scale < 0.4) return; }
       const col = colorOf(e); c.strokeStyle = col; c.fillStyle = col; drawEntity(c, e, v);
     });
-    if (selected >= 0 && ents[selected]) { c.save(); c.lineWidth = lw + 2; c.strokeStyle = "#38bdf8"; c.fillStyle = "#38bdf8"; drawEntity(c, ents[selected], v); c.restore(); }
+    if (sel.size) { c.save(); c.lineWidth = lw + 2; c.strokeStyle = "#38bdf8"; c.fillStyle = "#38bdf8"; for (const i of sel) if (ents[i] && visible(ents[i])) drawEntity(c, ents[i], v); c.restore(); }
     // markups
     c.save(); c.strokeStyle = "#ef4444"; c.fillStyle = "#ef4444"; c.lineWidth = 2; c.font = "14px sans-serif";
     for (const m of markups) {
@@ -153,9 +155,24 @@ function build(): void {
         else if (hover.kind === "intersection") { c.beginPath(); c.moveTo(p.x - 6, p.y - 6); c.lineTo(p.x + 6, p.y + 6); c.moveTo(p.x + 6, p.y - 6); c.lineTo(p.x - 6, p.y + 6); c.stroke(); }
         else c.strokeRect(p.x - 5, p.y - 5, 10, 10);
       }
+      paintScaleBar(c, v);
+      if (rband) { const x = rband.a.x, y = rband.a.y, w = rband.b.x - x, h = rband.b.y - y, win = w >= 0; c.save(); c.globalAlpha = 0.15; c.fillStyle = win ? "#38bdf8" : "#22c55e"; c.fillRect(x, y, w, h); c.globalAlpha = 1; c.strokeStyle = win ? "#38bdf8" : "#22c55e"; c.lineWidth = 1; c.setLineDash(win ? [] : [5, 4]); c.strokeRect(x, y, w, h); c.restore(); }
       if (winStart && winNow) { c.strokeStyle = "#38bdf8"; c.setLineDash([5, 4]); c.strokeRect(winStart.x, winStart.y, winNow.x - winStart.x, winNow.y - winStart.y); }
     }
     c.restore();
+  }
+  function paintGrid(c: CanvasRenderingContext2D, v: M.View): void {
+    const st = M.gridStep(v.scale), tl = M.screenToWorld(v, 0, 0), br = M.screenToWorld(v, v.w, v.h);
+    c.save(); c.strokeStyle = bg === "white" ? "rgba(0,0,0,.12)" : "rgba(255,255,255,.12)"; c.lineWidth = 1; c.beginPath();
+    for (let x = Math.ceil(tl.x / st) * st; x <= br.x; x += st) { const p = M.worldToScreen(v, x, 0).x; c.moveTo(p, 0); c.lineTo(p, v.h); }
+    for (let y = Math.ceil(br.y / st) * st; y <= tl.y; y += st) { const p = M.worldToScreen(v, 0, y).y; c.moveTo(0, p); c.lineTo(v.w, p); }
+    c.stroke(); c.restore();
+  }
+  function paintScaleBar(c: CanvasRenderingContext2D, v: M.View): void {
+    if (!doc) return; const sb = M.niceScaleBar(v.scale), x = 16, y = v.h - 22;
+    c.save(); c.strokeStyle = bg === "white" ? "#111" : "#eee"; c.fillStyle = c.strokeStyle; c.lineWidth = 2; c.font = "11px sans-serif";
+    c.beginPath(); c.moveTo(x, y - 5); c.lineTo(x, y); c.lineTo(x + sb.px, y); c.lineTo(x + sb.px, y - 5); c.stroke();
+    c.fillText(`${+M.convertLength(sb.length, doc.units, du).toFixed(3)} ${M.unitLabel(doc.units, du)}`, x, y - 9); c.restore();
   }
   function paintMeasure(c: CanvasRenderingContext2D, v: M.View, kind: Tool, p: M.Pt[]): void {
     if (!p.length) return;
@@ -188,7 +205,7 @@ function build(): void {
       if (!b) throw new Error("The file has no drawable geometry");
       bounds = b; idx = M.buildIndex(ents, b);
       hidden.clear(); for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
-      selected = -1; pts = []; drawn = []; markups = []; hits = []; results = []; history.length = 0;
+      selected = -1; sel.clear(); pts = []; drawn = []; markups = []; hits = []; results = []; history.length = 0; layerFilter = "";
       emptyEl.style.display = "none"; view = M.fitView(b, view.w, view.h);
       buildLayers(); showProps(); showMeas(); setTool("select"); updateStatus(); draw();
       const sk = doc.skipped && Object.keys(doc.skipped).length ? `  (not drawn: ${Object.entries(doc.skipped).map(([k, n]) => `${k}×${n}`).join(", ")})` : "";
@@ -196,24 +213,41 @@ function build(): void {
     } catch (err) { status(`Could not open ${file.name}: ${(err as Error).message}`); setTimeout(() => status(""), 7000); }
   }
 
+  function setSel(ids: number[], add = false): void {
+    if (!add) sel.clear();
+    if (add && ids.length === 1 && sel.has(ids[0])) sel.delete(ids[0]); else for (const i of ids) sel.add(i);
+    selected = sel.size ? [...sel][sel.size - 1] : -1; showProps(); draw();
+  }
+  function zoomToBox(b: M.BBox | null): void { if (!b) return; pushView(); const pad = Math.max(b.maxX - b.minX, b.maxY - b.minY, 1e-6) * 0.08; view = M.fitView({ minX: b.minX - pad, minY: b.minY - pad, maxX: b.maxX + pad, maxY: b.maxY + pad }, view.w, view.h, 0.02); draw(); }
+  function zoomSelection(): void { if (idx && sel.size) zoomToBox(M.bboxOfSet(idx, sel)); }
+  function zoomLayer(n: string): void { if (!idx) return; zoomToBox(M.bboxOfSet(idx, ents.map((e, i) => (e.layer === n ? i : -1)).filter((i) => i >= 0))); }
+
   /* ── layers ── */
   function buildLayers() {
     if (!doc) { layersEl.innerHTML = ""; return; }
     const counts = M.countByLayer(ents);
-    const names = [...new Set([...doc.layers.map((l) => l.name), ...counts.keys()])].sort((a, b) => a.localeCompare(b));
+    const f = layerFilter.toLowerCase();
+    const names = [...new Set([...doc.layers.map((l) => l.name), ...counts.keys()])].filter((n) => !f || n.toLowerCase().includes(f)).sort((a, b) => a.localeCompare(b));
     layersEl.innerHTML = names.map((n) => {
       const col = rgbToCss(aciToRgb(layerOf(n)?.color ?? 7, 0xffffff));
-      return `<label class="lyr"><input type="checkbox" data-l="${escapeHtml(n)}" ${hidden.has(n) ? "" : "checked"}><span class="sw" style="background:${col}"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(n)}">${escapeHtml(n)}</span><span style="color:#778">${counts.get(n) ?? 0}</span></label>`;
+      return `<label class="lyr"><input type="checkbox" data-l="${escapeHtml(n)}" ${hidden.has(n) ? "" : "checked"}><span class="sw" style="background:${col}"></span><span data-zl="${escapeHtml(n)}" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(n)} (double-click to zoom to layer)">${escapeHtml(n)}</span><span style="color:#778">${counts.get(n) ?? 0}</span></label>`;
     }).join("");
+    layersEl.querySelectorAll<HTMLElement>("[data-zl]").forEach((el) => el.ondblclick = (ev) => { ev.preventDefault(); zoomLayer(el.dataset.zl!); });
     layersEl.querySelectorAll<HTMLInputElement>("input[data-l]").forEach((i) => i.onchange = () => { i.checked ? hidden.delete(i.dataset.l!) : hidden.add(i.dataset.l!); draw(); });
   }
   const allLayers = () => [...new Set([...(doc?.layers.map((l) => l.name) ?? []), ...ents.map((e) => e.layer)])];
+  $<HTMLInputElement>("lf").oninput = (e) => { layerFilter = (e.target as HTMLInputElement).value; buildLayers(); };
   $("lon").onclick = () => { hidden.clear(); buildLayers(); draw(); };
   $("loff").onclick = () => { allLayers().forEach((n) => hidden.add(n)); buildLayers(); draw(); };
-  $("liso").onclick = () => { if (selected < 0) return; const keep = ents[selected].layer; allLayers().forEach((n) => (n === keep ? hidden.delete(n) : hidden.add(n))); buildLayers(); draw(); };
+  $("liso").onclick = () => { if (!sel.size) return; const keep = new Set([...sel].map((i) => ents[i].layer)); allLayers().forEach((n) => (keep.has(n) ? hidden.delete(n) : hidden.add(n))); buildLayers(); draw(); };
 
   /* ── properties & measurements ── */
   function showProps() {
+    if (sel.size > 1) {
+      let len = 0, area = 0; const types = new Map<string, number>(), lay = new Set<string>();
+      for (const i of sel) { const e = ents[i], m = M.entityMetrics(e); len += m.length ?? 0; area += m.area ?? 0; types.set(e.type, (types.get(e.type) ?? 0) + 1); lay.add(e.layer); }
+      propsEl.innerHTML = `<table>${row("Selected", `${sel.size} objects`)}${[...types].map(([k, n]) => row(k, String(n))).join("")}${row("Layers", String(lay.size))}${row("Total length", fmt(len))}${area ? row("Total area", fmt(area, 2)) : ""}</table>`; return;
+    }
     const e = ents[selected];
     if (!e) { propsEl.innerHTML = doc ? `<table>${row("File", name)}${row("Units", doc.units ?? "unitless")}${row("Objects", String(ents.length))}${row("Layers", String(doc.layers.length))}${[...M.countByType(ents)].map(([k, n]) => row(k, String(n))).join("")}</table>` : ""; return; }
     const m = M.entityMetrics(e), rows: string[] = [row("Type", e.type), row("Layer", e.layer), row("Colour", e.rgb != null ? rgbToCss(e.rgb) : e.color ? `ACI ${e.color}` : "ByLayer")];
@@ -232,16 +266,18 @@ function build(): void {
   const row = (k: string, v: string) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`;
   const pt = (p: { x: number; y: number }) => `${M.convertLength(p.x, doc?.units, du).toFixed(3)}, ${M.convertLength(p.y, doc?.units, du).toFixed(3)}`;
   function showMeas() {
-    measEl.innerHTML = results.length ? results.map((r) => `<div>${escapeHtml(r)}</div>`).join("") + `<button data-r="mclr" style="margin-top:6px">Clear</button>` : `<span style="color:#778">Wheel zooms, drag pans, click selects. Pick a measure tool, then click points. Enter or double-click finishes, Esc cancels.</span>`;
+    measEl.innerHTML = results.length ? results.map((r) => `<div>${escapeHtml(r)}</div>`).join("") + `<div style="display:flex;gap:4px;margin-top:6px"><button data-r="mclr">Clear</button><button data-r="mcopy">Copy</button><button data-r="mcsv">CSV</button></div>` : `<span style="color:#778">Wheel zooms, drag pans, click selects. Pick a measure tool, then click points. Enter or double-click finishes, Esc cancels.</span>`;
     const b = measEl.querySelector<HTMLButtonElement>("[data-r=mclr]"); if (b) b.onclick = () => { results = []; drawn = []; showMeas(); draw(); };
+    const cp = measEl.querySelector<HTMLButtonElement>("[data-r=mcopy]"); if (cp) cp.onclick = () => { void navigator.clipboard?.writeText(results.join("\n")).then(() => { status("Measurements copied"); setTimeout(() => status(""), 1800); }).catch(() => status("Copy not allowed by the browser")); };
+    const cs = measEl.querySelector<HTMLButtonElement>("[data-r=mcsv]"); if (cs) cs.onclick = () => download(new Blob([M.resultsToCsv(results)], { type: "text/csv" }), `${base()}-measurements.csv`);
   }
 
   /* ── tools ── */
-  const T: Array<[Tool, string, string]> = [["pan", "Pan", "P"], ["select", "Select", "S"], ["zoomwin", "Zoom window", "W"], ["dist", "Distance", "D"], ["poly", "Polyline length", "L"], ["area", "Area", "A"], ["angle", "Angle", "G"], ["coord", "Coordinates", "I"], ["radius", "Radius", "R"], ["redline", "Redline", "M"], ["note", "Note", "N"]];
+  const T: Array<[Tool, string, string]> = [["pan", "Pan", "P"], ["select", "Select", "S"], ["box", "Box select", "B"], ["zoomwin", "Zoom window", "W"], ["dist", "Distance", "D"], ["poly", "Polyline length", "L"], ["area", "Area", "A"], ["angle", "Angle", "G"], ["coord", "Coordinates", "I"], ["radius", "Radius", "R"], ["redline", "Redline", "M"], ["note", "Note", "N"]];
   function buildBar() {
     tools.innerHTML = `<button data-a="open">Open…</button><input type="file" data-r="file" accept=".dwg,.dxf" style="display:none"><span class="sep"></span>` +
       T.map(([k, l, key]) => `<button data-t="${k}" title="${l} (${key})">${l}</button>`).join("") + `<span class="sep"></span>
-      <button data-a="ext" title="Zoom extents (E)">Extents</button><button data-a="in">＋</button><button data-a="out">－</button><button data-a="prev" title="Previous view (Backspace)">Previous</button><span class="sep"></span>
+      <button data-a="ext" title="Zoom extents (E)">Extents</button><button data-a="zsel" title="Zoom to selection (F)">Selection</button><button data-a="grid" title="Grid (F7)">Grid</button><button data-a="help" title="Shortcuts (?)">?</button><button data-a="in">＋</button><button data-a="out">－</button><button data-a="prev" title="Previous view (Backspace)">Previous</button><span class="sep"></span>
       <button data-a="snap" class="on" title="Object snap (F3)">Snap</button><select data-a="snapset" title="Snap types"><option value="all">All snaps</option>${M.ALL_SNAPS.map((s) => `<option>${s}</option>`).join("")}</select><span class="sep"></span>
       <label>Background <select data-a="bg">${Object.keys(BG).map((k) => `<option>${k}</option>`).join("")}</select></label>
       <label>Colours <select data-a="cm"><option value="layer">As drawn</option><option value="bw">Black / white</option><option value="invert">Inverted</option></select></label>
@@ -254,7 +290,8 @@ function build(): void {
     const fileIn = tools.querySelector<HTMLInputElement>("[data-r=file]")!;
     fileIn.onchange = () => { const f = fileIn.files?.[0]; if (f) void load(f); fileIn.value = ""; };
     const act: Record<string, () => void> = {
-      open: () => fileIn.click(), ext: zoomExtents, close: () => api!.close(),
+      open: () => fileIn.click(), ext: zoomExtents, zsel: zoomSelection, help: () => toggleHelp(),
+      grid: () => { showGrid = !showGrid; tools.querySelector("[data-a=grid]")!.classList.toggle("on", showGrid); draw(); }, close: () => api!.close(),
       in: () => { pushView(); view = M.zoomAt(view, view.w / 2, view.h / 2, 1.5); draw(); },
       out: () => { pushView(); view = M.zoomAt(view, view.w / 2, view.h / 2, 1 / 1.5); draw(); },
       prev: () => { const v = history.pop(); if (v) { view = { ...v, w: view.w, h: view.h }; draw(); } },
@@ -274,7 +311,7 @@ function build(): void {
     q.oninput = () => { hits = M.searchText(ents, q.value, visible); hitI = -1; tools.querySelector("[data-r=qc]")!.textContent = q.value ? `${hits.length} found` : ""; draw(); };
     q.onkeydown = (e) => { if (e.key === "Enter") { e.stopPropagation(); stepHit(e.shiftKey ? -1 : 1); } };
   }
-  function stepHit(d: number) { if (!hits.length) return; hitI = (hitI + d + hits.length) % hits.length; const h = hits[hitI]; goTo(h.x, h.y, Math.max(view.scale, 40 / Math.max(M.textBox(ents[h.index] as any).h, 1e-9))); const el = tools.querySelector("[data-r=qc]")!; el.textContent = `${hitI + 1} / ${hits.length}`; selected = h.index; showProps(); draw(); }
+  function stepHit(d: number) { if (!hits.length) return; hitI = (hitI + d + hits.length) % hits.length; const h = hits[hitI]; goTo(h.x, h.y, Math.max(view.scale, 40 / Math.max(M.textBox(ents[h.index] as any).h, 1e-9))); const el = tools.querySelector("[data-r=qc]")!; el.textContent = `${hitI + 1} / ${hits.length}`; setSel([h.index]); }
   function setTool(t: Tool) { tool = t; pts = []; winStart = winNow = null; hover = null; tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === t)); cv.style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; draw(); }
   function finishMeasure() {
     if (tool === "poly" && pts.length >= 2) { results.push(`Polyline: ${fmt(M.pathLength(pts))}`); drawn.push({ kind: "poly", pts: [...pts] }); }
@@ -284,13 +321,14 @@ function build(): void {
 
   /* ── input ── */
   const rawPoint = (ev: PointerEvent | MouseEvent): { sp: M.Pt; wp: M.Pt } => { const r = cv.getBoundingClientRect(); const sp = { x: ev.clientX - r.left, y: ev.clientY - r.top }; return { sp, wp: M.screenToWorld(view, sp.x, sp.y) }; };
-  const snapped = (wp: M.Pt): M.Snap | null => (!idx || !snapOn || ["pan", "select", "zoomwin", "redline", "note"].includes(tool) && tool !== "redline") ? null : M.findSnap(idx, ents, wp.x, wp.y, 12 / view.scale, [...snapModes], visible);
+  const snapped = (wp: M.Pt): M.Snap | null => (!idx || !snapOn || ["pan", "select", "box", "zoomwin", "redline", "note"].includes(tool) && tool !== "redline") ? null : M.findSnap(idx, ents, wp.x, wp.y, 12 / view.scale, [...snapModes], visible);
   cv.addEventListener("pointerdown", (ev) => {
     if (!doc) return; cv.focus(); const { sp, wp } = rawPoint(ev);
     ptrs.set(ev.pointerId, sp);
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); dragging = null; press = null; return; }
     if (ev.button === 1 || ev.button === 2) { ev.preventDefault(); dragging = { x: sp.x, y: sp.y }; cv.setPointerCapture(ev.pointerId); cv.style.cursor = "grabbing"; pushView(); return; }
     if (ev.button !== 0) return;
+    if (tool === "box" || (tool === "select" && (ev.shiftKey || ev.ctrlKey))) { press = { x: sp.x, y: sp.y, moved: false, id: ev.pointerId, band: true, add: ev.shiftKey || ev.ctrlKey }; cv.setPointerCapture(ev.pointerId); return; }
     if (tool === "pan" || tool === "select") { press = { x: sp.x, y: sp.y, moved: false, id: ev.pointerId }; cv.setPointerCapture(ev.pointerId); return; }
     if (tool === "zoomwin") { winStart = winNow = sp; cv.setPointerCapture(ev.pointerId); return; }
     const s = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind }; const p = { x: s.x, y: s.y };
@@ -299,7 +337,7 @@ function build(): void {
       case "dist": pts.push(p); if (pts.length === 2) { const d = M.distance(pts[0], pts[1]); results.push(`Distance: ${fmt(d)}  ΔX ${fmt(Math.abs(pts[1].x - pts[0].x))}  ΔY ${fmt(Math.abs(pts[1].y - pts[0].y))}  Angle ${M.norm360Deg(pts[0], pts[1]).toFixed(2)}°`); drawn.push({ kind: "dist", pts: [...pts] }); pts = []; showMeas(); } break;
       case "poly": case "area": pts.push(p); break;
       case "angle": pts.push(p); if (pts.length === 3) { results.push(`Angle: ${M.angleAt(pts[1], pts[0], pts[2]).toFixed(2)}°`); drawn.push({ kind: "angle", pts: [...pts] }); pts = []; showMeas(); } break;
-      case "radius": { const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1; const e = ents[i]; if (e && (e.type === "CIRCLE" || e.type === "ARC")) { selected = i; results.push(`Radius ${fmt(e.radius)}  Diameter ${fmt(e.radius * 2)}`); showProps(); showMeas(); } break; }
+      case "radius": { const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1; const e = ents[i]; if (e && (e.type === "CIRCLE" || e.type === "ARC")) { setSel([i]); results.push(`Radius ${fmt(e.radius)}  Diameter ${fmt(e.radius * 2)}`); showProps(); showMeas(); } break; }
       case "redline": if (!pts.length) pts = [wp]; else pts.push(wp); break;
       case "note": { const t = prompt("Note text"); if (t) markups.push({ kind: "note", pts: [wp], text: t }); break; }
     }
@@ -310,6 +348,7 @@ function build(): void {
     if (ptrs.has(ev.pointerId)) ptrs.set(ev.pointerId, sp);
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0 && d > 0) { view = M.zoomAt(view, (a.x + b.x) / 2, (a.y + b.y) / 2, d / pinch); draw(); } pinch = d; return; }
     if (press && press.id === ev.pointerId) {
+      if (press.band) { if (Math.hypot(sp.x - press.x, sp.y - press.y) > 4) { press.moved = true; rband = { a: { x: press.x, y: press.y }, b: sp }; draw(); } return; }
       if (!press.moved && Math.hypot(sp.x - press.x, sp.y - press.y) > 4) { press.moved = true; pushView(); cv.style.cursor = "grabbing"; dragging = { x: press.x, y: press.y }; }
     }
     if (dragging) { view = M.panBy(view, sp.x - dragging.x, sp.y - dragging.y); dragging = { x: sp.x, y: sp.y }; draw(); updateStatus(wp); return; }
@@ -319,7 +358,11 @@ function build(): void {
   const endDrag = (ev: PointerEvent) => {
     ptrs.delete(ev.pointerId); if (ptrs.size < 2) pinch = 0;
     if (press && press.id === ev.pointerId) {
-      if (!press.moved && doc && ev.type === "pointerup") { const { wp } = rawPoint(ev); selected = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 8 / view.scale, visible) : -1; showProps(); draw(); }
+      if (press.band && press.moved && rband && idx && ev.type === "pointerup") {
+        const a = M.screenToWorld(view, rband.a.x, rband.a.y), b = M.screenToWorld(view, rband.b.x, rband.b.y);
+        setSel(M.selectInRect(idx, ents, M.rectOf(a, b), rband.b.x >= rband.a.x ? "window" : "crossing", visible), !!press.add);
+      } else if (!press.moved && doc && ev.type === "pointerup") { const { wp } = rawPoint(ev); const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 8 / view.scale, visible) : -1; if (i >= 0) setSel([i], !!press.add); else if (!press.add) setSel([]); }
+      rband = null; draw();
       press = null; cv.style.cursor = tool === "pan" ? "grab" : tool === "select" ? "default" : "crosshair";
     }
     if (dragging) { dragging = null; cv.style.cursor = tool === "pan" ? "grab" : "crosshair"; }
@@ -332,7 +375,10 @@ function build(): void {
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
   cv.addEventListener("wheel", (ev) => { if (!doc) return; ev.preventDefault(); const { sp } = rawPoint(ev); view = M.zoomAt(view, sp.x, sp.y, Math.exp(-Math.max(-300, Math.min(300, ev.deltaY * (ev.deltaMode === 1 ? 16 : 1))) * 0.0018)); draw(); updateStatus(); }, { passive: false });
   cv.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape") { if (pts.length) { pts = []; draw(); } else if (selected >= 0) { selected = -1; showProps(); draw(); } else setTool("pan"); return; }
+    if (ev.key === "Escape") { if (helpEl) { toggleHelp(); } else if (pts.length) { pts = []; draw(); } else if (sel.size) setSel([]); else setTool("select"); return; }
+    if (ev.key === "F7") { ev.preventDefault(); (tools.querySelector("[data-a=grid]") as HTMLButtonElement).click(); return; }
+    if (ev.key === "?" ) { toggleHelp(); return; }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "a" && doc) { ev.preventDefault(); setSel(ents.map((_, i) => i).filter((i) => visible(ents[i]))); return; }
     if (ev.key === "Enter") { if (tool === "poly" || tool === "area") finishMeasure(); else if (tool === "redline" && pts.length > 1) { markups.push({ kind: "line", pts: [...pts] }); pts = []; draw(); } return; }
     if (ev.key === "F3") { ev.preventDefault(); (tools.querySelector("[data-a=snap]") as HTMLButtonElement).click(); return; }
     if (ev.key === "Backspace" && !pts.length) { ev.preventDefault(); (tools.querySelector("[data-a=prev]") as HTMLButtonElement).click(); return; }
@@ -343,7 +389,7 @@ function build(): void {
     if (ev.key === "+" || ev.key === "=") { view = M.zoomAt(view, view.w / 2, view.h / 2, 1.3); draw(); return; }
     if (ev.key === "-" || ev.key === "_") { view = M.zoomAt(view, view.w / 2, view.h / 2, 1 / 1.3); draw(); return; }
     const k = ev.key.toLowerCase();
-    if (k === "e") zoomExtents(); else { const t = T.find(([, , key]) => key.toLowerCase() === k); if (t) setTool(t[0]); }
+    if (k === "e") zoomExtents(); else if (k === "f") zoomSelection(); else { const t = T.find(([, , key]) => key.toLowerCase() === k); if (t) setTool(t[0]); }
   });
   function updateStatus(p?: M.Pt) {
     const c = p ?? cursor; const zoomPct = doc && bounds ? Math.round((view.scale / M.fitView(bounds, view.w, view.h).scale) * 100) : 100;
@@ -354,6 +400,20 @@ function build(): void {
   const stage = $("stage");
   stage.addEventListener("dragover", (e) => { e.preventDefault(); });
   stage.addEventListener("drop", (e) => { e.preventDefault(); const f = e.dataTransfer?.files?.[0]; if (f) void load(f); });
+
+  let helpEl: HTMLDivElement | null = null;
+  function toggleHelp(): void {
+    if (helpEl) { helpEl.remove(); helpEl = null; return; }
+    helpEl = document.createElement("div");
+    helpEl.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);z-index:5";
+    helpEl.innerHTML = `<div style="background:#151a23;border:1px solid #2f3846;border-radius:10px;padding:16px 22px;max-width:560px;line-height:1.7"><b style="font-size:14px">Mouse & keyboard</b><br>
+      Wheel: zoom at cursor · Drag: pan · Middle / right drag: pan · Middle double-click: extents<br>
+      Click: select · Shift/Ctrl+click: add or remove · Shift+drag or <b>B</b>: box select (→ window, ← crossing) · Ctrl+A: select all<br>
+      P pan · S select · W zoom window · D distance · L polyline · A area · G angle · I coordinate · R radius · M redline · N note<br>
+      E extents · F zoom to selection · F3 snaps · F7 grid · Backspace previous view · Arrows pan · + / − zoom · Esc cancel<br>
+      Double-click a layer name: zoom to that layer<br><span style="color:#9aa4b2">Press ? or Esc to close.</span></div>`;
+    helpEl.onclick = () => toggleHelp(); stage.appendChild(helpEl);
+  }
 
   /* ── export ── */
   const base = () => (name || "drawing").replace(/\.[^.]+$/, "");
