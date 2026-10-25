@@ -1,7 +1,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs"), os = require("os"), path = require("path"), assert = require("assert");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "pd-"));
-execSync(`npx tsc src/features/plan-draw-math.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`, { stdio: "inherit" });
+execSync(`npx tsc src/features/plan-draw-math.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreDeprecations 5.0`, { stdio: "inherit" });
 const m = require(path.join(out, "plan-draw-math.js"));
 let pass = 0, fail = 0;
 const t = (n, f) => { try { f(); pass++; console.log("  PASS " + n); } catch (e) { fail++; console.log("  FAIL " + n + ": " + e.message); } };

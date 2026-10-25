@@ -1,6 +1,6 @@
 const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
 const out=fs.mkdtempSync(path.join(os.tmpdir(),"pc-"));
-execSync(`npx tsc src/modules/projects/project-crypto.ts --outDir ${out} --module commonjs --target es2020 --lib es2020,dom --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`,{stdio:"inherit"});
+execSync(`npx tsc src/modules/projects/project-crypto.ts --outDir ${out} --module commonjs --target es2020 --lib es2020,dom --skipLibCheck --ignoreDeprecations 5.0`,{stdio:"inherit"});
 const find=(d,n)=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()){const r=find(p,n);if(r)return r}else if(f.name===n)return p}};
 const m=require(find(out,"project-crypto.js"));
 let pass=0,fail=0;const t=async(n,f)=>{try{await f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};

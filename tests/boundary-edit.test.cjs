@@ -1,6 +1,6 @@
 const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
 const out=fs.mkdtempSync(path.join(os.tmpdir(),"be-"));
-execSync(`npx tsc src/modules/views/boundary-edit.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`,{stdio:"inherit"});
+execSync(`npx tsc src/modules/views/boundary-edit.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreDeprecations 5.0`,{stdio:"inherit"});
 const m=require(path.join(out,"boundary-edit.js"));
 let pass=0,fail=0;const t=(n,f)=>{try{f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
 const sq=[[0,0],[4,0],[4,4],[0,4]];
