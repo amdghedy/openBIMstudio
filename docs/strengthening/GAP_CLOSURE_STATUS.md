@@ -34,6 +34,18 @@
 - Worksharing / multi-user
 - ~~Adaptive components~~ ✅ v0.67 — `src/modules/adaptive` (profile sweeps, repeaters, mesh volumes)
 - ~~Advanced MEP calculation~~ ✅ v0.67 (pressure/hydraulics) — `src/modules/mep/pressure.ts`; flow-balance & equipment selection still open
+- ~~Parametric dependency graph + incremental evaluation~~ ✅ v0.68 — `src/modules/dependency-graph` (Tarjan cycle classification, batch coalescing)
+- ~~Document-level parameter engine (EffectiveValue / type-instance overrides)~~ ✅ v0.68 — `src/modules/parameter-engine`
+- ~~Object hierarchy + identity management~~ ✅ v0.68 — `src/modules/object-hierarchy`
+- ~~Solid geometry kernel (B-Rep, forms, booleans, voids, validation)~~ ✅ v0.68 — `src/modules/solid-kernel` (convex-clipping booleans; full CSG for non-convex union/intersect still open)
+- ~~Magnetic snapping + modeling state machine + wall-column connection~~ ✅ v0.68 — `src/modules/snapping`
+- ~~Persistent relationship registry + reconnection policies~~ ✅ v0.68 — `src/modules/relationships`
+- ~~MEP connector intelligence (compatibility, fittings, topology)~~ ✅ v0.68 — `src/modules/mep/connectors.ts`
+- ~~Unified Modify command engine~~ ✅ v0.68 — `src/modules/modify`
+- ~~Metadata-driven property panel + editable dimensions~~ ✅ v0.68 — `src/modules/properties-panel` (schema/lifecycle/dimensions)
+- ~~Hosting: host parameterization + opening regeneration~~ ✅ v0.68 — `src/modules/hosting`
+- Worksharing / multi-user
+- UI wiring of the v0.68 authoring engines into the plan-view tools
 - ~~Structural design / rebar~~ ✅ v0.67 (2D frame FEM + steel/RC checks) — `src/modules/analytical-model`; 3D frames, LTB/interaction still open
 - High-fidelity print/PDF
 - Large-model out-of-core loading

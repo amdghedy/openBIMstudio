@@ -396,6 +396,12 @@ async function runOnce(): Promise<void> {
     m.setupV67Engines?.();
   });
 
+  // ── v68 authoring core (dependency graph / solids / snapping / modify / properties)
+  await safe("v68-register", async () => {
+    const m: Any = await import("./modules/v68-register");
+    m.setupV68Engines?.();
+  });
+
   // ── View Tools Manager panel (replaces console.log dumps) ─────────────
   await safe("view-tools-manager", async () => {
     const m: Any = await import("./features/view-tools-manager");
