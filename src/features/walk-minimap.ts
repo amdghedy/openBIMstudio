@@ -29,9 +29,15 @@ let svgEl: SVGSVGElement | null = null;
 let planGroup: SVGGElement | null = null;
 let arrowGroup: SVGGElement | null = null;
 let debugEl: HTMLDivElement | null = null;
+let coneEl: SVGPolygonElement | null = null;
+let arrowRaf: number | null = null;
 let labelEl: HTMLDivElement | null = null;
 
 let currentPlan: PlanView | null = null;
+type Xf = ReturnType<typeof computeTransform>;
+/** The transform the plan lines were drawn with. The arrow MUST use the same one, otherwise the
+ *  walker drifts off the drawing whenever the bounds change. */
+let frozenXf: Xf | null = null;
 let lastPlanY = -99999;
 let generating = false;
 
@@ -77,7 +83,7 @@ function ensureOverlay(): HTMLDivElement | null {
     "position:absolute;top:3px;right:6px;z-index:3;" +
     "font:700 10px system-ui,sans-serif;color:#f59e0b;" +
     "text-shadow:0 1px 2px rgba(0,0,0,.9)";
-  compass.title = "Top of the minimap = +Z is DOWN, -Z is UP";
+  compass.title = "Top of the minimap is -Z (the direction the walker faces at heading 0)";
   overlay.appendChild(compass);
 
   debugEl = document.createElement("div");
@@ -102,9 +108,11 @@ function ensureOverlay(): HTMLDivElement | null {
   // Smaller FOV cone
   const cone = document.createElementNS(NS, "polygon") as SVGPolygonElement;
   cone.setAttribute("points", "0,0 -12,-28 12,-28");
-  cone.setAttribute("fill", "rgba(239,68,68,0.25)");
-  cone.setAttribute("stroke", "none");
+  cone.setAttribute("fill", "rgba(239,68,68,0.28)");
+  cone.setAttribute("stroke", "rgba(239,68,68,0.6)");
+  cone.setAttribute("stroke-width", "0.6");
   arrowGroup.appendChild(cone);
+  coneEl = cone;
 
   const ring = document.createElementNS(NS, "circle") as SVGCircleElement;
   ring.setAttribute("cx", "0");
@@ -177,14 +185,12 @@ function computeTransform() {
 
   const bounds = { minX, maxX, minZ, maxZ, w, h, scale, offX, offY };
 
-  // Plan convention: screenX = worldX, screenY = -worldZ.
-  // SVG Y grows DOWN. To make world -Z the "up" direction of the minimap
-  // (so a walker facing north sees the top of the box as forward):
-  //   svgY = offY + (worldZ - minZ) * scale
-  // This means higher world Z = lower in the box (down).
+  // Orientation matches what the walker sees: -Z is UP the minimap and +X is RIGHT, so the
+  // arrow (heading 0 = facing -Z) points up, moves up when walking forward, and turning right
+  // turns it clockwise. (This is the true top-down view of the 3D scene.)
   const toSvg = (x: number, z: number): [number, number] => [
     offX + (x - minX) * scale,
-    offY + (maxZ - z) * scale,
+    offY + (z - minZ) * scale,
   ];
 
   return { bounds, toSvg };
@@ -194,7 +200,8 @@ function buildPlanSvg(): void {
   if (!planGroup || !currentPlan) return;
   planGroup.innerHTML = "";
   const NS = "http://www.w3.org/2000/svg";
-  const { toSvg } = computeTransform();
+  frozenXf = computeTransform();
+  const { toSvg } = frozenXf;
   const frag = document.createDocumentFragment();
 
   const cuts = currentPlan.segments.filter((s) => s.kind === "cut");
@@ -240,41 +247,57 @@ function buildPlanSvg(): void {
 
 function updateArrow(): void {
   if (!arrowGroup) return;
-  if (!currentPlan) return;
 
-  const { toSvg, bounds } = computeTransform();
-  const cam = ctx.world.camera.three;
-  const wx = cam.position.x;
-  const wz = cam.position.z;
+  const pose = (() => { try { return (ctx.features as any).walkMode?.getPose?.() ?? null; } catch { return null; } })();
+  const cam: any = ctx.world.camera.three;
+  const wx = pose ? pose.x : cam.position.x;
+  const wz = pose ? pose.z : cam.position.z;
+
+  // Keep the drawing and the arrow on one transform; only re-derive it when the walker leaves it.
+  if (frozenXf) {
+    const bb = frozenXf.bounds;
+    if (wx < bb.minX || wx > bb.maxX || wz < bb.minZ || wz > bb.maxZ) {
+      frozenXf = null;
+      if (currentPlan) buildPlanSvg();
+    }
+  }
+  if (!frozenXf) frozenXf = computeTransform();
+  const { toSvg, bounds } = frozenXf;
 
   const [sx, sy] = toSvg(wx, wz);
-  // Since bounds already include the walker + padding, sx/sy should be
-  // inside the box. Just clamp as safety.
   const cx = Math.max(2, Math.min(BOX_W_PX - 2, sx));
   const cy = Math.max(2, Math.min(BOX_H_PX - 2, sy));
 
-  const dir = new THREE.Vector3();
-  cam.getWorldDirection(dir);
-  // In SVG, rotate(0) = arrow points up (-Y).
-  // Our transform maps world +Z → SVG +Y (down), world -Z → SVG -Y (up).
-  // So: facing world -Z (north) → rotate 0; facing world +X → rotate 90.
-  // atan2(x, -z): -z points "up". Wait, we want to face -Z to be 0°.
-  // Facing -Z: dir=(0,0,-1) → want 0°. atan2(0, 1) = 0. ✓
-  // Facing +X: dir=(1,0,0)  → want 90°. atan2(1, 0) = 90. ✓
-  // Facing +Z: dir=(0,0,1)  → want 180°. atan2(0, -1) = 180. ✓
-  // Facing -X: dir=(-1,0,0) → want -90. atan2(-1, 0) = -90. ✓
-  const headingDeg = (Math.atan2(dir.x, -dir.z) * 180) / Math.PI;
+  // Heading in degrees clockwise from "up" (-Z). Walk yaw 0 faces -Z and positive yaw turns left.
+  let headingDeg: number;
+  if (pose) {
+    headingDeg = (-pose.yaw * 180) / Math.PI;
+  } else {
+    const dir = new THREE.Vector3();
+    cam.getWorldDirection(dir);
+    headingDeg = (Math.atan2(dir.x, -dir.z) * 180) / Math.PI;
+  }
 
   arrowGroup.setAttribute("transform",
     "translate(" + cx.toFixed(2) + "," + cy.toFixed(2) + ") " +
     "rotate(" + headingDeg.toFixed(2) + ")");
 
+  // Vision cone = the camera's real horizontal field of view.
+  if (coneEl) {
+    const vfov = ((cam.fov ?? 65) * Math.PI) / 180;
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * (cam.aspect || 1.6));
+    const half = Math.min(hfov / 2, (80 * Math.PI) / 180);
+    const len = 40, w = Math.tan(half) * len;
+    coneEl.setAttribute("points", "0,0 " + (-w).toFixed(1) + "," + (-len) + " " + w.toFixed(1) + "," + (-len));
+  }
+
   if (debugEl) {
+    const hd = ((headingDeg % 360) + 360) % 360;
     debugEl.textContent =
       "X:" + wx.toFixed(1) + " Z:" + wz.toFixed(1) +
       " | box " + (bounds.maxX - bounds.minX).toFixed(0) + "\u00d7" +
       (bounds.maxZ - bounds.minZ).toFixed(0) +
-      " | hdg " + headingDeg.toFixed(0) + "\u00b0";
+      " | hdg " + hd.toFixed(0) + "\u00b0";
   }
 }
 
@@ -311,6 +334,13 @@ async function maybeRefreshPlan(force = false): Promise<void> {
   }
 }
 
+function arrowLoop(): void {
+  arrowRaf = null;
+  if (!enabled) return;
+  try { updateArrow(); } catch (e) { console.warn("[walk-minimap] arrow update failed", e); }
+  arrowRaf = requestAnimationFrame(arrowLoop);
+}
+
 function updateVisibility(): void {
   const on = isWalkOn();
   if (on === enabled) return;
@@ -320,6 +350,7 @@ function updateVisibility(): void {
     if (overlay) overlay.style.display = "block";
     lastPlanY = -99999;
     void maybeRefreshPlan(true);
+    if (arrowRaf == null) arrowRaf = requestAnimationFrame(arrowLoop);
   } else if (overlay) {
     overlay.style.display = "none";
   }
@@ -331,15 +362,13 @@ export function setupWalkMinimap(): void {
 
   ensureOverlay();
 
-  setInterval(() => {
-    updateVisibility();
-    if (enabled) updateArrow();
-  }, 100);
+  setInterval(updateVisibility, 100);
+  window.addEventListener("obs:walk-mode-changed", updateVisibility);
 
   setInterval(() => { void maybeRefreshPlan(); }, 2000);
 
   (window as any).__obsWalkMinimap = {
-    show: () => { enabled = true; if (overlay) overlay.style.display = "block"; void maybeRefreshPlan(true); },
+    show: () => { enabled = true; if (overlay) overlay.style.display = "block"; void maybeRefreshPlan(true); if (arrowRaf == null) arrowRaf = requestAnimationFrame(arrowLoop); },
     hide: () => { enabled = false; if (overlay) overlay.style.display = "none"; },
     isEnabled: () => enabled,
     hasPlan: () => !!currentPlan,
