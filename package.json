@@ -77,7 +77,7 @@
     "@thatopen/components-front": "^3.4.3",
     "@thatopen/fragments": "^3.4.7",
     "@thatopen/ui": "^3.4.14",
-    "@thatopen/ui-obc": "^3.4.2",
+    "@thatopen/ui-obc": "^3.4.3",
     "@tldraw/editor": "^5.5.2",
     "axios": "^1.7.4",
     "file-saver": "^2.0.5",
