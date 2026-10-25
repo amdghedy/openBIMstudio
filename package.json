@@ -67,7 +67,7 @@
   "dependencies": {
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
-    "@mlightcad/libredwg-web": "^0.8.0",
+    "@mlightcad/libredwg-web": "^0.8.2",
     "@mui/lab": "^5.0.0-alpha.165",
     "@mui/material": "^5.15.12",
     "@react-three/drei": "^9.106.0",
@@ -76,7 +76,7 @@
     "@thatopen/components": "^3.4.8",
     "@thatopen/components-front": "^3.4.3",
     "@thatopen/fragments": "^3.4.7",
-    "@thatopen/ui": "^3.4.0",
+    "@thatopen/ui": "^3.4.14",
     "@thatopen/ui-obc": "^3.4.2",
     "@tldraw/editor": "^5.5.2",
     "axios": "^1.7.4",
