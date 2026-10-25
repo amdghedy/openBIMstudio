@@ -112,7 +112,8 @@ function crossOriginIsolation() {
       server.middlewares.use((_req, res, next) => {
         res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
         res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+        applySecurityHeaders(res);
         next();
       });
     },
@@ -120,7 +121,8 @@ function crossOriginIsolation() {
       server.middlewares.use((_req, res, next) => {
         res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
         res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+        applySecurityHeaders(res);
         next();
       });
     },
@@ -153,4 +155,12 @@ function pwaPrecache() {
       writeFileSync(swPath, src);
     },
   };
+}
+
+/** Hardening headers shared by the dev and preview servers (the hosted build sets the same ones in vercel.json). */
+function applySecurityHeaders(res: { setHeader(k: string, v: string): void }) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()");
+  res.setHeader("Content-Security-Policy", "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
 }

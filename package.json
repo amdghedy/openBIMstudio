@@ -50,6 +50,8 @@
     "test:project-file": "node tests/project-file.test.cjs",
     "test:fitting-outline": "node tests/fitting-outline.test.cjs",
     "test:slope": "node tests/slope.test.cjs",
+    "test:server-security": "node tests/server-security.test.cjs",
+    "test:safe-expr": "node tests/safe-expr.test.cjs",
     "test:mep-connectivity": "node tests/mep-connectivity.test.cjs",
     "test:boundary-edit": "node tests/boundary-edit.test.cjs",
     "test:props": "node tests/property-schema-revit.test.cjs",

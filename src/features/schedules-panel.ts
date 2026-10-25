@@ -9,6 +9,7 @@
  *   • Template gallery (unchanged)
  *   • Snapshot diff (unchanged)
  */
+import { escapeHtml } from "../core/html-escape";
 import { ctx } from "../core/context";
 import {
   BUILT_IN_TEMPLATES,
@@ -699,7 +700,7 @@ function renderDiffView(): void {
           `<div style="opacity:.85;font-family:var(--font-mono,monospace)">` +
           `${c.key}: <s style="opacity:.6">${String(c.before ?? "—")}</s> → <b>${String(c.after ?? "—")}</b></div>`,
       );
-      row.innerHTML = `<div style="font-weight:600">${e.rowId}</div>` + lines.join("");
+      row.innerHTML = `<div style="font-weight:600">${escapeHtml(e.rowId)}</div>` + lines.join("");
       return row;
     }),
   );

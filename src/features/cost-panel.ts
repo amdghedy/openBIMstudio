@@ -1,4 +1,5 @@
 /** 5D Cost floating panel: Takeoff | Cost Items | Summary + CSV export. */
+import { escapeHtml } from "../core/html-escape";
 import { ctx } from "../core/context";
 import {
   getItems, addCostItem, updateCostItem, deleteCostItem,
@@ -209,7 +210,7 @@ function renderItems() {
       (() => {
         const d = document.createElement("td"); d.style.cssText = "padding:3px 4px";
         const s = document.createElement("select"); s.style.cssText = INP;
-        s.innerHTML = UNITS.map((u) => `<option ${u === it.unit ? "selected" : ""}>${u}</option>`).join("");
+        s.innerHTML = UNITS.map((u) => `<option ${u === it.unit ? "selected" : ""}>${escapeHtml(u)}</option>`).join("");
         s.onchange = () => updateCostItem(it.id, { unit: s.value as CostUnit });
         d.appendChild(s); return d;
       })(),
@@ -251,7 +252,7 @@ function renderSummary() {
   const barSection = (title: string, data: { name: string; total: number }[]) => {
     const sec = document.createElement("div");
     sec.style.cssText = "margin-bottom:14px";
-    sec.innerHTML = `<div style="font-weight:700;margin-bottom:6px">${title}</div>`;
+    sec.innerHTML = `<div style="font-weight:700;margin-bottom:6px">${escapeHtml(title)}</div>`;
     if (!data.length) { sec.innerHTML += `<div style="opacity:.5;font-size:11px">No assigned costs yet.</div>`; body.appendChild(sec); return; }
     const max = Math.max(...data.map((d) => d.total), 1);
     for (const d of data.slice(0, 12)) {

@@ -1,4 +1,5 @@
 /** IDS validation floating panel. */
+import { escapeHtml } from "../core/html-escape";
 import { ctx } from "../core/context";
 import {
   parseIdsXml,
@@ -81,14 +82,14 @@ async function runNow() {
   try {
     const report = await runIdsValidation(currentDoc, {
       onProgress: (p) => {
-        body.innerHTML = `<div style="opacity:.6">Model ${p.current}/${p.total} — ${p.modelId}</div>`;
+        body.innerHTML = `<div style="opacity:.6">Model ${p.current}/${p.total} — ${escapeHtml(p.modelId)}</div>`;
       },
     });
     currentReport = report;
     renderBody();
     renderHeader();
   } catch (e: any) {
-    body.innerHTML = `<div style="color:#fca5a5">Validation failed: ${e?.message ?? e}</div>`;
+    body.innerHTML = `<div style="color:#fca5a5">Validation failed: ${escapeHtml(e?.message ?? e)}</div>`;
   }
 }
 
@@ -224,7 +225,7 @@ function renderBody() {
     tr.appendChild(td(r.facet));
     const msgTd = document.createElement("td");
     msgTd.style.cssText = "padding:5px 6px";
-    msgTd.innerHTML = `${r.message}${r.actual ? ` <span style="opacity:.6">(actual: ${r.actual})</span>` : ""}`;
+    msgTd.innerHTML = `${escapeHtml(r.message)}${r.actual ? ` <span style="opacity:.6">(actual: ${escapeHtml(r.actual)})</span>` : ""}`;
     tr.appendChild(msgTd);
     tbody.appendChild(tr);
   }
@@ -250,7 +251,7 @@ fileInput.onchange = async () => {
     renderBody();
     renderHeader();
   } catch (e: any) {
-    body.innerHTML = `<div style="color:#fca5a5">Could not parse IDS: ${e?.message ?? e}</div>`;
+    body.innerHTML = `<div style="color:#fca5a5">Could not parse IDS: ${escapeHtml(e?.message ?? e)}</div>`;
   }
 };
 

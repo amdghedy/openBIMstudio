@@ -33,6 +33,8 @@ jobs:
       - run: npm run test:props
       - run: npm run test:fitting-outline
       - run: npm run test:slope
+      - run: npm run test:server-security
+      - run: npm run test:safe-expr
       - run: npm run test:mep-connectivity
       - run: npm run test:boundary-edit
       - run: npm run test:project-file

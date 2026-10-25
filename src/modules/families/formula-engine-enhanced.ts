@@ -14,6 +14,7 @@
  * to globalThis, document, or imports.
  */
 
+import { evaluateExpression } from "./safe-expr";
 import type { FamilyParameter } from "./types";
 
 export interface FormulaError {
@@ -218,34 +219,16 @@ export function evaluateParameters(
     });
   }
 
-  const fnNames = Object.keys(BUILTIN_FUNCTIONS);
-  const fnValues = fnNames.map((n) => BUILTIN_FUNCTIONS[n]);
-
   for (const p of order) {
     if (!p.formula) continue;
     if (cycleSet.has(p.name)) continue;
     computed.add(p.name);
 
-    const ids = identifiersIn(p.formula);
-    const argNames: string[] = [];
-    const argValues: any[] = [];
-    for (const id of ids) {
-      if (id in BUILTIN_FUNCTIONS) continue;
-      if (!(id in values)) continue;
-      argNames.push(id);
-      argValues.push(values[id]);
-    }
-
     const body = normalizeBody(p.formula);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const fn = new Function(
-        ...fnNames,
-        ...argNames,
-        `"use strict"; return (${body});`,
-      );
-      const raw = fn(...fnValues, ...argValues);
+      // Interpreted, never executed as script: formulas can come from imported family files.
+      const raw = evaluateExpression(body, values, BUILTIN_FUNCTIONS);
 
       if (raw === undefined || raw === null) {
         errors.push({

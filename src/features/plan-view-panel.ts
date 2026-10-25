@@ -7,6 +7,7 @@
  * - Wheel zoom, middle-mouse (or Shift+left) pan, left click selection/placement
  * - Print / Export SVG / Close
  */
+import { escapeHtml } from "../core/html-escape";
 import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
@@ -287,10 +288,10 @@ function renderPlanProperties() {
   const title = el
     ? `${schema?.label ?? typeKey} � ${el.name ?? el.id}`
     : `${schema?.label ?? typeKey} (type defaults)`;
-  planPropsHeader.innerHTML = `<span style="flex:1">${title}</span>`;
+  planPropsHeader.innerHTML = `<span style="flex:1">${escapeHtml(title)}</span>`;
 
   if (!schema) {
-    planPropsBody.innerHTML = `<div style="padding:12px;color:#6b7280">No schema for ${typeKey}</div>`;
+    planPropsBody.innerHTML = `<div style="padding:12px;color:#6b7280">No schema for ${escapeHtml(typeKey)}</div>`;
     return;
   }
 

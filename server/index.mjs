@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseAllowedOrigins, originAllowed, corsHeaders, SECURITY_HEADERS, validId, tokenOk, safeUploadName } from "./security.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -10,6 +11,10 @@ const projectsFile = path.join(dataDir, "projects.json");
 const roomsFile = path.join(dataDir, "rooms.json");
 
 const PORT = Number(process.env.PORT || 4000);
+// Local-only by default. Set HOST=0.0.0.0 to share on a network, and set OBS_SERVER_TOKEN when you do.
+const HOST = process.env.HOST || "127.0.0.1";
+const AUTH_TOKEN = process.env.OBS_SERVER_TOKEN || "";
+const ALLOWED_ORIGINS = parseAllowedOrigins();
 const MAX_BODY = 200 * 1024 * 1024;
 const PRESENCE_TIMEOUT_MS = 45000;
 const MAX_CHANGES_PER_ROOM = 500;
@@ -53,10 +58,9 @@ function send(res, status, body) {
       : JSON.stringify(body ?? {}, null, 2);
 
   res.writeHead(status, {
+    ...SECURITY_HEADERS,
+    ...(res.obsCors || {}),
     "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
     "Content-Length": Buffer.byteLength(data),
   });
 
@@ -221,6 +225,13 @@ setInterval(() => {
 }, 15000);
 
 const server = http.createServer(async (req, res) => {
+  const origin = req.headers.origin;
+  const allowedOrigin = originAllowed(origin, ALLOWED_ORIGINS);
+  res.obsCors = corsHeaders(origin, ALLOWED_ORIGINS);
+
+  // A page from another site must not be able to drive this server through the visitor's browser.
+  if (allowedOrigin === false) return send(res, 403, { error: "Origin not allowed" });
+
   if (req.method === "OPTIONS") {
     return send(res, 204, "");
   }
@@ -230,10 +241,15 @@ const server = http.createServer(async (req, res) => {
     `http://${req.headers.host || "localhost"}`,
   );
 
+  if (url.pathname.startsWith("/api/") && !tokenOk(req.headers.authorization, url.searchParams.get("token"), AUTH_TOKEN)) {
+    return send(res, 401, { error: "Missing or invalid access token" });
+  }
+
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
 
   if (projectMatch) {
     const id = decodeURIComponent(projectMatch[1]);
+    if (!validId(id)) return send(res, 400, { error: "Invalid project id" });
 
     if (req.method === "GET") {
       const project = projects[id];
@@ -275,14 +291,16 @@ const server = http.createServer(async (req, res) => {
 
   if (roomEventsMatch && req.method === "GET") {
     const roomId = decodeURIComponent(roomEventsMatch[1]);
+    if (!validId(roomId)) return send(res, 400, { error: "Invalid room id" });
     getRoom(roomId);
 
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "Content-Type",
+      ...SECURITY_HEADERS,
+      "Cache-Control": "no-cache, no-transform",
+      ...(res.obsCors || {}),
     });
 
     res.write("retry: 2000\n\n");
@@ -297,6 +315,7 @@ const server = http.createServer(async (req, res) => {
 
   if (roomBaseMatch && req.method === "GET") {
     const roomId = decodeURIComponent(roomBaseMatch[1]);
+    if (!validId(roomId)) return send(res, 400, { error: "Invalid room id" });
     const room = getRoom(roomId);
 
     return send(res, 200, {
@@ -313,6 +332,7 @@ const server = http.createServer(async (req, res) => {
 
   if (roomActionMatch && req.method === "POST") {
     const roomId = decodeURIComponent(roomActionMatch[1]);
+    if (!validId(roomId)) return send(res, 400, { error: "Invalid room id" });
     const action = roomActionMatch[2];
 
     let body = {};
@@ -365,6 +385,11 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (isConvertRoute(url, req)) {
+    await handleConvert(req, res, url);
+    return;
+  }
+
   return send(res, 404, {
     error:
       "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/join or /api/convert",
@@ -414,206 +439,220 @@ async function getAPSToken() {
   }
 }
 
-// POST /api/convert — upload RVT/NWD/NWC file and start conversion
-if (url.pathname === "/api/convert" && req.method === "POST") {
-  const contentType = req.headers["content-type"] || "";
-  const fileName = req.headers["x-file-name"] || `upload-${Date.now()}`;
-  const fileSize = parseInt(req.headers["content-length"] || "0", 10);
+function isConvertRoute(url, req) {
+  if (url.pathname === "/api/convert" && req.method === "POST") return true;
+  return req.method === "GET" && /^\/api\/convert\/[^/]+\/(status|download)$/.test(url.pathname);
+}
 
-  if (fileSize > MAX_BODY) return send(res, 413, { error: "File too large" });
+async function handleConvert(req, res, url) {
+  // POST /api/convert — upload RVT/NWD/NWC file and start conversion
+  if (url.pathname === "/api/convert" && req.method === "POST") {
+    const contentType = req.headers["content-type"] || "";
+    const fileName = safeUploadName(req.headers["x-file-name"]);
+  if (!fileName) return send(res, 400, { error: "Unsupported or missing file name (accepted: .rvt .nwd .nwc .ifc .dwg .dxf)" });
+    const fileSize = parseInt(req.headers["content-length"] || "0", 10);
 
-  // Collect the file data
-  const chunks = [];
-  req.on("data", (c) => chunks.push(c));
-  req.on("end", async () => {
-    const fileBuffer = Buffer.concat(chunks);
+    if (fileSize > MAX_BODY) return send(res, 413, { error: "File too large" });
 
-    // Check if APS credentials are configured
-    if (!APS_CLIENT_ID || !APS_CLIENT_SECRET) {
-      // Fallback: save the file locally and tell the user to convert externally
-      const uploadsDir = path.join(dataDir, "uploads");
-      fs.mkdirSync(uploadsDir, { recursive: true });
-      const savePath = path.join(uploadsDir, fileName);
-      fs.writeFileSync(savePath, fileBuffer);
+    // Collect the file data
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", async () => {
+      const fileBuffer = Buffer.concat(chunks);
 
-      return send(res, 200, {
-        ok: true,
-        mode: "manual",
-        message:
-          "APS credentials not configured. File saved to server. " +
-          "Configure APS_CLIENT_ID and APS_CLIENT_SECRET in environment " +
-          "to enable automatic RVT→IFC conversion.",
-        fileName,
-        savedPath: savePath,
-        hint: "In BIM: File → Export → IFC, then import the .ifc here.",
-      });
-    }
+      // Check if APS credentials are configured
+      if (!APS_CLIENT_ID || !APS_CLIENT_SECRET) {
+        // Fallback: save the file locally and tell the user to convert externally
+        const uploadsDir = path.join(dataDir, "uploads");
+        fs.mkdirSync(uploadsDir, { recursive: true });
+        const savePath = path.join(uploadsDir, fileName);
+      if (path.dirname(path.resolve(savePath)) !== path.resolve(uploadsDir)) throw new Error("Invalid file name");
+        fs.writeFileSync(savePath, fileBuffer);
 
-    // APS conversion flow
-    try {
-      const token = await getAPSToken();
-      if (!token) throw new Error("APS authentication failed");
+        return send(res, 200, {
+          ok: true,
+          mode: "manual",
+          message:
+            "APS credentials not configured. File saved to server. " +
+            "Configure APS_CLIENT_ID and APS_CLIENT_SECRET in environment " +
+            "to enable automatic RVT→IFC conversion.",
+          fileName,
+          savedPath: path.join("uploads", fileName),
+          hint: "In BIM: File → Export → IFC, then import the .ifc here.",
+        });
+      }
 
-      // 1. Ensure bucket exists
+      // APS conversion flow
       try {
-        await fetch(`https://developer.api.autodesk.com/oss/v2/buckets/${APS_BUCKET}`, {
+        const token = await getAPSToken();
+        if (!token) throw new Error("APS authentication failed");
+
+        // 1. Ensure bucket exists
+        try {
+          await fetch(`https://developer.api.autodesk.com/oss/v2/buckets/${APS_BUCKET}`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ bucketKey: APS_BUCKET, policyKey: "transient" }),
+          });
+        } catch { /* bucket may already exist */ }
+
+        // 2. Upload file to OSS
+        const objectKey = `${Date.now()}-${fileName}`;
+        const uploadRes = await fetch(
+          `https://developer.api.autodesk.com/oss/v2/buckets/${APS_BUCKET}/objects/${encodeURIComponent(objectKey)}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/octet-stream",
+            },
+            body: fileBuffer,
+          },
+        );
+        const uploadData = await uploadRes.json();
+        const urn = Buffer.from(uploadData.objectId).toString("base64");
+
+        // 3. Submit translation job (RVT/NWD → IFC)
+        await fetch("https://developer.api.autodesk.com/modelderivative/v2/designdata/job", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ bucketKey: APS_BUCKET, policyKey: "transient" }),
+          body: JSON.stringify({
+            input: { urn },
+            output: { formats: [{ type: "ifc", views: ["3d"] }] },
+          }),
         });
-      } catch { /* bucket may already exist */ }
 
-      // 2. Upload file to OSS
-      const objectKey = `${Date.now()}-${fileName}`;
-      const uploadRes = await fetch(
-        `https://developer.api.autodesk.com/oss/v2/buckets/${APS_BUCKET}/objects/${encodeURIComponent(objectKey)}`,
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/octet-stream",
-          },
-          body: fileBuffer,
-        },
+        // 4. Store job info
+        conversionJobs.set(urn, {
+          urn,
+          fileName,
+          status: "inprogress",
+          startedAt: Date.now(),
+          token,
+        });
+
+        console.log(`[convert] job started: ${fileName} → URN ${urn.substring(0, 20)}...`);
+
+        return send(res, 200, {
+          ok: true,
+          mode: "aps",
+          urn,
+          fileName,
+          status: "inprogress",
+          message: `File "${fileName}" uploaded to APS. Conversion to IFC started. Poll /api/convert/:urn/status for progress.`,
+        });
+      } catch (e) {
+        console.error("[convert] conversion failed:", e.message);
+        return send(res, 500, { error: "Conversion failed: " + e.message });
+      }
+    });
+    return;
+  }
+
+  // GET /api/convert/:urn/status — check conversion status
+  const convertMatch = url.pathname.match(/^\/api\/convert\/([^/]+)\/status$/);
+  if (convertMatch && req.method === "GET") {
+    const urn = decodeURIComponent(convertMatch[1]);
+    if (!/^[A-Za-z0-9_=-]{1,300}$/.test(urn)) return send(res, 400, { error: "Invalid job id" });
+    const job = conversionJobs.get(urn);
+
+    if (!job) return send(res, 404, { error: "Unknown conversion job" });
+
+    try {
+      const manifestRes = await fetch(
+        `https://developer.api.autodesk.com/modelderivative/v2/designdata/${urn}/manifest`,
+        { headers: { Authorization: `Bearer ${job.token}` } },
       );
-      const uploadData = await uploadRes.json();
-      const urn = Buffer.from(uploadData.objectId).toString("base64");
+      const manifest = await manifestRes.json();
 
-      // 3. Submit translation job (RVT/NWD → IFC)
-      await fetch("https://developer.api.autodesk.com/modelderivative/v2/designdata/job", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          input: { urn },
-          output: { formats: [{ type: "ifc", views: ["3d"] }] },
-        }),
-      });
+      const status = manifest.status; // "pending" | "inprogress" | "success" | "failed"
+      const progress = manifest.progress || "0%";
 
-      // 4. Store job info
-      conversionJobs.set(urn, {
-        urn,
-        fileName,
-        status: "inprogress",
-        startedAt: Date.now(),
-        token,
-      });
-
-      console.log(`[convert] job started: ${fileName} → URN ${urn.substring(0, 20)}...`);
+      if (status === "success") {
+        // Find the IFC derivative
+        const ifcDerivative = manifest.derivatives?.find((d) => d.outputType === "ifc");
+        job.status = "success";
+        job.ifcUrn = ifcDerivative?.urn || urn;
+        console.log(`[convert] job completed: ${job.fileName}`);
+      } else if (status === "failed") {
+        job.status = "failed";
+        console.error(`[convert] job failed: ${job.fileName}`);
+      }
 
       return send(res, 200, {
-        ok: true,
-        mode: "aps",
         urn,
-        fileName,
-        status: "inprogress",
-        message: `File "${fileName}" uploaded to APS. Conversion to IFC started. Poll /api/convert/:urn/status for progress.`,
+        fileName: job.fileName,
+        status,
+        progress,
+        message: status === "success"
+          ? "Conversion complete. Use /api/convert/:urn/download to get the IFC."
+          : status === "failed"
+          ? "Conversion failed. Check APS dashboard for details."
+          : `Converting: ${progress}`,
       });
     } catch (e) {
-      console.error("[convert] conversion failed:", e.message);
-      return send(res, 500, { error: "Conversion failed: " + e.message });
+      return send(res, 500, { error: "Status check failed: " + e.message });
     }
-  });
-  return;
-}
+  }
 
-// GET /api/convert/:urn/status — check conversion status
-const convertMatch = url.pathname.match(/^\/api\/convert\/([^/]+)\/status$/);
-if (convertMatch && req.method === "GET") {
-  const urn = decodeURIComponent(convertMatch[1]);
-  const job = conversionJobs.get(urn);
+  // GET /api/convert/:urn/download — download converted IFC
+  const downloadMatch = url.pathname.match(/^\/api\/convert\/([^/]+)\/download$/);
+  if (downloadMatch && req.method === "GET") {
+    const urn = decodeURIComponent(downloadMatch[1]);
+    if (!/^[A-Za-z0-9_=-]{1,300}$/.test(urn)) return send(res, 400, { error: "Invalid job id" });
+    const job = conversionJobs.get(urn);
 
-  if (!job) return send(res, 404, { error: "Unknown conversion job" });
+    if (!job) return send(res, 404, { error: "Unknown conversion job" });
+    if (job.status !== "success") return send(res, 400, { error: "Conversion not complete" });
 
-  try {
-    const manifestRes = await fetch(
-      `https://developer.api.autodesk.com/modelderivative/v2/designdata/${urn}/manifest`,
-      { headers: { Authorization: `Bearer ${job.token}` } },
-    );
-    const manifest = await manifestRes.json();
+    try {
+      // Get the manifest to find the IFC derivative URL
+      const manifestRes = await fetch(
+        `https://developer.api.autodesk.com/modelderivative/v2/designdata/${urn}/manifest`,
+        { headers: { Authorization: `Bearer ${job.token}` } },
+      );
+      const manifest = await manifestRes.json();
 
-    const status = manifest.status; // "pending" | "inprogress" | "success" | "failed"
-    const progress = manifest.progress || "0%";
-
-    if (status === "success") {
-      // Find the IFC derivative
       const ifcDerivative = manifest.derivatives?.find((d) => d.outputType === "ifc");
-      job.status = "success";
-      job.ifcUrn = ifcDerivative?.urn || urn;
-      console.log(`[convert] job completed: ${job.fileName}`);
-    } else if (status === "failed") {
-      job.status = "failed";
-      console.error(`[convert] job failed: ${job.fileName}`);
+      if (!ifcDerivative) return send(res, 404, { error: "IFC derivative not found" });
+
+      // Download the IFC file from APS
+      const ifcRes = await fetch(
+        `https://developer.api.autodesk.com/modelderivative/v2/designdata/${urn}/manifest/${ifcDerivative.urn}`,
+        { headers: { Authorization: `Bearer ${job.token}` } },
+      );
+      const ifcBuffer = Buffer.from(await ifcRes.arrayBuffer());
+
+      res.writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${job.fileName.replace(/\.[^.]+$/, "")}.ifc"`,
+        "Content-Length": ifcBuffer.length,
+      });
+      res.end(ifcBuffer);
+
+      // Clean up job after download
+      conversionJobs.delete(urn);
+      console.log(`[convert] IFC downloaded: ${job.fileName}`);
+      return;
+    } catch (e) {
+      return send(res, 500, { error: "Download failed: " + e.message });
     }
-
-    return send(res, 200, {
-      urn,
-      fileName: job.fileName,
-      status,
-      progress,
-      message: status === "success"
-        ? "Conversion complete. Use /api/convert/:urn/download to get the IFC."
-        : status === "failed"
-        ? "Conversion failed. Check APS dashboard for details."
-        : `Converting: ${progress}`,
-    });
-  } catch (e) {
-    return send(res, 500, { error: "Status check failed: " + e.message });
   }
 }
 
-// GET /api/convert/:urn/download — download converted IFC
-const downloadMatch = url.pathname.match(/^\/api\/convert\/([^/]+)\/download$/);
-if (downloadMatch && req.method === "GET") {
-  const urn = decodeURIComponent(downloadMatch[1]);
-  const job = conversionJobs.get(urn);
-
-  if (!job) return send(res, 404, { error: "Unknown conversion job" });
-  if (job.status !== "success") return send(res, 400, { error: "Conversion not complete" });
-
-  try {
-    // Get the manifest to find the IFC derivative URL
-    const manifestRes = await fetch(
-      `https://developer.api.autodesk.com/modelderivative/v2/designdata/${urn}/manifest`,
-      { headers: { Authorization: `Bearer ${job.token}` } },
-    );
-    const manifest = await manifestRes.json();
-
-    const ifcDerivative = manifest.derivatives?.find((d) => d.outputType === "ifc");
-    if (!ifcDerivative) return send(res, 404, { error: "IFC derivative not found" });
-
-    // Download the IFC file from APS
-    const ifcRes = await fetch(
-      `https://developer.api.autodesk.com/modelderivative/v2/designdata/${urn}/manifest/${ifcDerivative.urn}`,
-      { headers: { Authorization: `Bearer ${job.token}` } },
-    );
-    const ifcBuffer = Buffer.from(await ifcRes.arrayBuffer());
-
-    res.writeHead(200, {
-      "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${job.fileName.replace(/\.[^.]+$/, "")}.ifc"`,
-      "Content-Length": ifcBuffer.length,
-    });
-    res.end(ifcBuffer);
-
-    // Clean up job after download
-    conversionJobs.delete(urn);
-    console.log(`[convert] IFC downloaded: ${job.fileName}`);
-    return;
-  } catch (e) {
-    return send(res, 500, { error: "Download failed: " + e.message });
-  }
-}
-
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(
-    `[collab] Open BIM Studio server running on http://localhost:${PORT}`,
+    `[collab] Open BIM Studio server running on http://${HOST}:${PORT}` + (AUTH_TOKEN ? " (token required)" : ""),
   );
+  if (HOST !== "127.0.0.1" && HOST !== "localhost" && !AUTH_TOKEN) {
+    console.warn("[collab] WARNING: listening on the network without OBS_SERVER_TOKEN — anyone who can reach this port can read and write projects.");
+  }
   console.log(`[collab] Projects API:   /api/projects/:id`);
   console.log(`[collab] Rooms API:      /api/rooms/:room`);
   console.log(`[collab] Live SSE API:   /api/rooms/:room/events`);

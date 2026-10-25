@@ -1,3 +1,4 @@
+import { escapeHtml } from "../core/html-escape";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
 
@@ -70,7 +71,7 @@ export function openManageLinks() {
         tr.style.cssText = "border-bottom:1px solid #1e2029;vertical-align:top;";
         const nameTd = document.createElement("td");
         nameTd.style.cssText = "padding:8px;";
-        nameTd.innerHTML = `<div>${l.name.replace(/</g, "&lt;")}</div><div style="color:#6b7280;font-size:11px">${l.placement.unitsUsed}${l.placement.unitsGuessed ? " (guessed)" : ""} · ${l.options.positioning} · level ${l.options.elevation} m</div>`;
+        nameTd.innerHTML = `<div>${escapeHtml(l.name)}</div><div style="color:#6b7280;font-size:11px">${escapeHtml(l.placement.unitsUsed)}${l.placement.unitsGuessed ? " (guessed)" : ""} · ${escapeHtml(l.options.positioning)} · level ${escapeHtml(l.options.elevation)} m</div>`;
         const layers = document.createElement("details");
         layers.innerHTML = `<summary style="cursor:pointer;color:#8b949e;font-size:11px">Layers (${l.doc.layers.length})</summary>`;
         for (const ly of l.doc.layers) {
