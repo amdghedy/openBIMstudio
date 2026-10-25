@@ -1,5 +1,5 @@
 /**
- * Transaction Service — Revit-like Transaction / TransactionGroup + Undo/Redo
+ * Transaction service — transaction groups + undo/redo stack
  */
 import type {
   TransactionChange,

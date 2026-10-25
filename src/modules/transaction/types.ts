@@ -1,5 +1,5 @@
 /**
- * Transaction system — Revit Transaction / TransactionGroup parity
+ * Transaction system types
  */
 
 export type TransactionStatus = "pending" | "committed" | "rolledback" | "cancelled";

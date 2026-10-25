@@ -1,4 +1,4 @@
-/** Parametric regeneration — Revit regen / formula solver parity */
+/** Parametric regeneration — dirty flags, formulas, constraint graph */
 
 export type ConstraintType =
   | "equal" | "distance" | "angle" | "parallel" | "perpendicular"

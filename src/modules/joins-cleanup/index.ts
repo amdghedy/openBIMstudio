@@ -1,5 +1,5 @@
 /**
- * Joins & Cleanup Service — wall/floor/roof joins + host opening recuts (Revit join parity)
+ * Joins & cleanup service — wall/floor/roof joins + host opening recuts
  */
 import type { IJoinsCleanupService, JoinElementRef, JoinPair, JoinType } from "./types";
 

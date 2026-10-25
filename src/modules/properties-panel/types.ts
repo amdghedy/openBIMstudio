@@ -1,4 +1,4 @@
-/** Properties panel — Revit Properties palette parity (multi-select, *VARIES*) */
+/** Properties panel — multi-select, *VARIES*, type/instance */
 
 export type PropertyKind = "instance" | "type" | "calculated" | "readonly" | "formula";
 

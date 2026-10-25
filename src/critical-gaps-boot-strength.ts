@@ -1,6 +1,6 @@
 /**
  * OpenBIMStudio Strengthening Package — Full boot (P0–P2)
- * Closes remaining depth gaps vs Revit for authoring stability & documentation.
+ * Authoring depth, stability, and documentation modules.
  */
 
 import { getTransactionService } from "./modules/transaction";
