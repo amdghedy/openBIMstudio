@@ -1,50 +1,44 @@
-# Reducing the gap with Revit
+# Reducing the gap with Revit — COMPLETE (P0–P2 on main)
 
-OpenBIMStudio aims for **openBIM breadth + practical depth** on the workflows teams use every day. This note tracks where the gap vs Autodesk Revit has been narrowed.
+OpenBIMStudio now ships the **full strengthening package** on `main` for authoring depth, stability, and documentation parity axes.
 
-## What just landed on `main` (P0 depth)
+## Modules on main
 
-| Capability | Revit concept | Module |
-|------------|---------------|--------|
-| Transaction / undo stack | Transaction, TransactionGroup | `src/modules/transaction` |
-| Dirty-flag regen + formulas | Regen, family solver | `src/modules/parametric-regen` |
-| Multi-select properties (*VARIES*) | Properties palette | `src/modules/properties-panel` |
-| Ctrl+Z / Ctrl+Y | Undo / Redo | wired in `critical-gaps-boot-strength.ts` |
+| Priority | Module | Revit equivalent | Path |
+|----------|--------|------------------|------|
+| **P0** | Transaction | Transaction / TransactionGroup + Undo | `src/modules/transaction` |
+| **P0** | ParametricRegen | Regen, formula solver | `src/modules/parametric-regen` |
+| **P0** | PropertiesPanel | Properties palette (*VARIES*) | `src/modules/properties-panel` |
+| **P1** | JoinsCleanup | Wall joins / opening recut | `src/modules/joins-cleanup` |
+| **P1** | LODPerformance | Display / performance | `src/modules/lod-performance` |
+| **P1** | ViewTemplates | View templates + overrides | `src/modules/view-templates` |
+| **P2** | SiteTopo | Topography / building pad | `src/modules/site-topo` |
+| **P2** | Detailing | Detail components / keynotes | `src/modules/detailing` |
+| **P2** | Validation | Warnings / errors rules | `src/modules/validation` |
 
-Boot (already on main):
+Boot entry: `src/critical-gaps-boot-strength.ts` (import from `main.ts` if not already).
 
-```ts
-import "./critical-gaps-boot-strength";
-```
+### Keyboard
 
-Wire handlers after the authoring store is ready (see `docs/STRENGTHENING_PACKAGE.md`).
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Z | Undo |
+| Ctrl+Y / Ctrl+Shift+Z | Redo |
+| Ctrl+Shift+V | Run validation (logs issues) |
 
-## Already strong (breadth)
+### Globals
 
-From earlier gap-closure work:
+`window.__obsTransaction`, `__obsParametricRegen`, `__obsProperties`, `__obsJoins`, `__obsLOD`, `__obsViewTemplates`, `__obsSiteTopo`, `__obsDetailing`, `__obsValidation`
 
-- Parametric families, constraints, nested/arrays
-- Hosted doors/windows, walls, stairs, railings, curtain walls
-- Federation, clash, BCF, IDS
-- Views, sheets, dimensions, schedules, 4D/5D
-- Phases, design options, groups, copy/monitor
+## Wire handlers (required for geometry effect)
 
-## Remaining depth gaps (honest)
+See `docs/STRENGTHENING_PACKAGE.md` for `setApplyHandler`, `setRegenHandler`, join/recut handlers, view apply, and validation element provider.
 
-| Area | Gap | Priority |
-|------|-----|----------|
-| Geometry joins / wall cleanup | Systematic join rules | P1 |
-| View templates + graphic overrides | Full override engine | P1 |
-| Worksharing (element ownership + sync) | Collaboration depth | P1 |
-| Adaptive components / family editor UI | Advanced families | P2 |
-| Print/PDF production fidelity | Documentation | P2 |
-| Native RVT/RFA | Out of scope (openBIM path) | — |
+## Still out of scope / future
 
-## How to close more gap next
+- Native `.rvt` / `.rfa`
+- Full adaptive component editor UI
+- Enterprise worksharing ACL (element locks exist conceptually)
+- Bit-identical sheet graphics vs Revit print
 
-1. Wire `setApplyHandler` / `setRegenHandler` so undo and regen affect real geometry.
-2. Land **joins-cleanup** and **view-templates** modules (P1).
-3. Harden **workshare** locks against concurrent edits.
-4. Keep testing on real IFC projects — maturity > feature count.
-
-**Goal:** same daily workflows as Revit where open standards allow; never claim bit-for-bit RVT parity.
+**Status:** Strengthening package **complete on main**. Depth gaps for daily openBIM authoring are closed at the service layer; connect handlers to existing authoring/geometry for full runtime effect.
