@@ -8,6 +8,7 @@
  * clearCdeConfig) or move to the Web Crypto encrypted vault in a later
  * hardening pass.
  */
+import { migrateLegacy, secureNames, secureRemove, secureSet } from "../../core/secure-store";
 import type {
   CdeCredentials,
   CdeProviderId,
@@ -25,7 +26,7 @@ export function loadCdeConfig(
   providerId: CdeProviderId,
 ): { credentials: CdeCredentials; session: CdeSession | null } | null {
   try {
-    const raw = localStorage.getItem(keyFor(providerId));
+    const raw = migrateLegacy(keyFor(providerId), keyFor(providerId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CdeStoredConfig;
     if (parsed?.providerId !== providerId) return null;
@@ -43,7 +44,7 @@ export function saveCdeConfig(
 ): boolean {
   try {
     const payload: CdeStoredConfig = { ...config, updatedAt: Date.now() };
-    localStorage.setItem(keyFor(config.providerId), JSON.stringify(payload));
+    secureSet(keyFor(config.providerId), JSON.stringify(payload));
     return true;
   } catch (err) {
     console.warn("[cde] save failed", err);
@@ -52,12 +53,12 @@ export function saveCdeConfig(
 }
 
 export function clearCdeConfig(providerId: CdeProviderId): void {
-  try {
-    localStorage.removeItem(keyFor(providerId));
-  } catch { /* */ }
+  secureRemove(keyFor(providerId));
+  try { localStorage.removeItem(keyFor(providerId)); } catch { /* */ }
 }
 
 export function clearAllCdeConfig(): void {
+  for (const n of secureNames(PREFIX)) secureRemove(n);
   try {
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -69,12 +70,12 @@ export function clearAllCdeConfig(): void {
 }
 
 export function listStoredProviders(): CdeProviderId[] {
-  const out: CdeProviderId[] = [];
+  const out: CdeProviderId[] = secureNames(PREFIX).map((k) => k.slice(PREFIX.length) as CdeProviderId);
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k || !k.startsWith(PREFIX)) continue;
-      out.push(k.slice(PREFIX.length) as CdeProviderId);
+      { const id = k.slice(PREFIX.length) as CdeProviderId; if (!out.includes(id)) out.push(id); }
     }
   } catch { /* */ }
   return out;

@@ -7,6 +7,9 @@
  *     config doesn't reset the whole thing to defaults
  *   • onProviderConfigChanged lets UI subscribe to storage updates
  */
+import { secureGet, secureSet, secureRemove } from "../core/secure-store";
+import { ensureAiConsent } from "./ai-privacy";
+
 
 export type ProviderKind = "ollama" | "openai";
 
@@ -23,6 +26,7 @@ export const DEFAULT_CONFIG: ProviderConfig = {
   model: "llama3.1",
 };
 
+const KEY_NAME = "ai.apiKey";
 const CONFIG_KEY = "obs.ai.provider";
 const GEMINI_THOUGHT_SIGNATURE_BYPASS = "skip_thought_signature_validator";
 
@@ -61,9 +65,13 @@ export function loadProviderConfig(): ProviderConfig {
     const model = typeof parsed?.model === "string" && parsed.model
       ? parsed.model
       : DEFAULT_CONFIG.model;
-    const apiKey = typeof parsed?.apiKey === "string" && parsed.apiKey
-      ? parsed.apiKey
-      : undefined;
+    // The key lives encrypted in the secure store; an old plaintext copy is migrated on first read.
+    const legacyKey = typeof parsed?.apiKey === "string" && parsed.apiKey ? parsed.apiKey : undefined;
+    if (legacyKey && secureGet(KEY_NAME) == null) secureSet(KEY_NAME, legacyKey);
+    const apiKey = secureGet(KEY_NAME) || undefined;
+    if (legacyKey) {
+      try { localStorage.setItem(CONFIG_KEY, JSON.stringify({ kind, endpoint, model })); } catch { /* */ }
+    }
 
     return { kind, endpoint, model, apiKey };
   } catch (err) {
@@ -74,7 +82,9 @@ export function loadProviderConfig(): ProviderConfig {
 
 export function saveProviderConfig(cfg: ProviderConfig): boolean {
   try {
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+    const { apiKey, ...publicCfg } = cfg;
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(publicCfg));
+    if (apiKey) secureSet(KEY_NAME, apiKey); else secureRemove(KEY_NAME);
     lastSaveError = null;
     emit(cfg);
     console.log("[ai-providers] saved", {
@@ -99,6 +109,7 @@ export function saveProviderConfig(cfg: ProviderConfig): boolean {
 /** Wipe the saved config and reload defaults. */
 export function resetProviderConfig(): ProviderConfig {
   try { localStorage.removeItem(CONFIG_KEY); } catch { /* */ }
+  secureRemove(KEY_NAME);
   const fresh = { ...DEFAULT_CONFIG };
   saveProviderConfig(fresh);
   return fresh;
@@ -150,6 +161,7 @@ export interface ChatRequest {
 export type TokenCallback = (delta: string) => void;
 
 export async function callChat(cfg: ProviderConfig, req: ChatRequest): Promise<ChatResult> {
+  await ensureAiConsent(cfg.kind === "ollama" ? "/ollama" : cfg.endpoint);
   if (cfg.kind === "ollama") return callOllama(cfg, req);
   return callOpenAICompat(cfg, req);
 }
@@ -159,6 +171,7 @@ export async function callChatStream(
   req: ChatRequest,
   onToken: TokenCallback,
 ): Promise<ChatResult> {
+  await ensureAiConsent(cfg.kind === "ollama" ? "/ollama" : cfg.endpoint);
   if (cfg.kind === "ollama") return callOllamaStream(cfg, req, onToken);
   return callOpenAIStream(cfg, req, onToken);
 }

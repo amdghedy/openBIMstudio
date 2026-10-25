@@ -412,6 +412,19 @@ function bootstrapCommands(): void {
   } });
   registerCommand({ id: "file.save-to-file", label: "Save project to file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.saveProjectToFile(false)); } });
   registerCommand({ id: "file.save-as-file", label: "Save project as new file (copy / backup)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.saveProjectToFile(true)); } });
+  registerCommand({ id: "file.save-encrypted", label: "Save project to file, encrypted with a password", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.saveEncryptedCopy()); } });
+  registerCommand({
+    id: "privacy.forget-secrets",
+    label: "Privacy: forget saved API keys, tokens and AI approvals",
+    category: "File",
+    run: () => {
+      if (!window.confirm("Remove every saved API key, access token and cloud-AI approval from this browser?")) return;
+      void Promise.all([import("../core/secure-store"), import("./ai-privacy"), import("../modules/cde/store")]).then(([sec, priv, cde]) => {
+        sec.secureWipe(); priv.revokeAiConsent(); cde.clearAllCdeConfig();
+        notify("success", "Saved keys, tokens and approvals were removed.");
+      });
+    },
+  });
   registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
   registerCommand({ id: "tools.walk", label: toggleLabel("Walk mode", isWalkModeEnabled), category: "Tools", run: () => toggleWalkMode() });
   registerCommand({

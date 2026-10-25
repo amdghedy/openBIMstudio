@@ -12,6 +12,8 @@ import * as store from "./store";
 import type { ProjectDoc } from "./types";
 import { buildProjectFile, parseProjectFile, ProjectFileError, PROJECT_FILE_EXT, PROJECT_FILE_MIME, suggestedFileName } from "./project-file";
 import { getCurrentProject, openProject, saveProject } from "./projects";
+import { decryptProjectBlob, encryptProjectBlob, isEncryptedProjectBlob, WrongPasswordError } from "./project-crypto";
+import { askPassword } from "./password-dialog";
 
 type Handle = any; // FileSystemFileHandle (not in every TS lib)
 interface Link { projectId: string; handle: Handle; name: string }
@@ -146,8 +148,56 @@ async function readPickedFile(): Promise<{ file: File; handle: Handle | null } |
   });
 }
 
+/** Save a password-protected copy. It is never linked for autosave: the password is not kept anywhere. */
+export async function saveEncryptedCopy(): Promise<boolean> {
+  if (writing) return false;
+  writing = true;
+  try {
+    const snap = await snapshotFile();
+    if (!snap) return false;
+    const pw = await askPassword({
+      title: "Encrypt project file",
+      message: "The file is encrypted with AES-256. If you forget the password it cannot be recovered.",
+      confirm: true, okLabel: "Encrypt & save",
+    });
+    if (!pw) return false;
+    const enc = await encryptProjectBlob(snap.blob, pw);
+    const name = suggestedFileName(snap.doc).replace(/\.obsproj$/i, "") + " (encrypted)" + PROJECT_FILE_EXT;
+    if (hasPicker()) {
+      const handle = await (window as any).showSaveFilePicker({ suggestedName: name, types: pickerTypes() });
+      await writeHandle(handle, enc);
+      toast("success", `Saved encrypted copy: ${handle.name}`);
+    } else {
+      download(enc, name);
+      toast("success", `Downloaded ${name}`);
+    }
+    return true;
+  } catch (err: any) {
+    if (err?.name === "AbortError") return false;
+    console.error("[project-file] encrypted save failed", err);
+    toast("error", `Could not save the encrypted file: ${err?.message ?? err}`);
+    return false;
+  } finally {
+    writing = false;
+  }
+}
+
 /** Import a parsed project into this browser and open it. */
 export async function importProjectFile(file: Blob, handle: Handle | null = null): Promise<boolean> {
+  if (await isEncryptedProjectBlob(file)) {
+    // Password-protected: ask, decrypt in memory, and never link the file for plain-text autosave.
+    handle = null;
+    for (let attempt = 0; ; attempt++) {
+      const pw = await askPassword({ title: "Password-protected project", message: attempt ? "Wrong password. Try again." : "Enter the password to open this file.", okLabel: "Open" });
+      if (!pw) return false;
+      try { file = await decryptProjectBlob(file, pw); break; }
+      catch (e) {
+        if (e instanceof WrongPasswordError && attempt < 4) continue;
+        toast("error", e instanceof Error ? e.message : "Could not decrypt the file.");
+        return false;
+      }
+    }
+  }
   const { doc, blobs } = await parseProjectFile(file);
   const existing = await store.getProject(doc.id);
   let id = doc.id;

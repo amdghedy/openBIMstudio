@@ -1,0 +1,20 @@
+const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
+const out=fs.mkdtempSync(path.join(os.tmpdir(),"pc-"));
+execSync(`npx tsc src/modules/projects/project-crypto.ts --outDir ${out} --module commonjs --target es2020 --lib es2020,dom --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`,{stdio:"inherit"});
+const find=(d,n)=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()){const r=find(p,n);if(r)return r}else if(f.name===n)return p}};
+const m=require(find(out,"project-crypto.js"));
+let pass=0,fail=0;const t=async(n,f)=>{try{await f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
+const plain=new TextEncoder().encode("OBSPROJ1"+"{\"secret\":\"floor plan of the vault\"}".repeat(50));
+const IT=m.TEST_ITERATIONS;
+(async()=>{
+await t("round trip",async()=>{const e=await m.encryptProjectBytes(plain,"pässwörd ✓",IT);assert.deepStrictEqual(Buffer.from(await m.decryptProjectBytes(e,"pässwörd ✓")),Buffer.from(plain))});
+await t("encrypted file is recognisable and hides content",async()=>{const e=await m.encryptProjectBytes(plain,"pw",IT);assert.ok(m.isEncryptedProjectBytes(e));assert.ok(!Buffer.from(e).includes("vault"));assert.ok(!m.isEncryptedProjectBytes(plain))});
+await t("wrong password is rejected with a clear error",async()=>{const e=await m.encryptProjectBytes(plain,"right",IT);await assert.rejects(()=>m.decryptProjectBytes(e,"wrong"),(x)=>x instanceof m.WrongPasswordError)});
+await t("tampered ciphertext is rejected",async()=>{const e=await m.encryptProjectBytes(plain,"pw",IT);e[e.length-5]^=1;await assert.rejects(()=>m.decryptProjectBytes(e,"pw"))});
+await t("tampered header (salt) is rejected",async()=>{const e=await m.encryptProjectBytes(plain,"pw",IT);e[15]^=1;await assert.rejects(()=>m.decryptProjectBytes(e,"pw"))});
+await t("same input encrypts differently each time",async()=>{const a=await m.encryptProjectBytes(plain,"pw",IT),b=await m.encryptProjectBytes(plain,"pw",IT);assert.notDeepStrictEqual(Buffer.from(a),Buffer.from(b))});
+await t("cheap or absurd iteration counts in a file are refused",async()=>{const e=await m.encryptProjectBytes(plain,"pw",IT);new DataView(e.buffer).setUint32(9,5,true);await assert.rejects(()=>m.decryptProjectBytes(e,"pw"),/Unsupported/);new DataView(e.buffer).setUint32(9,4_000_000_000,true);await assert.rejects(()=>m.decryptProjectBytes(e,"pw"),/Unsupported/)});
+await t("empty password refused; default iterations are strong",async()=>{await assert.rejects(()=>m.encryptProjectBytes(plain,"",IT));assert.ok(m.DEFAULT_ITERATIONS>=600000)});
+await t("blob wrappers",async()=>{const b=new Blob([plain]);const e=await m.encryptProjectBlob(b,"pw");assert.ok(await m.isEncryptedProjectBlob(e));assert.ok(!(await m.isEncryptedProjectBlob(b)));const d=await m.decryptProjectBlob(e,"pw");assert.strictEqual(Buffer.from(await d.arrayBuffer()).toString(),Buffer.from(plain).toString())});
+console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);
+})();
