@@ -441,6 +441,9 @@ function bootstrapCommands(): void {
     },
   });
   registerCommand({ id: "app.install", label: "Install as desktop app (works offline)", category: "File", run: () => { void import("../core/pwa").then((m) => m.installApp()); } });
+  registerCommand({ id: "north.true", label: "Rotate True North…", category: "Tools", run: () => { void import("./north-ui").then((m) => m.promptTrueNorth()); } });
+  registerCommand({ id: "north.orient-project", label: "Plan orientation: Project North", category: "Tools", run: () => { void import("../modules/north/north").then((m) => m.setNorthState({ planOrientation: "project" })); } });
+  registerCommand({ id: "north.orient-true", label: "Plan orientation: True North", category: "Tools", run: () => { void import("../modules/north/north").then((m) => m.setNorthState({ planOrientation: "true" })); } });
   registerCommand({ id: "tools.clash", label: "Run clash detection", category: "Tools", kbd: "F5", run: () => void runElementClashDetection() });
   registerCommand({ id: "tools.clashClear", label: "Clear clash results", category: "Tools", run: () => void clearClash() });
 

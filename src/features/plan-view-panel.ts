@@ -16,6 +16,7 @@ import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan
 import { history as planHistory } from "./history";
 import { buildAutoDimensions, buildRangeDimension } from "../modules/views/auto-dim-chains";
 import { resolveElementRef } from "../modules/views/element-snap-points";
+import { getNorthState, onNorthChanged, planRotationDeg, setNorthState, formatNorthAngle } from "../modules/north/north";
 import { edgeMidpoint, insertVertex, removeVertex, moveVertex, isValidBoundary } from "../modules/views/boundary-edit";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
 import {
@@ -1422,6 +1423,51 @@ const slopeInp = (() => {
 (heightInp.querySelector("span") as HTMLElement).textContent = "H(mm)";
 (elevInp.querySelector("span") as HTMLElement).textContent = "Elev(mm)";
 
+
+/* -- Project North / True North: orientation switch, rotated view and north arrow -- */
+const orientSelect = document.createElement("select");
+orientSelect.title = "Plan orientation: Project North keeps the model's own up; True North turns the plan so real north is up";
+orientSelect.style.cssText = "padding:3px 6px;background:#0e1017;border:1px solid #2a2e3a;border-radius:4px;color:#e8eaf0;font:11px system-ui";
+for (const [v, l] of [["project", "Project North"], ["true", "True North"]]) {
+  const o = document.createElement("option"); o.value = v; o.textContent = l; orientSelect.appendChild(o);
+}
+orientSelect.onchange = () => setNorthState({ planOrientation: orientSelect.value === "true" ? "true" : "project" });
+const trueNorthBtn = document.createElement("button");
+trueNorthBtn.style.cssText = "padding:3px 8px;background:#1e2430;border:1px solid #2a2e3a;border-radius:4px;color:#e8eaf0;font:11px system-ui;cursor:pointer";
+trueNorthBtn.title = "Set the angle between Project North and True North";
+trueNorthBtn.onclick = () => { void import("./north-ui").then((m) => m.promptTrueNorth()); };
+
+const northArrow = document.createElement("div");
+northArrow.style.cssText = "position:absolute;right:12px;top:12px;width:64px;z-index:45;pointer-events:none;text-align:center;font:700 9px system-ui,sans-serif;color:#334155";
+northArrow.title = "Red = True North · Blue = Project North";
+northArrow.innerHTML =
+  '<svg width="64" height="64" viewBox="-32 -32 64 64" xmlns="http://www.w3.org/2000/svg">' +
+  '<circle r="29" fill="rgba(255,255,255,.85)" stroke="#94a3b8" stroke-width="1"/>' +
+  '<g id="obs-pn-proj"><polygon points="0,-27 4,-8 -4,-8" fill="#2563eb"/><text y="-28.5" font-size="6.5" text-anchor="middle" fill="#2563eb" font-family="system-ui">PN</text></g>' +
+  '<g id="obs-pn-true"><polygon points="0,-23 6,0 0,-5 -6,0" fill="#dc2626" stroke="#fff" stroke-width=".7"/><polygon points="0,23 4,0 0,5 -4,0" fill="#cbd5e1"/>' +
+  '<text y="-12" font-size="9" text-anchor="middle" fill="#fff" font-family="system-ui" font-weight="700">N</text></g></svg><div id="obs-pn-label"></div>';
+canvasWrap.appendChild(northArrow);
+
+function applyPlanOrientation(): void {
+  const st = getNorthState();
+  const rot = planRotationDeg(st);
+  orientSelect.value = st.planOrientation;
+  trueNorthBtn.textContent = st.trueNorthAngle === 0 ? "True N: 0°" : "True N: " + formatNorthAngle(st.trueNorthAngle);
+  const t = rot === 0 ? "" : `rotate(${rot}deg)`;
+  for (const el of [svg as unknown as HTMLElement, __planCursorSvg as unknown as HTMLElement | null]) {
+    if (!el) continue;
+    el.style.transformOrigin = "50% 50%";
+    el.style.transform = t;
+  }
+  // arrows: project north is up when the plan is shown in project orientation; true north sits angle clockwise of it
+  northArrow.querySelector("#obs-pn-proj")?.setAttribute("transform", `rotate(${rot})`);
+  northArrow.querySelector("#obs-pn-true")?.setAttribute("transform", `rotate(${rot + st.trueNorthAngle})`);
+  const lbl = northArrow.querySelector("#obs-pn-label");
+  if (lbl) lbl.textContent = st.planOrientation === "true" ? "True North up" : "Project North up";
+}
+onNorthChanged(applyPlanOrientation);
+applyPlanOrientation();
+
 /* Wall options � Location Line + Join (BIM Place Wall) */
 const locSelect = document.createElement("select");
 locSelect.title = "Location Line";
@@ -1521,6 +1567,7 @@ header.append(
   makeGroup("Level", levelSelect, cutSlider, cutLabel),
   makeGroup("Scale", scaleSelect, unitSelect),
   makeGroup("Dim", dimTypeSelect, chainDimLabel),
+  makeGroup("North", orientSelect, trueNorthBtn),
   makeGroup("", toolHint),
   makeGroup("Params", widthInp, heightInp, elevInp, slopeInp, wallOptsWrap),
   spacer,
@@ -2827,6 +2874,7 @@ function ensurePlanCursorOverlay(): HTMLDivElement | null {
   }
   __planCursorOverlay = ov;
   __planCursorSvg = svg;
+  applyPlanOrientation();
   return ov;
 }
 

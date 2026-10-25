@@ -6,6 +6,7 @@
  *
  * Every button action is async-aware: the strip re-renders after the action
  * resolves, so badges, counters, and active states stay in sync. */
+import { getNorthState, onNorthChanged } from "../modules/north/north";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { onNotify, __dispatchToSubscribers } from "../core/notify";
@@ -2468,7 +2469,27 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("wall", "Styles", safe(() => void openFamilyLibrary(), "Styles / Type Library"), { title: "Open element type and family-style library" }),
       sep(),
-      // Position / Project North / True North removed — world north only.
+      groupLabel("Position"),
+      b("rotate", "True North", safe(() => void import("../features/north-ui").then((m) => m.promptTrueNorth()), "Rotate True North"), {
+        title: "Set the angle between Project North (top of the plan) and True North",
+      }),
+      b("viewcube", "Project North", safe(async () => {
+        const n = await import("../modules/north/north");
+        n.setNorthState({ planOrientation: "project" });
+        toast("Plan views are oriented to Project North", "success");
+      }, "Project North orientation"), {
+        active: getNorthState().planOrientation === "project",
+        title: "Show plan views with Project North up",
+      }),
+      b("viewcube", "True North view", safe(async () => {
+        const n = await import("../modules/north/north");
+        n.setNorthState({ planOrientation: "true" });
+        toast("Plan views are oriented to True North", "success");
+      }, "True North orientation"), {
+        active: getNorthState().planOrientation === "true",
+        title: "Show plan views turned so True North is up",
+      }),
+      sep(),
       groupLabel("Production"),
             standardsButton(),
       sep(),
@@ -2886,6 +2907,7 @@ export function setupRibbon() {
   activeTab = getWorkspaceDefinition(activeWorkspace).tab;
   renderTabs();
   renderStrip();
+  onNorthChanged(() => renderStrip());
   // Restore minimized state (BIM-style flat ribbon)
   applyRibbonMinimize(ribbonMinimized);
 

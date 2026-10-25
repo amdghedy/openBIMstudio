@@ -7,13 +7,14 @@
  *  If the doc has no offsets (fresh project, or pre-migration), the
  *  saved positioning mode is applied instead.
  */
+import { getNorthState, loadNorth, resetNorth } from "../north/north";
 import { ctx } from "../../core/context";
 import { services } from "../../core/services";
 import * as store from "./store";
 import type { ProjectDoc, ProjectTemplate, ProjectStatus, ProjectUnits } from "./types";
 import {
   establishSceneOffset, computeSceneBounds, fitAll,
-  resetPlacementState, updateClipping,
+  resetPlacementState, updateClipping, resetToDefaultView, resetCameraUpright,
 } from "../../features/camera-tools";
 import {
   setElements, getElements, clearElements,
@@ -86,6 +87,7 @@ export async function saveProject(silent = false) {
   current.issues = getIssues();
   current.cost = getCostData();
   current.appState = snapshotAppState();
+  current.north = getNorthState();
 
   // Persist per-model offset from importer.
   try {
@@ -264,6 +266,8 @@ export async function createProject(name: string, options: CreateProjectOptions 
 
     computeSceneBounds();
     try { void refreshModelSelectionUI(); } catch { /* */ }
+    resetNorth();
+    resetToDefaultView();     // empty scene: fitAll has nothing to frame, so never keep the old project's camera
     fitAll();
     loader?.set?.("Done.", 1);
     notify();
@@ -414,6 +418,8 @@ export async function openProject(id: string) {
     loader?.set?.("Rebuilding panels…", 0.96);
     setTimeout(() => { try { void refreshModelSelectionUI(); } catch { /* */ } }, 300);
 
+    loadNorth(doc.north);
+    resetCameraUpright();
     const st = doc.appState;
     if (st?.cam && st?.target) {
       ctx.world.camera.controls.setLookAt(
