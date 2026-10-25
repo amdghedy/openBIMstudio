@@ -81,7 +81,7 @@
     "@tldraw/editor": "^5.5.2",
     "axios": "^1.7.4",
     "file-saver": "^2.0.5",
-    "json-rules-engine": "^5.2.1",
+    "json-rules-engine": "^7.3.1",
     "jszip": "^3.10.2",
     "monaco-editor": "^0.49.0",
     "nasjidwg": "^0.18.0",
