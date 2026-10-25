@@ -8,7 +8,8 @@
  *   • onProviderConfigChanged lets UI subscribe to storage updates
  */
 import { secureGet, secureSet, secureRemove } from "../core/secure-store";
-import { ensureAiConsent } from "./ai-privacy";
+import { notify } from "../core/notify";
+import { ensureAiConsent, isPrivateEndpoint, redactForCloud, redactJsonStringsForCloud } from "./ai-privacy";
 
 
 export type ProviderKind = "ollama" | "openai";
@@ -160,8 +161,45 @@ export interface ChatRequest {
 
 export type TokenCallback = (delta: string) => void;
 
+/**
+ * Defense-in-depth for cloud endpoints: before any request leaves the machine,
+ * scrub well-known credential shapes from every message (including past turns
+ * in the conversation history) and from tool-call arguments. Local endpoints
+ * (Ollama / LM Studio / LAN) are left untouched — data never leaves the
+ * machine there, so no rewriting (and no risk of mangling content) is needed.
+ * When something was actually redacted a single quiet status toast informs the
+ * user; nothing else about the interaction changes.
+ */
+function redactRequestForCloud(cfg: ProviderConfig, req: ChatRequest): ChatRequest {
+  try {
+    if (isPrivateEndpoint(cfg.kind === "ollama" ? "/ollama" : cfg.endpoint)) return req;
+    let scrubbed = false;
+    const messages = req.messages.map((m) => {
+      const content = redactForCloud(m.content);
+      let changed = content !== m.content;
+      let toolCalls = m.toolCalls;
+      if (Array.isArray(m.toolCalls) && m.toolCalls.length) {
+        toolCalls = m.toolCalls.map((tc) => {
+          const args = redactJsonStringsForCloud(tc.args);
+          if (args !== tc.args) changed = true;
+          return args === tc.args ? tc : { ...tc, args: args as typeof tc.args };
+        });
+      }
+      if (changed) scrubbed = true;
+      return changed ? { ...m, content, ...(toolCalls ? { toolCalls } : {}) } : m;
+    });
+    if (scrubbed) {
+      notify("info", "AI privacy: likely credentials were redacted before sending to the cloud endpoint.", { timeout: 6000 });
+    }
+    return scrubbed ? { ...req, messages } : req;
+  } catch {
+    return req; // redaction must never break the chat itself
+  }
+}
+
 export async function callChat(cfg: ProviderConfig, req: ChatRequest): Promise<ChatResult> {
   await ensureAiConsent(cfg.kind === "ollama" ? "/ollama" : cfg.endpoint);
+  req = redactRequestForCloud(cfg, req);
   if (cfg.kind === "ollama") return callOllama(cfg, req);
   return callOpenAICompat(cfg, req);
 }
@@ -172,6 +210,7 @@ export async function callChatStream(
   onToken: TokenCallback,
 ): Promise<ChatResult> {
   await ensureAiConsent(cfg.kind === "ollama" ? "/ollama" : cfg.endpoint);
+  req = redactRequestForCloud(cfg, req);
   if (cfg.kind === "ollama") return callOllamaStream(cfg, req, onToken);
   return callOpenAIStream(cfg, req, onToken);
 }

@@ -5,4 +5,18 @@ const files=[];(function w(d){for(const f of fs.readdirSync(d)){const p=path.joi
 const m=require(files.find(f=>f.endsWith("ai-privacy.js")));
 let pass=0,fail=0;const t=(n,fn)=>{try{fn();pass++;console.log("  PASS",n)}catch(e){fail++;console.log("  FAIL",n+": "+e.message)}};
 t("redact strips secrets",()=>{const s=m.redactForCloud?m.redactForCloud("token=abc"):m.redact("token=abc");if(typeof s!=="string")throw new Error("no redact");});
+t("redact removes key=value secrets",()=>{const s=m.redactForCloud("token=abc");if(/abc/.test(s))throw new Error("value kept: "+s);if(!s.includes("token="))throw new Error("label lost: "+s);});
+t("redact removes quoted values",()=>{const s=m.redactForCloud('api_key: "0123456789abcdef"');if(/0123456789/.test(s))throw new Error("value kept: "+s);});
+t("redact removes github pat",()=>{const s=m.redactForCloud("my key ghp_0123456789abcdefghij");if(/ghp_0123456789/.test(s))throw new Error("kept: "+s);});
+t("redact removes openai key",()=>{const s=m.redactForCloud("key sk-proj-0123456789abcdef");if(/0123456789abcdef/.test(s))throw new Error("kept: "+s);});
+t("redact removes aws key id",()=>{const s=m.redactForCloud("AKIAIOSFODNN7EXAMPLE");if(/AKIAIOSFODNN7/.test(s))throw new Error("kept: "+s);});
+t("redact removes bearer credential",()=>{const s=m.redactForCloud("Authorization: Bearer abcdef123456");if(/abcdef123456/.test(s))throw new Error("kept: "+s);if(!/Bearer/i.test(s))throw new Error("scheme lost: "+s);});
+t("redact removes jwt",()=>{const s=m.redactForCloud("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c");if(/SflKxwRJSMeK/.test(s))throw new Error("kept: "+s);});
+t("redact removes password",()=>{const s=m.redactForCloud("password=hunter2");if(/hunter2/.test(s))throw new Error("kept: "+s);});
+t("redact removes private key block",()=>{const pem="-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA7\n-----END RSA PRIVATE KEY-----";const s=m.redactForCloud("cert: "+pem);if(/MIIEpAIBAAKCAQEA7/.test(s))throw new Error("kept: "+s);});
+t("redact removes url password",()=>{const s=m.redactForCloud("https://user:sup3rsecret@example.com/db");if(/sup3rsecret/.test(s))throw new Error("kept: "+s);if(!/user/.test(s))throw new Error("user lost: "+s);});
+t("no false positive on plain engineering text",()=>{const s="Wall width is 200mm; tokens used: 512; level 2 concrete C30/37";if(m.redactForCloud(s)!==s)throw new Error("changed: "+m.redactForCloud(s));});
+t("containsSecret true for secrets, false for prose",()=>{if(m.containsSecret("token=abc")!==true)throw new Error("missed secret");if(m.containsSecret("shear wall 300mm")!==false)throw new Error("false positive");});
+t("json scrub walks nested strings",()=>{const v={a:{b:["ok","token=abc"]},n:5};const r=m.redactJsonStringsForCloud(v);if(/abc/.test(JSON.stringify(r)))throw new Error("kept: "+JSON.stringify(r));if(r.n!==5||r.a.b[0]!=="ok")throw new Error("structure damaged: "+JSON.stringify(r));});
+t("redactForCloud non-string passthrough",()=>{if(m.redactForCloud(undefined)!==undefined)throw new Error("changed undefined");});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

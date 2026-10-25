@@ -67,3 +67,88 @@ export async function ensureAiConsent(endpoint: string): Promise<void> {
   if (!(await askConsent(host))) throw new Error(`Not sent: you did not approve sending data to ${host}. Use a local model to keep data on this computer.`);
   try { localStorage.setItem(CONSENT_KEY, JSON.stringify([...ok, host])); } catch { /* */ }
 }
+
+/* ── Secret redaction for cloud endpoints ────────────────────────────────────
+ *
+ * Even with per-host consent, the safest default is to never let credentials
+ * leave the machine. `redactForCloud` performs a best-effort, high-precision
+ * scrub of well-known secret shapes before text is handed to a cloud AI
+ * endpoint: API keys, tokens, passwords, bearer/basic/JWT credentials, PEM
+ * private keys and credential key/value pairs. Patterns are deliberately
+ * conservative to avoid mangling ordinary engineering text (dimensions,
+ * quantities, element names); anything that looks like real credentials is
+ * replaced with a marker so the model still understands the sentence shape.
+ * Pure functions only — no DOM — so the behaviour is unit-testable in Node. */
+
+const REDACTED = "[redacted]";
+
+type Redactor = { re: RegExp; to: (m: string, ...groups: string[]) => string };
+
+const REDACTORS: Redactor[] = [
+  // PEM private-key blocks — the whole block including its body.
+  { re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g, to: () => "[redacted private key]" },
+  // JSON Web Tokens (three base64url segments).
+  { re: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\b/g, to: () => REDACTED },
+  // Authorization-style schemes: "Bearer <token>", "Basic <base64>".
+  { re: /\b(bearer|basic)(\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: (_m, scheme, sep) => `${scheme}${sep}${REDACTED}` },
+  // GitHub personal access tokens (classic + fine-grained).
+  { re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}\b/g, to: () => REDACTED },
+  { re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, to: () => REDACTED },
+  // OpenAI / DeepSeek-style keys (sk-…, sk-proj-…, sk-svcacct-…).
+  { re: /\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{16,}\b/g, to: () => REDACTED },
+  // AWS access key ids.
+  { re: /\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b/g, to: () => REDACTED },
+  // Google API keys.
+  { re: /\bAIza[0-9A-Za-z_-]{30,}\b/g, to: () => REDACTED },
+  // Slack tokens.
+  { re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, to: () => REDACTED },
+  // Groq / Hugging Face keys.
+  { re: /\bgsk_[A-Za-z0-9]{20,}\b/g, to: () => REDACTED },
+  { re: /\bhf_[A-Za-z0-9]{20,}\b/g, to: () => REDACTED },
+  // Credential key/value pairs: token=…, api_key: '…', password = hunter2 …
+  // The label list excludes generic words (e.g. "tokens: 4096" stays intact);
+  // values that start with an auth scheme word (Bearer/Basic) are left to the
+  // dedicated scheme rule above so output stays readable ("Bearer [redacted]").
+  {
+    re: /\b(token|api[\s_-]?key|api[\s_-]?secret|apikey|secret|client[_-]?secret|access[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token|password|passwd|pwd|passphrase|private[_-]?key|authorization|auth|credential|credentials)\b(\s*["']?\s*[:=]\s*["']?)(?!(?:bearer|basic)\b)([^\s"',;)\]}]{3,})/gi,
+    to: (_m, label, sep) => `${label}${sep}${REDACTED}`,
+  },
+  // URL userinfo: https://user:password@host → keep user, drop password.
+  { re: /\b(https?:\/\/)([^\s:/@"']+):([^\s@/\"']+)(@)/g, to: (_m, scheme, user, _pw, at) => `${scheme}${user}:${REDACTED}${at}` },
+];
+
+/**
+ * Return `text` with anything that looks like a credential replaced by
+ * `[redacted]`. Never throws; non-string input is returned unchanged.
+ */
+export function redactForCloud(text: string): string {
+  if (typeof text !== "string" || text.length === 0) return text;
+  let out = text;
+  for (const r of REDACTORS) out = out.replace(r.re, r.to as any);
+  return out;
+}
+
+/** True when `redactForCloud(text)` would change the text (i.e. it contains a likely secret). */
+export function containsSecret(text: string): boolean {
+  return redactForCloud(text) !== text;
+}
+
+/**
+ * Deep-scrub every string inside a JSON-like value (tool-call arguments,
+ * provider payloads). Arrays and plain objects are traversed up to
+ * `maxDepth` levels; primitives are returned via {@link redactForCloud}.
+ */
+export function redactJsonStringsForCloud(value: unknown, maxDepth = 8): unknown {
+  const walk = (v: unknown, d: number): unknown => {
+    if (typeof v === "string") return redactForCloud(v);
+    if (d <= 0) return v;
+    if (Array.isArray(v)) return v.map((x) => walk(x, d - 1));
+    if (v && typeof v === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = walk(val, d - 1);
+      return out;
+    }
+    return v;
+  };
+  return walk(value, maxDepth);
+}
