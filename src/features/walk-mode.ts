@@ -297,6 +297,12 @@ function updateStatus(): void {
 /* ═════════════════════════════════════════════════════════════════════════
    Public API
    ═════════════════════════════════════════════════════════════════════════ */
+/** Walker pose for the minimap: eye position and heading (yaw 0 faces -Z, positive turns left). */
+export function getWalkPose(): { x: number; y: number; z: number; yaw: number; pitch: number } | null {
+  if (!state.enabled) return null;
+  return { x: state.pos.x, y: state.pos.y, z: state.pos.z, yaw: state.yaw, pitch: state.pitch };
+}
+
 export function isWalkModeEnabled(): boolean {
   return state.enabled;
 }
@@ -676,6 +682,7 @@ export function setupWalkMode(): void {
 
   ctx.features.walkMode = {
     isEnabled: isWalkModeEnabled,
+    getPose: getWalkPose,
     enable: enableWalkMode,
     disable: disableWalkMode,
     toggle: toggleWalkMode,
