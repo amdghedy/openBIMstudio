@@ -73,7 +73,7 @@
     "@react-three/drei": "^9.106.0",
     "@react-three/fiber": "^8.16.6",
     "@reduxjs/toolkit": "^2.2.7",
-    "@thatopen/components": "^3.4.8",
+    "@thatopen/components": "^3.4.9",
     "@thatopen/components-front": "^3.4.3",
     "@thatopen/fragments": "^3.4.7",
     "@thatopen/ui": "^3.4.14",
