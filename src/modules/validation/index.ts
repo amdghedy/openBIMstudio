@@ -1,5 +1,5 @@
 /**
- * Native BIM Validation Framework (P2) — rules + severities (Revit warnings parity)
+ * Native BIM validation framework — rules + severities
  */
 export type ValidationSeverity = "info" | "warning" | "error";
 
@@ -168,5 +168,3 @@ export function getValidationService(): ValidationService {
   if (!_instance) _instance = new ValidationService();
   return _instance;
 }
-
-export type { IValidationService, ValidationIssue, ValidationRule, ValidationSeverity };

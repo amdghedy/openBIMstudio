@@ -1,5 +1,5 @@
 /**
- * Detailing Tools (P2) — detail components, repeating details, keynotes
+ * Detailing tools — detail components, repeating details, keynotes
  */
 export interface DetailComponent {
   id: string;
@@ -84,5 +84,3 @@ export function getDetailingService(): DetailingService {
   if (!_instance) _instance = new DetailingService();
   return _instance;
 }
-
-export type { IDetailingService, DetailComponent, Keynote, RepeatingDetail };

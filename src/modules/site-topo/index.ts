@@ -1,5 +1,5 @@
 /**
- * Site & Topography (P2) — Toposolid, graded surface, building pad
+ * Site & topography — toposolid, graded surface, building pad
  */
 export interface TopoPoint {
   x: number;
@@ -71,5 +71,3 @@ export function getSiteTopoService(): SiteTopoService {
   if (!_instance) _instance = new SiteTopoService();
   return _instance;
 }
-
-export type { ISiteTopoService, Toposolid, BuildingPad, TopoPoint };

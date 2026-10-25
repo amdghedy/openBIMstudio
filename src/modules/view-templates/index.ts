@@ -1,5 +1,5 @@
 /**
- * View Templates & Graphic Overrides (P1) — Revit View Template parity
+ * View templates & graphic overrides
  */
 export interface GraphicOverride {
   category: string;
@@ -99,5 +99,3 @@ export function getViewTemplatesService(): ViewTemplatesService {
   if (!_instance) _instance = new ViewTemplatesService();
   return _instance;
 }
-
-export type { IViewTemplatesService, ViewTemplate, GraphicOverride, ViewFilter };

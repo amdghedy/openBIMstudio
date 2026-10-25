@@ -1,7 +1,7 @@
 /**
- * LOD & Performance Manager (P1) — instance manager, LOD levels, stats
+ * LOD & performance manager — instance groups, LOD levels, stats
  */
-export type LODLevel = 0 | 1 | 2 | 3; // coarse → fine
+export type LODLevel = 0 | 1 | 2 | 3;
 
 export interface PerfStats {
   elementCount: number;
@@ -64,5 +64,3 @@ export function getLODPerformanceService(): LODPerformanceService {
   if (!_instance) _instance = new LODPerformanceService();
   return _instance;
 }
-
-export type { ILODPerformanceService, PerfStats, LODLevel };
