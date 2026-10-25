@@ -1,8 +1,5 @@
 /**
- * OpenBIMStudio Strengthening Package — Transaction System
- * Full transactional model with undo/redo, cancel, nested transactions,
- * and recovery. Mirrors Revit Transaction / TransactionGroup semantics
- * while remaining pure TypeScript / openBIM.
+ * Transaction system — Revit Transaction / TransactionGroup parity
  */
 
 export type TransactionStatus = "pending" | "committed" | "rolledback" | "cancelled";
@@ -66,4 +63,5 @@ export interface ITransactionService {
   clearHistory(): void;
   beginGroup(name: string): string;
   endGroup(commit?: boolean): boolean;
+  setApplyHandler(fn: (change: TransactionChange, reverse: boolean) => void): void;
 }
