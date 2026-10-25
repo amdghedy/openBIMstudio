@@ -68,23 +68,23 @@
   "dependencies": {
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
-    "@mlightcad/libredwg-web": "^0.8.0",
-    "@mui/lab": "^5.0.0-alpha.165",
-    "@mui/material": "^5.15.12",
-    "@react-three/drei": "^9.106.0",
-    "@react-three/fiber": "^8.16.6",
+    "@mlightcad/libredwg-web": "^0.8.2",
+    "@mui/lab": "^6.0.0-dev.20240529-082515-213b5e33ab",
+    "@mui/material": "^9.5.0",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
     "@reduxjs/toolkit": "^2.2.7",
-    "@thatopen/components": "^3.4.8",
-    "@thatopen/components-front": "^3.4.3",
+    "@thatopen/components": "^3.4.9",
+    "@thatopen/components-front": "^3.4.5",
     "@thatopen/fragments": "^3.4.7",
-    "@thatopen/ui": "^3.4.0",
-    "@thatopen/ui-obc": "^3.4.2",
+    "@thatopen/ui": "^3.4.14",
+    "@thatopen/ui-obc": "^3.4.3",
     "@tldraw/editor": "^5.5.2",
     "axios": "^1.7.4",
     "file-saver": "^2.0.5",
-    "json-rules-engine": "^5.2.1",
+    "json-rules-engine": "^7.3.1",
     "jszip": "^3.10.2",
-    "monaco-editor": "^0.49.0",
+    "monaco-editor": "^0.57.0",
     "nasjidwg": "^0.18.0",
     "papaparse": "^5.4.1",
     "pdf-lib": "^1.17.1",
@@ -93,10 +93,11 @@
     "react-redux": "^9.1.2",
     "three": "^0.182.0",
     "three-csg-ts": "^3.2.0",
-    "three-mesh-bvh": "^0.8.3",
-    "web-ifc": "0.0.77",
+    "three-mesh-bvh": "^0.9.16",
+    "web-ifc": "0.0.78",
     "y-websocket": "^2.0.1",
-    "yjs": "^13.6.14"
+    "yjs": "^13.6.14",
+    "camera-controls": "^3.1.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
@@ -107,6 +108,6 @@
     "vite": "^5.4.21"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12.0"
   }
 }

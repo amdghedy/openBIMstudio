@@ -1,5 +1,6 @@
 import { setupManageLinks } from "./features/manage-links";
 import "./critical-gaps-boot";
+import "./critical-gaps-boot-strength";
 import { setupPluginSystem } from "./plugins/boot";
 /**
  * Open BIM Studio v52 — main entry point.
@@ -373,7 +374,7 @@ computeSceneBounds();
 try { dumpServiceRegistry(); } catch { /* */ }
 
 console.log(
-  "[Open BIM Studio v52] Professional openBIM delivery platform online � sheets � 4D � automation � clash � IDS � BCF � schedules � 5D � authoring � materials � AI",
+  "[Open BIM Studio v52] Professional openBIM delivery platform online — sheets — 4D — automation — clash — IDS — BCF — schedules — 5D — authoring — materials — AI",
 );
 
 

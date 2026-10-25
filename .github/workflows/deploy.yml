@@ -1,4 +1,4 @@
-﻿name: Deploy to Vercel
+name: Deploy to Vercel
 
 on:
   push:
@@ -12,16 +12,19 @@ jobs:
       NODE_OPTIONS: "--max-old-space-size=4096"
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "20"
+          cache: npm
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci --legacy-peer-deps
+
+      - name: Align React 18 stack
+        run: npm install react@18.3.1 react-dom@18.3.1 @types/react@18.3.12 @types/react-dom@18.3.1 --legacy-peer-deps --no-fund --no-audit
 
       - name: Build Project
         run: npm run build
