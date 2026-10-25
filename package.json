@@ -58,7 +58,7 @@
     "test:safe-expr": "node tests/safe-expr.test.cjs",
     "test:mep-connectivity": "node tests/mep-connectivity.test.cjs",
     "test:boundary-edit": "node tests/boundary-edit.test.cjs",
-    "test:props": "node tests/property-schema-revit.test.cjs",
+    "test:props": "node tests/property-schema.test.cjs",
     "test:elbow": "node tests/elbow-geometry.test.cjs",
     "test:walk": "node tests/walk-physics.test.cjs",
     "test:cad-link": "node tests/cad-link.test.cjs",
@@ -69,10 +69,10 @@
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
     "@mlightcad/libredwg-web": "^0.8.2",
-    "@mui/lab": "^6.0.0-dev.20240529-082515-213b5e33ab",
-    "@mui/material": "^9.5.0",
-    "@react-three/drei": "^10.7.9",
-    "@react-three/fiber": "^9.8.2",
+    "@mui/lab": "^6.0.0-beta.28",
+    "@mui/material": "^6.4.0",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
     "@reduxjs/toolkit": "^2.2.7",
     "@thatopen/components": "^3.4.9",
     "@thatopen/components-front": "^3.4.5",
@@ -81,14 +81,15 @@
     "@thatopen/ui-obc": "^3.4.3",
     "@tldraw/editor": "^5.5.2",
     "axios": "^1.7.4",
+    "camera-controls": "^3.1.2",
     "file-saver": "^2.0.5",
-    "json-rules-engine": "^7.3.1",
+    "json-rules-engine": "^6.5.0",
     "jszip": "^3.10.2",
-    "monaco-editor": "^0.57.0",
+    "monaco-editor": "^0.52.2",
     "nasjidwg": "^0.18.0",
     "papaparse": "^5.4.1",
     "pdf-lib": "^1.17.1",
-    "react": "^19.3.1",
+    "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-redux": "^9.1.2",
     "three": "^0.182.0",
@@ -96,18 +97,17 @@
     "three-mesh-bvh": "^0.9.16",
     "web-ifc": "0.0.78",
     "y-websocket": "^2.0.1",
-    "yjs": "^13.6.14",
-    "camera-controls": "^3.1.2"
+    "yjs": "^13.6.14"
   },
   "devDependencies": {
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
     "@types/three": "^0.182.0",
-    "@vitejs/plugin-react": "^5.0.5",
+    "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
     "vite": "^5.4.21"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=20"
   }
 }

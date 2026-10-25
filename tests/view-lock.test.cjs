@@ -1,7 +1,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs"), os = require("os"), path = require("path"), assert = require("assert");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "vl-"));
-execSync(`npx tsc src/core/view-lock.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`, { stdio: "inherit" });
+execSync(`npx tsc src/core/view-lock.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreDeprecations 5.0`, { stdio: "inherit" });
 const v = require(path.join(out, "view-lock.js"));
 let pass = 0, fail = 0;
 const t = (n, f) => { try { f(); pass++; console.log("  PASS " + n); } catch (e) { fail++; console.log("  FAIL " + n + ": " + e.message); } };
@@ -24,7 +24,7 @@ t("dollyTowards moves along the ray without passing the focus", () => {
   near(p[2], 5);
   const q = v.dollyTowards([0, 0, 10], [0, 0, 0], 1e6, 0.05);
   assert.ok(q[2] >= 0.05 - 1e-9);
-  const o = v.dollyTowards([0, 0, 10], [0, 0, 0], 0.5); // zoom out
+  const o = v.dollyTowards([0, 0, 10], [0, 0, 0], 0.5);
   near(o[2], 20);
 });
 t("zoom is pure translation (direction preserved with off-centre focus)", () => {
