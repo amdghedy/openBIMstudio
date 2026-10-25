@@ -16,6 +16,10 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install --legacy-peer-deps
+      - name: Patch invalid tsc flags in tests
+        run: |
+          find tests -type f \( -name '*.cjs' -o -name '*.mjs' \) -print0 |
+            xargs -0 sed -i 's/ --ignoreConfig//g; s/--ignoreDeprecations 6\.0/--ignoreDeprecations 5.0/g'
       - run: npm run typecheck
       - run: npm run test:bim-gaps
       - run: npm run test:mep
