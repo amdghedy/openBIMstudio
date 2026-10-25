@@ -71,7 +71,7 @@
     "@mui/lab": "^5.0.0-alpha.165",
     "@mui/material": "^5.15.12",
     "@react-three/drei": "^9.106.0",
-    "@react-three/fiber": "^8.16.6",
+    "@react-three/fiber": "^9.8.2",
     "@reduxjs/toolkit": "^2.2.7",
     "@thatopen/components": "^3.4.8",
     "@thatopen/components-front": "^3.4.3",
