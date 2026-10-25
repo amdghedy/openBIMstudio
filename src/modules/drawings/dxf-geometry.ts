@@ -173,7 +173,7 @@ export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
   const uniform = Math.abs(Math.abs(m.sx) - Math.abs(m.sy)) < 1e-9 * Math.max(1, Math.abs(m.sx));
   const flip = m.sx < 0 && m.sy < 0 ? 180 : 0; // (-s,-s) is a rotation by 180
   const mirrored = m.sx * m.sy < 0;
-  const base = { layer: e.layer, color: e.color, rgb: e.rgb };
+  const base = { layer: e.layer, color: e.color, rgb: e.rgb, lineType: e.lineType };
 
   switch (e.type) {
     case "LINE":
@@ -181,12 +181,15 @@ export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
     case "POINT":
       return [{ ...base, type: "POINT", position: xp(m, e.position) }];
     case "LWPOLYLINE":
-      return [{ ...base, type: "LWPOLYLINE", points: e.points.map((p) => xp(m, p)), closed: e.closed }];
+      return [{
+        ...base, type: "LWPOLYLINE", points: e.points.map((p) => xp(m, p)), closed: e.closed,
+        ...(e.hatch ? { hatch: { ...e.hatch, angle: (e.hatch.angle ?? 0) + m.rot + flip, scale: (e.hatch.scale ?? 1) * Math.abs(m.sx), loops: e.hatch.loops.map((l) => l.map((p) => xp(m, p))) } } : {}),
+      }];
     case "TEXT":
       return [{
         ...base, type: "TEXT", position: xp(m, e.position),
         height: e.height * Math.abs(m.sy),
-        value: e.value, rotation: (e.rotation ?? 0) + m.rot + flip,
+        value: e.value, rotation: (e.rotation ?? 0) + m.rot + flip, align: e.align, valign: e.valign,
       }];
     case "CIRCLE":
       if (uniform && !mirrored) {
@@ -279,8 +282,8 @@ export function flipEntityX(e: DxfEntity): DxfEntity {
     case "POINT": return { ...e, position: fp(e.position) };
     case "CIRCLE": return { ...e, center: fp(e.center) };
     case "ARC": return { ...e, center: fp(e.center), startAngle: 180 - e.endAngle, endAngle: 180 - e.startAngle };
-    case "LWPOLYLINE": return { ...e, points: e.points.map(fp) };
-    case "TEXT": return { ...e, position: fp(e.position), rotation: 180 - (e.rotation ?? 0) };
+    case "LWPOLYLINE": return { ...e, points: e.points.map(fp), ...(e.hatch ? { hatch: { ...e.hatch, angle: 180 - (e.hatch.angle ?? 0), loops: e.hatch.loops.map((l) => l.map(fp)) } } : {}) };
+    case "TEXT": return { ...e, position: fp(e.position), rotation: 180 - (e.rotation ?? 0), align: e.align === "left" ? "right" : e.align === "right" ? "left" : e.align };
   }
 }
 

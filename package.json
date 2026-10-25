@@ -52,6 +52,8 @@
     "test:slope": "node tests/slope.test.cjs",
     "test:cad-viewer": "node tests/cad-viewer.test.cjs",
     "test:ocs": "node tests/ocs-flip.test.cjs",
+    "test:dxf-features": "node tests/dxf-features.test.cjs",
+    "test:dwg-features": "node tests/dwg-features.test.cjs",
     "test:north": "node tests/north.test.cjs",
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
     "test:project-crypto": "node tests/project-crypto.test.cjs",

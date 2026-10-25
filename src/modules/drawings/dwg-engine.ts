@@ -183,7 +183,7 @@ export function loadDxfIntoCad(
       const a1 = (-e.endAngle * Math.PI) / 180;
       cadEngine.addArc(c, e.radius * scale, a0, a1);
       n++;
-    } else if (e.type === "LWPOLYLINE") {
+    } else if (e.type === "LWPOLYLINE" && !e.hatch) {
       const pts = e.points.map(toScreen);
       if (e.closed && pts.length) pts.push({ ...pts[0] });
       cadEngine.addPolyline(pts);
@@ -249,7 +249,7 @@ export function loadDxfIntoScene(doc: DxfDocument, opts: { scale?: number } = {}
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       group.add(new THREE.LineLoop(geo, mat));
       n++;
-    } else if (e.type === "LWPOLYLINE") {
+    } else if (e.type === "LWPOLYLINE" && !e.hatch) {
       for (let i = 0; i < e.points.length - 1; i++) {
         addLine(e.points[i], e.points[i + 1], e.color);
       }

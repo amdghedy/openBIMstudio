@@ -13,7 +13,7 @@
  *
  * Pure TypeScript, no dependencies.
  */
-import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfUnits } from "./dxf-types";
+import type { DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "./dxf-types";
 import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
   insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
@@ -24,7 +24,7 @@ interface Rec { type: string; pairs: Pair[] }
 interface Block { name: string; base: DxfPoint; recs: Rec[] }
 
 /** Record types whose coordinates live in the object coordinate system (extrusion-dependent). */
-const OCS_TYPES = new Set(["CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "TEXT", "INSERT", "SOLID", "TRACE"]);
+const OCS_TYPES = new Set(["CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "TEXT", "ATTRIB", "HATCH", "INSERT", "SOLID", "TRACE"]);
 const DEG = Math.PI / 180;
 const MAX_DEPTH = 8;
 const MAX_ENTITIES = 3_000_000;
@@ -78,7 +78,7 @@ class Data {
   }
 }
 
-interface Common { layer: string; color?: number; rgb?: number }
+interface Common { layer: string; color?: number; rgb?: number; lineType?: string }
 
 function common(d: Data): Common {
   const layer = d.s(8) ?? "0";
@@ -88,7 +88,10 @@ function common(d: Data): Common {
     if (c >= 1 && c <= 255) color = c; // 0 = BYBLOCK, 256 = BYLAYER
   }
   const rgb = d.has(420) ? d.n(420) & 0xffffff : undefined;
-  return { layer, color, rgb };
+  const lt = d.s(6)?.trim();
+  const up = lt?.toUpperCase();
+  const lineType = lt && up !== "BYLAYER" && up !== "BYBLOCK" && up !== "CONTINUOUS" ? lt : undefined;
+  return { layer, color, rgb, lineType };
 }
 
 function headerUnits(pairs: Pair[]): DxfUnits | undefined {
@@ -98,6 +101,82 @@ function headerUnits(pairs: Pair[]): DxfUnits | undefined {
     }
   }
   return undefined;
+}
+
+function headerNumber(pairs: Pair[], name: string): number | undefined {
+  for (let i = 0; i < pairs.length - 1; i++) {
+    if (pairs[i].code === 9 && pairs[i].value.trim().toUpperCase() === name) return num(pairs[i + 1].value, NaN);
+  }
+  return undefined;
+}
+
+/** HATCH record -> boundary loops + pattern info. Returns null when no loop could be read. */
+export function parseHatch(P: Pair[]): DxfHatch | null {
+  let i = P.findIndex((p) => p.code === 91);
+  if (i < 0) return null;
+  const nPaths = Math.max(0, Math.min(2000, num(P[i].value)));
+  i++;
+  const rd = (code: number): string | undefined => (i < P.length && P[i].code === code ? P[i++].value : undefined);
+  const rn = (code: number, d = 0) => num(rd(code), d);
+  const loops: DxfPoint[][] = [];
+  for (let k = 0; k < nPaths && i < P.length; k++) {
+    const flags = rn(92);
+    const pts: DxfPoint[] = [];
+    if (flags & 2) {
+      const hasBulge = rn(72) !== 0, closed = rn(73) !== 0, n = Math.min(1_000_000, rn(93));
+      const verts: Array<DxfPoint & { bulge?: number }> = [];
+      for (let v = 0; v < n && i < P.length; v++) {
+        const x = rn(10), y = rn(20); const b = hasBulge ? rn(42) : 0;
+        verts.push({ x, y, z: 0, bulge: b || undefined });
+      }
+      pts.push(...expandBulges(verts, closed));
+    } else {
+      const nEdges = Math.min(1_000_000, rn(93));
+      for (let e = 0; e < nEdges && i < P.length; e++) {
+        const type = rn(72);
+        if (type === 1) { const a = { x: rn(10), y: rn(20), z: 0 }, b = { x: rn(11), y: rn(21), z: 0 }; if (!pts.length) pts.push(a); pts.push(b); }
+        else if (type === 2) {
+          const cx = rn(10), cy = rn(20), r = rn(40), a0 = rn(50), a1 = rn(51), ccw = rn(73, 1) !== 0;
+          const arc = ccw ? arcPoints(cx, cy, r, a0 * DEG, (a1 <= a0 ? a1 + 360 : a1) * DEG, 0) : arcPoints(cx, cy, r, a1 * DEG, (a0 <= a1 ? a0 + 360 : a0) * DEG, 0).reverse();
+          pts.push(...arc);
+        } else if (type === 3) {
+          const c = { x: rn(10), y: rn(20), z: 0 }, m = { x: rn(11), y: rn(21), z: 0 }, ratio = rn(40, 1), a0 = rn(50), a1 = rn(51), ccw = rn(73, 1) !== 0;
+          const e1 = ccw ? ellipsePoints(c, m, ratio, a0 * DEG, (a1 <= a0 ? a1 + 360 : a1) * DEG) : ellipsePoints(c, m, ratio, a1 * DEG, (a0 <= a1 ? a0 + 360 : a0) * DEG).reverse();
+          pts.push(...e1);
+        } else if (type === 4) {
+          const degree = rn(94, 3), rational = rn(73) !== 0; rn(74);
+          const nk = Math.min(100000, rn(95)), nc = Math.min(100000, rn(96));
+          const knots: number[] = []; for (let q = 0; q < nk; q++) knots.push(rn(40));
+          const ctrl: DxfPoint[] = []; for (let q = 0; q < nc; q++) { const x = rn(10), y = rn(20); if (rational) rn(42); ctrl.push({ x, y, z: 0 }); }
+          const nf = rn(97); for (let q = 0; q < nf; q++) { rn(11); rn(21); }
+          rd(12); rd(22); rd(13); rd(23);
+          const curve = ctrl.length >= degree + 1 ? evalBSpline(ctrl, knots, degree) : null;
+          pts.push(...(curve ?? ctrl));
+        } else break;
+      }
+    }
+    // source boundary object references
+    const nSrc = rn(97); for (let q = 0; q < nSrc; q++) rd(330);
+    const clean = pts.filter((p, q) => q === 0 || Math.hypot(p.x - pts[q - 1].x, p.y - pts[q - 1].y) > 1e-12);
+    if (clean.length > 2 && Math.hypot(clean[0].x - clean[clean.length - 1].x, clean[0].y - clean[clean.length - 1].y) < 1e-9) clean.pop();
+    if (clean.length >= 3) loops.push(clean);
+  }
+  if (!loops.length) return null;
+  const head = new Data(P.slice(0, P.findIndex((p) => p.code === 91)));
+  const tail = new Data(P.slice(i));
+  const solid = head.n(70) === 1;
+  const pattern = head.s(2)?.trim();
+  return { solid: solid || pattern?.toUpperCase() === "SOLID", pattern, angle: tail.has(52) ? tail.n(52) : 0, scale: tail.has(41) ? tail.n(41, 1) : 1, loops };
+}
+
+/** TEXT/ATTRIB anchor from the justification codes. */
+function textAnchor(d: Data, vCode: number): { position: DxfPoint; align: "left" | "center" | "right"; valign: "top" | "middle" | "bottom" | "baseline" } {
+  const h = d.n(72), v = d.n(vCode);
+  const aligned = (h !== 0 || v !== 0) && d.has(11);
+  const position = aligned ? d.pt(11, 21, 31) : d.pt(10, 20, 30);
+  const align = h === 1 || h === 4 ? "center" : h === 2 ? "right" : "left";
+  const valign = h === 4 ? "middle" : v === 1 ? "bottom" : v === 2 ? "middle" : v === 3 ? "top" : "baseline";
+  return { position, align, valign };
 }
 
 export function parseDxf(text: string): DxfDocument {
@@ -115,7 +194,11 @@ export function parseDxf(text: string): DxfDocument {
   const layers: DxfLayer[] = [];
   const blocks = new Map<string, Block>();
   const modelRecs: Rec[] = [];
+  const paperRecs: Rec[] = [];
+  const linetypes: Record<string, number[]> = {};
+  const layoutNames: Array<{ name: string; order: number }> = [];
   let units: DxfUnits | undefined;
+  let ltscale: number | undefined;
   let section = "";
   let table = "";
   let curBlock: Block | null = null;
@@ -124,7 +207,7 @@ export function parseDxf(text: string): DxfDocument {
     if (r.type === "EOF") break;
     if (r.type === "SECTION") {
       section = r.pairs.find((p) => p.code === 2)?.value.trim() ?? "";
-      if (section === "HEADER") units = headerUnits(r.pairs);
+      if (section === "HEADER") { units = headerUnits(r.pairs); const ls = headerNumber(r.pairs, "$LTSCALE"); if (ls != null && Number.isFinite(ls) && ls > 0) ltscale = ls; }
       continue;
     }
     if (r.type === "ENDSEC") { section = ""; curBlock = null; continue; }
@@ -132,7 +215,11 @@ export function parseDxf(text: string): DxfDocument {
     if (section === "TABLES") {
       if (r.type === "TABLE") table = r.pairs.find((p) => p.code === 2)?.value.trim() ?? "";
       else if (r.type === "ENDTAB") table = "";
-      else if (r.type === "LAYER" && table === "LAYER") {
+      else if (r.type === "LTYPE" && table === "LTYPE") {
+        const d = new Data(r.pairs);
+        const nm = d.s(2)?.trim().toUpperCase();
+        if (nm) linetypes[nm] = d.all(49).map((v) => num(v));
+      } else if (r.type === "LAYER" && table === "LAYER") {
         const d = new Data(r.pairs);
         const rawColor = d.n(62, 7);
         layers.push({
@@ -158,13 +245,46 @@ export function parseDxf(text: string): DxfDocument {
       continue;
     }
 
-    if (section === "ENTITIES") modelRecs.push(r);
+    if (section === "OBJECTS") {
+      if (r.type === "LAYOUT") {
+        const d = new Data(r.pairs);
+        const nm = d.s(1)?.trim();
+        if (nm && nm.toLowerCase() !== "model") layoutNames.push({ name: nm, order: d.n(71) });
+      }
+      continue;
+    }
+
+    if (section === "ENTITIES") {
+      const ps = r.pairs.find((p) => p.code === 67);
+      if (ps && num(ps.value) === 1) paperRecs.push(r); else modelRecs.push(r);
+    }
   }
 
   // 3. Convert (expanding blocks) into the flat entity list.
   const skipped: Record<string, number> = {};
   const skip = (t: string) => { skipped[t] = (skipped[t] ?? 0) + 1; };
   const entities = expandRecs(modelRecs, blocks, 0, skip, null);
+
+  // 3b. Paper-space layouts: the active layout lives in ENTITIES (flag 67), the others in *Paper_Space blocks.
+  const sheets: Array<{ recs: Rec[] }> = [];
+  if (paperRecs.length) sheets.push({ recs: paperRecs });
+  const paperBlocks = [...blocks.entries()].filter(([n]) => /^\*paper_space\d*$/i.test(n)).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+  for (const [n, b] of paperBlocks) { if (!b.recs.length) continue; if (n.toLowerCase() === "*paper_space" && paperRecs.length) continue; sheets.push({ recs: b.recs }); }
+  const orderedNames = layoutNames.sort((a, b) => a.order - b.order).map((l) => l.name);
+  const layouts: DxfLayout[] = [];
+  for (const sh of sheets) {
+    const vps: DxfViewport[] = [];
+    const rest = sh.recs.filter((r) => {
+      if (r.type !== "VIEWPORT") return true;
+      const vd = new Data(r.pairs);
+      if (vd.n(69, 2) !== 1 && vd.n(68, 1) !== 0 && vd.n(40) > 0 && vd.n(41) > 0 && vd.n(45) > 0) {
+        vps.push({ center: vd.pt(10, 20, 30), width: vd.n(40), height: vd.n(41), viewCenter: vd.pt(12, 22, 0), viewHeight: vd.n(45), twist: vd.n(51) || undefined });
+      }
+      return false;
+    });
+    const ents = expandRecs(rest, blocks, 0, skip, null, true);
+    if (ents.length || vps.length) layouts.push({ name: orderedNames[layouts.length] ?? `Layout ${layouts.length + 1}`, entities: ents, viewports: vps });
+  }
 
   if (!layers.some((l) => l.name === "0")) layers.unshift({ name: "0", color: 7 });
   // Layers used by entities but missing from the table still need an entry.
@@ -179,6 +299,9 @@ export function parseDxf(text: string): DxfDocument {
     extents: computeExtents(entities),
     units: units ?? "unitless",
     sourceFormat: "dxf",
+    layouts: layouts.length ? layouts : undefined,
+    linetypes: Object.keys(linetypes).length ? linetypes : undefined,
+    ltscale,
     skipped: Object.keys(skipped).length ? skipped : undefined,
   };
 }
@@ -189,6 +312,7 @@ function expandRecs(
   depth: number,
   skip: (t: string) => void,
   insertLayer: string | null,
+  allowPaper = false,
 ): DxfEntity[] {
   const out: DxfEntity[] = [];
   const push = (e: DxfEntity) => {
@@ -198,7 +322,7 @@ function expandRecs(
   for (let i = 0; i < recs.length; i++) {
     const r = recs[i];
     const d = new Data(r.pairs);
-    if (d.n(67) === 1) continue; // paper space
+    if (!allowPaper && d.n(67) === 1) continue; // paper space (collected separately as layouts)
     const c = common(d);
     if (insertLayer && c.layer === "0") c.layer = insertLayer; // layer 0 inside a block inherits
     const outStart = out.length;
@@ -251,20 +375,64 @@ function expandRecs(
         break;
       }
 
-      case "TEXT":
+      case "TEXT": {
+        const a = textAnchor(d, 73);
         push({
-          ...c, type: "TEXT", position: d.pt(10, 20, 30), height: d.n(40, 2.5),
-          value: cleanText(d.s(1) ?? ""), rotation: d.has(50) ? d.n(50) : undefined,
+          ...c, type: "TEXT", position: a.position, height: d.n(40, 2.5),
+          value: cleanText(d.s(1) ?? ""), rotation: d.has(50) ? d.n(50) : undefined, align: a.align, valign: a.valign,
         });
         break;
+      }
+
+      case "ATTRIB": {
+        if (d.n(70) & 1) break; // invisible attribute
+        const a = textAnchor(d, 74);
+        const value = cleanText(d.s(1) ?? "");
+        if (value) push({ ...c, type: "TEXT", position: a.position, height: d.n(40, 2.5), value, rotation: d.has(50) ? d.n(50) : undefined, align: a.align, valign: a.valign });
+        break;
+      }
+
+      case "HATCH": {
+        const h = parseHatch(r.pairs);
+        if (!h) { skip("HATCH"); break; }
+        push({ ...c, type: "LWPOLYLINE", points: h.loops[0], closed: true, hatch: h });
+        break;
+      }
+
+      case "LEADER": {
+        const xs = d.all(10), pts: DxfPoint[] = xs.map((x, k) => ({ x: num(x), y: d.n(20, 0, k), z: d.n(30, 0, k) }));
+        if (pts.length >= 2) push({ ...c, type: "LWPOLYLINE", points: pts, closed: false });
+        else skip("LEADER");
+        break;
+      }
+
+      case "MLEADER": {
+        // Best effort: leader lines sit between "LEADER_LINE{" and "}" markers; text is group 304.
+        let any = false, line: DxfPoint[] | null = null, textPos: DxfPoint | null = null, str = "", height = d.n(40, 2.5) || 2.5, curX: number | null = null;
+        for (const p of r.pairs) {
+          if (p.code === 304 && /LEADER_LINE\{/i.test(p.value)) { line = []; continue; }
+          if (p.code === 305 && line) { if (line.length >= 2) { push({ ...c, type: "LWPOLYLINE", points: line, closed: false }); any = true; } line = null; continue; }
+          if (p.code === 304 && !/[{}]$/.test(p.value)) { str = p.value; continue; }
+          if (p.code === 12) textPos = { x: num(p.value), y: 0, z: 0 };
+          else if (p.code === 22 && textPos) textPos.y = num(p.value);
+          else if (p.code === 140) height = num(p.value, height) || height;
+          if (line) { if (p.code === 10) curX = num(p.value); else if (p.code === 20 && curX != null) { line.push({ x: curX, y: num(p.value), z: 0 }); curX = null; } }
+        }
+        if (str && textPos) { push({ ...c, type: "TEXT", position: textPos, height: d.n(41, height) || height, value: cleanText(str) }); any = true; }
+        if (!any) skip("MLEADER");
+        break;
+      }
 
       case "MTEXT": {
         const chunks = d.all(3).join("") + (d.s(1) ?? "");
         let rot = d.has(50) ? d.n(50) : undefined;
         if (rot === undefined && (d.has(11) || d.has(21))) rot = Math.atan2(d.n(21), d.n(11)) / DEG;
+        const ap = d.n(71, 1);
         push({
           ...c, type: "TEXT", position: d.pt(10, 20, 30), height: d.n(40, 2.5),
           value: cleanText(chunks), rotation: rot,
+          align: (["left", "center", "right"] as const)[Math.max(0, Math.min(2, (ap - 1) % 3))],
+          valign: (["top", "middle", "bottom"] as const)[Math.max(0, Math.min(2, Math.floor((ap - 1) / 3)))],
         });
         break;
       }
@@ -344,13 +512,15 @@ function expandRecs(
       }
 
       // Present in many files but not drawn by this engine.
-      case "HATCH": case "LEADER": case "MLEADER": case "MLINE": case "IMAGE":
+      case "MLINE": case "IMAGE":
       case "WIPEOUT": case "OLE2FRAME": case "REGION": case "3DSOLID": case "BODY":
-      case "RAY": case "XLINE": case "ATTRIB": case "ATTDEF": case "VIEWPORT":
+      case "RAY": case "XLINE": case "VIEWPORT":
       case "TOLERANCE": case "MESH": case "SURFACE":
         skip(r.type);
         break;
 
+      case "ATTDEF":
+        break; // attribute definitions are placeholders; the inserted ATTRIBs carry the values
       default:
         break; // unknown/structural records are ignored
     }

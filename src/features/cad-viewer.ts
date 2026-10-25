@@ -59,12 +59,13 @@ function build(): void {
       <h4>Measurements</h4><div class="sc" data-r="meas" style="max-height:24%;padding:4px 8px"></div>
     </div>
   </div>
+  <div data-r="tabs" style="display:none;gap:2px;padding:3px 8px 0;background:#151a23;border-top:1px solid #2a3140"></div>
   <div data-r="status" style="display:flex;gap:16px;padding:4px 10px;background:#151a23;border-top:1px solid #2a3140;color:#9aa4b2;font-variant-numeric:tabular-nums"></div>`;
   document.body.appendChild(root);
 
   const $ = <T extends HTMLElement>(k: string) => root!.querySelector(`[data-r="${k}"]`) as T;
   const cv = $<HTMLCanvasElement>("cv"), g = cv.getContext("2d")!;
-  const tools = $("tools"), layersEl = $("layers"), propsEl = $("props"), measEl = $("meas"), statusEl = $("status"), emptyEl = $("empty"), busyEl = $("busy");
+  const tabsEl = $("tabs"), tools = $("tools"), layersEl = $("layers"), propsEl = $("props"), measEl = $("meas"), statusEl = $("status"), emptyEl = $("empty"), busyEl = $("busy");
 
   let doc: DxfDocument | null = null, name = "";
   let ents: DxfEntity[] = [], idx: M.SpatialIndex | null = null, bounds: M.BBox | null = null;
@@ -79,6 +80,8 @@ function build(): void {
   let markups: Markup[] = []; let hits: M.TextHit[] = [], hitI = -1;
   let dragging: { x: number; y: number } | null = null, winStart: { x: number; y: number } | null = null, winNow: { x: number; y: number } | null = null;
   let raf = 0;
+  let modelEnts: DxfEntity[] = [], modelIdx: M.SpatialIndex | null = null, modelBounds: M.BBox | null = null;
+  let layoutI = -1; const layoutIdxCache = new Map<number, M.SpatialIndex>();
   let press: { x: number; y: number; moved: boolean; id: number; band?: boolean; add?: boolean } | null = null;
   const sel = new Set<number>(); let showGrid = false; let rband: { a: M.Pt; b: M.Pt } | null = null; let layerFilter = "";
   const ptrs = new Map<number, M.Pt>(); let pinch = 0;
@@ -115,26 +118,65 @@ function build(): void {
       case "LINE": { const a = P(e.start.x, e.start.y), b = P(e.end.x, e.end.y); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); break; }
       case "CIRCLE": { const p = P(e.center.x, e.center.y); c.arc(p.x, p.y, e.radius * v.scale, 0, Math.PI * 2); c.stroke(); break; }
       case "ARC": { const p = P(e.center.x, e.center.y); const sw = M.arcSweepDeg(e.startAngle, e.endAngle) * Math.PI / 180, s = -e.startAngle * Math.PI / 180; c.arc(p.x, p.y, e.radius * v.scale, s, s - sw, true); c.stroke(); break; }
-      case "LWPOLYLINE": { e.points.forEach((q, i) => { const p = P(q.x, q.y); i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y); }); if (e.closed) c.closePath(); c.stroke(); break; }
+      case "LWPOLYLINE": { if (e.hatch) { drawHatch(c, e, v); break; } e.points.forEach((q, i) => { const p = P(q.x, q.y); i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y); }); if (e.closed) c.closePath(); c.stroke(); break; }
       case "POINT": { const p = P(e.position.x, e.position.y); c.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); break; }
       case "TEXT": {
-        const px = e.height * v.scale; if (px < 3) { const p = P(e.position.x, e.position.y); const w = M.textBox(e).w * v.scale; c.moveTo(p.x, p.y); c.lineTo(p.x + w, p.y); c.stroke(); break; }
+        const px = e.height * v.scale; const o = M.textOrigin(e);
+        if (px < 3) { const p = P(e.position.x, e.position.y); const w = M.textBox(e).w * v.scale; const ox = o.dx * v.scale; c.moveTo(p.x + ox, p.y); c.lineTo(p.x + ox + w, p.y); c.stroke(); break; }
         const p = P(e.position.x, e.position.y); c.save(); c.translate(p.x, p.y); c.rotate(-(e.rotation ?? 0) * Math.PI / 180);
-        c.font = `${Math.min(px, 600)}px sans-serif`; c.textBaseline = "alphabetic"; c.fillText(e.value, 0, 0); c.restore(); break;
+        c.font = `${Math.min(px, 600)}px sans-serif`; c.textAlign = e.align ?? "left";
+        c.textBaseline = e.valign === "top" ? "top" : e.valign === "middle" ? "middle" : e.valign === "bottom" ? "bottom" : "alphabetic";
+        c.fillText(e.value, 0, 0); c.restore(); break;
       }
     }
+  }
+  const visibleBox = (v: M.View): M.BBox => { const a = M.screenToWorld(v, 0, 0), b = M.screenToWorld(v, v.w, v.h); return { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y) }; };
+  function drawHatch(c: CanvasRenderingContext2D, e: Extract<DxfEntity, { type: "LWPOLYLINE" }>, v: M.View): void {
+    const h = e.hatch!; c.save(); c.beginPath();
+    for (const loop of h.loops) { loop.forEach((q, i) => { const p = M.worldToScreen(v, q.x, q.y); i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y); }); c.closePath(); }
+    const fams = h.solid ? [] : M.hatchFamilies(h.pattern, h.angle, h.scale);
+    if (h.solid) c.fill("evenodd");
+    else if (Math.min(...fams.map((f) => f.spacing)) * v.scale < 3) { c.globalAlpha = 0.35; c.fill("evenodd"); } // too dense to resolve: tint
+    else {
+      c.clip("evenodd");
+      const vb = visibleBox(v), eb = M.entityBBox(e);
+      const box = { minX: Math.max(vb.minX, eb.minX), minY: Math.max(vb.minY, eb.minY), maxX: Math.min(vb.maxX, eb.maxX), maxY: Math.min(vb.maxY, eb.maxY) };
+      if (box.minX <= box.maxX && box.minY <= box.maxY) {
+        c.lineWidth = Math.max(0.6, lw * 0.6); c.setLineDash([]); c.beginPath();
+        for (const f of fams) for (const sg of M.hatchLineSegments(box, f.angle, f.spacing)) { const a = M.worldToScreen(v, sg[0], sg[1]), b = M.worldToScreen(v, sg[2], sg[3]); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); }
+        c.stroke();
+      }
+    }
+    c.restore();
+  }
+  const dashFor = (e: DxfEntity, v: M.View): number[] => (!doc || (e.type === "LWPOLYLINE" && e.hatch) ? [] : M.resolveDash(e.lineType ?? layerOf(e.layer)?.lineType, doc.linetypes, doc.ltscale, v.scale));
+  function paintEntities(c: CanvasRenderingContext2D, v: M.View, list: DxfEntity[], ix: M.SpatialIndex | null, cull: M.BBox, skipSel: boolean): void {
+    list.forEach((e, i) => {
+      if (!visible(e) || (skipSel && sel.has(i))) return;
+      if (ix) { const bb = ix.boxes[i]; if (!M.boxesIntersect(bb, cull)) return; if (e.type !== "POINT" && (bb.maxX - bb.minX) * v.scale < 0.4 && (bb.maxY - bb.minY) * v.scale < 0.4) return; }
+      const col = colorOf(e); c.strokeStyle = col; c.fillStyle = col; c.setLineDash(dashFor(e, v)); drawEntity(c, e, v);
+    });
+    c.setLineDash([]);
   }
   function render(c: CanvasRenderingContext2D, v: M.View, withUi: boolean): void {
     c.save(); c.fillStyle = BG[bg]; c.fillRect(0, 0, v.w, v.h);
     if (!doc) { c.restore(); return; }
     if (withUi && showGrid) paintGrid(c, v);
     c.lineWidth = lw; c.lineJoin = "round";
-    ents.forEach((e, i) => {
-      if (!visible(e) || sel.has(i)) return;
-      if (idx) { const bb = idx.boxes[i]; if (!M.bboxVisible(bb, v)) return; if (e.type !== "POINT" && (bb.maxX - bb.minX) * v.scale < 0.4 && (bb.maxY - bb.minY) * v.scale < 0.4) return; }
-      const col = colorOf(e); c.strokeStyle = col; c.fillStyle = col; drawEntity(c, e, v);
-    });
-    if (sel.size) { c.save(); c.lineWidth = lw + 2; c.strokeStyle = "#38bdf8"; c.fillStyle = "#38bdf8"; for (const i of sel) if (ents[i] && visible(ents[i])) drawEntity(c, ents[i], v); c.restore(); }
+    paintEntities(c, v, ents, idx, visibleBox(v), true);
+    if (layoutI >= 0 && doc?.layouts?.[layoutI]) {
+      for (const vp of doc.layouts[layoutI].viewports) {
+        const r = M.viewportRect(vp), a = M.worldToScreen(v, r.minX, r.maxY), b = M.worldToScreen(v, r.maxX, r.minY), ctr = M.worldToScreen(v, vp.center.x, vp.center.y), sc = M.viewportScale(vp);
+        c.save(); c.beginPath(); c.rect(a.x, a.y, b.x - a.x, b.y - a.y); c.clip();
+        c.translate(ctr.x, ctr.y); c.rotate((vp.twist ?? 0) * Math.PI / 180); c.translate(-ctr.x, -ctr.y);
+        const vv: M.View = { cx: vp.viewCenter.x, cy: vp.viewCenter.y, scale: v.scale * sc, w: ctr.x * 2, h: ctr.y * 2 };
+        const rad = Math.hypot(vp.width, vp.height) / 2 / sc;
+        paintEntities(c, vv, modelEnts, modelIdx, { minX: vp.viewCenter.x - rad, maxX: vp.viewCenter.x + rad, minY: vp.viewCenter.y - rad, maxY: vp.viewCenter.y + rad }, false);
+        c.restore();
+        c.save(); c.strokeStyle = bg === "white" ? "rgba(0,0,0,.35)" : "rgba(255,255,255,.35)"; c.lineWidth = 1; c.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y); c.restore();
+      }
+    }
+    if (sel.size) { c.save(); c.setLineDash([]); c.lineWidth = lw + 2; c.strokeStyle = "#38bdf8"; c.fillStyle = "#38bdf8"; for (const i of sel) if (ents[i] && visible(ents[i])) drawEntity(c, ents[i], v); c.restore(); }
     // markups
     c.save(); c.strokeStyle = "#ef4444"; c.fillStyle = "#ef4444"; c.lineWidth = 2; c.font = "14px sans-serif";
     for (const m of markups) {
@@ -200,17 +242,36 @@ function build(): void {
     status(`Reading ${file.name}…`);
     try {
       const r = await readCadFile(file);
-      doc = r.doc; name = file.name; ents = doc.entities;
-      let b: M.BBox | null = null; for (const e of ents) { const eb = M.entityBBox(e); if (Number.isFinite(eb.minX + eb.maxX + eb.minY + eb.maxY)) b = M.unionBBox(b, eb); }
-      if (!b) throw new Error("The file has no drawable geometry");
-      bounds = b; idx = M.buildIndex(ents, b);
+      doc = r.doc; name = file.name; modelEnts = doc.entities;
+      let b: M.BBox | null = null; for (const e of modelEnts) { const eb = M.entityBBox(e); if (Number.isFinite(eb.minX + eb.maxX + eb.minY + eb.maxY)) b = M.unionBBox(b, eb); }
+      if (!b && !doc.layouts?.length) throw new Error("The file has no drawable geometry");
+      modelBounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 }; modelIdx = M.buildIndex(modelEnts, modelBounds); layoutIdxCache.clear();
       hidden.clear(); for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
-      selected = -1; sel.clear(); pts = []; drawn = []; markups = []; hits = []; results = []; history.length = 0; layerFilter = "";
-      emptyEl.style.display = "none"; view = M.fitView(b, view.w, view.h);
-      buildLayers(); showProps(); showMeas(); setTool("select"); updateStatus(); draw();
+      markups = []; results = []; layerFilter = ""; emptyEl.style.display = "none";
+      buildTabs(); activate(modelEnts.length ? -1 : 0); setTool("select"); showMeas();
       const sk = doc.skipped && Object.keys(doc.skipped).length ? `  (not drawn: ${Object.entries(doc.skipped).map(([k, n]) => `${k}×${n}`).join(", ")})` : "";
       status(`${r.summary}${sk}`); setTimeout(() => status(""), 5000);
     } catch (err) { status(`Could not open ${file.name}: ${(err as Error).message}`); setTimeout(() => status(""), 7000); }
+  }
+
+  /** Switch between model space (-1) and a paper-space layout. */
+  function activate(i: number): void {
+    if (!doc) return;
+    layoutI = i; sel.clear(); selected = -1; pts = []; drawn = []; hits = []; rband = null; history.length = 0;
+    if (i < 0 || !doc.layouts?.[i]) { layoutI = -1; ents = modelEnts; idx = modelIdx; bounds = modelBounds; }
+    else {
+      const L = doc.layouts[i]; ents = L.entities; bounds = M.layoutBounds(L) ?? modelBounds;
+      let ix = layoutIdxCache.get(i); if (!ix) { ix = M.buildIndex(ents, bounds!); layoutIdxCache.set(i, ix); } idx = ix;
+    }
+    view = M.fitView(bounds!, view.w, view.h);
+    tabsEl.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.classList.toggle("on", Number(b.dataset.li) === layoutI));
+    buildLayers(); showProps(); updateStatus(); draw();
+  }
+  function buildTabs(): void {
+    const n = doc?.layouts?.length ?? 0;
+    tabsEl.style.display = n ? "flex" : "none";
+    tabsEl.innerHTML = n ? `<button data-li="-1">Model</button>` + doc!.layouts!.map((l, i) => `<button data-li="${i}">${escapeHtml(l.name)}</button>`).join("") : "";
+    tabsEl.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.onclick = () => activate(Number(b.dataset.li)));
   }
 
   function setSel(ids: number[], add = false): void {
@@ -251,10 +312,12 @@ function build(): void {
     const e = ents[selected];
     if (!e) { propsEl.innerHTML = doc ? `<table>${row("File", name)}${row("Units", doc.units ?? "unitless")}${row("Objects", String(ents.length))}${row("Layers", String(doc.layers.length))}${[...M.countByType(ents)].map(([k, n]) => row(k, String(n))).join("")}</table>` : ""; return; }
     const m = M.entityMetrics(e), rows: string[] = [row("Type", e.type), row("Layer", e.layer), row("Colour", e.rgb != null ? rgbToCss(e.rgb) : e.color ? `ACI ${e.color}` : "ByLayer")];
+    rows.push(row("Linetype", e.lineType ?? layerOf(e.layer)?.lineType ?? "ByLayer"));
+    if (e.type === "LWPOLYLINE" && e.hatch) rows.push(row("Hatch", e.hatch.solid ? "Solid" : (e.hatch.pattern ?? "Pattern")), row("Loops", String(e.hatch.loops.length)), ...(e.hatch.solid ? [] : [row("Angle", (e.hatch.angle ?? 0).toFixed(2) + "°"), row("Pattern scale", String(+(e.hatch.scale ?? 1).toFixed(4)))]));
     if (e.type === "LINE") rows.push(row("Start", pt(e.start)), row("End", pt(e.end)));
     if (e.type === "CIRCLE" || e.type === "ARC") rows.push(row("Center", pt(e.center)));
     if (e.type === "ARC") rows.push(row("Start angle", e.startAngle.toFixed(2) + "°"), row("End angle", e.endAngle.toFixed(2) + "°"), row("Sweep", m.sweep!.toFixed(2) + "°"));
-    if (e.type === "LWPOLYLINE") rows.push(row("Vertices", String(e.points.length)), row("Closed", e.closed ? "Yes" : "No"));
+    if (e.type === "LWPOLYLINE" && !e.hatch) rows.push(row("Vertices", String(e.points.length)), row("Closed", e.closed ? "Yes" : "No"));
     if (e.type === "TEXT") rows.push(row("Text", e.value), row("Height", fmt(e.height)), row("Rotation", (e.rotation ?? 0).toFixed(2) + "°"), row("Position", pt(e.position)));
     if (e.type === "POINT") rows.push(row("Position", pt(e.position)));
     if (m.radius != null) rows.push(row("Radius", fmt(m.radius)), row("Diameter", fmt(m.diameter!)));
@@ -393,7 +456,7 @@ function build(): void {
   });
   function updateStatus(p?: M.Pt) {
     const c = p ?? cursor; const zoomPct = doc && bounds ? Math.round((view.scale / M.fitView(bounds, view.w, view.h).scale) * 100) : 100;
-    statusEl.innerHTML = `<span>${escapeHtml(name || "No file")}</span><span>${c && doc ? `X ${M.convertLength(c.x, doc.units, du).toFixed(3)}  Y ${M.convertLength(c.y, doc.units, du).toFixed(3)}` : ""}</span><span>Units: ${escapeHtml(doc ? M.unitLabel(doc.units, du) : "-")}</span><span>Zoom ${zoomPct}%</span><span>Tool: ${escapeHtml(T.find(([k]) => k === tool)?.[1] ?? tool)}</span><span style="flex:1"></span><span>Snap ${snapOn ? "on" : "off"}</span>`;
+    statusEl.innerHTML = `<span>${escapeHtml(name || "No file")}</span><span>${c && doc ? `X ${M.convertLength(c.x, doc.units, du).toFixed(3)}  Y ${M.convertLength(c.y, doc.units, du).toFixed(3)}` : ""}</span><span>${escapeHtml(layoutI >= 0 && doc?.layouts?.[layoutI] ? doc.layouts[layoutI].name : "Model")}</span><span>Units: ${escapeHtml(doc ? M.unitLabel(doc.units, du) : "-")}</span><span>Zoom ${zoomPct}%</span><span>Tool: ${escapeHtml(T.find(([k]) => k === tool)?.[1] ?? tool)}</span><span style="flex:1"></span><span>Snap ${snapOn ? "on" : "off"}</span>`;
   }
 
   /* ── drop ── */
@@ -420,20 +483,53 @@ function build(): void {
   const download = (blob: Blob, fn: string) => { const a = document.createElement("a"); const u = URL.createObjectURL(blob); a.href = u; a.download = fn; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); };
   function offscreen(scale: number): HTMLCanvasElement { const c = document.createElement("canvas"); c.width = Math.round(view.w * scale); c.height = Math.round(view.h * scale); const x = c.getContext("2d")!; x.scale(scale, scale); render(x, view, false); return c; }
   function exportPng() { if (!doc) return; offscreen(2).toBlob((b) => b && download(b, `${base()}.png`), "image/png"); }
-  function exportSvg() {
-    if (!doc) return; const v = view; const o: string[] = [];
-    const P = (x: number, y: number) => { const s = M.worldToScreen(v, x, y); return `${s.x.toFixed(2)},${s.y.toFixed(2)}`; };
-    for (let i = 0; i < ents.length; i++) {
-      const e = ents[i]; if (!visible(e) || !M.bboxVisible(idx!.boxes[i], v)) continue; const col = colorOf(e), st = `stroke="${col}" fill="none" stroke-width="${lw}"`;
-      if (e.type === "LINE") o.push(`<line x1="${P(e.start.x, e.start.y).split(",")[0]}" y1="${P(e.start.x, e.start.y).split(",")[1]}" x2="${P(e.end.x, e.end.y).split(",")[0]}" y2="${P(e.end.x, e.end.y).split(",")[1]}" ${st}/>`);
-      else if (e.type === "CIRCLE") { const c = M.worldToScreen(v, e.center.x, e.center.y); o.push(`<circle cx="${c.x.toFixed(2)}" cy="${c.y.toFixed(2)}" r="${(e.radius * v.scale).toFixed(2)}" ${st}/>`); }
-      else if (e.type === "ARC") { const r = e.radius * v.scale, s = e.startAngle * Math.PI / 180, en = e.endAngle * Math.PI / 180; const a = M.worldToScreen(v, e.center.x + e.radius * Math.cos(s), e.center.y + e.radius * Math.sin(s)), b = M.worldToScreen(v, e.center.x + e.radius * Math.cos(en), e.center.y + e.radius * Math.sin(en)); o.push(`<path d="M${a.x.toFixed(2)},${a.y.toFixed(2)} A${r.toFixed(2)},${r.toFixed(2)} 0 ${M.arcSweepDeg(e.startAngle, e.endAngle) > 180 ? 1 : 0} 0 ${b.x.toFixed(2)},${b.y.toFixed(2)}" ${st}/>`); }
+  /** SVG markup for a list of entities seen through view `v` (pixel space). */
+  function svgEntities(list: DxfEntity[], ix: M.SpatialIndex | null, v: M.View, cull: M.BBox, o: string[], uid: { n: number }): void {
+    const F = (n: number) => n.toFixed(2);
+    const P = (x: number, y: number) => { const q = M.worldToScreen(v, x, y); return `${F(q.x)},${F(q.y)}`; };
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i]; if (!visible(e)) continue;
+      if (ix && !M.boxesIntersect(ix.boxes[i], cull)) continue;
+      const col = colorOf(e), dash = dashFor(e, v), da = dash.length ? ` stroke-dasharray="${dash.map(F).join(" ")}"` : "";
+      const st = `stroke="${col}" fill="none" stroke-width="${lw}"${da}`;
+      if (e.type === "LINE") { const a = M.worldToScreen(v, e.start.x, e.start.y), b = M.worldToScreen(v, e.end.x, e.end.y); o.push(`<line x1="${F(a.x)}" y1="${F(a.y)}" x2="${F(b.x)}" y2="${F(b.y)}" ${st}/>`); }
+      else if (e.type === "CIRCLE") { const c = M.worldToScreen(v, e.center.x, e.center.y); o.push(`<circle cx="${F(c.x)}" cy="${F(c.y)}" r="${F(e.radius * v.scale)}" ${st}/>`); }
+      else if (e.type === "ARC") { const r = e.radius * v.scale, s0 = e.startAngle * Math.PI / 180, en = e.endAngle * Math.PI / 180; const a = M.worldToScreen(v, e.center.x + e.radius * Math.cos(s0), e.center.y + e.radius * Math.sin(s0)), b = M.worldToScreen(v, e.center.x + e.radius * Math.cos(en), e.center.y + e.radius * Math.sin(en)); o.push(`<path d="M${F(a.x)},${F(a.y)} A${F(r)},${F(r)} 0 ${M.arcSweepDeg(e.startAngle, e.endAngle) > 180 ? 1 : 0} 0 ${F(b.x)},${F(b.y)}" ${st}/>`); }
+      else if (e.type === "LWPOLYLINE" && e.hatch) {
+        const d = e.hatch.loops.map((l) => "M" + l.map((q) => P(q.x, q.y)).join(" L") + "Z").join(" ");
+        const fams = e.hatch.solid ? [] : M.hatchFamilies(e.hatch.pattern, e.hatch.angle, e.hatch.scale);
+        if (e.hatch.solid || Math.min(...fams.map((f) => f.spacing)) * v.scale < 3) o.push(`<path d="${d}" fill="${col}" fill-opacity="${e.hatch.solid ? 1 : 0.35}" fill-rule="evenodd" stroke="none"/>`);
+        else {
+          const id = `h${uid.n++}`, vb = visibleBox(v), eb = M.entityBBox(e);
+          const box = { minX: Math.max(vb.minX, eb.minX), minY: Math.max(vb.minY, eb.minY), maxX: Math.min(vb.maxX, eb.maxX), maxY: Math.min(vb.maxY, eb.maxY) };
+          let ls = ""; for (const f of fams) for (const sg of M.hatchLineSegments(box, f.angle, f.spacing)) { const a = M.worldToScreen(v, sg[0], sg[1]), b = M.worldToScreen(v, sg[2], sg[3]); ls += `M${F(a.x)},${F(a.y)}L${F(b.x)},${F(b.y)}`; }
+          o.push(`<clipPath id="${id}"><path d="${d}" clip-rule="evenodd"/></clipPath><path d="${ls}" clip-path="url(#${id})" stroke="${col}" fill="none" stroke-width="${Math.max(0.6, lw * 0.6)}"/>`);
+        }
+      }
       else if (e.type === "LWPOLYLINE") o.push(`<${e.closed ? "polygon" : "polyline"} points="${e.points.map((q) => P(q.x, q.y)).join(" ")}" ${st}/>`);
-      else if (e.type === "TEXT") { const p = M.worldToScreen(v, e.position.x, e.position.y); o.push(`<text x="${p.x.toFixed(2)}" y="${p.y.toFixed(2)}" font-size="${(e.height * v.scale).toFixed(2)}" fill="${col}" transform="rotate(${-(e.rotation ?? 0)} ${p.x.toFixed(2)} ${p.y.toFixed(2)})" font-family="sans-serif">${escapeHtml(e.value)}</text>`); }
-      else if (e.type === "POINT") { const p = M.worldToScreen(v, e.position.x, e.position.y); o.push(`<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="1.5" fill="${col}"/>`); }
+      else if (e.type === "TEXT") {
+        const p = M.worldToScreen(v, e.position.x, e.position.y);
+        const anchor = e.align === "center" ? "middle" : e.align === "right" ? "end" : "start";
+        const base = e.valign === "top" ? "hanging" : e.valign === "middle" ? "central" : e.valign === "bottom" ? "text-after-edge" : "alphabetic";
+        o.push(`<text x="${F(p.x)}" y="${F(p.y)}" font-size="${F(e.height * v.scale)}" fill="${col}" text-anchor="${anchor}" dominant-baseline="${base}" transform="rotate(${-(e.rotation ?? 0)} ${F(p.x)} ${F(p.y)})" font-family="sans-serif">${escapeHtml(e.value)}</text>`);
+      }
+      else if (e.type === "POINT") { const p = M.worldToScreen(v, e.position.x, e.position.y); o.push(`<circle cx="${F(p.x)}" cy="${F(p.y)}" r="1.5" fill="${col}"/>`); }
+    }
+  }
+  function exportSvg() {
+    if (!doc) return; const v = view, o: string[] = [], uid = { n: 0 };
+    svgEntities(ents, idx, v, visibleBox(v), o, uid);
+    if (layoutI >= 0 && doc.layouts?.[layoutI]) {
+      for (const vp of doc.layouts[layoutI].viewports) {
+        const r = M.viewportRect(vp), a = M.worldToScreen(v, r.minX, r.maxY), b = M.worldToScreen(v, r.maxX, r.minY), ctr = M.worldToScreen(v, vp.center.x, vp.center.y), sc = M.viewportScale(vp);
+        const id = `vp${uid.n++}`, vv: M.View = { cx: vp.viewCenter.x, cy: vp.viewCenter.y, scale: v.scale * sc, w: ctr.x * 2, h: ctr.y * 2 }, rad = Math.hypot(vp.width, vp.height) / 2 / sc;
+        o.push(`<clipPath id="${id}"><rect x="${a.x.toFixed(2)}" y="${a.y.toFixed(2)}" width="${(b.x - a.x).toFixed(2)}" height="${(b.y - a.y).toFixed(2)}"/></clipPath><g clip-path="url(#${id})"><g transform="rotate(${vp.twist ?? 0} ${ctr.x.toFixed(2)} ${ctr.y.toFixed(2)})">`);
+        svgEntities(modelEnts, modelIdx, vv, { minX: vp.viewCenter.x - rad, maxX: vp.viewCenter.x + rad, minY: vp.viewCenter.y - rad, maxY: vp.viewCenter.y + rad }, o, uid);
+        o.push("</g></g>");
+      }
     }
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${v.w}" height="${v.h}" viewBox="0 0 ${v.w} ${v.h}"><rect width="100%" height="100%" fill="${BG[bg]}"/>${o.join("")}</svg>`;
-    download(new Blob([svg], { type: "image/svg+xml" }), `${base()}.svg`);
+    download(new Blob([svg], { type: "image/svg+xml" }), `${base()}${layoutI >= 0 ? "-" + (doc.layouts?.[layoutI]?.name ?? "layout") : ""}.svg`);
   }
   function doPrint() {
     if (!doc) return; const url = offscreen(2).toDataURL("image/png");

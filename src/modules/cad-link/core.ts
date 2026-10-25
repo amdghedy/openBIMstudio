@@ -234,6 +234,7 @@ export function buildGeometry(
         seg(e.start.x, e.start.y, e.start.z ?? 0, e.end.x, e.end.y, e.end.z ?? 0);
         break;
       case "LWPOLYLINE":
+        if (e.hatch) break; // hatch boundaries are fills, not linework: keeps the linked underlay clean
         chain(e.points, !!e.closed);
         break;
       case "CIRCLE":

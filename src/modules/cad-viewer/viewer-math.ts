@@ -2,7 +2,7 @@
  * Pure geometry for the CAD Viewer: view transform, picking, snapping, measuring, units, text search.
  * No DOM, no rendering; everything works on the flattened DxfEntity vocabulary the DXF/DWG readers produce.
  */
-import type { DxfEntity, DxfPoint, DxfUnits } from "../drawings/dxf-types";
+import type { DxfEntity, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
 
 export type Pt = { x: number; y: number };
 export interface BBox { minX: number; minY: number; maxX: number; maxY: number }
@@ -63,6 +63,15 @@ export function textBox(e: Extract<DxfEntity, { type: "TEXT" }>): { w: number; h
   return { w: Math.max(e.height * 0.6 * e.value.length, e.height * 0.3), h: e.height };
 }
 
+/** Lower-left corner of the text box relative to its insertion point, in the text's own frame. */
+export function textOrigin(e: Extract<DxfEntity, { type: "TEXT" }>): { dx: number; dy: number } {
+  const { w, h } = textBox(e);
+  return {
+    dx: e.align === "center" ? -w / 2 : e.align === "right" ? -w : 0,
+    dy: e.valign === "top" ? -h : e.valign === "middle" ? -h / 2 : 0,
+  };
+}
+
 export function entityBBox(e: DxfEntity): BBox {
   switch (e.type) {
     case "LINE": return { minX: Math.min(e.start.x, e.end.x), minY: Math.min(e.start.y, e.end.y), maxX: Math.max(e.start.x, e.end.x), maxY: Math.max(e.start.y, e.end.y) };
@@ -72,10 +81,10 @@ export function entityBBox(e: DxfEntity): BBox {
       for (const q of [0, 90, 180, 270]) if (angleInArc(q, e.startAngle, e.endAngle)) pts.push(arcPt(e, q));
       return boxOf(pts);
     }
-    case "LWPOLYLINE": return boxOf(e.points);
+    case "LWPOLYLINE": return boxOf(e.hatch ? e.hatch.loops.flat() : e.points);
     case "TEXT": {
-      const { w, h } = textBox(e), r = (e.rotation ?? 0) * DEG, c = Math.cos(r), s = Math.sin(r);
-      return boxOf([{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }].map((p) => ({ x: e.position.x + p.x * c - p.y * s, y: e.position.y + p.x * s + p.y * c })));
+      const { w, h } = textBox(e), o = textOrigin(e), r = (e.rotation ?? 0) * DEG, c = Math.cos(r), s = Math.sin(r);
+      return boxOf([{ x: o.dx, y: o.dy }, { x: o.dx + w, y: o.dy }, { x: o.dx + w, y: o.dy + h }, { x: o.dx, y: o.dy + h }].map((p) => ({ x: e.position.x + p.x * c - p.y * s, y: e.position.y + p.x * s + p.y * c })));
     }
     case "POINT": return { minX: e.position.x, minY: e.position.y, maxX: e.position.x, maxY: e.position.y };
   }
@@ -87,6 +96,8 @@ function boxOf(pts: Array<{ x: number; y: number }>): BBox {
   return { minX, minY, maxX, maxY };
 }
 const arcPt = (e: { center: DxfPoint; radius: number }, deg: number): Pt => ({ x: e.center.x + e.radius * Math.cos(deg * DEG), y: e.center.y + e.radius * Math.sin(deg * DEG) });
+
+export const isHatchEntity = (e: DxfEntity): boolean => e.type === "LWPOLYLINE" && !!e.hatch;
 
 export function unionBBox(a: BBox | null, b: BBox): BBox {
   return a ? { minX: Math.min(a.minX, b.minX), minY: Math.min(a.minY, b.minY), maxX: Math.max(a.maxX, b.maxX), maxY: Math.max(a.maxY, b.maxY) } : { ...b };
@@ -127,8 +138,8 @@ export function distToEntity(e: DxfEntity, x: number, y: number): number {
     }
     case "LWPOLYLINE": { let d = Infinity; for (const [a, b] of polySegs(e)) d = Math.min(d, segDist(x, y, a.x, a.y, b.x, b.y)); return e.points.length === 1 ? Math.hypot(x - e.points[0].x, y - e.points[0].y) : d; }
     case "TEXT": {
-      const { w, h } = textBox(e), r = -(e.rotation ?? 0) * DEG, c = Math.cos(r), s = Math.sin(r);
-      const lx = (x - e.position.x) * c - (y - e.position.y) * s, ly = (x - e.position.x) * s + (y - e.position.y) * c;
+      const { w, h } = textBox(e), o = textOrigin(e), r = -(e.rotation ?? 0) * DEG, c = Math.cos(r), s = Math.sin(r);
+      const lx = (x - e.position.x) * c - (y - e.position.y) * s - o.dx, ly = (x - e.position.x) * s + (y - e.position.y) * c - o.dy;
       const dx = Math.max(-lx, 0, lx - w), dy = Math.max(-ly, 0, ly - h);
       return Math.hypot(dx, dy);
     }
@@ -186,7 +197,12 @@ export function entityMetrics(e: DxfEntity): EntityMetrics {
     case "LINE": return { length: distance(e.start, e.end), angle: norm360((Math.atan2(e.end.y - e.start.y, e.end.x - e.start.x) * 180) / Math.PI) };
     case "CIRCLE": return { radius: e.radius, diameter: e.radius * 2, length: TAU * e.radius, area: Math.PI * e.radius * e.radius };
     case "ARC": { const sw = arcSweepDeg(e.startAngle, e.endAngle); return { radius: e.radius, diameter: e.radius * 2, sweep: sw, length: e.radius * sw * DEG }; }
-    case "LWPOLYLINE": return { length: pathLength(e.points, !!e.closed), ...(e.closed && e.points.length > 2 ? { area: polygonArea(e.points) } : {}) };
+    case "LWPOLYLINE":
+      if (e.hatch) {
+        const [outer, ...holes] = e.hatch.loops;
+        return { length: e.hatch.loops.reduce((a, l) => a + pathLength(l, true), 0), area: Math.max(0, polygonArea(outer) - holes.reduce((a, l) => a + polygonArea(l), 0)) };
+      }
+      return { length: pathLength(e.points, !!e.closed), ...(e.closed && e.points.length > 2 ? { area: polygonArea(e.points) } : {}) };
     default: return {};
   }
 }
@@ -248,7 +264,7 @@ export function pickEntity(idx: SpatialIndex, entities: DxfEntity[], x: number, 
   for (const i of queryIndex(idx, x, y, tol)) {
     const e = entities[i];
     if (!visible(e)) continue;
-    const d = distToEntity(e, x, y);
+    const d = distToEntity(e, x, y) + (isHatchEntity(e) ? tol * 0.6 : 0); // a line near the cursor beats a hatch edge
     if (d < bd - 1e-12) { bd = d; best = i; }
   }
   return best;
@@ -291,7 +307,7 @@ const TIER: Record<SnapKind, number> = { endpoint: 0, midpoint: 0, center: 0, qu
 
 export function findSnap(idx: SpatialIndex, entities: DxfEntity[], x: number, y: number, tol: number, modes: SnapKind[] = ALL_SNAPS, visible: (e: DxfEntity) => boolean = () => true): Snap | null {
   const on = new Set(modes);
-  const ids = queryIndex(idx, x, y, tol).filter((i) => visible(entities[i]));
+  const ids = queryIndex(idx, x, y, tol).filter((i) => visible(entities[i]) && !isHatchEntity(entities[i]));
   let best: Snap | null = null, bd = tol;
   const consider = (s: Snap) => {
     if (!on.has(s.kind)) return;
@@ -407,4 +423,99 @@ export function gridStep(scale: number, minPx = 18): number {
 /** CSV text for a list of measurement result lines. */
 export function resultsToCsv(lines: string[]): string {
   return "No,Measurement\n" + lines.map((l, i) => `${i + 1},"${l.replace(/"/g, '""')}"`).join("\n");
+}
+
+
+/* ───────────────────────── hatch patterns ───────────────────────── */
+
+export interface HatchFamily { angle: number; spacing: number }
+
+const PAT: Array<[RegExp, Array<[number, number]>]> = [
+  [/^ANSI3[7-8]$|^NET$|^GRID$|^SQUARE$|^AR-B816$|^BRICK$|^AR-B88$/i, [[45, 3.175], [135, 3.175]]],
+  [/^NET3$/i, [[0, 3.175], [60, 3.175], [120, 3.175]]],
+  [/^ANSI32$|^STEEL$/i, [[45, 9.525], [45, 11.1]]],
+  [/^ANSI33$/i, [[45, 6.35], [45, 8]]],
+  [/^ANSI34$|^ANSI35$|^ANSI36$/i, [[45, 4.5]]],
+  [/^LINE$|^AR-CONC$|^EARTH$|^ESCHER$/i, [[0, 3.175]]],
+  [/^DOTS$|^DOT$|^GRAVEL$|^AR-SAND$|^AR-HBONE$|^HONEY$|^HEX$|^CROSS$/i, [[0, 3.175], [90, 3.175]]],
+  [/^ANSI31$|^ANSI3\d$|^ANGLE$|^ZIGZAG$|^SOLID$/i, [[45, 3.175]]],
+];
+
+/** Parallel-line families for a (non-solid) CAD hatch pattern. Spacing is in drawing units. */
+export function hatchFamilies(pattern: string | undefined, angle = 0, scale = 1): HatchFamily[] {
+  const name = (pattern ?? "ANSI31").trim();
+  const row = PAT.find(([re]) => re.test(name))?.[1] ?? [[45, 3.175]];
+  const sc = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  return row.map(([a, sp]) => ({ angle: a + angle, spacing: sp * sc }));
+}
+
+/** Lines of one hatch family covering `box`, anchored at the drawing origin like AutoCAD. Segment = [x1,y1,x2,y2]. */
+export function hatchLineSegments(box: BBox, angleDeg: number, spacing: number, maxLines = 4000): Array<[number, number, number, number]> {
+  if (!(spacing > 0)) return [];
+  const a = angleDeg * DEG, dx = Math.cos(a), dy = Math.sin(a), nx = -dy, ny = dx;
+  const cs = [[box.minX, box.minY], [box.maxX, box.minY], [box.maxX, box.maxY], [box.minX, box.maxY]];
+  let nMin = Infinity, nMax = -Infinity, tMin = Infinity, tMax = -Infinity;
+  for (const [x, y] of cs) { const n = x * nx + y * ny, t = x * dx + y * dy; nMin = Math.min(nMin, n); nMax = Math.max(nMax, n); tMin = Math.min(tMin, t); tMax = Math.max(tMax, t); }
+  const k0 = Math.ceil(nMin / spacing), k1 = Math.floor(nMax / spacing);
+  if (k1 - k0 + 1 > maxLines) return [];
+  const out: Array<[number, number, number, number]> = [];
+  for (let k = k0; k <= k1; k++) { const o = k * spacing; out.push([o * nx + tMin * dx, o * ny + tMin * dy, o * nx + tMax * dx, o * ny + tMax * dy]); }
+  return out;
+}
+
+/* ───────────────────────── linetypes ───────────────────────── */
+
+/** On-screen dash patterns (px) used when the file does not define a linetype. */
+const FALLBACK_DASH: Array<[RegExp, number[]]> = [
+  [/PHANTOM/i, [20, 4, 4, 4, 4, 4]],
+  [/CENTER|ISO04|ISO08|ISO10/i, [20, 4, 5, 4]],
+  [/DASHDOT|DASHDOT2|ISO03|ISO05|ISO09|ISO12|ISO13|ISO14|ISO15/i, [10, 4, 2, 4]],
+  [/HIDDEN|ISO02|ISO06/i, [6, 4]],
+  [/DASHED|DASH|BORDER|ISO01/i, [10, 6]],
+  [/DOT|DIVIDE|ISO07|ISO11/i, [1.5, 4]],
+];
+
+export function isContinuousLinetype(name: string | undefined): boolean {
+  if (!name) return true;
+  const n = name.trim().toUpperCase();
+  return n === "" || n === "CONTINUOUS" || n === "BYLAYER" || n === "BYBLOCK";
+}
+
+/**
+ * Canvas dash array (px) for a linetype, or [] for a continuous line.
+ * Defined patterns scale with the drawing (world units * ltscale); undefined names fall back to a fixed screen pattern.
+ */
+export function resolveDash(name: string | undefined, defs: Record<string, number[]> | undefined, ltscale: number | undefined, viewScale: number): number[] {
+  if (isContinuousLinetype(name)) return [];
+  const key = name!.trim().toUpperCase();
+  const def = defs?.[key];
+  if (def && def.length >= 2) {
+    const k = (ltscale && ltscale > 0 ? ltscale : 1) * viewScale;
+    const px = def.map((v) => (Math.abs(v) < 1e-12 ? 1 : Math.max(Math.abs(v) * k, 0.6)));
+    const total = px.reduce((a, b) => a + b, 0);
+    if (total < 3.5) return [];        // too dense to read at this zoom: draw solid
+    if (total > 4000) return [];       // absurdly long: draw solid
+    return px;
+  }
+  return FALLBACK_DASH.find(([re]) => re.test(key))?.[1] ?? [];
+}
+
+/* ───────────────────────── paper-space layouts ───────────────────────── */
+
+export const viewportRect = (vp: DxfViewport): BBox => ({ minX: vp.center.x - vp.width / 2, maxX: vp.center.x + vp.width / 2, minY: vp.center.y - vp.height / 2, maxY: vp.center.y + vp.height / 2 });
+/** Sheet units per model unit through this viewport. */
+export const viewportScale = (vp: DxfViewport): number => vp.height / vp.viewHeight;
+
+/** Model point -> sheet point through a viewport (view twist rotates the model by -twist). */
+export function modelToSheet(vp: DxfViewport, p: Pt): Pt {
+  const s = viewportScale(vp), a = -(vp.twist ?? 0) * DEG, c = Math.cos(a), sn = Math.sin(a);
+  const dx = (p.x - vp.viewCenter.x) * s, dy = (p.y - vp.viewCenter.y) * s;
+  return { x: vp.center.x + dx * c - dy * sn, y: vp.center.y + dx * sn + dy * c };
+}
+
+export function layoutBounds(l: DxfLayout): BBox | null {
+  let b: BBox | null = null;
+  for (const e of l.entities) { const eb = entityBBox(e); if (Number.isFinite(eb.minX + eb.maxX + eb.minY + eb.maxY)) b = unionBBox(b, eb); }
+  for (const vp of l.viewports) b = unionBBox(b, viewportRect(vp));
+  return b;
 }

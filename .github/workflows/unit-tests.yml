@@ -40,6 +40,8 @@ jobs:
       - run: npm run test:slope
       - run: npm run test:cad-viewer
       - run: npm run test:ocs
+      - run: npm run test:dxf-features
+      - run: npm run test:dwg-features
       - run: npm run test:north
       - run: npm run test:ai-privacy
       - run: npm run test:project-crypto
