@@ -38,3 +38,10 @@ export async function decryptString(key: CryptoKey, payload: string, aad = ""): 
 }
 
 export const _b64 = { b64, unb64 };
+
+/**
+ * Public API name for encrypting secrets at rest. Identical to
+ * {@link encryptString} (base64(iv ‖ ciphertext+tag), fresh IV per call);
+ * kept as a stable alias so callers and tests can rely on `encryptSecret`.
+ */
+export const encryptSecret = encryptString;

@@ -146,3 +146,18 @@ export function evaluateExpression(source: string, scope: Scope, fns: FnTable): 
   if (peek().t !== "end") throw new Error(`Unexpected "${peek().v}"`);
   return result;
 }
+
+/**
+ * Convenience wrapper around {@link evaluateExpression} for one-off evaluations.
+ * Scope and function table are optional, and any parse/evaluation error
+ * (unknown name, unknown function, unsupported syntax, too long, …) yields
+ * `null` instead of throwing, so formulas coming from untrusted family files
+ * can never crash the caller.
+ */
+export function safeEval(source: string, scope: Scope = {}, fns: FnTable = {}): unknown {
+  try {
+    return evaluateExpression(source, scope, fns);
+  } catch {
+    return null;
+  }
+}
