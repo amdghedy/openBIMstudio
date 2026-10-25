@@ -11,11 +11,21 @@ import { ctx } from "../../core/context";
 import { register } from "../../core/services";
 import { route as routeImpl } from "./router";
 import { sizeForSystem as sizeImpl, validateSize, defaultVelocityFor, maxVelocityFor } from "./sizing";
+import {
+  ductPressureDrop as ductPd, pipePressureDrop as pipePd, worstPath as worstPathImpl, classifyFrictionRate as classifyImpl,
+} from "./pressure";
 import type { MepSize, MepSystem, RouteRequest, RouteResult, SizingResult } from "./types";
 
 export * from "./types";
 export { route, routeSimple } from "./router";
 export { sizeForSystem, validateSize, defaultVelocityFor, maxVelocityFor } from "./sizing";
+export {
+  ductPressureDrop, pipePressureDrop, worstPath, classifyFrictionRate,
+  colebrook, hydraulicDiameter, FITTING_C, ROUGHNESS, FLUID,
+} from "./pressure";
+export type {
+  DuctSegment, PipeSegment, PressureEdge, PressureNetwork, PressureResult, WorstPathResult,
+} from "./pressure";
 
 /** Public MEP service interface - what consumers call. */
 export interface MepService {
@@ -47,6 +57,13 @@ export function setupMep(): MepService {
     defaultVelocityFor,
     maxVelocityFor,
   };
+
+  // v0.67: pressure-loss engineering rides on the same service.
+  const svcAny = svc as any;
+  svcAny.ductPressureDrop = ductPd;
+  svcAny.pipePressureDrop = pipePd;
+  svcAny.worstPath = worstPathImpl;
+  svcAny.classifyFrictionRate = classifyImpl;
 
   // Register in the typed service registry + legacy ctx.features bag.
   try {
