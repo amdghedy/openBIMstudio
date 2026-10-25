@@ -38,6 +38,7 @@ jobs:
       - run: npm run test:props
       - run: npm run test:fitting-outline
       - run: npm run test:slope
+      - run: npm run test:cad-viewer
       - run: npm run test:north
       - run: npm run test:ai-privacy
       - run: npm run test:project-crypto

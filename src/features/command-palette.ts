@@ -441,6 +441,7 @@ function bootstrapCommands(): void {
     },
   });
   registerCommand({ id: "app.install", label: "Install as desktop app (works offline)", category: "File", run: () => { void import("../core/pwa").then((m) => m.installApp()); } });
+  registerCommand({ id: "cad.viewer", label: "CAD Viewer: open DWG / DXF…", category: "Tools", run: () => { void import("./cad-viewer").then((m) => m.openCadViewer()); } });
   registerCommand({ id: "north.true", label: "Rotate True North…", category: "Tools", run: () => { void import("./north-ui").then((m) => m.promptTrueNorth()); } });
   registerCommand({ id: "north.orient-project", label: "Plan orientation: Project North", category: "Tools", run: () => { void import("../modules/north/north").then((m) => m.setNorthState({ planOrientation: "project" })); } });
   registerCommand({ id: "north.orient-true", label: "Plan orientation: True North", category: "Tools", run: () => { void import("../modules/north/north").then((m) => m.setNorthState({ planOrientation: "true" })); } });

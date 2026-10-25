@@ -2470,6 +2470,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("wall", "Styles", safe(() => void openFamilyLibrary(), "Styles / Type Library"), { title: "Open element type and family-style library" }),
       sep(),
       groupLabel("Position"),
+      b("viewcube", "CAD Viewer", safe(() => void import("../features/cad-viewer").then((m) => m.openCadViewer()), "CAD Viewer"), {
+        title: "Open a DWG or DXF in the standalone 2D viewer: layers, measure, snaps, search, markup, export",
+      }),
       b("rotate", "True North", safe(() => void import("../features/north-ui").then((m) => m.promptTrueNorth()), "Rotate True North"), {
         title: "Set the angle between Project North (top of the plan) and True North",
       }),
