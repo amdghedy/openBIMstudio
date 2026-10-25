@@ -42,3 +42,6 @@ obs-p*-*.txt
 # Test & diagnostic artifacts
 *.ifc
 obs-*.txt
+
+# Generated build-time WASM copy (scripts/copy-libredwg-wasm.mjs)
+public/libredwg/
