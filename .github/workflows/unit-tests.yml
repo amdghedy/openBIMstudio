@@ -49,3 +49,6 @@ jobs:
       - run: npm run test:plan-draw
       - run: npm run test:view-lock
       - run: npm run test:section-box
+      - name: Dependency audit (production, high severity)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
