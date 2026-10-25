@@ -70,7 +70,7 @@ function build(): void {
   let ents: DxfEntity[] = [], idx: M.SpatialIndex | null = null, bounds: M.BBox | null = null;
   let view: M.View = { cx: 0, cy: 0, scale: 1, w: 800, h: 600 };
   const history: M.View[] = [];
-  let tool: Tool = "pan";
+  let tool: Tool = "select";
   let bg = "black", cmode: ColorMode = "layer", lw = 1, du: M.DisplayUnit = "drawing";
   const hidden = new Set<string>();
   let snapOn = true; const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
@@ -79,6 +79,8 @@ function build(): void {
   let markups: Markup[] = []; let hits: M.TextHit[] = [], hitI = -1;
   let dragging: { x: number; y: number } | null = null, winStart: { x: number; y: number } | null = null, winNow: { x: number; y: number } | null = null;
   let raf = 0;
+  let press: { x: number; y: number; moved: boolean; id: number } | null = null;
+  const ptrs = new Map<number, M.Pt>(); let pinch = 0;
 
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
@@ -188,7 +190,7 @@ function build(): void {
       hidden.clear(); for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
       selected = -1; pts = []; drawn = []; markups = []; hits = []; results = []; history.length = 0;
       emptyEl.style.display = "none"; view = M.fitView(b, view.w, view.h);
-      buildLayers(); showProps(); showMeas(); setTool("pan"); updateStatus(); draw();
+      buildLayers(); showProps(); showMeas(); setTool("select"); updateStatus(); draw();
       const sk = doc.skipped && Object.keys(doc.skipped).length ? `  (not drawn: ${Object.entries(doc.skipped).map(([k, n]) => `${k}×${n}`).join(", ")})` : "";
       status(`${r.summary}${sk}`); setTimeout(() => status(""), 5000);
     } catch (err) { status(`Could not open ${file.name}: ${(err as Error).message}`); setTimeout(() => status(""), 7000); }
@@ -230,7 +232,7 @@ function build(): void {
   const row = (k: string, v: string) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`;
   const pt = (p: { x: number; y: number }) => `${M.convertLength(p.x, doc?.units, du).toFixed(3)}, ${M.convertLength(p.y, doc?.units, du).toFixed(3)}`;
   function showMeas() {
-    measEl.innerHTML = results.length ? results.map((r) => `<div>${escapeHtml(r)}</div>`).join("") + `<button data-r="mclr" style="margin-top:6px">Clear</button>` : `<span style="color:#778">Pick a measure tool, then click points. Enter or double-click finishes, Esc cancels.</span>`;
+    measEl.innerHTML = results.length ? results.map((r) => `<div>${escapeHtml(r)}</div>`).join("") + `<button data-r="mclr" style="margin-top:6px">Clear</button>` : `<span style="color:#778">Wheel zooms, drag pans, click selects. Pick a measure tool, then click points. Enter or double-click finishes, Esc cancels.</span>`;
     const b = measEl.querySelector<HTMLButtonElement>("[data-r=mclr]"); if (b) b.onclick = () => { results = []; drawn = []; showMeas(); draw(); };
   }
 
@@ -273,7 +275,7 @@ function build(): void {
     q.onkeydown = (e) => { if (e.key === "Enter") { e.stopPropagation(); stepHit(e.shiftKey ? -1 : 1); } };
   }
   function stepHit(d: number) { if (!hits.length) return; hitI = (hitI + d + hits.length) % hits.length; const h = hits[hitI]; goTo(h.x, h.y, Math.max(view.scale, 40 / Math.max(M.textBox(ents[h.index] as any).h, 1e-9))); const el = tools.querySelector("[data-r=qc]")!; el.textContent = `${hitI + 1} / ${hits.length}`; selected = h.index; showProps(); draw(); }
-  function setTool(t: Tool) { tool = t; pts = []; winStart = winNow = null; hover = null; tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === t)); cv.style.cursor = t === "pan" ? "grab" : "crosshair"; draw(); }
+  function setTool(t: Tool) { tool = t; pts = []; winStart = winNow = null; hover = null; tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === t)); cv.style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; draw(); }
   function finishMeasure() {
     if (tool === "poly" && pts.length >= 2) { results.push(`Polyline: ${fmt(M.pathLength(pts))}`); drawn.push({ kind: "poly", pts: [...pts] }); }
     else if (tool === "area" && pts.length >= 3) { results.push(`Area: ${fmt(M.polygonArea(pts), 2)}  Perimeter: ${fmt(M.pathLength(pts, true))}`); drawn.push({ kind: "area", pts: [...pts] }); }
@@ -285,10 +287,12 @@ function build(): void {
   const snapped = (wp: M.Pt): M.Snap | null => (!idx || !snapOn || ["pan", "select", "zoomwin", "redline", "note"].includes(tool) && tool !== "redline") ? null : M.findSnap(idx, ents, wp.x, wp.y, 12 / view.scale, [...snapModes], visible);
   cv.addEventListener("pointerdown", (ev) => {
     if (!doc) return; cv.focus(); const { sp, wp } = rawPoint(ev);
-    if (ev.button === 1 || ev.button === 2 || (ev.button === 0 && tool === "pan")) { dragging = { x: sp.x, y: sp.y }; cv.setPointerCapture(ev.pointerId); cv.style.cursor = "grabbing"; pushView(); return; }
+    ptrs.set(ev.pointerId, sp);
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); dragging = null; press = null; return; }
+    if (ev.button === 1 || ev.button === 2) { ev.preventDefault(); dragging = { x: sp.x, y: sp.y }; cv.setPointerCapture(ev.pointerId); cv.style.cursor = "grabbing"; pushView(); return; }
     if (ev.button !== 0) return;
+    if (tool === "pan" || tool === "select") { press = { x: sp.x, y: sp.y, moved: false, id: ev.pointerId }; cv.setPointerCapture(ev.pointerId); return; }
     if (tool === "zoomwin") { winStart = winNow = sp; cv.setPointerCapture(ev.pointerId); return; }
-    if (tool === "select") { selected = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 8 / view.scale, visible) : -1; showProps(); draw(); return; }
     const s = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind }; const p = { x: s.x, y: s.y };
     switch (tool) {
       case "coord": results.push(`X ${M.convertLength(p.x, doc.units, du).toFixed(3)}  Y ${M.convertLength(p.y, doc.units, du).toFixed(3)} ${M.unitLabel(doc.units, du)}`); drawn.push({ kind: "coord", pts: [p] }); showMeas(); break;
@@ -303,19 +307,30 @@ function build(): void {
   });
   cv.addEventListener("pointermove", (ev) => {
     const { sp, wp } = rawPoint(ev);
+    if (ptrs.has(ev.pointerId)) ptrs.set(ev.pointerId, sp);
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0 && d > 0) { view = M.zoomAt(view, (a.x + b.x) / 2, (a.y + b.y) / 2, d / pinch); draw(); } pinch = d; return; }
+    if (press && press.id === ev.pointerId) {
+      if (!press.moved && Math.hypot(sp.x - press.x, sp.y - press.y) > 4) { press.moved = true; pushView(); cv.style.cursor = "grabbing"; dragging = { x: press.x, y: press.y }; }
+    }
     if (dragging) { view = M.panBy(view, sp.x - dragging.x, sp.y - dragging.y); dragging = { x: sp.x, y: sp.y }; draw(); updateStatus(wp); return; }
     if (winStart) { winNow = sp; draw(); return; }
     hover = snapped(wp); cursor = hover ? { x: hover.x, y: hover.y } : wp; updateStatus(cursor); if (pts.length || hover || hits.length) draw();
   });
   const endDrag = (ev: PointerEvent) => {
+    ptrs.delete(ev.pointerId); if (ptrs.size < 2) pinch = 0;
+    if (press && press.id === ev.pointerId) {
+      if (!press.moved && doc && ev.type === "pointerup") { const { wp } = rawPoint(ev); selected = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 8 / view.scale, visible) : -1; showProps(); draw(); }
+      press = null; cv.style.cursor = tool === "pan" ? "grab" : tool === "select" ? "default" : "crosshair";
+    }
     if (dragging) { dragging = null; cv.style.cursor = tool === "pan" ? "grab" : "crosshair"; }
     if (winStart && winNow) { const a = winStart, b = winNow; winStart = winNow = null; if (Math.abs(a.x - b.x) > 6 && Math.abs(a.y - b.y) > 6) { pushView(); view = M.zoomWindow(view, a, b); } setTool("pan"); }
     try { cv.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
   };
   cv.addEventListener("pointerup", endDrag); cv.addEventListener("pointercancel", endDrag);
   cv.addEventListener("dblclick", () => { if (tool === "poly" || tool === "area") { pts.pop(); finishMeasure(); } else if (tool === "redline" && pts.length > 1) { markups.push({ kind: "line", pts: [...pts] }); pts = []; draw(); } });
+  cv.addEventListener("auxclick", (ev) => { if (ev.button === 1 && ev.detail >= 2) zoomExtents(); });
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
-  cv.addEventListener("wheel", (ev) => { if (!doc) return; ev.preventDefault(); const { sp } = rawPoint(ev); view = M.zoomAt(view, sp.x, sp.y, ev.deltaY < 0 ? 1.25 : 0.8); draw(); updateStatus(); }, { passive: false });
+  cv.addEventListener("wheel", (ev) => { if (!doc) return; ev.preventDefault(); const { sp } = rawPoint(ev); view = M.zoomAt(view, sp.x, sp.y, Math.exp(-Math.max(-300, Math.min(300, ev.deltaY * (ev.deltaMode === 1 ? 16 : 1))) * 0.0018)); draw(); updateStatus(); }, { passive: false });
   cv.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") { if (pts.length) { pts = []; draw(); } else if (selected >= 0) { selected = -1; showProps(); draw(); } else setTool("pan"); return; }
     if (ev.key === "Enter") { if (tool === "poly" || tool === "area") finishMeasure(); else if (tool === "redline" && pts.length > 1) { markups.push({ kind: "line", pts: [...pts] }); pts = []; draw(); } return; }
@@ -323,6 +338,10 @@ function build(): void {
     if (ev.key === "Backspace" && !pts.length) { ev.preventDefault(); (tools.querySelector("[data-a=prev]") as HTMLButtonElement).click(); return; }
     if (ev.key === "Backspace" && pts.length) { pts.pop(); draw(); return; }
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const step = ev.shiftKey ? 200 : 60;
+    if (ev.key.startsWith("Arrow")) { ev.preventDefault(); view = M.panBy(view, ev.key === "ArrowLeft" ? step : ev.key === "ArrowRight" ? -step : 0, ev.key === "ArrowUp" ? step : ev.key === "ArrowDown" ? -step : 0); draw(); return; }
+    if (ev.key === "+" || ev.key === "=") { view = M.zoomAt(view, view.w / 2, view.h / 2, 1.3); draw(); return; }
+    if (ev.key === "-" || ev.key === "_") { view = M.zoomAt(view, view.w / 2, view.h / 2, 1 / 1.3); draw(); return; }
     const k = ev.key.toLowerCase();
     if (k === "e") zoomExtents(); else { const t = T.find(([, , key]) => key.toLowerCase() === k); if (t) setTool(t[0]); }
   });
@@ -362,7 +381,7 @@ function build(): void {
     w.document.write(`<!doctype html><title>${escapeHtml(name)}</title><style>@page{margin:8mm}body{margin:0}img{width:100%}</style><img src="${url}">`); w.document.close(); w.onload = () => w.print();
   }
 
-  buildBar(); setTool("pan"); showProps(); showMeas(); updateStatus(); resize();
+  buildBar(); setTool("select"); showProps(); showMeas(); updateStatus(); resize();
   api = {
     load,
     close() { root!.style.display = "none"; },
