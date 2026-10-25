@@ -33,7 +33,9 @@ console.log("\n=== verify-v66 — interactive view-crop milestone ===\n");
 
 console.log("v0.66 modules:");
 
-track(check("version 0.66", "package.json", /"version":\s*"0\.66\./));
+// The v66 milestone is historical; the platform version moves on (v0.67+).
+// Verify a sane semver is present instead of pinning the exact minor.
+track(check("version semver", "package.json", /"version":\s*"0\.\d+\.\d+"/));
 track(check("test:view-crop script", "package.json", /test:view-crop/));
 
 track(check("scope-box-visualizer module", "src/modules/scope-box/scope-box-visualizer.ts", /export function enableScopeBoxVisualizer/));
