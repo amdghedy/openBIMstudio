@@ -375,7 +375,14 @@ function build(): void {
     q.onkeydown = (e) => { if (e.key === "Enter") { e.stopPropagation(); stepHit(e.shiftKey ? -1 : 1); } };
   }
   function stepHit(d: number) { if (!hits.length) return; hitI = (hitI + d + hits.length) % hits.length; const h = hits[hitI]; goTo(h.x, h.y, Math.max(view.scale, 40 / Math.max(M.textBox(ents[h.index] as any).h, 1e-9))); const el = tools.querySelector("[data-r=qc]")!; el.textContent = `${hitI + 1} / ${hits.length}`; setSel([h.index]); }
-  function setTool(t: Tool) { tool = t; pts = []; winStart = winNow = null; hover = null; tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === t)); cv.style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; draw(); }
+  /** Esc: cancel the pick in progress, then leave the active command, then clear the selection. */
+  function onEscape(): void {
+    if (helpEl) { toggleHelp(); return; }
+    if (pts.length || winStart || rband) { pts = []; winStart = winNow = null; rband = null; press = null; draw(); return; }
+    if (tool !== "select") { setTool("select"); return; }
+    if (sel.size) setSel([]);
+  }
+  function setTool(t: Tool) { tool = t; cv.focus({ preventScroll: true }); pts = []; winStart = winNow = null; hover = null; tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === t)); cv.style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; draw(); }
   function finishMeasure() {
     if (tool === "poly" && pts.length >= 2) { results.push(`Polyline: ${fmt(M.pathLength(pts))}`); drawn.push({ kind: "poly", pts: [...pts] }); }
     else if (tool === "area" && pts.length >= 3) { results.push(`Area: ${fmt(M.polygonArea(pts), 2)}  Perimeter: ${fmt(M.pathLength(pts, true))}`); drawn.push({ kind: "area", pts: [...pts] }); }
@@ -429,7 +436,7 @@ function build(): void {
       press = null; cv.style.cursor = tool === "pan" ? "grab" : tool === "select" ? "default" : "crosshair";
     }
     if (dragging) { dragging = null; cv.style.cursor = tool === "pan" ? "grab" : "crosshair"; }
-    if (winStart && winNow) { const a = winStart, b = winNow; winStart = winNow = null; if (Math.abs(a.x - b.x) > 6 && Math.abs(a.y - b.y) > 6) { pushView(); view = M.zoomWindow(view, a, b); } setTool("pan"); }
+    if (winStart && winNow) { const a = winStart, b = winNow; winStart = winNow = null; if (Math.abs(a.x - b.x) > 6 && Math.abs(a.y - b.y) > 6) { pushView(); view = M.zoomWindow(view, a, b); } draw(); }
     try { cv.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
   };
   cv.addEventListener("pointerup", endDrag); cv.addEventListener("pointercancel", endDrag);
@@ -438,7 +445,7 @@ function build(): void {
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
   cv.addEventListener("wheel", (ev) => { if (!doc) return; ev.preventDefault(); const { sp } = rawPoint(ev); view = M.zoomAt(view, sp.x, sp.y, Math.exp(-Math.max(-300, Math.min(300, ev.deltaY * (ev.deltaMode === 1 ? 16 : 1))) * 0.0018)); draw(); updateStatus(); }, { passive: false });
   cv.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape") { if (helpEl) { toggleHelp(); } else if (pts.length) { pts = []; draw(); } else if (sel.size) setSel([]); else setTool("select"); return; }
+    if (ev.key === "Escape") { ev.preventDefault(); onEscape(); return; }
     if (ev.key === "F7") { ev.preventDefault(); (tools.querySelector("[data-a=grid]") as HTMLButtonElement).click(); return; }
     if (ev.key === "?" ) { toggleHelp(); return; }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "a" && doc) { ev.preventDefault(); setSel(ents.map((_, i) => i).filter((i) => visible(ents[i]))); return; }
@@ -542,5 +549,11 @@ function build(): void {
     load,
     close() { root!.style.display = "none"; },
   };
-  window.addEventListener("keydown", (e) => { if (root!.style.display !== "none" && e.key === "Escape" && document.activeElement === document.body) api!.close(); });
+  // Esc works wherever the focus is (toolbar button, layer list...), not only on the canvas.
+  window.addEventListener("keydown", (e) => {
+    if (root!.style.display === "none" || e.key !== "Escape" || e.target === cv) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "SELECT") && (t as HTMLInputElement).type !== "checkbox") { (t as HTMLInputElement).blur(); }
+    e.preventDefault(); e.stopPropagation(); onEscape(); cv.focus({ preventScroll: true });
+  }, true);
 }
