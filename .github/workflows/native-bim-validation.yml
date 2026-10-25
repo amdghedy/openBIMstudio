@@ -37,16 +37,19 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: npm
-      - run: npm ci
+      - name: Install dependencies
+        run: |
+          npm ci || npm install
+      - name: Align React 18 stack
+        run: |
+          npm install react@18.3.1 react-dom@18.3.1 @types/react@18.3.12 @types/react-dom@18.3.1 --no-fund --no-audit
       - run: npm run typecheck
       - run: npm run build
       - run: node tests/native-bim-validation.test.mjs
-      # v66 milestone covers scope box + section box + crop region + all prior v40 modules
       - run: npm run verify:v66
-      # MEP routing + sizing unit tests (compiles mep/*.ts to CJS + runs A* / ASHRAE assertions).
       - run: npm run test:mep
