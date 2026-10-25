@@ -44,6 +44,10 @@ jobs:
       - run: npm run test:dwg-features
       - run: npm run test:north
       - run: npm run test:ai-privacy
+      - run: npm run test:constraints
+      - run: npm run test:structural
+      - run: npm run test:mep-pressure
+      - run: npm run test:adaptive
       - run: npm run test:project-crypto
       - run: npm run test:secret-crypto
       - run: npm run test:server-security

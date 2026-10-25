@@ -1,7 +1,7 @@
 {
   "name": "open-bim-studio",
   "private": true,
-  "version": "0.66.2",
+  "version": "0.67.0",
   "type": "module",
   "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
@@ -27,6 +27,7 @@
     "verify:v64": "node scripts/verify-v64.mjs",
     "verify:v65": "node scripts/verify-v65.mjs",
     "verify:v66": "node scripts/verify-v66.mjs",
+    "verify:v67": "node scripts/verify-v67.mjs",
     "seed:families": "node scripts/seed-families.mjs",
     "test:bim-gaps": "node tests/run-tests.mjs",
     "test:history": "node tests/history.test.cjs",
@@ -56,6 +57,10 @@
     "test:dwg-features": "node tests/dwg-features.test.cjs",
     "test:north": "node tests/north.test.cjs",
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
+    "test:constraints": "node tests/constraint-solver.test.cjs",
+    "test:structural": "node tests/structural.test.cjs",
+    "test:mep-pressure": "node tests/mep-pressure.test.cjs",
+    "test:adaptive": "node tests/adaptive.test.cjs",
     "test:project-crypto": "node tests/project-crypto.test.cjs",
     "test:secret-crypto": "node tests/secret-crypto.test.cjs",
     "test:server-security": "node tests/server-security.test.cjs",

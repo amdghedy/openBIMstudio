@@ -30,12 +30,12 @@
 
 ## Remaining known gaps (future packages)
 
-- Full numeric constraint solver (geometry)
+- ~~Full numeric constraint solver (geometry)~~ ✅ v0.67 — `src/modules/constraints` (Levenberg–Marquardt, 11 kinds, wall integration)
 - Worksharing / multi-user
-- Adaptive components
-- Advanced MEP calculation
-- Structural design / rebar
+- ~~Adaptive components~~ ✅ v0.67 — `src/modules/adaptive` (profile sweeps, repeaters, mesh volumes)
+- ~~Advanced MEP calculation~~ ✅ v0.67 (pressure/hydraulics) — `src/modules/mep/pressure.ts`; flow-balance & equipment selection still open
+- ~~Structural design / rebar~~ ✅ v0.67 (2D frame FEM + steel/RC checks) — `src/modules/analytical-model`; 3D frames, LTB/interaction still open
 - High-fidelity print/PDF
 - Large-model out-of-core loading
 
-These are now the clear next targets once the P0–P2 strengthening is integrated and wired to the real geometry/authoring engines.
+These are now the clear next targets once the P0–P2 strengthening is integrated and wired to the real geometry/authoring engines. The v0.67 engine package is documented in `docs/REVIT_KILLER_V67.md`.

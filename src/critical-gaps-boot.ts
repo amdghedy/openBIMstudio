@@ -390,6 +390,12 @@ async function runOnce(): Promise<void> {
     await import("./modules/v40-register");
   });
 
+  // ── v67 engineering engines (constraints / structural / MEP pressure / adaptive)
+  await safe("v67-register", async () => {
+    const m: Any = await import("./modules/v67-register");
+    m.setupV67Engines?.();
+  });
+
   // ── View Tools Manager panel (replaces console.log dumps) ─────────────
   await safe("view-tools-manager", async () => {
     const m: Any = await import("./features/view-tools-manager");
