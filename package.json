@@ -67,7 +67,7 @@
   "dependencies": {
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
-    "@mlightcad/libredwg-web": "^0.8.0",
+    "@mlightcad/libredwg-web": "^0.8.2",
     "@mui/lab": "^5.0.0-alpha.165",
     "@mui/material": "^5.15.12",
     "@react-three/drei": "^9.106.0",
