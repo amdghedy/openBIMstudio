@@ -13,7 +13,7 @@
 [![IFC](https://img.shields.io/badge/IFC-2x3%20%7C%204-3b82f6.svg)](#)
 [![Runs in](https://img.shields.io/badge/runs%20in-browser-success.svg)](#)
 
-**No install required for local use · Works offline · IFC · BCF · IDS · PDF · DWG**
+**Local-first · Open standards · Browser-based · IFC · BCF · IDS · PDF · CAD**
 
 [Quick start](#-quick-start) · [What you can do](#-what-you-can-do) · [Tools & commands](#-tools--commands) · [How to use](#-how-to-use-day-to-day) · [Docs](#-documentation)
 
@@ -23,8 +23,9 @@
 
 ## What is OpenBIMStudio?
 
-OpenBIMStudio is a **browser-based BIM platform** for architecture, engineering, and construction.  
-You can create and edit models, link several models together, find clashes, produce drawings, run checks, and export open formats — without locking your data into a proprietary file.
+OpenBIMStudio is a **browser-based, local-first BIM workspace** for architecture, engineering, and construction. It brings model authoring, multi-model coordination, drawing workflows, information checks, quantities, and open-format exchange into one application.
+
+The project is released under the MIT license. Local development and local project workflows are the primary path; optional collaboration and AI features may require separate configuration. Open standards are a design priority, while support and fidelity vary by format and workflow.
 
 | For you if you… | OpenBIMStudio helps by… |
 |-----------------|-------------------------|
@@ -252,7 +253,7 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 | **CSV** | Schedules & cost |
 | **gbXML** | Energy-related export path (where enabled) |
 
-RVT / NWD / NWC can be brought in through conversion pipelines where configured — native Revit/Navisworks files are not edited in-place.
+Some additional model formats may be accessible through separately configured conversion pipelines. Availability depends on the converter and workflow; source files are not necessarily editable in place.
 
 ---
 
@@ -286,15 +287,42 @@ npm run test:native-bim
 
 **Layout:** `src/features` (tools/UI) · `src/modules` (BIM domains) · `src/commands` · `src/workers` · optional `server/`
 
-Contributions welcome — open an issue for large changes; keep secrets and project files out of git.
+Contributions welcome. For substantial changes, open an issue first to agree on scope. Include reproduction steps, expected versus actual behavior, test evidence, and screenshots or a small non-confidential sample when useful. Keep credentials, private models, and project files out of git.
 
 ---
 
+## Project principles
+
+- **Open data first:** prioritize IFC and open coordination / information-exchange standards.
+- **Local-first workflow:** keep core development and model exploration close to the user's machine; optional server-backed functions are configured separately.
+- **Traceable maturity:** source code, a visible command, an automated test, and a validated production workflow are different levels of evidence.
+- **Incremental delivery:** report limitations clearly and verify critical workflows with representative models before relying on them for issued deliverables.
+
+## Verification & feature maturity
+
+The repository includes focused automated checks for selected BIM and application behaviors. Run the checks relevant to your change rather than assuming one command covers the whole platform.
+
+```bash
+npm run typecheck
+npm run test:native-bim
+npm run test:bim-gaps
+npm run test:mep
+npm run test:history
+npm run build
+```
+
+Not every tool has the same level of coverage. Automated tests cannot fully prove browser interaction quality, geometry fidelity, interoperability round-tripping, large-model performance, or suitability for contractual delivery. For important workflows, record the sample model, expected result, observed result, browser/runtime, and any known limitation.
+
+## Privacy, local data & optional services
+
+- Review the settings and configuration for any optional AI provider, collaboration server, or connected data environment before using them with confidential project information.
+- Do not commit credentials, API keys, private model files, or project-specific data to the repository.
+- Local-first does not automatically mean every feature is offline-only: features that connect to a provider or server require that service and its own privacy/security review.
+- Back up project data before testing migration, import/export, or experimental authoring features.
+
 ## Scope & honesty
 
-OpenBIMStudio aims for broad **openBIM** coverage (authoring, coordination, documentation, validation).  
-Individual tools differ in maturity. A button in the UI does not always mean a fully production-proven workflow.  
-Validate critical paths on your own models before relying on them for contractual deliverables.
+OpenBIMStudio aims for broad **openBIM** coverage across authoring, coordination, documentation, and validation. Individual tools differ in maturity: source code or a visible command alone does not prove end-to-end completion. Check the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) for evidence and known limitations, and validate critical paths on representative models before relying on them for contractual deliverables.
 
 ---
 
