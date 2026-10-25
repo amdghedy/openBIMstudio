@@ -1,6 +1,6 @@
 const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
 const out=fs.mkdtempSync(path.join(os.tmpdir(),"cv-"));
-execSync(`npx tsc src/modules/cad-viewer/viewer-math.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`,{stdio:"inherit"});
+execSync(`npx tsc src/modules/cad-viewer/viewer-math.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreDeprecations 6.0`,{stdio:"inherit"});
 const find=(d,n)=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()){const r=find(p,n);if(r)return r}else if(f.name===n)return p}};
 const m=require(find(out,"viewer-math.js"));
 let pass=0,fail=0;const t=(n,f)=>{try{f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
