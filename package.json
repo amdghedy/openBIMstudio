@@ -83,7 +83,7 @@
     "file-saver": "^2.0.5",
     "json-rules-engine": "^5.2.1",
     "jszip": "^3.10.2",
-    "monaco-editor": "^0.49.0",
+    "monaco-editor": "^0.57.0",
     "nasjidwg": "^0.18.0",
     "papaparse": "^5.4.1",
     "pdf-lib": "^1.17.1",
