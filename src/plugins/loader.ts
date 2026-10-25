@@ -89,7 +89,8 @@ async function discoverPluginIds(): Promise<string[]> {
     if (!res.ok) return FALLBACK_PLUGIN_IDS;
     const data = await res.json();
     if (!Array.isArray(data)) return FALLBACK_PLUGIN_IDS;
-    return data.filter((s): s is string => typeof s === "string" && s.length > 0);
+    // ids become URL path segments: accept only plain kebab-case names (no "..", slashes or schemes)
+    return data.filter((s): s is string => typeof s === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(s));
   } catch {
     return FALLBACK_PLUGIN_IDS;
   }
@@ -131,8 +132,11 @@ function grantCapabilities(manifest: PluginManifest): PluginCapability[] {
   const granted: PluginCapability[] = [];
   for (const cap of manifest.capabilities) {
     if (cap === "*") {
-      // Wildcard: grant everything grantable. Reserved for trusted plugins;
-      // third-party plugins should request specific capabilities.
+      // Wildcard is reserved for the first-party plugins shipped with the app.
+      if (!FALLBACK_PLUGIN_IDS.includes(manifest.id)) {
+        console.warn(`[plugins] ${manifest.id}: wildcard capability refused for a non-first-party plugin.`);
+        continue;
+      }
       console.warn(
         `[plugins] ${manifest.id}: requested wildcard capability — ` +
         `granting all. Use specific capabilities for third-party plugins.`,
@@ -214,6 +218,11 @@ async function loadAndActivatePlugin(id: string): Promise<boolean> {
     // Install bridge and load script
     installRegistrationBridge(id);
     const entry = manifest.entry ?? "index.js";
+    // the entry must be a plain relative .js path inside the plugin folder
+    if (!/^[A-Za-z0-9_\-][A-Za-z0-9_\-./]*\.js$/.test(entry) || entry.split("/").includes("..")) {
+      console.warn(`[plugins] ${id}: unsafe entry path "${entry}" — skipped.`);
+      return false;
+    }
     const scriptUrl = `/plugins/${id}/${entry}`;
     try {
       await loadScript(scriptUrl);

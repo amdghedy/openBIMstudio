@@ -33,6 +33,11 @@ jobs:
       - run: npm run test:props
       - run: npm run test:fitting-outline
       - run: npm run test:slope
+      - run: npm run test:ai-privacy
+      - run: npm run test:project-crypto
+      - run: npm run test:secret-crypto
+      - run: npm run test:server-security
+      - run: npm run test:safe-expr
       - run: npm run test:mep-connectivity
       - run: npm run test:boundary-edit
       - run: npm run test:project-file
@@ -44,3 +49,6 @@ jobs:
       - run: npm run test:plan-draw
       - run: npm run test:view-lock
       - run: npm run test:section-box
+      - name: Dependency audit (production, high severity)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true

@@ -13,6 +13,7 @@
  *     fragment and authored elements in one call.
  *   - Property palette state is published via onAuthoringChange.
  */
+import { escapeHtml } from "../core/html-escape";
 import { fittingArmLength } from "../modules/mep/fitting-outline";
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
 import * as THREE from "three";
@@ -3229,7 +3230,7 @@ function selectInput<T extends string>(
 ): HTMLSelectElement {
   const s = document.createElement("select");
   s.style.cssText = INP;
-  s.innerHTML = options.map((o) => `<option value="${o.v}" ${o.v === value ? "selected" : ""}>${o.label}</option>`).join("");
+  s.innerHTML = options.map((o) => `<option value="${escapeHtml(o.v)}" ${o.v === value ? "selected" : ""}>${escapeHtml(o.label)}</option>`).join("");
   s.onchange = () => on(s.value as T);
   return s;
 }

@@ -191,6 +191,7 @@ function step(name: string, fn: () => unknown | Promise<unknown>) {
   })();
 }
 
+await step("secure-store", async () => (await import("./core/secure-store")).initSecureStore());
 await step("setupViewer (core)", async () => {
   if (!document.getElementById("app")) {
     throw new Error('index.html has no <div id="app"> — check your HTML entry.');

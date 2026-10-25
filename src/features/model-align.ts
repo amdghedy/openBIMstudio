@@ -11,6 +11,7 @@
  * Everything is live — changes reflect immediately in the viewport and can
  * be saved with Ctrl+S.
  */
+import { escapeHtml } from "../core/html-escape";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import {
@@ -227,20 +228,20 @@ async function refreshBody(): Promise<void> {
     const isRef = id === referenceId;
 
     rows.push(`
-      <div data-id="${id}" style="
+      <div data-id="${escapeHtml(id)}" style="
         display:flex;flex-direction:column;gap:6px;padding:10px;
         border:1px solid ${isRef ? "var(--accent,#38bdf8)" : "var(--border-subtle,#1e2029)"};
         border-radius:8px;margin-bottom:8px;
         background:${isRef ? "var(--accent-dim,rgba(56,189,248,.08))" : "var(--bg-inset,#0e1017)"}">
 
         <div style="display:flex;align-items:center;gap:8px">
-          <input type="radio" name="oma-ref" value="${id}" ${isRef ? "checked" : ""}
+          <input type="radio" name="oma-ref" value="${escapeHtml(id)}" ${isRef ? "checked" : ""}
             title="Use as reference model"
             style="cursor:pointer;margin:0" data-act="set-ref" />
           <div style="flex:1;min-width:0">
             <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;
-              white-space:nowrap" title="${id}">
-              ${id}${isRef ? ` <span style="font-size:9px;opacity:.6;font-weight:400">(reference)</span>` : ""}
+              white-space:nowrap" title="${escapeHtml(id)}">
+              ${escapeHtml(id)}${isRef ? ` <span style="font-size:9px;opacity:.6;font-weight:400">(reference)</span>` : ""}
             </div>
             <div style="font-size:10px;color:#94a3b8;margin-top:2px;font-family:var(--font-mono,monospace)">
               offset ${fmtVec(offset)}
@@ -250,10 +251,10 @@ async function refreshBody(): Promise<void> {
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
-            <button data-act="snap" data-id="${id}" title="Snap this model to the reference"
+            <button data-act="snap" data-id="${escapeHtml(id)}" title="Snap this model to the reference"
               style="padding:4px 8px;background:#2563eb;color:#fff;border:none;
               border-radius:4px;cursor:pointer;font:600 10px system-ui">Snap →</button>
-            <button data-act="reset" data-id="${id}" title="Set offset to (0,0,0)"
+            <button data-act="reset" data-id="${escapeHtml(id)}" title="Set offset to (0,0,0)"
               style="padding:4px 8px;background:transparent;color:#fca5a5;
               border:1px solid rgba(239,68,68,.5);border-radius:4px;
               cursor:pointer;font:600 10px system-ui">Reset</button>
@@ -261,22 +262,22 @@ async function refreshBody(): Promise<void> {
         </div>
 
         <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button data-act="nudge" data-id="${id}" data-axis="x" data-dir="-1"
+          <button data-act="nudge" data-id="${escapeHtml(id)}" data-axis="x" data-dir="-1"
             style="flex:1;padding:4px;background:var(--bg-hover,#232633);color:#fca5a5;
             border:1px solid rgba(239,68,68,.4);border-radius:4px;cursor:pointer;font:600 10px system-ui">−X</button>
-          <button data-act="nudge" data-id="${id}" data-axis="x" data-dir="1"
+          <button data-act="nudge" data-id="${escapeHtml(id)}" data-axis="x" data-dir="1"
             style="flex:1;padding:4px;background:var(--bg-hover,#232633);color:#ef4444;
             border:1px solid rgba(239,68,68,.4);border-radius:4px;cursor:pointer;font:600 10px system-ui">+X</button>
-          <button data-act="nudge" data-id="${id}" data-axis="y" data-dir="-1"
+          <button data-act="nudge" data-id="${escapeHtml(id)}" data-axis="y" data-dir="-1"
             style="flex:1;padding:4px;background:var(--bg-hover,#232633);color:#a7f3d0;
             border:1px solid rgba(34,197,94,.4);border-radius:4px;cursor:pointer;font:600 10px system-ui">−Y</button>
-          <button data-act="nudge" data-id="${id}" data-axis="y" data-dir="1"
+          <button data-act="nudge" data-id="${escapeHtml(id)}" data-axis="y" data-dir="1"
             style="flex:1;padding:4px;background:var(--bg-hover,#232633);color:#22c55e;
             border:1px solid rgba(34,197,94,.4);border-radius:4px;cursor:pointer;font:600 10px system-ui">+Y</button>
-          <button data-act="nudge" data-id="${id}" data-axis="z" data-dir="-1"
+          <button data-act="nudge" data-id="${escapeHtml(id)}" data-axis="z" data-dir="-1"
             style="flex:1;padding:4px;background:var(--bg-hover,#232633);color:#93c5fd;
             border:1px solid rgba(59,130,246,.4);border-radius:4px;cursor:pointer;font:600 10px system-ui">−Z</button>
-          <button data-act="nudge" data-id="${id}" data-axis="z" data-dir="1"
+          <button data-act="nudge" data-id="${escapeHtml(id)}" data-axis="z" data-dir="1"
             style="flex:1;padding:4px;background:var(--bg-hover,#232633);color:#3b82f6;
             border:1px solid rgba(59,130,246,.4);border-radius:4px;cursor:pointer;font:600 10px system-ui">+Z</button>
         </div>

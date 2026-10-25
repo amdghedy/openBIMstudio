@@ -1,0 +1,13 @@
+const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
+const out=fs.mkdtempSync(path.join(os.tmpdir(),"ap-"));
+execSync(`npx tsc src/features/ai-privacy.ts --outDir ${out} --module commonjs --target es2020 --lib es2020,dom --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`,{stdio:"inherit"});
+const find=(d,n)=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()){const r=find(p,n);if(r)return r}else if(f.name===n)return p}};
+const m=require(find(out,"ai-privacy.js"));
+let pass=0,fail=0;const t=(n,f)=>{try{f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
+const O="http://localhost:3000";
+t("local proxies and loopback are private",()=>{for(const e of ["/ollama","/lmstudio/v1","http://localhost:11434","http://127.0.0.1:1234/v1","http://[::1]:8080","http://my-box.local:8000"]) assert.ok(m.isPrivateEndpoint(e,O),e)});
+t("private network ranges are private",()=>{for(const e of ["http://192.168.1.20:8000","http://10.0.0.5","http://172.16.4.4","http://172.31.255.1","http://169.254.1.1"]) assert.ok(m.isPrivateEndpoint(e,O),e)});
+t("cloud hosts are not private",()=>{for(const e of ["https://api.openai.com/v1","https://api.anthropic.com","https://generativelanguage.googleapis.com","http://172.32.0.1","http://8.8.8.8","http://192.169.1.1","https://localhost.evil.com","https://evil.com/ollama"]) assert.ok(!m.isPrivateEndpoint(e,O),e)});
+t("on a hosted origin only the local proxies count as private",()=>{const H="https://studio.example";assert.ok(m.isPrivateEndpoint("/ollama",H));assert.ok(!m.isPrivateEndpoint("/anthropic",H));assert.ok(!m.isPrivateEndpoint("/other",H))});
+t("garbage is treated as not private",()=>assert.ok(!m.isPrivateEndpoint("http://",O)));
+console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);
