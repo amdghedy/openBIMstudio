@@ -92,7 +92,7 @@
     "react-redux": "^9.1.2",
     "three": "^0.182.0",
     "three-csg-ts": "^3.2.0",
-    "three-mesh-bvh": "^0.8.3",
+    "three-mesh-bvh": "^0.9.16",
     "web-ifc": "0.0.78",
     "y-websocket": "^2.0.1",
     "yjs": "^13.6.14"
