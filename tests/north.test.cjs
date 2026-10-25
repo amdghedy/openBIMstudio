@@ -1,0 +1,16 @@
+const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
+const out=fs.mkdtempSync(path.join(os.tmpdir(),"no-"));
+execSync(`npx tsc src/modules/north/north.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreConfig --ignoreDeprecations 6.0`,{stdio:"inherit"});
+const find=(d,n)=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()){const r=find(p,n);if(r)return r}else if(f.name===n)return p}};
+const m=require(find(out,"north.js"));
+let pass=0,fail=0;const t=(n,f)=>{try{f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
+const near=(a,b,e=1e-6)=>assert.ok(Math.abs(a-b)<e,`${a}!=${b}`);
+t("angles normalise to (-180,180]",()=>{near(m.normalizeAngle(190),-170);near(m.normalizeAngle(-190),170);near(m.normalizeAngle(360),0);near(m.normalizeAngle(180),180);near(m.normalizeAngle(-180),180);assert.strictEqual(m.normalizeAngle(NaN),0)});
+t("project orientation never rotates the plan",()=>near(m.planRotationDeg({trueNorthAngle:30,planOrientation:"project"}),0));
+t("true orientation rotates the plan the opposite way by the angle",()=>{near(m.planRotationDeg({trueNorthAngle:30,planOrientation:"true"}),-30);near(m.planRotationDeg({trueNorthAngle:-45,planOrientation:"true"}),45)});
+t("bearing: with no offset +Z is north, +X is east",()=>{near(m.bearingOfDirection(0,1,0),0);near(m.bearingOfDirection(1,0,0),90);near(m.bearingOfDirection(0,-1,0),180);near(m.bearingOfDirection(-1,0,0),270)});
+t("bearing with offset: true north 30 deg clockwise of project north",()=>{near(m.bearingOfDirection(0,1,30),330);near(m.bearingOfDirection(Math.sin(Math.PI/6),Math.cos(Math.PI/6),30),0)});
+t("parse input",()=>{near(m.parseNorthInput("12.5"),12.5);near(m.parseNorthInput("20 W"),-20);near(m.parseNorthInput("20 e"),20);near(m.parseNorthInput("200"),-160);assert.strictEqual(m.parseNorthInput("abc"),null);assert.strictEqual(m.parseNorthInput(""),null)});
+t("format",()=>{assert.strictEqual(m.formatNorthAngle(0),"0°");assert.strictEqual(m.formatNorthAngle(12.5),"12.50° E");assert.strictEqual(m.formatNorthAngle(-20),"20° W")});
+t("state, events and load of old files",()=>{let n=0;const off=m.onNorthChanged(()=>n++);m.setNorthState({trueNorthAngle:15});m.setNorthState({trueNorthAngle:15});assert.strictEqual(n,1);m.setNorthState({planOrientation:"true"});assert.strictEqual(m.getNorthState().planOrientation,"true");m.loadNorth(undefined);assert.deepStrictEqual(m.getNorthState(),{trueNorthAngle:0,planOrientation:"project"});m.loadNorth({trueNorthAngle:"x",planOrientation:"true"});assert.strictEqual(m.getNorthState().trueNorthAngle,0);off()});
+console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

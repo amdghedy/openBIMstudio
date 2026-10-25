@@ -894,6 +894,35 @@ export function restoreCameraSnapshot(snap: { pos: THREE.Vector3; target: THREE.
   updateClipping();
 }
 
+/** Make the camera upright again (world +Y up) so a view never inherits a tilt from a previous project or the Top view. */
+export function resetCameraUpright(): void {
+  if (!worldReady()) return;
+  try {
+    const cam: any = ctx.world.camera.three;
+    cam.up.set(0, 1, 0);
+    (ctx.world.camera.controls as any)?.updateCameraUp?.();
+  } catch { /* */ }
+}
+
+/** Default 3D view for a new project: perspective, upright, looking at the origin from the standard
+ *  diagonal (same direction Fit-All uses), not rotated. */
+export function resetToDefaultView(distance = 28): void {
+  if (!worldReady()) return;
+  try { if (getProjection() !== "perspective") setProjection("perspective"); } catch { /* */ }
+  resetCameraUpright();
+  const dir = new THREE.Vector3(1.2, 0.7, 1.2).normalize();
+  const p = dir.multiplyScalar(distance);
+  try {
+    (ctx.world.camera.controls as any).setLookAt(p.x, p.y, p.z, 0, 0, 0, false);
+  } catch {
+    const cam: any = ctx.world.camera.three;
+    cam.position.copy(p);
+    cam.lookAt(0, 0, 0);
+  }
+  updateClipping();
+  saveHome();
+}
+
 export function saveHome() {
   if (!worldReady()) return;
   homeView = {

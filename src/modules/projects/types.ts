@@ -299,6 +299,9 @@ export interface ProjectDoc {
     target?: [number, number, number];
   };
 
+  /** Project North / True North setting (see modules/north). */
+  north?: { trueNorthAngle: number; planOrientation: "project" | "true" };
+
   /** Persisted positioning mode used when linking IFC / FRAG files. */
   positioningMode?: PositioningMode;
 

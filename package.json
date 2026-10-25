@@ -50,6 +50,7 @@
     "test:project-file": "node tests/project-file.test.cjs",
     "test:fitting-outline": "node tests/fitting-outline.test.cjs",
     "test:slope": "node tests/slope.test.cjs",
+    "test:north": "node tests/north.test.cjs",
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
     "test:project-crypto": "node tests/project-crypto.test.cjs",
     "test:secret-crypto": "node tests/secret-crypto.test.cjs",
