@@ -16,13 +16,15 @@
 import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfUnits } from "./dxf-types";
 import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
-  insUnitsToUnits, transformEntity, type InsertXform,
+  insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
 } from "./dxf-geometry";
 
 interface Pair { code: number; value: string }
 interface Rec { type: string; pairs: Pair[] }
 interface Block { name: string; base: DxfPoint; recs: Rec[] }
 
+/** Record types whose coordinates live in the object coordinate system (extrusion-dependent). */
+const OCS_TYPES = new Set(["CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "TEXT", "INSERT", "SOLID", "TRACE"]);
 const DEG = Math.PI / 180;
 const MAX_DEPTH = 8;
 const MAX_ENTITIES = 3_000_000;
@@ -199,6 +201,8 @@ function expandRecs(
     if (d.n(67) === 1) continue; // paper space
     const c = common(d);
     if (insertLayer && c.layer === "0") c.layer = insertLayer; // layer 0 inside a block inherits
+    const outStart = out.length;
+    const ocsFlip = OCS_TYPES.has(r.type) && isMirroredOcs(d.n(210), d.n(220), d.n(230, 1));
 
     switch (r.type) {
       case "LINE":
@@ -350,6 +354,7 @@ function expandRecs(
       default:
         break; // unknown/structural records are ignored
     }
+    if (ocsFlip) for (let k = outStart; k < out.length; k++) out[k] = flipEntityX(out[k]);
   }
   return out;
 }

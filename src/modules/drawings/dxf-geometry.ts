@@ -267,3 +267,24 @@ export function robustExtents(entities: DxfEntity[]): DxfDocument["extents"] | u
   });
   return computeExtents(keep.length ? keep : entities);
 }
+
+/**
+ * Entities stored in an OCS whose extrusion points down (0,0,-1) are mirrored in X in the world.
+ * Applies that mirror (x -> -x) to an already-converted entity. Arcs keep counter-clockwise order.
+ */
+export function flipEntityX(e: DxfEntity): DxfEntity {
+  const fp = (p: DxfPoint): DxfPoint => ({ ...p, x: -p.x });
+  switch (e.type) {
+    case "LINE": return { ...e, start: fp(e.start), end: fp(e.end) };
+    case "POINT": return { ...e, position: fp(e.position) };
+    case "CIRCLE": return { ...e, center: fp(e.center) };
+    case "ARC": return { ...e, center: fp(e.center), startAngle: 180 - e.endAngle, endAngle: 180 - e.startAngle };
+    case "LWPOLYLINE": return { ...e, points: e.points.map(fp) };
+    case "TEXT": return { ...e, position: fp(e.position), rotation: 180 - (e.rotation ?? 0) };
+  }
+}
+
+/** True when an extrusion vector is (0,0,-1) within tolerance, i.e. the OCS is X-mirrored. */
+export function isMirroredOcs(nx: number, ny: number, nz: number): boolean {
+  return nz < -0.5 && Math.abs(nx) < 1e-6 && Math.abs(ny) < 1e-6;
+}

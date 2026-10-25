@@ -51,6 +51,7 @@
     "test:fitting-outline": "node tests/fitting-outline.test.cjs",
     "test:slope": "node tests/slope.test.cjs",
     "test:cad-viewer": "node tests/cad-viewer.test.cjs",
+    "test:ocs": "node tests/ocs-flip.test.cjs",
     "test:north": "node tests/north.test.cjs",
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
     "test:project-crypto": "node tests/project-crypto.test.cjs",

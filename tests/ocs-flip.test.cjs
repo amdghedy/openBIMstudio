@@ -1,0 +1,16 @@
+const {execSync}=require("child_process");const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
+const out=fs.mkdtempSync(path.join(os.tmpdir(),"ocs-"));
+execSync(`npx tsc src/modules/drawings/dxf-reader.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`,{stdio:"inherit"});
+const find=(d,n)=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()){const r=find(p,n);if(r)return r}else if(f.name===n)return p}};
+const {parseDxf}=require(find(out,"dxf-reader.js"));
+const rec=(...l)=>l.join("\n");
+const dxf=(blocks,ents)=>["0","SECTION","2","BLOCKS",blocks,"0","ENDSEC","0","SECTION","2","ENTITIES",ents,"0","ENDSEC","0","EOF"].filter(x=>x!=="").join("\n");
+const blk=rec("0","BLOCK","8","0","2","GRILLE","70","0","10","0","20","0","30","0","0","LINE","8","0","10","0","20","0","11","1","21","0","0","ENDBLK");
+let pass=0,fail=0;const t=(n,f)=>{try{f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
+const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-9,a+"!="+b);
+t("plain insert unchanged",()=>{const d=parseDxf(dxf(blk,rec("0","INSERT","8","A","2","GRILLE","10","10","20","5","30","0")));near(d.entities[0].start.x,10);near(d.entities[0].end.x,11)});
+t("insert with extrusion -Z is mirrored in X",()=>{const d=parseDxf(dxf(blk,rec("0","INSERT","8","A","2","GRILLE","10","10","20","5","30","0","210","0","220","0","230","-1")));near(d.entities[0].start.x,-10);near(d.entities[0].end.x,-11);near(d.entities[0].start.y,5)});
+t("circle with extrusion -Z",()=>{const d=parseDxf(dxf("",rec("0","CIRCLE","8","A","10","7","20","2","30","0","40","1","210","0","220","0","230","-1")));near(d.entities[0].center.x,-7)});
+t("arc with extrusion -Z swaps angles",()=>{const d=parseDxf(dxf("",rec("0","ARC","8","A","10","0","20","0","30","0","40","1","50","10","51","80","210","0","220","0","230","-1")));near(d.entities[0].startAngle,100);near(d.entities[0].endAngle,170)});
+t("LINE ignores extrusion (WCS)",()=>{const d=parseDxf(dxf("",rec("0","LINE","8","A","10","3","20","0","30","0","11","4","21","0","31","0","210","0","220","0","230","-1")));near(d.entities[0].start.x,3)});
+console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

@@ -13,7 +13,7 @@
 import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint } from "./dxf-types";
 import {
   computeExtents, ellipsePoints, evalBSpline, expandBulges, insUnitsToUnits,
-  transformEntity, type InsertXform,
+  transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
 } from "./dxf-geometry";
 import { cleanText } from "./dxf-reader";
 
@@ -88,6 +88,8 @@ function colorOf(e: Any): { color?: number; rgb?: number } {
   return {};
 }
 
+const OCS_TYPES = new Set(["CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "POLYLINE2D", "TEXT", "ATTRIB", "ATTDEF", "INSERT", "SOLID", "TRACE"]);
+
 function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | null): DxfEntity[] {
   const out: DxfEntity[] = [];
 
@@ -99,6 +101,10 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
     let layer = String(pick(e, ["layer", "layerName"]) ?? "0");
     if (insertLayer && layer === "0") layer = insertLayer;
     const c = { layer, ...colorOf(e) };
+    const outStart = out.length;
+    const exRaw = pick(e, ["extrusionDirection", "extrusion", "normal"]);
+    const ex = exRaw ? toPt(exRaw) : null;
+    const ocsFlip = !!ex && OCS_TYPES.has(type) && isMirroredOcs(ex.x, ex.y, ex.z ?? 1);
 
     try {
       switch (type) {
@@ -236,6 +242,7 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
         default:
           cx.skip(type);
       }
+      if (ocsFlip) for (let k = outStart; k < out.length; k++) out[k] = flipEntityX(out[k]);
     } catch {
       cx.skip(`${type} (unreadable)`);
     }
