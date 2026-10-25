@@ -1,6 +1,5 @@
 /**
  * Parametric regeneration engine — dirty flags, formulas, constraint graph
- * Closes a major depth gap vs Revit family/instance regen.
  */
 import type {
   ConstraintNode,
@@ -95,7 +94,6 @@ export class ParametricRegenService implements IParametricRegenService {
       ? new Set(rootIds)
       : new Set(this.dirty.keys());
 
-    // Expand via formula constraints
     for (const c of this.constraints.values()) {
       if (!c.enabled || c.type !== "formula" || !c.formula) continue;
       if (!c.elements.some((e) => targets.has(e))) continue;

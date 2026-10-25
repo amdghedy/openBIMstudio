@@ -1,5 +1,5 @@
 /**
- * Properties panel service — multi-select, *VARIES*, type/instance (Revit palette parity)
+ * Properties panel service — multi-select, *VARIES*, type/instance
  */
 import type {
   IPropertiesPanelService,
@@ -26,7 +26,6 @@ export class PropertiesPanelService implements IPropertiesPanelService {
   }
 
   registerDescriptor(desc: PropertyDescriptor): void {
-    // Register under a synthetic "*" category and specific categories via group key
     const list = this.descriptors.get("*") ?? [];
     list.push(desc);
     list.sort((a, b) => a.order - b.order);
@@ -77,7 +76,6 @@ export class PropertiesPanelService implements IPropertiesPanelService {
       properties: props.filter((p) => guessGroup(p.key) === name),
     })).filter((g) => g.properties.length > 0);
 
-    // Remainder
     const assigned = new Set(groups.flatMap((g) => g.properties.map((p) => p.key)));
     const other = props.filter((p) => !assigned.has(p.key));
     if (other.length) groups.push({ name: "Other", properties: other });
