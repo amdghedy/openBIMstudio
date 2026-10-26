@@ -1,7 +1,11 @@
 /**
  * Own MMB orbit when a selection exists, pivoting about selection COG.
  * Priority 80 > navigation (30), so this handler claims the gesture first.
- * Also fixes orthographic wheel zoom about that same pivot.
+ *
+ * Wheel zoom is NOT handled here — wheel-arbiter is the sole owner
+ * (__OBS_WHEEL_AUTHORITY). A previous path called setLookAt toward the COG
+ * on every wheel tick, which rotated the camera during zoom.
+ *
  * Draws a small 3D crosshair at the active pivot so you can verify it.
  */
 
@@ -51,7 +55,6 @@ async function refreshCOG(): Promise<boolean> {
   const box = new THREE.Box3();
   let any = false;
 
-  // Fragment selection
   try {
     const sel = (ctx.features as Any)?.selection;
     if (sel?.boundingBox) {
@@ -65,7 +68,6 @@ async function refreshCOG(): Promise<boolean> {
     /* */
   }
 
-  // Authored selection - try every known API
   try {
     const a = (ctx.features as Any)?.authoring;
     if (a) {
@@ -82,7 +84,6 @@ async function refreshCOG(): Promise<boolean> {
 
         if (!el) continue;
 
-        // World box helper
         const wb = a.getElementWorldBox?.(el);
         if (wb && !wb.isEmpty?.()) {
           box.union(wb);
@@ -90,7 +91,6 @@ async function refreshCOG(): Promise<boolean> {
           continue;
         }
 
-        // Mesh / Object3D
         const mesh =
           el.mesh ??
           el.object3d ??
@@ -107,14 +107,12 @@ async function refreshCOG(): Promise<boolean> {
           }
         }
 
-        // Placement
         const p = el.params ?? el;
         const x = Number(p.x ?? p.origin?.x ?? el.position?.x);
         const y = Number(p.y ?? p.origin?.y ?? el.position?.y);
         const z = Number(p.z ?? p.origin?.z ?? el.position?.z);
         if ([x, y, z].every((n) => Number.isFinite(n))) {
           box.expandByPoint(new THREE.Vector3(x, y, z));
-          // Expand a bit so single points still form a box
           box.expandByScalar(0.05);
           any = true;
         }
@@ -124,7 +122,6 @@ async function refreshCOG(): Promise<boolean> {
     /* */
   }
 
-  // Highlighted / selected THREE objects in the scene
   try {
     const scene = (ctx as Any).world?.scene?.three as THREE.Scene | undefined;
     if (scene) {
@@ -202,7 +199,6 @@ function showPivotHelper(p: THREE.Vector3): void {
       pivotHelper.add(makeAxis(new THREE.Vector3(1, 0, 0), 0xff4466));
       pivotHelper.add(makeAxis(new THREE.Vector3(0, 1, 0), 0x44ff88));
       pivotHelper.add(makeAxis(new THREE.Vector3(0, 0, 1), 0x4488ff));
-      // small sphere
       const sph = new THREE.Mesh(
         new THREE.SphereGeometry(0.08, 12, 12),
         new THREE.MeshBasicMaterial({
@@ -259,7 +255,6 @@ function applyOrbit(dx: number, dy: number): void {
   sph.phi += dy * orbit.pixelsToRadians;
   sph.phi = Math.max(0.05, Math.min(Math.PI - 0.05, sph.phi));
 
-  // Keep radius stable; for ortho radius is less meaningful but position still moves
   if (cam.isOrthographicCamera) {
     sph.radius = Math.max(sph.radius, 1);
   }
@@ -294,7 +289,6 @@ function applyOrbit(dx: number, dy: number): void {
     cam.lookAt(orbit.pivot);
   }
 
-  // Keep controls target locked on pivot
   try {
     if (c?.target?.isVector3) c.target.copy(orbit.pivot);
   } catch {
@@ -318,20 +312,14 @@ function endOrbit(): void {
 }
 
 function onGesture(g: Gesture): boolean {
-  // Only claim when we have a selection COG and user wants orbit (Shift/Ctrl+MMB)
-  // or always on MMB orbit-style with shift
   if (g.kind === "drag-start" && g.button === 1) {
     if (!hasCog) return false;
-    const wantOrbit =
-      g.mods.shift || g.mods.ctrl || g.mods.meta;
-    // Also claim plain MMB orbit if user holds shift on keyboard
-    // For BIM: Shift+MMB = orbit. Plain MMB = pan (leave to navigation).
+    const wantOrbit = g.mods.shift || g.mods.ctrl || g.mods.meta;
     if (!wantOrbit) {
-      // Pan must never re-aim the camera: leave the target alone.
       return false; // let navigation pan
     }
     beginOrbit(g.event, cog);
-    return true; // claim gesture - navigation will NOT receive it
+    return true;
   }
 
   if (g.kind === "drag-move" && g.button === 1) {
@@ -349,56 +337,74 @@ function onGesture(g: Gesture): boolean {
   return false;
 }
 
-/* -- Ortho zoom about COG ------------------------------------------------ */
-
-function zoomAboutPivot(factor: number): void {
+/**
+ * Keyboard +/- zoom: pure view-axis translation.
+ * NEVER setLookAt toward the COG — that rotates the camera.
+ */
+function zoomAboutViewAxis(factor: number): void {
   if (!worldReady()) return;
   const cam = camera();
   const c = controls();
-  const pivot = hasCog ? cog.clone() : new THREE.Vector3();
-  if (!hasCog) {
-    if (c?.target?.isVector3) pivot.copy(c.target);
-    else {
-      const dir = new THREE.Vector3();
-      cam.getWorldDirection(dir);
-      pivot.copy(cam.position).addScaledVector(dir, 10);
-    }
-  }
+  const q = cam.quaternion.clone();
+  const up = cam.up.clone();
 
   if (cam.isOrthographicCamera) {
     const z = Math.max(1e-4, Number(cam.zoom) || 1);
     cam.zoom = Math.max(0.01, Math.min(8000, z * factor));
     syncOrthoZoom(cam);
     cam.updateProjectionMatrix();
+    cam.quaternion.copy(q);
+    cam.up.copy(up);
     try {
-      c?.setLookAt?.(
-        cam.position.x,
-        cam.position.y,
-        cam.position.z,
-        pivot.x,
-        pivot.y,
-        pivot.z,
-        false,
-      );
       c?.update?.(0);
     } catch {
       /* */
     }
+    cam.quaternion.copy(q);
+    cam.up.copy(up);
   } else {
-    const offset = new THREE.Vector3().subVectors(cam.position, pivot);
-    const dist = offset.length();
-    if (dist < 1e-6) return;
-    const newDist = Math.max(1e-4, dist / factor);
-    offset.normalize().multiplyScalar(newDist);
-    const np = pivot.clone().add(offset);
+    const target = new THREE.Vector3();
     try {
-      c?.setLookAt?.(np.x, np.y, np.z, pivot.x, pivot.y, pivot.z, false);
+      if (typeof c?.getTarget === "function") c.getTarget(target);
+      else if (c?.target?.isVector3) target.copy(c.target);
+      else {
+        const dir = new THREE.Vector3();
+        cam.getWorldDirection(dir);
+        target.copy(cam.position).addScaledVector(dir, 10);
+      }
+    } catch {
+      const dir = new THREE.Vector3();
+      cam.getWorldDirection(dir);
+      target.copy(cam.position).addScaledVector(dir, 10);
+    }
+
+    const fwd = new THREE.Vector3();
+    cam.getWorldDirection(fwd);
+    const dist = Math.max(target.clone().sub(cam.position).dot(fwd), 0.5);
+    const newDist = Math.max(0.05, dist / factor);
+    const along = dist - newDist;
+
+    // Translate eye and target together along the view axis.
+    cam.position.addScaledVector(fwd, along);
+    target.addScaledVector(fwd, along);
+    try {
+      if (typeof c?.setTarget === "function") {
+        c.setTarget(target.x, target.y, target.z, false);
+      } else if (c?.target?.isVector3) {
+        c.target.copy(target);
+      }
+      if (typeof c?.setPosition === "function") {
+        c.setPosition(cam.position.x, cam.position.y, cam.position.z, false);
+      }
       c?.update?.(0);
     } catch {
-      cam.position.copy(np);
-      cam.lookAt(pivot);
+      /* */
     }
+    cam.quaternion.copy(q);
+    cam.up.copy(up);
+    cam.updateMatrixWorld?.(true);
   }
+
   try {
     window.dispatchEvent(new CustomEvent("obs:camera-changed"));
   } catch {
@@ -407,44 +413,16 @@ function zoomAboutPivot(factor: number): void {
 }
 
 function installWheel(): void {
+  // Intentionally empty: wheel-arbiter owns all viewport wheel zoom.
+  // A previous implementation here called setLookAt toward the selection COG
+  // on every wheel tick, which rotated the camera during zoom.
   window.addEventListener(
     "wheel",
-    (e: WheelEvent) => {
-      try {
-        if ((window as Any).__OBS_MMB_HELD) return;
-        // Self-contained overlays (CAD Viewer) handle their own wheel zoom.
-        if ((e.target as HTMLElement | null)?.closest?.("#obs-cad-viewer,[data-obs-own-wheel]")) return;
-        // One wheel authority: wheel-arbiter owns zoom (cursor-centred, ortho + perspective).
-        if ((window as Any).__OBS_WHEEL_AUTHORITY) return;
-        const cam = camera();
-        if (!cam) return;
-
-        // (Zoom never re-aims the camera: the target is not forced onto the COG here.)
-
-        // Own zoom when: orthographic OR selection COG active
-        const own = cam.isOrthographicCamera || hasCog;
-        if (!own) return;
-
-        const host = (ctx as Any).rightHost as HTMLElement | undefined;
-        if (host && e.target && host.contains(e.target as Node) === false) {
-          const t = e.target as HTMLElement;
-          if (t.closest?.("#obs-parity-tabs,input,textarea,button")) return;
-        }
-
-        e.preventDefault();
-        e.stopImmediatePropagation();
-
-        let dy = e.deltaY;
-        if (e.deltaMode === 1) dy *= 16;
-        if (e.deltaMode === 2) dy *= 400;
-        const zoomIn = dy < 0;
-        const base = e.shiftKey ? 1.28 : 1.12;
-        zoomAboutPivot(zoomIn ? base : 1 / base);
-      } catch {
-        /* */
-      }
+    (_e: WheelEvent) => {
+      // Permanent yield — do not process wheel here.
+      return;
     },
-    { capture: true, passive: false },
+    { capture: true, passive: true },
   );
 }
 
@@ -454,7 +432,6 @@ export function setupNavCogForce(): void {
   if (installed) return;
   installed = true;
 
-  // Priority 80 > navigation 30
   try {
     inputRouter.subscribe(onGesture, 80);
   } catch (e) {
@@ -463,7 +440,6 @@ export function setupNavCogForce(): void {
 
   installWheel();
 
-  // Selection watch
   const tick = () => {
     const k = selectionKey();
     if (k !== lastSelKey) {
@@ -483,22 +459,22 @@ export function setupNavCogForce(): void {
     if (t?.closest?.("input,textarea,[contenteditable],select")) return;
     if (e.key === "+" || e.key === "=") {
       e.preventDefault();
-      zoomAboutPivot(e.shiftKey ? 1.35 : 1.18);
+      zoomAboutViewAxis(e.shiftKey ? 1.35 : 1.18);
     } else if (e.key === "-" || e.key === "_") {
       e.preventDefault();
-      zoomAboutPivot(e.shiftKey ? 1 / 1.35 : 1 / 1.18);
+      zoomAboutViewAxis(e.shiftKey ? 1 / 1.35 : 1 / 1.18);
     }
   });
 
   (window as Any).__obsNavCog = {
     refresh: refreshCOG,
-    zoomIn: () => zoomAboutPivot(1.2),
-    zoomOut: () => zoomAboutPivot(1 / 1.2),
+    zoomIn: () => zoomAboutViewAxis(1.2),
+    zoomOut: () => zoomAboutViewAxis(1 / 1.2),
     hasCog: () => hasCog,
     getCog: () => (hasCog ? cog.clone() : null),
   };
 
   console.log(
-    "[nav-cog-force] PRIORITY 80 orbit about selection COG + ortho zoom + pivot marker",
+    "[nav-cog-force] PRIORITY 80 orbit about selection COG; wheel deferred to wheel-arbiter",
   );
 }
