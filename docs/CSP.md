@@ -1,27 +1,47 @@
 # Content Security Policy — openBIMstudio
 
-Remediation program Phase 1.5. **Status: drafted and fully specified, but
-NOT yet enabled in `index.html`.** Production-boot verification found a real
-incompatibility that must be resolved first (see "Enablement blocker" below).
-The API server already sends a strict header policy
-(`server/security.mjs`); the app-level policy below is ready to apply once
-the blocker is closed. **Any change to the policy must be verified against a
+Remediation program Phase 1.5. **Status: ENABLED in `index.html` (v0.74.0).**
+The API server additionally sends a strict header policy
+(`server/security.mjs`). **Any change to the policy must be verified against a
 production build** (`npm run build && npm run preview`) with the browser
 console open — a too-strict directive breaks features silently; a too-loose
-one weakens the platform.
+one weakens the platform. The regression pins live in
+`tests/dependency-safety.test.cjs` (meta present, no blanket `https:`,
+same-origin workers, no unpkg references, self-hosted Fragments worker).
 
-## Enablement blocker (verified 2026-10-26)
+## Former enablement blocker — RESOLVED (2026-10-26, v0.74.0)
 
-With the full policy applied as a meta tag, the ThatOpen Fragments worker
-(`@thatopen/fragments/dist/Worker/worker.mjs`, emitted as
-`assets/worker-*.mjs`) fails during boot ("Fragments worker failed to load…
-Failed to fetch") and the app aborts startup; with the meta removed the same
-build boots fully. The exact directive-level cause needs the Phase 7 browser
-E2E harness (console-violation capture) to iterate safely — likely the
-worker's module-import chain requires either `worker-src blob:` handling for
-nested imports or an additional `script-src` source for the worker's chunk
-graph. Do not enable the policy piecemeal by loosening directives blindly;
-close the blocker with evidence instead.
+With the first policy draft applied as a meta tag, the app aborted boot with
+"Fragments worker failed to load". Root-cause chain, verified by evidence:
+
+1. **The real cause was an undeclared runtime CDN dependency, not a missing
+   directive.** `OBC.FragmentsManager.getWorker()` (the SDK-recommended boot
+   call used in `src/core/setup.ts`) fetches the Fragments worker script
+   **from unpkg.com at runtime** and returns a blob URL. Under the policy that
+   fetch violates `connect-src` (unpkg is not an enumerated provider), and a
+   blob worker would inherit the document policy for its import chain. Beyond
+   CSP this was a supply-chain and privacy defect: every boot phoned a public
+   npm CDN, the worker version depended on live unpkg availability, and the
+   app could not run offline.
+2. **Fix — self-host the worker.** `src/core/setup.ts` now imports the
+   package-shipped worker via the official subpath export
+   (`import fragmentsWorkerUrl from "@thatopen/fragments/worker?url"`) and
+   passes that same-origin URL to `fragments.init()`. In dev Vite serves the
+   file directly; in build it is emitted as `assets/worker-*.mjs`. The
+   `getWorker()` call is banned by test (`tests/dependency-safety.test.cjs`).
+3. **Collateral verified defect fixed in the same stage.** While verifying
+   boot with a real IFC import, a second pre-existing breakage was found:
+   every IFC conversion died with `LinkError: … "__cxa_throw"` /
+   `BindingError: function StreamMeshes called with 4 arguments, expected 3`.
+   Cause: the bundled `web-ifc` JS glue (npm 0.0.78, 4-arg `StreamMeshes`)
+   fetched the WASM binaries from `public/web-ifc/`, which still held the
+   0.0.77 binaries (3-arg embind) — a dependency bump without asset re-pin.
+   0.0.78's own browser pair is also internally incoherent. The whole stack
+   is pinned to **web-ifc 0.0.77** (JS + browser/node WASM mutually coherent;
+   Node isolation harness: `StreamAllMeshes` OK), and
+   `tests/dependency-safety.test.cjs` now asserts `public/web-ifc/*` are
+   byte-identical to `node_modules/web-ifc/*` so the two can never drift
+   again.
 
 ## Directive-by-directive justification
 
@@ -29,7 +49,7 @@ close the blocker with evidence instead.
 |---|---|---|
 | `default-src` | `'self'` | Everything not explicitly listed falls back to same-origin only. |
 | `script-src` | `'self'` `'wasm-unsafe-eval'` `https://cdn.jsdelivr.net` | Bundled app + classic scripts under `/js/`, `/plugins/` are same-origin. `'wasm-unsafe-eval'` is required by web-ifc and LibreDWG WebAssembly compilation (no general `'unsafe-eval'` granted). `cdn.jsdelivr.net` is required **only** by the PDF underlay feature, which loads PDF.js 4.4.168 on demand (`src/modules/pdf-underlay/pdf-underlay.ts`). PDFs are parsed locally; no project data is uploaded anywhere by that feature. |
-| `worker-src` | `'self'` `blob:` `https://cdn.jsdelivr.net` | Clash worker is a bundled same-origin worker. `blob:` covers workers built from inline bundles (ThatOpen fragments pipeline, Monaco-style patterns). PDF.js worker comes from jsdelivr together with the library. |
+| `worker-src` | `'self'` `blob:` `https://cdn.jsdelivr.net` | The Fragments worker (self-hosted `assets/worker-*.mjs`) and the clash worker are bundled same-origin workers. `blob:` covers workers built from inline bundles (Monaco-style patterns). PDF.js worker comes from jsdelivr together with the library. |
 | `style-src` | `'self'` `'unsafe-inline'` | Emotion/MUI inject runtime `<style>` elements — impossible without `'unsafe-inline'`. This is the industry-standard trade-off for CSS-in-JS; scripts remain restricted. |
 | `img-src` | `'self'` `data:` `blob:` | Icons/manifest assets are same-origin; screenshots, IFC texture atlases and canvas exports appear as data/blob URLs. |
 | `font-src` | `'self'` `data:` | No external font CDN is used. |

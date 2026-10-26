@@ -1,4 +1,4 @@
-﻿var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getOwnPropNames = Object.getOwnPropertyNames;
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
@@ -71454,7 +71454,7 @@ var IfcAPI2 = class {
    */
   async Init(customLocateFileHandler, forceSingleThread = false) {
     if (!WebIFCWasm) {
-      if (typeof self !== "undefined" && false) {
+      if (typeof self !== "undefined" && self.crossOriginIsolated && !forceSingleThread) {
         try {
           WebIFCWasm = require_web_ifc_mt();
         } catch (ex) {

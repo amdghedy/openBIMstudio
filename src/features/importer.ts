@@ -89,8 +89,10 @@ interface ImportTask {
 }
 
 export type IfcSettings = {
-  cdn: "local" | "unpkg" | "jsdelivr" | "custom";
-  version: string;
+  // "unpkg"/"jsdelivr" were removed: they were never wired into wasmPath()
+  // (dead controls) and a third-party WASM CDN would violate the app CSP
+  // (connect-src). Stale localStorage values degrade to "local" in wasmPath().
+  cdn: "local" | "custom";
   customPath: string;
   autoFit: boolean;
   keepFragInMemory: boolean;
@@ -105,7 +107,7 @@ export type IfcSettings = {
 const IFC_SETTINGS_KEY = "toc.ifc.settings.v1";
 
 const defaultIfcSettings: IfcSettings = {
-  cdn: "local", version: "0.0.77", customPath: "",
+  cdn: "local", customPath: "",
   autoFit: true, keepFragInMemory: true, replaceExisting: false,
   recenter: false, maxSizeMB: 500, useCoord: false, coordX: 0, coordY: 0, coordZ: 0,
   positioning: "origin-to-origin",
@@ -115,10 +117,6 @@ let ifcSettings: IfcSettings = { ...defaultIfcSettings };
 try {
   const raw = localStorage.getItem(IFC_SETTINGS_KEY);
   if (raw) ifcSettings = { ...defaultIfcSettings, ...JSON.parse(raw) };
-  if (ifcSettings.cdn === "unpkg" || ifcSettings.cdn === "jsdelivr") {
-    ifcSettings.cdn = "local";
-    saveIfcSettings();
-  }
 } catch { /* */ }
 
 function saveIfcSettings() {
@@ -929,13 +927,8 @@ settingsBox.innerHTML = `
     <label style="display:grid;gap:2px">WASM source
       <select id="ifcCdn" style="${inpCss}">
         <option value="local">Local (recommended)</option>
-        <option value="unpkg">unpkg.com</option>
-        <option value="jsdelivr">cdn.jsdelivr.net</option>
         <option value="custom">Custom path…</option>
       </select>
-    </label>
-    <label style="display:grid;gap:2px">web-ifc version
-      <input id="ifcVer" style="${inpCss}" placeholder="0.0.77">
     </label>
     <label id="ifcCustomRow" style="display:none;gap:2px">Custom WASM folder URL (must end with /)
       <input id="ifcCustom" style="${inpCss}" placeholder="https://my-cdn/web-ifc/">
@@ -952,7 +945,6 @@ settingsBox.innerHTML = `
 function syncSettingsUI() {
   const $ = (id: string) => settingsBox.querySelector(`#${id}`) as any;
   $("ifcCdn").value = ifcSettings.cdn;
-  $("ifcVer").value = ifcSettings.version;
   $("ifcCustom").value = ifcSettings.customPath;
   $("ifcCustomRow").style.display = ifcSettings.cdn === "custom" ? "grid" : "none";
   $("ifcRecenter").checked = !!ifcSettings.recenter;
@@ -967,7 +959,6 @@ settingsBox.addEventListener("change", (e) => {
   const rebuild = () => disposeImporter();
   switch (el.id) {
     case "ifcCdn": ifcSettings.cdn = el.value as IfcSettings["cdn"]; syncSettingsUI(); rebuild(); break;
-    case "ifcVer": ifcSettings.version = el.value.trim() || "0.0.77"; rebuild(); break;
     case "ifcCustom": ifcSettings.customPath = el.value.trim(); rebuild(); break;
     case "ifcRecenter":
       ifcSettings.recenter = el.checked;

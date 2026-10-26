@@ -5,4 +5,4 @@
  * consumed by the plugin host, the About dialog, and diagnostics. A test pins
  * the two values together so they cannot drift again (tests/version-consistency.test.cjs).
  */
-export const APP_VERSION = "0.73.0";
+export const APP_VERSION = "0.74.0";

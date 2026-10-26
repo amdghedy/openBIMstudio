@@ -4,6 +4,13 @@ import * as OBCF from "@thatopen/components-front";
 import * as BUI from "@thatopen/ui";
 import * as BUIC from "@thatopen/ui-obc";
 import { ctx } from "./context";
+// Self-hosted Fragments worker. The SDK default (`FragmentsManager.getWorker()`)
+// fetches the worker from unpkg.com at runtime and hands back a blob URL — an
+// undeclared third-party runtime dependency that violates the app CSP
+// (connect-src) and sends version telemetry to a public CDN on every boot.
+// The package exports the worker file as the subpath "@thatopen/fragments/worker"
+// (→ dist/Worker/worker.mjs, self-contained ESM with no bare imports).
+import fragmentsWorkerUrl from "@thatopen/fragments/worker?url";
 
 BUI.Manager.init();
 
@@ -63,12 +70,13 @@ export async function setupViewer() {
 
   const fragments = components.get(OBC.FragmentsManager);
   try {
-    fragments.init(await OBC.FragmentsManager.getWorker());
+    fragments.init(fragmentsWorkerUrl);
   } catch (e) {
     console.error("[fragments] worker init failed", e);
     throw new Error(
-      "Fragments worker failed to load. Often caused by COEP/CORS or a 404 HTML page. " +
-      "Restart Vite after npm install. Original: " + (e instanceof Error ? e.message : String(e))
+      "Fragments worker failed to load. The worker is self-hosted from /assets/worker-*.mjs — " +
+      "check the Network tab for a 404 or a wrong MIME type on that file. " +
+      "Original: " + (e instanceof Error ? e.message : String(e))
     );
   }
   world.camera.controls.addEventListener("update", () => fragments.core.update());

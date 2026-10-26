@@ -6,6 +6,9 @@
     <meta name="theme-color" content="#0e1017">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <meta charset="UTF-8" />
+    <!-- Full policy + justification: docs/CSP.md. Any change must be verified
+         against a production build with the console open (zero violations). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://developer.api.autodesk.com https://graph.microsoft.com https://*.sharepoint.com https://field.dalux.com https://www.googleapis.com https://generativelanguage.googleapis.com https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api.cerebras.ai https://api.deepseek.com https://api.mistral.ai https://api.together.xyz https://api.dropboxapi.com https://content.dropboxapi.com http://localhost:* http://127.0.0.1:* ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Open BIM Studio - Professional BIM-style openBIM Platform</title>
     <link rel="stylesheet" href="/src/style.css" />

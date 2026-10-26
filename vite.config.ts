@@ -19,9 +19,6 @@ import { createHash } from "node:crypto";
  */
 export default defineConfig({
   plugins: [react(), crossOriginIsolation(), pwaPrecache()],
-  define: {
-    __WEB_IFC_SCRIPT_URL__: JSON.stringify('/web-ifc/web-ifc-api.js'),
-  },
   esbuild: { target: "esnext" },
   build: {
     target: "esnext",
