@@ -31,6 +31,11 @@ export interface LinkOptions {
   rotationDeg: number;
   /** Placement level elevation in metres. */
   elevation: number;
+  /**
+   * true (default): the drawing is laid flat on the placement level, exactly like a CAD plan view.
+   * false: keep each point's own drawing Z (3D drawings).
+   */
+  flatten?: boolean;
   colors: ColorMode;
   layers: LayerImport;
   /** Plan views that show the link: every plan, or only the placement level. */
@@ -43,6 +48,7 @@ export const DEFAULT_LINK_OPTIONS: LinkOptions = {
   manual: { x: 0, z: 0 },
   rotationDeg: 0,
   elevation: 0,
+  flatten: true,
   colors: "preserve",
   layers: "all",
   planScope: "all",
@@ -66,6 +72,8 @@ export interface Placement {
   tx: number;
   tz: number;
   elevation: number;
+  /** Ignore drawing Z (lay the drawing flat on the placement level). */
+  flatten: boolean;
   /** Set for "shared": positions come from the survey transform instead. */
   survey?: PlacementEnv["surveyToProject"];
 }
@@ -101,6 +109,7 @@ export function computePlacement(doc: DxfDocument, opts: LinkOptions, env: Place
     rotationDeg: opts.rotationDeg || 0,
     tx: 0, tz: 0,
     elevation: opts.elevation || 0,
+    flatten: opts.flatten !== false,
   };
 
   if (opts.positioning === "shared" && env.surveyToProject) {
@@ -129,6 +138,7 @@ export function computePlacement(doc: DxfDocument, opts: LinkOptions, env: Place
 /** Drawing point (units) -> world [X, Y, Z] (metres). */
 export function mapPoint(pl: Placement, x: number, y: number, z = 0): [number, number, number] {
   const sx = x * pl.scale, sy = y * pl.scale;
+  if (pl.flatten) z = 0;
   if (pl.survey) {
     const [wx, wz] = pl.survey(sx, sy);
     return [wx, pl.elevation + z * pl.scale, wz];

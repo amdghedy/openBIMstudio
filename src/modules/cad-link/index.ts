@@ -597,6 +597,9 @@ export async function openLinkDialog(input: DialogInput): Promise<LinkOptions | 
       elev.style.width = "90px"; wrap.append(sel, elev); body.appendChild(wrap);
     } else body.appendChild(elev);
 
+    label("Elevations (Z)");
+    select([["flat", "Flat in plan, like the CAD drawing"], ["keep", "Keep each object's drawing Z (3D drawing)"]], o.flatten === false ? "keep" : "flat", (v) => { o.flatten = v !== "keep"; });
+
     label("Show in plan views");
     select([["all", "All plan views"], ["level", "Placement level only"]], o.planScope, (v) => { o.planScope = v as LinkOptions["planScope"]; });
 

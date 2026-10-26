@@ -376,5 +376,27 @@ t("snap segments honour layer visibility", () => {
   assert.strictEqual(core.snapSegments(g, (n) => n === "A").length, 4);
 });
 
+t("placement: drawing Z is flattened by default, kept on request", () => {
+  const doc = sq("mm");
+  const flat = core.computePlacement(doc, opts({ elevation: 3 }), env);
+  near(core.mapPoint(flat, 1000, 1000, 2000)[1], 3);          // z ignored: lies on the level
+  const keep = core.computePlacement(doc, opts({ elevation: 3, flatten: false }), env);
+  near(core.mapPoint(keep, 1000, 1000, 2000)[1], 5);          // 3 m level + 2 m drawing Z
+  // options saved before the setting existed behave as flat
+  const legacy = { ...core.DEFAULT_LINK_OPTIONS }; delete legacy.flatten;
+  near(core.mapPoint(core.computePlacement(doc, legacy, env), 0, 0, 5000)[1], 0);
+});
+
+t("geometry: an insert at a different Z lands on the same plane as the lines", () => {
+  const dxf = P(0, "SECTION") + P(2, "BLOCKS") + ent("BLOCK", [8, "0"], [2, "G"], [70, 0], [10, 0], [20, 0], [30, 0]) +
+    ent("LINE", [8, "0"], [10, 0], [20, 0], [30, 0], [11, 100], [21, 0], [31, 0]) + P(0, "ENDBLK") + P(0, "ENDSEC") +
+    section("ENTITIES", ent("INSERT", [8, "A"], [2, "G"], [10, 1000], [20, 500], [30, 2800]) + ent("LINE", [8, "A"], [10, 0], [20, 0], [30, 0], [11, 1000], [21, 500], [31, 0]));
+  const doc = parseDxf(P(9, "x") && header(4) + dxf);
+  const pl = core.computePlacement(doc, opts({}), env);
+  const geo = core.buildGeometry(doc, pl, opts({}), "dark");
+  const ys = new Set(); for (const g of geo.groups) for (let i = 1; i < g.segs.length; i += 3) ys.add(+g.segs[i].toFixed(6));
+  assert.deepStrictEqual([...ys], [0]);
+});
+
 console.log(`\n=== Result: ${passed} passed, ${failed} failed ===`);
 process.exit(failed ? 1 : 0);

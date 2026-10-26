@@ -168,6 +168,14 @@ function xp(m: InsertXform, p: DxfPoint): DxfPoint {
   };
 }
 
+/** Direction of text (deg) after scale, mirror and rotation of an insert: exact for any sign combination. */
+export function textAngleThrough(m: InsertXform, angleDeg: number): number {
+  const a = angleDeg * DEG;
+  const dx = Math.cos(a) * m.sx, dy = Math.sin(a) * m.sy;
+  const out = Math.atan2(dy, dx) / DEG + m.rot;
+  return ((out % 360) + 360) % 360;
+}
+
 /** Apply an insert transform to one entity (arcs/circles become polylines if the scale is non-uniform). */
 export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
   const uniform = Math.abs(Math.abs(m.sx) - Math.abs(m.sy)) < 1e-9 * Math.max(1, Math.abs(m.sx));
@@ -183,13 +191,13 @@ export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
     case "LWPOLYLINE":
       return [{
         ...base, type: "LWPOLYLINE", points: e.points.map((p) => xp(m, p)), closed: e.closed,
-        ...(e.hatch ? { hatch: { ...e.hatch, angle: (e.hatch.angle ?? 0) + m.rot + flip, scale: (e.hatch.scale ?? 1) * Math.abs(m.sx), loops: e.hatch.loops.map((l) => l.map((p) => xp(m, p))) } } : {}),
+        ...(e.hatch ? { hatch: { ...e.hatch, angle: textAngleThrough(m, e.hatch.angle ?? 0), scale: (e.hatch.scale ?? 1) * Math.abs(m.sx), loops: e.hatch.loops.map((l) => l.map((p) => xp(m, p))) } } : {}),
       }];
     case "TEXT":
       return [{
         ...base, type: "TEXT", position: xp(m, e.position),
         height: e.height * Math.abs(m.sy),
-        value: e.value, rotation: (e.rotation ?? 0) + m.rot + flip, align: e.align, valign: e.valign,
+        value: e.value, rotation: textAngleThrough(m, e.rotation ?? 0), align: e.align, valign: e.valign,
       }];
     case "CIRCLE":
       if (uniform && !mirrored) {

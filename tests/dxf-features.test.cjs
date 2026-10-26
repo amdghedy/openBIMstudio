@@ -59,4 +59,8 @@ t("*Paper_Space blocks become extra layouts",()=>{
   const blk=D("0","BLOCK","8","0","2","*Paper_Space1","70","0","10","0","20","0","30","0","0","LINE","8","TB","10","0","20","0","30","0","11","9","21","0","31","0","0","ENDBLK");
   const d=parseDxf(file({blocks:blk}));assert.strictEqual(d.layouts.length,1);assert.strictEqual(d.layouts[0].entities.length,1);assert.strictEqual(d.layouts[0].name,"Layout 1")});
 t("ATTDEF no longer reported as skipped",()=>{const d=parseDxf(file({ents:D("0","ATTDEF","8","A","10","0","20","0","30","0","40","2","1","x")}));assert.ok(!d.skipped||!d.skipped.ATTDEF)});
+t("text direction through mirrored and rotated inserts is exact",()=>{
+  const blk=D("0","BLOCK","8","0","2","T","70","0","10","0","20","0","30","0","0","TEXT","8","0","10","0","20","0","30","0","40","2","1","T","50","30","0","ENDBLK");
+  const ang=(sx,sy,rot)=>parseDxf(file({blocks:blk,ents:D("0","INSERT","8","A","2","T","10","0","20","0","30","0","41",sx,"42",sy,"43","1","50",rot)})).entities[0].rotation;
+  near(ang(1,1,0),30);near(ang(1,1,90),120);near(ang(-1,1,0),150);near(ang(1,-1,0),330);near(ang(-1,-1,0),210);near(ang(-1,1,90),240)});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

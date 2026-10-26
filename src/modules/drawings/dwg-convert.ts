@@ -55,7 +55,7 @@ function anglesAreDegrees(entities: Any[], blocks: Map<string, Any>): boolean {
       if (t === "ARC") vals.push(pick(e, ["startAngle", "start_angle"]), pick(e, ["endAngle", "end_angle"]));
       else if (t === "INSERT" || t === "TEXT" || t === "MTEXT") vals.push(e?.rotation);
       else if (t === "ELLIPSE") vals.push(pick(e, ["startAngle", "startParameter"]), pick(e, ["endAngle", "endParameter"]));
-      for (const v of vals) if (typeof v === "number" && Math.abs(v) > TWO_PI + 0.01) return true;
+      for (const v of vals) if (typeof v === "number" && Math.abs(v) > 2 * TWO_PI + 0.01) return true; // > two full turns in radians can only be degrees
     }
     return false;
   };
