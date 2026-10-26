@@ -387,10 +387,19 @@ export function solveFrame(model: FemModel): FemResult {
 
 function transMatrix(g: ElemGeom): number[][] {
   const { c, s } = g;
-  const nodeBlock = [[c, s, 0], [-s, c, 0], [0, 0, 1]];
+  // Block-diagonal 6×6: T = diag(B, B) with B the 3×3 global→local
+  // rotation per node ([u_l] = B·[u_g], θ unchanged). The previous
+  // implementation stacked B vertically, producing a 6×3 matrix — every
+  // member transformation was silently broken (NaN in K) and the FEM
+  // tests passed vacuously because their rel() assertions accepted NaN.
+  const B: number[][] = [[c, s, 0], [-s, c, 0], [0, 0, 1]];
   return [
-    ...nodeBlock.map((r) => [...r]),
-    ...nodeBlock.map((r) => [...r]),
+    [B[0][0], B[0][1], B[0][2], 0, 0, 0],
+    [B[1][0], B[1][1], B[1][2], 0, 0, 0],
+    [B[2][0], B[2][1], B[2][2], 0, 0, 0],
+    [0, 0, 0, B[0][0], B[0][1], B[0][2]],
+    [0, 0, 0, B[1][0], B[1][1], B[1][2]],
+    [0, 0, 0, B[2][0], B[2][1], B[2][2]],
   ];
 }
 

@@ -36,7 +36,11 @@ function near(a, b, tol = 1e-4) {
 
 function rel(a, b, tolPct = 0.5) {
   const d = Math.abs(a - b) / Math.max(Math.abs(b), 1e-12);
-  if (d > tolPct / 100) throw new Error(`Expected ${a} ~ ${b} (±${tolPct}%), off by ${(d * 100).toFixed(2)}%`);
+  // NaN-guard: a NaN result used to slip through (NaN > x === false) and
+  // made the whole FEM suite pass vacuously when the transform broke.
+  if (!Number.isFinite(d) || d > tolPct / 100) {
+    throw new Error(`Expected ${a} ~ ${b} (±${tolPct}%), off by ${(d * 100).toFixed(2)}%`);
+  }
 }
 
 function assert(cond, msg) {
@@ -96,11 +100,11 @@ t("SS beam UDL: reactions, midspan moment and deflection match closed form", () 
   const f1 = r.memberForces.get("e1");
   const f2 = r.memberForces.get("e2");
   rel(f1.V1, w * L / 2, 0.01);
-  rel(Math.abs(f1.V2), 0, 1e-3);
-  rel(Math.abs(f1.M1), 0, 1.0);
+  near(Math.abs(f1.V2), 0, 1e-3);
+  near(Math.abs(f1.M1), 0, 1.0);
   rel(f1.M2, (w * L * L) / 8, 0.5);
   rel(f2.M1, (w * L * L) / 8, 0.5);
-  rel(Math.abs(f2.M2), 0, 1.0);
+  near(Math.abs(f2.M2), 0, 1.0);
   rel(f2.V2, -w * L / 2, 0.01); // standard convention: right-end shear negative
 });
 
@@ -121,14 +125,15 @@ t("cantilever tip load: tip deflection PL³/3EI, base moment −PL", () => {
   const f = r.memberForces.get("c");
   rel(f.M1, -P * L, 0.01);   // hogging at base, sagging-positive convention
   rel(f.V1, P, 0.01);        // upward reaction at base
-  // Deflection profile matches exact shape.
+  // Deflection profile matches the exact elastic curve v(x) = P·x²(3L−x)/(6EI).
   const prof = fem.memberDeflectionProfile(model, r, "c", 11);
-  const mid = prof[5];
-  rel(Math.abs(mid.v), (P * Math.pow(2, 3)) / (3 * E * I) + (P * Math.pow(L, 2) / (2 * E * I)) * 2, 2);
+  const mid = prof[5]; // x = L/2 = 2 m
+  const xMid = 2;
+  rel(Math.abs(mid.v), (P * xMid * xMid * (3 * L - xMid)) / (6 * E * I), 2);
 });
 
 // ── 3. Axial truss member ───────────────────────────────────────────────────
-t("axial member: uniform stress, N = P", () => {
+t("axial member: parallel bars share load, N = P/2 each", () => {
   const P = 50000;
   const model = {
     nodes: [
@@ -143,15 +148,16 @@ t("axial member: uniform stress, N = P", () => {
     nodalLoads: [{ nodeId: "B", fx: P }],
   };
   const r = fem.solveFrame(model);
-  rel(r.memberForces.get("t1").N2, P, 0.01);
-  rel(r.memberForces.get("t2").N2, P, 0.01);
-  // Elongation of each bar: PL/AE
+  // Same tension P/2 in both bars; end-force signs flip with member axis.
+  rel(r.memberForces.get("t1").N2, P / 2, 0.01);
+  rel(r.memberForces.get("t2").N2, -P / 2, 0.01);
+  // Elongation of each bar: PL/(2AE)
   const dB = r.displacements.get("B");
-  rel(dB[0], (P * 3) / (2e-3 * E), 0.5);
+  rel(dB[0], (P * 3) / (2 * 2e-3 * E), 0.5);
 });
 
 // ── 4. Inclined member: load transformed through member axis ────────────────
-t("inclined brace carries axial load component", () => {
+t("inclined brace: joint equilibrium N = P/cosθ", () => {
   // 3-4-5 brace, roller at B: vertical load creates axial force N = P·sinθ
   const P = 20000;
   const model = {
@@ -164,7 +170,7 @@ t("inclined brace carries axial load component", () => {
   };
   const r = fem.solveFrame(model);
   const f = r.memberForces.get("b");
-  rel(f.N2, P * 0.8, 1); // cosθ = 4/5
+  rel(f.N2, P / 0.8, 1); // N = P / cosθ, cosθ = 4/5
 });
 
 // ── 5. Frame member rotation: 90° column with lateral load ──────────────────
@@ -235,9 +241,9 @@ t("RC beam: As required matches hand calc, shear stirrups sized", () => {
   const r = checks.checkRcBeam(input, { Mu, Vu });
 
   // Hand calc: Rn = Mu/(φ b d²) = 200e6/(0.9·300·540²) = 2.543...
-  const Rn = 200e6 / (0.9 * 0.3 * 0.54 * 0.54);
-  const k = 0.85 * 25 / 420;
-  const rho = k * (1 - Math.sqrt(1 - (2 * Rn) / k));
+  const Rn = 200e3 / (0.9 * 0.3 * 0.54 * 0.54); // Pa
+  const k = 0.85 * 25e6 / 420e6; // ρ coefficient, consistent SI units
+  const rho = k * (1 - Math.sqrt(1 - (2 * Rn) / (0.85 * 25e6)));
   const AsHand = rho * 0.3 * 0.54;
   rel(r.AsReq, AsHand, 0.5);
   assert(r.AsReq > 900e-6 && r.AsReq < 1300e-6, `AsReq ${r.AsReq * 1e6} mm² out of plausible range`);
