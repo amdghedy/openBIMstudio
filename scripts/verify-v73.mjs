@@ -173,7 +173,10 @@ check("package.json: test scripts wired", () => {
   for (const k of ["test:v73-just", "test:v73-mag", "test:v73-panels", "test:v73-rel", "verify:v73"]) {
     if (!p.scripts[k]) throw new Error(`missing script: ${k}`);
   }
-  if (p.version !== "0.73.0") throw new Error(`version ${p.version}`);
+  // Semver-forward (same fix class as verify-v71/v72): this script pins the
+  // v73 feature set, not the release line; any version >= 0.73.0 is valid.
+  const [maj, min, patch] = String(p.version).split(".").map(Number);
+  if (!(maj > 0 || min > 73 || (min === 73 && patch >= 0))) throw new Error(`version ${p.version} < 0.73.0`);
 });
 check("CI runs the v73 suites", () => {
   const wf = read(".github/workflows/unit-tests.yml");
