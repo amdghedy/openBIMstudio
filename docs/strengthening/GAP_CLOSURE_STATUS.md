@@ -45,9 +45,9 @@
 - ~~Metadata-driven property panel + editable dimensions~~ ✅ v0.68 — `src/modules/properties-panel` (schema/lifecycle/dimensions)
 - ~~Hosting: host parameterization + opening regeneration~~ ✅ v0.68 — `src/modules/hosting`
 - Worksharing / multi-user
-- UI wiring of the v0.68 authoring engines into the plan-view tools
-- ~~Structural design / rebar~~ ✅ v0.67 (2D frame FEM + steel/RC checks) — `src/modules/analytical-model`; 3D frames, LTB/interaction still open
+- ~~UI wiring of the v0.68 authoring engines into the plan-view tools~~ ✅ v0.69 — `src/features/engine-ui.ts` (ribbon groups on Analyze / Architecture / Edit / Manage; see `docs/UI_WIRING_V69.md`)
+- ~~Structural design / rebar~~ ✅ v0.67 (2D frame FEM + steel/RC checks) — `src/modules/analytical-model`; 3D frames, LTB/interaction still open. **v0.69 fix:** `transMatrix()` in `fem.ts` returned a malformed 6×3 transform that made every member transformation produce NaN — the structural suite had been passing vacuously (its `rel()` assertions accepted NaN). Both fixed; all 11 closed-form cases now assert genuine results.
 - High-fidelity print/PDF
 - Large-model out-of-core loading
 
-These are now the clear next targets once the P0–P2 strengthening is integrated and wired to the real geometry/authoring engines. The v0.67 engine package is documented in `docs/REVIT_KILLER_V67.md`.
+These are now the clear next targets once the P0–P2 strengthening is integrated and wired to the real geometry/authoring engines. The v0.67 engine package is documented in `docs/REVIT_KILLER_V67.md` and the v0.69 UI wiring wave in `docs/UI_WIRING_V69.md`.

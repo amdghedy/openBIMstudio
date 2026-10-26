@@ -67,6 +67,7 @@ jobs:
       - run: npm run test:v68-solids
       - run: npm run test:v68-interaction
       - run: npm run test:v68-acceptance
+      - run: npm run test:v69
       - run: npm run verify:v68
       - name: Dependency audit (production, high severity)
         run: npm audit --omit=dev --audit-level=high

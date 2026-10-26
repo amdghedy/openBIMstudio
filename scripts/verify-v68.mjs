@@ -39,7 +39,9 @@ const track = (ok) => { ok ? pass++ : fail++; };
 console.log("\n=== verify-v68 — authoring core milestone ===\n");
 
 console.log("version + scripts:");
-track(check("version 0.68", "package.json", /"version":\s*"0\.68\./));
+// The platform moves forward (0.68 → 0.69+); assert generic semver so the
+// check follows the platform instead of pinning the milestone version.
+track(check("version semver (>= 0.68)", "package.json", /"version":\s*"0\.(6[89]|[1-9][0-9]+)\./));
 track(check("test:v68-core script", "package.json", /test:v68-core/));
 track(check("test:v68-solids script", "package.json", /test:v68-solids/));
 track(check("test:v68-interaction script", "package.json", /test:v68-interaction/));
