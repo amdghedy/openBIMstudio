@@ -19,6 +19,20 @@
 
 [Quick start](#quick-start) · [Why OpenBIMStudio](#-why-openbimstudio) · [What you can do](#-what-you-can-do) · [All tools & commands](#tools--commands) · [Interoperability](#-interoperability) · [Docs](#-documentation)
 
+<p align="center">
+  <a href="https://www.buildingsmart.org/"><img src="https://img.shields.io/badge/IFC-2x3%20%7C%204-0096D6?style=for-the-badge" alt="IFC — Industry Foundation Classes"></a>
+  <a href="https://thatopen.com/"><img src="https://img.shields.io/badge/That%20Open-web--ifc%20·%20Fragments-7C3AED?style=for-the-badge" alt="That Open"></a>
+  <a href="https://threejs.org/"><img src="https://img.shields.io/badge/Three.js-000000?style=for-the-badge&logo=threedotjs&logoColor=white" alt="Three.js"></a>
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/React-18-20232A?style=flat-square&logo=react&logoColor=61DAFB" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite">
+  <img src="https://img.shields.io/badge/MUI-007FFF?style=flat-square&logo=mui&logoColor=white" alt="MUI">
+  <img src="https://img.shields.io/badge/LibreDWG-WASM-2D7D9A?style=flat-square" alt="LibreDWG">
+  <img src="https://img.shields.io/badge/Yjs-CRDT-4B7BE5?style=flat-square" alt="Yjs">
+</p>
+
 </div>
 
 ---
