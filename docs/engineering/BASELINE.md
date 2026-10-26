@@ -154,3 +154,10 @@ Legend: **verified** = implemented + runtime-verified by tests/verify scripts; *
 ## 11. Rule for closing gaps
 
 A gap may only be marked closed in this file (or the feature registry) when implementation + tests + runtime evidence + documentation + user-facing maturity state all agree. Evidence references are updated per stage in the corresponding stage reports.
+
+## 12. Stage status (living record)
+
+| Stage | Closed items | Evidence |
+|---|---|---|
+| Stage 1 (`d8565df`) | §4 critical vulnerabilities (phantom `json-rules-engine`→`jsonpath-plus` removed; `nasjidwg` removed); fake `ExportDWGCommand` stub deleted; CI audit `continue-on-error` removed; obsolete CI sed patch removed; `npm ci` in unit-tests | `npm audit --omit=dev --audit-level=high` = 0 vulnerabilities; `tests/dependency-safety.test.cjs` 7/7 |
+| Stage 2 (server hardening) | §8.1 fail-closed startup (non-loopback without strong token + explicit origins → process exit); §8.2 origin allow-list enforced; §8.3 query tokens restricted to SSE route + short-lived signed SSE tokens (`?sse=`); §8.4 per-IP rate budgets (general + mutations) and SSE connection cap; correlation IDs + structured security logs with token/file-name hygiene; §8.5 streaming size limit on uploads, opaque server-side upload ids (no user-name keys, no `savedPath` leak), signature sniffing (IFC/DXF/DWG; RVT/NWD/NWC documented unverifiable), conversion concurrency cap, retention sweeps (uploads + jobs + post-download deletion), generic client errors; §8.8 `OBS_DATA_DIR` isolation for tests | `tests/server-hardening.test.cjs` 37/37 (incl. spawned-server integration: refused startup, 401/403/413/429 paths, malformed JSON generic, SSE limits, signed-token accept/reject, upload path-leak checks); legacy `server-security` 11/11; typecheck clean; build ok. Remaining §8.7 (JSON persistence → transactional store) explicitly **not** closed — Phase 5 scope. |

@@ -3,21 +3,55 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseAllowedOrigins, originAllowed, corsHeaders, SECURITY_HEADERS, validId, tokenOk, safeUploadName } from "./security.mjs";
+import { resolveStartupConfig } from "./startup-config.mjs";
+import { createRateLimiter, clientKey, correlationId, securityLog, redactFileName } from "./rate-limit.mjs";
+import { issueSseToken, verifySseToken } from "./sse-tokens.mjs";
+import { sniffSignature, storeUpload, sweepExpired } from "./upload-store.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const dataDir = path.join(__dirname, "data");
+/* ── Fail-closed startup (remediation Phase 1.2) ─────────────────────────
+ * Non-loopback bind without a strong token + explicit origin allow-list is
+ * REFUSED (process exit), not warned. See server/startup-config.mjs.
+ */
+const CFG = resolveStartupConfig({
+  host: process.env.HOST,
+  token: process.env.OBS_SERVER_TOKEN,
+  allowedOrigins: process.env.OBS_ALLOWED_ORIGINS,
+});
+
+if (!CFG.ok) {
+  console.error("[collab] STARTUP REFUSED: " + CFG.reason);
+  process.exit(1);
+}
+
+const dataDir = process.env.OBS_DATA_DIR || path.join(__dirname, "data");
 const projectsFile = path.join(dataDir, "projects.json");
 const roomsFile = path.join(dataDir, "rooms.json");
+const uploadsDir = path.join(dataDir, "uploads");
 
 const PORT = Number(process.env.PORT || 4000);
-// Local-only by default. Set HOST=0.0.0.0 to share on a network, and set OBS_SERVER_TOKEN when you do.
-const HOST = process.env.HOST || "127.0.0.1";
-const AUTH_TOKEN = process.env.OBS_SERVER_TOKEN || "";
-const ALLOWED_ORIGINS = parseAllowedOrigins();
-const MAX_BODY = 200 * 1024 * 1024;
+const HOST = CFG.host;
+const AUTH_TOKEN = CFG.token;
+const ALLOWED_ORIGINS = CFG.origins
+  ? new Set(CFG.origins)
+  : parseAllowedOrigins();
+const MAX_BODY = Number(process.env.OBS_MAX_BODY || 200 * 1024 * 1024);
 const PRESENCE_TIMEOUT_MS = 45000;
 const MAX_CHANGES_PER_ROOM = 500;
+
+/* Rate budgets (per IP). Tunable for tests via env. */
+const RATE_WINDOW_MS = Number(process.env.OBS_RATE_WINDOW_MS || 60_000);
+const RATE_MAX_GENERAL = Number(process.env.OBS_RATE_MAX || 300);
+const RATE_MAX_MUTATION = Number(process.env.OBS_RATE_MAX_MUTATION || 120);
+const SSE_MAX_PER_IP = Number(process.env.OBS_SSE_MAX_PER_IP || 5);
+const UPLOAD_RETENTION_MS = Number(process.env.OBS_UPLOAD_RETENTION_MS || 24 * 60 * 60_000);
+const MAX_CONCURRENT_CONVERSIONS = Number(process.env.OBS_MAX_CONCURRENT_CONVERSIONS || 3);
+
+const httpRate = createRateLimiter({ windowMs: RATE_WINDOW_MS, max: RATE_MAX_GENERAL });
+const mutationRate = createRateLimiter({ windowMs: RATE_WINDOW_MS, max: RATE_MAX_MUTATION });
+const ssePerIp = new Map(); // ip -> active SSE connection count
+let activeConversions = 0;
 
 const sseClients = new Map();
 
@@ -76,7 +110,7 @@ function readBody(req) {
       size += chunk.length;
 
       if (size > MAX_BODY) {
-        reject(new Error("Payload too large"));
+        reject(Object.assign(new Error("Payload too large"), { code: "payload_too_large" }));
         req.destroy();
         return;
       }
@@ -88,6 +122,27 @@ function readBody(req) {
       resolve(Buffer.concat(chunks).toString("utf8"));
     });
 
+    req.on("error", reject);
+  });
+}
+
+/** Streaming size-limited binary body read (uploads). Rejects early — the
+ * connection is destroyed as soon as the limit is exceeded, not after the
+ * full body has been buffered. */
+function readBodyBuffer(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY) {
+        reject(Object.assign(new Error("Payload too large"), { code: "payload_too_large" }));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
 }
@@ -229,8 +284,24 @@ const server = http.createServer(async (req, res) => {
   const allowedOrigin = originAllowed(origin, ALLOWED_ORIGINS);
   res.obsCors = corsHeaders(origin, ALLOWED_ORIGINS);
 
+  // Correlation id — every response carries it; every security log cites it.
+  const reqId = correlationId(req);
+  res.setHeader("X-Request-Id", reqId);
+  const key = clientKey(req);
+
   // A page from another site must not be able to drive this server through the visitor's browser.
-  if (allowedOrigin === false) return send(res, 403, { error: "Origin not allowed" });
+  if (allowedOrigin === false) {
+    securityLog(console.log, "origin_blocked", { requestId: reqId, origin: origin });
+    return send(res, 403, { error: "Origin not allowed", requestId: reqId });
+  }
+
+  // Per-IP request budget (general). Floods get 429 + Retry-After.
+  const general = httpRate.check(key);
+  if (!general.allowed) {
+    securityLog(console.log, "rate_limited", { requestId: reqId, scope: "general", count: general.count });
+    res.setHeader("Retry-After", Math.ceil(general.retryAfterMs / 1000));
+    return send(res, 429, { error: "Too many requests", requestId: reqId });
+  }
 
   if (req.method === "OPTIONS") {
     return send(res, 204, "");
@@ -241,8 +312,37 @@ const server = http.createServer(async (req, res) => {
     `http://${req.headers.host || "localhost"}`,
   );
 
-  if (url.pathname.startsWith("/api/") && !tokenOk(req.headers.authorization, url.searchParams.get("token"), AUTH_TOKEN)) {
-    return send(res, 401, { error: "Missing or invalid access token" });
+  const isSseEvents = /^\/api\/rooms\/[^/]+\/events$/.test(url.pathname);
+
+  /* Token policy (remediation Phase 1.2):
+   *  - Non-SSE /api/ routes: Authorization: Bearer only. Query-string tokens
+   *    are refused (they leak into logs, proxies and history).
+   *  - SSE events route only: EventSource cannot set headers, so a signed
+   *    short-lived ?sse= token is preferred; the long-lived ?token= form is
+   *    still accepted there (documented URL-leakage trade-off).
+   */
+  if (url.pathname.startsWith("/api/")) {
+    let authed = false;
+    if (isSseEvents) {
+      const sseToken = url.searchParams.get("sse");
+      if (sseToken) {
+        const roomId = decodeURIComponent((url.pathname.match(/^\/api\/rooms\/([^/]+)\/events$/) || [])[1] || "");
+        const v = verifySseToken(sseToken, AUTH_TOKEN, { room: roomId });
+        if (!v.ok) {
+          securityLog(console.log, "sse_token_rejected", { requestId: reqId, reason: v.reason });
+          return send(res, 401, { error: "Invalid or expired SSE token", requestId: reqId });
+        }
+        authed = true;
+      } else {
+        authed = tokenOk(req.headers.authorization, url.searchParams.get("token"), AUTH_TOKEN);
+      }
+    } else {
+      authed = tokenOk(req.headers.authorization, undefined, AUTH_TOKEN);
+    }
+    if (!authed) {
+      securityLog(console.log, "auth_failed", { requestId: reqId, route: url.pathname, sse: isSseEvents });
+      return send(res, 401, { error: "Missing or invalid access token", requestId: reqId });
+    }
   }
 
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
@@ -278,8 +378,11 @@ const server = http.createServer(async (req, res) => {
 
         return send(res, 200, project);
       } catch (e) {
-        return send(res, 400, {
-          error: e instanceof Error ? e.message : String(e),
+        const tooLarge = e && e.code === "payload_too_large";
+        if (tooLarge) securityLog(console.log, "body_too_large", { requestId: reqId, route: "project_put" });
+        return send(res, tooLarge ? 413 : 400, {
+          error: tooLarge ? "Payload too large" : "Invalid JSON body",
+          requestId: reqId,
         });
       }
     }
@@ -291,7 +394,16 @@ const server = http.createServer(async (req, res) => {
 
   if (roomEventsMatch && req.method === "GET") {
     const roomId = decodeURIComponent(roomEventsMatch[1]);
-    if (!validId(roomId)) return send(res, 400, { error: "Invalid room id" });
+    if (!validId(roomId)) return send(res, 400, { error: "Invalid room id", requestId: reqId });
+
+    // Concurrent SSE budget per IP (remediation Phase 1.2).
+    const ipCount = ssePerIp.get(key) || 0;
+    if (ipCount >= SSE_MAX_PER_IP) {
+      securityLog(console.log, "sse_limit", { requestId: reqId, active: ipCount });
+      return send(res, 429, { error: "Too many event streams", requestId: reqId });
+    }
+    ssePerIp.set(key, ipCount + 1);
+
     getRoom(roomId);
 
     res.writeHead(200, {
@@ -308,6 +420,11 @@ const server = http.createServer(async (req, res) => {
     res.write(`event: presence\ndata: ${JSON.stringify(presenceList(roomId))}\n\n`);
 
     addSse(roomId, res);
+    res.on("close", () => {
+      const n = (ssePerIp.get(key) || 1) - 1;
+      if (n <= 0) ssePerIp.delete(key);
+      else ssePerIp.set(key, n);
+    });
     return;
   }
 
@@ -332,16 +449,29 @@ const server = http.createServer(async (req, res) => {
 
   if (roomActionMatch && req.method === "POST") {
     const roomId = decodeURIComponent(roomActionMatch[1]);
-    if (!validId(roomId)) return send(res, 400, { error: "Invalid room id" });
+    if (!validId(roomId)) return send(res, 400, { error: "Invalid room id", requestId: reqId });
     const action = roomActionMatch[2];
+
+    // Mutation budget (join/heartbeat/leave/change) — per IP.
+    const mut = mutationRate.check(`${action}|${key}`);
+    if (!mut.allowed) {
+      securityLog(console.log, "rate_limited", { requestId: reqId, scope: "mutation", action });
+      res.setHeader("Retry-After", Math.ceil(mut.retryAfterMs / 1000));
+      return send(res, 429, { error: "Too many requests", requestId: reqId });
+    }
 
     let body = {};
 
     try {
       const raw = await readBody(req);
       body = raw ? JSON.parse(raw) : {};
-    } catch {
-      return send(res, 400, { error: "Invalid JSON" });
+    } catch (e) {
+      const tooLarge = e && e.code === "payload_too_large";
+      if (tooLarge) securityLog(console.log, "body_too_large", { requestId: reqId, route: "room_action" });
+      return send(res, tooLarge ? 413 : 400, {
+        error: tooLarge ? "Payload too large" : "Invalid JSON",
+        requestId: reqId,
+      });
     }
 
     const room = getRoom(roomId);
@@ -386,7 +516,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (isConvertRoute(url, req)) {
-    await handleConvert(req, res, url);
+    await handleConvert(req, res, url, reqId);
     return;
   }
 
@@ -444,115 +574,136 @@ function isConvertRoute(url, req) {
   return req.method === "GET" && /^\/api\/convert\/[^/]+\/(status|download)$/.test(url.pathname);
 }
 
-async function handleConvert(req, res, url) {
+async function handleConvert(req, res, url, reqId) {
   // POST /api/convert — upload RVT/NWD/NWC file and start conversion
   if (url.pathname === "/api/convert" && req.method === "POST") {
-    const contentType = req.headers["content-type"] || "";
     const fileName = safeUploadName(req.headers["x-file-name"]);
-  if (!fileName) return send(res, 400, { error: "Unsupported or missing file name (accepted: .rvt .nwd .nwc .ifc .dwg .dxf)" });
+    if (!fileName) {
+      return send(res, 400, { error: "Unsupported or missing file name (accepted: .rvt .nwd .nwc .ifc .dwg .dxf)", requestId: reqId });
+    }
     const fileSize = parseInt(req.headers["content-length"] || "0", 10);
 
-    if (fileSize > MAX_BODY) return send(res, 413, { error: "File too large" });
+    if (fileSize > MAX_BODY) return send(res, 413, { error: "File too large", requestId: reqId });
 
-    // Collect the file data
-    const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    req.on("end", async () => {
-      const fileBuffer = Buffer.concat(chunks);
+    // Conversion concurrency cap — conversion is expensive (memory + APS quota).
+    if (activeConversions >= MAX_CONCURRENT_CONVERSIONS) {
+      securityLog(console.log, "convert_busy", { requestId: reqId, active: activeConversions });
+      res.setHeader("Retry-After", "30");
+      return send(res, 429, { error: "Conversion capacity reached — retry shortly", requestId: reqId });
+    }
 
-      // Check if APS credentials are configured
-      if (!APS_CLIENT_ID || !APS_CLIENT_SECRET) {
-        // Fallback: save the file locally and tell the user to convert externally
-        const uploadsDir = path.join(dataDir, "uploads");
-        fs.mkdirSync(uploadsDir, { recursive: true });
-        const savePath = path.join(uploadsDir, fileName);
-      if (path.dirname(path.resolve(savePath)) !== path.resolve(uploadsDir)) throw new Error("Invalid file name");
-        fs.writeFileSync(savePath, fileBuffer);
+    // Streaming, size-limited read: oversized uploads are destroyed mid-stream.
+    let fileBuffer;
+    try {
+      fileBuffer = await readBodyBuffer(req);
+    } catch (e) {
+      const tooLarge = e && e.code === "payload_too_large";
+      securityLog(console.log, tooLarge ? "upload_too_large" : "upload_read_failed", { requestId: reqId, name: redactFileName(fileName) });
+      return send(res, tooLarge ? 413 : 400, { error: tooLarge ? "File too large" : "Upload failed", requestId: reqId });
+    }
 
-        return send(res, 200, {
-          ok: true,
-          mode: "manual",
-          message:
-            "APS credentials not configured. File saved to server. " +
-            "Configure APS_CLIENT_ID and APS_CLIENT_SECRET in environment " +
-            "to enable automatic RVT→IFC conversion.",
-          fileName,
-          savedPath: path.join("uploads", fileName),
-          hint: "In BIM: File → Export → IFC, then import the .ifc here.",
-        });
-      }
+    // Content-signature validation where a public format allows it.
+    const ext = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
+    const sig = sniffSignature(fileBuffer, ext);
+    if (!sig.ok) {
+      securityLog(console.log, "upload_signature_rejected", { requestId: reqId, name: redactFileName(fileName), note: sig.note });
+      return send(res, 400, { error: "File content does not match its extension", requestId: reqId });
+    }
 
-      // APS conversion flow
+    // Persist under a SERVER-GENERATED opaque id. The client-supplied name is
+    // metadata only — never a storage key, never echoed as a path.
+    const meta = storeUpload(uploadsDir, { buffer: fileBuffer, originalName: fileName, ext, note: sig.note });
+    securityLog(console.log, "upload_stored", { requestId: reqId, uploadId: meta.id, name: redactFileName(fileName), bytes: meta.size, signatureChecked: sig.signatureChecked });
+
+    // Check if APS credentials are configured
+    if (!APS_CLIENT_ID || !APS_CLIENT_SECRET) {
+      // Fallback: keep the upload for manual conversion. Explicitly NOT sent
+      // anywhere; client UI must tell the user this (privacy notice).
+      return send(res, 200, {
+        ok: true,
+        mode: "manual",
+        uploadId: meta.id,
+        message:
+          "APS credentials not configured. File stored for manual conversion. " +
+          "Configure APS_CLIENT_ID and APS_CLIENT_SECRET in environment " +
+          "to enable automatic RVT→IFC conversion.",
+        hint: "In BIM: File → Export → IFC, then import the .ifc here.",
+      });
+    }
+
+    // APS conversion flow (explicit configuration = explicit consent scope;
+    // the client must present the privacy notice before uploading — Phase 3.3).
+    activeConversions++;
+    try {
+      const token = await getAPSToken();
+      if (!token) throw new Error("APS authentication failed");
+
+      // 1. Ensure bucket exists
       try {
-        const token = await getAPSToken();
-        if (!token) throw new Error("APS authentication failed");
-
-        // 1. Ensure bucket exists
-        try {
-          await fetch(`https://developer.api.autodesk.com/oss/v2/buckets/${APS_BUCKET}`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ bucketKey: APS_BUCKET, policyKey: "transient" }),
-          });
-        } catch { /* bucket may already exist */ }
-
-        // 2. Upload file to OSS
-        const objectKey = `${Date.now()}-${fileName}`;
-        const uploadRes = await fetch(
-          `https://developer.api.autodesk.com/oss/v2/buckets/${APS_BUCKET}/objects/${encodeURIComponent(objectKey)}`,
-          {
-            method: "PUT",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/octet-stream",
-            },
-            body: fileBuffer,
-          },
-        );
-        const uploadData = await uploadRes.json();
-        const urn = Buffer.from(uploadData.objectId).toString("base64");
-
-        // 3. Submit translation job (RVT/NWD → IFC)
-        await fetch("https://developer.api.autodesk.com/modelderivative/v2/designdata/job", {
+        await fetch(`https://developer.api.autodesk.com/oss/v2/buckets/${APS_BUCKET}`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            input: { urn },
-            output: { formats: [{ type: "ifc", views: ["3d"] }] },
-          }),
+          body: JSON.stringify({ bucketKey: APS_BUCKET, policyKey: "transient" }),
         });
+      } catch { /* bucket may already exist */ }
 
-        // 4. Store job info
-        conversionJobs.set(urn, {
-          urn,
-          fileName,
-          status: "inprogress",
-          startedAt: Date.now(),
-          token,
-        });
+      // 2. Upload file to OSS (opaque server-side object key)
+      const objectKey = `${meta.id}${ext}`;
+      const uploadRes = await fetch(
+        `https://developer.api.autodesk.com/oss/v2/buckets/${APS_BUCKET}/objects/${encodeURIComponent(objectKey)}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/octet-stream",
+          },
+          body: fileBuffer,
+        },
+      );
+      const uploadData = await uploadRes.json();
+      const urn = Buffer.from(uploadData.objectId).toString("base64");
 
-        console.log(`[convert] job started: ${fileName} → URN ${urn.substring(0, 20)}...`);
+      // 3. Submit translation job (RVT/NWD → IFC)
+      await fetch("https://developer.api.autodesk.com/modelderivative/v2/designdata/job", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: { urn },
+          output: { formats: [{ type: "ifc", views: ["3d"] }] },
+        }),
+      });
 
-        return send(res, 200, {
-          ok: true,
-          mode: "aps",
-          urn,
-          fileName,
-          status: "inprogress",
-          message: `File "${fileName}" uploaded to APS. Conversion to IFC started. Poll /api/convert/:urn/status for progress.`,
-        });
-      } catch (e) {
-        console.error("[convert] conversion failed:", e.message);
-        return send(res, 500, { error: "Conversion failed: " + e.message });
-      }
-    });
-    return;
+      // 4. Store job info (APS token kept out of logs; job retention sweeps below)
+      conversionJobs.set(urn, {
+        urn,
+        uploadId: meta.id,
+        ext,
+        status: "inprogress",
+        startedAt: Date.now(),
+        token,
+      });
+
+      securityLog(console.log, "convert_started", { requestId: reqId, uploadId: meta.id, name: redactFileName(fileName) });
+
+      return send(res, 200, {
+        ok: true,
+        mode: "aps",
+        urn,
+        status: "inprogress",
+        message: "Uploaded. Conversion to IFC started. Poll /api/convert/:urn/status for progress.",
+      });
+    } catch (e) {
+      securityLog(console.log, "convert_failed", { requestId: reqId, detail: String(e && e.message || e) });
+      return send(res, 500, { error: "Conversion failed", requestId: reqId });
+    } finally {
+      activeConversions--;
+    }
   }
 
   // GET /api/convert/:urn/status — check conversion status
@@ -579,15 +730,15 @@ async function handleConvert(req, res, url) {
         const ifcDerivative = manifest.derivatives?.find((d) => d.outputType === "ifc");
         job.status = "success";
         job.ifcUrn = ifcDerivative?.urn || urn;
-        console.log(`[convert] job completed: ${job.fileName}`);
+        securityLog(console.log, "convert_completed", { uploadId: job.uploadId });
       } else if (status === "failed") {
         job.status = "failed";
-        console.error(`[convert] job failed: ${job.fileName}`);
+        securityLog(console.log, "convert_job_failed", { uploadId: job.uploadId });
       }
 
       return send(res, 200, {
         urn,
-        fileName: job.fileName,
+        uploadId: job.uploadId,
         status,
         progress,
         message: status === "success"
@@ -597,7 +748,8 @@ async function handleConvert(req, res, url) {
           : `Converting: ${progress}`,
       });
     } catch (e) {
-      return send(res, 500, { error: "Status check failed: " + e.message });
+      securityLog(console.log, "convert_status_failed", { detail: String(e && e.message || e) });
+      return send(res, 500, { error: "Status check failed" });
     }
   }
 
@@ -631,27 +783,48 @@ async function handleConvert(req, res, url) {
 
       res.writeHead(200, {
         "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${job.fileName.replace(/\.[^.]+$/, "")}.ifc"`,
+        "Content-Disposition": `attachment; filename="${job.uploadId}.ifc"`,
         "Content-Length": ifcBuffer.length,
       });
       res.end(ifcBuffer);
 
-      // Clean up job after download
+      // Clean up job + the stored upload after a successful download
+      // (retention policy: downloaded temporary files are deleted).
       conversionJobs.delete(urn);
-      console.log(`[convert] IFC downloaded: ${job.fileName}`);
+      try { fs.rmSync(path.join(uploadsDir, job.uploadId), { force: true }); } catch { /* */ }
+      try { fs.rmSync(path.join(uploadsDir, `${job.uploadId}.json`), { force: true }); } catch { /* */ }
+      securityLog(console.log, "convert_downloaded", { uploadId: job.uploadId });
       return;
     } catch (e) {
-      return send(res, 500, { error: "Download failed: " + e.message });
+      securityLog(console.log, "convert_download_failed", { detail: String(e && e.message || e) });
+      return send(res, 500, { error: "Download failed" });
     }
   }
 }
+
+/* Retention sweep (Phase 1.3): expired uploads + stale conversion jobs. */
+setInterval(() => {
+  const removed = sweepExpired(uploadsDir, UPLOAD_RETENTION_MS);
+  if (removed.length) {
+    securityLog(console.log, "upload_retention_sweep", { removed: removed.length });
+  }
+  const now = Date.now();
+  for (const [urn, job] of conversionJobs) {
+    if (now - Number(job.startedAt || 0) > UPLOAD_RETENTION_MS) {
+      conversionJobs.delete(urn);
+      try { fs.rmSync(path.join(uploadsDir, job.uploadId), { force: true }); } catch { /* */ }
+      try { fs.rmSync(path.join(uploadsDir, `${job.uploadId}.json`), { force: true }); } catch { /* */ }
+    }
+  }
+}, 10 * 60_000).unref();
 
 server.listen(PORT, HOST, () => {
   console.log(
     `[collab] Open BIM Studio server running on http://${HOST}:${PORT}` + (AUTH_TOKEN ? " (token required)" : ""),
   );
-  if (HOST !== "127.0.0.1" && HOST !== "localhost" && !AUTH_TOKEN) {
-    console.warn("[collab] WARNING: listening on the network without OBS_SERVER_TOKEN — anyone who can reach this port can read and write projects.");
+  if (process.env.PORT === "0" && server.address() && typeof server.address() === "object") {
+    // Ephemeral-port mode for integration tests.
+    console.log(`[collab] PORT=${server.address().port}`);
   }
   console.log(`[collab] Projects API:   /api/projects/:id`);
   console.log(`[collab] Rooms API:      /api/rooms/:room`);

@@ -3,6 +3,24 @@ const API_BASE = String(
     "http://localhost:4000/api",
 );
 
+/* Optional auth for network deployments (remediation Phase 1.2).
+ *  __OPENBIM_COLLAB_TOKEN__             → long-lived token; sent as Bearer on
+ *                                         POSTs and as ?token= on the SSE URL
+ *                                         (EventSource cannot set headers).
+ *  __OPENBIM_COLLAB_SSE_TOKEN_PROVIDER__ → optional async () => string returning
+ *                                         a SHORT-LIVED signed SSE token
+ *                                         (preferred over ?token=; the server
+ *                                         mints these via /server/sse-tokens.mjs).
+ * Local-first default (loopback, no token) needs neither.
+ */
+function collabToken(): string {
+  return String((globalThis as any).__OPENBIM_COLLAB_TOKEN__ || "");
+}
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const t = collabToken();
+  return t ? { Authorization: `Bearer ${t}`, ...extra } : { ...extra };
+}
+
 type Any = Record<string, any>;
 
 export interface PresenceUser {
@@ -45,7 +63,7 @@ class RealtimeClient {
     try {
       await fetch(`${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/join`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           clientId: this.clientId,
           name: this.name,
@@ -55,7 +73,21 @@ class RealtimeClient {
       // Server may be offline; still attempt SSE.
     }
 
-    const url = `${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/events`;
+    let sseQuery = "";
+    try {
+      const provider = (globalThis as any).__OPENBIM_COLLAB_SSE_TOKEN_PROVIDER__;
+      if (typeof provider === "function") {
+        const sse = await provider();
+        if (sse) sseQuery = `?sse=${encodeURIComponent(String(sse))}`;
+      }
+    } catch { /* fall through to unauthenticated/local behavior */ }
+    if (!sseQuery && collabToken()) {
+      // Documented trade-off: long-lived token in the SSE URL (EventSource
+      // limitation). Prefer the short-lived signed provider above.
+      sseQuery = `?token=${encodeURIComponent(collabToken())}`;
+    }
+
+    const url = `${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/events${sseQuery}`;
 
     try {
       this.es = new EventSource(url);
@@ -102,7 +134,7 @@ class RealtimeClient {
         `${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/heartbeat`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             clientId: this.clientId,
             name: this.name,
@@ -137,7 +169,7 @@ class RealtimeClient {
         `${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/leave`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ clientId: this.clientId }),
         },
       ).catch(() => {
@@ -159,7 +191,7 @@ class RealtimeClient {
         `${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/change`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             clientId: this.clientId,
             type,
