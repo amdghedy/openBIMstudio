@@ -353,7 +353,7 @@ export function setupParametricFamilyPanel(): void {
     "position:fixed;left:168px;bottom:52px;z-index:10002;width:44px;height:40px;" +
     "border-radius:10px;border:1px solid #34d399;background:rgba(52,211,153,.14);" +
     "color:#6ee7b7;font:700 11px Inter,system-ui;cursor:pointer;" +
-    "box-shadow:0 4px 16px rgba(0,0,0,.35);";
+    "box-shadow:0 4px 16px rgba(0,0,0,.35);display:none;";
   launch.onclick = () => toggleParamFamilyPanel();
   document.body.appendChild(launch);
 
