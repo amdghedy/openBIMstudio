@@ -51,7 +51,9 @@ import {
 import {
   extrude, revolve, sweep as solidSweep, blend,
   subtract, generateVoid, cutVoids, validateMeshDiagnostics,
-  type VoidShape,
+  generalBoolean, fuseAll, weldMesh,
+  hollowExtrusion, hollowMetrics, loftSections, offsetClosedRing,
+  type VoidShape, type GeneralBooleanOp,
 } from "../modules/solid-kernel";
 import {
   MoveCommand, RotateCommand, ArrayLinearCommand, MirrorCommand,
@@ -902,9 +904,184 @@ export async function openVoidDialog(): Promise<void> {
   }
 }
 
+/* ── v70 deep-modeling dialogs: general booleans, shell, loft, fuse ────── */
+
+/** Axis-aligned box overlap volume (closed form for the UI report). */
+export function boxOverlapVolume(
+  a: { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number },
+  b: { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number },
+): number {
+  const dx = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const dy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  const dz = Math.min(a.z1, b.z1) - Math.max(a.z0, b.z0);
+  return dx > 0 && dy > 0 && dz > 0 ? dx * dy * dz : 0;
+}
+
+interface Box6 { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number; }
+
+export async function openGeneralBooleanDialog(): Promise<void> {
+  const r = await openFormModal({
+    title: "Boolean — General (any closed solids)",
+    subtitle: "v70 kernel: union / intersect / subtract with NON-CONVEX operands on both sides; coplanar faces resolved exactly",
+    fields: [
+      { kind: "select", key: "op", label: "Operation", default: "union", options: [["union", "Union (A ∪ B)"], ["intersect", "Intersect (A ∩ B)"], ["subtract", "Subtract (A − B)"]] },
+      { kind: "number", key: "aw", label: "A width (x)", default: 2, unit: "m", step: 0.25, min: 0.1 },
+      { kind: "number", key: "ad", label: "A depth (y)", default: 2, unit: "m", step: 0.25, min: 0.1 },
+      { kind: "number", key: "ah", label: "A height (z)", default: 1, unit: "m", step: 0.25, min: 0.1 },
+      { kind: "number", key: "leg", label: "B leg size (cube)", default: 1, unit: "m", step: 0.1, min: 0.1 },
+      { kind: "number", key: "legGap", label: "B leg2 diagonal offset", default: 0.5, unit: "m", step: 0.1, min: 0 },
+    ],
+    submitLabel: "Run Boolean",
+  });
+  if (!r) return;
+  try {
+    const aw = Number(r.aw), ad = Number(r.ad), ah = Number(r.ah);
+    const s = Number(r.leg), off = Number(r.legGap);
+    const A: Box6 = { x0: -aw / 2, y0: -ad / 2, z0: 0, x1: aw / 2, y1: ad / 2, z1: ah };
+    const leg1: Box6 = { x0: 0, y0: 0, z0: 0, x1: s, y1: s, z1: s };
+    const leg2: Box6 = { x0: off, y0: off, z0: 0, x1: off + s, y1: off + s, z1: s };
+    const meshOf = (bx: Box6): IndexedMesh =>
+      generateVoid({ kind: "box", center: { x: (bx.x0 + bx.x1) / 2, y: (bx.y0 + bx.y1) / 2, z: (bx.z0 + bx.z1) / 2 }, size: { x: bx.x1 - bx.x0, y: bx.y1 - bx.y0, z: bx.z1 - bx.z0 } });
+    const bMesh = fuseAll([meshOf(leg1), meshOf(leg2)]); // NON-CONVEX L when the legs overlap
+    const op = String(r.op) as GeneralBooleanOp;
+    const out = generalBoolean(op, meshOf(A), bMesh);
+
+    // Closed-form expectations (axis-aligned boxes): |B| = v1+v2−o12;
+    // |A∩B| = oA1 + oA2 − oA12 (legs overlap counted once).
+    const vA = (A.x1 - A.x0) * (A.y1 - A.y0) * (A.z1 - A.z0);
+    const o12 = boxOverlapVolume(leg1, leg2);
+    const vB = (s * s * s) * 2 - o12;
+    const oA1 = boxOverlapVolume(A, leg1);
+    const oA2 = boxOverlapVolume(A, leg2);
+    const oA12 = boxOverlapVolume(
+      { x0: Math.max(A.x0, leg1.x0), y0: Math.max(A.y0, leg1.y0), z0: 0, x1: Math.min(A.x1, leg1.x1), y1: Math.min(A.y1, leg1.y1), z1: Math.min(A.z1, leg1.z1) },
+      leg2,
+    );
+    const iAB = oA1 + oA2 - oA12;
+    const expected = op === "union" ? vA + vB - iAB : op === "intersect" ? iAB : vA - iAB;
+
+    const vol = meshVolume(out);
+    const diags = validateMeshDiagnostics(weldMesh(out));
+    const sSum = summarizeDiagnostics(diags);
+    recordSolid(out, `Boolean ${op}`);
+    showReportCard(`General Boolean — ${op}`, [
+      ["Volume A (closed form)", `${(vA * 1e6).toFixed(1)} L`],
+      ["Volume B (L, closed form)", `${(vB * 1e6).toFixed(1)} L`],
+      ["Result (kernel)", `${(vol * 1e6).toFixed(1)} L`],
+      ["Result (closed form)", `${(expected * 1e6).toFixed(1)} L`],
+      ["Match", Math.abs(vol - expected) < 1e-6 ? "EXACT" : "check inputs"],
+      ["Watertight", sSum.watertight ? "yes" : "NO"],
+    ], "The kernel refuses nothing here — non-convex operands and coplanar faces are resolved exactly.");
+  } catch (e) {
+    notify("error", `General boolean failed: ${(e as Error).message}`);
+  }
+}
+
+export async function openShellDialog(): Promise<void> {
+  const r = await openFormModal({
+    title: "Shell / Hollow Extrusion",
+    subtitle: "Give a closed profile a wall thickness — miter inward offset, watertight cavity, exact V = depth·(A_out − A_in)",
+    fields: [
+      { kind: "textarea", key: "profile", label: "Profile (x,y per point, CCW)", default: "0,0\n2,0\n2,2\n0,2" },
+      { kind: "number", key: "depth", label: "Depth", default: 3, unit: "m", step: 0.1, min: 0.01 },
+      { kind: "number", key: "thickness", label: "Wall thickness", default: 0.25, unit: "m", step: 0.05, min: 0.01 },
+    ],
+    submitLabel: "Create Shell",
+  });
+  if (!r) return;
+  try {
+    const profile = parseProfile(String(r.profile));
+    const depth = Number(r.depth);
+    const thickness = Number(r.thickness);
+    const mesh = hollowExtrusion({ profile, depth, thickness });
+    const metrics = hollowMetrics(profile, depth, thickness);
+    const vol = meshVolume(mesh);
+    recordSolid(mesh, "Shell");
+    showReportCard("Shell Report", [
+      ["Outer area", `${metrics.outerArea.toFixed(3)} m²`],
+      ["Inner (cavity) area", `${metrics.innerArea.toFixed(3)} m²`],
+      ["Volume (kernel)", `${(vol * 1e6).toFixed(1)} L`],
+      ["Volume (closed form)", `${(metrics.expectedVolume * 1e6).toFixed(1)} L`],
+      ["Match", Math.abs(vol - metrics.expectedVolume) < 1e-9 ? "EXACT" : "check"],
+    ], "Cavity walls wind into the void; annular caps connect both rings without polygon-with-hole triangulation.");
+  } catch (e) {
+    notify("error", `Shell failed: ${(e as Error).message} — reduce the thickness or simplify the profile`);
+  }
+}
+
+export async function openLoftDialog(): Promise<void> {
+  const r = await openFormModal({
+    title: "Loft Through Sections",
+    subtitle: "N-section ruled loft with polar-angle correspondence (2 sections == blend); explicit levels optional",
+    width: 560,
+    fields: [
+      { kind: "textarea", key: "s1", label: "Section 1 (bottom)", default: "-1,-1\n1,-1\n1,1\n-1,1" },
+      { kind: "textarea", key: "s2", label: "Section 2", default: "-0.5,0\n0.5,0\n0,0.5\n0,-0.5" },
+      { kind: "textarea", key: "s3", label: "Section 3 (optional — blank for 2-section loft)", default: "-0.75,-0.75\n0.75,-0.75\n0.75,0.75\n-0.75,0.75" },
+      { kind: "number", key: "height", label: "Height", default: 3, unit: "m", step: 0.1, min: 0.01 },
+      { kind: "text", key: "levels", label: "Levels (optional, z per section)", default: "", placeholder: "e.g. 0,1.2,3" },
+    ],
+    submitLabel: "Create Loft",
+  });
+  if (!r) return;
+  try {
+    const sections = [parseProfile(String(r.s1)), parseProfile(String(r.s2))];
+    if (String(r.s3).trim().length > 0) sections.push(parseProfile(String(r.s3)));
+    const levelsRaw = String(r.levels).trim();
+    let levels: number[] | undefined;
+    if (levelsRaw.length > 0) {
+      levels = levelsRaw.split(/[;,\s]+/).filter(Boolean).map(Number);
+      if (levels.some((v) => !Number.isFinite(v))) throw new Error("levels must be numbers");
+      if (levels.length !== sections.length) throw new Error(`levels needs ${sections.length} entries`);
+    }
+    const mesh = loftSections({ sections, height: Number(r.height), levels });
+    recordSolid(mesh, "Loft");
+  } catch (e) {
+    notify("error", `Loft failed: ${(e as Error).message}`);
+  }
+}
+
+export async function openFuseDialog(): Promise<void> {
+  const r = await openFormModal({
+    title: "Fuse Solids (n-ary Union)",
+    subtitle: "Join many solids into one with the general kernel — overlapping, touching or disjoint inputs",
+    fields: [
+      { kind: "number", key: "size", label: "Cube size", default: 1, unit: "m", step: 0.1, min: 0.1 },
+      { kind: "number", key: "o12", label: "Overlap 1↔2", default: 0.25, unit: "m", step: 0.05, min: 0 },
+      { kind: "number", key: "o23", label: "Overlap 2↔3", default: 0.25, unit: "m", step: 0.05, min: 0 },
+    ],
+    submitLabel: "Fuse",
+  });
+  if (!r) return;
+  try {
+    const s = Number(r.size);
+    const o12 = Number(r.o12), o23 = Number(r.o23);
+    const cube = (x0: number): Box6 => ({ x0, y0: 0, z0: 0, x1: x0 + s, y1: s, z1: s });
+    const b1 = cube(0);
+    const b2 = cube(s - o12);
+    const b3 = cube(2 * s - o12 - o23);
+    const meshOf = (bx: Box6): IndexedMesh =>
+      generateVoid({ kind: "box", center: { x: (bx.x0 + bx.x1) / 2, y: (bx.y0 + bx.y1) / 2, z: (bx.z0 + bx.z1) / 2 }, size: { x: bx.x1 - bx.x0, y: bx.y1 - bx.y0, z: bx.z1 - bx.z0 } });
+    const f = fuseAll([meshOf(b1), meshOf(b2), meshOf(b3)]);
+    const vol = meshVolume(f);
+    const expected = 3 * s * s * s - (o12 * s * s + o23 * s * s);
+    recordSolid(f, "Fused solids");
+    showReportCard("Fuse Report", [
+      ["Solids fused", "3"],
+      ["Volume (kernel)", `${(vol * 1e6).toFixed(1)} L`],
+      ["Volume (closed form)", `${(expected * 1e6).toFixed(1)} L`],
+      ["Match", Math.abs(vol - expected) < 1e-6 ? "EXACT" : "check inputs"],
+    ], "fuseAll reduces pairwise with the general union — overlapping, glued and disjoint inputs all accepted.");
+  } catch (e) {
+    notify("error", `Fuse failed: ${(e as Error).message}`);
+  }
+}
+
 export function validateLastSolid(): void {
   if (!lastSolid) { notify("warn", "No solid created yet — use a Solid Form button first"); return; }
-  const diags = validateMeshDiagnostics(lastSolid);
+  // Boolean/general-kernel outputs are polygon soups: weld first so the
+  // edge-use counts see the welded topology (forms outputs are unaffected).
+  const diags = validateMeshDiagnostics(weldMesh(lastSolid));
   const s = summarizeDiagnostics(diags);
   showReportCard("Solid Diagnostics", [
     ["Vertices", lastSolid.vertices.length],

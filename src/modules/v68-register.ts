@@ -26,6 +26,9 @@ import { BimRegistry, newUniqueId } from "./object-hierarchy";
 import {
   extrude, revolve, sweep, blend, subtract, union, intersect,
   cutVoids, generateVoid, planesOfConvex, AabbTree,
+  generalBoolean, generalUnion, generalIntersect, generalSubtract,
+  fuseAll, weldMesh, hollowExtrusion, hollowMetrics, offsetClosedRing,
+  loftSections,
   validateMeshDiagnostics, validateProfileDiagnostics, commitEligible,
 } from "./solid-kernel";
 import {
@@ -93,6 +96,10 @@ export function setupV68Engines(): void {
   const solidsApi = {
     extrude, revolve, sweep, blend,
     subtract, union, intersect,
+    // v0.70 general boolean kernel (non-convex operands, coplanar resolution)
+    generalBoolean, generalUnion, generalIntersect, generalSubtract,
+    fuseAll, weldMesh,
+    hollowExtrusion, hollowMetrics, offsetClosedRing, loftSections,
     cutVoids, generateVoid, planesOfConvex, AabbTree,
     validate: validateMeshDiagnostics,
     validateProfile: validateProfileDiagnostics,

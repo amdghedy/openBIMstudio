@@ -114,6 +114,7 @@ import {
   openAdaptiveSweepDialog, openAdaptiveRepeatDialog,
   openExtrudeDialog, openRevolveDialog, openSolidSweepDialog, openBlendDialog,
   openBooleanDialog, openVoidDialog, validateLastSolid,
+  openGeneralBooleanDialog, openShellDialog, openLoftDialog, openFuseDialog,
   openModifyMoveDialog, openModifyRotateDialog, openModifyArrayDialog, openModifyMirrorDialog,
   openHostedOpeningDialog, openParameterManagerDialog, openModelIntelligencePanel,
 } from "../features/engine-ui";
@@ -1994,6 +1995,18 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("clear", "Subtract", safe(() => void openBooleanDialog(), "Boolean subtract"), {
         title: "Boolean A − B on convex operands (exact half-space composition)",
+      }),
+      b("mass", "Bool (Any)", safe(() => void openGeneralBooleanDialog(), "General boolean"), {
+        title: "v70 general boolean: union/intersect/subtract with NON-CONVEX operands and exact coplanar resolution",
+      }),
+      b("shaft", "Shell", safe(() => void openShellDialog(), "Shell/hollow solid"), {
+        title: "Hollow extrusion with miter offset — exact wall thickness (v70)",
+      }),
+      b("mass-floor", "Loft N", safe(() => void openLoftDialog(), "N-section loft"), {
+        title: "Loft through 2–N sections with optional explicit levels (v70)",
+      }),
+      b("connection", "Fuse", safe(() => void openFuseDialog(), "Fuse solids"), {
+        title: "n-ary fuse of solids via the general union (v70)",
       }),
       b("opening", "Cut Voids", safe(() => void openVoidDialog(), "Cut voids"), {
         title: "Cut box/cylinder voids (openings) with the rollback-guaranteed void engine",
