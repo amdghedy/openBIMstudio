@@ -439,7 +439,8 @@ export function setupBimCommandCenter(): void {
     }
   });
 
-  // Floating launcher button (always visible)
+  // Floating launcher — hidden by default (clean workspace startup).
+  // Still reachable via Ctrl+Shift+R, ribbon, and command palette.
   const launch = document.createElement("button");
   launch.id = "obs-rcc-launch";
   launch.type = "button";
@@ -449,7 +450,7 @@ export function setupBimCommandCenter(): void {
     "position:fixed;left:16px;bottom:52px;z-index:10002;width:40px;height:40px;" +
     "border-radius:10px;border:1px solid #38bdf8;background:rgba(56,189,248,.16);" +
     "color:#7dd3fc;font:700 12px Inter,system-ui;cursor:pointer;" +
-    "box-shadow:0 4px 16px rgba(0,0,0,.35);";
+    "box-shadow:0 4px 16px rgba(0,0,0,.35);display:none;";
   launch.onmouseenter = () => {
     launch.style.background = "rgba(56,189,248,.28)";
   };
@@ -478,15 +479,6 @@ export function setupBimCommandCenter(): void {
     close: closeBimCommandCenter,
     toggle: toggleBimCommandCenter,
   };
-
-  // First-run: open once so the user sees every function grouped clearly
-  try {
-    const key = "obs.rcc.autoOpened.v1";
-    if (!sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, "1");
-      window.setTimeout(() => openBimCommandCenter(), 800);
-    }
-  } catch { /* */ }
 
   console.log("[bim-command-center] ready - Ctrl+Shift+R or RC button");
 }
