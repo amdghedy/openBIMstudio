@@ -42,6 +42,7 @@
 - ~~Persistent relationship registry + reconnection policies~~ ✅ v0.68 — `src/modules/relationships`
 - ~~MEP connector intelligence (compatibility, fittings, topology)~~ ✅ v0.68 — `src/modules/mep/connectors.ts`
 - ~~Unified Modify command engine~~ ✅ v0.68 — `src/modules/modify`
+- ~~Modify Group 1 behavioral spec: Selection engine + Reference acquisition + Move/Rotate/Mirror full catalogs~~ ✅ v0.71 — `src/modules/selection`, `src/modules/references`, `src/modules/modify/group1.ts` (transaction undo/redo, hosted rigid follow, mirror relationship cloning; spec-first per `docs/MODIFY_GROUP1_SPEC_V71.md`, registers continued A-10…/D-13…; Groups 2–7 of the Modify master prompt remain)
 - ~~Metadata-driven property panel + editable dimensions~~ ✅ v0.68 — `src/modules/properties-panel` (schema/lifecycle/dimensions)
 - ~~Hosting: host parameterization + opening regeneration~~ ✅ v0.68 — `src/modules/hosting`
 - Worksharing / multi-user

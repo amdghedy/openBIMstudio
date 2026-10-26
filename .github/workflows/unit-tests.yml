@@ -69,7 +69,9 @@ jobs:
       - run: npm run test:v68-acceptance
       - run: npm run test:v69
       - run: npm run test:v70
+      - run: npm run test:v71
       - run: npm run verify:v70
+      - run: npm run verify:v71
       - run: npm run verify:v68
       - name: Dependency audit (production, high severity)
         run: npm audit --omit=dev --audit-level=high
