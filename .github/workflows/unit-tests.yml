@@ -74,6 +74,7 @@ jobs:
       - run: npm run test:dep-safety
       - run: npm run test:server-hardening
       - run: npm run test:plugins
+      - run: npm run test:feature-registry
       - run: npm run verify:v70
       - run: npm run verify:v71
       - run: npm run verify:v72

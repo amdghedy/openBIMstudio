@@ -92,7 +92,8 @@
     "verify:v73": "node scripts/verify-v73.mjs",
     "test:dep-safety": "node tests/dependency-safety.test.cjs",
     "test:server-hardening": "node tests/server-hardening.test.cjs",
-    "test:plugins": "node tests/plugins-api.test.cjs"
+    "test:plugins": "node tests/plugins-api.test.cjs",
+    "test:feature-registry": "node tests/feature-registry.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
