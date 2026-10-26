@@ -245,7 +245,7 @@ export function setupDrawingsPanel(): void {
     "position:fixed;left:116px;bottom:52px;z-index:10002;width:44px;height:40px;" +
     "border-radius:10px;border:1px solid #a78bfa;background:rgba(167,139,250,.14);" +
     "color:#c4b5fd;font:700 11px Inter,system-ui;cursor:pointer;" +
-    "box-shadow:0 4px 16px rgba(0,0,0,.35);";
+    "box-shadow:0 4px 16px rgba(0,0,0,.35);display:none;";
   launch.onclick = () => toggleDrawingsPanel();
   document.body.appendChild(launch);
 
