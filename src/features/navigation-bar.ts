@@ -1,7 +1,9 @@
 /**
  * Navigation Bar — floating view-control toolbar.
  *
- * Positioned under the ViewCube on the right side of the viewport.
+ * Positioned under the ViewCube on the right side of the viewport (the
+ * ViewCube widget sits at top-right; this bar docks below it and returns
+ * to the top corner when the ViewCube is hidden from the UI menu).
  * Provides Home, Fit, Walk, Orbit, Pan, Zoom buttons that mirror the
  * 3D navigation commands. Visibility toggled from the User Interface menu.
  */
@@ -15,6 +17,21 @@ import * as THREE from "three";
 
 let bar: HTMLDivElement | null = null;
 let visible = false;
+
+/** Top offsets: below the ViewCube widget when it is visible, else the corner. */
+const TOP_WITH_VIEWCUBE = "200px";
+const TOP_ALONE = "14px";
+let topOffset = TOP_ALONE;
+
+function applyTop(): void {
+  if (bar) bar.style.top = topOffset;
+}
+
+window.addEventListener("obs-viewcube-visibility", (e) => {
+  const visibleNow = !!(e as CustomEvent).detail?.visible;
+  topOffset = visibleNow ? TOP_WITH_VIEWCUBE : TOP_ALONE;
+  applyTop();
+});
 
 function mkBtn(label: string, title: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement("button");
@@ -33,8 +50,10 @@ function mkBtn(label: string, title: string, onClick: () => void): HTMLButtonEle
 export function setupNavigationBar(): void {
   bar = document.createElement("div");
   bar.id = "obs-navigation-bar";
+  // Sit below the ViewCube when the widget is visible (it booted first).
+  topOffset = (window as any).__obsNavigation?.isVisible?.() ? TOP_WITH_VIEWCUBE : TOP_ALONE;
   bar.style.cssText =
-    "position:absolute;top:14px;right:14px;z-index:35;display:none;" +
+    `position:absolute;top:${topOffset};right:14px;z-index:35;display:none;` +
     "flex-direction:column;gap:4px;padding:5px;" +
     "background:rgba(20,22,30,.85);border:1px solid #2a2e3a;border-radius:10px;" +
     "box-shadow:0 8px 24px rgba(0,0,0,.4);backdrop-filter:blur(8px)";
@@ -82,7 +101,7 @@ export function setupNavigationBar(): void {
   ctx.rightHost.appendChild(bar);
 
   (ctx.features as any).navigationBar = {
-    show: () => { visible = true; if (bar) bar.style.display = "flex"; },
+    show: () => { visible = true; if (bar) { applyTop(); bar.style.display = "flex"; } },
     hide: () => { visible = false; if (bar) bar.style.display = "none"; },
     toggle: () => { visible ? (ctx.features as any).navigationBar.hide() : (ctx.features as any).navigationBar.show(); },
     isVisible: () => visible,

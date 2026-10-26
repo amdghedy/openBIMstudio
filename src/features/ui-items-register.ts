@@ -20,15 +20,32 @@ export function registerUiItems(): void {
   };
 
   // ── ViewCube ─────────────────────────────────────────────────────
-// ── Navigation Bar ───────────────────────────────────────────────
+  registerUiItem({
+    id: "viewcube",
+    label: "ViewCube",
+    group: "bars",
+    available: true,
+    isVisible: () => {
+      try { return !!(window as any).__obsNavigation?.isVisible?.(); } catch { return false; }
+    },
+    toggle: () => {
+      const nav = (window as any).__obsNavigation;
+      try { nav?.isVisible?.() ? nav.hide() : nav.show(); } catch { /* */ }
+    },
+  });
+
+  // ── Navigation Bar ───────────────────────────────────────────────
   registerUiItem({
     id: "nav-bar",
     label: "Navigation Bar",
-    group: "panels",
-    available: false,
-    unavailableHint: "The Navigation Bar is on the roadmap — the ViewCube and view ribbon cover this for now.",
-    isVisible: () => false,
-    toggle: () => {},
+    group: "bars",
+    available: true,
+    isVisible: () => {
+      try { return !!F.navigationBar?.isVisible?.(); } catch { return false; }
+    },
+    toggle: () => {
+      try { F.navigationBar?.toggle?.(); } catch { /* */ }
+    },
   });
 
   // ── Project Browser ──────────────────────────────────────────────
