@@ -21,7 +21,7 @@ type Any = Record<string, any>;
 let installed = false;
 let enabled = true;
 let invert = false;
-let multiplier = 1;
+let multiplier = 10;
 
 const UI_BLOCK =
   ".obs-panel,[data-obs-panel],#obs-ai-chat,#obs-bim-toolbox,.obs-ribbon," +
@@ -383,5 +383,5 @@ export function setupWheelArbiter(): void {
     lockControlsWheel,
     getState: () => ({ enabled, invert, multiplier: readMultiplier() }),
   };
-  console.log("[wheel-arbiter] scroll-up zooms in; native dollyToCursor");
+  console.log("[wheel-arbiter] scroll-up zooms in; native dollyToCursor; default speed 10x");
 }
