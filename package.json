@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.73.0",
   "type": "module",
-  "description": "Open BIM Studio \u2014 professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
+  "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
     "predev": "node scripts/copy-libredwg-wasm.mjs",
     "dev": "vite",
@@ -89,7 +89,8 @@
     "test:v73-mag": "node tests/v73-snap-magnetic.test.cjs",
     "test:v73-panels": "node tests/v73-tool-panels.test.cjs",
     "test:v73-rel": "node tests/v73-relationships.test.cjs",
-    "verify:v73": "node scripts/verify-v73.mjs"
+    "verify:v73": "node scripts/verify-v73.mjs",
+    "test:dep-safety": "node tests/dependency-safety.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
@@ -109,10 +110,8 @@
     "axios": "^1.7.4",
     "camera-controls": "^3.1.2",
     "file-saver": "^2.0.5",
-    "json-rules-engine": "^6.5.0",
     "jszip": "^3.10.2",
     "monaco-editor": "^0.52.2",
-    "nasjidwg": "^0.18.0",
     "papaparse": "^5.4.1",
     "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
