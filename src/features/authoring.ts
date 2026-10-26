@@ -42,6 +42,18 @@ import type {
   WindowPanelType,
 } from "../modules/projects/types";
 import { validateNativeModel } from "../modules/native-bim/model-validation";
+import {
+  applyJustificationToSegment,
+  coreThicknessFromLayers,
+  justificationShiftMeters,
+  resolveWallJustification,
+  type WallLocationLine as JustificationLine,
+} from "../modules/justification";
+import {
+  calculateWallEndpoint,
+  getWallLocationLine as toWallColumnLine,
+  type WallLocationLine as WallColumnLine,
+} from "../modules/snapping/wall-column";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -118,6 +130,9 @@ let gripDrag: {
 
 let lastSnapValid = false;
 let lastSnapResult: import("./snapping").SnapResult | null = null;
+/** Last hover event — used by refreshPreview() to redraw the ghost after
+ *  a parameter change in the modeling panel (MASTER PROMPT §2.3). */
+let lastHoverEvent: MouseEvent | null = null;
 
 let hoveredWall: { wallId: string; offset: number; point: THREE.Vector3 } | null = null;
 
@@ -462,31 +477,140 @@ export function setWallJoinStatus(v: WallJoinStatus) { wallJoinStatus = v; }
 export function getWallRadius() { return wallRadius; }
 export function setWallRadius(v: number) { wallRadius = v; }
 
+/* ── Beam / MEP justification state (MASTER PROMPT §3) ─────────────── */
+/** Horizontal justification across the profile width. */
+export type HJustification = "center" | "outer" | "inner";
+/** Vertical justification of a beam relative to the draw elevation. */
+export type ZJustification = "bottom" | "center" | "top";
+let beamJustification: HJustification = "center";
+let beamZJustification: ZJustification = "bottom";
+let mepJustification: HJustification = "center";
+export function getBeamJustification() { return beamJustification; }
+export function setBeamJustification(v: HJustification) { beamJustification = v; }
+export function getBeamZJustification() { return beamZJustification; }
+export function setBeamZJustification(v: ZJustification) { beamZJustification = v; }
+export function getMepJustification() { return mepJustification; }
+export function setMepJustification(v: HJustification) { mepJustification = v; }
+
+/**
+ * Reset a tool's type defaults (and tool-specific placement state) to the
+ * built-in factory values. Used by the modeling panel's Reset action.
+ */
+export function resetTypeDefaults(type: string): void {
+  const defaults = DEFAULTS[type] ?? { height: 1, thickness: 0.2 };
+  typeDefaults.set(type, {
+    params: { ...defaults },
+    properties: {},
+    color: COLORS[type] ?? "#cccccc",
+  });
+  if (type === "wall" || type === "curtain-wall") {
+    wallLocationLine = "wall-centerline";
+    wallOffset = 0;
+    wallChain = true;
+    wallJoinStatus = "allow";
+  }
+  if (type === "beam" || type === "strip") {
+    beamJustification = "center";
+    beamZJustification = "bottom";
+  }
+  if (type === "duct" || type === "pipe" || type === "cable-tray" || type === "conduit") {
+    mepJustification = "center";
+    drawSlopePct = 0;
+  }
+  notifyAuthoringChange();
+}
+
+/** Effective draw-time parameters (type defaults win over factory). */
+function effectiveDrawParams(type: ElementType): {
+  height: number; thickness: number; width?: number; elevation: number; layers?: string;
+} {
+  const presetKey = activePreset && DEFAULTS[activePreset] ? activePreset : type;
+  const baseDefaults = DEFAULTS[presetKey] ?? DEFAULTS[type] ?? { height: 1, thickness: 0.2 };
+  const userDefaults = getTypeDefaults(type);
+  const pick = (k: "height" | "thickness" | "width", fallback: number | undefined): number | undefined => {
+    const v = userDefaults.params[k] ?? (baseDefaults as any)[k] ?? fallback;
+    return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  };
+  const elevationRaw = userDefaults.params.elevation;
+  return {
+    height: pick("height", baseDefaults.height) ?? 1,
+    thickness: pick("thickness", baseDefaults.thickness) ?? 0.2,
+    width: pick("width", (baseDefaults as any).width),
+    elevation:
+      typeof elevationRaw === "number" && Number.isFinite(elevationRaw) ? elevationRaw : level,
+    layers: typeof userDefaults.properties?.layers === "string" ? userDefaults.properties.layers as string : undefined,
+  };
+}
+
+/**
+ * MASTER PROMPT §3.2 — justification affects the ACTUAL construction:
+ * resolve the per-tool justification against the reference segment and
+ * return the placed start/end (+ elevation / endElevation adjustments).
+ * The reference path itself is never moved (switching modes re-solves).
+ */
+function justifyLinearSegment(
+  tool: ElementType,
+  startPt: THREE.Vector3,
+  endPt: THREE.Vector3,
+  dp: ReturnType<typeof effectiveDrawParams>,
+): {
+  start: [number, number]; end: [number, number];
+  elevation?: number; endElevation?: number;
+} {
+  const s: [number, number] = [startPt.x, startPt.z];
+  const e: [number, number] = [endPt.x, endPt.z];
+  if (tool === "wall" || tool === "curtain-wall") {
+    const core = coreThicknessFromLayers(dp.layers, dp.thickness);
+    const r = resolveWallJustification({
+      start: s, end: e,
+      locationLine: wallLocationLine as JustificationLine,
+      thickness: dp.thickness,
+      coreThickness: core,
+      extraOffset: wallOffset,
+    });
+    return { start: r.start, end: r.end, elevation: dp.elevation };
+  }
+  if (tool === "beam" || tool === "strip") {
+    const r = applyJustificationToSegment({
+      start: s, end: e,
+      shift: justificationShiftMeters(beamJustification, dp.thickness),
+    });
+    const zShift =
+      beamZJustification === "center" ? -dp.height / 2 :
+      beamZJustification === "top" ? -dp.height : 0;
+    return { start: r.start, end: r.end, elevation: dp.elevation + zShift };
+  }
+  if (tool === "duct" || tool === "pipe" || tool === "cable-tray" || tool === "conduit") {
+    const r = applyJustificationToSegment({
+      start: s, end: e,
+      shift: justificationShiftMeters(mepJustification, dp.thickness),
+    });
+    // Reuse the plan-path slope state so chained 3D runs accumulate
+    // elevation exactly like plan-drawn runs (MASTER PROMPT §2.2 MEP).
+    const sloped = slopedElevations(tool, s[0], s[1], e[0], e[1]);
+    return {
+      start: r.start, end: r.end,
+      elevation: sloped.elevation,
+      endElevation: drawSlopePct !== 0 ? sloped.endElevation : undefined,
+    };
+  }
+  return { start: s, end: e, elevation: dp.elevation };
+}
+
 /** Shift start/end so the drawn line is the selected location line. */
 export function applyWallLocationOffset(
   x1: number, z1: number, x2: number, z2: number, thickness: number,
 ): { start: [number, number]; end: [number, number] } {
-  const dx = x2 - x1, dz = z2 - z1;
-  const L = Math.hypot(dx, dz) || 1;
-  const nx = -dz / L, nz = dx / L; // left normal
-  const t = thickness;
-  let shift = 0;
-  switch (wallLocationLine) {
-    case "wall-centerline":
-    case "core-centerline":
-      shift = 0; break;
-    case "finish-exterior":
-    case "core-exterior":
-      shift = t / 2; break;
-    case "finish-interior":
-    case "core-interior":
-      shift = -t / 2; break;
-  }
-  shift += wallOffset;
-  return {
-    start: [x1 + nx * shift, z1 + nz * shift],
-    end: [x2 + nx * shift, z2 + nz * shift],
-  };
+  const layers = getTypeDefaults("wall").properties?.layers as string | undefined;
+  const core = coreThicknessFromLayers(layers, thickness);
+  const r = resolveWallJustification({
+    start: [x1, z1], end: [x2, z2],
+    locationLine: wallLocationLine as JustificationLine,
+    thickness,
+    coreThickness: core,
+    extraOffset: wallOffset,
+  });
+  return { start: r.start, end: r.end };
 }
 
 /**
@@ -2095,7 +2219,7 @@ function groundPoint(e: MouseEvent): THREE.Vector3 | null {
 async function updateSnapAsync(e: MouseEvent, cursorWorld: THREE.Vector3 | null) {
   lastSnapValid = false;
   lastSnapResult = null;
-  if (!snapping.isEnabled()) {
+  if (!snapping.isEnabled() || (snapping as any).isSuspended?.()) {
     snapping.hideIndicator();
     return;
   }
@@ -2248,6 +2372,255 @@ function deleteElements(ids: string[]) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Snap-derived persistent relationships + dependent propagation
+// (MASTER PROMPT §4.3 commit, §5 magnetic behavior, §6 update-on-modify)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function snapRegistry(): any | null {
+  try {
+    const w = window as any;
+    return w.__obsRelationships?.registry ?? null;
+  } catch { return null; }
+}
+
+const dist2XZ = (ax: number, az: number, bx: number, bz: number) =>
+  (ax - bx) * (ax - bx) + (az - bz) * (az - bz);
+
+/**
+ * Called right after a draw-committed element. Converts the snap that
+ * produced the placement into persistent relationships:
+ *   • endpoint/corner snap onto another linear element → endpoint-constraint
+ *   • snap onto a column/footing face                  → wall-column
+ *     endpoint-constraint (via the wall-column module)
+ *   • connector snap (MEP)                             → mep-connection
+ */
+async function recordSnapRelationships(
+  el: AuthoredElement,
+  snap: import("./snapping").SnapResult | null,
+): Promise<void> {
+  try {
+    const registry = snapRegistry();
+    if (!registry || !snap || !snap.elementId || snap.elementId === el.id) return;
+    const z = (el.params.elevation ?? 0) as number;
+    const other = elements.find((x) => x.id === snap.elementId);
+    if (!other) return;
+
+    // 1) Wall/beam endpoint landing on another linear element's endpoint.
+    const linearTypes = new Set(["wall", "curtain-wall", "beam", "strip", "mline", "duct", "pipe", "cable-tray", "conduit"]);
+    if (
+      (snap.type === "endpoint" || snap.type === "corner") &&
+      linearTypes.has(other.type) && linearTypes.has(el.type) &&
+      other.params.start && other.params.end && el.params.start && el.params.end
+    ) {
+      registry.createRelationship({
+        type: "endpoint-constraint",
+        source: {
+          elementId: other.id,
+          kind: "endpoint",
+          position: [snap.point.x, snap.point.z, z],
+        },
+        target: {
+          elementId: el.id,
+          kind: "endpoint",
+          position: [snap.point.x, snap.point.z, z],
+        },
+        reconnection: "follow-source",
+        deletionPolicy: "break",
+        origin: "automatic",
+      });
+      return;
+    }
+
+    // 2) Linear element ending on a column / isolated footing face.
+    if (
+      el.params.start && el.params.end &&
+      (other.type === "column" || other.type === "footing") &&
+      other.params.point
+    ) {
+      const t = other.params.thickness ?? 0.3;
+      const d = other.params.depth ?? t;
+      const [cx, cz] = other.params.point;
+      const baseZ = other.params.elevation ?? 0;
+      const topZ = baseZ + (other.params.height ?? 3);
+      const wc = await import("../modules/snapping/wall-column");
+      const footprint: Array<[number, number]> = [
+        [cx - t / 2, cz - d / 2], [cx + t / 2, cz - d / 2],
+        [cx + t / 2, cz + d / 2], [cx - t / 2, cz + d / 2],
+      ];
+      const colRef = wc.getColumnReferenceGeometry({
+        elementId: other.id, footprint, baseZ, topZ,
+      });
+      const justificationMap: Record<string, "core-centerline" | "finish-face-exterior" | "finish-face-interior"> = {
+        "wall-centerline": "core-centerline",
+        "core-centerline": "core-centerline",
+        "finish-exterior": "finish-face-exterior",
+        "finish-interior": "finish-face-interior",
+        "core-exterior": "finish-face-exterior",
+        "core-interior": "finish-face-interior",
+      };
+      const wl: import("../modules/projects/types").ElementType = el.type;
+      void wl;
+      const wallLine = wc.getWallLocationLine({
+        start: el.params.start,
+        end: el.params.end,
+        width: el.params.thickness ?? 0.2,
+        justification: justificationMap[(el.properties as any)?.locationLine as string] ?? "core-centerline",
+      });
+      const contacts = wc.findWallColumnContactCandidates(wallLine, colRef);
+      if (!contacts.length) return;
+      const contact = contacts[0];
+      // Bind the wall endpoint that sits at the contact face.
+      const startD = dist2XZ(el.params.start[0], el.params.start[1], contact.point[0], contact.point[1]);
+      const endD = dist2XZ(el.params.end[0], el.params.end[1], contact.point[0], contact.point[1]);
+      const endpoint: [number, number] = startD <= endD ? el.params.start : el.params.end;
+      wc.createWallColumnRelationship(registry, wallLine, colRef, el.id, endpoint, contact, z);
+      return;
+    }
+
+    // 3) MEP run started/ended on an equipment/fitting connector.
+    if (snap.type === "connector" && linearTypes.has(el.type)) {
+      const endPt = el.params.end ?? el.params.start;
+      registry.createRelationship({
+        type: "mep-connection",
+        source: {
+          elementId: other.id,
+          kind: "connector",
+          position: [snap.point.x, snap.point.y, snap.point.z],
+        },
+        target: {
+          elementId: el.id,
+          kind: "endpoint",
+          position: [endPt?.[0] ?? snap.point.x, endPt?.[1] ?? snap.point.z, el.params.endElevation ?? z],
+        },
+        reconnection: "follow-source",
+        deletionPolicy: "break",
+        origin: "automatic",
+      });
+    }
+  } catch (err) {
+    console.warn("[authoring] snap relationship recording failed", err);
+  }
+}
+
+export interface ParamPatch {
+  el: AuthoredElement;
+  before: AuthoredElement["params"];
+  after: AuthoredElement["params"];
+  relationshipId: string;
+  endpoint: [number, number];
+}
+
+/**
+ * MASTER PROMPT §6 — moving a referenced object updates dependent
+ * geometry. Collects (without applying) the parameter patches for every
+ * endpoint-constraint dependent of the moved elements:
+ *   • wall-column constraints re-resolve the wall endpoint against the
+ *     column's NEW footprint (already moved by the caller);
+ *   • plain endpoint constraints translate the bound endpoint by the
+ *     same delta so coincident corners stay coincident.
+ * Callers fold the patches into the SAME undo transaction as the move.
+ */
+function collectDependentPatches(movedIds: string[], dx: number, dz: number): ParamPatch[] {
+  const registry = snapRegistry();
+  if (!registry) return [];
+  const moved = new Set(movedIds);
+  const seenRel = new Set<string>();
+  const patches: ParamPatch[] = [];
+  for (const mid of movedIds) {
+    let deps: any[] = [];
+    try { deps = registry.getRelationshipDependents(mid) ?? []; } catch { continue; }
+    for (const rec of deps) {
+      if (rec.type !== "endpoint-constraint" || seenRel.has(rec.id)) continue;
+      seenRel.add(rec.id);
+      const depId = rec.target?.elementId;
+      if (!depId || moved.has(depId)) continue;
+      const dep = elements.find((x) => x.id === depId);
+      if (!dep || dep.properties?.pinned) continue;
+      if (!dep.params.start || !dep.params.end) continue;
+
+      let newEndpoint: [number, number] | null = null;
+
+      if (rec.source?.kind === "edge") {
+        // Wall-column: re-resolve the endpoint against the column's
+        // CURRENT (already moved) footprint.
+        const col = elements.find((x) => x.id === mid && (x.type === "column" || x.type === "footing"));
+        if (col?.params.point) {
+          try {
+            const t = col.params.thickness ?? 0.3;
+            const d = col.params.depth ?? t;
+            const [cx, cz] = col.params.point;
+            const baseZ = col.params.elevation ?? 0;
+            const colRef = {
+              elementId: col.id,
+              footprint: [
+                [cx - t / 2, cz - d / 2], [cx + t / 2, cz - d / 2],
+                [cx + t / 2, cz + d / 2], [cx - t / 2, cz + d / 2],
+              ] as Array<[number, number]>,
+              baseZ,
+              topZ: baseZ + (col.params.height ?? 3),
+              isRectangle: true,
+            };
+            const justificationMap: Record<string, WallColumnLine["justification"]> = {
+              "wall-centerline": "core-centerline",
+              "core-centerline": "core-centerline",
+              "finish-exterior": "finish-face-exterior",
+              "finish-interior": "finish-face-interior",
+              "core-exterior": "finish-face-exterior",
+              "core-interior": "finish-face-interior",
+            };
+            const wallLine = toWallColumnLine({
+              start: dep.params.start,
+              end: dep.params.end,
+              width: dep.params.thickness ?? 0.2,
+              justification: justificationMap[(dep.properties as any)?.locationLine as string] ?? "core-centerline",
+            });
+            const resolved = calculateWallEndpoint(wallLine, colRef);
+            if (resolved) {
+              newEndpoint = resolved.endpoint;
+            }
+          } catch { /* fall through to plain follow */ }
+        }
+      }
+
+      if (!newEndpoint) {
+        // Plain follow-source: translate the bound endpoint by the delta.
+        const tp = rec.target.position;
+        const startD = dist2XZ(dep.params.start[0], dep.params.start[1], tp[0], tp[1]);
+        const endD = dist2XZ(dep.params.end[0], dep.params.end[1], tp[0], tp[1]);
+        newEndpoint = startD <= endD
+          ? [dep.params.start[0] + dx, dep.params.start[1] + dz]
+          : [dep.params.end[0] + dx, dep.params.end[1] + dz];
+      }
+      if (!newEndpoint) continue;
+
+      const before = JSON.parse(JSON.stringify(dep.params)) as AuthoredElement["params"];
+      const after = JSON.parse(JSON.stringify(dep.params)) as AuthoredElement["params"];
+      const startIsBound = dist2XZ(after.start![0], after.start![1], newEndpoint[0], newEndpoint[1]) <=
+        dist2XZ(after.end![0], after.end![1], newEndpoint[0], newEndpoint[1]);
+      if (startIsBound) after.start = newEndpoint;
+      else after.end = newEndpoint;
+      patches.push({ el: dep, before, after, relationshipId: rec.id, endpoint: newEndpoint });
+    }
+  }
+  return patches;
+}
+
+/** Push refreshed reference positions into the registry after a move. */
+function refreshDependentRefs(patches: ParamPatch[]): void {
+  const registry = snapRegistry();
+  if (!registry) return;
+  for (const p of patches) {
+    try {
+      registry.updateRelationshipReference(p.relationshipId, "target", {
+        elementId: p.el.id,
+        kind: "endpoint",
+        position: [p.endpoint[0], p.endpoint[1], p.el.params.elevation ?? 0],
+      });
+    } catch { /* registry optional */ }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Slab / params
 // ═══════════════════════════════════════════════════════════════════════════
 function finishSlab() {
@@ -2391,11 +2764,46 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
             }
           }
 
-          void createElement(activeTool as ElementType, {
-            start: [startPt.x, startPt.z],
-            end: [endPt.x, endPt.z],
+          const tool = activeTool as ElementType;
+          const dp = effectiveDrawParams(tool);
+          const placed = justifyLinearSegment(tool, startPt, endPt, dp);
+          // MASTER PROMPT §3.3 — the committed element records HOW it sits
+          // on the reference, so later edits can reproduce the offset.
+          const drawProps: Record<string, unknown> = {};
+          if (tool === "wall" || tool === "curtain-wall") {
+            drawProps.locationLine = wallLocationLine;
+            drawProps.joinStatus = wallJoinStatus;
+            drawProps.chain = wallChain;
+          }
+          const snapAtClick = lastSnapResult;
+          void createElement(tool, {
+            start: placed.start,
+            end: placed.end,
+            elevation: placed.elevation,
+            endElevation: placed.endElevation,
+          }, drawProps).then((el) => {
+            if (el) {
+              void recordSnapRelationships(el, snapAtClick);
+              // Keep the slope-chaining state coherent for 3D chains too
+              // (reference-path end, so chained matches work under any
+              // justification).
+              if (FITTED_TYPES.has(tool)) {
+                lastPlanLinear = {
+                  type: tool,
+                  end: [endPt.x, endPt.z],
+                  dir: newDir,
+                  thickness: dp.thickness,
+                  height: dp.height,
+                  elevation: placed.elevation ?? level,
+                  endElevation: placed.endElevation,
+                  id: el.id,
+                };
+              }
+            }
           });
           chainStartDir = newDir;
+          // Chain continues along the REFERENCE path (the justified face
+          // stays bound to it), matching BIM chain drawing.
           chainStart = endPt.clone();
           try { accuDraw.begin(chainStart); } catch { /* */ }
         }
@@ -2524,13 +2932,26 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
           const candidates = movers.map((m0) => { const c = JSON.parse(JSON.stringify(m0)) as AuthoredElement; shiftParams(c, dx, dz); return c; });
           const candById = new Map(candidates.map((c) => [c.id, c]));
           if (!rejectInvalidOperation(elements.map((item) => candById.get(item.id) ?? item), new Set(movers.map((m0) => m0.id)), `move ${src.name}`)) {
+            // MASTER PROMPT §6 — dependents follow the move in the SAME
+            // undo transaction (endpoint constraints / wall-column binds).
+            const depPatches = collectDependentPatches(movers.map((m0) => m0.id), dx, dz);
             const snaps = movers.map((m0) => ({ el: m0, before: JSON.parse(JSON.stringify(m0.params)), after: JSON.parse(JSON.stringify(candById.get(m0.id)!.params)) }));
             history.push({
               label: movers.length > 1 ? `Move ${src.name} + ${movers.length - 1} connected` : `Move ${src.name}`,
-              apply: () => { for (const o of snaps) o.el.params = JSON.parse(JSON.stringify(o.after)); rebuild(); markDirty(); },
-              revert: () => { for (const o of snaps) o.el.params = JSON.parse(JSON.stringify(o.before)); rebuild(); markDirty(); },
+              apply: () => {
+                for (const o of snaps) o.el.params = JSON.parse(JSON.stringify(o.after));
+                for (const p of depPatches) p.el.params = JSON.parse(JSON.stringify(p.after));
+                rebuild(); markDirty();
+              },
+              revert: () => {
+                for (const o of snaps) o.el.params = JSON.parse(JSON.stringify(o.before));
+                for (const p of depPatches) p.el.params = JSON.parse(JSON.stringify(p.before));
+                rebuild(); markDirty();
+              },
             });
             for (const o of snaps) o.el.params = JSON.parse(JSON.stringify(o.after));
+            for (const p of depPatches) p.el.params = JSON.parse(JSON.stringify(p.after));
+            refreshDependentRefs(depPatches);
             rebuild();
             markDirty();
           }
@@ -2933,16 +3354,44 @@ function updatePreview(e: MouseEvent | null) {
       activeTool === "mline" || activeTool === "duct" || activeTool === "pipe" ||
       activeTool === "cable-tray" || activeTool === "conduit")
   ) {
-    const d = DEFAULTS[activeTool];
+    const toolKey = activeTool as ElementType;
+    const d = effectiveDrawParams(toolKey);
     const a = chainStart;
     const len = Math.hypot(pt.x - a.x, pt.z - a.z);
     if (len > 0.05) {
-      preview = new THREE.Mesh(new THREE.BoxGeometry(len, d.height, d.thickness), pm);
-      preview.position.set((a.x + pt.x) / 2, level + d.height / 2, (a.z + pt.z) / 2);
-      (preview as THREE.Mesh).rotation.y = Math.atan2(-(pt.z - a.z), pt.x - a.x);
+      const placed = justifyLinearSegment(toolKey, a, pt, d);
+      const [ax, az] = placed.start;
+      const [bx, bz] = placed.end;
+      const ghostLen = Math.max(Math.hypot(bx - ax, bz - az), 0.05);
+      preview = new THREE.Mesh(new THREE.BoxGeometry(ghostLen, d.height, d.thickness), pm);
+      preview.position.set((ax + bx) / 2, (placed.elevation ?? level) + d.height / 2, (az + bz) / 2);
+      (preview as THREE.Mesh).rotation.y = Math.atan2(-(bz - az), bx - ax);
       previewGroup.add(preview);
-      // BIM-style dashed alignment / extension guides
-      try { updateAlignmentGuides(a, pt); } catch { /* */ }
+      // BIM-style dashed alignment / extension guides, then the
+      // MASTER PROMPT §3.3 reference-line visualisation on top: the
+      // reference path (light), offset ties (yellow) to the justified face.
+      try {
+        updateAlignmentGuides(a, pt);
+        const moved = Math.hypot(ax - a.x, az - a.z) + Math.hypot(bx - pt.x, bz - pt.z);
+        if (moved > 1e-4) {
+          const gy = level + 0.02;
+          guideGroup.add(dashedLine(
+            new THREE.Vector3(a.x, gy, a.z),
+            new THREE.Vector3(pt.x, gy, pt.z),
+            0xe2e8f0, 0.12, 0.08,
+          ));
+          guideGroup.add(dashedLine(
+            new THREE.Vector3(a.x, gy, a.z),
+            new THREE.Vector3(ax, gy, az),
+            0xfacc15, 0.08, 0.05,
+          ));
+          guideGroup.add(dashedLine(
+            new THREE.Vector3(pt.x, gy, pt.z),
+            new THREE.Vector3(bx, gy, bz),
+            0xfacc15, 0.08, 0.05,
+          ));
+        }
+      } catch { /* */ }
     }
   } else if (pt && activeTool === "brace" && chainStart) {
     const a = new THREE.Vector3(chainStart.x, level, chainStart.z);
@@ -3539,6 +3988,21 @@ function updateLabel() {
 }
 
 export function isDrawingActive() { return activeTool !== null && activeTool !== "select"; }
+
+/** True when a placement/draw tool is active (panel auto-open signal). */
+export function isDrawToolActive(): boolean {
+  return activeTool !== null && DRAW_TOOLS.has(activeTool);
+}
+
+/**
+ * Re-run the placement preview with the last known pointer position so a
+ * parameter change in the modeling panel updates the ghost immediately
+ * (MASTER PROMPT §2.3 "update the modeling preview immediately").
+ */
+export function refreshPreview(): void {
+  if (!activeTool || activeTool === "select") return;
+  try { updatePreview(lastHoverEvent); } catch { /* */ }
+}
 
 /**
  * Activate a modeling tool. Accepts internal Tool names or ribbon aliases
@@ -4657,6 +5121,8 @@ export function setupAuthoring() {
       for (const el of elements) {
         if (gizmoMoving.has(el.id) && before[el.id]) after[el.id] = JSON.parse(JSON.stringify(el.params));
       }
+      // MASTER PROMPT §6 — drag-move also updates bound dependents.
+      const depPatches = collectDependentPatches(Object.keys(after), delta.x, delta.z);
       for (const el of elements) {
         if (before[el.id]) el.params = JSON.parse(JSON.stringify(before[el.id]));
       }
@@ -4665,14 +5131,18 @@ export function setupAuthoring() {
         label: `Transform ${Object.keys(after).length} element(s)`,
         apply: () => {
           for (const el of elements) if (after[el.id]) el.params = JSON.parse(JSON.stringify(after[el.id]));
+          for (const p of depPatches) p.el.params = JSON.parse(JSON.stringify(p.after));
           rebuild(); markDirty();
         },
         revert: () => {
           for (const el of elements) if (before[el.id]) el.params = JSON.parse(JSON.stringify(before[el.id]));
+          for (const p of depPatches) p.el.params = JSON.parse(JSON.stringify(p.before));
           rebuild(); markDirty();
         },
       });
       for (const el of elements) if (after[el.id]) el.params = JSON.parse(JSON.stringify(after[el.id]));
+      for (const p of depPatches) p.el.params = JSON.parse(JSON.stringify(p.after));
+      refreshDependentRefs(depPatches);
       rebuild(); markDirty();
       gizmoBaseline = null;
       void gizmo.refresh();
@@ -4848,6 +5318,11 @@ export function setupAuthoring() {
 
   function handleAuthoringHover(e: PointerEvent): void {
     if (gripDrag) return;
+    lastHoverEvent = e;
+
+    // Feed the snap engine the draw context (chain base) so magnetic
+    // perpendicular/parallel snaps can be computed (MASTER PROMPT §5).
+    try { snapping.setDrawContext(chainStart); } catch { /* */ }
 
     // Snap indicator updates regardless of tool.
     try {
@@ -4937,6 +5412,18 @@ export function setupAuthoring() {
       return;
     }
 
+    // MASTER PROMPT §4.3 — Tab cycles overlapping snap candidates in the
+    // 3D viewport (Shift+Tab cycles backwards). Pointer movement resets.
+    if (e.key === "Tab" && activeTool && activeTool !== "select") {
+      const cycled = snapping.cycleNext(e.shiftKey ? -1 : 1);
+      if (cycled) {
+        e.preventDefault();
+        e.stopPropagation();
+        notify("info", `Snap: ${cycled}`);
+      }
+      return;
+    }
+
     if (e.key === "Backspace" || e.code === "Space" || e.key === " ") {
       if (tag === "button") return;
       e.preventDefault();
@@ -5021,6 +5508,15 @@ export function setupAuthoring() {
     getWallOffset, setWallOffset,
     getWallJoinStatus,
     setWallJoinStatus: (v) => setWallJoinStatus(v as any),
+
+    // MASTER PROMPT §2/§3 — modeling panel + justification state
+    isDrawToolActive,
+    refreshPreview,
+    resetTypeDefaults,
+    getBeamJustification, setBeamJustification: (v: any) => setBeamJustification(v as any),
+    getBeamZJustification, setBeamZJustification: (v: any) => setBeamZJustification(v as any),
+    getMepJustification, setMepJustification: (v: any) => setMepJustification(v as any),
+    getDrawSlope, setDrawSlope,
 
     getGrids, setGrids, getLevels, setLevels,
     getActiveLevelId, setActiveLevelById,

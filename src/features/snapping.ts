@@ -13,6 +13,17 @@
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
+import {
+  aabbNearCursor,
+  dist2,
+  parallelPoint,
+  perpendicularFoot,
+  pickWithHysteresis,
+  rankCandidates,
+  segDir,
+  segmentIntersection,
+  worldPerPixel,
+} from "../modules/snapping/magnetic";
 
 export type SnapType =
   | "endpoint"
@@ -28,18 +39,24 @@ export type SnapType =
   | "nearest"
   | "parallel"
   | "extension"
-  | "grid";
+  | "grid"
+  | "connector";
 
 export interface SnapResult {
   point: THREE.Vector3;
   type: SnapType;
   screenDist: number;
+  /** Element the snap reference belongs to (drives relationship binding). */
+  elementId?: string;
+  /** Semantic reference kind (endpoint/face/edge/connector/...). */
+  refKind?: string;
 }
 
 /** Priority table — higher wins. Matches BIM's hierarchy. */
 const SNAP_PRIORITY: Record<SnapType, number> = {
   endpoint:      100,
   intersection:   95,
+  connector:      93,
   corner:         92,
   midpoint:       90,
   center:         85,
@@ -57,7 +74,7 @@ const SNAP_PRIORITY: Record<SnapType, number> = {
 const ALL_TYPES: SnapType[] = [
   "endpoint", "intersection", "corner", "midpoint", "center",
   "perpendicular", "tangent", "quadrant", "vertex", "face",
-  "nearest", "parallel", "extension", "grid",
+  "nearest", "parallel", "extension", "grid", "connector",
 ];
 
 /* BIM-style SVG markers — 32×32 viewBox. */
@@ -98,6 +115,10 @@ const SVG_MARKER: Record<SnapType, string> = {
     `<path d="M8 12 H24 M8 20 H24" stroke="#A78BFA" stroke-width="2.5" stroke-linecap="round"/>`,
   extension:
     `<path d="M4 16 H28 M22 10 L28 16 L22 22" stroke="#F472B6" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  connector:
+    `<circle cx="16" cy="16" r="8" fill="none" stroke="#FB923C" stroke-width="2.5"/>` +
+    `<path d="M16 4 V10 M16 22 V28 M4 16 H10 M22 16 H28" stroke="#FB923C" stroke-width="2.5" stroke-linecap="round"/>` +
+    `<circle cx="16" cy="16" r="2.4" fill="#FB923C"/>`,
   grid:
     `<path d="M6 16 H26 M16 6 V26" stroke="#38BDF8" stroke-width="2" stroke-linecap="round"/>` +
     `<circle cx="16" cy="16" r="3" fill="none" stroke="#38BDF8" stroke-width="1.5"/>`,
@@ -117,6 +138,7 @@ const SVG_LABEL: Record<SnapType, string> = {
   nearest:        "Near",
   parallel:       "Par",
   extension:      "Ext",
+  connector:      "Conn",
   grid:           "Grid",
 };
 
@@ -159,6 +181,15 @@ class SnapManager {
   private orthoBase: THREE.Vector3 | null = null;
   private orthoAxis: "x" | "y" | "z" | null = null;
 
+  /** MASTER PROMPT §4.3 — Alt-hold suspension, Tab-pinned candidate,
+   *  hysteresis lock, and the magnetic draw context (chain base). */
+  private suspended = false;
+  private pinned: SnapResult | null = null;
+  private lastCandidates: SnapResult[] = [];
+  private cycleIndex = -1;
+  private lastPicked: SnapResult | null = null;
+  private drawBase: THREE.Vector3 | null = null;
+
   private overlay: HTMLDivElement | null = null;
   private marker: HTMLDivElement | null = null;
   private label: HTMLDivElement | null = null;
@@ -170,6 +201,46 @@ class SnapManager {
     if (!on) this.hideIndicator();
   }
   isEnabled() { return this.enabled; }
+
+  /** Hold-Alt temporary suspension (§4.3) — separate from the ON/OFF toggle. */
+  setSuspended(on: boolean) {
+    this.suspended = on;
+    if (on) {
+      this.hideIndicator();
+      this.pinned = null;
+      this.cycleIndex = -1;
+    }
+  }
+  isSuspended() { return this.suspended; }
+
+  /** Draw context for magnetic snaps: the active chain base point. */
+  setDrawContext(base: THREE.Vector3 | null) {
+    this.drawBase = base ? base.clone() : null;
+  }
+
+  getPinned(): SnapResult | null { return this.pinned; }
+  getLastCandidates(): SnapResult[] { return this.lastCandidates; }
+
+  /**
+   * Tab cycling (§4.3): step through the previous query's ranked
+   * candidates and pin the selection until the pointer moves off it.
+   * Returns a short human label, or null when there is nothing to cycle.
+   */
+  cycleNext(step: 1 | -1): string | null {
+    const list = this.lastCandidates;
+    if (list.length < 2) return null;
+    this.cycleIndex = ((this.cycleIndex + step) % list.length + list.length) % list.length;
+    this.pinned = list[this.cycleIndex];
+    this.showIndicator(this.pinned);
+    let name = "";
+    try {
+      const el = this.pinned.elementId
+        ? (window as any).__obsAuthoring?.getElementById?.(this.pinned.elementId)
+        : null;
+      if (el?.name) name = el.name;
+    } catch { /* */ }
+    return `${SVG_LABEL[this.pinned.type]}${name ? " · " + name : ""}`;
+  }
 
   setGridSize(m: number) { this.gridSize = Math.max(0.001, m); }
   getGridSize() { return this.gridSize; }
@@ -259,6 +330,7 @@ class SnapManager {
         nearest: "#F59E0B",
         parallel: "#A78BFA",
         extension: "#F472B6",
+        connector: "#FB923C",
         grid: "#38BDF8",
       };
       this.label.style.background = colorByType[result.type] ?? "#FBBF24";
@@ -270,15 +342,66 @@ class SnapManager {
 
   hideIndicator() { this.showIndicator(null); }
 
-  /** Best snap for a pointer event. Priority-aware, never throws. */
-  async query(e: MouseEvent, cursorWorld: THREE.Vector3 | null): Promise<SnapResult | null> {
+  /** Screen-space tolerance → world metres at the cursor's depth (§4.2). */
+  private worldTolerance(cursorWorld: THREE.Vector3, rect: DOMRect): number {
     try {
-      if (!this.enabled) return null;
+      const cam = ctx.world.camera.three as any;
+      if (cam.isOrthographicCamera) {
+        const h = (cam.top - cam.bottom) / (cam.zoom || 1);
+        return (h / Math.max(1, rect.height)) * this.pixelTolerance;
+      }
+      const dist = Math.max(0.01, cam.position.distanceTo(cursorWorld));
+      const fov = ((cam.fov ?? 50) * Math.PI) / 180;
+      return worldPerPixel(dist, fov, rect.height) * this.pixelTolerance;
+    } catch { return 0.25; }
+  }
+
+  private sameCandidate(a: SnapResult, b: SnapResult): boolean {
+    return a.type === b.type && a.elementId === b.elementId &&
+      a.point.distanceToSquared(b.point) < 1e-6;
+  }
+
+  /**
+   * Best snap for a pointer event. Priority-aware, hysteresis-stabilised
+   * and Tab-pinnable. Never throws.
+   */
+  async query(e: MouseEvent, cursorWorld: THREE.Vector3 | null): Promise<SnapResult | null> {
+    const all = await this.queryAll(e, cursorWorld);
+    if (!all.length) {
+      this.lastPicked = null;
+      return null;
+    }
+    // A Tab-pinned candidate keeps winning while it stays valid (§4.3).
+    if (this.pinned) {
+      const again = all.find((c) => this.sameCandidate(c, this.pinned!));
+      if (again) return again;
+      this.pinned = null;
+      this.cycleIndex = -1;
+    }
+    // Hysteresis (spec 2B.2): keep the previous target while it stays
+    // within tolerance × 1.15 — prevents endpoint/midpoint flicker.
+    let picked: SnapResult | null = null;
+    if (this.lastPicked) {
+      const again = all.find((c) => this.sameCandidate(c, this.lastPicked!));
+      if (again && again.screenDist <= this.pixelTolerance * 1.15) picked = again;
+    }
+    if (!picked) picked = all[0];
+    this.lastPicked = picked;
+    return picked;
+  }
+
+  /**
+   * All candidates within tolerance, priority-sorted (§4.2–4.3). This is
+   * the single producer every snap type flows through.
+   */
+  async queryAll(e: MouseEvent, cursorWorld: THREE.Vector3 | null): Promise<SnapResult[]> {
+    try {
+      if (!this.enabled || this.suspended) return [];
       this.lastPointer = { x: e.clientX, y: e.clientY };
       const host = ctx.rightHost;
-      if (!host || !ctx.world?.camera?.three) return null;
+      if (!host || !ctx.world?.camera?.three) return [];
       const rect = host.getBoundingClientRect();
-      if (rect.width < 1 || rect.height < 1) return null;
+      if (rect.width < 1 || rect.height < 1) return [];
 
       const ndc = new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -286,12 +409,19 @@ class SnapManager {
       );
 
       const candidates: SnapResult[] = [];
-      const add = (point: THREE.Vector3, type: SnapType) => {
+      const add = (
+        point: THREE.Vector3,
+        type: SnapType,
+        elementId?: string,
+        refKind?: string,
+      ) => {
         const px = this.screenDistToPointer(point, rect, e.clientX, e.clientY);
         if (px <= this.pixelTolerance) {
-          candidates.push({ point: point.clone(), type, screenDist: px });
+          candidates.push({ point: point.clone(), type, screenDist: px, elementId, refKind });
         }
       };
+
+      const authored = getAuthoredSafe();
 
       // Grid snap
       if (this.types.has("grid") && cursorWorld) {
@@ -304,10 +434,78 @@ class SnapManager {
         add(gp, "grid");
       }
 
-      // Authored element snaps (endpoint, midpoint, center, corner, face, quadrant)
-      const authored = getAuthoredSafe();
+      // Authored element snaps (endpoint, midpoint, center, corner, face,
+      // quadrant, vertex) — with element identity for relationship binding.
+      const tolWorld = cursorWorld ? this.worldTolerance(cursorWorld, rect) : 0.25;
       for (const el of authored) {
-        this.collectAuthoredSnaps(el, add, authored);
+        this.collectAuthoredSnaps(el, add, authored, cursorWorld, tolWorld);
+      }
+
+      // Magnetic alignment (MASTER PROMPT §5): while drawing from a base
+      // point, detect perpendicular feet / parallel companions / crossings
+      // on nearby linear elements and snap the preview to them.
+      if (this.drawBase && cursorWorld) {
+        const baseXZ: [number, number] = [this.drawBase.x, this.drawBase.z];
+        const curXZ: [number, number] = [cursorWorld.x, cursorWorld.z];
+        const y = this.drawBase.y || this.workPlaneY;
+        const near: Array<{ el: AuthoredLite; a: [number, number]; b: [number, number] }> = [];
+        for (const el of authored) {
+          if (!el.params.start || !el.params.end) continue;
+          const a = el.params.start;
+          const b = el.params.end;
+          if (!aabbNearCursor(curXZ, tolWorld,
+            [Math.min(a[0], b[0]), Math.min(a[1], b[1])],
+            [Math.max(a[0], b[0]), Math.max(a[1], b[1])])) continue;
+          near.push({ el, a, b });
+        }
+        if (this.types.has("perpendicular")) {
+          for (const { el, a, b } of near) {
+            const foot = perpendicularFoot(baseXZ, a, b);
+            if (foot && dist2(foot, curXZ) <= Math.pow(tolWorld * 2, 2)) {
+              add(new THREE.Vector3(foot[0], y, foot[1]), "perpendicular", el.id, "perpendicular");
+            }
+          }
+        }
+        if (this.types.has("parallel")) {
+          for (const { el, a, b } of near) {
+            const d = segDir(a, b);
+            if (!d) continue;
+            const pp = parallelPoint(baseXZ, d, curXZ);
+            if (dist2(pp, curXZ) <= Math.pow(tolWorld, 2)) {
+              add(new THREE.Vector3(pp[0], y, pp[1]), "parallel", el.id, "parallel");
+            }
+          }
+        }
+        if (this.types.has("intersection") && near.length > 1) {
+          const capped = near.slice(0, 32);
+          for (let i = 0; i < capped.length; i++) {
+            for (let j = i + 1; j < capped.length; j++) {
+              const x = segmentIntersection(capped[i].a, capped[i].b, capped[j].a, capped[j].b);
+              if (x && dist2(x, curXZ) <= Math.pow(tolWorld * 1.5, 2)) {
+                add(new THREE.Vector3(x[0], y, x[1]), "intersection", capped[i].el.id, "intersection");
+              }
+            }
+          }
+        }
+      }
+
+      // MEP connector snapping (§4.1) — free connector origins of
+      // equipment/fittings; the run that commits on them binds a
+      // persistent mep-connection relationship.
+      if (this.types.has("connector") && cursorWorld) {
+        try {
+          const conns = (window as any).__obsMepConnectors?.getMepConnectors?.() as
+            Array<{ ownerElementId: string; worldOrigin: [number, number, number]; engaged: boolean }> | undefined;
+          if (Array.isArray(conns)) {
+            for (const c of conns) {
+              if (!c || c.engaged || !c.worldOrigin) continue;
+              const [ox, oy, oz] = c.worldOrigin;
+              if (Math.hypot(ox - cursorWorld.x, oz - cursorWorld.z) > tolWorld * 3) continue;
+              if (Math.abs(oy - cursorWorld.y) > 1.0) continue;
+              add(new THREE.Vector3(ox, oy, oz), "connector", c.ownerElementId, "connector");
+            }
+          }
+        } catch { /* connectors optional */ }
       }
 
       // CAD underlay snaps — endpoints, centers, midpoints from DXF underlay.
@@ -326,7 +524,7 @@ class SnapManager {
         } catch { /* underlay snap module not loaded */ }
       }
 
-      // Raycast — nearest + vertex
+      // Raycast — nearest on fragment models / ground
       if (this.types.has("nearest") || this.types.has("vertex") || this.types.has("face")) {
         try {
           const ray = new THREE.Raycaster();
@@ -367,67 +565,69 @@ class SnapManager {
         }
       }
 
-      if (!candidates.length) return null;
+      if (!candidates.length) {
+        this.lastCandidates = [];
+        return [];
+      }
 
-      // Priority-aware sort — a higher-priority snap wins over a closer
-      // lower-priority one, exactly like BIM.
-      candidates.sort((a, b) => {
-        const pa = SNAP_PRIORITY[a.type] ?? 0;
-        const pb = SNAP_PRIORITY[b.type] ?? 0;
-        if (pa !== pb) return pb - pa;
-        return a.screenDist - b.screenDist;
-      });
+      // Unified priority ranking (modules/snapping/magnetic) — a
+      // higher-priority snap wins over a closer lower-priority one.
+      const ranked = rankCandidates(
+        candidates.map((c) => ({ ...c, kind: c.type })),
+        SNAP_PRIORITY as Record<string, number>,
+      ).map(({ kind: _kind, ...rest }) => rest as SnapResult);
 
-      return candidates[0];
+      this.lastCandidates = ranked;
+      if (this.cycleIndex >= ranked.length) this.cycleIndex = -1;
+      return ranked;
     } catch (err) {
       console.warn("[snap] query failed", err);
-      return null;
+      return [];
     }
   }
 
   private collectAuthoredSnaps(
     el: AuthoredLite,
-    add: (p: THREE.Vector3, t: SnapType) => void,
+    add: (p: THREE.Vector3, t: SnapType, elementId?: string, refKind?: string) => void,
     all: readonly AuthoredLite[],
+    cursorWorld: THREE.Vector3 | null,
+    tolWorld: number,
   ) {
     try {
       const y = el.params.elevation ?? this.workPlaneY;
       const p = el.params;
 
+      // MASTER PROMPT §4.2 — magnetic prefilter: skip elements whose AABB
+      // cannot produce a candidate near the cursor at the current zoom.
+      const curXZ: [number, number] | null = cursorWorld
+        ? [cursorWorld.x, cursorWorld.z]
+        : null;
+      const inRange = (a: [number, number], b: [number, number]): boolean => {
+        if (!curXZ) return true;
+        return aabbNearCursor(curXZ, tolWorld,
+          [Math.min(a[0], b[0]), Math.min(a[1], b[1])],
+          [Math.max(a[0], b[0]), Math.max(a[1], b[1])]);
+      };
+
       if (p.start && p.end) {
-        const a = new THREE.Vector3(p.start[0], y, p.start[1]);
-        const b = new THREE.Vector3(p.end[0], y, p.end[1]);
-        const dx = b.x - a.x;
-        const dz = b.z - a.z;
+        const a = p.start;
+        const b = p.end;
+        if (!inRange(a, b)) return;
+        const va = new THREE.Vector3(a[0], y, a[1]);
+        const vb = new THREE.Vector3(b[0], y, b[1]);
+        const dx = b[0] - a[0];
+        const dz = b[1] - a[1];
         const L = Math.hypot(dx, dz) || 1;
-        const ux = dx / L;
-        const uz = dz / L;
-        const nx = -uz;
-        const nz = ux;
+        const nx = -dz / L;
+        const nz = dx / L;
 
-        if (this.types.has("endpoint")) { add(a, "endpoint"); add(b, "endpoint"); }
-
-        if (this.types.has("midpoint")) {
-          add(new THREE.Vector3((a.x + b.x) / 2, y, (a.z + b.z) / 2), "midpoint");
+        if (this.types.has("endpoint")) {
+          add(va, "endpoint", el.id, "endpoint");
+          add(vb, "endpoint", el.id, "endpoint");
         }
 
-        // Corner — this endpoint coincides with another element's endpoint
-        if (this.types.has("corner")) {
-          const tol = 0.2;
-          for (const endpoint of [a, b]) {
-            for (const other of all) {
-              if (other.id === el.id) continue;
-              const op = other.params;
-              if (!op.start || !op.end) continue;
-              const oy = op.elevation ?? this.workPlaneY;
-              const os = new THREE.Vector3(op.start[0], oy, op.start[1]);
-              const oe = new THREE.Vector3(op.end[0], oy, op.end[1]);
-              if (endpoint.distanceTo(os) < tol || endpoint.distanceTo(oe) < tol) {
-                add(endpoint, "corner");
-                break;
-              }
-            }
-          }
+        if (this.types.has("midpoint")) {
+          add(new THREE.Vector3((a[0] + b[0]) / 2, y, (a[1] + b[1]) / 2), "midpoint", el.id, "midpoint");
         }
 
         // Face — sample points along both faces of a wall-like element
@@ -436,34 +636,33 @@ class SnapManager {
           const faceTypes = new Set(["wall", "duct", "pipe", "cable-tray", "conduit", "beam", "strip"]);
           if (faceTypes.has(el.type)) {
             for (const t of [0.25, 0.5, 0.75]) {
-              const cx = a.x + dx * t;
-              const cz = a.z + dz * t;
-              add(new THREE.Vector3(cx + nx * half, y, cz + nz * half), "face");
-              add(new THREE.Vector3(cx - nx * half, y, cz - nz * half), "face");
+              const cx = a[0] + dx * t;
+              const cz = a[1] + dz * t;
+              add(new THREE.Vector3(cx + nx * half, y, cz + nz * half), "face", el.id, "face");
+              add(new THREE.Vector3(cx - nx * half, y, cz - nz * half), "face", el.id, "face");
             }
           }
         }
 
-        // Tangent — only meaningful for arc-based elements; skip silently
-        // for linear elements. Activate when arc elements exist.
-
         // Extension — points slightly beyond each end
         if (this.types.has("extension")) {
-          add(a.clone().addScaledVector(new THREE.Vector3(ux, 0, uz), -0.5), "extension");
-          add(b.clone().addScaledVector(new THREE.Vector3(ux, 0, uz), 0.5), "extension");
+          const ux = dx / L;
+          const uz = dz / L;
+          add(va.clone().addScaledVector(new THREE.Vector3(ux, 0, uz), -0.5), "extension", el.id);
+          add(vb.clone().addScaledVector(new THREE.Vector3(ux, 0, uz), 0.5), "extension", el.id);
         }
       }
 
       if (p.point) {
         const c = new THREE.Vector3(p.point[0], y, p.point[1]);
-        if (this.types.has("center") || this.types.has("endpoint")) add(c, "center");
+        if (this.types.has("center") || this.types.has("endpoint")) add(c, "center", el.id, "center");
         if (this.types.has("quadrant") && (p.width || p.depth)) {
           const hw = (p.width ?? p.depth ?? 0.3) / 2;
           const hd = (p.depth ?? p.width ?? 0.3) / 2;
-          add(new THREE.Vector3(c.x + hw, y, c.z), "quadrant");
-          add(new THREE.Vector3(c.x - hw, y, c.z), "quadrant");
-          add(new THREE.Vector3(c.x, y, c.z + hd), "quadrant");
-          add(new THREE.Vector3(c.x, y, c.z - hd), "quadrant");
+          add(new THREE.Vector3(c.x + hw, y, c.z), "quadrant", el.id);
+          add(new THREE.Vector3(c.x - hw, y, c.z), "quadrant", el.id);
+          add(new THREE.Vector3(c.x, y, c.z + hd), "quadrant", el.id);
+          add(new THREE.Vector3(c.x, y, c.z - hd), "quadrant", el.id);
         }
       }
 
@@ -471,10 +670,26 @@ class SnapManager {
         for (let i = 0; i < p.polygon.length; i++) {
           const pt = p.polygon[i];
           const v = new THREE.Vector3(pt[0], y, pt[1]);
-          if (this.types.has("vertex") || this.types.has("endpoint")) add(v, "vertex");
+          if (this.types.has("vertex") || this.types.has("endpoint")) add(v, "vertex", el.id, "vertex");
           if (this.types.has("midpoint")) {
             const n = p.polygon[(i + 1) % p.polygon.length];
-            add(new THREE.Vector3((pt[0] + n[0]) / 2, y, (pt[1] + n[1]) / 2), "midpoint");
+            add(new THREE.Vector3((pt[0] + n[0]) / 2, y, (pt[1] + n[1]) / 2), "midpoint", el.id);
+          }
+        }
+      }
+
+      // Corner — this endpoint coincides with another element's endpoint.
+      // O(n) via the shared endpoint index (was O(n²) per element pair).
+      if (this.types.has("corner") && p.start && p.end) {
+        const tol = 0.2;
+        const tolQ = tol * tol;
+        for (const endpoint of [p.start, p.end]) {
+          for (const other of all) {
+            if (other.id === el.id || !other.params.start || !other.params.end) continue;
+            if (dist2(endpoint, other.params.start) < tolQ || dist2(endpoint, other.params.end) < tolQ) {
+              add(new THREE.Vector3(endpoint[0], y, endpoint[1]), "corner", other.id, "endpoint");
+              break;
+            }
           }
         }
       }
@@ -536,7 +751,7 @@ function renderSnapPanel() {
     midpoint: "#22C55E", center: "#38BDF8", perpendicular: "#C084FC",
     tangent: "#F472B6", quadrant: "#34D399", vertex: "#38BDF8",
     face: "#38BDF8", nearest: "#F59E0B", parallel: "#A78BFA",
-    extension: "#F472B6", grid: "#38BDF8",
+    extension: "#F472B6", connector: "#FB923C", grid: "#38BDF8",
   };
 
   const checkboxes = types.map((t) => {
@@ -609,7 +824,7 @@ function SVG_LABEL_FOR_PANEL(t: string): string {
     midpoint: "Midpoint", center: "Center", perpendicular: "Perpendicular",
     tangent: "Tangent", quadrant: "Quadrant", vertex: "Vertex",
     face: "Face", nearest: "Nearest", parallel: "Parallel",
-    extension: "Extension", grid: "Grid",
+    extension: "Extension", connector: "Connector (MEP)", grid: "Grid",
   };
   return map[t] ?? t;
 }
