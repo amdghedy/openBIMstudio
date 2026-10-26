@@ -249,3 +249,56 @@ The Plugin SDK v1.0 is the foundation. Planned additions:
 ## Contributing
 
 Contributions to the SDK itself (types, loader, API surface) should follow the existing `modules/families/` pattern: types in `types.ts`, host adapter in `api.ts`, lifecycle in `loader.ts` + `boot.ts`, documentation in this file.
+
+## Trust Model (remediation program Phase 1.4)
+
+**Plugins in openBIMstudio are same-origin trusted code, not sandboxed
+third-party code.** They are loaded as classic `<script>` tags and execute
+with the full privileges of the application origin. There is **no**
+iframe/worker isolation today. Treat every plugin you install with the same
+care as host source code.
+
+Consequences and guarantees under this model:
+
+| Concern | Status |
+|---|---|
+| Execution context | Same origin, main thread — **trusted** |
+| Manifest validation | id format, semver, SDK major, capability allow-list, entry-path safety, id-spoofing check (see `src/plugins/loader.ts`) |
+| Wildcard capability `*` | Granted **only** to first-party plugins shipped with the app |
+| Integrity pinning | Optional `integrity: "sha256-<hex>"` in `plugin.json` — the loader hashes the entry text and refuses activation on mismatch |
+| Capability enforcement | Every SDK call is permission-gated (`require_`); operations without the capability throw with a remediation hint |
+| Sandbox isolation | **Planned** — a worker/iframe message-based sandbox is future work; the SDK surface is designed to layer on top of it |
+
+### Honest authoring API (`createElement`)
+
+`obs.authoring.createElement(type, params, hostId?)` creates elements through
+the **same history-wrapped creation path the draw tools use** (type defaults,
+family overrides, hosting, snap relationships). It returns a typed result:
+
+```js
+const res = await api.obs.authoring.createElement("wall", { start: [0, 0], end: [5, 0] });
+if (res.ok) {
+  console.log("created", res.id);
+} else {
+  // res.error is "not-implemented" (authoring service not booted)
+  //            or "rejected" (unknown type / invalid params)
+  console.warn("creation failed:", res.message);
+}
+```
+
+Only whitelisted authoring types are accepted; anything else is an explicit
+`rejected` result — the host never pretends a stub was created.
+
+### Network, storage and workers
+
+- `obs.storage.*` is namespaced per plugin id (`plugin:<id>:<key>`) and gated
+  by `fs.local`.
+- `obs.fetch` is gated by `network.fetch`; the host CSP still applies.
+- `obs.spawnWorker` is gated by `worker.spawn`. Restrict workers to
+  same-origin scripts; cross-origin workers fail by browser rules.
+
+### Reviewing plugins
+
+Before installing a plugin from elsewhere, review its manifest capabilities
+and entry source. A plugin with `network.fetch` can exfiltrate any project
+data it can read; one with `authoring.write` can mutate the model.

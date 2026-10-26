@@ -5526,6 +5526,22 @@ export function setupAuthoring() {
     onAuthoringChange,
     migrateMepFittingRadii,
     setElbowBendRadius,
+
+    // Remediation Phase 1.4 — real element creation for plugin/API callers.
+    // Delegates to the SAME history-wrapped createElement the draw tools use
+    // (type defaults, family overrides, hosting, snap relationships), with a
+    // strict whitelist so unknown types are an honest rejection, not a stub.
+    createElementByType: async (type: string, params: Record<string, unknown>, hostId?: string) => {
+      const t = String(type || "").trim();
+      if (!Object.prototype.hasOwnProperty.call(DEFAULTS, t)) return null;
+      try {
+        const el = await createElement(t as ElementType, (params ?? {}) as Partial<AuthoredElement["params"]>, undefined, hostId);
+        return el ? el.id : null;
+      } catch (err) {
+        console.warn("[authoring] createElementByType rejected:", t, err);
+        return null;
+      }
+    },
   };
   ctx.features.authoring = api;
   register("authoring", api);

@@ -170,6 +170,17 @@ export interface AuthoringService {
   migrateMepFittingRadii(onlyId?: string, forceRadius?: number): number;
   /** Set an elbow's bend radius and re-trim connected runs. False if it would collapse a run. */
   setElbowBendRadius(fittingId: string, radius: number): boolean;
+
+  /** Create an authored element through the real draw-tool creation path
+   *  (type defaults, family overrides, history entry, snap relationships).
+   *  Only types in the authoring creation whitelist are accepted; anything
+   *  else resolves to null (documented rejection — plugins must surface it,
+   *  not fake success). */
+  createElementByType(
+    type: string,
+    params: Record<string, unknown>,
+    hostId?: string,
+  ): Promise<string | null>;
 }
 
 /* ══════════════════════════════════════════════════════════════════════

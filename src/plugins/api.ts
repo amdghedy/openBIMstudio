@@ -12,12 +12,14 @@ import type {
   PluginSDK, SemVer,
 } from "./types";
 import { tryUse } from "../core/services";
+import { APP_VERSION } from "../version";
 
 /** Current Plugin SDK version. Bump on breaking API changes. */
-export const SDK_VERSION: SemVer = { major: 1, minor: 0, patch: 0 };
+export const SDK_VERSION: SemVer = { major: 1, minor: 1, patch: 0 };
 
-/** Host application version, read from package.json at build time. */
-export const HOST_VERSION = "0.55.0";
+/** Host application version — single source of truth (src/version.ts).
+ *  Remediation Phase 2.1: was hardcoded "0.55.0" and drifted. */
+export const HOST_VERSION = APP_VERSION;
 
 /** Internal: per-plugin granted capability set. */
 const granted = new Map<string, Set<PluginCapability>>();
@@ -54,17 +56,27 @@ export function buildPluginSDK(pluginId: string): PluginSDK {
         const svc = tryUse("authoring");
         return svc ? svc.getElementById(id) : null;
       }),
-      createElement: (type, params, hostId) => require_(pluginId, "authoring.write", () => {
-        const svc = tryUse("authoring");
-        if (!svc) return null;
-        // We can't construct a full AuthoredElement here without coupling to
-        // the schema; instead, emit a minimal stub the authoring layer can
-        // accept via a future `createElementByType()` helper. For now, log.
-        // This is the seam where the host-side adapter would call into the
-        // authoring layer's internal creation logic.
-        const el = { id: crypto.randomUUID(), type, properties: params, hostId } as unknown;
-        console.info(`[plugins:${pluginId}] createElement(${type}) → stub`, el);
-        return el as unknown as string;
+      createElement: (type, params, hostId) => require_(pluginId, "authoring.write", async () => {
+        // Remediation Phase 1.4: routes through the REAL authoring creation
+        // path (same history-wrapped transaction the draw tools use). No
+        // stub, no fake success — failures are typed and honest.
+        const svc = tryUse("authoring") as any;
+        if (!svc || typeof svc.createElementByType !== "function") {
+          return {
+            ok: false as const,
+            error: "not-implemented" as const,
+            message: "authoring service is not available (not booted or does not expose createElementByType)",
+          };
+        }
+        const id = await svc.createElementByType(type, params ?? {}, hostId);
+        if (!id) {
+          return {
+            ok: false as const,
+            error: "rejected" as const,
+            message: `authoring rejected createElement("${String(type)}") — unknown type or invalid params`,
+          };
+        }
+        return { ok: true as const, id };
       }),
       updateElement: (id, patch) => require_(pluginId, "authoring.write", () => {
         const svc = tryUse("authoring");

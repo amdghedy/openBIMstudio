@@ -165,6 +165,38 @@ function loadScript(url: string): Promise<void> {
   });
 }
 
+/**
+ * Verify the entry script against an optional manifest integrity pin
+ * ("sha256-<hex>"). Remediation Phase 1.4. The script is fetched and hashed
+ * before the browser loads it as a classic <script>; on mismatch the plugin
+ * is refused. First-party plugins without a pin are unaffected.
+ */
+async function verifyEntryIntegrity(url: string, pin: string): Promise<boolean> {
+  const match = /^sha256-([a-f0-9]{64})$/i.exec(String(pin).trim());
+  if (!match) {
+    console.warn(`[plugins] integrity pin must look like "sha256-<64 hex chars>" — got: ${String(pin).slice(0, 20)}`);
+    return false;
+  }
+  try {
+    const res = await fetch(url, { cache: "no-cache" });
+    if (!res.ok) {
+      console.warn(`[plugins] integrity check failed: entry returned ${res.status}`);
+      return false;
+    }
+    const text = await res.text();
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    if (hex !== match[1].toLowerCase()) {
+      console.warn(`[plugins] integrity MISMATCH for ${url} — expected ${match[1].slice(0, 12)}…, got ${hex.slice(0, 12)}…. Refusing to load.`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn("[plugins] integrity check threw:", e);
+    return false;
+  }
+}
+
 /** Install the `window.__obsRegisterPlugin` bridge for a specific plugin id. */
 function installRegistrationBridge(pluginId: string): void {
   if (!window.__obsPluginRegistry) {
@@ -224,6 +256,13 @@ async function loadAndActivatePlugin(id: string): Promise<boolean> {
       return false;
     }
     const scriptUrl = `/plugins/${id}/${entry}`;
+
+    // Optional integrity pin (Phase 1.4): refuse tampered entry scripts.
+    if (manifest.integrity) {
+      const ok = await verifyEntryIntegrity(scriptUrl, manifest.integrity);
+      if (!ok) return false;
+    }
+
     try {
       await loadScript(scriptUrl);
     } catch (e) {

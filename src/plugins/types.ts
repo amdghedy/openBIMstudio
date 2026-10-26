@@ -85,6 +85,10 @@ export interface PluginManifest {
   sdkVersion: number;
   /** Capabilities requested. Host grants only these. */
   capabilities: PluginCapability[];
+  /** Optional integrity pin for the entry script: "sha256-<hex>" (remediation
+   *  Phase 1.4). When present, the loader fetches the entry text, hashes it,
+   *  and refuses to activate on mismatch. Absent = first-party plugin. */
+  integrity?: string;
   /** Other plugin ids this plugin depends on, if any. */
   dependencies?: string[];
   /** Optional URL of a help / docs page. */
@@ -184,10 +188,17 @@ export interface PluginSDK {
 // ─── Per-service plugin API surfaces (deliberately smaller than the
 //     internal ServiceMap — only what third-party plugins need) ──────────
 
+/** Typed result for authoring.createElement (remediation Phase 1.4):
+ *  either a real created element id, or an explicit typed failure — never a
+ *  silent stub that pretends success. */
+export type PluginCreateResult =
+  | { ok: true; id: string }
+  | { ok: false; error: "not-implemented" | "rejected"; message: string };
+
 export interface PluginAuthoringAPI {
   getElements(): unknown[];
   getElementById(id: string): unknown | null;
-  createElement(type: string, params: Record<string, unknown>, hostId?: string): string | null;
+  createElement(type: string, params: Record<string, unknown>, hostId?: string): Promise<PluginCreateResult>;
   updateElement(id: string, patch: Record<string, unknown>): boolean;
   deleteElement(id: string): boolean;
   onChange(cb: () => void): () => void;

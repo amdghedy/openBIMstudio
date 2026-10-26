@@ -23,6 +23,7 @@ import {
 import { syncOrthoZoom } from "../core/ortho-zoom";
 import { getNorthState, onNorthChanged } from "../modules/north/north";
 import { getCurrentProject, onProjectChanged } from "../modules/projects/projects";
+import { APP_VERSION } from "../version";
 import {
   CUBE_CORNERS, CUBE_EDGES, CUBE_FACES,
   NavigationController,
@@ -788,7 +789,7 @@ function exposeApi(controller: NavigationController, refs: WidgetRefs): void {
       if (!realAdapterInstance) return;
       openNavigationMenu(controller, realAdapterInstance, x ?? r.right - 40, y ?? r.top + 30, refs);
     },
-    version: "0.72.0",
+    version: APP_VERSION,
   };
   (ctx.features as any).viewCube = w.__obsNavigation;
 }
