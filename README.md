@@ -221,6 +221,8 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 - For several files: use **Federation** / **Manage Links** and align origins.
 
 ### 2. Explore
+- Use the **ViewCube** (top-right of the viewport): click faces, edges or corners to jump to exact views; use the curved arrows to orbit in 90° steps (hold to repeat); right-click the cube for the full navigation menu.
+- **Home menu**: Go Home · Orthographic / Perspective / Perspective with Ortho Faces · Set current view as Home · Focus and set as Home · Reset Home · Set current view as Front / Top · Reset orientation.
 - Use the **model tree** and **properties**.
 - **Isolate** a system or level; cut with a **section box**.
 
