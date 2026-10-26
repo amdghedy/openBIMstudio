@@ -1,26 +1,25 @@
 import * as THREE from "three";
 import { ctx } from "./context";
-import { syncOrthoZoom } from "./ortho-zoom";
 
 type Any = Record<string, any>;
 
 /**
- * Authoritative mouse-wheel zoom for the 3D viewport.
+ * Authoritative mouse-wheel zoom using camera-controls' native
+ * dolly-to-cursor implementation.
  *
- * HARD INVARIANT: wheel must never change camera orientation.
- *   - Do NOT call setLookAt / lookAt / rotate / orbit during wheel.
- *   - Only translate camera.position and controls.target together.
- *   - Snapshot quaternion + up before the step; re-assert after any
- *     controls.update() because camera-controls.update() calls lookAt
- *     internally and will otherwise rewrite orientation.
+ * Why this approach:
+ *   Custom setLookAt / setPosition / spherical hacks repeatedly failed
+ *   because camera-controls.update() re-applies spherical state every frame.
+ *   The library already implements orientation-preserving cursor zoom in
+ *   `_dollyInternal(delta, ndcX, ndcY)` when `dollyToCursor === true`.
+ *   We call that path directly while still owning the DOM wheel event so
+ *   pan/orbit/selection handlers do not compete.
  *
- * Cursor anchoring:
- *   Perspective — dolly along view axis, then truck in the image plane
- *     so the world point under the cursor stays fixed on screen.
- *   Orthographic — scale cam.zoom, then truck the same way.
- *
- * Competing handlers (nav-cog-force, navigation.ts) must yield when
- * __OBS_WHEEL_AUTHORITY is true.
+ * Contract:
+ *   - Wheel never rotates (azimuth/polar unchanged; only radius or zoom).
+ *   - Zoom aims at the world point under the cursor.
+ *   - Perspective: dolly (camera moves).
+ *   - Orthographic: zoom (frustum scale) with the same cursor anchor.
  */
 
 let installed = false;
@@ -32,20 +31,6 @@ const UI_BLOCK =
   ".obs-panel,[data-obs-panel],#obs-ai-chat,#obs-bim-toolbox,.obs-ribbon," +
   ".obs-property,.obs-dialog,.obs-adv-toolbar,.obs-plan-view,#plan-svg," +
   "input,textarea,select,button,label,a,[contenteditable=true],#obs-cad-viewer,[data-obs-own-wheel]";
-
-const _ndc = new THREE.Vector2();
-const _target = new THREE.Vector3();
-const _focus = new THREE.Vector3();
-const _after = new THREE.Vector3();
-const _truck = new THREE.Vector3();
-const _dir = new THREE.Vector3();
-const _plane = new THREE.Plane();
-const _raycaster = new THREE.Raycaster();
-const _hit = new THREE.Vector3();
-const _quat = new THREE.Quaternion();
-const _up = new THREE.Vector3();
-const _pos0 = new THREE.Vector3();
-const _tmp = new THREE.Vector3();
 
 function w(): Any {
   return window as Any;
@@ -63,11 +48,12 @@ function readMultiplier(): number {
 }
 
 function normalizeDelta(e: WheelEvent): number {
+  // Match camera-controls' own wheel normalization closely.
   let d = e.deltaY;
   if (e.deltaMode === 1) d *= 16;
   else if (e.deltaMode === 2) d *= 100;
-  if (d > 600) d = 600;
-  if (d < -600) d = -600;
+  if (d > 100) d = 100;
+  if (d < -100) d = -100;
   return d;
 }
 
@@ -95,14 +81,6 @@ function getViewportRect(): DOMRect | null {
   return null;
 }
 
-function clientToNdc(clientX: number, clientY: number, out: THREE.Vector2): boolean {
-  const rect = getViewportRect();
-  if (!rect || rect.width < 1 || rect.height < 1) return false;
-  out.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-  out.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-  return true;
-}
-
 function getControls(): Any {
   return (ctx as Any).world?.camera?.controls ?? null;
 }
@@ -123,330 +101,211 @@ function isOrthoCam(cam: THREE.Camera | null | undefined): boolean {
   return !!(cam as any)?.isOrthographicCamera;
 }
 
-function collectOrthoCameras(): THREE.OrthographicCamera[] {
-  const out: THREE.OrthographicCamera[] = [];
-  const push = (x: any) => {
-    if (!x) return;
-    const c = x.isCamera ? x : x.three;
-    if (c?.isOrthographicCamera) out.push(c as THREE.OrthographicCamera);
-  };
-  const wrapper = (ctx as Any).world?.camera;
-  if (!wrapper) return out;
-  push(wrapper.three);
-  push(wrapper.orthographicCamera);
-  push(wrapper.orthoCamera);
-  push(getControls()?.camera);
-  return Array.from(new Set(out));
-}
-
-function getOrbitTarget(controls: Any, cam: THREE.Camera, out: THREE.Vector3): void {
-  let got = false;
+/**
+ * Keep camera-controls' internal element rect in sync with our viewport.
+ * dollyToCursor uses _elementRect to convert clientX/Y → NDC. If it is
+ * stale or points at the wrong box, zoom aims at the wrong place and can
+ * look like a rotation/pan.
+ */
+function syncElementRect(controls: Any, rect: DOMRect): void {
   try {
-    if (typeof controls?.getTarget === "function") {
-      controls.getTarget(out);
-      got = Number.isFinite(out.x);
+    if (controls._elementRect) {
+      controls._elementRect.x = rect.left;
+      controls._elementRect.y = rect.top;
+      controls._elementRect.width = rect.width;
+      controls._elementRect.height = rect.height;
     }
   } catch {
     /* */
   }
-  if (!got) {
+  try {
+    // Public API when available (camera-controls >= 2).
+    if (typeof controls.setViewport === "function") {
+      // unset custom viewport — use full element
+      controls.setViewport(undefined);
+    }
+  } catch {
+    /* */
+  }
+}
+
+function cursorNdc(clientX: number, clientY: number, rect: DOMRect): { x: number; y: number } {
+  // Same convention as camera-controls wheel handler.
+  const x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  const y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  return { x, y };
+}
+
+/**
+ * Apply one wheel step via camera-controls internals.
+ * Returns true if the native path was used successfully.
+ */
+function nativeCursorZoom(
+  controls: Any,
+  cam: THREE.Camera,
+  deltaY: number,
+  clientX: number,
+  clientY: number,
+  shift: boolean,
+): boolean {
+  const rect = getViewportRect();
+  if (!rect || rect.width < 2 || rect.height < 2) return false;
+
+  syncElementRect(controls, rect);
+  const { x, y } = cursorNdc(clientX, clientY, rect);
+
+  const speed = readMultiplier() * (shift ? 2.5 : 1);
+  // camera-controls treats positive delta as zoom-out / dolly-out.
+  const signed = (invert ? -deltaY : deltaY) * speed;
+
+  const wasDollyToCursor = !!controls.dollyToCursor;
+  try {
+    controls.dollyToCursor = true;
+
+    // Ensure controls are enabled and not zeroed out.
     try {
-      if (controls?.target?.isVector3) {
-        out.copy(controls.target);
-        got = true;
+      if (controls.enabled === false) controls.enabled = true;
+    } catch {
+      /* */
+    }
+    try {
+      if ("dollySpeed" in controls && !(controls.dollySpeed > 0)) {
+        controls.dollySpeed = 1.0;
       }
     } catch {
       /* */
     }
-  }
-  if (!got) {
-    cam.getWorldDirection(_dir);
-    out.copy(cam.position).addScaledVector(_dir, 10);
-  }
-}
 
-/** World point under cursor: mesh hit preferred, else plane at orbit-target depth. */
-function focusUnderCursor(
-  cam: THREE.Camera,
-  controls: Any,
-  clientX: number,
-  clientY: number,
-  out: THREE.Vector3,
-): boolean {
-  if (!clientToNdc(clientX, clientY, _ndc)) return false;
-  getOrbitTarget(controls, cam, _target);
-  _raycaster.setFromCamera(_ndc, cam);
-  try {
-    const scene = (ctx as Any).world?.scene?.three as THREE.Scene | undefined;
-    if (scene) {
-      const hits = _raycaster.intersectObjects(scene.children, true);
-      const camPos = cam.position;
-      const targetDist = Math.max(camPos.distanceTo(_target), 0.5);
-      for (const h of hits) {
-        if (!h.point || !Number.isFinite(h.point.x)) continue;
-        if (String((h.object as any)?.name ?? "") === "groundPlane") continue;
-        const d = camPos.distanceTo(h.point);
-        if (d < 0.01) continue;
-        if (d < targetDist * 4 + 80) {
-          out.copy(h.point);
-          return true;
+    const ortho = isOrthoCam(cam);
+
+    if (ortho) {
+      // Orthographic: change zoom factor, cursor-anchored.
+      if (typeof controls._zoomInternal === "function") {
+        // _zoomInternal(delta, x, y) — same signature family as dolly.
+        controls._zoomInternal(signed * 0.01, x, y);
+      } else if (typeof controls.zoom === "function") {
+        // zoom(delta, transition) — delta is additive on cam.zoom in some versions.
+        // Prefer zoomTo for absolute control when we can read current zoom.
+        const z = Math.max(1e-4, Number((cam as any).zoom) || 1);
+        const factor = Math.exp(-signed * 0.0022);
+        const newZ = Math.max(0.05, Math.min(8000, z * factor));
+        if (typeof controls.zoomTo === "function") {
+          const r = controls.zoomTo(newZ, false);
+          if (r && typeof r.catch === "function") r.catch(() => { /* */ });
+        } else {
+          const r = controls.zoom(newZ - z, false);
+          if (r && typeof r.catch === "function") r.catch(() => { /* */ });
         }
+        // Manual truck compensation when only zoom API is available.
+        truckOrthoToCursor(controls, cam, x, y, z, newZ);
+      } else {
+        return false;
+      }
+    } else {
+      // Perspective: dolly with cursor anchor.
+      if (typeof controls._dollyInternal === "function") {
+        // Native path used by the library's own wheel handler.
+        // delta sign: negative → dolly in (closer).
+        controls._dollyInternal(-signed * 0.01, x, y);
+      } else if (typeof controls.dolly === "function") {
+        // Public dolly(distance, transition). Distance is along view axis;
+        // with dollyToCursor=true the library trucks to keep the cursor point.
+        let distance = 10;
+        try {
+          if (typeof controls.getDistance === "function") {
+            distance = Math.max(controls.getDistance(), 0.5);
+          } else if (controls._spherical?.radius) {
+            distance = Math.max(controls._spherical.radius, 0.5);
+          }
+        } catch {
+          /* */
+        }
+        const amount = signed * 0.0022 * distance;
+        const r = controls.dolly(amount, false);
+        if (r && typeof r.catch === "function") r.catch(() => { /* */ });
+      } else {
+        return false;
       }
     }
-  } catch {
-    /* */
-  }
-  cam.getWorldDirection(_dir);
-  _plane.setFromNormalAndCoplanarPoint(_dir, _target);
-  if (_raycaster.ray.intersectPlane(_plane, _hit)) {
-    out.copy(_hit);
+
+    try {
+      controls.update?.(0);
+    } catch {
+      /* */
+    }
     return true;
+  } catch (err) {
+    console.warn("[wheel-arbiter] native cursor zoom failed", err);
+    return false;
+  } finally {
+    try {
+      controls.dollyToCursor = wasDollyToCursor;
+    } catch {
+      /* */
+    }
   }
-  out.copy(_target);
-  return true;
 }
 
 /**
- * Write position + target by PURE TRANSLATION only.
- * Never calls setLookAt / lookAt — those re-derive orientation from world-up
- * and are the root cause of wheel-induced rotation.
+ * Fallback truck for ortho when only zoomTo is available (no _zoomInternal).
+ * Keeps the world point under the cursor fixed after a zoom change.
  */
-function applyPureTranslation(
+function truckOrthoToCursor(
   controls: Any,
   cam: THREE.Camera,
-  newPos: THREE.Vector3,
-  newTarget: THREE.Vector3,
-  preservedQuat: THREE.Quaternion,
-  preservedUp: THREE.Vector3,
+  ndcX: number,
+  ndcY: number,
+  oldZoom: number,
+  newZoom: number,
 ): void {
-  cam.position.copy(newPos);
-  try {
-    if (controls?.target?.isVector3) controls.target.copy(newTarget);
-  } catch {
-    /* */
-  }
-
-  // Keep camera-controls internal END state in sync so the animation
-  // loop does not lerp back toward a stale spherical (apparent rotation).
-  try {
-    const offset = new THREE.Vector3().subVectors(newPos, newTarget);
-    const sph = new THREE.Spherical().setFromVector3(offset);
-    for (const key of ["_spherical", "spherical", "_sphericalEnd", "sphericalEnd"] as const) {
-      const s = controls?.[key];
-      if (s && typeof s.theta === "number") {
-        s.theta = sph.theta;
-        s.phi = sph.phi;
-        s.radius = sph.radius;
-      }
-    }
-    for (const key of ["_targetEnd", "targetEnd", "_target", "target"] as const) {
-      const t = controls?.[key];
-      if (t?.isVector3) t.copy(newTarget);
-    }
-    for (const key of ["_positionEnd", "positionEnd"] as const) {
-      const p = controls?.[key];
-      if (p?.isVector3) p.copy(newPos);
-    }
-  } catch {
-    /* */
-  }
+  if (!isOrthoCam(cam) || !(cam as any).isOrthographicCamera) return;
+  if (Math.abs(newZoom - oldZoom) < 1e-9) return;
 
   try {
-    if (typeof controls?.setTarget === "function") {
-      const r = controls.setTarget(newTarget.x, newTarget.y, newTarget.z, false);
+    const ortho = cam as THREE.OrthographicCamera;
+    // World offset from viewport center to the cursor before zoom, then scale.
+    const halfW = (ortho.right - ortho.left) / (2 * oldZoom);
+    const halfH = (ortho.top - ortho.bottom) / (2 * oldZoom);
+    const worldX0 = ndcX * halfW;
+    const worldY0 = ndcY * halfH;
+
+    const halfW1 = (ortho.right - ortho.left) / (2 * newZoom);
+    const halfH1 = (ortho.top - ortho.bottom) / (2 * newZoom);
+    const worldX1 = ndcX * halfW1;
+    const worldY1 = ndcY * halfH1;
+
+    // Truck by the difference in camera local axes (right / up).
+    const dx = worldX0 - worldX1;
+    const dy = worldY0 - worldY1;
+    if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return;
+
+    if (typeof controls.truck === "function") {
+      const r = controls.truck(dx, dy, false);
       if (r && typeof r.catch === "function") r.catch(() => { /* */ });
     }
   } catch {
     /* */
   }
-  try {
-    if (typeof controls?.setPosition === "function") {
-      const r = controls.setPosition(newPos.x, newPos.y, newPos.z, false);
-      if (r && typeof r.catch === "function") r.catch(() => { /* */ });
-    }
-  } catch {
-    /* */
-  }
-
-  cam.quaternion.copy(preservedQuat);
-  cam.up.copy(preservedUp);
-  cam.updateMatrixWorld?.(true);
-
-  try {
-    controls?.update?.(0);
-  } catch {
-    /* */
-  }
-
-  cam.position.copy(newPos);
-  cam.quaternion.copy(preservedQuat);
-  cam.up.copy(preservedUp);
-  try {
-    if (controls?.target?.isVector3) controls.target.copy(newTarget);
-  } catch {
-    /* */
-  }
-  cam.updateMatrixWorld?.(true);
-}
-
-function applyOrthoZoom(
-  factor: number,
-  controls: Any,
-  clientX: number,
-  clientY: number,
-): void {
-  const driven = resolveDrivenCamera();
-  const orthos = collectOrthoCameras();
-  if (!orthos.length && driven && isOrthoCam(driven)) {
-    orthos.push(driven as THREE.OrthographicCamera);
-  }
-  if (!orthos.length) {
-    if (driven) applyPerspectiveZoom(driven, controls, factor, clientX, clientY);
-    return;
-  }
-
-  const primary =
-    (driven && isOrthoCam(driven) ? (driven as THREE.OrthographicCamera) : null) ??
-    orthos[0];
-
-  _quat.copy(primary.quaternion);
-  _up.copy(primary.up);
-  _pos0.copy(primary.position);
-  getOrbitTarget(controls, primary, _target);
-  const target0 = _target.clone();
-  const hasFocus = focusUnderCursor(primary, controls, clientX, clientY, _focus);
-  const focusBefore = _focus.clone();
-
-  for (const ortho of orthos) {
-    const oldZoom = Math.max(1e-4, ortho.zoom || 1);
-    const newZoom = Math.max(0.05, Math.min(8000, oldZoom * factor));
-    ortho.zoom = newZoom;
-    syncOrthoZoom(ortho);
-    const span = Math.max(
-      Math.abs(ortho.right - ortho.left),
-      Math.abs(ortho.top - ortho.bottom),
-      10,
-    );
-    const worldSpan = span / Math.max(ortho.zoom || 1, 0.05);
-    const far = Math.max(5000, worldSpan * 80);
-    ortho.near = -far;
-    ortho.far = far;
-    ortho.updateProjectionMatrix();
-  }
-
-  primary.quaternion.copy(_quat);
-  primary.up.copy(_up);
-
-  if (hasFocus && clientToNdc(clientX, clientY, _ndc)) {
-    _raycaster.setFromCamera(_ndc, primary);
-    primary.getWorldDirection(_dir);
-    _plane.setFromNormalAndCoplanarPoint(_dir, focusBefore);
-    if (_raycaster.ray.intersectPlane(_plane, _after)) {
-      _truck.subVectors(focusBefore, _after);
-      if (_truck.lengthSq() > 1e-12) {
-        const newPos = _pos0.clone().add(_truck);
-        const newTarget = target0.clone().add(_truck);
-        applyPureTranslation(controls, primary, newPos, newTarget, _quat, _up);
-        return;
-      }
-    }
-  }
-
-  primary.quaternion.copy(_quat);
-  primary.up.copy(_up);
-  primary.updateMatrixWorld?.(true);
-}
-
-function applyPerspectiveZoom(
-  cam: THREE.Camera,
-  controls: Any,
-  factor: number,
-  clientX: number,
-  clientY: number,
-): void {
-  _quat.copy(cam.quaternion);
-  _up.copy(cam.up);
-  _pos0.copy(cam.position);
-  getOrbitTarget(controls, cam, _target);
-  const target0 = _target.clone();
-  cam.getWorldDirection(_dir);
-  const fwd = _dir.clone();
-
-  const dist = Math.max(target0.clone().sub(_pos0).dot(fwd), 0.5);
-  const newDist = Math.max(0.05, dist / factor);
-  const along = dist - newDist;
-
-  const newPos = _pos0.clone().addScaledVector(fwd, along);
-  const newTarget = target0.clone().addScaledVector(fwd, along);
-
-  const hasFocus = focusUnderCursor(cam, controls, clientX, clientY, _focus);
-  if (hasFocus && Number.isFinite(_focus.x) && clientToNdc(clientX, clientY, _ndc)) {
-    const savedPos = cam.position.clone();
-    cam.position.copy(newPos);
-    cam.quaternion.copy(_quat);
-    cam.updateMatrixWorld?.(true);
-    _raycaster.setFromCamera(_ndc, cam);
-    cam.position.copy(savedPos);
-    cam.quaternion.copy(_quat);
-    cam.updateMatrixWorld?.(true);
-
-    _plane.setFromNormalAndCoplanarPoint(fwd, _focus);
-    if (_raycaster.ray.intersectPlane(_plane, _after)) {
-      _truck.subVectors(_focus, _after);
-      if (_truck.lengthSq() > 1e-12) {
-        newPos.add(_truck);
-        newTarget.add(_truck);
-      }
-    }
-  }
-
-  applyPureTranslation(controls, cam, newPos, newTarget, _quat, _up);
 }
 
 function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: number): void {
   const controls = getControls();
   const cam = resolveDrivenCamera();
-  if (!cam) return;
+  if (!cam || !controls) return;
 
-  try {
-    if (controls && controls.enabled === false) controls.enabled = true;
-  } catch {
-    /* */
-  }
-
+  // Keep wheel disabled on the library's own listener (we own the event).
   lockControlsWheel();
-
-  const speed = 0.0022 * readMultiplier() * (shift ? 3 : 1);
-  const signed = invert ? -ndelta : ndelta;
-  const factor = Math.exp(-signed * speed);
-  if (!Number.isFinite(factor) || factor <= 0) return;
-  if (Math.abs(factor - 1) < 1e-4) return;
-
-  // ONLY trust the driven camera. ThatOpen keeps both perspective and
-  // orthographic camera objects alive; collecting either must NOT force
-  // the ortho zoom path while the user is in perspective.
-  let modeOrtho = isOrthoCam(cam);
-  if (!modeOrtho) {
-    try {
-      const wrap = (ctx as Any).world?.camera;
-      const t = wrap?.cameraType ?? wrap?.projection?.current ?? wrap?.projection;
-      if (typeof t === "string" && /ortho|plan/i.test(String(t)) && !/persp/i.test(String(t))) {
-        modeOrtho = true;
-      }
-    } catch {
-      /* */
-    }
-  }
 
   const qBefore = cam.quaternion.clone();
   const dirBefore = cam.getWorldDirection(new THREE.Vector3()).clone();
 
-  if (modeOrtho) {
-    applyOrthoZoom(factor, controls, clientX, clientY);
-  } else {
-    applyPerspectiveZoom(cam, controls, factor, clientX, clientY);
+  const ok = nativeCursorZoom(controls, cam, ndelta, clientX, clientY, shift);
+  if (!ok) {
+    console.warn("[wheel-arbiter] native path unavailable — no zoom applied");
+    return;
   }
 
+  // Orientation invariant: azimuth/polar-only dolly must not change quat.
   try {
     const qAfter = cam.quaternion;
     const dot = Math.abs(
@@ -455,15 +314,14 @@ function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: num
         qBefore.z * qAfter.z +
         qBefore.w * qAfter.w,
     );
-    if (dot < 0.9995) {
+    if (dot < 0.999) {
+      // Unexpected — restore and log. Native path should never need this.
       cam.quaternion.copy(qBefore);
       cam.updateMatrixWorld?.(true);
-      if (typeof console !== "undefined" && console.warn) {
-        console.warn("[wheel-arbiter] orientation drift corrected (dot=" + dot.toFixed(6) + ")");
-      }
+      console.warn("[wheel-arbiter] orientation drift after native dolly (dot=" + dot.toFixed(6) + ")");
     }
-    const dirAfter = cam.getWorldDirection(_tmp);
-    if (dirBefore.dot(dirAfter) < 0.9995) {
+    const dirAfter = cam.getWorldDirection(new THREE.Vector3());
+    if (dirBefore.dot(dirAfter) < 0.999) {
       cam.quaternion.copy(qBefore);
       cam.updateMatrixWorld?.(true);
     }
@@ -489,6 +347,11 @@ function onWheel(e: WheelEvent): void {
   applyZoom(nd, !!e.shiftKey, e.clientX, e.clientY);
 }
 
+/**
+ * Prevent the library's own wheel listener from also handling the event.
+ * We call _dollyInternal ourselves; mouseButtons.wheel must stay NONE.
+ * dollySpeed is restored temporarily inside nativeCursorZoom.
+ */
 export function lockControlsWheel(): void {
   try {
     const controls = getControls();
@@ -509,16 +372,6 @@ export function lockControlsWheel(): void {
         },
         configurable: true,
       });
-    } catch {
-      /* */
-    }
-    try {
-      if ("dollySpeed" in controls) controls.dollySpeed = 0;
-    } catch {
-      /* */
-    }
-    try {
-      if ("dollyToCursor" in controls) controls.dollyToCursor = false;
     } catch {
       /* */
     }
@@ -564,5 +417,5 @@ export function setupWheelArbiter(): void {
     lockControlsWheel,
     getState: () => ({ enabled, invert, multiplier: readMultiplier() }),
   };
-  console.log("[wheel-arbiter] pure-translation zoom; perspective path fixed; sphericalEnd synced");
+  console.log("[wheel-arbiter] native camera-controls dollyToCursor / _dollyInternal");
 }
