@@ -6,16 +6,18 @@
 
 # OpenBIMStudio
 
-### Build, coordinate, and document BIM models in your browser — free, local-first, open standards
+### The open, local-first BIM workspace that runs in your browser
 
-[![Version](https://img.shields.io/badge/version-0.66.2-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-0.74.0-blue.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![IFC](https://img.shields.io/badge/IFC-2x3%20%7C%204-3b82f6.svg)](#)
+[![IFC](https://img.shields.io/badge/IFC-2x3%20%7C%204-3b82f6.svg)](#-interoperability)
 [![Runs in](https://img.shields.io/badge/runs%20in-browser-success.svg)](#)
+[![CI](https://github.com/amdghedy/openBIMstudio/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/amdghedy/openBIMstudio/actions/workflows/unit-tests.yml)
+[![BIM validation](https://github.com/amdghedy/openBIMstudio/actions/workflows/native-bim-validation.yml/badge.svg)](https://github.com/amdghedy/openBIMstudio/actions/workflows/native-bim-validation.yml)
 
-**Local-first · Open standards · Browser-based · IFC · BCF · IDS · PDF · CAD**
+**Local-first · Zero install · Open standards · IFC · BCF · IDS · PDF · CAD · AI-ready**
 
-[Quick start](#-quick-start) · [What you can do](#-what-you-can-do) · [Tools & commands](#-tools--commands) · [How to use](#-how-to-use-day-to-day) · [Docs](#-documentation)
+[Quick start](#quick-start) · [Why OpenBIMStudio](#-why-openbimstudio) · [What you can do](#-what-you-can-do) · [All tools & commands](#tools--commands) · [Interoperability](#-interoperability) · [Docs](#-documentation)
 
 </div>
 
@@ -23,19 +25,38 @@
 
 ## What is OpenBIMStudio?
 
-OpenBIMStudio is a **browser-based, local-first BIM workspace** for architecture, engineering, and construction. It brings model authoring, multi-model coordination, drawing workflows, information checks, quantities, and open-format exchange into one application.
+OpenBIMStudio is a **browser-based, local-first BIM workspace** for architecture, engineering, and construction. It combines model authoring, multi-model federation, clash detection, BCF issue exchange, drawing production, quantities and cost, 4D sequencing, information validation (IDS), and AI-assisted automation in **one open-source application** built around IFC.
 
-The project is released under the MIT license. Local development and local project workflows are the primary path; optional collaboration and AI features may require separate configuration. Open standards are a design priority, while support and fidelity vary by format and workflow.
+One install (none, actually — it's your browser). One license (MIT — yours). Your model data stays on your machine by default.
+
+> **Latest (v0.74.0):** cursor-accurate wheel zoom with a guaranteed orientation invariant (zoom never rotates the camera), full Content-Security-Policy with a self-hosted Fragments worker, and a phantom-dependency cleanup that removed a reachable `jsonpath-plus` RCE path from the tree.
+>
+> **Modeling (v0.73.0):** justification-aware wall & MEP modeling, magnetic snapping with persistent relationships, dependent-geometry updates in a single undo step, dynamic per-tool property panels.
 
 | For you if you… | OpenBIMStudio helps by… |
 |-----------------|-------------------------|
-| Need a free / open alternative for BIM | Local-first app, MIT license, IFC-based |
-| Coordinate multi-discipline models | Federation, clash detection, BCF issues |
-| Produce plans and sheets | Views, dimensions, tags, sheets, PDF |
-| Validate deliverables | IDS, rules, native model QA |
-| Prefer open data | IFC, BCF, IDS, CSV, PDF, DWG paths |
+| Need a free / open alternative for BIM | Full authoring + coordination workspace, MIT license, IFC-native |
+| Coordinate multi-discipline models | Federation, worker-based clash detection, BCF issues, Copy/Monitor |
+| Produce plans and sheets | Views, auto-dimension chains, tags, sheets with title blocks, PDF export |
+| Validate deliverables | IDS requirements, native model QA, rule packs, model health diagnostics |
+| Prefer open data | IFC, BCF, IDS, DXF, CSV, PDF — no proprietary lock-in, ever |
 
-> **Note:** The platform is actively developed. Always test the exact workflow you need before using it on a formal deliverable. See the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) for maturity details.
+> **Note:** The platform is actively developed and tools differ in maturity. Every capability below exists in the codebase today; check the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) for per-tool evidence and test your exact workflow on representative models before issuing formal deliverables.
+
+---
+
+## 🚀 Why OpenBIMStudio
+
+|  |  |
+|---|---|
+| 💰 **Free, forever** | MIT license. No seats, no subscriptions, no paywalled features. A complete BIM workflow that would cost thousands per seat elsewhere. |
+| 🌐 **Zero install** | The whole platform runs in the browser tab you already have open. Clone it for local use — no drivers, no licensing daemons, no installers. |
+| 🔐 **Local-first & private** | Models stay on your machine by default. Cloud AI and collaboration are **opt-in and self-configured** — bring your own keys, point at your own server. The app ships with a strict Content-Security-Policy, and nothing is phoned home. |
+| 🏗️ **Authoring to delivery in one app** | Walls to rebar, clash to BCF, views to sheets to PDF, quantities to cost, phasing to 4D. No stitching together five tools. |
+| 🔓 **Open standards, no lock-in** | IFC 2x3/4, BCF, IDS, DXF, CSV, PDF. Your data is never hostage to a vendor. |
+| 🤖 **Automate & extend** | Event-driven automation rules, an AI assistant (bring your own provider key), a plugin SDK with capability gating, and a sample plugin marketplace. |
+| ✅ **Evidence-based engineering** | 50+ automated test suites run in CI, a public per-tool maturity catalogue, and documented known limitations. You can verify claims instead of trusting marketing. |
+| 🧠 **Modern modeling engine** | Justification lines, magnetic snapping (perpendicular / parallel / intersection / MEP connectors), constraint solving, parametric families with formulas, and solid-kernel operations. |
 
 ---
 
@@ -69,31 +90,44 @@ npm run preview
 
 ---
 
-## What you can do
+## 🎯 What you can do
 
 ### View & navigate
 - 3D viewport (perspective & orthographic)
 - Orbit, pan, zoom, fit, focus on selection
+- **ViewCube** navigation (faces, edges, corners, Home menu, 90° orbit steps)
 - Section planes & section boxes
 - Hide / isolate / category visibility
 - Measure, temporary dimensions, snapping
 - Saved views, model tree, properties panel
+- CAD & PDF underlays, point cloud viewing
 
 ### Model (architecture)
 - Walls (including layered / compound), floors, roofs, ceilings
 - Doors & windows (host-aware openings)
-- Levels, grids, rooms & areas
-- Stairs (straight, L, U, winder, spiral), railings
-- Curtain walls, materials, reference planes
+- Levels, grids (with bubbles), rooms & areas
+- Stairs (straight, L, U, winder, spiral), railings, ramps
+- Curtain walls, materials, reference planes, work planes
 - Groups, design options, phases
 - Parametric families (formulas, constraints, nested, arrays)
+- In-place massing, wall sweeps, model curves
 
 ### Model (structure & MEP)
 - Beams, braces, trusses, footings, foundations
-- Ducts, pipes, cable trays, conduits
-- Routing, fittings, fabrication-related tools
+- **Rebar** modeling
+- Ducts, pipes, cable trays, conduits — with pressure & connectivity checks
+- Routing, fittings (elbow geometry), fabrication parts
 - P&ID-related workflows
-- Analytical / structural model export paths
+- Analytical / structural model export paths, structural loads & connections
+
+### Site & terrain
+- Toposurfaces & site topology
+- Building pads, property lines, site components
+
+### Analyze
+- Energy analysis paths
+- Daylighting studies
+- Sun settings & orientation
 
 ### Coordinate
 - Load and align **multiple models** (federation)
@@ -101,18 +135,19 @@ npm run preview
 - Clash scenarios, grouping, status tracking
 - **BCF** import/export for issues
 - Copy / Monitor relationships
+- Worksets & linked-model management
 
 ### Document
-- Plans, sections, elevations, RCPs, details
-- Dimensions (linear, aligned, angular, radial, spot…)
-- Tags (elements, rooms, materials)
-- Sheets, viewports, title blocks, revisions
-- View templates & graphic overrides
-- **PDF** export · CAD import/export paths
+- Plans, sections, elevations, RCPs, details, plan regions
+- Dimensions (linear, aligned, angular, radial, spot…) and **auto dimension chains**
+- Tags (elements, rooms, materials), keynotes
+- Sheets, viewports, title blocks, revisions, matchlines
+- View templates, view filters & graphic overrides, filled regions, detail components, hatch patterns
+- **PDF** export · CAD import/export paths · PDF underlay
 
 ### Quantify & plan
 - Schedules and quantity take-off
-- Cost items mapped from quantities
+- Cost items mapped from quantities (5D)
 - CSV export
 - 4D timeline / phasing simulation
 
@@ -124,9 +159,10 @@ npm run preview
 
 ### Automate & extend
 - Automation rules on model events
-- AI assistant (optional providers)
-- Plugin SDK & marketplace registry
-- Optional collaboration server (presence, worksharing concepts)
+- AI assistant (optional providers — your keys, your choice)
+- Plugin SDK with capability gating + plugin marketplace
+- Sample plugins included: element counter, CSV take-off, clash rule pack, family-from-CSV
+- Optional collaboration server (presence, worksharing concepts) — auth & hardening built in
 
 ---
 
@@ -141,7 +177,7 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 | New / Open Project | Create or open a project |
 | Project Browser | Browse projects and data |
 | Project Information | Project metadata |
-| Import / Export | Load or write supported files (IFC and more) |
+| Import / Export | Load or write supported files (IFC, DXF, and more) |
 | Manage Links | Linked models, reload, transforms |
 | Federation | Multi-model coordination workspace |
 | Save View | Store camera / view state |
@@ -168,9 +204,10 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 | Door / Window | Hosted openings |
 | Levels / Grids | Datum references |
 | Rooms / Areas | Spatial elements |
-| Stairs / Railings / Curtain Wall | Vertical circulation & facades |
-| Structural Members | Beams, braces, foundations… |
-| Ducts / Pipes / Trays / Conduits | MEP runs |
+| Stairs / Railings / Ramps / Curtain Wall | Vertical circulation & facades |
+| Structural Members / Rebar | Beams, braces, foundations, reinforcement |
+| Ducts / Pipes / Trays / Conduits | MEP runs with fittings |
+| Toposurface / Building Pad / Property Line | Site & terrain |
 | Materials / Shared Parameters / Type Catalog | Data & appearance |
 | Family Browser / Parametric Editor | Families & formulas |
 | Move / Copy / Rotate / Mirror / Array | Transforms |
@@ -184,13 +221,14 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 | Command | What it does |
 |---------|----------------|
 | Plan / Section / Elevation / RCP | Create views |
-| Dimensions & Tags | Annotate |
-| Sheets & Viewports | Layout drawings |
-| Title Blocks / Revisions | Issue control |
-| View Templates | Apply graphic standards |
+| Dimensions & Tags / Auto Dimensions | Annotate |
+| Sheets & Viewports / Matchlines | Layout drawings |
+| Title Blocks / Revisions / Keynotes | Issue control |
+| View Templates / View Filters | Apply graphic standards |
+| Filled Regions / Detail Components / Hatches | 2D detailing |
 | Export PDF | Issue sheets |
 
-### Coordination & QA
+### Coordination, QA & output
 
 | Command | What it does |
 |---------|----------------|
@@ -201,6 +239,8 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 | Validate Model | Native QA checks |
 | Schedules / QTO / Cost | Quantities and estimates |
 | 4D Timeline | Construction simulation |
+| Energy / Daylighting / Sun Settings | Analysis paths |
+| Automation Rules / AI Assistant | Automate repetitive work |
 
 ### Keyboard shortcuts (common)
 
@@ -229,6 +269,7 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 ### 3. Author
 - Place walls, doors, rooms from the **Architecture** tools or Command Center.
 - Use **Match Properties**, **Align**, and **Create Similar** for speed.
+- Let **justification lines** and **magnetic snapping** place elements precisely the first time.
 
 ### 4. Coordinate
 - Run **Clash Detection** between disciplines.
@@ -243,28 +284,44 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 
 ---
 
-## Interoperability
+## 🔓 Interoperability
 
-| Format / standard | Role |
-|-------------------|------|
-| **IFC 2x3 / IFC4** | Model exchange (import/export paths) |
-| **BCF** | Coordination issues |
-| **IDS** | Information requirements checking |
-| **PDF** | Drawing sheets |
-| **DWG / CAD** | Drawing import/export paths |
-| **CSV** | Schedules & cost |
-| **gbXML** | Energy-related export path (where enabled) |
+| Format / standard | Role | Direction |
+|-------------------|------|-----------|
+| **IFC 2x3 / IFC4** | Model exchange — the openBIM backbone | Import & export |
+| **BCF** | Coordination issue exchange | Import & export |
+| **IDS** | Information requirements checking | Validation |
+| **DXF** | 2D drawing exchange | Import & export |
+| **DWG** | Drawing import & link (LibreDWG WASM) | Import & link (model-level DWG export on the roadmap) |
+| **PDF** | Drawing sheets issue + PDF underlay | Export & underlay |
+| **CSV** | Schedules, take-off, cost | Import & export |
+| **gbXML** | Energy-related export path | Export (where enabled) |
 
-Some additional model formats may be accessible through separately configured conversion pipelines. Availability depends on the converter and workflow; source files are not necessarily editable in place.
+Some additional model formats may be accessible through separately configured conversion pipelines. Availability depends on the converter and workflow; source files are not necessarily editable in place. Verified per-format boundaries (what is proven import vs export vs one-way) are published in the [Engineering Baseline §7](docs/engineering/BASELINE.md).
 
 ---
 
-## Documentation
+## 🧭 How it compares
+
+|  | OpenBIMStudio | Typical proprietary BIM suite |
+|---|---|---|
+| Cost | Free (MIT) | Per-seat subscription |
+| Install | Browser tab | Desktop installer + licensing |
+| Model data | Local by default; opt-in services you configure | Often cloud-tied |
+| Formats | IFC / BCF / IDS / DXF / CSV / PDF native | Proprietary-first, open formats via translation |
+| Source code | Public and auditable | Closed |
+| Extensibility | Open plugin SDK + marketplace samples | Vendor-gated APIs |
+| Maturity claims | Public tool catalogue with per-tool evidence | Marketing brochures |
+
+---
+
+## 📚 Documentation
 
 | Guide | Audience |
 |-------|----------|
 | [User Guide](documentation/USER_GUIDE.md) | Setup, workflows, troubleshooting |
 | [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) | Full tool list & maturity |
+| [Engineering Baseline](docs/engineering/BASELINE.md) | Verified format boundaries, feature maturity inventory, stage evidence |
 | [Authoring](docs/02-authoring.md) | Modeling & families |
 | [Coordination](docs/03-coordination.md) | Clash & issues |
 | [Documentation](docs/04-documentation.md) | Views & sheets |
@@ -283,21 +340,22 @@ npm run dev          # development server
 npm run typecheck    # TypeScript
 npm run build        # production build
 npm run test:native-bim
+npm run verify:v73   # release verification chain (per version)
 ```
 
-**Stack:** React · TypeScript · Vite · Three.js · That Open (web-ifc / Fragments) · MUI  
+**Stack:** React · TypeScript · Vite · Three.js · That Open (web-ifc / Fragments) · MUI · LibreDWG (WASM) · Yjs (optional real-time collaboration)
 
-**Layout:** `src/features` (tools/UI) · `src/modules` (BIM domains) · `src/commands` · `src/workers` · optional `server/`
+**Layout:** `src/features` (tools/UI) · `src/modules` (BIM domains — 100+ modules from authoring to 5D) · `src/commands` · `src/workers` · optional `server/` (collaboration & conversion — token authentication, origin allow-listing, rate limiting, fail-closed startup)
 
-Contributions welcome. For substantial changes, open an issue first to agree on scope. Include reproduction steps, expected versus actual behavior, test evidence, and screenshots or a small non-confidential sample when useful. Keep credentials, private models, and project files out of git.
+**Testing culture:** 50+ focused automated suites (`npm run` and pick any `test:*`), CI on every push, and a per-version verification chain. Contributions welcome — for substantial changes, open an issue first to agree on scope. Include reproduction steps, expected versus actual behavior, test evidence, and screenshots or a small non-confidential sample when useful. Keep credentials, private models, and project files out of git.
 
 ---
 
 ## Project principles
 
 - **Open data first:** prioritize IFC and open coordination / information-exchange standards.
-- **Local-first workflow:** keep core development and model exploration close to the user's machine; optional server-backed functions are configured separately.
-- **Traceable maturity:** source code, a visible command, an automated test, and a validated production workflow are different levels of evidence.
+- **Local-first workflow:** core development and model exploration run close to the user's machine; optional server-backed functions are configured separately and require explicit consent.
+- **Traceable maturity:** source code, a visible command, an automated test, and a validated production workflow are different levels of evidence — we label which one each tool has.
 - **Incremental delivery:** report limitations clearly and verify critical workflows with representative models before relying on them for issued deliverables.
 
 ## Verification & feature maturity
@@ -332,4 +390,4 @@ OpenBIMStudio aims for broad **openBIM** coverage across authoring, coordination
 
 **MIT** — see [LICENSE](LICENSE).
 
-Built around open standards: **IFC · BCF · IDS · COBie** and the wider openBIM community.
+Built around open standards: **IFC · BCF · IDS · COBie** and the wider openBIM community. Star the repo if it saves you a seat fee — issues and PRs welcome.
