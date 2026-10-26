@@ -1,21 +1,34 @@
 import * as THREE from "three";
 import { ctx } from "./context";
 import { syncOrthoZoom } from "./ortho-zoom";
-import { axisDistance, dollyTowards, targetAhead, type V3 } from "./view-lock";
+import { axisDistance, targetAhead, type V3 } from "./view-lock";
 
 type Any = Record<string, any>;
 
 /**
  * Wheel zoom for 3D viewport — cursor-centered, orientation-preserving.
  *
- * Contract (BIM / Revit-style):
+ * Contract (BIM / Revit / Navisworks style):
  *   - Scroll zooms toward the world point under the mouse pointer.
- *   - View orientation (rotation) is NEVER changed by wheel.
- *   - Only orbit (Shift/Ctrl + MMB) may rotate the camera.
+ *   - View orientation is NEVER changed by wheel (only orbit may rotate).
+ *   - Up vector stays stable.
+ *   - Works in both Perspective and Orthographic.
  *
- * Ortho: zoom on controls.camera (ThatOpen-safe) + wide near/far + lateral truck.
- * Perspective: pure translation of eye + target toward cursor focus.
- * Locks mouseButtons.wheel so Ortho toggle cannot re-enable native dolly.
+ * Implementation strategy (root-cause fix, not a mask):
+ *   camera-controls stores a spherical (theta, phi, radius) and re-applies it
+ *   on every update(). Calling setLookAt() can rewrite theta/phi and produce
+ *   a visible rotation on the next frame.
+ *
+ *   We therefore:
+ *     1. Snapshot theta / phi / quaternion / up before the step.
+ *     2. Dolly ONLY along the current view axis (never change direction).
+ *     3. Truck laterally so the cursor's world point stays fixed on screen.
+ *     4. Write position + target, then force spherical theta/phi back and
+ *        re-assert quaternion/up so the animation loop cannot reintroduce
+ *        rotation.
+ *
+ * Native mouseButtons.wheel is locked to NONE so OrthoPerspectiveCamera
+ * cannot re-enable camera-controls' own dolly on projection switches.
  */
 
 let installed = false;
@@ -34,11 +47,15 @@ const _focus = new THREE.Vector3();
 const _after = new THREE.Vector3();
 const _truck = new THREE.Vector3();
 const _dir = new THREE.Vector3();
+const _offset = new THREE.Vector3();
 const _plane = new THREE.Plane();
 const _raycaster = new THREE.Raycaster();
 const _hit = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _up = new THREE.Vector3();
+const _spherical = new THREE.Spherical();
+const _newPos = new THREE.Vector3();
+const _newTarget = new THREE.Vector3();
 
 function w(): Any {
   return window as Any;
@@ -100,7 +117,6 @@ function getControls(): Any {
   return (ctx as Any).world?.camera?.controls ?? null;
 }
 
-/** Camera CameraControls is driving — required for visible Ortho zoom. */
 function resolveDrivenCamera(): THREE.Camera | null {
   const controls = getControls();
   try {
@@ -159,6 +175,11 @@ function getOrbitTarget(controls: Any, cam: THREE.Camera, out: THREE.Vector3): v
   }
 }
 
+/**
+ * World point under the cursor.
+ * Prefer a nearby mesh hit; otherwise intersect the plane through the
+ * current orbit target facing the camera (stable over empty space).
+ */
 function focusUnderCursor(
   cam: THREE.Camera,
   controls: Any,
@@ -189,7 +210,6 @@ function focusUnderCursor(
   } catch {
     /* */
   }
-  // Stable plane through the orbit target, facing the camera.
   cam.getWorldDirection(_dir);
   _plane.setFromNormalAndCoplanarPoint(_dir, _target);
   if (_raycaster.ray.intersectPlane(_plane, _hit)) {
@@ -201,34 +221,72 @@ function focusUnderCursor(
 }
 
 /**
- * Apply eye+target change while FORCING orientation to stay exactly as before.
- * camera-controls setLookAt can recompute sphericals / up and introduce a
- * visible rotation; we snapshot quaternion+up and restore them after update.
+ * Commit a pure-translation camera move (dolly along view + optional truck)
+ * while freezing orientation for the animation loop.
+ *
+ * camera-controls keeps spherical (theta, phi, radius). We force theta/phi
+ * to the pre-zoom values after writing position/target so the next
+ * controls.update(delta) cannot rotate the view.
  */
-function applyLookAtPreservingOrientation(
+function commitTranslation(
   controls: Any,
   cam: THREE.Camera,
-  pos: THREE.Vector3,
-  target: THREE.Vector3,
+  newPos: THREE.Vector3,
+  newTarget: THREE.Vector3,
   preservedQuat: THREE.Quaternion,
   preservedUp: THREE.Vector3,
+  preservedTheta: number,
+  preservedPhi: number,
 ): void {
+  // 1) Write through setLookAt when available (keeps controls internal state alive).
   try {
     if (controls && typeof controls.setLookAt === "function") {
-      controls.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, false);
-      try {
-        controls.update?.(0);
-      } catch {
-        /* */
-      }
+      controls.setLookAt(
+        newPos.x, newPos.y, newPos.z,
+        newTarget.x, newTarget.y, newTarget.z,
+        false,
+      );
     } else {
-      cam.position.copy(pos);
+      cam.position.copy(newPos);
     }
   } catch {
-    cam.position.copy(pos);
+    cam.position.copy(newPos);
   }
 
-  // Hard lock orientation — wheel must never rotate.
+  // 2) Force position + target (authoritative).
+  try {
+    cam.position.copy(newPos);
+    if (controls?.target?.isVector3) controls.target.copy(newTarget);
+  } catch {
+    /* */
+  }
+
+  // 3) Restore spherical theta/phi so the next update() cannot rotate.
+  try {
+    _offset.subVectors(newPos, newTarget);
+    _spherical.setFromVector3(_offset);
+    _spherical.theta = preservedTheta;
+    _spherical.phi = preservedPhi;
+    // If controls exposes spherical, write it directly.
+    if (controls?._spherical) {
+      controls._spherical.theta = preservedTheta;
+      controls._spherical.phi = preservedPhi;
+      controls._spherical.radius = _spherical.radius;
+    }
+    if (controls?.spherical) {
+      controls.spherical.theta = preservedTheta;
+      controls.spherical.phi = preservedPhi;
+      controls.spherical.radius = _spherical.radius;
+    }
+    // Rebuild position from frozen angles (guarantees direction match).
+    _offset.setFromSpherical(_spherical);
+    cam.position.copy(newTarget).add(_offset);
+    if (controls?.target?.isVector3) controls.target.copy(newTarget);
+  } catch {
+    /* */
+  }
+
+  // 4) Hard-lock orientation.
   try {
     cam.quaternion.copy(preservedQuat);
     cam.up.copy(preservedUp);
@@ -237,21 +295,48 @@ function applyLookAtPreservingOrientation(
     /* */
   }
 
-  // Keep controls internal target in sync without re-aiming.
+  // 5) Tick controls once, then re-assert orientation (update may touch quat).
   try {
-    if (controls?.target?.isVector3) {
-      controls.target.copy(target);
-    }
-    if (typeof controls?.update === "function") {
-      controls.update(0);
-    }
-    // Re-assert orientation in case update() touched it.
+    controls?.update?.(0);
+  } catch {
+    /* */
+  }
+  try {
     cam.quaternion.copy(preservedQuat);
     cam.up.copy(preservedUp);
     cam.updateMatrixWorld?.(true);
   } catch {
     /* */
   }
+}
+
+function snapshotOrientation(cam: THREE.Camera, target: THREE.Vector3): {
+  quat: THREE.Quaternion;
+  up: THREE.Vector3;
+  theta: number;
+  phi: number;
+  fwd: THREE.Vector3;
+  dist: number;
+} {
+  _quat.copy(cam.quaternion);
+  _up.copy(cam.up);
+  cam.getWorldDirection(_dir);
+  _offset.subVectors(cam.position, target);
+  _spherical.setFromVector3(_offset);
+  const dist = axisDistance(
+    [cam.position.x, cam.position.y, cam.position.z],
+    [target.x, target.y, target.z],
+    [_dir.x, _dir.y, _dir.z],
+    0.5,
+  );
+  return {
+    quat: _quat.clone(),
+    up: _up.clone(),
+    theta: _spherical.theta,
+    phi: _spherical.phi,
+    fwd: _dir.clone(),
+    dist,
+  };
 }
 
 function applyOrthoZoom(
@@ -274,27 +359,15 @@ function applyOrthoZoom(
     (driven && isOrthoCam(driven) ? (driven as THREE.OrthographicCamera) : null) ??
     orthos[0];
 
-  // Snapshot orientation BEFORE any mutation.
-  _quat.copy(primary.quaternion);
-  _up.copy(primary.up);
-
-  const hasFocus = focusUnderCursor(primary, controls, clientX, clientY, _focus);
   getOrbitTarget(controls, primary, _target);
+  const snap = snapshotOrientation(primary, _target);
+  const hasFocus = focusUnderCursor(primary, controls, clientX, clientY, _focus);
   const focusBefore = _focus.clone();
-  const fwd0 = new THREE.Vector3();
-  primary.getWorldDirection(fwd0);
-  const dist0 = axisDistance(
-    [primary.position.x, primary.position.y, primary.position.z],
-    [_target.x, _target.y, _target.z],
-    [fwd0.x, fwd0.y, fwd0.z],
-    1,
-  );
 
   for (const ortho of orthos) {
     const oldZoom = Math.max(1e-4, ortho.zoom || 1);
     const newZoom = Math.max(0.05, Math.min(8000, oldZoom * factor));
     ortho.zoom = newZoom;
-
     syncOrthoZoom(ortho);
     const span = Math.max(
       Math.abs(ortho.right - ortho.left),
@@ -309,12 +382,12 @@ function applyOrthoZoom(
   }
 
   try {
-    if (controls && typeof controls.update === "function") controls.update(0);
+    controls?.update?.(0);
   } catch {
     /* */
   }
 
-  // Lateral truck so the world point under the cursor stays fixed on screen.
+  // Lateral truck: keep the world point under the cursor fixed on screen.
   if (hasFocus && clientToNdc(clientX, clientY, _ndc) && isOrthoCam(primary)) {
     _raycaster.setFromCamera(_ndc, primary);
     primary.getWorldDirection(_dir);
@@ -322,35 +395,36 @@ function applyOrthoZoom(
     if (_raycaster.ray.intersectPlane(_plane, _after)) {
       _truck.subVectors(focusBefore, _after);
       if (_truck.lengthSq() > 1e-12) {
-        const newPos = primary.position.clone().add(_truck);
+        _newPos.copy(primary.position).add(_truck);
         const nt = targetAhead(
-          [newPos.x, newPos.y, newPos.z],
-          [fwd0.x, fwd0.y, fwd0.z],
-          dist0,
+          [_newPos.x, _newPos.y, _newPos.z],
+          [snap.fwd.x, snap.fwd.y, snap.fwd.z],
+          snap.dist,
         );
-        applyLookAtPreservingOrientation(
-          controls,
-          primary,
-          newPos,
-          new THREE.Vector3(nt[0], nt[1], nt[2]),
-          _quat,
-          _up,
+        _newTarget.set(nt[0], nt[1], nt[2]);
+        commitTranslation(
+          controls, primary, _newPos, _newTarget,
+          snap.quat, snap.up, snap.theta, snap.phi,
         );
         return;
       }
     }
   }
 
-  // No truck needed — still re-assert orientation after zoom/sync.
+  // No truck — still re-assert orientation after zoom/sync.
   try {
-    primary.quaternion.copy(_quat);
-    primary.up.copy(_up);
+    primary.quaternion.copy(snap.quat);
+    primary.up.copy(snap.up);
     primary.updateMatrixWorld?.(true);
   } catch {
     /* */
   }
 }
 
+/**
+ * Perspective: dolly along the CURRENT view axis only, then truck laterally
+ * so the cursor focus stays under the pointer. Orientation never changes.
+ */
 function applyPerspectiveZoom(
   cam: THREE.Camera,
   controls: Any,
@@ -358,32 +432,48 @@ function applyPerspectiveZoom(
   clientX: number,
   clientY: number,
 ): void {
-  // Snapshot orientation — wheel must be pure translation.
-  _quat.copy(cam.quaternion);
-  _up.copy(cam.up);
-
-  const hasFocus = focusUnderCursor(cam, controls, clientX, clientY, _focus);
   getOrbitTarget(controls, cam, _target);
-  cam.getWorldDirection(_dir);
-  const fwd: V3 = [_dir.x, _dir.y, _dir.z];
-  const pos: V3 = [cam.position.x, cam.position.y, cam.position.z];
-  const dist = axisDistance(pos, [_target.x, _target.y, _target.z], fwd, 0.5);
-  const focus: V3 =
-    hasFocus && Number.isFinite(_focus.x)
-      ? [_focus.x, _focus.y, _focus.z]
-      : targetAhead(pos, fwd, dist);
-  const np = dollyTowards(pos, focus, factor, 0.05);
-  const along =
-    (np[0] - pos[0]) * fwd[0] + (np[1] - pos[1]) * fwd[1] + (np[2] - pos[2]) * fwd[2];
-  const newDist = Math.max(dist - along, 0.5);
-  const nt = targetAhead(np, fwd, newDist);
-  applyLookAtPreservingOrientation(
-    controls,
-    cam,
-    new THREE.Vector3(np[0], np[1], np[2]),
-    new THREE.Vector3(nt[0], nt[1], nt[2]),
-    _quat,
-    _up,
+  const snap = snapshotOrientation(cam, _target);
+  const hasFocus = focusUnderCursor(cam, controls, clientX, clientY, _focus);
+
+  // Dolly along view axis: move eye toward/away from target plane.
+  // factor > 1 → zoom in (closer), factor < 1 → zoom out.
+  // Our caller passes exp(-delta * speed), so deltaY>0 (scroll down) → factor<1 → zoom out.
+  const newDist = Math.max(0.05, snap.dist / factor);
+  const dollyDelta = snap.dist - newDist; // positive when zooming in
+
+  // Move eye along forward.
+  _newPos.copy(cam.position).addScaledVector(snap.fwd, dollyDelta);
+  // Target stays straight ahead at the new distance (pure translation pair).
+  _newTarget.copy(_newPos).addScaledVector(snap.fwd, newDist);
+
+  // Lateral truck so the focus point stays under the cursor on screen.
+  if (hasFocus && Number.isFinite(_focus.x)) {
+    // After the dolly, project the same NDC ray onto the plane through the
+    // original focus (facing the camera). The delta is the required truck.
+    if (clientToNdc(clientX, clientY, _ndc)) {
+      // Temporarily place cam at the dollied position for a correct ray.
+      const savedPos = cam.position.clone();
+      cam.position.copy(_newPos);
+      cam.updateMatrixWorld?.(true);
+      _raycaster.setFromCamera(_ndc, cam);
+      cam.position.copy(savedPos);
+      cam.updateMatrixWorld?.(true);
+
+      _plane.setFromNormalAndCoplanarPoint(snap.fwd, _focus);
+      if (_raycaster.ray.intersectPlane(_plane, _after)) {
+        _truck.subVectors(_focus, _after);
+        if (_truck.lengthSq() > 1e-12) {
+          _newPos.add(_truck);
+          _newTarget.add(_truck);
+        }
+      }
+    }
+  }
+
+  commitTranslation(
+    controls, cam, _newPos, _newTarget,
+    snap.quat, snap.up, snap.theta, snap.phi,
   );
 }
 
@@ -398,13 +488,14 @@ function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: num
     /* */
   }
 
-  // Re-assert wheel lock every zoom (OrthoPerspectiveCamera can re-enable it).
   lockControlsWheel();
 
   const speed = 0.0022 * readMultiplier() * (shift ? 3 : 1);
   const signed = invert ? -ndelta : ndelta;
+  // factor > 1 = zoom in, factor < 1 = zoom out (matches applyPerspectiveZoom).
   const factor = Math.exp(-signed * speed);
   if (!Number.isFinite(factor) || factor <= 0) return;
+  if (Math.abs(factor - 1) < 1e-4) return;
 
   let modeOrtho = isOrthoCam(cam);
   if (!modeOrtho) {
@@ -466,7 +557,6 @@ export function lockControlsWheel(): void {
     } catch {
       /* */
     }
-    // Also kill native dolly/zoom speeds so a leaked wheel event is a no-op.
     try {
       if ("dollySpeed" in controls) controls.dollySpeed = 0;
     } catch {
@@ -519,5 +609,5 @@ export function setupWheelArbiter(): void {
     lockControlsWheel,
     getState: () => ({ enabled, invert, multiplier: readMultiplier() }),
   };
-  console.log("[wheel-arbiter] cursor-centered zoom, orientation locked");
+  console.log("[wheel-arbiter] cursor-centered zoom; orientation frozen (theta/phi lock)");
 }
