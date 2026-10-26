@@ -37,7 +37,7 @@
 - ~~Parametric dependency graph + incremental evaluation~~ ✅ v0.68 — `src/modules/dependency-graph` (Tarjan cycle classification, batch coalescing)
 - ~~Document-level parameter engine (EffectiveValue / type-instance overrides)~~ ✅ v0.68 — `src/modules/parameter-engine`
 - ~~Object hierarchy + identity management~~ ✅ v0.68 — `src/modules/object-hierarchy`
-- ~~Solid geometry kernel (B-Rep, forms, booleans, voids, validation)~~ ✅ v0.68 — `src/modules/solid-kernel` (convex-clipping booleans; full CSG for non-convex union/intersect still open)
+- ~~Solid geometry kernel (B-Rep, forms, booleans, voids, validation)~~ ✅ v0.68 — `src/modules/solid-kernel` (convex-clipping booleans) — **v0.70:** full non-convex CSG closed by `general-csg.ts` (`generalBoolean`/`fuseAll`/`weldMesh`: union/intersect/subtract on arbitrary closed meshes, global cut set for T-junction-free seams, exact coplanar resolution; see `docs/DEEP_MODELING_V70.md`)
 - ~~Magnetic snapping + modeling state machine + wall-column connection~~ ✅ v0.68 — `src/modules/snapping`
 - ~~Persistent relationship registry + reconnection policies~~ ✅ v0.68 — `src/modules/relationships`
 - ~~MEP connector intelligence (compatibility, fittings, topology)~~ ✅ v0.68 — `src/modules/mep/connectors.ts`
@@ -50,4 +50,4 @@
 - High-fidelity print/PDF
 - Large-model out-of-core loading
 
-These are now the clear next targets once the P0–P2 strengthening is integrated and wired to the real geometry/authoring engines. The v0.67 engine package is documented in `docs/REVIT_KILLER_V67.md` and the v0.69 UI wiring wave in `docs/UI_WIRING_V69.md`.
+These are now the clear next targets once the P0–P2 strengthening is integrated and wired to the real geometry/authoring engines. The v0.67 engine package is documented in `docs/REVIT_KILLER_V67.md`, the v0.69 UI wiring wave in `docs/UI_WIRING_V69.md`, and the v0.70 deep-modeling wave (general non-convex CSG + shell + loft, all ribbon-wired) in `docs/DEEP_MODELING_V70.md`.
