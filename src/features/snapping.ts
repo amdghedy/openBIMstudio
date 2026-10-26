@@ -174,7 +174,7 @@ class SnapManager {
   private enabled = true;
   private types: Set<SnapType> = new Set(ALL_TYPES);
   private gridSize = 0.1;
-  private pixelTolerance = 16;
+  private pixelTolerance = 20;
   private workPlaneY = 0;
 
   private orthoOn = false;
