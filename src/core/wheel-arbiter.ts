@@ -7,13 +7,9 @@ type Any = Record<string, any>;
  * Authoritative mouse-wheel zoom using camera-controls' native
  * dolly-to-cursor implementation.
  *
- * Why this approach:
- *   Custom setLookAt / setPosition / spherical hacks repeatedly failed
- *   because camera-controls.update() re-applies spherical state every frame.
- *   The library already implements orientation-preserving cursor zoom in
- *   `_dollyInternal(delta, ndcX, ndcY)` when `dollyToCursor === true`.
- *   We call that path directly while still owning the DOM wheel event so
- *   pan/orbit/selection handlers do not compete.
+ * Wheel direction (default):
+ *   scroll up   → zoom in
+ *   scroll down → zoom out
  *
  * Contract:
  *   - Wheel never rotates (azimuth/polar unchanged; only radius or zoom).
@@ -48,7 +44,6 @@ function readMultiplier(): number {
 }
 
 function normalizeDelta(e: WheelEvent): number {
-  // Match camera-controls' own wheel normalization closely.
   let d = e.deltaY;
   if (e.deltaMode === 1) d *= 16;
   else if (e.deltaMode === 2) d *= 100;
@@ -101,12 +96,6 @@ function isOrthoCam(cam: THREE.Camera | null | undefined): boolean {
   return !!(cam as any)?.isOrthographicCamera;
 }
 
-/**
- * Keep camera-controls' internal element rect in sync with our viewport.
- * dollyToCursor uses _elementRect to convert clientX/Y → NDC. If it is
- * stale or points at the wrong box, zoom aims at the wrong place and can
- * look like a rotation/pan.
- */
 function syncElementRect(controls: Any, rect: DOMRect): void {
   try {
     if (controls._elementRect) {
@@ -119,9 +108,7 @@ function syncElementRect(controls: Any, rect: DOMRect): void {
     /* */
   }
   try {
-    // Public API when available (camera-controls >= 2).
     if (typeof controls.setViewport === "function") {
-      // unset custom viewport — use full element
       controls.setViewport(undefined);
     }
   } catch {
@@ -130,16 +117,11 @@ function syncElementRect(controls: Any, rect: DOMRect): void {
 }
 
 function cursorNdc(clientX: number, clientY: number, rect: DOMRect): { x: number; y: number } {
-  // Same convention as camera-controls wheel handler.
   const x = ((clientX - rect.left) / rect.width) * 2 - 1;
   const y = -((clientY - rect.top) / rect.height) * 2 + 1;
   return { x, y };
 }
 
-/**
- * Apply one wheel step via camera-controls internals.
- * Returns true if the native path was used successfully.
- */
 function nativeCursorZoom(
   controls: Any,
   cam: THREE.Camera,
@@ -155,14 +137,15 @@ function nativeCursorZoom(
   const { x, y } = cursorNdc(clientX, clientY, rect);
 
   const speed = readMultiplier() * (shift ? 2.5 : 1);
-  // camera-controls treats positive delta as zoom-out / dolly-out.
-  const signed = (invert ? -deltaY : deltaY) * speed;
+  // amount > 0 → zoom in.
+  // Default: wheel up (deltaY < 0) → amount > 0 → zoom in.
+  // invert flips the mapping.
+  const amount = (invert ? deltaY : -deltaY) * speed;
 
   const wasDollyToCursor = !!controls.dollyToCursor;
   try {
     controls.dollyToCursor = true;
 
-    // Ensure controls are enabled and not zeroed out.
     try {
       if (controls.enabled === false) controls.enabled = true;
     } catch {
@@ -179,15 +162,14 @@ function nativeCursorZoom(
     const ortho = isOrthoCam(cam);
 
     if (ortho) {
-      // Orthographic: change zoom factor, cursor-anchored.
       if (typeof controls._zoomInternal === "function") {
-        // _zoomInternal(delta, x, y) — same signature family as dolly.
-        controls._zoomInternal(signed * 0.01, x, y);
+        // Positive amount → zoom in. Library zoom internals typically take
+        // negative delta for zoom-in; match by negating.
+        controls._zoomInternal(-amount * 0.01, x, y);
       } else if (typeof controls.zoom === "function") {
-        // zoom(delta, transition) — delta is additive on cam.zoom in some versions.
-        // Prefer zoomTo for absolute control when we can read current zoom.
         const z = Math.max(1e-4, Number((cam as any).zoom) || 1);
-        const factor = Math.exp(-signed * 0.0022);
+        // amount > 0 → factor > 1 → higher ortho.zoom → zoom in
+        const factor = Math.exp(amount * 0.0022);
         const newZ = Math.max(0.05, Math.min(8000, z * factor));
         if (typeof controls.zoomTo === "function") {
           const r = controls.zoomTo(newZ, false);
@@ -196,20 +178,16 @@ function nativeCursorZoom(
           const r = controls.zoom(newZ - z, false);
           if (r && typeof r.catch === "function") r.catch(() => { /* */ });
         }
-        // Manual truck compensation when only zoom API is available.
         truckOrthoToCursor(controls, cam, x, y, z, newZ);
       } else {
         return false;
       }
     } else {
-      // Perspective: dolly with cursor anchor.
       if (typeof controls._dollyInternal === "function") {
-        // Native path used by the library's own wheel handler.
-        // delta sign: negative → dolly in (closer).
-        controls._dollyInternal(-signed * 0.01, x, y);
+        // Native path: negative delta → dolly in (closer).
+        // amount > 0 (zoom in) → pass negative.
+        controls._dollyInternal(-amount * 0.01, x, y);
       } else if (typeof controls.dolly === "function") {
-        // Public dolly(distance, transition). Distance is along view axis;
-        // with dollyToCursor=true the library trucks to keep the cursor point.
         let distance = 10;
         try {
           if (typeof controls.getDistance === "function") {
@@ -220,8 +198,10 @@ function nativeCursorZoom(
         } catch {
           /* */
         }
-        const amount = signed * 0.0022 * distance;
-        const r = controls.dolly(amount, false);
+        // Public dolly: positive distance moves away (zoom out).
+        // amount > 0 (zoom in) → negative dolly distance.
+        const dollyDist = -amount * 0.0022 * distance;
+        const r = controls.dolly(dollyDist, false);
         if (r && typeof r.catch === "function") r.catch(() => { /* */ });
       } else {
         return false;
@@ -246,10 +226,6 @@ function nativeCursorZoom(
   }
 }
 
-/**
- * Fallback truck for ortho when only zoomTo is available (no _zoomInternal).
- * Keeps the world point under the cursor fixed after a zoom change.
- */
 function truckOrthoToCursor(
   controls: Any,
   cam: THREE.Camera,
@@ -263,7 +239,6 @@ function truckOrthoToCursor(
 
   try {
     const ortho = cam as THREE.OrthographicCamera;
-    // World offset from viewport center to the cursor before zoom, then scale.
     const halfW = (ortho.right - ortho.left) / (2 * oldZoom);
     const halfH = (ortho.top - ortho.bottom) / (2 * oldZoom);
     const worldX0 = ndcX * halfW;
@@ -274,7 +249,6 @@ function truckOrthoToCursor(
     const worldX1 = ndcX * halfW1;
     const worldY1 = ndcY * halfH1;
 
-    // Truck by the difference in camera local axes (right / up).
     const dx = worldX0 - worldX1;
     const dy = worldY0 - worldY1;
     if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return;
@@ -293,7 +267,6 @@ function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: num
   const cam = resolveDrivenCamera();
   if (!cam || !controls) return;
 
-  // Keep wheel disabled on the library's own listener (we own the event).
   lockControlsWheel();
 
   const qBefore = cam.quaternion.clone();
@@ -305,7 +278,6 @@ function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: num
     return;
   }
 
-  // Orientation invariant: azimuth/polar-only dolly must not change quat.
   try {
     const qAfter = cam.quaternion;
     const dot = Math.abs(
@@ -315,7 +287,6 @@ function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: num
         qBefore.w * qAfter.w,
     );
     if (dot < 0.999) {
-      // Unexpected — restore and log. Native path should never need this.
       cam.quaternion.copy(qBefore);
       cam.updateMatrixWorld?.(true);
       console.warn("[wheel-arbiter] orientation drift after native dolly (dot=" + dot.toFixed(6) + ")");
@@ -347,11 +318,6 @@ function onWheel(e: WheelEvent): void {
   applyZoom(nd, !!e.shiftKey, e.clientX, e.clientY);
 }
 
-/**
- * Prevent the library's own wheel listener from also handling the event.
- * We call _dollyInternal ourselves; mouseButtons.wheel must stay NONE.
- * dollySpeed is restored temporarily inside nativeCursorZoom.
- */
 export function lockControlsWheel(): void {
   try {
     const controls = getControls();
@@ -417,5 +383,5 @@ export function setupWheelArbiter(): void {
     lockControlsWheel,
     getState: () => ({ enabled, invert, multiplier: readMultiplier() }),
   };
-  console.log("[wheel-arbiter] native camera-controls dollyToCursor / _dollyInternal");
+  console.log("[wheel-arbiter] scroll-up zooms in; native dollyToCursor");
 }
