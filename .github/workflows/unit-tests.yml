@@ -58,6 +58,7 @@ jobs:
       - run: npm run test:snap-points
       - run: npm run test:plan-draw
       - run: npm run test:view-lock
+      - run: npm run test:wheel-zoom
       - run: npm run test:section-box
       - run: npm run test:v68-core
       - run: npm run test:v68-solids
