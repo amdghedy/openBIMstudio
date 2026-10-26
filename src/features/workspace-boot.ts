@@ -50,6 +50,28 @@ function reg(featureKey: string, label: string, defaultOpen = false): boolean {
   return true;
 }
 
+
+function hideStartupFloaters(): void {
+  for (const id of ["obs-rcc-launch", "obs-dwg-launch", "obs-param-launch"]) {
+    try {
+      const el = document.getElementById(id);
+      if (el) el.style.display = "none";
+    } catch { /* */ }
+  }
+  try { (window as any).__obsBIMCC?.close?.(); } catch { /* */ }
+  try { (window as any).__obsBimCommandCenter?.close?.(); } catch { /* */ }
+  try {
+    const feat = (window as any).__obsFeatures ?? {};
+    feat.bimToolbox?.close?.();
+    feat.propertyPalette?.close?.();
+  } catch { /* */ }
+  try {
+    const ctxFeat = (globalThis as any).ctx?.features;
+    ctxFeat?.bimToolbox?.close?.();
+    ctxFeat?.propertyPalette?.close?.();
+  } catch { /* */ }
+}
+
 export function setupWorkspaceLayout(): void {
   // Dockable panels -- all closed by default. Panels without a
   // ctx.features handle are silently skipped; the workspace system is
@@ -97,6 +119,7 @@ export function setupWorkspaceLayout(): void {
 
   installWorkspaceUnloadHook();
   restoreWorkspace();
+  hideStartupFloaters();
 
   // Expose the API for tests and DevTools.
   (window as any).__obsWorkspace = {
