@@ -81,7 +81,13 @@ function commitWalls(): void {
 
 export function setupV67Engines(): void {
   // ── 1. Constraint solver ────────────────────────────────────────────────
+  // NOTE: parametric-constraints registers `__obsConstraints` first
+  // (lock/equality/align manager). v67 must MERGE the numeric solver into
+  // that object — overwriting it broke the ribbon Lock Dim / Equality
+  // buttons, which call `.lock()` / `.equality()` at runtime.
+  const existingConstraints = (w.__obsConstraints ?? {}) as Any;
   const constraintsApi = {
+    ...existingConstraints,
     /** Solve an ad-hoc point/constraint system (returns solved points). */
     solve: (points: SolverPoint[], cons: Constraint[]): { result: SolveResult; points: SolverPoint[] } => {
       const pts = points.map((p) => ({ ...p }));
