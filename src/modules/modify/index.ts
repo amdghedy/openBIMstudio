@@ -5,3 +5,4 @@ export * from "./command";
 export * from "./transform";
 export * from "./edit";
 export * from "./duplicate";
+export * from "./group1";

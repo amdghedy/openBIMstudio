@@ -51,6 +51,11 @@ export interface ElementStore {
   /** Insert a cloned element (copy/array/mirror results). */
   insert(el: ModifyElement): void;
   all(): ModifyElement[];
+  /**
+   * Optional deletion — required to UNDO copy-creating commands
+   * (mirror copy, Group 1 spec §6.3). Store adapters may implement it.
+   */
+  remove?(id: string): boolean;
 }
 
 export type DiagnosticSeverity = "info" | "warning" | "error";
