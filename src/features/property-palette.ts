@@ -21,8 +21,27 @@ import {
   onAuthoringChange,
   rebuildAuthored,
   markAuthoringDirty,
+  isDrawToolActive,
+  refreshPreview,
+  resetTypeDefaults,
+  getWallLocationLine, setWallLocationLine,
+  getWallChain, setWallChain,
+  getWallOffset, setWallOffset,
+  getWallJoinStatus, setWallJoinStatus,
+  getBeamJustification, setBeamJustification,
+  getBeamZJustification, setBeamZJustification,
+  getMepJustification, setMepJustification,
+  getDrawSlope, setDrawSlope,
 } from "./authoring";
 import { getSchema, setLevelsProvider, type PropertyField, type FieldTarget } from "./property-schema";
+import {
+  getToolPanel,
+  validatePanelNumber,
+  type ToolPanelDescriptor,
+  type ToolPanelField,
+} from "./tool-panels";
+import { coreThicknessFromLayers } from "../modules/justification";
+import { units } from "../core/units";
 import { svgIcon, type IconName } from "./icon-set";
 import { levels } from "../modules/levels";
 import { makeDockable, type DockHandle } from "./dockable";
@@ -541,6 +560,248 @@ function renderHeader(mode: "defaults" | "edit", typeLabel: string, elementName?
   header.append(icon, text, collapseBtn);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Modeling tool panel (MASTER PROMPT §2) — contextual per-tool parameters
+   rendered from the declarative registry in tool-panels.ts. Values write
+   to the type defaults (what the NEXT placed element receives) or to live
+   authoring state (location line, chain, slope, justification…), and every
+   write refreshes the placement preview immediately.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Live authoring-state accessors used by "authoring"-bound fields. */
+const AUTHORING_STATE: Record<string, { get: () => any; set: (v: any) => void }> = {
+  wallLocationLine: { get: () => getWallLocationLine(), set: (v) => setWallLocationLine(v) },
+  wallChain: { get: () => getWallChain(), set: (v) => setWallChain(!!v) },
+  wallOffset: { get: () => getWallOffset(), set: (v) => setWallOffset(Number(v) || 0) },
+  wallJoinStatus: { get: () => getWallJoinStatus(), set: (v) => setWallJoinStatus(v) },
+  beamJustification: { get: () => getBeamJustification(), set: (v) => setBeamJustification(v) },
+  beamZJustification: { get: () => getBeamZJustification(), set: (v) => setBeamZJustification(v) },
+  mepJustification: { get: () => getMepJustification(), set: (v) => setMepJustification(v) },
+  drawSlope: { get: () => getDrawSlope(), set: (v) => setDrawSlope(Number(v) || 0) },
+};
+
+function readToolFieldValue(field: ToolPanelField, elementType: string): any {
+  if (!field.bind) return "";
+  if (field.bind.kind === "authoring") {
+    const s = AUTHORING_STATE[field.bind.stateKey];
+    return s ? s.get() : "";
+  }
+  const d = getTypeDefaults(elementType);
+  if (field.bind.target === "params") return (d.params as any)[field.bind.key] ?? "";
+  return (d.properties as any)[field.bind.key] ?? "";
+}
+
+function writeToolFieldValue(field: ToolPanelField, elementType: string, v: any): void {
+  if (!field.bind) return;
+  if (field.bind.kind === "authoring") {
+    const s = AUTHORING_STATE[field.bind.stateKey];
+    if (s) s.set(v);
+    return;
+  }
+  setTypeDefault(elementType, field.bind.target, field.bind.key, v);
+}
+
+/** §3.1 — core location-line options need a compound core in the type. */
+function coreLayersSupported(elementType: string): boolean {
+  try {
+    const d = getTypeDefaults(elementType);
+    const layers = d.properties?.layers as string | undefined;
+    const t = Number(d.params?.thickness) || 0.2;
+    return coreThicknessFromLayers(layers, t) != null;
+  } catch { return false; }
+}
+
+/** Numeric display in the app's configured unit system. */
+function formatPanelNumber(field: ToolPanelField, v: any): string {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return v == null ? "" : String(v);
+  if (field.unit === "m") {
+    try { return units.formatLength(n, { withUnit: false }); } catch { return String(n); }
+  }
+  return String(n);
+}
+
+/** Parse user input to SI using the app's unit grammar (§2.3). */
+function parsePanelNumber(field: ToolPanelField, raw: string): number | null {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  if (field.unit === "m") {
+    const parsed = units.parseLengthInput(text);
+    if (parsed != null && Number.isFinite(parsed)) return parsed;
+  }
+  const n = Number(text);
+  return Number.isFinite(n) ? n : null;
+}
+
+function renderToolField(field: ToolPanelField, elementType: string): HTMLElement {
+  const row = document.createElement("div");
+
+  if (field.kind === "info") {
+    row.style.cssText = "padding:4px 12px 6px";
+    const hint = document.createElement("div");
+    hint.textContent = field.text ?? "";
+    hint.style.cssText = "font-size:10.5px;color:var(--text-tertiary,#6b7280);line-height:1.45";
+    row.appendChild(hint);
+    return row;
+  }
+
+  row.style.cssText = "display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center;padding:3px 12px";
+
+  const label = document.createElement("label");
+  label.textContent = field.label;
+  label.style.cssText = "font-size:11px;color:var(--text-secondary,#a0a6b5)";
+  if (field.helpText) label.title = field.helpText;
+
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;gap:4px;align-items:center;min-width:0";
+
+  const errRow = document.createElement("div");
+  errRow.style.cssText =
+    "display:none;grid-column:1 / -1;font-size:10px;color:var(--obs-pp-warn-fg,#fca5a5);padding:0 12px 2px";
+
+  const setErr = (msg: string | null) => {
+    if (msg) {
+      errRow.textContent = msg;
+      errRow.style.display = "block";
+    } else {
+      errRow.style.display = "none";
+    }
+  };
+
+  const commit = (v: any) => {
+    writeToolFieldValue(field, elementType, v);
+    // §2.3 — update the modeling preview immediately.
+    try { refreshPreview(); } catch { /* preview optional */ }
+  };
+
+  switch (field.kind) {
+    case "number": {
+      const i = document.createElement("input");
+      i.type = "text";
+      i.inputMode = "decimal";
+      i.value = formatPanelNumber(field, readToolFieldValue(field, elementType));
+      i.style.cssText = INPUT_CSS + ";text-align:right";
+      i.onchange = () => {
+        const raw = i.value.trim();
+        if (!raw) { setErr(null); return; }
+        const v = parsePanelNumber(field, raw);
+        if (v == null) {
+          setErr("Enter a valid number" + (field.unit ? ` (e.g. ${field.unit})` : ""));
+          i.style.borderColor = "var(--obs-pp-warn-fg,#fca5a5)";
+          return;
+        }
+        const problem = validatePanelNumber(field, v);
+        if (problem) {
+          setErr(problem);
+          i.style.borderColor = "var(--obs-pp-warn-fg,#fca5a5)";
+          return;
+        }
+        setErr(null);
+        i.style.borderColor = "";
+        i.value = formatPanelNumber(field, v);
+        commit(v);
+      };
+      i.oninput = () => { setErr(null); i.style.borderColor = ""; };
+      wrap.appendChild(i);
+      break;
+    }
+    case "select": {
+      const s = document.createElement("select");
+      s.style.cssText = INPUT_CSS + ";cursor:pointer";
+      const cur = String(readToolFieldValue(field, elementType) ?? "");
+      s.innerHTML = (field.options ?? [])
+        .map((o) => `<option value="${o.value}" ${o.value === cur ? "selected" : ""}>${o.label}</option>`)
+        .join("");
+      s.onchange = () => { commit(s.value); };
+      wrap.appendChild(s);
+      break;
+    }
+    case "boolean": {
+      const c = document.createElement("input");
+      c.type = "checkbox";
+      c.checked = !!readToolFieldValue(field, elementType);
+      c.style.cssText = "cursor:pointer";
+      c.onchange = () => { commit(c.checked); };
+      wrap.appendChild(c);
+      break;
+    }
+  }
+
+  if (field.unit) {
+    const u = document.createElement("span");
+    u.textContent = field.unit;
+    u.style.cssText = "font-size:10px;color:var(--text-tertiary,#6b7280);min-width:16px";
+    wrap.appendChild(u);
+  }
+
+  row.append(label, wrap, errRow);
+  return row;
+}
+
+function renderToolPanel(desc: ToolPanelDescriptor): HTMLElement {
+  const block = document.createElement("div");
+  block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
+
+  const headerRow = document.createElement("div");
+  headerRow.style.cssText =
+    "display:flex;align-items:center;gap:6px;padding:7px 12px;cursor:pointer;" +
+    "background:var(--bg-elevated,#181a23);user-select:none";
+
+  const caret = document.createElement("span");
+  const openKey = `tool:${desc.tool}`;
+  const open = sectionState.get(openKey) ?? true;
+  caret.textContent = open ? "▾" : "▸";
+  caret.style.cssText = "width:10px;font-size:9px;color:var(--text-tertiary,#6b7280)";
+
+  const title = document.createElement("span");
+  title.textContent = "Tool Options";
+  title.style.cssText = "font-weight:600;font-size:11.5px;letter-spacing:.2px;flex:1";
+
+  const resetBtn = document.createElement("button");
+  resetBtn.textContent = "Reset";
+  resetBtn.title = "Restore factory defaults for this tool";
+  resetBtn.style.cssText =
+    "padding:2px 8px;background:transparent;color:var(--text-secondary);" +
+    "border:1px solid var(--border-default);border-radius:4px;cursor:pointer;font-size:10px";
+  resetBtn.onclick = (ev) => {
+    ev.stopPropagation();
+    resetTypeDefaults(desc.elementType);
+    try { refreshPreview(); } catch { /* */ }
+    render();
+  };
+
+  headerRow.append(caret, title, resetBtn);
+
+  const list = document.createElement("div");
+  list.style.cssText = "padding:4px 0;display:" + (open ? "block" : "none");
+
+  headerRow.onclick = () => {
+    const now = !(sectionState.get(openKey) ?? true);
+    sectionState.set(openKey, now);
+    caret.textContent = now ? "▾" : "▸";
+    list.style.display = now ? "block" : "none";
+  };
+
+  const coreOk = coreLayersSupported(desc.elementType);
+  for (const g of desc.groups) {
+    const gTitle = document.createElement("div");
+    gTitle.textContent = g.title;
+    gTitle.style.cssText =
+      "font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;" +
+      "color:var(--text-tertiary,#6b7280);padding:6px 12px 2px";
+    list.appendChild(gTitle);
+    for (const f of g.fields) {
+      // §3.1 — hide core-specific controls unless the data model supports
+      // a compound core; never show controls that do nothing.
+      if (f.requiresCoreLayers && !coreOk) continue;
+      list.appendChild(renderToolField(f, desc.elementType));
+    }
+  }
+
+  block.append(headerRow, list);
+  return block;
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    Render
    ═════════════════════════════════════════════════════════════════════════ */
@@ -565,7 +826,10 @@ function render() {
   else panel.style.display = "flex";
 
   const schema = getSchema(target.type);
-  if (!schema) {
+  // MASTER PROMPT §2 — while a draw tool is active, its contextual panel
+  // renders even when the element type has no other schema yet.
+  const toolPanelDesc = target.mode === "defaults" ? getToolPanel(getActiveTool()) : null;
+  if (!schema && !toolPanelDesc) {
     header.innerHTML = "";
     const t = document.createElement("div");
     t.textContent = `${target.type} — no editable properties`;
@@ -589,28 +853,35 @@ function render() {
 
   renderHeader(
     target.mode,
-    schema.label,
+    schema ? schema.label : (toolPanelDesc?.title ?? target.type),
     element ? element.name : undefined,
   );
 
   body.innerHTML = "";
   body.style.display = expanded ? "block" : "none";
 
-  const byGroup = new Map<string, PropertyField[]>();
-  for (const f of schema.fields) {
-    const arr = byGroup.get(f.group) ?? [];
-    arr.push(f);
-    byGroup.set(f.group, arr);
+  // Contextual tool parameters come first while a tool is active.
+  if (toolPanelDesc) {
+    try { body.appendChild(renderToolPanel(toolPanelDesc)); }
+    catch (err) { console.warn("[property-palette] tool panel failed", err); }
   }
 
-  for (const g of schema.groups) {
-    const fields = byGroup.get(g);
-    if (!fields || !fields.length) continue;
-    body.appendChild(sectionBlock(g, fields, element, schema.type));
+  if (schema) {
+    const byGroup = new Map<string, PropertyField[]>();
+    for (const f of schema.fields) {
+      const arr = byGroup.get(f.group) ?? [];
+      arr.push(f);
+      byGroup.set(f.group, arr);
+    }
+    for (const g of schema.groups) {
+      const fields = byGroup.get(g);
+      if (!fields || !fields.length) continue;
+      body.appendChild(sectionBlock(g, fields, element, schema.type));
+    }
   }
 
   // openbim-levels:ui-wired:property-palette
-  if (element && LEVEL_CONSTRAINED_TYPES.has(schema.type)) {
+  if (element && schema && LEVEL_CONSTRAINED_TYPES.has(schema.type)) {
     try { body.appendChild(makeLevelConstraintsBlock(element)); }
     catch (err) { console.warn("[property-palette] level constraints failed", err); }
   }
@@ -914,7 +1185,17 @@ export function setupPropertyPalette(): void {
   // force it open. The palette stays closed unless the user opened it
   // via the ribbon, User Interface menu, Ctrl+1, the command palette,
   // or openPropertyPalette().
+  // MASTER PROMPT §2.1 — selecting a modeling tool opens its contextual
+  // properties panel automatically. (Supersedes the earlier
+  // closed-by-default behaviour for tool activation only: selection and
+  // manual open/close still behave exactly as before.)
   onAuthoringChange(() => {
+    try {
+      if (isDrawToolActive() && !visible) {
+        openPropertyPalette();
+        return;
+      }
+    } catch (err) { console.warn("[property-palette] auto-open failed", err); }
     if (!visible) return;
     render();
   });
