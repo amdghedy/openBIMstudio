@@ -219,27 +219,46 @@ function applyPureTranslation(
   preservedQuat: THREE.Quaternion,
   preservedUp: THREE.Vector3,
 ): void {
-  // 1) Move the eye.
   cam.position.copy(newPos);
-
-  // 2) Move the orbit target by the same rigid transform (keep relative vector).
   try {
-    if (typeof controls?.setTarget === "function") {
-      // setTarget alone does not re-aim the camera the way setLookAt does.
-      const r = controls.setTarget(newTarget.x, newTarget.y, newTarget.z, false);
-      if (r && typeof r.catch === "function") r.catch(() => { /* */ });
-    } else if (controls?.target?.isVector3) {
-      controls.target.copy(newTarget);
-    }
+    if (controls?.target?.isVector3) controls.target.copy(newTarget);
   } catch {
-    try {
-      if (controls?.target?.isVector3) controls.target.copy(newTarget);
-    } catch {
-      /* */
-    }
+    /* */
   }
 
-  // 3) Prefer setPosition (translation) over setLookAt (re-aim).
+  // Keep camera-controls internal END state in sync so the animation
+  // loop does not lerp back toward a stale spherical (apparent rotation).
+  try {
+    const offset = new THREE.Vector3().subVectors(newPos, newTarget);
+    const sph = new THREE.Spherical().setFromVector3(offset);
+    for (const key of ["_spherical", "spherical", "_sphericalEnd", "sphericalEnd"] as const) {
+      const s = controls?.[key];
+      if (s && typeof s.theta === "number") {
+        s.theta = sph.theta;
+        s.phi = sph.phi;
+        s.radius = sph.radius;
+      }
+    }
+    for (const key of ["_targetEnd", "targetEnd", "_target", "target"] as const) {
+      const t = controls?.[key];
+      if (t?.isVector3) t.copy(newTarget);
+    }
+    for (const key of ["_positionEnd", "positionEnd"] as const) {
+      const p = controls?.[key];
+      if (p?.isVector3) p.copy(newPos);
+    }
+  } catch {
+    /* */
+  }
+
+  try {
+    if (typeof controls?.setTarget === "function") {
+      const r = controls.setTarget(newTarget.x, newTarget.y, newTarget.z, false);
+      if (r && typeof r.catch === "function") r.catch(() => { /* */ });
+    }
+  } catch {
+    /* */
+  }
   try {
     if (typeof controls?.setPosition === "function") {
       const r = controls.setPosition(newPos.x, newPos.y, newPos.z, false);
@@ -249,17 +268,16 @@ function applyPureTranslation(
     /* */
   }
 
-  // 4) Force orientation — the invariant.
   cam.quaternion.copy(preservedQuat);
   cam.up.copy(preservedUp);
   cam.updateMatrixWorld?.(true);
 
-  // 5) controls.update() may call lookAt internally — restore again after.
   try {
     controls?.update?.(0);
   } catch {
     /* */
   }
+
   cam.position.copy(newPos);
   cam.quaternion.copy(preservedQuat);
   cam.up.copy(preservedUp);
@@ -316,11 +334,9 @@ function applyOrthoZoom(
     ortho.updateProjectionMatrix();
   }
 
-  // Orientation must survive zoom/sync.
   primary.quaternion.copy(_quat);
   primary.up.copy(_up);
 
-  // Truck so the pre-zoom world point under the cursor stays fixed on screen.
   if (hasFocus && clientToNdc(clientX, clientY, _ndc)) {
     _raycaster.setFromCamera(_ndc, primary);
     primary.getWorldDirection(_dir);
@@ -348,7 +364,6 @@ function applyPerspectiveZoom(
   clientX: number,
   clientY: number,
 ): void {
-  // Snapshot orientation — MUST be restored exactly.
   _quat.copy(cam.quaternion);
   _up.copy(cam.up);
   _pos0.copy(cam.position);
@@ -357,26 +372,15 @@ function applyPerspectiveZoom(
   cam.getWorldDirection(_dir);
   const fwd = _dir.clone();
 
-  // Signed distance eye → target along view.
-  const dist = Math.max(
-    target0.clone().sub(_pos0).dot(fwd),
-    0.5,
-  );
-
-  // factor > 1 → zoom in (closer). factor from exp(-delta*speed):
-  // scroll-up (deltaY < 0) → factor > 1 → zoom in.
+  const dist = Math.max(target0.clone().sub(_pos0).dot(fwd), 0.5);
   const newDist = Math.max(0.05, dist / factor);
-  const along = dist - newDist; // positive when zooming in
+  const along = dist - newDist;
 
-  // Dolly: translate eye AND target along the view axis by the same amount.
-  // Relative offset unchanged → orientation unchanged by construction.
   const newPos = _pos0.clone().addScaledVector(fwd, along);
   const newTarget = target0.clone().addScaledVector(fwd, along);
 
-  // Cursor truck: keep the world focus under the pointer.
   const hasFocus = focusUnderCursor(cam, controls, clientX, clientY, _focus);
   if (hasFocus && Number.isFinite(_focus.x) && clientToNdc(clientX, clientY, _ndc)) {
-    // Ray at the post-dolly pose.
     const savedPos = cam.position.clone();
     cam.position.copy(newPos);
     cam.quaternion.copy(_quat);
@@ -418,19 +422,22 @@ function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: num
   if (!Number.isFinite(factor) || factor <= 0) return;
   if (Math.abs(factor - 1) < 1e-4) return;
 
+  // ONLY trust the driven camera. ThatOpen keeps both perspective and
+  // orthographic camera objects alive; collecting either must NOT force
+  // the ortho zoom path while the user is in perspective.
   let modeOrtho = isOrthoCam(cam);
   if (!modeOrtho) {
     try {
       const wrap = (ctx as Any).world?.camera;
       const t = wrap?.cameraType ?? wrap?.projection?.current ?? wrap?.projection;
-      if (typeof t === "string" && /ortho|plan/i.test(String(t))) modeOrtho = true;
+      if (typeof t === "string" && /ortho|plan/i.test(String(t)) && !/persp/i.test(String(t))) {
+        modeOrtho = true;
+      }
     } catch {
       /* */
     }
   }
-  if (!modeOrtho && collectOrthoCameras().length > 0) modeOrtho = true;
 
-  // Capture orientation for the post-condition check (dev / diagnostics).
   const qBefore = cam.quaternion.clone();
   const dirBefore = cam.getWorldDirection(new THREE.Vector3()).clone();
 
@@ -440,7 +447,6 @@ function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: num
     applyPerspectiveZoom(cam, controls, factor, clientX, clientY);
   }
 
-  // Runtime invariant: orientation must match pre-zoom (within float tolerance).
   try {
     const qAfter = cam.quaternion;
     const dot = Math.abs(
@@ -450,13 +456,10 @@ function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: num
         qBefore.w * qAfter.w,
     );
     if (dot < 0.9995) {
-      // Hard restore if anything drifted.
       cam.quaternion.copy(qBefore);
       cam.updateMatrixWorld?.(true);
       if (typeof console !== "undefined" && console.warn) {
-        console.warn(
-          "[wheel-arbiter] orientation drift corrected (dot=" + dot.toFixed(6) + ")",
-        );
+        console.warn("[wheel-arbiter] orientation drift corrected (dot=" + dot.toFixed(6) + ")");
       }
     }
     const dirAfter = cam.getWorldDirection(_tmp);
@@ -486,7 +489,6 @@ function onWheel(e: WheelEvent): void {
   applyZoom(nd, !!e.shiftKey, e.clientX, e.clientY);
 }
 
-/** Re-lock wheel after Ortho/Persp toggle (ThatOpen reassigns mouseButtons). */
 export function lockControlsWheel(): void {
   try {
     const controls = getControls();
@@ -562,5 +564,5 @@ export function setupWheelArbiter(): void {
     lockControlsWheel,
     getState: () => ({ enabled, invert, multiplier: readMultiplier() }),
   };
-  console.log("[wheel-arbiter] pure-translation zoom; setLookAt forbidden on wheel");
+  console.log("[wheel-arbiter] pure-translation zoom; perspective path fixed; sphericalEnd synced");
 }
