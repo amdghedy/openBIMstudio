@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.74.0",
   "type": "module",
-  "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
+  "description": "Open BIM Studio \u2014 professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
     "predev": "node scripts/copy-libredwg-wasm.mjs",
     "dev": "vite",
@@ -94,7 +94,9 @@
     "test:dep-safety": "node tests/dependency-safety.test.cjs",
     "test:server-hardening": "node tests/server-hardening.test.cjs",
     "test:plugins": "node tests/plugins-api.test.cjs",
-    "test:feature-registry": "node tests/feature-registry.test.cjs"
+    "test:feature-registry": "node tests/feature-registry.test.cjs",
+    "test:spatial-index": "node tests/spatial-index.test.cjs",
+    "test:smart-perp": "node tests/smart-perp-snap.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
