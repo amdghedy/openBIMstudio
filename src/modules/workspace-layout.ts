@@ -25,6 +25,17 @@ export interface WorkspacePanel {
 }
 
 const registry = new Map<string, WorkspacePanel>();
+
+/** Panels that must always start closed (clean 3D modeling workspace). */
+const FORCE_CLOSED_ON_BOOT = new Set([
+  "bimToolbox",
+  "propertyPalette",
+  "bimCommandCenter",
+  "commandCenter",
+  "toolPanel",
+  "propertiesPanel",
+]);
+
 const listeners = new Set<() => void>();
 
 export function registerWorkspacePanel(p: WorkspacePanel): void {
@@ -84,10 +95,20 @@ export function saveWorkspace(): Record<string, boolean> {
 export function restoreWorkspace(): void {
   const saved = readSaved();
   for (const [key, p] of registry) {
-    const want = key in saved ? saved[key] : (p.defaultOpen ?? false);
+    // Startup defaults take precedence for the core modeling workspace.
+    const want = FORCE_CLOSED_ON_BOOT.has(key)
+      ? false
+      : (key in saved ? saved[key] : (p.defaultOpen ?? false));
     try { p.setVisible(!!want); }
     catch (err) { console.warn("[workspace] restore failed:", key, err); }
   }
+  // Persist the forced-closed core panels so a refresh cannot reopen them
+  // from a stale layout snapshot.
+  try {
+    const snap = snapshotWorkspace();
+    for (const k of FORCE_CLOSED_ON_BOOT) snap[k] = false;
+    writeSaved(snap);
+  } catch { /* */ }
   emit();
 }
 
