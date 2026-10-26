@@ -5,5 +5,8 @@ export { meshVolume, profileArea, sweepProfile, type IndexedMesh, type Pt3, type
 export * from "./brep";
 export * from "./forms";
 export * from "./csg";
+export * from "./general-csg";
+export * from "./shell";
+export * from "./loft";
 export * from "./voids";
 export * from "./validate";

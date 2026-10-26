@@ -307,9 +307,10 @@ function centroid(ring: ProfilePt[]): ProfilePt {
 /**
  * Re-sample a closed ring at `count` evenly spaced polar angles around
  * `c`, preserving shape. Linear interpolation between the two bracketing
- * vertices per ray (O(n·count)).
+ * vertices per ray (O(n·count)). Exported for the v0.70 N-section loft,
+ * which must share blend()'s exact correspondence path.
  */
-function resampleByAngle(ring: ProfilePt[], c: ProfilePt, count: number): ProfilePt[] {
+export function resampleByAngle(ring: ProfilePt[], c: ProfilePt, count: number): ProfilePt[] {
   const pts = ring.map((p) => ({ p, ang: Math.atan2(p.v - c.v, p.u - c.u) }));
   // Ensure the ring angles are monotonic starting at the first point.
   const out: ProfilePt[] = [];
