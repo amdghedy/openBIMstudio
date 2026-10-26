@@ -83,7 +83,7 @@ export interface SnapSettings {
 }
 
 export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
-  screenTolerancePx: 12,
+  screenTolerancePx: 20,
   depthWindow: 2.0,
   hysteresis: 1.15,
   enabled: new Set<SnapReferenceKind>([
