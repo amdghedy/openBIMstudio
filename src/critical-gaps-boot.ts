@@ -315,6 +315,10 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./features/nav-cog-force");
     m.setupNavCogForce?.();
   });
+  await safe("shift-lmb-orbit", async () => {
+    const m: Any = await import("./features/shift-lmb-orbit");
+    m.setupShiftLmbOrbit?.();
+  });
   await safe("nav-selection-pivot-patch", async () => {
     const m: Any = await import("./features/nav-selection-pivot-patch");
     m.setupNavSelectionPivotPatch?.();
