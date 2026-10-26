@@ -108,6 +108,15 @@ import {
 } from "../features/frag-edit";
 import { toggleBimObjectStudio, isBimObjectStudioVisible } from "../features/bim-object-studio";
 import { gizmo as _gizmoForEdit } from "../features/gizmo";
+import {
+  openFrameSolverDialog, openSteelCheckDialog, openRcBeamDialog,
+  openDuctPressureDialog, openPipePressureDialog, openWorstPathDialog,
+  openAdaptiveSweepDialog, openAdaptiveRepeatDialog,
+  openExtrudeDialog, openRevolveDialog, openSolidSweepDialog, openBlendDialog,
+  openBooleanDialog, openVoidDialog, validateLastSolid,
+  openModifyMoveDialog, openModifyRotateDialog, openModifyArrayDialog, openModifyMirrorDialog,
+  openHostedOpeningDialog, openParameterManagerDialog, openModelIntelligencePanel,
+} from "../features/engine-ui";
 const gizmo_setMode = (m: "move" | "rotate" | "scale" | "none") => _gizmoForEdit.setMode(m);
 const gizmo_getMode = () => _gizmoForEdit.getMode();
 
@@ -704,6 +713,17 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("window", "Window", "window", "WN"),
       toolBtn("opening", "Opening", "opening"),
       toolBtn("shaft", "Shaft", "shaft"),
+      b("opening", "Hosted Opening", safe(() => void openHostedOpeningDialog(), "Hosted opening (v68)"), {
+        title: "Place a validated opening on a wall via the v68 hosting engine (overlap checks, layer offsets)",
+      }),
+      sep(),
+      groupLabel("Adaptive"),
+      b("component", "Adaptive Sweep", safe(() => void openAdaptiveSweepDialog(), "Adaptive sweep"), {
+        title: "Sweep an adaptive-family profile along a 3D path (exact volume, watertight mesh)",
+      }),
+      b("component", "Divide & Repeat", safe(() => void openAdaptiveRepeatDialog(), "Divide path and repeat family"), {
+        title: "Divide a line into equal bays and repeat a 2-point adaptive family along it",
+      }),
       sep(),
       groupLabel("Datum"),
       toolBtn("grid", "Grid", "grid", "GR"),
@@ -1570,6 +1590,28 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         });
         console.log("[generative]", result);
       }, "Run generative"), { title: "Run default generative design study" }),
+      sep(),
+      groupLabel("Structural FEM"),
+      b("beam", "Frame Solver", safe(() => void openFrameSolverDialog(), "Frame FEM solver"), {
+        title: "Solve a single-storey frame with the built-in Euler-Bernoulli FEM — reactions, member forces, deflection",
+      }),
+      b("beam", "Steel Check", safe(() => void openSteelCheckDialog(), "Steel beam check"), {
+        title: "AISC-style bending/shear/deflection check against the W/IPE/HEA catalog",
+      }),
+      b("footing", "RC Beam", safe(() => void openRcBeamDialog(), "RC beam design check"), {
+        title: "Size tension reinforcement (As) and stirrup spacing for a rectangular RC beam",
+      }),
+      sep(),
+      groupLabel("Hydraulics"),
+      b("duct", "Duct ΔP", safe(() => void openDuctPressureDialog(), "Duct pressure drop"), {
+        title: "Darcy-Weisbach + Colebrook-White pressure drop for round/rect ducts",
+      }),
+      b("pipe", "Pipe ΔP", safe(() => void openPipePressureDialog(), "Pipe pressure drop"), {
+        title: "Water pipe pressure drop and head loss",
+      }),
+      b("duct-fitting", "Worst Path", safe(() => void openWorstPathDialog(), "Critical path search"), {
+        title: "Find the highest-loss source→sink branch the fan/pump must be sized for",
+      }),
     ],
   },
 
@@ -1935,6 +1977,43 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("close", "Off", safe(() => gizmo_setMode("none"), "Off"), {
         active: gizmo_getMode() === "none",
         title: "Turn the gizmo off",
+      }),
+      sep(),
+      groupLabel("Solid Forms"),
+      b("slab", "Extrude", safe(() => void openExtrudeDialog(), "Extrude solid"), {
+        title: "Extrude a closed profile into a watertight B-Rep solid (v68 solid kernel)",
+      }),
+      b("circle", "Revolve", safe(() => void openRevolveDialog(), "Revolve solid"), {
+        title: "Revolve an (r,z) profile about an axis — full or partial angle",
+      }),
+      b("wall", "Sweep", safe(() => void openSolidSweepDialog(), "Sweep solid"), {
+        title: "Sweep a profile along a 3D polyline with per-segment frames",
+      }),
+      b("roof", "Blend", safe(() => void openBlendDialog(), "Blend/loft solid"), {
+        title: "Loft between two closed sections",
+      }),
+      b("clear", "Subtract", safe(() => void openBooleanDialog(), "Boolean subtract"), {
+        title: "Boolean A − B on convex operands (exact half-space composition)",
+      }),
+      b("opening", "Cut Voids", safe(() => void openVoidDialog(), "Cut voids"), {
+        title: "Cut box/cylinder voids (openings) with the rollback-guaranteed void engine",
+      }),
+      b("inspect", "Validate Last", safe(() => validateLastSolid(), "Validate last solid"), {
+        title: "Full watertightness/manifold diagnostics with recovery actions",
+      }),
+      sep(),
+      groupLabel("Modify Engine"),
+      b("move", "Move", safe(() => void openModifyMoveDialog(), "v68 Move"), {
+        title: "Move selection through the v68 command pipeline (preview → validate → commit)",
+      }),
+      b("rotate", "Rotate", safe(() => void openModifyRotateDialog(), "v68 Rotate"), {
+        title: "Rodrigues rotation about a plan pivot via the v68 command pipeline",
+      }),
+      b("array", "Array", safe(() => void openModifyArrayDialog(), "v68 Linear array"), {
+        title: "Linear array with cloned authored elements",
+      }),
+      b("mirror", "Mirror", safe(() => void openModifyMirrorDialog(), "v68 Mirror"), {
+        title: "Mirror the selection about an axis; copy keeps originals",
       }),
       sep(),
       groupLabel("Snaps"),
@@ -2331,6 +2410,14 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     id: "manage",
     label: "Manage",
     items: () => [
+      groupLabel("Parameters"),
+      b("settings", "Parameter Manager", safe(() => void openParameterManagerDialog(), "Project parameters"), {
+        title: "Add document-wide parameters (typed, unit-aware, formula-driven) via the v68 parameter engine",
+      }),
+      b("tree", "Model Intelligence", safe(() => openModelIntelligencePanel(), "Model intelligence panel"), {
+        title: "Registry stats, relationships, MEP connector status and snapping engine state in one panel",
+      }),
+      sep(),
       groupLabel("Collaboration"),
       b("system", "Live Sync", safe(() => (ctx.features as any).collaborationPanel?.toggle?.(), "Collaboration"), { title: "Join a real-time collaboration session" }),
       sep(),

@@ -402,6 +402,12 @@ async function runOnce(): Promise<void> {
     m.setupV68Engines?.();
   });
 
+  // ── v69 engine UI (ribbon buttons + dialogs + panels for every engine)
+  await safe("engine-ui", async () => {
+    const m: Any = await import("./features/engine-ui");
+    m.setupEngineUi?.();
+  });
+
   // ── View Tools Manager panel (replaces console.log dumps) ─────────────
   await safe("view-tools-manager", async () => {
     const m: Any = await import("./features/view-tools-manager");
