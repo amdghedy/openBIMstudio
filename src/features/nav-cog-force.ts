@@ -412,6 +412,8 @@ function installWheel(): void {
     (e: WheelEvent) => {
       try {
         if ((window as Any).__OBS_MMB_HELD) return;
+        // Self-contained overlays (CAD Viewer) handle their own wheel zoom.
+        if ((e.target as HTMLElement | null)?.closest?.("#obs-cad-viewer,[data-obs-own-wheel]")) return;
         // One wheel authority: wheel-arbiter owns zoom (cursor-centred, ortho + perspective).
         if ((window as Any).__OBS_WHEEL_AUTHORITY) return;
         const cam = camera();

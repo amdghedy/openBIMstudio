@@ -25,7 +25,7 @@ export function closeCadViewer(): void { api?.close(); }
 
 function build(): void {
   root = document.createElement("div");
-  root.id = "obs-cad-viewer";
+  root.id = "obs-cad-viewer"; root.setAttribute("data-obs-own-wheel", "");
   root.style.cssText = "position:fixed;inset:0;z-index:10050;display:none;flex-direction:column;background:#0f1218;color:#e5e7eb;font:12px/1.35 system-ui,sans-serif";
   root.innerHTML = `
   <style>
@@ -44,6 +44,7 @@ function build(): void {
     #obs-cad-viewer td:first-child{color:#9aa4b2}
   </style>
   <div class="bar" data-r="tools"></div>
+  <div class="bar" data-r="tools2"></div>
   <div style="display:flex;flex:1;min-height:0">
     <div style="flex:1;position:relative;min-width:0" data-r="stage">
       <canvas data-r="cv" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;outline:none" tabindex="0"></canvas>
@@ -65,7 +66,7 @@ function build(): void {
 
   const $ = <T extends HTMLElement>(k: string) => root!.querySelector(`[data-r="${k}"]`) as T;
   const cv = $<HTMLCanvasElement>("cv"), g = cv.getContext("2d")!;
-  const tabsEl = $("tabs"), tools = $("tools"), layersEl = $("layers"), propsEl = $("props"), measEl = $("meas"), statusEl = $("status"), emptyEl = $("empty"), busyEl = $("busy");
+  const tools2 = $("tools2"), tabsEl = $("tabs"), tools = $("tools"), layersEl = $("layers"), propsEl = $("props"), measEl = $("meas"), statusEl = $("status"), emptyEl = $("empty"), busyEl = $("busy");
 
   let doc: DxfDocument | null = null, name = "";
   let ents: DxfEntity[] = [], idx: M.SpatialIndex | null = null, bounds: M.BBox | null = null;
@@ -81,6 +82,8 @@ function build(): void {
   let dragging: { x: number; y: number } | null = null, winStart: { x: number; y: number } | null = null, winNow: { x: number; y: number } | null = null;
   let raf = 0;
   let modelEnts: DxfEntity[] = [], modelIdx: M.SpatialIndex | null = null, modelBounds: M.BBox | null = null;
+  let showText = true, showHatch = true, showLt = true, quick = false, forceColor: string | null = null;
+  let cmp: { removed: Set<DxfEntity>; added: DxfEntity[] } | null = null; let tipEl: HTMLDivElement | null = null;
   let layoutI = -1; const layoutIdxCache = new Map<number, M.SpatialIndex>();
   let press: { x: number; y: number; moved: boolean; id: number; band?: boolean; add?: boolean } | null = null;
   const sel = new Set<number>(); let showGrid = false; let rband: { a: M.Pt; b: M.Pt } | null = null; let layerFilter = "";
@@ -89,8 +92,11 @@ function build(): void {
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
   const visible = (e: DxfEntity) => !hidden.has(e.layer);
+  const shown = (e: DxfEntity) => visible(e) && !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch);
   const layerOf = (n: string) => doc?.layers.find((l) => l.name === n);
   function colorOf(e: DxfEntity): string {
+    if (forceColor) return forceColor;
+    if (cmp) return cmp.removed.has(e) ? "#ef4444" : "#6b7280";
     if (cmode === "bw") return bg === "white" ? "#000" : "#fff";
     let rgb: number;
     if (e.rgb != null) rgb = e.rgb;
@@ -149,10 +155,10 @@ function build(): void {
     }
     c.restore();
   }
-  const dashFor = (e: DxfEntity, v: M.View): number[] => (!doc || (e.type === "LWPOLYLINE" && e.hatch) ? [] : M.resolveDash(e.lineType ?? layerOf(e.layer)?.lineType, doc.linetypes, doc.ltscale, v.scale));
+  const dashFor = (e: DxfEntity, v: M.View): number[] => (!doc || !showLt || (e.type === "LWPOLYLINE" && e.hatch) ? [] : M.resolveDash(e.lineType ?? layerOf(e.layer)?.lineType, doc.linetypes, doc.ltscale, v.scale));
   function paintEntities(c: CanvasRenderingContext2D, v: M.View, list: DxfEntity[], ix: M.SpatialIndex | null, cull: M.BBox, skipSel: boolean): void {
     list.forEach((e, i) => {
-      if (!visible(e) || (skipSel && sel.has(i))) return;
+      if (!shown(e) || (skipSel && sel.has(i))) return;
       if (ix) { const bb = ix.boxes[i]; if (!M.boxesIntersect(bb, cull)) return; if (e.type !== "POINT" && (bb.maxX - bb.minX) * v.scale < 0.4 && (bb.maxY - bb.minY) * v.scale < 0.4) return; }
       const col = colorOf(e); c.strokeStyle = col; c.fillStyle = col; c.setLineDash(dashFor(e, v)); drawEntity(c, e, v);
     });
@@ -164,6 +170,7 @@ function build(): void {
     if (withUi && showGrid) paintGrid(c, v);
     c.lineWidth = lw; c.lineJoin = "round";
     paintEntities(c, v, ents, idx, visibleBox(v), true);
+    if (cmp && layoutI < 0) { forceColor = "#22c55e"; paintEntities(c, v, cmp.added, null, visibleBox(v), false); forceColor = null; }
     if (layoutI >= 0 && doc?.layouts?.[layoutI]) {
       for (const vp of doc.layouts[layoutI].viewports) {
         const r = M.viewportRect(vp), a = M.worldToScreen(v, r.minX, r.maxY), b = M.worldToScreen(v, r.maxX, r.minY), ctr = M.worldToScreen(v, vp.center.x, vp.center.y), sc = M.viewportScale(vp);
@@ -198,6 +205,7 @@ function build(): void {
         else c.strokeRect(p.x - 5, p.y - 5, 10, 10);
       }
       paintScaleBar(c, v);
+      if (cmp) { c.save(); c.font = "12px sans-serif"; c.fillStyle = "#ef4444"; c.fillText("■ only in this drawing", 12, 20); c.fillStyle = "#22c55e"; c.fillText("■ only in the compared drawing", 12, 36); c.fillStyle = "#9ca3af"; c.fillText("■ unchanged", 12, 52); c.restore(); }
       if (rband) { const x = rband.a.x, y = rband.a.y, w = rband.b.x - x, h = rband.b.y - y, win = w >= 0; c.save(); c.globalAlpha = 0.15; c.fillStyle = win ? "#38bdf8" : "#22c55e"; c.fillRect(x, y, w, h); c.globalAlpha = 1; c.strokeStyle = win ? "#38bdf8" : "#22c55e"; c.lineWidth = 1; c.setLineDash(win ? [] : [5, 4]); c.strokeRect(x, y, w, h); c.restore(); }
       if (winStart && winNow) { c.strokeStyle = "#38bdf8"; c.setLineDash([5, 4]); c.strokeRect(winStart.x, winStart.y, winNow.x - winStart.x, winNow.y - winStart.y); }
     }
@@ -347,7 +355,7 @@ function build(): void {
       <label>Line <select data-a="lw"><option>1</option><option>1.5</option><option>2</option><option>3</option></select></label>
       <label>Units <select data-a="du">${["drawing", "mm", "cm", "m", "in", "ft"].map((u) => `<option>${u}</option>`).join("")}</select></label><span class="sep"></span>
       <input data-r="q" placeholder="Find text…" style="width:130px"><button data-a="qprev">◀</button><button data-a="qnext">▶</button><span data-r="qc" style="color:#9aa4b2"></span><span class="sep"></span>
-      <button data-a="png">PNG</button><button data-a="svg">SVG</button><button data-a="print">Print</button><button data-a="clrmk">Clear markup</button>
+      <button data-a="png">PNG</button><button data-a="svg">SVG</button><button data-a="clrmk">Clear markup</button>
       <span style="flex:1"></span><button data-a="close">Close ✕</button>`;
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.onclick = () => setTool(b.dataset.t as Tool));
     const fileIn = tools.querySelector<HTMLInputElement>("[data-r=file]")!;
@@ -359,7 +367,7 @@ function build(): void {
       out: () => { pushView(); view = M.zoomAt(view, view.w / 2, view.h / 2, 1 / 1.5); draw(); },
       prev: () => { const v = history.pop(); if (v) { view = { ...v, w: view.w, h: view.h }; draw(); } },
       snap: () => { snapOn = !snapOn; tools.querySelector("[data-a=snap]")!.classList.toggle("on", snapOn); draw(); },
-      png: () => exportPng(), svg: () => exportSvg(), print: () => doPrint(),
+      png: () => exportPng(), svg: () => exportSvg(),
       clrmk: () => { markups = []; draw(); },
       qprev: () => stepHit(-1), qnext: () => stepHit(1),
     };
@@ -472,17 +480,132 @@ function build(): void {
   stage.addEventListener("drop", (e) => { e.preventDefault(); const f = e.dataTransfer?.files?.[0]; if (f) void load(f); });
 
   let helpEl: HTMLDivElement | null = null;
+  function closeOverlay(): void { helpEl?.remove(); helpEl = null; cv.focus({ preventScroll: true }); }
+  function openOverlay(html: string): HTMLDivElement {
+    helpEl?.remove();
+    const el = document.createElement("div"); helpEl = el;
+    el.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);z-index:5";
+    el.innerHTML = `<div data-r="panel" style="background:#151a23;border:1px solid #2f3846;border-radius:10px;padding:16px 22px;max-width:620px;max-height:90%;overflow:auto;line-height:1.7">${html}</div>`;
+    el.onclick = (ev) => { if (ev.target === el) closeOverlay(); };
+    stage.appendChild(el); return el;
+  }
   function toggleHelp(): void {
-    if (helpEl) { helpEl.remove(); helpEl = null; return; }
-    helpEl = document.createElement("div");
-    helpEl.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);z-index:5";
-    helpEl.innerHTML = `<div style="background:#151a23;border:1px solid #2f3846;border-radius:10px;padding:16px 22px;max-width:560px;line-height:1.7"><b style="font-size:14px">Mouse & keyboard</b><br>
+    if (helpEl) { closeOverlay(); return; }
+    openOverlay(`<b style="font-size:14px">Mouse & keyboard</b><br>
       Wheel: zoom at cursor · Drag: pan · Middle / right drag: pan · Middle double-click: extents<br>
       Click: select · Shift/Ctrl+click: add or remove · Shift+drag or <b>B</b>: box select (→ window, ← crossing) · Ctrl+A: select all<br>
       P pan · S select · W zoom window · D distance · L polyline · A area · G angle · I coordinate · R radius · M redline · N note<br>
-      E extents · F zoom to selection · F3 snaps · F7 grid · Backspace previous view · Arrows pan · + / − zoom · Esc cancel<br>
-      Double-click a layer name: zoom to that layer<br><span style="color:#9aa4b2">Press ? or Esc to close.</span></div>`;
-    helpEl.onclick = () => toggleHelp(); stage.appendChild(helpEl);
+      E extents · F zoom to selection · F3 snaps · F7 grid · Backspace previous view · Arrows pan · + / − zoom<br>
+      Esc: cancel the pick, then leave the command, then clear the selection · Ctrl+C: copy the view as an image<br>
+      Double-click a layer name: zoom to that layer<br><span style="color:#9aa4b2">Press ? or Esc to close.</span>`);
+  }
+
+  /* ── saved views, layer states ── */
+  const storeKey = () => `obs.cadviewer.v1.${name}`;
+  type Saved = { views: Array<{ n: string; cx: number; cy: number; s: number }>; states: Array<{ n: string; hidden: string[] }> };
+  function loadSaved(): Saved { try { const r = localStorage.getItem(storeKey()); if (r) { const j = JSON.parse(r); return { views: Array.isArray(j.views) ? j.views : [], states: Array.isArray(j.states) ? j.states : [] }; } } catch { /* storage unavailable */ } return { views: [], states: [] }; }
+  function persist(sv: Saved): void { try { localStorage.setItem(storeKey(), JSON.stringify(sv)); } catch { /* storage unavailable */ } }
+  function fillMenus(): void {
+    const sv = doc ? loadSaved() : { views: [], states: [] };
+    const opts = (head: string, names: string[]) => `<option value="">${head}</option>${names.map((n) => `<option value="go:${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("")}<option value="save:">＋ Save current…</option>${names.map((n) => `<option value="del:${escapeHtml(n)}">✕ Delete ${escapeHtml(n)}</option>`).join("")}`;
+    const v = tools2.querySelector<HTMLSelectElement>("[data-a=views]"), l = tools2.querySelector<HTMLSelectElement>("[data-a=lstates]");
+    if (v) v.innerHTML = opts("Named views", sv.views.map((x) => x.n));
+    if (l) l.innerHTML = opts("Layer states", sv.states.map((x) => x.n));
+  }
+  function menuAction(kind: "views" | "states", value: string): void {
+    if (!doc || !value) return; const sv = loadSaved(); const i = value.indexOf(":"), op = value.slice(0, i), nm = value.slice(i + 1);
+    const list = kind === "views" ? sv.views : sv.states;
+    if (op === "save") {
+      const n = prompt(kind === "views" ? "Name for this view" : "Name for this layer state")?.trim(); if (!n) return;
+      const at = list.findIndex((x) => x.n === n); if (at >= 0) list.splice(at, 1);
+      if (kind === "views") sv.views.push({ n, cx: view.cx, cy: view.cy, s: view.scale }); else sv.states.push({ n, hidden: [...hidden] });
+      persist(sv);
+    } else if (op === "del") { const at = list.findIndex((x) => x.n === nm); if (at >= 0) list.splice(at, 1); persist(sv); }
+    else if (op === "go") {
+      if (kind === "views") { const x = sv.views.find((q) => q.n === nm); if (x) { pushView(); view = { ...view, cx: x.cx, cy: x.cy, scale: x.s }; draw(); } }
+      else { const x = sv.states.find((q) => q.n === nm); if (x) { hidden.clear(); x.hidden.forEach((h) => hidden.add(h)); buildLayers(); draw(); } }
+    }
+    fillMenus();
+  }
+
+  /* ── quick measure tooltip ── */
+  function quickTip(sx: number, sy: number, wp: M.Pt): void {
+    if (!quick || !doc || !idx) { if (tipEl) tipEl.style.display = "none"; return; }
+    const i = M.pickEntity(idx, ents, wp.x, wp.y, 8 / view.scale, shown);
+    if (i < 0) { if (tipEl) tipEl.style.display = "none"; return; }
+    const parts = M.quickMeasureParts(ents[i]);
+    if (!parts.length) { if (tipEl) tipEl.style.display = "none"; return; }
+    if (!tipEl) { tipEl = document.createElement("div"); tipEl.style.cssText = "position:absolute;pointer-events:none;background:#0b0e14;border:1px solid #38bdf8;border-radius:5px;padding:3px 7px;font-size:11px;white-space:nowrap;z-index:4"; stage.appendChild(tipEl); }
+    tipEl.innerHTML = parts.map((q) => `${escapeHtml(q.label)} ${q.power === 0 ? q.value.toFixed(2) + "°" : escapeHtml(fmt(q.value, q.power))}`).join(" · ");
+    tipEl.style.left = `${sx + 14}px`; tipEl.style.top = `${sy + 14}px`; tipEl.style.display = "block";
+  }
+
+  /* ── drawing info ── */
+  function showInfo(): void {
+    if (!doc) return;
+    const types = [...M.countByType(modelEnts)].map(([k, n]) => `${escapeHtml(k)} ${n}`).join(" · ");
+    const b = modelBounds, w = b ? b.maxX - b.minX : 0, h = b ? b.maxY - b.minY : 0;
+    const lts = doc.linetypes ? Object.keys(doc.linetypes).join(", ") : "none defined";
+    const sk = doc.skipped ? Object.entries(doc.skipped).map(([k, n]) => `${escapeHtml(k)}×${n}`).join(", ") : "none";
+    const rows: Array<[string, string]> = [
+      ["File", escapeHtml(name)], ["Format", escapeHtml((doc.sourceFormat ?? "").toUpperCase())], ["Units", escapeHtml(doc.units ?? "unitless")],
+      ["Extents", b ? `${fmt(w)} × ${fmt(h)}` : "empty"], ["Model objects", String(modelEnts.length)], ["Object types", types || "none"],
+      ["Layers", String(doc.layers.length)], ["Layouts", doc.layouts?.length ? doc.layouts.map((l) => `${escapeHtml(l.name)} (${l.entities.length} objects, ${l.viewports.length} viewports)`).join("<br>") : "none"],
+      ["Linetypes", escapeHtml(lts)], ["Linetype scale", String(doc.ltscale ?? 1)], ["Not drawn", sk],
+    ];
+    openOverlay(`<b style="font-size:14px">Drawing information</b><table style="margin-top:6px">${rows.map(([k, v]) => `<tr><td style="vertical-align:top;white-space:nowrap">${k}</td><td>${v}</td></tr>`).join("")}</table><div style="color:#9aa4b2;margin-top:6px">Press Esc to close.</div>`);
+  }
+
+  /* ── compare ── */
+  async function runCompare(file: File): Promise<void> {
+    if (!doc || !modelBounds) return; status(`Reading ${file.name}…`);
+    try {
+      const r = await readCadFile(file);
+      const d = M.diffEntities(modelEnts, r.doc.entities, M.compareTolerance(modelBounds));
+      cmp = { removed: new Set(d.removed.map((i) => modelEnts[i])), added: d.added.map((i) => r.doc.entities[i]) };
+      if (layoutI >= 0) activate(-1); else draw();
+      tools2.querySelector("[data-a=compare]")!.textContent = "Clear compare"; tools2.querySelector("[data-a=compare]")!.classList.add("on");
+      const unitNote = (r.doc.units ?? "unitless") !== (doc.units ?? "unitless") ? "  ⚠ different units" : "";
+      status(`Compared with ${file.name}: ${d.added.length} added, ${d.removed.length} removed, ${d.same} unchanged${unitNote}`); setTimeout(() => status(""), 9000);
+    } catch (err) { status(`Could not compare: ${(err as Error).message}`); setTimeout(() => status(""), 6000); }
+  }
+  function clearCompare(): void { cmp = null; const b = tools2.querySelector("[data-a=compare]"); if (b) { b.textContent = "Compare…"; b.classList.remove("on"); } draw(); }
+
+  /* ── plot ── */
+  function openPlot(): void {
+    if (!doc) return;
+    const el = openOverlay(`<b style="font-size:14px">Plot</b>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin-top:8px;align-items:center">
+        <label>Paper</label><select data-p="paper">${Object.keys(M.PAPER_MM).map((k) => `<option ${k === "A3" ? "selected" : ""}>${k}</option>`).join("")}</select>
+        <label>Orientation</label><select data-p="ori"><option value="l">Landscape</option><option value="p">Portrait</option></select>
+        <label>Plot area</label><select data-p="area"><option value="display">Display (what you see)</option><option value="extents">Extents</option></select>
+        <label>Colours</label><select data-p="mono"><option value="1">Monochrome (black on white)</option><option value="0">As drawn on white</option></select>
+        <label>Title</label><input data-p="title" placeholder="Optional" value="${escapeHtml(name)}">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button data-p="go">Plot / save as PDF</button><button data-p="cancel">Cancel</button></div>
+      <div style="color:#9aa4b2;margin-top:6px">Fits the plot area to the sheet. In the print dialog choose “Save as PDF” to get a file.</div>`);
+    const g = (k: string) => el.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-p=${k}]`)!;
+    g("cancel").onclick = closeOverlay;
+    g("go").onclick = () => { const o = { paper: g("paper").value, land: g("ori").value === "l", area: g("area").value, mono: g("mono").value === "1", title: g("title").value }; closeOverlay(); doPlot(o); };
+  }
+  function doPlot(o: { paper: string; land: boolean; area: string; mono: boolean; title: string }): void {
+    if (!doc) return;
+    const pg = M.paperMm(o.paper, o.land), px = M.plotPixels(pg.w, pg.h, 8, 150);
+    const box = o.area === "extents" ? (bounds ?? modelBounds!) : visibleBox(view);
+    const pv = M.fitView(box, px.w, px.h, 0.02);
+    const c = document.createElement("canvas"); c.width = px.w; c.height = px.h; const x = c.getContext("2d")!;
+    const keep = { bg, cmode, lw }; bg = "white"; cmode = o.mono ? "bw" : "layer"; lw = Math.max(lw, px.w / 1200);
+    try { render(x, pv, false); } finally { bg = keep.bg; cmode = keep.cmode; lw = keep.lw; }
+    const url = c.toDataURL("image/png");
+    const w = window.open("", "_blank"); if (!w) { status("Allow pop-ups to plot"); setTimeout(() => status(""), 4000); return; }
+    w.document.write(`<!doctype html><title>${escapeHtml(o.title || name)}</title><style>@page{size:${o.paper} ${o.land ? "landscape" : "portrait"};margin:8mm}html,body{margin:0}img{width:100%;display:block}.t{font:11px sans-serif;margin-top:2mm}</style><img src="${url}">${o.title ? `<div class="t">${escapeHtml(o.title)}</div>` : ""}`);
+    w.document.close(); w.onload = () => w.print();
+  }
+  async function copyImage(): Promise<void> {
+    if (!doc) return;
+    try { const blob = await new Promise<Blob | null>((res) => offscreen(2).toBlob(res, "image/png")); if (!blob) throw new Error("no image"); await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); status("View copied as an image"); }
+    catch { status("Copy blocked by the browser; use PNG instead"); }
+    setTimeout(() => status(""), 2500);
   }
 
   /* ── export ── */
@@ -495,7 +618,7 @@ function build(): void {
     const F = (n: number) => n.toFixed(2);
     const P = (x: number, y: number) => { const q = M.worldToScreen(v, x, y); return `${F(q.x)},${F(q.y)}`; };
     for (let i = 0; i < list.length; i++) {
-      const e = list[i]; if (!visible(e)) continue;
+      const e = list[i]; if (!shown(e)) continue;
       if (ix && !M.boxesIntersect(ix.boxes[i], cull)) continue;
       const col = colorOf(e), dash = dashFor(e, v), da = dash.length ? ` stroke-dasharray="${dash.map(F).join(" ")}"` : "";
       const st = `stroke="${col}" fill="none" stroke-width="${lw}"${da}`;
@@ -544,7 +667,28 @@ function build(): void {
     w.document.write(`<!doctype html><title>${escapeHtml(name)}</title><style>@page{margin:8mm}body{margin:0}img{width:100%}</style><img src="${url}">`); w.document.close(); w.onload = () => w.print();
   }
 
-  buildBar(); setTool("select"); showProps(); showMeas(); updateStatus(); resize();
+  function buildBar2() {
+    tools2.innerHTML = `<select data-a="views" title="Named views"></select><select data-a="lstates" title="Layer states"></select><span class="sep"></span>
+      <button data-a="quick" title="Quick measure: hover an object to read its size">Quick measure</button>
+      <button data-a="compare" title="Highlight differences against another DWG/DXF">Compare…</button><input type="file" data-r="cmpfile" accept=".dwg,.dxf" style="display:none"><span class="sep"></span>
+      <button data-a="tText" class="on" title="Show or hide text">Text</button><button data-a="tHatch" class="on" title="Show or hide hatches">Hatch</button><button data-a="tLt" class="on" title="Show or hide linetypes">Linetypes</button><span class="sep"></span>
+      <button data-a="info" title="Drawing information">Info</button><button data-a="copy" title="Copy the view as an image (Ctrl+C)">Copy image</button><button data-a="plot" title="Plot to a sheet / PDF">Plot…</button><button data-a="full" title="Full screen">Full screen</button>`;
+    const q = <T extends HTMLElement>(a: string) => tools2.querySelector<T>(`[data-a=${a}]`)!;
+    const flip = (a: string, on: boolean) => q(a).classList.toggle("on", on);
+    q("tText").onclick = () => { showText = !showText; flip("tText", showText); draw(); };
+    q("tHatch").onclick = () => { showHatch = !showHatch; flip("tHatch", showHatch); draw(); };
+    q("tLt").onclick = () => { showLt = !showLt; flip("tLt", showLt); draw(); };
+    q("quick").onclick = () => { quick = !quick; flip("quick", quick); if (!quick && tipEl) tipEl.style.display = "none"; };
+    q("info").onclick = showInfo; q("copy").onclick = () => void copyImage(); q("plot").onclick = openPlot;
+    q("full").onclick = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void root!.requestFullscreen?.(); };
+    const cf = tools2.querySelector<HTMLInputElement>("[data-r=cmpfile]")!;
+    q("compare").onclick = () => { if (cmp) clearCompare(); else if (doc) cf.click(); };
+    cf.onchange = () => { const f = cf.files?.[0]; if (f) void runCompare(f); cf.value = ""; };
+    q<HTMLSelectElement>("views").onchange = (e) => { const sel2 = e.target as HTMLSelectElement; menuAction("views", sel2.value); sel2.value = ""; };
+    q<HTMLSelectElement>("lstates").onchange = (e) => { const sel2 = e.target as HTMLSelectElement; menuAction("states", sel2.value); sel2.value = ""; };
+    fillMenus();
+  }
+  buildBar(); buildBar2(); setTool("select"); showProps(); showMeas(); updateStatus(); resize();
   api = {
     load,
     close() { root!.style.display = "none"; },

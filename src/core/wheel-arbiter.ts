@@ -20,7 +20,7 @@ let multiplier = 1;
 const UI_BLOCK =
   ".obs-panel,[data-obs-panel],#obs-ai-chat,#obs-bim-toolbox,.obs-ribbon," +
   ".obs-property,.obs-dialog,.obs-adv-toolbar,.obs-plan-view,#plan-svg," +
-  "input,textarea,select,button,label,a,[contenteditable=true]";
+  "input,textarea,select,button,label,a,[contenteditable=true],#obs-cad-viewer,[data-obs-own-wheel]";
 
 const _ndc = new THREE.Vector2();
 const _target = new THREE.Vector3();

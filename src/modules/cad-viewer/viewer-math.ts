@@ -519,3 +519,66 @@ export function layoutBounds(l: DxfLayout): BBox | null {
   for (const vp of l.viewports) b = unionBBox(b, viewportRect(vp));
   return b;
 }
+
+/* ───────────────────────── drawing compare ───────────────────────── */
+
+function sigNum(v: number, q: number): number { return Math.round(v / q); }
+function pointSig(p: Pt, q: number): string { return `${sigNum(p.x, q)},${sigNum(p.y, q)}`; }
+
+/** Geometry-only signature of an entity (layer ignored), quantised to `tol`. Polylines match in either direction. */
+export function entitySignature(e: DxfEntity, tol: number): string {
+  const q = Math.max(tol, 1e-9);
+  switch (e.type) {
+    case "LINE": { const a = pointSig(e.start, q), b = pointSig(e.end, q); return "L" + (a < b ? `${a}|${b}` : `${b}|${a}`); }
+    case "CIRCLE": return `C${pointSig(e.center, q)}r${sigNum(e.radius, q)}`;
+    case "ARC": return `A${pointSig(e.center, q)}r${sigNum(e.radius, q)}a${Math.round(norm360(e.startAngle) * 100)}-${Math.round(norm360(e.endAngle) * 100)}`;
+    case "LWPOLYLINE": { const f = e.points.map((p) => pointSig(p, q)).join(";"), r = [...e.points].reverse().map((p) => pointSig(p, q)).join(";"); return "P" + (e.closed ? "c" : "o") + (f < r ? f : r) + (e.hatch ? "h" : ""); }
+    case "TEXT": return `T${pointSig(e.position, q)}${e.value}`;
+    case "POINT": return `O${pointSig(e.position, q)}`;
+  }
+}
+
+/** Multiset diff of two entity lists. Returns indices in `a` that vanished and in `b` that are new. */
+export function diffEntities(a: DxfEntity[], b: DxfEntity[], tol: number): { removed: number[]; added: number[]; same: number } {
+  const bag = new Map<string, number>();
+  for (const e of b) { const k = entitySignature(e, tol); bag.set(k, (bag.get(k) ?? 0) + 1); }
+  const removed: number[] = []; let same = 0;
+  const seen = new Map<string, number>();
+  a.forEach((e, i) => { const k = entitySignature(e, tol); const left = bag.get(k) ?? 0; if (left > 0) { bag.set(k, left - 1); same++; seen.set(k, (seen.get(k) ?? 0) + 1); } else removed.push(i); });
+  const added: number[] = [];
+  const used = new Map<string, number>(); 
+  b.forEach((e, i) => { const k = entitySignature(e, tol); const matched = seen.get(k) ?? 0; const u = used.get(k) ?? 0; if (u < matched) used.set(k, u + 1); else added.push(i); });
+  return { removed, added, same };
+}
+
+/** Compare tolerance: a small fraction of the drawing size. */
+export const compareTolerance = (b: BBox): number => Math.max(Math.max(b.maxX - b.minX, b.maxY - b.minY) * 1e-5, 1e-9);
+
+/* ───────────────────────── plotting ───────────────────────── */
+
+export const PAPER_MM: Record<string, [number, number]> = { A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], A0: [841, 1189], Letter: [215.9, 279.4], Tabloid: [279.4, 431.8] };
+
+export function paperMm(name: string, landscape: boolean): { w: number; h: number } {
+  const [s, l] = PAPER_MM[name] ?? PAPER_MM.A4;
+  return landscape ? { w: l, h: s } : { w: s, h: l };
+}
+
+/** Pixel size of the printable area for a raster plot (longest side capped). */
+export function plotPixels(paperW: number, paperH: number, marginMm: number, dpi = 150, maxSide = 6000): { w: number; h: number } {
+  const pw = Math.max(paperW - 2 * marginMm, 10), ph = Math.max(paperH - 2 * marginMm, 10);
+  let k = dpi / 25.4; const longest = Math.max(pw, ph) * k;
+  if (longest > maxSide) k *= maxSide / longest;
+  return { w: Math.max(1, Math.round(pw * k)), h: Math.max(1, Math.round(ph * k)) };
+}
+
+/* ───────────────────────── quick measure text ───────────────────────── */
+
+/** One-line summary for the quick-measure tooltip (values in drawing units; caller formats). */
+export function quickMeasureParts(e: DxfEntity): Array<{ label: string; value: number; power: 1 | 2 | 0 }> {
+  const m = entityMetrics(e), out: Array<{ label: string; value: number; power: 1 | 2 | 0 }> = [];
+  if (m.radius != null) out.push({ label: "R", value: m.radius, power: 1 });
+  if (m.length != null) out.push({ label: e.type === "CIRCLE" ? "Circumference" : "Length", value: m.length, power: 1 });
+  if (m.area != null) out.push({ label: "Area", value: m.area, power: 2 });
+  if (m.sweep != null) out.push({ label: "Sweep°", value: m.sweep, power: 0 });
+  return out;
+}
