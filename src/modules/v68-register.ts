@@ -49,7 +49,10 @@ import {
   MoveCommand, RotateCommand, AlignCommand, OffsetCommand,
   TrimExtendCommand, SplitCommand, CopyCommand,
   ArrayLinearCommand, ArrayRadialCommand, MirrorCommand, rotateAboutAxis,
+  MoveTool, RotateTool, MirrorTool,
 } from "./modify";
+import { SelectionEngine } from "./selection";
+import { ReferenceService, REFERENCE_ELIGIBILITY } from "./references";
 import {
   GetPropertyDefinitions, GetPropertyValue, IsPropertyEditable,
   ParsePropertyInput, BuildPropertyChangeSet, PreviewPropertyChange,
@@ -154,10 +157,20 @@ export function setupV68Engines(): void {
     MoveCommand, RotateCommand, AlignCommand, OffsetCommand,
     TrimExtendCommand, SplitCommand, CopyCommand,
     ArrayLinearCommand, ArrayRadialCommand, MirrorCommand,
+    // Group 1 tools (v71 spec §4–§6): full catalogs + transaction undo/redo
+    MoveTool, RotateTool, MirrorTool,
     rotateAboutAxis,
   };
   w.__obsModify = modifyApi;
   features().modifyEngine = modifyApi;
+
+  // ── 7b. Group 1 selection + reference engines (v71 spec §2–§3) ─────────
+  const selectionApi = { SelectionEngine };
+  w.__obsSelection = selectionApi;
+  features().selectionEngine = selectionApi;
+  const referencesApi = { ReferenceService, REFERENCE_ELIGIBILITY };
+  w.__obsReferences = referencesApi;
+  features().referenceService = referencesApi;
 
   // ── 8. Property panel engine ────────────────────────────────────────────
   const propertiesApi = {

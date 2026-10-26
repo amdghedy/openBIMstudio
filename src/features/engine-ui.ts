@@ -57,8 +57,13 @@ import {
 } from "../modules/solid-kernel";
 import {
   MoveCommand, RotateCommand, ArrayLinearCommand, MirrorCommand,
+  MoveTool, RotateTool, MirrorTool,
   type ElementStore, type ModifyElement, type ElementPatch, type ModifyContext,
+  type RemovableElementStore,
 } from "../modules/modify";
+import { SelectionEngine, type SelectableElement } from "../modules/selection";
+import { ReferenceService } from "../modules/references";
+import { TransactionService } from "../modules/transaction";
 import { placeOpening, type HostGeometry, type HostedOpening } from "../modules/hosting";
 import { ParameterEngine, type ParameterDefinition } from "../modules/parameter-engine";
 import type { GeometryDiagnostic } from "../modules/solid-kernel/validate";
@@ -1120,7 +1125,7 @@ function authoredList(): AuthoredLike[] {
 }
 
 /** Adapt the authored element array to the v68 Modify ElementStore. */
-export function authoredElementStore(): ElementStore {
+export function authoredElementStore(): RemovableElementStore {
   const auth = w.__obsAuthoring;
   const els = authoredList();
   const find = (id: string): AuthoredLike | undefined => els.find((x) => x.id === id);
@@ -1174,7 +1179,11 @@ export function authoredElementStore(): ElementStore {
     },
     insert: (el: ModifyElement) => {
       const src = find(el.id);
-      const newId = `${el.id}-m${Math.random().toString(36).slice(2, 6)}`;
+      // Preserve the tool's freshly allocated id when free (mirror copies,
+      // Group 1 spec §6.3); only collide-fallback to a derived id.
+      const newId = !src && !els.some((x) => x.id === el.id)
+        ? el.id
+        : `${el.id}-m${Math.random().toString(36).slice(2, 6)}`;
       const clone: AuthoredLike = src
         ? { ...src, id: newId, name: src.name ? `${src.name} (copy)` : undefined, params: { ...src.params } }
         : {
@@ -1190,6 +1199,16 @@ export function authoredElementStore(): ElementStore {
       try { auth?.rebuildAuthored?.(); } catch { /* ignore */ }
     },
     all: () => els.map(toModify),
+    remove: (id: string): boolean => {
+      const i = els.findIndex((x) => x.id === id);
+      if (i < 0) return false;
+      const viaAuth = (auth as { removeElementById?: (id: string) => boolean } | undefined)?.removeElementById;
+      let ok = false;
+      try { ok = typeof viaAuth === "function" ? viaAuth.call(auth, id) : false; } catch { ok = false; }
+      if (!ok) els.splice(i, 1);
+      try { auth?.rebuildAuthored?.(); } catch { /* ignore */ }
+      return true;
+    },
   };
 }
 
@@ -1543,8 +1562,297 @@ export function openModelIntelligencePanel(): void {
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   11. Boot
+   10b. Group 1 Modify tools (v71 spec §4–§6) — Move / Rotate / Mirror
+   full function catalogs with transaction undo/redo, hosted rigid
+   follow and relationship cloning, plus the Selection inspector and
+   Reference picker (spec §2–§3).
    ═════════════════════════════════════════════════════════════════════════ */
+
+/** Persistent undo/redo stack shared by every Group 1 tool invocation. */
+const group1Txn = new TransactionService();
+
+/** Persistent ReferenceService (command-scoped references live here). */
+const group1Refs = new ReferenceService();
+
+/** Map an authored element to the SelectionEngine's SelectableElement. */
+export function toSelectable(e: { id: string; type?: string; params?: Record<string, any> }): SelectableElement {
+  const p = e.params ?? {};
+  const hasCurve = Array.isArray(p.start) && Array.isArray(p.end);
+  const el: SelectableElement = {
+    id: e.id,
+    categoryId: String(e.type ?? "generic"),
+    pinned: false,
+    hidden: false,
+    editable: true,
+    curve: hasCurve
+      ? { start: [Number(p.start[0]), Number(p.start[1])], end: [Number(p.end[0]), Number(p.end[1])] }
+      : undefined,
+    point: !hasCurve && Array.isArray(p.point) ? [Number(p.point[0]), Number(p.point[1])] : undefined,
+    params: {},
+  };
+  if (hasCurve) {
+    el.aabb = {
+      min: [Math.min(Number(p.start[0]), Number(p.end[0])), Math.min(Number(p.start[1]), Number(p.end[1]))],
+      max: [Math.max(Number(p.start[0]), Number(p.end[0])), Math.max(Number(p.start[1]), Number(p.end[1]))],
+    };
+  }
+  if (typeof p.width === "number") el.params!.width = p.width;
+  if (typeof p.height === "number") el.params!.height = p.height;
+  return el;
+}
+
+/** Persistent selection engine over the live authored model. */
+let group1Selection: SelectionEngine | null = null;
+export function selectionEngine(): SelectionEngine {
+  if (!group1Selection) {
+    group1Selection = new SelectionEngine({
+      elements: () => authoredList().map((e) => toSelectable(e)),
+    });
+  }
+  return group1Selection;
+}
+
+function group1Context(): ModifyContext {
+  const rel = w.__obsRelationships?.registry;
+  return {
+    store: authoredElementStore(),
+    ...(rel ? { relationships: rel } : {}),
+    allocateId: () => `g1-${Math.random().toString(36).slice(2, 8)}`,
+  };
+}
+
+export async function openGroup1MoveDialog(): Promise<void> {
+  const r = await openFormModal({
+    title: "Group 1 Tool — Move (v71 spec §4)",
+    subtitle: "Full Move catalog: numeric Δ with axis constraint, hosted elements rigidly follow, transaction undo/redo",
+    fields: [
+      { kind: "number", key: "dx", label: "Displacement X (Δx)", default: 2, unit: "m", step: 0.25 },
+      { kind: "number", key: "dy", label: "Displacement Y (Δy)", default: 0, unit: "m", step: 0.25 },
+      { kind: "select", key: "axis", label: "Axis constraint", default: "none", options: [["none", "Free (2-D)"], ["x", "Constrain to X"], ["y", "Constrain to Y"]] },
+    ],
+    submitLabel: "Move Selection",
+  });
+  if (!r) return;
+  const ids = selectedAuthoredIds();
+  if (!ids.length) { notify("warn", "Nothing selected — select elements in the viewport first"); return; }
+  try {
+    let dx = Number(r.dx), dy = Number(r.dy);
+    if (r.axis === "x") dy = 0;
+    if (r.axis === "y") dx = 0;
+    const tool = new MoveTool(group1Context(), group1Txn);
+    tool.BeginMove(ids);
+    tool.SetNumericTranslation([dx, dy]);
+    const deps = tool.EvaluateMoveDependencies();
+    tool.GenerateMovePreview();
+    const v = tool.ValidateMove();
+    if (!v.ok) {
+      notify("error", `Move blocked: ${v.diagnostics.filter((d) => d.severity === "error").map((d) => d.message).join("; ")}`);
+      return;
+    }
+    const res = tool.CommitMove();
+    showReportCard("Move Report (Group 1)", [
+      ["Displacement", `Δ = (${dx.toFixed(3)}, ${dy.toFixed(3)}) m`],
+      ["Elements moved", String(res.applied)],
+      ["Hosted followers", deps.hosted.length ? deps.hosted.join(", ") : "none"],
+      ["Connected (policy-reconciled)", deps.connected.length ? deps.connected.join(", ") : "none"],
+      ["Reconciliation", res.reconciliation.length ? res.reconciliation.join("; ") : "no actions"],
+      ["Undo", "available (transaction stack)"],
+    ], "P' = P + Δ — hosted elements rigidly follow (spec §4.3, D-16). Undo via the Group 1 Undo ribbon button.");
+  } catch (e) {
+    notify("error", `Move failed: ${(e as Error).message}`);
+  }
+}
+
+/** Undo the last Group 1 transaction (Move/Rotate/Mirror are one unit each). */
+export function group1Undo(): boolean {
+  return group1Txn.undo();
+}
+
+/** Redo the last undone Group 1 transaction. */
+export function group1Redo(): boolean {
+  return group1Txn.redo();
+}
+
+export async function openGroup1RotateDialog(): Promise<void> {
+  const r = await openFormModal({
+    title: "Group 1 Tool — Rotate (v71 spec §5)",
+    subtitle: "Rodrigues plan rotation: pivot + angle with optional angular snap; hosted elements rotate about the SAME pivot",
+    fields: [
+      { kind: "text", key: "pivot", label: "Pivot (x,y)", default: "0,0", placeholder: "x,y" },
+      { kind: "number", key: "angle", label: "Angle", default: 90, unit: "°", step: 5 },
+      { kind: "select", key: "snap", label: "Angular snap", default: "off", options: [["off", "Off (exact)"], ["15", "15°"], ["30", "30°"], ["45", "45°"], ["90", "90°"]] },
+    ],
+    submitLabel: "Rotate Selection",
+  });
+  if (!r) return;
+  const ids = selectedAuthoredIds();
+  if (!ids.length) { notify("warn", "Nothing selected — select elements in the viewport first"); return; }
+  const p = parsePointList(String(r.pivot))[0];
+  if (!p) { notify("warn", "Invalid pivot"); return; }
+  try {
+    const tool = new RotateTool(group1Context(), group1Txn);
+    tool.BeginRotate(ids);
+    tool.AcquireRotationAxis();
+    tool.AcquireRotationPivot([p.x, p.y]);
+    const snapSel = String(r.snap);
+    const snapStep = snapSel === "off" ? undefined : (Number(snapSel) * Math.PI) / 180;
+    tool.ResolveRotationAngle({ angle: (Number(r.angle) * Math.PI) / 180 }, { snapStep });
+    tool.GenerateRotationPreview();
+    const v = tool.ValidateRotation();
+    const errors = v.diagnostics.filter((d) => d.severity === "error");
+    if (errors.length) {
+      notify("error", `Rotate blocked: ${errors.map((d) => d.message).join("; ")}`);
+      return;
+    }
+    const res = tool.CommitRotation();
+    if (!res.ok) {
+      notify("warn", `Rotate rejected: ${res.diagnostics.map((d) => d.message).join("; ")}`);
+      return;
+    }
+    showReportCard("Rotate Report (Group 1)", [
+      ["Pivot", `(${p.x}, ${p.y})`],
+      ["Angle", `${Number(r.angle)}°${snapStep ? " (snapped)" : ""}`],
+      ["Elements rotated", String(res.applied)],
+      ["Hosted co-rotated", tool.UpdateDependentOrientations().join(", ") || "none"],
+      ["Reconciliation", res.reconciliation.length ? res.reconciliation.join("; ") : "no actions"],
+    ], "p' = Q + R(θ)(p − Q); hosted elements share the pivot (spec §5.3).");
+  } catch (e) {
+    notify("error", `Rotate failed: ${(e as Error).message}`);
+  }
+}
+
+export async function openGroup1MirrorDialog(): Promise<void> {
+  const r = await openFormModal({
+    title: "Group 1 Tool — Mirror (v71 spec §6)",
+    subtitle: "Reflection M = 2ddᵀ − I, θ' = 2φ − θ; copy mode clones relationships with mirrored geometry",
+    fields: [
+      { kind: "text", key: "point", label: "Mirror-line point (x,y)", default: "0,0", placeholder: "x,y" },
+      { kind: "text", key: "dir", label: "Mirror-line direction", default: "1,0", placeholder: "dx,dy" },
+      { kind: "checkbox", key: "copy", label: "Keep originals (copy mode)", default: true },
+    ],
+    submitLabel: "Mirror Selection",
+  });
+  if (!r) return;
+  const ids = selectedAuthoredIds();
+  if (!ids.length) { notify("warn", "Nothing selected — select elements in the viewport first"); return; }
+  const p = parsePointList(String(r.point))[0];
+  const d = parsePointList(String(r.dir))[0];
+  if (!p || !d) { notify("warn", "Invalid mirror-line point/direction"); return; }
+  try {
+    const tool = new MirrorTool(group1Context(), group1Txn);
+    tool.BeginMirror(ids, r.copy === true);
+    tool.AcquireMirrorPlane([p.x, p.y], [d.x, d.y]);
+    tool.GenerateMirrorPreview();
+    const v = tool.ValidateMirror();
+    const errors = v.diagnostics.filter((dg) => dg.severity === "error");
+    if (errors.length) {
+      notify("error", `Mirror blocked: ${errors.map((dg) => dg.message).join("; ")}`);
+      return;
+    }
+    const res = tool.CommitMirror();
+    if (!res.ok) {
+      notify("warn", `Mirror rejected: ${res.diagnostics.map((dg) => dg.message).join("; ")}`);
+      return;
+    }
+    const warns = res.diagnostics.filter((dg) => dg.severity === "warning").map((dg) => dg.message);
+    showReportCard("Mirror Report (Group 1)", [
+      ["Mode", r.copy === true ? "copy (originals preserved)" : "move (originals transformed)"],
+      ["Elements", String(res.applied)],
+      ["Created copies", res.createdIds.length ? res.createdIds.join(", ") : "—"],
+      ["Relationships cloned", String(res.clonedRelationships)],
+      ["Warnings", warns.length ? warns.join("; ") : "none"],
+    ], "Handed parameters flip; copies start unpinned (spec §6.2–§6.3).");
+  } catch (e) {
+    notify("error", `Mirror failed: ${(e as Error).message}`);
+  }
+}
+
+export async function openSelectionInspectorDialog(): Promise<void> {
+  const r = await openFormModal({
+    title: "Selection Inspector (v71 spec §2)",
+    subtitle: "Hit-testing with deterministic priority (vertex > edge > connector > datum > body), window modes, filters, hosted expansion",
+    fields: [
+      { kind: "select", key: "mode", label: "Mode", default: "hit", options: [["hit", "Hit-test at point"], ["window-inside", "Window (fully inside)"], ["window-crossing", "Crossing (intersects)"], ["category", "Select by category"], ["expand", "Expand hosted of current selection"]] },
+      { kind: "text", key: "point", label: "Pick point (x,y)", default: "0,0", placeholder: "x,y" },
+      { kind: "number", key: "radius", label: "Pick radius", default: 0.05, unit: "m", step: 0.01, min: 0.001 },
+      { kind: "text", key: "corner", label: "Opposite corner (x,y) — window modes", default: "5,5", placeholder: "x,y" },
+      { kind: "text", key: "category", label: "Category — category mode", default: "wall", placeholder: "wall / column / ..." },
+    ],
+    submitLabel: "Run Selection",
+  });
+  if (!r) return;
+  try {
+    const eng = selectionEngine();
+    const p = parsePointList(String(r.point))[0] ?? { x: 0, y: 0 };
+    const c = parsePointList(String(r.corner))[0] ?? { x: 5, y: 5 };
+    let result: string;
+    if (r.mode === "hit") {
+      const hit = eng.SelectSingle([p.x, p.y], Number(r.radius));
+      result = hit ? `${hit.elementId} (${hit.subKind}, prio ${hit.priority}, d=${hit.distance.toFixed(4)}m)` : "no hit";
+    } else if (r.mode === "window-inside" || r.mode === "window-crossing") {
+      const picked = eng.SelectWindow([p.x, p.y], [c.x, c.y], r.mode === "window-inside" ? "inside" : "crossing");
+      result = picked.length ? picked.join(", ") : "none";
+    } else if (r.mode === "category") {
+      const picked = eng.SelectByCategory([String(r.category).trim()]);
+      result = picked.length ? picked.join(", ") : "none";
+    } else {
+      const out: string[] = [];
+      for (const id of eng.GetSelection()) out.push(...eng.ExpandHosted(id));
+      result = out.length ? out.join(", ") : "no hosted dependents";
+    }
+    const diags = eng.GetDiagnostics().slice(-6).map((dg) => `${dg.severity.toUpperCase()} ${dg.code}: ${dg.message}`);
+    showReportCard("Selection Report (Group 1)", [
+      ["Mode", String(r.mode)],
+      ["Selection", eng.GetSelection().join(", ") || "empty"],
+      ["Last result", result],
+      ["Diagnostics", diags.length ? diags.join("  |  ") : "none"],
+    ], "Pinned elements stay selectable for unpinning; edits reject them at command activation (spec §2.4).");
+  } catch (e) {
+    notify("error", `Selection failed: ${(e as Error).message}`);
+  }
+}
+
+export async function openReferencePickerDialog(): Promise<void> {
+  const r = await openFormModal({
+    title: "Reference Picker (v71 spec §3)",
+    subtitle: "Acquire a typed reference with a canonical orthonormal frame; command-scoped, never implicitly persistent",
+    fields: [
+      { kind: "select", key: "kind", label: "Reference kind", default: "edge", options: [["edge", "Edge"], ["vertex", "Vertex"], ["face", "Face"], ["host-surface", "Host surface"], ["centerline", "Centerline"], ["location-line", "Location line"], ["reference-plane", "Reference plane"], ["grid", "Grid"], ["level", "Level"], ["work-plane", "Work plane"], ["connector", "Connector"], ["analytical-axis", "Analytical axis"]] },
+      { kind: "text", key: "position", label: "Position (x,y,z)", default: "0,0,0", placeholder: "x,y,z" },
+      { kind: "text", key: "direction", label: "Direction / tangent (x,y,z)", default: "1,0,0", placeholder: "dx,dy,dz" },
+      { kind: "text", key: "normal", label: "Normal (face/plane kinds)", default: "0,0,1", placeholder: "nx,ny,nz" },
+      { kind: "number", key: "elevation", label: "Elevation (level kind)", default: 0, unit: "m", step: 0.5 },
+    ],
+    submitLabel: "Acquire Reference",
+  });
+  if (!r) return;
+  try {
+    const v3 = (s: string): [number, number, number] => {
+      const p = parsePointList(String(s))[0] ?? { x: 0, y: 0 };
+      return [p.x, p.y, (p as { z?: number }).z ?? 0];
+    };
+    const ref = group1Refs.Acquire({
+      kind: String(r.kind) as never,
+      position: v3(String(r.position)),
+      direction: v3(String(r.direction)),
+      normal: v3(String(r.normal)),
+      elevation: Number(r.elevation),
+    });
+    const elig = (["move", "rotate", "mirror"] as const).map((cmd) => {
+      const res = group1Refs.ValidateForCommand(ref, cmd);
+      return [cmd, res.ok ? "eligible" : "ineligible"] as [string, string];
+    });
+    showReportCard("Reference Report (Group 1)", [
+      ["Reference", `${ref.id} (${ref.kind})`],
+      ["Frame origin", ref.frame.origin.map((n) => n.toFixed(3)).join(", ")],
+      ["Frame x / z", `${ref.frame.xAxis.map((n) => n.toFixed(2)).join(",")}  /  ${ref.frame.zAxis.map((n) => n.toFixed(2)).join(",")}`],
+      ["Status", `${ref.status} (persistent: ${String(ref.persistent)})`],
+      ...elig.map(([cmd, s]) => [`Eligibility — ${cmd}`, s] as [string, string]),
+    ], "Acquired references are command inputs; persistence requires an explicit lock (e.g. Align-with-lock).");
+  } catch (e) {
+    notify("error", `Reference acquisition failed: ${(e as Error).message}`);
+  }
+}
 
 export function setupEngineUi(): void {
   w.__obsEngineUi = {
@@ -1559,6 +1867,12 @@ export function setupEngineUi(): void {
     openBooleanDialog, openVoidDialog, validateLastSolid, getLastSolid,
     // modify
     openModifyMoveDialog, openModifyRotateDialog, openModifyArrayDialog, openModifyMirrorDialog,
+    // group 1 tools (v71 spec §4–§6)
+    openGroup1MoveDialog, openGroup1RotateDialog, openGroup1MirrorDialog,
+    openSelectionInspectorDialog, openReferencePickerDialog,
+    group1Undo, group1Redo, selectionEngine, toSelectable,
+    get group1Txn() { return group1Txn; },
+    get group1Refs() { return group1Refs; },
     authoredElementStore,
     // hosting
     openHostedOpeningDialog,

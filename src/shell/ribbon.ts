@@ -116,6 +116,8 @@ import {
   openBooleanDialog, openVoidDialog, validateLastSolid,
   openGeneralBooleanDialog, openShellDialog, openLoftDialog, openFuseDialog,
   openModifyMoveDialog, openModifyRotateDialog, openModifyArrayDialog, openModifyMirrorDialog,
+  openGroup1MoveDialog, openGroup1RotateDialog, openGroup1MirrorDialog,
+  openSelectionInspectorDialog, openReferencePickerDialog, group1Undo, group1Redo,
   openHostedOpeningDialog, openParameterManagerDialog, openModelIntelligencePanel,
 } from "../features/engine-ui";
 const gizmo_setMode = (m: "move" | "rotate" | "scale" | "none") => _gizmoForEdit.setMode(m);
@@ -2027,6 +2029,29 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("mirror", "Mirror", safe(() => void openModifyMirrorDialog(), "v68 Mirror"), {
         title: "Mirror the selection about an axis; copy keeps originals",
+      }),
+      sep(),
+      groupLabel("Group 1 Tools (v71)"),
+      b("move", "Move+", safe(() => void openGroup1MoveDialog(), "v71 Move tool"), {
+        title: "Group 1 Move: numeric Δ + axis constraint, hosted rigid follow, undo/redo (spec §4)",
+      }),
+      b("rotate", "Rotate+", safe(() => void openGroup1RotateDialog(), "v71 Rotate tool"), {
+        title: "Group 1 Rotate: pivot + angle + angular snap, hosted co-rotation (spec §5)",
+      }),
+      b("mirror", "Mirror+", safe(() => void openGroup1MirrorDialog(), "v71 Mirror tool"), {
+        title: "Group 1 Mirror: M = 2ddᵀ − I, θ' = 2φ − θ, relationship cloning (spec §6)",
+      }),
+      b("undo", "Undo G1", safe(() => { const ok = group1Undo(); toast(ok ? "Group 1 undo applied" : "Nothing to undo", ok ? "success" : "warn"); }, "v71 undo"), {
+        title: "Undo the last Group 1 transaction (Move/Rotate/Mirror are one unit each)",
+      }),
+      b("undo", "Redo G1", safe(() => { const ok = group1Redo(); toast(ok ? "Group 1 redo applied" : "Nothing to redo", ok ? "success" : "warn"); }, "v71 redo"), {
+        title: "Redo the last undone Group 1 transaction",
+      }),
+      b("inspect", "Sel Inspector", safe(() => void openSelectionInspectorDialog(), "v71 selection engine"), {
+        title: "Hit-testing priority, window/crossing modes, filters, hosted expansion (spec §2)",
+      }),
+      b("grid", "Ref Picker", safe(() => void openReferencePickerDialog(), "v71 reference service"), {
+        title: "Acquire typed references with canonical frames; command eligibility check (spec §3)",
       }),
       sep(),
       groupLabel("Snaps"),
