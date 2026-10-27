@@ -31,10 +31,12 @@ t("wheel-arbiter claims __OBS_WHEEL_AUTHORITY", () => {
   assert.ok(s.includes("setupWheelArbiter"), "setup export missing");
 });
 
-t("wheel-arbiter uses native dollyToCursor / _dollyInternal", () => {
+t("wheel-arbiter uses the single cursor-anchored path (zoomBy + core/cursor-zoom), not private controls internals", () => {
   const s = read("src/core/wheel-arbiter.ts");
-  assert.ok(s.includes("_dollyInternal") || s.includes("dollyToCursor"), "native path missing");
-  assert.ok(s.includes("syncElementRect") || s.includes("_elementRect"), "element rect sync missing");
+  assert.ok(s.includes("zoomBy(") && s.includes("pickWorldPointUnderCursor"), "zoomBy/anchor path missing");
+  assert.ok(s.includes("wheelDistanceFactor") && s.includes("pointerNdc"), "cursor-zoom math not used");
+  assert.ok(!s.includes("_dollyInternal") && !s.includes("_zoomInternal"), "private camera-controls internals still used");
+  assert.ok(!/cam\.quaternion\.copy\(/.test(s), "orientation must not be restored after the fact");
 });
 
 t("wheel-arbiter never calls setLookAt in executable code", () => {
