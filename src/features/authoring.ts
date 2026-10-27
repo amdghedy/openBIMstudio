@@ -43,6 +43,7 @@ import type {
 } from "../modules/projects/types";
 import { validateNativeModel } from "../modules/native-bim/model-validation";
 import { deriveLinearParamsFromPositions } from "../modules/native-twin/linear-params";
+import { heightResizeTransform, footprintCenterXZ } from "../modules/native-twin/vertical-resize";
 import {
   classifyTwinCapabilities,
   elementTypeFromIfcEntity,
@@ -1728,14 +1729,20 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
       const h = Number(el.params.height) || baseH;
       const t = Number(el.params.thickness) || baseT;
       const w = Number(el.params.width ?? el.params.depth) || baseW;
-      const yScale = baseH > 1e-8 ? (h / baseH) * sy0 : sy0;
       // Thickness ~ local Z for walls; width ~ local X when available.
       const zScale = baseT > 1e-8 ? (t / baseT) * sz0 : sz0;
       const xScale = baseW > 1e-8 ? (w / baseW) * sx0 : sx0;
-      mesh.scale.set(xScale, yScale, zScale);
-      if (baseH > 1e-8 && Number.isFinite(el.params.elevation)) {
-        mesh.position.y = el.params.elevation + h / 2;
-      }
+      // Height is a DIMENSION: scale along local Y about the element's base and keep the
+      // base fixed in world space. (Previously position.y was overwritten with
+      // elevation + h/2, which moved any mesh whose origin is not its vertical centre.)
+      const rs = baseH > 1e-8
+        ? heightResizeTransform({
+            positions: el.nativeGeometry.positions, position: el.transform.position,
+            quaternion: el.transform.quaternion, scale: [sx0, sy0, sz0], baseHeight: baseH, newHeight: h,
+          })
+        : null;
+      mesh.scale.set(xScale, rs ? rs.scale[1] : sy0, zScale);
+      if (rs) mesh.position.set(rs.position[0], rs.position[1], rs.position[2]);
     }
     return mesh;
   }
@@ -4382,7 +4389,14 @@ export function applyElementParamChange(
   try {
     markNativeDimensionModified(el.sourceArchive, key);
   } catch { /* */ }
-  rebuild();
+  try {
+    rebuild();
+  } catch (err) {
+    // Atomic edit: geometry regeneration failed -> restore the previous valid parameters.
+    el.params = before;
+    try { rebuild(); } catch { /* keep going; previous state restored in the model */ }
+    return { ok: false, reason: "geometry_regeneration_failed: " + (err instanceof Error ? err.message : String(err)) };
+  }
   markDirty();
   notifyAuthoringChange();
   try {
@@ -4391,9 +4405,11 @@ export function applyElementParamChange(
     if (twins?.length) {
       for (const t of twins) {
         if (t.nativeElementId === el.id && Array.isArray(t.position)) {
-          // Nudge twin runtime transform for height elevation alignment
-          if (key === "height" && Number.isFinite(el.params.elevation) && Number.isFinite(el.params.height)) {
-            t.position[1] = (el.params.elevation as number) + (el.params.height as number) / 2;
+          // Keep the gizmo twin on the authored mesh's real placement. (Do NOT derive it from
+          // elevation + height/2: that assumes the mesh origin is its vertical centre.)
+          if (key === "height") {
+            const obj = group.children.find((c: any) => c.userData?.elementId === el.id && c.userData?.nativeTwin) as THREE.Object3D | undefined;
+            if (obj) t.position = [obj.position.x, obj.position.y, obj.position.z];
           }
         }
       }
@@ -4470,7 +4486,9 @@ export function addNativeGeometryElement(input: {
   const elevation = derived?.elevation ?? input.position[1] - (height || 0) / 2;
   const width = input.dimensions?.width ?? thickness;
   const depth = input.dimensions?.depth ?? thickness;
-  const point: [number, number] = [pos[0], pos[2]];
+  // Plan point = centre of the placed footprint, NOT the mesh origin (IFC origins are often a corner/base).
+  const fpc = footprintCenterXZ(positions, input.position, input.quaternion, input.scale);
+  const point: [number, number] = fpc ?? [pos[0], pos[2]];
   const useLinear = LINEAR_ELEMENT_TYPES.has(type) && !!(derived && derived.reliable);
   const useVertical = !useLinear && (
     type === "column" || type === "footing" || type === "equipment" || type === "fitting"

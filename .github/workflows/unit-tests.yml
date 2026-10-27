@@ -42,6 +42,7 @@ jobs:
       - run: npm run test:dwg-features
       - run: npm run test:north
       - run: npm run test:nav-math
+      - run: npm run test:native-twin-resize
       - run: npm run test:ai-privacy
       - run: npm run test:constraints
       - run: npm run test:structural
