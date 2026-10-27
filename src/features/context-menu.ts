@@ -544,14 +544,7 @@ async function openCtxMenu(e: MouseEvent) {
           const twin = await beginEdit(modelId, id);
           if (twin) created++;
           else {
-            try {
-              window.dispatchEvent(new CustomEvent("obs-toast", {
-                detail: {
-                  message: `Native Twin could not be created for ${modelId} / ${id}. The loaded source model returned no usable per-item geometry; no approximate object was created.`,
-                  kind: "error",
-                },
-              }));
-            } catch { /* */ }
+            // beginEdit already emits a diagnostic toast when extraction fails.
           }
         }
       }
