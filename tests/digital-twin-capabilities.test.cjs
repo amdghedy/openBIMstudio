@@ -22,13 +22,11 @@ function elementTypeFromIfcEntity(entity) {
   return "generic";
 }
 
-function shouldPreferParametricSolid(type, editMode, hasLinear, hasPoint, hasPolygon) {
-  if (editMode === "parametric-linear" && hasLinear) return true;
-  if (editMode === "parametric-vertical" && hasPoint) return true;
-  if (editMode === "parametric-slab" && hasPolygon) return true;
-  if (hasLinear && LINEAR.has(type)) return true;
-  if (hasPoint && VERTICAL.has(type)) return true;
-  if (hasPolygon && SLAB.has(type)) return true;
+function shouldPreferParametricSolid(type, editMode, hasLinear, hasPoint, hasPolygon, force = false) {
+  if (force) return true;
+  if (editMode === "force-parametric-linear" && hasLinear) return true;
+  if (editMode === "force-parametric-vertical" && hasPoint) return true;
+  if (editMode === "force-parametric-slab" && hasPolygon) return true;
   return false;
 }
 
@@ -38,10 +36,11 @@ assert.strictEqual(elementTypeFromIfcEntity("IfcPipeFitting"), "fitting");
 assert.strictEqual(elementTypeFromIfcEntity("IfcCableTraySegment"), "cable-tray");
 assert.strictEqual(elementTypeFromIfcEntity("IfcLightFixture"), "equipment");
 
-assert.strictEqual(shouldPreferParametricSolid("wall", "parametric-linear", true, false, false), true);
-assert.strictEqual(shouldPreferParametricSolid("column", "parametric-vertical", false, true, false), true);
-assert.strictEqual(shouldPreferParametricSolid("slab", "parametric-slab", false, false, true), true);
+assert.strictEqual(shouldPreferParametricSolid("wall", "parametric-linear", true, false, false), false);
+assert.strictEqual(shouldPreferParametricSolid("column", "parametric-vertical", false, true, false), false);
+assert.strictEqual(shouldPreferParametricSolid("slab", "parametric-slab", false, false, true), false);
 assert.strictEqual(shouldPreferParametricSolid("wall", "boundary-mesh", false, false, false), false);
-assert.strictEqual(shouldPreferParametricSolid("duct", "parametric-linear", true, false, false), true);
+assert.strictEqual(shouldPreferParametricSolid("duct", "force-parametric-linear", true, false, false), true);
+assert.strictEqual(shouldPreferParametricSolid("wall", "boundary-mesh", true, false, false, true), true);
 
 console.log("digital-twin-capabilities.test.cjs: ok");
