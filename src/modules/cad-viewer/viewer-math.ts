@@ -172,6 +172,13 @@ export function nearestOnEntity(e: DxfEntity, x: number, y: number): Pt | null {
 /** Direction a→b in degrees, 0..360 CCW from +X. */
 export const norm360Deg = (a: Pt, b: Pt) => norm360((Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI);
 export const distance = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.y - a.y);
+
+/** Constrain point B to the nearest axis-aligned direction from A (Ortho mode). */
+export function orthoConstrain(a: Pt, b: Pt): Pt {
+  const dx = Math.abs(b.x - a.x), dy = Math.abs(b.y - a.y);
+  return dx >= dy ? { x: b.x, y: a.y } : { x: a.x, y: b.y };
+}
+
 /** Angle in degrees at vertex `v` between rays to `a` and `b` (0..180). */
 export function angleAt(v: Pt, a: Pt, b: Pt): number {
   const ux = a.x - v.x, uy = a.y - v.y, wx = b.x - v.x, wy = b.y - v.y;
