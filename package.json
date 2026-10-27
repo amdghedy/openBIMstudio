@@ -97,7 +97,8 @@
     "test:feature-registry": "node tests/feature-registry.test.cjs",
     "test:spatial-index": "node tests/spatial-index.test.cjs",
     "test:smart-perp": "node tests/smart-perp-snap.test.cjs",
-    "deploy:worker": "npm run build && npx wrangler@4 deploy"
+    "deploy:worker": "npm run build && npx wrangler@4 deploy",
+    "test:native-twin": "node tests/native-twin-conversion.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
