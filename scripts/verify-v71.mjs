@@ -107,6 +107,7 @@ track(check("closed-form test suite exists", "tests/v71-modify-group1.test.cjs",
 track(check("performance budget test (spec §13.25)", "tests/v71-modify-group1.test.cjs", /hit-test over 10k elements/));
 track(check("CI runs test:v71", ".github/workflows/unit-tests.yml", /test:v71/));
 track(check("CI runs verify:v71", ".github/workflows/unit-tests.yml", /verify:v71/));
+track(check("batched CI runner includes test:v71", "scripts/ci-unit-tests.mjs", /test:v71/));
 track(check("package version >= 0.71.0 (forward-compatible)", "package.json", /"version": "0\.(7[1-9]|[89]\d|\d{3})\.\d+"/));
 
 console.log(`\n${pass} checks passed, ${fail} failed`);
