@@ -416,7 +416,7 @@ export async function pickFragmentAtPointer(): Promise<{ modelId: string; localI
   }
 }
 
-async function clearHover(): Promise<void> {
+export async function clearHover(): Promise<void> {
   if (!ctx.highlighter) return;
   try { await (ctx.highlighter as any).clear("preselect"); } catch { /* */ }
   hoveredMap = {};
@@ -424,6 +424,14 @@ async function clearHover(): Promise<void> {
 
 async function updateHover(canvas: HTMLCanvasElement): Promise<void> {
   if (hoverPending) return;
+  // Yield to transform gizmo — selection preselect/cursor must not block handle grab.
+  try {
+    const gz: any = (ctx.features as any)?.gizmo;
+    if (gz?.isDragging?.() || gz?.isHoveringHandle?.()) {
+      await clearHover();
+      return;
+    }
+  } catch { /* */ }
   hoverPending = true;
   try {
     const caster: any = ctx.components.get(OBC.Raycasters).get(ctx.world);
