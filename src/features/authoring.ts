@@ -1687,14 +1687,18 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
   const hasLinearBaseline = !!(el.params.start && el.params.end);
   const hasPoint = !!(el.params.point);
   const hasPolygon = !!(el.params.polygon && el.params.polygon.length >= 3);
+  const forceParametricSolid = !!(el.properties as any)?.forceParametricSolid;
   const preferParametricSolid = shouldPreferParametricSolid(
     el.type,
     editMode,
     hasLinearBaseline,
     hasPoint,
     hasPolygon,
+    forceParametricSolid,
   );
 
+  // Exact source geometry is the default for Digital Twins — preserves orientation,
+  // openings, and profile. Parametric box rebuild only when explicitly forced.
   if (
     el.nativeGeometry?.positions &&
     el.nativeGeometry.positions.length >= 9 &&
@@ -1729,12 +1733,15 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
       const h = Number(el.params.height) || baseH;
       const t = Number(el.params.thickness) || baseT;
       const w = Number(el.params.width ?? el.params.depth) || baseW;
-      // Thickness ~ local Z for walls; width ~ local X when available.
-      const zScale = baseT > 1e-8 ? (t / baseT) * sz0 : sz0;
-      const xScale = baseW > 1e-8 ? (w / baseW) * sx0 : sx0;
-      // Height is a DIMENSION: scale along local Y about the element's base and keep the
-      // base fixed in world space. (Previously position.y was overwritten with
-      // elevation + h/2, which moved any mesh whose origin is not its vertical centre.)
+      const q = el.transform.quaternion;
+      const isIdentityQuat =
+        Math.abs(q[0]) < 1e-9 && Math.abs(q[1]) < 1e-9 && Math.abs(q[2]) < 1e-9 && Math.abs(Math.abs(q[3]) - 1) < 1e-6;
+      // Source meshes are usually stored with identity quaternion and world-oriented
+      // vertices. Scaling X/Z in that frame shears diagonal walls — only safe when the
+      // element has a real local frame (non-identity quaternion).
+      const zScale = (!isIdentityQuat && baseT > 1e-8) ? (t / baseT) * sz0 : sz0;
+      const xScale = (!isIdentityQuat && baseW > 1e-8) ? (w / baseW) * sx0 : sx0;
+      // Height: scale along local Y, keep base fixed in world space.
       const rs = baseH > 1e-8
         ? heightResizeTransform({
             positions: el.nativeGeometry.positions, position: el.transform.position,
@@ -1743,6 +1750,7 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
         : null;
       mesh.scale.set(xScale, rs ? rs.scale[1] : sy0, zScale);
       if (rs) mesh.position.set(rs.position[0], rs.position[1], rs.position[2]);
+      else mesh.position.set(...el.transform.position);
     }
     return mesh;
   }
@@ -4507,10 +4515,14 @@ export function addNativeGeometryElement(input: {
     vertexCount: Math.floor(positions.length / 3),
   });
   // Prefer category-specific parametric modes when recovery succeeded.
-  let editMode = caps.editMode;
-  if (useLinear) editMode = "parametric-linear";
-  else if (useVertical) editMode = "parametric-vertical";
-  else if (useSlab) editMode = "parametric-slab";
+  // Visual mode is always source-mesh for Digital Twins. Parametric capability is
+  // recorded separately so Properties can edit dimensions without replacing geometry
+  // with an approximate box (which caused wall rotation/shape loss).
+  let editMode = "boundary-mesh";
+  let parametricCapability: string = caps.editMode;
+  if (useLinear) parametricCapability = "parametric-linear";
+  else if (useVertical) parametricCapability = "parametric-vertical";
+  else if (useSlab) parametricCapability = "parametric-slab";
 
   const el: AuthoredElement = {
     id, type,
@@ -4532,6 +4544,9 @@ export function addNativeGeometryElement(input: {
       nativeBaseThickness: thickness,
       nativeBaseWidth: width,
       editMode,
+      parametricCapability,
+      forceParametricSolid: false,
+      preserveSourceGeometry: true,
       twinCapabilities: caps.notes,
       sourceModelId: input.sourceModelId,
       sourceLocalId: input.sourceLocalId,
