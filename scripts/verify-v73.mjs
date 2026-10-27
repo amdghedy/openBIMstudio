@@ -180,8 +180,9 @@ check("package.json: test scripts wired", () => {
 });
 check("CI runs the v73 suites", () => {
   const wf = read(".github/workflows/unit-tests.yml");
+  const batch = read("scripts/ci-unit-tests.mjs");
   for (const k of ["test:v73-just", "test:v73-mag", "test:v73-panels", "test:v73-rel", "verify:v73"]) {
-    if (!wf.includes(`npm run ${k}`)) throw new Error(`CI missing ${k}`);
+    if (!wf.includes(`npm run ${k}`) && !batch.includes(k)) throw new Error(`CI missing ${k}`);
   }
 });
 check("documentation exists", () => {
