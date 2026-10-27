@@ -30,6 +30,7 @@ jobs:
       - run: npm run test:selection-box
       - run: npm run test:history
       - run: npm run test:dwg-isolation
+      - run: npm run test:dwg-worker-lifecycle
       - run: npm run test:native-bim
       - run: npm run test:cad-link
       - run: npm run test:walk

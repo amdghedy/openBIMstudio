@@ -104,7 +104,8 @@
     "deploy:worker": "npm run build && npx wrangler@4 deploy",
     "test:native-twin": "node tests/native-twin-conversion.test.cjs && node tests/native-twin-linear-params.test.cjs",
     "test:native-twin-linear": "node tests/native-twin-linear-params.test.cjs",
-    "test:dwg-isolation": "node tests/dwg-reader-isolation.test.cjs"
+    "test:dwg-isolation": "node tests/dwg-reader-isolation.test.cjs",
+    "test:dwg-worker-lifecycle": "node tests/dwg-worker-lifecycle.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
