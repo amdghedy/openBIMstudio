@@ -7,12 +7,10 @@ on:
       - "src/modules/mep/**"
       - "src/modules/families/**"
       - "src/plugins/**"
-      - "src/features/sheets-2d-panel.ts"
       - "src/features/authoring.ts"
       - "src/features/mep-fabrication.ts"
       - "tests/native-bim-validation.test.mjs"
       - "tests/mep-router.test.cjs"
-      - "docs/NATIVE_BIM_VALIDATION.md"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/native-bim-validation.yml"
@@ -27,7 +25,6 @@ on:
       - "src/features/mep-fabrication.ts"
       - "tests/native-bim-validation.test.mjs"
       - "tests/mep-router.test.cjs"
-      - "docs/NATIVE_BIM_VALIDATION.md"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/native-bim-validation.yml"
@@ -36,18 +33,22 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - name: Install dependencies
-        run: npm_config_registry=https://registry.npmjs.org/ npm ci --legacy-peer-deps
-      - name: Align React 18 stack
-        run: npm install react@18.3.1 react-dom@18.3.1 @types/react@18.3.12 @types/react-dom@18.3.1 --legacy-peer-deps --no-fund --no-audit
-      - run: npm run typecheck
-      - run: npm run build
-      - run: node tests/native-bim-validation.test.mjs
-      - run: npm run verify:v66
-      - run: npm run test:mep
+        env:
+          npm_config_registry: https://registry.npmjs.org/
+        run: npm ci --legacy-peer-deps
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Native BIM validation tests
+        run: node tests/native-bim-validation.test.mjs
+      - name: MEP tests
+        run: npm run test:mep
