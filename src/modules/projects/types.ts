@@ -101,6 +101,13 @@ export interface AuthoredElement {
    */
   nativeGeometry?: { positions: number[] };
 
+  /**
+   * Lossless source-information archive (Layer 2).
+   * Original IFC/FRAG item payload, property sets, quantities, field map,
+   * and geometry provenance. Native parametric edits must not erase this.
+   */
+  sourceArchive?: import("../native-twin/source-archive").SourceArchive;
+
   /** IFC semantic identity retained for reconstructed/native elements. */
   ifc?: {
     entity: string;
