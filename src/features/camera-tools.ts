@@ -6,6 +6,7 @@ import { register, type CameraService } from "../core/services";
 import { getElementWorldBoxes } from "../modules/geometry/world-box";
 import { syncOrthoZoom } from "../core/ortho-zoom";
 import { setOrbitTargetKeepingView } from "../core/orbit-target";
+import { validateHome, type HomeView, type V3 } from "../modules/navigation/nav-math";
 
 // ── Scene placement state ──
 let recenterEnabled = false;
@@ -1566,4 +1567,109 @@ export function setupCameraTools() {
     },
   };
   register("camera", cam);
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Navigation-controller hooks (ViewCube / Home menu)
+   These expose the camera internals the controller needs, without a second camera system.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/** Width / height of the 3D viewport (1 when unknown). */
+export function getViewportAspect(): number {
+  try {
+    const r = ctx.rightHost?.getBoundingClientRect();
+    if (r && r.width > 0 && r.height > 0) return r.width / r.height;
+  } catch { /* */ }
+  return 1;
+}
+
+/** Bounding sphere of everything loaded (recomputed). `empty` when no usable bounds exist. */
+export function getSceneSphere(): { center: V3; radius: number; empty: boolean } {
+  computeSceneBounds();
+  const empty = lastSceneBox.isEmpty();
+  return { center: [sceneCenter.x, sceneCenter.y, sceneCenter.z], radius: sceneRadius, empty };
+}
+
+export function getCameraFov(): number {
+  const cam: any = worldReady() ? ctx.world.camera.three : null;
+  return cam && !isOrthoCam(cam) && Number.isFinite(cam.fov) ? cam.fov : 60;
+}
+
+/** Everything needed to restore or describe the current view (validated; null when the camera is unusable). */
+export function getCameraState(): HomeView | null {
+  if (!worldReady()) return null;
+  try {
+    const cam: any = ctx.world.camera.three;
+    const target = getCamTarget(new THREE.Vector3());
+    const ortho = isOrthoCam(cam);
+    const framing = captureFraming();
+    return validateHome({
+      pos: [cam.position.x, cam.position.y, cam.position.z],
+      target: [target.x, target.y, target.z],
+      up: [cam.up.x, cam.up.y, cam.up.z],
+      projection: ortho ? "orthographic" : "perspective",
+      fov: ortho ? undefined : cam.fov,
+      zoom: ortho ? Number(cam.zoom) : undefined,
+      height: framing?.h,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Pose read for the transition engine: target, direction to camera, up, distance, ortho zoom. */
+export function getCameraPose(): { target: V3; pos: V3; up: V3; dist: number; zoom?: number; ortho: boolean } | null {
+  if (!worldReady()) return null;
+  try {
+    const cam: any = ctx.world.camera.three;
+    const t = getCamTarget(new THREE.Vector3());
+    const dist = cam.position.distanceTo(t);
+    return {
+      target: [t.x, t.y, t.z], pos: [cam.position.x, cam.position.y, cam.position.z], up: [cam.up.x, cam.up.y, cam.up.z],
+      dist: Number.isFinite(dist) ? dist : 0, zoom: isOrthoCam(cam) ? Number(cam.zoom) : undefined, ortho: isOrthoCam(cam),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Visible world height of an orthographic view at zoom 1 (frustum height). */
+export function getOrthoFrustumHeight(): number {
+  const cam: any = worldReady() ? ctx.world.camera.three : null;
+  return cam && isOrthoCam(cam) ? Math.abs(cam.top - cam.bottom) : 0;
+}
+
+/** Make the orthographic frustum fit the scene at zoom 1 (used when a Home is rebuilt for another window size). */
+export function refitOrthoFrustum(): void {
+  const cam: any = worldReady() ? ctx.world.camera.three : null;
+  if (!cam || !isOrthoCam(cam)) return;
+  computeSceneBounds();
+  fitOrthoFrustum(cam as THREE.OrthographicCamera, sceneRadius);
+}
+
+/**
+ * Put the camera on an exact pose NOW (one frame of a transition, or an instant jump).
+ * `up` is applied before and after the controls so the final orientation is exact, including at the poles.
+ */
+export function setCameraPose(target: V3, dirToCamera: V3, up: V3, dist: number, zoom?: number): void {
+  if (!worldReady()) return;
+  const cam: any = ctx.world.camera.three;
+  const controls: any = ctx.world.camera.controls;
+  const d = Math.max(dist, 1e-4);
+  const px = target[0] + dirToCamera[0] * d, py = target[1] + dirToCamera[1] * d, pz = target[2] + dirToCamera[2] * d;
+  if (![px, py, pz, target[0], target[1], target[2]].every(Number.isFinite)) return;
+  cam.up.set(up[0], up[1], up[2]);
+  try { controls.setLookAt(px, py, pz, target[0], target[1], target[2], false); } catch { cam.position.set(px, py, pz); }
+  cam.up.set(up[0], up[1], up[2]);
+  cam.lookAt(target[0], target[1], target[2]);
+  if (zoom != null && Number.isFinite(zoom) && isOrthoCam(cam)) {
+    cam.zoom = Math.max(1e-4, zoom);
+    syncOrthoZoom(cam);
+    cam.updateProjectionMatrix();
+  }
+}
+
+/** Stop any camera-controls transition that is still running (so our own animation owns the camera). */
+export function stopControlsTransition(): void {
+  try { (ctx.world.camera.controls as any)?.stop?.(); } catch { /* */ }
 }

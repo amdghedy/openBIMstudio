@@ -56,6 +56,7 @@
     "test:ocs": "node tests/ocs-flip.test.cjs",
     "test:dxf-features": "node tests/dxf-features.test.cjs",
     "test:dwg-features": "node tests/dwg-features.test.cjs",
+    "test:nav-math": "node tests/nav-math.test.cjs",
     "test:north": "node tests/north.test.cjs",
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
     "test:constraints": "node tests/constraint-solver.test.cjs",
