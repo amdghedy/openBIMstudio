@@ -8,9 +8,9 @@ import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import * as M from "../modules/cad-viewer/viewer-math";
 
-type Tool = "pan" | "select" | "box" | "dist" | "poly" | "area" | "angle" | "coord" | "radius" | "zoomwin" | "redline" | "note" | "id" | "dim" | "calibrate" | "chain" | "offset" | "bearing" | "cloud";
+type Tool = "pan" | "select" | "box" | "dist" | "poly" | "area" | "angle" | "coord" | "radius" | "zoomwin" | "redline" | "note" | "id" | "dim" | "calibrate" | "chain" | "offset" | "bearing" | "cloud" | "origin" | "stamp" | "leader";
 type ColorMode = "layer" | "bw" | "invert";
-interface Markup { kind: "line" | "note" | "dim" | "cloud"; pts: M.Pt[]; text?: string }
+interface Markup { kind: "line" | "note" | "dim" | "cloud" | "stamp" | "leader"; pts: M.Pt[]; text?: string }
 
 const BG: Record<string, string> = { black: "#000000", dark: "#1c2128", grey: "#808080", white: "#ffffff" };
 let root: HTMLDivElement | null = null;
@@ -60,6 +60,11 @@ function build(): void {
       <h4>Measurements</h4><div class="sc" data-r="meas" style="max-height:24%;padding:4px 8px"></div>
     </div>
   </div>
+  <div data-r="cmdrow" style="display:flex;gap:6px;align-items:center;padding:4px 8px;background:#12151c;border-top:1px solid #2a3140">
+    <span style="color:#9aa4b2;font-size:11px">Command</span>
+    <input data-r="cmd" placeholder="Type a command: dist, chain, area, layer, extents, report, list…" style="flex:1;min-width:0;padding:4px 8px;background:#0e1017;border:1px solid #2a3140;border-radius:4px;color:#e5e7eb;font:12px system-ui" />
+    <button data-r="cmdrun" style="padding:4px 10px">Run</button>
+  </div>
   <div data-r="tabs" style="display:none;gap:2px;padding:3px 8px 0;background:#151a23;border-top:1px solid #2a3140"></div>
   <div data-r="status" style="display:flex;gap:16px;padding:4px 10px;background:#151a23;border-top:1px solid #2a3140;color:#9aa4b2;font-variant-numeric:tabular-nums"></div>`;
   document.body.appendChild(root);
@@ -78,6 +83,10 @@ function build(): void {
   let snapOn = true; const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
   let orthoOn = false;
   let offsetEntity = -1;
+  /** Relative origin for coordinate readouts (null = absolute drawing coords). */
+  let origin: M.Pt | null = null;
+  let dualUnits = false;
+  let typeFilter = new Set<string>(); // empty = all types visible
   /** User calibration: multiplies converted lengths (1 = drawing units as-is). */
   let scaleCal = 1;
   let crosshair: M.Pt | null = null;
@@ -98,7 +107,7 @@ function build(): void {
 
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
-  const visible = (e: DxfEntity) => !hidden.has(e.layer);
+  const visible = (e: DxfEntity) => !hidden.has(e.layer) && (typeFilter.size === 0 || typeFilter.has(e.type));
   const shown = (e: DxfEntity) => visible(e) && !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch);
   const layerOf = (n: string) => doc?.layers.find((l) => l.name === n);
   function colorOf(e: DxfEntity): string {
@@ -224,6 +233,31 @@ function build(): void {
         });
         c.stroke();
         c.strokeStyle = "#ef4444"; c.fillStyle = "#ef4444";
+      } else if (m.kind === "leader" && m.pts.length >= 2) {
+        const a = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
+        const b = M.worldToScreen(v, m.pts[1].x, m.pts[1].y);
+        c.strokeStyle = "#a78bfa"; c.fillStyle = "#a78bfa"; c.lineWidth = 1.5;
+        c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+        // arrow head at a
+        const ang = Math.atan2(a.y - b.y, a.x - b.x);
+        c.beginPath();
+        c.moveTo(a.x, a.y);
+        c.lineTo(a.x - 10 * Math.cos(ang - 0.4), a.y - 10 * Math.sin(ang - 0.4));
+        c.lineTo(a.x - 10 * Math.cos(ang + 0.4), a.y - 10 * Math.sin(ang + 0.4));
+        c.closePath(); c.fill();
+        c.font = "12px system-ui,sans-serif";
+        c.fillText(m.text ?? "", b.x + 4, b.y - 4);
+        c.strokeStyle = "#ef4444"; c.fillStyle = "#ef4444";
+      } else if (m.kind === "stamp") {
+        const p = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
+        c.font = "bold 13px system-ui,sans-serif";
+        c.fillStyle = "#fbbf24";
+        const tw = c.measureText(m.text ?? "").width;
+        c.fillStyle = "rgba(0,0,0,0.55)";
+        c.fillRect(p.x - 4, p.y - 14, tw + 8, 18);
+        c.fillStyle = "#fbbf24";
+        c.fillText(m.text ?? "", p.x, p.y);
+        c.strokeStyle = "#ef4444"; c.fillStyle = "#ef4444";
       } else {
         const p = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
         c.fillText(m.text ?? "", p.x, p.y);
@@ -245,6 +279,16 @@ function build(): void {
         else c.strokeRect(p.x - 5, p.y - 5, 10, 10);
       }
       paintScaleBar(c, v);
+      // Origin marker
+      if (origin) {
+        const op = M.worldToScreen(v, origin.x, origin.y);
+        c.save();
+        c.strokeStyle = "#f472b6"; c.fillStyle = "#f472b6"; c.lineWidth = 1.5;
+        c.beginPath(); c.moveTo(op.x - 10, op.y); c.lineTo(op.x + 10, op.y); c.moveTo(op.x, op.y - 10); c.lineTo(op.x, op.y + 10); c.stroke();
+        c.beginPath(); c.arc(op.x, op.y, 4, 0, 7); c.stroke();
+        c.font = "10px system-ui"; c.fillText("UCS", op.x + 6, op.y - 6);
+        c.restore();
+      }
       // Engineer crosshair at cursor (world-aligned readout uses status bar)
       if (cursor && withUi) {
         const cp = M.worldToScreen(v, cursor.x, cursor.y);
@@ -306,7 +350,7 @@ function build(): void {
       if (!b && !doc.layouts?.length) throw new Error("The file has no drawable geometry");
       modelBounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 }; modelIdx = M.buildIndex(modelEnts, modelBounds); layoutIdxCache.clear();
       hidden.clear(); for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
-      markups = []; results = []; layerFilter = ""; $<HTMLInputElement>("lf").value = ""; emptyEl.style.display = "none";
+      markups = []; results = []; layerFilter = ""; origin = null; typeFilter = new Set(); offsetEntity = -1; $<HTMLInputElement>("lf").value = ""; emptyEl.style.display = "none";
       cmp = null; { const cb = tools2.querySelector("[data-a=compare]"); if (cb) { cb.textContent = "Compare…"; cb.classList.remove("on"); } }
       fillMenus();
       buildTabs(); activate(modelEnts.length ? -1 : 0); setTool("select"); showMeas();
@@ -402,7 +446,8 @@ function build(): void {
     ["dist", "Distance", "D"], ["chain", "Chain", "H"], ["poly", "Polyline", "L"], ["area", "Area", "A"],
     ["angle", "Angle", "G"], ["bearing", "Bearing", "T"], ["offset", "Offset", "O"],
     ["coord", "Coordinates", "C"], ["radius", "Radius", "R"], ["id", "ID", "I"], ["dim", "Dimension", "Q"],
-    ["calibrate", "Calibrate", "K"], ["cloud", "Cloud", "U"], ["redline", "Redline", "M"], ["note", "Note", "N"],
+    ["calibrate", "Calibrate", "K"], ["origin", "Origin", "X"], ["stamp", "Stamp", "J"], ["leader", "Leader", "Y"],
+    ["cloud", "Cloud", "U"], ["redline", "Redline", "M"], ["note", "Note", "N"],
   ];
   function buildBar() {
     tools.innerHTML = `<button data-a="open">Open…</button><input type="file" data-r="file" accept=".dwg,.dxf" style="display:none"><span class="sep"></span>` +
@@ -419,8 +464,13 @@ function build(): void {
       <button data-a="report" title="Layer length / entity report">Report</button>
       <button data-a="list" title="Selection schedule">List</button>
       <button data-a="sim" title="Select similar (same layer)">Similar</button>
+      <button data-a="bytype" title="Select / filter by entity type">By type…</button>
+      <button data-a="invlay" title="Invert layer visibility">Inv layers</button>
       <button data-a="freeze" title="Freeze layers of selection">Freeze sel</button>
       <button data-a="xy" title="Copy cursor X,Y">Copy XY</button>
+      <button data-a="dual" title="Show dual units in status">Dual units</button>
+      <button data-a="mkexp" title="Export markups JSON">Mk↑</button>
+      <button data-a="mkimp" title="Import markups JSON">Mk↓</button>
       <button data-a="csv" title="Export measurements as CSV">CSV</button>
       <span style="flex:1"></span><button data-a="close">Close ✕</button>`;
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.onclick = () => setTool(b.dataset.t as Tool));
@@ -437,8 +487,13 @@ function build(): void {
       report: () => showLayerReport(),
       list: () => showSelectionList(),
       sim: () => selectSimilarLayer(),
+      bytype: () => openTypeFilter(),
+      invlay: () => invertLayers(),
       freeze: () => freezeSelectedLayers(),
       xy: () => copyCursorXY(),
+      dual: () => { dualUnits = !dualUnits; tools.querySelector("[data-a=dual]")?.classList.toggle("on", dualUnits); updateStatus(); },
+      mkexp: () => exportMarkups(),
+      mkimp: () => importMarkups(),
       csv: () => exportMeasurementsCsv(),
       png: () => exportPng(), svg: () => exportSvg(),
       clrmk: () => { markups = []; draw(); },
@@ -497,7 +552,46 @@ function build(): void {
     if (tool === "zoomwin") { winStart = winNow = sp; cv.setPointerCapture(ev.pointerId); return; }
     const s = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind }; const p = { x: s.x, y: s.y };
     switch (tool) {
-      case "coord": results.push(`X ${M.convertLength(p.x, doc.units, du).toFixed(3)}  Y ${M.convertLength(p.y, doc.units, du).toFixed(3)} ${M.unitLabel(doc.units, du)}`); drawn.push({ kind: "coord", pts: [p] }); showMeas(); break;
+      case "coord": {
+        const ox = origin ? p.x - origin.x : p.x;
+        const oy = origin ? p.y - origin.y : p.y;
+        const u = M.unitLabel(doc.units, du);
+        const abs = `X ${M.convertLength(p.x * scaleCal, doc.units, du).toFixed(3)}  Y ${M.convertLength(p.y * scaleCal, doc.units, du).toFixed(3)} ${u}`;
+        const rel = origin ? `  (rel ${M.convertLength(ox * scaleCal, doc.units, du).toFixed(3)}, ${M.convertLength(oy * scaleCal, doc.units, du).toFixed(3)})` : "";
+        results.push(`Coord: ${abs}${rel}`);
+        drawn.push({ kind: "coord", pts: [p] });
+        showMeas();
+        break;
+      }
+      case "origin": {
+        origin = { x: p.x, y: p.y };
+        results.push(`Origin set at X ${M.convertLength(p.x * scaleCal, doc.units, du).toFixed(3)}  Y ${M.convertLength(p.y * scaleCal, doc.units, du).toFixed(3)}`);
+        showMeas();
+        updateStatus();
+        draw();
+        break;
+      }
+      case "stamp": {
+        const now = new Date();
+        const label = prompt("Stamp text", `REV  ${now.toISOString().slice(0, 10)}`) ?? "";
+        if (label.trim()) {
+          markups.push({ kind: "stamp", pts: [p], text: label.trim() });
+          results.push(`Stamp: ${label.trim()}`);
+          showMeas();
+        }
+        break;
+      }
+      case "leader": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const text = prompt("Leader text", "Note") ?? "";
+          markups.push({ kind: "leader", pts: [...pts], text: text.trim() || "Note" });
+          results.push(`Leader: ${text.trim() || "Note"}`);
+          pts = [];
+          showMeas();
+        }
+        break;
+      }
       case "dist": {
         let q = p;
         if (orthoOn && pts.length === 1) q = M.orthoConstrain(pts[0], p);
@@ -668,21 +762,42 @@ function build(): void {
     const c = p ?? cursor;
     const zoomPct = doc && bounds ? Math.round((view.scale / M.fitView(bounds, view.w, view.h).scale) * 100) : 100;
     const unit = doc ? M.unitLabel(doc.units, du) : "-";
-    const xy = c && doc
-      ? `X ${M.convertLength(c.x * scaleCal, doc.units, du).toFixed(3)}  Y ${M.convertLength(c.y * scaleCal, doc.units, du).toFixed(3)} ${unit}`
-      : "";
+    let xy = "";
+    if (c && doc) {
+      const ax = M.convertLength(c.x * scaleCal, doc.units, du);
+      const ay = M.convertLength(c.y * scaleCal, doc.units, du);
+      xy = `X ${ax.toFixed(3)}  Y ${ay.toFixed(3)} ${unit}`;
+      if (origin) {
+        const rx = M.convertLength((c.x - origin.x) * scaleCal, doc.units, du);
+        const ry = M.convertLength((c.y - origin.y) * scaleCal, doc.units, du);
+        xy += `  |  Δ ${rx.toFixed(3)}, ${ry.toFixed(3)}`;
+      }
+      if (dualUnits && du !== "mm" && du !== "drawing") {
+        const ax2 = M.convertLength(c.x * scaleCal, doc.units, "mm");
+        const ay2 = M.convertLength(c.y * scaleCal, doc.units, "mm");
+        xy += `  ·  ${ax2.toFixed(1)}, ${ay2.toFixed(1)} mm`;
+      } else if (dualUnits && du === "mm") {
+        const ax2 = M.convertLength(c.x * scaleCal, doc.units, "m");
+        const ay2 = M.convertLength(c.y * scaleCal, doc.units, "m");
+        xy += `  ·  ${ax2.toFixed(3)}, ${ay2.toFixed(3)} m`;
+      }
+    }
+    // Approximate paper scale: how many drawing units per screen mm (rough)
+    const scaleHint = doc && view.scale > 0 ? `1:${Math.max(1, Math.round(1000 / view.scale))}` : "";
     statusEl.innerHTML =
       `<span>${escapeHtml(name || "No file")}</span>` +
       `<span>${xy}</span>` +
       `<span>${escapeHtml(layoutI >= 0 && doc?.layouts?.[layoutI] ? doc.layouts[layoutI].name : "Model")}</span>` +
       `<span>Units: ${escapeHtml(unit)}</span>` +
-      `<span>Zoom ${zoomPct}%</span>` +
+      `<span>Zoom ${zoomPct}%${scaleHint ? " · ~" + scaleHint : ""}</span>` +
       `<span>Tool: ${escapeHtml(T.find(([k]) => k === tool)?.[1] ?? tool)}</span>` +
       `<span style="flex:1"></span>` +
       `<span>Snap ${snapOn ? "ON" : "off"}</span>` +
       `<span>Ortho ${orthoOn ? "ON" : "off"}</span>` +
       `<span>Scale ×${scaleCal === 1 ? "1" : scaleCal.toFixed(4)}</span>` +
-      `<span>${sel.size ? sel.size + " selected" : ""}</span>`;
+      `<span>${origin ? "UCS" : "WCS"}</span>` +
+      `<span>${sel.size ? sel.size + " selected" : ""}</span>` +
+      `<span>${typeFilter.size ? "Type filter " + typeFilter.size : ""}</span>`;
   }
 
   function showLayerReport(): void {
@@ -739,6 +854,120 @@ function build(): void {
     URL.revokeObjectURL(a.href);
   }
 
+
+
+  function openTypeFilter(): void {
+    if (!doc) return;
+    const counts = M.countByType(ents);
+    const types = [...counts.keys()].sort();
+    const rows = types.map((ty) => {
+      const on = typeFilter.size === 0 || typeFilter.has(ty);
+      return `<label style="display:flex;gap:8px;align-items:center;padding:3px 0;cursor:pointer">
+        <input type="checkbox" data-ty="${escapeHtml(ty)}" ${on ? "checked" : ""}/>
+        <span style="flex:1">${escapeHtml(ty)}</span>
+        <span style="color:#9aa4b2">${counts.get(ty)}</span>
+      </label>`;
+    }).join("");
+    openOverlay(
+      `<b style="font-size:14px">Entity types</b><br>
+      <span style="color:#9aa4b2">Filter which object types are visible and selectable. Empty selection = show all.</span>
+      <div style="margin-top:10px;max-height:50vh;overflow:auto">${rows}</div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button data-r="ty-all" style="padding:6px 10px">All</button>
+        <button data-r="ty-none" style="padding:6px 10px">None</button>
+        <button data-r="ty-sel" style="padding:6px 10px">Select visible types</button>
+        <button data-r="ty-apply" style="padding:6px 10px">Apply filter</button>
+        <button data-r="ty-close" style="padding:6px 10px">Close</button>
+      </div>`,
+    );
+    const panel = helpEl!;
+    const boxes = () => [...panel.querySelectorAll<HTMLInputElement>("input[data-ty]")];
+    panel.querySelector("[data-r=ty-all]")?.addEventListener("click", () => boxes().forEach((b) => { b.checked = true; }));
+    panel.querySelector("[data-r=ty-none]")?.addEventListener("click", () => boxes().forEach((b) => { b.checked = false; }));
+    panel.querySelector("[data-r=ty-close]")?.addEventListener("click", () => closeOverlay());
+    panel.querySelector("[data-r=ty-apply]")?.addEventListener("click", () => {
+      const checked = boxes().filter((b) => b.checked).map((b) => b.dataset.ty!);
+      typeFilter = checked.length === types.length ? new Set() : new Set(checked);
+      closeOverlay();
+      draw();
+      updateStatus();
+    });
+    panel.querySelector("[data-r=ty-sel]")?.addEventListener("click", () => {
+      const checked = new Set(boxes().filter((b) => b.checked).map((b) => b.dataset.ty!));
+      const next: number[] = [];
+      ents.forEach((e, i) => { if (visible(e) && checked.has(e.type)) next.push(i); });
+      // temporarily apply filter for visibility then select
+      const prev = typeFilter;
+      typeFilter = checked.size === types.length ? new Set() : checked;
+      setSel(next);
+      typeFilter = prev;
+      closeOverlay();
+      results.push(`Selected ${next.length} of type(s): ${[...checked].join(", ")}`);
+      showMeas();
+      draw();
+    });
+  }
+
+  function invertLayers(): void {
+    if (!doc) return;
+    const all = new Set(doc.layers.map((l) => l.name));
+    // also include entity layers not in table
+    for (const e of ents) all.add(e.layer);
+    const next = new Set<string>();
+    for (const name of all) if (!hidden.has(name)) next.add(name);
+    hidden.clear();
+    for (const n of next) hidden.add(n);
+    const lf = root!.querySelector<HTMLInputElement>("[data-r=lf]");
+    if (lf) lf.dispatchEvent(new Event("input"));
+    draw();
+  }
+
+  function exportMarkups(): void {
+    const payload = {
+      version: 1,
+      file: name,
+      scaleCal,
+      origin,
+      markups,
+      measurements: results,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (name || "drawing") + "-markups.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function importMarkups(): void {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(String(reader.result || "{}"));
+          if (Array.isArray(data.markups)) markups = data.markups;
+          if (Array.isArray(data.measurements)) results = data.measurements.map(String);
+          if (typeof data.scaleCal === "number" && data.scaleCal > 0) scaleCal = data.scaleCal;
+          if (data.origin && typeof data.origin.x === "number") origin = data.origin;
+          showMeas();
+          updateStatus();
+          draw();
+          results.push(`Imported ${markups.length} markups from ${f.name}`);
+          showMeas();
+        } catch (err) {
+          results.push("Markup import failed: " + String(err));
+          showMeas();
+        }
+      };
+      reader.readAsText(f);
+    };
+    input.click();
+  }
 
   function showSelectionList(): void {
     if (!sel.size) {
@@ -1017,6 +1246,43 @@ function build(): void {
     fillMenus();
   }
   buildBar(); buildBar2(); setTool("select"); showProps(); showMeas(); updateStatus(); resize();
+
+  const cmdIn = root!.querySelector<HTMLInputElement>("[data-r=cmd]")!;
+  const runCmd = () => {
+    const raw = (cmdIn.value || "").trim().toLowerCase();
+    if (!raw) return;
+    cmdIn.value = "";
+    const [cmd, ...rest] = raw.split(/\s+/);
+    const arg = rest.join(" ");
+    const toolMap: Record<string, Tool> = {
+      pan: "pan", select: "select", box: "box", zoom: "zoomwin", dist: "dist", distance: "dist",
+      chain: "chain", poly: "poly", pline: "poly", area: "area", angle: "angle", bearing: "bearing",
+      offset: "offset", coord: "coord", id: "id", dim: "dim", calibrate: "calibrate", origin: "origin",
+      stamp: "stamp", leader: "leader", cloud: "cloud", redline: "redline", note: "note", radius: "radius",
+    };
+    if (toolMap[cmd]) { setTool(toolMap[cmd]); return; }
+    if (cmd === "extents" || cmd === "ze") { zoomExtents(); return; }
+    if (cmd === "report") { showLayerReport(); return; }
+    if (cmd === "list") { showSelectionList(); return; }
+    if (cmd === "similar") { selectSimilarLayer(); return; }
+    if (cmd === "ortho") { orthoOn = !orthoOn; updateStatus(); draw(); return; }
+    if (cmd === "snap") { snapOn = !snapOn; updateStatus(); draw(); return; }
+    if (cmd === "grid") { showGrid = !showGrid; draw(); return; }
+    if (cmd === "clear") { results = []; drawn = []; markups = []; showMeas(); draw(); return; }
+    if (cmd === "layer" && arg) {
+      // toggle layer by name
+      if (hidden.has(arg)) hidden.delete(arg); else hidden.add(arg);
+      draw();
+      return;
+    }
+    results.push(`Unknown command: ${raw}`);
+    showMeas();
+  };
+  cmdIn.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); runCmd(); }
+  });
+  root!.querySelector("[data-r=cmdrun]")?.addEventListener("click", () => runCmd());
+
   api = {
     load,
     close() { root!.style.display = "none"; },
