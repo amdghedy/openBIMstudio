@@ -28,6 +28,8 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        env:
+          npm_config_registry: https://registry.npmjs.org/
         run: npm ci --legacy-peer-deps
 
       - name: Build project
