@@ -171,21 +171,27 @@ export function classifyTwinCapabilities(input: ClassifyInput): TwinCapabilities
   };
 }
 
-/** Whether createMesh should ignore frozen nativeGeometry and use builders. */
+/**
+ * Whether createMesh should ignore frozen nativeGeometry and use builders.
+ *
+ * CRITICAL: Exact source mesh must win for Digital Twins. Rebuilding a wall as a
+ * parametric box from derived start/end was rotating and reshaping converted
+ * elements. Only force the parametric solid when the element explicitly opts in
+ * via editMode suffix or properties.forceParametricSolid (set by advanced edits).
+ */
 export function shouldPreferParametricSolid(
   type: ElementType,
   editMode: string,
   hasLinearBaseline: boolean,
   hasPoint: boolean,
   hasPolygon: boolean,
+  forceParametricSolid = false,
 ): boolean {
-  if (editMode === "parametric-linear" && hasLinearBaseline) return true;
-  if (editMode === "parametric-vertical" && hasPoint) return true;
-  if (editMode === "parametric-slab" && hasPolygon) return true;
-  // Category defaults when editMode not yet stored on legacy twins
-  if (hasLinearBaseline && LINEAR_ELEMENT_TYPES.has(type)) return true;
-  if (hasPoint && VERTICAL_ELEMENT_TYPES.has(type)) return true;
-  if (hasPolygon && SLAB_LIKE_TYPES.has(type)) return true;
+  if (forceParametricSolid) return true;
+  // Explicit opt-in modes only — never auto-promote merely because a baseline exists.
+  if (editMode === "force-parametric-linear" && hasLinearBaseline) return true;
+  if (editMode === "force-parametric-vertical" && hasPoint) return true;
+  if (editMode === "force-parametric-slab" && hasPolygon) return true;
   return false;
 }
 
