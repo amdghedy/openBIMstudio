@@ -44,6 +44,13 @@ import type {
 import { validateNativeModel } from "../modules/native-bim/model-validation";
 import { deriveLinearParamsFromPositions } from "../modules/native-twin/linear-params";
 import {
+  classifyTwinCapabilities,
+  elementTypeFromIfcEntity,
+  shouldPreferParametricSolid,
+  LINEAR_ELEMENT_TYPES,
+} from "../modules/native-twin/capabilities";
+import { derivePlanAabbPolygon } from "../modules/native-twin/plan-polygon";
+import {
   applyJustificationToSegment,
   coreThicknessFromLayers,
   justificationShiftMeters,
@@ -1676,13 +1683,15 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
   // standard wall/beam builders so Height/Thickness edits change real solids.
   const editMode = String((el.properties as any)?.editMode ?? "");
   const hasLinearBaseline = !!(el.params.start && el.params.end);
-  const preferParametricSolid =
-    hasLinearBaseline &&
-    (editMode === "parametric-linear" ||
-      el.type === "wall" ||
-      el.type === "beam" ||
-      el.type === "brace" ||
-      el.type === "strip");
+  const hasPoint = !!(el.params.point);
+  const hasPolygon = !!(el.params.polygon && el.params.polygon.length >= 3);
+  const preferParametricSolid = shouldPreferParametricSolid(
+    el.type,
+    editMode,
+    hasLinearBaseline,
+    hasPoint,
+    hasPolygon,
+  );
 
   if (
     el.nativeGeometry?.positions &&
@@ -4306,27 +4315,7 @@ export function getAuthoredGroup(): THREE.Group { return group; }
 export function getSelectedIds(): string[] { return [...selectedIds]; }
 
 function nativeElementTypeFromIfc(entity: string): ElementType {
-  const e = String(entity || "").toLowerCase();
-  if (e.includes("wall")) return "wall";
-  if (e.includes("slab")) return "slab";
-  if (e.includes("column")) return "column";
-  if (e.includes("beam") || e.includes("member")) return "beam";
-  if (e.includes("brace")) return "brace";
-  if (e.includes("truss")) return "truss";
-  if (e.includes("footing") || e.includes("pile")) return "footing";
-  if (e.includes("door")) return "door";
-  if (e.includes("window")) return "window";
-  if (e.includes("roof")) return "roof";
-  if (e.includes("ceiling")) return "ceiling";
-  if (e.includes("stair")) return "stairs";
-  if (e.includes("railing")) return "railing";
-  if (e.includes("ramp")) return "ramp";
-  if (e.includes("duct")) return "duct";
-  if (e.includes("pipe")) return "pipe";
-  if (e.includes("cable") && e.includes("tray")) return "cable-tray";
-  if (e.includes("conduit")) return "conduit";
-  if (e.includes("fitting") || e.includes("elbow") || e.includes("segment")) return "fitting";
-  return "generic";
+  return elementTypeFromIfcEntity(entity);
 }
 
 
@@ -4381,22 +4370,12 @@ export function applyElementParamChange(
     return { ok: false, reason: diagnostics.map((d) => d.code + ": " + d.message).join("; ") };
   }
   el.params = candidateParams;
-  // Parametric-linear walls: drop frozen mesh so builders regenerate solids.
-  if (
-    el.nativeGeometry &&
-    el.params.start &&
-    el.params.end &&
-    (key === "height" || key === "thickness" || key === "width" || key === "depth" || key === "elevation") &&
-    ((el.properties as any)?.editMode === "parametric-linear" ||
-      el.type === "wall" ||
-      el.type === "beam")
-  ) {
-    // Keep nativeGeometry as provenance snapshot under properties; render via builder.
+  // Snapshot frozen mesh provenance; createMesh prefers parametric solids when capable.
+  const mode = String((el.properties as any)?.editMode ?? "");
+  const geomKeys = new Set(["height", "thickness", "width", "depth", "elevation", "sillHeight", "offsetAlongHost", "frameThickness"]);
+  if (el.nativeGeometry && geomKeys.has(key)) {
     (el.properties as any).nativeGeometrySnapshot = el.nativeGeometry;
-    // Do not delete nativeGeometry if boundary mode — only for parametric-linear.
-    if ((el.properties as any)?.editMode === "parametric-linear") {
-      // Leave nativeGeometry in place but createMesh prefers parametric solid.
-    }
+    // Parametric modes keep nativeGeometry for provenance but rebuild via builders / scaled mesh.
   }
   rebuild();
   markDirty();
@@ -4462,47 +4441,69 @@ export function addNativeGeometryElement(input: {
     }
   }
 
-  // Derive linear baseline (start/end) so wall/beam height edits pass validation
-  // and participate in the linear-element property pipeline.
+  // Recover parametric definition from exact source geometry (all disciplines).
   const derived = deriveLinearParamsFromPositions(
     positions,
     input.position,
     input.quaternion,
     input.scale,
   );
+  const planPoly = derivePlanAabbPolygon(positions, input.position, input.scale);
   const height = derived?.height ?? input.dimensions?.height ?? 0;
   const thickness = derived?.thickness ?? input.dimensions?.depth ?? input.dimensions?.width ?? 0.2;
-  const elevation = derived?.elevation ?? input.position[1] - height / 2;
-  const linearTypes = new Set(["wall", "beam", "brace", "truss", "strip", "mline", "duct", "pipe", "cable-tray", "conduit"]);
-  const canBeLinear = linearTypes.has(type);
-  const useLinear = canBeLinear && derived && derived.reliable;
+  const elevation = derived?.elevation ?? input.position[1] - (height || 0) / 2;
+  const width = input.dimensions?.width ?? thickness;
+  const depth = input.dimensions?.depth ?? thickness;
+  const point: [number, number] = [pos[0], pos[2]];
+  const useLinear = LINEAR_ELEMENT_TYPES.has(type) && !!(derived && derived.reliable);
+  const useVertical = !useLinear && (
+    type === "column" || type === "footing" || type === "equipment" || type === "fitting"
+  );
+  const useSlab = !useLinear && !useVertical && !!planPoly && (
+    type === "slab" || type === "roof" || type === "ceiling" || type === "terrain" || type === "room" || type === "area"
+  );
+
+  const caps = classifyTwinCapabilities({
+    type,
+    hasPositions: positions.length >= 9,
+    hasLinearBaseline: useLinear,
+    linearReliable: !!(derived && derived.reliable),
+    hasPoint: useVertical || !!point,
+    hasPolygon: !!planPoly && (useSlab || type === "slab"),
+    vertexCount: Math.floor(positions.length / 3),
+  });
+  // Prefer category-specific parametric modes when recovery succeeded.
+  let editMode = caps.editMode;
+  if (useLinear) editMode = "parametric-linear";
+  else if (useVertical) editMode = "parametric-vertical";
+  else if (useSlab) editMode = "parametric-slab";
 
   const el: AuthoredElement = {
     id, type,
     name: input.name || `${type} native twin`,
     color: input.color,
     params: {
-      point: [pos[0], pos[2]],
+      point,
       height,
       thickness,
       elevation,
-      width: input.dimensions?.width ?? (useLinear ? derived!.thickness : undefined),
-      depth: input.dimensions?.depth ?? thickness,
-      ...(useLinear
-        ? { start: derived!.start, end: derived!.end }
-        : {}),
+      width,
+      depth,
+      ...(useLinear && derived ? { start: derived.start, end: derived.end } : {}),
+      ...(useSlab && planPoly ? { polygon: planPoly } : {}),
     },
     properties: {
       nativeTwin: true,
       nativeBaseHeight: height,
       nativeBaseThickness: thickness,
-      nativeBaseWidth: input.dimensions?.width ?? thickness,
-      editMode: useLinear ? "parametric-linear" : "boundary-mesh",
+      nativeBaseWidth: width,
+      editMode,
+      twinCapabilities: caps.notes,
       sourceModelId: input.sourceModelId,
       sourceLocalId: input.sourceLocalId,
       sourceGlobalId: input.sourceGlobalId || input.globalId,
       sourceModelName: input.sourceModelName,
-      editable: true,
+      editable: editMode !== "read-only",
       pinned: false,
     },
     nativeGeometry: { positions: [...positions] },
