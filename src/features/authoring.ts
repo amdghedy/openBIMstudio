@@ -42,6 +42,7 @@ import type {
   WindowPanelType,
 } from "../modules/projects/types";
 import { validateNativeModel } from "../modules/native-bim/model-validation";
+import { deriveLinearParamsFromPositions } from "../modules/native-twin/linear-params";
 import {
   applyJustificationToSegment,
   coreThicknessFromLayers,
@@ -1688,7 +1689,20 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
     if (el.transform) {
       mesh.position.set(...el.transform.position);
       mesh.quaternion.set(...el.transform.quaternion);
-      mesh.scale.set(...el.transform.scale);
+      const sx = el.transform.scale[0];
+      const sy = el.transform.scale[1];
+      const sz = el.transform.scale[2];
+      // Height edits update params.height; scale local Y relative to captured base height
+      // so boundary-mesh twins respond like parametric walls without losing plan shape.
+      const baseH = Number((el.properties as any)?.nativeBaseHeight ?? el.params.height) || 0;
+      const h = Number(el.params.height) || baseH;
+      const yScale = baseH > 1e-8 ? (h / baseH) * sy : sy;
+      mesh.scale.set(sx, yScale, sz);
+      // Keep base elevation stable: placement center moves with half-height change.
+      if (baseH > 1e-8 && Number.isFinite(el.params.elevation)) {
+        const base = el.params.elevation;
+        mesh.position.y = base + h / 2;
+      }
     }
     return mesh;
   }
@@ -4318,20 +4332,40 @@ export function addNativeGeometryElement(input: {
     }
   }
 
+  // Derive linear baseline (start/end) so wall/beam height edits pass validation
+  // and participate in the linear-element property pipeline.
+  const derived = deriveLinearParamsFromPositions(
+    positions,
+    input.position,
+    input.quaternion,
+    input.scale,
+  );
+  const height = derived?.height ?? input.dimensions?.height ?? 0;
+  const thickness = derived?.thickness ?? input.dimensions?.depth ?? input.dimensions?.width ?? 0.2;
+  const elevation = derived?.elevation ?? input.position[1] - height / 2;
+  const linearTypes = new Set(["wall", "beam", "brace", "truss", "strip", "mline", "duct", "pipe", "cable-tray", "conduit"]);
+  const canBeLinear = linearTypes.has(type);
+  const useLinear = canBeLinear && derived && derived.reliable;
+
   const el: AuthoredElement = {
     id, type,
     name: input.name || `${type} native twin`,
     color: input.color,
     params: {
       point: [pos[0], pos[2]],
-      height: input.dimensions?.height ?? 0,
-      thickness: input.dimensions?.depth ?? 0,
-      elevation: pos[1],
-      width: input.dimensions?.width,
-      depth: input.dimensions?.depth,
+      height,
+      thickness,
+      elevation,
+      width: input.dimensions?.width ?? (useLinear ? derived!.thickness : undefined),
+      depth: input.dimensions?.depth ?? thickness,
+      ...(useLinear
+        ? { start: derived!.start, end: derived!.end }
+        : {}),
     },
     properties: {
       nativeTwin: true,
+      nativeBaseHeight: height,
+      editMode: useLinear ? "parametric-linear" : "boundary-mesh",
       sourceModelId: input.sourceModelId,
       sourceLocalId: input.sourceLocalId,
       sourceGlobalId: input.sourceGlobalId || input.globalId,
