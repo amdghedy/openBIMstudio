@@ -62,7 +62,7 @@ jobs:
           command: deploy
 
       - name: Deploy failure help
-        if: failure()
+        if: failure() && steps.deploy.conclusion == 'failure'
         shell: bash
         run: |
           echo "::error::Cloudflare deploy failed (often: No access to the specified service)."
