@@ -25,3 +25,22 @@ Root causes addressed:
 - Unsupported or empty geometry is skipped with a toast; the viewport is not modified.
 - Relationships beyond preserved property sets / placement are not fully re-wired.
 - Requires usable per-item geometry from the Fragments API or viewport mesh fallback.
+
+## Geometry retrieval (2026-10-27)
+
+Failure mode addressed: *“no usable per-item geometry”* for items such as
+`3032_ECG-INT-T2-BASE2-S / 35960`.
+
+### Root cause
+Fragments 3.x viewport tiles store `userData.itemIds`, not classic `idRanges`.
+The older traverse helpers (`getElementTriangles*`) therefore returned null for
+many visible elements. In addition, `getItemsGeometry` MeshData transforms may
+arrive as `{ elements: number[] }` rather than `THREE.Matrix4`, which broke
+triangle world transforms when not normalized.
+
+### Retrieval order
+1. `model.getItemsGeometry([localId])` (multiple LOD attempts)
+2. Exclusive single-item tiles (`userData.itemIds` length === 1)
+3. Legacy `getElementTrianglesExact` / `getElementTriangles` (idRanges)
+
+Approximate bounding-box meshes are **never** synthesized.
