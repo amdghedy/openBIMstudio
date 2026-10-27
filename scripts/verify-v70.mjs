@@ -74,6 +74,7 @@ console.log("\nTests + CI:");
 track(check("v70 test suite", "tests/v70-deep-modeling.test.cjs", /general union: overlapping boxes with coplanar tops/));
 track(check("unit-tests workflow runs test:v70", ".github/workflows/unit-tests.yml", /test:v70/));
 track(check("unit-tests workflow runs verify:v70", ".github/workflows/unit-tests.yml", /verify:v70/));
+track(check("batched CI runner includes test:v70", "scripts/ci-unit-tests.mjs", /test:v70/));
 
 console.log(`\n=== verify-v70: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail === 0 ? 0 : 1);
