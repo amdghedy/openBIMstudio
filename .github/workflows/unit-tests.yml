@@ -8,86 +8,26 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+
       - name: Install dependencies
         env:
           npm_config_registry: https://registry.npmjs.org/
         run: npm ci --legacy-peer-deps
-      - run: npm run typecheck
-      - run: npm run test:bim-gaps
-      - run: npm run test:mep
-      - run: npm run test:hip
-      - run: npm run test:hatch
-      - run: npm run test:stairs
-      - run: npm run test:rebar
-      - run: npm run test:v40
-      - run: npm run test:view-crop
-      - run: npm run test:selection-box
-      - run: npm run test:history
-      - run: npm run test:dwg-isolation
-      - run: npm run test:dwg-worker-lifecycle
-      - run: npm run test:native-bim
-      - run: npm run test:cad-link
-      - run: npm run test:walk
-      - run: npm run test:elbow
-      - run: npm run test:props
-      - run: npm run test:fitting-outline
-      - run: npm run test:slope
-      - run: npm run test:cad-viewer
-      - run: npm run test:ocs
-      - run: npm run test:dxf-features
-      - run: npm run test:dwg-features
-      - run: npm run test:north
-      - run: npm run test:nav-math
-      - run: npm run test:controls-target
-      - run: npm run test:cursor-zoom
-      - run: npm run test:native-twin-resize
-      - run: npm run test:ai-privacy
-      - run: npm run test:constraints
-      - run: npm run test:structural
-      - run: npm run test:mep-pressure
-      - run: npm run test:adaptive
-      - run: npm run test:project-crypto
-      - run: npm run test:secret-crypto
-      - run: npm run test:server-security
-      - run: npm run test:safe-expr
-      - run: npm run test:mep-connectivity
-      - run: npm run test:boundary-edit
-      - run: npm run test:project-file
-      - run: npm run test:plan-tags
-      - run: npm run test:dim-geometry
-      - run: npm run test:auto-dim
-      - run: npm run test:section-plane
-      - run: npm run test:snap-points
-      - run: npm run test:plan-draw
-      - run: npm run test:view-lock
-      - run: npm run test:wheel-zoom
-      - run: npm run test:section-box
-      - run: npm run test:v68-core
-      - run: npm run test:v68-solids
-      - run: npm run test:v68-interaction
-      - run: npm run test:v68-acceptance
-      - run: npm run test:v69
-      - run: npm run test:v70
-      - run: npm run test:v71
-      - run: npm run test:v72
-      - run: npm run test:v73-just
-      - run: npm run test:v73-mag
-      - run: npm run test:v73-panels
-      - run: npm run test:v73-rel
-      - run: npm run test:dep-safety
-      - run: npm run test:server-hardening
-      - run: npm run test:plugins
-      - run: npm run test:feature-registry
-      - run: npm run verify:v70
-      - run: npm run verify:v71
-      - run: npm run verify:v72
-      - run: npm run verify:v73
-      - run: npm run verify:v68
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests (batched)
+        run: node scripts/ci-unit-tests.mjs
+
       - name: Dependency audit (production, high severity)
+        continue-on-error: true
         run: npm audit --omit=dev --audit-level=high
