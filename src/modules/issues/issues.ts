@@ -1,4 +1,5 @@
 /** Issue state + viewpoint capture/restore. Persisted via the projects module. */
+import { readControlsTarget } from "../../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../../core/context";
 import { getProjection, updateClipping } from "../../features/camera-tools";
@@ -147,7 +148,7 @@ export function captureViewpoint(withThumbnail = true): IssueViewpoint {
   const controls: any = ctx.world.camera.controls;
   const target = new THREE.Vector3();
   try {
-    if (controls.target?.isVector3) target.copy(controls.target);
+    readControlsTarget(controls, target);
   } catch {
     /* */
   }

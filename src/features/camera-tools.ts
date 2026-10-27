@@ -1,4 +1,5 @@
 import { perspectiveZoomAbout } from "../core/cursor-zoom";
+import { readControlsTarget, axisTargetFallback } from "../core/controls-target";
 import * as THREE from "three";
 import type * as OBC from "@thatopen/components";
 import { ctx, type Projection } from "../core/context";
@@ -432,12 +433,15 @@ export function setProjection(mode: Projection): boolean {
 function getCamTarget(out: THREE.Vector3): THREE.Vector3 {
   if (!worldReady()) return out.copy(sceneCenter);
   const c: any = ctx.world.camera.controls;
-  try {
-    if (c.target?.isVector3) return out.copy(c.target);
-  } catch {
-    /* */
-  }
-  return out.copy(sceneCenter);
+  if (readControlsTarget(c, out)) return out;
+  // No target available: a point on the current view axis, NEVER the (off-axis) scene centre,
+  // so a setLookAt built from it cannot re-aim the camera.
+  const cam: any = ctx.world.camera.three;
+  const d = cam.getWorldDirection(new THREE.Vector3());
+  const t = axisTargetFallback(
+    [cam.position.x, cam.position.y, cam.position.z], [d.x, d.y, d.z], [sceneCenter.x, sceneCenter.y, sceneCenter.z],
+  );
+  return out.set(t[0], t[1], t[2]);
 }
 
 /**
@@ -728,7 +732,7 @@ export function centerOnPoint(point: THREE.Vector3): void {
 
   // Read current target
   const oldTarget = new THREE.Vector3();
-  if (controls.target?.isVector3) oldTarget.copy(controls.target);
+  if (readControlsTarget(controls, oldTarget)) { /* real controls target */ }
   else {
     const dir = new THREE.Vector3();
     cam.getWorldDirection(dir);

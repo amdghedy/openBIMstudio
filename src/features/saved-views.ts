@@ -5,6 +5,7 @@
  * and buttons to restore or delete. Saving captures the current camera
  * position, orbit target, and projection mode.
  */
+import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getProjection, setProjection, updateClipping } from "./camera-tools";
@@ -56,7 +57,7 @@ export function saveCurrentView(name?: string): SavedView | null {
   const cam = ctx.world.camera.three;
   const controls: any = ctx.world.camera.controls;
   const target = new THREE.Vector3();
-  if (controls?.target?.isVector3) target.copy(controls.target);
+  if (readControlsTarget(controls, target)) { /* real controls target */ }
   else {
     const d = new THREE.Vector3();
     cam.getWorldDirection(d);

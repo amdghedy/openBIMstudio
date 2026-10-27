@@ -13,6 +13,7 @@
  * Every control routes through NavigationController — no placeholder
  * handlers, no visual-only state.
  */
+import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
@@ -91,7 +92,7 @@ class RealCameraAdapter implements CameraAdapter {
   target(): THREE.Vector3 {
     if (!worldReady()) return new THREE.Vector3();
     const c = controls();
-    if (c?.target?.isVector3) return c.target.clone();
+    { const t0 = new THREE.Vector3(); if (readControlsTarget(c, t0)) return t0; }
     const cam = activeCam();
     const d = new THREE.Vector3();
     cam.getWorldDirection(d);

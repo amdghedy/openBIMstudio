@@ -17,6 +17,7 @@
  * CameraControls mouse/touch are forced OFF so only this module drives the view.
  * Every gesture ends with forceResumeCameraControls to prevent 3D hang-ups.
  */
+import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { inputRouter, type Gesture, type Mods } from "../core/input-router";
@@ -131,7 +132,7 @@ function camera(): THREE.PerspectiveCamera | THREE.OrthographicCamera {
 
 function getTarget(out = new THREE.Vector3()): THREE.Vector3 {
   const c = controls();
-  if (c?.target?.isVector3) return out.copy(c.target);
+  if (readControlsTarget(c, out)) return out;
   return out.set(0, 0, 0);
 }
 

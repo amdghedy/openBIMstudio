@@ -20,6 +20,7 @@
  * shortcuts (Ctrl+S, Ctrl+Z…) keep working while walking. Only the movement
  * keys are captured exclusively.
  */
+import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getLevel, getLevels, getAuthoredGroup, getElements } from "./authoring";
@@ -332,8 +333,8 @@ function enableWalkModeInner(): void {
   // ── Save camera + controls state ──
   const savedPos = cam.position.clone();
   let savedTarget = new THREE.Vector3();
-  if (controls?.target?.isVector3) {
-    savedTarget.copy(controls.target);
+  if (readControlsTarget(controls, savedTarget)) {
+    /* real controls target */
   } else {
     // Fallback: 5 m in front of camera.
     const d = new THREE.Vector3();
@@ -708,7 +709,7 @@ function nudgeStartPosition(keyCode: string, dt: number): void {
     else if (keyCode === "KeyA") off.addScaledVector(right, -step);
     else return;
     const t = new THREE.Vector3();
-    if (controls.target?.isVector3) t.copy(controls.target);
+    if (readControlsTarget(controls, t)) { /* real controls target */ }
     else t.copy(cam.position).add(forward.clone().multiplyScalar(TARGET_DISTANCE));
     const p = cam.position.clone().add(off);
     t.add(off);

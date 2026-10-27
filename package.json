@@ -58,6 +58,7 @@
     "test:dwg-features": "node tests/dwg-features.test.cjs",
     "test:native-twin-resize": "node tests/native-twin-vertical-resize.test.cjs",
     "test:cursor-zoom": "node tests/cursor-zoom.test.cjs",
+    "test:controls-target": "node tests/controls-target.test.cjs",
     "test:nav-math": "node tests/nav-math.test.cjs",
     "test:north": "node tests/north.test.cjs",
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",

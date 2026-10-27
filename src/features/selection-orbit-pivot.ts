@@ -15,6 +15,7 @@
  *   Ctrl+Shift+O    Toggle ortho
  */
 
+import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { syncOrthoZoom } from "../core/ortho-zoom";
@@ -243,7 +244,7 @@ export function zoomTowardSelection(factor: number): void {
   const controls: Any = (ctx as Any).world.camera.controls;
   const target = new THREE.Vector3();
   if (focus) target.copy(focus);
-  else if (controls?.target?.isVector3) target.copy(controls.target);
+  else if (readControlsTarget(controls, target)) { /* real controls target */ }
   else {
     const dir = new THREE.Vector3();
     cam.getWorldDirection(dir);
