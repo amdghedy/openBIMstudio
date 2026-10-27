@@ -50,6 +50,7 @@ import {
   LINEAR_ELEMENT_TYPES,
 } from "../modules/native-twin/capabilities";
 import { derivePlanAabbPolygon } from "../modules/native-twin/plan-polygon";
+import { buildSourceArchive, markNativeDimensionModified, type SourceArchive } from "../modules/native-twin/source-archive";
 import {
   applyJustificationToSegment,
   coreThicknessFromLayers,
@@ -4377,6 +4378,10 @@ export function applyElementParamChange(
     (el.properties as any).nativeGeometrySnapshot = el.nativeGeometry;
     // Parametric modes keep nativeGeometry for provenance but rebuild via builders / scaled mesh.
   }
+  // Preserve Layer 2 archive; mark dimension fields as native-modified only.
+  try {
+    markNativeDimensionModified(el.sourceArchive, key);
+  } catch { /* */ }
   rebuild();
   markDirty();
   notifyAuthoringChange();
@@ -4421,6 +4426,17 @@ export function addNativeGeometryElement(input: {
   quaternion: [number, number, number, number];
   scale: [number, number, number];
   dimensions?: { width: number; height: number; depth: number };
+  /** Full source item record from getItemsData (Layer 2 archive). */
+  sourceRawItem?: unknown;
+  sourceArchive?: SourceArchive;
+  geometryProvenance?: {
+    extractionPath?: string;
+    triangleCount?: number;
+    meshCount?: number;
+    vertexCount?: number;
+    bounds?: { min: [number, number, number]; max: [number, number, number]; center: [number, number, number] };
+    modelMatrixWorld?: number[];
+  };
 }): AuthoredElement {
   const id = uid();
   const type = nativeElementTypeFromIfc(input.entity);
@@ -4521,6 +4537,41 @@ export function addNativeGeometryElement(input: {
       quantities: input.quantities,
     },
     transform: { position: [...input.position], quaternion: [...input.quaternion], scale: [...input.scale] },
+    sourceArchive: input.sourceArchive ?? buildSourceArchive({
+      rawItem: input.sourceRawItem ?? {
+        propertySets: input.propertySets,
+        quantities: input.quantities,
+        GlobalId: input.globalId,
+        Name: input.name,
+        Description: input.description,
+        Tag: input.tag,
+        PredefinedType: input.predefinedType,
+        Entity: input.entity,
+      },
+      identity: {
+        sourceModelId: input.sourceModelId,
+        sourceLocalId: input.sourceLocalId,
+        sourceModelName: input.sourceModelName,
+        globalId: input.globalId || input.sourceGlobalId,
+        entityType: input.entity,
+        predefinedType: input.predefinedType,
+        name: input.name,
+        tag: input.tag,
+        description: input.description,
+      },
+      geometry: {
+        ...(input.geometryProvenance ?? {}),
+        tessellationPositionsCount: positions.length,
+        notes: [
+          "Tessellated positions are the editable/render representation; original source topology remains in rawItem when provided by the loader.",
+        ],
+      },
+      sourceDimensions: {
+        height: input.dimensions?.height ?? null,
+        width: input.dimensions?.width ?? null,
+        depth: input.dimensions?.depth ?? null,
+      },
+    }),
   };
   elements.push(el);
   // Incremental add — avoid full authored-scene dispose/rebuild which can
