@@ -240,7 +240,7 @@ export function solve(
   const dof = unknowns - nEq;
 
   // Flatten; fixed points are simply never updated below.
-  let v = Float64Array.from(pts.flatMap((p) => [p.x, p.y]));
+  let v: Float64Array = new Float64Array(pts.flatMap((p) => [p.x, p.y]));
   const movable = new Uint8Array(unknowns);
   for (let i = 0; i < n; i++) {
     if (!pts[i].fixed) {
@@ -334,7 +334,7 @@ export function solve(
       alpha *= 0.5;
     }
     if (best && bestR < maxR) {
-      v = best;
+      v = new Float64Array(best);
       lambda = Math.max(lambda * 0.3, 1e-10);
       if (bestR <= tol) break;
     } else {
