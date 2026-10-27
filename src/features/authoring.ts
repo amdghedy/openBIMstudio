@@ -1672,10 +1672,27 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
   // Exact native reconstruction path for IFC/FRAG Native Twins. The authored
   // project stores non-indexed triangle positions, so the object is rendered
   // by the same authored scene graph as normal BIM objects.
-  if (el.nativeGeometry?.positions && el.nativeGeometry.positions.length >= 9) {
+  // Parametric-linear Native Twins with a valid baseline regenerate via the
+  // standard wall/beam builders so Height/Thickness edits change real solids.
+  const editMode = String((el.properties as any)?.editMode ?? "");
+  const hasLinearBaseline = !!(el.params.start && el.params.end);
+  const preferParametricSolid =
+    hasLinearBaseline &&
+    (editMode === "parametric-linear" ||
+      el.type === "wall" ||
+      el.type === "beam" ||
+      el.type === "brace" ||
+      el.type === "strip");
+
+  if (
+    el.nativeGeometry?.positions &&
+    el.nativeGeometry.positions.length >= 9 &&
+    !preferParametricSolid
+  ) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(el.nativeGeometry.positions, 3));
-    geo.computeVertexNormals();
+    try { geo.computeVertexNormals(); } catch { /* */ }
+    try { geo.computeBoundingBox(); geo.computeBoundingSphere(); } catch { /* */ }
     const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(el.color || COLORS[el.type] || "#a7b0be") });
     if (el.type === "slab" || el.type === "wall" || el.type === "roof") mat.side = THREE.DoubleSide;
     const mesh = new THREE.Mesh(geo, mat);
@@ -1686,22 +1703,28 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
     mesh.userData.sourceModelId = el.ifc?.sourceModelId;
     mesh.userData.sourceLocalId = el.ifc?.sourceLocalId;
     mesh.userData.sourceGlobalId = el.ifc?.sourceGlobalId || el.ifc?.globalId;
+    // Ensure base dimensions exist so scale ratios are not 1 after first edit.
+    ensureNativeBaseDimensions(el);
     if (el.transform) {
       mesh.position.set(...el.transform.position);
       mesh.quaternion.set(...el.transform.quaternion);
-      const sx = el.transform.scale[0];
-      const sy = el.transform.scale[1];
-      const sz = el.transform.scale[2];
-      // Height edits update params.height; scale local Y relative to captured base height
-      // so boundary-mesh twins respond like parametric walls without losing plan shape.
-      const baseH = Number((el.properties as any)?.nativeBaseHeight ?? el.params.height) || 0;
+      const sx0 = el.transform.scale[0];
+      const sy0 = el.transform.scale[1];
+      const sz0 = el.transform.scale[2];
+      const props = el.properties as any;
+      const baseH = Number(props.nativeBaseHeight) || 0;
+      const baseT = Number(props.nativeBaseThickness) || 0;
+      const baseW = Number(props.nativeBaseWidth) || 0;
       const h = Number(el.params.height) || baseH;
-      const yScale = baseH > 1e-8 ? (h / baseH) * sy : sy;
-      mesh.scale.set(sx, yScale, sz);
-      // Keep base elevation stable: placement center moves with half-height change.
+      const t = Number(el.params.thickness) || baseT;
+      const w = Number(el.params.width ?? el.params.depth) || baseW;
+      const yScale = baseH > 1e-8 ? (h / baseH) * sy0 : sy0;
+      // Thickness ~ local Z for walls; width ~ local X when available.
+      const zScale = baseT > 1e-8 ? (t / baseT) * sz0 : sz0;
+      const xScale = baseW > 1e-8 ? (w / baseW) * sx0 : sx0;
+      mesh.scale.set(xScale, yScale, zScale);
       if (baseH > 1e-8 && Number.isFinite(el.params.elevation)) {
-        const base = el.params.elevation;
-        mesh.position.y = base + h / 2;
+        mesh.position.y = el.params.elevation + h / 2;
       }
     }
     return mesh;
@@ -3756,17 +3779,31 @@ function historyNum(
       return;
     }
     const after = JSON.parse(JSON.stringify(candidate.params));
+    // Resolve which param key changed for geometry sync
+    const changedKey = (() => {
+      for (const k of Object.keys(after)) {
+        if (JSON.stringify((before as any)[k]) !== JSON.stringify((after as any)[k])) return k;
+      }
+      return "height";
+    })();
     history.push(
       {
         label: `Edit ${el.name} · ${getLabel()}`,
-        apply: () => { el.params = JSON.parse(JSON.stringify(after)); rebuild(); markDirty(); },
-        revert: () => { el.params = JSON.parse(JSON.stringify(before)); rebuild(); markDirty(); },
+        apply: () => {
+          el.params = JSON.parse(JSON.stringify(after));
+          rebuild();
+          markDirty();
+        },
+        revert: () => {
+          el.params = JSON.parse(JSON.stringify(before));
+          rebuild();
+          markDirty();
+        },
       },
       coalesceKey,
     );
-    el.params = JSON.parse(JSON.stringify(after));
-    rebuild();
-    markDirty();
+    el.params = JSON.parse(JSON.stringify(before));
+    applyElementParamChange(el.id, changedKey, (after as any)[changedKey]);
   });
 }
 
@@ -4292,6 +4329,99 @@ function nativeElementTypeFromIfc(entity: string): ElementType {
   return "generic";
 }
 
+
+/** Capture reference dimensions once so later param edits can scale/regenerate. */
+function ensureNativeBaseDimensions(el: AuthoredElement): void {
+  const props = (el.properties ??= {}) as Record<string, unknown>;
+  if (props.nativeBaseHeight == null && Number.isFinite(el.params.height) && (el.params.height as number) > 0) {
+    props.nativeBaseHeight = el.params.height;
+  }
+  if (props.nativeBaseThickness == null && Number.isFinite(el.params.thickness) && (el.params.thickness as number) > 0) {
+    props.nativeBaseThickness = el.params.thickness;
+  }
+  if (props.nativeBaseWidth == null) {
+    const w = (el.params.width ?? el.params.depth) as number | undefined;
+    if (Number.isFinite(w) && (w as number) > 0) props.nativeBaseWidth = w;
+  }
+  // Derive from geometry if still missing
+  if (props.nativeBaseHeight == null && el.nativeGeometry?.positions?.length) {
+    const pos = el.nativeGeometry.positions;
+    let minY = Infinity, maxY = -Infinity;
+    for (let i = 1; i < pos.length; i += 3) {
+      const y = pos[i];
+      if (Number.isFinite(y)) { minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+    }
+    if (Number.isFinite(minY) && maxY > minY) props.nativeBaseHeight = maxY - minY;
+  }
+}
+
+/**
+ * Authoritative parametric property update used by the Properties panel and
+ * inline editors. Updates params, regenerates geometry via rebuild, and
+ * keeps Native Twin gizmo clones in sync when present.
+ */
+export function applyElementParamChange(
+  elementId: string,
+  key: string,
+  value: number | string | boolean,
+): { ok: boolean; reason?: string } {
+  const el = elements.find((e) => e.id === elementId);
+  if (!el) return { ok: false, reason: "element_not_found" };
+  ensureNativeBaseDimensions(el);
+  const before = JSON.parse(JSON.stringify(el.params));
+  const candidateParams = JSON.parse(JSON.stringify(el.params));
+  (candidateParams as any)[key] = value;
+  const candidate: AuthoredElement = { ...el, params: candidateParams };
+  const diagnostics = validateNativeModel({
+    elements: elements.map((item) => (item.id === el.id ? candidate : item)),
+    levels,
+    grids,
+  }).filter((d) => d.elementId === el.id && d.severity === "error");
+  if (diagnostics.length) {
+    return { ok: false, reason: diagnostics.map((d) => d.code + ": " + d.message).join("; ") };
+  }
+  el.params = candidateParams;
+  // Parametric-linear walls: drop frozen mesh so builders regenerate solids.
+  if (
+    el.nativeGeometry &&
+    el.params.start &&
+    el.params.end &&
+    (key === "height" || key === "thickness" || key === "width" || key === "depth" || key === "elevation") &&
+    ((el.properties as any)?.editMode === "parametric-linear" ||
+      el.type === "wall" ||
+      el.type === "beam")
+  ) {
+    // Keep nativeGeometry as provenance snapshot under properties; render via builder.
+    (el.properties as any).nativeGeometrySnapshot = el.nativeGeometry;
+    // Do not delete nativeGeometry if boundary mode — only for parametric-linear.
+    if ((el.properties as any)?.editMode === "parametric-linear") {
+      // Leave nativeGeometry in place but createMesh prefers parametric solid.
+    }
+  }
+  rebuild();
+  markDirty();
+  notifyAuthoringChange();
+  try {
+    const fe: any = (ctx.features as any)?.fragEdit;
+    const twins = fe?.list?.() as any[] | undefined;
+    if (twins?.length) {
+      for (const t of twins) {
+        if (t.nativeElementId === el.id && Array.isArray(t.position)) {
+          // Nudge twin runtime transform for height elevation alignment
+          if (key === "height" && Number.isFinite(el.params.elevation) && Number.isFinite(el.params.height)) {
+            t.position[1] = (el.params.elevation as number) + (el.params.height as number) / 2;
+          }
+        }
+      }
+    }
+  } catch { /* optional */ }
+  console.info(
+    `[authoring] param ${key}=${String(value)} applied to ${el.id} (${el.type}); geometry rebuilt`,
+  );
+  return { ok: true };
+}
+
+
 /** Create a persistent project object from an IFC/FRAG object's exact geometry. */
 export function addNativeGeometryElement(input: {
   name: string;
@@ -4365,6 +4495,8 @@ export function addNativeGeometryElement(input: {
     properties: {
       nativeTwin: true,
       nativeBaseHeight: height,
+      nativeBaseThickness: thickness,
+      nativeBaseWidth: input.dimensions?.width ?? thickness,
       editMode: useLinear ? "parametric-linear" : "boundary-mesh",
       sourceModelId: input.sourceModelId,
       sourceLocalId: input.sourceLocalId,
