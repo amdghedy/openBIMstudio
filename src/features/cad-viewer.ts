@@ -8,9 +8,9 @@ import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import * as M from "../modules/cad-viewer/viewer-math";
 
-type Tool = "pan" | "select" | "box" | "dist" | "poly" | "area" | "angle" | "coord" | "radius" | "zoomwin" | "redline" | "note" | "id" | "dim" | "calibrate";
+type Tool = "pan" | "select" | "box" | "dist" | "poly" | "area" | "angle" | "coord" | "radius" | "zoomwin" | "redline" | "note" | "id" | "dim" | "calibrate" | "chain" | "offset" | "bearing" | "cloud";
 type ColorMode = "layer" | "bw" | "invert";
-interface Markup { kind: "line" | "note" | "dim"; pts: M.Pt[]; text?: string }
+interface Markup { kind: "line" | "note" | "dim" | "cloud"; pts: M.Pt[]; text?: string }
 
 const BG: Record<string, string> = { black: "#000000", dark: "#1c2128", grey: "#808080", white: "#ffffff" };
 let root: HTMLDivElement | null = null;
@@ -77,6 +77,7 @@ function build(): void {
   const hidden = new Set<string>();
   let snapOn = true; const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
   let orthoOn = false;
+  let offsetEntity = -1;
   /** User calibration: multiplies converted lengths (1 = drawing units as-is). */
   let scaleCal = 1;
   let crosshair: M.Pt | null = null;
@@ -213,6 +214,15 @@ function build(): void {
         const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
         c.font = "bold 12px system-ui,sans-serif";
         c.fillText(m.text ?? "", mx + 4, my - 4);
+        c.strokeStyle = "#ef4444"; c.fillStyle = "#ef4444";
+      } else if (m.kind === "cloud" && m.pts.length >= 2) {
+        c.strokeStyle = "#f97316"; c.lineWidth = 2;
+        c.beginPath();
+        m.pts.forEach((q, i) => {
+          const p = M.worldToScreen(v, q.x, q.y);
+          i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y);
+        });
+        c.stroke();
         c.strokeStyle = "#ef4444"; c.fillStyle = "#ef4444";
       } else {
         const p = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
@@ -389,9 +399,10 @@ function build(): void {
   /* ── tools ── */
   const T: Array<[Tool, string, string]> = [
     ["pan", "Pan", "P"], ["select", "Select", "S"], ["box", "Box", "B"], ["zoomwin", "Zoom window", "W"],
-    ["dist", "Distance", "D"], ["poly", "Polyline", "L"], ["area", "Area", "A"], ["angle", "Angle", "G"],
+    ["dist", "Distance", "D"], ["chain", "Chain", "H"], ["poly", "Polyline", "L"], ["area", "Area", "A"],
+    ["angle", "Angle", "G"], ["bearing", "Bearing", "T"], ["offset", "Offset", "O"],
     ["coord", "Coordinates", "C"], ["radius", "Radius", "R"], ["id", "ID", "I"], ["dim", "Dimension", "Q"],
-    ["calibrate", "Calibrate", "K"], ["redline", "Redline", "M"], ["note", "Note", "N"],
+    ["calibrate", "Calibrate", "K"], ["cloud", "Cloud", "U"], ["redline", "Redline", "M"], ["note", "Note", "N"],
   ];
   function buildBar() {
     tools.innerHTML = `<button data-a="open">Open…</button><input type="file" data-r="file" accept=".dwg,.dxf" style="display:none"><span class="sep"></span>` +
@@ -406,6 +417,10 @@ function build(): void {
       <button data-a="png">PNG</button><button data-a="svg">SVG</button><button data-a="clrmk">Clear markup</button>
       <button data-a="ortho" title="Ortho — constrain to axis (F8)">Ortho</button>
       <button data-a="report" title="Layer length / entity report">Report</button>
+      <button data-a="list" title="Selection schedule">List</button>
+      <button data-a="sim" title="Select similar (same layer)">Similar</button>
+      <button data-a="freeze" title="Freeze layers of selection">Freeze sel</button>
+      <button data-a="xy" title="Copy cursor X,Y">Copy XY</button>
       <button data-a="csv" title="Export measurements as CSV">CSV</button>
       <span style="flex:1"></span><button data-a="close">Close ✕</button>`;
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.onclick = () => setTool(b.dataset.t as Tool));
@@ -420,6 +435,10 @@ function build(): void {
       snap: () => { snapOn = !snapOn; tools.querySelector("[data-a=snap]")!.classList.toggle("on", snapOn); draw(); },
       ortho: () => { orthoOn = !orthoOn; tools.querySelector("[data-a=ortho]")!.classList.toggle("on", orthoOn); updateStatus(); draw(); },
       report: () => showLayerReport(),
+      list: () => showSelectionList(),
+      sim: () => selectSimilarLayer(),
+      freeze: () => freezeSelectedLayers(),
+      xy: () => copyCursorXY(),
       csv: () => exportMeasurementsCsv(),
       png: () => exportPng(), svg: () => exportSvg(),
       clrmk: () => { markups = []; draw(); },
@@ -444,11 +463,24 @@ function build(): void {
     if (tool !== "select") { setTool("select"); return; }
     if (sel.size) setSel([]);
   }
-  function setTool(t: Tool) { tool = t; cv.focus({ preventScroll: true }); pts = []; winStart = winNow = null; hover = null; tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === t)); cv.style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; draw(); }
+  function setTool(t: Tool) { tool = t; cv.focus({ preventScroll: true }); pts = []; offsetEntity = -1; winStart = winNow = null; hover = null; tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === t)); cv.style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; draw(); }
   function finishMeasure() {
-    if (tool === "poly" && pts.length >= 2) { results.push(`Polyline: ${fmt(M.pathLength(pts))}`); drawn.push({ kind: "poly", pts: [...pts] }); }
-    else if (tool === "area" && pts.length >= 3) { results.push(`Area: ${fmt(M.polygonArea(pts), 2)}  Perimeter: ${fmt(M.pathLength(pts, true))}`); drawn.push({ kind: "area", pts: [...pts] }); }
-    pts = []; showMeas(); draw();
+    if (tool === "poly" && pts.length >= 2) {
+      results.push(`Polyline: ${fmt(M.pathLength(pts))}`);
+      drawn.push({ kind: "poly", pts: [...pts] });
+    } else if (tool === "area" && pts.length >= 3) {
+      results.push(`Area: ${fmt(M.polygonArea(pts), 2)}  Perimeter: ${fmt(M.pathLength(pts, true))}`);
+      drawn.push({ kind: "area", pts: [...pts] });
+    } else if (tool === "chain" && pts.length >= 2) {
+      results.push(`Chain: ${fmt(M.pathLength(pts))}  (${pts.length - 1} segments)`);
+      drawn.push({ kind: "poly", pts: [...pts] });
+    } else if (tool === "cloud" && pts.length >= 2) {
+      markups.push({ kind: "cloud", pts: M.revisionCloudPoints(pts), text: "REV" });
+      results.push(`Revision cloud · ${pts.length} vertices`);
+    }
+    pts = [];
+    showMeas();
+    draw();
   }
 
   /* ── input ── */
@@ -516,6 +548,55 @@ function build(): void {
         }
         break;
       }
+      case "chain": {
+        let q = p;
+        if (orthoOn && pts.length >= 1) q = M.orthoConstrain(pts[pts.length - 1], p);
+        pts.push(q);
+        break;
+      }
+      case "bearing": {
+        let q = p;
+        if (orthoOn && pts.length === 1) q = M.orthoConstrain(pts[0], p);
+        pts.push(q);
+        if (pts.length === 2) {
+          results.push(`Bearing: ${M.bearingDeg(pts[0], pts[1]).toFixed(2)}°  Length: ${fmt(M.distance(pts[0], pts[1]))}`);
+          drawn.push({ kind: "dist", pts: [...pts] });
+          pts = [];
+          showMeas();
+        }
+        break;
+      }
+      case "offset": {
+        if (offsetEntity < 0) {
+          const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 12 / view.scale, visible) : -1;
+          if (i < 0) break;
+          offsetEntity = i;
+          setSel([i]);
+          results.push(`Offset: entity #${i} (${ents[i].type} / ${ents[i].layer}) — click a point`);
+          showMeas();
+          break;
+        }
+        {
+          const e = ents[offsetEntity];
+          let best = Infinity;
+          let foot: M.Pt = p;
+          for (const [a, b] of M.entitySegments(e)) {
+            const r = M.distPointToSeg(p, a, b);
+            if (r.dist < best) { best = r.dist; foot = r.foot; }
+          }
+          results.push(`Offset: ${fmt(best)}  (perpendicular to #${offsetEntity})`);
+          drawn.push({ kind: "dist", pts: [foot, p] });
+          offsetEntity = -1;
+          showMeas();
+        }
+        break;
+      }
+      case "cloud": {
+        let q = p;
+        if (orthoOn && pts.length >= 1) q = M.orthoConstrain(pts[pts.length - 1], p);
+        pts.push(q);
+        break;
+      }
       case "poly": case "area": pts.push(p); break;
       case "angle": pts.push(p); if (pts.length === 3) { results.push(`Angle: ${M.angleAt(pts[1], pts[0], pts[2]).toFixed(2)}°`); drawn.push({ kind: "angle", pts: [...pts] }); pts = []; showMeas(); } break;
       case "radius": { const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1; const e = ents[i]; if (e && (e.type === "CIRCLE" || e.type === "ARC")) { setSel([i]); results.push(`Radius ${fmt(e.radius)}  Diameter ${fmt(e.radius * 2)}`); showProps(); showMeas(); } break; }
@@ -536,7 +617,7 @@ function build(): void {
     if (winStart) { winNow = sp; draw(); return; }
     hover = snapped(wp);
     let cur = hover ? { x: hover.x, y: hover.y } : wp;
-    if (orthoOn && pts.length >= 1 && (tool === "dist" || tool === "dim" || tool === "poly" || tool === "redline" || tool === "calibrate")) {
+    if (orthoOn && pts.length >= 1 && (tool === "dist" || tool === "dim" || tool === "poly" || tool === "redline" || tool === "calibrate" || tool === "chain" || tool === "bearing" || tool === "cloud")) {
       cur = M.orthoConstrain(pts[pts.length - 1], cur);
     }
     cursor = cur;
@@ -558,7 +639,7 @@ function build(): void {
     try { cv.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
   };
   cv.addEventListener("pointerup", endDrag); cv.addEventListener("pointercancel", endDrag);
-  cv.addEventListener("dblclick", () => { if (tool === "poly" || tool === "area") { pts.pop(); finishMeasure(); } else if (tool === "redline" && pts.length > 1) { markups.push({ kind: "line", pts: [...pts] }); pts = []; draw(); } });
+  cv.addEventListener("dblclick", () => { if (tool === "poly" || tool === "area" || tool === "chain" || tool === "cloud") { pts.pop(); finishMeasure(); } else if (tool === "redline" && pts.length > 1) { markups.push({ kind: "line", pts: [...pts] }); pts = []; draw(); } });
   cv.addEventListener("auxclick", (ev) => { if (ev.button === 1 && ev.detail >= 2) zoomExtents(); });
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
   cv.addEventListener("wheel", (ev) => { if (!doc) return; ev.preventDefault(); const { sp } = rawPoint(ev); view = M.zoomAt(view, sp.x, sp.y, Math.exp(-Math.max(-300, Math.min(300, ev.deltaY * (ev.deltaMode === 1 ? 16 : 1))) * 0.0018)); draw(); updateStatus(); }, { passive: false });
@@ -567,7 +648,7 @@ function build(): void {
     if (ev.key === "F7") { ev.preventDefault(); (tools.querySelector("[data-a=grid]") as HTMLButtonElement).click(); return; }
     if (ev.key === "?" ) { toggleHelp(); return; }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "a" && doc) { ev.preventDefault(); setSel(ents.map((_, i) => i).filter((i) => visible(ents[i]))); return; }
-    if (ev.key === "Enter") { if (tool === "poly" || tool === "area") finishMeasure(); else if (tool === "redline" && pts.length > 1) { markups.push({ kind: "line", pts: [...pts] }); pts = []; draw(); } return; }
+    if (ev.key === "Enter") { if (tool === "poly" || tool === "area" || tool === "chain" || tool === "cloud") finishMeasure(); else if (tool === "redline" && pts.length > 1) { markups.push({ kind: "line", pts: [...pts] }); pts = []; draw(); } return; }
     if (ev.key === "F3") { ev.preventDefault(); (tools.querySelector("[data-a=snap]") as HTMLButtonElement).click(); return; }
     if (ev.key === "Backspace" && !pts.length) { ev.preventDefault(); (tools.querySelector("[data-a=prev]") as HTMLButtonElement).click(); return; }
     if (ev.key === "Backspace" && pts.length) { pts.pop(); draw(); return; }
@@ -656,6 +737,67 @@ function build(): void {
     a.download = (name || "drawing") + "-measurements.csv";
     a.click();
     URL.revokeObjectURL(a.href);
+  }
+
+
+  function showSelectionList(): void {
+    if (!sel.size) {
+      openOverlay("<b>Selection list</b><br><span style=\"color:#9aa4b2\">Select one or more objects first.</span>");
+      return;
+    }
+    let totalLen = 0, totalArea = 0;
+    const rows: string[] = [];
+    for (const i of sel) {
+      const e = ents[i];
+      if (!e) continue;
+      const met = M.entityMetrics(e);
+      if (met.length != null) totalLen += met.length;
+      if (met.area != null) totalArea += met.area;
+      rows.push(`<tr><td>${i}</td><td>${escapeHtml(e.type)}</td><td>${escapeHtml(e.layer)}</td><td style="text-align:right">${met.length != null ? escapeHtml(fmt(met.length)) : "—"}</td><td style="text-align:right">${met.area != null ? escapeHtml(fmt(met.area, 2)) : "—"}</td></tr>`);
+    }
+    openOverlay(
+      `<b style="font-size:14px">Selection schedule</b><br>` +
+      `<span style="color:#9aa4b2">${sel.size} objects · length ${escapeHtml(fmt(totalLen))}${totalArea ? " · area " + escapeHtml(fmt(totalArea, 2)) : ""}</span>` +
+      `<table style="width:100%;margin-top:10px;border-collapse:collapse;font-size:12px">` +
+      `<thead><tr style="color:#9aa4b2;text-align:left"><th>#</th><th>Type</th><th>Layer</th><th style="text-align:right">Length</th><th style="text-align:right">Area</th></tr></thead>` +
+      `<tbody>${rows.join("")}</tbody></table>` +
+      `<div style="margin-top:12px"><button data-r="rep-close" style="padding:6px 10px">Close</button></div>`,
+    );
+    helpEl?.querySelector("[data-r=rep-close]")?.addEventListener("click", () => closeOverlay());
+  }
+
+  function selectSimilarLayer(): void {
+    if (!sel.size || !doc) return;
+    const layers = new Set<string>();
+    for (const i of sel) if (ents[i]) layers.add(ents[i].layer);
+    const next: number[] = [];
+    ents.forEach((e, i) => { if (visible(e) && layers.has(e.layer)) next.push(i); });
+    setSel(next);
+    results.push(`Select similar: ${next.length} on ${[...layers].join(", ")}`);
+    showMeas();
+  }
+
+  function freezeSelectedLayers(): void {
+    if (!sel.size) return;
+    for (const i of sel) if (ents[i]) hidden.add(ents[i].layer);
+    setSel([]);
+    const lf = root!.querySelector<HTMLInputElement>("[data-r=lf]");
+    if (lf) lf.dispatchEvent(new Event("input"));
+    draw();
+    updateStatus();
+  }
+
+  function copyCursorXY(): void {
+    const c = cursor;
+    if (!c || !doc) return;
+    const text = `${M.convertLength(c.x * scaleCal, doc.units, du).toFixed(4)}, ${M.convertLength(c.y * scaleCal, doc.units, du).toFixed(4)}`;
+    void navigator.clipboard?.writeText(text).then(() => {
+      results.push(`Copied XY: ${text} ${M.unitLabel(doc!.units, du)}`);
+      showMeas();
+    }).catch(() => {
+      results.push(`XY: ${text}`);
+      showMeas();
+    });
   }
 
   /* ── drop ── */
