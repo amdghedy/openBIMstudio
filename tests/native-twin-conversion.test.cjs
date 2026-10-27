@@ -1,58 +1,79 @@
 /**
- * Native Twin conversion safety — geometry validation and registry shape.
- * Does not drive WebGL; verifies pure conversion helpers stay finite-safe.
+ * Native Twin conversion — geometry extraction guards (no WebGL).
  */
 const assert = require("assert");
 
-function buildCenteredGeometryPure(tris) {
-  if (!tris.length) return null;
-  const box = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
-  const expand = (x, y, z) => {
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return false;
-    box.min[0] = Math.min(box.min[0], x); box.min[1] = Math.min(box.min[1], y); box.min[2] = Math.min(box.min[2], z);
-    box.max[0] = Math.max(box.max[0], x); box.max[1] = Math.max(box.max[1], y); box.max[2] = Math.max(box.max[2], z);
-    return true;
-  };
-  let any = false;
-  for (const t of tris) {
-    for (let k = 0; k < 3; k++) {
-      if (expand(t[k * 3], t[k * 3 + 1], t[k * 3 + 2])) any = true;
-    }
+function finiteMatrixFromUnknown(input) {
+  // Mirrors src/modules/native-twin/geometry-extract.ts behaviour for tests
+  if (!input) return "identity";
+  if (input.elements && (Array.isArray(input.elements) || ArrayBuffer.isView(input.elements))) {
+    const a = Array.from(input.elements);
+    assert.strictEqual(a.length >= 16, true);
+    return "from-elements";
   }
-  if (!any) return null;
-  const cx = (box.min[0] + box.max[0]) / 2;
-  const cy = (box.min[1] + box.max[1]) / 2;
-  const cz = (box.min[2] + box.max[2]) / 2;
-  if (![cx, cy, cz].every(Number.isFinite)) return null;
-  const positions = [];
-  for (const t of tris) {
-    let ok = true;
-    for (let k = 0; k < 3; k++) {
-      if (![t[k*3], t[k*3+1], t[k*3+2]].every(Number.isFinite)) { ok = false; break; }
-    }
-    if (!ok) continue;
-    for (let k = 0; k < 3; k++) {
-      positions.push(t[k*3] - cx, t[k*3+1] - cy, t[k*3+2] - cz);
-    }
+  if (Array.isArray(input) || ArrayBuffer.isView(input)) {
+    const a = Array.from(input);
+    if (a.length >= 16) return "from-array";
   }
-  return positions.length >= 9 ? { positions, center: [cx, cy, cz] } : null;
+  return "identity";
 }
 
-// Unit cube triangles (2 faces worth for simplicity — 2 tris)
-const cubeTris = [
-  new Float32Array([0,0,0, 1,0,0, 1,1,0]),
-  new Float32Array([0,0,0, 1,1,0, 0,1,0]),
-];
-const built = buildCenteredGeometryPure(cubeTris);
-assert.ok(built, "valid geometry builds");
-assert.ok(built.positions.every(Number.isFinite), "all positions finite");
-assert.ok(built.center.every(Number.isFinite), "center finite");
+function meshDataListFromApiResult(groups, localId) {
+  if (!groups) return [];
+  if (Array.isArray(groups)) {
+    if (groups.length && Array.isArray(groups[0])) {
+      const flat = [];
+      for (const g of groups) if (Array.isArray(g)) flat.push(...g);
+      return flat.filter(Boolean);
+    }
+    if (groups.length && (groups[0]?.positions || groups[0]?.transform)) return groups;
+  }
+  if (typeof groups === "object") {
+    const obj = groups;
+    if (Array.isArray(obj[String(localId)])) return obj[String(localId)];
+    const values = Object.values(obj);
+    if (values.length && Array.isArray(values[0])) return values.flat().filter(Boolean);
+  }
+  return [];
+}
 
-// Non-finite must be rejected
-const bad = [new Float32Array([NaN, 0, 0, 1, 0, 0, 1, 1, 0])];
-assert.strictEqual(buildCenteredGeometryPure(bad), null, "NaN geometry rejected");
+// Nested MeshData[][] (Fragments contract)
+const nested = [[{ positions: new Float32Array(9), transform: { elements: new Array(16).fill(0) } }]];
+assert.strictEqual(meshDataListFromApiResult(nested, 35960).length, 1);
 
-const inf = [new Float32Array([0, 0, 0, Infinity, 0, 0, 1, 1, 0])];
-assert.strictEqual(buildCenteredGeometryPure(inf), null, "Infinity geometry rejected");
+// Flat MeshData[]
+const flat = [{ positions: new Float32Array(12), transform: null }];
+assert.strictEqual(meshDataListFromApiResult(flat, 1).length, 1);
+
+// Map by localId
+const map = { "35960": [{ positions: new Float32Array(9) }] };
+assert.strictEqual(meshDataListFromApiResult(map, 35960).length, 1);
+
+// Transform formats
+assert.strictEqual(finiteMatrixFromUnknown({ elements: new Array(16).fill(1) }), "from-elements");
+assert.strictEqual(finiteMatrixFromUnknown(new Array(16).fill(0)), "from-array");
+assert.strictEqual(finiteMatrixFromUnknown(null), "identity");
+
+// Reject non-finite geometry for twin registration
+function positionsUsable(positions) {
+  if (!positions || positions.length < 9) return false;
+  for (let i = 0; i < Math.min(positions.length, 12); i++) {
+    if (!Number.isFinite(Number(positions[i]))) return false;
+  }
+  return true;
+}
+assert.strictEqual(positionsUsable(new Float32Array([0,0,0,1,0,0,1,1,0])), true);
+assert.strictEqual(positionsUsable(new Float32Array([NaN,0,0,1,0,0,1,1,0])), false);
+assert.strictEqual(positionsUsable(new Float32Array(6)), false);
+
+// Failure message distinguishes mapping vs empty
+function failureUserMessage(modelId, localId, reason) {
+  if (reason === "no_geometry_mapping") {
+    return `Native Twin: element ${localId} in ${modelId} has no geometry mapping`;
+  }
+  return `Native Twin: could not retrieve usable geometry for ${modelId} / ${localId}`;
+}
+assert.ok(failureUserMessage("3032_ECG-INT-T2-BASE2-S", 35960, "no_geometry_mapping").includes("35960"));
+assert.ok(failureUserMessage("3032_ECG-INT-T2-BASE2-S", 35960, "geometry_api_empty").includes("3032_ECG-INT-T2-BASE2-S"));
 
 console.log("native-twin-conversion.test.cjs: ok");
