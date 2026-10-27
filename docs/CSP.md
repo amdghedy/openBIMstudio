@@ -91,6 +91,50 @@ inference server via an SSH/localhost tunnel (covered by `http://localhost:*`).
 The UI shows the provider's connection error in that case; this limitation is
 recorded in `docs/engineering/BASELINE.md`.
 
+## DWG reader isolation — scoped 'unsafe-eval' (2026-10-27, v0.74.0)
+
+**Root cause (verified empirically and statically):** `@mlightcad/libredwg-web`'s
+wasm imports `_embind_register_class/_embind_register_function/_emval_*` and
+registers its entire API during `__wasm_call_ctors`. Emscripten embind creates
+each invoker with `new Function(...)` — JavaScript string evaluation, which the
+main document CSP correctly blocks (`'wasm-unsafe-eval'` covers wasm compilation
+only, never `eval`/`new Function`). The reader failed on every import with
+"could not start the DWG reader (WASM failed to load): Evaluating a string as
+JavaScript violates ... script-src". 0.8.2 is the newest published package and
+no embind-free build exists; rebuilding LibreDWG cannot remove embind's dynamic
+invoker generation.
+
+**Selected remediation (isolate, don't weaken):** the parser runs in a dedicated
+module worker (`src/modules/cad-link/dwg-reader-worker.ts`). Worker documents
+get their CSP from their own HTTP response, so the worker script is served with
+a **scoped** policy that permits dynamic execution for this one document:
+
+```
+default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'
+```
+
+The **main document CSP is unchanged** — no `'unsafe-eval'` there, ever.
+
+Boundary contract: the worker receives `{ id, kind: "parse", bytes, fileName }`
+and returns structured JSON (DxfDocument or `{ code, message, detail }`). No
+DOM, no BIM state, no network beyond same-origin wasm assets. Error codes:
+`init-failed | invalid-file | unsupported-version | parse-failed | internal`.
+
+Where the scoped header lives (must stay identical — pinned by
+`tests/dwg-reader-isolation.test.cjs`):
+
+| Surface | Location | Matched path |
+|---|---|---|
+| Vite dev server | `vite.config.ts` `crossOriginIsolation()` middleware | `*/dwg-reader-worker*` (source URL) |
+| Vite preview (prod check) | same middleware | `/assets/dwg-reader-worker-*.js` |
+| Vercel | `vercel.json` headers | `/assets/dwg-reader-worker-(.*)` |
+| Cloudflare Workers assets | `public/_headers` | `/assets/dwg-reader-worker-*` |
+
+Deployment note: a host that strips these headers serves the worker without a
+CSP — the feature still works, it is simply less hardened; the main app policy
+is unaffected. Maintenance rules #4 gains one exception clause: `'unsafe-eval'`
+is permitted **only** in the DWG reader worker document listed above.
+
 ## Maintenance rules
 
 1. Adding a new cloud provider → add its host to `connect-src` **and** to the
@@ -99,8 +143,9 @@ recorded in `docs/engineering/BASELINE.md`.
    pinned version + a privacy note in the feature docs.
 3. Never add blanket `https:` to `connect-src` — it would silently allow any
    project data to leave the machine and defeat the AI redaction audit trail.
-4. Never add `'unsafe-eval'` — WASM uses `'wasm-unsafe-eval'`; if a dependency
-   demands full eval, replace the dependency.
+4. Never add `'unsafe-eval'` to the main document — WASM uses
+   `'wasm-unsafe-eval'`; if a dependency demands full eval, replace the
+   dependency. Sole exception: the scoped DWG reader worker document above.
 5. Verify: `npm run build && npm run preview`, open the app, run an IFC
    import, a clash run, an export, and the AI panel with the console open —
    zero CSP violations is the acceptance bar (Phase 7 browser E2E automates

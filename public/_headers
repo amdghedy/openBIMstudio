@@ -1,0 +1,5 @@
+# Scoped CSP for the isolated DWG reader worker (LibreDWG embind requires
+# dynamic invoker generation inside this one worker document). The main app
+# CSP lives in index.html and stays strict - no 'unsafe-eval' there.
+/assets/dwg-reader-worker-*
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'

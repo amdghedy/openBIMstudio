@@ -102,24 +102,34 @@ export default defineConfig({
   },
 });
 // --- OpenBIMStudio :: COOP/COEP for SharedArrayBuffer (web-ifc-mt) ---
+// CSP for the DWG reader worker document ONLY. The LibreDWG wasm registers its
+// whole API through emscripten embind, which generates invoker functions with
+// `new Function` during wasm startup - JavaScript evaluation the main document
+// CSP deliberately forbids. The parser therefore runs in an isolated module
+// worker; this scoped policy is the ONLY place 'unsafe-eval' is allowed, and
+// the worker has no DOM or BIM state (bytes in -> geometry JSON out).
+const DWG_READER_WORKER_CSP =
+  "default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'";
+const DWG_READER_WORKER_URL = /dwg-reader-worker/;
+
 function crossOriginIsolation() {
   return {
     name: "cross-origin-isolation",
     configureServer(server) {
-      server.middlewares.use((_req, res, next) => {
+      server.middlewares.use((req, res, next) => {
         res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
         res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
         res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, req.url && DWG_READER_WORKER_URL.test(req.url) ? DWG_READER_WORKER_CSP : undefined);
         next();
       });
     },
     configurePreviewServer(server) {
-      server.middlewares.use((_req, res, next) => {
+      server.middlewares.use((req, res, next) => {
         res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
         res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
         res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, req.url && DWG_READER_WORKER_URL.test(req.url) ? DWG_READER_WORKER_CSP : undefined);
         next();
       });
     },
@@ -155,9 +165,12 @@ function pwaPrecache() {
 }
 
 /** Hardening headers shared by the dev and preview servers (the hosted build sets the same ones in vercel.json). */
-function applySecurityHeaders(res: { setHeader(k: string, v: string): void }) {
+function applySecurityHeaders(res: { setHeader(k: string, v: string): void }, cspOverride?: string) {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()");
-  res.setHeader("Content-Security-Policy", "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
+  res.setHeader(
+    "Content-Security-Policy",
+    cspOverride ?? "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  );
 }

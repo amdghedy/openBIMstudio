@@ -10,7 +10,6 @@ import * as THREE from "three";
 import { ctx } from "../../core/context";
 import type { DxfDocument } from "../drawings/dxf-types";
 import { parseDxf } from "../drawings/dxf-reader";
-import { dwgDatabaseToDxfDocument } from "../drawings/dwg-convert";
 import {
   buildGeometry, collectLayerSegments, computePlacement, DEFAULT_LINK_OPTIONS, snapSegments,
   type LinkGeometry, type LinkOptions, type Placement, type PlacementEnv, type Theme,
@@ -75,63 +74,105 @@ function emit(kind: "added" | "changed" = "changed") {
 /* ------------------------------------------------------------------ */
 /* Reading files                                                       */
 /* ------------------------------------------------------------------ */
-async function createLibreDwg(LibreDwg: Any): Promise<Any> {
-  const attempts: Array<() => Promise<Any>> = [
-    () => LibreDwg.create(),
-    // Copied next to the app by scripts/copy-libredwg-wasm.mjs (npm postinstall).
-    () => LibreDwg.create("/libredwg/"),
-  ];
-  let last: unknown;
-  for (const a of attempts) {
-    try { return await a(); } catch (e) { last = e; }
-  }
-  throw new Error(`could not start the DWG reader (WASM failed to load): ${last instanceof Error ? last.message : String(last)}`);
+
+/**
+ * DWG parsing runs in a dedicated module worker (see dwg-reader-worker.ts).
+ * Root cause fixed here: the LibreDWG wasm registers its whole API through
+ * emscripten embind, whose invoker generation uses `new Function` at startup —
+ * JavaScript evaluation the main-document CSP (no 'unsafe-eval') must block.
+ * The worker document has its own scoped CSP; this thread stays strict.
+ */
+const DWG_PARSE_TIMEOUT_MS = 120_000;
+
+interface DwgParseSuccess { doc: DxfDocument; summary: string; version: string; entityCount: number }
+
+let readerWorker: Worker | null = null;
+let readerWorkerFailed = false;
+let nextParseId = 0;
+const pendingParses = new Map<number, {
+  resolve: (r: DwgParseSuccess) => void;
+  reject: (e: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}>();
+
+function failAllPending(message: string): void {
+  for (const [, p] of pendingParses) { clearTimeout(p.timer); p.reject(new Error(message)); }
+  pendingParses.clear();
 }
 
-/** Read a DWG with @mlightcad/libredwg-web and convert it to a DxfDocument. */
-export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: string }> {
-  let mod: Any;
+function resetReaderWorker(): void {
+  if (readerWorker) { try { readerWorker.terminate(); } catch { /* */ } }
+  readerWorker = null;
+}
+
+function describeDwgError(res: { code: string; message: string; detail?: string }): string {
+  if (res.code === "parse-failed" && res.detail) return `${res.message} - ${res.detail}`;
+  if (res.code !== "init-failed" && res.code !== "invalid-file" && res.detail) {
+    return `${res.message} (${res.detail})`;
+  }
+  return res.message;
+}
+
+function ensureReaderWorker(): Worker {
+  if (readerWorker) return readerWorker;
+  if (readerWorkerFailed) {
+    throw new Error("the DWG reader worker could not start in this browser (Web Workers unavailable)");
+  }
   try {
-    mod = await import("@mlightcad/libredwg-web");
-  } catch (e) {
-    throw new Error("the DWG reader (@mlightcad/libredwg-web) is not installed - run npm install");
+    readerWorker = new Worker(new URL("./dwg-reader-worker.ts", import.meta.url), {
+      type: "module",
+      name: "obs-dwg-reader-worker",
+    });
+  } catch (err) {
+    readerWorkerFailed = true;
+    throw new Error(`the DWG reader worker could not start: ${err instanceof Error ? err.message : String(err)}`);
   }
-  const LibreDwg = mod.LibreDwg ?? mod.default?.LibreDwg;
-  const FileType = mod.Dwg_File_Type ?? mod.default?.Dwg_File_Type;
-  if (!LibreDwg?.create) throw new Error("the installed libredwg-web has an unexpected API (LibreDwg.create missing)");
-  const lib = await createLibreDwg(LibreDwg);
+  readerWorker.addEventListener("message", (ev: MessageEvent<any>) => {
+    const res = ev.data;
+    const p = res && typeof res.id === "number" ? pendingParses.get(res.id) : undefined;
+    if (!p) return;
+    pendingParses.delete(res.id);
+    clearTimeout(p.timer);
+    if (res.ok) {
+      p.resolve({ doc: res.doc as DxfDocument, summary: res.summary, version: res.version, entityCount: res.entityCount });
+    } else {
+      p.reject(new Error(describeDwgError(res)));
+    }
+  });
+  readerWorker.addEventListener("error", (ev: ErrorEvent) => {
+    failAllPending(`the DWG reader worker crashed: ${ev.message || "unknown error"}`);
+    resetReaderWorker(); // next import respawns a fresh worker and retries
+  });
+  readerWorker.addEventListener("messageerror", () => {
+    failAllPending("the DWG reader returned a malformed response");
+    resetReaderWorker();
+  });
+  return readerWorker;
+}
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let dwg: Any | null = null;
-  const errors: string[] = [];
-  for (const input of [bytes, bytes.buffer] as Any[]) {
-    try { dwg = lib.dwg_read_data(input, FileType?.DWG ?? 0); if (dwg) break; }
-    catch (e) { errors.push(e instanceof Error ? e.message : String(e)); }
-  }
-  if (!dwg) {
-    throw new Error(
-      "libredwg could not read this DWG (very new AutoCAD version, encrypted or damaged file)" +
-      (errors.length ? ` - ${errors[0]}` : ""),
-    );
-  }
-  let db: Any;
-  try { db = lib.convert ? lib.convert(dwg) : dwg; }
-  finally { try { lib.dwg_free?.(dwg); } catch { /* */ } }
-
-  try { (window as Any).__obsLastDwgDb = db; } catch { /* kept for debugging */ }
-  const res = dwgDatabaseToDxfDocument(db);
-  if (!res.doc.entities.length) {
-    // Help diagnose converter/field-name mismatches: what did the file actually contain?
+/** Read a DWG through the isolated reader worker; converts to a DxfDocument. */
+export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: string }> {
+  const worker = ensureReaderWorker();
+  const bytes = await file.arrayBuffer();
+  const id = ++nextParseId;
+  return new Promise<{ doc: DxfDocument; summary: string }>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingParses.delete(id);
+      resetReaderWorker(); // cancel = terminate the parser; the next import gets a fresh worker
+      reject(new Error(
+        `${file.name}: the DWG parser did not finish within ${Math.round(DWG_PARSE_TIMEOUT_MS / 1000)}s and was cancelled. Try a smaller drawing or retry.`,
+      ));
+    }, DWG_PARSE_TIMEOUT_MS);
+    pendingParses.set(id, { resolve, reject, timer });
     try {
-      const raw: Any[] = Array.isArray(db?.entities) ? db.entities : [];
-      const hist: Record<string, number> = {};
-      for (const e of raw) { const k = String(e?.type ?? e?.entityType ?? e?.name ?? "?"); hist[k] = (hist[k] ?? 0) + 1; }
-      const keys = Object.keys(db ?? {}).join(", ");
-      res.summary += ` | raw model entities: ${raw.length}${raw.length ? " (" + Object.entries(hist).map(([k, v]) => `${v}x${k}`).join(", ") + ")" : ""} | database keys: ${keys}`;
-      console.warn("[cad-link] DWG produced no drawable entities", { hist, keys });
-    } catch { /* */ }
-  }
-  return res;
+      worker.postMessage({ id, kind: "parse", bytes, fileName: file.name } satisfies import("./dwg-reader-protocol").DwgParseRequest, [bytes]);
+    } catch (e) {
+      pendingParses.delete(id);
+      clearTimeout(timer);
+      resetReaderWorker();
+      reject(e instanceof Error ? e : new Error(String(e)));
+    }
+  });
 }
 
 export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {

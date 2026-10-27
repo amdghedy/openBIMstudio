@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.74.0",
   "type": "module",
-  "description": "Open BIM Studio \u2014 professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
+  "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
     "predev": "node scripts/copy-libredwg-wasm.mjs",
     "dev": "vite",
@@ -103,7 +103,8 @@
     "test:smart-perp": "node tests/smart-perp-snap.test.cjs",
     "deploy:worker": "npm run build && npx wrangler@4 deploy",
     "test:native-twin": "node tests/native-twin-conversion.test.cjs && node tests/native-twin-linear-params.test.cjs",
-    "test:native-twin-linear": "node tests/native-twin-linear-params.test.cjs"
+    "test:native-twin-linear": "node tests/native-twin-linear-params.test.cjs",
+    "test:dwg-isolation": "node tests/dwg-reader-isolation.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",

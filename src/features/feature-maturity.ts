@@ -136,9 +136,13 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     id: "dwg-import",
     area: "Interoperability",
     status: "limited",
-    source: ["src/modules/drawings/dwg-engine.ts"],
-    evidence: ["tests/"],
-    limitations: ["DWG version coverage per LibreDWG WASM (@mlightcad/libredwg-web)"],
+    source: ["src/modules/drawings/dwg-engine.ts", "src/modules/cad-link/index.ts", "src/modules/cad-link/dwg-reader-worker.ts"],
+    evidence: ["tests/dwg-reader-isolation.test.cjs"],
+    limitations: [
+      "DWG version coverage per LibreDWG WASM (@mlightcad/libredwg-web); fixtures verified AC1009/AC1015/AC1024/AC1032",
+      "Reader runs in an isolated worker: LibreDWG embind needs dynamic invoker generation, forbidden by the main-document CSP (no 'unsafe-eval')",
+      "Model-level DWG export unavailable; import-only",
+    ],
     affirmedIn: APP_VERSION,
   },
   {

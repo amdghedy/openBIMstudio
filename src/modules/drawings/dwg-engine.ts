@@ -12,6 +12,7 @@ import { ctx } from "../../core/context";
 import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint } from "./dxf-types";
 import { parseDxf, parseDxfFile } from "./dxf-reader";
 import { writeDxf, downloadDxf } from "./dxf-writer";
+import { readDwg } from "../cad-link/index";
 import { cadEngine, type CadEntity, type CadPt } from "../cad/cad-engine";
 
 type Any = Record<string, any>;
@@ -322,50 +323,9 @@ export async function importDxfFile(
  */
 export async function tryImportDwg(file: File): Promise<DrawingDocument | null> {
   try {
-    // Optional peer dependency
-    // Must be a bare specifier WITHOUT @vite-ignore so Vite can resolve + prebundle it.
-    // @ts-ignore optional dependency
-    const mod: Any = await import("@mlightcad/libredwg-web");
-    const LibreDwg = mod.LibreDwg ?? mod.default?.LibreDwg;
-    const Dwg_File_Type = mod.Dwg_File_Type ?? mod.default?.Dwg_File_Type;
-    if (!LibreDwg?.create) {
-      console.warn("[dwg-engine] libredwg-web loaded but API mismatch");
-      return null;
-    }
-    const lib = await LibreDwg.create();
-    const buf = new Uint8Array(await file.arrayBuffer());
-    const raw = lib.dwg_read_data(buf, Dwg_File_Type?.DWG ?? 0);
-    const db = lib.convert?.(raw) ?? raw;
-
-    // Best-effort extract entities from converted DB
-    const entities: DxfEntity[] = [];
-    const layers: DxfLayer[] = [{ name: "0", color: 7 }];
-    const ents = db?.entities ?? db?.modelSpace?.entities ?? [];
-    for (const e of ents) {
-      const type = String(e.type ?? e.entityType ?? "").toUpperCase();
-      const layer = e.layer ?? e.layerName ?? "0";
-      if (type.includes("LINE") && e.start && e.end) {
-        entities.push({
-          type: "LINE",
-          layer,
-          start: { x: e.start.x, y: e.start.y, z: e.start.z },
-          end: { x: e.end.x, y: e.end.y, z: e.end.z },
-        });
-      } else if (type.includes("CIRCLE") && e.center && e.radius != null) {
-        entities.push({
-          type: "CIRCLE",
-          layer,
-          center: { x: e.center.x, y: e.center.y },
-          radius: e.radius,
-        });
-      }
-    }
-
-    const doc: DxfDocument = {
-      layers,
-      entities,
-      sourceFormat: "dwg",
-    };
+    // Parse in the isolated DWG reader worker (CSP-safe; full converter, not
+    // the old ad-hoc LINE/CIRCLE extraction). See modules/cad-link/index.ts.
+    const { doc, summary } = await readDwg(file);
     const id = uid();
     const drawing: DrawingDocument = {
       id,
@@ -378,10 +338,12 @@ export async function tryImportDwg(file: File): Promise<DrawingDocument | null> 
     activeId = id;
     loadDxfIntoCad(doc);
     loadDxfIntoScene(doc);
-    toast("success", `DWG imported: ${entities.length} entities`);
+    toast("success", `DWG imported: ${doc.entities.length} entities${summary ? ` - ${summary.split(" | ")[0]}` : ""}`);
     return drawing;
   } catch (err) {
-    console.warn("[dwg-engine] DWG import unavailable:", err);
+    // Surface the actionable reason (init/CSP/version/parse) instead of failing silently.
+    console.warn("[dwg-engine] DWG import failed:", err);
+    toast("error", err instanceof Error ? err.message : String(err));
     return null;
   }
 }
