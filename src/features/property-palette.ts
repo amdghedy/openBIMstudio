@@ -21,6 +21,7 @@ import {
   onAuthoringChange,
   rebuildAuthored,
   markAuthoringDirty,
+  applyElementParamChange,
   isDrawToolActive,
   refreshPreview,
   resetTypeDefaults,
@@ -124,8 +125,22 @@ function writeValue(
     // 1. Snapshot the "before" state for Undo
     const before = JSON.parse(JSON.stringify(element));
 
-    // 2. Apply the new value
-    if (target === "root") {
+    // 2. Apply the new value — geometric params go through the authoritative
+    //    applyElementParamChange path so Native Twin / authored solids regenerate.
+    const geometricKeys = new Set([
+      "height", "thickness", "width", "depth", "elevation", "sillHeight",
+      "offsetAlongHost", "frameThickness",
+    ]);
+    if (target === "params" && geometricKeys.has(key) && typeof value === "number") {
+      const res = applyElementParamChange(element.id, key, value);
+      if (!res?.ok) {
+        Object.assign(element, before);
+        window.dispatchEvent(new CustomEvent("obs-toast", {
+          detail: { message: res?.reason || "Could not apply parameter", kind: "error" },
+        }));
+        return;
+      }
+    } else if (target === "root") {
       (element as any)[key] = value;
     } else if (target === "params") {
       (element.params as any)[key] = value;
@@ -136,13 +151,15 @@ function writeValue(
     // 3. Snapshot the "after" state for Redo
     const after = JSON.parse(JSON.stringify(element));
 
-    // 4. Instantly rebuild the 3D geometry so the user sees the change
-    try {
-      import("./authoring").then((m) => {
-        m.rebuildAuthored();
-        m.markAuthoringDirty();
-      });
-    } catch (e) { /* */ }
+    // 4. Non-geometric fields still need an explicit rebuild
+    if (!(target === "params" && geometricKeys.has(key) && typeof value === "number")) {
+      try {
+        import("./authoring").then((m) => {
+          m.rebuildAuthored();
+          m.markAuthoringDirty();
+        });
+      } catch (e) { /* */ }
+    }
 
     // 5. Push to History so Ctrl+Z works
     try {
