@@ -44,6 +44,7 @@ import type {
 import { validateNativeModel } from "../modules/native-bim/model-validation";
 import { deriveLinearParamsFromPositions } from "../modules/native-twin/linear-params";
 import { heightResizeTransform, footprintCenterXZ } from "../modules/native-twin/vertical-resize";
+import { deformPlanDimensions, planAxesFromBaseline, lengthRatioFromParams } from "../modules/native-twin/mesh-plan-deform";
 import {
   classifyTwinCapabilities,
   elementTypeFromIfcEntity,
@@ -1704,8 +1705,37 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
     el.nativeGeometry.positions.length >= 9 &&
     !preferParametricSolid
   ) {
+    ensureNativeBaseDimensions(el);
+    const props = el.properties as any;
+    const baseH = Number(props.nativeBaseHeight) || 0;
+    const baseT = Number(props.nativeBaseThickness) || 0;
+    const baseLen = Number(props.nativeBaseLength) || 0;
+    const h = Number(el.params.height) || baseH;
+    const t = Number(el.params.thickness) || baseT;
+
+    // Orientation-preserving plan deform (length + thickness) on a copy of source verts.
+    let positions: ArrayLike<number> = el.nativeGeometry.positions;
+    if (el.transform && el.params.start && el.params.end && (baseT > 1e-8 || baseLen > 1e-8)) {
+      const axes = planAxesFromBaseline(el.params.start as [number, number], el.params.end as [number, number]);
+      if (axes) {
+        const tr = baseT > 1e-8 ? t / baseT : 1;
+        const lr = baseLen > 1e-8
+          ? lengthRatioFromParams(el.params.start as [number, number], el.params.end as [number, number], baseLen)
+          : 1;
+        if (Math.abs(tr - 1) > 1e-9 || Math.abs(lr - 1) > 1e-9) {
+          positions = deformPlanDimensions(
+            el.nativeGeometry.positions,
+            axes,
+            el.transform.position,
+            lr,
+            tr,
+          );
+        }
+      }
+    }
+
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(el.nativeGeometry.positions, 3));
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions as ArrayLike<number>, 3));
     try { geo.computeVertexNormals(); } catch { /* */ }
     try { geo.computeBoundingBox(); geo.computeBoundingSphere(); } catch { /* */ }
     const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(el.color || COLORS[el.type] || "#a7b0be") });
@@ -1718,37 +1748,24 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
     mesh.userData.sourceModelId = el.ifc?.sourceModelId;
     mesh.userData.sourceLocalId = el.ifc?.sourceLocalId;
     mesh.userData.sourceGlobalId = el.ifc?.sourceGlobalId || el.ifc?.globalId;
-    // Ensure base dimensions exist so scale ratios are not 1 after first edit.
-    ensureNativeBaseDimensions(el);
     if (el.transform) {
       mesh.position.set(...el.transform.position);
       mesh.quaternion.set(...el.transform.quaternion);
       const sx0 = el.transform.scale[0];
       const sy0 = el.transform.scale[1];
       const sz0 = el.transform.scale[2];
-      const props = el.properties as any;
-      const baseH = Number(props.nativeBaseHeight) || 0;
-      const baseT = Number(props.nativeBaseThickness) || 0;
-      const baseW = Number(props.nativeBaseWidth) || 0;
-      const h = Number(el.params.height) || baseH;
-      const t = Number(el.params.thickness) || baseT;
-      const w = Number(el.params.width ?? el.params.depth) || baseW;
-      const q = el.transform.quaternion;
-      const isIdentityQuat =
-        Math.abs(q[0]) < 1e-9 && Math.abs(q[1]) < 1e-9 && Math.abs(q[2]) < 1e-9 && Math.abs(Math.abs(q[3]) - 1) < 1e-6;
-      // Source meshes are usually stored with identity quaternion and world-oriented
-      // vertices. Scaling X/Z in that frame shears diagonal walls — only safe when the
-      // element has a real local frame (non-identity quaternion).
-      const zScale = (!isIdentityQuat && baseT > 1e-8) ? (t / baseT) * sz0 : sz0;
-      const xScale = (!isIdentityQuat && baseW > 1e-8) ? (w / baseW) * sx0 : sx0;
-      // Height: scale along local Y, keep base fixed in world space.
+      // Height only via vertical resize — plan size handled by vertex deform above.
       const rs = baseH > 1e-8
         ? heightResizeTransform({
-            positions: el.nativeGeometry.positions, position: el.transform.position,
-            quaternion: el.transform.quaternion, scale: [sx0, sy0, sz0], baseHeight: baseH, newHeight: h,
+            positions: el.nativeGeometry.positions,
+            position: el.transform.position,
+            quaternion: el.transform.quaternion,
+            scale: [sx0, sy0, sz0],
+            baseHeight: baseH,
+            newHeight: h,
           })
         : null;
-      mesh.scale.set(xScale, rs ? rs.scale[1] : sy0, zScale);
+      mesh.scale.set(sx0, rs ? rs.scale[1] : sy0, sz0);
       if (rs) mesh.position.set(rs.position[0], rs.position[1], rs.position[2]);
       else mesh.position.set(...el.transform.position);
     }
@@ -4348,6 +4365,13 @@ function ensureNativeBaseDimensions(el: AuthoredElement): void {
     const w = (el.params.width ?? el.params.depth) as number | undefined;
     if (Number.isFinite(w) && (w as number) > 0) props.nativeBaseWidth = w;
   }
+  if (props.nativeBaseLength == null && el.params.start && el.params.end) {
+    const len = Math.hypot(
+      (el.params.end[0] as number) - (el.params.start[0] as number),
+      (el.params.end[1] as number) - (el.params.start[1] as number),
+    );
+    if (Number.isFinite(len) && len > 1e-6) props.nativeBaseLength = len;
+  }
   // Derive from geometry if still missing
   if (props.nativeBaseHeight == null && el.nativeGeometry?.positions?.length) {
     const pos = el.nativeGeometry.positions;
@@ -4543,6 +4567,7 @@ export function addNativeGeometryElement(input: {
       nativeBaseHeight: height,
       nativeBaseThickness: thickness,
       nativeBaseWidth: width,
+      nativeBaseLength: useLinear && derived ? Math.hypot(derived.end[0] - derived.start[0], derived.end[1] - derived.start[1]) : undefined,
       editMode,
       parametricCapability,
       forceParametricSolid: false,
