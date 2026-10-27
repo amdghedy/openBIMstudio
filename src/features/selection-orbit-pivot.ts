@@ -424,26 +424,6 @@ function installSelectionListeners(): void {
 
 /* -- Wheel: prefer selection pivot when present -------------------------- */
 
-function installWheelPivotHook(): void {
-  // When selection pivot is active, nudge wheel-arbiter zoom to use it by
-  // temporarily setting controls target before zoom (arbiter reads target).
-  window.addEventListener(
-    "wheel",
-    (e) => {
-      if (!hasPivot) return;
-      if ((window as Any).__OBS_MMB_HELD) return;
-      try {
-        // Intentionally empty: forcing the controls target onto the pivot made
-        // every wheel tick rotate the camera towards it. Zoom keeps the view direction.
-        void lastPivot;
-      } catch {
-        /* */
-      }
-    },
-    { capture: true, passive: true },
-  );
-}
-
 /* -- Keyboard ------------------------------------------------------------ */
 
 function installKeys(): void {
@@ -502,7 +482,6 @@ export function setupSelectionOrbitPivot(): void {
   installed = true;
 
   installSelectionListeners();
-  installWheelPivotHook();
   installKeys();
 
   // Initial sync

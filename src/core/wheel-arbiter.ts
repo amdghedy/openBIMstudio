@@ -1,11 +1,12 @@
 import * as THREE from "three";
 import { ctx } from "./context";
+import { pointerNdc, wheelDistanceFactor } from "./cursor-zoom";
+import { zoomBy, pickWorldPointUnderCursor } from "../features/camera-tools";
 
 type Any = Record<string, any>;
 
 /**
- * Authoritative mouse-wheel zoom using camera-controls' native
- * dolly-to-cursor implementation.
+ * Authoritative mouse-wheel zoom (cursor-anchored, see core/cursor-zoom.ts).
  *
  * Wheel direction (default):
  *   scroll up   → zoom in
@@ -96,226 +97,49 @@ function isOrthoCam(cam: THREE.Camera | null | undefined): boolean {
   return !!(cam as any)?.isOrthographicCamera;
 }
 
-function syncElementRect(controls: Any, rect: DOMRect): void {
-  try {
-    if (controls._elementRect) {
-      controls._elementRect.x = rect.left;
-      controls._elementRect.y = rect.top;
-      controls._elementRect.width = rect.width;
-      controls._elementRect.height = rect.height;
-    }
-  } catch {
-    /* */
-  }
-  try {
-    if (typeof controls.setViewport === "function") {
-      controls.setViewport(undefined);
-    }
-  } catch {
-    /* */
-  }
+/** Last anchor, reused while the pointer rests: the anchor keeps its pixel, so reusing it is exact. */
+let lastAnchor: { p: THREE.Vector3; x: number; y: number; t: number } | null = null;
+
+function anchorFor(clientX: number, clientY: number): THREE.Vector3 | null {
+  const now = performance.now();
+  const a = lastAnchor;
+  if (a && now - a.t < 250 && Math.hypot(clientX - a.x, clientY - a.y) < 3) { a.t = now; return a.p; }
+  const p = pickWorldPointUnderCursor(clientX, clientY);
+  lastAnchor = p ? { p, x: clientX, y: clientY, t: now } : null;
+  return p;
 }
 
-function cursorNdc(clientX: number, clientY: number, rect: DOMRect): { x: number; y: number } {
-  const x = ((clientX - rect.left) / rect.width) * 2 - 1;
-  const y = -((clientY - rect.top) / rect.height) * 2 + 1;
-  return { x, y };
-}
-
-function nativeCursorZoom(
-  controls: Any,
-  cam: THREE.Camera,
-  deltaY: number,
-  clientX: number,
-  clientY: number,
-  shift: boolean,
-): boolean {
-  const rect = getViewportRect();
-  if (!rect || rect.width < 2 || rect.height < 2) return false;
-
-  syncElementRect(controls, rect);
-  const { x, y } = cursorNdc(clientX, clientY, rect);
-
-  const speed = readMultiplier() * (shift ? 2.5 : 1);
-  // amount > 0 → zoom in.
-  // Default: wheel up (deltaY < 0) → amount > 0 → zoom in.
-  // invert flips the mapping.
-  const amount = (invert ? deltaY : -deltaY) * speed;
-
-  const wasDollyToCursor = !!controls.dollyToCursor;
-  try {
-    controls.dollyToCursor = true;
-
-    try {
-      if (controls.enabled === false) controls.enabled = true;
-    } catch {
-      /* */
-    }
-    try {
-      if ("dollySpeed" in controls && !(controls.dollySpeed > 0)) {
-        controls.dollySpeed = 1.0;
-      }
-    } catch {
-      /* */
-    }
-
-    const ortho = isOrthoCam(cam);
-
-    if (ortho) {
-      if (typeof controls._zoomInternal === "function") {
-        // Positive amount → zoom in. Library zoom internals typically take
-        // negative delta for zoom-in; match by negating.
-        controls._zoomInternal(-amount * 0.01, x, y);
-      } else if (typeof controls.zoom === "function") {
-        const z = Math.max(1e-4, Number((cam as any).zoom) || 1);
-        // amount > 0 → factor > 1 → higher ortho.zoom → zoom in
-        const factor = Math.exp(amount * 0.0022);
-        const newZ = Math.max(0.05, Math.min(8000, z * factor));
-        if (typeof controls.zoomTo === "function") {
-          const r = controls.zoomTo(newZ, false);
-          if (r && typeof r.catch === "function") r.catch(() => { /* */ });
-        } else {
-          const r = controls.zoom(newZ - z, false);
-          if (r && typeof r.catch === "function") r.catch(() => { /* */ });
-        }
-        truckOrthoToCursor(controls, cam, x, y, z, newZ);
-      } else {
-        return false;
-      }
-    } else {
-      if (typeof controls._dollyInternal === "function") {
-        // Native path: negative delta → dolly in (closer).
-        // amount > 0 (zoom in) → pass negative.
-        controls._dollyInternal(-amount * 0.01, x, y);
-      } else if (typeof controls.dolly === "function") {
-        let distance = 10;
-        try {
-          if (typeof controls.getDistance === "function") {
-            distance = Math.max(controls.getDistance(), 0.5);
-          } else if (controls._spherical?.radius) {
-            distance = Math.max(controls._spherical.radius, 0.5);
-          }
-        } catch {
-          /* */
-        }
-        // Public dolly: positive distance moves away (zoom out).
-        // amount > 0 (zoom in) → negative dolly distance.
-        const dollyDist = -amount * 0.0022 * distance;
-        const r = controls.dolly(dollyDist, false);
-        if (r && typeof r.catch === "function") r.catch(() => { /* */ });
-      } else {
-        return false;
-      }
-    }
-
-    try {
-      controls.update?.(0);
-    } catch {
-      /* */
-    }
-    return true;
-  } catch (err) {
-    console.warn("[wheel-arbiter] native cursor zoom failed", err);
-    return false;
-  } finally {
-    try {
-      controls.dollyToCursor = wasDollyToCursor;
-    } catch {
-      /* */
-    }
-  }
-}
-
-function truckOrthoToCursor(
-  controls: Any,
-  cam: THREE.Camera,
-  ndcX: number,
-  ndcY: number,
-  oldZoom: number,
-  newZoom: number,
-): void {
-  if (!isOrthoCam(cam) || !(cam as any).isOrthographicCamera) return;
-  if (Math.abs(newZoom - oldZoom) < 1e-9) return;
-
-  try {
-    const ortho = cam as THREE.OrthographicCamera;
-    const halfW = (ortho.right - ortho.left) / (2 * oldZoom);
-    const halfH = (ortho.top - ortho.bottom) / (2 * oldZoom);
-    const worldX0 = ndcX * halfW;
-    const worldY0 = ndcY * halfH;
-
-    const halfW1 = (ortho.right - ortho.left) / (2 * newZoom);
-    const halfH1 = (ortho.top - ortho.bottom) / (2 * newZoom);
-    const worldX1 = ndcX * halfW1;
-    const worldY1 = ndcY * halfH1;
-
-    const dx = worldX0 - worldX1;
-    const dy = worldY0 - worldY1;
-    if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return;
-
-    if (typeof controls.truck === "function") {
-      const r = controls.truck(dx, dy, false);
-      if (r && typeof r.catch === "function") r.catch(() => { /* */ });
-    }
-  } catch {
-    /* */
-  }
-}
-
-function applyZoom(ndelta: number, shift: boolean, clientX: number, clientY: number): void {
+/**
+ * One wheel notch = one zoomBy(). Zoom is anchored on the world point under the pointer
+ * (raycast, else the camera-facing plane through the orbit target). Camera orientation is never
+ * touched: zoomBy only moves position/target along the same view direction (or ortho zoom).
+ */
+function applyZoom(e: WheelEvent): boolean {
   const controls = getControls();
   const cam = resolveDrivenCamera();
-  if (!cam || !controls) return;
-
-  lockControlsWheel();
-
+  if (!cam || !controls) return false;
+  const rect = getViewportRect();
+  if (!rect || !pointerNdc(e.clientX, e.clientY, rect)) return false; // outside the viewport
+  lockControlsWheel(); // the library's own wheel action must never also zoom
   const qBefore = cam.quaternion.clone();
-  const dirBefore = cam.getWorldDirection(new THREE.Vector3()).clone();
-
-  const ok = nativeCursorZoom(controls, cam, ndelta, clientX, clientY, shift);
-  if (!ok) {
-    console.warn("[wheel-arbiter] native path unavailable — no zoom applied");
-    return;
-  }
-
-  try {
-    const qAfter = cam.quaternion;
-    const dot = Math.abs(
-      qBefore.x * qAfter.x +
-        qBefore.y * qAfter.y +
-        qBefore.z * qAfter.z +
-        qBefore.w * qAfter.w,
-    );
-    if (dot < 0.999) {
-      cam.quaternion.copy(qBefore);
-      cam.updateMatrixWorld?.(true);
-      console.warn("[wheel-arbiter] orientation drift after native dolly (dot=" + dot.toFixed(6) + ")");
-    }
-    const dirAfter = cam.getWorldDirection(new THREE.Vector3());
-    if (dirBefore.dot(dirAfter) < 0.999) {
-      cam.quaternion.copy(qBefore);
-      cam.updateMatrixWorld?.(true);
-    }
-  } catch {
-    /* */
-  }
-
-  try {
-    window.dispatchEvent(new CustomEvent("obs:camera-changed"));
-  } catch {
-    /* */
-  }
+  const dy = invert ? -e.deltaY : e.deltaY;
+  const factor = wheelDistanceFactor(dy, e.deltaMode, readMultiplier(), e.shiftKey);
+  if (factor === 1) return true;
+  zoomBy(factor, anchorFor(e.clientX, e.clientY) ?? undefined);
+  const dot = Math.abs(qBefore.dot(cam.quaternion));
+  if (dot < 0.999999) console.warn("[wheel-arbiter] camera orientation changed during wheel zoom (dot=" + dot.toFixed(7) + ")");
+  try { window.dispatchEvent(new CustomEvent("obs:camera-changed")); } catch { /* */ }
+  return true;
 }
 
 function onWheel(e: WheelEvent): void {
   if (!enabled) return;
   if ((w() as Any).__OBS_MMB_HELD) return;
   if (!isOverViewport(e.target)) return;
-  const nd = normalizeDelta(e);
-  if (nd === 0) return;
+  if (normalizeDelta(e) === 0) return;
   e.preventDefault();
   e.stopImmediatePropagation();
-  applyZoom(nd, !!e.shiftKey, e.clientX, e.clientY);
+  applyZoom(e);
 }
 
 export function lockControlsWheel(): void {
@@ -383,5 +207,5 @@ export function setupWheelArbiter(): void {
     lockControlsWheel,
     getState: () => ({ enabled, invert, multiplier: readMultiplier() }),
   };
-  console.log("[wheel-arbiter] scroll-up zooms in; native dollyToCursor; default speed 10x");
+  console.log("[wheel-arbiter] scroll-up zooms in; cursor-anchored zoomBy; default speed 10x");
 }

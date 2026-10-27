@@ -412,20 +412,6 @@ function zoomAboutViewAxis(factor: number): void {
   }
 }
 
-function installWheel(): void {
-  // Intentionally empty: wheel-arbiter owns all viewport wheel zoom.
-  // A previous implementation here called setLookAt toward the selection COG
-  // on every wheel tick, which rotated the camera during zoom.
-  window.addEventListener(
-    "wheel",
-    (_e: WheelEvent) => {
-      // Permanent yield — do not process wheel here.
-      return;
-    },
-    { capture: true, passive: true },
-  );
-}
-
 /* -- Setup --------------------------------------------------------------- */
 
 export function setupNavCogForce(): void {
@@ -437,8 +423,6 @@ export function setupNavCogForce(): void {
   } catch (e) {
     console.warn("[nav-cog-force] inputRouter subscribe failed", e);
   }
-
-  installWheel();
 
   const tick = () => {
     const k = selectionKey();

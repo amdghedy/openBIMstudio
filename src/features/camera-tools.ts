@@ -1,3 +1,4 @@
+import { perspectiveZoomAbout } from "../core/cursor-zoom";
 import * as THREE from "three";
 import type * as OBC from "@thatopen/components";
 import { ctx, type Projection } from "../core/context";
@@ -498,23 +499,31 @@ export function zoomBy(factor: number, focusPoint?: THREE.Vector3) {
   }
 
   // ── PERSPECTIVE ──────────────────────────────────────────────────
+  // With a cursor anchor: scale camera AND target about that exact world point (exact:
+  // the anchor keeps its pixel, orientation is unchanged, and a near anchor is never
+  // overshot). The old "truck by lateral*(1-factor) on the target plane" was only right
+  // for anchors at target depth.
   const offset = new THREE.Vector3().subVectors(cam.position, target);
   const dist = offset.length();
   if (dist < 1e-6) return;
-  const dir = offset.clone().multiplyScalar(1 / dist);
-  const newDist = Math.max(0.05, dist * factor);
-  let newPos = target.clone().add(dir.clone().multiplyScalar(newDist));
-  let newTarget = target.clone();
-
-  if (focusPoint && Number.isFinite(focusPoint.x)) {
-    const viewN = dir.clone();
-    const toFocus = focusPoint.clone().sub(target);
-    const along = toFocus.dot(viewN);
-    const focusOnPlane = focusPoint.clone().sub(viewN.clone().multiplyScalar(along));
-    const lateral = focusOnPlane.clone().sub(target);
-    const truck = lateral.multiplyScalar(1 - factor);
-    newPos.add(truck);
-    newTarget.add(truck);
+  let newPos: THREE.Vector3;
+  let newTarget: THREE.Vector3;
+  const anchored = focusPoint && Number.isFinite(focusPoint.x)
+    ? perspectiveZoomAbout({
+        pos: [cam.position.x, cam.position.y, cam.position.z],
+        target: [target.x, target.y, target.z],
+        anchor: [focusPoint.x, focusPoint.y, focusPoint.z],
+        factor,
+      })
+    : null;
+  if (anchored) {
+    newPos = new THREE.Vector3(...anchored.pos);
+    newTarget = new THREE.Vector3(...anchored.target);
+  } else {
+    // No usable anchor (none given, or behind the camera): dolly along the view axis about the target.
+    const dir = offset.clone().multiplyScalar(1 / dist);
+    newPos = target.clone().add(dir.multiplyScalar(Math.max(0.05, dist * factor)));
+    newTarget = target.clone();
   }
 
   try {
@@ -560,6 +569,7 @@ export function pickWorldPointUnderCursor(clientX: number, clientY: number): THR
       const targetDist = camPos.distanceTo(target);
       for (const h of hits) {
         if (!h.point || !Number.isFinite(h.point.x)) continue;
+        { let o: any = h.object, hidden = false; while (o) { if (o.visible === false) { hidden = true; break; } o = o.parent; } if (hidden) continue; }
         const d = camPos.distanceTo(h.point);
         if (d < 0.01) continue;
         // Accept hits roughly in front of / near the target depth.
