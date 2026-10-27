@@ -8,9 +8,9 @@ import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import * as M from "../modules/cad-viewer/viewer-math";
 
-type Tool = "pan" | "select" | "box" | "dist" | "poly" | "area" | "angle" | "coord" | "radius" | "zoomwin" | "redline" | "note";
+type Tool = "pan" | "select" | "box" | "dist" | "poly" | "area" | "angle" | "coord" | "radius" | "zoomwin" | "redline" | "note" | "id" | "dim" | "calibrate";
 type ColorMode = "layer" | "bw" | "invert";
-interface Markup { kind: "line" | "note"; pts: M.Pt[]; text?: string }
+interface Markup { kind: "line" | "note" | "dim"; pts: M.Pt[]; text?: string }
 
 const BG: Record<string, string> = { black: "#000000", dark: "#1c2128", grey: "#808080", white: "#ffffff" };
 let root: HTMLDivElement | null = null;
@@ -76,6 +76,12 @@ function build(): void {
   let bg = "black", cmode: ColorMode = "layer", lw = 1, du: M.DisplayUnit = "drawing";
   const hidden = new Set<string>();
   let snapOn = true; const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
+  let orthoOn = false;
+  /** User calibration: multiplies converted lengths (1 = drawing units as-is). */
+  let scaleCal = 1;
+  let crosshair: M.Pt | null = null;
+  let lastWorld: M.Pt | null = null;
+
   let selected = -1, hover: M.Snap | null = null, cursor: M.Pt | null = null;
   let pts: M.Pt[] = []; let results: string[] = []; let drawn: Array<{ kind: Tool; pts: M.Pt[] }> = [];
   let markups: Markup[] = []; let hits: M.TextHit[] = [], hitI = -1;
@@ -105,7 +111,7 @@ function build(): void {
     if (inv()) rgb = 0xffffff ^ rgb;
     return rgbToCss(rgb);
   }
-  const fmt = (v: number, p = 1) => M.formatQty(v, doc?.units, du, p);
+  const fmt = (v: number, p = 1) => M.formatQty(v * scaleCal, doc?.units, du, p);
   const dpr = () => window.devicePixelRatio || 1;
   const status = (m: string) => { busyEl.textContent = m; busyEl.style.display = m ? "block" : "none"; };
 
@@ -187,8 +193,32 @@ function build(): void {
     // markups
     c.save(); c.strokeStyle = "#ef4444"; c.fillStyle = "#ef4444"; c.lineWidth = 2; c.font = "14px sans-serif";
     for (const m of markups) {
-      if (m.kind === "line") { c.beginPath(); m.pts.forEach((q, i) => { const p = M.worldToScreen(v, q.x, q.y); i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y); }); c.stroke(); }
-      else { const p = M.worldToScreen(v, m.pts[0].x, m.pts[0].y); c.fillText(m.text ?? "", p.x, p.y); c.beginPath(); c.arc(p.x, p.y, 3, 0, 7); c.fill(); }
+      if (m.kind === "line") {
+        c.beginPath();
+        m.pts.forEach((q, i) => { const p = M.worldToScreen(v, q.x, q.y); i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y); });
+        c.stroke();
+      } else if (m.kind === "dim" && m.pts.length >= 2) {
+        const a = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
+        const b = M.worldToScreen(v, m.pts[1].x, m.pts[1].y);
+        c.strokeStyle = "#38bdf8"; c.fillStyle = "#38bdf8";
+        c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+        // end ticks
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        for (const p of [a, b]) {
+          c.beginPath();
+          c.moveTo(p.x + Math.cos(ang + Math.PI / 2) * 6, p.y + Math.sin(ang + Math.PI / 2) * 6);
+          c.lineTo(p.x + Math.cos(ang - Math.PI / 2) * 6, p.y + Math.sin(ang - Math.PI / 2) * 6);
+          c.stroke();
+        }
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        c.font = "bold 12px system-ui,sans-serif";
+        c.fillText(m.text ?? "", mx + 4, my - 4);
+        c.strokeStyle = "#ef4444"; c.fillStyle = "#ef4444";
+      } else {
+        const p = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
+        c.fillText(m.text ?? "", p.x, p.y);
+        c.beginPath(); c.arc(p.x, p.y, 3, 0, 7); c.fill();
+      }
     }
     c.restore();
     if (withUi) {
@@ -205,6 +235,17 @@ function build(): void {
         else c.strokeRect(p.x - 5, p.y - 5, 10, 10);
       }
       paintScaleBar(c, v);
+      // Engineer crosshair at cursor (world-aligned readout uses status bar)
+      if (cursor && withUi) {
+        const cp = M.worldToScreen(v, cursor.x, cursor.y);
+        c.save();
+        c.strokeStyle = "rgba(56,189,248,0.45)";
+        c.lineWidth = 1;
+        c.setLineDash([4, 4]);
+        c.beginPath(); c.moveTo(0, cp.y); c.lineTo(v.w, cp.y); c.moveTo(cp.x, 0); c.lineTo(cp.x, v.h); c.stroke();
+        c.setLineDash([]);
+        c.restore();
+      }
       if (cmp) { c.save(); c.font = "12px sans-serif"; c.fillStyle = "#ef4444"; c.fillText("■ only in this drawing", 12, 20); c.fillStyle = "#22c55e"; c.fillText("■ only in the compared drawing", 12, 36); c.fillStyle = "#9ca3af"; c.fillText("■ unchanged", 12, 52); c.restore(); }
       if (rband) { const x = rband.a.x, y = rband.a.y, w = rband.b.x - x, h = rband.b.y - y, win = w >= 0; c.save(); c.globalAlpha = 0.15; c.fillStyle = win ? "#38bdf8" : "#22c55e"; c.fillRect(x, y, w, h); c.globalAlpha = 1; c.strokeStyle = win ? "#38bdf8" : "#22c55e"; c.lineWidth = 1; c.setLineDash(win ? [] : [5, 4]); c.strokeRect(x, y, w, h); c.restore(); }
       if (winStart && winNow) { c.strokeStyle = "#38bdf8"; c.setLineDash([5, 4]); c.strokeRect(winStart.x, winStart.y, winNow.x - winStart.x, winNow.y - winStart.y); }
@@ -346,7 +387,12 @@ function build(): void {
   }
 
   /* ── tools ── */
-  const T: Array<[Tool, string, string]> = [["pan", "Pan", "P"], ["select", "Select", "S"], ["box", "Box select", "B"], ["zoomwin", "Zoom window", "W"], ["dist", "Distance", "D"], ["poly", "Polyline length", "L"], ["area", "Area", "A"], ["angle", "Angle", "G"], ["coord", "Coordinates", "I"], ["radius", "Radius", "R"], ["redline", "Redline", "M"], ["note", "Note", "N"]];
+  const T: Array<[Tool, string, string]> = [
+    ["pan", "Pan", "P"], ["select", "Select", "S"], ["box", "Box", "B"], ["zoomwin", "Zoom window", "W"],
+    ["dist", "Distance", "D"], ["poly", "Polyline", "L"], ["area", "Area", "A"], ["angle", "Angle", "G"],
+    ["coord", "Coordinates", "C"], ["radius", "Radius", "R"], ["id", "ID", "I"], ["dim", "Dimension", "Q"],
+    ["calibrate", "Calibrate", "K"], ["redline", "Redline", "M"], ["note", "Note", "N"],
+  ];
   function buildBar() {
     tools.innerHTML = `<button data-a="open">Open…</button><input type="file" data-r="file" accept=".dwg,.dxf" style="display:none"><span class="sep"></span>` +
       T.map(([k, l, key]) => `<button data-t="${k}" title="${l} (${key})">${l}</button>`).join("") + `<span class="sep"></span>
@@ -358,6 +404,9 @@ function build(): void {
       <label>Units <select data-a="du">${["drawing", "mm", "cm", "m", "in", "ft"].map((u) => `<option>${u}</option>`).join("")}</select></label><span class="sep"></span>
       <input data-r="q" placeholder="Find text…" style="width:130px"><button data-a="qprev">◀</button><button data-a="qnext">▶</button><span data-r="qc" style="color:#9aa4b2"></span><span class="sep"></span>
       <button data-a="png">PNG</button><button data-a="svg">SVG</button><button data-a="clrmk">Clear markup</button>
+      <button data-a="ortho" title="Ortho — constrain to axis (F8)">Ortho</button>
+      <button data-a="report" title="Layer length / entity report">Report</button>
+      <button data-a="csv" title="Export measurements as CSV">CSV</button>
       <span style="flex:1"></span><button data-a="close">Close ✕</button>`;
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.onclick = () => setTool(b.dataset.t as Tool));
     const fileIn = tools.querySelector<HTMLInputElement>("[data-r=file]")!;
@@ -369,6 +418,9 @@ function build(): void {
       out: () => { pushView(); view = M.zoomAt(view, view.w / 2, view.h / 2, 1 / 1.5); draw(); },
       prev: () => { const v = history.pop(); if (v) { view = { ...v, w: view.w, h: view.h }; draw(); } },
       snap: () => { snapOn = !snapOn; tools.querySelector("[data-a=snap]")!.classList.toggle("on", snapOn); draw(); },
+      ortho: () => { orthoOn = !orthoOn; tools.querySelector("[data-a=ortho]")!.classList.toggle("on", orthoOn); updateStatus(); draw(); },
+      report: () => showLayerReport(),
+      csv: () => exportMeasurementsCsv(),
       png: () => exportPng(), svg: () => exportSvg(),
       clrmk: () => { markups = []; draw(); },
       qprev: () => stepHit(-1), qnext: () => stepHit(1),
@@ -414,7 +466,56 @@ function build(): void {
     const s = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind }; const p = { x: s.x, y: s.y };
     switch (tool) {
       case "coord": results.push(`X ${M.convertLength(p.x, doc.units, du).toFixed(3)}  Y ${M.convertLength(p.y, doc.units, du).toFixed(3)} ${M.unitLabel(doc.units, du)}`); drawn.push({ kind: "coord", pts: [p] }); showMeas(); break;
-      case "dist": pts.push(p); if (pts.length === 2) { const d = M.distance(pts[0], pts[1]); results.push(`Distance: ${fmt(d)}  ΔX ${fmt(Math.abs(pts[1].x - pts[0].x))}  ΔY ${fmt(Math.abs(pts[1].y - pts[0].y))}  Angle ${M.norm360Deg(pts[0], pts[1]).toFixed(2)}°`); drawn.push({ kind: "dist", pts: [...pts] }); pts = []; showMeas(); } break;
+      case "dist": {
+        let q = p;
+        if (orthoOn && pts.length === 1) q = M.orthoConstrain(pts[0], p);
+        pts.push(q);
+        if (pts.length === 2) {
+          const d = M.distance(pts[0], pts[1]);
+          results.push(`Distance: ${fmt(d)}  ΔX ${fmt(Math.abs(pts[1].x - pts[0].x))}  ΔY ${fmt(Math.abs(pts[1].y - pts[0].y))}  Angle ${M.norm360Deg(pts[0], pts[1]).toFixed(2)}°`);
+          drawn.push({ kind: "dist", pts: [...pts] });
+          pts = [];
+          showMeas();
+        }
+        break;
+      }
+      case "id": {
+        const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 12 / view.scale, visible) : -1;
+        if (i >= 0) { setSel([i]); results.push(`ID · #${i} · ${ents[i].type} · layer ${ents[i].layer}`); showProps(); showMeas(); }
+        break;
+      }
+      case "dim": {
+        let q = p;
+        if (orthoOn && pts.length === 1) q = M.orthoConstrain(pts[0], p);
+        pts.push(q);
+        if (pts.length === 2) {
+          const d = M.distance(pts[0], pts[1]);
+          const label = fmt(d);
+          markups.push({ kind: "dim", pts: [...pts], text: label });
+          results.push(`Dimension: ${label}`);
+          drawn.push({ kind: "dist", pts: [...pts] });
+          pts = [];
+          showMeas();
+        }
+        break;
+      }
+      case "calibrate": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const raw = M.distance(pts[0], pts[1]);
+          const known = prompt("Enter the real-world length for this segment (in the current display unit):", "");
+          pts = [];
+          if (known != null && Number.isFinite(Number(known)) && Number(known) > 0 && raw > 1e-12) {
+            const displayedRaw = M.convertLength(raw, doc?.units, du) || raw;
+            scaleCal = Number(known) / displayedRaw;
+            results.push(`Scale calibrated ×${scaleCal.toFixed(6)} — measured segment now reads ${Number(known)} ${M.unitLabel(doc?.units, du)}`);
+            showMeas();
+            updateStatus();
+          }
+          break;
+        }
+        break;
+      }
       case "poly": case "area": pts.push(p); break;
       case "angle": pts.push(p); if (pts.length === 3) { results.push(`Angle: ${M.angleAt(pts[1], pts[0], pts[2]).toFixed(2)}°`); drawn.push({ kind: "angle", pts: [...pts] }); pts = []; showMeas(); } break;
       case "radius": { const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1; const e = ents[i]; if (e && (e.type === "CIRCLE" || e.type === "ARC")) { setSel([i]); results.push(`Radius ${fmt(e.radius)}  Diameter ${fmt(e.radius * 2)}`); showProps(); showMeas(); } break; }
@@ -433,7 +534,14 @@ function build(): void {
     }
     if (dragging) { view = M.panBy(view, sp.x - dragging.x, sp.y - dragging.y); dragging = { x: sp.x, y: sp.y }; draw(); updateStatus(wp); return; }
     if (winStart) { winNow = sp; draw(); return; }
-    hover = snapped(wp); cursor = hover ? { x: hover.x, y: hover.y } : wp; updateStatus(cursor); if (pts.length || hover || hits.length) draw();
+    hover = snapped(wp);
+    let cur = hover ? { x: hover.x, y: hover.y } : wp;
+    if (orthoOn && pts.length >= 1 && (tool === "dist" || tool === "dim" || tool === "poly" || tool === "redline" || tool === "calibrate")) {
+      cur = M.orthoConstrain(pts[pts.length - 1], cur);
+    }
+    cursor = cur;
+    updateStatus(cursor);
+    if (pts.length || hover || hits.length || tool !== "select") draw();
   });
   const endDrag = (ev: PointerEvent) => {
     ptrs.delete(ev.pointerId); if (ptrs.size < 2) pinch = 0;
@@ -469,11 +577,85 @@ function build(): void {
     if (ev.key === "+" || ev.key === "=") { view = M.zoomAt(view, view.w / 2, view.h / 2, 1.3); draw(); return; }
     if (ev.key === "-" || ev.key === "_") { view = M.zoomAt(view, view.w / 2, view.h / 2, 1 / 1.3); draw(); return; }
     const k = ev.key.toLowerCase();
-    if (k === "e") zoomExtents(); else if (k === "f") zoomSelection(); else { const t = T.find(([, , key]) => key.toLowerCase() === k); if (t) setTool(t[0]); }
+    if (k === "e") zoomExtents();
+    else if (k === "f") zoomSelection();
+    else if (e.key === "F8") { orthoOn = !orthoOn; tools.querySelector("[data-a=ortho]")?.classList.toggle("on", orthoOn); updateStatus(); draw(); }
+    else if (e.key === "F3") { snapOn = !snapOn; tools.querySelector("[data-a=snap]")?.classList.toggle("on", snapOn); draw(); }
+    else { const tt = T.find(([, , key]) => key.toLowerCase() === k); if (tt) setTool(tt[0]); }
   });
   function updateStatus(p?: M.Pt) {
-    const c = p ?? cursor; const zoomPct = doc && bounds ? Math.round((view.scale / M.fitView(bounds, view.w, view.h).scale) * 100) : 100;
-    statusEl.innerHTML = `<span>${escapeHtml(name || "No file")}</span><span>${c && doc ? `X ${M.convertLength(c.x, doc.units, du).toFixed(3)}  Y ${M.convertLength(c.y, doc.units, du).toFixed(3)}` : ""}</span><span>${escapeHtml(layoutI >= 0 && doc?.layouts?.[layoutI] ? doc.layouts[layoutI].name : "Model")}</span><span>Units: ${escapeHtml(doc ? M.unitLabel(doc.units, du) : "-")}</span><span>Zoom ${zoomPct}%</span><span>Tool: ${escapeHtml(T.find(([k]) => k === tool)?.[1] ?? tool)}</span><span style="flex:1"></span><span>Snap ${snapOn ? "on" : "off"}</span>`;
+    const c = p ?? cursor;
+    const zoomPct = doc && bounds ? Math.round((view.scale / M.fitView(bounds, view.w, view.h).scale) * 100) : 100;
+    const unit = doc ? M.unitLabel(doc.units, du) : "-";
+    const xy = c && doc
+      ? `X ${M.convertLength(c.x * scaleCal, doc.units, du).toFixed(3)}  Y ${M.convertLength(c.y * scaleCal, doc.units, du).toFixed(3)} ${unit}`
+      : "";
+    statusEl.innerHTML =
+      `<span>${escapeHtml(name || "No file")}</span>` +
+      `<span>${xy}</span>` +
+      `<span>${escapeHtml(layoutI >= 0 && doc?.layouts?.[layoutI] ? doc.layouts[layoutI].name : "Model")}</span>` +
+      `<span>Units: ${escapeHtml(unit)}</span>` +
+      `<span>Zoom ${zoomPct}%</span>` +
+      `<span>Tool: ${escapeHtml(T.find(([k]) => k === tool)?.[1] ?? tool)}</span>` +
+      `<span style="flex:1"></span>` +
+      `<span>Snap ${snapOn ? "ON" : "off"}</span>` +
+      `<span>Ortho ${orthoOn ? "ON" : "off"}</span>` +
+      `<span>Scale ×${scaleCal === 1 ? "1" : scaleCal.toFixed(4)}</span>` +
+      `<span>${sel.size ? sel.size + " selected" : ""}</span>`;
+  }
+
+  function showLayerReport(): void {
+    if (!doc) return;
+    const byLayer = new Map<string, { count: number; length: number; area: number }>();
+    for (const e of ents) {
+      if (!visible(e)) continue;
+      const m = M.entityMetrics(e);
+      const row = byLayer.get(e.layer) ?? { count: 0, length: 0, area: 0 };
+      row.count++;
+      if (m.length != null) row.length += m.length;
+      if (m.area != null) row.area += m.area;
+      byLayer.set(e.layer, row);
+    }
+    const rows = [...byLayer.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    let totalLen = 0, totalN = 0;
+    const body = rows.map(([layer, r]) => {
+      totalLen += r.length; totalN += r.count;
+      return `<tr><td>${escapeHtml(layer)}</td><td style="text-align:right">${r.count}</td><td style="text-align:right">${escapeHtml(fmt(r.length))}</td><td style="text-align:right">${r.area ? escapeHtml(fmt(r.area, 2)) : "—"}</td></tr>`;
+    }).join("");
+    openOverlay(
+      `<b style="font-size:14px">Layer report — ${escapeHtml(name)}</b><br>` +
+      `<span style="color:#9aa4b2">${totalN} visible objects · total length ${escapeHtml(fmt(totalLen))}</span>` +
+      `<table style="width:100%;margin-top:10px;border-collapse:collapse;font-size:12px">` +
+      `<thead><tr style="text-align:left;color:#9aa4b2"><th>Layer</th><th style="text-align:right">Count</th><th style="text-align:right">Length</th><th style="text-align:right">Area</th></tr></thead>` +
+      `<tbody>${body}</tbody></table>` +
+      `<div style="margin-top:12px;display:flex;gap:8px">` +
+      `<button data-r="rep-csv" style="padding:6px 10px">Download CSV</button>` +
+      `<button data-r="rep-close" style="padding:6px 10px">Close</button></div>`,
+    );
+    helpEl?.querySelector("[data-r=rep-close]")?.addEventListener("click", () => closeOverlay());
+    helpEl?.querySelector("[data-r=rep-csv]")?.addEventListener("click", () => {
+      const lines = ["layer,count,length,area"];
+      for (const [layer, r] of rows) {
+        lines.push(`"${layer.replace(/"/g, '""')}",${r.count},${r.length * scaleCal},${r.area * scaleCal}`);
+      }
+      const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (name || "drawing") + "-layer-report.csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  }
+
+  function exportMeasurementsCsv(): void {
+    const lines = ["index,measurement"];
+    results.forEach((r, i) => lines.push(`${i + 1},"${String(r).replace(/"/g, '""')}"`));
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (name || "drawing") + "-measurements.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   /* ── drop ── */
@@ -496,8 +678,10 @@ function build(): void {
     openOverlay(`<b style="font-size:14px">Mouse & keyboard</b><br>
       Wheel: zoom at cursor · Drag: pan · Middle / right drag: pan · Middle double-click: extents<br>
       Click: select · Shift/Ctrl+click: add or remove · Shift+drag or <b>B</b>: box select (→ window, ← crossing) · Ctrl+A: select all<br>
-      P pan · S select · W zoom window · D distance · L polyline · A area · G angle · I coordinate · R radius · M redline · N note<br>
-      E extents · F zoom to selection · F3 snaps · F7 grid · Backspace previous view · Arrows pan · + / − zoom<br>
+      P pan · S select · W zoom window · D distance · L polyline · A area · G angle · C coordinates · R radius<br>
+      I identify entity · Q dimension · K calibrate scale · M redline · N note<br>
+      E extents · F zoom selection · F3 snap · F7 grid · F8 ortho · Backspace previous view · Arrows pan · + / − zoom<br>
+      Report = layer lengths · CSV = export measurements · Calibrate = set real-world scale from a known length<br>
       Esc: cancel the pick, then leave the command, then clear the selection · Ctrl+C: copy the view as an image<br>
       Double-click a layer name: zoom to that layer<br><span style="color:#9aa4b2">Press ? or Esc to close.</span>`);
   }
