@@ -6,12 +6,11 @@ on:
   workflow_dispatch:
 
 # Required GitHub secrets:
-#   CLOUDFLARE_API_TOKEN  — API token with Account → Workers Scripts:Edit
-#                          and Account → Account Settings:Read
+#   CLOUDFLARE_API_TOKEN  — Workers Scripts:Edit + Account Settings:Read
 #   CLOUDFLARE_ACCOUNT_ID — Cloudflare account id
 #
-# Create token: https://dash.cloudflare.com/profile/api-tokens
-# Use template "Edit Cloudflare Workers" (or custom with Workers Scripts Edit).
+# This app is an assets-only Worker (static Vite build in ./dist).
+# Requires Wrangler 4+ (v3 demands a JS entry-point / main field).
 
 jobs:
   deploy:
@@ -55,16 +54,21 @@ jobs:
 
       - name: Deploy Worker
         id: deploy
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Assets-only project (wrangler.jsonc) needs Wrangler 4+
+          wranglerVersion: "4.153.0"
           command: deploy
 
       - name: Deploy failure help
         if: failure() && steps.deploy.conclusion == 'failure'
         shell: bash
         run: |
-          echo "::error::Cloudflare deploy failed (often: No access to the specified service)."
-          echo "Fix: create an API token with Workers Scripts:Edit + Account Settings:Read,"
-          echo "set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID, then re-run this workflow."
+          echo "::error::Cloudflare deploy step failed."
+          echo "If the log says 'No access to the specified service':"
+          echo "  - Token needs Account → Workers Scripts → Edit"
+          echo "  - CLOUDFLARE_ACCOUNT_ID must match the Worker account"
+          echo "If the log says 'Missing entry-point':"
+          echo "  - Ensure wranglerVersion is 4.x (assets-only config)"
