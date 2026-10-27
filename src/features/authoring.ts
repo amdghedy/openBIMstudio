@@ -4302,6 +4302,22 @@ export function addNativeGeometryElement(input: {
   const id = uid();
   const type = nativeElementTypeFromIfc(input.entity);
   const pos = input.position;
+  // Reject non-finite geometry — prevents WebGL corruption / black viewport.
+  const positions = input.positions ?? [];
+  if (positions.length < 9) {
+    throw new Error("Native twin geometry has insufficient positions");
+  }
+  for (let i = 0; i < positions.length; i++) {
+    if (!Number.isFinite(positions[i])) {
+      throw new Error(`Native twin geometry has non-finite coordinate at index ${i}`);
+    }
+  }
+  for (const n of [...input.position, ...input.quaternion, ...input.scale]) {
+    if (!Number.isFinite(n)) {
+      throw new Error("Native twin transform contains non-finite values");
+    }
+  }
+
   const el: AuthoredElement = {
     id, type,
     name: input.name || `${type} native twin`,
@@ -4323,7 +4339,7 @@ export function addNativeGeometryElement(input: {
       editable: true,
       pinned: false,
     },
-    nativeGeometry: { positions: [...input.positions] },
+    nativeGeometry: { positions: [...positions] },
     ifc: {
       entity: input.entity || "IfcBuildingElementProxy",
       globalId: input.globalId,
@@ -4340,7 +4356,17 @@ export function addNativeGeometryElement(input: {
     transform: { position: [...input.position], quaternion: [...input.quaternion], scale: [...input.scale] },
   };
   elements.push(el);
-  rebuild();
+  // Incremental add — avoid full authored-scene dispose/rebuild which can
+  // flash the viewport black and drop unrelated meshes under load.
+  try {
+    const mesh = createMesh(el);
+    if (mesh) group.add(mesh);
+    applySelection();
+  } catch (err) {
+    const idx = elements.findIndex((e) => e.id === id);
+    if (idx >= 0) elements.splice(idx, 1);
+    throw err;
+  }
   markDirty();
   notifyAuthoringChange();
   return el;
