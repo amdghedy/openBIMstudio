@@ -12,6 +12,10 @@
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getElementTriangles, getElementTrianglesExact, type Tri } from "../modules/clash/geometry";
+import {
+  extractElementGeometry,
+  failureUserMessage,
+} from "../modules/native-twin/geometry-extract";
 import { gizmo } from "./gizmo";
 import { makeDockable, type DockHandle } from "./dockable";
 import { history } from "./history";
@@ -479,41 +483,46 @@ export async function beginEdit(modelId: string, localId: number): Promise<FragE
   let exactGeometry = false;
   let extractedBox: THREE.Box3 | null = null;
 
-  // 1) Preferred: Fragments' supported per-item geometry API. This is the
-  //    authoritative route and works for composite/render-tiled elements such
-  //    as slabs, beams, walls and complex families where the viewport mesh
-  //    does not expose a simple localId range.
-  try {
-    const meshData = await getItemMeshData(model, localId);
-    if (meshData?.length) {
-      const extracted = await meshDataToWorldTriangles(meshData, model, localId);
-      if (extracted?.tris.length) {
-        tris = extracted.tris;
-        extractedBox = extracted.box;
-        exactGeometry = true;
-      }
-    }
-  } catch (error) {
-    console.warn("[frag-edit] supported item geometry extraction failed", error);
+  // Multi-path extraction: Fragments getItemsGeometry → single-item tiles →
+  // viewport idRanges. Never invents approximate boxes.
+  const extraction = await extractElementGeometry(model, localId, modelId);
+  if (extraction.ok && extraction.tris.length) {
+    tris = extraction.tris;
+    extractedBox = extraction.box;
+    exactGeometry = true;
   }
 
-  // 2) Compatibility fallback for older/custom fragment payloads.
-  if (!tris?.length) {
+  if (!tris || !tris.length) {
+    console.warn(
+      "[frag-edit] no editable geometry for element:",
+      modelId,
+      localId,
+      extraction.reason,
+      extraction.detail,
+    );
     try {
-      tris = getElementTrianglesExact(model.object, localId);
-      exactGeometry = !!tris?.length;
-    } catch { tris = null; }
-  }
-  if (!tris || !tris.length) {
-    try { tris = getElementTriangles(model.object, localId); } catch { tris = null; }
-  }
-  if (!tris || !tris.length) {
-    console.warn("[frag-edit] no editable geometry for element:", modelId, localId);
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: {
+          message: failureUserMessage(modelId, localId, extraction),
+          kind: "error",
+        },
+      }));
+    } catch { /* */ }
     return null;
   }
 
   const built = buildCenteredGeometry(tris);
-  if (!built) return null;
+  if (!built) {
+    try {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: {
+          message: `Native Twin: geometry for ${modelId} / ${localId} failed validation after extraction.`,
+          kind: "error",
+        },
+      }));
+    } catch { /* */ }
+    return null;
+  }
 
   let name = `#${localId}`, category = "Unknown";
   try {
