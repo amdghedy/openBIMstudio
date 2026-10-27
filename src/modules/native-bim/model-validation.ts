@@ -109,7 +109,22 @@ export function validateNativeModel(snapshot: NativeModelSnapshot): ModelDiagnos
     if (p.depth !== undefined && !positive(p.depth)) add("DEPTH_NOT_POSITIVE", "error", "Depth must be greater than zero.", el.id, undefined, "params.depth");
 
     if (LINEAR_TYPES.has(el.type)) {
-      if (!p.start || !p.end) {
+      // Boundary-mesh Native Twins may not have a recovered baseline yet; do not
+      // block height/property edits that only update params.height on mesh geometry.
+      const isBoundaryTwin =
+        !!(el as any).nativeGeometry?.positions?.length &&
+        ((el.properties as any)?.editMode === "boundary-mesh" || !p.start || !p.end);
+      if (isBoundaryTwin && (!p.start || !p.end)) {
+        // Warn only — height scaling of nativeGeometry remains valid.
+        add(
+          "LINEAR_ENDPOINTS_MISSING",
+          "warning",
+          "Linear baseline not recovered; element is edited as boundary geometry.",
+          el.id,
+          undefined,
+          "params",
+        );
+      } else if (!p.start || !p.end) {
         add("LINEAR_ENDPOINTS_MISSING", "error", "Linear element requires start and end coordinates.", el.id, undefined, "params");
       } else if (![...p.start, ...p.end].every(finite)) {
         add("LINEAR_COORDINATE_INVALID", "error", "Linear element coordinates must be finite.", el.id, undefined, "params.start");
