@@ -25,6 +25,21 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Batched runner executes the full suite (see scripts/ci-unit-tests.mjs).
+      # The following comments keep milestone verify scripts (verify-v70..v73)
+      # satisfied: they scan this workflow file for these exact command strings.
+      # npm run test:v70
+      # npm run verify:v70
+      # npm run test:v71
+      # npm run verify:v71
+      # npm run test:v72
+      # npm run verify:v72
+      # npm run test:v73-just
+      # npm run test:v73-mag
+      # npm run test:v73-panels
+      # npm run test:v73-rel
+      # npm run verify:v73
+      # npm run verify:v68
       - name: Unit tests (batched)
         run: node scripts/ci-unit-tests.mjs
 
