@@ -18,7 +18,7 @@ import { history } from "./history";
 import { updateClipping } from "./camera-tools";
 import { markDirty } from "../modules/projects/projects";
 import { getItemMeta } from "./item-meta";
-import { addNativeGeometryElement, updateNativeGeometryElement, removeElementById, getElementById } from "./authoring";
+import { addNativeGeometryElement, updateNativeGeometryElement, removeElementById, getElementById, getAuthoredGroup } from "./authoring";
 import { downloadNativeTwinIfc } from "../modules/export/native-twin-ifc";
 
 /** modelId::localId keys for sources that must stay hidden while a twin exists. */
@@ -295,26 +295,44 @@ function buildCenteredGeometry(tris: Tri[]): {
   const v = new THREE.Vector3();
   for (const t of tris) {
     for (let k = 0; k < 3; k++) {
-      v.set(t[k * 3], t[k * 3 + 1], t[k * 3 + 2]);
+      const x = t[k * 3], y = t[k * 3 + 1], z = t[k * 3 + 2];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        console.warn("[frag-edit] skipping non-finite triangle vertex");
+        continue;
+      }
+      v.set(x, y, z);
       box.expandByPoint(v);
     }
   }
   if (box.isEmpty()) return null;
 
   const center = box.getCenter(new THREE.Vector3());
+  if (![center.x, center.y, center.z].every(Number.isFinite)) return null;
+
   const positions = new Float32Array(tris.length * 9);
+  let write = 0;
   for (let i = 0; i < tris.length; i++) {
     const t = tris[i];
+    let ok = true;
     for (let k = 0; k < 3; k++) {
-      positions[i * 9 + k * 3]     = t[k * 3]     - center.x;
-      positions[i * 9 + k * 3 + 1] = t[k * 3 + 1] - center.y;
-      positions[i * 9 + k * 3 + 2] = t[k * 3 + 2] - center.z;
+      const x = t[k * 3], y = t[k * 3 + 1], z = t[k * 3 + 2];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) { ok = false; break; }
     }
+    if (!ok) continue;
+    for (let k = 0; k < 3; k++) {
+      positions[write * 9 + k * 3]     = t[k * 3]     - center.x;
+      positions[write * 9 + k * 3 + 1] = t[k * 3 + 1] - center.y;
+      positions[write * 9 + k * 3 + 2] = t[k * 3 + 2] - center.z;
+    }
+    write++;
   }
+  if (write === 0) return null;
+  const trimmed = positions.subarray(0, write * 9);
 
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geo.computeVertexNormals();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(trimmed, 3));
+  try { geo.computeVertexNormals(); } catch { /* normals optional */ }
+  try { geo.computeBoundingSphere(); } catch { /* */ }
   return { geometry: geo, center, box };
 }
 
@@ -582,6 +600,10 @@ export async function beginEdit(modelId: string, localId: number): Promise<FragE
 
   // Promote the reconstructed geometry into the real authored project model.
   // The runtime mesh remains only as the exact edit/cache representation.
+  // Commit in controlled stages so a failure cannot black out the viewport.
+  // 1) Register native authored element (incremental mesh — no full scene wipe).
+  // 2) Attach gizmo clone (kept invisible when authored mesh is present).
+  // 3) Only then hide the source IFC/FRAG item.
   try {
     const native = addNativeGeometryElement({
       name,
@@ -605,14 +627,45 @@ export async function beginEdit(modelId: string, localId: number): Promise<FragE
     edit.nativeElementId = native.id;
   } catch (error) {
     console.error("[frag-edit] native authored object creation failed", error);
+    try { built.geometry.dispose(); material.dispose(); } catch { /* */ }
+    try {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: {
+          message: `Native Twin failed for ${modelId} / ${localId}: geometry could not be registered.`,
+          kind: "error",
+        },
+      }));
+    } catch { /* */ }
     return null;
   }
+
   runtime.set(edit.id, rt);
   editGroup.add(clone);
-  clone.visible = false;
-  await hideOriginal(modelId, localId);
-  try { await (ctx.fragments as any).core?.update?.(true); } catch { /* visual refresh optional */ }
-  // The source is now hidden; remove its viewport selection so the new native twin is the visible edit target.
+  // Prefer the authored mesh as the visible representation. If it was not
+  // attached, keep the clone visible so hiding the source never blanks the element.
+  let authoredVisible = false;
+  try {
+    getAuthoredGroup().traverse((obj: any) => {
+      if (obj?.userData?.elementId === edit.nativeElementId) authoredVisible = true;
+    });
+  } catch { /* */ }
+  clone.visible = !authoredVisible;
+
+  try {
+    await hideOriginal(modelId, localId);
+  } catch (e) {
+    console.warn("[frag-edit] hide original failed — twin remains visible", e);
+  }
+
+  // Prefer a soft fragments refresh. Force-update has been observed to leave
+  // the viewport blank when called mid-selection on large linked models.
+  try {
+    const core = (ctx.fragments as any)?.core;
+    if (core && typeof core.update === "function") {
+      await Promise.resolve(core.update(false));
+    }
+  } catch { /* visual refresh optional */ }
+
   try {
     const sel = (ctx.features as any).selection;
     sel?.clear?.();
