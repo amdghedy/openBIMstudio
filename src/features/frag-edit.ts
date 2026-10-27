@@ -62,6 +62,8 @@ export interface FragEdit {
   };
   objectPlacement?: number[];
   sourceData?: Record<string, unknown>;
+  /** Unflattened getItemsData record for lossless archive. */
+  sourceRaw?: unknown;
   propertySets?: Record<string, unknown>;
   quantities?: Record<string, unknown>;
   overrides?: Record<string, unknown>;
@@ -464,6 +466,17 @@ function ensureNativeElementForEdit(e: FragEdit): void {
       quaternion: [...e.quaternion],
       scale: [...e.scale],
       dimensions: d ? { width: d.width, height: d.height, depth: d.depth } : undefined,
+      sourceRawItem: e.sourceRaw ?? e.sourceData,
+      geometryProvenance: {
+        triangleCount: Math.floor((e.geometry?.positions?.length ?? 0) / 9),
+        vertexCount: Math.floor((e.geometry?.positions?.length ?? 0) / 3),
+        bounds: d ? {
+          min: d.min as [number, number, number],
+          max: d.max as [number, number, number],
+          center: d.center as [number, number, number],
+        } : undefined,
+        modelMatrixWorld: e.objectPlacement,
+      },
     });
     e.nativeElementId = native.id;
   } catch (error) {
@@ -594,6 +607,7 @@ export async function beginEdit(modelId: string, localId: number): Promise<FragE
       center: [center.x, center.y, center.z],
     },
     sourceData: source.sourceData,
+    sourceRaw: raw,
     propertySets: source.propertySets,
     quantities: source.quantities,
     overrides: {},
@@ -632,6 +646,19 @@ export async function beginEdit(modelId: string, localId: number): Promise<FragE
       quaternion: [...edit.quaternion],
       scale: [...edit.scale],
       dimensions: { width: size.x, height: size.y, depth: size.z },
+      sourceRawItem: edit.sourceRaw ?? edit.sourceData ?? raw,
+      geometryProvenance: {
+        extractionPath: extraction.path,
+        triangleCount: extraction.triangleCount ?? tris.length,
+        meshCount: extraction.meshCount,
+        vertexCount: extraction.vertexCount,
+        bounds: {
+          min: [dimensionBox.min.x, dimensionBox.min.y, dimensionBox.min.z],
+          max: [dimensionBox.max.x, dimensionBox.max.y, dimensionBox.max.z],
+          center: [center.x, center.y, center.z],
+        },
+        modelMatrixWorld: objectPlacement,
+      },
     });
     edit.nativeElementId = native.id;
   } catch (error) {
