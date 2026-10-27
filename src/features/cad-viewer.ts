@@ -255,7 +255,9 @@ function build(): void {
       if (!b && !doc.layouts?.length) throw new Error("The file has no drawable geometry");
       modelBounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 }; modelIdx = M.buildIndex(modelEnts, modelBounds); layoutIdxCache.clear();
       hidden.clear(); for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
-      markups = []; results = []; layerFilter = ""; emptyEl.style.display = "none";
+      markups = []; results = []; layerFilter = ""; $<HTMLInputElement>("lf").value = ""; emptyEl.style.display = "none";
+      cmp = null; { const cb = tools2.querySelector("[data-a=compare]"); if (cb) { cb.textContent = "Compare…"; cb.classList.remove("on"); } }
+      fillMenus();
       buildTabs(); activate(modelEnts.length ? -1 : 0); setTool("select"); showMeas();
       const sk = doc.skipped && Object.keys(doc.skipped).length ? `  (not drawn: ${Object.entries(doc.skipped).map(([k, n]) => `${k}×${n}`).join(", ")})` : "";
       status(`${r.summary}${sk}`); setTimeout(() => status(""), 5000);
