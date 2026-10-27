@@ -179,6 +179,53 @@ export function orthoConstrain(a: Pt, b: Pt): Pt {
   return dx >= dy ? { x: b.x, y: a.y } : { x: a.x, y: b.y };
 }
 
+/** Shortest distance from point P to segment AB, and the foot of the perpendicular. */
+export function distPointToSeg(p: Pt, a: Pt, b: Pt): { dist: number; foot: Pt; t: number } {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-18) return { dist: distance(p, a), foot: { ...a }, t: 0 };
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const foot = { x: a.x + t * dx, y: a.y + t * dy };
+  return { dist: distance(p, foot), foot, t };
+}
+
+/** Compass bearing degrees clockwise from +Y (north), 0–360. */
+export function bearingDeg(a: Pt, b: Pt): number {
+  const ang = Math.atan2(b.x - a.x, b.y - a.y) * 180 / Math.PI; // from north toward east
+  return ((ang % 360) + 360) % 360;
+}
+
+/** Simple revision-cloud polyline (rounded scallops along path). */
+export function revisionCloudPoints(path: Pt[], bulge = 0.35, segsPerArc = 6): Pt[] {
+  if (path.length < 2) return path.slice();
+  const out: Pt[] = [];
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i], b = path[i + 1];
+    const len = distance(a, b);
+    if (len < 1e-9) continue;
+    const n = Math.max(2, Math.round(len / (len * 0.25 + 1e-6) * 3));
+    const steps = Math.max(2, Math.min(24, n));
+    for (let s = 0; s < steps; s++) {
+      const t0 = s / steps, t1 = (s + 1) / steps;
+      const mx = a.x + (b.x - a.x) * ((t0 + t1) / 2);
+      const my = a.y + (b.y - a.y) * ((t0 + t1) / 2);
+      const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
+      const amp = len / steps * bulge;
+      for (let k = 0; k <= segsPerArc; k++) {
+        const u = k / segsPerArc;
+        const t = t0 + (t1 - t0) * u;
+        const px = a.x + (b.x - a.x) * t;
+        const py = a.y + (b.y - a.y) * t;
+        const off = Math.sin(u * Math.PI) * amp;
+        out.push({ x: px + nx * off, y: py + ny * off });
+      }
+    }
+  }
+  return out;
+}
+
+
 /** Angle in degrees at vertex `v` between rays to `a` and `b` (0..180). */
 export function angleAt(v: Pt, a: Pt, b: Pt): number {
   const ux = a.x - v.x, uy = a.y - v.y, wx = b.x - v.x, wy = b.y - v.y;
