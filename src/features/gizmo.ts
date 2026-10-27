@@ -77,7 +77,8 @@ class TransformGizmo {
   }
 
   private buildMove() {
-    const len = 1.2, shaftR = 0.02, headR = 0.09, headL = 0.22;
+    // Unit-length triad; world size is controlled entirely by refreshScale().
+    const len = 1.0, shaftR = 0.018, headR = 0.055, headL = 0.16;
     const axes = [
       { dir: new THREE.Vector3(1, 0, 0), color: AXIS_COLOR.x },
       { dir: new THREE.Vector3(0, 1, 0), color: AXIS_COLOR.y },
@@ -88,7 +89,7 @@ class TransformGizmo {
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftR, shaftR, len, 8), this.mkMat(color));
       shaft.position.copy(dir.clone().multiplyScalar(len / 2));
       const head = new THREE.Mesh(new THREE.ConeGeometry(headR, headL, 12), this.mkMat(color));
-      head.position.copy(dir.clone().multiplyScalar(len));
+      head.position.copy(dir.clone().multiplyScalar(len + headL * 0.15));
       const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
       shaft.quaternion.copy(q); head.quaternion.copy(q);
       const ax = dir.x ? "x" : dir.y ? "y" : "z";
@@ -97,7 +98,7 @@ class TransformGizmo {
       g.add(shaft, head);
       this.moveGroup.add(g);
     }
-    const center = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.18), this.mkMat(AXIS_COLOR.free, 0.85));
+    const center = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.12), this.mkMat(AXIS_COLOR.free, 0.9));
     center.userData.axis = "free";
     center.renderOrder = 100;
     this.moveGroup.add(center);
@@ -111,7 +112,7 @@ class TransformGizmo {
     ];
     for (const { dir, color } of axes) {
       const g = new THREE.Group();
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.015, 8, 64), this.mkMat(color, 0.9));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.012, 8, 64), this.mkMat(color, 0.9));
       ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
       ring.userData.axis = dir.x ? "x" : dir.y ? "y" : "z";
       ring.renderOrder = 100;
@@ -232,7 +233,10 @@ class TransformGizmo {
 
     this.basePos.copy(center);
     const diag = size.length() || 1;
-    this.baseScale = THREE.MathUtils.clamp(diag / 4, 0.3, 5);
+    // Mild influence of selection size only — do NOT multiply object size by
+    // camera distance (that made arrows larger than the whole model).
+    // Range ~0.55..1.15 keeps the triad readable on tiny and large selections.
+    this.baseScale = THREE.MathUtils.clamp(Math.sqrt(Math.max(diag, 0.01)) / 3.5, 0.55, 1.15);
     this.root.position.copy(this.basePos);
     this.refreshScale();
     this.root.visible = true;
@@ -241,17 +245,19 @@ class TransformGizmo {
   private refreshScale(): void {
     if (!this.root.visible) return;
     const cam: any = ctx.world.camera.three;
-    let f: number;
+    let screenFactor: number;
     if (cam.isOrthographicCamera) {
-      // Orthographic size does not depend on distance but on zoom: keep the
-      // gizmo a constant fraction of the visible height (same ratio as the
-      // perspective case at ~60 deg FOV).
+      // ~6% of visible height — screen-stable, model-proportionate
       const visibleH = Math.abs(cam.top - cam.bottom) / Math.max(1e-3, cam.zoom || 1);
-      f = visibleH * 0.13;
+      screenFactor = visibleH * 0.06;
     } else {
-      f = cam.position.distanceTo(this.root.position) * 0.15;
+      // ~6% of camera distance (was 15% × up to 5× object scale → huge)
+      const dist = cam.position.distanceTo(this.root.position);
+      screenFactor = dist * 0.06;
     }
-    this.root.scale.setScalar(Math.max(0.2, f * this.baseScale));
+    // Final world size of the unit triad (shaft length ≈ this value in metres)
+    const world = THREE.MathUtils.clamp(screenFactor * this.baseScale, 0.25, 12);
+    this.root.scale.setScalar(world);
   }
 
   isDragging(): boolean { return this.dragging; }
