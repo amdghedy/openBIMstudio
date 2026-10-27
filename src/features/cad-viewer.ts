@@ -754,8 +754,7 @@ function build(): void {
     const k = ev.key.toLowerCase();
     if (k === "e") zoomExtents();
     else if (k === "f") zoomSelection();
-    else if (e.key === "F8") { orthoOn = !orthoOn; tools.querySelector("[data-a=ortho]")?.classList.toggle("on", orthoOn); updateStatus(); draw(); }
-    else if (e.key === "F3") { snapOn = !snapOn; tools.querySelector("[data-a=snap]")?.classList.toggle("on", snapOn); draw(); }
+    else if (ev.key === "F8") { ev.preventDefault(); orthoOn = !orthoOn; tools.querySelector("[data-a=ortho]")?.classList.toggle("on", orthoOn); updateStatus(); draw(); }
     else { const tt = T.find(([, , key]) => key.toLowerCase() === k); if (tt) setTool(tt[0]); }
   });
   function updateStatus(p?: M.Pt) {
