@@ -4,35 +4,23 @@
 import { ctx } from "../core/context";
 import { selection } from "./selection";
 import {
-  getActiveTool as getAuthoringTool,
   getSelectedIds as getAuthoredSelection,
   setAuthoringTool,
-  deleteSelectedElement,
 } from "./authoring";
 import { beginEdit, beginEditFromSelection, openFragEditPanel } from "./frag-edit";
+import { buildContextMenu, type MenuItem } from "./context-menu-model";
+import { executeBimCommand, listBimCommands } from "./bim-experience";
 import {
+  copySelectionToClipboard,
+  getModifyClipboardCount,
   listModifyActions,
   runModifyAction,
-  isModifyActionEnabled,
   isModifyToolActive,
 } from "./modify-actions";
 
-type MenuItem =
-  | { type: "sep" }
-  | { type: "label"; text: string }
-  | {
-      type: "action";
-      text: string;
-      icon?: string;
-      onclick: () => void;
-      disabled?: boolean;
-      checked?: boolean;
-    }
-  | { type: "sub"; text: string; icon?: string; items: MenuItem[] };
-
 const ctxMenu = document.createElement("div");
 ctxMenu.style.cssText =
-  "position:absolute;z-index:100;display:none;min-width:260px;max-height:calc(100vh - 24px);overflow-y:auto;" +
+  "position:absolute;z-index:100;display:none;min-width:250px;overflow:visible;" +
   "background:var(--bg-floating,#1e1f26);border:1px solid var(--border-default,#3a3a4a);border-radius:8px;" +
   "box-shadow:0 10px 30px rgba(0,0,0,.55);font:12px system-ui,sans-serif;color:var(--text-primary,#e2e8f0);padding:4px 0";
 ctxMenu.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -57,13 +45,15 @@ function renderMenuItems(container: HTMLElement, items: MenuItem[]) {
       continue;
     }
     const row = document.createElement("div");
-    const disabled = it.type === "action" && it.disabled;
+    const disabled = (it.type === "action" || it.type === "sub") && it.disabled;
+    if (it.type === "action" && it.title) row.title = it.title;
     row.style.cssText =
       "display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;white-space:nowrap;position:relative" +
       (disabled ? ";opacity:.35;pointer-events:none" : "");
     row.innerHTML =
       `<span style="width:18px;text-align:center">${it.icon ?? ""}</span>` +
-      `<span style="flex:1">${it.text}</span>` +
+      `<span style="flex:1${it.type === "action" && it.danger ? ";color:#f87171" : ""}">${it.text}</span>` +
+      (it.type === "action" && it.kbd ? `<span style="opacity:.45;font-size:10px;margin-left:14px">${it.kbd}</span>` : "") +
       (it.type === "sub" ? `<span style="opacity:.6">▸</span>` : "") +
       (it.type === "action" && it.checked ? `<span style="color:#22c55e;font-weight:700">✓</span>` : "");
     if (it.type === "action") {
@@ -77,8 +67,23 @@ function renderMenuItems(container: HTMLElement, items: MenuItem[]) {
         "display:none;position:absolute;top:-5px;left:calc(100% - 2px);min-width:220px;max-height:calc(100vh - 36px);" +
         "overflow-y:auto;background:var(--bg-floating,#1e1f26);border:1px solid var(--border-default,#3a3a4a);" +
         "border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.55);padding:4px 0;z-index:101";
-      renderMenuItems(sub, it.items);
-      row.onmouseenter = () => { sub.style.display = "block"; };
+      if (it.items.filter((x) => x.type === "label").length >= 3) {
+        // Many groups (Modify): two columns, each group kept together, so it fits any window height.
+        sub.style.columnCount = "2"; sub.style.columnGap = "0"; sub.style.minWidth = "470px"; sub.style.maxHeight = "none";
+        let g: HTMLElement | null = null;
+        for (const x of it.items) {
+          if (x.type === "label" || !g) { g = document.createElement("div"); g.style.cssText = "break-inside:avoid;padding-bottom:2px"; sub.appendChild(g); }
+          renderMenuItems(g, [x]);
+        }
+      } else renderMenuItems(sub, it.items);
+      const place = () => {
+        sub.style.display = "block"; sub.style.left = "calc(100% - 2px)"; sub.style.right = "auto"; sub.style.top = "-5px";
+        const r = sub.getBoundingClientRect();
+        if (r.right > window.innerWidth - 4) { sub.style.left = "auto"; sub.style.right = "calc(100% - 2px)"; }
+        const r2 = sub.getBoundingClientRect();
+        if (r2.bottom > window.innerHeight - 4) sub.style.top = `${-5 - (r2.bottom - window.innerHeight + 8)}px`;
+      };
+      row.onmouseenter = place;
       row.onmouseleave = () => { sub.style.display = "none"; };
       sub.onmouseenter = () => { sub.style.display = "block"; };
       sub.onmouseleave = () => { sub.style.display = "none"; };
@@ -92,76 +97,41 @@ function renderMenuItems(container: HTMLElement, items: MenuItem[]) {
 
 async function openCtxMenu(e: MouseEvent) {
   const authoredIds = getAuthoredSelection();
-  const hasAuthored = authoredIds.length > 0;
-  const snap = selection.snapshot();
+    const snap = selection.snapshot();
   const actionCount = Object.values(snap).reduce((a, v) => a + (v?.size ?? 0), 0);
 
-  const items: MenuItem[] = [];
-  if (hasAuthored) {
-    items.push({ type: "label", text: `Authored: ${authoredIds.length} element(s)` });
-  } else if (actionCount > 0) {
-    items.push({ type: "label", text: `Selection: ${actionCount} item(s)` });
-  }
-
-  // Full Modify submenu — tools complete on subsequent left-clicks (onModifyClick)
-  if (hasAuthored) {
-    const modItems: MenuItem[] = [];
-    for (const def of listModifyActions()) {
-      if (def.separatorBefore) modItems.push({ type: "sep" });
-      modItems.push({
-        type: "action",
-        text: def.label,
-        icon: def.icon ?? "",
-        disabled: !isModifyActionEnabled(def, authoredIds.length),
-        checked: isModifyToolActive(def.id),
-        onclick: () => runModifyAction(def.id),
-      });
-    }
-    items.push({ type: "sub", text: "Modify", icon: "", items: modItems });
-    items.push({ type: "sep" });
-  }
-
-  items.push({
-    type: "action",
-    text: "Make Editable Native Twin",
-    disabled: actionCount === 0,
-    onclick: async () => {
+  const have = new Set(listBimCommands().map((c) => c.id));
+  const items: MenuItem[] = buildContextMenu({
+    authoredCount: authoredIds.length,
+    linkedCount: actionCount,
+    clipboardCount: getModifyClipboardCount(),
+    modifyDefs: listModifyActions(),
+    activeModifyTool: (id) => isModifyToolActive(id as any),
+    runModify: (id) => runModifyAction(id as any),
+    command: (id) => executeBimCommand(id),
+    hasCommand: (id) => have.has(id),
+    openDialog: (k) => {
+      void import("./engine-ui").then((m) => {
+        const f = { move: m.openModifyMoveDialog, rotate: m.openModifyRotateDialog, array: m.openModifyArrayDialog, mirror: m.openModifyMirrorDialog }[k];
+        return f();
+      }).catch((err) => console.warn("[context-menu] modify dialog failed", err));
+    },
+    setTool: (t) => setAuthoringTool(t),
+    copyToClipboard: () => {
+      const n = copySelectionToClipboard();
+      window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: n ? `Copied ${n} element(s)` : "Nothing to copy", kind: n ? "success" : "warn" } }));
+    },
+    makeNativeTwin: async () => {
       try {
         const { bulkConvertLinkedToNativeTwin } = await import("./bulk-native-twin");
         const result = await bulkConvertLinkedToNativeTwin({
-          quietPerItem: true,
-          openPanelOnSuccess: true,
-          convertOne: async (modelId, localId) => {
-            const twin = await beginEdit(modelId, localId);
-            return twin ? { id: twin.id, name: twin.name } : null;
-          },
+          quietPerItem: true, openPanelOnSuccess: true,
+          convertOne: async (modelId, localId) => { const twin = await beginEdit(modelId, localId); return twin ? { id: twin.id, name: twin.name } : null; },
         });
         if (result.created > 0) openFragEditPanel();
-      } catch {
-        const n = await beginEditFromSelection();
-        if (n) openFragEditPanel();
-      }
+      } catch { const n = await beginEditFromSelection(); if (n) openFragEditPanel(); }
     },
-  });
-  items.push({
-    type: "action",
-    text: "Properties",
-    disabled: actionCount === 0 && !hasAuthored,
-    onclick: async () => {
-      try {
-        (ctx.features as any).propertyPalette?.open?.();
-      } catch { /* */ }
-    },
-  });
-  items.push({ type: "sep" });
-  items.push({
-    type: "action",
-    text: "Clear Selection",
-    disabled: selection.isEmpty() && !hasAuthored,
-    onclick: async () => {
-      selection.clear();
-      await selection.applyToHighlighter();
-    },
+    openProperties: () => { try { (ctx.features as any).propertyPalette?.open?.(); } catch { /* */ } },
   });
 
   if (!ctxMenu.isConnected) {
@@ -174,6 +144,10 @@ async function openCtxMenu(e: MouseEvent) {
   const hr = host.getBoundingClientRect();
   let x = e.clientX - hr.left;
   let y = e.clientY - hr.top;
+  // keep the whole menu on screen (flip up / left when it would overflow)
+  const mw = ctxMenu.offsetWidth, mh = ctxMenu.offsetHeight;
+  if (e.clientX + mw > window.innerWidth - 4) x = Math.max(0, x - mw);
+  if (e.clientY + mh > window.innerHeight - 4) y = Math.max(0, y - mh);
   ctxMenu.style.left = `${Math.max(0, x)}px`;
   ctxMenu.style.top = `${Math.max(0, y)}px`;
 }

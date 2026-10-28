@@ -60,6 +60,7 @@
     "test:bulk-native-twin": "node tests/bulk-native-twin.test.cjs",
     "test:cursor-zoom": "node tests/cursor-zoom.test.cjs",
     "test:controls-target": "node tests/controls-target.test.cjs",
+    "test:context-menu": "node tests/context-menu-model.test.cjs",
     "test:nav-math": "node tests/nav-math.test.cjs",
     "test:north": "node tests/north.test.cjs",
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
