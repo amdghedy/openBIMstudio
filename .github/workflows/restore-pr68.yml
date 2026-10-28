@@ -1,5 +1,7 @@
 name: Restore PR68 damaged files
 
+# One-shot recovery for PR #68 placeholder merge. Already ran successfully.
+# Keep for history; safe to delete after CI is green.
 on:
   workflow_dispatch:
 
@@ -31,10 +33,6 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --cached --quiet && git diff --quiet; then
-            # ensure staged
-            git add src/modules/native-twin/geometry-extract.ts src/features/frag-edit.ts src/shell/ribbon.ts
-          fi
           git add src/modules/native-twin/geometry-extract.ts src/features/frag-edit.ts src/shell/ribbon.ts
           if git diff --cached --quiet; then
             echo "No changes to commit — files may already be restored."
