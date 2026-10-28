@@ -18,7 +18,7 @@ const scripts = [
   "test:walk", "test:elbow", "test:props", "test:fitting-outline", "test:slope",
   "test:cad-viewer", "test:ocs", "test:dxf-features", "test:dwg-features",
   "test:north", "test:nav-math", "test:controls-target", "test:cursor-zoom",
-  "test:native-twin-resize", "test:ai-privacy", "test:constraints", "test:structural",
+  "test:native-twin-resize", "test:bulk-native-twin", "test:ai-privacy", "test:constraints", "test:structural",
   "test:mep-pressure", "test:adaptive", "test:project-crypto", "test:secret-crypto",
   "test:server-security", "test:safe-expr", "test:mep-connectivity", "test:boundary-edit",
   "test:project-file", "test:plan-tags", "test:dim-geometry", "test:auto-dim",
