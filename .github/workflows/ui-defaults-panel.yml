@@ -1,0 +1,78 @@
+name: UI defaults panel closed
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Default tool panel closed + ribbon tabs collapsed
+        run: |
+          set -euo pipefail
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("src/shell/ribbon.ts")
+          t = p.read_text()
+
+          old1 = "let leftPanelVisible = true;"
+          new1 = "let leftPanelVisible = false;"
+          if old1 not in t:
+              raise SystemExit("leftPanelVisible pattern not found")
+          t = t.replace(old1, new1, 1)
+
+          old2 = '''let ribbonMinimized = false;\ntry {\n  ribbonMinimized = localStorage.getItem("obs.ribbon.minimized") === "1";\n} catch { /* */ }'''
+          new2 = '''// Default: ribbon strip collapsed (tabs only). Expand via double-click tab row.\nlet ribbonMinimized = true;\ntry {\n  const stored = localStorage.getItem("obs.ribbon.minimized");\n  // Prefer collapsed; only expand if user explicitly stored "0"\n  if (stored === "0") ribbonMinimized = false;\n  else ribbonMinimized = true;\n} catch { /* */ }'''
+          if old2 not in t:
+              raise SystemExit("ribbonMinimized pattern not found")
+          t = t.replace(old2, new2, 1)
+
+          marker = 'display:flex;flex-direction:column;";'
+          inject = '''display:flex;flex-direction:column.";\n  // Tool panel starts closed (open via View \u2192 Tools)\n  if (!leftPanelVisible) {\n    ctx.leftHost.style.display = "none";\n  }'''
+          # Fix: use exact existing cssText ending
+          old3 = '''  ctx.leftHost.style.cssText =\n    "height:100%;overflow-y:auto;overflow-x:hidden;" +\n    "background:var(--bg-base);border-right:1px solid var(--border-default);" +\n    "display:flex;flex-direction:column.";'''
+          # Correct without typo
+          old3 = (
+              '  ctx.leftHost.style.cssText =\n'
+              '    "height:100%;overflow-y:auto;overflow-x:hidden;" +\n'
+              '    "background:var(--bg-base);border-right:1px solid var(--border-default);" +\n'
+              '    "display:flex;flex-direction:column.";'
+          )
+          old3 = old3.replace('column.";', 'column.";')  # noop safeguard
+          old3 = (
+              '  ctx.leftHost.style.cssText =\n'
+              '    "height:100%;overflow-y:auto;overflow-x:hidden;" +\n'
+              '    "background:var(--bg-base);border-right:1px solid var(--border-default);" +\n'
+              '    "display:flex;flex-direction:column.";'
+          )
+          PY
+          # Simpler reliable patch with Python
+          python3 << 'PY2'
+          from pathlib import Path
+          p = Path("src/shell/ribbon.ts")
+          t = p.read_text()
+
+          if "let leftPanelVisible = true;" in t:
+              t = t.replace("let leftPanelVisible = true;", "let leftPanelVisible = false;", 1)
+          elif "let leftPanelVisible = false;" in t:
+              print("leftPanel already false")
+          else:
+              raise SystemExit("leftPanelVisible not found")
+
+          old_min = """let ribbonMinimized = false;\ntry {\n  ribbonMinimized = localStorage.getItem(\"obs.ribbon.minimized\") === \"1\";\n} catch { /* */ }"""
+          new_min = """// Default: ribbon strip collapsed (tabs only). Expand via double-click tab row.\nlet ribbonMinimized = true;\ntry {\n  const stored = localStorage.getItem(\"obs.ribbon.minimized\");\n  // Prefer collapsed; only expand if user explicitly stored \"0\"\n  if (stored === \"0\") ribbonMinimized = false;\n  else ribbonMinimized = true;\n} catch { /* */ }"""
+          if old_min in t:
+              t = t.replace(old_min, new_min, 1)
+          elif "let ribbonMinimized = true;" in t:
+              print("ribbonMinimized already default true")
+          else:
+              raise SystemExit("ribbonMinimized block not found")
+
+          needle = '"display:flex;flex-direction:column.";'
+          needle = '"display:flex;flex-direction:column.";'
+          PY2
