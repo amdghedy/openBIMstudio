@@ -1,0 +1,44 @@
+name: Restore PR68 damaged files
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore three files from last green commit e45ca908
+        run: |
+          set -euo pipefail
+          GOOD=e45ca9081ec9a8d5678ed812bdf1958521df2ccc
+          git checkout "$GOOD" -- \
+            src/modules/native-twin/geometry-extract.ts \
+            src/features/frag-edit.ts \
+            src/shell/ribbon.ts
+          echo "Restored file sizes:"
+          wc -c src/modules/native-twin/geometry-extract.ts src/features/frag-edit.ts src/shell/ribbon.ts
+
+      - name: Commit and push to main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --cached --quiet && git diff --quiet; then
+            # ensure staged
+            git add src/modules/native-twin/geometry-extract.ts src/features/frag-edit.ts src/shell/ribbon.ts
+          fi
+          git add src/modules/native-twin/geometry-extract.ts src/features/frag-edit.ts src/shell/ribbon.ts
+          if git diff --cached --quiet; then
+            echo "No changes to commit — files may already be restored."
+            exit 0
+          fi
+          git commit -m "fix: restore frag-edit, ribbon, geometry-extract from e45ca908 (repair PR #68)"
+          git push origin HEAD:main
