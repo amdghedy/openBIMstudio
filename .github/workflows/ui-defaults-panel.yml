@@ -19,7 +19,6 @@ jobs:
           p = Path("src/shell/ribbon.ts")
           t = p.read_text()
 
-          # 1) Tool panel starts closed
           if "let leftPanelVisible = true;" in t:
               t = t.replace("let leftPanelVisible = true;", "let leftPanelVisible = false;", 1)
               print("leftPanelVisible -> false")
@@ -28,7 +27,6 @@ jobs:
           else:
               raise SystemExit("leftPanelVisible not found")
 
-          # 2) Ribbon tabs strip starts collapsed
           old_min = (
               "let ribbonMinimized = false;\n"
               "try {\n"
@@ -53,18 +51,37 @@ jobs:
           else:
               raise SystemExit("ribbonMinimized block not found")
 
-          # 3) Hide left host on setup when panel is closed
-          old_css = (
-              '  ctx.leftHost.style.cssText =\n'
-              '    "height:100%;overflow-y:auto;overflow-x:hidden;" +\n'
-              '    "background:var(--bg-base);border-right:1px solid var(--border-default);" +\n'
-              '    "display:flex;flex-direction:column.";'
-          )
-          # fix typo: column."; should be column.";
-          old_css = (
-              "  ctx.leftHost.style.cssText =\n"
-              '    "height:100%;overflow-y:auto;overflow-x:hidden;" +\n'
-              '    "background:var(--bg-base);border-right:1px solid var(--border-default);" +\n'
-              '    "display:flex;flex-direction:column.";'
-          )
+          start = t.find("  ctx.leftHost.style.cssText =")
+          if start < 0:
+              raise SystemExit("leftHost cssText not found")
+          end = t.find("\n  // Wheel over left dock", start)
+          if end < 0:
+              raise SystemExit("wheel comment anchor not found")
+          if "Tool panel starts closed" not in t[start:end + 200]:
+              inject = (
+                  "\n  // Tool panel starts closed (open via View \u2192 Tools)\n"
+                  "  if (!leftPanelVisible) {\n"
+                  '    ctx.leftHost.style.display = "none";\n'
+                  "  }"
+              )
+              t = t[:end] + inject + t[end:]
+              print("injected leftHost display:none on setup")
+          else:
+              print("leftHost closed-init already present")
+
+          p.write_text(t)
+          print("ribbon.ts updated, size", p.stat().st_size)
           PY
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/shell/ribbon.ts
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "fix(ui): tool panel closed by default, ribbon tabs collapsed"
+          git push origin HEAD:main
