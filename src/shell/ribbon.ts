@@ -167,7 +167,7 @@ function tryPropertyPalette(): { open?: () => void; close?: () => void; isVisibl
 /* ═════════════════════════════════════════════════════════════════════════
    Left tools panel toggle
    ═════════════════════════════════════════════════════════════════════════ */
-let leftPanelVisible = true;
+let leftPanelVisible = false;
 function toggleLeftPanel() {
   leftPanelVisible = !leftPanelVisible;
   ctx.leftHost.style.display = leftPanelVisible ? "" : "none";
@@ -191,9 +191,13 @@ pill.className = "obs-ribbon__pill";
 
 /** BIM-style ribbon minimize: double-click a tab (or tabs row) to collapse the strip
  *  so only the tab buttons remain (flat / shrunk). Double-click again to restore. */
-let ribbonMinimized = false;
+// Default: ribbon strip collapsed (tabs only). Expand via double-click tab row.
+let ribbonMinimized = true;
 try {
-  ribbonMinimized = localStorage.getItem("obs.ribbon.minimized") === "1";
+  const stored = localStorage.getItem("obs.ribbon.minimized");
+  // Prefer collapsed; only expand if user explicitly stored "0"
+  if (stored === "0") ribbonMinimized = false;
+  else ribbonMinimized = true;
 } catch { /* */ }
 
 function applyRibbonMinimize(min: boolean) {
@@ -3016,6 +3020,10 @@ export function setupRibbon() {
     "height:100%;overflow-y:auto;overflow-x:hidden;" +
     "background:var(--bg-base);border-right:1px solid var(--border-default);" +
     "display:flex;flex-direction:column;";
+  // Tool panel starts closed (open via View → Tools)
+  if (!leftPanelVisible) {
+    ctx.leftHost.style.display = "none";
+  }
   // Wheel over left dock scrolls the panel — never zooms 3D
   ctx.leftHost.addEventListener("wheel", (e) => { e.stopPropagation(); }, { passive: true });
 
