@@ -7,7 +7,17 @@ const root = path.resolve(__dirname, "..");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-mep-connectors-"));
 try {
   execSync(`npx tsc "${path.join(root, "src/modules/mep/connectors.ts")}" --outDir "${out}" --module commonjs --target es2020 --strict --skipLibCheck`, { cwd: root, stdio: "pipe" });
-  const m = require(path.join(out, "connectors.js"));
+  const findCompiled = (dir, file) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { const found = findCompiled(full, file); if (found) return found; }
+      else if (entry.isFile() && entry.name === file) return full;
+    }
+    return null;
+  };
+  const compiled = findCompiled(out, "connectors.js");
+  assert.ok(compiled, "TypeScript compiler output not found");
+  const m = require(compiled);
   const connector = (owner, origin, direction, size = 0.1, extra = {}) => ({
     ownerElementId: owner,
     def: { name: "port", origin: [0, 0, 0], direction, domain: "pipe", shape: "round", size, flowDirection: extra.flowDirection ?? "out", systemClassification: "chilled-water" },
