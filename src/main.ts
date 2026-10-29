@@ -67,6 +67,7 @@ import { setupNavigationBar } from "./features/navigation-bar";
 import { setupViewCube } from "./features/viewcube";
 import { setupSystemBrowser } from "./features/system-browser";
 import { setupMepFabrication } from "./features/mep-fabrication";
+import { openMepLifecyclePanel } from "./features/mep-lifecycle-panel";
 import { setupPidModeler } from "./features/pid-modeler";
 import { registerUiItems } from "./features/ui-items-register";
 
@@ -356,6 +357,7 @@ await step("viewcube", () => setupViewCube());
 await step("navigation-bar", () => setupNavigationBar());
 await step("system-browser", () => setupSystemBrowser());
 await step("mep-fabrication", () => setupMepFabrication());
+await step("mep-lifecycle-panel", () => { void openMepLifecyclePanel; });
 await step("pid-modeler", () => setupPidModeler());
 await step("ui-items", () => registerUiItems());
 await step("shortcuts-install", () => shortcuts.install());
