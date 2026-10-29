@@ -7,7 +7,17 @@ const root = path.resolve(__dirname, "..");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-mep-lifecycle-"));
 try {
   execSync(`npx tsc "${path.join(root, "src/modules/mep/model-lifecycle.ts")}" --outDir "${out}" --module commonjs --target es2020 --strict --skipLibCheck`, { cwd: root, stdio: "pipe" });
-  const { MepModelLifecycle } = require(path.join(out, "model-lifecycle.js"));
+  const findCompiled = (dir, file) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { const found = findCompiled(full, file); if (found) return found; }
+      else if (entry.isFile() && entry.name === file) return full;
+    }
+    return null;
+  };
+  const compiled = findCompiled(out, "model-lifecycle.js");
+  assert.ok(compiled, "TypeScript compiler output not found");
+  const { MepModelLifecycle } = require(compiled);
   const connector = (owner, name, origin, direction, flowDirection) => ({
     ownerElementId: owner,
     def: { name, origin: [0, 0, 0], direction, domain: "pipe", shape: "round", size: 0.05, flowDirection, systemClassification: "chilled-water" },
