@@ -9,6 +9,7 @@
 import {
   createConnectorRelationship,
   disconnectMepConnectors,
+  evaluateConnectorCompatibility,
   previewMepConnection,
   recalculateAffectedMepProperties,
   validateMepNetworkTopology,
@@ -103,13 +104,31 @@ export class MepModelLifecycle {
       const other = this.connectors.find(c => c.ownerElementId === otherElementId && c.def.name === otherName);
       const changed = s ?? t;
       if (removedNames.has(connection.sourceElementId === elementId ? connection.sourceConnector : connection.targetConnector) ||
-          !changed || !other || !importCompatibility(changed, other)) invalidIds.add(connection.id);
+          !changed || !other || !evaluateConnectorCompatibility(changed, other).compatible) invalidIds.add(connection.id);
     }
     for (const connection of affected) {
       if (invalidIds.has(connection.id)) disconnectMepConnectors(this.connectors, connection);
     }
     this.connectors = this.connectors.filter(c => c.ownerElementId !== elementId).concat(next);
     this.connections = this.connections.filter(c => !invalidIds.has(c.id));
+    // Regenerate the connector-aligned route and fittings after geometry edits.
+    const regenerated: ConnectorConnection[] = [];
+    for (const connection of this.connections) {
+      if (connection.sourceElementId !== elementId && connection.targetElementId !== elementId) {
+        regenerated.push(connection);
+        continue;
+      }
+      const start = this.connectors.find(c => c.ownerElementId === connection.sourceElementId && c.def.name === connection.sourceConnector);
+      const end = this.connectors.find(c => c.ownerElementId === connection.targetElementId && c.def.name === connection.targetConnector);
+      if (!start || !end) continue;
+      const preview = previewMepConnection(start, end);
+      if (!preview.valid) {
+        disconnectMepConnectors(this.connectors, connection);
+        continue;
+      }
+      regenerated.push({ ...connection, route: preview.route.map(p => [...p]), fittings: preview.fittings.map(f => ({ ...f })) });
+    }
+    this.connections = regenerated;
     this.reconcileConnectorEngagement();
     const affectedRemaining = recalculateAffectedMepProperties(this.connections, elementId);
     this.revision++;
@@ -163,10 +182,3 @@ export class MepModelLifecycle {
   }
 }
 
-function importCompatibility(a: MepConnector, b: MepConnector): boolean {
-  // Local import-free guard avoids mutating the graph during validation.
-  return a.def.domain === b.def.domain &&
-    a.def.systemClassification === b.def.systemClassification &&
-    !(a.def.flowDirection === "out" && b.def.flowDirection === "out") &&
-    !(a.def.flowDirection === "in" && b.def.flowDirection === "in");
-}
