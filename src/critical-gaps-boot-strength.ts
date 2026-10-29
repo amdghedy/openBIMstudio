@@ -15,9 +15,17 @@ import { getValidationService } from "./modules/validation";
 import { getWorksharingEngine } from "./modules/collaboration/worksharing-engine";
 import { getMemoryBudgetManager } from "./modules/streaming/memory-budget-manager";
 import { generateBatchPlotPdf, downloadBatchPlotPdf } from "./modules/export/batch-plotter";
+import * as HatchPatterns from "./modules/detail-patterns/hatch-patterns";
+import * as ArcWall from "./modules/parametric/arc-wall";
+import * as GltfNativeTwin from "./modules/export/gltf-native-twin";
+import * as ModifyGroup2 from "./modules/modify/group2";
 import "./features/worksharing-panel";
 import "./features/streaming-panel";
 import "./features/batch-plot-panel";
+import "./features/hatch-panel";
+import "./features/arc-wall-tool";
+import "./features/gltf-export-tool";
+import "./features/modify-group2-tool";
 
 declare global {
   interface Window {
@@ -36,6 +44,10 @@ declare global {
       generateBatchPlotPdf: typeof generateBatchPlotPdf;
       downloadBatchPlotPdf: typeof downloadBatchPlotPdf;
     };
+    __obsDetailHatch?: typeof HatchPatterns;
+    __obsArcWall?: typeof ArcWall;
+    __obsGltfExporter?: typeof GltfNativeTwin;
+    __obsModifyGroup2?: typeof ModifyGroup2;
   }
 }
 
@@ -68,6 +80,10 @@ export function bootStrengtheningModules(): void {
       generateBatchPlotPdf,
       downloadBatchPlotPdf,
     };
+    window.__obsDetailHatch = HatchPatterns;
+    window.__obsArcWall = ArcWall;
+    window.__obsGltfExporter = GltfNativeTwin;
+    window.__obsModifyGroup2 = ModifyGroup2;
 
     window.addEventListener("keydown", (e) => {
       const t = e.target as HTMLElement | null;

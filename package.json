@@ -108,7 +108,8 @@
     "test:native-twin-linear": "node tests/native-twin-linear-params.test.cjs",
     "test:dwg-isolation": "node tests/dwg-reader-isolation.test.cjs",
     "test:dwg-worker-lifecycle": "node tests/dwg-worker-lifecycle.test.cjs",
-    "test:collab": "node tests/enterprise-collaboration.test.cjs"
+    "test:collab": "node tests/enterprise-collaboration.test.cjs",
+    "test:p1-gaps": "node tests/priority1-gaps.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
