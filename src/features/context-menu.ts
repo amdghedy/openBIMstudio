@@ -2,7 +2,7 @@
  * Viewport context menu (restored minimal shell + full Modify toolkit).
  */
 import { ctx } from "../core/context";
-import { selection } from "./selection";
+import { selection, pickUnderCursor } from "./selection";
 import {
   getSelectedIds as getAuthoredSelection,
   setAuthoringTool,
@@ -95,9 +95,33 @@ function renderMenuItems(container: HTMLElement, items: MenuItem[]) {
   }
 }
 
+/**
+ * The linked (IFC/FRAG) elements the menu acts on. Order: the selection manager; else whatever the
+ * highlighter shows; else the element under the cursor (right-click on an unselected object acts on it).
+ */
+async function resolveLinkedSelection(): Promise<Record<string, Set<number>>> {
+  let snap = selection.snapshot() as Record<string, Set<number>>;
+  const count = (m: Record<string, Set<number>>) => Object.values(m).reduce((a, v) => a + (v?.size ?? 0), 0);
+  if (!count(snap)) {
+    try { selection.adoptFromHighlighter(); } catch { /* */ }
+    snap = selection.snapshot() as Record<string, Set<number>>;
+  }
+  if (!count(snap) && getAuthoredSelection().length === 0) {
+    try {
+      const hit = await pickUnderCursor();
+      if (hit) {
+        selection.replace({ [hit.modelId]: new Set([hit.localId]) });
+        await selection.applyToHighlighter();
+        snap = selection.snapshot() as Record<string, Set<number>>;
+      }
+    } catch { /* picking is best-effort */ }
+  }
+  return snap;
+}
+
 async function openCtxMenu(e: MouseEvent) {
   const authoredIds = getAuthoredSelection();
-    const snap = selection.snapshot();
+  const snap = await resolveLinkedSelection();
   const actionCount = Object.values(snap).reduce((a, v) => a + (v?.size ?? 0), 0);
 
   const have = new Set(listBimCommands().map((c) => c.id));
@@ -122,14 +146,24 @@ async function openCtxMenu(e: MouseEvent) {
       window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: n ? `Copied ${n} element(s)` : "Nothing to copy", kind: n ? "success" : "warn" } }));
     },
     makeNativeTwin: async () => {
+      // Work on the selection captured when the menu opened (the click that follows must not change it).
+      const target = snap;
+      const n = Object.values(target).reduce((acc, v) => acc + (v?.size ?? 0), 0);
+      const note = (message: string, kind: string) => window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message, kind } }));
+      if (!n) { note("Make Editable: select one or more linked elements first.", "warn"); return; }
+      note(`Making ${n} element(s) editable…`, "info");
       try {
         const { bulkConvertLinkedToNativeTwin } = await import("./bulk-native-twin");
         const result = await bulkConvertLinkedToNativeTwin({
-          quietPerItem: true, openPanelOnSuccess: true,
+          selection: target,
+          quietPerItem: true, openPanelOnSuccess: false,
           convertOne: async (modelId, localId) => { const twin = await beginEdit(modelId, localId); return twin ? { id: twin.id, name: twin.name } : null; },
         });
         if (result.created > 0) openFragEditPanel();
-      } catch { const n = await beginEditFromSelection(); if (n) openFragEditPanel(); }
+      } catch (err) {
+        console.error("[context-menu] bulk Native Twin conversion failed", err);
+        note(`Make Editable failed: ${err instanceof Error ? err.message : String(err)}`, "error");
+      }
     },
     openProperties: () => { try { (ctx.features as any).propertyPalette?.open?.(); } catch { /* */ } },
   });
