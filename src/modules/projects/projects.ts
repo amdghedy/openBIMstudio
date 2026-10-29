@@ -231,6 +231,7 @@ export async function createProject(name: string, options: CreateProjectOptions 
   try {
     loader?.set?.("Clearing current scene…", 0.2);
     await clearScene();
+    try { (ctx.features as any).mep?.lifecycle?.hydrate?.({ connectors: [], connections: [], panels: [], loads: [] }); } catch (e) { console.warn("[projects] MEP lifecycle reset failed", e); }
     loader?.set?.("Preparing document…", 0.6);
 
     const now = Date.now();
