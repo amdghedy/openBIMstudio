@@ -278,7 +278,7 @@ export function buildPanelSchedule(panel: ElectricalPanel, loads: readonly Elect
       designCurrentA,
       breakerRatingA: circuit.breakerRatingA,
       conductorAmpacityA: circuit.conductorAmpacityA ?? null,
-      status: circuitDiagnostics.some((d) => d.severity === "error") ? "error" : circuitDiagnostics.some((d) => d.severity === "warning") ? "warning" : "ok",
+      status: (circuitDiagnostics.some((d) => d.severity === "error") ? "error" : circuitDiagnostics.some((d) => d.severity === "warning") ? "warning" : "ok") as CircuitStatus,
       diagnostics: circuitDiagnostics.map((d) => d.code),
     };
   }).sort((a, b) => a.circuitNumber - b.circuitNumber || a.circuitId.localeCompare(b.circuitId));
