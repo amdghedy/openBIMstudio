@@ -72,6 +72,7 @@ import {
   type SmartPerpSnapResult,
 } from "../modules/snapping/smart-perp-snap";
 import { snapFeedback } from "./snap-feedback";
+import type { MepConnector } from "../modules/mep/connectors";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -2046,6 +2047,49 @@ function rebuild() {
   // clamped offsetAlongHost (same source as the wall hole) so a freshly placed
   // opening cannot float off its host. No-op if the module is not loaded.
   (window as any).__obsSyncHostedPlacement?.();
+  syncMepLifecycleFromAuthoredElements();
+}
+
+/** Synchronize native MEP geometry after the common authoring rebuild path. */
+let lastMepAuthoringIds = new Set<string>();
+function syncMepLifecycleFromAuthoredElements(): void {
+  const lifecycle = (ctx.features as any).mep?.lifecycle ?? (window as any).__obsMep?.lifecycle;
+  if (!lifecycle || typeof lifecycle.onElementChanged !== "function") return;
+  const mepElements = elements.filter(el => ["duct", "pipe", "cable-tray", "conduit"].includes(el.type));
+  const currentIds = new Set(mepElements.map(el => el.id));
+  for (const oldId of lastMepAuthoringIds) {
+    if (!currentIds.has(oldId)) {
+      try { lifecycle.onElementChanged(oldId, []); } catch (e) { console.warn("[mep] deleted element reconciliation failed", oldId, e); }
+    }
+  }
+  for (const el of mepElements) {
+    const p = el.params;
+    const start = p.start, end = p.end;
+    if (!start || !end || !Number.isFinite(start[0]) || !Number.isFinite(start[1]) ||
+        !Number.isFinite(end[0]) || !Number.isFinite(end[1])) continue;
+    const dx = end[0] - start[0], dz = end[1] - start[1], length = Math.hypot(dx, dz);
+    if (length < 1e-6) continue;
+    const domain = el.type === "duct" ? "duct" : el.type === "pipe" ? "pipe" : el.type === "cable-tray" ? "cabletray" : "conduit";
+    const shape = el.type === "pipe" || el.type === "conduit" ? "round" : "rectangular";
+    const size: number | [number, number] = shape === "round"
+      ? Math.max(0.001, p.thickness || p.width || 0.05)
+      : [Math.max(0.001, p.width || p.thickness || 0.1), Math.max(0.001, p.height || p.thickness || 0.1)];
+    const classification = String(el.properties?.systemClassification ?? el.properties?.systemType ?? domain + "-default");
+    const make = (name: string, x: number, y: number, z: number, dir: [number, number, number], flowDirection: "in" | "out"): MepConnector => ({
+      ownerElementId: el.id,
+      def: { name, origin: [0, 0, 0], direction: dir, domain: domain as any, shape: shape as any, size,
+        flowDirection, systemClassification: classification },
+      worldOrigin: [x, y, z], worldDirection: dir, engaged: false, connectedTo: null,
+    });
+    const y0 = p.elevation || 0, y1 = p.endElevation ?? y0;
+    const connectors = [
+      make("start", start[0], y0, start[1], [-dx / length, (y0 - y1) / Math.max(length, 1e-6), -dz / length], "in"),
+      make("end", end[0], y1, end[1], [dx / length, (y1 - y0) / Math.max(length, 1e-6), dz / length], "out"),
+    ];
+    try { lifecycle.onElementChanged(el.id, connectors); }
+    catch (e) { console.warn("[mep] authored geometry reconciliation failed", el.id, e); }
+  }
+  lastMepAuthoringIds = currentIds;
 }
 
 function applySelection() {
