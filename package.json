@@ -33,6 +33,7 @@
     "test:history": "node tests/history.test.cjs",
     "test:native-bim": "node tests/native-bim-validation.test.mjs",
     "test:mep": "node tests/mep-router.test.cjs",
+    "test:mep-electrical": "node tests/mep-electrical.test.cjs",
     "test:hip": "node tests/hip-roof.test.cjs",
     "test:hatch": "node tests/hatch-patterns.test.cjs",
     "test:stairs": "node tests/stair-winder-spiral.test.cjs",
