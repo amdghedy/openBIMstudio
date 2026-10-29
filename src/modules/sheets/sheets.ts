@@ -5,6 +5,7 @@
  * Designed to compete with BIM sheets / Bentley drawing production.
  */
 import type { SheetDef, SheetViewport, TitleblockDef } from "../projects/types";
+export type { SheetDef, SheetViewport, TitleblockDef };
 
 const uid = () =>
   (crypto as any).randomUUID?.() ?? `sh-${Date.now()}-${Math.random().toString(16).slice(2)}`;

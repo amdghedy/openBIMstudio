@@ -47,6 +47,7 @@ for (const name of scripts) {
     encoding: "utf8",
     env: process.env,
     maxBuffer: 20 * 1024 * 1024,
+    shell: true,
   });
   if (r.status === 0) {
     passed.push(name);

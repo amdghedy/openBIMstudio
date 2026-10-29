@@ -5,7 +5,7 @@
  * dates, and statuses into a formal transmittal / sheet list.
  */
 
-import type { SheetDef } from "./sheets";
+import type { SheetDef } from "../projects/types";
 import { getSheetRevisions, type RevisionRecord } from "../revisions/model";
 
 export interface DrawingRegisterRow {
