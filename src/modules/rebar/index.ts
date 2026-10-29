@@ -13,7 +13,6 @@ import { detectRebarClashes, clashReportToCSV, clashReportToHTML, type ClashRepo
 import { detectLapSplices, renderLapSpliceOverlay, type LapSpliceResult } from "./lap-splice";
 import { REBAR_STANDARDS, type StandardCode, type RebarStandard } from "./standards";
 import type { RebarLayout, RebarLayoutConfig, RebarHost, RebarBar } from "./types";
-import { registerCommand } from "../../features/command-palette";
 
 export * from "./types";
 export { layoutRebar, layoutBeamRebar, layoutColumnRebar } from "./layout";
@@ -59,24 +58,6 @@ export function setupRebar(): RebarService {
     (window as any).__obsRebar = svc;
   } catch {
     /* ignore */
-  }
-
-  // Register commands in ribbon/palette
-  try {
-    registerCommand({
-      id: "rebar.clashReview",
-      label: "Rebar — Clash Review & Clearances",
-      category: "Structural",
-      run: () => import("../../features/rebar-clash-review").then((m) => m.openRebarClashReview()),
-    });
-    registerCommand({
-      id: "rebar.standards",
-      label: "Rebar — International Standards & Codes",
-      category: "Structural",
-      run: () => import("../../features/rebar-clash-review").then((m) => m.openRebarStandardsDialog()),
-    });
-  } catch {
-    /* command-palette not yet loaded */
   }
 
   console.log("[rebar] ready. Shape library + layout engine + standards + clash detector online.");

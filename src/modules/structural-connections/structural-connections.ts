@@ -8,7 +8,6 @@
 import * as THREE from "three";
 import { buildGussetPlate } from "./gusset-plate";
 import { checkConnectionCapacity, formatCapacityReport, type ConnectionCapacity, type DesignForces } from "./connection-capacity";
-import { registerCommand } from "../../features/command-palette";
 
 export * from "./connection-capacity";
 export * from "./gusset-plate";
@@ -222,30 +221,4 @@ export function buildStructuralConnection(input: Partial<ConnectionParams> = {})
     weldLength,
     object: group,
   };
-}
-
-// Register structural connection commands
-try {
-  registerCommand({
-    id: "connections.designCheck",
-    label: "Structural — Connection Capacity & Code Check",
-    category: "Structural",
-    run: () => {
-      const sampleForces: DesignForces = { shearKN: 120, momentKNm: 45, axialKN: 30 };
-      const sampleParams: ConnectionParams = {
-        type: "moment-flange-plate",
-        origin: { x: 0, y: 0, z: 0 },
-        columnSize: 0.3,
-        beamSize: 0.4,
-        boltDiameter: 0.02,
-        boltsPerRow: 4,
-        plateThickness: 0.02,
-        plateOversize: 0.04,
-      };
-      const res = checkConnectionCapacity(sampleParams, sampleForces, "EC3", "S355");
-      alert(formatCapacityReport(res));
-    },
-  });
-} catch {
-  /* command palette deferred */
 }
