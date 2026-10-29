@@ -1,4 +1,4 @@
-# BIM Input Parity — Camera, View, Mouse, Keyboard
+# BIM Input workflow alignment — Camera, View, Mouse, Keyboard
 
 ## Mouse (matches BIM default 3D navigation)
 
@@ -16,7 +16,7 @@
 | **RMB** | Context menu |
 
 Implemented in `navigation.ts` + `bim-mouse-policy.ts` + `input-router.ts`.  
-CameraControls mouse buttons are forced **OFF** so only this map drives the view (`bim-input-parity` re-asserts every 4s).
+CameraControls mouse buttons are forced **OFF** so only this map drives the view (`bim-input-workflow alignment` re-asserts every 4s).
 
 ## Keyboard — view
 
@@ -80,4 +80,4 @@ Two-letter sequences use an ~800 ms buffer (same idea as BIM).
 | `core/wheel-arbiter.ts` | Wheel conflict resolution |
 | `features/selection-orbit.ts` | Pivot on LMB selection only |
 | `shell/default-shortcuts.ts` | Base tool + app shortcuts |
-| `features/bim-input-parity.ts` | Missing BIM keys + help overlay + nav guard |
+| `features/bim-input-workflow alignment.ts` | Missing BIM keys + help overlay + nav guard |
