@@ -17,6 +17,8 @@ import {
 import type { MepSize, MepSystem, RouteRequest, RouteResult, SizingResult } from "./types";
 
 export * from "./types";
+export * from "./connectors";
+export * from "./electrical";
 export { route, routeSimple } from "./router";
 export { sizeForSystem, validateSize, defaultVelocityFor, maxVelocityFor } from "./sizing";
 export {
