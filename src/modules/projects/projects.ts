@@ -82,6 +82,10 @@ export async function saveProject(silent = false) {
     return;
   }
   current.elements = getElements();
+  try {
+    const lifecycle = (ctx.features as any).mep?.lifecycle;
+    if (typeof lifecycle?.snapshot === "function") current.mepLifecycle = lifecycle.snapshot();
+  } catch (e) { console.warn("[projects] MEP lifecycle snapshot failed", e); }
   current.grids = getGrids();
   current.levels = getLevels();
   current.issues = getIssues();
@@ -362,6 +366,10 @@ export async function openProject(id: string) {
     setGrids(doc.grids ?? []);
     setLevels(doc.levels ?? []);
     setElements(doc.elements ?? []);
+    try {
+      const lifecycle = (ctx.features as any).mep?.lifecycle;
+      if (typeof lifecycle?.hydrate === "function") lifecycle.hydrate(doc.mepLifecycle ?? {});
+    } catch (e) { console.warn("[projects] MEP lifecycle restore failed", e); }
 
     // openbim-levels:ui-wired:projects
     try {
