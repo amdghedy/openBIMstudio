@@ -15,10 +15,12 @@ import {
   ductPressureDrop as ductPd, pipePressureDrop as pipePd, worstPath as worstPathImpl, classifyFrictionRate as classifyImpl,
 } from "./pressure";
 import type { MepSize, MepSystem, RouteRequest, RouteResult, SizingResult } from "./types";
+import { MepModelLifecycle } from "./model-lifecycle";
 
 export * from "./types";
 export * from "./connectors";
 export * from "./electrical";
+export * from "./model-lifecycle";
 export { route, routeSimple } from "./router";
 export { sizeForSystem, validateSize, defaultVelocityFor, maxVelocityFor } from "./sizing";
 export {
@@ -41,6 +43,8 @@ export interface MepService {
   defaultVelocityFor(system: MepSystem): number;
   /** Maximum allowable velocity for a system. */
   maxVelocityFor(system: MepSystem): number;
+  /** Native model lifecycle: connectors, electrical assignments, schedules and diagnostics. */
+  lifecycle: MepModelLifecycle;
 }
 
 let installed = false;
@@ -58,6 +62,7 @@ export function setupMep(): MepService {
     validateSize,
     defaultVelocityFor,
     maxVelocityFor,
+    lifecycle: new MepModelLifecycle(),
   };
 
   // v0.67: pressure-loss engineering rides on the same service.
