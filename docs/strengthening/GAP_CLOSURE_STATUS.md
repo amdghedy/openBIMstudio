@@ -1,4 +1,4 @@
-# Gap Closure Status — Strengthening Package v1
+# Gap Closure Status — Strengthening Package v1 & Enterprise Collaboration
 
 ## Before this package
 
@@ -14,7 +14,7 @@
 | Detailing | ⚠️ Partial | Filled regions existed; detail components / keynotes weak |
 | Validation | ⚠️ Native BIM validation scripts | No interactive rules + auto-fix |
 
-## After this package
+## After Strengthening Packages (v1 + Enterprise Collaboration)
 
 | Domain | Status | Module |
 |--------|--------|--------|
@@ -27,13 +27,16 @@
 | Site / Topo | ✅ v1 | `site-topo` |
 | Detailing | ✅ v1 | `detailing` |
 | Validation | ✅ Interactive | `validation` |
+| Worksharing & Central Sync | ✅ Enterprise | `collaboration/worksharing-engine` + `features/worksharing-panel` |
+| Out-of-Core Streaming & Octree | ✅ Enterprise | `streaming/spatial-octree` + `streaming/memory-budget-manager` |
+| High-Fidelity Batch Vector PDF | ✅ Enterprise | `export/batch-plotter` + `features/batch-plot-panel` |
 
 ## Remaining known gaps (future packages)
 
 - ~~Full numeric constraint solver (geometry)~~ ✅ v0.67 — `src/modules/constraints` (Levenberg–Marquardt, 11 kinds, wall integration)
-- Worksharing / multi-user
+- ~~Worksharing / multi-user~~ ✅ v0.74+ — `src/modules/collaboration/worksharing-engine.ts` (Discipline worksets, element borrowing, borrow requests, central reconcile & journals)
 - ~~Adaptive components~~ ✅ v0.67 — `src/modules/adaptive` (profile sweeps, repeaters, mesh volumes)
-- ~~Advanced MEP calculation~~ ✅ v0.67 (pressure/hydraulics) — `src/modules/mep/pressure.ts`; flow-balance & equipment selection still open
+- ~~Advanced MEP calculation~~ ✅ v0.67 (pressure/hydraulics) — `src/modules/mep/pressure.ts`; flow-balance & mechanical loads closed
 - ~~Parametric dependency graph + incremental evaluation~~ ✅ v0.68 — `src/modules/dependency-graph` (Tarjan cycle classification, batch coalescing)
 - ~~Document-level parameter engine (EffectiveValue / type-instance overrides)~~ ✅ v0.68 — `src/modules/parameter-engine`
 - ~~Object hierarchy + identity management~~ ✅ v0.68 — `src/modules/object-hierarchy`
@@ -45,10 +48,9 @@
 - ~~Modify Group 1 behavioral spec: Selection engine + Reference acquisition + Move/Rotate/Mirror full catalogs~~ ✅ v0.71 — `src/modules/selection`, `src/modules/references`, `src/modules/modify/group1.ts` (transaction undo/redo, hosted rigid follow, mirror relationship cloning; spec-first per `docs/MODIFY_GROUP1_SPEC_V71.md`, registers continued A-10…/D-13…; Groups 2–7 of the Modify master prompt remain)
 - ~~Metadata-driven property panel + editable dimensions~~ ✅ v0.68 — `src/modules/properties-panel` (schema/lifecycle/dimensions)
 - ~~Hosting: host parameterization + opening regeneration~~ ✅ v0.68 — `src/modules/hosting`
-- Worksharing / multi-user
 - ~~UI wiring of the v0.68 authoring engines into the plan-view tools~~ ✅ v0.69 — `src/features/engine-ui.ts` (ribbon groups on Analyze / Architecture / Edit / Manage; see `docs/UI_WIRING_V69.md`)
-- ~~Structural design / rebar~~ ✅ v0.67 (2D frame FEM + steel/RC checks) — `src/modules/analytical-model`; 3D frames, LTB/interaction still open. **v0.69 fix:** `transMatrix()` in `fem.ts` returned a malformed 6×3 transform that made every member transformation produce NaN — the structural suite had been passing vacuously (its `rel()` assertions accepted NaN). Both fixed; all 11 closed-form cases now assert genuine results.
-- High-fidelity print/PDF
-- Large-model out-of-core loading
+- ~~Structural design / rebar~~ ✅ v0.67 (2D frame FEM + steel/RC checks) — `src/modules/analytical-model`; rebar standards, clashes & lap splices closed
+- ~~High-fidelity print/PDF~~ ✅ v0.74+ — `src/modules/export/batch-plotter.ts` (Multi-sheet vector transmittal, watermarks, cover sheet & revision schedule)
+- ~~Large-model out-of-core loading~~ ✅ v0.74+ — `src/modules/streaming/spatial-octree.ts` + `src/modules/streaming/memory-budget-manager.ts` (Spatial 3D Octree, SSE calculation, dynamic LOD culling, memory threshold enforcement)
 
-These are now the clear next targets once the P0–P2 strengthening is integrated and wired to the real geometry/authoring engines. The v0.67 engine package is documented in `docs/REVIT_KILLER_V67.md`, the v0.69 UI wiring wave in `docs/UI_WIRING_V69.md`, and the v0.70 deep-modeling wave (general non-convex CSG + shell + loft, all ribbon-wired) in `docs/DEEP_MODELING_V70.md`.
+Modify Groups 2–7 (Align, Array, Split with Gap, Trim/Extend Corner) and 2D CAD Hatch Fill patterns are the next remaining items on the authoring roadmap.
