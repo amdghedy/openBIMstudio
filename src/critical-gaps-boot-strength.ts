@@ -1,6 +1,6 @@
 /**
  * OpenBIMStudio Strengthening Package — Full boot (P0–P2)
- * Authoring depth, stability, and documentation modules.
+ * Authoring depth, stability, enterprise collaboration, and documentation modules.
  */
 
 import { getTransactionService } from "./modules/transaction";
@@ -12,6 +12,12 @@ import { getViewTemplatesService } from "./modules/view-templates";
 import { getSiteTopoService } from "./modules/site-topo";
 import { getDetailingService } from "./modules/detailing";
 import { getValidationService } from "./modules/validation";
+import { getWorksharingEngine } from "./modules/collaboration/worksharing-engine";
+import { getMemoryBudgetManager } from "./modules/streaming/memory-budget-manager";
+import { generateBatchPlotPdf, downloadBatchPlotPdf } from "./modules/export/batch-plotter";
+import "./features/worksharing-panel";
+import "./features/streaming-panel";
+import "./features/batch-plot-panel";
 
 declare global {
   interface Window {
@@ -24,6 +30,12 @@ declare global {
     __obsSiteTopo?: ReturnType<typeof getSiteTopoService>;
     __obsDetailing?: ReturnType<typeof getDetailingService>;
     __obsValidation?: ReturnType<typeof getValidationService>;
+    __obsWorksharing?: ReturnType<typeof getWorksharingEngine>;
+    __obsStreamingBudget?: ReturnType<typeof getMemoryBudgetManager>;
+    __obsBatchPlot?: {
+      generateBatchPlotPdf: typeof generateBatchPlotPdf;
+      downloadBatchPlotPdf: typeof downloadBatchPlotPdf;
+    };
   }
 }
 
@@ -37,6 +49,8 @@ export function bootStrengtheningModules(): void {
   const site = getSiteTopoService();
   const detail = getDetailingService();
   const validation = getValidationService();
+  const worksharing = getWorksharingEngine();
+  const streaming = getMemoryBudgetManager();
 
   if (typeof window !== "undefined") {
     window.__obsTransaction = txn;
@@ -48,6 +62,12 @@ export function bootStrengtheningModules(): void {
     window.__obsSiteTopo = site;
     window.__obsDetailing = detail;
     window.__obsValidation = validation;
+    window.__obsWorksharing = worksharing;
+    window.__obsStreamingBudget = streaming;
+    window.__obsBatchPlot = {
+      generateBatchPlotPdf,
+      downloadBatchPlotPdf,
+    };
 
     window.addEventListener("keydown", (e) => {
       const t = e.target as HTMLElement | null;
@@ -74,8 +94,8 @@ export function bootStrengtheningModules(): void {
   }
 
   console.info(
-    "[Strengthening] P0–P2 modules booted:",
-    "Transaction, ParametricRegen, Properties, Joins, LOD, ViewTemplates, SiteTopo, Detailing, Validation"
+    "[Strengthening] P0–P2 enterprise modules booted:",
+    "Transaction, ParametricRegen, Properties, Joins, LOD, ViewTemplates, SiteTopo, Detailing, Validation, Worksharing, StreamingBudget, BatchPlot"
   );
 }
 
@@ -91,4 +111,8 @@ export {
   getSiteTopoService,
   getDetailingService,
   getValidationService,
+  getWorksharingEngine,
+  getMemoryBudgetManager,
+  generateBatchPlotPdf,
+  downloadBatchPlotPdf,
 };

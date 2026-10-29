@@ -13,7 +13,7 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 
 const scripts = [
   "test:bim-gaps", "test:mep", "test:hip", "test:hatch", "test:stairs", "test:rebar",
-  "test:v40", "test:view-crop", "test:selection-box", "test:history",
+  "test:v40", "test:collab", "test:view-crop", "test:selection-box", "test:history",
   "test:dwg-isolation", "test:dwg-worker-lifecycle", "test:native-bim", "test:cad-link",
   "test:walk", "test:elbow", "test:props", "test:fitting-outline", "test:slope",
   "test:cad-viewer", "test:ocs", "test:dxf-features", "test:dwg-features",
