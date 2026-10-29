@@ -191,17 +191,88 @@ export function calculateRequiredFittings(
   return out;
 }
 
-/** FindMEPConnectionPath: orthogonal 2-bend route between connectors. */
+/**
+ * FindMEPConnectionPath: connector-aligned stubs followed by an orthogonal
+ * 3D core route. The former fixed midpoint could create diagonal segments
+ * whenever both elevation and plan coordinates changed.
+ */
 export function findMepConnectionPath(
   start: MepConnector,
   end: MepConnector,
 ): Array<[number, number, number]> {
   const a = start.worldOrigin;
   const b = end.worldOrigin;
-  // Classic MEP routing: leave the start along its axis, then a square
-  // offset in the dominant remaining axis, then into the target axis.
-  const mid: [number, number, number] = [b[0], b[1], a[2]];
-  return [a, mid, b];
+  const startDir = unitDirection(start.worldDirection);
+  const endDir = unitDirection(end.worldDirection);
+  const stub = Math.max(
+    0.15,
+    2 * connectorCharacteristicSize(start),
+    2 * connectorCharacteristicSize(end),
+  );
+  // Connector directions point out of their owning elements. Leave the
+  // source along its direction and reach the target from the opposite side.
+  const from: [number, number, number] = startDir
+    ? [a[0] + startDir[0] * stub, a[1] + startDir[1] * stub, a[2] + startDir[2] * stub]
+    : [...a];
+  const to: [number, number, number] = endDir
+    ? [b[0] + endDir[0] * stub, b[1] + endDir[1] * stub, b[2] + endDir[2] * stub]
+    : [...b];
+
+  const orders: Array<[number, number, number]> = [
+    [0, 1, 2], [0, 2, 1], [1, 0, 2],
+    [1, 2, 0], [2, 0, 1], [2, 1, 0],
+  ];
+  let best: Array<[number, number, number]> | null = null;
+  let bestLength = Infinity;
+  for (const order of orders) {
+    const points: Array<[number, number, number]> = [[...from]];
+    const cursor: [number, number, number] = [...from];
+    for (const axis of order) {
+      cursor[axis] = to[axis];
+      points.push([...cursor]);
+    }
+    const candidate = dedupeRoute([ [...a], ...points, [...b] ]);
+    const length = routeLength(candidate);
+    if (length < bestLength - 1e-9) {
+      best = candidate;
+      bestLength = length;
+    }
+  }
+  return best ?? [ [...a], [...b] ];
+}
+
+function unitDirection(v: [number, number, number]): [number, number, number] | null {
+  const length = Math.hypot(v[0], v[1], v[2]);
+  if (!Number.isFinite(length) || length < 1e-8) return null;
+  return [v[0] / length, v[1] / length, v[2] / length];
+}
+
+function connectorCharacteristicSize(c: MepConnector): number {
+  const size = c.def.size;
+  if (typeof size === "number") return Number.isFinite(size) && size > 0 ? size : 0;
+  return Array.isArray(size) ? Math.max(...size.filter(Number.isFinite), 0) : 0;
+}
+
+function dedupeRoute(points: Array<[number, number, number]>): Array<[number, number, number]> {
+  const out: Array<[number, number, number]> = [];
+  for (const point of points) {
+    if (!out.length || Math.hypot(
+      point[0] - out[out.length - 1][0],
+      point[1] - out[out.length - 1][1],
+      point[2] - out[out.length - 1][2],
+    ) > 1e-8) out.push(point);
+  }
+  return out;
+}
+
+function routeLength(points: Array<[number, number, number]>): number {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) total += Math.hypot(
+    points[i][0] - points[i - 1][0],
+    points[i][1] - points[i - 1][1],
+    points[i][2] - points[i - 1][2],
+  );
+  return total;
 }
 
 /** PreviewMEPConnection: route + fittings + validity for the view layer. */
