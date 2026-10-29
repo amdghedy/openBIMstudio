@@ -68,10 +68,18 @@ export function validateNativeModel(snapshot: NativeModelSnapshot): ModelDiagnos
   const byId = new Map<string, AuthoredElement>();
   const globalIds = new Map<string, string>();
   const levelIds = new Set((snapshot.levels ?? []).map((x) => x.id));
+  const seenLevelIds = new Set<string>();
   const gridIds = new Set<string>();
 
   for (const level of snapshot.levels ?? []) {
-    if (!level.id?.trim()) add("LEVEL_ID_MISSING", "error", "Level has no stable ID.");
+    if (!level.id?.trim()) {
+      add("LEVEL_ID_MISSING", "error", "Level has no stable ID.");
+    } else if (seenLevelIds.has(level.id)) {
+      add("LEVEL_ID_DUPLICATE", "error", `Level ID "${level.id}" is duplicated.`, level.id);
+    } else {
+      seenLevelIds.add(level.id);
+    }
+    if (!level.name?.trim()) add("LEVEL_NAME_MISSING", "warning", "Level name is empty.", level.id);
     if (!finite(level.elevation)) add("LEVEL_ELEVATION_INVALID", "error", "Level elevation must be finite.", level.id);
   }
   for (const grid of snapshot.grids ?? []) {
