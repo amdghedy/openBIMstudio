@@ -428,7 +428,7 @@ t("mep: topology validation catches loops, disconnection, size jumps", () => {
   assert(!preview.valid && preview.reasons.some((r) => r.includes("engaged")));
   // Disconnected equipment + size jump without fitting.
   const C = connector("C", "out", { size: 0.05 });
-  const D = connector("D", "in", { size: 0.1, origin: [5, 0, 0] });
+  const D = connector("D", "in", { flow: "in", size: 0.1, origin: [5, 0, 0] });
   const conn2 = { ...mepc.createConnectorRelationship(C, D, [[0, 0, 0], [5, 0, 0]], []), fittings: [] };
   const connectors = [A, B, C, D, connector("E", "in", { origin: [9, 9, 9] })];
   // Rebuild C/D as unengaged copies for topology input consistency.
