@@ -321,9 +321,28 @@ export function createConnectorRelationship(
   route: Array<[number, number, number]>,
   fittings: RequiredFitting[],
 ): ConnectorConnection {
-  if (start.engaged || end.engaged) {
+  if (start.engaged || start.connectedTo || end.engaged || end.connectedTo) {
     throw new Error("CreateConnectorRelationship: connector already engaged");
   }
+  const compatibility = evaluateConnectorCompatibility(start, end);
+  if (!compatibility.compatible) {
+    throw new Error(`CreateConnectorRelationship: incompatible connectors: ${compatibility.reasons.join("; ")}`);
+  }
+  if (route.length < 2 || route.some((p) => p.length !== 3 || !p.every(Number.isFinite))) {
+    throw new Error("CreateConnectorRelationship: route must contain at least two finite 3D points");
+  }
+  const routeStart = route[0];
+  const routeEnd = route[route.length - 1];
+  const endpointTolerance = 1e-4;
+  const startError = Math.hypot(routeStart[0] - start.worldOrigin[0], routeStart[1] - start.worldOrigin[1], routeStart[2] - start.worldOrigin[2]);
+  const endError = Math.hypot(routeEnd[0] - end.worldOrigin[0], routeEnd[1] - end.worldOrigin[1], routeEnd[2] - end.worldOrigin[2]);
+  if (startError > endpointTolerance || endError > endpointTolerance) {
+    throw new Error("CreateConnectorRelationship: route endpoints must coincide with connector origins");
+  }
+  if (!Array.isArray(fittings)) {
+    throw new Error("CreateConnectorRelationship: fittings must be an array");
+  }
+  // Mutate only after all validation succeeds so a failed operation is atomic.
   start.engaged = true;
   start.connectedTo = end.ownerElementId;
   end.engaged = true;
