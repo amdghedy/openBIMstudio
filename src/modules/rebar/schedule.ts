@@ -229,3 +229,77 @@ export function bbsToText(schedule: BBSSchedule): string {
 
   return lines.join("\n");
 }
+
+
+/**
+ * Export a BBS as an Excel-compatible CSV string with formal structural headers.
+ */
+export function bbsToExcel(layout: RebarLayout, elementName: string = "Element"): string {
+  const schedule = generateBBS(layout, elementName);
+  const headers = [
+    "Mark",
+    "Bar Ref",
+    "Diameter (mm)",
+    "No. of Members",
+    "No. of Bars",
+    "Length per Bar (m)",
+    "Total Length (m)",
+    "Shape Code",
+    "Total Weight (kg)",
+    "Role",
+  ];
+
+  const rows = schedule.rows.map((r) => [
+    `"${r.mark}"`,
+    `"${elementName}-${r.mark}"`,
+    r.diameterMm,
+    1,
+    r.count,
+    r.lengthPerBar.toFixed(3),
+    r.totalLength.toFixed(3),
+    `"${r.shape}"`,
+    r.totalMass.toFixed(2),
+    `"${r.role}"`,
+  ]);
+
+  return [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+}
+
+/**
+ * Generate a high-level Quantity Takeoff (QTO) grouping steel by diameter.
+ */
+export function generateQuantityTakeoff(
+  layouts: RebarLayout[],
+  standard: string = "EC2",
+): {
+  byDiameter: Record<string, { count: number; totalLength: number; weight: number }>;
+  grandTotalWeight: number;
+  standard: string;
+} {
+  const byDiameter: Record<string, { count: number; totalLength: number; weight: number }> = {};
+  let grandTotalWeight = 0;
+
+  for (const layout of layouts) {
+    for (const bar of layout.bars) {
+      const diaMm = `${Math.round(bar.diameter * 1000)}mm`;
+      if (!byDiameter[diaMm]) {
+        byDiameter[diaMm] = { count: 0, totalLength: 0, weight: 0 };
+      }
+      byDiameter[diaMm].count += 1;
+      byDiameter[diaMm].totalLength += bar.totalLength;
+      byDiameter[diaMm].weight += bar.mass;
+      grandTotalWeight += bar.mass;
+    }
+  }
+
+  for (const k of Object.keys(byDiameter)) {
+    byDiameter[k].totalLength = Math.round(byDiameter[k].totalLength * 100) / 100;
+    byDiameter[k].weight = Math.round(byDiameter[k].weight * 100) / 100;
+  }
+
+  return {
+    byDiameter,
+    grandTotalWeight: Math.round(grandTotalWeight * 100) / 100,
+    standard,
+  };
+}

@@ -1,0 +1,76 @@
+{
+  "id": "seed-struct-col-001",
+  "name": "Rectangular Concrete Column",
+  "category": "structural-column",
+  "ifcEntity": "IfcColumn",
+  "schemaVersion": 1,
+  "sourceElementType": "column",
+  "builtIn": true,
+  "group": "Structural",
+  "parameters": [
+    {
+      "name": "width",
+      "type": "length",
+      "scope": "type",
+      "default": 0.4,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "depth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.4,
+      "editable": true,
+      "step": 0.05,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "height",
+      "type": "length",
+      "scope": "instance",
+      "default": 3.0,
+      "editable": true,
+      "step": 0.1,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "concreteGrade",
+      "type": "text",
+      "scope": "type",
+      "default": "C30/37",
+      "editable": true,
+      "group": "Materials"
+    }
+  ],
+  "types": [
+    {
+      "name": "400x400 C30",
+      "parameters": {
+        "width": 0.4,
+        "depth": 0.4,
+        "concreteGrade": "C30/37"
+      }
+    },
+    {
+      "name": "500x500 C35",
+      "parameters": {
+        "width": 0.5,
+        "depth": 0.5,
+        "concreteGrade": "C35/45"
+      }
+    },
+    {
+      "name": "600x400 C40",
+      "parameters": {
+        "width": 0.6,
+        "depth": 0.4,
+        "concreteGrade": "C40/50"
+      }
+    }
+  ]
+}

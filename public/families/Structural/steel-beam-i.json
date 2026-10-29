@@ -1,0 +1,80 @@
+{
+  "id": "seed-struct-beam-001",
+  "name": "Universal Steel I-Beam",
+  "category": "structural-framing",
+  "ifcEntity": "IfcBeam",
+  "schemaVersion": 1,
+  "sourceElementType": "beam",
+  "builtIn": true,
+  "group": "Structural",
+  "parameters": [
+    {
+      "name": "sectionDepth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.457,
+      "editable": true,
+      "step": 0.01,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "flangeWidth",
+      "type": "length",
+      "scope": "type",
+      "default": 0.19,
+      "editable": true,
+      "step": 0.005,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "webThickness",
+      "type": "length",
+      "scope": "type",
+      "default": 0.009,
+      "editable": true,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "flangeThickness",
+      "type": "length",
+      "scope": "type",
+      "default": 0.0145,
+      "editable": true,
+      "unit": "m",
+      "group": "Dimensions"
+    },
+    {
+      "name": "steelGrade",
+      "type": "text",
+      "scope": "type",
+      "default": "S355JR",
+      "editable": true,
+      "group": "Materials"
+    }
+  ],
+  "types": [
+    {
+      "name": "UB 457x191x67",
+      "parameters": {
+        "sectionDepth": 0.457,
+        "flangeWidth": 0.19,
+        "webThickness": 0.009,
+        "flangeThickness": 0.0145,
+        "steelGrade": "S355JR"
+      }
+    },
+    {
+      "name": "UB 533x210x92",
+      "parameters": {
+        "sectionDepth": 0.533,
+        "flangeWidth": 0.21,
+        "webThickness": 0.0102,
+        "flangeThickness": 0.0156,
+        "steelGrade": "S355JR"
+      }
+    }
+  ]
+}

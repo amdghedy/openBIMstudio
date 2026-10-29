@@ -1,23 +1,29 @@
 /**
- * Structural Connections Library — steel moment / shear / base-plate / cap-plate.
+ * Structural Connections Library — steel moment / shear / base-plate / cap-plate / gussets.
  *
  * BIM-equivalent of Revit's "Structural Connection" tool. Generates
- * connection plates, bolt arrays and stiffeners at beam/column joints.
- *
- * Each connection produces a Group containing:
- *   - plate geometry (top, bottom, end, cap, base),
- *   - bolt markers (InstancedMesh),
- *   - weld/stiffener ribs.
+ * connection plates, bolt arrays, stiffeners, and capacity check reports at joints.
  */
 
 import * as THREE from "three";
+import { buildGussetPlate } from "./gusset-plate";
+import { checkConnectionCapacity, formatCapacityReport, type ConnectionCapacity, type DesignForces } from "./connection-capacity";
+import { registerCommand } from "../../features/command-palette";
+
+export * from "./connection-capacity";
+export * from "./gusset-plate";
+export * from "./weld-annotations";
+export * from "./anchor-bolt-pattern";
 
 export type ConnectionType =
   | "moment-flange-plate"   // top + bottom flange plates
   | "shear-end-plate"        // single end plate
   | "base-plate"             // column-to-foundation
   | "cap-plate"              // column-to-beam top
-  | "splice-plate";          // column-to-column butt splice
+  | "splice-plate"           // column-to-column butt splice
+  | "gusset-plate"           // diagonal brace gusset plate
+  | "double-angle-shear"     // bolted/welded double angle cleat
+  | "welded-moment-end-plate"; // full-depth welded moment end plate
 
 export interface ConnectionParams {
   type: ConnectionType;
@@ -44,6 +50,7 @@ export interface ConnectionResult {
   boltCount: number;
   weldLength: number;
   object: THREE.Object3D;
+  capacity?: ConnectionCapacity;
 }
 
 const DEFAULTS = {
@@ -85,6 +92,25 @@ export function buildStructuralConnection(input: Partial<ConnectionParams> = {})
   const p: ConnectionParams = { ...DEFAULTS, ...input } as ConnectionParams;
   if (p.origin === undefined) p.origin = { x: 0, y: 0, z: 0 };
 
+  // Handle gusset plate via dedicated module
+  if (p.type === "gusset-plate") {
+    const res = buildGussetPlate({
+      origin: p.origin,
+      columnSize: p.columnSize,
+      beamSize: p.beamSize,
+      plateThickness: p.plateThickness,
+      boltDiameter: p.boltDiameter,
+      boltsOnBrace: p.boltsPerRow,
+      angle: p.angle,
+    });
+    return {
+      plateCount: 1,
+      boltCount: res.boltCount,
+      weldLength: res.weldLength,
+      object: res.object,
+    };
+  }
+
   const group = new THREE.Group();
   group.name = `obs-conn-${p.type}`;
   group.userData.kind = "structural-connection";
@@ -104,7 +130,6 @@ export function buildStructuralConnection(input: Partial<ConnectionParams> = {})
   let weldLength = 0;
 
   if (p.type === "moment-flange-plate") {
-    // Top + bottom flange plates bridging beam-to-column.
     const flangeW = beamW;
     const flangeL = cs + 2 * beamW * 0.3;
     const top = plateMesh(flangeL, t, flangeW, new THREE.Vector3(0, bs * 0.5, 0));
@@ -112,17 +137,15 @@ export function buildStructuralConnection(input: Partial<ConnectionParams> = {})
     group.add(top); group.add(bot);
     plateCount = 2;
     weldLength = 4 * flangeL;
-    // Bolt array: 2 rows of boltsPerRow on each plate.
     const spacing = beamW / (p.boltsPerRow + 1);
     for (const yPos of [bs * 0.5, -bs * 0.5]) {
       for (let i = 1; i <= p.boltsPerRow; i++) {
         boltPositions.push(new THREE.Vector3(-flangeL * 0.5 + i * spacing, yPos, 0));
       }
     }
-  } else if (p.type === "shear-end-plate") {
-    // Single end plate (column face).
+  } else if (p.type === "shear-end-plate" || p.type === "welded-moment-end-plate") {
     const plateW = colW;
-    const plateH = beamW;
+    const plateH = p.type === "welded-moment-end-plate" ? beamW * 1.3 : beamW;
     const m = plateMesh(t, plateH, plateW, new THREE.Vector3(0, 0, colW * 0.5));
     group.add(m);
     plateCount = 1;
@@ -132,38 +155,46 @@ export function buildStructuralConnection(input: Partial<ConnectionParams> = {})
       boltPositions.push(new THREE.Vector3(0, -plateH * 0.5 + i * spacing, colW * 0.5 + t * 0.5));
     }
   } else if (p.type === "base-plate") {
-    // Square base plate under column.
     const plateW = colW + 0.1;
     const m = plateMesh(plateW, t, plateW, new THREE.Vector3(0, -t * 0.5, 0));
     group.add(m);
     plateCount = 1;
     weldLength = 4 * cs;
-    // 4 anchor bolts at corners.
     const inset = plateW * 0.15;
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
       boltPositions.push(new THREE.Vector3(sx * (plateW * 0.5 - inset), t, sz * (plateW * 0.5 - inset)));
     }
   } else if (p.type === "cap-plate") {
-    // Square cap plate on top of column.
     const plateW = colW + 0.05;
     const m = plateMesh(plateW, t, plateW, new THREE.Vector3(0, cs * 0.5 + t * 0.5, 0));
     group.add(m);
     plateCount = 1;
     weldLength = 4 * cs;
-    // 4 bolts at corners.
     const inset = plateW * 0.15;
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
       boltPositions.push(new THREE.Vector3(sx * (plateW * 0.5 - inset), cs * 0.5 + t * 0.5, sz * (plateW * 0.5 - inset)));
     }
+  } else if (p.type === "double-angle-shear") {
+    // Two angle cleats on beam web
+    const angleH = bs * 0.7;
+    const angleW = 0.09;
+    const m1 = plateMesh(angleW, angleH, t, new THREE.Vector3(t, 0, 0.04));
+    const m2 = plateMesh(angleW, angleH, t, new THREE.Vector3(t, 0, -0.04));
+    group.add(m1); group.add(m2);
+    plateCount = 2;
+    weldLength = 4 * angleH;
+    for (let i = 1; i <= p.boltsPerRow; i++) {
+      boltPositions.push(new THREE.Vector3(0, -angleH * 0.5 + (i * angleH) / (p.boltsPerRow + 1), 0.04));
+      boltPositions.push(new THREE.Vector3(0, -angleH * 0.5 + (i * angleH) / (p.boltsPerRow + 1), -0.04));
+    }
   } else if (p.type === "splice-plate") {
-    // 4 splice plates (top, bottom, left, right web).
     const spliceL = cs * 1.2;
     const spliceW = cs * 0.4;
     const positions = [
-      new THREE.Vector3(0, cs * 0.5, 0),    // top flange
-      new THREE.Vector3(0, -cs * 0.5, 0),   // bottom flange
-      new THREE.Vector3(cs * 0.5, 0, 0),    // right web
-      new THREE.Vector3(-cs * 0.5, 0, 0),   // left web
+      new THREE.Vector3(0, cs * 0.5, 0),
+      new THREE.Vector3(0, -cs * 0.5, 0),
+      new THREE.Vector3(cs * 0.5, 0, 0),
+      new THREE.Vector3(-cs * 0.5, 0, 0),
     ];
     for (const pos of positions) {
       const m = plateMesh(spliceL, t, spliceW, pos);
@@ -171,7 +202,6 @@ export function buildStructuralConnection(input: Partial<ConnectionParams> = {})
       plateCount++;
       weldLength += 2 * spliceL;
     }
-    // 4 bolts per splice plate.
     const spacing = spliceL / 5;
     for (const pos of positions) {
       for (let i = -2; i <= 2; i++) {
@@ -192,4 +222,30 @@ export function buildStructuralConnection(input: Partial<ConnectionParams> = {})
     weldLength,
     object: group,
   };
+}
+
+// Register structural connection commands
+try {
+  registerCommand({
+    id: "connections.designCheck",
+    label: "Structural — Connection Capacity & Code Check",
+    category: "Structural",
+    run: () => {
+      const sampleForces: DesignForces = { shearKN: 120, momentKNm: 45, axialKN: 30 };
+      const sampleParams: ConnectionParams = {
+        type: "moment-flange-plate",
+        origin: { x: 0, y: 0, z: 0 },
+        columnSize: 0.3,
+        beamSize: 0.4,
+        boltDiameter: 0.02,
+        boltsPerRow: 4,
+        plateThickness: 0.02,
+        plateOversize: 0.04,
+      };
+      const res = checkConnectionCapacity(sampleParams, sampleForces, "EC3", "S355");
+      alert(formatCapacityReport(res));
+    },
+  });
+} catch {
+  /* command palette deferred */
 }

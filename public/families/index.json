@@ -484,5 +484,23 @@
     "ifcEntity": "IfcMechanicalAppliance",
     "typeCount": 2,
     "path": "Mechanical Equipment/water-heater.json"
+  },
+  {
+    "id": "seed-struct-col-001",
+    "name": "Rectangular Concrete Column",
+    "group": "Structural",
+    "category": "column",
+    "ifcEntity": "IfcColumn",
+    "typeCount": 3,
+    "path": "Structural/concrete-column-rectangular.json"
+  },
+  {
+    "id": "seed-struct-beam-001",
+    "name": "Universal Steel I-Beam",
+    "group": "Structural",
+    "category": "beam",
+    "ifcEntity": "IfcBeam",
+    "typeCount": 2,
+    "path": "Structural/steel-beam-i.json"
   }
 ]
