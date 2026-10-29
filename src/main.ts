@@ -111,9 +111,13 @@ import { installGlobalErrorHandlers, renderBootFailure, logError } from "./core/
 import { dumpServiceRegistry } from "./core/services";
 import { bootTheme } from "./core/theme";
 import { setupExtras } from "./features/_extras";
+import { inject } from '@vercel/analytics';
 
 // Install global error handlers before anything else boots.
 installGlobalErrorHandlers();
+
+// Initialize Vercel Web Analytics
+inject();
 
 
 const errOverlay = document.createElement("div");
