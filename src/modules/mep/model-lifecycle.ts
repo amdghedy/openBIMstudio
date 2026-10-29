@@ -121,7 +121,15 @@ export class MepModelLifecycle {
       const start = this.connectors.find(c => c.ownerElementId === connection.sourceElementId && c.def.name === connection.sourceConnector);
       const end = this.connectors.find(c => c.ownerElementId === connection.targetElementId && c.def.name === connection.targetConnector);
       if (!start || !end) continue;
+      // Existing edges are engaged by definition; temporarily release only
+      // these two ports so preview can validate/regenerate their own edge.
+      const startState = { engaged: start.engaged, connectedTo: start.connectedTo };
+      const endState = { engaged: end.engaged, connectedTo: end.connectedTo };
+      start.engaged = false; start.connectedTo = null;
+      end.engaged = false; end.connectedTo = null;
       const preview = previewMepConnection(start, end);
+      start.engaged = startState.engaged; start.connectedTo = startState.connectedTo;
+      end.engaged = endState.engaged; end.connectedTo = endState.connectedTo;
       if (!preview.valid) {
         disconnectMepConnectors(this.connectors, connection);
         continue;
