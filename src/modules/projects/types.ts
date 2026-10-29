@@ -1,5 +1,6 @@
 import type { Issue } from "../issues/types";
 import type { CostData } from "../cost/types";
+import type { MepModelSnapshot } from "../mep/model-lifecycle";
 
 // ── Geometry / authored element types ─────────────────────────────────────
 export type Vec2 = [number, number];
@@ -333,6 +334,9 @@ export interface ProjectDoc {
   planDimensions?: unknown[];
   /** Plan-view tags and text notes. */
   planAnnotations?: { tags: unknown[]; notes: unknown[] };
+
+  /** Native MEP connector graph, electrical assignments and lifecycle revision. */
+  mepLifecycle?: MepModelSnapshot;
 
   /** Persisted 2D annotations (dimensions, tags, notes) keyed per view. */
   annotations?: {
