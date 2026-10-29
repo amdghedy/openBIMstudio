@@ -34,6 +34,23 @@ assert.equal(isNativeModelValid({ elements: [wall, doorBeyondHost] }), false,
   "hosted opening outside the wall must fail blocking validation");
 assert.deepEqual(summarizeDiagnostics(validateNativeModel(valid)), { total: 0, errors: 0, warnings: 0, info: 0 });
 
+const duplicateLevel = validateNativeModel({
+  elements: [],
+  levels: [
+    { id: "L0", name: "Ground", elevation: 0 },
+    { id: "L0", name: "First", elevation: 3.5 },
+  ],
+});
+assert.ok(duplicateLevel.some(d => d.code === "LEVEL_ID_DUPLICATE" && d.elementId === "L0"),
+  "duplicate level identities must be blocking diagnostics");
+
+const unnamedLevel = validateNativeModel({
+  elements: [],
+  levels: [{ id: "L1", name: "  ", elevation: 3.5 }],
+});
+assert.ok(unnamedLevel.some(d => d.code === "LEVEL_NAME_MISSING" && d.severity === "warning"),
+  "unnamed levels should be surfaced as warnings without blocking model edits");
+
 const badLinear = { ...wall, params: { ...wall.params, end: [0, 0] } };
 assert.ok(validateNativeModel({ elements: [badLinear] }).some((d) => d.code === "LINEAR_LENGTH_ZERO"));
 assert.equal(isNativeModelValid({ elements: [badLinear] }), false);
