@@ -63,7 +63,7 @@ One install (none, actually — it's your browser). One license (MIT — yours).
 
 |  |  |
 |---|---|
-| 💰 **Free, forever** | MIT license. No seats, no subscriptions, no paywalled features. A complete BIM workflow that would cost thousands per seat elsewhere. |
+| 💰 **Free, forever** | MIT license. No seats, no subscriptions, no paywalled features. An integrated BIM workflow built around open standards. |
 | 🌐 **Zero install** | The whole platform runs in the browser tab you already have open. Clone it for local use — no drivers, no licensing daemons, no installers. |
 | 🔐 **Local-first & private** | Models stay on your machine by default. Cloud AI and collaboration are **opt-in and self-configured** — bring your own keys, point at your own server. The app ships with a strict Content-Security-Policy, and nothing is phoned home. |
 | 🏗️ **Authoring to delivery in one app** | Walls to rebar, clash to BCF, views to sheets to PDF, quantities to cost, phasing to 4D. No stitching together five tools. |
@@ -315,20 +315,6 @@ Some additional model formats may be accessible through separately configured co
 
 ---
 
-## 🧭 How it compares
-
-|  | OpenBIMStudio | Typical proprietary BIM suite |
-|---|---|---|
-| Cost | Free (MIT) | Per-seat subscription |
-| Install | Browser tab | Desktop installer + licensing |
-| Model data | Local by default; opt-in services you configure | Often cloud-tied |
-| Formats | IFC / BCF / IDS / DXF / CSV / PDF native | Proprietary-first, open formats via translation |
-| Source code | Public and auditable | Closed |
-| Extensibility | Open plugin SDK + marketplace samples | Vendor-gated APIs |
-| Maturity claims | Public tool catalogue with per-tool evidence | Marketing brochures |
-
----
-
 ## 📚 Documentation
 
 | Guide | Audience |
@@ -404,4 +390,4 @@ OpenBIMStudio aims for broad **openBIM** coverage across authoring, coordination
 
 **MIT** — see [LICENSE](LICENSE).
 
-Built around open standards: **IFC · BCF · IDS · COBie** and the wider openBIM community. Star the repo if it saves you a seat fee — issues and PRs welcome.
+Built around open standards: **IFC · BCF · IDS · COBie** and the wider openBIM community. Contributions, issues, and pull requests are welcome.
