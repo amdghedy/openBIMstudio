@@ -57,6 +57,20 @@ try {
     assert.ok(preview.valid);
     assert.ok(preview.fittings.some(x => x.kind === "reducer"));
   });
+  test("relationship creation is atomic when connectors are incompatible", () => {
+    const a = connector("A", [0, 0, 0], [1, 0, 0], 0.1, { flowDirection: "out" });
+    const b = connector("B", [2, 0, 0], [-1, 0, 0], 0.1, { flowDirection: "out" });
+    assert.throws(() => m.createConnectorRelationship(a, b, [a.worldOrigin, b.worldOrigin], []), /incompatible connectors/);
+    assert.equal(a.engaged, false);
+    assert.equal(b.engaged, false);
+  });
+  test("relationship creation rejects route endpoints that do not match ports", () => {
+    const a = connector("A", [0, 0, 0], [1, 0, 0], 0.1, { flowDirection: "out" });
+    const b = connector("B", [2, 0, 0], [-1, 0, 0], 0.1, { flowDirection: "in" });
+    assert.throws(() => m.createConnectorRelationship(a, b, [[0.5, 0, 0], b.worldOrigin], []), /route endpoints/);
+    assert.equal(a.engaged, false);
+    assert.equal(b.engaged, false);
+  });
   console.log(`=== MEP connector tests: ${pass} passed, ${fail} failed ===`);
   process.exitCode = fail ? 1 : 0;
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
