@@ -35,6 +35,7 @@
     "test:mep": "node tests/mep-router.test.cjs",
     "test:mep-electrical": "node tests/mep-electrical.test.cjs",
     "test:mep-connectors": "node tests/mep-connectors.test.cjs",
+    "test:mep-lifecycle": "node tests/mep-lifecycle.test.cjs",
     "test:hip": "node tests/hip-roof.test.cjs",
     "test:hatch": "node tests/hatch-patterns.test.cjs",
     "test:stairs": "node tests/stair-winder-spiral.test.cjs",
