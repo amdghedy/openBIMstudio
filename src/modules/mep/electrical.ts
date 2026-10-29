@@ -161,6 +161,9 @@ export function validateElectricalDistribution(
   }
 
   for (const panel of panels) {
+    if (!Number.isFinite(panel.voltageV) || panel.voltageV <= 0) {
+      add(diagnostics, "PANEL_VOLTAGE_INVALID", "error", "Panel voltage must be finite and positive.", panel.id);
+    }
     if (!Number.isFinite(panel.busRatingA) || panel.busRatingA <= 0) {
       add(diagnostics, "PANEL_BUS_RATING_INVALID", "error", "Panel bus rating must be finite and positive.", panel.id);
     }
@@ -184,6 +187,9 @@ export function validateElectricalDistribution(
       seenNumbers.add(circuit.circuitNumber);
       if (!Number.isInteger(circuit.circuitNumber) || circuit.circuitNumber < 1) {
         add(diagnostics, "CIRCUIT_NUMBER_INVALID", "error", "Circuit number must be a positive integer.", panel.id, circuit.id);
+      }
+      if (!Number.isFinite(circuit.voltageV) || circuit.voltageV <= 0) {
+        add(diagnostics, "CIRCUIT_VOLTAGE_INVALID", "error", "Circuit voltage must be finite and positive.", panel.id, circuit.id);
       }
       if (!Number.isFinite(circuit.breakerRatingA) || circuit.breakerRatingA <= 0) {
         add(diagnostics, "BREAKER_RATING_INVALID", "error", "Circuit breaker rating must be finite and positive.", panel.id, circuit.id);
@@ -221,7 +227,8 @@ export function validateElectricalDistribution(
         try { demandVA += effectiveDemandVA(load); } catch { /* already diagnosed above */ }
       }
       totalDemandVA += demandVA;
-      const designCurrentA = circuit.designCurrentA ?? currentFromVA(demandVA, circuit.voltageV, circuit.phase);
+      const circuitSupplyValid = Number.isFinite(circuit.voltageV) && circuit.voltageV > 0;
+      const designCurrentA = circuit.designCurrentA ?? (circuitSupplyValid ? currentFromVA(demandVA, circuit.voltageV, circuit.phase) : 0);
       if (!Number.isFinite(designCurrentA) || designCurrentA < 0) {
         add(diagnostics, "CIRCUIT_DESIGN_CURRENT_INVALID", "error", "Circuit design current must be finite and non-negative.", panel.id, circuit.id);
       } else if (designCurrentA > circuit.breakerRatingA + 1e-6) {
@@ -234,14 +241,16 @@ export function validateElectricalDistribution(
         add(diagnostics, "PROTECTION_CONDUCTOR_REVIEW", "warning", "Conductor ampacity exceeds the breaker rating; verify conductor protection and applicable code requirements.", panel.id, circuit.id);
       }
       // Catch obviously inconsistent declared demand current vs load-derived current.
-      const derived = currentFromVA(demandVA, circuit.voltageV, circuit.phase);
+      const derived = circuitSupplyValid ? currentFromVA(demandVA, circuit.voltageV, circuit.phase) : 0;
       if (circuit.designCurrentA !== undefined && Math.abs(derived - circuit.designCurrentA) > Math.max(1, derived * 0.05)) {
         add(diagnostics, "DESIGN_CURRENT_DIVERGENCE", "warning", `Declared design current differs from load-derived current (${derived.toFixed(2)} A).`, panel.id, circuit.id);
       }
       void connectedVA;
     }
 
-    const panelCurrent = currentFromVA(totalDemandVA, panel.voltageV, panel.phase);
+    const panelCurrent = Number.isFinite(panel.voltageV) && panel.voltageV > 0
+      ? currentFromVA(totalDemandVA, panel.voltageV, panel.phase)
+      : 0;
     if (panelCurrent > panel.busRatingA + 1e-6) {
       add(diagnostics, "PANEL_BUS_OVERLOAD", "error", `Estimated demand current ${panelCurrent.toFixed(2)} A exceeds bus rating ${panel.busRatingA} A.`, panel.id);
     }
@@ -284,7 +293,9 @@ export function buildPanelSchedule(panel: ElectricalPanel, loads: readonly Elect
   }).sort((a, b) => a.circuitNumber - b.circuitNumber || a.circuitId.localeCompare(b.circuitId));
   const totalConnectedVA = rows.reduce((sum, row) => sum + row.connectedVA, 0);
   const totalDemandVA = rows.reduce((sum, row) => sum + row.demandVA, 0);
-  const estimatedDemandCurrentA = currentFromVA(totalDemandVA, panel.voltageV, panel.phase);
+  const estimatedDemandCurrentA = Number.isFinite(panel.voltageV) && panel.voltageV > 0
+    ? currentFromVA(totalDemandVA, panel.voltageV, panel.phase)
+    : 0;
   return {
     panelId: panel.id,
     panelName: panel.name,
