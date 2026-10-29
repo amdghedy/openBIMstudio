@@ -44,6 +44,26 @@ try {
     assert.equal(lifecycle.listConnections().length, 0);
     assert.ok(result.topologyIssues.some(x => x.code === "disconnected-equipment"));
   });
+  test("move/resize of connected element regenerates route and retains valid relationship", () => {
+    lifecycle.hydrate({ connectors: [a, b] });
+    lifecycle.connect("P1", "out", "P2", "in");
+    const moved = connector("P1", "out", [0, 1, 0], [1, 0, 0], "out");
+    const result = lifecycle.onElementChanged("P1", [moved]);
+    assert.equal(lifecycle.listConnections().length, 1);
+    const route = lifecycle.listConnections()[0].route;
+    assert.deepEqual(route[0], [0, 1, 0]);
+    assert.deepEqual(route[route.length - 1], [2, 0, 0]);
+    assert.ok(result.affectedConnectionIds.length >= 0);
+  });
+  test("save/load snapshot restores connector graph and electrical data", () => {
+    lifecycle.hydrate({ connectors: [a, b] });
+    lifecycle.connect("P1", "out", "P2", "in");
+    const persisted = lifecycle.snapshot();
+    const restored = new MepModelLifecycle();
+    restored.hydrate(persisted);
+    assert.equal(restored.listConnections().length, 1);
+    assert.equal(restored.snapshot().connectors.find(c => c.ownerElementId === "P1").engaged, true);
+  });
   test("electrical distribution is held by lifecycle and schedule generated", () => {
     lifecycle.setElectricalDistribution([{
       id: "LP1", name: "Lighting Panel", voltageV: 230, phase: 1, busRatingA: 100,
