@@ -508,8 +508,9 @@ export function onModelImported(modelId: string, name: string, bytes: Uint8Array
     markDirty();
     return;
   }
-  // Capture the owning document before starting asynchronous storage work.
-  // The active project can change while the blob is being written.
+  // Capture the owning project before starting asynchronous storage work.
+  // The store updates its persisted document and blob in one transaction, and
+  // refuses to recreate the project if it was deleted while the import ran.
   const project = current;
   const projectId = project.id;
   const blob = new Blob([bytes as unknown as BlobPart]);
@@ -523,12 +524,11 @@ export function onModelImported(modelId: string, name: string, bytes: Uint8Array
   }
   markDirty();
 
-  void store.putModelBlob(projectId, modelId, name, blob)
-    .then(async () => {
-      // Never write a stale project snapshot over a different active project.
-      // If the user switched projects, its normal save/switch lifecycle owns
-      // persistence of the captured document metadata.
-      if (current === project) await store.putProject(project);
+  void store.putImportedModel(projectId, modelId, name, blob)
+    .then((saved) => {
+      if (!saved) {
+        console.warn(`[projects] skipped model payload for deleted project "${projectId}"`);
+      }
     })
     .catch((e) => console.error(`[projects] blob save FAILED for "${name}"`, e));
 }
