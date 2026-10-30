@@ -10,7 +10,7 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
   if (!dbPromise) {
-    dbPromise = new Promise((resolve, reject) => {
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
@@ -31,19 +31,19 @@ function openDb(): Promise<IDBDatabase> {
         resolve(db);
       };
       req.onerror = () => {
-        dbPromise = null;
         reject(req.error ?? new Error("Unable to open the project database."));
       };
       req.onblocked = () => {
         // Existing tabs may still hold an older connection. Keep the request
         // pending; their onversionchange handlers close those connections.
       };
-    }).catch((error) => {
-      dbPromise = null;
-      throw error;
+    });
+    dbPromise = opening;
+    void opening.catch(() => {
+      if (dbPromise === opening) dbPromise = null;
     });
   }
-  return dbPromise;
+  return dbPromise!;
 }
 
 function reqAs<T>(req: IDBRequest<T>): Promise<T> {
