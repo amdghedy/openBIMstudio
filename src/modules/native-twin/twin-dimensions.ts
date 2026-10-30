@@ -57,3 +57,10 @@ export function rotateTransformAboutPivot(
     quaternion: mulQuat(yQuat(deg), quaternion),
   };
 }
+
+/** Vertical shift of a Native Twin from an elevation / level-constraint edit (0 when no baseline recorded). */
+export function twinElevationShift(elevation: unknown, baseElevation: unknown): number {
+  const e = Number(elevation), b = Number(baseElevation);
+  if (baseElevation == null || !Number.isFinite(e) || !Number.isFinite(b)) return 0;
+  return e - b;
+}

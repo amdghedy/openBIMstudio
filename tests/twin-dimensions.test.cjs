@@ -13,4 +13,5 @@ near(m.normalizeDeg(270), -90); near(m.normalizeDeg(-190), 170); near(m.normaliz
 const t = m.rotateTransformAboutPivot([2, 5, 0], [0, 0, 0, 1], [0, 0], 180);
 near(t.position[0], -2); near(t.position[1], 5); near(t.position[2], 0, 1e-9); near(t.quaternion[1], 1);
 const q = m.mulQuat(m.yQuat(90), m.yQuat(90)); near(q[1], 1); near(q[3], 0, 1e-9);
+near(m.twinElevationShift(3.2, 0), 3.2); near(m.twinElevationShift(1, undefined), 0); near(m.twinElevationShift(NaN, 0), 0);
 console.log("twin-dimensions OK");

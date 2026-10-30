@@ -14,7 +14,7 @@
  *   - Property palette state is published via onAuthoringChange.
  */
 import { resolveVertical, inferBase, levelChangeUpdates } from "../modules/native-bim/level-constraints";
-import { endpointForLength, rotateTransformAboutPivot, normalizeDeg } from "../modules/native-twin/twin-dimensions";
+import { endpointForLength, rotateTransformAboutPivot, normalizeDeg, twinElevationShift } from "../modules/native-twin/twin-dimensions";
 import { escapeHtml } from "../core/html-escape";
 import { fittingArmLength } from "../modules/mep/fitting-outline";
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
@@ -1794,6 +1794,8 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
       mesh.scale.set(sx0, rs ? rs.scale[1] : sy0, sz0);
       if (rs) mesh.position.set(rs.position[0], rs.position[1], rs.position[2]);
       else mesh.position.set(...el.transform.position);
+      // Level-constraint / elevation edits move the whole twin vertically.
+      mesh.position.y += twinElevationShift(el.params.elevation, props.nativeBaseElevation);
     }
     return mesh;
   }
@@ -2049,6 +2051,23 @@ function syncHostedPositions(): void {
   }
 }
 
+const TWIN_PLACEMENT_KEYS = new Set(["height", "elevation", "rotation", "length", "baseLevelId", "baseOffset", "topLevelId", "topOffset"]);
+
+/** Keep the gizmo twin on the authored mesh's real placement. (Do NOT derive it from
+ *  elevation + height/2: that assumes the mesh origin is its vertical centre.) */
+function syncTwinGizmoPosition(elementId: string): void {
+  try {
+    const fe: any = (ctx.features as any)?.fragEdit;
+    const twins = fe?.list?.() as any[] | undefined;
+    if (!twins?.length) return;
+    const obj = group.children.find((c: any) => c.userData?.elementId === elementId && c.userData?.nativeTwin) as THREE.Object3D | undefined;
+    if (!obj) return;
+    for (const t of twins) {
+      if (t.nativeElementId === elementId && Array.isArray(t.position)) t.position = [obj.position.x, obj.position.y, obj.position.z];
+    }
+  } catch { /* optional */ }
+}
+
 /** After a level elevation change: re-resolve every level-constrained element, then rebuild. */
 function applyLevelConstraints(): void {
   try {
@@ -2057,7 +2076,7 @@ function applyLevelConstraints(): void {
       const el = elements.find((e) => e.id === u.id);
       if (el) { el.params.elevation = u.elevation; el.params.height = u.height; }
     }
-    if (updates.length) rebuild();
+    if (updates.length) { rebuild(); for (const u of updates) syncTwinGizmoPosition(u.id); }
     if (failures.length) {
       window.dispatchEvent(new CustomEvent("obs-toast", {
         detail: { message: `${failures.length} constrained element(s) could not follow the level change: ${failures[0].reason}`, kind: "warning" },
@@ -4448,6 +4467,9 @@ function nativeElementTypeFromIfc(entity: string): ElementType {
 /** Capture reference dimensions once so later param edits can scale/regenerate. */
 function ensureNativeBaseDimensions(el: AuthoredElement): void {
   const props = (el.properties ??= {}) as Record<string, unknown>;
+  if (props.nativeBaseElevation == null && Number.isFinite(el.params.elevation)) {
+    props.nativeBaseElevation = el.params.elevation;
+  }
   if (props.nativeBaseHeight == null && Number.isFinite(el.params.height) && (el.params.height as number) > 0) {
     props.nativeBaseHeight = el.params.height;
   }
@@ -4554,22 +4576,7 @@ export function applyElementParamChange(
   }
   markDirty();
   notifyAuthoringChange();
-  try {
-    const fe: any = (ctx.features as any)?.fragEdit;
-    const twins = fe?.list?.() as any[] | undefined;
-    if (twins?.length) {
-      for (const t of twins) {
-        if (t.nativeElementId === el.id && Array.isArray(t.position)) {
-          // Keep the gizmo twin on the authored mesh's real placement. (Do NOT derive it from
-          // elevation + height/2: that assumes the mesh origin is its vertical centre.)
-          if (key === "height") {
-            const obj = group.children.find((c: any) => c.userData?.elementId === el.id && c.userData?.nativeTwin) as THREE.Object3D | undefined;
-            if (obj) t.position = [obj.position.x, obj.position.y, obj.position.z];
-          }
-        }
-      }
-    }
-  } catch { /* optional */ }
+  if (TWIN_PLACEMENT_KEYS.has(key)) syncTwinGizmoPosition(el.id);
   console.info(
     `[authoring] param ${key}=${String(value)} applied to ${el.id} (${el.type}); geometry rebuilt`,
   );
@@ -4785,6 +4792,7 @@ export function updateNativeGeometryElement(
     scale: [...transform.scale],
   };
   el.params.elevation = transform.position[1];
+  (el.properties as any).nativeBaseElevation = el.params.elevation; // gizmo move re-baselines the elevation shift
   if (!rebuildScene) {
     group.traverse((obj: any) => {
       if (obj?.isMesh && obj.userData?.elementId === id) {

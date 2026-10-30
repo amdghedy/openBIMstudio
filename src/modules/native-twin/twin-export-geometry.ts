@@ -5,7 +5,7 @@
  */
 import { deformPlanDimensions, planAxesFromBaseline, lengthRatioFromParams } from "./mesh-plan-deform";
 import { heightResizeTransform } from "./vertical-resize";
-import { rotateTransformAboutPivot } from "./twin-dimensions";
+import { rotateTransformAboutPivot, twinElevationShift } from "./twin-dimensions";
 
 export interface TwinExportInput {
   params: Record<string, any>;
@@ -51,6 +51,8 @@ export function resolveTwinExportGeometry(el: TwinExportInput): TwinExportOutput
     ? heightResizeTransform({ positions: src, position: tr0.position, quaternion: tr0.quaternion, scale: tr0.scale, baseHeight: baseH, newHeight: h })
     : null;
   if (rs) { scale = [scale[0], rs.scale[1], scale[2]]; position = [rs.position[0], rs.position[1], rs.position[2]]; }
+
+  position[1] += twinElevationShift(el.params.elevation, props.nativeBaseElevation);
 
   const rot = Number(el.params.rotation) || 0;
   if (Math.abs(rot) > 1e-9) {

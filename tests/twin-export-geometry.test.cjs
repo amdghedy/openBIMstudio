@@ -30,6 +30,9 @@ e = base(); e.params.thickness = 0.4; w = world(m.resolveTwinExportGeometry(e));
 e = base(); e.params.rotation = 90; w = world(m.resolveTwinExportGeometry(e));
 near(ext(w, 0)[1] - ext(w, 0)[0], 0.2); near(ext(w, 2)[1] - ext(w, 2)[0], 4);
 near((ext(w, 0)[0] + ext(w, 0)[1]) / 2, 2); near((ext(w, 2)[0] + ext(w, 2)[1]) / 2, 0.1); near(ext(w, 1)[1], 3);
+// elevation edit: baseline 0 -> +2.5 lifts the whole twin; no baseline recorded -> no shift
+e = base(); e.properties.nativeBaseElevation = 0; e.params.elevation = 2.5; w = world(m.resolveTwinExportGeometry(e)); near(ext(w, 1)[0], 2.5); near(ext(w, 1)[1], 5.5);
+e = base(); e.params.elevation = 2.5; w = world(m.resolveTwinExportGeometry(e)); near(ext(w, 1)[0], 0);
 // no transform / no base dims: no crash, geometry passes through
 w = world(m.resolveTwinExportGeometry({ params: { height: 3 }, nativeGeometry: { positions: P } })); near(ext(w, 0)[1], 4);
 console.log("twin-export-geometry OK");
