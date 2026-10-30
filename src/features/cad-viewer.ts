@@ -500,15 +500,12 @@ function build(): void {
         c.rotate((-(e.rotation ?? 0) * Math.PI) / 180);
         c.font = `${Math.min(px, 600)}px sans-serif`;
         c.textAlign = e.align ?? "left";
-        c.textBaseline =
-          e.valign === "top"
-            ? "top"
-            : e.valign === "middle"
-            ? "middle"
-            : e.valign === "bottom"
-            ? "bottom"
-            : "alphabetic";
-        c.fillText(e.value, 0, 0);
+        c.textBaseline = "alphabetic";
+        {
+          const lines = String(e.value ?? "").split("\n");
+          const bl = M.textLineBaselines(e);
+          for (let li = 0; li < lines.length; li++) c.fillText(lines[li], 0, -bl[li] * v.scale);
+        }
         c.restore();
         break;
       }

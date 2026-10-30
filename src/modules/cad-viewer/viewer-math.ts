@@ -59,8 +59,30 @@ export function angleInArc(a: number, s: number, e: number): boolean {
 }
 export const arcSweepDeg = (s: number, e: number) => norm360(e - s) || 360;
 
+/** AutoCAD default MTEXT line pitch = 5/3 of the text height. */
+export const TEXT_LINE_PITCH = 5 / 3;
+
+function linesOf(e: Extract<DxfEntity, { type: "TEXT" }>): string[] {
+  return String(e.value ?? "").split("\n");
+}
+
 export function textBox(e: Extract<DxfEntity, { type: "TEXT" }>): { w: number; h: number } {
-  return { w: Math.max(e.height * 0.6 * e.value.length, e.height * 0.3), h: e.height };
+  const lines = linesOf(e);
+  const longest = Math.max(...lines.map((l) => l.length), 0);
+  return {
+    w: Math.max(e.height * 0.6 * longest, e.height * 0.3),
+    h: e.height + (lines.length - 1) * e.height * TEXT_LINE_PITCH,
+  };
+}
+
+/**
+ * Baseline offset (world units, y up, relative to the insertion point) of every line of a TEXT/MTEXT,
+ * honouring the vertical anchor. Single-line text keeps the previous behaviour.
+ */
+export function textLineBaselines(e: Extract<DxfEntity, { type: "TEXT" }>): number[] {
+  const n = linesOf(e).length, h = e.height, H = textBox(e).h;
+  const top = e.valign === "top" ? 0 : e.valign === "middle" ? H / 2 : e.valign === "bottom" ? H : h;
+  return Array.from({ length: n }, (_, i) => top - h - i * h * TEXT_LINE_PITCH);
 }
 
 /** Lower-left corner of the text box relative to its insertion point, in the text's own frame. */

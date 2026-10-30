@@ -47,19 +47,8 @@ function num(v: string | undefined, d = 0): number {
   return Number.isFinite(n) ? n : d;
 }
 
-/** Strip MTEXT / TEXT formatting codes down to readable text. */
-export function cleanText(s: string): string {
-  return s
-    .replace(/\\[Pp]/g, " ")
-    .replace(/\\~/g, " ")
-    .replace(/\\[A-Za-z][^;\\]*;/g, "")
-    .replace(/\\([\\{}])/g, "$1")
-    .replace(/[{}]/g, "")
-    .replace(/%%[cC]/g, "Ø")
-    .replace(/%%[dD]/g, "°")
-    .replace(/%%[pP]/g, "±")
-    .trim();
-}
+import { cleanText } from "./mtext";
+export { cleanText };
 
 class Data {
   private m = new Map<number, string[]>();

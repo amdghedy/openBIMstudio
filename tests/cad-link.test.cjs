@@ -189,7 +189,7 @@ t("DXF: MTEXT formatting stripped, paper space skipped, unsupported types counte
     ent("HATCH", [8, "0"]) + ent("HATCH", [8, "0"]),
   )));
   assert.strictEqual(d.entities.length, 1, "paper-space line dropped");
-  assert.strictEqual(d.entities[0].value, "Room 101");
+  assert.strictEqual(d.entities[0].value, "Room\n101");
   assert.strictEqual(d.skipped.HATCH, 2);
 });
 
