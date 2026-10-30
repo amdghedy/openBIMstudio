@@ -63,6 +63,46 @@ export class MoveCommand extends ModifyCommandBase {
     return this.pending;
   }
 
+  /**
+   * Commit primary patches, then re-solve relationship dependents and apply
+   * their new world positions in the same transaction result.
+   */
+  Commit(): { ok: boolean; applied: number; diagnostics: ModifyDiagnostic[] } {
+    const result = super.Commit();
+    if (!result.ok || !this.ctx.relationships) return result;
+    let extra = 0;
+    for (const id of this.ids) {
+      const prop = propagateAfterCommit(
+        this.ctx.relationships,
+        id,
+        this.translation,
+        0,
+      );
+      for (const p of prop) {
+        if (p.action === "moved-dependent" && p.newPosition) {
+          if (this.ctx.store.apply(p.elementId, {
+            position: p.newPosition,
+            reason: "relationship-follow",
+          })) {
+            extra++;
+          }
+        }
+      }
+    }
+    if (extra > 0) {
+      this.info(
+        "dependents-updated",
+        `relationship propagation updated ${extra} dependent element(s)`,
+        this.ids,
+      );
+    }
+    return {
+      ok: true,
+      applied: result.applied + extra,
+      diagnostics: this.GetDiagnostics(),
+    };
+  }
+
   GetRequiredReferences(): string[] {
     return ["move-base-point", "move-target-point"];
   }
@@ -103,6 +143,8 @@ export class RotateCommand extends ModifyCommandBase {
   readonly name = "rotate";
   private angle = 0;
   private pivot: [number, number] = [0, 0];
+  /** Per-element translation implied by the rotation (for relationship eval). */
+  private elementDeltas = new Map<string, [number, number]>();
 
   UpdatePreview(input: CommandInput): PendingChange[] {
     if (input.type === "rotation") {
@@ -118,15 +160,16 @@ export class RotateCommand extends ModifyCommandBase {
     }
     const c = Math.cos(this.angle);
     const s = Math.sin(this.angle);
+    this.elementDeltas.clear();
     this.pending = this.ids.map((id) => {
       const el = this.ctx.store.get(id)!;
       const dx = el.position[0] - this.pivot[0];
       const dy = el.position[1] - this.pivot[1];
+      const nx = this.pivot[0] + dx * c - dy * s;
+      const ny = this.pivot[1] + dx * s + dy * c;
+      this.elementDeltas.set(id, [nx - el.position[0], ny - el.position[1]]);
       const patch: ElementPatch = {
-        position: [
-          this.pivot[0] + dx * c - dy * s,
-          this.pivot[1] + dx * s + dy * c,
-        ],
+        position: [nx, ny],
         rotationZ: el.rotationZ + this.angle,
         reason: "rotate",
       };
@@ -154,6 +197,56 @@ export class RotateCommand extends ModifyCommandBase {
       }
     }
     return this.pending;
+  }
+
+  /**
+   * Commit primary patches, then re-solve relationship dependents with the
+   * full rotation delta (translation of each source + rotationZ) and apply
+   * their new world positions. Closes the "rotation propagation reports
+   * registry updates rather than re-solving all dependents" gap.
+   */
+  Commit(): { ok: boolean; applied: number; diagnostics: ModifyDiagnostic[] } {
+    const result = super.Commit();
+    if (!result.ok || !this.ctx.relationships) return result;
+    let extra = 0;
+    for (const id of this.ids) {
+      const delta = this.elementDeltas.get(id) ?? [0, 0];
+      const prop = propagateAfterCommit(
+        this.ctx.relationships,
+        id,
+        delta,
+        this.angle,
+      );
+      for (const p of prop) {
+        if (p.action === "moved-dependent" && p.newPosition) {
+          const dep = this.ctx.store.get(p.elementId);
+          const patch: ElementPatch = {
+            position: p.newPosition,
+            reason: "relationship-follow-rotate",
+          };
+          // Dependents that rigidly follow a rotated host also inherit the
+          // orientation delta when they carry rotationZ in the store.
+          if (dep && Number.isFinite(dep.rotationZ)) {
+            patch.rotationZ = dep.rotationZ + this.angle;
+          }
+          if (this.ctx.store.apply(p.elementId, patch)) {
+            extra++;
+          }
+        }
+      }
+    }
+    if (extra > 0) {
+      this.info(
+        "dependents-updated",
+        `rotation propagation updated ${extra} dependent element(s)`,
+        this.ids,
+      );
+    }
+    return {
+      ok: true,
+      applied: result.applied + extra,
+      diagnostics: this.GetDiagnostics(),
+    };
   }
 
   GetRequiredReferences(): string[] {
