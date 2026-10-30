@@ -1,0 +1,16 @@
+const { execSync } = require("child_process");
+const fs = require("fs"), path = require("path"), assert = require("assert");
+const out = fs.mkdtempSync(path.join(require("os").tmpdir(), "td-"));
+execSync(`npx tsc src/modules/native-twin/twin-dimensions.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`, { stdio: "pipe" });
+const m = require(path.join(out, "twin-dimensions.js"));
+const near = (a, b, e = 1e-9) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`);
+let e = m.endpointForLength([0, 0], [3, 4], 10); near(e[0], 6); near(e[1], 8);
+assert.strictEqual(m.endpointForLength([0, 0], [3, 4], 0), null);
+assert.strictEqual(m.endpointForLength([0, 0], [3, 4], NaN), null);
+e = m.endpointForLength([1, 1], [1, 1], 2); near(e[0], 3);
+const r = m.rotatePlanPoint([1, 0], [0, 0], 90); near(r[0], 0); near(r[1], -1);
+near(m.normalizeDeg(270), -90); near(m.normalizeDeg(-190), 170); near(m.normalizeDeg(360), 0);
+const t = m.rotateTransformAboutPivot([2, 5, 0], [0, 0, 0, 1], [0, 0], 180);
+near(t.position[0], -2); near(t.position[1], 5); near(t.position[2], 0, 1e-9); near(t.quaternion[1], 1);
+const q = m.mulQuat(m.yQuat(90), m.yQuat(90)); near(q[1], 1); near(q[3], 0, 1e-9);
+console.log("twin-dimensions OK");

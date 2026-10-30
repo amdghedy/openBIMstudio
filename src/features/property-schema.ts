@@ -157,7 +157,7 @@ export const SCHEMAS: Partial<Record<ElementType, ElementSchema>> = {
       { key: "height",    label: "Height", group: DIMENSIONS, type: "number", unit: "m", step: 0.1,  min: 0.01, target: "params" },
 
       // Read-only computed
-      { key: "length", label: "Length", group: DIMENSIONS, type: "number", unit: "m", step: 0.001, target: "params", readOnly: true,
+      { key: "length", label: "Length", group: DIMENSIONS, type: "number", unit: "m", step: 0.001, target: "params", min: 0.01,
         compute: (el: any) => { const a = el?.params?.start, b = el?.params?.end; if (!a || !b) return 0; return Math.hypot(b[0]-a[0], b[1]-a[1]); } },
       { key: "surfaceArea", label: "Surface Area", group: DIMENSIONS, type: "number", unit: "m2", step: 0.001, target: "params", readOnly: true,
         compute: (el: any) => { const a = el?.params?.start, b = el?.params?.end; const h = el?.params?.height ?? 0; if (!a || !b) return 0; return Math.hypot(b[0]-a[0], b[1]-a[1]) * h; } },
@@ -338,7 +338,7 @@ export const SCHEMAS: Partial<Record<ElementType, ElementSchema>> = {
         ], default: "rectangular" },
       { key: "thickness", label: "Width", group: DIMENSIONS, type: "number", unit: "m", step: 0.05, min: 0.05, target: "params" },
       { key: "height", label: "Height", group: DIMENSIONS, type: "number", unit: "m", step: 0.05, min: 0.05, target: "params" },
-      { key: "length", label: "Length", group: DIMENSIONS, type: "number", unit: "m", step: 0.001, target: "params", readOnly: true,
+      { key: "length", label: "Length", group: DIMENSIONS, type: "number", unit: "m", step: 0.001, target: "params", min: 0.01,
         compute: (el: any) => { const a = el?.params?.start, b = el?.params?.end; if (!a || !b) return 0; return Math.hypot(b[0]-a[0], b[1]-a[1]); } },
       { key: "surfaceArea", label: "Surface Area", group: DIMENSIONS, type: "number", unit: "m2", step: 0.001, target: "params", readOnly: true,
         compute: (el: any) => { const a = el?.params?.start, b = el?.params?.end; const w = el?.params?.thickness ?? 0; const h = el?.params?.height ?? 0; if (!a || !b) return 0; const L = Math.hypot(b[0]-a[0], b[1]-a[1]); return 2 * (w + h) * L; } },
@@ -392,7 +392,7 @@ export const SCHEMAS: Partial<Record<ElementType, ElementSchema>> = {
     fields: [
       { key: "thickness", label: "Width", group: DIMENSIONS, type: "number", unit: "m", step: 0.05, min: 0.05, target: "params" },
       { key: "height", label: "Height", group: DIMENSIONS, type: "number", unit: "m", step: 0.01, min: 0.01, target: "params" },
-      { key: "length", label: "Length", group: DIMENSIONS, type: "number", unit: "m", step: 0.001, target: "params", readOnly: true,
+      { key: "length", label: "Length", group: DIMENSIONS, type: "number", unit: "m", step: 0.001, target: "params", min: 0.01,
         compute: (el: any) => { const a = el?.params?.start, b = el?.params?.end; if (!a || !b) return 0; return Math.hypot(b[0]-a[0], b[1]-a[1]); } },
       { key: "surfaceArea", label: "Surface Area", group: DIMENSIONS, type: "number", unit: "m2", step: 0.001, target: "params", readOnly: true,
         compute: (el: any) => { const a = el?.params?.start, b = el?.params?.end; const w = el?.params?.thickness ?? 0; const h = el?.params?.height ?? 0; if (!a || !b) return 0; const L = Math.hypot(b[0]-a[0], b[1]-a[1]); return (2 * h + w) * L; } },
@@ -674,6 +674,20 @@ function commonFields(schema: ElementSchema): PropertyField[] {
       [...lv].filter((l) => l.elevation <= e + 0.01).sort((a, b) => b.elevation - a.elevation)[0];
     return +(e - (byId?.elevation ?? 0)).toFixed(4);
   }, "m"));
+
+  // Rotation (about the element's vertical axis) — Native Twins behave like IFC objects
+  add({ key: "rotation", label: "Rotation", group: DIMENSIONS, type: "number", unit: "°", step: 1, target: "params", default: 0,
+    compute: (el: any) => +Number(el?.params?.rotation ?? 0).toFixed(3) });
+  // Native Twin / source IFC identity
+  const NT = "Native Twin (IFC Source)";
+  const nt = (key: string, label: string, get: (el: any) => string | number) =>
+    add(ro(key, label, NT, (el) => (el?.nativeGeometry || el?.ifc) ? get(el) : "—"));
+  nt("ntSourceClass", "IFC Class", (el) => String(el?.ifc?.ifcClass ?? el?.ifc?.type ?? el?.properties?.ifcType ?? ""));
+  nt("ntSourceGuid", "Source GlobalId", (el) => String(el?.ifc?.sourceGlobalId ?? el?.ifc?.globalId ?? ""));
+  nt("ntSourceModel", "Source Model", (el) => String(el?.ifc?.sourceModelId ?? ""));
+  nt("ntSourceLocalId", "Source Local ID", (el) => String(el?.ifc?.sourceLocalId ?? ""));
+  nt("ntEditMode", "Edit Mode", (el) => String(el?.properties?.editMode ?? ""));
+  nt("ntVertices", "Source Vertices", (el) => Math.floor((el?.nativeGeometry?.positions?.length ?? 0) / 3));
 
   // Identity Data
   add(txt("mark", "Mark", IDENTITY));

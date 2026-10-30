@@ -129,7 +129,7 @@ function writeValue(
     //    applyElementParamChange path so Native Twin / authored solids regenerate.
     const geometricKeys = new Set([
       "height", "thickness", "width", "depth", "elevation", "sillHeight",
-      "offsetAlongHost", "frameThickness",
+      "offsetAlongHost", "frameThickness", "length", "rotation",
     ]);
     if (target === "params" && geometricKeys.has(key) && typeof value === "number") {
       const res = applyElementParamChange(element.id, key, value);

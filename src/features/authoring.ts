@@ -13,6 +13,7 @@
  *     fragment and authored elements in one call.
  *   - Property palette state is published via onAuthoringChange.
  */
+import { endpointForLength, rotateTransformAboutPivot, normalizeDeg } from "../modules/native-twin/twin-dimensions";
 import { escapeHtml } from "../core/html-escape";
 import { fittingArmLength } from "../modules/mep/fitting-outline";
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
@@ -1678,6 +1679,29 @@ function buildBimFamilyMesh(el: AuthoredElement): THREE.Object3D | null {
 // General mesh factory
 // ═══════════════════════════════════════════════════════════════════════════
 function createMesh(el: AuthoredElement): THREE.Object3D | null {
+  const m = createMeshBase(el);
+  const rot = Number((el.params as any)?.rotation) || 0;
+  if (m && Math.abs(rot) > 1e-9) {
+    try {
+      m.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(m);
+      if (!box.isEmpty()) {
+        const c = box.getCenter(new THREE.Vector3());
+        const r = rotateTransformAboutPivot(
+          [m.position.x, m.position.y, m.position.z],
+          [m.quaternion.x, m.quaternion.y, m.quaternion.z, m.quaternion.w],
+          [c.x, c.z],
+          rot,
+        );
+        m.position.set(...r.position);
+        m.quaternion.set(...r.quaternion);
+      }
+    } catch { /* keep unrotated */ }
+  }
+  return m;
+}
+
+function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
   const p = el.params;
 
   // Exact native reconstruction path for IFC/FRAG Native Twins. The authored
@@ -4443,7 +4467,16 @@ export function applyElementParamChange(
   ensureNativeBaseDimensions(el);
   const before = JSON.parse(JSON.stringify(el.params));
   const candidateParams = JSON.parse(JSON.stringify(el.params));
-  (candidateParams as any)[key] = value;
+  if (key === "length") {
+    const a = candidateParams.start, b = candidateParams.end;
+    const ne = a && b && typeof value === "number" ? endpointForLength(a, b, value) : null;
+    if (!ne) return { ok: false, reason: "length_requires_linear_element_and_positive_value" };
+    candidateParams.end = ne;
+  } else if (key === "rotation") {
+    (candidateParams as any).rotation = normalizeDeg(Number(value) || 0);
+  } else {
+    (candidateParams as any)[key] = value;
+  }
   const candidate: AuthoredElement = { ...el, params: candidateParams };
   const diagnostics = validateNativeModel({
     elements: elements.map((item) => (item.id === el.id ? candidate : item)),
@@ -4456,7 +4489,7 @@ export function applyElementParamChange(
   el.params = candidateParams;
   // Snapshot frozen mesh provenance; createMesh prefers parametric solids when capable.
   const mode = String((el.properties as any)?.editMode ?? "");
-  const geomKeys = new Set(["height", "thickness", "width", "depth", "elevation", "sillHeight", "offsetAlongHost", "frameThickness"]);
+  const geomKeys = new Set(["length", "rotation", "height", "thickness", "width", "depth", "elevation", "sillHeight", "offsetAlongHost", "frameThickness"]);
   if (el.nativeGeometry && geomKeys.has(key)) {
     (el.properties as any).nativeGeometrySnapshot = el.nativeGeometry;
     // Parametric modes keep nativeGeometry for provenance but rebuild via builders / scaled mesh.
