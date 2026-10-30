@@ -1,0 +1,47 @@
+name: Restore ribbon once
+on:
+  workflow_dispatch:
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore ribbon.ts from known-good commit and apply UX migration
+        run: |
+          git checkout 41edb8d -- src/shell/ribbon.ts
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("src/shell/ribbon.ts")
+          src = p.read_text(encoding="utf-8")
+          old = """let ribbonMinimized = false;
+try {
+  ribbonMinimized = localStorage.getItem("obs.ribbon.minimized") === "1";
+} catch { /* */ }"""
+          new = """let ribbonMinimized = false;
+try {
+  const migrated = localStorage.getItem("obs.ribbon.ux-migrated-v1") === "1";
+  if (!migrated) {
+    // One-time: expand ribbon + open left tools so first-time / post-fix users see the UI
+    localStorage.setItem("obs.ribbon.minimized", "0");
+    localStorage.setItem("obs.ribbon.ux-migrated-v1", "1");
+    ribbonMinimized = false;
+  } else {
+    ribbonMinimized = localStorage.getItem("obs.ribbon.minimized") === "1";
+  }
+} catch { /* */ }"""
+          if old not in src:
+              raise SystemExit("anchor not found in ribbon.ts")
+          p.write_text(src.replace(old, new, 1), encoding="utf-8")
+          print("patched", p.stat().st_size)
+          PY
+      - name: Commit and push
+        run: |
+          git config user.name "amdghedy"
+          git config user.email "43811322+amdghedy@users.noreply.github.com"
+          git add src/shell/ribbon.ts
+          git commit -m "fix(ui): restore full ribbon.ts from 41edb8d + expand-by-default migration" || echo "no change"
+          git push origin HEAD:main
