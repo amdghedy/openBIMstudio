@@ -66,6 +66,7 @@
     "test:context-menu": "node tests/context-menu-model.test.cjs",
     "test:twin-dimensions": "node tests/twin-dimensions.test.cjs",
     "test:mtext": "node tests/mtext.test.cjs",
+    "test:level-constraints": "node tests/level-constraints.test.cjs",
     "test:twin-export": "node tests/twin-export-geometry.test.cjs",
     "test:pick-arbiter": "node tests/pick-arbiter.test.cjs",
     "test:nav-math": "node tests/nav-math.test.cjs",

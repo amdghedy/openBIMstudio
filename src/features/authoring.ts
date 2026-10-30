@@ -13,6 +13,7 @@
  *     fragment and authored elements in one call.
  *   - Property palette state is published via onAuthoringChange.
  */
+import { resolveVertical, inferBase, levelChangeUpdates } from "../modules/native-bim/level-constraints";
 import { endpointForLength, rotateTransformAboutPivot, normalizeDeg } from "../modules/native-twin/twin-dimensions";
 import { escapeHtml } from "../core/html-escape";
 import { fittingArmLength } from "../modules/mep/fitting-outline";
@@ -2048,6 +2049,23 @@ function syncHostedPositions(): void {
   }
 }
 
+/** After a level elevation change: re-resolve every level-constrained element, then rebuild. */
+function applyLevelConstraints(): void {
+  try {
+    const { updates, failures } = levelChangeUpdates(elements as any, levels);
+    for (const u of updates) {
+      const el = elements.find((e) => e.id === u.id);
+      if (el) { el.params.elevation = u.elevation; el.params.height = u.height; }
+    }
+    if (updates.length) rebuild();
+    if (failures.length) {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: { message: `${failures.length} constrained element(s) could not follow the level change: ${failures[0].reason}`, kind: "warning" },
+      }));
+    }
+  } catch { /* constraints are best-effort; never block a level edit */ }
+}
+
 function rebuild() {
   while (group.children.length) {
     const ch = group.children[0];
@@ -2521,6 +2539,13 @@ async function createElement(
       ...(baseDefaults.width !== undefined ? { width: baseDefaults.width } : {}),
       ...userDefaults.params,
       ...params,
+      ...((type === "wall" || type === "column") && activeLevelId
+        ? (() => {
+            const lv = levels.find((l) => l.id === activeLevelId);
+            const elev = Number(params?.elevation ?? level) || 0;
+            return lv ? { baseLevelId: lv.id, baseOffset: +(elev - lv.elevation).toFixed(6) } : {};
+          })()
+        : {}),
     },
     properties: {
       ...userDefaults.properties,
@@ -3975,9 +4000,9 @@ function refreshDatumEditor(): void {
       if (!Number.isFinite(v)) return;
       const before = lv.elevation;
       history.push({ label: `Set ${lv.name} elevation`,
-        apply: () => { lv.elevation = v; if (activeLevelId === lv.id) level = v; rebuildDatums(); markDirty(); notifyAuthoringChange(); },
-        revert: () => { lv.elevation = before; if (activeLevelId === lv.id) level = before; rebuildDatums(); markDirty(); notifyAuthoringChange(); } });
-      lv.elevation = v; if (activeLevelId === lv.id) level = v; rebuildDatums(); markDirty(); notifyAuthoringChange();
+        apply: () => { lv.elevation = v; if (activeLevelId === lv.id) level = v; applyLevelConstraints(); rebuildDatums(); markDirty(); notifyAuthoringChange(); },
+        revert: () => { lv.elevation = before; if (activeLevelId === lv.id) level = before; applyLevelConstraints(); rebuildDatums(); markDirty(); notifyAuthoringChange(); } });
+      lv.elevation = v; if (activeLevelId === lv.id) level = v; applyLevelConstraints(); rebuildDatums(); markDirty(); notifyAuthoringChange();
     })));
     const act = document.createElement("button");
     act.textContent = activeLevelId === lv.id ? "Active level" : "Make active level";
@@ -4474,8 +4499,29 @@ export function applyElementParamChange(
     candidateParams.end = ne;
   } else if (key === "rotation") {
     (candidateParams as any).rotation = normalizeDeg(Number(value) || 0);
+  } else if (key === "baseLevelId" || key === "baseOffset" || key === "topLevelId" || key === "topOffset") {
+    const p = candidateParams as any;
+    if (key === "baseLevelId" || key === "topLevelId") p[key] = String(value || "");
+    else p[key] = Number(value) || 0;
+    if (key === "baseLevelId" && p.baseLevelId) {
+      // Keep the element where it is: express its current elevation as an offset from the new base level.
+      const lv = levels.find((l) => l.id === p.baseLevelId);
+      if (lv) p.baseOffset = +(Number(before.elevation) - lv.elevation).toFixed(6);
+    }
+    if (key === "topLevelId" && p.topLevelId && p.topOffset === undefined) p.topOffset = 0;
+    const r = resolveVertical(p, levels, { elevation: Number(p.elevation) || 0, height: Number(p.height) || 0 });
+    if (!r.ok) return { ok: false, reason: r.reason };
+    p.elevation = r.elevation; p.height = r.height;
   } else {
     (candidateParams as any)[key] = value;
+    if (key === "elevation" && (candidateParams as any).baseLevelId) {
+      const lv = levels.find((l) => l.id === (candidateParams as any).baseLevelId);
+      if (lv) {
+        (candidateParams as any).baseOffset = +(Number(value) - lv.elevation).toFixed(6);
+        const r = resolveVertical(candidateParams as any, levels, { elevation: Number(value), height: Number(candidateParams.height) });
+        if (r.ok) (candidateParams as any).height = r.height;
+      }
+    }
   }
   const candidate: AuthoredElement = { ...el, params: candidateParams };
   const diagnostics = validateNativeModel({
@@ -4489,7 +4535,7 @@ export function applyElementParamChange(
   el.params = candidateParams;
   // Snapshot frozen mesh provenance; createMesh prefers parametric solids when capable.
   const mode = String((el.properties as any)?.editMode ?? "");
-  const geomKeys = new Set(["length", "rotation", "height", "thickness", "width", "depth", "elevation", "sillHeight", "offsetAlongHost", "frameThickness"]);
+  const geomKeys = new Set(["baseLevelId", "baseOffset", "topLevelId", "topOffset", "length", "rotation", "height", "thickness", "width", "depth", "elevation", "sillHeight", "offsetAlongHost", "frameThickness"]);
   if (el.nativeGeometry && geomKeys.has(key)) {
     (el.properties as any).nativeGeometrySnapshot = el.nativeGeometry;
     // Parametric modes keep nativeGeometry for provenance but rebuild via builders / scaled mesh.

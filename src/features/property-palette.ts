@@ -130,8 +130,11 @@ function writeValue(
     const geometricKeys = new Set([
       "height", "thickness", "width", "depth", "elevation", "sillHeight",
       "offsetAlongHost", "frameThickness", "length", "rotation",
+      "baseLevelId", "baseOffset", "topLevelId", "topOffset",
     ]);
-    if (target === "params" && geometricKeys.has(key) && typeof value === "number") {
+    const constraintKeys = new Set(["baseLevelId", "topLevelId"]);
+    const isGeoWrite = target === "params" && geometricKeys.has(key) && (typeof value === "number" || (constraintKeys.has(key) && typeof value === "string"));
+    if (isGeoWrite) {
       const res = applyElementParamChange(element.id, key, value);
       if (!res?.ok) {
         Object.assign(element, before);
@@ -152,7 +155,7 @@ function writeValue(
     const after = JSON.parse(JSON.stringify(element));
 
     // 4. Non-geometric fields still need an explicit rebuild
-    if (!(target === "params" && geometricKeys.has(key) && typeof value === "number")) {
+    if (!isGeoWrite) {
       try {
         import("./authoring").then((m) => {
           m.rebuildAuthored();
@@ -241,7 +244,7 @@ function fieldRow(
       const cur = String(getValue() ?? field.default ?? "");
       s.innerHTML =
         `<option value="">—</option>` +
-        (field.options ?? [])
+        ((field.optionsFn ? field.optionsFn() : field.options) ?? [])
           .map(
             (o) =>
               `<option value="${o.value}" ${o.value === cur ? "selected" : ""}>${o.label}</option>`,

@@ -62,6 +62,12 @@ export interface AuthoredElement {
     height: number;
     thickness: number;
     elevation: number;
+    /** Level constraints (walls, columns): base level id, offset from it (m). */
+    baseLevelId?: string;
+    baseOffset?: number;
+    /** Top constraint level id ("" / absent = Unconnected) and offset from it (m). */
+    topLevelId?: string;
+    topOffset?: number;
     /** Optional end elevation for sloped MEP runs (absolute, m). Absent = flat. */
     endElevation?: number;
 

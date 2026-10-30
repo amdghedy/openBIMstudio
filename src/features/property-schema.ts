@@ -25,6 +25,8 @@ export interface PropertyField {
   max?: number;
   step?: number;
   options?: { value: string; label: string }[];
+  /** Dynamic options (e.g. project levels); wins over `options`. */
+  optionsFn?: () => { value: string; label: string }[];
   target: FieldTarget;
   default?: string | number | boolean;
   helpText?: string;
@@ -632,6 +634,33 @@ function levelsList(): LevelRow[] {
   try { return levelsProvider() ?? []; } catch { return []; }
 }
 
+function levelOptions(unconnected: boolean): { value: string; label: string }[] {
+  const rows = [...levelsList()].sort((a, b) => a.elevation - b.elevation)
+    .map((l) => ({ value: l.id, label: `${l.name} (${l.elevation.toFixed(2)} m)` }));
+  return unconnected ? [{ value: "", label: "Unconnected" }, ...rows] : rows;
+}
+
+/** Revit-style Base / Top constraints for vertical elements. */
+function levelConstraintFields(): PropertyField[] {
+  const G = CONSTRAINTS;
+  return [
+    { key: "baseLevelId", label: "Base Constraint", group: G, type: "select", target: "params", optionsFn: () => levelOptions(false),
+      helpText: "Level the element's base is tied to. Moving the level moves the element.",
+      compute: (el: any) => String(el?.params?.baseLevelId ?? "") },
+    { key: "baseOffset", label: "Base Offset", group: G, type: "number", unit: "m", step: 0.05, target: "params",
+      compute: (el: any) => {
+        const id = el?.params?.baseLevelId;
+        const lv = levelsList().find((l) => l.id === id);
+        return +(lv ? Number(el?.params?.baseOffset ?? Number(el?.params?.elevation ?? 0) - lv.elevation) : Number(el?.params?.elevation ?? 0)).toFixed(4);
+      } },
+    { key: "topLevelId", label: "Top Constraint", group: G, type: "select", target: "params", optionsFn: () => levelOptions(true),
+      helpText: "Up to level: the height follows the level. Unconnected: the height is a free value.",
+      compute: (el: any) => String(el?.params?.topLevelId ?? "") },
+    { key: "topOffset", label: "Top Offset", group: G, type: "number", unit: "m", step: 0.05, target: "params",
+      compute: (el: any) => +Number(el?.params?.topOffset ?? 0).toFixed(4) },
+  ];
+}
+
 function turnDeg(el: any): number {
   const p = el?.params ?? {};
   let d = (Number(p.angleOut ?? Math.PI / 2) - Number(p.angleIn ?? 0));
@@ -768,6 +797,13 @@ for (const key of Object.keys(SCHEMAS)) {
   const schema = (SCHEMAS as any)[key] as ElementSchema | undefined;
   if (!schema || key === "grid" || key === "level") continue;
   const extra = commonFields(schema);
+  if (key === "wall" || key === "column") {
+    const lc = levelConstraintFields().filter((f) => !schema.fields.some((x) => x.key === f.key));
+    // Replace the read-only computed Level / Offset rows with the editable constraint set.
+    const drop = new Set(["levelName", "offsetFromLevel"]);
+    for (let i = extra.length - 1; i >= 0; i--) if (drop.has(extra[i].key)) extra.splice(i, 1);
+    extra.unshift(...lc);
+  }
   schema.fields.push(...extra);
   ensureGroups(schema, extra);
 }
