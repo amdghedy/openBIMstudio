@@ -57,6 +57,12 @@ for (const name of scripts) {
     console.log("FAIL");
     const out = `${r.stdout || ""}\n${r.stderr || ""}`.trim();
     if (out) console.log(out.slice(-4000));
+    if (process.env.GITHUB_ACTIONS) {
+      // Annotation: visible on the run page and through the check-runs API even when raw logs are restricted.
+      const esc = (t) => t.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+      const fails = out.split("\n").filter((l) => /FAIL|Error|error TS|Cannot find|AssertionError/.test(l)).slice(0, 12).join("\n");
+      console.log(`::error title=${name} failed::${esc((fails || out.slice(-1500)).slice(0, 3500))}`);
+    }
   }
 }
 
