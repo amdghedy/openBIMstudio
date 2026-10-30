@@ -209,6 +209,9 @@ if (!ctx.world) {
   throw new Error("Boot aborted: viewer is not available.");
 }
 
+// Mount ribbon + left tools dock + home screen (was imported but never called)
+await step("shell", () => setupShell());
+
 await step("diagnostics", () => setupDiagnostics());
 await step("options", () => setupOptions());
 bootTheme();
