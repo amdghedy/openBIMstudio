@@ -7,7 +7,7 @@
   "scripts": {
     "predev": "node scripts/copy-libredwg-wasm.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/copy-libredwg-wasm.mjs",
+    "prebuild": "node scripts/copy-libredwg-wasm.mjs && node scripts/sync-web-ifc-assets.mjs",
     "build": "tsc && vite build --target esnext",
     "preview": "vite preview",
     "start:local": "vite build --target esnext && vite preview --open",
@@ -103,6 +103,7 @@
     "test:v73-panels": "node tests/v73-tool-panels.test.cjs",
     "test:v73-rel": "node tests/v73-relationships.test.cjs",
     "verify:v73": "node scripts/verify-v73.mjs",
+    "pretest:dep-safety": "node scripts/sync-web-ifc-assets.mjs",
     "test:dep-safety": "node tests/dependency-safety.test.cjs",
     "test:server-hardening": "node tests/server-hardening.test.cjs",
     "test:plugins": "node tests/plugins-api.test.cjs",
@@ -153,7 +154,6 @@
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@types/three": "^0.182.0",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
     "vite": "^5.4.21"
