@@ -36,7 +36,7 @@ const FIXTURES = path.join(__dirname, "fixtures");
 const OUT = fs.mkdtempSync(path.join(os.tmpdir(), "dwg-iso-"));
 fs.writeFileSync(path.join(OUT, "package.json"), JSON.stringify({ type: "module" }));
 // the compiled core does import("@mlightcad/libredwg-web") - make it resolvable from OUT
-fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(OUT, "node_modules"), "dir");
+fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(OUT, "node_modules"), process.platform === "win32" ? "junction" : "dir");
 execSync(
   `npx tsc src/modules/cad-link/dwg-parse-core.ts src/modules/cad-link/dwg-reader-protocol.ts` +
   ` --outDir ${OUT} --module es2020 --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop`,

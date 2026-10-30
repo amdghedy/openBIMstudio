@@ -42,7 +42,7 @@ const FIXTURES = path.join(__dirname, "fixtures");
 /* ------------------------------------------------------------------ */
 const OUT = fs.mkdtempSync(path.join(os.tmpdir(), "dwg-lifecycle-"));
 fs.writeFileSync(path.join(OUT, "package.json"), JSON.stringify({ type: "module" }));
-fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(OUT, "node_modules"), "dir");
+fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(OUT, "node_modules"), process.platform === "win32" ? "junction" : "dir");
 execSync(
   `npx tsc src/modules/cad-link/dwg-reader-worker.ts src/modules/cad-link/dwg-parse-core.ts` +
   ` src/modules/cad-link/dwg-reader-protocol.ts` +
