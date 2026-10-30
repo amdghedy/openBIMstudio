@@ -45,3 +45,7 @@ obs-*.txt
 
 # Generated build-time WASM copy (scripts/copy-libredwg-wasm.mjs)
 public/libredwg/
+
+# temp dirs left by dwg isolation tests
+.dwg-iso-*/
+.dwg-lifecycle-*/
