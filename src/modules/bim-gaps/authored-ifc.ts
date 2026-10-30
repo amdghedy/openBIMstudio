@@ -189,6 +189,29 @@ function classFor(kind: Kind, schema: IfcSchema, hint = ""): ClassDef {
   }
 }
 
+/** Real IFC class for a Native Twin by element type. Doors/windows need extra attributes -> proxy. */
+export function twinIfcKind(type: string): { kind: Kind; hint?: string } {
+  switch (type) {
+    case "wall": return { kind: "wall" };
+    case "slab": return { kind: "slab" };
+    case "roof": return { kind: "slab", hint: ".ROOF." };
+    case "ceiling": return { kind: "covering" };
+    case "column": return { kind: "column" };
+    case "beam": return { kind: "beam" };
+    case "brace": return { kind: "member" };
+    case "footing": return { kind: "footing" };
+    case "stairs": return { kind: "stair" };
+    case "railing": return { kind: "railing" };
+    case "ramp": return { kind: "ramp" };
+    case "curtain-wall": return { kind: "curtain" };
+    case "duct": return { kind: "duct" };
+    case "pipe": return { kind: "pipe" };
+    case "cable-tray": return { kind: "tray" };
+    case "conduit": return { kind: "conduit" };
+    default: return { kind: "proxy" };
+  }
+}
+
 const DEFAULT_COLOR: Record<string, string> = {
   wall: "#d9d4c7", slab: "#9aa0a6", column: "#b0b4ba", beam: "#a9998a", door: "#8b6b4a", window: "#7fb3d5",
   duct: "#6fa8dc", pipe: "#38a169", "cable-tray": "#d69e2e", conduit: "#b7791f", equipment: "#a0aec0",
@@ -443,7 +466,8 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
         const baked = bakeTriangles(Array.from(edited.positions as ArrayLike<number>), edited.transform, storey);
         if (!baked) { skip(el, "native geometry has no valid triangles"); continue; }
         const pl = place(storey.pl, axisAt(0, 0, 0));
-        const cd = classFor("proxy", schema);
+        const tk = twinIfcKind(el.type);
+        const cd = classFor(tk.kind, schema, tk.hint);
         const id = f.add(cd.name, baseAttrs(el, el.id, pl, rep([baked.item], baked.repType), cd.tail));
         emitted.set(el.id, { id, storey });
         finishProduct(el, id, storey, cd.name, rgb, [baked.item]);

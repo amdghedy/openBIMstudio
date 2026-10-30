@@ -108,6 +108,15 @@ t("IFC2X3: uses IfcWallStandardCase + IfcFlowSegment and a faceted brep for nati
   assert.ok(r.text.includes("IFCFACETEDBREP"));
   assert.ok(!r.text.includes("IFCTRIANGULATEDFACESET"));
 });
+t("native twins export their real IFC class (wall/beam/slab), edited geometry baked; unknown stays proxy", () => {
+  const tri = [0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1];
+  const mk = (id, type, extra = {}) => ({ id, type, params: { height: 3, thickness: 0.2, elevation: 0, ...extra }, nativeGeometry: { positions: tri }, transform: { position: [0, 0, 0], quaternion: [0, 0, 0, 1], scale: [1, 1, 1] } });
+  const r = exportAuthoredToIfc([mk("w", "wall"), mk("b", "beam"), mk("s", "slab"), mk("g", "generic")], { schema: "IFC4", levels });
+  assert.strictEqual(r.stats.byClass.IFCWALL, 1);
+  assert.strictEqual(r.stats.byClass.IFCBEAM, 1);
+  assert.strictEqual(r.stats.byClass.IFCSLAB, 1);
+  assert.strictEqual(r.stats.byClass.IFCBUILDINGELEMENTPROXY, 1);
+});
 t("wall geometry: origin (x,-z), X axis along the wall, 6 x 0.2 profile, depth 3, storey-relative Z", () => {
   const r = exportAuthoredToIfc([walls[1]], { schema: "IFC4", levels });
   const e = parse(r.text);
