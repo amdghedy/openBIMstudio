@@ -1,0 +1,15 @@
+const {execSync}=require("child_process");const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
+const out=fs.mkdtempSync(path.join(os.tmpdir(),"pa-"));
+execSync(`npx tsc src/features/pick-arbiter.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`,{stdio:"inherit"});
+const {authoredOwnsClick:own}=require(path.join(out,"pick-arbiter.js"));
+let pass=0,fail=0;const t=(n,f)=>{try{f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
+const tw=d=>({distance:d,isNativeTwin:true}),au=d=>({distance:d,isNativeTwin:false});
+t("THE BUG: converted wall (12 m) with an element behind it (18 m) -> the twin owns the click",()=>assert.ok(own(tw(12),18)));
+t("hidden source element at the same surface (12.0 vs 12.0, tiny float error) -> twin owns the click",()=>{assert.ok(own(tw(12),12));assert.ok(own(tw(12.01),12));assert.ok(own(tw(12),11.99))});
+t("a linked element clearly in front of the twin still wins",()=>{assert.ok(!own(tw(12),8));assert.ok(!own(au(12),11))});
+t("nothing in the linked model under the cursor -> authored owns it",()=>{assert.ok(own(tw(5),null));assert.ok(own(au(5),undefined))});
+t("no authored hit -> never owns the click",()=>assert.ok(!own(null,5)&&!own(null,null)));
+t("linked distance unknown: authored wins (nothing measurable to contradict it)",()=>assert.ok(own(tw(5),NaN)));
+t("authored distance unknown: only a native twin may claim it",()=>{assert.ok(own({distance:NaN,isNativeTwin:true},9));assert.ok(!own({distance:NaN,isNativeTwin:false},9))});
+t("tolerance scales with distance but cannot swallow a real gap (twin 100 m, linked 99 m ahead)",()=>{assert.ok(!own(tw(100),99));assert.ok(own(tw(100),99.8))});
+console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

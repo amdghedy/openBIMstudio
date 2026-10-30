@@ -119,6 +119,7 @@ export interface AuthoringService {
   getElementById(id: string): AuthoredElement | null;
 
   pickAuthoredElementAt(e: MouseEvent): string | null;
+  pickAuthoredHitAt?(e: MouseEvent): { id: string; distance: number; isNativeTwin: boolean } | null;
 
   selectAllAuthored(ids: string[]): void;
   setSelectedAuthored(

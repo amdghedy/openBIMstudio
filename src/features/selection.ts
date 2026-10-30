@@ -6,6 +6,7 @@
  * Named selection sets, persisted in localStorage.
  * Click-to-select for fragments wired via setupClickToSelect().
  */
+import { authoredOwnsClick } from "./pick-arbiter";
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import { ctx } from "../core/context";
@@ -372,7 +373,7 @@ function anyBlockingToolActive(): boolean {
   } catch { return false; }
 }
 
-function normalizeRaycastResult(r: any): { modelId: string; localId: number } | null {
+function normalizeRaycastResult(r: any): { modelId: string; localId: number; distance?: number } | null {
   if (!r) return null;
   const localCandidate = r.localId ?? r.localIds?.[0] ?? r.fragments?.localId ?? r.fragments?.localIds?.[0] ?? r.itemId;
   const localId = typeof localCandidate === "number" ? localCandidate : Number(localCandidate);
@@ -389,7 +390,8 @@ function normalizeRaycastResult(r: any): { modelId: string; localId: number } | 
     }
   }
   if (!Number.isFinite(localId) || modelId == null || !ctx.fragments.list.has(modelId)) return null;
-  return { modelId, localId };
+  const d = Number(r.distance ?? r.dist);
+  return { modelId, localId, distance: Number.isFinite(d) ? d : undefined };
 }
 
 function clearAuthoredSelection(): void {
@@ -406,7 +408,7 @@ function clearFragmentSelection(): void {
   } catch { /* */ }
 }
 
-export async function pickFragmentAtPointer(): Promise<{ modelId: string; localId: number } | null> {
+export async function pickFragmentAtPointer(): Promise<{ modelId: string; localId: number; distance?: number } | null> {
   try {
     const caster: any = ctx.components.get(OBC.Raycasters).get(ctx.world);
     return normalizeRaycastResult(await caster.castRay());
@@ -526,6 +528,15 @@ export function setupClickToSelect(): void {
       if (anyBlockingToolActive()) return;
 
       const hit = await pickFragmentAtPointer();
+
+      // Depth arbitration: an authored element (e.g. a converted Native Twin) that is nearer than
+      // the linked-model hit owns the click. The fragment raycaster cannot see authored meshes, so
+      // without this the ray passed through the twin and selected whatever lay behind it.
+      try {
+        const authoring: any = tryUse("authoring") as any;
+        const ah = authoring?.pickAuthoredHitAt?.(e as MouseEvent) ?? null;
+        if (authoredOwnsClick(ah, hit?.distance ?? null)) return;
+      } catch { /* optional authoring bridge */ }
 
       // If the authored-element handler already owns this click, do not let
       // the fragment selector clear that selection.

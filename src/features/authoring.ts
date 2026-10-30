@@ -4969,6 +4969,29 @@ export function pickAuthoredElementAt(e: MouseEvent): string | null {
   return elementAt(e);
 }
 
+/** Nearest authored element under the pointer with its ray distance (for depth arbitration vs linked models). */
+export function pickAuthoredHitAt(e: MouseEvent): { id: string; distance: number; isNativeTwin: boolean } | null {
+  try {
+    if (!ctx.world?.camera?.three || !group.children.length) return null;
+    const ray = new THREE.Raycaster();
+    ray.params.Line = { threshold: 0.15 };
+    ray.params.Points = { threshold: 0.2 };
+    ray.setFromCamera(ndcOf(e), ctx.world.camera.three);
+    for (const h of ray.intersectObjects(group.children, true)) {
+      let o: THREE.Object3D | null = h.object;
+      while (o) {
+        const id = o.userData?.elementId;
+        if (id) {
+          const el = elements.find((x) => x.id === String(id));
+          return { id: String(id), distance: h.distance, isNativeTwin: !!(el?.properties as any)?.nativeTwin };
+        }
+        o = o.parent;
+      }
+    }
+  } catch { /* */ }
+  return null;
+}
+
 export function setSelectedAuthored(
   ids: string[],
   mode: "replace" | "add" | "remove" = "replace",
@@ -5917,7 +5940,7 @@ export function setupAuthoring() {
     getElementCount, getElements, getSelectedIds,
     getElementById,
     setElementVisibility,
-    pickAuthoredElementAt,
+    pickAuthoredElementAt, pickAuthoredHitAt,
     deleteSelectedElement, clearAllElements, clearDatums,
     getSelectedDatum, selectDatum, deleteDatum,
     rebuildAuthored, transformElements,
