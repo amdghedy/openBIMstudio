@@ -508,17 +508,29 @@ export function onModelImported(modelId: string, name: string, bytes: Uint8Array
     markDirty();
     return;
   }
+  // Capture the owning document before starting asynchronous storage work.
+  // The active project can change while the blob is being written.
+  const project = current;
+  const projectId = project.id;
   const blob = new Blob([bytes as unknown as BlobPart]);
-  const sizeMB = blob.size / (1024 * 1024);
-  store.putModelBlob(current.id, modelId, name, blob)
+  const meta = project.models.find((m) => m.id === modelId);
+  if (meta) {
+    meta.name = name;
+    meta.bytes = blob.size;
+    (meta as any).missing = false;
+  } else {
+    project.models.push({ id: modelId, name, bytes: blob.size });
+  }
+  markDirty();
+
+  void store.putModelBlob(projectId, modelId, name, blob)
     .then(async () => {
-      const meta = current!.models.find((m) => m.id === modelId);
-      if (meta) { meta.name = name; meta.bytes = blob.size; (meta as any).missing = false; }
-      else current!.models.push({ id: modelId, name, bytes: blob.size });
-      try { await store.putProject(current!); } catch { /* */ }
+      // Never write a stale project snapshot over a different active project.
+      // If the user switched projects, its normal save/switch lifecycle owns
+      // persistence of the captured document metadata.
+      if (current === project) await store.putProject(project);
     })
     .catch((e) => console.error(`[projects] blob save FAILED for "${name}"`, e));
-  markDirty();
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
