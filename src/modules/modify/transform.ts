@@ -48,7 +48,6 @@ export class MoveCommand extends ModifyCommandBase {
         } satisfies ElementPatch,
       };
     });
-    // Constrained-move diagnostics (spec: locked alignment must block).
     if (this.ctx.relationships) {
       for (const id of this.ids) {
         for (const conflict of detectAlignmentConflict(this.ctx.relationships, id, this.translation)) {
@@ -63,10 +62,6 @@ export class MoveCommand extends ModifyCommandBase {
     return this.pending;
   }
 
-  /**
-   * Commit primary patches, then re-solve relationship dependents and apply
-   * their new world positions in the same transaction result.
-   */
   Commit(): { ok: boolean; applied: number; diagnostics: ModifyDiagnostic[] } {
     const result = super.Commit();
     if (!result.ok || !this.ctx.relationships) return result;
@@ -107,7 +102,6 @@ export class MoveCommand extends ModifyCommandBase {
     return ["move-base-point", "move-target-point"];
   }
 
-  /** Exposed for tests/preview rendering. */
   get currentTranslation(): [number, number] {
     return [...this.translation] as [number, number];
   }
@@ -115,10 +109,6 @@ export class MoveCommand extends ModifyCommandBase {
 
 // ── Rotate (2C.4) ────────────────────────────────────────────────────────
 
-/**
- * Rodrigues rotation of a 3D point about a unit axis (spec 2C.4 formula).
- * Exported for reuse by orientation updates on dependent elements.
- */
 export function rotateAboutAxis(
   p: [number, number, number],
   axis: [number, number, number],
@@ -131,7 +121,6 @@ export function rotateAboutAxis(
   const s = Math.sin(theta);
   const [x, y, z] = p;
   const [ux, uy, uz] = u;
-  // R = I·c + (1−c)·u uᵀ + [u]×·s  applied to p
   return [
     (c + (1 - c) * ux * ux) * x + ((1 - c) * ux * uy - uz * s) * y + ((1 - c) * ux * uz + uy * s) * z,
     ((1 - c) * uy * ux + uz * s) * x + (c + (1 - c) * uy * uy) * y + ((1 - c) * uy * uz - ux * s) * z,
@@ -143,8 +132,6 @@ export class RotateCommand extends ModifyCommandBase {
   readonly name = "rotate";
   private angle = 0;
   private pivot: [number, number] = [0, 0];
-  /** Per-element translation implied by the rotation (for relationship eval). */
-  private elementDeltas = new Map<string, [number, number]>();
 
   UpdatePreview(input: CommandInput): PendingChange[] {
     if (input.type === "rotation") {
@@ -160,27 +147,19 @@ export class RotateCommand extends ModifyCommandBase {
     }
     const c = Math.cos(this.angle);
     const s = Math.sin(this.angle);
-    this.elementDeltas.clear();
     this.pending = this.ids.map((id) => {
       const el = this.ctx.store.get(id)!;
       const dx = el.position[0] - this.pivot[0];
       const dy = el.position[1] - this.pivot[1];
       const nx = this.pivot[0] + dx * c - dy * s;
       const ny = this.pivot[1] + dx * s + dy * c;
-      this.elementDeltas.set(id, [nx - el.position[0], ny - el.position[1]]);
       const patch: ElementPatch = {
         position: [nx, ny],
         rotationZ: el.rotationZ + this.angle,
         reason: "rotate",
       };
-      // The local curve is frame-relative: a pure rotation changes the
-      // element's position/orientation only — the local shape is carried
-      // with the frame and is NOT rewritten (world geometry turns with
-      // the element; spec 5.3 transform composition).
       return { elementId: id, patch };
     });
-    // Rotation of a constrained element violates coincident locks unless
-    // the pivot IS the shared point — flag the conflicts.
     if (this.ctx.relationships) {
       for (const id of this.ids) {
         for (const conflict of detectAlignmentConflict(
@@ -200,21 +179,18 @@ export class RotateCommand extends ModifyCommandBase {
   }
 
   /**
-   * Commit primary patches, then re-solve relationship dependents with the
-   * full rotation delta (translation of each source + rotationZ) and apply
-   * their new world positions. Closes the "rotation propagation reports
-   * registry updates rather than re-solving all dependents" gap.
+   * Commit primary patches, then re-solve dependents via rigid-motion
+   * evaluation (per-reference source transform about the pivot).
    */
   Commit(): { ok: boolean; applied: number; diagnostics: ModifyDiagnostic[] } {
     const result = super.Commit();
     if (!result.ok || !this.ctx.relationships) return result;
     let extra = 0;
     for (const id of this.ids) {
-      const delta = this.elementDeltas.get(id) ?? [0, 0];
-      const prop = propagateAfterCommit(
+      const prop = propagateAfterRigidMotion(
         this.ctx.relationships,
         id,
-        delta,
+        this.pivot,
         this.angle,
       );
       for (const p of prop) {
@@ -224,8 +200,6 @@ export class RotateCommand extends ModifyCommandBase {
             position: p.newPosition,
             reason: "relationship-follow-rotate",
           };
-          // Dependents that rigidly follow a rotated host also inherit the
-          // orientation delta when they carry rotationZ in the store.
           if (dep && Number.isFinite(dep.rotationZ)) {
             patch.rotationZ = dep.rotationZ + this.angle;
           }
@@ -259,7 +233,6 @@ export class RotateCommand extends ModifyCommandBase {
 export interface AlignReferences {
   source: { elementId: string; position: [number, number] };
   target: { elementId: string; position: [number, number] };
-  /** Lock the alignment persistently (spec: one-time vs locked). */
   lock?: boolean;
 }
 
@@ -269,8 +242,6 @@ export class AlignCommand extends ModifyCommandBase {
   private refs: AlignReferences | null = null;
 
   UpdatePreview(input: CommandInput): PendingChange[] {
-    // Align is reference-driven; the caller passes references via beginRefs.
-    // CommandInput is accepted for interface compatibility.
     void input;
     if (!this.refs) throw new Error("AlignCommand: call setReferences first");
     this.translation = [
@@ -294,16 +265,10 @@ export class AlignCommand extends ModifyCommandBase {
     return this.pending;
   }
 
-  /** AcquireSourceReference + AcquireTargetReference in one call. */
   setReferences(refs: AlignReferences): void {
     this.refs = refs;
   }
 
-  /**
-   * CreateOptionalPersistentConstraint — after Commit, store the locked
-   * alignment when requested (spec 2C.5 distinguishes one-time align from
-   * a persistent locked constraint).
-   */
   Commit(): { ok: boolean; applied: number; diagnostics: ModifyDiagnostic[] } {
     const result = super.Commit();
     if (result.ok && this.refs?.lock && this.ctx.relationships) {
@@ -339,7 +304,7 @@ export class AlignCommand extends ModifyCommandBase {
   }
 }
 
-/** Registry propagation helper: call after any committed modify command. */
+/** Registry propagation helper: pure translation (optional rotation about origin of offsets). */
 export function propagateAfterCommit(
   registry: RelationshipRegistry,
   changedElementId: string,
@@ -354,6 +319,29 @@ export function propagateAfterCommit(
     newVersion: v,
     translation: [translation[0], translation[1], 0],
     rotationZ,
+  });
+  return results.map((r) => ({
+    elementId: r.elementId,
+    newPosition: r.newPosition ? [r.newPosition[0], r.newPosition[1]] : null,
+    action: r.action,
+  }));
+}
+
+/** Rigid-body plan rotation about a pivot — preferred path for RotateCommand. */
+export function propagateAfterRigidMotion(
+  registry: RelationshipRegistry,
+  changedElementId: string,
+  pivot: [number, number],
+  angle: number,
+  newVersion?: number,
+): Array<{ elementId: string; newPosition: [number, number] | null; action: string }> {
+  const v = newVersion ?? registry.geometryVersion(changedElementId) + 1;
+  registry.setGeometryVersion(changedElementId, v);
+  const results = registry.evaluateAfterRigidMotion({
+    elementId: changedElementId,
+    newVersion: v,
+    pivot,
+    angle,
   });
   return results.map((r) => ({
     elementId: r.elementId,
