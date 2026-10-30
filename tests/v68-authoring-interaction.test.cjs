@@ -420,7 +420,7 @@ t("mep: fittings — elbows at direction changes, reducer for size jumps", () =>
 
 t("mep: topology validation catches loops, disconnection, size jumps", () => {
   const A = connector("A", "out");
-  const B = connector("B", "in", { origin: [1, 0, 0] });
+  const B = connector("B", "in", { flow: "in", origin: [1, 0, 0] });
   const conn = mepc.createConnectorRelationship(A, B, [[0, 0, 0], [1, 0, 0]], []);
   assert(A.engaged && B.engaged);
   // Loop: connect B back to A — blocked (engaged).
