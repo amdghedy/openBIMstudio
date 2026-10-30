@@ -128,6 +128,52 @@ export async function putModelBlob(
   await done;
 }
 
+/**
+ * Persist an imported model payload and its project metadata atomically.
+ * The project is looked up inside the same transaction so an import that
+ * finishes after project deletion cannot recreate the deleted project.
+ */
+export async function putImportedModel(
+  projectId: string,
+  modelId: string,
+  name: string,
+  blob: Blob,
+): Promise<boolean> {
+  const db = await openDb();
+  const tx = db.transaction([S_PROJECTS, S_BLOBS], "readwrite");
+  const done = transactionDone(tx);
+  const projects = tx.objectStore(S_PROJECTS);
+  const blobs = tx.objectStore(S_BLOBS);
+  const request = projects.get(projectId);
+  const key = `${projectId}::${modelId}`;
+  let saved = false;
+
+  request.onsuccess = () => {
+    const doc = request.result as ProjectDoc | undefined;
+    if (!doc) return;
+
+    if (!Array.isArray(doc.models)) doc.models = [];
+    const meta = doc.models.find((model) => model.id === modelId);
+    if (meta) {
+      meta.name = name;
+      meta.bytes = blob.size;
+      (meta as any).missing = false;
+    } else {
+      doc.models.push({ id: modelId, name, bytes: blob.size });
+    }
+    doc.updatedAt = Date.now();
+    projects.put(doc);
+    blobs.put({ key, projectId, modelId, name, blob }, key);
+    saved = true;
+  };
+  request.onerror = () => {
+    try { tx.abort(); } catch { /* transaction may already be inactive */ }
+  };
+
+  await done;
+  return saved;
+}
+
 export async function getModelBlobs(
   projectId: string,
 ): Promise<{ modelId: string; name: string; blob: Blob }[]> {
