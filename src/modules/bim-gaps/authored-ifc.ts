@@ -23,6 +23,7 @@
  */
 import { stableIfcGuid, isValidIfcGuid } from "./ifc-guid";
 import { buildElementGeo, m2Quantities } from "./m2-geometry";
+import { resolveTwinExportGeometry } from "../native-twin/twin-export-geometry";
 
 export type Vec2 = [number, number];
 export type IfcSchema = "IFC4" | "IFC2X3";
@@ -438,7 +439,8 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
       /* ---- native twin: baked triangles ---- */
       if (el.nativeGeometry?.positions && el.nativeGeometry.positions.length >= 9) {
         const storey = storeyFor(el.levelId, elev);
-        const baked = bakeTriangles(el.nativeGeometry.positions, el.transform, storey);
+        const edited = resolveTwinExportGeometry(el as never);
+        const baked = bakeTriangles(Array.from(edited.positions as ArrayLike<number>), edited.transform, storey);
         if (!baked) { skip(el, "native geometry has no valid triangles"); continue; }
         const pl = place(storey.pl, axisAt(0, 0, 0));
         const cd = classFor("proxy", schema);
