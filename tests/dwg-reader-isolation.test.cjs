@@ -14,6 +14,7 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { pathToFileURL } = require("url");
 const assert = require("assert");
 
 const ROOT = path.join(__dirname, "..");
@@ -31,12 +32,13 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
 const FIXTURES = path.join(__dirname, "fixtures");
 
 /* ------------------------------------------------------------------ */
-/* Compile the isomorphic parse core (ESM so `import()` stays dynamic) */
+/* Compile the isomorphic parse core into a temp directory INSIDE the */
+/* repository. Keeping the output below ROOT lets Node's normal ESM     */
+/* package-resolution algorithm reach ROOT/node_modules without any    */
+/* Windows symlink/junction.                                           */
 /* ------------------------------------------------------------------ */
-const OUT = fs.mkdtempSync(path.join(os.tmpdir(), "dwg-iso-"));
+const OUT = fs.mkdtempSync(path.join(ROOT, ".dwg-iso-"));
 fs.writeFileSync(path.join(OUT, "package.json"), JSON.stringify({ type: "module" }));
-// the compiled core does import("@mlightcad/libredwg-web") - make it resolvable from OUT
-fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(OUT, "node_modules"), process.platform === "win32" ? "junction" : "dir");
 execSync(
   `npx tsc src/modules/cad-link/dwg-parse-core.ts src/modules/cad-link/dwg-reader-protocol.ts` +
   ` --outDir ${OUT} --module es2020 --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop`,
@@ -87,7 +89,6 @@ assert.ok(corePath, "compiled dwg-parse-core.js not found");
     const csp = html.match(/Content-Security-Policy" content="([^"]+)"/);
     assert.ok(csp, "index.html must declare the meta CSP");
     assert.ok(csp[1].includes("wasm-unsafe-eval"), "main CSP allows wasm compilation");
-    // standalone token check: 'unsafe-eval' must not appear un-prefixed ('wasm-unsafe-eval' is fine)
     assert.ok(!/(^|\s)'unsafe-eval'/.test(csp[1]), "main CSP must NOT allow JS string evaluation");
   });
 
@@ -114,8 +115,9 @@ assert.ok(corePath, "compiled dwg-parse-core.js not found");
   });
 
   console.log("=== C. DWG import (official LibreDWG fixtures) ===");
-  const { parseDwgBytes, toDwgParseError } = await import(corePath);
-  // Node Buffers share a pooled backing store: slice a clean ArrayBuffer copy.
+  // Node 24 on Windows rejects a raw C:\... path as an ESM specifier.
+  // Convert filesystem paths to standards-compliant file:// URLs.
+  const { parseDwgBytes, toDwgParseError } = await import(pathToFileURL(corePath).href);
   const fixtureBuffer = (name) => {
     const b = fs.readFileSync(path.join(FIXTURES, name));
     return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
@@ -151,7 +153,7 @@ assert.ok(corePath, "compiled dwg-parse-core.js not found");
     ].join("\r\n");
     const readerPath = findFile(OUT, "dxf-reader.js");
     assert.ok(readerPath, "compiled dxf-reader.js not found");
-    const { parseDxf } = await import(readerPath);
+    const { parseDxf } = await import(pathToFileURL(readerPath).href);
     const doc = parseDxf(dxf);
     assert.ok(doc.entities.length >= 2, "DXF entities parsed");
   });
@@ -200,7 +202,6 @@ assert.ok(corePath, "compiled dwg-parse-core.js not found");
     const b = await parseFixture("sample_2000.dwg");
     assert.strictEqual(a.entityCount, b.entityCount, "entity count must be identical across repeat parses");
     assert.strictEqual(a.version, b.version);
-    // failed import followed by a retry still succeeds
     try { await parseDwgBytes(new ArrayBuffer(3), "bad.dwg"); } catch { /* expected */ }
     const c = await parseFixture("r11_entities_2d.dwg");
     assert.ok(c.entityCount >= 1, "retry after failure must succeed");
