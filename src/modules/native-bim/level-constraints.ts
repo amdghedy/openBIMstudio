@@ -53,7 +53,8 @@ export function levelChangeUpdates(
   for (const e of elements) {
     if (!isConstrained(e.params)) continue;
     const r = resolveVertical(e.params, levels, { elevation: e.params.elevation, height: e.params.height });
-    if (!r.ok) { failures.push({ id: e.id, reason: r.reason }); continue; }
+    // Use r.ok === false so isolated `tsc file.ts` (CI unit test) narrows the union correctly.
+    if (r.ok === false) { failures.push({ id: e.id, reason: r.reason }); continue; }
     if (Math.abs(r.elevation - e.params.elevation) > 1e-9 || Math.abs(r.height - e.params.height) > 1e-9) {
       updates.push({ id: e.id, elevation: r.elevation, height: r.height });
     }
