@@ -1,3 +1,4 @@
+import { inject } from "@vercel/analytics";
 import { setupManageLinks } from "./features/manage-links";
 import "./critical-gaps-boot";
 import "./critical-gaps-boot-strength";
@@ -184,6 +185,9 @@ function step(name: string, fn: () => unknown | Promise<unknown>) {
     }
   })();
 }
+
+// Initialize Vercel Web Analytics
+inject();
 
 await step("secure-store", async () => (await import("./core/secure-store")).initSecureStore());
 await step("setupViewer (core)", async () => {

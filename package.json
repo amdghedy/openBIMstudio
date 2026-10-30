@@ -134,6 +134,7 @@
     "@thatopen/ui": "^3.4.14",
     "@thatopen/ui-obc": "^3.4.3",
     "@tldraw/editor": "^5.5.2",
+    "@vercel/analytics": "^2.0.1",
     "axios": "^1.7.4",
     "camera-controls": "^3.1.2",
     "file-saver": "^2.0.5",
