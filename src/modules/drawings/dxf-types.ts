@@ -37,6 +37,8 @@ export interface DxfHatch {
   scale?: number;
   /** All boundary loops, outer first (even-odd fill). */
   loops: DxfPoint[][];
+  /** WIPEOUT: solid fill with the drawing background (masks what is behind it). */
+  wipeout?: boolean;
 }
 
 export type DxfEntity =

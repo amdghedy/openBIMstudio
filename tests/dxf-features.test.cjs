@@ -63,4 +63,15 @@ t("text direction through mirrored and rotated inserts is exact",()=>{
   const blk=D("0","BLOCK","8","0","2","T","70","0","10","0","20","0","30","0","0","TEXT","8","0","10","0","20","0","30","0","40","2","1","T","50","30","0","ENDBLK");
   const ang=(sx,sy,rot)=>parseDxf(file({blocks:blk,ents:D("0","INSERT","8","A","2","T","10","0","20","0","30","0","41",sx,"42",sy,"43","1","50",rot)})).entities[0].rotation;
   near(ang(1,1,0),30);near(ang(1,1,90),120);near(ang(-1,1,0),150);near(ang(1,-1,0),330);near(ang(-1,-1,0),210);near(ang(-1,1,90),240)});
+t("IMAGE: placement frame + diagonals + file label from IMAGEDEF; WIPEOUT: background-fill mask",()=>{
+  const img=D("0","IMAGE","8","A","10","10","20","20","30","0","11","0.5","21","0","31","0","12","0","22","0.5","32","0","13","100","23","40","340","1F");
+  const wipe=D("0","WIPEOUT","8","A","10","0","20","0","30","0","11","1","21","0","31","0","12","0","22","1","32","0","13","10","23","10","71","2","91","4","14","-0.5","24","-0.5","14","9.5","24","-0.5","14","9.5","24","9.5","14","-0.5","24","9.5");
+  const objs=D("0","IMAGEDEF","5","1F","1","C:\\\\scans\\\\plan.png");
+  const d=parseDxf(file({ents:img+"\n"+wipe,objects:objs}));
+  const fr=d.entities.find(e=>e.type==="LWPOLYLINE"&&e.closed&&!e.hatch);
+  near(fr.points[2].x,60);near(fr.points[2].y,40);
+  assert.strictEqual(d.entities.filter(e=>e.type==="LWPOLYLINE"&&!e.closed).length,2);
+  assert.strictEqual(d.entities.find(e=>e.type==="TEXT").value,"plan.png");
+  const w=d.entities.find(e=>e.hatch&&e.hatch.wipeout);assert.ok(w);near(w.hatch.loops[0][0].x,0);near(w.hatch.loops[0][2].x,10);
+  assert.ok(d.skipped&&Object.keys(d.skipped).some(k=>/IMAGE/.test(k)))});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

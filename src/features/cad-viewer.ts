@@ -539,7 +539,8 @@ function build(): void {
       c.closePath();
     }
     const fams = h.solid ? [] : M.hatchFamilies(h.pattern, h.angle, h.scale);
-    if (h.solid) c.fill("evenodd");
+    if (h.wipeout) { c.fillStyle = BG[bg] || BG.autocad; c.fill("evenodd"); }
+    else if (h.solid) c.fill("evenodd");
     else if (Math.min(...fams.map((f) => f.spacing)) * v.scale < 3) {
       c.globalAlpha = 0.35;
       c.fill("evenodd");

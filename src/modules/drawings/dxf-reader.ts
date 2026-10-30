@@ -19,6 +19,9 @@ import {
   insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
 } from "./dxf-geometry";
 
+/** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
+let imageDefs = new Map<string, string>();
+
 interface Pair { code: number; value: string }
 interface Rec { type: string; pairs: Pair[] }
 interface Block { name: string; base: DxfPoint; recs: Rec[] }
@@ -48,6 +51,7 @@ function num(v: string | undefined, d = 0): number {
 }
 
 import { cleanText } from "./mtext";
+import { imageGeometry, clipBoundaryLoop, fileLabel } from "./dxf-image";
 export { cleanText };
 
 class Data {
@@ -191,6 +195,7 @@ export function parseDxf(text: string): DxfDocument {
   let section = "";
   let table = "";
   let curBlock: Block | null = null;
+  imageDefs = new Map();
 
   for (const r of recs) {
     if (r.type === "EOF") break;
@@ -235,6 +240,11 @@ export function parseDxf(text: string): DxfDocument {
     }
 
     if (section === "OBJECTS") {
+      if (r.type === "IMAGEDEF") {
+        const d = new Data(r.pairs);
+        const h = d.s(5)?.trim().toUpperCase(), p = d.s(1);
+        if (h && p) imageDefs.set(h, p);
+      }
       if (r.type === "LAYOUT") {
         const d = new Data(r.pairs);
         const nm = d.s(1)?.trim();
@@ -501,8 +511,28 @@ function expandRecs(
       }
 
       // Present in many files but not drawn by this engine.
-      case "MLINE": case "IMAGE":
-      case "WIPEOUT": case "OLE2FRAME": case "REGION": case "3DSOLID": case "BODY":
+      case "IMAGE": case "WIPEOUT": {
+        const ins = d.pt(10, 20, 30), u = d.pt(11, 21, 31), vv = d.pt(12, 22, 32);
+        const pxW = d.n(13, 0), pxH = d.n(23, 0);
+        const g = imageGeometry(ins, u, vv, pxW, pxH);
+        if (!g) { skip(r.type); break; }
+        if (r.type === "WIPEOUT") {
+          const loop = clipBoundaryLoop(ins, u, vv, pxW, pxH, d.n(71, 1), d.all(14).map((x) => num(x)), d.all(24).map((x) => num(x)));
+          if (!loop) { skip("WIPEOUT"); break; }
+          push({ ...c, type: "LWPOLYLINE", points: loop, closed: true, hatch: { solid: true, loops: [loop], wipeout: true } });
+          break;
+        }
+        // Raster images are external files: draw frame + diagonals + file name so the placement is visible.
+        push({ ...c, type: "LWPOLYLINE", points: g.corners, closed: true });
+        push({ ...c, type: "LWPOLYLINE", points: [g.corners[0], g.corners[2]] });
+        push({ ...c, type: "LWPOLYLINE", points: [g.corners[1], g.corners[3]] });
+        const label = fileLabel(imageDefs.get((d.s(340) ?? "").trim().toUpperCase()));
+        if (label) push({ ...c, type: "TEXT", position: g.center, height: Math.max(Math.min(g.worldH / 12, g.worldW / Math.max(label.length, 4) / 0.6), 1e-6), value: label, align: "center", valign: "middle" });
+        skip("IMAGE (placeholder frame; raster not embedded)");
+        break;
+      }
+      case "MLINE":
+      case "OLE2FRAME": case "REGION": case "3DSOLID": case "BODY":
       case "RAY": case "XLINE": case "VIEWPORT":
       case "TOLERANCE": case "MESH": case "SURFACE":
         skip(r.type);
