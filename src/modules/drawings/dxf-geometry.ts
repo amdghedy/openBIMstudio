@@ -198,6 +198,9 @@ export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
         ...base, type: "TEXT", position: xp(m, e.position),
         height: e.height * Math.abs(m.sy),
         value: e.value, rotation: textAngleThrough(m, e.rotation ?? 0), align: e.align, valign: e.valign,
+        ...(e.style ? { style: e.style } : {}), ...(e.font ? { font: e.font } : {}),
+        ...(e.bold ? { bold: true } : {}), ...(e.italic ? { italic: true } : {}),
+        ...(e.widthFactor ? { widthFactor: e.widthFactor } : {}), ...(e.oblique ? { oblique: e.oblique } : {}),
       }];
     case "CIRCLE":
       if (uniform && !mirrored) {

@@ -59,6 +59,21 @@ export function angleInArc(a: number, s: number, e: number): boolean {
 }
 export const arcSweepDeg = (s: number, e: number) => norm360(e - s) || 360;
 
+/**
+ * Canvas font stack for a TEXT. AutoCAD SHX stroke fonts have no web equivalent, so they map to the
+ * closest look: simplex/iso/romans/standard -> clean sans, txt/monotxt -> monospace, roman/times/serif TTFs -> serif.
+ */
+export function textFontCss(e: Extract<DxfEntity, { type: "TEXT" }>, px: number): string {
+  const raw = String(e.font ?? "").trim();
+  const base = raw.replace(/\.(shx|ttf|otf|ttc)$/i, "").replace(/[^A-Za-z0-9 _-]/g, "");
+  const k = base.toLowerCase();
+  let stack = "sans-serif";
+  if (/^(txt|monotxt|mono|courier|consolas|lucida console)/.test(k)) stack = base ? `"${base}", "Courier New", monospace` : "monospace";
+  else if (/^(romanc|romant|romand|times|roman|georgia|garamond|palatino|cambria|serif|scriptc|scripts)/.test(k)) stack = `"${/^(roman[cdt]?|script[cs])$/.test(k) ? "Times New Roman" : base}", "Times New Roman", serif`;
+  else if (base && !/^(simplex|iso|isocp|isocpeur|romans|standard|gothic[a-z]*|italic[a-z]*|complex|monotxt)/.test(k)) stack = `"${base}", sans-serif`;
+  return `${e.italic ? "italic " : ""}${e.bold ? "bold " : ""}${px}px ${stack}`;
+}
+
 /** AutoCAD default MTEXT line pitch = 5/3 of the text height. */
 export const TEXT_LINE_PITCH = 5 / 3;
 
@@ -70,7 +85,7 @@ export function textBox(e: Extract<DxfEntity, { type: "TEXT" }>): { w: number; h
   const lines = linesOf(e);
   const longest = Math.max(...lines.map((l) => l.length), 0);
   return {
-    w: Math.max(e.height * 0.6 * longest, e.height * 0.3),
+    w: Math.max(e.height * 0.6 * longest * (e.widthFactor && e.widthFactor > 0 ? e.widthFactor : 1), e.height * 0.3),
     h: e.height + (lines.length - 1) * e.height * TEXT_LINE_PITCH,
   };
 }

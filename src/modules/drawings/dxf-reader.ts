@@ -21,6 +21,26 @@ import {
 
 /** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
 let imageDefs = new Map<string, string>();
+interface TextStyleDef { font?: string; width?: number; oblique?: number; bold?: boolean; italic?: boolean }
+/** STYLE table by upper-case name, filled per parse. */
+let textStyles = new Map<string, TextStyleDef>();
+
+/** Resolve style-derived text fields for TEXT/ATTRIB/MTEXT (entity overrides win over the style). */
+function textStyleFields(d: Data, mtextSrc?: string): { style?: string; font?: string; bold?: boolean; italic?: boolean; widthFactor?: number; oblique?: number } {
+  const name = d.s(7)?.trim();
+  const st = name ? textStyles.get(name.toUpperCase()) : undefined;
+  const inl = mtextSrc !== undefined ? mtextFont(mtextSrc) : {};
+  const wf = (mtextSrc === undefined && d.has(41) ? d.n(41) : undefined) ?? (mtextSrc !== undefined ? mtextWidthFactor(mtextSrc) : undefined) ?? st?.width;
+  const ob = mtextSrc === undefined && d.has(51) ? d.n(51) : st?.oblique;
+  const out: ReturnType<typeof textStyleFields> = {};
+  if (name) out.style = name;
+  const font = inl.font ?? st?.font; if (font) out.font = font;
+  const bold = inl.bold ?? st?.bold; if (bold) out.bold = true;
+  const italic = inl.italic ?? st?.italic; if (italic) out.italic = true;
+  if (wf && Math.abs(wf - 1) > 1e-6) out.widthFactor = wf;
+  if (ob && Math.abs(ob) > 1e-6) out.oblique = ob;
+  return out;
+}
 
 interface Pair { code: number; value: string }
 interface Rec { type: string; pairs: Pair[] }
@@ -50,7 +70,7 @@ function num(v: string | undefined, d = 0): number {
   return Number.isFinite(n) ? n : d;
 }
 
-import { cleanText } from "./mtext";
+import { cleanText, mtextFont, mtextWidthFactor } from "./mtext";
 import { imageGeometry, clipBoundaryLoop, fileLabel } from "./dxf-image";
 export { cleanText };
 
@@ -196,6 +216,7 @@ export function parseDxf(text: string): DxfDocument {
   let table = "";
   let curBlock: Block | null = null;
   imageDefs = new Map();
+  textStyles = new Map();
 
   for (const r of recs) {
     if (r.type === "EOF") break;
@@ -213,6 +234,21 @@ export function parseDxf(text: string): DxfDocument {
         const d = new Data(r.pairs);
         const nm = d.s(2)?.trim().toUpperCase();
         if (nm) linetypes[nm] = d.all(49).map((v) => num(v));
+      } else if (r.type === "STYLE" && table === "STYLE") {
+        const d = new Data(r.pairs);
+        const nm = d.s(2)?.trim().toUpperCase();
+        if (nm) {
+          const face = d.s(1000)?.trim();
+          const f71 = d.has(1071) ? d.n(1071) : 0;
+          const file = d.s(3)?.trim();
+          textStyles.set(nm, {
+            font: face || file || undefined,
+            width: d.has(41) ? d.n(41, 1) : undefined,
+            oblique: d.has(50) ? d.n(50, 0) : undefined,
+            bold: (f71 & 0x2000000) !== 0 || undefined,
+            italic: (f71 & 0x1000000) !== 0 || undefined,
+          });
+        }
       } else if (r.type === "LAYER" && table === "LAYER") {
         const d = new Data(r.pairs);
         const rawColor = d.n(62, 7);
@@ -379,6 +415,7 @@ function expandRecs(
         push({
           ...c, type: "TEXT", position: a.position, height: d.n(40, 2.5),
           value: cleanText(d.s(1) ?? ""), rotation: d.has(50) ? d.n(50) : undefined, align: a.align, valign: a.valign,
+          ...textStyleFields(d),
         });
         break;
       }
@@ -387,7 +424,7 @@ function expandRecs(
         if (d.n(70) & 1) break; // invisible attribute
         const a = textAnchor(d, 74);
         const value = cleanText(d.s(1) ?? "");
-        if (value) push({ ...c, type: "TEXT", position: a.position, height: d.n(40, 2.5), value, rotation: d.has(50) ? d.n(50) : undefined, align: a.align, valign: a.valign });
+        if (value) push({ ...c, type: "TEXT", position: a.position, height: d.n(40, 2.5), value, rotation: d.has(50) ? d.n(50) : undefined, align: a.align, valign: a.valign, ...textStyleFields(d) });
         break;
       }
 
@@ -432,6 +469,7 @@ function expandRecs(
           value: cleanText(chunks), rotation: rot,
           align: (["left", "center", "right"] as const)[Math.max(0, Math.min(2, (ap - 1) % 3))],
           valign: (["top", "middle", "bottom"] as const)[Math.max(0, Math.min(2, Math.floor((ap - 1) / 3)))],
+          ...textStyleFields(d, chunks),
         });
         break;
       }

@@ -74,4 +74,11 @@ t("IMAGE: placement frame + diagonals + file label from IMAGEDEF; WIPEOUT: backg
   assert.strictEqual(d.entities.find(e=>e.type==="TEXT").value,"plan.png");
   const w=d.entities.find(e=>e.hatch&&e.hatch.wipeout);assert.ok(w);near(w.hatch.loops[0][0].x,0);near(w.hatch.loops[0][2].x,10);
   assert.ok(d.skipped&&Object.keys(d.skipped).some(k=>/IMAGE/.test(k)))});
+t("text styles: STYLE table font/width/oblique resolve onto TEXT; entity overrides win; MTEXT inline font",()=>{
+  const tbl=D("0","TABLE","2","STYLE","0","STYLE","2","Narrow","3","romans.shx","41","0.8","50","15","0","STYLE","2","Std","3","arial.ttf","1000","Arial","1071","50331648","0","ENDTAB");
+  const tx=D("0","TEXT","8","A","10","0","20","0","30","0","40","2","1","hi","7","Narrow","0","TEXT","8","A","10","0","20","0","30","0","40","2","1","ov","7","Narrow","41","1.5","51","0","0","MTEXT","8","A","10","0","20","0","30","0","40","2","1","{\\\\fTimes New Roman|b1|i0;Hello}","7","Std");
+  const d=parseDxf(file({tables:tbl,ents:tx}));const [a,b,c]=d.entities;
+  assert.strictEqual(a.font,"romans.shx");near(a.widthFactor,0.8);near(a.oblique,15);
+  near(b.widthFactor,1.5);assert.strictEqual(b.oblique,undefined);
+  assert.strictEqual(c.font,"Times New Roman");assert.strictEqual(c.bold,true);assert.strictEqual(c.italic,true)});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

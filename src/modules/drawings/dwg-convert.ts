@@ -251,6 +251,7 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
             ...c, type: "TEXT", position: al.useAlignPoint ? al.point! : pos,
             height: toNum(pick(e, ["textHeight", "height", "fontSize"]), 2.5),
             value, rotation: rot, align: al.align, valign: al.valign,
+            ...dwgTextStyle(e, cx),
           });
           break;
         }
@@ -380,6 +381,18 @@ export interface DwgConvertResult {
 }
 
 /** Convert a libredwg-web database into a DxfDocument. */
+/** Best-effort text style fields from a libredwg text entity (names vary by build; unknown -> omitted). */
+function dwgTextStyle(e: Any, cx: { toDeg: number }): { style?: string; widthFactor?: number; oblique?: number } {
+  const out: { style?: string; widthFactor?: number; oblique?: number } = {};
+  const st = pick(e, ["styleName", "style"]);
+  if (typeof st === "string" && st.trim()) out.style = st.trim();
+  const wf = toNum(pick(e, ["widthFactor", "widthScale", "xScale"]));
+  if (wf > 0 && Math.abs(wf - 1) > 1e-6) out.widthFactor = wf;
+  const ob = toNum(pick(e, ["obliqueAngle", "oblique"])) * cx.toDeg;
+  if (Number.isFinite(ob) && Math.abs(ob) > 1e-6) out.oblique = ob;
+  return out;
+}
+
 export function dwgDatabaseToDxfDocument(db: Any): DwgConvertResult {
   const blocks = new Map<string, Any>();
   for (const b of entriesOf(db?.tables?.BLOCK_RECORD ?? db?.blocks)) {

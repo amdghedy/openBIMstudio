@@ -498,7 +498,9 @@ function build(): void {
         c.save();
         c.translate(p.x, p.y);
         c.rotate((-(e.rotation ?? 0) * Math.PI) / 180);
-        c.font = `${Math.min(px, 600)}px sans-serif`;
+        c.font = M.textFontCss(e, Math.min(px, 600));
+        if (e.widthFactor && e.widthFactor > 0 && e.widthFactor !== 1) c.scale(e.widthFactor, 1);
+        if (e.oblique) c.transform(1, 0, -Math.tan((e.oblique * Math.PI) / 180), 1, 0, 0);
         c.textAlign = e.align ?? "left";
         c.textBaseline = "alphabetic";
         {

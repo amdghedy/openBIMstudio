@@ -76,6 +76,16 @@ export type DxfEntity =
       align?: "left" | "center" | "right";
       /** Vertical anchor of `position`; default baseline. */
       valign?: "top" | "middle" | "bottom" | "baseline";
+      /** Text style name (STYLE table). */
+      style?: string;
+      /** Font file / family from the style or an inline \\f code (e.g. "simplex.shx", "Arial"). */
+      font?: string;
+      bold?: boolean;
+      italic?: boolean;
+      /** Width factor (1 = normal). */
+      widthFactor?: number;
+      /** Oblique angle in degrees (positive leans right). */
+      oblique?: number;
     })
   | (DxfEntityBase & {
       type: "POINT";

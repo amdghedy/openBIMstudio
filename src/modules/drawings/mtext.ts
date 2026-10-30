@@ -62,3 +62,18 @@ export function cleanText(src: string): string {
 export function textLines(value: string): string[] {
   return String(value ?? "").split("\n");
 }
+
+/** First inline font code `\\fName|b1|i1|...;` of an MTEXT string (font family + bold/italic), if any. */
+export function mtextFont(src: string): { font?: string; bold?: boolean; italic?: boolean } {
+  const m = /\\[fF]([^|;\\]+)((?:\|[a-z]-?\d+)*);/.exec(String(src ?? ""));
+  if (!m) return {};
+  const flag = (k: string) => new RegExp("\\|" + k + "(-?\\d+)").exec(m[2])?.[1];
+  return { font: m[1].trim(), bold: flag("b") === "1" || undefined, italic: flag("i") === "1" || undefined };
+}
+
+/** Inline width factor `\\W0.8;` (first occurrence) of an MTEXT string. */
+export function mtextWidthFactor(src: string): number | undefined {
+  const m = /\\W(\d*\.?\d+);/.exec(String(src ?? ""));
+  const v = m ? Number(m[1]) : NaN;
+  return Number.isFinite(v) && v > 0 ? v : undefined;
+}
