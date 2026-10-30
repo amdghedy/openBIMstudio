@@ -487,8 +487,8 @@ function showMissingModelsBanner(models: string[]) {
    Delete
    ═════════════════════════════════════════════════════════════════════════ */
 export async function deleteProjectById(id: string) {
+  // The store deletes the project document and all model blobs atomically.
   await store.deleteProjectRecord(id);
-  await store.deleteModelBlobs(id);
   if (current?.id === id) { current = null; notify(); }
 }
 
