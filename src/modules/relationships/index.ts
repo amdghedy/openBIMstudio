@@ -105,6 +105,18 @@ export interface GeometryChange {
   rotationZ: number;
 }
 
+/** Rigid-body plan motion of a host element about a pivot. */
+export interface RigidMotionChange {
+  elementId: string;
+  newVersion: number;
+  /** Plan pivot of the rotation (metres). */
+  pivot: [number, number];
+  /** Signed rotation about +Z (radians). */
+  angle: number;
+  /** Optional extra translation after rotation (metres). */
+  extraTranslation?: [number, number];
+}
+
 export interface RelationshipEvalResult {
   id: string;
   elementId: string;
@@ -265,57 +277,123 @@ export class RelationshipRegistry {
     const out: RelationshipEvalResult[] = [];
     const deps = this.getRelationshipDependents(change.elementId);
     for (const rec of deps) {
-      if (rec.suspended) {
-        out.push({ id: rec.id, elementId: rec.target.elementId, action: "suspended", note: "record suspended" });
-        continue;
-      }
-      switch (rec.reconnection) {
-        case "follow-source": {
-          // Exact rigid follow: rotate the stored offset by Δrotation,
-          // then apply the source's translation. Reduces to pure
-          // translation when Δrotation = 0 (spec 2B.6).
-          const c = Math.cos(change.rotationZ);
-          const s = Math.sin(change.rotationZ);
-          const ox = rec.target.position[0] - rec.source.position[0];
-          const oy = rec.target.position[1] - rec.source.position[1];
-          const base: [number, number, number] = [
-            rec.source.position[0] + change.translation[0],
-            rec.source.position[1] + change.translation[1],
-            rec.source.position[2] + change.translation[2],
-          ];
-          const np: [number, number, number] = [
-            base[0] + ox * c - oy * s,
-            base[1] + ox * s + oy * c,
-            base[2],
-          ];
-          rec.target = { ...rec.target, position: np };
-          out.push({ id: rec.id, elementId: rec.target.elementId, action: "moved-dependent", newPosition: np });
-          break;
-        }
-        case "fixed-world":
-          // Dependent stays; only refresh the source reference position.
-          rec.source = { ...rec.source, position: addRot(rec.source.position, change.translation) };
-          out.push({ id: rec.id, elementId: rec.target.elementId, action: "unchanged" });
-          break;
-        case "local-reference": {
-          // Recompute from the stored local offset against the source's new frame.
-          const c = Math.cos(change.rotationZ);
-          const s = Math.sin(change.rotationZ);
-          const rx = rec.localOffset[0] * c - rec.localOffset[1] * s;
-          const ry = rec.localOffset[0] * s + rec.localOffset[1] * c;
-          const base = addRot(rec.source.position, change.translation);
-          const np: [number, number, number] = [base[0] + rx, base[1] + ry, base[2] + rec.localOffset[2]];
-          rec.target = { ...rec.target, position: np };
-          out.push({ id: rec.id, elementId: rec.target.elementId, action: "moved-dependent", newPosition: np });
-          break;
-        }
-        case "becomes-invalid":
-          rec.valid = false;
-          out.push({ id: rec.id, elementId: rec.target.elementId, action: "flagged-invalid", note: "policy becomes-invalid" });
-          break;
-      }
+      out.push(...this.evalOne(rec, change.translation, change.rotationZ));
     }
     return out;
+  }
+
+  /**
+   * Evaluate dependents after a rigid-body plan rotation of the host about
+   * `pivot`. Each source reference is transformed individually so endpoint
+   * and face attachments follow correctly (not just the element origin).
+   */
+  evaluateAfterRigidMotion(change: RigidMotionChange): RelationshipEvalResult[] {
+    const out: RelationshipEvalResult[] = [];
+    const deps = this.getRelationshipDependents(change.elementId);
+    const extra = change.extraTranslation ?? [0, 0];
+    const c = Math.cos(change.angle);
+    const s = Math.sin(change.angle);
+    const [px, py] = change.pivot;
+
+    for (const rec of deps) {
+      if (rec.suspended) {
+        out.push({
+          id: rec.id,
+          elementId: rec.target.elementId,
+          action: "suspended",
+          note: "record suspended",
+        });
+        continue;
+      }
+
+      const [sx, sy, sz] = rec.source.position;
+      const dx = sx - px;
+      const dy = sy - py;
+      const nsx = px + dx * c - dy * s + extra[0];
+      const nsy = py + dx * s + dy * c + extra[1];
+      const translation: [number, number, number] = [nsx - sx, nsy - sy, 0];
+
+      // Apply policies with the per-reference translation + full angle.
+      out.push(...this.evalOne(rec, translation, change.angle));
+
+      // Keep the source reference in sync with the rigid motion.
+      rec.source = { ...rec.source, position: [nsx, nsy, sz] };
+    }
+    return out;
+  }
+
+  private evalOne(
+    rec: RelationshipRecord,
+    translation: [number, number, number],
+    rotationZ: number,
+  ): RelationshipEvalResult[] {
+    if (rec.suspended) {
+      return [{
+        id: rec.id,
+        elementId: rec.target.elementId,
+        action: "suspended",
+        note: "record suspended",
+      }];
+    }
+    switch (rec.reconnection) {
+      case "follow-source": {
+        const c = Math.cos(rotationZ);
+        const s = Math.sin(rotationZ);
+        const ox = rec.target.position[0] - rec.source.position[0];
+        const oy = rec.target.position[1] - rec.source.position[1];
+        const base: [number, number, number] = [
+          rec.source.position[0] + translation[0],
+          rec.source.position[1] + translation[1],
+          rec.source.position[2] + translation[2],
+        ];
+        const np: [number, number, number] = [
+          base[0] + ox * c - oy * s,
+          base[1] + ox * s + oy * c,
+          base[2],
+        ];
+        rec.target = { ...rec.target, position: np };
+        return [{
+          id: rec.id,
+          elementId: rec.target.elementId,
+          action: "moved-dependent",
+          newPosition: np,
+        }];
+      }
+      case "fixed-world":
+        rec.source = { ...rec.source, position: addRot(rec.source.position, translation) };
+        return [{
+          id: rec.id,
+          elementId: rec.target.elementId,
+          action: "unchanged",
+        }];
+      case "local-reference": {
+        const c = Math.cos(rotationZ);
+        const s = Math.sin(rotationZ);
+        const rx = rec.localOffset[0] * c - rec.localOffset[1] * s;
+        const ry = rec.localOffset[0] * s + rec.localOffset[1] * c;
+        const base = addRot(rec.source.position, translation);
+        const np: [number, number, number] = [
+          base[0] + rx,
+          base[1] + ry,
+          base[2] + rec.localOffset[2],
+        ];
+        rec.target = { ...rec.target, position: np };
+        return [{
+          id: rec.id,
+          elementId: rec.target.elementId,
+          action: "moved-dependent",
+          newPosition: np,
+        }];
+      }
+      case "becomes-invalid":
+        rec.valid = false;
+        return [{
+          id: rec.id,
+          elementId: rec.target.elementId,
+          action: "flagged-invalid",
+          note: "policy becomes-invalid",
+        }];
+    }
   }
 
   /** SuspendRelationship: keep the record but stop enforcing it. */
@@ -368,9 +446,6 @@ export class RelationshipRegistry {
     for (const rec of this.records.values()) {
       const v = this.geometryVersion(rec.source.elementId);
       if (rec.valid && v !== rec.geometryVersion) {
-        // Source geometry changed since the record was created without a
-        // recorded evaluation; conservative choice: keep local-reference
-        // semantics, invalidate only records that demand strict follow.
         if (rec.reconnection === "becomes-invalid") {
           rec.valid = false;
           invalidated++;
@@ -423,6 +498,5 @@ export function defaultPolicyFor(type: RelationshipType): ReconnectionPolicy {
     case "system-membership":
       return "follow-source";
   }
-  // Defensive fallback (exhaustive switch above covers all members).
   return "fixed-world";
 }
