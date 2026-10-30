@@ -487,8 +487,8 @@ function showMissingModelsBanner(models: string[]) {
    Delete
    ═════════════════════════════════════════════════════════════════════════ */
 export async function deleteProjectById(id: string) {
+  // The store deletes the project document and all model blobs atomically.
   await store.deleteProjectRecord(id);
-  await store.deleteModelBlobs(id);
   if (current?.id === id) { current = null; notify(); }
 }
 
@@ -508,17 +508,29 @@ export function onModelImported(modelId: string, name: string, bytes: Uint8Array
     markDirty();
     return;
   }
+  // Capture the owning project before starting asynchronous storage work.
+  // The store updates its persisted document and blob in one transaction, and
+  // refuses to recreate the project if it was deleted while the import ran.
+  const project = current;
+  const projectId = project.id;
   const blob = new Blob([bytes as unknown as BlobPart]);
-  const sizeMB = blob.size / (1024 * 1024);
-  store.putModelBlob(current.id, modelId, name, blob)
-    .then(async () => {
-      const meta = current!.models.find((m) => m.id === modelId);
-      if (meta) { meta.name = name; meta.bytes = blob.size; (meta as any).missing = false; }
-      else current!.models.push({ id: modelId, name, bytes: blob.size });
-      try { await store.putProject(current!); } catch { /* */ }
+  const meta = project.models.find((m) => m.id === modelId);
+  if (meta) {
+    meta.name = name;
+    meta.bytes = blob.size;
+    (meta as any).missing = false;
+  } else {
+    project.models.push({ id: modelId, name, bytes: blob.size });
+  }
+  markDirty();
+
+  void store.putImportedModel(projectId, modelId, name, blob)
+    .then((saved) => {
+      if (!saved) {
+        console.warn(`[projects] skipped model payload for deleted project "${projectId}"`);
+      }
     })
     .catch((e) => console.error(`[projects] blob save FAILED for "${name}"`, e));
-  markDirty();
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
