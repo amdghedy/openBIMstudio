@@ -6,11 +6,13 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
-  },
-  "kv_namespaces": [
-    {
-      "binding": "VISITS",
-      "id": "PASTE_KV_NAMESPACE_ID_HERE"
-    }
-  ]
+  }
+  // Optional Cloudflare KV binding for the visit counter.
+  // Uncomment and replace with a real namespace ID when you want to enable it:
+  // ,"kv_namespaces": [
+  //   {
+  //     "binding": "VISITS",
+  //     "id": "<actual-kv-namespace-id>"
+  //   }
+  // ]
 }
