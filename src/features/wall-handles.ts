@@ -17,6 +17,8 @@ import { inputRouter, type Gesture } from "../core/input-router";
 import { history } from "./history";
 import { notify } from "../core/notify";
 import { units } from "../core/units";
+import { makeAxisLock, projectOnAxis, snapAlongAxis } from "./grip-axis-lock";
+import type { AxisLock, XZ } from "./grip-axis-lock";
 import type { AuthoredElement } from "../modules/projects/types";
 
 const HANDLE_RADIUS_PX = 8;
@@ -40,6 +42,10 @@ interface DragState {
   groundY: number;
   currentWorld: { x: number; z: number };
   snapTarget: { x: number; z: number } | null;
+  /** Stretch axis (fixed opposite endpoint → dragged endpoint), captured at drag start. */
+  axis: AxisLock | null;
+  /** True while Shift is held — perpendicular direction locked, length-only edit. */
+  axisLocked: boolean;
 }
 
 class WallHandlesManager {
@@ -205,6 +211,15 @@ class WallHandlesManager {
 
     this.line(this.dimG, s.x, s.y, e.x, e.y, "#2563eb", 1.2, "6 3", 0.7);
 
+    // Shift-locked: dashed amber guide along the stretch axis (visual cue).
+    if (this.drag?.axisLocked && this.drag.axis) {
+      const ax = this.drag.axis;
+      const wl = Math.hypot(ex - sx, ez - sz) || 1;
+      const g1 = this.project(ax.ox + ax.dx * -wl, y, ax.oz + ax.dz * -wl);
+      const g2 = this.project(ax.ox + ax.dx * 2 * wl, y, ax.oz + ax.dz * 2 * wl);
+      if (g1 && g2) this.line(this.dimG, g1.x, g1.y, g2.x, g2.y, "#f59e0b", 1.2, "10 4 2 4", 0.9);
+    }
+
     const mx = (s.x + e.x) / 2;
     const my = (s.y + e.y) / 2;
     this.handlePos.mid = { x: mx, y: my, visible: s.visible && e.visible };
@@ -221,8 +236,9 @@ class WallHandlesManager {
         "#38bdf8", "#0b0d12", 1, { flip: "1" });
     }
 
-    this.circle(this.hG, s.x, s.y, HANDLE_RADIUS_PX, "#2563eb", "#ffffff", 2, { handle: "start" });
-    this.circle(this.hG, e.x, e.y, HANDLE_RADIUS_PX, "#2563eb", "#ffffff", 2, { handle: "end" });
+    const lockedFill = this.drag?.axisLocked ? "#f59e0b" : "#2563eb";
+    this.circle(this.hG, s.x, s.y, HANDLE_RADIUS_PX, lockedFill, "#ffffff", 2, { handle: "start" });
+    this.circle(this.hG, e.x, e.y, HANDLE_RADIUS_PX, lockedFill, "#ffffff", 2, { handle: "end" });
     this.circle(this.hG, s.x, s.y, HANDLE_RADIUS_PX * 0.42, "#bae6fd", "none", 0, {});
     this.circle(this.hG, e.x, e.y, HANDLE_RADIUS_PX * 0.42, "#bae6fd", "none", 0, {});
 
@@ -356,6 +372,9 @@ class WallHandlesManager {
     const cur = which === "start"
       ? { x: p.start[0], z: p.start[1] }
       : { x: p.end[0], z: p.end[1] };
+    const fixed = which === "start"
+      ? { x: p.end[0], z: p.end[1] }
+      : { x: p.start[0], z: p.start[1] };
     this.drag = {
       wallId: w.id,
       which,
@@ -363,6 +382,8 @@ class WallHandlesManager {
       groundY,
       currentWorld: cur,
       snapTarget: null,
+      axis: makeAxisLock(fixed, cur),
+      axisLocked: false,
     };
     this.updateDrag(e);
     return true;
@@ -412,17 +433,60 @@ class WallHandlesManager {
     return best ? { x: best.x, z: best.z } : null;
   }
 
+  /** All endpoints of other authored elements — collinear snap candidates. */
+  private endpointCandidates(): XZ[] {
+    const auth: any = (ctx.features as any).authoring;
+    const els: AuthoredElement[] = auth?.getElements?.() ?? [];
+    const selfId = this.drag?.wallId;
+    const out: XZ[] = [];
+    for (const el of els) {
+      if (el.id === selfId) continue;
+      if (!el.params.start || !el.params.end) continue;
+      out.push({ x: el.params.start[0], z: el.params.start[1] });
+      out.push({ x: el.params.end[0], z: el.params.end[1] });
+    }
+    return out;
+  }
+
+  /** World-units per screen pixel at a point — sizes the collinear snap tolerance. */
+  private axisTolWorld(x: number, z: number): number {
+    const fallback = SNAP_SCREEN_TOL_PX * 0.01;
+    const axis = this.drag?.axis;
+    if (!axis) return fallback;
+    const y = this.drag?.groundY ?? 0;
+    const a = this.project(x, y, z);
+    const b = this.project(x - axis.dz, y, z + axis.dx); // 1 world unit perpendicular
+    if (!a || !b) return fallback;
+    const pxPerUnit = Math.hypot(b.x - a.x, b.y - a.y);
+    if (!isFinite(pxPerUnit) || pxPerUnit < 1e-6) return fallback;
+    return SNAP_SCREEN_TOL_PX / pxPerUnit;
+  }
+
   private updateDrag(e: PointerEvent): void {
     if (!this.drag) return;
     const g = this.groundPoint(e);
     if (!g) return;
-    const snap = this.findSnap(g.x, g.z);
-    if (snap) {
-      this.drag.snapTarget = snap;
-      this.drag.currentWorld = snap;
+    // Shift = perpendicular lock — the endpoint slides along the element's own
+    // axis only, so the element gets longer/shorter without drifting sideways.
+    const axis = this.drag.axis;
+    const shiftLock = !!e.shiftKey && !!axis;
+    this.drag.axisLocked = shiftLock;
+    if (shiftLock && axis) {
+      const proj = projectOnAxis(axis, g);
+      let target: XZ = { x: proj.x, z: proj.z };
+      const hit = snapAlongAxis(axis, proj.t, this.endpointCandidates(), this.axisTolWorld(target.x, target.z));
+      if (hit) target = hit;
+      this.drag.snapTarget = hit;
+      this.drag.currentWorld = target;
     } else {
-      this.drag.snapTarget = null;
-      this.drag.currentWorld = g;
+      const snap = this.findSnap(g.x, g.z);
+      if (snap) {
+        this.drag.snapTarget = snap;
+        this.drag.currentWorld = snap;
+      } else {
+        this.drag.snapTarget = null;
+        this.drag.currentWorld = g;
+      }
     }
     const auth: any = (ctx.features as any).authoring;
     const el: AuthoredElement | null = auth?.getElementById?.(this.drag.wallId) ?? null;

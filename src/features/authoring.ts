@@ -35,6 +35,8 @@ import { accuDraw } from "./accudraw";
 import { expandConnected, isMepElement } from "../modules/mep/connectivity";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
+import { makeAxisLock, projectOnAxis } from "./grip-axis-lock";
+import type { AxisLock } from "./grip-axis-lock";
 import type {
   AuthoredElement,
   DoorPanelType,
@@ -151,6 +153,11 @@ let gripDrag: {
   snapshot: AuthoredElement["params"];
   original: THREE.Vector3;
   smartSnap?: SmartPerpSnapResult | null;
+  /** Stretch axis (fixed opposite endpoint → gripped endpoint), captured at drag start.
+   *  Used by the Shift lock: perpendicular direction locked, length-only edit. */
+  axis: AxisLock | null;
+  /** True while Shift is held during this move — drives smart-snap bypass. */
+  shiftLock: boolean;
 } | null = null;
 
 let lastSnapValid = false;
@@ -2282,21 +2289,49 @@ function gripAt(e: MouseEvent): GripSpec | null {
 function startGripDrag(g: GripSpec, worldPt: THREE.Vector3) {
   const el = elements.find((e) => e.id === g.elementId);
   if (!el) return;
+  // Capture the stretch axis (fixed opposite endpoint → gripped endpoint) so
+  // Shift can lock the drag to the element's length for the whole gesture.
+  let axis: AxisLock | null = null;
+  if (g.kind === "start" || g.kind === "end") {
+    const p = el.params;
+    const fixedArr = g.kind === "start" ? p.end : p.start;
+    const curArr = g.kind === "start" ? p.start : p.end;
+    if (fixedArr && curArr) {
+      axis = makeAxisLock({ x: fixedArr[0], z: fixedArr[1] }, { x: curArr[0], z: curArr[1] });
+    }
+  }
   gripDrag = {
     grip: g,
     snapshot: JSON.parse(JSON.stringify(el.params)),
     original: worldPt.clone(),
+    axis,
+    shiftLock: false,
   };
 }
 
-function updateGripDrag(worldPt: THREE.Vector3) {
+function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
   if (!gripDrag) return;
   const el = elements.find((e) => e.id === gripDrag!.grip.elementId);
   if (!el) return;
   const p = el.params;
-  const x = snap(worldPt.x);
-  const z = snap(worldPt.z);
+  let x = snap(worldPt.x);
+  let z = snap(worldPt.z);
   const { kind, vertexIndex } = gripDrag.grip;
+
+  // ⇧ axis lock — the endpoint may only slide along the element's own length
+  // axis (perpendicular direction locked), so the element stretches/shrinks
+  // in place instead of drifting sideways.
+  let axisLocked = false;
+  if (gripDrag.axis && shiftKey && (kind === "start" || kind === "end")) {
+    const proj = projectOnAxis(gripDrag.axis, { x: worldPt.x, z: worldPt.z });
+    const t = snap(proj.t);
+    x = gripDrag.axis.ox + gripDrag.axis.dx * t;
+    z = gripDrag.axis.oz + gripDrag.axis.dz * t;
+    axisLocked = true;
+    gripDrag.smartSnap = null;
+    try { snapFeedback.hide(); } catch { /* */ }
+  }
+  gripDrag.shiftLock = axisLocked;
 
   if (kind === "hosted-offset" && el.hostId) {
     const host = elements.find((e) => e.id === el.hostId);
@@ -2312,8 +2347,9 @@ function updateGripDrag(worldPt: THREE.Vector3) {
         p.offsetAlongHost = snap(clamped, 0.05);
       }
     }
-  } else if ((kind === "start" || kind === "end") && (p.start || p.end) && el.type === "wall") {
+  } else if ((kind === "start" || kind === "end") && (p.start || p.end) && el.type === "wall" && !axisLocked) {
     // Smart Snap & Perpendicular Link — magnetize wall endpoint to column face
+    // (skipped while Shift axis-locks the drag to the element's own length).
     let sx = x, sz = z;
     gripDrag.smartSnap = null;
     try {
@@ -4347,7 +4383,7 @@ const TOOL_HINTS: Record<string, string> = {
   mirror: "Mirror: select element(s), then two points defining the mirror line",
   array: "Array: select element(s), then base point (prompts for count/spacing)",
   offset: "Offset: click a wall/line, then click the side to offset toward",
-  select: "Select: click elements · Ctrl add · Shift toggle · Alt remove · drag grips to reshape",
+  select: "Select: click elements · Ctrl add · Shift toggle · Alt remove · drag grips to reshape (Shift+drag endpoint = stretch along length)",
 };
 
 function updateLabel() {
@@ -5907,7 +5943,7 @@ export function setupAuthoring() {
 
     if (g.kind === "drag-move" && gripDrag) {
       const pt = groundPoint(g.event);
-      if (pt) updateGripDrag(pt);
+      if (pt) updateGripDrag(pt, (g.event as PointerEvent | MouseEvent).shiftKey === true);
       return true;
     }
 
