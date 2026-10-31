@@ -2,7 +2,7 @@
  *
  * 16 tabs. File · Architecture · Structure · Mechanical · Electrical ·
  * Insert · Annotate · Analyze · Massing & Site · Coordinate ·
- * Clash Detective · Edit · View · Manage · 5D Cost.
+ * Clash Detective · Edit · View · Manage · X Dim.
  *
  * Every button action is async-aware: the strip re-renders after the action
  * resolves, so badges, counters, and active states stay in sync. */
@@ -627,7 +627,7 @@ const WORKSPACES = [
   { id: "coordination", label: "Coordination", caption: "Federation + alignment", tab: "coordinate" },
   { id: "qa", label: "QA / QC", caption: "Clash + IDS + issues", tab: "clash" },
   { id: "documentation", label: "Documentation", caption: "Sheets + views", tab: "view" },
-  { id: "construction", label: "Construction", caption: "4D + 5D + automation", tab: "cost" },
+  { id: "construction", label: "Construction", caption: "4D + 5D + 6D · P6 · X Dim", tab: "cost" },
 ] as const;
 type WorkspaceId = typeof WORKSPACES[number]["id"];
 let activeWorkspace: WorkspaceId = "coordination";
@@ -2688,35 +2688,103 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     ],
   },
 
-  // ═══════════════════════════ 5D COST ═════════════════════════════════
+  // ═══════════════════════════ X DIM (4D / 5D / 6D) ═══════════════════
   {
     id: "cost",
-    label: "5D Cost",
+    label: "X Dim",
     items: () => [
-      groupLabel("Takeoff"),
-      b("cost", "Panel", safe(() => toggleCostPanel(), "Cost"), { active: isCostPanelVisible() }),
-      b("reset-offsets", "Recalc", safe(() => recalculateTakeoff(), "Recalc")),
+      groupLabel("4D Simulation"),
+      b("timeline", "Timeline", safe(() => openTimelineTab("4d"), "4D Timeline"), {
+        title: "4D construction simulation — Gantt, calendar playback, phases",
+        active: isTimelinePanelVisible(),
+      }),
+      b("play", "Play / Pause", safe(() => openTimelineTab("4d"), "4D Play"), {
+        title: "Open the 4D panel to play or pause the construction sequence",
+      }),
+      b("grid", "Gantt", safe(() => openTimelineTab("4d"), "Gantt chart"), {
+        title: "Open the 4D Gantt chart view of schedule activities",
+      }),
+      b("levels", "Phases", safe(() => openTimelineTab("4d"), "4D Phases"), {
+        title: "Manage construction phases and default phase sets",
+      }),
+      sep(),
+      groupLabel("P6 Planning"),
+      b("file", "Import P6", safe(() => pickAndImportP6(), "Import P6"), {
+        title: "Import Primavera P6 schedule (.xer or PMXML .xml)",
+      }),
+      b("connection", "Re-import", safe(() => pickAndImportP6(), "Re-import P6"), {
+        title: "Replace the current schedule with a new P6 file",
+      }),
+      b("link", "Auto-link", safe(() => openTimelineTab("links"), "Auto-link"), {
+        title: "Auto-link P6 activities to model elements by name / level / WBS",
+      }),
+      b("select", "Link selection", safe(() => openTimelineTab("links"), "Link selection"), {
+        title: "Assign the current model selection to a P6 activity",
+      }),
+      b("property", "Links panel", safe(() => openTimelineTab("links"), "Links"), {
+        title: "Review activity ↔ element links and unlinked tasks",
+      }),
+      sep(),
+      groupLabel("Assign to model"),
+      b("select-all", "Assign phase", safe(() => openTimelineTab("4d"), "Assign phase"), {
+        title: "Assign selected elements to a 4D construction phase",
+      }),
+      b("connection", "Assign activity", safe(() => openTimelineTab("links"), "Assign activity"), {
+        title: "Link selected elements to a P6 activity (sets activityId / WBS)",
+      }),
+      b("filter", "Unlinked", safe(() => openTimelineTab("links"), "Unlinked tasks"), {
+        title: "Show P6 activities that are not yet linked to the model",
+      }),
+      sep(),
+      groupLabel("5D Cost"),
+      b("cost", "Cost panel", safe(() => toggleCostPanel(), "Cost"), {
+        active: isCostPanelVisible(),
+        title: "Quantity take-off, rates, and cost items",
+      }),
+      b("quantification", "5D by activity", safe(() => openTimelineTab("5d"), "5D Cost"), {
+        title: "Cost per P6 activity and cumulative cost curve",
+      }),
+      b("reset-offsets", "Recalc takeoff", safe(() => recalculateTakeoff(), "Recalc"), {
+        title: "Recalculate model quantities for cost take-off",
+      }),
+      b("new-file", "Cost items", safe(() => toggleCostPanel(), "Cost items"), {
+        title: "Manage cost items and assignments",
+      }),
+      b("cost-takeoff", "Rates", safe(() => toggleCostPanel(), "Rates"), {
+        title: "Unit rates and rate assignments",
+      }),
+      sep(),
+      groupLabel("6D Carbon"),
+      b("energy", "Carbon panel", safe(() => openTimelineTab("6d"), "6D Carbon"), {
+        title: "Embodied carbon per activity and carbon factor table",
+      }),
+      b("settings", "Factors", safe(() => openTimelineTab("6d"), "Carbon factors"), {
+        title: "Edit or reset generic carbon factors (kgCO₂e)",
+      }),
+      sep(),
+      groupLabel("Schedules & BOQ"),
       schedulesButton(),
-      sep(),
-      groupLabel("P6 Schedule"),
-      b("file", "Import P6", safe(() => pickAndImportP6(), "Import P6"), { title: "Import a Primavera P6 schedule (.xer or PMXML .xml) and link it to the model" }),
-      b("connection", "Link", safe(() => openTimelineTab("links"), "Link activities"), { title: "Link selected elements to schedule activities" }),
-      b("csv", "Report", safe(() => openTimelineTab("5d"), "Schedule report"), { title: "Per-activity cost / carbon report (Export CSV inside)" }),
-      sep(),
-      groupLabel("4D / 5D / 6D"),
-      b("timeline", "4D", safe(() => openTimelineTab("4d"), "4D Timeline"), { title: "4D construction simulation with calendar playback and Gantt", active: isTimelinePanelVisible() }),
-      b("quantification", "5D Cost", safe(() => openTimelineTab("5d"), "5D Cost"), { title: "Cost per activity and cumulative cost curve" }),
-      b("energy", "6D Carbon", safe(() => openTimelineTab("6d"), "6D Carbon"), { title: "Embodied carbon per activity and editable carbon factors" }),
-      sep(),
-      groupLabel("Cost items"),
-      b("new-file", "Item", safe(() => toggleCostPanel(), "Cost Item"), { title: "Open cost item management" }),
-      b("cost-takeoff", "Rates", safe(() => toggleCostPanel(), "Cost Rates"), { title: "Open rates and assignments" }),
-      b("tag", "Categories", safe(() => toggleSchedules(), "Cost Categories"), { title: "Open schedule/category workflow" }),
+      b("tag", "Categories", safe(() => toggleSchedules(), "Categories"), {
+        title: "Schedule categories and templates",
+      }),
+      b("report", "Cost summary", safe(() => toggleCostPanel(), "Cost summary"), {
+        title: "Open cost summary in the Cost panel",
+      }),
       sep(),
       groupLabel("Reports"),
-      b("report", "Summary", safe(() => toggleCostPanel(), "Cost Summary")),
-      b("csv", "CSV", safe(() => void exportCostCsv(), "Cost CSV")),
-      b("print", "BOQ", safe(() => void exportCostCsv(), "BOQ Export")),
+      b("csv", "P6 report CSV", safe(() => openTimelineTab("5d"), "P6 report"), {
+        title: "Per-activity cost / carbon report — export CSV from the panel",
+      }),
+      b("csv", "Cost CSV", safe(() => void exportCostCsv(), "Cost CSV"), {
+        title: "Export quantity take-off as CSV",
+      }),
+      b("print", "BOQ", safe(() => void exportCostCsv(), "BOQ"), {
+        title: "Export bill of quantities",
+      }),
+      b("timeline", "Open X Dim hub", safe(() => toggleTimelinePanel(), "X Dim hub"), {
+        title: "Toggle the unified 4D / 5D / 6D / Links panel",
+        active: isTimelinePanelVisible(),
+      }),
     ],
   },
 ];
