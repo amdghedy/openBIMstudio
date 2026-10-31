@@ -193,14 +193,7 @@ pill.className = "obs-ribbon__pill";
  *  so only the tab buttons remain (flat / shrunk). Double-click again to restore. */
 let ribbonMinimized = false;
 try {
-  const migrated = localStorage.getItem("obs.ribbon.ux-migrated-v1") === "1";
-  if (!migrated) {
-    localStorage.setItem("obs.ribbon.minimized", "0");
-    localStorage.setItem("obs.ribbon.ux-migrated-v1", "1");
-    ribbonMinimized = false;
-  } else {
-    ribbonMinimized = localStorage.getItem("obs.ribbon.minimized") === "1";
-  }
+  localStorage.setItem("obs.ribbon.minimized", "0");
 } catch { /* */ }
 
 function applyRibbonMinimize(min: boolean) {
@@ -282,6 +275,23 @@ function sep(): HTMLElement {
   d.dataset.obsSep = "1";
   d.style.display = "none";
   return d;
+}
+
+/** Returns true if any object is currently selected. Safe multi-API check. */
+function hasAnySelection(): boolean {
+  try {
+    const w: any = window;
+    if (w.ctx) {
+      if ((w.ctx.highlighter && w.ctx.highlighter.selected && w.ctx.highlighter.selected.size > 0)) return true;
+      if ((w.ctx.highlighter && w.ctx.highlighter.selection && w.ctx.highlighter.selection.size > 0)) return true;
+      if ((w.ctx.selection && w.ctx.selection.size > 0)) return true;
+      if (typeof w.ctx.hasSelection === "function" && w.ctx.hasSelection()) return true;
+    }
+    if (typeof w.getSelectedIds === "function" && w.getSelectedIds().length > 0) return true;
+    if (w.__obs_selection && w.__obs_selection.length > 0) return true;
+    if (w.obs && typeof w.obs.getSelectedIds === "function" && w.obs.getSelectedIds().length > 0) return true;
+  } catch { /* */ }
+  return false;
 }
 
 function groupLabel(text: string): HTMLElement {
@@ -648,6 +658,23 @@ function setActiveWorkspace(id: string) {
    Tabs
    ═════════════════════════════════════════════════════════════════════════ */
 const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
+  // ===== CONTEXTUAL MODIFY TAB (visible only when objects are selected) =====
+  {
+    id: "modify-contextual",
+    label: "Modify",
+    items: () => [
+      toolBtn("select-all", "Select", "select", "Esc"),
+      toolBtn("move", "Move", "move", "G"),
+      toolBtn("copy", "Copy", "copy", "C"),
+      toolBtn("rotate", "Rotate", "rotate", "R"),
+      toolBtn("mirror", "Mirror", "mirror", "M"),
+      toolBtn("array", "Array", "array", "A"),
+      toolBtn("offset", "Offset", "offset", "O"),
+      sep(),
+      b("delete", "Delete", safe(() => deleteSelectedElement(), "Delete"), { kbd: "Del" }),
+      b("clear", "Clear", safe(() => clearAllElements(), "Clear")),
+    ]
+  },
   // ════════════════════════════════ FILE ═══════════════════════════════
   {
     id: "file",
@@ -806,18 +833,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         c.equality(ids, "spacing");
         toast(`Equal spacing applied to ${ids.length} elements`, "success");
       }, "Equality"), { title: "Make spacing between selected elements equal" }),
-      sep(),
-      groupLabel("Modify"),
-      toolBtn("select-all", "Select", "select", "Esc"),
-      toolBtn("move", "Move", "move", "G"),
-      toolBtn("copy", "Copy", "copy"),
-      toolBtn("rotate", "Rotate", "rotate", "R"),
-      toolBtn("mirror", "Mirror", "mirror"),
-      toolBtn("array", "Array", "array"),
-      toolBtn("offset", "Offset", "offset"),
-      sep(),
-      b("delete", "Delete", safe(() => deleteSelectedElement(), "Delete"), { kbd: "Del" }),
-      b("clear", "Clear", safe(() => clearAllElements(), "Clear")),
       sep(),
       groupLabel("Massing"),
       b("mass", "In-Place Mass", safe(async () => {
@@ -2798,6 +2813,10 @@ function refreshRibbon() {
 }
 
 function renderTabs() {
+  // Reset activeTab if Modify tab is active but nothing is selected
+  if (activeTab === "modify-contextual" && !hasAnySelection()) {
+    activeTab = "file";
+  }
   tabsRow.innerHTML = "";
 
   const brand = document.createElement("div");
@@ -2810,6 +2829,8 @@ function renderTabs() {
   tabsRow.appendChild(brand);
 
   for (const t of TABS) {
+    // Skip contextual Modify tab when nothing is selected
+    if (t.id === "modify-contextual" && !hasAnySelection()) continue;
 
     const btn = document.createElement("button");
     btn.className = "obs-ribbon__tab" + (t.id === "file" ? " obs-ribbon__tab--file" : "");
