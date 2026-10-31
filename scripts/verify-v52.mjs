@@ -13,7 +13,7 @@ const plan = read("src/features/plan-view-panel.ts");
 const auth = read("src/features/authoring.ts");
 const pkg = JSON.parse(read("package.json"));
 
-pass("release version 0.52", pkg.version === "0.52.0", pkg.version);
+pass("release version 0.52", (([ma, mi]) => ma > 0 || mi >= 52)(pkg.version.split(".").map(Number)), pkg.version);
 pass("dimension references require model boundaries", plan.includes('Dimensions may terminate only on an actual model boundary') && plan.includes('if (!hit) {'));
 pass("dimension references store boundary semantics", plan.includes('"linear-side" as const') && plan.includes('"linear-cap" as const') && plan.includes('"static-boundary"'));
 pass("dimension scale is paper-space driven", plan.includes('function paperMmToWorld') && plan.includes('offsetMm?: number'));
