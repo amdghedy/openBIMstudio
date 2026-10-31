@@ -30,7 +30,7 @@ fs.writeFileSync(path.join(OUT, "package.json"), JSON.stringify({ type: "module"
 execSync(
   `npx tsc src/modules/cad-link/dwg-reader-worker.ts src/modules/cad-link/dwg-parse-core.ts` +
   ` src/modules/cad-link/dwg-reader-protocol.ts` +
-  ` --outDir ${OUT} --module es2020 --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop`,
+  ` --outDir "${OUT}" --module es2020 --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop`,
   { cwd: ROOT, stdio: "inherit" },
 );
 const addJsExt = (d) => {

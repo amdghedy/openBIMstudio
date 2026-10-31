@@ -41,7 +41,7 @@ const OUT = fs.mkdtempSync(path.join(ROOT, ".dwg-iso-"));
 fs.writeFileSync(path.join(OUT, "package.json"), JSON.stringify({ type: "module" }));
 execSync(
   `npx tsc src/modules/cad-link/dwg-parse-core.ts src/modules/cad-link/dwg-reader-protocol.ts` +
-  ` --outDir ${OUT} --module es2020 --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop`,
+  ` --outDir "${OUT}" --module es2020 --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop`,
   { cwd: ROOT, stdio: "inherit" },
 );
 // tsc lays outputs out relative to the common root (src/modules/cad-link/...)
