@@ -78,6 +78,7 @@ import {
 } from "../modules/snapping/smart-perp-snap";
 import { snapFeedback } from "./snap-feedback";
 import type { MepConnector } from "../modules/mep/connectors";
+import { lengthKeepRight, thicknessKeepFace, openingWidthKeepRight, heightKeepBase } from "../modules/native-bim/dimension-edit";
 import { registerTempDimProvider, type TempDimSpec, setupEditableTempDims } from "./temp-dimensions-edit";
 import { setupOptionsBar } from "./options-bar";
 
@@ -4647,6 +4648,7 @@ export function applyElementParamChange(
   elementId: string,
   key: string,
   value: number | string | boolean,
+  extra?: Record<string, unknown>,
 ): { ok: boolean; reason?: string } {
   const el = elements.find((e) => e.id === elementId);
   if (!el) return { ok: false, reason: "element_not_found" };
@@ -4684,6 +4686,8 @@ export function applyElementParamChange(
       }
     }
   }
+  // Companion params changed together with `key` (e.g. anchored dimension edits move start AND end).
+  if (extra) for (const [k, v] of Object.entries(extra)) (candidateParams as any)[k] = v;
   const candidate: AuthoredElement = { ...el, params: candidateParams };
   const diagnostics = validateNativeModel({
     elements: elements.map((item) => (item.id === el.id ? candidate : item)),
@@ -6369,46 +6373,48 @@ function buildEditableTempDims(): TempDimSpec[] {
 function commitEditableTempDim(spec: TempDimSpec, value: number): boolean {
   const el = elements.find((e) => e.id === spec.elementId);
   if (!el || !Number.isFinite(value) || value <= 0) return false;
-  const p = el.params;
-  const before = JSON.parse(JSON.stringify(p));
+  const p = el.params as any;
+  let key = spec.param;
+  let val: any = value;
+  let extra: Record<string, unknown> | undefined;
+  const before = JSON.parse(JSON.stringify(el.params));
   if (spec.param === "length") {
-    if (!p.start || !p.end) return false;
-    const [sx, sz] = p.start;
-    const [ex, ez] = p.end;
-    const len = Math.hypot(ex - sx, ez - sz);
-    if (len < 1e-9) return false;
-    const k = value / len;
-    p.end = [sx + (ex - sx) * k, sz + (ez - sz) * k];
+    // Right (or bottom) end stays fixed, the left (or top) end moves.
+    const r = p.start && p.end ? lengthKeepRight(p.start, p.end, value) : null;
+    if (!r) return false;
+    key = "start"; val = r.start; extra = { end: r.end };
   } else if (spec.param === "height") {
-    p.height = Math.max(0.01, value);
-    if (p.topLevelId) { p.topLevelId = undefined; p.topOffset = 0; }
+    // Base elevation stays fixed, the top edge moves.
+    const patch = heightKeepBase(p, value);
+    if (!patch) return false;
+    const { height, ...rest } = patch;
+    key = "height"; val = height; extra = rest;
   } else if (spec.param === "thickness") {
-    p.thickness = Math.max(0.01, value);
+    // The bottom/right face stays fixed, the opposite face moves.
+    const r = p.start && p.end ? thicknessKeepFace(p.start, p.end, Number(p.thickness) || value, value) : null;
+    if (!r) return false;
+    key = "thickness"; val = Math.max(0.01, value); extra = { start: r.start, end: r.end };
   } else if (spec.param === "width") {
-    p.width = Math.max(0.05, value);
-  } else if (spec.param === "offsetAlongHost") {
-    p.offsetAlongHost = value;
-  } else if (spec.param === "sillHeight") {
-    p.sillHeight = value;
-  } else {
+    const host = el.hostId ? elements.find((e) => e.id === el.hostId) : undefined;
+    const hp = host?.params as any;
+    const r = hp?.start && hp?.end ? openingWidthKeepRight(hp.start, hp.end, Number(p.offsetAlongHost) || 0, Number(p.width) || value, Math.max(0.05, value)) : null;
+    key = "width"; val = Math.max(0.05, value);
+    if (r) extra = { offsetAlongHost: r.offsetAlongHost };
+  } else if (spec.param !== "offsetAlongHost" && spec.param !== "sillHeight") {
     return false;
   }
-  // Keep an active lock on this dimension in sync with the committed value,
-  // so the constraint follows the user's edit instead of snapping back.
+  const res = applyElementParamChange(spec.elementId, key, val, extra);
+  if (!res.ok) { console.warn("[temp-dim] edit rejected:", res.reason); return false; }
+  // A locked dimension keeps its constraint at the new value.
   const lock = dimLocks.find((l) => l.elementId === spec.elementId && l.param === spec.param);
   if (lock) lock.value = value;
-
-  const after = JSON.parse(JSON.stringify(p));
-  if (JSON.stringify(before) === JSON.stringify(after)) return false;
+  const after = JSON.parse(JSON.stringify(el.params));
   // Same undo transaction as grip drags: Ctrl+Z reverts the dimension edit.
   history.push({
     label: `Edit dimension · ${el.name}`,
     apply: () => { el.params = JSON.parse(JSON.stringify(after)); rebuild(); markDirty(); },
     revert: () => { el.params = JSON.parse(JSON.stringify(before)); rebuild(); markDirty(); },
   });
-  rebuild();
-  markDirty();
-  notifyAuthoringChange();
   return true;
 }
 

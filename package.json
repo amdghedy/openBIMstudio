@@ -68,6 +68,7 @@
     "test:twin-dimensions": "node tests/twin-dimensions.test.cjs",
     "test:mtext": "node tests/mtext.test.cjs",
     "test:level-constraints": "node tests/level-constraints.test.cjs",
+    "test:dimension-edit": "node tests/dimension-edit.test.cjs",
     "test:schedule-4d": "node tests/schedule-4d.test.cjs",
     "test:schedule-4d-ui": "node tests/schedule-4d-ui.test.cjs",
     "test:twin-export": "node tests/twin-export-geometry.test.cjs",
