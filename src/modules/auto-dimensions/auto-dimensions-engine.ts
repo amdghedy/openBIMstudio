@@ -529,27 +529,30 @@ class AutoDimensionsEngine {
   // ---------- Overlay rendering ----------
 
   ensureOverlay(): void {
-    if (this.overlayHost) return;
-    const host = document.createElement("div");
-    host.id = "obs-auto-dims-overlay";
-    host.style.cssText = `
-      position: absolute; inset: 0; pointer-events: none; z-index: 40;
-      overflow: hidden; font-family: "Segoe UI", system-ui, sans-serif;
-    `;
+    if (!this.overlayHost) {
+      const host = document.createElement("div");
+      host.id = "obs-auto-dims-overlay";
+      host.style.cssText = `
+        position: absolute; inset: 0; pointer-events: none; z-index: 40;
+        overflow: hidden; font-family: "Segoe UI", system-ui, sans-serif;
+      `;
+      // May run before the viewer exists; park on <body>, ensureOverlay() is
+      // called on every render so the host is re-parented into the real
+      // viewport (#viewport) as soon as it appears.
+      document.body.appendChild(host);
+      this.overlayHost = host;
+    }
     const viewport =
       document.getElementById("viewport") ||
       document.querySelector(".obs-viewport") ||
       document.querySelector("canvas")?.parentElement;
-    if (viewport) {
+    if (viewport && this.overlayHost.parentElement !== viewport) {
       const parent = viewport as HTMLElement;
       if (getComputedStyle(parent).position === "static") {
         parent.style.position = "relative";
       }
-      parent.appendChild(host);
-    } else {
-      document.body.appendChild(host);
+      parent.appendChild(this.overlayHost);
     }
-    this.overlayHost = host;
   }
 
   requestRender(): void {
@@ -572,16 +575,25 @@ class AutoDimensionsEngine {
       return;
     }
 
-    const canvas = renderer.domElement;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
+    const canvas = renderer.domElement as HTMLCanvasElement;
+    const cRect = canvas.getBoundingClientRect();
+    const w = cRect.width;
+    const h = cRect.height;
+    if (w < 1 || h < 1) return;
+    const hRect = this.overlayHost.getBoundingClientRect();
+    // canvas space -> overlay host space (the host may be attached anywhere)
+    const ox = cRect.left - hRect.left;
+    const oy = cRect.top - hRect.top;
     const dims = this.listDimensions();
 
     let html = "";
     for (const d of dims) {
       if (d.points.length < 2) continue;
       const projected = d.points
-        .map((p) => projectPoint(new THREE.Vector3(p.x, p.y, p.z), cam, w, h))
+        .map((p) => {
+          const q = projectPoint(new THREE.Vector3(p.x, p.y, p.z), cam, w, h);
+          return q ? { x: q.x + ox, y: q.y + oy, visible: q.visible } : null;
+        })
         .filter(Boolean) as { x: number; y: number; visible: boolean }[];
       if (projected.length < 2) continue;
 
@@ -617,7 +629,7 @@ class AutoDimensionsEngine {
         const stroke = d.temporary ? "#0078D4" : "#201F1E";
         const tick = 6;
 
-        html += `<svg style="position:absolute;left:0;top:0;width:${w}px;height:${h}px;overflow:visible">
+        html += `<svg style="position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible">
           <line x1="${a.x}" y1="${a.y}" x2="${ax}" y2="${ay}" stroke="${stroke}" stroke-width="1" opacity="0.7"/>
           <line x1="${b.x}" y1="${b.y}" x2="${bx}" y2="${by}" stroke="${stroke}" stroke-width="1" opacity="0.7"/>
           <line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${stroke}" stroke-width="1.25"/>

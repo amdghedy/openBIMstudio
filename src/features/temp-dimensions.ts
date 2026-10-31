@@ -40,6 +40,14 @@ function getRenderer(): THREE.WebGLRenderer | null {
   );
 }
 
+/** The real viewport container (#viewport / ctx.rightHost), once core/setup.ts has run. */
+function viewportEl(): HTMLElement | null {
+  return (
+    ((ctx as Any).rightHost as HTMLElement | undefined) ??
+    (document.getElementById("viewport") as HTMLElement | null)
+  );
+}
+
 function formatLength(metres: number): string {
   try {
     const u = units as any;
@@ -50,37 +58,51 @@ function formatLength(metres: number): string {
   return (metres * 1000).toFixed(0) + " mm";
 }
 
+/**
+ * Project a world point into pixel space RELATIVE TO THE OVERLAY HOST.
+ *
+ * Uses the render canvas rect (the true projection surface) for the
+ * NDC->pixel conversion, then maps canvas space -> host space via the two
+ * rects' origins, so the labels land on the geometry no matter where the
+ * host is currently attached (it may live on <body> until the viewport
+ * element is created by core/setup.ts and re-parented by ensureHost()).
+ */
 function project(v: THREE.Vector3): { x: number; y: number; visible: boolean } | null {
   const cam = getCamera();
   const renderer = getRenderer();
   if (!cam || !renderer) return null;
-  const canvas = renderer.domElement;
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
+  const canvas = renderer.domElement as HTMLCanvasElement;
+  if (!canvas || !canvas.isConnected) return null;
+  const cRect = canvas.getBoundingClientRect();
+  if (cRect.width < 1 || cRect.height < 1) return null;
+  const hRect = ensureHost().getBoundingClientRect();
   const ndc = v.clone().project(cam);
   if (ndc.z > 1 || ndc.z < -1) return { x: 0, y: 0, visible: false };
   return {
-    x: (ndc.x * 0.5 + 0.5) * w,
-    y: (-ndc.y * 0.5 + 0.5) * h,
+    x: (ndc.x * 0.5 + 0.5) * cRect.width + (cRect.left - hRect.left),
+    y: (-ndc.y * 0.5 + 0.5) * cRect.height + (cRect.top - hRect.top),
     visible: true,
   };
 }
 
 function ensureHost(): HTMLDivElement {
-  if (host) return host;
-  host = document.createElement("div");
-  host.id = "obs-temp-dims";
-  host.style.cssText =
-    "position:absolute;inset:0;pointer-events:none;z-index:70;overflow:hidden;";
-  const viewport =
-    (ctx as Any).rightHost ??
-    document.getElementById("viewport") ??
-    document.querySelector(".obs-viewport") ??
-    document.body;
-  if (getComputedStyle(viewport).position === "static") {
-    (viewport as HTMLElement).style.position = "relative";
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "obs-temp-dims";
+    host.style.cssText =
+      "position:absolute;inset:0;pointer-events:none;z-index:70;overflow:hidden;";
+    // May run before core/setup.ts creates the viewport (dynamic import from
+    // critical-gaps-boot can race the viewer); park on <body> and re-parent
+    // into the real viewport below as soon as it exists.
+    document.body.appendChild(host);
   }
-  viewport.appendChild(host);
+  const viewport = viewportEl();
+  if (viewport && host.parentElement !== viewport) {
+    if (getComputedStyle(viewport).position === "static") {
+      (viewport as HTMLElement).style.position = "relative";
+    }
+    viewport.appendChild(host);
+  }
   return host;
 }
 

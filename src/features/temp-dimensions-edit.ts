@@ -5,10 +5,17 @@
  *
  *  Placement policy (critical):
  *  - Project the RAW a/b points (same coordinates as wall endpoint grips).
- *  - Do NOT apply the provider world offset to position — that was pushing
- *    labels far from the selected element.
- *  - Apply a fixed 28px screen-space perpendicular push only.
- *  - Use world offset solely to decide which side the push goes (cycle).
+ *  - NDC -> pixels uses the RENDER CANVAS rect (the true projection surface),
+ *    then maps canvas space -> overlay-host space via the two rects' origins,
+ *    so labels land on the geometry no matter where the host is attached.
+ *  - The overlay host is re-parented into the real viewport (#viewport /
+ *    ctx.rightHost) as soon as it exists — this module is evaluated as a
+ *    static dependency of authoring.ts, BEFORE core/setup.ts builds the
+ *    viewer, so it initially parks on <body>. Without the re-parent every
+ *    dimension was drawn offset by the left panel + ribbon (the
+ *    "dimensions appear far away from the wall" bug).
+ *  - Apply a fixed screen-space perpendicular push (16px) only.
+ *  - Use the provider world offset solely to decide which side the push goes.
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
@@ -51,39 +58,61 @@ const SCREEN_OFFSET_PX = 16;
 const CAMERA = (): THREE.Camera | null =>
   ((ctx as Any).world?.camera?.three ?? (ctx as Any).world?.camera ?? null);
 
+const getRenderer = (): THREE.WebGLRenderer | null =>
+  ((ctx as Any).world?.renderer?.three ?? (ctx as Any).world?.renderer ?? null);
+
+/** The real viewport container (#viewport / ctx.rightHost), once core/setup.ts has run. */
+function viewportEl(): HTMLElement | null {
+  return (
+    ((ctx as Any).rightHost as HTMLElement | undefined) ??
+    (document.getElementById("viewport") as HTMLElement | null)
+  );
+}
+
 /**
- * Project a world point into the same pixel space used by wall-handles.
- * MUST use ctx.rightHost.getBoundingClientRect() — never renderer.domElement
- * size alone — otherwise dimensions drift far from the selected geometry.
+ * Project a world point into pixel space RELATIVE TO THE OVERLAY HOST.
+ *
+ * Uses the render canvas rect (the true projection surface) for the
+ * NDC->pixel conversion, then maps canvas space -> host space via the two
+ * rects' origins. This stays correct even if the host is temporarily
+ * attached elsewhere (e.g. <body> before the viewport is created).
  */
 function project(v: THREE.Vector3): { x: number; y: number; visible: boolean } | null {
   const cam = CAMERA();
   if (!cam) return null;
-  const hostEl =
-    ((ctx as Any).rightHost as HTMLElement | undefined) ??
-    document.getElementById("viewport") ??
-    null;
-  if (!hostEl) return null;
-  const rect = hostEl.getBoundingClientRect();
-  if (rect.width < 1 || rect.height < 1) return null;
+  const canvas = getRenderer()?.domElement as HTMLCanvasElement | undefined;
+  if (!canvas || !canvas.isConnected) return null;
+  const hostEl = ensureHost();
+  const cRect = canvas.getBoundingClientRect();
+  if (cRect.width < 1 || cRect.height < 1) return null;
+  const hRect = hostEl.getBoundingClientRect();
   const ndc = v.clone().project(cam);
   if (!isFinite(ndc.x) || !isFinite(ndc.y)) return null;
   if (ndc.z < -1 || ndc.z > 1) return { x: 0, y: 0, visible: false };
   return {
-    x: (ndc.x * 0.5 + 0.5) * rect.width,
-    y: (-ndc.y * 0.5 + 0.5) * rect.height,
+    x: (ndc.x * 0.5 + 0.5) * cRect.width + (cRect.left - hRect.left),
+    y: (-ndc.y * 0.5 + 0.5) * cRect.height + (cRect.top - hRect.top),
     visible: true,
   };
 }
 
 function ensureHost(): HTMLDivElement {
-  if (host) return host;
-  host = document.createElement("div");
-  host.id = "obs-temp-dims-edit";
-  host.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:72;overflow:hidden;";
-  const parent = ((ctx as Any).rightHost ?? document.getElementById("viewport") ?? document.body) as HTMLElement;
-  if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
-  parent.appendChild(host);
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "obs-temp-dims-edit";
+    host.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:72;overflow:hidden;";
+    // This module is evaluated as a static dependency of authoring.ts, which
+    // runs BEFORE core/setup.ts builds the viewer, so the real viewport does
+    // not exist yet. Park the host on <body> for now; the check below
+    // re-parents it into the viewport as soon as it appears (render() calls
+    // ensureHost() every frame, so the recovery is automatic).
+    document.body.appendChild(host);
+  }
+  const parent = viewportEl();
+  if (parent && host.parentElement !== parent) {
+    if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
+    parent.appendChild(host);
+  }
   return host;
 }
 
