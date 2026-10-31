@@ -23,6 +23,7 @@ import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import * as M from "../modules/cad-viewer/viewer-math";
+import { svgIcon, type IconName } from "./icon-set";
 
 type Tool =
   | "pan"
@@ -142,6 +143,30 @@ function build(): void {
     #obs-cad-viewer table{width:100%;border-collapse:collapse}#obs-cad-viewer td{padding:3px 8px;border-bottom:1px solid #222a37}
     #obs-cad-viewer td:first-child{color:#9aa4b2}
 
+    /* Ribbon-style toolbar: icon over label, grouped, caption underneath (same look as the main app ribbon) */
+    #obs-cad-viewer{--cadrb-w:56px;--cadrb-h:36px;--cadrb-gap:2px;--cadrb-icon:16px;--cadrb-label:9px}
+    #obs-cad-viewer .cadrb-strip{display:flex;align-items:stretch;flex:none;height:104px;padding:7px 8px;overflow-x:auto;overflow-y:hidden;background:linear-gradient(180deg,var(--bg-surface,#12141b) 0%,var(--bg-base,#0b0d12) 100%);border-bottom:1px solid var(--border-default,#2a2e3a);user-select:none;scrollbar-width:thin}
+    #obs-cad-viewer .cadrb-host{display:flex;align-items:stretch;flex:none}
+    #obs-cad-viewer .cadrb-host--end{flex:1 0 auto}
+    #obs-cad-viewer .cadrg{display:flex;flex-direction:column;align-items:center;padding:0 4px;border-right:1px solid var(--border-subtle,#1e2029);min-width:0;flex:none;height:100%}
+    #obs-cad-viewer .cadrg--end{margin-left:auto;border-right:none}
+    #obs-cad-viewer .cadrg__body{flex:1;display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,var(--cadrb-h));grid-auto-columns:var(--cadrb-w);gap:var(--cadrb-gap);align-content:center;justify-content:center;min-width:0}
+    #obs-cad-viewer .cadrg__body--fields{grid-auto-columns:auto;column-gap:6px}
+    #obs-cad-viewer .cadrg__label{text-align:center;font:500 9px var(--font-sans,system-ui);letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary,#6b7280);padding-top:3px;white-space:nowrap;opacity:.65;flex:none}
+    #obs-cad-viewer .cadrb{width:var(--cadrb-w);height:var(--cadrb-h);padding:3px 2px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:transparent;border:1px solid transparent;border-radius:4px;cursor:pointer;color:var(--text-secondary,#a0a6b5);font-family:var(--font-sans,system-ui);position:relative;overflow:visible;flex:none;transition:background .14s,color .14s,border-color .14s}
+    #obs-cad-viewer .cadrb:hover{background:var(--bg-hover,#232633);color:var(--text-primary,#e8eaf0);border-color:var(--border-subtle,#1e2029)}
+    #obs-cad-viewer .cadrb:active{background:var(--bg-active,#2a2e3d);transform:scale(.96)}
+    #obs-cad-viewer .cadrb.on{background:var(--accent-dim,rgba(56,189,248,.14));color:var(--accent,#38bdf8);border-color:var(--accent,#38bdf8);box-shadow:inset 0 0 6px rgba(56,189,248,.10)}
+    #obs-cad-viewer .cadrb--danger{color:#fca5a5}
+    #obs-cad-viewer .cadrb--danger:hover{background:rgba(239,68,68,.15);border-color:#ef4444;color:#fecaca}
+    #obs-cad-viewer .cadrb--flip .cadrb__icon{transform:scaleX(-1)}
+    #obs-cad-viewer .cadrb__icon{display:flex;align-items:center;justify-content:center;width:var(--cadrb-icon);height:var(--cadrb-icon);color:inherit;pointer-events:none;flex:none}
+    #obs-cad-viewer .cadrb__icon svg{display:block;width:var(--cadrb-icon);height:var(--cadrb-icon);stroke:currentColor;fill:none;stroke-width:1.9}
+    #obs-cad-viewer .cadrb__icon svg [fill="currentColor"]{fill:currentColor;stroke:none}
+    #obs-cad-viewer .cadrb__label{display:block;font-size:var(--cadrb-label);line-height:1;font-weight:500;color:inherit;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:0 1px;opacity:.85}
+    #obs-cad-viewer .cadrb.on .cadrb__label,#obs-cad-viewer .cadrb:hover .cadrb__label{opacity:1}
+    #obs-cad-viewer .cadrb-field{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:var(--cadrb-h);padding:0 3px;font:500 9px var(--font-sans,system-ui);color:var(--text-tertiary,#6b7280);text-transform:uppercase;letter-spacing:.5px}
+    #obs-cad-viewer .cadrb-field select{background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);color:var(--text-primary,#e8eaf0);font:500 10px var(--font-mono,monospace);padding:3px 4px;border-radius:3px;min-width:70px;outline:none;cursor:pointer;text-transform:none;letter-spacing:0}
     /* AutoCAD In-Canvas ViewCube */
     #obs-cad-viewcube {
       position: absolute; top: 16px; right: 28px; width: 68px; height: 68px;
@@ -222,8 +247,10 @@ function build(): void {
   </style>
 
   <!-- AutoCAD Ribbon / Main Action Bar -->
-  <div class="bar" data-r="tools"></div>
-  <div class="bar" data-r="tools2"></div>
+  <div class="cadrb-strip">
+    <div class="cadrb-host" data-r="tools"></div>
+    <div class="cadrb-host cadrb-host--end" data-r="tools2"></div>
+  </div>
 
   <!-- Main CAD Viewport & Sidebars -->
   <div style="display:flex;flex:1;min-height:0">
@@ -1717,39 +1744,95 @@ function build(): void {
     ["calibrate", "Calibrate", "K"],
   ];
 
+  /* Ribbon-style button / group builders (shared by buildBar + buildBar2) */
+  function rb(icon: IconName, label: string, attrs: string, title: string, cls = ""): string {
+    return (
+      `<button class="cadrb${cls ? " " + cls : ""}" ${attrs} title="${escapeHtml(title)}" aria-label="${escapeHtml(label)}">` +
+      `<span class="cadrb__icon">${svgIcon(icon)}</span><span class="cadrb__label">${escapeHtml(label)}</span></button>`
+    );
+  }
+  function rg(label: string, body: string, bodyCls = "", groupCls = ""): string {
+    return (
+      `<div class="cadrg${groupCls ? " " + groupCls : ""}"><div class="cadrg__body${bodyCls ? " " + bodyCls : ""}">${body}</div>` +
+      `<div class="cadrg__label">${escapeHtml(label)}</div></div>`
+    );
+  }
   function buildBar() {
-    tools.innerHTML =
-      `<button data-a="open" style="font-weight:600;color:#38bdf8">📂 Open…</button><input type="file" data-r="file" accept=".dwg,.dxf" style="display:none"><span class="sep"></span>` +
-      T.map(
-        ([k, l, key]) =>
-          `<button data-t="${k}" title="${l} (${key})" style="${
-            ["line", "circle", "rect", "arc"].includes(k) ? "border-color:#38bdf8;" : ""
-          }">${l}</button>`,
-      ).join("") +
-      `<span class="sep"></span>
-      <button data-a="ext" title="Zoom extents (Z E)">Extents</button>
-      <button data-a="zsel" title="Zoom to selection (F)">Selection</button>
-      <button data-a="grid" class="on" title="Grid (F7)">Grid</button>
-      <button data-a="snap" class="on" title="Object snap (F3)">Snap</button>
-      <button data-a="ortho" title="Ortho (F8)">Ortho</button>
-      <button data-a="dyn" class="on" title="Dynamic Input HUD (F12)">DYN</button>
-      <button data-a="lwt" class="on" title="Lineweight display">LWT</button>
-      <span class="sep"></span>
-      <label>Background <select data-a="bg">${Object.keys(BG)
-        .map((k) => `<option value="${k}" ${k === "autocad" ? "selected" : ""}>${k}</option>`)
-        .join("")}</select></label>
-      <label>Units <select data-a="du">${["drawing", "mm", "cm", "m", "in", "ft"]
-        .map((u) => `<option>${u}</option>`)
-        .join("")}</select></label>
-      <span class="sep"></span>
-      <button data-a="undo" title="Undo (Ctrl+Z / U)">↶ Undo</button>
-      <button data-a="redo" title="Redo (Ctrl+Y)">↷ Redo</button>
-      <button data-a="erase" title="Erase selected (DEL / E)">🗑 Erase</button>
-      <span style="flex:1"></span>
-      <button data-a="plot" title="AutoCAD Plot to PDF / Paper">🖨️ Plot…</button>
-      <button data-a="help" title="AutoCAD Shortcuts & Commands (?)">❓</button>
-      <button data-a="close" style="background:#ef4444;border-color:#f87171;color:white;font-weight:600">✕ Close</button>`;
+    const tip = (k: Tool): string => {
+      const d = T.find((x) => x[0] === k);
+      return d ? `${d[1]} (${d[2]})` : String(k);
+    };
+    const tb = (k: Tool, icon: IconName, label: string): string => rb(icon, label, `data-t="${k}"`, tip(k));
+    const bgOpts = Object.keys(BG)
+      .map((k) => `<option value="${k}" ${k === "autocad" ? "selected" : ""}>${k}</option>`)
+      .join("");
+    const unitOpts = ["drawing", "mm", "cm", "m", "in", "ft"].map((u) => `<option>${u}</option>`).join("");
 
+    tools.innerHTML =
+      rg(
+        "File",
+        rb("folder", "Open", `data-a="open"`, "Open a DWG or DXF file") +
+          rb("print", "Plot", `data-a="plot"`, "Plot to PDF / paper") +
+          `<input type="file" data-r="file" accept=".dwg,.dxf" style="display:none">`,
+      ) +
+      rg(
+        "Draw",
+        tb("line", "mline", "Line") +
+          tb("circle", "circle", "Circle") +
+          tb("poly", "model-curve", "Pline") +
+          tb("rect", "plate", "Rectang") +
+          tb("arc", "arc-length", "Arc"),
+      ) +
+      rg(
+        "Modify",
+        tb("select", "select-all", "Select") +
+          tb("erase", "delete", "Erase") +
+          tb("box", "isolate", "Box") +
+          rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)") +
+          tb("offset", "offset", "Offset"),
+      ) +
+      rg(
+        "History",
+        rb("undo", "Undo", `data-a="undo"`, "Undo (Ctrl+Z / U)") +
+          rb("undo", "Redo", `data-a="redo"`, "Redo (Ctrl+Y)", "cadrb--flip"),
+      ) +
+      rg(
+        "Measure",
+        tb("dist", "measure", "Distance") +
+          tb("area", "area", "Area") +
+          tb("dim", "dim-aligned", "Dimension") +
+          tb("coord", "spot-coord", "Coords") +
+          tb("radius", "dim-radial", "Radius") +
+          tb("calibrate", "ref-plane", "Calibrate"),
+      ) +
+      rg(
+        "Markup",
+        tb("redline", "detail-line", "Redline") +
+          tb("cloud", "revision-cloud", "RevCloud") +
+          tb("leader", "tag", "Leader") +
+          tb("note", "text", "Note"),
+      ) +
+      rg(
+        "Navigate",
+        tb("pan", "move", "Pan") +
+          tb("zoomwin", "inspect", "Zoom Win") +
+          rb("fit", "Extents", `data-a="ext"`, "Zoom extents (Z E)") +
+          rb("recenter", "Selection", `data-a="zsel"`, "Zoom to selection (F)"),
+      ) +
+      rg(
+        "Modes",
+        rb("grid", "Grid", `data-a="grid"`, "Grid (F7)", "on") +
+          rb("origin", "Snap", `data-a="snap"`, "Object snap (F3)", "on") +
+          rb("orthographic", "Ortho", `data-a="ortho"`, "Ortho (F8)") +
+          rb("dim-linear", "DYN", `data-a="dyn"`, "Dynamic Input HUD (F12)", "on") +
+          rb("strip", "LWT", `data-a="lwt"`, "Lineweight display", "on"),
+      ) +
+      rg(
+        "Settings",
+        `<label class="cadrb-field"><span>Background</span><select data-a="bg">${bgOpts}</select></label>` +
+          `<label class="cadrb-field"><span>Units</span><select data-a="du">${unitOpts}</select></label>`,
+        "cadrg__body--fields",
+      );
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => (b.onclick = () => setTool(b.dataset.t as Tool)));
     const fileIn = tools.querySelector<HTMLInputElement>("[data-r=file]")!;
     fileIn.onchange = () => {
@@ -2881,24 +2964,33 @@ function build(): void {
   }
 
   function buildBar2() {
-    tools2.innerHTML = `
-      <button data-a="lyr-mgr" style="color:#38bdf8;font-weight:600" title="AutoCAD Layer Properties Manager (LA)">📋 Layers (LA)</button>
-      <button data-a="dim-tool" title="Linear Dimension (Q)">📏 Dimension</button>
-      <button data-a="cloud-tool" title="Revision Cloud (U)">☁ RevCloud</button>
-      <button data-a="leader-tool" title="Leader Note (Y)">↗ Leader</button>
-      <span class="sep"></span>
-      <button data-a="tText" class="on" title="Show or hide text">Text</button>
-      <button data-a="tHatch" class="on" title="Show or hide hatches">Hatch</button>
-      <button data-a="tLt" class="on" title="Show or hide linetypes">Linetypes</button>
-      <span class="sep"></span>
-      <button data-a="info" title="Drawing information">Drawing Info</button>
-      <button data-a="takeoff" title="Quantity takeoff by layer and type (CSV)">📊 Takeoff</button>
-      <button data-a="save-mk" title="Save all markups to JSON sidecar">💾 Save Markups</button>
-      <button data-a="load-mk" title="Load markups from a JSON sidecar">📂 Load Markups</button>
-      <button data-a="svg" title="Export SVG vector file">Export SVG</button>
-      <button data-a="csv" title="Export measurements as CSV">Export CSV</button>
-    `;
-    const q = <T extends HTMLElement>(a: string) => tools2.querySelector<T>(`[data-a=${a}]`)!;
+    tools2.innerHTML =
+      rg("Layers", rb("schedules", "Manager", `data-a="lyr-mgr"`, "AutoCAD Layer Properties Manager (LA)")) +
+      rg(
+        "Show",
+        rb("text", "Text", `data-a="tText"`, "Show or hide text", "on") +
+          rb("filled-region", "Hatch", `data-a="tHatch"`, "Show or hide hatches", "on") +
+          rb("insulation", "Linetypes", `data-a="tLt"`, "Show or hide linetypes", "on"),
+      ) +
+      rg(
+        "Markup Files",
+        rb("save", "Save", `data-a="save-mk"`, "Save all markups to JSON sidecar") +
+          rb("folder-recent", "Load", `data-a="load-mk"`, "Load markups from a JSON sidecar"),
+      ) +
+      rg(
+        "Export",
+        rb("file", "SVG", `data-a="svg"`, "Export SVG vector file") +
+          rb("csv", "CSV", `data-a="csv"`, "Export measurements as CSV") +
+          rb("quantification", "Takeoff", `data-a="takeoff"`, "Quantity takeoff by layer and type (CSV)") +
+          rb("report", "Info", `data-a="info"`, "Drawing information"),
+      ) +
+      rg(
+        "Window",
+        rb("issues", "Help", `data-a="help"`, "AutoCAD Shortcuts & Commands (?)") +
+          rb("close", "Close", `data-a="close"`, "Close the CAD viewer", "cadrb--danger"),
+        "",
+        "cadrg--end",
+      );    const q = <T extends HTMLElement>(a: string) => tools2.querySelector<T>(`[data-a=${a}]`)!;
     const flip = (a: string, on: boolean) => q(a).classList.toggle("on", on);
     q("tText").onclick = () => {
       showText = !showText;
@@ -2916,9 +3008,8 @@ function build(): void {
       draw();
     };
     q("lyr-mgr").onclick = openLayerPropertiesManager;
-    q("dim-tool").onclick = () => setTool("dim");
-    q("cloud-tool").onclick = () => setTool("cloud");
-    q("leader-tool").onclick = () => setTool("leader");
+    q("help").onclick = () => toggleHelp();
+    q("close").onclick = () => api!.close();
     q("takeoff").onclick = () => {
       if (!doc) return;
       const rows = new Map<string, { type: string; layer: string; count: number; totalLength: number }>();
