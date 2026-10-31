@@ -11,7 +11,6 @@
     "build": "tsc && vite build --target esnext",
     "preview": "vite preview",
     "start:local": "vite build --target esnext && vite preview --open",
-    "setup:visits": "node scripts/setup-visit-counter.mjs",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "verify:v50": "node scripts/verify-v50.mjs",

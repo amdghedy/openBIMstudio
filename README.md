@@ -97,18 +97,20 @@ npm run preview
 
 ### Deploy to Cloudflare Workers (with visit counter)
 
-The site is served by the edge worker in `worker/index.ts`, which also exposes
-the cumulative visit counter shown in the Project Center status bar (`/api/visits`,
-backed by Cloudflare KV). One-time setup, then deploy:
+Pushes to `main` deploy automatically through the `deploy.yml` GitHub Action
+(`wrangler deploy`). The worker in `worker/index.ts` serves `dist/` and exposes
+the cumulative visit counter shown in the Project Center status bar
+(`POST/GET /api/visits`), backed by a SQLite Durable Object that is created
+automatically on deploy — no KV namespace or extra token permissions needed.
+
+To deploy manually instead:
 
 ```bash
-npx wrangler login        # once, or set CLOUDFLARE_API_TOKEN
-npm run setup:visits      # creates the KV namespace and writes its id into wrangler.jsonc
 npm run deploy            # builds dist/ and deploys worker + assets
 ```
 
-If the counter is not configured (KV binding missing), the status bar simply
-hides the "N visits" readout — everything else keeps working offline/local.
+If the counter is unavailable, the status bar simply hides the "N visits"
+readout — everything else keeps working offline/local.
 
 ### First 2 minutes in the app
 

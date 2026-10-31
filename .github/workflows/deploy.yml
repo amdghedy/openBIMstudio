@@ -9,7 +9,9 @@ on:
 #   CLOUDFLARE_API_TOKEN  — Workers Scripts:Edit + Account Settings:Read
 #   CLOUDFLARE_ACCOUNT_ID — Cloudflare account id
 #
-# This app is an assets-only Worker (static Vite build in ./dist).
+# Worker script (worker/index.ts) serves the Vite build in ./dist and the
+# /api/visits counter backed by a SQLite Durable Object, which is created
+# automatically on deploy — no KV namespace or extra permissions required.
 # Requires Wrangler 4+ (v3 demands a JS entry-point / main field).
 
 jobs:
@@ -58,7 +60,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Assets-only project (wrangler.jsonc) needs Wrangler 4+
+          # Worker + assets config (wrangler.jsonc) needs Wrangler 4+
           wranglerVersion: "4.153.0"
           command: deploy
 

@@ -6,13 +6,21 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
-  }
-  // Optional Cloudflare KV binding for the visit counter.
-  // Uncomment and replace with a real namespace ID when you want to enable it:
-  // ,"kv_namespaces": [
-  //   {
-  //     "binding": "VISITS",
-  //     "id": "<actual-kv-namespace-id>"
-  //   }
-  // ]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "COUNTER",
+        "class_name": "VisitCounter"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "VisitCounter"
+      ]
+    }
+  ]
 }
