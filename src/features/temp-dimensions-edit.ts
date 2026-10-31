@@ -2,6 +2,10 @@
  *  Click a dimension label -> type a value -> geometry updates.
  *  Lock button -> persistent dimensional constraint.
  *  Cycle button -> moves the dimension line through 4 witness sides.
+ *
+ *  Placement: world points are projected, then a fixed screen-space
+ *  offset is applied along the dimension perpendicular so the string
+ *  always sits tightly beside the selected element (never drifts far).
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
@@ -38,6 +42,9 @@ let host: HTMLDivElement | null = null;
 let raf = 0;
 let editing: { spec: TempDimSpec; input: HTMLInputElement } | null = null;
 
+/** Screen-space distance (px) the dimension line is pushed away from the element. */
+const SCREEN_OFFSET_PX = 32;
+
 const CAMERA = (): THREE.Camera | null =>
   ((ctx as Any).world?.camera?.three ?? (ctx as Any).world?.camera ?? null);
 const RENDERER = (): THREE.WebGLRenderer | null =>
@@ -70,6 +77,57 @@ function fmt(v: number): string {
 
 function clearNode(n: Node): void { while (n.firstChild) n.removeChild(n.firstChild); }
 
+/**
+ * Project the two world endpoints, then push them a fixed pixel distance
+ * along the screen-space perpendicular so the dimension always sits
+ * immediately beside the selected geometry (never far away).
+ */
+function projectWithScreenOffset(
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  worldOffset?: THREE.Vector3,
+): { pa: { x: number; y: number }; pb: { x: number; y: number } } | null {
+  // Prefer the side indicated by the provider's world offset when present.
+  const baseA = worldOffset ? a.clone().add(worldOffset) : a.clone();
+  const baseB = worldOffset ? b.clone().add(worldOffset) : b.clone();
+
+  const pa0 = project(baseA);
+  const pb0 = project(baseB);
+  if (!pa0 || !pb0 || !pa0.visible || !pb0.visible) return null;
+
+  const dx = pb0.x - pa0.x;
+  const dy = pb0.y - pa0.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // Screen-space unit perpendicular (rotate 90°)
+  let nx = -dy / len;
+  let ny = dx / len;
+
+  // If a world offset was supplied, flip the screen push so it agrees with
+  // the direction the provider intended (keeps cycle button behaviour).
+  if (worldOffset && worldOffset.lengthSq() > 1e-8) {
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+    const midOff = mid.clone().add(worldOffset);
+    const pMid = project(mid);
+    const pMidOff = project(midOff);
+    if (pMid && pMidOff && pMid.visible && pMidOff.visible) {
+      const ox = pMidOff.x - pMid.x;
+      const oy = pMidOff.y - pMid.y;
+      if (ox * nx + oy * ny < 0) {
+        nx = -nx;
+        ny = -ny;
+      }
+    }
+  }
+
+  const ox = nx * SCREEN_OFFSET_PX;
+  const oy = ny * SCREEN_OFFSET_PX;
+
+  return {
+    pa: { x: pa0.x + ox, y: pa0.y + oy },
+    pb: { x: pb0.x + ox, y: pb0.y + oy },
+  };
+}
+
 function render(): void {
   const h = ensureHost();
   clearNode(h);
@@ -79,10 +137,9 @@ function render(): void {
   if (!specs.length) return;
 
   for (const s of specs) {
-    const off = s.offset ?? new THREE.Vector3();
-    const pa = project(s.a.clone().add(off));
-    const pb = project(s.b.clone().add(off));
-    if (!pa || !pb || !pa.visible || !pb.visible) continue;
+    const placed = projectWithScreenOffset(s.a, s.b, s.offset);
+    if (!placed) continue;
+    const { pa, pb } = placed;
 
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("style", "position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none;");
