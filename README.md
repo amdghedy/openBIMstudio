@@ -95,6 +95,21 @@ npm run build
 npm run preview
 ```
 
+### Deploy to Cloudflare Workers (with visit counter)
+
+The site is served by the edge worker in `worker/index.ts`, which also exposes
+the cumulative visit counter shown in the Project Center status bar (`/api/visits`,
+backed by Cloudflare KV). One-time setup, then deploy:
+
+```bash
+npx wrangler login        # once, or set CLOUDFLARE_API_TOKEN
+npm run setup:visits      # creates the KV namespace and writes its id into wrangler.jsonc
+npm run deploy            # builds dist/ and deploys worker + assets
+```
+
+If the counter is not configured (KV binding missing), the status bar simply
+hides the "N visits" readout — everything else keeps working offline/local.
+
 ### First 2 minutes in the app
 
 1. The **BIM Command Center** opens (or click the blue **RC** button bottom-left).

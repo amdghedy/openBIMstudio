@@ -1,8 +1,16 @@
 {
   "name": "openbimstudio",
+  "main": "worker/index.ts",
   "compatibility_date": "2026-10-26",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application"
-  }
+  },
+  "kv_namespaces": [
+    {
+      "binding": "VISITS",
+      "id": "PASTE_KV_NAMESPACE_ID_HERE"
+    }
+  ]
 }

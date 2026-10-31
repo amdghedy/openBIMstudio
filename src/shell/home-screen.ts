@@ -37,6 +37,38 @@ function emitWorkspace(id: string) {
   hideHome();
 }
 
+/* Cumulative visit counter (edge worker + KV). Counted once per page load;
+   hidden silently when the counter API is unavailable. */
+let visitRequest: Promise<number | null> | null = null;
+
+async function fetchVisitTotal(): Promise<number | null> {
+  try {
+    const res = await fetch("/api/visits", { method: "POST" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { visits?: number | null };
+    return typeof data.visits === "number" && Number.isFinite(data.visits) ? data.visits : null;
+  } catch {
+    return null;
+  }
+}
+
+function trackVisit(): Promise<number | null> {
+  visitRequest ??= fetchVisitTotal();
+  return visitRequest;
+}
+
+function renderVisits(): void {
+  const el = inner.querySelector("#obs-visits") as HTMLElement | null;
+  if (!el) return;
+  void trackVisit().then((total) => {
+    if (total === null) {
+      el.style.display = "none";
+      return;
+    }
+    el.textContent = `${total.toLocaleString("en-US")} ${total === 1 ? "visit" : "visits"}`;
+  });
+}
+
 function buildStatic() {
   inner.innerHTML = `
     <header class="obs-center-header">
@@ -88,6 +120,7 @@ function buildStatic() {
 
     <footer class="obs-home__footer">
       <span>Open BIM Studio · local project database · browser-first delivery</span>
+      <span class="obs-home__visits" id="obs-visits" aria-live="polite"></span>
       <span><kbd>Ctrl</kbd> <kbd>O</kbd> Open &nbsp;·&nbsp; <kbd>Ctrl</kbd> <kbd>S</kbd> Save &nbsp;·&nbsp; <kbd>Ctrl</kbd> <kbd>P</kbd> Commands</span>
     </footer>`;
 
@@ -104,6 +137,7 @@ function buildStatic() {
   };
   template.addEventListener("change", updateTemplateNote);
   updateTemplateNote();
+  renderVisits();
   createBtn.onclick = () => {
     const name = nameInput.value.trim();
     if (!name) {

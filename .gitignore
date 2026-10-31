@@ -52,3 +52,6 @@ public/libredwg/
 # temp dirs left by dwg isolation tests
 .dwg-iso-*/
 .dwg-lifecycle-*/
+
+# Wrangler local dev cache
+.wrangler/

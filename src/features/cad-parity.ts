@@ -870,19 +870,9 @@ export function setupCadParity(): void {
 
   void registerCadShortcuts();
 
-  // Launcher button
-  const launch = document.createElement("button");
-  launch.id = "obs-cad-launch";
-  launch.type = "button";
-  launch.title = "CAD Tools (Ctrl+Shift+D)";
-  launch.textContent = "CAD";
-  launch.style.cssText =
-    "position:fixed;left:64px;bottom:52px;z-index:10002;width:44px;height:40px;" +
-    "border-radius:10px;border:1px solid #fbbf24;background:rgba(251,191,36,.14);" +
-    "color:#fbbf24;font:700 11px Inter,system-ui;cursor:pointer;" +
-    "box-shadow:0 4px 16px rgba(0,0,0,.35);";
-  launch.onclick = () => toggleCadPanel();
-  document.body.appendChild(launch);
+  // Floating launcher removed (was the yellow "CAD" pill, bottom-left).
+  // The CAD Tools panel stays reachable via Ctrl+Shift+D, the command
+  // palette ("CAD Tools Panel") and the parity tab bar.
 
   (ctx.features as Any).cad = {
     engine: cadEngine,
