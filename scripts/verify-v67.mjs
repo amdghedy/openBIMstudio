@@ -32,7 +32,7 @@ const track = (ok) => { ok ? pass++ : fail++; };
 console.log("\n=== verify-v67 — engineering engine milestone ===\n");
 
 console.log("version + scripts:");
-track(check("version 0.67", "package.json", /"version":\s*"0\.67\./));
+track(check("version 0.67", "package.json", /"version":\s*"(?:0\.(?:6[7-9]|[7-9]\d|\d{3,})|[1-9]\d*)\./));
 track(check("test:constraints script", "package.json", /test:constraints/));
 track(check("test:structural script", "package.json", /test:structural/));
 track(check("test:mep-pressure script", "package.json", /test:mep-pressure/));
@@ -69,7 +69,7 @@ track(check("adaptive test", "tests/adaptive.test.cjs", /volume equals area × p
 console.log("\nBoot wiring:");
 track(check("v67 register", "src/modules/v67-register.ts", /export function setupV67Engines/));
 track(check("boot import", "src/critical-gaps-boot.ts", /v67-register/));
-track(check("CI wiring", ".github/workflows/unit-tests.yml", /test:structural/));
+track(check("CI wiring", "scripts/ci-unit-tests.mjs", /test:structural/));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

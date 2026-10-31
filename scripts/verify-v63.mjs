@@ -97,7 +97,7 @@ for (const [label, file, regex] of pkgChecks) {
 
 console.log("\nTest execution:");
 try {
-  execSync("node tests/stair-winder-spiral.test.cjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node tests/stair-winder-spiral.test.cjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ Stair tests pass (13/13)");
   pass++;
 } catch {
@@ -108,7 +108,7 @@ try {
 console.log("\nRegression checks:");
 for (const v of [55, 56, 57, 58, 59, 60, 61, 62]) {
   try {
-    execSync(`node scripts/verify-v${v}.mjs > /dev/null 2>&1`, { cwd: root, stdio: "inherit" });
+    execSync(`node scripts/verify-v${v}.mjs`, { cwd: root, stdio: "ignore" });
     console.log(`  ✓ verify-v${v} still passes`);
     pass++;
   } catch {

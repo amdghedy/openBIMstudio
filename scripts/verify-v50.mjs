@@ -15,7 +15,7 @@ const checks = [
   ['BIM view range', 'src/modules/drawings/plan-generator.ts', /viewRangeTop/],
   ['middle-button plan pan', 'src/features/plan-view-panel.ts', /e\.button !== 1 && !\(e\.button === 0 && e\.shiftKey\)/],
   ['dimension format/unit style', 'src/features/plan-view-panel.ts', /formatPlanDimension/],
-  ['release version', 'package.json', /"version": "0\.54\.0"/],
+  ['release version', 'package.json', /"version":\s*"(?:0\.(?:5[4-9]|[6-9]\d|\d{3,})|[1-9]\d*)\./],
 ];
 let failed = 0;
 for (const [label, file, re] of checks) {

@@ -37,7 +37,7 @@ console.log("\n=== verify-v65 — v40 modules milestone ===\n");
 
 console.log("Modules:");
 
-track(check("version 0.65", "package.json", /"version":\s*"0\.65\./));
+track(check("version 0.65", "package.json", /"version":\s*"(?:0\.(?:6[5-9]|[7-9]\d|\d{3,})|[1-9]\d*)\./));
 track(check("test:v40 script", "package.json", /test:v40/));
 
 track(check("toposurface module", "src/modules/toposurface/toposurface.ts", /export function buildToposurface/));

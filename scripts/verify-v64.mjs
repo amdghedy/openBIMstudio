@@ -116,13 +116,13 @@ console.log("\npackage.json:");
 const pkgChecks = [
   ["test:rebar script", "package.json", /"test:rebar":\s*"node tests\/rebar\.test\.cjs"/],
   ["verify:v64 script", "package.json", /"verify:v64":\s*"node scripts\/verify-v64\.mjs"/],
-  ["version 0.64", "package.json", /"version":\s*"0\.64\.0"/],
+  ["version 0.64", "package.json", /"version":\s*"(?:0\.(?:6[4-9]|[7-9]\d|\d{3,})|[1-9]\d*)\./],
 ];
 for (const [l, f, r] of pkgChecks) { if (check(l, f, r)) pass++; else fail++; }
 
 console.log("\nTest execution:");
 try {
-  execSync("node tests/rebar.test.cjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node tests/rebar.test.cjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ Rebar tests pass (21/21)");
   pass++;
 } catch {
@@ -133,7 +133,7 @@ try {
 console.log("\nRegression checks:");
 for (const v of [55, 56, 57, 58, 59, 60, 61, 62]) {
   try {
-    execSync(`node scripts/verify-v${v}.mjs > /dev/null 2>&1`, { cwd: root, stdio: "inherit" });
+    execSync(`node scripts/verify-v${v}.mjs`, { cwd: root, stdio: "ignore" });
     console.log(`  ✓ verify-v${v} still passes`);
     pass++;
   } catch {

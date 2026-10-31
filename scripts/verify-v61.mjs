@@ -66,7 +66,7 @@ for (const [label, file, regex] of dblclickChecks) {
 
 console.log("\nRegression checks:");
 try {
-  execSync("node scripts/verify-v55.mjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node scripts/verify-v55.mjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ verify-v55 still passes (Plugin SDK intact)");
   pass++;
 } catch {
@@ -74,7 +74,7 @@ try {
   fail++;
 }
 try {
-  execSync("node scripts/verify-v56.mjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node scripts/verify-v56.mjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ verify-v56 still passes (Family Library intact)");
   pass++;
 } catch {
@@ -82,7 +82,7 @@ try {
   fail++;
 }
 try {
-  execSync("node scripts/verify-v57.mjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node scripts/verify-v57.mjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ verify-v57 still passes (Hosted recut fix intact)");
   pass++;
 } catch {
@@ -90,7 +90,7 @@ try {
   fail++;
 }
 try {
-  execSync("node scripts/verify-v58.mjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node scripts/verify-v58.mjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ verify-v58 still passes (MEP auto-routing intact)");
   pass++;
 } catch {
@@ -98,7 +98,7 @@ try {
   fail++;
 }
 try {
-  execSync("node scripts/verify-v59.mjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node scripts/verify-v59.mjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ verify-v59 still passes (Hip + Valley roofs intact)");
   pass++;
 } catch {
@@ -106,7 +106,7 @@ try {
   fail++;
 }
 try {
-  execSync("node scripts/verify-v60.mjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node scripts/verify-v60.mjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ verify-v60 still passes (Hatch patterns intact)");
   pass++;
 } catch {

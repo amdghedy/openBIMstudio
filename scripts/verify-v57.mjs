@@ -70,7 +70,7 @@ console.log("\nRegression checks:");
 // Re-run v55 + v56 milestone verifiers
 import { execSync } from "node:child_process";
 try {
-  execSync("node scripts/verify-v55.mjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node scripts/verify-v55.mjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ verify-v55 still passes (Plugin SDK intact)");
   pass++;
 } catch {
@@ -78,7 +78,7 @@ try {
   fail++;
 }
 try {
-  execSync("node scripts/verify-v56.mjs > /dev/null 2>&1", { cwd: root, stdio: "inherit" });
+  execSync("node scripts/verify-v56.mjs", { cwd: root, stdio: "ignore" });
   console.log("  ✓ verify-v56 still passes (Family Library intact)");
   pass++;
 } catch {
