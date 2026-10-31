@@ -3,9 +3,9 @@
  *  Lock button -> persistent dimensional constraint.
  *  Cycle button -> moves the dimension line through 4 witness sides.
  *
- *  Placement: world points are projected, then a fixed screen-space
- *  offset is applied along the dimension perpendicular so the string
- *  always sits tightly beside the selected element (never drifts far).
+ *  Placement: world points are projected with the SAME host rect used by
+ *  wall-handles, then a fixed screen-space offset is applied so the string
+ *  always sits tightly beside the selected element.
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
@@ -43,21 +43,34 @@ let raf = 0;
 let editing: { spec: TempDimSpec; input: HTMLInputElement } | null = null;
 
 /** Screen-space distance (px) the dimension line is pushed away from the element. */
-const SCREEN_OFFSET_PX = 32;
+const SCREEN_OFFSET_PX = 28;
 
 const CAMERA = (): THREE.Camera | null =>
   ((ctx as Any).world?.camera?.three ?? (ctx as Any).world?.camera ?? null);
-const RENDERER = (): THREE.WebGLRenderer | null =>
-  ((ctx as Any).world?.renderer?.three ?? (ctx as Any).world?.renderer ?? null);
 
+/**
+ * Project a world point into the same pixel space used by wall-handles.
+ * MUST use ctx.rightHost.getBoundingClientRect() — never renderer.domElement
+ * size alone — otherwise dimensions drift far from the selected geometry.
+ */
 function project(v: THREE.Vector3): { x: number; y: number; visible: boolean } | null {
-  const cam = CAMERA(); const r = RENDERER();
-  if (!cam || !r) return null;
-  const c = r.domElement;
-  const w = c.clientWidth, h = c.clientHeight;
+  const cam = CAMERA();
+  if (!cam) return null;
+  const hostEl =
+    ((ctx as Any).rightHost as HTMLElement | undefined) ??
+    document.getElementById("viewport") ??
+    null;
+  if (!hostEl) return null;
+  const rect = hostEl.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return null;
   const ndc = v.clone().project(cam);
+  if (!isFinite(ndc.x) || !isFinite(ndc.y)) return null;
   if (ndc.z < -1 || ndc.z > 1) return { x: 0, y: 0, visible: false };
-  return { x: (ndc.x * 0.5 + 0.5) * w, y: (-ndc.y * 0.5 + 0.5) * h, visible: true };
+  return {
+    x: (ndc.x * 0.5 + 0.5) * rect.width,
+    y: (-ndc.y * 0.5 + 0.5) * rect.height,
+    visible: true,
+  };
 }
 
 function ensureHost(): HTMLDivElement {
@@ -80,7 +93,7 @@ function clearNode(n: Node): void { while (n.firstChild) n.removeChild(n.firstCh
 /**
  * Project the two world endpoints, then push them a fixed pixel distance
  * along the screen-space perpendicular so the dimension always sits
- * immediately beside the selected geometry (never far away).
+ * immediately beside the selected geometry.
  */
 function projectWithScreenOffset(
   a: THREE.Vector3,
