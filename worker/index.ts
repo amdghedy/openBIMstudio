@@ -115,7 +115,11 @@ export class VisitCounter {
 
       const [salt, stats] = await Promise.all([this.salt(), this.stats()]);
       const now = Date.now();
-      const ip = request.headers.get("cf-connecting-ip") ?? "";
+      // Identity IP: direct visitors arrive via Cloudflare (cf-connecting-ip);
+      // Vercel proxy visitors arrive with the real client IP forwarded in
+      // x-obs-visitor-ip (Cloudflare replaces cf-connecting-ip with the
+      // proxy's egress IP, which is identical for every Vercel visitor).
+      const ip = request.headers.get("x-obs-visitor-ip") ?? request.headers.get("cf-connecting-ip") ?? "";
       const hash = await visitorHash(salt, ip, request.headers.get("user-agent") ?? "");
       const markerKey = `r:${hash}`;
       const lastSeen = await this.storage.get<number>(markerKey);
