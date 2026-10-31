@@ -1,25 +1,9 @@
-name: Restore styles.css
+# Disabled — one-shot restore finished. Do not re-enable on push.
+name: Restore styles.css (disabled)
 on:
   workflow_dispatch:
 jobs:
-  restore:
+  noop:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Restore styles from known-good commit
-        run: |
-          git show 410c54573f459334c36fe6b8310d1d569908d055:src/styles.css > src/styles.css
-          cat .github/styles/modify-tab-patch.css >> src/styles.css
-          wc -c src/styles.css
-          head -3 src/styles.css
-      - name: Commit
-        run: |
-          git config user.name "amdghedy"
-          git config user.email "43811322+amdghedy@users.noreply.github.com"
-          git add src/styles.css
-          git commit -m "fix(css): restore styles.css + Modify tab accent" || echo nochange
-          git push origin HEAD:main
+      - run: echo "Disabled. styles.css restored on main."

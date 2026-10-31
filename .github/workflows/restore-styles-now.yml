@@ -1,49 +1,9 @@
-name: Restore styles.css now
+# Disabled — one-shot restore finished. Do not re-enable on push.
+name: Restore styles.css now (disabled)
 on:
   workflow_dispatch:
 jobs:
-  restore:
+  noop:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Restore from known-good commit and append Modify CSS
-        run: |
-          set -e
-          git show 410c54573f459334c36fe6b8310d1d569908d055:src/styles.css > src/styles.css
-          cat >> src/styles.css << 'EOF'
-
-/* Active tab highlighting */
-.obs-ribbon__tab[data-active="1"],
-.obs-ribbon__tab.is-active,
-.obs-ribbon__tab[aria-selected="true"] {
-  color: #f8fafc;
-  background: #1e2230;
-  box-shadow: inset 0 -2px 0 #38bdf8;
-}
-/* Contextual Modify tab - Revit green */
-.obs-ribbon__tab--modify {
-  color: #86efac !important;
-  font-weight: 700;
-}
-.obs-ribbon__tab--modify[data-active="1"],
-.obs-ribbon__tab--modify.is-active,
-.obs-ribbon__tab--modify[aria-selected="true"] {
-  color: #f0fdf4 !important;
-  background: #14532d !important;
-  box-shadow: inset 0 -2px 0 #22c55e !important;
-}
-EOF
-          wc -c src/styles.css
-          head -5 src/styles.css
-          grep -c "tab--modify" src/styles.css || true
-      - name: Commit and push
-        run: |
-          git config user.name "amdghedy"
-          git config user.email "43811322+amdghedy@users.noreply.github.com"
-          git add src/styles.css
-          git commit -m "fix(css): restore full styles.css from 410c545 + Modify tab accent" || echo nochange
-          git push origin HEAD:main
+      - run: echo "Disabled. styles.css restored on main."
