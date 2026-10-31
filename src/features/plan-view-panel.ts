@@ -3359,13 +3359,16 @@ async function commitPlanBoxSelect(additive: boolean) {
 async function moveSelectedInPlan(dx: number, dz: number) {
   if (!planSelectedIds.size || (Math.abs(dx) < 1e-9 && Math.abs(dz) < 1e-9)) return;
   try {
-    const { getElements, rebuildAuthored, markAuthoringDirty, expandConnectedIds } = await import("./authoring");
+    const { getElements, rebuildAuthored, markAuthoringDirty, expandConnectedIds, mepFollowPatches } = await import("./authoring");
     const { history } = await import("./history");
     const moveIds = new Set(expandConnectedIds(planSelectedIds));
-    const els = getElements().filter((el: any) => moveIds.has(el.id));
+    const followPatches = mepFollowPatches(moveIds, dx, dz);
+    const patchById = new Map(followPatches.map((u) => [u.id, u.patch]));
+    const els = getElements().filter((el: any) => moveIds.has(el.id) || patchById.has(el.id));
     const before = els.map((el: any) => ({ id: el.id, params: JSON.parse(JSON.stringify(el.params)) }));
     for (const el of els) {
       if (el.properties?.pinned) continue;
+      if (!moveIds.has(el.id)) { Object.assign(el.params, patchById.get(el.id)); continue; } // follower: fitting / stretched run
       if (el.params.start) { el.params.start[0] += dx; el.params.start[1] += dz; }
       if (el.params.end) { el.params.end[0] += dx; el.params.end[1] += dz; }
       if (el.params.point) { el.params.point[0] += dx; el.params.point[1] += dz; }

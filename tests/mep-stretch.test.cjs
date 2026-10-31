@@ -48,4 +48,20 @@ ok(JSON.stringify(nw) === JSON.stringify(["A", "C", "D", "T"]), "network = every
 // elbow is not a junction: branch passes through it
 const lb = cn.connectedSelection("A", els, "branch").sort();
 ok(JSON.stringify(lb) === JSON.stringify(["A", "B", "E"]), "branch passes through elbows");
+// ── Move: select pipe B of an A–elbow–B–elbow–C zig-zag; fittings follow, neighbours stretch, rest stays
+const zz = [run("A", [0, 0], [3, 0]), fit("E1", [3, 0], "elbow", 0, Math.PI / 2), run("B", [3, 0], [3, 4]), fit("E2", [3, 4], "elbow", Math.PI / 2, 0), run("C", [3, 4], [8, 4])];
+u = by(st.planMepMove(zz, ["B"], 1, 0));
+ok(near(u.E1.point[0], 4) && near(u.E2.point[0], 4), "both fittings follow the moved pipe");
+ok(near(u.A.end[0], 4) && near(u.A.end[1], 0) && !u.A.start, "pipe A stretches, its far end stays");
+ok(near(u.C.start[0], 4) && near(u.C.start[1], 4) && !u.C.end, "pipe C stretches, its far end stays");
+ok(!u.B, "moved pipe is the caller's job");
+ok(u.E1.angleIn === undefined && u.E1.angleOut === undefined, "angles untouched for a parallel move");
+// moving the elbow itself: both runs stretch to it
+u = by(st.planMepMove(zz, ["E1"], 0, -1));
+ok(near(u.A.end[1], -1) && near(u.B.start[1], -1) && !u.C, "moved fitting: attached runs stretch, rest untouched");
+// whole network selected (Tab Tab): nothing left to patch
+ok(st.planMepMove(zz, zz.map((e) => e.id), 2, 2).every((x) => !x.patch.start && !x.patch.end && !x.patch.point), "all selected -> rigid, no follower patches");
+// pinned neighbour fitting stays put
+ok(by(st.planMepMove(zz.map((e) => e.id === "E2" ? { ...e, properties: { pinned: true } } : e), ["B"], 1, 0)).E2 === undefined, "pinned fitting not dragged");
+
 console.log(`mep-stretch: ${n} checks OK`);

@@ -33,7 +33,7 @@ import { snapping } from "./snapping";
 import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
 import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP } from "../modules/mep/connectivity";
-import { planMepStretch } from "../modules/mep/stretch";
+import { planMepStretch, planMepMove } from "../modules/mep/stretch";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import { makeAxisLock, projectOnAxis } from "./grip-axis-lock";
@@ -3376,6 +3376,11 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
             // undo transaction (endpoint constraints / wall-column binds).
             const depPatches = collectDependentPatches(movers.map((m0) => m0.id), dx, dz);
             const snaps = movers.map((m0) => ({ el: m0, before: JSON.parse(JSON.stringify(m0.params)), after: JSON.parse(JSON.stringify(candById.get(m0.id)!.params)) }));
+            // Connected MEP parts follow (fittings move, neighbouring runs stretch) in the same undo step.
+            for (const u of mepFollowPatches(movers.map((m0) => m0.id), dx, dz)) {
+              const fe = elements.find((x) => x.id === u.id);
+              if (fe && !snaps.some((o) => o.el === fe)) snaps.push({ el: fe, before: JSON.parse(JSON.stringify(fe.params)), after: { ...JSON.parse(JSON.stringify(fe.params)), ...u.patch } });
+            }
             history.push({
               label: movers.length > 1 ? `Move ${src.name} + ${movers.length - 1} connected` : `Move ${src.name}`,
               apply: () => {
@@ -5354,14 +5359,24 @@ export function cycleMepSelection(): "branch" | "network" | "single" | null {
   return next === 1 ? "branch" : "network";
 }
 
-/** Ids to move together with `ids`: the connected MEP network when the option is on. */
+/**
+ * Ids to move rigidly with `ids`. Connected MEP parts are no longer dragged as a rigid network:
+ * they FOLLOW (see mepFollowPatches). To move a whole network, Tab-select it first.
+ */
 export function expandConnectedIds(ids: Iterable<string>): string[] {
-  const list = [...ids];
-  if (!moveConnectedMep) return list;
-  const mepStart = list.filter((id) => { const e = elements.find((x) => x.id === id); return e && isMepElement(e); });
-  if (!mepStart.length) return list;
-  const extra = expandConnected(mepStart, elements as any);
-  return [...new Set([...list, ...extra])];
+  return [...ids];
+}
+/**
+ * Revit-style follow: patches for the MEP parts that stay behind when `movedIds` move by (dx,dz,dy):
+ * fittings at the moved ends follow, the other runs on them stretch. Empty when the option is off.
+ * `baseline` (id -> params) plans against a pre-drag state so live drags stay idempotent.
+ */
+export function mepFollowPatches(movedIds: Iterable<string>, dx: number, dz: number, dy = 0, baseline?: Map<string, any>): Array<{ id: string; patch: Record<string, unknown> }> {
+  if (!moveConnectedMep) return [];
+  const ids = [...movedIds].map(String);
+  if (!ids.some((id) => { const e = elements.find((x) => x.id === id); return e && isMepElement(e); })) return [];
+  const view = baseline ? elements.map((e) => (baseline.has(e.id) ? { ...e, params: baseline.get(e.id) } : e)) : elements;
+  return planMepMove(view as any, ids, dx, dz, dy);
 }
 
 /** Replace an element's boundary polygon (Edit Boundary), with undo/redo. Returns false if rejected. */
@@ -5848,11 +5863,13 @@ export function setupAuthoring() {
 
   let gizmoBaseline: Record<string, AuthoredElement["params"]> | null = null;
   let gizmoMoving = new Set<string>();
+  let gizmoFollowBase: Map<string, any> | null = null;
 
   gizmo.setCallbacks({
     onStart: () => {
       gizmoBaseline = {};
       gizmoMoving = new Set(expandConnectedIds(selectedIds));
+      gizmoFollowBase = snapshotMepParams();
       for (const el of elements) {
         if (gizmoMoving.has(el.id) && !el.properties?.pinned) {
           gizmoBaseline[el.id] = JSON.parse(JSON.stringify(el.params));
@@ -5874,6 +5891,18 @@ export function setupAuthoring() {
         if (p.endElevation != null) p.endElevation += delta.y;
         el.params = p;
       }
+      // connected MEP parts follow live; re-planned from the pre-drag state each frame
+      if (gizmoFollowBase) {
+        for (const [id, params] of gizmoFollowBase) {
+          if (gizmoMoving.has(id)) continue;
+          const o = elements.find((q) => q.id === id);
+          if (o) o.params = JSON.parse(JSON.stringify(params));
+        }
+        for (const u of mepFollowPatches(gizmoMoving, delta.x, delta.z, delta.y, gizmoFollowBase)) {
+          const o = elements.find((q) => q.id === u.id);
+          if (o && !gizmoMoving.has(o.id)) Object.assign(o.params, u.patch);
+        }
+      }
       rebuild();
     },
     onEnd: (delta) => {
@@ -5884,6 +5913,18 @@ export function setupAuthoring() {
       const after: Record<string, AuthoredElement["params"]> = {};
       for (const el of elements) {
         if (gizmoMoving.has(el.id) && before[el.id]) after[el.id] = JSON.parse(JSON.stringify(el.params));
+      }
+      // followers (fittings / stretched neighbours) join the same undo step
+      if (gizmoFollowBase) {
+        for (const el of elements) {
+          const base = gizmoFollowBase.get(el.id);
+          if (!base || gizmoMoving.has(el.id) || before[el.id]) continue;
+          if (JSON.stringify(base) !== JSON.stringify(el.params)) {
+            before[el.id] = JSON.parse(JSON.stringify(base));
+            after[el.id] = JSON.parse(JSON.stringify(el.params));
+          }
+        }
+        gizmoFollowBase = null;
       }
       // MASTER PROMPT §6 — drag-move also updates bound dependents.
       const depPatches = collectDependentPatches(Object.keys(after), delta.x, delta.z);
