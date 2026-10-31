@@ -70,7 +70,7 @@ import { toggleSchedules, isSchedulesVisible } from "./schedules-panel";
 import { toggleSheetsPanel, isSheetsPanelVisible } from "./sheets-panel";
 import { toggleIssuesPanel, isIssuesPanelVisible } from "./issues-panel";
 import { toggleIdsPanel, isIdsPanelVisible } from "./ids-panel";
-import { toggleTimelinePanel, isTimelinePanelVisible, openTimelineTab, pickAndImportP6 } from "./timeline-panel";
+import { toggleTimelinePanel, isTimelinePanelVisible, openTimelineTab, pickAndImportP6, openCurvesView, pickAndImportFactors } from "./timeline-panel";
 import { fitAll, goHome, gotoDir, getProjection, setProjection } from "./camera-tools";
 import { svgIcon, type IconName } from "./icon-set";
 import { registerCommand as registerPaletteCommand } from "./command-palette";
@@ -652,6 +652,8 @@ function createCommandCatalog() {
   registerBimCommand({ id: "schedule.4d", label: "4D Simulation", ribbon: "Manage", group: "4D / 5D / 6D", run: () => openTimelineTab("4d") });
   registerBimCommand({ id: "schedule.5d", label: "5D Cost", ribbon: "Manage", group: "4D / 5D / 6D", run: () => openTimelineTab("5d") });
   registerBimCommand({ id: "schedule.6d", label: "6D Carbon", ribbon: "Manage", group: "4D / 5D / 6D", run: () => openTimelineTab("6d") });
+  registerBimCommand({ id: "schedule.curves", label: "Cost & Carbon Curves", ribbon: "Manage", group: "4D / 5D / 6D", run: () => openCurvesView() });
+  registerBimCommand({ id: "schedule.importFactors", label: "Import Carbon Factors (EPD)", ribbon: "Manage", group: "4D / 5D / 6D", run: () => pickAndImportFactors() });
   registerBimCommand({ id: "schedule.links", label: "Link Activities to Elements", ribbon: "Manage", group: "4D / 5D / 6D", run: () => openTimelineTab("links") });
   registerBimCommand({ id: "view.graphics", label: "Visibility / Graphics", ribbon: "View", group: "Graphics", run: openVisibilityGraphics });
   registerBimCommand({ id: "view.templates", label: "View Templates", ribbon: "View", group: "Graphics", run: openViewTemplates });

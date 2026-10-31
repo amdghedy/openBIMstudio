@@ -22,7 +22,7 @@ import { toggleMeasure, isMeasureEnabled } from "./measure";
 import { toggleSection, isSectionOn } from "./section";
 import { toggleIssuesPanel, isIssuesPanelVisible } from "./issues-panel";
 import { toggleCostPanel, isCostPanelVisible, recalculateTakeoff } from "./cost-panel";
-import { openTimelineTab, pickAndImportP6 } from "./timeline-panel";
+import { openTimelineTab, pickAndImportP6, openCurvesView, pickAndImportFactors } from "./timeline-panel";
 import { toggleIdsPanel, isIdsPanelVisible } from "./ids-panel";
 import { toggleModelTreePanel, isModelTreePanelVisible } from "./model-tree-panel";
 import { togglePlanView, isPlanViewVisible } from "./plan-view-panel";
@@ -458,6 +458,8 @@ function bootstrapCommands(): void {
   registerCommand({ id: "schedule.4d", label: "4D simulation", category: "4D / 5D / 6D", run: () => openTimelineTab("4d") });
   registerCommand({ id: "schedule.5d", label: "5D cost by activity", category: "4D / 5D / 6D", run: () => openTimelineTab("5d") });
   registerCommand({ id: "schedule.6d", label: "6D embodied carbon", category: "4D / 5D / 6D", run: () => openTimelineTab("6d") });
+  registerCommand({ id: "schedule.curves", label: "Cost & carbon curves (large view)", category: "4D / 5D / 6D", run: () => openCurvesView() });
+  registerCommand({ id: "schedule.importFactors", label: "Import carbon factors (EPD CSV / JSON)", category: "4D / 5D / 6D", run: () => pickAndImportFactors() });
   registerCommand({ id: "schedule.links", label: "Link activities to elements", category: "4D / 5D / 6D", run: () => openTimelineTab("links") });
   registerCommand({ id: "panel.cost", label: toggleLabel("5D Cost panel", isCostPanelVisible), category: "Panels", run: () => toggleCostPanel() });
   registerCommand({ id: "panel.issues", label: toggleLabel("Issues / BCF panel", isIssuesPanelVisible), category: "Panels", run: () => toggleIssuesPanel() });

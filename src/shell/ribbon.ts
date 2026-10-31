@@ -79,7 +79,7 @@ import { selectAllObjects, clearAllSelection } from "../features/select-all";
 import { toggleAiChat, isAiChatVisible } from "../features/ai-chat";
 
 // ── 4D Construction Simulation (Navisworks TimeLiner competitor) ───────
-import { toggleTimelinePanel, isTimelinePanelVisible, openTimelineTab, pickAndImportP6 } from "../features/timeline-panel";
+import { toggleTimelinePanel, isTimelinePanelVisible, openTimelineTab, pickAndImportP6, openCurvesView, pickAndImportFactors } from "../features/timeline-panel";
 
 // ── Sheets / Production + Automation ───────────────────────────────────
 import { toggleSheetsPanel, isSheetsPanelVisible } from "../features/sheets-panel";
@@ -2745,6 +2745,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("quantification", "5D by activity", safe(() => openTimelineTab("5d"), "5D Cost"), {
         title: "Cost per P6 activity and cumulative cost curve",
       }),
+      b("report", "Curves", safe(() => openCurvesView(), "Curves"), {
+        title: "Large cost and carbon S-curves; click or drag to move the 4D date",
+      }),
       b("reset-offsets", "Recalc takeoff", safe(() => recalculateTakeoff(), "Recalc"), {
         title: "Recalculate model quantities for cost take-off",
       }),
@@ -2761,6 +2764,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("settings", "Factors", safe(() => openTimelineTab("6d"), "Carbon factors"), {
         title: "Edit or reset generic carbon factors (kgCO₂e)",
+      }),
+      b("file", "Import EPD", safe(() => pickAndImportFactors(), "Import EPD factors"), {
+        title: "Import carbon factors from a CSV or JSON file (type, unit, kgCO2e per unit)",
       }),
       sep(),
       groupLabel("Schedules & BOQ"),

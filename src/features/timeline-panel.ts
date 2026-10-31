@@ -21,9 +21,11 @@ import {
   phaseDateRange,
   simulationMs,
 } from "../modules/timeline/timeline";
+import { scurveSvg, timeAtX } from "../modules/schedule-4d/chart-svg";
 import {
   importScheduleText, relinkSchedule, summaryNow, onScheduleChange, setupSchedule4d, type ScheduleSummary,
   getTaskRows, exportReportCsvText, getUnlinkedTasks, linkSelectionToTask, getCarbonFactorRows, setCarbonFactor, resetCarbonFactors, getScheduleState,
+  importCarbonFactorsText, exportCarbonFactorsCsv, seekToDate,
 } from "../modules/schedule-4d/controller";
 import { selection } from "./selection";
 
@@ -50,6 +52,66 @@ export function pickAndImportP6() {
     }
   };
   input.click();
+}
+
+/** Public: pick a CSV/JSON of carbon (EPD) factors and merge it over the defaults. */
+export function pickAndImportFactors() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".csv,.json,.txt";
+  input.onchange = async () => {
+    const f = input.files?.[0];
+    if (!f) return;
+    const r = importCarbonFactorsText(await f.text());
+    const msg = r.count
+      ? `Imported ${r.count} carbon factor(s) from ${f.name}.` + (r.errors.length ? ` ${r.errors.length} row(s) skipped: ${r.errors[0]}` : "")
+      : `No factors imported. ${r.errors[0] ?? ""}`;
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: msg, kind: r.count ? (r.errors.length ? "warning" : "success") : "error" } }));
+  };
+  input.click();
+}
+
+let curvesEl: HTMLElement | null = null;
+/** Public: full-screen cost + carbon S-curves; click or drag on the chart to move the 4D date. */
+export function openCurvesView() {
+  if (curvesEl) { curvesEl.remove(); curvesEl = null; }
+  const sum = summaryNow();
+  if (!sum) { window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Import a P6 schedule first.", kind: "info" } })); return; }
+  const wrap = document.createElement("div");
+  curvesEl = wrap;
+  wrap.style.cssText = "position:fixed;inset:0;z-index:9500;background:rgba(2,6,23,.92);display:flex;flex-direction:column;font:13px system-ui,sans-serif;color:#e2e8f0";
+  const close = () => { wrap.remove(); curvesEl = null; document.removeEventListener("keydown", onKey, true); off(); };
+  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  document.addEventListener("keydown", onKey, true);
+  const W = 1100, H = 560;
+  const draw = () => {
+    const s = summaryNow();
+    if (!s) return;
+    const o = { width: W, height: H, nowMs: s.dateMs, costLabel: "Cumulative cost (5D)", carbonLabel: "Cumulative carbon kgCO₂e (6D)" };
+    wrap.innerHTML = `<div style="display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid #334155">
+        <b style="font-size:15px">Cost &amp; carbon curves</b>
+        <span>Date <b>${fmtDate(s.dateMs ?? s.range?.start ?? null)}</b></span>
+        <span style="color:#22c55e">Cost ${fmtNum(s.cost)} / ${fmtNum(s.costTotal)}</span>
+        <span style="color:#f97316">Carbon ${fmtNum(s.carbonKg)} / ${fmtNum(s.carbonTotalKg)} kgCO₂e</span>
+        <span style="color:#94a3b8">Click or drag the chart to move the 4D date</span>
+        <button type="button" data-x="close" style="margin-left:auto;background:#334155;border:1px solid #475569;color:#e2e8f0;border-radius:6px;padding:4px 12px;cursor:pointer">Close (Esc)</button></div>
+      <div data-x="chart" style="flex:1;min-height:0;padding:12px 16px;cursor:crosshair">${scurveSvg(s.costCurve, s.carbonCurve, o)}</div>`;
+    (wrap.querySelector('[data-x="close"]') as HTMLElement).onclick = close;
+    const host = wrap.querySelector('[data-x="chart"]') as HTMLElement;
+    const seek = (ev: PointerEvent) => {
+      const svg = host.querySelector("svg") as SVGSVGElement | null;
+      if (!svg || !s.range) return;
+      const r = svg.getBoundingClientRect();
+      const x = ((ev.clientX - r.left) / Math.max(1, r.width)) * W;
+      seekToDate(timeAtX(x, s.range.start, s.range.finish, o));
+    };
+    host.onpointerdown = (ev) => { host.setPointerCapture(ev.pointerId); seek(ev); host.onpointermove = (e2) => seek(e2 as PointerEvent); };
+    host.onpointerup = () => { host.onpointermove = null; };
+  };
+  document.body.appendChild(wrap);
+  draw();
+  const off1 = onTimelineChange(draw), off2 = onScheduleChange(draw);
+  const off = () => { off1(); off2(); };
 }
 
 /** Public: open the panel on a given tab (ribbon / command palette entry points). */
@@ -95,6 +157,7 @@ function scheduleSection(sum: ScheduleSummary | null): string {
       <button type="button" data-act="p6-import">Re-import…</button>
       <button type="button" data-act="p6-relink" title="Re-link activities to the current model">Re-link</button>
       <button type="button" data-act="p6-csv" title="Export per-activity cost / carbon report (CSV)">Export CSV</button>
+      <button type="button" data-act="curves" title="Large cost and carbon S-curves">⤢ Curves</button>
     </div>
     <div class="obs-timeline__kpis">
       <div><span>Date</span><b>${fmtDate(sum.dateMs ?? sum.range?.start ?? null)}</b></div>
@@ -133,9 +196,11 @@ function tabContent(): string {
       <div class="obs-timeline__hint">Embodied carbon (kgCO₂e) from the quantities of linked authored elements. The factors are generic
       placeholders - replace them with your EPD values.</div>
       <table class="obs-timeline__tbl"><tr><th>ID</th><th>Activity</th><th>kgCO₂e</th></tr>${body || `<tr><td colspan="3">No linked elements with a carbon factor yet.</td></tr>`}</table>
-      <details><summary>Carbon factors (editable)</summary>
+      <details open><summary>Carbon factors (editable)</summary>
         <table class="obs-timeline__tbl"><tr><th>Type</th><th>Unit</th><th>Factor</th></tr>${fac}</table>
-        <div class="obs-timeline__actions"><button type="button" data-act="carbon-reset">Reset to defaults</button></div></details></div>`;
+        <div class="obs-timeline__actions"><button type="button" data-act="carbon-reset">Reset to defaults</button>
+          <button type="button" data-act="carbon-import" title="CSV: type,unit,kgCO2e_per_unit,note — or JSON">Import EPD factors…</button>
+          <button type="button" data-act="carbon-export">Export factors CSV</button></div></details></div>`;
   }
   // links
   const un = getUnlinkedTasks().slice(0, 60);
@@ -338,6 +403,13 @@ function render() {
       if (act === "p6-relink") void relinkSchedule();
       if (act === "tab") { tab = ((el as HTMLElement).dataset.tab as Tab) || "4d"; render(); }
       if (act === "carbon-reset") resetCarbonFactors();
+      if (act === "curves") openCurvesView();
+      if (act === "carbon-export") {
+        const blob = new Blob(["\uFEFF" + exportCarbonFactorsCsv()], { type: "text/csv;charset=utf-8" });
+        const u = URL.createObjectURL(blob), a = document.createElement("a");
+        a.href = u; a.download = "carbon-factors.csv"; a.click(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+      }
+      if (act === "carbon-import") pickAndImportFactors();
       if (act === "open-cost") { void import("./cost-panel").then((m) => m.toggleCostPanel()).catch(() => { /* optional */ }); }
       if (act === "p6-csv") {
         const blob = new Blob(["\uFEFF" + exportReportCsvText()], { type: "text/csv;charset=utf-8" });

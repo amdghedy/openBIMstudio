@@ -9,6 +9,8 @@ import { scheduleRange, taskStatusAt } from "./schedule-model";
 import type { ParsedSchedule, SchedTask } from "./types";
 import { reportRows, reportCsv, type ReportRow } from "./report";
 import { DEFAULT_CARBON_FACTORS } from "./curves";
+import { parseFactors, factorsCsv } from "./factor-import";
+import { phaseDateRange } from "../timeline/timeline";
 import { DEFAULT_PHASE_COLORS, type Phase } from "../timeline/types";
 import { replacePhases, setScheduleHooks, simulationMs, setProgress, getTimelineState } from "../timeline/timeline";
 
@@ -166,11 +168,29 @@ export async function linkSelectionToTask(taskId: string): Promise<number> {
 }
 
 export function getCarbonFactorRows(): Array<{ type: string; unit: string; kg: number; note: string; custom: boolean }> {
-  return Object.entries(DEFAULT_CARBON_FACTORS).map(([type, f]) => {
-    const o = st.carbonOverrides[type];
-    return { type, unit: f.unit, kg: (o ?? f).kgCO2ePerUnit, note: f.note, custom: !!o };
+  const types = [...new Set([...Object.keys(DEFAULT_CARBON_FACTORS), ...Object.keys(st.carbonOverrides)])];
+  return types.map((type) => {
+    const o = st.carbonOverrides[type], d = DEFAULT_CARBON_FACTORS[type];
+    const f = o ?? d;
+    return { type, unit: f.unit, kg: f.kgCO2ePerUnit, note: f.note, custom: !!o };
   });
 }
+
+/** Import EPD factors (CSV or JSON). Valid rows are merged over the current overrides; errors are returned. */
+export function importCarbonFactorsText(text: string): { count: number; errors: string[] } {
+  const r = parseFactors(text);
+  const n = Object.keys(r.factors).length;
+  if (n) setCarbonOverrides({ ...st.carbonOverrides, ...r.factors });
+  return { count: n, errors: r.errors };
+}
+export const exportCarbonFactorsCsv = (): string => factorsCsv(getCarbonFactorRows());
+
+/** Move the 4D playhead to a calendar date (epoch ms), clamped to the phase range. */
+export function seekToDate(ms: number) {
+  const r = phaseDateRange();
+  if (r) setProgress((ms - r.start) / (r.end - r.start));
+}
+
 export function setCarbonFactor(type: string, kg: number) {
   const base = DEFAULT_CARBON_FACTORS[type];
   if (!base || !Number.isFinite(kg) || kg < 0) return;
