@@ -48,7 +48,7 @@ export function healMepElbows(): number {
     const e: any = byId.get(id);
     if (!e) return null;
     return {
-      id, start: e.params.start ? [...e.params.start] : undefined, end: e.params.end ? [...e.params.end] : undefined,
+      id, start: e.params.start ? [e.params.start[0], e.params.start[1]] as [number, number] : undefined, end: e.params.end ? [e.params.end[0], e.params.end[1]] as [number, number] : undefined,
       elevation: e.params.elevation, endElevation: e.params.endElevation, bendRadius: e.params.bendRadius,
     };
   };
