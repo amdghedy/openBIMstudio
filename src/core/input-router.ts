@@ -327,6 +327,10 @@ class InputRouterImpl {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (e.key !== "Escape") return;
+    // Keystrokes aimed at editable UI (text inputs, textareas, …) belong to
+    // that field — e.g. Esc must cancel an open temporary-dimension editor,
+    // not trigger tool cancellation and swallow the key (stopImmediatePropagation).
+    if (isUiEventTarget(e.target)) return;
     for (let i = this.cancelHandlers.length - 1; i >= 0; i--) {
       try {
         if (this.cancelHandlers[i]()) {

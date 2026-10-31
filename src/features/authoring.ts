@@ -6370,6 +6370,7 @@ function commitEditableTempDim(spec: TempDimSpec, value: number): boolean {
   const el = elements.find((e) => e.id === spec.elementId);
   if (!el || !Number.isFinite(value) || value <= 0) return false;
   const p = el.params;
+  const before = JSON.parse(JSON.stringify(p));
   if (spec.param === "length") {
     if (!p.start || !p.end) return false;
     const [sx, sz] = p.start;
@@ -6392,6 +6393,19 @@ function commitEditableTempDim(spec: TempDimSpec, value: number): boolean {
   } else {
     return false;
   }
+  // Keep an active lock on this dimension in sync with the committed value,
+  // so the constraint follows the user's edit instead of snapping back.
+  const lock = dimLocks.find((l) => l.elementId === spec.elementId && l.param === spec.param);
+  if (lock) lock.value = value;
+
+  const after = JSON.parse(JSON.stringify(p));
+  if (JSON.stringify(before) === JSON.stringify(after)) return false;
+  // Same undo transaction as grip drags: Ctrl+Z reverts the dimension edit.
+  history.push({
+    label: `Edit dimension · ${el.name}`,
+    apply: () => { el.params = JSON.parse(JSON.stringify(after)); rebuild(); markDirty(); },
+    revert: () => { el.params = JSON.parse(JSON.stringify(before)); rebuild(); markDirty(); },
+  });
   rebuild();
   markDirty();
   notifyAuthoringChange();

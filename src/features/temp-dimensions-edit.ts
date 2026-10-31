@@ -120,6 +120,35 @@ function fmt(v: number): string {
   return Math.abs(v) >= 1 ? `${v.toFixed(3)} m` : `${Math.round(v * 1000)} mm`;
 }
 
+/**
+ * Parse a user-typed dimension value. Accepts the formatted unit that the
+ * chip itself displays ("3.564 m", "200 mm") plus plain numbers (metres,
+ * the internal unit) — matching Revit's behaviour of typing what you see.
+ */
+function parseDimInput(raw: string, kind: TempDimKind): number | null {
+  const t = String(raw ?? "").trim().toLowerCase().replace(",", ".");
+  if (!t) return null;
+  if (kind === "angle") {
+    const v = Number.parseFloat(t);
+    return Number.isFinite(v) ? v : null;
+  }
+  const m = t.match(/^(-?\d+(?:\.\d+)?)\s*(mm|cm|m)?$/);
+  if (!m) return null;
+  const n = Number.parseFloat(m[1]);
+  if (!Number.isFinite(n)) return null;
+  if (m[2] === "mm") return n / 1000;
+  if (m[2] === "cm") return n / 100;
+  return n; // metres (internal unit)
+}
+
+/** Flash the edit input red (invalid/rejected value) without closing it. */
+function flashInvalid(input: HTMLInputElement): void {
+  input.style.borderColor = "#ef4444";
+  input.focus();
+  input.select();
+  window.setTimeout(() => { input.style.borderColor = "#38bdf8"; }, 450);
+}
+
 function clearNode(n: Node): void { while (n.firstChild) n.removeChild(n.firstChild); }
 
 function elementOf(id: string): Any | null {
@@ -220,6 +249,10 @@ function projectWithScreenOffset(
 }
 
 function render(): void {
+  // While an edit is open the overlay is frozen: render() runs on every
+  // animation frame and would otherwise destroy the input 16 ms after it
+  // appears (the "dimensions can't be edited" bug).
+  if (editing) return;
   const h = ensureHost();
   clearNode(h);
   if (!provider) return;
@@ -285,17 +318,22 @@ function beginEdit(s: TempDimSpec, x: number, y: number): void {
   cancelEdit();
   const input = document.createElement("input");
   input.type = "text";
-  input.value = s.kind === "angle" ? s.value.toFixed(2) : s.value.toFixed(3);
+  // Prefill with what the chip displays ("3.564 m" / "200 mm"), so the user
+  // edits the value they see — not the raw internal metres.
+  input.value = s.kind === "angle" ? s.value.toFixed(2) : fmt(s.value);
   input.style.cssText =
-    `position:absolute;left:${x}px;top:${y - 12}px;transform:translate(-50%,-50%);width:96px;` +
+    `position:absolute;left:${x}px;top:${y - 12}px;transform:translate(-50%,-50%);width:110px;` +
     `background:#0c0e13;border:1px solid #38bdf8;border-radius:4px;color:#f8fafc;` +
     `font:600 11px/1.2 var(--font-mono,monospace);padding:3px 6px;pointer-events:auto;z-index:80;`;
   input.onkeydown = (ev) => {
     if (ev.key === "Enter") {
       ev.preventDefault();
-      const v = parseFloat(input.value.replace(",", "."));
-      if (Number.isFinite(v) && v > 0) provider?.commit(s, v);
-      cancelEdit(); render();
+      const v = parseDimInput(input.value, s.kind);
+      if (v === null || !Number.isFinite(v)) { flashInvalid(input); return; }
+      const ok = provider?.commit(s, v);
+      if (ok === false) { flashInvalid(input); return; }
+      cancelEdit();
+      render();
     } else if (ev.key === "Escape") {
       ev.preventDefault(); cancelEdit();
     }
@@ -307,7 +345,14 @@ function beginEdit(s: TempDimSpec, x: number, y: number): void {
 }
 
 function cancelEdit(): void {
-  if (editing) { editing.input.remove(); editing = null; }
+  if (!editing) return;
+  const { input } = editing;
+  // Clear state FIRST: removing a focused input fires blur synchronously,
+  // which re-enters cancelEdit — the second remove() then throws
+  // "The node to be removed is no longer a child of this node".
+  editing = null;
+  input.onblur = null;
+  try { input.remove(); } catch { /* already detached */ }
 }
 
 export function registerTempDimProvider(p: TempDimProvider): () => void {
