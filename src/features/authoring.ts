@@ -76,6 +76,8 @@ import {
 } from "../modules/snapping/smart-perp-snap";
 import { snapFeedback } from "./snap-feedback";
 import type { MepConnector } from "../modules/mep/connectors";
+import { registerTempDimProvider, type TempDimSpec, setupEditableTempDims } from "./temp-dimensions-edit";
+import { setupOptionsBar } from "./options-bar";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -6220,4 +6222,207 @@ export function setupAuthoring() {
   ctx.features.authoring = api;
   register("authoring", api);
   try { (window as any).__obsAuthoring = api; } catch { /* */ }
+}
+/* ═══════════════════════════════════════════════════════════════════════
+   Revit-style editable temporary dimensions + dimensional constraints.
+   Appended by the modeling-parity patch. Uses module-scoped authoring state.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+interface DimLock { elementId: string; param: string; value: number; }
+const dimLocks: DimLock[] = [];
+const dimSides = new Map<string, number>();
+
+function dimFmt(v: number): string {
+  return Math.abs(v) >= 1 ? `${v.toFixed(3)} m` : `${Math.round(v * 1000)} mm`;
+}
+
+function sideOffset(specId: string, dir: THREE.Vector3): THREE.Vector3 {
+  const i = dimSides.get(specId) ?? 0;
+  const perp = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+  const up = new THREE.Vector3(0, 1, 0);
+  const opts = [perp, perp.clone().negate(), up, up.clone().negate()];
+  return opts[i % opts.length].multiplyScalar(0.35);
+}
+
+function buildEditableTempDims(): TempDimSpec[] {
+  const out: TempDimSpec[] = [];
+  const selected = [...selectedIds].map(String).slice(0, 4);
+  for (const id of selected) {
+    const el = elements.find((e) => e.id === id);
+    if (!el) continue;
+    const p = el.params;
+    const elev = Number(p.elevation ?? 0);
+    const linear = el.type === "wall" || el.type === "beam" || el.type === "duct" ||
+      el.type === "pipe" || el.type === "cable-tray" || el.type === "conduit" ||
+      el.type === "strip";
+    if (linear && p.start && p.end) {
+      const a = new THREE.Vector3(p.start[0], elev + p.height / 2, p.start[1]);
+      const b = new THREE.Vector3(p.end[0], elev + p.height / 2, p.end[1]);
+      const dir = b.clone().sub(a).setY(0).normalize();
+      const len = a.distanceTo(b);
+      const idLen = `${el.id}:length`;
+      out.push({
+        id: idLen, elementId: el.id, param: "length", kind: "length", a, b,
+        value: len, label: dimFmt(len), editable: true,
+        locked: dimLocks.some((l) => l.elementId === el.id && l.param === "length"),
+        offset: sideOffset(idLen, dir),
+      });
+      const idH = `${el.id}:height`;
+      out.push({
+        id: idH, elementId: el.id, param: "height", kind: "height",
+        a: new THREE.Vector3(p.end[0], elev, p.end[1]),
+        b: new THREE.Vector3(p.end[0], elev + p.height, p.end[1]),
+        value: p.height, label: dimFmt(p.height), editable: true,
+        locked: dimLocks.some((l) => l.elementId === el.id && l.param === "height"),
+        offset: sideOffset(idH, dir),
+      });
+      const idT = `${el.id}:thickness`;
+      const mid = a.clone().add(b).multiplyScalar(0.5);
+      const n = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+      out.push({
+        id: idT, elementId: el.id, param: "thickness", kind: "thickness",
+        a: mid.clone().addScaledVector(n, -p.thickness / 2),
+        b: mid.clone().addScaledVector(n, p.thickness / 2),
+        value: p.thickness, label: dimFmt(p.thickness), editable: true,
+        locked: dimLocks.some((l) => l.elementId === el.id && l.param === "thickness"),
+        offset: sideOffset(idT, dir),
+      });
+    }
+    if ((el.type === "door" || el.type === "window") && el.hostId && p.offsetAlongHost != null) {
+      const hostEl = elements.find((e) => e.id === el.hostId);
+      if (hostEl?.params.start && hostEl.params.end) {
+        const hs = new THREE.Vector3(hostEl.params.start[0], elev, hostEl.params.start[1]);
+        const he = new THREE.Vector3(hostEl.params.end[0], elev, hostEl.params.end[1]);
+        const hdir = he.clone().sub(hs).normalize();
+        const center = hs.clone().addScaledVector(hdir, p.offsetAlongHost);
+        const w = p.width ?? 1;
+        const idW = `${el.id}:width`;
+        out.push({
+          id: idW, elementId: el.id, param: "width", kind: "width",
+          a: center.clone().addScaledVector(hdir, -w / 2),
+          b: center.clone().addScaledVector(hdir, w / 2),
+          value: w, label: dimFmt(w), editable: true,
+          locked: dimLocks.some((l) => l.elementId === el.id && l.param === "width"),
+          offset: sideOffset(idW, hdir),
+        });
+        const idO = `${el.id}:offset`;
+        out.push({
+          id: idO, elementId: el.id, param: "offsetAlongHost", kind: "offset",
+          a: hs, b: center, value: p.offsetAlongHost,
+          label: dimFmt(p.offsetAlongHost), editable: true,
+          locked: dimLocks.some((l) => l.elementId === el.id && l.param === "offsetAlongHost"),
+          offset: sideOffset(idO, hdir),
+        });
+        if (p.sillHeight != null) {
+          const idS = `${el.id}:sill`;
+          out.push({
+            id: idS, elementId: el.id, param: "sillHeight", kind: "height",
+            a: new THREE.Vector3(center.x, elev, center.z),
+            b: new THREE.Vector3(center.x, elev + p.sillHeight, center.z),
+            value: p.sillHeight, label: dimFmt(p.sillHeight), editable: true,
+            locked: dimLocks.some((l) => l.elementId === el.id && l.param === "sillHeight"),
+            offset: sideOffset(idS, hdir),
+          });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function commitEditableTempDim(spec: TempDimSpec, value: number): boolean {
+  const el = elements.find((e) => e.id === spec.elementId);
+  if (!el || !Number.isFinite(value) || value <= 0) return false;
+  const p = el.params;
+  if (spec.param === "length") {
+    if (!p.start || !p.end) return false;
+    const [sx, sz] = p.start;
+    const [ex, ez] = p.end;
+    const len = Math.hypot(ex - sx, ez - sz);
+    if (len < 1e-9) return false;
+    const k = value / len;
+    p.end = [sx + (ex - sx) * k, sz + (ez - sz) * k];
+  } else if (spec.param === "height") {
+    p.height = Math.max(0.01, value);
+    if (p.topLevelId) { p.topLevelId = undefined; p.topOffset = 0; }
+  } else if (spec.param === "thickness") {
+    p.thickness = Math.max(0.01, value);
+  } else if (spec.param === "width") {
+    p.width = Math.max(0.05, value);
+  } else if (spec.param === "offsetAlongHost") {
+    p.offsetAlongHost = value;
+  } else if (spec.param === "sillHeight") {
+    p.sillHeight = value;
+  } else {
+    return false;
+  }
+  rebuild();
+  markDirty();
+  notifyAuthoringChange();
+  return true;
+}
+
+function toggleDimLock(spec: TempDimSpec): boolean {
+  const i = dimLocks.findIndex((l) => l.elementId === spec.elementId && l.param === spec.param);
+  if (i >= 0) { dimLocks.splice(i, 1); return false; }
+  dimLocks.push({ elementId: spec.elementId, param: spec.param, value: spec.value });
+  return true;
+}
+
+function cycleDimSide(spec: TempDimSpec): boolean {
+  dimSides.set(spec.id, (dimSides.get(spec.id) ?? 0) + 1);
+  return true;
+}
+
+function applyDimLocks(): void {
+  for (const l of dimLocks) {
+    const el = elements.find((e) => e.id === l.elementId);
+    if (!el) continue;
+    const p = el.params;
+    if (l.param === "length" && p.start && p.end) {
+      const [sx, sz] = p.start;
+      const [ex, ez] = p.end;
+      const len = Math.hypot(ex - sx, ez - sz);
+      if (len > 1e-9) {
+        const k = l.value / len;
+        p.end = [sx + (ex - sx) * k, sz + (ez - sz) * k];
+      }
+    } else if (l.param === "height") p.height = l.value;
+    else if (l.param === "thickness") p.thickness = l.value;
+    else if (l.param === "width") p.width = l.value;
+    else if (l.param === "offsetAlongHost") p.offsetAlongHost = l.value;
+    else if (l.param === "sillHeight") p.sillHeight = l.value;
+  }
+  rebuild();
+  markDirty();
+  notifyAuthoringChange();
+}
+
+registerTempDimProvider({
+  specs: buildEditableTempDims,
+  commit: commitEditableTempDim,
+  toggleLock: toggleDimLock,
+  cycleRef: cycleDimSide,
+});
+
+setupEditableTempDims();
+setupOptionsBar();
+
+export function applyDimensionalConstraints(): void { applyDimLocks(); }
+
+export function translateSelected(dx: number, dz: number): number {
+  const ids = [...selectedIds].map(String);
+  let n = 0;
+  for (const id of ids) {
+    const el = elements.find((e) => e.id === id);
+    if (!el) continue;
+    const p = el.params;
+    if (p.start) p.start = [p.start[0] + dx, p.start[1] + dz];
+    if (p.end) p.end = [p.end[0] + dx, p.end[1] + dz];
+    if (p.point) p.point = [p.point[0] + dx, p.point[1] + dz];
+    if (p.polygon) p.polygon = p.polygon.map(([x, z]) => [x + dx, z + dz] as [number, number]);
+    n++;
+  }
+  if (n) { rebuild(); markDirty(); notifyAuthoringChange(); }
+  return n;
 }
