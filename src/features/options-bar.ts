@@ -1,7 +1,9 @@
-/** Revit-style contextual Options Bar. Switches with the active tool. */
+/** Revit-style contextual Options Bar. Switches with the active tool.
+ *  Modify tools (Move/Copy/Rotate/…) appear only when something is selected.
+ */
 import { ctx } from "../core/context";
 import {
-  getActiveTool, onAuthoringChange,
+  getActiveTool, onAuthoringChange, getSelectedIds,
   getWallLocationLine, setWallLocationLine, getWallChain, setWallChain,
   getWallOffset, setWallOffset, getWallJoinStatus, setWallJoinStatus,
   getBeamJustification, setBeamJustification,
@@ -10,6 +12,7 @@ import {
   getDrawSlope, setDrawSlope,
   getTypeDefaults, setTypeDefault,
 } from "./authoring";
+import { selection } from "./selection";
 import { runModifyAction } from "./modify-actions";
 import { startMultiMove } from "./multi-move";
 import { startArray } from "./array-tool";
@@ -18,6 +21,7 @@ import { startRotate } from "./rotate-tool";
 type Any = Record<string, any>;
 let host: HTMLDivElement | null = null;
 let unsub: (() => void) | null = null;
+let unsubSel: (() => void) | null = null;
 let timer = 0;
 let lastTool: string | null = null;
 
@@ -44,13 +48,42 @@ const chk = (k: string, v: boolean, label: string): string =>
 const btn = (action: string, label: string): string =>
   `<button data-m="${action}" style="background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">${label}</button>`;
 
+function hasSelection(): boolean {
+  try {
+    const authored = getSelectedIds?.() ?? [];
+    if (Array.isArray(authored) && authored.length > 0) return true;
+  } catch { /* */ }
+  try {
+    if (selection?.size?.() > 0) return true;
+  } catch { /* */ }
+  return false;
+}
+
 function render(): void {
   if (!host) return;
   const tool = (getActiveTool() ?? "select") as string;
   lastTool = tool;
+
+  // Drawing tools → always show type options.
+  // Select / modify → only when there is a selection (Revit Modify contextual).
+  const isDraw = DRAW.has(tool) || tool === "wall" || tool === "curtain-wall" ||
+    tool === "beam" || tool === "strip" ||
+    tool === "duct" || tool === "pipe" || tool === "cable-tray" || tool === "conduit";
+  const isModifyTool = ["move", "copy", "rotate", "mirror", "array", "offset"].includes(tool);
+
+  if (!isDraw && !isModifyTool) {
+    // Select / idle: hide bar until objects are selected
+    if (!hasSelection()) {
+      host.style.display = "none";
+      host.innerHTML = "";
+      return;
+    }
+  }
+
+  host.style.display = "flex";
   const defaults = getTypeDefaults(tool);
   let html =
-    `<span style="color:#38bdf8;font-weight:700;font-size:10px;letter-spacing:.04em;text-transform:uppercase">${tool}</span>` +
+    `<span style="color:#38bdf8;font-weight:700;font-size:10px;letter-spacing:.04em;text-transform:uppercase">${isDraw ? tool : "Modify"}</span>` +
     `<span style="width:1px;height:16px;background:#2f3846"></span>`;
 
   if (tool === "wall" || tool === "curtain-wall") {
@@ -89,28 +122,23 @@ function render(): void {
     if (defaults.params.width != null) html += field("Width", num("width", defaults.params.width ?? 1));
     html += field("Elevation", num("elevation", defaults.params.elevation ?? 0));
   } else {
-    html += `<span style="color:#94a3b8;font-size:10px">Modify</span>`;
-    html += `<button data-mm="move">Move</button><button data-mm="copy">Copy</button>` + `<button data-rot="1" style="position:relative;background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">Rotate</button>` +
-      btn("mirror", "Mirror") + `<button data-arr="1" style="background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">Array</button>` + btn("offset", "Offset") +
-      btn("pin", "Pin") + btn("delete", "Delete");
+    // Selection present → Modify tools (Revit contextual Modify)
+    const n = (() => {
+      try { return getSelectedIds().length || selection.size(); } catch { return 0; }
+    })();
+    html += `<span style="color:#86efac;font-size:10px;font-weight:600">${n} selected</span>`;
+    html += `<button data-mm="move" style="background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">Move</button>`;
+    html += `<button data-mm="copy" style="background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">Copy</button>`;
+    html += `<button data-rot="1" style="background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">Rotate</button>`;
+    html += btn("mirror", "Mirror");
+    html += `<button data-arr="1" style="background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">Array</button>`;
+    html += btn("offset", "Offset");
+    html += btn("pin", "Pin");
+    html += btn("delete", "Delete");
   }
 
   html += `<span style="flex:1"></span><span style="color:#64748b;font-size:9px">Esc cancels · Space repeats</span>`;
   host.innerHTML = html;
-  host.querySelectorAll<HTMLElement>("button").forEach((b) => {
-    const isNew =
-      (b.dataset.mm === "move") ||
-      (b.dataset.mm === "copy") ||
-      (b.dataset.arr === "1") ||
-      (b.dataset.rot === "1");
-    if (!isNew || b.querySelector(".obs-new-dot")) return;
-    b.style.position = "relative";
-    const dot = document.createElement("span");
-    dot.className = "obs-new-dot";
-    dot.title = "New tool — try it";
-    dot.style.cssText = "position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#22c55e;border-radius:50%;box-shadow:0 0 3px #22c55e;pointer-events:none;";
-    b.appendChild(dot);
-  });
 
   host.querySelectorAll<HTMLElement>("[data-k]").forEach((el) => {
     const k = el.dataset.k!;
@@ -154,13 +182,17 @@ export function setupOptionsBar(): void {
   host = document.createElement("div");
   host.id = "obs-options-bar";
   host.style.cssText =
-    "position:absolute;left:0;right:0;top:0;z-index:60;display:flex;align-items:center;gap:10px;" +
+    "position:absolute;left:0;right:0;top:0;z-index:60;display:none;align-items:center;gap:10px;" +
     "flex-wrap:wrap;padding:4px 10px;background:rgba(15,17,23,.92);border-bottom:1px solid #2a3140;" +
     "backdrop-filter:blur(6px);pointer-events:auto;";
   const parent = ((ctx as Any).rightHost ?? document.getElementById("viewport") ?? document.body) as HTMLElement;
   if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
   parent.appendChild(host);
   unsub = onAuthoringChange(render);
+  try { unsubSel = selection.onChange(render); } catch { /* */ }
+  try {
+    window.addEventListener("obs-selection-changed", render as EventListener);
+  } catch { /* */ }
   timer = window.setInterval(() => {
     const t = (getActiveTool() ?? "select") as string;
     if (t !== lastTool) render();
@@ -170,6 +202,8 @@ export function setupOptionsBar(): void {
 
 export function destroyOptionsBar(): void {
   unsub?.(); unsub = null;
+  unsubSel?.(); unsubSel = null;
+  try { window.removeEventListener("obs-selection-changed", render as EventListener); } catch { /* */ }
   if (timer) clearInterval(timer);
   timer = 0;
   host?.remove(); host = null;
