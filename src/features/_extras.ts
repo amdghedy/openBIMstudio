@@ -4,6 +4,7 @@ import { setupSectionBox } from "./section-box";
 import { setupRevisionCloud } from "./revision-cloud";
 import { setupDraftingBridge } from "./drafting-bridge";
 import { setupMepJointHealer } from "./mep-joint-healer";
+import { setupModifyLive } from "./modify-live";
 
 let installed = false;
 
@@ -14,5 +15,6 @@ export function setupExtras(): void {
   setupRevisionCloud();
   setupDraftingBridge();
   setupMepJointHealer();
+  setupModifyLive();
   console.log("[extras] all post-v1 features wired");
 }

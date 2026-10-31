@@ -1173,6 +1173,8 @@ function build(): void {
     else if (kind === "poly" && p.length >= 2) label = fmt(M.pathLength(p));
     else if (kind === "area" && p.length >= 3)
       label = fmt(M.polygonArea(p), 2);
+    else if (kind === "radius" && p.length >= 2)
+      label = fmt(M.distance(p[0], p[1]));
     else if (kind === "angle" && p.length >= 3)
       label = M.angleAt(p[1], p[0], p[2]).toFixed(2) + "°";
 
@@ -2019,6 +2021,79 @@ function build(): void {
           showMeas();
         }
         break;
+      case "radius": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const r = M.distance(pts[0], pts[1]);
+          results.push(`Radius = ${fmt(r)}`);
+          drawn.push({ kind: "dist", pts: [...pts] });
+          pts = [];
+          showMeas();
+          logCmd(`Radius = ${fmt(r)}`);
+        }
+        break;
+      }
+      case "arc": {
+        pts.push(p);
+        if (pts.length === 3) {
+          const p1 = pts[0], p2 = pts[1], p3 = pts[2];
+          const ax = p1.x, ay = p1.y, bx = p2.x, by = p2.y, cx = p3.x, cy = p3.y;
+          const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+          if (Math.abs(d) > 1e-9) {
+            const ux = ((ax*ax+ay*ay)*(by-cy) + (bx*bx+by*by)*(cy-ay) + (cx*cx+cy*cy)*(ay-by)) / d;
+            const uy = ((ax*ax+ay*ay)*(cx-bx) + (bx*bx+by*by)*(ax-cx) + (cx*cx+cy*cy)*(bx-ax)) / d;
+            const radius = Math.hypot(ax-ux, ay-uy);
+            const aStart = (Math.atan2(ay-uy, ax-ux) * 180) / Math.PI;
+            const aEnd = (Math.atan2(cy-uy, cx-ux) * 180) / Math.PI;
+            addDraftEntity({ type: "ARC", layer: currentLayer, center: { x: ux, y: uy }, radius, startAngle: aStart, endAngle: aEnd });
+            logCmd(`Arc added: R=${fmt(radius)}`);
+          }
+          pts = [];
+        }
+        break;
+      }
+      case "note": {
+        const t = window.prompt("Enter text note:", "Note");
+        if (t) {
+          markups.push({ kind: "note", pts: [p], text: t });
+          results.push(`Note: ${t}`);
+          showMeas();
+          draw();
+        }
+        break;
+      }
+      case "leader": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const t = window.prompt("Enter leader text:", "");
+          if (t) {
+            markups.push({ kind: "leader", pts: [...pts], text: t });
+            results.push(`Leader: ${t}`);
+            showMeas();
+            draw();
+          }
+          pts = [];
+        }
+        break;
+      }
+      case "calibrate": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const cur = M.distance(pts[0], pts[1]);
+          const knownStr = window.prompt("Enter known real distance for calibration:", cur.toFixed(3));
+          if (knownStr) {
+            const known = parseFloat(knownStr);
+            if (!isNaN(known) && known > 0 && cur > 0) {
+              scaleCal = scaleCal * (known / cur);
+              results.push(`Calibrated: 1 drawing unit = ${scaleCal.toFixed(4)} real units`);
+              showMeas();
+              logCmd(`Calibrated: scale factor = ${scaleCal.toFixed(4)}`);
+            }
+          }
+          pts = [];
+        }
+        break;
+      }
       case "erase": {
         const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
         if (i >= 0) {
@@ -2817,6 +2892,9 @@ function build(): void {
       <button data-a="tLt" class="on" title="Show or hide linetypes">Linetypes</button>
       <span class="sep"></span>
       <button data-a="info" title="Drawing information">Drawing Info</button>
+      <button data-a="takeoff" title="Quantity takeoff by layer and type (CSV)">📊 Takeoff</button>
+      <button data-a="save-mk" title="Save all markups to JSON sidecar">💾 Save Markups</button>
+      <button data-a="load-mk" title="Load markups from a JSON sidecar">📂 Load Markups</button>
       <button data-a="svg" title="Export SVG vector file">Export SVG</button>
       <button data-a="csv" title="Export measurements as CSV">Export CSV</button>
     `;
@@ -2841,6 +2919,52 @@ function build(): void {
     q("dim-tool").onclick = () => setTool("dim");
     q("cloud-tool").onclick = () => setTool("cloud");
     q("leader-tool").onclick = () => setTool("leader");
+    q("takeoff").onclick = () => {
+      if (!doc) return;
+      const rows = new Map<string, { type: string; layer: string; count: number; totalLength: number }>();
+      for (const e of ents) {
+        if (!shown(e)) continue;
+        const key = e.type + "|" + e.layer;
+        let r = rows.get(key);
+        if (!r) { r = { type: e.type, layer: e.layer, count: 0, totalLength: 0 }; rows.set(key, r); }
+        r.count++;
+        const m = M.entityMetrics(e);
+        if (m.length != null) r.totalLength += m.length;
+      }
+      const sorted = [...rows.values()].sort((a, b) => a.type.localeCompare(b.type) || a.layer.localeCompare(b.layer));
+      const csv = "type,layer,count,totalLength\n" + sorted.map((r) =>
+        r.type + "," + r.layer + "," + r.count + "," + (r.totalLength * scaleCal).toFixed(3)
+      ).join("\n");
+      download(new Blob([csv], { type: "text/csv" }), base() + "-takeoff.csv");
+      logCmd("Takeoff: " + sorted.length + " row(s) exported from " + ents.length + " visible entities");
+    };
+    q("save-mk").onclick = () => {
+      const json = JSON.stringify({ version: 1, markups: markups }, null, 2);
+      download(new Blob([json], { type: "application/json" }), base() + ".markups.json");
+      logCmd("Saved " + markups.length + " markup(s) to " + base() + ".markups.json");
+    };
+    q("load-mk").onclick = () => {
+      const inp = document.createElement("input");
+      inp.type = "file";
+      inp.accept = ".json";
+      inp.onchange = () => {
+        const f = inp.files?.[0];
+        if (!f) return;
+        void f.text().then((txt) => {
+          try {
+            const data = JSON.parse(txt) as { markups?: Markup[] };
+            if (Array.isArray(data.markups)) {
+              markups = data.markups;
+              draw();
+              logCmd("Loaded " + markups.length + " markup(s) from " + f.name);
+            }
+          } catch (e) {
+            logCmd("Failed to load markups: " + (e as Error).message);
+          }
+        });
+      };
+      inp.click();
+    };
     q("info").onclick = () => {
       if (!doc) return;
       const panel = openOverlay(`
