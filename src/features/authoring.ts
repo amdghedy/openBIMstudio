@@ -2482,6 +2482,43 @@ function wallAtPoint(e: MouseEvent): { wallId: string; offset: number; point: TH
   return null;
 }
 
+/**
+ * Hold Shift while modeling → lock to perpendicular / ortho mode.
+ * - With a previous segment direction: nearest of parallel or perpendicular to it.
+ * - Otherwise (first segment): lock to nearest world X or Z axis from the base point.
+ * Uses e.shiftKey (reliable) rather than only AccuDraw's key-state flag.
+ */
+function applyShiftPerpendicular(
+  p: THREE.Vector3,
+  e: MouseEvent,
+  base: THREE.Vector3 | null,
+  prevDir: number | null,
+): THREE.Vector3 {
+  if (!e.shiftKey || !base) return p;
+  const dx = p.x - base.x;
+  const dz = p.z - base.z;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-6) return p;
+
+  if (prevDir != null && Number.isFinite(prevDir)) {
+    const ux = Math.cos(prevDir);
+    const uz = Math.sin(prevDir);
+    const px = -uz;
+    const pz = ux;
+    const along = dx * ux + dz * uz;
+    const across = dx * px + dz * pz;
+    if (Math.abs(along) >= Math.abs(across)) {
+      return new THREE.Vector3(base.x + along * ux, 0, base.z + along * uz);
+    }
+    return new THREE.Vector3(base.x + across * px, 0, base.z + across * pz);
+  }
+
+  if (Math.abs(dx) >= Math.abs(dz)) {
+    return new THREE.Vector3(base.x + dx, 0, base.z);
+  }
+  return new THREE.Vector3(base.x, 0, base.z + dz);
+}
+
 function groundPoint(e: MouseEvent): THREE.Vector3 | null {
   const ray = new THREE.Raycaster();
   ray.setFromCamera(ndcOf(e), ctx.world.camera.three);
@@ -2500,6 +2537,8 @@ function groundPoint(e: MouseEvent): THREE.Vector3 | null {
   try {
     if (accuDraw.isActive()) p = accuDraw.constrain(p);
   } catch { /* */ }
+
+  p = applyShiftPerpendicular(p, e, chainStart, chainStartDir);
 
   return p;
 }
