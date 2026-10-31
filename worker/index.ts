@@ -61,7 +61,19 @@ interface Env {
   COUNTER: CounterNamespace;
 }
 
-const NO_STORE = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } as const;
+/** CORS-open so any deployment of the studio (Cloudflare, Vercel, Netlify, …)
+ *  can read and feed this one global counter from the browser. */
+const NO_STORE = {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store",
+  "access-control-allow-origin": "*",
+} as const;
+
+const CORS_PREFLIGHT = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-max-age": "86400",
+} as const;
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: NO_STORE });
@@ -160,6 +172,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/visits") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_PREFLIGHT });
       try {
         const stub = env.COUNTER.get(env.COUNTER.idFromName("global"));
         return stub.fetch(request);

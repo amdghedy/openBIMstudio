@@ -38,19 +38,33 @@ function emitWorkspace(id: string) {
   hideHome();
 }
 
-/* Cumulative visit counter (edge worker + KV). Counted once per page load;
-   hidden silently when the counter API is unavailable. */
+/* Cumulative visit counter. Counting happens server-side on the Cloudflare
+   edge (Durable Object): one visit per visitor per 30-min session window,
+   identical for every visitor on every device — never a per-PC number.
+   Static deployments (e.g. Vercel) ship no /api backend, so the client falls
+   back to the canonical counter API. Every copy of the site therefore feeds
+   and displays the SAME global count. Hidden silently when unreachable. */
+const COUNTER_PATH = "/api/visits";
+const COUNTER_FALLBACK = "https://openbimstudio.amdghedy.workers.dev/api/visits";
+
 let visitRequest: Promise<number | null> | null = null;
 
-async function fetchVisitTotal(): Promise<number | null> {
+async function postVisit(url: string): Promise<number | null> {
   try {
-    const res = await fetch("/api/visits", { method: "POST" });
+    const res = await fetch(url, { method: "POST" });
     if (!res.ok) return null;
     const data = (await res.json()) as { visits?: number | null };
     return typeof data.visits === "number" && Number.isFinite(data.visits) ? data.visits : null;
   } catch {
     return null;
   }
+}
+
+async function fetchVisitTotal(): Promise<number | null> {
+  const local = await postVisit(COUNTER_PATH);
+  if (local !== null) return local;
+  if (new URL(COUNTER_FALLBACK).origin === location.origin) return null;
+  return postVisit(COUNTER_FALLBACK);
 }
 
 function trackVisit(): Promise<number | null> {
