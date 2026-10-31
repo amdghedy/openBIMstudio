@@ -3,9 +3,12 @@
  *  Lock button -> persistent dimensional constraint.
  *  Cycle button -> moves the dimension line through 4 witness sides.
  *
- *  Placement: world points are projected with the SAME host rect used by
- *  wall-handles, then a fixed screen-space offset is applied so the string
- *  always sits tightly beside the selected element.
+ *  Placement policy (critical):
+ *  - Project the RAW a/b points (same coordinates as wall endpoint grips).
+ *  - Do NOT apply the provider world offset to position — that was pushing
+ *    labels far from the selected element.
+ *  - Apply a fixed 28px screen-space perpendicular push only.
+ *  - Use world offset solely to decide which side the push goes (cycle).
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
@@ -91,32 +94,27 @@ function fmt(v: number): string {
 function clearNode(n: Node): void { while (n.firstChild) n.removeChild(n.firstChild); }
 
 /**
- * Project the two world endpoints, then push them a fixed pixel distance
- * along the screen-space perpendicular so the dimension always sits
- * immediately beside the selected geometry.
+ * Project RAW a/b (no world offset), then push 28px in screen space.
+ * World offset only chooses the side (for the cycle button).
  */
 function projectWithScreenOffset(
   a: THREE.Vector3,
   b: THREE.Vector3,
   worldOffset?: THREE.Vector3,
 ): { pa: { x: number; y: number }; pb: { x: number; y: number } } | null {
-  // Prefer the side indicated by the provider's world offset when present.
-  const baseA = worldOffset ? a.clone().add(worldOffset) : a.clone();
-  const baseB = worldOffset ? b.clone().add(worldOffset) : b.clone();
-
-  const pa0 = project(baseA);
-  const pb0 = project(baseB);
+  // CRITICAL: project the raw geometry points — same basis as wall grips.
+  // Do not add worldOffset here; that was the source of the "far from wall" bug.
+  const pa0 = project(a);
+  const pb0 = project(b);
   if (!pa0 || !pb0 || !pa0.visible || !pb0.visible) return null;
 
   const dx = pb0.x - pa0.x;
   const dy = pb0.y - pa0.y;
   const len = Math.hypot(dx, dy) || 1;
-  // Screen-space unit perpendicular (rotate 90°)
   let nx = -dy / len;
   let ny = dx / len;
 
-  // If a world offset was supplied, flip the screen push so it agrees with
-  // the direction the provider intended (keeps cycle button behaviour).
+  // Use world offset only to pick side (cycle button).
   if (worldOffset && worldOffset.lengthSq() > 1e-8) {
     const mid = a.clone().add(b).multiplyScalar(0.5);
     const midOff = mid.clone().add(worldOffset);
