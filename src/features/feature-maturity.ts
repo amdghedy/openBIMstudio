@@ -205,6 +205,19 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "p6-4d-5d-6d",
+    area: "Analysis",
+    status: "experimental",
+    source: ["src/modules/schedule-4d/", "src/modules/timeline/", "src/features/timeline-panel.ts"],
+    evidence: ["tests/schedule-4d.test.cjs"],
+    limitations: [
+      "P6 import covers XER and PMXML activities, WBS, relationships and resource-assigned cost; calendars, resource loading and baselines are not read",
+      "Activity-to-element links use element properties (activityId, wbs) or name/level vocabulary; only authored elements are linked, imported IFC objects are not yet",
+      "6D carbon uses generic indicative factors (editable) - not project EPDs",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "clash-detection",
     area: "Analysis",
     status: "limited",

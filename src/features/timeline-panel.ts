@@ -18,7 +18,10 @@ import {
   exportTimelineJson,
   importTimelineJson,
   onTimelineChange,
+  phaseDateRange,
+  simulationMs,
 } from "../modules/timeline/timeline";
+import { importScheduleText, relinkSchedule, summaryNow, onScheduleChange, setupSchedule4d, type ScheduleSummary } from "../modules/schedule-4d/controller";
 import { selection } from "./selection";
 
 let panel: HTMLElement | null = null;
@@ -39,6 +42,44 @@ function download(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
+const fmtDate = (ms: number | null) => (ms == null ? "—" : new Date(ms).toISOString().slice(0, 10));
+const fmtNum = (n: number) => (Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + " M" : Math.abs(n) >= 1e3 ? (n / 1e3).toFixed(1) + " k" : n.toFixed(0));
+
+function sparkline(pts: Array<{ t: number; value: number }>, nowMs: number | null, color: string): string {
+  if (pts.length < 2) return "";
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t, vmax = Math.max(...pts.map((p) => p.value), 1e-9);
+  const X = (t: number) => ((t - t0) / Math.max(1, t1 - t0)) * 200, Y = (v: number) => 34 - (v / vmax) * 32;
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p.value).toFixed(1)}`).join("");
+  const now = nowMs == null ? "" : `<line x1="${X(nowMs).toFixed(1)}" x2="${X(nowMs).toFixed(1)}" y1="0" y2="36" stroke="#fbbf24" stroke-width="1.5"/>`;
+  return `<svg viewBox="0 0 200 36" width="100%" height="36" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.8"/>${now}</svg>`;
+}
+
+function scheduleSection(sum: ScheduleSummary | null): string {
+  if (!sum) {
+    return `<div class="obs-timeline__p6">
+      <div class="obs-timeline__hint"><b>Primavera P6:</b> import a schedule (.xer or PMXML .xml). Activities are linked to model elements by id/WBS
+      (element properties <code>activityId</code> / <code>wbs</code>) or by name (e.g. "Level 2 Walls"), then drive 4D playback, 5D cost and 6D carbon.</div>
+      <div class="obs-timeline__actions"><button type="button" data-act="p6-import">Import P6 schedule…</button></div></div>`;
+  }
+  return `<div class="obs-timeline__p6">
+    <div class="obs-timeline__actions">
+      <button type="button" data-act="p6-import">Re-import…</button>
+      <button type="button" data-act="p6-relink" title="Re-link activities to the current model">Re-link</button>
+    </div>
+    <div class="obs-timeline__kpis">
+      <div><span>Date</span><b>${fmtDate(sum.dateMs ?? sum.range?.start ?? null)}</b></div>
+      <div><span>Activities</span><b>${sum.tasksDone}/${sum.tasksTotal} done · ${sum.tasksActive} active</b></div>
+      <div><span>Linked</span><b>${sum.linkedTasks} of ${sum.tasksTotal}${sum.unlinkedTasks ? ` (${sum.unlinkedTasks} unlinked)` : ""}</b></div>
+      <div><span>5D cost</span><b>${fmtNum(sum.cost)} / ${fmtNum(sum.costTotal)}</b>
+        <small>P6 ${fmtNum(sum.costSource.p6)} · model ${fmtNum(sum.costSource.model)}</small></div>
+      <div><span>6D carbon</span><b>${fmtNum(sum.carbonKg)} / ${fmtNum(sum.carbonTotalKg)} kgCO₂e</b>
+        <small>indicative generic factors</small></div>
+    </div>
+    ${sparkline(sum.costCurve, sum.dateMs, "#22c55e")}
+    ${sparkline(sum.carbonCurve, sum.dateMs, "#f97316")}
+  </div>`;
+}
+
 function render() {
   if (!panel) return;
   const st = getTimelineState();
@@ -55,6 +96,8 @@ function render() {
         Competes with Navisworks TimeLiner for open federated models.
       </div>
 
+      ${scheduleSection(summaryNow())}
+
       <div class="obs-timeline__transport">
         <button type="button" data-act="reset" title="Reset">⏮</button>
         <button type="button" data-act="play" title="${st.playing ? "Pause" : "Play"}">
@@ -62,7 +105,7 @@ function render() {
         </button>
         <input type="range" min="0" max="1000" value="${Math.round(st.progress * 1000)}"
                data-act="scrub" class="obs-timeline__scrub" />
-        <span class="obs-timeline__pct">${Math.round(st.progress * 100)}%</span>
+        <span class="obs-timeline__pct">${simulationMs() != null ? fmtDate(simulationMs()) : Math.round(st.progress * 100) + "%"}</span>
       </div>
 
       <div class="obs-timeline__speed">
@@ -82,10 +125,14 @@ function render() {
             ? `<div class="obs-timeline__empty">No phases yet.</div>`
             : phases.map((p) => {
               const phaseCount = phases.length || 1;
-              const barWidth = 100 / phaseCount;
-              const barLeft = p.order * barWidth;
-              const isBefore = st.progress < p.order / phaseCount;
-              const isAfter = st.progress > (p.order + 1) / phaseCount;
+              const dr = phaseDateRange();
+              const ps = dr ? Date.parse(p.startDate as string) : NaN, pe = dr ? Date.parse(p.endDate as string) : NaN;
+              const dated = !!dr && Number.isFinite(ps) && Number.isFinite(pe);
+              const span = dr ? Math.max(1, dr.end - dr.start) : 1;
+              const barWidth = dated ? Math.max(0.8, ((pe - ps) / span) * 100) : 100 / phaseCount;
+              const barLeft = dated ? ((ps - dr!.start) / span) * 100 : p.order * barWidth;
+              const isBefore = dated ? st.progress < (ps - dr!.start) / span : st.progress < p.order / phaseCount;
+              const isAfter = dated ? st.progress > (pe - dr!.start) / span : st.progress > (p.order + 1) / phaseCount;
               const isCurrent = !isBefore && !isAfter;
               const opacity = isBefore ? "0.35" : isCurrent ? "1" : "0.65";
               return `
@@ -190,6 +237,26 @@ function render() {
       if (act === "close") { setVisible(false); return; }
       if (act === "play") setPlaying(!getTimelineState().playing);
       if (act === "reset") resetTimeline();
+      if (act === "p6-import") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".xer,.xml,.txt";
+        input.onchange = async () => {
+          const f = input.files?.[0];
+          if (!f) return;
+          try {
+            const r = await importScheduleText(await f.text(), f.name);
+            const msg = r.tasks
+              ? `Imported ${r.tasks} activities from ${f.name}; ${r.linked} linked to model elements.` + (r.warnings.length ? ` (${r.warnings.length} warnings)` : "")
+              : `No activities found in ${f.name}. ${r.warnings[0] ?? ""}`;
+            window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: msg, kind: r.tasks ? "success" : "error" } }));
+          } catch (e) {
+            window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "P6 import failed: " + (e instanceof Error ? e.message : String(e)), kind: "error" } }));
+          }
+        };
+        input.click();
+      }
+      if (act === "p6-relink") void relinkSchedule();
       if (act === "add") addPhase();
       if (act === "defaults") createDefaultPhases();
       if (act === "export") download("timeline-4d.json", exportTimelineJson());
@@ -249,7 +316,7 @@ function ensurePanel() {
     .obs-timeline__hint { font-size:11px; color:#94a3b8; margin-bottom:10px; }
     .obs-timeline__transport { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
     .obs-timeline__scrub { flex:1; }
-    .obs-timeline__pct { width:36px; text-align:right; font-variant-numeric:tabular-nums; }
+    .obs-timeline__pct { min-width:36px; text-align:right; font-variant-numeric:tabular-nums; }
     .obs-timeline__speed { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:12px; }
     .obs-timeline__speed input { flex:1; }
     .obs-timeline__gantt {
@@ -302,6 +369,11 @@ function ensurePanel() {
     .obs-timeline__phase-meta select {
       background:#1e293b; border:1px solid #334155; color:#e2e8f0; border-radius:4px; font-size:11px;
     }
+    .obs-timeline__p6 { background:#0f172a; border:1px solid #334155; border-radius:8px; padding:8px; margin-bottom:10px; }
+    .obs-timeline__kpis { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:6px 0; font-size:11px; }
+    .obs-timeline__kpis div { display:flex; flex-direction:column; }
+    .obs-timeline__kpis span { color:#64748b; }
+    .obs-timeline__kpis small { color:#64748b; }
     .obs-timeline__empty { color:#64748b; font-size:12px; padding:12px 0; text-align:center; }
     .obs-panel-header {
       display:flex; justify-content:space-between; align-items:center;
@@ -313,6 +385,7 @@ function ensurePanel() {
   document.head.appendChild(style);
 
   onTimelineChange(render);
+  onScheduleChange(render);
   return panel;
 }
 
@@ -332,5 +405,6 @@ export function isTimelinePanelVisible() {
 }
 
 export function setupTimelinePanel() {
+  setupSchedule4d();
   ensurePanel();
 }

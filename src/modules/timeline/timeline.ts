@@ -145,11 +145,50 @@ function tick(ts: number) {
   raf = requestAnimationFrame(tick);
 }
 
-/** Map progress 0..1 onto phase index and apply visibility/colour. */
+const isoMs = (s?: string): number | null => { const t = s ? Date.parse(s) : NaN; return Number.isFinite(t) ? t : null; };
+
+/** Calendar range of the timeline when EVERY phase has start+end dates (P6-driven 4D), else null. */
+export function phaseDateRange(): { start: number; end: number } | null {
+  const ph = state.phases;
+  if (!ph.length) return null;
+  let a = Infinity, b = -Infinity;
+  for (const p of ph) {
+    const s = isoMs(p.startDate), e = isoMs(p.endDate);
+    if (s == null || e == null) return null;
+    if (s < a) a = s; if (e > b) b = e;
+  }
+  return b > a ? { start: a, end: b } : null;
+}
+
+/** Simulated calendar date (epoch ms) at the current progress, or null in index mode. */
+export function simulationMs(): number | null {
+  const r = phaseDateRange();
+  return r ? r.start + state.progress * (r.end - r.start) : null;
+}
+
+/** Replace all phases (used by the schedule importer). */
+export function replacePhases(phases: Phase[]) {
+  state.phases = phases;
+  applyProgress(state.progress);
+  notify();
+}
+
+/** Map progress 0..1 onto phase index (or calendar date when phases are dated) and apply visibility/colour. */
 function applyProgress(t: number) {
   const phases = listPhases();
   if (!phases.length) {
     restoreAll();
+    return;
+  }
+
+  const range = phaseDateRange();
+  if (range) {
+    const now = range.start + t * (range.end - range.start);
+    for (const ph of phases) {
+      const s = isoMs(ph.startDate)!, e = isoMs(ph.endDate)!;
+      const mode = now < s ? ph.beforeMode : now >= e ? ph.afterMode : "active";
+      for (const eid of ph.elementIds) applyElementStyle(eid, mode, ph.color);
+    }
     return;
   }
 
@@ -237,8 +276,12 @@ export function createDefaultPhases() {
   names.forEach((n) => addPhase(n));
 }
 
+/** The schedule importer registers these so the timeline file also carries the imported P6 schedule. */
+let scheduleHooks: { snapshot?: () => unknown; restore?: (d: unknown) => void } = {};
+export function setScheduleHooks(h: typeof scheduleHooks) { scheduleHooks = h; }
+
 export function exportTimelineJson(): string {
-  return JSON.stringify({ version: 1, phases: state.phases }, null, 2);
+  return JSON.stringify({ version: 2, phases: state.phases, schedule: scheduleHooks.snapshot?.() ?? null }, null, 2);
 }
 
 export function importTimelineJson(json: string) {
@@ -246,6 +289,7 @@ export function importTimelineJson(json: string) {
     const data = JSON.parse(json);
     if (Array.isArray(data.phases)) {
       state.phases = data.phases;
+      if (data.schedule) { try { scheduleHooks.restore?.(data.schedule); } catch (e) { console.warn("[timeline] schedule restore failed", e); } }
       applyProgress(state.progress);
       notify();
     }
