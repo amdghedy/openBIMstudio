@@ -6426,3 +6426,57 @@ export function translateSelected(dx: number, dz: number): number {
   if (n) { rebuild(); markDirty(); notifyAuthoringChange(); }
   return n;
 }
+export function duplicateSelected(dx: number, dz: number): string[] {
+  const ids = [...selectedIds].map(String);
+  const newIds: string[] = [];
+  for (const id of ids) {
+    const el = elements.find((e) => String((e as any).id) === id);
+    if (!el) continue;
+    const srcId = (el as any).id;
+    const newId: any = typeof srcId === "number"
+      ? Date.now() + Math.floor(Math.random() * 100000) + newIds.length
+      : (typeof crypto !== "undefined" && (crypto as any).randomUUID
+          ? (crypto as any).randomUUID()
+          : `el-${Date.now()}-${newIds.length}-${Math.random().toString(36).slice(2, 8)}`);
+    const clonedParams: Record<string, any> = { ...(el as any).params };
+    if (Array.isArray(clonedParams.polygon)) {
+      clonedParams.polygon = clonedParams.polygon.map((q: any) => Array.isArray(q) ? [...q] : q);
+    }
+    const cloned: any = { ...(el as any), id: newId, params: clonedParams };
+    const p = cloned.params;
+    if (Array.isArray(p.start)) p.start = [p.start[0] + dx, p.start[1] + dz];
+    if (Array.isArray(p.end)) p.end = [p.end[0] + dx, p.end[1] + dz];
+    if (Array.isArray(p.point)) p.point = [p.point[0] + dx, p.point[1] + dz];
+    if (Array.isArray(p.polygon)) p.polygon = p.polygon.map(([x, z]: [number, number]) => [x + dx, z + dz] as [number, number]);
+    elements.push(cloned);
+    newIds.push(String(newId));
+  }
+  if (newIds.length) {
+    rebuild();
+    markDirty();
+    notifyAuthoringChange();
+  }
+  return newIds;
+}
+export function rotateSelected(px: number, pz: number, angleRadians: number): number {
+  const cos = Math.cos(angleRadians), sin = Math.sin(angleRadians);
+  const rot = (x: number, z: number): [number, number] => [
+    px + (x - px) * cos - (z - pz) * sin,
+    pz + (x - px) * sin + (z - pz) * cos,
+  ];
+  const ids = [...selectedIds].map(String);
+  let n = 0;
+  for (const id of ids) {
+    const el = elements.find((e) => String((e as any).id) === id);
+    if (!el) continue;
+    const p = (el as any).params;
+    if (Array.isArray(p.start) && p.start.length === 2) p.start = rot(p.start[0], p.start[1]);
+    if (Array.isArray(p.end) && p.end.length === 2) p.end = rot(p.end[0], p.end[1]);
+    if (Array.isArray(p.point) && p.point.length === 2) p.point = rot(p.point[0], p.point[1]);
+    if (Array.isArray(p.polygon)) p.polygon = p.polygon.map(([x, z]: [number, number]) => rot(x, z));
+    if (typeof p.rotation === "number") p.rotation += angleRadians;
+    n++;
+  }
+  if (n) { rebuild(); markDirty(); notifyAuthoringChange(); }
+  return n;
+}

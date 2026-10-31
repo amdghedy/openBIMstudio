@@ -11,6 +11,9 @@ import {
   getTypeDefaults, setTypeDefault,
 } from "./authoring";
 import { runModifyAction } from "./modify-actions";
+import { startMultiMove } from "./multi-move";
+import { startArray } from "./array-tool";
+import { startRotate } from "./rotate-tool";
 
 type Any = Record<string, any>;
 let host: HTMLDivElement | null = null;
@@ -87,13 +90,27 @@ function render(): void {
     html += field("Elevation", num("elevation", defaults.params.elevation ?? 0));
   } else {
     html += `<span style="color:#94a3b8;font-size:10px">Modify</span>`;
-    html += btn("move", "Move") + btn("copy", "Copy") + btn("rotate", "Rotate") +
-      btn("mirror", "Mirror") + btn("array", "Array") + btn("offset", "Offset") +
+    html += `<button data-mm="move">Move</button><button data-mm="copy">Copy</button>` + `<button data-rot="1" style="position:relative;background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">Rotate</button>` +
+      btn("mirror", "Mirror") + `<button data-arr="1" style="background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">Array</button>` + btn("offset", "Offset") +
       btn("pin", "Pin") + btn("delete", "Delete");
   }
 
   html += `<span style="flex:1"></span><span style="color:#64748b;font-size:9px">Esc cancels · Space repeats</span>`;
   host.innerHTML = html;
+  host.querySelectorAll<HTMLElement>("button").forEach((b) => {
+    const isNew =
+      (b.dataset.mm === "move") ||
+      (b.dataset.mm === "copy") ||
+      (b.dataset.arr === "1") ||
+      (b.dataset.rot === "1");
+    if (!isNew || b.querySelector(".obs-new-dot")) return;
+    b.style.position = "relative";
+    const dot = document.createElement("span");
+    dot.className = "obs-new-dot";
+    dot.title = "New tool — try it";
+    dot.style.cssText = "position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#22c55e;border-radius:50%;box-shadow:0 0 3px #22c55e;pointer-events:none;";
+    b.appendChild(dot);
+  });
 
   host.querySelectorAll<HTMLElement>("[data-k]").forEach((el) => {
     const k = el.dataset.k!;
@@ -105,8 +122,11 @@ function render(): void {
       (el as HTMLInputElement).onchange = () => apply(k, parseFloat((el as HTMLInputElement).value));
     }
   });
-  host.querySelectorAll<HTMLElement>("[data-m]").forEach((b) => {
-    b.onclick = () => runModifyAction(b.dataset.m as any);
+  host.querySelectorAll<HTMLElement>("button").forEach((b) => {
+    if (b.dataset.mm) b.onclick = () => startMultiMove(b.dataset.mm === "copy");
+    else if (b.dataset.arr) b.onclick = () => startArray();
+    else if (b.dataset.rot) b.onclick = () => startRotate();
+    else if (b.dataset.m) b.onclick = () => runModifyAction(b.dataset.m as any);
   });
 }
 

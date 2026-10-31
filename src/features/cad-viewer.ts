@@ -2991,6 +2991,21 @@ function build(): void {
 
   buildBar();
   buildBar2();
+  (function markNewCadTools() {
+    const mark = (btn: Element | null, tip: string) => {
+      if (!btn) return;
+      const el = btn as HTMLElement;
+      if (el.querySelector(".obs-new-dot")) return;
+      el.style.position = "relative";
+      const dot = document.createElement("span");
+      dot.className = "obs-new-dot";
+      dot.title = tip;
+      dot.style.cssText = "position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#22c55e;border-radius:50%;box-shadow:0 0 3px #22c55e;pointer-events:none;";
+      el.appendChild(dot);
+    };
+    ["radius", "arc", "note", "leader", "calibrate"].forEach((t) => mark(tools.querySelector('[data-t="' + t + '"]'), "New tool"));
+    ["takeoff", "save-mk", "load-mk"].forEach((a) => mark(tools2.querySelector('[data-a="' + a + '"]'), "New feature"));
+  })();
   setTool("select");
   showProps();
   showMeas();
