@@ -37,7 +37,7 @@ export type IconName =
   // Room
   | "room" | "area" | "room-tag"
   // Modify
-  | "move" | "copy" | "rotate" | "mirror" | "array" | "offset"
+  | "move" | "copy" | "rotate" | "mirror" | "array" | "offset" | "scale"
   | "delete" | "clear" | "isolate" | "show-all" | "select-all"
   // View
   | "perspective" | "orthographic" | "fit"
@@ -174,6 +174,7 @@ const PATHS: Record<IconName, string> = {
   mirror: `<path d="M12 3 V21" stroke-dasharray="2 2"/><path d="M9 6 L3 12 L9 18 Z M15 6 L21 12 L15 18 Z"/>`,
   array: `<rect x="3" y="3" width="6" height="6"/><rect x="15" y="3" width="6" height="6"/><rect x="3" y="15" width="6" height="6"/><rect x="15" y="15" width="6" height="6"/>`,
   offset: `<path d="M4 12 H20" stroke-dasharray="3 2"/><path d="M6 8 H18"/><path d="M6 16 H18"/>`,
+  scale: `<rect x="8" y="8" width="8" height="8"/><path d="M3 9 V3 H9 M21 15 V21 H15 M3 3 L8 8 M21 21 L16 16"/>`,
   delete: `<path d="M6 6 H18 M9 6 V4 H15 V6 M8 6 L9 20 H15 L16 6"/>`,
   clear: `<path d="M5 7 H19 M9 7 V5 H15 V7 M8 7 L9 20 H15 L16 7"/><path d="M12 10 V17 M15 10 L15 17"/>`,
   isolate: `<rect x="4" y="4" width="16" height="16" stroke-dasharray="3 2"/><path d="M8 8 H16 V16 H8 Z"/>`,

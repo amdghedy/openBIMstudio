@@ -13,6 +13,8 @@
  *   ID, LI (LIST), Z (ZOOM [All/Extents/Window/Previous]), P (PAN), LA (LAYER), PR (PROPERTIES),
  *   RE (REGEN), UN (UNITS), UCS, PU (PURGE), U (UNDO), REDO, ORTHO (F8), OSNAP (F3), GRID (F7), DYN (F12)
  * - Real AutoCAD Drafting: Line, Polyline, Circle, Rectangle, Arc drafting with Undo/Redo stack
+ * - AutoCAD-Grade Modify tools: MOVE (M), COPY (CO), ROTATE (RO), MIRROR (MI), SCALE (SC),
+ *   OFFSET (O) — base-point flows, live ghost preview, dynamic-input prompts, Undo/Redo support
  * - Full AutoCAD Layer Properties Manager (LA) with On/Off, Freeze, Lock, ACI Colors, and Linetypes
  * - Standard Window (blue solid) vs Crossing (green dashed) selection modes
  * - Modern AutoCAD Dark Charcoal Canvas (#212830) with adaptive major/minor grid & colored axes
@@ -23,6 +25,7 @@ import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import * as M from "../modules/cad-viewer/viewer-math";
+import * as X from "../modules/cad-viewer/modify-math";
 import { svgIcon, type IconName } from "./icon-set";
 
 type Tool =
@@ -52,7 +55,12 @@ type Tool =
   | "circle"
   | "rect"
   | "arc"
-  | "erase";
+  | "erase"
+  | "move"
+  | "copy"
+  | "rotate"
+  | "mirror"
+  | "scale";
 
 type ColorMode = "layer" | "bw" | "invert";
 interface Markup {
@@ -74,6 +82,12 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "RECTANG", aliases: ["REC", "RECTANGLE"], description: "Create a rectangular polyline" },
   { name: "ARC", aliases: ["A"], description: "Create an arc using 3 points" },
   { name: "ERASE", aliases: ["E", "DEL"], description: "Erase selected objects" },
+  { name: "MOVE", aliases: ["M"], description: "Move selected objects a distance and direction" },
+  { name: "COPY", aliases: ["CO"], description: "Copy selected objects to multiple placements" },
+  { name: "ROTATE", aliases: ["RO"], description: "Rotate selected objects around a base point" },
+  { name: "MIRROR", aliases: ["MI"], description: "Mirror selected objects about a two-point axis" },
+  { name: "SCALE", aliases: ["SC"], description: "Scale selected objects about a base point" },
+  { name: "OFFSET", aliases: ["O"], description: "Create concentric parallel copies at a distance" },
   { name: "DIST", aliases: ["DI", "DISTANCE"], description: "Measure distance and angle between points" },
   { name: "AREA", aliases: ["AA"], description: "Calculate area and perimeter of an object or region" },
   { name: "ID", aliases: ["ID"], description: "Display the coordinate values of a location" },
@@ -407,8 +421,12 @@ function build(): void {
 
   // AutoCAD Drafting Undo / Redo Stacks
   interface UndoAction {
-    type: "add" | "delete";
-    entities: DxfEntity[];
+    type: "add" | "delete" | "modify";
+    entities?: DxfEntity[];
+    /** Modify: entity objects before the transform. */
+    before?: DxfEntity[];
+    /** Modify: transformed entity objects currently in the drawing. */
+    after?: DxfEntity[];
   }
   const undoStack: UndoAction[] = [];
   const redoStack: UndoAction[] = [];
@@ -801,6 +819,28 @@ function build(): void {
       const ang = M.norm360Deg(lastP, cursor);
       text1 = `${fmt(d)} < ${ang.toFixed(1)}°`;
       text2 = `Specify next point or [Close/Undo]`;
+    } else if (mod) {
+      text2 = modPrompt();
+      if (mod.stage === "second" && mod.base) {
+        const d = M.distance(mod.base, cursor);
+        const ang = M.norm360Deg(mod.base, cursor);
+        if (mod.kind === "rotate") text1 = `${ang.toFixed(1)}°`;
+        else if (mod.kind === "scale") {
+          const refD = mod.ref ? Math.max(1e-9, M.distance(mod.ref, mod.base)) : 1;
+          text1 = `×${(d / refD).toFixed(4)}`;
+        } else text1 = `${fmt(d)} < ${ang.toFixed(1)}°`;
+      } else if (mod.stage === "select") {
+        text1 = `${sel.size} selected`;
+      } else {
+        text1 = `${ax.toFixed(4)}, ${ay.toFixed(4)} ${uLabel}`;
+      }
+    } else if (tool === "offset") {
+      text2 = offsetPrompt();
+      if (offStage === "dist2" && offPick) {
+        text1 = `${fmt(M.distance(offPick, cursor))}`;
+      } else {
+        text1 = `${ax.toFixed(4)}, ${ay.toFixed(4)} ${uLabel}`;
+      }
     } else {
       text1 = `${ax.toFixed(4)}, ${ay.toFixed(4)} ${uLabel}`;
       if (tool === "line") text2 = "Specify first point:";
@@ -982,6 +1022,44 @@ function build(): void {
       c.strokeStyle = "#38bdf8";
       c.fillStyle = "#38bdf8";
       for (const i of sel) if (ents[i] && visible(ents[i])) drawEntity(c, ents[i], v);
+      c.restore();
+    }
+
+    // Modify ghost preview (MOVE / COPY / ROTATE / MIRROR / SCALE) — AutoCAD drag style
+    if (modGhost && modGhost.length) {
+      c.save();
+      c.setLineDash([6, 4]);
+      c.lineWidth = lw + 1;
+      c.strokeStyle = "#facc15";
+      c.fillStyle = "#facc15";
+      c.globalAlpha = 0.85;
+      for (const e of modGhost) drawEntity(c, e, v);
+      c.restore();
+    }
+
+    // Modify guide lines: displacement (base→cursor) or mirror axis
+    if (withUi && mod && mod.base && mod.stage === "second" && cursor) {
+      const a = M.worldToScreen(v, mod.base.x, mod.base.y);
+      const b2 = M.worldToScreen(v, cursor.x, cursor.y);
+      c.save();
+      c.strokeStyle = mod.kind === "mirror" ? "#a78bfa" : "rgba(250,204,21,.7)";
+      c.setLineDash(mod.kind === "mirror" ? [8, 5] : [4, 4]);
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(a.x, a.y);
+      c.lineTo(b2.x, b2.y);
+      c.stroke();
+      if (mod.kind === "mirror") {
+        // Extend the mirror axis across the viewport
+        const dx = b2.x - a.x,
+          dy = b2.y - a.y;
+        const L = Math.hypot(v.w, v.h);
+        const len = Math.hypot(dx, dy) || 1;
+        c.beginPath();
+        c.moveTo(b2.x + (dx / len) * L, b2.y + (dy / len) * L);
+        c.lineTo(b2.x - (dx / len) * L, b2.y - (dy / len) * L);
+        c.stroke();
+      }
       c.restore();
     }
 
@@ -1278,6 +1356,23 @@ function build(): void {
     logCmd(`Command: ERASE — ${removed.length} object(s) deleted`);
   }
 
+  /** Replaces entity `oldE` with `newE` (identity-based) in ents / modelEnts. */
+  const replaceEntity = (oldE: DxfEntity, newE: DxfEntity): void => {
+    const i = ents.indexOf(oldE);
+    if (i >= 0) ents[i] = newE;
+    if (modelEnts !== ents) {
+      const j = modelEnts.indexOf(oldE);
+      if (j >= 0) modelEnts[j] = newE;
+    }
+  };
+
+  const rebuildIndex = (): void => {
+    let b: M.BBox | null = null;
+    for (const e of ents) b = M.unionBBox(b, M.entityBBox(e));
+    bounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+    idx = M.buildIndex(ents, bounds);
+  };
+
   function undo(): void {
     const act = undoStack.pop();
     if (!act) {
@@ -1286,20 +1381,24 @@ function build(): void {
     }
     if (act.type === "add") {
       // Remove added entities
-      const addSet = new Set(act.entities);
+      const addSet = new Set(act.entities ?? []);
       ents = ents.filter((e) => !addSet.has(e));
       if (layoutI < 0) modelEnts = ents;
       redoStack.push(act);
     } else if (act.type === "delete") {
       // Restore deleted entities
-      ents.push(...act.entities);
-      if (layoutI < 0) modelEnts.push(...act.entities);
+      ents.push(...(act.entities ?? []));
+      if (layoutI < 0) modelEnts.push(...(act.entities ?? []));
+      redoStack.push(act);
+    } else if (act.type === "modify") {
+      const before = act.before ?? [];
+      const after = act.after ?? [];
+      for (let i = 0; i < after.length; i++) replaceEntity(after[i], before[i]);
+      if (layoutI < 0) modelEnts = ents;
       redoStack.push(act);
     }
-    let b: M.BBox | null = null;
-    for (const e of ents) b = M.unionBBox(b, M.entityBBox(e));
-    bounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-    idx = M.buildIndex(ents, bounds);
+    rebuildIndex();
+    showProps();
     draw();
     logCmd("Command: UNDO");
   }
@@ -1311,21 +1410,403 @@ function build(): void {
       return;
     }
     if (act.type === "add") {
-      ents.push(...act.entities);
-      if (layoutI < 0) modelEnts.push(...act.entities);
+      ents.push(...(act.entities ?? []));
+      if (layoutI < 0) modelEnts.push(...(act.entities ?? []));
       undoStack.push(act);
     } else if (act.type === "delete") {
-      const delSet = new Set(act.entities);
+      const delSet = new Set(act.entities ?? []);
       ents = ents.filter((e) => !delSet.has(e));
       if (layoutI < 0) modelEnts = ents;
       undoStack.push(act);
+    } else if (act.type === "modify") {
+      const before = act.before ?? [];
+      const after = act.after ?? [];
+      for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
+      if (layoutI < 0) modelEnts = ents;
+      undoStack.push(act);
     }
-    let b: M.BBox | null = null;
-    for (const e of ents) b = M.unionBBox(b, M.entityBBox(e));
-    bounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-    idx = M.buildIndex(ents, bounds);
+    rebuildIndex();
+    showProps();
     draw();
     logCmd("Command: REDO");
+  }
+
+  /* ── AutoCAD Modify Engine (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET) ── */
+  type ModKind = "move" | "copy" | "rotate" | "mirror" | "scale";
+  type ModStage = "select" | "base" | "second" | "eraseAsk";
+  type OffStage = "dist" | "dist2" | "pickObj" | "pickSide";
+  interface ModOp {
+    kind: ModKind;
+    stage: ModStage;
+    ghostOf: number[]; // entity indices captured when the op started
+    base: M.Pt | null;
+    ref: M.Pt | null; // SCALE: cursor position when the factor prompt became active (factor 1.0)
+  }
+  let mod: ModOp | null = null;
+  let modGhost: DxfEntity[] | null = null;
+  let offStage: OffStage = "dist";
+  let offDist: number | null = null;
+  let offPick: M.Pt | null = null;
+  let offTarget = -1;
+  let pendingNumeric: ((v: number) => void) | null = null;
+  let pendingYesNo: ((yes: boolean) => void) | null = null;
+
+  const isModTool = (t: Tool): t is ModKind =>
+    t === "move" || t === "copy" || t === "rotate" || t === "mirror" || t === "scale";
+
+  /** Clears modify/offset interaction state (no tool change, no logging). */
+  function clearModState(): void {
+    mod = null;
+    modGhost = null;
+    offStage = "dist";
+    offPick = null;
+    offTarget = -1;
+    pendingNumeric = null;
+    pendingYesNo = null;
+  }
+
+  const modTargets = (): DxfEntity[] =>
+    mod
+      ? mod.ghostOf
+          .map((i) => ents[i])
+          .filter((e): e is DxfEntity => !!e)
+      : [];
+
+  function modPrompt(): string {
+    if (!mod) return "";
+    switch (mod.stage) {
+      case "select":
+        return "Select objects: (click to add · Enter / right-click to finish)";
+      case "base":
+        return mod.kind === "mirror" ? "Specify first point of mirror line:" : "Specify base point:";
+      case "eraseAsk":
+        return "Erase source objects? [Yes/No] <N>:";
+      case "second":
+        switch (mod.kind) {
+          case "move":
+            return "Specify second point or <use first point as displacement>:";
+          case "copy":
+            return "Specify second point or [Exit]:";
+          case "rotate":
+            return "Specify rotation angle:";
+          case "mirror":
+            return "Specify second point of mirror line:";
+          case "scale":
+            return "Specify scale factor:";
+        }
+    }
+  }
+
+  /** Batched add: pushes all entities with a single undo action. */
+  function addEntities(list: DxfEntity[]): void {
+    if (!list.length) return;
+    for (const e of list) ents.push(e);
+    if (modelEnts !== ents) for (const e of list) modelEnts.push(e);
+    let b: M.BBox | null = null;
+    for (const e of list) b = b ? M.unionBBox(b, M.entityBBox(e)) : M.entityBBox(e);
+    if (b) bounds = M.unionBBox(bounds ?? b, b);
+    idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+    undoStack.push({ type: "add", entities: list });
+    redoStack.length = 0;
+    showProps();
+  }
+
+  /** In-place transform commit with a single modify undo action. */
+  function commitModify(before: DxfEntity[], after: DxfEntity[]): void {
+    for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
+    undoStack.push({ type: "modify", before, after });
+    redoStack.length = 0;
+    rebuildIndex();
+    // Keep the transformed objects selected, like AutoCAD grips.
+    sel.clear();
+    for (const e of after) {
+      const i = ents.indexOf(e);
+      if (i >= 0) sel.add(i);
+    }
+    selected = sel.size ? [...sel][sel.size - 1] : -1;
+    showProps();
+  }
+
+  function applyMove(dp: M.Pt): void {
+    if (!mod) return;
+    const before = modTargets();
+    if (!before.length) return;
+    commitModify(before, before.map((e) => X.translateEnt(e, dp.x, dp.y)));
+    logCmd(`MOVE: ${before.length} object(s) moved by ${fmt(Math.hypot(dp.x, dp.y))}`);
+  }
+
+  function placeCopy(dp: M.Pt): void {
+    if (!mod) return;
+    const src = modTargets();
+    if (!src.length) return;
+    addEntities(src.map((e) => X.translateEnt(e, dp.x, dp.y)));
+    logCmd(`COPY: ${src.length} object(s) copied by ${fmt(Math.hypot(dp.x, dp.y))}`);
+  }
+
+  function applyRotate(angleDeg: number): void {
+    if (!mod || !mod.base) return;
+    const before = modTargets();
+    if (!before.length) return;
+    commitModify(before, before.map((e) => X.rotateEnt(e, mod!.base!.x, mod!.base!.y, angleDeg)));
+    logCmd(`ROTATE: ${before.length} object(s) rotated ${angleDeg.toFixed(2)}°`);
+  }
+
+  function applyScale(k: number): void {
+    if (!mod || !mod.base) return;
+    if (!Number.isFinite(k) || k <= 0) {
+      logCmd("Scale factor must be greater than zero.");
+      return;
+    }
+    const before = modTargets();
+    if (!before.length) return;
+    commitModify(before, before.map((e) => X.scaleEnt(e, mod!.base!.x, mod!.base!.y, k)));
+    logCmd(`SCALE: ${before.length} object(s) scaled ×${k.toFixed(4)}`);
+  }
+
+  function finishMirrorAxis(p2: M.Pt): void {
+    if (!mod || !mod.base) return;
+    const src = modTargets();
+    if (!src.length) return;
+    const copies = src.map((e) => X.mirrorEnt(e, mod!.base!, p2));
+    addEntities(copies);
+    logCmd(`MIRROR: ${src.length} mirrored object(s) created.`);
+    mod.stage = "eraseAsk";
+    modGhost = null;
+    logCmd("Erase source objects? [Yes/No] <N>: (type Y or N, Enter = No)");
+    pendingYesNo = (yes) => {
+      pendingYesNo = null;
+      if (yes) {
+        const doomed = modTargets();
+        const keep = ents.filter((e) => !doomed.includes(e));
+        undoStack.push({ type: "delete", entities: doomed });
+        redoStack.length = 0;
+        ents = keep;
+        if (layoutI < 0) modelEnts = keep;
+        sel.clear();
+        selected = -1;
+        rebuildIndex();
+        showProps();
+        logCmd(`MIRROR: ${doomed.length} source object(s) erased.`);
+      }
+      const kind = mod?.kind;
+      clearModState();
+      setTool("select");
+      draw();
+      if (kind) logCmd("Command: _MIRROR completed");
+    };
+  }
+
+  /** Live preview ghost for the active modify operation. */
+  function updateModGhost(cur: M.Pt): void {
+    if (!mod || !mod.base || mod.stage !== "second") {
+      if (mod?.stage === "eraseAsk") modGhost = null;
+      return;
+    }
+    const src = modTargets();
+    const b = mod.base;
+    switch (mod.kind) {
+      case "move":
+      case "copy":
+        modGhost = src.map((e) => X.translateEnt(e, cur.x - b.x, cur.y - b.y));
+        break;
+      case "rotate":
+        modGhost = src.map((e) => X.rotateEnt(e, b.x, b.y, M.norm360Deg(b, cur)));
+        break;
+      case "mirror":
+        modGhost = src.map((e) => X.mirrorEnt(e, b, cur));
+        break;
+      case "scale": {
+        const refD = mod.ref ? Math.max(1e-9, Math.hypot(mod.ref.x - b.x, mod.ref.y - b.y)) : 1;
+        const k = Math.hypot(cur.x - b.x, cur.y - b.y) / refD;
+        modGhost = src.map((e) => X.scaleEnt(e, b.x, b.y, k));
+        break;
+      }
+    }
+  }
+
+  /** Enter / right-click during a modify op. */
+  function confirmModStep(): void {
+    if (!mod) return;
+    if (mod.stage === "select") {
+      if (!sel.size) {
+        logCmd("0 found");
+        return;
+      }
+      mod.ghostOf = [...sel];
+      mod.stage = "base";
+      logCmd(`${sel.size} found`);
+      logCmd(modPrompt());
+    } else if (mod.stage === "second" && mod.kind === "copy") {
+      clearModState();
+      setTool("select");
+      logCmd("Command: _COPY completed");
+      draw();
+    } else if (mod.stage === "eraseAsk") {
+      const f = pendingYesNo;
+      pendingYesNo = null;
+      f?.(false);
+    }
+  }
+
+  /** Cancels the active modify / offset operation (Esc). */
+  function cancelModOp(): void {
+    const had = !!mod || isModTool(tool) || tool === "offset";
+    clearModState();
+    if (had) {
+      setTool("select");
+      logCmd("*Cancel*");
+      draw();
+    }
+  }
+
+  /** OFFSET click flow. Returns true when the click was consumed. */
+  function onOffsetClick(wp: M.Pt): boolean {
+    switch (offStage) {
+      case "dist": {
+        offPick = { x: wp.x, y: wp.y };
+        offStage = "dist2";
+        logCmd("Specify second point:");
+        return true;
+      }
+      case "dist2": {
+        const d = Math.hypot(wp.x - offPick!.x, wp.y - offPick!.y);
+        offDist = d;
+        offPick = null;
+        offStage = "pickObj";
+        logCmd(`Offset distance = ${fmt(d)}`);
+        logCmd("Select object to offset:");
+        return true;
+      }
+      case "pickObj": {
+        if (offDist == null) {
+          logCmd("Specify the offset distance first (click two points or type a value).");
+          offStage = "dist";
+          return true;
+        }
+        const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        if (i < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        offTarget = i;
+        setSel([i]);
+        offStage = "pickSide";
+        logCmd("Specify point on side to offset:");
+        return true;
+      }
+      case "pickSide": {
+        const e = ents[offTarget];
+        if (!e || offDist == null) {
+          offStage = "pickObj";
+          offTarget = -1;
+          logCmd("Select object to offset:");
+          return true;
+        }
+        const copy = X.offsetEnt(e, offDist, wp);
+        if (!copy) {
+          logCmd(`Cannot offset that ${e.type} — the offset would collapse the shape.`);
+        } else {
+          addEntities([copy]);
+          logCmd(`Offset created: ${copy.type} at ${fmt(offDist)}`);
+        }
+        offTarget = -1;
+        sel.clear();
+        selected = -1;
+        showProps();
+        offStage = "pickObj";
+        logCmd("Select object to offset:");
+        return true;
+      }
+    }
+  }
+
+  /** Offset prompt for the dynamic-input HUD / command log. */
+  function offsetPrompt(): string {
+    switch (offStage) {
+      case "dist":
+        return `Specify offset distance or <${offDist != null ? fmt(offDist) : "distance"}>: (click two points or type a value)`;
+      case "dist2":
+        return "Specify second point:";
+      case "pickObj":
+        return "Select object to offset:";
+      case "pickSide":
+        return "Specify point on side to offset:";
+    }
+  }
+
+  /** Central modify/offset pointer-down handler. Returns true when consumed. */
+  function onModPointerDown(wp: M.Pt): boolean {
+    if (tool === "offset") return onOffsetClick(wp);
+    if (!mod) return false;
+
+    if (mod.stage === "select") {
+      const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+      if (i >= 0) setSel([i], true);
+      else logCmd("0 found");
+      return true;
+    }
+    if (mod.stage === "base") {
+      mod.base = { x: wp.x, y: wp.y };
+      mod.stage = "second";
+      if (mod.kind === "scale") mod.ref = cursor ? { x: cursor.x, y: cursor.y } : { x: wp.x + 1, y: wp.y };
+      pendingNumeric =
+        mod.kind === "scale"
+          ? (k) => {
+              applyScale(k);
+              clearModState();
+              setTool("select");
+              draw();
+            }
+          : mod.kind === "rotate"
+            ? (a) => {
+                applyRotate(a);
+                clearModState();
+                setTool("select");
+                draw();
+              }
+            : null;
+      logCmd(modPrompt());
+      return true;
+    }
+    if (mod.stage === "second" && mod.base) {
+      const b = mod.base;
+      switch (mod.kind) {
+        case "move": {
+          applyMove({ x: wp.x - b.x, y: wp.y - b.y });
+          clearModState();
+          setTool("select");
+          draw();
+          return true;
+        }
+        case "copy": {
+          placeCopy({ x: wp.x - b.x, y: wp.y - b.y });
+          mod.base = { x: wp.x, y: wp.y }; // next placement continues from here (AutoCAD multi-copy)
+          logCmd("Specify second point or [Exit]:");
+          return true;
+        }
+        case "rotate": {
+          applyRotate(M.norm360Deg(b, wp));
+          clearModState();
+          setTool("select");
+          draw();
+          return true;
+        }
+        case "mirror": {
+          finishMirrorAxis(wp);
+          draw();
+          return true;
+        }
+        case "scale": {
+          const refD = mod.ref ? Math.max(1e-9, Math.hypot(mod.ref.x - b.x, mod.ref.y - b.y)) : 1;
+          applyScale(Math.hypot(wp.x - b.x, wp.y - b.y) / refD);
+          clearModState();
+          setTool("select");
+          draw();
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /* ── Load Document ── */
@@ -1374,6 +1855,7 @@ function build(): void {
 
   function activate(i: number): void {
     if (!doc) return;
+    clearModState();
     layoutI = i;
     sel.clear();
     selected = -1;
@@ -1738,6 +2220,11 @@ function build(): void {
     ["radius", "Radius", "R"],
     ["leader", "Leader", "Y"],
     ["cloud", "RevCloud", "U"],
+    ["move", "Move", "M"],
+    ["copy", "Copy", "CO"],
+    ["rotate", "Rotate", "RO"],
+    ["mirror", "Mirror", "MI"],
+    ["scale", "Scale", "SC"],
     ["offset", "Offset", "O"],
     ["redline", "Redline", "M"],
     ["note", "Text Note", "N"],
@@ -1784,11 +2271,19 @@ function build(): void {
           tb("arc", "arc-length", "Arc"),
       ) +
       rg(
-        "Modify",
+        "Select",
         tb("select", "select-all", "Select") +
           tb("erase", "delete", "Erase") +
           tb("box", "isolate", "Box") +
-          rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)") +
+          rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)"),
+      ) +
+      rg(
+        "Modify",
+        tb("move", "move", "Move") +
+          tb("copy", "copy", "Copy") +
+          tb("rotate", "rotate", "Rotate") +
+          tb("mirror", "mirror", "Mirror") +
+          tb("scale", "scale", "Scale") +
           tb("offset", "offset", "Offset"),
       ) +
       rg(
@@ -1900,6 +2395,7 @@ function build(): void {
   }
 
   function setTool(t: Tool) {
+    clearModState();
     tool = t;
     cv.focus({ preventScroll: true });
     pts = [];
@@ -1908,8 +2404,24 @@ function build(): void {
     hover = null;
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === t));
     cv.style.cursor = t === "pan" ? "grab" : "crosshair";
+    if (isModTool(t)) {
+      // Noun–verb: an existing selection skips the Select objects stage.
+      mod = { kind: t, stage: sel.size ? "base" : "select", ghostOf: [...sel], base: null, ref: null };
+      logCmd(`Command: _${t.toUpperCase()} ${modPrompt()}`);
+    } else if (t === "offset") {
+      offStage = offDist == null ? "dist" : "pickObj";
+      pendingNumeric = (d) => {
+        offDist = Math.abs(d);
+        offStage = "pickObj";
+        pendingNumeric = null;
+        logCmd(`Offset distance = ${fmt(offDist)}`);
+        logCmd("Select object to offset:");
+      };
+      logCmd(`Command: _OFFSET ${offsetPrompt()}`);
+    } else {
+      logCmd(`Command: _${t.toUpperCase()}`);
+    }
     draw();
-    logCmd(`Command: _${t.toUpperCase()}`);
   }
 
   function finishMeasure() {
@@ -1989,6 +2501,17 @@ function build(): void {
       winStart = winNow = sp;
       cv.setPointerCapture(ev.pointerId);
       return;
+    }
+
+    // AutoCAD Modify tools (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET)
+    if (isModTool(tool) || tool === "offset") {
+      const s2 = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind };
+      let mp: M.Pt = { x: s2.x, y: s2.y };
+      if (orthoOn && mod?.base && mod.stage === "second") mp = M.orthoConstrain(mod.base, mp);
+      if (onModPointerDown(mp)) {
+        draw();
+        return;
+      }
     }
 
     const s = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind };
@@ -2241,8 +2764,24 @@ function build(): void {
     let cur = hover ? { x: hover.x, y: hover.y } : wp;
     if (orthoOn && pts.length >= 1) cur = M.orthoConstrain(pts[pts.length - 1], cur);
     cursor = cur;
+    if (mod) updateModGhost(cur);
     updateStatus(cursor);
     draw();
+  });
+
+  // Right-click = Enter (AutoCAD: confirm selection / accept defaults)
+  cv.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    if (mod) confirmModStep();
+    else if (tool === "offset" && offStage === "pickSide") {
+      offStage = "pickObj";
+      offTarget = -1;
+      sel.clear();
+      selected = -1;
+      showProps();
+      logCmd("Select object to offset:");
+      draw();
+    }
   });
 
   const endDrag = (ev: PointerEvent) => {
@@ -2318,6 +2857,10 @@ function build(): void {
       closeOverlay();
       return;
     }
+    if (mod || isModTool(tool) || tool === "offset") {
+      cancelModOp();
+      return;
+    }
     if (pts.length || winStart || rband) {
       pts = [];
       winStart = winNow = null;
@@ -2379,8 +2922,30 @@ function build(): void {
       return;
     }
     if (ev.key === "Delete") {
-      eraseSelected();
+      if (!mod) eraseSelected();
       return;
+    }
+    if (mod?.stage === "eraseAsk" && (ev.key === "y" || ev.key === "Y")) {
+      ev.preventDefault();
+      const f = pendingYesNo;
+      pendingYesNo = null;
+      f?.(true);
+      return;
+    }
+    if (ev.key === "Enter" || ev.key === " ") {
+      if (mod) {
+        ev.preventDefault();
+        confirmModStep();
+        return;
+      }
+      if (tool === "offset") {
+        ev.preventDefault();
+        return;
+      }
+      if (pts.length > 0) {
+        ev.preventDefault();
+        finishMeasure();
+      }
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") {
       ev.preventDefault();
@@ -2396,12 +2961,6 @@ function build(): void {
       ev.preventDefault();
       toggleCleanScreen();
       return;
-    }
-    if (ev.key === "Enter" || ev.key === " ") {
-      if (pts.length > 0) {
-        ev.preventDefault();
-        finishMeasure();
-      }
     }
   });
 
@@ -2524,6 +3083,23 @@ function build(): void {
     const cmd = parts[0].toUpperCase();
     const arg = parts.slice(1).join(" ");
 
+    // Direct numeric entry feeds a pending ROTATE angle / SCALE factor / OFFSET distance
+    if (pendingNumeric && /^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(trimmed)) {
+      const f = pendingNumeric;
+      pendingNumeric = null;
+      f(parseFloat(trimmed));
+      draw();
+      return;
+    }
+    // Yes/No answer to the MIRROR "Erase source objects?" prompt
+    if (pendingYesNo && /^(y|yes|n|no)$/i.test(trimmed)) {
+      const f = pendingYesNo;
+      pendingYesNo = null;
+      f(/^y/i.test(trimmed));
+      draw();
+      return;
+    }
+
     // Standard AutoCAD command matching
     if (cmd === "L" || cmd === "LINE") {
       setTool("line");
@@ -2547,6 +3123,30 @@ function build(): void {
     }
     if (cmd === "E" || cmd === "ERASE" || cmd === "DEL" || cmd === "DELETE") {
       eraseSelected();
+      return;
+    }
+    if (cmd === "M" || cmd === "MOVE") {
+      setTool("move");
+      return;
+    }
+    if (cmd === "CO" || cmd === "COPY") {
+      setTool("copy");
+      return;
+    }
+    if (cmd === "RO" || cmd === "ROTATE") {
+      setTool("rotate");
+      return;
+    }
+    if (cmd === "MI" || cmd === "MIRROR") {
+      setTool("mirror");
+      return;
+    }
+    if (cmd === "SC" || cmd === "SCALE") {
+      setTool("scale");
+      return;
+    }
+    if (cmd === "O" || cmd === "OFFSET") {
+      setTool("offset");
       return;
     }
     if (cmd === "DI" || cmd === "DIST" || cmd === "DISTANCE") {
@@ -2813,26 +3413,26 @@ function build(): void {
       <b style="font-size:15px;color:#38bdf8">AutoCAD Command &amp; Shortcut Guide</b>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;font-size:12px">
         <div>
-          <b style="color:#f8fafc">Standard Drawing Commands:</b><br>
-          • <b>L / LINE</b> — Draw line segments<br>
-          • <b>PL / PLINE</b> — Draw 2D polyline<br>
-          • <b>C / CIRCLE</b> — Draw circle<br>
-          • <b>REC / RECTANG</b> — Draw rectangle<br>
-          • <b>A / ARC</b> — Draw 3-point circular arc<br>
+          <b style="color:#f8fafc">Modify Commands:</b><br>
+          • <b>M / MOVE</b> — Move selected objects (base point → displacement)<br>
+          • <b>CO / COPY</b> — Copy objects, click repeatedly for multiple copies<br>
+          • <b>RO / ROTATE</b> — Rotate about a base point (drag or type angle)<br>
+          • <b>MI / MIRROR</b> — Mirror about a 2-point axis (Y erases sources)<br>
+          • <b>SC / SCALE</b> — Scale about a base point (drag or type factor)<br>
+          • <b>O / OFFSET</b> — Parallel copy: distance → object → side<br>
           • <b>E / ERASE</b> — Delete selected entities<br>
-          • <b>U / UNDO</b> — Undo (Ctrl+Z)<br>
-          • <b>REDO</b> — Redo (Ctrl+Y)<br>
+          • <b>U / UNDO</b> — Undo (Ctrl+Z) · <b>REDO</b> — Redo (Ctrl+Y)<br>
         </div>
         <div>
-          <b style="color:#f8fafc">Function Keys &amp; Toggles:</b><br>
+          <b style="color:#f8fafc">Modify Tips:</b><br>
+          • Select objects first, then run the command (noun–verb)<br>
+          • Right-click or Enter finishes the Select objects stage<br>
+          • Numeric input (angle / factor / distance) is typed in the command line<br>
+          • Yellow dashed ghost previews every transform before you click<br>
           • <b>F3</b> — Object Snap (OSNAP) ON/OFF<br>
-          • <b>F7</b> — Grid ON/OFF<br>
           • <b>F8</b> — Ortho mode ON/OFF<br>
           • <b>F12</b> — Dynamic Input HUD ON/OFF<br>
-          • <b>Ctrl+0</b> — Clean Screen Toggle<br>
           • <b>LA / LAYER</b> — Layer Properties Manager<br>
-          • <b>Z E</b> — Zoom Extents<br>
-          • <b>Z W</b> — Zoom Window<br>
         </div>
       </div>
       <div style="margin-top:14px;text-align:right"><button data-r="help-close" style="padding:6px 14px">OK</button></div>

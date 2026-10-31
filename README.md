@@ -266,6 +266,32 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 | **Delete** | Delete selection |
 | **Ctrl+Z / Ctrl+Y** | Undo / Redo (when history is active) |
 
+### CAD Viewer (DWG/DXF) — Modify tools
+
+The standalone CAD Viewer ribbon has a full **Modify** group with AutoCAD-grade
+transform tools. Select objects first (noun–verb), then run the command — or
+start the command and pick objects, then press **Enter / right-click** to finish
+the selection stage. Every transform shows a live yellow dashed ghost preview,
+supports osnap / ortho, numeric entry typed into the command line, and a single
+Undo step (Ctrl+Z).
+
+| Command | Alias | What it does |
+|---------|-------|--------------|
+| MOVE | `M` | Move selected objects: base point → second point (or displacement) |
+| COPY | `CO` | Copy objects; keep clicking to place multiple copies, Enter to finish |
+| ROTATE | `RO` | Rotate around a base point; drag the angle or type it (e.g. `45`) |
+| MIRROR | `MI` | Mirror about a two-point axis; type `Y` to erase source objects, Enter keeps them |
+| SCALE | `SC` | Scale about a base point; drag the factor or type it (e.g. `2`) |
+| OFFSET | `O` | Parallel concentric copy: click two points (or type distance) → object → side |
+
+Notes:
+
+- OFFSET works on lines, circles, arcs and polylines (mitered corners, hatch
+  boundaries included); text and points are skipped with a message.
+- MIRROR keeps text readable (MIRRTEXT=0 behaviour) and handles arc sweep correctly.
+- The Modify engine reuses the drawing undo stack, so `U` / Ctrl+Z reverts each
+  operation in one step, and `REDO` / Ctrl+Y reapplies it.
+
 ---
 
 ## How to use (day to day)
@@ -348,6 +374,29 @@ npm run verify:v73   # release verification chain (per version)
 **Layout:** `src/features` (tools/UI) · `src/modules` (BIM domains — 100+ modules from authoring to 5D) · `src/commands` · `src/workers` · optional `server/` (collaboration & conversion — token authentication, origin allow-listing, rate limiting, fail-closed startup)
 
 **Testing culture:** 50+ focused automated suites (`npm run` and pick any `test:*`), CI on every push, and a per-version verification chain. Contributions welcome — for substantial changes, open an issue first to agree on scope. Include reproduction steps, expected versus actual behavior, test evidence, and screenshots or a small non-confidential sample when useful. Keep credentials, private models, and project files out of git.
+
+### Deploying CAD Viewer updates with PowerShell 5.1 (Windows)
+
+Feature packages ship as a folder containing `deploy-cad-update.ps1` plus a
+`files/` tree that mirrors the repository. The script is the data-management
+tool: it validates the environment, backs up the originals, copy–pastes the
+updated files into the repo, and pushes the commit to GitHub — no manual file
+handling required.
+
+```powershell
+# Run from the extracted package folder (PowerShell 5.1 or later)
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\deploy-cad-update.ps1                                   # interactive: asks for the commit message
+.\deploy-cad-update.ps1 -Message "feat(cad-viewer): modify tools"   # fully automatic (backup + copy + commit + push)
+.\deploy-cad-update.ps1 -NoPush                           # backup + copy + commit, you push manually
+.\deploy-cad-update.ps1 -NoBackup -NoPush                 # copy only
+```
+
+Default repository path: `C:\Users\abdelrehem.mohamed\Desktop\New folder\openBIMstudio`
+(override with `-RepoRoot "D:\path\to\openBIMstudio"`). Backups land in
+`<repo>\_backup\<yyyy-MM-dd_HHmmss>\` with the original folder structure; the
+script refuses to run when `git` is missing, the folder is not a repository,
+or the push is rejected (it then suggests `git pull --rebase`).
 
 ---
 

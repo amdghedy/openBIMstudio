@@ -39,6 +39,9 @@ Project_Part_*.txt
 # Bundle artifacts (local diagnostics only)
 obs-p*-*.txt
 
+# Local deploy backups (deploy-cad-update.ps1)
+_backup/
+
 # Test & diagnostic artifacts
 *.ifc
 obs-*.txt
