@@ -56,6 +56,10 @@ class FamilyStore {
 
     if (restored && restored.length) {
       for (const d of restored) this.byId.set(d.id, d);
+      // Ensure built-ins still present
+      for (const d of seedBuiltIns) {
+        if (!this.byId.has(d.id)) this.byId.set(d.id, d);
+      }
     } else {
       for (const d of seedBuiltIns) this.byId.set(d.id, d);
       this.persist();
@@ -173,8 +177,47 @@ class FamilyStore {
 
   private persist(): void {
     try {
-      const arr = [...this.byId.values()];
-      localStorage.setItem(getStorageKey(), JSON.stringify(arr));
+      // Built-ins are re-seeded on boot - only persist user families to save quota.
+      const arr = [...this.byId.values()].filter((d) => !d.builtIn);
+      const key = getStorageKey();
+      try {
+        localStorage.setItem(key, JSON.stringify(arr));
+        return;
+      } catch (err: any) {
+        const isQuota =
+          err?.name === "QuotaExceededError" ||
+          err?.code === 22 ||
+          err?.code === 1014 ||
+          (typeof err?.message === "string" && /quota/i.test(err.message));
+        if (!isQuota) {
+          console.warn("[families] persist failed", err);
+          return;
+        }
+        // Free space from other project family keys first
+        try {
+          const doomed: string[] = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith("obs.families.v1.") && k !== key) doomed.push(k);
+          }
+          for (const k of doomed) localStorage.removeItem(k);
+        } catch { /* */ }
+        let working = arr.slice();
+        while (working.length) {
+          try {
+            localStorage.setItem(key, JSON.stringify(working));
+            if (working.length < arr.length) {
+              console.warn(`[families] quota: persisted ${working.length}/${arr.length} user families`);
+            }
+            return;
+          } catch {
+            working = working.slice(0, Math.max(0, working.length - 1));
+          }
+        }
+        try { localStorage.removeItem(key); } catch { /* */ }
+        // One quiet warning - session continues in-memory
+        console.warn("[families] localStorage full - family edits work this session only");
+      }
     } catch (err) {
       console.warn("[families] persist failed", err);
     }
