@@ -17,6 +17,7 @@ import { resolveVertical, inferBase, levelChangeUpdates } from "../modules/nativ
 import { endpointForLength, rotateTransformAboutPivot, normalizeDeg, twinElevationShift } from "../modules/native-twin/twin-dimensions";
 import { escapeHtml } from "../core/html-escape";
 import { fittingArmLength } from "../modules/mep/fitting-outline";
+import { mitreEndFaces, type JoinPeer } from "../modules/geometry/linear-join";
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
 import * as THREE from "three";
 import { CSG } from "three-csg-ts";
@@ -1166,6 +1167,25 @@ function computeWallEndFaces(
     return [px + t * dx, pz + t * dz];
   };
 
+  {
+    const __self = allWalls.find((w) => w.id === selfId);
+    const __s = __self?.params.start, __e = __self?.params.end;
+    const __atStart = !!__s && !!__e &&
+      Math.hypot(endX - __s[0], endZ - __s[1]) <= Math.hypot(endX - __e[0], endZ - __e[1]);
+    const __peers: JoinPeer[] = [];
+    for (const w of allWalls) {
+      if (!w.params.start || !w.params.end) continue;
+      __peers.push({
+        id: w.id,
+        start: [w.params.start[0], w.params.start[1]],
+        end: [w.params.end[0], w.params.end[1]],
+        thickness: Number(w.params.thickness ?? 0.2),
+        joinStatus: String(w.properties?.joinStatus ?? "allow"),
+      });
+    }
+    const __m = mitreEndFaces([endX, endZ], [dirX, dirZ], halfT, __atStart, selfId, __peers);
+    if (__m) return __m;
+  }
   // L-corner: neighbour's endpoint coincides with ours
   const endpointTol = Math.max(0.20, halfT * 3.0);
   let nbEnd: AuthoredElement | null = null;

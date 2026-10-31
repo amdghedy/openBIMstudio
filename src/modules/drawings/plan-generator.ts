@@ -13,6 +13,7 @@
  * The panel handles the flip when rendering SVG.
  */
 import { defaultBendRadius, elbowGeometry } from "../mep/elbow-geometry";
+import { mitreEndFaces, type JoinPeer } from "../geometry/linear-join";
 import { transitionOutlineSegments, unionOutlineSegments, capOutlineSegments, fittingBranchAngles, openBranchInSegment, fittingArmAngles, fittingArmLength, fittingOutlineSegments } from "../mep/fitting-outline";
 import * as THREE from "three";
 import { ctx } from "../../core/context";
@@ -370,91 +371,30 @@ function emitAuthoredSymbol(
       const wallThick = Number.isFinite(rawThick) && rawThick > 0.001 ? rawThick : 0.2;
       const t2 = wallThick / 2;
       const joinStat = String((el as any).properties?.joinStatus ?? "allow");
-
-      const endTol = Math.max(0.20, t2 * 4);
-
-      const findCornerPartner = (px: number, pz: number): AuthoredElement | null => {
-        if (joinStat === "disallow" || joinStat === "butt") return null;
-        let best: AuthoredElement | null = null;
-        let bestScore = -Infinity;
-        for (const o of getElements()) {
-          if (o.id === el.id || o.type !== el.type || !o.params.start || !o.params.end) continue;
-          const otherJoin = String((o as any).properties?.joinStatus ?? "allow");
-          if (otherJoin === "disallow" || otherJoin === "butt") continue;
-          const dS = Math.hypot(o.params.start[0] - px, o.params.start[1] - pz);
-          const dE = Math.hypot(o.params.end[0] - px, o.params.end[1] - pz);
-          const dMin = Math.min(dS, dE);
-          if (dMin > endTol) continue;
-          const odx = o.params.end[0] - o.params.start[0];
-          const odz = o.params.end[1] - o.params.start[1];
-          const oL = Math.hypot(odx, odz) || 1;
-          const oux = odx / oL, ouz = odz / oL;
-          const cross = Math.abs(ux * ouz - uz * oux);
-          const score = cross * 100 - dMin * 5;
-          if (score > bestScore) { bestScore = score; best = o; }
-        }
-        return best;
-      };
-
-      const lineHit = (
-        px: number, pz: number, dx_: number, dz_: number,
-        qx: number, qz: number, ex_: number, ez_: number,
-      ): { x: number; z: number } | null => {
-        const det = dx_ * ez_ - dz_ * ex_;
-        if (Math.abs(det) < 1e-9) return null;
-        const t = ((qx - px) * ez_ - (qz - pz) * ex_) / det;
-        return { x: px + t * dx_, z: pz + t * dz_ };
-      };
-
-      const faceEndsAt = (
-        endX: number, endZ: number,
-      ): { left: { x: number; z: number }; right: { x: number; z: number }; joined: boolean } => {
+      const peers: JoinPeer[] = [];
+      for (const o of getElements()) {
+        if (o.type !== el.type || !o.params.start || !o.params.end) continue;
+        const ot = Number(o.params.thickness);
+        peers.push({
+          id: o.id,
+          start: [o.params.start[0], o.params.start[1]],
+          end: [o.params.end[0], o.params.end[1]],
+          thickness: Number.isFinite(ot) && ot > 0.001 ? ot : 0.2,
+          joinStatus: String((o as any).properties?.joinStatus ?? "allow"),
+        });
+      }
+      if (!peers.some((q) => q.id === el.id)) {
+        peers.push({ id: el.id, start: [ax, az], end: [bx, bz], thickness: wallThick, joinStatus: joinStat });
+      }
+      const faceEndsAt = (endX: number, endZ: number, atStart: boolean) => {
         const plainL = { x: endX + nx * t2, z: endZ + nz * t2 };
         const plainR = { x: endX - nx * t2, z: endZ - nz * t2 };
-        const nb = findCornerPartner(endX, endZ);
-        if (!nb || !nb.params.start || !nb.params.end) {
-          return { left: plainL, right: plainR, joined: false };
-        }
-        const [sx, sz] = nb.params.start;
-        const [ex, ez] = nb.params.end;
-        const ndx = ex - sx, ndz = ez - sz;
-        const nL = Math.hypot(ndx, ndz) || 1;
-        const nux = ndx / nL, nuz = ndz / nL;
-        const nnx = -nuz, nnz = nux;
-        const nbThick = Number(nb.params.thickness);
-        const nt2 = Math.max(0.01, (Number.isFinite(nbThick) && nbThick > 0.001 ? nbThick : 0.2) / 2);
-
-        const nLeftX = sx + nnx * nt2, nLeftZ = sz + nnz * nt2;
-        const nRightX = sx - nnx * nt2, nRightZ = sz - nnz * nt2;
-
-        const LL = lineHit(plainL.x, plainL.z, ux, uz, nLeftX, nLeftZ, nux, nuz);
-        const LR = lineHit(plainL.x, plainL.z, ux, uz, nRightX, nRightZ, nux, nuz);
-        const RL = lineHit(plainR.x, plainR.z, ux, uz, nLeftX, nLeftZ, nux, nuz);
-        const RR = lineHit(plainR.x, plainR.z, ux, uz, nRightX, nRightZ, nux, nuz);
-
-        // miter-pair-LL-RR-v4
-        // BIM-style miter: for a perpendicular L-corner, the outer
-        // corner is always on the same "side" for both walls (both left
-        // faces, or both right faces). Therefore the correct pairing is
-        // ALWAYS left → LL, right → RR. The previous turn-sign logic
-        // mis-paired right-hand turns (e.g. wall going east meeting a
-        // wall going south).
-        const maxMiter = Math.max(t2, nt2) * 8;
-        const leftCandidate  = LL;
-        const rightCandidate = RR;
-
-        const leftOK  = !!leftCandidate  && Math.hypot(leftCandidate.x  - endX, leftCandidate.z  - endZ) <= maxMiter;
-        const rightOK = !!rightCandidate && Math.hypot(rightCandidate.x - endX, rightCandidate.z - endZ) <= maxMiter;
-
-        return {
-          left:  leftOK  ? leftCandidate!  : plainL,
-          right: rightOK ? rightCandidate! : plainR,
-          joined: true,
-        };
+        const m = mitreEndFaces([endX, endZ], [ux, uz], t2, atStart, el.id, peers);
+        if (!m) return { left: plainL, right: plainR, joined: false };
+        return { left: { x: m.left[0], z: m.left[1] }, right: { x: m.right[0], z: m.right[1] }, joined: m.joined };
       };
-
-      const startFaces = faceEndsAt(ax, az);
-      const endFaces = faceEndsAt(bx, bz);
+      const startFaces = faceEndsAt(ax, az, true);
+      const endFaces = faceEndsAt(bx, bz, false);
 
       const hosts = (hostedByWall.get(el.id) ?? []).filter(
         (h) => h.type === "door" || h.type === "window",
