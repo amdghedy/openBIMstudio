@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const root = path.resolve(new URL('..', import.meta.url).pathname);
+import { fileURLToPath as __fileURLToPath } from 'node:url';
+const root = path.resolve(__fileURLToPath(new URL('..', import.meta.url)));
 const checks = [
   ['selection raycast canonical fragments.modelId', 'src/features/selection.ts', /r\.fragments\?\.modelId/],
   ['manual selection style', 'src/core/setup.ts', /styles\.set\("select"/],

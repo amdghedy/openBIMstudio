@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(new URL('.', import.meta.url).pathname, '..');
+import { fileURLToPath as __fileURLToPath } from 'node:url';
+const root = path.resolve(__fileURLToPath(new URL('.', import.meta.url)), '..');
 let files = [];
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
