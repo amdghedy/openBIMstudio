@@ -65,6 +65,7 @@ import {
 import { toggleFileMenu, isFileMenuVisible } from "./file-menu";
 import { pickAndImport } from "../features/file-interop";
 import { svgIcon, type IconName } from "../features/icon-set";
+import { mountLanguageButton } from "../features/language-button";
 import { openProjectInfo } from "../features/project-info";
 import { toggleBimToolbox, isBimToolboxVisible } from "../features/bim-toolbox";
 
@@ -2799,6 +2800,7 @@ function refreshRibbon() {
 
 function renderTabs() {
   tabsRow.innerHTML = "";
+  mountLanguageButton(tabsRow);
 
   const brand = document.createElement("div");
   brand.className = "obs-ribbon__brand";

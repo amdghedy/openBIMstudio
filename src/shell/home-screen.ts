@@ -2,6 +2,7 @@
 import * as store from "../modules/projects/store";
 import { createProject, openProject, deleteProjectById, getCurrentProject, onProjectChanged } from "../modules/projects/projects";
 import type { ProjectTemplate } from "../modules/projects/types";
+import { mountLanguageButton } from "../features/language-button";
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>\"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" } as Record<string, string>)[c],
@@ -124,6 +125,7 @@ function buildStatic() {
       <span><kbd>Ctrl</kbd> <kbd>O</kbd> Open &nbsp;·&nbsp; <kbd>Ctrl</kbd> <kbd>S</kbd> Save &nbsp;·&nbsp; <kbd>Ctrl</kbd> <kbd>P</kbd> Commands</span>
     </footer>`;
 
+  mountLanguageButton(inner.querySelector(".obs-center-header"));
   const nameInput = inner.querySelector("#obs-new-name") as HTMLInputElement;
   const template = inner.querySelector("#obs-template") as HTMLSelectElement;
   const note = inner.querySelector("#obs-template-note") as HTMLElement;

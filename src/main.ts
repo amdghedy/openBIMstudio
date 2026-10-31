@@ -54,6 +54,8 @@ import { setupFileMenu } from "./shell/file-menu";
 import { setupViewsPanel } from "./features/views-panel";
 import { setupSheets2dPanel } from "./features/sheets-2d-panel";
 import { setupShell } from "./shell/shell";
+import { setupLocale } from "./core/locale-boot";
+import { setupDomTranslate, registerSwitcherLocales } from "./core/dom-translate";
 import { buildPanel } from "./features/panel";
 
 import { history } from "./features/history";
@@ -350,6 +352,7 @@ await step("view-graphics", () => refreshViewGraphics());
 await step("bim-experience", () => setupBimExperience());
 await step("bim-object-studio", () => setupBimObjectStudio());
 await step("level-chip", () => setupLevelChip());
+await step("i18n", () => { registerSwitcherLocales(); setupLocale(); setupDomTranslate(); });
 await step("shell", () => setupShell());
 await step("default-shortcuts", () => registerDefaultShortcuts());
 await step("ui-menu", () => setupUserInterfaceMenu());
