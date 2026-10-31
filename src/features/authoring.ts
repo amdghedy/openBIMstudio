@@ -2993,6 +2993,48 @@ function shiftParams(el: AuthoredElement, dx: number, dz: number) {
   if (el.params.polygon) el.params.polygon = el.params.polygon.map(([x, z]) => [x + dx, z + dz] as Vec2);
 }
 
+/**
+ * Keyboard nudge: move selected authored elements / grids by (dx, dz) on plan
+ * and optional dy elevation. Skips pinned elements. Undoable via transformElements.
+ */
+export function nudgeSelectedByKeyboard(dx: number, dz: number, dy = 0): number {
+  // Selected grid datum
+  if (selectedDatum?.kind === "grid" && selectedIds.size === 0) {
+    const gr = grids.find((g) => g.id === selectedDatum!.id);
+    if (!gr) return 0;
+    const before = { start: [...gr.start] as [number, number], end: [...gr.end] as [number, number] };
+    gr.start = [gr.start[0] + dx, gr.start[1] + dz];
+    gr.end = [gr.end[0] + dx, gr.end[1] + dz];
+    const after = { start: [...gr.start] as [number, number], end: [...gr.end] as [number, number] };
+    history.push({
+      label: "Nudge grid",
+      apply: () => { gr.start = [...after.start]; gr.end = [...after.end]; rebuildDatums(); markDirty(); notifyAuthoringChange(); },
+      revert: () => { gr.start = [...before.start]; gr.end = [...before.end]; rebuildDatums(); markDirty(); notifyAuthoringChange(); },
+    });
+    rebuildDatums(); markDirty(); notifyAuthoringChange();
+    return 1;
+  }
+
+  const targets = elements.filter((el) => selectedIds.has(el.id) && !el.properties?.pinned);
+  if (!targets.length) return 0;
+
+  transformElements(targets.map((t) => t.id), (el) => {
+    shiftParams(el, dx, dz);
+    if (dy) {
+      el.params.elevation = (Number(el.params.elevation) || 0) + dy;
+      if (el.params.endElevation != null) {
+        el.params.endElevation = Number(el.params.endElevation) + dy;
+      }
+    }
+    if (el.transform?.position) {
+      el.transform.position[0] += dx;
+      el.transform.position[2] += dz;
+      if (dy) el.transform.position[1] += dy;
+    }
+  });
+  return targets.length;
+}
+
 function rotateElement(el: AuthoredElement, center: THREE.Vector3, angle: number) {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
@@ -6000,6 +6042,39 @@ export function setupAuthoring() {
     if (tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
 
     try { if ((window as any).__obsPlanVisible?.()) return; } catch { /* */ }
+
+    // ── Arrow-key nudge of selection (objects, annotations, dims, grids) ──
+    // Base step = grid size (default 0.1 m). Hold Shift → 10× larger step.
+    // Alt+Up/Down moves elevation (Y) instead of plan.
+    {
+      const isArrow =
+        e.key === "ArrowLeft" || e.key === "ArrowRight" ||
+        e.key === "ArrowUp" || e.key === "ArrowDown";
+      const canNudge =
+        isArrow &&
+        (!activeTool || activeTool === "select") &&
+        (selectedIds.size > 0 || !!selectedDatum);
+      if (canNudge) {
+        e.preventDefault();
+        e.stopPropagation();
+        let step = 0.1;
+        try { step = Math.max(0.01, Number(snapping.getGridSize()) || 0.1); } catch { /* */ }
+        if (e.shiftKey) step *= 10;
+        let dx = 0, dz = 0, dy = 0;
+        if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+          dy = e.key === "ArrowUp" ? step : -step;
+        } else if (e.key === "ArrowLeft") dx = -step;
+        else if (e.key === "ArrowRight") dx = step;
+        else if (e.key === "ArrowUp") dz = -step;
+        else if (e.key === "ArrowDown") dz = step;
+        const n = nudgeSelectedByKeyboard(dx, dz, dy);
+        if (n > 0) {
+          const axis = dy !== 0 ? `Y ${dy > 0 ? "+" : ""}${dy.toFixed(2)}` : `Δ(${dx.toFixed(2)}, ${dz.toFixed(2)})`;
+          notify("info", `Nudge ${n} · ${axis} m${e.shiftKey ? " · Shift×10" : ""}`);
+        }
+        return;
+      }
+    }
 
     if ((e.key === "ArrowUp" || e.key === "ArrowDown") && activeTool && activeTool !== "select") {
       const step = e.shiftKey ? 0.1 : 0.5;
