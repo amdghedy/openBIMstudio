@@ -46,7 +46,7 @@ let raf = 0;
 let editing: { spec: TempDimSpec; input: HTMLInputElement } | null = null;
 
 /** Screen-space distance (px) the dimension line is pushed away from the element. */
-const SCREEN_OFFSET_PX = 28;
+const SCREEN_OFFSET_PX = 16;
 
 const CAMERA = (): THREE.Camera | null =>
   ((ctx as Any).world?.camera?.three ?? (ctx as Any).world?.camera ?? null);
@@ -93,6 +93,57 @@ function fmt(v: number): string {
 
 function clearNode(n: Node): void { while (n.firstChild) n.removeChild(n.firstChild); }
 
+function elementOf(id: string): Any | null {
+  try { return (window as Any).__obsAuthoring?.getElementById?.(id) ?? null; } catch { return null; }
+}
+
+/** Re-anchor wall-like length/height/thickness dims onto the wall face at base
+ *  elevation (same basis as the grips). Other specs are returned unchanged. */
+function anchorToElement(s: TempDimSpec): TempDimSpec {
+  if (s.param !== "length" && s.param !== "height" && s.param !== "thickness") return s;
+  try {
+    const p = elementOf(s.elementId)?.params;
+    if (!p || !Array.isArray(p.start) || !Array.isArray(p.end)) return s;
+
+    const elev = Number(p.elevation ?? 0);
+    const endElev = Number(p.endElevation ?? elev);
+    const t = Number(p.thickness ?? 0);
+    const h = Number(p.height ?? 0);
+    const A = new THREE.Vector3(p.start[0], elev, p.start[1]);
+    const B = new THREE.Vector3(p.end[0], endElev, p.end[1]);
+    const dir = B.clone().sub(A).setY(0);
+    if (dir.lengthSq() < 1e-12) return s;
+    dir.normalize();
+    const n = new THREE.Vector3(-dir.z, 0, dir.x);
+
+    // Which wall face: taken from the provider's side choice (cycle button)
+    let sgn = 1;
+    const o = s.offset;
+    if (o && o.lengthSq() > 1e-8) {
+      const horiz = Math.hypot(o.x, o.z);
+      sgn = horiz > Math.abs(o.y) ? (o.dot(n) >= 0 ? 1 : -1) : (o.y >= 0 ? 1 : -1);
+    }
+    const side = n.clone().multiplyScalar(sgn);
+    const face = side.clone().multiplyScalar(t / 2);
+    const sideOff = side.clone().multiplyScalar(0.35);
+
+    if (s.param === "length") {
+      return { ...s, a: A.clone().add(face), b: B.clone().add(face), offset: sideOff };
+    }
+    if (s.param === "height") {
+      const base = B.clone().add(face);
+      return { ...s, a: base, b: base.clone().setY(base.y + h), offset: sideOff };
+    }
+    return {
+      ...s,
+      a: B.clone().addScaledVector(n, -t / 2),
+      b: B.clone().addScaledVector(n, t / 2),
+      offset: dir.clone().multiplyScalar(0.35),
+    };
+  } catch {
+    return s;
+  }
+}
 /**
  * Project RAW a/b (no world offset), then push 28px in screen space.
  * World offset only chooses the side (for the cycle button).
@@ -147,7 +198,8 @@ function render(): void {
   try { specs = provider.specs() ?? []; } catch { specs = []; }
   if (!specs.length) return;
 
-  for (const s of specs) {
+  for (const spec of specs) {
+    const s = anchorToElement(spec);
     const placed = projectWithScreenOffset(s.a, s.b, s.offset);
     if (!placed) continue;
     const { pa, pb } = placed;
@@ -189,7 +241,7 @@ function render(): void {
     if (provider.cycleRef) {
       const cyc = document.createElement("button");
       cyc.textContent = "⇄";
-      cyc.title = "Cycle dimension witness line";
+      cyc.title = "Flip dimension to the other side of the wall";
       cyc.style.cssText =
         `position:absolute;left:${mx - 40}px;top:${my - 12}px;transform:translate(-50%,-50%);` +
         `background:rgba(15,17,23,.94);border:1px solid rgba(56,189,248,.5);color:#38bdf8;` +
