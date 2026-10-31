@@ -1,3 +1,4 @@
+import "./features/usage-boot";
 import { setupManageLinks } from "./features/manage-links";
 import "./critical-gaps-boot";
 import "./critical-gaps-boot-strength";
