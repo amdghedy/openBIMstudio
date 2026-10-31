@@ -68,6 +68,7 @@
     "test:mtext": "node tests/mtext.test.cjs",
     "test:level-constraints": "node tests/level-constraints.test.cjs",
     "test:schedule-4d": "node tests/schedule-4d.test.cjs",
+    "test:schedule-4d-ui": "node tests/schedule-4d-ui.test.cjs",
     "test:twin-export": "node tests/twin-export-geometry.test.cjs",
     "test:pick-arbiter": "node tests/pick-arbiter.test.cjs",
     "test:nav-math": "node tests/nav-math.test.cjs",

@@ -7,6 +7,8 @@ import { linkTasksToElements, type LinkElement, type LinkResult } from "./task-l
 import { buildCostItems, buildCarbonItems, valueAt, total, curve, authoredQuantity, elementCarbon, type SpreadItem, type CarbonFactor } from "./curves";
 import { scheduleRange, taskStatusAt } from "./schedule-model";
 import type { ParsedSchedule, SchedTask } from "./types";
+import { reportRows, reportCsv, type ReportRow } from "./report";
+import { DEFAULT_CARBON_FACTORS } from "./curves";
 import { DEFAULT_PHASE_COLORS, type Phase } from "../timeline/types";
 import { replacePhases, setScheduleHooks, simulationMs, setProgress, getTimelineState } from "../timeline/timeline";
 
@@ -138,3 +140,40 @@ export function setupSchedule4d() {
   });
 }
 export type { SchedTask };
+
+export const getTaskRows = (): ReportRow[] =>
+  st.schedule ? reportRows(st.schedule.tasks, st.links, st.costItems, st.carbonItems) : [];
+export const exportReportCsvText = (): string => reportCsv(getTaskRows());
+export const getUnlinkedTasks = (): SchedTask[] =>
+  st.schedule && st.links ? st.schedule.tasks.filter((t) => !st.links!.byTask.has(t.id)) : [];
+
+/** Tag the selected authored elements with an activity id (explicit link) and re-link. Returns how many were tagged. */
+export async function linkSelectionToTask(taskId: string): Promise<number> {
+  const a = auth();
+  const ids: string[] = a?.getSelectedIds?.() ?? [];
+  let n = 0;
+  for (const id of ids) {
+    const el = a?.getElementById?.(id);
+    if (!el) continue;
+    el.properties = { ...(el.properties ?? {}), activityId: taskId };
+    n++;
+  }
+  if (n) {
+    try { (await import("../../features/authoring")).markAuthoringDirty(); } catch { /* optional */ }
+    await relinkSchedule();
+  }
+  return n;
+}
+
+export function getCarbonFactorRows(): Array<{ type: string; unit: string; kg: number; note: string; custom: boolean }> {
+  return Object.entries(DEFAULT_CARBON_FACTORS).map(([type, f]) => {
+    const o = st.carbonOverrides[type];
+    return { type, unit: f.unit, kg: (o ?? f).kgCO2ePerUnit, note: f.note, custom: !!o };
+  });
+}
+export function setCarbonFactor(type: string, kg: number) {
+  const base = DEFAULT_CARBON_FACTORS[type];
+  if (!base || !Number.isFinite(kg) || kg < 0) return;
+  setCarbonOverrides({ ...st.carbonOverrides, [type]: { ...base, kgCO2ePerUnit: kg } });
+}
+export function resetCarbonFactors() { setCarbonOverrides({}); }

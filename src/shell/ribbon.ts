@@ -78,7 +78,7 @@ import { selectAllObjects, clearAllSelection } from "../features/select-all";
 import { toggleAiChat, isAiChatVisible } from "../features/ai-chat";
 
 // ── 4D Construction Simulation (Navisworks TimeLiner competitor) ───────
-import { toggleTimelinePanel, isTimelinePanelVisible } from "../features/timeline-panel";
+import { toggleTimelinePanel, isTimelinePanelVisible, openTimelineTab, pickAndImportP6 } from "../features/timeline-panel";
 
 // ── Sheets / Production + Automation ───────────────────────────────────
 import { toggleSheetsPanel, isSheetsPanelVisible } from "../features/sheets-panel";
@@ -2698,12 +2698,15 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("reset-offsets", "Recalc", safe(() => recalculateTakeoff(), "Recalc")),
       schedulesButton(),
       sep(),
-      groupLabel("4D Simulation"),
-      b("timeline", "Timeline", safe(() => {
-        const tp = (ctx.features as any).timelinePanel;
-        if (tp) tp.toggle();
-        else toast("Timeline panel not loaded", "warn");
-      }, "4D Timeline"), { title: "Open 4D construction simulation with Gantt chart" }),
+      groupLabel("P6 Schedule"),
+      b("file", "Import P6", safe(() => pickAndImportP6(), "Import P6"), { title: "Import a Primavera P6 schedule (.xer or PMXML .xml) and link it to the model" }),
+      b("connection", "Link", safe(() => openTimelineTab("links"), "Link activities"), { title: "Link selected elements to schedule activities" }),
+      b("csv", "Report", safe(() => openTimelineTab("5d"), "Schedule report"), { title: "Per-activity cost / carbon report (Export CSV inside)" }),
+      sep(),
+      groupLabel("4D / 5D / 6D"),
+      b("timeline", "4D", safe(() => openTimelineTab("4d"), "4D Timeline"), { title: "4D construction simulation with calendar playback and Gantt", active: isTimelinePanelVisible() }),
+      b("quantification", "5D Cost", safe(() => openTimelineTab("5d"), "5D Cost"), { title: "Cost per activity and cumulative cost curve" }),
+      b("energy", "6D Carbon", safe(() => openTimelineTab("6d"), "6D Carbon"), { title: "Embodied carbon per activity and editable carbon factors" }),
       sep(),
       groupLabel("Cost items"),
       b("new-file", "Item", safe(() => toggleCostPanel(), "Cost Item"), { title: "Open cost item management" }),

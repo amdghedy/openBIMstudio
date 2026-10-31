@@ -1,7 +1,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs"), path = require("path"), assert = require("assert");
 const out = fs.mkdtempSync(path.join(require("os").tmpdir(), "s4d-"));
-execSync(`npx tsc src/modules/schedule-4d/p6-parser.ts src/modules/schedule-4d/schedule-model.ts src/modules/schedule-4d/task-linking.ts src/modules/schedule-4d/curves.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --strict`, { stdio: "pipe" });
+execSync(`npx tsc src/modules/schedule-4d/p6-parser.ts src/modules/schedule-4d/schedule-model.ts src/modules/schedule-4d/task-linking.ts src/modules/schedule-4d/curves.ts src/modules/schedule-4d/report.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --strict`, { stdio: "pipe" });
 const find = (n) => { const w = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = w(p); if (r) return r; } else if (f.name === n) return p; } }; return w(out); };
 const P = require(find("p6-parser.js")), S = require(find("schedule-model.js")), L = require(find("task-linking.js")), C = require(find("curves.js"));
 let n = 0; const ok = (c, m) => { assert.ok(c, m); n++; };
@@ -98,4 +98,9 @@ near(C.elementCarbon("wall", q, { wall: { unit: "m2", kgCO2ePerUnit: 10, note: "
 near(C.elementCarbon("unknown", q), 0);
 const ci = C.buildCarbonItems(s.tasks, lk, new Map([["c1", 400], ["w2", 600]]));
 near(C.total(ci), 1000); ok(ci.length === 2, "carbon items");
+const R = require(find("report.js"));
+const rows = R.reportRows(s.tasks, lk, items, ci);
+ok(rows.length === s.tasks.length && rows.find((r) => r.id === "A1010").cost === 60000 && rows.find((r) => r.id === "A1000").carbonKg === 400, "report rows");
+const csv = R.reportCsv([{ id: "A,1", name: 'He said "hi"', wbs: "W", start: "2026-01-01", finish: "2026-01-02", percent: 5, linkedElements: 2, cost: 10, costSource: "p6", carbonKg: 1.25 }]);
+ok(csv.split("\r\n").length === 2 && csv.includes('"A,1"') && csv.includes('"He said ""hi"""') && csv.includes("1.3") || csv.includes("1.2"), "csv quoting");
 console.log("schedule-4d OK", n);

@@ -21,11 +21,40 @@ import {
   phaseDateRange,
   simulationMs,
 } from "../modules/timeline/timeline";
-import { importScheduleText, relinkSchedule, summaryNow, onScheduleChange, setupSchedule4d, type ScheduleSummary } from "../modules/schedule-4d/controller";
+import {
+  importScheduleText, relinkSchedule, summaryNow, onScheduleChange, setupSchedule4d, type ScheduleSummary,
+  getTaskRows, exportReportCsvText, getUnlinkedTasks, linkSelectionToTask, getCarbonFactorRows, setCarbonFactor, resetCarbonFactors, getScheduleState,
+} from "../modules/schedule-4d/controller";
 import { selection } from "./selection";
 
 let panel: HTMLElement | null = null;
 let visible = false;
+type Tab = "4d" | "5d" | "6d" | "links";
+let tab: Tab = "4d";
+/** Public: pick a P6 file (.xer / PMXML) and import it (ribbon / command palette entry point). */
+export function pickAndImportP6() {
+  setVisible(true);
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".xer,.xml,.txt";
+  input.onchange = async () => {
+    const f = input.files?.[0];
+    if (!f) return;
+    try {
+      const r = await importScheduleText(await f.text(), f.name);
+      window.dispatchEvent(new CustomEvent("obs-toast", { detail: {
+        message: r.tasks ? `Imported ${r.tasks} activities from ${f.name}; ${r.linked} linked to model elements.` : `No activities found in ${f.name}. ${r.warnings[0] ?? ""}`,
+        kind: r.tasks ? "success" : "error" } }));
+    } catch (e) {
+      window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "P6 import failed: " + (e instanceof Error ? e.message : String(e)), kind: "error" } }));
+    }
+  };
+  input.click();
+}
+
+/** Public: open the panel on a given tab (ribbon / command palette entry points). */
+export function openTimelineTab(t: Tab) { tab = t; setVisible(true); render(); }
+
 
 function esc(s: string) {
   return s.replace(/[&<>"']/g, (c) =>
@@ -65,6 +94,7 @@ function scheduleSection(sum: ScheduleSummary | null): string {
     <div class="obs-timeline__actions">
       <button type="button" data-act="p6-import">Re-import…</button>
       <button type="button" data-act="p6-relink" title="Re-link activities to the current model">Re-link</button>
+      <button type="button" data-act="p6-csv" title="Export per-activity cost / carbon report (CSV)">Export CSV</button>
     </div>
     <div class="obs-timeline__kpis">
       <div><span>Date</span><b>${fmtDate(sum.dateMs ?? sum.range?.start ?? null)}</b></div>
@@ -78,6 +108,44 @@ function scheduleSection(sum: ScheduleSummary | null): string {
     ${sparkline(sum.costCurve, sum.dateMs, "#22c55e")}
     ${sparkline(sum.carbonCurve, sum.dateMs, "#f97316")}
   </div>`;
+}
+
+function tabContent(): string {
+  if (tab === "4d") return "";
+  const sum = summaryNow();
+  if (!sum) return `<div class="obs-timeline__empty">Import a P6 schedule first (button above).</div>`;
+  const rows = getTaskRows();
+  if (tab === "5d") {
+    const body = rows.filter((r) => r.cost > 0).sort((a, b) => b.cost - a.cost).slice(0, 40)
+      .map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.name)}</td><td>${fmtNum(r.cost)}</td><td>${esc(r.costSource)}</td></tr>`).join("");
+    return `<div class="obs-timeline__pane">
+      <div class="obs-timeline__hint">Budget per activity: the P6 resource cost when present, otherwise the cost of its linked elements from the
+      take-off (assign cost items in the Cost panel).</div>
+      <div class="obs-timeline__actions"><button type="button" data-act="open-cost">Open take-off &amp; rates…</button></div>
+      <table class="obs-timeline__tbl"><tr><th>ID</th><th>Activity</th><th>Cost</th><th>Src</th></tr>${body || `<tr><td colspan="4">No activity has a cost yet.</td></tr>`}</table></div>`;
+  }
+  if (tab === "6d") {
+    const fac = getCarbonFactorRows().map((f) => `<tr><td>${esc(f.type)}</td><td>kg/${esc(f.unit)}</td>
+      <td><input type="number" min="0" step="1" value="${f.kg}" data-act="carbon-factor" data-type="${esc(f.type)}" class="${f.custom ? "custom" : ""}"/></td></tr>`).join("");
+    const body = rows.filter((r) => r.carbonKg > 0).sort((a, b) => b.carbonKg - a.carbonKg).slice(0, 25)
+      .map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.name)}</td><td>${fmtNum(r.carbonKg)}</td></tr>`).join("");
+    return `<div class="obs-timeline__pane">
+      <div class="obs-timeline__hint">Embodied carbon (kgCO₂e) from the quantities of linked authored elements. The factors are generic
+      placeholders - replace them with your EPD values.</div>
+      <table class="obs-timeline__tbl"><tr><th>ID</th><th>Activity</th><th>kgCO₂e</th></tr>${body || `<tr><td colspan="3">No linked elements with a carbon factor yet.</td></tr>`}</table>
+      <details><summary>Carbon factors (editable)</summary>
+        <table class="obs-timeline__tbl"><tr><th>Type</th><th>Unit</th><th>Factor</th></tr>${fac}</table>
+        <div class="obs-timeline__actions"><button type="button" data-act="carbon-reset">Reset to defaults</button></div></details></div>`;
+  }
+  // links
+  const un = getUnlinkedTasks().slice(0, 60);
+  const opts = (getScheduleState().schedule?.tasks ?? []).map((t) => `<option value="${esc(t.id)}">${esc(t.id)} — ${esc(t.name)}</option>`).join("");
+  return `<div class="obs-timeline__pane">
+    <div class="obs-timeline__hint">Link the elements currently selected in the model to an activity (stored as the element property <code>activityId</code>).</div>
+    <div class="obs-timeline__actions"><select data-act="link-task">${opts}</select><button type="button" data-act="link-sel">Link selection</button>
+      <button type="button" data-act="p6-relink">Auto re-link</button></div>
+    <div class="obs-timeline__hint"><b>${un.length}</b> activit${un.length === 1 ? "y has" : "ies have"} no linked elements${un.length ? ":" : "."}</div>
+    <div class="obs-timeline__unl">${un.map((t) => `<div>${esc(t.id)} — ${esc(t.name)}</div>`).join("")}</div></div>`;
 }
 
 function render() {
@@ -97,7 +165,11 @@ function render() {
       </div>
 
       ${scheduleSection(summaryNow())}
-
+      <div class="obs-timeline__tabs">
+        ${(["4d", "5d", "6d", "links"] as Tab[]).map((k) => `<button type="button" data-act="tab" data-tab="${k}" class="${tab === k ? "on" : ""}">${({ "4d": "4D Timeline", "5d": "5D Cost", "6d": "6D Carbon", links: "Links" } as any)[k]}</button>`).join("")}
+      </div>
+      ${tabContent()}
+      <div data-tab-pane="4d" style="display:${tab === "4d" ? "block" : "none"}">
       <div class="obs-timeline__transport">
         <button type="button" data-act="reset" title="Reset">⏮</button>
         <button type="button" data-act="play" title="${st.playing ? "Pause" : "Play"}">
@@ -190,6 +262,7 @@ function render() {
               </div>
             </div>`).join("")}
       </div>
+      </div>
     </div>
   `;
 
@@ -226,6 +299,12 @@ function render() {
       return;
     }
 
+    if (el.tagName === "INPUT" && act === "carbon-factor") {
+      el.addEventListener("change", () => setCarbonFactor((el as HTMLElement).dataset.type!, Number((el as HTMLInputElement).value)));
+      return;
+    }
+    if (el.tagName === "SELECT" && act === "link-task") return;
+
     if (el.tagName === "INPUT" && act === "rename" && id) {
       el.addEventListener("change", () => {
         updatePhase(id, { name: (el as HTMLInputElement).value.trim() || "Phase" });
@@ -257,6 +336,20 @@ function render() {
         input.click();
       }
       if (act === "p6-relink") void relinkSchedule();
+      if (act === "tab") { tab = ((el as HTMLElement).dataset.tab as Tab) || "4d"; render(); }
+      if (act === "carbon-reset") resetCarbonFactors();
+      if (act === "open-cost") { void import("./cost-panel").then((m) => m.toggleCostPanel()).catch(() => { /* optional */ }); }
+      if (act === "p6-csv") {
+        const blob = new Blob(["\uFEFF" + exportReportCsvText()], { type: "text/csv;charset=utf-8" });
+        const u = URL.createObjectURL(blob), a = document.createElement("a");
+        a.href = u; a.download = "schedule-4d5d6d-report.csv"; a.click(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+      }
+      if (act === "link-sel") {
+        const sel = panel!.querySelector('select[data-act="link-task"]') as HTMLSelectElement | null;
+        void linkSelectionToTask(sel?.value ?? "").then((n) => window.dispatchEvent(new CustomEvent("obs-toast", {
+          detail: { message: n ? `Linked ${n} selected element(s) to ${sel?.value}.` : "Select authored elements in the model first.", kind: n ? "success" : "warning" },
+        })));
+      }
       if (act === "add") addPhase();
       if (act === "defaults") createDefaultPhases();
       if (act === "export") download("timeline-4d.json", exportTimelineJson());
@@ -374,6 +467,15 @@ function ensurePanel() {
     .obs-timeline__kpis div { display:flex; flex-direction:column; }
     .obs-timeline__kpis span { color:#64748b; }
     .obs-timeline__kpis small { color:#64748b; }
+    .obs-timeline__tabs { display:flex; gap:4px; margin:6px 0 10px; }
+    .obs-timeline__tabs button { flex:1; background:#1e293b; border:1px solid #334155; color:#cbd5e1; border-radius:6px; padding:4px 6px; cursor:pointer; font-size:12px; }
+    .obs-timeline__tabs button.on { background:#2563eb; border-color:#3b82f6; color:#fff; }
+    .obs-timeline__tbl { width:100%; border-collapse:collapse; font-size:11px; margin:6px 0; }
+    .obs-timeline__tbl th, .obs-timeline__tbl td { text-align:left; padding:2px 4px; border-bottom:1px solid #1e293b; }
+    .obs-timeline__tbl input { width:70px; background:#1e293b; border:1px solid #334155; color:#e2e8f0; border-radius:4px; }
+    .obs-timeline__tbl input.custom { border-color:#f59e0b; }
+    .obs-timeline__unl { max-height:140px; overflow:auto; font-size:11px; color:#94a3b8; }
+    .obs-timeline__pane select { background:#1e293b; border:1px solid #334155; color:#e2e8f0; border-radius:4px; max-width:190px; }
     .obs-timeline__empty { color:#64748b; font-size:12px; padding:12px 0; text-align:center; }
     .obs-panel-header {
       display:flex; justify-content:space-between; align-items:center;
