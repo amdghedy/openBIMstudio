@@ -39,6 +39,7 @@ import {
   joinSelectedWalls,
   deleteSelectedElement,
   setSelectedAuthored,
+  cycleMepSelection,
   getTypeDefaults,
   setTypeDefault,
   rebuildAuthored,
@@ -945,6 +946,15 @@ function keydown(e: KeyboardEvent) {
   // keep ownership of its detailed mouse/Enter/Escape state machine.
   if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "z") return;
   if (e.ctrlKey && e.key.toLowerCase() === "y") return;
+
+  if (e.key === "Tab" && !e.shiftKey && getActiveTool() === "select" && !isPlanViewVisible()) {
+    const stage = cycleMepSelection();
+    if (stage) {
+      toast(stage === "branch" ? "Selected branch (Tab again: whole network)" : stage === "network" ? "Selected whole connected network (Tab again: single part)" : "Single part selected", "info", 1400);
+      e.preventDefault();
+      return;
+    }
+  }
 
   if (e.key === "Tab" && !e.shiftKey) {
     if (!isPlanViewVisible() && getActiveTool() === "select" && hoveredAuthorId) {

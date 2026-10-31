@@ -32,7 +32,8 @@ import { history } from "./history";
 import { snapping } from "./snapping";
 import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
-import { expandConnected, isMepElement } from "../modules/mep/connectivity";
+import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP } from "../modules/mep/connectivity";
+import { planMepStretch } from "../modules/mep/stretch";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import { makeAxisLock, projectOnAxis } from "./grip-axis-lock";
@@ -150,6 +151,8 @@ let polyLine: THREE.Line | null = null;
 let polyStartMarker: THREE.Mesh | null = null;
 
 let gripDrag: {
+  /** Pre-drag params of every MEP part when an MEP run end is dragged (fittings follow live). */
+  mepBase?: Map<string, any> | null;
   grip: GripSpec;
   snapshot: AuthoredElement["params"];
   original: THREE.Vector3;
@@ -2301,7 +2304,9 @@ function startGripDrag(g: GripSpec, worldPt: THREE.Vector3) {
       axis = makeAxisLock({ x: fixedArr[0], z: fixedArr[1] }, { x: curArr[0], z: curArr[1] });
     }
   }
+  const mepBase = (g.kind === "start" || g.kind === "end") && LINEAR_MEP.has(el.type) ? snapshotMepParams(el) : null;
   gripDrag = {
+    mepBase,
     grip: g,
     snapshot: JSON.parse(JSON.stringify(el.params)),
     original: worldPt.clone(),
@@ -2409,6 +2414,19 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
   else if (kind === "point" && p.point) p.point = [x, z];
   else if (kind === "vertex" && p.polygon && vertexIndex !== undefined) p.polygon[vertexIndex] = [x, z];
 
+  // MEP run end dragged: connected fittings follow live and neighbouring runs stretch with them.
+  // Re-planned from the pre-drag state each frame, so it is idempotent and reversible mid-drag.
+  if (gripDrag.mepBase && (kind === "start" || kind === "end")) {
+    for (const [id, params] of gripDrag.mepBase) {
+      const o = elements.find((q) => q.id === id);
+      if (o && o !== el) o.params = JSON.parse(JSON.stringify(params));
+    }
+    el.params = gripDrag.snapshot;
+    const ups = planMepStretch(elements as any, el.id, { start: p.start, end: p.end });
+    el.params = p;
+    for (const u of ups) { const o = elements.find((q) => q.id === u.id); if (o && o !== el) Object.assign(o.params, u.patch); }
+  }
+
   while (group.children.length) {
     const ch = group.children[0];
     group.remove(ch);
@@ -2433,6 +2451,7 @@ function endGripDrag() {
   const before = gripDrag.snapshot;
   const after = el ? JSON.parse(JSON.stringify(el.params)) : null;
   const smart = gripDrag.smartSnap ?? null;
+  const mepBase = gripDrag.mepBase ?? null;
   const which = gripDrag.grip.kind === "start" || gripDrag.grip.kind === "end"
     ? gripDrag.grip.kind
     : null;
@@ -2441,11 +2460,17 @@ function endGripDrag() {
   if (!el || !after) return;
   if (JSON.stringify(before) === JSON.stringify(after)) return;
 
-  history.push({
-    label: `Move grip · ${el.name}`,
-    apply: () => { el.params = JSON.parse(JSON.stringify(after)); rebuild(); markDirty(); },
-    revert: () => { el.params = JSON.parse(JSON.stringify(before)); rebuild(); markDirty(); },
-  });
+  if (mepBase) {
+    mepBase.set(el.id, before); // pre-drag state of the dragged run itself
+    pushMepParamsHistory(`Move grip · ${el.name}`, mepBase, snapshotMepParams(el));
+    notifyAuthoringChange(); // lets the elbow healer re-trim the runs to the moved fittings
+  } else {
+    history.push({
+      label: `Move grip · ${el.name}`,
+      apply: () => { el.params = JSON.parse(JSON.stringify(after)); rebuild(); markDirty(); },
+      revert: () => { el.params = JSON.parse(JSON.stringify(before)); rebuild(); markDirty(); },
+    });
+  }
   markDirty();
 
   // Persist wall–column link when the grip ended on a smart face/corner snap.
@@ -4639,6 +4664,26 @@ function ensureNativeBaseDimensions(el: AuthoredElement): void {
   }
 }
 
+/** Params of every MEP part (plus `el`) so a stretch that drags fittings and neighbours is ONE undo step. */
+function snapshotMepParams(el?: AuthoredElement): Map<string, any> {
+  const m = new Map<string, any>();
+  for (const e of elements) if (isMepElement(e) || e === el) m.set(e.id, JSON.parse(JSON.stringify(e.params)));
+  return m;
+}
+function pushMepParamsHistory(label: string, before: Map<string, any>, after: Map<string, any>): void {
+  const restore = (snap: Map<string, any>) => {
+    for (const [id, params] of snap) { const e = elements.find((x) => x.id === id); if (e) e.params = JSON.parse(JSON.stringify(params)); }
+    rebuild(); markDirty();
+  };
+  history.push({ label, apply: () => restore(after), revert: () => restore(before) });
+}
+/** Apply a stretch plan for run `runId` (fittings + neighbouring runs follow its moved end). */
+function applyMepStretchPlan(runId: string, next: { start?: any; end?: any; elevation?: number; endElevation?: number }): string[] {
+  const ups = planMepStretch(elements as any, runId, next);
+  for (const u of ups) { const e = elements.find((x) => x.id === u.id); if (e) Object.assign(e.params, u.patch); }
+  return ups.map((u) => u.id);
+}
+
 /**
  * Authoritative parametric property update used by the Properties panel and
  * inline editors. Updates params, regenerates geometry via rebuild, and
@@ -4697,7 +4742,19 @@ export function applyElementParamChange(
   if (diagnostics.length) {
     return { ok: false, reason: diagnostics.map((d) => d.code + ": " + d.message).join("; ") };
   }
+  // MEP runs: fittings and neighbouring runs follow a moved end.
+  const beforeOthers = LINEAR_MEP.has(el.type) ? snapshotMepParams() : null;
   el.params = candidateParams;
+  if (beforeOthers) {
+    const cp: any = candidateParams, bp: any = before;
+    if (JSON.stringify([cp.start, cp.end, cp.elevation, cp.endElevation]) !== JSON.stringify([bp.start, bp.end, bp.elevation, bp.endElevation])) {
+      // plan against the PRE-edit model, then drop the run itself (already updated)
+      el.params = before;
+      const ups = planMepStretch(elements as any, el.id, { start: cp.start, end: cp.end, elevation: cp.elevation, endElevation: cp.endElevation });
+      el.params = candidateParams;
+      for (const u of ups) { const o = elements.find((x) => x.id === u.id); if (o && o.id !== el.id) Object.assign(o.params, u.patch); }
+    }
+  }
   // Snapshot frozen mesh provenance; createMesh prefers parametric solids when capable.
   const mode = String((el.properties as any)?.editMode ?? "");
   const geomKeys = new Set(["baseLevelId", "baseOffset", "topLevelId", "topOffset", "length", "rotation", "height", "thickness", "width", "depth", "elevation", "sillHeight", "offsetAlongHost", "frameThickness"]);
@@ -4714,6 +4771,7 @@ export function applyElementParamChange(
   } catch (err) {
     // Atomic edit: geometry regeneration failed -> restore the previous valid parameters.
     el.params = before;
+    if (beforeOthers) for (const [id, params] of beforeOthers) { const o = elements.find((x) => x.id === id); if (o && o.id !== el.id) o.params = params; }
     try { rebuild(); } catch { /* keep going; previous state restored in the model */ }
     return { ok: false, reason: "geometry_regeneration_failed: " + (err instanceof Error ? err.message : String(err)) };
   }
@@ -5273,6 +5331,29 @@ export function setMoveConnectedMep(on: boolean): void {
   moveConnectedMep = on;
   try { localStorage.setItem("obs.moveConnectedMep", on ? "1" : "0"); } catch { /* */ }
 }
+/**
+ * Revit-style Tab on an MEP part: 1st press selects its branch (up to the next junction),
+ * 2nd press selects the whole connected network, 3rd press returns to the single part.
+ * Returns the stage applied, or null when the selection is not a single MEP part / cycle.
+ */
+let mepTabState: { anchor: string; stage: 0 | 1 | 2; sig: string } | null = null;
+const selSig = (ids: string[]) => [...ids].sort().join("|");
+export function cycleMepSelection(): "branch" | "network" | "single" | null {
+  const ids = [...selectedIds].map(String);
+  const cont = !!mepTabState && selSig(ids) === mepTabState.sig; // selection untouched since our last Tab
+  const anchor = cont ? mepTabState!.anchor : ids.length === 1 ? ids[0] : null;
+  if (!anchor) return null;
+  const el = elements.find((e) => e.id === anchor);
+  if (!el || !isMepElement(el)) return null;
+  const stage = (cont ? mepTabState!.stage : 0);
+  const next = ((stage + 1) % 3) as 0 | 1 | 2;
+  const picked = next === 0 ? [anchor] : connectedSelection(anchor, elements as any, next === 1 ? "branch" : "network");
+  mepTabState = { anchor, stage: next, sig: selSig(picked) };
+  setSelectedAuthored(picked, "replace");
+  if (next === 0) return "single";
+  return next === 1 ? "branch" : "network";
+}
+
 /** Ids to move together with `ids`: the connected MEP network when the option is on. */
 export function expandConnectedIds(ids: Iterable<string>): string[] {
   const list = [...ids];
@@ -6377,7 +6458,7 @@ function commitEditableTempDim(spec: TempDimSpec, value: number): boolean {
   let key = spec.param;
   let val: any = value;
   let extra: Record<string, unknown> | undefined;
-  const before = JSON.parse(JSON.stringify(el.params));
+  const beforeSnap = snapshotMepParams(el);
   if (spec.param === "length") {
     // Right (or bottom) end stays fixed, the left (or top) end moves.
     const r = p.start && p.end ? lengthKeepRight(p.start, p.end, value) : null;
@@ -6408,13 +6489,8 @@ function commitEditableTempDim(spec: TempDimSpec, value: number): boolean {
   // A locked dimension keeps its constraint at the new value.
   const lock = dimLocks.find((l) => l.elementId === spec.elementId && l.param === spec.param);
   if (lock) lock.value = value;
-  const after = JSON.parse(JSON.stringify(el.params));
-  // Same undo transaction as grip drags: Ctrl+Z reverts the dimension edit.
-  history.push({
-    label: `Edit dimension · ${el.name}`,
-    apply: () => { el.params = JSON.parse(JSON.stringify(after)); rebuild(); markDirty(); },
-    revert: () => { el.params = JSON.parse(JSON.stringify(before)); rebuild(); markDirty(); },
-  });
+  // One undo step covers the edited part AND every fitting / neighbouring run it dragged along.
+  pushMepParamsHistory(`Edit dimension · ${el.name}`, beforeSnap, snapshotMepParams(el));
   return true;
 }
 

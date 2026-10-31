@@ -58,7 +58,7 @@ export function fittingPortAngles(p: MepLike["params"]): number[] {
 }
 
 /** True when a free end point touches this element. */
-function pointTouches(pt: Pt3, e: MepLike): boolean {
+export function pointTouches(pt: Pt3, e: MepLike): boolean {
   const p = e.params;
   if (LINEAR_MEP.has(e.type)) {
     const ends = linearEnds(e);
@@ -135,6 +135,36 @@ export function expandConnected(startIds: Iterable<string>, elements: MepLike[])
       if (seen.has(other.id) || !areConnected(cur, other)) continue;
       seen.add(other.id);
       if (other.type !== "equipment") queue.push(other);
+    }
+  }
+  return [...seen];
+}
+
+/**
+ * Tab-selection helper. `branch` follows the run through plain connections and stops at
+ * junction fittings (tee / cross / wye: 3+ ports) — the junction is included, the other
+ * branches are not. `network` follows everything, including through junctions. Equipment
+ * is included but never spread through. Pinned parts are selectable, so they are included.
+ */
+export function connectedSelection(startId: string, elements: MepLike[], mode: "branch" | "network"): string[] {
+  const mep = elements.filter(isMepElement);
+  const start = mep.find((e) => e.id === startId);
+  if (!start) return [startId];
+  const seen = new Set<string>([startId]);
+  const queue: MepLike[] = [start];
+  const isJunction = (e: MepLike) => e.type === "fitting" && fittingPortAngles(e.params).length >= 3;
+  while (queue.length) {
+    const cur = queue.pop()!;
+    for (const o of mep) {
+      if (seen.has(o.id) || !areConnected(cur, o)) continue;
+      // Two runs meeting at a tee also touch each other directly; in branch mode they only
+      // count as connected THROUGH the junction, which ends the branch.
+      if (mode === "branch" && !isJunction(cur) && !isJunction(o) &&
+          mep.some((j) => j !== cur && j !== o && isJunction(j) && areConnected(j, cur) && areConnected(j, o))) continue;
+      seen.add(o.id);
+      if (o.type === "equipment") continue;
+      if (mode === "branch" && isJunction(o)) continue;
+      queue.push(o);
     }
   }
   return [...seen];
