@@ -2698,13 +2698,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "4D construction simulation — Gantt, calendar playback, phases",
         active: isTimelinePanelVisible(),
       }),
-      b("play", "Play / Pause", safe(() => openTimelineTab("4d"), "4D Play"), {
+      b("walk", "Play / Pause", safe(() => openTimelineTab("4d"), "4D Play"), {
         title: "Open the 4D panel to play or pause the construction sequence",
       }),
       b("grid", "Gantt", safe(() => openTimelineTab("4d"), "Gantt chart"), {
         title: "Open the 4D Gantt chart view of schedule activities",
       }),
-      b("levels", "Phases", safe(() => openTimelineTab("4d"), "4D Phases"), {
+      b("level", "Phases", safe(() => openTimelineTab("4d"), "4D Phases"), {
         title: "Manage construction phases and default phase sets",
       }),
       sep(),
@@ -2715,10 +2715,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("connection", "Re-import", safe(() => pickAndImportP6(), "Re-import P6"), {
         title: "Replace the current schedule with a new P6 file",
       }),
-      b("link", "Auto-link", safe(() => openTimelineTab("links"), "Auto-link"), {
+      b("conn", "Auto-link", safe(() => openTimelineTab("links"), "Auto-link"), {
         title: "Auto-link P6 activities to model elements by name / level / WBS",
       }),
-      b("select", "Link selection", safe(() => openTimelineTab("links"), "Link selection"), {
+      b("inspect", "Link selection", safe(() => openTimelineTab("links"), "Link selection"), {
         title: "Assign the current model selection to a P6 activity",
       }),
       b("property", "Links panel", safe(() => openTimelineTab("links"), "Links"), {
@@ -2732,7 +2732,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("connection", "Assign activity", safe(() => openTimelineTab("links"), "Assign activity"), {
         title: "Link selected elements to a P6 activity (sets activityId / WBS)",
       }),
-      b("filter", "Unlinked", safe(() => openTimelineTab("links"), "Unlinked tasks"), {
+      b("isolate", "Unlinked", safe(() => openTimelineTab("links"), "Unlinked tasks"), {
         title: "Show P6 activities that are not yet linked to the model",
       }),
       sep(),
