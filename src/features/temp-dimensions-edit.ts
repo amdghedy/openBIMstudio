@@ -282,23 +282,11 @@ function render(): void {
     label.textContent = s.label;
     label.style.cssText =
       `position:absolute;left:${mx}px;top:${my - 12}px;transform:translate(-50%,-50%);` +
-      `background:rgba(15,17,23,.94);border:1px solid ${s.locked ? "#fbbf24" : "rgba(56,189,248,.6)"};` +
-      `color:#e0f2fe;font:600 10px/1.2 var(--font-mono,monospace);padding:2px 6px;border-radius:4px;` +
+      `color:${s.locked ? "#fbbf24" : "#e0f2fe"};font:600 11px/1.2 var(--font-mono,monospace);` +
+      `text-shadow:0 0 3px #0f1117,0 0 3px #0f1117,0 0 2px #0f1117;padding:0;` +
       `white-space:nowrap;pointer-events:auto;cursor:${s.editable ? "text" : "default"};`;
     if (s.editable) label.onpointerdown = (ev) => { ev.preventDefault(); ev.stopPropagation(); beginEdit(s, mx, my); }; // pointerdown: overlay is rebuilt every frame, press/release would hit different nodes
     h.appendChild(label);
-
-    if (s.editable) {
-      const lock = document.createElement("button");
-      lock.textContent = s.locked ? "🔒" : "🔓";
-      lock.title = s.locked ? "Unlock dimension" : "Lock dimension (create constraint)";
-      lock.style.cssText =
-        `position:absolute;left:${mx + 34}px;top:${my - 12}px;transform:translate(-50%,-50%);` +
-        `background:rgba(15,17,23,.94);border:1px solid rgba(56,189,248,.5);color:#fbbf24;` +
-        `font:10px/1 sans-serif;border-radius:4px;padding:2px 4px;pointer-events:auto;cursor:pointer;`;
-      lock.onpointerdown = (ev) => { ev.preventDefault(); ev.stopPropagation(); provider?.toggleLock?.(s); render(); };
-      h.appendChild(lock);
-    }
 
     if (provider.cycleRef) {
       const cyc = document.createElement("button");
@@ -306,8 +294,8 @@ function render(): void {
       cyc.title = "Flip dimension to the other side of the wall";
       cyc.style.cssText =
         `position:absolute;left:${mx - 40}px;top:${my - 12}px;transform:translate(-50%,-50%);` +
-        `background:rgba(15,17,23,.94);border:1px solid rgba(56,189,248,.5);color:#38bdf8;` +
-        `font:10px/1 sans-serif;border-radius:4px;padding:2px 4px;pointer-events:auto;cursor:pointer;`;
+        `background:transparent;border:0;color:#38bdf8;text-shadow:0 0 3px #0f1117;` +
+        `font:11px/1 sans-serif;padding:0;pointer-events:auto;cursor:pointer;`;
       cyc.onpointerdown = (ev) => { ev.preventDefault(); ev.stopPropagation(); provider?.cycleRef?.(s); render(); };
       h.appendChild(cyc);
     }
