@@ -2,7 +2,7 @@
  * Persistent schedule storage.
  *
  * Stores user-created schedule definitions in localStorage, separate from
- * the built-in templates. A definition is self-contained — everything the
+ * the built-in templates. A definition is self-contained â€” everything the
  * generator needs to produce rows.
  */
 import type { ScheduleDefinition } from "./schedule-types";

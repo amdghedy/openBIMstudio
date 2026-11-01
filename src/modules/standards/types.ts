@@ -1,6 +1,6 @@
 /**
  * Public re-exports for the standards subsystem.
- * All rule-related types live in `./rules/types` — this file only
+ * All rule-related types live in `./rules/types` â€” this file only
  * re-exports them plus any standards-specific UI shapes.
  */
 
