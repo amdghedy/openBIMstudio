@@ -16,6 +16,7 @@ export interface ModelAuditOptions {
   totalGeometryElementCount: number;
   scannedCount: number;
   readErrorCount?: number;
+  categoryReadFailed?: boolean;
   truncated?: boolean;
 }
 
@@ -90,7 +91,8 @@ export function auditModelRecords(
       scannedCount: options.scannedCount,
       truncated: !!options.truncated,
       readErrorCount,
-      complete: !options.truncated && readErrorCount === 0 &&
+      categoryReadFailed: !!options.categoryReadFailed,
+      complete: !options.truncated && !options.categoryReadFailed && readErrorCount === 0 &&
         options.scannedCount === options.totalGeometryElementCount,
     },
     summary: {
