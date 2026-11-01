@@ -240,6 +240,18 @@ function cancel(): void {
   setTimeout(() => { cancelled = false; }, 0);
 }
 
+/** True while the array tool holds a pending direction/preview (escape-all). */
+export function isArrayActive(): boolean {
+  return phase !== "idle";
+}
+
+/** Cancel any in-flight array preview. Returns true if something was canceled. */
+export function cancelArray(): boolean {
+  if (phase === "idle") return false;
+  cancel();
+  return true;
+}
+
 export function startArray(): void {
   const canvas = CANVAS();
   if (!canvas) return;

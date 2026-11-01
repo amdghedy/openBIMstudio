@@ -209,6 +209,18 @@ function cancel(): void {
   setTimeout(() => { cancelled = false; }, 0);
 }
 
+/** True while the rotate tool holds a pending pivot/preview (escape-all). */
+export function isRotateActive(): boolean {
+  return phase !== "idle";
+}
+
+/** Cancel any in-flight rotate preview. Returns true if something was canceled. */
+export function cancelRotate(): boolean {
+  if (phase === "idle") return false;
+  cancel();
+  return true;
+}
+
 export function startRotate(): void {
   const canvas = CANVAS();
   if (!canvas) return;

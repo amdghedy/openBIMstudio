@@ -148,6 +148,27 @@ class InputRouterImpl {
     };
   }
 
+  /** escape-all support: run EVERY cancel handler (unlike the Escape path,
+   *  which stops at the first handler that returns true) and report how many
+   *  actually canceled something. */
+  cancelAll(): number {
+    let n = 0;
+    for (let i = this.cancelHandlers.length - 1; i >= 0; i--) {
+      try {
+        if (this.cancelHandlers[i]()) n++;
+      } catch (err) {
+        console.error("[input-router] cancel handler threw", err);
+      }
+    }
+    return n;
+  }
+
+  /** Drop any claimed gesture and release the camera pause (escape-all uses
+   *  this after a cancel sweep so a stuck drag can never survive ESC). */
+  releaseGesture(): void {
+    this.releaseOwner();
+  }
+
   hasOwner(): boolean { return this.owner !== null; }
 
   /* ── Internals ─────────────────────────────────────────────────── */

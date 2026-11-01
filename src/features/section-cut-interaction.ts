@@ -592,6 +592,13 @@ function onPointerUp(e: PointerEvent): void {
   setArrowHover(!!pickClipperHandle(e.clientX, e.clientY));
 }
 
+/** Release an in-flight section-handle drag. Returns true if one was active (escape-all). */
+export function cancelSectionCutDrag(): boolean {
+  if (!dragging) return false;
+  releaseEverything(null);
+  return true;
+}
+
 export function setupSectionCutInteraction(): void {
   if (installed) return;
   installed = true;

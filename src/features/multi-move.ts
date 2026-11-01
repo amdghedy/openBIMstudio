@@ -228,6 +228,18 @@ export function startMultiMove(copy = false): void {
   window.addEventListener("keyup", onKeyUp, true);
 }
 
+/** True while a live multi-move/copy preview is in flight (escape-all). */
+export function isMultiMoveActive(): boolean {
+  return phase !== "idle";
+}
+
+/** Cancel any in-flight multi-move/copy preview. Returns true if canceled. */
+export function cancelMultiMove(): boolean {
+  if (phase === "idle") return false;
+  cancel();
+  return true;
+}
+
 export function cancel(): void {
   const canvas = CANVAS();
   canvas?.removeEventListener("pointerdown", onDown, true);

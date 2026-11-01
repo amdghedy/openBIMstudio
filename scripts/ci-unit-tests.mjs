@@ -27,7 +27,7 @@ const scripts = [
   "test:v68-core", "test:v68-solids", "test:v68-interaction", "test:v68-acceptance",
   "test:v69", "test:v70", "test:v71", "test:v72",
   "test:v73-just", "test:v73-mag", "test:v73-panels", "test:v73-rel",
-  "test:dep-safety", "test:server-hardening", "test:plugins", "test:feature-registry",
+  "test:dep-safety", "test:server-hardening", "test:plugins", "test:feature-registry", "test:escape-all",
   "verify:v70", "verify:v71", "verify:v72", "verify:v73", "verify:v68",
 ];
 

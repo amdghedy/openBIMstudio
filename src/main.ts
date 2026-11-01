@@ -13,6 +13,7 @@ import { setupPluginSystem } from "./plugins/boot";
  * BricsCAD BIM, Forma and Renga as the open standards monster of AEC.
  */
 import { setupViewer } from "./core/setup";
+import { installEscapeAll } from "./core/escape-all";
 import { setupInputRouter } from "./core/input-router";
 import { setupDiagnostics } from "./core/diagnostics";
 import { setupOptions } from "./core/options-registry";
@@ -229,6 +230,12 @@ if (!ctx.world) {
 await step("diagnostics", () => setupDiagnostics());
 await step("options", () => setupOptions());
 bootTheme();
+// escape-all MUST install before the input router: both add window-capture
+// keydown listeners, and same-target/same-phase listeners fire in registration
+// order. escape-all needs to see bare Escape first so one press cancels ALL
+// active orders (router, modify orders, tool previews, modes) and can consume
+// the key before the router's first-true-consumes path runs.
+await step("escape-all", () => installEscapeAll());
 await step("input-router", () => setupInputRouter());
 await step("camera-tools", () => setupCameraTools());
 await step("navigation", () => setupNavigation());

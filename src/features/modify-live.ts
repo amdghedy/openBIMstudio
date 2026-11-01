@@ -223,6 +223,7 @@ export function setupModifyLive(): void {
     startCopy: () => startLiveMove("copy"),
     stop: stopModifyLive,
     isActive: isModifyLiveActive,
+    escape: modifyLiveEscape,
   };
   console.log("[modify-live] Revit-parity command host ready (Move/Copy)");
 }
