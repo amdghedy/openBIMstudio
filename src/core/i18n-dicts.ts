@@ -858,3 +858,40 @@ export const DICTS: Record<string, Dict> = {
     "Language": "भाषा",
   },
 };
+
+/**
+ * Lazy per-language machine catalogs (i18n-catalogs/<lang>.gen.ts) covering
+ * the whole app surface — menus, right-click menu + submenus, panels,
+ * toolbars, dialogs, toasts, property palette. Each catalog is its own
+ * chunk, fetched only for the language in use; CORE entries always win.
+ */
+const GEN_LOADERS: Record<string, () => Promise<{ GEN: Dict }>> = {
+  ar: () => import("./i18n-catalogs/ar.gen"),
+  zh: () => import("./i18n-catalogs/zh.gen"),
+  es: () => import("./i18n-catalogs/es.gen"),
+  fr: () => import("./i18n-catalogs/fr.gen"),
+  de: () => import("./i18n-catalogs/de.gen"),
+  pt: () => import("./i18n-catalogs/pt.gen"),
+  ru: () => import("./i18n-catalogs/ru.gen"),
+  ja: () => import("./i18n-catalogs/ja.gen"),
+  hi: () => import("./i18n-catalogs/hi.gen"),
+};
+
+const genLoaded = new Set<string>();
+
+/** True once the machine catalog for `code` is merged into DICTS. */
+export function hasGenDict(code: string): boolean {
+  return genLoaded.has(code);
+}
+
+/** Merge the machine catalog for `code` (once). English needs none. */
+export function ensureGenDicts(code: string): Promise<void> {
+  const loader = GEN_LOADERS[code];
+  if (!loader || genLoaded.has(code)) return Promise.resolve();
+  return loader()
+    .then((mod) => {
+      genLoaded.add(code);
+      DICTS[code] = { ...mod.GEN, ...DICTS[code] };
+    })
+    .catch(() => { /* catalog unavailable — CORE + English fallback still work */ });
+}

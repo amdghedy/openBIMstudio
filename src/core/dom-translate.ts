@@ -12,7 +12,7 @@
  * module only maps service locale ⇄ dictionary code and applies the DOM.
  */
 import { i18n, type Locale } from "./i18n";
-import { DICTS } from "./i18n-dicts";
+import { DICTS, ensureGenDicts, hasGenDict } from "./i18n-dicts";
 
 export interface DomLangDef {
   code: string;
@@ -142,6 +142,12 @@ export function setDomLang(code: string): void {
   current = def.code;
   dict = def.code === "en" ? null : DICTS[def.code] ?? null;
   translateRoot(document.body);
+  // Machine catalog not merged yet? Fetch it, then re-apply this language.
+  if (def.code !== "en" && !hasGenDict(def.code)) {
+    void ensureGenDicts(def.code).then(() => {
+      if (current === def.code) setDomLang(def.code);
+    });
+  }
 }
 
 /** Service locale → dictionary code ("zh-CN" → "zh", "pt-BR" → "pt"). */
