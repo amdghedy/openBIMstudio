@@ -155,7 +155,7 @@ let historyDropdown: HTMLDivElement | null = null;
 const panel = document.createElement("div");
 panel.id = "obs-ai-chat";
 panel.style.cssText =
-  "z-index:37;display:none;flex-direction:column;background:var(--bg-floating,#1c1e28);" +
+  "z-index:9600;display:none;flex-direction:column;background:var(--bg-floating,#1c1e28);" +
   "border:1px solid var(--border-default,#2a2e3a);border-radius:10px;" +
   "box-shadow:0 12px 36px rgba(0,0,0,.55);font:12px system-ui,sans-serif;" +
   "color:var(--text-primary,#e8eaf0);min-height:0;position:relative";
@@ -1702,6 +1702,14 @@ export function openAiChat(): void {
   if (panel.style.display === "none" || !panel.style.display) {
     panel.style.display = "flex";
   }
+  // Force layout after show (guards against zero-size first paint)
+  requestAnimationFrame(() => {
+    try {
+      dock?.dock(dock.side()); // re-apply current dock state
+    } catch {
+      /* */
+    }
+  });
   renderHeader();
   renderSettings();
   renderMessages();
