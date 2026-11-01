@@ -14,7 +14,7 @@ import * as OBC from "@thatopen/components";
 import { ctx } from "../core/context";
 import { forceResumeCameraControls } from "../core/camera-gate";
 import { whenNavigationBlocked } from "./navigation";
-import { isGrabbableHandle } from "./section-handle-filter";
+import { isGrabbableHandle, isStaleDrag } from "./section-handle-filter";
 
 type Any = Record<string, any>;
 
@@ -542,6 +542,13 @@ function onPointerMove(e: PointerEvent): void {
     if (hoverArrow) setArrowHover(false);
     return;
   }
+  // The button was released but we never saw the pointerup (swallowed by another handler,
+  // released over UI, lost capture): end the drag instead of leaving the arrow stuck to the mouse.
+  if (isStaleDrag(e.buttons, dragging)) {
+    releaseEverything(e);
+    setArrowHover(!!pickClipperHandle(e.clientX, e.clientY));
+    return;
+  }
   if (dragging && dragPlane) {
     if (pointerId != null && e.pointerId !== pointerId) return;
     movePlaneAlongNormal(dragPlane, e.clientX, e.clientY);
@@ -609,6 +616,12 @@ export function setupSectionCutInteraction(): void {
   window.addEventListener("pointermove", onPointerMove, true);
   window.addEventListener("pointerup", onPointerUp, true);
   window.addEventListener("pointercancel", onPointerUp, true);
+  // belt and braces: any other way a drag can end must release the arrow too
+  const forceRelease = () => { if (dragging) { releaseEverything(null); setArrowHover(false); } };
+  window.addEventListener("mouseup", forceRelease, true);
+  window.addEventListener("blur", forceRelease);
+  host.addEventListener("lostpointercapture", forceRelease, true);
+  document.addEventListener("visibilitychange", forceRelease);
 
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
