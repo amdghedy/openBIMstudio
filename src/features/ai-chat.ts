@@ -165,18 +165,17 @@ panel.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
 
 const header = document.createElement("div");
 header.style.cssText =
-  "display:flex;align-items:center;gap:6px;padding:8px 10px;" +
+  "display:flex;flex-direction:column;gap:0;padding:0;" +
   "border-bottom:1px solid var(--border-subtle,#1e2029);" +
   "border-top-left-radius:9px;border-top-right-radius:9px;" +
   "background:var(--bg-elevated,#181a23);cursor:grab;user-select:none;" +
-  "flex-shrink:0;min-height:40px;height:40px;position:sticky;top:0;z-index:5;" +
-  "box-sizing:border-box";
+  "flex-shrink:0;position:sticky;top:0;z-index:5;box-sizing:border-box";
 
 const settingsPane = document.createElement("div");
 settingsPane.style.cssText =
-  "display:none;padding:10px 12px;border-bottom:1px solid var(--border-subtle,#1e2029);" +
-  "background:var(--bg-elevated,#181a23);gap:6px;flex-direction:column;" +
-  "overflow-y:auto;max-height:70%;flex-shrink:0;" +
+  "display:none;padding:12px 14px;border-bottom:1px solid var(--border-subtle,#1e2029);" +
+  "background:var(--bg-inset,#12141c);gap:8px;flex-direction:column;" +
+  "overflow-y:auto;max-height:55%;flex-shrink:0;" +
   "scrollbar-width:thin;scrollbar-color:var(--border-default,#2a2e3a) transparent";
 
 const messages = document.createElement("div");
@@ -460,8 +459,16 @@ function renderHeader(): void {
   try {
     header.innerHTML = "";
 
+    // ── Row 1: title + actions ──
+    const row1 = document.createElement("div");
+    row1.style.cssText =
+      "display:flex;align-items:center;gap:8px;padding:8px 10px 6px;" +
+      "min-height:36px;box-sizing:border-box";
+
     const icon = document.createElement("span");
-    icon.style.cssText = "display:flex;color:var(--accent,#38bdf8)";
+    icon.style.cssText =
+      "display:flex;align-items:center;justify-content:center;" +
+      "width:18px;height:18px;color:var(--accent,#38bdf8);font-size:12px;flex-shrink:0";
     icon.textContent = "◆";
 
     const text = document.createElement("div");
@@ -471,13 +478,17 @@ function renderHeader(): void {
     title.textContent =
       conv?.title && conv.title !== "New chat" ? conv.title : "AI assistant";
     title.style.cssText =
-      "font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      "font-weight:700;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" +
+      "color:var(--text-primary,#e8eaf0)";
     const sub = document.createElement("div");
     sub.textContent = `${cfg.kind} · ${cfg.model}`;
     sub.style.cssText =
       "font-size:10px;color:var(--text-tertiary,#6b7280);" +
-      "overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px";
     text.append(title, sub);
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;align-items:center;gap:4px;flex-shrink:0";
 
     const histBtn = document.createElement("button");
     histBtn.textContent = "🕘";
@@ -490,9 +501,10 @@ function renderHeader(): void {
 
     const gear = document.createElement("button");
     gear.textContent = "⚙";
-    gear.title = "Settings";
+    gear.title = showSettings ? "Hide settings" : "Settings";
     gear.style.cssText = smallBtnCss(showSettings);
-    gear.onclick = () => {
+    gear.onclick = (e) => {
+      e.stopPropagation();
       showSettings = !showSettings;
       renderHeader();
       renderSettings();
@@ -502,7 +514,8 @@ function renderHeader(): void {
     clearBtn.textContent = "Clear";
     clearBtn.title = "Clear this conversation";
     clearBtn.style.cssText = smallBtnCss();
-    clearBtn.onclick = () => {
+    clearBtn.onclick = (e) => {
+      e.stopPropagation();
       history = [];
       persistCurrent();
       renderMessages();
@@ -512,23 +525,44 @@ function renderHeader(): void {
     closeBtn.textContent = "✕";
     closeBtn.title = "Close (Esc)";
     closeBtn.style.cssText = smallBtnCss();
-    closeBtn.onclick = () => closeAiChat();
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeAiChat();
+    };
 
-    // Dock controls — explicit buttons so docking works even if drag-snap is unclear
+    actions.append(histBtn, gear, clearBtn, closeBtn);
+    row1.append(icon, text, actions);
+
+    // ── Row 2: dock controls ──
+    const row2 = document.createElement("div");
+    row2.style.cssText =
+      "display:flex;align-items:center;gap:4px;padding:0 10px 8px;" +
+      "box-sizing:border-box";
+
+    const dockLabel = document.createElement("span");
+    dockLabel.textContent = "Dock";
+    dockLabel.style.cssText =
+      "font-size:10px;color:var(--text-tertiary,#6b7280);margin-right:4px;flex-shrink:0";
+
     const dockBar = document.createElement("div");
-    dockBar.style.cssText = "display:flex;gap:2px;margin-left:4px";
+    dockBar.style.cssText = "display:flex;gap:3px;flex:1";
     const sides: Array<{ side: "left" | "right" | "top" | "bottom" | "float"; label: string; title: string }> = [
-      { side: "left", label: "◀", title: "Dock left" },
-      { side: "right", label: "▶", title: "Dock right" },
-      { side: "top", label: "▲", title: "Dock top" },
-      { side: "bottom", label: "▼", title: "Dock bottom" },
-      { side: "float", label: "⧉", title: "Float" },
+      { side: "left", label: "Left", title: "Dock left" },
+      { side: "right", label: "Right", title: "Dock right" },
+      { side: "top", label: "Top", title: "Dock top" },
+      { side: "bottom", label: "Bottom", title: "Dock bottom" },
+      { side: "float", label: "Float", title: "Float window" },
     ];
     for (const s of sides) {
+      const active = dock?.side() === s.side;
       const b = document.createElement("button");
       b.textContent = s.label;
       b.title = s.title;
-      b.style.cssText = smallBtnCss(dock?.side() === s.side);
+      b.style.cssText =
+        "padding:3px 8px;font-size:10px;border-radius:4px;cursor:pointer;" +
+        "border:1px solid " + (active ? "var(--accent,#38bdf8)" : "var(--border-default,#2a2e3a)") + ";" +
+        "background:" + (active ? "rgba(56,189,248,.16)" : "transparent") + ";" +
+        "color:" + (active ? "var(--accent,#38bdf8)" : "var(--text-secondary,#a0a6b5)");
       b.onpointerdown = (e) => e.stopPropagation();
       b.onclick = (e) => {
         e.stopPropagation();
@@ -537,8 +571,9 @@ function renderHeader(): void {
       };
       dockBar.appendChild(b);
     }
+    row2.append(dockLabel, dockBar);
 
-    header.append(icon, text, dockBar, histBtn, gear, clearBtn, closeBtn);
+    header.append(row1, row2);
   } finally {
     renderingHeader = false;
   }
@@ -1728,8 +1763,7 @@ export function openAiChat(): void {
   panel.style.flexDirection = "column";
   // Header must never disappear
   header.style.display = "flex";
-  header.style.minHeight = "40px";
-  header.style.height = "40px";
+  header.style.flexDirection = "column";
   header.style.flexShrink = "0";
   header.style.visibility = "visible";
   header.style.opacity = "1";
