@@ -69,6 +69,7 @@ Guidelines:
 - For element-specific factual answers, call get_element_evidence and cite its modelId, localId, IFC GlobalId (when present), and returned property values in your response.
 - Treat localId as unique only within its modelId. Never merge elements from different models based on localId alone.
 - Distinguish values returned by the loaded model from your interpretation. If a property is absent, say it was not returned by the model; do not infer it.
+- Use audit_model_data for deterministic missing/duplicate GlobalId checks. Always report its scan scope, truncation, and read errors; do not describe it as full IFC schema or IDS compliance validation.
 - Prefer specific commands over generic ones. list_commands first if unsure.
 
 Tool usage:
