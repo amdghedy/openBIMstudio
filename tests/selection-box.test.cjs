@@ -146,6 +146,7 @@ class Box3 {
     this.max.x = Math.max(this.max.x, b.max.x); this.max.y = Math.max(this.max.y, b.max.y); this.max.z = Math.max(this.max.z, b.max.z);
     return this;
   }
+  setFromObject(_o: any) { return this; }
 }
 class Vector3 { x: number; y: number; z: number; constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; } }
 const THREE: any = { Box3, Vector3 };
@@ -161,6 +162,7 @@ function getElementWorldBox(el: any): any {
   b.max = { x: el.bbox.max[0], y: el.bbox.max[1], z: el.bbox.max[2] };
   return b;
 }
+function getAuthoredGroup(): any { return (globalThis as any).__testAuthoredGroup ?? null; }
 `);
 src = src.replace(/^import\s+\{[\s\S]+?\}\s+from\s+"\.\/section-box";/m, `
 function enableSectionBox(padding?: number): void {} function disableSectionBox(): void {}
