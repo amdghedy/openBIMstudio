@@ -133,7 +133,8 @@
     "test:collab": "node tests/enterprise-collaboration.test.cjs",
     "test:p1-gaps": "node tests/priority1-gaps.test.cjs",
     "test:grip-axis-lock": "node tests/grip-axis-lock.test.cjs",
-    "test:ai-embeddings": "node tests/ai-embeddings-config.test.cjs"
+    "test:ai-embeddings": "node tests/ai-embeddings-config.test.cjs",
+    "test:ai-evidence": "node tests/ai-evidence.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
