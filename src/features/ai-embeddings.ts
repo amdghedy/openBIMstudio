@@ -13,6 +13,7 @@
  */
 import { ctx } from "../core/context";
 import { pMap } from "../core/p-map";
+import { secureGet, secureSet, secureRemove } from "../core/secure-store";
 
 export type EmbeddingProvider = "ollama" | "openai";
 
@@ -30,28 +31,41 @@ export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
 };
 
 const CFG_KEY = "obs.ai.embeddings.config";
+const API_KEY_NAME = "ai.embeddings.apiKey";
 
 export function loadEmbeddingConfig(): EmbeddingConfig {
   try {
     const raw = localStorage.getItem(CFG_KEY);
-    if (!raw) return { ...DEFAULT_EMBEDDING_CONFIG };
-    const p = JSON.parse(raw);
+    const p = raw ? JSON.parse(raw) : {};
+    // Migrate the legacy plaintext key once, then keep only non-secret settings
+    // in localStorage. Prefer an already-encrypted value if one exists.
+    const legacyKey = typeof p?.apiKey === "string" && p.apiKey ? p.apiKey : undefined;
+    if (legacyKey && secureGet(API_KEY_NAME) == null) secureSet(API_KEY_NAME, legacyKey);
+    if (legacyKey) {
+      const { apiKey: _legacyApiKey, ...publicConfig } = p;
+      localStorage.setItem(CFG_KEY, JSON.stringify(publicConfig));
+    }
     return {
-      provider: p.provider === "openai" ? "openai" : "ollama",
-      endpoint: String(p.endpoint || DEFAULT_EMBEDDING_CONFIG.endpoint),
-      model: String(p.model || DEFAULT_EMBEDDING_CONFIG.model),
-      apiKey: p.apiKey ? String(p.apiKey) : undefined,
+      provider: p?.provider === "openai" ? "openai" : "ollama",
+      endpoint: typeof p?.endpoint === "string" && p.endpoint
+        ? p.endpoint : DEFAULT_EMBEDDING_CONFIG.endpoint,
+      model: typeof p?.model === "string" && p.model
+        ? p.model : DEFAULT_EMBEDDING_CONFIG.model,
+      apiKey: secureGet(API_KEY_NAME) || undefined,
     };
   } catch {
-    return { ...DEFAULT_EMBEDDING_CONFIG };
+    return { ...DEFAULT_EMBEDDING_CONFIG, apiKey: secureGet(API_KEY_NAME) || undefined };
   }
 }
 
 export function saveEmbeddingConfig(cfg: EmbeddingConfig): void {
   try {
-    localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
-  } catch {
-    /* */
+    const { apiKey, ...publicConfig } = cfg;
+    localStorage.setItem(CFG_KEY, JSON.stringify(publicConfig));
+    if (apiKey) secureSet(API_KEY_NAME, apiKey);
+    else secureRemove(API_KEY_NAME);
+  } catch (err) {
+    console.warn("[ai-embeddings] could not save embedding configuration", err);
   }
 }
 
@@ -160,12 +174,36 @@ export async function getIndexStats(): Promise<IndexStats> {
 /* ═════════════════════════════════════════════════════════════════════════
    Embedding calls
    ═════════════════════════════════════════════════════════════════════════ */
+/**
+ * Match the chat provider's Ollama routing: local Vite development uses its
+ * same-origin proxy, while deployed builds use the configured Ollama endpoint.
+ */
+export function resolveOllamaBaseUrl(endpoint: string): string {
+  let configured = (endpoint || DEFAULT_EMBEDDING_CONFIG.endpoint).trim();
+  while (configured.endsWith("/")) configured = configured.slice(0, -1);
+  const isDefaultLocal =
+    configured === "http://localhost:11434" ||
+    configured === "https://localhost:11434" ||
+    configured === "http://127.0.0.1:11434" ||
+    configured === "https://127.0.0.1:11434";
+  try {
+    const host = typeof location !== "undefined" ? location.hostname : "";
+    // Preserve the Vite proxy only for the default local Ollama endpoint.
+    // A user-configured endpoint must never be silently replaced.
+    if (isDefaultLocal && (host === "localhost" || host === "127.0.0.1")) return "/ollama";
+  } catch {
+    /* location may be unavailable in non-browser test environments */
+  }
+  return configured;
+}
+
 async function embedBatchOllama(
   cfg: EmbeddingConfig,
   texts: string[],
   signal?: AbortSignal,
 ): Promise<Float32Array[]> {
-  const url = joinUrl("/ollama", "/api/embeddings");
+  const base = resolveOllamaBaseUrl(cfg.endpoint);
+  const url = joinUrl(base, "/api/embeddings");
 
   // Ollama /api/embeddings is one-prompt-at-a-time. Bounded concurrency (4)
   // turns a large index from minutes into seconds without flooding Ollama.

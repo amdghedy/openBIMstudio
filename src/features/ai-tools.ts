@@ -130,6 +130,22 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "get_element_evidence",
+    description:
+      "Returns a source-labelled evidence record for one loaded BIM element, " +
+      "including model identity, model-scoped localId, IFC GlobalId when present, " +
+      "category, attributes and property sets. Use this when an answer needs " +
+      "traceable element facts. Never treat localId as globally unique.",
+    parameters: {
+      type: "object",
+      properties: {
+        modelId: { type: "string", description: "Exact loaded model id from get_app_state" },
+        localId: { type: "integer", minimum: 0, description: "Element localId within that model" },
+      },
+      required: ["modelId", "localId"],
+    },
+  },
+  {
     name: "query_elements",
     description:
       "Finds elements of a category that match a property filter. " +
@@ -342,6 +358,7 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
 
       case "get_model_categories": return await getModelCategoriesTool(call.args);
       case "get_element_properties": return await getElementPropertiesTool(call.args);
+      case "get_element_evidence": return await getElementEvidenceTool(call.args);
       case "query_elements": return await queryElementsTool(call.args);
 
       case "run_clash_test": return await runClashTestTool(call.args);
@@ -537,6 +554,59 @@ function flattenData(d: any): Record<string, string> {
     }
   }
   return out;
+}
+
+async function getElementEvidenceTool(args: Record<string, any>): Promise<ToolResult> {
+  const modelId = String(args.modelId ?? "").trim();
+  const localId = Number(args.localId);
+  if (!modelId || !Number.isInteger(localId) || localId < 0) {
+    return { ok: false, error: "A valid modelId and non-negative integer localId are required" };
+  }
+  const model = ctx.fragments.list.get(modelId);
+  if (!model) return { ok: false, error: `Model "${modelId}" is not currently loaded` };
+
+  try {
+    const categories = await (model as any).getItemsOfCategories([/.+/]);
+    let category: string | null = null;
+    for (const [name, ids] of Object.entries(categories ?? {})) {
+      if (((ids as number[]) ?? []).includes(localId)) {
+        category = name;
+        break;
+      }
+    }
+    if (!category) {
+      return {
+        ok: false,
+        error: `Element ${localId} was not found in the loaded category index for model "${modelId}"`,
+      };
+    }
+
+    const rows = await (model as any).getItemsData([localId], {
+      attributesDefault: true,
+      psetsDefault: true,
+    });
+    const item = (rows as any[])?.[0];
+    if (!item || !Object.keys(item).length) {
+      return { ok: false, error: `The loaded model returned no data for element ${localId}` };
+    }
+
+    const evidenceModule: any = await import("./ai-evidence");
+    return {
+      ok: true,
+      data: evidenceModule.buildElementEvidence({
+        modelId,
+        modelName: String((model as any)?.name ?? (model as any)?.modelName ?? modelId),
+        localId,
+        category,
+        item,
+      }),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Could not read evidence for ${modelId}:${localId}: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
 }
 
 async function getElementPropertiesTool(args: Record<string, any>): Promise<ToolResult> {
