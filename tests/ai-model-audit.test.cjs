@@ -55,7 +55,7 @@ test("marks truncated scans incomplete and states scope limitations", () => {
   assert.equal(result.scope.complete, false);
   assert.equal(result.scope.truncated, true);
   assert.match(result.scope.elementPopulation, /geometry-bearing/);
-  assert.ok(result.limitations.some((line) => /IDS compliance/.test(line)) === false);
+  assert.ok(result.limitations.some((line) => /project-specific exchange requirements/.test(line)));
 });
 
 test("reports read and category-index errors independently", () => {
