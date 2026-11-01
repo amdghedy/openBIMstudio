@@ -12,7 +12,7 @@
  * module only maps service locale ⇄ dictionary code and applies the DOM.
  */
 import { i18n, type Locale } from "./i18n";
-import { DICTS, ensureGenDicts, hasGenDict } from "./i18n-dicts";
+import { DICTS, ensureGenDicts, hasGenDict, NUM_TEMPLATES } from "./i18n-dicts";
 
 export interface DomLangDef {
   code: string;
@@ -67,6 +67,15 @@ function skipSubtree(el: Element | null): boolean {
   return !!el && (!!el.closest("[data-i18n-skip]") || SKIP_TAGS.has(el.tagName));
 }
 
+/** Runtime-built "N <fragment>" text ("3 element(s)") → localized template. */
+function tryNumTemplate(text: string): string | null {
+  const m = text.match(/^(\s*)([\d][\d,]*(?:\s*[+×]\s*[\d][\d,]*)*)(\s+)(.+?)(\s*)$/);
+  if (!m) return null;
+  const tpl = NUM_TEMPLATES[m[4]]?.[current];
+  if (!tpl || !tpl.includes("{n}")) return null;
+  return m[1] + tpl.replace("{n}", m[2]) + m[5];
+}
+
 function translateTextNode(node: Text): void {
   const parent = node.parentElement;
   if (!parent || skipSubtree(parent)) return;
@@ -84,13 +93,12 @@ function translateTextNode(node: Text): void {
   const baseRaw = orig ?? raw;
   const baseTrimmed = baseRaw.trim();
   if (!baseTrimmed) return;
-  const tr = dict[baseTrimmed];
+  const tr = dict[baseTrimmed] ?? tryNumTemplate(baseTrimmed);
   if (!tr || tr === baseTrimmed) return;
   const lead = baseRaw.slice(0, baseRaw.length - baseRaw.trimStart().length);
   const trail = baseRaw.slice(baseRaw.trimEnd().length);
   if (orig === undefined) originalText.set(node, raw);
-  node.nodeValue = lead + tr + trail;
-}
+  node.nodeValue = lead + tr + trail;}
 
 function translateElementAttrs(el: Element): void {
   if (skipSubtree(el)) return;

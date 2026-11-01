@@ -895,3 +895,46 @@ export function ensureGenDicts(code: string): Promise<void> {
     })
     .catch(() => { /* catalog unavailable — CORE + English fallback still work */ });
 }
+
+/**
+ * Localized templates for runtime-BUILT "N <fragment>" strings (the UI often
+ * appends `${count} element(s)` style text nodes by concatenation, which a
+ * static dictionary keyed by full strings can never match). The DOM engine
+ * replaces the leading number(s) into {n}. Hand-curated per language so word
+ * order is right (zh/ja put the counter after, ru uses "выбрано: N", …).
+ */
+export const NUM_TEMPLATES: Record<string, Dict> = {
+  "element(s)": {
+    ar: "{n} عنصر",
+    zh: "{n} 个元素",
+    es: "{n} elemento(s)",
+    fr: "{n} élément(s)",
+    de: "{n} Element(e)",
+    pt: "{n} elemento(s)",
+    ru: "{n} элемент(ов)",
+    ja: "{n} 個の要素",
+    hi: "{n} तत्व",
+  },
+  selected: {
+    ar: "تم تحديد {n}",
+    zh: "已选择 {n}",
+    es: "{n} seleccionado(s)",
+    fr: "{n} sélectionné(s)",
+    de: "{n} ausgewählt",
+    pt: "{n} selecionado(s)",
+    ru: "выбрано: {n}",
+    ja: "{n} 個選択中",
+    hi: "{n} चयनित",
+  },
+  "authored selected": {
+    ar: "تم تحديد {n} عنصر من العناصر المنشأة",
+    zh: "已选择 {n} 个创建的元素",
+    es: "{n} elementos creados seleccionados",
+    fr: "{n} éléments créés sélectionnés",
+    de: "{n} erstellte Elemente ausgewählt",
+    pt: "{n} elementos criados selecionados",
+    ru: "выбрано созданных элементов: {n}",
+    ja: "作成要素 {n} 個を選択中",
+    hi: "{n} निर्मित तत्व चयनित",
+  },
+};
