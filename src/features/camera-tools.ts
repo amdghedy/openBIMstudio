@@ -1695,3 +1695,84 @@ export function setCameraPose(target: V3, dirToCamera: V3, up: V3, dist: number,
 export function stopControlsTransition(): void {
   try { (ctx.world.camera.controls as any)?.stop?.(); } catch { /* */ }
 }
+
+/**
+ * Frame a world-space box so the selected element FILLS the viewport.
+ * focusOnBox() frames the box's bounding sphere, which leaves the element small.
+ * This fits the real box to the real viewport aspect, keeps the current view
+ * direction, and supports perspective and orthographic cameras.
+ * padding = margin around the element (0.06 = 6%).
+ */
+export function focusOnBoxTight(box: THREE.Box3, padding = 0.06): boolean {
+  if (!worldReady() || !box || box.isEmpty()) return false;
+  preFocusView = saveCameraSnapshot();
+
+  const cam: any = ctx.world.camera.three;
+  const controls: any = ctx.world.camera.controls;
+
+  // Never collapse on flat or tiny boxes (a wall is only 0.2 m thick).
+  const b = box.clone();
+  const dims = b.getSize(new THREE.Vector3());
+  const maxDim = Math.max(dims.x, dims.y, dims.z);
+  if (maxDim < 0.5) b.expandByScalar((0.5 - maxDim) / 2);
+  const diag = Math.max(b.getSize(new THREE.Vector3()).length(), 0.5);
+  const center = b.getCenter(new THREE.Vector3());
+
+  cam.updateMatrixWorld(true);
+  const right = new THREE.Vector3();
+  const up = new THREE.Vector3();
+  const back = new THREE.Vector3();
+  cam.matrixWorld.extractBasis(right, up, back);
+  right.normalize();
+  up.normalize();
+  back.normalize();
+
+  // Project the 8 box corners onto the camera axes.
+  const eps = Math.max(diag * 0.005, 0.01);
+  const k = 1 + Math.max(0, padding);
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const zs: number[] = [];
+  const q = new THREE.Vector3();
+  for (let i = 0; i < 8; i++) {
+    q.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).sub(center);
+    xs.push(Math.max(Math.abs(q.dot(right)), eps));
+    ys.push(Math.max(Math.abs(q.dot(up)), eps));
+    zs.push(q.dot(back)); // positive = toward the camera
+  }
+  const maxX = Math.max(...xs);
+  const maxY = Math.max(...ys);
+  const maxZ = Math.max(...zs);
+
+  if (isOrthoCam(cam)) {
+    const dist = Math.max(diag * 1.5, 5);
+    controls.setLookAt(
+      center.x + back.x * dist, center.y + back.y * dist, center.z + back.z * dist,
+      center.x, center.y, center.z,
+      true,
+    );
+    const halfW = (cam.right - cam.left) / 2;
+    const halfH = (cam.top - cam.bottom) / 2;
+    const zoom = Math.min(halfW / (maxX * k), halfH / (maxY * k));
+    if (Number.isFinite(zoom) && zoom > 0) {
+      cam.zoom = zoom;
+      cam.updateProjectionMatrix();
+      syncOrthoZoom(cam);
+    }
+  } else {
+    const tanV = Math.tan(THREE.MathUtils.degToRad(cam.fov ?? 60) / 2);
+    const tanH = tanV * (cam.aspect || 1);
+    let dist = 0;
+    for (let i = 0; i < 8; i++) {
+      dist = Math.max(dist, zs[i] + Math.max((xs[i] * k) / tanH, (ys[i] * k) / tanV));
+    }
+    dist = Math.max(dist, maxZ + Math.max((cam.near ?? 0.1) * 2, diag * 0.05)); // stay outside the box
+    controls.setLookAt(
+      center.x + back.x * dist, center.y + back.y * dist, center.z + back.z * dist,
+      center.x, center.y, center.z,
+      true,
+    );
+  }
+  updateClipping();
+  return true;
+}
