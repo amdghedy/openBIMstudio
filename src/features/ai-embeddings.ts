@@ -362,7 +362,11 @@ export async function buildIndex(opts: BuildOptions = {}): Promise<IndexStats> {
       try {
         data = await (model as any).getItemsData(slice, {
           attributesDefault: false,
-          attributes: [\n            "Name", "GlobalId", "ObjectType", "Tag", "Description", "PredefinedType",\n            "LongName", "OverallHeight", "OverallWidth", "NominalDiameter", "NominalLength",\n          ],\n          psetsDefault: true,
+          attributes: [
+            "Name", "GlobalId", "ObjectType", "Tag", "Description", "PredefinedType",
+            "LongName", "OverallHeight", "OverallWidth", "NominalDiameter", "NominalLength",
+          ],
+          psetsDefault: true,
         });
       } catch {
         continue;
