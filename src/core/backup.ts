@@ -1,7 +1,9 @@
 // Rotating backup-on-load (Phase 0 / issue P0-03). Server/Node form.
 // Browser build: OPFS equivalent per the plan (same contract, same KEEP policy).
-// Named imports from 'node:fs/promises' (stable across @types/node majors,
-// unlike the legacy `import { promises } from 'fs'` form).
+// NOTE: excluded from `tsc --noEmit` until P0-03 wires it — this repo has no
+// @types/node; 'fs' is a minimal writeFileSync shim in src/types/custom.d.ts,
+// so fs/promises types do not resolve here. Import from 'node:fs/promises'
+// once the Node-side type environment is decided.
 import { copyFile, readdir, unlink } from 'node:fs/promises';
 
 const KEEP = 5;

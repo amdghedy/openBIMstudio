@@ -62,11 +62,13 @@ phase order. Until an issue wires a file, the file stays inert:
 
 - `src/core/crashLog.ts` and `src/shell/AppErrorBoundary.tsx` already typecheck clean
   and live under the normal `tsc --noEmit` program (nothing imports them yet).
-- `src/core/backup.ts` typechecks clean (Node form; browser/OPFS variant is P0-03).
-- `src/core/safeLoad.ts`, `src/core/registry.ts`, `src/core/journal.ts` are excluded
-  from `tsc` via `tsconfig.json` `exclude` because they reference contracts that do
-  not exist yet (`zod` install, real service types, `JournalStore`). The issue that
-  wires each file **removes it from that exclude list** — that removal is the gate.
+- `src/core/safeLoad.ts`, `src/core/registry.ts`, `src/core/journal.ts`,
+  `src/core/backup.ts` are excluded from `tsc` via `tsconfig.json` `exclude`
+  because they reference contracts that do not exist yet (`zod` install, real
+  service types, `JournalStore`) or need a Node type environment this repo does
+  not have (no `@types/node`; `'fs'` is a minimal `writeFileSync` shim in
+  `src/types/custom.d.ts`). The issue that wires each file **removes it from
+  that exclude list** — that removal is the gate.
 - `.github/workflows/golden-roundtrip.yml` is `workflow_dispatch`-only until P1-04;
   flip its `on:` to `[push, pull_request, workflow_dispatch]` when `diff.ts` and the
   golden corpus land.

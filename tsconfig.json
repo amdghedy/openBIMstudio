@@ -31,11 +31,15 @@
   // Hardening starters not yet wired into the app (docs/engineering/STARTER_ARTIFACTS.md).
   // Each entry is removed by the issue that wires the file — do NOT add new files here:
   //   P0-02 (safeLoad + zod install)      -> src/core/safeLoad.ts
+  //   P0-03 (backup: browser/OPFS design; repo has no @types/node —
+  //          'fs' is a minimal writeFileSync shim in src/types/custom.d.ts)
+  //                                       -> src/core/backup.ts
   //   P1-01 (typed service registry)      -> src/core/registry.ts
   //   P2-01 (JournalStore implementation) -> src/core/journal.ts
   "exclude": [
     "src/core/safeLoad.ts",
     "src/core/registry.ts",
-    "src/core/journal.ts"
+    "src/core/journal.ts",
+    "src/core/backup.ts"
   ]
 }
