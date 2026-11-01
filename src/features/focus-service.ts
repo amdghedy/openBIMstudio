@@ -203,8 +203,25 @@ function getAuthoredBox(ids: string[]): THREE.Box3 | null {
 
   if (!auth || !ids.length) return null;
 
-  const elements = auth.getElements?.() ?? auth.elements ?? [];
+  const idSet = new Set(ids.map(String));
   const box = new THREE.Box3();
+
+  // Prefer live scene meshes (matches what the user actually sees).
+  try {
+    const group = auth.getAuthoredGroup?.();
+    if (group) {
+      try { group.updateMatrixWorld?.(true); } catch { /* */ }
+      group.traverse((o: Any) => {
+        if (!o?.isMesh) return;
+        const eid = o.userData?.elementId;
+        if (eid == null || !idSet.has(String(eid))) return;
+        includeObject(o, box);
+      });
+      if (!box.isEmpty()) return box;
+    }
+  } catch { /* fall through */ }
+
+  const elements = auth.getElements?.() ?? auth.elements ?? [];
 
   for (const id of ids) {
     const el = (elements as any[]).find(

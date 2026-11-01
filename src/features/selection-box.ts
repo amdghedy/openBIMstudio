@@ -12,7 +12,7 @@
 
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { getElementById, getElementWorldBox, getSelectedIds } from "./authoring";
+import { getElementById, getElementWorldBox, getSelectedIds, getAuthoredGroup } from "./authoring";
 import {
   enableSectionBox, disableSectionBox, isSectionBoxActive, growSectionBox, enableSectionBoxWithBox,
 } from "./section-box";
@@ -43,15 +43,37 @@ export interface CropToSelectionOptions {
 export function getSelectionWorldBox(elementIds?: string[]): THREE.Box3 | null {
   const ids = elementIds ?? getSelectedIds();
   if (!ids.length) return null;
+  const idSet = new Set(ids.map(String));
   const box = new THREE.Box3();
   let hasAny = false;
-  for (const id of ids) {
-    const el = getElementById(id);
-    if (!el) continue;
-    const elBox = getElementWorldBox(el);
-    if (!elBox) continue;
-    box.union(elBox);
-    hasAny = true;
+
+  // Prefer live scene meshes (correct world transforms after placement / coordination).
+  try {
+    const group = getAuthoredGroup?.();
+    if (group) {
+      try { group.updateMatrixWorld(true); } catch { /* */ }
+      group.traverse((o: any) => {
+        if (!o?.isMesh) return;
+        const eid = o.userData?.elementId;
+        if (eid == null || !idSet.has(String(eid))) return;
+        const b = new THREE.Box3().setFromObject(o);
+        if (!b.isEmpty()) {
+          box.union(b);
+          hasAny = true;
+        }
+      });
+    }
+  } catch { /* fall through to synthetic path */ }
+
+  if (!hasAny) {
+    for (const id of ids) {
+      const el = getElementById(id);
+      if (!el) continue;
+      const elBox = getElementWorldBox(el);
+      if (!elBox) continue;
+      box.union(elBox);
+      hasAny = true;
+    }
   }
   return hasAny && !box.isEmpty() ? box : null;
 }

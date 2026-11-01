@@ -374,10 +374,27 @@ async function selectedWorldBox(): Promise<THREE.Box3 | null> {
   const box = new THREE.Box3();
   const authoredBox = getSelectionWorldBox();
   if (authoredBox) box.union(authoredBox);
+  // Prefer robust world-box helper used by fitToMap (selection.boundingBox is less reliable).
   try {
-    const fragBox = selection.isEmpty() ? null : await selection.boundingBox();
-    if (fragBox && !fragBox.isEmpty()) box.union(fragBox);
-  } catch { /* fragment bounds unavailable */ }
+    if (!selection.isEmpty()) {
+      const { getElementWorldBoxes } = await import("../modules/geometry/world-box");
+      const snap = selection.snapshot() as Record<string, Set<number>>;
+      for (const [modelId, ids] of Object.entries(snap)) {
+        if (!ids?.size) continue;
+        const model: any = (ctx as any).fragments?.list?.get?.(modelId);
+        if (!model) continue;
+        const wbs = await getElementWorldBoxes(model, [...ids], modelId);
+        for (const wb of wbs ?? []) {
+          if (wb?.box && !wb.box.isEmpty()) box.union(wb.box);
+        }
+      }
+    }
+  } catch {
+    try {
+      const fragBox = selection.isEmpty() ? null : await selection.boundingBox();
+      if (fragBox && !fragBox.isEmpty()) box.union(fragBox);
+    } catch { /* fragment bounds unavailable */ }
+  }
   return box.isEmpty() ? null : box;
 }
 
@@ -387,6 +404,17 @@ async function focusSelection() {
     toast("Select an element first", "warn");
     return;
   }
+  // Preferred path: focus-service (live scene meshes + robust fragment world boxes).
+  try {
+    const mod = await import("./focus-service");
+    if (typeof mod.focusSelected === "function") {
+      const ok = await mod.focusSelected();
+      if (ok) return;
+    }
+  } catch (err) {
+    console.warn("[bim-experience] focus-service focusSelected failed", err);
+  }
+  // Fallback: local box measurement + camera-tools focusOnBox.
   const box = await selectedWorldBox();
   if (!box) {
     toast("Could not measure the selection", "warn");
