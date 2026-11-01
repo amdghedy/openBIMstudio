@@ -1,0 +1,17 @@
+const { execSync } = require("child_process");
+const fs = require("fs"), path = require("path"), assert = require("assert");
+const out = fs.mkdtempSync(path.join(require("os").tmpdir(), "mg-"));
+execSync(`npx tsc src/modules/native-bim/linear-follow.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`, { stdio: "pipe" });
+const m = require(path.join(out, "linear-follow.js"));
+const w = (id, type, s, e) => ({ id, type, params: { start: s, end: e } });
+const els = [w("a", "wall", [0, 0], [3, 0]), w("b", "wall", [3, 0], [3, 3]), w("d", "duct", [10, 0], [12, 0])];
+let n = 0; const ok = (c, s) => { assert.ok(c, s); n++; };
+ok(JSON.stringify(m.magnetSameTypeEnd(els, "wall", [3.2, 0.1])) === "[3,0]", "snaps to wall end");
+ok(m.magnetSameTypeEnd(els, "wall", [10.1, 0]) === null, "other type ignored");
+ok(m.magnetSameTypeEnd(els, "wall", [3.2, 0.1], 0.3, ["a", "b"]) === null, "excluded");
+ok(m.magnetSameTypeEnd(els, "wall", [5, 5]) === null, "out of radius");
+ok(m.magnetSameTypeEnd(els, "duct", [11.9, 0.1])[0] === 12, "duct");
+const j = m.joinedEnds(els, els[0], "end");
+ok(j.length === 1 && j[0].id === "b" && j[0].key === "start", "joined end");
+ok(m.joinedEnds(els, els[0], "start").length === 0, "free end");
+console.log(`magnet: ${n} checks OK`);

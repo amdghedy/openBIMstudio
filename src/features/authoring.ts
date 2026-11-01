@@ -34,7 +34,7 @@ import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
 import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP } from "../modules/mep/connectivity";
 import { planMepStretch, planMepMove } from "../modules/mep/stretch";
-import { planLinearFollow, FOLLOW_LINEAR } from "../modules/native-bim/linear-follow";
+import { planLinearFollow, FOLLOW_LINEAR, magnetSameTypeEnd, joinedEnds } from "../modules/native-bim/linear-follow";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import { makeAxisLock, projectOnAxis } from "./grip-axis-lock";
@@ -154,6 +154,8 @@ let polyStartMarker: THREE.Mesh | null = null;
 let gripDrag: {
   /** Pre-drag params of every MEP part when an MEP run end is dragged (fittings follow live). */
   mepBase?: Map<string, any> | null;
+  /** Wall/beam/strip neighbours joined at the dragged end: they stay joined (their touching end follows). */
+  follow?: Array<{ id: string; key: "start" | "end"; before: any }> | null;
   grip: GripSpec;
   snapshot: AuthoredElement["params"];
   original: THREE.Vector3;
@@ -2306,8 +2308,14 @@ function startGripDrag(g: GripSpec, worldPt: THREE.Vector3) {
     }
   }
   const mepBase = (g.kind === "start" || g.kind === "end") && LINEAR_MEP.has(el.type) ? snapshotMepParams(el) : null;
+  let follow: Array<{ id: string; key: "start" | "end"; before: any }> | null = null;
+  if ((g.kind === "start" || g.kind === "end") && FOLLOW_LINEAR.has(el.type)) {
+    const js = joinedEnds(elements as any, el as any, g.kind);
+    if (js.length) follow = js.map((j) => ({ ...j, before: JSON.parse(JSON.stringify(elements.find((q) => q.id === j.id)!.params)) }));
+  }
   gripDrag = {
     mepBase,
+    follow,
     grip: g,
     snapshot: JSON.parse(JSON.stringify(el.params)),
     original: worldPt.clone(),
@@ -2415,6 +2423,20 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
   else if (kind === "point" && p.point) p.point = [x, z];
   else if (kind === "vertex" && p.polygon && vertexIndex !== undefined) p.polygon[vertexIndex] = [x, z];
 
+  // Magnetic join: a dragged end of a wall/beam/strip/duct/pipe/tray/conduit locks onto a nearby free end of
+  // another element of the same type (never one of its own joined neighbours).
+  if ((kind === "start" || kind === "end") && (p as any)[kind]) {
+    const mg = magnetSameTypeEnd(elements as any, el.type, (p as any)[kind], 0.3, [el.id, ...(gripDrag.follow ?? []).map((f) => f.id)]);
+    if (mg) (p as any)[kind] = mg;
+  }
+  // Joined neighbours keep their touching end on the dragged end.
+  if (gripDrag.follow && (kind === "start" || kind === "end") && (p as any)[kind]) {
+    for (const f of gripDrag.follow) {
+      const o = elements.find((q) => q.id === f.id);
+      if (o) (o.params as any)[f.key] = [...(p as any)[kind]] as [number, number];
+    }
+  }
+
   // MEP run end dragged: connected fittings follow live and neighbouring runs stretch with them.
   // Re-planned from the pre-drag state each frame, so it is idempotent and reversible mid-drag.
   if (gripDrag.mepBase && (kind === "start" || kind === "end")) {
@@ -2453,6 +2475,7 @@ function endGripDrag() {
   const after = el ? JSON.parse(JSON.stringify(el.params)) : null;
   const smart = gripDrag.smartSnap ?? null;
   const mepBase = gripDrag.mepBase ?? null;
+  const followed = gripDrag.follow ?? null;
   const which = gripDrag.grip.kind === "start" || gripDrag.grip.kind === "end"
     ? gripDrag.grip.kind
     : null;
@@ -2466,10 +2489,12 @@ function endGripDrag() {
     pushMepParamsHistory(`Move grip · ${el.name}`, mepBase, snapshotMepParams(el));
     notifyAuthoringChange(); // lets the elbow healer re-trim the runs to the moved fittings
   } else {
+    const fAfter = (followed ?? []).map((f) => ({ id: f.id, before: f.before, after: JSON.parse(JSON.stringify(elements.find((q) => q.id === f.id)?.params ?? f.before)) }));
+    const setF = (k: "before" | "after") => { for (const f of fAfter) { const o = elements.find((q) => q.id === f.id); if (o) o.params = JSON.parse(JSON.stringify(f[k])); } };
     history.push({
       label: `Move grip · ${el.name}`,
-      apply: () => { el.params = JSON.parse(JSON.stringify(after)); rebuild(); markDirty(); },
-      revert: () => { el.params = JSON.parse(JSON.stringify(before)); rebuild(); markDirty(); },
+      apply: () => { el.params = JSON.parse(JSON.stringify(after)); setF("after"); rebuild(); markDirty(); },
+      revert: () => { el.params = JSON.parse(JSON.stringify(before)); setF("before"); rebuild(); markDirty(); },
     });
   }
   markDirty();
@@ -3183,6 +3208,10 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
     case "pipe":
     case "cable-tray":
     case "conduit": {
+      { // magnetic join to a nearby free end of the same type
+        const mg = magnetSameTypeEnd(elements as any, activeTool as string, [pt.x, pt.z]);
+        if (mg) { pt = pt.clone(); pt.x = mg[0]; pt.z = mg[1]; }
+      }
       if (!chainStart) {
         chainStart = pt.clone();
         chainStartDir = null;

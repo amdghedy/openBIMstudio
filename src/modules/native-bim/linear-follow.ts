@@ -41,3 +41,36 @@ export function planLinearFollow(elements: LinearLike[], movedIds: Iterable<stri
   }
   return [...out].map(([id, patch]) => ({ id, patch }));
 }
+
+export const MAGNET_TYPES = new Set(["wall", "beam", "strip", "duct", "pipe", "cable-tray", "conduit"]);
+
+/** Magnetic join: the nearest free END of another element of the SAME type within `radius`
+ *  (plan metres), or null. `exclude` ids are skipped (the element being edited and its followers). */
+export function magnetSameTypeEnd(elements: LinearLike[], type: string, p: Vec2, radius = 0.3, exclude: Iterable<string> = []): Vec2 | null {
+  if (!MAGNET_TYPES.has(type)) return null;
+  const skip = new Set(exclude);
+  let best: Vec2 | null = null, bd = radius;
+  for (const e of elements) {
+    if (e.type !== type || skip.has(e.id) || !e.params.start || !e.params.end) continue;
+    for (const q of [e.params.start, e.params.end]) {
+      const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      if (d <= bd) { bd = d; best = [q[0], q[1]]; }
+    }
+  }
+  return best;
+}
+
+/** Same-type neighbours that share an END with `el`'s `which` end (before it is dragged). */
+export function joinedEnds(elements: LinearLike[], el: LinearLike, which: "start" | "end"): Array<{ id: string; key: "start" | "end" }> {
+  const at = el.params[which];
+  if (!at) return [];
+  const out: Array<{ id: string; key: "start" | "end" }> = [];
+  for (const o of elements) {
+    if (o.id === el.id || o.type !== el.type || o.properties?.pinned || !o.params.start || !o.params.end) continue;
+    for (const key of ["start", "end"] as const) {
+      const q = o.params[key]!;
+      if (Math.hypot(q[0] - at[0], q[1] - at[1]) <= TOL) out.push({ id: o.id, key });
+    }
+  }
+  return out;
+}
