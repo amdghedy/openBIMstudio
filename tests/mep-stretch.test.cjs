@@ -1,7 +1,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs"), path = require("path"), assert = require("assert");
 const out = fs.mkdtempSync(path.join(require("os").tmpdir(), "ms-"));
-execSync(`npx tsc src/modules/mep/stretch.ts src/modules/mep/connectivity.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`, { stdio: "pipe" });
+execSync(`npx tsc src/modules/mep/stretch.ts src/modules/mep/connectivity.ts src/modules/mep/elbow-geometry.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`, { stdio: "pipe" });
 const find = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? find(path.join(d, e.name)) : [path.join(d, e.name)]);
 const files = find(out);
 const st = require(files.find((f) => f.endsWith("stretch.js")));
@@ -63,5 +63,19 @@ ok(near(u.A.end[1], -1) && near(u.B.start[1], -1) && !u.C, "moved fitting: attac
 ok(st.planMepMove(zz, zz.map((e) => e.id), 2, 2).every((x) => !x.patch.start && !x.patch.end && !x.patch.point), "all selected -> rigid, no follower patches");
 // pinned neighbour fitting stays put
 ok(by(st.planMepMove(zz.map((e) => e.id === "E2" ? { ...e, properties: { pinned: true } } : e), ["B"], 1, 0)).E2 === undefined, "pinned fitting not dragged");
+
+// Realistic: duct runs trimmed back to the elbow's tangent points (not the corner)
+const eg = require(files.find((f) => f.endsWith("elbow-geometry.js")));
+{
+  const C = [3, 0], w = 0.4, r = eg.defaultBendRadius(w), g = eg.elbowGeometry(C, 0, Math.PI / 2, r);
+  const duct = (id, s, e) => run(id, s, e, "duct", { thickness: w, height: 0.3 });
+  const real = [duct("A", [0, 0], g.T1), { id: "E", type: "fitting", params: { point: C, elevation: 0, height: 0.3, thickness: w, fittingKind: "elbow", angleIn: 0, angleOut: Math.PI / 2, parentType: "duct", bendRadius: r } }, duct("B", g.T2, [3, 4])];
+  ok(cn.areConnected(real[0], real[1]) && cn.areConnected(real[2], real[1]), "trimmed duct ends are detected as connected to the elbow");
+  const m = by(st.planMepMove(real, ["B"], 1, 0));
+  ok(m.E && near(m.E.point[0], 4), "elbow follows a moved duct (tangent-trimmed)");
+  ok(m.A && near(m.A.end[0], 4), "neighbour duct stretches to the moved elbow");
+  const m2 = by(st.planMepMove(real, ["A"], 0, 1));
+  ok(m2.E && near(m2.E.point[1], 1), "moving the other duct drags the elbow as well");
+}
 
 console.log(`mep-stretch: ${n} checks OK`);

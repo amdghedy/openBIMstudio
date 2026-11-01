@@ -3095,7 +3095,7 @@ export function nudgeSelectedByKeyboard(dx: number, dz: number, dy = 0): number 
       el.transform.position[2] += dz;
       if (dy) el.transform.position[1] += dy;
     }
-  });
+  }, { dx, dz, dy });
   return targets.length;
 }
 
@@ -5671,15 +5671,27 @@ export async function addPointElement(
   } catch { /* */ }
 }
 
+const followPending = new Map<string, Record<string, unknown>>();
 export function transformElements(
   ids: string[],
   transform: (el: AuthoredElement, idx: number) => void,
+  /** When the transform is a translation, connected MEP parts follow (fittings move, runs stretch). */
+  follow?: { dx: number; dz: number; dy?: number },
 ): void {
   const targets = elements.filter((el) => ids.includes(el.id));
   if (!targets.length) return;
+  if (follow) {
+    // plan against the pre-move state, then treat the followers as extra targets of this transaction
+    const ups = mepFollowPatches(targets.map((t) => t.id), follow.dx, follow.dz, follow.dy ?? 0);
+    for (const u of ups) {
+      const fe = elements.find((x) => x.id === u.id);
+      if (fe && !targets.includes(fe)) { targets.push(fe); followPending.set(fe.id, u.patch); }
+    }
+  }
   const before = targets.map((t) => JSON.parse(JSON.stringify(t.params)));
   let i = 0;
-  for (const el of targets) transform(el, i++);
+  for (const el of targets) { if (followPending.has(el.id)) Object.assign(el.params, followPending.get(el.id)); else transform(el, i++); }
+  followPending.clear();
   const after = targets.map((t) => JSON.parse(JSON.stringify(t.params)));
   history.push({
     label: `Transform ${targets.length} element(s)`,
@@ -6585,10 +6597,12 @@ export function applyDimensionalConstraints(): void { applyDimLocks(); }
 
 export function translateSelected(dx: number, dz: number): number {
   const ids = [...selectedIds].map(String);
+  const beforeSnap = snapshotMepParams();
+  const follow = mepFollowPatches(ids, dx, dz);
   let n = 0;
   for (const id of ids) {
     const el = elements.find((e) => e.id === id);
-    if (!el) continue;
+    if (!el || el.properties?.pinned) continue;
     const p = el.params;
     if (p.start) p.start = [p.start[0] + dx, p.start[1] + dz];
     if (p.end) p.end = [p.end[0] + dx, p.end[1] + dz];
@@ -6596,7 +6610,11 @@ export function translateSelected(dx: number, dz: number): number {
     if (p.polygon) p.polygon = p.polygon.map(([x, z]) => [x + dx, z + dz] as [number, number]);
     n++;
   }
-  if (n) { rebuild(); markDirty(); notifyAuthoringChange(); }
+  for (const u of follow) { const fe = elements.find((e) => e.id === u.id); if (fe && !ids.includes(fe.id)) Object.assign(fe.params, u.patch); }
+  if (n) {
+    if (follow.length) pushMepParamsHistory(`Move ${n} element(s)`, beforeSnap, snapshotMepParams());
+    rebuild(); markDirty(); notifyAuthoringChange();
+  }
   return n;
 }
 export function duplicateSelected(dx: number, dz: number): string[] {

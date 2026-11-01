@@ -15,6 +15,7 @@ import {
   selectAllAuthored,
   rebuildAuthored,
   getAuthoredGroup,
+  mepFollowPatches,
 } from "./authoring";
 
 function shiftElParams(el: any, dx: number, dz: number): void {
@@ -112,6 +113,12 @@ function buildMoveApi() {
         };
       }
 
+      // Connected MEP parts follow the move (fittings move, neighbouring runs stretch): same transaction.
+      const followers = mepFollowPatches(targets.map((t: any) => t.id), dx, dz)
+        .map((u) => ({ el: els.find((e: any) => e.id === u.id) as any, patch: u.patch }))
+        .filter((f) => f.el && !targets.includes(f.el));
+      const fBefore = followers.map((f) => JSON.parse(JSON.stringify(f.el.params)));
+      const fAfter = followers.map((f, i) => ({ ...JSON.parse(JSON.stringify(fBefore[i])), ...f.patch }));
       const before = targets.map((t) => JSON.parse(JSON.stringify(t.params)));
       const beforeXform = targets.map((t) => (t.transform ? JSON.parse(JSON.stringify(t.transform)) : null));
       for (const t of targets) shiftElParams(t, dx, dz);
@@ -129,6 +136,7 @@ function buildMoveApi() {
             t.params = JSON.parse(JSON.stringify(after[i]));
             if (afterXform[i]) t.transform = JSON.parse(JSON.stringify(afterXform[i]));
           });
+          followers.forEach((f, i) => { f.el.params = JSON.parse(JSON.stringify(fAfter[i])); });
           rebuildAuthored();
         },
         revert: () => {
@@ -136,6 +144,7 @@ function buildMoveApi() {
             t.params = JSON.parse(JSON.stringify(before[i]));
             if (beforeXform[i]) t.transform = JSON.parse(JSON.stringify(beforeXform[i]));
           });
+          followers.forEach((f, i) => { f.el.params = JSON.parse(JSON.stringify(fBefore[i])); });
           rebuildAuthored();
         },
       };
