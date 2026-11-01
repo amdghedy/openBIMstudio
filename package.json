@@ -71,6 +71,7 @@
     "test:mep-stretch": "node tests/mep-stretch.test.cjs",
     "test:linear-follow": "node tests/linear-follow.test.cjs",
     "test:up-axis": "node tests/up-axis.test.cjs",
+    "test:section-handle-filter": "node tests/section-handle-filter.test.cjs",
     "test:dimension-edit": "node tests/dimension-edit.test.cjs",
     "test:schedule-4d": "node tests/schedule-4d.test.cjs",
     "test:schedule-4d-ui": "node tests/schedule-4d-ui.test.cjs",

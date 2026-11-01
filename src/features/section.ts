@@ -28,6 +28,11 @@ export function isSectionOn() {
 
 export function setSectionOn(on: boolean) {
   enabled = on;
+  if (on) {
+    // the cut only renders when the clipper is enabled and the renderer honours local clipping planes
+    try { (ctx.clipper as any).enabled = true; } catch { /* */ }
+    try { (ctx.world.renderer as any).three.localClippingEnabled = true; } catch { /* */ }
+  }
   const el = checkboxEl ?? ctx.leftHost.querySelector("bim-checkbox[data-section]");
   if (el) el.checked = on;
 }
@@ -169,6 +174,23 @@ export function resetSection(): number {
 
   return removed;
 }
+/** Remove every section plane but keep the Section Cut mode on. Returns how many were removed. */
+export function deleteSectionPlanes(): number {
+  let removed = 0;
+  try {
+    const clipper: any = ctx.clipper;
+    removed = getSectionPlanes().length;
+    if (typeof clipper?.deleteAll === "function") clipper.deleteAll();
+    if (clipper?.list && typeof clipper.list.clear === "function") clipper.list.clear();
+    // no planes left -> stop clipping unless the section box still needs it
+    const left = getSectionPlanes().length;
+    const r: any = (ctx.world.renderer as any)?.three;
+    if (r && left === 0) r.localClippingEnabled = false;
+  } catch (e) { console.warn("[section] deleteSectionPlanes failed", e); }
+  try { (ctx.features as any).sectionCutInteraction?.cancel?.(); } catch { /* */ }
+  return removed;
+}
+
 export function setupSection() {
   ctx.rightHost.addEventListener("dblclick", async (e: MouseEvent) => {
     if (isDrawingActive() || isMeasureEnabled() || !enabled) return;
@@ -240,7 +262,7 @@ export function setupSection() {
     getPlanes: getSectionPlanes,
     setPlanes: setSectionPlanes,
     reset: resetSection,
-    deleteAllPlanes: resetSection,
+    deleteAllPlanes: deleteSectionPlanes,
   };
   (window as any).__obsSection = {
     reset: resetSection,
@@ -253,7 +275,9 @@ export function setupSection() {
 // ============================================================================
 // Section visual auto-hide + grid toggle
 // ============================================================================
-let autoHideSectionVisuals = true;
+// Planes stay visible by default: hiding them (as a timer once did) left invisible planes the
+// user could neither see nor drag. The panel's "Show plane" toggle can still hide them.
+let autoHideSectionVisuals = false;
 
 export function hideSectionVisuals(): number {
   let count = 0;
@@ -479,10 +503,6 @@ function hideAllSectionVisuals(): number {
 
   return n;
 }
-
-(function autoHideAll() {
-  setInterval(() => { hideAllSectionVisuals(); }, 400);
-})();
 
 try {
   const sec: any = (window as any).__obsSection ?? {};

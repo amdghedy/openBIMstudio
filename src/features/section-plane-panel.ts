@@ -9,6 +9,7 @@
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
+import { setAutoHideSectionVisuals } from "./section";
 import { alignPlaneToAxis, dominantAxis, nudgePlane, planeOffset, reversePlane, setPlaneOffset, type Axis } from "./section-plane-math";
 
 type Any = any;
@@ -18,6 +19,7 @@ let stepInp: HTMLInputElement;
 let axisLbl: HTMLSpanElement;
 let sideLbl: HTMLSpanElement;
 let currentItem: Any = null;
+let planeShown = true;
 
 function items(): Any[] {
   try {
@@ -112,6 +114,7 @@ function build(): void {
     lab("step"), stepInp,
     btn("⇄ Reverse", "Flip the cut direction (R)", () => act((p) => reversePlane(p)), "border-color:#ef4444"),
     ...axes, sideLbl,
+    btn("👁 Plane", "Show / hide the plane outline (the cut itself stays)", () => { planeShown = !planeShown; setAutoHideSectionVisuals(!planeShown); }),
     btn("Delete", "Remove this section plane", () => {
       const item = currentItem; if (!item) return;
       try { (ctx as Any).clipper.delete?.(ctx.world, item); } catch { try { item.dispose?.(); } catch { /* */ } }

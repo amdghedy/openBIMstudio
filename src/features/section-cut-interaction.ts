@@ -14,6 +14,7 @@ import * as OBC from "@thatopen/components";
 import { ctx } from "../core/context";
 import { forceResumeCameraControls } from "../core/camera-gate";
 import { whenNavigationBlocked } from "./navigation";
+import { isGrabbableHandle } from "./section-handle-filter";
 
 type Any = Record<string, any>;
 
@@ -365,7 +366,8 @@ function pickClipperHandle(
     raycaster.setFromCamera(ndc, cam);
     for (const g of collectClipperHelpers()) {
       try {
-        const hits = raycaster.intersectObjects(g.objects, true);
+        // Only the visible move arrow is a handle - not the plane quad, not hidden leftovers.
+        const hits = raycaster.intersectObjects(g.objects, true).filter((h: any) => isGrabbableHandle(h.object as any));
         if (hits.length && hits[0].point) {
           return { item: g.item, point: hits[0].point.clone() };
         }

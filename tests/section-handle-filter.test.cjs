@@ -1,0 +1,15 @@
+const { execSync } = require("child_process");
+const fs = require("fs"), path = require("path"), assert = require("assert");
+const out = fs.mkdtempSync(path.join(require("os").tmpdir(), "sh-"));
+execSync(`npx tsc src/features/section-handle-filter.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`, { stdio: "pipe" });
+const m = require(path.join(out, "section-handle-filter.js"));
+let n = 0; const ok = (c, s) => { assert.ok(c, s); n++; };
+const mesh = (geo, extra = {}) => ({ visible: true, geometry: { type: geo }, material: { opacity: 1 }, ...extra });
+ok(m.isGrabbableHandle(mesh("ConeGeometry")), "visible arrow is grabbable");
+ok(!m.isGrabbableHandle(mesh("PlaneGeometry")), "the plane quad is not a handle");
+ok(!m.isGrabbableHandle(mesh("ConeGeometry", { visible: false })), "hidden arrow is not grabbable");
+ok(!m.isGrabbableHandle(mesh("ConeGeometry", { parent: { visible: false } })), "arrow under a hidden parent is not grabbable");
+ok(!m.isGrabbableHandle(mesh("ConeGeometry", { material: { opacity: 0 } })), "fully transparent leftovers are not grabbable");
+ok(!m.isGrabbableHandle(mesh("CylinderGeometry", { material: [{ opacity: 0 }, { visible: false }] })), "all materials hidden");
+ok(m.isGrabbableHandle({ visible: true }), "plain object without geometry stays grabbable");
+console.log(`section-handle-filter: ${n} checks OK`);
