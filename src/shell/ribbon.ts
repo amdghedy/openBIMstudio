@@ -16,7 +16,9 @@ import {
   recenterSceneNow, resetOffsets, showBoundsHelpers, alignOriginToOrigin,
   getScreenshotPreset, setScreenshotPreset, type ScreenshotPreset,
 } from "../features/camera-tools";
-import { toggleMeasure, isMeasureEnabled } from "../features/measure";
+import { toggleMeasure, isMeasureEnabled, clearMeasurements } from "../features/measure";
+import { toggleToolWindow, openToolWindow, isToolWindowOpen } from "../features/tool-windows";
+import { toggleAlign } from "../features/model-align";
 import { toggleSection, isSectionOn } from "../features/section";
 import {
   runElementClashDetection, clearClash, refreshModelSelectionUI,
@@ -168,10 +170,11 @@ function tryPropertyPalette(): { open?: () => void; close?: () => void; isVisibl
 /* ═════════════════════════════════════════════════════════════════════════
    Left tools panel toggle
    ═════════════════════════════════════════════════════════════════════════ */
-let leftPanelVisible = true;
+let leftPanelVisible = false; // the Tools panel is gone: its groups are tool windows opened from the tabs
 function toggleLeftPanel() {
-  leftPanelVisible = !leftPanelVisible;
-  ctx.leftHost.style.display = leftPanelVisible ? "" : "none";
+  // The left Tools panel no longer exists (its groups are tool windows); keep the dock hidden.
+  leftPanelVisible = false;
+  ctx.leftHost.style.display = "none";
   window.dispatchEvent(new Event("resize"));
 }
 
@@ -679,6 +682,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("file", "IFC", safe(() => pickFiles(".ifc", true, loadIfcFiles), "IFC")),
       b("file-frag", "FRAG", safe(() => pickFiles(".frag", true, loadFragFiles), "FRAG")),
       b("folder", "Any file", safe(() => void pickAndImport(), "Import")),
+      b("settings", "Import Setup", safe(() => toggleToolWindow("import"), "Import setup"), {
+        active: isToolWindowOpen("import"),
+        title: "Positioning (linking), IFC to FRAG conversion settings, the import queue and status",
+      }),
       cdeButton(),
       sep(),
       groupLabel("Export"),
@@ -1154,14 +1161,21 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("undo", "Reset offsets", safe(() => resetOffsets(), "Reset offsets"), {
         title: "Clear all placement offsets",
       }),
+      b("origin", "Align…", safe(() => toggleAlign(), "Model alignment"), {
+        title: "Model alignment window: align linked models to each other",
+      }),
+      b("tree", "Models", safe(() => toggleToolWindow("models"), "Models list"), {
+        active: isToolWindowOpen("models"),
+        title: "Loaded models: visibility, remove, per-model actions",
+      }),
       sep(),
       groupLabel("Ext"),
       b("issues", "Issues", safe(() => toggleIssuesPanel(), "Issues"), { active: isIssuesPanelVisible() }),
       b("clash", "Clash", safe(() => {
         void refreshModelSelectionUI();
-        try { ctx.leftHost.style.display = ""; } catch { /* */ }
         const tab = document.querySelector('[data-tab="clash"]') as HTMLElement | null;
         tab?.click();
+        openToolWindow("clash");
       }, "Clash Detective"), { title: "Open Clash Detective" }),
       b("cost", "Cost", safe(() => toggleCostPanel(), "Cost"), { active: isCostPanelVisible() }),
       idsButton(),
@@ -1707,10 +1721,16 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "Coordinate",
     items: () => [
       groupLabel("Review"),
-      b("measure", "Measure", safe(() => toggleMeasure(), "Measure"), { active: isMeasureEnabled() }),
+      b("measure", "Measure", safe(() => toggleMeasure(), "Measure"), {
+        active: isMeasureEnabled(),
+        title: "Double-click point A then point B. Red = X, green = Y, blue = Z, cyan = total",
+      }),
+      b("clear", "Clear Meas.", safe(() => clearMeasurements(), "Clear measurements"), { title: "Remove every measurement from the view" }),
       b("section", "Section", safe(() => toggleSection(), "Section"), { active: isSectionOn() }),
       sep(),
       groupLabel("Placement"),
+      b("origin", "Align…", safe(() => toggleAlign(), "Model alignment"), { title: "Model alignment window" }),
+      b("tree", "Models", safe(() => toggleToolWindow("models"), "Models list"), { active: isToolWindowOpen("models"), title: "Loaded models list" }),
       b("origin", "Origin↔Origin", safe(() => alignOriginToOrigin(), "Origin")),
       b("recenter", "Recenter", safe(() => recenterSceneNow(), "Recenter")),
       b("reset-offsets", "Reset", safe(() => resetOffsets(), "Reset offsets")),
@@ -1724,6 +1744,14 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "Clash Detective",
     items: () => [
       groupLabel("Clash Rules"),
+      b("clash", "Test Setup", safe(() => { void refreshModelSelectionUI(); toggleToolWindow("clash"); }, "Clash test setup"), {
+        active: isToolWindowOpen("clash"),
+        title: "Test name, method, scope, Selection A / B, tolerance, run, results and scenarios",
+      }),
+      b("crop-reset", "Crop Box", safe(() => toggleToolWindow("crop"), "Crop box"), {
+        active: isToolWindowOpen("crop"),
+        title: "Crop margin around the active clash: -10 cm / +10 cm / reset 30 cm / remove",
+      }),
       b("clash", "Categories", () => (window as any).__obsOpenClashCategories?.(), { title: "Category Clash Rules" }),
       sep(),
       groupLabel("Tests"),
@@ -2407,7 +2435,15 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       sep(),
       groupLabel("Windows"),
-      b("tools-panel", "Tools", safe(() => toggleLeftPanel(), "Tools panel"), { active: leftPanelVisible }),
+      b("tree", "Models", safe(() => toggleToolWindow("models"), "Models list"), { active: isToolWindowOpen("models"), title: "Loaded models list" }),
+      b("settings", "IFC Props", safe(() => toggleToolWindow("properties"), "IFC properties"), {
+        active: isToolWindowOpen("properties"),
+        title: "Properties of the selected IFC / FRAG object, with a filter",
+      }),
+      b("tools-panel", "Controls", safe(() => toggleToolWindow("controls"), "Controls help"), {
+        active: isToolWindowOpen("controls"),
+        title: "Navigation, authoring and shortcut reference",
+      }),
       aiChatButton(),
       b("tools-panel", "BIM Center", safe(() => toggleBimToolbox(), "BIM Command Center"), {
         active: isBimToolboxVisible(),
@@ -3104,6 +3140,7 @@ export function setupRibbon() {
     "display:flex;flex-direction:column;";
   // Wheel over left dock scrolls the panel — never zooms 3D
   ctx.leftHost.addEventListener("wheel", (e) => { e.stopPropagation(); }, { passive: true });
+  ctx.leftHost.style.display = "none"; // no Tools panel: see features/tool-windows.ts
 
 
   const mainRow = document.createElement("div");

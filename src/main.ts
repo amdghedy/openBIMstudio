@@ -57,6 +57,7 @@ import { setupShell } from "./shell/shell";
 import { setupLocale } from "./core/locale-boot";
 import { setupDomTranslate, registerSwitcherLocales } from "./core/dom-translate";
 import { buildPanel } from "./features/panel";
+import { setupToolWindows } from "./features/tool-windows";
 
 import { history } from "./features/history";
 import { selection, setupClickToSelect } from "./features/selection";
@@ -363,7 +364,7 @@ await step("mep-fabrication", () => setupMepFabrication());
 await step("pid-modeler", () => setupPidModeler());
 await step("ui-items", () => registerUiItems());
 await step("shortcuts-install", () => shortcuts.install());
-await step("panel", () => buildPanel());
+await step("panel", () => { buildPanel(); setupToolWindows(); });
 await step("workspace-layout", () => setupWorkspaceLayout());
 await step("ribbon-persist", () => setupRibbonPersist());
 await step("status-bar-extras", () => setupStatusBarExtras());

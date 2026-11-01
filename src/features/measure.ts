@@ -48,7 +48,7 @@ export function setMeasureEnabled(on: boolean) {
   // Hide the floating label layer when the tool is off. The underlying
   // dimensions remain in the OBC measurer -- re-enabling restores them.
   try { measureLabelLayer.style.display = on ? "block" : "none"; } catch { /* */ }
-  const el = measureCheckboxEl ?? ctx.leftHost.querySelector("bim-checkbox[data-measure]");
+  const el = measureCheckboxEl ?? document.querySelector("bim-checkbox[data-measure]");
   if (el) el.checked = on;
 }
 

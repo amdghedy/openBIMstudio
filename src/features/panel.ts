@@ -1,4 +1,5 @@
-/** Assembles the BIM side panel from every feature's exported UI elements. */
+/** Tool-window content. The old left "Tools" panel is gone: each of its groups is now a floating
+ *  window opened from the matching ribbon tab (see tool-windows.ts), reusing the same live elements. */
 import * as BUI from "@thatopen/ui";
 import { ctx } from "../core/context";
 import {
@@ -26,11 +27,15 @@ import {
 import { toggleReview } from "./clash-review";
 import { toggleAlign } from "./model-align";
 
-export function buildPanel() {
-  const panel = BUI.Component.create(() => {
-    return BUI.html`
-      <bim-panel label="Open BIM Studio" active style="width:100%">
-        <bim-panel-section label="Load Models" icon="mdi:folder-open" collapsed>
+export type ToolWindowId = "import" | "models" | "properties" | "view" | "modeling" | "clash" | "crop" | "measure" | "scene" | "controls";
+
+export interface ToolSection { title: string; icon: string; render: () => unknown }
+
+export const TOOL_SECTIONS: Record<ToolWindowId, ToolSection> = {
+  import: {
+    title: 'Load Models',
+    icon: "mdi:folder-open",
+    render: () => BUI.html`
           <div style="font-size:11px;margin:6px 10px 2px;opacity:.85;font-weight:600;color:var(--text-secondary)">
             Positioning (linking)
           </div>
@@ -57,19 +62,28 @@ export function buildPanel() {
           ${queueButtons}
           ${queueListEl}
           ${loadStatusEl}
-        </bim-panel-section>
-
-        <bim-panel-section label="Models" icon="mdi:cube-outline" collapsed>
+    `,
+  },
+  models: {
+    title: 'Models',
+    icon: "mdi:cube-outline",
+    render: () => BUI.html`
           ${ctx.modelsList}
-        </bim-panel-section>
-
-        <bim-panel-section label="Properties" icon="mdi:information-outline" collapsed>
+    `,
+  },
+  properties: {
+    title: 'Properties',
+    icon: "mdi:information-outline",
+    render: () => BUI.html`
           <bim-text-input placeholder="Filter properties…"
             @input=${({ target }: any) => { ctx.props.table.queryString = target.value; }}></bim-text-input>
           ${ctx.props.table}
-        </bim-panel-section>
-
-        <bim-panel-section label="View" icon="mdi:rotate-3d" collapsed>
+    `,
+  },
+  view: {
+    title: 'View',
+    icon: "mdi:rotate-3d",
+    render: () => BUI.html`
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 10px">
             <bim-button label="Perspective" @click=${() => setProjection("perspective")}></bim-button>
@@ -80,9 +94,12 @@ export function buildPanel() {
             <bim-button label="Go Home" @click=${() => goHome()}></bim-button>
           </div>
           <bim-button label="⛶  Fit to View" @click=${() => fitAll()}></bim-button>
-        </bim-panel-section>
-
-        <bim-panel-section label="Modeling Tools" icon="mdi:pencil" collapsed>
+    `,
+  },
+  modeling: {
+    title: 'Modeling Tools',
+    icon: "mdi:pencil",
+    render: () => BUI.html`
           <div style="font-size:11.5px;opacity:.7;margin:4px 10px 8px;line-height:1.55">
             Click on the model to place points. Two points = one segment.<br>
             <b style="color:var(--accent)">AccuDraw</b>:
@@ -101,9 +118,12 @@ export function buildPanel() {
           <bim-button label="🪟  Insert Window" @click=${() => { setAuthoringTool("window");   setMeasureEnabled(false); setSectionOn(false); }}></bim-button>
           <bim-button label="✖  Stop drawing"  @click=${() => setAuthoringTool(null)}></bim-button>
           ${activeToolLabel}
-        </bim-panel-section>
-
-        <bim-panel-section label="Clash Detection" icon="mdi:alert-outline" collapsed>
+    `,
+  },
+  clash: {
+    title: 'Clash Detection',
+    icon: "mdi:alert-outline",
+    render: () => BUI.html`
           <div style="font-size:11px;opacity:.7;margin:4px 10px 8px">
             Navisworks-style test · 8 detection methods.
           </div>
@@ -147,9 +167,12 @@ export function buildPanel() {
           ${clashStatusEl}
           ${clashListEl}
           ${scenarioPanel}
-        </bim-panel-section>
-
-        <bim-panel-section label="Crop Box" icon="mdi:cube-scan" collapsed>
+    `,
+  },
+  crop: {
+    title: 'Crop Box',
+    icon: "mdi:cube-scan",
+    render: () => BUI.html`
           ${cropMarginLabel}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:4px 10px">
             <bim-button label="− 10 cm" @click=${() => changeCropMargin(-0.1)}></bim-button>
@@ -159,9 +182,12 @@ export function buildPanel() {
           </div>
           <bim-button label="⛶  Fit all" @click=${() => fitAll()}></bim-button>
           ${cropInfoEl}
-        </bim-panel-section>
-
-        <bim-panel-section label="Measure & Snap" icon="mdi:ruler-square" collapsed>
+    `,
+  },
+  measure: {
+    title: 'Measure & Snap',
+    icon: "mdi:ruler-square",
+    render: () => BUI.html`
           <bim-checkbox label="Measure (double-click two points)"
             data-measure
             @change=${({ target }: any) => {
@@ -175,9 +201,12 @@ export function buildPanel() {
             Red = X · Green = Y · Blue = Z · Cyan = total (mm)
           </div>
           <bim-button label="Clear measurements" @click=${() => clearMeasurements()}></bim-button>
-        </bim-panel-section>
-
-        <bim-panel-section label="Scene" icon="mdi:tools" collapsed>
+    `,
+  },
+  scene: {
+    title: 'Scene',
+    icon: "mdi:tools",
+    render: () => BUI.html`
           <bim-button label="⛶  Fit model" @click=${() => fitAll()}></bim-button>
           <bim-button label="📷  Screenshot" @click=${() => takeScreenshot()}></bim-button>
           <bim-button label="🎯  Recenter at origin" @click=${() => recenterSceneNow()}></bim-button>
@@ -185,9 +214,12 @@ export function buildPanel() {
           <bim-checkbox label="Show scene bounds (debug)"
             @change=${({ target }: any) => showBoundsHelpers(target.checked)}></bim-checkbox>
           ${boundsInfoEl}
-        </bim-panel-section>
-
-        <bim-panel-section label="Controls" icon="mdi:help-circle-outline" collapsed>
+    `,
+  },
+  controls: {
+    title: 'Controls',
+    icon: "mdi:help-circle-outline",
+    render: () => BUI.html`
           <div style="font-size:11.5px;line-height:1.75;opacity:0.85;padding:0 10px 10px">
             <b>Navigation</b><br>
             Left drag – Rotate · Right drag – Pan · Scroll – Zoom<br>
@@ -202,31 +234,32 @@ export function buildPanel() {
             Ctrl+Z undo · Ctrl+Y redo · F5 clash · Ctrl+Shift+C review<br>
             Ctrl+Shift+V saved views
           </div>
-        </bim-panel-section>
-      </bim-panel>
-    `;
-  });
+    `,
+  },
+};
 
-  ctx.leftHost.appendChild(panel);
+const cache = new Map<ToolWindowId, HTMLElement>();
 
-  // Collapsed-section sync — BUI does not mirror the `collapsed` property
-  // to a `data-collapsed` attribute, and our CSS uses that to hide slotted
-  // plain divs. Mirror it on every toggle.
+/** Build (once) the element of a tool window; its content is the former panel group. */
+export function buildToolSection(id: ToolWindowId): HTMLElement {
+  const hit = cache.get(id);
+  if (hit) return hit;
+  const sec = TOOL_SECTIONS[id];
+  const el = BUI.Component.create(() => BUI.html`
+    <bim-panel active style="width:100%">
+      <bim-panel-section label=${sec.title} icon=${sec.icon}>
+        ${sec.render()}
+      </bim-panel-section>
+    </bim-panel>
+  `) as HTMLElement;
+  cache.set(id, el);
+  return el;
+}
+
+/** The left dock no longer holds a tools panel: it stays hidden and every function lives in a tab. */
+export function buildPanel() {
+  ctx.leftHost.style.display = "none";
   const style = document.createElement("style");
-  style.textContent = `
-    bim-panel-section {
-      --bim-ui_bg-contrast-20: var(--bg-elevated);
-    }
-    bim-panel-section + bim-panel-section { margin-top: 0; }
-  `;
+  style.textContent = `bim-panel-section { --bim-ui_bg-contrast-20: var(--bg-elevated); }`;
   document.head.appendChild(style);
-
-  const syncSections = () => {
-    ctx.leftHost.querySelectorAll("bim-panel-section").forEach((sec: any) => {
-      if (sec.collapsed) sec.setAttribute("data-collapsed", "");
-      else sec.removeAttribute("data-collapsed");
-    });
-  };
-  ctx.leftHost.addEventListener("click", () => setTimeout(syncSections, 0));
-  syncSections();
 }

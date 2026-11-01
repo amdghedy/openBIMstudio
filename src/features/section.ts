@@ -41,7 +41,7 @@ export function setSectionOn(on: boolean) {
     try { (ctx.clipper as any).enabled = true; } catch { /* */ }
     try { (ctx.world.renderer as any).three.localClippingEnabled = true; } catch { /* */ }
   }
-  const el = checkboxEl ?? ctx.leftHost.querySelector("bim-checkbox[data-section]");
+  const el = checkboxEl ?? document.querySelector("bim-checkbox[data-section]");
   if (el) el.checked = on;
 }
 
@@ -159,7 +159,7 @@ export function resetSection(): number {
   setSectionOn(false);
 
   try {
-    const hosts: HTMLElement[] = [ctx.leftHost as any, document.body];
+    const hosts: HTMLElement[] = [document.body];
     for (const host of hosts) {
       if (!host) continue;
       const labels = Array.from(host.querySelectorAll("label")) as HTMLLabelElement[];
