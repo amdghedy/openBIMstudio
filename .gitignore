@@ -55,3 +55,4 @@ public/libredwg/
 
 # Wrangler local dev cache
 .wrangler/
+interop-report.json

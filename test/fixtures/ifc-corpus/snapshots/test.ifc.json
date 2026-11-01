@@ -1,0 +1,22 @@
+{
+  "schema": "IFC2X3",
+  "classes": [
+    {
+      "name": "IFCCARTESIANPOINT",
+      "count": 72
+    },
+    {
+      "name": "IFCFACE",
+      "count": 24
+    },
+    {
+      "name": "IFCFACEOUTERBOUND",
+      "count": 24
+    },
+    {
+      "name": "IFCPOLYLOOP",
+      "count": 24
+    }
+  ],
+  "geomHash": "7dfc6d958643900a"
+}

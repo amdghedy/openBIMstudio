@@ -1,9 +1,14 @@
 // The only sanctioned way to reach cross-module services.
+// Member sets fill in as each service migrates behind the registry;
+// keep the interface additive.
+export interface TransactionService {}
+export interface SelectionService {}
+export interface IfcService {}
+
 export interface BimServices {
   transactions: TransactionService;
   selection: SelectionService;
   ifc: IfcService;
-  // migrate one service at a time; keep the interface additive
 }
 
 let services: BimServices | null = null;

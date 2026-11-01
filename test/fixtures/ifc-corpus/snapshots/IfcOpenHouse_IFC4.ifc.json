@@ -1,0 +1,242 @@
+{
+  "schema": "IFC4",
+  "classes": [
+    {
+      "name": "IFCAPPLICATION",
+      "count": 1
+    },
+    {
+      "name": "IFCARBITRARYCLOSEDPROFILEDEF",
+      "count": 21
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT3D",
+      "count": 75
+    },
+    {
+      "name": "IFCBOOLEANCLIPPINGRESULT",
+      "count": 2
+    },
+    {
+      "name": "IFCBUILDING",
+      "count": 1
+    },
+    {
+      "name": "IFCBUILDINGSTOREY",
+      "count": 1
+    },
+    {
+      "name": "IFCCARTESIANPOINT",
+      "count": 512
+    },
+    {
+      "name": "IFCCARTESIANTRANSFORMATIONOPERATOR3D",
+      "count": 24
+    },
+    {
+      "name": "IFCCOLOURRGB",
+      "count": 11
+    },
+    {
+      "name": "IFCCONVERSIONBASEDUNIT",
+      "count": 1
+    },
+    {
+      "name": "IFCDIMENSIONALEXPONENTS",
+      "count": 1
+    },
+    {
+      "name": "IFCDIRECTION",
+      "count": 172
+    },
+    {
+      "name": "IFCDOOR",
+      "count": 1
+    },
+    {
+      "name": "IFCEXTRUDEDAREASOLID",
+      "count": 21
+    },
+    {
+      "name": "IFCFACE",
+      "count": 570
+    },
+    {
+      "name": "IFCFACEBASEDSURFACEMODEL",
+      "count": 1
+    },
+    {
+      "name": "IFCFACEOUTERBOUND",
+      "count": 570
+    },
+    {
+      "name": "IFCFOOTING",
+      "count": 1
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONCONTEXT",
+      "count": 1
+    },
+    {
+      "name": "IFCHALFSPACESOLID",
+      "count": 2
+    },
+    {
+      "name": "IFCLOCALPLACEMENT",
+      "count": 47
+    },
+    {
+      "name": "IFCMAPPEDITEM",
+      "count": 24
+    },
+    {
+      "name": "IFCMATERIAL",
+      "count": 1
+    },
+    {
+      "name": "IFCMATERIALLAYER",
+      "count": 1
+    },
+    {
+      "name": "IFCMATERIALLAYERSET",
+      "count": 1
+    },
+    {
+      "name": "IFCMATERIALLAYERSETUSAGE",
+      "count": 1
+    },
+    {
+      "name": "IFCMEASUREWITHUNIT",
+      "count": 1
+    },
+    {
+      "name": "IFCMEMBER",
+      "count": 20
+    },
+    {
+      "name": "IFCOPENINGELEMENT",
+      "count": 4
+    },
+    {
+      "name": "IFCOPENSHELL",
+      "count": 1
+    },
+    {
+      "name": "IFCORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCOWNERHISTORY",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSON",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSONANDORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCPLANE",
+      "count": 2
+    },
+    {
+      "name": "IFCPLATE",
+      "count": 5
+    },
+    {
+      "name": "IFCPOLYLINE",
+      "count": 25
+    },
+    {
+      "name": "IFCPOLYLOOP",
+      "count": 570
+    },
+    {
+      "name": "IFCPRESENTATIONSTYLEASSIGNMENT",
+      "count": 11
+    },
+    {
+      "name": "IFCPRODUCTDEFINITIONSHAPE",
+      "count": 39
+    },
+    {
+      "name": "IFCPROJECT",
+      "count": 1
+    },
+    {
+      "name": "IFCRELAGGREGATES",
+      "count": 9
+    },
+    {
+      "name": "IFCRELASSOCIATESMATERIAL",
+      "count": 1
+    },
+    {
+      "name": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "count": 13
+    },
+    {
+      "name": "IFCRELFILLSELEMENT",
+      "count": 1
+    },
+    {
+      "name": "IFCRELVOIDSELEMENT",
+      "count": 4
+    },
+    {
+      "name": "IFCREPRESENTATIONMAP",
+      "count": 4
+    },
+    {
+      "name": "IFCROOF",
+      "count": 1
+    },
+    {
+      "name": "IFCSHAPEREPRESENTATION",
+      "count": 47
+    },
+    {
+      "name": "IFCSITE",
+      "count": 1
+    },
+    {
+      "name": "IFCSIUNIT",
+      "count": 2
+    },
+    {
+      "name": "IFCSLAB",
+      "count": 2
+    },
+    {
+      "name": "IFCSTAIRFLIGHT",
+      "count": 1
+    },
+    {
+      "name": "IFCSTYLEDITEM",
+      "count": 20
+    },
+    {
+      "name": "IFCSURFACESTYLE",
+      "count": 11
+    },
+    {
+      "name": "IFCSURFACESTYLERENDERING",
+      "count": 11
+    },
+    {
+      "name": "IFCUNITASSIGNMENT",
+      "count": 1
+    },
+    {
+      "name": "IFCWALLSTANDARDCASE",
+      "count": 4
+    },
+    {
+      "name": "IFCWINDOW",
+      "count": 5
+    }
+  ],
+  "geomHash": "f1b7f4c3316422ed"
+}
