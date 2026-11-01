@@ -258,3 +258,367 @@ function getAuthoredBox(ids: string[]): THREE.Box3 | null {
 
   return box.isEmpty() ? null : box;
 }
+
+async function getFragmentBox(
+  frag: Record<string, Set<number>>,
+): Promise<THREE.Box3 | null> {
+  const entries = Object.entries(frag).filter(
+    ([, ids]) => ids instanceof Set && ids.size,
+  );
+
+  if (!entries.length) return null;
+
+  const box = new THREE.Box3();
+  const cont = c();
+
+  try {
+    const wbMod: any = await import("../modules/geometry/world-box");
+
+    for (const [modelId, ids] of entries) {
+      const model: any =
+        cont.fragments?.list?.get?.(modelId) ??
+        cont.fragments?.list?.get?.(String(modelId));
+
+      if (!model) continue;
+
+      const idList = [...ids]
+        .map(Number)
+        .filter((n) => Number.isFinite(n));
+
+      if (!idList.length) continue;
+
+      const wbs = await wbMod.getElementWorldBoxes?.(
+        model,
+        idList,
+        modelId,
+      );
+
+      for (const item of wbs ?? []) {
+        const b = boxFromAnyBox(item?.box ?? item);
+
+        if (b && !b.isEmpty()) {
+          box.union(b);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[focus-service] world-box failed", err);
+  }
+
+  if (!box.isEmpty()) return box;
+
+  const scene: any = cont.world?.scene?.three ?? cont.world?.scene;
+
+  if (scene && typeof scene.traverse === "function") {
+    try {
+      scene.updateMatrixWorld?.(true);
+    } catch {
+      /* ignore */
+    }
+
+    const lookup = new Map<string, Set<string>>();
+
+    for (const [modelId, ids] of entries) {
+      const set = new Set<string>();
+
+      for (const id of ids) {
+        set.add(String(id));
+      }
+
+      if (set.size) {
+        lookup.set(String(modelId), set);
+      }
+    }
+
+    scene.traverse((obj: Any) => {
+      const ud = obj?.userData || {};
+
+      const mid = String(
+        ud.modelID ??
+          ud.modelId ??
+          ud.model ??
+          ud.fragmentModelID ??
+          ud.ownerModelID ??
+          "",
+      );
+
+      const lid = String(
+        ud.expressID ??
+          ud.localID ??
+          ud.localId ??
+          ud.id ??
+          ud.elementID ??
+          ud.instanceID ??
+          "",
+      );
+
+      if (!mid || !lid) return;
+
+      const set = lookup.get(mid);
+
+      if (set?.has(lid)) {
+        includeObject(obj, box);
+      }
+    });
+  }
+
+  return box.isEmpty() ? null : box;
+}
+
+function getCurrentTarget(cam: Any, controls: Any): THREE.Vector3 {
+  const t = new THREE.Vector3();
+
+  try {
+    if (typeof controls?.getTarget === "function") {
+      controls.getTarget(t);
+
+      if (
+        Number.isFinite(t.x) &&
+        Number.isFinite(t.y) &&
+        Number.isFinite(t.z)
+      ) {
+        return t;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const dir = new THREE.Vector3();
+    cam.getWorldDirection(dir);
+    t.copy(cam.position).addScaledVector(dir, 10);
+  } catch {
+    t.set(0, 0, 0);
+  }
+
+  return t;
+}
+
+function focusBoxManual(box: THREE.Box3): boolean {
+  const cont = c();
+  const cam: Any = cont.world?.camera?.three;
+  const controls: Any = cont.world?.camera?.controls;
+
+  if (!cam || box.isEmpty()) return false;
+
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+
+  const target = center.clone();
+  const currentTarget = getCurrentTarget(cam, controls);
+
+  const dir = new THREE.Vector3().subVectors(cam.position, currentTarget);
+
+  if (!Number.isFinite(dir.lengthSq()) || dir.lengthSq() < 1e-8) {
+    dir.set(0, 0.35, 1);
+  }
+
+  dir.normalize();
+
+  let distance: number;
+
+  if (cam.isOrthographicCamera) {
+    distance = Math.max(maxDim * 2.5, 1);
+
+    const height = Math.abs(Number(cam.top ?? 1) - Number(cam.bottom ?? -1));
+    const width = Math.abs(Number(cam.right ?? 1) - Number(cam.left ?? -1));
+
+    const zoomY = height / Math.max(maxDim * 1.35, 0.0001);
+    const zoomX = width / Math.max(maxDim * 1.35, 0.0001);
+    const zoom = Math.min(zoomX, zoomY);
+
+    cam.zoom = Math.max(0.0001, Math.min(100000, Number(zoom) || 1));
+
+    syncOrthoZoom(cam);
+    cam.updateProjectionMatrix();
+  } else {
+    const fov = THREE.MathUtils.degToRad(Number(cam.fov) || 50);
+    distance = ((maxDim / 2) / Math.tan(fov / 2)) * 1.75;
+    distance = Math.max(distance, maxDim * 0.85);
+  }
+
+  const pos = target.clone().addScaledVector(dir, distance);
+
+  try {
+    if (typeof controls?.setLookAt === "function") {
+      controls.setLookAt(
+        pos.x,
+        pos.y,
+        pos.z,
+        target.x,
+        target.y,
+        target.z,
+        true,
+      );
+
+      controls.update?.(0);
+    } else {
+      cam.position.copy(pos);
+      cam.lookAt(target);
+    }
+  } catch {
+    cam.position.copy(pos);
+
+    try {
+      cam.lookAt(target);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent("obs:camera-changed"));
+  } catch {
+    /* ignore */
+  }
+
+  return true;
+}
+
+async function applyBox(box: THREE.Box3): Promise<boolean> {
+  if (!box || box.isEmpty()) return false;
+
+  try {
+    const cam: any = await import("./camera-tools");
+
+    if (typeof cam.focusOnBox === "function") {
+      await cam.focusOnBox(box);
+      return true;
+    }
+  } catch {
+    /* fallback below */
+  }
+
+  return focusBoxManual(box);
+}
+
+async function tryFitToMap(frag: any): Promise<boolean> {
+  try {
+    const cam: any = await import("./camera-tools");
+
+    if (typeof cam.fitToMap === "function") {
+      await cam.fitToMap(frag);
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return false;
+}
+
+async function pickAndFocus(event: any): Promise<boolean> {
+  if (!event) return false;
+
+  const cont = c();
+  const auth = cont.features?.authoring || w().__obsAuthoring;
+
+  try {
+    const authoredId = auth?.pickAuthoredElementAt?.(event);
+
+    if (authoredId) {
+      const ids = [String(authoredId)];
+      auth?.setSelectedAuthored?.(ids, "replace");
+
+      const box = getAuthoredBox(ids);
+
+      if (box) {
+        return await applyBox(box);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const selMod: any = await import("./selection");
+    const hit = await selMod.pickFragmentAtPointer?.();
+
+    if (hit) {
+      const lid = Number(hit.localId);
+
+      selMod.selection?.applyClick?.(hit.modelId, hit.localId, {});
+      await selMod.selection?.applyToHighlighter?.();
+
+      if (Number.isFinite(lid)) {
+        const frag: Record<string, Set<number>> = {};
+        frag[String(hit.modelId)] = new Set<number>([lid]);
+
+        const box = await getFragmentBox(frag);
+
+        if (box) {
+          return await applyBox(box);
+        }
+
+        return await tryFitToMap(frag);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return false;
+}
+
+export async function focusSelected(event?: any): Promise<boolean> {
+  const authIds = getAuthoredSelection();
+  const frag = getFragmentSelection();
+
+  const box = new THREE.Box3();
+  let has = false;
+
+  if (authIds.length) {
+    const ab = getAuthoredBox(authIds);
+
+    if (ab) {
+      box.union(ab);
+      has = true;
+    }
+  }
+
+  if (Object.keys(frag).length) {
+    const fb = await getFragmentBox(frag);
+
+    if (fb) {
+      box.union(fb);
+      has = true;
+    }
+  }
+
+  if (has && !box.isEmpty()) {
+    return await applyBox(box);
+  }
+
+  if (Object.keys(frag).length) {
+    const ok = await tryFitToMap(frag);
+
+    if (ok) return true;
+  }
+
+  if (authIds.length) {
+    try {
+      const auth: any = c().features?.authoring;
+
+      if (typeof auth?.focusSelected === "function") {
+        await auth.focusSelected();
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return await pickAndFocus(event ?? (w() as Any).__obsLastCtxEvent ?? null);
+}
+
+(w() as Any).__obsFocusSelected = focusSelected;
+
+(w() as Any).__obsFocusService = {
+  focusSelected,
+  getAuthoredSelection,
+  getFragmentSelection,
+};
+
+console.log("[focus-service] ready");
