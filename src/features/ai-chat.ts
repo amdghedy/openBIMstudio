@@ -1737,7 +1737,9 @@ export function toggleAiChat(): void {
 }
 
 export function isAiChatVisible(): boolean {
-  return panel.style.display !== "none" && !!panel.style.display;
+  if (!panel || panel.style.display === "none" || !panel.style.display) return false;
+  // Also treat as hidden if the panel is not in the document (e.g. after dispose)
+  return !!panel.isConnected;
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -1760,17 +1762,26 @@ export function setupAiChat(): void {
     header,
     minWidth: 320,
     minHeight: 360,
-    defaultDock: "right",
+    defaultDock: "float",   // start floating; user docks when they want
     defaultWidth: 420,
     defaultHeight: 640,
     margin: 8,
     snapThreshold: 32,
   });
 
+  // CRITICAL: panel must stay hidden until the user presses the AI button.
+  // makeDockable can restore layout; never auto-show on boot or home screen.
+  try { dock.hide(); } catch { /* */ }
+  panel.style.display = "none";
+
   setupAiTools();
   renderHeader();
   renderSettings();
   renderMessages();
+
+  // Re-assert hidden after first render (guards against any side-effect that sets display)
+  panel.style.display = "none";
+  try { dock.hide(); } catch { /* */ }
 
   const observer = new MutationObserver(() => {
     if (panel.style.display !== "none" && header.children.length === 0) {
