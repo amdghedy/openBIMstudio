@@ -22,6 +22,7 @@
  * database/family solver. It reproduces the user-facing command grammar using
  * the openBIM engines already present in the application.
  */
+import { setupVisibilityBridge, hideSelection as bridgeHide, isolateSelection as bridgeIsolate, resetTemporaryVisibility as bridgeReset } from "../modules/bim-gaps/visibility-bridge";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { selection } from "./selection";
@@ -434,7 +435,13 @@ async function focusSelection() {
 /** Temporary Hide / Isolate / Reveal go through the visibility bridge, which handles authored
  *  elements and IFC objects together; the raw hider only knows IFC fragments. */
 function visibilityApi(): { hideSelection?: () => number; isolateSelection?: () => number; reset?: () => void } | null {
-  try { return (window as any).__obsBIMGaps?.visibility ?? null; } catch { return null; }
+  try {
+    const v = (window as any).__obsBIMGaps?.visibility;
+    if (v) return v;
+    // Boot may not have run (or its step failed): use the bridge directly.
+    setupVisibilityBridge();
+    return { hideSelection: bridgeHide, isolateSelection: bridgeIsolate, reset: bridgeReset };
+  } catch { return null; }
 }
 
 function execute(id: string): void {

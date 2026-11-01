@@ -2502,6 +2502,12 @@ function ndcOf(e: MouseEvent): THREE.Vector2 {
   );
 }
 
+/** True when the object and all its ancestors are visible (rays ignore `visible`). */
+function visibleChain(o: THREE.Object3D | null): boolean {
+  for (let x: THREE.Object3D | null = o; x; x = x.parent) if (!x.visible) return false;
+  return true;
+}
+
 function elementAt(e: MouseEvent): string | null {
   try {
     if (!ctx.world?.camera?.three || !group.children.length) return null;
@@ -2512,6 +2518,7 @@ function elementAt(e: MouseEvent): string | null {
     // Prefer authored group; include nested meshes
     const hits = ray.intersectObjects(group.children, true);
     for (const h of hits) {
+      if (!visibleChain(h.object)) continue;
       let o: THREE.Object3D | null = h.object;
       while (o) {
         if (o.userData?.elementId) return String(o.userData.elementId);
@@ -2529,6 +2536,7 @@ function wallAtPoint(e: MouseEvent): { wallId: string; offset: number; point: TH
   ray.setFromCamera(ndcOf(e), ctx.world.camera.three);
   const hits = ray.intersectObjects(group.children, true);
   for (const h of hits) {
+    if (!visibleChain(h.object)) continue;
     let o: THREE.Object3D | null = h.object;
     let elId: string | null = null;
     while (o && !elId) { elId = o.userData?.elementId ?? null; o = o.parent; }
@@ -5284,6 +5292,7 @@ export function pickAuthoredHitAt(e: MouseEvent): { id: string; distance: number
     ray.params.Points = { threshold: 0.2 };
     ray.setFromCamera(ndcOf(e), ctx.world.camera.three);
     for (const h of ray.intersectObjects(group.children, true)) {
+      if (!visibleChain(h.object)) continue;
       let o: THREE.Object3D | null = h.object;
       while (o) {
         const id = o.userData?.elementId;

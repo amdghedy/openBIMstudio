@@ -115,20 +115,25 @@ export function applyAuthored(force = false): number {
   const byId = new Map<string, Any>();
   for (const e of elements) byId.set(e.id, e);
   let hiddenCount = 0;
-  group.traverse((o: any) => {
-    if (!o.isMesh) return;
-    const id = o.userData?.elementId as string | undefined;
-    if (!id) return;
+  // Drive visibility per ELEMENT (top-level object) so child meshes, edges and
+  // helper lines of a hidden element are hidden together.
+  const idOf = (o: any): string | undefined => {
+    for (let x = o; x; x = x.parent) if (x.userData?.elementId) return String(x.userData.elementId);
+    return undefined;
+  };
+  for (const top of group.children as any[]) {
+    const id = idOf(top);
+    if (!id) continue;
     const el = byId.get(id);
-    if (!el) return;
+    if (!el) continue;
     const tags = elementTags(el);
     const ve = { id, category: String(el.type), ...tags };
     const vis = visibilityFilter.isVisible(ve);
-    o.visible = vis;
+    top.visible = vis;
     if (!vis) hiddenCount++;
     const gs = visibilityFilter.graphicStyle(ve);
-    setOpacity(o, vis ? gs.opacity : 1);
-  });
+    top.traverse((o: any) => { if (o.isMesh) setOpacity(o, vis ? gs.opacity : 1); });
+  }
   lastActive = active;
   return hiddenCount;
 }
