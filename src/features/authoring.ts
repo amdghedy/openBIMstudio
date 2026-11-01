@@ -3681,90 +3681,81 @@ function updateAlignmentGuides(start: THREE.Vector3, end: THREE.Vector3) {
   const len = Math.hypot(dx, dz);
   if (len < 0.01) return;
 
-  const EXT = 40;
   const dir = new THREE.Vector3(dx / len, 0, dz / len);
-
-  // Orthogonal tracks from start
-  guideGroup.add(dashedLine(
-    new THREE.Vector3(s.x - EXT, y, s.z),
-    new THREE.Vector3(s.x + EXT, y, s.z),
-    0x38bdf8, 0.3, 0.2,
-  ));
-  guideGroup.add(dashedLine(
-    new THREE.Vector3(s.x, y, s.z - EXT),
-    new THREE.Vector3(s.x, y, s.z + EXT),
-    0x38bdf8, 0.3, 0.2,
-  ));
-
-  // Draft direction extension beyond segment
-  guideGroup.add(dashedLine(e.clone(), e.clone().addScaledVector(dir, EXT), 0xa78bfa, 0.25, 0.18));
-  guideGroup.add(dashedLine(s.clone(), s.clone().addScaledVector(dir, -EXT), 0xa78bfa, 0.25, 0.18));
-
-  // Strong ortho lock feedback (~2°)
   const ang = Math.abs(Math.atan2(dz, dx));
-  const orthoTol = 0.04;
-  if (ang < orthoTol || Math.abs(ang - Math.PI) < orthoTol) {
-    guideGroup.add(dashedLine(
-      new THREE.Vector3(s.x - EXT, y, s.z),
-      new THREE.Vector3(s.x + EXT, y, s.z),
-      0x22d3ee, 0.5, 0.12,
-    ));
-  } else if (Math.abs(ang - Math.PI / 2) < orthoTol) {
-    guideGroup.add(dashedLine(
-      new THREE.Vector3(s.x, y, s.z - EXT),
-      new THREE.Vector3(s.x, y, s.z + EXT),
-      0x22d3ee, 0.5, 0.12,
-    ));
+
+  // ── Intelligent guides ───────────────────────────────────────────────
+  // Only what is relevant to what is being drawn is shown:
+  //  • ortho track: only while the draft is (nearly) horizontal / vertical, drawn from the start to the cursor
+  //  • references: only elements of the SAME kind as the active tool (wall↔wall, duct↔duct …),
+  //    on the same level for walls/strips, and close to the cursor
+  //  • each guide is a finite segment between the reference and the cursor (never an infinite ray)
+  //  • at most the 2 nearest parallel / alignment references, so guides never pile up
+  const TRACK_TOL = 0.09;        // ~5° from an axis
+  const NEAR = 4;                // m: references farther than this from the cursor are ignored
+  const alignTol = 0.12;
+  const parTol = 0.05;
+  const horizontal = ang < TRACK_TOL || Math.abs(ang - Math.PI) < TRACK_TOL;
+  const vertical = Math.abs(ang - Math.PI / 2) < TRACK_TOL;
+  if (horizontal) {
+    guideGroup.add(dashedLine(s.clone(), new THREE.Vector3(e.x, y, s.z), 0x22d3ee, 0.5, 0.12));
+  } else if (vertical) {
+    guideGroup.add(dashedLine(s.clone(), new THREE.Vector3(s.x, y, e.z), 0x22d3ee, 0.5, 0.12));
   }
 
-  // Align / extend from existing linear elements
-  const alignTol = 0.15;
-  const parTol = 0.06;
+  const tool = String(activeTool);
+  const levelSensitive = tool === "wall" || tool === "strip";
+  type Ref = { el: typeof elements[number]; ax: number; az: number; bx: number; bz: number; ux: number; uz: number; d: number };
+  const refs: Ref[] = [];
   for (const el of elements) {
-    if (!el.params.start || !el.params.end) continue;
-    if (!["wall", "beam", "strip", "duct", "pipe", "cable-tray", "conduit", "mline"].includes(el.type)) {
-      continue;
-    }
+    if (el.type !== tool || !el.params.start || !el.params.end) continue;
+    if (levelSensitive && Math.abs((el.params.elevation ?? 0) - level) > 0.3) continue;
     const [ax, az] = el.params.start;
     const [bx, bz] = el.params.end;
     const elLen = Math.hypot(bx - ax, bz - az);
     if (elLen < 0.05) continue;
-    const elDirX = (bx - ax) / elLen;
-    const elDirZ = (bz - az) / elLen;
+    const ux = (bx - ax) / elLen, uz = (bz - az) / elLen;
+    // distance from the cursor to the element segment
+    const t = Math.max(0, Math.min(elLen, (e.x - ax) * ux + (e.z - az) * uz));
+    const d = Math.hypot(e.x - (ax + ux * t), e.z - (az + uz * t));
+    if (d > NEAR) continue;
+    refs.push({ el, ax, az, bx, bz, ux, uz, d });
+  }
+  refs.sort((p, q) => p.d - q.d);
 
-    // Parallel
-    const cross = Math.abs(dir.x * elDirZ - dir.z * elDirX);
-    if (cross < parTol) {
-      const mid = new THREE.Vector3((ax + bx) / 2, y, (az + bz) / 2);
-      const ed = new THREE.Vector3(elDirX, 0, elDirZ);
+  let parallelShown = 0;
+  let alignShown = 0;
+  for (const r of refs.slice(0, 6)) {
+    // Parallel to the draft: guide spans the reference and the cursor's projection onto its axis.
+    const cross = Math.abs(dir.x * r.uz - dir.z * r.ux);
+    if (cross < parTol && parallelShown < 1) {
+      const t0 = 0, t1 = Math.hypot(r.bx - r.ax, r.bz - r.az);
+      const tc = (e.x - r.ax) * r.ux + (e.z - r.az) * r.uz;
+      const lo = Math.min(t0, tc), hi = Math.max(t1, tc);
       guideGroup.add(dashedLine(
-        mid.clone().addScaledVector(ed, -EXT),
-        mid.clone().addScaledVector(ed, EXT),
+        new THREE.Vector3(r.ax + r.ux * lo, y, r.az + r.uz * lo),
+        new THREE.Vector3(r.ax + r.ux * hi, y, r.az + r.uz * hi),
         0xf472b6, 0.35, 0.2,
       ));
+      parallelShown++;
     }
-
-    // Endpoint horizontal / vertical extensions + colinear pull
-    for (const [px, pz] of [[ax, az], [bx, bz]] as [number, number][]) {
-      if (Math.abs(e.z - pz) < alignTol) {
-        guideGroup.add(dashedLine(
-          new THREE.Vector3(px - EXT, y, pz),
-          new THREE.Vector3(px + EXT, y, pz),
-          0x34d399, 0.3, 0.15,
-        ));
-      }
-      if (Math.abs(e.x - px) < alignTol) {
-        guideGroup.add(dashedLine(
-          new THREE.Vector3(px, y, pz - EXT),
-          new THREE.Vector3(px, y, pz + EXT),
-          0x34d399, 0.3, 0.15,
-        ));
-      }
-      const toC = new THREE.Vector3(e.x - px, 0, e.z - pz);
-      const along = toC.x * elDirX + toC.z * elDirZ;
-      const perp = Math.abs(toC.x * elDirZ - toC.z * elDirX);
-      if (perp < alignTol && Math.abs(along) > 0.05) {
-        guideGroup.add(dashedLine(new THREE.Vector3(px, y, pz), e.clone(), 0xfbbf24, 0.22, 0.14));
+    // Endpoint alignment (same x or z as the reference's end) and colinear extension.
+    for (const [px, pz] of [[r.ax, r.az], [r.bx, r.bz]] as [number, number][]) {
+      if (alignShown >= 2) break;
+      if (Math.abs(e.z - pz) < alignTol && Math.abs(e.x - px) > 0.05) {
+        guideGroup.add(dashedLine(new THREE.Vector3(px, y, pz), new THREE.Vector3(e.x, y, pz), 0x34d399, 0.3, 0.15));
+        alignShown++;
+      } else if (Math.abs(e.x - px) < alignTol && Math.abs(e.z - pz) > 0.05) {
+        guideGroup.add(dashedLine(new THREE.Vector3(px, y, pz), new THREE.Vector3(px, y, e.z), 0x34d399, 0.3, 0.15));
+        alignShown++;
+      } else {
+        const toC = new THREE.Vector3(e.x - px, 0, e.z - pz);
+        const along = toC.x * r.ux + toC.z * r.uz;
+        const perp = Math.abs(toC.x * r.uz - toC.z * r.ux);
+        if (perp < alignTol && Math.abs(along) > 0.05) {
+          guideGroup.add(dashedLine(new THREE.Vector3(px, y, pz), e.clone(), 0xfbbf24, 0.22, 0.14));
+          alignShown++;
+        }
       }
     }
   }
