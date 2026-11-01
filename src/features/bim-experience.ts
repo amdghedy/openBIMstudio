@@ -406,7 +406,9 @@ async function focusSelection() {
   }
   // Preferred path: focus-service (live scene meshes + robust fragment world boxes).
   try {
-    const mod = await import("./focus-service");
+    const mod = await import("./focus-service") as {
+      focusSelected?: (event?: unknown) => Promise<boolean>;
+    };
     if (typeof mod.focusSelected === "function") {
       const ok = await mod.focusSelected();
       if (ok) return;
