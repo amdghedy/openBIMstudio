@@ -2,11 +2,14 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
 import { planeForAxis } from "./section-plane-math";
+import { isSectionOn, setSectionOn, deleteSectionPlanes, onSectionModeChange } from "./section";
+import { setMeasureEnabled } from "./measure";
 
 let modalEl: HTMLDivElement | null = null;
 let activePlane: THREE.Plane | null = null;
 let activeHelper: THREE.Mesh | null = null;
 let reversed = false;
+let offModeListener: (() => void) | null = null;
 
 export function setupSectionModal() {
   console.log("[section-modal] Module loaded.");
@@ -14,17 +17,19 @@ export function setupSectionModal() {
 }
 
 export function openSectionModal() {
-  if (modalEl) modalEl.remove();
+  if (modalEl) { modalEl.remove(); offModeListener?.(); offModeListener = null; }
 
-  // Reset any existing section
+  // Reset only this window's own axis cut; interactive (double-click) planes are kept.
   clearSection();
   reversed = false;
 
+  // Floating window, NOT a blocking overlay: the viewport must stay clickable so planes can be
+  // created with a double-click on a face and dragged by their arrow while this window is open.
   modalEl = document.createElement("div");
-  modalEl.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font:13px system-ui,sans-serif;";
+  modalEl.style.cssText = "position:fixed;top:84px;right:18px;z-index:99999;pointer-events:none;font:13px system-ui,sans-serif;";
   
   const win = document.createElement("div");
-  win.style.cssText = "background:#1e2029;border:1px solid #2a2e3a;border-radius:8px;width:500px;max-width:90vw;display:flex;flex-direction:column;color:#e8eaf0;box-shadow:0 20px 50px rgba(0,0,0,.5);";
+  win.style.cssText = "pointer-events:auto;background:#1e2029;border:1px solid #2a2e3a;border-radius:8px;width:380px;max-width:90vw;max-height:calc(100vh - 120px);overflow:auto;display:flex;flex-direction:column;color:#e8eaf0;box-shadow:0 20px 50px rgba(0,0,0,.5);";
   
   const header = document.createElement("div");
   header.style.cssText = "padding:12px 16px;border-bottom:1px solid #2a2e3a;display:flex;justify-content:space-between;align-items:center;background:#161a22;border-radius:8px 8px 0 0;";
@@ -33,13 +38,45 @@ export function openSectionModal() {
   const closeBtn = document.createElement("button");
   closeBtn.innerHTML = "&#x2715;";
   closeBtn.style.cssText = "background:transparent;border:none;color:#8b949e;font-size:18px;cursor:pointer;";
-  closeBtn.onclick = () => { modalEl?.remove(); modalEl = null; };
+  closeBtn.onclick = () => closeWindow();
   header.appendChild(closeBtn);
   win.appendChild(header);
 
   const body = document.createElement("div");
   body.style.cssText = "padding:16px;background:#0f1117;display:flex;flex-direction:column;gap:12px;";
   
+  // ── Interactive section (formerly the Tools-panel "Section Cut" group)
+  const live = document.createElement("div");
+  live.style.cssText = "display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid #2a2e3a;border-radius:6px;background:#12151c;";
+  const liveTitle = document.createElement("div");
+  liveTitle.textContent = "Interactive section";
+  liveTitle.style.cssText = "font-weight:700;color:#e8eaf0;";
+  const liveRow = document.createElement("label");
+  liveRow.style.cssText = "display:flex;gap:8px;align-items:center;cursor:pointer;color:#cbd2dc;";
+  const liveChk = document.createElement("input");
+  liveChk.type = "checkbox";
+  liveChk.checked = isSectionOn();
+  liveChk.onchange = () => { setSectionOn(liveChk.checked); if (liveChk.checked) setMeasureEnabled(false); };
+  const liveTxt = document.createElement("span");
+  liveTxt.textContent = "Double-click a face to cut parallel to it";
+  liveRow.append(liveChk, liveTxt);
+  const liveHint = document.createElement("div");
+  liveHint.textContent = "Then drag the plane's arrow to move the cut forward / back. Esc cancels a drag.";
+  liveHint.style.cssText = "font-size:11px;color:#8b949e;";
+  const liveDel = document.createElement("button");
+  liveDel.textContent = "\u{1F5D1} Delete all planes";
+  liveDel.style.cssText = "padding:6px 10px;background:#3b0d0d;color:#fca5a5;border:1px solid #7f1d1d;border-radius:4px;cursor:pointer;font-weight:600;align-self:flex-start;";
+  liveDel.onclick = () => { deleteSectionPlanes(); };
+  live.append(liveTitle, liveRow, liveHint, liveDel);
+  body.appendChild(live);
+  offModeListener = onSectionModeChange((on) => { liveChk.checked = on; });
+
+  // ── Axis cut
+  const axisTitle = document.createElement("div");
+  axisTitle.textContent = "Cut by axis";
+  axisTitle.style.cssText = "font-weight:700;color:#e8eaf0;margin-top:2px;";
+  body.appendChild(axisTitle);
+
   // ── Axis Selection
   const axisRow = document.createElement("div");
   axisRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;";
@@ -109,7 +146,7 @@ export function openSectionModal() {
   const closeFooterBtn = document.createElement("button");
   closeFooterBtn.textContent = "Close";
   closeFooterBtn.style.cssText = "padding:6px 16px;background:#2a2e3a;color:#e8eaf0;border:none;border-radius:4px;cursor:pointer;";
-  closeFooterBtn.onclick = () => { modalEl?.remove(); modalEl = null; };
+  closeFooterBtn.onclick = () => closeWindow();
   footer.appendChild(closeFooterBtn);
   win.appendChild(footer);
 
@@ -146,6 +183,11 @@ export function openSectionModal() {
   document.body.appendChild(modalEl);
 }
 
+function closeWindow(): void {
+  modalEl?.remove(); modalEl = null;
+  offModeListener?.(); offModeListener = null;
+}
+
 function applySection(axis: "x"|"y"|"z", pos: number) {
   clearSection();
 
@@ -159,14 +201,6 @@ function applySection(axis: "x"|"y"|"z", pos: number) {
     renderer.localClippingEnabled = true;
     renderer.clippingPlanes = [activePlane];
   }
-
-  // Also apply to fragments materials if possible (OBC may handle this natively)
-  try {
-    const clipper: any = ctx.clipper;
-    if (clipper && typeof clipper.addPlane === "function") {
-      clipper.addPlane(activePlane);
-    }
-  } catch { /* ignore */ }
 
   // Add a visual helper box to show the cut
   const helperGeo = new THREE.PlaneGeometry(100, 100);
@@ -186,11 +220,6 @@ function clearSection() {
   if (renderer) {
     renderer.clippingPlanes = [];
   }
-
-  try {
-    const clipper: any = ctx.clipper;
-    if (clipper && typeof clipper.deleteAll === "function") clipper.deleteAll();
-  } catch { /* ignore */ }
 
   if (activeHelper) {
     ctx.world.scene.three.remove(activeHelper);

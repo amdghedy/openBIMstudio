@@ -26,8 +26,16 @@ export function isSectionOn() {
   return enabled;
 }
 
+const modeListeners = new Set<(on: boolean) => void>();
+/** Subscribe to Section Cut mode changes (the Section Cut window keeps its checkbox in sync). */
+export function onSectionModeChange(cb: (on: boolean) => void): () => void {
+  modeListeners.add(cb);
+  return () => { modeListeners.delete(cb); };
+}
+
 export function setSectionOn(on: boolean) {
   enabled = on;
+  for (const cb of [...modeListeners]) { try { cb(on); } catch { /* */ } }
   if (on) {
     // the cut only renders when the clipper is enabled and the renderer honours local clipping planes
     try { (ctx.clipper as any).enabled = true; } catch { /* */ }

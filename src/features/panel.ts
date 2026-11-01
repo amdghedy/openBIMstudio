@@ -10,7 +10,7 @@ import {
   setProjection, saveHome, goHome, fitAll, takeScreenshot,
   recenterSceneNow, resetOffsets, showBoundsHelpers, boundsInfoEl,
 } from "./camera-tools";
-import { setSectionCheckboxRef, setSectionOn, deleteSectionPlanes } from "./section";
+import { setSectionOn } from "./section";
 import { setMeasureCheckboxRef, setMeasureEnabled, clearMeasurements } from "./measure";
 import { activeToolLabel, setAuthoringTool } from "./authoring";
 import {
@@ -159,17 +159,6 @@ export function buildPanel() {
           </div>
           <bim-button label="⛶  Fit all" @click=${() => fitAll()}></bim-button>
           ${cropInfoEl}
-        </bim-panel-section>
-
-        <bim-panel-section label="Section Cut" icon="mdi:scissors-cutting" collapsed>
-          <bim-checkbox label="Enable section (double-click)"
-            data-section
-            @change=${({ target }: any) => {
-              setSectionCheckboxRef(target);
-              setSectionOn(target.checked);
-              if (target.checked) setMeasureEnabled(false);
-            }}></bim-checkbox>
-          <bim-button label="🗑  Delete all planes" @click=${() => { deleteSectionPlanes(); }}></bim-button>
         </bim-panel-section>
 
         <bim-panel-section label="Measure & Snap" icon="mdi:ruler-square" collapsed>
