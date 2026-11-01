@@ -777,7 +777,7 @@ async function auditModelDataTool(args: Record<string, any>): Promise<ToolResult
     }
 
     const records: any[] = [];
-    let readErrorCount = categoryReadFailed ? 1 : 0;
+    let readErrorCount = 0;
     const chunkSize = 500;
     for (let offset = 0; offset < ids.length; offset += chunkSize) {
       const chunk = ids.slice(offset, offset + chunkSize);
@@ -815,6 +815,7 @@ async function auditModelDataTool(args: Record<string, any>): Promise<ToolResult
         totalGeometryElementCount: allIds.length,
         scannedCount: records.length,
         readErrorCount,
+        categoryReadFailed,
         truncated: allIds.length > ids.length,
       }));
     } catch (err) {
