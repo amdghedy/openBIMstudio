@@ -129,23 +129,23 @@ export function runModifyAction(id: ModifyActionId): void {
   switch (id) {
     case "move":
       setAuthoringTool("move");
-      toast("Move — click element, then base point, then target", "info");
+      toast(has ? "Move — click a base point, then the target" : "Move — click element, then base point, then target", "info");
       break;
     case "copy":
       copySelectionToClipboard();
       setAuthoringTool("copy");
-      toast("Copy — click element, base point, then target", "info");
+      toast(has ? "Copy — click a base point, then the target" : "Copy — click element, base point, then target", "info");
       break;
     case "paste":
       pasteFromClipboard();
       break;
     case "rotate":
       setAuthoringTool("rotate");
-      toast("Rotate — click center, then reference angle", "info");
+      toast(has ? "Rotate — click the center, then the reference angle" : "Rotate: select elements first, then pick Rotate", "info");
       break;
     case "mirror":
       setAuthoringTool("mirror");
-      toast("Mirror — click mirror line start and end", "info");
+      toast(has ? "Mirror — click the mirror line start and end" : "Mirror: select elements first, then pick Mirror", "info");
       break;
     case "array":
       setAuthoringTool("array");

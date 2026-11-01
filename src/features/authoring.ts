@@ -112,7 +112,7 @@ interface WallOpening {
 
 type PendingOp =
   | { kind: "none" }
-  | { kind: "move-copy"; mode: "move" | "copy"; id: string | null; base: THREE.Vector3 | null }
+  | { kind: "move-copy"; mode: "move" | "copy"; id: string | null; base: THREE.Vector3 | null; /** elements that were already selected when the tool started */ ids?: string[] }
   | { kind: "rotate"; ids: string[]; center: THREE.Vector3 | null; ref: THREE.Vector3 | null }
   | { kind: "mirror"; ids: string[]; axisA: THREE.Vector3 | null; axisB: THREE.Vector3 | null }
   | { kind: "array"; ids: string[]; mode: "linear" | "radial"; base: THREE.Vector3 | null; count?: number; spacing?: number }
@@ -3341,49 +3341,59 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
   switch (pendingOp.kind) {
     case "move-copy": {
       const op = pendingOp;
+      // Started with a selection (e.g. from the right-click menu): act on it, no second pick needed.
       if (!op.id) { op.id = elementAt(e); updateLabel(); return; }
       if (!op.base) { op.base = pt.clone(); updateLabel(); return; }
       const dx = snap(pt.x - op.base.x);
       const dz = snap(pt.z - op.base.z);
-      const src = elements.find((x) => x.id === op.id);
-      if (src?.properties?.pinned) {
-        window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `${src.name} is pinned — unpin before moving or copying.`, kind: "info" } }));
-        pendingOp = { kind: "move-copy", mode: op.mode, id: null, base: null };
-        updateLabel();
+      const sourceIds = op.ids && op.ids.length ? op.ids : [op.id];
+      const sources = sourceIds.map((sid) => elements.find((x) => x.id === sid)).filter((x): x is AuthoredElement => !!x);
+      const src = sources[0];
+      const pinned = sources.filter((x) => x.properties?.pinned);
+      const resetOp = () => { pendingOp = { kind: "move-copy", mode: op.mode, id: null, base: null }; updateLabel(); };
+      if (pinned.length === sources.length && pinned.length) {
+        window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `${pinned[0].name} is pinned — unpin before moving or copying.`, kind: "info" } }));
+        resetOp();
         break;
       }
+      const label = sources.length > 1 ? `${sources.length} elements` : (src?.name ?? "element");
       if (src && (dx !== 0 || dz !== 0)) {
         if (op.mode === "copy") {
-          const clone: AuthoredElement = JSON.parse(JSON.stringify(src));
-          clone.id = uid();
-          clone.name = `${src.name} (copy)`;
-          if (clone.hostId) clone.hostId = undefined;
-          shiftParams(clone, dx, dz);
-          if (!rejectInvalidOperation([...elements, clone], new Set([clone.id]), `copy ${src.name}`)) {
+          const clones: AuthoredElement[] = [];
+          for (const so of sources) {
+            if (so.properties?.pinned) continue;
+            const clone: AuthoredElement = JSON.parse(JSON.stringify(so));
+            clone.id = uid();
+            clone.name = `${so.name} (copy)`;
+            if (clone.hostId) clone.hostId = undefined;
+            shiftParams(clone, dx, dz);
+            clones.push(clone);
+          }
+          if (clones.length && !rejectInvalidOperation([...elements, ...clones], new Set(clones.map((c) => c.id)), `copy ${label}`)) {
             history.exec({
-              label: `Copy ${src.name}`,
-              apply: () => { elements.push(clone); rebuild(); markDirty(); },
-              revert: () => { const i = elements.indexOf(clone); if (i >= 0) elements.splice(i, 1); rebuild(); markDirty(); },
+              label: `Copy ${label}`,
+              apply: () => { for (const c of clones) if (!elements.includes(c)) elements.push(c); rebuild(); markDirty(); },
+              revert: () => { for (const c of clones) { const i = elements.indexOf(c); if (i >= 0) elements.splice(i, 1); } rebuild(); markDirty(); },
             });
           }
         } else {
-          const movers = expandConnectedIds([src.id])
+          const movers = expandConnectedIds(sources.map((x) => x.id))
             .map((mid) => elements.find((x) => x.id === mid))
             .filter((x): x is AuthoredElement => !!x && !x.properties?.pinned);
           const candidates = movers.map((m0) => { const c = JSON.parse(JSON.stringify(m0)) as AuthoredElement; shiftParams(c, dx, dz); return c; });
           const candById = new Map(candidates.map((c) => [c.id, c]));
-          if (!rejectInvalidOperation(elements.map((item) => candById.get(item.id) ?? item), new Set(movers.map((m0) => m0.id)), `move ${src.name}`)) {
+          if (!rejectInvalidOperation(elements.map((item) => candById.get(item.id) ?? item), new Set(movers.map((m0) => m0.id)), `move ${label}`)) {
             // MASTER PROMPT §6 — dependents follow the move in the SAME
             // undo transaction (endpoint constraints / wall-column binds).
             const depPatches = collectDependentPatches(movers.map((m0) => m0.id), dx, dz);
             const snaps = movers.map((m0) => ({ el: m0, before: JSON.parse(JSON.stringify(m0.params)), after: JSON.parse(JSON.stringify(candById.get(m0.id)!.params)) }));
-            // Connected MEP parts follow (fittings move, neighbouring runs stretch) in the same undo step.
+            // Connected MEP parts / joined walls follow (fittings move, neighbours stretch) in the same undo step.
             for (const u of mepFollowPatches(movers.map((m0) => m0.id), dx, dz)) {
               const fe = elements.find((x) => x.id === u.id);
               if (fe && !snaps.some((o) => o.el === fe)) snaps.push({ el: fe, before: JSON.parse(JSON.stringify(fe.params)), after: { ...JSON.parse(JSON.stringify(fe.params)), ...u.patch } });
             }
             history.push({
-              label: movers.length > 1 ? `Move ${src.name} + ${movers.length - 1} connected` : `Move ${src.name}`,
+              label: movers.length > 1 ? `Move ${label}${sources.length === 1 ? ` + ${movers.length - 1} connected` : ""}` : `Move ${label}`,
               apply: () => {
                 for (const o of snaps) o.el.params = JSON.parse(JSON.stringify(o.after));
                 for (const p of depPatches) p.el.params = JSON.parse(JSON.stringify(p.after));
@@ -3403,8 +3413,7 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
           }
         }
       }
-      pendingOp = { kind: "move-copy", mode: op.mode, id: null, base: null };
-      updateLabel();
+      resetOp();
       break;
     }
     case "rotate": {
@@ -4469,6 +4478,9 @@ export function refreshPreview(): void {
  * (e.g. "outlet", "sprinkler", "pile") which map via TOOL_ALIASES.
  */
 export function setAuthoringTool(tool: Tool | string | null) {
+  // Selection at the moment the tool starts: Move/Copy/Rotate/Mirror/Array/Offset act on it directly
+  // (it is cleared below for every non-select tool, which used to leave them with nothing).
+  const preSelected = [...selectedIds];
   if (tool === null) {
     activePreset = null;
     activeTool = null;
@@ -4505,15 +4517,15 @@ export function setAuthoringTool(tool: Tool | string | null) {
 
   const t = activeTool;
   if (t === "move" || t === "copy") {
-    pendingOp = { kind: "move-copy", mode: t as "move" | "copy", id: null, base: null };
+    pendingOp = { kind: "move-copy", mode: t as "move" | "copy", id: preSelected[0] ?? null, ids: preSelected.length ? preSelected : undefined, base: null };
   } else if (t === "rotate") {
-    pendingOp = { kind: "rotate", ids: [...selectedIds], center: null, ref: null };
+    pendingOp = { kind: "rotate", ids: preSelected, center: null, ref: null };
   } else if (t === "mirror") {
-    pendingOp = { kind: "mirror", ids: [...selectedIds], axisA: null, axisB: null };
+    pendingOp = { kind: "mirror", ids: preSelected, axisA: null, axisB: null };
   } else if (t === "array") {
-    pendingOp = { kind: "array", ids: [...selectedIds], mode: "linear", base: null };
+    pendingOp = { kind: "array", ids: preSelected, mode: "linear", base: null };
   } else if (t === "offset") {
-    pendingOp = { kind: "offset", id: null, base: null, side: null };
+    pendingOp = { kind: "offset", id: preSelected.length === 1 ? preSelected[0] : null, base: null, side: null };
   }
 
   // Palette sync.
