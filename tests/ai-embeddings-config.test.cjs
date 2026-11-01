@@ -20,18 +20,18 @@ global.localStorage = {
 const fakeModule = new Module(sourcePath, module);
 fakeModule.filename = sourcePath;
 fakeModule.paths = Module._nodeModulePaths(path.dirname(sourcePath));
-const originalRequire = fakeModule.require.bind(fakeModule);
-fakeModule.require = (id) => {
-  if (id === "../core/context") return { ctx: { fragments: { list: new Map() } } };
-  if (id === "../core/p-map") return { pMap: async (items, _limit, fn) => Promise.all(items.map(fn)) };
-  if (id === "../core/secure-store") return {
+const originalLoad = Module._load;
+Module._load = function (request, parent, isMain) {
+  if (parent === fakeModule && request === "../core/context") return { ctx: { fragments: { list: new Map() } } };
+  if (parent === fakeModule && request === "../core/p-map") return { pMap: async (items, _limit, fn) => Promise.all(items.map(fn)) };
+  if (parent === fakeModule && request === "../core/secure-store") return {
     secureGet: (key) => values.has(key) ? values.get(key) : null,
     secureSet: (key, value) => values.set(key, value),
     secureRemove: (key) => values.delete(key),
   };
-  return originalRequire(id);
+  return originalLoad.call(this, request, parent, isMain);
 };
-fakeModule._compile(output, sourcePath);
+try { fakeModule._compile(output, sourcePath); } finally { Module._load = originalLoad; }
 const api = fakeModule.exports;
 const cfgKey = "obs.ai.embeddings.config";
 const secretKey = "ai.embeddings.apiKey";
