@@ -1,0 +1,11 @@
+{
+  "tools": [
+    { "id": "clash.detect", "name": "Clash Detection", "status": "tested",
+      "tests": ["tests/clash-detection.test.cjs"], "verifiedScenarios": [] },
+    { "id": "wall.create", "name": "Wall Tool", "status": "runtime-verified",
+      "tests": ["tests/wall.test.cjs", "tests/e2e/wall.spec.ts"],
+      "verifiedScenarios": ["fixtures/ifc-corpus/wall-demo.ifc"] },
+    { "id": "rooms.edit", "name": "Rooms", "status": "partial",
+      "knownLimitation": "non-associative; plan panel unwired" }
+  ]
+}

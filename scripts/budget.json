@@ -1,0 +1,6 @@
+{
+  "import":   { "fixture": "bench/large-reference.ifc.checksum",
+               "maxSeconds": 60, "maxPeakMB": 1500 },
+  "bundle":   { "maxMainJsKB": 2500 },
+  "e2eSmoke": { "maxSeconds": 180 }
+}
