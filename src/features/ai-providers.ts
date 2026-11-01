@@ -216,9 +216,23 @@ export async function callChatStream(
 }
 
 function resolveEndpoint(cfg: ProviderConfig): string {
-  if (cfg.kind === "ollama") return "/ollama";
+  if (cfg.kind === "ollama") {
+    // Dev server: Vite proxies /ollama → localhost:11434 (no CORS needed).
+    // Deployed site: call the user's Ollama directly (needs OLLAMA_ORIGINS).
+    try {
+      const host = typeof location !== "undefined" ? location.hostname : "";
+      if (host === "localhost" || host === "127.0.0.1") return "/ollama";
+    } catch { /* */ }
+    const ep = (cfg.endpoint || "http://127.0.0.1:11434").trim();
+    return ep || "http://127.0.0.1:11434";
+  }
   const ep = cfg.endpoint.toLowerCase();
-  if (ep.includes("localhost:1234") || ep.includes("127.0.0.1:1234")) return "/lmstudio";
+  if (ep.includes("localhost:1234") || ep.includes("127.0.0.1:1234")) {
+    try {
+      const host = typeof location !== "undefined" ? location.hostname : "";
+      if (host === "localhost" || host === "127.0.0.1") return "/lmstudio";
+    } catch { /* */ }
+  }
   if (ep.includes("api.anthropic.com")) return "/anthropic";
   return cfg.endpoint;
 }
@@ -248,7 +262,24 @@ function classifyHttpError(status: number, statusText: string, body: string): st
 function networkErrorHint(err: unknown, cfg: ProviderConfig): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/failed to fetch/i.test(msg)) {
-    if (cfg.kind === "ollama") return `Cannot reach Ollama at ${cfg.endpoint}. Check that "ollama serve" is running.`;
+    if (cfg.kind === "ollama") {
+      let remote = false;
+      try {
+        const host = typeof location !== "undefined" ? location.hostname : "";
+        remote = !!host && host !== "localhost" && host !== "127.0.0.1";
+      } catch { /* */ }
+      if (remote) {
+        return (
+          `Cannot reach Ollama at ${cfg.endpoint} from this site.\n\n` +
+          `Start Ollama with CORS open so the browser can call it:\n` +
+          `  Windows (PowerShell):  $env:OLLAMA_ORIGINS="*"; ollama serve\n` +
+          `  Windows (cmd):         set OLLAMA_ORIGINS=* && ollama serve\n` +
+          `  macOS / Linux:         OLLAMA_ORIGINS=* ollama serve\n\n` +
+          `Or run the app locally (npm run dev) — the Vite proxy needs no CORS setup.`
+        );
+      }
+      return `Cannot reach Ollama at ${cfg.endpoint}. Check that "ollama serve" is running.`;
+    }
     if (cfg.endpoint.includes("localhost") || cfg.endpoint.includes("127.0.0.1")) {
       return `Cannot reach ${cfg.endpoint}. The local server is not running, or it does not allow requests from the browser (CORS).`;
     }
