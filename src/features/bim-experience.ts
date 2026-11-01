@@ -39,6 +39,7 @@ import {
   joinSelectedWalls,
   deleteSelectedElement,
   setSelectedAuthored,
+  selectAllAuthored,
   cycleMepSelection,
   getTypeDefaults,
   setTypeDefault,
@@ -72,7 +73,8 @@ import { toggleSheetsPanel, isSheetsPanelVisible } from "./sheets-panel";
 import { toggleIssuesPanel, isIssuesPanelVisible } from "./issues-panel";
 import { toggleIdsPanel, isIdsPanelVisible } from "./ids-panel";
 import { toggleTimelinePanel, isTimelinePanelVisible, openTimelineTab, pickAndImportP6, openCurvesView, pickAndImportFactors } from "./timeline-panel";
-import { fitAll, goHome, gotoDir, getProjection, setProjection } from "./camera-tools";
+import { fitAll, goHome, gotoDir, getProjection, setProjection, focusOnBox, resetCameraUpright } from "./camera-tools";
+import { getSelectionWorldBox } from "./selection-box";
 import { svgIcon, type IconName } from "./icon-set";
 import { registerCommand as registerPaletteCommand } from "./command-palette";
 
@@ -307,6 +309,7 @@ function repeatLast() {
 }
 
 function clearSelection() {
+  try { setSelectedAuthored([], "replace"); } catch { /* */ }
   selection.clear();
   void selection.applyToHighlighter();
   setAuthoringTool("select");
@@ -317,6 +320,15 @@ function isolateSelection() {
   const authored = getAuthoredSelection();
   const snap = selection.snapshot();
   if (!authored.length && selection.isEmpty()) { toast("Select elements first", "warn"); return; }
+  const vis = visibilityApi();
+  if (vis?.isolateSelection) {
+    if (vis.isolateSelection() > 0) {
+      state.temporaryMode = "isolate";
+      toast("Temporary Hide/Isolate → Isolate", "success");
+      refresh();
+    }
+    return;
+  }
   try {
     (ctx.hider as any)?.isolate?.(snap);
   } catch {
@@ -329,6 +341,16 @@ function isolateSelection() {
 
 function hideSelection() {
   const snap = selection.snapshot();
+  if (!getAuthoredSelection().length && selection.isEmpty()) { toast("Select elements first", "warn"); return; }
+  const vis = visibilityApi();
+  if (vis?.hideSelection) {
+    if (vis.hideSelection() > 0) {
+      state.temporaryMode = "hide";
+      toast("Selected elements hidden temporarily", "success");
+      refresh();
+    }
+    return;
+  }
   if (!selection.isEmpty()) {
     try { (ctx.hider as any)?.set?.(snap, false); } catch {
       try { (ctx.hider as any)?.hide?.(snap); } catch { /* SDK drift */ }
@@ -340,18 +362,43 @@ function hideSelection() {
 }
 
 function revealAll() {
+  try { visibilityApi()?.reset?.(); } catch { /* */ }
   try { (ctx.hider as any)?.show?.(); } catch { /* SDK drift */ }
   state.temporaryMode = "reveal";
   toast("Reveal Hidden Elements", "success");
   refresh();
 }
 
-function focusSelection() {
+/** World box of everything selected: authored elements AND IFC/FRAG objects. */
+async function selectedWorldBox(): Promise<THREE.Box3 | null> {
+  const box = new THREE.Box3();
+  const authoredBox = getSelectionWorldBox();
+  if (authoredBox) box.union(authoredBox);
+  try {
+    const fragBox = selection.isEmpty() ? null : await selection.boundingBox();
+    if (fragBox && !fragBox.isEmpty()) box.union(fragBox);
+  } catch { /* fragment bounds unavailable */ }
+  return box.isEmpty() ? null : box;
+}
+
+/** Zoom to Selection: frame the selected element(s) - never the whole model. */
+async function focusSelection() {
   if (selection.isEmpty() && getAuthoredSelection().length === 0) {
-    fitAll();
+    toast("Select an element first", "warn");
     return;
   }
-  void selection.focus();
+  const box = await selectedWorldBox();
+  if (!box) {
+    toast("Could not measure the selection", "warn");
+    return;
+  }
+  focusOnBox(box);
+}
+
+/** Temporary Hide / Isolate / Reveal go through the visibility bridge, which handles authored
+ *  elements and IFC objects together; the raw hider only knows IFC fragments. */
+function visibilityApi(): { hideSelection?: () => number; isolateSelection?: () => number; reset?: () => void } | null {
+  try { return (window as any).__obsBIMGaps?.visibility ?? null; } catch { return null; }
 }
 
 function execute(id: string): void {
@@ -660,7 +707,7 @@ function createCommandCatalog() {
   registerBimCommand({ id: "view.templates", label: "View Templates", ribbon: "View", group: "Graphics", run: openViewTemplates });
   registerBimCommand({ id: "modify.typeProperties", label: "Type Properties", ribbon: "Modify", group: "Properties", run: openTypeProperties });
   registerBimCommand({ id: "view.fit", label: "Zoom to Fit", ribbon: "View", group: "Navigation", shortcut: "ZF", run: () => fitAll() });
-  registerBimCommand({ id: "view.home", label: "Default 3D View", ribbon: "View", group: "Navigation", shortcut: "3D", run: () => goHome() });
+  registerBimCommand({ id: "view.home", label: "Default 3D View", ribbon: "View", group: "Navigation", shortcut: "3D", run: () => { resetCameraUpright(); goHome(); } });
   registerBimCommand({ id: "view.top", label: "Top / Plan Orientation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 1, 0)) });
   registerBimCommand({ id: "view.front", label: "Front Elevation", ribbon: "View", group: "Orientation", run: () => gotoDir(new THREE.Vector3(0, 0, 1)) });
   registerBimCommand({ id: "view.ortho", label: "Orthographic", ribbon: "View", group: "Projection", run: () => { void setProjection("orthographic"); } });
@@ -676,7 +723,7 @@ function createCommandCatalog() {
   registerBimCommand({ id: "global.select", label: "Modify / Select", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
   registerBimCommand({ id: "global.repeat", label: "Repeat Last Command", ribbon: "Modify", group: "Selection", shortcut: "Space", run: repeatLast });
   registerBimCommand({ id: "global.cancel", label: "Cancel Current Command", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
-  registerBimCommand({ id: "global.selectAll", label: "Select All", ribbon: "Modify", group: "Selection", shortcut: "Ctrl+A", run: () => void selection.selectAll() });
+  registerBimCommand({ id: "global.selectAll", label: "Select All", ribbon: "Modify", group: "Selection", shortcut: "Ctrl+A", run: () => { try { selectAllAuthored(getElements().map((e) => e.id)); } catch { /* */ } void selection.selectAll(); } });
   registerBimCommand({ id: "global.clearSelection", label: "Clear Selection", ribbon: "Modify", group: "Selection", run: clearSelection });
   registerBimCommand({ id: "global.undo", label: "Undo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Z", run: () => void history.undo() });
   registerBimCommand({ id: "global.redo", label: "Redo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Y", run: () => void history.redo() });

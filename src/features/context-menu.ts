@@ -6,6 +6,8 @@ import { selection, pickUnderCursor } from "./selection";
 import {
   getSelectedIds as getAuthoredSelection,
   setAuthoringTool,
+  setSelectedAuthored,
+  pickAuthoredElementAt,
 } from "./authoring";
 import { beginEdit, beginEditFromSelection, openFragEditPanel } from "./frag-edit";
 import { buildContextMenu, type MenuItem } from "./context-menu-model";
@@ -99,12 +101,19 @@ function renderMenuItems(container: HTMLElement, items: MenuItem[]) {
  * The linked (IFC/FRAG) elements the menu acts on. Order: the selection manager; else whatever the
  * highlighter shows; else the element under the cursor (right-click on an unselected object acts on it).
  */
-async function resolveLinkedSelection(): Promise<Record<string, Set<number>>> {
+async function resolveLinkedSelection(e?: MouseEvent): Promise<Record<string, Set<number>>> {
   let snap = selection.snapshot() as Record<string, Set<number>>;
   const count = (m: Record<string, Set<number>>) => Object.values(m).reduce((a, v) => a + (v?.size ?? 0), 0);
   if (!count(snap)) {
     try { selection.adoptFromHighlighter(); } catch { /* */ }
     snap = selection.snapshot() as Record<string, Set<number>>;
+  }
+  // Right-clicking an unselected authored element selects it first (the menu then acts on it).
+  if (!count(snap) && getAuthoredSelection().length === 0 && e) {
+    try {
+      const id = pickAuthoredElementAt(e);
+      if (id) setSelectedAuthored([id], "replace");
+    } catch { /* picking is best-effort */ }
   }
   if (!count(snap) && getAuthoredSelection().length === 0) {
     try {
@@ -120,8 +129,8 @@ async function resolveLinkedSelection(): Promise<Record<string, Set<number>>> {
 }
 
 async function openCtxMenu(e: MouseEvent) {
-  const authoredIds = getAuthoredSelection();
-  const snap = await resolveLinkedSelection();
+  const snap = await resolveLinkedSelection(e);
+  const authoredIds = getAuthoredSelection(); // read AFTER resolving: a right-click may have selected one
   const actionCount = Object.values(snap).reduce((a, v) => a + (v?.size ?? 0), 0);
 
   const have = new Set(listBimCommands().map((c) => c.id));

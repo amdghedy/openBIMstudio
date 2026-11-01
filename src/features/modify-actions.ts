@@ -182,9 +182,11 @@ export function runModifyAction(id: ModifyActionId): void {
       void (async () => {
         try {
           const sel = (window as Any).__obsSelection;
-          if (sel?.selectSimilar && ids[0]) {
-            await sel.selectSimilar("native", ids[0]);
+          if (!sel?.selectSimilar || !ids[0]) {
+            toast("Select Similar works on an authored element - select one first.", "warn");
+            return;
           }
+          await sel.selectSimilar("native", ids[0]);
           toast("Select Similar", "success");
         } catch {
           toast("Select Similar failed", "warn");
