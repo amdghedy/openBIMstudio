@@ -27,25 +27,17 @@ export default defineConfig({
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Group large vendor libs into separate chunks for better caching
-          // and to silence the > 500 KB build warning.
-          "react-vendor": ["react", "react-dom", "react-redux", "@reduxjs/toolkit"],
-          "mui-vendor": ["@mui/material", "@mui/lab", "@emotion/react", "@emotion/styled"],
-          "three-vendor": ["three", "three-mesh-bvh", "three-csg-ts"],
-          "thatopen-vendor": [
-            "@thatopen/components",
-            "@thatopen/components-front",
-            "@thatopen/fragments",
-            "@thatopen/ui",
-            "@thatopen/ui-obc",
-          ],
-          "tldraw-vendor": [
-            "@tldraw/editor",
-          ],
-          "monaco-vendor": ["monaco-editor"],
-          "ifc-vendor": ["web-ifc"],
-          "yjs-vendor": ["yjs", "y-websocket"],
+        // Vite 8 / rolldown requires a function (object form throws TypeError).
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return;
+          if (/node_modules\/(?:react|react-dom|react-redux|@reduxjs)\//.test(id)) return "react-vendor";
+          if (/node_modules\/(?:@mui|@emotion)\//.test(id)) return "mui-vendor";
+          if (/node_modules\/(?:three|three-mesh-bvh|three-csg-ts)\//.test(id)) return "three-vendor";
+          if (/node_modules\/@thatopen\//.test(id)) return "thatopen-vendor";
+          if (/node_modules\/@tldraw\//.test(id)) return "tldraw-vendor";
+          if (/node_modules\/monaco-editor\//.test(id)) return "monaco-vendor";
+          if (/node_modules\/web-ifc\//.test(id)) return "ifc-vendor";
+          if (/node_modules\/(?:yjs|y-websocket)\//.test(id)) return "yjs-vendor";
         },
       },
     },
