@@ -6,26 +6,26 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 
 **Automated option:** run `bash create_issues.sh` (GitHub CLI) to open all 18 issues with labels in one go.
 
-| Id | Title | Priority | Phase | Estimate |
+| Id | Title | Priority | Phase | Estimate | Status @ `7b7a338` (2026-11-01) |
 |----|-------|----------|-------|----------|
-| P0-01 | Global crash containment: error boundaries per panel + crash log | Critical | Phase 0 | 1d |
-| P0-02 | Zod validation at all file-load boundaries (`safeLoad`) | Critical | Phase 0 | 1d |
-| P0-03 | Backup-on-load with rotating timestamps | High | Phase 0 | 0.5d |
-| P0-04 | Fail-closed server: origin allow-list, header-only tokens, rate limit | Critical | Phase 0 | 1d |
-| P0-05 | Remove `jsonpath-plus`; add npm audit CI gate | Critical | Phase 0 | 0.5d |
-| P1-01 | Freeze `__obs*` globals with ESLint; typed service registry | High | Phase 1 | 2d |
-| P1-02 | TypeScript strictification wave 1 (src/modules, src/core) | High | Phase 1 | 3d |
-| P1-03 | Assemble 20-fixture IFC golden corpus (licensed, snapshotted) | High | Phase 1 | 2d |
-| P1-04 | Golden round-trip pipeline + interop report + CI workflow | High | Phase 1 | 3d |
-| P1-05 | Property-based kernel invariants (fast-check) | High | Phase 1 | 2d |
-| P1-06 | Malformed-input rejection property tests (IFC, BCF, DXF) | Medium | Phase 1 | 1d |
-| P1-07 | Playwright E2E smoke suite on Chromium, WebKit, Firefox | High | Phase 1 | 3d |
-| P2-01 | Append-only journal persistence with snapshot recovery | High | Phase 2 | 4d |
-| P2-02 | Maturity gate: tool-catalog.json enforcement in CI | High | Phase 2 | 2d |
-| P2-03 | Performance budget benchmark + CI gate | Medium | Phase 2 | 2d |
-| P2-04 | Nightly parser fuzzing loop | Medium | Phase 2 | 2d |
-| P2-05 | Spec-before-code process + SPEC_TEMPLATE.md | Medium | Phase 2 | 0.5d |
-| P2-06 | Surface per-entity IFC interop report in the UI | Medium | Phase 2 | 2d |
+| P0-01 | Global crash containment: error boundaries per panel + crash log | Critical | Phase 0 | 1d | ✅ satisfied |
+| P0-02 | Zod validation at all file-load boundaries (`safeLoad`) | Critical | Phase 0 | 1d | 🔶 partial |
+| P0-03 | Backup-on-load with rotating timestamps | High | Phase 0 | 0.5d | ⬜ open |
+| P0-04 | Fail-closed server: origin allow-list, header-only tokens, rate limit | Critical | Phase 0 | 1d | 🔶 partial |
+| P0-05 | Remove `jsonpath-plus`; add npm audit CI gate | Critical | Phase 0 | 0.5d | ✅ satisfied |
+| P1-01 | Freeze `__obs*` globals with ESLint; typed service registry | High | Phase 1 | 2d | ✅ satisfied |
+| P1-02 | TypeScript strictification wave 1 (src/modules, src/core) | High | Phase 1 | 3d | ✅ satisfied |
+| P1-03 | Assemble 20-fixture IFC golden corpus (licensed, snapshotted) | High | Phase 1 | 2d | 🔶 partial (3/20) |
+| P1-04 | Golden round-trip pipeline + interop report + CI workflow | High | Phase 1 | 3d | ✅ satisfied |
+| P1-05 | Property-based kernel invariants (fast-check) | High | Phase 1 | 2d | ⬜ open |
+| P1-06 | Malformed-input rejection property tests (IFC, BCF, DXF) | Medium | Phase 1 | 1d | 🔶 partial |
+| P1-07 | Playwright E2E smoke suite on Chromium, WebKit, Firefox | High | Phase 1 | 3d | 🔶 partial |
+| P2-01 | Append-only journal persistence with snapshot recovery | High | Phase 2 | 4d | 🔶 partial |
+| P2-02 | Maturity gate: tool-catalog.json enforcement in CI | High | Phase 2 | 2d | 🔶 partial |
+| P2-03 | Performance budget benchmark + CI gate | Medium | Phase 2 | 2d | 🔶 partial |
+| P2-04 | Nightly parser fuzzing loop | Medium | Phase 2 | 2d | ⬜ open |
+| P2-05 | Spec-before-code process + SPEC_TEMPLATE.md | Medium | Phase 2 | 0.5d | ✅ satisfied |
+| P2-06 | Surface per-entity IFC interop report in the UI | Medium | Phase 2 | 2d | ⬜ open |
 
 ---
 
@@ -401,3 +401,28 @@ gh label create medium      --description "Medium priority"                  --c
 gh label create security    --description "Security related"                 --color ee0701 --force
 gh label create process     --description "Process / documentation"          --color c5def5 --force
 ```
+
+---
+
+## Status assessment @ main `7b7a338` (2026-11-01)
+
+Evidence-based audit of main against each issue's acceptance criteria
+(`scripts/check-hardening-evidence.sh` reproduces this check):
+
+- **Satisfied on main (close on issue creation):** P0-01 crash containment
+  (`src/core/crashLog.ts`, `AppErrorBoundary`, `window.onerror` + crash viewer),
+  P0-05 (`jsonpath-plus` gone + npm audit gate), P1-01 (`registry.ts` + ESLint
+  `__obs` rule), P1-02 (`strict: true`), P1-04 (roundtrip pipeline + workflow
+  activated on push), P2-05 (`SPEC_TEMPLATE.md`).
+- **Partial progress (create + progress comment):** P0-02 (safeLoad + schemas
+  exist; loader routing, malformed corpus, CI audit missing), P0-04 (origin
+  allow-list done; rate limiting missing), P1-03 (3/20 fixtures), P1-06 (some
+  malformed tests; property suites missing), P1-07 (playwright config; runner
+  not in devDeps), P2-01 (`journal.ts` exists; not wired into persistence),
+  P2-02 (`check-tool-catalog.mjs` exists; no CI enforcement), P2-03
+  (`budget.json` exists; no CI workflow).
+- **Not started:** P0-03, P1-05, P2-04, P2-06.
+
+Run `bash docs/engineering/sync-issues.sh` (needs `GH_TOKEN` or `/tmp/gh.token`)
+to create all 18 issues from the bodies below, close the satisfied ones with
+evidence comments, and drop progress comments on the partial ones. Idempotent.
