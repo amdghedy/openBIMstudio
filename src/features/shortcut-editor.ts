@@ -92,7 +92,7 @@ export function openShortcutEditor(): void {
   card.innerHTML =
     "<div style='display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid #2a2e3a;background:#181a23;border-radius:10px 10px 0 0'>" +
     "<div style='flex:1'><div style='font-weight:700;font-size:15px'>Keyboard Shortcuts</div>" +
-    "<div style='font-size:11px;color:#94a3b8;margin-top:2px'>Click a shortcut box, then type 1–2 letters (e.g. WA) or press a combination (e.g. Ctrl+Shift+K). Enter saves, Backspace clears, Esc cancels.</div></div></div>";
+    "<div style='font-size:11px;color:#94a3b8;margin-top:2px'>Click a shortcut box, then type 1–3 letters (e.g. WA) or press a combination (e.g. Ctrl+Shift+K). Enter saves, Backspace clears, Esc cancels.</div></div></div>";
   const close = document.createElement("button");
   close.textContent = "✕"; close.style.cssText = "margin-left:10px;width:28px;height:28px;border-radius:4px;background:transparent;color:#94a3b8;border:1px solid #2a2e3a;cursor:pointer";
   close.onclick = closeShortcutEditor;
@@ -156,7 +156,7 @@ export function openShortcutEditor(): void {
         const combo = comboFromEvent(e);
         if (!combo) return;
         if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[a-z]$/i.test(e.key)) {
-          draft = (draft.length >= 2 || draft.includes("+") ? "" : draft) + e.key.toLowerCase();
+          draft = (draft.length >= 3 || draft.includes("+") ? "" : draft) + e.key.toLowerCase();
         } else draft = combo;
         box.value = prettyKeys(draft);
       };

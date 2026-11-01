@@ -14,7 +14,7 @@ export function normalizeKeys(raw: string): string | null {
   if (new Set(mods).size !== mods.length || mods.some((m) => !MODS.includes(m))) return null;
   const ordered = MODS.filter((m) => mods.includes(m));
   if (!mods.length) {
-    if (/^[a-z]{1,2}$/.test(key) || /^[0-9]$/.test(key) || NAMED.test(key)) return key;
+    if (/^[a-z]{1,3}$/.test(key) || /^[0-9]$/.test(key) || NAMED.test(key)) return key;
     return null;
   }
   if (/^[a-z0-9]$/.test(key) || NAMED.test(key) || /^[-=,./;'[\]\\`]$/.test(key)) return [...ordered, key].join("+");
@@ -23,7 +23,7 @@ export function normalizeKeys(raw: string): string | null {
 
 export function prettyKeys(k: string): string {
   if (!k) return "";
-  if (/^[a-z]{1,2}$/.test(k)) return k.toUpperCase();
+  if (/^[a-z]{1,3}$/.test(k)) return k.toUpperCase();
   return k.split("+").map((p) => (p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1))).join("+");
 }
 

@@ -1,7 +1,7 @@
 /**
  * Keyboard command registry (BIM + Blender hybrid).
  *
- * Two-letter sequences (BIM-style): WA = Wall, CM = Column.
+ * Letter sequences of 1–3 letters (BIM-style): WA = Wall, CM = Column, KSX…
  * Single-letter modals (Blender-style): G = move gizmo, R = rotate, S = scale.
  * Standard modifiers: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, Ctrl+A, Delete, Esc.
  *
@@ -74,10 +74,11 @@ class ShortcutRegistry {
     return null;
   }
 
-  private matchSeqPrefix(prefix: string): Shortcut[] {
+  /** Letter-only sequences (2–3 letters) that start with `prefix` and are longer than it. */
+  private matchLonger(prefix: string): Shortcut[] {
     const out: Shortcut[] = [];
     for (const s of this.shortcuts.values()) {
-      if (s.keys.length === 2 && s.keys.startsWith(prefix)) {
+      if (/^[a-z]{2,3}$/.test(s.keys) && s.keys.length > prefix.length && s.keys.startsWith(prefix)) {
         if (!s.when || s.when()) out.push(s);
       }
     }
@@ -123,34 +124,31 @@ class ShortcutRegistry {
       }
     }
 
-    // Pure letter → sequence logic.
+    // Pure letter → sequence logic (1–3 letters).
     if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[a-z]$/.test(key)) {
-      const candidate = this.buffer + key;
-      // Is this a complete two-letter command?
-      const exactTwo = this.matchExact(candidate);
-      if (exactTwo && this.buffer.length === 1) {
-        this.fire(exactTwo, e);
-        return;
-      }
-      // Does candidate prefix any two-letter command?
-      const prefixes = this.matchSeqPrefix(candidate);
-      if (prefixes.length) {
-        e.preventDefault();
-        this.buffer = candidate;
-        if (this.timer != null) clearTimeout(this.timer);
-        this.timer = window.setTimeout(() => {
-          this.timer = null;
-          const single = this.matchExact(key);
-          if (single && this.buffer === key) single.handler(e);
-          this.resetBuffer();
-        }, SEQ_TIMEOUT);
-        return;
-      }
-      // No prefix; check single-letter exact.
-      const single = this.matchExact(key);
-      if (single) {
-        this.fire(single, e);
-        return;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const candidate = (attempt === 0 ? this.buffer : "") + key;
+        const exact = candidate.length <= 3 ? this.matchExact(candidate) : null;
+        const longer = candidate.length < 3 ? this.matchLonger(candidate) : [];
+        if (exact && !longer.length) {
+          this.fire(exact, e);
+          return;
+        }
+        if (longer.length) {
+          // More keys may follow: wait; if they don't, run the shorter match (if any).
+          e.preventDefault();
+          this.buffer = candidate;
+          if (this.timer != null) clearTimeout(this.timer);
+          this.timer = window.setTimeout(() => {
+            this.timer = null;
+            const done = this.buffer === candidate ? this.matchExact(candidate) : null;
+            this.resetBuffer();
+            if (done) { try { done.handler(e); } catch (err) { console.error("[shortcuts] handler failed", done.id, err); } }
+          }, SEQ_TIMEOUT);
+          return;
+        }
+        if (!this.buffer) break; // nothing buffered: a fresh key was already evaluated
+        this.resetBuffer();       // sequence broken: retry this key as a new start
       }
       this.resetBuffer();
       return;
