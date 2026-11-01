@@ -7,21 +7,39 @@ on: [push, pull_request, workflow_dispatch]
 jobs:
   roundtrip:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: node scripts/golden-roundtrip.mjs
+
+      - name: Install dependencies
+        env:
+          npm_config_registry: https://registry.npmjs.org/
+        # Match unit-tests / deploy / native-bim: lockfile still has Fiber/Drei peer mismatch.
+        run: npm ci --legacy-peer-deps
+
+      - name: Build
+        run: npm run build
+
+      - name: Golden round-trip
+        run: node scripts/golden-roundtrip.mjs
+
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: interop-report
           path: interop-report.json
+          if-no-files-found: ignore
+
       - name: fail on snapshot regression
         run: |
+          if [ ! -d test/fixtures/ifc-corpus/snapshots ]; then
+            echo "::notice::No golden snapshots yet (P1-03/P1-04) — skipping regression gate."
+            exit 0
+          fi
           git diff --exit-code test/fixtures/ifc-corpus/snapshots ||
             (echo '::error::Interop regression: inspect interop-report.json' && exit 1)
