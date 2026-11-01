@@ -4,7 +4,8 @@
  * Wraps an absolutely-positioned element with:
  *   • Drag by header (or by whole element if no header given)
  *   • Resize from any of 8 edges/corners
- *   • Dock to left / right / floating — snap when dragged near an edge
+ *   • Dock to left / right / top / bottom / floating — snap (with a preview) when dragged near an edge;
+ *     right-click the header for a Dock menu
  *   • Persists size + position + dock state in localStorage per panel ID
  *
  * Usage:
@@ -19,7 +20,7 @@
  */
 import { ctx } from "../core/context";
 
-export type DockSide = "left" | "right" | "float";
+export type DockSide = "left" | "right" | "top" | "bottom" | "float";
 
 export interface DockOptions {
   id: string;
@@ -166,6 +167,14 @@ export function makeDockable(panel: HTMLElement, opts: DockOptions): DockHandle 
       panel.style.top = `${margin}px`;
       panel.style.width = `${Math.min(state.width, hostRect.width - margin * 2)}px`;
       panel.style.height = `${Math.min(state.height, hostRect.height - margin * 2)}px`;
+    } else if (state.dock === "top" || state.dock === "bottom") {
+      panel.style.left = `${margin}px`;
+      panel.style.right = "auto";
+      panel.style.width = `${Math.max(minW, hostRect.width - margin * 2)}px`;
+      const h = Math.min(state.height, hostRect.height - margin * 2);
+      panel.style.height = `${h}px`;
+      if (state.dock === "top") { panel.style.top = `${margin}px`; panel.style.bottom = "auto"; }
+      else { panel.style.top = `${Math.max(margin, hostRect.height - h - margin)}px`; panel.style.bottom = "auto"; }
     } else if (state.dock === "right") {
       panel.style.right = `${margin}px`;
       panel.style.left = "auto";
@@ -290,6 +299,34 @@ const handleEls: HTMLDivElement[] = [];
     moved: boolean;
   } | null = null;
 
+  /** Edge the panel would dock to right now (nearest within the snap threshold), or null. */
+  function snapTarget(): DockSide | null {
+    const hr = host.getBoundingClientRect();
+    const d: Array<[DockSide, number]> = [
+      ["left", state.x],
+      ["right", hr.width - (state.x + state.width)],
+      ["top", state.y],
+      ["bottom", hr.height - (state.y + state.height)],
+    ];
+    d.sort((a, b) => a[1] - b[1]);
+    return d[0][1] < snapThreshold ? d[0][0] : null;
+  }
+  let previewEl: HTMLDivElement | null = null;
+  function showPreview(side: DockSide): void {
+    const hr = host.getBoundingClientRect();
+    if (!previewEl) {
+      previewEl = document.createElement("div");
+      previewEl.style.cssText = "position:absolute;z-index:9;pointer-events:none;border:2px solid #38bdf8;background:rgba(56,189,248,.14);border-radius:6px;";
+      host.appendChild(previewEl);
+    }
+    const w = side === "top" || side === "bottom" ? hr.width - margin * 2 : Math.min(state.width, hr.width - margin * 2);
+    const h = Math.min(state.height, hr.height - margin * 2);
+    previewEl.style.width = `${w}px`; previewEl.style.height = `${h}px`;
+    previewEl.style.left = side === "right" ? `${hr.width - w - margin}px` : `${margin}px`;
+    previewEl.style.top = side === "bottom" ? `${hr.height - h - margin}px` : `${margin}px`;
+  }
+  function hidePreview(): void { previewEl?.remove(); previewEl = null; }
+
   function onDragDown(e: PointerEvent): void {
     // Only primary button; ignore resize handles and interactive content.
     if (e.button !== 0) return;
@@ -356,22 +393,20 @@ const handleEls: HTMLDivElement[] = [];
     state.y = Math.max(0, Math.min(hostRect.height - 40, state.y));
 
     applyLayout();
+    const t = snapTarget();
+    if (t) showPreview(t); else hidePreview();
   }
 
   function onDragUp(e: PointerEvent): void {
     if (!drag) return;
     const moved = drag.moved;
     drag = null;
-    if (!moved) return;
+    if (!moved) { hidePreview(); return; }
 
-    // Snap to left / right if within threshold.
-    const hostRect = host.getBoundingClientRect();
-    const rightEdge = state.x + state.width;
-    if (state.x < snapThreshold) {
-      state.dock = "left";
-    } else if (rightEdge > hostRect.width - snapThreshold) {
-      state.dock = "right";
-    }
+    // Snap to the nearest edge (left / right / top / bottom) within the threshold.
+    const target = snapTarget();
+    hidePreview();
+    if (target) state.dock = target;
     applyLayout();
     saveState();
   }
@@ -441,7 +476,7 @@ const handleEls: HTMLDivElement[] = [];
         });
         const dockBtn = makeControl(
           state.dock === "float" ? "⇲" : "⇱",
-          state.dock === "float" ? "Dock right" : "Float window",
+          state.dock === "float" ? "Dock right (right-click the title bar for other sides)" : "Float window",
           () => { dock(state.dock === "float" ? "right" : "float"); },
         );
         controlsHost.append(minBtn, dockBtn);
@@ -454,7 +489,8 @@ const handleEls: HTMLDivElement[] = [];
   }
 
   function cycleDock(): void {
-    dock(state.dock === "right" ? "float" : state.dock === "float" ? "left" : "right");
+    const order: DockSide[] = ["right", "bottom", "left", "top", "float"];
+    dock(order[(order.indexOf(state.dock) + 1) % order.length]);
   }
 
   function minimize(): void {
@@ -472,6 +508,33 @@ const handleEls: HTMLDivElement[] = [];
 
   // Header cursor hint
   if (opts.header) opts.header.style.cursor = "grab";
+
+  // Right-click the title bar -> Dock menu (all four sides, floating).
+  panel.setAttribute("data-obs-ui", "1"); // viewport input/context handlers leave panels alone
+  const onHeaderMenu = (e: MouseEvent) => {
+    const t = e.target as HTMLElement;
+    if (opts.header && !opts.header.contains(t)) return;
+    if (t.closest("input,textarea,select")) return;
+    e.preventDefault(); e.stopPropagation();
+    document.getElementById("obs-dock-menu")?.remove();
+    const m = document.createElement("div");
+    m.id = "obs-dock-menu"; m.setAttribute("data-obs-ui", "1");
+    m.style.cssText = `position:fixed;z-index:10001;left:${e.clientX}px;top:${e.clientY}px;min-width:150px;background:#1e1f26;color:#e2e8f0;border:1px solid #3a3a4a;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.55);font:12px system-ui,sans-serif;padding:4px 0`;
+    const items: Array<[string, DockSide]> = [["Dock left", "left"], ["Dock right", "right"], ["Dock top", "top"], ["Dock bottom", "bottom"], ["Floating", "float"]];
+    for (const [label, side] of items) {
+      const r = document.createElement("div");
+      r.textContent = (state.dock === side ? "✓ " : "\u00a0\u00a0 ") + label;
+      r.style.cssText = "padding:6px 14px;cursor:pointer";
+      r.onmouseenter = () => { r.style.background = "#2c2d38"; };
+      r.onmouseleave = () => { r.style.background = ""; };
+      r.onclick = () => { m.remove(); dock(side); };
+      m.appendChild(r);
+    }
+    document.body.appendChild(m);
+    const close = (ev: Event) => { if (!m.contains(ev.target as Node)) { m.remove(); window.removeEventListener("pointerdown", close, true); } };
+    window.addEventListener("pointerdown", close, true);
+  };
+  (opts.header ?? panel).addEventListener("contextmenu", onHeaderMenu);
 
   // ── Public handle ──
   let visible = panel.style.display !== "none";
@@ -521,10 +584,12 @@ const handleEls: HTMLDivElement[] = [];
       opts.header.removeEventListener("pointerdown", onDragDown);
       opts.header.removeEventListener("pointermove", onDragMove);
       opts.header.removeEventListener("pointerup", onDragUp);
+      opts.header.removeEventListener("contextmenu", onHeaderMenu);
       opts.header.style.cursor = "";
     }
     opts.header = el ?? undefined;
     const target = opts.header ?? panel;
+    target.addEventListener("contextmenu", onHeaderMenu);
     target.addEventListener("pointerdown", onDragDown);
     target.addEventListener("pointermove", onDragMove);
     target.addEventListener("pointerup", onDragUp);
@@ -546,6 +611,8 @@ const handleEls: HTMLDivElement[] = [];
     target.removeEventListener("pointerdown", onDragDown);
     target.removeEventListener("pointermove", onDragMove);
     target.removeEventListener("pointerup", onDragUp);
+    target.removeEventListener("contextmenu", onHeaderMenu);
+    hidePreview();
   }
 
   // Initial layout. Window chrome is opt-in (windowControls).
