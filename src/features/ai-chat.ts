@@ -755,6 +755,42 @@ const PRESETS: Preset[] = [
     cfg: { kind: "ollama", endpoint: "http://localhost:11434", model: "command-r" },
   },
   {
+    group: "Local · coding",
+    label: "Ollama · qwen2.5-coder",
+    needsKey: false,
+    cfg: { kind: "ollama", endpoint: "http://localhost:11434", model: "qwen2.5-coder" },
+  },
+  {
+    group: "Local · coding",
+    label: "Ollama · qwen2.5-coder:7b",
+    needsKey: false,
+    cfg: { kind: "ollama", endpoint: "http://localhost:11434", model: "qwen2.5-coder:7b" },
+  },
+  {
+    group: "Local · coding",
+    label: "Ollama · qwen2.5-coder:14b",
+    needsKey: false,
+    cfg: { kind: "ollama", endpoint: "http://localhost:11434", model: "qwen2.5-coder:14b" },
+  },
+  {
+    group: "Local · coding",
+    label: "Ollama · deepseek-coder-v2",
+    needsKey: false,
+    cfg: { kind: "ollama", endpoint: "http://localhost:11434", model: "deepseek-coder-v2" },
+  },
+  {
+    group: "Local · coding",
+    label: "Ollama · codellama",
+    needsKey: false,
+    cfg: { kind: "ollama", endpoint: "http://localhost:11434", model: "codellama" },
+  },
+  {
+    group: "Local · coding",
+    label: "Ollama · starcoder2",
+    needsKey: false,
+    cfg: { kind: "ollama", endpoint: "http://localhost:11434", model: "starcoder2" },
+  },
+  {
     group: "Local",
     label: "LM Studio",
     needsKey: false,
@@ -931,6 +967,22 @@ function renderSettings(): void {
     renderSettings();
   };
   settingsPane.appendChild(row("Provider", pSel));
+
+  if (cfg.kind === "ollama") {
+    const tip = document.createElement("div");
+    tip.style.cssText =
+      "font-size:10.5px;line-height:1.5;color:var(--text-secondary,#a0a6b5);" +
+      "padding:8px 10px;margin:2px 0 6px;border-radius:6px;" +
+      "background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.22)";
+    tip.innerHTML =
+      "<b style=\"color:var(--accent,#38bdf8)\">Local Ollama</b><br>" +
+      "1. Run <code style=\"font-size:10px\">ollama serve</code> on this PC<br>" +
+      "2. Pull models: <code style=\"font-size:10px\">ollama pull qwen2.5-coder</code><br>" +
+      "3. If you open the app from workers.dev, start Ollama with CORS:<br>" +
+      "&nbsp;&nbsp;<code style=\"font-size:10px\">OLLAMA_ORIGINS=* ollama serve</code><br>" +
+      "4. Click <b>Test connection</b> — your installed models will appear.";
+    settingsPane.appendChild(tip);
+  }
 
   /* ── Endpoint ──
      oninput → saves on every keystroke, so nothing is lost. */
