@@ -48,19 +48,24 @@ function btnCss(active = false): string {
 
 function buildDockBar(dock: DockHandle, onChange: () => void): HTMLDivElement {
   const bar = document.createElement("div");
-  bar.style.cssText = "display:flex;gap:2px;margin-left:auto;margin-right:4px";
+  bar.style.cssText = "display:flex;align-items:center;gap:3px;margin-left:auto;margin-right:6px";
   const sides: Array<{ side: DockSide; label: string; title: string }> = [
-    { side: "left", label: "◀", title: "Dock left" },
-    { side: "right", label: "▶", title: "Dock right" },
-    { side: "top", label: "▲", title: "Dock top" },
-    { side: "bottom", label: "▼", title: "Dock bottom" },
-    { side: "float", label: "⧉", title: "Float" },
+    { side: "left", label: "Left", title: "Dock left" },
+    { side: "right", label: "Right", title: "Dock right" },
+    { side: "top", label: "Top", title: "Dock top" },
+    { side: "bottom", label: "Bottom", title: "Dock bottom" },
+    { side: "float", label: "Float", title: "Float window" },
   ];
   for (const s of sides) {
+    const active = dock.side() === s.side;
     const b = document.createElement("button");
     b.textContent = s.label;
     b.title = s.title;
-    b.style.cssText = btnCss(dock.side() === s.side);
+    b.style.cssText =
+      "padding:3px 7px;font-size:10px;border-radius:4px;cursor:pointer;" +
+      "border:1px solid " + (active ? "rgba(56,189,248,.55)" : "#2a2e3a") + ";" +
+      "background:" + (active ? "rgba(56,189,248,.16)" : "transparent") + ";" +
+      "color:" + (active ? "#38bdf8" : "#a0a6b5");
     b.onpointerdown = (e) => e.stopPropagation();
     b.onclick = (e) => {
       e.stopPropagation();
@@ -128,7 +133,7 @@ export function openToolWindow(id: ToolWindowId): void {
     "display:flex;align-items:center;gap:6px;" +
     "padding:8px 10px;background:#161a22;border-bottom:1px solid #2a2e3a;" +
     "border-radius:8px 8px 0 0;cursor:grab;user-select:none;touch-action:none;" +
-    "flex-shrink:0;min-height:40px;height:40px;box-sizing:border-box;" +
+    "flex-shrink:0;min-height:40px;box-sizing:border-box;" +
     "position:sticky;top:0;z-index:5";
 
   const title = document.createElement("b");
