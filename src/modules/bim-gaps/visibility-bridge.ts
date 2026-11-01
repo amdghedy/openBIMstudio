@@ -92,6 +92,23 @@ function anyOverride(elements: Any[]): boolean {
   return false;
 }
 
+/** Visit meshes in real Three.js objects and lightweight test/adaptor objects. */
+function visitMeshes(root: Any, callback: (object: Any) => void): void {
+  if (!root) return;
+
+  // Preserve Three.js' optimized traversal for real Object3D instances.
+  if (typeof root.traverse === "function") {
+    root.traverse(callback);
+    return;
+  }
+
+  // Test doubles and adapters may expose only isMesh / children.
+  if (root.isMesh) callback(root);
+  if (Array.isArray(root.children)) {
+    for (const child of root.children) visitMeshes(child, callback);
+  }
+}
+
 function setOpacity(mesh: THREE.Mesh | Any, opacity: number): void {
   const mats: Any[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   for (const m of mats) {
@@ -132,7 +149,7 @@ export function applyAuthored(force = false): number {
     top.visible = vis;
     if (!vis) hiddenCount++;
     const gs = visibilityFilter.graphicStyle(ve);
-    top.traverse((o: any) => { if (o.isMesh) setOpacity(o, vis ? gs.opacity : 1); });
+    visitMeshes(top, (o) => { if (o.isMesh) setOpacity(o, vis ? gs.opacity : 1); });
   }
   lastActive = active;
   return hiddenCount;

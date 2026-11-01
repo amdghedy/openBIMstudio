@@ -60,6 +60,16 @@ const vis = () => Object.fromEntries(group.children.map((m) => [m.userData.eleme
     visibilityFilter.resetTemporary(); await tick();
     assert.deepStrictEqual(vis(), { w1: true, w2: true, s1: true });
   });
+  await t("visibility styling traverses nested plain-object groups without Three.js traverse()", async () => {
+    const original = group.children[0];
+    const nestedMesh = mesh("w1");
+    group.children[0] = { userData: { elementId: "w1" }, visible: true, children: [nestedMesh] };
+    visibilityFilter.setCategoryOverride("wall", { halftone: true }); await tick();
+    assert.ok(nestedMesh.material.transparent && nestedMesh.material.opacity <= 0.4, `opacity ${nestedMesh.material.opacity}`);
+    visibilityFilter.clearCategoryOverrides(); await tick();
+    assert.ok(!nestedMesh.material.transparent && nestedMesh.material.opacity === 1);
+    group.children[0] = original;
+  });
   await t("isolate: only the isolated authored element stays; linked models are hidden", async () => {
     calls.length = 0;
     visibilityFilter.isolateElements(["w2"]); await tick();
