@@ -22,9 +22,11 @@ import {
 
 const ctxMenu = document.createElement("div");
 ctxMenu.style.cssText =
-  "position:absolute;z-index:100;display:none;min-width:250px;overflow:visible;" +
+  "position:fixed;z-index:10000;display:none;min-width:250px;overflow:visible;" +
   "background:var(--bg-floating,#1e1f26);border:1px solid var(--border-default,#3a3a4a);border-radius:8px;" +
   "box-shadow:0 10px 30px rgba(0,0,0,.55);font:12px system-ui,sans-serif;color:var(--text-primary,#e2e8f0);padding:4px 0";
+ctxMenu.id = "obs-context-menu";
+ctxMenu.setAttribute("data-obs-ui", "1");
 ctxMenu.addEventListener("mousedown", (e) => e.stopPropagation());
 
 function closeCtxMenu() {
@@ -178,15 +180,16 @@ async function openCtxMenu(e: MouseEvent) {
   });
 
   if (!ctxMenu.isConnected) {
-    (ctx.rightHost ?? document.body).appendChild(ctxMenu);
+    // Outside the viewport host: pointer events on menu rows must never reach the viewport's
+    // capture handlers (they treated a menu click as an empty-space click and cleared the
+    // selection before the item ran).
+    document.body.appendChild(ctxMenu);
   }
   ctxMenu.innerHTML = "";
   renderMenuItems(ctxMenu, items);
   ctxMenu.style.display = "block";
-  const host = ctx.rightHost ?? document.body;
-  const hr = host.getBoundingClientRect();
-  let x = e.clientX - hr.left;
-  let y = e.clientY - hr.top;
+  let x = e.clientX;
+  let y = e.clientY;
   // keep the whole menu on screen (flip up / left when it would overflow)
   const mw = ctxMenu.offsetWidth, mh = ctxMenu.offsetHeight;
   if (e.clientX + mw > window.innerWidth - 4) x = Math.max(0, x - mw);
