@@ -14,4 +14,17 @@ ok(m.isStaleDrag(0, true), "buttons=0 while dragging -> stale");
 ok(!m.isStaleDrag(1, true), "left button still down -> live drag");
 ok(!m.isStaleDrag(0, false), "not dragging -> nothing to release");
 ok(!m.isStaleDrag(undefined, true), "unknown buttons -> do not guess");
+// native gizmo drag detection / forced end
+let upCalls = 0;
+const tc = { dragging: true, axis: "X", pointerUp() { upCalls++; } };
+const idle = { dragging: false, axis: null, pointerUp() {} };
+const item = { three: { children: [], geometry: {} }, helper: { x: 1 }, _controls: tc, other: { nested: { controls: idle } } };
+let found = m.findDraggingControls(item);
+ok(found.length === 1 && found[0] === tc, "finds the dragging gizmo controls");
+ok(m.findDraggingControls({ a: { b: { c: { deep: tc } } } }).length === 0, "does not search unboundedly deep");
+ok(m.findDraggingControls({ controls: idle }).length === 0, "idle controls are ignored");
+m.endControlsDrag(tc);
+ok(upCalls === 1 && tc.dragging === false && tc.axis === null, "forced end calls pointerUp and clears the state");
+const cyc = { dragging: false, pointerUp() {} }; cyc.self = cyc; cyc.axis = null;
+ok(m.findDraggingControls({ c: cyc }).length === 0, "cyclic structures are safe");
 console.log(`section-handle-filter: ${n} checks OK`);

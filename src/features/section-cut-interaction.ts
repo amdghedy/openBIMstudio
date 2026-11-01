@@ -14,7 +14,7 @@ import * as OBC from "@thatopen/components";
 import { ctx } from "../core/context";
 import { forceResumeCameraControls } from "../core/camera-gate";
 import { whenNavigationBlocked } from "./navigation";
-import { isGrabbableHandle, isStaleDrag } from "./section-handle-filter";
+import { isGrabbableHandle, isStaleDrag, findDraggingControls, endControlsDrag } from "./section-handle-filter";
 
 type Any = Record<string, any>;
 
@@ -416,6 +416,25 @@ function movePlaneAlongNormal(item: Any, clientX: number, clientY: number): void
 
 /* -- Hover lock ------------------------------------------------------------ */
 
+/** End any clipper arrow (gizmo) drag that is still running. Returns true if one was ended. */
+function endNativeClipperDrags(): boolean {
+  let ended = false;
+  try {
+    const list = (ctx as Any).clipper?.list;
+    if (!list) return false;
+    const entries: Any[] = list[Symbol.iterator] ? [...list] : Object.values(list);
+    for (const entry of entries) {
+      const item = Array.isArray(entry) ? entry[1] : entry;
+      for (const c of findDraggingControls(item)) { endControlsDrag(c); ended = true; }
+    }
+  } catch { /* */ }
+  if (ended) {
+    try { forceResumeCameraControls(); } catch { /* */ }
+    try { const c = (ctx as Any).world?.camera?.controls; if (c) c.enabled = true; } catch { /* */ }
+  }
+  return ended;
+}
+
 function isArrowMode(): boolean {
   return hoverArrow || dragging;
 }
@@ -544,6 +563,7 @@ function onPointerMove(e: PointerEvent): void {
   }
   // The button was released but we never saw the pointerup (swallowed by another handler,
   // released over UI, lost capture): end the drag instead of leaving the arrow stuck to the mouse.
+  if (e.buttons === 0) endNativeClipperDrags();
   if (isStaleDrag(e.buttons, dragging)) {
     releaseEverything(e);
     setArrowHover(!!pickClipperHandle(e.clientX, e.clientY));
@@ -586,6 +606,8 @@ function onPointerDown(e: PointerEvent): void {
 }
 
 function onPointerUp(e: PointerEvent): void {
+  // The gizmo arrow ends its drag only on a pointerup that reaches the canvas; make sure it ends.
+  if (endNativeClipperDrags()) { releaseEverything(e); setArrowHover(false); return; }
   if (!dragging) return;
   if (pointerId != null && e.pointerId !== pointerId) return;
   releaseEverything(e);
@@ -624,7 +646,7 @@ export function setupSectionCutInteraction(): void {
   window.addEventListener("pointerup", onPointerUp, true);
   window.addEventListener("pointercancel", onPointerUp, true);
   // belt and braces: any other way a drag can end must release the arrow too
-  const forceRelease = () => { if (dragging) { releaseEverything(null); setArrowHover(false); } };
+  const forceRelease = () => { const n = endNativeClipperDrags(); if (dragging || n) { releaseEverything(null); setArrowHover(false); } };
   window.addEventListener("mouseup", forceRelease, true);
   window.addEventListener("blur", forceRelease);
   host.addEventListener("lostpointercapture", forceRelease, true);
@@ -641,9 +663,9 @@ export function setupSectionCutInteraction(): void {
     void import("../core/input-router").then((mod: Any) => {
       // Priority 200 - above gizmo(100), box-select(50), selection/authoring
       mod.inputRouter?.subscribe?.((g: Any) => {
-        if (!hoverArrow && !dragging) return false;
-        // Claim EVERY gesture so select / window-select / pan / orbit cannot run
-        return true;
+        // Claim gestures only while WE drag the arrow. Claiming on mere hover made the router swallow the
+        // pointerup of the gizmo's own drag, leaving the arrow stuck to the mouse.
+        return dragging;
       }, 200);
     });
   } catch {
