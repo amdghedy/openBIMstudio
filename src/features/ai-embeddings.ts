@@ -179,8 +179,13 @@ export async function getIndexStats(): Promise<IndexStats> {
  * same-origin proxy, while deployed builds use the configured Ollama endpoint.
  */
 export function resolveOllamaBaseUrl(endpoint: string): string {
-  const configured = (endpoint || DEFAULT_EMBEDDING_CONFIG.endpoint).trim();
-  const isDefaultLocal = /^https?:\\/\\/(localhost|127\\.0\\.0\\.1):11434\\/?$/i.test(configured);
+  let configured = (endpoint || DEFAULT_EMBEDDING_CONFIG.endpoint).trim();
+  while (configured.endsWith("/")) configured = configured.slice(0, -1);
+  const isDefaultLocal =
+    configured === "http://localhost:11434" ||
+    configured === "https://localhost:11434" ||
+    configured === "http://127.0.0.1:11434" ||
+    configured === "https://127.0.0.1:11434";
   try {
     const host = typeof location !== "undefined" ? location.hostname : "";
     // Preserve the Vite proxy only for the default local Ollama endpoint.
@@ -189,7 +194,7 @@ export function resolveOllamaBaseUrl(endpoint: string): string {
   } catch {
     /* location may be unavailable in non-browser test environments */
   }
-  return configured.replace(/\\/+$/, "");
+  return configured;
 }
 
 async function embedBatchOllama(
