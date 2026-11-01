@@ -1,0 +1,17 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "rules": {
+    "no-restricted-syntax": ["error",
+      { "selector": "MemberExpression[object.name='window'][property.name=/^__obs/]",
+        "message": "window.__obs* bridges are frozen. Use src/core/registry.ts." },
+      { "selector": "Identifier[name=/^__obs/]",
+        "message": "Global __obs* state is frozen. Use the typed registry." }],
+    "@typescript-eslint/no-explicit-any": "error"
+  },
+  "overrides": [
+    { "files": ["src/modules/**/*.ts"],
+      "rules": { "@typescript-eslint/no-explicit-any": "error" } }
+  ]
+}

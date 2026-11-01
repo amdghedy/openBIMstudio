@@ -1,0 +1,23 @@
+name: golden-roundtrip
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  roundtrip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/golden-roundtrip.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interop-report
+          path: interop-report.json
+      - name: fail on snapshot regression
+        run: |
+          git diff --exit-code test/fixtures/ifc-corpus/snapshots ||
+            (echo '::error::Interop regression: inspect interop-report.json' && exit 1)
