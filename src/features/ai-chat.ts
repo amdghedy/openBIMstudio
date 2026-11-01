@@ -73,6 +73,7 @@ Tool usage:
 - Call list_commands to discover what actions are available.
 - Call run_command with the id from list_commands to execute.
 - Use semantic_search for natural-language queries about elements.
+- Auto-modelling from a linked CAD drawing: call list_cad_links, then create_walls_from_cad (it detects wall face-line pairs and models real walls). Use dryRun first when the drawing is large or ambiguous, then report how many walls and which thicknesses were created. If no layer looks like walls, ask which layer to use.
 - Destructive tools (delete_elements, clear_all_elements) will be shown to the user for approval — do not hesitate to call them when the user asks.`;
 
 const MAX_ITERATIONS = 8;

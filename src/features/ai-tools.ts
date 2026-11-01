@@ -281,6 +281,34 @@ export const TOOLS: ToolDef[] = [
     },
   },
 
+  // ── Auto-modelling from linked CAD ─────────────────────────────────
+  {
+    name: "list_cad_links",
+    description:
+      "Lists linked CAD drawings (DWG/DXF) with their layers, line counts per layer and whether a layer looks like walls. Call this before creating elements from a CAD link.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "create_walls_from_cad",
+    description:
+      "Detects the walls in a linked CAD drawing and models them as native walls. Pairs the two parallel face lines of each wall into ONE centre-line wall with the measured thickness, merges broken/duplicate lines, bridges door and window openings, and joins corners. " +
+      "If no layers are given, layers whose names look like walls are used. Use dryRun=true to report what would be created without creating anything. Use includeSingleLines=true when the drawing shows each wall as a single line.",
+    parameters: {
+      type: "object",
+      properties: {
+        linkId: { type: "string", description: "CAD link id (default: the only / first link)." },
+        layers: { type: "array", items: { type: "string" }, description: "Layer names to read. Default: auto-detect wall layers." },
+        height: { type: "number", description: "Wall height in metres (default 3)." },
+        defaultThickness: { type: "number", description: "Thickness (m) for single-line walls (default 0.2)." },
+        minThickness: { type: "number", description: "Thinnest wall in metres (default 0.05)." },
+        maxThickness: { type: "number", description: "Thickest wall in metres (default 0.6)." },
+        includeSingleLines: { type: "boolean", description: "Also create walls from lines that have no parallel partner." },
+        bridgeGap: { type: "number", description: "Largest opening (m) bridged into one wall (default 1.2; 0 disables)." },
+        dryRun: { type: "boolean", description: "Only analyse; do not create walls." },
+      },
+    },
+  },
+
   // ── Destructive ────────────────────────────────────────────────────
   {
     name: "delete_elements",
@@ -331,6 +359,9 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       case "list_schedule_columns": return await listScheduleColumnsTool();
       case "create_schedule": return await createScheduleTool(call.args);
       case "run_saved_schedule": return await runSavedScheduleTool(call.args);
+
+      case "list_cad_links": return await listCadLinksTool();
+      case "create_walls_from_cad": return await createWallsFromCadTool(call.args);
 
       case "delete_elements": return await deleteElementsTool(call.args);
       case "clear_all_elements": return await clearAllElementsTool();
@@ -1003,6 +1034,91 @@ async function clearAllElementsTool(): Promise<ToolResult> {
 /* ═════════════════════════════════════════════════════════════════════════
    Setup — register AI-friendly commands
    ═════════════════════════════════════════════════════════════════════════ */
+/* ═════════════════════════════════════════════════════════════════════════
+   Auto-modelling from linked CAD
+   ═════════════════════════════════════════════════════════════════════════ */
+const WALL_LAYER_RE = /wall|a-wall|mur|muro|parede|wand|walls|جدار|حائط|حوائط/i;
+
+function cadApi(): any {
+  return (ctx.features as any)?.cadLinks ?? (window as any).__obsCadLinks ?? null;
+}
+
+async function listCadLinksTool(): Promise<ToolResult> {
+  const api = cadApi();
+  const links: any[] = api?.list?.() ?? [];
+  if (!links.length) return { ok: false, error: "No CAD drawing is linked. Link a DWG/DXF first (Insert > Link CAD)." };
+  const { collectLayerSegments } = await import("../modules/cad-link/core");
+  return {
+    ok: true,
+    data: links.map((l) => {
+      const layers = [...new Set<string>(l.geoPlan.groups.map((g: any) => g.layer))].map((name) => ({
+        name,
+        lines: collectLayerSegments(l.geoPlan, new Set([name]), 0.05).length,
+        looksLikeWalls: WALL_LAYER_RE.test(name),
+      }));
+      return { id: l.id, name: l.name, elevation: l.options?.elevation ?? 0, layers };
+    }),
+  };
+}
+
+async function createWallsFromCadTool(args: Record<string, any>): Promise<ToolResult> {
+  const api = cadApi();
+  const links: any[] = api?.list?.() ?? [];
+  if (!links.length) return { ok: false, error: "No CAD drawing is linked. Link a DWG/DXF first (Insert > Link CAD)." };
+  const link = (args.linkId ? links.find((l) => l.id === args.linkId) : links[0]) as any;
+  if (!link) return { ok: false, error: `CAD link not found: ${args.linkId}` };
+
+  const allLayers: string[] = [...new Set<string>(link.geoPlan.groups.map((g: any) => g.layer))];
+  let layers: string[] = Array.isArray(args.layers) && args.layers.length ? args.layers.map(String) : allLayers.filter((n) => WALL_LAYER_RE.test(n));
+  const unknown = layers.filter((n) => !allLayers.includes(n));
+  if (unknown.length) return { ok: false, error: `Unknown layer(s): ${unknown.join(", ")}. Available: ${allLayers.join(", ")}` };
+  if (!layers.length) {
+    return { ok: false, error: `No layer name looks like walls. Pick the wall layer(s) from: ${allLayers.join(", ")} and call again with layers.` };
+  }
+
+  const { collectLayerSegments } = await import("../modules/cad-link/core");
+  const { detectWalls } = await import("../modules/cad-link/wall-detect");
+  const segs = collectLayerSegments(link.geoPlan, new Set(layers), 0.02);
+  if (!segs.length) return { ok: false, error: `No lines on layer(s): ${layers.join(", ")}` };
+
+  const num = (v: any, d: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
+  const res = detectWalls(segs, {
+    minThickness: num(args.minThickness, 0.05),
+    maxThickness: num(args.maxThickness, 0.6),
+    defaultThickness: num(args.defaultThickness, 0.2),
+    includeSingleLines: args.includeSingleLines === true,
+    bridgeGap: args.bridgeGap === 0 ? 0 : num(args.bridgeGap, 1.2),
+  });
+  const summary = {
+    link: link.name, layers, inputLines: res.stats.inputSegments, mergedLines: res.stats.mergedLines,
+    walls: res.walls.length, fromParallelPairs: res.stats.pairedWalls, fromSingleLines: res.stats.singleLineWalls,
+    thicknessesMetres: res.stats.thicknesses,
+  };
+  if (!res.walls.length) {
+    return { ok: false, error: "No walls could be detected (no parallel line pairs). If walls are drawn as single lines, call again with includeSingleLines=true.", data: summary };
+  }
+  if (args.dryRun === true) return { ok: true, data: { ...summary, created: 0, dryRun: true } };
+  if (res.walls.length > 3000) return { ok: false, error: `${res.walls.length} walls detected - too many to create at once. Restrict the layers.`, data: summary };
+
+  const auth: any = await import("./authoring");
+  const height = num(args.height, 3);
+  const elevation = link.options?.elevation ?? 0;
+  // The detected lines are centre lines: model them on the wall centre line, then restore the user's setting.
+  const prevLine = auth.getWallLocationLine?.(); const prevOff = auth.getWallOffset?.();
+  try { auth.setWallLocationLine?.("wall-centerline"); auth.setWallOffset?.(0); } catch { /* */ }
+  let created = 0;
+  try {
+    for (const w of res.walls) {
+      try { await auth.addLinearElement("wall", w.x1, w.z1, w.x2, w.z2, elevation, { thickness: w.thickness, height }); created++; }
+      catch (e) { console.warn("[ai-tools] wall failed", e); }
+    }
+  } finally {
+    try { if (prevLine) auth.setWallLocationLine?.(prevLine); if (prevOff != null) auth.setWallOffset?.(prevOff); } catch { /* */ }
+  }
+  try { await executeTool({ id: "t", name: "focus_camera", args: {} }); } catch { /* */ }
+  return { ok: true, data: { ...summary, created, heightMetres: height, elevationMetres: elevation } };
+}
+
 export function setupAiTools(): void {
   registerCommand({
     id: "ai.selectDoors",
