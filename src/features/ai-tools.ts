@@ -200,12 +200,14 @@ export const TOOLS: ToolDef[] = [
   {
     name: "semantic_search",
     description:
-      "Searches element descriptions by meaning. If the index is empty, " +
-      "call build_semantic_index first.",
+      "Searches loaded BIM elements using semantic meaning plus exact lexical " +
+      "matches in IFC attributes, property sets and quantity sets. Optionally " +
+      "restrict results to one loaded model. If the index is empty, build it first.",
     parameters: {
       type: "object",
       properties: {
         query: { type: "string" },
+        modelId: { type: "string", description: "Optional exact model id from get_app_state" },
         limit: { type: "number" },
       },
       required: ["query"],
@@ -773,6 +775,7 @@ async function semanticSearchTool(args: Record<string, any>): Promise<ToolResult
   const query = String(args.query ?? "").trim();
   if (!query) return { ok: false, error: "Query is required" };
   const limit = Math.min(Number(args.limit) || 20, 100);
+  const modelId = args.modelId ? String(args.modelId) : undefined;
   try {
     const mod: any = await import("./ai-embeddings");
     const stats = await mod.getIndexStats();
@@ -784,7 +787,7 @@ async function semanticSearchTool(args: Record<string, any>): Promise<ToolResult
           "ask the user to build it from the settings panel.",
       };
     }
-    const hits = await mod.semanticSearch(query, limit);
+    const hits = await mod.semanticSearch(query, limit, undefined, modelId);
     return { ok: true, data: { query, count: hits.length, hits } };
   } catch (err) {
     return {
