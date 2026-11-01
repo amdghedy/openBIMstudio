@@ -54,3 +54,22 @@ Chapter 10, Table 12), extracted so nothing needs copying out of the document by
 - Where a listing references a helper that is part of your codebase
   (`scanCommandRegistry`, `JournalStore`, `diffModel`, `testEngine`), the contract it
   must satisfy is described in the corresponding plan section and issue body.
+
+## Wiring status in this repo (2026-11-01)
+
+These starters are **not yet wired into the app** — that is deliberate, and done in
+phase order. Until an issue wires a file, the file stays inert:
+
+- `src/core/crashLog.ts` and `src/shell/AppErrorBoundary.tsx` already typecheck clean
+  and live under the normal `tsc --noEmit` program (nothing imports them yet).
+- `src/core/backup.ts` typechecks clean (Node form; browser/OPFS variant is P0-03).
+- `src/core/safeLoad.ts`, `src/core/registry.ts`, `src/core/journal.ts` are excluded
+  from `tsc` via `tsconfig.json` `exclude` because they reference contracts that do
+  not exist yet (`zod` install, real service types, `JournalStore`). The issue that
+  wires each file **removes it from that exclude list** — that removal is the gate.
+- `.github/workflows/golden-roundtrip.yml` is `workflow_dispatch`-only until P1-04;
+  flip its `on:` to `[push, pull_request, workflow_dispatch]` when `diff.ts` and the
+  golden corpus land.
+- `tests/property/*`, `tests/e2e/*`, `playwright.config.ts` are inert: the CI unit
+  battery (`scripts/ci-unit-tests.mjs`) runs an explicit script allow-list, and the
+  typecheck include is `src` only. They activate when P1-05/P1-06/P1-07 wire them.
