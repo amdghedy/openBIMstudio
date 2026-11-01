@@ -164,6 +164,21 @@ export const TOOLS: ToolDef[] = [
 
   // ── Analysis ───────────────────────────────────────────────────────
   {
+    name: "audit_model_data",
+    description:
+      "Runs deterministic IFC data-quality checks on geometry-bearing elements " +
+      "in one or all loaded models. Reports missing GlobalIds, duplicate GlobalIds " +
+      "within each model, category counts, scan coverage and read errors. This is " +
+      "a bounded audit, not a full IFC schema or IDS compliance validation.",
+    parameters: {
+      type: "object",
+      properties: {
+        modelId: { type: "string", description: "Optional exact model id from get_app_state" },
+        maxElementsPerModel: { type: "integer", minimum: 100, maximum: 50000 },
+      },
+    },
+  },
+  {
     name: "run_clash_test",
     description:
       "Runs a clash detection test between Selection A and Selection B.",
@@ -362,6 +377,7 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       case "get_element_properties": return await getElementPropertiesTool(call.args);
       case "get_element_evidence": return await getElementEvidenceTool(call.args);
       case "query_elements": return await queryElementsTool(call.args);
+      case "audit_model_data": return await auditModelDataTool(call.args);
 
       case "run_clash_test": return await runClashTestTool(call.args);
       case "summarize_clashes": return await summarizeClashesTool();
@@ -718,6 +734,105 @@ async function queryElementsTool(args: Record<string, any>): Promise<ToolResult>
 /* ═════════════════════════════════════════════════════════════════════════
    Analysis
    ═════════════════════════════════════════════════════════════════════════ */
+async function auditModelDataTool(args: Record<string, any>): Promise<ToolResult> {
+  const requestedModelId = args.modelId ? String(args.modelId) : undefined;
+  const maxElementsPerModel = Math.min(
+    50000,
+    Math.max(100, Math.floor(Number(args.maxElementsPerModel) || 10000)),
+  );
+  const models = [...ctx.fragments.list.entries()].filter(([id]) =>
+    !requestedModelId || id === requestedModelId,
+  );
+  if (requestedModelId && !models.length) {
+    return { ok: false, error: `Model "${requestedModelId}" is not currently loaded` };
+  }
+  if (!models.length) return { ok: false, error: "No loaded models are available to audit" };
+
+  const audits: any[] = [];
+  for (const [modelId, model] of models) {
+    const getIds = (model as any).getItemsIdsWithGeometry;
+    if (typeof getIds !== "function") {
+      audits.push({ modelId, error: "Model does not expose getItemsIdsWithGeometry" });
+      continue;
+    }
+    let allIds: number[];
+    try {
+      allIds = (await getIds.call(model)) ?? [];
+    } catch (err) {
+      audits.push({ modelId, error: `Could not enumerate model elements: ${err instanceof Error ? err.message : String(err)}` });
+      continue;
+    }
+
+    const ids = allIds.slice(0, maxElementsPerModel);
+    let categories: Record<string, number[]> = {};
+    let categoryReadFailed = false;
+    try {
+      categories = await (model as any).getItemsOfCategories([/.+/]);
+    } catch {
+      categoryReadFailed = true;
+    }
+    const categoryById = new Map<number, string>();
+    for (const [category, categoryIds] of Object.entries(categories ?? {})) {
+      for (const id of (categoryIds as number[]) ?? []) categoryById.set(id, category);
+    }
+
+    const records: any[] = [];
+    let readErrorCount = categoryReadFailed ? 1 : 0;
+    const chunkSize = 500;
+    for (let offset = 0; offset < ids.length; offset += chunkSize) {
+      const chunk = ids.slice(offset, offset + chunkSize);
+      let rows: any[];
+      try {
+        rows = await (model as any).getItemsData(chunk, {
+          attributesDefault: false,
+          attributes: ["GlobalId", "Name", "ObjectType", "PredefinedType"],
+        });
+      } catch {
+        readErrorCount += chunk.length;
+        continue;
+      }
+      for (let index = 0; index < chunk.length; index++) {
+        const item = rows?.[index];
+        if (!item || typeof item !== "object") {
+          readErrorCount++;
+          continue;
+        }
+        const value = (key: string) => item[key]?.value ?? item[key] ?? null;
+        records.push({
+          localId: chunk[index],
+          category: categoryById.get(chunk[index]) ?? "Unknown",
+          globalId: value("GlobalId") == null ? null : String(value("GlobalId")),
+          name: value("Name") == null ? null : String(value("Name")),
+        });
+      }
+    }
+
+    try {
+      const auditModule: any = await import("./ai-model-audit");
+      audits.push(auditModule.auditModelRecords(records, {
+        modelId,
+        modelName: String((model as any)?.name ?? (model as any)?.modelName ?? modelId),
+        totalGeometryElementCount: allIds.length,
+        scannedCount: records.length,
+        readErrorCount,
+        truncated: allIds.length > ids.length,
+      }));
+    } catch (err) {
+      audits.push({ modelId, error: `Audit processing failed: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      auditCount: audits.filter((audit) => !audit.error).length,
+      failedModelCount: audits.filter((audit) => !!audit.error).length,
+      maxElementsPerModel,
+      audits,
+    },
+  };
+}
+
 async function runClashTestTool(_args: Record<string, any>): Promise<ToolResult> {
   const clash = services.tryUse("clash");
   if (!clash) return { ok: false, error: "Clash module not loaded" };
