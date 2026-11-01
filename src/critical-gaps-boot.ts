@@ -97,6 +97,12 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./modules/visibility/visibility-filter");
     m.setupVisibilityFilter?.();
   });
+  // Wire filter → viewport (authored meshes + OBC.Hider for fragments).
+  // Without this, right-click Visibility / review.hide|isolate|reveal only toast.
+  await safe("visibility-bridge", async () => {
+    const m: Any = await import("./modules/bim-gaps/visibility-bridge");
+    m.setupVisibilityBridge?.();
+  });
 
   // Geometry generators
   await safe("stairs", async () => {
