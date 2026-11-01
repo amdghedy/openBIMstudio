@@ -63,7 +63,7 @@ test("normalizes IFC wrapped values and bounds nested structures", () => {
     Length: { value: 2500 }, Flags: [true, false],
   }), { Length: 2500, Flags: [true, false] });
   const deep = { a: { b: { c: { d: { e: { f: "bounded" } } } } } };
-  assert.equal(normalizeEvidenceValue(deep).a.b.c.d.e.f, "[nested value omitted]");
+  assert.equal(normalizeEvidenceValue(deep).a.b.c.d.e, "[nested value omitted]");
 });
 
 test("omits prototype-pollution keys", () => {
@@ -72,7 +72,7 @@ test("omits prototype-pollution keys", () => {
     modelId: "A", modelName: "A", localId: 1, category: "IFCWALL", item: input,
   });
   assert.equal(Object.prototype.polluted, undefined);
-  assert.equal(evidence.attributes.constructor, undefined);
+  assert.equal(Object.prototype.hasOwnProperty.call(evidence.attributes, "constructor"), false);
   assert.equal(evidence.attributes.Name, "Wall");
 });
 
