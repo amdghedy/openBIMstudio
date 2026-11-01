@@ -169,7 +169,8 @@ header.style.cssText =
   "border-bottom:1px solid var(--border-subtle,#1e2029);" +
   "border-top-left-radius:9px;border-top-right-radius:9px;" +
   "background:var(--bg-elevated,#181a23);cursor:grab;user-select:none;" +
-  "flex-shrink:0;min-height:36px";
+  "flex-shrink:0;min-height:40px;height:40px;position:sticky;top:0;z-index:5;" +
+  "box-sizing:border-box";
 
 const settingsPane = document.createElement("div");
 settingsPane.style.cssText =
@@ -513,7 +514,31 @@ function renderHeader(): void {
     closeBtn.style.cssText = smallBtnCss();
     closeBtn.onclick = () => closeAiChat();
 
-    header.append(icon, text, histBtn, gear, clearBtn, closeBtn);
+    // Dock controls — explicit buttons so docking works even if drag-snap is unclear
+    const dockBar = document.createElement("div");
+    dockBar.style.cssText = "display:flex;gap:2px;margin-left:4px";
+    const sides: Array<{ side: "left" | "right" | "top" | "bottom" | "float"; label: string; title: string }> = [
+      { side: "left", label: "◀", title: "Dock left" },
+      { side: "right", label: "▶", title: "Dock right" },
+      { side: "top", label: "▲", title: "Dock top" },
+      { side: "bottom", label: "▼", title: "Dock bottom" },
+      { side: "float", label: "⧉", title: "Float" },
+    ];
+    for (const s of sides) {
+      const b = document.createElement("button");
+      b.textContent = s.label;
+      b.title = s.title;
+      b.style.cssText = smallBtnCss(dock?.side() === s.side);
+      b.onpointerdown = (e) => e.stopPropagation();
+      b.onclick = (e) => {
+        e.stopPropagation();
+        try { dock?.dock(s.side); } catch (err) { console.warn("[ai-chat] dock failed", err); }
+        renderHeader();
+      };
+      dockBar.appendChild(b);
+    }
+
+    header.append(icon, text, dockBar, histBtn, gear, clearBtn, closeBtn);
   } finally {
     renderingHeader = false;
   }
@@ -1699,13 +1724,25 @@ export function openAiChat(): void {
   } catch (err) {
     console.warn("[ai-chat] dock.show threw", err);
   }
-  if (panel.style.display === "none" || !panel.style.display) {
-    panel.style.display = "flex";
-  }
-  // Force layout after show (guards against zero-size first paint)
+  panel.style.display = "flex";
+  panel.style.flexDirection = "column";
+  // Header must never disappear
+  header.style.display = "flex";
+  header.style.minHeight = "40px";
+  header.style.height = "40px";
+  header.style.flexShrink = "0";
+  header.style.visibility = "visible";
+  header.style.opacity = "1";
+
   requestAnimationFrame(() => {
     try {
-      dock?.dock(dock.side()); // re-apply current dock state
+      // If restored size is broken, reset to a usable floating size
+      const r = panel.getBoundingClientRect();
+      if (r.height < 120 || r.width < 200) {
+        dock?.dock("float");
+      } else {
+        dock?.dock(dock.side());
+      }
     } catch {
       /* */
     }
