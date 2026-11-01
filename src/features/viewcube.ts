@@ -14,6 +14,7 @@
  * handlers, no visual-only state.
  */
 import { readControlsTarget } from "../core/controls-target";
+import { resolveWorldUp } from "../modules/navigation/up-axis";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
@@ -152,7 +153,16 @@ class RealCameraAdapter implements CameraAdapter {
     if (!worldReady()) return;
     const cam = activeCam();
     const c = controls();
-    try { cam.up.copy(up).normalize(); } catch { /* */ }
+    // Keep camera.up on world +Y whenever possible (Top/Bottom use a tiny horizontal offset to
+    // pick the on-screen orientation). A left-over up of (0,0,-1) made camera-controls orbit
+    // around the wrong axis, so manual rotation after Top "swapped" the axes.
+    const r = resolveWorldUp([pos.x, pos.y, pos.z], [target.x, target.y, target.z], [up.x, up.y, up.z]);
+    pos = new THREE.Vector3(r.pos[0], r.pos[1], r.pos[2]);
+    const wantUp = new THREE.Vector3(r.up[0], r.up[1], r.up[2]).normalize();
+    const upChanged = cam.up.distanceToSquared(wantUp) > 1e-12;
+    try { cam.up.copy(wantUp); } catch { /* */ }
+    // camera-controls captures its orbit axis from camera.up; refresh it whenever up changes.
+    if (upChanged) { try { c.updateCameraUp?.(); } catch { /* */ } }
     try {
       c.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, animate);
     } catch {

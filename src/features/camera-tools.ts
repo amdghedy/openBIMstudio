@@ -1,3 +1,4 @@
+import { resolveWorldUp } from "../modules/navigation/up-axis";
 import { perspectiveZoomAbout } from "../core/cursor-zoom";
 import { readControlsTarget, axisTargetFallback } from "../core/controls-target";
 import * as THREE from "three";
@@ -616,9 +617,16 @@ export function gotoExactView(view: ExactView): void {
     : Math.max(sceneRadius * 2, 10);
   const pos = target.clone().add(spec.dir.clone().multiplyScalar(dist));
 
-  cam.up.copy(spec.up);
+  // Keep up = +Y (Top/Bottom pick their screen orientation with a tiny offset) so manual
+  // orbiting afterwards does not swap the axes; see modules/navigation/up-axis.ts.
+  const ru = resolveWorldUp([pos.x, pos.y, pos.z], [target.x, target.y, target.z], [spec.up.x, spec.up.y, spec.up.z]);
+  pos.set(ru.pos[0], ru.pos[1], ru.pos[2]);
+  const wantUp = new THREE.Vector3(ru.up[0], ru.up[1], ru.up[2]);
+  const upChanged = cam.up.distanceToSquared(wantUp) > 1e-12;
+  cam.up.copy(wantUp);
+  if (upChanged) { try { (ctx.world.camera.controls as any).updateCameraUp?.(); } catch { /* */ } }
   ctx.world.camera.controls.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, true);
-  cam.up.copy(spec.up);
+  cam.up.copy(wantUp);
   cam.lookAt(target);
 
   if (isOrtho) {
