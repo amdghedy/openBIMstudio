@@ -14,6 +14,7 @@
 import { ctx } from "../core/context";
 import { pMap } from "../core/p-map";
 import { secureGet, secureSet, secureRemove } from "../core/secure-store";
+import { buildElementSearchText, rankHybridResults } from "./ai-retrieval";
 
 export type EmbeddingProvider = "ollama" | "openai";
 
@@ -290,17 +291,8 @@ function joinUrl(base: string, path: string): string {
 /* ═════════════════════════════════════════════════════════════════════════
    Text extraction
    ═════════════════════════════════════════════════════════════════════════ */
-function textFromElement(
-  name: string,
-  category: string,
-  extra: Record<string, string>,
-): string {
-  const clean = category.replace(/^IFC/i, "");
-  const parts = [name, clean];
-  for (const v of Object.values(extra)) {
-    if (v && v !== name) parts.push(v);
-  }
-  return parts.join(" · ").slice(0, 400);
+function textFromElement(name: string, category: string, extra: Record<string, string>): string {
+  return buildElementSearchText(name, category, extra, 1400);
 }
 
 function hashText(s: string): string {
@@ -370,7 +362,7 @@ export async function buildIndex(opts: BuildOptions = {}): Promise<IndexStats> {
       try {
         data = await (model as any).getItemsData(slice, {
           attributesDefault: false,
-          attributes: ["Name", "ObjectType", "Tag", "Description", "PredefinedType"],
+          attributes: [\n            "Name", "GlobalId", "ObjectType", "Tag", "Description", "PredefinedType",\n            "LongName", "OverallHeight", "OverallWidth", "NominalDiameter", "NominalLength",\n          ],\n          psetsDefault: true,
         });
       } catch {
         continue;
@@ -394,9 +386,34 @@ export async function buildIndex(opts: BuildOptions = {}): Promise<IndexStats> {
           d?.Name?.value ?? d?.ObjectType?.value ?? d?.Tag?.value ?? `#${id}`,
         );
         const extra: Record<string, string> = {};
-        if (d?.ObjectType?.value) extra.objectType = String(d.ObjectType.value);
-        if (d?.PredefinedType?.value) extra.predefinedType = String(d.PredefinedType.value);
-        if (d?.Description?.value) extra.description = String(d.Description.value);
+        for (const key of [
+          "GlobalId", "ObjectType", "Tag", "Description", "PredefinedType",
+          "LongName", "OverallHeight", "OverallWidth", "NominalDiameter", "NominalLength",
+        ]) {
+          const value = d?.[key]?.value ?? d?.[key];
+          if (value != null && ["string", "number", "boolean"].includes(typeof value)) {
+            extra[key] = String(value);
+          }
+        }
+        // Include a bounded sample of property-set and quantity-set values.
+        // The text cap below prevents a single richly populated object from
+        // dominating the index or embedding request size.
+        let propertyCount = 0;
+        for (const groupName of ["psets", "qsets"]) {
+          const groups = d?.[groupName];
+          if (!groups || typeof groups !== "object") continue;
+          for (const [setName, properties] of Object.entries(groups)) {
+            if (!properties || typeof properties !== "object") continue;
+            for (const [propertyName, rawValue] of Object.entries(properties as Record<string, any>)) {
+              const value = rawValue?.value ?? rawValue;
+              if (value == null || !["string", "number", "boolean"].includes(typeof value)) continue;
+              extra[`${setName}.${propertyName}`] = String(value);
+              if (++propertyCount >= 30) break;
+            }
+            if (propertyCount >= 30) break;
+          }
+          if (propertyCount >= 30) break;
+        }
         const category = catMap.get(id) ?? "Unknown";
         const text = textFromElement(name, category, extra);
         items.push({ id, text, hash: hashText(text) });
@@ -476,6 +493,8 @@ export interface SemanticHit {
   localId: number;
   text: string;
   score: number;
+  semanticScore: number;
+  lexicalScore: number;
 }
 
 function cosine(a: Float32Array, b: Float32Array): number {
@@ -496,21 +515,28 @@ export async function semanticSearch(
   query: string,
   limit = 20,
   cfg?: EmbeddingConfig,
+  modelId?: string,
 ): Promise<SemanticHit[]> {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return [];
   const conf = cfg ?? loadEmbeddingConfig();
-  const qVec = await embedText(conf, query);
+  const qVec = await embedText(conf, normalizedQuery);
 
   const db = await openDb();
   const t = db.transaction(STORE, "readonly");
   const all: StoredVector[] = await reqAs(t.objectStore(STORE).getAll());
-  if (!all.length) return [];
+  const candidates = all.filter((row) => !modelId || row.modelId === modelId);
+  if (!candidates.length) return [];
 
-  const scored = all.map((r) => ({
-    modelId: r.modelId,
-    localId: r.localId,
-    text: r.text,
-    score: cosine(qVec, r.vector),
+  const ranked = rankHybridResults(normalizedQuery, candidates.map((row) => ({
+    semanticScore: cosine(qVec, row.vector),
+    text: row.text,
+    value: { modelId: row.modelId, localId: row.localId, text: row.text },
+  })));
+  return ranked.slice(0, Math.max(1, limit)).map((hit) => ({
+    ...hit.value,
+    score: hit.score,
+    semanticScore: hit.semanticScore,
+    lexicalScore: hit.lexicalScore,
   }));
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit);
 }
