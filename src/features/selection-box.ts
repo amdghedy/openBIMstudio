@@ -2,14 +2,17 @@
  * Selection Box — auto-fit section box / crop region to selected elements.
  *
  * BIM-equivalent of Revit's right-click → "Show Selection Box" command
- * (which wraps a 3D section box tightly around the current selection) and
- * the plan-view "Crop to Selection" action that tightens the crop region
- * to the current authoring selection.
+ * (wraps a section box tightly around the selected element(s)) and the
+ * "Crop to Selection" command (auto-sizes a 2D crop region in the active
+ * plan/section/elevation view to fit the selected elements).
+ *
+ * Both functions accept either a list of element IDs (string[]) or, if
+ * omitted, fall back to the current authoring selection.
  */
 
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { getElementById, getElementWorldBox, getSelectedIds, getAuthoredGroup } from "./authoring";
+import { getElementById, getElementWorldBox, getSelectedIds } from "./authoring";
 import {
   enableSectionBox, disableSectionBox, isSectionBoxActive, growSectionBox, enableSectionBoxWithBox,
 } from "./section-box";
@@ -40,37 +43,15 @@ export interface CropToSelectionOptions {
 export function getSelectionWorldBox(elementIds?: string[]): THREE.Box3 | null {
   const ids = elementIds ?? getSelectedIds();
   if (!ids.length) return null;
-  const idSet = new Set(ids.map(String));
   const box = new THREE.Box3();
   let hasAny = false;
-
-  // Prefer live scene meshes (correct world transforms after placement / coordination).
-  try {
-    const group = getAuthoredGroup?.();
-    if (group) {
-      try { group.updateMatrixWorld(true); } catch { /* */ }
-      group.traverse((o: any) => {
-        if (!o?.isMesh) return;
-        const eid = o.userData?.elementId;
-        if (eid == null || !idSet.has(String(eid))) return;
-        const b = new THREE.Box3().setFromObject(o);
-        if (!b.isEmpty()) {
-          box.union(b);
-          hasAny = true;
-        }
-      });
-    }
-  } catch { /* fall through to synthetic path */ }
-
-  if (!hasAny) {
-    for (const id of ids) {
-      const el = getElementById(id);
-      if (!el) continue;
-      const elBox = getElementWorldBox(el);
-      if (!elBox) continue;
-      box.union(elBox);
-      hasAny = true;
-    }
+  for (const id of ids) {
+    const el = getElementById(id);
+    if (!el) continue;
+    const elBox = getElementWorldBox(el);
+    if (!elBox) continue;
+    box.union(elBox);
+    hasAny = true;
   }
   return hasAny && !box.isEmpty() ? box : null;
 }
@@ -98,93 +79,150 @@ export function showSelectionBox(options: SelectionBoxOptions = {}): boolean {
   const padding = options.padding ?? 0.5;
   const box = getSelectionWorldBox();
   if (!box) {
-    console.warn("[selection-box] no selection — cannot show selection box");
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: { message: "Select at least one element first.", kind: "warn" },
+    }));
     return false;
   }
-
-  const padded = box.clone();
-  padded.expandByScalar(padding);
-
-  // enableSectionBoxWithBox creates a new section box from the given AABB.
-  enableSectionBoxWithBox(padded);
-
+  // Apply padding on all sides.
+  box.expandByScalar(padding);
+  // Works with or without loaded fragment models (authored elements only).
+  enableSectionBoxWithBox(box);
   if (options.fitCamera !== false) {
-    try { focusOnBox(padded); } catch { /* */ }
+    // Frame the selection box itself (not the whole scene).
+    focusOnBox(box);
   }
-
-  if (options.disable) {
-    disableSectionBox();
-  }
-
+  if (options.disable) disableSectionBox();
+  window.dispatchEvent(new CustomEvent("obs-toast", {
+    detail: {
+      message: `Selection Box ON — ${(box.max.x - box.min.x).toFixed(2)}×${(box.max.y - box.min.y).toFixed(2)}×${(box.max.z - box.min.z).toFixed(2)} m (incl. ${padding} m padding)`,
+      kind: "success",
+    },
+  }));
   return true;
 }
 
 /**
- * Crop to Selection — tighten the active plan-view crop region to the
- * current selection's 2D footprint.
+ * Crop to Selection — auto-fit the 2D crop region of the active plan/section
+ * view to the bounding box of the selected elements.
+ *
+ * BIM equivalent: View → Crop Region → "Crop to Selection".
  */
 export function cropToSelection(options: CropToSelectionOptions = {}): boolean {
-  const padding = options.padding ?? 0.5;
+  const padding = options.padding ?? 1.0;
   const viewId = options.viewId ?? "plan-view-1";
   const bbox = getSelectionViewBbox();
   if (!bbox) {
-    console.warn("[selection-box] no selection — cannot crop to selection");
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: { message: "Select at least one element first.", kind: "warn" },
+    }));
     return false;
   }
-
   const region = {
     minX: bbox.minX - padding,
     maxX: bbox.maxX + padding,
-    minZ: bbox.minZ - padding,
-    maxZ: bbox.maxZ + padding,
+    minY: bbox.minZ - padding,
+    maxY: bbox.maxZ + padding,
+    rotation: 0,
+    enabled: options.enable !== false,
   };
-
   setCropRegion(viewId, region);
-  if (options.enable !== false) {
-    setActiveView(viewId);
-  }
+  setActiveView(viewId);
+  window.dispatchEvent(new CustomEvent("obs-toast", {
+    detail: {
+      message: `Crop region fit to selection — ${(bbox.maxX - bbox.minX + 2 * padding).toFixed(1)}×${(bbox.maxZ - bbox.minZ + 2 * padding).toFixed(1)} m`,
+      kind: "success",
+    },
+  }));
   return true;
 }
 
-/** Toggle selection box on/off. When turning on, fits to current selection. */
-export function toggleSelectionBox(): boolean {
-  if (isSectionBoxActive()) {
-    disableSectionBox();
+/**
+ * Zoom to Selection — fit the camera frustum to the selected elements
+ * without affecting the section box or crop region.
+ *
+ * BIM equivalent: right-click → "Zoom to Fit" / "Frame Selected".
+ */
+export function zoomToSelection(): boolean {
+  const box = getSelectionWorldBox();
+  if (!box) {
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: { message: "Select at least one element first.", kind: "warn" },
+    }));
     return false;
   }
-  return showSelectionBox();
-}
-
-/** Grow the existing section box by the given amount (m) on all sides. */
-export function growSelectionBox(amount = 0.5): void {
-  growSectionBox(amount);
-}
-
-/** Fit the camera to the current selection without changing the section box. */
-export function fitCameraToSelection(): boolean {
-  const box = getSelectionWorldBox();
-  if (!box) return false;
   focusOnBox(box);
+  window.dispatchEvent(new CustomEvent("obs-toast", {
+    detail: { message: "Zoomed to selection", kind: "info" },
+  }));
   return true;
 }
 
-/** Fit the camera to everything (authored + linked). */
-export function fitCameraToAll(): void {
-  fitAll();
+/**
+ * Isolate Selection — hide everything except the selected elements.
+ *
+ * BIM equivalent: right-click → "Isolate".
+ */
+export function isolateSelection(): boolean {
+  const ids = getSelectedIds();
+  if (!ids.length) {
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: { message: "Select at least one element first.", kind: "warn" },
+    }));
+    return false;
+  }
+  // Prefer the app's single temporary-visibility mechanism so Reset works everywhere.
+  const vis = (ctx.features as any).visibility;
+  if (typeof vis?.isolateSelection === "function") {
+    const n = vis.isolateSelection();
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: { message: `Isolated ${ids.length} element(s)`, kind: "success" },
+    }));
+    void n;
+    return true;
+  }
+  const elements = (ctx as any).elements ?? [];
+  let hiddenCount = 0;
+  for (const el of elements) {
+    if (!ids.includes(String(el.id))) {
+      const mesh = (ctx as any).__obsGetElementMesh?.(el.id) ?? el.mesh;
+      if (mesh) {
+        mesh.visible = false;
+        hiddenCount++;
+      }
+    }
+  }
+  window.dispatchEvent(new CustomEvent("obs-toast", {
+    detail: { message: `Isolated ${ids.length} element(s), hid ${hiddenCount}`, kind: "success" },
+  }));
+  return true;
 }
 
-export function setupSelectionBox(): void {
-  try {
-    (ctx.features as any).selectionBox = {
-      show: showSelectionBox,
-      crop: cropToSelection,
-      toggle: toggleSelectionBox,
-      grow: growSelectionBox,
-      fitSelection: fitCameraToSelection,
-      fitAll: fitCameraToAll,
-      getWorldBox: getSelectionWorldBox,
-      getViewBbox: getSelectionViewBbox,
-    };
-  } catch { /* */ }
-  console.log("[selection-box] ready");
+/**
+ * Reset Isolation — show all hidden elements again.
+ */
+export function resetIsolation(): void {
+  const vis = (ctx.features as any).visibility;
+  if (typeof vis?.reset === "function") {
+    vis.reset();
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Isolation reset", kind: "info" } }));
+    return;
+  }
+  const elements = (ctx as any).elements ?? [];
+  let shown = 0;
+  for (const el of elements) {
+    const mesh = (ctx as any).__obsGetElementMesh?.(el.id) ?? el.mesh;
+    if (mesh && !mesh.visible) {
+      mesh.visible = true;
+      shown++;
+    }
+  }
+  window.dispatchEvent(new CustomEvent("obs-toast", {
+    detail: { message: `Restored ${shown} hidden element(s)`, kind: "info" },
+  }));
+}
+
+/** Compute combined bbox of N authored elements — exposed for tests + console. */
+export function computeElementsBbox(elementIds: string[]): THREE.Box3 | null {
+  return getSelectionWorldBox(elementIds);
 }
