@@ -34,6 +34,7 @@ import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
 import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP } from "../modules/mep/connectivity";
 import { planMepStretch, planMepMove } from "../modules/mep/stretch";
+import { planLinearFollow, FOLLOW_LINEAR } from "../modules/native-bim/linear-follow";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import { makeAxisLock, projectOnAxis } from "./grip-axis-lock";
@@ -4672,7 +4673,7 @@ function ensureNativeBaseDimensions(el: AuthoredElement): void {
 /** Params of every MEP part (plus `el`) so a stretch that drags fittings and neighbours is ONE undo step. */
 function snapshotMepParams(el?: AuthoredElement): Map<string, any> {
   const m = new Map<string, any>();
-  for (const e of elements) if (isMepElement(e) || e === el) m.set(e.id, JSON.parse(JSON.stringify(e.params)));
+  for (const e of elements) if (isMepElement(e) || FOLLOW_LINEAR.has(e.type) || e === el) m.set(e.id, JSON.parse(JSON.stringify(e.params)));
   return m;
 }
 function pushMepParamsHistory(label: string, before: Map<string, any>, after: Map<string, any>): void {
@@ -5374,9 +5375,17 @@ export function expandConnectedIds(ids: Iterable<string>): string[] {
 export function mepFollowPatches(movedIds: Iterable<string>, dx: number, dz: number, dy = 0, baseline?: Map<string, any>): Array<{ id: string; patch: Record<string, unknown> }> {
   if (!moveConnectedMep) return [];
   const ids = [...movedIds].map(String);
-  if (!ids.some((id) => { const e = elements.find((x) => x.id === id); return e && isMepElement(e); })) return [];
+  const kinds = ids.map((id) => elements.find((x) => x.id === id)).filter(Boolean) as AuthoredElement[];
+  const hasMep = kinds.some((e) => isMepElement(e));
+  const hasLinear = kinds.some((e) => FOLLOW_LINEAR.has(e.type));
+  if (!hasMep && !hasLinear) return [];
   const view = baseline ? elements.map((e) => (baseline.has(e.id) ? { ...e, params: baseline.get(e.id) } : e)) : elements;
-  return planMepMove(view as any, ids, dx, dz, dy);
+  // walls / beams / strips that share an end stay joined; MEP fittings follow and runs stretch
+  const merged = new Map<string, Record<string, unknown>>();
+  const add = (list: Array<{ id: string; patch: Record<string, unknown> }>) => { for (const u of list) merged.set(u.id, { ...(merged.get(u.id) ?? {}), ...u.patch }); };
+  if (hasMep) add(planMepMove(view as any, ids, dx, dz, dy));
+  if (hasLinear) add(planLinearFollow(view as any, ids, dx, dz, dy));
+  return [...merged].map(([id, patch]) => ({ id, patch }));
 }
 
 /** Replace an element's boundary polygon (Edit Boundary), with undo/redo. Returns false if rejected. */
