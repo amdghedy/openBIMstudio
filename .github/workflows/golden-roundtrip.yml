@@ -1,9 +1,9 @@
 name: golden-roundtrip
-# workflow_dispatch-only until P1-03 (golden corpus) + P1-04 (diff.ts implementation) land:
-# scripts/golden-roundtrip.mjs needs src/core/interop/diff.ts and
-# test/fixtures/ifc-corpus/, which do not exist yet. Flip to [push, pull_request, workflow_dispatch]
-# when P1-04 is merged. See docs/engineering/STARTER_ARTIFACTS.md.
-on: [workflow_dispatch]
+# P1-03 (golden corpus) + P1-04 (roundtrip harness) delivered: the script is
+# self-contained and the corpus + snapshots live under test/fixtures/ifc-corpus/.
+# web-ifc has no general exporter yet, so the export leg is a second independent
+# parse; swap it in the script when a real exporter lands.
+on: [push, pull_request, workflow_dispatch]
 jobs:
   roundtrip:
     runs-on: ubuntu-latest

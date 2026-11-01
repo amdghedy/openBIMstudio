@@ -62,16 +62,17 @@ phase order. Until an issue wires a file, the file stays inert:
 
 - `src/core/crashLog.ts` and `src/shell/AppErrorBoundary.tsx` already typecheck clean
   and live under the normal `tsc --noEmit` program (nothing imports them yet).
-- `src/core/safeLoad.ts`, `src/core/registry.ts`, `src/core/journal.ts`,
-  `src/core/backup.ts` are excluded from `tsc` via `tsconfig.json` `exclude`
-  because they reference contracts that do not exist yet (`zod` install, real
-  service types, `JournalStore`) or need a Node type environment this repo does
-  not have (no `@types/node`; `'fs'` is a minimal `writeFileSync` shim in
-  `src/types/custom.d.ts`). The issue that wires each file **removes it from
-  that exclude list** — that removal is the gate.
-- `.github/workflows/golden-roundtrip.yml` is `workflow_dispatch`-only until P1-04;
-  flip its `on:` to `[push, pull_request, workflow_dispatch]` when `diff.ts` and the
-  golden corpus land.
+- **2026-11-01 update:** `safeLoad` (zod installed), `registry` (service contracts
+  declared inline), and `journal` (JournalStore contract + injected apply/serialize
+  callbacks) now typecheck clean and were removed from the `exclude` list — the
+  P0-02 / P1-01 / P2-01 gates are satisfied. `backup.ts` moved to `server/backup.ts`
+  (Node-only fs code, same rationale as `failClosed.ts`); wiring it into a save flow
+  stays with P0-03. The `tsconfig.json` `exclude` list is now empty and gone.
+- `.github/workflows/golden-roundtrip.yml` runs on push/PR again: the golden corpus
+  (3 files, IFC4 + IFC2X3) and snapshots live under `test/fixtures/ifc-corpus/`, and
+  `scripts/golden-roundtrip.mjs` is self-contained (web-ifc has no general exporter
+  yet, so the export leg is a second independent parse — see the script header).
+  P1-03/P1-04 are satisfied; the export leg moves when a real exporter lands.
 - `tests/property/*`, `tests/e2e/*`, `playwright.config.ts` are inert: the CI unit
   battery (`scripts/ci-unit-tests.mjs`) runs an explicit script allow-list, and the
   typecheck include is `src` only. They activate when P1-05/P1-06/P1-07 wire them.
