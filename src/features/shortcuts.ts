@@ -37,6 +37,16 @@ class ShortcutRegistry {
   unregister(id: string): void {
     this.shortcuts.delete(id);
   }
+  get(id: string): Shortcut | undefined {
+    return this.shortcuts.get(id);
+  }
+  /** Re-bind an existing shortcut (user customisation). Keys use the registry format. */
+  setKeys(id: string, keys: string): boolean {
+    const s = this.shortcuts.get(id);
+    if (!s) return false;
+    s.keys = keys;
+    return true;
+  }
   list(): Shortcut[] {
     return [...this.shortcuts.values()];
   }

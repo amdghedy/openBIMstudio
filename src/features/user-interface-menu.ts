@@ -119,7 +119,7 @@ function renderRows(): void {
   // Footer: Keyboard Shortcuts
   const ks = mkFooterRow("\u2328", "Keyboard Shortcuts", () => {
     closeMenu();
-    openKeyboardShortcutsDialog();
+    try { (window as any).__obsShortcutEditor?.open(); } catch { openKeyboardShortcutsDialog(); }
   });
   menuEl.appendChild(ks);
 }
