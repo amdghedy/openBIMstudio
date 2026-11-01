@@ -420,7 +420,13 @@ async function focusSelection() {
     toast("Could not measure the selection", "warn");
     return;
   }
-  focusOnBox(box);
+  console.info("[zoom-selection] box", { min: box.min.toArray(), max: box.max.toArray() });
+  try {
+    const camTools = await import("./camera-tools");
+    camTools.focusOnBoxTight(box);
+  } catch {
+    focusOnBox(box);
+  }
 }
 
 /** Temporary Hide / Isolate / Reveal go through the visibility bridge, which handles authored
