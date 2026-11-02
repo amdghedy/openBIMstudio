@@ -14,7 +14,7 @@
  * handlers, no visual-only state.
  */
 import { readControlsTarget } from "../core/controls-target";
-import { resolveWorldUp } from "../modules/navigation/up-axis";
+import { resolveLookAtHint } from "../modules/navigation/up-axis";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
@@ -155,15 +155,21 @@ class RealCameraAdapter implements CameraAdapter {
 
   lookAt(
     pos: THREE.Vector3, target: THREE.Vector3, up: THREE.Vector3,
-    animate: boolean, refreshOrbitBasis = true,
+    animate: boolean, settle = true,
   ): void {
     if (!worldReady()) return;
     const cam = activeCam();
     const c = controls();
-    // Keep camera.up on world +Y whenever possible (Top/Bottom use a tiny horizontal offset to
-    // pick the on-screen orientation). A left-over up of (0,0,-1) made camera-controls orbit
-    // around the wrong axis, so manual rotation after Top "swapped" the axes.
-    const r = resolveWorldUp([pos.x, pos.y, pos.z], [target.x, target.y, target.z], [up.x, up.y, up.z]);
+    // Intermediate transition samples carry an already-orthonormal lookAt
+    // basis: they pass through unmodified so the slerp stays the only motion
+    // (blending camera.up toward +Y per frame raced the slerp and produced a
+    // visible second jerk at the end of Top/Bottom transitions). Settled
+    // poses (settle=true — transition endpoint or a direct command) go
+    // through the pole resolution: camera.up returns to world +Y with the
+    // tiny horizontal offset that defines the on-screen up, which keeps
+    // camera-controls' orbit basis on world +Y without changing the
+    // rendered orientation.
+    const r = resolveLookAtHint([pos.x, pos.y, pos.z], [target.x, target.y, target.z], [up.x, up.y, up.z], settle);
     pos = new THREE.Vector3(r.pos[0], r.pos[1], r.pos[2]);
     const wantUp = new THREE.Vector3(r.up[0], r.up[1], r.up[2]).normalize();
     const upChanged = cam.up.distanceToSquared(wantUp) > 1e-12;
@@ -175,10 +181,10 @@ class RealCameraAdapter implements CameraAdapter {
     // camera.position directly here lets that loop restore its stale pose,
     // which appears as a snap/flicker during the transition.
     //
-    // setLookAt is therefore applied on EVERY frame. Only the expensive orbit
-    // basis rebuild is deferred until the final frame, when the interpolated
-    // camera.up has reached its settled value.
-    if (refreshOrbitBasis && (upChanged || this.controlsOutOfSync)) {
+    // setLookAt is therefore applied on EVERY frame. The expensive orbit
+    // basis rebuild (updateCameraUp) runs only on the settled frame, when
+    // camera.up has reached its final value.
+    if (settle && (upChanged || this.controlsOutOfSync)) {
       try { c.updateCameraUp?.(); } catch { /* */ }
     }
     try {

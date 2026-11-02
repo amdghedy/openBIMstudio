@@ -118,6 +118,7 @@
     "test:v73-mag": "node tests/v73-snap-magnetic.test.cjs",
     "test:v73-panels": "node tests/v73-tool-panels.test.cjs",
     "test:v73-rel": "node tests/v73-relationships.test.cjs",
+    "test:viewcube-pole": "node tests/viewcube-pole-transition.test.cjs",
     "verify:v73": "node scripts/verify-v73.mjs",
     "pretest:dep-safety": "node scripts/sync-web-ifc-assets.mjs",
     "test:dep-safety": "node tests/dependency-safety.test.cjs",

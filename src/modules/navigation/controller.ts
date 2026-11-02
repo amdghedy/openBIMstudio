@@ -39,6 +39,7 @@ import {
   specForTarget,
 } from "./orientation";
 import { CameraTransition, endpointFrom, quaternionForSpec } from "./transitions";
+import { resolveWorldUp } from "./up-axis";
 import { defaultHomePlacement, frameBox } from "./framing";
 import {
   clearHome,
@@ -212,9 +213,27 @@ export class NavigationController {
     dist: number,
     durationMs = this.config.transitionMs,
   ): void {
-    this.transition = CameraTransition.fromSpec(
-      this.endpointNow(), spec, target.clone(), Math.max(dist, this.config.minDistance), durationMs,
+    // Resolve the pole case ONCE, in the endpoint. At a pole the spec up is
+    // the on-screen up and cannot double as camera.up, so the endpoint pose
+    // is the resolved one: the tiny horizontal offset picks the on-screen
+    // up and camera.up lands on world +Y. Baking it into the endpoint lets
+    // the quaternion slerp converge the screen-up azimuth smoothly across
+    // the whole transition — the old per-frame pole blend fought the slerp
+    // in its final frames and re-accelerated the roll (a visible second
+    // jerk at the end of Top/Bottom transitions).
+    const distEp = Math.max(dist, this.config.minDistance);
+    const posEp = target.clone().addScaledVector(spec.dir, distEp);
+    const resolved = resolveWorldUp(
+      [posEp.x, posEp.y, posEp.z],
+      [target.x, target.y, target.z],
+      [spec.up.x, spec.up.y, spec.up.z],
     );
+    const to = endpointFrom(
+      new THREE.Vector3(resolved.pos[0], resolved.pos[1], resolved.pos[2]),
+      target,
+      new THREE.Vector3(resolved.up[0], resolved.up[1], resolved.up[2]),
+    );
+    this.transition = new CameraTransition(this.endpointNow(), to, durationMs);
     this.events.onStateChange?.();
     // Apply the first frame immediately so repeated commands never show a
     // stale camera between ticks.

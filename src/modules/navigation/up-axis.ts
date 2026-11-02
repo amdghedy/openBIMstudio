@@ -63,3 +63,59 @@ export function screenUp(pos: V3, target: V3): V3 {
   const d = f[1];
   return norm([-d * f[0], 1 - d * f[1], -d * f[2]]);
 }
+
+/**
+ * Per-frame lookAt hint for the camera adapter.
+ *
+ * Two pose families reach the adapter:
+ *  1. Navigation-transition samples and drag poses. Their up vector is the
+ *     interpolated lookAt basis (up ⊥ view direction), already smooth by
+ *     construction — pass it through UNMODIFIED. Running the pole blend on
+ *     these frames made camera.up race the slerp: the slerp keeps rolling
+ *     the basis toward the pole's screen-up while the blend simultaneously
+ *     drags camera.up back to +Y over the last ~1° of the arc, so the roll
+ *     reversed direction and re-accelerated at the end of Top/Bottom
+ *     transitions — the "shaking" reported on cube navigation.
+ *  2. Settled poses (transition endpoint or a direct command pose). These
+ *     end with camera.up on world +Y (camera-controls' orbit basis stays
+ *     world-Y). The pole's horizontal offset that defines the on-screen up
+ *     is added only when the pose does not already carry it: transition
+ *     endpoints come pre-tilted (baked by the controller), so the settle
+ *     frame is a pure hint conversion with zero rendered change.
+ */
+export function resolveLookAtHint(pos: V3, target: V3, up: V3, settle: boolean): UpResolution {
+  const toTarget = sub(target, pos);
+  const dist = len(toTarget);
+  const f = norm(toTarget);
+  const upN = norm(up);
+  const dot = upN[0] * f[0] + upN[1] * f[1] + upN[2] * f[2];
+  if (Math.abs(dot) >= 1e-6) {
+    // Not an orthonormal lookAt basis (external/home pose): full pole
+    // resolution, exactly as before.
+    return resolveWorldUp(pos, target, up);
+  }
+  if (!settle) {
+    // Intermediate transition/drag sample: keep the interpolated
+    // orientation exactly, no pole correction.
+    return { pos, up: upN, keptWorldUp: Math.abs(upN[1]) > 0.9999 };
+  }
+  // Settled navigation pose: re-level the hint to world +Y.
+  const pole = Math.abs(f[1]);
+  if (pole <= TOP_BLEND_START) {
+    return { pos, up: upN, keptWorldUp: Math.abs(upN[1]) > 0.9999 };
+  }
+  const horizontalLength = Math.hypot(upN[0], upN[2]);
+  if (horizontalLength < 1e-6) {
+    return { pos, up: [0, 1, 0], keptWorldUp: true };
+  }
+  const h: V3 = [upN[0] / horizontalLength, 0, upN[2] / horizontalLength];
+  const sgn = f[1] < 0 ? -1 : 1;
+  // Idempotent tilt: a transition endpoint already carries the offset.
+  const along = ((pos[0] - target[0]) * h[0] + (pos[2] - target[2]) * h[2]) / Math.max(dist, 1e-12);
+  const resolvedPos: V3 = along > TOP_EPS * 0.5 ? pos : [
+    pos[0] + h[0] * sgn * TOP_EPS * dist,
+    pos[1],
+    pos[2] + h[2] * sgn * TOP_EPS * dist,
+  ];
+  return { pos: resolvedPos, up: [0, 1, 0], keptWorldUp: true };
+}

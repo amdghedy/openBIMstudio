@@ -51,6 +51,7 @@ process.env.NODE_PATH = path.join(root, "node_modules");
 require("node:module").Module._initPaths();
 
 const nav = require(path.join(tmpOut, "modules/navigation/index.js"));
+const { TOP_EPS } = require(path.join(tmpOut, "modules/navigation/up-axis.js"));
 const geo = require(path.join(tmpOut, "features/viewcube-geometry.js"));
 const THREE = require("three");
 
@@ -116,6 +117,24 @@ function camDir(adapter) {
 }
 function camUp(adapter) {
   return adapter._state.up.clone().normalize();
+}
+
+/** Pole snaps land on the RESOLVED pose: the view direction carries the
+ *  TOP_EPS horizontal offset that makes a straight-down/up lookAt
+ *  well-defined (tilted toward +Z for the default mapping), and the
+ *  delivered up is the orthogonalized basis whose screen-up matches the
+ *  spec (−Z for Top, +Z for Bottom). The exact-pole endpoint was never
+ *  renderable — the adapter had to patch it every frame, which is what
+ *  made the transition shake. */
+function assertPoleEndpoint(adapter, sign) {
+  const d = camDir(adapter);
+  near(d.x, 0, 1e-9);
+  near(d.y, sign, 1e-5);
+  near(d.z, TOP_EPS, 1e-6);
+  const u = camUp(adapter);
+  near(u.x, 0, 1e-9);
+  assert(u.z * sign < -0.999, `screen-up should face ${sign > 0 ? "−Z" : "+Z"}, got (${u.x},${u.y},${u.z})`);
+  assert(Math.abs(d.dot(u)) < 1e-6, "pole endpoint is not an orthonormal lookAt basis");
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -502,12 +521,11 @@ t("navigateToFace(front) ends at dir +Z with up +Y", () => {
   vecNear(camUp(adapter), 0, 1, 0, 1e-6);
 });
 
-t("navigateToFace(top) from front: no flip, stable up, exact endpoint", () => {
+t("navigateToFace(top) from front: no flip, stable up, resolved endpoint", () => {
   const { adapter, controller } = freshController();
   controller.navigateToFace("top");
   finish(controller);
-  vecNear(camDir(adapter), 0, 1, 0, 1e-6);
-  vecNear(camUp(adapter), 0, 0, -1, 1e-6);
+  assertPoleEndpoint(adapter, +1);
 });
 
 t("navigateToEdge(front-right) goes to the exact diagonal", () => {
@@ -538,7 +556,7 @@ t("opposite-face switch animates without flipping (roll stays sane)", () => {
     assert(Number.isFinite(u.x) && u.length() > 0.9, "up collapsed mid-flight");
   }
   finish(controller);
-  vecNear(camDir(adapter), 0, -1, 0, 1e-6);
+  assertPoleEndpoint(adapter, -1);
 });
 
 t("rapid repeated commands replace the active transition", () => {
@@ -595,12 +613,13 @@ t("rotateUp arcs over the model to Top; rotateDown returns to Front", () => {
   const { adapter, controller } = freshController();
   controller.rotateUp();
   finish(controller);
-  vecNear(camDir(adapter), 0, 1, 0, 1e-6);
-  vecNear(camUp(adapter), 0, 0, -1, 1e-6);
+  assertPoleEndpoint(adapter, +1);
   controller.rotateDown();
   finish(controller);
-  vecNear(camDir(adapter), 0, 0, 1, 1e-6);
-  vecNear(camUp(adapter), 0, 1, 0, 1e-6);
+  // The down arc starts from the resolved (tilted) Top pose, so the Front
+  // landing keeps a sub-0.1° residue of that tilt — far below perception.
+  vecNear(camDir(adapter), 0, 0, 1, 3e-3);
+  vecNear(camUp(adapter), 0, 1, 0, 3e-3);
 });
 
 t("rotateUp at the top pole is rejected with at-pole", () => {

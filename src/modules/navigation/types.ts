@@ -163,12 +163,13 @@ export interface CameraAdapter {
   setProjection(m: CoreProjection): boolean;
   /**
    * Apply a camera pose through the live camera controls. Transition frames
-   * always update the controls; refreshOrbitBasis controls only whether the
-   * orbit-up basis is recalculated for the new camera.up vector.
+   * always update the controls; `settle` marks the final frame of a
+   * transition (or a direct command pose): the adapter may then re-level
+   * camera.up to world +Y at poles and rebuild the orbit-up basis.
    */
   lookAt(
     pos: THREE.Vector3, target: THREE.Vector3, up: THREE.Vector3,
-    animate: boolean, refreshOrbitBasis?: boolean,
+    animate: boolean, settle?: boolean,
   ): void;
   /** Reconcile camera-controls with a live pose before yielding to user input. */
   syncControls?(): void;
