@@ -582,6 +582,14 @@ t("rotateRight (cw) from front lands on the left face dir", () => {
   vecNear(camDir(adapter), -1, 0, 0, 1e-6);
 });
 
+t("pointer-driven immediate rotation updates the live camera without an animation", () => {
+  const { adapter, controller } = freshController();
+  const out = controller.rotateByImmediate(90, 0);
+  assert(out.ok, JSON.stringify(out));
+  assert(!controller.isTransitioning(), "pointer orbit must not enqueue an eased transition");
+  vecNear(camDir(adapter), 1, 0, 0, 1e-6);
+});
+
 t("rotateUp arcs over the model to Top; rotateDown returns to Front", () => {
   const { adapter, controller } = freshController();
   controller.rotateUp();
