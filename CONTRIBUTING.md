@@ -58,7 +58,7 @@ contributor remains responsible for the result:
 ## What to run before opening a PR
 
 Run what is relevant — CI (`node scripts/ci-unit-tests.mjs`) runs the full
-97-suite batch:
+98-suite batch:
 
 ```bash
 npm run typecheck                # always
