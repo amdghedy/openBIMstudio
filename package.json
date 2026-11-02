@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.74.0",
   "type": "module",
-  "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
+  "description": "Open BIM Studio \u2014 professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
     "predev": "node scripts/copy-libredwg-wasm.mjs",
     "dev": "vite",
@@ -77,6 +77,7 @@
     "test:shortcut-keys": "node tests/shortcut-keys.test.cjs",
     "test:magnet": "node tests/magnet.test.cjs",
     "test:up-axis": "node tests/up-axis.test.cjs",
+    "test:nwc-bridge": "node tests/nwc-bridge.test.cjs",
     "test:section-handle-filter": "node tests/section-handle-filter.test.cjs",
     "test:dimension-edit": "node tests/dimension-edit.test.cjs",
     "test:schedule-4d": "node tests/schedule-4d.test.cjs",

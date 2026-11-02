@@ -35,7 +35,8 @@ is the Phase 4 deliverable (`docs/INTEROPERABILITY_MATRIX.md`).
 | DXF | export | limited | 2D drawing writer (`src/modules/drawings/dxf-writer.ts`) | dxf test suites | 2D drawing scope | No |
 | DWG | import | limited | LibreDWG WASM (`src/modules/drawings/dwg-engine.ts`, `@mlightcad/libredwg-web`) | dwg test suites | DWG version coverage per LibreDWG; 2D/geometry scope per reader | No |
 | DWG | export | **unavailable** | — (the former fake `ExportDWGCommand` stub was removed, remediation Stage 1) | `tests/dependency-safety.test.cjs` | The drawing export command offers DXF; no DWG writer exists and none may be faked | No |
-| RVT / RFA / NWD / NWC | import (conversion) | experimental | Autodesk Platform Services Model Derivative via the local collaboration server `/api/convert` (`server/index.mjs`, `src/services/rfaImport.ts`) | `tests/server-hardening.test.cjs` (upload hardening); no network-dependent e2e | Requires your own APS credentials; hardening of the conversion UX continues (Phase 3) | **Yes — files are uploaded to Autodesk APS** by explicit user action with configured credentials; uploads are stored locally server-side (opaque ids, retention sweeps) |
+| NWD / NWC / NWF | import (conversion) | limited | **openBIM NWC bridge** — local loopback service (`tools/navisworks-bridge/openbim-nwc-bridge.mjs`, client `src/features/nwc-bridge.ts`) drives the installed Navisworks Manage/Simulate 2024–2027 with the free MIT BIMCamel exporter plug-in; guided (app opens the file, one click exports) and headless (BIMCamel harness) modes | `tests/nwc-bridge.test.cjs` (24 checks: detection, loopback/CORS/name gates, job lifecycle, guided + headless e2e) | Navisworks has **no built-in IFC export** (Autodesk support); the conversion happens inside the user's own Navisworks via the plug-in | **No — files never leave the machine** |
+| RVT / RFA / NWD / NWC | import (conversion, cloud fallback) | experimental | Autodesk Platform Services Model Derivative via the local collaboration server `/api/convert` (`server/index.mjs`) | `tests/server-hardening.test.cjs` (upload hardening); no network-dependent e2e | Requires your own APS credentials; for NWD/NWC/NWF the local bridge is the preferred route | **Yes — files are uploaded to Autodesk APS** by explicit user action with configured credentials; uploads are stored locally server-side (opaque ids, retention sweeps) |
 | BCF 2.1 | import + export | limited | `src/modules/issues/bcf.ts` (import), `src/modules/export/bcf21.ts` (export) | issues test suites | Two-application round-trip validation pending (Phase 4 fixtures) | No |
 | IDS | audit | limited | `src/features/ids.ts`, `src/features/ids-panel.ts` | ids test suites | Audit/validation scope; unsupported facets not yet itemised per spec (Phase 4) | No |
 | PDF | import (underlay) | limited | bundled `pdfjs-dist` dependency on demand with a same-origin worker (`src/modules/pdf-underlay/pdf-underlay.ts`) | manual verification; CSP allows `cdn.jsdelivr.net` for the library | Underlay/reference use, not editable vector import | Only the **library code** is fetched from jsdelivr; the PDF document itself is parsed locally |
@@ -51,8 +52,10 @@ is the Phase 4 deliverable (`docs/INTEROPERABILITY_MATRIX.md`).
 - **DWG export** — unavailable (see matrix). Real DXF writing is the shipped
   capability; no DWG writer exists in the stack.
 - **Native Revit file parsing** — RVT/RFA/NWD/NWC are closed formats; they
-  are only reachable through the APS conversion path (which uploads files to
-  Autodesk by explicit consent), never parsed in-browser.
+  are never parsed in-browser. NWD/NWC/NWF are converted **locally** by the
+  openBIM NWC bridge driving the user's own Navisworks + BIMCamel plug-in
+  (`tools/navisworks-bridge/README.md`); the APS conversion path (which
+  uploads files to Autodesk by explicit consent) remains as fallback.
 - **Custom AI endpoint hosts** — a static CSP cannot enumerate user-supplied
   endpoints; deployments must extend the policy or tunnel locally
   (`docs/CSP.md`).

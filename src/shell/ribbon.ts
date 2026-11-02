@@ -1071,7 +1071,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Link / Import"),
       b("file", "BIM / Navisworks…", safe(() => {
         (window as any).__obsBIMImport?.pickAndConvert?.();
-      }, "BIM import"), { title: "Import .rvt / .nwd / .nwc — converts to IFC via APS" }),
+      }, "BIM import"), { title: "Import .rvt / .nwd / .nwc / .nwf — converts to IFC locally with your Navisworks (or via APS)" }),
       b("file", "IFC", safe(() => linkIfc(), "Link IFC"), {
         title: "Link IFC models — origin-to-origin federation (same as old OpenBIMStudio)",
       }),

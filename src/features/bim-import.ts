@@ -1,19 +1,23 @@
 /**
  * RVT / Navisworks import — client-side flow.
  *
- * Lets the user pick a .rvt, .nwd, or .nwc file from the browser,
- * uploads it to the server's /api/convert endpoint, polls for
- * conversion status, then loads the resulting IFC into the viewport.
+ * For .nwc / .nwd / .nwf the preferred route is the LOCAL openBIM NWC bridge
+ * (tools/navisworks-bridge — see nwc-bridge.ts): the file is converted to IFC
+ * by the Navisworks installation on the user's own PC via the free BIMCamel
+ * exporter plug-in. Nothing is uploaded anywhere.
  *
- * Requires the server to be running (npm run server) with APS credentials
- * configured (APS_CLIENT_ID, APS_CLIENT_SECRET).
+ * Fallback routes for those files (and the default route for .rvt/.rfa/.dwg)
+ * upload to the server's /api/convert endpoint (Autodesk Platform Services),
+ * poll for conversion status, then load the resulting IFC into the viewport.
  *
- * If APS credentials are not configured, the server saves the file
- * locally and instructs the user to export IFC from BIM manually.
+ * The server flow requires the server to be running (npm run server) with APS
+ * credentials configured (APS_CLIENT_ID, APS_CLIENT_SECRET); without them it
+ * saves the file and instructs the user to export IFC manually.
  */
 
 import { ctx } from "../core/context";
 import { importFiles } from "./file-interop";
+import { tryNwcLocalBridge, probeNwcBridge, isNwcLocalFile, NWC_LOCAL_EXTS, setBridgeBase, getBridgeBase } from "./nwc-bridge";
 
 type Any = Record<string, any>;
 
@@ -31,7 +35,7 @@ export function getConvertServer(): string {
 }
 
 /** Supported file extensions for conversion. */
-const CONVERTIBLE_EXTS = [".rvt", ".rfa", ".nwd", ".nwc", ".dwg"];
+const CONVERTIBLE_EXTS = [".rvt", ".rfa", ".nwd", ".nwc", ".nwf", ".dwg"];
 
 /**
  * Open a file picker for RVT/NWD/NWC/DWG files, upload to the server,
@@ -51,23 +55,45 @@ export async function pickAndConvertBIMFile(): Promise<void> {
 }
 
 /**
- * Convert a RVT/NWD/NWC/DWG file to IFC and load it into the viewport.
+ * Convert a RVT/NWD/NWC/NWF/DWG file to IFC and load it into the viewport.
  *
- * Flow:
- *   1. Upload to server /api/convert
- *   2. Poll /api/convert/:urn/status every 3 seconds
- *   3. When status = "success", download IFC from /api/convert/:urn/download
- *   4. Load the IFC bytes into the viewport via the existing importFiles() flow
+ * Routing:
+ *   - .nwc/.nwd/.nwf → local Navisworks bridge first (tools/navisworks-bridge);
+ *     if that is unavailable the setup wizard offers cloud/manual routes.
+ *   - .rvt/.rfa/.dwg → server /api/convert (APS Model Derivative) as before.
  */
 export async function convertAndLoadFile(file: File): Promise<void> {
   const ext = (file.name.split(".").pop() ?? "").toLowerCase();
 
   if (!CONVERTIBLE_EXTS.includes(`.${ext}`)) {
     window.dispatchEvent(new CustomEvent("obs-toast", {
-      detail: { message: `Unsupported file type: .${ext}. Use .rvt, .nwd, .nwc, or .dwg.`, kind: "error" },
+      detail: { message: `Unsupported file type: .${ext}. Use .rvt, .nwd, .nwc, .nwf, or .dwg.`, kind: "error" },
     }));
     return;
   }
+
+  // Navisworks source formats: convert locally with the installed engine.
+  if (isNwcLocalFile(file.name)) {
+    const handled = await tryNwcLocalBridge(file, convertViaServer);
+    if (handled) return;
+    // Wizard cancelled without completing any route — stop quietly.
+    return;
+  }
+
+  await convertViaServer(file);
+}
+
+/**
+ * Cloud conversion via the local collaboration server (APS Model Derivative).
+ *
+ * Flow:
+ *   1. Upload to server /api/convert
+ *   2. Poll /api/convert/:urn/status every 5 seconds
+ *   3. When status = "success", download IFC from /api/convert/:urn/download
+ *   4. Load the IFC bytes into the viewport via the existing importFiles() flow
+ */
+export async function convertViaServer(file: File): Promise<void> {
+  const ext = (file.name.split(".").pop() ?? "").toLowerCase();
 
   // Show progress toast
   const toastId = `convert-${Date.now()}`;
@@ -95,7 +121,7 @@ export async function convertAndLoadFile(file: File): Promise<void> {
       showToast(toastId, "warn",
         `"${file.name}" saved to server. APS credentials not configured.\n` +
         `To enable auto-conversion: set APS_CLIENT_ID and APS_CLIENT_SECRET.\n` +
-        `Manual path: In BIM → File → Export → IFC → import the .ifc here.`,
+        `Local alternative: run tools/navisworks-bridge (see Route A in the wizard).`,
         8000
       );
       return;
@@ -189,6 +215,13 @@ export function setupBIMImport(): void {
     convertFile: convertAndLoadFile,
     setServer: setConvertServer,
     getServer: getConvertServer,
+    convertViaServer,
+    nwcBridge: {
+      probe: probeNwcBridge,
+      localExts: [...NWC_LOCAL_EXTS],
+      setBase: setBridgeBase,
+      getBase: getBridgeBase,
+    },
   };
 
   // Register command
