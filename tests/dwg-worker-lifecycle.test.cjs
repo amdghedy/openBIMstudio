@@ -72,7 +72,10 @@ function spawnReader() {
   const worker = new Worker(WRAPPER);
   const waiters = new Map();
   let nextId = 0;
-  worker.on("message", (res) => { const w = waiters.get(res && res.id); if (w) { waiters.delete(res.id); w(res); } });
+  worker.on("message", (res) => {
+    if (res && res.kind === "started") return; // lifecycle ack — responses are demuxed below
+    const w = waiters.get(res && res.id); if (w) { waiters.delete(res.id); w(res); }
+  });
   const next = (bytes, fileName, id = ++nextId) => new Promise((resolve, reject) => {
     waiters.set(id, resolve);
     worker.postMessage({ id, kind: "parse", bytes, fileName });
@@ -114,6 +117,22 @@ const fixtureBuffer = (name) => { const b = fs.readFileSync(path.join(FIXTURES, 
     worker.postMessage({ id: 999, kind: "unknown-kind", bytes: new ArrayBuffer(8), fileName: "x.dwg" });
     const res = await next(fixtureBuffer("sample_2018.dwg"), "sample_2018.dwg");
     assert.strictEqual(res.ok, true); assert.strictEqual(res.version, "AC1032");
+  });
+  console.log("=== G4b. Every parse is acked with {id, kind:'started'} before its result ===");
+  await tAsync("started ack arrives first, result follows (parse-timer contract)", async () => {
+    // Raw listener: observes ack + result without registering a waiter.
+    const seen = [];
+    const onMsg = (res) => seen.push(res);
+    worker.on("message", onMsg);
+    const ACK_ID = 424242;
+    worker.postMessage({ id: ACK_ID, kind: "parse", bytes: fixtureBuffer("sample_2000.dwg"), fileName: "ack.dwg" });
+    const deadline = Date.now() + 90_000;
+    while (!seen.some((m) => m && m.ok === true && m.id === ACK_ID) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    worker.removeListener("message", onMsg);
+    assert.deepStrictEqual(seen[0], { id: ACK_ID, kind: "started" }, "first message must be the started ack");
+    assert.strictEqual(seen[seen.length - 1].ok, true, "the parse result must follow the ack");
   });
   await worker.terminate();
   console.log("=== G5. Main-thread client lifecycle guards (static) ===");
