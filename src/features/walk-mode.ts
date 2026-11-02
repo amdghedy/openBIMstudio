@@ -1,5 +1,15 @@
 ﻿/**
- * Walk mode — first-person navigation.
+ * Walk mode — first-person navigation with simple physics.
+ *
+ * Physics:
+ *   Walls block (capsule-style horizontal ray slide)
+ *   Stairs / kerbs within ~0.55 m step up or down while grounded
+ *   Openings / voids engage gravity (freefall) until a lower floor is hit
+ *   Collision meshes: IFC/FRAG fragments, authored elements, aux OBJ/GLB/…
+ *
+ * Start / end:
+ *   Starts at the current camera position and orientation
+ *   Esc exits and keeps the last walk view (does not restore the pre-walk camera)
  *
  * Controls:
  *   W A S D     — move
@@ -8,7 +18,7 @@
  *   Ctrl        — crouch
  *   Space       — raise
  *   C           — lower
- *   Esc         — exit
+ *   Esc         — exit (keep view)
  *
  * The camera in @thatopen/components is driven by `CameraControls`. Simply
  * assigning `camera.position` is not enough — the controls overwrite the
@@ -37,13 +47,18 @@ const CROUCH_SPEED = 1.4;
 const ACCEL = 12.0;
 const LOOK_SENS = 0.0022;
 const PITCH_LIMIT = Math.PI / 2 - 0.08;
-const RAYCAST_INTERVAL = 6;      // frames between ground raycasts
-const GROUND_SMOOTH = 12.0;      // Y-follow smoothing
+const RAYCAST_INTERVAL = 3;      // frames between ground raycasts (tighter for stairs/gaps)
+const GROUND_SMOOTH = 14.0;      // Y-follow smoothing when grounded
 const TARGET_DISTANCE = 5.0;     // metres in front of the eye for the controls target
 const GROUND_RAY_LENGTH = 500;   // how far down to look for the ground
-const MAX_STEP = 0.5;            // highest kerb/stair riser the walker steps up without a ramp
-const BODY_RADIUS = 0.3;         // collision radius against walls
-const COLLIDE_INTERVAL = 2;      // frames between wall checks
+const MAX_STEP = 0.55;           // highest kerb/stair riser the walker steps up without a ramp
+const MAX_STEP_DOWN = 0.65;      // continuous step-down (stairs) before freefall engages
+const FALL_TRIGGER = 0.9;        // gap below feet that starts freefall (openings / voids)
+const BODY_RADIUS = 0.32;        // collision radius against walls
+const COLLIDE_INTERVAL = 1;      // frames between wall checks
+const GRAVITY = -16.0;           // m/s² downward acceleration while airborne
+const TERMINAL_V = -28.0;        // terminal fall speed (m/s)
+const LANDING_SNAP = 0.08;       // metres — snap to floor when this close while falling
 
 interface SavedCamState {
   projection: "perspective" | "orthographic";
@@ -64,6 +79,7 @@ interface WalkState {
   pitch: number;
   keys: Set<string>;
   targetGroundY: number;
+  airborne: boolean;
   raycastTick: number;
   rafId: number | null;
   lastT: number;
@@ -82,6 +98,7 @@ const state: WalkState = {
   pitch: 0,
   keys: new Set(),
   targetGroundY: 0,
+  airborne: false,
   raycastTick: 0,
   rafId: null,
   lastT: 0,
@@ -179,30 +196,45 @@ function ensureOverlay(): HTMLDivElement {
 /* ═════════════════════════════════════════════════════════════════════════
    Ground raycast — find the surface below a given (x, z)
    ═════════════════════════════════════════════════════════════════════════ */
-function getWalkTargets(): THREE.Object3D[] {
+function collectSceneMeshes(): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
+  // ThatOpen Fragments (IFC / FRAG linked models)
   try {
     for (const [, model] of ctx.fragments.list) {
       if (model?.object) out.push(model.object);
     }
   } catch { /* */ }
+  // Native authored elements
   try { const ag = getAuthoredGroup(); if (ag) out.push(ag); } catch { /* */ }
+  // Aux imports (OBJ / GLB / FBX / …)
+  try {
+    const aux = (ctx.features as any)?.fileInterop?.getAuxObjects?.() as THREE.Object3D[] | undefined;
+    if (aux?.length) out.push(...aux);
+  } catch { /* */ }
+  return out;
+}
+
+function getWalkTargets(): THREE.Object3D[] {
+  const out = collectSceneMeshes();
   if (ctx.groundPlane) out.push(ctx.groundPlane);
   return out;
 }
 
-/** Wall-collision targets: linked models plus in-app authored geometry (no ground plane). */
+/** Wall-collision targets: all linked model types + authored (no infinite ground plane). */
 function getCollisionTargets(): THREE.Object3D[] {
-  const out: THREE.Object3D[] = [];
-  try { for (const [, m] of ctx.fragments.list) if (m?.object) out.push(m.object); } catch { /* */ }
-  try { const ag = getAuthoredGroup(); if (ag) out.push(ag); } catch { /* */ }
-  return out;
+  return collectSceneMeshes();
 }
 
-/** Ids of elements the walker may pass through (doors / openings). */
+/** Ids of elements the walker may pass through (doors / openings / windows). */
 function passableIds(): Set<string> {
   const ids = new Set<string>();
-  try { for (const e of getElements() as any[]) if (e?.type === "door") ids.add(String(e.id)); } catch { /* */ }
+  const pass = new Set(["door", "opening", "window", "void", "space"]);
+  try {
+    for (const e of getElements() as any[]) {
+      const ty = String(e?.type ?? "").toLowerCase();
+      if (pass.has(ty)) ids.add(String(e.id));
+    }
+  } catch { /* */ }
   return ids;
 }
 function hitElementId(o: THREE.Object3D | null): string | null {
@@ -228,15 +260,50 @@ function raycastGround(x: number, z: number, fromY: number): number | null {
   return null;
 }
 
+function eyeHeight(): number {
+  return state.keys.has("control") ? CROUCH_HEIGHT : EYE_HEIGHT;
+}
+
+/**
+ * Probe the floor under the walker.
+ * - Stairs / kerbs within MAX_STEP → step up/down (grounded).
+ * - Larger drop (opening, atrium, missing slab) → freefall toward lower floor.
+ * - No hit → freefall (void).
+ */
 function updateGroundTarget() {
-  // Look for the floor from just above the current floor + step height, so
-  // ceilings, roofs and tables above the walker are never mistaken for the
-  // ground, and only risers up to MAX_STEP can be climbed.
-  const from = Math.max(state.targetGroundY, state.pos.y - EYE_HEIGHT) + MAX_STEP;
+  const feetY = state.pos.y - eyeHeight();
+  // Probe from just above the feet + max step so we can step up stairs
+  // without locking onto ceilings/roofs above the head.
+  const from = Math.max(feetY + MAX_STEP + 0.08, state.targetGroundY + MAX_STEP + 0.08);
   const found = raycastGround(state.pos.x, state.pos.z, from);
-  if (found != null) { state.targetGroundY = found; return; }
-  if (!Number.isFinite(state.targetGroundY)) {
-    state.targetGroundY = (() => { try { return getLevel(); } catch { return 0; } })();
+
+  if (found == null) {
+    // Nothing below — open void / outside the model.
+    state.airborne = true;
+    return;
+  }
+
+  const drop = feetY - found; // positive = floor is below feet
+
+  if (drop < -MAX_STEP) {
+    // Floor is higher than we can step — treat as a wall, keep current ground.
+    return;
+  }
+
+  if (drop > FALL_TRIGGER) {
+    // Opening / missing slab / deep stair run: fall to the lower floor.
+    state.targetGroundY = found;
+    state.airborne = true;
+    return;
+  }
+
+  // Continuous surface or short stair riser/tread.
+  state.targetGroundY = found;
+  if (state.airborne && drop <= LANDING_SNAP) {
+    state.airborne = false;
+    state.vel.y = 0;
+  } else if (!state.airborne) {
+    state.airborne = false;
   }
 }
 
@@ -292,6 +359,7 @@ function updateStatus(): void {
   statusEl.textContent =
     `X ${f(state.pos.x)} m   Z ${f(state.pos.z)} m   Eye ${f(state.pos.y)} m\n` +
     `Heading ${heading.toFixed(0).padStart(3)}\u00b0   Speed \u00d7${state.speedFactor.toFixed(2)}` +
+    (state.airborne ? "   FALLING" : "   GROUNDED") +
     (levelName ? `   Level ${levelName}` : "");
 }
 
@@ -368,37 +436,32 @@ function enableWalkModeInner(): void {
   wcam.updateProjectionMatrix();
   if (controls) controls.enabled = false;
 
-  // ── Orientation: keep the current heading; pitch is level-ish when looking down from above ──
-  const viewDir = savedTarget.clone().sub(savedPos).normalize();
-  state.pitch = THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(viewDir.y, -1, 1)), -0.35, 0.35);
+  // ── Orientation from the CURRENT camera view ──
+  const viewDir = savedTarget.clone().sub(savedPos);
+  if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, -1);
+  else viewDir.normalize();
+  state.pitch = THREE.MathUtils.clamp(
+    Math.asin(THREE.MathUtils.clamp(viewDir.y, -1, 1)),
+    -PITCH_LIMIT,
+    PITCH_LIMIT,
+  );
   state.yaw = yawFromDirection(viewDir.x, viewDir.z) ?? 0;
   state.speedFactor = 1;
   state.dragging = false;
 
-  // ── Position: stand where the view ray meets the model / ground (like picking a
-  //    start point), falling back to the camera's own XZ. Eye height is above that floor. ──
-  let startX = savedPos.x, startZ = savedPos.z, floorY: number | null = null;
-  let probeFrom = Math.max(savedPos.y, 0) + 1;
-  try {
-    const rc = new THREE.Raycaster(savedPos.clone(), viewDir.clone());
-    rc.far = 5000;
-    const targets = getWalkTargets();
-    const hit = targets.length ? rc.intersectObjects(targets, true)[0] : null;
-    if (hit) {
-      // Step back a little so the walker is not inside the wall that was clicked.
-      const back = Math.min(0.6, hit.distance * 0.5);
-      startX = hit.point.x - viewDir.x * back;
-      startZ = hit.point.z - viewDir.z * back;
-      probeFrom = hit.point.y + 1;
-    }
-  } catch { /* */ }
-  // Stand on the ACTIVE level at that spot (not on the roof the view ray happened to hit).
-  const activeElev = (() => { try { const v = Number(getLevel()); return Number.isFinite(v) ? v : 0; } catch { return 0; } })();
-  void probeFrom;
-  floorY = raycastGround(startX, startZ, activeElev + MAX_STEP + 0.05);
-  if (floorY == null || Math.abs(floorY - activeElev) > 1.5) floorY = activeElev;
+  // ── Position: CURRENT camera point (do not teleport to a look-ray hit / active level) ──
+  const startX = savedPos.x;
+  const startZ = savedPos.z;
+  const probeFrom = Math.max(savedPos.y + 0.5, savedPos.y);
+  let floorY = raycastGround(startX, startZ, probeFrom);
+  if (floorY == null) floorY = savedPos.y - EYE_HEIGHT;
+
   state.targetGroundY = floorY;
-  state.pos.set(startX, floorY + EYE_HEIGHT, startZ);
+  state.airborne = false;
+  const standingEye = floorY + EYE_HEIGHT;
+  // Keep the camera's actual eye height when it is already near a valid standing pose.
+  const eyeY = Math.abs(savedPos.y - standingEye) < 2.5 ? savedPos.y : standingEye;
+  state.pos.set(startX, eyeY, startZ);
   state.vel.set(0, 0, 0);
   state.keys.clear();
 
@@ -410,7 +473,12 @@ function enableWalkModeInner(): void {
   state.raycastTick = 0;
 
   try { ov.requestPointerLock(); } catch (e) { console.warn("[walk] pointer lock failed", e); }
-  try { notify("info", "Walk mode: W A S D to move, mouse to look, Esc to exit. Click the view if the mouse isn't captured."); } catch { /* */ }
+  try {
+    notify(
+      "info",
+      "Walk mode (physics): walls block, stairs climb, openings drop. Esc exits and keeps this view.",
+    );
+  } catch { /* */ }
 
   state.rafId = requestAnimationFrame(tick);
 
@@ -430,26 +498,34 @@ export function disableWalkMode(): void {
     if (document.pointerLockElement) document.exitPointerLock();
   } catch { /* */ }
 
-  // ── Restore camera + controls via setLookAt so the controls accept the value ──
+  // ── Keep the LAST walk camera (do not jump back to the pre-walk view) ──
   const saved = state.saved;
   const controls: any = ctx.world.camera.controls;
   const cam = ctx.world.camera.three as THREE.PerspectiveCamera;
+
+  const look = new THREE.Vector3(
+    -Math.sin(state.yaw) * Math.cos(state.pitch),
+    Math.sin(state.pitch),
+    -Math.cos(state.yaw) * Math.cos(state.pitch),
+  );
+  const endPos = state.pos.clone();
+  const endTarget = endPos.clone().add(look.multiplyScalar(TARGET_DISTANCE));
+
+  if (controls && typeof controls.setLookAt === "function") {
+    try {
+      controls.setLookAt(
+        endPos.x, endPos.y, endPos.z,
+        endTarget.x, endTarget.y, endTarget.z,
+        false,
+      );
+    } catch { /* */ }
+  } else {
+    cam.position.copy(endPos);
+    cam.lookAt(endTarget);
+  }
+
   if (saved) {
-    if (controls && typeof controls.setLookAt === "function") {
-      try {
-        controls.setLookAt(
-          saved.position.x, saved.position.y, saved.position.z,
-          saved.target.x, saved.target.y, saved.target.z,
-          false,
-        );
-      } catch { /* */ }
-    } else {
-      // Fallback: set camera directly and hope the controls tolerate it.
-      cam.position.copy(saved.position);
-      cam.lookAt(saved.target);
-    }
     cam.fov = saved.fov;
-    // Walk mode tightened the clip planes; put them back.
     if (Number.isFinite(saved.near)) cam.near = saved.near as number;
     if (Number.isFinite(saved.far)) cam.far = saved.far as number;
     cam.updateProjectionMatrix();
@@ -459,9 +535,12 @@ export function disableWalkMode(): void {
       live.up.copy(saved.up);
       (controls as any)?.updateCameraUp?.();
     } catch { /* */ }
+    // Stay in perspective after walk for a natural hand-off; only restore ortho if requested.
     if (saved.projection !== "perspective") {
       try { setProjection(saved.projection); } catch { /* */ }
     }
+  } else if (controls) {
+    controls.enabled = true;
   }
   state.saved = null;
   state.keys.clear();
@@ -636,19 +715,39 @@ function tickBody(now: number) {
     if (!Number.isFinite(state.targetGroundY)) state.targetGroundY = 0;
   }
 
-  // Manual vertical (Space / C) overrides ground-follow this frame.
+  // Manual vertical (Space / C) overrides gravity / ground-follow this frame.
   const manualVertical = state.keys.has("space") || state.keys.has("c");
-  if (state.keys.has("space")) state.pos.y += 2.4 * dt;
-  if (state.keys.has("c")) state.pos.y -= 2.4 * dt;
+  if (state.keys.has("space")) {
+    state.pos.y += 2.4 * dt;
+    state.vel.y = Math.max(state.vel.y, 0);
+    state.airborne = true;
+  }
+  if (state.keys.has("c")) {
+    state.pos.y -= 2.4 * dt;
+    state.vel.y = Math.min(state.vel.y, 0);
+  }
 
-  // Ground-follow raycast every N frames.
   state.raycastTick = (state.raycastTick + 1) % RAYCAST_INTERVAL;
   if (state.raycastTick === 0) updateGroundTarget();
 
   const eyeH = crouching ? CROUCH_HEIGHT : EYE_HEIGHT;
-  if (!manualVertical) {
-    const targetY = state.targetGroundY + eyeH;
+  const targetY = state.targetGroundY + eyeH;
+
+  if (manualVertical) {
+    // free vertical nudge
+  } else if (state.airborne) {
+    state.vel.y += GRAVITY * dt;
+    if (state.vel.y < TERMINAL_V) state.vel.y = TERMINAL_V;
+    state.pos.y += state.vel.y * dt;
+    if (state.pos.y <= targetY + LANDING_SNAP) {
+      state.pos.y = targetY;
+      state.vel.y = 0;
+      state.airborne = false;
+    }
+  } else {
+    state.vel.y = 0;
     state.pos.y += (targetY - state.pos.y) * Math.min(1, GROUND_SMOOTH * dt);
+    if (state.pos.y - targetY > FALL_TRIGGER) state.airborne = true;
   }
 
   state.hudTick = (state.hudTick + 1) % 8;
