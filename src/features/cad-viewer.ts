@@ -143,6 +143,8 @@ interface CadEngineApi {
   saveDxf(): void;
   fileName(): string;
   focus(): void;
+  /** Run a ribbon action by id (shell A-menu / Quick Access toolbar → active drawing). */
+  exec(action: string): void;
 }
 
 interface EngineHooks {
@@ -169,6 +171,51 @@ let active: DocTab | null = null;
 let nextTabId = 1;
 /** Shared cross-drawing clipboard (COPYCLIP in one tab, PASTECLIP in another). */
 let clip: CadClip | null = null;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Shell ribbon (AutoCAD MDI chrome). The ribbon lives ONCE at shell level:
+   ribbon tabs row → active tab's panels → drawing file tabs → viewport.
+   Every drawing contributes its own panel set; only the active drawing's
+   panels are visible, and the ribbon tabs filter which panel groups show.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const RIBBON_TABS: ReadonlyArray<{ id: string; label: string }> = [
+  { id: "home", label: "Home" },
+  { id: "annotate", label: "Annotate" },
+  { id: "view", label: "View" },
+  { id: "manage", label: "Manage" },
+  { id: "output", label: "Output" },
+];
+let ribbonTab = "home";
+try {
+  const saved = localStorage.getItem("obs.cad.ribbon.tab");
+  if (saved && RIBBON_TABS.some((t) => t.id === saved)) ribbonTab = saved;
+} catch { /* private browsing / storage blocked */ }
+let ribbonStrip: HTMLDivElement | null = null;
+let ribbonTabsRow: HTMLDivElement | null = null;
+let ribbonActive: CadEngineApi | null = null;
+const ribbonEngines = new Map<CadEngineApi, HTMLDivElement>();
+
+function applyRibbonTab(): void {
+  ribbonStrip?.setAttribute("data-ribbon-tab", ribbonTab);
+  ribbonTabsRow?.querySelectorAll<HTMLElement>("[data-ribtab]").forEach((b) =>
+    b.classList.toggle("on", b.dataset.ribtab === ribbonTab),
+  );
+  try { localStorage.setItem("obs.cad.ribbon.tab", ribbonTab); } catch { /* */ }
+}
+
+function registerRibbonEngine(wrap: HTMLDivElement, engine: CadEngineApi): void {
+  wrap.className = "cadrb-enginewrap";
+  ribbonEngines.set(engine, wrap);
+  if (ribbonStrip) ribbonStrip.appendChild(wrap);
+}
+
+function showRibbonEngine(wrap: HTMLDivElement, engine: CadEngineApi): void {
+  ribbonActive = engine;
+  if (!ribbonStrip) return;
+  if (wrap.parentElement !== ribbonStrip) ribbonStrip.appendChild(wrap);
+  for (const w of Array.from(ribbonStrip.children)) w.classList.toggle("on", w === wrap);
+  applyRibbonTab();
+}
 
 export function openCadViewer(file?: File): void {
   ensureShell();
@@ -213,12 +260,18 @@ function closeTab(tab: DocTab | null): void {
   if (tab.engine.isDirty() && !window.confirm(`"${tab.title}" has unsaved changes. Close without saving?`)) return;
   tab.engine.deactivate();
   tab.page.remove();
+  const wrap = ribbonEngines.get(tab.engine);
+  if (wrap) {
+    wrap.remove();
+    ribbonEngines.delete(tab.engine);
+  }
   tabs = tabs.filter((t) => t !== tab);
   if (active === tab) {
     active = null;
     if (tabs.length) activate(tabs[tabs.length - 1]);
     else hideShell();
   }
+  if (ribbonActive === tab.engine) ribbonActive = tabs.find((t) => t.engine !== tab.engine)?.engine ?? null;
   renderStrip();
 }
 
@@ -273,6 +326,56 @@ function openTabMenu(x: number, y: number, tab: DocTab): void {
   }, 0);
 }
 
+/** AutoCAD application menu — the red "A" button dropdown. Dispatches to the
+ *  active drawing's engine (shell-level actions like New/Save All stay here). */
+function openAppMenu(anchor: HTMLElement): void {
+  document.querySelectorAll(".obs-cad-shell .cadmenu").forEach((m) => m.remove());
+  const menu = document.createElement("div");
+  menu.className = "cadmenu";
+  menu.style.cssText = "position:fixed;z-index:10060;min-width:210px";
+  const item = (label: string, fn: () => void) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.onclick = () => {
+      menu.remove();
+      fn();
+    };
+    menu.appendChild(b);
+  };
+  const sep = () => {
+    const s = document.createElement("div");
+    s.className = "cadmenu__sep";
+    menu.appendChild(s);
+  };
+  item("New Drawing", () => openBlank());
+  item("Open…", () => picker!.click());
+  sep();
+  item("Save DXF", () => ribbonActive?.exec("save-dxf"));
+  item("Save All", () => saveAll());
+  item("Plot…", () => ribbonActive?.exec("plot"));
+  sep();
+  item("Export SVG", () => ribbonActive?.exec("svg"));
+  item("Export Measurements CSV", () => ribbonActive?.exec("csv"));
+  item("Quantity Takeoff (CSV)", () => ribbonActive?.exec("takeoff"));
+  item("Drawing Information", () => ribbonActive?.exec("info"));
+  sep();
+  item("Close Drawing", () => ribbonActive?.exec("close"));
+  shell!.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  const off = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(r.left, window.innerWidth - off.width - 8)}px`;
+  menu.style.top = `${Math.min(r.bottom + 4, window.innerHeight - off.height - 8)}px`;
+  setTimeout(() => {
+    const done = (ev: MouseEvent) => {
+      if (!menu.contains(ev.target as Node)) {
+        menu.remove();
+        document.removeEventListener("mousedown", done);
+      }
+    };
+    document.addEventListener("mousedown", done);
+  }, 0);
+}
+
 function ensureShell(): void {
   if (shell) return;
   shell = document.createElement("div");
@@ -281,13 +384,56 @@ function ensureShell(): void {
   shell.setAttribute("data-obs-own-wheel", "");
   shell.style.cssText =
     "position:fixed;inset:0;z-index:10050;display:none;flex-direction:column;background:#151a23;color:#e5e7eb;font:12px/1.35 system-ui,sans-serif";
+  const tabstripStyle =
+    "display:flex;align-items:flex-end;gap:2px;padding:6px 8px 0;background:#0b0d12;border-bottom:1px solid #2a3140;overflow-x:auto;scrollbar-width:thin;flex:none;min-height:34px";
+  const qatBtn = (icon: IconName, action: string, title: string, flip = false) =>
+    `<button data-qat="${action}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">` +
+    (flip ? `<span class="qat-flip">${svgIcon(icon)}</span>` : svgIcon(icon)) +
+    `</button>`;
   shell.innerHTML =
     `<style>${CAD_CSS}</style>` +
-    `<div data-r="tabstrip" role="tablist" aria-label="Open drawings" style="display:flex;align-items:flex-end;gap:2px;padding:6px 8px 0;background:#0b0d12;border-bottom:1px solid #2a3140;overflow-x:auto;scrollbar-width:thin;flex:none;min-height:34px"></div>` +
+    // AutoCAD chrome: ribbon tabs row → ribbon panels → drawing file tabs → viewport
+    `<div class="cad-chrome">` +
+    `<div class="cad-ribbon-tabs" data-r="ribbontabs">` +
+    `<button class="cad-appmenu" data-r="appmenu" title="Application menu" aria-label="Application menu">A</button>` +
+    RIBBON_TABS.map((t) => `<button class="cad-ribtab" data-ribtab="${t.id}">${t.label}</button>`).join("") +
+    `<div class="cad-qat">` +
+    qatBtn("folder", "open", "Open a DWG or DXF drawing") +
+    qatBtn("save", "save-dxf", "Save DXF (QSAVE)") +
+    qatBtn("print", "plot", "Plot to PDF / paper") +
+    qatBtn("undo", "undo", "Undo (Ctrl+Z)") +
+    qatBtn("undo", "redo", "Redo (Ctrl+Y)", true) +
+    qatBtn("fit", "ext", "Zoom extents (Z E)") +
+    `</div></div>` +
+    `<div class="cadrb-strip" data-r="ribbonstrip"></div>` +
+    `<div data-r="tabstrip" role="tablist" aria-label="Open drawings" style="${tabstripStyle}"></div>` +
+    `</div>` +
     `<div data-r="pages" style="display:flex;flex:1;min-height:0;position:relative;overflow:hidden"></div>`;
   document.body.appendChild(shell);
   strip = shell.querySelector<HTMLDivElement>("[data-r=tabstrip]")!;
   pagesEl = shell.querySelector<HTMLDivElement>("[data-r=pages]")!;
+  ribbonStrip = shell.querySelector<HTMLDivElement>("[data-r=ribbonstrip]")!;
+  ribbonTabsRow = shell.querySelector<HTMLDivElement>("[data-r=ribbontabs]")!;
+  applyRibbonTab();
+  ribbonTabsRow.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    const rib = target.closest<HTMLElement>("[data-ribtab]");
+    if (rib) {
+      ribbonTab = rib.dataset.ribtab!;
+      applyRibbonTab();
+      return;
+    }
+    const q = target.closest<HTMLElement>("[data-qat]");
+    if (q) {
+      const a = q.dataset.qat!;
+      if (a === "open") picker!.click();
+      else ribbonActive?.exec(a);
+    }
+  });
+  shell.querySelector<HTMLButtonElement>("[data-r=appmenu]")!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openAppMenu(e.currentTarget as HTMLElement);
+  });
 
   picker = document.createElement("input");
   picker.type = "file";
@@ -400,30 +546,58 @@ const CAD_CSS = `
     .obs-cad-viewer table{width:100%;border-collapse:collapse}.obs-cad-viewer td{padding:3px 8px;border-bottom:1px solid #222a37}
     .obs-cad-viewer td:first-child{color:#9aa4b2}
 
-    /* Ribbon-style toolbar: icon over label, grouped, caption underneath (same look as the main app ribbon) */
-    .obs-cad-viewer{--cadrb-w:56px;--cadrb-h:36px;--cadrb-gap:2px;--cadrb-icon:16px;--cadrb-label:9px}
-    .obs-cad-viewer .cadrb-strip{display:flex;align-items:stretch;flex:none;height:104px;padding:7px 8px;overflow-x:auto;overflow-y:hidden;background:linear-gradient(180deg,var(--bg-surface,#12141b) 0%,var(--bg-base,#0b0d12) 100%);border-bottom:1px solid var(--border-default,#2a2e3a);user-select:none;scrollbar-width:thin}
-    .obs-cad-viewer .cadrb-host{display:flex;align-items:stretch;flex:none}
-    .obs-cad-viewer .cadrb-host--end{flex:1 0 auto}
-    .obs-cad-viewer .cadrg{display:flex;flex-direction:column;align-items:center;padding:0 4px;border-right:1px solid var(--border-subtle,#1e2029);min-width:0;flex:none;height:100%}
-    .obs-cad-viewer .cadrg--end{margin-left:auto;border-right:none}
-    .obs-cad-viewer .cadrg__body{flex:1;display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,var(--cadrb-h));grid-auto-columns:var(--cadrb-w);gap:var(--cadrb-gap);align-content:center;justify-content:center;min-width:0}
-    .obs-cad-viewer .cadrg__body--fields{grid-auto-columns:auto;column-gap:6px}
-    .obs-cad-viewer .cadrg__label{text-align:center;font:500 9px var(--font-sans,system-ui);letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary,#6b7280);padding-top:3px;white-space:nowrap;opacity:.65;flex:none}
-    .obs-cad-viewer .cadrb{width:var(--cadrb-w);height:var(--cadrb-h);padding:3px 2px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:transparent;border:1px solid transparent;border-radius:4px;cursor:pointer;color:var(--text-secondary,#a0a6b5);font-family:var(--font-sans,system-ui);position:relative;overflow:visible;flex:none;transition:background .14s,color .14s,border-color .14s}
-    .obs-cad-viewer .cadrb:hover{background:var(--bg-hover,#232633);color:var(--text-primary,#e8eaf0);border-color:var(--border-subtle,#1e2029)}
-    .obs-cad-viewer .cadrb:active{background:var(--bg-active,#2a2e3d);transform:scale(.96)}
-    .obs-cad-viewer .cadrb.on{background:var(--accent-dim,rgba(56,189,248,.14));color:var(--accent,#38bdf8);border-color:var(--accent,#38bdf8);box-shadow:inset 0 0 6px rgba(56,189,248,.10)}
-    .obs-cad-viewer .cadrb--danger{color:#fca5a5}
-    .obs-cad-viewer .cadrb--danger:hover{background:rgba(239,68,68,.15);border-color:#ef4444;color:#fecaca}
-    .obs-cad-viewer .cadrb--flip .cadrb__icon{transform:scaleX(-1)}
-    .obs-cad-viewer .cadrb__icon{display:flex;align-items:center;justify-content:center;width:var(--cadrb-icon);height:var(--cadrb-icon);color:inherit;pointer-events:none;flex:none}
-    .obs-cad-viewer .cadrb__icon svg{display:block;width:var(--cadrb-icon);height:var(--cadrb-icon);stroke:currentColor;fill:none;stroke-width:1.9}
-    .obs-cad-viewer .cadrb__icon svg [fill="currentColor"]{fill:currentColor;stroke:none}
-    .obs-cad-viewer .cadrb__label{display:block;font-size:var(--cadrb-label);line-height:1;font-weight:500;color:inherit;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:0 1px;opacity:.85}
-    .obs-cad-viewer .cadrb.on .cadrb__label,.obs-cad-viewer .cadrb:hover .cadrb__label{opacity:1}
-    .obs-cad-viewer .cadrb-field{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:var(--cadrb-h);padding:0 3px;font:500 9px var(--font-sans,system-ui);color:var(--text-tertiary,#6b7280);text-transform:uppercase;letter-spacing:.5px}
-    .obs-cad-viewer .cadrb-field select{background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);color:var(--text-primary,#e8eaf0);font:500 10px var(--font-mono,monospace);padding:3px 4px;border-radius:3px;min-width:70px;outline:none;cursor:pointer;text-transform:none;letter-spacing:0}
+    /* Ribbon-style toolbar: icon over label, grouped, caption underneath (same look as the main app ribbon).
+       The strip lives in the SHELL chrome (shared across drawing tabs, AutoCAD MDI style), so every
+       ribbon rule is scoped to both the viewer page and the shell. */
+    .obs-cad-viewer,.obs-cad-shell{--cadrb-w:56px;--cadrb-h:36px;--cadrb-gap:2px;--cadrb-icon:16px;--cadrb-label:9px}
+    .obs-cad-viewer .cadrb-strip,.obs-cad-shell .cadrb-strip{display:flex;align-items:stretch;flex:none;height:104px;padding:7px 8px;overflow-x:auto;overflow-y:hidden;background:linear-gradient(180deg,var(--bg-surface,#12141b) 0%,var(--bg-base,#0b0d12) 100%);border-bottom:1px solid var(--border-default,#2a2e3a);user-select:none;scrollbar-width:thin}
+    .obs-cad-viewer .cadrb-host,.obs-cad-shell .cadrb-host{display:flex;align-items:stretch;flex:none}
+    .obs-cad-viewer .cadrb-host--end,.obs-cad-shell .cadrb-host--end{flex:1 0 auto}
+    .obs-cad-viewer .cadrg,.obs-cad-shell .cadrg{display:flex;flex-direction:column;align-items:center;padding:0 4px;border-right:1px solid var(--border-subtle,#1e2029);min-width:0;flex:none;height:100%}
+    .obs-cad-viewer .cadrg--end,.obs-cad-shell .cadrg--end{margin-left:auto;border-right:none}
+    .obs-cad-viewer .cadrg__body,.obs-cad-shell .cadrg__body{flex:1;display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,var(--cadrb-h));grid-auto-columns:var(--cadrb-w);gap:var(--cadrb-gap);align-content:center;justify-content:center;min-width:0}
+    .obs-cad-viewer .cadrg__body--fields,.obs-cad-shell .cadrg__body--fields{grid-auto-columns:auto;column-gap:6px}
+    .obs-cad-viewer .cadrg__label,.obs-cad-shell .cadrg__label{text-align:center;font:500 9px var(--font-sans,system-ui);letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary,#6b7280);padding-top:3px;white-space:nowrap;opacity:.65;flex:none}
+    .obs-cad-viewer .cadrb,.obs-cad-shell .cadrb{width:var(--cadrb-w);height:var(--cadrb-h);padding:3px 2px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:transparent;border:1px solid transparent;border-radius:4px;cursor:pointer;color:var(--text-secondary,#a0a6b5);font-family:var(--font-sans,system-ui);position:relative;overflow:visible;flex:none;transition:background .14s,color .14s,border-color .14s}
+    .obs-cad-viewer .cadrb:hover,.obs-cad-shell .cadrb:hover{background:var(--bg-hover,#232633);color:var(--text-primary,#e8eaf0);border-color:var(--border-subtle,#1e2029)}
+    .obs-cad-viewer .cadrb:active,.obs-cad-shell .cadrb:active{background:var(--bg-active,#2a2e3d);transform:scale(.96)}
+    .obs-cad-viewer .cadrb.on,.obs-cad-shell .cadrb.on{background:var(--accent-dim,rgba(56,189,248,.14));color:var(--accent,#38bdf8);border-color:var(--accent,#38bdf8);box-shadow:inset 0 0 6px rgba(56,189,248,.10)}
+    .obs-cad-viewer .cadrb--danger,.obs-cad-shell .cadrb--danger{color:#fca5a5}
+    .obs-cad-viewer .cadrb--danger:hover,.obs-cad-shell .cadrb--danger:hover{background:rgba(239,68,68,.15);border-color:#ef4444;color:#fecaca}
+    .obs-cad-viewer .cadrb--flip .cadrb__icon,.obs-cad-shell .cadrb--flip .cadrb__icon{transform:scaleX(-1)}
+    .obs-cad-viewer .cadrb__icon,.obs-cad-shell .cadrb__icon{display:flex;align-items:center;justify-content:center;width:var(--cadrb-icon);height:var(--cadrb-icon);color:inherit;pointer-events:none;flex:none}
+    .obs-cad-viewer .cadrb__icon svg,.obs-cad-shell .cadrb__icon svg{display:block;width:var(--cadrb-icon);height:var(--cadrb-icon);stroke:currentColor;fill:none;stroke-width:1.9}
+    .obs-cad-viewer .cadrb__icon svg [fill="currentColor"],.obs-cad-shell .cadrb__icon svg [fill="currentColor"]{fill:currentColor;stroke:none}
+    .obs-cad-viewer .cadrb__label,.obs-cad-shell .cadrb__label{display:block;font-size:var(--cadrb-label);line-height:1;font-weight:500;color:inherit;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:0 1px;opacity:.85}
+    .obs-cad-viewer .cadrb.on .cadrb__label,.obs-cad-viewer .cadrb:hover .cadrb__label,.obs-cad-shell .cadrb.on .cadrb__label,.obs-cad-shell .cadrb:hover .cadrb__label{opacity:1}
+    .obs-cad-viewer .cadrb-field,.obs-cad-shell .cadrb-field{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:var(--cadrb-h);padding:0 3px;font:500 9px var(--font-sans,system-ui);color:var(--text-tertiary,#6b7280);text-transform:uppercase;letter-spacing:.5px}
+    .obs-cad-viewer .cadrb-field select,.obs-cad-shell .cadrb-field select{background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);color:var(--text-primary,#e8eaf0);font:500 10px var(--font-mono,monospace);padding:3px 4px;border-radius:3px;min-width:70px;outline:none;cursor:pointer;text-transform:none;letter-spacing:0}
+
+    /* AutoCAD shell chrome: application menu (red A) + ribbon tabs + Quick Access toolbar,
+       then the ribbon strip, then the drawing file tabs — exactly the AutoCAD stacking order. */
+    .obs-cad-shell .cad-chrome{flex:none;display:flex;flex-direction:column;min-height:0}
+    .obs-cad-shell .cad-ribbon-tabs{display:flex;align-items:stretch;height:32px;padding:0 8px;background:#0b0d12;border-bottom:1px solid #2a3140;user-select:none;flex:none}
+    .obs-cad-shell .cad-appmenu{width:32px;min-width:32px;margin:3px 8px 3px 0;padding:0;display:flex;align-items:center;justify-content:center;border-radius:5px;background:linear-gradient(180deg,#e05252,#b91c1c);border:1px solid #7f1d1d;color:#fff;font:700 15px/1 var(--font-sans,system-ui);cursor:pointer}
+    .obs-cad-shell .cad-appmenu:hover{background:linear-gradient(180deg,#ef6a6a,#c52222)}
+    .obs-cad-shell .cad-ribtab{padding:0 14px;background:transparent;border:none;border-bottom:2px solid transparent;border-radius:0;color:#9aa4b2;font:500 12px var(--font-sans,system-ui);cursor:pointer}
+    .obs-cad-shell .cad-ribtab:hover{color:#e8eaf0;background:#1b212c}
+    .obs-cad-shell .cad-ribtab.on{color:#f8fafc;background:#151a23;border-bottom-color:#38bdf8}
+    .obs-cad-shell .cad-qat{margin-left:auto;display:flex;align-items:center;gap:1px}
+    .obs-cad-shell .cad-qat button{width:26px;height:26px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#9aa4b2;cursor:pointer}
+    .obs-cad-shell .cad-qat button:hover{background:#1b212c;color:#e8eaf0;border-color:#2a3140}
+    .obs-cad-shell .cad-qat button svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9}
+    .obs-cad-shell .cad-qat .qat-flip{display:flex;transform:scaleX(-1)}
+    .obs-cad-shell .cadmenu__sep{height:1px;margin:4px 6px;background:#2a3140}
+    /* Per-engine ribbon content: only the active drawing's panels are mounted/visible */
+    .obs-cad-shell .cadrb-enginewrap{display:none;flex:1;min-width:0;align-items:stretch}
+    .obs-cad-shell .cadrb-enginewrap.on{display:flex}
+    /* Ribbon tabs filter the panels of the active drawing (AutoCAD tab → panels) */
+    .obs-cad-shell .cadrb-strip .cadrg{display:none}
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="home"] .cadrg[data-cadtab="home"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="annotate"] .cadrg[data-cadtab="annotate"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="view"] .cadrg[data-cadtab="view"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="manage"] .cadrg[data-cadtab="manage"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="output"] .cadrg[data-cadtab="output"]{display:flex}
     /* AutoCAD In-Canvas ViewCube */
     .obs-cad-viewcube {
       position: absolute; top: 16px; right: 28px; width: 68px; height: 68px;
@@ -524,12 +698,6 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     "display:none;flex-direction:column;min-height:0;flex:1;background:#151a23;color:#e5e7eb;font:12px/1.35 system-ui,sans-serif";
 
   root.innerHTML = `
-  <!-- AutoCAD Ribbon / Main Action Bar -->
-  <div class="cadrb-strip">
-    <div class="cadrb-host" data-r="tools"></div>
-    <div class="cadrb-host cadrb-host--end" data-r="tools2"></div>
-  </div>
-
   <!-- Main CAD Viewport & Sidebars -->
   <div style="display:flex;flex:1;min-height:0">
     <div style="flex:1;position:relative;min-width:0" data-r="stage">
@@ -604,11 +772,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   `;
 
   const $ = <T extends HTMLElement>(k: string) => root!.querySelector(`[data-r="${k}"]`) as T;
+  // Ribbon panels are built per drawing but MOUNTED in the shell chrome above the
+  // drawing tabs (AutoCAD MDI style) — only the active drawing's panels show.
+  const tools = document.createElement("div"),
+    tools2 = document.createElement("div");
+  tools.className = "cadrb-host";
+  tools.dataset.r = "tools";
+  tools2.className = "cadrb-host cadrb-host--end";
+  tools2.dataset.r = "tools2";
+  const ribbonWrap = document.createElement("div");
+  ribbonWrap.append(tools, tools2);
   const cv = $<HTMLCanvasElement>("cv"),
     g = cv.getContext("2d")!;
-  const tools2 = $("tools2"),
-    tabsEl = $("tabs"),
-    tools = $("tools"),
+  const tabsEl = $("tabs"),
     layersEl = $("layers"),
     propsEl = $("props"),
     measEl = $("meas"),
@@ -2532,12 +2708,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       `<span class="cadrb__icon">${svgIcon(icon)}</span><span class="cadrb__label">${escapeHtml(label)}</span></button>`
     );
   }
-  function rg(label: string, body: string, bodyCls = "", groupCls = ""): string {
+  function rg(label: string, body: string, bodyCls = "", groupCls = "", cadTab = "home"): string {
     return (
-      `<div class="cadrg${groupCls ? " " + groupCls : ""}"><div class="cadrg__body${bodyCls ? " " + bodyCls : ""}">${body}</div>` +
+      `<div class="cadrg${groupCls ? " " + groupCls : ""}" data-cadtab="${cadTab}"><div class="cadrg__body${bodyCls ? " " + bodyCls : ""}">${body}</div>` +
       `<div class="cadrg__label">${escapeHtml(label)}</div></div>`
     );
   }
+  /* Ribbon actions (buildBar) and right-side actions (buildBar2), both reachable
+     from the shell-level A-menu / Quick Access toolbar via exec(). */
+  const act: Record<string, () => void> = {};
+  const act2: Record<string, () => void> = {};
+
   function buildBar() {
     const tip = (k: Tool): string => {
       const d = T.find((x) => x[0] === k);
@@ -2556,6 +2737,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("save", "Save DXF", `data-a="save-dxf"`, "Save the edited drawing as DXF (QSAVE)") +
           rb("print", "Plot", `data-a="plot"`, "Plot to PDF / paper") +
           `<input type="file" data-r="file" accept=".dwg,.dxf" style="display:none">`,
+        "",
+        "",
+        "home",
       ) +
       rg(
         "Draw",
@@ -2564,6 +2748,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("poly", "model-curve", "Pline") +
           tb("rect", "plate", "Rectang") +
           tb("arc", "arc-length", "Arc"),
+        "",
+        "",
+        "home",
       ) +
       rg(
         "Select",
@@ -2571,6 +2758,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("erase", "delete", "Erase") +
           tb("box", "isolate", "Box") +
           rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)"),
+        "",
+        "",
+        "home",
       ) +
       rg(
         "Modify",
@@ -2580,11 +2770,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("mirror", "mirror", "Mirror") +
           tb("scale", "scale", "Scale") +
           tb("offset", "offset", "Offset"),
+        "",
+        "",
+        "home",
       ) +
       rg(
         "History",
         rb("undo", "Undo", `data-a="undo"`, "Undo (Ctrl+Z / U)") +
           rb("undo", "Redo", `data-a="redo"`, "Redo (Ctrl+Y)", "cadrb--flip"),
+        "",
+        "",
+        "home",
       ) +
       rg(
         "Measure",
@@ -2594,6 +2790,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("coord", "spot-coord", "Coords") +
           tb("radius", "dim-radial", "Radius") +
           tb("calibrate", "ref-plane", "Calibrate"),
+        "",
+        "",
+        "annotate",
       ) +
       rg(
         "Markup",
@@ -2601,6 +2800,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("cloud", "revision-cloud", "RevCloud") +
           tb("leader", "tag", "Leader") +
           tb("note", "text", "Note"),
+        "",
+        "",
+        "annotate",
       ) +
       rg(
         "Navigate",
@@ -2608,6 +2810,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("zoomwin", "inspect", "Zoom Win") +
           rb("fit", "Extents", `data-a="ext"`, "Zoom extents (Z E)") +
           rb("recenter", "Selection", `data-a="zsel"`, "Zoom to selection (F)"),
+        "",
+        "",
+        "view",
       ) +
       rg(
         "Modes",
@@ -2616,12 +2821,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("orthographic", "Ortho", `data-a="ortho"`, "Ortho (F8)") +
           rb("dim-linear", "DYN", `data-a="dyn"`, "Dynamic Input HUD (F12)", "on") +
           rb("strip", "LWT", `data-a="lwt"`, "Lineweight display", "on"),
+        "",
+        "",
+        "view",
       ) +
       rg(
         "Settings",
         `<label class="cadrb-field"><span>Background</span><select data-a="bg">${bgOpts}</select></label>` +
           `<label class="cadrb-field"><span>Units</span><select data-a="du">${unitOpts}</select></label>`,
         "cadrg__body--fields",
+        "",
+        "manage",
       );
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => (b.onclick = () => setTool(b.dataset.t as Tool)));
     const fileIn = tools.querySelector<HTMLInputElement>("[data-r=file]")!;
@@ -2631,7 +2841,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       fileIn.value = "";
     };
 
-    const act: Record<string, () => void> = {
+    Object.assign(act, {
       open: () => fileIn.click(),
       ext: zoomExtents,
       zsel: zoomSelection,
@@ -2671,7 +2881,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       erase: eraseSelected,
       plot: openPlot,
       "save-dxf": saveDxf,
-    };
+    });
 
     tools.querySelectorAll<HTMLElement>("button[data-a]").forEach((b) => {
       const f = act[b.dataset.a!];
@@ -3979,17 +4189,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   function buildBar2() {
     tools2.innerHTML =
-      rg("Layers", rb("schedules", "Manager", `data-a="lyr-mgr"`, "AutoCAD Layer Properties Manager (LA)")) +
+      rg("Layers", rb("schedules", "Manager", `data-a="lyr-mgr"`, "AutoCAD Layer Properties Manager (LA)"), "", "", "home") +
       rg(
         "Show",
         rb("text", "Text", `data-a="tText"`, "Show or hide text", "on") +
           rb("filled-region", "Hatch", `data-a="tHatch"`, "Show or hide hatches", "on") +
           rb("insulation", "Linetypes", `data-a="tLt"`, "Show or hide linetypes", "on"),
+        "",
+        "",
+        "view",
       ) +
       rg(
         "Markup Files",
         rb("save", "Save", `data-a="save-mk"`, "Save all markups to JSON sidecar") +
           rb("folder-recent", "Load", `data-a="load-mk"`, "Load markups from a JSON sidecar"),
+        "",
+        "",
+        "annotate",
       ) +
       rg(
         "Export",
@@ -3997,6 +4213,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("csv", "CSV", `data-a="csv"`, "Export measurements as CSV") +
           rb("quantification", "Takeoff", `data-a="takeoff"`, "Quantity takeoff by layer and type (CSV)") +
           rb("report", "Info", `data-a="info"`, "Drawing information"),
+        "",
+        "",
+        "output",
       ) +
       rg(
         "Window",
@@ -4004,6 +4223,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("close", "Close", `data-a="close"`, "Close the CAD viewer", "cadrb--danger"),
         "",
         "cadrg--end",
+        "output",
       );    const q = <T extends HTMLElement>(a: string) => tools2.querySelector<T>(`[data-a=${a}]`)!;
     const flip = (a: string, on: boolean) => q(a).classList.toggle("on", on);
     q("tText").onclick = () => {
@@ -4092,6 +4312,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       results.forEach((r, i) => lines.push(`${i + 1},"${String(r).replace(/"/g, '""')}"`));
       download(new Blob([lines.join("\n")], { type: "text/csv" }), `${base()}-measurements.csv`);
     };
+    // Shell A-menu / Quick Access dispatch forwards through the built buttons
+    // (keeps toggle state in sync — tText etc. read their flags in the handler).
+    for (const k of ["tText", "tHatch", "tLt", "lyr-mgr", "help", "close", "takeoff", "save-mk", "load-mk", "info", "svg", "csv"]) {
+      act2[k] = () => tools2.querySelector<HTMLElement>(`[data-a=${k}]`)?.click();
+    }
   }
 
   buildBar();
@@ -4136,13 +4361,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     true,
   );
 
-  return {
+  const api: CadEngineApi = {
     load,
     close() {
       hooks.requestClose();
     },
     activate() {
       root.style.display = "flex";
+      showRibbonEngine(ribbonWrap, api);
       resize();
       draw();
     },
@@ -4158,5 +4384,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     saveDxf,
     fileName: () => name,
     focus: () => cv.focus({ preventScroll: true }),
+    exec: (a: string) => {
+      const f = act[a] ?? act2[a];
+      if (f) f();
+    },
   };
+  registerRibbonEngine(ribbonWrap, api);
+  return api;
 }
