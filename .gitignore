@@ -59,3 +59,6 @@ public/libredwg/
 # Wrangler local dev cache
 .wrangler/
 interop-report.json
+
+# Generated versioned web-ifc assets (scripts/sync-web-ifc-assets.mjs)
+public/web-ifc/0.*/

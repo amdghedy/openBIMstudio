@@ -153,5 +153,27 @@ t("public/web-ifc wasm assets match the installed web-ifc package byte-for-byte"
   }
 });
 
+// The runtime fetches WASM from the VERSIONED folder /web-ifc/<version>/ (see
+// __WEB_IFC_VERSION__ in vite.config.ts and wasmPath() in importer.ts) so a
+// new build can never receive stale cached bytes. The pretest hook runs
+// scripts/sync-web-ifc-assets.mjs, which generates that folder; this pins it.
+t("versioned /web-ifc/<version>/ folder exists and mirrors the installed package", () => {
+  const version = JSON.parse(fs.readFileSync(path.join(root, "node_modules/web-ifc/package.json"), "utf8")).version;
+  const dir = path.join(root, "public/web-ifc", version);
+  assert.ok(fs.existsSync(dir), "public/web-ifc/" + version + "/ missing — run scripts/sync-web-ifc-assets.mjs");
+  for (const f of ["web-ifc-api.js", "web-ifc.wasm", "web-ifc-mt.wasm", "web-ifc-node.wasm"]) {
+    const p = path.join(dir, f);
+    const nm = path.join(root, "node_modules/web-ifc", f);
+    assert.ok(fs.existsSync(p), f + " missing in versioned folder");
+    assert.strictEqual(
+      createHash("sha256").update(fs.readFileSync(p)).digest("hex"),
+      createHash("sha256").update(fs.readFileSync(nm)).digest("hex"),
+      "versioned " + f + " drifted from the installed web-ifc package"
+    );
+  }
+  const importerSrc = fs.readFileSync(path.join(root, "src/features/importer.ts"), "utf8");
+  assert.ok(importerSrc.includes("__WEB_IFC_VERSION__"), "importer.ts must build wasmPath() from __WEB_IFC_VERSION__");
+});
+
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

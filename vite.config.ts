@@ -20,6 +20,17 @@ import { createHash } from "node:crypto";
 export default defineConfig({
   plugins: [react(), crossOriginIsolation(), pwaPrecache()],
   esbuild: { target: "esnext" },
+  // web-ifc WASM is served from a versioned folder (/web-ifc/<version>/) so a
+  // new build can never be paired with stale cached WASM bytes (PWA precache,
+  // browser HTTP cache, edge cache) — the source of web-ifc BindingErrors
+  // like "StreamMeshes called with 4 arguments, expected 3".
+  define: {
+    __WEB_IFC_VERSION__: JSON.stringify((() => {
+      try {
+        return JSON.parse(readFileSync(join(process.cwd(), "node_modules", "web-ifc", "package.json"), "utf8")).version;
+      } catch { return ""; }
+    })()),
+  },
   build: {
     target: "esnext",
     // Large vendors (web-ifc WASM, @thatopen/components, monaco) inherently
