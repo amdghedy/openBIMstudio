@@ -1,5 +1,5 @@
 /**
- * CAD Viewer — Modify Math (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET).
+ * CAD Editor — Modify Math (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET).
  *
  * Pure geometry helpers that transform `DxfEntity` objects. Every function is
  * immutable: it returns a NEW entity object and never mutates its input, so the

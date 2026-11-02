@@ -1,5 +1,5 @@
 /**
- * Pure geometry for the CAD Viewer: view transform, picking, snapping, measuring, units, text search.
+ * Pure geometry for the CAD Editor: view transform, picking, snapping, measuring, units, text search.
  * No DOM, no rendering; everything works on the flattened DxfEntity vocabulary the DXF/DWG readers produce.
  */
 import type { DxfEntity, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";

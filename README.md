@@ -289,9 +289,9 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 | **Delete** | Delete selection |
 | **Ctrl+Z / Ctrl+Y** | Undo / Redo (when history is active) |
 
-### CAD Viewer (DWG/DXF) — Modify tools
+### CAD Editor (DWG/DXF) — Modify tools
 
-The standalone CAD Viewer ribbon has a full **Modify** group with AutoCAD-grade transform tools. Select objects first (noun–verb), then run the command — or start the command and pick objects, then press **Enter / right-click** to finish the selection stage. Every transform shows a live yellow dashed ghost preview, supports osnap / ortho, numeric entry typed into the command line, and a single Undo step (Ctrl+Z).
+The standalone CAD Editor ribbon has a full **Modify** group with AutoCAD-grade transform tools. Select objects first (noun–verb), then run the command — or start the command and pick objects, then press **Enter / right-click** to finish the selection stage. Every transform shows a live yellow dashed ghost preview, supports osnap / ortho, numeric entry typed into the command line, and a single Undo step (Ctrl+Z).
 
 | Command | Alias | What it does |
 |---------|-------|--------------|
@@ -390,7 +390,7 @@ npm run verify:v73   # release verification chain (per version)
 
 **Testing culture:** 50+ focused automated suites (`npm run` and pick any `test:*`), CI on every push, and a per-version verification chain. Contributions welcome — for substantial changes, open an issue first and discuss the design and validation strategy.
 
-### Deploying CAD Viewer updates with PowerShell 5.1 (Windows)
+### Deploying CAD Editor updates with PowerShell 5.1 (Windows)
 
 Feature packages ship as a folder containing `deploy-cad-update.ps1` plus a `files/` tree that mirrors the repository. The script validates the environment, backs up originals, copies updated files into the repo, and pushes the commit to GitHub.
 
