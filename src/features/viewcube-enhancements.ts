@@ -62,15 +62,15 @@ export function installViewCubeEnhancements(
   applyPrefs(container, svg, prefs);
 
   let pointerId: number | null = null;
-  let lastX = 0, lastY = 0, moved = false;
+  let lastX = 0, lastY = 0, downX = 0, downY = 0, moved = false;
   const threshold = 3;
   svg.addEventListener("pointerdown", (event: PointerEvent) => {
     if (!event.isPrimary || event.button !== 0) return;
     const target = event.target as Element | null;
     if (!target || !target.closest("polygon,circle")) return;
     pointerId = event.pointerId;
-    lastX = event.clientX;
-    lastY = event.clientY;
+    lastX = downX = event.clientX;
+    lastY = downY = event.clientY;
     moved = false;
     try { svg.setPointerCapture(pointerId); } catch { /* browser fallback */ }
   });
@@ -81,7 +81,7 @@ export function installViewCubeEnhancements(
     const dy = event.clientY - lastY;
     lastX = event.clientX;
     lastY = event.clientY;
-    if (!moved && Math.hypot(dx, dy) < threshold) return;
+    if (!moved && Math.hypot(event.clientX - downX, event.clientY - downY) < threshold) return;
     moved = true;
     event.preventDefault();
     // Direct camera updates (zero-duration) make the cube track the pointer
