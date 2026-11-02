@@ -155,7 +155,7 @@ class RealCameraAdapter implements CameraAdapter {
 
   lookAt(
     pos: THREE.Vector3, target: THREE.Vector3, up: THREE.Vector3,
-    animate: boolean, syncControls = true,
+    animate: boolean, refreshOrbitBasis = true,
   ): void {
     if (!worldReady()) return;
     const cam = activeCam();
@@ -170,25 +170,23 @@ class RealCameraAdapter implements CameraAdapter {
     this.pendingTarget.copy(target);
     try { cam.up.copy(wantUp); } catch { /* */ }
 
-    if (syncControls) {
-      // Rebuild the orbit basis only when a pose is committed, not on every
-      // animation frame. This avoids repeatedly resetting camera-controls'
-      // internal spherical state while the ViewCube interpolates the camera.
-      if (upChanged || this.controlsOutOfSync) {
-        try { c.updateCameraUp?.(); } catch { /* */ }
-      }
-      try {
-        c.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, animate);
-        this.controlsOutOfSync = false;
-      } catch {
-        cam.position.copy(pos);
-        cam.lookAt(target);
-        this.controlsOutOfSync = true;
-      }
-    } else {
-      // camera-controls owns input and orbit state, but should not be rebuilt
-      // hundreds of times during a single transition. Drive the rendered pose
-      // directly, then reconcile at the final frame or before user input.
+    // Keep camera-controls as the sole owner of the live camera pose. Its
+    // update loop runs independently of the ViewCube rAF loop; writing
+    // camera.position directly here lets that loop restore its stale pose,
+    // which appears as a snap/flicker during the transition.
+    //
+    // setLookAt is therefore applied on EVERY frame. Only the expensive orbit
+    // basis rebuild is deferred until the final frame, when the interpolated
+    // camera.up has reached its settled value.
+    if (refreshOrbitBasis && (upChanged || this.controlsOutOfSync)) {
+      try { c.updateCameraUp?.(); } catch { /* */ }
+    }
+    try {
+      c.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, animate);
+      this.controlsOutOfSync = false;
+    } catch {
+      // Emergency fallback only. Mark dirty so the next input/command retries
+      // synchronization instead of silently treating this as a normal frame.
       cam.position.copy(pos);
       cam.lookAt(target);
       this.controlsOutOfSync = true;
