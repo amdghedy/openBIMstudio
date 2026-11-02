@@ -77,7 +77,7 @@ function makeAdapter(opts = {}) {
     sceneBox: opts.sceneBox ?? null,
     selectionBox: opts.selectionBox ?? null,
   };
-  const log = { lookAts: [], setProjectionCalls: [], gestures: [] };
+  const log = { lookAts: [], setProjectionCalls: [], gestures: [], syncCalls: 0 };
   const listeners = new Set();
   const adapter = {
     position: () => state.pos.clone(),
@@ -89,10 +89,11 @@ function makeAdapter(opts = {}) {
     setOrthoHalfHeight: (h) => { state.orthoHalfHeight = h; },
     projection: () => state.projection,
     setProjection: (m) => { log.setProjectionCalls.push(m); state.projection = m; return true; },
-    lookAt: (pos, target, up) => {
-      log.lookAts.push({ pos: pos.clone(), target: target.clone(), up: up.clone() });
+    lookAt: (pos, target, up, animate, syncControls = true) => {
+      log.lookAts.push({ pos: pos.clone(), target: target.clone(), up: up.clone(), syncControls });
       state.pos.copy(pos); state.target.copy(target); state.up.copy(up);
     },
+    syncControls: () => { log.syncCalls++; },
     focusBounds: () => state.selectionBox ?? state.sceneBox,
     sceneBounds: () => state.sceneBox,
     onUserGesture: (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
@@ -840,6 +841,26 @@ console.log("\n— Controller: tick / engine hygiene —");
 t("tick is a no-op without an active transition", () => {
   const { controller } = freshController();
   assert(controller.tick(16) === false);
+});
+
+t("transition synchronizes camera controls only on the final pose", () => {
+  const { adapter, controller } = freshController();
+  assert(controller.navigateToFace("top").ok);
+  assert(adapter._log.lookAts.length === 1, "initial transition pose missing");
+  assert(adapter._log.lookAts[0].syncControls === false, "initial frame rebuilt controls");
+  controller.tick(controller.config.transitionMs / 2);
+  assert(adapter._log.lookAts.at(-1).syncControls === false, "intermediate frame rebuilt controls");
+  controller.tick(controller.config.transitionMs);
+  assert(adapter._log.lookAts.at(-1).syncControls === true, "final frame did not synchronize controls");
+  assert(!controller.isTransitioning(), "transition should be complete");
+});
+
+t("cancelling a transition reconciles camera controls before yielding", () => {
+  const { adapter, controller } = freshController();
+  assert(controller.navigateToFace("top").ok);
+  controller.tick(120);
+  controller.cancelTransition();
+  assert(adapter._log.syncCalls === 1, "camera controls were not synchronized on cancellation");
 });
 
 t("currentOrientation reports the nearest target", () => {
