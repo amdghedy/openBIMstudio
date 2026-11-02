@@ -275,7 +275,6 @@ interface WidgetRefs {
   cornerEls: Record<CornerId, SVGCircleElement>;
   labelEls: Record<FaceId, SVGTextElement>;
   compassEls: Record<string, SVGTextElement>;
-  orientLabel: HTMLDivElement;
 }
 
 const FACE_DISPLAY: Record<FaceId, string> = {
@@ -368,10 +367,6 @@ function buildWidget(
   homeBtn.onmouseenter = () => { homeBtn.style.color = "#38bdf8"; };
   homeBtn.onmouseleave = () => { homeBtn.style.color = "#cbd5e1"; };
   homeBtn.onclick = (e) => { e.stopPropagation(); controller.goHome(); };
-
-  const orientLabel = el("div", "flex:1;text-align:center;font:600 10px system-ui,sans-serif;" +
-    "color:#9aa5b5;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", header);
-  orientLabel.textContent = "Front · Perspective";
 
   const menuBtn = el("button", "display:flex;align-items:center;justify-content:center;" +
     "width:22px;height:22px;border-radius:5px;background:transparent;border:none;" +
@@ -501,7 +496,7 @@ function buildWidget(
   (ctx.rightHost as HTMLElement).appendChild(container);
   installViewCubeEnhancements(container, svg, controller);
 
-  return { container, svg, faceEls, edgeEls, cornerEls, labelEls, compassEls, orientLabel };
+  return { container, svg, faceEls, edgeEls, cornerEls, labelEls, compassEls };
 }
 
 function capitalize(s: string): string {
@@ -703,12 +698,8 @@ function wireRenderLoop(controller: NavigationController, refs: WidgetRefs): voi
       t.setAttribute("opacity", (0.9 - 0.55 * p.behind).toFixed(3));
     }
 
-    // Orientation label
-    const mode = controller.projectionMode();
-    refs.orientLabel.textContent = `${current.label} · ${MODE_LABEL[mode]}`;
-    refs.container.title =
-      `Current view: ${current.label} (${MODE_LABEL[mode]})\n` +
-      `Click faces, edges or corners to navigate · Right-click for options`;
+    // Keep the ViewCube compact: the live orientation/projection description is intentionally hidden.
+    refs.container.title = "ViewCube navigation · Click faces, edges or corners to navigate · Right-click for options";
   };
 
   const markDirty = () => {
