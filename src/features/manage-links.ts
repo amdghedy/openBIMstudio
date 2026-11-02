@@ -1,6 +1,7 @@
 import { escapeHtml } from "../core/html-escape";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
+import { markDirty } from "../modules/projects/projects";
 
 let modalEl: HTMLDivElement | null = null;
 
@@ -56,6 +57,79 @@ export function openManageLinks() {
 
     const tbody = table.querySelector("#obs-manage-links-body")!;
     let count = 0;
+
+    if (activeTab === "Point Clouds") {
+      const pointClouds = ctx.world.scene.three.children.filter((child: any) => child.userData?.isPointCloud) as any[];
+      const btn = (label: string, fn: () => void | Promise<void>, danger = false) => {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.style.cssText = `margin-left:4px;padding:4px 8px;background:${danger ? "#3b0d0d" : "#2a2e3a"};color:${danger ? "#fca5a5" : "#e8eaf0"};border:1px solid ${danger ? "#7f1d1d" : "#3a3f4d"};border-radius:4px;cursor:pointer;font:12px system-ui;`;
+        b.onclick = () => { void Promise.resolve(fn()).catch((e) => notify("error", e instanceof Error ? e.message : String(e))); };
+        return b;
+      };
+      for (const cloud of pointClouds) {
+        const tr = document.createElement("tr");
+        tr.style.cssText = "border-bottom:1px solid #1e2029;vertical-align:top;";
+        const nameTd = document.createElement("td");
+        nameTd.style.cssText = "padding:8px;";
+        const name = document.createElement("div");
+        name.textContent = cloud.name || "Point cloud";
+        const details = document.createElement("div");
+        details.style.cssText = "color:#6b7280;font-size:11px;";
+        details.textContent = `${Number(cloud.userData.pointCount ?? cloud.geometry?.getAttribute?.("position")?.count ?? 0).toLocaleString()} points`;
+        nameTd.append(name, details);
+
+        const statusTd = document.createElement("td");
+        statusTd.style.cssText = `padding:8px;color:${cloud.visible ? "#22c55e" : "#6b7280"};`;
+        statusTd.textContent = cloud.visible ? "Shown" : "Hidden";
+        const typeTd = document.createElement("td");
+        typeTd.style.cssText = "padding:8px;color:#8b949e;";
+        typeTd.textContent = "Point cloud";
+
+        const actionTd = document.createElement("td");
+        actionTd.style.cssText = "padding:8px;text-align:right;white-space:nowrap;";
+        actionTd.append(
+          btn(cloud.visible ? "Hide" : "Show", () => {
+            cloud.visible = !cloud.visible;
+            markDirty();
+            renderTable();
+          }),
+          btn("Zoom", async () => {
+            const THREE = await import("three");
+            const bounds = new THREE.Box3().setFromObject(cloud);
+            if (bounds.isEmpty()) throw new Error("Point cloud has no visible geometry to zoom to.");
+            modalEl?.remove(); modalEl = null;
+            const camera = await import("./camera-tools");
+            camera.focusOnBox(bounds);
+          }),
+          btn("Point size", () => {
+            const material = cloud.material;
+            const current = Number(material?.size ?? 0.05);
+            const raw = prompt("Point size in model units:", String(current));
+            if (raw == null) return;
+            const size = Number(raw);
+            if (!Number.isFinite(size) || size <= 0) throw new Error("Enter a point size greater than zero.");
+            if (Array.isArray(material)) material.forEach((m: any) => { m.size = size; m.needsUpdate = true; });
+            else if (material) { material.size = size; material.needsUpdate = true; }
+            markDirty();
+          }),
+          btn("Remove", () => {
+            const name = cloud.name || "this point cloud";
+            if (!confirm(`Remove ${name} from the current scene?`)) return;
+            cloud.parent?.remove(cloud);
+            cloud.geometry?.dispose?.();
+            if (Array.isArray(cloud.material)) cloud.material.forEach((m: any) => m.dispose?.());
+            else cloud.material?.dispose?.();
+            markDirty();
+            notify("info", `Removed ${name}`);
+            renderTable();
+          }, true),
+        );
+        tr.append(nameTd, statusTd, typeTd, actionTd);
+        tbody.appendChild(tr);
+        count++;
+      }
+    }
 
     if (activeTab.startsWith("CAD")) {
       const api: any = (ctx.features as any).cadLinks;

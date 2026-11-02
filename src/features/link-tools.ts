@@ -130,57 +130,72 @@ export function linkBIM() {
 }
 
 /**
- * Scan / Point cloud → BIM
- * Supports: PLY, XYZ, PTS, TXT, PCD (ASCII).
- * LAS/LAZ/E57: guided conversion path.
- * Multiple files, subsample for heavy scans, visible point markers.
+ * Scan / Point cloud → BIM.
+ * RWCX/RWP files open the Trimble conversion assistant; converted LAS/PTX/PTS
+ * files are passed through the same validated point-cloud import pipeline.
  */
 export function linkPointCloud() {
   pickAccept(
     ".las,.ptx,.ply,.xyz,.pts,.txt,.csv,.pcd,.laz,.e57,.rcp,.rcs,.rwcx,.rwp,.fls,.fws,.lsproj,.zfs,.cpe,.imp,.pod",
     true,
     async (files) => {
-      const { UNSUPPORTED_POINT_CLOUD, parseLas, parsePtx } = await import("../modules/point-cloud/parsers");
-      let loaded = 0;
-      const unsupported: string[] = [];
-      for (const file of files) {
+      const trimbleSources = files.filter((file) => {
         const ext = (file.name.split(".").pop() ?? "").toLowerCase();
-        const bad = UNSUPPORTED_POINT_CLOUD[ext];
-        if (bad) { unsupported.push(`- ${file.name}  (${bad.name})\n  ${bad.how}`); continue; }
-        try {
-          if (ext === "las" || ext === "ptx") {
-            const parsed = ext === "las" ? parseLas(await file.arrayBuffer(), 2_000_000) : parsePtx(await file.text(), 2_000_000);
-            const far = parsed.origin.some((v) => Math.abs(v) > 5000);
-            // Survey coordinates (UTM etc.) are far from the model origin: offer to bring the cloud to the origin.
-            const recentre = far && confirm(
-              `${file.name} uses survey coordinates (centre ${parsed.origin.map((v) => v.toFixed(0)).join(", ")}).\n\n` +
-              "OK = move the cloud to the model origin (recommended)\nCancel = keep the survey coordinates (the model must use the same coordinates)",
-            );
-            await addPointsToScene(file.name, parsed.positions, parsed.colors, parsed.kept > 500_000 ? 0.03 : 0.05, far && !recentre ? parsed.origin : [0, 0, 0]);
-            toast(`${file.name}: ${parsed.info}, ${parsed.kept.toLocaleString()} of ${parsed.total.toLocaleString()} points`, "success");
-          } else if (["xyz", "pts", "txt", "csv", "pcd"].includes(ext)) {
-            await loadAsciiPointCloud(file);
-          } else if (ext === "ply") {
-            await loadPlyAsPoints(file);
-          } else {
-            await importFiles([file]);
-          }
-          loaded++;
-        } catch (e) {
-          console.error(e);
-          alert(`Could not load point cloud “${file.name}”: ${e instanceof Error ? e.message : e}`);
-        }
+        return ext === "rwcx" || ext === "rwp";
+      });
+      const directFiles = files.filter((file) => !trimbleSources.includes(file));
+      if (directFiles.length) await importPointCloudFiles(directFiles);
+      if (trimbleSources.length) {
+        const { showTrimbleImportAssistant } = await import("../modules/point-cloud/trimble-import-assistant");
+        await showTrimbleImportAssistant(trimbleSources, importPointCloudFiles);
       }
-      if (unsupported.length) {
-        alert(
-          "These point-cloud formats are proprietary or compressed and cannot be read in the browser:\n\n" +
-          unsupported.join("\n\n") +
-          "\n\nSupported: LAS, PTX, PLY, PCD, XYZ, PTS, TXT, CSV.",
-        );
-      }
-      if (loaded > 0) toast(`${loaded} scan(s) in scene — use Architecture tools to model over the cloud (Scan-to-BIM)`, "info", 4500);
     },
   );
+}
+
+/** Import formats that the browser pipeline currently decodes and validates. */
+async function importPointCloudFiles(files: File[]) {
+  const { UNSUPPORTED_POINT_CLOUD, parseLas, parsePtx } = await import("../modules/point-cloud/parsers");
+  let loaded = 0;
+  const unsupported: string[] = [];
+  for (const file of files) {
+    const ext = (file.name.split(".").pop() ?? "").toLowerCase();
+    const bad = UNSUPPORTED_POINT_CLOUD[ext];
+    if (bad) { unsupported.push(`- ${file.name}  (${bad.name})\n  ${bad.how}`); continue; }
+    try {
+      if (ext === "las" || ext === "ptx") {
+        const parsed = ext === "las" ? parseLas(await file.arrayBuffer(), 2_000_000) : parsePtx(await file.text(), 2_000_000);
+        const far = parsed.origin.some((v) => Math.abs(v) > 5000);
+        // Survey coordinates (UTM etc.) are far from the model origin: offer to bring the cloud to the origin.
+        const recentre = far && confirm(
+          `${file.name} uses survey coordinates (centre ${parsed.origin.map((v) => v.toFixed(0)).join(", ")}).\n\n` +
+          "OK = move the cloud to the model origin (recommended)\nCancel = keep the survey coordinates (the model must use the same coordinates)",
+        );
+        await addPointsToScene(file.name, parsed.positions, parsed.colors, parsed.kept > 500_000 ? 0.03 : 0.05, far && !recentre ? parsed.origin : [0, 0, 0]);
+        toast(`${file.name}: ${parsed.info}, ${parsed.kept.toLocaleString()} of ${parsed.total.toLocaleString()} points`, "success");
+      } else if (["xyz", "pts", "txt", "csv", "pcd"].includes(ext)) {
+        await loadAsciiPointCloud(file);
+      } else if (ext === "ply") {
+        await loadPlyAsPoints(file);
+      } else {
+        unsupported.push(`- ${file.name}  (${bad?.name ?? "Unsupported point-cloud format"})\n  ${bad?.how ?? "This format is not decoded by the current browser importer."}`);
+        continue;
+      }
+      loaded++;
+    } catch (e) {
+      console.error(e);
+      alert(`Could not load point cloud “${file.name}”: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  if (unsupported.length) {
+    alert(
+      "These point-cloud formats are not decoded by the current browser importer:\n\n" +
+      unsupported.join("\n\n") +
+      "\n\nCurrently decoded: LAS (uncompressed), PTX, PLY, XYZ, PTS, TXT and CSV. " +
+      "PCD support is currently limited to ASCII data.",
+    );
+  }
+  if (loaded > 0) toast(`${loaded} scan(s) in scene — use Architecture tools to model over the cloud (Scan-to-BIM)`, "info", 4500);
 }
 
 async function addPointsToScene(
