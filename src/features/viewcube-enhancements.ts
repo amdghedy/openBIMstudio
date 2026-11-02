@@ -140,6 +140,23 @@ export function installViewCubeEnhancements(
     "padding:11px;display:none;flex-direction:column;gap:9px;background:rgba(20,24,33,.98);" +
     "border:1px solid #3a4352;border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.55);" +
     "color:#e2e8f0;font:11px system-ui;pointer-events:auto;z-index:9600";
+  const positionPanel = () => {
+    const anchor = optionsButton.getBoundingClientRect();
+    const margin = 8;
+    const panelWidth = Math.min(218, Math.max(160, window.innerWidth - margin * 2));
+    panel.style.width = `${panelWidth}px`;
+    const panelHeight = panel.offsetHeight || 190;
+    let left = anchor.right - panelWidth;
+    left = Math.max(margin, Math.min(left, window.innerWidth - panelWidth - margin));
+    let top = anchor.bottom + 6;
+    if (top + panelHeight > window.innerHeight - margin) {
+      top = anchor.top - panelHeight - 6;
+    }
+    top = Math.max(margin, Math.min(top, window.innerHeight - panelHeight - margin));
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+  };
+
   const addRange = (labelText: string, min: number, max: number, step: number, value: number,
     onInput: (value: number) => void) => {
     const wrap = document.createElement("label");
@@ -179,10 +196,7 @@ export function installViewCubeEnhancements(
     ["bottom-right", "Bottom right"], ["bottom-left", "Bottom left"],
   ], prefs.position, value => {
     prefs.position = value as CubePosition; applyPrefs(container, svg, prefs); persist(prefs);
-    panel.style.right = prefs.position.endsWith("right") ? "0" : "auto";
-    panel.style.left = prefs.position.endsWith("left") ? "0" : "auto";
-    panel.style.top = prefs.position.startsWith("top") ? "100%" : "auto";
-    panel.style.bottom = prefs.position.startsWith("bottom") ? "100%" : "auto";
+    if (panel.style.display !== "none") positionPanel();
   });
   const reset = document.createElement("button");
   reset.type = "button"; reset.textContent = "Restore defaults";
@@ -196,22 +210,6 @@ export function installViewCubeEnhancements(
     if (select) select.value = prefs.position;
   });
   panel.appendChild(reset);
-  const positionPanel = () => {
-    const anchor = optionsButton.getBoundingClientRect();
-    const margin = 8;
-    const panelWidth = Math.min(218, Math.max(160, window.innerWidth - margin * 2));
-    panel.style.width = `${panelWidth}px`;
-    const panelHeight = panel.offsetHeight || 190;
-    let left = anchor.right - panelWidth;
-    left = Math.max(margin, Math.min(left, window.innerWidth - panelWidth - margin));
-    let top = anchor.bottom + 6;
-    if (top + panelHeight > window.innerHeight - margin) {
-      top = anchor.top - panelHeight - 6;
-    }
-    top = Math.max(margin, Math.min(top, window.innerHeight - panelHeight - margin));
-    panel.style.left = `${left}px`;
-    panel.style.top = `${top}px`;
-  };
   const closePanel = () => {
     panel.style.display = "none";
     panel.setAttribute("aria-hidden", "true");
