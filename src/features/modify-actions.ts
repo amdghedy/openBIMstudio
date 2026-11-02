@@ -18,28 +18,11 @@ import {
   getElements,
 } from "./authoring";
 import { gizmo, type GizmoMode } from "./gizmo";
+import { listModifyCommandDefinitions, resolveModifyCapability, type ModifyCommandId } from "../modules/modify/registry";
 
 type Any = Record<string, any>;
 
-export type ModifyActionId =
-  | "move"
-  | "copy"
-  | "paste"
-  | "rotate"
-  | "mirror"
-  | "array"
-  | "offset"
-  | "scale"
-  | "create-similar"
-  | "match-props"
-  | "select-similar"
-  | "align-x"
-  | "align-z"
-  | "pin"
-  | "unpin"
-  | "split-mid"
-  | "join-walls"
-  | "delete";
+export type ModifyActionId = ModifyCommandId;
 
 export interface ModifyActionDef {
   id: ModifyActionId;
@@ -242,33 +225,23 @@ export function runModifyAction(id: ModifyActionId): void {
 
 /** Ordered list of modify actions for menus. */
 export function listModifyActions(): ModifyActionDef[] {
-  return [
-    { id: "move", label: "Move", icon: "✥", shortcut: "MV", needsSelection: true },
-    { id: "copy", label: "Copy", icon: "⧉", shortcut: "CO", needsSelection: true },
-    { id: "paste", label: "Paste", icon: "📋", shortcut: "Ctrl+V", needsSelection: false },
-    { id: "rotate", label: "Rotate", icon: "↻", shortcut: "RO", needsSelection: true },
-    { id: "mirror", label: "Mirror", icon: "▦", shortcut: "MI", needsSelection: true },
-    { id: "array", label: "Array", icon: "⊞", shortcut: "AR", needsSelection: true },
-    { id: "offset", label: "Offset", icon: "⇔", shortcut: "OF", needsSelection: true },
-    { id: "scale", label: "Scale", icon: "⤢", shortcut: "SC", needsSelection: true },
-    { id: "create-similar", label: "Create Similar", icon: "⊕", needsSelection: true, separatorBefore: true },
-    { id: "match-props", label: "Match Properties", icon: "⇄", needsSelection: true },
-    { id: "select-similar", label: "Select Similar", icon: "⊟", needsSelection: true },
-    { id: "align-x", label: "Align X", icon: "↔", needsMulti: true, separatorBefore: true },
-    { id: "align-z", label: "Align Z", icon: "↕", needsMulti: true },
-    { id: "pin", label: "Pin", icon: "📌", needsSelection: true, separatorBefore: true },
-    { id: "unpin", label: "Unpin", icon: "○", needsSelection: true },
-    { id: "split-mid", label: "Split at Midpoint", icon: "✂", needsSelection: true },
-    { id: "join-walls", label: "Join Walls", icon: "⋈", needsSelection: true },
-    { id: "delete", label: "Delete", icon: "🗑", shortcut: "Del", needsSelection: true, danger: true, separatorBefore: true },
-  ];
+  return listModifyCommandDefinitions().map((definition) => ({
+    id: definition.id,
+    label: definition.label,
+    icon: definition.icon,
+    shortcut: definition.commandAlias,
+    needsSelection: definition.selection === "one",
+    needsMulti: definition.selection === "two",
+    danger: definition.danger,
+    separatorBefore: definition.separatorBefore,
+  }));
 }
 
 export function isModifyActionEnabled(def: ModifyActionDef, selectionCount: number): boolean {
-  if (def.id === "paste") return getModifyClipboardCount() > 0;
-  if (def.needsMulti) return selectionCount >= 2;
-  if (def.needsSelection) return selectionCount >= 1;
-  return true;
+  return resolveModifyCapability(def.id, {
+    selectedCount: selectionCount,
+    clipboardCount: getModifyClipboardCount(),
+  }).enabled;
 }
 
 export function isModifyToolActive(id: ModifyActionId): boolean {
