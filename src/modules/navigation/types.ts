@@ -162,13 +162,13 @@ export interface CameraAdapter {
   /** Switch the core projection. Returns false if the camera API rejected it. */
   setProjection(m: CoreProjection): boolean;
   /**
-   * Apply a camera pose. Intermediate transition frames may bypass the
-   * controls' orbit-state rebuild; the final frame must synchronize them.
-   * syncControls defaults to true for immediate/non-transition poses.
+   * Apply a camera pose through the live camera controls. Transition frames
+   * always update the controls; refreshOrbitBasis controls only whether the
+   * orbit-up basis is recalculated for the new camera.up vector.
    */
   lookAt(
     pos: THREE.Vector3, target: THREE.Vector3, up: THREE.Vector3,
-    animate: boolean, syncControls?: boolean,
+    animate: boolean, refreshOrbitBasis?: boolean,
   ): void;
   /** Reconcile camera-controls with a live pose before yielding to user input. */
   syncControls?(): void;
