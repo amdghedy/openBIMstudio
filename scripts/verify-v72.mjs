@@ -89,7 +89,7 @@ check("widget: SVG cube geometry module", () => has(/projectCube|CUBE_GRAPH/, "s
 check("widget: Revit-style pointer orbit and appearance preferences", () => {
   has(/installViewCubeEnhancements/, "src/features/viewcube.ts");
   const s = read("src/features/viewcube-enhancements.ts");
-  for (const m of ["pointermove", "rotateByImmediate", "PREF_KEY", "Cube size", "Widget opacity", "Screen position"]) {
+  for (const m of ["pointermove", "rotateByImmediate", "PREF_KEY", "Cube size", "Widget opacity", "Screen position", "pointerenter", "closeOnOutside", "closeOnEscape", "Close ViewCube options"]) {
     if (!s.includes(m)) throw new Error(`enhancement missing: ${m}`);
   }
 });
