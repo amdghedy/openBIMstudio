@@ -4,7 +4,7 @@
  * Activates every Insert-tab action with stable, production behaviour:
  * Link IFC, Link CAD, Link BIM, Point cloud, Topography, Family, Library.
  */
-import { pickFiles, loadFragFiles } from "./importer";
+import { pickFiles, loadIfcFiles, loadFragFiles } from "./importer";
 import { pickAndImport, importFiles } from "./file-interop";
 
 
@@ -50,18 +50,51 @@ function toast(msg: string, kind: "info" | "warn" | "success" = "info", _ms = 24
  * Same as BIM: origin-to-origin links stay coordinated.
  */
 export function linkIfc() {
-  // Route both IFC and IFCZIP through the universal importer.
-  // IFCZIP is extracted with JSZip there, then each contained IFC is sent
-  // through the existing IFC conversion queue and positioning workflow.
-  pickFiles(".ifc,.ifczip", true, async (files) => {
-    const list = Array.from(files as FileList | File[]);
-    const accepted = list.filter((file) => /\.ifc(zip)?$/i.test(file.name));
-    if (!accepted.length) {
-      toast("Select one or more .ifc or .ifczip files.", "warn");
+  // Use a dedicated picker and enqueue directly into the visible IFC task queue.
+  // This avoids the universal import router and makes each selected model observable.
+  pickAccept(".ifc,.ifczip,application/x-step,application/octet-stream", true, async (selected) => {
+    const ifcFiles: File[] = [];
+
+    for (const file of selected) {
+      if (/\\.ifc$/i.test(file.name)) {
+        ifcFiles.push(file);
+        continue;
+      }
+
+      if (/\\.ifczip$/i.test(file.name)) {
+        const JSZip = (await import("jszip")).default;
+        const archive = await JSZip.loadAsync(file);
+        const entries: string[] = [];
+        archive.forEach((path, entry) => {
+          if (!entry.dir && /\\.ifc$/i.test(path)) entries.push(path);
+        });
+
+        if (!entries.length) {
+          throw new Error(`No IFC model was found inside "${file.name}".`);
+        }
+
+        for (const path of entries) {
+          const entry = archive.file(path);
+          if (!entry) continue;
+          const bytes = await entry.async("uint8array");
+          if (!bytes.byteLength) throw new Error(`The IFC entry "${path}" in "${file.name}" is empty.`);
+          const name = path.split("/").pop() || `${file.name}.ifc`;
+          ifcFiles.push(new File([bytes], name, { type: "application/octet-stream" }));
+        }
+        continue;
+      }
+
+      throw new Error(`Unsupported file type: ${file.name}`);
+    }
+
+    if (!ifcFiles.length) {
+      toast("No IFC models were selected.", "warn");
       return;
     }
-    await importFiles(accepted);
-    toast(`Linking ${accepted.length} IFC/IFCZIP archive(s) — origin-to-origin federation…`, "info");
+
+    // enqueueIfc() runs synchronously inside loadIfcFiles(), creating queue rows immediately.
+    loadIfcFiles(ifcFiles);
+    toast(`Queued ${ifcFiles.length} IFC model(s) for linking…`, "success");
   });
 }
 
