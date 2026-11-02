@@ -12,7 +12,7 @@ import * as W from 'web-ifc';
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { createHash } from 'crypto';
 
-const CORPUS = 'test/fixtures/ifc-corpus';
+const CORPUS = 'tests/fixtures/ifc-corpus';
 const SNAPSHOTS = CORPUS + '/snapshots';
 
 const TYPE_IDS = Object.entries(W)

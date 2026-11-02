@@ -62,7 +62,7 @@ EOF
 PARTIAL=$(cat <<'EOF'
 P0-02|Progress on main: `src/core/safeLoad.ts` + `ProjectFileSchema`/`BcfManifestSchema` exist. Still missing: routing all JSON loaders through `safeLoad`, the 10-input malformed corpus under `tests/fixtures/malformed/`, and the CI grep audit.
 P0-04|Progress on main: `api/` server with origin allow-list is in place. Still missing: rate limiting.
-P1-03|Progress on main: `test/fixtures/ifc-corpus/snapshots/` exists with 3 fixtures (IfcOpenHouse_IFC4, example, test). Still missing: 17 more licensed fixtures to reach 20.
+P1-03|Progress on main: `tests/fixtures/ifc-corpus/snapshots/` exists with 3 fixtures (IfcOpenHouse_IFC4, example, test). Still missing: 17 more licensed fixtures to reach 20.
 P1-06|Progress on main: malformed/truncation handling tests exist in `tests/` (project-file, server-hardening). Still missing: property-based rejection suites for IFC/BCF/DXF.
 P1-07|Progress on main: `playwright.config.ts` exists. Still missing: `@playwright/test` in devDependencies and the multi-browser smoke suite.
 P2-01|Progress on main: `src/core/journal.ts` (append-only journal) exists. Still missing: wiring into the persistence layer + snapshot recovery.

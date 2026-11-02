@@ -3,8 +3,8 @@
 import { readFileSync } from 'fs';
 import { importIfcIsolated } from '../src/modules/ifc/importWorker';
 
-const seeds = ['test/fixtures/ifc-corpus/wall-demo.ifc',
-               'test/fixtures/ifc-corpus/synth-minimal.ifc'];
+const seeds = ['tests/fixtures/ifc-corpus/wall-demo.ifc',
+               'tests/fixtures/ifc-corpus/synth-minimal.ifc'];
 
 for (let i = 0; i < 500; i++) {
   const bytes = Buffer.from(readFileSync(seeds[i % seeds.length]));

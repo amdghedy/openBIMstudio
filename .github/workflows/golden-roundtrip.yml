@@ -1,6 +1,6 @@
 name: golden-roundtrip
 # P1-03 (golden corpus) + P1-04 (roundtrip harness) delivered: the script is
-# self-contained and the corpus + snapshots live under test/fixtures/ifc-corpus/.
+# self-contained and the corpus + snapshots live under tests/fixtures/ifc-corpus/.
 # web-ifc has no general exporter yet, so the export leg is a second independent
 # parse; swap it in the script when a real exporter lands.
 on: [push, pull_request, workflow_dispatch]
@@ -37,9 +37,9 @@ jobs:
 
       - name: fail on snapshot regression
         run: |
-          if [ ! -d test/fixtures/ifc-corpus/snapshots ]; then
+          if [ ! -d tests/fixtures/ifc-corpus/snapshots ]; then
             echo "::notice::No golden snapshots yet (P1-03/P1-04) — skipping regression gate."
             exit 0
           fi
-          git diff --exit-code test/fixtures/ifc-corpus/snapshots ||
+          git diff --exit-code tests/fixtures/ifc-corpus/snapshots ||
             (echo '::error::Interop regression: inspect interop-report.json' && exit 1)

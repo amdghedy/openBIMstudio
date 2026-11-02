@@ -69,7 +69,7 @@ phase order. Until an issue wires a file, the file stays inert:
   (Node-only fs code, same rationale as `failClosed.ts`); wiring it into a save flow
   stays with P0-03. The `tsconfig.json` `exclude` list is now empty and gone.
 - `.github/workflows/golden-roundtrip.yml` runs on push/PR again: the golden corpus
-  (3 files, IFC4 + IFC2X3) and snapshots live under `test/fixtures/ifc-corpus/`, and
+  (3 files, IFC4 + IFC2X3) and snapshots live under `tests/fixtures/ifc-corpus/`, and
   `scripts/golden-roundtrip.mjs` is self-contained (web-ifc has no general exporter
   yet, so the export leg is a second independent parse — see the script header).
   P1-03/P1-04 are satisfied; the export leg moves when a real exporter lands.

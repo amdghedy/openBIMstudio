@@ -44,6 +44,9 @@ _backup/
 
 # Test & diagnostic artifacts
 *.ifc
+# ...except the golden IFC corpus, which must be version-controlled so the
+# golden-roundtrip CI gate compares against committed sources + snapshots
+!tests/fixtures/ifc-corpus/*.ifc
 obs-*.txt
 
 # Generated build-time WASM copy (scripts/copy-libredwg-wasm.mjs)
