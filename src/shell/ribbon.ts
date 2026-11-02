@@ -42,8 +42,9 @@ import {
 import {
   setAuthoringTool, getActiveTool, deleteSelectedElement, clearAllElements,
   setLevel, getLevel, getLastCommand, pinSelected,
-  onAuthoringChange, getWallChain, setWallChain,
+  onAuthoringChange, getWallChain, setWallChain, reverseSelected, cycleMepSelection, selectAllAuthored, getElements,
 } from "../features/authoring";
+import { selectedAuthored, selectionCategory } from "../features/modify-options";
 import { PLACE_TOOLS } from "../features/place-options";
 import { runModifyAction } from "../features/modify-actions";
 import {
@@ -2883,14 +2884,80 @@ function ctxItems(tool: string): HTMLElement[] {
   if (tool === "wall") items.push(b("wall", "Join Walls", act("join-walls"), { title: "Join the selected walls" }));
   return items;
 }
+/** Revit "Modify | Walls": every modification tool for the current selection, with category-specific extras. */
+function selectionItems(types: Set<string>): HTMLElement[] {
+  const act = (id: string) => safe(() => { void runModifyAction(id as any); }, id);
+  const cmd = (id: string) => safe(() => { (window as any).__obsBIMExperience?.execute?.(id); }, id);
+  const has = (...t: string[]) => t.some((x) => types.has(x));
+  const items: HTMLElement[] = [
+    groupLabel("Select"),
+    b("modify" as IconName, "Modify", safe(() => setAuthoringTool("select"), "Modify"), { kbd: "Esc" }),
+    b("select-all", "Select Similar", act("select-similar"), { title: "Select every element of the same type" }),
+    b("select-all", "Select All", safe(() => { try { selectAllAuthored(getElements().map((e: any) => e.id)); } catch { /* */ } }, "Select all"), { kbd: "Ctrl+A" }),
+    b("clear", "Clear", cmd("global.clearSelection")),
+    sep(),
+    groupLabel("Properties"),
+    b("settings", "Properties", safe(() => { try { (ctx.features as any).propertyPalette?.open?.(); } catch { /* */ } }, "Properties")),
+    b("settings", "Type Properties", cmd("modify.typeProperties")),
+    sep(),
+    groupLabel("Clipboard"),
+    b("copy", "Copy", safe(() => { void import("../features/modify-actions").then((m) => { const n = m.copySelectionToClipboard(); toast(n ? `Copied ${n} element(s)` : "Nothing to copy", n ? "success" : "warn"); }); }, "Copy"), { kbd: "Ctrl+C" }),
+    b("copy", "Paste", act("paste"), { kbd: "Ctrl+V" }),
+    sep(),
+    groupLabel("Modify"),
+    b("move", "Move", act("move"), { kbd: "MV" }), b("copy", "Copy Move", act("copy"), { kbd: "CO", title: "Copy: place copies at new points" }),
+    b("rotate", "Rotate", act("rotate"), { kbd: "RO" }), b("mirror", "Mirror", act("mirror"), { kbd: "MI" }),
+    b("array", "Array", act("array"), { kbd: "AR" }), b("offset", "Offset", act("offset"), { kbd: "OF" }),
+    b("scale", "Scale", act("scale"), { kbd: "SC" }),
+    b("move", "Align H", act("align-x"), { title: "Align the selected elements on X" }), b("move", "Align V", act("align-z"), { title: "Align the selected elements on Z" }),
+    b("delete", "Delete", act("delete"), { kbd: "Del" }),
+    sep(),
+    groupLabel("Geometry"),
+    b("move", "Trim/Extend", cmd("modify.trimExtend"), { title: "Trim or extend two line elements to a corner" }),
+    b("move", "Split", act("split-mid"), { title: "Split the selected run at its midpoint" }),
+    b("move", "Flip", safe(() => { const n = reverseSelected(); toast(n ? `Flipped ${n} element(s)` : "Select linear elements", n ? "success" : "warn"); }, "Flip"), { title: "Reverse the drawing direction" }),
+  ];
+  if (has("wall", "curtain-wall")) items.push(b("wall", "Join Walls", act("join-walls"), { title: "Join walls that meet at a corner" }));
+  if (has("duct", "pipe", "cable-tray", "conduit")) {
+    items.push(b("connection", "Branch / Network", safe(() => { cycleMepSelection(); }, "Select branch"), { kbd: "Tab", title: "Tab: select the branch, then the whole network, then back to one run" }));
+  }
+  items.push(
+    sep(),
+    groupLabel("Constraints"),
+    b("origin" as IconName, "Pin", act("pin")), b("origin" as IconName, "Unpin", act("unpin")),
+    sep(),
+    groupLabel("Create"),
+    b("component", "Create Similar", act("create-similar")), b("copy", "Match Properties", act("match-props")),
+    sep(),
+    groupLabel("View"),
+    b("isolate", "Isolate", cmd("review.isolate"), { title: "Temporary isolate" }), b("clear", "Hide", cmd("review.hide"), { title: "Temporary hide" }),
+    b("show-all", "Reveal", cmd("review.reveal")), b("fit", "Zoom", cmd("review.focus"), { title: "Zoom to selection" }),
+  );
+  return items;
+}
+
 function syncContextTab() {
   const t = getActiveTool();
   const place = t && PLACE_TOOLS.has(t) ? t : null;
-  if (place === ctxTool) return;
-  ctxTool = place;
+  let key: string | null = null;
+  let label = "";
+  let build: (() => HTMLElement[]) | null = null;
   if (place) {
-    if (!ctxTab) tabBeforeCtx = activeTab;
-    ctxTab = { id: "ctx-place", label: `Modify | Place ${CTX_LABEL[place] ?? place}`, contextual: true, items: () => ctxItems(place) };
+    key = `place:${place}`; label = `Modify | Place ${CTX_LABEL[place] ?? place}`; build = () => ctxItems(place);
+  } else if (!t || t === "select") {
+    const els = selectedAuthored();
+    if (els.length) {
+      const types = new Set<string>(els.map((e) => e.type));
+      const cat = selectionCategory(els);
+      key = `sel:${[...types].sort().join(",")}`; label = `Modify | ${cat}`; build = () => selectionItems(types);
+    }
+  }
+  if (key === ctxTool) return;
+  const hadTab = !!ctxTab;
+  ctxTool = key;
+  if (key && build) {
+    if (!hadTab) tabBeforeCtx = activeTab;
+    ctxTab = { id: "ctx-place", label, contextual: true, items: build };
     activeTab = "ctx-place";
     if (ribbonMinimized) applyRibbonMinimize(false);
   } else if (ctxTab) {

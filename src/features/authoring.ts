@@ -5087,6 +5087,54 @@ export function isElementPinned(id: string): boolean {
   return !!el?.properties?.pinned;
 }
 
+/** Run `fn` and record ONE undo step covering every element's parameters (multi-element edits). */
+function withParamHistory<T>(label: string, fn: () => T, didChange: (r: T) => boolean): T {
+  const snap = () => new Map(elements.map((e) => [e.id, JSON.parse(JSON.stringify(e.params))] as [string, any]));
+  const before = snap();
+  const r = fn();
+  if (!didChange(r)) return r;
+  const after = snap();
+  const restore = (m: Map<string, any>) => {
+    for (const e of elements) { const p = m.get(e.id); if (p) e.params = JSON.parse(JSON.stringify(p)); }
+    rebuild(); markDirty(); notifyAuthoringChange();
+  };
+  history.push({ label, apply: () => restore(after), revert: () => restore(before) });
+  return r;
+}
+
+/** Set the same parameter(s) on every selected, unpinned element (Modify options bar). One undo step. */
+export function editSelectedParams(patch: Record<string, number>): { changed: number; failed: string[] } {
+  const ids = [...selectedIds].filter((id) => !elements.find((e) => e.id === id)?.properties?.pinned);
+  if (!ids.length) return { changed: 0, failed: [] };
+  return withParamHistory(`Edit ${ids.length} element(s)`, () => {
+    let changed = 0; const failed: string[] = [];
+    for (const id of ids) {
+      const el = elements.find((e) => e.id === id)!;
+      for (const [k, v] of Object.entries(patch)) {
+        if (!(k in (el.params as any))) continue; // the element has no such parameter
+        const r = applyElementParamChange(id, k, v);
+        if (r.ok) changed++; else failed.push(`${el.name}: ${r.reason}`);
+      }
+    }
+    return { changed, failed };
+  }, (r) => r.changed > 0);
+}
+
+/** Reverse the drawing direction of the selected linear elements (start <-> end). One undo step. */
+export function reverseSelected(): number {
+  const targets = elements.filter((e) => selectedIds.has(e.id) && !e.properties?.pinned && e.params.start && e.params.end);
+  if (!targets.length) return 0;
+  return withParamHistory(`Flip ${targets.length} element(s)`, () => {
+    for (const el of targets) {
+      const p: any = el.params;
+      [p.start, p.end] = [p.end, p.start];
+      if (p.endElevation !== undefined) [p.elevation, p.endElevation] = [p.endElevation, p.elevation];
+    }
+    rebuild(); markDirty(); notifyAuthoringChange();
+    return targets.length;
+  }, (n) => n > 0);
+}
+
 export function pinSelected(pinned = true): number {
   let changed = 0;
   const targets = elements.filter((el) => selectedIds.has(el.id));
@@ -6396,7 +6444,7 @@ export function setupAuthoring() {
     getElementWorldBox,
     getAuthoredGroup,
 
-    pinSelected,
+    pinSelected, editSelectedParams, reverseSelected,
     createSimilarFromSelection,
     splitSelectedAtMidpoint,
     joinSelectedWalls,

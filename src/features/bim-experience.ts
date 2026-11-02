@@ -53,6 +53,7 @@ import {
   onAuthoringChange,
 } from "./authoring";
 import { buildPlaceOptions, PLACE_TOOLS } from "./place-options";
+import { buildModifyOptions } from "./modify-options";
 import { history } from "./history";
 import { snapping } from "./snapping";
 import { gizmo } from "./gizmo";
@@ -869,6 +870,7 @@ function renderOptionsBar() {
 
   // Modify options.
   optionsBar.append(smallLabel("Selection"), `${selectionSummary().authored + selectionSummary().fragments} element(s)` as any, separator());
+  if (buildModifyOptions(optionsBar)) optionsBar.append(separator());
   optionsBar.append(button("Constrain", "⊙", () => toast("Constraint mode — click target geometry", "info"), false));
   optionsBar.append(button("Disjoin", "⊘", () => toast("Disjoin mode toggled", "info"), false));
   optionsBar.append(button("Pin", "●", () => { pinSelected(true); refresh(); }, false));
