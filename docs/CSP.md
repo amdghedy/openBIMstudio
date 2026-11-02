@@ -48,8 +48,8 @@ With the first policy draft applied as a meta tag, the app aborted boot with
 | Directive | Value | Why |
 |---|---|---|
 | `default-src` | `'self'` | Everything not explicitly listed falls back to same-origin only. |
-| `script-src` | `'self'` `'wasm-unsafe-eval'` `https://cdn.jsdelivr.net` | Bundled app + classic scripts under `/js/`, `/plugins/` are same-origin. `'wasm-unsafe-eval'` is required by web-ifc and LibreDWG WebAssembly compilation (no general `'unsafe-eval'` granted). `cdn.jsdelivr.net` is required **only** by the PDF underlay feature, which loads PDF.js 4.4.168 on demand (`src/modules/pdf-underlay/pdf-underlay.ts`). PDFs are parsed locally; no project data is uploaded anywhere by that feature. |
-| `worker-src` | `'self'` `blob:` `https://cdn.jsdelivr.net` | The Fragments worker (self-hosted `assets/worker-*.mjs`) and the clash worker are bundled same-origin workers. `blob:` covers workers built from inline bundles (Monaco-style patterns). PDF.js worker comes from jsdelivr together with the library. |
+| `script-src` | `'self'` `'wasm-unsafe-eval'` | Bundled app + same-origin lazy-loaded modules. `'wasm-unsafe-eval'` is required by web-ifc and LibreDWG WebAssembly compilation (no general `'unsafe-eval'` granted). PDF.js is bundled from the pinned `pdfjs-dist` dependency; no script CDN is required. PDFs are parsed locally; no project data is uploaded anywhere by that feature. |
+| `worker-src` | `'self'` `blob:` | The Fragments worker and PDF.js worker are emitted as same-origin build assets; `blob:` covers workers built from inline bundles. |
 | `style-src` | `'self'` `'unsafe-inline'` | Emotion/MUI inject runtime `<style>` elements — impossible without `'unsafe-inline'`. This is the industry-standard trade-off for CSS-in-JS; scripts remain restricted. |
 | `img-src` | `'self'` `data:` `blob:` | Icons/manifest assets are same-origin; screenshots, IFC texture atlases and canvas exports appear as data/blob URLs. |
 | `font-src` | `'self'` `data:` | No external font CDN is used. |
@@ -139,8 +139,8 @@ is permitted **only** in the DWG reader worker document listed above.
 
 1. Adding a new cloud provider → add its host to `connect-src` **and** to the
    table above **and** to `docs/INTEROPERABILITY_MATRIX.md` privacy column.
-2. Adding a new CDN-loaded library → `script-src`/`worker-src` entry + a
-   pinned version + a privacy note in the feature docs.
+2. Adding a new externally loaded library → review CSP, pin the version, and add
+   a privacy note in the feature docs. Prefer bundled dependencies over runtime CDNs.
 3. Never add blanket `https:` to `connect-src` — it would silently allow any
    project data to leave the machine and defeat the AI redaction audit trail.
 4. Never add `'unsafe-eval'` to the main document — WASM uses
