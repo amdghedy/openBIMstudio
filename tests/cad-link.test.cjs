@@ -16,13 +16,30 @@ fs.writeFileSync(path.join(out, "package.json"), '{"type":"commonjs"}');
 execSync(
   `npx tsc --rootDir src --outDir "${out}" --module commonjs --target ES2022 --moduleResolution node --lib es2022,dom --skipLibCheck --noCheck ` +
   "src/modules/drawings/aci.ts src/modules/drawings/dxf-types.ts src/modules/drawings/dxf-geometry.ts " +
-  "src/modules/drawings/dxf-reader.ts src/modules/drawings/dwg-convert.ts src/modules/cad-link/core.ts",
+  "src/modules/drawings/dxf-reader.ts src/modules/drawings/dwg-convert.ts src/modules/cad-link/core.ts src/features/cad-underlay-snap.ts",
   { cwd: root, stdio: "inherit" },
 );
 
 const { parseDxf } = require(path.join(out, "modules/drawings/dxf-reader.js"));
 const { dwgDatabaseToDxfDocument } = require(path.join(out, "modules/drawings/dwg-convert.js"));
 const { aciToRgb } = require(path.join(out, "modules/drawings/aci.js"));
+const cadSnap = require(path.join(out, "features/cad-underlay-snap.js"));
+
+function testCadUnderlaySnap() {
+  const count = cadSnap.setUnderlaySegments([0, 0, 4, 0, 4, 0, 4, 4]);
+  assert.strictEqual(count, undefined, "segment setter does not return a count");
+  assert.strictEqual(cadSnap.hasUnderlayData(), true);
+  assert.strictEqual(cadSnap.getUnderlaySnapPoints(0, 0, 0.01).length, 1, "CAD endpoints are acquired");
+  assert.strictEqual(cadSnap.getUnderlaySnapPoints(2, 0, 0.01)[0]?.type, "midpoint", "CAD segment midpoint is acquired");
+  cadSnap.setUnderlaySnapEnabled(false);
+  assert.strictEqual(cadSnap.getUnderlaySnapPoints(0, 0, 0.01).length, 0, "CAD snapping can be disabled independently");
+  cadSnap.setUnderlaySnapEnabled(true);
+  assert.strictEqual(cadSnap.getUnderlaySnapPoints(0, 0, 0.01).length, 1, "CAD snapping can be re-enabled");
+  cadSnap.clearUnderlayData();
+  assert.strictEqual(cadSnap.hasUnderlayData(), false, "clearing the linked underlay clears snap data");
+}
+testCadUnderlaySnap();
+
 const core = require(path.join(out, "modules/cad-link/core.js"));
 
 let passed = 0, failed = 0;
