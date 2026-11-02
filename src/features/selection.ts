@@ -364,13 +364,13 @@ let hoveredMap: Record<string, Set<number>> = {};
 
 function anyBlockingToolActive(): boolean {
   try {
-    // Section cut arrow hover/drag must always own the pointer (hand cursor, no select).
+    // Only block while the section-cut ARROW is hovered/dragged — not for the whole
+    // Section mode session (that previously disabled every click/select action).
     const w = window as any;
-    if (w.__OBS_SECTION_ARROW_HOVER || w.__OBS_SECTION_ARROW_LOCK || w.__OBS_BLOCK_SELECT) return true;
+    if (w.__OBS_SECTION_ARROW_HOVER || w.__OBS_SECTION_ARROW_LOCK) return true;
     if ((tryUse("authoring") as any)?.isActive?.()) return true;
     if ((ctx.features as any).drawing?.isActive?.()) return true;
     if ((ctx.features as any).measure?.isEnabled?.()) return true;
-    if ((ctx.features as any).section?.isEnabled?.()) return true;
     if ((ctx.features as any).walkMode?.isEnabled?.()) return true;
     return false;
   } catch { return false; }
