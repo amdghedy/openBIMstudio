@@ -26,4 +26,25 @@ ok(r.up[1] === 1 && r.pos[2] === 10 && r.pos[0] === 0, "front view untouched");
 // oblique custom up is honoured and flagged
 r = m.resolveWorldUp([5, 5, 5], [0, 0, 0], [1, 1, 0]);
 ok(!r.keptWorldUp && near(r.up[0], Math.SQRT1_2), "oblique custom up kept");
-console.log(`up-axis: ${n} checks OK`);
+
+ // Pole handoff must be continuous; a hard threshold used to snap camera.up
+ // from an interpolated horizontal vector to world +Y in a single frame.
+ for (const sign of [1, -1]) {
+   let previous = null;
+   for (let degrees = 78; degrees <= 90.0001; degrees += 0.1) {
+     const angle = degrees * Math.PI / 180;
+     const pos = [0, sign * 10 * Math.sin(angle), 10 * Math.cos(angle)];
+     const up = [0, Math.cos(angle), -sign * Math.sin(angle)];
+     const current = m.resolveWorldUp(pos, [0, 0, 0], up);
+     if (previous) {
+       const upStep = Math.hypot(
+         current.up[0] - previous.up[0],
+         current.up[1] - previous.up[1],
+         current.up[2] - previous.up[2],
+       );
+       ok(upStep < 0.05, `pole handoff up-vector discontinuity (${sign}, ${degrees.toFixed(1)}°): ${upStep}`);
+     }
+     previous = current;
+   }
+ }
+\nconsole.log(`up-axis: ${n} checks OK`);
