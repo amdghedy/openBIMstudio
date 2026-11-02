@@ -56,17 +56,17 @@ export function linkIfc() {
     const ifcFiles: File[] = [];
 
     for (const file of selected) {
-      if (/\\.ifc$/i.test(file.name)) {
+      if (/\.ifc$/i.test(file.name)) {
         ifcFiles.push(file);
         continue;
       }
 
-      if (/\\.ifczip$/i.test(file.name)) {
+      if (/\.ifczip$/i.test(file.name)) {
         const JSZip = (await import("jszip")).default;
         const archive = await JSZip.loadAsync(file);
         const entries: string[] = [];
         archive.forEach((path, entry) => {
-          if (!entry.dir && /\\.ifc$/i.test(path)) entries.push(path);
+          if (!entry.dir && /\.ifc$/i.test(path)) entries.push(path);
         });
 
         if (!entries.length) {
