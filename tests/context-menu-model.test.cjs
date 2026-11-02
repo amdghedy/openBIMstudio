@@ -1,7 +1,7 @@
 const {execSync}=require("child_process");const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
 const out=fs.mkdtempSync(path.join(os.tmpdir(),"cm-"));
-execSync(`npx tsc src/features/context-menu-model.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`,{stdio:"inherit"});
-const m=require(path.join(out,"context-menu-model.js"));
+execSync(`npx tsc src/features/context-menu-model.ts --rootDir src --outDir ${out} --module commonjs --target es2020 --skipLibCheck`,{stdio:"inherit"});
+const m=require(path.join(out,"features","context-menu-model.js"));
 let pass=0,fail=0;const t=(n,f)=>{try{f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
 const DEFS=[["move","Move","MV","s"],["copy","Copy","CO","s"],["paste","Paste","Ctrl+V",""],["rotate","Rotate","RO","s"],["mirror","Mirror","MI","s"],["array","Array","AR","s"],["offset","Offset","OF","s"],["scale","Scale","SC","s"],["create-similar","Create Similar","","s"],["match-props","Match Properties","","s"],["select-similar","Select Similar","","s"],["align-x","Align X","","m"],["align-z","Align Z","","m"],["pin","Pin","","s"],["unpin","Unpin","","s"],["split-mid","Split at Midpoint","","s"],["join-walls","Join Walls","","s"],["delete","Delete","Del","s"]]
  .map(([id,label,shortcut,k])=>({id,label,shortcut,needsSelection:k==="s",needsMulti:k==="m"}));
