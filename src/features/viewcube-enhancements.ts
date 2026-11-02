@@ -115,23 +115,59 @@ export function installViewCubeEnhancements(
   svg.addEventListener("lostpointercapture", finishDrag as EventListener);
 
   const tools = document.createElement("div");
-  tools.style.cssText = "display:flex;justify-content:flex-end;gap:5px;margin-top:2px;pointer-events:auto";
+  tools.style.cssText = "position:absolute;top:0;right:0;display:flex;justify-content:flex-end;" +
+    "gap:5px;pointer-events:none;opacity:0;transition:opacity 120ms ease;z-index:6";
   const optionsButton = document.createElement("button");
   optionsButton.type = "button";
-  optionsButton.textContent = "ViewCube options";
-  optionsButton.title = "Configure ViewCube size, opacity and position";
+  optionsButton.textContent = "⚙";
+  optionsButton.title = "ViewCube options";
+  optionsButton.setAttribute("aria-label", "Open ViewCube options");
   optionsButton.setAttribute("aria-expanded", "false");
-  optionsButton.style.cssText = buttonStyle();
+  optionsButton.style.cssText = buttonStyle() +
+    ";width:28px;height:28px;padding:0;font-size:15px;pointer-events:auto";
   tools.appendChild(optionsButton);
 
   const panel = document.createElement("div");
   panel.hidden = true;
+  panel.style.display = "none";
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-label", "ViewCube options");
-  panel.style.cssText = "position:absolute;right:0;top:100%;margin-top:6px;width:218px;" +
-    "padding:11px;display:flex;flex-direction:column;gap:9px;background:rgba(20,24,33,.97);" +
+  panel.style.cssText += "position:absolute;right:0;top:100%;margin-top:6px;width:218px;" +
+    "padding:11px;display:none;flex-direction:column;gap:9px;background:rgba(20,24,33,.97);" +
     "border:1px solid #3a4352;border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.42);" +
-    "color:#e2e8f0;font:11px system-ui;pointer-events:auto;z-index:5";
+    "color:#e2e8f0;font:11px system-ui;pointer-events:auto;z-index:7";
+  const panelHeader = document.createElement("div");
+  panelHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;" +
+    "font-weight:700;font-size:12px";
+  const panelTitle = document.createElement("span");
+  panelTitle.textContent = "ViewCube options";
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "×";
+  closeButton.title = "Close ViewCube options";
+  closeButton.setAttribute("aria-label", "Close ViewCube options");
+  closeButton.style.cssText = buttonStyle() + ";padding:1px 7px;font-size:16px";
+  panelHeader.append(panelTitle, closeButton);
+  panel.appendChild(panelHeader);
+
+  const setPanelOpen = (open: boolean) => {
+    panel.hidden = !open;
+    panel.style.display = open ? "flex" : "none";
+    optionsButton.setAttribute("aria-expanded", String(open));
+    optionsButton.setAttribute("aria-label", open ? "Close ViewCube options" : "Open ViewCube options");
+    if (open) closeButton.focus();
+  };
+  const placePanel = () => {
+    const left = prefs.position.endsWith("left");
+    const bottom = prefs.position.startsWith("bottom");
+    panel.style.right = left ? "auto" : "0";
+    panel.style.left = left ? "0" : "auto";
+    panel.style.top = bottom ? "auto" : "100%";
+    panel.style.bottom = bottom ? "100%" : "auto";
+    panel.style.marginTop = bottom ? "0" : "6px";
+    panel.style.marginBottom = bottom ? "6px" : "0";
+  };
+
   const addRange = (labelText: string, min: number, max: number, step: number, value: number,
     onInput: (value: number) => void) => {
     const wrap = document.createElement("label");
@@ -161,7 +197,7 @@ export function installViewCubeEnhancements(
   };
 
   addRange("Cube size", 0.75, 1.35, 0.05, prefs.scale, value => {
-    prefs.scale = value; applyPrefs(container, svg, prefs); persist(prefs);
+    prefs.scale = value; applyPrefs(container, svg, prefs); persist(prefs); placePanel();
   });
   addRange("Widget opacity", 0.35, 1, 0.05, prefs.opacity, value => {
     prefs.opacity = value; applyPrefs(container, svg, prefs); persist(prefs);
@@ -171,16 +207,13 @@ export function installViewCubeEnhancements(
     ["bottom-right", "Bottom right"], ["bottom-left", "Bottom left"],
   ], prefs.position, value => {
     prefs.position = value as CubePosition; applyPrefs(container, svg, prefs); persist(prefs);
-    panel.style.right = prefs.position.endsWith("right") ? "0" : "auto";
-    panel.style.left = prefs.position.endsWith("left") ? "0" : "auto";
-    panel.style.top = prefs.position.startsWith("top") ? "100%" : "auto";
-    panel.style.bottom = prefs.position.startsWith("bottom") ? "100%" : "auto";
+    placePanel();
   });
   const reset = document.createElement("button");
   reset.type = "button"; reset.textContent = "Restore defaults";
   reset.style.cssText = buttonStyle();
   reset.addEventListener("click", () => {
-    prefs = { ...DEFAULT_PREFS }; persist(prefs); applyPrefs(container, svg, prefs);
+    prefs = { ...DEFAULT_PREFS }; persist(prefs); applyPrefs(container, svg, prefs); placePanel();
     panel.querySelectorAll("input").forEach((input, index) => {
       (input as HTMLInputElement).value = String(index === 0 ? prefs.scale : prefs.opacity);
     });
@@ -190,10 +223,44 @@ export function installViewCubeEnhancements(
   panel.appendChild(reset);
   optionsButton.addEventListener("click", event => {
     event.stopPropagation();
-    panel.hidden = !panel.hidden;
-    optionsButton.setAttribute("aria-expanded", String(!panel.hidden));
+    setPanelOpen(panel.hidden);
+  });
+  closeButton.addEventListener("click", () => {
+    setPanelOpen(false);
+    optionsButton.focus();
   });
   panel.addEventListener("pointerdown", event => event.stopPropagation());
+  panel.addEventListener("click", event => event.stopPropagation());
+  const revealTools = () => {
+    tools.style.opacity = "1";
+    tools.style.pointerEvents = "auto";
+  };
+  const concealTools = () => {
+    if (!panel.hidden) return;
+    tools.style.opacity = "0";
+    tools.style.pointerEvents = "none";
+  };
+  container.addEventListener("pointerenter", revealTools);
+  container.addEventListener("pointerleave", concealTools);
+  container.addEventListener("focusin", revealTools);
+  container.addEventListener("focusout", event => {
+    if (!container.contains(event.relatedTarget as Node | null)) concealTools();
+  });
+  const closeOnOutside = (event: PointerEvent) => {
+    if (!panel.hidden && !container.contains(event.target as Node)) {
+      setPanelOpen(false);
+      concealTools();
+    }
+  };
+  const closeOnEscape = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && !panel.hidden) {
+      setPanelOpen(false);
+      optionsButton.focus();
+    }
+  };
+  document.addEventListener("pointerdown", closeOnOutside);
+  container.addEventListener("keydown", closeOnEscape);
+  placePanel();
   tools.appendChild(panel);
   container.appendChild(tools);
 }
