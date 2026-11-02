@@ -136,53 +136,59 @@ export function linkBIM() {
  * Multiple files, subsample for heavy scans, visible point markers.
  */
 export function linkPointCloud() {
-  pickAccept(".ply,.xyz,.pts,.txt,.pcd,.las,.laz,.e57", true, async (files) => {
-    let loaded = 0;
-    for (const file of files) {
-      const ext = (file.name.split(".").pop() ?? "").toLowerCase();
-
-      if (["las", "laz", "e57"].includes(ext)) {
-        alert(
-          `${ext.toUpperCase()} needs conversion for browser Scan-to-BIM.\n\n` +
-          "Recommended workflow:\n" +
-          "1. CloudCompare / Recap / Cyclone → Export as PLY or XYZ\n" +
-          "2. Insert → Point cloud again with the converted file\n" +
-          "3. Trace walls / ducts over the scan with Architecture tools\n\n" +
-          "Tip: subsample to ≤ 2M points for smooth performance.",
-        );
-        continue;
-      }
-
-      try {
-        if (ext === "xyz" || ext === "pts" || ext === "txt" || ext === "pcd") {
-          await loadAsciiPointCloud(file);
-        } else if (ext === "ply") {
-          await loadPlyAsPoints(file);
-        } else {
-          await importFiles([file]);
+  pickAccept(
+    ".las,.ptx,.ply,.xyz,.pts,.txt,.csv,.pcd,.laz,.e57,.rcp,.rcs,.rwcx,.rwp,.fls,.fws,.lsproj,.zfs,.cpe,.imp,.pod",
+    true,
+    async (files) => {
+      const { UNSUPPORTED_POINT_CLOUD, parseLas, parsePtx } = await import("../modules/point-cloud/parsers");
+      let loaded = 0;
+      const unsupported: string[] = [];
+      for (const file of files) {
+        const ext = (file.name.split(".").pop() ?? "").toLowerCase();
+        const bad = UNSUPPORTED_POINT_CLOUD[ext];
+        if (bad) { unsupported.push(`- ${file.name}  (${bad.name})\n  ${bad.how}`); continue; }
+        try {
+          if (ext === "las" || ext === "ptx") {
+            const parsed = ext === "las" ? parseLas(await file.arrayBuffer(), 2_000_000) : parsePtx(await file.text(), 2_000_000);
+            const far = parsed.origin.some((v) => Math.abs(v) > 5000);
+            // Survey coordinates (UTM etc.) are far from the model origin: offer to bring the cloud to the origin.
+            const recentre = far && confirm(
+              `${file.name} uses survey coordinates (centre ${parsed.origin.map((v) => v.toFixed(0)).join(", ")}).\n\n` +
+              "OK = move the cloud to the model origin (recommended)\nCancel = keep the survey coordinates (the model must use the same coordinates)",
+            );
+            await addPointsToScene(file.name, parsed.positions, parsed.colors, parsed.kept > 500_000 ? 0.03 : 0.05, far && !recentre ? parsed.origin : [0, 0, 0]);
+            toast(`${file.name}: ${parsed.info}, ${parsed.kept.toLocaleString()} of ${parsed.total.toLocaleString()} points`, "success");
+          } else if (["xyz", "pts", "txt", "csv", "pcd"].includes(ext)) {
+            await loadAsciiPointCloud(file);
+          } else if (ext === "ply") {
+            await loadPlyAsPoints(file);
+          } else {
+            await importFiles([file]);
+          }
+          loaded++;
+        } catch (e) {
+          console.error(e);
+          alert(`Could not load point cloud “${file.name}”: ${e instanceof Error ? e.message : e}`);
         }
-        loaded++;
-        toast(`Scan linked: ${file.name}`, "success");
-      } catch (e) {
-        console.error(e);
-        alert(`Could not load point cloud “${file.name}”: ${e instanceof Error ? e.message : e}`);
       }
-    }
-    if (loaded > 0) {
-      toast(
-        `${loaded} scan(s) in scene — use Architecture tools to model over the cloud (Scan-to-BIM)`,
-        "info",
-        4500,
-      );
-    }
-  });
+      if (unsupported.length) {
+        alert(
+          "These point-cloud formats are proprietary or compressed and cannot be read in the browser:\n\n" +
+          unsupported.join("\n\n") +
+          "\n\nSupported: LAS, PTX, PLY, PCD, XYZ, PTS, TXT, CSV.",
+        );
+      }
+      if (loaded > 0) toast(`${loaded} scan(s) in scene — use Architecture tools to model over the cloud (Scan-to-BIM)`, "info", 4500);
+    },
+  );
 }
 
 async function addPointsToScene(
   name: string,
-  positions: number[],
-  colors: number[],
+  positions: number[] | Float32Array,
+  colors: number[] | Float32Array | null,
   pointSize = 0.04,
+  position: [number, number, number] = [0, 0, 0],
 ) {
   const count = positions.length / 3;
   if (count < 10) throw new Error("No valid points found in file.");
@@ -191,15 +197,17 @@ async function addPointsToScene(
   const { ctx } = await import("../core/context");
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  if (colors) geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geo.computeBoundingSphere();
   const mat = new THREE.PointsMaterial({
     size: pointSize,
-    vertexColors: true,
+    vertexColors: !!colors,
+    color: colors ? 0xffffff : 0x9aa7b8,
     sizeAttenuation: true,
   });
   const pts = new THREE.Points(geo, mat);
   pts.name = name;
+  pts.position.set(position[0], position[1], position[2]);
   pts.userData.isPointCloud = true;
   pts.userData.pointCount = count;
   pts.userData.scanToBim = true;
