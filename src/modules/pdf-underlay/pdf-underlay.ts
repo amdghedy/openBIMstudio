@@ -63,7 +63,7 @@ export async function loadPdfUnderlay(input: PdfUnderlayParams): Promise<PdfUnde
   const page = pdf.getPage(p.page - 1);
   const { width, height } = page.getSize();
 
-  // Rasterise using PDF.js (lazy-loaded from CDN).
+  // Rasterise using the locally bundled PDF.js dependency.
   const pdfjs: any = await loadPdfJs();
   const loadingTask = pdfjs.getDocument({ data: bytes });
   const pdfDoc = await loadingTask.promise;
@@ -116,20 +116,21 @@ export async function loadPdfUnderlay(input: PdfUnderlayParams): Promise<PdfUnde
 let pdfJsPromise: Promise<any> | null = null;
 function loadPdfJs(): Promise<any> {
   if (pdfJsPromise) return pdfJsPromise;
-  pdfJsPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.js";
-    script.onload = () => {
-      const pdfjs = (window as any).pdfjsLib;
-      if (pdfjs) {
-        pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
-        resolve(pdfjs);
-      } else {
-        reject(new Error("PDF.js failed to initialise"));
-      }
-    };
-    script.onerror = () => reject(new Error("Could not load PDF.js from CDN"));
-    document.head.appendChild(script);
-  });
+  pdfJsPromise = import("pdfjs-dist")
+    .then((pdfjs: any) => {
+      // Resolve the worker from the exact installed package version. Vite emits
+      // it as a same-origin asset, avoiding CDN outages and version mismatches.
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+        "pdfjs-dist/build/pdf.worker.min.mjs",
+        import.meta.url,
+      ).toString();
+      return pdfjs;
+    })
+    .catch((error: unknown) => {
+      // Permit a later user retry if the first dynamic import fails.
+      pdfJsPromise = null;
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`Could not load the bundled PDF.js library: ${detail}`);
+    });
   return pdfJsPromise;
 }
