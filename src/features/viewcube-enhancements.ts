@@ -128,13 +128,18 @@ export function installViewCubeEnhancements(
   tools.appendChild(optionsButton);
 
   const panel = document.createElement("div");
-  panel.hidden = true;
+  // Render the panel in document.body rather than inside the ViewCube's
+  // low-z-index overlay. This prevents the viewer canvas/viewport layers from
+  // covering it and gives the popup a predictable viewport-relative position.
+  panel.style.display = "none";
   panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-label", "ViewCube options");
-  panel.style.cssText = "position:absolute;right:0;top:100%;margin-top:6px;width:218px;" +
-    "padding:11px;display:flex;flex-direction:column;gap:9px;background:rgba(20,24,33,.97);" +
-    "border:1px solid #3a4352;border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.42);" +
-    "color:#e2e8f0;font:11px system-ui;pointer-events:auto;z-index:5";
+  panel.setAttribute("aria-label", "ViewCube settings");
+  panel.setAttribute("aria-hidden", "true");
+  panel.tabIndex = -1;
+  panel.style.cssText = "position:fixed;left:0;top:0;width:218px;box-sizing:border-box;" +
+    "padding:11px;display:none;flex-direction:column;gap:9px;background:rgba(20,24,33,.98);" +
+    "border:1px solid #3a4352;border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.55);" +
+    "color:#e2e8f0;font:11px system-ui;pointer-events:auto;z-index:9600";
   const addRange = (labelText: string, min: number, max: number, step: number, value: number,
     onInput: (value: number) => void) => {
     const wrap = document.createElement("label");
@@ -191,12 +196,57 @@ export function installViewCubeEnhancements(
     if (select) select.value = prefs.position;
   });
   panel.appendChild(reset);
+  const positionPanel = () => {
+    const anchor = optionsButton.getBoundingClientRect();
+    const margin = 8;
+    const panelWidth = Math.min(218, Math.max(160, window.innerWidth - margin * 2));
+    panel.style.width = `${panelWidth}px`;
+    const panelHeight = panel.offsetHeight || 190;
+    let left = anchor.right - panelWidth;
+    left = Math.max(margin, Math.min(left, window.innerWidth - panelWidth - margin));
+    let top = anchor.bottom + 6;
+    if (top + panelHeight > window.innerHeight - margin) {
+      top = anchor.top - panelHeight - 6;
+    }
+    top = Math.max(margin, Math.min(top, window.innerHeight - panelHeight - margin));
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+  };
+  const closePanel = () => {
+    panel.style.display = "none";
+    panel.setAttribute("aria-hidden", "true");
+    optionsButton.setAttribute("aria-expanded", "false");
+  };
   optionsButton.addEventListener("click", event => {
+    event.preventDefault();
     event.stopPropagation();
-    panel.hidden = !panel.hidden;
-    optionsButton.setAttribute("aria-expanded", String(!panel.hidden));
+    const opening = panel.style.display === "none";
+    if (opening) {
+      document.body.appendChild(panel);
+      panel.style.display = "flex";
+      panel.setAttribute("aria-hidden", "false");
+      optionsButton.setAttribute("aria-expanded", "true");
+      positionPanel();
+    } else {
+      closePanel();
+    }
   });
   panel.addEventListener("pointerdown", event => event.stopPropagation());
-  tools.appendChild(panel);
+  document.addEventListener("pointerdown", event => {
+    const target = event.target as Node | null;
+    if (target && !panel.contains(target) && !optionsButton.contains(target)) closePanel();
+  }, true);
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && panel.style.display !== "none") {
+      closePanel();
+      optionsButton.focus();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (panel.style.display !== "none") positionPanel();
+  });
+  window.addEventListener("scroll", () => {
+    if (panel.style.display !== "none") positionPanel();
+  }, true);
   container.appendChild(tools);
 }
