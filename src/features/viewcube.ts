@@ -85,6 +85,8 @@ function perspFovDeg(): number {
 
 class RealCameraAdapter implements CameraAdapter {
   private selectionBox: THREE.Box3 | null = null;
+  private pendingTarget = new THREE.Vector3();
+  private controlsOutOfSync = false;
 
   position(): THREE.Vector3 {
     if (!worldReady()) return new THREE.Vector3();
@@ -93,6 +95,7 @@ class RealCameraAdapter implements CameraAdapter {
 
   target(): THREE.Vector3 {
     if (!worldReady()) return new THREE.Vector3();
+    if (this.controlsOutOfSync) return this.pendingTarget.clone();
     const c = controls();
     { const t0 = new THREE.Vector3(); if (readControlsTarget(c, t0)) return t0; }
     const cam = activeCam();
@@ -150,7 +153,10 @@ class RealCameraAdapter implements CameraAdapter {
     return setProjection(m);
   }
 
-  lookAt(pos: THREE.Vector3, target: THREE.Vector3, up: THREE.Vector3, animate: boolean): void {
+  lookAt(
+    pos: THREE.Vector3, target: THREE.Vector3, up: THREE.Vector3,
+    animate: boolean, syncControls = true,
+  ): void {
     if (!worldReady()) return;
     const cam = activeCam();
     const c = controls();
@@ -161,18 +167,53 @@ class RealCameraAdapter implements CameraAdapter {
     pos = new THREE.Vector3(r.pos[0], r.pos[1], r.pos[2]);
     const wantUp = new THREE.Vector3(r.up[0], r.up[1], r.up[2]).normalize();
     const upChanged = cam.up.distanceToSquared(wantUp) > 1e-12;
+    this.pendingTarget.copy(target);
     try { cam.up.copy(wantUp); } catch { /* */ }
-    // camera-controls captures its orbit axis from camera.up; refresh it whenever up changes.
-    if (upChanged) { try { c.updateCameraUp?.(); } catch { /* */ } }
-    try {
-      c.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, animate);
-    } catch {
+
+    if (syncControls) {
+      // Rebuild the orbit basis only when a pose is committed, not on every
+      // animation frame. This avoids repeatedly resetting camera-controls'
+      // internal spherical state while the ViewCube interpolates the camera.
+      if (upChanged || this.controlsOutOfSync) {
+        try { c.updateCameraUp?.(); } catch { /* */ }
+      }
+      try {
+        c.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, animate);
+        this.controlsOutOfSync = false;
+      } catch {
+        cam.position.copy(pos);
+        cam.lookAt(target);
+        this.controlsOutOfSync = true;
+      }
+    } else {
+      // camera-controls owns input and orbit state, but should not be rebuilt
+      // hundreds of times during a single transition. Drive the rendered pose
+      // directly, then reconcile at the final frame or before user input.
       cam.position.copy(pos);
       cam.lookAt(target);
+      this.controlsOutOfSync = true;
     }
-    if (!animate) {
-      try { cam.updateMatrixWorld(); } catch { /* */ }
+
+    try { cam.updateMatrixWorld(); } catch { /* */ }
+    updateClipping();
+  }
+
+  syncControls(): void {
+    if (!worldReady() || !this.controlsOutOfSync) return;
+    const cam = activeCam();
+    const c = controls();
+    try {
+      try { c.updateCameraUp?.(); } catch { /* */ }
+      c.setLookAt(
+        cam.position.x, cam.position.y, cam.position.z,
+        this.pendingTarget.x, this.pendingTarget.y, this.pendingTarget.z,
+        false,
+      );
+      this.controlsOutOfSync = false;
+    } catch {
+      // Keep the dirty flag: a later input/command can retry the reconciliation.
     }
+    try { cam.updateMatrixWorld(); } catch { /* */ }
     updateClipping();
   }
 
@@ -197,7 +238,11 @@ class RealCameraAdapter implements CameraAdapter {
     if (!host) return () => {};
     const handler = (e: Event) => {
       const t = e.target as HTMLElement | null;
-      if (t && t.tagName === "CANVAS") cb();
+      if (t && t.tagName === "CANVAS") {
+        // Capture phase runs before camera-controls handles the gesture.
+        this.syncControls();
+        cb();
+      }
     };
     host.addEventListener("pointerdown", handler, true);
     host.addEventListener("wheel", handler, { capture: true, passive: true });

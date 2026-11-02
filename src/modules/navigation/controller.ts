@@ -100,6 +100,9 @@ export class NavigationController {
 
     this.stopGesture = this.adapter.onUserGesture(() => {
       if (this.transition) {
+        // The adapter may have driven intermediate frames without rebuilding
+        // camera-controls state. Reconcile before the controls process input.
+        this.adapter.syncControls?.();
         this.transition.cancel();
         this.transition = null;
         this.events.onStateChange?.();
@@ -182,7 +185,9 @@ export class NavigationController {
       this.transition = null;
       this.events.onStateChange?.();
     }
-    this.adapter.lookAt(sample.pos, sample.target, sample.up, false);
+    // Intermediate poses are applied directly by the production adapter;
+    // camera-controls is synchronized exactly once at the settled endpoint.
+    this.adapter.lookAt(sample.pos, sample.target, sample.up, false, sample.done);
     return this.transition != null;
   }
 
@@ -190,6 +195,8 @@ export class NavigationController {
     if (this.transition) {
       this.transition.cancel();
       this.transition = null;
+      // A replacement command or Escape must not leave orbit controls stale.
+      this.adapter.syncControls?.();
       this.events.onStateChange?.();
     }
   }
