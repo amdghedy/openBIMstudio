@@ -364,6 +364,9 @@ let hoveredMap: Record<string, Set<number>> = {};
 
 function anyBlockingToolActive(): boolean {
   try {
+    // Section cut arrow hover/drag must always own the pointer (hand cursor, no select).
+    const w = window as any;
+    if (w.__OBS_SECTION_ARROW_HOVER || w.__OBS_SECTION_ARROW_LOCK || w.__OBS_BLOCK_SELECT) return true;
     if ((tryUse("authoring") as any)?.isActive?.()) return true;
     if ((ctx.features as any).drawing?.isActive?.()) return true;
     if ((ctx.features as any).measure?.isEnabled?.()) return true;

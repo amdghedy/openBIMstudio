@@ -73,7 +73,7 @@ function releaseEverything(e?: PointerEvent | null): void {
   }
   const host = hostEl();
   if (host) {
-    host.style.cursor = hoverArrow ? "grab" : "";
+    applyGrabCursor(hoverArrow ? "grab" : "");
     if (e) {
       try {
         host.releasePointerCapture(e.pointerId);
@@ -318,8 +318,8 @@ function getPlaneFromItem(item: Any): THREE.Plane | null {
   return null;
 }
 
-function collectClipperHelpers(): Array<{ item: Any; objects: THREE.Object3D[] }> {
-  const out: Array<{ item: Any; objects: THREE.Object3D[] }> = [];
+function collectClipperHelpers(): Array<{ item: Any; objects: THREE.Object3D[]; tip: THREE.Vector3 | null }> {
+  const out: Array<{ item: Any; objects: THREE.Object3D[]; tip: THREE.Vector3 | null }> = [];
   try {
     const list = (ctx as Any).clipper?.list;
     if (!list) return out;
@@ -328,20 +328,66 @@ function collectClipperHelpers(): Array<{ item: Any; objects: THREE.Object3D[] }
       const item = Array.isArray(entry) ? entry[1] : entry;
       if (!item) continue;
       const objects: THREE.Object3D[] = [];
+      const seen = new Set<THREE.Object3D>();
       const push = (o: Any) => {
-        if (o?.isObject3D) objects.push(o as THREE.Object3D);
-        if (o?.object?.isObject3D) objects.push(o.object as THREE.Object3D);
+        if (!o) return;
+        if (o.isObject3D && !seen.has(o)) {
+          seen.add(o);
+          objects.push(o as THREE.Object3D);
+        }
+        if (o.object?.isObject3D && !seen.has(o.object)) {
+          seen.add(o.object);
+          objects.push(o.object as THREE.Object3D);
+        }
+        // TransformControls / gizmo roots
+        if (o._gizmo?.isObject3D && !seen.has(o._gizmo)) {
+          seen.add(o._gizmo);
+          objects.push(o._gizmo as THREE.Object3D);
+        }
+        if (o.gizmo?.isObject3D && !seen.has(o.gizmo)) {
+          seen.add(o.gizmo);
+          objects.push(o.gizmo as THREE.Object3D);
+        }
       };
-      for (const key of ["helper", "arrow", "mesh", "object", "three", "root", "group", "controls"]) {
+      for (const key of [
+        "helper", "arrow", "mesh", "object", "three", "root", "group",
+        "controls", "transform", "gizmo", "handle", "handles",
+      ]) {
         push(item[key]);
       }
+      // Deep-scan one level for TransformControls-like objects
+      try {
+        for (const v of Object.values(item)) {
+          if (!v || typeof v !== "object") continue;
+          const o = v as Any;
+          if (typeof o.dragging === "boolean" || o.isTransformControls) push(o);
+        }
+      } catch { /* */ }
+
+      let tip: THREE.Vector3 | null = null;
       for (const o of objects) {
         o.traverse((ch) => {
           (ch as Any).userData = (ch as Any).userData || {};
           (ch as Any).userData.isClipperHelper = true;
+          // Prefer arrow tip / visible mesh for screen-space proximity
+          if (!tip && (ch as Any).isMesh && (ch as Any).visible !== false) {
+            tip = new THREE.Vector3();
+            (ch as THREE.Object3D).getWorldPosition(tip);
+          }
         });
       }
-      if (objects.length) out.push({ item, objects });
+      if (!tip) {
+        try {
+          const plane = getPlaneFromItem(item);
+          if (plane) {
+            tip = plane.normal.clone().normalize().multiplyScalar(1.2);
+            // coplanar point approx: -n * constant
+            const origin = plane.normal.clone().multiplyScalar(-plane.constant);
+            tip.add(origin);
+          }
+        } catch { /* */ }
+      }
+      if (objects.length || tip) out.push({ item, objects, tip });
     }
   } catch {
     /* */
@@ -358,23 +404,55 @@ function pickClipperHandle(
     const host = hostEl();
     if (!cam || !host) return null;
     const rect = host.getBoundingClientRect();
+    const w = Math.max(1, rect.width);
+    const h = Math.max(1, rect.height);
     const ndc = new THREE.Vector2(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
+      ((clientX - rect.left) / w) * 2 - 1,
+      -((clientY - rect.top) / h) * 2 + 1,
     );
     const raycaster = new THREE.Raycaster();
+    // Fat rays so thin arrow meshes / lines are easy to hover
+    raycaster.params.Line = { threshold: 0.35 };
+    raycaster.params.Points = { threshold: 0.35 };
+    (raycaster.params as Any).Mesh = { ...(raycaster.params as Any).Mesh, threshold: 0.2 };
     raycaster.setFromCamera(ndc, cam);
+
+    let best: { item: Any; point: THREE.Vector3; dist: number } | null = null;
+
     for (const g of collectClipperHelpers()) {
       try {
-        // Only the visible move arrow is a handle - not the plane quad, not hidden leftovers.
-        const hits = raycaster.intersectObjects(g.objects, true).filter((h: any) => isGrabbableHandle(h.object as any));
-        if (hits.length && hits[0].point) {
-          return { item: g.item, point: hits[0].point.clone() };
+        if (g.objects.length) {
+          const hits = raycaster
+            .intersectObjects(g.objects, true)
+            .filter((hit: any) => isGrabbableHandle(hit.object as any));
+          if (hits.length && hits[0].point) {
+            const d = hits[0].distance;
+            if (!best || d < best.dist) {
+              best = { item: g.item, point: hits[0].point.clone(), dist: d };
+            }
+          }
+        }
+        // Screen-space proximity fallback (thin arrows often miss mesh raycasts)
+        if (g.tip && cam) {
+          const projected = g.tip.clone().project(cam);
+          if (projected.z < 1) {
+            const sx = (projected.x * 0.5 + 0.5) * w + rect.left;
+            const sy = (-projected.y * 0.5 + 0.5) * h + rect.top;
+            const pix = Math.hypot(clientX - sx, clientY - sy);
+            // ~28 px grab radius around the arrow tip / helper center
+            if (pix <= 28) {
+              const d = pix * 0.001; // prefer real hits; use tiny virtual distance
+              if (!best || d < best.dist) {
+                best = { item: g.item, point: g.tip.clone(), dist: d };
+              }
+            }
+          }
         }
       } catch {
         /* */
       }
     }
+    if (best) return { item: best.item, point: best.point };
   } catch {
     /* */
   }
@@ -478,10 +556,28 @@ function installGlobalMouseLock(): void {
   attach();
 }
 
+function applyGrabCursor(mode: "grab" | "grabbing" | ""): void {
+  const host = hostEl();
+  const canvas = (() => {
+    try {
+      return (ctx as Any).world?.renderer?.three?.domElement as HTMLElement | null;
+    } catch {
+      return null;
+    }
+  })();
+  for (const el of [host, canvas, document.body]) {
+    if (!el) continue;
+    try {
+      el.style.cursor = mode;
+    } catch {
+      /* */
+    }
+  }
+}
+
 function setArrowHover(on: boolean): void {
   if (hoverArrow === on) return;
   hoverArrow = on;
-  const host = hostEl();
   if (on) {
     try {
       if (!unblockNav) unblockNav = whenNavigationBlocked(() => true);
@@ -494,11 +590,8 @@ function setArrowHover(on: boolean): void {
     } catch {
       /* */
     }
-    if (host) {
-      host.style.cursor = "grab";
-      host.style.pointerEvents = "auto";
-    }
-    // Flags consumed by selection / box-select / navigation guards
+    applyGrabCursor(dragging ? "grabbing" : "grab");
+    // Flags consumed by selection / box-select / navigation / Modify mode
     (window as Any).__OBS_SECTION_ARROW_HOVER = true;
     (window as Any).__OBS_SECTION_ARROW_LOCK = true;
     (window as Any).__OBS_BLOCK_SELECT = true;
@@ -517,7 +610,7 @@ function setArrowHover(on: boolean): void {
     } catch {
       /* */
     }
-    if (host) host.style.cursor = "";
+    applyGrabCursor("");
     (window as Any).__OBS_SECTION_ARROW_HOVER = false;
     (window as Any).__OBS_SECTION_ARROW_LOCK = false;
     (window as Any).__OBS_BLOCK_SELECT = false;
@@ -599,7 +692,7 @@ function onPointerDown(e: PointerEvent): void {
     /* */
   }
   const host = hostEl();
-  if (host) host.style.cursor = "grabbing";
+  applyGrabCursor("grabbing");
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();

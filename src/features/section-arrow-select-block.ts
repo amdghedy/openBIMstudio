@@ -39,7 +39,10 @@ export function setupSectionArrowSelectBlock(): void {
       return;
     }
     // Bubble-block: selection often listens on host
+    // Stop click/mousedown selection only. Leave pointerdown/up for the
+    // section-cut-interaction arrow drag handlers.
     h.addEventListener("click", stopIfLocked, true);
+    h.addEventListener("mousedown", stopIfLocked, true);
     h.addEventListener("dblclick", (e) => {
       // Allow section dblclick only when section enabled AND not on arrow
       if (locked()) {
