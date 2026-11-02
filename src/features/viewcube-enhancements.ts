@@ -58,6 +58,7 @@ export function installViewCubeEnhancements(
   container: HTMLDivElement,
   svg: SVGSVGElement,
   controller: NavigationController,
+  header: HTMLElement,
 ): void {
   let prefs = readPrefs();
   applyPrefs(container, svg, prefs);
@@ -115,16 +116,19 @@ export function installViewCubeEnhancements(
   svg.addEventListener("lostpointercapture", finishDrag as EventListener);
 
   const tools = document.createElement("div");
-  tools.style.cssText = "display:flex;justify-content:flex-end;gap:5px;margin-top:2px;pointer-events:auto";
+  tools.style.cssText = "display:flex;align-items:center;gap:4px;pointer-events:auto";
   const optionsButton = document.createElement("button");
   optionsButton.type = "button";
   optionsButton.textContent = "⚙";
   optionsButton.title = "ViewCube settings";
   optionsButton.setAttribute("aria-label", "ViewCube settings");
   optionsButton.setAttribute("aria-expanded", "false");
-  optionsButton.style.cssText = buttonStyle() +
-    ";display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;" +
-    "padding:0;font:700 19px/1 system-ui,sans-serif;flex:none;opacity:1;visibility:visible";
+  optionsButton.style.cssText = "display:inline-flex;align-items:center;justify-content:center;" +
+    "width:22px;height:22px;padding:0;border:0;border-radius:5px;background:transparent;" +
+    "color:#cbd5e1;cursor:pointer;font:700 16px/1 system-ui,sans-serif;flex:none;" +
+    "opacity:1;visibility:visible";
+  optionsButton.addEventListener("mouseenter", () => { optionsButton.style.color = "#38bdf8"; });
+  optionsButton.addEventListener("mouseleave", () => { optionsButton.style.color = "#cbd5e1"; });
   tools.appendChild(optionsButton);
 
   const panel = document.createElement("div");
@@ -246,5 +250,6 @@ export function installViewCubeEnhancements(
   window.addEventListener("scroll", () => {
     if (panel.style.display !== "none") positionPanel();
   }, true);
-  container.appendChild(tools);
+  // Keep the settings gear in the header, immediately after Home and before the view menu.
+  header.insertBefore(tools, header.lastElementChild);
 }
