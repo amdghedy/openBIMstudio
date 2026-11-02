@@ -115,8 +115,8 @@ export function installViewCubeEnhancements(
   svg.addEventListener("lostpointercapture", finishDrag as EventListener);
 
   const tools = document.createElement("div");
-  tools.style.cssText = "position:absolute;top:0;right:0;display:flex;justify-content:flex-end;" +
-    "gap:5px;pointer-events:none;opacity:0;transition:opacity 120ms ease;z-index:6";
+  tools.style.cssText = "position:absolute;top:-5px;right:-5px;display:flex;justify-content:flex-end;" +
+    "gap:5px;pointer-events:auto;opacity:1;visibility:visible;z-index:60";
   const optionsButton = document.createElement("button");
   optionsButton.type = "button";
   optionsButton.textContent = "⚙";
@@ -124,7 +124,9 @@ export function installViewCubeEnhancements(
   optionsButton.setAttribute("aria-label", "Open ViewCube options");
   optionsButton.setAttribute("aria-expanded", "false");
   optionsButton.style.cssText = buttonStyle() +
-    ";width:28px;height:28px;padding:0;font-size:15px;pointer-events:auto";
+    ";width:28px;height:28px;padding:0;font-size:15px;pointer-events:auto;" +
+    "display:inline-flex;align-items:center;justify-content:center;opacity:1;visibility:visible;" +
+    "box-shadow:0 2px 8px rgba(0,0,0,.45)";
   tools.appendChild(optionsButton);
 
   const panel = document.createElement("div");
@@ -231,25 +233,11 @@ export function installViewCubeEnhancements(
   });
   panel.addEventListener("pointerdown", event => event.stopPropagation());
   panel.addEventListener("click", event => event.stopPropagation());
-  const revealTools = () => {
-    tools.style.opacity = "1";
-    tools.style.pointerEvents = "auto";
-  };
-  const concealTools = () => {
-    if (!panel.hidden) return;
-    tools.style.opacity = "0";
-    tools.style.pointerEvents = "none";
-  };
-  container.addEventListener("pointerenter", revealTools);
-  container.addEventListener("pointerleave", concealTools);
-  container.addEventListener("focusin", revealTools);
-  container.addEventListener("focusout", event => {
-    if (!container.contains(event.relatedTarget as Node | null)) concealTools();
-  });
+  // Keep only the compact gear affordance visible; the settings panel itself
+  // remains hidden until explicitly opened and closes on outside click / Escape.
   const closeOnOutside = (event: PointerEvent) => {
     if (!panel.hidden && !container.contains(event.target as Node)) {
       setPanelOpen(false);
-      concealTools();
     }
   };
   const closeOnEscape = (event: KeyboardEvent) => {
