@@ -494,7 +494,7 @@ function buildWidget(
   buildRotationArrows(gArrows, controller);
 
   (ctx.rightHost as HTMLElement).appendChild(container);
-  installViewCubeEnhancements(container, svg, controller);
+  installViewCubeEnhancements(container, svg, controller, header);
 
   return { container, svg, faceEls, edgeEls, cornerEls, labelEls, compassEls };
 }
