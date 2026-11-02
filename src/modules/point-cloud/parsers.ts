@@ -16,7 +16,7 @@ export interface ParsedCloud {
 
 /** Formats that are proprietary or compressed: cannot be decoded in the browser. */
 export const UNSUPPORTED_POINT_CLOUD: Record<string, { name: string; how: string }> = {
-  rwcx: { name: "Trimble RealWorks project", how: "In RealWorks export the scans (File > Export) as LAS, E57 or PTX, then link that file." },
+  rwcx: { name: "Trimble RWCX scan (proprietary)", how: "Use the Trimble import assistant: import the original Siteworks Work Order .SPJ in TBC (Scanning support) or open the source scan data in RealWorks, then export registered points as LAS or PTX. RWCX is not decoded directly in the browser." },
   rwp: { name: "Trimble RealWorks project", how: "In RealWorks export the scans as LAS, E57 or PTX." },
   rcp: { name: "Autodesk ReCap project", how: "In ReCap choose Export > LAS (or E57 / PTS), then link that file." },
   rcs: { name: "Autodesk ReCap scan", how: "Open the project in ReCap and export it as LAS (or E57 / PTS)." },
