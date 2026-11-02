@@ -11,7 +11,7 @@
 [![Version](https://img.shields.io/badge/version-0.74.0-blue.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![IFC](https://img.shields.io/badge/IFC-2x3%20%7C%204-3b82f6.svg)](#-interoperability)
-[![Runs in](https://img.shields.io/badge/runs%20in-browser-success.svg)](#)
+[![Runs in](https://img.shields.io/badge/runs%20in-browser-success.svg)](https://github.com/amdghedy/openBIMstudio#quick-start)
 [![CI](https://github.com/amdghedy/openBIMstudio/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/amdghedy/openBIMstudio/actions/workflows/unit-tests.yml)
 [![BIM validation](https://github.com/amdghedy/openBIMstudio/actions/workflows/native-bim-validation.yml/badge.svg)](https://github.com/amdghedy/openBIMstudio/actions/workflows/native-bim-validation.yml)
 
@@ -37,28 +37,13 @@
 
 ---
 
-## Repository snapshot
-
-OpenBIMStudio is a browser-native BIM workspace for architecture, engineering, and coordination teams building around open standards, local-first workflows, and interoperable project delivery.
-
-- Language mix: JavaScript 75.6% · TypeScript 24.1% · Other 0.3%
-- Model: browser-first, local-first BIM application with optional server-backed AI/collaboration services
-- Platform: React + Vite + Three.js + web-ifc / Fragments + MUI + WASM tooling
-- Use cases: authoring, coordination, clash detection, documentation, validation, and issue exchange
-
-This repository is designed to reduce the fragmentation of BIM tooling while keeping project data portable, inspectable, and vendor-independent.
-
----
-
 ## What is OpenBIMStudio?
 
 OpenBIMStudio is a **browser-based, local-first BIM workspace** for architecture, engineering, and construction. It combines model authoring, multi-model federation, clash detection, BCF issue exchange, sheet production, and validation around open standards and a self-hosted local workflow.
 
 One install (none, actually — it's your browser). One license (MIT — yours). Your model data stays on your machine by default.
 
-> **Latest (v0.74.0):** cursor-accurate wheel zoom with a guaranteed orientation invariant (zoom never rotates the camera), full Content-Security-Policy with a self-hosted Fragments worker, and a wider set of modeling and documentation improvements.
->
-> **Modeling (v0.73.0):** justification-aware wall & MEP modeling, magnetic snapping with persistent relationships, dependent-geometry updates in a single undo step, dynamic per-tool property panels, and stronger family/parametric workflows.
+> **Latest release (v0.74.0):** cursor-accurate wheel zoom with a guaranteed orientation invariant, a full Content-Security-Policy with a self-hosted Fragments worker, and a broad set of modeling and documentation improvements. Release highlights and the running change log: [CHANGELOG.md](CHANGELOG.md).
 
 | For you if you… | OpenBIMStudio helps by… |
 |-----------------|-------------------------|
@@ -82,7 +67,7 @@ One install (none, actually — it's your browser). One license (MIT — yours).
 | 🏗️ **Authoring to delivery in one app** | Walls to rebar, clash to BCF, views to sheets to PDF, quantities to cost, phasing to 4D. No stitching together five tools. |
 | 🔓 **Open standards, no lock-in** | IFC 2x3/4, BCF, IDS, DXF, CSV, PDF. Your data is never hostage to a vendor. |
 | 🤖 **Automate & extend** | Event-driven automation rules, an AI assistant (bring your own provider key), a plugin SDK with capability gating, and a sample plugin marketplace. |
-| ✅ **Evidence-based engineering** | 50+ automated test suites run in CI, a public per-tool maturity catalogue, and documented known limitations. |
+| ✅ **Evidence-based engineering** | 97 focused test suites run in CI on every push, a public per-tool maturity catalogue, and documented known limitations. |
 | 🧠 **Modern modeling engine** | Justification lines, magnetic snapping, constraint solving, parametric families with formulas, and deep authoring workflows. |
 
 ---
@@ -360,18 +345,25 @@ Some additional model formats may be accessible through separately configured co
 
 ## 📚 Documentation
 
+**Guides for users and developers** (`documentation/`):
+
 | Guide | Audience |
 |-------|----------|
 | [User Guide](documentation/USER_GUIDE.md) | Setup, workflows, troubleshooting |
 | [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) | Full tool list & maturity |
+| [Developer Guide](documentation/DEVELOPER_GUIDE.md) | Architecture & contribution |
+| [Plugin SDK](docs/PLUGIN_SDK.md) | Extensions |
+
+**Engineering notes** (`docs/`) — the full index lives in [docs/README.md](docs/README.md):
+
+| Guide | Topic |
+|-------|-------|
 | [Engineering Baseline](docs/engineering/BASELINE.md) | Verified format boundaries, feature maturity inventory, stage evidence |
 | [Authoring](docs/02-authoring.md) | Modeling & families |
 | [Coordination](docs/03-coordination.md) | Clash & issues |
 | [Documentation](docs/04-documentation.md) | Views & sheets |
 | [Install & UX](docs/INSTALL_AND_UX.md) | UI map & smoke test |
 | [Native BIM validation](docs/NATIVE_BIM_VALIDATION.md) | QA checks |
-| [Plugin SDK](docs/PLUGIN_SDK.md) | Extensions |
-| [Developer Guide](documentation/DEVELOPER_GUIDE.md) | Architecture & contribution |
 
 ---
 
@@ -379,33 +371,21 @@ Some additional model formats may be accessible through separately configured co
 
 ```bash
 npm install
-npm run dev          # development server
-npm run typecheck    # TypeScript
-npm run build        # production build
-npm run test:native-bim
-npm run verify:v73   # release verification chain (per version)
+npm run dev                      # development server (http://localhost:3000)
+npm run typecheck                # TypeScript
+npm run build                    # production build
+npm run test:native-bim          # native BIM validation checks
+node scripts/ci-unit-tests.mjs   # the full batched suite (what CI runs)
 ```
+
+Per-version milestone checks (`npm run verify:v50` … `npm run verify:v73`) remain
+available from earlier releases; run the one matching the milestone you touched.
 
 **Stack:** React · TypeScript · Vite · Three.js · That Open (web-ifc / Fragments) · MUI · LibreDWG (WASM) · Yjs (optional real-time collaboration)
 
 **Layout:** `src/features` (tools/UI) · `src/modules` (BIM domains — 100+ modules from authoring to 5D) · `src/commands` · `src/workers` · optional `server/` (collaboration & conversion — self-hosted and optional)
 
-**Testing culture:** 50+ focused automated suites (`npm run` and pick any `test:*`), CI on every push, and a per-version verification chain. Contributions welcome — for substantial changes, open an issue first and discuss the design and validation strategy.
-
-### Deploying CAD Editor updates with PowerShell 5.1 (Windows)
-
-Feature packages ship as a folder containing `deploy-cad-update.ps1` plus a `files/` tree that mirrors the repository. The script validates the environment, backs up originals, copies updated files into the repo, and pushes the commit to GitHub.
-
-```powershell
-# Run from the extracted package folder (PowerShell 5.1 or later)
-Set-ExecutionPolicy -Scope Process Bypass -Force
-.\deploy-cad-update.ps1                                   # interactive: asks for the commit message
-.\deploy-cad-update.ps1 -Message "feat(cad-viewer): modify tools"   # fully automatic (backup + copy + commit + push)
-.\deploy-cad-update.ps1 -NoPush                           # backup + copy + commit, you push manually
-.\deploy-cad-update.ps1 -NoBackup -NoPush                 # copy only
-```
-
-Default repository path: `C:\Users\abdelrehem.mohamed\Desktop\New folder\openBIMstudio` (override with `-RepoRoot "D:\path\to\openBIMstudio"`). Backups land in `<repo>\_backup\<yyyy-MM-dd_HHmmss>\` with the original folder structure; the script refuses to run when `git` is missing, the folder is not a repository, or the push is rejected.
+**Testing culture:** 97 focused automated suites (`npm run` and pick any `test:*`; `node scripts/ci-unit-tests.mjs` runs the whole batch), CI on every push, and per-version milestone checks. Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md); for substantial changes, open an issue first and discuss the design and validation strategy.
 
 ---
 
