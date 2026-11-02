@@ -79,6 +79,8 @@ export interface DockHandle {
   hide(): void;
   toggle(): void;
   isVisible(): boolean;
+  /** Open the Dock menu (left / right / top / bottom / floating) at a screen position. */
+  showMenu(clientX: number, clientY: number): void;
   /** Reset size + position to defaults and reapply stored dock side. */
   reset(): void;
   /** Cycle docked → floating → right, similar to BIM-style panel management. */
@@ -516,10 +518,13 @@ const handleEls: HTMLDivElement[] = [];
     if (opts.header && !opts.header.contains(t)) return;
     if (t.closest("input,textarea,select")) return;
     e.preventDefault(); e.stopPropagation();
+    showDockMenu(e.clientX, e.clientY);
+  };
+  function showDockMenu(clientX: number, clientY: number): void {
     document.getElementById("obs-dock-menu")?.remove();
     const m = document.createElement("div");
     m.id = "obs-dock-menu"; m.setAttribute("data-obs-ui", "1");
-    m.style.cssText = `position:fixed;z-index:10001;left:${e.clientX}px;top:${e.clientY}px;min-width:150px;background:#1e1f26;color:#e2e8f0;border:1px solid #3a3a4a;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.55);font:12px system-ui,sans-serif;padding:4px 0`;
+    m.style.cssText = `position:fixed;z-index:10001;left:${clientX}px;top:${clientY}px;min-width:150px;background:#1e1f26;color:#e2e8f0;border:1px solid #3a3a4a;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.55);font:12px system-ui,sans-serif;padding:4px 0`;
     const items: Array<[string, DockSide]> = [["Dock left", "left"], ["Dock right", "right"], ["Dock top", "top"], ["Dock bottom", "bottom"], ["Floating", "float"]];
     for (const [label, side] of items) {
       const r = document.createElement("div");
@@ -533,7 +538,7 @@ const handleEls: HTMLDivElement[] = [];
     document.body.appendChild(m);
     const close = (ev: Event) => { if (!m.contains(ev.target as Node)) { m.remove(); window.removeEventListener("pointerdown", close, true); } };
     window.addEventListener("pointerdown", close, true);
-  };
+  }
   (opts.header ?? panel).addEventListener("contextmenu", onHeaderMenu);
 
   // ── Public handle ──
@@ -623,5 +628,5 @@ const handleEls: HTMLDivElement[] = [];
     controlsObserver.observe(opts.header, { childList: true, subtree: false });
   }
 
-  return { side: () => state.dock, dock, cycleDock, minimize, show, hide, toggle, isVisible, reset, setHeader, dispose };
+  return { side: () => state.dock, dock, showMenu: showDockMenu, cycleDock, minimize, show, hide, toggle, isVisible, reset, setHeader, dispose };
 }

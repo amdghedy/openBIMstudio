@@ -502,6 +502,16 @@ function renderHeader(): void {
       toggleHistoryDropdown(histBtn);
     };
 
+    const dockBtn = document.createElement("button");
+    dockBtn.textContent = "⊞";
+    dockBtn.title = "Dock the assistant: left / right / top / bottom / floating (or drag the title bar to a side)";
+    dockBtn.style.cssText = smallBtnCss();
+    dockBtn.onclick = (e) => {
+      e.stopPropagation();
+      const r = dockBtn.getBoundingClientRect();
+      try { dock?.showMenu(Math.max(8, r.left - 120), r.bottom + 4); } catch { /* */ }
+    };
+
     const gear = document.createElement("button");
     gear.textContent = "⚙";
     gear.title = showSettings ? "Hide settings" : "Settings";
@@ -533,7 +543,7 @@ function renderHeader(): void {
       closeAiChat();
     };
 
-    actions.append(histBtn, gear, clearBtn, closeBtn);
+    actions.append(histBtn, dockBtn, gear, clearBtn, closeBtn);
     row1.append(icon, text, actions);
 
     // ── Row 2: dock controls ──
