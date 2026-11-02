@@ -1,9 +1,0 @@
-# Disabled — one-shot restore finished. Do not re-enable on push.
-name: Restore styles.css now (disabled)
-on:
-  workflow_dispatch:
-jobs:
-  noop:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Disabled. styles.css restored on main."
