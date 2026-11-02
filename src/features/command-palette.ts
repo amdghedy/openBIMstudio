@@ -41,6 +41,8 @@ import { selection } from "./selection";
 import { saveProject, createProject, getCurrentProject } from "../modules/projects/projects";
 import { showHome } from "../shell/home-screen";
 import { pickAndImport } from "./file-interop";
+import { listModifyCommandDefinitions } from "../modules/modify/registry";
+import { runModifyAction } from "./modify-actions";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Types
@@ -540,82 +542,42 @@ function registerAuthoringCommands(): void {
     });
   }
 
-  for (const [tool, kbd] of [["move", "G"], ["copy", ""], ["rotate", "R"], ["mirror", "M"], ["array", ""], ["offset", "O"]] as const) {
+  // Register every Modify action from the canonical registry. Existing command
+  // IDs are retained as aliases so saved shortcuts and integrations keep working.
+  const paletteIds: Record<string, string> = {
+    move: "authoring.modify.move",
+    copy: "authoring.modify.copy",
+    paste: "authoring.modify.paste",
+    rotate: "authoring.modify.rotate",
+    mirror: "authoring.modify.mirror",
+    array: "authoring.modify.array",
+    offset: "authoring.modify.offset",
+    scale: "authoring.modify.scale",
+    "create-similar": "authoring.createSimilar",
+    "match-props": "authoring.modify.match-props",
+    "select-similar": "authoring.modify.select-similar",
+    "align-x": "authoring.alignX",
+    "align-z": "authoring.alignZ",
+    pin: "authoring.pin",
+    unpin: "authoring.unpin",
+    "split-mid": "authoring.splitMidpoint",
+    "join-walls": "authoring.joinWalls",
+    delete: "edit.delete",
+  };
+  const physicalShortcuts: Record<string, string> = {
+    move: "G", rotate: "R", mirror: "M", offset: "O",
+    delete: "Del", paste: "Ctrl+V",
+  };
+  for (const definition of listModifyCommandDefinitions()) {
     registerCommand({
-      id: `authoring.modify.${tool}`,
-      label: `Modify: ${prettyToolLabel(tool)}`,
-      category: "Authoring",
-      kbd: kbd || undefined,
-      run: () => services.tryUse("authoring")?.setAuthoringTool(tool),
+      id: paletteIds[definition.id],
+      label: definition.label,
+      category: "Modify",
+      hint: `${definition.description} · ${definition.synonyms.join(", ")}`,
+      kbd: physicalShortcuts[definition.id],
+      run: () => runModifyAction(definition.id),
     });
   }
-
-  registerCommand({
-    id: "authoring.pin",
-    label: "Pin selected authored elements",
-    category: "Authoring",
-    run: () => {
-      const n = services.tryUse("authoring")?.pinSelected(true) ?? 0;
-      notify("success", `Pinned ${n} element(s)`);
-    },
-  });
-  registerCommand({
-    id: "authoring.unpin",
-    label: "Unpin selected authored elements",
-    category: "Authoring",
-    run: () => {
-      const n = services.tryUse("authoring")?.pinSelected(false) ?? 0;
-      notify("success", `Unpinned ${n} element(s)`);
-    },
-  });
-  registerCommand({
-    id: "authoring.splitMidpoint",
-    label: "Split selected linear elements at midpoint",
-    category: "Authoring",
-    run: () => {
-      const n = services.tryUse("authoring")?.splitSelectedAtMidpoint() ?? 0;
-      if (n) notify("success", `Split ${n} element(s)`);
-      else notify("warn", "Select wall / beam / MEP runs first");
-    },
-  });
-  registerCommand({
-    id: "authoring.joinWalls",
-    label: "Join selected walls to neighbors",
-    category: "Authoring",
-    run: () => {
-      const n = services.tryUse("authoring")?.joinSelectedWalls() ?? 0;
-      if (n) notify("success", `Joined ${n} wall(s)`);
-      else notify("warn", "No joinable walls selected");
-    },
-  });
-  registerCommand({
-    id: "authoring.alignX",
-    label: "Align selected to first (X)",
-    category: "Authoring",
-    run: () => {
-      const n = services.tryUse("authoring")?.alignSelectedAxis("x") ?? 0;
-      if (n) notify("success", `Aligned ${n} element(s)`);
-    },
-  });
-  registerCommand({
-    id: "authoring.alignZ",
-    label: "Align selected to first (Z)",
-    category: "Authoring",
-    run: () => {
-      const n = services.tryUse("authoring")?.alignSelectedAxis("z") ?? 0;
-      if (n) notify("success", `Aligned ${n} element(s)`);
-    },
-  });
-  registerCommand({
-    id: "authoring.createSimilar",
-    label: "Create Similar from selection",
-    category: "Authoring",
-    run: () => {
-      const tool = services.tryUse("authoring")?.createSimilarFromSelection();
-      if (tool) notify("success", `Create Similar → ${prettyToolLabel(tool)}`);
-      else notify("warn", "Select one authored element first");
-    },
-  });
   registerCommand({
     id: "authoring.fragEditPanel",
     label: "Open Native Twin panel",

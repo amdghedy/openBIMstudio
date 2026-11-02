@@ -46,7 +46,8 @@ import {
 } from "../features/authoring";
 import { selectedAuthored, selectionCategory } from "../features/modify-options";
 import { PLACE_TOOLS } from "../features/place-options";
-import { runModifyAction } from "../features/modify-actions";
+import { runModifyAction, type ModifyActionId } from "../features/modify-actions";
+import { getModifyCommandDefinition } from "../modules/modify/registry";
 import {
   getCurrentProject, saveProject, isDirty, onProjectChanged,
 } from "../modules/projects/projects";
@@ -2859,7 +2860,15 @@ const CTX_LABEL: Record<string, string> = {
 };
 function pressKey(key: string) { window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })); }
 function ctxItems(tool: string): HTMLElement[] {
-  const act = (id: string) => safe(() => { void runModifyAction(id as any); }, id);
+  const act = (id: string) => safe(() => { void runModifyAction(id as ModifyActionId); }, id);
+  const mod = (id: ModifyActionId, icon: IconName, label?: string, options: any = {}) => {
+    const definition = getModifyCommandDefinition(id);
+    const displayLabel = label ?? definition?.label ?? id;
+    return b(icon, displayLabel, act(id), {
+      ...options,
+      kbd: options.kbd ?? definition?.commandAlias,
+    });
+  };
   const items: HTMLElement[] = [
     groupLabel("Select"),
     b("modify" as IconName, "Modify", safe(() => setAuthoringTool("select"), "Modify"), { kbd: "Esc", title: "Finish placing and return to Modify" }),
@@ -2869,30 +2878,35 @@ function ctxItems(tool: string): HTMLElement[] {
     b("settings", "Type Properties", safe(() => { (window as any).__obsBIMExperience?.execute?.("modify.typeProperties"); }, "Type properties")),
     sep(),
     groupLabel("Clipboard"),
-    b("copy", "Paste", act("paste")),
+    mod("paste", "copy"),
     sep(),
     groupLabel("Modify"),
-    b("move", "Move", act("move")), b("copy", "Copy", act("copy")), b("rotate", "Rotate", act("rotate")),
-    b("mirror", "Mirror", act("mirror")), b("array", "Array", act("array")), b("offset", "Offset", act("offset")),
-    b("scale", "Scale", act("scale")), b("delete", "Delete", act("delete")),
+    mod("move", "move"), mod("copy", "copy"), mod("rotate", "rotate"),
+    mod("mirror", "mirror"), mod("array", "array"), mod("offset", "move"),
+    mod("scale", "scale"), mod("delete", "delete"),
     sep(),
     groupLabel("Draw"),
     b("check" as IconName, "Finish", safe(() => pressKey("Enter"), "Finish"), { kbd: "Enter", title: "Finish the current chain and keep the tool" }),
     b("close", "Cancel", safe(() => pressKey("Escape"), "Cancel"), { kbd: "Esc", title: "Cancel the current segment / chain" }),
     b("check" as IconName, "Chain", safe(() => setWallChain(!getWallChain()), "Chain"), { active: getWallChain(), title: "Continue drawing from the last end point" }),
   ];
-  if (tool === "wall") items.push(b("wall", "Join Walls", act("join-walls"), { title: "Join the selected walls" }));
+  if (tool === "wall") items.push(mod("join-walls", "wall", undefined, { title: "Join the selected walls" }));
   return items;
 }
 /** Revit "Modify | Walls": every modification tool for the current selection, with category-specific extras. */
 function selectionItems(types: Set<string>): HTMLElement[] {
-  const act = (id: string) => safe(() => { void runModifyAction(id as any); }, id);
+  const act = (id: string) => safe(() => { void runModifyAction(id as ModifyActionId); }, id);
+  const mod = (id: ModifyActionId, icon: IconName, label?: string, options: any = {}) => {
+    const definition = getModifyCommandDefinition(id);
+    const displayLabel = label ?? definition?.label ?? id;
+    return b(icon, displayLabel, act(id), { ...options, kbd: options.kbd ?? definition?.commandAlias });
+  };
   const cmd = (id: string) => safe(() => { (window as any).__obsBIMExperience?.execute?.(id); }, id);
   const has = (...t: string[]) => t.some((x) => types.has(x));
   const items: HTMLElement[] = [
     groupLabel("Select"),
     b("modify" as IconName, "Modify", safe(() => setAuthoringTool("select"), "Modify"), { kbd: "Esc" }),
-    b("select-all", "Select Similar", act("select-similar"), { title: "Select every element of the same type" }),
+    mod("select-similar", "select-all", undefined, { title: "Select every element of the same type" }),
     b("select-all", "Select All", safe(() => { try { selectAllAuthored(getElements().map((e: any) => e.id)); } catch { /* */ } }, "Select all"), { kbd: "Ctrl+A" }),
     b("clear", "Clear", cmd("global.clearSelection")),
     sep(),
@@ -2902,32 +2916,32 @@ function selectionItems(types: Set<string>): HTMLElement[] {
     sep(),
     groupLabel("Clipboard"),
     b("copy", "Copy", safe(() => { void import("../features/modify-actions").then((m) => { const n = m.copySelectionToClipboard(); toast(n ? `Copied ${n} element(s)` : "Nothing to copy", n ? "success" : "warn"); }); }, "Copy"), { kbd: "Ctrl+C" }),
-    b("copy", "Paste", act("paste"), { kbd: "Ctrl+V" }),
+    mod("paste", "copy", undefined, { kbd: "Ctrl+V" }),
     sep(),
     groupLabel("Modify"),
-    b("move", "Move", act("move"), { kbd: "MV" }), b("copy", "Copy Move", act("copy"), { kbd: "CO", title: "Copy: place copies at new points" }),
-    b("rotate", "Rotate", act("rotate"), { kbd: "RO" }), b("mirror", "Mirror", act("mirror"), { kbd: "MI" }),
-    b("array", "Array", act("array"), { kbd: "AR" }), b("offset", "Offset", act("offset"), { kbd: "OF" }),
-    b("scale", "Scale", act("scale"), { kbd: "SC" }),
-    b("move", "Align H", act("align-x"), { title: "Align the selected elements on X" }), b("move", "Align V", act("align-z"), { title: "Align the selected elements on Z" }),
-    b("delete", "Delete", act("delete"), { kbd: "Del" }),
+    mod("move", "move"), mod("copy", "copy", "Copy Move", { title: "Copy: place copies at new points" }),
+    mod("rotate", "rotate"), mod("mirror", "mirror"),
+    mod("array", "array"), mod("offset", "move"),
+    mod("scale", "scale"),
+    mod("align-x", "move", "Align H", { title: "Align the selected elements on X" }), mod("align-z", "move", "Align V", { title: "Align the selected elements on Z" }),
+    mod("delete", "delete"),
     sep(),
     groupLabel("Geometry"),
     b("move", "Trim/Extend", cmd("modify.trimExtend"), { title: "Trim or extend two line elements to a corner" }),
-    b("move", "Split", act("split-mid"), { title: "Split the selected run at its midpoint" }),
+    mod("split-mid", "move"),
     b("move", "Flip", safe(() => { const n = reverseSelected(); toast(n ? `Flipped ${n} element(s)` : "Select linear elements", n ? "success" : "warn"); }, "Flip"), { title: "Reverse the drawing direction" }),
   ];
-  if (has("wall", "curtain-wall")) items.push(b("wall", "Join Walls", act("join-walls"), { title: "Join walls that meet at a corner" }));
+  if (has("wall", "curtain-wall")) items.push(mod("join-walls", "wall", undefined, { title: "Join walls that meet at a corner" }));
   if (has("duct", "pipe", "cable-tray", "conduit")) {
     items.push(b("connection", "Branch / Network", safe(() => { cycleMepSelection(); }, "Select branch"), { kbd: "Tab", title: "Tab: select the branch, then the whole network, then back to one run" }));
   }
   items.push(
     sep(),
     groupLabel("Constraints"),
-    b("origin" as IconName, "Pin", act("pin")), b("origin" as IconName, "Unpin", act("unpin")),
+    mod("pin", "origin"), mod("unpin", "origin"),
     sep(),
     groupLabel("Create"),
-    b("component", "Create Similar", act("create-similar")), b("copy", "Match Properties", act("match-props")),
+    mod("create-similar", "component"), mod("match-props", "copy"),
     sep(),
     groupLabel("View"),
     b("isolate", "Isolate", cmd("review.isolate"), { title: "Temporary isolate" }), b("clear", "Hide", cmd("review.hide"), { title: "Temporary hide" }),

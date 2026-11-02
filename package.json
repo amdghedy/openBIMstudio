@@ -141,7 +141,8 @@
     "test:cad-save": "node tests/cad-save.test.cjs",
     "test:cad-clipboard": "node tests/cad-clipboard.test.cjs",
     "test:dwg-convert-limits": "node tests/dwg-convert-limits.test.cjs",
-    "test:pdf-underlay-loader": "node tests/pdf-underlay-loader.test.cjs"
+    "test:pdf-underlay-loader": "node tests/pdf-underlay-loader.test.cjs",
+    "test:modify-registry": "node tests/modify-command-registry.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",

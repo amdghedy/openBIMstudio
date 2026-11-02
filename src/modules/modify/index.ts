@@ -7,3 +7,5 @@ export * from "./edit";
 export * from "./duplicate";
 export * from "./group1";
 export * from "./group2";
+
+export * from "./registry";

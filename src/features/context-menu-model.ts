@@ -1,3 +1,5 @@
+import { getModifyCommandDefinition, resolveModifyCapability } from "../modules/modify/registry";
+
 /**
  * Pure model of the viewport context menu. No DOM, no app imports: every action is injected, so
  * the structure (what is offered, in what order, and when it is disabled) can be unit-tested.
@@ -27,8 +29,14 @@ export interface MenuDeps {
   openProperties: () => void;
 }
 
-const bySel = (d: ModifyDef, n: number, clip: number): boolean =>
-  d.id === "paste" ? clip > 0 : d.needsMulti ? n >= 2 : d.needsSelection ? n >= 1 : true;
+const bySel = (d: ModifyDef, n: number, clip: number): boolean => {
+  // Registry-backed commands share one capability decision across menus.
+  if (getModifyCommandDefinition(d.id)) {
+    return resolveModifyCapability(d.id, { selectedCount: n, clipboardCount: clip }).enabled;
+  }
+  // Preserve injected third-party/legacy menu actions until they migrate.
+  return d.id === "paste" ? clip > 0 : d.needsMulti ? n >= 2 : d.needsSelection ? n >= 1 : true;
+};
 
 export const CREATE_TOOLS: Array<[string, string, string]> = [
   ["wall", "Wall", "▭"], ["column", "Column", "▮"], ["beam", "Beam", "▬"], ["slab", "Slab / Floor", "▱"],
