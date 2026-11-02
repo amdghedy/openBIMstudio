@@ -401,7 +401,8 @@ function buildWidget(
   svg.addEventListener("pointerdown", (e) => e.stopPropagation());
 
   // Subtle instrument-style compass bezel and a beveled face gradient.
-  const defs = svgEl("defs", {}, svg);
+  const defs = document.createElementNS(SVG_NS, "defs");
+  svg.appendChild(defs);
   const faceGradient = document.createElementNS(SVG_NS, "linearGradient");
   faceGradient.setAttribute("id", "obs-viewcube-face-gradient");
   faceGradient.setAttribute("x1", "0"); faceGradient.setAttribute("y1", "0");
