@@ -293,6 +293,8 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 
 The standalone CAD Editor ribbon has a full **Modify** group with AutoCAD-grade transform tools. Select objects first (noun–verb), then run the command — or start the command and pick objects, then press **Enter / right-click** to finish the selection stage. Every transform shows a live yellow dashed ghost preview, supports osnap / ortho, numeric entry typed into the command line, and a single Undo step (Ctrl+Z).
 
+**Multi-document workspace.** The editor opens any number of DWG/DXF files at once, one drawing per file tab (native-CAD-style tab strip with unsaved-changes dots, middle-click close, right-click tab menu with Save / Save All / Close Others / Close All, and `Ctrl+Tab` / `Ctrl+Shift+Tab` to cycle drawings). Drawings interact: `COPYCLIP` (Ctrl+C) places selected objects on a shared cross-drawing clipboard, `PASTECLIP` (Ctrl+V) drops them into another drawing at the view center with a cascade offset, and `PASTEORIG` (Ctrl+Shift+V) pastes at the original source coordinates — so plans, details, and legends can be assembled across files without any export/import step.
+
 | Command | Alias | What it does |
 |---------|-------|--------------|
 | MOVE | `M` | Move selected objects: base point → second point (or displacement) |

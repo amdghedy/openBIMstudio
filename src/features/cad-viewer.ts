@@ -23,6 +23,7 @@
 import { readCadFile } from "../modules/cad-link/index";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
 import { downloadDxf } from "../modules/drawings/dxf-writer";
+import { makeClip, clipInstances, type CadClip } from "../modules/cad-viewer/clipboard";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import * as M from "../modules/cad-viewer/viewer-math";
@@ -112,6 +113,11 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "PLOT", aliases: ["PRINT"], description: "Plot drawing to PDF or physical paper" },
   { name: "QSAVE", aliases: ["SAVE", "SAVEAS"], description: "Save the edited drawing as a DXF file" },
   { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
+  { name: "COPYCLIP", aliases: ["CC"], description: "Copy selected objects to the cross-drawing clipboard (Ctrl+C)" },
+  { name: "PASTECLIP", aliases: [], description: "Paste clipboard objects into this drawing (Ctrl+V)" },
+  { name: "PASTEORIG", aliases: [], description: "Paste clipboard at original coordinates (Ctrl+Shift+V)" },
+  { name: "SAVEALL", aliases: ["SALL"], description: "Save every open drawing tab" },
+  { name: "CLOSE", aliases: [], description: "Close the current drawing tab" },
   { name: "CLEANSCREEN", aliases: ["CLEAN"], description: "Toggle clean screen mode (Ctrl+0)" },
 ];
 
@@ -123,124 +129,350 @@ const BG: Record<string, string> = {
   white: "#ffffff",
 };
 
-let root: HTMLDivElement | null = null;
-let api: { load(f: File): Promise<void>; close(): void } | null = null;
+interface CadEngineApi {
+  load(f: File): Promise<void>;
+  close(): void;
+  activate(): void;
+  deactivate(): void;
+  isDirty(): boolean;
+  markSaved(): void;
+  copySelection(): boolean;
+  pasteClip(at?: M.Pt): number;
+  pasteOrig(): number;
+  hasClip(): boolean;
+  saveDxf(): void;
+  fileName(): string;
+  focus(): void;
+}
+
+interface EngineHooks {
+  onDirty(d: boolean): void;
+  onTitle(n: string): void;
+  saveAll(): void;
+  requestClose(): void;
+}
+
+interface DocTab {
+  id: number;
+  engine: CadEngineApi;
+  page: HTMLDivElement;
+  title: string;
+  dirty: boolean;
+}
+
+let shell: HTMLDivElement | null = null;
+let strip: HTMLDivElement | null = null;
+let pagesEl: HTMLDivElement | null = null;
+let picker: HTMLInputElement | null = null;
+let tabs: DocTab[] = [];
+let active: DocTab | null = null;
+let nextTabId = 1;
+/** Shared cross-drawing clipboard (COPYCLIP in one tab, PASTECLIP in another). */
+let clip: CadClip | null = null;
 
 export function openCadViewer(file?: File): void {
-  if (!root) build();
-  root!.style.display = "flex";
-  if (file) void api!.load(file);
+  ensureShell();
+  shell!.style.display = "flex";
+  if (file) openFile(file);
+  else if (!tabs.length) openBlank();
+  active?.engine.focus();
 }
 
 export function closeCadViewer(): void {
-  api?.close();
+  hideShell();
 }
 
-function build(): void {
-  root = document.createElement("div");
-  root.id = "obs-cad-viewer";
-  root.setAttribute("data-obs-own-wheel", "");
-  root.style.cssText =
-    "position:fixed;inset:0;z-index:10050;display:none;flex-direction:column;background:#151a23;color:#e5e7eb;font:12px/1.35 system-ui,sans-serif";
+function byId(id: number): DocTab | null {
+  return tabs.find((t) => t.id === id) ?? null;
+}
 
-  root.innerHTML = `
-  <style>
-    #obs-cad-viewer button,#obs-cad-viewer select,#obs-cad-viewer input{font:inherit;color:inherit;background:#1b212c;border:1px solid #2f3846;border-radius:5px;padding:4px 8px}
-    #obs-cad-viewer button{cursor:pointer}#obs-cad-viewer button:hover{background:#263041}
-    #obs-cad-viewer button.on{background:#0284c7;border-color:#38bdf8;color:#ffffff}
-    #obs-cad-viewer .bar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:5px 8px;background:#151a23;border-bottom:1px solid #2a3140}
-    #obs-cad-viewer .sep{width:1px;height:20px;background:#2f3846;margin:0 4px}
-    #obs-cad-viewer .side{width:270px;display:flex;flex-direction:column;background:#151a23;border-left:1px solid #2a3140;min-height:0}
-    #obs-cad-viewer .side h4{margin:0;padding:6px 8px;background:#1b212c;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#9aa4b2;display:flex;align-items:center;justify-content:space-between}
-    #obs-cad-viewer .lyr{display:flex;align-items:center;gap:6px;padding:2px 8px}
-    #obs-cad-viewer .lyr:hover{background:#1b212c}
-    #obs-cad-viewer .sw{width:12px;height:12px;border-radius:2px;border:1px solid #556}
-    #obs-cad-viewer .sc{overflow:auto;min-height:0}
-    #obs-cad-viewer table{width:100%;border-collapse:collapse}#obs-cad-viewer td{padding:3px 8px;border-bottom:1px solid #222a37}
-    #obs-cad-viewer td:first-child{color:#9aa4b2}
+function renderStrip(): void {
+  if (!strip) return;
+  strip.innerHTML =
+    tabs
+      .map(
+        (t) =>
+          `<button class="cadtab${t === active ? " on" : ""}" data-tab="${t.id}" title="${escapeHtml(t.title || "Drawing")}"><span class="cadtab__name">${escapeHtml(t.title || "Drawing")}</span><span class="cadtab__dirty"${t.dirty ? "" : ' style="display:none"'}>●</span><span class="cadtab__x" data-x="${t.id}" title="Close drawing">×</span></button>`,
+      )
+      .join("") + `<button class="cadtab cadtab--plus" data-plus title="Open drawing">+</button>`;
+}
+
+function activate(tab: DocTab | null): void {
+  if (!tab || tab === active) {
+    renderStrip();
+    return;
+  }
+  if (active) active.engine.deactivate();
+  active = tab;
+  tab.engine.activate();
+  renderStrip();
+}
+
+function closeTab(tab: DocTab | null): void {
+  if (!tab) return;
+  if (tab.engine.isDirty() && !window.confirm(`"${tab.title}" has unsaved changes. Close without saving?`)) return;
+  tab.engine.deactivate();
+  tab.page.remove();
+  tabs = tabs.filter((t) => t !== tab);
+  if (active === tab) {
+    active = null;
+    if (tabs.length) activate(tabs[tabs.length - 1]);
+    else hideShell();
+  }
+  renderStrip();
+}
+
+function closeOthers(keep: DocTab): void {
+  for (const t of [...tabs]) if (t !== keep) closeTab(t);
+  activate(keep);
+}
+
+function closeAll(): void {
+  for (const t of [...tabs]) closeTab(t);
+}
+
+function saveAll(): void {
+  for (const t of tabs) if (t.engine.fileName()) t.engine.saveDxf();
+}
+
+function hideShell(): void {
+  if (shell) shell.style.display = "none";
+}
+
+function openTabMenu(x: number, y: number, tab: DocTab): void {
+  document.querySelectorAll(".obs-cad-shell .cadmenu").forEach((m) => m.remove());
+  const menu = document.createElement("div");
+  menu.className = "cadmenu";
+  menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:10060`;
+  const item = (label: string, fn: () => void) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.onclick = () => {
+      menu.remove();
+      fn();
+    };
+    menu.appendChild(b);
+  };
+  item("Save", () => tab.engine.saveDxf());
+  item("Save All", () => saveAll());
+  item("Close", () => closeTab(tab));
+  item("Close Others", () => closeOthers(tab));
+  item("Close All", () => closeAll());
+  shell!.appendChild(menu);
+  const off = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(x, window.innerWidth - off.width - 8)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - off.height - 8)}px`;
+  setTimeout(() => {
+    const done = (ev: MouseEvent) => {
+      if (!menu.contains(ev.target as Node)) {
+        menu.remove();
+        document.removeEventListener("mousedown", done);
+      }
+    };
+    document.addEventListener("mousedown", done);
+  }, 0);
+}
+
+function ensureShell(): void {
+  if (shell) return;
+  shell = document.createElement("div");
+  shell.className = "obs-cad-shell";
+  shell.id = "obs-cad-shell";
+  shell.setAttribute("data-obs-own-wheel", "");
+  shell.style.cssText =
+    "position:fixed;inset:0;z-index:10050;display:none;flex-direction:column;background:#151a23;color:#e5e7eb;font:12px/1.35 system-ui,sans-serif";
+  shell.innerHTML =
+    `<style>${CAD_CSS}</style>` +
+    `<div data-r="tabstrip" role="tablist" aria-label="Open drawings" style="display:flex;align-items:flex-end;gap:2px;padding:6px 8px 0;background:#0b0d12;border-bottom:1px solid #2a3140;overflow-x:auto;scrollbar-width:thin;flex:none;min-height:34px"></div>` +
+    `<div data-r="pages" style="display:flex;flex:1;min-height:0;position:relative;overflow:hidden"></div>`;
+  document.body.appendChild(shell);
+  strip = shell.querySelector<HTMLDivElement>("[data-r=tabstrip]")!;
+  pagesEl = shell.querySelector<HTMLDivElement>("[data-r=pages]")!;
+
+  picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = ".dxf,.dwg";
+  picker.multiple = true;
+  picker.style.cssText = "display:none";
+  picker.onchange = () => {
+    for (const f of [...(picker!.files ?? [])]) openFile(f);
+    picker!.value = "";
+  };
+  shell.appendChild(picker);
+
+  strip.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    const x = t.closest<HTMLElement>("[data-x]");
+    if (x) {
+      closeTab(byId(Number(x.dataset.x)));
+      return;
+    }
+    if (t.closest("[data-plus]")) {
+      picker!.click();
+      return;
+    }
+    const tab = t.closest<HTMLElement>("[data-tab]");
+    if (tab) activate(byId(Number(tab.dataset.tab)));
+  });
+  strip.addEventListener("auxclick", (e) => {
+    if (e.button !== 1) return;
+    const tab = (e.target as HTMLElement).closest<HTMLElement>("[data-tab]");
+    if (tab) closeTab(byId(Number(tab.dataset.tab)));
+  });
+  strip.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-tab]");
+    if (el) openTabMenu(e.clientX, e.clientY, byId(Number(el.dataset.tab))!);
+  });
+
+  shell.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Tab" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (tabs.length < 2 || !active) return;
+        const i = tabs.indexOf(active);
+        activate(tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length]);
+      }
+    },
+    true,
+  );
+}
+
+function createTab(title: string): DocTab {
+  const page = document.createElement("div");
+  pagesEl!.appendChild(page);
+  const tab: DocTab = { id: nextTabId++, engine: null as unknown as CadEngineApi, page, title, dirty: false };
+  tab.engine = buildEngine(page, {
+    onDirty: (d) => {
+      tab.dirty = d;
+      renderStrip();
+    },
+    onTitle: (n) => {
+      tab.title = n;
+      renderStrip();
+    },
+    saveAll: () => saveAll(),
+    requestClose: () => closeTab(tab),
+  });
+  tabs.push(tab);
+  renderStrip();
+  return tab;
+}
+
+function openFile(file: File): void {
+  ensureShell();
+  const existing = tabs.find((t) => t.title.toLowerCase() === file.name.toLowerCase());
+  if (existing) {
+    activate(existing);
+    return;
+  }
+  const tab = createTab(file.name);
+  activate(tab);
+  void tab.engine.load(file);
+}
+
+function openBlank(): void {
+  activate(createTab(`Drawing${nextTabId}`));
+}
+
+const CAD_CSS = `
+    .obs-cad-viewer button,.obs-cad-viewer select,.obs-cad-viewer input{font:inherit;color:inherit;background:#1b212c;border:1px solid #2f3846;border-radius:5px;padding:4px 8px}
+    .obs-cad-viewer button{cursor:pointer}.obs-cad-viewer button:hover{background:#263041}
+    .obs-cad-viewer button.on{background:#0284c7;border-color:#38bdf8;color:#ffffff}
+    .obs-cad-viewer .bar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:5px 8px;background:#151a23;border-bottom:1px solid #2a3140}
+    .obs-cad-viewer .sep{width:1px;height:20px;background:#2f3846;margin:0 4px}
+    .obs-cad-viewer .side{width:270px;display:flex;flex-direction:column;background:#151a23;border-left:1px solid #2a3140;min-height:0}
+    .obs-cad-viewer .side h4{margin:0;padding:6px 8px;background:#1b212c;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#9aa4b2;display:flex;align-items:center;justify-content:space-between}
+    .obs-cad-viewer .lyr{display:flex;align-items:center;gap:6px;padding:2px 8px}
+    .obs-cad-viewer .lyr:hover{background:#1b212c}
+    .obs-cad-viewer .sw{width:12px;height:12px;border-radius:2px;border:1px solid #556}
+    .obs-cad-viewer .sc{overflow:auto;min-height:0}
+    .obs-cad-viewer table{width:100%;border-collapse:collapse}.obs-cad-viewer td{padding:3px 8px;border-bottom:1px solid #222a37}
+    .obs-cad-viewer td:first-child{color:#9aa4b2}
 
     /* Ribbon-style toolbar: icon over label, grouped, caption underneath (same look as the main app ribbon) */
-    #obs-cad-viewer{--cadrb-w:56px;--cadrb-h:36px;--cadrb-gap:2px;--cadrb-icon:16px;--cadrb-label:9px}
-    #obs-cad-viewer .cadrb-strip{display:flex;align-items:stretch;flex:none;height:104px;padding:7px 8px;overflow-x:auto;overflow-y:hidden;background:linear-gradient(180deg,var(--bg-surface,#12141b) 0%,var(--bg-base,#0b0d12) 100%);border-bottom:1px solid var(--border-default,#2a2e3a);user-select:none;scrollbar-width:thin}
-    #obs-cad-viewer .cadrb-host{display:flex;align-items:stretch;flex:none}
-    #obs-cad-viewer .cadrb-host--end{flex:1 0 auto}
-    #obs-cad-viewer .cadrg{display:flex;flex-direction:column;align-items:center;padding:0 4px;border-right:1px solid var(--border-subtle,#1e2029);min-width:0;flex:none;height:100%}
-    #obs-cad-viewer .cadrg--end{margin-left:auto;border-right:none}
-    #obs-cad-viewer .cadrg__body{flex:1;display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,var(--cadrb-h));grid-auto-columns:var(--cadrb-w);gap:var(--cadrb-gap);align-content:center;justify-content:center;min-width:0}
-    #obs-cad-viewer .cadrg__body--fields{grid-auto-columns:auto;column-gap:6px}
-    #obs-cad-viewer .cadrg__label{text-align:center;font:500 9px var(--font-sans,system-ui);letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary,#6b7280);padding-top:3px;white-space:nowrap;opacity:.65;flex:none}
-    #obs-cad-viewer .cadrb{width:var(--cadrb-w);height:var(--cadrb-h);padding:3px 2px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:transparent;border:1px solid transparent;border-radius:4px;cursor:pointer;color:var(--text-secondary,#a0a6b5);font-family:var(--font-sans,system-ui);position:relative;overflow:visible;flex:none;transition:background .14s,color .14s,border-color .14s}
-    #obs-cad-viewer .cadrb:hover{background:var(--bg-hover,#232633);color:var(--text-primary,#e8eaf0);border-color:var(--border-subtle,#1e2029)}
-    #obs-cad-viewer .cadrb:active{background:var(--bg-active,#2a2e3d);transform:scale(.96)}
-    #obs-cad-viewer .cadrb.on{background:var(--accent-dim,rgba(56,189,248,.14));color:var(--accent,#38bdf8);border-color:var(--accent,#38bdf8);box-shadow:inset 0 0 6px rgba(56,189,248,.10)}
-    #obs-cad-viewer .cadrb--danger{color:#fca5a5}
-    #obs-cad-viewer .cadrb--danger:hover{background:rgba(239,68,68,.15);border-color:#ef4444;color:#fecaca}
-    #obs-cad-viewer .cadrb--flip .cadrb__icon{transform:scaleX(-1)}
-    #obs-cad-viewer .cadrb__icon{display:flex;align-items:center;justify-content:center;width:var(--cadrb-icon);height:var(--cadrb-icon);color:inherit;pointer-events:none;flex:none}
-    #obs-cad-viewer .cadrb__icon svg{display:block;width:var(--cadrb-icon);height:var(--cadrb-icon);stroke:currentColor;fill:none;stroke-width:1.9}
-    #obs-cad-viewer .cadrb__icon svg [fill="currentColor"]{fill:currentColor;stroke:none}
-    #obs-cad-viewer .cadrb__label{display:block;font-size:var(--cadrb-label);line-height:1;font-weight:500;color:inherit;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:0 1px;opacity:.85}
-    #obs-cad-viewer .cadrb.on .cadrb__label,#obs-cad-viewer .cadrb:hover .cadrb__label{opacity:1}
-    #obs-cad-viewer .cadrb-field{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:var(--cadrb-h);padding:0 3px;font:500 9px var(--font-sans,system-ui);color:var(--text-tertiary,#6b7280);text-transform:uppercase;letter-spacing:.5px}
-    #obs-cad-viewer .cadrb-field select{background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);color:var(--text-primary,#e8eaf0);font:500 10px var(--font-mono,monospace);padding:3px 4px;border-radius:3px;min-width:70px;outline:none;cursor:pointer;text-transform:none;letter-spacing:0}
+    .obs-cad-viewer{--cadrb-w:56px;--cadrb-h:36px;--cadrb-gap:2px;--cadrb-icon:16px;--cadrb-label:9px}
+    .obs-cad-viewer .cadrb-strip{display:flex;align-items:stretch;flex:none;height:104px;padding:7px 8px;overflow-x:auto;overflow-y:hidden;background:linear-gradient(180deg,var(--bg-surface,#12141b) 0%,var(--bg-base,#0b0d12) 100%);border-bottom:1px solid var(--border-default,#2a2e3a);user-select:none;scrollbar-width:thin}
+    .obs-cad-viewer .cadrb-host{display:flex;align-items:stretch;flex:none}
+    .obs-cad-viewer .cadrb-host--end{flex:1 0 auto}
+    .obs-cad-viewer .cadrg{display:flex;flex-direction:column;align-items:center;padding:0 4px;border-right:1px solid var(--border-subtle,#1e2029);min-width:0;flex:none;height:100%}
+    .obs-cad-viewer .cadrg--end{margin-left:auto;border-right:none}
+    .obs-cad-viewer .cadrg__body{flex:1;display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,var(--cadrb-h));grid-auto-columns:var(--cadrb-w);gap:var(--cadrb-gap);align-content:center;justify-content:center;min-width:0}
+    .obs-cad-viewer .cadrg__body--fields{grid-auto-columns:auto;column-gap:6px}
+    .obs-cad-viewer .cadrg__label{text-align:center;font:500 9px var(--font-sans,system-ui);letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary,#6b7280);padding-top:3px;white-space:nowrap;opacity:.65;flex:none}
+    .obs-cad-viewer .cadrb{width:var(--cadrb-w);height:var(--cadrb-h);padding:3px 2px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:transparent;border:1px solid transparent;border-radius:4px;cursor:pointer;color:var(--text-secondary,#a0a6b5);font-family:var(--font-sans,system-ui);position:relative;overflow:visible;flex:none;transition:background .14s,color .14s,border-color .14s}
+    .obs-cad-viewer .cadrb:hover{background:var(--bg-hover,#232633);color:var(--text-primary,#e8eaf0);border-color:var(--border-subtle,#1e2029)}
+    .obs-cad-viewer .cadrb:active{background:var(--bg-active,#2a2e3d);transform:scale(.96)}
+    .obs-cad-viewer .cadrb.on{background:var(--accent-dim,rgba(56,189,248,.14));color:var(--accent,#38bdf8);border-color:var(--accent,#38bdf8);box-shadow:inset 0 0 6px rgba(56,189,248,.10)}
+    .obs-cad-viewer .cadrb--danger{color:#fca5a5}
+    .obs-cad-viewer .cadrb--danger:hover{background:rgba(239,68,68,.15);border-color:#ef4444;color:#fecaca}
+    .obs-cad-viewer .cadrb--flip .cadrb__icon{transform:scaleX(-1)}
+    .obs-cad-viewer .cadrb__icon{display:flex;align-items:center;justify-content:center;width:var(--cadrb-icon);height:var(--cadrb-icon);color:inherit;pointer-events:none;flex:none}
+    .obs-cad-viewer .cadrb__icon svg{display:block;width:var(--cadrb-icon);height:var(--cadrb-icon);stroke:currentColor;fill:none;stroke-width:1.9}
+    .obs-cad-viewer .cadrb__icon svg [fill="currentColor"]{fill:currentColor;stroke:none}
+    .obs-cad-viewer .cadrb__label{display:block;font-size:var(--cadrb-label);line-height:1;font-weight:500;color:inherit;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:0 1px;opacity:.85}
+    .obs-cad-viewer .cadrb.on .cadrb__label,.obs-cad-viewer .cadrb:hover .cadrb__label{opacity:1}
+    .obs-cad-viewer .cadrb-field{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:var(--cadrb-h);padding:0 3px;font:500 9px var(--font-sans,system-ui);color:var(--text-tertiary,#6b7280);text-transform:uppercase;letter-spacing:.5px}
+    .obs-cad-viewer .cadrb-field select{background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);color:var(--text-primary,#e8eaf0);font:500 10px var(--font-mono,monospace);padding:3px 4px;border-radius:3px;min-width:70px;outline:none;cursor:pointer;text-transform:none;letter-spacing:0}
     /* AutoCAD In-Canvas ViewCube */
-    #obs-cad-viewcube {
+    .obs-cad-viewcube {
       position: absolute; top: 16px; right: 28px; width: 68px; height: 68px;
       user-select: none; z-index: 10; pointer-events: auto;
     }
-    #obs-cad-viewcube .vc-box {
+    .obs-cad-viewcube .vc-box {
       width: 100%; height: 100%; background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(148, 163, 184, 0.4);
       border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center;
       cursor: pointer; transition: all 0.15s ease; backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
-    #obs-cad-viewcube .vc-box:hover {
+    .obs-cad-viewcube .vc-box:hover {
       background: rgba(30, 41, 59, 0.95); border-color: #38bdf8;
     }
-    #obs-cad-viewcube .vc-label {
+    .obs-cad-viewcube .vc-label {
       font-weight: 700; font-size: 11px; color: #f8fafc; letter-spacing: 0.05em;
     }
-    #obs-cad-viewcube .vc-compass {
+    .obs-cad-viewcube .vc-compass {
       font-size: 9px; color: #94a3b8; margin-top: 1px;
     }
-    #obs-cad-viewcube .vc-controls {
+    .obs-cad-viewcube .vc-controls {
       display: flex; gap: 4px; margin-top: 2px;
     }
-    #obs-cad-viewcube .vc-btn {
+    .obs-cad-viewcube .vc-btn {
       background: rgba(15, 23, 42, 0.6); border: none; color: #cbd5e1; font-size: 10px;
       border-radius: 3px; padding: 1px 4px; cursor: pointer;
     }
-    #obs-cad-viewcube .vc-btn:hover { background: #0284c7; color: white; }
+    .obs-cad-viewcube .vc-btn:hover { background: #0284c7; color: white; }
 
     /* AutoCAD Navigation Bar */
-    #obs-cad-navbar {
+    .obs-cad-navbar {
       position: absolute; right: 28px; top: 96px; z-index: 10;
       background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(148, 163, 184, 0.3);
       border-radius: 6px; display: flex; flex-direction: column; padding: 3px; gap: 3px;
       backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
-    #obs-cad-navbar button {
+    .obs-cad-navbar button {
       width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center;
       background: transparent; border: none; border-radius: 4px; color: #cbd5e1; font-size: 13px;
     }
-    #obs-cad-navbar button:hover {
+    .obs-cad-navbar button:hover {
       background: rgba(56, 189, 248, 0.2); color: #38bdf8;
     }
 
     /* AutoCAD Command Line Container */
-    #obs-cad-cmd-container {
+    .obs-cad-cmd-container {
       position: relative; background: #12151c; border-top: 1px solid #2a3140;
       display: flex; flex-direction: column; font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
     }
-    #obs-cad-cmd-history {
+    .obs-cad-cmd-history {
       padding: 3px 10px; max-height: 48px; overflow-y: auto; font-size: 11px;
       color: #94a3b8; background: #0c0e13; border-bottom: 1px solid #1c222c;
     }
-    #obs-cad-cmd-history div { line-height: 1.4; white-space: pre-wrap; }
-    #obs-cad-cmd-history .cmd-echo { color: #38bdf8; }
-    #obs-cad-cmd-input-row {
+    .obs-cad-cmd-history div { line-height: 1.4; white-space: pre-wrap; }
+    .obs-cad-cmd-history .cmd-echo { color: #38bdf8; }
+    .obs-cad-cmd-input-row {
       display: flex; align-items: center; gap: 8px; padding: 4px 8px;
     }
-    #obs-cad-cmd-auto-popup {
+    .obs-cad-cmd-auto-popup {
       position: absolute; bottom: 100%; left: 80px; width: 340px; max-height: 220px;
       background: #1e293b; border: 1px solid #38bdf8; border-radius: 6px; overflow-y: auto;
       display: none; flex-direction: column; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
@@ -260,8 +492,29 @@ function build(): void {
     }
     .obs-status-btn:hover { background: #1e293b; color: #f8fafc; }
     .obs-status-btn.active { background: #0284c7; color: #ffffff; border-color: #38bdf8; }
-  </style>
 
+    /* MDI file tabs */
+    .obs-cad-shell .cadtab{display:flex;align-items:center;gap:6px;padding:6px 8px 7px;background:#151a23;border:1px solid #2a3140;border-bottom:none;border-radius:6px 6px 0 0;color:#94a3b8;font:500 11px var(--font-sans,system-ui);cursor:pointer;white-space:nowrap;max-width:220px;flex:none}
+    .obs-cad-shell .cadtab:hover{color:#e8eaf0;background:#1b212c}
+    .obs-cad-shell .cadtab.on{background:#212830;color:#f8fafc;border-color:#38bdf8;box-shadow:inset 0 2px 0 #38bdf8}
+    .obs-cad-shell .cadtab__name{overflow:hidden;text-overflow:ellipsis}
+    .obs-cad-shell .cadtab__dirty{color:#38bdf8;font-size:9px;line-height:1}
+    .obs-cad-shell .cadtab__x{border-radius:3px;padding:0 3px;font-size:13px;line-height:1;color:#64748b}
+    .obs-cad-shell .cadtab__x:hover{background:#ef4444;color:#fff}
+    .obs-cad-shell .cadtab--plus{padding:6px 10px;font-size:14px}
+    .obs-cad-shell .cadmenu{background:#1e293b;border:1px solid #38bdf8;border-radius:6px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:150px}
+    .obs-cad-shell .cadmenu button{display:block;width:100%;text-align:left;background:transparent;border:none;color:#f8fafc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px}
+    .obs-cad-shell .cadmenu button:hover{background:#0284c7}
+  `;
+
+function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
+  const root = page;
+  root.className = "obs-cad-viewer";
+  root.setAttribute("data-obs-own-wheel", "");
+  root.style.cssText =
+    "display:none;flex-direction:column;min-height:0;flex:1;background:#151a23;color:#e5e7eb;font:12px/1.35 system-ui,sans-serif";
+
+  root.innerHTML = `
   <!-- AutoCAD Ribbon / Main Action Bar -->
   <div class="cadrb-strip">
     <div class="cadrb-host" data-r="tools"></div>
@@ -274,7 +527,7 @@ function build(): void {
       <canvas data-r="cv" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;outline:none" tabindex="0"></canvas>
 
       <!-- In-Canvas AutoCAD ViewCube -->
-      <div id="obs-cad-viewcube">
+      <div class="obs-cad-viewcube">
         <div class="vc-box" data-r="vc-home" title="AutoCAD ViewCube — Top View / Extents (Home)">
           <div class="vc-compass">N</div>
           <div class="vc-label">TOP</div>
@@ -287,7 +540,7 @@ function build(): void {
       </div>
 
       <!-- In-Canvas AutoCAD Navigation Bar -->
-      <div id="obs-cad-navbar">
+      <div class="obs-cad-navbar">
         <button data-r="nav-pan" title="Pan (P)">✋</button>
         <button data-r="nav-ext" title="Zoom Extents (Z E)">⛶</button>
         <button data-r="nav-win" title="Zoom Window (Z W)">🔍</button>
@@ -322,16 +575,16 @@ function build(): void {
   </div>
 
   <!-- AutoCAD Command Window (Scrollable History + Autocomplete) -->
-  <div id="obs-cad-cmd-container">
-    <div id="obs-cad-cmd-history" data-r="cmdhist">
+  <div class="obs-cad-cmd-container">
+    <div class="obs-cad-cmd-history" data-r="cmdhist">
       <div>Command: AutoCAD 2D/3D Engine Initialized. Type a command or alias (L, C, REC, Z, DI, LA...)</div>
     </div>
-    <div id="obs-cad-cmd-input-row">
+    <div class="obs-cad-cmd-input-row">
       <span style="color:#38bdf8;font-weight:700;font-size:12px">Command:</span>
       <input data-r="cmd" placeholder="Type a command or press Enter to repeat" style="flex:1;min-width:0;padding:5px 8px;background:#0c0e13;border:1px solid #2a3140;border-radius:4px;color:#f8fafc;font:12px Consolas,monospace" autocomplete="off" spellcheck="false" />
       <button data-r="cmdrun" style="padding:4px 12px;background:#0284c7;border-color:#38bdf8;font-weight:500">Run</button>
     </div>
-    <div id="obs-cad-cmd-auto-popup" data-r="cmdauto"></div>
+    <div class="obs-cad-cmd-auto-popup" data-r="cmdauto"></div>
   </div>
 
   <!-- AutoCAD Layout Tabs (Model, Layout1, Layout2...) -->
@@ -340,8 +593,6 @@ function build(): void {
   <!-- AutoCAD Status Bar Tray -->
   <div data-r="status" style="display:flex;align-items:center;gap:12px;padding:3px 10px;background:#0f1218;border-top:1px solid #2a3140;color:#9aa4b2;font-size:11px;font-variant-numeric:tabular-nums"></div>
   `;
-
-  document.body.appendChild(root);
 
   const $ = <T extends HTMLElement>(k: string) => root!.querySelector(`[data-r="${k}"]`) as T;
   const cv = $<HTMLCanvasElement>("cv"),
@@ -431,6 +682,19 @@ function build(): void {
     after?: DxfEntity[];
   }
   const undoStack: UndoAction[] = [];
+  let dirty = false;
+  const markDirty = (): void => {
+    if (!dirty) {
+      dirty = true;
+      hooks.onDirty(true);
+    }
+  };
+  const markSaved = (): void => {
+    if (dirty) {
+      dirty = false;
+      hooks.onDirty(false);
+    }
+  };
   const redoStack: UndoAction[] = [];
 
   // AutoCAD Command History
@@ -1327,6 +1591,7 @@ function build(): void {
     bounds = bounds ? M.unionBBox(bounds, eb) : eb;
     idx = M.buildIndex(ents, bounds);
     undoStack.push({ type: "add", entities: [e] });
+    markDirty();
     redoStack.length = 0;
     showProps();
     draw();
@@ -1344,6 +1609,7 @@ function build(): void {
       else keep.push(e);
     });
     undoStack.push({ type: "delete", entities: removed });
+    markDirty();
     redoStack.length = 0;
     ents = keep;
     if (layoutI < 0) modelEnts = keep;
@@ -1415,17 +1681,20 @@ function build(): void {
       ents.push(...(act.entities ?? []));
       if (layoutI < 0) modelEnts.push(...(act.entities ?? []));
       undoStack.push(act);
+      markDirty();
     } else if (act.type === "delete") {
       const delSet = new Set(act.entities ?? []);
       ents = ents.filter((e) => !delSet.has(e));
       if (layoutI < 0) modelEnts = ents;
       undoStack.push(act);
+      markDirty();
     } else if (act.type === "modify") {
       const before = act.before ?? [];
       const after = act.after ?? [];
       for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
       if (layoutI < 0) modelEnts = ents;
       undoStack.push(act);
+      markDirty();
     }
     rebuildIndex();
     showProps();
@@ -1509,6 +1778,7 @@ function build(): void {
     if (b) bounds = M.unionBBox(bounds ?? b, b);
     idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
     undoStack.push({ type: "add", entities: list });
+    markDirty();
     redoStack.length = 0;
     showProps();
   }
@@ -1517,6 +1787,7 @@ function build(): void {
   function commitModify(before: DxfEntity[], after: DxfEntity[]): void {
     for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
     undoStack.push({ type: "modify", before, after });
+    markDirty();
     redoStack.length = 0;
     rebuildIndex();
     // Keep the transformed objects selected, like AutoCAD grips.
@@ -1581,6 +1852,7 @@ function build(): void {
         const doomed = modTargets();
         const keep = ents.filter((e) => !doomed.includes(e));
         undoStack.push({ type: "delete", entities: doomed });
+        markDirty();
         redoStack.length = 0;
         ents = keep;
         if (layoutI < 0) modelEnts = keep;
@@ -1847,6 +2119,8 @@ function build(): void {
       showMeas();
 
       logCmd(`Loaded: ${file.name} (${doc.entities.length} entities, ${doc.layers.length} layers, ${doc.units || "mm"})`);
+      markSaved();
+      hooks.onTitle(name);
       status(`${r.summary}`);
       setTimeout(() => status(""), 5000);
     } catch (err) {
@@ -2350,7 +2624,7 @@ function build(): void {
         updateStatus();
         draw();
       },
-      close: () => api!.close(),
+      close: () => hooks.requestClose(),
       snap: () => {
         snapOn = !snapOn;
         tools.querySelector("[data-a=snap]")!.classList.toggle("on", snapOn);
@@ -2480,10 +2754,18 @@ function build(): void {
       return;
     }
 
+    const capture = (id: number): void => {
+      try {
+        cv.setPointerCapture(id);
+      } catch {
+        /* synthetic / already-released pointers */
+      }
+    };
+
     if (ev.button === 1 || (ev.button === 2 && tool === "pan")) {
       ev.preventDefault();
       dragging = { x: sp.x, y: sp.y };
-      cv.setPointerCapture(ev.pointerId);
+      capture(ev.pointerId);
       cv.style.cursor = "grabbing";
       pushView();
       return;
@@ -2493,17 +2775,17 @@ function build(): void {
 
     if (tool === "box" || (tool === "select" && (ev.shiftKey || ev.ctrlKey))) {
       press = { x: sp.x, y: sp.y, moved: false, id: ev.pointerId, band: true, add: ev.shiftKey || ev.ctrlKey };
-      cv.setPointerCapture(ev.pointerId);
+      capture(ev.pointerId);
       return;
     }
     if (tool === "pan" || tool === "select") {
       press = { x: sp.x, y: sp.y, moved: false, id: ev.pointerId };
-      cv.setPointerCapture(ev.pointerId);
+      capture(ev.pointerId);
       return;
     }
     if (tool === "zoomwin") {
       winStart = winNow = sp;
-      cv.setPointerCapture(ev.pointerId);
+      capture(ev.pointerId);
       return;
     }
 
@@ -2961,6 +3243,22 @@ function build(): void {
       redo();
       return;
     }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "c") {
+      ev.preventDefault();
+      copySelection();
+      return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "x") {
+      ev.preventDefault();
+      if (copySelection()) eraseSelected();
+      return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "v") {
+      ev.preventDefault();
+      if (ev.shiftKey) pasteOrig();
+      else pasteClip();
+      return;
+    }
     if ((ev.ctrlKey || ev.metaKey) && ev.key === "0") {
       ev.preventDefault();
       toggleCleanScreen();
@@ -3241,6 +3539,26 @@ function build(): void {
     }
     if (cmd === "QSAVE" || cmd === "SAVE" || cmd === "SAVEAS") {
       saveDxf();
+      return;
+    }
+    if (cmd === "COPYCLIP") {
+      copySelection();
+      return;
+    }
+    if (cmd === "PASTECLIP") {
+      pasteClip();
+      return;
+    }
+    if (cmd === "PASTEORIG") {
+      pasteOrig();
+      return;
+    }
+    if (cmd === "SAVEALL") {
+      hooks.saveAll();
+      return;
+    }
+    if (cmd === "CLOSE") {
+      hooks.requestClose();
       return;
     }
     if (cmd === "SVGSAVE" || cmd === "EXPORTSVG") {
@@ -3536,8 +3854,60 @@ function build(): void {
     downloadDxf({ ...doc, entities }, fn);
     logCmd(`Saved ${fn} — ${entities.length} entities, ${doc.layers.length} layers.`);
     status(`Saved ${fn}`);
+    markSaved();
     setTimeout(() => status(""), 4000);
   }
+
+  /* ── Cross-drawing clipboard (COPYCLIP / PASTECLIP / PASTEORIG) ── */
+  function copySelection(): boolean {
+    if (!sel.size) {
+      logCmd("COPYCLIP: 0 found — select objects first.");
+      return false;
+    }
+    const list = [...sel].map((i) => ents[i]).filter(Boolean);
+    const b = idx ? M.bboxOfSet(idx, sel) : null;
+    clip = makeClip(
+      list,
+      b ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : undefined,
+      name || undefined,
+    );
+    logCmd(`COPYCLIP: ${list.length} object(s) — switch file tab and press Ctrl+V to paste.`);
+    return true;
+  }
+
+  let pasteN = 0;
+  function pasteInstance(atWorld?: M.Pt, toOrigin = false): number {
+    if (!doc) {
+      logCmd("Nothing to paste — open a drawing first.");
+      return 0;
+    }
+    if (!clip || !clip.entities.length) {
+      logCmd("Clipboard is empty — COPYCLIP objects in any drawing tab first.");
+      return 0;
+    }
+    const c = M.screenToWorld(view, view.w / 2, view.h / 2);
+    const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
+    const off = pasteN * Math.max(span * 0.02, 1e-9);
+    const at = toOrigin ? undefined : atWorld ?? { x: c.x + off, y: c.y - off };
+    const list = clipInstances(clip, at);
+    pasteN++;
+    if (!list.length) return 0;
+    for (const e of list) {
+      ents.push(e);
+      if (layoutI < 0) modelEnts.push(e);
+    }
+    const start = ents.length - list.length;
+    undoStack.push({ type: "add", entities: list });
+    redoStack.length = 0;
+    markDirty();
+    rebuildIndex();
+    setSel(list.map((_, i) => start + i));
+    logCmd(`PASTE${toOrigin ? "ORIG" : "CLIP"}: ${list.length} object(s)${clip.sourceName ? ` from ${clip.sourceName}` : ""}`);
+    draw();
+    return list.length;
+  }
+  const pasteClip = (at?: M.Pt): number => pasteInstance(at, false);
+  const pasteOrig = (): number => pasteInstance(undefined, true);
 
   function download(blob: Blob, fn: string): void {
     const a = document.createElement("a");
@@ -3635,7 +4005,7 @@ function build(): void {
     };
     q("lyr-mgr").onclick = openLayerPropertiesManager;
     q("help").onclick = () => toggleHelp();
-    q("close").onclick = () => api!.close();
+    q("close").onclick = () => hooks.requestClose();
     q("takeoff").onclick = () => {
       if (!doc) return;
       const rows = new Map<string, { type: string; layer: string; count: number; totalLength: number }>();
@@ -3729,18 +4099,13 @@ function build(): void {
   updateStatus();
   resize();
 
-  api = {
-    load,
-    close() {
-      root!.style.display = "none";
-    },
-  };
+  // Esc handling: guard checks this page and the whole shell (multi-document).
 
   // Esc handling across entire window when CAD viewer is open
   window.addEventListener(
     "keydown",
     (e) => {
-      if (root!.style.display === "none" || e.key !== "Escape" || e.target === cv) return;
+      if (root.style.display === "none" || !shell || shell.style.display === "none" || e.key !== "Escape" || e.target === cv) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "SELECT") && (t as HTMLInputElement).type !== "checkbox") {
         (t as HTMLInputElement).blur();
@@ -3752,4 +4117,28 @@ function build(): void {
     },
     true,
   );
+
+  return {
+    load,
+    close() {
+      hooks.requestClose();
+    },
+    activate() {
+      root.style.display = "flex";
+      resize();
+      draw();
+    },
+    deactivate() {
+      root.style.display = "none";
+    },
+    isDirty: () => dirty,
+    markSaved,
+    copySelection,
+    pasteClip,
+    pasteOrig,
+    hasClip: () => !!clip,
+    saveDxf,
+    fileName: () => name,
+    focus: () => cv.focus({ preventScroll: true }),
+  };
 }
