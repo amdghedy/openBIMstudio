@@ -332,13 +332,8 @@ export class NavigationController {
     if (!next) return { ok: false, reason: "degenerate-orientation" };
     this.cancelTransition();
     const dist = Math.max(pos.distanceTo(target), this.config.minDistance);
-    const endpoint = endpointFrom(
-      target.clone().addScaledVector(next.dir, dist), target, next.up,
-    );
-    this.adapter.lookAt(
-      target.clone().addScaledVector(next.dir, dist), target, endpoint.q.clone().vmult
-        ? next.up : next.up, false,
-    );
+    const nextPos = target.clone().addScaledVector(next.dir, dist);
+    this.adapter.lookAt(nextPos, target, next.up, false);
     return { ok: true };
   }
 
