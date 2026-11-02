@@ -193,5 +193,13 @@
   },
   "overrides": {
     "web-ifc": "0.0.77"
+  },
+  "homepage": "https://github.com/amdghedy/openBIMstudio#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amdghedy/openBIMstudio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/amdghedy/openBIMstudio/issues"
   }
 }

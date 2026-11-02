@@ -8,6 +8,9 @@
 
 ### The open, local-first BIM workspace that runs in your browser
 
+[![GitHub stars](https://img.shields.io/github/stars/amdghedy/openBIMstudio?style=social)](https://github.com/amdghedy/openBIMstudio/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/amdghedy/openBIMstudio?style=social)](https://github.com/amdghedy/openBIMstudio/network/members)
+[![GitHub watchers](https://img.shields.io/github/watchers/amdghedy/openBIMstudio?style=social)](https://github.com/amdghedy/openBIMstudio/watchers)
 [![Version](https://img.shields.io/badge/version-0.74.0-blue.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![IFC](https://img.shields.io/badge/IFC-2x3%20%7C%204-3b82f6.svg)](#-interoperability)
@@ -15,9 +18,19 @@
 [![CI](https://github.com/amdghedy/openBIMstudio/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/amdghedy/openBIMstudio/actions/workflows/unit-tests.yml)
 [![BIM validation](https://github.com/amdghedy/openBIMstudio/actions/workflows/native-bim-validation.yml/badge.svg)](https://github.com/amdghedy/openBIMstudio/actions/workflows/native-bim-validation.yml)
 
-**Local-first · Zero install · Open standards · IFC · BCF · IDS · PDF · CAD · AI-ready**
+**Local-first · Zero install · Open standards · IFC · FRAG · BCF · IDS · PDF · CAD · AI-ready**
 
-[Quick start](#quick-start) · [Why OpenBIMStudio](#-why-openbimstudio) · [What you can do](#-what-you-can-do) · [All tools & commands](#tools--commands) · [Interoperability](#-interoperability) · [Documentation](#-documentation)
+<p align="center">
+  <a href="https://open-bi-mstudio.vercel.app"><img src="https://img.shields.io/badge/🚀_Live_demo-open--bi--mstudio.vercel.app-00C853?style=for-the-badge" alt="Live demo"></a>
+  &nbsp;
+  <a href="https://github.com/amdghedy/openBIMstudio"><img src="https://img.shields.io/badge/⭐_Star_this_repo-181717?style=for-the-badge&logo=github" alt="Star on GitHub"></a>
+  &nbsp;
+  <a href="https://github.com/amdghedy/openBIMstudio/issues/new/choose"><img src="https://img.shields.io/badge/Issues_&_ideas-open-2088FF?style=for-the-badge" alt="Open an issue"></a>
+</p>
+
+**Canonical project:** [github.com/amdghedy/openBIMstudio](https://github.com/amdghedy/openBIMstudio) · **Live app:** [open-bi-mstudio.vercel.app](https://open-bi-mstudio.vercel.app)
+
+[Quick start](#quick-start) · [Why OpenBIMStudio](#-why-openbimstudio) · [What you can do](#-what-you-can-do) · [All tools & commands](#tools--commands) · [Interoperability](#-interoperability) · [Documentation](#-documentation) · [Contributing](CONTRIBUTING.md)
 
 <p align="center">
   <a href="https://www.buildingsmart.org/"><img src="https://img.shields.io/badge/IFC-2x3%20%7C%204-0096D6?style=for-the-badge" alt="IFC — Industry Foundation Classes"></a>
@@ -423,6 +436,21 @@ Not every tool has the same level of coverage. Automated tests cannot fully prov
 OpenBIMStudio aims for broad **openBIM** coverage across authoring, coordination, documentation, and validation. Individual tools differ in maturity: source code or a visible command alone does not guarantee runtime reliability or production readiness.
 
 ---
+
+
+
+---
+
+## Support the project
+
+OpenBIMStudio is free and MIT-licensed. The fastest way to help is:
+
+1. **[⭐ Star the repository](https://github.com/amdghedy/openBIMstudio)** — improves discoverability on GitHub.
+2. **Share the [live demo](https://open-bi-mstudio.vercel.app)** with BIM / AEC / web colleagues.
+3. **[Open an issue](https://github.com/amdghedy/openBIMstudio/issues)** for bugs or ideas.
+4. **[Contribute](CONTRIBUTING.md)** a fix or docs improvement.
+
+Please link back to **https://github.com/amdghedy/openBIMstudio** (this repo is the source of truth — not forks or mirrors unless they point here).
 
 ## License
 

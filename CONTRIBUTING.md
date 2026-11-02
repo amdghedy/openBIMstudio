@@ -1,5 +1,7 @@
 # Contributing to OpenBIMStudio
 
+Thank you for considering contributing. If this project helps you, please [⭐ star the repository](https://github.com/amdghedy/openBIMstudio) so others can find it.
+
 Thank you for considering contributing. This guide describes the workflow the
 maintainers actually use — following it keeps review fast and the history
 readable.

@@ -1,5 +1,14 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Live demo
+    url: https://open-bi-mstudio.vercel.app
+    about: Try OpenBIMStudio in the browser (no install).
+  - name: Source repository (star & fork here)
+    url: https://github.com/amdghedy/openBIMstudio
+    about: Canonical source of truth — please star, fork, and open PRs against this repo.
   - name: Discussions
     url: https://github.com/amdghedy/openBIMstudio/discussions
-    about: Ask questions or share ideas
+    about: Questions, ideas, and show-and-tell.
+  - name: Security
+    url: https://github.com/amdghedy/openBIMstudio/blob/main/SECURITY.md
+    about: Report a vulnerability privately (see SECURITY.md).

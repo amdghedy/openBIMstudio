@@ -95,7 +95,10 @@ function update() {
           : ` <span style="color:#7bb040">● saved</span>`)
       : `<span style="opacity:.55">No project</span>`) +
     `<span style="opacity:.4">·</span>` +
-    `<span style="opacity:.55">Open BIM Studio v54</span>`;
+    `<span style="opacity:.55">Open BIM Studio v54</span>` +
+    `<span style="opacity:.4">·</span>` +
+    `<a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" ` +
+      `style="color:#93c5fd;text-decoration:none;opacity:.9" title="Source on GitHub — star the project">GitHub ⭐</a>`;
 }
 
 export function setupStatusBar() {

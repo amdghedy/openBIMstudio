@@ -134,7 +134,7 @@ function buildStatic() {
     </section>
 
     <footer class="obs-home__footer">
-      <span>Open BIM Studio · local project database · browser-first delivery</span>
+      <span>Open BIM Studio · local-first · <a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;text-decoration:none">GitHub</a> · <a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" style="color:#fbbf24;text-decoration:none">⭐ Star</a> · <a href="https://github.com/amdghedy/openBIMstudio/issues/new/choose" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;text-decoration:none">Report issue</a></span>
       <span class="obs-home__visits" id="obs-visits" aria-live="polite"></span>
       <span><kbd>Ctrl</kbd> <kbd>O</kbd> Open &nbsp;·&nbsp; <kbd>Ctrl</kbd> <kbd>S</kbd> Save &nbsp;·&nbsp; <kbd>Ctrl</kbd> <kbd>P</kbd> Commands</span>
     </footer>`;
