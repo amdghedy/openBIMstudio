@@ -17,6 +17,7 @@ import { togglePlanView } from "./plan-view-panel";
 import { toggleSheetsPanel } from "./sheets-panel";
 import { ensureDefaultMaterials, listMaterials } from "../modules/materials/materials";
 import { markDirty } from "../modules/projects/projects";
+import { openToolWindow } from "./tool-windows";
 
 function pickAccept(accept: string, multiple: boolean, onFiles: (files: File[]) => void | Promise<void>) {
   const input = document.createElement("input");
@@ -50,6 +51,8 @@ function toast(msg: string, kind: "info" | "warn" | "success" = "info", _ms = 24
  * Same as BIM: origin-to-origin links stay coordinated.
  */
 export function linkIfc() {
+  // Reveal the importer queue so the user can see progress and failures.
+  openToolWindow("import");
   // Use a dedicated picker and enqueue directly into the visible IFC task queue.
   // This avoids the universal import router and makes each selected model observable.
   pickAccept(".ifc,.ifczip,application/x-step,application/octet-stream", true, async (selected) => {
