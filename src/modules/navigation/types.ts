@@ -162,11 +162,16 @@ export interface CameraAdapter {
   /** Switch the core projection. Returns false if the camera API rejected it. */
   setProjection(m: CoreProjection): boolean;
   /**
-   * Drive the camera to a position/target/up. Implementations must route
-   * through the existing controls (camera-controls setLookAt) so orbit,
-   * pan, zoom and clipping stay synchronized.
+   * Apply a camera pose. Intermediate transition frames may bypass the
+   * controls' orbit-state rebuild; the final frame must synchronize them.
+   * syncControls defaults to true for immediate/non-transition poses.
    */
-  lookAt(pos: THREE.Vector3, target: THREE.Vector3, up: THREE.Vector3, animate: boolean): void;
+  lookAt(
+    pos: THREE.Vector3, target: THREE.Vector3, up: THREE.Vector3,
+    animate: boolean, syncControls?: boolean,
+  ): void;
+  /** Reconcile camera-controls with a live pose before yielding to user input. */
+  syncControls?(): void;
   /** Bounds used by Focus commands: selection AABB when present, else scene. */
   focusBounds(): THREE.Box3 | null;
   /** Whole visible scene bounds; null when empty or degenerate. */
