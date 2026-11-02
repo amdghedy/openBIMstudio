@@ -1,5 +1,5 @@
 /**
- * CAD Viewer – Standalone AutoCAD-Grade 2D DWG/DXF Environment (100% AutoCAD Parity).
+ * CAD Editor – Standalone AutoCAD-Grade 2D DWG/DXF Environment (100% AutoCAD Parity).
  *
  * Provides:
  * - Classic AutoCAD Model Space & Layout / Paper Space views
@@ -22,6 +22,7 @@
 
 import { readCadFile } from "../modules/cad-link/index";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
+import { downloadDxf } from "../modules/drawings/dxf-writer";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import * as M from "../modules/cad-viewer/viewer-math";
@@ -109,7 +110,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "UNDO", aliases: ["U"], description: "Undo the last drafting or modify operation" },
   { name: "REDO", aliases: ["REDO"], description: "Redo the previously undone operation" },
   { name: "PLOT", aliases: ["PRINT"], description: "Plot drawing to PDF or physical paper" },
-  { name: "QSAVE", aliases: ["SAVE"], description: "Export current drawing state" },
+  { name: "QSAVE", aliases: ["SAVE", "SAVEAS"], description: "Save the edited drawing as a DXF file" },
+  { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
   { name: "CLEANSCREEN", aliases: ["CLEAN"], description: "Toggle clean screen mode (Ctrl+0)" },
 ];
 
@@ -2259,6 +2261,7 @@ function build(): void {
       rg(
         "File",
         rb("folder", "Open", `data-a="open"`, "Open a DWG or DXF file") +
+          rb("save", "Save DXF", `data-a="save-dxf"`, "Save the edited drawing as DXF (QSAVE)") +
           rb("print", "Plot", `data-a="plot"`, "Plot to PDF / paper") +
           `<input type="file" data-r="file" accept=".dwg,.dxf" style="display:none">`,
       ) +
@@ -2375,6 +2378,7 @@ function build(): void {
       redo,
       erase: eraseSelected,
       plot: openPlot,
+      "save-dxf": saveDxf,
     };
 
     tools.querySelectorAll<HTMLElement>("button[data-a]").forEach((b) => {
@@ -3235,7 +3239,11 @@ function build(): void {
       openPlot();
       return;
     }
-    if (cmd === "QSAVE" || cmd === "SAVE") {
+    if (cmd === "QSAVE" || cmd === "SAVE" || cmd === "SAVEAS") {
+      saveDxf();
+      return;
+    }
+    if (cmd === "SVGSAVE" || cmd === "EXPORTSVG") {
       exportSvg();
       logCmd("Drawing exported as SVG.");
       return;
@@ -3513,6 +3521,24 @@ function build(): void {
   function base(): string {
     return (name || "drawing").replace(/\.[^.]+$/, "");
   }
+
+  /** Save the edited drawing back to DXF R2010 (QSAVE / SAVE / SAVEAS). */
+  function saveDxf(): void {
+    if (!doc) {
+      logCmd("Nothing to save — open a DWG or DXF drawing first.");
+      status("Nothing to save");
+      return;
+    }
+    // doc.entities goes stale after erase/undo (the live list is rebound), so
+    // serialize from modelEnts — it is kept in sync by add/erase/undo/redo.
+    const entities = layoutI < 0 ? ents : modelEnts;
+    const fn = `${base()}.dxf`;
+    downloadDxf({ ...doc, entities }, fn);
+    logCmd(`Saved ${fn} — ${entities.length} entities, ${doc.layers.length} layers.`);
+    status(`Saved ${fn}`);
+    setTimeout(() => status(""), 4000);
+  }
+
   function download(blob: Blob, fn: string): void {
     const a = document.createElement("a");
     const u = URL.createObjectURL(blob);
