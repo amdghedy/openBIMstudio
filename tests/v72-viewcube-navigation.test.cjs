@@ -89,8 +89,8 @@ function makeAdapter(opts = {}) {
     setOrthoHalfHeight: (h) => { state.orthoHalfHeight = h; },
     projection: () => state.projection,
     setProjection: (m) => { log.setProjectionCalls.push(m); state.projection = m; return true; },
-    lookAt: (pos, target, up, animate, syncControls = true) => {
-      log.lookAts.push({ pos: pos.clone(), target: target.clone(), up: up.clone(), syncControls });
+    lookAt: (pos, target, up, animate, refreshOrbitBasis = true) => {
+      log.lookAts.push({ pos: pos.clone(), target: target.clone(), up: up.clone(), refreshOrbitBasis });
       state.pos.copy(pos); state.target.copy(target); state.up.copy(up);
     },
     syncControls: () => { log.syncCalls++; },
@@ -843,15 +843,17 @@ t("tick is a no-op without an active transition", () => {
   assert(controller.tick(16) === false);
 });
 
-t("transition synchronizes camera controls only on the final pose", () => {
+t("every transition frame updates the camera adapter; orbit basis refresh is deferred to completion", () => {
   const { adapter, controller } = freshController();
   assert(controller.navigateToFace("top").ok);
-  assert(adapter._log.lookAts.length === 1, "initial transition pose missing");
-  assert(adapter._log.lookAts[0].syncControls === false, "initial frame rebuilt controls");
+  assert(adapter._log.lookAts.length === 1, "initial transition frame missing");
+  assert(adapter._log.lookAts[0].refreshOrbitBasis === false, "initial frame should not rebuild orbit basis");
   controller.tick(controller.config.transitionMs / 2);
-  assert(adapter._log.lookAts.at(-1).syncControls === false, "intermediate frame rebuilt controls");
+  assert(adapter._log.lookAts.length === 2, "midpoint camera pose was not applied");
+  assert(adapter._log.lookAts.at(-1).refreshOrbitBasis === false, "intermediate frame rebuilt orbit basis");
   controller.tick(controller.config.transitionMs);
-  assert(adapter._log.lookAts.at(-1).syncControls === true, "final frame did not synchronize controls");
+  assert(adapter._log.lookAts.length === 3, "final camera pose was not applied");
+  assert(adapter._log.lookAts.at(-1).refreshOrbitBasis === true, "final frame did not refresh orbit basis");
   assert(!controller.isTransitioning(), "transition should be complete");
 });
 
