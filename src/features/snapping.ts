@@ -13,6 +13,7 @@
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
+import { hasUnderlayData, isUnderlaySnapEnabled, setUnderlaySnapEnabled } from "./cad-underlay-snap";
 import {
   aabbNearCursor,
   dist2,
@@ -782,6 +783,17 @@ function renderSnapPanel() {
         '</button>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-bottom:10px">' + checkboxes + '</div>' +
+      '<div style="margin:4px 0 10px;padding:8px;border:1px solid #475569;border-radius:6px;background:#0f172a">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#e2e8f0;font-size:11px">' +
+          '<input type="checkbox" id="obs-snap-cad" ' + (isUnderlaySnapEnabled() ? "checked" : "") +
+            ' style="accent-color:#38bdf8"/>' +
+          '<span style="flex:1">Linked CAD (DWG / DXF)</span>' +
+          '<span style="font-size:10px;color:#94a3b8">' + (hasUnderlayData() ? "Loaded" : "No linked drawing") + '</span>' +
+        '</label>' +
+        '<div style="margin:5px 0 0 24px;font-size:10px;color:#94a3b8;line-height:1.4">' +
+          'Snap to visible drawing endpoints and segment midpoints while manually placing or aligning model elements.' +
+        '</div>' +
+      '</div>' +
       '<label style="display:flex;align-items:center;gap:8px;font-size:11px;color:#94a3b8">' +
         'Grid size (m)' +
         '<input type="number" id="obs-snap-grid" value="' + snapping.getGridSize() + '" step="0.05" min="0.001" ' +
@@ -800,6 +812,9 @@ function renderSnapPanel() {
   snapPanel.querySelector("#obs-snap-close")?.addEventListener("click", () => setSnapSettingsVisible(false));
   snapPanel.querySelector("#obs-snap-all")?.addEventListener("click", () => { snapping.enableAllTypes(); renderSnapPanel(); });
   snapPanel.querySelector("#obs-snap-none")?.addEventListener("click", () => { snapping.disableAllTypes(); renderSnapPanel(); });
+  snapPanel.querySelector("#obs-snap-cad")?.addEventListener("change", (e) => {
+    setUnderlaySnapEnabled((e.target as HTMLInputElement).checked);
+  });
   snapPanel.querySelector("#obs-snap-toggle")?.addEventListener("click", () => {
     snapping.setEnabled(!snapping.isEnabled());
     renderSnapPanel();
