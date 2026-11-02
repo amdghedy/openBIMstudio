@@ -4,7 +4,7 @@
  * Activates every Insert-tab action with stable, production behaviour:
  * Link IFC, Link CAD, Link BIM, Point cloud, Topography, Family, Library.
  */
-import { pickFiles, loadIfcFiles, loadFragFiles } from "./importer";
+import { pickFiles, loadFragFiles } from "./importer";
 import { pickAndImport, importFiles } from "./file-interop";
 
 
