@@ -702,10 +702,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         const mod = await import("../modules/bim-gaps/bim-gaps-boot");
         await mod.exportIfc("IFC2X3");
       }, "Export IFC2X3"), { title: "Export the authored model as IFC2X3 STEP file" }),
-      b("file-frag", "Save FRAG", safe(async () => {
+      b("file-frag", "FRAG", safe(async () => {
         const mod = await import("../modules/export/frag");
         await mod.exportFragFromMenu();
-      }, "Save FRAG"), {
+      }, "Export FRAG"), {
         title: "Export loaded model(s) as ThatOpen Fragments (.frag) — official binary format",
       }),
       b("cost-takeoff", "Cost", safe(() => recalculateTakeoff(), "Cost")),
