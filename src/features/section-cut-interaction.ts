@@ -331,23 +331,19 @@ function collectClipperHelpers(): Array<{ item: Any; objects: THREE.Object3D[]; 
       const seen = new Set<THREE.Object3D>();
       const push = (o: Any) => {
         if (!o) return;
-        if (o.isObject3D && !seen.has(o)) {
-          seen.add(o);
-          objects.push(o as THREE.Object3D);
-        }
-        if (o.object?.isObject3D && !seen.has(o.object)) {
-          seen.add(o.object);
-          objects.push(o.object as THREE.Object3D);
-        }
+        const add = (node: unknown) => {
+          if (!node || typeof node !== "object") return;
+          const obj = node as THREE.Object3D;
+          if (!(obj as Any).isObject3D) return;
+          if (seen.has(obj)) return;
+          seen.add(obj);
+          objects.push(obj);
+        };
+        add(o);
+        add(o.object);
         // TransformControls / gizmo roots
-        if (o._gizmo?.isObject3D && !seen.has(o._gizmo)) {
-          seen.add(o._gizmo);
-          objects.push(o._gizmo as THREE.Object3D);
-        }
-        if (o.gizmo?.isObject3D && !seen.has(o.gizmo)) {
-          seen.add(o.gizmo);
-          objects.push(o.gizmo as THREE.Object3D);
-        }
+        add(o._gizmo);
+        add(o.gizmo);
       };
       for (const key of [
         "helper", "arrow", "mesh", "object", "three", "root", "group",
