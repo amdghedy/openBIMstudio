@@ -76,7 +76,7 @@ export function installViewCubeEnhancements(
     lastX = downX = event.clientX;
     lastY = downY = event.clientY;
     moved = false;
-    try { captureTarget.setPointerCapture(pointerId); } catch { /* browser fallback */ }
+    try { hitTarget.setPointerCapture(pointerId); } catch { /* browser fallback */ }
   });
 
   svg.addEventListener("pointermove", (event: PointerEvent) => {
