@@ -4,7 +4,7 @@
  * Activates every Insert-tab action with stable, production behaviour:
  * Link IFC, Link CAD, Link BIM, Point cloud, Topography, Family, Library.
  */
-import { pickFiles, loadIfcFiles, loadFragFiles } from "./importer";
+import { pickFiles, loadFragFiles } from "./importer";
 import { pickAndImport, importFiles } from "./file-interop";
 
 
@@ -50,11 +50,18 @@ function toast(msg: string, kind: "info" | "warn" | "success" = "info", _ms = 24
  * Same as BIM: origin-to-origin links stay coordinated.
  */
 export function linkIfc() {
-  // Exact old path: pickFiles(".ifc", true, loadIfcFiles)
-  pickFiles(".ifc,.ifczip", true, (files) => {
+  // Route both IFC and IFCZIP through the universal importer.
+  // IFCZIP is extracted with JSZip there, then each contained IFC is sent
+  // through the existing IFC conversion queue and positioning workflow.
+  pickFiles(".ifc,.ifczip", true, async (files) => {
     const list = Array.from(files as FileList | File[]);
-    loadIfcFiles(list);
-    toast(`Linking ${list.length} IFC model(s) — origin-to-origin federation…`, "info");
+    const accepted = list.filter((file) => /\.ifc(zip)?$/i.test(file.name));
+    if (!accepted.length) {
+      toast("Select one or more .ifc or .ifczip files.", "warn");
+      return;
+    }
+    await importFiles(accepted);
+    toast(`Linking ${accepted.length} IFC/IFCZIP archive(s) — origin-to-origin federation…`, "info");
   });
 }
 
