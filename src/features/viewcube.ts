@@ -342,7 +342,7 @@ function buildWidget(
   controller: NavigationController, adapter: RealCameraAdapter,
 ): WidgetRefs {
   const container = el("div", "position:absolute;top:14px;right:14px;z-index:40;" +
-    "pointer-events:none;user-select:none;-webkit-user-select:none");
+    "pointer-events:auto;user-select:none;-webkit-user-select:none");
   container.id = "obs-viewcube";
   container.setAttribute("aria-label", "ViewCube navigation");
 
