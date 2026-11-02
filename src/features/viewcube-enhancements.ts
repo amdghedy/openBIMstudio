@@ -118,10 +118,13 @@ export function installViewCubeEnhancements(
   tools.style.cssText = "display:flex;justify-content:flex-end;gap:5px;margin-top:2px;pointer-events:auto";
   const optionsButton = document.createElement("button");
   optionsButton.type = "button";
-  optionsButton.textContent = "ViewCube options";
-  optionsButton.title = "Configure ViewCube size, opacity and position";
+  optionsButton.textContent = "⚙";
+  optionsButton.title = "ViewCube settings";
+  optionsButton.setAttribute("aria-label", "ViewCube settings");
   optionsButton.setAttribute("aria-expanded", "false");
-  optionsButton.style.cssText = buttonStyle();
+  optionsButton.style.cssText = buttonStyle() +
+    ";display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;" +
+    "padding:0;font:700 19px/1 system-ui,sans-serif;flex:none;opacity:1;visibility:visible";
   tools.appendChild(optionsButton);
 
   const panel = document.createElement("div");
