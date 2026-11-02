@@ -36,6 +36,7 @@ export interface DwgParseRequest {
 }
 
 export type DwgParseResponse =
+  | { id: number; kind: "started" }
   | { id: number; ok: true; doc: unknown; summary: string; version: string; entityCount: number }
   | { id: number; ok: false; code: DwgReaderErrorCode; message: string; detail?: string };
 

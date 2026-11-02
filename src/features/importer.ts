@@ -1107,6 +1107,14 @@ export function setupImporter() {
     const ifcFiles = files.filter((f) => /\.ifc$/i.test(f.name));
     if (fragFiles.length) void loadFragFiles(fragFiles);
     if (ifcFiles.length) enqueueIfc(ifcFiles);
+    // DWG/DXF has no place in the BIM scene — hand it to the CAD editor
+    // (opened lazily) instead of ignoring the drop silently.
+    const cadFiles = files.filter((f) => /\.(dwg|dxf)$/i.test(f.name));
+    if (cadFiles.length) {
+      void import("./cad-viewer").then((m) => {
+        for (const f of cadFiles) m.openCadViewer(f);
+      });
+    }
   });
 
   ctx.features.importer = {

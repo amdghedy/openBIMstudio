@@ -73,6 +73,10 @@ async function getReader(): Promise<{ lib: Any; FileType: Any }> {
  * before — only the execution context changed (worker instead of main thread).
  */
 export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Promise<DwgParseResult> {
+  // Total worker-turn budget: wasm read + JS conversion must finish before the
+  // main-thread parse timeout (DWG_PARSE_TIMEOUT_MS = 120s) terminates the worker.
+  const t0 = Date.now();
+  const CONVERT_DEADLINE_MS = 115_000;
   const bytes = new Uint8Array(buffer);
   const sniff = sniffDwgVersion(bytes);
   if (!sniff) {
@@ -103,7 +107,7 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
   try { db = lib.convert ? lib.convert(dwg) : dwg; }
   finally { try { lib.dwg_free?.(dwg); } catch { /* */ } }
 
-  const res = dwgDatabaseToDxfDocument(db);
+  const res = dwgDatabaseToDxfDocument(db, { deadlineMs: t0 + CONVERT_DEADLINE_MS });
   if (!res.doc.entities.length) {
     // Help diagnose converter/field-name mismatches: what did the file actually contain?
     try {

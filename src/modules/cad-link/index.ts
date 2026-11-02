@@ -83,16 +83,23 @@ function emit(kind: "added" | "changed" = "changed") {
  * The worker document has its own scoped CSP; this thread stays strict.
  */
 const DWG_PARSE_TIMEOUT_MS = 120_000;
+/** Backstop for a wedged worker that never acks a parse (e.g. wasm init hang). */
+const DWG_START_BACKSTOP_MS = 60_000;
 
 interface DwgParseSuccess { doc: DxfDocument; summary: string; version: string; entityCount: number }
 
 let readerWorker: Worker | null = null;
 let readerWorkerFailed = false;
 let nextParseId = 0;
+/** DWG parses run serially: the reader worker handles one message at a time,
+ *  so without a queue the second file's timeout would also cover the first
+ *  file's whole parse (dropping several drawings made every timer dishonest). */
+let parseChain: Promise<void> = Promise.resolve();
 const pendingParses = new Map<number, {
   resolve: (r: DwgParseSuccess) => void;
   reject: (e: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  fileName: string;
 }>();
 
 function failAllPending(message: string): void {
@@ -131,6 +138,19 @@ function ensureReaderWorker(): Worker {
     const res = ev.data;
     const p = res && typeof res.id === "number" ? pendingParses.get(res.id) : undefined;
     if (!p) return;
+    if (res.kind === "started") {
+      // The worker picked up this parse: now (and only now) does the parse
+      // timeout start — earlier requests in the queue must not eat into it.
+      clearTimeout(p.timer);
+      p.timer = setTimeout(() => {
+        pendingParses.delete(res.id);
+        resetReaderWorker(); // cancel = terminate the parser; the next import gets a fresh worker
+        p.reject(new Error(
+          `${p.fileName}: the DWG parser did not finish within ${Math.round(DWG_PARSE_TIMEOUT_MS / 1000)}s and was cancelled. The drawing may be very large — retry once (the reader warms up), or re-save it from AutoCAD (SAVEAS, R2018) which usually shrinks the file.`,
+        ));
+      }, DWG_PARSE_TIMEOUT_MS);
+      return;
+    }
     pendingParses.delete(res.id);
     clearTimeout(p.timer);
     if (res.ok) {
@@ -152,27 +172,33 @@ function ensureReaderWorker(): Worker {
 
 /** Read a DWG through the isolated reader worker; converts to a DxfDocument. */
 export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: string }> {
-  const worker = ensureReaderWorker();
   const bytes = await file.arrayBuffer();
   const id = ++nextParseId;
-  return new Promise<{ doc: DxfDocument; summary: string }>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pendingParses.delete(id);
-      resetReaderWorker(); // cancel = terminate the parser; the next import gets a fresh worker
-      reject(new Error(
-        `${file.name}: the DWG parser did not finish within ${Math.round(DWG_PARSE_TIMEOUT_MS / 1000)}s and was cancelled. Try a smaller drawing or retry.`,
-      ));
-    }, DWG_PARSE_TIMEOUT_MS);
-    pendingParses.set(id, { resolve, reject, timer });
-    try {
-      worker.postMessage({ id, kind: "parse", bytes, fileName: file.name } satisfies import("./dwg-reader-protocol").DwgParseRequest, [bytes]);
-    } catch (e) {
-      pendingParses.delete(id);
-      clearTimeout(timer);
-      resetReaderWorker();
-      reject(e instanceof Error ? e : new Error(String(e)));
-    }
-  });
+  const run = (): Promise<{ doc: DxfDocument; summary: string }> =>
+    new Promise((resolve, reject) => {
+      const worker = ensureReaderWorker();
+      // Backstop until the worker acks; replaced by the real parse timeout on "started".
+      const timer = setTimeout(() => {
+        pendingParses.delete(id);
+        resetReaderWorker();
+        reject(new Error(`${file.name}: the DWG reader did not start within ${Math.round(DWG_START_BACKSTOP_MS / 1000)}s. Reload the page and retry.`));
+      }, DWG_START_BACKSTOP_MS);
+      pendingParses.set(id, { resolve, reject, timer, fileName: file.name });
+      try {
+        worker.postMessage({ id, kind: "parse", bytes, fileName: file.name } satisfies import("./dwg-reader-protocol").DwgParseRequest, [bytes]);
+      } catch (e) {
+        pendingParses.delete(id);
+        clearTimeout(timer);
+        resetReaderWorker();
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  const result = parseChain.then(run, run);
+  parseChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
 }
 
 export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {

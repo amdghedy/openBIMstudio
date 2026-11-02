@@ -14,6 +14,9 @@ import type { DwgParseRequest, DwgParseResponse } from "./dwg-reader-protocol";
 self.addEventListener("message", (ev: MessageEvent<DwgParseRequest>) => {
   const req = ev.data;
   if (!req || typeof req.id !== "number" || req.kind !== "parse") return;
+  // Ack before touching the bytes: the worker processes messages sequentially,
+  // so this also tells the main thread when its parse timer actually starts.
+  (self as unknown as Worker).postMessage({ id: req.id, kind: "started" } satisfies DwgParseResponse);
   parseDwgBytes(req.bytes, req.fileName)
     .then((res): DwgParseResponse => ({
       id: req.id,

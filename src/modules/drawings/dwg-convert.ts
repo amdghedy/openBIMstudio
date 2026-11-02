@@ -73,7 +73,24 @@ interface Ctx {
   /** A full turn expressed in database angle units (360 or 2*PI). */
   fullTurn: number;
   skip: (t: string) => void;
+  /** Remaining drawable entities this conversion may still emit (shared, mutable). */
+  budget: number;
+  /** Epoch ms after which conversion stops and returns what it has so far. */
+  deadline: number;
 }
+
+/** Push without spreading — huge arrays would overflow the argument limit. */
+function pushAll<T>(out: T[], arr: readonly T[] | null | undefined): void {
+  if (!arr) return;
+  for (let i = 0; i < arr.length; i++) out.push(arr[i]);
+}
+
+/** Hard cap on emitted entities: protects the reader worker from drawings whose
+ *  INSERT / MINSERT references multiply into millions of objects (the worker is
+ *  synchronous — an unbounded conversion stalls it past the parse timeout). */
+const ENTITY_BUDGET = 1_200_000;
+/** Hard cap on one INSERT's row×column grid (AutoCAD MINSERT). */
+const MAX_INSERT_CELLS = 4096;
 
 function colorOf(e: Any): { color?: number; rgb?: number } {
   const ci = pick(e, ["colorIndex", "aci", "colorNumber"]);
@@ -119,7 +136,7 @@ function hatchOf(e: Any, cx: Ctx): DxfHatch | null {
     const verts: Any[] | undefined = pick(path, ["polylineVertices", "vertices", "points", "polyline"]);
     if (Array.isArray(verts) && verts.length) {
       const closed = path.isClosed !== false;
-      pts.push(...expandBulges(verts.map((v) => ({ ...toPt(v), bulge: toNum(v?.bulge) || undefined })), closed));
+      pushAll(pts, expandBulges(verts.map((v) => ({ ...toPt(v), bulge: toNum(v?.bulge) || undefined })), closed));
     } else {
       for (const ed of (pick(path, ["edges", "segments"]) ?? []) as Any[]) {
         const t = String(pick(ed, ["type", "edgeType"]) ?? "").toUpperCase();
@@ -134,17 +151,17 @@ function hatchOf(e: Any, cx: Ctx): DxfHatch | null {
           const ccw = ed.isCCW !== false && ed.counterClockwise !== false && ed.isCounterClockwise !== false;
           const full = TWO_PI;
           const arc = ccw ? arcPoints(ctr.x, ctr.y, r, a0, a1raw <= a0 ? a1raw + full : a1raw, 0) : arcPoints(ctr.x, ctr.y, r, a1raw, a0 <= a1raw ? a0 + full : a0, 0).reverse();
-          pts.push(...arc);
+          pushAll(pts, arc);
         } else if (t === "ELLIPSE" || t === "ELLIPTICAL_ARC" || tn === 3) {
           const ctr = toPt(pick(ed, ["center", "centre"])), maj = toPt(pick(ed, ["majorAxisEndPoint", "majorAxis", "endPoint"]));
           const ratio = toNum(pick(ed, ["axisRatio", "ratio", "minorToMajorRatio"]), 1);
           const a0 = toNum(pick(ed, ["startAngle"])) * cx.toRad, a1 = toNum(pick(ed, ["endAngle"]), cx.fullTurn) * cx.toRad;
-          pts.push(...ellipsePoints(ctr, maj, ratio, a0, a1 <= a0 ? a1 + TWO_PI : a1));
+          pushAll(pts, ellipsePoints(ctr, maj, ratio, a0, a1 <= a0 ? a1 + TWO_PI : a1));
         } else if (t === "SPLINE" || tn === 4) {
           const ctrl: DxfPoint[] = (pick(ed, ["controlPoints"]) ?? []).map(toPt);
           const knots: number[] = (pick(ed, ["knots", "knotValues"]) ?? []).map((k: any) => toNum(k));
           const deg = toNum(pick(ed, ["degree"]), 3);
-          pts.push(...((ctrl.length >= deg + 1 ? evalBSpline(ctrl, knots, deg) : null) ?? ctrl));
+          pushAll(pts, (ctrl.length >= deg + 1 ? evalBSpline(ctrl, knots, deg) : null) ?? ctrl);
         }
       }
     }
@@ -182,7 +199,13 @@ function viewportOf(e: Any): DxfViewport | null {
 function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | null): DxfEntity[] {
   const out: DxfEntity[] = [];
 
-  for (const e of list) {
+  for (let i = 0; i < list.length; i++) {
+    const e = list[i];
+    if (cx.budget <= 0) { cx.skip("(entity budget reached — remaining entities not drawn)"); return out; }
+    if ((i & 511) === 511 && Date.now() > cx.deadline) {
+      cx.skip("(time budget reached — remaining entities not drawn)");
+      return out;
+    }
     const type = String(e?.type ?? e?.entityType ?? "").toUpperCase();
     if (!type) continue;
     if (e.inPaperSpace === true || e.paperSpace === true) continue;
@@ -329,8 +352,13 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
           const blk = cx.blocks.get(name);
           if (!blk || depth >= MAX_DEPTH) { cx.skip(blk ? "INSERT (too deeply nested)" : "INSERT (missing block)"); break; }
           const inner = convertList(blk.entities ?? [], cx, depth + 1, layer);
-          const cols = Math.max(1, Math.min(500, Math.round(toNum(pick(e, ["columnCount", "columns"]), 1))));
-          const rows = Math.max(1, Math.min(500, Math.round(toNum(pick(e, ["rowCount", "rows"]), 1))));
+          let cols = Math.max(1, Math.round(toNum(pick(e, ["columnCount", "columns"]), 1)));
+          let rows = Math.max(1, Math.round(toNum(pick(e, ["rowCount", "rows"]), 1)));
+          if (rows * cols > MAX_INSERT_CELLS) {
+            cx.skip(`INSERT (MINSERT grid ${rows}×${cols} exceeds ${MAX_INSERT_CELLS} cells — placed once)`);
+            rows = 1;
+            cols = 1;
+          }
           const dc = toNum(pick(e, ["columnSpacing"])), dr = toNum(pick(e, ["rowSpacing"]));
           const ins = toPt(pick(e, ["insertionPoint", "position", "insertPoint"]));
           const rotDeg = toNum(e.rotation) * cx.toDeg;
@@ -350,7 +378,7 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
                   z: ins.z,
                 },
               };
-              for (const ent of inner) out.push(...transformEntity(ent, xf));
+              for (const ent of inner) pushAll(out, transformEntity(ent, xf));
             }
           }
           break;
@@ -358,7 +386,7 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
 
         case "DIMENSION": {
           const blk = cx.blocks.get(String(e.name ?? e.blockName ?? ""));
-          if (blk && depth < MAX_DEPTH) out.push(...convertList(blk.entities ?? [], cx, depth + 1, layer));
+          if (blk && depth < MAX_DEPTH) pushAll(out, convertList(blk.entities ?? [], cx, depth + 1, layer));
           else cx.skip("DIMENSION");
           break;
         }
@@ -367,6 +395,7 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
           cx.skip(type);
       }
       if (ocsFlip) for (let k = outStart; k < out.length; k++) out[k] = flipEntityX(out[k]);
+      cx.budget -= out.length - outStart;
     } catch {
       cx.skip(`${type} (unreadable)`);
     }
@@ -393,7 +422,10 @@ function dwgTextStyle(e: Any, cx: { toDeg: number }): { style?: string; widthFac
   return out;
 }
 
-export function dwgDatabaseToDxfDocument(db: Any): DwgConvertResult {
+export function dwgDatabaseToDxfDocument(
+  db: Any,
+  opts?: { deadlineMs?: number; entityBudget?: number },
+): DwgConvertResult {
   const blocks = new Map<string, Any>();
   for (const b of entriesOf(db?.tables?.BLOCK_RECORD ?? db?.blocks)) {
     const n = String(b?.name ?? "");
@@ -427,6 +459,8 @@ export function dwgDatabaseToDxfDocument(db: Any): DwgConvertResult {
     toDeg: deg ? 1 : 1 / DEG,
     toRad: deg ? DEG : 1,
     fullTurn: deg ? 360 : TWO_PI,
+    budget: opts?.entityBudget ?? ENTITY_BUDGET,
+    deadline: opts?.deadlineMs ?? Number.POSITIVE_INFINITY,
   };
 
   const entities = convertList(model, cx, 0, null);
@@ -463,6 +497,7 @@ export function dwgDatabaseToDxfDocument(db: Any): DwgConvertResult {
   }
 
   const insUnits = db?.header?.INSUNITS ?? db?.header?.$INSUNITS ?? db?.header?.insUnits;
+  const lts = linetypesOf(db);
   const doc: DxfDocument = {
     layers,
     entities,
@@ -470,7 +505,7 @@ export function dwgDatabaseToDxfDocument(db: Any): DwgConvertResult {
     units: insUnitsToUnits(toNum(insUnits)),
     sourceFormat: "dwg",
     layouts: layouts.length ? layouts : undefined,
-    linetypes: Object.keys(linetypesOf(db)).length ? linetypesOf(db) : undefined,
+    linetypes: Object.keys(lts).length ? lts : undefined,
     ltscale: toNum(db?.header?.LTSCALE ?? db?.header?.$LTSCALE, 0) > 0 ? toNum(db?.header?.LTSCALE ?? db?.header?.$LTSCALE) : undefined,
     skipped: Object.keys(skipped).length ? skipped : undefined,
   };

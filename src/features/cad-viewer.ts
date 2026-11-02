@@ -300,6 +300,15 @@ function ensureShell(): void {
   };
   shell.appendChild(picker);
 
+  // Drag & drop: the empty state promises "Drop DWG or DXF file here", so the
+  // shell accepts .dwg/.dxf drops anywhere over the editor (multi-file too).
+  shell.addEventListener("dragover", (e) => e.preventDefault());
+  shell.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /\.(dwg|dxf)$/i.test(f.name));
+    for (const f of files) openFile(f);
+  });
+
   strip.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     const x = t.closest<HTMLElement>("[data-x]");
@@ -2086,6 +2095,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   /* ── Load Document ── */
   async function load(file: File): Promise<void> {
     status(`Reading ${file.name}…`);
+    // Large DWGs can legitimately take a while: show the elapsed seconds so
+    // the editor is visibly alive instead of silently stuck on one line.
+    const t0 = Date.now();
+    const tick = window.setInterval(
+      () => status(`Reading ${file.name}… ${Math.round((Date.now() - t0) / 1000)}s`),
+      1000,
+    );
     try {
       const r = await readCadFile(file);
       doc = r.doc;
@@ -2126,6 +2142,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     } catch (err) {
       status(`Could not open ${file.name}: ${(err as Error).message}`);
       setTimeout(() => status(""), 7000);
+    } finally {
+      clearInterval(tick);
     }
   }
 
