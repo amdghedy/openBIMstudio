@@ -120,10 +120,7 @@ function loadPdfJs(): Promise<any> {
     .then((pdfjs: any) => {
       // Resolve the worker from the exact installed package version. Vite emits
       // it as a same-origin asset, avoiding CDN outages and version mismatches.
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/build/pdf.worker.min.mjs",
-        import.meta.url,
-      ).toString();
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
       return pdfjs;
     })
     .catch((error: unknown) => {
