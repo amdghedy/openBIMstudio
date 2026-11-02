@@ -911,8 +911,17 @@ async function runTask(t: ImportTask) {
     if (cancelled) { t.status = "cancelled"; t.phase = "cancelled by user"; }
     else {
       console.error("[ifc-import]", err);
+      // A wasm/embind BindingError about argument counts means the browser is
+      // running the bundled web-ifc glue against a STALE cached WASM (old
+      // service-worker / HTTP cache). Give the user the actual recovery action.
+      let userMsg = msg;
+      if (/BindingError|called with \d+ arguments/i.test(msg)) {
+        userMsg +=
+          " — your browser served a cached mix of app and WASM versions. " +
+          "Hard-reload once (Ctrl+Shift+R / empty cache) and retry.";
+      }
       t.status = "failed"; t.phase = "failed";
-      t.error = msg;
+      t.error = userMsg;
     }
     refreshTaskRow(t);
     disposeImporter();

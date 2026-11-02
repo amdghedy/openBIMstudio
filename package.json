@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.74.0",
   "type": "module",
-  "description": "Open BIM Studio \u2014 professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
+  "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
     "predev": "node scripts/copy-libredwg-wasm.mjs",
     "dev": "vite",
@@ -123,6 +123,7 @@
     "verify:v73": "node scripts/verify-v73.mjs",
     "pretest:dep-safety": "node scripts/sync-web-ifc-assets.mjs",
     "test:dep-safety": "node tests/dependency-safety.test.cjs",
+    "test:webifc-abi": "node tests/webifc-abi.test.cjs",
     "test:server-hardening": "node tests/server-hardening.test.cjs",
     "test:plugins": "node tests/plugins-api.test.cjs",
     "test:feature-registry": "node tests/feature-registry.test.cjs",
@@ -175,7 +176,7 @@
     "three": "^0.182.0",
     "three-csg-ts": "^3.2.0",
     "three-mesh-bvh": "^0.9.16",
-    "web-ifc": "0.0.78",
+    "web-ifc": "0.0.77",
     "y-websocket": "^2.0.1",
     "yjs": "^13.6.14",
     "zod": "^3.25.76"

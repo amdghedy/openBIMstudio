@@ -74,7 +74,10 @@ export function setupPwa(): void {
 
   if (!("serviceWorker" in navigator) || !(import.meta as any).env?.PROD) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").then((reg) => {
+    // updateViaCache:"none" — /sw.js must never be resolved from the browser HTTP
+    // cache, otherwise a new deploy can ship while the old worker keeps serving
+    // stale (mismatched) assets like the web-ifc WASM.
+    navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((reg) => {
       reg.addEventListener("updatefound", () => {
         const w = reg.installing;
         w?.addEventListener("statechange", () => {
