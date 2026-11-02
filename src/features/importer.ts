@@ -179,6 +179,45 @@ function getImporter(): any {
     console.warn("[importer] could not patch web-ifc Init", e);
   }
 
+  // ABI safety for web-ifc StreamMeshes.
+  // Upstream 0.0.78 JS always calls wasmModule.StreamMeshes with 4 args
+  // (optional applyLinearScalingFactor defaults to true), but the shipped
+  // WASM still expects 3 → embind BindingError. Pin package to 0.0.77 and
+  // additionally clamp arg counts on the wasmModule after Init so a stale
+  // 0.0.78 JS chunk can never trigger the crash.
+  try {
+    const proto = (WEBIFC as any).IfcAPI?.prototype;
+    if (proto && !(proto as any).__obsStreamMeshesPatched) {
+      const prevInit = proto.Init;
+      if (typeof prevInit === "function") {
+        proto.Init = function (this: any, ...args: any[]) {
+          const ret = prevInit.apply(this, args);
+          try {
+            const wm = this.wasmModule;
+            if (wm && !(wm as any).__obsStreamMeshesPatched) {
+              const clamp: Record<string, number> = {
+                StreamMeshes: 3,
+                StreamAllMeshes: 2,
+                StreamAllMeshesWithTypes: 3,
+              };
+              for (const [n, arity] of Object.entries(clamp)) {
+                if (typeof wm[n] !== "function") continue;
+                const o = wm[n].bind(wm);
+                wm[n] = (...a: any[]) => o(...a.slice(0, arity));
+              }
+              (wm as any).__obsStreamMeshesPatched = true;
+              console.log("[importer] web-ifc wasmModule Stream* arity clamped");
+            }
+          } catch { /* */ }
+          return ret;
+        };
+      }
+      (proto as any).__obsStreamMeshesPatched = true;
+    }
+  } catch (e) {
+    console.warn("[importer] could not patch StreamMeshes ABI", e);
+  }
+
   // Also make the page appear non-cross-origin-isolated during conversion
   // so web-ifc never chooses the MT path
   try {

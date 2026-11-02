@@ -4,11 +4,7 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb, mod) => function __require() {
-  try {
-    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-  } catch (e) {
-    throw mod = 0, e;
-  }
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -220,9 +216,6 @@ var require_web_ifc_mt = __commonJS({
           err(what);
           ABORT = true;
           what += ". Build with -sASSERTIONS for more info.";
-          if (runtimeInitialized) {
-            ___trap();
-          }
           var e = new WebAssembly.RuntimeError(what);
           readyPromiseReject?.(e);
           throw e;
@@ -282,7 +275,7 @@ var require_web_ifc_mt = __commonJS({
           function receiveInstance(instance2, module3) {
             wasmExports = instance2.exports;
             wasmExports = applySignatureConversions(wasmExports);
-            registerTLSInit(wasmExports["pa"]);
+            registerTLSInit(wasmExports["qa"]);
             assignWasmExports(wasmExports);
             wasmModule = module3;
             return wasmExports;
@@ -539,6 +532,64 @@ var require_web_ifc_mt = __commonJS({
         var noExitRuntime = true;
         var registerTLSInit = (tlsInitFunc) => PThread.tlsInitFunctions.push(tlsInitFunc);
         var wasmMemory;
+        class ExceptionInfo {
+          constructor(excPtr) {
+            this.excPtr = excPtr;
+            this.ptr = excPtr - 24;
+          }
+          set_type(type) {
+            (growMemViews(), HEAPU32)[this.ptr + 4 >>> 2 >>> 0] = type;
+          }
+          get_type() {
+            return (growMemViews(), HEAPU32)[this.ptr + 4 >>> 2 >>> 0];
+          }
+          set_destructor(destructor) {
+            (growMemViews(), HEAPU32)[this.ptr + 8 >>> 2 >>> 0] = destructor;
+          }
+          get_destructor() {
+            return (growMemViews(), HEAPU32)[this.ptr + 8 >>> 2 >>> 0];
+          }
+          set_caught(caught) {
+            caught = caught ? 1 : 0;
+            (growMemViews(), HEAP8)[this.ptr + 12 >>> 0] = caught;
+          }
+          get_caught() {
+            return (growMemViews(), HEAP8)[this.ptr + 12 >>> 0] != 0;
+          }
+          set_rethrown(rethrown) {
+            rethrown = rethrown ? 1 : 0;
+            (growMemViews(), HEAP8)[this.ptr + 13 >>> 0] = rethrown;
+          }
+          get_rethrown() {
+            return (growMemViews(), HEAP8)[this.ptr + 13 >>> 0] != 0;
+          }
+          init(type, destructor) {
+            this.set_adjusted_ptr(0);
+            this.set_type(type);
+            this.set_destructor(destructor);
+          }
+          set_adjusted_ptr(adjustedPtr) {
+            (growMemViews(), HEAPU32)[this.ptr + 16 >>> 2 >>> 0] = adjustedPtr;
+          }
+          get_adjusted_ptr() {
+            return (growMemViews(), HEAPU32)[this.ptr + 16 >>> 2 >>> 0];
+          }
+        }
+        var exceptionLast = 0;
+        var uncaughtExceptionCount = 0;
+        var INT53_MAX = 9007199254740992;
+        var INT53_MIN = -9007199254740992;
+        var bigintToI53Checked = (num) => num < INT53_MIN || num > INT53_MAX ? NaN : Number(num);
+        function ___cxa_throw(ptr, type, destructor) {
+          ptr >>>= 0;
+          type >>>= 0;
+          destructor >>>= 0;
+          var info = new ExceptionInfo(ptr);
+          info.init(type, destructor);
+          exceptionLast = ptr;
+          uncaughtExceptionCount++;
+          throw exceptionLast;
+        }
         var __abort_js = () => abort("");
         var tupleRegistrations = {};
         var runDestructors = (destructors) => {
@@ -598,9 +649,6 @@ var require_web_ifc_mt = __commonJS({
             onComplete(typeConverters);
           }
         };
-        var INT53_MAX = 9007199254740992;
-        var INT53_MIN = -9007199254740992;
-        var bigintToI53Checked = (num) => num < INT53_MIN || num > INT53_MAX ? NaN : Number(num);
         var __embind_finalize_value_array = function(rawTupleType) {
           rawTupleType >>>= 0;
           var reg = tupleRegistrations[rawTupleType];
@@ -2118,11 +2166,6 @@ var require_web_ifc_mt = __commonJS({
           key = Emval.toValue(key);
           value = Emval.toValue(value);
           handle[key] = value;
-        }
-        function __emval_typeof(handle) {
-          handle >>>= 0;
-          handle = Emval.toValue(handle);
-          return Emval.toHandle(typeof handle);
         }
         function __gmtime_js(time, tmPtr) {
           time = bigintToI53Checked(time);
@@ -4245,41 +4288,40 @@ var require_web_ifc_mt = __commonJS({
           }
         }
         var proxiedFunctionTable = [_proc_exit, exitOnMainThread, __setitimer_js, _environ_get, _environ_sizes_get, _fd_close, _fd_fdstat_get, _fd_read, _fd_seek, _fd_write];
-        var ___getTypeName, __embind_initialize_bindings, _malloc, _free, _pthread_self, __emscripten_tls_init, __emscripten_thread_init, __emscripten_thread_crashed, __emscripten_run_js_on_main_thread, __emscripten_thread_free_data, __emscripten_thread_exit, __emscripten_timeout, __emscripten_check_mailbox, ___trap, _emscripten_stack_set_limits, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, __indirect_function_table, wasmTable;
+        var ___getTypeName, __embind_initialize_bindings, _free, _malloc, _pthread_self, __emscripten_tls_init, __emscripten_thread_init, __emscripten_thread_crashed, __emscripten_run_js_on_main_thread, __emscripten_thread_free_data, __emscripten_thread_exit, __emscripten_timeout, __emscripten_check_mailbox, _emscripten_stack_set_limits, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, __indirect_function_table, wasmTable;
         function assignWasmExports(wasmExports2) {
           ___getTypeName = wasmExports2["ka"];
           __embind_initialize_bindings = wasmExports2["la"];
-          _malloc = wasmExports2["ma"];
           _free = wasmExports2["na"];
-          _pthread_self = wasmExports2["oa"];
-          __emscripten_tls_init = wasmExports2["pa"];
-          __emscripten_thread_init = wasmExports2["qa"];
-          __emscripten_thread_crashed = wasmExports2["ra"];
+          _malloc = wasmExports2["oa"];
+          _pthread_self = wasmExports2["pa"];
+          __emscripten_tls_init = wasmExports2["qa"];
+          __emscripten_thread_init = wasmExports2["ra"];
+          __emscripten_thread_crashed = wasmExports2["sa"];
           __emscripten_run_js_on_main_thread = wasmExports2["ta"];
           __emscripten_thread_free_data = wasmExports2["ua"];
           __emscripten_thread_exit = wasmExports2["va"];
           __emscripten_timeout = wasmExports2["wa"];
           __emscripten_check_mailbox = wasmExports2["xa"];
-          ___trap = wasmExports2["ya"];
-          _emscripten_stack_set_limits = wasmExports2["za"];
-          __emscripten_stack_restore = wasmExports2["Aa"];
-          __emscripten_stack_alloc = wasmExports2["Ba"];
-          _emscripten_stack_get_current = wasmExports2["Ca"];
-          __indirect_function_table = wasmTable = wasmExports2["sa"];
+          _emscripten_stack_set_limits = wasmExports2["ya"];
+          __emscripten_stack_restore = wasmExports2["za"];
+          __emscripten_stack_alloc = wasmExports2["Aa"];
+          _emscripten_stack_get_current = wasmExports2["Ba"];
+          __indirect_function_table = wasmTable = wasmExports2["ma"];
         }
         var wasmImports;
         function assignWasmImports() {
-          wasmImports = { O: __abort_js, H: __embind_finalize_value_array, l: __embind_finalize_value_object, G: __embind_register_bigint, ga: __embind_register_bool, n: __embind_register_class, m: __embind_register_class_constructor, c: __embind_register_class_function, ea: __embind_register_emval, F: __embind_register_float, g: __embind_register_function, w: __embind_register_integer, o: __embind_register_memory_view, s: __embind_register_optional, fa: __embind_register_std_string, B: __embind_register_std_wstring, ia: __embind_register_value_array, p: __embind_register_value_array_element, q: __embind_register_value_object, i: __embind_register_value_object_field, ha: __embind_register_void, _: __emscripten_init_main_thread_js, Q: __emscripten_notify_mailbox_postmessage, V: __emscripten_receive_on_main_thread_js, J: __emscripten_runtime_keepalive_clear, D: __emscripten_thread_cleanup, Z: __emscripten_thread_mailbox_await, da: __emscripten_thread_set_strongref, f: __emval_create_invoker, b: __emval_decref, t: __emval_get_global, h: __emval_get_property, k: __emval_incref, v: __emval_instanceof, e: __emval_invoke, r: __emval_is_number, z: __emval_is_string, C: __emval_new_array, j: __emval_new_cstring, x: __emval_new_object, d: __emval_run_destructors, u: __emval_set_property, A: __emval_typeof, W: __gmtime_js, X: __localtime_js, K: __setitimer_js, Y: __tzset_js, U: _clock_time_get, E: _emscripten_check_blocking_allowed, ca: _emscripten_exit_with_live_runtime, y: _emscripten_get_now, P: _emscripten_resize_heap, aa: _environ_get, ba: _environ_sizes_get, L: _exit, T: _fd_close, $: _fd_fdstat_get, N: _fd_read, R: _fd_seek, S: _fd_write, a: wasmMemory, I: _proc_exit, M: _random_get };
+          wasmImports = { i: ___cxa_throw, P: __abort_js, ha: __embind_finalize_value_array, q: __embind_finalize_value_object, E: __embind_register_bigint, fa: __embind_register_bool, m: __embind_register_class, l: __embind_register_class_constructor, c: __embind_register_class_function, da: __embind_register_emval, D: __embind_register_float, d: __embind_register_function, u: __embind_register_integer, o: __embind_register_memory_view, s: __embind_register_optional, ea: __embind_register_std_string, x: __embind_register_std_wstring, ia: __embind_register_value_array, p: __embind_register_value_array_element, r: __embind_register_value_object, h: __embind_register_value_object_field, ga: __embind_register_void, Z: __emscripten_init_main_thread_js, R: __emscripten_notify_mailbox_postmessage, U: __emscripten_receive_on_main_thread_js, I: __emscripten_runtime_keepalive_clear, B: __emscripten_thread_cleanup, Y: __emscripten_thread_mailbox_await, ca: __emscripten_thread_set_strongref, g: __emval_create_invoker, b: __emval_decref, A: __emval_get_global, n: __emval_get_property, j: __emval_incref, z: __emval_instanceof, f: __emval_invoke, y: __emval_is_number, G: __emval_is_string, F: __emval_new_array, k: __emval_new_cstring, v: __emval_new_object, e: __emval_run_destructors, t: __emval_set_property, V: __gmtime_js, W: __localtime_js, J: __setitimer_js, X: __tzset_js, T: _clock_time_get, C: _emscripten_check_blocking_allowed, ba: _emscripten_exit_with_live_runtime, w: _emscripten_get_now, Q: _emscripten_resize_heap, $: _environ_get, aa: _environ_sizes_get, K: _exit, M: _fd_close, _: _fd_fdstat_get, O: _fd_read, N: _fd_seek, S: _fd_write, a: wasmMemory, H: _proc_exit, L: _random_get };
         }
         function applySignatureConversions(wasmExports2) {
           wasmExports2 = Object.assign({}, wasmExports2);
           var makeWrapper_pp = (f) => (a0) => f(a0) >>> 0;
           var makeWrapper_p = (f) => () => f() >>> 0;
           wasmExports2["ka"] = makeWrapper_pp(wasmExports2["ka"]);
-          wasmExports2["ma"] = makeWrapper_pp(wasmExports2["ma"]);
-          wasmExports2["oa"] = makeWrapper_p(wasmExports2["oa"]);
-          wasmExports2["Ba"] = makeWrapper_pp(wasmExports2["Ba"]);
-          wasmExports2["Ca"] = makeWrapper_p(wasmExports2["Ca"]);
+          wasmExports2["oa"] = makeWrapper_pp(wasmExports2["oa"]);
+          wasmExports2["pa"] = makeWrapper_p(wasmExports2["pa"]);
+          wasmExports2["Aa"] = makeWrapper_pp(wasmExports2["Aa"]);
+          wasmExports2["Ba"] = makeWrapper_p(wasmExports2["Ba"]);
           return wasmExports2;
         }
         function run() {
@@ -4487,9 +4529,6 @@ var require_web_ifc_node = __commonJS({
           err(what);
           ABORT = true;
           what += ". Build with -sASSERTIONS for more info.";
-          if (runtimeInitialized) {
-            ___trap();
-          }
           var e = new WebAssembly.RuntimeError(what);
           readyPromiseReject?.(e);
           throw e;
@@ -4585,6 +4624,64 @@ var require_web_ifc_node = __commonJS({
         var onPreRuns = [];
         var addOnPreRun = (cb) => onPreRuns.push(cb);
         var noExitRuntime = true;
+        class ExceptionInfo {
+          constructor(excPtr) {
+            this.excPtr = excPtr;
+            this.ptr = excPtr - 24;
+          }
+          set_type(type) {
+            HEAPU32[this.ptr + 4 >>> 2 >>> 0] = type;
+          }
+          get_type() {
+            return HEAPU32[this.ptr + 4 >>> 2 >>> 0];
+          }
+          set_destructor(destructor) {
+            HEAPU32[this.ptr + 8 >>> 2 >>> 0] = destructor;
+          }
+          get_destructor() {
+            return HEAPU32[this.ptr + 8 >>> 2 >>> 0];
+          }
+          set_caught(caught) {
+            caught = caught ? 1 : 0;
+            HEAP8[this.ptr + 12 >>> 0] = caught;
+          }
+          get_caught() {
+            return HEAP8[this.ptr + 12 >>> 0] != 0;
+          }
+          set_rethrown(rethrown) {
+            rethrown = rethrown ? 1 : 0;
+            HEAP8[this.ptr + 13 >>> 0] = rethrown;
+          }
+          get_rethrown() {
+            return HEAP8[this.ptr + 13 >>> 0] != 0;
+          }
+          init(type, destructor) {
+            this.set_adjusted_ptr(0);
+            this.set_type(type);
+            this.set_destructor(destructor);
+          }
+          set_adjusted_ptr(adjustedPtr) {
+            HEAPU32[this.ptr + 16 >>> 2 >>> 0] = adjustedPtr;
+          }
+          get_adjusted_ptr() {
+            return HEAPU32[this.ptr + 16 >>> 2 >>> 0];
+          }
+        }
+        var exceptionLast = 0;
+        var uncaughtExceptionCount = 0;
+        var INT53_MAX = 9007199254740992;
+        var INT53_MIN = -9007199254740992;
+        var bigintToI53Checked = (num) => num < INT53_MIN || num > INT53_MAX ? NaN : Number(num);
+        function ___cxa_throw(ptr, type, destructor) {
+          ptr >>>= 0;
+          type >>>= 0;
+          destructor >>>= 0;
+          var info = new ExceptionInfo(ptr);
+          info.init(type, destructor);
+          exceptionLast = ptr;
+          uncaughtExceptionCount++;
+          throw exceptionLast;
+        }
         var __abort_js = () => abort("");
         var tupleRegistrations = {};
         var runDestructors = (destructors) => {
@@ -4644,9 +4741,6 @@ var require_web_ifc_node = __commonJS({
             onComplete(typeConverters);
           }
         };
-        var INT53_MAX = 9007199254740992;
-        var INT53_MIN = -9007199254740992;
-        var bigintToI53Checked = (num) => num < INT53_MIN || num > INT53_MAX ? NaN : Number(num);
         var __embind_finalize_value_array = function(rawTupleType) {
           rawTupleType >>>= 0;
           var reg = tupleRegistrations[rawTupleType];
@@ -6075,11 +6169,6 @@ var require_web_ifc_node = __commonJS({
           key = Emval.toValue(key);
           value = Emval.toValue(value);
           handle[key] = value;
-        }
-        function __emval_typeof(handle) {
-          handle >>>= 0;
-          handle = Emval.toValue(handle);
-          return Emval.toHandle(typeof handle);
         }
         function __gmtime_js(time, tmPtr) {
           time = bigintToI53Checked(time);
@@ -8256,23 +8345,24 @@ var require_web_ifc_node = __commonJS({
             }
           }
         }
-        var ___getTypeName, _malloc, _free, __emscripten_timeout, ___trap, memory, __indirect_function_table, wasmMemory, wasmTable;
+        var ___getTypeName, _free, _malloc, __emscripten_timeout, memory, __indirect_function_table, wasmMemory, wasmTable;
         function assignWasmExports(wasmExports2) {
           ___getTypeName = wasmExports2["aa"];
-          _malloc = wasmExports2["ba"];
           _free = wasmExports2["ca"];
+          _malloc = wasmExports2["da"];
           __emscripten_timeout = wasmExports2["ea"];
-          ___trap = wasmExports2["fa"];
           memory = wasmMemory = wasmExports2["_"];
-          __indirect_function_table = wasmTable = wasmExports2["da"];
+          __indirect_function_table = wasmTable = wasmExports2["ba"];
         }
-        var wasmImports = { H: __abort_js, D: __embind_finalize_value_array, k: __embind_finalize_value_object, C: __embind_register_bigint, X: __embind_register_bool, m: __embind_register_class, l: __embind_register_class_constructor, b: __embind_register_class_function, V: __embind_register_emval, B: __embind_register_float, f: __embind_register_function, v: __embind_register_integer, n: __embind_register_memory_view, r: __embind_register_optional, W: __embind_register_std_string, z: __embind_register_std_wstring, Z: __embind_register_value_array, o: __embind_register_value_array_element, p: __embind_register_value_object, h: __embind_register_value_object_field, Y: __embind_register_void, F: __emscripten_runtime_keepalive_clear, e: __emval_create_invoker, a: __emval_decref, s: __emval_get_global, g: __emval_get_property, j: __emval_incref, u: __emval_instanceof, d: __emval_invoke, q: __emval_is_number, x: __emval_is_string, A: __emval_new_array, i: __emval_new_cstring, w: __emval_new_object, c: __emval_run_destructors, t: __emval_set_property, y: __emval_typeof, P: __gmtime_js, Q: __localtime_js, G: __setitimer_js, R: __tzset_js, K: _clock_time_get, L: _emscripten_resize_heap, T: _environ_get, U: _environ_sizes_get, O: _fd_close, S: _fd_fdstat_get, J: _fd_read, M: _fd_seek, N: _fd_write, E: _proc_exit, I: _random_get };
+        var wasmImports = { h: ___cxa_throw, K: __abort_js, Y: __embind_finalize_value_array, p: __embind_finalize_value_object, A: __embind_register_bigint, W: __embind_register_bool, l: __embind_register_class, k: __embind_register_class_constructor, b: __embind_register_class_function, U: __embind_register_emval, z: __embind_register_float, c: __embind_register_function, t: __embind_register_integer, n: __embind_register_memory_view, r: __embind_register_optional, V: __embind_register_std_string, v: __embind_register_std_wstring, Z: __embind_register_value_array, o: __embind_register_value_array_element, q: __embind_register_value_object, g: __embind_register_value_object_field, X: __embind_register_void, E: __emscripten_runtime_keepalive_clear, f: __emval_create_invoker, a: __emval_decref, y: __emval_get_global, m: __emval_get_property, i: __emval_incref, x: __emval_instanceof, e: __emval_invoke, w: __emval_is_number, C: __emval_is_string, B: __emval_new_array, j: __emval_new_cstring, u: __emval_new_object, d: __emval_run_destructors, s: __emval_set_property, O: __gmtime_js, P: __localtime_js, F: __setitimer_js, Q: __tzset_js, L: _clock_time_get, M: _emscripten_resize_heap, S: _environ_get, T: _environ_sizes_get, H: _fd_close, R: _fd_fdstat_get, J: _fd_read, I: _fd_seek, N: _fd_write, D: _proc_exit, G: _random_get };
         function applySignatureConversions(wasmExports2) {
           wasmExports2 = Object.assign({}, wasmExports2);
           var makeWrapper_pp = (f) => (a0) => f(a0) >>> 0;
+          var makeWrapper_p = (f) => () => f() >>> 0;
           wasmExports2["aa"] = makeWrapper_pp(wasmExports2["aa"]);
-          wasmExports2["ba"] = makeWrapper_pp(wasmExports2["ba"]);
+          wasmExports2["da"] = makeWrapper_pp(wasmExports2["da"]);
           wasmExports2["_emscripten_stack_alloc"] = makeWrapper_pp(wasmExports2["_emscripten_stack_alloc"]);
+          wasmExports2["emscripten_stack_get_current"] = makeWrapper_p(wasmExports2["emscripten_stack_get_current"]);
           return wasmExports2;
         }
         function run() {
@@ -8328,7 +8418,6 @@ var require_web_ifc_node = __commonJS({
 // dist/web-ifc-api.ts
 var web_ifc_api_exports = {};
 __export(web_ifc_api_exports, {
-  BINARY: () => BINARY,
   Constructors: () => Constructors,
   EMPTY: () => EMPTY,
   ENUM: () => ENUM,
@@ -10935,7 +11024,7 @@ FromRawLineData[1] = {
   2529465313: (v) => new IFC2X3.IfcParameterizedProfileDef(v[0], (v[1] ?? void 0) === void 0 || v[1] === "" ? null : new IFC2X3.IfcLabel((v[1] ?? void 0) === void 0 || v[1] === "" ? null : v[1].value), new Handle((v[2] ?? void 0) === void 0 || v[2] === "" ? null : v[2].value, 1, v[2])),
   2519244187: (v) => new IFC2X3.IfcPath(v[0]?.map((p) => (p?.value ?? void 0) !== void 0 && p?.value !== "" ? new Handle(p.value, 1, p) : null) || []),
   3021840470: (v) => new IFC2X3.IfcPhysicalComplexQuantity(new IFC2X3.IfcLabel((v[0] ?? void 0) === void 0 || v[0] === "" ? null : v[0].value), (v[1] ?? void 0) === void 0 || v[1] === "" ? null : new IFC2X3.IfcText((v[1] ?? void 0) === void 0 || v[1] === "" ? null : v[1].value), v[2]?.map((p) => (p?.value ?? void 0) !== void 0 && p?.value !== "" ? new Handle(p.value, 1, p) : null) || [], new IFC2X3.IfcLabel((v[3] ?? void 0) === void 0 || v[3] === "" ? null : v[3].value), (v[4] ?? void 0) === void 0 || v[4] === "" ? null : new IFC2X3.IfcLabel((v[4] ?? void 0) === void 0 || v[4] === "" ? null : v[4].value), (v[5] ?? void 0) === void 0 || v[5] === "" ? null : new IFC2X3.IfcLabel((v[5] ?? void 0) === void 0 || v[5] === "" ? null : v[5].value)),
-  597895409: (v) => new IFC2X3.IfcPixelTexture((v[0] ?? void 0) === void 0 || v[0] === "" ? null : v[0].value, (v[1] ?? void 0) === void 0 || v[1] === "" ? null : v[1].value, v[2], (v[3] ?? void 0) === void 0 || v[3] === "" ? null : new Handle((v[3] ?? void 0) === void 0 || v[3] === "" ? null : v[3].value, 1, v[3]), new IFC2X3.IfcInteger((v[4] ?? void 0) === void 0 || v[4] === "" ? null : v[4].value), new IFC2X3.IfcInteger((v[5] ?? void 0) === void 0 || v[5] === "" ? null : v[5].value), new IFC2X3.IfcInteger((v[6] ?? void 0) === void 0 || v[6] === "" ? null : v[6].value), v[7]?.map((p) => (p?.value ?? void 0) !== void 0 && p?.value !== "" ? p.value : null) || []),
+  597895409: (v) => new IFC2X3.IfcPixelTexture((v[0] ?? void 0) === void 0 || v[0] === "" ? null : v[0].value, (v[1] ?? void 0) === void 0 || v[1] === "" ? null : v[1].value, v[2], (v[3] ?? void 0) === void 0 || v[3] === "" ? null : new Handle((v[3] ?? void 0) === void 0 || v[3] === "" ? null : v[3].value, 1, v[3]), new IFC2X3.IfcInteger((v[4] ?? void 0) === void 0 || v[4] === "" ? null : v[4].value), new IFC2X3.IfcInteger((v[5] ?? void 0) === void 0 || v[5] === "" ? null : v[5].value), new IFC2X3.IfcInteger((v[6] ?? void 0) === void 0 || v[6] === "" ? null : v[6].value), v[7]?.map((p) => (p?.value ?? void 0) !== void 0 && p?.value !== "" ? Number(p.value) : null) || []),
   2004835150: (v) => new IFC2X3.IfcPlacement(new Handle((v[0] ?? void 0) === void 0 || v[0] === "" ? null : v[0].value, 1, v[0])),
   1663979128: (v) => new IFC2X3.IfcPlanarExtent(new IFC2X3.IfcLengthMeasure((v[0] ?? void 0) === void 0 || v[0] === "" ? null : v[0].value), new IFC2X3.IfcLengthMeasure((v[1] ?? void 0) === void 0 || v[1] === "" ? null : v[1].value)),
   2067069095: (_) => new IFC2X3.IfcPoint(),
@@ -12849,7 +12938,7 @@ ToRawLineData[1] = {
   2529465313: (i) => [i.ProfileType, i.ProfileName, i.Position],
   2519244187: (i) => [i.EdgeList],
   3021840470: (i) => [i.Name, i.Description, i.HasQuantities, i.Discrimination, i.Quality, i.Usage],
-  597895409: (i) => [i.RepeatS, i.RepeatT, i.TextureType, i.TextureTransform, i.Width, i.Height, i.ColourComponents, i.Pixel == null ? null : i.Pixel.map((p) => ({ type: 11, value: typeof p === "string" ? p : p.value }))],
+  597895409: (i) => [i.RepeatS, i.RepeatT, i.TextureType, i.TextureTransform, i.Width, i.Height, i.ColourComponents, i.Pixel],
   2004835150: (i) => [i.Location],
   1663979128: (i) => [i.SizeInX, i.SizeInY],
   2067069095: (_) => [],
@@ -30699,10 +30788,10 @@ var IFC4;
     }
   }
   IFC42.IfcAreaMeasure = IfcAreaMeasure;
-  class IfcBinary {
-    constructor(value) {
-      this.value = value;
-      this.type = 11;
+  class IfcBinary extends NumberHandle {
+    constructor() {
+      super(...arguments);
+      this.type = 4;
       this.name = "IFCBINARY";
     }
   }
@@ -47889,7 +47978,7 @@ var IFC4;
   }
   IFC42.IfcController = IfcController;
 })(IFC4 || (IFC4 = {}));
-SchemaNames[3] = ["IFC4X3", "IFC4X1", "IFC4X2", "IFC4X3_RC3", "IFC4X3_RC4", "IFC4X3_RC1", "IFC4X3_RC2", "IFC4X3_ADD2", "IFC4X3_ADD1", "IFC4X2SCGL"];
+SchemaNames[3] = ["IFC4X3", "IFC4X1", "IFC4X2", "IFC4X3_RC3", "IFC4X3_RC4", "IFC4X3_RC1", "IFC4X3_RC2", "IFC4X3_ADD2", "IFC4X3_ADD1"];
 FromRawLineData[3] = {
   3630933823: (v) => new IFC4X3.IfcActorRole(v[0], (v[1] ?? void 0) === void 0 || v[1] === "" ? null : new IFC4X3.IfcLabel((v[1] ?? void 0) === void 0 || v[1] === "" ? null : v[1].value), (v[2] ?? void 0) === void 0 || v[2] === "" ? null : new IFC4X3.IfcText((v[2] ?? void 0) === void 0 || v[2] === "" ? null : v[2].value)),
   618182010: (v) => new IFC4X3.IfcAddress(v[0], (v[1] ?? void 0) === void 0 || v[1] === "" ? null : new IFC4X3.IfcText((v[1] ?? void 0) === void 0 || v[1] === "" ? null : v[1].value), (v[2] ?? void 0) === void 0 || v[2] === "" ? null : new IFC4X3.IfcLabel((v[2] ?? void 0) === void 0 || v[2] === "" ? null : v[2].value)),
@@ -51653,10 +51742,10 @@ var IFC4X3;
     }
   }
   IFC4X32.IfcAreaMeasure = IfcAreaMeasure;
-  class IfcBinary {
-    constructor(value) {
-      this.value = value;
-      this.type = 11;
+  class IfcBinary extends NumberHandle {
+    constructor() {
+      super(...arguments);
+      this.type = 4;
       this.name = "IFCBINARY";
     }
   }
@@ -72148,7 +72237,6 @@ var Log = class {
 };
 
 // dist/web-ifc-api.ts
-var import_meta = {};
 var WebIFCWasm;
 var currentScriptPath;
 if (typeof document !== "undefined") {
@@ -72170,11 +72258,9 @@ var SET_BEGIN = 7;
 var SET_END = 8;
 var LINE_END = 9;
 var INTEGER = 10;
-var BINARY = 11;
 function ms() {
   return (/* @__PURE__ */ new Date()).getTime();
 }
-var MT_INIT_TIMEOUT_MS = 1e4;
 var IfcAPI2 = class {
   constructor() {
     /** @ignore */
@@ -72198,12 +72284,10 @@ var IfcAPI2 = class {
    * you override the path from which the wasm module is loaded.
    */
   async Init(customLocateFileHandler, forceSingleThread = false) {
-    let shouldRetrySingleThread = false;
     if (!WebIFCWasm) {
       if (typeof self !== "undefined" && self.crossOriginIsolated && !forceSingleThread) {
         try {
           WebIFCWasm = require_web_ifc_mt();
-          shouldRetrySingleThread = true;
         } catch (ex) {
           WebIFCWasm = require_web_ifc_node();
         }
@@ -72216,52 +72300,10 @@ var IfcAPI2 = class {
         }
         return (currentScriptPath !== void 0 ? currentScriptPath : prefix) + this.wasmPath + path;
       };
-      try {
-        const modulePromise = WebIFCWasm({
-          noInitialRun: true,
-          locateFile: customLocateFileHandler || locateFileHandler,
-          // The generated pthread bootstrap falls back to
-          // `document.currentScript?.src` to find its own script URL when
-          // spawning its worker. That is always `undefined` when this
-          // module is loaded as an ES module (which is how `web-ifc` is
-          // distributed and how virtually every modern bundler loads it),
-          // causing `new Worker(undefined)` and a silent hang. Passing
-          // `mainScriptUrlOrBlob` explicitly (which the generated bootstrap
-          // already prefers over `document.currentScript` when present)
-          // avoids that entirely. `import.meta.url` is correctly populated
-          // for ES modules, unlike `document.currentScript`.
-          // @ts-ignore
-          ...shouldRetrySingleThread ? { mainScriptUrlOrBlob: import_meta.url } : {}
-        });
-        if (shouldRetrySingleThread) {
-          this.wasmModule = await Promise.race([
-            modulePromise,
-            new Promise(
-              (_, reject) => setTimeout(
-                () => reject(
-                  new Error(
-                    `MT WASM init timed out after ${MT_INIT_TIMEOUT_MS}ms`
-                  )
-                ),
-                MT_INIT_TIMEOUT_MS
-              )
-            )
-          ]);
-        } else {
-          this.wasmModule = await modulePromise;
-        }
-      } catch (error) {
-        if (!shouldRetrySingleThread) throw error;
-        Log.warn(
-          "MT WASM init failed, retrying with single-thread module.",
-          error
-        );
-        WebIFCWasm = require_web_ifc_node();
-        this.wasmModule = await WebIFCWasm({
-          noInitialRun: true,
-          locateFile: customLocateFileHandler || locateFileHandler
-        });
-      }
+      this.wasmModule = await WebIFCWasm({
+        noInitialRun: true,
+        locateFile: customLocateFileHandler || locateFileHandler
+      });
       this.SetLogLevel(4 /* LOG_LEVEL_ERROR */);
     } else {
       Log.error(
@@ -72287,7 +72329,6 @@ var IfcAPI2 = class {
   }
   CreateSettings(settings) {
     let s = {
-      ALLOW_INCOMPATIBLE_SCHEMA_ALIASES: true,
       COORDINATE_TO_ORIGIN: false,
       CIRCLE_SEGMENTS: 12,
       TAPE_SIZE: 67108864,
@@ -72304,23 +72345,11 @@ var IfcAPI2 = class {
     };
     return s;
   }
-  LookupSchemaId(schemaName, allowIncompatibleAlias = true) {
-    const name = schemaName.toUpperCase();
+  LookupSchemaId(schemaName) {
     for (var i = 0; i < SchemaNames.length; i++) {
       if (typeof SchemaNames[i] !== "undefined") {
         for (var j = 0; j < SchemaNames[i].length; j++) {
-          if (SchemaNames[i][j] === name) {
-            const canonical = SchemaNames[i][0];
-            const compatible = name === canonical || name === "IFC4X3_ADD2";
-            if (!compatible) {
-              if (!allowIncompatibleAlias) {
-                Log.error(`Schema ${name} requires an incompatible ${canonical} alias. Set ALLOW_INCOMPATIBLE_SCHEMA_ALIASES to true to allow best-effort parsing.`);
-                return -1;
-              }
-              Log.warn(`Parsing ${name} using ${canonical}; entity and attribute layouts may differ.`);
-            }
-            return i;
-          }
+          if (SchemaNames[i][j] == schemaName.toUpperCase()) return i;
         }
       }
     }
@@ -72337,22 +72366,16 @@ var IfcAPI2 = class {
     let result = this.wasmModule.OpenModel(
       s,
       (destPtr, offsetInSrc, destSize) => {
-        let srcSize = Math.max(0, Math.min(data.byteLength - offsetInSrc, destSize));
+        let srcSize = Math.min(data.byteLength - offsetInSrc, destSize);
         let dest = this.wasmModule.HEAPU8.subarray(destPtr, destPtr + srcSize);
         let src = data.subarray(offsetInSrc, offsetInSrc + srcSize);
         dest.set(src);
         return srcSize;
       }
     );
-    if (result < 0) return -1;
     this.deletedLines.set(result, /* @__PURE__ */ new Set());
     var schemaName = this.GetHeaderLine(result, FILE_SCHEMA).arguments[0][0].value;
-    if (typeof schemaName !== "string") {
-      Log.error("Missing or invalid FILE_SCHEMA header");
-      this.CloseModel(result);
-      return -1;
-    }
-    let id = this.LookupSchemaId(schemaName, s.ALLOW_INCOMPATIBLE_SCHEMA_ALIASES);
+    let id = this.LookupSchemaId(schemaName);
     if (id == -1) {
       Log.error("Unsupported Schema:" + schemaName);
       this.CloseModel(result);
@@ -72381,15 +72404,9 @@ var IfcAPI2 = class {
         return srcSize;
       }
     );
-    if (result < 0) return -1;
     this.deletedLines.set(result, /* @__PURE__ */ new Set());
     var schemaName = this.GetHeaderLine(result, FILE_SCHEMA).arguments[0][0].value;
-    if (typeof schemaName !== "string") {
-      Log.error("Missing or invalid FILE_SCHEMA header");
-      this.CloseModel(result);
-      return -1;
-    }
-    this.modelSchemaList[result] = this.LookupSchemaId(schemaName, s.ALLOW_INCOMPATIBLE_SCHEMA_ALIASES);
+    this.modelSchemaList[result] = this.LookupSchemaId(schemaName);
     this.modelSchemaNameList[result] = schemaName;
     if (this.modelSchemaList[result] == -1) {
       Log.error("Unsupported Schema:" + schemaName);
@@ -72415,7 +72432,7 @@ var IfcAPI2 = class {
   CreateModel(model, settings) {
     let s = this.CreateSettings(settings);
     let result = this.wasmModule.CreateModel(s);
-    let id = this.LookupSchemaId(model.schema, s.ALLOW_INCOMPATIBLE_SCHEMA_ALIASES);
+    let id = this.LookupSchemaId(model.schema);
     if (id == -1) {
       Log.error("Unsupported Schema:" + model.schema);
       this.CloseModel(result);
@@ -73067,29 +73084,26 @@ var IfcAPI2 = class {
    * @param modelID Model handle retrieved by OpenModel
    * @param expressIDs expressIDs of elements to stream
    * @param meshCallback callback function that is called for each mesh
-   * @param applyLinearScalingFactor Whether to apply the model's linear scaling factor to the geometry (default: true)
    */
-  StreamMeshes(modelID, expressIDs, meshCallback, applyLinearScalingFactor = true) {
-    this.wasmModule.StreamMeshes(modelID, expressIDs, meshCallback, applyLinearScalingFactor);
+  StreamMeshes(modelID, expressIDs, meshCallback) {
+    this.wasmModule.StreamMeshes(modelID, expressIDs, meshCallback);
   }
   /**
    * Streams all meshes of a model
    * @param modelID Model handle retrieved by OpenModel
    * @param meshCallback callback function that is called for each mesh
-   * @param applyLinearScalingFactor Whether to apply the model's linear scaling factor to the geometry (default: true)
    */
-  StreamAllMeshes(modelID, meshCallback, applyLinearScalingFactor = true) {
-    this.wasmModule.StreamAllMeshes(modelID, meshCallback, applyLinearScalingFactor);
+  StreamAllMeshes(modelID, meshCallback) {
+    this.wasmModule.StreamAllMeshes(modelID, meshCallback);
   }
   /**
    * Streams all meshes of a model with a specific ifc type
    * @param modelID Model handle retrieved by OpenModel
    * @param types types of elements to stream
    * @param meshCallback callback function that is called for each mesh
-   * @param applyLinearScalingFactor Whether to apply the model's linear scaling factor to the geometry (default: true)
    */
-  StreamAllMeshesWithTypes(modelID, types, meshCallback, applyLinearScalingFactor = true) {
-    this.wasmModule.StreamAllMeshesWithTypes(modelID, types, meshCallback, applyLinearScalingFactor);
+  StreamAllMeshesWithTypes(modelID, types, meshCallback) {
+    this.wasmModule.StreamAllMeshesWithTypes(modelID, types, meshCallback);
   }
   /**
    * Checks if a specific model ID is open or closed
@@ -73102,11 +73116,10 @@ var IfcAPI2 = class {
   /**
    * Load all geometry in a model
    * @param modelID Model handle retrieved by OpenModel
-   * @param applyLinearScalingFactor Whether to apply the model's linear scaling factor to the geometry (default: true)
    * @returns Vector of FlatMesh objects
    */
-  LoadAllGeometry(modelID, applyLinearScalingFactor = true) {
-    let flatMeshes = this.wasmModule.LoadAllGeometry(modelID, applyLinearScalingFactor);
+  LoadAllGeometry(modelID) {
+    let flatMeshes = this.wasmModule.LoadAllGeometry(modelID);
     flatMeshes[Symbol.iterator] = function* () {
       for (let i = 0; i < flatMeshes.size(); i++) yield flatMeshes.get(i);
     };
@@ -73116,11 +73129,10 @@ var IfcAPI2 = class {
    * Load geometry for a single element
    * @param modelID Model handle retrieved by OpenModel
    * @param expressID ExpressID of the element
-   * @param applyLinearScalingFactor Whether to apply the model's linear scaling factor to the geometry (default: true)
    * @returns FlatMesh object
    */
-  GetFlatMesh(modelID, expressID, applyLinearScalingFactor = true) {
-    return this.wasmModule.GetFlatMesh(modelID, expressID, applyLinearScalingFactor);
+  GetFlatMesh(modelID, expressID) {
+    return this.wasmModule.GetFlatMesh(modelID, expressID);
   }
   /**
    * Returns the maximum ExpressID value in the IFC file, ex.- #9999999
@@ -73235,7 +73247,6 @@ var IfcAPI2 = class {
 };
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  BINARY,
   Constructors,
   EMPTY,
   ENUM,
