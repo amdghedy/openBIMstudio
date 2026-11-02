@@ -86,6 +86,15 @@ check("widget: real camera adapter (no second viewer)", () => {
 });
 check("widget: gesture-watched projection restore (PwOF)", () => has(/perspective-ortho-faces/, "src/features/viewcube.ts"));
 check("widget: SVG cube geometry module", () => has(/projectCube|CUBE_GRAPH/, "src/features/viewcube-geometry.ts"));
+check("widget: Revit-style pointer orbit and appearance preferences", () => {
+  has(/installViewCubeEnhancements/, "src/features/viewcube.ts");
+  const s = read("src/features/viewcube-enhancements.ts");
+  for (const m of ["pointermove", "rotateByImmediate", "PREF_KEY", "Cube size", "Widget opacity", "Screen position"]) {
+    if (!s.includes(m)) throw new Error(`enhancement missing: ${m}`);
+  }
+});
+check("controller: immediate pointer orbit does not enqueue a transition", () =>
+  has(/rotateByImmediate/, "src/modules/navigation/controller.ts"));
 check("geometry: canonical edge ids match navigation convention", () => has(/canonicalEdgeId/, "src/features/viewcube-geometry.ts"));
 
 /* ── Integration ───────────────────────────────────────────────────────── */
