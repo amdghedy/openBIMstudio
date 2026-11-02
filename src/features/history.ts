@@ -102,33 +102,65 @@ class HistoryManager {
    * elements in one action).
    */
   async transaction(label: string, fn: () => void | Promise<void>): Promise<void> {
-    this.txDepth++;
-    if (this.txDepth === 1) {
+    const outermost = this.txDepth === 0;
+    const savepoint = this.txCommands.length;
+    if (outermost) {
       this.txCommands = [];
       this.txLabel = label;
     }
+    this.txDepth++;
+
     try {
       await fn();
-    } finally {
-      this.txDepth--;
-      if (this.txDepth === 0) {
-        const inner = this.txCommands.slice();
-        this.txCommands = [];
-        if (!inner.length) return;
-        const group: Command = {
-          label: this.txLabel || label,
-          apply: async () => {
-            for (const c of inner) await c.apply();
-          },
-          revert: async () => {
-            // Reverse order on revert.
-            for (let i = inner.length - 1; i >= 0; i--) await inner[i].revert();
-          },
-        };
-        // Bypass tx buffering (we're already out).
-        this.push(group);
+    } catch (error) {
+      // A failed nested scope is a savepoint: undo only work added by that
+      // scope. This also means a caller may catch the nested error and keep
+      // the surrounding transaction alive.
+      const failed = this.txCommands.splice(savepoint);
+      let rollbackError: unknown;
+      this.isExecuting = true;
+      try {
+        for (let i = failed.length - 1; i >= 0; i--) {
+          try {
+            await failed[i].revert();
+          } catch (cause) {
+            rollbackError ??= cause;
+          }
+        }
+      } finally {
+        this.isExecuting = false;
+        this.txDepth--;
+        if (outermost) {
+          this.txCommands = [];
+          this.txLabel = "";
+        }
       }
+      if (rollbackError) {
+        throw new AggregateError([error, rollbackError], `Transaction '${label}' failed and rollback was incomplete`);
+      }
+      throw error;
     }
+
+    this.txDepth--;
+    if (!outermost) return;
+
+    const inner = this.txCommands.slice();
+    this.txCommands = [];
+    const groupLabel = this.txLabel || label;
+    this.txLabel = "";
+    if (!inner.length) return;
+
+    const group: Command = {
+      label: groupLabel,
+      apply: async () => {
+        for (const command of inner) await command.apply();
+      },
+      revert: async () => {
+        for (let i = inner.length - 1; i >= 0; i--) await inner[i].revert();
+      },
+    };
+    // Bypass tx buffering (we're already out).
+    this.push(group);
   }
 
   /** Execute and record a command (convenience for one-shot actions). */
@@ -136,6 +168,15 @@ class HistoryManager {
     this.isExecuting = true;
     try {
       await cmd.apply();
+    } catch (error) {
+      // apply() may have mutated part of the model before throwing. Attempt
+      // the command's inverse before exposing the failure to the caller.
+      try {
+        await cmd.revert();
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], `Command '${cmd.label}' failed and its rollback was incomplete`);
+      }
+      throw error;
     } finally {
       this.isExecuting = false;
     }

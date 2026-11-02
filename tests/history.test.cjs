@@ -71,6 +71,47 @@ async function t(name, fn) {
     assert.deepStrictEqual(log, ["y-", "x-"]);
   });
 
+  await t("a failed transaction rolls back every buffered command and records nothing", async () => {
+    history.clear();
+    const log = [];
+    await assert.rejects(history.transaction("will fail", async () => {
+      await history.exec({ label: "first", apply: () => log.push("first+"), revert: () => log.push("first-") });
+      await history.exec({ label: "second", apply: () => log.push("second+"), revert: () => log.push("second-") });
+      throw new Error("injected commit-stage failure");
+    }), /injected commit-stage failure/);
+    assert.deepStrictEqual(log, ["first+", "second+", "second-", "first-"]);
+    assert.deepStrictEqual(history.depth(), { undo: 0, redo: 0 });
+  });
+
+  await t("a failed nested transaction rolls back to its savepoint without discarding outer work", async () => {
+    history.clear();
+    const log = [];
+    await history.transaction("outer", async () => {
+      await history.exec({ label: "before", apply: () => log.push("before+"), revert: () => log.push("before-") });
+      await assert.rejects(history.transaction("inner", async () => {
+        await history.exec({ label: "inner", apply: () => log.push("inner+"), revert: () => log.push("inner-") });
+        throw new Error("inner failure");
+      }), /inner failure/);
+      await history.exec({ label: "after", apply: () => log.push("after+"), revert: () => log.push("after-") });
+    });
+    assert.deepStrictEqual(log, ["before+", "inner+", "inner-", "after+"]);
+    assert.strictEqual(history.depth().undo, 1);
+    await history.undo();
+    assert.deepStrictEqual(log.slice(-2), ["after-", "before-"]);
+  });
+
+  await t("a command that throws during apply attempts its inverse and is not recorded", async () => {
+    history.clear();
+    let value = 0;
+    await assert.rejects(history.exec({
+      label: "partial",
+      apply: () => { value = 7; throw new Error("apply failed"); },
+      revert: () => { value = 0; },
+    }), /apply failed/);
+    assert.strictEqual(value, 0);
+    assert.deepStrictEqual(history.depth(), { undo: 0, redo: 0 });
+  });
+
   await t("rapid overlapping undo() calls never run concurrently", async () => {
     history.clear();
     let running = 0;
