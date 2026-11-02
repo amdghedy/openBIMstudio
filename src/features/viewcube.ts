@@ -400,6 +400,29 @@ function buildWidget(
   });
   svg.addEventListener("pointerdown", (e) => e.stopPropagation());
 
+  // Subtle instrument-style compass bezel and a beveled face gradient.
+  const defs = svgEl("defs", {}, svg);
+  const faceGradient = document.createElementNS(SVG_NS, "linearGradient");
+  faceGradient.setAttribute("id", "obs-viewcube-face-gradient");
+  faceGradient.setAttribute("x1", "0"); faceGradient.setAttribute("y1", "0");
+  faceGradient.setAttribute("x2", "0.85"); faceGradient.setAttribute("y2", "1");
+  for (const [offset, color, opacity] of [
+    ["0%", "#e5edf7", "0.94"], ["48%", "#9baec3", "0.92"], ["100%", "#53677f", "0.96"],
+  ]) {
+    const stop = document.createElementNS(SVG_NS, "stop");
+    stop.setAttribute("offset", offset); stop.setAttribute("stop-color", color);
+    stop.setAttribute("stop-opacity", opacity); faceGradient.appendChild(stop);
+  }
+  defs.appendChild(faceGradient);
+  svgEl("circle", {
+    cx: CX, cy: CY, r: 54, fill: "rgba(10,15,23,.16)",
+    stroke: "rgba(148,163,184,.34)", "stroke-width": 1.1,
+  }, svg);
+  svgEl("circle", {
+    cx: CX, cy: CY, r: 57, fill: "none",
+    stroke: "rgba(71,85,105,.35)", "stroke-width": 0.7, "stroke-dasharray": "2 3",
+  }, svg);
+
   const gCompass = svgEl("g", {}, svg);
   const gFaces = svgEl("g", {}, svg);
   const gEdges = svgEl("g", {}, svg);
@@ -425,13 +448,13 @@ function buildWidget(
   const faceEls = {} as Record<FaceId, SVGPolygonElement>;
   for (const f of CUBE_FACES) {
     const p = svgEl("polygon", {
-      fill: "#aab3c0", "fill-opacity": 0.35, stroke: "#0f1117", "stroke-width": 1,
+      fill: "url(#obs-viewcube-face-gradient)", "fill-opacity": 0.82, stroke: "#dbe5f1", "stroke-opacity": 0.62, "stroke-width": 1.1,
       "stroke-linejoin": "round",
     }, gFaces) as SVGPolygonElement;
     makeInteractive(p, `${capitalize(f)} view`, () => { controller.navigateToFace(f); });
     trackHover(p);
     p.addEventListener("mouseenter", () => { p.setAttribute("fill", "#7cc7f7"); p.setAttribute("fill-opacity", "0.6"); });
-    p.addEventListener("mouseleave", () => { p.setAttribute("fill", "#aab3c0"); });
+    p.addEventListener("mouseleave", () => { p.setAttribute("fill", "url(#obs-viewcube-face-gradient)"); });
     faceEls[f] = p;
   }
 
