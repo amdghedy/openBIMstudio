@@ -225,28 +225,52 @@ function getImporter(): any {
 }
 
 async function ensureWasmAvailable(): Promise<void> {
-  const base = wasmPath();
-  const join_ = (f: string) => (base.endsWith("/") ? `${base}${f}` : `${base}/${f}`);
-  for (const file of ["web-ifc.wasm"]) {
-    const url = join_(file);
-    let res: Response;
+  // Prefer versioned path (ABI-safe). If the deploy did not materialize
+  // public/web-ifc/<version>/ (prebuild skipped / cache), fall back to the
+  // root public/web-ifc/ assets that are committed in-repo.
+  const preferred = wasmPath();
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const candidates = [preferred];
+  const rootPath = `${origin}/web-ifc/`;
+  if (preferred !== rootPath) candidates.push(rootPath);
+
+  let lastError: Error | null = null;
+  for (const base of candidates) {
+    const join_ = (f: string) => (base.endsWith("/") ? `${base}${f}` : `${base}/${f}`);
+    const url = join_("web-ifc.wasm");
     try {
-      res = await fetch(url, { method: "GET", cache: "no-cache" });
+      const res = await fetch(url, { method: "GET", cache: "no-cache" });
+      if (!res.ok) {
+        lastError = new Error(`WASM HTTP ${res.status} at ${url}`);
+        continue;
+      }
+      const buf = await res.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      if (bytes.length > 0 && bytes[0] === 0x3c) {
+        lastError = new Error(`HTML instead of WASM at ${url}. Run npm run prebuild (sync-web-ifc-assets).`);
+        continue;
+      }
+      if (bytes.byteLength < 1000) {
+        lastError = new Error(`WASM too small at ${url}`);
+        continue;
+      }
+      // Pin importer to the base that actually served a valid WASM binary.
+      if (ifcImporter) {
+        ifcImporter.wasm = { absolute: true, path: base.endsWith("/") ? base : `${base}/` };
+      }
+      if (base !== preferred) {
+        console.warn(`[importer] versioned WASM missing; using fallback ${base}`);
+      }
+      return;
     } catch (e: any) {
-      throw new Error(
+      lastError = new Error(
         `Network error fetching WASM: ${url}\n${e?.message || e}\n\n` +
         `Run: npm install && npm run dev, then confirm ` +
         `http://localhost:3000/web-ifc/web-ifc.wasm downloads a binary.`,
       );
     }
-    const buf = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    if (bytes.length > 0 && bytes[0] === 0x3c) {
-      throw new Error(`HTML instead of WASM at ${url}. Copy WASM into public/web-ifc/ and restart Vite.`);
-    }
-    if (!res.ok) throw new Error(`WASM HTTP ${res.status} at ${url}`);
-    if (bytes.byteLength < 1000) throw new Error(`WASM too small at ${url}`);
   }
+  throw lastError ?? new Error("web-ifc WASM not available");
 }
 
 function disposeImporter() {
