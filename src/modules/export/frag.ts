@@ -51,18 +51,31 @@ export async function getFragBuffer(modelId: string, raw = false): Promise<FragE
         `requires @thatopen/fragments FragmentsModel.`,
     );
   }
-  const buf: ArrayBuffer = await model.getBuffer(raw);
-  if (!buf || !(buf instanceof ArrayBuffer) && !(buf as any)?.byteLength) {
+  const rawBuf: unknown = await model.getBuffer(raw);
+  const bytes = toArrayBuffer(rawBuf);
+  if (!bytes.byteLength) {
     throw new Error(`getBuffer() returned empty data for "${modelId}".`);
   }
-  const bytes =
-    buf instanceof ArrayBuffer
-      ? buf
-      : (buf as ArrayBufferView).buffer.slice(
-          (buf as ArrayBufferView).byteOffset,
-          (buf as ArrayBufferView).byteOffset + (buf as ArrayBufferView).byteLength,
-        );
   return { modelId, bytes, byteLength: bytes.byteLength };
+}
+
+/** Normalize getBuffer() result to a plain ArrayBuffer (TS 5.x ArrayBufferLike). */
+function toArrayBuffer(src: unknown): ArrayBuffer {
+  if (src instanceof ArrayBuffer) return src;
+  if (ArrayBuffer.isView(src)) {
+    const v = src as ArrayBufferView;
+    const copy = new Uint8Array(v.byteLength);
+    copy.set(new Uint8Array(v.buffer, v.byteOffset, v.byteLength));
+    return copy.buffer;
+  }
+  if (src && typeof (src as any).byteLength === "number") {
+    // SharedArrayBuffer or ArrayBuffer-like
+    const len = Number((src as any).byteLength) || 0;
+    const copy = new Uint8Array(len);
+    copy.set(new Uint8Array(src as ArrayBufferLike));
+    return copy.buffer;
+  }
+  throw new Error("getBuffer() returned an unsupported buffer type.");
 }
 
 /**
