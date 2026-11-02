@@ -2890,7 +2890,7 @@ function ctxItems(tool: string): HTMLElement[] {
     b("close", "Cancel", safe(() => pressKey("Escape"), "Cancel"), { kbd: "Esc", title: "Cancel the current segment / chain" }),
     b("check" as IconName, "Chain", safe(() => setWallChain(!getWallChain()), "Chain"), { active: getWallChain(), title: "Continue drawing from the last end point" }),
   ];
-  if (tool === "wall") items.push(b("wall", "Join Walls", act("join-walls"), { title: "Join the selected walls" }));
+  if (tool === "wall") items.push(mod("join-walls", "wall", undefined, { title: "Join the selected walls" }));
   return items;
 }
 /** Revit "Modify | Walls": every modification tool for the current selection, with category-specific extras. */
@@ -2915,7 +2915,7 @@ function selectionItems(types: Set<string>): HTMLElement[] {
     b("settings", "Type Properties", cmd("modify.typeProperties")),
     sep(),
     groupLabel("Clipboard"),
-    mod("copy", "copy", undefined, { kbd: "Ctrl+C" }),
+    b("copy", "Copy", safe(() => { void import("../features/modify-actions").then((m) => { const n = m.copySelectionToClipboard(); toast(n ? `Copied ${n} element(s)` : "Nothing to copy", n ? "success" : "warn"); }); }, "Copy"), { kbd: "Ctrl+C" }),
     mod("paste", "copy", undefined, { kbd: "Ctrl+V" }),
     sep(),
     groupLabel("Modify"),
