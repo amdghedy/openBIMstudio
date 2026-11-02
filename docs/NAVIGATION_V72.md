@@ -14,6 +14,8 @@ behavioral contracts, persistence, testing and known limitations.
 | ViewCube | Live SVG cube in the upper-right viewport corner. 6 faces, 12 edges and 8 corners are real, individually clickable targets. Current orientation is highlighted; face labels follow the live orientation mapping. |
 | Compass | N/E/S/W ring letters anchored to Project/True North (`modules/north`), foreshortened with the view, dimmed when pointing away from the viewer, hidden when pointing at it. |
 | Rotation arrows | 4 curved arrows (left/right = 90° spins, up/down = 90° pitches). Click = one step; press-and-hold = continuous repeat at `rotateHoldMs`. Pitches refuse to flip over the poles. |
+| Direct cube drag | Drag from a visible cube face, edge or corner to orbit continuously around the current camera target. Pointer motion updates the existing camera-controls camera immediately; it does not create a second orbit controller. |
+| Appearance options | ViewCube options panel: persisted scale, opacity and one of four viewport corners. Settings are stored under `obs.navigation.viewcube.appearance.v1`; Restore defaults resets them. |
 | Home menu | All ten commands of the reference screenshot: Go Home, Orthographic, Perspective, Perspective with Ortho Faces, Set current view as Home, Focus and set as Home, Reset Home, Set current view as Front, Set current view as Top, Reset orientation. |
 | Projection | Genuine orthographic/perspective switches through the existing ThatOpen `OrthoPerspectiveCamera` (framing-preserving), plus the distinct *Perspective with Ortho Faces* mode. |
 | Transitions | Quaternion-slerp camera animation with cancellation, replacement and gesture yielding. No Euler flips, stable up vectors. |
@@ -106,6 +108,13 @@ service) when present, else the whole scene bounds, and preserves a useful
 viewing direction.
 
 ---
+
+### ViewCube drag and appearance
+
+- Press and drag directly on the cube to orbit the live view; release to finish.
+- Click targets still perform exact face, edge and corner snaps. Small pointer movement remains a click; a deliberate drag suppresses the synthetic click so the camera does not snap unexpectedly on release.
+- The options panel controls size, opacity and top/bottom + left/right placement. Preferences are validated, bounded and persisted locally. If local storage is unavailable, the widget continues with defaults.
+- Drag orbit is routed through `NavigationController.rotateByImmediate` and the existing `CameraAdapter.lookAt`; all other navigation gestures remain owned by the viewer's current camera-controls instance.
 
 ## 3. Commands and gestures
 
