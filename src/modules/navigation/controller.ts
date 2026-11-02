@@ -312,6 +312,31 @@ export class NavigationController {
    *    toward the top pole; clamped away from the poles so the up vector
    *    can never flip.
    */
+  /** Apply pointer-driven ViewCube orbit immediately, without starting an eased transition. */
+  rotateByImmediate(azimuthDeg = 0, pitchDeg = 0): CommandOutcome {
+    if (!this.ensureCoreFor("free")) return { ok: false, reason: "rejected-by-camera" };
+    const pos = this.adapter.position();
+    const target = this.adapter.target();
+    const up = this.adapter.up();
+    const cur = makeSpec(pos.clone().sub(target), up);
+    if (!cur) return { ok: false, reason: "degenerate-orientation" };
+    let next: ViewSpec | null = cur;
+    if (pitchDeg !== 0) {
+      next = pitchSpec(cur, pitchDeg);
+      if (!next) return { ok: false, reason: "at-pole" };
+    }
+    if (azimuthDeg !== 0) {
+      next = spinSpec(next, azimuthDeg);
+      if (!next) return { ok: false, reason: "at-pole" };
+    }
+    if (!next) return { ok: false, reason: "degenerate-orientation" };
+    this.cancelTransition();
+    const dist = Math.max(pos.distanceTo(target), this.config.minDistance);
+    const nextPos = target.clone().addScaledVector(next.dir, dist);
+    this.adapter.lookAt(nextPos, target, next.up, false);
+    return { ok: true };
+  }
+
   rotateBy(azimuthDeg = 0, pitchDeg = 0): CommandOutcome {
     if (!this.ensureCoreFor("free")) return { ok: false, reason: "rejected-by-camera" };
 

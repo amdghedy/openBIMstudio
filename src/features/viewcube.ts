@@ -23,6 +23,7 @@ import {
   computeSceneBounds, getProjection, getSceneBox, setProjection, updateClipping,
 } from "./camera-tools";
 import { syncOrthoZoom } from "../core/ortho-zoom";
+import { installViewCubeEnhancements } from "./viewcube-enhancements";
 import { getNorthState, onNorthChanged } from "../modules/north/north";
 import { getCurrentProject, onProjectChanged } from "../modules/projects/projects";
 import { APP_VERSION } from "../version";
@@ -349,6 +350,8 @@ function buildWidget(
     "padding:7px 8px 8px;background:rgba(20,22,30,.88);border:1px solid #2a2e3a;" +
     "border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);backdrop-filter:blur(8px)", container);
   card.oncontextmenu = (e) => e.preventDefault();
+  // Revit-style direct drag orbit and persisted appearance options.
+  // Installed after the SVG has been constructed and before it is attached.
 
   // Header: Home · orientation label · menu
   const header = el("div", "display:flex;align-items:center;gap:6px;height:22px", card);
@@ -397,6 +400,30 @@ function buildWidget(
   });
   svg.addEventListener("pointerdown", (e) => e.stopPropagation());
 
+  // Subtle instrument-style compass bezel and a beveled face gradient.
+  const defs = document.createElementNS(SVG_NS, "defs");
+  svg.appendChild(defs);
+  const faceGradient = document.createElementNS(SVG_NS, "linearGradient");
+  faceGradient.setAttribute("id", "obs-viewcube-face-gradient");
+  faceGradient.setAttribute("x1", "0"); faceGradient.setAttribute("y1", "0");
+  faceGradient.setAttribute("x2", "0.85"); faceGradient.setAttribute("y2", "1");
+  for (const [offset, color, opacity] of [
+    ["0%", "#e5edf7", "0.94"], ["48%", "#9baec3", "0.92"], ["100%", "#53677f", "0.96"],
+  ]) {
+    const stop = document.createElementNS(SVG_NS, "stop");
+    stop.setAttribute("offset", offset); stop.setAttribute("stop-color", color);
+    stop.setAttribute("stop-opacity", opacity); faceGradient.appendChild(stop);
+  }
+  defs.appendChild(faceGradient);
+  svgEl("circle", {
+    cx: CX, cy: CY, r: 54, fill: "rgba(10,15,23,.16)",
+    stroke: "rgba(148,163,184,.34)", "stroke-width": 1.1,
+  }, svg);
+  svgEl("circle", {
+    cx: CX, cy: CY, r: 57, fill: "none",
+    stroke: "rgba(71,85,105,.35)", "stroke-width": 0.7, "stroke-dasharray": "2 3",
+  }, svg);
+
   const gCompass = svgEl("g", {}, svg);
   const gFaces = svgEl("g", {}, svg);
   const gEdges = svgEl("g", {}, svg);
@@ -422,13 +449,13 @@ function buildWidget(
   const faceEls = {} as Record<FaceId, SVGPolygonElement>;
   for (const f of CUBE_FACES) {
     const p = svgEl("polygon", {
-      fill: "#aab3c0", "fill-opacity": 0.35, stroke: "#0f1117", "stroke-width": 1,
+      fill: "url(#obs-viewcube-face-gradient)", "fill-opacity": 0.82, stroke: "#dbe5f1", "stroke-opacity": 0.62, "stroke-width": 1.1,
       "stroke-linejoin": "round",
     }, gFaces) as SVGPolygonElement;
     makeInteractive(p, `${capitalize(f)} view`, () => { controller.navigateToFace(f); });
     trackHover(p);
     p.addEventListener("mouseenter", () => { p.setAttribute("fill", "#7cc7f7"); p.setAttribute("fill-opacity", "0.6"); });
-    p.addEventListener("mouseleave", () => { p.setAttribute("fill", "#aab3c0"); });
+    p.addEventListener("mouseleave", () => { p.setAttribute("fill", "url(#obs-viewcube-face-gradient)"); });
     faceEls[f] = p;
   }
 
@@ -472,6 +499,7 @@ function buildWidget(
   buildRotationArrows(gArrows, controller);
 
   (ctx.rightHost as HTMLElement).appendChild(container);
+  installViewCubeEnhancements(container, svg, controller);
 
   return { container, svg, faceEls, edgeEls, cornerEls, labelEls, compassEls, orientLabel };
 }
