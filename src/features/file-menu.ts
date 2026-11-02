@@ -9,6 +9,7 @@ import { exportBCF } from "../modules/issues/bcf";
 import { exportCostCsv } from "../features/cost-panel";
 import { importFiles, pickAndImport, ACCEPT_ALL } from "../features/file-interop";
 import { settingsBox } from "../features/importer";
+import { exportFragFromMenu } from "../modules/export/frag";
 
 const menu = document.createElement("div");
 menu.style.cssText = "position:fixed;top:100px;left:10px;width:760px;max-width:calc(100vw - 20px);z-index:250;display:none;background:#1b1c26;border:1px solid #34353f;border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.6);color:#e2e8f0;font:12px system-ui,sans-serif;overflow:hidden";
@@ -153,6 +154,7 @@ function build() {
     item("🗣", "Issues → BCF", () => exportBCF()),
     item("💰", "Cost → CSV", () => exportCostCsv()),
     item("🧊", "Scene → GLB", () => void exportGlb()),
+    item("🧱", "Model → FRAG (ThatOpen)", () => void exportFragFromMenu(), ".frag"),
     item("🖼", "Project → JSON", () => exportProjectJson(), "backup"),
     Object.assign(document.createElement("div"), { style: SECTION, textContent: "Document" }),
     item("🖨", "Print…", () => printView()),

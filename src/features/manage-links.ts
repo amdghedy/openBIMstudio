@@ -1,6 +1,7 @@
 import { escapeHtml } from "../core/html-escape";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
+import { downloadFragModel } from "../modules/export/frag";
 import { markDirty } from "../modules/projects/projects";
 
 let modalEl: HTMLDivElement | null = null;
@@ -239,6 +240,9 @@ export function openManageLinks() {
       };
       const imp = () => import("./importer");
             actionTd.append(
+        mini("Save .frag", "Download ThatOpen Fragments binary for this model", async () => {
+          await downloadFragModel(modelId);
+        }),
         mini("Offset", "Set X, Y, Z offset in metres", async () => {
           const m = await imp();
           const cur = m.getModelOffset(modelId) ?? [0, 0, 0];
