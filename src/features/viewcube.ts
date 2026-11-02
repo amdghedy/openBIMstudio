@@ -23,6 +23,7 @@ import {
   computeSceneBounds, getProjection, getSceneBox, setProjection, updateClipping,
 } from "./camera-tools";
 import { syncOrthoZoom } from "../core/ortho-zoom";
+import { installViewCubeEnhancements } from "./viewcube-enhancements";
 import { getNorthState, onNorthChanged } from "../modules/north/north";
 import { getCurrentProject, onProjectChanged } from "../modules/projects/projects";
 import { APP_VERSION } from "../version";
@@ -349,6 +350,8 @@ function buildWidget(
     "padding:7px 8px 8px;background:rgba(20,22,30,.88);border:1px solid #2a2e3a;" +
     "border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);backdrop-filter:blur(8px)", container);
   card.oncontextmenu = (e) => e.preventDefault();
+  // Revit-style direct drag orbit and persisted appearance options.
+  // Installed after the SVG has been constructed and before it is attached.
 
   // Header: Home · orientation label · menu
   const header = el("div", "display:flex;align-items:center;gap:6px;height:22px", card);
@@ -472,6 +475,7 @@ function buildWidget(
   buildRotationArrows(gArrows, controller);
 
   (ctx.rightHost as HTMLElement).appendChild(container);
+  installViewCubeEnhancements(container, svg, controller);
 
   return { container, svg, faceEls, edgeEls, cornerEls, labelEls, compassEls, orientLabel };
 }
