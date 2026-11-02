@@ -22,6 +22,6 @@ To make the gate real again:
 3. Review the snapshots, then commit **both** the `.ifc` sources and the
    snapshots together.
 
-Track this in [docs/engineering/ISSUES.md](../../docs/engineering/ISSUES.md)
+Track this in [docs/engineering/ISSUES.md](../../../docs/engineering/ISSUES.md)
 (P1-03: corpus should reach ~20 fixtures, each self-authored or openly licensed,
 with source tool + license recorded in `MANIFEST.md`).
