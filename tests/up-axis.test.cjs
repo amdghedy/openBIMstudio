@@ -47,4 +47,5 @@ ok(!r.keptWorldUp && near(r.up[0], Math.SQRT1_2), "oblique custom up kept");
      previous = current;
    }
  }
-\nconsole.log(`up-axis: ${n} checks OK`);
+
+console.log(`up-axis: ${n} checks OK`);
