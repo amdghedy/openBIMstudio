@@ -52,5 +52,5 @@ ok(r.colors && near(r.colors[0], 1) && near(r.colors[1], 0), "ptx rgb");
 let e3 = ""; try { m.parsePtx("hello\nworld"); } catch (e) { e3 = e.message; }
 ok(/PTX/.test(e3), "bad ptx");
 // unsupported table
-ok(m.UNSUPPORTED_POINT_CLOUD.rwcx && /RealWorks/.test(m.UNSUPPORTED_POINT_CLOUD.rwcx.name) && m.UNSUPPORTED_POINT_CLOUD.rcp, "proprietary formats listed with export instructions");
+ok(m.UNSUPPORTED_POINT_CLOUD.rwcx && /RWCX/.test(m.UNSUPPORTED_POINT_CLOUD.rwcx.name) && /TBC/.test(m.UNSUPPORTED_POINT_CLOUD.rwcx.how) && m.UNSUPPORTED_POINT_CLOUD.rcp, "RWCX has Trimble-specific conversion guidance");
 console.log(`point-cloud-parsers: ${n} checks OK`);
