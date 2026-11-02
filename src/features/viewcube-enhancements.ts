@@ -38,8 +38,9 @@ function applyPrefs(container: HTMLElement, svg: SVGSVGElement, prefs: CubePrefs
   container.style.bottom = prefs.position.startsWith("bottom") ? inset : "auto";
   container.style.left = prefs.position.endsWith("left") ? inset : "auto";
   container.style.right = prefs.position.endsWith("right") ? inset : "auto";
-  svg.style.transformOrigin = "center center";
-  svg.style.transform = `scale(${prefs.scale})`;
+  svg.style.width = `${140 * prefs.scale}px`;
+  svg.style.height = `${140 * prefs.scale}px`;
+  svg.style.transform = "none";
   svg.style.opacity = String(prefs.opacity);
   container.dataset.viewcubePosition = prefs.position;
 }
