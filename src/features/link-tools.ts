@@ -79,7 +79,7 @@ export function linkIfc() {
         for (const path of entries) {
           const entry = archive.file(path);
           if (!entry) continue;
-          const bytes = await entry.async("uint8array");
+          const bytes = (await entry.async("uint8array")) as Uint8Array<ArrayBuffer>;
           if (!bytes.byteLength) throw new Error(`The IFC entry "${path}" in "${file.name}" is empty.`);
           const name = path.split("/").pop() || `${file.name}.ifc`;
           ifcFiles.push(new File([bytes], name, { type: "application/octet-stream" }));
