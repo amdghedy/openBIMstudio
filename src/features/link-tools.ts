@@ -178,7 +178,7 @@ async function importPointCloudFiles(files: File[]) {
       } else if (ext === "ply") {
         await loadPlyAsPoints(file);
       } else {
-        unsupported.push(`- ${file.name}  (${bad?.name ?? "Unsupported point-cloud format"})\n  ${bad?.how ?? "This format is not decoded by the current browser importer."}`);
+        unsupported.push(`- ${file.name}  (Unsupported point-cloud format)\n  This format is not decoded by the current browser importer.`);
         continue;
       }
       loaded++;
