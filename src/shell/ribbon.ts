@@ -42,7 +42,10 @@ import {
 import {
   setAuthoringTool, getActiveTool, deleteSelectedElement, clearAllElements,
   setLevel, getLevel, getLastCommand, pinSelected,
+  onAuthoringChange, getWallChain, setWallChain,
 } from "../features/authoring";
+import { PLACE_TOOLS } from "../features/place-options";
+import { runModifyAction } from "../features/modify-actions";
 import {
   getCurrentProject, saveProject, isDirty, onProjectChanged,
 } from "../modules/projects/projects";
@@ -2840,6 +2843,64 @@ function refreshRibbon() {
   renderStrip();
 }
 
+/* ═════════════════════════════════════════════════════════════════════════
+   Contextual tab - "Modify | Place Wall" (Revit style). Appears when a placement
+   tool starts, so the user can adjust the options and then start modelling; it
+   disappears (returning to the previous tab) when the tool ends.
+   ═════════════════════════════════════════════════════════════════════════ */
+type TabDef = { id: string; label: string; items: () => HTMLElement[]; contextual?: boolean };
+let ctxTab: TabDef | null = null;
+let ctxTool: string | null = null;
+let tabBeforeCtx: string | null = null;
+const CTX_LABEL: Record<string, string> = {
+  wall: "Wall", "curtain-wall": "Curtain Wall", beam: "Beam", strip: "Wall Foundation", duct: "Duct", pipe: "Pipe",
+  "cable-tray": "Cable Tray", conduit: "Conduit", column: "Column", slab: "Floor", footing: "Isolated Foundation", brace: "Brace",
+};
+function pressKey(key: string) { window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })); }
+function ctxItems(tool: string): HTMLElement[] {
+  const act = (id: string) => safe(() => { void runModifyAction(id as any); }, id);
+  const items: HTMLElement[] = [
+    groupLabel("Select"),
+    b("modify" as IconName, "Modify", safe(() => setAuthoringTool("select"), "Modify"), { kbd: "Esc", title: "Finish placing and return to Modify" }),
+    sep(),
+    groupLabel("Properties"),
+    b("settings", "Properties", safe(() => { try { (ctx.features as any).propertyPalette?.open?.(); } catch { /* */ } }, "Properties")),
+    b("settings", "Type Properties", safe(() => { (window as any).__obsBIMExperience?.execute?.("modify.typeProperties"); }, "Type properties")),
+    sep(),
+    groupLabel("Clipboard"),
+    b("copy", "Paste", act("paste")),
+    sep(),
+    groupLabel("Modify"),
+    b("move", "Move", act("move")), b("copy", "Copy", act("copy")), b("rotate", "Rotate", act("rotate")),
+    b("mirror", "Mirror", act("mirror")), b("array", "Array", act("array")), b("offset", "Offset", act("offset")),
+    b("scale", "Scale", act("scale")), b("delete", "Delete", act("delete")),
+    sep(),
+    groupLabel("Draw"),
+    b("check" as IconName, "Finish", safe(() => pressKey("Enter"), "Finish"), { kbd: "Enter", title: "Finish the current chain and keep the tool" }),
+    b("close", "Cancel", safe(() => pressKey("Escape"), "Cancel"), { kbd: "Esc", title: "Cancel the current segment / chain" }),
+    b("check" as IconName, "Chain", safe(() => setWallChain(!getWallChain()), "Chain"), { active: getWallChain(), title: "Continue drawing from the last end point" }),
+  ];
+  if (tool === "wall") items.push(b("wall", "Join Walls", act("join-walls"), { title: "Join the selected walls" }));
+  return items;
+}
+function syncContextTab() {
+  const t = getActiveTool();
+  const place = t && PLACE_TOOLS.has(t) ? t : null;
+  if (place === ctxTool) return;
+  ctxTool = place;
+  if (place) {
+    if (!ctxTab) tabBeforeCtx = activeTab;
+    ctxTab = { id: "ctx-place", label: `Modify | Place ${CTX_LABEL[place] ?? place}`, contextual: true, items: () => ctxItems(place) };
+    activeTab = "ctx-place";
+    if (ribbonMinimized) applyRibbonMinimize(false);
+  } else if (ctxTab) {
+    ctxTab = null;
+    if (activeTab === "ctx-place") activeTab = tabBeforeCtx && TABS.some((x) => x.id === tabBeforeCtx) ? tabBeforeCtx : (TABS[0]?.id ?? "file");
+  }
+  renderTabs();
+  renderStrip();
+}
+
 function renderTabs() {
   tabsRow.innerHTML = "";
   mountLanguageButton(tabsRow);
@@ -2853,10 +2914,10 @@ function renderTabs() {
   brand.appendChild(version);
   tabsRow.appendChild(brand);
 
-  for (const t of TABS) {
+  for (const t of [...TABS, ...(ctxTab ? [ctxTab] : [])] as TabDef[]) {
 
     const btn = document.createElement("button");
-    btn.className = "obs-ribbon__tab" + (t.id === "file" ? " obs-ribbon__tab--file" : "");
+    btn.className = "obs-ribbon__tab" + (t.id === "file" ? " obs-ribbon__tab--file" : "") + (t.contextual ? " obs-ribbon__tab--ctx" : "");
     btn.textContent = t.label;
     if (t.id === activeTab) btn.dataset.active = "1";
     btn.dataset.tab = t.id;
@@ -2904,7 +2965,7 @@ function renderStrip() {
 function renderStripImpl() {
   strip.innerHTML = "";
 
-  const tab = TABS.find((t) => t.id === activeTab) ?? TABS[0];
+  const tab: TabDef = ([...TABS, ...(ctxTab ? [ctxTab] : [])] as TabDef[]).find((t) => t.id === activeTab) ?? TABS[0];
   let items: HTMLElement[] = [];
   try {
     items = tab.items();
@@ -3159,6 +3220,8 @@ export function setupRibbon() {
   renderTabs();
   renderStrip();
   onNorthChanged(() => renderStrip());
+  onAuthoringChange(syncContextTab);
+  syncContextTab();
   // Restore minimized state (BIM-style flat ribbon)
   applyRibbonMinimize(ribbonMinimized);
 

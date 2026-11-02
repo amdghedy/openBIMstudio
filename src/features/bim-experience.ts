@@ -52,6 +52,7 @@ import {
   setWallOffset,
   onAuthoringChange,
 } from "./authoring";
+import { buildPlaceOptions, PLACE_TOOLS } from "./place-options";
 import { history } from "./history";
 import { snapping } from "./snapping";
 import { gizmo } from "./gizmo";
@@ -846,21 +847,15 @@ function renderOptionsBar() {
 
   if (mode === "place") {
     if (!tool) return;
+    if (PLACE_TOOLS.has(tool)) {
+      buildPlaceOptions(tool, optionsBar);
+      optionsBar.append(separator(), button("Finish", "✓", () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); }, false));
+      optionsBar.append(button("Cancel", "✕", () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); }, false));
+      return;
+    }
     optionsBar.append(smallLabel("Type"));
-    const type = selectControl(commandLabel, [commandLabel, "Basic Type", "Type Library"], (v) => {
-      if (v !== commandLabel) toast(`${v} selector opened`);
-    }, 140);
-    optionsBar.append(type, separator());
-
-    optionsBar.append(numberControl(tool === "wall" ? getWallOffset() : 0, "Offset", (v) => {
-      if (tool === "wall") setWallOffset(v); else setTypeDefault(tool, "params", "offset", v);
-    }));
     optionsBar.append(numberControl(Number(getTypeDefaults(tool).params.height ?? 3), "Height", (v) => setTypeDefault(tool, "params", "height", v)));
     optionsBar.append(numberControl(Number(getTypeDefaults(tool).params.elevation ?? 0), "Elevation", (v) => setTypeDefault(tool, "params", "elevation", v)));
-    optionsBar.append(separator());
-    optionsBar.append(button("Chain", "↗", () => { setWallChain(!getWallChain()); toast(`Chain ${getWallChain() ? "ON" : "OFF"}`, "info", 1200); }, getWallChain()));
-    optionsBar.append(button("Multiple", "∞", () => toast("Multiple placement toggled", "info", 1200), false));
-    optionsBar.append(button("Flip / Space", "↻", () => toast("Flip / orientation toggled", "info", 1200), false));
     return;
   }
 
