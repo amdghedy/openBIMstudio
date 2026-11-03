@@ -1,6 +1,6 @@
 /**
- * IFC export of the AUTHORED model (walls, slabs, columns, beams, doors,
- * windows, MEP runs, native twins) and rooms -> IfcSpace.
+ * IFC export of the AUTHORED model (walls (+ baseboard/cornice/wainscot sweeps as
+ * IfcCovering), slabs, columns, beams, doors, windows, MEP runs, native twins) and rooms -> IfcSpace.
  *
  * Pure TypeScript: no three.js, no DOM, no project imports - it takes plain
  * data and returns the STEP text, so it can be unit-tested in Node.
@@ -24,6 +24,8 @@
 import { stableIfcGuid, isValidIfcGuid } from "./ifc-guid";
 import { buildElementGeo, m2Quantities } from "./m2-geometry";
 import { resolveTwinExportGeometry } from "../native-twin/twin-export-geometry";
+import { generateWallSweep } from "../wall-sweeps/geometry";
+import { getProfile, type WallSweepPlacement } from "../wall-sweeps/types";
 
 export type Vec2 = [number, number];
 export type IfcSchema = "IFC4" | "IFC2X3";
@@ -171,7 +173,7 @@ function classFor(kind: Kind, schema: IfcSchema, hint = ""): ClassDef {
   switch (kind) {
     case "wall": return v4 ? { name: "IFCWALL", tail: [".STANDARD."] } : { name: "IFCWALLSTANDARDCASE", tail: [] };
     case "slab": return { name: "IFCSLAB", tail: [hint || ".FLOOR."] };
-    case "covering": return { name: "IFCCOVERING", tail: [".CEILING."] };
+    case "covering": return { name: "IFCCOVERING", tail: [hint || ".CEILING."] };
     case "column": return { name: "IFCCOLUMN", tail: v4 ? [".COLUMN."] : [] };
     case "beam": return { name: "IFCBEAM", tail: v4 ? [".BEAM."] : [] };
     case "member": return { name: "IFCMEMBER", tail: v4 ? [".BRACE."] : [] };
@@ -525,6 +527,30 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
         emitted.set(el.id, { id, storey, wall: { start: p.start, end: p.end, elev, t: T, h: H } });
         finishProduct(el, id, storey, cd.name, rgb, [solid]);
         quantities(id, [["L", "Length", len], ["L", "Width", T], ["L", "Height", H], ["V", "GrossVolume", len * T * H]], el.id);
+
+        /* ---- wall sweeps (baseboard / cornice / wainscot): one IfcCovering each, tessellated ---- */
+        const sweeps = Array.isArray((p as any).sweeps) ? ((p as any).sweeps as WallSweepPlacement[]) : [];
+        sweeps.forEach((sw, i) => {
+          const geo = generateWallSweep(p.start!, p.end!, T, H, elev, sw);
+          const prof = getProfile(sw.profileId);
+          const sid = `${el.id}:sweep:${i}`;
+          const sweepEl: IfcElementInput = {
+            id: sid, type: "covering", name: prof?.name ?? sw.profileId, color: geo?.color, levelId: el.levelId,
+            params: { height: H, thickness: T, elevation: elev },
+            properties: { hostWall: el.id, sweepProfile: sw.profileId, sweepFace: sw.face, sweepHeight: sw.height },
+          };
+          if (!geo || !geo.positions.length) { skip(sweepEl, "sweep profile not found"); return; }
+          if (geo.isReveal) { skip(sweepEl, "reveals are not exported (they are drawn as solids, not cut into the wall)"); return; }
+          const baked = bakeTriangles(geo.positions, undefined, storey);
+          if (!baked) { skip(sweepEl, "sweep has no valid triangles"); return; }
+          const kindHint = /baseboard/i.test(sw.profileId) ? (v4 ? ".SKIRTINGBOARD." : ".NOTDEFINED.")
+            : /cornice/i.test(sw.profileId) ? (v4 ? ".MOLDING." : ".NOTDEFINED.")
+            : /wainscot/i.test(sw.profileId) ? ".CLADDING." : ".NOTDEFINED.";
+          const cov = classFor("covering", schema, kindHint);
+          const sidNum = f.add(cov.name, baseAttrs(sweepEl, sid, place(storey.pl, axisAt(0, 0, 0)), rep([baked.item], baked.repType), cov.tail));
+          emitted.set(sid, { id: sidNum, storey });
+          finishProduct(sweepEl, sidNum, storey, cov.name, parseColor(geo.color, "#e5e7eb"), [baked.item]);
+        });
         continue;
       }
 
