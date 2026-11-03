@@ -1,0 +1,19 @@
+{
+  "standards": {
+    "title": "Normas"
+  },
+  "meta": {
+    "name": "Portuguese (Brazil)",
+    "nativeName": "Português (Brasil)",
+    "dir": "ltr"
+  },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "Carregando…",
+    "ready": "Pronto",
+    "cancel": "Cancelar",
+    "close": "Fechar",
+    "save": "Salvar",
+    "delete": "Excluir"
+  }
+}

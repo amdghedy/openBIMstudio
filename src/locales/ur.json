@@ -1,0 +1,19 @@
+{
+  "standards": {
+    "title": "معیارات"
+  },
+  "meta": {
+    "name": "Urdu",
+    "nativeName": "اردو",
+    "dir": "rtl"
+  },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "لوڈ ہو رہا ہے…",
+    "ready": "تیار",
+    "cancel": "منسوخ",
+    "close": "بند کریں",
+    "save": "محفوظ کریں",
+    "delete": "حذف کریں"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "standards": {
+    "title": "मानक"
+  },
+  "meta": {
+    "name": "Hindi",
+    "nativeName": "हिन्दी",
+    "dir": "ltr"
+  },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "लोड हो रहा है…",
+    "ready": "तैयार",
+    "cancel": "रद्द करें",
+    "close": "बंद करें",
+    "save": "सहेजें",
+    "delete": "हटाएँ"
+  }
+}

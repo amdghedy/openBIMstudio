@@ -1,0 +1,19 @@
+{
+  "standards": {
+    "title": "Normen"
+  },
+  "meta": {
+    "name": "Dutch",
+    "nativeName": "Nederlands",
+    "dir": "ltr"
+  },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "Laden…",
+    "ready": "Gereed",
+    "cancel": "Annuleren",
+    "close": "Sluiten",
+    "save": "Opslaan",
+    "delete": "Verwijderen"
+  }
+}
