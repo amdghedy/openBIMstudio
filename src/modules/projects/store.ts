@@ -1,5 +1,7 @@
 /** Raw IndexedDB persistence — no dependencies, local-first. */
 import type { ProjectDoc, ProjectSummary } from "./types";
+export type { ProjectRecoverySnapshot } from "./project-journal";
+
 import {
   getProjectJournalPruneIds,
   prepareRecoveredProjectDocument,
