@@ -95,6 +95,7 @@ import { toggleAutomationPanel, isAutomationPanelVisible } from "../features/aut
 
 // ── Object snaps (all modes) ───────────────────────────────────────────
 import { toggleSnapSettings, isSnapSettingsVisible, snapping } from "../features/snapping";
+import { resolveDblClick } from "./ribbon-collapse";
 
 // ── Insert / Link tools (all activated) ────────────────────────────────
 import {
@@ -231,6 +232,29 @@ function applyRibbonMinimize(min: boolean) {
 function toggleRibbonMinimize() {
   applyRibbonMinimize(!ribbonMinimized);
 }
+
+/** Date.now() of the last auto-expand (single click on a tab while minimized).
+ *  A dblclick landing right after such an expand is the tail of the SAME
+ *  gesture — swallowing it keeps the just-expanded ribbon open. */
+let lastAutoExpandAt = 0;
+
+// Double-click a tab (or the empty tabs row) → collapse the strip so only the
+// tab buttons remain. Delegated on the PERSISTENT tabs row: renderTabs()
+// rebuilds every tab button on each click, and a rebuilt button never sees the
+// browser's dblclick (its node was replaced between the two clicks) — this
+// delegation is what makes the gesture work on Home / Annotate / View / … .
+tabsRow.addEventListener("dblclick", (e) => {
+  const target = e.target as HTMLElement | null;
+  const onTab = !!target?.closest?.(".obs-ribbon__tab");
+  const decision = resolveDblClick({
+    minimized: ribbonMinimized,
+    lastAutoExpandAt,
+    now: Date.now(),
+    onTab,
+  });
+  lastAutoExpandAt = decision.lastAutoExpandAt;
+  if (decision.minimize !== ribbonMinimized) applyRibbonMinimize(decision.minimize);
+});
 
 /* ═════════════════════════════════════════════════════════════════════════
    Helpers
@@ -3067,7 +3091,10 @@ function syncContextTab() {
     if (!hadTab) tabBeforeCtx = activeTab;
     ctxTab = { id: "ctx-place", label, contextual: true, items: build };
     activeTab = "ctx-place";
-    if (ribbonMinimized) applyRibbonMinimize(false);
+    if (ribbonMinimized) {
+      applyRibbonMinimize(false);
+      lastAutoExpandAt = Date.now();
+    }
   } else if (ctxTab) {
     ctxTab = null;
     if (activeTab === "ctx-place") activeTab = tabBeforeCtx && TABS.some((x) => x.id === tabBeforeCtx) ? tabBeforeCtx : (TABS[0]?.id ?? "file");
@@ -3100,25 +3127,18 @@ function renderTabs() {
       // Single click: if minimized, expand and switch; if already expanded, just switch tab
       if (ribbonMinimized) {
         applyRibbonMinimize(false);
+        lastAutoExpandAt = Date.now();
       }
+      // Re-clicking the already-active tab must NOT rebuild the tabs row: the
+      // double-click collapse gesture needs both clicks to land on the same
+      // node, and renderTabs() replaces every button.
+      if (activeTab === t.id && !ribbonMinimized) return;
       activeTab = t.id;
       renderTabs();
       renderStrip();
     };
-    // Double-click on tab → toggle minimize (BIM behavior: shrink ribbon so only tabs show)
-    btn.ondblclick = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleRibbonMinimize();
-    };
     tabsRow.appendChild(btn);
   }
-
-  // Double-click empty area of tabs row also toggles minimize
-  tabsRow.ondblclick = (e) => {
-    if ((e.target as HTMLElement).classList.contains("obs-ribbon__tab")) return;
-    toggleRibbonMinimize();
-  };
 
   tabsRow.appendChild(pill);
   updatePill();

@@ -333,6 +333,16 @@ bim-panel-section[data-collapsed] { overflow: hidden; }
   border-bottom: none;
 }
 
+/* Full-screen focus mode: any fullscreen (F11, the CAD full-screen button, …)
+   hides all command chrome — ribbon and status bar — so the model view gets the
+   whole screen. Toggled by src/shell/fullscreen-chrome.ts via body.obs-fullscreen;
+   leaving full screen restores the layout as it was, including the ribbon's own
+   minimize state, because only this scoped rule does the hiding. */
+body.obs-fullscreen .obs-ribbon,
+body.obs-fullscreen .bb-status {
+  display: none !important;
+}
+
 .obs-ribbon__tabs {
   display: flex;
   align-items: stretch;

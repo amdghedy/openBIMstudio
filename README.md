@@ -82,7 +82,7 @@ One install (none, actually — it's your browser). One license (MIT — yours).
 | 🏗️ **Authoring to delivery in one app** | Walls to rebar, clash to BCF, views to sheets to PDF, quantities to cost, phasing to 4D. No stitching together five tools. |
 | 🔓 **Open standards, no lock-in** | IFC 2x3/4, BCF, IDS, DXF, CSV, PDF. Your data is never hostage to a vendor. |
 | 🤖 **Automate & extend** | Event-driven automation rules, an AI assistant (bring your own provider key), a plugin SDK with capability gating, and a sample plugin marketplace. |
-| ✅ **Evidence-based engineering** | 103 focused test suites run in CI on every push, a public per-tool maturity catalogue, and documented known limitations. |
+| ✅ **Evidence-based engineering** | 104 focused test suites run in CI on every push, a public per-tool maturity catalogue, and documented known limitations. |
 | 🧠 **Modern modeling engine** | Justification lines, magnetic snapping, constraint solving, parametric families with formulas, and deep authoring workflows. |
 
 ---
@@ -400,7 +400,7 @@ available from earlier releases; run the one matching the milestone you touched.
 
 **Layout:** `src/features` (tools/UI) · `src/modules` (BIM domains — 100+ modules from authoring to 5D) · `src/commands` · `src/workers` · optional `server/` (collaboration & conversion — self-hosted and optional)
 
-**Testing culture:** 103 focused automated suites (`npm run` and pick any `test:*`; `node scripts/ci-unit-tests.mjs` runs the whole batch), CI on every push, and per-version milestone checks. Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md); for substantial changes, open an issue first and discuss the design and validation strategy.
+**Testing culture:** 104 focused automated suites (`npm run` and pick any `test:*`; `node scripts/ci-unit-tests.mjs` runs the whole batch), CI on every push, and per-version milestone checks. Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md); for substantial changes, open an issue first and discuss the design and validation strategy.
 
 ---
 
