@@ -822,23 +822,29 @@ export function showWalkAdjustmentUI(onStartWalk: () => void) {
 
   const ui = document.createElement("div");
   ui.id = "walk-adjust-ui";
-  ui.style.position = "fixed";
-  ui.style.bottom = "30px";
-  ui.style.left = "50%";
-  ui.style.transform = "translateX(-50%)";
+  // Sit directly under the ViewCube (top-right of the 3D viewport).
+  // ViewCube: absolute top:14px;right:14px — card ≈ header + 140px SVG + padding.
+  ui.style.position = "absolute";
+  ui.style.top = "210px";
+  ui.style.right = "14px";
+  ui.style.left = "auto";
+  ui.style.bottom = "auto";
+  ui.style.transform = "none";
   ui.style.background = "rgba(20, 25, 30, 0.95)";
   ui.style.border = "1px solid #00A3E0";
   ui.style.borderRadius = "8px";
-  ui.style.padding = "20px";
+  ui.style.padding = "12px 14px";
   ui.style.display = "flex";
   ui.style.flexDirection = "column";
   ui.style.alignItems = "center";
-  ui.style.gap = "15px";
-  ui.style.zIndex = "999999";
+  ui.style.gap = "10px";
+  ui.style.zIndex = "45"; // above viewcube (40), below modals
   ui.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
+  ui.style.pointerEvents = "auto";
+  ui.style.maxWidth = "min(220px, calc(100% - 28px))";
 
   const title = document.createElement("div");
-  title.textContent = "ADJUST STARTING POSITION";
+  title.textContent = "WALK START";
   title.style.color = "#00A3E0";
   title.style.fontWeight = "bold";
   title.style.fontFamily = "sans-serif";
@@ -909,7 +915,20 @@ export function showWalkAdjustmentUI(onStartWalk: () => void) {
   };
   
   ui.appendChild(startBtn);
-  document.body.appendChild(ui);
+  try {
+    const host = (ctx as any).rightHost as HTMLElement | undefined;
+    if (host) {
+      // Keep the panel in the 3D viewport stack (same parent as ViewCube).
+      if (getComputedStyle(host).position === "static") {
+        host.style.position = "relative";
+      }
+      host.appendChild(ui);
+    } else {
+      document.body.appendChild(ui);
+    }
+  } catch {
+    document.body.appendChild(ui);
+  }
 }
 
 
