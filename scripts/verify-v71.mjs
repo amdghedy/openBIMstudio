@@ -94,9 +94,9 @@ track(check("host-not-mirrored detach warning MOD-MIR-010", "src/modules/modify/
 track(check("transaction double-apply guard", "src/modules/modify/group1.ts", /initial forward apply already performed by the tool/));
 
 // ── Global exposure + UI wiring ─────────────────────────────────────────
-track(check("__obsModify exposes Group 1 tools", "src/modules/v68-register.ts", /MoveTool, RotateTool, MirrorTool/));
-track(check("__obsSelection registered", "src/modules/v68-register.ts", /w\.__obsSelection = selectionApi/));
-track(check("__obsReferences registered", "src/modules/v68-register.ts", /w\.__obsReferences = referencesApi/));
+track(check("__obsModify exposes Group 1 tools", "src/modules/authoring-core.ts", /MoveTool, RotateTool, MirrorTool/));
+track(check("__obsSelection registered", "src/modules/authoring-core.ts", /w\.__obsSelection = selectionApi/));
+track(check("__obsReferences registered", "src/modules/authoring-core.ts", /w\.__obsReferences = referencesApi/));
 track(check("engine-ui Move/Rotate/Mirror/Selection/Reference dialogs", "src/features/engine-ui.ts", /openGroup1MoveDialog[\s\S]*openGroup1RotateDialog[\s\S]*openGroup1MirrorDialog[\s\S]*openSelectionInspectorDialog[\s\S]*openReferencePickerDialog/s));
 track(check("engine-ui persistent transaction + undo/redo exports", "src/features/engine-ui.ts", /export function group1Undo[\s\S]*export function group1Redo/s));
 track(check("store adapter implements remove (undo of copies)", "src/features/engine-ui.ts", /remove: \(id: string\): boolean/));

@@ -14,7 +14,7 @@
  *   - src/modules/modify            (Module 2C)
  *   - src/modules/properties-panel  (Module 2D: schema/lifecycle/dimensions)
  *   - tests: v68-engine-core, v68-solid-hosting, v68-authoring-interaction, v68-acceptance
- *   - Boot wiring via v68-register + critical-gaps-boot
+ *   - Boot wiring via authoring-core + critical-gaps-boot
  *
  * Run: `node scripts/verify-v68.mjs`
  * Exit code: 0 = pass, 1 = fail.
@@ -99,8 +99,8 @@ track(check("interaction suite", "tests/v68-authoring-interaction.test.cjs", /st
 track(check("acceptance suite", "tests/v68-acceptance.test.cjs", /2E\.1|2E\.10/i));
 
 console.log("\nBoot wiring:");
-track(check("v68-register module", "src/modules/v68-register.ts", /setupV68Engines/));
-track(check("boot integration", "src/critical-gaps-boot.ts", /v68-register/));
+track(check("authoring-core module", "src/modules/authoring-core.ts", /setupAuthoringCore/));
+track(check("boot integration", "src/critical-gaps-boot.ts", /authoring-core/));
 
 console.log(`\n=== verify-v68: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail ? 1 : 0);

@@ -438,6 +438,6 @@ No Group 1 behavior is "complete" without the test evidence above (spec §13 clo
 | Selection engine (§2) | `src/modules/selection/index.ts` (new, pure) |
 | Reference service (§3) | `src/modules/references/index.ts` (new, pure) |
 | Move/Rotate/Mirror catalogs (§4–6) | `src/modules/modify/group1.ts` (extends existing commands, pure) |
-| Global exposure | `v68-register.ts` → `__obsSelection`, `__obsReferences`, extended `__obsModify` |
+| Global exposure | `authoring-core.ts` → `__obsSelection`, `__obsReferences`, extended `__obsModify` |
 | UI wiring | `engine-ui.ts` dialogs + ribbon buttons (Selection Inspector, Reference Picker, Move/Rotate/Mirror numeric tools) |
 | Tests | `tests/v71-modify-group1.test.cjs` (closed-form + §8 classes) |

@@ -36,7 +36,7 @@ All dialogs also remain available programmatically via
 ## Bugs fixed on the way
 
 1. **`__obsConstraints` collision** — `parametric-constraints` registers
-   the lock/equality manager; `v67-register` then overwrote it, breaking
+   the lock/equality manager; `engineering-engines` then overwrote it, breaking
    the ribbon *Lock Dim* / *Equality* buttons at runtime. v67 now merges
    the numeric solver into the existing object.
 2. **FEM `transMatrix()` produced a 6×3 matrix** (B stacked vertically
@@ -71,7 +71,7 @@ sanitisation), and DOM-free module loading.
 - `src/shell/ribbon.ts` — new groups on Analyze / Architecture / Edit /
   Manage tabs
 - `src/critical-gaps-boot.ts` — boots `setupEngineUi()`
-- `src/modules/v67-register.ts` — constraint API merge fix
+- `src/modules/engineering-engines.ts` — constraint API merge fix
 - `src/modules/analytical-model/fem.ts` — transform fix
 - `tests/structural.test.cjs` — de-vacuated + corrected
 - `tests/v69-engine-ui.test.cjs` — new

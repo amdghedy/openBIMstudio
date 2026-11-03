@@ -24,7 +24,7 @@
  *
  * Engine access: stateless engines are imported directly (pure modules);
  * singleton-backed registries are read through the window.__obs* handles
- * installed by v67/v68-register so the UI always reflects the same state
+ * installed by v67/authoring-core so the UI always reflects the same state
  * the console sees. The authoring model is reached exclusively through
  * window.__obsAuthoring so this module never pulls three.js into the
  * Node test slice.

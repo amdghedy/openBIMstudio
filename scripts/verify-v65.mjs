@@ -8,7 +8,7 @@
  *   - Analyze: model-checker, daylighting, structural-loads-ui, generative-design
  *   - Insert: point-cloud, pdf-underlay
  *   - Collaboration: worksets
- *   - v40-register.ts wires all modules to window.__obs*
+ *   - module-globals.ts wires all modules to window.__obs*
  *   - tests/v40-modules.test.cjs (36 tests)
  *   - Two new ribbon tabs (analyze + massing-site)
  *
@@ -71,8 +71,8 @@ track(check("pdf-underlay module", "src/modules/pdf-underlay/pdf-underlay.ts", /
 track(check("worksets module", "src/modules/worksets/worksets.ts", /export function createWorkset/));
 
 console.log("\nBoot + ribbon:");
-track(check("v40-register boot", "src/modules/v40-register.ts", /window as any/));
-track(check("v40-register in boot sequence", "src/critical-gaps-boot.ts", /v40-register/));
+track(check("module-globals boot", "src/modules/module-globals.ts", /window as any/));
+track(check("module-globals in boot sequence", "src/critical-gaps-boot.ts", /module-globals/));
 track(check("analyze tab in ribbon", "src/shell/ribbon.ts", /id: "analyze"/));
 track(check("massing-site tab in ribbon", "src/shell/ribbon.ts", /id: "massing-site"/));
 track(check("scope-box button in View tab", "src/shell/ribbon.ts", /__obsScopeBox/));

@@ -124,7 +124,7 @@ __obsAdaptive.repeatAlongPath("fin", __obsAdaptive.divideLine(p1, p2, 6));
 
 ## Boot & CI
 
-- `src/modules/v67-register.ts` wires all four engines into
+- `src/modules/engineering-engines.ts` wires all four engines into
   `window.__obsConstraints / __obsStructural / __obsMepPressure /
   __obsAdaptive`, guarded by the boot `safe()` wrapper.
 - All four test suites added to the `Unit tests` workflow.

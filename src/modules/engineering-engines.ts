@@ -1,5 +1,5 @@
 /**
- * v67 module globals — the "Revit killer" engine package.
+ * Engineering engines — constraints, structural FEM, MEP pressure, adaptive components.
  *
  * Exposes the four new engineering engines on window.__obs* for the
  * console, ribbon, automation and AI tools:
@@ -79,7 +79,7 @@ function commitWalls(): void {
   } catch { /* ignore */ }
 }
 
-export function setupV67Engines(): void {
+export function setupEngineeringEngines(): void {
   // ── 1. Constraint solver ────────────────────────────────────────────────
   // NOTE: parametric-constraints registers `__obsConstraints` first
   // (lock/equality/align manager). v67 must MERGE the numeric solver into

@@ -57,9 +57,9 @@ track(check("section-box icon", "src/features/icon-set.ts", /"section-box"/));
 track(check("ribbon Section Box button", "src/shell/ribbon.ts", /__obsSectionBox/));
 track(check("ribbon Scope Box visualizer button", "src/shell/ribbon.ts", /__obsScopeBoxViz/));
 track(check("ribbon Crop Region button", "src/shell/ribbon.ts", /__obsCropRegion/));
-track(check("v40-register wires scope-box-viz", "src/modules/v40-register.ts", /__obsScopeBoxViz/));
-track(check("v40-register wires section-box", "src/modules/v40-register.ts", /__obsSectionBox/));
-track(check("v40-register wires crop-region", "src/modules/v40-register.ts", /__obsCropRegion/));
+track(check("module-globals wires scope-box-viz", "src/modules/module-globals.ts", /__obsScopeBoxViz/));
+track(check("module-globals wires section-box", "src/modules/module-globals.ts", /__obsSectionBox/));
+track(check("module-globals wires crop-region", "src/modules/module-globals.ts", /__obsCropRegion/));
 
 console.log("\nRegression (v40 modules still present):");
 track(check("toposurface still present", "src/modules/toposurface/toposurface.ts", /export function buildToposurface/));

@@ -1,5 +1,5 @@
 /**
- * Module globals — exposes all v40+ modules on `window.__obs*` for the ribbon,
+ * Module globals — exposes the feature modules on `window.__obs*` for the ribbon,
  * console and other modules to consume without a hard import.
  *
  * Each global is wrapped in a lazy-load try/catch so a failure in one module

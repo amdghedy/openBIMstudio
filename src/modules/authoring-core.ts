@@ -1,5 +1,5 @@
 /**
- * v68 module globals — the "Authoring Core" engine package.
+ * Authoring core — parametric graph, registry, solids, snapping, relationships.
  *
  * Implements the MASTER PROMPT authorized modules (1, 2, 2B, 2C, 2D, 2E)
  * as pure engines and exposes them on window.__obs* for the console,
@@ -73,7 +73,7 @@ function features(): Any {
   return c.features;
 }
 
-export function setupV68Engines(): void {
+export function setupAuthoringCore(): void {
   // ── 1. Parametric engine (dependency graph + parameters) ────────────────
   const parametricApi = {
     DependencyGraph,

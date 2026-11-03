@@ -67,8 +67,8 @@ track(check("ribbon: Bool (Any) button", "src/shell/ribbon.ts", /openGeneralBool
 track(check("ribbon: Shell button", "src/shell/ribbon.ts", /openShellDialog/));
 track(check("ribbon: Loft N button", "src/shell/ribbon.ts", /openLoftDialog/));
 track(check("ribbon: Fuse button", "src/shell/ribbon.ts", /openFuseDialog/));
-track(check("__obsSolids exposes general kernel", "src/modules/v68-register.ts", /generalBoolean, generalUnion, generalIntersect, generalSubtract/));
-track(check("__obsSolids exposes shell + loft", "src/modules/v68-register.ts", /hollowExtrusion, hollowMetrics, offsetClosedRing, loftSections/));
+track(check("__obsSolids exposes general kernel", "src/modules/authoring-core.ts", /generalBoolean, generalUnion, generalIntersect, generalSubtract/));
+track(check("__obsSolids exposes shell + loft", "src/modules/authoring-core.ts", /hollowExtrusion, hollowMetrics, offsetClosedRing, loftSections/));
 
 console.log("\nTests + CI:");
 track(check("v70 test suite", "tests/v70-deep-modeling.test.cjs", /general union: overlapping boxes with coplanar tops/));

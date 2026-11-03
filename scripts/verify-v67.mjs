@@ -7,7 +7,7 @@
  *   - src/modules/mep/pressure.ts    (duct/pipe hydraulics, worst path)
  *   - src/modules/adaptive           (adaptive components)
  *   - tests: constraint-solver, structural, mep-pressure, adaptive
- *   - Boot wiring via v67-register + critical-gaps-boot
+ *   - Boot wiring via engineering-engines + critical-gaps-boot
  *
  * Run: `node scripts/verify-v67.mjs`
  * Exit code: 0 = pass, 1 = fail.
@@ -67,8 +67,8 @@ track(check("repeater", "src/modules/adaptive/index.ts", /export function repeat
 track(check("adaptive test", "tests/adaptive.test.cjs", /volume equals area × polyline length/));
 
 console.log("\nBoot wiring:");
-track(check("v67 register", "src/modules/v67-register.ts", /export function setupV67Engines/));
-track(check("boot import", "src/critical-gaps-boot.ts", /v67-register/));
+track(check("v67 register", "src/modules/engineering-engines.ts", /export function setupEngineeringEngines/));
+track(check("boot import", "src/critical-gaps-boot.ts", /engineering-engines/));
 track(check("CI wiring", ".github/workflows/unit-tests.yml", /test:structural/));
 
 console.log(`\n${pass} passed, ${fail} failed`);

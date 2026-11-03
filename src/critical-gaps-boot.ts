@@ -396,20 +396,20 @@ async function runOnce(): Promise<void> {
   });
 
   // ── v40 module globals ────────────────────────────────────────────────
-  await safe("v40-register", async () => {
-    await import("./modules/v40-register");
+  await safe("module-globals", async () => {
+    await import("./modules/module-globals");
   });
 
   // ── v67 engineering engines (constraints / structural / MEP pressure / adaptive)
-  await safe("v67-register", async () => {
-    const m: Any = await import("./modules/v67-register");
-    m.setupV67Engines?.();
+  await safe("engineering-engines", async () => {
+    const m: Any = await import("./modules/engineering-engines");
+    m.setupEngineeringEngines?.();
   });
 
   // ── v68 authoring core (dependency graph / solids / snapping / modify / properties)
-  await safe("v68-register", async () => {
-    const m: Any = await import("./modules/v68-register");
-    m.setupV68Engines?.();
+  await safe("authoring-core", async () => {
+    const m: Any = await import("./modules/authoring-core");
+    m.setupAuthoringCore?.();
   });
 
   // ── v69 engine UI (ribbon buttons + dialogs + panels for every engine)
