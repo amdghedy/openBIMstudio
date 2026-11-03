@@ -43,6 +43,21 @@ function toast(msg: string, kind: "info" | "warn" | "success" = "info") {
   }
 }
 
+/** Session-only: user accepted risk for large IFC→FRAG conversions. */
+let allowLargeThisSession = false;
+
+function confirmLargeConvert(sizeMB: number, name: string): boolean {
+  if (allowLargeThisSession) return true;
+  const ok = window.confirm(
+    `“${name}” is ${sizeMB.toFixed(0)} MB.\n\n` +
+    `In-browser web-ifc conversion of multi-hundred-MB IFCs usually runs out of memory and can crash this tab.\n\n` +
+    `Recommended: convert offline to .frag on a desktop machine, then Insert → Link FRAG.\n\n` +
+    `Click OK to try anyway in this browser (unsafe).`,
+  );
+  if (ok) allowLargeThisSession = true;
+  return ok;
+}
+
 function downloadBytes(bytes: Uint8Array, name: string) {
   const blob = new Blob([bytes as BlobPart], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
@@ -155,8 +170,9 @@ function ensurePanel(): HTMLDivElement {
   const tip = document.createElement("div");
   tip.style.cssText = "font-size:11px;color:#64748b;line-height:1.4";
   tip.innerHTML =
-    `Tip: for models over ~100 MB, conversion may still fail in the browser. ` +
-    `Enable <i>Allow unsafe large IFC</i> in Import Setup only if you accept a possible tab crash.`;
+    `For models over ~120 MB you will be asked to <b>try anyway</b>. ` +
+    `A <b>698 MB</b> IFC almost always crashes the browser — prefer offline convert + <b>Link FRAG</b>. ` +
+    `This tool still helps for medium files and avoids loading the 3D scene during conversion.`;
   body.appendChild(tip);
 
   root.appendChild(body);
@@ -303,7 +319,21 @@ async function processJobs() {
         },
       });
       try {
+        const sizeMB = j.file.size / (1024 * 1024);
+        // Soft limit ~120 MB — require explicit OK for larger files.
+        if (sizeMB > 120 && !confirmLargeConvert(sizeMB, j.sourceName)) {
+          j.status = "cancelled";
+          j.phase = "skipped — user declined large-file risk";
+          renderList();
+          continue;
+        }
+        j.phase = sizeMB > 120
+          ? `⚠️ converting large IFC (${sizeMB.toFixed(0)} MB) — do not close this tab`
+          : "starting…";
+        renderList();
+
         const result = await convertIfcToFragBytes(j.file, {
+          force: sizeMB > 120 || allowLargeThisSession,
           onProgress: (pct, phase) => {
             j.progress = pct;
             j.phase = phase;
