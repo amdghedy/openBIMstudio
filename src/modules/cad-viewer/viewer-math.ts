@@ -2,6 +2,7 @@
  * Pure geometry for the CAD Editor: view transform, picking, snapping, measuring, units, text search.
  * No DOM, no rendering; everything works on the flattened DxfEntity vocabulary the DXF/DWG readers produce.
  */
+import { findFont } from "../drawings/cad-styles";
 import type { DxfEntity, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
 
 export type Pt = { x: number; y: number };
@@ -65,6 +66,8 @@ export const arcSweepDeg = (s: number, e: number) => norm360(e - s) || 360;
  */
 export function textFontCss(e: Extract<DxfEntity, { type: "TEXT" }>, px: number): string {
   const raw = String(e.font ?? "").trim();
+  const known = findFont(raw);
+  if (known && known.kind !== "stroke") return `${e.italic ? "italic " : ""}${e.bold ? "bold " : ""}${px}px ${known.css}`;
   const base = raw.replace(/\.(shx|ttf|otf|ttc)$/i, "").replace(/[^A-Za-z0-9 _-]/g, "");
   const k = base.toLowerCase();
   let stack = "sans-serif";

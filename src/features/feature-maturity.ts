@@ -366,6 +366,25 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     ],
     affirmedIn: APP_VERSION,
   },
+  {
+    id: "cad-editor-styles",
+    area: "Drawings",
+    status: "limited",
+    source: [
+      "src/modules/drawings/cad-styles.ts",
+      "src/features/cad-style-ui.ts",
+      "src/modules/drawings/dxf-writer.ts",
+      "src/features/cad-viewer.ts",
+    ],
+    evidence: ["tests/cad-styles.test.cjs", "tests/cad-save.test.cjs"],
+    limitations: [
+      "DXF write/read round trip (linetypes, lineweights, true colour, text font/style/anchor, layer lock/off) is tested; the editing dialogs have not been browser-tested",
+      "Fonts are system fonts; SHX stroke fonts are drawn with a similar-looking font on screen and keep their names in saved DXF files",
+      "Linetypes are dash/dot patterns only; complex linetypes with embedded text or shapes are not supported",
+      "Saved DXF does not include hatches, blocks or layouts; plot/PDF output has not been verified to honour per-object lineweights",
+    ],
+    affirmedIn: APP_VERSION,
+  },
 ] as const;
 
 /** Look up a feature's maturity by id. */

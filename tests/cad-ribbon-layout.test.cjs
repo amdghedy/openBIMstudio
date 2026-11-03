@@ -67,7 +67,7 @@ t("A-menu dispatches to the active drawing and offers shell-level file ops", () 
 // ── 3. Ribbon tabs filter the panel groups of the active drawing ──
 t("every ribbon group is tagged with exactly one of the five tabs", () => {
   const expected = {
-    File: "home", Draw: "home", Select: "home", Modify: "home", History: "home", Layers: "home",
+    File: "home", Draw: "home", Select: "home", Modify: "home", History: "home", Layers: "home", Styles: "home",
     Measure: "annotate", Markup: "annotate", "Markup Files": "annotate",
     Navigate: "view", Modes: "view", Show: "view",
     Settings: "manage",
@@ -134,8 +134,8 @@ t("toolbar actions still wired: tool buttons, toggles, selects", () => {
   assert.ok(src.includes('sel("bg").onchange'), "background select not wired");
   assert.ok(src.includes('sel("du").onchange'), "units select not wired");
 });
-t("all 15 ribbon groups still exist after the tab reorganization", () => {
-  for (const label of ["File", "Draw", "Select", "Modify", "History", "Measure", "Markup", "Navigate", "Modes", "Settings", "Layers", "Show", "Markup Files", "Export", "Window"]) {
+t("all 16 ribbon groups still exist after the tab reorganization", () => {
+  for (const label of ["File", "Draw", "Select", "Modify", "History", "Measure", "Markup", "Navigate", "Modes", "Settings", "Layers", "Styles", "Show", "Markup Files", "Export", "Window"]) {
     assert.ok(src.includes(`"${label}"`), `group "${label}" lost`);
   }
 });

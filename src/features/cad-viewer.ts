@@ -30,6 +30,11 @@ import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import { svgIcon, type IconName } from "./icon-set";
 import { promptLine, confirmDialog } from "./form-modal";
+import {
+  renderAppearanceEditor, openLinetypeManager, openTextStyleManager, placeText, editLayerProperty,
+  matchProperties, newObjectProps, lineweightPx, type CadStyleApi,
+} from "./cad-style-ui";
+import { lineweightLabel } from "../modules/drawings/cad-styles";
 
 type Tool =
   | "pan"
@@ -54,6 +59,8 @@ type Tool =
   | "cloud"
   | "redline"
   | "note"
+  | "text"
+  | "match"
   | "line"
   | "circle"
   | "rect"
@@ -98,6 +105,11 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "ZOOM", aliases: ["Z"], description: "Zoom view: [All/Extents/Window/Previous]" },
   { name: "PAN", aliases: ["P"], description: "Move the view without changing magnification" },
   { name: "LAYER", aliases: ["LA", "LAYERS"], description: "Open Layer Properties Manager" },
+  { name: "LINETYPE", aliases: ["LT", "LTYPE"], description: "Open the Linetype Manager (load linetypes, set current)" },
+  { name: "LTSCALE", aliases: ["LTS"], description: "Set the global linetype scale, e.g. LTSCALE 2" },
+  { name: "STYLE", aliases: ["ST"], description: "Open the Text Style Manager (fonts, heights, presets)" },
+  { name: "TEXT", aliases: ["T", "DT", "DTEXT", "MT", "MTEXT"], description: "Place text with the current text style" },
+  { name: "MATCHPROP", aliases: ["MA"], description: "Copy layer, colour, linetype and lineweight from one object to others" },
   { name: "PROPERTIES", aliases: ["PR", "CH", "PROP"], description: "Show properties inspector" },
   { name: "REGEN", aliases: ["RE", "REA", "REGENALL"], description: "Regenerate view and graphics" },
   { name: "UNITS", aliases: ["UN"], description: "Control coordinate and angle display format" },
@@ -1105,9 +1117,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.strokeStyle = col;
       c.fillStyle = col;
       c.setLineDash(dashFor(e, v));
+      c.lineWidth = lwtOn && !(e.type === "LWPOLYLINE" && e.hatch) ? lineweightPxFor(e) : lwtOn ? lw : 1;
       drawEntity(c, e, v);
     });
     c.setLineDash([]);
+    c.lineWidth = lwtOn ? lw : 1;
   }
 
   /** Paints the AutoCAD major/minor grid and red/green axes through (0,0) */
@@ -1769,6 +1783,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     view = { ...view, cx: x, cy: y, scale: scale ?? view.scale };
     draw();
   }
+
+  /* ── Style tools (linetypes, fonts, text styles, match properties) ── */
+  let matchSrc: DxfEntity | null = null;
+  const styleApi: CadStyleApi = {
+    doc: () => doc,
+    entities: () => ents,
+    selection: () => [...sel],
+    commitModify: (before, after) => commitModify(before, after),
+    addEntity: (e) => addDraftEntity(e),
+    redraw: () => draw(),
+    log: (m) => logCmd(m),
+    refreshLayers: () => buildLayers(),
+    currentLayer: () => currentLayer,
+  };
+  const lineweightPxFor = (e: DxfEntity): number => {
+    const mm = e.lineweight ?? layerOf(e.layer)?.lineweight;
+    return mm != null ? lineweightPx(mm) : lw;
+  };
 
   /* ── AutoCAD Drafting Engine ── */
   function addDraftEntity(e: DxfEntity): void {
@@ -2488,9 +2520,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           <td style="text-align:center;cursor:pointer" data-act="toggle-on">${isOff ? "💡❌" : "💡"}</td>
           <td style="text-align:center;cursor:pointer" data-act="toggle-freeze">${isFrozen ? "❄️" : "☀️"}</td>
           <td style="text-align:center;cursor:pointer" data-act="toggle-lock">${isLocked ? "🔒" : "🔓"}</td>
-          <td><span class="sw" style="display:inline-block;background:${col};vertical-align:middle;margin-right:4px"></span>${lyr?.color ?? 7}</td>
-          <td>${escapeHtml(lyr?.lineType ?? "Continuous")}</td>
-          <td>${(lyr as any)?.lineweight != null ? (lyr as any).lineweight + "mm" : "Default"}</td>
+          <td style="cursor:pointer" data-act="edit-color" title="Click to change colour"><span class="sw" style="display:inline-block;background:${col};vertical-align:middle;margin-right:4px"></span>${lyr?.color ?? 7}</td>
+          <td style="cursor:pointer" data-act="edit-lt" title="Click to change linetype">${escapeHtml(lyr?.lineType ?? "Continuous")}</td>
+          <td style="cursor:pointer" data-act="edit-lw" title="Click to change lineweight">${lyr?.lineweight != null ? escapeHtml(lineweightLabel(lyr.lineweight)) : "Default"}</td>
           <td style="text-align:center">🖨️</td>
         </tr>`;
       })
@@ -2535,6 +2567,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     el.querySelectorAll("tr[data-row-l]").forEach((tr) => {
       const lname = tr.getAttribute("data-row-l")!;
+      const editField = (act: string, field: "color" | "lineType" | "lineweight") =>
+        tr.querySelector(`[data-act=${act}]`)?.addEventListener("click", () => {
+          void editLayerProperty(styleApi, lname, field).then((changed) => {
+            if (!changed) return;
+            closeOverlay();
+            buildLayers();
+            openLayerPropertiesManager();
+            markDirty();
+            draw();
+          });
+        });
+      editField("edit-color", "color");
+      editField("edit-lt", "lineType");
+      editField("edit-lw", "lineweight");
       tr.querySelector("[data-act=toggle-on]")?.addEventListener("click", () => {
         if (hidden.has(lname)) hidden.delete(lname);
         else hidden.add(lname);
@@ -2581,6 +2627,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         .join("")}${row("Layers", String(lay.size))}${row("Total length", fmt(len))}${
         area ? row("Total area", fmt(area, 2)) : ""
       }</table>`;
+      const hostMulti = document.createElement("div");
+      propsEl.append(hostMulti);
+      renderAppearanceEditor(hostMulti, styleApi);
       return;
     }
     const e = ents[selected];
@@ -2635,7 +2684,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (m.length != null) rows.push(row("Length", fmt(m.length)));
     if (m.angle != null) rows.push(row("Angle", m.angle.toFixed(2) + "°"));
     if (m.area != null) rows.push(row("Area", fmt(m.area, 2)));
+    rows.push(row("Lineweight", lineweightLabel(e.lineweight ?? layerOf(e.layer)?.lineweight)));
     propsEl.innerHTML = `<table>${rows.join("")}</table>`;
+    const hostOne = document.createElement("div");
+    propsEl.append(hostOne);
+    renderAppearanceEditor(hostOne, styleApi);
   }
 
   const row = (k: string, v: string) =>
@@ -2702,6 +2755,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ["offset", "Offset", "O"],
     ["redline", "Redline", "M"],
     ["note", "Text Note", "N"],
+    ["text", "Text", "T"],
+    ["match", "Match Properties", "MA"],
     ["calibrate", "Calibrate", "K"],
   ];
 
@@ -2803,7 +2858,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         tb("redline", "detail-line", "Redline") +
           tb("cloud", "revision-cloud", "RevCloud") +
           tb("leader", "tag", "Leader") +
-          tb("note", "text", "Note"),
+          tb("note", "text", "Note") +
+          tb("text", "text", "Text") +
+          tb("match", "detail-line", "Match"),
         "",
         "",
         "annotate",
@@ -2906,6 +2963,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   function setTool(t: Tool) {
     clearModState();
+    matchSrc = null;
     tool = t;
     cv.focus({ preventScroll: true });
     pts = [];
@@ -2940,7 +2998,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // Also add drafted polyline entity
       addDraftEntity({
         type: "LWPOLYLINE",
-        layer: currentLayer,
+        layer: currentLayer, ...newObjectProps(),
         points: pts.map((p) => ({ x: p.x, y: p.y })),
         closed: false,
       });
@@ -3042,7 +3100,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (pts.length === 2) {
           addDraftEntity({
             type: "LINE",
-            layer: currentLayer,
+            layer: currentLayer, ...newObjectProps(),
             start: { x: pts[0].x, y: pts[0].y },
             end: { x: pts[1].x, y: pts[1].y },
           });
@@ -3057,7 +3115,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           const r = M.distance(pts[0], pts[1]);
           addDraftEntity({
             type: "CIRCLE",
-            layer: currentLayer,
+            layer: currentLayer, ...newObjectProps(),
             center: { x: pts[0].x, y: pts[0].y },
             radius: r,
           });
@@ -3073,7 +3131,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             p2 = pts[1];
           addDraftEntity({
             type: "LWPOLYLINE",
-            layer: currentLayer,
+            layer: currentLayer, ...newObjectProps(),
             points: [
               { x: p1.x, y: p1.y },
               { x: p2.x, y: p1.y },
@@ -3169,7 +3227,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             const radius = Math.hypot(ax-ux, ay-uy);
             const aStart = (Math.atan2(ay-uy, ax-ux) * 180) / Math.PI;
             const aEnd = (Math.atan2(cy-uy, cx-ux) * 180) / Math.PI;
-            addDraftEntity({ type: "ARC", layer: currentLayer, center: { x: ux, y: uy }, radius, startAngle: aStart, endAngle: aEnd });
+            addDraftEntity({ type: "ARC", layer: currentLayer, ...newObjectProps(), center: { x: ux, y: uy }, radius, startAngle: aStart, endAngle: aEnd });
             logCmd(`Arc added: R=${fmt(radius)}`);
           }
           pts = [];
@@ -3221,6 +3279,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             }
             draw();
           });
+        }
+        break;
+      }
+      case "text": {
+        void placeText(styleApi, p);
+        break;
+      }
+      case "match": {
+        const mi = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        if (mi < 0) break;
+        if (!matchSrc) {
+          matchSrc = ents[mi];
+          logCmd("MATCHPROP: source selected. Click destination objects (Esc to finish).");
+        } else if (ents[mi] !== matchSrc) {
+          matchProperties(styleApi, matchSrc, [mi]);
         }
         break;
       }
@@ -3735,6 +3808,33 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("Specify corner of window, enter a scale factor, or [All/Extents/Previous/Window] <real time>:");
       return;
     }
+    if (cmd === "LT" || cmd === "LTYPE" || cmd === "LINETYPE") {
+      openLinetypeManager(styleApi);
+      return;
+    }
+    if (cmd === "LTS" || cmd === "LTSCALE") {
+      const v = Number(arg);
+      if (doc && Number.isFinite(v) && v > 0) {
+        doc.ltscale = v;
+        logCmd(`LTSCALE = ${v}`);
+        draw();
+      } else logCmd(`LTSCALE = ${doc?.ltscale ?? 1}. Enter a positive number, e.g. LTSCALE 2`);
+      return;
+    }
+    if (cmd === "ST" || cmd === "STYLE") {
+      openTextStyleManager(styleApi);
+      return;
+    }
+    if (cmd === "T" || cmd === "DT" || cmd === "DTEXT" || cmd === "MT" || cmd === "MTEXT" || cmd === "TEXT") {
+      setTool("text");
+      logCmd("Click to place text.");
+      return;
+    }
+    if (cmd === "MA" || cmd === "MATCHPROP") {
+      setTool("match");
+      logCmd("MATCHPROP: select the source object.");
+      return;
+    }
     if (cmd === "LA" || cmd === "LAYER" || cmd === "LAYERS") {
       openLayerPropertiesManager();
       return;
@@ -4201,6 +4301,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     tools2.innerHTML =
       rg("Layers", rb("schedules", "Manager", `data-a="lyr-mgr"`, "AutoCAD Layer Properties Manager (LA)"), "", "", "home") +
       rg(
+        "Styles",
+        rb("insulation", "Linetypes", `data-a="lt-mgr"`, "Linetype Manager: load linetypes, set current, global scale (LT)") +
+          rb("text", "Text Styles", `data-a="ts-mgr"`, "Text Style Manager: fonts, heights, presets (ST)"),
+        "",
+        "",
+        "home",
+      ) +
+      rg(
         "Show",
         rb("text", "Text", `data-a="tText"`, "Show or hide text", "on") +
           rb("filled-region", "Hatch", `data-a="tHatch"`, "Show or hide hatches", "on") +
@@ -4252,6 +4360,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       draw();
     };
     q("lyr-mgr").onclick = openLayerPropertiesManager;
+    q("lt-mgr").onclick = () => openLinetypeManager(styleApi);
+    q("ts-mgr").onclick = () => openTextStyleManager(styleApi);
     q("help").onclick = () => toggleHelp();
     q("close").onclick = () => hooks.requestClose();
     q("takeoff").onclick = () => {
