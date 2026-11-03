@@ -77,7 +77,11 @@ Tool usage:
 - Call list_commands to discover what actions are available.
 - Call run_command with the id from list_commands to execute.
 - Use semantic_search for natural-language queries about elements.
+- Native modeling from explicit geometry: use create_linear_elements to create actual project-authored walls, beams, strips, ducts, pipes, cable trays, conduits, and linear members. Coordinates are metres in plan X/Z; elevation is Y. The tool uses the platform authoring engine, so committed elements participate in native editing and undo/redo.
+- Never invent model placement. If the user gives dimensions but not a start point and direction (or enough context to derive them unambiguously), ask one concise clarification before creating geometry. Confirm the coordinate reference and units when they are not clear.
+- For multiple straight elements, submit all segments in one create_linear_elements call (maximum 100). Supply only dimensions the user stated or that are established by the active tool/type defaults; do not fabricate thicknesses or heights. Explain defaults when they are used.
 - Auto-modelling from a linked CAD drawing: call list_cad_links, then create_walls_from_cad (it detects wall face-line pairs and models real walls). Use dryRun first when the drawing is large or ambiguous, then report how many walls and which thicknesses were created. If no layer looks like walls, ask which layer to use.
+- Report the actual number and IDs returned by modeling tools. Never say an element was drawn unless the tool confirms that it was committed.
 - Destructive tools (delete_elements, clear_all_elements) will be shown to the user for approval — do not hesitate to call them when the user asks.`;
 
 const MAX_ITERATIONS = 8;
