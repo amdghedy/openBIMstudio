@@ -65,6 +65,7 @@ function isSectionEnabled(): boolean {
 function releaseEverything(e?: PointerEvent | null): void {
   dragging = false;
   dragPlane = null;
+  try { (window as Any).__OBS_SECTION_ARROW_DRAGGING = false; } catch { /* */ }
   pointerId = null;
   try {
     forceResumeCameraControls();
@@ -326,6 +327,9 @@ function createPlaneAt(point: THREE.Vector3, normal: THREE.Vector3): void {
   } catch { /* */ }
   try {
     void import("./section-plane-panel").then((m) => m.openSectionPlanePanel());
+  } catch { /* */ }
+  try {
+    void import("./section-arrow-camera-sync").then((m) => m.syncSectionArrowsToCamera());
   } catch { /* */ }
 }
 
@@ -709,6 +713,7 @@ function onPointerDown(e: PointerEvent): void {
     /* */
   }
   const host = hostEl();
+  try { (window as Any).__OBS_SECTION_ARROW_DRAGGING = true; } catch { /* */ }
   applyGrabCursor("grabbing");
   e.preventDefault();
   e.stopPropagation();

@@ -29,6 +29,7 @@ import { setupImporter } from "./features/importer";
 import { ctx } from "./core/context";
 import { setupSectionModal } from "./features/section-modal";
 import { setupSectionPlanePanel } from "./features/section-plane-panel";
+import { setupSectionArrowCameraSync } from "./features/section-arrow-camera-sync";
 import { setupSchedulesUI } from "./features/schedules-ui";
 import { setupPlanAuthoringBridge } from "./features/plan-authoring-bridge";
 
@@ -275,6 +276,7 @@ await step("section", () => setupSection());
 await step("section-modal", () => {
   setupSectionModal();
   setupSectionPlanePanel();
+  setupSectionArrowCameraSync();
   import("./features/command-palette").then(m => {
     m.registerCommand({
       id: "section-modal",
