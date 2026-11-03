@@ -1,0 +1,19 @@
+{
+  "standards": {
+    "title": "標準"
+  },
+  "meta": {
+    "name": "Chinese (Traditional)",
+    "nativeName": "繁體中文",
+    "dir": "ltr"
+  },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "載入中…",
+    "ready": "就緒",
+    "cancel": "取消",
+    "close": "關閉",
+    "save": "儲存",
+    "delete": "刪除"
+  }
+}

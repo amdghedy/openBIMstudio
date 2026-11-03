@@ -32,6 +32,7 @@ import {
 } from "./packs/accessibility";
 import { structuralPack } from "./packs/structural";
 import { qaPack } from "./packs/qa";
+import { gccPacks } from "./packs/gcc";
 
 /* -------------------------------------------------------------------------
    Built-in packs
@@ -47,6 +48,7 @@ export const BUILT_IN_PACKS: RulePack[] = [
   accessibilityPackCN,
   structuralPack,
   qaPack,
+  ...gccPacks,
 ];
 
 /**

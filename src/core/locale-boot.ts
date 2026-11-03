@@ -6,12 +6,27 @@ import { i18n, t, type Locale, type Catalog } from "./i18n";
 import { units, type UnitSystem } from "./units";
 import { register, type ServiceMap } from "./services";
 import { registerOption } from "./options-registry";
+import { region, detectRegionProfile } from "./region";
 
 import en from "../locales/en.json";
 import ar from "../locales/ar.json";
 import de from "../locales/de.json";
 import ja from "../locales/ja.json";
 import zhCN from "../locales/zh-CN.json";
+import fr from "../locales/fr.json";
+import es from "../locales/es.json";
+import ptBR from "../locales/pt-BR.json";
+import it from "../locales/it.json";
+import zhTW from "../locales/zh-TW.json";
+import ko from "../locales/ko.json";
+import ru from "../locales/ru.json";
+import tr from "../locales/tr.json";
+import pl from "../locales/pl.json";
+import nl from "../locales/nl.json";
+import hi from "../locales/hi.json";
+import he from "../locales/he.json";
+import fa from "../locales/fa.json";
+import ur from "../locales/ur.json";
 
 const FONT_STACKS: Record<string, string> = {
   default: `system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
@@ -101,6 +116,41 @@ function registerLocaleOptions(): void {
       try { localStorage.setItem("obs.currency", String(v)); } catch { /* */ }
     },
   });
+
+  registerOption({
+    id: "locale.regionProfile",
+    group: "Language & Region",
+    label: "Region profile",
+    description:
+      "One-stop setting that preselects language, units, currency, paper " +
+      "size, date format and default standards packs for a country. " +
+      "Individual fields can still be overridden below.",
+    type: "select",
+    default: region.getProfileId(),
+    choices: [
+      ...region.listProfiles().map((pr) => ({
+        value: pr.id,
+        label: `${pr.nativeName}  ·  ${pr.name}`,
+      })),
+      { value: "__custom", label: "Custom (manual overrides)" },
+    ],
+    apply: (v) => {
+      if (v === "__custom") return;
+      if (region.setProfile(String(v))) {
+        const r = region.getResolved();
+        i18n.setLocale(r.locale);
+        units.setSystem(r.unitSystem);
+        try { localStorage.setItem("obs.currency", r.currency); } catch { /* */ }
+      }
+    },
+  });
+
+  region.onChange((r) => {
+    try {
+      window.dispatchEvent(new CustomEvent("obs-region-changed", { detail: r }));
+    } catch { /* */ }
+    void r;
+  });
 }
 
 export interface LocaleBootResult {
@@ -126,9 +176,45 @@ export function setupLocale(): LocaleBootResult {
   i18n.register("de", de as Partial<Catalog>);
   i18n.register("ja", ja as Partial<Catalog>);
   i18n.register("zh-CN", zhCN as Partial<Catalog>);
+  i18n.register("fr", fr as Partial<Catalog>);
+  i18n.register("es", es as Partial<Catalog>);
+  i18n.register("pt-BR", ptBR as Partial<Catalog>);
+  i18n.register("it", it as Partial<Catalog>);
+  i18n.register("zh-TW", zhTW as Partial<Catalog>);
+  i18n.register("ko", ko as Partial<Catalog>);
+  i18n.register("ru", ru as Partial<Catalog>);
+  i18n.register("tr", tr as Partial<Catalog>);
+  i18n.register("pl", pl as Partial<Catalog>);
+  i18n.register("nl", nl as Partial<Catalog>);
+  i18n.register("hi", hi as Partial<Catalog>);
+  i18n.register("he", he as Partial<Catalog>);
+  i18n.register("fa", fa as Partial<Catalog>);
+  i18n.register("ur", ur as Partial<Catalog>);
 
   i18n.boot();
   units.boot();
+  region.boot();
+
+  // First run (no saved profile): auto-detect region from browser languages.
+  try {
+    if (!localStorage.getItem("obs.region.profile")) {
+      const langs = navigator.languages?.length
+        ? [...navigator.languages]
+        : [navigator.language ?? "en"];
+      const pid = detectRegionProfile(langs);
+      if (pid !== "intl" && region.setProfile(pid)) {
+        const r = region.getResolved();
+        i18n.setLocale(r.locale);
+        units.setSystem(r.unitSystem);
+      }
+    } else {
+      const r = region.getResolved();
+      if (r.customized) {
+        if (r.locale) i18n.setLocale(r.locale);
+        if (r.unitSystem) units.setSystem(r.unitSystem);
+      }
+    }
+  } catch { /* SSR/tests */ }
 
   applyLocaleCss();
 

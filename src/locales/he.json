@@ -1,0 +1,19 @@
+{
+  "standards": {
+    "title": "תקנים"
+  },
+  "meta": {
+    "name": "Hebrew",
+    "nativeName": "עברית",
+    "dir": "rtl"
+  },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "טוען…",
+    "ready": "מוכן",
+    "cancel": "ביטול",
+    "close": "סגור",
+    "save": "שמור",
+    "delete": "מחק"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "standards": {
+    "title": "استانداردها"
+  },
+  "meta": {
+    "name": "Persian",
+    "nativeName": "فارسی",
+    "dir": "rtl"
+  },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "در حال بارگذاری…",
+    "ready": "آماده",
+    "cancel": "لغو",
+    "close": "بستن",
+    "save": "ذخیره",
+    "delete": "حذف"
+  }
+}
