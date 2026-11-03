@@ -10,6 +10,7 @@
  * Commands are contributed by any module via `registerCommand()`; the palette
  * itself ships a bootstrap list of application commands on first setup.
  */
+import { promptLine } from "./form-modal";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { services } from "../core/services";
@@ -332,9 +333,10 @@ function bootstrapCommands(): void {
   // Project
   registerCommand({ id: "project.save", label: "Save project", category: "Project", kbd: "Ctrl+S", run: () => void saveProject() });
   registerCommand({ id: "project.new", label: "New project", category: "Project", kbd: "Ctrl+N", run: () => {
-    const name = prompt("New project name:", "Untitled");
-    if (name == null) return;
-    void createProject(name.trim() || "Untitled");
+    void promptLine("New project", "Project name", "Untitled").then((name) => {
+      if (name == null) return;
+      void createProject(name.trim() || "Untitled");
+    });
   }});
   registerCommand({ id: "project.home", label: "Home screen", category: "Project", kbd: "Ctrl+H", run: () => showHome() });
   registerCommand({ id: "project.open", label: "Open any file…", category: "Project", kbd: "Ctrl+O", run: () => void pickAndImport() });

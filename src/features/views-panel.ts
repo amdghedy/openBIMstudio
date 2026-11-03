@@ -6,6 +6,7 @@
  * The panel is draggable by its header and resizeable from all 8 edges.
  */
 
+import { promptLine, confirmDialog } from "./form-modal";
 import { ctx } from "../core/context";
 import {
   bootViewsStore, listViews, getView, createView, deleteView, onViewsChange, updateView,
@@ -103,11 +104,12 @@ export function setupViewsPanel(): void {
 
   const newBtn = mkButton("+ New View", () => {
     const kind = typeSelect.value as ViewKind;
-    const name = prompt("New " + kind + " view name:", "New " + kind);
-    if (!name) return;
-    const v = createView(kind, name);
-    currentViewId = v.id;
-    render();
+    void promptLine("New " + kind + " view", "View name", "New " + kind).then((name) => {
+      if (!name) return;
+      const v = createView(kind, name);
+      currentViewId = v.id;
+      render();
+    });
   }, true);
 
   templateSelectEl = document.createElement("select");
@@ -252,11 +254,12 @@ function render(): void {
       "float:right;background:transparent;color:#fca5a5;border:none;cursor:pointer;font-size:13px;padding:0 4px";
     del.onclick = (e) => {
       e.stopPropagation();
-      if (confirm('Delete "' + v.name + '"?')) {
+      void confirmDialog("Delete view", 'Delete "' + v.name + '"?').then((yes) => {
+        if (!yes) return;
         deleteView(v.id);
         if (currentViewId === v.id) currentViewId = null;
         render();
-      }
+      });
     };
     row.appendChild(del);
     sidebar.appendChild(row);

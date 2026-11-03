@@ -40,5 +40,5 @@ World axes: X east, Y up, Z north. Element params such as `start`, `end` and `po
 
 - Several generations of the same feature exist in places (older `v40`..`v7x` registers and verify scripts, parallel panels). New work should reuse the current implementation rather than adding another.
 - `window.__obs*` globals are still used widely for cross-feature calls.
-- Many `prompt()`/`confirm()` calls remain (a CI ratchet in `tests/ui-honesty.test.cjs` stops the count from growing).
+- About 92 `prompt()`/`confirm()` calls remain (a CI ratchet in `tests/ui-honesty.test.cjs` stops the count from growing).
 - Unit tests cover logic. Browser-level coverage is one Playwright spec (`tests/e2e/edit-undo-save.spec.ts`) and needs to grow.

@@ -2,6 +2,7 @@
  * Sheets panel — production documentation UI.
  * Create sheets, place viewports, export SVG for print/PDF workflows.
  */
+import { promptLine, confirmDialog } from "./form-modal";
 import {
   listSheets,
   createSheet,
@@ -81,11 +82,12 @@ function render() {
       if (act === "export" && activeId) { exportSheetSvg(activeId); return; }
       if (act === "select" && id) { activeId = id; render(); return; }
       if (act === "del" && id) {
-        if (confirm("Delete this sheet?")) {
+        void confirmDialog("Delete sheet", "Delete this sheet?").then((yes) => {
+          if (!yes) return;
           deleteSheet(id);
           if (activeId === id) activeId = null;
           render();
-        }
+        });
         return;
       }
       if (act === "add-vp" && activeId) {
@@ -122,15 +124,19 @@ function render() {
         return;
       }
       if (act === "rename" && activeId) {
-        const name = prompt("Sheet name", active!.name);
-        if (name != null) updateSheet(activeId, { name: name.trim() || active!.name });
-        render();
+        const sid = activeId, cur = active!.name;
+        void promptLine("Rename sheet", "Sheet name", cur).then((name) => {
+          if (name != null) updateSheet(sid, { name: name.trim() || cur });
+          render();
+        });
         return;
       }
       if (act === "renumber" && activeId) {
-        const number = prompt("Sheet number", active!.number);
-        if (number != null) updateSheet(activeId, { number: number.trim() || active!.number });
-        render();
+        const sid = activeId, cur = active!.number;
+        void promptLine("Renumber sheet", "Sheet number", cur).then((number) => {
+          if (number != null) updateSheet(sid, { number: number.trim() || cur });
+          render();
+        });
         return;
       }
     });

@@ -5,6 +5,7 @@
  * and buttons to restore or delete. Saving captures the current camera
  * position, orbit target, and projection mode.
  */
+import { promptLine } from "./form-modal";
 import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
@@ -158,9 +159,10 @@ function ensurePanel(): HTMLDivElement {
     "padding:4px 10px;background:var(--accent,#38bdf8);color:#0b0d12;" +
     "border:none;border-radius:5px;cursor:pointer;font:600 11px system-ui";
   saveBtn.onclick = () => {
-    const name = prompt("View name:", `View ${listSavedViews().length + 1}`);
-    if (name == null) return;
-    saveCurrentView(name);
+    void promptLine("Save view", "View name", `View ${listSavedViews().length + 1}`).then((name) => {
+      if (name == null) return;
+      saveCurrentView(name);
+    });
   };
 
   const closeBtn = document.createElement("button");

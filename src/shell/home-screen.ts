@@ -1,4 +1,5 @@
 /** Open BIM Studio Project Center — enterprise-style local project launcher. */
+import { confirmDialog } from "../features/form-modal";
 import * as store from "../modules/projects/store";
 import { createProject, openProject, deleteProjectById, getCurrentProject, onProjectChanged } from "../modules/projects/projects";
 import type { ProjectTemplate } from "../modules/projects/types";
@@ -235,7 +236,7 @@ function projectCard(doc: any): HTMLElement {
   deleteBtn.textContent = "Delete";
   deleteBtn.onclick = async (e) => {
     e.stopPropagation();
-    if (!confirm(`Delete “${s.name}” and its stored models? This cannot be undone.`)) return;
+    if (!(await confirmDialog("Delete project", `Delete “${s.name}” and its stored models? This cannot be undone.`))) return;
     await deleteProjectById(s.id);
     void renderList();
   };

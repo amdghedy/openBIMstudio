@@ -8,6 +8,7 @@
  * Walk mode owns W A S D Shift Ctrl Space C — every shortcut registered
  * here is filtered by the walk handler when it fires.
  */
+import { promptLine } from "../features/form-modal";
 import { ctx } from "../core/context";
 import { history } from "../features/history";
 import { selection } from "../features/selection";
@@ -40,9 +41,10 @@ export function registerDefaultShortcuts(): void {
   shortcuts.register({
     id: "app-new", label: "New project", keys: "ctrl+n", category: "app",
     handler: () => {
-      const name = prompt("New project name:", "Untitled");
-      if (name == null) return;
-      void createProject(name.trim() || "Untitled");
+      void promptLine("New project", "Project name", "Untitled").then((name) => {
+        if (name == null) return;
+        void createProject(name.trim() || "Untitled");
+      });
     },
   });
   shortcuts.register({
