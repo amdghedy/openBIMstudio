@@ -105,6 +105,13 @@ export type IfcSettings = {
   replaceExisting: boolean;
   recenter: boolean;
   maxSizeMB: number;
+  /**
+   * Soft ceiling for in-browser web-ifc conversion. Files above this are skipped
+   * unless allowUnsafeLargeIfc is true. 698 MB IFCs routinely OOM the tab.
+   */
+  browserSafeMaxMB: number;
+  /** User opts in to attempt conversion of files above browserSafeMaxMB. */
+  allowUnsafeLargeIfc: boolean;
   useCoord: boolean;
   coordX: number; coordY: number; coordZ: number;
   positioning: PositioningMode;
@@ -115,14 +122,19 @@ const IFC_SETTINGS_KEY = "toc.ifc.settings.v1";
 const defaultIfcSettings: IfcSettings = {
   cdn: "local", customPath: "",
   autoFit: true, keepFragInMemory: true, replaceExisting: false,
-  recenter: false, maxSizeMB: 500, useCoord: false, coordX: 0, coordY: 0, coordZ: 0,
+  recenter: false, maxSizeMB: 800, browserSafeMaxMB: 120, allowUnsafeLargeIfc: false,
+  useCoord: false, coordX: 0, coordY: 0, coordZ: 0,
   positioning: "origin-to-origin",
 };
 
 let ifcSettings: IfcSettings = { ...defaultIfcSettings };
 try {
   const raw = localStorage.getItem(IFC_SETTINGS_KEY);
-  if (raw) ifcSettings = { ...defaultIfcSettings, ...JSON.parse(raw) };
+  if (raw) {
+    ifcSettings = { ...defaultIfcSettings, ...JSON.parse(raw) };
+    if (!Number.isFinite(ifcSettings.browserSafeMaxMB)) ifcSettings.browserSafeMaxMB = 120;
+    if (typeof ifcSettings.allowUnsafeLargeIfc !== "boolean") ifcSettings.allowUnsafeLargeIfc = false;
+  }
 } catch { /* */ }
 
 function saveIfcSettings() {
@@ -892,14 +904,37 @@ function enqueueIfc(files: File | File[]) {
     if (sizeMB > ifcSettings.maxSizeMB) {
       t.status = "skipped";
       t.phase = "skipped";
-      t.error = `File is ${sizeMB.toFixed(0)} MB (limit ${ifcSettings.maxSizeMB} MB). Raise the limit in Importer settings or convert to .frag offline.`;
+      t.error = `File is ${sizeMB.toFixed(0)} MB (hard limit ${ifcSettings.maxSizeMB} MB). Convert to .frag offline, or raise max size in Importer settings.`;
+    } else if (sizeMB > ifcSettings.browserSafeMaxMB && !ifcSettings.allowUnsafeLargeIfc) {
+      t.status = "skipped";
+      t.phase = "skipped — too large for browser";
+      t.error =
+        `Extracted IFC is ${sizeMB.toFixed(0)} MB. In-browser web-ifc typically fails above ~${ifcSettings.browserSafeMaxMB} MB (tab runs out of memory). ` +
+        `Convert this model to .frag (ThatOpen / desktop) and use Insert → Link FRAG, ` +
+        `or enable "Allow unsafe large IFC" in Importer settings (may crash the tab).`;
     } else if (sizeMB > 80) {
-      t.phase = `large file (${sizeMB.toFixed(0)} MB) — conversion may take several minutes`;
+      t.phase = `large file (${sizeMB.toFixed(0)} MB) — conversion may take several minutes / risk OOM`;
     }
     importQueue.push(t);
     renderTaskRow(t);
   }
   updateQueueSummary();
+  const skippedBig = list.filter((f) => {
+    const mb = f.size / (1024 * 1024);
+    return mb > ifcSettings.browserSafeMaxMB && mb <= ifcSettings.maxSizeMB && !ifcSettings.allowUnsafeLargeIfc;
+  });
+  if (skippedBig.length) {
+    const names = skippedBig.map((f) => `• ${f.name} (${(f.size / (1024 * 1024)).toFixed(0)} MB)`).join("\n");
+    try {
+      uiAlert(
+        `These IFC file(s) are too large to convert reliably in the browser:\n\n${names}\n\n` +
+        `Recommended:\n` +
+        `1. Convert IFC → .frag on a desktop tool (ThatOpen / IFC.js pipeline)\n` +
+        `2. Insert → Link FRAG\n\n` +
+        `Optional: Importer settings → enable "Allow unsafe large IFC" (often crashes the tab on 200–700 MB models).`,
+      );
+    } catch { /* */ }
+  }
   void processQueue();
 }
 
@@ -973,9 +1008,29 @@ async function runTask(t: ImportTask) {
   const loader = (ctx.features as any).appLoader;
 
   try {
+    if (t.sizeMB > ifcSettings.browserSafeMaxMB && !ifcSettings.allowUnsafeLargeIfc) {
+      t.status = "skipped";
+      t.phase = "skipped — too large for browser";
+      t.error =
+        `IFC is ${t.sizeMB.toFixed(0)} MB. Browser conversion is limited to ~${ifcSettings.browserSafeMaxMB} MB. ` +
+        `Use Link FRAG after offline conversion, or enable "Allow unsafe large IFC".`;
+      refreshTaskRow(t);
+      try {
+        uiAlert(t.error);
+      } catch { /* */ }
+      return;
+    }
+    if (t.sizeMB > 200 && ifcSettings.allowUnsafeLargeIfc) {
+      t.phase = `⚠️ ${t.sizeMB.toFixed(0)} MB — high risk of tab crash`;
+      refreshTaskRow(t);
+    }
+
     t.status = "reading"; t.progress = 0; t.phase = "reading file…";
     refreshTaskRow(t);
     loader?.set?.(`Reading ${t.file.name}…`, 0.05);
+
+    // Keep FRAG bytes out of memory for huge files
+    if (t.sizeMB > 80) ifcSettings.keepFragInMemory = false;
 
     const buffer = await t.file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
@@ -1109,9 +1164,14 @@ settingsBox.innerHTML = `
     <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcKeep"> Keep converted .frag in memory</label>
     <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcReplace"> Replace existing model with same name</label>
     <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcFit"> Auto-fit camera after import</label>
-    <label style="display:grid;gap:2px">Max file size (MB)
+    <label style="display:grid;gap:2px">Hard max file size (MB)
       <input id="ifcMax" type="number" min="1" style="${inpCss}">
     </label>
+    <label style="display:grid;gap:2px">Browser-safe conversion limit (MB)
+      <input id="ifcSafeMax" type="number" min="10" style="${inpCss}">
+      <span style="opacity:.65;font-size:10px">Above this, IFC is skipped (web-ifc runs out of memory). Default 120. A 698 MB IFC cannot convert in a browser tab.</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcAllowUnsafe"> Allow unsafe large IFC (may crash the tab)</label>
   </div>`;
 
 function syncSettingsUI() {
@@ -1124,6 +1184,8 @@ function syncSettingsUI() {
   $("ifcReplace").checked = ifcSettings.replaceExisting;
   $("ifcFit").checked = ifcSettings.autoFit;
   $("ifcMax").value = String(ifcSettings.maxSizeMB);
+  $("ifcSafeMax").value = String(ifcSettings.browserSafeMaxMB ?? 120);
+  $("ifcAllowUnsafe").checked = !!ifcSettings.allowUnsafeLargeIfc;
 }
 
 settingsBox.addEventListener("change", (e) => {
@@ -1140,7 +1202,9 @@ settingsBox.addEventListener("change", (e) => {
     case "ifcKeep": ifcSettings.keepFragInMemory = el.checked; break;
     case "ifcReplace": ifcSettings.replaceExisting = el.checked; break;
     case "ifcFit": ifcSettings.autoFit = el.checked; break;
-    case "ifcMax": ifcSettings.maxSizeMB = Math.max(1, Number(el.value) || 500); break;
+    case "ifcMax": ifcSettings.maxSizeMB = Math.max(1, Number(el.value) || 800); break;
+    case "ifcSafeMax": ifcSettings.browserSafeMaxMB = Math.max(10, Number(el.value) || 120); break;
+    case "ifcAllowUnsafe": ifcSettings.allowUnsafeLargeIfc = el.checked; break;
   }
   saveIfcSettings();
 });
@@ -1235,8 +1299,11 @@ export function loadIfcFiles(files: FileList | File[]) {
         return;
       }
       const totalMb = expanded.reduce((s, f) => s + f.size, 0) / (1024 * 1024);
-      if (totalMb > 100) {
-        console.warn(`[importer] large IFC payload ${totalMb.toFixed(0)} MB — browser memory limits may apply`);
+      if (totalMb > ifcSettings.browserSafeMaxMB) {
+        console.warn(
+          `[importer] large IFC payload ${totalMb.toFixed(0)} MB — above browser-safe limit ` +
+          `(${ifcSettings.browserSafeMaxMB} MB); will skip unless allowUnsafeLargeIfc is on`,
+        );
       }
       enqueueIfc(expanded);
     } catch (err: any) {
