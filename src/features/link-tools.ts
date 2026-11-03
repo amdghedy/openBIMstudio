@@ -65,25 +65,39 @@ export function linkIfc() {
         continue;
       }
 
-      if (/\.ifczip$/i.test(file.name)) {
-        const JSZip = (await import("jszip")).default;
-        const archive = await JSZip.loadAsync(file);
-        const entries: string[] = [];
-        archive.forEach((path, entry) => {
-          if (!entry.dir && /\.ifc$/i.test(path)) entries.push(path);
-        });
+      if (/\.ifczip$/i.test(file.name) || /\.zip$/i.test(file.name)) {
+        try {
+          toast(`Unpacking ${file.name} (${(file.size / (1024 * 1024)).toFixed(0)} MB)…`, "info");
+          const JSZip = (await import("jszip")).default;
+          const archive = await JSZip.loadAsync(file, { createFolders: false });
+          const entries: string[] = [];
+          archive.forEach((path, entry) => {
+            if (!entry.dir && /\.ifc$/i.test(path)) entries.push(path);
+          });
 
-        if (!entries.length) {
-          throw new Error(`No IFC model was found inside "${file.name}".`);
-        }
+          if (!entries.length) {
+            throw new Error(`No IFC model was found inside "${file.name}".`);
+          }
+          entries.sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
 
-        for (const path of entries) {
-          const entry = archive.file(path);
-          if (!entry) continue;
-          const bytes = (await entry.async("uint8array")) as Uint8Array<ArrayBuffer>;
-          if (!bytes.byteLength) throw new Error(`The IFC entry "${path}" in "${file.name}" is empty.`);
-          const name = path.split("/").pop() || `${file.name}.ifc`;
-          ifcFiles.push(new File([bytes], name, { type: "application/octet-stream" }));
+          for (const path of entries) {
+            const entry = archive.file(path);
+            if (!entry) continue;
+            const bytes = await entry.async("uint8array");
+            if (!bytes.byteLength) {
+              console.warn(`[link-ifc] empty entry ${path}`);
+              continue;
+            }
+            const name = path.split("/").pop() || `${file.name}.ifc`;
+            const blob = new Blob([bytes as BlobPart], { type: "application/octet-stream" });
+            ifcFiles.push(new File([blob], name, { type: "application/octet-stream" }));
+          }
+          if (!ifcFiles.length) {
+            throw new Error(`All IFC entries inside "${file.name}" were empty.`);
+          }
+        } catch (err: any) {
+          toast(err?.message || String(err), "error");
+          throw err;
         }
         continue;
       }

@@ -805,6 +805,81 @@ async function nextModelId(fileName: string): Promise<string> {
   return `${base} (${i})`;
 }
 
+
+/** True when the payload is a ZIP (IFCZIP or misnamed .zip). */
+function looksLikeZip(bytes: Uint8Array): boolean {
+  return bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && (bytes[2] === 0x03 || bytes[2] === 0x05 || bytes[2] === 0x07);
+}
+
+/**
+ * Expand .ifczip / .zip into one File per embedded .ifc.
+ * Large archives stream entry-by-entry to limit peak memory.
+ */
+async function expandIfcSources(
+  files: File[],
+  onProgress?: (msg: string) => void,
+): Promise<File[]> {
+  const out: File[] = [];
+  for (const file of files) {
+    const name = file.name || "model";
+    const isZipName = /\.(ifczip|zip)$/i.test(name);
+
+    if (/\.ifc$/i.test(name) && !isZipName) {
+      out.push(file);
+      continue;
+    }
+
+    // Peek magic for misnamed IFCZIP uploaded as .ifc
+    let needUnzip = isZipName;
+    if (!needUnzip && /\.ifc$/i.test(name) && file.size > 64) {
+      try {
+        const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+        if (looksLikeZip(head)) needUnzip = true;
+      } catch { /* */ }
+    }
+
+    if (!needUnzip) {
+      if (/\.ifc$/i.test(name)) out.push(file);
+      continue;
+    }
+
+    onProgress?.(`Unpacking ${name} (${(file.size / (1024 * 1024)).toFixed(0)} MB)…`);
+    try {
+      const JSZip = (await import("jszip")).default;
+      const archive = await JSZip.loadAsync(file, { createFolders: false });
+      const entries: string[] = [];
+      archive.forEach((path, entry) => {
+        if (!entry.dir && /\.ifc$/i.test(path)) entries.push(path);
+      });
+      if (!entries.length) {
+        throw new Error(`No .ifc model found inside "${name}".`);
+      }
+      // Prefer root / shortest path first (main model often not nested deep)
+      entries.sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+
+      for (let i = 0; i < entries.length; i++) {
+        const path = entries[i];
+        onProgress?.(`Extracting ${i + 1}/${entries.length}: ${path.split("/").pop()}…`);
+        const entry = archive.file(path);
+        if (!entry) continue;
+        const bytes = await entry.async("uint8array");
+        if (!bytes.byteLength) {
+          console.warn(`[importer] empty IFC entry "${path}" in ${name}`);
+          continue;
+        }
+        // Blob avoids an extra full copy that `new File([uint8array])` can trigger.
+        const blob = new Blob([bytes as BlobPart], { type: "application/octet-stream" });
+        const leaf = path.split("/").pop() || `${name.replace(/\.(ifczip|zip)$/i, "")}.ifc`;
+        out.push(new File([blob], leaf, { type: "application/octet-stream", lastModified: file.lastModified }));
+      }
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      throw new Error(`Failed to unpack "${name}": ${msg}`);
+    }
+  }
+  return out;
+}
+
 function enqueueIfc(files: File | File[]) {
   const list = Array.isArray(files) ? files : [files];
   for (const file of list) {
@@ -816,7 +891,10 @@ function enqueueIfc(files: File | File[]) {
     };
     if (sizeMB > ifcSettings.maxSizeMB) {
       t.status = "skipped";
-      t.error = `File is ${sizeMB.toFixed(0)} MB (limit ${ifcSettings.maxSizeMB} MB).`;
+      t.phase = "skipped";
+      t.error = `File is ${sizeMB.toFixed(0)} MB (limit ${ifcSettings.maxSizeMB} MB). Raise the limit in Importer settings or convert to .frag offline.`;
+    } else if (sizeMB > 80) {
+      t.phase = `large file (${sizeMB.toFixed(0)} MB) — conversion may take several minutes`;
     }
     importQueue.push(t);
     renderTaskRow(t);
@@ -936,7 +1014,10 @@ async function runTask(t: ImportTask) {
 
     const fragBytes: Uint8Array = snapshotBytes(rawResult);
     if (!fragBytes.byteLength) {
-      throw new Error("Converter returned empty data — try a different web-ifc version.");
+      throw new Error(
+        "Converter returned empty data. For large IFCZIP/IFC this often means the browser ran out of memory " +
+        "during web-ifc conversion — try a machine with more RAM, split the model, or pre-convert to .frag.",
+      );
     }
 
     const projectBytes: Uint8Array = snapshotBytes(fragBytes);
@@ -986,6 +1067,16 @@ async function runTask(t: ImportTask) {
       }
       t.status = "failed"; t.phase = "failed";
       t.error = userMsg;
+      // Large IFC/IFCZIP failures were previously only visible in the queue row.
+      try {
+        uiAlert(
+          `IFC import failed: ${t.file.name}\n\n${userMsg}\n\n` +
+          (t.sizeMB > 80
+            ? "Tip: files over ~80–100 MB often exhaust browser WASM memory. " +
+              "Convert to .frag (ThatOpen) offline, or raise Importer max size and retry on a machine with more RAM."
+            : "Open Insert → Import Setup to inspect the queue and retry."),
+        );
+      } catch { /* */ }
     }
     refreshTaskRow(t);
     disposeImporter();
@@ -1126,9 +1217,35 @@ export async function loadFragFiles(files: FileList | File[]) {
 }
 
 export function loadIfcFiles(files: FileList | File[]) {
-  const list = Array.from(files).filter((f) => /\.ifc$/i.test(f.name));
-  if (!list.length) { uiAlert("Please select one or more .ifc files."); return; }
-  enqueueIfc(list);
+  const list = Array.from(files as FileList | File[]);
+  if (!list.length) {
+    uiAlert("Please select one or more .ifc / .ifczip files.");
+    return;
+  }
+  void (async () => {
+    const loader = (ctx.features as any).appLoader;
+    try {
+      try { (await import("./tool-windows")).openToolWindow("import"); } catch { /* */ }
+      loader?.begin?.("Preparing IFC…", { cancellable: false });
+      const expanded = await expandIfcSources(list, (msg) => {
+        try { loader?.set?.(msg, 0.08); } catch { /* */ }
+      });
+      if (!expanded.length) {
+        uiAlert("No IFC models found. For .ifczip, the archive must contain at least one .ifc entry.");
+        return;
+      }
+      const totalMb = expanded.reduce((s, f) => s + f.size, 0) / (1024 * 1024);
+      if (totalMb > 100) {
+        console.warn(`[importer] large IFC payload ${totalMb.toFixed(0)} MB — browser memory limits may apply`);
+      }
+      enqueueIfc(expanded);
+    } catch (err: any) {
+      console.error("[importer] expandIfcSources", err);
+      uiAlert(errorMessage(err));
+    } finally {
+      try { loader?.finish?.(); } catch { /* */ }
+    }
+  })();
 }
 
 export function pickFiles(
@@ -1164,7 +1281,7 @@ export function setupImporter() {
     "position:absolute;inset:0;display:none;align-items:center;justify-content:center;" +
     "background:rgba(56,189,248,.08);border:2px dashed #38bdf8;z-index:50;" +
     "pointer-events:none;color:#38bdf8;font:600 16px system-ui,sans-serif";
-  dropHint.textContent = "Drop .ifc / .frag files to import";
+  dropHint.textContent = "Drop .ifc / .ifczip / .frag files to import";
   ctx.rightHost.appendChild(dropHint);
 
   let dragDepth = 0;
@@ -1185,9 +1302,9 @@ export function setupImporter() {
     const files = Array.from(e.dataTransfer?.files ?? []);
     if (!files.length) return;
     const fragFiles = files.filter((f) => /\.frag$/i.test(f.name));
-    const ifcFiles = files.filter((f) => /\.ifc$/i.test(f.name));
+    const ifcFiles = files.filter((f) => /\.(ifc|ifczip)$/i.test(f.name));
     if (fragFiles.length) void loadFragFiles(fragFiles);
-    if (ifcFiles.length) enqueueIfc(ifcFiles);
+    if (ifcFiles.length) loadIfcFiles(ifcFiles);
     // DWG/DXF has no place in the BIM scene — hand it to the CAD editor
     // (opened lazily) instead of ignoring the drop silently.
     const cadFiles = files.filter((f) => /\.(dwg|dxf)$/i.test(f.name));
