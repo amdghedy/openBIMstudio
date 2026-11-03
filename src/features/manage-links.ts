@@ -172,6 +172,10 @@ export function openManageLinks() {
           btn(l.visible ? "Hide" : "Show", () => { api.setVisible(l.id, !l.visible); renderTable(); }),
           btn("Zoom", () => { modalEl?.remove(); modalEl = null; void api.zoomTo(l.id); }),
           btn("Walls from CAD", () => { modalEl?.remove(); modalEl = null; void api.createElements(l.id); }),
+          btn("Query", () => {
+            modalEl?.remove(); modalEl = null;
+            void import("./cad-query-panel").then((m) => m.showCadQueryPanel());
+          }),
           btn("Settings", async () => { await api.edit(l.id); renderTable(); }),
           btn("Reload", () => {
             const i = document.createElement("input");

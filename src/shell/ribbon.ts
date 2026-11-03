@@ -1102,6 +1102,11 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("system", "Link CAD", safe(() => linkCad(), "Link CAD underlay"), {
         title: "DXF / SVG / PNG underlay for plan tracing, or 3D CAD reference",
       }),
+      b("folder", "CAD Query", safe(() => {
+        void import("../features/cad-query-panel").then((m) => m.toggleCadQueryPanel());
+      }, "CAD Query"), {
+        title: "Query linked CAD by layer, element type, name / text, colour, linetype",
+      }),
       b("file", "Link BIM", safe(() => linkBIM(), "Link BIM via IFC"), {
         title: "Export IFC from BIM, then link here",
       }),
