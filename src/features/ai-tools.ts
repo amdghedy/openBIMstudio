@@ -35,15 +35,33 @@ export interface ToolResult {
   error?: string;
 }
 
-/** Tools that must be approved by the user before running. */
+/** Irreversible or destructive operations that always need explicit approval. */
 const DESTRUCTIVE_TOOLS = new Set<string>([
   "clear_all_elements",
   "delete_elements",
   "clear_index",
 ]);
 
+/** Operations that write to the project or create persistent artifacts. */
+const WRITE_TOOLS = new Set<string>([
+  "create_linear_elements",
+  "create_walls_from_cad",
+  "create_issue",
+  "create_schedule",
+]);
+
 export function isDestructiveTool(name: string): boolean {
   return DESTRUCTIVE_TOOLS.has(name);
+}
+
+/**
+ * Read-only tools may run immediately. Any tool that changes authored model
+ * geometry or creates a persistent project artifact must be approved first.
+ */
+export function requiresUserApproval(name: string, args: Record<string, any> = {}): boolean {
+  // A CAD dry-run only analyzes geometry and does not write to the project.
+  if (name === "create_walls_from_cad" && args.dryRun === true) return false;
+  return DESTRUCTIVE_TOOLS.has(name) || WRITE_TOOLS.has(name);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
