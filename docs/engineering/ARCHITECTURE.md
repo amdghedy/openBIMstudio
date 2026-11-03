@@ -312,6 +312,8 @@ The browser has project-scoped stores and `.obsproj` file import/export under `s
 
 Export code is grouped under `src/modules/export/` and drawing-format code under `src/modules/drawings/`. IFC native-twin export, BCF, COBie, FRAG, GLTF and PDF/sheet exporters have distinct scope. The compatibility matrix and feature maturity registry are the authoritative user-facing statements of supported formats and limitations. Do not call an IFC writer a lossless exporter without fixture-based property, relationship, placement, unit and geometry verification.
 
+The APS integration is explicitly experimental in `src/features/feature-maturity.ts`. In particular, `src/services/rfaImport.ts` and `src/services/bimRoundTrip.ts` describe themselves as minimal stubs: the APS job-completion polling and reliable output download/ingestion steps are incomplete or placeholders. Do not present RFA import or an IFC↔RVT round-trip as a delivered production workflow until those steps are implemented and verified with real APS jobs and representative files.
+
 ## Service contracts and dependency direction
 
 - Use `src/core/services.ts` for typed cross-feature services where a contract exists. Its registry currently mirrors registered objects into `ctx.features` for migration compatibility.
