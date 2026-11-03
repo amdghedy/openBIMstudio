@@ -497,6 +497,20 @@ function renderHeader(): void {
     const actions = document.createElement("div");
     actions.style.cssText = "display:flex;align-items:center;gap:4px;flex-shrink:0";
 
+    // Open the official DeepSeek web app in a separate tab. DeepSeek owns
+    // authentication and session handling; do not embed the third-party site.
+    const deepSeekLink = document.createElement("a");
+    deepSeekLink.href = "https://chat.deepseek.com/";
+    deepSeekLink.target = "_blank";
+    deepSeekLink.rel = "noopener noreferrer";
+    deepSeekLink.textContent = "DeepSeek ↗";
+    deepSeekLink.title = "Open DeepSeek Chat in a new browser tab";
+    deepSeekLink.setAttribute("aria-label", "Open DeepSeek Chat in a new browser tab");
+    deepSeekLink.style.cssText =
+      smallBtnCss() +
+      ";display:inline-flex;align-items:center;text-decoration:none;white-space:nowrap";
+    deepSeekLink.addEventListener("pointerdown", (e) => e.stopPropagation());
+
     const histBtn = document.createElement("button");
     histBtn.textContent = "🕘";
     histBtn.title = "Conversation history";
@@ -547,7 +561,7 @@ function renderHeader(): void {
       closeAiChat();
     };
 
-    actions.append(histBtn, dockBtn, gear, clearBtn, closeBtn);
+    actions.append(deepSeekLink, histBtn, dockBtn, gear, clearBtn, closeBtn);
     row1.append(icon, text, actions);
 
     // ── Row 2: dock controls ──

@@ -80,6 +80,21 @@ outbound connection is opt-in through the user's own configuration:
 | Dropbox | `api.dropboxapi.com`, `content.dropboxapi.com` | File storage | User-configured |
 | Local services | `localhost` / `127.0.0.1` any port, `ws://`/`wss://` localhost | Collaboration server, local AI (Ollama), dev HMR | Local-first default |
 
+## External AI destinations
+
+The AI assistant header provides an **Open DeepSeek Chat** link to
+`https://chat.deepseek.com/`. It opens the official DeepSeek website in a
+separate browser tab using `target="_blank"` and
+`rel="noopener noreferrer"`. DeepSeek handles sign-in, cookies, and its own
+chat session. This is a website shortcut only: it does not embed DeepSeek,
+does not pass the openBIMstudio conversation or model data to DeepSeek, and
+does not provide API access to the website session.
+
+The application intentionally keeps `frame-src 'none'`; the third-party chat
+site is not embedded because its authentication and framing behavior are not
+controlled or verified by openBIMstudio. Users who need AI responses inside
+the native assistant must configure a supported model provider separately.
+
 ## Known limitation (visible, documented)
 
 The AI provider settings accept an **arbitrary endpoint URL** (e.g. a LAN
