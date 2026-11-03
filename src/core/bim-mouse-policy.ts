@@ -86,17 +86,18 @@ function cancelActiveOperation(): boolean {
     }
   }
 
-  // 3) measure / section / walk (best effort through known globals)
-  const m = W.__obsMeasure;
+  // 3) measure / section / walk via feature registry + legacy globals
+  const feat: Any = (c.features as Any) || {};
+  const m = feat.measure || W.__obsMeasure;
   if (m && (typeof m.isEnabled === "function" ? m.isEnabled() : m.enabled)) {
-    m.setMeasureEnabled?.(false); m.disable?.(); canceled = true;
+    m.cancel?.(); m.setMeasureEnabled?.(false); m.disable?.(); canceled = true;
   }
-  const s = W.__obsSection;
-  if (s && (typeof s.isSectionOn === "function" ? s.isSectionOn() : s.enabled)) {
+  const s = feat.section || W.__obsSection;
+  if (s && (typeof s.isEnabled === "function" ? s.isEnabled() : (typeof s.isSectionOn === "function" ? s.isSectionOn() : s.enabled))) {
     s.setSectionOn?.(false); s.disable?.(); canceled = true;
   }
-  const wk = W.__obsWalkMode;
-  if (wk && (typeof wk.isActive === "function" ? wk.isActive() : wk.enabled)) {
+  const wk = feat.walkMode || W.__obsWalkMode;
+  if (wk && (typeof wk.isEnabled === "function" ? wk.isEnabled() : (typeof wk.isActive === "function" ? wk.isActive() : wk.enabled))) {
     wk.disable?.(); wk.setActive?.(false); canceled = true;
   }
 

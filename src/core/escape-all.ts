@@ -131,6 +131,11 @@ class EscapeAllImpl {
     if (canceled.length) {
       e.preventDefault();
       e.stopImmediatePropagation();
+      try {
+        window.dispatchEvent(new CustomEvent("obs-toast", {
+          detail: { kind: "info", message: "Cancelled: " + canceled.join(", "), timeout: 1400 },
+        }));
+      } catch { /* */ }
     }
   };
 }
@@ -206,12 +211,25 @@ function builtinScopes(getMods: () => Any): EscapeScope[] {
       cancel: () => getMods().sectionCut?.cancelSectionCutDrag?.() === true,
     },
     {
-      // Pending measure point-pick creation (two-point XYZ dimension).
-      id: "measure-creation", priority: 700,
+      // Pending measure picks + OBC creation, then exit measure tool.
+      id: "measure-tool", priority: 720,
       cancel: () => {
-        const lm: Any = (ctx as Any).lengthMeasurer;
-        if (!lm?.enabled || typeof lm.cancelCreation !== "function") return false;
-        try { lm.cancelCreation(); return true; } catch { return false; }
+        const m: Any = F()?.measure ?? W().__obsMeasure;
+        if (!m) {
+          const lm: Any = (ctx as Any).lengthMeasurer;
+          if (!lm?.enabled) return false;
+          try { lm.cancelCreation?.(); } catch { /* */ }
+          try { lm.enabled = false; return true; } catch { return false; }
+        }
+        try {
+          if (typeof m.cancel === "function") return m.cancel() === true;
+          let any = false;
+          if (typeof m.cancelPending === "function") any = m.cancelPending() === true || any;
+          if (typeof m.isEnabled === "function" ? m.isEnabled() : !!m.enabled) {
+            m.setMeasureEnabled?.(false); m.disable?.(); any = true;
+          }
+          return any;
+        } catch { return false; }
       },
     },
     {
@@ -227,8 +245,63 @@ function builtinScopes(getMods: () => Any): EscapeScope[] {
       },
     },
     {
-      // BIM arbiter: drafting-2D overlay tool, authoring placement tool,
-      // measure/section/walk modes. Returns true only when it reset a mode.
+      // Walk mode (first-person).
+      id: "walk-mode", priority: 680,
+      cancel: () => {
+        const wmode: Any = F()?.walkMode ?? W().__obsWalkMode;
+        try {
+          if (wmode?.isEnabled?.() || wmode?.isActive?.()) {
+            wmode.disable?.(); wmode.setActive?.(false); return true;
+          }
+        } catch { /* */ }
+        return false;
+      },
+    },
+    {
+      // Model align tool window / mode.
+      id: "model-align", priority: 660,
+      cancel: () => {
+        const a: Any = F()?.align ?? getMods().modelAlign;
+        try {
+          if (a?.isVisible?.() || a?.isEnabled?.()) { a.disable?.(); a.hide?.(); a.toggle?.(); return true; }
+        } catch { /* */ }
+        return false;
+      },
+    },
+    {
+      // Section cut mode (planes stay; exit interactive mode).
+      id: "section-mode", priority: 650,
+      cancel: () => {
+        const s: Any = F()?.section ?? W().__obsSection;
+        try {
+          const on = typeof s?.isEnabled === "function" ? s.isEnabled() : !!s?.isSectionOn?.();
+          if (on) {
+            if (typeof s.setSectionOn === "function") s.setSectionOn(false);
+            else if (typeof s.setOn === "function") s.setOn(false);
+            else if (typeof s.toggle === "function") s.toggle();
+            s.disable?.();
+            return true;
+          }
+        } catch { /* */ }
+        return false;
+      },
+    },
+    {
+      // Authoring placement tool → back to select / idle.
+      id: "authoring-tool", priority: 640,
+      cancel: () => {
+        const a: Any = F()?.authoring;
+        try {
+          const tool = a?.getActiveTool?.();
+          if (tool && tool !== "select" && tool !== null) {
+            a.setAuthoringTool?.(null); return true;
+          }
+        } catch { /* */ }
+        return false;
+      },
+    },
+    {
+      // BIM arbiter: drafting-2D + leftover measure/section/walk flags.
       id: "bim-policy-modes", priority: 600,
       cancel: () => {
         const p: Any = W().__obsBIMMousePolicy;
@@ -237,15 +310,29 @@ function builtinScopes(getMods: () => Any): EscapeScope[] {
       },
     },
     {
-      // UI transients that expose a queryable state. Transients without one
-      // (context menu, options dialog, form modal, view-tools overlay) keep
-      // their own legacy ESC listeners: with nothing active the key is not
-      // consumed and their listeners close them as before.
+      // UI transients: command palette, CAD query, file menu, walk adjust UI.
       id: "ui-transients", priority: 100,
       cancel: () => {
         let any = false;
-        const cp: Any = F()?.commandPalette;
-        try { if (cp?.isOpen?.() === true) { cp.close?.(); any = true; } } catch { /* */ }
+        const f = F();
+        try {
+          const cp: Any = f?.commandPalette;
+          if (cp?.isOpen?.() === true) { cp.close?.(); any = true; }
+        } catch { /* */ }
+        try {
+          const cq: Any = f?.cadQuery ?? W().__obsCadQuery;
+          if (cq?.isOpen?.() === true || (cq?.toggle && document.getElementById("obs-cad-query-panel")?.style.display !== "none")) {
+            cq.close?.(); cq.hide?.(); any = true;
+          }
+        } catch { /* */ }
+        try {
+          const fm: Any = f?.fileMenu;
+          if (fm?.isVisible?.()) { fm.hide?.(); fm.close?.(); any = true; }
+        } catch { /* */ }
+        try {
+          const adj = document.getElementById("walk-adjust-ui");
+          if (adj) { adj.remove(); any = true; }
+        } catch { /* */ }
         return any;
       },
     },
