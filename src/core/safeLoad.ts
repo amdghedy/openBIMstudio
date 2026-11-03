@@ -17,7 +17,7 @@ export function safeLoad<T>(file: string, raw: string,
 export const ProjectFileSchema = z.object({
   formatVersion: z.number().int().min(1),
   elements: z.array(z.object({ id: z.string(), type: z.string(),
-    props: z.record(z.unknown()) })),
+    props: z.record(z.string(), z.unknown()) })),
 });
 
 export const BcfManifestSchema = z.object({
