@@ -16,6 +16,7 @@ import {
 } from "./importer";
 import { loadFragFiles } from "./importer";
 import { openToolWindow } from "./tool-windows";
+import { confirmDialog } from "./form-modal";
 
 type Job = {
   id: number;
@@ -46,13 +47,14 @@ function toast(msg: string, kind: "info" | "warn" | "success" = "info") {
 /** Session-only: user accepted risk for large IFC→FRAG conversions. */
 let allowLargeThisSession = false;
 
-function confirmLargeConvert(sizeMB: number, name: string): boolean {
+async function confirmLargeConvert(sizeMB: number, name: string): Promise<boolean> {
   if (allowLargeThisSession) return true;
-  const ok = window.confirm(
+  const ok = await confirmDialog(
+    "Large IFC conversion",
     `“${name}” is ${sizeMB.toFixed(0)} MB.\n\n` +
     `In-browser web-ifc conversion of multi-hundred-MB IFCs usually runs out of memory and can crash this tab.\n\n` +
-    `Recommended: convert offline to .frag on a desktop machine, then Insert → Link FRAG.\n\n` +
-    `Click OK to try anyway in this browser (unsafe).`,
+    `Recommended: convert offline to .frag, then Insert → Link FRAG.\n\n` +
+    `Continue anyway in this browser?`,
   );
   if (ok) allowLargeThisSession = true;
   return ok;
@@ -321,7 +323,7 @@ async function processJobs() {
         const sizeMB = j.file.size / (1024 * 1024);
         // Confirm only for very large extracted IFCs (normal ~80 MB IFCZIP is fine).
         const LARGE_MB = 350;
-        if (sizeMB > LARGE_MB && !confirmLargeConvert(sizeMB, j.sourceName)) {
+        if (sizeMB > LARGE_MB && !(await confirmLargeConvert(sizeMB, j.sourceName))) {
           j.status = "cancelled";
           j.phase = "skipped — user declined large-file risk";
           renderList();
