@@ -1242,9 +1242,11 @@ async function createLinearElementsTool(args: Record<string, any>): Promise<Tool
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
       const elevation = segment.elevation ?? defaultElevation ?? previousLevel ?? 0;
+      const resolvedThickness = segment.thickness ?? defaultThickness;
+      const resolvedHeight = segment.height ?? defaultHeight;
       const size = {
-        ...(segment.thickness ?? defaultThickness) !== undefined ? { thickness: segment.thickness ?? defaultThickness } : {},
-        ...(segment.height ?? defaultHeight) !== undefined ? { height: segment.height ?? defaultHeight } : {},
+        ...(resolvedThickness !== undefined ? { thickness: resolvedThickness } : {}),
+        ...(resolvedHeight !== undefined ? { height: resolvedHeight } : {}),
       };
       const idsBefore = getIds();
       const countBefore = Number(service?.getElementCount?.() ?? getElements().length);
