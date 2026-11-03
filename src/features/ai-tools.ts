@@ -58,7 +58,9 @@ export function isDestructiveTool(name: string): boolean {
  * Read-only tools may run immediately. Any tool that changes authored model
  * geometry or creates a persistent project artifact must be approved first.
  */
-export function requiresUserApproval(name: string): boolean {
+export function requiresUserApproval(name: string, args: Record<string, any> = {}): boolean {
+  // A CAD dry-run only analyzes geometry and does not write to the project.
+  if (name === "create_walls_from_cad" && args.dryRun === true) return false;
   return DESTRUCTIVE_TOOLS.has(name) || WRITE_TOOLS.has(name);
 }
 
