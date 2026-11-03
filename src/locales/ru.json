@@ -1,0 +1,19 @@
+{
+  "standards": {
+    "title": "Стандарты"
+  },
+  "meta": {
+    "name": "Russian",
+    "nativeName": "Русский",
+    "dir": "ltr"
+  },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "Загрузка…",
+    "ready": "Готово",
+    "cancel": "Отмена",
+    "close": "Закрыть",
+    "save": "Сохранить",
+    "delete": "Удалить"
+  }
+}

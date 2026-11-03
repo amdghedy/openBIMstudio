@@ -1,0 +1,19 @@
+{
+  "standards": {
+    "title": "Standartlar"
+  },
+  "meta": {
+    "name": "Turkish",
+    "nativeName": "Türkçe",
+    "dir": "ltr"
+  },
+  "app": {
+    "name": "Open BIM Studio",
+    "loading": "Yükleniyor…",
+    "ready": "Hazır",
+    "cancel": "İptal",
+    "close": "Kapat",
+    "save": "Kaydet",
+    "delete": "Sil"
+  }
+}
