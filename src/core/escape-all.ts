@@ -269,21 +269,27 @@ function builtinScopes(getMods: () => Any): EscapeScope[] {
       },
     },
     {
-      // Section cut mode (planes stay; exit interactive mode).
+      // Section panel + mode (dockable UI and/or active cut mode).
       id: "section-mode", priority: 650,
       cancel: () => {
-        const s: Any = F()?.section ?? W().__obsSection;
+        let any = false;
         try {
+          const sp: Any = F()?.sectionPanel ?? W().__obsSectionPanel;
+          if (sp?.cancel?.() === true) any = true;
+          else if (sp?.isOpen?.() === true) { sp.close?.(); any = true; }
+        } catch { /* */ }
+        try {
+          const s: Any = F()?.section ?? W().__obsSection;
           const on = typeof s?.isEnabled === "function" ? s.isEnabled() : !!s?.isSectionOn?.();
           if (on) {
             if (typeof s.setSectionOn === "function") s.setSectionOn(false);
             else if (typeof s.setOn === "function") s.setOn(false);
             else if (typeof s.toggle === "function") s.toggle();
             s.disable?.();
-            return true;
+            any = true;
           }
         } catch { /* */ }
-        return false;
+        return any;
       },
     },
     {

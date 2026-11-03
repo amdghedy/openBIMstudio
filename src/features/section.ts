@@ -267,6 +267,7 @@ export function setupSection() {
   ctx.features.section = {
     isEnabled: isSectionOn,
     toggle: toggleSection,
+    setSectionOn,
     getPlanes: getSectionPlanes,
     setPlanes: setSectionPlanes,
     reset: resetSection,
@@ -278,6 +279,7 @@ export function setupSection() {
     toggle: toggleSection,
     isEnabled: isSectionOn,
     setOn: setSectionOn,
+    setSectionOn,
   };
 }
 // ============================================================================

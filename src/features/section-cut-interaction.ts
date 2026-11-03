@@ -285,27 +285,48 @@ function createPlaneAt(point: THREE.Vector3, normal: THREE.Vector3): void {
   }
   const n = normal.clone().normalize();
   const p = point.clone();
+  let ok = false;
 
   try {
     if (typeof clipper.createFromNormalAndCoplanarPoint === "function") {
       clipper.createFromNormalAndCoplanarPoint(ctx.world, n, p);
-      return;
+      ok = true;
     }
   } catch (e) {
     console.warn("[section-cut] createFromNormal failed", e);
   }
 
-  try {
-    const item = clipper.create?.(ctx.world);
-    const plane: THREE.Plane | undefined =
-      item?.three?.plane ?? item?.plane ?? item?.three;
-    if (plane?.normal) {
-      plane.normal.copy(n);
-      plane.constant = -p.dot(n);
+  if (!ok) {
+    try {
+      const item = clipper.create?.(ctx.world);
+      const plane: THREE.Plane | undefined =
+        item?.three?.plane ?? item?.plane ?? item?.three;
+      if (plane?.normal) {
+        plane.normal.copy(n);
+        plane.constant = -p.dot(n);
+        ok = true;
+      }
+    } catch (e) {
+      console.warn("[section-cut] create failed", e);
     }
-  } catch (e) {
-    console.warn("[section-cut] create failed", e);
   }
+
+  try { clipper.enabled = true; } catch { /* */ }
+  try {
+    const r = (ctx as Any).world?.renderer?.three;
+    if (r) r.localClippingEnabled = true;
+  } catch { /* */ }
+  try { (ctx as Any).fragments?.core?.update?.(true); } catch { /* */ }
+  try {
+    const sec = (ctx as Any).features?.section;
+    if (sec?.setSectionOn) sec.setSectionOn(true);
+    else if (typeof (window as Any).__obsSection?.setOn === "function") {
+      (window as Any).__obsSection.setOn(true);
+    }
+  } catch { /* */ }
+  try {
+    void import("./section-plane-panel").then((m) => m.openSectionPlanePanel());
+  } catch { /* */ }
 }
 
 function getPlaneFromItem(item: Any): THREE.Plane | null {
