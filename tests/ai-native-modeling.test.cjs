@@ -70,6 +70,8 @@ async function test(name, fn) {
     for (const name of ["get_app_state", "get_model_categories", "get_element_properties", "run_clash_test"]) {
       assert.equal(requiresUserApproval(name), false, name + " should remain read-only");
     }
+    assert.equal(requiresUserApproval("create_walls_from_cad", { dryRun: true }), false, "CAD analysis-only dry run should not require write approval");
+    assert.equal(requiresUserApproval("create_walls_from_cad", { dryRun: false }), true, "CAD wall creation must require approval");
     assert.equal(isDestructiveTool("delete_elements"), true);
     assert.equal(requiresUserApproval("delete_elements"), true);
   });
