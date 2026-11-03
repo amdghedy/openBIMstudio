@@ -7,6 +7,7 @@ import {
 import { exportBCF, importBCF } from "../modules/issues/bcf";
 import type { Issue, IssueComment, IssuePriority, IssueStatus } from "../modules/issues/types";
 import { getCurrentProject } from "../modules/projects/projects";
+import { uiAlert } from "../core/notify";
 
 const panel = document.createElement("div");
 panel.style.cssText = "position:absolute;top:210px;right:14px;width:310px;max-height:calc(100% - 230px);z-index:35;display:none;flex-direction:column;background:#171821;border:1px solid #2a2a35;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5);font:12px system-ui,sans-serif;color:#e2e8f0;overflow:hidden";
@@ -221,10 +222,10 @@ fileInput.onchange = async () => {
   if (!f) return;
   try {
     const n = await importBCF(f);
-    alert(`Imported ${n} issue(s) from BCF.`);
+    uiAlert(`Imported ${n} issue(s) from BCF.`);
     renderAll();
   } catch (e: any) {
-    alert(`BCF import failed: ${e?.message ?? e}`);
+    uiAlert(`BCF import failed: ${e?.message ?? e}`);
   }
 };
 

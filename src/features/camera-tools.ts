@@ -10,6 +10,7 @@ import { getElementWorldBoxes } from "../modules/geometry/world-box";
 import { syncOrthoZoom } from "../core/ortho-zoom";
 import { setOrbitTargetKeepingView } from "../core/orbit-target";
 import { validateHome, type HomeView, type V3 } from "../modules/navigation/nav-math";
+import { uiAlert } from "../core/notify";
 
 // ── Scene placement state ──
 let recenterEnabled = false;
@@ -1398,7 +1399,7 @@ export function takeScreenshot(opts: ScreenshotOptions = {}): void {
       }
     }
     console.error("[screenshot] capture failed", err);
-    alert(
+    uiAlert(
       "Screenshot failed.\n\n" +
         (err instanceof Error ? err.message : String(err)) +
         "\n\nTry a smaller preset (HD or Native).",
@@ -1448,7 +1449,7 @@ export function takeScreenshot(opts: ScreenshotOptions = {}): void {
       (blob) => {
         if (!blob) {
           console.error("[screenshot] toBlob returned null — try a smaller preset");
-          alert("Encoding failed. Try a smaller preset (HD or Native).");
+          uiAlert("Encoding failed. Try a smaller preset (HD or Native).");
           return;
         }
         const url = URL.createObjectURL(blob);
@@ -1472,7 +1473,7 @@ export function takeScreenshot(opts: ScreenshotOptions = {}): void {
     );
   } catch (err) {
     console.error("[screenshot] toBlob threw", err);
-    alert(
+    uiAlert(
       "Screenshot encoding failed.\n\n" +
         (err instanceof Error ? err.message : String(err)),
     );

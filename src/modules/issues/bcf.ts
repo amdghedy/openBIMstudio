@@ -26,6 +26,7 @@ import type {
   IssueViewpoint,
 } from "./types";
 import { getIssues, setIssues } from "./issues";
+import { uiAlert } from "../../core/notify";
 
 const xmlEsc = (s: string) =>
   String(s ?? "").replace(
@@ -203,7 +204,7 @@ export async function exportBCF(
   fileName?: string,
 ) {
   if (!issueList.length) {
-    alert("No issues to export.");
+    uiAlert("No issues to export.");
     return;
   }
   const zip = new JSZip();
@@ -384,7 +385,7 @@ export async function importBCF(file: File): Promise<number> {
     if (/markup\.bcf$/i.test(path)) markupPaths.push(path);
   });
   if (!markupPaths.length) {
-    alert("No markup.bcf found in this BCF file.");
+    uiAlert("No markup.bcf found in this BCF file.");
     return 0;
   }
 

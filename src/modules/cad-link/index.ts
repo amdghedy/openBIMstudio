@@ -17,6 +17,7 @@ import {
 import { surveyToProject } from "../project-base-point/types";
 import { setUnderlaySegments, clearUnderlayData } from "../../features/cad-underlay-snap";
 import { getSceneBackground } from "../../features/view-graphics";
+import { uiAlert } from "../../core/notify";
 
 export * from "./core";
 
@@ -707,7 +708,7 @@ export async function linkCadFileInteractive(file: File): Promise<CadLink | null
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[cad-link] read failed", e);
-    alert(
+    uiAlert(
       `Could not read "${file.name}":\n${msg}\n\n` +
       (ext(file.name) === "dwg"
         ? "Tip: in AutoCAD use SAVEAS and choose a DXF (ASCII, R2013 or R2018), then link the DXF."
@@ -716,7 +717,7 @@ export async function linkCadFileInteractive(file: File): Promise<CadLink | null
     return null;
   }
   if (!parsed.doc.entities.length) {
-    alert(
+    uiAlert(
       `"${file.name}" was read but contains no geometry this viewer can draw.\n\n${parsed.summary}\n\n` +
       "Check that the drawing has model-space geometry (not only paper-space layouts, hatches or images).",
     );

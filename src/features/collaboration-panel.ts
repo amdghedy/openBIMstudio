@@ -1,6 +1,7 @@
 ﻿import { ctx } from "../core/context";
 import { realtimeClient, type PresenceUser } from "../modules/collaboration/realtime-client";
 import { makeDockable, type DockHandle } from "./dockable";
+import { uiAlert } from "../core/notify";
 
 let panel: HTMLDivElement | null = null;
 let dock: DockHandle | null = null;
@@ -110,7 +111,7 @@ export function setupCollaborationPanel(): void {
     const room = roomInput.value.trim();
     const name = nameInput.value.trim();
     if (!room || !name) {
-      alert("Please enter both Room ID and Name.");
+      uiAlert("Please enter both Room ID and Name.");
       return;
     }
 

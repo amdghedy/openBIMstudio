@@ -7,6 +7,7 @@ import {
 } from "../modules/cost/cost";
 import { computeTakeoff, getRows } from "../modules/cost/quantities";
 import type { CostItem, CostUnit, TakeoffRow } from "../modules/cost/types";
+import { uiAlert } from "../core/notify";
 
 const UNITS: CostUnit[] = ["m", "m2", "m3", "pcs"];
 
@@ -288,7 +289,7 @@ function renderBody() {
 // ── CSV export (exported: used by the File menu too) ──
 export function exportCostCsv() {
   const rows = getRows();
-  if (!rows.length) { alert("Nothing to export — run Recalculate first."); return; }
+  if (!rows.length) { uiAlert("Nothing to export — run Recalculate first."); return; }
   const q = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines: string[] = ["Source,Label,Detail,Count,Length_m,Area_m2,Volume_m3,CostCode,CostName,Unit,Qty,Rate,LineCost,CostCategory"];
   let grand = 0;

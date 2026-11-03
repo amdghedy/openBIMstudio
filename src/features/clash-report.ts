@@ -13,6 +13,7 @@ import {
   type ClashStatus,
 } from "./clash";
 import { getCurrentProject } from "../modules/projects/projects";
+import { uiAlert } from "../core/notify";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Shared data extraction
@@ -232,7 +233,7 @@ export function buildClashReportHtml(): string {
 export function exportClashReportHtml(): void {
   const rows = collectRows();
   if (!rows.length) {
-    alert("No clashes to report. Run a test first.");
+    uiAlert("No clashes to report. Run a test first.");
     return;
   }
   const html = buildClashReportHtml();
@@ -251,13 +252,13 @@ export function exportClashReportHtml(): void {
 export function previewClashReportHtml(): void {
   const rows = collectRows();
   if (!rows.length) {
-    alert("No clashes to report. Run a test first.");
+    uiAlert("No clashes to report. Run a test first.");
     return;
   }
   const html = buildClashReportHtml();
   const w = window.open("", "_blank");
   if (!w) {
-    alert("Popup blocked — allow popups to preview.");
+    uiAlert("Popup blocked — allow popups to preview.");
     return;
   }
   w.document.write(html);
@@ -271,7 +272,7 @@ export function previewClashReportHtml(): void {
 export function exportClashReportXls(): void {
   const rows = collectRows();
   if (!rows.length) {
-    alert("No clashes to report. Run a test first.");
+    uiAlert("No clashes to report. Run a test first.");
     return;
   }
   const summary = summarize(rows);

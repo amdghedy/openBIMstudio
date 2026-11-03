@@ -64,3 +64,15 @@ export function __dispatchToSubscribers(
     try { cb(kind, message, opts); } catch { /* */ }
   }
 }
+
+/**
+ * Non-blocking replacement for `window.alert()`. Shows a toast whose kind is
+ * inferred from the wording and whose lifetime scales with the message length.
+ */
+export function uiAlert(message: string): void {
+  const text = String(message).replace(/\s*\n+\s*/g, " — ").trim();
+  const kind: NotifyKind = /fail|could not|cannot|can't|error|invalid|unavailable|blocked|not available/i.test(text)
+    ? "error"
+    : /^(no |nothing|please|select|run |generate|create or select)/i.test(text) ? "warn" : "info";
+  notify(kind, text, { timeout: Math.min(14000, Math.max(3500, 2500 + text.length * 45)) });
+}

@@ -1,10 +1,10 @@
 /**
  * Error handling: a global reporter, a ring-buffer log, and a boot-failure
- * screen. Replaces ad-hoc `console.error` + `alert()` calls with a single
+ * screen. Replaces ad-hoc `console.error` + `uiAlert()` calls with a single
  * entry point that surfaces failures in the UI instead of hiding them in
  * the dev-tools console.
  */
-import { notify, type NotifyKind } from "./notify";
+import { notify, type NotifyKind, uiAlert } from "./notify";
 
 export interface ErrorEntry {
   time: number;

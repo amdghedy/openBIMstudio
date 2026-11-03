@@ -17,6 +17,7 @@ import {
 } from "../modules/sheets/sheets";
 import { exportAllSheetsToPdf, downloadSingleSheetPdf } from "../modules/export/sheet-pdf";
 import type { SheetDef } from "../modules/projects/types";
+import { uiAlert } from "../core/notify";
 
 let panel: HTMLElement | null = null;
 let visible = false;
@@ -104,7 +105,7 @@ function render() {
       }
       if (act === "publish-pdf") {
         const sheets = listSheets();
-        if (!sheets.length) { alert("No sheets to publish."); return; }
+        if (!sheets.length) { uiAlert("No sheets to publish."); return; }
         void (async () => {
           try {
             if (activeId) {
@@ -115,7 +116,7 @@ function render() {
             window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "PDF published successfully", kind: "success" } }));
           } catch (e) {
             console.error("[sheets] PDF publish failed", e);
-            alert("PDF export failed. See console.");
+            uiAlert("PDF export failed. See console.");
           }
         })();
         return;

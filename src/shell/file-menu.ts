@@ -1,4 +1,5 @@
 /** BIM-style File application menu: commands + Recent Documents. */
+import { promptLine, confirmDialog } from "../features/form-modal";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import * as store from "../modules/projects/store";
@@ -10,6 +11,7 @@ import { exportCostCsv } from "../features/cost-panel";
 import { pickAndImport } from "../features/file-interop";
 import { settingsBox } from "../features/importer";
 import { exportFragFromMenu } from "../modules/export/frag";
+import { uiAlert } from "../core/notify";
 
 const menu = document.createElement("div");
 menu.style.cssText = "position:fixed;top:100px;left:10px;width:760px;max-width:calc(100vw - 20px);z-index:250;display:none;background:#1b1c26;border:1px solid #34353f;border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.6);color:#e2e8f0;font:12px system-ui,sans-serif;overflow:hidden";
@@ -36,8 +38,8 @@ function item(icon: string, label: string, onclick: () => void, hint = "", dange
 
 async function saveAs() {
   const cur = getCurrentProject();
-  if (!cur) { alert("No project is open."); return; }
-  const name = prompt("Save project as:", `${cur.name} (copy)`);
+  if (!cur) { uiAlert("No project is open."); return; }
+  const name = await promptLine("Save project as", "Project name", `${cur.name} (copy)`);
   if (!name) return;
   await saveProject();
   const copy: any = JSON.parse(JSON.stringify(cur));
@@ -52,7 +54,7 @@ async function saveAs() {
 
 function exportProjectJson() {
   const cur = getCurrentProject();
-  if (!cur) { alert("No project is open."); return; }
+  if (!cur) { uiAlert("No project is open."); return; }
   void saveProject(true).then(() => {
     const blob = new Blob([JSON.stringify(getCurrentProject(), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -66,7 +68,7 @@ function exportProjectJson() {
 function printView() {
   const url = captureThumbnail(1800);
   const w = window.open("", "_blank");
-  if (!w) { alert("Popup blocked — allow popups to print."); return; }
+  if (!w) { uiAlert("Popup blocked — allow popups to print."); return; }
   w.document.write(`<html><head><title>Open BIM Studio — Print</title></head><body style="margin:0"><img src="${url}" style="width:100%" onload="window.print()"></body></html>`);
   w.document.close();
 }
@@ -74,7 +76,7 @@ function printView() {
 async function exportGlb() {
   const auxObjects: THREE.Object3D[] = (ctx.features as any).fileInterop?.getAuxObjects?.() ?? [];
   if (!ctx.fragments.list.size && !auxObjects.length) {
-    alert("Nothing to export — the scene is empty."); return;
+    uiAlert("Nothing to export — the scene is empty."); return;
   }
   try {
     const { GLTFExporter } = await import("three/examples/jsm/exporters/GLTFExporter.js");
@@ -89,8 +91,8 @@ async function exportGlb() {
       a.href = url; a.download = `${(cur?.name ?? "scene").replace(/[^\w-]+/g, "_")}.glb`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 8000);
-    }, (err: any) => { console.error(err); alert("GLB export failed — see console."); }, { binary: true });
-  } catch (err: any) { alert(`GLB export failed: ${err?.message ?? err}`); }
+    }, (err: any) => { console.error(err); uiAlert("GLB export failed — see console."); }, { binary: true });
+  } catch (err: any) { uiAlert(`GLB export failed: ${err?.message ?? err}`); }
 }
 
 async function importProjectFile() {
@@ -103,7 +105,7 @@ async function importProjectFile() {
       if (!doc?.id || !Array.isArray(doc.elements)) throw new Error("Not a valid Open BIM Studio project file.");
       await store.putProject(doc);
       await openProject(doc.id);
-    } catch (e: any) { alert(`Open project file failed: ${e?.message ?? e}`); }
+    } catch (e: any) { uiAlert(`Open project file failed: ${e?.message ?? e}`); }
   };
   input.click();
 }
@@ -111,8 +113,9 @@ async function importProjectFile() {
 function closeProject() {
   const go = () => showHome();
   if (isDirty()) {
-    if (confirm("Project has unsaved changes. Save before closing?")) void saveProject(true).then(go);
-    else go();
+    void confirmDialog("Close project", "Project has unsaved changes. Save before closing?").then((save) => {
+      if (save) void saveProject(true).then(go); else go();
+    });
   } else go();
 }
 
@@ -201,7 +204,7 @@ async function renderRecents() {
     del.style.cssText = "padding:4px 8px;background:#2a2a3a;border:1px solid #3a3a4a;border-radius:5px;cursor:pointer;font-size:10px";
     del.onclick = async (e) => {
       e.stopPropagation();
-      if (!confirm(`Remove "${doc.name}" from Recent Documents?`)) return;
+      if (!(await confirmDialog("Remove from Recent Documents", `Remove "${doc.name}" from Recent Documents?`))) return;
       await deleteProjectById(doc.id);
       void renderRecents();
     };

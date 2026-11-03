@@ -18,6 +18,7 @@ import { toggleSheetsPanel } from "./sheets-panel";
 import { ensureDefaultMaterials, listMaterials } from "../modules/materials/materials";
 import { markDirty } from "../modules/projects/projects";
 import { openToolWindow } from "./tool-windows";
+import { uiAlert } from "../core/notify";
 
 function pickAccept(accept: string, multiple: boolean, onFiles: (files: File[]) => void | Promise<void>) {
   const input = document.createElement("input");
@@ -28,7 +29,7 @@ function pickAccept(accept: string, multiple: boolean, onFiles: (files: File[]) 
     const files = input.files ? Array.from(input.files) : [];
     if (files.length) void Promise.resolve(onFiles(files)).catch((e) => {
       console.error("[link-tools]", e);
-      alert(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+      uiAlert(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
     });
   };
   input.click();
@@ -227,11 +228,11 @@ async function importPointCloudFiles(files: File[]) {
       loaded++;
     } catch (e) {
       console.error(e);
-      alert(`Could not load point cloud “${file.name}”: ${e instanceof Error ? e.message : e}`);
+      uiAlert(`Could not load point cloud “${file.name}”: ${e instanceof Error ? e.message : e}`);
     }
   }
   if (unsupported.length) {
-    alert(
+    uiAlert(
       "These point-cloud formats are not decoded by the current browser importer:\n\n" +
       unsupported.join("\n\n") +
       "\n\nCurrently decoded: LAS (uncompressed), PTX, PLY, XYZ, PTS, TXT and CSV. " +
@@ -372,7 +373,7 @@ export function linkTopography() {
     const file = files[0];
     const ext = (file.name.split(".").pop() ?? "").toLowerCase();
     if (["tif", "tiff", "png"].includes(ext)) {
-      alert(
+      uiAlert(
         "Raster DEM / contour images:\n" +
         "Convert to mesh (OBJ/STL) in Civil 3D, QGIS or Blender, then link again.\n\n" +
         "For 2D site plans use Link CAD with DXF/PNG in Plan view.",
@@ -389,7 +390,7 @@ export function openFamilyLibrary() {
   ensureDefaultMaterials();
   const mats = listMaterials();
   const names = mats.slice(0, 12).map((m) => `• ${m.name}`).join("\n");
-  alert(
+  uiAlert(
     "Element Types & Materials library\n\n" +
     `${mats.length} materials loaded:\n${names}\n\n` +
     "Use Architecture / Structure / Mechanical tools to place elements.\n" +

@@ -14,6 +14,7 @@ import type {
   CdeCredentials, CdeFile, CdeFolder, CdeProject, CdeProviderId,
   CdeProviderMeta, CdeSession,
 } from "../modules/cde/types";
+import { uiAlert } from "../core/notify";
 
 const panel = document.createElement("div");
 panel.id = "obs-cde-panel";
@@ -455,7 +456,7 @@ async function pushCurrentScene(): Promise<void> {
   if (!provider?.uploadFile) return;
   const { getCurrentProject } = await import("../modules/projects/projects");
   const project = getCurrentProject();
-  if (!project) { alert("No project is currently open."); return; }
+  if (!project) { uiAlert("No project is currently open."); return; }
   const filename = `${project.name.replace(/[^\w-]+/g, "_")}.obs.json`;
   const payload = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
   state.busy = true;

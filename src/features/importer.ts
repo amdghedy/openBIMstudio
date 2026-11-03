@@ -21,6 +21,7 @@ import {
   recenterSceneNow, resetOffsets, setRecenterEnabled,
 } from "./camera-tools";
 import { refreshModelSelectionUI } from "./clash";
+import { uiAlert } from "../core/notify";
 
 // Injected by vite.config.ts (define) from node_modules/web-ifc/package.json.
 // The WASM is served from /web-ifc/<version>/ so a build can never be paired
@@ -738,12 +739,12 @@ function taskAction(t: ImportTask, act: string) {
 
 function downloadFragBytes(t: ImportTask) {
   if (!t.fragBytes || t.fragBytes.byteLength === 0) {
-    alert("The cached .frag bytes are no longer available.\nRe-import the IFC and try Save .frag again.");
+    uiAlert("The cached .frag bytes are no longer available.\nRe-import the IFC and try Save .frag again.");
     return;
   }
   const blob = new Blob([t.fragBytes as unknown as BlobPart], { type: "application/octet-stream" });
   if (blob.size === 0) {
-    alert("Could not export: the byte cache was released.\nRe-import the IFC and try again.");
+    uiAlert("Could not export: the byte cache was released.\nRe-import the IFC and try again.");
     return;
   }
   const url = URL.createObjectURL(blob);
@@ -1078,7 +1079,7 @@ export async function loadFragFiles(files: FileList | File[]) {
       loader?.set?.(`Loading ${i} / ${list.length} · ${file.name}`, i / list.length);
       try {
         if (file.size === 0) {
-          alert(`"${file.name}" is empty (0 bytes).`);
+          uiAlert(`"${file.name}" is empty (0 bytes).`);
           continue;
         }
         const buffer = await file.arrayBuffer();
@@ -1097,7 +1098,7 @@ export async function loadFragFiles(files: FileList | File[]) {
         } catch (e) { console.warn("[frag-load] project persistence hook failed", e); }
       } catch (err: any) {
         console.error("[frag-load]", err);
-        alert(`Failed: ${file.name}\n${errorMessage(err)}`);
+        uiAlert(`Failed: ${file.name}\n${errorMessage(err)}`);
       }
       await new Promise((r) => setTimeout(r, 0));
     }
@@ -1126,7 +1127,7 @@ export async function loadFragFiles(files: FileList | File[]) {
 
 export function loadIfcFiles(files: FileList | File[]) {
   const list = Array.from(files).filter((f) => /\.ifc$/i.test(f.name));
-  if (!list.length) { alert("Please select one or more .ifc files."); return; }
+  if (!list.length) { uiAlert("Please select one or more .ifc files."); return; }
   enqueueIfc(list);
 }
 

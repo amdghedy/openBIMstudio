@@ -23,6 +23,7 @@ import {
 import { refreshModelSelectionUI, clearClash } from "../../features/clash";
 import { getIssues, setIssues, onIssuesChanged } from "../issues/issues";
 import { getCostData, setCostData, onCostChanged } from "../cost/cost";
+import { uiAlert } from "../../core/notify";
 
 let current: ProjectDoc | null = null;
 let dirty = false;
@@ -78,7 +79,7 @@ function snapshotAppState() {
    ═════════════════════════════════════════════════════════════════════════ */
 export async function saveProject(silent = false) {
   if (!current) {
-    if (!silent) alert("No project is open.");
+    if (!silent) uiAlert("No project is open.");
     return;
   }
   current.elements = getElements();
@@ -289,7 +290,7 @@ export async function openProject(id: string) {
   if (loader?.isActive?.()) return;
 
   const doc = await store.getProject(id);
-  if (!doc) { alert("Project not found."); return; }
+  if (!doc) { uiAlert("Project not found."); return; }
 
   loader?.begin?.(`Opening ${doc.name}…`, { cancellable: false });
 
@@ -448,7 +449,7 @@ export async function openProject(id: string) {
     notify();
   } catch (err) {
     console.error("[projects] openProject failed", err);
-    alert(`Could not open project: ${err instanceof Error ? err.message : err}`);
+    uiAlert(`Could not open project: ${err instanceof Error ? err.message : err}`);
   } finally {
     setTimeout(() => loader?.finish?.(), 180);
   }

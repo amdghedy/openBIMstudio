@@ -12,6 +12,7 @@ import {
   generateArcWallPlanPolyline,
 } from "../modules/parametric/arc-wall";
 import { registerCommand } from "./command-palette";
+import { uiAlert } from "../core/notify";
 
 export function openArcWallDialog(): void {
   const existing = document.getElementById("obs-arc-wall-modal");
@@ -136,7 +137,7 @@ export function openArcWallDialog(): void {
   document.getElementById("obs-arc-just")?.addEventListener("change", updateSummary);
 
   document.getElementById("obs-arc-place-btn")?.addEventListener("click", () => {
-    alert("Arc wall parameters committed. Click on canvas to place wall center point.");
+    uiAlert("Arc wall parameters committed. Click on canvas to place wall center point.");
     overlay.remove();
   });
 

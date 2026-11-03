@@ -9,7 +9,7 @@
 import { getNorthState, onNorthChanged } from "../modules/north/north";
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { onNotify, __dispatchToSubscribers } from "../core/notify";
+import { onNotify, __dispatchToSubscribers, uiAlert } from "../core/notify";
 import { pickFiles, loadIfcFiles, loadFragFiles } from "../features/importer";
 import {
   setProjection, getProjection, fitAll, gotoDir, goHome, takeScreenshot,
@@ -1841,7 +1841,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("interference", "Clr +", safe(() => changeClearance(0.1), "Clearance +"),
         { title: "Increase the clearance band by 10 cm" }),
       b("settings", "Rules…", safe(() => {
-        alert(
+        uiAlert(
           `Clash rules:\n\n` +
           `Tolerance:      ${(getTolerance() * 1000).toFixed(0)} mm\n` +
           `Clearance band: ${(getClearance() * 100).toFixed(0)} cm\n\n` +

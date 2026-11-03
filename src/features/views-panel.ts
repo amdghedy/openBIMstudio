@@ -23,6 +23,7 @@ import { toolState, type ActiveTool } from "../modules/views/tools";
 import { attachAnnotationInteractions } from "../modules/views/annotation-interactions";
 import { bootAnnotationStore, onAnnotationChange } from "../modules/views/annotation-store";
 import { makeDockable, type DockHandle } from "./dockable";
+import { uiAlert } from "../core/notify";
 
 let panel: HTMLDivElement | null = null;
 let sidebar: HTMLDivElement | null = null;
@@ -122,13 +123,13 @@ export function setupViewsPanel(): void {
   };
 
   const vgBtn = mkButton("VG", () => {
-    if (!currentViewId) return alert("Select a view first");
+    if (!currentViewId) return uiAlert("Select a view first");
     openVgDialog({ viewId: currentViewId });
   });
 
   const editTmplBtn = mkButton("Edit Tmpl", () => {
     const tId = templateSelectEl?.value;
-    if (!tId) return alert("Select a template first");
+    if (!tId) return uiAlert("Select a template first");
     openVgDialog({ templateId: tId });
   });
 

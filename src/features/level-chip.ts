@@ -13,9 +13,26 @@
 // All glyphs are emitted via \uXXXX escapes so this .ts file stays pure
 // ASCII even though the UI renders non-ASCII characters at runtime.
 
+import { openFormModal, promptLine, confirmDialog } from "./form-modal";
 import { ctx } from "../core/context";
 import { levels, type LevelRecord } from "../modules/levels";
 import { registerCommand } from "./command-palette";
+
+
+/** Form dialog for a new level; resolves null if cancelled. */
+async function askNewLevel(defaultName: string, defaultElevation: number): Promise<{ name: string; elevation: number } | null> {
+  const v = await openFormModal({
+    title: "New level",
+    fields: [
+      { kind: "text", key: "name", label: "Name", default: defaultName },
+      { kind: "number", key: "elevation", label: "Elevation", default: defaultElevation, step: 0.1, unit: "m",
+        validate: (x) => Number.isFinite(Number(x)) ? null : "Elevation must be a number" },
+    ],
+    submitLabel: "Add level",
+  });
+  if (!v) return null;
+  return { name: String(v.name).trim() || defaultName, elevation: Number(v.elevation) };
+}
 import { notify } from "../core/notify";
 
 const CHIP_ID = "obs-level-chip";
@@ -181,22 +198,13 @@ function openDropdown(): void {
         closeDropdown();
         const last = list[list.length - 1];
         const nextElev = last ? last.elevation + 3 : 0;
-        const name = prompt("New level name:", "Level " + list.length);
-        if (name == null) return;
-        const elevRaw = prompt("Elevation (m):", String(nextElev));
-        if (elevRaw == null) return;
-        const elev = Number(elevRaw);
-        if (!Number.isFinite(elev)) {
-          notify("warn", "Elevation must be a number");
-          return;
-        }
-        const rec = levels.add({
-          name: name.trim() || ("Level " + list.length),
-          elevation: elev,
+        void askNewLevel("Level " + list.length, nextElev).then((v) => {
+          if (!v) return;
+          const rec = levels.add({ name: v.name, elevation: v.elevation });
+          levels.setActiveId(rec.id);
+          notify("success", "Level added: " + rec.name + " (" + fmtMeters(rec.elevation) + ")");
+          refresh();
         });
-        levels.setActiveId(rec.id);
-        notify("success", "Level added: " + rec.name + " (" + fmtMeters(rec.elevation) + ")");
-        refresh();
       },
     }),
   );
@@ -210,11 +218,12 @@ function openDropdown(): void {
           meta: cur.name,
           onClick: () => {
             closeDropdown();
-            const name = prompt("Rename level:", cur.name);
-            if (name == null) return;
-            levels.update(cur.id, { name: name.trim() || cur.name });
-            notify("success", "Level renamed");
-            refresh();
+            void promptLine("Rename level", "Level name", cur.name).then((name) => {
+              if (name == null) return;
+              levels.update(cur.id, { name: name.trim() || cur.name });
+              notify("success", "Level renamed");
+              refresh();
+            });
           },
         }),
       );
@@ -229,12 +238,14 @@ function openDropdown(): void {
               notify("warn", "A project must keep at least one level.");
               return;
             }
-            if (!confirm("Delete level \"" + cur.name + "\"?")) return;
-            levels.remove(cur.id);
-            const next = levels.list()[0];
-            if (next) levels.setActiveId(next.id);
-            notify("info", "Level deleted");
-            refresh();
+            void confirmDialog("Delete level", "Delete level \"" + cur.name + "\"?").then((yes) => {
+              if (!yes) return;
+              levels.remove(cur.id);
+              const next = levels.list()[0];
+              if (next) levels.setActiveId(next.id);
+              notify("info", "Level deleted");
+              refresh();
+            });
           },
         }),
       );
@@ -301,15 +312,12 @@ export function setupLevelChip(): void {
         const list = levels.list();
         const last = list[list.length - 1];
         const nextElev = last ? last.elevation + 3 : 0;
-        const name = prompt("New level name:", "Level " + list.length);
-        if (name == null) return;
-        const elevRaw = prompt("Elevation (m):", String(nextElev));
-        if (elevRaw == null) return;
-        const elev = Number(elevRaw);
-        if (!Number.isFinite(elev)) { notify("warn", "Elevation must be a number"); return; }
-        const rec = levels.add({ name: name.trim() || ("Level " + list.length), elevation: elev });
-        levels.setActiveId(rec.id);
-        refresh();
+        void askNewLevel("Level " + list.length, nextElev).then((v) => {
+          if (!v) return;
+          const rec = levels.add({ name: v.name, elevation: v.elevation });
+          levels.setActiveId(rec.id);
+          refresh();
+        });
       },
     });
 
@@ -320,10 +328,11 @@ export function setupLevelChip(): void {
       run: () => {
         const cur = levels.getActive();
         if (!cur) { notify("warn", "No active level"); return; }
-        const name = prompt("Rename level:", cur.name);
-        if (name == null) return;
-        levels.update(cur.id, { name: name.trim() || cur.name });
-        refresh();
+        void promptLine("Rename level", "Level name", cur.name).then((name) => {
+          if (name == null) return;
+          levels.update(cur.id, { name: name.trim() || cur.name });
+          refresh();
+        });
       },
     });
 
@@ -336,11 +345,13 @@ export function setupLevelChip(): void {
         if (!cur) { notify("warn", "No active level"); return; }
         const list = levels.list();
         if (list.length <= 1) { notify("warn", "A project must keep at least one level."); return; }
-        if (!confirm("Delete level \"" + cur.name + "\"?")) return;
-        levels.remove(cur.id);
-        const next = levels.list()[0];
-        if (next) levels.setActiveId(next.id);
-        refresh();
+        void confirmDialog("Delete level", "Delete level \"" + cur.name + "\"?").then((yes) => {
+          if (!yes) return;
+          levels.remove(cur.id);
+          const next = levels.list()[0];
+          if (next) levels.setActiveId(next.id);
+          refresh();
+        });
       },
     });
 

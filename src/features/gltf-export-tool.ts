@@ -12,6 +12,7 @@ import {
 } from "../modules/export/gltf-native-twin";
 import { getElements } from "./authoring";
 import { registerCommand } from "./command-palette";
+import { uiAlert } from "../core/notify";
 
 export function exportNativeTwinGlbAction(): void {
   try {
@@ -91,9 +92,9 @@ export function exportNativeTwinGlbAction(): void {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
 
-    alert(`Successfully exported ${glbElements.length} element(s) to GLB container (${(glbBuffer.byteLength / 1024).toFixed(1)} KB).`);
+    uiAlert(`Successfully exported ${glbElements.length} element(s) to GLB container (${(glbBuffer.byteLength / 1024).toFixed(1)} KB).`);
   } catch (err: any) {
-    alert(`GLB export failed: ${err?.message || err}`);
+    uiAlert(`GLB export failed: ${err?.message || err}`);
   }
 }
 

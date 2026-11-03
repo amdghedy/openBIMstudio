@@ -50,6 +50,7 @@ import type {
   ConditionalRule,
   GroupLevel,
 } from "../modules/schedules/schedule-types";
+import { uiAlert } from "../core/notify";
 
 /* ═════════════════════════════════════════════════════════════════════════
    State
@@ -335,7 +336,7 @@ function saveCurrent(): void {
   if (existing) {
     const stored = saveSchedule(currentDefinition);
     currentDefinition = stored;
-    alert(`Saved "${stored.name}".`);
+    uiAlert(`Saved "${stored.name}".`);
     renderHeader();
     return;
   }
@@ -344,7 +345,7 @@ function saveCurrent(): void {
   const named = { ...currentDefinition, name: name.trim() || currentDefinition.name };
   const stored = saveSchedule(named);
   currentDefinition = stored;
-  alert(`Saved as "${stored.name}".`);
+  uiAlert(`Saved as "${stored.name}".`);
   renderHeader();
 }
 
@@ -742,7 +743,7 @@ async function regenerate(): Promise<void> {
     renderFooter();
   } catch (err) {
     console.error("[schedule] failed", err);
-    alert("Schedule generation failed — see console.");
+    uiAlert("Schedule generation failed — see console.");
   } finally {
     running = false;
     loading.style.display = "none";
@@ -755,23 +756,23 @@ async function regenerate(): Promise<void> {
    ═════════════════════════════════════════════════════════════════════════ */
 function takeSnapshotNow(): void {
   if (!currentRun) {
-    alert("Run the schedule first.");
+    uiAlert("Run the schedule first.");
     return;
   }
   const label = prompt("Snapshot label:", `Run ${new Date().toLocaleString()}`);
   if (label == null) return;
   takeSnapshot(currentRun, label);
-  alert(`Snapshot saved with ${currentRun.rows.length} rows.`);
+  uiAlert(`Snapshot saved with ${currentRun.rows.length} rows.`);
 }
 
 function showLatestDiff(): void {
   if (!currentRun) {
-    alert("Run the schedule first.");
+    uiAlert("Run the schedule first.");
     return;
   }
   const snaps = listSnapshots(currentDefinition.id);
   if (!snaps.length) {
-    alert("No snapshots for this schedule yet. Take one first.");
+    uiAlert("No snapshots for this schedule yet. Take one first.");
     return;
   }
   currentDiff = diffAgainstSnapshot(currentRun, snaps[0]);

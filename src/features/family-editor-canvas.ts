@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { familyStore } from "../modules/families/store";
 import type { FamilyDefinition } from "../modules/families/types";
+import { uiAlert } from "../core/notify";
 
 let dialog: HTMLDivElement | null = null;
 let canvas: HTMLCanvasElement | null = null;
@@ -224,7 +225,7 @@ function renderPreview() {
 }
 
 function saveFamily() {
-  if (!currentShape) { alert("Draw a shape first."); return; }
+  if (!currentShape) { uiAlert("Draw a shape first."); return; }
   const name = prompt("Family name:", "Custom Column");
   if (!name) return;
 

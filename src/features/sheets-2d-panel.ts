@@ -30,6 +30,7 @@ import type { SheetDef, SheetViewport } from "../modules/projects/types";
 import { getElements, getGrids, getLevels } from "./authoring";
 import { validateNativeModel, summarizeDiagnostics } from "../modules/native-bim/model-validation";
 import { validateDocumentationSet, summarizeDocumentationDiagnostics } from "../modules/native-bim/documentation-validation";
+import { uiAlert } from "../core/notify";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PANEL_ID = "obs-sheets-2d-panel";
@@ -133,19 +134,19 @@ export function setupSheets2dPanel(): void {
   const exportBtn = mkBtn("Export SVG", () => exportSheet());
 
   const pdfBtn = mkBtn("Export PDF", () => {
-    if (!currentSheetId) { alert("No sheet selected."); return; }
+    if (!currentSheetId) { uiAlert("No sheet selected."); return; }
     void downloadSingleSheetPdf(currentSheetId).catch((err) => {
       console.error("[sheets-2d] PDF export failed", err);
-      alert("PDF export failed: " + (err && err.message ? err.message : err));
+      uiAlert("PDF export failed: " + (err && err.message ? err.message : err));
     });
   });
 
   const pdfAllBtn = mkBtn("PDF All", () => {
     const sheets = listSheets();
-    if (!sheets.length) { alert("No sheets to export."); return; }
+    if (!sheets.length) { uiAlert("No sheets to export."); return; }
     void exportAllSheetsToPdf(sheets, "open-bim-studio-sheets.pdf").catch((err) => {
       console.error("[sheets-2d] batch PDF failed", err);
-      alert("Batch PDF failed: " + (err && err.message ? err.message : err));
+      uiAlert("Batch PDF failed: " + (err && err.message ? err.message : err));
     });
   });
 
@@ -670,7 +671,7 @@ function addSelectedViewport(): void {
   const sheet = getSheet(currentSheetId);
   if (!sheet) return;
   const viewId = viewPicker.value;
-  if (!viewId) { alert("No views available. Open the Views panel first."); return; }
+  if (!viewId) { uiAlert("No views available. Open the Views panel first."); return; }
   const viewDef = getView(viewId);
   if (!viewDef) return;
 
@@ -702,7 +703,7 @@ function exportSheet(): void {
   const sheet = getSheet(currentSheetId);
   if (!sheet) return;
   const svgEl = canvasHost.querySelector("svg");
-  if (!svgEl) { alert("Nothing to export."); return; }
+  if (!svgEl) { uiAlert("Nothing to export."); return; }
   const xml = new XMLSerializer().serializeToString(svgEl);
   const blob = new Blob(
     ["<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + xml],

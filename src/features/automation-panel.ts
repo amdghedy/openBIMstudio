@@ -9,6 +9,7 @@ import {
   ensureDefaultRules,
   onRulesChange,
 } from "../modules/automation/rules";
+import { uiAlert } from "../core/notify";
 
 let panel: HTMLElement | null = null;
 let visible = false;
@@ -57,7 +58,7 @@ function render() {
       if (act === "defaults") { ensureDefaultRules(); render(); }
       if (act === "run" && id) {
         const res = await runRule(id);
-        alert(res.message || (res.ok ? "Done" : "Failed"));
+        uiAlert(res.message || (res.ok ? "Done" : "Failed"));
       }
       if (act === "del" && id) { removeRule(id); render(); }
     });

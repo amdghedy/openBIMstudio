@@ -104,6 +104,7 @@ function readValue(
 }
 
 import { isElementLocked, getLockOwner } from "../modules/collaboration/workshare-locks";
+import { uiAlert } from "../core/notify";
 
 function writeValue(
   target: FieldTarget,
@@ -114,7 +115,7 @@ function writeValue(
 ): void {
   if (element) {
     if (isElementLocked(element.id)) {
-      alert(`Cannot edit: this element is currently locked by ${getLockOwner(element.id)}.`);
+      uiAlert(`Cannot edit: this element is currently locked by ${getLockOwner(element.id)}.`);
       return;
     }
     // Elbow bend radius re-trims connected runs through the authoring service.

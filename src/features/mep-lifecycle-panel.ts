@@ -1,12 +1,13 @@
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
+import { uiAlert } from "../core/notify";
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" } as Record<string,string>)[c]);
 
 export function openMepLifecyclePanel(): void {
   document.getElementById("obs-mep-lifecycle-panel")?.remove();
   const lifecycle = (ctx.features as any).mep?.lifecycle ?? (window as any).__obsMep?.lifecycle;
-  if (!lifecycle) { alert("MEP lifecycle service is not available yet."); return; }
+  if (!lifecycle) { uiAlert("MEP lifecycle service is not available yet."); return; }
   const snap = lifecycle.snapshot();
   const result = lifecycle.validate();
   const overlay = document.createElement("div");
@@ -45,19 +46,19 @@ export function openMepLifecyclePanel(): void {
     const circuitSpaces = Number(prompt("Available circuit spaces:", "24"));
     if (!Number.isFinite(voltageV) || voltageV <= 0 || ![1,3].includes(phase) ||
         !Number.isFinite(busRatingA) || busRatingA <= 0 || !Number.isInteger(circuitSpaces) || circuitSpaces < 0) {
-      alert("Invalid panel data. Enter positive voltage and bus rating, phase 1 or 3, and non-negative integer circuit spaces."); return;
+      uiAlert("Invalid panel data. Enter positive voltage and bus rating, phase 1 or 3, and non-negative integer circuit spaces."); return;
     }
     const current = lifecycle.snapshot();
     const id = "P-" + Date.now().toString(36);
     const panels = [...current.panels, { id, name: name.trim(), voltageV, phase, busRatingA, circuitSpaces, circuits: [] }];
     const issues = lifecycle.setElectricalDistribution(panels, current.loads);
-    if (issues.some((d: any) => d.severity === "error")) alert("Panel saved with engineering diagnostics. Review the diagnostics panel.");
+    if (issues.some((d: any) => d.severity === "error")) uiAlert("Panel saved with engineering diagnostics. Review the diagnostics panel.");
     overlay.remove(); openMepLifecyclePanel();
   });
   card.querySelector("#obs-mep-life-add-load")?.addEventListener("click", () => {
     const current = lifecycle.snapshot();
     const panel = current.panels.find((p: any) => p.id === select?.value);
-    if (!panel) { alert("Create or select an electrical panel first."); return; }
+    if (!panel) { uiAlert("Create or select an electrical panel first."); return; }
     const name = prompt("Load name:");
     if (!name?.trim()) return;
     const apparentPowerVA = Number(prompt("Connected apparent power (VA):", "500"));
@@ -68,9 +69,9 @@ export function openMepLifecyclePanel(): void {
     if (!Number.isFinite(apparentPowerVA) || apparentPowerVA < 0 || !Number.isInteger(circuitNumber) || circuitNumber < 1 ||
         !Number.isFinite(breakerRatingA) || breakerRatingA <= 0 || ![1,2,3].includes(poles) ||
         !Number.isFinite(demandFactor) || demandFactor < 0 || demandFactor > 1) {
-      alert("Invalid load/circuit data. Check VA, circuit number, breaker, poles and demand factor."); return;
+      uiAlert("Invalid load/circuit data. Check VA, circuit number, breaker, poles and demand factor."); return;
     }
-    if (panel.circuits.some((x: any) => x.circuitNumber === circuitNumber)) { alert("That circuit number is already used on this panel."); return; }
+    if (panel.circuits.some((x: any) => x.circuitNumber === circuitNumber)) { uiAlert("That circuit number is already used on this panel."); return; }
     const id = "L-" + Date.now().toString(36);
     const circuitId = "C-" + Date.now().toString(36);
     const load = { id, name: name.trim(), apparentPowerVA, voltageV: panel.voltageV, phase: panel.phase, poles, demandFactor, panelId: panel.id, circuitNumber };
@@ -78,7 +79,7 @@ export function openMepLifecyclePanel(): void {
     const panels = current.panels.map((p: any) => p.id === panel.id ? { ...p, circuits: [...p.circuits, circuit] } : p);
     const issues = lifecycle.setElectricalDistribution(panels, [...current.loads, load]);
     overlay.remove(); openMepLifecyclePanel();
-    if (issues.some((d: any) => d.severity === "error")) alert("Load saved with engineering diagnostics. Review the diagnostics panel.");
+    if (issues.some((d: any) => d.severity === "error")) uiAlert("Load saved with engineering diagnostics. Review the diagnostics panel.");
   });
   render();
 }

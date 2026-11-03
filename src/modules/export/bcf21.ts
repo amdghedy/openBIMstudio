@@ -15,6 +15,7 @@ import JSZip from "jszip";
 import type { ElementClash, ClashKind } from "../../features/clash-engine";
 import { getClashState, listClashes, testNameInput, type ClashStatus } from "../../features/clash";
 import { getAuthor } from "../issues/issues";
+import { uiAlert } from "../../core/notify";
 
 const BCF_VERSION = "2.1";
 
@@ -485,7 +486,7 @@ export async function exportClashesBcf(
 ): Promise<void> {
   const clashes = listClashes();
   if (!clashes.length) {
-    alert("No clash results to export. Run a clash test first.");
+    uiAlert("No clash results to export. Run a clash test first.");
     return;
   }
   const testName = testNameInput.value || "Clash Test";
@@ -500,7 +501,7 @@ export async function exportStandardsBcf(
   opts: BcfWriteOptions = {},
 ): Promise<void> {
   if (!violations.length) {
-    alert("No standards violations to export.");
+    uiAlert("No standards violations to export.");
     return;
   }
   const topics = violations.map((v, i) => standardsViolationToTopic(v, i, opts));
@@ -524,7 +525,7 @@ export async function exportCombinedBcf(
     violations.forEach((v, i) => topics.push(standardsViolationToTopic(v, i, opts)));
   }
   if (!topics.length) {
-    alert("Nothing to export — run a clash test or a standards check first.");
+    uiAlert("Nothing to export — run a clash test or a standards check first.");
     return;
   }
   await downloadBcf21(topics, {

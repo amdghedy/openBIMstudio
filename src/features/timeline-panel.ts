@@ -28,6 +28,7 @@ import {
   importCarbonFactorsText, exportCarbonFactorsCsv, seekToDate,
 } from "../modules/schedule-4d/controller";
 import { selection } from "./selection";
+import { uiAlert } from "../core/notify";
 
 let panel: HTMLElement | null = null;
 let visible = false;
@@ -453,7 +454,7 @@ function render() {
         }
 
         if (!ids.length) {
-          alert("Select elements in the model first, then click Assign.");
+          uiAlert("Select elements in the model first, then click Assign.");
           return;
         }
         assignSelectionToPhase(id, ids);

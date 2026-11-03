@@ -1589,6 +1589,7 @@ let cadImageEl: SVGImageElement | null = null;
 // Import the underlay snap module to store entity data for snap querying.
 // This enables the "trace over DWG" workflow: walls snap to DWG endpoints.
 import { storeUnderlayFromDxf, clearUnderlayData, setUnderlaySnapEnabled, isUnderlaySnapEnabled } from "./cad-underlay-snap";
+import { uiAlert } from "../core/notify";
 
 async function loadCadFileAsUnderlay(file: File) {
   if (cadUnderlayUrl) URL.revokeObjectURL(cadUnderlayUrl);
@@ -1643,7 +1644,7 @@ async function linkCadUnderlay() {
         await loadCadFileAsUnderlay(file);
       } catch (err) {
         console.error("[plan] CAD link failed", err);
-        alert("Could not load CAD underlay. Use SVG, PNG, JPG, or DXF.");
+        uiAlert("Could not load CAD underlay. Use SVG, PNG, JPG, or DXF.");
       }
     };
     input.click();
@@ -4161,7 +4162,7 @@ async function regenerateNow() {
     applyCadUnderlay();
   } catch (err) {
     console.error("[plan] generation failed", err);
-    alert("Plan generation failed � see console. Check model is loaded.");
+    uiAlert("Plan generation failed � see console. Check model is loaded.");
   } finally {
     generating = false;
     loading.style.display = "none";
@@ -4184,7 +4185,7 @@ function populateLevels() {
    ------------------------------------------------------------------------- */
 function printPlan() {
   if (!currentPlan) {
-    alert("Generate a plan first.");
+    uiAlert("Generate a plan first.");
     return;
   }
   const svgMarkup = svg.outerHTML;
@@ -4200,7 +4201,7 @@ function printPlan() {
     </body></html>`;
   const w = window.open("", "_blank");
   if (!w) {
-    alert("Popup blocked. Allow popups to print.");
+    uiAlert("Popup blocked. Allow popups to print.");
     return;
   }
   w.document.write(html);
@@ -4209,7 +4210,7 @@ function printPlan() {
 
 function exportSvg() {
   if (!currentPlan) {
-    alert("Generate a plan first.");
+    uiAlert("Generate a plan first.");
     return;
   }
   // Build a clean SVG that keeps the current viewBox

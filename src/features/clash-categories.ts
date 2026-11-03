@@ -1,4 +1,5 @@
 import { ctx } from "../core/context";
+import { uiAlert } from "../core/notify";
 
 let modalEl: HTMLDivElement | null = null;
 
@@ -112,10 +113,10 @@ export function openClashCategoriesModal() {
   btnRun.onclick = async () => {
      const catsA = Array.from(selA.selectedOptions).map(o => o.value);
      const catsB = Array.from(selB.selectedOptions).map(o => o.value);
-     if (!catsA.length || !catsB.length) { alert("Select at least one category in A and B."); return; }
+     if (!catsA.length || !catsB.length) { uiAlert("Select at least one category in A and B."); return; }
 
      const clash: any = (ctx.features as any).clash;
-     if (!clash) { alert("Clash engine not ready"); return; }
+     if (!clash) { uiAlert("Clash engine not ready"); return; }
 
      if (typeof clash.clearSelectionA === "function") clash.clearSelectionA();
      if (typeof clash.clearSelectionB === "function") clash.clearSelectionB();

@@ -7,6 +7,7 @@
 
 import { listPatterns, getPattern, type HatchPatternDef } from "../modules/detail-patterns/hatch-patterns";
 import { registerCommand } from "./command-palette";
+import { uiAlert } from "../core/notify";
 
 export function openHatchPatternPanel(): void {
   const existing = document.getElementById("obs-hatch-pattern-modal");
@@ -136,7 +137,7 @@ export function openHatchPatternPanel(): void {
   document.getElementById("obs-hatch-rot")?.addEventListener("input", renderPreview);
 
   document.getElementById("obs-hatch-apply-btn")?.addEventListener("click", () => {
-    alert(`Applied hatch pattern '${selectedPatternId}' to active drafting section.`);
+    uiAlert(`Applied hatch pattern '${selectedPatternId}' to active drafting section.`);
     overlay.remove();
   });
 

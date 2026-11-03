@@ -17,6 +17,7 @@
  * through the one-time setup (or a manual BIMCamel export / cloud APS route).
  */
 import { importFiles } from "./file-interop";
+import { uiAlert } from "../core/notify";
 
 type Any = Record<string, any>;
 
@@ -591,7 +592,7 @@ export function showNwcConvertWizard(
 
     cloudBtn.onclick = async () => {
       if (!onCloudFallback) {
-        window.alert("Cloud (APS) conversion is not available in this session.");
+        uiAlert("Cloud (APS) conversion is not available in this session.");
         return;
       }
       overlay.remove();
@@ -623,7 +624,7 @@ export function showNwcConvertWizard(
           pickBtn.disabled = false;
           pickBtn.textContent = "Select converted IFC…";
           const message = error instanceof Error ? error.message : String(error);
-          window.alert("The exported IFC could not be imported: " + message);
+          uiAlert("The exported IFC could not be imported: " + message);
         }
       };
       input.click();

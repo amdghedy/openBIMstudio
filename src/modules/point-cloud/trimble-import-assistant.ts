@@ -1,3 +1,4 @@
+import { uiAlert } from "../../core/notify";
 /**
  * Trimble RWCX hand-off assistant.
  *
@@ -160,7 +161,7 @@ export function showTrimbleImportAssistant(
           choose.disabled = false;
           choose.textContent = "Select converted LAS / PTX";
           const message = error instanceof Error ? error.message : String(error);
-          window.alert("The converted point cloud could not be imported: " + message);
+          uiAlert("The converted point cloud could not be imported: " + message);
         }
       };
       input.click();

@@ -13,6 +13,7 @@ import {
 } from "./clash";
 import { services, tryUse } from "../core/services";
 import { getCurrentProject } from "../modules/projects/projects";
+import { uiAlert } from "../core/notify";
 
 interface StandardsViolation {
   ruleId: string;
@@ -340,7 +341,7 @@ export async function previewCoordinationReportHtml(): Promise<void> {
   const standards = tryUse("standards") ? await runStandardsForReport() : null;
   const html = buildCoordinationReportHtml(standards);
   const w = window.open("", "_blank");
-  if (!w) { alert("Popup blocked — allow popups to preview."); return; }
+  if (!w) { uiAlert("Popup blocked — allow popups to preview."); return; }
   w.document.write(html);
   w.document.close();
 }

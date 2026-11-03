@@ -8,6 +8,7 @@
 import { listSheets } from "../modules/sheets/sheets";
 import { downloadBatchPlotPdf, type BatchPlotOptions, type WatermarkStatus } from "../modules/export/batch-plotter";
 import { registerCommand } from "./command-palette";
+import { uiAlert } from "../core/notify";
 
 export function openBatchPlotPanel(): void {
   const existing = document.getElementById("obs-batch-plot-modal");
@@ -150,7 +151,7 @@ export function openBatchPlotPanel(): void {
     const selectedIds = Array.from(selectedCbs).map((cb) => cb.getAttribute("data-id") || "").filter(Boolean);
 
     if (selectedIds.length === 0 && sheets.length > 0) {
-      alert("Please select at least one sheet to plot.");
+      uiAlert("Please select at least one sheet to plot.");
       return;
     }
 

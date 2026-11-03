@@ -5,7 +5,7 @@
  * format produced by IfcImporter and consumed by FragmentsModels.load().
  */
 import { ctx } from "../../core/context";
-import { notify } from "../../core/notify";
+import { notify, uiAlert } from "../../core/notify";
 
 export interface FragExportResult {
   modelId: string;
@@ -125,14 +125,14 @@ export async function downloadAllFragModels(raw = false): Promise<{ ok: number; 
 export async function exportFragFromMenu(): Promise<void> {
   const ids = Array.from(ctx.fragments?.list?.keys?.() ?? []);
   if (!ids.length) {
-    alert("No Fragments models are loaded.\nImport an IFC or open a .frag file first.");
+    uiAlert("No Fragments models are loaded.\nImport an IFC or open a .frag file first.");
     return;
   }
   if (ids.length === 1) {
     try {
       await downloadFragModel(ids[0]);
     } catch (e: any) {
-      alert(`FRAG export failed: ${e?.message ?? e}`);
+      uiAlert(`FRAG export failed: ${e?.message ?? e}`);
     }
     return;
   }
@@ -144,9 +144,9 @@ export async function exportFragFromMenu(): Promise<void> {
   try {
     const { ok, failed } = await downloadAllFragModels();
     if (failed.length) {
-      alert(`Exported ${ok} file(s).\nFailed:\n${failed.slice(0, 8).join("\n")}`);
+      uiAlert(`Exported ${ok} file(s).\nFailed:\n${failed.slice(0, 8).join("\n")}`);
     }
   } catch (e: any) {
-    alert(`FRAG export failed: ${e?.message ?? e}`);
+    uiAlert(`FRAG export failed: ${e?.message ?? e}`);
   }
 }

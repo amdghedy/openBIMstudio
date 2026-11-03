@@ -29,6 +29,7 @@ import {
   type ClashStatus,
 } from "./clash";
 import type { ElementClash, ClashKind } from "./clash-engine";
+import { uiAlert } from "../core/notify";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Constants
@@ -398,7 +399,7 @@ function render(): void {
       }
     } catch (err) {
       console.error("[clash-review] Failed to create BCF issue", err);
-      alert("Failed to create BCF issue. Check the console.");
+      uiAlert("Failed to create BCF issue. Check the console.");
     }
   };
 

@@ -4,6 +4,7 @@ import { ctx } from "../core/context";
 import { computeSceneBounds, fitAll } from "./camera-tools";
 import { loadIfcFiles, loadFragFiles } from "./importer";
 import { markDirty } from "../modules/projects/projects";
+import { uiAlert } from "../core/notify";
 
 export const ACCEPT_ALL =
   ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.dwg,.dxf,.skp";
@@ -181,7 +182,7 @@ async function parseModelBytes(buf: ArrayBuffer, name: string): Promise<THREE.Ob
       return new TDSLoader().parse(buf, "");
     }
   } catch (err: any) {
-    alert(`Could not parse "${name}":\n${err?.message ?? err}\n\nTip: .glb (binary, single file) is the most reliable mesh format.`);
+    uiAlert(`Could not parse "${name}":\n${err?.message ?? err}\n\nTip: .glb (binary, single file) is the most reliable mesh format.`);
   }
   return null;
 }
@@ -199,7 +200,7 @@ export async function importFiles(files: File[]) {
         const zip = await JSZip.loadAsync(file);
         const ifcPaths: string[] = [];
         zip.forEach((p) => { if (/\.ifc$/i.test(p)) ifcPaths.push(p); });
-        if (!ifcPaths.length) { alert(`No .ifc entries inside "${file.name}".`); continue; }
+        if (!ifcPaths.length) { uiAlert(`No .ifc entries inside "${file.name}".`); continue; }
         const converted: File[] = [];
         for (const p of ifcPaths) {
           const bytes = await zip.file(p)!.async("uint8array");
@@ -229,7 +230,7 @@ export async function importFiles(files: File[]) {
         continue;
       }
 
-      if (DESKTOP_ONLY[e]) { alert(DESKTOP_ONLY[e]); continue; }
+      if (DESKTOP_ONLY[e]) { uiAlert(DESKTOP_ONLY[e]); continue; }
 
       // Everything else → try as a 3D model (glb/gltf/obj/stl/ply/fbx/dae/3ds)
       const buf = await file.arrayBuffer();
@@ -239,11 +240,11 @@ export async function importFiles(files: File[]) {
         const bytes = new Uint8Array(buf);
         (ctx.features.projects as any)?.onModelImported?.(`aux-${uid()}`, file.name, bytes);
       } else {
-        alert(`Unsupported file type: "${file.name}"\n\nSupported: ${ACCEPT_ALL}\n\n${Object.entries(DESKTOP_ONLY).map(([k, v]) => `.${k}: ${v.split("\n")[0]}`).join("\n")}`);
+        uiAlert(`Unsupported file type: "${file.name}"\n\nSupported: ${ACCEPT_ALL}\n\n${Object.entries(DESKTOP_ONLY).map(([k, v]) => `.${k}: ${v.split("\n")[0]}`).join("\n")}`);
       }
     } catch (err: any) {
       console.error("[file-interop]", err);
-      alert(`Failed to open "${file.name}":\n${err?.message ?? err}`);
+      uiAlert(`Failed to open "${file.name}":\n${err?.message ?? err}`);
     }
   }
 }
