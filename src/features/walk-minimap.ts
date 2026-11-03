@@ -19,7 +19,9 @@ let enabled = false;
 
 const BOX_W_PX = 227;
 const BOX_H_PX = 151;
-const BOX_MARGIN_PX = 12;
+const BOX_MARGIN_PX = 14;
+/** Sit under the ViewCube (top-right). Cube card ≈ 14 + header + 140px SVG + padding. */
+const BOX_TOP_PX = 210;
 const EYE_HEIGHT_M = 1.6;
 const CUT_HEIGHT_M = 1.2;
 const PAD_FRACTION = 0.08;   // 8% padding around the bounds
@@ -60,7 +62,9 @@ function ensureOverlay(): HTMLDivElement | null {
   set("min-height", BOX_H_PX + "px");
   set("max-height", BOX_H_PX + "px");
   set("right", BOX_MARGIN_PX + "px");
-  set("top",   BOX_MARGIN_PX + "px");
+  set("top",   BOX_TOP_PX + "px");
+  set("left",  "auto");
+  set("bottom", "auto");
   set("border", "2px solid #38bdf8");
   set("border-radius", "4px");
   set("box-shadow", "0 8px 24px rgba(0,0,0,.6)");
