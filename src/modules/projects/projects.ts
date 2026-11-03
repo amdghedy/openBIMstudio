@@ -231,6 +231,9 @@ export async function createProject(name: string, options: CreateProjectOptions 
   const resumeHistory = await history.beginDocumentTransition();
   const loader = (ctx.features as any).appLoader;
   try {
+    // Flush the outgoing document while its scene is still available. The
+    // history boundary above prevents new edits from racing this snapshot.
+    if (current && dirty) await saveProject(true);
     loader?.begin?.(`Creating project · ${name || "Untitled"}`, { cancellable: false });
     loader?.set?.("Clearing current scene…", 0.2);
     await clearScene();
@@ -297,6 +300,8 @@ export async function openProject(id: string) {
 
   const resumeHistory = await history.beginDocumentTransition();
   try {
+    // Persist the outgoing project before tearing down its scene.
+    if (current && current.id !== id && dirty) await saveProject(true);
     loader?.begin?.(`Opening ${doc.name}…`, { cancellable: false });
     loader?.set?.("Clearing current scene…", 0.05);
     await clearScene();

@@ -214,6 +214,35 @@ async function t(name, fn) {
     resume();
   });
 
+
+  await t("project transition waits for an in-flight command execution before clearing history", async () => {
+    history.clear();
+    let value = 0;
+    let started;
+    let release;
+    const startedPromise = new Promise((resolve) => { started = resolve; });
+    const gate = new Promise((resolve) => { release = resolve; });
+    const execution = history.exec({
+      label: "slow old-project creation",
+      apply: async () => { started(); await gate; value = 1; },
+      revert: () => { value = 0; },
+    });
+    await startedPromise;
+    let transitionReady = false;
+    const transition = history.beginDocumentTransition().then((resume) => {
+      transitionReady = true;
+      return resume;
+    });
+    await Promise.resolve();
+    assert.strictEqual(transitionReady, false, "transition must wait for in-flight command execution");
+    release();
+    await execution;
+    const resume = await transition;
+    assert.strictEqual(value, 1);
+    assert.deepStrictEqual(history.depth(), { undo: 0, redo: 0 });
+    resume();
+  });
+
   console.log(`\n=== Result: ${passed} passed, ${failed} failed ===`);
   process.exit(failed ? 1 : 0);
 })();
