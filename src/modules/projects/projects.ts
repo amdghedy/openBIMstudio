@@ -156,6 +156,32 @@ export async function saveProject(silent = false) {
   try { window.dispatchEvent(new CustomEvent("obs:project-saved", { detail: { silent } })); } catch { /* */ }
 }
 
+
+/** Recovery checkpoint inventory for the currently open project. */
+export async function listProjectRecoverySnapshots(): Promise<store.ProjectRecoverySnapshot[]> {
+  if (!current) return [];
+  return store.listProjectRecoverySnapshots(current.id);
+}
+
+/**
+ * Restore a retained document snapshot in IndexedDB. Linked model payloads
+ * live in a separate store; missing payloads are returned and marked on the
+ * restored document. The caller must reopen the project to refresh the scene.
+ */
+export async function restoreProjectRecoverySnapshot(snapshotId: number): Promise<{ restored: boolean; missingModelIds: string[]; reopenRequired: boolean }> {
+  if (!current) return { restored: false, missingModelIds: [], reopenRequired: false };
+  const projectId = current.id;
+  const result = await store.restoreProjectSnapshot(projectId, snapshotId);
+  if (!result.restored) return { ...result, reopenRequired: false };
+  const restored = await store.getProject(projectId);
+  if (restored) {
+    current = restored;
+    dirty = false;
+    notify();
+  }
+  return { ...result, reopenRequired: true };
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    Scene teardown
    ═════════════════════════════════════════════════════════════════════════ */
@@ -541,6 +567,7 @@ export function setupProjects() {
   ctx.features.projects = {
     getCurrentProject, isDirty, createProject, openProject,
     deleteProjectById, saveProject, onModelImported, markDirty,
+    listProjectRecoverySnapshots, restoreProjectRecoverySnapshot,
   };
   onIssuesChanged(() => markDirty());
   onCostChanged(() => markDirty());

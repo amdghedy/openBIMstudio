@@ -290,6 +290,9 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 
 ---
 
+
+**Initial implementation status (November 3, 2026):** IndexedDB document recovery checkpoints are being introduced as a first step. The checkpoint contains the `ProjectDoc` only; linked IFC/FRAG payloads remain in the separate `modelBlobs` store. Restores explicitly mark missing payloads. This is not yet the full operation journal, deterministic replay, OPFS/server adapter, or multi-tab writer coordination described by the remaining acceptance criteria.
+
 ## P2-02 — Maturity gate: tool-catalog.json enforcement in CI
 
 - **Labels:** `hardening`, `P2`, `high`

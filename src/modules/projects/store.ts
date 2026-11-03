@@ -1,10 +1,19 @@
 /** Raw IndexedDB persistence — no dependencies, local-first. */
 import type { ProjectDoc, ProjectSummary } from "./types";
+import {
+  getProjectJournalPruneIds,
+  prepareRecoveredProjectDocument,
+  summarizeProjectJournalRecord,
+  type ProjectJournalReason,
+  type ProjectJournalRecord,
+  type ProjectRecoverySnapshot,
+} from "./project-journal";
 
 const DB_NAME = "open-bim-studio";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const S_PROJECTS = "projects";
 const S_BLOBS = "modelBlobs";
+const S_JOURNAL = "projectJournal";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -20,6 +29,10 @@ function openDb(): Promise<IDBDatabase> {
         if (!db.objectStoreNames.contains(S_BLOBS)) {
           const blobs = db.createObjectStore(S_BLOBS);
           blobs.createIndex("projectId", "projectId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(S_JOURNAL)) {
+          const journal = db.createObjectStore(S_JOURNAL, { keyPath: "id", autoIncrement: true });
+          journal.createIndex("projectId", "projectId", { unique: false });
         }
       };
       req.onsuccess = () => {
@@ -62,11 +75,68 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
-export async function putProject(doc: ProjectDoc): Promise<void> {
+
+/**
+ * Append the previous ProjectDoc inside the caller's IndexedDB transaction.
+ * The journal is best-effort: quota pressure must not prevent the primary
+ * project write. Snapshots are document-only; modelBlobs remain separate.
+ */
+function appendProjectSnapshot(
+  tx: IDBTransaction,
+  doc: ProjectDoc,
+  reason: ProjectJournalReason,
+): void {
+  const journal = tx.objectStore(S_JOURNAL);
+  const keysRequest = journal.index("projectId").getAllKeys(doc.id);
+  const addSnapshot = () => {
+    const request = journal.add({
+      projectId: doc.id,
+      createdAt: Date.now(),
+      reason,
+      doc,
+    });
+    request.onerror = (event) => {
+      // Prevent an optional recovery checkpoint quota failure from aborting
+      // the main project save in this shared transaction.
+      event.preventDefault();
+      event.stopPropagation();
+      console.warn("[projects] recovery checkpoint could not be stored", request.error);
+    };
+  };
+
+  keysRequest.onsuccess = () => {
+    const ids = keysRequest.result.map((key) => Number(key));
+    // Treat the next auto-increment key as newest while selecting records to prune.
+    const pruneIds = getProjectJournalPruneIds([...ids, Number.MAX_SAFE_INTEGER]);
+    for (const id of pruneIds) journal.delete(id);
+    addSnapshot();
+  };
+  keysRequest.onerror = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    addSnapshot();
+  };
+}
+
+export interface PutProjectOptions {
+  /** Store the overwritten document as a recovery checkpoint. Defaults to true. */
+  checkpoint?: boolean;
+  reason?: ProjectJournalReason;
+}
+
+export async function putProject(doc: ProjectDoc, options: PutProjectOptions = {}): Promise<void> {
   const db = await openDb();
-  const tx = db.transaction(S_PROJECTS, "readwrite");
+  const tx = db.transaction([S_PROJECTS, S_JOURNAL], "readwrite");
   const done = transactionDone(tx);
-  await reqAs(tx.objectStore(S_PROJECTS).put(doc));
+  const projects = tx.objectStore(S_PROJECTS);
+  const request = projects.get(doc.id);
+  request.onsuccess = () => {
+    const previous = request.result as ProjectDoc | undefined;
+    if (options.checkpoint !== false && previous && previous.updatedAt !== doc.updatedAt) {
+      appendProjectSnapshot(tx, previous, options.reason ?? "project-save");
+    }
+    projects.put(doc);
+  };
   await done;
 }
 
@@ -95,10 +165,13 @@ export async function listProjectDocs(): Promise<ProjectDoc[]> {
  */
 export async function deleteProjectRecord(id: string): Promise<void> {
   const db = await openDb();
-  const tx = db.transaction([S_PROJECTS, S_BLOBS], "readwrite");
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL], "readwrite");
   const done = transactionDone(tx);
   const projects = tx.objectStore(S_PROJECTS);
   const blobs = tx.objectStore(S_BLOBS);
+  const journal = tx.objectStore(S_JOURNAL);
+  const journalKeys = journal.index("projectId").getAllKeys(id);
+  journalKeys.onsuccess = () => { for (const key of journalKeys.result) journal.delete(key); };
   const cursorRequest = blobs.index("projectId").openKeyCursor(IDBKeyRange.only(id));
 
   cursorRequest.onsuccess = () => {
@@ -140,7 +213,7 @@ export async function putImportedModel(
   blob: Blob,
 ): Promise<boolean> {
   const db = await openDb();
-  const tx = db.transaction([S_PROJECTS, S_BLOBS], "readwrite");
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL], "readwrite");
   const done = transactionDone(tx);
   const projects = tx.objectStore(S_PROJECTS);
   const blobs = tx.objectStore(S_BLOBS);
@@ -152,6 +225,7 @@ export async function putImportedModel(
     const doc = request.result as ProjectDoc | undefined;
     if (!doc) return;
 
+    appendProjectSnapshot(tx, doc, "model-import");
     if (!Array.isArray(doc.models)) doc.models = [];
     const meta = doc.models.find((model) => model.id === modelId);
     if (meta) {
@@ -207,6 +281,65 @@ export async function deleteModelBlobs(projectId: string): Promise<void> {
     try { tx.abort(); } catch { /* transaction may already be inactive */ }
   };
   await done;
+}
+
+
+/** List the retained document checkpoints, newest first. */
+export async function listProjectRecoverySnapshots(projectId: string): Promise<ProjectRecoverySnapshot[]> {
+  const db = await openDb();
+  const tx = db.transaction(S_JOURNAL, "readonly");
+  const done = transactionDone(tx);
+  const records = await reqAs(tx.objectStore(S_JOURNAL).index("projectId").getAll(projectId)) as ProjectJournalRecord[];
+  await done;
+  return records
+    .sort((a, b) => b.id - a.id)
+    .map(summarizeProjectJournalRecord);
+}
+
+/**
+ * Restore a document checkpoint atomically. This does not restore IFC/FRAG
+ * payload bytes: models absent from modelBlobs are marked missing and reported.
+ * The current document is checkpointed first so the restore itself is reversible.
+ */
+export async function restoreProjectSnapshot(
+  projectId: string,
+  snapshotId: number,
+): Promise<{ restored: boolean; missingModelIds: string[] }> {
+  const db = await openDb();
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL], "readwrite");
+  const done = transactionDone(tx);
+  const projects = tx.objectStore(S_PROJECTS);
+  const blobs = tx.objectStore(S_BLOBS);
+  const journal = tx.objectStore(S_JOURNAL);
+  const snapshotRequest = journal.get(snapshotId);
+  const currentRequest = projects.get(projectId);
+  const blobsRequest = blobs.index("projectId").getAll(projectId);
+  const result = { restored: false, missingModelIds: [] as string[] };
+  let snapshotReady = false;
+  let currentReady = false;
+  let blobsReady = false;
+  let applied = false;
+
+  const applyWhenReady = () => {
+    if (applied || !snapshotReady || !currentReady || !blobsReady) return;
+    applied = true;
+    const snapshot = snapshotRequest.result as ProjectJournalRecord | undefined;
+    const current = currentRequest.result as ProjectDoc | undefined;
+    if (!snapshot || snapshot.projectId !== projectId || !current) return;
+
+    appendProjectSnapshot(tx, current, "before-restore");
+    const availableIds = new Set<string>((blobsRequest.result as Array<{ modelId: string }>).map((item) => item.modelId));
+    const recovered = prepareRecoveredProjectDocument(snapshot.doc, availableIds, Date.now());
+    projects.put(recovered.doc);
+    result.restored = true;
+    result.missingModelIds = recovered.missingModelIds;
+  };
+
+  snapshotRequest.onsuccess = () => { snapshotReady = true; applyWhenReady(); };
+  currentRequest.onsuccess = () => { currentReady = true; applyWhenReady(); };
+  blobsRequest.onsuccess = () => { blobsReady = true; applyWhenReady(); };
+  await done;
+  return result;
 }
 
 export function summarize(doc: ProjectDoc): ProjectSummary {
