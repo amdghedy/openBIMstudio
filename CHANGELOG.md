@@ -11,8 +11,24 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Added
+
+- Region-profile service (`src/core/region.ts`): 20 country profiles unifying
+  language, units, currency, paper sizes, date formats and standards packs;
+  wired into Settings as a single "Region profile" control with browser
+  auto-detection on first run (PR #137).
+- Fourteen locale catalogs (fr, es, pt-BR, it, zh-TW, ko, ru, tr, pl, nl, hi,
+  he, fa, ur) bringing the UI to 19 languages.
+- GCC standards pack (`src/modules/standards/rules/packs/gcc.ts`): UAE FSC
+  2018 fire rules, SBC 201 egress rules, Dubai Build accessibility rules and
+  USSC issue categories, registered in the built-in rule-pack index.
+
 ### Changed
 
+- Repository governance: squash-only merges with branch auto-deletion,
+  linear-history branch protection on `main`, required CI status checks,
+  Discussions enabled, curated issue backlog (#140–#144), stale branches
+  pruned.
 - Repository hygiene pass: disabled one-shot recovery workflows removed;
   23 single-use fix/repair scripts moved to `scripts/archive/`; test fixtures
   consolidated under `tests/`; README de-duplicated (release notes now live

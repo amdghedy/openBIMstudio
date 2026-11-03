@@ -56,7 +56,7 @@ OpenBIMStudio is a **browser-based, local-first BIM workspace** for architecture
 
 One install (none, actually — it's your browser). One license (MIT — yours). Your model data stays on your machine by default.
 
-> **Latest release (v0.74.0):** cursor-accurate wheel zoom with a guaranteed orientation invariant, a full Content-Security-Policy with a self-hosted Fragments worker, and a broad set of modeling and documentation improvements. Release highlights and the running change log: [CHANGELOG.md](CHANGELOG.md).
+> **Latest release ([v0.74.0](https://github.com/amdghedy/openBIMstudio/releases/tag/v0.74.0)):** internationalization foundation — a region-profile service covering 20 countries (units, currency, paper sizes, date formats), 19 UI locales with browser auto-detection, and machine-checkable GCC building-code rule packs (UAE FSC 2018 / SBC 201 / Dubai Build accessibility). Release notes: [Releases](https://github.com/amdghedy/openBIMstudio/releases) · [CHANGELOG.md](CHANGELOG.md).
 
 | For you if you… | OpenBIMStudio helps by… |
 |-----------------|-------------------------|
