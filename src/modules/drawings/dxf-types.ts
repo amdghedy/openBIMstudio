@@ -14,6 +14,8 @@ export interface DxfLayer {
   locked?: boolean;
   /** Layer switched off (negative colour in DXF, "off" flag in DWG). */
   off?: boolean;
+  /** Default lineweight in mm (DXF group 370 / 100); undefined = default. */
+  lineweight?: number;
 }
 
 /** Fields every entity carries. */
@@ -25,6 +27,8 @@ interface DxfEntityBase {
   rgb?: number;
   /** Linetype name; undefined = BYLAYER. */
   lineType?: string;
+  /** Lineweight in mm; undefined = BYLAYER. */
+  lineweight?: number;
 }
 
 /** Hatch data carried on a closed polyline (`points` is the outer loop). */

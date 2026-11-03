@@ -144,6 +144,7 @@
     "test:ai-embeddings": "node tests/ai-embeddings-config.test.cjs",
     "test:ai-evidence": "node tests/ai-evidence.test.cjs",
     "test:cad-save": "node tests/cad-save.test.cjs",
+    "test:cad-styles": "node tests/cad-styles.test.cjs",
     "test:cad-clipboard": "node tests/cad-clipboard.test.cjs",
     "test:dwg-convert-limits": "node tests/dwg-convert-limits.test.cjs",
     "test:pdf-underlay-loader": "node tests/pdf-underlay-loader.test.cjs",

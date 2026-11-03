@@ -13,6 +13,7 @@
  *
  * Pure TypeScript, no dependencies.
  */
+import { lineweightFromDxf } from "./cad-styles";
 import type { DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "./dxf-types";
 import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
@@ -91,7 +92,7 @@ class Data {
   }
 }
 
-interface Common { layer: string; color?: number; rgb?: number; lineType?: string }
+interface Common { layer: string; color?: number; rgb?: number; lineType?: string; lineweight?: number }
 
 function common(d: Data): Common {
   const layer = d.s(8) ?? "0";
@@ -104,7 +105,8 @@ function common(d: Data): Common {
   const lt = d.s(6)?.trim();
   const up = lt?.toUpperCase();
   const lineType = lt && up !== "BYLAYER" && up !== "BYBLOCK" && up !== "CONTINUOUS" ? lt : undefined;
-  return { layer, color, rgb, lineType };
+  const lw = d.has(370) ? lineweightFromDxf(d.n(370)) : undefined;
+  return lw != null ? { layer, color, rgb, lineType, lineweight: lw } : { layer, color, rgb, lineType };
 }
 
 function headerUnits(pairs: Pair[]): DxfUnits | undefined {
@@ -259,6 +261,7 @@ export function parseDxf(text: string): DxfDocument {
           frozen: (d.n(70) & 1) === 1,
           locked: (d.n(70) & 4) === 4,
           off: rawColor < 0,
+          ...(d.has(370) && lineweightFromDxf(d.n(370)) != null ? { lineweight: lineweightFromDxf(d.n(370)) } : {}),
         });
       }
       continue;
