@@ -47,7 +47,6 @@ const aiModule = new Module(sourcePath, module);
 aiModule.filename = sourcePath;
 aiModule.paths = Module._nodeModulePaths(path.dirname(sourcePath));
 aiModule._compile(output, sourcePath);
-Module._load = originalLoad;
 
 const { executeTool, TOOLS } = aiModule.exports;
 
@@ -150,6 +149,7 @@ async function test(name, fn) {
     assert.equal(authored.length, before);
   });
 
+  Module._load = originalLoad;
   if (process.exitCode) process.exit(process.exitCode);
   console.log("=== AI native modeling tests complete ===");
 })();
