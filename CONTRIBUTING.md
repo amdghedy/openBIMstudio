@@ -45,6 +45,16 @@ setup, not an optional extra.
 - Do not commit generated artifacts, credentials, or private model files (see
   `.gitignore` and [SECURITY.md](SECURITY.md)).
 
+## Engineering-first change policy
+
+- Start substantial work with a short specification: problem, scope, non-goals, units/coordinates, acceptance criteria and failure cases.
+- Trace the existing domain owner, callers, event lifecycle and persistence path before implementing. Reuse the current engine; do not add a parallel implementation without an architecture decision.
+- For a bug, reproduce it and add a failing regression test before changing production code. For a feature, add deterministic domain tests and realistic fixtures alongside the implementation.
+- Keep each PR focused. Separate UI adapters, domain logic, persistence and file-format adapters according to the [Engineering Architecture Map](docs/engineering/ARCHITECTURE.md).
+- Never make a test green by raising a baseline or weakening an assertion unless the changed contract is independently justified, reviewed and the remaining debt is recorded.
+- Do not describe a feature as complete because its UI exists or a mock passes. Update the feature maturity registry with evidence and known limitations.
+- Do not merge on typecheck alone: run focused tests, relevant integration/round-trip checks, and browser acceptance tests for important user workflows.
+
 ## AI-assisted contributions
 
 AI tooling may be used for drafting, refactors and test scaffolding. The
