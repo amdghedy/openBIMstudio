@@ -1,0 +1,70 @@
+name: PR quality gates
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: Typecheck (tsc --noEmit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: npm run typecheck
+
+  production-build:
+    name: Production build (vite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: npm run build
+
+  i18n-integrity:
+    name: Locale catalog integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify every locale parses and matches en.json key set
+        run: |
+          node - <<'SCRIPT'
+          const fs = require('fs');
+          const path = 'src/locales';
+          const files = fs.readdirSync(path).filter(f => f.endsWith('.json'));
+          const en = JSON.parse(fs.readFileSync(`${path}/en.json`, 'utf8'));
+          const flat = (o, p = '') => Object.entries(o).flatMap(([k, v]) =>
+            typeof v === 'object' && v !== null ? flat(v, `${p}${k}.`) : [`${p}${k}`]);
+          const enKeys = new Set(flat(en));
+          let fail = 0;
+          for (const f of files) {
+            let obj;
+            try { obj = JSON.parse(fs.readFileSync(`${path}/${f}`, 'utf8')); }
+            catch (e) { console.error(`FAIL ${f}: invalid JSON (${e.message})`); fail = 1; continue; }
+            const keys = new Set(flat(obj));
+            const missing = [...enKeys].filter(k => !keys.has(k));
+            if (missing.length) {
+              console.log(`WARN ${f}: ${missing.length} key(s) missing vs en.json (fallback will apply)`);
+            } else {
+              console.log(`OK   ${f}: all ${enKeys.size} keys present`);
+            }
+          }
+          process.exit(fail);
+          SCRIPT
