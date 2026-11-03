@@ -89,6 +89,7 @@
     "test:nav-math": "node tests/nav-math.test.cjs",
     "test:north": "node tests/north.test.cjs",
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
+    "test:ai-modeling": "node tests/ai-native-modeling.test.cjs",
     "test:constraints": "node tests/constraint-solver.test.cjs",
     "test:structural": "node tests/structural.test.cjs",
     "test:mep-pressure": "node tests/mep-pressure.test.cjs",

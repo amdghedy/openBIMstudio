@@ -17,7 +17,7 @@ const scripts = [
   "test:dwg-isolation", "test:dwg-worker-lifecycle", "test:native-bim", "test:cad-link",
   "test:walk", "test:elbow", "test:props", "test:fitting-outline", "test:slope",
   "test:cad-viewer", "test:cad-ribbon-layout", "test:cad-save", "test:cad-clipboard", "test:ocs", "test:dxf-features", "test:dwg-features", "test:dwg-convert-limits",
-  "test:north", "test:nav-math", "test:controls-target", "test:cursor-zoom", "test:viewcube-pole",
+  "test:north", "test:nav-math", "test:controls-target", "test:cursor-zoom", "test:viewcube-pole", "test:ai-modeling",
   "test:native-twin-resize", "test:twin-dimensions", "test:twin-export", "test:mtext", "test:level-constraints", "test:mep-stretch", "test:linear-follow", "test:point-cloud", "test:ui-honesty", "test:wall-sweep-ifc", "test:wall-detect", "test:shortcut-keys", "test:shortcut-sequences", "test:magnet", "test:up-axis", "test:nwc-bridge", "test:section-handle-filter", "test:dimension-edit", "test:schedule-4d", "test:schedule-4d-ui", "test:bulk-native-twin", "test:ai-privacy", "test:constraints", "test:structural",
   "test:mep-pressure", "test:adaptive", "test:project-crypto", "test:secret-crypto",
   "test:server-security", "test:safe-expr", "test:mep-connectivity", "test:boundary-edit",
