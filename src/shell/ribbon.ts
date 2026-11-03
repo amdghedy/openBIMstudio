@@ -1091,6 +1091,11 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("file", "IFC", safe(() => linkIfc(), "Link IFC"), {
         title: "Link IFC models — origin-to-origin federation (same as old OpenBIMStudio)",
       }),
+      b("file-frag", "IFC→FRAG", safe(() => {
+        void import("../features/ifc-to-frag").then((m) => m.toggleIfcToFragPanel());
+      }, "IFC to FRAG"), {
+        title: "Convert IFC / IFCZIP to .frag and download — then Link FRAG (best for large models)",
+      }),
       b("file-frag", "FRAG", safe(() => linkFrag(), "Link FRAG"), {
         title: "Load FRAG as-is — coordinates preserved (old FRAG linker)",
       }),

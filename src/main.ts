@@ -1,6 +1,7 @@
 import "./features/usage-boot";
 import { setupManageLinks } from "./features/manage-links";
 import { setupCadQueryPanel } from "./features/cad-query-panel";
+import { setupIfcToFrag } from "./features/ifc-to-frag";
 import "./critical-gaps-boot";
 import "./critical-gaps-boot-strength";
 import { setupPluginSystem } from "./plugins/boot";
@@ -358,6 +359,7 @@ await step("file-interop", () => setupFileInterop());
 await step("file-menu", () => setupFileMenu());
 await step("manage-links", () => setupManageLinks());
 await step("cad-query", () => setupCadQueryPanel());
+await step("ifc-to-frag", () => setupIfcToFrag());
 await step("views-panel", () => setupViewsPanel());
 await step("sheets-2d-panel", () => setupSheets2dPanel());
 

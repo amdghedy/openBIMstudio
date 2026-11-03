@@ -827,7 +827,7 @@ function looksLikeZip(bytes: Uint8Array): boolean {
  * Expand .ifczip / .zip into one File per embedded .ifc.
  * Large archives stream entry-by-entry to limit peak memory.
  */
-async function expandIfcSources(
+export async function expandIfcSources(
   files: File[],
   onProgress?: (msg: string) => void,
 ): Promise<File[]> {
@@ -1277,6 +1277,84 @@ export async function loadFragFiles(files: FileList | File[]) {
     }, 400);
   } finally {
     loader?.finish?.();
+  }
+}
+
+
+/**
+ * Convert a single IFC (or already-extracted) file to FRAG bytes without
+ * loading it into the 3D scene. Used by the IFC→FRAG tool so users can
+ * convert once, download .frag, and Link FRAG later (much lighter).
+ */
+export async function convertIfcToFragBytes(
+  file: File,
+  opts?: {
+    onProgress?: (pct: number, phase: string) => void;
+    /** When true, skip the browser-safe size guard (still may OOM). */
+    force?: boolean;
+  },
+): Promise<{ frag: Uint8Array; fileName: string; schema: string; sizeMB: number }> {
+  const sizeMB = file.size / (1024 * 1024);
+  const onProgress = opts?.onProgress ?? (() => {});
+
+  if (sizeMB > ifcSettings.maxSizeMB) {
+    throw new Error(
+      `File is ${sizeMB.toFixed(0)} MB (hard limit ${ifcSettings.maxSizeMB} MB).`,
+    );
+  }
+  if (sizeMB > ifcSettings.browserSafeMaxMB && !opts?.force && !ifcSettings.allowUnsafeLargeIfc) {
+    throw new Error(
+      `IFC is ${sizeMB.toFixed(0)} MB — above the browser-safe limit (${ifcSettings.browserSafeMaxMB} MB). ` +
+      `Enable "Allow unsafe large IFC" in Importer settings, or split the model. ` +
+      `Note: multi-hundred-MB IFCs usually crash the tab during conversion.`,
+    );
+  }
+
+  onProgress(2, "reading file…");
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const schema = detectSchema(bytes);
+
+  onProgress(8, "checking WASM…");
+  await ensureWasmAvailable();
+
+  onProgress(12, "converting IFC → FRAG…");
+  cancelRequested = false;
+  const cancelPromise = new Promise<never>((_, rej) => {
+    rejectActive = rej;
+  });
+
+  const settings: any = {
+    bytes,
+    progressCallback: (progress: any, data?: any) => {
+      const pct = normalizeProgress(progress);
+      onProgress(12 + Math.round(pct * 0.85), describePhase(data));
+    },
+  };
+  if (ifcSettings.useCoord) {
+    settings.coordToPlace = [ifcSettings.coordX, ifcSettings.coordY, ifcSettings.coordZ];
+  }
+
+  try {
+    const processPromise = getImporter().process(settings);
+    processPromise.catch(() => { /* raced */ });
+    const rawResult: any = await Promise.race([processPromise, cancelPromise]);
+    if (cancelRequested) throw new Error("Cancelled by user");
+
+    const frag = snapshotBytes(rawResult);
+    if (!frag.byteLength) {
+      throw new Error(
+        "Converter returned empty data (often out-of-memory on large IFC). " +
+        "Try a smaller model or a machine with more RAM.",
+      );
+    }
+    onProgress(100, "done");
+    const base = file.name.replace(/\.ifc$/i, "") || "model";
+    return { frag, fileName: `${base}.frag`, schema, sizeMB };
+  } finally {
+    rejectActive = null;
+    // Free WASM between large conversions
+    try { disposeImporter(); } catch { /* */ }
   }
 }
 

@@ -429,6 +429,7 @@ function bootstrapCommands(): void {
     },
   });
   registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
+  registerCommand({ id: "ifc.to-frag", label: "Convert IFC → FRAG (download)", category: "Insert", run: () => { void import("./ifc-to-frag").then((m) => m.showIfcToFragPanel()); } });
   registerCommand({ id: "cad.query", label: "Query linked CAD (layer / type / name)", category: "Insert", run: () => { void import("./cad-query-panel").then((m) => m.showCadQueryPanel()); } });
   registerCommand({ id: "file.export-frag", label: "Export model(s) as ThatOpen FRAG (.frag)", category: "File", run: () => { void import("../modules/export/frag").then((m) => m.exportFragFromMenu()); } });
   registerCommand({ id: "tools.walk", label: toggleLabel("Walk mode", isWalkModeEnabled), category: "Tools", run: () => toggleWalkMode() });
