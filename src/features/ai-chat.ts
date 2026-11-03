@@ -1731,7 +1731,7 @@ async function runAgentLoop(): Promise<void> {
 
       for (const call of result.toolCalls) {
         let output: { ok: boolean; data?: any; error?: string };
-        if (requiresUserApproval(call.name)) {
+        if (requiresUserApproval(call.name, call.args)) {
           const approved = await showConfirmationCard(call.name, call.args);
           if (approved) {
             output = await executeTool(call);
