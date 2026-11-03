@@ -48,7 +48,7 @@ aiModule.filename = sourcePath;
 aiModule.paths = Module._nodeModulePaths(path.dirname(sourcePath));
 aiModule._compile(output, sourcePath);
 
-const { executeTool, TOOLS } = aiModule.exports;
+const { executeTool, TOOLS, requiresUserApproval, isDestructiveTool } = aiModule.exports;
 
 async function test(name, fn) {
   try { await fn(); console.log("  PASS", name); }
@@ -60,6 +60,18 @@ async function test(name, fn) {
     const tool = TOOLS.find((item) => item.name === "create_linear_elements");
     assert.ok(tool, "tool is missing");
     assert.deepEqual(tool.parameters.required, ["type", "segments"]);
+  });
+
+
+  await test("requires approval for every model-writing operation", () => {
+    for (const name of ["create_linear_elements", "create_walls_from_cad", "create_issue", "create_schedule"]) {
+      assert.equal(requiresUserApproval(name), true, name + " must require approval");
+    }
+    for (const name of ["get_app_state", "get_model_categories", "get_element_properties", "run_clash_test"]) {
+      assert.equal(requiresUserApproval(name), false, name + " should remain read-only");
+    }
+    assert.equal(isDestructiveTool("delete_elements"), true);
+    assert.equal(requiresUserApproval("delete_elements"), true);
   });
 
   await test("creates a native wall through the authoring engine", async () => {
