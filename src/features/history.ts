@@ -19,6 +19,11 @@ class HistoryManager {
   private listeners = new Set<() => void>();
   private isExecuting = false;
 
+  // Project transitions suspend new edits and wait for in-flight history work.
+  private suspended = false;
+  private activeOperations = 0;
+  private idleWaiters: Array<() => void> = [];
+
   // Coalescing
   private coalesceKey: string | null = null;
   private coalesceTimer: number | null = null;
@@ -39,6 +44,64 @@ class HistoryManager {
       } catch {
         /* */
       }
+    }
+  }
+
+  private enterOperation(): void {
+    this.activeOperations++;
+  }
+
+  private leaveOperation(): void {
+    this.activeOperations = Math.max(0, this.activeOperations - 1);
+    if (this.activeOperations === 0 && this.idleWaiters.length) {
+      const waiters = this.idleWaiters.splice(0);
+      for (const resolve of waiters) resolve();
+    }
+  }
+
+  private waitForOperations(): Promise<void> {
+    if (this.activeOperations === 0) return Promise.resolve();
+    return new Promise((resolve) => this.idleWaiters.push(resolve));
+  }
+
+  /**
+   * Start a project/document boundary. Existing undo/redo work is allowed to
+   * finish against the old scene; new history actions are blocked until the
+   * returned release function is called after the new scene is ready.
+   */
+  async beginDocumentTransition(): Promise<() => void> {
+    if (this.suspended) throw new Error("A project/document transition is already in progress");
+    this.suspended = true;
+
+    try {
+      // Drain operations already queued on the serial undo/redo chain.
+      await this.chain;
+      // Commands and grouped transactions are async and are not part of that
+      // chain. Wait for them too before the scene is torn down.
+      await this.waitForOperations();
+      this.clearStacks();
+    } catch (error) {
+      this.suspended = false;
+      this.emit();
+      throw error;
+    }
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.suspended = false;
+      this.emit();
+    };
+  }
+
+  private clearStacks(): void {
+    this.undoStack.length = 0;
+    this.redoStack.length = 0;
+    this.coalesceKey = null;
+    if (this.coalesceTimer != null) {
+      clearTimeout(this.coalesceTimer);
+      this.coalesceTimer = null;
     }
   }
 
@@ -66,12 +129,15 @@ class HistoryManager {
   push(cmd: Command, coalesce?: string): void {
     if (this.isExecuting) return;
 
-    // Inside a transaction: buffer, don't push yet.
+    // An active transaction may still be unwinding while a transition starts;
+    // keep its savepoint buffer intact so its own rollback remains correct.
     if (this.txDepth > 0) {
       this.txCommands.push(cmd);
       return;
     }
+    if (this.suspended) return;
 
+    // Inside a transaction: buffer, don't push yet.
     if (coalesce && this.coalesceKey === coalesce) {
       // Replace the last command instead of stacking.
       this.undoStack[this.undoStack.length - 1] = cmd;
@@ -102,6 +168,9 @@ class HistoryManager {
    * elements in one action).
    */
   async transaction(label: string, fn: () => void | Promise<void>): Promise<void> {
+    if (this.suspended) throw new Error("Cannot start a history transaction during a project/document transition");
+    this.enterOperation();
+    try {
     const outermost = this.txDepth === 0;
     const savepoint = this.txCommands.length;
     if (outermost) {
@@ -161,10 +230,16 @@ class HistoryManager {
     };
     // Bypass tx buffering (we're already out).
     this.push(group);
+    } finally {
+      this.leaveOperation();
+    }
   }
 
   /** Execute and record a command (convenience for one-shot actions). */
   async exec(cmd: Command, coalesce?: string): Promise<void> {
+    if (this.suspended) throw new Error("Cannot execute a history command during a project/document transition");
+    this.enterOperation();
+    try {
     this.isExecuting = true;
     try {
       await cmd.apply();
@@ -181,6 +256,9 @@ class HistoryManager {
       this.isExecuting = false;
     }
     this.push(cmd, coalesce);
+    } finally {
+      this.leaveOperation();
+    }
   }
 
   // Undo/redo run one at a time. Holding Ctrl+Z (key repeat) used to start
@@ -200,6 +278,7 @@ class HistoryManager {
   }
 
   private async doUndo(): Promise<void> {
+    if (this.suspended) return;
     const cmd = this.undoStack.pop();
     if (!cmd) return;
     this.isExecuting = true;
@@ -223,6 +302,7 @@ class HistoryManager {
   }
 
   private async doRedo(): Promise<void> {
+    if (this.suspended) return;
     const cmd = this.redoStack.pop();
     if (!cmd) return;
     this.isExecuting = true;
@@ -245,9 +325,7 @@ class HistoryManager {
   }
 
   clear(): void {
-    this.undoStack.length = 0;
-    this.redoStack.length = 0;
-    this.coalesceKey = null;
+    this.clearStacks();
     this.emit();
   }
 }

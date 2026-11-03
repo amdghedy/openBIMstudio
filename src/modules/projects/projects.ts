@@ -24,6 +24,7 @@ import { refreshModelSelectionUI, clearClash } from "../../features/clash";
 import { getIssues, setIssues, onIssuesChanged } from "../issues/issues";
 import { getCostData, setCostData, onCostChanged } from "../cost/cost";
 import { uiAlert } from "../../core/notify";
+import { history } from "../../features/history";
 
 let current: ProjectDoc | null = null;
 let dirty = false;
@@ -227,9 +228,10 @@ export interface CreateProjectOptions {
 }
 
 export async function createProject(name: string, options: CreateProjectOptions = {}) {
+  const resumeHistory = await history.beginDocumentTransition();
   const loader = (ctx.features as any).appLoader;
-  loader?.begin?.(`Creating project · ${name || "Untitled"}`, { cancellable: false });
   try {
+    loader?.begin?.(`Creating project · ${name || "Untitled"}`, { cancellable: false });
     loader?.set?.("Clearing current scene…", 0.2);
     await clearScene();
     try { (ctx.features as any).mep?.lifecycle?.hydrate?.({ connectors: [], connections: [], panels: [], loads: [] }); } catch (e) { console.warn("[projects] MEP lifecycle reset failed", e); }
@@ -278,6 +280,7 @@ export async function createProject(name: string, options: CreateProjectOptions 
     loader?.set?.("Done.", 1);
     notify();
   } finally {
+    resumeHistory();
     setTimeout(() => loader?.finish?.(), 150);
   }
 }
@@ -292,9 +295,9 @@ export async function openProject(id: string) {
   const doc = await store.getProject(id);
   if (!doc) { uiAlert("Project not found."); return; }
 
-  loader?.begin?.(`Opening ${doc.name}…`, { cancellable: false });
-
+  const resumeHistory = await history.beginDocumentTransition();
   try {
+    loader?.begin?.(`Opening ${doc.name}…`, { cancellable: false });
     loader?.set?.("Clearing current scene…", 0.05);
     await clearScene();
 
@@ -451,6 +454,7 @@ export async function openProject(id: string) {
     console.error("[projects] openProject failed", err);
     uiAlert(`Could not open project: ${err instanceof Error ? err.message : err}`);
   } finally {
+    resumeHistory();
     setTimeout(() => loader?.finish?.(), 180);
   }
 }

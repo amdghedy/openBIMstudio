@@ -150,6 +150,70 @@ async function t(name, fn) {
     assert.strictEqual(ok, 11);
   });
 
+
+  await t("project transition clears undo and redo history and blocks commands until the new scene is ready", async () => {
+    history.clear();
+    let projectA = 0;
+    let projectB = 0;
+    await history.exec({ label: "Project A edit", apply: () => { projectA = 1; }, revert: () => { projectA = 0; } });
+    await history.undo();
+    assert.strictEqual(projectA, 0);
+    assert.strictEqual(history.canRedo(), true);
+
+    const resume = await history.beginDocumentTransition();
+    assert.deepStrictEqual(history.depth(), { undo: 0, redo: 0 });
+    assert.strictEqual(history.canUndo(), false);
+    assert.strictEqual(history.canRedo(), false);
+
+    await assert.rejects(history.exec({
+      label: "edit during load",
+      apply: () => { projectB = 5; },
+      revert: () => { projectB = 0; },
+    }), /project\/document transition/);
+    history.push({ label: "stale direct push", apply: () => { projectA = 9; }, revert: () => { projectA = 1; } });
+    await history.undo();
+    await history.redo();
+    assert.strictEqual(projectA, 0);
+    assert.strictEqual(projectB, 0);
+    assert.deepStrictEqual(history.depth(), { undo: 0, redo: 0 });
+
+    resume();
+    await history.exec({ label: "Project B edit", apply: () => { projectB = 2; }, revert: () => { projectB = 0; } });
+    await history.undo();
+    assert.strictEqual(projectA, 0);
+    assert.strictEqual(projectB, 0);
+  });
+
+  await t("project transition waits for an in-flight undo before clearing the old document history", async () => {
+    history.clear();
+    let value = 1;
+    let started;
+    let release;
+    const startedPromise = new Promise((resolve) => { started = resolve; });
+    const gate = new Promise((resolve) => { release = resolve; });
+    await history.exec({
+      label: "slow old-project edit",
+      apply: () => { value = 1; },
+      revert: async () => { started(); await gate; value = 0; },
+    });
+
+    const undo = history.undo();
+    await startedPromise;
+    let transitionReady = false;
+    const transition = history.beginDocumentTransition().then((resume) => {
+      transitionReady = true;
+      return resume;
+    });
+    await Promise.resolve();
+    assert.strictEqual(transitionReady, false, "transition must wait for the active undo");
+    release();
+    await undo;
+    const resume = await transition;
+    assert.strictEqual(value, 0);
+    assert.deepStrictEqual(history.depth(), { undo: 0, redo: 0 });
+    resume();
+  });
+
   console.log(`\n=== Result: ${passed} passed, ${failed} failed ===`);
   process.exit(failed ? 1 : 0);
 })();
