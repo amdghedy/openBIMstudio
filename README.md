@@ -373,7 +373,7 @@ Some additional model formats may be accessible through separately configured co
 
 | Guide | Topic |
 |-------|-------|
-| [Engineering Baseline](docs/engineering/BASELINE.md) | Verified format boundaries, feature maturity inventory, stage evidence |
+| [Engineering Architecture Map](docs/engineering/ARCHITECTURE.md) | Runtime boot, domain boundaries, module inventory and data flows |\n| [Engineering Baseline](docs/engineering/BASELINE.md) | Verified format boundaries, feature maturity inventory, stage evidence |
 | [Authoring](docs/02-authoring.md) | Modeling & families |
 | [Coordination](docs/03-coordination.md) | Clash & issues |
 | [Documentation](docs/04-documentation.md) | Views & sheets |

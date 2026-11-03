@@ -13,7 +13,7 @@ read (and where a new document belongs).
 - [User Guide](../documentation/USER_GUIDE.md) — setup, workflows, troubleshooting
 - [Developer Guide](../documentation/DEVELOPER_GUIDE.md) — architecture and contribution
 - [Master Tool Catalogue](../documentation/MASTER_TOOL_CATALOG.md) — every command and its maturity level (enforced by `scripts/check-tool-catalog.mjs`)
-- [Engineering Baseline](engineering/BASELINE.md) — verified format boundaries and evidence per capability
+- [Engineering Architecture Map](engineering/ARCHITECTURE.md) — boot lifecycle, domain boundaries, complete module inventory and data flows\n- [Engineering Baseline](engineering/BASELINE.md) — verified format boundaries and evidence per capability
 - [Known issues / gap tracker](engineering/ISSUES.md) (synced to GitHub issues by `engineering/sync-issues.sh`)
 - [Plugin SDK](PLUGIN_SDK.md) · [CSP policy](CSP.md) · [Compatibility](COMPATIBILITY.md)
 
