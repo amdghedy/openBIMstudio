@@ -1169,7 +1169,8 @@ async function listCadLinksTool(): Promise<ToolResult> {
 
 async function createLinearElementsTool(args: Record<string, any>): Promise<ToolResult> {
   const allowed = new Set(["wall", "beam", "strip", "duct", "pipe", "cable-tray", "conduit", "mline"]);
-  const type = String(args.type ?? "").trim();
+  type LinearElementType = "wall" | "beam" | "strip" | "duct" | "pipe" | "cable-tray" | "conduit" | "mline";
+  const type = String(args.type ?? "").trim() as LinearElementType;
   if (!allowed.has(type)) return { ok: false, error: `Unsupported linear element type: ${type || "(missing)"}` };
   if (!Array.isArray(args.segments) || args.segments.length < 1) {
     return { ok: false, error: "At least one segment is required. Each segment needs start and end [x,z] coordinates in metres." };
