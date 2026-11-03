@@ -214,23 +214,26 @@ footer.append(regenBtn, footerSpacer, tokenCountEl);
 
 const inputRow = document.createElement("div");
 inputRow.style.cssText =
-  "display:flex;gap:6px;padding:8px;padding-top:4px;" +
+  "display:flex;flex-direction:column;gap:6px;padding:8px 10px 10px;" +
   "background:var(--bg-elevated,#181a23);border-bottom-left-radius:9px;" +
   "border-bottom-right-radius:9px;" +
-  "flex-shrink:0;align-items:flex-end";
+  "flex-shrink:0;width:100%;box-sizing:border-box;min-width:0";
 
 const input = document.createElement("textarea");
 input.placeholder = "Ask about the model, or tell me what to do…";
-input.rows = 2;
+input.rows = 3;
 input.style.cssText =
-  "flex:1;box-sizing:border-box;padding:6px 8px;background:var(--bg-inset,#0e1017);" +
-  "border:1px solid var(--border-default,#2a2e3a);border-radius:6px;" +
-  "color:var(--text-primary,#e8eaf0);font:12px system-ui;resize:none;outline:none;" +
-  "max-height:120px";
+  "display:block;width:100%;min-width:0;box-sizing:border-box;" +
+  "padding:10px 12px;background:var(--bg-inset,#0e1017);" +
+  "border:1px solid var(--border-default,#2a2e3a);border-radius:8px;" +
+  "color:var(--text-primary,#e8eaf0);font:13px/1.45 system-ui,sans-serif;" +
+  "resize:none;outline:none;min-height:72px;max-height:none;" +
+  "overflow-y:auto;field-sizing:content";
 
 const inputTools = document.createElement("div");
 inputTools.style.cssText =
-  "display:flex;flex-direction:column;gap:4px;align-items:flex-end";
+  "display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;align-items:center;" +
+  "justify-content:space-between;width:100%;box-sizing:border-box;min-width:0";
 
 const autoScrollLbl = document.createElement("label");
 autoScrollLbl.style.cssText =
@@ -248,9 +251,9 @@ autoScrollLbl.append(autoScrollCb, document.createTextNode("Auto-scroll"));
 const sendBtn = document.createElement("button");
 sendBtn.textContent = "Send";
 sendBtn.style.cssText =
-  "padding:6px 14px;background:var(--accent,#38bdf8);color:#0b0d12;border:none;" +
-  "border-radius:6px;cursor:pointer;font:600 12px system-ui;height:32px;" +
-  "min-width:64px";
+  "padding:8px 18px;background:var(--accent,#38bdf8);color:#0b0d12;border:none;" +
+  "border-radius:6px;cursor:pointer;font:600 12px system-ui;height:34px;" +
+  "min-width:72px;margin-left:auto";
 
 inputTools.append(autoScrollLbl, sendBtn);
 inputRow.append(input, inputTools);
@@ -1810,11 +1813,36 @@ input.addEventListener("keydown", (e) => {
   }
 });
 
-input.addEventListener("input", () => {
+function maxInputHeight(): number {
+  try {
+    const ph = panel.clientHeight || 400;
+    // Grow with the panel — up to ~42% of panel, at least 72px, cap 420px
+    return Math.min(420, Math.max(72, Math.floor(ph * 0.42)));
+  } catch {
+    return 180;
+  }
+}
+
+function fitInputHeight(): void {
   input.style.height = "auto";
-  const h = Math.min(120, Math.max(36, input.scrollHeight));
+  const maxH = maxInputHeight();
+  const h = Math.min(maxH, Math.max(72, input.scrollHeight));
   input.style.height = `${h}px`;
-});
+}
+
+input.addEventListener("input", () => fitInputHeight());
+
+// Keep width/height correct when the dockable panel is resized or docked
+try {
+  const ro = new ResizeObserver(() => {
+    input.style.width = "100%";
+    fitInputHeight();
+  });
+  ro.observe(panel);
+  ro.observe(inputRow);
+} catch {
+  window.addEventListener("resize", () => fitInputHeight());
+}
 
 /* ═════════════════════════════════════════════════════════════════════════
    Public API
@@ -1829,6 +1857,7 @@ export function openAiChat(): void {
   panel.style.flexDirection = "column";
   // Header must never disappear
   header.style.display = "flex";
+  try { fitInputHeight(); } catch { /* */ }
   header.style.flexDirection = "column";
   header.style.flexShrink = "0";
   header.style.visibility = "visible";
