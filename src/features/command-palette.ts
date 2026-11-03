@@ -432,6 +432,13 @@ function bootstrapCommands(): void {
     },
   });
   registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
+  registerCommand({ id: "view.graphic-options", label: "Graphic Display Options…", category: "View", run: () => { void import("./view-graphics").then((m) => m.openGraphicDisplayOptions()); } });
+  registerCommand({ id: "view.wireframe", label: "Display: Wireframe", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("wireframe")); } });
+  registerCommand({ id: "view.hidden-line", label: "Display: Hidden Line", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("hidden-line")); } });
+  registerCommand({ id: "view.shaded", label: "Display: Shaded", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("shaded")); } });
+  registerCommand({ id: "view.consistent", label: "Display: Consistent Colors", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("consistent-colors")); } });
+  registerCommand({ id: "view.realistic", label: "Display: Realistic", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("realistic")); } });
+  registerCommand({ id: "view.ray-trace", label: "Display: Ray Trace", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("ray-trace")); } });
   registerCommand({ id: "ifc.to-frag", label: "Convert IFC → FRAG (download)", category: "Insert", run: () => { void import("./ifc-to-frag").then((m) => m.showIfcToFragPanel()); } });
   registerCommand({ id: "cad.query", label: "Query linked CAD (layer / type / name)", category: "Insert", run: () => { void import("./cad-query-panel").then((m) => m.showCadQueryPanel()); } });
   registerCommand({ id: "file.export-frag", label: "Export model(s) as ThatOpen FRAG (.frag)", category: "File", run: () => { void import("../modules/export/frag").then((m) => m.exportFragFromMenu()); } });

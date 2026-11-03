@@ -104,7 +104,7 @@ import { setupSheetsPanel } from "./features/sheets-panel";
 import { setupAutomationPanel } from "./features/automation-panel";
 import { setupProjectBrowser } from "./features/project-browser";
 import { setupBimToolbox } from "./features/bim-toolbox";
-import { refreshViewGraphics } from "./features/view-graphics";
+import { refreshViewGraphics, setupViewGraphics } from "./features/view-graphics";
 import { setupBimExperience } from "./features/bim-experience";
 import { setupBimObjectStudio } from "./features/bim-object-studio";
 import { setupLevelChip } from "./features/level-chip";
@@ -361,7 +361,7 @@ await step("ifc-to-frag", () => setupIfcToFrag());
 await step("views-panel", () => setupViewsPanel());
 await step("sheets-2d-panel", () => setupSheets2dPanel());
 
-await step("view-graphics", () => refreshViewGraphics());
+await step("view-graphics", () => { setupViewGraphics(); refreshViewGraphics(); });
 await step("bim-experience", () => setupBimExperience());
 await step("bim-object-studio", () => setupBimObjectStudio());
 await step("level-chip", () => setupLevelChip());

@@ -2291,8 +2291,68 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("select-all", "Modify", "select", "Esc"),
       sep(),
 
-      // ── Graphics (VVG / Thin Lines / Hidden) ────────────────────────
+      // ── Graphics (display styles + VVG) ─────────────────────────────
       groupLabel("Graphics"),
+      b("system", "Graphic…", safe(async () => {
+        const vg = await import("../features/view-graphics");
+        vg.openGraphicDisplayOptions();
+      }, "Graphic Display Options"), {
+        title: "Graphic Display Options — style, background, sun, transparency",
+      }),
+      b("system", "Wireframe", safe(async () => {
+        const vg = await import("../features/view-graphics");
+        vg.setVisualPreset("wireframe");
+        toast("Wireframe", "info");
+        refreshRibbon();
+      }, "Wireframe"), {
+        active: (window as any).__obsViewGraphics?.getPreset?.() === "wireframe",
+        title: "Wireframe display",
+      }),
+      b("system", "Hidden Line", safe(async () => {
+        const vg = await import("../features/view-graphics");
+        vg.setVisualPreset("hidden-line");
+        toast("Hidden Line", "info");
+        refreshRibbon();
+      }, "Hidden Line"), {
+        active: (window as any).__obsViewGraphics?.getPreset?.() === "hidden-line",
+        title: "Hidden Line — pale faces + edges",
+      }),
+      b("system", "Shaded", safe(async () => {
+        const vg = await import("../features/view-graphics");
+        vg.setVisualPreset("shaded");
+        toast("Shaded", "info");
+        refreshRibbon();
+      }, "Shaded"), {
+        active: (window as any).__obsViewGraphics?.getPreset?.() === "shaded",
+        title: "Shaded display",
+      }),
+      b("system", "Consistent", safe(async () => {
+        const vg = await import("../features/view-graphics");
+        vg.setVisualPreset("consistent-colors");
+        toast("Consistent Colors", "info");
+        refreshRibbon();
+      }, "Consistent Colors"), {
+        active: (window as any).__obsViewGraphics?.getPreset?.() === "consistent-colors",
+        title: "Consistent Colors — flat shading",
+      }),
+      b("system", "Realistic", safe(async () => {
+        const vg = await import("../features/view-graphics");
+        vg.setVisualPreset("realistic");
+        toast("Realistic", "info");
+        refreshRibbon();
+      }, "Realistic"), {
+        active: (window as any).__obsViewGraphics?.getPreset?.() === "realistic",
+        title: "Realistic materials and soft shadows",
+      }),
+      b("system", "Ray Trace", safe(async () => {
+        const vg = await import("../features/view-graphics");
+        vg.setVisualPreset("ray-trace");
+        toast("Ray Trace (enhanced realistic)", "info");
+        refreshRibbon();
+      }, "Ray Trace"), {
+        active: (window as any).__obsViewGraphics?.getPreset?.() === "ray-trace",
+        title: "Ray Trace approximation — stronger tone mapping & shadows",
+      }),
       b("tree", "Visibility", safe(() => {
         try { toggleModelTreePanel(); } catch { /* */ }
         toast("Visibility/Graphics — use Model Tree eye icons to hide categories", "info");
@@ -2303,19 +2363,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         try { toggleModelTreePanel(); } catch { /* */ }
         toast("Filters — filter by category in Model Tree / search", "info");
       }, "View filters"), { title: "View filters by category" }),
-      b("mline", "Thin Lines", safe(() => {
-        const on = !(window as any).__obsThinLines;
-        (window as any).__obsThinLines = on;
-        try {
-          ctx.world.scene.three.traverse((o: any) => {
-            if (o?.isLine || o?.isLineSegments) {
-              if (o.material) {
-                o.material.linewidth = on ? 1 : 2;
-                o.material.needsUpdate = true;
-              }
-            }
-          });
-        } catch { /* */ }
+      b("mline", "Thin Lines", safe(async () => {
+        const vg = await import("../features/view-graphics");
+        const on = !vg.isThinLines();
+        vg.setThinLines(on);
         toast(on ? "Thin lines ON" : "Thin lines OFF", "info");
         refreshRibbon();
       }, "Thin lines"), {

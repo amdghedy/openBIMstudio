@@ -316,10 +316,13 @@ const graphics = makeSection("graphics", "5 · View & Visual Appearance", "prese
 graphics.content.append(
   row(
     select<VisualPreset>("Visual Style", getVisualPreset(), [
-      { v: "shaded", label: "Shaded" },
-      { v: "shaded-edges", label: "Shaded + Edges" },
       { v: "wireframe", label: "Wireframe" },
       { v: "hidden-line", label: "Hidden Line" },
+      { v: "shaded", label: "Shaded" },
+      { v: "shaded-edges", label: "Shaded + Edges" },
+      { v: "consistent-colors", label: "Consistent Colors" },
+      { v: "realistic", label: "Realistic" },
+      { v: "ray-trace", label: "Ray Trace" },
     ], (v) => setVisualPreset(v)),
     select("Background", getSceneBackground(), [
       { v: "studio", label: "Studio" },
