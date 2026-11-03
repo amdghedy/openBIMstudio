@@ -51,6 +51,7 @@ import type {
   GroupLevel,
 } from "../modules/schedules/schedule-types";
 import { uiAlert } from "../core/notify";
+import { promptLine } from "./form-modal";
 
 /* ═════════════════════════════════════════════════════════════════════════
    State
@@ -331,7 +332,7 @@ function openNewDialog(): void {
 /* ═════════════════════════════════════════════════════════════════════════
    Save current
    ═════════════════════════════════════════════════════════════════════════ */
-function saveCurrent(): void {
+async function saveCurrent(): Promise<void> {
   const existing = listSavedSchedules().find((s) => s.id === currentDefinition.id);
   if (existing) {
     const stored = saveSchedule(currentDefinition);
@@ -340,7 +341,7 @@ function saveCurrent(): void {
     renderHeader();
     return;
   }
-  const name = prompt("Save schedule as:", currentDefinition.name || "New schedule");
+  const name = await promptLine("Save schedule", "Save schedule as:", currentDefinition.name || "New schedule");
   if (name == null) return;
   const named = { ...currentDefinition, name: name.trim() || currentDefinition.name };
   const stored = saveSchedule(named);
@@ -410,8 +411,9 @@ function renderControls(): void {
     "padding:3px 10px;border-radius:4px;font:11px system-ui;cursor:pointer;" +
     "background:var(--bg-elevated,#181a23);color:var(--text-secondary,#a0a6b5);" +
     "border:1px dashed var(--border-default,#2a2e3a)";
-  addGroup.onclick = () => {
-    const key = prompt(
+  addGroup.onclick = async () => {
+    const key = await promptLine(
+      "Add grouping level",
       "Group by column key (e.g. level, category, systemType, material, type):",
       "level",
     );
@@ -754,15 +756,16 @@ async function regenerate(): Promise<void> {
 /* ═════════════════════════════════════════════════════════════════════════
    Snapshot / diff
    ═════════════════════════════════════════════════════════════════════════ */
-function takeSnapshotNow(): void {
+async function takeSnapshotNow(): Promise<void> {
   if (!currentRun) {
     uiAlert("Run the schedule first.");
     return;
   }
-  const label = prompt("Snapshot label:", `Run ${new Date().toLocaleString()}`);
+  const run = currentRun;
+  const label = await promptLine("Take snapshot", "Snapshot label:", `Run ${new Date().toLocaleString()}`);
   if (label == null) return;
-  takeSnapshot(currentRun, label);
-  uiAlert(`Snapshot saved with ${currentRun.rows.length} rows.`);
+  takeSnapshot(run, label);
+  uiAlert(`Snapshot saved with ${run.rows.length} rows.`);
 }
 
 function showLatestDiff(): void {

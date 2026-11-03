@@ -16,6 +16,7 @@ import { runClashOffThread } from "./clash-worker-client";
 import { getAuthor } from "../modules/issues/issues";
 import { getElementWorldBox } from "../modules/geometry/world-box";
 import { register, tryUse, type ClashService } from "../core/services";
+import { promptLine, confirmDialog } from "./form-modal";
 import {
   groupClashes,
   summarizeGroups,
@@ -1173,19 +1174,19 @@ scenarioPanel.style.cssText = "margin-top:10px;border-top:1px solid #2a2a35;padd
 const scenarioToolbar = document.createElement("div");
 scenarioToolbar.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px";
 
-function scBtn(label: string, onClick: () => void, title = "") {
+function scBtn(label: string, onClick: () => void | Promise<void>, title = "") {
   const b = document.createElement("button");
   b.textContent = label;
   b.title = title || label;
   b.style.cssText =
     "padding:5px 8px;font:500 11px system-ui,sans-serif;background:#1e1f28;color:#e2e8f0;border:1px solid #3a3a4a;border-radius:5px;cursor:pointer";
-  b.onclick = onClick;
+  b.onclick = () => { void onClick(); };
   return b;
 }
 
 scenarioToolbar.append(
-  scBtn("💾 Save scenario", () => {
-    const name = prompt("Scenario name:", testNameInput.value || "Scenario");
+  scBtn("💾 Save scenario", async () => {
+    const name = await promptLine("Save scenario", "Scenario name:", testNameInput.value || "Scenario");
     if (name == null) return;
     createScenario(name.trim() || "Scenario");
   }, "Save current A/B + scope + method + rules + statuses"),
@@ -1248,8 +1249,8 @@ function renderScenarioList() {
         }
       })();
     }, "Load and run");
-    const del = scBtn("🗑", () => {
-      if (confirm(`Delete scenario "${sc.name}"?`)) deleteScenario(sc.id);
+    const del = scBtn("🗑", async () => {
+      if (await confirmDialog("Delete scenario", `Delete scenario "${sc.name}"?`)) deleteScenario(sc.id);
     });
     row.append(meta, run, del);
     scenarioListEl.appendChild(row);

@@ -19,6 +19,7 @@ import { ensureDefaultMaterials, listMaterials } from "../modules/materials/mate
 import { markDirty } from "../modules/projects/projects";
 import { openToolWindow } from "./tool-windows";
 import { uiAlert } from "../core/notify";
+import { confirmDialog } from "./form-modal";
 
 function pickAccept(accept: string, multiple: boolean, onFiles: (files: File[]) => void | Promise<void>) {
   const input = document.createElement("input");
@@ -172,9 +173,9 @@ export function linkCad() {
 }
 
 /** Link BIM models via IFC export guidance + IFC picker. */
-export function linkBIM() {
-  const go = confirm(
-    "Link BIM model\n\n" +
+export async function linkBIM() {
+  const go = await confirmDialog(
+    "Link BIM model",
     "BIM files (.rvt) cannot open directly in the browser.\n\n" +
     "Professional workflow:\n" +
     "1. In BIM: File → Export → IFC\n" +
@@ -225,7 +226,8 @@ async function importPointCloudFiles(files: File[]) {
         const parsed = ext === "las" ? parseLas(await file.arrayBuffer(), 2_000_000) : parsePtx(await file.text(), 2_000_000);
         const far = parsed.origin.some((v) => Math.abs(v) > 5000);
         // Survey coordinates (UTM etc.) are far from the model origin: offer to bring the cloud to the origin.
-        const recentre = far && confirm(
+        const recentre = far && await confirmDialog(
+          "Survey coordinates",
           `${file.name} uses survey coordinates (centre ${parsed.origin.map((v) => v.toFixed(0)).join(", ")}).\n\n` +
           "OK = move the cloud to the model origin (recommended)\nCancel = keep the survey coordinates (the model must use the same coordinates)",
         );
@@ -421,9 +423,9 @@ export function openComponentLibrary() {
 }
 
 /** Autodesk format bridge. */
-export function linkAutodesk() {
-  const go = confirm(
-    "Autodesk formats (RVT, RFA, NWD, DWG)\n\n" +
+export async function linkAutodesk() {
+  const go = await confirmDialog(
+    "Autodesk formats (RVT, RFA, NWD, DWG)",
     "Browser cannot open proprietary Autodesk binaries.\n\n" +
     "Recommended open workflow:\n" +
     "• BIM → Export IFC → Link IFC here\n" +

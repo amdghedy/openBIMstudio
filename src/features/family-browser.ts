@@ -18,6 +18,7 @@
 
 import * as THREE from "three";
 import { ctx } from "../core/context";
+import { promptLine, confirmDialog, pickFromList } from "./form-modal";
 import { makeDockable, type DockHandle } from "./dockable";
 import { setupFamilies, isFamilySystemReady } from "../modules/families";
 import type { FamilyDefinition, FamilyType, FamilyService } from "../modules/families";
@@ -581,7 +582,7 @@ function buildFormulaDiagnosticsBlock(
       "border:1px dashed #2a2e3a;border-radius:4px;cursor:pointer;font:10.5px system-ui";
     addBtn.onmouseenter = () => (addBtn.style.color = "#38bdf8");
     addBtn.onmouseleave = () => (addBtn.style.color = "#94a3b8");
-    addBtn.onclick = (ev) => {
+    addBtn.onclick = async (ev) => {
       ev.stopPropagation();
       const store = svc();
       if (!store) return;
@@ -593,12 +594,14 @@ function buildFormulaDiagnosticsBlock(
         return;
       }
       const names = available.map((x) => x.name);
-      const choose = prompt(
-        "Add a formula to which parameter?\n\nAvailable: " + names.join(", "),
+      const choose = await pickFromList(
+        "Add formula",
+        "Add a formula to which parameter?",
+        names.map((n) => ({ value: n, label: n })),
         names[0],
       );
       if (!choose || names.indexOf(choose) < 0) return;
-      const formula = prompt("Formula for " + choose + ":", "= ");
+      const formula = await promptLine("Add formula", "Formula for " + choose + ":", "= ");
       if (formula == null) return;
       const next = fam.parameters.map((x) =>
         x.name === choose ? { ...x, formula: formula.trim() || undefined } : x,
@@ -912,10 +915,10 @@ function onPlaceReal(fam: FamilyDefinition): void {
     toast("Family has no sourceElementType and no direct geometry path.", "warn");
   }
 }
-function onDuplicate(fam: FamilyDefinition): void {
+async function onDuplicate(fam: FamilyDefinition): Promise<void> {
   const s = svc();
   if (!s) return;
-  const name = prompt("New family name:", fam.name + " Copy");
+  const name = await promptLine("Duplicate family", "New family name:", fam.name + " Copy");
   if (!name) return;
   const clone = s.duplicate(fam.id, name.trim() || (fam.name + " Copy"));
   if (clone) {
@@ -926,11 +929,11 @@ function onDuplicate(fam: FamilyDefinition): void {
   }
 }
 
-function onDelete(fam: FamilyDefinition): void {
+async function onDelete(fam: FamilyDefinition): Promise<void> {
   const s = svc();
   if (!s) return;
   if (fam.builtIn) { toast("Built-in families cannot be deleted.", "warn"); return; }
-  if (!confirm("Delete family “" + fam.name + "” and all its types?")) return;
+  if (!(await confirmDialog("Delete family", "Delete family “" + fam.name + "” and all its types?"))) return;
   if (s.remove(fam.id)) {
     if (selectedFamilyId === fam.id) {
       selectedFamilyId = null;
@@ -941,12 +944,12 @@ function onDelete(fam: FamilyDefinition): void {
   }
 }
 
-function onNewFamily(): void {
+async function onNewFamily(): Promise<void> {
   const s = svc();
   if (!s) return;
   const src = selectedFamilyId ? s.get(selectedFamilyId) : s.list()[0];
   if (!src) { toast("No family to duplicate.", "warn"); return; }
-  const name = prompt("New family name:", "New " + src.category);
+  const name = await promptLine("New family", "New family name:", "New " + src.category);
   if (!name) return;
   const clone = s.duplicate(src.id, name.trim() || ("New " + src.category));
   if (clone) {
@@ -957,10 +960,10 @@ function onNewFamily(): void {
   }
 }
 
-function onAddType(fam: FamilyDefinition): void {
+async function onAddType(fam: FamilyDefinition): Promise<void> {
   const s = svc();
   if (!s) return;
-  const name = prompt("New type name:", fam.name + " Type " + (fam.types.length + 1));
+  const name = await promptLine("New type", "New type name:", fam.name + " Type " + (fam.types.length + 1));
   if (!name) return;
   const base: Record<string, any> = {};
   const resolved = s.resolveParams(fam.id, selectedTypeId, undefined) ?? {};
@@ -973,14 +976,14 @@ function onAddType(fam: FamilyDefinition): void {
   }
 }
 
-function onRemoveType(fam: FamilyDefinition): void {
+async function onRemoveType(fam: FamilyDefinition): Promise<void> {
   const s = svc();
   if (!s) return;
   if (!selectedTypeId) return;
   if (fam.types.length <= 1) { toast("A family must keep at least one type.", "warn"); return; }
   const t = fam.types.find((x) => x.id === selectedTypeId);
   if (!t) return;
-  if (!confirm("Delete type “" + t.name + "”?")) return;
+  if (!(await confirmDialog("Delete type", "Delete type “" + t.name + "”?"))) return;
   if (s.removeType(fam.id, t.id)) {
     selectedTypeId = fam.types[0]?.id ?? null;
     toast("Type removed.", "info");

@@ -9,6 +9,7 @@
  *   3. Exposes a help overlay (Ctrl+/ or from Command Center)
  */
 
+import { promptLine } from "./form-modal";
 import { ctx } from "../core/context";
 
 type Any = Record<string, any>;
@@ -241,9 +242,11 @@ async function registerBIMShortcuts(): Promise<void> {
         notify("info", "Select elements to group");
         return;
       }
-      const name = window.prompt("Group name:", "Group") ?? "Group";
-      (window as Any).__obsGroups?.createFromSelection?.(name, ids, true);
-      notify("success", `Group "${name}"`);
+      void promptLine("Create group", "Group name:", "Group").then((name) => {
+        if (name == null) return;
+        (window as Any).__obsGroups?.createFromSelection?.(name, ids, true);
+        notify("success", `Group "${name}"`);
+      });
     },
   });
 

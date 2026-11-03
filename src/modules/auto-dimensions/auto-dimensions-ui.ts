@@ -4,6 +4,7 @@
 
 import { autoDimensionsEngine } from "./auto-dimensions-engine";
 import { defaultAutoDimOptions } from "./types";
+import { confirmDialog } from "../../features/form-modal";
 
 type Any = Record<string, any>;
 
@@ -177,7 +178,7 @@ function renderPanel(): void {
   });
 }
 
-function handle(act: string, id?: string): void {
+async function handle(act: string, id?: string): Promise<void> {
   switch (act) {
     case "close":
       closeAutoDimsPanel();
@@ -216,7 +217,7 @@ function handle(act: string, id?: string): void {
       break;
     }
     case "clear-all": {
-      if (!window.confirm("Remove all dimensions?")) return;
+      if (!(await confirmDialog("Remove dimensions", "Remove all dimensions?"))) return;
       for (const d of autoDimensionsEngine.listDimensions()) {
         autoDimensionsEngine.removeDimension(d.id);
       }

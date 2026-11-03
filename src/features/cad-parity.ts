@@ -9,6 +9,7 @@
  */
 
 import { ctx } from "../core/context";
+import { promptLine, confirmDialog, openFormModal } from "./form-modal";
 import { cadEngine, type CadPt, type CadTool } from "../modules/cad/cad-engine";
 
 type Any = Record<string, any>;
@@ -227,7 +228,7 @@ function render(): void {
 
 /* -- Pointer tools --------------------------------------------------------- */
 
-function onDown(e: PointerEvent): void {
+async function onDown(e: PointerEvent): Promise<void> {
   const tool = cadEngine.getTool();
   if (!tool || e.button !== 0) return;
   if (isUi(e.target)) return;
@@ -246,7 +247,7 @@ function onDown(e: PointerEvent): void {
 
   if (tool === "text") {
     const p = cadEngine.snapPoint(null, raw);
-    const text = window.prompt("Text:", "Text") ?? "";
+    const text = (await promptLine("Text", "Text", "Text")) ?? "";
     if (text) {
       cadEngine.addText(p, text);
       render();
@@ -331,7 +332,9 @@ function onDown(e: PointerEvent): void {
   }
 
   if (tool === "offset") {
-    const d = Number(window.prompt("Offset distance (px):", "20") ?? "20");
+    const rawD = await promptLine("Offset", "Offset distance (px)", "20");
+    if (rawD == null) return;
+    const d = Number(rawD);
     if (Number.isFinite(d) && d !== 0) {
       const ent = cadEngine.offsetLast(d);
       toast(ent ? "success" : "warn", ent ? "Offset created" : "Nothing to offset");
@@ -342,8 +345,16 @@ function onDown(e: PointerEvent): void {
   }
 
   if (tool === "move" || tool === "copy") {
-    const dx = Number(window.prompt("Delta X (px):", "40") ?? "40");
-    const dy = Number(window.prompt("Delta Y (px):", "0") ?? "0");
+    const vals = await openFormModal({
+      title: tool === "move" ? "Move" : "Copy",
+      fields: [
+        { kind: "number", key: "dx", label: "Delta X", default: 40, unit: "px", validate: (v) => (Number.isFinite(Number(v)) ? null : "Enter a number") },
+        { kind: "number", key: "dy", label: "Delta Y", default: 0, unit: "px", validate: (v) => (Number.isFinite(Number(v)) ? null : "Enter a number") },
+      ],
+    });
+    if (!vals) return;
+    const dx = Number(vals.dx);
+    const dy = Number(vals.dy);
     if (Number.isFinite(dx) && Number.isFinite(dy)) {
       const ent = cadEngine.copyLast(dx, dy);
       if (tool === "move" && ent) {
@@ -660,23 +671,27 @@ function buildPanel(): void {
         render();
         syncDrafting();
       } else if (a === "clear") {
-        if (window.confirm("Clear all CAD entities?")) {
+        void confirmDialog("Clear", "Clear all CAD entities?").then((ok) => {
+          if (!ok) return;
           cadEngine.clear();
           render();
           syncDrafting();
-        }
+        });
       } else if (a === "finish-pl") {
         cadEngine.finishPolyline();
         render();
         syncDrafting();
         toast("success", "Polyline finished");
       } else if (a === "fillet-r") {
-        const v = Number(window.prompt("Fillet radius (px):", String(filletRadius)) ?? filletRadius);
-        if (Number.isFinite(v) && v > 0) {
-          filletRadius = v;
-          toast("info", "Fillet radius = " + filletRadius);
-          setCmd("FILLETRAD = " + filletRadius);
-        }
+        void promptLine("Fillet", "Fillet radius (px)", String(filletRadius)).then((raw) => {
+          if (raw == null) return;
+          const v = Number(raw);
+          if (Number.isFinite(v) && v > 0) {
+            filletRadius = v;
+            toast("info", "Fillet radius = " + filletRadius);
+            setCmd("FILLETRAD = " + filletRadius);
+          }
+        });
       } else if (a === "export-dxf") {
         (window as Any).__obsDrawings?.exportCadAsDxf?.("cad-export.dxf");
       } else if (a === "import-dxf") {

@@ -14,6 +14,7 @@
  */
 
 import { ctx } from "../core/context";
+import { openFormModal, pickFromList } from "./form-modal";
 import { setAuthoringTool, addLinearElement } from "./authoring";
 
 interface FabPart {
@@ -172,53 +173,30 @@ const SYSTEMS: Array<{ id: string; label: string; group: string; unit: string; d
   { id: "conduit",         label: "Conduit",              group: "Electrical", unit: "cables", defaultFlow: 5 },
 ];
 
-function openAutoRouteModal(): void {
+async function openAutoRouteModal(): Promise<void> {
   // Pick system
-  const systemOptions = SYSTEMS.map((s) => `${s.label} (${s.unit})`).join("\n");
-  const sysIdx = prompt(`Select MEP system (enter number):\n\n${SYSTEMS.map((s, i) => `${i + 1}. ${s.label}`).join("\n")}`);
-  if (!sysIdx) return;
-  const idx = parseInt(sysIdx, 10) - 1;
-  if (isNaN(idx) || idx < 0 || idx >= SYSTEMS.length) {
-    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Invalid system number", kind: "error" } }));
-    return;
-  }
-  const system = SYSTEMS[idx];
-
-  // Pick flow rate
-  const flowStr = prompt(`Flow rate (${system.unit}) for ${system.label}:`, String(system.defaultFlow));
-  if (!flowStr) return;
-  const flowRate = parseFloat(flowStr);
-  if (isNaN(flowRate) || flowRate <= 0) {
-    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Invalid flow rate", kind: "error" } }));
-    return;
-  }
-
-  // Pick elevation (Y)
-  const elevStr = prompt(`Routing elevation (m, world Y) for ${system.label}:`, "2.7");
-  if (!elevStr) return;
-  const elevation = parseFloat(elevStr);
-  if (isNaN(elevation)) {
-    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Invalid elevation", kind: "error" } }));
-    return;
-  }
-
-  // Pick start point (X, Z) in metres
-  const startStr = prompt(`Start point X,Z (m, e.g. "0,0"):`);
-  if (!startStr) return;
-  const startParts = startStr.split(",").map((s) => parseFloat(s.trim()));
-  if (startParts.length !== 2 || startParts.some(isNaN)) {
-    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Invalid start point", kind: "error" } }));
-    return;
-  }
-
-  // Pick end point
-  const endStr = prompt(`End point X,Z (m, e.g. "10,5"):`);
-  if (!endStr) return;
-  const endParts = endStr.split(",").map((s) => parseFloat(s.trim()));
-  if (endParts.length !== 2 || endParts.some(isNaN)) {
-    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Invalid end point", kind: "error" } }));
-    return;
-  }
+  const sysId = await pickFromList("Auto-route MEP", "MEP system", SYSTEMS.map((s) => ({ value: s.id, label: s.label })), SYSTEMS[0].id);
+  if (!sysId) return;
+  const system = SYSTEMS.find((s) => s.id === sysId);
+  if (!system) return;
+  const num = (x: unknown) => Number.isFinite(Number(x)) ? null : "Enter a number";
+  const vals = await openFormModal({
+    title: `Auto-route ${system.label}`,
+    fields: [
+      { kind: "number", key: "flow", label: "Flow rate", default: system.defaultFlow, unit: system.unit, validate: (x) => Number(x) > 0 ? null : "Must be positive" },
+      { kind: "number", key: "elev", label: "Routing elevation (world Y)", default: 2.7, unit: "m", validate: num },
+      { kind: "number", key: "sx", label: "Start X", default: 0, unit: "m", validate: num },
+      { kind: "number", key: "sz", label: "Start Z", default: 0, unit: "m", validate: num },
+      { kind: "number", key: "ex", label: "End X", default: 10, unit: "m", validate: num },
+      { kind: "number", key: "ez", label: "End Z", default: 5, unit: "m", validate: num },
+    ],
+    submitLabel: "Route",
+  });
+  if (!vals) return;
+  const flowRate = Number(vals.flow);
+  const elevation = Number(vals.elev);
+  const startParts = [Number(vals.sx), Number(vals.sz)];
+  const endParts = [Number(vals.ex), Number(vals.ez)];
 
   // Run the route
   const mep = (ctx.features as any).mep;

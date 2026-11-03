@@ -6,6 +6,7 @@
  * BIM-experience commands and Modify actions (user shortcuts are added to the registry).
  */
 import { shortcuts } from "./shortcuts";
+import { confirmDialog } from "./form-modal";
 import { listCommands } from "./command-palette";
 import { listBimCommands, executeBimCommand } from "./bim-experience";
 import { listModifyActions, runModifyAction } from "./modify-actions";
@@ -131,7 +132,7 @@ export function openShortcutEditor(): void {
       let draft = "";
       box.onfocus = () => { draft = ""; box.value = ""; box.placeholder = "Type keys…"; box.style.borderColor = "#38bdf8"; };
       box.onblur = () => { box.style.borderColor = "#3a4050"; box.placeholder = "Not assigned"; box.value = prettyKeys(effective(r).startsWith("none:") ? "" : effective(r)); };
-      box.onkeydown = (e) => {
+      box.onkeydown = async (e) => {
         e.stopPropagation();
         if (e.key === "Escape") { e.preventDefault(); box.blur(); return; }
         if (e.key === "Tab") return;
@@ -144,7 +145,7 @@ export function openShortcutEditor(): void {
           const other = findConflict(eff(), r.key, keys);
           if (other) {
             const o = rows.find((x) => x.key === other)!;
-            if (!window.confirm(`"${prettyKeys(keys)}" is already used by "${o.label}". Reassign it to "${r.label}"?`)) return;
+            if (!(await confirmDialog("Shortcut conflict", `"${prettyKeys(keys)}" is already used by "${o.label}". Reassign it to "${r.label}"?`))) return;
             assign(o, "");
           }
           assign(r, keys);
@@ -175,8 +176,8 @@ export function openShortcutEditor(): void {
     if (!list.firstChild) list.textContent = "No commands match.";
   };
   search.oninput = draw;
-  resetAll.onclick = () => {
-    if (!window.confirm("Reset every shortcut to its built-in value?")) return;
+  resetAll.onclick = async () => {
+    if (!(await confirmDialog("Reset shortcuts", "Reset every shortcut to its built-in value?"))) return;
     for (const key of Object.keys(store)) {
       const [kind, ...rest] = key.split(":"); const id = rest.join(":");
       if (kind === "reg") { const d = defaults.get(id); if (d != null) shortcuts.setKeys(id, d); } else shortcuts.unregister(`user:${key}`);

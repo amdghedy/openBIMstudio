@@ -1,4 +1,5 @@
 /** Floating Issues panel: create/expand/comment/status + BCF import/export. */
+import { confirmDialog } from "./form-modal";
 import { ctx } from "../core/context";
 import {
   getIssues, createIssue, addComment, setStatus, setPriority, deleteIssue,
@@ -156,7 +157,7 @@ function issueNode(issue: Issue) {
       const next = ORDER_P[(ORDER_P.indexOf(issue.priority) + 1) % ORDER_P.length];
       setPriority(issue.id, next);
     }, "Cycle priority"),
-    miniBtn("🗑", () => { if (confirm(`Delete issue "${issue.title}"?`)) { deleteIssue(issue.id); renderHeader(); } }, "Delete issue"),
+    miniBtn("🗑", () => { void confirmDialog("Delete issue", `Delete issue "${issue.title}"?`).then((ok) => { if (ok) { deleteIssue(issue.id); renderHeader(); } }); }, "Delete issue"),
   );
   details.appendChild(btns);
 

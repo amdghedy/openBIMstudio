@@ -8,6 +8,7 @@
  * resolves, so badges, counters, and active states stay in sync. */
 import { getNorthState, onNorthChanged } from "../modules/north/north";
 import * as THREE from "three";
+import { confirmDialog } from "../features/form-modal";
 import { ctx } from "../core/context";
 import { onNotify, __dispatchToSubscribers, uiAlert } from "../core/notify";
 import { pickFiles, loadIfcFiles, loadFragFiles } from "../features/importer";
@@ -2024,7 +2025,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("clear", "Clear All", safe(async () => {
         if (!getEditCount()) { toast("No edits to clear.", "info"); return; }
-        if (!confirm(`Revert all ${getEditCount()} edit(s)?`)) return;
+        if (!(await confirmDialog("Revert edits", `Revert all ${getEditCount()} edit(s)?`))) return;
         await clearAllEdits();
         toast("All edits reverted.", "success");
       }, "Clear all edits"), {
@@ -2141,7 +2142,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("show-all", "Revert All", safe(async () => {
         if (!getEditCount()) { toast("No edits.", "info"); return; }
-        if (!confirm(`Revert all ${getEditCount()} edit(s)?`)) return;
+        if (!(await confirmDialog("Revert edits", `Revert all ${getEditCount()} edit(s)?`))) return;
         await clearAllEdits();
       }, "Revert all"), {
         title: "Revert every edit and unhide all originals",

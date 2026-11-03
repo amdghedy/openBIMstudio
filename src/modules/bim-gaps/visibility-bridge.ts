@@ -30,6 +30,7 @@ import { notify } from "../../core/notify";
 import { visibilityFilter } from "../visibility/visibility-filter";
 import { phasesStore } from "../phases/phases";
 import { designOptionsStore } from "../design-options/design-options";
+import { pickFromList } from "../../features/form-modal";
 
 type Any = Record<string, any>;
 const FRAG_PREFIX = "frag:";
@@ -334,18 +335,20 @@ export async function tagSelection(patch: { phaseCreated?: string | null; phaseD
   return n;
 }
 
-function pick<T extends { id: string; name: string }>(title: string, items: T[], allowNone = true): string | null | undefined {
+async function pick<T extends { id: string; name: string }>(title: string, items: T[], allowNone = true): Promise<string | null | undefined> {
   if (!items.length) { notify("warn", `${title}: none defined yet`); return undefined; }
-  const lines = items.map((it, i) => `${i + 1}. ${it.name}`).join("\n");
-  const ans = window.prompt(`${title}\n${lines}${allowNone ? "\n0. (none)" : ""}`, "1");
+  const NONE = "__none__";
+  const options = items.map((it, i) => ({ value: String(i + 1), label: `${i + 1}. ${it.name}` }));
+  if (allowNone) options.push({ value: NONE, label: "0. (none)" });
+  const ans = await pickFromList(title, title, options, "1");
   if (ans === null) return undefined;
-  const i = Number(ans.trim());
-  if (allowNone && i === 0) return null;
+  if (allowNone && ans === NONE) return null;
+  const i = Number(ans);
   return Number.isInteger(i) && i >= 1 && i <= items.length ? items[i - 1].id : undefined;
 }
 
 export async function promptAssignPhase(kind: "created" | "demolished"): Promise<void> {
-  const id = pick(`Phase ${kind} for selection`, phasesStore.list() as Array<{ id: string; name: string }>);
+  const id = await pick(`Phase ${kind} for selection`, phasesStore.list() as Array<{ id: string; name: string }>);
   if (id === undefined) return;
   const n = await tagSelection(kind === "created" ? { phaseCreated: id } : { phaseDemolished: id });
   notify(n ? "success" : "info", n ? `Phase ${kind} set on ${n} element(s)` : "Select authored elements first");
@@ -354,7 +357,7 @@ export async function promptAssignPhase(kind: "created" | "demolished"): Promise
 export async function promptAssignDesignOption(): Promise<void> {
   const opts: Array<{ id: string; name: string }> = [];
   for (const s of designOptionsStore.listSets()) for (const o of s.options) opts.push({ id: o.id, name: `${s.name} / ${o.name}` });
-  const id = pick("Design option for selection", opts);
+  const id = await pick("Design option for selection", opts);
   if (id === undefined) return;
   const n = await tagSelection({ designOptionId: id });
   notify(n ? "success" : "info", n ? `Design option set on ${n} element(s)` : "Select authored elements first");

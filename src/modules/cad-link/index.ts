@@ -794,7 +794,7 @@ export async function createElementsFromCad(id: string): Promise<number> {
   if (!cfg || !cfg.layers.size) return 0;
   const segs = collectLayerSegments(l.geoPlan, cfg.layers);
   if (!segs.length) { toast("No lines on the chosen layers.", "warn"); return 0; }
-  if (segs.length > 500 && !confirm(`Create ${segs.length} elements?`)) return 0;
+  if (segs.length > 500 && !(await (await import("../../features/form-modal")).confirmDialog("Create elements", `Create ${segs.length} elements?`))) return 0;
   const auth: Any = (ctx.features as Any).authoring ?? await import("../../features/authoring");
   let n = 0;
   for (const s of segs) {

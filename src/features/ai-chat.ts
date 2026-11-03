@@ -37,6 +37,7 @@ import {
   type ChatMessage,
   type ProviderConfig,
 } from "./ai-providers";
+import { confirmDialog } from "./form-modal";
 import {
   TOOLS,
   executeTool,
@@ -689,9 +690,9 @@ function toggleHistoryDropdown(anchor: HTMLElement): void {
       "padding:2px 5px;background:transparent;color:var(--text-secondary);" +
       "border:1px solid var(--border-default);border-radius:3px;" +
       "cursor:pointer;font-size:10px;flex-shrink:0";
-    del.onclick = (ev) => {
+    del.onclick = async (ev) => {
       ev.stopPropagation();
-      if (!confirm(`Delete "${c.title}"?`)) return;
+      if (!(await confirmDialog("Delete conversation", `Delete "${c.title}"?`))) return;
       deleteConversation(c.id);
       historyDropdown?.remove();
       historyDropdown = null;
@@ -1317,7 +1318,7 @@ function renderSettings(): void {
     "border:1px solid rgba(239,68,68,.5);border-radius:5px;cursor:pointer;" +
     "font:600 11.5px system-ui";
   idxClear.onclick = async () => {
-    if (!confirm("Clear the semantic index?")) return;
+    if (!(await confirmDialog("Clear index", "Clear the semantic index?"))) return;
     await clearIndex();
     idxStatus.textContent = "Index cleared.";
   };

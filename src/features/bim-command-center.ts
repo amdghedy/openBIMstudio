@@ -8,6 +8,8 @@
  * is missing. Opens via toolbar, Ctrl+Shift+R, or command palette.
  */
 
+import { promptLine } from "./form-modal";
+
 type Any = Record<string, any>;
 
 let panel: HTMLDivElement | null = null;
@@ -228,9 +230,11 @@ function buildBody(host: HTMLElement): void {
           toast("Select elements to group", "info");
           return;
         }
-        const name = window.prompt("Group name:", "Group") ?? "Group";
-        const g = (window as Any).__obsGroups?.createFromSelection?.(name, ids, true);
-        toast(g ? `Group "${name}" created` : "Groups not ready", g ? "success" : "warn");
+        void promptLine("Create group", "Group name:", "Group").then((name) => {
+          if (name == null) return;
+          const g = (window as Any).__obsGroups?.createFromSelection?.(name, ids, true);
+          toast(g ? `Group "${name}" created` : "Groups not ready", g ? "success" : "warn");
+        });
       }, has("__obsGroups")),
       btn("Create Similar", "Same type tool", () => {
         (window as Any).__obsBimParity?.createSimilar?.();

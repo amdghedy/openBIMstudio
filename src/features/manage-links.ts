@@ -1,6 +1,7 @@
 import { escapeHtml } from "../core/html-escape";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
+import { promptLine, confirmDialog } from "./form-modal";
 import { downloadFragModel } from "../modules/export/frag";
 import { markDirty } from "../modules/projects/projects";
 
@@ -103,10 +104,10 @@ export function openManageLinks() {
             const camera = await import("./camera-tools");
             camera.focusOnBox(bounds);
           }),
-          btn("Point size", () => {
+          btn("Point size", async () => {
             const material = cloud.material;
             const current = Number(material?.size ?? 0.05);
-            const raw = prompt("Point size in model units:", String(current));
+            const raw = await promptLine("Point size", "Point size in model units:", String(current));
             if (raw == null) return;
             const size = Number(raw);
             if (!Number.isFinite(size) || size <= 0) throw new Error("Enter a point size greater than zero.");
@@ -114,9 +115,9 @@ export function openManageLinks() {
             else if (material) { material.size = size; material.needsUpdate = true; }
             markDirty();
           }),
-          btn("Remove", () => {
+          btn("Remove", async () => {
             const name = cloud.name || "this point cloud";
-            if (!confirm(`Remove ${name} from the current scene?`)) return;
+            if (!(await confirmDialog("Remove point cloud", `Remove ${name} from the current scene?`))) return;
             cloud.parent?.remove(cloud);
             cloud.geometry?.dispose?.();
             if (Array.isArray(cloud.material)) cloud.material.forEach((m: any) => m.dispose?.());
@@ -189,7 +190,7 @@ export function openManageLinks() {
             };
             i.click();
           }),
-          btn("Remove", () => { api.remove(l.id); renderTable(); }, true),
+          btn("Remove", async () => { api.remove(l.id); renderTable(); }, true),
         );
         tr.append(nameTd, st, ty, ac);
         tbody.appendChild(tr);
@@ -250,7 +251,7 @@ export function openManageLinks() {
         mini("Offset", "Set X, Y, Z offset in metres", async () => {
           const m = await imp();
           const cur = m.getModelOffset(modelId) ?? [0, 0, 0];
-          const raw = prompt("Offset X, Y, Z in metres (X east, Y up, Z north):", cur.map((v) => +v.toFixed(3)).join(", "));
+          const raw = await promptLine("Model offset", "Offset X, Y, Z in metres (X east, Y up, Z north):", cur.map((v) => +v.toFixed(3)).join(", "));
           if (raw == null) return;
           const v = raw.split(/[ ,;]+/).filter(Boolean).map(Number);
           if (v.length !== 3 || v.some((n) => !Number.isFinite(n))) throw new Error("Enter three numbers: x, y, z");
@@ -260,7 +261,7 @@ export function openManageLinks() {
         }),
         mini("Rotate", "Rotate the link about the vertical axis (degrees, counter-clockwise from above)", async () => {
           const m = await imp();
-          const raw = prompt("Rotation in degrees about the vertical axis:", String(+m.getModelRotation(modelId).toFixed(3)));
+          const raw = await promptLine("Model rotation", "Rotation in degrees about the vertical axis:", String(+m.getModelRotation(modelId).toFixed(3)));
           if (raw == null) return;
           const d = Number(raw.trim());
           if (!Number.isFinite(d)) throw new Error("Enter a number of degrees");

@@ -25,7 +25,7 @@ for (const f of srcFiles) {
   blocking += (t.match(/(^|[^.\w])(window\.)?(prompt|confirm)\(/gm) || []).length;
 }
 ok("no blocking alert() calls in src (use uiAlert / notify)", alerts === 0, alerts + " found");
-const BASELINE = 92;
+const BASELINE = 0;
 ok("prompt()/confirm() count does not grow (baseline " + BASELINE + ", now " + blocking + ")", blocking <= BASELINE, "convert new ones to form-modal promptLine/confirmDialog");
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

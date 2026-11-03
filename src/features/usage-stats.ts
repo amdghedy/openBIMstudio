@@ -1,4 +1,6 @@
 /** Cumulative usage tracking + welcome badge. Self-contained, no ctx dependency. */
+
+import { confirmDialog } from "./form-modal";
 const STORAGE_KEY = 'obs.usage.v1';
 const CLICK_DEBOUNCE_MS = 400;
 const SESSION_GAP_MS = 30 * 60 * 1000;
@@ -208,7 +210,9 @@ export function mountUsageBadge(target: HTMLElement, opts: UsageBadgeOptions = {
     el.innerHTML = rows.join('');
     if (showReset) {
       el.querySelector('.obs-usage-reset')?.addEventListener('click', () => {
-        if (confirm('Reset your local usage stats?')) { cache = defaults(); save(cache); notify(); }
+        void confirmDialog('Reset usage stats', 'Reset your local usage stats?').then((ok) => {
+          if (ok) { cache = defaults(); save(cache); notify(); }
+        });
       });
     }
   };

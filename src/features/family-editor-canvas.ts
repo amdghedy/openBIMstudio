@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { familyStore } from "../modules/families/store";
 import type { FamilyDefinition } from "../modules/families/types";
 import { uiAlert } from "../core/notify";
+import { promptLine } from "./form-modal";
 
 let dialog: HTMLDivElement | null = null;
 let canvas: HTMLCanvasElement | null = null;
@@ -224,13 +225,14 @@ function renderPreview() {
   animate();
 }
 
-function saveFamily() {
+async function saveFamily(): Promise<void> {
   if (!currentShape) { uiAlert("Draw a shape first."); return; }
-  const name = prompt("Family name:", "Custom Column");
+  const shape = currentShape;
+  const name = await promptLine("Save family", "Family name:", "Custom Column");
   if (!name) return;
 
-  const w = currentShape.w / SCALE;
-  const h = currentShape.h / SCALE;
+  const w = shape.w / SCALE;
+  const h = shape.h / SCALE;
 
   const family: Omit<FamilyDefinition, "id" | "schemaVersion" | "builtIn"> = {
     name,
@@ -241,7 +243,7 @@ function saveFamily() {
       { name: "depth",  type: "length", scope: "instance", default: h, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
       { name: "height", type: "length", scope: "instance", default: 3.0, editable: true, step: 0.1, unit: "m", group: "Dimensions" },
     ],
-    geometry: currentShape.type === "rect"
+    geometry: shape.type === "rect"
       ? { kind: "box", w: { ref: "width" }, d: { ref: "depth" }, h: { ref: "height" } }
       : { kind: "cylinder", r: { expr: "width / 2" }, h: { ref: "height" } },
     types: [

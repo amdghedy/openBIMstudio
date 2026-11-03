@@ -10,33 +10,45 @@
 import { registerCommand } from "./command-palette";
 import { getSelectedIds } from "./authoring";
 import { uiAlert } from "../core/notify";
+import { openFormModal, promptLine } from "./form-modal";
 
-export function runAlignLockAction(): void {
+export async function runAlignLockAction(): Promise<void> {
   const ids = (getSelectedIds() as string[]) || [];
   if (ids.length === 0) {
     uiAlert("Please select at least one element to align.");
     return;
   }
-  const axis = prompt("Enter alignment axis ('x' or 'y'):", "x");
-  if (!axis || (axis !== "x" && axis !== "y")) return;
-  const targetStr = prompt(`Enter target coordinate on ${axis.toUpperCase()} axis:`, "0");
-  if (targetStr === null) return;
-  const target = parseFloat(targetStr);
+  const res = await openFormModal({
+    title: "Align with Lock Constraint",
+    submitLabel: "Align",
+    fields: [
+      { kind: "select", key: "axis", label: "Alignment axis", default: "x", options: [["x", "X"], ["y", "Y"]] },
+      {
+        kind: "number", key: "target", label: "Target coordinate", default: 0,
+        validate: (v) => (Number.isFinite(parseFloat(String(v))) ? null : "Invalid coordinate number."),
+      },
+      { kind: "checkbox", key: "lock", label: "Lock this alignment constraint persistently", default: false },
+    ],
+  });
+  if (!res) return;
+  const axis = String(res.axis);
+  if (axis !== "x" && axis !== "y") return;
+  const target = parseFloat(String(res.target));
   if (isNaN(target)) {
     uiAlert("Invalid coordinate number.");
     return;
   }
-  const lock = confirm("Do you want to lock this alignment constraint persistently?");
+  const lock = !!res.lock;
   uiAlert(`Aligned ${ids.length} element(s) to ${axis.toUpperCase()} = ${target} (Lock: ${lock ? "Enabled" : "Disabled"}).`);
 }
 
-export function runSplitWithGapAction(): void {
+export async function runSplitWithGapAction(): Promise<void> {
   const ids = (getSelectedIds() as string[]) || [];
   if (ids.length === 0) {
     uiAlert("Please select a linear element to split.");
     return;
   }
-  const gapStr = prompt("Enter gap distance in meters (e.g. 0.05 for 50mm expansion joint):", "0.05");
+  const gapStr = await promptLine("Split with Gap", "Gap distance in meters", "0.05", undefined, "e.g. 0.05 for a 50mm expansion joint");
   if (gapStr === null) return;
   const gap = parseFloat(gapStr);
   if (isNaN(gap) || gap < 0) {

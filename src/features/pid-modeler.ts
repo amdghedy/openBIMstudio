@@ -7,6 +7,7 @@
  */
 
 import { ctx } from "../core/context";
+import { promptLine, confirmDialog } from "./form-modal";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const STORE_KEY = "obs.pid.diagram.v1";
@@ -102,8 +103,8 @@ export function setupPidModeler(): void {
   clearBtn.style.cssText =
     "padding:4px 10px;background:transparent;color:#fca5a5;border:1px solid #ef4444;" +
     "border-radius:4px;cursor:pointer;font:11px system-ui";
-  clearBtn.onclick = () => {
-    if (!confirm("Clear the P&ID diagram?")) return;
+  clearBtn.onclick = async () => {
+    if (!(await confirmDialog("Clear P&ID", "Clear the P&ID diagram?"))) return;
     diagram = { symbols: [], lines: [] };
     saveDiagram();
     render();
@@ -212,7 +213,7 @@ function render(): void {
   canvasHost.appendChild(svg);
 }
 
-function placeAt(x: number, y: number): void {
+async function placeAt(x: number, y: number): Promise<void> {
   if (currentTool === "line") {
     if (!pendingLineStart) {
       pendingLineStart = { x, y };
@@ -231,16 +232,17 @@ function placeAt(x: number, y: number): void {
     return;
   }
 
-  const label = currentTool === "instrument"
-    ? prompt("Instrument tag (e.g. FT-101):", "FT-101")
-    : prompt("Symbol label:", currentTool.toUpperCase());
+  const tool = currentTool;
+  const label = tool === "instrument"
+    ? await promptLine("Instrument tag", "Instrument tag (e.g. FT-101):", "FT-101")
+    : await promptLine("Symbol label", "Symbol label:", tool.toUpperCase());
   if (label == null) return;
 
   diagram.symbols.push({
     id: "s-" + Date.now().toString(36),
-    kind: currentTool,
+    kind: tool,
     x, y,
-    label: label || currentTool,
+    label: label || tool,
   });
   saveDiagram();
   render();

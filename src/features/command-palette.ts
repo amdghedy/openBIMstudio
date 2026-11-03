@@ -10,6 +10,7 @@
  * Commands are contributed by any module via `registerCommand()`; the palette
  * itself ships a bootstrap list of application commands on first setup.
  */
+import { confirmDialog } from "./form-modal";
 import { promptLine } from "./form-modal";
 import * as THREE from "three";
 import { ctx } from "../core/context";
@@ -422,8 +423,8 @@ function bootstrapCommands(): void {
     id: "privacy.forget-secrets",
     label: "Privacy: forget saved API keys, tokens and AI approvals",
     category: "File",
-    run: () => {
-      if (!window.confirm("Remove every saved API key, access token and cloud-AI approval from this browser?")) return;
+    run: async () => {
+      if (!(await confirmDialog("Forget saved secrets", "Remove every saved API key, access token and cloud-AI approval from this browser?"))) return;
       void Promise.all([import("../core/secure-store"), import("./ai-privacy"), import("../modules/cde/store")]).then(([sec, priv, cde]) => {
         sec.secureWipe(); priv.revokeAiConsent(); cde.clearAllCdeConfig();
         notify("success", "Saved keys, tokens and approvals were removed.");

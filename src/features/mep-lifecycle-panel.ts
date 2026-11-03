@@ -1,6 +1,7 @@
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
 import { uiAlert } from "../core/notify";
+import { openFormModal } from "./form-modal";
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" } as Record<string,string>)[c]);
 
@@ -37,13 +38,22 @@ export function openMepLifecyclePanel(): void {
     } catch (e) { target.textContent = e instanceof Error ? e.message : String(e); }
   };
   select?.addEventListener("change", render);
-  card.querySelector("#obs-mep-life-add-panel")?.addEventListener("click", () => {
-    const name = prompt("Panel name:");
-    if (!name?.trim()) return;
-    const voltageV = Number(prompt("Nominal voltage (V):", "230"));
-    const phase = Number(prompt("Phase (1 or 3):", "1"));
-    const busRatingA = Number(prompt("Bus rating (A):", "100"));
-    const circuitSpaces = Number(prompt("Available circuit spaces:", "24"));
+  card.querySelector("#obs-mep-life-add-panel")?.addEventListener("click", async () => {
+    const v = await openFormModal({
+      title: "Add electrical panel",
+      fields: [
+        { kind: "text", key: "name", label: "Panel name", default: "", validate: x => String(x).trim() ? null : "Name is required" },
+        { kind: "number", key: "voltageV", label: "Nominal voltage", default: 230, unit: "V", validate: x => Number.isFinite(Number(x)) && Number(x) > 0 ? null : "Must be positive" },
+        { kind: "number", key: "phase", label: "Phase (1 or 3)", default: 1, validate: x => [1, 3].includes(Number(x)) ? null : "Must be 1 or 3" },
+        { kind: "number", key: "busRatingA", label: "Bus rating", default: 100, unit: "A", validate: x => Number.isFinite(Number(x)) && Number(x) > 0 ? null : "Must be positive" },
+        { kind: "number", key: "circuitSpaces", label: "Available circuit spaces", default: 24, validate: x => Number.isInteger(Number(x)) && Number(x) >= 0 ? null : "Must be a non-negative integer" },
+      ],
+      submitLabel: "Add panel",
+    });
+    if (!v) return;
+    const name = String(v.name);
+    const voltageV = Number(v.voltageV), phase = Number(v.phase), busRatingA = Number(v.busRatingA), circuitSpaces = Number(v.circuitSpaces);
+    if (!name.trim()) return;
     if (!Number.isFinite(voltageV) || voltageV <= 0 || ![1,3].includes(phase) ||
         !Number.isFinite(busRatingA) || busRatingA <= 0 || !Number.isInteger(circuitSpaces) || circuitSpaces < 0) {
       uiAlert("Invalid panel data. Enter positive voltage and bus rating, phase 1 or 3, and non-negative integer circuit spaces."); return;
@@ -55,17 +65,26 @@ export function openMepLifecyclePanel(): void {
     if (issues.some((d: any) => d.severity === "error")) uiAlert("Panel saved with engineering diagnostics. Review the diagnostics panel.");
     overlay.remove(); openMepLifecyclePanel();
   });
-  card.querySelector("#obs-mep-life-add-load")?.addEventListener("click", () => {
+  card.querySelector("#obs-mep-life-add-load")?.addEventListener("click", async () => {
     const current = lifecycle.snapshot();
     const panel = current.panels.find((p: any) => p.id === select?.value);
     if (!panel) { uiAlert("Create or select an electrical panel first."); return; }
-    const name = prompt("Load name:");
-    if (!name?.trim()) return;
-    const apparentPowerVA = Number(prompt("Connected apparent power (VA):", "500"));
-    const circuitNumber = Number(prompt("Circuit number:", String(Math.max(0, ...panel.circuits.map((x: any) => x.circuitNumber)) + 1)));
-    const breakerRatingA = Number(prompt("Breaker rating (A):", "10"));
-    const poles = Number(prompt("Breaker poles (1, 2 or 3):", "1"));
-    const demandFactor = Number(prompt("Demand factor (0–1):", "1"));
+    const v = await openFormModal({
+      title: "Add electrical load",
+      fields: [
+        { kind: "text", key: "name", label: "Load name", default: "", validate: x => String(x).trim() ? null : "Name is required" },
+        { kind: "number", key: "apparentPowerVA", label: "Connected apparent power", default: 500, unit: "VA", validate: x => Number.isFinite(Number(x)) && Number(x) >= 0 ? null : "Must be >= 0" },
+        { kind: "number", key: "circuitNumber", label: "Circuit number", default: Math.max(0, ...panel.circuits.map((x: any) => x.circuitNumber)) + 1, validate: x => Number.isInteger(Number(x)) && Number(x) >= 1 ? null : "Must be an integer >= 1" },
+        { kind: "number", key: "breakerRatingA", label: "Breaker rating", default: 10, unit: "A", validate: x => Number.isFinite(Number(x)) && Number(x) > 0 ? null : "Must be positive" },
+        { kind: "number", key: "poles", label: "Breaker poles (1, 2 or 3)", default: 1, validate: x => [1, 2, 3].includes(Number(x)) ? null : "Must be 1, 2 or 3" },
+        { kind: "number", key: "demandFactor", label: "Demand factor (0–1)", default: 1, step: 0.05, validate: x => Number.isFinite(Number(x)) && Number(x) >= 0 && Number(x) <= 1 ? null : "Must be between 0 and 1" },
+      ],
+      submitLabel: "Add load",
+    });
+    if (!v) return;
+    const name = String(v.name);
+    if (!name.trim()) return;
+    const apparentPowerVA = Number(v.apparentPowerVA), circuitNumber = Number(v.circuitNumber), breakerRatingA = Number(v.breakerRatingA), poles = Number(v.poles), demandFactor = Number(v.demandFactor);
     if (!Number.isFinite(apparentPowerVA) || apparentPowerVA < 0 || !Number.isInteger(circuitNumber) || circuitNumber < 1 ||
         !Number.isFinite(breakerRatingA) || breakerRatingA <= 0 || ![1,2,3].includes(poles) ||
         !Number.isFinite(demandFactor) || demandFactor < 0 || demandFactor > 1) {

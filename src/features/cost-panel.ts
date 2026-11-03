@@ -8,6 +8,7 @@ import {
 import { computeTakeoff, getRows } from "../modules/cost/quantities";
 import type { CostItem, CostUnit, TakeoffRow } from "../modules/cost/types";
 import { uiAlert } from "../core/notify";
+import { confirmDialog } from "./form-modal";
 
 const UNITS: CostUnit[] = ["m", "m2", "m3", "pcs"];
 
@@ -219,7 +220,7 @@ function renderItems() {
       cell(it.category, (v) => updateCostItem(it.id, { category: v }), "100px"),
       (() => {
         const d = document.createElement("td"); d.style.cssText = "padding:3px 4px";
-        d.appendChild(miniBtn("🗑", () => { if (confirm(`Delete cost item "${it.code} ${it.name}"?`)) { deleteCostItem(it.id); renderBody(); } }));
+        d.appendChild(miniBtn("🗑", async () => { if (await confirmDialog("Delete cost item", `Delete cost item "${it.code} ${it.name}"?`)) { deleteCostItem(it.id); renderBody(); } }));
         return d;
       })(),
     );

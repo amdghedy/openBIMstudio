@@ -9,6 +9,7 @@
  * Call setupBimParityBridge() from critical-gaps-boot (already wired).
  */
 
+import { promptLine } from "./form-modal";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
@@ -393,9 +394,11 @@ async function registerCommands(): Promise<void> {
           notify("info", "Select elements to group");
           return;
         }
-        const name = window.prompt("Group name:", "Group") ?? "Group";
-        const g = (window as Any).__obsGroups?.createFromSelection?.(name, ids, true);
-        if (g) notify("success", `Group "${name}" created`, { timeout: 1800 });
+        void promptLine("Create group", "Group name:", "Group").then((name) => {
+          if (name == null) return;
+          const g = (window as Any).__obsGroups?.createFromSelection?.(name, ids, true);
+          if (g) notify("success", `Group "${name}" created`, { timeout: 1800 });
+        });
       },
     },
     {

@@ -31,6 +31,7 @@ import { getElements, getGrids, getLevels } from "./authoring";
 import { validateNativeModel, summarizeDiagnostics } from "../modules/native-bim/model-validation";
 import { validateDocumentationSet, summarizeDocumentationDiagnostics } from "../modules/native-bim/documentation-validation";
 import { uiAlert } from "../core/notify";
+import { confirmDialog } from "./form-modal";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PANEL_ID = "obs-sheets-2d-panel";
@@ -114,14 +115,16 @@ export function setupSheets2dPanel(): void {
   });
   const delSheetBtn = mkBtn("Delete Sheet", () => {
     if (!currentSheetId) return;
-    const s = getSheet(currentSheetId);
+    const sheetId = currentSheetId;
+    const s = getSheet(sheetId);
     if (!s) return;
-    if (confirm("Delete sheet \"" + s.number + " - " + s.name + "\"?")) {
-      deleteSheet(currentSheetId);
-      currentSheetId = null;
+    void confirmDialog("Delete sheet", "Delete sheet \"" + s.number + " - " + s.name + "\"?").then((ok) => {
+      if (!ok) return;
+      deleteSheet(sheetId);
+      if (currentSheetId === sheetId) currentSheetId = null;
       selectedVpId = null;
       render();
-    }
+    });
   });
   const delVpBtn = mkBtn("Delete Viewport", () => {
     if (!currentSheetId || !selectedVpId) return;

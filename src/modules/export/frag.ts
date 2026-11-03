@@ -137,8 +137,10 @@ export async function exportFragFromMenu(): Promise<void> {
     return;
   }
   // Multiple models: export all (one download each).
-  const choice = confirm(
-    `${ids.length} Fragments models are loaded.\n\nOK = save each as its own .frag file\nCancel = abort`,
+  const { confirmDialog } = await import("../../features/form-modal");
+  const choice = await confirmDialog(
+    "Export FRAG",
+    `${ids.length} Fragments models are loaded.\n\nConfirm = save each as its own .frag file\nCancel = abort`,
   );
   if (!choice) return;
   try {

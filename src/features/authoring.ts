@@ -85,6 +85,7 @@ import type { MepConnector } from "../modules/mep/connectors";
 import { lengthKeepRight, thicknessKeepFace, openingWidthKeepRight, heightKeepBase } from "../modules/native-bim/dimension-edit";
 import { registerTempDimProvider, type TempDimSpec, setupEditableTempDims } from "./temp-dimensions-edit";
 import { setupOptionsBar } from "./options-bar";
+import { promptLine, confirmDialog } from "./form-modal";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -3549,23 +3550,26 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
       const op = pendingOp;
       if (!op.base) {
         op.base = pt.clone();
-        const countStr = prompt("Array: number of copies?", "3");
-        if (!countStr) { pendingOp = { kind: "none" }; updateLabel(); return; }
-        const count = Math.floor(Number(countStr));
-        const spacingStr = prompt("Spacing (m)?", "3.0");
-        const spacing = Number(spacingStr);
-        if (!Number.isFinite(count) || count < 1 || count > 500 ||
-            !Number.isFinite(spacing) || spacing <= 0) {
-          window.dispatchEvent(new CustomEvent("obs-toast", {
-            detail: { message: "Array requires 1–500 copies and a positive spacing.", kind: "error" },
-          }));
-          pendingOp = { kind: "none" };
+        void (async () => {
+          const countStr = await promptLine("Array", "Number of copies:", "3");
+          if (!countStr) { pendingOp = { kind: "none" }; updateLabel(); return; }
+          const count = Math.floor(Number(countStr));
+          const spacingStr = await promptLine("Array", "Spacing (m):", "3.0");
+          if (spacingStr == null) { pendingOp = { kind: "none" }; updateLabel(); return; }
+          const spacing = Number(spacingStr);
+          if (!Number.isFinite(count) || count < 1 || count > 500 ||
+              !Number.isFinite(spacing) || spacing <= 0) {
+            window.dispatchEvent(new CustomEvent("obs-toast", {
+              detail: { message: "Array requires 1–500 copies and a positive spacing.", kind: "error" },
+            }));
+            pendingOp = { kind: "none" };
+            updateLabel();
+            return;
+          }
+          op.count = count;
+          op.spacing = spacing;
           updateLabel();
-          return;
-        }
-        op.count = count;
-        op.spacing = spacing;
-        updateLabel();
+        })();
         return;
       }
 
@@ -3623,24 +3627,26 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
         const [bx, bz] = src.params.end;
         const side = Math.sign((pt.x - ax) * (bz - az) - (pt.z - az) * (bx - ax));
         op.side = (side || 1) as 1 | -1;
-        const distanceStr = prompt("Offset distance (m)?", "0.2");
-        const distance = parseFloat(distanceStr ?? "0.2") || 0.2;
-        const dxv = (bz - az) / Math.hypot(bx - ax, bz - az);
-        const dzv = -(bx - ax) / Math.hypot(bx - ax, bz - az);
-        const ddx = dxv * distance * (op.side ?? 1);
-        const ddz = dzv * distance * (op.side ?? 1);
-        const clone: AuthoredElement = JSON.parse(JSON.stringify(src));
-        clone.id = uid();
-        clone.name = `${src.name} (offset)`;
-        if (clone.hostId) clone.hostId = undefined;
-        shiftParams(clone, ddx, ddz);
-        history.exec({
-          label: `Offset ${src.name}`,
-          apply: () => { elements.push(clone); rebuild(); markDirty(); },
-          revert: () => { const i = elements.indexOf(clone); if (i >= 0) elements.splice(i, 1); rebuild(); markDirty(); },
-        });
-        pendingOp = { kind: "none" };
-        updateLabel();
+        void (async () => {
+          const distanceStr = await promptLine("Offset", "Offset distance (m):", "0.2");
+          const distance = parseFloat(distanceStr ?? "0.2") || 0.2;
+          const dxv = (bz - az) / Math.hypot(bx - ax, bz - az);
+          const dzv = -(bx - ax) / Math.hypot(bx - ax, bz - az);
+          const ddx = dxv * distance * (op.side ?? 1);
+          const ddz = dzv * distance * (op.side ?? 1);
+          const clone: AuthoredElement = JSON.parse(JSON.stringify(src));
+          clone.id = uid();
+          clone.name = `${src.name} (offset)`;
+          if (clone.hostId) clone.hostId = undefined;
+          shiftParams(clone, ddx, ddz);
+          history.exec({
+            label: `Offset ${src.name}`,
+            apply: () => { elements.push(clone); rebuild(); markDirty(); },
+            revert: () => { const i = elements.indexOf(clone); if (i >= 0) elements.splice(i, 1); rebuild(); markDirty(); },
+          });
+          pendingOp = { kind: "none" };
+          updateLabel();
+        })();
       }
       break;
     }
@@ -4557,7 +4563,7 @@ export function setAuthoringTool(tool: Tool | string | null) {
   chainStart = null;
   chainStartDir = null;
   poly = [];
-  pendingOp = { kind: "none" };
+          pendingOp = { kind: "none" };
   clearPreviews();
   snapping.hideIndicator();
 
@@ -5338,9 +5344,9 @@ export function selectAllAuthored(ids: string[]): void {
   notifyAuthoringChange();
 }
 
-export function clearAllElements(force = false) {
+export async function clearAllElements(force = false): Promise<void> {
   if (!elements.length) return;
-  if (!force && !confirm(`Delete all ${elements.length} authored objects?`)) return;
+  if (!force && !(await confirmDialog("Delete all", `Delete all ${elements.length} authored objects?`))) return;
   const snapshot = JSON.parse(JSON.stringify(elements));
   history.exec({
     label: `Clear all ${elements.length} elements`,

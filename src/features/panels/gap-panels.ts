@@ -8,6 +8,7 @@ import { phasesStore } from "../../modules/phases/phases";
 import { designOptionsStore } from "../../modules/design-options/design-options";
 import { groupsStore } from "../../modules/groups/groups";
 import { copyMonitorStore } from "../../modules/copy-monitor/copy-monitor";
+import { promptLine } from "../form-modal";
 
 type PanelId = "rooms" | "phases" | "design-options" | "groups" | "copy-monitor";
 
@@ -202,7 +203,7 @@ function renderCopyMonitor(): string {
 function bindPanel(id: PanelId, el: HTMLDivElement): void {
   const body = el.querySelector("[data-body]") as HTMLElement;
 
-  body.addEventListener("click", (e) => {
+  body.addEventListener("click", async (e) => {
     const t = e.target as HTMLElement;
     const action = t.getAttribute("data-action");
     if (action === "add-room") {
@@ -218,14 +219,14 @@ function bindPanel(id: PanelId, el: HTMLDivElement): void {
       refresh(id);
     }
     if (action === "add-phase") {
-      const name = window.prompt("Phase name:", "Phase") ?? "";
+      const name = (await promptLine("New phase", "Phase name:", "Phase")) ?? "";
       if (name) {
         phasesStore.create(name);
         refresh(id);
       }
     }
     if (action === "add-set") {
-      const name = window.prompt("Option set name:", "Design Options") ?? "";
+      const name = (await promptLine("New option set", "Option set name:", "Design Options")) ?? "";
       if (name) {
         designOptionsStore.createSet(name);
         refresh(id);

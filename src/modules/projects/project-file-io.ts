@@ -203,9 +203,11 @@ export async function importProjectFile(file: Blob, handle: Handle | null = null
   let id = doc.id;
   if (existing) {
     const when = new Date(existing.updatedAt).toLocaleString();
-    const replace = window.confirm(
+    const { confirmDialog } = await import("../../features/form-modal");
+    const replace = await confirmDialog(
+      "Project already exists",
       `"${existing.name}" already exists in this browser (last saved ${when}).\n\n` +
-      `OK = replace it with the file's version.\nCancel = open the file as a separate copy.`);
+      `Confirm = replace it with the file's version.\nCancel = open the file as a separate copy.`);
     if (replace) {
       await store.deleteModelBlobs(id);
     } else {

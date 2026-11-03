@@ -9,6 +9,7 @@
  * This makes "Edit Selected" work whether the user clicked in the viewport,
  * picked from the model tree, or the OBC highlighter was driven by other code.
  */
+import { confirmDialog } from "./form-modal";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getElementTriangles, getElementTrianglesExact, type Tri } from "../modules/clash/geometry";
@@ -1170,7 +1171,7 @@ function ensurePanel(): HTMLDivElement {
     "border:1px solid rgba(239,68,68,.5);border-radius:5px;cursor:pointer;font:600 10.5px system-ui";
   clearBtn.onclick = async () => {
     if (!runtime.size) return;
-    if (!confirm(`Revert all ${runtime.size} edit(s)?`)) return;
+    if (!(await confirmDialog("Revert edits", `Revert all ${runtime.size} edit(s)?`))) return;
     await clearAllEdits();
     markDirty();
   };

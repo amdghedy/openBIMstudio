@@ -1,4 +1,5 @@
 import { ctx } from "../core/context";
+import { promptLine } from "./form-modal";
 
 type Any = Record<string, any>;
 
@@ -268,11 +269,11 @@ class Drafting2DLayer {
     }
 
     if (this.tool === "text") {
-      const text = window.prompt("Draft text:");
-
-      if (text) {
-        this.add({ kind: "text", a, text });
-      }
+      void promptLine("Draft text", "Draft text").then((text) => {
+        if (text) {
+          this.add({ kind: "text", a, text });
+        }
+      });
 
       return;
     }

@@ -729,7 +729,7 @@ function handleAutoDimClick(w: { x: number; z: number }): void {
 
 async function runAutoDimension(): Promise<void> {
   try {
-    const raw = window.prompt("Auto Dimension - distance from the outermost column / wall (cm):", "50");
+    const raw = await promptLine("Auto Dimension", "Distance from the outermost column / wall (cm)", "50");
     if (raw == null) return;
     const cm = parseFloat(raw);
     if (!Number.isFinite(cm) || cm < 0) { footerStatus("Auto Dimension: invalid distance"); return; }
@@ -1234,10 +1234,17 @@ function hitAnnotation(wx: number, wz: number): PlanAnno | null {
   }
   return null;
 }
-function runTagAll(): void {
-  const raw = window.prompt("Tag All - label:\n1 = Mark / Name\n2 = Size\n3 = Elevation\n4 = Material", "1");
-  if (raw == null) return;
-  const mode: TagMode = ({ "1": "category", "2": "size", "3": "elevation", "4": "material" } as Record<string, TagMode>)[raw.trim()] ?? "category";
+async function runTagAll(): Promise<void> {
+  const res = await openFormModal({
+    title: "Tag All",
+    submitLabel: "Tag",
+    fields: [{
+      kind: "select", key: "mode", label: "Label", default: "1",
+      options: [["1", "Mark / Name"], ["2", "Size"], ["3", "Elevation"], ["4", "Material"]],
+    }],
+  });
+  if (!res) return;
+  const mode: TagMode = ({ "1": "category", "2": "size", "3": "elevation", "4": "material" } as Record<string, TagMode>)[String(res.mode).trim()] ?? "category";
   const els = authoredEls();
   const only = planSelectedIds.size ? [...planSelectedIds] : undefined;
   const before = annoSnapshot();
@@ -1590,6 +1597,7 @@ let cadImageEl: SVGImageElement | null = null;
 // This enables the "trace over DWG" workflow: walls snap to DWG endpoints.
 import { storeUnderlayFromDxf, clearUnderlayData, setUnderlaySnapEnabled, isUnderlaySnapEnabled } from "./cad-underlay-snap";
 import { uiAlert } from "../core/notify";
+import { promptLine, openFormModal } from "./form-modal";
 
 async function loadCadFileAsUnderlay(file: File) {
   if (cadUnderlayUrl) URL.revokeObjectURL(cadUnderlayUrl);
@@ -3716,23 +3724,27 @@ canvasWrap.addEventListener("mousedown", (e) => {
         setPlanSelectedElement(hit.element);
         footerStatus(`${mode === "room" ? "Room" : "Tag"}: ${label}`);
       } else {
-        const label = prompt("Tag text:", "TAG");
-        if (label != null && label.trim()) {
-          { const beforeAnno = annoSnapshot(); planTags.push({ x:w.x, z:w.z, text:label.trim(), mode:"custom" }); recordAnno("Place tag", beforeAnno); }
-          if (currentPlan) renderPlan(currentPlan);
-          footerStatus(`Tag: ${label.trim()}`);
-        }
+        const tx = w.x, tz = w.z;
+        void promptLine("Tag", "Tag text", "TAG").then((label) => {
+          if (label != null && label.trim()) {
+            { const beforeAnno = annoSnapshot(); planTags.push({ x:tx, z:tz, text:label.trim(), mode:"custom" }); recordAnno("Place tag", beforeAnno); }
+            if (currentPlan) renderPlan(currentPlan);
+            footerStatus(`Tag: ${label.trim()}`);
+          }
+        });
       }
       return;
     }
 
     if (planMode === "text") {
-      const note = prompt("Text note (use \\n for a new line):", "Note");
-      if (note != null && note.trim()) {
-        { const beforeAnno = annoSnapshot(); planNotes.push({ x: w.x, z: w.z, text: note.trim().replace(/\\n/g, "\n") }); recordAnno("Place note", beforeAnno); }
-        if (currentPlan) renderPlan(currentPlan);
-        footerStatus(`Text placed`);
-      }
+      const nx = w.x, nz = w.z;
+      void promptLine("Text note", "Text note (use \\n for a new line)", "Note").then((note) => {
+        if (note != null && note.trim()) {
+          { const beforeAnno = annoSnapshot(); planNotes.push({ x: nx, z: nz, text: note.trim().replace(/\\n/g, "\n") }); recordAnno("Place note", beforeAnno); }
+          if (currentPlan) renderPlan(currentPlan);
+          footerStatus(`Text placed`);
+        }
+      });
       return;
     }
     return;
@@ -3883,7 +3895,7 @@ window.addEventListener("mouseup", () => {
   planDimDrag = null;
   if (dr.moved) { recordDims("Move dimension", dr.before); footerStatus("Dimension moved - Ctrl+Z undo"); }
 });
-canvasWrap.addEventListener("dblclick", (e) => {
+canvasWrap.addEventListener("dblclick", async (e) => {
   if (planMode !== "select") return;
   const w = clientToWorld(e.clientX, e.clientY);
   const an = w ? hitAnnotation(w.x, w.z) : null;
@@ -3891,12 +3903,12 @@ canvasWrap.addEventListener("dblclick", (e) => {
     e.preventDefault(); e.stopPropagation();
     const beforeAnno = annoSnapshot();
     if (an.kind === "note") {
-      const v = window.prompt("Note text (use \\n for a new line):", an.obj.text.replace(/\n/g, "\\n"));
+      const v = await promptLine("Edit note", "Note text (use \\n for a new line)", an.obj.text.replace(/\n/g, "\\n"));
       if (v == null || !v.trim()) return;
       an.obj.text = v.trim().replace(/\\n/g, "\n");
     } else {
       const t = an.obj;
-      const v = window.prompt(t.elementId && t.mode === "category" ? "Tag text (sets the element's Mark):" : "Tag text:", liveTagText(t));
+      const v = await promptLine("Edit tag", t.elementId && t.mode === "category" ? "Tag text (sets the element's Mark)" : "Tag text", liveTagText(t));
       if (v == null || !v.trim()) return;
       const el = t.elementId ? authoredEls().find((x) => String(x?.id) === String(t.elementId)) : null;
       if (el && t.mode === "category") {
@@ -3916,7 +3928,7 @@ canvasWrap.addEventListener("dblclick", (e) => {
   if (!d) return;
   e.preventDefault(); e.stopPropagation();
   const cur = d.textOverride ?? "";
-  const next = window.prompt("Dimension text (leave empty to show the measured value):", cur);
+  const next = await promptLine("Dimension text", "Dimension text (leave empty to show the measured value)", cur);
   if (next == null) return;
   const beforeSnap = dimSnapshot();
   const txt = next.trim();
@@ -4452,7 +4464,7 @@ export function setPlanToolFromRibbon(tool: string) {
   } else if (tool === "auto-dim-all" || tool === "dim-auto-all") {
     void runAutoDimension();
   } else if (tool === "tag-all") {
-    runTagAll();
+    void runTagAll();
   } else if (tool === "tag" || tool === "room-tag" || tool === "material-tag") {
     planMode = "tag";
     (window as any).__obsPlanTagMode = tool === "room-tag" ? "room" : tool === "material-tag" ? "material" : "category";

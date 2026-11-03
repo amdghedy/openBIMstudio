@@ -29,6 +29,7 @@ import { escapeHtml } from "../core/html-escape";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import { svgIcon, type IconName } from "./icon-set";
+import { promptLine, confirmDialog } from "./form-modal";
 
 type Tool =
   | "pan"
@@ -255,9 +256,10 @@ function activate(tab: DocTab | null): void {
   renderStrip();
 }
 
-function closeTab(tab: DocTab | null): void {
+async function closeTab(tab: DocTab | null): Promise<void> {
   if (!tab) return;
-  if (tab.engine.isDirty() && !window.confirm(`"${tab.title}" has unsaved changes. Close without saving?`)) return;
+  if (tab.engine.isDirty() && !(await confirmDialog("Unsaved changes", `"${tab.title}" has unsaved changes. Close without saving?`))) return;
+  if (!tabs.includes(tab)) return; // already closed while the dialog was open
   tab.engine.deactivate();
   tab.page.remove();
   const wrap = ribbonEngines.get(tab.engine);
@@ -275,13 +277,13 @@ function closeTab(tab: DocTab | null): void {
   renderStrip();
 }
 
-function closeOthers(keep: DocTab): void {
-  for (const t of [...tabs]) if (t !== keep) closeTab(t);
+async function closeOthers(keep: DocTab): Promise<void> {
+  for (const t of [...tabs]) if (t !== keep) await closeTab(t);
   activate(keep);
 }
 
-function closeAll(): void {
-  for (const t of [...tabs]) closeTab(t);
+async function closeAll(): Promise<void> {
+  for (const t of [...tabs]) await closeTab(t);
 }
 
 function saveAll(): void {
@@ -2516,17 +2518,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     el.querySelector("[data-r=lyr-close]")?.addEventListener("click", () => closeOverlay());
     el.querySelector("[data-r=lyr-new]")?.addEventListener("click", () => {
-      const newName = prompt("Enter new layer name:", `Layer${names.length + 1}`)?.trim();
-      if (newName) {
-        if (!doc!.layers.some((l) => l.name === newName)) {
-          doc!.layers.push({ name: newName, color: 7, lineType: "Continuous" });
-          currentLayer = newName;
-          closeOverlay();
-          buildLayers();
-          openLayerPropertiesManager();
-          logCmd(`Layer created: ${newName}`);
+      void promptLine("New layer", "Enter new layer name", `Layer${names.length + 1}`).then((raw) => {
+        const newName = raw?.trim();
+        if (newName) {
+          if (!doc!.layers.some((l) => l.name === newName)) {
+            doc!.layers.push({ name: newName, color: 7, lineType: "Continuous" });
+            currentLayer = newName;
+            closeOverlay();
+            buildLayers();
+            openLayerPropertiesManager();
+            logCmd(`Layer created: ${newName}`);
+          }
         }
-      }
+      });
     });
 
     el.querySelectorAll("tr[data-row-l]").forEach((tr) => {
@@ -3173,26 +3177,30 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         break;
       }
       case "note": {
-        const t = window.prompt("Enter text note:", "Note");
-        if (t) {
-          markups.push({ kind: "note", pts: [p], text: t });
-          results.push(`Note: ${t}`);
-          showMeas();
+        const notePt = p;
+        void promptLine("Text note", "Enter text note", "Note").then((t) => {
+          if (t) {
+            markups.push({ kind: "note", pts: [notePt], text: t });
+            results.push(`Note: ${t}`);
+            showMeas();
+          }
           draw();
-        }
+        });
         break;
       }
       case "leader": {
         pts.push(p);
         if (pts.length === 2) {
-          const t = window.prompt("Enter leader text:", "");
-          if (t) {
-            markups.push({ kind: "leader", pts: [...pts], text: t });
-            results.push(`Leader: ${t}`);
-            showMeas();
-            draw();
-          }
+          const leaderPts = [...pts];
           pts = [];
+          void promptLine("Leader", "Enter leader text", "").then((t) => {
+            if (t) {
+              markups.push({ kind: "leader", pts: leaderPts, text: t });
+              results.push(`Leader: ${t}`);
+              showMeas();
+            }
+            draw();
+          });
         }
         break;
       }
@@ -3200,17 +3208,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         pts.push(p);
         if (pts.length === 2) {
           const cur = M.distance(pts[0], pts[1]);
-          const knownStr = window.prompt("Enter known real distance for calibration:", cur.toFixed(3));
-          if (knownStr) {
-            const known = parseFloat(knownStr);
-            if (!isNaN(known) && known > 0 && cur > 0) {
-              scaleCal = scaleCal * (known / cur);
-              results.push(`Calibrated: 1 drawing unit = ${scaleCal.toFixed(4)} real units`);
-              showMeas();
-              logCmd(`Calibrated: scale factor = ${scaleCal.toFixed(4)}`);
-            }
-          }
           pts = [];
+          void promptLine("Calibrate", "Enter known real distance for calibration", cur.toFixed(3)).then((knownStr) => {
+            if (knownStr) {
+              const known = parseFloat(knownStr);
+              if (!isNaN(known) && known > 0 && cur > 0) {
+                scaleCal = scaleCal * (known / cur);
+                results.push(`Calibrated: 1 drawing unit = ${scaleCal.toFixed(4)} real units`);
+                showMeas();
+                logCmd(`Calibrated: scale factor = ${scaleCal.toFixed(4)}`);
+              }
+            }
+            draw();
+          });
         }
         break;
       }

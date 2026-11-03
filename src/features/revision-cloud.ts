@@ -1,6 +1,7 @@
 // BIM-style revisions + revision clouds.
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
+import { confirmDialog } from "./form-modal";
 
 export interface RevisionEntry {
   id: string;
@@ -104,10 +105,10 @@ export function removeCloud(id: string): void {
   save();
 }
 
-export function beginCloudPlacement(): void {
+export async function beginCloudPlacement(): Promise<void> {
   const visible = revisions.filter(function (r) { return r.visible; });
   if (!visible.length) {
-    const ok = confirm("No revisions defined. Create Revision 1 now?");
+    const ok = await confirmDialog("Revision cloud", "No revisions defined. Create Revision 1 now?");
     if (!ok) return;
     addRevision({ description: "Initial revision" });
   }

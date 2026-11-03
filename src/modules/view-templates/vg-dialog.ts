@@ -12,6 +12,7 @@ import {
   createDefaultVg,
 } from "./types";
 import { viewTemplatesStore } from "./view-templates-store";
+import { promptLine, confirmDialog } from "../../features/form-modal";
 
 type Any = Record<string, any>;
 
@@ -407,7 +408,7 @@ function wireEvents(dialog: HTMLElement): void {
   }
 }
 
-function handleAction(act: string): void {
+async function handleAction(act: string): Promise<void> {
   const sel = document.getElementById("vg-template-select") as HTMLSelectElement | null;
   const selectedTmpl = sel?.value || null;
 
@@ -442,11 +443,12 @@ function handleAction(act: string): void {
       notify("success", "Template applied to view");
       break;
     case "save-as-template": {
-      const name = window.prompt("Template name", "New View Template");
+      const vgSnap = draftVg;
+      const name = await promptLine("Save as template", "Template name", "New View Template");
       if (!name) return;
       const t = viewTemplatesStore.createTemplate({
         name: name.trim(),
-        vg: draftVg,
+        vg: vgSnap,
         appliesTo: ["plan", "section", "elevation", "3d", "ceiling"],
       });
       editingTemplateId = t.id;
@@ -469,16 +471,18 @@ function handleAction(act: string): void {
         notify("warning", "Select a template first");
         return;
       }
-      if (!window.confirm("Delete this view template?")) return;
-      viewTemplatesStore.deleteTemplate(selectedTmpl);
-      if (editingTemplateId === selectedTmpl) editingTemplateId = null;
+      const delId = selectedTmpl;
+      if (!(await confirmDialog("Delete view template", "Delete this view template?"))) return;
+      viewTemplatesStore.deleteTemplate(delId);
+      if (editingTemplateId === delId) editingTemplateId = null;
       notify("info", "Template deleted");
       renderBody();
       break;
     case "add-filter": {
-      const name = window.prompt("Filter name", "New Filter");
+      const vgTarget = draftVg;
+      const name = await promptLine("Add filter", "Filter name", "New Filter");
       if (!name) return;
-      draftVg.filters.push({
+      vgTarget.filters.push({
         id: `flt_${Date.now().toString(36)}`,
         name: name.trim(),
         category: "Walls",
