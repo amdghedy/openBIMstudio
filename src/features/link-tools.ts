@@ -96,7 +96,7 @@ export function linkIfc() {
             throw new Error(`All IFC entries inside "${file.name}" were empty.`);
           }
         } catch (err: any) {
-          toast(err?.message || String(err), "error");
+          toast(err?.message || String(err), "warn");
           throw err;
         }
         continue;
