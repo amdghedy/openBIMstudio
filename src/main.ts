@@ -1,3 +1,4 @@
+import { APP_VERSION } from "./version";
 import "./features/usage-boot";
 import { setupManageLinks } from "./features/manage-links";
 import { setupCadQueryPanel } from "./features/cad-query-panel";
@@ -6,13 +7,10 @@ import "./critical-gaps-boot";
 import "./critical-gaps-boot-strength";
 import { setupPluginSystem } from "./plugins/boot";
 /**
- * Open BIM Studio v52 — main entry point.
+ * Open BIM Studio — main entry point.
  *
- * Heavy-duty open BIM production platform:
- * parametric-ready authoring, sheets/production docs, 4D simulation,
- * clash detective, IDS, schedules, 5D cost, automation rules, materials,
- * BCF, AI — engineered to compete with BIM, Navisworks, Bentley,
- * BricsCAD BIM, Forma and Renga as the open standards monster of AEC.
+ * Open BIM Studio entry point: creates the viewer, then runs the named boot
+ * steps below. See docs/ARCHITECTURE.md for how the code is organised.
  */
 import { setupViewer } from "./core/setup";
 import { installEscapeAll } from "./core/escape-all";
@@ -395,9 +393,7 @@ computeSceneBounds();
 
 try { dumpServiceRegistry(); } catch { /* */ }
 
-console.log(
-  "[Open BIM Studio v52] Professional openBIM delivery platform online — sheets — 4D — automation — clash — IDS — BCF — schedules — 5D — authoring — materials — AI",
-);
+console.log(`[Open BIM Studio ${APP_VERSION}] ready`);
 
 
 

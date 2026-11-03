@@ -66,7 +66,9 @@ One install (none, actually — it's your browser). One license (MIT — yours).
 | Validate deliverables | IDS requirements, native model QA, rule packs, model health diagnostics |
 | Prefer open data | IFC, BCF, IDS, DXF, CSV, PDF — no proprietary lock-in, ever |
 
-> **Note:** The platform is actively developed and tool maturity varies. Every capability below exists in the codebase today; check the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md) for the current status and verification boundaries.
+> **Status:** OpenBIMStudio is under active development and maturity varies by feature. Each capability is rated *verified*, *limited*, *experimental*, *planned* or *unavailable*, with its known limitations, in the app under **User Interface -> Feature Status** (source: `src/features/feature-maturity.ts`). See also [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for file-format support, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code is organised, and the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md).
+>
+> Not decodable in a browser: LAZ, E57, RCP/RCS, RWCX and FLS point clouds (export to LAS first); DWG export is not available.
 
 ---
 
