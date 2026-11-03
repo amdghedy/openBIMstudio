@@ -297,6 +297,41 @@ export const TOOLS: ToolDef[] = [
     },
   },
 
+  // ── Native linear modeling ──────────────────────────────────────────
+  {
+    name: "create_linear_elements",
+    description:
+      "Creates real native authored linear BIM elements in the active project using the platform's authoring engine and undo/redo history. Supported types: wall, beam, strip, duct, pipe, cable-tray, conduit, mline. Coordinates are metres in the plan X/Z plane; elevation is metres on Y. Each segment needs distinct start and end [x,z] coordinates. Do not invent coordinates: ask the user for a start point/direction or use coordinates explicitly established in the conversation. For a wall, thickness is wall thickness and height is vertical height. The tool reports the elements actually committed.",
+    parameters: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["wall", "beam", "strip", "duct", "pipe", "cable-tray", "conduit", "mline"] },
+        segments: {
+          type: "array",
+          minItems: 1,
+          maxItems: 100,
+          items: {
+            type: "object",
+            properties: {
+              start: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "Start [x,z] in metres." },
+              end: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "End [x,z] in metres." },
+              elevation: { type: "number", description: "Base elevation in metres." },
+              thickness: { type: "number", exclusiveMinimum: 0, description: "Width/thickness in metres, as appropriate for the element type." },
+              height: { type: "number", exclusiveMinimum: 0, description: "Vertical height/depth in metres, as appropriate for the element type." }
+            },
+            required: ["start", "end"]
+          },
+          description: "One or more straight native elements to create."
+        },
+        elevation: { type: "number", description: "Default base elevation in metres for segments without their own elevation." },
+        thickness: { type: "number", exclusiveMinimum: 0, description: "Default thickness/width in metres." },
+        height: { type: "number", exclusiveMinimum: 0, description: "Default height/depth in metres." },
+        locationLine: { type: "string", enum: ["wall-centerline", "core-centerline", "finish-exterior", "finish-interior", "core-exterior", "core-interior"], description: "Wall placement reference line. Defaults to wall-centerline." }
+      },
+      required: ["type", "segments"]
+    }
+  },
+
   // ── Auto-modelling from linked CAD ─────────────────────────────────
   {
     name: "list_cad_links",
@@ -377,6 +412,7 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       case "create_schedule": return await createScheduleTool(call.args);
       case "run_saved_schedule": return await runSavedScheduleTool(call.args);
 
+      case "create_linear_elements": return await createLinearElementsTool(call.args);
       case "list_cad_links": return await listCadLinksTool();
       case "create_walls_from_cad": return await createWallsFromCadTool(call.args);
 
@@ -1128,6 +1164,133 @@ async function listCadLinksTool(): Promise<ToolResult> {
       }));
       return { id: l.id, name: l.name, elevation: l.options?.elevation ?? 0, layers };
     }),
+  };
+}
+
+async function createLinearElementsTool(args: Record<string, any>): Promise<ToolResult> {
+  const allowed = new Set(["wall", "beam", "strip", "duct", "pipe", "cable-tray", "conduit", "mline"]);
+  const type = String(args.type ?? "").trim();
+  if (!allowed.has(type)) return { ok: false, error: `Unsupported linear element type: ${type || "(missing)"}` };
+  if (!Array.isArray(args.segments) || args.segments.length < 1) {
+    return { ok: false, error: "At least one segment is required. Each segment needs start and end [x,z] coordinates in metres." };
+  }
+  if (args.segments.length > 100) return { ok: false, error: "A single AI modeling request is limited to 100 segments. Split larger requests into smaller batches." };
+
+  const positive = (value: any, label: string): number | undefined => {
+    if (value === undefined || value === null) return undefined;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) throw new Error(`${label} must be a positive number in metres.`);
+    return n;
+  };
+  const finite = (value: any, label: string): number => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) throw new Error(`${label} must be a finite number in metres.`);
+    return n;
+  };
+
+  let segments: Array<{ start: [number, number]; end: [number, number]; elevation?: number; thickness?: number; height?: number }>;
+  let defaultThickness: number | undefined;
+  let defaultHeight: number | undefined;
+  let defaultElevation: number | undefined;
+  let locationLine = "wall-centerline";
+  try {
+    defaultThickness = positive(args.thickness, "thickness");
+    defaultHeight = positive(args.height, "height");
+    defaultElevation = args.elevation == null ? undefined : finite(args.elevation, "elevation");
+    if (args.locationLine != null) locationLine = String(args.locationLine);
+    const validLocationLines = new Set(["wall-centerline", "core-centerline", "finish-exterior", "finish-interior", "core-exterior", "core-interior"]);
+    if (type === "wall" && !validLocationLines.has(locationLine)) throw new Error("Unsupported wall locationLine.");
+    segments = args.segments.map((raw: any, index: number) => {
+      if (!raw || !Array.isArray(raw.start) || !Array.isArray(raw.end) || raw.start.length !== 2 || raw.end.length !== 2) {
+        throw new Error(`Segment ${index + 1} must contain start and end arrays with exactly two coordinates [x,z].`);
+      }
+      const start: [number, number] = [finite(raw.start[0], `Segment ${index + 1} start.x`), finite(raw.start[1], `Segment ${index + 1} start.z`)];
+      const end: [number, number] = [finite(raw.end[0], `Segment ${index + 1} end.x`), finite(raw.end[1], `Segment ${index + 1} end.z`)];
+      if (Math.hypot(end[0] - start[0], end[1] - start[1]) < 0.001) throw new Error(`Segment ${index + 1} is shorter than 1 mm or has identical endpoints.`);
+      return {
+        start, end,
+        ...(raw.elevation != null ? { elevation: finite(raw.elevation, `Segment ${index + 1} elevation`) } : {}),
+        ...(raw.thickness != null ? { thickness: positive(raw.thickness, `Segment ${index + 1} thickness`) } : {}),
+        ...(raw.height != null ? { height: positive(raw.height, `Segment ${index + 1} height`) } : {}),
+      };
+    });
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  const auth: any = await import("./authoring");
+  if (typeof auth.addLinearElement !== "function") return { ok: false, error: "The native authoring engine is not ready; linear element placement is unavailable." };
+  const service = services.tryUse("authoring");
+  const getElements = () => {
+    try { const value = service?.getElements?.(); return Array.isArray(value) ? value : []; }
+    catch { return []; }
+  };
+  const getIds = () => new Set(getElements().map((el: any) => String(el?.id ?? "")).filter(Boolean));
+  const beforeIds = getIds();
+  const beforeCount = Number(service?.getElementCount?.() ?? getElements().length);
+  const previousLevel = typeof auth.getLevel === "function" ? auth.getLevel() : undefined;
+  const previousLine = typeof auth.getWallLocationLine === "function" ? auth.getWallLocationLine() : undefined;
+  const previousOffset = typeof auth.getWallOffset === "function" ? auth.getWallOffset() : undefined;
+  const failures: Array<{ index: number; error: string }> = [];
+
+  try {
+    if (type === "wall") {
+      auth.setWallLocationLine?.(locationLine);
+      // AI geometry is defined by its stated reference line; never inherit a stale manual offset.
+      auth.setWallOffset?.(0);
+    }
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const elevation = segment.elevation ?? defaultElevation ?? previousLevel ?? 0;
+      const size = {
+        ...(segment.thickness ?? defaultThickness) !== undefined ? { thickness: segment.thickness ?? defaultThickness } : {},
+        ...(segment.height ?? defaultHeight) !== undefined ? { height: segment.height ?? defaultHeight } : {},
+      };
+      const idsBefore = getIds();
+      const countBefore = Number(service?.getElementCount?.() ?? getElements().length);
+      try {
+        await auth.addLinearElement(type, segment.start[0], segment.start[1], segment.end[0], segment.end[1], elevation, size);
+      } catch (err) {
+        failures.push({ index: i + 1, error: err instanceof Error ? err.message : String(err) });
+        continue;
+      }
+      const idsAfter = getIds();
+      const createdIds = [...idsAfter].filter((id) => !idsBefore.has(id));
+      const countAfter = Number(service?.getElementCount?.() ?? getElements().length);
+      if (!createdIds.length && !(Number.isFinite(countBefore) && Number.isFinite(countAfter) && countAfter > countBefore)) {
+        failures.push({ index: i + 1, error: "The authoring engine did not confirm that an element was committed." });
+      }
+    }
+  } finally {
+    try { if (previousLevel !== undefined) auth.setLevel?.(previousLevel); } catch { /* restore best-effort */ }
+    try {
+      if (type === "wall") {
+        if (previousLine !== undefined) auth.setWallLocationLine?.(previousLine);
+        if (previousOffset !== undefined) auth.setWallOffset?.(previousOffset);
+      }
+    } catch { /* restore best-effort */ }
+  }
+
+  const afterIds = getIds();
+  const createdIds = [...afterIds].filter((id) => !beforeIds.has(id));
+  const afterCount = Number(service?.getElementCount?.() ?? getElements().length);
+  const createdCount = createdIds.length || (Number.isFinite(beforeCount) && Number.isFinite(afterCount) ? Math.max(0, afterCount - beforeCount) : 0);
+  if (!createdCount) {
+    return { ok: false, error: "No native elements were confirmed as created. Check that an active project is open and the authoring module is initialized.", data: { requested: segments.length, failures } };
+  }
+  return {
+    ok: failures.length === 0,
+    data: {
+      type,
+      requested: segments.length,
+      created: createdCount,
+      elementIds: createdIds,
+      units: "metres",
+      coordinatePlane: "X/Z plan; Y elevation",
+      defaultElevationMetres: defaultElevation ?? previousLevel ?? 0,
+      failures,
+    },
+    ...(failures.length ? { error: `${createdCount} of ${segments.length} elements were confirmed; ${failures.length} segment(s) failed.` } : {}),
   };
 }
 
