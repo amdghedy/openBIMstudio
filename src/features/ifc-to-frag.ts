@@ -324,7 +324,7 @@ async function processJobs() {
         j.error = err?.message || String(err);
         j.phase = "failed";
         console.error("[ifc→frag]", err);
-        toast(j.error, "warn");
+        toast(j.error ?? "Conversion failed", "warn");
       }
       renderList();
       try {
