@@ -170,9 +170,8 @@ function ensurePanel(): HTMLDivElement {
   const tip = document.createElement("div");
   tip.style.cssText = "font-size:11px;color:#64748b;line-height:1.4";
   tip.innerHTML =
-    `For models over ~120 MB you will be asked to <b>try anyway</b>. ` +
-    `A <b>698 MB</b> IFC almost always crashes the browser — prefer offline convert + <b>Link FRAG</b>. ` +
-    `This tool still helps for medium files and avoids loading the 3D scene during conversion.`;
+    `Typical <b>~80 MB IFCZIP</b> files are allowed. You are asked to confirm only above <b>~350 MB</b> extracted IFC. ` +
+    `A <b>698 MB</b> IFC still needs offline convert + <b>Link FRAG</b>.`;
   body.appendChild(tip);
 
   root.appendChild(body);
@@ -320,20 +319,21 @@ async function processJobs() {
       });
       try {
         const sizeMB = j.file.size / (1024 * 1024);
-        // Soft limit ~120 MB — require explicit OK for larger files.
-        if (sizeMB > 120 && !confirmLargeConvert(sizeMB, j.sourceName)) {
+        // Confirm only for very large extracted IFCs (normal ~80 MB IFCZIP is fine).
+        const LARGE_MB = 350;
+        if (sizeMB > LARGE_MB && !confirmLargeConvert(sizeMB, j.sourceName)) {
           j.status = "cancelled";
           j.phase = "skipped — user declined large-file risk";
           renderList();
           continue;
         }
-        j.phase = sizeMB > 120
+        j.phase = sizeMB > LARGE_MB
           ? `⚠️ converting large IFC (${sizeMB.toFixed(0)} MB) — do not close this tab`
           : "starting…";
         renderList();
 
         const result = await convertIfcToFragBytes(j.file, {
-          force: sizeMB > 120 || allowLargeThisSession,
+          force: sizeMB > LARGE_MB || allowLargeThisSession,
           onProgress: (pct, phase) => {
             j.progress = pct;
             j.phase = phase;

@@ -122,7 +122,7 @@ const IFC_SETTINGS_KEY = "toc.ifc.settings.v1";
 const defaultIfcSettings: IfcSettings = {
   cdn: "local", customPath: "",
   autoFit: true, keepFragInMemory: true, replaceExisting: false,
-  recenter: false, maxSizeMB: 800, browserSafeMaxMB: 120, allowUnsafeLargeIfc: false,
+  recenter: false, maxSizeMB: 1500, browserSafeMaxMB: 350, allowUnsafeLargeIfc: false,
   useCoord: false, coordX: 0, coordY: 0, coordZ: 0,
   positioning: "origin-to-origin",
 };
@@ -132,8 +132,15 @@ try {
   const raw = localStorage.getItem(IFC_SETTINGS_KEY);
   if (raw) {
     ifcSettings = { ...defaultIfcSettings, ...JSON.parse(raw) };
-    if (!Number.isFinite(ifcSettings.browserSafeMaxMB)) ifcSettings.browserSafeMaxMB = 120;
+    if (!Number.isFinite(ifcSettings.browserSafeMaxMB)) ifcSettings.browserSafeMaxMB = 350;
+    // Migrate the previous 120 MB default that blocked normal ~80 MB IFCZIP after unpack.
+    if (ifcSettings.browserSafeMaxMB > 0 && ifcSettings.browserSafeMaxMB <= 120) {
+      ifcSettings.browserSafeMaxMB = 350;
+    }
     if (typeof ifcSettings.allowUnsafeLargeIfc !== "boolean") ifcSettings.allowUnsafeLargeIfc = false;
+    if (!Number.isFinite(ifcSettings.maxSizeMB) || ifcSettings.maxSizeMB < 500) {
+      ifcSettings.maxSizeMB = Math.max(ifcSettings.maxSizeMB || 0, 1500);
+    }
   }
 } catch { /* */ }
 
@@ -1169,7 +1176,7 @@ settingsBox.innerHTML = `
     </label>
     <label style="display:grid;gap:2px">Browser-safe conversion limit (MB)
       <input id="ifcSafeMax" type="number" min="10" style="${inpCss}">
-      <span style="opacity:.65;font-size:10px">Above this, IFC is skipped (web-ifc runs out of memory). Default 120. A 698 MB IFC cannot convert in a browser tab.</span>
+      <span style="opacity:.65;font-size:10px">Above this, IFC is skipped unless "Allow unsafe large IFC" is on. Default 350 MB (covers typical ~80 MB IFCZIP after unpack). ~700 MB models still need offline FRAG.</span>
     </label>
     <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcAllowUnsafe"> Allow unsafe large IFC (may crash the tab)</label>
   </div>`;
@@ -1184,7 +1191,7 @@ function syncSettingsUI() {
   $("ifcReplace").checked = ifcSettings.replaceExisting;
   $("ifcFit").checked = ifcSettings.autoFit;
   $("ifcMax").value = String(ifcSettings.maxSizeMB);
-  $("ifcSafeMax").value = String(ifcSettings.browserSafeMaxMB ?? 120);
+  $("ifcSafeMax").value = String(ifcSettings.browserSafeMaxMB ?? 350);
   $("ifcAllowUnsafe").checked = !!ifcSettings.allowUnsafeLargeIfc;
 }
 
@@ -1203,7 +1210,7 @@ settingsBox.addEventListener("change", (e) => {
     case "ifcReplace": ifcSettings.replaceExisting = el.checked; break;
     case "ifcFit": ifcSettings.autoFit = el.checked; break;
     case "ifcMax": ifcSettings.maxSizeMB = Math.max(1, Number(el.value) || 800); break;
-    case "ifcSafeMax": ifcSettings.browserSafeMaxMB = Math.max(10, Number(el.value) || 120); break;
+    case "ifcSafeMax": ifcSettings.browserSafeMaxMB = Math.max(10, Number(el.value) || 350); break;
     case "ifcAllowUnsafe": ifcSettings.allowUnsafeLargeIfc = el.checked; break;
   }
   saveIfcSettings();
