@@ -42,3 +42,8 @@ World axes: X east, Y up, Z north. Element params such as `start`, `end` and `po
 - `window.__obs*` globals (about 895 references) are still used for cross-feature calls; `tests/ui-honesty.test.cjs` only lets the count go down.
 - No native `prompt()`/`confirm()`/`alert()` calls remain; `tests/ui-honesty.test.cjs` keeps it that way.
 - Unit tests cover logic. Browser-level coverage is one Playwright spec (`tests/e2e/edit-undo-save.spec.ts`) and needs to grow.
+
+
+## Full engineering map
+
+The concise overview above is supplemented by the [Engineering Architecture Map](engineering/ARCHITECTURE.md), which documents the actual boot lifecycle, domain boundaries, IFC/FRAG and collaboration flows, all top-level `src/modules/` directories, and current structural limitations. CI checks that the directory inventory remains synchronized with source.
