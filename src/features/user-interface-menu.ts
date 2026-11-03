@@ -122,6 +122,23 @@ function renderRows(): void {
     try { (window as any).__obsShortcutEditor?.open(); } catch { openKeyboardShortcutsDialog(); }
   });
   menuEl.appendChild(ks);
+
+  // Footer: Feature Status (what is verified / limited / planned)
+  const fs = mkFooterRow("\u2713", "Feature Status", () => {
+    closeMenu();
+    void (async () => {
+      const [{ FEATURE_MATURITY }, { showTableDialog }] = await Promise.all([
+        import("./feature-maturity"), import("./form-modal"),
+      ]);
+      const order = ["verified", "limited", "experimental", "planned", "unavailable"];
+      const rows = [...FEATURE_MATURITY]
+        .sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || a.area.localeCompare(b.area))
+        .map((f) => [f.area, f.id.replace(/-/g, " "), f.status, f.limitations[0] ?? ""]);
+      await showTableDialog("Feature status", ["Area", "Feature", "Status", "Main limitation"], rows,
+        "What is verified, limited, experimental or planned in this build");
+    })();
+  });
+  menuEl.appendChild(fs);
 }
 
 function mkFooterRow(icon: string, label: string, onClick: () => void): HTMLElement {

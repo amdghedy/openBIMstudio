@@ -303,6 +303,69 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     limitations: ["Large-model performance budgets and benchmarks are Phase 6 scope"],
     affirmedIn: APP_VERSION,
   },
+  {
+    id: "native-joins",
+    area: "Modeling",
+    status: "limited",
+    source: ["src/modules/native-bim/linear-follow.ts", "src/features/authoring.ts"],
+    evidence: ["tests/magnet.test.cjs"],
+    limitations: [
+      "Join/follow planning is unit-tested as pure logic; interactive behaviour has not been browser-tested",
+      "Applies to straight linear elements (walls, beams, strips, ducts, pipes, trays, conduits); arcs are not joined",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "wall-sweeps",
+    area: "Modeling",
+    status: "limited",
+    source: ["src/modules/wall-sweeps/geometry.ts", "src/features/authoring.ts"],
+    evidence: ["tests/ui-honesty.test.cjs"],
+    limitations: [
+      "Built-in profiles only (baseboard, cornice, wainscot, reveal); no custom profile editor",
+      "Sweeps are display geometry on the wall; they are not yet exported to IFC as separate elements",
+      "Reveals are drawn as solids, not cut into the wall",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "shortcut-editor",
+    area: "Interface",
+    status: "limited",
+    source: ["src/features/shortcut-editor.ts", "src/modules/shortcuts/shortcut-keys.ts", "src/features/shortcuts.ts"],
+    evidence: ["tests/shortcut-keys.test.cjs", "tests/shortcut-sequences.test.cjs"],
+    limitations: [
+      "Key matching is unit-tested; the editor window itself has not been browser-tested",
+      "Sequences of up to three letters; typing speed window is fixed",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "cad-wall-detection",
+    area: "Linking",
+    status: "experimental",
+    source: ["src/modules/cad-link/wall-detect.ts", "src/features/ai-tools.ts"],
+    evidence: ["tests/wall-detect.test.cjs"],
+    limitations: [
+      "Works from line geometry on wall-like layers; hatches, blocks and xrefs are not interpreted",
+      "Curved walls are not detected; results need review before use",
+      "Capped at 3000 walls per run; tested on synthetic drawings only",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "point-cloud-linking",
+    area: "Linking",
+    status: "limited",
+    source: ["src/modules/point-cloud/parsers.ts", "src/features/link-tools.ts"],
+    evidence: ["tests/point-cloud-parsers.test.cjs"],
+    limitations: [
+      "Reads PLY, XYZ, PTS, PCD, LAS (1.0-1.4) and PTX",
+      "LAZ, E57, RCP/RCS, RWCX and FLS cannot be decoded in a browser; export to LAS or E57-to-LAS first",
+      "Whole cloud is loaded in memory; no level-of-detail streaming for very large scans",
+    ],
+    affirmedIn: APP_VERSION,
+  },
 ] as const;
 
 /** Look up a feature's maturity by id. */

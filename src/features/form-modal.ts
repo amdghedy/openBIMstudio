@@ -8,6 +8,7 @@
  * Visual style matches the existing .obs-modal design (dark card, cyan
  * accents) so it feels native to the rest of the app.
  */
+import { escapeHtml as escHtml } from "../core/html-escape";
 
 export type FieldKind = "text" | "number" | "select" | "checkbox" | "textarea" | "divider";
 
@@ -371,4 +372,57 @@ export async function pickFromList(
     }],
   });
   return result ? String(result.value) : null;
+}
+
+/** Read-only table dialog (replaces "see console" / console.table results). */
+export function showTableDialog(
+  title: string,
+  columns: string[],
+  rows: Array<Array<string | number>>,
+  subtitle?: string,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const ov = ensureOverlay();
+    ov.innerHTML = "";
+    const card = document.createElement("div");
+    card.style.cssText = `
+      width: min(760px, 94vw); max-height: 86vh; display:flex; flex-direction:column;
+      background:#1c1e28; color:#e8eaf0; border:1px solid #2a2e3a; border-radius:10px;
+      box-shadow:0 24px 60px rgba(0,0,0,.65); font:13px system-ui,sans-serif; overflow:hidden;
+    `;
+    const header = document.createElement("div");
+    header.style.cssText = "padding:14px 18px;border-bottom:1px solid #2a2e3a;background:#181a23";
+    header.innerHTML = `<div style="font-weight:700;font-size:15px">${escHtml(title)}</div>` +
+      (subtitle ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escHtml(subtitle)}</div>` : "");
+    const body = document.createElement("div");
+    body.style.cssText = "overflow:auto;padding:0";
+    if (!rows.length) {
+      body.innerHTML = `<div style="padding:18px;color:#94a3b8">Nothing to show.</div>`;
+    } else {
+      const th = columns.map((c) => `<th style="text-align:left;padding:7px 12px;position:sticky;top:0;background:#222637;border-bottom:1px solid #2a2e3a;font-weight:600">${escHtml(c)}</th>`).join("");
+      const tr = rows.map((r) => `<tr>${r.map((v) => `<td style="padding:6px 12px;border-bottom:1px solid #232736">${escHtml(String(v))}</td>`).join("")}</tr>`).join("");
+      body.innerHTML = `<table style="width:100%;border-collapse:collapse"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
+    }
+    const footer = document.createElement("div");
+    footer.style.cssText = "padding:10px 18px;border-top:1px solid #2a2e3a;background:#181a23;display:flex;justify-content:space-between;align-items:center";
+    const count = document.createElement("span");
+    count.style.cssText = "color:#94a3b8;font-size:12px";
+    count.textContent = `${rows.length} row(s)`;
+    const close = document.createElement("button");
+    close.textContent = "Close";
+    close.style.cssText = "padding:7px 16px;border-radius:5px;cursor:pointer;background:#0e7490;color:#fff;border:1px solid #0e7490;font-size:13px;font-weight:600";
+    close.onclick = () => { closeFormModal(); resolve(); };
+    footer.append(count, close);
+    card.append(header, body, footer);
+    ov.appendChild(card);
+    ov.style.display = "flex";
+  });
+}
+
+/** Read-only dialog for a list of plain objects; columns come from the union of their keys. */
+export function showObjectsDialog(title: string, objs: Array<Record<string, unknown>>, subtitle?: string): Promise<void> {
+  const cols = [...new Set(objs.flatMap((o) => Object.keys(o)))];
+  const fmt = (v: unknown): string | number =>
+    typeof v === "number" ? (Number.isInteger(v) ? v : Number(v.toFixed(3))) : v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+  return showTableDialog(title, cols, objs.map((o) => cols.map((c) => fmt(o[c]))), subtitle);
 }

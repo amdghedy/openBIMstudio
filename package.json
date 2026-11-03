@@ -71,6 +71,7 @@
     "test:level-constraints": "node tests/level-constraints.test.cjs",
     "test:mep-stretch": "node tests/mep-stretch.test.cjs",
     "test:point-cloud": "node tests/point-cloud-parsers.test.cjs",
+    "test:ui-honesty": "node tests/ui-honesty.test.cjs",
     "test:linear-follow": "node tests/linear-follow.test.cjs",
     "test:wall-detect": "node tests/wall-detect.test.cjs",
     "test:shortcut-sequences": "node tests/shortcut-sequences.test.cjs",

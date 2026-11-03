@@ -35,6 +35,8 @@ import { accuDraw } from "./accudraw";
 import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP } from "../modules/mep/connectivity";
 import { planMepStretch, planMepMove } from "../modules/mep/stretch";
 import { planLinearFollow, FOLLOW_LINEAR, magnetSameTypeEnd, joinedEnds } from "../modules/native-bim/linear-follow";
+import { generateWallSweep } from "../modules/wall-sweeps/geometry";
+import type { WallSweepPlacement } from "../modules/wall-sweeps/types";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import { makeAxisLock, projectOnAxis } from "./grip-axis-lock";
@@ -1437,7 +1439,36 @@ function buildWallWithOpenings(
       (window as any).__obsPerf.accelerateMesh(mesh);
     }
   } catch { /* BVH not available yet — mesh still works, just slower raycast */ }
+  attachWallSweeps(mesh, el);
   return mesh;
+}
+
+/** Baseboards / cornices / wainscots stored in `params.sweeps`, rendered as child meshes of the wall. */
+function attachWallSweeps(wallMesh: THREE.Mesh, el: AuthoredElement): void {
+  const list = ((el.params as any).sweeps ?? []) as WallSweepPlacement[];
+  if (!Array.isArray(list) || !list.length) return;
+  const p = el.params;
+  if (!p.start || !p.end) return;
+  wallMesh.updateMatrixWorld(true);
+  const inv = wallMesh.matrixWorld.clone().invert();
+  for (const sw of list) {
+    const geo = generateWallSweep(p.start, p.end, p.thickness, p.height, p.elevation, sw);
+    if (!geo || !geo.positions.length) continue;
+    const arr = new Float32Array(geo.positions);
+    const v = new THREE.Vector3();
+    for (let i = 0; i < arr.length; i += 3) {
+      v.set(arr[i], arr[i + 1], arr[i + 2]).applyMatrix4(inv);
+      arr[i] = v.x; arr[i + 1] = v.y; arr[i + 2] = v.z;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: new THREE.Color(geo.color), side: THREE.DoubleSide }));
+    m.userData.elementId = el.id;
+    m.userData.baseColor = geo.color;
+    m.userData.isWallSweep = true;
+    wallMesh.add(m);
+  }
 }
 function buildDoor(el: AuthoredElement, host: AuthoredElement): THREE.Group | null {
   const p = el.params;
@@ -5121,6 +5152,32 @@ export function editSelectedParams(patch: Record<string, number>): { changed: nu
 }
 
 /** Reverse the drawing direction of the selected linear elements (start <-> end). One undo step. */
+/** Add a sweep (baseboard / cornice / wainscot / reveal) to every selected wall. One undo step. */
+export function addWallSweepToSelected(placement: Omit<WallSweepPlacement, "wallId">): number {
+  const walls = [...selectedIds].map((id) => elements.find((e) => e.id === id)).filter((e): e is AuthoredElement => !!e && e.type === "wall");
+  if (!walls.length) return 0;
+  return withParamHistory(`Add wall sweep to ${walls.length} wall(s)`, () => {
+    for (const w of walls) {
+      const list = (((w.params as any).sweeps ?? []) as WallSweepPlacement[]).slice();
+      list.push({ ...placement, wallId: w.id });
+      (w.params as any).sweeps = list;
+    }
+    rebuild(); markDirty(); notifyAuthoringChange();
+    return walls.length;
+  }, (n) => n > 0);
+}
+
+/** Remove all sweeps from the selected walls. One undo step. */
+export function clearWallSweepsSelected(): number {
+  const walls = [...selectedIds].map((id) => elements.find((e) => e.id === id)).filter((e): e is AuthoredElement => !!e && e.type === "wall" && ((e.params as any).sweeps?.length ?? 0) > 0);
+  if (!walls.length) return 0;
+  return withParamHistory(`Clear wall sweeps (${walls.length})`, () => {
+    for (const w of walls) delete (w.params as any).sweeps;
+    rebuild(); markDirty(); notifyAuthoringChange();
+    return walls.length;
+  }, (n) => n > 0);
+}
+
 export function reverseSelected(): number {
   const targets = elements.filter((e) => selectedIds.has(e.id) && !e.properties?.pinned && e.params.start && e.params.end);
   if (!targets.length) return 0;
@@ -6444,7 +6501,7 @@ export function setupAuthoring() {
     getElementWorldBox,
     getAuthoredGroup,
 
-    pinSelected, editSelectedParams, reverseSelected,
+    pinSelected, editSelectedParams, reverseSelected, addWallSweepToSelected, clearWallSweepsSelected,
     createSimilarFromSelection,
     splitSelectedAtMidpoint,
     joinSelectedWalls,

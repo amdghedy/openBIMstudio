@@ -42,7 +42,7 @@ import {
 import {
   setAuthoringTool, getActiveTool, deleteSelectedElement, clearAllElements,
   setLevel, getLevel, getLastCommand, pinSelected,
-  onAuthoringChange, getWallChain, setWallChain, reverseSelected, cycleMepSelection, selectAllAuthored, getElements,
+  onAuthoringChange, getWallChain, setWallChain, reverseSelected, addWallSweepToSelected, clearWallSweepsSelected, cycleMepSelection, selectAllAuthored, getElements,
 } from "../features/authoring";
 import { selectedAuthored, selectionCategory } from "../features/modify-options";
 import { PLACE_TOOLS } from "../features/place-options";
@@ -784,16 +784,23 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Sweeps"),
       b("wall", "Baseboard", safe(() => {
-        const w = (window as any).__obsWallSweeps;
-        if (w) toast("Baseboard: select a wall, then run Generate Rebar or use __obsWallSweeps", "info");
-        else toast("Wall sweeps module not loaded", "warn");
-      }, "Baseboard"), { title: "Add baseboard sweep to selected wall" }),
+        const n = addWallSweepToSelected({ profileId: "baseboard-100", height: 0, face: "both" });
+        toast(n ? `Baseboard added to ${n} wall(s)` : "Select one or more walls first", n ? "success" : "warn");
+      }, "Baseboard"), { title: "Add a 100 mm baseboard to the selected walls (both faces)" }),
       b("wall", "Cornice", safe(() => {
-        toast("Cornice: select a wall → use __obsWallSweeps to generate", "info");
-      }, "Cornice"), { title: "Add cornice (crown moulding) sweep" }),
+        const sel = selectedAuthored().filter((e) => e.type === "wall");
+        const top = sel.length ? Math.min(...sel.map((e) => Number((e.params as any).height) || 3)) - 0.12 : 0;
+        const n = addWallSweepToSelected({ profileId: "cornice-standard", height: Math.max(0, top), face: "both" });
+        toast(n ? `Cornice added to ${n} wall(s)` : "Select one or more walls first", n ? "success" : "warn");
+      }, "Cornice"), { title: "Add a crown moulding at the top of the selected walls" }),
       b("wall", "Wainscot", safe(() => {
-        toast("Wainscot: select a wall → use __obsWallSweeps to generate", "info");
-      }, "Wainscot"), { title: "Add wainscot panel sweep" }),
+        const n = addWallSweepToSelected({ profileId: "wainscot-1200", height: 0, face: "both" });
+        toast(n ? `Wainscot added to ${n} wall(s)` : "Select one or more walls first", n ? "success" : "warn");
+      }, "Wainscot"), { title: "Add a 1.2 m wainscot panel to the selected walls" }),
+      b("wall", "Clear Sweeps", safe(() => {
+        const n = clearWallSweepsSelected();
+        toast(n ? `Sweeps removed from ${n} wall(s)` : "Selected walls have no sweeps", n ? "success" : "info");
+      }, "Clear sweeps"), { title: "Remove baseboards / cornices / wainscots from the selected walls" }),
       sep(),
       groupLabel("Constraints"),
       b("dim-aligned", "Lock Dim", safe(async () => {
@@ -860,16 +867,19 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         const m = mc.create(poly, h, `Mass ${mc.list().length + 1}`);
         toast(`Created "${m.name}": ${w}×${w}×${h}m, area=${w * w}m²`, "success");
       }, "In-place mass"), { title: "Create a conceptual mass element (extruded polygon)" }),
-      b("mass", "Mass Floors", safe(() => {
+      b("mass", "Mass Floors", safe(async () => {
         const mc = (window as any).__obsMass;
         if (!mc) { toast("Mass module not loaded", "warn"); return; }
         const masses = mc.list();
         if (!masses.length) { toast("No masses created yet", "info"); return; }
+        const { showObjectsDialog } = await import("../features/form-modal");
+        const rows: Array<Record<string, unknown>> = [];
         for (const m of masses) {
           const floors = mc.getFloors(m.id);
-          if (floors.length) console.table(floors);
+          if (floors.length) for (const f of floors) rows.push({ mass: m.name ?? m.id, ...f });
+          else rows.push({ mass: m.name ?? m.id });
         }
-        toast(`${masses.length} mass(es) — see console for floor areas`, "info");
+        await showObjectsDialog("Mass floors", rows, `${masses.length} mass(es)`);
       }, "Mass floors"), { title: "Extract mass floor areas from conceptual masses" }),
       sep(),
       groupLabel("Properties"),
@@ -1251,22 +1261,23 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "Annotate",
     items: () => [
       groupLabel("Graphics"),
-      b("dim-linear", "Line Weights", safe(() => {
+      b("dim-linear", "Line Weights", safe(async () => {
         const lw = (window as any).__obsLineWeights;
         if (!lw) { toast("Line weights module not loaded", "warn"); return; }
         const list = lw.list();
-        const text = list.map((r: any) => `${r.elementType}: ${r.widthMm}mm ${r.color}`).join("\n");
-        toast(`${list.length} line weight rules. See console.`, "info");
-        console.table(list);
+        const { showTableDialog } = await import("../features/form-modal");
+        await showTableDialog("Line weights", ["Element type", "Width (mm)", "Colour"],
+          list.map((r: any) => [r.elementType, r.widthMm, r.color]), `${list.length} rules`);
       }, "Line weights"), { title: "View line weight assignments per element type" }),
-      b("grid", "Grid Bubbles", safe(() => {
+      b("grid", "Grid Bubbles", safe(async () => {
         const gb = (window as any).__obsGridBubbles;
         if (!gb) { toast("Grid bubbles module not loaded", "warn"); return; }
         const grids = gb.getGrids();
         const levels = gb.getLevels();
-        toast(`${grids.length} grid bubble(s), ${levels.length} level marker(s). See console.`, "info");
-        console.table(grids);
-        console.table(levels);
+        const { showObjectsDialog } = await import("../features/form-modal");
+        await showObjectsDialog("Grids and levels",
+          [...grids.map((g: any) => ({ kind: "grid", ...g })), ...levels.map((l: any) => ({ kind: "level", ...l }))],
+          `${grids.length} grid bubble(s), ${levels.length} level marker(s)`);
       }, "Grid bubbles"), { title: "View grid bubbles and level markers" }),
       sep(),
       groupLabel("Dimension"),
@@ -1719,7 +1730,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         (window as any).__obsInPlaceMass?.create?.();
         toast("In-Place Mass: extrude/sweep/revolve in viewport", "info");
       }, "In-place mass"), { title: "Create an in-place massing form" }),
-      b("mass", "Mass Floors", safe(() => {
+      b("mass", "Mass Floors", safe(async () => {
         (window as any).__obsInPlaceMass?.massFloors?.();
       }, "Mass floors"), { title: "Slice mass into mass floors per level" }),
     ],
@@ -2230,14 +2241,31 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Dependent view"), { title: "Create a dependent view sharing primary geometry" }),
       sep(),
       groupLabel("Filters"),
-      b("system", "Create Filter", safe(() => {
-        (window as any).__obsViewFilters?.create?.({
-          name: "Fire-rated Walls",
-          categories: ["walls"],
-          rules: [{ parameter: "FireRating", operator: "not-equals", value: "0" }],
-          overrides: { projectionColor: 0xdc2626, cutColor: 0xdc2626, lineWeight: 4, surfacePattern: null, cutPattern: null, transparency: 0, halftone: false, visible: true },
+      b("system", "Create Filter", safe(async () => {
+        const vf = (window as any).__obsViewFilters;
+        if (!vf?.create) { toast("View filters not loaded", "warn"); return; }
+        const { openFormModal } = await import("../features/form-modal");
+        const v = await openFormModal({
+          title: "New view filter",
+          subtitle: "Elements matching the rule get these graphics overrides",
+          fields: [
+            { kind: "text", key: "name", label: "Filter name", default: "New Filter", validate: (x) => String(x).trim() ? null : "Name is required" },
+            { kind: "select", key: "category", label: "Category", default: "walls", options: [["walls", "Walls"], ["doors", "Doors"], ["windows", "Windows"], ["floors", "Floors"], ["columns", "Columns"], ["beams", "Beams"], ["ducts", "Ducts"], ["pipes", "Pipes"]] },
+            { kind: "text", key: "parameter", label: "Parameter", default: "FireRating" },
+            { kind: "select", key: "operator", label: "Operator", default: "equals", options: [["equals", "equals"], ["not-equals", "does not equal"], ["greater", "greater than"], ["less", "less than"], ["contains", "contains"]] },
+            { kind: "text", key: "value", label: "Value", default: "" },
+            { kind: "text", key: "color", label: "Override colour (hex)", default: "#dc2626", validate: (x) => /^#[0-9a-f]{6}$/i.test(String(x)) ? null : "Use a hex colour like #dc2626" },
+          ],
+          submitLabel: "Create filter",
         });
-        toast("View filter created — add to views via console", "success");
+        if (!v) return;
+        vf.create({
+          name: String(v.name).trim(),
+          categories: [v.category],
+          rules: [{ parameter: String(v.parameter).trim(), operator: v.operator, value: v.value }],
+          overrides: { projectionColor: parseInt(String(v.color).slice(1), 16), cutColor: parseInt(String(v.color).slice(1), 16), lineWeight: 4, surfacePattern: null, cutPattern: null, transparency: 0, halftone: false, visible: true },
+        });
+        toast(`Filter "${String(v.name).trim()}" created — apply it from Visibility/Graphics → Filters`, "success", 4000);
       }, "View filter"), { title: "Create a rule-based view graphics filter" }),
       b("system", "Matchline", safe(() => {
         (window as any).__obsMatchline?.build?.({ points: [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 12, z: 2 }] });
@@ -2553,12 +2581,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Release"), { title: "Release borrowed element back to pool" }),
       sep(),
       groupLabel("Plugins"),
-      b("component", "Plugin List", safe(() => {
+      b("component", "Plugin List", safe(async () => {
         const loaded = (window as any).__obsPluginRegistry;
-        if (!loaded || loaded.size === 0) { toast("No plugins loaded. Check console for boot log.", "info"); return; }
-        const names = [...loaded.keys()];
-        toast(`${names.length} plugin(s) active: ${names.join(", ")}`, "info", 5000);
-        console.table([...loaded.entries()].map(([id, v]: any) => ({ id, name: v.manifest?.name, version: v.manifest?.version })));
+        if (!loaded || loaded.size === 0) { toast("No plugins are loaded.", "info"); return; }
+        const { showTableDialog } = await import("../features/form-modal");
+        await showTableDialog("Loaded plugins", ["Id", "Name", "Version"],
+          [...loaded.entries()].map(([id, v]: any) => [id, v.manifest?.name ?? "", v.manifest?.version ?? ""]), `${loaded.size} active`);
       }, "Plugin list"), { title: "List all loaded plugins" }),
       b("component", "Reload Plugins", safe(async () => {
         try {
@@ -2584,28 +2612,26 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Toggle batching"), { title: "Toggle InstancedMesh batching (1 draw call per element type)" }),
       sep(),
       groupLabel("Analysis"),
-      b("connection", "Analytical", safe(() => {
+      b("connection", "Analytical", safe(async () => {
         const am = (window as any).__obsAnalytical;
         if (!am) { toast("Analytical model not loaded", "warn"); return; }
         const nodes = am.getNodes();
         const members = am.getMembers();
-        toast(`Analytical model: ${nodes.length} nodes, ${members.length} members. See console.`, "info");
-        console.table(nodes);
-        console.table(members);
+        const { showTableDialog } = await import("../features/form-modal");
+        await showTableDialog("Structural analytical model", ["Member", "Type", "From node", "To node", "Area (m²)"],
+          members.map((m: any) => [m.id, m.sourceType, m.startNodeId, m.endNodeId, Number(m.area).toFixed(4)]),
+          `${nodes.length} nodes, ${members.length} members`);
       }, "Analytical model"), { title: "View structural analytical model (FEM nodes + members)" }),
-      b("energy", "Energy", safe(() => {
-        const en = (window as any).__obsEnergy;
-        if (!en) { toast("Energy analysis not loaded", "warn"); return; }
-        toast("Energy analysis ready. Use __obsEnergy.computeHeatLoss(zone) or exportGbXML(zones).", "info", 5000);
-      }, "Energy analysis"), { title: "Energy analysis: heat loss, solar gain, gbXML export" }),
+      planned("energy", "Energy", "Energy analysis needs room/space thermal zones, which can't be created in the UI yet."),
       sep(),
       groupLabel("Marketplace"),
-      b("component", "Browse Plugins", safe(() => {
+      b("component", "Browse Plugins", safe(async () => {
         const mp = (window as any).__obsMarketplace;
         if (!mp) { toast("Marketplace not loaded", "warn"); return; }
         const list = mp.list();
-        console.table(list);
-        toast(`${list.length} plugins available. See console.`, "info");
+        const { showTableDialog } = await import("../features/form-modal");
+        await showTableDialog("Bundled plugins", ["Name", "Version", "Author", "Description"],
+          list.map((x: any) => [x.name, x.version, x.author, x.description]), "Plugins shipped with this build");
       }, "Browse marketplace"), { title: "Browse plugin marketplace" }),
       b("component", "Install Plugin", safe(async () => {
         const mp = (window as any).__obsMarketplace;
