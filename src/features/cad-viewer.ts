@@ -5647,7 +5647,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     try {
       const dxf = writeDxf({ ...doc, entities });
       const bytes = await exportDxfToDwg(dxf);
-      const blob = new Blob([bytes], { type: "application/acad" });
+      const blobBuffer = new ArrayBuffer(bytes.byteLength);
+      new Uint8Array(blobBuffer).set(bytes);
+      const blob = new Blob([blobBuffer], { type: "application/acad" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
