@@ -2733,9 +2733,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rows: string[] = [
         row("Type", e.type),
         row("Layer", e.layer),
-        row("Colour", e.rgb != null ? rgbToCss(e.rgb) : e.color ? `ACI ${e.color}` : "ByLayer"),
+        row(
+          "Colour",
+          e.rgb != null
+            ? `${rgbToCss(e.rgb)}  (#${e.rgb.toString(16).padStart(6, "0").toUpperCase()}, true colour)`
+            : e.color
+              ? `ACI ${e.color}`
+              : "ByLayer",
+        ),
       ];
     rows.push(row("Linetype", e.lineType ?? layerOf(e.layer)?.lineType ?? "ByLayer"));
+    if (e.ltScale != null && e.ltScale !== 1) rows.push(row("Linetype scale", String(+e.ltScale.toFixed(4))));
+    if (e.transparency) rows.push(row("Transparency", `${e.transparency}%`));
     if (e.type === "LWPOLYLINE" && e.hatch)
       rows.push(
         row("Hatch", e.hatch.solid ? "Solid" : e.hatch.pattern ?? "Pattern"),
@@ -2757,13 +2766,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       );
     if (e.type === "LWPOLYLINE" && !e.hatch)
       rows.push(row("Vertices", String(e.points.length)), row("Closed", e.closed ? "Yes" : "No"));
-    if (e.type === "TEXT")
+    if (e.type === "TEXT") {
+      const styleName = e.style ?? "Standard";
+      const fileStyle = doc?.textStyles?.[styleName.toUpperCase()];
+      const fontName = e.font ?? fileStyle?.font;
       rows.push(
         row("Text", e.value),
+        row("Text style", styleName),
+        row("Font", fontName ? String(fontName) : "—"),
         row("Height", fmt(e.height)),
         row("Rotation", (e.rotation ?? 0).toFixed(2) + "°"),
         row("Position", pt(e.position)),
       );
+    }
     if (e.type === "POINT") rows.push(row("Position", pt(e.position)));
     if (m.radius != null) rows.push(row("Radius", fmt(m.radius)), row("Diameter", fmt(m.diameter!)));
     if (m.length != null) rows.push(row("Length", fmt(m.length)));
@@ -4497,6 +4512,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     };
     q("info").onclick = () => {
       if (!doc) return;
+      // Full AutoCAD-style STATUS report — everything the reader pulled out of
+      // the file's tables and entities, so "what did we read" is answerable in UI.
+      const ltNames = Object.keys(doc.linetypes ?? {});
+      const styleEntries = Object.entries(doc.textStyles ?? {});
+      const dimNames = doc.dimStyles ?? [];
+      const fontsInFile = [...new Set(styleEntries.map(([, s]) => s.font).filter((f): f is string => !!f))];
+      const fontList = (fs: string[]) => (fs.length ? escapeHtml(fs.slice(0, 14).join(", ")) + (fs.length > 14 ? `, … (+${fs.length - 14})` : "") : "—");
+      const styleList = styleEntries.length
+        ? styleEntries
+            .map(([sn, s]) => `${escapeHtml(sn)} → ${escapeHtml(s.font ?? "default")}${s.height ? ` (h=${s.height})` : ""}${s.bigFont ? ` +${escapeHtml(s.bigFont)}` : ""}`)
+            .join("<br>")
+        : "—";
+      const skippedBits = Object.entries(doc.skipped ?? {})
+        .filter(([, n]) => n > 0)
+        .map(([k, n]) => `${k} (${n})`);
       const panel = openOverlay(`
         <b style="font-size:15px;color:#38bdf8">AutoCAD Drawing Database Status</b>
         <table style="margin-top:10px;font-size:12px;width:100%">
@@ -4506,6 +4536,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           <tr><td>Total Entities:</td><td>${modelEnts.length}</td></tr>
           <tr><td>Total Layers:</td><td>${doc.layers.length}</td></tr>
           <tr><td>Active Layouts:</td><td>${doc.layouts?.length ?? 1}</td></tr>
+          <tr><td>Linetype Table:</td><td>${ltNames.length} defined${ltNames.length ? ` — ${escapeHtml(ltNames.slice(0, 12).join(", "))}${ltNames.length > 12 ? ", …" : ""}` : ""}</td></tr>
+          <tr><td>LTSCALE:</td><td>${escapeHtml(String(doc.ltscale ?? 1))}</td></tr>
+          <tr><td>Text Style Table:</td><td>${styleEntries.length} style(s)</td></tr>
+        </table>
+        ${styleEntries.length ? `<div style="margin-top:6px;font-size:11px;line-height:1.55;color:#c3cad6;background:#12141c;border:1px solid #1f2633;border-radius:6px;padding:8px 10px">${styleList}</div>` : ""}
+        <table style="margin-top:8px;font-size:12px;width:100%">
+          <tr><td>Fonts in Drawing:</td><td>${fontList(fontsInFile)}</td></tr>
+          <tr><td>Dimension Style Table:</td><td>${dimNames.length} style(s)${dimNames.length ? ` — ${escapeHtml(dimNames.slice(0, 12).join(", "))}${dimNames.length > 12 ? ", …" : ""}` : ""}</td></tr>
+          <tr><td>Entities Not Drawn:</td><td>${skippedBits.length ? escapeHtml(skippedBits.join(", ")) : "none"}</td></tr>
         </table>
         <div style="margin-top:14px"><button data-r="inf-close" style="padding:6px 14px">Close</button></div>
       `);

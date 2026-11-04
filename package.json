@@ -48,6 +48,7 @@
     "test:section-box": "node tests/section-box.test.cjs",
     "test:section-box-arrows": "node tests/section-box-arrows.test.cjs",
     "test:cad-tables-fidelity": "node tests/cad-tables-fidelity.test.cjs",
+    "test:cad-ui-wiring": "node tests/cad-ui-wiring.test.cjs",
     "test:view-lock": "node tests/view-lock.test.cjs",
     "test:wheel-zoom": "node tests/wheel-zoom-orientation.test.cjs",
     "test:plan-draw": "node tests/plan-draw.test.cjs",
