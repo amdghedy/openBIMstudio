@@ -990,9 +990,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     let rgb: number;
     if (e.rgb != null) rgb = e.rgb;
     else if (e.color != null && e.color > 0 && e.color < 256) rgb = aciToRgb(e.color, fg());
-    else rgb = aciToRgb(layerOf(e.layer)?.color ?? 7, fg());
+    else {
+      const lyr = layerOf(e.layer);
+      rgb = lyr?.rgb != null ? lyr.rgb : aciToRgb(lyr?.color ?? 7, fg());
+    }
     if (inv()) rgb = 0xffffff ^ rgb;
     return rgbToCss(rgb);
+  }
+
+  /** Effective transparency percent for an entity (entity 440 wins over its layer's). */
+  function alphaOf(e: DxfEntity): number {
+    const t = e.transparency ?? layerOf(e.layer)?.transparency ?? 0;
+    return t > 0 ? Math.max(0.1, 1 - t / 100) : 1;
   }
 
   const fmt = (v: number, p = 1) => M.formatQty(v * scaleCal, doc?.units, du, p);
@@ -1076,6 +1085,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.save();
         c.translate(p.x, p.y);
         c.rotate((-(e.rotation ?? 0) * Math.PI) / 180);
+        if (e.backwards) c.scale(-1, 1);
+        if (e.upsideDown) c.scale(1, -1);
         c.font = M.textFontCss(e, Math.min(px, 600));
         if (e.widthFactor && e.widthFactor > 0 && e.widthFactor !== 1) c.scale(e.widthFactor, 1);
         if (e.oblique) c.transform(1, 0, -Math.tan((e.oblique * Math.PI) / 180), 1, 0, 0);
@@ -1157,7 +1168,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       : M.resolveDash(
           e.lineType ?? layerOf(e.layer)?.lineType,
           doc.linetypes,
-          doc.ltscale,
+          (doc.ltscale ?? 1) * (e.ltScale ?? 1),
           v.scale,
         );
 
@@ -1186,10 +1197,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.fillStyle = col;
       c.setLineDash(dashFor(e, v));
       c.lineWidth = lwtOn && !(e.type === "LWPOLYLINE" && e.hatch) ? lineweightPxFor(e) : lwtOn ? lw : 1;
+      c.globalAlpha = alphaOf(e);
       drawEntity(c, e, v);
+      c.globalAlpha = 1;
     });
     c.setLineDash([]);
     c.lineWidth = lwtOn ? lw : 1;
+    c.globalAlpha = 1;
   }
 
   /** Paints the AutoCAD major/minor grid and red/green axes through (0,0) */
@@ -2575,11 +2589,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const rows = names
       .map((n) => {
         const lyr = layerOf(n);
-        const col = rgbToCss(aciToRgb(lyr?.color ?? 7, 0xffffff));
+        const col = rgbToCss(lyr?.rgb != null ? lyr.rgb : aciToRgb(lyr?.color ?? 7, 0xffffff));
         const isOff = hidden.has(n);
         const isFrozen = lyr?.frozen ?? false;
         const isLocked = lyr?.locked ?? false;
         const isCurrent = currentLayer === n;
+        const transp = lyr?.transparency ?? 0;
+        const plots = lyr?.plot !== false;
 
         return `
         <tr data-row-l="${escapeHtml(n)}">
@@ -2588,10 +2604,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           <td style="text-align:center;cursor:pointer" data-act="toggle-on">${isOff ? "💡❌" : "💡"}</td>
           <td style="text-align:center;cursor:pointer" data-act="toggle-freeze">${isFrozen ? "❄️" : "☀️"}</td>
           <td style="text-align:center;cursor:pointer" data-act="toggle-lock">${isLocked ? "🔒" : "🔓"}</td>
-          <td style="cursor:pointer" data-act="edit-color" title="Click to change colour"><span class="sw" style="display:inline-block;background:${col};vertical-align:middle;margin-right:4px"></span>${lyr?.color ?? 7}</td>
+          <td style="cursor:pointer" data-act="edit-color" title="Click to change colour${lyr?.rgb != null ? ` (true colour #${lyr.rgb.toString(16).padStart(6, "0").toUpperCase()})` : ""}"><span class="sw" style="display:inline-block;background:${col};vertical-align:middle;margin-right:4px"></span>${lyr?.color ?? 7}${lyr?.rgb != null ? " ᵀ" : ""}</td>
           <td style="cursor:pointer" data-act="edit-lt" title="Click to change linetype">${escapeHtml(lyr?.lineType ?? "Continuous")}</td>
           <td style="cursor:pointer" data-act="edit-lw" title="Click to change lineweight">${lyr?.lineweight != null ? escapeHtml(lineweightLabel(lyr.lineweight)) : "Default"}</td>
-          <td style="text-align:center">🖨️</td>
+          <td style="text-align:center">${transp ? `${transp}%` : "—"}</td>
+          <td style="text-align:center">${plots ? "🖨️" : "🚫"}</td>
         </tr>`;
       })
       .join("");
@@ -2608,7 +2625,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         <table style="width:100%;font-size:12px;border-collapse:collapse">
           <thead>
             <tr style="color:#9aa4b2;text-align:left;border-bottom:1px solid #334155">
-              <th>Status</th><th>Name</th><th>On</th><th>Freeze</th><th>Lock</th><th>Color</th><th>Linetype</th><th>Lineweight</th><th>Plot</th>
+              <th>Status</th><th>Name</th><th>On</th><th>Freeze</th><th>Lock</th><th>Color</th><th>Linetype</th><th>Lineweight</th><th>Transp.</th><th>Plot</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

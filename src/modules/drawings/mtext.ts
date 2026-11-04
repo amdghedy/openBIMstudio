@@ -77,3 +77,25 @@ export function mtextWidthFactor(src: string): number | undefined {
   const v = m ? Number(m[1]) : NaN;
   return Number.isFinite(v) && v > 0 ? v : undefined;
 }
+
+/**
+ * First inline colour of an MTEXT string:
+ * `\\C<aci>;` (ACI 1-255) or `\\c<truecolour>;` (0xRRGGBB decimal, writers
+ * sometimes set the high bookkeeping byte — masked off). BYLAYER/BYBLOCK
+ * special values are ignored so the entity keeps inheriting properly.
+ */
+export function mtextColor(src: string): { color?: number; rgb?: number } {
+  const s = String(src ?? "");
+  const mC = /\\C(\d+);/.exec(s);
+  if (mC) {
+    const v = Number(mC[1]);
+    if (v >= 1 && v <= 255) return { color: v };
+  }
+  const mc = /\\c(\d+);/.exec(s);
+  if (mc) {
+    const v = Number(mc[1]);
+    if (v > 255) return { rgb: v & 0xffffff };
+    if (v >= 1 && v <= 255) return { color: v };
+  }
+  return {};
+}

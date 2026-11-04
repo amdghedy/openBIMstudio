@@ -215,7 +215,16 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
     const ltRaw = pick(e, ["lineType", "lineTypeName", "linetype", "ltype"]);
     const ltName = typeof ltRaw === "string" ? ltRaw.trim() : "";
     const ltUp = ltName.toUpperCase();
-    const c = { layer, ...colorOf(e), ...(ltName && ltUp !== "BYLAYER" && ltUp !== "BYBLOCK" && ltUp !== "CONTINUOUS" ? { lineType: ltName } : {}) };
+    // Per-entity linetype scale + transparency (AutoCAD-fidelity properties).
+    const ltScale = toNum(pick(e, ["linetypeScale", "ltScale", "lineTypeScale"]), 0);
+    const transRaw = toNum(pick(e, ["transparency", "transparencyValue"]), 0);
+    const transparency = transRaw > 0 ? Math.max(0, Math.min(90, transRaw <= 90 ? transRaw : (transRaw >>> 24) & 0xff)) : 0;
+    const c = {
+      layer, ...colorOf(e),
+      ...(ltName && ltUp !== "BYLAYER" && ltUp !== "BYBLOCK" && ltUp !== "CONTINUOUS" ? { lineType: ltName } : {}),
+      ...(ltScale > 0 && Math.abs(ltScale - 1) > 1e-9 ? { ltScale } : {}),
+      ...(transparency ? { transparency } : {}),
+    };
     const outStart = out.length;
     const exRaw = pick(e, ["extrusionDirection", "extrusion", "normal"]);
     const ex = exRaw ? toPt(exRaw) : null;
@@ -481,13 +490,23 @@ export function dwgDatabaseToDxfDocument(
   for (const l of entriesOf(db?.tables?.LAYER)) {
     const flag = toNum(pick(l, ["flag", "flags", "standardFlag"]));
     const ci = toNum(pick(l, ["colorIndex", "color"]), 7);
+    // True colour (libredwg exposes color as 0x0C000000RRGGBB-ish or a `colorRgb`/`trueColor` field).
+    const rawTc = pick(l, ["trueColor", "colorRgb", "rgb"]);
+    const tcN = typeof rawTc === "number" ? rawTc : toNum(rawTc, 0);
+    const rgb = tcN > 0xffffff ? (tcN & 0xffffff) : tcN > 0 ? tcN : undefined;
+    const transRaw = toNum(pick(l, ["transparency", "transparencyValue"]), 0);
+    const transparency = transRaw > 0 ? Math.max(0, Math.min(90, transRaw <= 90 ? transRaw : (transRaw >>> 24) & 0xff)) : 0;
+    const plotRaw = pick(l, ["plotFlag", "plots", "plot"]);
     layers.push({
       name: String(l?.name ?? "0"),
       color: Math.abs(ci) >= 1 && Math.abs(ci) <= 255 ? Math.abs(ci) : 7,
+      ...(rgb ? { rgb } : {}),
       lineType: typeof pick(l, ["lineType", "lineTypeName"]) === "string" ? String(pick(l, ["lineType", "lineTypeName"])) : undefined,
       frozen: l?.frozen === true || (flag & 1) === 1,
       locked: l?.locked === true || (flag & 4) === 4,
       off: l?.off === true || l?.visible === false || ci < 0,
+      ...(transparency ? { transparency } : {}),
+      ...(typeof plotRaw === "boolean" ? { plot: plotRaw } : toNum(plotRaw, 1) === 0 ? { plot: false } : {}),
     });
   }
   if (!layers.some((l) => l.name === "0")) layers.unshift({ name: "0", color: 7 });
