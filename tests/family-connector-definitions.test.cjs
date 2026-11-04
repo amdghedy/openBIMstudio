@@ -9,8 +9,16 @@ try {
   const source = path.join(root, "src/modules/families/connector-definitions.ts");
   execSync("npx tsc \"" + source + "\" --outDir \"" + out + "\" --module commonjs --target es2020 --strict --skipLibCheck",
     { cwd: root, stdio: "pipe" });
-  const compiled = path.join(out, "connector-definitions.js");
-  assert.ok(fs.existsSync(compiled), "compiled connector definition module not found");
+  const findCompiled = (dir, file) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { const found = findCompiled(full, file); if (found) return found; }
+      else if (entry.isFile() && entry.name === file) return full;
+    }
+    return null;
+  };
+  const compiled = findCompiled(out, "connector-definitions.js");
+  assert.ok(compiled, "compiled connector definition module not found");
   const { validateFamilyConnectorDefinitions, cloneFamilyConnectorDefinitions } = require(compiled);
   let pass = 0, fail = 0;
   const test = (name, fn) => {
