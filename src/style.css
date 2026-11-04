@@ -344,6 +344,11 @@ body.obs-fullscreen .bb-status {
   display: none !important;
 }
 
+/* While full screen, hovering the 12 px top-edge peek zone temporarily
+   reveals the ribbon; moving the mouse back down hides it again. */
+body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
+#obs-fullscreen-peek { background: transparent; pointer-events: auto; }
+
 .obs-ribbon__tabs {
   display: flex;
   align-items: stretch;
@@ -1369,12 +1374,3 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 .obs-bim-dialog__empty { padding:24px; text-align:center; color:var(--text-tertiary); border:1px dashed var(--border-default); border-radius:8px; font-size:10px; }
 @media (max-width:720px) { .obs-bim-dialog-grid { grid-template-columns:1fr; } .obs-bim-template-row { grid-template-columns:1fr auto; } .obs-bim-template-row button:last-child { grid-column:2; } }
 
-/* ═══ Full Screen mode (Revit-style): hide command bars ═══
-   body.obs-fullscreen is applied while the app is in full screen.
-   The ribbon (tabs + strip) and the bottom status bar hide so the
-   model view window fills the screen; #obs-fullscreen-peek is a 12px
-   hover zone at the very top edge that temporarily reveals the ribbon. */
-body.obs-fullscreen .obs-ribbon,
-body.obs-fullscreen .bb-status { display: none !important; }
-body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
-#obs-fullscreen-peek { background: transparent; pointer-events: auto; }
