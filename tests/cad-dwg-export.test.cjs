@@ -37,7 +37,7 @@ const addJsExt = (dir) => {
     if (entry.isDirectory()) addJsExt(p);
     else if (entry.name.endsWith(".js")) {
       const src = fs.readFileSync(p, "utf8");
-      const fixed = src.replace(/(from\\s*"(`.?\\/?[^"*]+))"/g, (m, a, spec) =>
+      const fixed = src.replace(/(from\\s*"(..?\\/[^"*]+))"/g, (m, a, spec) =>
         spec.endsWith(".js") ? m : `${a}.js"`);
       if (fixed !== src) fs.writeFileSync(p, fixed);
     }
@@ -51,11 +51,11 @@ const findEsm = (dir, name) => {
     else if (entry.name === name) return p;
   }
 };
-const independentReader = await import(pathToFileURL(findEsm(outEsm, "dwg-parse-core.js")).href);
 const acad = require(find(out, "acad-engine.js"));
 const { writeDxf } = require(find(out, "dxf-writer.js"));
 
 (async () => {
+  const independentReader = await import(pathToFileURL(findEsm(outEsm, "dwg-parse-core.js")).href);
   const wasm = fs.readFileSync(wasmPath);
   assert.ok(await acad.setAcadEngineForTests(wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength)), "DWG writer WASM failed to instantiate");
   const doc = {
