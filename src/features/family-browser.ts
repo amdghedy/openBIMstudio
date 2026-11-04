@@ -24,6 +24,7 @@ import { setupFamilies, isFamilySystemReady } from "../modules/families";
 import type { FamilyDefinition, FamilyType, FamilyService } from "../modules/families";
 import type { ConnectorDefinition } from "../modules/object-hierarchy";
 import { validateFamilyConnectorDefinitions, cloneFamilyConnectorDefinitions } from "../modules/families/connector-definitions";
+import { buildFamilyConnectorPreviewLayout } from "../modules/families/connector-preview";
 // openbim-families:formula-engine-ui
 import { evaluateParameters } from "../modules/families/formula-engine";
 
@@ -320,7 +321,7 @@ function renderDetail(): void {
     "padding:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;min-height:160px";
   try {
     const built = s.buildGeometry(fam.id, selectedTypeId, undefined);
-    if (built) preview.appendChild(buildPreviewSvg(built));
+    if (built) preview.appendChild(buildPreviewSvg(built, fam.connectorDefs ?? []));
     else {
       const em = document.createElement("div");
       em.textContent = "(no geometry for this type)";
@@ -523,7 +524,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
   wrap.appendChild(title);
 
   const hint = document.createElement("div");
-  hint.textContent = "Define connection ports in family-local metres. The placed instance transform converts them into world coordinates.";
+  hint.textContent = "Numbered markers in the preview show port origins; arrows show connection axes. Coordinates are stored in family-local metres and transformed on placement.";
   hint.style.cssText = "color:#94a3b8;font-size:10.5px;line-height:1.5;margin-bottom:8px";
   wrap.appendChild(hint);
 
@@ -998,58 +999,45 @@ function esc(s: unknown): string {
 // -----------------------------------------------------------------------------
 // Isometric preview
 // -----------------------------------------------------------------------------
-function buildPreviewSvg(obj: THREE.Object3D): SVGSVGElement {
-  const box = new THREE.Box3().setFromObject(obj);
-  if (box.isEmpty()) {
-    const svg = document.createElementNS(SVG_NS, "svg");
+function buildPreviewSvg(
+  obj: THREE.Object3D,
+  connectorDefinitions: ConnectorDefinition[] = [],
+): SVGSVGElement {
+  let layout: ReturnType<typeof buildFamilyConnectorPreviewLayout> = null;
+  let connectorPreviewError = false;
+  try {
+    layout = buildFamilyConnectorPreviewLayout(obj, connectorDefinitions);
+  } catch (err) {
+    connectorPreviewError = true;
+    console.warn("[family-browser] connector preview failed", err);
+    // Keep the geometry preview useful even when stored connector data is invalid.
+    layout = buildFamilyConnectorPreviewLayout(obj, []);
+  }
+
+  const w = 220, h = 160;
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("xmlns", SVG_NS);
+  svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+  svg.setAttribute("width", String(w));
+  svg.setAttribute("height", String(h));
+  svg.style.cssText = "display:block;max-width:100%";
+
+  if (!layout) {
     svg.setAttribute("width", "200");
     svg.setAttribute("height", "150");
     return svg;
   }
 
-  const w = 220, h = 160, pad = 20;
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-  const scale = (Math.min(w, h) - pad * 2) / (maxDim * 1.6);
-
-  const c30 = Math.cos(Math.PI / 6);
-  const s30 = Math.sin(Math.PI / 6);
-  const project = (p: THREE.Vector3) => {
-    const dx = p.x - center.x, dy = p.y - center.y, dz = p.z - center.z;
-    return {
-      x: (dx - dz) * c30 * scale + w / 2,
-      y: ((dx + dz) * s30 - dy) * scale + h / 2,
-    };
-  };
-
-  const min = box.min, max = box.max;
-  const corners: THREE.Vector3[] = [
-    new THREE.Vector3(min.x, min.y, min.z),
-    new THREE.Vector3(max.x, min.y, min.z),
-    new THREE.Vector3(max.x, min.y, max.z),
-    new THREE.Vector3(min.x, min.y, max.z),
-    new THREE.Vector3(min.x, max.y, min.z),
-    new THREE.Vector3(max.x, max.y, min.z),
-    new THREE.Vector3(max.x, max.y, max.z),
-    new THREE.Vector3(min.x, max.y, max.z),
-  ];
   const edges: [number, number][] = [
     [0, 1], [1, 2], [2, 3], [3, 0],
     [4, 5], [5, 6], [6, 7], [7, 4],
     [0, 4], [1, 5], [2, 6], [3, 7],
   ];
 
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("xmlns", SVG_NS);
-  svg.setAttribute("viewBox", "0 0 " + w + " " + h);
-  svg.setAttribute("width", String(w));
-  svg.setAttribute("height", String(h));
-  svg.style.cssText = "display:block";
-
   for (const [a, b] of edges) {
-    const pa = project(corners[a]);
-    const pb = project(corners[b]);
+    const pa = layout.geometryCorners[a];
+    const pb = layout.geometryCorners[b];
+    if (!pa || !pb) continue;
     const line = document.createElementNS(SVG_NS, "line");
     line.setAttribute("x1", pa.x.toFixed(2));
     line.setAttribute("y1", pa.y.toFixed(2));
@@ -1061,7 +1049,106 @@ function buildPreviewSvg(obj: THREE.Object3D): SVGSVGElement {
     svg.appendChild(line);
   }
 
-  // Dimensions annotation
+  const connectorColors: Record<ConnectorDefinition["domain"], string> = {
+    duct: "#a78bfa",
+    pipe: "#38bdf8",
+    electrical: "#fbbf24",
+    conduit: "#fb923c",
+    cabletray: "#34d399",
+    structural: "#f472b6",
+    other: "#cbd5e1",
+  };
+
+  layout.ports.forEach((port, index) => {
+    const color = connectorColors[port.domain] ?? "#cbd5e1";
+    const group = document.createElementNS(SVG_NS, "g");
+    const tooltip = document.createElementNS(SVG_NS, "title");
+    const size = Array.isArray(port.size) ? port.size.join(" × ") + " m" : port.size + " m";
+    tooltip.textContent =
+      port.name + " · " + port.domain + " · " + port.shape + " · " +
+      port.flowDirection + " · " + port.systemClassification + " · " + size;
+    group.appendChild(tooltip);
+
+    const dx = port.axisEnd.x - port.origin.x;
+    const dy = port.axisEnd.y - port.origin.y;
+    const length = Math.hypot(dx, dy);
+    if (length > 1.5) {
+      const shaft = document.createElementNS(SVG_NS, "line");
+      shaft.setAttribute("x1", port.origin.x.toFixed(2));
+      shaft.setAttribute("y1", port.origin.y.toFixed(2));
+      shaft.setAttribute("x2", port.axisEnd.x.toFixed(2));
+      shaft.setAttribute("y2", port.axisEnd.y.toFixed(2));
+      shaft.setAttribute("stroke", color);
+      shaft.setAttribute("stroke-width", "2");
+      shaft.setAttribute("stroke-linecap", "round");
+      group.appendChild(shaft);
+
+      const ux = dx / length, uy = dy / length;
+      const headLength = Math.min(5.5, Math.max(3.5, length * 0.35));
+      const halfWidth = headLength * 0.48;
+      const baseX = port.axisEnd.x - ux * headLength;
+      const baseY = port.axisEnd.y - uy * headLength;
+      const leftX = baseX - uy * halfWidth;
+      const leftY = baseY + ux * halfWidth;
+      const rightX = baseX + uy * halfWidth;
+      const rightY = baseY - ux * halfWidth;
+      const head = document.createElementNS(SVG_NS, "polygon");
+      head.setAttribute(
+        "points",
+        port.axisEnd.x.toFixed(2) + "," + port.axisEnd.y.toFixed(2) + " " +
+        leftX.toFixed(2) + "," + leftY.toFixed(2) + " " +
+        rightX.toFixed(2) + "," + rightY.toFixed(2),
+      );
+      head.setAttribute("fill", color);
+      group.appendChild(head);
+    }
+
+    const marker = document.createElementNS(SVG_NS, "circle");
+    marker.setAttribute("cx", port.origin.x.toFixed(2));
+    marker.setAttribute("cy", port.origin.y.toFixed(2));
+    marker.setAttribute("r", "5.8");
+    marker.setAttribute("fill", color);
+    marker.setAttribute("stroke", "#f8fafc");
+    marker.setAttribute("stroke-width", "1");
+    group.appendChild(marker);
+
+    const number = document.createElementNS(SVG_NS, "text");
+    number.setAttribute("x", port.origin.x.toFixed(2));
+    number.setAttribute("y", (port.origin.y + 2.5).toFixed(2));
+    number.setAttribute("text-anchor", "middle");
+    number.setAttribute("font-family", "ui-monospace, monospace");
+    number.setAttribute("font-size", "7.5");
+    number.setAttribute("font-weight", "700");
+    number.setAttribute("fill", "#07111c");
+    number.textContent = String(index + 1);
+    group.appendChild(number);
+    svg.appendChild(group);
+  });
+
+  if (layout.ports.length) {
+    const count = document.createElementNS(SVG_NS, "text");
+    count.setAttribute("x", String(w - 6));
+    count.setAttribute("y", "12");
+    count.setAttribute("text-anchor", "end");
+    count.setAttribute("font-family", "ui-monospace, monospace");
+    count.setAttribute("font-size", "8.5");
+    count.setAttribute("fill", "#cbd5e1");
+    count.textContent = layout.ports.length + " MEP port" + (layout.ports.length === 1 ? "" : "s");
+    svg.appendChild(count);
+  }
+
+  if (connectorPreviewError) {
+    const warning = document.createElementNS(SVG_NS, "text");
+    warning.setAttribute("x", "6");
+    warning.setAttribute("y", "12");
+    warning.setAttribute("font-family", "system-ui, sans-serif");
+    warning.setAttribute("font-size", "8.5");
+    warning.setAttribute("fill", "#fca5a5");
+    warning.textContent = "Port preview unavailable — check definitions";
+    svg.appendChild(warning);
+  }
+
+  // Dimensions are based on the actual family geometry, not expanded port extents.
   const dims = document.createElementNS(SVG_NS, "text");
   dims.setAttribute("x", String(w - 6));
   dims.setAttribute("y", String(h - 6));
@@ -1070,7 +1157,9 @@ function buildPreviewSvg(obj: THREE.Object3D): SVGSVGElement {
   dims.setAttribute("font-size", "9.5");
   dims.setAttribute("fill", "#64748b");
   dims.textContent =
-    size.x.toFixed(2) + " × " + size.y.toFixed(2) + " × " + size.z.toFixed(2) + " m";
+    layout.dimensions[0].toFixed(2) + " × " +
+    layout.dimensions[1].toFixed(2) + " × " +
+    layout.dimensions[2].toFixed(2) + " m";
   svg.appendChild(dims);
 
   return svg;
