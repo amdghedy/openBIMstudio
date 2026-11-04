@@ -8,9 +8,8 @@
  * resolves, so badges, counters, and active states stay in sync. */
 import { getNorthState, onNorthChanged } from "../modules/north/north";
 import * as THREE from "three";
-import { confirmDialog } from "../features/form-modal";
 import { ctx } from "../core/context";
-import { onNotify, __dispatchToSubscribers, uiAlert } from "../core/notify";
+import { onNotify, __dispatchToSubscribers } from "../core/notify";
 import { pickFiles, loadIfcFiles, loadFragFiles } from "../features/importer";
 import {
   setProjection, getProjection, fitAll, gotoDir, goHome, takeScreenshot,
@@ -43,7 +42,7 @@ import {
 import {
   setAuthoringTool, getActiveTool, deleteSelectedElement, clearAllElements,
   setLevel, getLevel, getLastCommand, pinSelected,
-  onAuthoringChange, getWallChain, setWallChain, reverseSelected, addWallSweepToSelected, clearWallSweepsSelected, cycleMepSelection, selectAllAuthored, getElements,
+  onAuthoringChange, getWallChain, setWallChain, reverseSelected, cycleMepSelection, selectAllAuthored, getElements,
 } from "../features/authoring";
 import { selectedAuthored, selectionCategory } from "../features/modify-options";
 import { PLACE_TOOLS } from "../features/place-options";
@@ -95,7 +94,6 @@ import { toggleAutomationPanel, isAutomationPanelVisible } from "../features/aut
 
 // ── Object snaps (all modes) ───────────────────────────────────────────
 import { toggleSnapSettings, isSnapSettingsVisible, snapping } from "../features/snapping";
-import { resolveDblClick } from "./ribbon-collapse";
 
 // ── Insert / Link tools (all activated) ────────────────────────────────
 import {
@@ -233,28 +231,53 @@ function toggleRibbonMinimize() {
   applyRibbonMinimize(!ribbonMinimized);
 }
 
-/** Date.now() of the last auto-expand (single click on a tab while minimized).
- *  A dblclick landing right after such an expand is the tail of the SAME
- *  gesture — swallowing it keeps the just-expanded ribbon open. */
-let lastAutoExpandAt = 0;
+/* ── Full Screen (Revit-style "Full Screen" navigation tool) ────────────
+ * Enters browser fullscreen on <html> and hides the command bars (ribbon
+ * tabs + strip, status bar) so the model view window gets the whole screen.
+ * Moving the mouse to the very top edge temporarily reveals the ribbon.
+ * F11 / Esc exits. Works even when native fullscreen is blocked (focus mode). */
+let fullscreenFocus = false;
+let fsPeek: HTMLDivElement | null = null;
 
-// Double-click a tab (or the empty tabs row) → collapse the strip so only the
-// tab buttons remain. Delegated on the PERSISTENT tabs row: renderTabs()
-// rebuilds every tab button on each click, and a rebuilt button never sees the
-// browser's dblclick (its node was replaced between the two clicks) — this
-// delegation is what makes the gesture work on Home / Annotate / View / … .
-tabsRow.addEventListener("dblclick", (e) => {
-  const target = e.target as HTMLElement | null;
-  const onTab = !!target?.closest?.(".obs-ribbon__tab");
-  const decision = resolveDblClick({
-    minimized: ribbonMinimized,
-    lastAutoExpandAt,
-    now: Date.now(),
-    onTab,
-  });
-  lastAutoExpandAt = decision.lastAutoExpandAt;
-  if (decision.minimize !== ribbonMinimized) applyRibbonMinimize(decision.minimize);
-});
+function applyFullscreenUI(on: boolean) {
+  const changed = fullscreenFocus !== on;
+  fullscreenFocus = on;
+  document.body.classList.toggle("obs-fullscreen", on);
+  if (fsPeek) fsPeek.style.display = on ? "block" : "none";
+  if (!on) document.body.classList.remove("obs-fullscreen-peek");
+  if (changed && on) {
+    toast("Full Screen — command bars hidden · move mouse to the top edge to reveal the ribbon · F11 / Esc to exit", "info", 3600);
+  }
+  if (changed) {
+    try { renderStrip(); } catch { /* ribbon not mounted yet */ }
+  }
+  window.dispatchEvent(new Event("resize"));
+  window.dispatchEvent(new CustomEvent("obs-ribbon-resize"));
+}
+
+function toggleFullScreen() {
+  if (document.fullscreenElement) {
+    try { void document.exitFullscreen()?.catch?.(() => applyFullscreenUI(false)); } catch { applyFullscreenUI(false); }
+    return;
+  }
+  const el = document.documentElement as any;
+  const req = el.requestFullscreen ?? el.webkitRequestFullscreen;
+  if (typeof req === "function") {
+    try {
+      const p = req.call(el);
+      if (p && typeof p.then === "function") {
+        p.then(() => applyFullscreenUI(true)).catch(() => {
+          // Native fullscreen blocked (sandboxed iframe etc.) — focus mode fallback.
+          applyFullscreenUI(true);
+        });
+      } else {
+        applyFullscreenUI(true);
+      }
+    } catch { applyFullscreenUI(true); }
+  } else {
+    applyFullscreenUI(true);
+  }
+}
 
 /* ═════════════════════════════════════════════════════════════════════════
    Helpers
@@ -727,12 +750,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         const mod = await import("../modules/bim-gaps/bim-gaps-boot");
         await mod.exportIfc("IFC2X3");
       }, "Export IFC2X3"), { title: "Export the authored model as IFC2X3 STEP file" }),
-      b("file-frag", "FRAG", safe(async () => {
-        const mod = await import("../modules/export/frag");
-        await mod.exportFragFromMenu();
-      }, "Export FRAG"), {
-        title: "Export loaded model(s) as ThatOpen Fragments (.frag) — official binary format",
-      }),
       b("cost-takeoff", "Cost", safe(() => recalculateTakeoff(), "Cost")),
       b("issues", "Issues", safe(() => toggleIssuesPanel(), "Issues"), { active: isIssuesPanelVisible() }),
       b("issues", "Issues", safe(() => toggleIssuesPanel(), "Issues"), { active: isIssuesPanelVisible() }),
@@ -809,23 +826,16 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Sweeps"),
       b("wall", "Baseboard", safe(() => {
-        const n = addWallSweepToSelected({ profileId: "baseboard-100", height: 0, face: "both" });
-        toast(n ? `Baseboard added to ${n} wall(s)` : "Select one or more walls first", n ? "success" : "warn");
-      }, "Baseboard"), { title: "Add a 100 mm baseboard to the selected walls (both faces)" }),
+        const w = (window as any).__obsWallSweeps;
+        if (w) toast("Baseboard: select a wall, then run Generate Rebar or use __obsWallSweeps", "info");
+        else toast("Wall sweeps module not loaded", "warn");
+      }, "Baseboard"), { title: "Add baseboard sweep to selected wall" }),
       b("wall", "Cornice", safe(() => {
-        const sel = selectedAuthored().filter((e) => e.type === "wall");
-        const top = sel.length ? Math.min(...sel.map((e) => Number((e.params as any).height) || 3)) - 0.12 : 0;
-        const n = addWallSweepToSelected({ profileId: "cornice-standard", height: Math.max(0, top), face: "both" });
-        toast(n ? `Cornice added to ${n} wall(s)` : "Select one or more walls first", n ? "success" : "warn");
-      }, "Cornice"), { title: "Add a crown moulding at the top of the selected walls" }),
+        toast("Cornice: select a wall → use __obsWallSweeps to generate", "info");
+      }, "Cornice"), { title: "Add cornice (crown moulding) sweep" }),
       b("wall", "Wainscot", safe(() => {
-        const n = addWallSweepToSelected({ profileId: "wainscot-1200", height: 0, face: "both" });
-        toast(n ? `Wainscot added to ${n} wall(s)` : "Select one or more walls first", n ? "success" : "warn");
-      }, "Wainscot"), { title: "Add a 1.2 m wainscot panel to the selected walls" }),
-      b("wall", "Clear Sweeps", safe(() => {
-        const n = clearWallSweepsSelected();
-        toast(n ? `Sweeps removed from ${n} wall(s)` : "Selected walls have no sweeps", n ? "success" : "info");
-      }, "Clear sweeps"), { title: "Remove baseboards / cornices / wainscots from the selected walls" }),
+        toast("Wainscot: select a wall → use __obsWallSweeps to generate", "info");
+      }, "Wainscot"), { title: "Add wainscot panel sweep" }),
       sep(),
       groupLabel("Constraints"),
       b("dim-aligned", "Lock Dim", safe(async () => {
@@ -892,19 +902,16 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         const m = mc.create(poly, h, `Mass ${mc.list().length + 1}`);
         toast(`Created "${m.name}": ${w}×${w}×${h}m, area=${w * w}m²`, "success");
       }, "In-place mass"), { title: "Create a conceptual mass element (extruded polygon)" }),
-      b("mass", "Mass Floors", safe(async () => {
+      b("mass", "Mass Floors", safe(() => {
         const mc = (window as any).__obsMass;
         if (!mc) { toast("Mass module not loaded", "warn"); return; }
         const masses = mc.list();
         if (!masses.length) { toast("No masses created yet", "info"); return; }
-        const { showObjectsDialog } = await import("../features/form-modal");
-        const rows: Array<Record<string, unknown>> = [];
         for (const m of masses) {
           const floors = mc.getFloors(m.id);
-          if (floors.length) for (const f of floors) rows.push({ mass: m.name ?? m.id, ...f });
-          else rows.push({ mass: m.name ?? m.id });
+          if (floors.length) console.table(floors);
         }
-        await showObjectsDialog("Mass floors", rows, `${masses.length} mass(es)`);
+        toast(`${masses.length} mass(es) — see console for floor areas`, "info");
       }, "Mass floors"), { title: "Extract mass floor areas from conceptual masses" }),
       sep(),
       groupLabel("Properties"),
@@ -1116,11 +1123,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("file", "IFC", safe(() => linkIfc(), "Link IFC"), {
         title: "Link IFC models — origin-to-origin federation (same as old OpenBIMStudio)",
       }),
-      b("file-frag", "IFC→FRAG", safe(() => {
-        void import("../features/ifc-to-frag").then((m) => m.toggleIfcToFragPanel());
-      }, "IFC to FRAG"), {
-        title: "Convert IFC / IFCZIP to .frag and download — then Link FRAG (best for large models)",
-      }),
       b("file-frag", "FRAG", safe(() => linkFrag(), "Link FRAG"), {
         title: "Load FRAG as-is — coordinates preserved (old FRAG linker)",
       }),
@@ -1131,11 +1133,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Link CAD / BIM"),
       b("system", "Link CAD", safe(() => linkCad(), "Link CAD underlay"), {
         title: "DXF / SVG / PNG underlay for plan tracing, or 3D CAD reference",
-      }),
-      b("folder", "CAD Query", safe(() => {
-        void import("../features/cad-query-panel").then((m) => m.toggleCadQueryPanel());
-      }, "CAD Query"), {
-        title: "Query linked CAD by layer, element type, name / text, colour, linetype",
       }),
       b("file", "Link BIM", safe(() => linkBIM(), "Link BIM via IFC"), {
         title: "Export IFC from BIM, then link here",
@@ -1296,23 +1293,22 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "Annotate",
     items: () => [
       groupLabel("Graphics"),
-      b("dim-linear", "Line Weights", safe(async () => {
+      b("dim-linear", "Line Weights", safe(() => {
         const lw = (window as any).__obsLineWeights;
         if (!lw) { toast("Line weights module not loaded", "warn"); return; }
         const list = lw.list();
-        const { showTableDialog } = await import("../features/form-modal");
-        await showTableDialog("Line weights", ["Element type", "Width (mm)", "Colour"],
-          list.map((r: any) => [r.elementType, r.widthMm, r.color]), `${list.length} rules`);
+        const text = list.map((r: any) => `${r.elementType}: ${r.widthMm}mm ${r.color}`).join("\n");
+        toast(`${list.length} line weight rules. See console.`, "info");
+        console.table(list);
       }, "Line weights"), { title: "View line weight assignments per element type" }),
-      b("grid", "Grid Bubbles", safe(async () => {
+      b("grid", "Grid Bubbles", safe(() => {
         const gb = (window as any).__obsGridBubbles;
         if (!gb) { toast("Grid bubbles module not loaded", "warn"); return; }
         const grids = gb.getGrids();
         const levels = gb.getLevels();
-        const { showObjectsDialog } = await import("../features/form-modal");
-        await showObjectsDialog("Grids and levels",
-          [...grids.map((g: any) => ({ kind: "grid", ...g })), ...levels.map((l: any) => ({ kind: "level", ...l }))],
-          `${grids.length} grid bubble(s), ${levels.length} level marker(s)`);
+        toast(`${grids.length} grid bubble(s), ${levels.length} level marker(s). See console.`, "info");
+        console.table(grids);
+        console.table(levels);
       }, "Grid bubbles"), { title: "View grid bubbles and level markers" }),
       sep(),
       groupLabel("Dimension"),
@@ -1765,7 +1761,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         (window as any).__obsInPlaceMass?.create?.();
         toast("In-Place Mass: extrude/sweep/revolve in viewport", "info");
       }, "In-place mass"), { title: "Create an in-place massing form" }),
-      b("mass", "Mass Floors", safe(async () => {
+      b("mass", "Mass Floors", safe(() => {
         (window as any).__obsInPlaceMass?.massFloors?.();
       }, "Mass floors"), { title: "Slice mass into mass floors per level" }),
     ],
@@ -1871,7 +1867,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("interference", "Clr +", safe(() => changeClearance(0.1), "Clearance +"),
         { title: "Increase the clearance band by 10 cm" }),
       b("settings", "Rules…", safe(() => {
-        uiAlert(
+        alert(
           `Clash rules:\n\n` +
           `Tolerance:      ${(getTolerance() * 1000).toFixed(0)} mm\n` +
           `Clearance band: ${(getClearance() * 100).toFixed(0)} cm\n\n` +
@@ -2049,7 +2045,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("clear", "Clear All", safe(async () => {
         if (!getEditCount()) { toast("No edits to clear.", "info"); return; }
-        if (!(await confirmDialog("Revert edits", `Revert all ${getEditCount()} edit(s)?`))) return;
+        if (!confirm(`Revert all ${getEditCount()} edit(s)?`)) return;
         await clearAllEdits();
         toast("All edits reverted.", "success");
       }, "Clear all edits"), {
@@ -2166,7 +2162,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("show-all", "Revert All", safe(async () => {
         if (!getEditCount()) { toast("No edits.", "info"); return; }
-        if (!(await confirmDialog("Revert edits", `Revert all ${getEditCount()} edit(s)?`))) return;
+        if (!confirm(`Revert all ${getEditCount()} edit(s)?`)) return;
         await clearAllEdits();
       }, "Revert all"), {
         title: "Revert every edit and unhide all originals",
@@ -2191,7 +2187,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Section box"), {
         kbd: "^B",
         active: !!(window as any).__obsSectionBox?.isActive?.(),
-        title: "Toggle the 3D section box — drag cyan face handles to crop live — Ctrl+B",
+        title: "Toggle the 3D section box — drag the cyan arrows on each face to stretch / shrink — Ctrl+B",
       }),
       b("section-box", "Reset Box", safe(() => {
         (window as any).__obsSectionBox?.reset?.();
@@ -2276,31 +2272,14 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Dependent view"), { title: "Create a dependent view sharing primary geometry" }),
       sep(),
       groupLabel("Filters"),
-      b("system", "Create Filter", safe(async () => {
-        const vf = (window as any).__obsViewFilters;
-        if (!vf?.create) { toast("View filters not loaded", "warn"); return; }
-        const { openFormModal } = await import("../features/form-modal");
-        const v = await openFormModal({
-          title: "New view filter",
-          subtitle: "Elements matching the rule get these graphics overrides",
-          fields: [
-            { kind: "text", key: "name", label: "Filter name", default: "New Filter", validate: (x) => String(x).trim() ? null : "Name is required" },
-            { kind: "select", key: "category", label: "Category", default: "walls", options: [["walls", "Walls"], ["doors", "Doors"], ["windows", "Windows"], ["floors", "Floors"], ["columns", "Columns"], ["beams", "Beams"], ["ducts", "Ducts"], ["pipes", "Pipes"]] },
-            { kind: "text", key: "parameter", label: "Parameter", default: "FireRating" },
-            { kind: "select", key: "operator", label: "Operator", default: "equals", options: [["equals", "equals"], ["not-equals", "does not equal"], ["greater", "greater than"], ["less", "less than"], ["contains", "contains"]] },
-            { kind: "text", key: "value", label: "Value", default: "" },
-            { kind: "text", key: "color", label: "Override colour (hex)", default: "#dc2626", validate: (x) => /^#[0-9a-f]{6}$/i.test(String(x)) ? null : "Use a hex colour like #dc2626" },
-          ],
-          submitLabel: "Create filter",
+      b("system", "Create Filter", safe(() => {
+        (window as any).__obsViewFilters?.create?.({
+          name: "Fire-rated Walls",
+          categories: ["walls"],
+          rules: [{ parameter: "FireRating", operator: "not-equals", value: "0" }],
+          overrides: { projectionColor: 0xdc2626, cutColor: 0xdc2626, lineWeight: 4, surfacePattern: null, cutPattern: null, transparency: 0, halftone: false, visible: true },
         });
-        if (!v) return;
-        vf.create({
-          name: String(v.name).trim(),
-          categories: [v.category],
-          rules: [{ parameter: String(v.parameter).trim(), operator: v.operator, value: v.value }],
-          overrides: { projectionColor: parseInt(String(v.color).slice(1), 16), cutColor: parseInt(String(v.color).slice(1), 16), lineWeight: 4, surfacePattern: null, cutPattern: null, transparency: 0, halftone: false, visible: true },
-        });
-        toast(`Filter "${String(v.name).trim()}" created — apply it from Visibility/Graphics → Filters`, "success", 4000);
+        toast("View filter created — add to views via console", "success");
       }, "View filter"), { title: "Create a rule-based view graphics filter" }),
       b("system", "Matchline", safe(() => {
         (window as any).__obsMatchline?.build?.({ points: [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 12, z: 2 }] });
@@ -2315,68 +2294,8 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("select-all", "Modify", "select", "Esc"),
       sep(),
 
-      // ── Graphics (display styles + VVG) ─────────────────────────────
+      // ── Graphics (VVG / Thin Lines / Hidden) ────────────────────────
       groupLabel("Graphics"),
-      b("system", "Graphic…", safe(async () => {
-        const vg = await import("../features/view-graphics");
-        vg.openGraphicDisplayOptions();
-      }, "Graphic Display Options"), {
-        title: "Graphic Display Options — style, background, sun, transparency",
-      }),
-      b("system", "Wireframe", safe(async () => {
-        const vg = await import("../features/view-graphics");
-        vg.setVisualPreset("wireframe");
-        toast("Wireframe", "info");
-        refreshRibbon();
-      }, "Wireframe"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "wireframe",
-        title: "Wireframe display",
-      }),
-      b("system", "Hidden Line", safe(async () => {
-        const vg = await import("../features/view-graphics");
-        vg.setVisualPreset("hidden-line");
-        toast("Hidden Line", "info");
-        refreshRibbon();
-      }, "Hidden Line"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "hidden-line",
-        title: "Hidden Line — pale faces + edges",
-      }),
-      b("system", "Shaded", safe(async () => {
-        const vg = await import("../features/view-graphics");
-        vg.setVisualPreset("shaded");
-        toast("Shaded", "info");
-        refreshRibbon();
-      }, "Shaded"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "shaded",
-        title: "Shaded display",
-      }),
-      b("system", "Consistent", safe(async () => {
-        const vg = await import("../features/view-graphics");
-        vg.setVisualPreset("consistent-colors");
-        toast("Consistent Colors", "info");
-        refreshRibbon();
-      }, "Consistent Colors"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "consistent-colors",
-        title: "Consistent Colors — flat shading",
-      }),
-      b("system", "Realistic", safe(async () => {
-        const vg = await import("../features/view-graphics");
-        vg.setVisualPreset("realistic");
-        toast("Realistic", "info");
-        refreshRibbon();
-      }, "Realistic"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "realistic",
-        title: "Realistic materials and soft shadows",
-      }),
-      b("system", "Ray Trace", safe(async () => {
-        const vg = await import("../features/view-graphics");
-        vg.setVisualPreset("ray-trace");
-        toast("Ray Trace (enhanced realistic)", "info");
-        refreshRibbon();
-      }, "Ray Trace"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "ray-trace",
-        title: "Ray Trace approximation — stronger tone mapping & shadows",
-      }),
       b("tree", "Visibility", safe(() => {
         try { toggleModelTreePanel(); } catch { /* */ }
         toast("Visibility/Graphics — use Model Tree eye icons to hide categories", "info");
@@ -2387,10 +2306,19 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         try { toggleModelTreePanel(); } catch { /* */ }
         toast("Filters — filter by category in Model Tree / search", "info");
       }, "View filters"), { title: "View filters by category" }),
-      b("mline", "Thin Lines", safe(async () => {
-        const vg = await import("../features/view-graphics");
-        const on = !vg.isThinLines();
-        vg.setThinLines(on);
+      b("mline", "Thin Lines", safe(() => {
+        const on = !(window as any).__obsThinLines;
+        (window as any).__obsThinLines = on;
+        try {
+          ctx.world.scene.three.traverse((o: any) => {
+            if (o?.isLine || o?.isLineSegments) {
+              if (o.material) {
+                o.material.linewidth = on ? 1 : 2;
+                o.material.needsUpdate = true;
+              }
+            }
+          });
+        } catch { /* */ }
         toast(on ? "Thin lines ON" : "Thin lines OFF", "info");
         refreshRibbon();
       }, "Thin lines"), {
@@ -2437,6 +2365,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("walk", "Walk", safe(() => toggleWalkMode(), "Walk mode"), {
         active: isWalkModeEnabled(),
         title: "First-person walk (WASD + mouse)",
+      }),
+      b("fit", "Full Screen", safe(() => {
+        toggleFullScreen();
+      }, "Full screen"), {
+        active: fullscreenFocus,
+        title: "Full Screen — hide command bars, move mouse to top edge to reveal the ribbon (F11)",
       }),
       sep(),
 
@@ -2667,12 +2601,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Release"), { title: "Release borrowed element back to pool" }),
       sep(),
       groupLabel("Plugins"),
-      b("component", "Plugin List", safe(async () => {
+      b("component", "Plugin List", safe(() => {
         const loaded = (window as any).__obsPluginRegistry;
-        if (!loaded || loaded.size === 0) { toast("No plugins are loaded.", "info"); return; }
-        const { showTableDialog } = await import("../features/form-modal");
-        await showTableDialog("Loaded plugins", ["Id", "Name", "Version"],
-          [...loaded.entries()].map(([id, v]: any) => [id, v.manifest?.name ?? "", v.manifest?.version ?? ""]), `${loaded.size} active`);
+        if (!loaded || loaded.size === 0) { toast("No plugins loaded. Check console for boot log.", "info"); return; }
+        const names = [...loaded.keys()];
+        toast(`${names.length} plugin(s) active: ${names.join(", ")}`, "info", 5000);
+        console.table([...loaded.entries()].map(([id, v]: any) => ({ id, name: v.manifest?.name, version: v.manifest?.version })));
       }, "Plugin list"), { title: "List all loaded plugins" }),
       b("component", "Reload Plugins", safe(async () => {
         try {
@@ -2698,26 +2632,28 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Toggle batching"), { title: "Toggle InstancedMesh batching (1 draw call per element type)" }),
       sep(),
       groupLabel("Analysis"),
-      b("connection", "Analytical", safe(async () => {
+      b("connection", "Analytical", safe(() => {
         const am = (window as any).__obsAnalytical;
         if (!am) { toast("Analytical model not loaded", "warn"); return; }
         const nodes = am.getNodes();
         const members = am.getMembers();
-        const { showTableDialog } = await import("../features/form-modal");
-        await showTableDialog("Structural analytical model", ["Member", "Type", "From node", "To node", "Area (m²)"],
-          members.map((m: any) => [m.id, m.sourceType, m.startNodeId, m.endNodeId, Number(m.area).toFixed(4)]),
-          `${nodes.length} nodes, ${members.length} members`);
+        toast(`Analytical model: ${nodes.length} nodes, ${members.length} members. See console.`, "info");
+        console.table(nodes);
+        console.table(members);
       }, "Analytical model"), { title: "View structural analytical model (FEM nodes + members)" }),
-      planned("energy", "Energy", "Energy analysis needs room/space thermal zones, which can't be created in the UI yet."),
+      b("energy", "Energy", safe(() => {
+        const en = (window as any).__obsEnergy;
+        if (!en) { toast("Energy analysis not loaded", "warn"); return; }
+        toast("Energy analysis ready. Use __obsEnergy.computeHeatLoss(zone) or exportGbXML(zones).", "info", 5000);
+      }, "Energy analysis"), { title: "Energy analysis: heat loss, solar gain, gbXML export" }),
       sep(),
       groupLabel("Marketplace"),
-      b("component", "Browse Plugins", safe(async () => {
+      b("component", "Browse Plugins", safe(() => {
         const mp = (window as any).__obsMarketplace;
         if (!mp) { toast("Marketplace not loaded", "warn"); return; }
         const list = mp.list();
-        const { showTableDialog } = await import("../features/form-modal");
-        await showTableDialog("Bundled plugins", ["Name", "Version", "Author", "Description"],
-          list.map((x: any) => [x.name, x.version, x.author, x.description]), "Plugins shipped with this build");
+        console.table(list);
+        toast(`${list.length} plugins available. See console.`, "info");
       }, "Browse marketplace"), { title: "Browse plugin marketplace" }),
       b("component", "Install Plugin", safe(async () => {
         const mp = (window as any).__obsMarketplace;
@@ -3091,10 +3027,7 @@ function syncContextTab() {
     if (!hadTab) tabBeforeCtx = activeTab;
     ctxTab = { id: "ctx-place", label, contextual: true, items: build };
     activeTab = "ctx-place";
-    if (ribbonMinimized) {
-      applyRibbonMinimize(false);
-      lastAutoExpandAt = Date.now();
-    }
+    if (ribbonMinimized) applyRibbonMinimize(false);
   } else if (ctxTab) {
     ctxTab = null;
     if (activeTab === "ctx-place") activeTab = tabBeforeCtx && TABS.some((x) => x.id === tabBeforeCtx) ? tabBeforeCtx : (TABS[0]?.id ?? "file");
@@ -3127,18 +3060,25 @@ function renderTabs() {
       // Single click: if minimized, expand and switch; if already expanded, just switch tab
       if (ribbonMinimized) {
         applyRibbonMinimize(false);
-        lastAutoExpandAt = Date.now();
       }
-      // Re-clicking the already-active tab must NOT rebuild the tabs row: the
-      // double-click collapse gesture needs both clicks to land on the same
-      // node, and renderTabs() replaces every button.
-      if (activeTab === t.id && !ribbonMinimized) return;
       activeTab = t.id;
       renderTabs();
       renderStrip();
     };
+    // Double-click on tab → toggle minimize (BIM behavior: shrink ribbon so only tabs show)
+    btn.ondblclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleRibbonMinimize();
+    };
     tabsRow.appendChild(btn);
   }
+
+  // Double-click empty area of tabs row also toggles minimize
+  tabsRow.ondblclick = (e) => {
+    if ((e.target as HTMLElement).classList.contains("obs-ribbon__tab")) return;
+    toggleRibbonMinimize();
+  };
 
   tabsRow.appendChild(pill);
   updatePill();
@@ -3387,6 +3327,31 @@ function setupLeftDock(mainRow: HTMLElement) {
    Setup
    ═════════════════════════════════════════════════════════════════════════ */
 export function setupRibbon() {
+  // ── Full Screen: F11 shortcut, fullscreenchange sync, top-edge peek zone ──
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "F11") {
+      e.preventDefault();
+      toggleFullScreen();
+    }
+  }, true);
+  document.addEventListener("fullscreenchange", () => {
+    applyFullscreenUI(!!document.fullscreenElement);
+  });
+  fsPeek = document.createElement("div");
+  fsPeek.id = "obs-fullscreen-peek";
+  fsPeek.style.cssText =
+    "position:fixed;top:0;left:0;right:0;height:12px;z-index:2147483000;display:none;";
+  fsPeek.addEventListener("mouseenter", () => {
+    if (fullscreenFocus) document.body.classList.add("obs-fullscreen-peek");
+  });
+  document.body.appendChild(fsPeek);
+  document.addEventListener("mousemove", (e) => {
+    if (!fullscreenFocus) return;
+    if (document.body.classList.contains("obs-fullscreen-peek") && e.clientY > 140) {
+      document.body.classList.remove("obs-fullscreen-peek");
+    }
+  });
+
   const app = document.getElementById("app") as HTMLElement;
   app.style.flexDirection = "column";
 

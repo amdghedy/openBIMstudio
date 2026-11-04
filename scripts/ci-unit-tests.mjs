@@ -23,7 +23,7 @@ const scripts = [
   "test:server-security", "test:safe-expr", "test:mep-connectivity", "test:boundary-edit",
   "test:project-file", "test:plan-tags", "test:dim-geometry", "test:auto-dim",
   "test:section-plane", "test:snap-points", "test:plan-draw", "test:view-lock",
-  "test:wheel-zoom", "test:section-box",
+  "test:wheel-zoom", "test:section-box", "test:section-box-arrows",
   "test:v68-core", "test:v68-solids", "test:v68-interaction", "test:v68-acceptance",
   "test:v69", "test:v70", "test:v71", "test:v72",
   "test:v73-just", "test:v73-mag", "test:v73-panels", "test:v73-rel",

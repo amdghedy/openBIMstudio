@@ -5,36 +5,41 @@
 // a translucent Plane mesh positioned at the centre of its face, oriented
 // perpendicular to the face normal. Dragging the handle moves that face only.
 //
-// Extended (Revit parity): every face now also carries a double-headed drag
-// arrow pointing along its face normal (Revit's section-box face handles).
-// The arrow is a real drag target — grabbing it stretches or shrinks that
-// face exactly like dragging the quad — and hovering either highlights the
-// whole face. Arrow geometry is built along local +Z, which each face's
-// rotation maps onto the outward normal, with the lift baked in so the
-// arrow straddles the plane (inner head inside the crop, outer head proud).
+// Extended (Revit-style grips): every face also carries an ARROW grip — a
+// solid shaft + conehead pointing outward along the face normal, exactly like
+// the section box arrows in Revit. Dragging an arrow stretches / shrinks that
+// face; dragging the translucent plane does the same (bigger hit target).
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getSceneBox } from "./camera-tools";
 import { registerCommand } from "./command-palette";
-import {
-  ARROW_SPEC,
-  closestParamOnLine,
-  faceCenter,
-  FACE_DEFS,
-  handleSize,
-  moveBoxFace,
-} from "./section-box-math";
+import { closestParamOnLine, handleSize, moveBoxFace } from "./section-box-math";
 
 let box: THREE.Box3 | null = null;
 let helper: THREE.Box3Helper | null = null;
 let faceGroup: THREE.Group | null = null;
 let enabled = false;
 
-/** Hovered face (matches by axis+sign across the plane and its arrow). */
-let hoveredFace: { axis: "x" | "y" | "z"; sign: 1 | -1 } | null = null;
+/** Per-face drag handle definitions: axis + sign + rotation. */
+const FACE_DEFS: Array<{
+  axis: "x" | "y" | "z";
+  sign: 1 | -1;
+  rotation: [number, number, number];
+  /** Rotation that points a +Y arrow along the outward face normal. */
+  arrowRotation: [number, number, number];
+  label: string;
+}> = [
+  { axis: "x", sign: -1, rotation: [0, -Math.PI / 2, 0], arrowRotation: [0, 0,  Math.PI / 2], label: "−X face" },
+  { axis: "x", sign:  1, rotation: [0,  Math.PI / 2, 0], arrowRotation: [0, 0, -Math.PI / 2], label: "+X face" },
+  { axis: "y", sign: -1, rotation: [ Math.PI / 2, 0, 0], arrowRotation: [Math.PI, 0, 0],      label: "−Y face (bottom)" },
+  { axis: "y", sign:  1, rotation: [-Math.PI / 2, 0, 0], arrowRotation: [0, 0, 0],            label: "+Y face (top)" },
+  { axis: "z", sign: -1, rotation: [Math.PI, 0, 0],      arrowRotation: [-Math.PI / 2, 0, 0], label: "−Z face" },
+  { axis: "z", sign:  1, rotation: [0, 0, 0],            arrowRotation: [ Math.PI / 2, 0, 0], label: "+Z face" },
+];
 
-/** Face-quad opacity: faint at rest so the model shows through, stronger on hover. */
-const PLANE_OPACITY = { base: 0.3, hot: 0.55 } as const;
+/** Arrow grip colours (base / hover) — amber hover reads clearly over cyan. */
+const ARROW_COLOR = 0x22d3ee;
+const ARROW_HOVER = 0xfde047;
 
 /** Internal drag state for live face editing. */
 let faceDragState: {
@@ -104,7 +109,7 @@ export function enableSectionBox(padding = 1.0): void {
   attachPointerHandlers();
   enabled = true;
   window.dispatchEvent(new CustomEvent("obs-toast", {
-    detail: { message: "Section Box ON — drag the cyan arrows on each face to stretch or shrink", kind: "success" },
+    detail: { message: "Section Box ON — drag the cyan arrows on each face to stretch / shrink", kind: "success" },
   }));
 }
 
@@ -135,7 +140,7 @@ export function disableSectionBox(): void {
     if (renderer && clipperItems(clipper()).length === 0) renderer.localClippingEnabled = false;
   } catch { /* */ }
   detachPointerHandlers();
-  hoveredFace = null;
+  setArrowHover(null);
   if (faceGroup) {
     ctx.world.scene.three.remove(faceGroup);
     faceGroup.traverse((o: any) => {
@@ -184,62 +189,56 @@ function buildHelper(): void {
 }
 
 /**
- * Build the 6 face handles: a translucent drag quad plus a Revit-style
- * double-headed arrow on each face. Both carry the same "section-box-face"
- * userData, so the existing drag logic treats them as one handle per face.
+ * Build 6 face handles (translucent planes at each face centre) PLUS one
+ * Revit-style arrow grip per face (shaft + conehead pointing outward).
  */
 function buildFaceHandles(): void {
   if (!box) return;
   faceGroup = new THREE.Group();
   faceGroup.name = "obs-section-box-handles";
+  faceGroup.renderOrder = 1000;
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  const handleGeo = new THREE.PlaneGeometry(0.6, 0.6);
 
-  // Shared geometry for all six faces (local units; scaled per handle).
-  const planeGeo = new THREE.PlaneGeometry(0.6, 0.6);
-  const shaftGeo = new THREE.CylinderGeometry(ARROW_SPEC.shaftR, ARROW_SPEC.shaftR, ARROW_SPEC.shaftLen, 12);
-  shaftGeo.rotateX(Math.PI / 2); // cylinder Y axis → Z
-  const coneOutGeo = new THREE.ConeGeometry(ARROW_SPEC.coneR, ARROW_SPEC.coneLen, 16);
-  coneOutGeo.rotateX(Math.PI / 2);  // apex +Y → +Z (outward head)
-  const coneInGeo = new THREE.ConeGeometry(ARROW_SPEC.coneR, ARROW_SPEC.coneLen, 16);
-  coneInGeo.rotateX(-Math.PI / 2); // apex +Y → −Z (inward head)
-  const headOutZ = ARROW_SPEC.lift + ARROW_SPEC.shaftLen / 2 + ARROW_SPEC.coneLen / 2;
-  const headInZ = ARROW_SPEC.lift - ARROW_SPEC.shaftLen / 2 - ARROW_SPEC.coneLen / 2;
+  // Shared unit-arrow geometries (origin at the face surface, pointing +Y).
+  // Shaft spans y 0..0.9, conehead spans y 0.9..1.4 — total length 1.4 units.
+  const shaftGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.9, 10);
+  shaftGeo.translate(0, 0.45, 0);
+  const headGeo = new THREE.ConeGeometry(0.21, 0.5, 14);
+  headGeo.translate(0, 1.15, 0);
 
   for (const def of FACE_DEFS) {
-    const ud = { kind: "section-box-face", axis: def.axis, sign: def.sign, label: def.label };
-
-    const planeMat = new THREE.MeshBasicMaterial({
+    const mat = new THREE.MeshBasicMaterial({
       color: 0x22d3ee,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: PLANE_OPACITY.base,
+      opacity: 0.5,
       depthTest: false,
     });
-    const plane = new THREE.Mesh(planeGeo, planeMat);
-    plane.rotation.set(...def.rotation);
-    plane.renderOrder = 1000;
-    plane.userData = { ...ud, part: "plane" };
-    faceGroup!.add(plane);
+    const mesh = new THREE.Mesh(handleGeo, mat);
+    mesh.rotation.set(...def.rotation);
+    mesh.userData = { kind: "section-box-face", axis: def.axis, sign: def.sign, label: def.label };
+    faceGroup!.add(mesh);
 
-    const arrow = new THREE.Group();
-    arrow.rotation.set(...def.rotation); // same mapping: local +Z = outward normal
-    arrow.userData = { ...ud, part: "arrow" };
+    // ── Arrow grip (Revit style) ──
     const arrowMat = new THREE.MeshBasicMaterial({
-      color: 0x22d3ee,
+      color: ARROW_COLOR,
+      side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.95,
       depthTest: false,
     });
+    const arrow = new THREE.Group();
+    arrow.name = `obs-sb-arrow-${def.axis}${def.sign < 0 ? "-" : "+"}`;
+    arrow.renderOrder = 1001;
     const shaft = new THREE.Mesh(shaftGeo, arrowMat);
-    shaft.position.z = ARROW_SPEC.lift;
-    const headOut = new THREE.Mesh(coneOutGeo, arrowMat);
-    headOut.position.z = headOutZ;
-    const headIn = new THREE.Mesh(coneInGeo, arrowMat);
-    headIn.position.z = headInZ;
-    for (const part of [shaft, headOut, headIn]) {
-      part.renderOrder = 1001; // draw after the quad so the arrow reads on top
-      part.userData = { ...ud, part: "arrow-mesh" };
-      arrow.add(part);
-    }
+    const head = new THREE.Mesh(headGeo, arrowMat);
+    shaft.renderOrder = 1001;
+    head.renderOrder = 1001;
+    arrow.add(shaft, head);
+    arrow.rotation.set(...def.arrowRotation);
+    arrow.userData = { kind: "section-box-arrow", axis: def.axis, sign: def.sign, label: `${def.label} arrow` };
     faceGroup!.add(arrow);
   }
   positionFaceHandles();
@@ -249,18 +248,33 @@ function buildFaceHandles(): void {
 
 function positionFaceHandles(): void {
   if (!faceGroup || !box) return;
-  // Both the quads and the arrow groups are face handles: centre each on
-  // its face (arrow heads straddle the plane via the baked-in lift).
+  const center = new THREE.Vector3();
+  box.getCenter(center);
   for (const h of faceGroup.children) {
-    const ud = h.userData;
-    if (ud?.kind !== "section-box-face") continue;
-    const c = faceCenter(
-      { min: box.min, max: box.max },
-      ud.axis as "x" | "y" | "z",
-      ud.sign as 1 | -1,
-    );
-    h.position.set(c.x, c.y, c.z);
+    const kind = h.userData?.kind as string | undefined;
+    if (kind !== "section-box-face" && kind !== "section-box-arrow") continue;
+    const axis = h.userData.axis as "x" | "y" | "z";
+    const sign = h.userData.sign as 1 | -1;
+    const pos = center.clone();
+    if (axis === "x") pos.x = sign < 0 ? box!.min.x : box!.max.x;
+    else if (axis === "y") pos.y = sign < 0 ? box!.min.y : box!.max.y;
+    else pos.z = sign < 0 ? box!.min.z : box!.max.z;
+    // Arrow base sits a hair outside the face so the shaft never z-fights the plane.
+    if (kind === "section-box-arrow") {
+      const n = faceNormal(axis, sign);
+      pos.addScaledVector(n, 0.02 * (h.scale.x || 1));
+    }
+    h.position.copy(pos);
   }
+}
+
+/** Outward unit normal of a box face. */
+function faceNormal(axis: "x" | "y" | "z", sign: 1 | -1): THREE.Vector3 {
+  return new THREE.Vector3(
+    axis === "x" ? sign : 0,
+    axis === "y" ? sign : 0,
+    axis === "z" ? sign : 0,
+  );
 }
 
 /**
@@ -401,13 +415,13 @@ function castRayOnHandles(ndc: THREE.Vector2): THREE.Object3D | null {
   const camera = (ctx as any).world?.camera?.three as THREE.Camera | undefined;
   if (!camera) return null;
   raycaster.setFromCamera(ndc, camera);
-  // Arrows are groups of cone/shaft meshes: raycast recursively, then climb
-  // to the face handle (quad or arrow group) that owns the hit.
+  // Recursive: arrow grips are Groups (shaft + conehead children).
   const hits = raycaster.intersectObjects(faceGroup.children, true);
   if (!hits.length) return null;
+  // Walk up to the object that carries the drag userData (plane mesh or arrow group).
   let o: THREE.Object3D | null = hits[0].object;
   while (o && o !== faceGroup) {
-    if (o.userData?.kind === "section-box-face") return o;
+    if (o.userData?.kind === "section-box-face" || o.userData?.kind === "section-box-arrow") return o;
     o = o.parent;
   }
   return null;
@@ -438,37 +452,12 @@ function updateHandleScale(): void {
   const maxDim = Math.max(size.x, size.y, size.z);
   for (const h of faceGroup.children) {
     const d = cam.position.distanceTo(h.position);
-    const k = handleSize(d, maxDim) / 0.6;
+    const s = handleSize(d, maxDim);
+    // Planes are 0.6-unit geometry; unit arrows are 1.4 long → shorter factor
+    // keeps both grips at a matching, Revit-like on-screen size.
+    const k = h.userData?.kind === "section-box-arrow" ? (s * 0.7) : (s / 0.6);
     h.scale.set(k, k, k);
   }
-}
-
-/** Restyle every face so the hovered (or dragged) one lights up. */
-function applyHoverStyles(): void {
-  if (!faceGroup) return;
-  for (const h of faceGroup.children) {
-    const ud = h.userData;
-    if (ud?.kind !== "section-box-face") continue;
-    const hot = !!hoveredFace && ud.axis === hoveredFace.axis && ud.sign === hoveredFace.sign;
-    if ((h as THREE.Mesh).isMesh) {
-      // Face quad: raise its translucency while hovered.
-      const m = (h as THREE.Mesh).material as THREE.MeshBasicMaterial;
-      if (m) m.opacity = hot ? PLANE_OPACITY.hot : PLANE_OPACITY.base;
-    } else {
-      // Arrow group: brighten the shaft + heads.
-      h.traverse((o) => {
-        const m = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined;
-        if (!m || !(m as unknown as { isMaterial?: boolean }).isMaterial) return;
-        m.opacity = hot ? 1 : 0.9;
-        m.color.setHex(hot ? 0x67e8f9 : 0x22d3ee);
-      });
-    }
-  }
-}
-
-function setHoveredFace(face: { axis: "x" | "y" | "z"; sign: 1 | -1 } | null): void {
-  hoveredFace = face;
-  applyHoverStyles();
 }
 
 function setControls(enabled: boolean): void {
@@ -480,7 +469,7 @@ function onCanvasPointerDown(event: PointerEvent): void {
   const target = castRayOnHandles(getNDC(event));
   if (!target) return;
   const ud = target.userData;
-  if (ud?.kind !== "section-box-face" || !box) return;
+  if ((ud?.kind !== "section-box-face" && ud?.kind !== "section-box-arrow") || !box) return;
   const startParam = pointerAxisParam(event, ud.axis);
   if (startParam == null) return;
   let wasEnabled: boolean | null = null;
@@ -495,10 +484,25 @@ function onCanvasPointerDown(event: PointerEvent): void {
     controlsWasEnabled: wasEnabled,
   };
   (event.target as HTMLElement).style.cursor = "grabbing";
-  setHoveredFace({ axis: ud.axis, sign: ud.sign });
   // Capture phase: keep the camera controls from also orbiting.
   event.preventDefault();
   event.stopImmediatePropagation();
+}
+
+/** Currently hovered arrow grip (for the amber hover highlight). */
+let hoveredArrow: THREE.Object3D | null = null;
+
+function setArrowHover(obj: THREE.Object3D | null): void {
+  if (hoveredArrow === obj) return;
+  if (hoveredArrow) {
+    const m = (hoveredArrow as THREE.Group).children as unknown as THREE.Mesh[];
+    for (const c of m) (c.material as THREE.MeshBasicMaterial)?.color?.setHex(ARROW_COLOR);
+  }
+  hoveredArrow = obj;
+  if (obj) {
+    const m = (obj as THREE.Group).children as unknown as THREE.Mesh[];
+    for (const c of m) (c.material as THREE.MeshBasicMaterial)?.color?.setHex(ARROW_HOVER);
+  }
 }
 
 function onCanvasPointerMove(event: PointerEvent): void {
@@ -506,8 +510,7 @@ function onCanvasPointerMove(event: PointerEvent): void {
     if (faceGroup && raycaster) {
       updateHandleScale();
       const hit = castRayOnHandles(getNDC(event));
-      const ud = hit?.userData as { axis?: "x" | "y" | "z"; sign?: 1 | -1 } | undefined;
-      setHoveredFace(ud?.axis && ud?.sign ? { axis: ud.axis, sign: ud.sign } : null);
+      setArrowHover(hit?.userData?.kind === "section-box-arrow" ? hit : null);
       const canvas = (ctx as any).world?.renderer?.three?.domElement as HTMLElement;
       if (canvas) canvas.style.cursor = hit ? "grab" : "";
     }
@@ -534,7 +537,7 @@ function onCanvasPointerUp(): void {
   if (!faceDragState) return;
   if (faceDragState.controlsWasEnabled !== false) setControls(true);
   faceDragState = null;
-  setHoveredFace(null);
+  setArrowHover(null);
   const canvas = (ctx as any).world?.renderer?.three?.domElement as HTMLElement | undefined;
   if (canvas) canvas.style.cursor = "";
 }
