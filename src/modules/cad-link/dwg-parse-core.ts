@@ -1,13 +1,17 @@
 /**
  * DWG parse pipeline (isomorphic core): runs inside the reader worker and in
- * Node regression tests. Imports @mlightcad/libredwg-web lazily and converts
- * a DWG byte buffer to a DxfDocument via dwgDatabaseToDxfDocument.
+ * Node regression tests.
  *
- * Every failure exits through DwgParseError with a structured code so the UI
- * can show actionable diagnostics instead of a raw wasm message.
+ * Primary reader: the acadrust WASM engine (acad-engine.ts) — native-grade
+ * DXF/DWG reading with full entity coverage. When the engine artifact is
+ * unavailable or fails, falls back to @mlightcad/libredwg-web and converts
+ * its database via dwgDatabaseToDxfDocument. Every failure exits through
+ * DwgParseError with a structured code so the UI can show actionable
+ * diagnostics instead of a raw wasm message.
  */
 import type { DxfDocument } from "../drawings/dxf-types";
 import { dwgDatabaseToDxfDocument } from "../drawings/dwg-convert";
+import { parseWithAcadEngine } from "../drawings/acad-engine";
 import { DwgParseError, sniffDwgVersion, type DwgReaderErrorCode } from "./dwg-reader-protocol";
 
 type Any = Record<string, any>;
@@ -84,6 +88,26 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
       "invalid-file",
       `${fileName} is not a DWG file (missing DWG version stamp such as AC1032). If this is a DXF, import it with the DXF path.`,
     );
+  }
+
+  // Primary path: the acadrust engine reads every DWG version R12–R2018+ with
+  // full entity coverage and returns structured read statistics.
+  try {
+    const acad = await parseWithAcadEngine(bytes, fileName);
+    if (acad && acad.entityCount > 0) {
+      return {
+        doc: acad.doc,
+        summary: acad.summary,
+        version: acad.version || sniff.code,
+        entityCount: acad.entityCount,
+      };
+    }
+    if (acad && acad.entityCount === 0 && acad.stats?.entities === 0 && !acad.stats.streamCompleted) {
+      // Engine started but could not decode the stream at all — fall through.
+      console.warn("[dwg-reader] acadrust produced no entities, falling back to libredwg", acad.summary);
+    }
+  } catch (e) {
+    console.warn("[dwg-reader] acadrust path failed, falling back to libredwg:", e);
   }
 
   const { lib, FileType } = await getReader();

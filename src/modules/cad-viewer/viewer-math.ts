@@ -557,6 +557,87 @@ export function hatchLineSegments(box: BBox, angleDeg: number, spacing: number, 
   return out;
 }
 
+/**
+ * Exact DXF hatch pattern definition → clipped dashed segments.
+ *
+ * Each family is one pattern-line definition straight from the file (already
+ * transformed into drawing space by the mapper): `angle` in radians, `base`
+ * the line's anchor point, `offset` the vector to the next parallel line
+ * (perpendicular spacing plus the along-line shift AutoCAD uses) and `dashes`
+ * the alternating dash(+)/gap(−) lengths anchored at each line origin.
+ * Segment = [x1,y1,x2,y2] in world coordinates.
+ */
+export function hatchPatternLineSegments(
+  box: BBox,
+  fams: Array<{ angle: number; base: [number, number]; offset: [number, number]; dashes: number[] }>,
+  maxLines = 4000,
+): Array<[number, number, number, number]> {
+  const out: Array<[number, number, number, number]> = [];
+  const cs = [
+    [box.minX, box.minY],
+    [box.maxX, box.minY],
+    [box.maxX, box.maxY],
+    [box.minX, box.maxY],
+  ];
+  for (const f of fams) {
+    const a = Number.isFinite(f.angle) ? f.angle : 0;
+    const ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux;
+    const step = f.offset[0] * nx + f.offset[1] * ny;
+    if (!(Math.abs(step) > 1e-9)) continue; // degenerate: lines coincide
+    const shift = f.offset[0] * ux + f.offset[1] * uy;
+    const baseN = f.base[0] * nx + f.base[1] * ny;
+    let nMin = Infinity, nMax = -Infinity, uMin = Infinity, uMax = -Infinity;
+    for (const [x, y] of cs) {
+      const n = x * nx + y * ny, u = x * ux + y * uy;
+      if (n < nMin) nMin = n;
+      if (n > nMax) nMax = n;
+      if (u < uMin) uMin = u;
+      if (u > uMax) uMax = u;
+    }
+    // Lines exist where nMin <= baseN + k*step <= nMax; when step is negative
+    // the k range inverts, so normalise the interval first.
+    let lo = (nMin - baseN) / step, hi = (nMax - baseN) / step;
+    if (step < 0) { const tmp = lo; lo = hi; hi = tmp; }
+    const k0 = Math.ceil(lo), k1 = Math.floor(hi);
+    const count = k1 - k0 + 1;
+    if (count < 1 || count > maxLines) continue;
+    const patternLen = f.dashes.reduce((s, d) => s + Math.abs(d), 0);
+    const hasDashes = f.dashes.length > 0 && patternLen > 1e-9;
+    for (let k = k0; k <= k1; k++) {
+      const ox = f.base[0] + k * f.offset[0], oy = f.base[1] + k * f.offset[1];
+      const originU = ox * ux + oy * uy;
+      const wMin = uMin - originU, wMax = uMax - originU;
+      if (!hasDashes) {
+        // Continuous family line.
+        out.push([
+          ox + wMin * ux, oy + wMin * uy,
+          ox + wMax * ux, oy + wMax * uy,
+        ]);
+        continue;
+      }
+      // Dashed family line: dash pattern repeats with period patternLen,
+      // anchored at the line origin (w = 0) like AutoCAD.
+      const first = Math.floor(wMin / patternLen);
+      const last = Math.ceil(wMax / patternLen);
+      for (let rep = first; rep <= last; rep++) {
+        let w = rep * patternLen;
+        for (const d of f.dashes) {
+          const len = Math.abs(d);
+          if (d > 0) {
+            const s0 = Math.max(w, wMin), s1 = Math.min(w + len, wMax);
+            if (s1 > s0) {
+              out.push([ox + s0 * ux, oy + s0 * uy, ox + s1 * ux, oy + s1 * uy]);
+            }
+          }
+          w += len;
+        }
+        if (out.length > maxLines * 64) return out; // hard safety valve
+      }
+    }
+  }
+  return out;
+}
+
 /* ───────────────────────── linetypes ───────────────────────── */
 
 /** On-screen dash patterns (px) used when the file does not define a linetype. */

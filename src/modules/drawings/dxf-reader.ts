@@ -14,6 +14,7 @@
  * Pure TypeScript, no dependencies.
  */
 import { lineweightFromDxf } from "./cad-styles";
+import { parseWithAcadEngine } from "./acad-engine";
 import type { DxfDimStyle, DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport } from "./dxf-types";
 import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
@@ -800,8 +801,37 @@ function expandRecs(
   return out;
 }
 
+/**
+ * Parse a DXF file. Primary path: the acadrust WASM engine (native-grade
+ * reading — binary DXF, R2018+, automatic code pages, failsafe recovery).
+ * Falls back to the pure-TS ASCII reader when the engine artifact is not
+ * available; binary DXF without the engine raises a clear error instead of
+ * mojibake.
+ */
 export async function parseDxfFile(file: File | Blob): Promise<DxfDocument> {
-  return parseDxf(await file.text());
+  const name = file instanceof File ? file.name : "drawing.dxf";
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const head = new TextDecoder("latin1").decode(bytes.slice(0, 22));
+  const isBinary = head.startsWith("AutoCAD Binary DXF");
+  try {
+    const acad = await parseWithAcadEngine(bytes, name);
+    if (acad && acad.entityCount > 0) {
+      acad.doc.sourceFormat = acad.format === "dwg" ? "dwg" : "dxf";
+      return acad.doc;
+    }
+    if (acad) {
+      console.warn(`[dxf-reader] acadrust read ${name} but drew nothing: ${acad.summary}`);
+    }
+  } catch (e) {
+    console.warn(`[dxf-reader] acadrust path failed for ${name}:`, e);
+  }
+  if (isBinary) {
+    throw new Error(
+      `${name} is a binary DXF and the native CAD engine is not available. Serve public/cad-engine/obim-cad-engine.wasm or convert the file to ASCII DXF.`,
+    );
+  }
+  return parseDxf(new TextDecoder().decode(bytes));
 }
 
 // Re-exported for tests / callers that tessellate arcs themselves.

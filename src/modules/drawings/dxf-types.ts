@@ -51,6 +51,20 @@ export interface DxfHatch {
   scale?: number;
   /** All boundary loops, outer first (even-odd fill). */
   loops: DxfPoint[][];
+  /**
+   * Real pattern definition read from the file (acadrust engine): one entry
+   * per pattern line family. Angles are radians in pattern space; `offset`
+   * is the perpendicular spacing vector between lines; `dashes` alternate
+   * dash/gap lengths along the line (positive dash, negative gap). When
+   * present the renderer draws the actual ANSI/ISO pattern instead of a
+   * generic fallback.
+   */
+  patternLines?: Array<{
+    angle: number;
+    base: [number, number];
+    offset: [number, number];
+    dashes: number[];
+  }>;
   /** WIPEOUT: solid fill with the drawing background (masks what is behind it). */
   wipeout?: boolean;
 }

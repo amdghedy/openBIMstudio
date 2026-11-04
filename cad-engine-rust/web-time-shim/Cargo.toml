@@ -1,0 +1,9 @@
+[package]
+name = "web-time"
+version = "1.1.0"
+edition = "2021"
+license = "MIT"
+description = "Drop-in replacement for the web-time crate backed by std::time (Rust >= 1.83 implements Instant/SystemTime on wasm32-unknown-unknown), so the CAD engine wasm builds without wasm-bindgen imports."
+
+[features]
+serde = []

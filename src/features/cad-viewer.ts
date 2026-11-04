@@ -1213,13 +1213,33 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.lineWidth = Math.max(0.6, lw * 0.6);
         c.setLineDash([]);
         c.beginPath();
-        for (const f of fams)
-          for (const sg of M.hatchLineSegments(box, f.angle, f.spacing)) {
-            const a = M.worldToScreen(v, sg[0], sg[1]),
-              b = M.worldToScreen(v, sg[2], sg[3]);
-            c.moveTo(a.x, a.y);
-            c.lineTo(b.x, b.y);
+        if (h.patternLines?.length) {
+          // Real pattern definition from the file (acadrust engine): draw the
+          // actual ANSI/ISO line families with their native dash motifs
+          // instead of a generic spacing fallback.
+          const step = Math.min(
+            ...h.patternLines.map((f) => Math.hypot(f.offset[0], f.offset[1])),
+          );
+          if (step * v.scale >= 2) {
+            for (const sg of M.hatchPatternLineSegments(box, h.patternLines)) {
+              const a = M.worldToScreen(v, sg[0], sg[1]),
+                b = M.worldToScreen(v, sg[2], sg[3]);
+              c.moveTo(a.x, a.y);
+              c.lineTo(b.x, b.y);
+            }
+          } else {
+            c.globalAlpha = 0.35;
+            c.fill("evenodd");
           }
+        } else {
+          for (const f of fams)
+            for (const sg of M.hatchLineSegments(box, f.angle, f.spacing)) {
+              const a = M.worldToScreen(v, sg[0], sg[1]),
+                b = M.worldToScreen(v, sg[2], sg[3]);
+              c.moveTo(a.x, a.y);
+              c.lineTo(b.x, b.y);
+            }
+        }
         c.stroke();
       }
     }
