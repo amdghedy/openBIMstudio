@@ -155,7 +155,6 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "PLOT", aliases: ["PRINT"], description: "Plot drawing to PDF or physical paper" },
   { name: "QSAVE", aliases: ["SAVE"], description: "Save the edited drawing as a DXF file" },
   { name: "SAVEAS", aliases: ["SA"], description: "Choose DXF or DWG for export" },
-  { name: "SAVEAS", aliases: ["SA"], description: "Choose DXF or DWG for export" },
   { name: "DWGSAVE", aliases: ["EXPORTDWG"], description: "Export the edited drawing as a native DWG file" },
   { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
   { name: "COPYCLIP", aliases: ["CC"], description: "Copy selected objects to the cross-drawing clipboard (Ctrl+C)" },
@@ -5604,7 +5603,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return (name || "drawing").replace(/\.[^.]+$/, "");
   }
 
-  /** Save the edited drawing back to DXF R2010 (QSAVE / SAVE / SAVEAS). */
+  /** Save the edited drawing back to DXF R2010 (QSAVE / SAVE). */
   function saveDxf(): void {
     if (!doc) {
       logCmd("Nothing to save — open a DWG or DXF drawing first.");
