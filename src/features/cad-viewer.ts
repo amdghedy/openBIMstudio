@@ -4974,13 +4974,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     updateStatus();
   }, { passive: false });
 
-  // Escape key handler — single Esc cancels step-by-step; double Esc (within 500 ms)
-  // fully resets the drawing session to a clean SELECT state (like a fresh reload of tools).
-  let lastEscAt = 0;
-  const DOUBLE_ESC_MS = 500;
-
-  /** Drop every in-progress command, tool, prompt and selection — idle SELECT. */
-  function resetDrawingSession(reason = "double Esc"): void {
+  /**
+   * Full session cancel (Esc): exit every tool/command, drop in-progress points,
+   * clear selection and prompts — back to idle SELECT. One Esc is enough.
+   */
+  function resetDrawingSession(reason = "Esc"): void {
     try {
       closeDynamicCommand();
     } catch {
@@ -5004,14 +5002,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     matchSrc = null;
     pendingNumeric = null;
     pendingYesNo = null;
-    try {
-      offStage = "dist";
-      offTarget = -1;
-      offPick = null;
-      offsetEntity = -1;
-    } catch {
-      /* */
-    }
+    offStage = "dist";
+    offTarget = -1;
+    offPick = null;
+    offsetEntity = -1;
+    offDist = null;
     pts = [];
     winStart = winNow = null;
     rband = null;
@@ -5019,11 +5014,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     dragging = null;
     hover = null;
     cursor = null;
-    try {
-      modGhost = null;
-    } catch {
-      /* */
-    }
+    modGhost = null;
     try {
       cmdAutoEl.style.display = "none";
     } catch {
@@ -5034,20 +5025,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     } catch {
       /* */
     }
-    // Return to SELECT and clear grips / selection
-    tool = "select";
+    // Force SELECT via setTool so ribbon/tool buttons stay in sync
     try {
-      tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) =>
-        b.classList.toggle("on", b.dataset.t === "select"),
-      );
+      setTool("select");
     } catch {
-      /* */
+      tool = "select";
+      try {
+        tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) =>
+          b.classList.toggle("on", b.dataset.t === "select"),
+        );
+      } catch {
+        /* */
+      }
+      cv.style.cursor = "crosshair";
     }
-    cv.style.cursor = "crosshair";
+    // setTool may preserve selection for noun-verb; force clear
     setSel([]);
     selected = -1;
-    lastEscAt = 0;
-    logCmd(`*Cancel* — all commands reset (${reason})`);
+    logCmd(`*Cancel* — all tools and selection cleared (${reason})`);
     try {
       showProps();
     } catch {
@@ -5067,54 +5062,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function onEscape(): void {
-    const now = performance.now();
-    if (lastEscAt > 0 && now - lastEscAt <= DOUBLE_ESC_MS) {
-      resetDrawingSession("double Esc");
-      return;
-    }
-    lastEscAt = now;
-
-    if (dynCommandEl) {
-      closeDynamicCommand();
-      logCmd("*Cancel*");
-      return;
-    }
-    if (helpEl) {
-      closeOverlay();
-      return;
-    }
-    if (pick) {
-      clearPickState();
-      setTool("select");
-      logCmd("*Cancel*");
-      draw();
-      return;
-    }
-    if (mod || isModTool(tool) || tool === "offset") {
-      cancelModOp();
-      return;
-    }
-    if (pts.length || winStart || rband) {
-      pts = [];
-      winStart = winNow = null;
-      rband = null;
-      press = null;
-      draw();
-      logCmd("*Cancel*");
-      return;
-    }
-    if (tool !== "select") {
-      setTool("select");
-      logCmd("*Cancel*");
-      return;
-    }
-    if (sel.size) {
-      setSel([]);
-      logCmd("*Cancel*");
-      return;
-    }
-    // Idle SELECT with nothing selected: second Esc within the window still resets
-    logCmd("Command: Cancel (press Esc again to reset all)");
+    // One Esc cancels everything (circle, line, modify, selection, prompts…)
+    resetDrawingSession("Esc");
   }
 
     // Keyboard Shortcuts (AutoCAD Standard: F3, F7, F8, F12, Ctrl+Z, Ctrl+Y, Space/Enter)
@@ -5509,6 +5458,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (event.key === "Escape") {
           event.preventDefault();
           closeDynamicCommand();
+          resetDrawingSession("Esc");
           return;
         }
         if (event.key === "Enter") {
