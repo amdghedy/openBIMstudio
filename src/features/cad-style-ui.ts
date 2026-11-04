@@ -423,6 +423,40 @@ export function openTextStyleManager(api: CadStyleApi): void {
       writeJson(STYLE_KEY, [...rest, n]); render();
     });
     const note = el("div", "color:#7c8696;font-size:11px;margin-bottom:8px", "Fonts are system fonts; SHX stroke fonts are drawn with a similar-looking font on screen and keep their names in saved DXF files.");
+
+    // ── "From this file" — the STYLE and DIMSTYLE tables exactly as read from the drawing ──
+    const fileStyles = Object.entries(api.doc()?.textStyles ?? {});
+    const fileDims = api.doc()?.dimStyles ?? [];
+    if (fileStyles.length || fileDims.length) {
+      const fileBox = el("div", "border:1px solid #1f2633;border-radius:6px;padding:8px 10px;margin-bottom:8px;background:#12141c");
+      fileBox.append(el("div", "color:#38bdf8;font-size:11px;font-weight:600;margin-bottom:6px", "From this file (STYLE / DIMSTYLE tables)"));
+      if (fileStyles.length) {
+        const grid = el("div", "display:grid;grid-template-columns:1fr 1fr;gap:2px 14px;font-size:10.5px;color:#c3cad6");
+        for (const [name, st] of fileStyles) {
+          const bits = [
+            st.font ? (findFont(st.font)?.label ?? st.font) : undefined,
+            st.height ? `fixed h=${st.height}` : undefined,
+            st.width ? `w=${st.width}` : undefined,
+            st.oblique ? `${st.oblique}°` : undefined,
+            st.bold ? "bold" : undefined,
+            st.italic ? "italic" : undefined,
+            st.backwards ? "backwards" : undefined,
+            st.upsideDown ? "upside-down" : undefined,
+            st.bigFont ? `big: ${st.bigFont}` : undefined,
+          ].filter(Boolean).join(", ");
+          const row = el("div", "overflow:hidden;text-overflow:ellipsis;white-space:nowrap");
+          row.title = `${name}: ${bits}`;
+          row.append(el("b", "", name), document.createTextNode(` — ${bits || "default"}`));
+          grid.append(row);
+        }
+        fileBox.append(grid);
+      }
+      if (fileDims.length) {
+        fileBox.append(el("div", "color:#9aa4b2;font-size:10.5px;margin-top:6px", `Dimension styles (${fileDims.length}): ${fileDims.slice(0, 12).join(", ")}${fileDims.length > 12 ? ", …" : ""}`));
+      }
+      body.append(fileBox);
+    }
+
     body.append(add, note, list);
     render();
   });

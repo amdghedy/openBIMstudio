@@ -9,6 +9,8 @@ export interface DxfPoint {
 export interface DxfLayer {
   name: string;
   color: number; // ACI color index 1-255
+  /** 24-bit true colour (0xRRGGBB) from DXF group 420 — wins over ACI when present. */
+  rgb?: number;
   lineType?: string;
   frozen?: boolean;
   locked?: boolean;
@@ -16,6 +18,10 @@ export interface DxfLayer {
   off?: boolean;
   /** Default lineweight in mm (DXF group 370 / 100); undefined = default. */
   lineweight?: number;
+  /** Layer transparency in percent 0-90 (DXF group 440); 0/undefined = opaque. */
+  transparency?: number;
+  /** DXF group 290: does this layer plot? undefined = plots. */
+  plot?: boolean;
 }
 
 /** Fields every entity carries. */
@@ -29,6 +35,10 @@ interface DxfEntityBase {
   lineType?: string;
   /** Lineweight in mm; undefined = BYLAYER. */
   lineweight?: number;
+  /** Per-entity linetype scale (DXF group 48); undefined = 1. */
+  ltScale?: number;
+  /** Entity transparency in percent 0-90 (DXF group 440); 0/undefined = opaque. */
+  transparency?: number;
 }
 
 /** Hatch data carried on a closed polyline (`points` is the outer loop). */
@@ -90,6 +100,10 @@ export type DxfEntity =
       widthFactor?: number;
       /** Oblique angle in degrees (positive leans right). */
       oblique?: number;
+      /** DXF group 71 flag 2: mirrored horizontally (reads backwards). */
+      backwards?: boolean;
+      /** DXF group 71 flag 4: flipped vertically (reads upside down). */
+      upsideDown?: boolean;
     })
   | (DxfEntityBase & {
       type: "POINT";
@@ -118,6 +132,26 @@ export interface DxfLayout {
 
 export type DxfUnits = "unitless" | "mm" | "cm" | "m" | "in" | "ft";
 
+/** A STYLE-table record (text style) as read from the file. */
+export interface DxfTextStyle {
+  /** Primary font: SHX file name ("txt.shx") or TrueType family ("Arial"). */
+  font?: string;
+  /** Big-font file name for the extended character set (DXF group 4). */
+  bigFont?: string;
+  /** Fixed height (DXF group 40); 0/undefined = height set per entity. */
+  height?: number;
+  /** Width factor (DXF group 41). */
+  width?: number;
+  /** Oblique angle in degrees (DXF group 50). */
+  oblique?: number;
+  bold?: boolean;
+  italic?: boolean;
+  /** DXF group 71 flag 2: drawn backwards. */
+  backwards?: boolean;
+  /** DXF group 71 flag 4: drawn upside down. */
+  upsideDown?: boolean;
+}
+
 export interface DxfDocument {
   layers: DxfLayer[];
   entities: DxfEntity[];
@@ -132,6 +166,10 @@ export interface DxfDocument {
   linetypes?: Record<string, number[]>;
   /** Global linetype scale ($LTSCALE). */
   ltscale?: number;
+  /** STYLE table (text styles) by upper-case name, as read from the file. */
+  textStyles?: Record<string, DxfTextStyle>;
+  /** DIMSTYLE table names, as read from the file. */
+  dimStyles?: string[];
   /** Entity types that were present but not drawn, with counts. */
   skipped?: Record<string, number>;
 }

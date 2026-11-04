@@ -39,6 +39,9 @@ function layerTable(layers: DxfLayer[]): string {
     s += pair(62, layer.off ? -aci : aci); // negative colour = layer off
     s += pair(6, layer.lineType || "Continuous");
     if (layer.lineweight != null) s += pair(370, lineweightToDxf(layer.lineweight));
+    if (layer.rgb != null) s += pair(420, layer.rgb & 0xffffff);
+    if (layer.transparency) s += pair(440, layer.transparency << 24);
+    if (layer.plot === false) s += pair(290, 0);
   }
   s += pair(0, "ENDTAB");
   return s;
@@ -134,13 +137,15 @@ function styleTable(entities: DxfEntity[]): { table: string; nameFor: (e: Extrac
   return { table: s, nameFor: (e) => (!e.font && !e.bold && !e.italic ? e.style && e.style.toUpperCase() !== "STANDARD" && used.has(e.style.toUpperCase()) ? e.style : "Standard" : byKey.get(keyOf(e))!.name) };
 }
 
-/** Common entity attributes: layer, ACI colour, linetype, lineweight, true colour. */
+/** Common entity attributes: layer, ACI colour, linetype, lineweight, true colour, lt-scale, transparency. */
 function common(e: DxfEntity): string {
   let s = pair(8, e.layer || "0");
   if (e.lineType) s += pair(6, e.lineType);
   s += pair(62, e.color ?? 256); // 256 = ByLayer
   if (e.lineweight != null) s += pair(370, lineweightToDxf(e.lineweight));
   if (e.rgb != null) s += pair(420, e.rgb & 0xffffff);
+  if (e.ltScale != null && Math.abs(e.ltScale - 1) > 1e-9) s += pair(48, e.ltScale);
+  if (e.transparency) s += pair(440, e.transparency << 24);
   return s;
 }
 
@@ -183,6 +188,8 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     if (e.widthFactor && Math.abs(e.widthFactor - 1) > 1e-6) s += pair(41, e.widthFactor);
     if (e.oblique && Math.abs(e.oblique) > 1e-6) s += pair(51, e.oblique);
     s += pair(7, styleName(e));
+    const tg = (e.backwards ? 2 : 0) | (e.upsideDown ? 4 : 0);
+    if (tg) s += pair(71, tg);
     const h = e.align === "center" ? 1 : e.align === "right" ? 2 : 0;
     const v = e.valign === "bottom" ? 1 : e.valign === "middle" ? 2 : e.valign === "top" ? 3 : 0;
     if (h !== 0 || v !== 0) {

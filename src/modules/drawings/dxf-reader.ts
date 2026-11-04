@@ -14,7 +14,7 @@
  * Pure TypeScript, no dependencies.
  */
 import { lineweightFromDxf } from "./cad-styles";
-import type { DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "./dxf-types";
+import type { DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport } from "./dxf-types";
 import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
   insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
@@ -22,9 +22,8 @@ import {
 
 /** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
 let imageDefs = new Map<string, string>();
-interface TextStyleDef { font?: string; width?: number; oblique?: number; bold?: boolean; italic?: boolean }
 /** STYLE table by upper-case name, filled per parse. */
-let textStyles = new Map<string, TextStyleDef>();
+let textStyles = new Map<string, DxfTextStyle>();
 
 /** Resolve style-derived text fields for TEXT/ATTRIB/MTEXT (entity overrides win over the style). */
 function textStyleFields(d: Data, mtextSrc?: string): { style?: string; font?: string; bold?: boolean; italic?: boolean; widthFactor?: number; oblique?: number } {
@@ -40,6 +39,27 @@ function textStyleFields(d: Data, mtextSrc?: string): { style?: string; font?: s
   const italic = inl.italic ?? st?.italic; if (italic) out.italic = true;
   if (wf && Math.abs(wf - 1) > 1e-6) out.widthFactor = wf;
   if (ob && Math.abs(ob) > 1e-6) out.oblique = ob;
+  return out;
+}
+
+/**
+ * Text height for TEXT/ATTRIB/MTEXT: the entity's group 40, falling back to
+ * the STYLE table's fixed height (group 40) when the entity says 0 — exactly
+ * what AutoCAD does for fixed-height styles.
+ */
+function textHeight(d: Data, code: number, fallback: number): number {
+  const h = d.n(code, 0);
+  if (h > 0) return h;
+  const st = d.s(7)?.trim() ? textStyles.get(d.s(7)!.trim().toUpperCase()) : undefined;
+  return st?.height && st.height > 0 ? st.height : fallback;
+}
+
+/** DXF group 71 text-generation flags present on a TEXT/ATTRIB entity (2 = backwards, 4 = upside down). */
+function textFlags(d: Data): { backwards?: boolean; upsideDown?: boolean } {
+  const f = d.n(71);
+  const out: { backwards?: boolean; upsideDown?: boolean } = {};
+  if ((f & 2) === 2) out.backwards = true;
+  if ((f & 4) === 4) out.upsideDown = true;
   return out;
 }
 
@@ -71,7 +91,7 @@ function num(v: string | undefined, d = 0): number {
   return Number.isFinite(n) ? n : d;
 }
 
-import { cleanText, mtextFont, mtextWidthFactor } from "./mtext";
+import { cleanText, mtextFont, mtextWidthFactor, mtextColor } from "./mtext";
 import { imageGeometry, clipBoundaryLoop, fileLabel } from "./dxf-image";
 export { cleanText };
 
@@ -92,7 +112,7 @@ class Data {
   }
 }
 
-interface Common { layer: string; color?: number; rgb?: number; lineType?: string; lineweight?: number }
+interface Common { layer: string; color?: number; rgb?: number; lineType?: string; lineweight?: number; ltScale?: number; transparency?: number }
 
 function common(d: Data): Common {
   const layer = d.s(8) ?? "0";
@@ -106,7 +126,17 @@ function common(d: Data): Common {
   const up = lt?.toUpperCase();
   const lineType = lt && up !== "BYLAYER" && up !== "BYBLOCK" && up !== "CONTINUOUS" ? lt : undefined;
   const lw = d.has(370) ? lineweightFromDxf(d.n(370)) : undefined;
-  return lw != null ? { layer, color, rgb, lineType, lineweight: lw } : { layer, color, rgb, lineType };
+  const ltScale = d.has(48) && d.n(48) > 0 && Math.abs(d.n(48) - 1) > 1e-9 ? d.n(48) : undefined;
+  const transparency = d.has(440) ? dxfTransparency(d.n(440)) : undefined;
+  const c0: Common = { layer, color, rgb, lineType, ...(ltScale !== undefined ? { ltScale } : {}), ...(transparency ? { transparency } : {}) };
+  return lw != null ? { ...c0, lineweight: lw } : c0;
+}
+
+/** DXF group 440 transparency -> percent 0-90. Writers store (percent << 24); plain values also accepted. */
+function dxfTransparency(v: number): number {
+  const pct = v > 0xff ? (v >>> 24) & 0xff : v;
+  if (!(pct > 0) || !Number.isFinite(pct)) return 0;
+  return Math.max(0, Math.min(90, Math.round(pct)));
 }
 
 function headerUnits(pairs: Pair[]): DxfUnits | undefined {
@@ -211,6 +241,8 @@ export function parseDxf(text: string): DxfDocument {
   const modelRecs: Rec[] = [];
   const paperRecs: Rec[] = [];
   const linetypes: Record<string, number[]> = {};
+  const docTextStyles: Record<string, DxfTextStyle> = {};
+  const dimStyleNames: string[] = [];
   const layoutNames: Array<{ name: string; order: number }> = [];
   let units: DxfUnits | undefined;
   let ltscale: number | undefined;
@@ -243,25 +275,39 @@ export function parseDxf(text: string): DxfDocument {
           const face = d.s(1000)?.trim();
           const f71 = d.has(1071) ? d.n(1071) : 0;
           const file = d.s(3)?.trim();
-          textStyles.set(nm, {
+          const flags = d.n(71);
+          const def: DxfTextStyle = {
             font: face || file || undefined,
-            width: d.has(41) ? d.n(41, 1) : undefined,
-            oblique: d.has(50) ? d.n(50, 0) : undefined,
+            ...(d.has(4) ? { bigFont: d.s(4)?.trim() || undefined } : {}),
+            ...(d.has(40) && d.n(40) > 0 ? { height: d.n(40) } : {}),
+            ...(d.has(41) && Math.abs(d.n(41, 1) - 1) > 1e-9 ? { width: d.n(41, 1) } : {}),
+            ...(d.has(50) && Math.abs(d.n(50)) > 1e-9 ? { oblique: d.n(50) } : {}),
             bold: (f71 & 0x2000000) !== 0 || undefined,
             italic: (f71 & 0x1000000) !== 0 || undefined,
-          });
+            backwards: (flags & 2) === 2 || undefined,
+            upsideDown: (flags & 4) === 4 || undefined,
+          };
+          textStyles.set(nm, def);
+          docTextStyles[nm] = def;
         }
+      } else if (r.type === "DIMSTYLE" && table === "DIMSTYLE") {
+        const nm = new Data(r.pairs).s(2)?.trim();
+        if (nm) dimStyleNames.push(nm);
       } else if (r.type === "LAYER" && table === "LAYER") {
         const d = new Data(r.pairs);
         const rawColor = d.n(62, 7);
+        const transparency = d.has(440) ? dxfTransparency(d.n(440)) : 0;
         layers.push({
           name: d.s(2) ?? "0",
           color: Math.abs(rawColor) || 7,
+          ...(d.has(420) ? { rgb: d.n(420) & 0xffffff } : {}),
           lineType: d.s(6),
           frozen: (d.n(70) & 1) === 1,
           locked: (d.n(70) & 4) === 4,
           off: rawColor < 0,
           ...(d.has(370) && lineweightFromDxf(d.n(370)) != null ? { lineweight: lineweightFromDxf(d.n(370)) } : {}),
+          ...(transparency ? { transparency } : {}),
+          ...(d.has(290) ? { plot: d.n(290, 1) !== 0 } : {}),
         });
       }
       continue;
@@ -340,6 +386,8 @@ export function parseDxf(text: string): DxfDocument {
     layouts: layouts.length ? layouts : undefined,
     linetypes: Object.keys(linetypes).length ? linetypes : undefined,
     ltscale,
+    textStyles: Object.keys(docTextStyles).length ? docTextStyles : undefined,
+    dimStyles: dimStyleNames.length ? dimStyleNames : undefined,
     skipped: Object.keys(skipped).length ? skipped : undefined,
   };
 }
@@ -416,8 +464,9 @@ function expandRecs(
       case "TEXT": {
         const a = textAnchor(d, 73);
         push({
-          ...c, type: "TEXT", position: a.position, height: d.n(40, 2.5),
+          ...c, type: "TEXT", position: a.position, height: textHeight(d, 40, 2.5),
           value: cleanText(d.s(1) ?? ""), rotation: d.has(50) ? d.n(50) : undefined, align: a.align, valign: a.valign,
+          ...textFlags(d),
           ...textStyleFields(d),
         });
         break;
@@ -427,7 +476,7 @@ function expandRecs(
         if (d.n(70) & 1) break; // invisible attribute
         const a = textAnchor(d, 74);
         const value = cleanText(d.s(1) ?? "");
-        if (value) push({ ...c, type: "TEXT", position: a.position, height: d.n(40, 2.5), value, rotation: d.has(50) ? d.n(50) : undefined, align: a.align, valign: a.valign, ...textStyleFields(d) });
+        if (value) push({ ...c, type: "TEXT", position: a.position, height: textHeight(d, 40, 2.5), value, rotation: d.has(50) ? d.n(50) : undefined, align: a.align, valign: a.valign, ...textFlags(d), ...textStyleFields(d) });
         break;
       }
 
@@ -467,11 +516,14 @@ function expandRecs(
         let rot = d.has(50) ? d.n(50) : undefined;
         if (rot === undefined && (d.has(11) || d.has(21))) rot = Math.atan2(d.n(21), d.n(11)) / DEG;
         const ap = d.n(71, 1);
+        const col = mtextColor(chunks);
         push({
-          ...c, type: "TEXT", position: d.pt(10, 20, 30), height: d.n(40, 2.5),
+          ...c, type: "TEXT", position: d.pt(10, 20, 30), height: textHeight(d, 40, 2.5),
           value: cleanText(chunks), rotation: rot,
           align: (["left", "center", "right"] as const)[Math.max(0, Math.min(2, (ap - 1) % 3))],
           valign: (["top", "middle", "bottom"] as const)[Math.max(0, Math.min(2, Math.floor((ap - 1) / 3)))],
+          ...(col.color != null ? { color: col.color } : {}),
+          ...(col.rgb != null ? { rgb: col.rgb } : {}),
           ...textStyleFields(d, chunks),
         });
         break;
