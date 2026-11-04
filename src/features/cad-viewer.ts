@@ -5633,12 +5633,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // Refuse content the current 2D DXF serializer cannot faithfully carry.
     const hatchBoundaries = entities.filter((e) => e.type === "LWPOLYLINE" && !!e.hatch).length;
     const skippedEntities = Object.values(doc.skipped ?? {}).reduce((sum, count) => sum + count, 0);
-    const paperSpaceEntities = (doc.layouts ?? []).reduce((sum, layout) => sum + layout.entities.length, 0);
-    if (hatchBoundaries || skippedEntities || paperSpaceEntities) {
+    const layoutCount = doc.layouts?.length ?? 0;
+    const dimensionStyleCount = Math.max(doc.dimStyles?.length ?? 0, Object.keys(doc.dimStyleTable ?? {}).length);
+    const customTextStyles = Object.keys(doc.textStyles ?? {}).filter((name) => !/^standard$/i.test(name));
+    if (hatchBoundaries || skippedEntities || layoutCount || dimensionStyleCount || customTextStyles.length) {
       const reasons = [
         hatchBoundaries ? `${hatchBoundaries} hatch boundary/boundaries` : "",
         skippedEntities ? `${skippedEntities} unsupported imported entity/entities` : "",
-        paperSpaceEntities ? `${paperSpaceEntities} paper-space entity/entities` : "",
+        layoutCount ? `${layoutCount} paper-space layout(s)/viewport definitions` : "",
+        dimensionStyleCount ? `${dimensionStyleCount} dimension style record(s)` : "",
+        customTextStyles.length ? `${customTextStyles.length} custom text style definition(s)` : "",
       ].filter(Boolean).join(", ");
       logCmd(`DWG export cancelled to prevent data loss: ${reasons}. Export as DXF or resolve these items first.`);
       status("DWG export blocked — unsupported content");
