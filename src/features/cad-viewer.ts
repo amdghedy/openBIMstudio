@@ -4980,14 +4980,56 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     logCmd("Command: Cancel");
   }
 
-  // Keyboard Shortcuts (AutoCAD Standard: F3, F7, F8, F12, Ctrl+Z, Ctrl+Y, Space/Enter)
-  // Printable keys start an in-canvas command prompt; the canvas remains the primary input surface.
-  cv.addEventListener("keydown", (ev) => {
-    if (ev.target !== cv || ev.ctrlKey || ev.metaKey || ev.altKey || ev.key.length !== 1) return;
-    if (/^[\\p{L}\\p{N}._+-]$/u.test(ev.key)) {
-      ev.preventDefault();
-      openDynamicCommand(ev.key);
+    // Keyboard Shortcuts (AutoCAD Standard: F3, F7, F8, F12, Ctrl+Z, Ctrl+Y, Space/Enter)
+  // Printable keys open the in-canvas command prompt from ANYWHERE on screen while this
+  // drawing is the active CAD tab (AutoCAD behaviour — not limited to the command line).
+  let screenTypeActive = false;
+
+  function isUiTextField(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    if (dynCommandInput && el === dynCommandInput) return true;
+    const tag = el.tagName?.toLowerCase();
+    if (tag === "textarea" || tag === "select") return true;
+    if (tag === "input") {
+      const type = ((el as HTMLInputElement).type || "text").toLowerCase();
+      if (type === "button" || type === "checkbox" || type === "radio" || type === "range" || type === "file") return false;
+      return true;
     }
+    if (el.isContentEditable) return true;
+    if (el.closest?.("#obs-cad-alias-editor, #obs-shortcut-editor, .obs-form-modal-overlay")) return true;
+    return false;
+  }
+
+  const onAnywhereCommandType = (ev: KeyboardEvent): void => {
+    if (!screenTypeActive) return;
+    if (!page.isConnected || page.style.display === "none") return;
+    if (!shell || shell.style.display === "none") return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (ev.repeat) return;
+    if (ev.key.length !== 1) return;
+    // Letters, digits, and common AutoCAD punctuation for command entry
+    if (!/^[a-zA-Z0-9._+-]$/.test(ev.key)) return;
+    if (isUiTextField(ev.target)) return;
+    if (dynCommandEl && dynCommandInput && document.activeElement === dynCommandInput) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    openDynamicCommand(ev.key);
+  };
+  window.addEventListener("keydown", onAnywhereCommandType, true);
+  const stageEl = root.querySelector<HTMLElement>("[data-r=stage]");
+  stageEl?.addEventListener("pointerdown", () => {
+    try { cv.focus({ preventScroll: true }); } catch { /* */ }
+  });
+
+
+  cv.addEventListener("keydown", (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.key.length !== 1) return;
+    if (!/^[a-zA-Z0-9._+-]$/.test(ev.key)) return;
+    if (dynCommandEl && document.activeElement === dynCommandInput) return;
+    if (isUiTextField(ev.target) && ev.target !== cv) return;
+    ev.preventDefault();
+    openDynamicCommand(ev.key);
   });
 
   cv.addEventListener("keydown", (ev) => {
@@ -6757,11 +6799,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     },
     activate() {
       root.style.display = "flex";
+      screenTypeActive = true;
       showRibbonEngine(ribbonWrap, api);
       resize();
       draw();
+      try { cv.focus({ preventScroll: true }); } catch { /* */ }
     },
     deactivate() {
+      screenTypeActive = false;
+      try { closeDynamicCommand(); } catch { /* */ }
       root.style.display = "none";
     },
     isDirty: () => dirty,
