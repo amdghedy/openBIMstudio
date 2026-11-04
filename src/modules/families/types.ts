@@ -7,6 +7,7 @@
 // safe to use as a type-only dependency from services.ts.
 
 import type * as THREE from "three";
+import type { ConnectorDefinition } from "../object-hierarchy";
 
 export type FamilyCategory =
   | "wall" | "slab" | "column" | "beam" | "brace" | "truss" | "footing"
@@ -88,6 +89,11 @@ export interface FamilyDefinition {
   schemaVersion: number;
   /** The element type in the current hardcoded system this family mirrors. */
   sourceElementType?: string;
+  /**
+   * Optional MEP ports defined in family-local coordinates (metres).
+   * Authoring transforms these through the rendered instance world matrix.
+   */
+  connectorDefs?: ConnectorDefinition[];
   parameters: FamilyParameter[];
   geometry: FamilyGeometrySpec;
   types: FamilyType[];

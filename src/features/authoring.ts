@@ -82,6 +82,7 @@ import {
 } from "../modules/snapping/smart-perp-snap";
 import { snapFeedback } from "./snap-feedback";
 import type { MepConnector } from "../modules/mep/connectors";
+import { deriveFamilyInstanceConnectors } from "../modules/mep/family-connectors";
 import { lengthKeepRight, thicknessKeepFace, openingWidthKeepRight, heightKeepBase } from "../modules/native-bim/dimension-edit";
 import { registerTempDimProvider, type TempDimSpec, setupEditableTempDims } from "./temp-dimensions-edit";
 import { setupOptionsBar } from "./options-bar";
@@ -2184,8 +2185,25 @@ let lastMepAuthoringIds = new Set<string>();
 function syncMepLifecycleFromAuthoredElements(): void {
   const lifecycle = (ctx.features as any).mep?.lifecycle ?? (window as any).__obsMep?.lifecycle;
   if (!lifecycle || typeof lifecycle.onElementChanged !== "function") return;
-  const mepElements = elements.filter(el => ["duct", "pipe", "cable-tray", "conduit"].includes(el.type));
-  const currentIds = new Set(mepElements.map(el => el.id));
+  const linearMepTypes = ["duct", "pipe", "cable-tray", "conduit"];
+  const mepElements = elements.filter(el => linearMepTypes.includes(el.type));
+  const familyService = (ctx.features as any).family;
+  const familyConnectorInstances = elements.flatMap(el => {
+    if (!el.familyId || linearMepTypes.includes(el.type) || typeof familyService?.get !== "function") return [];
+    try {
+      const family = familyService.get(el.familyId);
+      return Array.isArray(family?.connectorDefs) && family.connectorDefs.length
+        ? [{ element: el, definitions: family.connectorDefs }]
+        : [];
+    } catch (e) {
+      console.warn("[mep] family connector lookup failed", el.id, e);
+      return [];
+    }
+  });
+  const currentIds = new Set([
+    ...mepElements.map(el => el.id),
+    ...familyConnectorInstances.map(item => item.element.id),
+  ]);
   for (const oldId of lastMepAuthoringIds) {
     if (!currentIds.has(oldId)) {
       try { lifecycle.onElementChanged(oldId, []); } catch (e) { console.warn("[mep] deleted element reconciliation failed", oldId, e); }
@@ -2217,6 +2235,24 @@ function syncMepLifecycleFromAuthoredElements(): void {
     ];
     try { lifecycle.onElementChanged(el.id, connectors); }
     catch (e) { console.warn("[mep] authored geometry reconciliation failed", el.id, e); }
+  }
+  for (const item of familyConnectorInstances) {
+    const { element: el, definitions } = item;
+    // Use the actual rendered root: createMesh() has already applied the
+    // instance translation, rotation pivot and quaternion at this point.
+    const instanceObject = group.children.find(child => child.userData?.elementId === el.id);
+    if (!instanceObject) {
+      // Do not clear valid connections because a renderable instance is not
+      // available during this rebuild (for example, while a family is loading).
+      console.warn("[mep] family connector sync skipped: rendered instance not found", el.id);
+      continue;
+    }
+    try {
+      const connectors = deriveFamilyInstanceConnectors(el.id, definitions, instanceObject);
+      lifecycle.onElementChanged(el.id, connectors);
+    } catch (e) {
+      console.warn("[mep] family connector reconciliation failed", el.id, e);
+    }
   }
   lastMepAuthoringIds = currentIds;
 }
