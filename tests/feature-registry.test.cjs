@@ -69,7 +69,12 @@ t("registry affirms the current app version (SSOT)", () => {
 t("docs/COMPATIBILITY.md exists and carries the honest format labels", () => {
   const doc = fs.readFileSync(path.join(root, "docs/COMPATIBILITY.md"), "utf8");
   for (const fmt of ["IFC", "DXF", "DWG", "BCF", "IDS", "COBie", "PDF", "RVT", ".frag"]) assert.ok(doc.includes(fmt), "COMPATIBILITY.md missing format: " + fmt);
-  assert.ok(/DWG[^\n]*export[^\n]*unavailable|unavailable[^\n]*DWG export/i.test(doc)); assert.ok(/APS|Autodesk Platform Services/.test(doc));
+  const dwgExportRow = doc.split(/\r?\n/).find((line) => /^\|\s*DWG\s*\|\s*export\s*\|/i.test(line));
+  assert.ok(dwgExportRow, "COMPATIBILITY.md must include a DWG export row");
+  const documentedStatus = dwgExportRow.split("|")[3].replace(/\*/g, "").trim().toLowerCase();
+  const registryStatus = entries.find((entry) => entry.id === "dwg-export").status;
+  assert.strictEqual(documentedStatus, registryStatus, "DWG export documentation must match feature maturity registry");
+  assert.ok(/APS|Autodesk Platform Services/.test(doc));
 });
 t("BASELINE §9 references the registry as the machine-readable mirror", () => {
   const baseline = fs.readFileSync(path.join(root, "docs/engineering/BASELINE.md"), "utf8"); assert.ok(baseline.includes("feature-maturity.ts"));
