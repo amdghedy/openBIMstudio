@@ -432,6 +432,7 @@ function bootstrapCommands(): void {
     },
   });
   registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
+  registerCommand({ id: "command.ks", label: "KS — Command aliases / keyboard shortcuts", category: "App", run: () => { void import("./command-aliases").then((m) => m.openKs()); } });
   registerCommand({ id: "view.graphic-options", label: "Graphic Display Options…", category: "View", run: () => { void import("./view-graphics").then((m) => m.openGraphicDisplayOptions()); } });
   registerCommand({ id: "view.wireframe", label: "Display: Wireframe", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("wireframe")); } });
   registerCommand({ id: "view.hidden-line", label: "Display: Hidden Line", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("hidden-line")); } });

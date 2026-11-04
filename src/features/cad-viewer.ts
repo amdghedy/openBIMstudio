@@ -32,6 +32,7 @@ import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import { svgIcon, type IconName } from "./icon-set";
 import { promptLine, confirmDialog } from "./form-modal";
+import { loadCadAliases, resolveCadToken, openCadAliasEditor, effectiveAliases } from "./command-aliases";
 import {
   renderAppearanceEditor, openLinetypeManager, openTextStyleManager, placeText, editLayerProperty,
   matchProperties, newObjectProps, lineweightPx, type CadStyleApi,
@@ -210,6 +211,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DIMBASELINE", aliases: ["DBA", "DIMBASE"], description: "Baseline dimension from the last one" },
   { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
   { name: "IMPORT", aliases: ["INSERT", "IMP"], description: "Merge a DWG / DXF file into the current drawing" },
+  { name: "KS", aliases: ["ALIASEDIT", "ALIASES", "SHORTCUTS"], description: "Edit command aliases (abbreviations) — AutoCAD-style" },
 ];
 
 const BG: Record<string, string> = {
@@ -357,7 +359,22 @@ function showRibbonEngine(wrap: HTMLDivElement, engine: CadEngineApi): void {
   applyRibbonTab();
 }
 
+function registerCadAliasApi(): void {
+  loadCadAliases();
+  (window as any).__obsCadAliasApi = {
+    open: () =>
+      openCadAliasEditor(
+        CAD_COMMANDS.map((c) => ({
+          name: c.name,
+          aliases: effectiveAliases(c.name, c.aliases),
+          description: c.description,
+        })),
+      ),
+  };
+}
+
 export function openCadViewer(file?: File): void {
+  registerCadAliasApi();
   ensureShell();
   shell!.style.display = "flex";
   if (file) openFile(file);
@@ -5219,8 +5236,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const query = dynCommandInput?.value.trim().toUpperCase() ?? "";
         if (!dynCommandHint) return;
         if (!query) { dynCommandHint.style.display = "none"; return; }
-        const matches = CAD_COMMANDS.filter((item) => item.name.startsWith(query) || item.aliases.some((alias) => alias === query || alias.startsWith(query))).slice(0, 4);
-        dynCommandHint.textContent = matches.map((item) => `${item.name} (${item.aliases.join(", ")})`).join("  ·  ");
+        const matches = CAD_COMMANDS.filter((item) => cadCommandMatches(item, query)).slice(0, 4);
+        dynCommandHint.textContent = matches.map((item) => `${item.name} (${cadAliasesOf(item).join(", ")})`).join("  ·  ");
         dynCommandHint.style.display = matches.length ? "block" : "none";
       });
       dynCommandInput.addEventListener("keydown", (event) => {
@@ -5239,7 +5256,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         if (event.key === "Tab") {
           const query = dynCommandInput.value.trim().toUpperCase();
-          const match = CAD_COMMANDS.find((item) => item.name.startsWith(query) || item.aliases.some((alias) => alias === query || alias.startsWith(query)));
+          const match = CAD_COMMANDS.find((item) => cadCommandMatches(item, query));
           if (match) { event.preventDefault(); dynCommandInput.value = match.name; dynCommandInput.dispatchEvent(new Event("input")); }
           return;
         }
@@ -5266,6 +5283,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
   }
 
+
+  function cadAliasesOf(c: CadCommandDef): string[] {
+    return effectiveAliases(c.name, c.aliases);
+  }
+  function cadCommandMatches(c: CadCommandDef, query: string): boolean {
+    const q = query.toUpperCase();
+    if (c.name.startsWith(q)) return true;
+    return cadAliasesOf(c).some((a) => a === q || a.startsWith(q));
+  }
+
   function executeAutoCadCommand(rawInput: string): void {
     const trimmed = rawInput.trim();
     if (!trimmed) return;
@@ -5277,7 +5304,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     logCmd(`Command: ${trimmed}`, true);
 
     const parts = trimmed.split(/\s+/);
-    const cmd = parts[0].toUpperCase();
+    const cmd = resolveCadToken(parts[0], CAD_COMMANDS);
     const arg = parts.slice(1).join(" ");
 
     // Direct numeric entry feeds a pending ROTATE angle / SCALE factor / OFFSET distance
@@ -5294,6 +5321,22 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       pendingYesNo = null;
       f(/^y/i.test(trimmed));
       draw();
+      return;
+    }
+
+    // KS / ALIASEDIT — command alias editor (AutoCAD-style abbreviations)
+    if (cmd === "KS" || cmd === "ALIASEDIT" || cmd === "ALIASES" || cmd === "SHORTCUTS") {
+      openCadAliasEditor(
+        CAD_COMMANDS.map((c) => ({
+          name: c.name,
+          aliases: effectiveAliases(c.name, c.aliases),
+          description: c.description,
+        })),
+        () => {
+          /* aliases reloaded on next resolveCadToken */
+        },
+      );
+      logCmd("KS — Command Aliases editor");
       return;
     }
 
@@ -5716,7 +5759,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     const matches = CAD_COMMANDS.filter(
-      (c) => c.name.startsWith(q) || c.aliases.some((a) => a === q || a.startsWith(q)),
+      (c) => cadCommandMatches(c, q),
     ).slice(0, 7);
 
     if (matches.length === 0) {
@@ -5728,7 +5771,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       .map(
         (m, idx) => `
         <div class="obs-cmd-auto-item ${idx === 0 ? "active" : ""}" data-cmd="${m.name}">
-          <div><strong>${m.name}</strong> <span style="color:#94a3b8">(${m.aliases.join(", ")})</span></div>
+          <div><strong>${m.name}</strong> <span style="color:#94a3b8">(${cadAliasesOf(m).join(", ")})</span></div>
           <div style="font-size:10px;color:#94a3b8">${m.description}</div>
         </div>
       `,
