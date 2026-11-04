@@ -32,7 +32,7 @@ import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import { svgIcon, type IconName } from "./icon-set";
 import { promptLine, confirmDialog } from "./form-modal";
-import { loadCadAliases, resolveCadToken, openCadAliasEditor, effectiveAliases } from "./command-aliases";
+import { loadCadAliases, resolveCadToken, openCadAliasEditor, effectiveAliases, registerCadAliasEditorOpener } from "./command-aliases";
 import {
   renderAppearanceEditor, openLinetypeManager, openTextStyleManager, placeText, editLayerProperty,
   matchProperties, newObjectProps, lineweightPx, type CadStyleApi,
@@ -359,18 +359,20 @@ function showRibbonEngine(wrap: HTMLDivElement, engine: CadEngineApi): void {
   applyRibbonTab();
 }
 
+let unregisterCadAliasEditorOpener: (() => void) | null = null;
+
 function registerCadAliasApi(): void {
   loadCadAliases();
-  (window as any).__obsCadAliasApi = {
-    open: () =>
-      openCadAliasEditor(
-        CAD_COMMANDS.map((c) => ({
-          name: c.name,
-          aliases: effectiveAliases(c.name, c.aliases),
-          description: c.description,
-        })),
-      ),
-  };
+  unregisterCadAliasEditorOpener?.();
+  const openEditor = () =>
+    openCadAliasEditor(
+      CAD_COMMANDS.map((c) => ({
+        name: c.name,
+        aliases: effectiveAliases(c.name, c.aliases),
+        description: c.description,
+      })),
+    );
+  unregisterCadAliasEditorOpener = registerCadAliasEditorOpener(openEditor);
 }
 
 export function openCadViewer(file?: File): void {
@@ -384,6 +386,8 @@ export function openCadViewer(file?: File): void {
 
 export function closeCadViewer(): void {
   hideShell();
+  unregisterCadAliasEditorOpener?.();
+  unregisterCadAliasEditorOpener = null;
 }
 
 function byId(id: number): DocTab | null {

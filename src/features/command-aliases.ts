@@ -280,13 +280,20 @@ export function closeCadAliasEditor(): void {
 }
 
 /** Open alias editor if CAD commands are available, else keyboard shortcuts. */
+let cadAliasEditorOpener: (() => void) | null = null;
+
+/** Register the active drawing's alias editor without adding a window global. */
+export function registerCadAliasEditorOpener(opener: () => void): () => void {
+  cadAliasEditorOpener = opener;
+  return () => {
+    if (cadAliasEditorOpener === opener) cadAliasEditorOpener = null;
+  };
+}
+
 export function openKs(): void {
   loadCadAliases();
-  const cad = (window as any).__obsCadAliasApi as
-    | { open: () => void }
-    | undefined;
-  if (cad?.open) {
-    cad.open();
+  if (cadAliasEditorOpener) {
+    cadAliasEditorOpener();
     return;
   }
   void import("./shortcut-editor").then((m) => m.openShortcutEditor());
@@ -307,6 +314,5 @@ export function setupCommandAliases(): void {
   } catch {
     /* */
   }
-  (window as any).__obsKs = { open: openKs };
   console.log("[aliases] KS / command abbreviations ready");
 }
