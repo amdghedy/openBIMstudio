@@ -72,7 +72,24 @@ t("text style manager: file styles adoptable via Set current", () => {
   assert.ok(styleUi.includes("height: s.height && s.height > 0 ? s.height : 2.5"), "zero-height fallback missing");
 });
 
-// ── 4. Runtime: compile the two helpers and verify their behaviour ──
+// ── 4. In-canvas command entry is wired to the existing CAD command parser ──
+t("viewport keyboard opens a cursor-positioned command prompt and reuses command execution", () => {
+  const mustContain = [
+    'ev.target !== cv',
+    'openDynamicCommand(ev.key)',
+    'position:absolute;z-index:15',
+    'dynCommandInput.addEventListener("keydown"',
+    'executeAutoCadCommand(value)',
+    'closeDynamicCommand();',
+    'CAD_COMMANDS.filter((item)',
+    'dynCommandInput.addEventListener("input"',
+  ];
+  for (const marker of mustContain) assert.ok(viewer.includes(marker), `in-canvas command entry missing "${marker}"`);
+  assert.ok(viewer.includes('dynCommandInput.placeholder = "Enter command…";'), "dynamic prompt placeholder missing");
+  assert.ok(viewer.includes('dynCommandInput.setSelectionRange(initialText.length, initialText.length);'), "initial typed character is not retained");
+});
+
+// ── 5. Runtime: compile the two helpers and verify their behaviour ──
 t("runtime: fileStyleToTextStyle + fontOptionsFor behaviour", () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "cad-uiw-"));
   // Stub the DOM-touching imports so the module compiles standalone.
