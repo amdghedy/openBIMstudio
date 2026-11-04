@@ -21,7 +21,7 @@ const scripts = [
   "test:native-twin-resize", "test:twin-dimensions", "test:twin-export", "test:mtext", "test:level-constraints", "test:mep-stretch", "test:linear-follow", "test:point-cloud", "test:ui-honesty", "test:wall-sweep-ifc", "test:wall-detect", "test:shortcut-keys", "test:shortcut-sequences", "test:magnet", "test:up-axis", "test:nwc-bridge", "test:section-handle-filter", "test:dimension-edit", "test:schedule-4d", "test:schedule-4d-ui", "test:bulk-native-twin", "test:ai-privacy", "test:constraints", "test:structural",
   "test:mep-pressure", "test:adaptive", "test:project-crypto", "test:secret-crypto",
   "test:server-security", "test:safe-expr", "test:mep-connectivity", "test:boundary-edit",
-  "test:project-file", "test:plan-tags", "test:dim-geometry", "test:auto-dim",
+  "test:project-file", "test:project-journal", "test:plan-tags", "test:dim-geometry", "test:auto-dim",
   "test:section-plane", "test:snap-points", "test:plan-draw", "test:view-lock",
   "test:wheel-zoom", "test:section-box", "test:section-box-arrows",
   "test:v68-core", "test:v68-solids", "test:v68-interaction", "test:v68-acceptance",

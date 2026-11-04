@@ -1,10 +1,23 @@
 /** Raw IndexedDB persistence — no dependencies, local-first. */
 import type { ProjectDoc, ProjectSummary } from "./types";
+export type { ProjectRecoverySnapshot } from "./project-journal";
+import {
+  getModelBlobVersionKey,
+  getUnreferencedModelBlobVersionKeys,
+  getProjectJournalPruneIds,
+  prepareRecoveredProjectDocument,
+  summarizeProjectJournalRecord,
+  type ProjectJournalReason,
+  type ProjectJournalRecord,
+  type ProjectRecoverySnapshot,
+} from "./project-journal";
 
 const DB_NAME = "open-bim-studio";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const S_PROJECTS = "projects";
 const S_BLOBS = "modelBlobs";
+const S_JOURNAL = "projectJournal";
+const S_JOURNAL_BLOBS = "projectJournalBlobs";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -20,6 +33,14 @@ function openDb(): Promise<IDBDatabase> {
         if (!db.objectStoreNames.contains(S_BLOBS)) {
           const blobs = db.createObjectStore(S_BLOBS);
           blobs.createIndex("projectId", "projectId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(S_JOURNAL)) {
+          const journal = db.createObjectStore(S_JOURNAL, { keyPath: "id", autoIncrement: true });
+          journal.createIndex("projectId", "projectId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(S_JOURNAL_BLOBS)) {
+          const archived = db.createObjectStore(S_JOURNAL_BLOBS, { keyPath: "key" });
+          archived.createIndex("projectId", "projectId", { unique: false });
         }
       };
       req.onsuccess = () => {
@@ -62,11 +83,83 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
+let modelBlobVersionCounter = 0;
+function nextModelBlobVersion(): string {
+  modelBlobVersionCounter += 1;
+  return `${Date.now()}-${modelBlobVersionCounter}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Remove archive versions no retained checkpoint references. */
+function pruneUnreferencedModelBlobVersions(tx: IDBTransaction, projectId: string): void {
+  const journal = tx.objectStore(S_JOURNAL);
+  const archive = tx.objectStore(S_JOURNAL_BLOBS);
+  const records = journal.index("projectId").getAll(projectId);
+  records.onsuccess = () => {
+    const referenced = new Set<string>();
+    for (const record of records.result as ProjectJournalRecord[]) {
+      for (const item of record.modelVersions ?? []) referenced.add(getModelBlobVersionKey(projectId, item.modelId, item.version));
+    }
+    const keys = archive.index("projectId").getAllKeys(projectId);
+    keys.onsuccess = () => {
+      const obsolete = getUnreferencedModelBlobVersionKeys(keys.result.map(String), referenced);
+      for (const key of obsolete) archive.delete(key);
+    };
+  };
+}
+
+/** Snapshot document state and reference immutable model-payload versions. */
+function appendProjectSnapshot(
+  tx: IDBTransaction,
+  doc: ProjectDoc,
+  reason: ProjectJournalReason,
+  suppliedBlobs?: Array<{ key: string; projectId: string; modelId: string; name: string; blob: Blob; version?: string }>,
+): void {
+  const journal = tx.objectStore(S_JOURNAL);
+  const archive = tx.objectStore(S_JOURNAL_BLOBS);
+  const source = tx.objectStore(S_BLOBS);
+  const existing = journal.index("projectId").getAllKeys(doc.id);
+  const sourceRequest = suppliedBlobs ? null : source.index("projectId").getAll(doc.id);
+  let existingIds: number[] = [];
+  let existingReady = false;
+  let modelBlobs = suppliedBlobs ?? [];
+  let blobsReady = suppliedBlobs !== undefined;
+  const append = () => {
+    if (!existingReady || !blobsReady) return;
+    const modelVersions = modelBlobs.map((model) => {
+      const version = model.version || nextModelBlobVersion();
+      if (!model.version) source.put({ ...model, version }, model.key);
+      const key = getModelBlobVersionKey(doc.id, model.modelId, version);
+      const getVersion = archive.get(key);
+      getVersion.onsuccess = () => {
+        if (!getVersion.result) archive.put({ key, projectId: doc.id, modelId: model.modelId, version, name: model.name, blob: model.blob });
+      };
+      return { modelId: model.modelId, version };
+    });
+    const available = new Set(modelVersions.map((x) => x.modelId));
+    const missingModelIds = (doc.models ?? []).map((x) => x.id).filter((id) => !available.has(id));
+    const request = journal.add({ projectId: doc.id, createdAt: Date.now(), reason, doc, modelVersions, archivedModelIds: [...available].sort(), missingModelIds });
+    request.onsuccess = () => {
+      const pruneIds = getProjectJournalPruneIds([...existingIds, Number(request.result)]);
+      for (const id of pruneIds) journal.delete(id);
+      pruneUnreferencedModelBlobVersions(tx, doc.id);
+    };
+  };
+  existing.onsuccess = () => { existingIds = existing.result.map(Number); existingReady = true; append(); };
+  if (sourceRequest) { sourceRequest.onsuccess = () => { modelBlobs = sourceRequest.result as typeof modelBlobs; blobsReady = true; append(); }; }
+}
+
 export async function putProject(doc: ProjectDoc): Promise<void> {
   const db = await openDb();
-  const tx = db.transaction(S_PROJECTS, "readwrite");
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
   const done = transactionDone(tx);
-  await reqAs(tx.objectStore(S_PROJECTS).put(doc));
+  const projects = tx.objectStore(S_PROJECTS);
+  const request = projects.get(doc.id);
+  request.onsuccess = () => {
+    const previous = request.result as ProjectDoc | undefined;
+    if (previous && previous.updatedAt !== doc.updatedAt) appendProjectSnapshot(tx, previous, "project-save");
+    projects.put(doc);
+  };
+  request.onerror = () => { try { tx.abort(); } catch { /* transaction may already be inactive */ } };
   await done;
 }
 
@@ -95,10 +188,16 @@ export async function listProjectDocs(): Promise<ProjectDoc[]> {
  */
 export async function deleteProjectRecord(id: string): Promise<void> {
   const db = await openDb();
-  const tx = db.transaction([S_PROJECTS, S_BLOBS], "readwrite");
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
   const done = transactionDone(tx);
   const projects = tx.objectStore(S_PROJECTS);
   const blobs = tx.objectStore(S_BLOBS);
+  const journal = tx.objectStore(S_JOURNAL);
+  const archive = tx.objectStore(S_JOURNAL_BLOBS);
+  const archiveKeys = archive.index("projectId").getAllKeys(id);
+  archiveKeys.onsuccess = () => { for (const key of archiveKeys.result) archive.delete(key); };
+  const journalKeys = journal.index("projectId").getAllKeys(id);
+  journalKeys.onsuccess = () => { for (const key of journalKeys.result) journal.delete(key); };
   const cursorRequest = blobs.index("projectId").openKeyCursor(IDBKeyRange.only(id));
 
   cursorRequest.onsuccess = () => {
@@ -121,10 +220,18 @@ export async function putModelBlob(
   blob: Blob,
 ): Promise<void> {
   const db = await openDb();
-  const tx = db.transaction(S_BLOBS, "readwrite");
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
   const done = transactionDone(tx);
+  const projects = tx.objectStore(S_PROJECTS);
+  const blobs = tx.objectStore(S_BLOBS);
+  const request = projects.get(projectId);
   const key = `${projectId}::${modelId}`;
-  await reqAs(tx.objectStore(S_BLOBS).put({ key, projectId, modelId, name, blob }, key));
+  request.onsuccess = () => {
+    const previous = request.result as ProjectDoc | undefined;
+    if (previous) appendProjectSnapshot(tx, previous, "model-import");
+    blobs.put({ key, projectId, modelId, name, blob }, key);
+  };
+  request.onerror = () => { try { tx.abort(); } catch { /* transaction may already be inactive */ } };
   await done;
 }
 
@@ -140,7 +247,7 @@ export async function putImportedModel(
   blob: Blob,
 ): Promise<boolean> {
   const db = await openDb();
-  const tx = db.transaction([S_PROJECTS, S_BLOBS], "readwrite");
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
   const done = transactionDone(tx);
   const projects = tx.objectStore(S_PROJECTS);
   const blobs = tx.objectStore(S_BLOBS);
@@ -152,6 +259,8 @@ export async function putImportedModel(
     const doc = request.result as ProjectDoc | undefined;
     if (!doc) return;
 
+    const previousDoc = { ...doc, models: (doc.models ?? []).map((model) => ({ ...model })) };
+    appendProjectSnapshot(tx, previousDoc, "model-import");
     if (!Array.isArray(doc.models)) doc.models = [];
     const meta = doc.models.find((model) => model.id === modelId);
     if (meta) {
@@ -207,6 +316,65 @@ export async function deleteModelBlobs(projectId: string): Promise<void> {
     try { tx.abort(); } catch { /* transaction may already be inactive */ }
   };
   await done;
+}
+
+/** List retained recovery checkpoints, newest first. */
+export async function listProjectRecoverySnapshots(projectId: string): Promise<ProjectRecoverySnapshot[]> {
+  const db = await openDb();
+  const tx = db.transaction(S_JOURNAL, "readonly");
+  const done = transactionDone(tx);
+  const records = await reqAs(tx.objectStore(S_JOURNAL).index("projectId").getAll(projectId)) as ProjectJournalRecord[];
+  await done;
+  return records.sort((a, b) => b.id - a.id).map(summarizeProjectJournalRecord);
+}
+
+/** Restore a document and its matching archived model blobs in one transaction. */
+export async function restoreProjectSnapshot(projectId: string, snapshotId: number): Promise<{ restored: boolean; missingModelIds: string[] }> {
+  const db = await openDb();
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
+  const done = transactionDone(tx);
+  const projects = tx.objectStore(S_PROJECTS);
+  const blobs = tx.objectStore(S_BLOBS);
+  const journal = tx.objectStore(S_JOURNAL);
+  const archive = tx.objectStore(S_JOURNAL_BLOBS);
+  const snapshotRequest = journal.get(snapshotId);
+  const currentRequest = projects.get(projectId);
+  const currentBlobsRequest = blobs.index("projectId").getAll(projectId);
+  const archivedBlobsRequest = archive.index("projectId").getAll(projectId);
+  const result = { restored: false, missingModelIds: [] as string[] };
+  let ready = 0;
+  let applied = false;
+  const apply = () => {
+    if (applied || ready !== 4) return;
+    applied = true;
+    const snapshot = snapshotRequest.result as ProjectJournalRecord | undefined;
+    const current = currentRequest.result as ProjectDoc | undefined;
+    if (!snapshot || snapshot.projectId !== projectId || !current) return;
+    const currentBlobs = currentBlobsRequest.result as Array<{ key: string; projectId: string; modelId: string; name: string; blob: Blob; version?: string }>;
+    appendProjectSnapshot(tx, current, "before-restore", currentBlobs);
+    const archived = archivedBlobsRequest.result as Array<{ key: string; modelId: string; version: string; name: string; blob: Blob }>;
+    const requiredVersions = new Map((snapshot.modelVersions ?? []).map((x) => [x.modelId, x.version] as const));
+    const archivedByKey = new Map(archived.map((x) => [x.key, x] as const));
+    const restoredBlobs = [...requiredVersions.entries()]
+      .map(([modelId, version]) => archivedByKey.get(getModelBlobVersionKey(projectId, modelId, version)))
+      .filter((x): x is NonNullable<typeof x> => !!x);
+    const available = new Set(restoredBlobs.map((x) => x.modelId));
+    const recovered = prepareRecoveredProjectDocument(snapshot.doc, available, Date.now());
+    for (const blob of currentBlobs) blobs.delete(blob.key);
+    for (const blob of restoredBlobs) {
+      const key = `${projectId}::${blob.modelId}`;
+      blobs.put({ key, projectId, modelId: blob.modelId, name: blob.name, blob: blob.blob, version: blob.version }, key);
+    }
+    projects.put(recovered.doc);
+    result.restored = true;
+    result.missingModelIds = recovered.missingModelIds;
+  };
+  for (const request of [snapshotRequest, currentRequest, currentBlobsRequest, archivedBlobsRequest]) {
+    request.onsuccess = () => { ready += 1; apply(); };
+    request.onerror = () => { try { tx.abort(); } catch { /* transaction may already be inactive */ } };
+  }
+  await done;
+  return result;
 }
 
 export function summarize(doc: ProjectDoc): ProjectSummary {

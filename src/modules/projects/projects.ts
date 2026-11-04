@@ -75,6 +75,23 @@ function snapshotAppState() {
   };
 }
 
+/** List retained recovery checkpoints for the active project. */
+export async function listProjectRecoverySnapshots(): Promise<store.ProjectRecoverySnapshot[]> {
+  if (!current) return [];
+  return store.listProjectRecoverySnapshots(current.id);
+}
+
+/** Restore a checkpoint and its linked model bytes; the scene must then be reopened. */
+export async function restoreProjectRecoverySnapshot(snapshotId: number): Promise<{ restored: boolean; missingModelIds: string[]; reopenRequired: boolean }> {
+  if (!current) return { restored: false, missingModelIds: [], reopenRequired: false };
+  const projectId = current.id;
+  const result = await store.restoreProjectSnapshot(projectId, snapshotId);
+  if (!result.restored) return { ...result, reopenRequired: false };
+  const restored = await store.getProject(projectId);
+  if (restored) { current = restored; dirty = false; notify(); }
+  return { ...result, reopenRequired: true };
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    Save
    ═════════════════════════════════════════════════════════════════════════ */
@@ -550,6 +567,7 @@ export function setupProjects() {
   ctx.features.projects = {
     getCurrentProject, isDirty, createProject, openProject,
     deleteProjectById, saveProject, onModelImported, markDirty,
+    listProjectRecoverySnapshots, restoreProjectRecoverySnapshot,
   };
   onIssuesChanged(() => markDirty());
   onCostChanged(() => markDirty());
