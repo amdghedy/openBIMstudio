@@ -202,6 +202,7 @@ t("revision clouds are native closed polylines so they can be selected and expor
   assert.ok(viewer.includes('{ name: "REVCLOUD", aliases: ["RC", "CLOUD"]'), "REVCLOUD command and aliases missing");
   assert.ok(viewer.includes('if (cmd === "RC" || cmd === "CLOUD" || cmd === "REVCLOUD"'), "typed revision-cloud command is not dispatched");
   assert.ok(viewer.includes("const boundary = [...pts, pts[0]];"), "cloud boundary must close back to its first point");
+  assert.ok(viewer.includes("const preview = M.revisionCloudPoints(p)"), "cloud must show a scalloped live preview while drawing");
   assert.ok(viewer.includes("points: cloudPoints.map((p) => ({ x: p.x, y: p.y })),\n          closed: true,"), "cloud must be committed as a closed LWPOLYLINE");
   assert.ok(!/markups\.push\(\{ kind: "cloud"/.test(viewer), "cloud must not remain transient markup");
 });
