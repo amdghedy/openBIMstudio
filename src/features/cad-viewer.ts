@@ -37,6 +37,17 @@ import {
   matchProperties, newObjectProps, lineweightPx, type CadStyleApi,
 } from "./cad-style-ui";
 import { lineweightLabel } from "../modules/drawings/cad-styles";
+import { readDwgPreview, type DwgPreviewImage } from "../modules/drawings/dwg-preview";
+import {
+  grayscaleChannel,
+  loadPlotStyleFile,
+  plotStyleByName,
+  plotStyleForAci,
+  resolvePlotStyle,
+  rgbToChannels,
+  type PlotStyleTable,
+} from "../modules/drawings/plot-styles";
+import { isLandXml, parseLandXmlPoints } from "../modules/drawings/landxml";
 
 type Tool =
   | "pan"
@@ -101,7 +112,7 @@ type Tool =
   | "dimbase"
   | "table";
 
-type ColorMode = "layer" | "bw" | "invert";
+type ColorMode = "layer" | "bw" | "invert" | "style";
 interface Markup {
   kind: "line" | "note" | "dim" | "cloud" | "stamp" | "leader" | "dimang" | "dimarc" | "dimdia" | "dimcenter";
   pts: M.Pt[];
@@ -157,6 +168,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "QSAVE", aliases: ["SAVE"], description: "Save the edited drawing as a DXF file" },
   { name: "SAVEAS", aliases: ["SA"], description: "Choose DXF or DWG for export" },
   { name: "DWGSAVE", aliases: ["EXPORTDWG"], description: "Export the edited drawing as a native DWG file" },
+  { name: "DATAEXTRACT", aliases: ["EATTEXT", "DX"], description: "Export all entity data (layer, type, colour, geometry) to a CSV file" },
+  { name: "LANDXMLIN", aliases: ["XMLIN"], description: "Import survey points from a LandXML CgPoints file" },
   { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
   { name: "COPYCLIP", aliases: ["CC"], description: "Copy selected objects to the cross-drawing clipboard (Ctrl+C)" },
   { name: "PASTECLIP", aliases: [], description: "Paste clipboard objects into this drawing (Ctrl+V)" },
@@ -224,6 +237,8 @@ interface CadEngineApi {
   focus(): void;
   /** Run a ribbon action by id (shell A-menu / Quick Access toolbar → active drawing). */
   exec(action: string): void;
+  /** Import LandXML CgPoints survey data into the current drawing. */
+  importLandXml(f: File): Promise<void>;
 }
 
 interface EngineHooks {
@@ -245,6 +260,8 @@ let shell: HTMLDivElement | null = null;
 let strip: HTMLDivElement | null = null;
 let pagesEl: HTMLDivElement | null = null;
 let picker: HTMLInputElement | null = null;
+/** LandXML CgPoints import picker (LANDXMLIN command + app menu). */
+let xmlPicker: HTMLInputElement | null = null;
 let tabs: DocTab[] = [];
 let active: DocTab | null = null;
 let nextTabId = 1;
@@ -481,6 +498,8 @@ function openAppMenu(anchor: HTMLElement): void {
   sep();
   item("Export SVG", () => ribbonActive?.exec("svg"));
   item("Export Measurements CSV", () => ribbonActive?.exec("csv"));
+  item("Export Entity Data (CSV)", () => ribbonActive?.exec("dataextract"));
+  item("Import LandXML CgPoints…", () => ribbonActive?.exec("landxmlin"));
   item("Quantity Takeoff (CSV)", () => ribbonActive?.exec("takeoff"));
   item("Drawing Information", () => ribbonActive?.exec("info"));
   sep();
@@ -578,7 +597,9 @@ function ensureShell(): void {
 
   picker = document.createElement("input");
   picker.type = "file";
-  picker.accept = ".dxf,.dwg";
+  // .bak / .sv$ are AutoCAD drawing backups (openable like native CAD); .xml
+  // routes to the LandXML CgPoints importer.
+  picker.accept = ".dxf,.dwg,.bak,.sv$,.xml";
   picker.multiple = true;
   picker.style.cssText = "display:none";
   picker.onchange = () => {
@@ -587,12 +608,27 @@ function ensureShell(): void {
   };
   shell.appendChild(picker);
 
+  xmlPicker = document.createElement("input");
+  xmlPicker.type = "file";
+  xmlPicker.accept = ".xml";
+  xmlPicker.multiple = true;
+  xmlPicker.style.cssText = "display:none";
+  xmlPicker.onchange = () => {
+    for (const f of [...(xmlPicker!.files ?? [])]) openFile(f);
+    xmlPicker!.value = "";
+  };
+  shell.appendChild(xmlPicker);
+
   // Drag & drop: the empty state promises "Drop DWG or DXF file here", so the
   // shell accepts .dwg/.dxf drops anywhere over the editor (multi-file too).
+  // AutoCAD backup extensions (.bak, .sv$) open like native CAD; LandXML .xml
+  // files import their CgPoints into the active drawing.
   shell.addEventListener("dragover", (e) => e.preventDefault());
   shell.addEventListener("drop", (e) => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /\.(dwg|dxf)$/i.test(f.name));
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
+      /\.(dwg|dxf|bak|sv\$|xml)$/i.test(f.name),
+    );
     for (const f of files) openFile(f);
   });
 
@@ -658,6 +694,18 @@ function createTab(title: string): DocTab {
 
 function openFile(file: File): void {
   ensureShell();
+  if (/\.xml$/i.test(file.name)) {
+    const host = active?.engine;
+    if (host) {
+      activate(active);
+      void host.importLandXml(file);
+    } else {
+      const tab = createTab(file.name);
+      activate(tab);
+      void tab.engine.importLandXml(file);
+    }
+    return;
+  }
   const existing = tabs.find((t) => t.title.toLowerCase() === file.name.toLowerCase());
   if (existing) {
     activate(existing);
@@ -946,6 +994,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   let doc: DxfDocument | null = null,
     name = "";
+  /** Loaded CTB/STB plot style table (PLOT › Load CTB/STB…), applied while plotting. */
+  let plotStyle: { table: PlotStyleTable; fileName: string } | null = null;
+  /** Embedded DWG preview of the loaded file (shown while reading + Info dialog). */
+  let previewInfo: DwgPreviewImage | null = null;
   let ents: DxfEntity[] = [],
     idx: M.SpatialIndex | null = null,
     bounds: M.BBox | null = null;
@@ -1065,13 +1117,47 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rgb = lyr?.rgb != null ? lyr.rgb : aciToRgb(lyr?.color ?? 7, fg());
     }
     if (inv()) rgb = 0xffffff ^ rgb;
+    // Plot style table active (PLOT with a CTB/STB loaded): map through the pen
+    // table — forced colour, grayscale policy — like AutoCAD plot previews.
+    if (cmode === "style" && plotStyle) {
+      const r = resolvePlotStyle(plotStyle.table, plotEntryOf(e));
+      let ch: [number, number, number] = r.color ?? rgbToChannels(rgb);
+      if (r.grayscale) {
+        const g = grayscaleChannel(ch);
+        ch = [g, g, g];
+      }
+      return rgbToCss((ch[0] << 16) | (ch[1] << 8) | ch[2]);
+    }
     return rgbToCss(rgb);
+  }
+
+  /** Plot style entry for an entity: CTB → ACI (entity, then layer, then 7). */
+  function plotEntryOf(e: DxfEntity) {
+    if (!plotStyle) return null;
+    const t = plotStyle.table;
+    if (t.kind === "ctb") {
+      const lyr = layerOf(e.layer);
+      const aci =
+        e.color != null && e.color > 0 && e.color < 256
+          ? e.color
+          : lyr && lyr.color > 0 && lyr.color < 256
+            ? lyr.color
+            : 7;
+      return plotStyleForAci(t, aci);
+    }
+    return plotStyleByName(t, "Normal");
   }
 
   /** Effective transparency percent for an entity (entity 440 wins over its layer's). */
   function alphaOf(e: DxfEntity): number {
     const t = e.transparency ?? layerOf(e.layer)?.transparency ?? 0;
-    return t > 0 ? Math.max(0.1, 1 - t / 100) : 1;
+    let a = t > 0 ? Math.max(0.1, 1 - t / 100) : 1;
+    // Plot style screening (ink coverage) combines with entity transparency.
+    if (cmode === "style" && plotStyle) {
+      const r = resolvePlotStyle(plotStyle.table, plotEntryOf(e));
+      a = Math.min(a, r.alpha);
+    }
+    return a;
   }
 
   const fmt = (v: number, p = 1) => M.formatQty(v * scaleCal, doc?.units, du, p);
@@ -2062,9 +2148,133 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     currentLayer: () => currentLayer,
   };
   const lineweightPxFor = (e: DxfEntity): number => {
-    const mm = e.lineweight ?? layerOf(e.layer)?.lineweight;
+    let mm = e.lineweight ?? layerOf(e.layer)?.lineweight;
+    // Plot style pen assignment (CTB/STB lineweight) wins while plotting.
+    if (cmode === "style" && plotStyle) {
+      const r = resolvePlotStyle(plotStyle.table, plotEntryOf(e));
+      if (r.lineweightMm != null) mm = r.lineweightMm;
+    }
     return mm != null ? lineweightPx(mm) : lw;
   };
+
+  /* ── OpenCADStudio absorption: embedded preview + LandXML + DATAEXTRACT ── */
+
+  let previewEl: HTMLDivElement | null = null;
+  const hidePreviewPlaceholder = (): void => {
+    previewEl?.remove();
+    previewEl = null;
+  };
+
+  /** Paint the DWG's embedded thumbnail over the canvas while the parse runs. */
+  function showPreviewPlaceholder(pv: DwgPreviewImage): void {
+    hidePreviewPlaceholder();
+    const host = cv.parentElement;
+    if (!host) return;
+    if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    const d = document.createElement("div");
+    d.style.cssText =
+      "position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#212830;z-index:6;pointer-events:none";
+    const img = document.createElement("img");
+    img.src = pv.url;
+    img.alt = "Embedded drawing preview";
+    img.style.cssText = "max-width:68%;max-height:68%;border:1px solid #38404d;box-shadow:0 10px 34px rgba(0,0,0,.45);background:#fff";
+    const cap = document.createElement("div");
+    cap.style.cssText = "font:12px var(--font-sans,system-ui);color:#9aa4b2;text-align:center;padding:0 20px";
+    cap.textContent = `Reading ${name || "drawing"}… — showing the native embedded preview (${pv.format.toUpperCase()} ${pv.width}×${pv.height})`;
+    d.append(img, cap);
+    host.appendChild(d);
+    previewEl = d;
+  }
+
+  /** LandXML CgPoints → POINT entities + name labels on a "LandXML Points" layer. */
+  async function importLandXml(f: File): Promise<void> {
+    try {
+      const text = await f.text();
+      if (!isLandXml(text)) {
+        logCmd("LandXML import: not a LandXML file (expected <LandXML> with CgPoints).");
+        return;
+      }
+      const pts = parseLandXmlPoints(text);
+      if (!pts.length) {
+        logCmd("LandXML import: no CgPoint elements found.");
+        return;
+      }
+      if (!doc) {
+        logCmd("LandXML import: open or create a drawing first.");
+        return;
+      }
+      let lyr = doc.layers.find((l) => l.name === "LandXML Points");
+      if (!lyr) {
+        lyr = { name: "LandXML Points", color: 4, rgb: 0x00b0f0 };
+        doc.layers.push(lyr);
+      }
+      hidden.delete(lyr.name);
+      const b = bounds ?? modelBounds;
+      const span = b ? Math.max(b.maxX - b.minX, b.maxY - b.minY) : 0;
+      const h = span > 0 ? span / 50 : 1;
+      const list: DxfEntity[] = [];
+      for (const p of pts) {
+        list.push({ type: "POINT", layer: lyr.name, position: { x: p.x, y: p.y } });
+        const label = p.name || p.desc;
+        if (label)
+          list.push({
+            type: "TEXT",
+            layer: lyr.name,
+            position: { x: p.x, y: p.y + h * 0.35 },
+            height: h,
+            value: label,
+          });
+      }
+      addEntities(list);
+      draw();
+      logCmd(
+        `LandXML: imported ${pts.length} survey point(s) onto layer "${lyr.name}" (north → CAD Y, east → CAD X).`,
+      );
+    } catch (err) {
+      logCmd(`LandXML import failed: ${(err as Error).message}`);
+    }
+  }
+
+  /** DATAEXTRACT — export every entity's data as CSV (layer, type, colour, geometry). */
+  function extractEntityCsv(): void {
+    if (!doc || !modelEnts.length) {
+      logCmd("DATAEXTRACT: nothing to export — open a drawing first.");
+      return;
+    }
+    const esc = (v: string): string => (/[,"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const rows: string[] = [
+      "handle,type,layer,color,linetype,lineweight_mm,text,x,y",
+    ];
+    for (const e of modelEnts) {
+      const anchor =
+        e.type === "LINE"
+          ? e.start
+          : e.type === "CIRCLE" || e.type === "ARC"
+            ? e.center
+            : e.type === "LWPOLYLINE"
+              ? (e.points[0] ?? null)
+              : e.type === "TEXT" || e.type === "POINT"
+                ? e.position
+                : null;
+      rows.push(
+        [
+          String((e as { handle?: string }).handle ?? ""),
+          e.type,
+          e.layer,
+          e.rgb != null ? `#${e.rgb.toString(16).padStart(6, "0").toUpperCase()}` : e.color != null ? `ACI ${e.color}` : "ByLayer",
+          e.lineType ?? "ByLayer",
+          e.lineweight != null ? String(e.lineweight) : "default",
+          e.type === "TEXT" ? e.value : "",
+          anchor ? anchor.x.toFixed(4) : "",
+          anchor ? anchor.y.toFixed(4) : "",
+        ]
+          .map((c) => esc(String(c)))
+          .join(","),
+      );
+    }
+    download(new Blob([rows.join("\r\n")], { type: "text/csv" }), `${base()}-entities.csv`);
+    logCmd(`DATAEXTRACT: ${modelEnts.length} entities written to ${base()}-entities.csv`);
+  }
 
   /* ── AutoCAD Drafting Engine ── */
   function addDraftEntity(e: DxfEntity): void {
@@ -2967,6 +3177,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   /* ── Load Document ── */
   async function load(file: File): Promise<void> {
     status(`Reading ${file.name}…`);
+    // OpenCADStudio absorption: paint the DWG's embedded preview instantly so a
+    // big drawing opens like native CAD (image first, parse runs underneath).
+    previewInfo = await readDwgPreview(file).catch(() => null);
+    if (previewInfo) showPreviewPlaceholder(previewInfo);
     // Large DWGs can legitimately take a while: show the elapsed seconds so
     // the editor is visibly alive instead of silently stuck on one line.
     const t0 = Date.now();
@@ -3016,6 +3230,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       setTimeout(() => status(""), 7000);
     } finally {
       clearInterval(tick);
+      hidePreviewPlaceholder();
     }
   }
 
@@ -3796,6 +4011,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       import: () => tools.querySelector<HTMLInputElement>("[data-r=importfile]")?.click(),
       takeoff2: () => doTakeoff(),
       info2: () => doInfo(),
+      // OpenCADStudio absorption: entity CSV export + LandXML survey import
+      dataextract: () => extractEntityCsv(),
+      landxmlin: () => xmlPicker?.click(),
       // View tab
       zscale: () => {
         void promptLine("Zoom Scale", "Enter a scale factor (2 = 2×, 0.5 = half)", "2").then((s) => {
@@ -5241,6 +5459,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       purgeDrawing();
       return;
     }
+    if (cmd === "DATAEXTRACT" || cmd === "EATTEXT" || cmd === "DX") {
+      extractEntityCsv();
+      return;
+    }
+    if (cmd === "LANDXMLIN" || cmd === "XMLIN") {
+      xmlPicker?.click();
+      return;
+    }
     if (cmd === "PRINT" || cmd === "PLOT") {
       openPlot();
       return;
@@ -5672,6 +5898,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         <select data-p="area"><option value="display">Display (Screen)</option><option value="extents">Extents</option></select>
         <label>Plot Style:</label>
         <select data-p="mono"><option value="1">Monochrome.ctb (Black &amp; White)</option><option value="0">As Drawn (Color)</option></select>
+        <label>Pen Table:</label>
+        <span style="display:flex;gap:6px;align-items:center">
+          <button data-p="ctbload" style="padding:3px 10px">Load CTB / STB…</button>
+          <span data-p="ctbname" style="font-size:11px;color:#9aa4b2">none</span>
+        </span>
+        <input type="file" data-p="ctbfile" accept=".ctb,.stb" style="display:none">
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
         <button data-p="cancel" style="padding:6px 12px">Cancel</button>
@@ -5680,6 +5912,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     `);
     const gP = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-p=${k}]`)!;
     gP("cancel").onclick = closeOverlay;
+    // Pen table: load a real AutoCAD CTB/STB file and plot through it.
+    gP("ctbload").onclick = () => gP("ctbfile").click();
+    gP("ctbfile").onchange = async () => {
+      const f = gP("ctbfile").files?.[0];
+      if (!f) return;
+      const res = await loadPlotStyleFile(f);
+      if (!res) {
+        logCmd(`Could not read plot style table ${f.name} — not a valid CTB/STB file.`);
+        return;
+      }
+      plotStyle = res;
+      panel.querySelector("[data-p=ctbname]")!.textContent =
+        `${res.fileName} — ${res.table.kind.toUpperCase()}, ${res.table.styles.length} style(s)`;
+      logCmd(
+        `Pen table loaded: ${res.fileName} (${res.table.kind.toUpperCase()}, ${res.table.styles.length} styles${res.table.description ? `, "${res.table.description}"` : ""}) — plotting will map colours, screening and lineweights through it.`,
+      );
+      gP("ctbfile").value = "";
+    };
     gP("go").onclick = () => {
       const o = {
         paper: gP("paper").value,
@@ -5704,7 +5954,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const x = c.getContext("2d")!;
     const keep = { bg, cmode, lw };
     bg = "white";
-    cmode = o.mono ? "bw" : "layer";
+    // Loaded CTB/STB pen table maps every entity through its plot styles.
+    cmode = o.mono ? "bw" : plotStyle ? "style" : "layer";
     lw = Math.max(lw, px.w / 1200);
     try {
       render(x, pv, false);
@@ -5950,6 +6201,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         <table style="margin-top:10px;font-size:12px;width:100%">
           <tr><td>File Name:</td><td>${escapeHtml(name)}</td></tr>
           <tr><td>Database Format:</td><td>${escapeHtml((doc.sourceFormat ?? "").toUpperCase())}</td></tr>
+          <tr><td>Embedded Preview:</td><td>${previewInfo ? `${previewInfo.format.toUpperCase()} ${previewInfo.width}×${previewInfo.height} — native DWG thumbnail shown while reading` : "none"}</td></tr>
           <tr><td>Drawing Units:</td><td>${escapeHtml(doc.units ?? "unitless")}</td></tr>
           <tr><td>Total Entities:</td><td>${modelEnts.length}</td></tr>
           <tr><td>Total Layers:</td><td>${doc.layers.length}</td></tr>
@@ -6447,6 +6699,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     saveDwg,
     fileName: () => name,
     focus: () => cv.focus({ preventScroll: true }),
+    importLandXml: (f: File) => importLandXml(f),
     exec: (a: string) => {
       const f = act[a] ?? act2[a];
       if (f) f();

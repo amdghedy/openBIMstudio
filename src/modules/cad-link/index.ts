@@ -204,7 +204,14 @@ export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: 
 
 export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {
   const e = ext(file.name);
-  if (e === "dwg") return { ...(await readDwg(file)), format: "dwg" };
+  // .bak and .sv$ are AutoCAD drawing backup / autosave files — same DWG
+  // container, so native CAD opens them directly ("recover from backup").
+  const isDwg = e === "dwg" || e === "bak" || e === "sv$";
+  if (isDwg) {
+    const r = await readDwg(file);
+    const suffix = e === "dwg" ? "" : ` — recovered from AutoCAD ${e === "bak" ? "backup" : "autosave"} (.${e})`;
+    return { ...r, summary: `${r.summary}${suffix}`, format: "dwg" };
+  }
   if (e === "dxf") {
     const doc = parseDxf(await file.text());
     const skipped = doc.skipped
@@ -213,6 +220,7 @@ export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summa
       (skipped ? `; not drawn: ${skipped}` : "");
     return { doc, summary, format: "dxf" };
   }
+  if (e === "xml") throw new Error("LandXML files import as survey points — use LANDXMLIN or drop the .xml onto a drawing");
   throw new Error(`unsupported CAD format .${e} (use .dwg or .dxf)`);
 }
 

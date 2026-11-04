@@ -242,9 +242,20 @@ function offsetArc(e: Extract<DxfEntity, { type: "ARC" }>, d: number, side: Pt):
 }
 
 /**
- * Miter offset for polylines: every vertex slides along the angle-bisector
- * normal so adjacent segments stay joined (AutoCAD-style sharp corners).
- * Works for open and closed loops; hatch boundary loops are offset too.
+ * Curve-aware offset for polylines (kernel-style "offset with trim", absorbed
+ * from the OpenCADStudio geometry-kernel approach — opencadkernel is MPL-2.0
+ * and only informed the algorithm; this is an independent TS implementation):
+ *
+ *  1. every segment is offset by `d` on the picked side;
+ *  2. adjacent offset segments are joined by infinite-line INTERSECTION, so
+ *     corners are extended/trimmed exactly like AutoCAD (no bisector overshoot
+ *     on dense arc approximations — the join lands on the true offset);
+ *  3. tangential/parallel joins fall back to the shared offset endpoint;
+ *  4. joins further than 4·d from the source vertex (very shallow angle spikes)
+ *     clamp to the classic miter cap, matching AutoCAD's default 4× mitre limit;
+ *  5. a closed loop whose offset flips orientation (the shape collapsed
+ *     inward past its centroid) is refused with null — AutoCAD's "cannot
+ *     offset that" for inner offsets of circles and thin shapes.
  */
 function offsetPolyline(
   e: Extract<DxfEntity, { type: "LWPOLYLINE" }>,
@@ -255,37 +266,80 @@ function offsetPolyline(
     const n = loop.length;
     if (n < 2) return null;
     const closed = !!e.closed && n > 2;
-    const segN: Pt[] = [];
     const m = closed ? n : n - 1;
-    for (let i = 0; i < m; i++) segN.push(segNormal(loop[i], loop[(i + 1) % n]));
+    // Unit direction per segment; zero for degenerate (zero-length) ones.
+    const dirs: Pt[] = [];
+    for (let i = 0; i < m; i++) {
+      const b = loop[(i + 1) % n];
+      const dx = b.x - loop[i].x,
+        dy = b.y - loop[i].y;
+      const len = Math.hypot(dx, dy);
+      dirs.push(len < 1e-12 ? { x: 0, y: 0 } : { x: dx / len, y: dy / len });
+    }
     // Decide global side from the first non-degenerate segment.
     let s = 1;
-    for (const nn of segN) {
-      if (nn.x || nn.y) {
-        const a = loop[0];
-        const b = loop[1 % n];
-        s = isLeft(side, a, b) ? 1 : -1;
+    for (let i = 0; i < m; i++) {
+      if (dirs[i].x || dirs[i].y) {
+        s = isLeft(side, loop[i], loop[(i + 1) % n]) ? 1 : -1;
         break;
       }
     }
+    // Offset endpoints per segment: a→b shifted by d along the left-hand normal.
+    const offA: Pt[] = [],
+      offB: Pt[] = [];
+    for (let i = 0; i < m; i++) {
+      const dx = -dirs[i].y * d * s,
+        dy = dirs[i].x * d * s;
+      offA.push(P(loop[i].x + dx, loop[i].y + dy));
+      offB.push(P(loop[(i + 1) % n].x + dx, loop[(i + 1) % n].y + dy));
+    }
+    const capDist = 4 * Math.abs(d); // AutoCAD's default mitre ratio
     const out: DxfPoint[] = [];
-    for (let i = 0; i < n; i++) {
-      const prev = closed ? segN[(i - 1 + m) % m] : segN[Math.max(0, i - 1)];
-      const next = closed ? segN[i % m] : segN[Math.min(m - 1, i)];
-      let bx: number, by: number;
-      if (!prev.x && !prev.y) { bx = next.x; by = next.y; }
-      else if (!next.x && !next.y) { bx = prev.x; by = prev.y; }
-      else {
-        bx = prev.x + next.x;
-        by = prev.y + next.y;
-        const bl = Math.hypot(bx, by);
-        if (bl < 1e-9) { bx = next.x; by = next.y; } // 180° reversal
-        else { bx /= bl; by /= bl; }
+    const join = (i: number, prev: number): DxfPoint => {
+      const d1 = dirs[prev],
+        d2 = dirs[i];
+      if (!d1.x && !d1.y) return offA[i];
+      if (!d2.x && !d2.y) return offB[prev];
+      const den = d1.x * d2.y - d1.y * d2.x;
+      let p: Pt;
+      if (Math.abs(den) < 1e-12) {
+        // Parallel / tangential continuation: endpoints already coincide.
+        p = P((offB[prev].x + offA[i].x) / 2, (offB[prev].y + offA[i].y) / 2);
+      } else {
+        // Infinite-line intersection of the two offset segments.
+        const t =
+          ((offA[i].x - offA[prev].x) * d2.y - (offA[i].y - offA[prev].y) * d2.x) / den;
+        p = P(offA[prev].x + t * d1.x, offA[prev].y + t * d1.y);
       }
-      // Miter length = d / cos(half-angle between the two normals).
-      const cos = Math.max(0.25, bx * prev.x + by * prev.y);
-      const mlen = (d * s) / cos;
-      out.push(P(loop[i].x + bx * mlen, loop[i].y + by * mlen));
+      // Spike clamp: beyond the mitre cap fall back to the bisector join.
+      if (Math.hypot(p.x - loop[i].x, p.y - loop[i].y) > capDist) {
+        const bx = d1.x + d2.x,
+          by = d1.y + d2.y;
+        const bl = Math.hypot(bx, by);
+        const nx = bl < 1e-9 ? d2.x : bx / bl,
+          ny = bl < 1e-9 ? d2.y : by / bl;
+        const cos = Math.max(0.25, nx * d1.x + ny * d1.y);
+        const mlen = (d * s) / cos;
+        p = P(loop[i].x + nx * mlen, loop[i].y + ny * mlen);
+      }
+      return p;
+    };
+    if (!closed) {
+      out.push(offA[0]);
+      for (let i = 1; i < n - 1; i++) out.push(join(i, i - 1));
+      out.push(offB[m - 1]);
+    } else {
+      for (let i = 0; i < n; i++) out.push(join(i, (i - 1 + m) % m));
+    }
+    // Collapse detection on the JOINED loop: an inward offset that ends up
+    // covering more (signed) area than the source has folded past the
+    // centroid — AutoCAD refuses with "cannot offset that". Outward offsets
+    // legitimately grow, so only the inward direction is checked.
+    if (closed) {
+      const a0 = signedArea(loop);
+      const a1 = signedArea(out);
+      const inward = Math.sign(s) === Math.sign(a0); // left of CCW edges = inside
+      if ((inward && Math.abs(a1) >= Math.abs(a0)) || a0 * a1 < 0) return null;
     }
     return out;
   };
@@ -294,6 +348,17 @@ function offsetPolyline(
   if (!pts) return null;
   const hatch = e.hatch ? { ...e.hatch, loops: e.hatch.loops.map((l) => off(l)).filter((l): l is DxfPoint[] => !!l) } : undefined;
   return { ...e, points: pts, hatch };
+}
+
+/** Signed area of a closed loop (positive = counter-clockwise). */
+function signedArea(loop: Pt[]): number {
+  let a = 0;
+  for (let i = 0; i < loop.length; i++) {
+    const p = loop[i],
+      q = loop[(i + 1) % loop.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a / 2;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

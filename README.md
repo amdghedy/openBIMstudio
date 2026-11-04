@@ -82,7 +82,7 @@ One install (none, actually — it's your browser). One license (MIT — yours).
 | 🏗️ **Authoring to delivery in one app** | Walls to rebar, clash to BCF, views to sheets to PDF, quantities to cost, phasing to 4D. No stitching together five tools. |
 | 🔓 **Open standards, no lock-in** | IFC 2x3/4, BCF, IDS, DXF, CSV, PDF. Your data is never hostage to a vendor. |
 | 🤖 **Automate & extend** | Event-driven automation rules, an AI assistant (bring your own provider key), a plugin SDK with capability gating, and a sample plugin marketplace. |
-| ✅ **Evidence-based engineering** | 116 focused test suites run in CI on every push, a public per-tool maturity catalogue, and documented known limitations. |
+| ✅ **Evidence-based engineering** | 117 focused test suites run in CI on every push, a public per-tool maturity catalogue, and documented known limitations. |
 | 🧠 **Modern modeling engine** | Justification lines, magnetic snapping, constraint solving, parametric families with formulas, and deep authoring workflows. |
 
 ---
@@ -306,9 +306,21 @@ The standalone CAD Editor ribbon has a full **Modify** group with AutoCAD-grade 
 
 Notes:
 
-- OFFSET works on lines, circles, arcs and polylines (mitered corners, hatch boundaries included); text and points are skipped with a message.
+- OFFSET works on lines, circles, arcs and polylines with **curve-aware joins** — corners are extended/trimmed by exact intersection (AutoCAD's offset-with-trim), shallow-angle spikes clamp to the classic 4× mitre, and a closed loop whose inset would collapse past its centroid is refused with "cannot offset that", exactly like native CAD. Hatch boundaries offset with their polyline.
 - MIRROR keeps text readable (MIRRTEXT=0 behaviour) and handles arc sweep correctly.
 - The Modify engine reuses the drawing undo stack, so `U` / Ctrl+Z reverts each operation in one step, and `REDO` / Ctrl+Y reapplies it.
+
+### CAD Editor — absorbed from OpenCADStudio (options & functions grab)
+
+Functions absorbed from the OpenCADStudio project (github.com/HakanSeven12/OpenCADStudio) under their own licenses — the GPL-3.0 application code is **not** copied; only permissively-licensed parts are ported and the rest is re-implemented against public formats:
+
+| Feature | Entry | What it does |
+|---------|-------|--------------|
+| Embedded DWG preview | open any DWG | The drawing's native thumbnail (extracted from the DWG preview container at byte 0x0D) is shown instantly while the full parse runs — big drawings open like native CAD. Also listed in the Info dialog. Ported from the MIT/Apache-2.0 `dwg-thumbnailer` crate. |
+| CTB / STB plot styles | PLOT › Load CTB / STB… | Load a real AutoCAD plot style table; the plot maps every entity through it — forced pen colours, grayscale policy, screen (ink) levels and pen lineweights. Validated against ezdxf-generated fixtures. |
+| BAK / SV$ recovery | open / drop a `.bak` or `.sv$` file | AutoCAD drawing backup and autosave files open like native CAD, with a "recovered from backup" note in the command line. |
+| LandXML CgPoints | drop a `.xml`, or `LANDXMLIN` | Survey points import as POINT entities with name labels on a "LandXML Points" layer (north → CAD Y, east → CAD X). |
+| Entity data extract | `DATAEXTRACT`, or App menu › Export Entity Data (CSV) | Every entity's handle, type, layer, colour, linetype, lineweight, text and anchor point exports to a CSV file. |
 
 ---
 
@@ -401,7 +413,7 @@ available from earlier releases; run the one matching the milestone you touched.
 
 **Layout:** `src/features` (tools/UI) · `src/modules` (BIM domains — 100+ modules from authoring to 5D) · `src/commands` · `src/workers` · optional `server/` (collaboration & conversion — self-hosted and optional)
 
-**Testing culture:** 116 focused automated suites (`npm run` and pick any `test:*`; `node scripts/ci-unit-tests.mjs` runs the whole batch), CI on every push, and per-version milestone checks. Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md); for substantial changes, open an issue first and discuss the design and validation strategy.
+**Testing culture:** 117 focused automated suites (`npm run` and pick any `test:*`; `node scripts/ci-unit-tests.mjs` runs the whole batch), CI on every push, and per-version milestone checks. Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md); for substantial changes, open an issue first and discuss the design and validation strategy.
 
 ---
 
