@@ -2157,6 +2157,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── Style tools (linetypes, fonts, text styles, match properties) ── */
   let matchSrc: DxfEntity | null = null;
+  /** CIRCLE creation mode — AutoCAD: Center-radius (default), 2P, 3P. */
+  let circleMode: "center" | "2p" | "3p" = "center";
+  /** Last status prompt shown (for dyn input / status bar). */
+  let acadPromptText = "";
+
   const styleApi: CadStyleApi = {
     doc: () => doc,
     entities: () => ents,
@@ -4159,11 +4164,154 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     commitReplace(before, before.map(mut));
   }
 
+
+  /** AutoCAD-style command prompt for the active tool and stage. */
+  function toolPrompt(): string {
+    const n = pts.length;
+    switch (tool) {
+      case "line":
+        return n === 0 ? "Specify first point:" : "Specify next point or [Undo]:";
+      case "circle":
+        if (circleMode === "2p") {
+          return n === 0 ? "Specify first end point of diameter:" : "Specify second end point of diameter:";
+        }
+        if (circleMode === "3p") {
+          return n === 0 ? "Specify first point on circle:" : n === 1 ? "Specify second point on circle:" : "Specify third point on circle:";
+        }
+        return n === 0 ? "Specify center point for circle or [2P/3P]:" : "Specify radius of circle:";
+      case "arc":
+        return n === 0 ? "Specify start point of arc:" : n === 1 ? "Specify second point of arc:" : "Specify end point of arc:";
+      case "rect":
+        return n === 0 ? "Specify first corner point:" : "Specify other corner point:";
+      case "poly":
+      case "cloud":
+        return n === 0 ? "Specify start point:" : "Specify next point or [Close/Undo]:";
+      case "dist":
+        return n === 0 ? "Specify first point:" : "Specify second point:";
+      case "area":
+      case "chain":
+        return n === 0 ? "Specify first point:" : "Specify next point or [Undo]:";
+      case "select":
+        return "Select objects:";
+      case "pan":
+        return "Press Esc or Enter to exit, or pan with the mouse:";
+      case "erase":
+        return "Select objects to erase:";
+      case "text":
+        return "Specify start point of text:";
+      default:
+        if (mod) return modPrompt() || "";
+        if (pick) return pickPrompt() || "";
+        if (tool === "offset") return offsetPrompt() || "";
+        return "";
+    }
+  }
+
+  function showAcadPrompt(msg?: string): void {
+    const text = (msg ?? toolPrompt()).trim();
+    acadPromptText = text;
+    if (text) {
+      try {
+        logCmd(text);
+      } catch {
+        /* */
+      }
+    }
+    try {
+      updateStatus(cursor ?? undefined);
+    } catch {
+      /* */
+    }
+  }
+
+  /**
+   * AutoCAD direct distance / radius entry while a tool is waiting for a point.
+   * Returns true if the numeric value was consumed.
+   */
+  function applyDirectDistance(value: number): boolean {
+    if (!Number.isFinite(value) || value === 0) return false;
+    const abs = Math.abs(value);
+    if (tool === "circle" && circleMode === "center" && pts.length === 1) {
+      const c = pts[0];
+      addDraftEntity({
+        type: "CIRCLE",
+        layer: currentLayer,
+        ...newObjectProps(),
+        center: { x: c.x, y: c.y },
+        radius: abs,
+      });
+      logCmd(`Circle added: radius = ${fmt(abs)}`);
+      pts = [];
+      showAcadPrompt();
+      draw();
+      return true;
+    }
+    if (tool === "line" && pts.length >= 1) {
+      const a = pts[pts.length - 1];
+      const dir = cursor ? { x: cursor.x - a.x, y: cursor.y - a.y } : { x: abs, y: 0 };
+      const len = Math.hypot(dir.x, dir.y) || 1;
+      const b = { x: a.x + (dir.x / len) * abs, y: a.y + (dir.y / len) * abs };
+      addDraftEntity({
+        type: "LINE",
+        layer: currentLayer,
+        ...newObjectProps(),
+        start: { x: a.x, y: a.y },
+        end: { x: b.x, y: b.y },
+      });
+      logCmd(`Line added: length = ${fmt(abs)}`);
+      pts = [b];
+      showAcadPrompt();
+      draw();
+      return true;
+    }
+    if (tool === "offset" && offStage === "dist") {
+      offDist = abs;
+      offStage = "pickObj";
+      logCmd(`Offset distance = ${fmt(abs)}`);
+      showAcadPrompt();
+      return true;
+    }
+    if (pendingNumeric) {
+      const f = pendingNumeric;
+      pendingNumeric = null;
+      f(value);
+      return true;
+    }
+    return false;
+  }
+
+  /** End the current drawing command (Enter / space when no distance applies). */
+  function endCurrentCommand(): void {
+    if (tool === "line" || tool === "poly" || tool === "cloud" || tool === "spline" || tool === "wipeout" || tool === "area" || tool === "chain") {
+      if (pts.length >= 2 && (tool === "poly" || tool === "cloud" || tool === "area" || tool === "chain" || tool === "spline" || tool === "wipeout")) {
+        try {
+          finishMeasure();
+        } catch {
+          /* */
+        }
+      }
+      pts = [];
+      setTool("select");
+      logCmd("Command: *Cancel*");
+      return;
+    }
+    if (tool === "circle" || tool === "arc" || tool === "rect" || tool === "ellipse" || tool === "donut" || tool === "polygon") {
+      pts = [];
+      setTool("select");
+      logCmd("Command: *Cancel*");
+      return;
+    }
+    if (tool !== "select") {
+      setTool("select");
+    }
+  }
+
   function setTool(t: Tool) {
     clearModState();
     clearPickState();
     matchSrc = null;
     tool = t;
+    if (t !== "circle") circleMode = "center";
     cv.focus({ preventScroll: true });
     pts = [];
     offsetEntity = -1;
@@ -4196,6 +4344,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`Command: _${t.toUpperCase()}`);
     }
     draw();
+    showAcadPrompt();
   }
 
   function finishMeasure() {
@@ -4366,20 +4515,64 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           logCmd(`Line added: length = ${fmt(M.distance(pts[0], pts[1]))}`);
           pts = [p]; // Chain next line like AutoCAD
         }
+        showAcadPrompt();
         break;
       }
       case "circle": {
         pts.push(p);
-        if (pts.length === 2) {
+        if (circleMode === "2p" && pts.length === 2) {
+          const [a, b] = pts;
+          const cx = (a.x + b.x) / 2,
+            cy = (a.y + b.y) / 2;
+          const r = M.distance(a, b) / 2;
+          if (r > 1e-12) {
+            addDraftEntity({
+              type: "CIRCLE",
+              layer: currentLayer,
+              ...newObjectProps(),
+              center: { x: cx, y: cy },
+              radius: r,
+            });
+            logCmd(`Circle added (2P): diameter = ${fmt(2 * r)}`);
+          }
+          pts = [];
+          showAcadPrompt();
+        } else if (circleMode === "3p" && pts.length === 3) {
+          const [a, b, c] = pts;
+          // Circumcircle of triangle abc
+          const D = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+          if (Math.abs(D) > 1e-12) {
+            const a2 = a.x * a.x + a.y * a.y,
+              b2 = b.x * b.x + b.y * b.y,
+              c2 = c.x * c.x + c.y * c.y;
+            const ux = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / D;
+            const uy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / D;
+            const r = Math.hypot(ux - a.x, uy - a.y);
+            addDraftEntity({
+              type: "CIRCLE",
+              layer: currentLayer,
+              ...newObjectProps(),
+              center: { x: ux, y: uy },
+              radius: r,
+            });
+            logCmd(`Circle added (3P): radius = ${fmt(r)}`);
+          } else logCmd("CIRCLE 3P: points are collinear.");
+          pts = [];
+          showAcadPrompt();
+        } else if (circleMode === "center" && pts.length === 2) {
           const r = M.distance(pts[0], pts[1]);
           addDraftEntity({
             type: "CIRCLE",
-            layer: currentLayer, ...newObjectProps(),
+            layer: currentLayer,
+            ...newObjectProps(),
             center: { x: pts[0].x, y: pts[0].y },
             radius: r,
           });
           logCmd(`Circle added: radius = ${fmt(r)}`);
           pts = [];
+          showAcadPrompt();
+        } else {
+          showAcadPrompt();
         }
         break;
       }
@@ -5000,6 +5193,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       /* */
     }
     matchSrc = null;
+    circleMode = "center";
+    acadPromptText = "";
     pendingNumeric = null;
     pendingYesNo = null;
     offStage = "dist";
@@ -5248,7 +5443,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
 
-    // Enter / Space: finish current op, or repeat last command (AutoCAD)
+    // Enter / Space: finish current op, end drawing command, or repeat last (AutoCAD)
     if (key === "Enter" || key === " ") {
       if (pick) {
         ev.preventDefault();
@@ -5264,9 +5459,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         ev.preventDefault();
         return;
       }
-      if (pts.length > 0) {
+      // LINE / PLINE: Enter ends the command (AutoCAD)
+      if (tool === "line" || tool === "poly" || tool === "cloud" || tool === "spline" || tool === "wipeout") {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        if ((tool === "poly" || tool === "cloud" || tool === "spline" || tool === "wipeout") && pts.length >= 2) {
+          try { finishMeasure(); } catch { /* */ }
+        }
+        pts = [];
+        setTool("select");
+        logCmd("Command: *Complete*");
+        return;
+      }
+      if (pts.length > 0 && (tool === "area" || tool === "chain")) {
         ev.preventDefault();
         finishMeasure();
+        return;
+      }
+      // CIRCLE/ARC incomplete: Enter cancels like AutoCAD
+      if (tool !== "select" && tool !== "pan") {
+        ev.preventDefault();
+        endCurrentCommand();
         return;
       }
       // Idle: Space / Enter repeats last command
@@ -5330,7 +5543,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       xy = `${ax.toFixed(4)}, ${ay.toFixed(4)}, 0.0000`;
     }
 
+    const promptBit = acadPromptText
+      ? `<span style="color:#fbbf24;font-weight:600;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${acadPromptText.replace(/"/g, "&quot;")}">${acadPromptText}</span><span class="sep"></span>`
+      : "";
     statusEl.innerHTML = `
+      ${promptBit}
       <span style="color:#f8fafc;font-weight:600">${xy}</span>
       <span class="sep"></span>
       <button class="obs-status-btn active" data-s="space">${layoutI >= 0 ? "PAPER" : "MODEL"}</button>
@@ -5521,13 +5738,34 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const cmd = resolveCadToken(parts[0], CAD_COMMANDS);
     const arg = parts.slice(1).join(" ");
 
-    // Direct numeric entry feeds a pending ROTATE angle / SCALE factor / OFFSET distance
-    if (pendingNumeric && /^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(trimmed)) {
-      const f = pendingNumeric;
-      pendingNumeric = null;
-      f(parseFloat(trimmed));
-      draw();
-      return;
+    // Direct numeric entry: tool radius/length, or pending ROTATE/SCALE/OFFSET
+    if (/^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(trimmed)) {
+      const num = parseFloat(trimmed);
+      if (applyDirectDistance(num)) {
+        draw();
+        return;
+      }
+      if (pendingNumeric) {
+        const f = pendingNumeric;
+        pendingNumeric = null;
+        f(num);
+        draw();
+        return;
+      }
+    }
+    // CIRCLE option keywords while CIRCLE is active
+    if (tool === "circle" && pts.length === 0) {
+      const k = cmd;
+      if (k === "2P" || k === "2") {
+        circleMode = "2p";
+        showAcadPrompt();
+        return;
+      }
+      if (k === "3P" || k === "3") {
+        circleMode = "3p";
+        showAcadPrompt();
+        return;
+      }
     }
     // Yes/No answer to the MIRROR "Erase source objects?" prompt
     if (pendingYesNo && /^(y|yes|n|no)$/i.test(trimmed)) {
@@ -5564,6 +5802,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "C" || cmd === "CIRCLE") {
+      const opt = (arg || "").trim().toUpperCase();
+      if (opt === "2P" || opt === "2") circleMode = "2p";
+      else if (opt === "3P" || opt === "3") circleMode = "3p";
+      else circleMode = "center";
+      // Also allow: CIRCLE 2P as separate token flow via dynamic input
       setTool("circle");
       return;
     }
