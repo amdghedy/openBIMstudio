@@ -339,9 +339,15 @@ bim-panel-section[data-collapsed] { overflow: hidden; }
    leaving full screen restores the layout as it was, including the ribbon's own
    minimize state, because only this scoped rule does the hiding. */
 body.obs-fullscreen .obs-ribbon,
+body.obs-fullscreen #obs-options-bar,
 body.obs-fullscreen .bb-status {
   display: none !important;
 }
+
+/* While full screen, hovering the 12 px top-edge peek zone temporarily
+   reveals the ribbon; moving the mouse back down hides it again. */
+body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
+#obs-fullscreen-peek { background: transparent; pointer-events: auto; }
 
 .obs-ribbon__tabs {
   display: flex;
@@ -1367,3 +1373,4 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 .obs-bim-template-name { flex:1; height:28px; min-width:180px; border:1px solid var(--border-default); border-radius:6px; background:var(--bg-inset); color:var(--text-primary); padding:0 8px; }
 .obs-bim-dialog__empty { padding:24px; text-align:center; color:var(--text-tertiary); border:1px dashed var(--border-default); border-radius:8px; font-size:10px; }
 @media (max-width:720px) { .obs-bim-dialog-grid { grid-template-columns:1fr; } .obs-bim-template-row { grid-template-columns:1fr auto; } .obs-bim-template-row button:last-child { grid-column:2; } }
+

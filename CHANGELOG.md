@@ -13,6 +13,13 @@ file — the project adopted a written changelog at 0.73.0.
 
 ### Added
 
+- Revit-style section box face arrows: each of the six crop faces now carries
+  a double-headed drag arrow pointing along its face normal, next to the
+  translucent drag quad. Grabbing the arrow (or the quad) stretches or
+  shrinks that face live; hovering highlights the face. Arrow orientation is
+  pinned by unit tests (every face rotation must map local +Z onto the
+  outward normal) alongside new pure helpers `faceNormal`, `faceCenter`,
+  `ARROW_SPEC` in `section-box-math.ts`.
 - Region-profile service (`src/core/region.ts`): 20 country profiles unifying
   language, units, currency, paper sizes, date formats and standards packs;
   wired into Settings as a single "Region profile" control with browser

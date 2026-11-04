@@ -96,6 +96,7 @@ import { toggleAutomationPanel, isAutomationPanelVisible } from "../features/aut
 // ── Object snaps (all modes) ───────────────────────────────────────────
 import { toggleSnapSettings, isSnapSettingsVisible, snapping } from "../features/snapping";
 import { resolveDblClick } from "./ribbon-collapse";
+import { toggleAppFullScreen, isAppFullScreen } from "./fullscreen-chrome";
 
 // ── Insert / Link tools (all activated) ────────────────────────────────
 import {
@@ -2438,6 +2439,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         active: isWalkModeEnabled(),
         title: "First-person walk (WASD + mouse)",
       }),
+      b("fit", "Full Screen", safe(() => {
+        toggleAppFullScreen();
+      }, "Full screen"), {
+        active: isAppFullScreen(),
+        title: "Full Screen — hides the command bars; move the mouse to the top edge to reveal the ribbon (F11)",
+      }),
       sep(),
 
       // ── Create views ────────────────────────────────────────────────
@@ -2962,6 +2969,12 @@ function refreshRibbon() {
   renderTabs();
   renderStrip();
 }
+
+// Keep the View ▸ Full Screen button highlight in sync with the real
+// fullscreen state (F11, Esc, the CAD viewer's own fullscreen, …).
+window.addEventListener("obs-fullscreen-toggle", () => {
+  try { refreshRibbon(); } catch { /* ribbon not mounted yet */ }
+});
 
 /* ═════════════════════════════════════════════════════════════════════════
    Contextual tab - "Modify | Place Wall" (Revit style). Appears when a placement

@@ -26,6 +26,7 @@ import { downloadDxf } from "../modules/drawings/dxf-writer";
 import { makeClip, clipInstances, type CadClip } from "../modules/cad-viewer/clipboard";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
+import { resolveDblClick } from "../shell/ribbon-collapse";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import { svgIcon, type IconName } from "./icon-set";
@@ -207,6 +208,49 @@ let ribbonStrip: HTMLDivElement | null = null;
 let ribbonTabsRow: HTMLDivElement | null = null;
 let ribbonActive: CadEngineApi | null = null;
 const ribbonEngines = new Map<CadEngineApi, HTMLDivElement>();
+
+/** Ribbon minimize (double-click a tab) - the strip hides, the tab row stays, the drawing gets the space. */
+let ribbonMinimized = false;
+let ribbonLastAutoExpandAt = 0;
+try { ribbonMinimized = localStorage.getItem("obs.cad.ribbon.min") === "1"; } catch { /* storage blocked */ }
+
+function applyCadRibbonMinimized(min: boolean): void {
+  ribbonMinimized = min;
+  shell?.classList.toggle("cad-ribbon--min", min);
+  try { localStorage.setItem("obs.cad.ribbon.min", min ? "1" : "0"); } catch { /* */ }
+  // the drawing area changed size - let the canvas refit
+  window.dispatchEvent(new Event("resize"));
+}
+
+/** Full screen: hide the drawing's side panel, command line, layout tabs and status bar. */
+let cadFullscreenInstalled = false;
+function installCadFullscreen(): void {
+  if (cadFullscreenInstalled) return;
+  cadFullscreenInstalled = true;
+  const onChange = () => {
+    document.querySelectorAll(".obs-cad-viewer.obs-cad-fs").forEach((n) => {
+      n.classList.remove("obs-cad-fs", "obs-cad-fs--peek");
+      n.querySelector(":scope > .obs-cad-fs-chip")?.remove();
+    });
+    const fe = ((document as any).fullscreenElement ?? (document as any).webkitFullscreenElement) as HTMLElement | null;
+    if (fe && fe.classList.contains("obs-cad-viewer")) {
+      fe.classList.add("obs-cad-fs");
+      const chip = document.createElement("button");
+      chip.className = "obs-cad-fs-chip";
+      chip.textContent = "Show command bars";
+      chip.title = "Show or hide the command line, status bar and side panel (Esc leaves full screen)";
+      chip.onclick = () => {
+        const peek = fe.classList.toggle("obs-cad-fs--peek");
+        chip.textContent = peek ? "Hide command bars" : "Show command bars";
+        window.dispatchEvent(new Event("resize"));
+      };
+      fe.appendChild(chip);
+    }
+    window.dispatchEvent(new Event("resize"));
+  };
+  document.addEventListener("fullscreenchange", onChange);
+  document.addEventListener("webkitfullscreenchange", onChange as EventListener);
+}
 
 function applyRibbonTab(): void {
   ribbonStrip?.setAttribute("data-ribbon-tab", ribbonTab);
@@ -429,12 +473,28 @@ function ensureShell(): void {
   ribbonStrip = shell.querySelector<HTMLDivElement>("[data-r=ribbonstrip]")!;
   ribbonTabsRow = shell.querySelector<HTMLDivElement>("[data-r=ribbontabs]")!;
   applyRibbonTab();
+  shell.classList.toggle("cad-ribbon--min", ribbonMinimized);
+  installCadFullscreen();
+  ribbonTabsRow.addEventListener("dblclick", (e) => {
+    const target = e.target as HTMLElement;
+    const onTab = !!target.closest("[data-ribtab]");
+    // only a tab or the empty part of the tab row collapses the ribbon (not the A menu or quick-access buttons)
+    if (!onTab && target !== ribbonTabsRow) return;
+    const d = resolveDblClick({ minimized: ribbonMinimized, lastAutoExpandAt: ribbonLastAutoExpandAt, now: Date.now(), onTab });
+    ribbonLastAutoExpandAt = d.lastAutoExpandAt;
+    if (d.minimize !== ribbonMinimized) applyCadRibbonMinimized(d.minimize);
+  });
   ribbonTabsRow.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
     const rib = target.closest<HTMLElement>("[data-ribtab]");
     if (rib) {
       ribbonTab = rib.dataset.ribtab!;
       applyRibbonTab();
+      if (ribbonMinimized) {
+        // a single click on a tab while collapsed re-opens the ribbon on that tab
+        ribbonLastAutoExpandAt = Date.now();
+        applyCadRibbonMinimized(false);
+      }
       return;
     }
     const q = target.closest<HTMLElement>("[data-qat]");
@@ -595,6 +655,14 @@ const CAD_CSS = `
     .obs-cad-shell .cad-appmenu:hover{background:linear-gradient(180deg,#ef6a6a,#c52222)}
     .obs-cad-shell .cad-ribtab{padding:0 14px;background:transparent;border:none;border-bottom:2px solid transparent;border-radius:0;color:#9aa4b2;font:500 12px var(--font-sans,system-ui);cursor:pointer}
     .obs-cad-shell .cad-ribtab:hover{color:#e8eaf0;background:#1b212c}
+    .obs-cad-shell.cad-ribbon--min .cadrb-strip{display:none}
+    .obs-cad-shell.cad-ribbon--min .cad-ribtab.on{border-bottom-color:transparent}
+    .obs-cad-viewer.obs-cad-fs:not(.obs-cad-fs--peek) .side,
+    .obs-cad-viewer.obs-cad-fs:not(.obs-cad-fs--peek) .obs-cad-cmd-container,
+    .obs-cad-viewer.obs-cad-fs:not(.obs-cad-fs--peek) [data-r=status],
+    .obs-cad-viewer.obs-cad-fs:not(.obs-cad-fs--peek) [data-r=tabs]{display:none!important}
+    .obs-cad-fs-chip{position:absolute;top:8px;right:10px;z-index:30;padding:4px 10px;background:rgba(21,26,35,.82);color:#cbd5e1;border:1px solid #334155;border-radius:5px;font:11px system-ui,sans-serif;cursor:pointer;opacity:.35;transition:opacity .15s}
+    .obs-cad-fs-chip:hover{opacity:1}
     .obs-cad-shell .cad-ribtab.on{color:#f8fafc;background:#151a23;border-bottom-color:#38bdf8}
     .obs-cad-shell .cad-qat{margin-left:auto;display:flex;align-items:center;gap:1px}
     .obs-cad-shell .cad-qat button{width:26px;height:26px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#9aa4b2;cursor:pointer}

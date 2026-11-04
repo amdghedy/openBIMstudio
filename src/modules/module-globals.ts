@@ -359,7 +359,7 @@ w.__obsCropRegion = {
 w.__obsSectionBox = {
   toggle: () => {
     const on = toggleSectionBox();
-    toast(on ? "Section Box ON — drag cyan face handles" : "Section Box OFF", "success");
+    toast(on ? "Section Box ON — drag the cyan arrows on each face to stretch / shrink" : "Section Box OFF", "success");
     return on;
   },
   enable: (padding = 1.0) => enableSectionBox(padding),
