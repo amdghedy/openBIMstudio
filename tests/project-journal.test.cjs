@@ -9,6 +9,8 @@ execSync(`npx tsc src/modules/projects/project-journal.ts --outDir "${out}" --mo
 const find = (dir, name) => { for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { const file = path.join(dir, entry.name); if (entry.isDirectory()) { const nested = find(file, name); if (nested) return nested; } else if (entry.name === name) return file; } };
 const journal = require(find(out, "project-journal.js"));
 assert.equal(journal.PROJECT_RECOVERY_RETENTION, 10);
+assert.equal(journal.getModelBlobVersionKey("p-1", "ifc-1", "v2"), "p-1::ifc-1::v2");
+assert.deepEqual(journal.getUnreferencedModelBlobVersionKeys(["a", "b", "c"], new Set(["b"])), ["a", "c"]);
 assert.deepEqual(journal.getProjectJournalPruneIds([1, 2, 3, 4], 10), []);
 assert.deepEqual(journal.getProjectJournalPruneIds([1, 2, 3, 4, 5], 3), [1, 2]);
 assert.deepEqual(journal.getProjectJournalPruneIds([9, 2, 8, 1, 9, 7], 3), [1, 2]);

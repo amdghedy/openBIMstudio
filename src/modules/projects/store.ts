@@ -2,6 +2,8 @@
 import type { ProjectDoc, ProjectSummary } from "./types";
 export type { ProjectRecoverySnapshot } from "./project-journal";
 import {
+  getModelBlobVersionKey,
+  getUnreferencedModelBlobVersionKeys,
   getProjectJournalPruneIds,
   prepareRecoveredProjectDocument,
   summarizeProjectJournalRecord,
@@ -95,10 +97,13 @@ function pruneUnreferencedModelBlobVersions(tx: IDBTransaction, projectId: strin
   records.onsuccess = () => {
     const referenced = new Set<string>();
     for (const record of records.result as ProjectJournalRecord[]) {
-      for (const item of record.modelVersions ?? []) referenced.add(`${projectId}::${item.modelId}::${item.version}`);
+      for (const item of record.modelVersions ?? []) referenced.add(getModelBlobVersionKey(projectId, item.modelId, item.version));
     }
     const keys = archive.index("projectId").getAllKeys(projectId);
-    keys.onsuccess = () => { for (const key of keys.result) if (!referenced.has(String(key))) archive.delete(key); };
+    keys.onsuccess = () => {
+      const obsolete = getUnreferencedModelBlobVersionKeys(keys.result.map(String), referenced);
+      for (const key of obsolete) archive.delete(key);
+    };
   };
 }
 
@@ -123,7 +128,7 @@ function appendProjectSnapshot(
     const modelVersions = modelBlobs.map((model) => {
       const version = model.version || nextModelBlobVersion();
       if (!model.version) source.put({ ...model, version }, model.key);
-      const key = `${doc.id}::${model.modelId}::${version}`;
+      const key = getModelBlobVersionKey(doc.id, model.modelId, version);
       const getVersion = archive.get(key);
       getVersion.onsuccess = () => {
         if (!getVersion.result) archive.put({ key, projectId: doc.id, modelId: model.modelId, version, name: model.name, blob: model.blob });
@@ -351,7 +356,7 @@ export async function restoreProjectSnapshot(projectId: string, snapshotId: numb
     const requiredVersions = new Map((snapshot.modelVersions ?? []).map((x) => [x.modelId, x.version]));
     const archivedByKey = new Map(archived.map((x) => [x.key, x]));
     const restoredBlobs = [...requiredVersions.entries()]
-      .map(([modelId, version]) => archivedByKey.get(`${projectId}::${modelId}::${version}`))
+      .map(([modelId, version]) => archivedByKey.get(getModelBlobVersionKey(projectId, modelId, version)))
       .filter((x): x is NonNullable<typeof x> => !!x);
     const available = new Set(restoredBlobs.map((x) => x.modelId));
     const recovered = prepareRecoveredProjectDocument(snapshot.doc, available, Date.now());

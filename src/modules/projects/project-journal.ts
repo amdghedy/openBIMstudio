@@ -6,6 +6,14 @@ export type ProjectJournalReason = "project-save" | "model-import" | "before-res
 export interface ProjectJournalRecord { id: number; projectId: string; createdAt: number; reason: ProjectJournalReason; doc: ProjectDoc; modelVersions: Array<{ modelId: string; version: string }>; archivedModelIds: string[]; missingModelIds: string[]; }
 export interface ProjectRecoverySnapshot { id: number; createdAt: number; reason: ProjectJournalReason; projectName: string; updatedAt: number; elementCount: number; modelCount: number; archivedModelCount: number; missingModelCount: number; }
 
+export function getModelBlobVersionKey(projectId: string, modelId: string, version: string): string {
+  return `${projectId}::${modelId}::${version}`;
+}
+
+export function getUnreferencedModelBlobVersionKeys(archiveKeys: readonly string[], referencedKeys: ReadonlySet<string>): string[] {
+  return archiveKeys.filter((key) => !referencedKeys.has(key)).sort();
+}
+
 export function getProjectJournalPruneIds(ids: readonly number[], maxEntries = PROJECT_RECOVERY_RETENTION): number[] {
   if (!Number.isInteger(maxEntries) || maxEntries < 1) throw new RangeError("maxEntries must be a positive integer");
   const unique = [...new Set(ids.filter((id) => Number.isSafeInteger(id) && id > 0))];
