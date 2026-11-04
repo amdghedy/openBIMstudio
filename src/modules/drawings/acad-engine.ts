@@ -166,6 +166,37 @@ function readFrame(inst: AcadInstance, ptr: number): string {
   return new TextDecoder().decode(bytes);
 }
 
+/**
+ * Re-read the intermediate DXF before DWG conversion. The CAD editor's DXF
+ * serializer intentionally supports a bounded entity set; checking only the
+ * final DWG would miss entities already omitted by that serializer.
+ */
+export async function validateDxfForDwgExport(
+  dxf: string,
+  expectedEntityCount: number,
+  expectedLayerNames: string[],
+): Promise<void> {
+  if (!dxf.trim()) throw new Error("DWG export preflight failed: the intermediate DXF is empty.");
+  const parsed = await parseWithAcadEngine(new TextEncoder().encode(dxf), "DWG export preflight.dxf");
+  if (!parsed || parsed.format !== "dxf") {
+    throw new Error("DWG export preflight failed: the intermediate DXF could not be independently parsed.");
+  }
+  if (parsed.entityCount !== expectedEntityCount) {
+    throw new Error(
+      `DWG export blocked to prevent data loss: the DXF serializer retained ${parsed.entityCount} of ${expectedEntityCount} model entities.`,
+    );
+  }
+  const skipped = Object.values(parsed.doc.skipped ?? {}).reduce((sum, count) => sum + count, 0);
+  if (skipped > 0) {
+    throw new Error(`DWG export blocked to prevent data loss: the DXF parser skipped ${skipped} unsupported record(s).`);
+  }
+  const actualLayers = new Set(parsed.doc.layers.map((layer) => layer.name.trim().toUpperCase()));
+  const missingLayers = expectedLayerNames.filter((name) => !actualLayers.has(name.trim().toUpperCase()));
+  if (missingLayers.length) {
+    throw new Error(`DWG export blocked to prevent data loss: missing DXF layer(s): ${missingLayers.join(", ")}.`);
+  }
+}
+
 /** Convert an editor-generated ASCII DXF into native binary DWG. */
 export async function exportDxfToDwg(dxf: string): Promise<Uint8Array> {
   if (!dxf.trim()) throw new Error("The drawing is empty.");
