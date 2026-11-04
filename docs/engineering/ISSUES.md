@@ -288,6 +288,9 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 - [ ] Journal file size stays bounded (compaction verified)
 - [ ] Concurrent local tabs serialize through one writer (no interleaved corruption)
 
+
+**Implementation status (November 4, 2026):** IndexedDB document checkpoints now retain the exact linked IFC/FRAG blobs in a separate archive store. Restoring a checkpoint restores the document and its matching payload set in one transaction. Deterministic operation replay, OPFS/server adapters, and multi-tab writer coordination remain open acceptance criteria.
+
 ---
 
 ## P2-02 — Maturity gate: tool-catalog.json enforcement in CI
