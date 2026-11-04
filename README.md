@@ -68,7 +68,7 @@ One install (none, actually — it's your browser). One license (MIT — yours).
 
 > **Status:** OpenBIMStudio is under active development and maturity varies by feature. Each capability is rated *verified*, *limited*, *experimental*, *planned* or *unavailable*, with its known limitations, in the app under **User Interface -> Feature Status** (source: `src/features/feature-maturity.ts`). See also [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for file-format support, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code is organised, and the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md).
 >
-> Not decodable in a browser: LAZ, E57, RCP/RCS, RWCX and FLS point clouds (export to LAS first); DWG export is not available.
+> Not decodable in a browser: LAZ, E57, RCP/RCS, RWCX and FLS point clouds (export to LAS first); Native DWG export from the CAD editor is experimental and uses a local MPL-2.0 acadrust WASM writer; unsupported content is rejected rather than silently dropped.
 
 ---
 
@@ -349,7 +349,7 @@ Notes:
 | **BCF** | Coordination issue exchange | Import & export |
 | **IDS** | Information requirements checking | Validation |
 | **DXF** | 2D drawing exchange | Import & export |
-| **DWG** | Drawing import & link (LibreDWG WASM) | Import & link (model-level DWG export on the roadmap) |
+| **DWG** | Drawing import & link (LibreDWG WASM) | Import & link; experimental 2D CAD editor export via local acadrust WASM |
 | **PDF** | Drawing sheets issue + PDF underlay | Export & underlay |
 | **CSV** | Schedules, take-off, cost | Import & export |
 | **gbXML** | Energy-related export path | Export (where enabled) |
