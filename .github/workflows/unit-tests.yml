@@ -7,6 +7,8 @@ on:
   pull_request:
   push:
     branches: [main]
+    paths-ignore:
+      - "public/cad-engine/obim-cad-engine.wasm"
 
 jobs:
   test:
@@ -37,7 +39,7 @@ jobs:
         run: node scripts/copy-cad-engine-wasm.mjs
 
       - name: Commit refreshed CAD engine WASM for browser deployments
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git add public/cad-engine/obim-cad-engine.wasm
           if git diff --cached --quiet; then
@@ -45,8 +47,8 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "build(cad): refresh DWG writer WebAssembly"
-            git push origin "HEAD:${{ github.head_ref }}"
+            git commit -m "build(cad): refresh CAD engine WebAssembly"
+            git push origin HEAD:main
           fi
 
       - name: Typecheck
