@@ -978,6 +978,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let selected = -1,
     hover: M.Snap | null = null,
     cursor: M.Pt | null = null;
+  // Last viewport position is used to anchor the in-canvas command prompt.
+  let lastPointerScreen: M.Pt = { x: 24, y: 24 };
   let pts: M.Pt[] = [];
   let results: string[] = [];
   let drawn: Array<{ kind: Tool; pts: M.Pt[] }> = [];
@@ -4033,6 +4035,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!doc) return;
     cv.focus();
     const { sp, wp } = rawPoint(ev);
+    lastPointerScreen = sp;
     ptrs.set(ev.pointerId, sp);
 
     if (ptrs.size === 2) {
@@ -4549,6 +4552,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   cv.addEventListener("pointermove", (ev) => {
     const { sp, wp } = rawPoint(ev);
+    lastPointerScreen = sp;
     if (ptrs.has(ev.pointerId)) ptrs.set(ev.pointerId, sp);
 
     if (ptrs.size === 2) {
@@ -4705,6 +4709,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   // Escape key handler
   function onEscape(): void {
+    if (dynCommandEl) {
+      closeDynamicCommand();
+      return;
+    }
     if (helpEl) {
       closeOverlay();
       return;
@@ -4738,6 +4746,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   // Keyboard Shortcuts (AutoCAD Standard: F3, F7, F8, F12, Ctrl+Z, Ctrl+Y, Space/Enter)
+  // Printable keys start an in-canvas command prompt; the canvas remains the primary input surface.
+  cv.addEventListener("keydown", (ev) => {
+    if (ev.target !== cv || ev.ctrlKey || ev.metaKey || ev.altKey || ev.key.length !== 1) return;
+    if (/^[\\p{L}\\p{N}._+-]$/u.test(ev.key)) {
+      ev.preventDefault();
+      openDynamicCommand(ev.key);
+    }
+  });
+
   cv.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
       ev.preventDefault();
@@ -4946,8 +4963,90 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   root.querySelector("[data-r=open-layer-mgr]")?.addEventListener("click", openLayerPropertiesManager);
 
-  /* ── AutoCAD Command Line Execution & Autocomplete ── */
+  /* ── AutoCAD Command Line Execution & In-Canvas Dynamic Command Entry ── */
   const cmdInput = root.querySelector<HTMLInputElement>("[data-r=cmd]")!;
+  let dynCommandEl: HTMLDivElement | null = null;
+  let dynCommandInput: HTMLInputElement | null = null;
+  let dynCommandHint: HTMLDivElement | null = null;
+
+  function closeDynamicCommand(): void {
+    dynCommandEl?.remove();
+    dynCommandEl = null;
+    dynCommandInput = null;
+    dynCommandHint = null;
+    cv.focus({ preventScroll: true });
+  }
+
+  function openDynamicCommand(initialText = ""): void {
+    if (!dynCommandEl) {
+      const stage = root.querySelector<HTMLElement>("[data-r=stage]");
+      if (!stage) return;
+      dynCommandEl = document.createElement("div");
+      dynCommandEl.style.cssText = "position:absolute;z-index:15;display:flex;align-items:center;gap:7px;min-width:220px;max-width:min(420px,calc(100% - 24px));padding:7px 9px;background:rgba(15,23,42,.96);border:1px solid #38bdf8;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.45);font:12px/1.35 system-ui,sans-serif;color:#e2e8f0;pointer-events:auto";
+      const prompt = document.createElement("span");
+      prompt.textContent = "›";
+      prompt.style.cssText = "color:#38bdf8;font-weight:700;font-size:16px";
+      dynCommandInput = document.createElement("input");
+      dynCommandInput.type = "text";
+      dynCommandInput.autocomplete = "off";
+      dynCommandInput.spellcheck = false;
+      dynCommandInput.setAttribute("aria-label", "CAD command or numeric input");
+      dynCommandInput.placeholder = "Enter command…";
+      dynCommandInput.style.cssText = "flex:1;min-width:0;background:transparent;border:0;outline:0;color:#f8fafc;font:12px Consolas,monospace";
+      dynCommandHint = document.createElement("div");
+      dynCommandHint.style.cssText = "position:absolute;left:28px;top:calc(100% + 4px);display:none;max-width:360px;padding:5px 8px;background:#111827;border:1px solid #334155;border-radius:4px;color:#94a3b8;font:11px/1.4 system-ui,sans-serif;white-space:normal;pointer-events:none";
+      dynCommandEl.append(prompt, dynCommandInput, dynCommandHint);
+      stage.appendChild(dynCommandEl);
+      dynCommandInput.addEventListener("input", () => {
+        const query = dynCommandInput?.value.trim().toUpperCase() ?? "";
+        if (!dynCommandHint) return;
+        if (!query) { dynCommandHint.style.display = "none"; return; }
+        const matches = CAD_COMMANDS.filter((item) => item.name.startsWith(query) || item.aliases.some((alias) => alias === query || alias.startsWith(query))).slice(0, 4);
+        dynCommandHint.textContent = matches.map((item) => `${item.name} (${item.aliases.join(", ")})`).join("  ·  ");
+        dynCommandHint.style.display = matches.length ? "block" : "none";
+      });
+      dynCommandInput.addEventListener("keydown", (event) => {
+        if (!dynCommandInput) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeDynamicCommand();
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          const value = dynCommandInput.value;
+          closeDynamicCommand();
+          executeAutoCadCommand(value);
+          return;
+        }
+        if (event.key === "Tab") {
+          const query = dynCommandInput.value.trim().toUpperCase();
+          const match = CAD_COMMANDS.find((item) => item.name.startsWith(query) || item.aliases.some((alias) => alias === query || alias.startsWith(query)));
+          if (match) { event.preventDefault(); dynCommandInput.value = match.name; dynCommandInput.dispatchEvent(new Event("input")); }
+          return;
+        }
+        if (event.key === "F3" || event.key === "F7" || event.key === "F8" || event.key === "F12") {
+          event.preventDefault();
+          const key = event.key;
+          closeDynamicCommand();
+          cv.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+        }
+      });
+    }
+    const stage = root.querySelector<HTMLElement>("[data-r=stage]");
+    if (stage && dynCommandEl) {
+      const x = Math.max(8, Math.min(lastPointerScreen.x + 14, stage.clientWidth - Math.min(430, stage.clientWidth - 16)));
+      const y = Math.max(8, Math.min(lastPointerScreen.y + 16, stage.clientHeight - 54));
+      dynCommandEl.style.left = `${x}px`;
+      dynCommandEl.style.top = `${y}px`;
+    }
+    if (dynCommandInput) {
+      dynCommandInput.value = initialText;
+      dynCommandInput.focus({ preventScroll: true });
+      dynCommandInput.setSelectionRange(initialText.length, initialText.length);
+      dynCommandInput.dispatchEvent(new Event("input"));
+    }
+  }
 
   function executeAutoCadCommand(rawInput: string): void {
     const trimmed = rawInput.trim();
