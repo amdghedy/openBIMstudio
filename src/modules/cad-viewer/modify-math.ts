@@ -1,9 +1,11 @@
 /**
- * CAD Editor — Modify Math (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET).
+ * CAD Editor — Modify Math (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET and
+ * the cutting tools: TRIM / EXTEND / BREAK / FILLET / CHAMFER / JOIN / STRETCH,
+ * plus SPLINE / POLYGON / ELLIPSE / DONUT loop builders).
  *
- * Pure geometry helpers that transform `DxfEntity` objects. Every function is
- * immutable: it returns a NEW entity object and never mutates its input, so the
- * viewer's undo stack can snapshot `before` / `after` entity references.
+ * Pure geometry helpers that transform or decompose `DxfEntity` objects. Every
+ * function is immutable: it returns NEW entity objects and never mutates its
+ * input, so the viewer's undo stack can snapshot `before` / `after` references.
  *
  * Supported entity types: LINE, CIRCLE, ARC, LWPOLYLINE (incl. hatch loops),
  * TEXT and POINT — the full set the CAD viewer renders.
@@ -292,4 +294,680 @@ function offsetPolyline(
   if (!pts) return null;
   const hatch = e.hatch ? { ...e.hatch, loops: e.hatch.loops.map((l) => off(l)).filter((l): l is DxfPoint[] => !!l) } : undefined;
   return { ...e, points: pts, hatch };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Intersections (TRIM / EXTEND / BREAK / FILLET foundation)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Intersection of the finite segments a1→a2 and b1→b2 (0, 1 or 2 coincident → 1). */
+export function segSegX(a1: Pt, a2: Pt, b1: Pt, b2: Pt, eps = 1e-9): Pt[] {
+  const d1x = a2.x - a1.x,
+    d1y = a2.y - a1.y,
+    d2x = b2.x - b1.x,
+    d2y = b2.y - b1.y;
+  const den = d1x * d2y - d1y * d2x;
+  if (Math.abs(den) < eps) return [];
+  const t = ((b1.x - a1.x) * d2y - (b1.y - a1.y) * d2x) / den;
+  const u = ((b1.x - a1.x) * d1y - (b1.y - a1.y) * d1x) / den;
+  if (t < -eps || t > 1 + eps || u < -eps || u > 1 + eps) return [];
+  return [{ x: a1.x + t * d1x, y: a1.y + t * d1y }];
+}
+
+/** Intersections of the finite segment a→b with the circle (c, r). */
+export function segCircleX(a: Pt, b: Pt, c: Pt, r: number, eps = 1e-9): Pt[] {
+  const dx = b.x - a.x,
+    dy = b.y - a.y;
+  const fx = a.x - c.x,
+    fy = a.y - c.y;
+  const A = dx * dx + dy * dy;
+  if (A < eps) return [];
+  const B = 2 * (fx * dx + fy * dy);
+  const C = fx * fx + fy * fy - r * r;
+  const disc = B * B - 4 * A * C;
+  if (disc < 0) return [];
+  const sq = Math.sqrt(disc);
+  const out: Pt[] = [];
+  for (const t of [(-B - sq) / (2 * A), (-B + sq) / (2 * A)]) {
+    if (t >= -eps && t <= 1 + eps) out.push({ x: a.x + t * dx, y: a.y + t * dy });
+  }
+  return out;
+}
+
+/** True when `deg` lies on the CCW sweep startAngle→endAngle of an arc. */
+export function arcHasDeg(startDeg: number, endDeg: number, deg: number, eps = 1e-6): boolean {
+  const n = (a: number): number => ((a % 360) + 360) % 360;
+  const sweep = n(endDeg - startDeg) || 360;
+  const off = n(deg - startDeg);
+  return off <= sweep + eps;
+}
+
+const angleDeg = (c: Pt, p: Pt): number => Math.atan2(p.y - c.y, p.x - c.x) * RAD;
+
+/** Segment approximations of an entity's drawable geometry. */
+export function entitySegments(e: DxfEntity): Array<[Pt, Pt]> {
+  switch (e.type) {
+    case "LINE":
+      return [[e.start, e.end]];
+    case "LWPOLYLINE": {
+      const n = e.points.length;
+      if (n < 2) return [];
+      const m = e.closed ? n : n - 1;
+      const segs: Array<[Pt, Pt]> = [];
+      for (let i = 0; i < m; i++) segs.push([e.points[i], e.points[(i + 1) % n]]);
+      return segs;
+    }
+    default:
+      return [];
+  }
+}
+
+/** All intersections between two entities (segments, circles and arcs). */
+export function entIntersections(e1: DxfEntity, e2: DxfEntity, eps = 1e-7): Pt[] {
+  const out: Pt[] = [];
+  const circ: Array<[Pt, number, number, number]> = []; // center, r, startDeg, sweepDeg (360 = full circle)
+  const arcInfo = (e: DxfEntity): [Pt, number, number, number] | null => {
+    if (e.type === "CIRCLE") return [e.center, e.radius, 0, 360];
+    if (e.type === "ARC") {
+      const sweep = ((e.endAngle - e.startAngle) % 360 + 360) % 360 || 360;
+      return [e.center, e.radius, e.startAngle, sweep];
+    }
+    return null;
+  };
+  const pushCirc = (e: DxfEntity) => {
+    const ci = arcInfo(e);
+    if (ci) circ.push(ci);
+  };
+  pushCirc(e1);
+  pushCirc(e2);
+  const inArc = (ci: [Pt, number, number, number], p: Pt): boolean => {
+    const [, , startDeg, sweep] = ci;
+    if (sweep >= 360 - 1e-9) return true;
+    return arcHasDeg(startDeg, startDeg + sweep, angleDeg(ci[0], p));
+  };
+  // segment × segment
+  for (const s1 of entitySegments(e1))
+    for (const s2 of entitySegments(e2)) out.push(...segSegX(s1[0], s1[1], s2[0], s2[1], eps));
+  // segment × circle/arc
+  const segEnts = [e1, e2];
+  for (const se of segEnts)
+    for (const [a, b] of entitySegments(se))
+      for (const ci of circ) {
+        for (const p of segCircleX(a, b, ci[0], ci[1], eps)) {
+          // dedupe: segment belongs to this circle's entity — skip arc filter for own pairs
+          if (!out.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 1e-6)) out.push(p);
+        }
+      }
+  // arc filters applied after collecting seg×circ hits (segment may pair with the OTHER entity)
+  // circle/arc × circle/arc
+  if (circ.length === 2) {
+    const [c1, r1, s1, w1] = circ[0];
+    const [c2, r2, s2] = circ[1];
+    const dx = c2.x - c1.x,
+      dy = c2.y - c1.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 1e-9 && d <= r1 + r2 + 1e-9 && d >= Math.abs(r1 - r2) - 1e-9) {
+      const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+      const h2 = r1 * r1 - a * a;
+      const h = h2 > 0 ? Math.sqrt(h2) : 0;
+      const mx = c1.x + (a * dx) / d,
+        my = c1.y + (a * dy) / d;
+      for (const sgn of [1, -1]) {
+        const p = { x: mx - (sgn * h * dy) / d, y: my + (sgn * h * dx) / d };
+        const on1 = inArc(circ[0], p);
+        const on2 = inArc([c2, r2, s2, ((arcInfo(e2)?.[3] ?? 360))], p);
+        if (on1 && on2 && !out.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 1e-6)) out.push(p);
+      }
+    }
+  }
+  // Apply arc membership filter for seg×circ results: a hit only counts when it
+  // lies on BOTH entities' curved geometry it touched. Simplified: keep hits that
+  // lie on every arc entity involved when the segment pair produced them.
+  if (circ.length) {
+    return out.filter((p) => {
+      for (const e of [e1, e2]) {
+        const ai = arcInfo(e);
+        if (ai && ai[3] < 360 - 1e-9) {
+          const onCurve = Math.abs(Math.hypot(p.x - ai[0].x, p.y - ai[0].y) - ai[1]) < 1e-6;
+          if (onCurve && !inArc(ai, p)) return false;
+        }
+      }
+      return true;
+    });
+  }
+  return out;
+}
+
+/** Distance from p to segment a→b. */
+export function distToSeg(p: Pt, a: Pt, b: Pt): number {
+  const dx = b.x - a.x,
+    dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-12) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/** True when p sits within `tol` of the entity's geometry. */
+export function pointOnEntity(e: DxfEntity, p: Pt, tol: number): boolean {
+  switch (e.type) {
+    case "LINE":
+      return distToSeg(p, e.start, e.end) <= tol;
+    case "LWPOLYLINE":
+      return entitySegments(e).some(([a, b]) => distToSeg(p, a, b) <= tol);
+    case "CIRCLE":
+      return Math.abs(Math.hypot(p.x - e.center.x, p.y - e.center.y) - e.radius) <= tol;
+    case "ARC": {
+      if (Math.abs(Math.hypot(p.x - e.center.x, p.y - e.center.y) - e.radius) > tol) return false;
+      return arcHasDeg(e.startAngle, e.endAngle, angleDeg(e.center, p), Math.max(0.5, (tol / Math.max(e.radius, 1e-9)) * RAD));
+    }
+    default:
+      return false;
+  }
+}
+
+/** Normalized position (0..1) of point p along the entity's path. */
+export function paramAlong(e: DxfEntity, p: Pt): number {
+  switch (e.type) {
+    case "LINE": {
+      const dx = e.end.x - e.start.x,
+        dy = e.end.y - e.start.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-12) return 0;
+      return Math.max(0, Math.min(1, ((p.x - e.start.x) * dx + (p.y - e.start.y) * dy) / len2));
+    }
+    case "LWPOLYLINE": {
+      const segs = entitySegments(e);
+      if (!segs.length) return 0;
+      let total = 0,
+        acc = 0,
+        best = 0,
+        bestD = Infinity;
+      for (const [a, b] of segs) {
+        const d = distToSeg(p, a, b);
+        if (d < bestD) {
+          bestD = d;
+          best = acc + Math.hypot(p.x - a.x, p.y - a.y);
+        }
+        acc += Math.hypot(b.x - a.x, b.y - a.y);
+      }
+      total = acc;
+      return total > 1e-12 ? Math.max(0, Math.min(1, best / total)) : 0;
+    }
+    case "CIRCLE":
+      return ((angleDeg(e.center, p) % 360) + 360) % 360 / 360;
+    case "ARC": {
+      const sweep = ((e.endAngle - e.startAngle) % 360 + 360) % 360 || 360;
+      const off = ((angleDeg(e.center, p) - e.startAngle) % 360 + 360) % 360;
+      return Math.max(0, Math.min(1, off / sweep));
+    }
+    default:
+      return 0;
+  }
+}
+
+const lineEnt = (e: DxfEntity): e is Extract<DxfEntity, { type: "LINE" }> => e.type === "LINE";
+
+/**
+ * TRIM: split `e` at every intersection with the cutting entities and remove
+ * the piece that contains `click`. Returns the remaining pieces (0–2 for a
+ * LINE, 1–2 polylines for a picked LWPOLYLINE segment); [] when nothing to trim.
+ */
+export function trimEntity(e: DxfEntity, click: Pt, cutters: DxfEntity[], eps = 1e-7): DxfEntity[] {
+  if (lineEnt(e)) {
+    const xs: number[] = [];
+    for (const c of cutters) {
+      if (c === e) continue;
+      for (const p of entIntersections(e, c, eps)) {
+        const t = paramAlong(e, p);
+        if (t > 1e-6 && t < 1 - 1e-6) xs.push(t);
+      }
+    }
+    if (!xs.length) return [];
+    const tc = paramAlong(e, click);
+    xs.sort((a, b) => a - b);
+    // Find the cut span that contains the click: (prevX, nextX) — 0/1 act as ends.
+    let lo = 0,
+      hi = 1;
+    for (const t of xs) {
+      if (t < tc) lo = Math.max(lo, t);
+      if (t > tc) {
+        hi = t;
+        break;
+      }
+    }
+    if (tc < xs[0]) {
+      hi = xs[0];
+      lo = 0;
+    } else if (tc > xs[xs.length - 1]) {
+      lo = xs[xs.length - 1];
+      hi = 1;
+    }
+    const at = (t: number) => ({ x: e.start.x + (e.end.x - e.start.x) * t, y: e.start.y + (e.end.y - e.start.y) * t });
+    const pieces: DxfEntity[] = [];
+    if (lo > 1e-6) pieces.push({ ...e, start: e.start, end: at(lo) });
+    if (hi < 1 - 1e-6) pieces.push({ ...e, start: at(hi), end: e.end });
+    return pieces;
+  }
+  if (e.type === "LWPOLYLINE") {
+    const segs = entitySegments(e);
+    // Which segment was clicked?
+    let k = -1,
+      kd = Infinity;
+    segs.forEach(([a, b], i) => {
+      const d = distToSeg(click, a, b);
+      if (d < kd) {
+        kd = d;
+        k = i;
+      }
+    });
+    if (k < 0) return [];
+    const [sa, sb] = segs[k];
+    const xs: number[] = [];
+    for (const c of cutters) {
+      if (c === e) continue;
+      for (const p of entIntersections(e, c, eps)) {
+        if (distToSeg(p, sa, sb) > 1e-6) continue;
+        const t = paramAlong(e, p);
+        xs.push(t);
+      }
+    }
+    const t0 = paramAlong(e, sa),
+      t1 = paramAlong(e, sb);
+    const tc = paramAlong(e, click);
+    const inside = xs.filter((t) => t > Math.min(t0, t1) + 1e-9 && t < Math.max(t0, t1) - 1e-9);
+    const lo = inside.filter((t) => t < tc).sort((a, b) => a - b).pop() ?? Math.min(t0, t1);
+    const hi = inside.filter((t) => t > tc).sort((a, b) => a - b)[0] ?? Math.max(t0, t1);
+    const n = e.points.length;
+    // Walk the polyline path (segment lengths) to the point at param t.
+    const atT = (t: number): Pt => {
+      const segs2 = entitySegments(e);
+      let acc = 0;
+      for (const [a, b] of segs2) {
+        const l = Math.hypot(b.x - a.x, b.y - a.y);
+        if (l > 1e-12 && t >= acc - 1e-12 && t <= acc + l + 1e-12) {
+          const f = (t - acc) / l;
+          return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+        }
+        acc += l;
+      }
+      return { ...e.points[e.points.length - 1] };
+    };
+    // Build piece A: verts before the removed span + the cut point at `lo`;
+    // piece B: the cut point at `hi` + verts after it.
+    const pieceA: DxfPoint[] = [];
+    const pieceB: DxfPoint[] = [];
+    const vertT = e.points.map((q) => paramAlong(e, q));
+    const aEnd = lo,
+      bStart = hi;
+    for (let i = 0; i < n; i++) {
+      const vt = vertT[i];
+      if (vt <= aEnd + 1e-9) pieceA.push(e.points[i]);
+      if (vt >= bStart - 1e-9) pieceB.push(e.points[i]);
+    }
+    const out: DxfEntity[] = [];
+    if (pieceA.length >= 2) {
+      const pts = [...pieceA];
+      const pa = atT(aEnd);
+      if (!pts.some((q) => Math.hypot(q.x - pa.x, q.y - pa.y) < 1e-9)) pts.push(pa);
+      out.push({ ...e, points: pts, closed: false, hatch: undefined });
+    }
+    if (pieceB.length >= 2) {
+      const pts = [...pieceB];
+      const pb = atT(bStart);
+      if (!pts.some((q) => Math.hypot(q.x - pb.x, q.y - pb.y) < 1e-9)) pts.unshift(pb);
+      out.push({ ...e, points: pts, closed: false, hatch: undefined });
+    }
+    return out;
+  }
+  return [];
+}
+
+/**
+ * EXTEND: stretch the clicked end of `e` to the nearest intersection with the
+ * boundary entities. Returns the extended entity or null when no boundary hit.
+ */
+export function extendEntity(e: DxfEntity, click: Pt, boundaries: DxfEntity[], eps = 1e-7): DxfEntity | null {
+  const tryEnd = (from: Pt, dir: Pt, back: (p: Pt) => DxfEntity | null): DxfEntity | null => {
+    const far = Math.hypot(dir.x, dir.y) || 1;
+    const tip = { x: from.x + (dir.x / far) * 1e9, y: from.y + (dir.y / far) * 1e9 };
+    let best: Pt | null = null;
+    for (const b of boundaries) {
+      if (b === e) continue;
+      for (const p of entIntersections({ ...e, start: from, end: tip } as DxfEntity, b, eps)) {
+        const d = Math.hypot(p.x - from.x, p.y - from.y);
+        if (d > 1e-6 && (!best || d < Math.hypot(best.x - from.x, best.y - from.y))) best = p;
+      }
+    }
+    return best ? back(best) : null;
+  };
+  if (lineEnt(e)) {
+    const dS = Math.hypot(click.x - e.start.x, click.y - e.start.y);
+    const dE = Math.hypot(click.x - e.end.x, click.y - e.end.y);
+    const dirS = { x: e.start.x - e.end.x, y: e.start.y - e.end.y };
+    const dirE = { x: e.end.x - e.start.x, y: e.end.y - e.start.y };
+    return dS <= dE
+      ? tryEnd(e.start, dirS, (p) => ({ ...e, start: p }))
+      : tryEnd(e.end, dirE, (p) => ({ ...e, end: p }));
+  }
+  if (e.type === "LWPOLYLINE") {
+    const n = e.points.length;
+    if (n < 2 || e.closed) return null;
+    const dF = Math.hypot(click.x - e.points[0].x, click.y - e.points[0].y);
+    const dL = Math.hypot(click.x - e.points[n - 1].x, click.y - e.points[n - 1].y);
+    if (dF <= dL) {
+      const dir = { x: e.points[0].x - e.points[1].x, y: e.points[0].y - e.points[1].y };
+      return tryEnd(e.points[0], dir, (p) => ({ ...e, points: [p, ...e.points.slice(1)] }));
+    }
+    const dir = { x: e.points[n - 1].x - e.points[n - 2].x, y: e.points[n - 1].y - e.points[n - 2].y };
+    return tryEnd(e.points[n - 1], dir, (p) => ({ ...e, points: [...e.points.slice(0, n - 1), p] }));
+  }
+  return null;
+}
+
+/**
+ * BREAK: remove the portion of `e` between the two picked points (params
+ * sorted). Returns the two remaining pieces, or null when nothing remains.
+ */
+export function breakEntity(e: DxfEntity, p1: Pt, p2: Pt): DxfEntity[] | null {
+  if (lineEnt(e)) {
+    let t1 = paramAlong(e, p1),
+      t2 = paramAlong(e, p2);
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    if (t2 - t1 < 1e-9) return null;
+    const at = (t: number) => ({ x: e.start.x + (e.end.x - e.start.x) * t, y: e.start.y + (e.end.y - e.start.y) * t });
+    const out: DxfEntity[] = [];
+    if (t1 > 1e-6) out.push({ ...e, end: at(t1) });
+    if (t2 < 1 - 1e-6) out.push({ ...e, start: at(t2) });
+    return out.length ? out : null;
+  }
+  if (e.type === "LWPOLYLINE" && !e.closed) {
+    let t1 = paramAlong(e, p1),
+      t2 = paramAlong(e, p2);
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    if (t2 - t1 < 1e-9) return null;
+    const vertT = e.points.map((q) => paramAlong(e, q));
+    const A: DxfPoint[] = [],
+      B: DxfPoint[] = [];
+    e.points.forEach((q, i) => {
+      if (vertT[i] <= t1 + 1e-9) A.push(q);
+      if (vertT[i] >= t2 - 1e-9) B.push(q);
+    });
+    if (A.length < 2 && B.length < 2) return null;
+    const out: DxfEntity[] = [];
+    if (A.length >= 2) out.push({ ...e, points: A, hatch: undefined });
+    if (B.length >= 2) out.push({ ...e, points: B, hatch: undefined });
+    return out.length ? out : null;
+  }
+  return null;
+}
+
+/* ── FILLET / CHAMFER (two lines) ─────────────────────────────────────────── */
+
+const lineDir = (l: Extract<DxfEntity, { type: "LINE" }>): Pt => {
+  const dx = l.end.x - l.start.x,
+    dy = l.end.y - l.start.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len };
+};
+
+/** Intersection of two infinite lines through a1→a2 and b1→b2; null when parallel. */
+function infiniteX(a1: Pt, a2: Pt, b1: Pt, b2: Pt): Pt | null {
+  const [p] = segSegX(a1, a2, b1, b2);
+  if (p) return p;
+  const d1x = a2.x - a1.x,
+    d1y = a2.y - a1.y,
+    d2x = b2.x - b1.x,
+    d2y = b2.y - b1.y;
+  const den = d1x * d2y - d1y * d2x;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((b1.x - a1.x) * d2y - (b1.y - a1.y) * d2x) / den;
+  return { x: a1.x + t * d1x, y: a1.y + t * d1y };
+}
+
+/** Infinite-line intersection of two LINE entities; null when parallel. */
+function lineLineX(l1: Extract<DxfEntity, { type: "LINE" }>, l2: Extract<DxfEntity, { type: "LINE" }>): Pt | null {
+  return infiniteX(l1.start, l1.end, l2.start, l2.end);
+}
+
+/**
+ * FILLET of two LINE entities with radius r: trims both back to their tangent
+ * points and returns the tangent arc. r/tan(θ/2) is the tangent offset from
+ * the corner. Null when r is too large for either line or the lines are parallel.
+ */
+export function filletTwoLines(
+  l1: Extract<DxfEntity, { type: "LINE" }>,
+  l2: Extract<DxfEntity, { type: "LINE" }>,
+  r: number,
+): { lines: [DxfEntity, DxfEntity]; arc: Extract<DxfEntity, { type: "ARC" }> } | null {
+  if (!(r > 1e-9)) return null;
+  const P = lineLineX(l1, l2);
+  if (!P) return null;
+  const d1 = lineDir(l1),
+    d2 = lineDir(l2);
+  const cosHalf = Math.sqrt((1 + (d1.x * d2.x + d1.y * d2.y)) / 2); // cos(θ/2)
+  if (cosHalf < 1e-6) return null;
+  // Offset both lines by r toward each other; the fillet center is the corner
+  // candidate whose tangent points (projections onto the lines) fall inside
+  // both segments — the nearest-to-P candidate as a fallback.
+  const n1 = { x: -d1.y, y: d1.x },
+    n2 = { x: -d2.y, y: d2.x };
+  const within = (l: Extract<DxfEntity, { type: "LINE" }>, p: Pt): boolean => {
+    const dx = l.end.x - l.start.x,
+      dy = l.end.y - l.start.y;
+    const t = ((p.x - l.start.x) * dx + (p.y - l.start.y) * dy) / Math.max(1e-12, dx * dx + dy * dy);
+    return t >= -1e-6 && t <= 1 + 1e-6;
+  };
+  let best: Pt | null = null;
+  let bestIn = false;
+  for (const s1 of [1, -1])
+    for (const s2 of [1, -1]) {
+      const c = infiniteX(
+        { x: l1.start.x + n1.x * r * s1, y: l1.start.y + n1.y * r * s1 },
+        { x: l1.end.x + n1.x * r * s1, y: l1.end.y + n1.y * r * s1 },
+        { x: l2.start.x + n2.x * r * s2, y: l2.start.y + n2.y * r * s2 },
+        { x: l2.end.x + n2.x * r * s2, y: l2.end.y + n2.y * r * s2 },
+      );
+      if (!c) continue;
+      const inSeg = within(l1, c) && within(l2, c);
+      if (best == null || (inSeg && !bestIn) || (inSeg === bestIn && Math.hypot(c.x - P.x, c.y - P.y) < Math.hypot(best.x - P.x, best.y - P.y))) {
+        best = c;
+        bestIn = inSeg;
+      }
+    }
+  if (!best) return null;
+  const C = best;
+  const proj = (l: Extract<DxfEntity, { type: "LINE" }>): Pt => {
+    const dx = l.end.x - l.start.x,
+      dy = l.end.y - l.start.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-12) return { ...l.start };
+    const t = Math.max(0, Math.min(1e9, ((C.x - l.start.x) * dx + (C.y - l.start.y) * dy) / len2));
+    return { x: l.start.x + dx * t, y: l.start.y + dy * t };
+  };
+  const TA = proj(l1);
+  const TB = proj(l2);
+  const farA = Math.hypot(l1.start.x - P.x, l1.start.y - P.y) > Math.hypot(l1.end.x - P.x, l1.end.y - P.y) ? l1.start : l1.end;
+  const farB = Math.hypot(l2.start.x - P.x, l2.start.y - P.y) > Math.hypot(l2.end.x - P.x, l2.end.y - P.y) ? l2.start : l2.end;
+  const na = { ...l1, start: farA, end: TA };
+  const nb = { ...l2, start: farB, end: TB };
+  if (Math.hypot(na.end.x - na.start.x, na.end.y - na.start.y) < r * 1e-3) return null;
+  if (Math.hypot(nb.end.x - nb.start.x, nb.end.y - nb.start.y) < r * 1e-3) return null;
+  const a0 = angleDeg(C, TA);
+  const a1 = angleDeg(C, TB);
+  // DXF arcs sweep CCW from start to end — pick the pair whose sweep stays near the corner.
+  const midOf = (s: number, e: number): number => s + (((e - s) % 360) + 360) % 360 / 2;
+  const mid1 = midOf(a0, a1);
+  const mid2 = midOf(a1, a0);
+  const pm1 = { x: C.x + r * Math.cos(mid1 * DEG), y: C.y + r * Math.sin(mid1 * DEG) };
+  const pm2 = { x: C.x + r * Math.cos(mid2 * DEG), y: C.y + r * Math.sin(mid2 * DEG) };
+  const dPm1 = Math.hypot(pm1.x - P.x, pm1.y - P.y);
+  const dPm2 = Math.hypot(pm2.x - P.x, pm2.y - P.y);
+  const arc: Extract<DxfEntity, { type: "ARC" }> =
+    dPm1 <= dPm2
+      ? { type: "ARC", layer: l1.layer, center: C, radius: r, startAngle: a0, endAngle: a1 }
+      : { type: "ARC", layer: l1.layer, center: C, radius: r, startAngle: a1, endAngle: a0 };
+  return { lines: [na, nb], arc };
+}
+
+/**
+ * CHAMFER of two LINE entities: bevels the corner at distance d1 along l1 and
+ * d2 along l2 (measured from the corner). Returns the two trimmed lines and
+ * the connecting bar.
+ */
+export function chamferTwoLines(
+  l1: Extract<DxfEntity, { type: "LINE" }>,
+  l2: Extract<DxfEntity, { type: "LINE" }>,
+  d1: number,
+  d2: number,
+): { lines: [DxfEntity, DxfEntity]; bar: Extract<DxfEntity, { type: "LINE" }> } | null {
+  if (!(d1 > 0 && d2 > 0)) return null;
+  const P = lineLineX(l1, l2);
+  if (!P) return null;
+  const sA = Math.hypot(l1.start.x - P.x, l1.start.y - P.y) > Math.hypot(l1.end.x - P.x, l1.end.y - P.y) ? l1.start : l1.end;
+  const sB = Math.hypot(l2.start.x - P.x, l2.start.y - P.y) > Math.hypot(l2.end.x - P.x, l2.end.y - P.y) ? l2.start : l2.end;
+  // Tangent points sit at d1 / d2 from the corner P, along each line toward
+  // its far endpoint; the trimmed lines keep everything beyond the tangent.
+  const along = (far: Pt, d: number): Pt => {
+    const dx = far.x - P.x,
+      dy = far.y - P.y;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: P.x + (dx / len) * d, y: P.y + (dy / len) * d };
+  };
+  const TApt = along(sA, d1);
+  const TBpt = along(sB, d2);
+  const na = { ...l1, start: sA, end: TApt };
+  const nb = { ...l2, start: sB, end: TBpt };
+  if (Math.hypot(na.end.x - na.start.x, na.end.y - na.start.y) < 1e-9) return null;
+  if (Math.hypot(nb.end.x - nb.start.x, nb.end.y - nb.start.y) < 1e-9) return null;
+  return { lines: [na, nb], bar: { type: "LINE", layer: l1.layer, start: TApt, end: TBpt } };
+}
+
+/* ── JOIN / SPLINE / shape loops ──────────────────────────────────────────── */
+
+/**
+ * JOIN: chain open LINE / LWPOLYLINE entities into one polyline. Returns null
+ * when fewer than two connectable entities are given or the chain is broken.
+ */
+export function chainPolyline(list: DxfEntity[], closed = false): DxfEntity | null {
+  const ok = list.filter((e): e is Extract<DxfEntity, { type: "LINE" | "LWPOLYLINE" }> =>
+    e.type === "LINE" || (e.type === "LWPOLYLINE" && !e.closed && !e.hatch),
+  );
+  if (ok.length < 2) return null;
+  const chains: DxfPoint[][] = ok.map((e) => (e.type === "LINE" ? [e.start, e.end] : [...e.points]));
+  const merged: DxfPoint[] = chains.shift()!;
+  let progress = true;
+  while (chains.length && progress) {
+    progress = false;
+    for (let i = 0; i < chains.length; i++) {
+      const c = chains[i];
+      const tail = merged[merged.length - 1];
+      const head = merged[0];
+      const dEnd = (p: Pt): number => Math.min(Math.hypot(p.x - tail.x, p.y - tail.y), Math.hypot(p.x - head.x, p.y - head.y));
+      if (dEnd(c[0]) > dEnd(c[c.length - 1])) c.reverse();
+      const gapT = Math.hypot(c[0].x - tail.x, c[0].y - tail.y);
+      const gapH = Math.hypot(c[0].x - head.x, c[0].y - head.y);
+      if (gapT < 1e-6 && gapT <= gapH) {
+        merged.push(...c.slice(1));
+        chains.splice(i, 1);
+        progress = true;
+      } else if (gapH < 1e-6) {
+        merged.unshift(...c.slice(0, c.length - 1));
+        chains.splice(i, 1);
+        progress = true;
+      }
+    }
+  }
+  if (chains.length) return null; // broken chain
+  const base = ok[0];
+  return { ...base, type: "LWPOLYLINE", points: merged, closed, hatch: undefined } as Extract<DxfEntity, { type: "LWPOLYLINE" }>;
+}
+
+/** Open Catmull–Rom spline through `pts` — `per` points per segment. */
+export function catmullRom(pts: Pt[], per = 12): DxfPoint[] {
+  if (pts.length < 2) return pts.map((p) => ({ ...p }));
+  const out: DxfPoint[] = [];
+  const at = (i: number): Pt => pts[Math.max(0, Math.min(pts.length - 1, i))];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = at(i - 1),
+      p1 = at(i),
+      p2 = at(i + 1),
+      p3 = at(i + 2);
+    for (let j = 0; j < per; j++) {
+      const t = j / per,
+        t2 = t * t,
+        t3 = t2 * t;
+      out.push({
+        x: 0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+        y: 0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+      });
+    }
+  }
+  out.push({ ...pts[pts.length - 1] });
+  return out;
+}
+
+/** Regular n-gon inscribed in the circle (cx, cy, r), first vertex at `startDeg`. */
+export function polygonLoop(cx: number, cy: number, r: number, n: number, startDeg = 90): DxfPoint[] {
+  const k = Math.max(3, Math.round(n));
+  const out: DxfPoint[] = [];
+  for (let i = 0; i < k; i++) {
+    const a = (startDeg + (360 * i) / k) * DEG;
+    out.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+  }
+  return out;
+}
+
+/** Ellipse approximation as a closed polyline loop (48 segments). */
+export function ellipseLoop(cx: number, cy: number, rx: number, ry: number, steps = 48): DxfPoint[] {
+  const out: DxfPoint[] = [];
+  for (let i = 0; i < steps; i++) {
+    const a = (2 * Math.PI * i) / steps;
+    out.push({ x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) });
+  }
+  return out;
+}
+
+/** Annulus loops for DONUT: [outer, inner] (even-odd fill punches the hole). */
+export function donutLoops(cx: number, cy: number, rOuter: number, rInner: number): [DxfPoint[], DxfPoint[]] {
+  return [ellipseLoop(cx, cy, rOuter, rOuter, 64), ellipseLoop(cx, cy, rInner, rInner, 48)];
+}
+
+/* ── STRETCH ──────────────────────────────────────────────────────────────── */
+
+/**
+ * STRETCH: move every vertex of `ents` that lies inside the crossing window by
+ * dp. Circles/arcs/TEXT move wholesale when their anchor is inside.
+ */
+export function stretchEnts(ents: DxfEntity[], win: { minX: number; minY: number; maxX: number; maxY: number }, dp: Pt): DxfEntity[] {
+  const inside = (p: Pt): boolean => p.x >= win.minX && p.x <= win.maxX && p.y >= win.minY && p.y <= win.maxY;
+  return ents.map((e) => {
+    switch (e.type) {
+      case "LINE": {
+        const s = inside(e.start),
+          en = inside(e.end);
+        if (!s && !en) return e;
+        return {
+          ...e,
+          start: s ? translatePt(e.start, dp.x, dp.y) : e.start,
+          end: en ? translatePt(e.end, dp.x, dp.y) : e.end,
+        };
+      }
+      case "LWPOLYLINE": {
+        if (!e.points.some(inside)) return e;
+        return {
+          ...e,
+          points: e.points.map((q) => (inside(q) ? translatePt(q, dp.x, dp.y) : q)),
+          hatch: e.hatch ? mapHatch(e.hatch, (q) => (inside(q) ? translatePt(q, dp.x, dp.y) : q)) : undefined,
+        };
+      }
+      case "CIRCLE":
+      case "ARC":
+        return inside(e.center) ? translateEnt(e, dp.x, dp.y) : e;
+      case "TEXT":
+      case "POINT":
+        return inside(e.position) ? translateEnt(e, dp.x, dp.y) : e;
+    }
+  });
 }

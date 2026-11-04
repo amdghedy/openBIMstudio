@@ -1,8 +1,9 @@
 /**
- * CAD editor AutoCAD-style SHELL RIBBON layout suite.
+ * CAD editor AutoCAD-style SHELL RIBBON layout suite — native-engine edition.
  *
- * Pins the AutoCAD MDI chrome stacking order and wiring after the ribbon was
- * hoisted out of the per-drawing page into the shared shell:
+ * Pins the AutoCAD MDI chrome stacking order, the full six-tab drafting
+ * ribbon (Home / Insert / Annotate / View / Manage / Output) and the wiring
+ * of every panel button to a real engine command or tool:
  *   application menu (red A) + ribbon tabs + Quick Access toolbar
  *   → active ribbon tab's panels (one set per open drawing)
  *   → drawing file tabs
@@ -20,6 +21,7 @@ const ROOT = path.join(__dirname, "..");
 let pass = 0, fail = 0;
 const t = (name, fn) => { try { fn(); pass++; console.log("  PASS " + name); } catch (e) { fail++; console.log("  FAIL " + name + ": " + e.message); } };
 const src = fs.readFileSync(path.join(ROOT, "src/features/cad-viewer.ts"), "utf8");
+const icons = fs.readFileSync(path.join(ROOT, "src/features/icon-set.ts"), "utf8");
 
 // ── 1. Shell stacking order: ribbon tabs row → ribbon panels → drawing tabs → pages ──
 t("shell mounts chrome in AutoCAD order: ribbon tabs, panels, drawing tabs, pages", () => {
@@ -38,13 +40,13 @@ t("shell mounts chrome in AutoCAD order: ribbon tabs, panels, drawing tabs, page
 });
 
 // ── 2. Ribbon tabs row content ──
-t("ribbon tabs: Home / Annotate / View / Manage / Output", () => {
+t("ribbon tabs: Home / Insert / Annotate / View / Manage / Output", () => {
   const m = src.match(/const RIBBON_TABS: ReadonlyArray<\{ id: string; label: string \}> = \[([\s\S]*?)\];/);
   assert.ok(m, "RIBBON_TABS definition missing");
-  for (const id of ["home", "annotate", "view", "manage", "output"]) {
+  for (const id of ["home", "insert", "annotate", "view", "manage", "output"]) {
     assert.ok(m[1].includes(`id: "${id}"`), `ribbon tab "${id}" missing`);
   }
-  assert.ok(!/id: "(file|insert)"/.test(m[1]), "no invented tabs: every tab maps to real panel groups");
+  assert.ok(!/id: "(file|data|settings)"/.test(m[1]), "no invented tabs: every tab maps to real panel groups");
 });
 t("tab row carries the red application menu button and the Quick Access toolbar", () => {
   const ensure = src.slice(src.indexOf("function ensureShell"), src.indexOf("function createTab"));
@@ -65,16 +67,24 @@ t("A-menu dispatches to the active drawing and offers shell-level file ops", () 
 });
 
 // ── 3. Ribbon tabs filter the panel groups of the active drawing ──
-t("every ribbon group is tagged with exactly one of the five tabs", () => {
+t("every ribbon group is tagged with exactly one of the six tabs", () => {
   const expected = {
-    File: "home", Draw: "home", Select: "home", Modify: "home", History: "home", Layers: "home", Styles: "home",
-    Measure: "annotate", Markup: "annotate", "Markup Files": "annotate",
-    Navigate: "view", Modes: "view", Show: "view",
-    Settings: "manage",
-    Export: "output", Window: "output",
+    // Home
+    Clipboard: "home", Select: "home", Draw: "home", "Draw II": "home", Modify: "home", "Modify II": "home",
+    Annotation: "home", Properties: "home", Utilities: "home", History: "home", Layers: "home", Styles: "home",
+    // Insert
+    Import: "insert", Data: "insert",
+    // Annotate
+    Text: "annotate", Dimensions: "annotate", Markup: "annotate", Tables: "annotate", "Markup Files": "annotate",
+    // View
+    Navigate: "view", "Saved Views": "view", "Visual Styles": "view", Modes: "view", UCS: "view", Show: "view",
+    // Manage
+    Units: "manage", Drawing: "manage", "Layer States": "manage",
+    // Output
+    Plot: "output", Export: "output", Window: "output",
   };
   const found = {};
-  const re = /rg\(\s*(?:\n\s*)?"((?:[^"\\]|\\.)+)",([\s\S]*?)"(home|annotate|view|manage|output)"\s*\)?/g;
+  const re = /rg\(\s*(?:\n\s*)?"((?:[^"\\]|\\.)+)",([\s\S]*?)"(home|insert|annotate|view|manage|output)"\s*\)?/g;
   let m;
   while ((m = re.exec(src)) !== null) found[m[1]] = m[3];
   for (const [label, tab] of Object.entries(expected)) {
@@ -84,7 +94,7 @@ t("every ribbon group is tagged with exactly one of the five tabs", () => {
   assert.deepStrictEqual(extra, [], "untagged/unexpected ribbon groups");
 });
 t("CSS filters panels per active ribbon tab", () => {
-  for (const id of ["home", "annotate", "view", "manage", "output"]) {
+  for (const id of ["home", "insert", "annotate", "view", "manage", "output"]) {
     assert.ok(
       src.includes(`.cadrb-strip[data-ribbon-tab="${id}"] .cadrg[data-cadtab="${id}"]`),
       `no CSS rule shows panels for tab "${id}"`,
@@ -119,9 +129,13 @@ t("engine exposes exec() covering left-ribbon and right-ribbon actions", () => {
   assert.ok(src.includes("exec: (a: string) => {"), "exec() missing on the engine API");
   assert.ok(src.includes("const act: Record<string, () => void> = {};"), "left action map not hoisted");
   assert.ok(src.includes("const act2: Record<string, () => void> = {};"), "right action map not hoisted");
-  for (const k of ["tText", "tHatch", "tLt", "lyr-mgr", "help", "close", "takeoff", "save-mk", "load-mk", "info", "svg", "csv"]) {
+  for (const k of ["tText", "tHatch", "tLt", "help", "close", "takeoff", "save-mk", "load-mk", "info", "svg", "csv"]) {
     assert.ok(src.includes(`"${k}"`), `action "${k}" not forwarded via act2`);
   }
+  // Layers / Styles managers moved to buildBar's act map when the panels moved
+  assert.ok(src.includes('"lyr-mgr": openLayerPropertiesManager'), "lyr-mgr must dispatch through act");
+  assert.ok(src.includes('"lt-mgr": () => openLinetypeManager(styleApi)'), "lt-mgr must dispatch through act");
+  assert.ok(src.includes('"ts-mgr": () => openTextStyleManager(styleApi)'), "ts-mgr must dispatch through act");
 });
 t("QAT and A-menu route through ribbonActive, Open uses the shell picker", () => {
   const ensure = src.slice(src.indexOf("function ensureShell"), src.indexOf("function createTab"));
@@ -133,10 +147,74 @@ t("toolbar actions still wired: tool buttons, toggles, selects", () => {
   assert.ok(src.includes('tools.querySelectorAll<HTMLElement>("button[data-a]").forEach'), "action buttons not wired");
   assert.ok(src.includes('sel("bg").onchange'), "background select not wired");
   assert.ok(src.includes('sel("du").onchange'), "units select not wired");
+  assert.ok(src.includes('sel("ecol").onchange'), "entity color select not wired");
+  assert.ok(src.includes('sel("elt").onchange'), "entity linetype select not wired");
 });
-t("all 16 ribbon groups still exist after the tab reorganization", () => {
-  for (const label of ["File", "Draw", "Select", "Modify", "History", "Measure", "Markup", "Navigate", "Modes", "Settings", "Layers", "Styles", "Show", "Markup Files", "Export", "Window"]) {
+
+// ── 6. Native-engine drafting ribbon: every button lands on a real tool ──
+t("all 31 ribbon groups exist after the native-engine reorganization", () => {
+  for (const label of [
+    "Clipboard", "Select", "Draw", "Draw II", "Modify", "Modify II", "Annotation", "Properties", "Utilities", "History", "Layers", "Styles",
+    "Import", "Data",
+    "Text", "Dimensions", "Markup", "Tables", "Markup Files",
+    "Navigate", "Saved Views", "Visual Styles", "Modes", "UCS", "Show",
+    "Units", "Drawing", "Layer States",
+    "Plot", "Export", "Window",
+  ]) {
     assert.ok(src.includes(`"${label}"`), `group "${label}" lost`);
+  }
+});
+t("Home Draw + Modify panels carry the full AutoCAD tool set", () => {
+  const bar = src.slice(src.indexOf("tools.innerHTML ="), src.indexOf('tools.querySelectorAll<HTMLButtonElement>("[data-t]")'));
+  for (const tool of ["line", "poly", "polygon", "rect", "arc", "circle", "spline", "ellipse", "donut", "point",
+    "hatch", "wipeout", "xline", "ray",
+    "move", "copy", "rotate", "scale", "stretch", "mirror", "offset", "trim", "extend", "break",
+    "join", "fillet", "chamfer", "explode", "align"]) {
+    assert.ok(bar.includes(`tb("${tool}"`), `tool "${tool}" not on the ribbon`);
+  }
+});
+t("typed commands dispatch to the staged pick machine and draw tools", () => {
+  const disp = src.slice(src.indexOf("function executeAutoCadCommand"));
+  const must = ["TRIM", "EXTEND", "BREAK", "FILLET", "CHAMFER", "JOIN", "EXPLODE", "STRETCH", "ALIGN",
+    "MATCHLAYER", "XLINE", "RAY", "POLYGON", "SPLINE", "ELLIPSE", "DONUT", "POINT", "HATCH", "WIPEOUT",
+    "DIMANGULAR", "DIMARC", "DIMDIAMETER", "DIMCENTER", "DIMCONTINUE", "DIMBASELINE", "TABLE", "ARRAY", "FIND", "VIEW", "LAYERSTATE", "IMPORT"];
+  for (const c of must) assert.ok(disp.includes(`"${c}"`), `command "${c}" not dispatched`);
+});
+t("dimension family renders on canvas: angular, arc-length, diameter, center mark", () => {
+  const render = src.slice(src.indexOf("function render("));
+  for (const k of ['m.kind === "dimang"', 'm.kind === "dimarc"', 'm.kind === "dimdia"', 'm.kind === "dimcenter"']) {
+    assert.ok(render.includes(k), `markup renderer for ${k} missing`);
+  }
+  assert.ok(src.includes('"dimang" | "dimarc" | "dimdia" | "dimcenter"'), "Markup kind union missing the dim variants");
+});
+t("PURGE / AUDIT / OVERKILL are real database operations, not stubs", () => {
+  assert.ok(!src.includes('0 unreferenced objects purged'), "PURGE stub must be gone");
+  assert.ok(src.includes("function purgeDrawing()"), "purgeDrawing missing");
+  assert.ok(src.includes("function auditDrawing("), "auditDrawing missing");
+  const audit = src.slice(src.indexOf("function auditDrawing("));
+  for (const need of ["fixedLayer", "zeroLen", "dupes", "commitReplace(before, repaired)"]) {
+    assert.ok(audit.includes(need), `auditDrawing lacks ${need}`);
+  }
+  assert.ok(src.includes('cmd === "OVERKILL"'), "OVERKILL command missing");
+});
+t("new drawings boot into a live empty document with a replace-aware undo stack", () => {
+  assert.ok(src.includes("function startBlank()"), "startBlank missing");
+  assert.ok(/buildBar\(\);\s*\n\s*buildBar2\(\);[\s\S]{0,120}startBlank\(\);/.test(src), "startBlank must run at engine init");
+  assert.ok(src.includes('type: "add" | "delete" | "modify" | "replace"'), "UndoAction must support replace");
+  const undoFn = src.slice(src.indexOf("function undo()"), src.indexOf("function redo()"));
+  assert.ok(undoFn.includes('act.type === "replace"'), "undo must handle replace actions");
+  const redoFn = src.slice(src.indexOf("function redo()"));
+  assert.ok(redoFn.includes('act.type === "replace"'), "redo must handle replace actions");
+});
+t("the 33 native-engine icons exist in the union and the path table", () => {
+  const names = ["cut", "paste", "polygon", "spline", "ellipse", "donut", "point", "hatch", "wipeout",
+    "xline", "ray", "trim", "extend", "break", "stretch", "join", "fillet", "chamfer", "explode", "align",
+    "matchprop", "find", "table", "center-mark", "dim-arclen", "dim-diameter", "dim-baseline", "dim-continue",
+    "ucs", "purge", "audit", "layer-state", "import"];
+  assert.strictEqual(names.length, 33, "icon list drifted");
+  for (const n of names) {
+    assert.ok(new RegExp(`\\|\\s*"${n}"`).test(icons), `icon "${n}" missing from IconName union`);
+    assert.ok(new RegExp(`^\\s{2}"?${n}"?:\\s*\`<`, "m").test(icons), `icon "${n}" missing from PATHS`);
   }
 });
 

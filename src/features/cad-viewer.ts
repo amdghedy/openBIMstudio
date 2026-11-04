@@ -71,11 +71,38 @@ type Tool =
   | "copy"
   | "rotate"
   | "mirror"
-  | "scale";
+  | "scale"
+  // native-engine drafting tools (full AutoCAD 2D ribbon)
+  | "polygon"
+  | "spline"
+  | "ellipse"
+  | "donut"
+  | "point"
+  | "hatch"
+  | "wipeout"
+  | "xline"
+  | "ray"
+  | "trim"
+  | "extend"
+  | "break"
+  | "fillet"
+  | "chamfer"
+  | "join"
+  | "explode"
+  | "align"
+  | "stretch"
+  | "matchlayer"
+  | "dimang"
+  | "dimarc"
+  | "dimdia"
+  | "dimcenter"
+  | "dimcont"
+  | "dimbase"
+  | "table";
 
 type ColorMode = "layer" | "bw" | "invert";
 interface Markup {
-  kind: "line" | "note" | "dim" | "cloud" | "stamp" | "leader";
+  kind: "line" | "note" | "dim" | "cloud" | "stamp" | "leader" | "dimang" | "dimarc" | "dimdia" | "dimcenter";
   pts: M.Pt[];
   text?: string;
 }
@@ -133,6 +160,39 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "SAVEALL", aliases: ["SALL"], description: "Save every open drawing tab" },
   { name: "CLOSE", aliases: [], description: "Close the current drawing tab" },
   { name: "CLEANSCREEN", aliases: ["CLEAN"], description: "Toggle clean screen mode (Ctrl+0)" },
+  // ── Native-engine drafting commands (full AutoCAD 2D ribbon) ──
+  { name: "XLINE", aliases: ["XL"], description: "Create an infinite construction line" },
+  { name: "RAY", aliases: ["RAY"], description: "Create a one-sided ray from a point" },
+  { name: "POLYGON", aliases: ["POL"], description: "Create a regular polygon (3-1024 sides)" },
+  { name: "SPLINE", aliases: ["SPL"], description: "Create a smooth spline through picked points" },
+  { name: "ELLIPSE", aliases: ["EL"], description: "Create an ellipse from center and two axes" },
+  { name: "DONUT", aliases: ["DO"], description: "Create a filled ring (donut) from center and radius" },
+  { name: "POINT", aliases: ["PO"], description: "Place a point object" },
+  { name: "HATCH", aliases: ["H", "BHATCH"], description: "Fill a closed polyline with a solid hatch" },
+  { name: "WIPEOUT", aliases: ["WI", "WIPE"], description: "Mask drawing content behind a polygon frame" },
+  { name: "TRIM", aliases: ["TR", "TRIM"], description: "Trim objects at cutting edges" },
+  { name: "EXTEND", aliases: ["EX"], description: "Extend objects to boundary edges" },
+  { name: "BREAK", aliases: ["BR"], description: "Break an object between two points" },
+  { name: "FILLET", aliases: ["F"], description: "Fillet two lines with a tangent arc (FILLET R <radius>)" },
+  { name: "CHAMFER", aliases: ["CHA"], description: "Bevel two lines (CHAMFER <d1> <d2>)" },
+  { name: "JOIN", aliases: ["J"], description: "Join collinear lines / polylines into one polyline" },
+  { name: "EXPLODE", aliases: ["X"], description: "Explode polylines into individual segments" },
+  { name: "STRETCH", aliases: ["S"], description: "Stretch objects through a crossing window" },
+  { name: "ALIGN", aliases: ["AL"], description: "Move + rotate objects onto a two-point alignment" },
+  { name: "MATCHLAYER", aliases: ["ML"], description: "Move objects onto the source object's layer" },
+  { name: "ARRAY", aliases: ["AR"], description: "Rectangular array: rows, columns, row & column spacing" },
+  { name: "FIND", aliases: ["FIND"], description: "Find and replace text in the drawing" },
+  { name: "VIEW", aliases: ["V"], description: "Named views: VIEW S <name> saves, VIEW R <name> restores" },
+  { name: "LAYERSTATE", aliases: ["LAS", "LAYSTATE"], description: "Layer states: LAYERSTATE S|R <name>" },
+  { name: "OVERKILL", aliases: ["OVERKILL"], description: "Remove duplicate / overlapping entities" },
+  { name: "DIMANGULAR", aliases: ["DAN", "DIMANG"], description: "Angular dimension from a vertex and two rays" },
+  { name: "DIMARC", aliases: ["DAR"], description: "Arc-length dimension on a picked arc" },
+  { name: "DIMDIAMETER", aliases: ["DDI", "DIMDIA"], description: "Diameter dimension on a circle" },
+  { name: "DIMCENTER", aliases: ["DCE"], description: "Center mark on a circle or arc" },
+  { name: "DIMCONTINUE", aliases: ["DCO", "DIMCONT"], description: "Continue a dimension from the last one" },
+  { name: "DIMBASELINE", aliases: ["DBA", "DIMBASE"], description: "Baseline dimension from the last one" },
+  { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
+  { name: "IMPORT", aliases: ["INSERT", "IMP"], description: "Merge a DWG / DXF file into the current drawing" },
 ];
 
 const BG: Record<string, string> = {
@@ -194,6 +254,7 @@ let clip: CadClip | null = null;
    ═══════════════════════════════════════════════════════════════════════════ */
 const RIBBON_TABS: ReadonlyArray<{ id: string; label: string }> = [
   { id: "home", label: "Home" },
+  { id: "insert", label: "Insert" },
   { id: "annotate", label: "Annotate" },
   { id: "view", label: "View" },
   { id: "manage", label: "Manage" },
@@ -676,6 +737,7 @@ const CAD_CSS = `
     /* Ribbon tabs filter the panels of the active drawing (AutoCAD tab → panels) */
     .obs-cad-shell .cadrb-strip .cadrg{display:none}
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="home"] .cadrg[data-cadtab="home"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="insert"] .cadrg[data-cadtab="insert"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="annotate"] .cadrg[data-cadtab="annotate"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="view"] .cadrg[data-cadtab="view"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="manage"] .cadrg[data-cadtab="manage"],
@@ -941,11 +1003,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   // AutoCAD Drafting Undo / Redo Stacks
   interface UndoAction {
-    type: "add" | "delete" | "modify";
+    type: "add" | "delete" | "modify" | "replace";
     entities?: DxfEntity[];
-    /** Modify: entity objects before the transform. */
+    /** Modify / replace: entity objects before the operation. */
     before?: DxfEntity[];
-    /** Modify: transformed entity objects currently in the drawing. */
+    /** Modify / replace: entity objects currently in the drawing. */
     after?: DxfEntity[];
   }
   const undoStack: UndoAction[] = [];
@@ -1680,6 +1742,87 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.fillText(m.text ?? "", b.x + 4, b.y - 4);
         c.strokeStyle = "#ef4444";
         c.fillStyle = "#ef4444";
+      } else if (m.kind === "dimang" && m.pts.length >= 3) {
+        // Angular dimension: vertex + two ray points (AutoCAD DIMANGULAR 3-point flow)
+        const v0 = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
+        const a = M.worldToScreen(v, m.pts[1].x, m.pts[1].y);
+        const b = M.worldToScreen(v, m.pts[2].x, m.pts[2].y);
+        const a1 = Math.atan2(a.y - v0.y, a.x - v0.x);
+        const a2 = Math.atan2(b.y - v0.y, b.x - v0.x);
+        const r = Math.min(46, Math.max(22, Math.min(Math.hypot(a.x - v0.x, a.y - v0.y), Math.hypot(b.x - v0.x, b.y - v0.y)) * 0.7));
+        c.strokeStyle = "#38bdf8";
+        c.fillStyle = "#38bdf8";
+        for (const ang of [a1, a2]) {
+          c.beginPath();
+          c.moveTo(v0.x, v0.y);
+          c.lineTo(v0.x + Math.cos(ang) * (r + 10), v0.y + Math.sin(ang) * (r + 10));
+          c.stroke();
+        }
+        let da = a2 - a1;
+        while (da <= -Math.PI) da += 2 * Math.PI;
+        while (da > Math.PI) da -= 2 * Math.PI;
+        c.beginPath();
+        c.arc(v0.x, v0.y, r, a1, a1 + da, da < 0);
+        c.stroke();
+        const mid = a1 + da / 2;
+        c.font = "bold 12px system-ui,sans-serif";
+        c.fillText(m.text ?? "", v0.x + Math.cos(mid) * (r + 14) - 6, v0.y + Math.sin(mid) * (r + 14) + 4);
+        c.strokeStyle = "#ef4444";
+        c.fillStyle = "#ef4444";
+      } else if (m.kind === "dimarc" && m.pts.length >= 3) {
+        // Arc-length dimension: runs along the picked arc, label = arc length
+        const c0 = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
+        const s = M.worldToScreen(v, m.pts[1].x, m.pts[1].y);
+        const e = M.worldToScreen(v, m.pts[2].x, m.pts[2].y);
+        const r = Math.hypot(s.x - c0.x, s.y - c0.y);
+        const a1 = Math.atan2(s.y - c0.y, s.x - c0.x);
+        const a2 = Math.atan2(e.y - c0.y, e.x - c0.x);
+        c.strokeStyle = "#38bdf8";
+        c.fillStyle = "#38bdf8";
+        c.beginPath();
+        c.arc(c0.x, c0.y, r, a1, a2);
+        c.stroke();
+        const mid = (a1 + a2) / 2;
+        c.font = "bold 12px system-ui,sans-serif";
+        c.fillText(m.text ?? "", c0.x + Math.cos(mid) * (r + 12) - 6, c0.y + Math.sin(mid) * (r + 12) + 4);
+        c.strokeStyle = "#ef4444";
+        c.fillStyle = "#ef4444";
+      } else if (m.kind === "dimdia" && m.pts.length >= 2) {
+        // Diameter dimension: full diameter line through the center + ⌀ label
+        const c0 = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
+        const e1 = M.worldToScreen(v, m.pts[1].x, m.pts[1].y);
+        const ex = e1.x - c0.x,
+          ey = e1.y - c0.y;
+        const len = Math.hypot(ex, ey) || 1;
+        const e2 = { x: c0.x - ex, y: c0.y - ey };
+        c.strokeStyle = "#38bdf8";
+        c.fillStyle = "#38bdf8";
+        c.beginPath();
+        c.moveTo(e2.x, e2.y);
+        c.lineTo(e1.x, e1.y);
+        c.stroke();
+        for (const p of [e1, e2]) {
+          c.beginPath();
+          c.arc(p.x, p.y, 2.4, 0, 7);
+          c.fill();
+        }
+        c.font = "bold 12px system-ui,sans-serif";
+        c.fillText(m.text ?? "", e1.x + 6, e1.y - 4);
+        c.strokeStyle = "#ef4444";
+        c.fillStyle = "#ef4444";
+      } else if (m.kind === "dimcenter" && m.pts.length >= 1) {
+        // Center mark: cross at the circle / arc center
+        const c0 = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
+        c.strokeStyle = "#38bdf8";
+        c.lineWidth = 1.4;
+        c.beginPath();
+        c.moveTo(c0.x - 9, c0.y);
+        c.lineTo(c0.x + 9, c0.y);
+        c.moveTo(c0.x, c0.y - 9);
+        c.lineTo(c0.x, c0.y + 9);
+        c.stroke();
+        c.strokeStyle = "#ef4444";
+        c.lineWidth = 2;
       } else if (m.kind === "stamp") {
         const p = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
         c.font = "bold 13px system-ui,sans-serif";
@@ -1965,6 +2108,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       for (let i = 0; i < after.length; i++) replaceEntity(after[i], before[i]);
       if (layoutI < 0) modelEnts = ents;
       redoStack.push(act);
+    } else if (act.type === "replace") {
+      // N→M replacement (TRIM / BREAK / EXPLODE / JOIN / FILLET / CHAMFER):
+      // drop the after-entities, restore the before-entities.
+      const afterSet = new Set(act.after ?? []);
+      const restored = act.before ?? [];
+      const kept = ents.filter((e) => !afterSet.has(e));
+      kept.push(...restored);
+      ents = kept;
+      if (layoutI < 0) modelEnts = ents;
+      redoStack.push(act);
     }
     rebuildIndex();
     showProps();
@@ -1993,6 +2146,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const before = act.before ?? [];
       const after = act.after ?? [];
       for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
+      if (layoutI < 0) modelEnts = ents;
+      undoStack.push(act);
+      markDirty();
+    } else if (act.type === "replace") {
+      const beforeSet = new Set(act.before ?? []);
+      const produced = act.after ?? [];
+      const kept = ents.filter((e) => !beforeSet.has(e));
+      kept.push(...produced);
+      ents = kept;
       if (layoutI < 0) modelEnts = ents;
       undoStack.push(act);
       markDirty();
@@ -2092,6 +2254,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     redoStack.length = 0;
     rebuildIndex();
     // Keep the transformed objects selected, like AutoCAD grips.
+    sel.clear();
+    for (const e of after) {
+      const i = ents.indexOf(e);
+      if (i >= 0) sel.add(i);
+    }
+    selected = sel.size ? [...sel][sel.size - 1] : -1;
+    showProps();
+  }
+
+  /** N→M replacement commit (TRIM / BREAK / EXPLODE / JOIN / FILLET / CHAMFER / AUDIT). */
+  function commitReplace(before: DxfEntity[], after: DxfEntity[]): void {
+    if (!before.length) return;
+    const beforeSet = new Set(before);
+    const kept = ents.filter((e) => !beforeSet.has(e));
+    kept.push(...after);
+    ents = kept;
+    if (layoutI < 0) modelEnts = ents;
+    undoStack.push({ type: "replace", before, after });
+    markDirty();
+    redoStack.length = 0;
+    rebuildIndex();
     sel.clear();
     for (const e of after) {
       const i = ents.indexOf(e);
@@ -2232,6 +2415,363 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("*Cancel*");
       draw();
     }
+  }
+
+  /* ── Cutting / staged pick tools (TRIM / EXTEND / BREAK / FILLET / CHAMFER /
+     JOIN / STRETCH / ALIGN / MATCHLAYER) ── */
+  type PickKind = "trim" | "extend" | "break" | "fillet" | "chamfer" | "join" | "stretch" | "align" | "matchlayer";
+  interface PickOp {
+    kind: PickKind;
+    stage: "edges" | "targets" | "obj" | "p1" | "p2" | "win1" | "win2" | "base" | "second" | "src1" | "src2" | "dst1" | "dst2";
+    edges: number[]; // cutting edges / boundary entities / join members
+    obj: number; // BREAK: picked entity
+    p1: M.Pt | null;
+    win: { a: M.Pt; b: M.Pt } | null;
+    base: M.Pt | null;
+    src: [M.Pt, M.Pt] | null; // ALIGN source axis
+    dst: [M.Pt, M.Pt] | null; // ALIGN destination axis
+    srcLayer: string; // MATCHLAYER source layer
+  }
+  let pick: PickOp | null = null;
+  let filletR = 10;
+  let chamferD = [5, 5];
+  let polySides = 6;
+  let tableDims = { rows: 3, cols: 4 };
+  /** Named views: name → view snapshot (VIEW S / VIEW R). */
+  const namedViews = new Map<string, M.View>();
+  /** Layer state snapshots: name → off/frozen layer names (LAYERSTATE S / R). */
+  const layerStates = new Map<string, { off: string[]; frozen: string[] }>();
+
+  const isPickTool = (t: Tool): t is PickKind =>
+    t === "trim" || t === "extend" || t === "break" || t === "fillet" || t === "chamfer" ||
+    t === "join" || t === "stretch" || t === "align" || t === "matchlayer";
+
+  function clearPickState(): void {
+    pick = null;
+    pendingNumeric = null;
+  }
+
+  function pickPrompt(): string {
+    if (!pick) return "";
+    switch (pick.kind) {
+      case "trim":
+        return pick.stage === "edges" ? "Select cutting edges: (click · Enter / right-click to cut)" : "Select object to trim:";
+      case "extend":
+        return pick.stage === "edges" ? "Select boundary edges: (click · Enter / right-click to extend)" : "Select object to extend:";
+      case "break":
+        return pick.stage === "obj" ? "Select object:" : "Specify second break point:";
+      case "fillet":
+        return "Select first object:";
+      case "chamfer":
+        return "Select first line:";
+      case "join":
+        return "Select objects to join: (click · Enter / right-click to join)";
+      case "stretch":
+        return pick.stage === "win1" ? "Specify first corner of crossing window:" : pick.stage === "win2" ? "Specify opposite corner:" : pick.stage === "base" ? "Specify base point:" : "Specify second point:";
+      case "align":
+        return pick.stage === "src1" ? "Specify first source point:" : pick.stage === "src2" ? "Specify second source point:" : pick.stage === "dst1" ? "Specify first destination point:" : "Specify second destination point:";
+      case "matchlayer":
+        return pick.stage === "edges" ? "Select the source object:" : "Select destination objects: (Esc to finish)";
+    }
+  }
+
+  function startPick(kind: PickKind): void {
+    clearModState();
+    const twoStage = kind === "trim" || kind === "extend" || kind === "matchlayer";
+    pick = {
+      kind,
+      stage: twoStage ? "edges" : kind === "break" ? "obj" : kind === "stretch" ? "win1" : kind === "align" ? "src1" : "targets",
+      edges: [],
+      obj: -1,
+      p1: null,
+      win: null,
+      base: null,
+      src: null,
+      dst: null,
+      srcLayer: "",
+    };
+    if (kind === "fillet") logCmd(`Current fillet radius = ${fmt(filletR)} (FILLET R <value> to change)`);
+    if (kind === "chamfer") logCmd(`Current chamfer distances = ${fmt(chamferD[0])} and ${fmt(chamferD[1])} (CHAMFER <d1> <d2> to change)`);
+    logCmd(pickPrompt());
+  }
+
+  const pickTargets = (): DxfEntity[] => (pick?.edges ?? []).map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+
+  /** Commits the staged FILLET / CHAMFER between two picked LINE entities. */
+  function commitFilletChamfer(a: DxfEntity, b: DxfEntity): void {
+    if (!pick) return;
+    if (a.type !== "LINE" || b.type !== "LINE") {
+      logCmd("FILLET / CHAMFER supports two LINE entities.");
+      pick.stage = "targets";
+      pick.edges = [];
+      logCmd(pickPrompt());
+      return;
+    }
+    if (pick.kind === "fillet") {
+      const r = X.filletTwoLines(a, b, filletR);
+      if (!r) {
+        logCmd("Fillet radius is too large for those lines.");
+        pick.stage = "targets";
+        pick.edges = [];
+        logCmd(pickPrompt());
+        return;
+      }
+      commitReplace([a, b], [...r.lines, r.arc]);
+      logCmd(`FILLET: R = ${fmt(filletR)} — 2 line(s) trimmed, 1 arc added.`);
+    } else {
+      const c = X.chamferTwoLines(a, b, chamferD[0], chamferD[1]);
+      if (!c) {
+        logCmd("Chamfer distances are too large for those lines.");
+        pick.stage = "targets";
+        pick.edges = [];
+        logCmd(pickPrompt());
+        return;
+      }
+      commitReplace([a, b], [...c.lines, c.bar]);
+      logCmd(`CHAMFER: ${fmt(chamferD[0])} × ${fmt(chamferD[1])} — 2 line(s) trimmed, 1 bevel added.`);
+    }
+    clearPickState();
+    setTool("select");
+    draw();
+  }
+
+  /** Central staged-pick pointer-down handler. Returns true when consumed. */
+  function onPickClick(wp: M.Pt): boolean {
+    if (!pick) return false;
+    const hit = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+    const eps = 10 / view.scale;
+
+    switch (pick.kind) {
+      case "trim":
+      case "extend": {
+        if (pick.stage === "edges") {
+          if (hit < 0) {
+            logCmd("0 found");
+            return true;
+          }
+          if (!pick.edges.includes(hit)) pick.edges.push(hit);
+          setSel([hit], true);
+          logCmd(`1 found (${pick.edges.length} total)`);
+          return true;
+        }
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const e = ents[hit];
+        const cutters = pickTargets().filter((c) => c !== e);
+        if (pick.kind === "trim") {
+          const pieces = X.trimEntity(e, wp, cutters, eps);
+          if (!pieces.length) logCmd("Object cannot be trimmed — no cutting edge crosses it.");
+          else {
+            commitReplace([e], pieces);
+            logCmd(`TRIM: ${pieces.length} piece(s) kept.`);
+          }
+        } else {
+          const out = X.extendEntity(e, wp, cutters, eps);
+          if (!out) logCmd("Object cannot be extended to those boundaries.");
+          else {
+            commitReplace([e], [out]);
+            logCmd("EXTEND: endpoint stretched to the boundary.");
+          }
+        }
+        return true;
+      }
+      case "break": {
+        if (pick.stage === "obj") {
+          if (hit < 0) {
+            logCmd("0 found");
+            return true;
+          }
+          pick.obj = hit;
+          pick.p1 = { x: wp.x, y: wp.y };
+          setSel([hit]);
+          pick.stage = "p2";
+          logCmd("Specify second break point:");
+          return true;
+        }
+        const e = ents[pick.obj];
+        if (!e || !pick.p1) return true;
+        const pieces = X.breakEntity(e, pick.p1, wp);
+        if (!pieces) logCmd("Nothing to break between those points.");
+        else {
+          commitReplace([e], pieces);
+          logCmd(`BREAK: ${pieces.length} piece(s) kept.`);
+        }
+        clearPickState();
+        setTool("select");
+        draw();
+        return true;
+      }
+      case "fillet":
+      case "chamfer": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        pick.edges.push(hit);
+        setSel([hit], true);
+        if (pick.edges.length === 1) {
+          pick.stage = "targets";
+          logCmd("Select second line:");
+        } else commitFilletChamfer(ents[pick.edges[0]], ents[pick.edges[1]]);
+        return true;
+      }
+      case "join": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        if (!pick.edges.includes(hit)) {
+          pick.edges.push(hit);
+          setSel([hit], true);
+          logCmd(`1 found (${pick.edges.length} total)`);
+        }
+        return true;
+      }
+      case "stretch": {
+        switch (pick.stage) {
+          case "win1":
+            pick.win = { a: { x: wp.x, y: wp.y }, b: wp };
+            pick.stage = "win2";
+            logCmd(pickPrompt());
+            return true;
+          case "win2": {
+            if (!pick.win) return true;
+            const a = pick.win.a;
+            const rect = M.rectOf(a, wp);
+            if (idx) {
+              const crossing = M.selectInRect(idx, ents, rect, "crossing", visible);
+              pick.edges = crossing;
+              setSel(crossing);
+              logCmd(`${crossing.length} object(s) cross the window.`);
+            }
+            pick.win = { a: rect.minX === a.x && rect.minY === a.y ? a : a, b: wp };
+            // remember the window rect corners for the vertex test
+            (pick as PickOp & { rect?: { minX: number; minY: number; maxX: number; maxY: number } }).rect = rect;
+            pick.base = { x: wp.x, y: wp.y };
+            pick.stage = "base";
+            logCmd(pickPrompt());
+            return true;
+          }
+          case "base":
+            pick.base = { x: wp.x, y: wp.y };
+            pick.stage = "second";
+            logCmd(pickPrompt());
+            return true;
+          case "second": {
+            if (!pick.base) return true;
+            const dp = { x: wp.x - pick.base.x, y: wp.y - pick.base.y };
+            const rect = (pick as PickOp & { rect?: { minX: number; minY: number; maxX: number; maxY: number } }).rect;
+            const before = pickTargets();
+            if (before.length && rect) {
+              const after = X.stretchEnts(before, rect, dp);
+              commitModify(before, after);
+              logCmd(`STRETCH: ${before.length} object(s) stretched by ${fmt(Math.hypot(dp.x, dp.y))}`);
+            }
+            clearPickState();
+            setTool("select");
+            draw();
+            return true;
+          }
+          default:
+            return true;
+        }
+      }
+      case "align": {
+        const pt = { x: wp.x, y: wp.y };
+        if (pick.stage === "src1") {
+          pick.src = [pt, pt];
+          pick.stage = "src2";
+        } else if (pick.stage === "src2") {
+          pick.src![1] = pt;
+          pick.stage = "dst1";
+        } else if (pick.stage === "dst1") {
+          pick.dst = [pt, pt];
+          pick.stage = "dst2";
+        } else if (pick.stage === "dst2") {
+          pick.dst![1] = pt;
+          if (!sel.size) logCmd("ALIGN: select objects first, then run ALIGN.");
+          else if (pick.src && pick.dst) {
+            const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+            const ang = M.norm360Deg(pick.dst[0], pick.dst[1]) - M.norm360Deg(pick.src[0], pick.src[1]);
+            const d1 = pick.dst[0],
+              s1 = pick.src[0];
+            const after = before.map((e) => X.translateEnt(X.rotateEnt(e, s1.x, s1.y, ang), d1.x - s1.x, d1.y - s1.y));
+            commitModify(before, after);
+            logCmd(`ALIGN: ${before.length} object(s) aligned (move + rotate).`);
+          }
+          clearPickState();
+          setTool("select");
+          draw();
+        }
+        return true;
+      }
+      case "matchlayer": {
+        if (pick.stage === "edges") {
+          if (hit < 0) {
+            logCmd("0 found");
+            return true;
+          }
+          pick.srcLayer = ents[hit].layer;
+          pick.stage = "targets";
+          logCmd(`Source layer: ${pick.srcLayer}. ${pickPrompt()}`);
+          return true;
+        }
+        if (hit < 0 || ents[hit].layer === pick.srcLayer) return true;
+        const e = ents[hit];
+        commitReplace([e], [{ ...e, layer: pick.srcLayer }]);
+        logCmd(`MATCHLAYER: moved to ${pick.srcLayer}.`);
+        return true;
+      }
+    }
+  }
+
+  /** JOIN finisher (Enter / right-click during JOIN). */
+  function finishJoin(): void {
+    if (!pick || pick.kind !== "join") return;
+    const members = pickTargets();
+    const merged = X.chainPolyline(members);
+    if (!merged) {
+      logCmd(`JOIN: ${members.length} object(s) do not form a connected chain (LINE / open LWPOLYLINE only).`);
+      clearPickState();
+      setTool("select");
+      draw();
+      return;
+    }
+    commitReplace(members, [merged]);
+    const verts = merged.type === "LWPOLYLINE" ? merged.points.length : 2;
+    logCmd(`JOIN: ${members.length} object(s) joined into 1 polyline with ${verts} vertices.`);
+    clearPickState();
+    setTool("select");
+    draw();
+  }
+
+  /** EXPLODE: break selection into simpler entities (polylines → lines). */
+  function explodeSelection(): void {
+    if (!sel.size) {
+      logCmd("Command: EXPLODE — 0 found");
+      return;
+    }
+    const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+    const after: DxfEntity[] = [];
+    for (const e of before) {
+      if (e.type === "LWPOLYLINE") {
+        const n = e.points.length;
+        const m = e.closed ? n : n - 1;
+        for (let i = 0; i < m; i++) {
+          const a = e.points[i],
+            b = e.points[(i + 1) % n];
+          after.push({ type: "LINE", layer: e.layer, color: e.color, rgb: e.rgb, lineType: e.lineType, lineweight: e.lineweight, start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y } });
+        }
+      } else after.push(e);
+    }
+    if (after.length === before.length) {
+      logCmd("EXPLODE: nothing to explode in the selection.");
+      return;
+    }
+    commitReplace(before, after);
+    logCmd(`EXPLODE: ${before.length} object(s) → ${after.length} entities.`);
   }
 
   /** OFFSET click flow. Returns true when the click was consumed. */
@@ -2891,22 +3431,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     tools.innerHTML =
       rg(
-        "File",
-        rb("folder", "Open", `data-a="open"`, "Open a DWG or DXF file") +
-          rb("save", "Save DXF", `data-a="save-dxf"`, "Save the edited drawing as DXF (QSAVE)") +
-          rb("print", "Plot", `data-a="plot"`, "Plot to PDF / paper") +
-          `<input type="file" data-r="file" accept=".dwg,.dxf" style="display:none">`,
-        "",
-        "",
-        "home",
-      ) +
-      rg(
-        "Draw",
-        tb("line", "mline", "Line") +
-          tb("circle", "circle", "Circle") +
-          tb("poly", "model-curve", "Pline") +
-          tb("rect", "plate", "Rectang") +
-          tb("arc", "arc-length", "Arc"),
+        "Clipboard",
+        rb("copy", "Copy", `data-a="clipcopy"`, "Copy selection to the cross-drawing clipboard (Ctrl+C / COPYCLIP)") +
+          rb("cut", "Cut", `data-a="clipcut"`, "Cut selection to the clipboard (Ctrl+X)") +
+          rb("paste", "Paste", `data-a="clippaste"`, "Paste clipboard at the cursor (Ctrl+V / PASTECLIP)") +
+          rb("ref-plane", "Paste to Origin", `data-a="pasteorig"`, "Paste clipboard at original coordinates (Ctrl+Shift+V / PASTEORIG)"),
         "",
         "",
         "home",
@@ -2914,9 +3443,35 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "Select",
         tb("select", "select-all", "Select") +
-          tb("erase", "delete", "Erase") +
           tb("box", "isolate", "Box") +
+          tb("erase", "delete", "Erase") +
           rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)"),
+        "",
+        "",
+        "home",
+      ) +
+      rg(
+        "Draw",
+        tb("line", "mline", "Line") +
+          tb("poly", "model-curve", "Pline") +
+          tb("polygon", "polygon", "Polygon") +
+          tb("rect", "plate", "Rectang") +
+          tb("arc", "arc-length", "Arc") +
+          tb("circle", "circle", "Circle") +
+          tb("spline", "spline", "Spline") +
+          tb("ellipse", "ellipse", "Ellipse") +
+          tb("donut", "donut", "Donut") +
+          tb("point", "point", "Point"),
+        "",
+        "",
+        "home",
+      ) +
+      rg(
+        "Draw II",
+        tb("hatch", "hatch", "Hatch") +
+          tb("wipeout", "wipeout", "Wipeout") +
+          tb("xline", "xline", "XLine") +
+          tb("ray", "ray", "Ray"),
         "",
         "",
         "home",
@@ -2926,9 +3481,57 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         tb("move", "move", "Move") +
           tb("copy", "copy", "Copy") +
           tb("rotate", "rotate", "Rotate") +
-          tb("mirror", "mirror", "Mirror") +
           tb("scale", "scale", "Scale") +
-          tb("offset", "offset", "Offset"),
+          tb("stretch", "stretch", "Stretch") +
+          tb("mirror", "mirror", "Mirror") +
+          tb("offset", "offset", "Offset") +
+          tb("trim", "trim", "Trim") +
+          tb("extend", "extend", "Extend") +
+          tb("break", "break", "Break"),
+        "",
+        "",
+        "home",
+      ) +
+      rg(
+        "Modify II",
+        tb("join", "join", "Join") +
+          tb("fillet", "fillet", "Fillet") +
+          tb("chamfer", "chamfer", "Chamfer") +
+          tb("explode", "explode", "Explode") +
+          tb("align", "align", "Align") +
+          tb("erase", "delete", "Erase"),
+        "",
+        "",
+        "home",
+      ) +
+      rg(
+        "Annotation",
+        tb("text", "text", "Text") +
+          rb("model-text", "MText", `data-a="mtext"`, "Place multiline text (MTEXT)") +
+          tb("table", "table", "Table") +
+          tb("leader", "tag", "Leader"),
+        "",
+        "",
+        "home",
+      ) +
+      rg(
+        "Properties",
+        `<label class="cadrb-field"><span>Color</span><select data-a="ecol"><option value="">ByLayer</option><option value="1">Red</option><option value="2">Yellow</option><option value="3">Green</option><option value="4">Cyan</option><option value="5">Blue</option><option value="6">Magenta</option><option value="7">White</option></select></label>` +
+          `<label class="cadrb-field"><span>Linetype</span><select data-a="elt"><option value="">ByLayer</option><option>CONTINUOUS</option><option>DASHED</option><option>HIDDEN</option><option>CENTER</option><option>DOT</option></select></label>` +
+          tb("match", "matchprop", "MatchProp") +
+          tb("matchlayer", "modify", "Match Layer"),
+        "cadrg__body--fields",
+        "",
+        "home",
+      ) +
+      rg(
+        "Utilities",
+        tb("dist", "measure", "Distance") +
+          tb("area", "area", "Area") +
+          tb("radius", "dim-radial", "Radius") +
+          tb("coord", "spot-coord", "ID Point") +
+          tb("angle", "dim-angular", "Angle") +
+          rb("report", "List", `data-a="list"`, "List properties of the selection (LI / LIST)"),
         "",
         "",
         "home",
@@ -2942,13 +3545,55 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "home",
       ) +
       rg(
-        "Measure",
-        tb("dist", "measure", "Distance") +
-          tb("area", "area", "Area") +
-          tb("dim", "dim-aligned", "Dimension") +
-          tb("coord", "spot-coord", "Coords") +
+        "Layers",
+        rb("schedules", "Manager", `data-a="lyr-mgr"`, "AutoCAD Layer Properties Manager (LA)"),
+        "",
+        "",
+        "home",
+      ) +
+      rg(
+        "Styles",
+        rb("insulation", "Linetypes", `data-a="lt-mgr"`, "Linetype Manager: load linetypes, set current, global scale (LT)") +
+          rb("text", "Text Styles", `data-a="ts-mgr"`, "Text Style Manager: fonts, heights, presets (ST)"),
+        "",
+        "",
+        "home",
+      ) +
+      rg(
+        "Import",
+        rb("import", "DWG / DXF…", `data-a="import"`, "Merge a DWG or DXF file into the current drawing (IMPORT)") +
+          `<input type="file" data-r="importfile" accept=".dwg,.dxf" style="display:none">`,
+        "",
+        "",
+        "insert",
+      ) +
+      rg(
+        "Data",
+        rb("quantification", "Takeoff", `data-a="takeoff2"`, "Quantity takeoff by layer and type (CSV)") +
+          rb("report", "Info", `data-a="info2"`, "Drawing information"),
+        "",
+        "",
+        "insert",
+      ) +
+      rg(
+        "Text",
+        tb("text", "text", "Text") +
+          rb("model-text", "MText", `data-a="mtext"`, "Place multiline text (MTEXT)") +
+          rb("find", "Find Text", `data-a="find"`, "Find and replace text in the drawing (FIND)"),
+        "",
+        "",
+        "annotate",
+      ) +
+      rg(
+        "Dimensions",
+        tb("dim", "dim-aligned", "Linear") +
+          tb("dimang", "dim-angular", "Angular") +
+          tb("dimarc", "dim-arclen", "Arc Len") +
+          tb("dimdia", "dim-diameter", "Diameter") +
           tb("radius", "dim-radial", "Radius") +
-          tb("calibrate", "ref-plane", "Calibrate"),
+          tb("dimcenter", "center-mark", "Center") +
+          tb("dimcont", "dim-continue", "Continue") +
+          tb("dimbase", "dim-baseline", "Baseline"),
         "",
         "",
         "annotate",
@@ -2957,10 +3602,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "Markup",
         tb("redline", "detail-line", "Redline") +
           tb("cloud", "revision-cloud", "RevCloud") +
-          tb("leader", "tag", "Leader") +
           tb("note", "text", "Note") +
-          tb("text", "text", "Text") +
-          tb("match", "detail-line", "Match"),
+          tb("calibrate", "ref-plane", "Calibrate"),
+        "",
+        "",
+        "annotate",
+      ) +
+      rg(
+        "Tables",
+        tb("table", "table", "Table") +
+          rb("schedule", "Edit Size", `data-a="tablesize"`, "Set the next table's rows × columns"),
         "",
         "",
         "annotate",
@@ -2970,8 +3621,28 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         tb("pan", "move", "Pan") +
           tb("zoomwin", "inspect", "Zoom Win") +
           rb("fit", "Extents", `data-a="ext"`, "Zoom extents (Z E)") +
-          rb("recenter", "Selection", `data-a="zsel"`, "Zoom to selection (F)"),
+          rb("recenter", "Selection", `data-a="zsel"`, "Zoom to selection") +
+          rb("bounds", "Zoom Scale", `data-a="zscale"`, "Zoom by a scale factor (Z <factor>)") +
+          rb("back", "Zoom Previous", `data-a="zprev"`, "Restore the previous view (Z P)"),
         "",
+        "",
+        "view",
+      ) +
+      rg(
+        "Saved Views",
+        rb("camera", "Save View", `data-a="vsave"`, "Save the current view under a name (VIEW S <name>)") +
+          rb("view", "Restore", `data-a="vrestore"`, "Restore a saved view (VIEW R <name>)"),
+        "",
+        "",
+        "view",
+      ) +
+      rg(
+        "Visual Styles",
+        `<label class="cadrb-field"><span>Background</span><select data-a="bg">${bgOpts}</select></label>` +
+          rb("plan", "Layer color", `data-a="cmlayer"`, "Color mode: by layer (default)") +
+          rb("circle", "B & W", `data-a="cmbw"`, "Color mode: black & white plot style") +
+          rb("filled-region", "Invert", `data-a="cminv"`, "Color mode: inverted"),
+        "cadrg__body--fields",
         "",
         "view",
       ) +
@@ -2987,23 +3658,47 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "view",
       ) +
       rg(
-        "Settings",
-        `<label class="cadrb-field"><span>Background</span><select data-a="bg">${bgOpts}</select></label>` +
-          `<label class="cadrb-field"><span>Units</span><select data-a="du">${unitOpts}</select></label>`,
+        "UCS",
+        tb("origin", "origin", "Origin") +
+          rb("recenter", "World", `data-a="ucsworld"`, "Return the UCS to the world origin"),
+        "",
+        "",
+        "view",
+      ) +
+      rg(
+        "Units",
+        `<label class="cadrb-field"><span>Units</span><select data-a="du">${unitOpts}</select></label>`,
         "cadrg__body--fields",
         "",
         "manage",
+      ) +
+      rg(
+        "Drawing",
+        rb("purge", "Purge", `data-a="purge"`, "Remove unused layers from the drawing (PURGE)") +
+          rb("audit", "Audit", `data-a="audit"`, "Check and repair the drawing database (AUDIT / OVERKILL)") +
+          rb("refresh", "Regen", `data-a="regen"`, "Regenerate the drawing (REGEN)"),
+        "",
+        "",
+        "manage",
+      ) +
+      rg(
+        "Layer States",
+        rb("layer-state", "Save State", `data-a="lssave"`, "Snapshot which layers are off / frozen (LAYERSTATE S)") +
+          rb("show-all", "Restore State", `data-a="lsrestore"`, "Restore a saved layer state (LAYERSTATE R)"),
+        "",
+        "",
+        "manage",
+      ) +
+      rg(
+        "Plot",
+        rb("print", "Plot…", `data-a="plot"`, "Plot to PDF / paper (PLOT)"),
+        "",
+        "",
+        "output",
       );
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => (b.onclick = () => setTool(b.dataset.t as Tool)));
-    const fileIn = tools.querySelector<HTMLInputElement>("[data-r=file]")!;
-    fileIn.onchange = () => {
-      const f = fileIn.files?.[0];
-      if (f) void load(f);
-      fileIn.value = "";
-    };
 
     Object.assign(act, {
-      open: () => fileIn.click(),
       ext: zoomExtents,
       zsel: zoomSelection,
       help: () => toggleHelp(),
@@ -3042,12 +3737,106 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       erase: eraseSelected,
       plot: openPlot,
       "save-dxf": saveDxf,
+      // Clipboard (Home › Clipboard)
+      clipcopy: () => copySelection(),
+      clipcut: () => {
+        if (copySelection()) eraseSelected();
+      },
+      clippaste: () => pasteClip(),
+      pasteorig: () => pasteOrig(),
+      // Annotation / find
+      mtext: () => {
+        setTool("text");
+        logCmd("MTEXT: click to place multiline text.");
+      },
+      find: () => void findReplace(),
+      list: () => showSelectionList(),
+      // Insert tab
+      import: () => tools.querySelector<HTMLInputElement>("[data-r=importfile]")?.click(),
+      takeoff2: () => doTakeoff(),
+      info2: () => doInfo(),
+      // View tab
+      zscale: () => {
+        void promptLine("Zoom Scale", "Enter a scale factor (2 = 2×, 0.5 = half)", "2").then((s) => {
+          const f = parseFloat(s ?? "");
+          if (Number.isFinite(f) && f > 0) {
+            pushView();
+            view = M.zoomAt(view, view.w / 2, view.h / 2, f);
+            draw();
+            logCmd(`Zoom scale factor: ${f}`);
+          }
+        });
+      },
+      zprev: () => {
+        const v = history.pop();
+        if (v) {
+          view = { ...v, w: view.w, h: view.h };
+          draw();
+          logCmd("Zoom previous.");
+        } else logCmd("No previous view.");
+      },
+      vsave: () => saveNamedView(),
+      vrestore: () => restoreNamedView(),
+      ucsworld: () => {
+        origin = null;
+        draw();
+        logCmd("UCS restored to World.");
+      },
+      // Visual styles
+      cmlayer: () => {
+        cmode = "layer";
+        forceColor = null;
+        draw();
+      },
+      cmbw: () => {
+        cmode = "bw";
+        forceColor = null;
+        draw();
+      },
+      cminv: () => {
+        cmode = "invert";
+        forceColor = null;
+        draw();
+      },
+      // Manage tab
+      purge: purgeDrawing,
+      audit: () => auditDrawing(false),
+      regen: () => {
+        if (bounds) idx = M.buildIndex(ents, bounds);
+        draw();
+        logCmd("Regenerating model...");
+      },
+      lssave: () => saveLayerState(),
+      lsrestore: () => restoreLayerState(),
+      // Styles panels (Home › Layers / Styles)
+      "lyr-mgr": openLayerPropertiesManager,
+      "lt-mgr": () => openLinetypeManager(styleApi),
+      "ts-mgr": () => openTextStyleManager(styleApi),
+      // Annotate › Tables
+      tablesize: () => {
+        void promptLine("Table Size", "Rows and columns (e.g. 4 5)", `${tableDims.rows} ${tableDims.cols}`).then((s) => {
+          const m = (s ?? "").trim().split(/\s+/).map(Number);
+          if (m.length === 2 && m.every((n) => Number.isInteger(n) && n > 0 && n <= 50)) {
+            tableDims = { rows: m[0], cols: m[1] };
+            logCmd(`Next table: ${tableDims.rows} rows × ${tableDims.cols} columns.`);
+          }
+        });
+      },
     });
 
     tools.querySelectorAll<HTMLElement>("button[data-a]").forEach((b) => {
       const f = act[b.dataset.a!];
       if (f) b.onclick = f;
     });
+
+    const importIn = tools.querySelector<HTMLInputElement>("[data-r=importfile]")!;
+    importIn.onchange = () => {
+      const files = [...(importIn.files ?? [])];
+      void (async () => {
+        for (const f of files) await mergeCadFile(f);
+      })();
+      importIn.value = "";
+    };
 
     const sel = (a: string) => tools.querySelector<HTMLSelectElement>(`[data-a=${a}]`)!;
     sel("bg").onchange = (e) => {
@@ -3059,10 +3848,40 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       showProps();
       draw();
     };
+    sel("ecol").onchange = (e) => {
+      const v = (e.target as HTMLSelectElement).value;
+      applyEntityProps((en) => {
+        const { rgb: _rgb, color: _c, ...rest } = en;
+        return v === "" ? (rest as DxfEntity) : ({ ...rest, color: Number(v) } as DxfEntity);
+      });
+      logCmd(v === "" ? "Color: ByLayer" : `Color: ACI ${v}`);
+      draw();
+    };
+    sel("elt").onchange = (e) => {
+      const v = (e.target as HTMLSelectElement).value;
+      applyEntityProps((en) => {
+        const { lineType: _lt, ...rest } = en;
+        return v === "" ? (rest as DxfEntity) : ({ ...rest, lineType: v } as DxfEntity);
+      });
+      logCmd(v === "" ? "Linetype: ByLayer" : `Linetype: ${v}`);
+      draw();
+    };
+  }
+
+  /** Applies a property mutation to the whole selection as one undoable replace. */
+  function applyEntityProps(mut: (e: DxfEntity) => DxfEntity): void {
+    if (!sel.size) {
+      logCmd("Select objects first, then set the property.");
+      return;
+    }
+    const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+    if (!before.length) return;
+    commitReplace(before, before.map(mut));
   }
 
   function setTool(t: Tool) {
     clearModState();
+    clearPickState();
     matchSrc = null;
     tool = t;
     cv.focus({ preventScroll: true });
@@ -3086,6 +3905,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd("Select object to offset:");
       };
       logCmd(`Command: _OFFSET ${offsetPrompt()}`);
+    } else if (isPickTool(t)) {
+      startPick(t);
+      logCmd(`Command: _${t.toUpperCase()}`);
+    } else if (t === "spline" || t === "wipeout") {
+      logCmd(`Command: _${t.toUpperCase()} — click points, Enter / double-click to finish`);
+    } else if (t === "polygon") {
+      logCmd(`Command: _POLYGON — ${polySides} sides (type POLYGON <n> to change)`);
     } else {
       logCmd(`Command: _${t.toUpperCase()}`);
     }
@@ -3112,6 +3938,25 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     } else if (tool === "cloud" && pts.length >= 2) {
       markups.push({ kind: "cloud", pts: M.revisionCloudPoints(pts), text: "REV" });
       results.push(`Revision cloud · ${pts.length} vertices`);
+    } else if (tool === "spline" && pts.length >= 2) {
+      addDraftEntity({
+        type: "LWPOLYLINE",
+        layer: currentLayer, ...newObjectProps(),
+        points: X.catmullRom(pts),
+        closed: false,
+      });
+      results.push(`Spline · ${pts.length} fit points, ${X.catmullRom(pts).length} segment vertices`);
+      logCmd(`Spline added through ${pts.length} points.`);
+    } else if (tool === "wipeout" && pts.length >= 3) {
+      addDraftEntity({
+        type: "LWPOLYLINE",
+        layer: currentLayer, ...newObjectProps(),
+        points: [...pts],
+        closed: true,
+        hatch: { solid: true, loops: [[...pts]], wipeout: true },
+      });
+      results.push(`Wipeout · ${pts.length}-sided mask`);
+      logCmd("Wipeout frame added — masks everything behind it.");
     }
     pts = [];
     showMeas();
@@ -3188,6 +4033,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         draw();
         return;
       }
+    }
+
+    // Staged cutting tools (TRIM / EXTEND / BREAK / FILLET / CHAMFER / JOIN /
+    // STRETCH / ALIGN / MATCHLAYER)
+    if (isPickTool(tool) && pick && onPickClick(wp)) {
+      draw();
+      return;
     }
 
     const s = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind };
@@ -3405,6 +4257,236 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         break;
       }
+      case "polygon": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const r = M.distance(pts[0], pts[1]);
+          addDraftEntity({
+            type: "LWPOLYLINE",
+            layer: currentLayer, ...newObjectProps(),
+            points: X.polygonLoop(pts[0].x, pts[0].y, r, polySides),
+            closed: true,
+          });
+          logCmd(`Polygon added: ${polySides} sides, R = ${fmt(r)}`);
+          pts = [];
+        }
+        break;
+      }
+      case "spline":
+      case "wipeout":
+        pts.push(p);
+        break;
+      case "ellipse": {
+        pts.push(p);
+        if (pts.length === 3) {
+          const [c, a1, a2] = pts;
+          const rx = M.distance(c, a1);
+          // second axis: perpendicular distance from a2 to the line c→a1
+          const ang = Math.atan2(a1.y - c.y, a1.x - c.x);
+          const dx = a2.x - c.x,
+            dy = a2.y - c.y;
+          const perp = -dx * Math.sin(ang) + dy * Math.cos(ang);
+          const ry = Math.abs(perp);
+          if (rx > 1e-9 && ry > 1e-9) {
+            addDraftEntity({
+              type: "LWPOLYLINE",
+              layer: currentLayer, ...newObjectProps(),
+              points: X.ellipseLoop(c.x, c.y, rx, ry),
+              closed: true,
+            });
+            logCmd(`Ellipse added: ${fmt(2 * rx)} × ${fmt(2 * ry)}`);
+          }
+          pts = [];
+        }
+        break;
+      }
+      case "donut": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const rOut = M.distance(pts[0], pts[1]);
+          const rIn = rOut * 0.5;
+          const [outer, inner] = X.donutLoops(pts[0].x, pts[0].y, rOut, rIn);
+          addDraftEntity({
+            type: "LWPOLYLINE",
+            layer: currentLayer, ...newObjectProps(),
+            points: outer,
+            closed: true,
+            hatch: { solid: true, pattern: "SOLID", loops: [outer, inner], wipeout: false },
+          });
+          logCmd(`Donut added: outer ${fmt(2 * rOut)}, inner ${fmt(2 * rIn)}`);
+          pts = [];
+        }
+        break;
+      }
+      case "point": {
+        addDraftEntity({ type: "POINT", layer: currentLayer, ...newObjectProps(), position: { x: p.x, y: p.y } });
+        logCmd(`Point at ${fmt(p.x)}, ${fmt(p.y)}`);
+        break;
+      }
+      case "hatch": {
+        const hi = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        if (hi < 0) {
+          logCmd("0 found — pick a closed polyline to hatch.");
+          break;
+        }
+        const e = ents[hi];
+        if (e.type !== "LWPOLYLINE" || !e.closed) {
+          logCmd("HATCH: that object is not a closed polyline.");
+          break;
+        }
+        const after: DxfEntity = e.hatch
+          ? { ...e, hatch: undefined }
+          : { ...e, hatch: { solid: true, pattern: "SOLID", loops: [e.points] } };
+        commitReplace([e], [after]);
+        logCmd(e.hatch ? "HATCH: hatch removed (toggle)." : "HATCH: solid hatch applied.");
+        break;
+      }
+      case "xline": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const [a, b] = pts;
+          const dx = b.x - a.x,
+            dy = b.y - a.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const R = 1e6;
+          addDraftEntity({
+            type: "LINE",
+            layer: currentLayer, ...newObjectProps(),
+            start: { x: a.x - (dx / len) * R, y: a.y - (dy / len) * R },
+            end: { x: a.x + (dx / len) * R, y: a.y + (dy / len) * R },
+          });
+          logCmd("XLine added: infinite construction line.");
+          pts = [];
+        }
+        break;
+      }
+      case "ray": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const [a, b] = pts;
+          const dx = b.x - a.x,
+            dy = b.y - a.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const R = 1e6;
+          addDraftEntity({
+            type: "LINE",
+            layer: currentLayer, ...newObjectProps(),
+            start: { x: a.x, y: a.y },
+            end: { x: a.x + (dx / len) * R, y: a.y + (dy / len) * R },
+          });
+          logCmd("Ray added: one-sided construction ray.");
+          pts = [];
+        }
+        break;
+      }
+      case "dimang": {
+        pts.push(p);
+        if (pts.length === 3) {
+          const [v, a, b] = pts;
+          const ang = M.angleAt(v, a, b);
+          markups.push({ kind: "dimang", pts: [v, a, b], text: `${ang.toFixed(2)}°` });
+          results.push(`Angular dimension: ${ang.toFixed(2)}°`);
+          pts = [];
+          showMeas();
+        }
+        break;
+      }
+      case "dimarc": {
+        const ai = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        if (ai >= 0) {
+          const e = ents[ai];
+          if (e.type === "ARC") {
+            const sweep = ((e.endAngle - e.startAngle) % 360 + 360) % 360 || 360;
+            const len = (sweep * Math.PI * e.radius) / 180;
+            const mid = e.startAngle + sweep / 2;
+            const sm = { x: e.center.x + e.radius * Math.cos((e.startAngle * Math.PI) / 180), y: e.center.y + e.radius * Math.sin((e.startAngle * Math.PI) / 180) };
+            const em = { x: e.center.x + e.radius * Math.cos((e.endAngle * Math.PI) / 180), y: e.center.y + e.radius * Math.sin((e.endAngle * Math.PI) / 180) };
+            markups.push({ kind: "dimarc", pts: [e.center, sm, em], text: `${fmt(len)}` });
+            results.push(`Arc length: ${fmt(len)}`);
+            showMeas();
+          } else logCmd("DIMARC: pick an arc.");
+        }
+        break;
+      }
+      case "dimdia": {
+        const di = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        if (di >= 0) {
+          const e = ents[di];
+          if (e.type === "CIRCLE" || e.type === "ARC") {
+            const len = Math.hypot(wp.x - e.center.x, wp.y - e.center.y) || 1;
+            const edge = { x: e.center.x + (e.radius * (wp.x - e.center.x)) / len, y: e.center.y + (e.radius * (wp.y - e.center.y)) / len };
+            markups.push({ kind: "dimdia", pts: [e.center, edge], text: `⌀${fmt(2 * e.radius)}` });
+            results.push(`Diameter: ${fmt(2 * e.radius)}`);
+            showMeas();
+          } else logCmd("DIMDIAMETER: pick a circle or arc.");
+        }
+        break;
+      }
+      case "dimcenter": {
+        const ci = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        if (ci >= 0) {
+          const e = ents[ci];
+          if (e.type === "CIRCLE" || e.type === "ARC") {
+            markups.push({ kind: "dimcenter", pts: [e.center], text: "" });
+            logCmd("DIMCENTER: center mark placed.");
+          } else logCmd("DIMCENTER: pick a circle or arc.");
+        }
+        break;
+      }
+      case "dimcont": {
+        pts.push(p);
+        if (pts.length === 2) {
+          markups.push({ kind: "dim", pts: [...pts], text: fmt(M.distance(pts[0], pts[1])) });
+          results.push(`Continued dimension: ${fmt(M.distance(pts[0], pts[1]))}`);
+          pts = [p]; // chain from the last point like DIMCONTINUE
+          showMeas();
+        }
+        break;
+      }
+      case "dimbase": {
+        pts.push(p);
+        if (pts.length === 2) {
+          markups.push({ kind: "dim", pts: [...pts], text: fmt(M.distance(pts[0], pts[1])) });
+          results.push(`Baseline dimension: ${fmt(M.distance(pts[0], pts[1]))}`);
+          pts = [pts[0]]; // measure from the same baseline origin
+          showMeas();
+        }
+        break;
+      }
+      case "explode": {
+        explodeSelection();
+        setTool("select");
+        break;
+      }
+      case "table": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const [t1, t2] = pts;
+          const cols = tableDims.cols,
+            rows = tableDims.rows;
+          const w = (t2.x - t1.x) / cols,
+            h = (t2.y - t1.y) / rows;
+          const list: DxfEntity[] = [];
+          for (let c = 0; c <= cols; c++)
+            list.push({ type: "LINE", layer: currentLayer, start: { x: t1.x + c * w, y: t1.y }, end: { x: t1.x + c * w, y: t2.y } });
+          for (let r = 0; r <= rows; r++)
+            list.push({ type: "LINE", layer: currentLayer, start: { x: t1.x, y: t1.y + r * h }, end: { x: t2.x, y: t1.y + r * h } });
+          const hh = Math.min(Math.abs(h) * 0.6, Math.max(1e-6, Math.abs(w) * 0.5));
+          for (let r = 0; r < rows; r++)
+            for (let c = 0; c < cols; c++)
+              list.push({
+                type: "TEXT",
+                layer: currentLayer,
+                position: { x: t1.x + (c + 0.08) * w, y: t1.y + (r + 0.5) * h },
+                height: hh,
+                value: `${r + 1},${c + 1}`,
+              });
+          addEntities(list);
+          logCmd(`Table added: ${rows} rows × ${cols} columns (TABLE <rows> <cols> to change).`);
+          pts = [];
+        }
+        break;
+      }
       default:
         break;
     }
@@ -3466,10 +4548,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     draw();
   });
 
+  /** Enter / right-click during a staged pick op: confirm stages, finish JOIN. */
+  function confirmPickStep(): void {
+    if (!pick) return;
+    if ((pick.kind === "trim" || pick.kind === "extend") && pick.stage === "edges") {
+      pick.stage = "targets";
+      sel.clear();
+      selected = -1;
+      showProps();
+      logCmd(pickPrompt());
+      draw();
+      return;
+    }
+    if (pick.kind === "join") {
+      finishJoin();
+      return;
+    }
+  }
+
   // Right-click = Enter (AutoCAD: confirm selection / accept defaults)
   cv.addEventListener("contextmenu", (ev) => {
     ev.preventDefault();
-    if (mod) confirmModStep();
+    if (pick) confirmPickStep();
+    else if (mod) confirmModStep();
     else if (tool === "offset" && offStage === "pickSide") {
       offStage = "pickObj";
       offTarget = -1;
@@ -3528,7 +4629,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   cv.addEventListener("pointercancel", endDrag);
 
   cv.addEventListener("dblclick", () => {
-    if (tool === "poly" || tool === "area" || tool === "chain" || tool === "cloud") {
+    if (tool === "poly" || tool === "area" || tool === "chain" || tool === "cloud" || tool === "spline" || tool === "wipeout") {
       pts.pop();
       finishMeasure();
     }
@@ -3552,6 +4653,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function onEscape(): void {
     if (helpEl) {
       closeOverlay();
+      return;
+    }
+    if (pick) {
+      clearPickState();
+      setTool("select");
+      logCmd("*Cancel*");
+      draw();
       return;
     }
     if (mod || isModTool(tool) || tool === "offset") {
@@ -3630,6 +4738,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (ev.key === "Enter" || ev.key === " ") {
+      if (pick) {
+        ev.preventDefault();
+        confirmPickStep();
+        return;
+      }
       if (mod) {
         ev.preventDefault();
         confirmModStep();
@@ -3968,7 +5081,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "PU" || cmd === "PURGE") {
-      logCmd("0 unreferenced objects purged.");
+      purgeDrawing();
       return;
     }
     if (cmd === "PRINT" || cmd === "PLOT") {
@@ -4023,6 +5136,177 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       updateStatus();
       draw();
       logCmd(`GRID: <${showGrid ? "ON" : "OFF"}>`);
+      return;
+    }
+    if (cmd === "DYN" || cmd === "DYNMODE") {
+      dynOn = !dynOn;
+      tools.querySelector("[data-a=dyn]")?.classList.toggle("on", dynOn);
+      updateStatus();
+      draw();
+      logCmd(`DYNMODE: <${dynOn ? "ON" : "OFF"}>`);
+      return;
+    }
+    if (cmd === "SNAP" || cmd === "SNAPMODE") {
+      snapOn = !snapOn;
+      updateStatus();
+      draw();
+      logCmd(`SNAPMODE: <${snapOn ? "ON" : "OFF"}>`);
+      return;
+    }
+    if (cmd === "CLEANSCREEN" || cmd === "CLEAN") {
+      toggleCleanScreen();
+      return;
+    }
+    if (cmd === "OVERKILL") {
+      auditDrawing(true);
+      return;
+    }
+    if (cmd === "AUDIT") {
+      auditDrawing(false);
+      return;
+    }
+    if (cmd === "FIND") {
+      void findReplace();
+      return;
+    }
+    if (cmd === "ARRAY" || cmd === "AR") {
+      arrayRect();
+      return;
+    }
+    if (cmd === "VIEW" || cmd === "V") {
+      viewCommand(parts.slice(1));
+      return;
+    }
+    if (cmd === "LAYERSTATE" || cmd === "LAS" || cmd === "LAYSTATE") {
+      layerStateCommand(parts.slice(1));
+      return;
+    }
+    if (cmd === "IMPORT" || cmd === "INSERT" || cmd === "IMP") {
+      tools.querySelector<HTMLInputElement>("[data-r=importfile]")?.click();
+      return;
+    }
+
+    // ── Native-engine drafting commands ──
+    if (cmd === "XLINE" || cmd === "XL") {
+      setTool("xline");
+      return;
+    }
+    if (cmd === "RAY") {
+      setTool("ray");
+      return;
+    }
+    if (cmd === "POLYGON" || cmd === "POL") {
+      const n = parseInt(parts[1] ?? "", 10);
+      if (Number.isInteger(n) && n >= 3 && n <= 1024) {
+        polySides = n;
+        logCmd(`Polygon sides: ${n}`);
+      }
+      setTool("polygon");
+      return;
+    }
+    if (cmd === "SPLINE" || cmd === "SPL") {
+      setTool("spline");
+      return;
+    }
+    if (cmd === "ELLIPSE" || cmd === "EL") {
+      setTool("ellipse");
+      return;
+    }
+    if (cmd === "DONUT" || cmd === "DO") {
+      setTool("donut");
+      return;
+    }
+    if (cmd === "POINT" || cmd === "PO") {
+      setTool("point");
+      return;
+    }
+    if (cmd === "HATCH" || cmd === "H" || cmd === "BHATCH") {
+      setTool("hatch");
+      return;
+    }
+    if (cmd === "WIPEOUT" || cmd === "WI" || cmd === "WIPE") {
+      setTool("wipeout");
+      return;
+    }
+    if (cmd === "TRIM" || cmd === "TR") {
+      setTool("trim");
+      return;
+    }
+    if (cmd === "EXTEND" || cmd === "EX") {
+      setTool("extend");
+      return;
+    }
+    if (cmd === "BREAK" || cmd === "BR") {
+      setTool("break");
+      return;
+    }
+    if (cmd === "FILLET" || cmd === "F") {
+      const ri = parts.indexOf("R") >= 0 ? parts.indexOf("R") : parts.indexOf("RADIUS");
+      const rv = ri >= 0 ? parseFloat(parts[ri + 1] ?? "") : NaN;
+      if (Number.isFinite(rv) && rv > 0) filletR = rv;
+      else if (parts.length === 2 && Number.isFinite(parseFloat(parts[1]))) filletR = Math.abs(parseFloat(parts[1]));
+      setTool("fillet");
+      return;
+    }
+    if (cmd === "CHAMFER" || cmd === "CHA") {
+      const nums = parts.slice(1).map(parseFloat).filter((v) => Number.isFinite(v) && v > 0);
+      if (nums.length >= 2) chamferD = [nums[0], nums[1]];
+      else if (nums.length === 1) chamferD = [nums[0], nums[0]];
+      setTool("chamfer");
+      return;
+    }
+    if (cmd === "JOIN" || cmd === "J") {
+      setTool("join");
+      return;
+    }
+    if (cmd === "EXPLODE" || cmd === "X") {
+      explodeSelection();
+      return;
+    }
+    if (cmd === "STRETCH" || cmd === "S") {
+      setTool("stretch");
+      return;
+    }
+    if (cmd === "ALIGN" || cmd === "AL") {
+      setTool("align");
+      return;
+    }
+    if (cmd === "MATCHLAYER" || cmd === "ML") {
+      setTool("matchlayer");
+      return;
+    }
+    if (cmd === "DIMANGULAR" || cmd === "DAN" || cmd === "DIMANG") {
+      setTool("dimang");
+      return;
+    }
+    if (cmd === "DIMARC" || cmd === "DAR") {
+      setTool("dimarc");
+      return;
+    }
+    if (cmd === "DIMDIAMETER" || cmd === "DDI" || cmd === "DIMDIA") {
+      setTool("dimdia");
+      return;
+    }
+    if (cmd === "DIMCENTER" || cmd === "DCE") {
+      setTool("dimcenter");
+      return;
+    }
+    if (cmd === "DIMCONTINUE" || cmd === "DCO" || cmd === "DIMCONT") {
+      setTool("dimcont");
+      return;
+    }
+    if (cmd === "DIMBASELINE" || cmd === "DBA" || cmd === "DIMBASE") {
+      setTool("dimbase");
+      return;
+    }
+    if (cmd === "TABLE" || cmd === "TB") {
+      const r0 = parseInt(parts[1] ?? "", 10),
+        c0 = parseInt(parts[2] ?? "", 10);
+      if (Number.isInteger(r0) && Number.isInteger(c0) && r0 > 0 && c0 > 0 && r0 <= 50 && c0 <= 50) {
+        tableDims = { rows: r0, cols: c0 };
+        logCmd(`Next table: ${r0} rows × ${c0} columns.`);
+      }
+      setTool("table");
       return;
     }
 
@@ -4397,17 +5681,385 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     /* noop for compatibility */
   }
 
+  /* Quantity takeoff + drawing info — shared by Output › Export and Insert › Data. */
+  function doTakeoff(): void {
+    if (!doc) return;
+    const rows = new Map<string, { type: string; layer: string; count: number; totalLength: number }>();
+    for (const e of ents) {
+      if (!shown(e)) continue;
+      const key = e.type + "|" + e.layer;
+      let r = rows.get(key);
+      if (!r) {
+        r = { type: e.type, layer: e.layer, count: 0, totalLength: 0 };
+        rows.set(key, r);
+      }
+      r.count++;
+      const m = M.entityMetrics(e);
+      if (m.length != null) r.totalLength += m.length;
+    }
+    const sorted = [...rows.values()].sort((a, b) => a.type.localeCompare(b.type) || a.layer.localeCompare(b.layer));
+    const csv = "type,layer,count,totalLength\n" + sorted.map((r) => r.type + "," + r.layer + "," + r.count + "," + (r.totalLength * scaleCal).toFixed(3)).join("\n");
+    download(new Blob([csv], { type: "text/csv" }), base() + "-takeoff.csv");
+    logCmd("Takeoff: " + sorted.length + " row(s) exported from " + ents.length + " visible entities");
+  }
+
+  function doInfo(): void {
+    if (!doc) return;
+    // Full AutoCAD-style STATUS report — everything the reader pulled out of
+    // the file's tables and entities, so "what did we read" is answerable in UI.
+    const ltNames = Object.keys(doc.linetypes ?? {});
+    const styleEntries = Object.entries(doc.textStyles ?? {});
+    const dimNames = doc.dimStyles ?? [];
+    const fontsInFile = [...new Set(styleEntries.map(([, s]) => s.font).filter((f): f is string => !!f))];
+    const fontList = (fs: string[]) => (fs.length ? escapeHtml(fs.slice(0, 14).join(", ")) + (fs.length > 14 ? `, … (+${fs.length - 14})` : "") : "—");
+    const styleList = styleEntries.length
+      ? styleEntries
+          .map(([sn, s]) => `${escapeHtml(sn)} → ${escapeHtml(s.font ?? "default")}${s.height ? ` (h=${s.height})` : ""}${s.bigFont ? ` +${escapeHtml(s.bigFont)}` : ""}`)
+          .join("<br>")
+      : "—";
+    const skippedBits = Object.entries(doc.skipped ?? {})
+      .filter(([, n]) => n > 0)
+      .map(([k, n]) => `${k} (${n})`);
+    const panel = openOverlay(`
+        <b style="font-size:15px;color:#38bdf8">AutoCAD Drawing Database Status</b>
+        <table style="margin-top:10px;font-size:12px;width:100%">
+          <tr><td>File Name:</td><td>${escapeHtml(name)}</td></tr>
+          <tr><td>Database Format:</td><td>${escapeHtml((doc.sourceFormat ?? "").toUpperCase())}</td></tr>
+          <tr><td>Drawing Units:</td><td>${escapeHtml(doc.units ?? "unitless")}</td></tr>
+          <tr><td>Total Entities:</td><td>${modelEnts.length}</td></tr>
+          <tr><td>Total Layers:</td><td>${doc.layers.length}</td></tr>
+          <tr><td>Active Layouts:</td><td>${doc.layouts?.length ?? 1}</td></tr>
+          <tr><td>Linetype Table:</td><td>${ltNames.length} defined${ltNames.length ? ` — ${escapeHtml(ltNames.slice(0, 12).join(", "))}${ltNames.length > 12 ? ", …" : ""}` : ""}</td></tr>
+          <tr><td>LTSCALE:</td><td>${escapeHtml(String(doc.ltscale ?? 1))}</td></tr>
+          <tr><td>Text Style Table:</td><td>${styleEntries.length} style(s)</td></tr>
+        </table>
+        ${styleEntries.length ? `<div style="margin-top:6px;font-size:11px;line-height:1.55;color:#c3cad6;background:#12141c;border:1px solid #1f2633;border-radius:6px;padding:8px 10px">${styleList}</div>` : ""}
+        <table style="margin-top:8px;font-size:12px;width:100%">
+          <tr><td>Fonts in Drawing:</td><td>${fontList(fontsInFile)}</td></tr>
+          <tr><td>Dimension Style Table:</td><td>${dimNames.length} style(s)${dimNames.length ? ` — ${escapeHtml(dimNames.slice(0, 12).join(", "))}${dimNames.length > 12 ? ", …" : ""}` : ""}</td></tr>
+          <tr><td>Entities Not Drawn:</td><td>${skippedBits.length ? escapeHtml(skippedBits.join(", ")) : "none"}</td></tr>
+        </table>
+        <div style="margin-top:14px"><button data-r="inf-close" style="padding:6px 14px">Close</button></div>
+      `);
+    panel.querySelector("[data-r=inf-close]")?.addEventListener("click", closeOverlay);
+  }
+
+  /* ── Drawing maintenance: PURGE / AUDIT / OVERKILL ── */
+
+  /** PURGE: delete layers that carry no entities and are not current. */
+  function purgeDrawing(): void {
+    if (!doc) return;
+    const used = new Set<string>(["0", currentLayer]);
+    for (const e of modelEnts) used.add(e.layer);
+    for (const L of doc.layouts ?? []) for (const e of L.entities) used.add(e.layer);
+    const removed: string[] = [];
+    doc.layers = doc.layers.filter((l) => {
+      if (used.has(l.name)) return true;
+      removed.push(l.name);
+      return false;
+    });
+    for (const nm of removed) hidden.delete(nm);
+    buildLayers();
+    markDirty();
+    logCmd(removed.length ? `PURGE: ${removed.length} unused layer(s) removed — ${removed.join(", ")}.` : "PURGE: no unreferenced layers found.");
+  }
+
+  /** AUDIT / OVERKILL: repair layer refs, drop zero-length and duplicate entities. */
+  function auditDrawing(overkillOnly = false): void {
+    if (!doc) return;
+    const layerNames = new Set(doc.layers.map((l) => l.name));
+    const before: DxfEntity[] = [...ents];
+    const repaired: DxfEntity[] = [];
+    const seen = new Set<string>();
+    let fixedLayer = 0,
+      zeroLen = 0,
+      dupes = 0;
+    const sig = (e: DxfEntity): string => {
+      const f = (v: number): string => v.toFixed(6);
+      switch (e.type) {
+        case "LINE":
+          return `L|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.end.x)},${f(e.end.y)}`;
+        case "CIRCLE":
+          return `C|${e.layer}|${f(e.center.x)},${f(e.center.y)}|${f(e.radius)}`;
+        case "ARC":
+          return `A|${e.layer}|${f(e.center.x)},${f(e.center.y)}|${f(e.radius)}|${f(e.startAngle)}|${f(e.endAngle)}`;
+        case "LWPOLYLINE":
+          return `P|${e.layer}|${e.closed ? 1 : 0}|${e.points.map((q) => `${f(q.x)},${f(q.y)}`).join(";")}`;
+        case "TEXT":
+          return `T|${e.layer}|${f(e.position.x)},${f(e.position.y)}|${e.value}`;
+        case "POINT":
+          return `D|${e.layer}|${f(e.position.x)},${f(e.position.y)}`;
+      }
+    };
+    for (const e of before) {
+      let cur = e;
+      if (!layerNames.has(cur.layer)) {
+        cur = { ...cur, layer: "0" };
+        fixedLayer++;
+      }
+      const dead =
+        (cur.type === "LINE" && Math.hypot(cur.end.x - cur.start.x, cur.end.y - cur.start.y) < 1e-9) ||
+        (cur.type === "CIRCLE" && cur.radius < 1e-9) ||
+        (cur.type === "LWPOLYLINE" && cur.points.length < 2) ||
+        (cur.type === "TEXT" && !cur.value.trim());
+      if (dead) {
+        zeroLen++;
+        continue;
+      }
+      const s = sig(cur);
+      if (seen.has(s)) {
+        dupes++;
+        continue;
+      }
+      seen.add(s);
+      repaired.push(cur);
+    }
+    if (fixedLayer || zeroLen || dupes) {
+      commitReplace(before, repaired);
+      logCmd(
+        `AUDIT: ${fixedLayer} layer reference(s) repaired, ${zeroLen} degenerate object(s) removed, ${dupes} duplicate(s) removed.`,
+      );
+    } else logCmd(overkillOnly ? "OVERKILL: no duplicate objects found." : "AUDIT: no errors found in the drawing database.");
+  }
+
+  /* ── Named views (VIEW S / VIEW R) ── */
+  function saveNamedView(): void {
+    void promptLine("Save View", "View name", `View${namedViews.size + 1}`).then((nm) => {
+      const k = (nm ?? "").trim();
+      if (!k) return;
+      namedViews.set(k, { ...view });
+      logCmd(`VIEW: saved "${k}".`);
+    });
+  }
+
+  function restoreNamedView(): void {
+    const names = [...namedViews.keys()];
+    if (!names.length) {
+      logCmd("VIEW: no saved views (VIEW S <name>).");
+      return;
+    }
+    void promptLine("Restore View", `Name — ${names.join(", ")}`, names[0]).then((nm) => {
+      const k = (nm ?? "").trim();
+      const v = namedViews.get(k);
+      if (!v) {
+        logCmd(`VIEW: "${k}" not found.`);
+        return;
+      }
+      pushView();
+      view = { ...v, w: view.w, h: view.h };
+      draw();
+      logCmd(`VIEW: restored "${k}".`);
+    });
+  }
+
+  function viewCommand(rest: string[]): void {
+    const sub = (rest[0] ?? "").toUpperCase();
+    const k = rest.slice(1).join(" ").trim();
+    if (sub === "S" || sub === "SAVE") {
+      if (k) {
+        namedViews.set(k, { ...view });
+        logCmd(`VIEW: saved "${k}".`);
+      } else saveNamedView();
+      return;
+    }
+    if (sub === "R" || sub === "RESTORE") {
+      if (k) {
+        const v = namedViews.get(k);
+        if (!v) {
+          logCmd(`VIEW: "${k}" not found.`);
+          return;
+        }
+        pushView();
+        view = { ...v, w: view.w, h: view.h };
+        draw();
+        logCmd(`VIEW: restored "${k}".`);
+      } else restoreNamedView();
+      return;
+    }
+    const names = [...namedViews.keys()];
+    logCmd(names.length ? `VIEW: saved views — ${names.join(", ")}` : "VIEW: no saved views (VIEW S <name>).");
+  }
+
+  /* ── Layer states (LAYERSTATE S / R) ── */
+  function saveLayerState(): void {
+    void promptLine("Layer State", "State name", `State${layerStates.size + 1}`).then((nm) => {
+      const k = (nm ?? "").trim();
+      if (!k || !doc) return;
+      layerStates.set(k, {
+        off: doc.layers.filter((l) => l.off).map((l) => l.name),
+        frozen: doc.layers.filter((l) => l.frozen).map((l) => l.name),
+      });
+      const st = layerStates.get(k)!;
+      logCmd(`LAYERSTATE: saved "${k}" (${st.off.length} off, ${st.frozen.length} frozen).`);
+    });
+  }
+
+  function restoreLayerState(): void {
+    const names = [...layerStates.keys()];
+    if (!names.length) {
+      logCmd("LAYERSTATE: no saved states (LAYERSTATE S <name>).");
+      return;
+    }
+    void promptLine("Restore Layer State", `Name — ${names.join(", ")}`, names[0]).then((nm) => {
+      const k = (nm ?? "").trim();
+      const st = layerStates.get(k);
+      if (!st || !doc) {
+        logCmd(`LAYERSTATE: "${k}" not found.`);
+        return;
+      }
+      for (const l of doc.layers) {
+        l.off = st.off.includes(l.name);
+        l.frozen = st.frozen.includes(l.name);
+        if (l.off || l.frozen) hidden.add(l.name);
+        else hidden.delete(l.name);
+      }
+      buildLayers();
+      draw();
+      logCmd(`LAYERSTATE: restored "${k}".`);
+    });
+  }
+
+  function layerStateCommand(rest: string[]): void {
+    const sub = (rest[0] ?? "").toUpperCase();
+    const k = rest.slice(1).join(" ").trim();
+    if (sub === "S" || sub === "SAVE") {
+      if (k && doc) {
+        layerStates.set(k, {
+          off: doc.layers.filter((l) => l.off).map((l) => l.name),
+          frozen: doc.layers.filter((l) => l.frozen).map((l) => l.name),
+        });
+        logCmd(`LAYERSTATE: saved "${k}".`);
+      } else saveLayerState();
+      return;
+    }
+    if (sub === "R" || sub === "RESTORE") {
+      if (k && doc) {
+        const st = layerStates.get(k);
+        if (!st) {
+          logCmd(`LAYERSTATE: "${k}" not found.`);
+          return;
+        }
+        for (const l of doc.layers) {
+          l.off = st.off.includes(l.name);
+          l.frozen = st.frozen.includes(l.name);
+          if (l.off || l.frozen) hidden.add(l.name);
+          else hidden.delete(l.name);
+        }
+        buildLayers();
+        draw();
+        logCmd(`LAYERSTATE: restored "${k}".`);
+      } else restoreLayerState();
+      return;
+    }
+    const names = [...layerStates.keys()];
+    logCmd(names.length ? `LAYERSTATE: saved states — ${names.join(", ")}` : "LAYERSTATE: no saved states (LAYERSTATE S <name>).");
+  }
+
+  /* ── FIND / REPLACE text ── */
+  async function findReplace(): Promise<void> {
+    const q = await promptLine("Find and Replace", "Text to find", "");
+    if (!q) return;
+    const rep = await promptLine("Replace With", "Replacement text (empty removes it)", "");
+    const before: DxfEntity[] = [];
+    const after: DxfEntity[] = [];
+    for (const e of ents) {
+      if (e.type !== "TEXT" || !e.value.includes(q)) continue;
+      before.push(e);
+      after.push({ ...e, value: e.value.split(q).join(rep ?? "") });
+    }
+    if (!before.length) {
+      logCmd(`FIND: "${q}" not found in the drawing.`);
+      return;
+    }
+    commitReplace(before, after);
+    logCmd(`FIND: ${before.length} text object(s) updated.`);
+  }
+
+  /* ── Rectangular ARRAY ── */
+  function arrayRect(): void {
+    if (!sel.size) {
+      logCmd("ARRAY: select objects first.");
+      return;
+    }
+    void promptLine("Rectangular Array", "rows columns rowSpacing colSpacing (e.g. 3 4 500 400)", "2 2 100 100").then((s) => {
+      const m = (s ?? "").trim().split(/\s+/).map(Number);
+      if (m.length !== 4 || m.some((x) => !Number.isFinite(x))) {
+        logCmd("ARRAY: need 4 numbers — rows, columns, row spacing, column spacing.");
+        return;
+      }
+      const [rows, cols, rs, cs] = m;
+      if (rows < 1 || cols < 1 || (rows === 1 && cols === 1)) {
+        logCmd("ARRAY: array must have at least 2 items.");
+        return;
+      }
+      const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+      const copies: DxfEntity[] = [];
+      for (let r = 0; r < Math.min(rows, 100); r++)
+        for (let c = 0; c < Math.min(cols, 100); c++) {
+          if (!r && !c) continue;
+          for (const e of before) copies.push(X.translateEnt(e, c * cs, r * rs));
+        }
+      addEntities(copies);
+      logCmd(`ARRAY: ${copies.length} copies added (${rows} rows × ${cols} columns).`);
+    });
+  }
+
+  /* ── INSERT: merge a DWG / DXF file into the current drawing ── */
+  async function mergeCadFile(f: File): Promise<void> {
+    if (!doc) return;
+    status(`Importing ${f.name}…`);
+    try {
+      const r = await readCadFile(f);
+      const incoming = r.doc.entities.filter((e) => {
+        const b = M.entityBBox(e);
+        return Number.isFinite(b.minX + b.maxX + b.minY + b.maxY);
+      });
+      if (!incoming.length) throw new Error("the file has no drawable geometry");
+      // Merge the layer table — existing definitions win.
+      const have = new Set(doc.layers.map((l) => l.name));
+      for (const l of r.doc.layers) if (!have.has(l.name)) doc.layers.push({ ...l });
+      for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
+      addEntities(incoming);
+      buildLayers();
+      logCmd(`IMPORT: merged ${f.name} — ${incoming.length} entities, ${r.doc.layers.length} layer definitions.`);
+      status(`${f.name} merged: ${incoming.length} entities`);
+      setTimeout(() => status(""), 5000);
+    } catch (err) {
+      logCmd(`IMPORT failed: ${(err as Error).message}`);
+      status(`Could not import ${f.name}: ${(err as Error).message}`);
+      setTimeout(() => status(""), 7000);
+    }
+  }
+
+  /* ── New Drawing: an empty, immediately drawable document ── */
+  function startBlank(): void {
+    if (doc) return;
+    doc = { units: "mm", layers: [{ name: "0", color: 7 }], entities: [], linetypes: {}, sourceFormat: "cad-engine" };
+    name = "";
+    modelEnts = doc.entities;
+    modelBounds = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+    modelIdx = M.buildIndex(modelEnts, modelBounds);
+    layoutIdxCache.clear();
+    hidden.clear();
+    markups = [];
+    results = [];
+    drawn = [];
+    origin = null;
+    cmp = null;
+    emptyEl.style.display = "none";
+    $<HTMLInputElement>("lf").value = "";
+    fillMenus();
+    buildTabs();
+    activate(-1);
+    setTool("select");
+    showMeas();
+    markSaved();
+    updateStatus();
+    draw();
+  }
+
   function buildBar2() {
     tools2.innerHTML =
-      rg("Layers", rb("schedules", "Manager", `data-a="lyr-mgr"`, "AutoCAD Layer Properties Manager (LA)"), "", "", "home") +
-      rg(
-        "Styles",
-        rb("insulation", "Linetypes", `data-a="lt-mgr"`, "Linetype Manager: load linetypes, set current, global scale (LT)") +
-          rb("text", "Text Styles", `data-a="ts-mgr"`, "Text Style Manager: fonts, heights, presets (ST)"),
-        "",
-        "",
-        "home",
-      ) +
       rg(
         "Show",
         rb("text", "Text", `data-a="tText"`, "Show or hide text", "on") +
@@ -4459,31 +6111,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       flip("tLt", showLt);
       draw();
     };
-    q("lyr-mgr").onclick = openLayerPropertiesManager;
-    q("lt-mgr").onclick = () => openLinetypeManager(styleApi);
-    q("ts-mgr").onclick = () => openTextStyleManager(styleApi);
     q("help").onclick = () => toggleHelp();
     q("close").onclick = () => hooks.requestClose();
-    q("takeoff").onclick = () => {
-      if (!doc) return;
-      const rows = new Map<string, { type: string; layer: string; count: number; totalLength: number }>();
-      for (const e of ents) {
-        if (!shown(e)) continue;
-        const key = e.type + "|" + e.layer;
-        let r = rows.get(key);
-        if (!r) { r = { type: e.type, layer: e.layer, count: 0, totalLength: 0 }; rows.set(key, r); }
-        r.count++;
-        const m = M.entityMetrics(e);
-        if (m.length != null) r.totalLength += m.length;
-      }
-      const sorted = [...rows.values()].sort((a, b) => a.type.localeCompare(b.type) || a.layer.localeCompare(b.layer));
-      const csv = "type,layer,count,totalLength\n" + sorted.map((r) =>
-        r.type + "," + r.layer + "," + r.count + "," + (r.totalLength * scaleCal).toFixed(3)
-      ).join("\n");
-      download(new Blob([csv], { type: "text/csv" }), base() + "-takeoff.csv");
-      logCmd("Takeoff: " + sorted.length + " row(s) exported from " + ents.length + " visible entities");
-    };
-    q("save-mk").onclick = () => {
+    q("takeoff").onclick = doTakeoff;    q("save-mk").onclick = () => {
       const json = JSON.stringify({ version: 1, markups: markups }, null, 2);
       download(new Blob([json], { type: "application/json" }), base() + ".markups.json");
       logCmd("Saved " + markups.length + " markup(s) to " + base() + ".markups.json");
@@ -4510,46 +6140,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       };
       inp.click();
     };
-    q("info").onclick = () => {
-      if (!doc) return;
-      // Full AutoCAD-style STATUS report — everything the reader pulled out of
-      // the file's tables and entities, so "what did we read" is answerable in UI.
-      const ltNames = Object.keys(doc.linetypes ?? {});
-      const styleEntries = Object.entries(doc.textStyles ?? {});
-      const dimNames = doc.dimStyles ?? [];
-      const fontsInFile = [...new Set(styleEntries.map(([, s]) => s.font).filter((f): f is string => !!f))];
-      const fontList = (fs: string[]) => (fs.length ? escapeHtml(fs.slice(0, 14).join(", ")) + (fs.length > 14 ? `, … (+${fs.length - 14})` : "") : "—");
-      const styleList = styleEntries.length
-        ? styleEntries
-            .map(([sn, s]) => `${escapeHtml(sn)} → ${escapeHtml(s.font ?? "default")}${s.height ? ` (h=${s.height})` : ""}${s.bigFont ? ` +${escapeHtml(s.bigFont)}` : ""}`)
-            .join("<br>")
-        : "—";
-      const skippedBits = Object.entries(doc.skipped ?? {})
-        .filter(([, n]) => n > 0)
-        .map(([k, n]) => `${k} (${n})`);
-      const panel = openOverlay(`
-        <b style="font-size:15px;color:#38bdf8">AutoCAD Drawing Database Status</b>
-        <table style="margin-top:10px;font-size:12px;width:100%">
-          <tr><td>File Name:</td><td>${escapeHtml(name)}</td></tr>
-          <tr><td>Database Format:</td><td>${escapeHtml((doc.sourceFormat ?? "").toUpperCase())}</td></tr>
-          <tr><td>Drawing Units:</td><td>${escapeHtml(doc.units ?? "unitless")}</td></tr>
-          <tr><td>Total Entities:</td><td>${modelEnts.length}</td></tr>
-          <tr><td>Total Layers:</td><td>${doc.layers.length}</td></tr>
-          <tr><td>Active Layouts:</td><td>${doc.layouts?.length ?? 1}</td></tr>
-          <tr><td>Linetype Table:</td><td>${ltNames.length} defined${ltNames.length ? ` — ${escapeHtml(ltNames.slice(0, 12).join(", "))}${ltNames.length > 12 ? ", …" : ""}` : ""}</td></tr>
-          <tr><td>LTSCALE:</td><td>${escapeHtml(String(doc.ltscale ?? 1))}</td></tr>
-          <tr><td>Text Style Table:</td><td>${styleEntries.length} style(s)</td></tr>
-        </table>
-        ${styleEntries.length ? `<div style="margin-top:6px;font-size:11px;line-height:1.55;color:#c3cad6;background:#12141c;border:1px solid #1f2633;border-radius:6px;padding:8px 10px">${styleList}</div>` : ""}
-        <table style="margin-top:8px;font-size:12px;width:100%">
-          <tr><td>Fonts in Drawing:</td><td>${fontList(fontsInFile)}</td></tr>
-          <tr><td>Dimension Style Table:</td><td>${dimNames.length} style(s)${dimNames.length ? ` — ${escapeHtml(dimNames.slice(0, 12).join(", "))}${dimNames.length > 12 ? ", …" : ""}` : ""}</td></tr>
-          <tr><td>Entities Not Drawn:</td><td>${skippedBits.length ? escapeHtml(skippedBits.join(", ")) : "none"}</td></tr>
-        </table>
-        <div style="margin-top:14px"><button data-r="inf-close" style="padding:6px 14px">Close</button></div>
-      `);
-      panel.querySelector("[data-r=inf-close]")?.addEventListener("click", closeOverlay);
-    };
+    q("info").onclick = doInfo;
     q("svg").onclick = exportSvg;
     q("csv").onclick = () => {
       const lines = ["index,measurement"];
@@ -4558,13 +6149,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     };
     // Shell A-menu / Quick Access dispatch forwards through the built buttons
     // (keeps toggle state in sync — tText etc. read their flags in the handler).
-    for (const k of ["tText", "tHatch", "tLt", "lyr-mgr", "help", "close", "takeoff", "save-mk", "load-mk", "info", "svg", "csv"]) {
+    for (const k of ["tText", "tHatch", "tLt", "help", "close", "takeoff", "save-mk", "load-mk", "info", "svg", "csv"]) {
       act2[k] = () => tools2.querySelector<HTMLElement>(`[data-a=${k}]`)?.click();
     }
   }
 
   buildBar();
   buildBar2();
+  // New Drawing tabs start with a live, empty document — draw immediately.
+  startBlank();
   (function markNewCadTools() {
     const mark = (btn: Element | null, tip: string) => {
       if (!btn) return;

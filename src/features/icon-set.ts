@@ -69,7 +69,14 @@ export type IconName =
   | "bench" | "conn" | "crop" | "fire" | "generative" | "inspect"
   | "lightpole" | "loads" | "pdf" | "property" | "topo" | "workset"
   // v0.66 additional icons
-  | "section-box";
+  | "section-box"
+  // CAD native-engine drafting ribbon
+  | "cut" | "paste" | "polygon" | "spline" | "ellipse" | "donut" | "point"
+  | "hatch" | "wipeout" | "xline" | "ray" | "trim" | "extend" | "break"
+  | "stretch" | "join" | "fillet" | "chamfer" | "explode" | "align"
+  | "matchprop" | "find" | "table" | "center-mark" | "dim-arclen"
+  | "dim-diameter" | "dim-baseline" | "dim-continue" | "ucs" | "purge"
+  | "audit" | "layer-state" | "import";
 
 const PATHS: Record<IconName, string> = {
   // ── App / file ──────────────────────────────────────────────────────
@@ -303,6 +310,41 @@ const PATHS: Record<IconName, string> = {
 
   // ── v0.66 additions ────────────────────────────────────────────────────
   "section-box": `<path d="M3 5 V19 H21 V5 Z"/><path d="M3 5 L21 19 M21 5 L3 19" stroke-dasharray="2 1"/>`,
+
+  // ── CAD native-engine drafting ribbon ────────────────────────────────
+  cut: `<path d="M7 6 L17 18 M17 6 L7 18"/><circle cx="6" cy="19.5" r="2"/><circle cx="18" cy="19.5" r="2"/>`,
+  paste: `<rect x="5" y="4" width="14" height="17" rx="1.5"/><path d="M9 4 H15 V7 H9 Z"/><path d="M8 11 H16 M8 14.5 H16 M8 18 H13"/>`,
+  polygon: `<path d="M12 3 L20.5 9 L17.3 19 H6.7 L3.5 9 Z"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>`,
+  spline: `<path d="M3 19 C7 19 7 5 12 5 C17 5 17 19 21 19"/><circle cx="3" cy="19" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="5" r="1.3" fill="currentColor" stroke="none"/><circle cx="21" cy="19" r="1.3" fill="currentColor" stroke="none"/>`,
+  ellipse: `<ellipse cx="12" cy="12" rx="9" ry="6"/><path d="M3 12 H21" stroke-dasharray="2 1.6"/>`,
+  donut: `<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/>`,
+  point: `<circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 4 V8 M12 16 V20 M4 12 H8 M16 12 H20"/>`,
+  hatch: `<path d="M4 4 H20 V20 H4 Z"/><path d="M4 12 L12 20 M4 7 L17 20 M7 4 L20 17 M12 4 L20 12"/>`,
+  wipeout: `<rect x="4" y="6" width="13" height="9" rx="1"/><path d="M8 18 H21 M10 21 H18" opacity="0.55"/><path d="M7 9 H14 M7 12 H14" opacity="0.8"/>`,
+  xline: `<path d="M2 12 H22 M4 9 L8 12 L4 15 M20 9 L16 12 L20 15"/>`,
+  ray: `<circle cx="4" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M4 12 H22 M19 9.5 L22 12 L19 14.5"/>`,
+  trim: `<path d="M4 18 L11 11 M13 9 L18 4 M20 4 L12 12 M9 20 H20 M12 12 L20 20" stroke-dasharray="0 0"/><path d="M14 4 H20 V10"/>`,
+  extend: `<path d="M3 16 L12 7 L15 10"/><path d="M12 20 H21 M15 16 L21 16 L21 10"/><path d="M18 13 L21 16 L18 19"/>`,
+  break: `<path d="M3 12 H8 M16 12 H21"/><path d="M8 12 L11 9 M11 15 L8 12" opacity="0"/><path d="M9 8 Q12 12 15 16"/><path d="M9 16 Q12 12 15 8"/>`,
+  stretch: `<rect x="4" y="8" width="10" height="8" rx="1"/><path d="M14 12 H21 M18 8.5 L21 12 L18 15.5"/>`,
+  join: `<path d="M3 18 L9 12 M15 8 L21 3"/><path d="M9 12 C11 10 13 10 15 8" stroke-dasharray="1.6 1.6"/><circle cx="9" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="8" r="1.2" fill="currentColor" stroke="none"/>`,
+  fillet: `<path d="M3 20 H21 M3 20 V3"/><path d="M3 9 A11 11 0 0 1 14 20" stroke-dasharray="2.5 2"/>`,
+  chamfer: `<path d="M3 20 H21 M3 20 V3"/><path d="M3 12 L11 20"/>`,
+  explode: `<rect x="9" y="9" width="6" height="6"/><path d="M6 6 L9 9 M18 6 L15 9 M6 18 L9 15 M18 18 L15 15"/>`,
+  align: `<circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M6 6 L18 18" stroke-dasharray="3 2"/><path d="M8 16 H14 M12 13 L15 16 L12 19" transform="rotate(0 12 16)"/>`,
+  matchprop: `<path d="M5 5 H13 V10 H5 Z"/><path d="M9 10 V15"/><rect x="7" y="15" width="10" height="5" rx="1"/><path d="M13 7.5 H19 M17 5.5 L19 7.5 L17 9.5"/>`,
+  find: `<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15 L21 21"/><path d="M8 10.5 H13 M10.5 8 V13"/>`,
+  table: `<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9.5 H21 M3 15 H21 M9 4 V20 M15 4 V20"/>`,
+  "center-mark": `<circle cx="12" cy="12" r="7"/><path d="M2.5 12 H21.5 M12 2.5 V21.5"/>`,
+  "dim-arclen": `<path d="M4 18 A10 10 0 0 1 20 18"/><path d="M4 18 L5.5 13.5 M20 18 L18.5 13.5"/><path d="M9 10 Q12 12 15 10" stroke-dasharray="1.5 1.5" opacity="0.7"/>`,
+  "dim-diameter": `<circle cx="12" cy="12" r="8"/><path d="M6.3 6.3 L17.7 17.7"/><path d="M6.3 6.3 L7.5 9 M6.3 6.3 L9 7.5 M17.7 17.7 L16.5 15 M17.7 17.7 L15 16.5"/>`,
+  "dim-baseline": `<path d="M4 5 V19"/><path d="M4 8 H14 M4 14 H20"/><path d="M14 6 V10 M20 12 V16 M14 8 L20 14" opacity="0.6"/>`,
+  "dim-continue": `<path d="M3 17 H9 M11 17 H17 M19 17 H21"/><path d="M9 15 V19 M17 15 V19 M3 15 V19 M21 15 V19"/><path d="M9 17 L11 17 M17 17 L19 17" stroke-dasharray="1.4 1.4" opacity="0.7"/>`,
+  ucs: `<path d="M4 20 V4 M4 20 H20"/><path d="M4 12 L12 20" stroke-dasharray="2.4 2"/><circle cx="4" cy="20" r="1.4" fill="currentColor" stroke="none"/><path d="M12 20 L10 18 M4 12 L6 10"/>`,
+  purge: `<rect x="5" y="7" width="14" height="14" rx="1.5"/><path d="M9 7 V4.5 A1.5 1.5 0 0 1 10.5 3 H13.5 A1.5 1.5 0 0 1 15 4.5 V7"/><path d="M9 11 V18 M12 11 V18 M15 11 V18" opacity="0.75"/>`,
+  audit: `<circle cx="12" cy="12" r="8.5"/><path d="M8 12.5 L11 15.5 L16.5 9.5"/>`,
+  "layer-state": `<path d="M12 3 L21 8 L12 13 L3 8 Z"/><path d="M3 13 L12 18 L21 13" opacity="0.65"/><path d="M3 17.5 L12 22 L21 17.5" opacity="0.35"/>`,
+  import: `<path d="M12 3 V14 M8 10.5 L12 14.5 L16 10.5"/><path d="M4 14 V19 A2 2 0 0 0 6 21 H18 A2 2 0 0 0 20 19 V14"/>`,
 };
 
 /**
