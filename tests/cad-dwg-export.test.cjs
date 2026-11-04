@@ -43,7 +43,6 @@ const { writeDxf } = require(find(out, "dxf-writer.js"));
   assert.ok(parsed && parsed.format === "dwg", "exported file did not parse as DWG");
   assert.strictEqual(parsed.entityCount, doc.entities.length, "entity count changed during DWG round-trip");
   assert.ok(parsed.doc.layers.some((l) => l.name === "WALLS"), "layer table did not survive DWG round-trip");
-  assert.throws(() => {}, "sanity");
   let emptyFailed = false;
   try { await acad.exportDxfToDwg(""); } catch { emptyFailed = true; }
   assert.ok(emptyFailed, "empty input must be rejected");
