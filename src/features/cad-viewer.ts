@@ -23,7 +23,7 @@
 import { readCadFile } from "../modules/cad-link/index";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
 import { downloadDxf, writeDxf } from "../modules/drawings/dxf-writer";
-import { exportDxfToDwg } from "../modules/drawings/acad-engine";
+import { exportDxfToDwg, validateDxfForDwgExport } from "../modules/drawings/acad-engine";
 import { makeClip, clipInstances, type CadClip } from "../modules/cad-viewer/clipboard";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
@@ -5633,12 +5633,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // Refuse content the current 2D DXF serializer cannot faithfully carry.
     const hatchBoundaries = entities.filter((e) => e.type === "LWPOLYLINE" && !!e.hatch).length;
     const skippedEntities = Object.values(doc.skipped ?? {}).reduce((sum, count) => sum + count, 0);
-    const paperSpaceEntities = (doc.layouts ?? []).reduce((sum, layout) => sum + layout.entities.length, 0);
-    if (hatchBoundaries || skippedEntities || paperSpaceEntities) {
+    const layoutCount = doc.layouts?.length ?? 0;
+    const dimensionStyleCount = Math.max(doc.dimStyles?.length ?? 0, Object.keys(doc.dimStyleTable ?? {}).length);
+    const customTextStyles = Object.keys(doc.textStyles ?? {}).filter((name) => !/^standard$/i.test(name));
+    if (hatchBoundaries || skippedEntities || layoutCount || dimensionStyleCount || customTextStyles.length) {
       const reasons = [
         hatchBoundaries ? `${hatchBoundaries} hatch boundary/boundaries` : "",
         skippedEntities ? `${skippedEntities} unsupported imported entity/entities` : "",
-        paperSpaceEntities ? `${paperSpaceEntities} paper-space entity/entities` : "",
+        layoutCount ? `${layoutCount} paper-space layout(s)/viewport definitions` : "",
+        dimensionStyleCount ? `${dimensionStyleCount} dimension style record(s)` : "",
+        customTextStyles.length ? `${customTextStyles.length} custom text style definition(s)` : "",
       ].filter(Boolean).join(", ");
       logCmd(`DWG export cancelled to prevent data loss: ${reasons}. Export as DXF or resolve these items first.`);
       status("DWG export blocked — unsupported content");
@@ -5646,6 +5650,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     try {
       const dxf = writeDxf({ ...doc, entities });
+      await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
       const blobBuffer = new ArrayBuffer(bytes.byteLength);
       new Uint8Array(blobBuffer).set(bytes);
@@ -6310,6 +6315,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     pasteOrig,
     hasClip: () => !!clip,
     saveDxf,
+    saveDwg,
     fileName: () => name,
     focus: () => cv.focus({ preventScroll: true }),
     exec: (a: string) => {
