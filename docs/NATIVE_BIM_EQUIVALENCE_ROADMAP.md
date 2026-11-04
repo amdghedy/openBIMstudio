@@ -20,7 +20,7 @@ The repository's own feature-maturity registry correctly records several boundar
 - **Documentation:** sheets/views/PDF support is limited compared with a full documentation environment.
 - **Schedules and quantities:** take-off is parameter-driven, not yet a full configurable rules-based quantity/cost engine.
 - **Collaboration:** persistence is whole-file JSON and conflict semantics need a formal consistency audit.
-- **DWG:** import is limited to the documented reader/version coverage; DWG export is explicitly unavailable and must not be presented as implemented.
+- **DWG:** import remains limited to documented reader/version coverage; CAD-editor DWG export is experimental, local and 2D-subset-only, with unsupported content rejected pending round-trip verification.
 - **Validation and performance:** some IDS facets, large-model performance budgets and offline end-to-end flows still need evidence.
 
 See `src/features/feature-maturity.ts` for the machine-readable baseline and limitations.
