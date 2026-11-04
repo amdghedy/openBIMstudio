@@ -4974,10 +4974,109 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     updateStatus();
   }, { passive: false });
 
-  // Escape key handler
+  // Escape key handler — single Esc cancels step-by-step; double Esc (within 500 ms)
+  // fully resets the drawing session to a clean SELECT state (like a fresh reload of tools).
+  let lastEscAt = 0;
+  const DOUBLE_ESC_MS = 500;
+
+  /** Drop every in-progress command, tool, prompt and selection — idle SELECT. */
+  function resetDrawingSession(reason = "double Esc"): void {
+    try {
+      closeDynamicCommand();
+    } catch {
+      /* */
+    }
+    try {
+      closeOverlay();
+    } catch {
+      /* */
+    }
+    try {
+      clearPickState();
+    } catch {
+      /* */
+    }
+    try {
+      clearModState();
+    } catch {
+      /* */
+    }
+    matchSrc = null;
+    pendingNumeric = null;
+    pendingYesNo = null;
+    try {
+      offStage = "dist";
+      offTarget = -1;
+      offPick = null;
+      offsetEntity = -1;
+    } catch {
+      /* */
+    }
+    pts = [];
+    winStart = winNow = null;
+    rband = null;
+    press = null;
+    dragging = null;
+    hover = null;
+    cursor = null;
+    try {
+      modGhost = null;
+    } catch {
+      /* */
+    }
+    try {
+      cmdAutoEl.style.display = "none";
+    } catch {
+      /* */
+    }
+    try {
+      cmdInput.value = "";
+    } catch {
+      /* */
+    }
+    // Return to SELECT and clear grips / selection
+    tool = "select";
+    try {
+      tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) =>
+        b.classList.toggle("on", b.dataset.t === "select"),
+      );
+    } catch {
+      /* */
+    }
+    cv.style.cursor = "crosshair";
+    setSel([]);
+    selected = -1;
+    lastEscAt = 0;
+    logCmd(`*Cancel* — all commands reset (${reason})`);
+    try {
+      showProps();
+    } catch {
+      /* */
+    }
+    try {
+      updateStatus();
+    } catch {
+      /* */
+    }
+    draw();
+    try {
+      cv.focus({ preventScroll: true });
+    } catch {
+      /* */
+    }
+  }
+
   function onEscape(): void {
+    const now = performance.now();
+    if (lastEscAt > 0 && now - lastEscAt <= DOUBLE_ESC_MS) {
+      resetDrawingSession("double Esc");
+      return;
+    }
+    lastEscAt = now;
+
     if (dynCommandEl) {
       closeDynamicCommand();
+      logCmd("*Cancel*");
       return;
     }
     if (helpEl) {
@@ -5006,10 +5105,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (tool !== "select") {
       setTool("select");
+      logCmd("*Cancel*");
       return;
     }
-    if (sel.size) setSel([]);
-    logCmd("Command: Cancel");
+    if (sel.size) {
+      setSel([]);
+      logCmd("*Cancel*");
+      return;
+    }
+    // Idle SELECT with nothing selected: second Esc within the window still resets
+    logCmd("Command: Cancel (press Esc again to reset all)");
   }
 
     // Keyboard Shortcuts (AutoCAD Standard: F3, F7, F8, F12, Ctrl+Z, Ctrl+Y, Space/Enter)
