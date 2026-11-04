@@ -154,6 +154,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "REDO", aliases: ["REDO"], description: "Redo the previously undone operation" },
   { name: "PLOT", aliases: ["PRINT"], description: "Plot drawing to PDF or physical paper" },
   { name: "QSAVE", aliases: ["SAVE"], description: "Save the edited drawing as a DXF file" },
+  { name: "SAVEAS", aliases: ["SA"], description: "Choose DXF or DWG for export" },
   { name: "DWGSAVE", aliases: ["EXPORTDWG"], description: "Export the edited drawing as a native DWG file" },
   { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
   { name: "COPYCLIP", aliases: ["CC"], description: "Copy selected objects to the cross-drawing clipboard (Ctrl+C)" },
@@ -5115,8 +5116,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       openPlot();
       return;
     }
-    if (cmd === "QSAVE" || cmd === "SAVE" || cmd === "SAVEAS") {
+    if (cmd === "QSAVE" || cmd === "SAVE") {
       saveDxf();
+      return;
+    }
+    if (cmd === "SAVEAS" || cmd === "SA") {
+      void promptLine("Save As", "Choose output format: DXF or DWG", "DXF").then((format) => {
+        const choice = (format ?? "").trim().toUpperCase().replace(/^\./, "");
+        if (choice === "DXF") saveDxf();
+        else if (choice === "DWG") void saveDwg();
+        else if (choice) logCmd("SAVEAS cancelled: enter DXF or DWG.");
+      });
+      return;
+    }
+    if (cmd === "DWGSAVE" || cmd === "EXPORTDWG") {
+      void saveDwg();
       return;
     }
     if (cmd === "COPYCLIP") {
