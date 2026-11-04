@@ -49,9 +49,7 @@ is the Phase 4 deliverable (`docs/INTEROPERABILITY_MATRIX.md`).
 
 ## Known non-goals and honest absences
 
-- **DWG export** — experimental (see matrix). The CAD editor converts its
-  supported 2D DXF serialization to native DWG locally through acadrust
-  (MPL-2.0); unsupported content is rejected rather than silently discarded.
+- **DWG export** — experimental (see matrix). The CAD editor converts its supported 2D DXF serialization to native DWG locally through acadrust (MPL-2.0); unsupported content is rejected rather than silently discarded, and when the local WASM engine artifact is missing, DWG export is unavailable and nothing is written.
 - **Native Revit file parsing** — RVT/RFA/NWD/NWC are closed formats; they
   are never parsed in-browser. NWD/NWC/NWF are converted **locally** by the
   openBIM NWC bridge driving the user's own Navisworks + BIMCamel plug-in
