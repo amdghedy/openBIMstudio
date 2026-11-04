@@ -466,8 +466,8 @@ export function validateMepNetworkTopology(
     const source = uniqueConnector(sourceElementId, sourceName);
     const target = uniqueConnector(targetElementId, targetName);
 
-    if (sourceKey === targetKey) {
-      issues.push({ code: "self-connection", message: "connection '" + (id || "(no id)") + "' references the same connector at both ends", elementIds: [sourceElementId] });
+    if (sourceElementId === targetElementId || sourceKey === targetKey) {
+      issues.push({ code: "self-connection", message: "connection '" + (id || "(no id)") + "' links an element to itself", elementIds: [sourceElementId] });
     }
     if (!source || !target) {
       const missing: string[] = [];
@@ -504,7 +504,7 @@ export function validateMepNetworkTopology(
       const sameSize = Array.isArray(fromSize) && Array.isArray(toSize)
         ? fromSize[0] === toSize[0] && fromSize[1] === toSize[1]
         : !Array.isArray(fromSize) && !Array.isArray(toSize) && fromSize === toSize;
-      if (!sameSize && connection.fittings.length === 0) {
+      if (!sameSize && (!Array.isArray(connection.fittings) || connection.fittings.length === 0)) {
         issues.push({
           code: "size-jump-without-fitting",
           message: "connection " + id + " changes size without a reducer/transition fitting",
