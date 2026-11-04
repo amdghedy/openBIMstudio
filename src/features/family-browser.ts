@@ -497,7 +497,7 @@ type FamilyConnectorPreviewState = {
   onPortMove: (index: number, origin: [number, number, number]) => void;
   refresh: () => void;
 };
-\nconst CONNECTOR_DOMAINS: ConnectorDefinition["domain"][] =
+const CONNECTOR_DOMAINS: ConnectorDefinition["domain"][] =
   ["duct", "pipe", "electrical", "conduit", "cabletray", "structural", "other"];
 const CONNECTOR_SHAPES: ConnectorDefinition["shape"][] =
   ["round", "rectangular", "oval", "point"];
