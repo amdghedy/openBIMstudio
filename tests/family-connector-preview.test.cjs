@@ -131,7 +131,8 @@ try {
 
   const browserSource = fs.readFileSync(path.join(root, "src/features/family-browser.ts"), "utf8");
   test("Family Browser passes connector definitions to the geometry preview", () => {
-    assert.match(browserSource, /buildPreviewSvg\(built,\s*fam\.connectorDefs\s*\?\?\s*\[\]\)/);
+    assert.match(browserSource, /buildPreviewSvg\(builtPreviewObject,\s*connectorPreviewState\.definitions/);
+    assert.match(browserSource, /definitions:\s*\(fam\.connectorDefs\s*\?\?\s*\[\]\)\.map/);
     assert.match(browserSource, /buildFamilyConnectorPreviewLayout/);
     assert.match(browserSource, /createElementNS\(SVG_NS,\s*["']circle["']\)/);
     assert.match(browserSource, /createElementNS\(SVG_NS,\s*["']polygon["']\)/);
