@@ -339,6 +339,7 @@ bim-panel-section[data-collapsed] { overflow: hidden; }
    leaving full screen restores the layout as it was, including the ribbon's own
    minimize state, because only this scoped rule does the hiding. */
 body.obs-fullscreen .obs-ribbon,
+body.obs-fullscreen #obs-options-bar,
 body.obs-fullscreen .bb-status {
   display: none !important;
 }
