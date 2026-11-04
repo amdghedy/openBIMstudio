@@ -5,6 +5,10 @@ const path = require("path");
 const assert = require("assert");
 const { execSync } = require("child_process");
 const root = path.join(__dirname, "..");
+const viewerSource = fs.readFileSync(path.join(root, "src", "features", "cad-viewer.ts"), "utf8");
+for (const required of ['name: "SAVEAS"', 'name: "DWGSAVE"', 'async function saveDwg()', 'exportDxfToDwg(dxf)', "DWG export cancelled to prevent data loss"]) {
+  assert.ok(viewerSource.includes(required), "CAD editor DWG export wiring missing: " + required);
+}
 const wasmPath = path.join(root, "public", "cad-engine", "obim-cad-engine.wasm");
 assert.ok(fs.existsSync(wasmPath), "DWG writer WASM is missing; build cad-engine-rust first");
 
