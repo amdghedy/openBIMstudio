@@ -5032,13 +5032,43 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     openDynamicCommand(ev.key);
   });
 
-  cv.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape") {
-      ev.preventDefault();
-      onEscape();
+  function repeatLastCommand(): void {
+    const last = cmdHistory.length ? cmdHistory[cmdHistory.length - 1] : "";
+    if (!last || !String(last).trim()) {
+      logCmd("Nothing to repeat.");
       return;
     }
-    if (ev.key === "F3") {
+    logCmd(`Repeat: ${last}`);
+    executeAutoCadCommand(last);
+  }
+
+  /** Undo / Redo / Esc / Delete / Ctrl+C/V/X / Space·Enter repeat — work anywhere while this drawing is active. */
+  const onCadEditorHotkeys = (ev: KeyboardEvent): void => {
+    if (!screenTypeActive) return;
+    if (!page.isConnected || page.style.display === "none") return;
+    if (!shell || shell.style.display === "none") return;
+    if (isUiTextField(ev.target) && ev.target !== cv) {
+      // Allow Esc to still cancel CAD tools even from non-command inputs in the shell
+      if (ev.key !== "Escape") return;
+    }
+    // Let the dynamic command prompt handle its own Enter/Esc
+    if (dynCommandEl && dynCommandInput && document.activeElement === dynCommandInput) {
+      return;
+    }
+
+    const modKey = ev.ctrlKey || ev.metaKey;
+    const key = ev.key;
+    const lower = key.length === 1 ? key.toLowerCase() : key;
+
+    if (key === "Escape") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      onEscape();
+      try { cv.focus({ preventScroll: true }); } catch { /* */ }
+      return;
+    }
+
+    if (key === "F3") {
       ev.preventDefault();
       snapOn = !snapOn;
       tools.querySelector("[data-a=snap]")?.classList.toggle("on", snapOn);
@@ -5047,7 +5077,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`OSNAP: <${snapOn ? "ON" : "OFF"}>`);
       return;
     }
-    if (ev.key === "F7") {
+    if (key === "F7") {
       ev.preventDefault();
       showGrid = !showGrid;
       tools.querySelector("[data-a=grid]")?.classList.toggle("on", showGrid);
@@ -5056,7 +5086,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`GRID: <${showGrid ? "ON" : "OFF"}>`);
       return;
     }
-    if (ev.key === "F8") {
+    if (key === "F8") {
       ev.preventDefault();
       orthoOn = !orthoOn;
       tools.querySelector("[data-a=ortho]")?.classList.toggle("on", orthoOn);
@@ -5065,7 +5095,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`ORTHOMODE: <${orthoOn ? "ON" : "OFF"}>`);
       return;
     }
-    if (ev.key === "F12") {
+    if (key === "F12") {
       ev.preventDefault();
       dynOn = !dynOn;
       tools.querySelector("[data-a=dyn]")?.classList.toggle("on", dynOn);
@@ -5074,18 +5104,66 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`DYNMODE: <${dynOn ? "ON" : "OFF"}>`);
       return;
     }
-    if (ev.key === "Delete") {
-      if (!mod) eraseSelected();
+
+    if (key === "Delete" || key === "Backspace") {
+      // Backspace only deletes selection when not typing a command (AutoCAD: Delete)
+      if (key === "Backspace" && (pts.length || pick || mod)) return;
+      if (!mod) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        eraseSelected();
+      }
       return;
     }
-    if (mod?.stage === "eraseAsk" && (ev.key === "y" || ev.key === "Y")) {
+
+    if (mod?.stage === "eraseAsk" && (lower === "y" || lower === "n")) {
       ev.preventDefault();
       const f = pendingYesNo;
       pendingYesNo = null;
-      f?.(true);
+      f?.(lower === "y");
       return;
     }
-    if (ev.key === "Enter" || ev.key === " ") {
+
+    // Ctrl/Cmd shortcuts
+    if (modKey && lower === "z" && !ev.shiftKey) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      undo();
+      return;
+    }
+    if (modKey && (lower === "y" || (lower === "z" && ev.shiftKey))) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      redo();
+      return;
+    }
+    if (modKey && lower === "c") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      copySelection();
+      return;
+    }
+    if (modKey && lower === "x") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (copySelection()) eraseSelected();
+      return;
+    }
+    if (modKey && lower === "v") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ev.shiftKey) pasteOrig();
+      else pasteClip();
+      return;
+    }
+    if (modKey && key === "0") {
+      ev.preventDefault();
+      toggleCleanScreen();
+      return;
+    }
+
+    // Enter / Space: finish current op, or repeat last command (AutoCAD)
+    if (key === "Enter" || key === " ") {
       if (pick) {
         ev.preventDefault();
         confirmPickStep();
@@ -5103,9 +5181,32 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (pts.length > 0) {
         ev.preventDefault();
         finishMeasure();
+        return;
+      }
+      // Idle: Space / Enter repeats last command
+      if (tool === "select" && !dynCommandEl) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        repeatLastCommand();
       }
     }
-    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") {
+  };
+  window.addEventListener("keydown", onCadEditorHotkeys, true);
+
+  // Keep canvas-local hotkeys as a fallback when the canvas has focus
+  cv.addEventListener("keydown", (ev) => {
+    // Handled by window capture when active; this covers focus-only edge cases
+    if (screenTypeActive) return;
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      onEscape();
+      return;
+    }
+    if (ev.key === "Delete") {
+      if (!mod) eraseSelected();
+      return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z" && !ev.shiftKey) {
       ev.preventDefault();
       undo();
       return;
@@ -5118,22 +5219,6 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "c") {
       ev.preventDefault();
       copySelection();
-      return;
-    }
-    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "x") {
-      ev.preventDefault();
-      if (copySelection()) eraseSelected();
-      return;
-    }
-    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "v") {
-      ev.preventDefault();
-      if (ev.shiftKey) pasteOrig();
-      else pasteClip();
-      return;
-    }
-    if ((ev.ctrlKey || ev.metaKey) && ev.key === "0") {
-      ev.preventDefault();
-      toggleCleanScreen();
       return;
     }
   });
@@ -5832,6 +5917,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   cmdInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      const v = cmdInput.value.trim();
+      if (!v) {
+        repeatLastCommand();
+        return;
+      }
       executeAutoCadCommand(cmdInput.value);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
