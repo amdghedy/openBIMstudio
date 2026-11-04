@@ -1,5 +1,14 @@
 /** Raw IndexedDB persistence — no dependencies, local-first. */
 import type { ProjectDoc, ProjectSummary } from "./types";
+export type { ProjectRecoverySnapshot } from "./project-journal";
+import {
+  getProjectJournalPruneIds,
+  prepareRecoveredProjectDocument,
+  summarizeProjectJournalRecord,
+  type ProjectJournalReason,
+  type ProjectJournalRecord,
+  type ProjectRecoverySnapshot,
+} from "./project-journal";
 
 const DB_NAME = "open-bim-studio";
 const DB_VERSION = 2;
