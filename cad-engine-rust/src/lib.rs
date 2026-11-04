@@ -115,8 +115,24 @@ pub fn write_dwg_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let document = reader
         .read()
         .map_err(|e| format!("dxf-read-failed: {e}"))?;
-    acadrust::DwgWriter::write_to_vec(&document)
-        .map_err(|e| format!("dwg-write-failed: {e}"))
+    let expected_entities = document.entities().count();
+    let dwg = acadrust::DwgWriter::write_to_vec(&document)
+        .map_err(|e| format!("dwg-write-failed: {e}"))?;
+    if dwg.len() < 6 || !dwg.starts_with(b"AC10") {
+        return Err("dwg-write-invalid: output has no recognized DWG signature".to_string());
+    }
+    // Re-open the actual bytes before returning them. This catches truncated
+    // output and entity loss caused by unsupported writer paths.
+    let mut verify = acadrust::DwgReader::from_stream(Cursor::new(dwg.clone()));
+    let reopened = verify.read()
+        .map_err(|e| format!("dwg-verify-failed: {e}"))?;
+    let actual_entities = reopened.entities().count();
+    if actual_entities != expected_entities {
+        return Err(format!(
+            "dwg-verify-entity-count: input has {expected_entities} entities but DWG re-opened with {actual_entities}; export cancelled to prevent silent data loss"
+        ));
+    }
+    Ok(dwg)
 }
 
 /// C-ABI DWG export. The returned frame payload starts with a status byte:
