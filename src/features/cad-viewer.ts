@@ -4304,12 +4304,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     if (ev.button !== 0) return;
 
-    if (tool === "box" || (tool === "select" && (ev.shiftKey || ev.ctrlKey))) {
-      press = { x: sp.x, y: sp.y, moved: false, id: ev.pointerId, band: true, add: ev.shiftKey || ev.ctrlKey };
+    // AutoCAD SELECT: left-click drag always starts a selection rectangle.
+    // Left → right  = WINDOW (solid blue) — only entities fully inside
+    // Right → left  = CROSSING (dotted green) — any entity that touches the box
+    // Shift/Ctrl adds to the current selection. Pan is middle-button or PAN tool only.
+    if (tool === "box" || tool === "select") {
+      press = {
+        x: sp.x,
+        y: sp.y,
+        moved: false,
+        id: ev.pointerId,
+        band: true,
+        add: ev.shiftKey || ev.ctrlKey,
+      };
       capture(ev.pointerId);
       return;
     }
-    if (tool === "pan" || tool === "select") {
+    if (tool === "pan") {
       press = { x: sp.x, y: sp.y, moved: false, id: ev.pointerId };
       capture(ev.pointerId);
       return;
@@ -4884,12 +4895,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (ptrs.size < 2) pinch = 0;
     if (press && press.id === ev.pointerId) {
       if (press.band && press.moved && rband && idx && ev.type === "pointerup") {
-        const a = M.screenToWorld(view, rband.a.x, rband.a.y),
-          b = M.screenToWorld(view, rband.b.x, rband.b.y);
-        setSel(
-          M.selectInRect(idx, ents, M.rectOf(a, b), rband.b.x >= rband.a.x ? "window" : "crossing", visible),
-          !!press.add,
-        );
+        // Screen X direction decides mode (AutoCAD): L→R window, R→L crossing
+        const isWindow = rband.b.x >= rband.a.x;
+        const mode: "window" | "crossing" = isWindow ? "window" : "crossing";
+        const a = M.screenToWorld(view, rband.a.x, rband.a.y);
+        const b = M.screenToWorld(view, rband.b.x, rband.b.y);
+        const rect = M.rectOf(a, b);
+        // Ignore tiny accidental drags (treat as click)
+        const screenW = Math.abs(rband.b.x - rband.a.x);
+        const screenH = Math.abs(rband.b.y - rband.a.y);
+        if (screenW >= 4 || screenH >= 4) {
+          const ids = M.selectInRect(idx, ents, rect, mode, visible);
+          setSel(ids, !!press.add);
+          logCmd(
+            isWindow
+              ? `Window selected ${ids.length} object(s) (fully inside)`
+              : `Crossing selected ${ids.length} object(s) (any touch)`,
+          );
+        } else {
+          const { wp } = rawPoint(ev);
+          const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 8 / view.scale, visible) : -1;
+          if (i >= 0) setSel([i], !!press.add);
+          else if (!press.add) setSel([]);
+        }
       } else if (!press.moved && doc && ev.type === "pointerup") {
         const { wp } = rawPoint(ev);
         const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 8 / view.scale, visible) : -1;
