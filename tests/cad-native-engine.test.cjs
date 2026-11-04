@@ -196,5 +196,30 @@ t("translate/rotate/scale/mirror entity transforms still work", () => {
   assert.ok(ptClose(mi.end, { x: -1, y: 0 }));
 });
 
+// ── 15. AutoCAD-style revision cloud and repeated COPY workflow ──
+t("revision clouds are native closed polylines so they can be selected and exported", () => {
+  const viewer = fs.readFileSync(path.join(ROOT, "src/features/cad-viewer.ts"), "utf8");
+  assert.ok(viewer.includes('{ name: "REVCLOUD", aliases: ["RC", "CLOUD"]'), "REVCLOUD command and aliases missing");
+  assert.ok(viewer.includes('if (cmd === "RC" || cmd === "CLOUD" || cmd === "REVCLOUD"'), "typed revision-cloud command is not dispatched");
+  assert.ok(viewer.includes("const boundary = [...pts, pts[0]];"), "cloud boundary must close back to its first point");
+  assert.ok(viewer.includes("points: cloudPoints.map((p) => ({ x: p.x, y: p.y })),\n          closed: true,"), "cloud must be committed as a closed LWPOLYLINE");
+  assert.ok(!/markups\.push\(\{ kind: "cloud"/.test(viewer), "cloud must not remain transient markup");
+});
+t("COPY keeps its original base point for every placement (non-cumulative offsets)", () => {
+  const viewer = fs.readFileSync(path.join(ROOT, "src/features/cad-viewer.ts"), "utf8");
+  const copyCase = viewer.slice(viewer.indexOf('case "copy": {', viewer.indexOf("function onModPointerDown")), viewer.indexOf('case "rotate": {', viewer.indexOf("function onModPointerDown")));
+  assert.ok(copyCase.includes("placeCopy({ x: wp.x - b.x, y: wp.y - b.y });"), "COPY displacement must be measured from original base point");
+  assert.ok(!copyCase.includes("mod.base ="), "COPY must not move its base point after each placement");
+  assert.ok(viewer.includes('mod.stage === "second" && mod.kind === "copy"'), "Enter must finish the repeated-copy command");
+});
+t("global Cloud ribbon action starts revision-cloud placement instead of MLINE", () => {
+  const ribbon = fs.readFileSync(path.join(ROOT, "src/shell/ribbon.ts"), "utf8");
+  const at = ribbon.indexOf('b("revision-cloud", "Cloud"');
+  assert.ok(at >= 0, "Cloud ribbon button missing");
+  const cloud = ribbon.slice(at, at + 800);
+  assert.ok(cloud.includes("revisions.begin()") || cloud.includes("beginCloudPlacement()"), "Cloud button is not connected to revision-cloud placement");
+  assert.ok(!cloud.includes('setAuthoringTool("mline")'), "Cloud button must not start MLINE");
+});
+
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
