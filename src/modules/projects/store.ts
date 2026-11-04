@@ -38,7 +38,6 @@ function openDb(): Promise<IDBDatabase> {
         }
         if (!db.objectStoreNames.contains(S_JOURNAL_BLOBS)) {
           const archived = db.createObjectStore(S_JOURNAL_BLOBS, { keyPath: "key" });
-          archived.createIndex("snapshotId", "snapshotId", { unique: false });
           archived.createIndex("projectId", "projectId", { unique: false });
         }
       };
