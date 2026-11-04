@@ -3,7 +3,7 @@ import type { ProjectDoc } from "./types";
 export const PROJECT_RECOVERY_RETENTION = 10;
 export type ProjectJournalReason = "project-save" | "model-import" | "before-restore";
 
-export interface ProjectJournalRecord { id: number; projectId: string; createdAt: number; reason: ProjectJournalReason; doc: ProjectDoc; archivedModelIds: string[]; missingModelIds: string[]; }
+export interface ProjectJournalRecord { id: number; projectId: string; createdAt: number; reason: ProjectJournalReason; doc: ProjectDoc; modelVersions: Array<{ modelId: string; version: string }>; archivedModelIds: string[]; missingModelIds: string[]; }
 export interface ProjectRecoverySnapshot { id: number; createdAt: number; reason: ProjectJournalReason; projectName: string; updatedAt: number; elementCount: number; modelCount: number; archivedModelCount: number; missingModelCount: number; }
 
 export function getProjectJournalPruneIds(ids: readonly number[], maxEntries = PROJECT_RECOVERY_RETENTION): number[] {

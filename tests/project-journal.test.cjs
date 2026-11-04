@@ -14,7 +14,7 @@ assert.deepEqual(journal.getProjectJournalPruneIds([1, 2, 3, 4, 5], 3), [1, 2]);
 assert.deepEqual(journal.getProjectJournalPruneIds([9, 2, 8, 1, 9, 7], 3), [1, 2]);
 assert.throws(() => journal.getProjectJournalPruneIds([1], 0), /positive integer/);
 const doc = { id: "p-1", name: "Tower", createdAt: 10, updatedAt: 20, elements: [{ id: "wall-1" }, { id: "wall-2" }], models: [{ id: "ifc-1", name: "structure.ifc", bytes: 100 }, { id: "frag-1", name: "services.frag", bytes: 200 }] };
-const summary = journal.summarizeProjectJournalRecord({ id: 7, projectId: "p-1", createdAt: 30, reason: "project-save", doc, archivedModelIds: ["ifc-1"], missingModelIds: ["frag-1"] });
+const summary = journal.summarizeProjectJournalRecord({ id: 7, projectId: "p-1", createdAt: 30, reason: "project-save", doc, modelVersions: [{ modelId: "ifc-1", version: "v1" }], archivedModelIds: ["ifc-1"], missingModelIds: ["frag-1"] });
 assert.equal(summary.archivedModelCount, 1); assert.equal(summary.missingModelCount, 1);
 const restored = journal.prepareRecoveredProjectDocument(doc, new Set(["ifc-1"]), 99);
 assert.equal(restored.doc.updatedAt, 99); assert.equal(restored.doc.models[0].missing, undefined); assert.equal(restored.doc.models[1].missing, true);
