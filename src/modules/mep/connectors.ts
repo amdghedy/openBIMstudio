@@ -361,89 +361,221 @@ export function createConnectorRelationship(
 
 // ── Topology validation (spec 2B.7) ─────────────────────────────────────
 
+
 export interface TopologyIssue {
   code:
     | "disconnected-equipment"
     | "flow-direction-conflict"
     | "closed-loop"
     | "size-jump-without-fitting"
-    | "missing-fitting";
+    | "missing-fitting"
+    | "duplicate-connector-definition"
+    | "duplicate-connection-id"
+    | "dangling-connection"
+    | "self-connection"
+    | "connector-multiple-connections"
+    | "connector-compatibility"
+    | "invalid-connection-route"
+    | "connector-engagement-mismatch";
   message: string;
   elementIds: string[];
 }
 
+function connectorKey(elementId: string, connectorName: string): string {
+  return JSON.stringify([elementId, connectorName]);
+}
+
+function routeMatchesConnectorOrigins(connection: ConnectorConnection, start: MepConnector, end: MepConnector): boolean {
+  if (!Array.isArray(connection.route) || connection.route.length < 2) return false;
+  if (!connection.route.every((point) => Array.isArray(point) && point.length === 3 && point.every(Number.isFinite))) return false;
+  if (!Array.isArray(connection.fittings)) return false;
+  const first = connection.route[0];
+  const last = connection.route[connection.route.length - 1];
+  const tolerance = 1e-4;
+  const startError = Math.hypot(first[0] - start.worldOrigin[0], first[1] - start.worldOrigin[1], first[2] - start.worldOrigin[2]);
+  const endError = Math.hypot(last[0] - end.worldOrigin[0], last[1] - end.worldOrigin[1], last[2] - end.worldOrigin[2]);
+  return startError <= tolerance && endError <= tolerance;
+}
+
 /**
- * ValidateMEPNetworkTopology over the connection graph. Rules (level E):
- *   - every element with connectors should have at least one engagement
- *     (disconnected equipment is a warning-level report for the caller);
- *   - flow must alternate out → in across each connection;
- *   - connections must not form closed loops (flow networks are trees/DAGs);
- *   - size changes must be accompanied by a reducer/transition fitting.
+ * Validate the persisted connector graph, not just the in-memory engaged flags.
+ * A connector is a single-connection port in this data model: a second edge
+ * using the same owner/name pair is an integrity error even when both edges
+ * point to different elements.
  */
 export function validateMepNetworkTopology(
   connectors: MepConnector[],
   connections: ConnectorConnection[],
 ): TopologyIssue[] {
   const issues: TopologyIssue[] = [];
+  const byKey = new Map<string, MepConnector[]>();
   const byElement = new Map<string, MepConnector[]>();
-  for (const c of connectors) {
-    const list = byElement.get(c.ownerElementId) ?? [];
-    list.push(c);
-    byElement.set(c.ownerElementId, list);
+  for (const connector of connectors) {
+    const key = connectorKey(connector.ownerElementId, connector.def.name);
+    const matches = byKey.get(key) ?? [];
+    matches.push(connector);
+    byKey.set(key, matches);
+    const owned = byElement.get(connector.ownerElementId) ?? [];
+    owned.push(connector);
+    byElement.set(connector.ownerElementId, owned);
   }
-  // Disconnected equipment.
-  for (const [elId, list] of byElement) {
-    if (list.length && !list.some((c) => c.engaged)) {
-      issues.push({ code: "disconnected-equipment", message: `element '${elId}' has connectors but none engaged`, elementIds: [elId] });
+
+  for (const matches of byKey.values()) {
+    if (matches.length > 1) {
+      const first = matches[0];
+      issues.push({
+        code: "duplicate-connector-definition",
+        message: "element '" + first.ownerElementId + "' defines connector '" + first.def.name + "' " + matches.length + " times",
+        elementIds: [first.ownerElementId],
+      });
     }
   }
-  // Build adjacency for loop detection + flow checks.
-  const adj = new Map<string, Array<{ to: string; conn: ConnectorConnection }>>();
-  for (const conn of connections) {
-    const list = adj.get(conn.sourceElementId) ?? [];
-    list.push({ to: conn.targetElementId, conn });
-    adj.set(conn.sourceElementId, list);
-    const back = adj.get(conn.targetElementId) ?? [];
-    back.push({ to: conn.sourceElementId, conn });
-    adj.set(conn.targetElementId, back);
+
+  const uniqueConnector = (elementId: string, name: string): MepConnector | undefined => {
+    const matches = byKey.get(connectorKey(elementId, name));
+    return matches?.length === 1 ? matches[0] : undefined;
+  };
+  const uses = new Map<string, Array<{ peerElementId: string }>>();
+  const seenConnectionIds = new Set<string>();
+  const adjacency = new Map<string, Array<{ to: string; edgeId: string }>>();
+  const addUse = (key: string, peerElementId: string) => {
+    const list = uses.get(key) ?? [];
+    list.push({ peerElementId });
+    uses.set(key, list);
+  };
+
+  for (const connection of connections) {
+    if (!connection || typeof connection !== "object") continue;
+    const id = typeof connection.id === "string" ? connection.id : "";
+    if (!id || seenConnectionIds.has(id)) {
+      issues.push({
+        code: "duplicate-connection-id",
+        message: id ? "connection id '" + id + "' is used more than once" : "connection has no valid id",
+        elementIds: [connection.sourceElementId, connection.targetElementId].filter((x): x is string => typeof x === "string"),
+      });
+    } else {
+      seenConnectionIds.add(id);
+    }
+
+    const sourceElementId = connection.sourceElementId;
+    const targetElementId = connection.targetElementId;
+    const sourceName = connection.sourceConnector;
+    const targetName = connection.targetConnector;
+    const sourceKey = connectorKey(sourceElementId, sourceName);
+    const targetKey = connectorKey(targetElementId, targetName);
+    const source = uniqueConnector(sourceElementId, sourceName);
+    const target = uniqueConnector(targetElementId, targetName);
+
+    if (sourceElementId === targetElementId || sourceKey === targetKey) {
+      issues.push({ code: "self-connection", message: "connection '" + (id || "(no id)") + "' links an element to itself", elementIds: [sourceElementId] });
+    }
+    if (!source || !target) {
+      const missing: string[] = [];
+      if (!source) missing.push(String(sourceElementId) + ":" + String(sourceName));
+      if (!target) missing.push(String(targetElementId) + ":" + String(targetName));
+      issues.push({
+        code: "dangling-connection",
+        message: "connection '" + (id || "(no id)") + "' references missing or ambiguous connector(s): " + missing.join(", "),
+        elementIds: [sourceElementId, targetElementId].filter((x): x is string => typeof x === "string"),
+      });
+    }
+
+    if (source && typeof targetElementId === "string") addUse(sourceKey, targetElementId);
+    if (target && typeof sourceElementId === "string") addUse(targetKey, sourceElementId);
+
+    if (source && target) {
+      const compatibility = evaluateConnectorCompatibility(source, target);
+      if (!compatibility.compatible) {
+        issues.push({
+          code: "connector-compatibility",
+          message: "connection '" + (id || "(no id)") + "' has incompatible endpoints: " + compatibility.reasons.join("; "),
+          elementIds: [sourceElementId, targetElementId],
+        });
+      }
+      if (!routeMatchesConnectorOrigins(connection, source, target)) {
+        issues.push({
+          code: "invalid-connection-route",
+          message: "connection '" + (id || "(no id)") + "' route is malformed or does not terminate at its connector origins",
+          elementIds: [sourceElementId, targetElementId],
+        });
+      }
+      const fromSize = source.def.size;
+      const toSize = target.def.size;
+      const sameSize = Array.isArray(fromSize) && Array.isArray(toSize)
+        ? fromSize[0] === toSize[0] && fromSize[1] === toSize[1]
+        : !Array.isArray(fromSize) && !Array.isArray(toSize) && fromSize === toSize;
+      if (!sameSize && (!Array.isArray(connection.fittings) || connection.fittings.length === 0)) {
+        issues.push({
+          code: "size-jump-without-fitting",
+          message: "connection " + id + " changes size without a reducer/transition fitting",
+          elementIds: [sourceElementId, targetElementId],
+        });
+      }
+      const sourceEdges = adjacency.get(sourceElementId) ?? [];
+      sourceEdges.push({ to: targetElementId, edgeId: id });
+      adjacency.set(sourceElementId, sourceEdges);
+      const targetEdges = adjacency.get(targetElementId) ?? [];
+      targetEdges.push({ to: sourceElementId, edgeId: id });
+      adjacency.set(targetElementId, targetEdges);
+    }
   }
-  // Closed-loop detection via DFS (undirected cycle).
+
+  for (const [key, list] of uses) {
+    if (list.length > 1) {
+      const identity = JSON.parse(key) as [string, string];
+      issues.push({
+        code: "connector-multiple-connections",
+        message: "connector '" + identity[0] + ":" + identity[1] + "' is used by " + list.length + " connections; this model supports one edge per connector",
+        elementIds: [identity[0], ...list.map((use) => use.peerElementId).filter((x): x is string => typeof x === "string")],
+      });
+    }
+  }
+
+  // Engagement is a derived cache of the edge list. Verify it agrees where
+  // there is exactly one unambiguous edge; skip overbooked/duplicate ports.
+  for (const connector of connectors) {
+    const key = connectorKey(connector.ownerElementId, connector.def.name);
+    if ((byKey.get(key)?.length ?? 0) !== 1) continue;
+    const portUses = uses.get(key) ?? [];
+    if (portUses.length > 1) continue;
+    const expectedPeer = portUses[0]?.peerElementId ?? null;
+    const expectedEngaged = portUses.length === 1;
+    if (connector.engaged !== expectedEngaged || connector.connectedTo !== expectedPeer) {
+      issues.push({
+        code: "connector-engagement-mismatch",
+        message: "connector '" + connector.ownerElementId + ":" + connector.def.name + "' engagement does not match its connection records",
+        elementIds: [connector.ownerElementId, ...(expectedPeer ? [expectedPeer] : [])],
+      });
+    }
+  }
+
+  for (const [elementId, owned] of byElement) {
+    const connected = owned.some((connector) => (uses.get(connectorKey(connector.ownerElementId, connector.def.name))?.length ?? 0) > 0);
+    if (owned.length && !connected) {
+      issues.push({ code: "disconnected-equipment", message: "element '" + elementId + "' has connectors but none connected", elementIds: [elementId] });
+    }
+  }
+
+  // Traverse by edge identity so parallel edges are not mistaken for one parent edge.
   const visited = new Set<string>();
   let cycles = 0;
-  const dfs = (node: string, parent: string | null): void => {
+  const dfs = (node: string, parentEdgeId: string | null): void => {
     visited.add(node);
-    for (const edge of adj.get(node) ?? []) {
-      if (edge.to === parent) continue;
-      if (visited.has(edge.to)) {
-        cycles++;
-        continue;
-      }
-      dfs(edge.to, node);
+    for (const edge of adjacency.get(node) ?? []) {
+      if (edge.edgeId === parentEdgeId) continue;
+      if (visited.has(edge.to)) { cycles++; continue; }
+      dfs(edge.to, edge.edgeId);
     }
   };
-  for (const node of adj.keys()) {
+  for (const node of adjacency.keys()) {
     if (!visited.has(node)) dfs(node, null);
   }
   if (cycles > 0) {
     issues.push({
       code: "closed-loop",
-      message: `network contains ${cycles} closed loop(s); flow networks must be tree/DAG shaped`,
-      elementIds: [...adj.keys()],
+      message: "network contains " + Math.ceil(cycles / 2) + " closed loop(s); review the topology rule for this system",
+      elementIds: [...adjacency.keys()],
     });
-  }
-  // Size jumps without fittings.
-  for (const conn of connections) {
-    if (conn.fittings.length === 0) {
-      const s = connectors.find((c) => c.ownerElementId === conn.sourceElementId && c.def.name === conn.sourceConnector);
-      const t = connectors.find((c) => c.ownerElementId === conn.targetElementId && c.def.name === conn.targetConnector);
-      if (s && t && s.def.size.toString() !== t.def.size.toString()) {
-        issues.push({
-          code: "size-jump-without-fitting",
-          message: `connection ${conn.id} changes size without a reducer/transition fitting`,
-          elementIds: [conn.sourceElementId, conn.targetElementId],
-        });
-      }
-    }
   }
   return issues;
 }

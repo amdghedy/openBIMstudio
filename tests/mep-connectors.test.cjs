@@ -81,6 +81,60 @@ try {
     assert.equal(a.engaged, false);
     assert.equal(b.engaged, false);
   });
+
+  const edge = (id, a, b, route = [a.worldOrigin, b.worldOrigin], fittings = []) => ({
+    id, sourceElementId: a.ownerElementId, sourceConnector: a.def.name,
+    targetElementId: b.ownerElementId, targetConnector: b.def.name,
+    fittings, route, createdAt: 1,
+  });
+  test("topology validator accepts one compatible, correctly engaged edge", () => {
+    const a = connector("A", [0, 0, 0], [1, 0, 0], 0.1, { flowDirection: "out" });
+    const b = connector("B", [2, 0, 0], [-1, 0, 0], 0.1, { flowDirection: "in" });
+    const conn = m.createConnectorRelationship(a, b, [a.worldOrigin, b.worldOrigin], []);
+    const issues = m.validateMepNetworkTopology([a, b], [conn]);
+    assert.equal(issues.some(x => ["dangling-connection", "connector-multiple-connections", "connector-compatibility", "invalid-connection-route", "connector-engagement-mismatch"].includes(x.code)), false);
+  });
+  test("topology validator reports a dangling edge endpoint", () => {
+    const a = connector("A", [0, 0, 0], [1, 0, 0], 0.1, { flowDirection: "out" });
+    const missing = connector("B-missing", [2, 0, 0], [-1, 0, 0], 0.1, { flowDirection: "in" });
+    const issues = m.validateMepNetworkTopology([a], [edge("dangling", a, missing)]);
+    assert.ok(issues.some(x => x.code === "dangling-connection"));
+  });
+  test("topology validator rejects two edges occupying the same connector", () => {
+    const a = connector("A", [0, 0, 0], [1, 0, 0], 0.1, { flowDirection: "out" });
+    const b = connector("B", [2, 0, 0], [-1, 0, 0], 0.1, { flowDirection: "in" });
+    const c = connector("C", [3, 0, 0], [-1, 0, 0], 0.1, { flowDirection: "in" });
+    a.engaged = true; a.connectedTo = "C";
+    b.engaged = true; b.connectedTo = "A";
+    c.engaged = true; c.connectedTo = "A";
+    const issues = m.validateMepNetworkTopology([a, b, c], [edge("ab", a, b), edge("ac", a, c)]);
+    assert.ok(issues.some(x => x.code === "connector-multiple-connections" && x.elementIds.includes("A")));
+  });
+  test("topology validator reports duplicate connector definitions and connection IDs", () => {
+    const a = connector("A", [0, 0, 0], [1, 0, 0], 0.1, { flowDirection: "out" });
+    const b = connector("B", [2, 0, 0], [-1, 0, 0], 0.1, { flowDirection: "in" });
+    const duplicate = { ...a, worldOrigin: [...a.worldOrigin] };
+    a.engaged = true; a.connectedTo = "B"; b.engaged = true; b.connectedTo = "A";
+    const issues = m.validateMepNetworkTopology([a, duplicate, b], [edge("same", a, b), edge("same", a, b)]);
+    assert.ok(issues.some(x => x.code === "duplicate-connector-definition"));
+    assert.ok(issues.some(x => x.code === "duplicate-connection-id"));
+    assert.ok(issues.some(x => x.code === "connector-multiple-connections"));
+  });
+  test("topology validator reports incompatible endpoints and malformed route geometry", () => {
+    const a = connector("A", [0, 0, 0], [1, 0, 0], 0.1, { flowDirection: "out" });
+    const b = connector("B", [2, 0, 0], [-1, 0, 0], 0.1, { flowDirection: "out" });
+    a.engaged = true; a.connectedTo = "B"; b.engaged = true; b.connectedTo = "A";
+    const issues = m.validateMepNetworkTopology([a, b], [edge("bad", a, b, [[0, 0, 0], [Number.NaN, 0, 0]])]);
+    assert.ok(issues.some(x => x.code === "connector-compatibility"));
+    assert.ok(issues.some(x => x.code === "invalid-connection-route"));
+  });
+  test("topology validator detects stale engagement not backed by an edge", () => {
+    const a = connector("A", [0, 0, 0], [1, 0, 0]);
+    a.engaged = true; a.connectedTo = "B";
+    const issues = m.validateMepNetworkTopology([a], []);
+    assert.ok(issues.some(x => x.code === "connector-engagement-mismatch"));
+  });
+
   console.log(`=== MEP connector tests: ${pass} passed, ${fail} failed ===`);
   process.exitCode = fail ? 1 : 0;
 } finally { fs.rmSync(out, { recursive: true, force: true }); }

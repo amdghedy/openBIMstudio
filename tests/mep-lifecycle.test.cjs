@@ -79,6 +79,22 @@ try {
     s.loads[0].name = "mutated";
     assert.equal(lifecycle.getPanelSchedule("LP1").rows[0].loadNames[0], "Lighting");
   });
+
+  test("hydrate preserves duplicate connector occupancy as a topology diagnostic", () => {
+    const a0 = connector("A", "out", [0, 0, 0], [1, 0, 0], "out");
+    const b0 = connector("B", "in", [2, 0, 0], [-1, 0, 0], "in");
+    const c0 = connector("C", "in", [3, 0, 0], [-1, 0, 0], "in");
+    const connection = (id, target) => ({ id, sourceElementId: "A", sourceConnector: "out", targetElementId: target.ownerElementId, targetConnector: target.def.name, fittings: [], route: [[0,0,0], target.worldOrigin], createdAt: 1 });
+    lifecycle.hydrate({ connectors: [a0, b0, c0], connections: [connection("AB", b0), connection("AC", c0)] });
+    const issues = lifecycle.validate().topologyIssues;
+    assert.ok(issues.some(x => x.code === "connector-multiple-connections" && x.elementIds.includes("A")));
+  });
+  test("hydrate reports connections that reference missing connectors", () => {
+    const a0 = connector("A", "out", [0, 0, 0], [1, 0, 0], "out");
+    lifecycle.hydrate({ connectors: [a0], connections: [{ id: "dangling", sourceElementId: "A", sourceConnector: "out", targetElementId: "missing", targetConnector: "in", fittings: [], route: [[0,0,0],[1,0,0]], createdAt: 1 }] });
+    assert.ok(lifecycle.validate().topologyIssues.some(x => x.code === "dangling-connection"));
+  });
+
   console.log(`=== MEP lifecycle tests: ${pass} passed, ${fail} failed ===`);
   process.exitCode = fail ? 1 : 0;
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
