@@ -122,7 +122,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "ARC", aliases: ["A"], description: "Create an arc using 3 points" },
   { name: "ERASE", aliases: ["E", "DEL"], description: "Erase selected objects" },
   { name: "MOVE", aliases: ["M"], description: "Move selected objects a distance and direction" },
-  { name: "COPY", aliases: ["CO"], description: "Copy selected objects to multiple placements" },
+  { name: "COPY", aliases: ["CO"], description: "Copy selected objects to multiple placements from one fixed base point" },
+  { name: "REVCLOUD", aliases: ["RC", "CLOUD"], description: "Create a revision cloud polyline; click boundary points, then Enter or double-click" },
   { name: "ROTATE", aliases: ["RO"], description: "Rotate selected objects around a base point" },
   { name: "MIRROR", aliases: ["MI"], description: "Mirror selected objects about a two-point axis" },
   { name: "SCALE", aliases: ["SC"], description: "Scale selected objects about a base point" },
@@ -2921,8 +2922,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return true;
         }
         case "copy": {
+          // AutoCAD COPY keeps the original base point for every placement.
+          // Do not rebase on the previous destination or offsets become cumulative.
           placeCopy({ x: wp.x - b.x, y: wp.y - b.y });
-          mod.base = { x: wp.x, y: wp.y }; // next placement continues from here (AutoCAD multi-copy)
           logCmd("Specify second point or [Exit]:");
           return true;
         }
@@ -3936,7 +3938,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     } else if (isPickTool(t)) {
       startPick(t);
       logCmd(`Command: _${t.toUpperCase()}`);
-    } else if (t === "spline" || t === "wipeout") {
+    } else if (t === "spline" || t === "wipeout" || t === "cloud") {
       logCmd(`Command: _${t.toUpperCase()} — click points, Enter / double-click to finish`);
     } else if (t === "polygon") {
       logCmd(`Command: _POLYGON — ${polySides} sides (type POLYGON <n> to change)`);
@@ -3964,8 +3966,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       results.push(`Chain: ${fmt(M.pathLength(pts))}  (${pts.length - 1} segments)`);
       drawn.push({ kind: "poly", pts: [...pts] });
     } else if (tool === "cloud" && pts.length >= 2) {
-      markups.push({ kind: "cloud", pts: M.revisionCloudPoints(pts), text: "REV" });
-      results.push(`Revision cloud · ${pts.length} vertices`);
+      // Store revision clouds as native closed polylines, not transient markup,
+      // so they participate in selection, COPY/MOVE, undo/redo, DXF and DWG export.
+      const boundary = [...pts, pts[0]];
+      const cloudPoints = M.revisionCloudPoints(boundary);
+      if (cloudPoints.length >= 3) {
+        addDraftEntity({
+          type: "LWPOLYLINE",
+          layer: currentLayer,
+          ...newObjectProps(),
+          points: cloudPoints.map((p) => ({ x: p.x, y: p.y })),
+          closed: true,
+        });
+        results.push(`Revision cloud · ${pts.length} boundary points`);
+        logCmd("Revision cloud created as a native closed polyline.");
+      } else {
+        logCmd("Revision cloud needs at least two distinct boundary points.");
+      }
     } else if (tool === "spline" && pts.length >= 2) {
       addDraftEntity({
         type: "LWPOLYLINE",
@@ -4985,6 +5002,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "CO" || cmd === "COPY") {
       setTool("copy");
+      return;
+    }
+    if (cmd === "RC" || cmd === "CLOUD" || cmd === "REVCLOUD" || cmd === "REVISIONCLOUD") {
+      setTool("cloud");
       return;
     }
     if (cmd === "RO" || cmd === "ROTATE") {
