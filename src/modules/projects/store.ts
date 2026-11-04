@@ -218,7 +218,7 @@ export async function putImportedModel(
   blob: Blob,
 ): Promise<boolean> {
   const db = await openDb();
-  const tx = db.transaction([S_PROJECTS, S_BLOBS], "readwrite");
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
   const done = transactionDone(tx);
   const projects = tx.objectStore(S_PROJECTS);
   const blobs = tx.objectStore(S_BLOBS);
