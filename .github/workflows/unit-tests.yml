@@ -101,6 +101,15 @@ jobs:
       - name: IFC corpus parser and snapshot regression
         run: node scripts/golden-roundtrip.mjs
 
+      - name: Ensure IFC golden snapshots were not rewritten
+        run: |
+          changed="$(git status --porcelain -- tests/fixtures/ifc-corpus/snapshots)"
+          if [ -n "$changed" ]; then
+            echo "::error::IFC golden snapshots changed or were generated during CI."
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+
       - name: Upload IFC interoperability report
         if: always()
         uses: actions/upload-artifact@v4
