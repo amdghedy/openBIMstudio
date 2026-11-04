@@ -379,6 +379,11 @@ export function openCadViewer(file?: File): void {
   registerCadAliasApi();
   ensureShell();
   shell!.style.display = "flex";
+  try {
+    (window as any).__obsCadOwnsEsc = () => !!shell && shell.style.display !== "none";
+  } catch {
+    /* */
+  }
   if (file) openFile(file);
   else if (!tabs.length) openBlank();
   active?.engine.focus();
@@ -5341,13 +5346,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const key = ev.key;
     const lower = key.length === 1 ? key.toLowerCase() : key;
 
-    if (key === "Escape") {
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      onEscape();
-      try { cv.focus({ preventScroll: true }); } catch { /* */ }
-      return;
-    }
+    // Escape is handled by onCadEscCapture (drawing view + stage + window)
 
     if (key === "F3") {
       ev.preventDefault();
@@ -7195,22 +7194,34 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   // Esc handling: guard checks this page and the whole shell (multi-document).
 
-  // Esc handling across entire window when CAD viewer is open
-  window.addEventListener(
-    "keydown",
-    (e) => {
-      if (root.style.display === "none" || !shell || shell.style.display === "none" || e.key !== "Escape" || e.target === cv) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "SELECT") && (t as HTMLInputElement).type !== "checkbox") {
-        (t as HTMLInputElement).blur();
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      onEscape();
+  // Esc from the 2D drawing view, stage, command bar, or anywhere while this
+  // drawing page is the active CAD tab. Capture phase + stopImmediate so global
+  // BIM Esc cannot leave CIRCLE/LINE running.
+  const onCadEscCapture = (e: KeyboardEvent): void => {
+    if (e.key !== "Escape") return;
+    if (!shell || shell.style.display === "none") return;
+    // Only the active drawing page handles Esc
+    if (root.style.display === "none" || page.style.display === "none") return;
+    if (!screenTypeActive && root.style.display === "none") return;
+
+    const target = e.target as HTMLElement | null;
+    // Don't fight modal dialogs outside CAD
+    if (target?.closest?.("#obs-shortcut-editor, #obs-cad-alias-editor, .obs-form-modal-overlay, [role=dialog]")) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    onEscape();
+    try {
       cv.focus({ preventScroll: true });
-    },
-    true,
-  );
+    } catch {
+      /* */
+    }
+  };
+  window.addEventListener("keydown", onCadEscCapture, true);
+  stageEl?.addEventListener("keydown", onCadEscCapture, true);
+  cv.addEventListener("keydown", onCadEscCapture, true);
 
   const api: CadEngineApi = {
     load,
@@ -7220,6 +7231,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     activate() {
       root.style.display = "flex";
       screenTypeActive = true;
+      try {
+        (window as any).__obsCadOwnsEsc = () =>
+          !!shell && shell.style.display !== "none" && root.style.display !== "none";
+      } catch {
+        /* */
+      }
       showRibbonEngine(ribbonWrap, api);
       resize();
       draw();
@@ -7227,6 +7244,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     },
     deactivate() {
       screenTypeActive = false;
+      try {
+        if ((window as any).__obsCadOwnsEsc) {
+          const still = !!shell && shell.style.display !== "none";
+          if (!still) delete (window as any).__obsCadOwnsEsc;
+        }
+      } catch {
+        /* */
+      }
       try { closeDynamicCommand(); } catch { /* */ }
       root.style.display = "none";
     },

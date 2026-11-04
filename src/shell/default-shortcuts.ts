@@ -117,11 +117,20 @@ export function registerDefaultShortcuts(): void {
     label: "Cancel tool / Clear selection",
     keys: "escape",
     category: "select",
-    when: () => !isWalkModeEnabled(),
+    // CAD drawing owns Esc while its shell is visible (AutoCAD-style cancel in 2D view)
+    when: () => {
+      try {
+        if ((window as any).__obsCadOwnsEsc?.()) return false;
+      } catch { /* */ }
+      return !isWalkModeEnabled();
+    },
     handler: async () => {
       // Floor Plan owns Esc when open
       try {
         if ((window as any).__obsPlanVisible?.()) return;
+      } catch { /* */ }
+      try {
+        if ((window as any).__obsCadOwnsEsc?.()) return;
       } catch { /* */ }
       // BIM-style Esc:
       // 1) Cancel active authoring tool (wall, duct, move…) → Select
