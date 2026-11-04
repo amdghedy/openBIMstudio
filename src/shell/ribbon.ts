@@ -1478,10 +1478,16 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           }));
         });
       }, "Section Line"), { title: "Draw a section cut line in the plan view" }),
-      b("revision-cloud", "Cloud", safe(() => {
-        setAuthoringTool("mline");
-        toast("Revision cloud — sketch cloud outline", "success");
-      }, "Revision cloud")),
+      b("revision-cloud", "Cloud", safe(async () => {
+        // Use the registered revision-cloud workflow; do not silently start MLINE.
+        const revisions = (ctx.features as any).revisions;
+        if (typeof revisions?.begin === "function") {
+          await revisions.begin();
+          return;
+        }
+        const mod = await import("../features/revision-cloud");
+        await mod.beginCloudPlacement();
+      }, "Revision cloud"), { title: "Place a revision cloud in the active plan view" }),
       sep(),
       groupLabel("Text"),
       b("text", "Text", safe(async () => {
