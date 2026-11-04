@@ -5,6 +5,10 @@ const path = require("node:path");
 const assert = require("node:assert/strict");
 const THREE = require("three");
 const root = path.resolve(__dirname, "..");
+// The compiled helper lives under the OS temp directory. Include the
+// repository's node_modules in Node's global lookup paths for that output.
+process.env.NODE_PATH = [path.join(root, "node_modules"), process.env.NODE_PATH || ""].filter(Boolean).join(path.delimiter);
+require("node:module").Module._initPaths();
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-mep-family-connectors-"));
 try {
   const source = path.join(root, "src/modules/mep/family-connectors.ts");
