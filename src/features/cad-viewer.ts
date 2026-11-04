@@ -6315,6 +6315,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     pasteOrig,
     hasClip: () => !!clip,
     saveDxf,
+    saveDwg,
     fileName: () => name,
     focus: () => cv.focus({ preventScroll: true }),
     exec: (a: string) => {
