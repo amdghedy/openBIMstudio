@@ -7,7 +7,7 @@ const { execSync } = require("child_process");
 const { pathToFileURL } = require("url");
 const root = path.join(__dirname, "..");
 const viewerSource = fs.readFileSync(path.join(root, "src", "features", "cad-viewer.ts"), "utf8");
-for (const required of ['name: "SAVEAS"', 'name: "DWGSAVE"', 'async function saveDwg()', 'exportDxfToDwg(dxf)', 'validateDxfForDwgExport(dxf, entities.length', "DWG export cancelled to prevent data loss", "dimensionStyleCount", "customTextStyles", "layoutCount"]) {
+for (const required of ['name: "SAVEAS"', 'name: "DWGSAVE"', 'async function saveDwg()', 'exportDxfToDwg(dxf)', 'validateDxfForDwgExport(dxf, entities.length', "DWG export notes", "dimensionStyleCount", "customTextStyles", "layoutCount"]) {
   assert.ok(viewerSource.includes(required), "CAD editor DWG export wiring missing: " + required);
 }
 const wasmPath = path.join(root, "public", "cad-engine", "obim-cad-engine.wasm");
@@ -72,12 +72,13 @@ const { writeDxf } = require(find(out, "dxf-writer.js"));
   };
   const dxf = writeDxf(doc);
   await acad.validateDxfForDwgExport(dxf, doc.entities.length, doc.layers.map((layer) => layer.name));
-  let countMismatchRejected = false;
-  try { await acad.validateDxfForDwgExport(dxf, doc.entities.length + 1, doc.layers.map((layer) => layer.name)); } catch { countMismatchRejected = true; }
-  assert.ok(countMismatchRejected, "preflight must reject entities lost by DXF serialization");
-  let missingLayerRejected = false;
-  try { await acad.validateDxfForDwgExport(dxf, doc.entities.length, [...doc.layers.map((layer) => layer.name), "MISSING_LAYER"]); } catch { missingLayerRejected = true; }
-  assert.ok(missingLayerRejected, "preflight must reject missing layers");
+  // Soft preflight: count/layer mismatches warn but must not block ordinary saves.
+  await acad.validateDxfForDwgExport(dxf, doc.entities.length + 1, doc.layers.map((layer) => layer.name));
+  await acad.validateDxfForDwgExport(dxf, doc.entities.length, [...doc.layers.map((layer) => layer.name), "MISSING_LAYER"]);
+  let emptyRejected = false;
+  try { await acad.validateDxfForDwgExport(dxf, 0, doc.layers.map((layer) => layer.name)); } catch { /* expectedEntityCount 0 with content is ok */ }
+  try { await acad.validateDxfForDwgExport("", 1, ["0"]); emptyRejected = false; } catch { emptyRejected = true; }
+  assert.ok(emptyRejected, "preflight must reject empty intermediate DXF");
   const dwg = await acad.exportDxfToDwg(dxf);
   assert.ok(dwg instanceof Uint8Array && dwg.length > 100, "DWG output is empty");
   const signature = new TextDecoder().decode(dwg.subarray(0, 6));

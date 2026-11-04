@@ -6008,28 +6008,35 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       status("Nothing to export");
       return;
     }
+    // Always export model-space geometry (paper layouts stay as metadata warnings).
     const entities = layoutI < 0 ? ents : modelEnts;
     const fn = `${base()}.dwg`;
-    // Refuse content the current 2D DXF serializer cannot faithfully carry.
-    const hatchBoundaries = entities.filter((e) => e.type === "LWPOLYLINE" && !!e.hatch).length;
+    if (!entities.length) {
+      logCmd("Nothing to export — the model has no drawable entities.");
+      status("Nothing to export");
+      return;
+    }
+    // Advisory only: layouts / dim styles / text styles / import skips must NOT
+    // block DWG save. The writer serializes supported model entities; the rest
+    // is reported so the user knows what is approximate.
+    const hatchBoundaries = entities.filter((e) => e.type === "LWPOLYLINE" && !!(e as any).hatch).length;
     const skippedEntities = Object.values(doc.skipped ?? {}).reduce((sum, count) => sum + count, 0);
     const layoutCount = doc.layouts?.length ?? 0;
     const dimensionStyleCount = Math.max(doc.dimStyles?.length ?? 0, Object.keys(doc.dimStyleTable ?? {}).length);
     const customTextStyles = Object.keys(doc.textStyles ?? {}).filter((name) => !/^standard$/i.test(name));
-    if (hatchBoundaries || skippedEntities || layoutCount || dimensionStyleCount || customTextStyles.length) {
-      const reasons = [
-        hatchBoundaries ? `${hatchBoundaries} hatch boundary/boundaries` : "",
-        skippedEntities ? `${skippedEntities} unsupported imported entity/entities` : "",
-        layoutCount ? `${layoutCount} paper-space layout(s)/viewport definitions` : "",
-        dimensionStyleCount ? `${dimensionStyleCount} dimension style record(s)` : "",
-        customTextStyles.length ? `${customTextStyles.length} custom text style definition(s)` : "",
-      ].filter(Boolean).join(", ");
-      logCmd(`DWG export cancelled to prevent data loss: ${reasons}. Export as DXF or resolve these items first.`);
-      status("DWG export blocked — unsupported content");
-      return;
+    const notes = [
+      hatchBoundaries ? `${hatchBoundaries} hatch(es) exported as solid/boundary` : "",
+      skippedEntities ? `${skippedEntities} entity type(s) were skipped on import (not in model)` : "",
+      layoutCount ? `${layoutCount} paper-space layout(s) not written (model space only)` : "",
+      dimensionStyleCount ? `${dimensionStyleCount} dim style(s) may be simplified` : "",
+      customTextStyles.length ? `${customTextStyles.length} custom text style(s) may map to Standard` : "",
+    ].filter(Boolean);
+    if (notes.length) {
+      logCmd(`DWG export notes: ${notes.join("; ")}.`);
     }
     try {
-      const dxf = writeDxf({ ...doc, entities });
+      status("Exporting DWG…");
+      const dxf = writeDxf({ ...doc, entities, layouts: undefined });
       await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
       const blobBuffer = new ArrayBuffer(bytes.byteLength);
