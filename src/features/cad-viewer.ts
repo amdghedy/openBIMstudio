@@ -22,7 +22,8 @@
 
 import { readCadFile } from "../modules/cad-link/index";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
-import { downloadDxf } from "../modules/drawings/dxf-writer";
+import { downloadDxf, writeDxf } from "../modules/drawings/dxf-writer";
+import { exportDxfToDwg } from "../modules/drawings/acad-engine";
 import { makeClip, clipInstances, type CadClip } from "../modules/cad-viewer/clipboard";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
@@ -152,7 +153,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "UNDO", aliases: ["U"], description: "Undo the last drafting or modify operation" },
   { name: "REDO", aliases: ["REDO"], description: "Redo the previously undone operation" },
   { name: "PLOT", aliases: ["PRINT"], description: "Plot drawing to PDF or physical paper" },
-  { name: "QSAVE", aliases: ["SAVE", "SAVEAS"], description: "Save the edited drawing as a DXF file" },
+  { name: "QSAVE", aliases: ["SAVE"], description: "Save the edited drawing as a DXF file" },
+  { name: "DWGSAVE", aliases: ["EXPORTDWG"], description: "Export the edited drawing as a native DWG file" },
   { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
   { name: "COPYCLIP", aliases: ["CC"], description: "Copy selected objects to the cross-drawing clipboard (Ctrl+C)" },
   { name: "PASTECLIP", aliases: [], description: "Paste clipboard objects into this drawing (Ctrl+V)" },
@@ -215,6 +217,7 @@ interface CadEngineApi {
   pasteOrig(): number;
   hasClip(): boolean;
   saveDxf(): void;
+  saveDwg(): Promise<void>;
   fileName(): string;
   focus(): void;
   /** Run a ribbon action by id (shell A-menu / Quick Access toolbar → active drawing). */
@@ -470,6 +473,7 @@ function openAppMenu(anchor: HTMLElement): void {
   item("Open…", () => picker!.click());
   sep();
   item("Save DXF", () => ribbonActive?.exec("save-dxf"));
+  item("Save DWG…", () => ribbonActive?.exec("save-dwg"));
   item("Save All", () => saveAll());
   item("Plot…", () => ribbonActive?.exec("plot"));
   sep();
@@ -3759,6 +3763,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       erase: eraseSelected,
       plot: openPlot,
       "save-dxf": saveDxf,
+      "save-dwg": () => void saveDwg(),
       // Clipboard (Home › Clipboard)
       clipcopy: () => copySelection(),
       clipcut: () => {
@@ -5600,6 +5605,40 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     status(`Saved ${fn}`);
     markSaved();
     setTimeout(() => status(""), 4000);
+  }
+
+  /** Export the live edited model as a real binary DWG using the local acadrust WASM writer. */
+  async function saveDwg(): Promise<void> {
+    if (!doc) {
+      logCmd("Nothing to export — open or create a drawing first.");
+      status("Nothing to export");
+      return;
+    }
+    const entities = layoutI < 0 ? ents : modelEnts;
+    const fn = `${base()}.dwg`;
+    try {
+      const dxf = writeDxf({ ...doc, entities });
+      const bytes = await exportDxfToDwg(dxf);
+      const blob = new Blob([bytes], { type: "application/acad" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fn;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      logCmd(`Exported ${fn} — ${entities.length} entities, ${doc.layers.length} layers.`);
+      status(`Exported ${fn}`);
+      markSaved();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logCmd(`DWG export failed: ${message}`);
+      status("DWG export failed");
+      console.error("[CAD] DWG export failed:", error);
+    }
+    window.setTimeout(() => status(""), 5000);
   }
 
   /* ── Cross-drawing clipboard (COPYCLIP / PASTECLIP / PASTEORIG) ── */
