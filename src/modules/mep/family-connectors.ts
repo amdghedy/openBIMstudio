@@ -69,8 +69,8 @@ export function deriveFamilyInstanceConnectors(
     return {
       ownerElementId,
       def: copyDefinition(definition),
-      worldOrigin: [worldOrigin.x, worldOrigin.y, worldOrigin.z],
-      worldDirection: [worldDirection.x, worldDirection.y, worldDirection.z],
+      worldOrigin: [worldOrigin.x, worldOrigin.y, worldOrigin.z] as [number, number, number],
+      worldDirection: [worldDirection.x, worldDirection.y, worldDirection.z] as [number, number, number],
       engaged: false,
       connectedTo: null,
     };
