@@ -14,7 +14,7 @@
  * Pure TypeScript, no dependencies.
  */
 import { lineweightFromDxf } from "./cad-styles";
-import type { DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport } from "./dxf-types";
+import type { DxfDimStyle, DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport } from "./dxf-types";
 import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
   insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
@@ -24,6 +24,8 @@ import {
 let imageDefs = new Map<string, string>();
 /** STYLE table by upper-case name, filled per parse. */
 let textStyles = new Map<string, DxfTextStyle>();
+/** DIMSTYLE table by upper-case name, filled per parse. */
+let dimStyleTable: Record<string, DxfDimStyle> = {};
 
 /** Resolve style-derived text fields for TEXT/ATTRIB/MTEXT (entity overrides win over the style). */
 function textStyleFields(d: Data, mtextSrc?: string): { style?: string; font?: string; bold?: boolean; italic?: boolean; widthFactor?: number; oblique?: number } {
@@ -224,6 +226,116 @@ function textAnchor(d: Data, vCode: number): { position: DxfPoint; align: "left"
   return { position, align, valign };
 }
 
+/**
+ * Native dimension geometry from the DIMENSION entity's definition points —
+ * used when the anonymous geometry block is missing (third-party writers).
+ * Covers the types that carry the measurement in their points:
+ *   0 rotated linear, 1 aligned, 4 radius, 3 diameter.
+ * Style sizes come from the file's DIMSTYLE table (DIMTXT/DIMASZ/DIMEXO/
+ * DIMEXE/DIMGAP × DIMSCALE) with metric defaults, like AutoCAD's.
+ */
+function nativeDimension(d: Data, styles: Record<string, DxfDimStyle>): DxfEntity[] | null {
+  const dimType = d.n(70, 0) & 7;
+  const out: DxfEntity[] = [];
+  const styleName = (d.s(3) ?? "").trim().toUpperCase();
+  const st = styles[styleName];
+  const dimScale = (st?.scale ?? d.n(40, 1)) || 1;
+  const txtH = (st?.textHeight ?? d.n(140, 2.5)) * dimScale || 2.5 * dimScale;
+  const arrowSz = (st?.arrowSize ?? d.n(41, 2.5)) * dimScale || 2.5 * dimScale;
+  const extOff = (st?.extOffset ?? d.n(42, 0.625)) * dimScale;
+  const extExt = (st?.extExtend ?? d.n(44, 1.25)) * dimScale;
+  const gap = (st?.textGap ?? d.n(147, 0.625)) * dimScale;
+
+  const arrow = (tip: DxfPoint, ux: number, uy: number): DxfEntity => {
+    const tri = [
+      { x: tip.x, y: tip.y, z: tip.z },
+      { x: tip.x - ux * arrowSz - uy * arrowSz * 0.25, y: tip.y - uy * arrowSz + ux * arrowSz * 0.25, z: tip.z },
+      { x: tip.x - ux * arrowSz + uy * arrowSz * 0.25, y: tip.y - uy * arrowSz - ux * arrowSz * 0.25, z: tip.z },
+    ];
+    return { type: "LWPOLYLINE", points: tri, closed: true, hatch: { solid: true, loops: [tri] } } as DxfEntity;
+  };
+  const line = (a: DxfPoint, b: DxfPoint): DxfEntity => ({ type: "LINE", start: a, end: b }) as DxfEntity;
+  const textRot = (deg: number): number => {
+    let a = ((deg % 360) + 360) % 360;
+    if (a > 90 && a < 270) a += 180; // keep the measurement readable
+    return a;
+  };
+  const measText = (m: number, prefix = ""): string => {
+    const override = cleanText(d.s(1) ?? "");
+    const s = !override || override === "<>" ? `${prefix}${m.toFixed(2)}` : override.replace(/<>/g, `${prefix}${m.toFixed(2)}`);
+    return s;
+  };
+
+  if (dimType === 0 || dimType === 1) {
+    const p1 = d.pt(13, 23, 33), p2 = d.pt(14, 24, 34), dl = d.pt(10, 20, 30);
+    const span = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    if (!(d.has(13) && d.has(14)) || span < 1e-9) return null;
+    const rotDeg = dimType === 0 ? (d.has(50) ? d.n(50) : 0) : (Math.atan2(p2.y - p1.y, p2.x - p1.x) / DEG);
+    const a = rotDeg * DEG;
+    const ux = Math.cos(a), uy = Math.sin(a);
+    // Project both origins onto the dimension line direction (through dl).
+    const t1 = (p1.x - dl.x) * ux + (p1.y - dl.y) * uy;
+    const t2 = (p2.x - dl.x) * ux + (p2.y - dl.y) * uy;
+    const q1 = { x: dl.x + ux * t1, y: dl.y + uy * t1, z: dl.z };
+    const q2 = { x: dl.x + ux * t2, y: dl.y + uy * t2, z: dl.z };
+    const meas = Math.abs(t2 - t1);
+    if (meas < 1e-9) return null;
+    // Extension lines: origin -> dimension line, offset from the origin and past the dim line.
+    for (const [p, q] of [[p1, q1], [p2, q2]] as const) {
+      const ex = q.x - p.x, ey = q.y - p.y;
+      const el = Math.hypot(ex, ey);
+      if (el < 1e-9) continue;
+      out.push(line({ x: p.x + (ex / el) * extOff, y: p.y + (ey / el) * extOff, z: p.z }, { x: q.x + (ex / el) * extExt, y: q.y + (ey / el) * extExt, z: p.z }));
+    }
+    out.push(line(q1, q2));
+    const sgn = t2 >= t1 ? 1 : -1;
+    out.push(arrow(q1, ux * sgn, uy * sgn));
+    out.push(arrow(q2, -ux * sgn, -uy * sgn));
+    // Text above the dim line midpoint, rotated with the dimension.
+    const perpX = -uy, perpY = ux;
+    const mid = { x: (q1.x + q2.x) / 2, y: (q1.y + q2.y) / 2, z: q1.z };
+    const flipped = (((rotDeg % 360) + 360) % 360) > 90 && (((rotDeg % 360) + 360) % 360) < 270;
+    const side = flipped ? -1 : 1;
+    out.push({
+      type: "TEXT", position: { x: mid.x + perpX * (txtH / 2 + gap) * side, y: mid.y + perpY * (txtH / 2 + gap) * side, z: mid.z },
+      height: txtH, value: measText(meas), rotation: textRot(rotDeg), align: "center", valign: "bottom",
+    } as DxfEntity);
+    return out;
+  }
+
+  if (dimType === 4 || dimType === 3) {
+    // Radius / diameter: center (10,20), point on the curve (15,25), leader length (40).
+    const cp = d.pt(10, 20, 30), pp = d.pt(15, 25, 35);
+    const r = Math.hypot(pp.x - cp.x, pp.y - cp.y);
+    if (!d.has(15) || r < 1e-9) return null;
+    const ux = (pp.x - cp.x) / r, uy = (pp.y - cp.y) / r;
+    const meas = dimType === 3 ? r * 2 : r;
+    if (dimType === 3) {
+      // Diameter: line through the circle between the two opposite points.
+      const a = { x: cp.x - ux * r, y: cp.y - uy * r, z: cp.z };
+      const b = { x: cp.x + ux * r, y: cp.y + uy * r, z: cp.z };
+      out.push(line(a, b));
+      out.push(arrow(a, ux, uy));
+      out.push(arrow(b, -ux, -uy));
+      out.push({
+        type: "TEXT", position: { x: pp.x + ux * (txtH / 2 + gap), y: pp.y + uy * (txtH / 2 + gap), z: pp.z },
+        height: txtH, value: measText(meas, "⌀"), rotation: textRot(Math.atan2(uy, ux) / DEG), align: "left", valign: "bottom",
+      } as DxfEntity);
+    } else {
+      const lead = d.n(40, 0) || arrowSz;
+      const elbow = { x: pp.x + ux * lead, y: pp.y + uy * lead, z: pp.z };
+      out.push(line(cp, elbow));
+      out.push(arrow(pp, -ux, -uy));
+      out.push({
+        type: "TEXT", position: { x: elbow.x + ux * (txtH / 2 + gap), y: elbow.y + uy * (txtH / 2 + gap), z: elbow.z },
+        height: txtH, value: measText(meas, "R"), rotation: textRot(Math.atan2(uy, ux) / DEG), align: "left", valign: "bottom",
+      } as DxfEntity);
+    }
+    return out;
+  }
+  return null;
+}
+
 export function parseDxf(text: string): DxfDocument {
   const pairs = tokenize(text);
 
@@ -243,6 +355,7 @@ export function parseDxf(text: string): DxfDocument {
   const linetypes: Record<string, number[]> = {};
   const docTextStyles: Record<string, DxfTextStyle> = {};
   const dimStyleNames: string[] = [];
+  dimStyleTable = {};
   const layoutNames: Array<{ name: string; order: number }> = [];
   let units: DxfUnits | undefined;
   let ltscale: number | undefined;
@@ -291,8 +404,21 @@ export function parseDxf(text: string): DxfDocument {
           docTextStyles[nm] = def;
         }
       } else if (r.type === "DIMSTYLE" && table === "DIMSTYLE") {
-        const nm = new Data(r.pairs).s(2)?.trim();
-        if (nm) dimStyleNames.push(nm);
+        const d = new Data(r.pairs);
+        const nm = d.s(2)?.trim();
+        if (nm) {
+          dimStyleNames.push(nm);
+          // Dimension variables the native renderer needs (DXF reference):
+          // DIMSCALE 40, DIMTXT 140, DIMASZ 41, DIMEXO 42, DIMEXE 44, DIMGAP 147.
+          dimStyleTable[nm.toUpperCase()] = {
+            ...(d.has(40) && d.n(40) !== 1 ? { scale: d.n(40) } : {}),
+            ...(d.has(140) ? { textHeight: d.n(140) } : {}),
+            ...(d.has(41) ? { arrowSize: d.n(41) } : {}),
+            ...(d.has(42) ? { extOffset: d.n(42) } : {}),
+            ...(d.has(44) ? { extExtend: d.n(44) } : {}),
+            ...(d.has(147) ? { textGap: d.n(147) } : {}),
+          };
+        }
       } else if (r.type === "LAYER" && table === "LAYER") {
         const d = new Data(r.pairs);
         const rawColor = d.n(62, 7);
@@ -388,6 +514,7 @@ export function parseDxf(text: string): DxfDocument {
     ltscale,
     textStyles: Object.keys(docTextStyles).length ? docTextStyles : undefined,
     dimStyles: dimStyleNames.length ? dimStyleNames : undefined,
+    dimStyleTable: Object.keys(dimStyleTable).length ? dimStyleTable : undefined,
     skipped: Object.keys(skipped).length ? skipped : undefined,
   };
 }
@@ -489,8 +616,33 @@ function expandRecs(
 
       case "LEADER": {
         const xs = d.all(10), pts: DxfPoint[] = xs.map((x, k) => ({ x: num(x), y: d.n(20, 0, k), z: d.n(30, 0, k) }));
-        if (pts.length >= 2) push({ ...c, type: "LWPOLYLINE", points: pts, closed: false });
-        else skip("LEADER");
+        if (pts.length < 2) { skip("LEADER"); break; }
+        push({ ...c, type: "LWPOLYLINE", points: pts, closed: false });
+        // Arrowhead at the first vertex, pointing along the first segment
+        // (group 71 arrowhead flag; absent = draw it, as most files do).
+        const arrowFlag = d.has(71) ? d.n(71, 1) : 1;
+        const lh = d.n(41, 2.5) || 2.5;
+        if (arrowFlag !== 0) {
+          const a = pts[0], b = pts[1];
+          const L = Math.hypot(b.x - a.x, b.y - a.y);
+          if (L > 1e-9) {
+            const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
+            const tri = [
+              { x: a.x, y: a.y, z: a.z },
+              { x: a.x + ux * lh - uy * lh * 0.25, y: a.y + uy * lh + ux * lh * 0.25, z: a.z },
+              { x: a.x + ux * lh + uy * lh * 0.25, y: a.y + uy * lh - ux * lh * 0.25, z: a.z },
+            ];
+            push({ ...c, type: "LWPOLYLINE", points: tri, closed: true, hatch: { solid: true, loops: [tri] } });
+          }
+        }
+        // Inline annotation text (group 1) is placed past the last vertex along the last segment.
+        const ltxt = cleanText(d.s(1) ?? "");
+        if (ltxt) {
+          const a = pts[pts.length - 2], b = pts[pts.length - 1];
+          const L = Math.hypot(b.x - a.x, b.y - a.y);
+          const ux = L > 1e-9 ? (b.x - a.x) / L : 1, uy = L > 1e-9 ? (b.y - a.y) / L : 0;
+          push({ ...c, type: "TEXT", position: { x: b.x + ux * lh * 0.6, y: b.y + uy * lh * 0.6 + lh * 0.3, z: b.z }, height: lh, value: ltxt });
+        }
         break;
       }
 
@@ -598,8 +750,15 @@ function expandRecs(
       case "DIMENSION": {
         // The drawn dimension (lines, arrows, text) lives in an anonymous block.
         const blk = blocks.get(d.s(2) ?? "");
-        if (!blk || depth >= MAX_DEPTH) { skip("DIMENSION"); break; }
-        for (const e of expandRecs(blk.recs, blocks, depth + 1, skip, c.layer)) push(e);
+        if (blk && depth < MAX_DEPTH) {
+          for (const e of expandRecs(blk.recs, blocks, depth + 1, skip, c.layer)) push(e);
+          break;
+        }
+        // No anonymous block (written by third-party tools): compute the
+        // geometry natively from the definition points, like AutoCAD does.
+        const dim = nativeDimension(d, dimStyleTable);
+        if (dim) for (const e of dim) push({ ...c, ...e });
+        else skip("DIMENSION");
         break;
       }
 

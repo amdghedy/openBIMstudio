@@ -152,6 +152,22 @@ export interface DxfTextStyle {
   upsideDown?: boolean;
 }
 
+/** A DIMSTYLE-table record (dimension style) as read from the file — the values needed to draw dimensions natively. */
+export interface DxfDimStyle {
+  /** DIMSCALE (group 40) — overall scale applied to every size. */
+  scale?: number;
+  /** DIMTXT (group 140) — dimension text height. */
+  textHeight?: number;
+  /** DIMASZ (group 41) — arrowhead size. */
+  arrowSize?: number;
+  /** DIMEXO (group 42) — extension-line offset from the measured origin. */
+  extOffset?: number;
+  /** DIMEXE (group 44) — extension past the dimension line. */
+  extExtend?: number;
+  /** DIMGAP (group 147) — gap around the dimension text. */
+  textGap?: number;
+}
+
 export interface DxfDocument {
   layers: DxfLayer[];
   entities: DxfEntity[];
@@ -170,6 +186,8 @@ export interface DxfDocument {
   textStyles?: Record<string, DxfTextStyle>;
   /** DIMSTYLE table names, as read from the file. */
   dimStyles?: string[];
+  /** DIMSTYLE table by upper-case name, with the values needed for native dimension drawing. */
+  dimStyleTable?: Record<string, DxfDimStyle>;
   /** Entity types that were present but not drawn, with counts. */
   skipped?: Record<string, number>;
 }

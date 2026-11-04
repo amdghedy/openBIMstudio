@@ -1134,7 +1134,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       case "TEXT": {
         const px = e.height * v.scale;
         const o = M.textOrigin(e);
-        if (px < 3) {
+        // Native CAD keeps drawing real glyphs at any zoom: only go to a
+        // placeholder stroke when the text would be sub-pixel on screen.
+        if (px < 0.75) {
           const p = P(e.position.x, e.position.y);
           const w = M.textBox(e).w * v.scale;
           const ox = o.dx * v.scale;
