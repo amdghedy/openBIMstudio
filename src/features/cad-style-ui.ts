@@ -6,7 +6,7 @@
  * The CAD viewer owns the drawing state; it passes a small `CadStyleApi` so this
  * file never reaches into its closure.
  */
-import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
+import type { DxfDocument, DxfEntity, DxfTextStyle } from "../modules/drawings/dxf-types";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
 import {
   CAD_FONTS, LINETYPE_LIBRARY, LINEWEIGHTS_MM, TEXT_STYLE_PRESETS,
@@ -363,8 +363,37 @@ export function openLinetypeManager(api: CadStyleApi): void {
 
 /* ───────────────────────────── Text Style Manager ───────────────────────────── */
 
-async function editTextStyle(initial?: TextStyle): Promise<TextStyle | null> {
-  const fontOptions: Array<[string, string]> = CAD_FONTS.map((f) => [f.id, f.label]);
+/**
+ * Fonts offered by the style editor: the built-in CAD font list plus every font
+ * the open drawing references (STYLE table + text entities), so fonts read from
+ * the file are selectable, exactly like AutoCAD listing SHX + TTF faces.
+ */
+export function fontOptionsFor(api: CadStyleApi | null): Array<[string, string]> {
+  const fileFonts = new Set<string>();
+  for (const st of Object.values(api?.doc()?.textStyles ?? {})) if (st.font) fileFonts.add(st.font);
+  for (const e of api?.entities() ?? []) if (e.type === "TEXT" && e.font) fileFonts.add(e.font);
+  const known = (f: string) => CAD_FONTS.some((x) => x.id.toLowerCase() === f.toLowerCase() || x.file.toLowerCase() === f.toLowerCase());
+  const extra = [...fileFonts].filter((f) => !known(f)).sort((a, b) => a.localeCompare(b)).map((f) => [f, `${f} (from file)`] as [string, string]);
+  return [...CAD_FONTS.map((f) => [f.id, f.label] as [string, string]), ...extra];
+}
+
+/** Convert a STYLE-table record read from the drawing into an editable TextStyle. */
+export function fileStyleToTextStyle(name: string, s: DxfTextStyle): TextStyle {
+  const st: TextStyle = {
+    name,
+    font: s.font ?? "txt.shx",
+    height: s.height && s.height > 0 ? s.height : 2.5,
+    note: "Read from the drawing's STYLE table",
+  };
+  if (s.width && Math.abs(s.width - 1) > 1e-9) st.widthFactor = s.width;
+  if (s.oblique && Math.abs(s.oblique) > 1e-9) st.oblique = s.oblique;
+  if (s.bold) st.bold = true;
+  if (s.italic) st.italic = true;
+  return st;
+}
+
+async function editTextStyle(api: CadStyleApi | null, initial?: TextStyle): Promise<TextStyle | null> {
+  const fontOptions: Array<[string, string]> = fontOptionsFor(api);
   const v = await openFormModal({
     title: initial ? `Edit text style "${initial.name}"` : "New text style",
     fields: [
@@ -409,7 +438,7 @@ export function openTextStyleManager(api: CadStyleApi): void {
         };
         acts.append(cur, app);
         if (isCustom) {
-          const ed = el("button", BTN, "Edit"); ed.onclick = () => void editTextStyle(st).then((n) => { if (n) { saveCustom(customTextStyles().map((c) => (c.name === st.name ? n : c))); if (getCurrent().textStyle.name === st.name) setCurrentTextStyle(n); render(); } });
+          const ed = el("button", BTN, "Edit"); ed.onclick = () => void editTextStyle(api, st).then((n) => { if (n) { saveCustom(customTextStyles().map((c) => (c.name === st.name ? n : c))); if (getCurrent().textStyle.name === st.name) setCurrentTextStyle(n); render(); } });
           const del = el("button", BTN, "Delete"); del.onclick = () => { saveCustom(customTextStyles().filter((c) => c.name !== st.name)); render(); };
           acts.append(ed, del);
         }
@@ -417,7 +446,7 @@ export function openTextStyleManager(api: CadStyleApi): void {
       }
     };
     const add = el("button", BTN + ";margin-bottom:8px", "+ New style");
-    add.onclick = () => void editTextStyle().then((n) => {
+    add.onclick = () => void editTextStyle(api).then((n) => {
       if (!n) return;
       const rest = customTextStyles().filter((c) => c.name.toLowerCase() !== n.name.toLowerCase());
       writeJson(STYLE_KEY, [...rest, n]); render();
@@ -432,6 +461,14 @@ export function openTextStyleManager(api: CadStyleApi): void {
       fileBox.append(el("div", "color:#38bdf8;font-size:11px;font-weight:600;margin-bottom:6px", "From this file (STYLE / DIMSTYLE tables)"));
       if (fileStyles.length) {
         const grid = el("div", "display:grid;grid-template-columns:1fr 1fr;gap:2px 14px;font-size:10.5px;color:#c3cad6");
+        const adopt = (name: string, st: DxfTextStyle) => {
+          const ts = fileStyleToTextStyle(name, st);
+          const rest = customTextStyles().filter((c) => c.name.toLowerCase() !== ts.name.toLowerCase());
+          writeJson(STYLE_KEY, [...rest, ts]);
+          setCurrentTextStyle(ts);
+          api.log(`Current text style: ${ts.name} (from file)`);
+          render();
+        };
         for (const [name, st] of fileStyles) {
           const bits = [
             st.font ? (findFont(st.font)?.label ?? st.font) : undefined,
@@ -444,9 +481,14 @@ export function openTextStyleManager(api: CadStyleApi): void {
             st.upsideDown ? "upside-down" : undefined,
             st.bigFont ? `big: ${st.bigFont}` : undefined,
           ].filter(Boolean).join(", ");
-          const row = el("div", "overflow:hidden;text-overflow:ellipsis;white-space:nowrap");
-          row.title = `${name}: ${bits}`;
-          row.append(el("b", "", name), document.createTextNode(` — ${bits || "default"}`));
+          const row = el("div", "display:flex;align-items:center;gap:6px;min-width:0");
+          const label = el("div", "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1");
+          label.title = `${name}: ${bits}`;
+          label.append(el("b", "", name), document.createTextNode(` — ${bits || "default"}`));
+          const use = el("button", BTN + ";font-size:10px;padding:1px 7px;flex:none", "Set current");
+          use.title = "Make this STYLE from the drawing the current style for new text";
+          use.onclick = () => adopt(name, st);
+          row.append(label, use);
           grid.append(row);
         }
         fileBox.append(grid);
