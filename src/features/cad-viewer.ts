@@ -1968,6 +1968,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   ): void {
     if (!p.length) return;
     const S = p.map((q) => M.worldToScreen(v, q.x, q.y));
+    if (kind === "cloud" && S.length >= 2) {
+      // Preview the same scalloped boundary that will be committed on finish.
+      const preview = M.revisionCloudPoints(p).map((q) => M.worldToScreen(v, q.x, q.y));
+      c.beginPath();
+      preview.forEach((q, i) => (i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)));
+      c.stroke();
+      for (const q of S) c.fillRect(q.x - 2.5, q.y - 2.5, 5, 5);
+      return;
+    }
     c.beginPath();
     S.forEach((q, i) => (i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)));
 
