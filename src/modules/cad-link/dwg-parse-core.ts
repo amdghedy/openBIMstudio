@@ -72,6 +72,62 @@ async function getReader(): Promise<{ lib: Any; FileType: Any }> {
 }
 
 /**
+ * Independent DWG validation entry point. This deliberately bypasses acadrust
+ * and invokes the separately implemented LibreDWG reader directly. Keep this
+ * exported so export acceptance tests can verify writer interoperability
+ * without allowing the writer to validate its own output.
+ */
+export async function parseDwgBytesWithLibreDwg(
+  buffer: ArrayBuffer,
+  fileName: string,
+): Promise<DwgParseResult> {
+  const t0 = Date.now();
+  const bytes = new Uint8Array(buffer);
+  const sniff = sniffDwgVersion(bytes);
+  if (!sniff) {
+    throw new DwgParseError(
+      "invalid-file",
+      `${fileName} is not a DWG file (missing DWG version stamp such as AC1032).`,
+    );
+  }
+
+  const { lib, FileType } = await getReader();
+  let dwg: Any | null = null;
+  const errors: string[] = [];
+  for (const input of [bytes, bytes.buffer] as Any[]) {
+    try {
+      dwg = lib.dwg_read_data(input, FileType?.DWG ?? 0);
+      if (dwg) break;
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  if (!dwg) {
+    const detail = errors.length ? errors[0] : "dwg_read_data returned no data";
+    throw new DwgParseError(
+      "parse-failed",
+      "LibreDWG could not read this DWG (unsupported version, encrypted or damaged file)",
+      `${sniff.label} (${sniff.code}) - ${detail}`,
+    );
+  }
+
+  let db: Any;
+  try {
+    db = lib.convert ? lib.convert(dwg) : dwg;
+  } finally {
+    try { lib.dwg_free?.(dwg); } catch { /* best-effort native cleanup */ }
+  }
+
+  const res = dwgDatabaseToDxfDocument(db, { deadlineMs: t0 + 115_000 });
+  return {
+    doc: res.doc,
+    summary: `Independently parsed by LibreDWG: ${res.summary}`,
+    version: sniff.code,
+    entityCount: res.doc.entities.length,
+  };
+}
+
+/**
  * Parse DWG bytes into a DxfDocument. Coordinates, units, layers, colors,
  * linetypes and block relationships are preserved by the converter exactly as
  * before — only the execution context changed (worker instead of main thread).
