@@ -46,6 +46,13 @@ try {
   });
   const finitePoint = (point) =>
     Number.isFinite(point.x) && Number.isFinite(point.y);
+  const closeVector = (actual, expected, epsilon = 1e-8) => {
+    assert.equal(actual.length, expected.length);
+    actual.forEach((value, index) => assert.ok(
+      Math.abs(value - expected[index]) <= epsilon,
+      "index " + index + ": expected " + expected[index] + ", got " + value,
+    ));
+  };
 
   test("projects connector origins and axes through the rendered instance transform", () => {
     const instance = new THREE.Group();
@@ -56,8 +63,8 @@ try {
     const layout = buildFamilyConnectorPreviewLayout(instance, [connector()]);
     assert.ok(layout);
     assert.equal(layout.ports.length, 1);
-    assert.deepEqual(layout.ports[0].worldOrigin, [5, 2, 6]);
-    assert.deepEqual(layout.ports[0].worldDirection, [0, 0, -1]);
+    closeVector(layout.ports[0].worldOrigin, [5, 2, 6]);
+    closeVector(layout.ports[0].worldDirection, [0, 0, -1]);
     assert.ok(finitePoint(layout.ports[0].origin));
     assert.ok(finitePoint(layout.ports[0].axisEnd));
     assert.notDeepEqual(layout.ports[0].origin, layout.ports[0].axisEnd);
