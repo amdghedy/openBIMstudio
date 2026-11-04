@@ -75,6 +75,7 @@ interface AcadInstance {
     obim_engine_version(): number;
     obim_alloc(len: number): number;
     obim_read(ptr: number, len: number): number;
+    obim_write_dwg?: (ptr: number, len: number) => number;
     obim_free(ptr: number, len: number): void;
   };
 }
@@ -163,6 +164,40 @@ function readFrame(inst: AcadInstance, ptr: number): string {
   const len = dv.getUint32(ptr, true);
   const bytes = new Uint8Array(inst.exports.memory.buffer, ptr + 4, len);
   return new TextDecoder().decode(bytes);
+}
+
+/** Convert an editor-generated ASCII DXF into native binary DWG. */
+export async function exportDxfToDwg(dxf: string): Promise<Uint8Array> {
+  if (!dxf.trim()) throw new Error("The drawing is empty.");
+  const inst = await loadAcadEngine();
+  if (!inst) throw new Error("CAD WASM engine unavailable; reload after rebuilding the CAD engine.");
+  const write = inst.exports.obim_write_dwg;
+  if (typeof write !== "function") throw new Error("DWG writer is missing from the loaded CAD WASM. Rebuild cad-engine-rust and reload.");
+  const input = new TextEncoder().encode(dxf);
+  let ptr = 0, resultPtr = 0;
+  try {
+    ptr = inst.exports.obim_alloc(input.length);
+    if (!ptr) throw new Error("Unable to allocate export buffer.");
+    new Uint8Array(inst.exports.memory.buffer, ptr, input.length).set(input);
+    resultPtr = write(ptr, input.length);
+    if (!resultPtr) throw new Error("DWG writer returned no result.");
+    const view = new DataView(inst.exports.memory.buffer);
+    const len = view.getUint32(resultPtr, true);
+    if (len < 1) throw new Error("DWG writer returned an invalid frame.");
+    const payload = new Uint8Array(inst.exports.memory.buffer, resultPtr + 4, len);
+    if (payload[0] !== 0) throw new Error(new TextDecoder().decode(payload.subarray(1)) || "DWG conversion failed.");
+    const bytes = payload.slice(1);
+    const signature = new TextDecoder().decode(bytes.subarray(0, 6));
+    if (bytes.length < 6 || !/^AC10(?:09|12|14|15|18|21|24|27|32)$/.test(signature)) {
+      throw new Error("DWG writer output failed signature validation; no file was saved.");
+    }
+    return bytes;
+  } finally {
+    try {
+      if (resultPtr) inst.exports.obim_free(resultPtr, 4 + new DataView(inst.exports.memory.buffer).getUint32(resultPtr, true));
+      if (ptr) inst.exports.obim_free(ptr, input.length);
+    } catch { /* best-effort release after wasm memory growth */ }
+  }
 }
 
 /**

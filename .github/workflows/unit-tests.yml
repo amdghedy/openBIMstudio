@@ -1,5 +1,8 @@
 name: Unit tests
 
+permissions:
+  contents: write
+
 on:
   pull_request:
   push:
@@ -21,6 +24,30 @@ jobs:
         env:
           npm_config_registry: https://registry.npmjs.org/
         run: npm ci --legacy-peer-deps
+
+      - name: Install Rust WebAssembly target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build native DWG writer (MPL-2.0)
+        run: cargo build --release --target wasm32-unknown-unknown --manifest-path cad-engine-rust/Cargo.toml
+
+      - name: Stage verified CAD engine WebAssembly
+        run: node scripts/copy-cad-engine-wasm.mjs
+
+      - name: Commit refreshed CAD engine WASM for browser deployments
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          git add public/cad-engine/obim-cad-engine.wasm
+          if git diff --cached --quiet; then
+            echo "CAD engine WASM is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "build(cad): refresh DWG writer WebAssembly"
+            git push origin "HEAD:${{ github.head_ref }}"
+          fi
 
       - name: Typecheck
         run: npm run typecheck

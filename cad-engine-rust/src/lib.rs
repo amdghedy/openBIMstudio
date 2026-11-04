@@ -11,8 +11,9 @@
 //! by exactly that many payload bytes:
 //!   obim_engine_version() -> frame {"engine":"acadrust",...}
 //!   obim_alloc(len)       -> *mut u8 scratch buffer for the caller's input
-//!   obim_read(ptr, len)   -> frame {"ok":true,...} | {"ok":false,"error":...}
-//!   obim_free(ptr, len)   -> release any buffer handed out above
+//!   obim_read(ptr, len)       -> framed JSON drawing document
+//!   obim_write_dwg(ptr, len)  -> frame [0x00][DWG bytes] or [0x01][UTF-8 error]
+//!   obim_free(ptr, len)       -> release any buffer handed out above
 
 use core::slice;
 use std::io::Cursor;
@@ -97,6 +98,70 @@ pub extern "C" fn obim_read(ptr: *const u8, len: usize) -> *mut u8 {
         Err(_) => r#"{"ok":false,"error":"panic: the drawing hit an engine panic guard"}"#.to_string(),
     };
     frame(json.as_bytes())
+}
+
+/// Convert an ASCII or binary DXF buffer into native DWG bytes.
+///
+/// The input is parsed into acadrust's document model before writing. This
+/// deliberately uses the same in-memory path as the upstream round-trip
+/// tests; no filename, browser filesystem, network service, or external
+/// executable is required.
+pub fn write_dwg_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    if bytes.is_empty() {
+        return Err("dxf-write-failed: empty input".to_string());
+    }
+    let reader = acadrust::DxfReader::from_reader(Cursor::new(bytes.to_vec()))
+        .map_err(|e| format!("dxf-open-failed: {e}"))?;
+    let document = reader
+        .read()
+        .map_err(|e| format!("dxf-read-failed: {e}"))?;
+    let expected_entities = document.entities().count();
+    let dwg = acadrust::DwgWriter::write_to_vec(&document)
+        .map_err(|e| format!("dwg-write-failed: {e}"))?;
+    if dwg.len() < 6 || !dwg.starts_with(b"AC10") {
+        return Err("dwg-write-invalid: output has no recognized DWG signature".to_string());
+    }
+    // Re-open the actual bytes before returning them. This catches truncated
+    // output and entity loss caused by unsupported writer paths.
+    let mut verify = acadrust::DwgReader::from_stream(Cursor::new(dwg.clone()));
+    let reopened = verify.read()
+        .map_err(|e| format!("dwg-verify-failed: {e}"))?;
+    let actual_entities = reopened.entities().count();
+    if actual_entities != expected_entities {
+        return Err(format!(
+            "dwg-verify-entity-count: input has {expected_entities} entities but DWG re-opened with {actual_entities}; export cancelled to prevent silent data loss"
+        ));
+    }
+    Ok(dwg)
+}
+
+/// C-ABI DWG export. The returned frame payload starts with a status byte:
+/// 0 = success followed by DWG bytes; 1 = failure followed by UTF-8 text.
+#[no_mangle]
+pub extern "C" fn obim_write_dwg(ptr: *const u8, len: usize) -> *mut u8 {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        if ptr.is_null() || len == 0 {
+            return Err("bad-arguments: null pointer or zero length".to_string());
+        }
+        let bytes = slice::from_raw_parts(ptr, len);
+        write_dwg_bytes(bytes)
+    }));
+    let mut payload = Vec::new();
+    match result {
+        Ok(Ok(bytes)) => {
+            payload.push(0);
+            payload.extend_from_slice(&bytes);
+        }
+        Ok(Err(error)) => {
+            payload.push(1);
+            payload.extend_from_slice(error.as_bytes());
+        }
+        Err(_) => {
+            payload.push(1);
+            payload.extend_from_slice(b"panic: DWG writer aborted while converting the drawing");
+        }
+    }
+    frame(&payload)
 }
 
 fn escape(s: &str) -> String {

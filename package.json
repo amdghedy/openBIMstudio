@@ -162,7 +162,8 @@
     "test:pdf-underlay-loader": "node tests/pdf-underlay-loader.test.cjs",
     "test:modify-registry": "node tests/modify-command-registry.test.cjs",
     "test:architecture-map": "node tests/architecture-map.test.cjs",
-    "test:project-journal": "node tests/project-journal.test.cjs"
+    "test:project-journal": "node tests/project-journal.test.cjs",
+    "test:cad-dwg-export": "node tests/cad-dwg-export.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
