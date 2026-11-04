@@ -12,7 +12,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 
 const scripts = [
-  "test:architecture-map", "test:bim-gaps", "test:mep", "test:mep-electrical", "test:mep-connectors", "test:mep-family-connectors", "test:family-connector-definitions", "test:mep-lifecycle", "test:hip", "test:hatch", "test:stairs", "test:rebar",
+  "test:architecture-map", "test:bim-gaps", "test:mep", "test:mep-electrical", "test:mep-connectors", "test:mep-family-connectors", "test:family-connector-definitions", "test:family-connector-preview", "test:mep-lifecycle", "test:hip", "test:hatch", "test:stairs", "test:rebar",
   "test:v40", "test:collab", "test:p1-gaps", "test:view-crop", "test:selection-box", "test:history", "test:context-menu", "test:modify-registry",
   "test:dwg-isolation", "test:dwg-worker-lifecycle", "test:native-bim", "test:cad-link",
   "test:walk", "test:elbow", "test:props", "test:fitting-outline", "test:slope",

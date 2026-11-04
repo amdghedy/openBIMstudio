@@ -38,6 +38,7 @@
     "test:mep-connectors": "node tests/mep-connectors.test.cjs",
     "test:mep-family-connectors": "node tests/mep-family-connectors.test.cjs",
     "test:family-connector-definitions": "node tests/family-connector-definitions.test.cjs",
+    "test:family-connector-preview": "node tests/family-connector-preview.test.cjs",
     "test:mep-lifecycle": "node tests/mep-lifecycle.test.cjs",
     "test:hip": "node tests/hip-roof.test.cjs",
     "test:hatch": "node tests/hatch-patterns.test.cjs",
