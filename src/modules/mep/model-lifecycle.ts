@@ -34,7 +34,85 @@ export interface MepEditResult {
 }
 
 function cloneConnector(c: MepConnector): MepConnector {
-  return { ...c, worldOrigin: [...c.worldOrigin], worldDirection: [...c.worldDirection], def: { ...c.def } };
+  return {
+    ...c,
+    worldOrigin: [...c.worldOrigin] as [number, number, number],
+    worldDirection: [...c.worldDirection] as [number, number, number],
+    def: {
+      ...c.def,
+      origin: [...c.def.origin] as [number, number, number],
+      direction: [...c.def.direction] as [number, number, number],
+      size: Array.isArray(c.def.size) ? [...c.def.size] as [number, number] : c.def.size,
+    },
+  };
+}
+
+function cloneFitting(fitting: ConnectorConnection["fittings"][number]): ConnectorConnection["fittings"][number] {
+  const cloneSize = (size: typeof fitting.fromSize) =>
+    Array.isArray(size) ? [...size] as [number, number] : size;
+  return {
+    ...fitting,
+    fromSize: cloneSize(fitting.fromSize),
+    toSize: cloneSize(fitting.toSize),
+    shapeTransition: fitting.shapeTransition ? [...fitting.shapeTransition] as [typeof fitting.shapeTransition[0], typeof fitting.shapeTransition[1]] : undefined,
+  };
+}
+
+function cloneConnection(connection: ConnectorConnection): ConnectorConnection {
+  return {
+    ...connection,
+    route: connection.route.map(point => [...point] as [number, number, number]),
+    fittings: connection.fittings.map(cloneFitting),
+  };
+}
+
+function isFiniteVector3(value: unknown): value is [number, number, number] {
+  return Array.isArray(value) && value.length === 3 && value.every(Number.isFinite);
+}
+
+/** Validate a complete replacement list before changing any live lifecycle state. */
+function validateReplacementConnectors(elementId: string, connectors: MepConnector[]): void {
+  if (!Array.isArray(connectors)) throw new Error("nextConnectors must be an array");
+  const names = new Set<string>();
+  const domains = new Set(["duct", "pipe", "electrical", "conduit", "cabletray", "structural", "other"]);
+  const shapes = new Set(["round", "rectangular", "oval", "point"]);
+  const flows = new Set(["in", "out", "inout"]);
+  for (const connector of connectors) {
+    if (!connector || typeof connector !== "object") throw new Error("nextConnectors contains an invalid connector");
+    if (connector.ownerElementId !== elementId) {
+      throw new Error("nextConnectors must belong to the changed element: " + elementId);
+    }
+    const def = connector.def;
+    if (!def || typeof def !== "object" || typeof def.name !== "string" || !def.name.trim()) {
+      throw new Error("MEP connector name is required");
+    }
+    if (names.has(def.name)) throw new Error("Duplicate MEP connector name on element " + elementId + ": " + def.name);
+    names.add(def.name);
+    if (!domains.has(def.domain) || !shapes.has(def.shape) || !flows.has(def.flowDirection)) {
+      throw new Error("MEP connector has an unsupported domain, shape or flow direction: " + def.name);
+    }
+    if (typeof def.systemClassification !== "string" || !def.systemClassification.trim()) {
+      throw new Error("MEP connector system classification is required: " + def.name);
+    }
+    if (!isFiniteVector3(def.origin) || !isFiniteVector3(def.direction) ||
+        !isFiniteVector3(connector.worldOrigin) || !isFiniteVector3(connector.worldDirection)) {
+      throw new Error("MEP connector coordinates and directions must be finite 3D vectors: " + def.name);
+    }
+    const directionLength = Math.hypot(...connector.worldDirection);
+    const definitionDirectionLength = Math.hypot(...def.direction);
+    if (directionLength < 1e-9 || definitionDirectionLength < 1e-9) {
+      throw new Error("MEP connector direction must be non-zero: " + def.name);
+    }
+    const size = def.size;
+    if (Array.isArray(size)) {
+      if (size.length !== 2 || !size.every(value => Number.isFinite(value) && value > 0)) {
+        throw new Error("MEP connector size must contain two positive finite dimensions: " + def.name);
+      }
+      if (def.shape === "round") throw new Error("Round MEP connectors require a scalar size: " + def.name);
+    } else if (!Number.isFinite(size) || size <= 0 || def.shape === "rectangular") {
+      throw new Error("MEP connector size is invalid for its shape: " + def.name);
+    }
+  }
 }
 
 /** Coordinates MEP state transitions for native model edits. */
@@ -50,9 +128,7 @@ export class MepModelLifecycle {
   /** Replace the current MEP snapshot from the project's authored model. */
   hydrate(snapshot: Partial<Omit<MepModelSnapshot, "revision">>): void {
     this.connectors = (snapshot.connectors ?? []).map(cloneConnector);
-    this.connections = (snapshot.connections ?? []).map(c => ({
-      ...c, route: c.route.map(p => [...p]), fittings: c.fittings.map(f => ({ ...f })),
-    }));
+    this.connections = (snapshot.connections ?? []).map(cloneConnection);
     this.panels = (snapshot.panels ?? []).map(p => ({ ...p, circuits: p.circuits.map(c => ({ ...c, loadIds: [...c.loadIds] })) }));
     this.loads = (snapshot.loads ?? []).map(l => ({ ...l }));
     this.reconcileConnectorEngagement();
@@ -63,7 +139,7 @@ export class MepModelLifecycle {
     return {
       revision: this.revision,
       connectors: this.connectors.map(cloneConnector),
-      connections: this.connections.map(c => ({ ...c, route: c.route.map(p => [...p]), fittings: c.fittings.map(f => ({ ...f })) })),
+      connections: this.connections.map(cloneConnection),
       panels: this.panels.map(p => ({ ...p, circuits: p.circuits.map(c => ({ ...c, loadIds: [...c.loadIds] })) })),
       loads: this.loads.map(l => ({ ...l })),
     };
@@ -79,7 +155,7 @@ export class MepModelLifecycle {
     const connection = createConnectorRelationship(start, end, preview.route, preview.fittings);
     this.connections.push(connection);
     this.revision++;
-    return connection;
+    return cloneConnection(connection);
   }
 
   /**
@@ -89,9 +165,13 @@ export class MepModelLifecycle {
    * affected so route/fitting regeneration can be queued by the host.
    */
   onElementChanged(elementId: string, nextConnectors: MepConnector[]): MepEditResult {
+    if (typeof elementId !== "string" || !elementId.trim()) throw new Error("elementId is required");
+    // Validate the unfiltered input first. Filtering here would silently turn a
+    // foreign/malformed connector list into an empty replacement, dropping
+    // valid connections on the real element.
+    validateReplacementConnectors(elementId, nextConnectors);
+    const next = nextConnectors.map(cloneConnector);
     const previousIds = new Set(this.connectors.filter(c => c.ownerElementId === elementId).map(c => c.def.name));
-    const next = nextConnectors.filter(c => c.ownerElementId === elementId).map(cloneConnector);
-    if (next.some(c => c.ownerElementId !== elementId)) throw new Error("nextConnectors must belong to the changed element");
     const affected = this.connections.filter(c => c.sourceElementId === elementId || c.targetElementId === elementId);
     const affectedIds = affected.map(c => c.id);
     const removedNames = new Set([...previousIds].filter(name => !next.some(c => c.def.name === name)));
@@ -102,9 +182,9 @@ export class MepModelLifecycle {
       const otherElementId = connection.sourceElementId === elementId ? connection.targetElementId : connection.sourceElementId;
       const otherName = connection.sourceElementId === elementId ? connection.targetConnector : connection.sourceConnector;
       const other = this.connectors.find(c => c.ownerElementId === otherElementId && c.def.name === otherName);
-      const changed = s ?? t;
-      if (removedNames.has(connection.sourceElementId === elementId ? connection.sourceConnector : connection.targetConnector) ||
-          !changed || !other || !evaluateConnectorCompatibility(changed, other).compatible) invalidIds.add(connection.id);
+      const changed = connection.sourceElementId === elementId ? s : t;
+      const changedName = connection.sourceElementId === elementId ? connection.sourceConnector : connection.targetConnector;
+      if (removedNames.has(changedName) || !changed || !other || !evaluateConnectorCompatibility(changed, other).compatible) invalidIds.add(connection.id);
     }
     for (const connection of affected) {
       if (invalidIds.has(connection.id)) disconnectMepConnectors(this.connectors, connection);
