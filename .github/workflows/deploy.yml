@@ -5,19 +5,25 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker-${{ github.ref }}
+  cancel-in-progress: true
+
 # Required GitHub secrets:
 #   CLOUDFLARE_API_TOKEN  — Workers Scripts:Edit + Account Settings:Read
 #   CLOUDFLARE_ACCOUNT_ID — Cloudflare account id
 #
-# Worker script (worker/index.ts) serves the Vite build in ./dist and the
-# /api/visits counter backed by a SQLite Durable Object, which is created
-# automatically on deploy — no KV namespace or extra permissions required.
-# Requires Wrangler 4+ (v3 demands a JS entry-point / main field).
+# Build the native CAD writer in CI and package it into dist. Never push
+# generated binaries back to the protected main branch. The deployment
+# consumes the freshly built artifact directly from this job.
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,6 +33,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - name: Install Rust WebAssembly target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build native DWG writer
+        run: cargo build --locked --release --target wasm32-unknown-unknown --manifest-path cad-engine-rust/Cargo.toml
+
+      - name: Stage freshly built CAD engine WebAssembly
+        run: node scripts/copy-cad-engine-wasm.mjs
 
       - name: Install dependencies
         env:
@@ -38,13 +55,16 @@ jobs:
 
       - name: Check Cloudflare secrets
         shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           missing=0
-          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::error::Missing secret CLOUDFLARE_API_TOKEN"
             missing=1
           fi
-          if [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::error::Missing secret CLOUDFLARE_ACCOUNT_ID"
             missing=1
           fi
@@ -60,7 +80,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Worker + assets config (wrangler.jsonc) needs Wrangler 4+
           wranglerVersion: "4.153.0"
           command: deploy
 
@@ -69,8 +88,4 @@ jobs:
         shell: bash
         run: |
           echo "::error::Cloudflare deploy step failed."
-          echo "If the log says 'No access to the specified service':"
-          echo "  - Token needs Account → Workers Scripts → Edit"
-          echo "  - CLOUDFLARE_ACCOUNT_ID must match the Worker account"
-          echo "If the log says 'Missing entry-point':"
-          echo "  - Ensure wranglerVersion is 4.x (assets-only config)"
+          echo "Check Workers Scripts:Edit permission and CLOUDFLARE_ACCOUNT_ID."
