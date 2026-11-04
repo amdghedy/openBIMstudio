@@ -23,7 +23,7 @@
 import { readCadFile } from "../modules/cad-link/index";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
 import { downloadDxf, writeDxf } from "../modules/drawings/dxf-writer";
-import { exportDxfToDwg } from "../modules/drawings/acad-engine";
+import { exportDxfToDwg, validateDxfForDwgExport } from "../modules/drawings/acad-engine";
 import { makeClip, clipInstances, type CadClip } from "../modules/cad-viewer/clipboard";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
@@ -5646,6 +5646,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     try {
       const dxf = writeDxf({ ...doc, entities });
+      await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
       const blobBuffer = new ArrayBuffer(bytes.byteLength);
       new Uint8Array(blobBuffer).set(bytes);
