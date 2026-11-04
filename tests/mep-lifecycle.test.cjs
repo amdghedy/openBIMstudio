@@ -79,6 +79,45 @@ try {
     s.loads[0].name = "mutated";
     assert.equal(lifecycle.getPanelSchedule("LP1").rows[0].loadNames[0], "Lighting");
   });
+
+  test("foreign connector input is rejected before touching the existing graph", () => {
+    lifecycle.hydrate({ connectors: [a, b] });
+    lifecycle.connect("P1", "out", "P2", "in");
+    const before = lifecycle.snapshot();
+    const foreign = connector("P2", "in", [2, 0, 0], [-1, 0, 0], "in");
+    assert.throws(() => lifecycle.onElementChanged("P1", [foreign]), /must belong to the changed element/);
+    assert.deepEqual(lifecycle.snapshot(), before, "failed input validation must be atomic");
+    assert.equal(lifecycle.listConnections().length, 1);
+  });
+  test("duplicate or non-finite replacement connectors are rejected atomically", () => {
+    lifecycle.hydrate({ connectors: [a, b] });
+    lifecycle.connect("P1", "out", "P2", "in");
+    const before = lifecycle.snapshot();
+    const duplicate = connector("P1", "out", [0, 0, 0], [1, 0, 0], "out");
+    assert.throws(() => lifecycle.onElementChanged("P1", [duplicate, duplicate]), /Duplicate MEP connector name/);
+    const nonFinite = connector("P1", "out", [Number.NaN, 0, 0], [1, 0, 0], "out");
+    assert.throws(() => lifecycle.onElementChanged("P1", [nonFinite]), /finite 3D vectors/);
+    assert.deepEqual(lifecycle.snapshot(), before);
+    assert.equal(lifecycle.listConnections().length, 1);
+  });
+  test("returned connections and snapshot connector definitions are defensive copies", () => {
+    lifecycle.hydrate({ connectors: [a, b] });
+    const returned = lifecycle.connect("P1", "out", "P2", "in");
+    const originalRouteX = lifecycle.listConnections()[0].route[0][0];
+    returned.route[0][0] = 999;
+    returned.fittings.push({ kind: "union", reason: "external mutation" });
+    const snapshot = lifecycle.snapshot();
+    snapshot.connectors.find(c => c.ownerElementId === "P1").def.direction[0] = 999;
+    snapshot.connectors.find(c => c.ownerElementId === "P1").def.origin[0] = 999;
+    snapshot.connectors.find(c => c.ownerElementId === "P1").worldOrigin[0] = 999;
+    const persisted = lifecycle.snapshot();
+    assert.equal(persisted.connections[0].route[0][0], originalRouteX);
+    assert.equal(persisted.connections[0].fittings.length, 0);
+    assert.equal(persisted.connectors.find(c => c.ownerElementId === "P1").def.direction[0], 1);
+    assert.equal(persisted.connectors.find(c => c.ownerElementId === "P1").def.origin[0], 0);
+    assert.equal(persisted.connectors.find(c => c.ownerElementId === "P1").worldOrigin[0], 0);
+  });
+
   console.log(`=== MEP lifecycle tests: ${pass} passed, ${fail} failed ===`);
   process.exitCode = fail ? 1 : 0;
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
