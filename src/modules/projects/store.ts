@@ -353,8 +353,8 @@ export async function restoreProjectSnapshot(projectId: string, snapshotId: numb
     const currentBlobs = currentBlobsRequest.result as Array<{ key: string; projectId: string; modelId: string; name: string; blob: Blob; version?: string }>;
     appendProjectSnapshot(tx, current, "before-restore", currentBlobs);
     const archived = archivedBlobsRequest.result as Array<{ key: string; modelId: string; version: string; name: string; blob: Blob }>;
-    const requiredVersions = new Map((snapshot.modelVersions ?? []).map((x) => [x.modelId, x.version]));
-    const archivedByKey = new Map(archived.map((x) => [x.key, x]));
+    const requiredVersions = new Map((snapshot.modelVersions ?? []).map((x) => [x.modelId, x.version] as const));
+    const archivedByKey = new Map(archived.map((x) => [x.key, x] as const));
     const restoredBlobs = [...requiredVersions.entries()]
       .map(([modelId, version]) => archivedByKey.get(getModelBlobVersionKey(projectId, modelId, version)))
       .filter((x): x is NonNullable<typeof x> => !!x);
