@@ -27,7 +27,7 @@ try {
   };
   const compiled = findCompiled(out, "connector-preview.js");
   assert.ok(compiled, "compiled connector preview module not found");
-  const { buildFamilyConnectorPreviewLayout } = require(compiled);
+  const { buildFamilyConnectorPreviewLayout, projectedDeltaToLocalAxisDelta } = require(compiled);
   let pass = 0, fail = 0;
   const test = (name, fn) => {
     try { fn(); pass++; console.log("  PASS " + name); }
@@ -68,6 +68,8 @@ try {
     assert.ok(finitePoint(layout.ports[0].origin));
     assert.ok(finitePoint(layout.ports[0].axisEnd));
     assert.notDeepEqual(layout.ports[0].origin, layout.ports[0].axisEnd);
+    assert.ok(layout.ports[0].axisProjection.x.x > 0);
+    assert.ok(layout.ports[0].axisProjection.x.y < 0);
   });
 
   test("keeps model dimensions independent from connector extensions", () => {
@@ -80,6 +82,21 @@ try {
     assert.equal(layout.geometryCorners.length, 8);
     assert.ok(layout.ports[0].origin.x >= 0 && layout.ports[0].origin.x <= 220);
     assert.ok(layout.ports[0].origin.y >= 0 && layout.ports[0].origin.y <= 160);
+  });
+
+  test("converts projected pointer motion into a family-local axis delta", () => {
+    const axis = { x: 12, y: -5 };
+    const pointer = { x: axis.x * 0.375, y: axis.y * 0.375 };
+    const delta = projectedDeltaToLocalAxisDelta(pointer, axis);
+    assert.ok(Math.abs(delta - 0.375) < 1e-10);
+    assert.throws(
+      () => projectedDeltaToLocalAxisDelta({ x: 2, y: 3 }, { x: 0, y: 0 }),
+      /not visible/,
+    );
+    assert.throws(
+      () => projectedDeltaToLocalAxisDelta({ x: Number.NaN, y: 0 }, { x: 1, y: 0 }),
+      /must be finite/,
+    );
   });
 
   test("supports an equipment family with ports but no preview mesh", () => {
@@ -118,6 +135,9 @@ try {
     assert.match(browserSource, /buildFamilyConnectorPreviewLayout/);
     assert.match(browserSource, /createElementNS\(SVG_NS,\s*["']circle["']\)/);
     assert.match(browserSource, /createElementNS\(SVG_NS,\s*["']polygon["']\)/);
+    assert.match(browserSource, /setPointerCapture\(pointer\.pointerId\)/);
+    assert.match(browserSource, /projectedDeltaToLocalAxisDelta/);
+    assert.match(browserSource, /DRAG PORT ALONG LOCAL AXIS/);
   });
 
   console.log("=== Family connector preview tests: " + pass + " passed, " + fail + " failed ===");

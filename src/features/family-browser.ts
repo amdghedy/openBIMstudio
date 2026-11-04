@@ -24,7 +24,7 @@ import { setupFamilies, isFamilySystemReady } from "../modules/families";
 import type { FamilyDefinition, FamilyType, FamilyService } from "../modules/families";
 import type { ConnectorDefinition } from "../modules/object-hierarchy";
 import { validateFamilyConnectorDefinitions, cloneFamilyConnectorDefinitions } from "../modules/families/connector-definitions";
-import { buildFamilyConnectorPreviewLayout } from "../modules/families/connector-preview";
+import { buildFamilyConnectorPreviewLayout, projectedDeltaToLocalAxisDelta, type PreviewLocalAxis } from "../modules/families/connector-preview";
 // openbim-families:formula-engine-ui
 import { evaluateParameters } from "../modules/families/formula-engine";
 
@@ -314,14 +314,34 @@ function renderDetail(): void {
 
   detailPane.append(head, meta);
 
-  // --- Preview (isometric SVG of the bounding box of the built geometry) ---
+  // --- Preview (isometric geometry + editable local MEP connector ports) ---
   const preview = document.createElement("div");
   preview.style.cssText =
     "background:#0b0d12;border:1px solid var(--border-subtle,#1e2029);border-radius:6px;" +
     "padding:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;min-height:160px";
+  let builtPreviewObject: THREE.Object3D | null = null;
+  const connectorPreviewState: FamilyConnectorPreviewState = {
+    axis: "x",
+    definitions: (fam.connectorDefs ?? []).map(definition => ({
+      ...definition,
+      origin: [...definition.origin] as [number, number, number],
+      direction: [...definition.direction] as [number, number, number],
+      size: Array.isArray(definition.size) ? [...definition.size] as [number, number] : definition.size,
+    })),
+    onPortMove: () => { /* assigned by the connector editor below */ },
+    refresh: () => { /* assigned after the geometry preview is built */ },
+  };
+  connectorPreviewState.refresh = () => {
+    if (!builtPreviewObject) return;
+    preview.replaceChildren(buildPreviewSvg(builtPreviewObject, connectorPreviewState.definitions, {
+      dragAxis: connectorPreviewState.axis,
+      interactive: !fam.builtIn,
+      onPortMove: connectorPreviewState.onPortMove,
+    }));
+  };
   try {
-    const built = s.buildGeometry(fam.id, selectedTypeId, undefined);
-    if (built) preview.appendChild(buildPreviewSvg(built, fam.connectorDefs ?? []));
+    builtPreviewObject = s.buildGeometry(fam.id, selectedTypeId, undefined);
+    if (builtPreviewObject) connectorPreviewState.refresh();
     else {
       const em = document.createElement("div");
       em.textContent = "(no geometry for this type)";
@@ -389,7 +409,7 @@ function renderDetail(): void {
 
   // --- Family-local MEP connector definitions ------------------------------
   try {
-    detailPane.appendChild(buildMepConnectorsSection(fam));
+    detailPane.appendChild(buildMepConnectorsSection(fam, connectorPreviewState));
   } catch (err) {
     console.warn("[family-browser] MEP connectors section failed", err);
   }
@@ -470,7 +490,14 @@ type ConnectorDraft = {
   sizeB: string;
 };
 
-const CONNECTOR_DOMAINS: ConnectorDefinition["domain"][] =
+
+type FamilyConnectorPreviewState = {
+  axis: PreviewLocalAxis;
+  definitions: ConnectorDefinition[];
+  onPortMove: (index: number, origin: [number, number, number]) => void;
+  refresh: () => void;
+};
+\nconst CONNECTOR_DOMAINS: ConnectorDefinition["domain"][] =
   ["duct", "pipe", "electrical", "conduit", "cabletray", "structural", "other"];
 const CONNECTOR_SHAPES: ConnectorDefinition["shape"][] =
   ["round", "rectangular", "oval", "point"];
@@ -514,7 +541,7 @@ function connectorDraftDefinition(draft: ConnectorDraft): ConnectorDefinition {
   };
 }
 
-function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
+function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyConnectorPreviewState): HTMLElement {
   const wrap = document.createElement("div");
   wrap.style.cssText =
     "margin:12px 0 14px;padding:9px;border:1px solid var(--border-subtle,#1e2029);" +
@@ -524,7 +551,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
   wrap.appendChild(title);
 
   const hint = document.createElement("div");
-  hint.textContent = "Numbered markers in the preview show port origins; arrows show connection axes. Coordinates are stored in family-local metres and transformed on placement.";
+  hint.textContent = fam.builtIn ? "Numbered markers show port origins; arrows show connection axes." : "Drag a numbered port along the selected family-local axis. Arrow keys nudge the focused port by 10 mm. Save connectors to persist the changes.";
   hint.style.cssText = "color:#94a3b8;font-size:10.5px;line-height:1.5;margin-bottom:8px";
   wrap.appendChild(hint);
 
@@ -561,6 +588,11 @@ function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
 
   let drafts = existing.map(connectorDraft);
 
+  const notifyPreview = (): void => {
+    previewState.definitions = drafts.map(connectorDraftDefinition);
+    previewState.refresh();
+  };
+
   const makeInput = (
     labelText: string,
     value: string,
@@ -579,7 +611,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
     input.style.cssText =
       "box-sizing:border-box;width:100%;min-width:0;padding:4px 5px;background:#11141d;" +
       "border:1px solid #303746;border-radius:4px;color:#e8eaf0;font:10.5px ui-monospace,monospace";
-    input.addEventListener("input", () => onChange(input.value));
+    input.addEventListener("input", () => { onChange(input.value); notifyPreview(); });
     field.append(caption, input);
     return field;
   };
@@ -617,6 +649,23 @@ function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
     return row;
   };
 
+  if (!fam.builtIn) {
+    const dragAxis = makeFieldRow();
+    dragAxis.style.marginBottom = "8px";
+    dragAxis.appendChild(makeSelect(
+      "DRAG PORT ALONG LOCAL AXIS",
+      previewState.axis,
+      ["x", "y", "z"] as PreviewLocalAxis[],
+      value => {
+        previewState.axis = value;
+        previewState.refresh();
+      },
+    ));
+    wrap.appendChild(dragAxis);
+  }
+
+
+
   const renderRows = (): void => {
     list.innerHTML = "";
     drafts.forEach((draft, index) => {
@@ -630,6 +679,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
         makeSelect("SHAPE", draft.shape, CONNECTOR_SHAPES, value => {
           draft.shape = value;
           renderRows();
+          notifyPreview();
         }),
         makeSelect("FLOW", draft.flowDirection, CONNECTOR_FLOWS, value => { draft.flowDirection = value; }),
         makeInput("SYSTEM CLASSIFICATION", draft.systemClassification, "160px", value => { draft.systemClassification = value; }),
@@ -638,6 +688,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
         drafts.splice(index, 1);
         status.textContent = "";
         renderRows();
+        notifyPreview();
       }, false);
       remove.style.padding = "4px 7px";
       identity.appendChild(remove);
@@ -661,6 +712,19 @@ function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
       empty.style.cssText = "color:#64748b;font-size:10.5px;padding:4px 0";
       list.appendChild(empty);
     }
+    notifyPreview();
+  };
+
+  previewState.onPortMove = (index, origin) => {
+    const draft = drafts[index];
+    if (!draft) return;
+    draft.origin = origin.map(value => Number(value.toFixed(6)).toString()) as [string, string, string];
+    status.style.color = "#86efac";
+    status.textContent =
+      "Moved " + (draft.name || ("connector " + (index + 1))) +
+      " along local " + previewState.axis.toUpperCase() +
+      ". Save connectors to persist this change.";
+    renderRows();
   };
 
   const actions = document.createElement("div");
@@ -685,6 +749,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
     });
     status.textContent = "";
     renderRows();
+    notifyPreview();
   }, false);
   const save = mkActionBtn("Save connectors", () => {
     const s = svc();
@@ -1002,6 +1067,11 @@ function esc(s: unknown): string {
 function buildPreviewSvg(
   obj: THREE.Object3D,
   connectorDefinitions: ConnectorDefinition[] = [],
+  interaction: {
+    dragAxis: PreviewLocalAxis;
+    interactive: boolean;
+    onPortMove: (index: number, origin: [number, number, number]) => void;
+  } = { dragAxis: "x", interactive: false, onPortMove: () => { /* no-op */ } },
 ): SVGSVGElement {
   let layout: ReturnType<typeof buildFamilyConnectorPreviewLayout> = null;
   let connectorPreviewError = false;
@@ -1020,7 +1090,7 @@ function buildPreviewSvg(
   svg.setAttribute("viewBox", "0 0 " + w + " " + h);
   svg.setAttribute("width", String(w));
   svg.setAttribute("height", String(h));
-  svg.style.cssText = "display:block;max-width:100%";
+  svg.style.cssText = "display:block;max-width:100%;touch-action:none";
 
   if (!layout) {
     svg.setAttribute("width", "200");
@@ -1059,9 +1129,32 @@ function buildPreviewSvg(
     other: "#cbd5e1",
   };
 
+  type ActivePortDrag = {
+    pointerId: number;
+    group: SVGGElement;
+    index: number;
+    startClientX: number;
+    startClientY: number;
+    origin: [number, number, number];
+    axisIndex: number;
+    axisProjection: { x: number; y: number };
+    delta: number;
+  };
+  let activeDrag: ActivePortDrag | null = null;
+
+  const commitKeyboardNudge = (index: number, axis: PreviewLocalAxis, delta: number): void => {
+    const definition = connectorDefinitions[index];
+    if (!definition) return;
+    const axisIndex = axis === "x" ? 0 : axis === "y" ? 1 : 2;
+    const origin = [...definition.origin] as [number, number, number];
+    origin[axisIndex] += delta;
+    interaction.onPortMove(index, origin);
+  };
+
   layout.ports.forEach((port, index) => {
     const color = connectorColors[port.domain] ?? "#cbd5e1";
     const group = document.createElementNS(SVG_NS, "g");
+    const definition = connectorDefinitions[index];
     const tooltip = document.createElementNS(SVG_NS, "title");
     const size = Array.isArray(port.size) ? port.size.join(" × ") + " m" : port.size + " m";
     tooltip.textContent =
@@ -1122,8 +1215,83 @@ function buildPreviewSvg(
     number.setAttribute("fill", "#07111c");
     number.textContent = String(index + 1);
     group.appendChild(number);
+
+    if (interaction.interactive && typeof interaction.onPortMove === "function" && definition) {
+      group.style.cursor = "grab";
+      group.setAttribute("role", "button");
+      group.setAttribute("tabindex", "0");
+      group.setAttribute("aria-label",
+        "Move connector " + port.name + " along local " + interaction.dragAxis.toUpperCase() +
+        " axis. Use arrow keys for 10 millimetre adjustments.");
+      group.addEventListener("pointerdown", (event) => {
+        const pointer = event as PointerEvent;
+        if (pointer.button !== 0 || activeDrag) return;
+        pointer.preventDefault();
+        pointer.stopPropagation();
+        const axisIndex = interaction.dragAxis === "x" ? 0 : interaction.dragAxis === "y" ? 1 : 2;
+        activeDrag = {
+          pointerId: pointer.pointerId,
+          group,
+          index,
+          startClientX: pointer.clientX,
+          startClientY: pointer.clientY,
+          origin: [...definition.origin] as [number, number, number],
+          axisIndex,
+          axisProjection: { ...port.axisProjection[interaction.dragAxis] },
+          delta: 0,
+        };
+        group.style.cursor = "grabbing";
+        try { svg.setPointerCapture(pointer.pointerId); } catch { /* pointer capture may be unavailable in test/older browsers */ }
+      });
+      group.addEventListener("keydown", (event) => {
+        const key = event as KeyboardEvent;
+        if (key.key !== "ArrowLeft" && key.key !== "ArrowRight" &&
+            key.key !== "ArrowUp" && key.key !== "ArrowDown") return;
+        key.preventDefault();
+        key.stopPropagation();
+        const delta = (key.key === "ArrowRight" || key.key === "ArrowUp" ? 1 : -1) * 0.01;
+        commitKeyboardNudge(index, interaction.dragAxis, delta);
+      });
+    }
+
     svg.appendChild(group);
   });
+
+  const updateDrag = (event: PointerEvent): void => {
+    if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+    const rect = svg.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) return;
+    const pointerDelta = {
+      x: (event.clientX - activeDrag.startClientX) * w / rect.width,
+      y: (event.clientY - activeDrag.startClientY) * h / rect.height,
+    };
+    try {
+      activeDrag.delta = projectedDeltaToLocalAxisDelta(pointerDelta, activeDrag.axisProjection);
+    } catch {
+      activeDrag.delta = 0;
+    }
+    const movement = {
+      x: activeDrag.axisProjection.x * activeDrag.delta,
+      y: activeDrag.axisProjection.y * activeDrag.delta,
+    };
+    activeDrag.group.setAttribute("transform",
+      "translate(" + movement.x.toFixed(2) + " " + movement.y.toFixed(2) + ")");
+  };
+  const finishDrag = (event: PointerEvent, commit: boolean): void => {
+    if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+    const finished = activeDrag;
+    activeDrag = null;
+    finished.group.removeAttribute("transform");
+    finished.group.style.cursor = "grab";
+    try { if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId); } catch { /* */ }
+    if (!commit || Math.abs(finished.delta) < 1e-6) return;
+    const origin = [...finished.origin] as [number, number, number];
+    origin[finished.axisIndex] += finished.delta;
+    interaction.onPortMove(finished.index, origin);
+  };
+  svg.addEventListener("pointermove", (event) => updateDrag(event as PointerEvent));
+  svg.addEventListener("pointerup", (event) => finishDrag(event as PointerEvent, true));
+  svg.addEventListener("pointercancel", (event) => finishDrag(event as PointerEvent, false));
 
   if (layout.ports.length) {
     const count = document.createElementNS(SVG_NS, "text");

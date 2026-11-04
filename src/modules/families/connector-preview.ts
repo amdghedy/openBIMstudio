@@ -14,6 +14,10 @@ export interface PreviewPoint2D {
   y: number;
 }
 
+export type PreviewLocalAxis = "x" | "y" | "z";
+
+export type PreviewAxisProjection = Record<PreviewLocalAxis, PreviewPoint2D>;
+
 export interface FamilyConnectorPreviewPort {
   name: string;
   domain: ConnectorDefinition["domain"];
@@ -25,6 +29,8 @@ export interface FamilyConnectorPreviewPort {
   axisEnd: PreviewPoint2D;
   worldOrigin: [number, number, number];
   worldDirection: [number, number, number];
+  /** Screen-space displacement caused by moving one family-local metre on each axis. */
+  axisProjection: PreviewAxisProjection;
 }
 
 export interface FamilyConnectorPreviewLayout {
@@ -106,6 +112,16 @@ export function buildFamilyConnectorPreviewLayout(
       y: ((dx + dz) * sin30 - dy) * scale + height / 2,
     };
   };
+  const projectVector = (vector: THREE.Vector3): PreviewPoint2D => ({
+    x: (vector.x - vector.z) * cos30 * scale,
+    y: ((vector.x + vector.z) * sin30 - vector.y) * scale,
+  });
+  const linearTransform = new THREE.Matrix3().setFromMatrix4(instanceObject.matrixWorld);
+  const axisProjection: PreviewAxisProjection = {
+    x: projectVector(new THREE.Vector3(1, 0, 0).applyMatrix3(linearTransform)),
+    y: projectVector(new THREE.Vector3(0, 1, 0).applyMatrix3(linearTransform)),
+    z: projectVector(new THREE.Vector3(0, 0, 1).applyMatrix3(linearTransform)),
+  };
 
   const geometryCorners: PreviewPoint2D[] = [];
   if (hasGeometry) {
@@ -137,7 +153,32 @@ export function buildFamilyConnectorPreviewLayout(
     axisEnd: project(axisEnd),
     worldOrigin: [...connector.worldOrigin] as [number, number, number],
     worldDirection: [...connector.worldDirection] as [number, number, number],
+    axisProjection: {
+      x: { ...axisProjection.x },
+      y: { ...axisProjection.y },
+      z: { ...axisProjection.z },
+    },
   }));
 
   return { width, height, geometryCorners, dimensions, ports };
+}
+
+
+/**
+ * Resolve a 2D pointer displacement onto one projected local family axis.
+ * The returned scalar is measured in family-local metres.
+ */
+export function projectedDeltaToLocalAxisDelta(
+  pointerDelta: PreviewPoint2D,
+  projectedAxis: PreviewPoint2D,
+): number {
+  if (!Number.isFinite(pointerDelta.x) || !Number.isFinite(pointerDelta.y) ||
+      !Number.isFinite(projectedAxis.x) || !Number.isFinite(projectedAxis.y)) {
+    throw new Error("Pointer and projected-axis coordinates must be finite");
+  }
+  const lengthSquared = projectedAxis.x * projectedAxis.x + projectedAxis.y * projectedAxis.y;
+  if (lengthSquared < 1e-12) {
+    throw new Error("The selected local axis is not visible in this preview orientation");
+  }
+  return (pointerDelta.x * projectedAxis.x + pointerDelta.y * projectedAxis.y) / lengthSquared;
 }
