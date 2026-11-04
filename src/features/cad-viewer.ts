@@ -6056,8 +6056,33 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       markSaved();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logCmd(`DWG export failed: ${message}`);
-      status("DWG export failed");
+      // Legacy WASM hard-fails on tiny entity-count drift (e.g. 337780 → 337548).
+      // Offer DXF so the user still gets a file; new engine tolerates small drift.
+      const m = /input has (\d+) entities but DWG re-opened with (\d+)/i.exec(message);
+      if (m) {
+        const expected = Number(m[1]);
+        const actual = Number(m[2]);
+        const lost = Math.max(0, expected - actual);
+        const pct = expected > 0 ? (lost * 100) / expected : 100;
+        logCmd(
+          `DWG writer reported ${lost} entit${lost === 1 ? "y" : "ies"} not re-read (${pct.toFixed(3)}%). ` +
+            (pct <= 2
+              ? "Saving DXF fallback (same geometry). Update the app to get soft DWG verify."
+              : "Saving DXF fallback."),
+        );
+        try {
+          const dxfName = `${base()}.dxf`;
+          downloadDxf({ ...doc, entities, layouts: undefined }, dxfName);
+          status(`Saved ${dxfName} (DWG verify soft-fail)`);
+          markSaved();
+        } catch (e2) {
+          logCmd(`DXF fallback failed: ${e2 instanceof Error ? e2.message : String(e2)}`);
+          status("DWG export failed");
+        }
+      } else {
+        logCmd(`DWG export failed: ${message}`);
+        status("DWG export failed");
+      }
       console.error("[CAD] DWG export failed:", error);
     }
     window.setTimeout(() => status(""), 5000);
