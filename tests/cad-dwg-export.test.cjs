@@ -6,7 +6,7 @@ const assert = require("assert");
 const { execSync } = require("child_process");
 const root = path.join(__dirname, "..");
 const viewerSource = fs.readFileSync(path.join(root, "src", "features", "cad-viewer.ts"), "utf8");
-for (const required of ['name: "SAVEAS"', 'name: "DWGSAVE"', 'async function saveDwg()', 'exportDxfToDwg(dxf)', "DWG export cancelled to prevent data loss"]) {
+for (const required of ['name: "SAVEAS"', 'name: "DWGSAVE"', 'async function saveDwg()', 'exportDxfToDwg(dxf)', 'validateDxfForDwgExport(dxf, entities.length', "DWG export cancelled to prevent data loss"]) {
   assert.ok(viewerSource.includes(required), "CAD editor DWG export wiring missing: " + required);
 }
 const wasmPath = path.join(root, "public", "cad-engine", "obim-cad-engine.wasm");
@@ -39,7 +39,15 @@ const { writeDxf } = require(find(out, "dxf-writer.js"));
       { type: "POINT", layer: "0", position: { x: 5, y: 5 } },
     ],
   };
-  const dwg = await acad.exportDxfToDwg(writeDxf(doc));
+  const dxf = writeDxf(doc);
+  await acad.validateDxfForDwgExport(dxf, doc.entities.length, doc.layers.map((layer) => layer.name));
+  let countMismatchRejected = false;
+  try { await acad.validateDxfForDwgExport(dxf, doc.entities.length + 1, doc.layers.map((layer) => layer.name)); } catch { countMismatchRejected = true; }
+  assert.ok(countMismatchRejected, "preflight must reject entities lost by DXF serialization");
+  let missingLayerRejected = false;
+  try { await acad.validateDxfForDwgExport(dxf, doc.entities.length, [...doc.layers.map((layer) => layer.name), "MISSING_LAYER"]); } catch { missingLayerRejected = true; }
+  assert.ok(missingLayerRejected, "preflight must reject missing layers");
+  const dwg = await acad.exportDxfToDwg(dxf);
   assert.ok(dwg instanceof Uint8Array && dwg.length > 100, "DWG output is empty");
   const signature = new TextDecoder().decode(dwg.subarray(0, 6));
   assert.ok(/^AC10(?:09|12|14|15|18|21|24|27|32)$/.test(signature), "invalid DWG signature: " + signature);
@@ -50,5 +58,5 @@ const { writeDxf } = require(find(out, "dxf-writer.js"));
   let emptyFailed = false;
   try { await acad.exportDxfToDwg(""); } catch { emptyFailed = true; }
   assert.ok(emptyFailed, "empty input must be rejected");
-  console.log("cad-dwg-export: native DWG signature, entity count, layer table and empty-input guard passed");
+  console.log("cad-dwg-export: DXF preflight, native DWG signature, entity count, layer table and empty-input guard passed");
 })().catch((error) => { console.error(error); process.exitCode = 1; });
