@@ -22,6 +22,8 @@ import { promptLine, confirmDialog, pickFromList } from "./form-modal";
 import { makeDockable, type DockHandle } from "./dockable";
 import { setupFamilies, isFamilySystemReady } from "../modules/families";
 import type { FamilyDefinition, FamilyType, FamilyService } from "../modules/families";
+import type { ConnectorDefinition } from "../modules/object-hierarchy";
+import { validateFamilyConnectorDefinitions, cloneFamilyConnectorDefinitions } from "../modules/families/connector-definitions";
 // openbim-families:formula-engine-ui
 import { evaluateParameters } from "../modules/families/formula-engine";
 
@@ -384,6 +386,13 @@ function renderDetail(): void {
     }
   }
 
+  // --- Family-local MEP connector definitions ------------------------------
+  try {
+    detailPane.appendChild(buildMepConnectorsSection(fam));
+  } catch (err) {
+    console.warn("[family-browser] MEP connectors section failed", err);
+  }
+
   // --- Types table ---
   detailPane.appendChild(sectionLabel("Types"));
   const tBar = document.createElement("div");
@@ -442,6 +451,263 @@ function renderDetail(): void {
 
   actions.append(place, dup, del, exportBtn);
   detailPane.appendChild(actions);
+}
+
+
+// -----------------------------------------------------------------------------
+// MEP connector-definition editor
+// -----------------------------------------------------------------------------
+type ConnectorDraft = {
+  name: string;
+  domain: ConnectorDefinition["domain"];
+  shape: ConnectorDefinition["shape"];
+  flowDirection: ConnectorDefinition["flowDirection"];
+  systemClassification: string;
+  origin: [string, string, string];
+  direction: [string, string, string];
+  sizeA: string;
+  sizeB: string;
+};
+
+const CONNECTOR_DOMAINS: ConnectorDefinition["domain"][] =
+  ["duct", "pipe", "electrical", "conduit", "cabletray", "structural", "other"];
+const CONNECTOR_SHAPES: ConnectorDefinition["shape"][] =
+  ["round", "rectangular", "oval", "point"];
+const CONNECTOR_FLOWS: ConnectorDefinition["flowDirection"][] = ["in", "out", "inout"];
+
+function connectorDraft(definition: ConnectorDefinition): ConnectorDraft {
+  const size = definition.size;
+  return {
+    name: definition.name,
+    domain: definition.domain,
+    shape: definition.shape,
+    flowDirection: definition.flowDirection,
+    systemClassification: definition.systemClassification,
+    origin: definition.origin.map(String) as [string, string, string],
+    direction: definition.direction.map(String) as [string, string, string],
+    sizeA: Array.isArray(size) ? String(size[0]) : String(size),
+    sizeB: Array.isArray(size) ? String(size[1]) : "",
+  };
+}
+
+function connectorNumber(value: string): number {
+  return value.trim() === "" ? Number.NaN : Number(value);
+}
+
+function connectorDraftDefinition(draft: ConnectorDraft): ConnectorDefinition {
+  const firstSize = connectorNumber(draft.sizeA);
+  const secondSize = connectorNumber(draft.sizeB);
+  const size: number | [number, number] =
+    draft.shape === "rectangular" || (draft.shape === "oval" && draft.sizeB.trim() !== "")
+      ? [firstSize, secondSize]
+      : firstSize;
+  return {
+    name: draft.name.trim(),
+    domain: draft.domain,
+    shape: draft.shape,
+    flowDirection: draft.flowDirection,
+    systemClassification: draft.systemClassification.trim(),
+    origin: draft.origin.map(connectorNumber) as [number, number, number],
+    direction: draft.direction.map(connectorNumber) as [number, number, number],
+    size,
+  };
+}
+
+function buildMepConnectorsSection(fam: FamilyDefinition): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.style.cssText =
+    "margin:12px 0 14px;padding:9px;border:1px solid var(--border-subtle,#1e2029);" +
+    "border-radius:7px;background:#0b0d12";
+  const title = sectionLabel("MEP connectors");
+  title.style.marginTop = "0";
+  wrap.appendChild(title);
+
+  const hint = document.createElement("div");
+  hint.textContent = "Define connection ports in family-local metres. The placed instance transform converts them into world coordinates.";
+  hint.style.cssText = "color:#94a3b8;font-size:10.5px;line-height:1.5;margin-bottom:8px";
+  wrap.appendChild(hint);
+
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex;flex-direction:column;gap:8px";
+  wrap.appendChild(list);
+
+  const status = document.createElement("div");
+  status.style.cssText = "font-size:10.5px;line-height:1.45;margin-top:7px;color:#fca5a5;white-space:pre-wrap";
+  wrap.appendChild(status);
+
+  const existing = fam.connectorDefs ?? [];
+  if (fam.builtIn) {
+    const locked = document.createElement("div");
+    locked.textContent = "Built-in family definitions are read-only. Duplicate this family to add or edit connector ports.";
+    locked.style.cssText = "padding:8px;border:1px dashed #384152;border-radius:5px;color:#cbd5e1;font-size:11px;line-height:1.5";
+    wrap.appendChild(locked);
+    if (existing.length) {
+      for (const definition of existing) {
+        const row = document.createElement("div");
+        row.textContent = definition.name + " · " + definition.domain + " · " +
+          definition.shape + " · " + definition.systemClassification;
+        row.style.cssText = "font:10.5px ui-monospace,monospace;color:#94a3b8;padding:4px 0";
+        wrap.appendChild(row);
+      }
+    } else {
+      const empty = document.createElement("div");
+      empty.textContent = "No connector definitions yet.";
+      empty.style.cssText = "color:#64748b;font-size:10.5px";
+      wrap.appendChild(empty);
+    }
+    return wrap;
+  }
+
+  let drafts = existing.map(connectorDraft);
+
+  const makeInput = (
+    labelText: string,
+    value: string,
+    width: string,
+    onChange: (value: string) => void,
+  ): HTMLElement => {
+    const field = document.createElement("label");
+    field.style.cssText = "display:flex;flex-direction:column;gap:3px;min-width:0;flex:0 0 " + width;
+    const caption = document.createElement("span");
+    caption.textContent = labelText;
+    caption.style.cssText = "font-size:9px;color:#94a3b8";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = value;
+    input.spellcheck = false;
+    input.style.cssText =
+      "box-sizing:border-box;width:100%;min-width:0;padding:4px 5px;background:#11141d;" +
+      "border:1px solid #303746;border-radius:4px;color:#e8eaf0;font:10.5px ui-monospace,monospace";
+    input.addEventListener("input", () => onChange(input.value));
+    field.append(caption, input);
+    return field;
+  };
+
+  const makeSelect = <T extends string>(
+    labelText: string,
+    value: T,
+    options: T[],
+    onChange: (value: T) => void,
+  ): HTMLElement => {
+    const field = document.createElement("label");
+    field.style.cssText = "display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 90px";
+    const caption = document.createElement("span");
+    caption.textContent = labelText;
+    caption.style.cssText = "font-size:9px;color:#94a3b8";
+    const select = document.createElement("select");
+    select.style.cssText =
+      "box-sizing:border-box;width:100%;min-width:0;padding:4px 5px;background:#11141d;" +
+      "border:1px solid #303746;border-radius:4px;color:#e8eaf0;font:10.5px system-ui";
+    for (const option of options) {
+      const item = document.createElement("option");
+      item.value = option;
+      item.textContent = option;
+      select.appendChild(item);
+    }
+    select.value = value;
+    select.addEventListener("change", () => onChange(select.value as T));
+    field.append(caption, select);
+    return field;
+  };
+
+  const makeFieldRow = (): HTMLDivElement => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:5px;align-items:flex-end;flex-wrap:wrap";
+    return row;
+  };
+
+  const renderRows = (): void => {
+    list.innerHTML = "";
+    drafts.forEach((draft, index) => {
+      const card = document.createElement("div");
+      card.style.cssText =
+        "padding:7px;background:#11141d;border:1px solid #252d39;border-radius:5px;display:flex;flex-direction:column;gap:6px";
+      const identity = makeFieldRow();
+      identity.append(
+        makeInput("PORT NAME", draft.name, "115px", value => { draft.name = value; }),
+        makeSelect("DOMAIN", draft.domain, CONNECTOR_DOMAINS, value => { draft.domain = value; }),
+        makeSelect("SHAPE", draft.shape, CONNECTOR_SHAPES, value => {
+          draft.shape = value;
+          renderRows();
+        }),
+        makeSelect("FLOW", draft.flowDirection, CONNECTOR_FLOWS, value => { draft.flowDirection = value; }),
+        makeInput("SYSTEM CLASSIFICATION", draft.systemClassification, "160px", value => { draft.systemClassification = value; }),
+      );
+      const remove = mkActionBtn("Remove", () => {
+        drafts.splice(index, 1);
+        status.textContent = "";
+        renderRows();
+      }, false);
+      remove.style.padding = "4px 7px";
+      identity.appendChild(remove);
+      const coords = makeFieldRow();
+      coords.append(
+        makeInput("ORIGIN X", draft.origin[0], "72px", value => { draft.origin[0] = value; }),
+        makeInput("ORIGIN Y", draft.origin[1], "72px", value => { draft.origin[1] = value; }),
+        makeInput("ORIGIN Z", draft.origin[2], "72px", value => { draft.origin[2] = value; }),
+        makeInput("DIRECTION X", draft.direction[0], "80px", value => { draft.direction[0] = value; }),
+        makeInput("DIRECTION Y", draft.direction[1], "80px", value => { draft.direction[1] = value; }),
+        makeInput("DIRECTION Z", draft.direction[2], "80px", value => { draft.direction[2] = value; }),
+        makeInput("SIZE A (m)", draft.sizeA, "78px", value => { draft.sizeA = value; }),
+        makeInput("SIZE B (m)", draft.sizeB, "78px", value => { draft.sizeB = value; }),
+      );
+      card.append(identity, coords);
+      list.appendChild(card);
+    });
+    if (!drafts.length) {
+      const empty = document.createElement("div");
+      empty.textContent = "No connector ports defined for this family.";
+      empty.style.cssText = "color:#64748b;font-size:10.5px;padding:4px 0";
+      list.appendChild(empty);
+    }
+  };
+
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:8px";
+  const add = mkActionBtn("+ Add connector", () => {
+    const defaultDomain: ConnectorDefinition["domain"] =
+      fam.category === "duct" ? "duct" :
+      fam.category === "pipe" ? "pipe" :
+      fam.category === "conduit" ? "conduit" :
+      fam.category === "cable-tray" ? "cabletray" :
+      fam.category === "equipment" ? "pipe" : "other";
+    drafts.push({
+      name: "Port " + (drafts.length + 1),
+      domain: defaultDomain,
+      shape: "round",
+      flowDirection: "inout",
+      systemClassification: defaultDomain + "-default",
+      origin: ["0", "0", "0"],
+      direction: ["1", "0", "0"],
+      sizeA: "0.05",
+      sizeB: "",
+    });
+    status.textContent = "";
+    renderRows();
+  }, false);
+  const save = mkActionBtn("Save connectors", () => {
+    const s = svc();
+    if (!s) { status.textContent = "Family service is unavailable."; return; }
+    const definitions = drafts.map(connectorDraftDefinition);
+    const errors = validateFamilyConnectorDefinitions(definitions);
+    if (errors.length) {
+      status.textContent = errors.map(error => "• " + error).join("\n");
+      return;
+    }
+    const updated = s.update(fam.id, {
+      connectorDefs: cloneFamilyConnectorDefinitions(definitions),
+    });
+    if (!updated) {
+      status.textContent = "The family connector definitions could not be saved.";
+      return;
+    }
+    toast("Saved " + definitions.length + " MEP connector" + (definitions.length === 1 ? "" : "s") + ".", "success");
+    reloadAll();
+  }, true);
+  actions.append(add, save);
+  wrap.appendChild(actions);
+  renderRows();
+  return wrap;
 }
 
 function sectionLabel(text: string): HTMLElement {
