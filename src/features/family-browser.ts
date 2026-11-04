@@ -25,6 +25,7 @@ import type { FamilyDefinition, FamilyType, FamilyService } from "../modules/fam
 import type { ConnectorDefinition } from "../modules/object-hierarchy";
 import { validateFamilyConnectorDefinitions, cloneFamilyConnectorDefinitions } from "../modules/families/connector-definitions";
 import { buildFamilyConnectorPreviewLayout, projectedDeltaToLocalAxisDelta, type PreviewLocalAxis } from "../modules/families/connector-preview";
+import { connectorDirectionToYawPitch, yawPitchToConnectorDirection } from "../modules/families/connector-orientation";
 // openbim-families:formula-engine-ui
 import { evaluateParameters } from "../modules/families/formula-engine";
 
@@ -551,7 +552,9 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
   wrap.appendChild(title);
 
   const hint = document.createElement("div");
-  hint.textContent = fam.builtIn ? "Numbered markers show port origins; arrows show connection axes." : "Drag a numbered port along the selected family-local axis. Arrow keys nudge the focused port by 10 mm. Save connectors to persist the changes.";
+  hint.textContent = fam.builtIn
+    ? "Numbered markers show port origins; arrows show connection axes."
+    : "Drag a numbered port along the selected local axis. Set direction with yaw/pitch angles; the arrow updates live. Save connectors to persist changes.";
   hint.style.cssText = "color:#94a3b8;font-size:10.5px;line-height:1.5;margin-bottom:8px";
   wrap.appendChild(hint);
 
@@ -587,6 +590,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
   }
 
   let drafts = existing.map(connectorDraft);
+  const orientationErrors = new Map<ConnectorDraft, string>();
 
   const notifyPreview = (): void => {
     previewState.definitions = drafts.map(connectorDraftDefinition);
@@ -598,6 +602,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
     value: string,
     width: string,
     onChange: (value: string) => void,
+    afterChange?: () => void,
   ): HTMLElement => {
     const field = document.createElement("label");
     field.style.cssText = "display:flex;flex-direction:column;gap:3px;min-width:0;flex:0 0 " + width;
@@ -611,7 +616,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
     input.style.cssText =
       "box-sizing:border-box;width:100%;min-width:0;padding:4px 5px;background:#11141d;" +
       "border:1px solid #303746;border-radius:4px;color:#e8eaf0;font:10.5px ui-monospace,monospace";
-    input.addEventListener("input", () => { onChange(input.value); notifyPreview(); });
+    input.addEventListener("input", () => { onChange(input.value); afterChange?.(); notifyPreview(); });
     field.append(caption, input);
     return field;
   };
@@ -667,6 +672,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
 
 
   const renderRows = (): void => {
+    orientationErrors.clear();
     list.innerHTML = "";
     drafts.forEach((draft, index) => {
       const card = document.createElement("div");
@@ -697,13 +703,107 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
         makeInput("ORIGIN X", draft.origin[0], "72px", value => { draft.origin[0] = value; }),
         makeInput("ORIGIN Y", draft.origin[1], "72px", value => { draft.origin[1] = value; }),
         makeInput("ORIGIN Z", draft.origin[2], "72px", value => { draft.origin[2] = value; }),
-        makeInput("DIRECTION X", draft.direction[0], "80px", value => { draft.direction[0] = value; }),
-        makeInput("DIRECTION Y", draft.direction[1], "80px", value => { draft.direction[1] = value; }),
-        makeInput("DIRECTION Z", draft.direction[2], "80px", value => { draft.direction[2] = value; }),
+      );
+
+      let yawInput: HTMLInputElement | null = null;
+      let pitchInput: HTMLInputElement | null = null;
+      const directionInputs: HTMLInputElement[] = [];
+      const syncAnglesFromDirection = (): void => {
+        try {
+          const angles = connectorDirectionToYawPitch(draft.direction.map(connectorNumber));
+          if (yawInput) yawInput.value = angles.yawDeg.toFixed(2);
+          if (pitchInput) pitchInput.value = angles.pitchDeg.toFixed(2);
+          orientationErrors.delete(draft);
+        } catch {
+          // Preserve the last valid angle display while the vector is being corrected.
+        }
+      };
+      const directionField = (axisIndex: number, label: string): HTMLElement => {
+        const field = makeInput(
+          label,
+          draft.direction[axisIndex],
+          "80px",
+          value => { draft.direction[axisIndex] = value; },
+          syncAnglesFromDirection,
+        );
+        const input = field.querySelector("input");
+        if (input) directionInputs.push(input);
+        return field;
+      };
+      coords.append(
+        directionField(0, "DIRECTION X"),
+        directionField(1, "DIRECTION Y"),
+        directionField(2, "DIRECTION Z"),
         makeInput("SIZE A (m)", draft.sizeA, "78px", value => { draft.sizeA = value; }),
         makeInput("SIZE B (m)", draft.sizeB, "78px", value => { draft.sizeB = value; }),
       );
-      card.append(identity, coords);
+
+      const orientation = makeFieldRow();
+      const initialAngles = (() => {
+        try {
+          return connectorDirectionToYawPitch(draft.direction.map(connectorNumber));
+        } catch {
+          return { yawDeg: 0, pitchDeg: 0 };
+        }
+      })();
+      const makeAngleInput = (
+        label: string,
+        value: number,
+        width: string,
+        min: string | null,
+        max: string | null,
+      ): { field: HTMLElement; input: HTMLInputElement } => {
+        const field = document.createElement("label");
+        field.style.cssText = "display:flex;flex-direction:column;gap:3px;min-width:0;flex:0 0 " + width;
+        const caption = document.createElement("span");
+        caption.textContent = label;
+        caption.style.cssText = "font-size:9px;color:#94a3b8";
+        const input = document.createElement("input");
+        input.type = "number";
+        input.step = "0.1";
+        if (min !== null) input.min = min;
+        if (max !== null) input.max = max;
+        input.value = value.toFixed(2);
+        input.style.cssText =
+          "box-sizing:border-box;width:100%;min-width:0;padding:4px 5px;background:#11141d;" +
+          "border:1px solid #303746;border-radius:4px;color:#e8eaf0;font:10.5px ui-monospace,monospace";
+        field.append(caption, input);
+        return { field, input };
+      };
+      const applyOrientation = (): void => {
+        if (!yawInput || !pitchInput) return;
+        const yaw = connectorNumber(yawInput.value);
+        const pitch = connectorNumber(pitchInput.value);
+        try {
+          const direction = yawPitchToConnectorDirection(yaw, pitch);
+          draft.direction = direction.map(String) as [string, string, string];
+          directionInputs.forEach((input, axisIndex) => {
+            input.value = draft.direction[axisIndex];
+          });
+          status.style.color = "#86efac";
+          orientationErrors.delete(draft);
+          status.textContent =
+            "Updated " + (draft.name || ("connector " + (index + 1))) +
+            " direction. The preview arrow reflects this draft; save connectors to persist it.";
+          notifyPreview();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          orientationErrors.set(draft, message);
+          status.style.color = "#fca5a5";
+          status.textContent = message;
+        }
+      };
+      const yawControl = makeAngleInput("YAW (°)", initialAngles.yawDeg, "88px", null, null);
+      const pitchControl = makeAngleInput("PITCH (°)", initialAngles.pitchDeg, "88px", "-90", "90");
+      yawInput = yawControl.input;
+      pitchInput = pitchControl.input;
+      yawControl.input.addEventListener("input", applyOrientation);
+      pitchControl.input.addEventListener("input", applyOrientation);
+      const orientationHint = document.createElement("span");
+      orientationHint.textContent = "Yaw: +X → +Z · Pitch: −90° to +90°";
+      orientationHint.style.cssText = "align-self:center;color:#64748b;font-size:9px;margin-left:4px";
+      orientation.append(yawControl.field, pitchControl.field, orientationHint);
+      card.append(identity, coords, orientation);
       list.appendChild(card);
     });
     if (!drafts.length) {
@@ -754,6 +854,11 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
   const save = mkActionBtn("Save connectors", () => {
     const s = svc();
     if (!s) { status.textContent = "Family service is unavailable."; return; }
+    if (orientationErrors.size) {
+      status.style.color = "#fca5a5";
+      status.textContent = [...orientationErrors.values()].map(error => "• " + error).join("\n");
+      return;
+    }
     const definitions = drafts.map(connectorDraftDefinition);
     const errors = validateFamilyConnectorDefinitions(definitions);
     if (errors.length) {
