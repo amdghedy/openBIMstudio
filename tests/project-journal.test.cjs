@@ -8,6 +8,17 @@ const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-project-journal-"));
 execSync(`npx tsc src/modules/projects/project-journal.ts --outDir "${out}" --module commonjs --target ES2022 --moduleResolution node --lib ES2022,DOM --skipLibCheck --noCheck`, { cwd: root, stdio: "inherit" });
 const find = (dir, name) => { for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { const file = path.join(dir, entry.name); if (entry.isDirectory()) { const nested = find(file, name); if (nested) return nested; } else if (entry.name === name) return file; } };
 const journal = require(find(out, "project-journal.js"));
+const storeSource = fs.readFileSync(path.join(root, "src/modules/projects/store.ts"), "utf8");
+assert.match(storeSource, /const DB_VERSION = 2;/);
+assert.match(storeSource, /createObjectStore\(S_JOURNAL_BLOBS/);
+assert.match(storeSource, /function appendProjectSnapshot/);
+assert.match(storeSource, /getModelBlobVersionKey\(doc\.id, model\.modelId, version\)/);
+assert.match(storeSource, /archive\.get\(key\)/);
+assert.match(storeSource, /pruneUnreferencedModelBlobVersions\(tx, doc\.id\)/);
+assert.match(storeSource, /snapshot\.modelVersions \?\?/);
+assert.match(storeSource, /archive\.index\("projectId"\)\.getAll\(projectId\)/);
+assert.match(storeSource, /db\.transaction\(\[S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS\], "readwrite"\)/);
+
 assert.equal(journal.PROJECT_RECOVERY_RETENTION, 10);
 assert.equal(journal.getModelBlobVersionKey("p-1", "ifc-1", "v2"), "p-1::ifc-1::v2");
 assert.deepEqual(journal.getUnreferencedModelBlobVersionKeys(["a", "b", "c"], new Set(["b"])), ["a", "c"]);
