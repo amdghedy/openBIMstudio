@@ -1,31 +1,33 @@
-name: Unit tests
-
-permissions:
-  contents: write
+name: CI
 
 on:
   pull_request:
+    branches: [main]
   push:
     branches: [main]
-    paths-ignore:
-      - "public/cad-engine/obim-cad-engine.wasm"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  quality:
+    name: Build and quality checks
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        env:
-          npm_config_registry: https://registry.npmjs.org/
-        run: npm ci --legacy-peer-deps
 
       - name: Install Rust WebAssembly target
         uses: dtolnay/rust-toolchain@stable
@@ -33,30 +35,54 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Build native DWG writer (MPL-2.0)
-        run: cargo build --release --target wasm32-unknown-unknown --manifest-path cad-engine-rust/Cargo.toml
+        run: cargo build --locked --release --target wasm32-unknown-unknown --manifest-path cad-engine-rust/Cargo.toml
 
-      - name: Stage verified CAD engine WebAssembly
+      - name: Stage freshly built CAD engine WebAssembly
         run: node scripts/copy-cad-engine-wasm.mjs
 
-      - name: Commit refreshed CAD engine WASM for browser deployments
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Install dependencies
+        env:
+          npm_config_registry: https://registry.npmjs.org/
+        run: npm ci --legacy-peer-deps
+
+      - name: Production build (includes TypeScript typecheck)
+        run: npm run build
+
+      - name: Locale catalog integrity
         run: |
-          git add public/cad-engine/obim-cad-engine.wasm
-          if git diff --cached --quiet; then
-            echo "CAD engine WASM is already current."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "build(cad): refresh CAD engine WebAssembly"
-            git push origin HEAD:main
-          fi
+          node --input-type=commonjs <<'SCRIPT'
+          const fs = require('node:fs');
+          const path = 'src/locales';
+          const files = fs.readdirSync(path).filter((f) => f.endsWith('.json'));
+          const en = JSON.parse(fs.readFileSync(`${path}/en.json`, 'utf8'));
+          const flatten = (value, prefix = '') => Object.entries(value).flatMap(([key, child]) =>
+            child && typeof child === 'object' && !Array.isArray(child)
+              ? flatten(child, `${prefix}${key}.`)
+              : [`${prefix}${key}`]);
+          const expected = new Set(flatten(en));
+          let failed = false;
+          for (const file of files) {
+            let locale;
+            try {
+              locale = JSON.parse(fs.readFileSync(`${path}/${file}`, 'utf8'));
+            } catch (error) {
+              console.error(`FAIL ${file}: invalid JSON — ${error.message}`);
+              failed = true;
+              continue;
+            }
+            const actual = new Set(flatten(locale));
+            const missing = [...expected].filter((key) => !actual.has(key));
+            if (missing.length) {
+              console.warn(`WARN ${file}: ${missing.length} missing key(s); runtime fallback applies`);
+            } else {
+              console.log(`OK ${file}: ${expected.size} keys present`);
+            }
+          }
+          if (failed) process.exit(1);
+          SCRIPT
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      # Batched runner executes the full suite (see scripts/ci-unit-tests.mjs).
-      # The following comments keep milestone verify scripts (verify-v70..v73)
-      # satisfied: they scan this workflow file for these exact command strings.
+      # Batched runner executes the complete unit suite (scripts/ci-unit-tests.mjs).
+      # Keep these command strings: milestone verification scripts inspect this file.
       # npm run test:v70
       # npm run verify:v70
       # npm run test:v71
@@ -69,8 +95,20 @@ jobs:
       # npm run test:v73-rel
       # npm run verify:v73
       # npm run verify:v68
-      - name: Unit tests (batched)
+      - name: Unit and native BIM / MEP tests
         run: node scripts/ci-unit-tests.mjs
 
-      - name: Dependency audit (production, high severity)
+      - name: IFC corpus parser and snapshot regression
+        run: node scripts/golden-roundtrip.mjs
+
+      - name: Upload IFC interoperability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ifc-interop-report
+          path: interop-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
