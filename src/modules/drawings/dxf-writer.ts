@@ -149,6 +149,52 @@ function common(e: DxfEntity): string {
   return s;
 }
 
+/**
+ * HATCH entity for a polyline that carries fill data: solid fills and patterned fills
+ * (with the real pattern lines when the entity has them). Boundaries are written as
+ * closed polyline paths; the first loop is the external one. Without this a hatch was
+ * saved as a bare outline and the fill was lost.
+ */
+function writeHatch(e: Extract<DxfEntity, { type: "LWPOLYLINE" }>): string {
+  const h = e.hatch!;
+  const loops = h.loops.filter((l) => l.length >= 3);
+  const solid = h.solid || !h.pattern || h.pattern.toUpperCase() === "SOLID";
+  let s = pair(0, "HATCH");
+  s += common(e);
+  s += pair(100, "AcDbHatch");
+  s += pair(10, 0) + pair(20, 0) + pair(30, 0);
+  s += pair(210, 0) + pair(220, 0) + pair(230, 1);
+  s += pair(2, solid ? "SOLID" : h.pattern!);
+  s += pair(70, solid ? 1 : 0);
+  s += pair(71, 0);
+  s += pair(91, loops.length);
+  loops.forEach((loop, i) => {
+    s += pair(92, i === 0 ? 3 : 2); // polyline path; external for the first loop
+    s += pair(72, 0) + pair(73, 1) + pair(93, loop.length);
+    for (const p of loop) s += pair(10, p.x) + pair(20, p.y);
+    s += pair(97, 0);
+  });
+  s += pair(75, 0); // hatch style: normal
+  s += pair(76, 1); // pattern type: predefined
+  if (!solid) {
+    s += pair(52, h.angle ?? 0);
+    s += pair(41, h.scale ?? 1);
+    s += pair(77, 0);
+    const lines = h.patternLines ?? [];
+    s += pair(78, lines.length);
+    for (const ln of lines) {
+      s += pair(53, (ln.angle * 180) / Math.PI);
+      s += pair(43, ln.base[0]) + pair(44, ln.base[1]);
+      s += pair(45, ln.offset[0]) + pair(46, ln.offset[1]);
+      s += pair(79, ln.dashes.length);
+      for (const d of ln.dashes) s += pair(49, d);
+    }
+  }
+  s += pair(47, 1);
+  s += pair(98, 0);
+  return s;
+}
+
 function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TEXT" }>) => string): string {
   let s = "";
 
@@ -169,6 +215,8 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     s += pair(40, e.radius);
     s += pair(50, e.startAngle);
     s += pair(51, e.endAngle);
+  } else if (e.type === "LWPOLYLINE" && e.hatch && !e.hatch.wipeout && e.hatch.loops.some((l) => l.length >= 3)) {
+    s += writeHatch(e);
   } else if (e.type === "LWPOLYLINE") {
     s += pair(0, "LWPOLYLINE");
     s += common(e);

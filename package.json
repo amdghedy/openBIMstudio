@@ -159,6 +159,7 @@
     "test:cad-styles": "node tests/cad-styles.test.cjs",
     "test:cad-ribbon-collapse": "node tests/cad-ribbon-collapse.test.cjs",
     "test:plan-commands": "node tests/plan-commands.test.cjs",
+    "test:cad-hatch-save": "node tests/cad-hatch-save.test.cjs",
     "test:wall-reveal-cutter": "node tests/wall-reveal-cutter.test.cjs",
     "test:clash-review-dock": "node tests/clash-review-dock.test.cjs",
     "test:door-window-place": "node tests/door-window-place-options.test.cjs",
