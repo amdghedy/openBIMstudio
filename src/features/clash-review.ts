@@ -18,6 +18,7 @@
  */
 import { inputRouter } from "../core/input-router";
 import { ctx } from "../core/context";
+import { makeDockable, type DockHandle } from "./dockable";
 import {
   listClashes,
   getActiveClashIndex,
@@ -34,7 +35,6 @@ import { uiAlert } from "../core/notify";
 /* ═════════════════════════════════════════════════════════════════════════
    Constants
    ═════════════════════════════════════════════════════════════════════════ */
-const POS_KEY = "obs.clashReview.position";
 const ISO_KEY = "obs.clashReview.autoIsolate";
 
 const STATUS_ORDER: ClashStatus[] = ["new", "active", "reviewed", "approved", "resolved"];
@@ -66,6 +66,7 @@ const KIND_COLOR: Record<ClashKind, string> = {
    State
    ═════════════════════════════════════════════════════════════════════════ */
 let panel: HTMLDivElement | null = null;
+let dock: DockHandle | null = null;
 let navLock = false;
 let autoIsolate = true;
 let pollTimer: number | null = null;
@@ -110,26 +111,13 @@ function ensurePanel(): HTMLDivElement {
   panel = document.createElement("div");
   panel.id = "obs-clash-review";
   panel.style.cssText =
-    "position:fixed;z-index:8000;width:440px;max-height:82vh;display:none;" +
+    "z-index:58;display:none;min-width:320px;" +
     "flex-direction:column;background:var(--bg-floating,#1c1e28);" +
     "border:1px solid var(--border-default,#2a2e3a);border-radius:12px;" +
     "box-shadow:0 24px 60px rgba(0,0,0,.65);" +
     "font:12px system-ui,sans-serif;color:var(--text-primary,#e8eaf0);" +
     "overflow:hidden;user-select:none";
   panel.onmousedown = (e) => e.stopPropagation();
-
-  /* Position */
-  let px = 40, py = 120;
-  try {
-    const stored = localStorage.getItem(POS_KEY);
-    if (stored) {
-      const p = JSON.parse(stored);
-      px = Number(p.x) || px;
-      py = Number(p.y) || py;
-    }
-  } catch { /* */ }
-  panel.style.left = `${px}px`;
-  panel.style.top = `${py}px`;
 
   panel.innerHTML = `
     <div id="ocr-header" style="
@@ -180,42 +168,24 @@ function ensurePanel(): HTMLDivElement {
     </div>
   `;
 
-  document.body.appendChild(panel);
+  ctx.rightHost.appendChild(panel);
 
   /* ── Wire controls ── */
   (panel.querySelector("#ocr-close") as HTMLElement).onclick = () => closeReview();
   (panel.querySelector("#ocr-prev") as HTMLElement).onclick = () => void navigate(-1);
   (panel.querySelector("#ocr-next") as HTMLElement).onclick = () => void navigate(+1);
 
-  /* ── Draggable header ── */
+  /* ── Dock: drag by header, resize, snap to an edge, remembered per user ── */
   const header = panel.querySelector("#ocr-header") as HTMLElement;
-  let dragging = false;
-  let dragOffset = { x: 0, y: 0 };
-
-  header.addEventListener("pointerdown", (e) => {
-    if ((e.target as HTMLElement).id === "ocr-close") return;
-    dragging = true;
-    const r = panel!.getBoundingClientRect();
-    dragOffset = { x: e.clientX - r.left, y: e.clientY - r.top };
-    (e.target as Element).setPointerCapture(e.pointerId);
-    header.style.cursor = "grabbing";
-  });
-  header.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    const x = Math.max(0, Math.min(window.innerWidth - 80, e.clientX - dragOffset.x));
-    const y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - dragOffset.y));
-    panel!.style.left = `${x}px`;
-    panel!.style.top = `${y}px`;
-  });
-  header.addEventListener("pointerup", (e) => {
-    if (!dragging) return;
-    dragging = false;
-    (e.target as Element).releasePointerCapture(e.pointerId);
-    header.style.cursor = "move";
-    try {
-      const r = panel!.getBoundingClientRect();
-      localStorage.setItem(POS_KEY, JSON.stringify({ x: r.left, y: r.top }));
-    } catch { /* */ }
+  dock = makeDockable(panel, {
+    id: "clash-review",
+    host: ctx.rightHost,
+    header,
+    minWidth: 340,
+    minHeight: 320,
+    defaultDock: "float",
+    defaultWidth: 440,
+    defaultHeight: 560,
   });
 
   return panel;
@@ -537,6 +507,7 @@ export function openReview(): void {
   ensurePanel();
   if (!panel) return;
   panel.style.display = "flex";
+  dock?.show();
 
   // Focus the first clash if nothing is active yet.
   if (getActiveClashIndex() < 0 && listClashes().length) {
@@ -560,6 +531,7 @@ export function openReview(): void {
 }
 
 export function closeReview(): void {
+  dock?.hide();
   if (panel) panel.style.display = "none";
   if (pollTimer != null) {
     clearInterval(pollTimer);
