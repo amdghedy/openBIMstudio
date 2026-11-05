@@ -89,7 +89,18 @@ t("viewport keyboard opens a cursor-positioned command prompt and reuses command
   assert.ok(viewer.includes('dynCommandInput.setSelectionRange(initialText.length, initialText.length);'), "initial typed character is not retained");
 });
 
-// ── 5. Runtime: compile the two helpers and verify their behaviour ──
+// ── 5. AutoCAD command activation: Space executes exact commands and aliases ──
+t("command entry: Space executes exact commands in both command inputs without eating argument spaces", () => {
+  assert.ok(viewer.includes("function isExactCadCommandToken(rawInput: string): boolean"), "exact command-token guard missing");
+  assert.ok(viewer.includes("const resolved = resolveCadToken(token, CAD_COMMANDS);"), "custom and built-in aliases are not resolved");
+  assert.ok(viewer.includes('if (event.key === " " || event.code === "Space")'), "dynamic command input does not handle Space");
+  assert.ok(viewer.includes('if (e.key === " " || e.code === "Space")'), "command line does not handle Space");
+  assert.ok(viewer.includes("if (isExactCadCommandToken(dynCommandInput.value))"), "dynamic input executes partial commands");
+  assert.ok(viewer.includes("if (isExactCadCommandToken(cmdInput.value))"), "command line executes partial commands");
+  assert.ok(viewer.includes('if (!token || token.includes(" ")) return false;'), "argument-containing input is not protected");
+});
+
+// ── 6. Runtime: compile the two helpers and verify their behaviour ──
 t("runtime: fileStyleToTextStyle + fontOptionsFor behaviour", () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "cad-uiw-"));
   // Stub the DOM-touching imports so the module compiles standalone.
