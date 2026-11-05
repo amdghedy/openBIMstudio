@@ -25,6 +25,22 @@ export interface Shortcut {
 
 const SEQ_TIMEOUT = 800;
 
+/**
+ * Combos the CAD drawing editor (cad-viewer.ts) consumes itself while a
+ * drawing tab is active: copy / cut / paste / super-copy / undo / redo /
+ * CleanScreen, Delete and the CAD toggle keys (F3 osnap, F7 grid, F8 ortho,
+ * F12 dyn). While the CAD editor owns the keyboard the registry must neither
+ * fire these nor stopImmediatePropagation them — its own hotkey handler is
+ * registered later on the same window capture path and would never run
+ * (this exact collision shipped Ctrl+Shift+C/V dead inside the CAD editor:
+ * "ctrl+shift+c" fired Clash Review and "ctrl+shift+v" fired Tools Manager).
+ */
+const CAD_EDITOR_COMBOS = new Set([
+  "ctrl+c", "ctrl+shift+c", "ctrl+x", "ctrl+v", "ctrl+shift+v", "ctrl+alt+v",
+  "ctrl+z", "ctrl+shift+z", "ctrl+y", "ctrl+0", "ctrl+digit0",
+  "delete", "f3", "f7", "f8", "f12",
+]);
+
 class ShortcutRegistry {
   private shortcuts = new Map<string, Shortcut>();
   private buffer = "";
@@ -114,6 +130,21 @@ class ShortcutRegistry {
     if (e.altKey) parts.push("alt");
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase();
     const combo = [...parts, key].join("+");
+    // Physical-key variant so the CAD yield below also matches non-Latin
+    // keyboard layouts, where e.key is not the Latin letter (ev.code is).
+    const codeKey = e.code ? e.code.replace(/^Key/, "").toLowerCase() : "";
+    const physCombo = codeKey ? [...parts, codeKey].join("+") : "";
+
+    // CAD drawing editor owns the keyboard while a drawing tab is active:
+    // yield its editing combos (and bare command letters) so they reach the
+    // CAD hotkey layer instead of being swallowed here.
+    try {
+      const ownsKeys = (window as unknown as { __obsCadOwnsKeys?: () => boolean }).__obsCadOwnsKeys;
+      if (typeof ownsKeys === "function" && ownsKeys()) {
+        if (CAD_EDITOR_COMBOS.has(combo) || (physCombo && CAD_EDITOR_COMBOS.has(physCombo))) return;
+        if (!parts.length && /^[a-z]$/.test(key)) return;
+      }
+    } catch { /* CAD bridge unavailable — normal registry behaviour */ }
 
     // Modifier-based commands handled first (they never start a sequence).
     if (parts.length) {

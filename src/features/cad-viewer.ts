@@ -390,6 +390,9 @@ export function openCadViewer(file?: File): void {
   shell!.style.display = "flex";
   try {
     (window as any).__obsCadOwnsEsc = () => !!shell && shell.style.display !== "none";
+    // Keyboard ownership: while a drawing tab is active the BIM global shortcut
+    // registry yields the CAD editing combos to this viewer (see shortcuts.ts).
+    (window as any).__obsCadOwnsKeys = () => !!active && !!shell && shell.style.display !== "none";
   } catch {
     /* */
   }
@@ -5405,6 +5408,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const modKey = ev.ctrlKey || ev.metaKey;
     const key = ev.key;
     const lower = key.length === 1 ? key.toLowerCase() : key;
+    // Layout-proof shortcut key: with non-Latin OS keyboard layouts (Arabic,
+    // Cyrillic, …) Ctrl+Shift+C reports a non-Latin ev.key, so every letter
+    // shortcut would silently die. Fall back to the physical key position
+    // (ev.code, QWERTY reference) — matching native CAD on every layout.
+    const physKey = typeof ev.code === "string" && ev.code.startsWith("Key") ? ev.code.slice(3).toLowerCase() : "";
+    const hotKey = lower >= "a" && lower <= "z" ? lower : physKey;
 
     // Escape is handled by onCadEscCapture (drawing view + stage + window)
 
@@ -5465,32 +5474,32 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
 
     // Ctrl/Cmd shortcuts
-    if (modKey && lower === "z" && !ev.shiftKey) {
+    if (modKey && hotKey === "z" && !ev.shiftKey) {
       ev.preventDefault();
       ev.stopImmediatePropagation();
       undo();
       return;
     }
-    if (modKey && (lower === "y" || (lower === "z" && ev.shiftKey))) {
+    if (modKey && (hotKey === "y" || (hotKey === "z" && ev.shiftKey))) {
       ev.preventDefault();
       ev.stopImmediatePropagation();
       redo();
       return;
     }
-    if (modKey && lower === "c") {
+    if (modKey && hotKey === "c") {
       // Ctrl+C / Ctrl+Shift+C — Super Copy (COPYCLIP): snapshot selection + style deps
       ev.preventDefault();
       ev.stopImmediatePropagation();
       copySelection();
       return;
     }
-    if (modKey && lower === "x") {
+    if (modKey && hotKey === "x") {
       ev.preventDefault();
       ev.stopImmediatePropagation();
       if (copySelection()) eraseSelected();
       return;
     }
-    if (modKey && lower === "v") {
+    if (modKey && hotKey === "v") {
       ev.preventDefault();
       ev.stopImmediatePropagation();
       // Ctrl+V / Ctrl+Shift+V — PASTECLIP: clipboard ghosts on the cursor, click to place
@@ -5499,7 +5508,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       else pasteClip();
       return;
     }
-    if (modKey && key === "0") {
+    if (modKey && (key === "0" || ev.code === "Digit0")) {
       ev.preventDefault();
       toggleCleanScreen();
       return;
@@ -5577,7 +5586,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       redo();
       return;
     }
-    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "c") {
+    if ((ev.ctrlKey || ev.metaKey) && (ev.key.toLowerCase() === "c" || ev.code === "KeyC")) {
       ev.preventDefault();
       copySelection();
       return;
@@ -7400,6 +7409,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       try {
         (window as any).__obsCadOwnsEsc = () =>
           !!shell && shell.style.display !== "none" && root.style.display !== "none";
+        (window as any).__obsCadOwnsKeys = () =>
+          screenTypeActive && !!shell && shell.style.display !== "none" && root.style.display !== "none";
       } catch {
         /* */
       }
@@ -7417,9 +7428,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     deactivate() {
       screenTypeActive = false;
       try {
-        if ((window as any).__obsCadOwnsEsc) {
-          const still = !!shell && shell.style.display !== "none";
-          if (!still) delete (window as any).__obsCadOwnsEsc;
+        const still = !!shell && shell.style.display !== "none";
+        if ((window as any).__obsCadOwnsEsc && !still) {
+          delete (window as any).__obsCadOwnsEsc;
+        }
+        if ((window as any).__obsCadOwnsKeys && !still) {
+          delete (window as any).__obsCadOwnsKeys;
         }
       } catch {
         /* */

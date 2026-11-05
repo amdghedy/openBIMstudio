@@ -21,6 +21,7 @@ const { execSync } = require("child_process");
 const read = (...p) => fs.readFileSync(path.join(__dirname, "..", "src", ...p), "utf8");
 const viewer = read("features", "cad-viewer.ts");
 const styleUi = read("features", "cad-style-ui.ts");
+const shortcutsSrc = read("features", "shortcuts.ts");
 
 let pass = 0, fail = 0;
 const t = (n, f) => { try { f(); pass++; console.log("  PASS " + n); } catch (e) { fail++; console.log("  FAIL " + n + ": " + e.message); } };
@@ -161,11 +162,32 @@ t("super copy: clipboard engine wired into tools, hotkeys, ribbon and commands",
   ];
   for (const m of mustContain) assert.ok(viewer.includes(m), `cad-viewer.ts drift: missing "${m}"`);
   // Hotkeys: Ctrl+C / Ctrl+Shift+C copy, Ctrl+X cut, Ctrl+V / Ctrl+Shift+V paste, Ctrl+Alt+V paste-to-origin
-  assert.ok(viewer.includes('if (modKey && lower === "c") {'), "Ctrl+C hotkey missing");
+  // Layout-proof: shortcuts must fall back to ev.code for non-Latin keyboard layouts
+  assert.ok(
+    viewer.includes('const hotKey = lower >= "a" && lower <= "z" ? lower : physKey;'),
+    "layout-proof hotkey resolution missing"
+  );
+  assert.ok(viewer.includes('if (modKey && hotKey === "c") {'), "Ctrl+C hotkey missing");
   assert.ok(viewer.includes("(Ctrl+C / Ctrl+Shift+C)"), "Ctrl+Shift+C copy hint missing");
   assert.ok(viewer.includes("if (copySelection()) eraseSelected();"), "Ctrl+X cut missing");
   assert.ok(viewer.includes("if (ev.altKey) pasteOrig();"), "Ctrl+Alt+V paste-to-origin missing");
   assert.ok(viewer.includes("else pasteClip();"), "Ctrl+V paste missing");
+  // Keyboard ownership bridge: the BIM global shortcut registry must yield the
+  // CAD editing combos while a drawing tab is active, or its
+  // stopImmediatePropagation() kills the CAD hotkeys (Ctrl+Shift+C/V bug).
+  assert.ok(
+    shortcutsSrc.includes("__obsCadOwnsKeys") && shortcutsSrc.includes("CAD_EDITOR_COMBOS.has(combo)"),
+    "shortcuts.ts CAD keyboard-ownership yield missing"
+  );
+  assert.ok(
+    shortcutsSrc.includes('"ctrl+shift+c"') && shortcutsSrc.includes('"ctrl+shift+v"'),
+    "CAD-owned combo set incomplete"
+  );
+  assert.ok(
+    viewer.includes("(window as any).__obsCadOwnsKeys = () =>") &&
+      viewer.includes("delete (window as any).__obsCadOwnsKeys;"),
+    "cad-viewer.ts keyboard ownership bridge missing"
+  );
   // Ribbon Clipboard panel buttons
   for (const a of ['data-a="clipcopy"', 'data-a="clipcut"', 'data-a="clippaste"', 'data-a="pasteorig"']) {
     assert.ok(viewer.includes(a), `ribbon button ${a} missing`);
