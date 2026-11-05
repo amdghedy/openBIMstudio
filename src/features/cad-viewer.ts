@@ -35,6 +35,7 @@ import {
 } from "../modules/cad-viewer/clipboard";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
+import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
@@ -7414,6 +7415,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       } catch {
         /* */
       }
+      try {
+        // Hotkey ownership: while a drawing tab is active the CAD editor owns
+        // Ctrl+Shift+C (COPYCLIP) and Ctrl+Shift+V (PASTECLIP). App-level
+        // handlers that bind the same combos (Clash Review, View Tools
+        // Manager, Saved Views, Validation, VG dialog) stand down, so
+        // cross-drawing Super Copy always reaches the engine.
+        setCadHotkeyOwner(true);
+      } catch {
+        /* */
+      }
       showRibbonEngine(ribbonWrap, api);
       resize();
       draw();
@@ -7427,6 +7438,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     },
     deactivate() {
       screenTypeActive = false;
+      try {
+        // Hand Ctrl+Shift+C / Ctrl+Shift+V back to the app-level handlers.
+        setCadHotkeyOwner(false);
+      } catch {
+        /* */
+      }
       try {
         const still = !!shell && shell.style.display !== "none";
         if ((window as any).__obsCadOwnsEsc && !still) {

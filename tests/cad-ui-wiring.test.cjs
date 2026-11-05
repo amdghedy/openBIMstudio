@@ -203,5 +203,30 @@ t("super copy: clipboard engine wired into tools, hotkeys, ribbon and commands",
   }
 });
 
+// ── 7. Hotkey ownership: the CAD editor owns Ctrl+Shift+C / Ctrl+Shift+V ──
+t("super copy hotkey ownership: app-level handlers stand down while a drawing tab is active", () => {
+  // The ownership flag lives in a module singleton (core/cad-hotkey-ownership.ts)
+  const owner = read("core", "cad-hotkey-ownership.ts");
+  for (const m of ["export function isCadHotkeyOwnerActive(", "export function setCadHotkeyOwner("]) {
+    assert.ok(owner.includes(m), `cad-hotkey-ownership.ts drift: missing "${m}"`);
+  }
+  // The CAD editor raises / lowers the ownership flag on activate / deactivate
+  assert.ok(viewer.includes("setCadHotkeyOwner(true);"), "cad-viewer activate must claim hotkey ownership");
+  assert.ok(viewer.includes("setCadHotkeyOwner(false);"), "cad-viewer deactivate must release hotkey ownership");
+  // Shortcut-registry entries bound to the same combos must carry a when-guard,
+  // otherwise the registry's stopImmediatePropagation eats the key before the
+  // viewer's window-capture handler ever sees it.
+  const ds = read("shell", "default-shortcuts.ts");
+  assert.ok(ds.includes('keys: "ctrl+shift+c"'), "app-clash-review keys drift");
+  assert.ok(ds.includes('keys: "ctrl+shift+v"'), "view.tools-manager keys drift");
+  const guards = ds.split("when: () => !isCadHotkeyOwnerActive()").length - 1;
+  assert.strictEqual(guards, 2, `expected 2 shortcut when-guards for CAD hotkey ownership, found ${guards}`);
+  // Window-level handlers bound to Ctrl+Shift+V must stand down too
+  for (const f of [["features", "saved-views.ts"], ["critical-gaps-boot-strength.ts"], ["modules", "view-templates", "vg-dialog.ts"]]) {
+    const src = read(...f);
+    assert.ok(src.includes("if (isCadHotkeyOwnerActive()) return;"), `${f[f.length - 1]} must stand down while a CAD drawing is active`);
+  }
+});
+
 console.log(`\ncad-ui-wiring: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -10,6 +10,7 @@
  */
 import { promptLine } from "../features/form-modal";
 import { ctx } from "../core/context";
+import { isCadHotkeyOwnerActive } from "../core/cad-hotkey-ownership";
 import { history } from "../features/history";
 import { selection } from "../features/selection";
 import { snapping } from "../features/snapping";
@@ -60,6 +61,9 @@ export function registerDefaultShortcuts(): void {
   label: "Toggle Clash Review window",
   keys: "ctrl+shift+c",
   category: "app",
+  // While a CAD drawing tab is active, Ctrl+Shift+C belongs to the CAD editor
+  // (COPYCLIP — Super Copy). Clash Review stays reachable from its menu entry.
+  when: () => !isCadHotkeyOwnerActive(),
   handler: () => {
     const fn = (window as any).__obs_toggleClashReview;
     if (typeof fn === "function") fn();
@@ -343,6 +347,9 @@ export function registerDefaultShortcuts(): void {
   });
   shortcuts.register({
     id: "view.tools-manager", label: "View Tools Manager", keys: "ctrl+shift+v", category: "view",
+    // While a CAD drawing tab is active, Ctrl+Shift+V belongs to the CAD editor
+    // (PASTECLIP — Super Copy). The manager stays reachable from the View menu.
+    when: () => !isCadHotkeyOwnerActive(),
     handler: () => { (window as any).__obsOpenViewToolsManager?.(); },
   });
 

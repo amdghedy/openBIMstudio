@@ -12,6 +12,7 @@ import {
   createDefaultVg,
 } from "./types";
 import { viewTemplatesStore } from "./view-templates-store";
+import { isCadHotkeyOwnerActive } from "../../core/cad-hotkey-ownership";
 import { promptLine, confirmDialog } from "../../features/form-modal";
 
 type Any = Record<string, any>;
@@ -565,9 +566,11 @@ function detectActiveViewId(): string | null {
 
 export function setupVgDialog(): void {
   ensureRoot();
-  // Keyboard: Ctrl+Shift+V
+  // Keyboard: Ctrl+Shift+V (stands down while a CAD drawing tab is active —
+  // the CAD editor owns the combo for PASTECLIP / Super Copy)
   window.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.shiftKey && (e.key === "V" || e.key === "v")) {
+      if (isCadHotkeyOwnerActive()) return;
       e.preventDefault();
       openVgDialog();
     }

@@ -4,6 +4,7 @@
  */
 
 import { getTransactionService } from "./modules/transaction";
+import { isCadHotkeyOwnerActive } from "./core/cad-hotkey-ownership";
 import { getParametricRegenService } from "./modules/parametric-regen";
 import { getPropertiesPanelService } from "./modules/properties-panel";
 import { getJoinsCleanupService } from "./modules/joins-cleanup";
@@ -102,6 +103,9 @@ export function bootStrengtheningModules(): void {
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "v") {
+        // Stands down while a CAD drawing tab is active — the CAD editor owns
+        // Ctrl+Shift+V for PASTECLIP / Super Copy.
+        if (isCadHotkeyOwnerActive()) return;
         e.preventDefault();
         const issues = validation.runAll();
         console.info("[Validation]", issues.length, "issue(s)", issues);

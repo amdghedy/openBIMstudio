@@ -9,6 +9,7 @@ import { promptLine } from "./form-modal";
 import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
+import { isCadHotkeyOwnerActive } from "../core/cad-hotkey-ownership";
 import { getProjection, setProjection, updateClipping } from "./camera-tools";
 import { getCurrentProject, onProjectChanged } from "../modules/projects/projects";
 import { syncOrthoZoom } from "../core/ortho-zoom";
@@ -261,10 +262,12 @@ export function setupSavedViews(): void {
     if (isSavedViewsPanelVisible()) renderPanel();
   });
 
-  // Ctrl+Shift+V to toggle
+  // Ctrl+Shift+V to toggle (stands down while a CAD drawing tab is active —
+  // the CAD editor owns the combo for PASTECLIP / Super Copy)
   window.addEventListener(
     "keydown",
     (e) => {
+      if (isCadHotkeyOwnerActive()) return;
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "v") {
         e.preventDefault();
         e.stopImmediatePropagation();

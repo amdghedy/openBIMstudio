@@ -307,6 +307,8 @@ The standalone CAD Editor ribbon has a full **Modify** group with AutoCAD-grade 
 | PASTECLIP | — | Paste the clipboard: ghost follows the cursor, click to place, click again for another copy (Ctrl+V / Ctrl+Shift+V) |
 | PASTEORIG | — | Paste the clipboard verbatim at the original source coordinates (Ctrl+Alt+V) |
 
+While a drawing tab is active, the CAD editor owns Ctrl+Shift+C and Ctrl+Shift+V — app-level features that bind the same combos (Clash Review, View Tools Manager, Saved Views, Validation, VG dialog) stand down until you leave the drawing view; those features stay reachable from their menus.
+
 Notes:
 
 - OFFSET works on lines, circles, arcs and polylines with **curve-aware joins** — corners are extended/trimmed by exact intersection (AutoCAD's offset-with-trim), shallow-angle spikes clamp to the classic 4× mitre, and a closed loop whose inset would collapse past its centroid is refused with "cannot offset that", exactly like native CAD. Hatch boundaries offset with their polyline.
