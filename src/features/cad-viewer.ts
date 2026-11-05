@@ -5737,6 +5737,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           resetDrawingSession("Esc");
           return;
         }
+        if (event.key === " " || event.code === "Space") {
+          if (isExactCadCommandToken(dynCommandInput.value)) {
+            event.preventDefault();
+            const value = dynCommandInput.value;
+            closeDynamicCommand();
+            executeAutoCadCommand(value);
+          }
+          return;
+        }
         if (event.key === "Enter") {
           event.preventDefault();
           const value = dynCommandInput.value;
@@ -5781,6 +5790,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const q = query.toUpperCase();
     if (c.name.startsWith(q)) return true;
     return cadAliasesOf(c).some((a) => a === q || a.startsWith(q));
+  }
+
+  /** Space executes only a complete command/alias, never a partial match or argument. */
+  function isExactCadCommandToken(rawInput: string): boolean {
+    const token = rawInput.trim();
+    if (!token || /\\s/.test(token)) return false;
+    const resolved = resolveCadToken(token, CAD_COMMANDS);
+    return CAD_COMMANDS.some((command) => command.name === resolved);
   }
 
   function executeAutoCadCommand(rawInput: string): void {
@@ -6304,6 +6321,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   });
 
   cmdInput.addEventListener("keydown", (e) => {
+    if (e.key === " " || e.code === "Space") {
+      if (isExactCadCommandToken(cmdInput.value)) {
+        e.preventDefault();
+        executeAutoCadCommand(cmdInput.value);
+      }
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       const v = cmdInput.value.trim();
