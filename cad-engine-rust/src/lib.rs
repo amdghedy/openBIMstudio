@@ -138,8 +138,8 @@ pub fn write_dwg_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
     if actual_entities != expected_entities {
         let lost = expected_entities.saturating_sub(actual_entities);
         let loss_pct = (lost as f64) * 100.0 / (expected_entities as f64);
-        // Allow up to 2% loss or 500 entities (whichever is larger threshold
-        // for small files: always allow if lost <= max(5, 0.5% of count)).
+        // Allow loss when it stays within either tolerance: the greater of 5 entities
+        // or 0.5% of input, or 2% of input. Reject only when both limits are exceeded.
         let soft_cap = std::cmp::max(5, (expected_entities as f64 * 0.005).ceil() as usize);
         let hard_cap_pct = 2.0;
         if lost > soft_cap && loss_pct > hard_cap_pct {
