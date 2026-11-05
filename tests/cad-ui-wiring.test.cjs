@@ -129,5 +129,45 @@ t("runtime: fileStyleToTextStyle + fontOptionsFor behaviour", () => {
   fs.rmSync(out, { recursive: true, force: true });
 });
 
+// ── 6. Super Copy: Ctrl+C / Ctrl+V across drawings, wired end to end ──
+t("super copy: clipboard engine wired into tools, hotkeys, ribbon and commands", () => {
+  const mustContain = [
+    // Interactive placement tool (ghost follows the cursor, click drops a copy)
+    'setTool("paste")',
+    'kind: "paste", stage: "second"',
+    "case \"paste\": {",
+    "PASTECLIP: ${placed.length} object(s) placed",
+    // Copy side: dependency snapshot + persistence
+    "collectClipDeps(list, doc)",
+    "persistClip();",
+    "localStorage.setItem(CLIP_STORAGE_KEY",
+    // Paste side: restore + style carry-over
+    "parseClip(localStorage.getItem(CLIP_STORAGE_KEY))",
+    "function applyClipCarryOver(): void {",
+    "missingClipDeps(doc, clip)",
+    // Tab-switch awareness
+    "Ctrl+V to paste into this drawing",
+  ];
+  for (const m of mustContain) assert.ok(viewer.includes(m), `cad-viewer.ts drift: missing "${m}"`);
+  // Hotkeys: Ctrl+C copy, Ctrl+X cut, Ctrl+V paste, Ctrl+Shift+V paste-to-origin
+  assert.ok(viewer.includes('if (modKey && lower === "c") {'), "Ctrl+C hotkey missing");
+  assert.ok(viewer.includes("if (copySelection()) eraseSelected();"), "Ctrl+X cut missing");
+  assert.ok(viewer.includes("if (ev.shiftKey) pasteOrig();"), "Ctrl+Shift+V missing");
+  assert.ok(viewer.includes("else pasteClip();"), "Ctrl+V missing");
+  // Ribbon Clipboard panel buttons
+  for (const a of ['data-a="clipcopy"', 'data-a="clipcut"', 'data-a="clippaste"', 'data-a="pasteorig"']) {
+    assert.ok(viewer.includes(a), `ribbon button ${a} missing`);
+  }
+  // Command table + parser
+  assert.ok(viewer.includes('if (cmd === "COPYCLIP") {'), "COPYCLIP command missing");
+  assert.ok(viewer.includes('if (cmd === "PASTECLIP") {'), "PASTECLIP command missing");
+  assert.ok(viewer.includes('if (cmd === "PASTEORIG") {'), "PASTEORIG command missing");
+  // The clipboard module exposes the Super Copy API the viewer imports
+  const clipSrc = read("modules", "cad-viewer", "clipboard.ts");
+  for (const m of ["export function collectClipDeps(", "export function missingClipDeps(", "export function serializeClip(", "export function parseClip("]) {
+    assert.ok(clipSrc.includes(m), `clipboard.ts drift: missing "${m}"`);
+  }
+});
+
 console.log(`\ncad-ui-wiring: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

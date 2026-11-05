@@ -137,6 +137,7 @@ Site components/topography plus daylight, energy and generative-design analysis.
       "parametric-regen",
       "parameter-engine",
       "phases",
+      "plan",
       "plan-region",
       "project-base-point",
       "property-line",

@@ -24,7 +24,15 @@ import { readCadFile } from "../modules/cad-link/index";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
 import { downloadDxf, writeDxf } from "../modules/drawings/dxf-writer";
 import { exportDxfToDwg, validateDxfForDwgExport } from "../modules/drawings/acad-engine";
-import { makeClip, clipInstances, type CadClip } from "../modules/cad-viewer/clipboard";
+import {
+  makeClip,
+  clipInstances,
+  collectClipDeps,
+  missingClipDeps,
+  serializeClip,
+  parseClip,
+  type CadClip,
+} from "../modules/cad-viewer/clipboard";
 import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import { resolveDblClick } from "../shell/ribbon-collapse";
@@ -82,6 +90,7 @@ type Tool =
   | "erase"
   | "move"
   | "copy"
+  | "paste"
   | "rotate"
   | "mirror"
   | "scale"
@@ -172,9 +181,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DATAEXTRACT", aliases: ["EATTEXT", "DX"], description: "Export all entity data (layer, type, colour, geometry) to a CSV file" },
   { name: "LANDXMLIN", aliases: ["XMLIN"], description: "Import survey points from a LandXML CgPoints file" },
   { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
-  { name: "COPYCLIP", aliases: ["CC"], description: "Copy selected objects to the cross-drawing clipboard (Ctrl+C)" },
-  { name: "PASTECLIP", aliases: [], description: "Paste clipboard objects into this drawing (Ctrl+V)" },
-  { name: "PASTEORIG", aliases: [], description: "Paste clipboard at original coordinates (Ctrl+Shift+V)" },
+  { name: "COPYCLIP", aliases: ["CC"], description: "Super Copy: copy selected objects with their layers, linetypes and text styles to the cross-drawing clipboard (Ctrl+C)" },
+  { name: "PASTECLIP", aliases: [], description: "Paste clipboard objects into this drawing — click to place, repeat for multiple copies (Ctrl+V)" },
+  { name: "PASTEORIG", aliases: [], description: "Paste clipboard at the original coordinates (Ctrl+Shift+V)" },
   { name: "SAVEALL", aliases: ["SALL"], description: "Save every open drawing tab" },
   { name: "CLOSE", aliases: [], description: "Close the current drawing tab" },
   { name: "CLEANSCREEN", aliases: ["CLEAN"], description: "Toggle clean screen mode (Ctrl+0)" },
@@ -2446,7 +2455,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /* ── AutoCAD Modify Engine (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET) ── */
-  type ModKind = "move" | "copy" | "rotate" | "mirror" | "scale";
+  type ModKind = "move" | "copy" | "paste" | "rotate" | "mirror" | "scale";
   type ModStage = "select" | "base" | "second" | "eraseAsk";
   type OffStage = "dist" | "dist2" | "pickObj" | "pickSide";
   interface ModOp {
@@ -2455,6 +2464,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ghostOf: number[]; // entity indices captured when the op started
     base: M.Pt | null;
     ref: M.Pt | null; // SCALE: cursor position when the factor prompt became active (factor 1.0)
+    /** PASTE: clipboard entities being placed (not yet in `ents`). */
+    pasteSrc?: DxfEntity[];
+    /** PASTE: style carry-over already applied to the target document? */
+    carried?: boolean;
+    /** PASTE: total entities placed across all clicks in this session. */
+    placedCount?: number;
   }
   let mod: ModOp | null = null;
   let modGhost: DxfEntity[] | null = null;
@@ -2466,7 +2481,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let pendingYesNo: ((yes: boolean) => void) | null = null;
 
   const isModTool = (t: Tool): t is ModKind =>
-    t === "move" || t === "copy" || t === "rotate" || t === "mirror" || t === "scale";
+    t === "move" || t === "copy" || t === "paste" || t === "rotate" || t === "mirror" || t === "scale";
 
   /** Clears modify/offset interaction state (no tool change, no logging). */
   function clearModState(): void {
@@ -2481,9 +2496,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const modTargets = (): DxfEntity[] =>
     mod
-      ? mod.ghostOf
-          .map((i) => ents[i])
-          .filter((e): e is DxfEntity => !!e)
+      ? mod.kind === "paste"
+        ? mod.pasteSrc ?? []
+        : mod.ghostOf
+            .map((i) => ents[i])
+            .filter((e): e is DxfEntity => !!e)
       : [];
 
   function modPrompt(): string {
@@ -2501,6 +2518,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             return "Specify second point or <use first point as displacement>:";
           case "copy":
             return "Specify second point or [Exit]:";
+          case "paste":
+            return "Click to place the pasted objects — click again for another copy, Enter / Esc to finish:";
           case "rotate":
             return "Specify rotation angle:";
           case "mirror":
@@ -2645,6 +2664,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     switch (mod.kind) {
       case "move":
       case "copy":
+      case "paste":
         modGhost = src.map((e) => X.translateEnt(e, cur.x - b.x, cur.y - b.y));
         break;
       case "rotate":
@@ -2674,10 +2694,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       mod.stage = "base";
       logCmd(`${sel.size} found`);
       logCmd(modPrompt());
-    } else if (mod.stage === "second" && mod.kind === "copy") {
+    } else if (mod.stage === "second" && (mod.kind === "copy" || mod.kind === "paste")) {
+      const wasPaste = mod.kind === "paste";
+      const placedCount = wasPaste ? mod.placedCount ?? 0 : 0;
+      const kind = mod.kind;
       clearModState();
       setTool("select");
-      logCmd("Command: _COPY completed");
+      logCmd(`Command: _${wasPaste ? `PASTECLIP completed (${placedCount} object(s) placed)` : kind === "copy" ? "COPY completed" : kind.toUpperCase() + " completed"}`);
       draw();
     } else if (mod.stage === "eraseAsk") {
       const f = pendingYesNo;
@@ -3178,6 +3201,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           // Do not rebase on the previous destination or offsets become cumulative.
           placeCopy({ x: wp.x - b.x, y: wp.y - b.y });
           logCmd("Specify second point or [Exit]:");
+          return true;
+        }
+        case "paste": {
+          // Super Copy placement: every click drops one copy anchored on the
+          // clipboard base point; the session stays open for repeat placements.
+          if (!mod.carried) {
+            mod.carried = true;
+            applyClipCarryOver();
+          }
+          const placed = modTargets().map((e) => X.translateEnt(e, wp.x - b.x, wp.y - b.y));
+          if (!placed.length) return true;
+          addEntities(placed);
+          mod.placedCount = (mod.placedCount ?? 0) + placed.length;
+          sel.clear();
+          for (const e of placed) {
+            const i = ents.indexOf(e);
+            if (i >= 0) sel.add(i);
+          }
+          selected = sel.size ? [...sel][sel.size - 1] : -1;
+          showProps();
+          logCmd(`PASTECLIP: ${placed.length} object(s) placed — click again for another copy, Enter / Esc to finish`);
           return true;
         }
         case "rotate": {
@@ -3720,7 +3764,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "Clipboard",
         rb("copy", "Copy", `data-a="clipcopy"`, "Copy selection to the cross-drawing clipboard (Ctrl+C / COPYCLIP)") +
           rb("cut", "Cut", `data-a="clipcut"`, "Cut selection to the clipboard (Ctrl+X)") +
-          rb("paste", "Paste", `data-a="clippaste"`, "Paste clipboard at the cursor (Ctrl+V / PASTECLIP)") +
+          rb("paste", "Paste", `data-a="clippaste"`, "Paste clipboard at the cursor — click to place, click again for another copy (Ctrl+V / PASTECLIP)") +
           rb("ref-plane", "Paste to Origin", `data-a="pasteorig"`, "Paste clipboard at original coordinates (Ctrl+Shift+V / PASTEORIG)"),
         "",
         "",
@@ -4325,9 +4369,25 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === t));
     cv.style.cursor = t === "pan" ? "grab" : "crosshair";
     if (isModTool(t)) {
-      // Noun–verb: an existing selection skips the Select objects stage.
-      mod = { kind: t, stage: sel.size ? "base" : "select", ghostOf: [...sel], base: null, ref: null };
-      logCmd(`Command: _${t.toUpperCase()} ${modPrompt()}`);
+      if (t === "paste") {
+        // Super Copy placement: the clipboard ghosts onto the cursor immediately
+        // (AutoCAD PASTECLIP). The style carry-over is applied once per session,
+        // before the first placement, so even the ghost renders true.
+        if (!clip || !clip.entities.length) {
+          logCmd("PASTECLIP: clipboard is empty — COPYCLIP objects in any drawing tab first (Ctrl+C).");
+          tool = "select";
+          tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === "select"));
+          draw();
+          return;
+        }
+        const anchor = cursor ?? M.screenToWorld(view, view.w / 2, view.h / 2);
+        mod = { kind: "paste", stage: "second", ghostOf: [], base: { x: anchor.x, y: anchor.y }, ref: null, pasteSrc: clip.entities, carried: false, placedCount: 0 };
+        logCmd(`Command: _PASTECLIP — ${clip.entities.length} object(s)${clip.sourceName ? ` from ${clip.sourceName}` : ""}. ${modPrompt()}`);
+      } else {
+        // Noun–verb: an existing selection skips the Select objects stage.
+        mod = { kind: t, stage: sel.size ? "base" : "select", ghostOf: [...sel], base: null, ref: null };
+        logCmd(`Command: _${t.toUpperCase()} ${modPrompt()}`);
+      }
     } else if (t === "offset") {
       offStage = offDist == null ? "dist" : "pickObj";
       pendingNumeric = (d) => {
@@ -6592,7 +6652,39 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     window.setTimeout(() => status(""), 5000);
   }
 
-  /* ── Cross-drawing clipboard (COPYCLIP / PASTECLIP / PASTEORIG) ── */
+  /* ── Super Copy — cross-drawing clipboard (COPYCLIP / PASTECLIP / PASTEORIG) ──
+     Ctrl+C copies the selection together with its layer / linetype / text-style
+     definitions and mirrors the payload to localStorage, so the clipboard works
+     across drawing tabs, survives a reload and travels between app windows. */
+
+  const CLIP_STORAGE_KEY = "obs.cad.clipboard.v2";
+
+  /** Paste entry points converge here: fall back to the persisted clipboard. */
+  function ensureClip(): CadClip | null {
+    if (clip && clip.entities.length) return clip;
+    try {
+      const restored = parseClip(localStorage.getItem(CLIP_STORAGE_KEY));
+      if (restored) {
+        clip = restored;
+        const age = restored.savedAt ? ` (${new Date(restored.savedAt).toLocaleTimeString()})` : "";
+        logCmd(`Clipboard restored${restored.sourceName ? ` from ${restored.sourceName}` : ""}${age} — ${restored.entities.length} object(s).`);
+      }
+    } catch {
+      /* private browsing / storage blocked */
+    }
+    return clip && clip.entities.length ? clip : null;
+  }
+
+  function persistClip(): void {
+    if (!clip) return;
+    try {
+      const json = serializeClip(clip);
+      if (json) localStorage.setItem(CLIP_STORAGE_KEY, json);
+    } catch {
+      /* quota or private browsing — the in-memory clipboard still works */
+    }
+  }
+
   function copySelection(): boolean {
     if (!sel.size) {
       logCmd("COPYCLIP: 0 found — select objects first.");
@@ -6600,13 +6692,52 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     const list = [...sel].map((i) => ents[i]).filter(Boolean);
     const b = idx ? M.bboxOfSet(idx, sel) : null;
+    const deps = collectClipDeps(list, doc);
     clip = makeClip(
       list,
       b ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : undefined,
       name || undefined,
+      deps,
     );
-    logCmd(`COPYCLIP: ${list.length} object(s) — switch file tab and press Ctrl+V to paste.`);
+    if (!clip) return false;
+    persistClip();
+    const carried = [
+      deps.layers?.length ? `${deps.layers.length} layer(s)` : null,
+      deps.linetypes ? `${Object.keys(deps.linetypes).length} linetype(s)` : null,
+      deps.textStyles ? `${Object.keys(deps.textStyles).length} text style(s)` : null,
+    ].filter(Boolean).join(", ");
+    logCmd(`COPYCLIP: ${list.length} object(s)${carried ? ` + ${carried}` : ""} — switch file tab and press Ctrl+V to paste.`);
     return true;
+  }
+
+  /**
+   * Super Copy style carry-over: add the clipboard's layer / linetype / text
+   * style definitions that are missing from this drawing, so pasted entities
+   * keep their source colours, dash patterns and fonts. Existing definitions
+   * always win (same rule as the drawing IMPORT merge).
+   */
+  function applyClipCarryOver(): void {
+    if (!doc || !clip) return;
+    const miss = missingClipDeps(doc, clip);
+    for (const l of miss.layers) doc.layers.push({ ...l });
+    if (miss.layers.length) {
+      for (const l of miss.layers) if (l.off || l.frozen) hidden.add(l.name);
+      buildLayers();
+    }
+    if (miss.linetypes.length) {
+      doc.linetypes = doc.linetypes ?? {};
+      for (const [ltName, pat] of miss.linetypes) doc.linetypes[ltName.toUpperCase()] = [...pat];
+    }
+    if (miss.textStyles.length) {
+      doc.textStyles = doc.textStyles ?? {};
+      for (const [stName, s] of miss.textStyles) doc.textStyles[stName.toUpperCase()] = { ...s };
+    }
+    const bits = [
+      miss.layers.length ? `${miss.layers.length} layer(s)` : null,
+      miss.linetypes.length ? `${miss.linetypes.length} linetype(s)` : null,
+      miss.textStyles.length ? `${miss.textStyles.length} text style(s)` : null,
+    ].filter(Boolean);
+    if (bits.length) logCmd(`PASTECLIP: carried over missing ${bits.join(", ")} from the clipboard.`);
   }
 
   let pasteN = 0;
@@ -6615,15 +6746,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("Nothing to paste — open a drawing first.");
       return 0;
     }
-    if (!clip || !clip.entities.length) {
+    const c0 = ensureClip();
+    if (!c0) {
       logCmd("Clipboard is empty — COPYCLIP objects in any drawing tab first.");
       return 0;
     }
+    applyClipCarryOver();
     const c = M.screenToWorld(view, view.w / 2, view.h / 2);
     const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
     const off = pasteN * Math.max(span * 0.02, 1e-9);
     const at = toOrigin ? undefined : atWorld ?? { x: c.x + off, y: c.y - off };
-    const list = clipInstances(clip, at);
+    const list = clipInstances(c0, at);
     pasteN++;
     if (!list.length) return 0;
     for (const e of list) {
@@ -6636,11 +6769,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     markDirty();
     rebuildIndex();
     setSel(list.map((_, i) => start + i));
-    logCmd(`PASTE${toOrigin ? "ORIG" : "CLIP"}: ${list.length} object(s)${clip.sourceName ? ` from ${clip.sourceName}` : ""}`);
+    logCmd(`PASTE${toOrigin ? "ORIG" : "CLIP"}: ${list.length} object(s)${c0.sourceName ? ` from ${c0.sourceName}` : ""}`);
     draw();
     return list.length;
   }
-  const pasteClip = (at?: M.Pt): number => pasteInstance(at, false);
+  const pasteClip = (_at?: M.Pt): number => {
+    // Super Copy default: interactive placement — the clipboard ghosts onto the
+    // cursor and every click drops a copy (repeatable), like native PASTECLIP.
+    ensureClip();
+    setTool("paste");
+    return 0;
+  };
   const pasteOrig = (): number => pasteInstance(undefined, true);
 
   function download(blob: Blob, fn: string): void {
@@ -7240,6 +7379,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       showRibbonEngine(ribbonWrap, api);
       resize();
       draw();
+      // Super Copy awareness: switching drawing tabs tells you what is waiting
+      // on the clipboard, so the Ctrl+C → tab → Ctrl+V flow is discoverable.
+      const c = ensureClip();
+      if (c && c.entities.length && doc) {
+        logCmd(`Clipboard: ${c.entities.length} object(s)${c.sourceName ? ` from ${c.sourceName}` : ""} — Ctrl+V to paste into this drawing, Ctrl+Shift+V for original coordinates.`);
+      }
       try { cv.focus({ preventScroll: true }); } catch { /* */ }
     },
     deactivate() {

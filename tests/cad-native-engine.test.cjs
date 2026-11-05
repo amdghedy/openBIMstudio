@@ -211,7 +211,7 @@ t("COPY keeps its original base point for every placement (non-cumulative offset
   const copyCase = viewer.slice(viewer.indexOf('case "copy": {', viewer.indexOf("function onModPointerDown")), viewer.indexOf('case "rotate": {', viewer.indexOf("function onModPointerDown")));
   assert.ok(copyCase.includes("placeCopy({ x: wp.x - b.x, y: wp.y - b.y });"), "COPY displacement must be measured from original base point");
   assert.ok(!copyCase.includes("mod.base ="), "COPY must not move its base point after each placement");
-  assert.ok(viewer.includes('mod.stage === "second" && mod.kind === "copy"'), "Enter must finish the repeated-copy command");
+  assert.ok(viewer.includes('mod.stage === "second" && (mod.kind === "copy" || mod.kind === "paste")'), "Enter must finish the repeated-copy command (and the paste placement session)");
 });
 t("global Cloud ribbon action starts revision-cloud placement instead of MLINE", () => {
   const ribbon = fs.readFileSync(path.join(ROOT, "src/shell/ribbon.ts"), "utf8");
