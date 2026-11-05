@@ -823,10 +823,19 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         const n = addWallSweepToSelected({ profileId: "wainscot-1200", height: 0, face: "both" });
         toast(n ? `Wainscot added to ${n} wall(s)` : "Select one or more walls first", n ? "success" : "warn");
       }, "Wainscot"), { title: "Add a 1.2 m wainscot panel to the selected walls" }),
+      b("wall", "Reveal", safe(async () => {
+        const { promptLine } = await import("../features/form-modal");
+        const v = await promptLine("Wall reveal", "Height above the wall base (m)", "1.0", undefined, "A 10 mm groove is cut into both faces of the selected walls.");
+        if (v == null) return;
+        const h = Number(v.replace(",", "."));
+        if (!Number.isFinite(h) || h < 0) { toast("Enter a height of 0 or more", "warn"); return; }
+        const n = addWallSweepToSelected({ profileId: "reveal-10", height: h, face: "both" });
+        toast(n ? `Reveal cut into ${n} wall(s)` : "Select one or more walls first", n ? "success" : "warn");
+      }, "Reveal"), { title: "Cut a 10 mm groove into the selected straight walls" }),
       b("wall", "Clear Sweeps", safe(() => {
         const n = clearWallSweepsSelected();
         toast(n ? `Sweeps removed from ${n} wall(s)` : "Selected walls have no sweeps", n ? "success" : "info");
-      }, "Clear sweeps"), { title: "Remove baseboards / cornices / wainscots from the selected walls" }),
+      }, "Clear sweeps"), { title: "Remove baseboards, cornices, wainscots and reveals from the selected walls" }),
       sep(),
       groupLabel("Constraints"),
       b("dim-aligned", "Lock Dim", safe(async () => {

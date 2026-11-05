@@ -31,9 +31,14 @@ t("IFC2X3: sweeps are exported with a valid predefined type", () => {
   assert.strictEqual(c.length, 3);
   for (const l of c) assert.ok(/\.(NOTDEFINED|CLADDING)\.\);$/.test(l), l);
 });
-t("reveals are reported as skipped, not silently dropped", () => {
+t("reveals are exported as an IfcOpeningElement that voids the wall", () => {
   const r = exportAuthoredToIfc([wall], { schema: "IFC4", levels });
-  assert.ok(r.stats.skipped.some((s) => s.id === "w1:sweep:3" && /reveal/i.test(s.reason)));
+  assert.ok(!r.stats.skipped.some((s) => /reveal/i.test(s.reason)), "not skipped");
+  const open = r.text.split("\n").filter((l) => /=IFCOPENINGELEMENT\(/.test(l) && l.includes("Reveal"));
+  assert.strictEqual(open.length, 1);
+  assert.ok(open[0].includes(".RECESS."));
+  assert.ok(/=IFCRELVOIDSELEMENT\(/.test(r.text));
+  assert.ok(!/NaN|Infinity|undefined/.test(r.text));
 });
 t("sweep geometry is storey-relative and sits on the wall", () => {
   const r = exportAuthoredToIfc([{ ...wall, params: { ...wall.params, sweeps: [sweeps[0]] } }], { schema: "IFC4", levels });

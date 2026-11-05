@@ -24,7 +24,7 @@
 import { stableIfcGuid, isValidIfcGuid } from "./ifc-guid";
 import { buildElementGeo, m2Quantities } from "./m2-geometry";
 import { resolveTwinExportGeometry } from "../native-twin/twin-export-geometry";
-import { generateWallSweep } from "../wall-sweeps/geometry";
+import { generateWallSweep, generateRevealCutter } from "../wall-sweeps/geometry";
 import { getProfile, type WallSweepPlacement } from "../wall-sweeps/types";
 
 export type Vec2 = [number, number];
@@ -540,7 +540,20 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
             properties: { hostWall: el.id, sweepProfile: sw.profileId, sweepFace: sw.face, sweepHeight: sw.height },
           };
           if (!geo || !geo.positions.length) { skip(sweepEl, "sweep profile not found"); return; }
-          if (geo.isReveal) { skip(sweepEl, "reveals are not exported (they are drawn as solids, not cut into the wall)"); return; }
+          if (geo.isReveal) {
+            // A reveal is a groove: export it as an IfcOpeningElement that voids the wall.
+            const cut = generateRevealCutter(p.start!, p.end!, T, elev, sw);
+            if (!cut) { skip(sweepEl, "reveal is deeper than the wall allows, or the wall is too short"); return; }
+            const bakedCut = bakeTriangles(cut.positions, undefined, storey);
+            if (!bakedCut) { skip(sweepEl, "reveal has no valid triangles"); return; }
+            const openId = f.add("IFCOPENINGELEMENT", [
+              S(guid("reveal:" + sid)), ref(oh), S((prof?.name ?? sw.profileId) + " (reveal)"), "$", S("Reveal"),
+              ref(place(storey.pl, axisAt(0, 0, 0))), ref(rep([bakedCut.item], bakedCut.repType)), "$", ...(v4 ? [".RECESS."] : []),
+            ]);
+            f.add("IFCRELVOIDSELEMENT", [S(guid("revoid:" + sid)), ref(oh), "$", "$", ref(id), ref(openId)]);
+            stats.openings++;
+            return;
+          }
           const baked = bakeTriangles(geo.positions, undefined, storey);
           if (!baked) { skip(sweepEl, "sweep has no valid triangles"); return; }
           const kindHint = /baseboard/i.test(sw.profileId) ? (v4 ? ".SKIRTINGBOARD." : ".NOTDEFINED.")

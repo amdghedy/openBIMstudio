@@ -10,7 +10,7 @@ import { getProfile, listProfiles, listProfileOptions, BUILTIN_PROFILES } from "
 import type { WallSweepPlacement, SweepProfile } from "./types";
 
 export * from "./types";
-export { generateWallSweep, generateAllWallSweeps } from "./geometry";
+export { generateWallSweep, generateAllWallSweeps, generateRevealCutter } from "./geometry";
 
 /** Public WallSweep service. */
 export interface WallSweepService {

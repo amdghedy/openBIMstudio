@@ -327,11 +327,11 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Modeling",
     status: "limited",
     source: ["src/modules/wall-sweeps/geometry.ts", "src/features/authoring.ts"],
-    evidence: ["tests/ui-honesty.test.cjs", "tests/wall-sweep-ifc.test.cjs"],
+    evidence: ["tests/ui-honesty.test.cjs", "tests/wall-sweep-ifc.test.cjs", "tests/wall-reveal-cutter.test.cjs"],
     limitations: [
       "Built-in profiles only (baseboard, cornice, wainscot, reveal); no custom profile editor",
       "Baseboards, cornices and wainscots export to IFC as IfcCovering (tessellated); the IFC export has not been opened in a third-party viewer",
-      "Reveals are drawn as solids, not cut into the wall, and are not exported to IFC",
+      "Reveals are cut into straight walls with the same CSG used for door openings and export to IFC as IfcOpeningElement (RECESS); curved walls do not get reveals, and the cut has not been checked on screen or in a third-party viewer",
     ],
     affirmedIn: APP_VERSION,
   },

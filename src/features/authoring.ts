@@ -35,7 +35,7 @@ import { accuDraw } from "./accudraw";
 import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP } from "../modules/mep/connectivity";
 import { planMepStretch, planMepMove } from "../modules/mep/stretch";
 import { planLinearFollow, FOLLOW_LINEAR, magnetSameTypeEnd, joinedEnds } from "../modules/native-bim/linear-follow";
-import { generateWallSweep } from "../modules/wall-sweeps/geometry";
+import { generateWallSweep, generateRevealCutter } from "../modules/wall-sweeps/geometry";
 import type { WallSweepPlacement } from "../modules/wall-sweeps/types";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
@@ -1433,6 +1433,25 @@ function buildWallWithOpenings(
     }
   }
 
+  // Reveals (grooves) are cut into the wall like openings are. Straight walls only.
+  const reveals = ((p as any).sweeps ?? []) as WallSweepPlacement[];
+  if (Array.isArray(reveals) && reveals.length && !(Math.abs(arcH) > 0.05 && L > 0.5)) {
+    for (const sw of reveals) {
+      const cut = generateRevealCutter(p.start, p.end, T, p.elevation, sw);
+      if (!cut) continue;
+      try {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(cut.positions), 3));
+        const cutter = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ visible: false }));
+        cutter.updateMatrixWorld(true);
+        mesh = CSG.toMesh(CSG.fromMesh(mesh).subtract(CSG.fromMesh(cutter)), mesh.matrix, mat);
+        mesh.updateMatrixWorld(true);
+      } catch (err) {
+        console.warn("[CSG] reveal subtraction failed", err);
+      }
+    }
+  }
+
   mesh.userData.elementId = el.id;
   mesh.userData.baseColor = el.color || COLORS.wall;
   // Accelerate this mesh with BVH for fast raycasting (selection, snapping).
@@ -1455,7 +1474,7 @@ function attachWallSweeps(wallMesh: THREE.Mesh, el: AuthoredElement): void {
   const inv = wallMesh.matrixWorld.clone().invert();
   for (const sw of list) {
     const geo = generateWallSweep(p.start, p.end, p.thickness, p.height, p.elevation, sw);
-    if (!geo || !geo.positions.length) continue;
+    if (!geo || !geo.positions.length || geo.isReveal) continue; // reveals are cut into the wall, not drawn
     const arr = new Float32Array(geo.positions);
     const v = new THREE.Vector3();
     for (let i = 0; i < arr.length; i += 3) {

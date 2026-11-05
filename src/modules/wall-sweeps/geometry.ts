@@ -165,3 +165,78 @@ export function generateAllWallSweeps(
   }
   return results;
 }
+
+/**
+ * Closed cutter solid for a REVEAL (a groove cut into the wall face).
+ *
+ * The profile's u axis is depth into the wall here: u = 0 is the wall face and
+ * u > 0 goes inward. The solid starts `OVERSHOOT` outside the face so a boolean
+ * subtraction leaves a clean groove instead of a coplanar sliver. Every body is
+ * closed and wound with outward normals (checked by signed volume), which is what
+ * the wall's CSG needs.
+ *
+ * Returns null for non-reveal profiles, a wall that is too short, or a groove
+ * deeper than the wall (that would cut through; it is clamped by the caller's UI
+ * but refused here so a bad value cannot punch a hole).
+ */
+export const REVEAL_OVERSHOOT = 0.01;
+
+export function generateRevealCutter(
+  wallStart: [number, number],
+  wallEnd: [number, number],
+  wallThickness: number,
+  wallElevation: number,
+  placement: WallSweepPlacement,
+): { positions: number[]; depth: number } | null {
+  const profile = getProfile(placement.profileId);
+  if (!profile || profile.type !== "reveal") return null;
+  const dx = wallEnd[0] - wallStart[0];
+  const dz = wallEnd[1] - wallStart[1];
+  const L = Math.hypot(dx, dz);
+  if (L < 0.05) return null;
+  const dirX = dx / L, dirZ = dz / L;
+  const normalX = dirZ, normalZ = -dirX;
+  const halfT = wallThickness / 2;
+  const depth = Math.max(...profile.vertices.map(([u]) => u));
+  if (depth >= wallThickness * 0.9) return null;
+
+  const startU = Math.max(0, placement.startOffset ?? 0);
+  const endU = Math.min(L, placement.endOffset ?? L);
+  if (endU - startU < 0.01) return null;
+
+  const faces = placement.face === "both" ? [1, -1] : [placement.face === "exterior" ? 1 : -1];
+  const out: number[] = [];
+  const n = profile.vertices.length;
+
+  for (const sign of faces) {
+    const ring = (along: number): V3[] => profile.vertices.map(([u, h]) => {
+      const uu = u <= 1e-9 ? -REVEAL_OVERSHOOT : u; // face-side vertices sit just outside
+      const lat = sign * (halfT - uu);
+      return [
+        wallStart[0] + dirX * along + normalX * lat,
+        wallElevation + placement.height + h,
+        wallStart[1] + dirZ * along + normalZ * lat,
+      ] as V3;
+    });
+    const a = ring(startU), b = ring(endU);
+    const tris: V3[][] = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n; // includes the closing edge
+      tris.push([a[i], b[i], b[j]], [a[i], b[j], a[j]]);
+    }
+    for (let i = 1; i < n - 1; i++) {
+      tris.push([a[0], a[i], a[i + 1]]);
+      tris.push([b[0], b[i + 1], b[i]]);
+    }
+    // Orient outward: a closed body must have positive signed volume.
+    let vol = 0;
+    for (const [p, q, r] of tris) {
+      vol += (p[0] * (q[1] * r[2] - q[2] * r[1]) - p[1] * (q[0] * r[2] - q[2] * r[0]) + p[2] * (q[0] * r[1] - q[1] * r[0])) / 6;
+    }
+    for (const [p, q, r] of tris) {
+      const t = vol < 0 ? [p, r, q] : [p, q, r];
+      for (const v of t) out.push(v[0], v[1], v[2]);
+    }
+  }
+  return { positions: out, depth };
+}
