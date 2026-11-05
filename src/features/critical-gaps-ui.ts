@@ -3,6 +3,7 @@
  * Extends the original advanced toolbar with Architecture / Modify / View actions.
  */
 
+import { ctx } from "../core/context";
 type Any = Record<string, any>;
 
 let toolbar: HTMLDivElement | null = null;
@@ -161,18 +162,18 @@ export async function setupCriticalGapsUI(): Promise<void> {
     const sel = (window as Any).__OBS_CTX__?.features?.selection;
     let ids: string[] = [];
     try { ids = sel?.getSelectedIds?.() ?? []; } catch { /* */ }
-    (window as Any).__obsVisibility?.hideElements?.(ids);
+    (ctx.features as any).visibility?.hideElements?.(ids);
     flash(hideBtn, ids.length ? `[OK] ${ids.length}` : "[--]");
   });
   const isoBtn = makeButton("obs-adv-iso", "Isolate", "Temporary isolate selection", () => {
     const sel = (window as Any).__OBS_CTX__?.features?.selection;
     let ids: string[] = [];
     try { ids = sel?.getSelectedIds?.() ?? []; } catch { /* */ }
-    (window as Any).__obsVisibility?.isolateElements?.(ids);
+    (ctx.features as any).visibility?.isolateElements?.(ids);
     flash(isoBtn, ids.length ? `[OK] ${ids.length}` : "[--]");
   });
   const resetVisBtn = makeButton("obs-adv-resetvis", "Reset Vis", "Reset temp hide/isolate", () => {
-    (window as Any).__obsVisibility?.resetTemporary?.();
+    (ctx.features as any).visibility?.resetTemporary?.();
     flash(resetVisBtn, "[OK]");
   });
 

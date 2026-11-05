@@ -12,6 +12,7 @@ import {
   createDefaultVg,
   defaultCategoryOverride,
 } from "./types";
+import { ctx } from "../../core/context";
 
 type Listener = () => void;
 
@@ -346,7 +347,7 @@ class ViewTemplatesStore {
   /** Push effective category overrides into the existing VisibilityFilter if present. */
   syncToVisibilityFilter(viewId: string): void {
     try {
-      const vf = (window as any).__obsVisibility;
+      const vf = (ctx.features as any).visibility;
       if (!vf || typeof vf.setCategoryOverride !== "function") return;
       const vg = this.getEffectiveVg(viewId);
       for (const [cat, ov] of Object.entries(vg.categoryOverrides)) {

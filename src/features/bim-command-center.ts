@@ -9,6 +9,7 @@
  */
 
 import { promptLine } from "./form-modal";
+import { ctx } from "../core/context";
 
 type Any = Record<string, any>;
 
@@ -159,7 +160,7 @@ function buildBody(host: HTMLElement): void {
   if (has("__obsCurtainWall")) ready.push("Curtain");
   if (has("__obsRooms")) ready.push("Rooms");
   if (has("__obsPhases")) ready.push("Phases");
-  if (has("__obsVisibility")) ready.push("Visibility");
+  if ((ctx.features as any).visibility) ready.push("Visibility");
   if (has("__obsAlign")) ready.push("Align");
   status.textContent = ready.length
     ? `Ready: ${ready.join(" - ")}`
@@ -247,18 +248,18 @@ function buildBody(host: HTMLElement): void {
     section("View", [
       btn("Hide", "Temp hide selected", () => {
         const ids = selIds();
-        (window as Any).__obsVisibility?.hideElements?.(ids);
+        (ctx.features as any).visibility?.hideElements?.(ids);
         toast(ids.length ? `Hidden ${ids.length}` : "Nothing selected", ids.length ? "info" : "info");
-      }, has("__obsVisibility")),
+      }, !!(ctx.features as any).visibility),
       btn("Isolate", "Temp isolate", () => {
         const ids = selIds();
-        (window as Any).__obsVisibility?.isolateElements?.(ids);
+        (ctx.features as any).visibility?.isolateElements?.(ids);
         toast(ids.length ? `Isolated ${ids.length}` : "Nothing selected", "info");
-      }, has("__obsVisibility")),
+      }, !!(ctx.features as any).visibility),
       btn("Reset Vis", "Clear temp hide", () => {
-        (window as Any).__obsVisibility?.resetTemporary?.();
+        (ctx.features as any).visibility?.resetTemporary?.();
         toast("Visibility reset", "success");
-      }, has("__obsVisibility")),
+      }, !!(ctx.features as any).visibility),
       btn("Work Plane XY", "Floor plane", () => {
         (window as Any).__obsRefPlanes?.setActiveWorkPlane?.("rp-xy");
         toast("Work plane: Floor (XY)", "success");

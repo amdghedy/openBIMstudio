@@ -223,7 +223,7 @@ function hookTempDims(): void {
 
 function hookVisibility(): void {
   window.addEventListener("obs:authoring-changed", () => {
-    const vis = (window as Any).__obsVisibility;
+    const vis = (ctx.features as any).visibility;
     if (!vis?.isVisible) return;
     // Soft filter: mark userData; full mesh hide is left to authoring rebuild consumers
     const elements = getElements();
@@ -329,7 +329,7 @@ async function registerCommands(): Promise<void> {
       kbd: "HH",
       run: () => {
         const ids = getSelectionIds();
-        (window as Any).__obsVisibility?.hideElements?.(ids);
+        (ctx.features as any).visibility?.hideElements?.(ids);
         notify("info", `Hidden ${ids.length} element(s)`, { timeout: 1400 });
       },
     },
@@ -340,7 +340,7 @@ async function registerCommands(): Promise<void> {
       kbd: "HI",
       run: () => {
         const ids = getSelectionIds();
-        (window as Any).__obsVisibility?.isolateElements?.(ids);
+        (ctx.features as any).visibility?.isolateElements?.(ids);
         notify("info", `Isolated ${ids.length} element(s)`, { timeout: 1400 });
       },
     },
@@ -350,7 +350,7 @@ async function registerCommands(): Promise<void> {
       category: "View",
       kbd: "HR",
       run: () => {
-        (window as Any).__obsVisibility?.resetTemporary?.();
+        (ctx.features as any).visibility?.resetTemporary?.();
         notify("success", "Temporary visibility reset", { timeout: 1400 });
       },
     },

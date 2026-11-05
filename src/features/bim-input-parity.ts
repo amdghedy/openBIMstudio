@@ -150,7 +150,7 @@ async function registerBIMShortcuts(): Promise<void> {
     category: "view",
     handler: () => {
       const ids = selIds();
-      (window as Any).__obsVisibility?.hideElements?.(ids);
+      (ctx.features as any).visibility?.hideElements?.(ids);
       notify("info", ids.length ? `Hidden ${ids.length}` : "Select elements first");
     },
   });
@@ -161,7 +161,7 @@ async function registerBIMShortcuts(): Promise<void> {
     category: "view",
     handler: () => {
       const ids = selIds();
-      (window as Any).__obsVisibility?.isolateElements?.(ids);
+      (ctx.features as any).visibility?.isolateElements?.(ids);
       notify("info", ids.length ? `Isolated ${ids.length}` : "Select elements first");
     },
   });
@@ -171,7 +171,7 @@ async function registerBIMShortcuts(): Promise<void> {
     keys: "hr",
     category: "view",
     handler: () => {
-      (window as Any).__obsVisibility?.resetTemporary?.();
+      (ctx.features as any).visibility?.resetTemporary?.();
       notify("success", "Visibility reset");
     },
   });
