@@ -103,7 +103,7 @@ t("command entry: Space executes exact commands in both command inputs without e
   assert.ok(viewer.includes("e.preventDefault();\\n        executeAutoCadCommand(cmdInput.value);"), "command-line Space execution does not preserve ordinary spaces");
 });
 
-// ── 5. Runtime: compile the two helpers and verify their behaviour ──
+// ── 6. Runtime: compile the two helpers and verify their behaviour ──
 t("runtime: fileStyleToTextStyle + fontOptionsFor behaviour", () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "cad-uiw-"));
   // Stub the DOM-touching imports so the module compiles standalone.
