@@ -1,5 +1,5 @@
 /**
- * Magnetic snapping engine (MASTER PROMPT MODULE 2B.2).
+ * Magnetic snapping engine (Design spec MODULE 2B.2).
  *
  * Implements the spec's snap candidate pipeline:
  *   QuerySnapCandidates → ClassifySnapReference → EvaluateSnapEligibility

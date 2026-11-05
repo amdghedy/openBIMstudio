@@ -1,5 +1,5 @@
 /**
- * Editable dimensions (MASTER PROMPT MODULE 2D.6).
+ * Editable dimensions (Design spec MODULE 2D.6).
  *
  * Distinguishes measured / reference / driving / locked / calculated /
  * annotation-only dimensions (spec 2D.6) and implements the named

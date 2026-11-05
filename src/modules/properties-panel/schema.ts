@@ -1,5 +1,5 @@
 /**
- * Metadata-driven property schemas (MASTER PROMPT MODULE 2D.1, 2D.4, 2D.5).
+ * Metadata-driven property schemas (Design spec MODULE 2D.1, 2D.4, 2D.5).
  *
  * Every property definition carries the 21 metadata fields the spec
  * mandates (parameter id, names, description, data type, unit, defaults,

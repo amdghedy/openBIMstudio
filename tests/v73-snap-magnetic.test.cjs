@@ -1,7 +1,7 @@
 /**
  * tests/v73-snap-magnetic.test.cjs
  *
- * MASTER PROMPT §4/§5 — magnetic alignment math + snap candidate
+ * Design spec §4/§5 — magnetic alignment math + snap candidate
  * ranking / hysteresis / cycling. Closed-form checks on the pure
  * modules/snapping/magnetic.ts (no DOM, no three.js).
  *

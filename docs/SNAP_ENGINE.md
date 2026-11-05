@@ -46,7 +46,7 @@ Higher wins before screen-distance tie-break (see `SNAP_PRIORITY` / `BASE_PRIORI
 
 - Runtime object snap: configurable (`setPixelTolerance`); default historically 16 px.
 - Engine default: `DEFAULT_SNAP_SETTINGS.screenTolerancePx` (12 historically).
-- Master prompt target: **20 px search / ~15 px priority ring** — tune via settings; spatial index uses world radius derived from camera + pixels.
+- Design target: **20 px search / ~15 px priority ring** — tune via settings; spatial index uses world radius derived from camera + pixels.
 
 ## Spatial indexing
 

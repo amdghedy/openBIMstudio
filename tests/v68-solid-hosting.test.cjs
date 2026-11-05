@@ -1,7 +1,7 @@
 /**
  * tests/v68-solid-hosting.test.cjs
  *
- * Unit tests for MASTER PROMPT Module 2.7–2.9/2.12 (solid kernel:
+ * Unit tests for Design spec Module 2.7–2.9/2.12 (solid kernel:
  * parametric forms, BSP booleans, voids, validation) and Module 1.5
  * (hosting: surface parameterisation, openings, host-change propagation).
  * All values verified against closed forms to 1e-6 or better.

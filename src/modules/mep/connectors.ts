@@ -1,5 +1,5 @@
 /**
- * MEP connector intelligence (MASTER PROMPT MODULE 2B.7).
+ * MEP connector intelligence (Design spec MODULE 2B.7).
  *
  * Connector compatibility, approach-path fitting determination, route
  * preview, persistent connectivity records and network topology

@@ -1,5 +1,5 @@
 /**
- * Alignment and temporary constraints (MASTER PROMPT MODULE 2B.4).
+ * Alignment and temporary constraints (Design spec MODULE 2B.4).
  *
  * Residuals (spec formulas):
  *   parallel directions:        u × v ≈ 0

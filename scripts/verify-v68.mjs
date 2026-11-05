@@ -1,7 +1,7 @@
 /**
  * verify-v68.mjs — v0.68 milestone checks (authoring core package).
  *
- * Asserts the MASTER PROMPT authoring engines landed with the expected
+ * Asserts the Design spec authoring engines landed with the expected
  * shape:
  *   - src/modules/dependency-graph  (Module 1.1–1.3)
  *   - src/modules/parameter-engine  (Module 1.6 / 2.3)

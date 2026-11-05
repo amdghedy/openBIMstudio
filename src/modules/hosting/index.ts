@@ -1,5 +1,5 @@
 /**
- * Hosting and transform propagation (MASTER PROMPT MODULE 1.5).
+ * Hosting and transform propagation (Design spec MODULE 1.5).
  *
  * Host-child relationships for straight AND curved (arc) walls: the host
  * surface is parameterised by curve length s; a hosted element stores its

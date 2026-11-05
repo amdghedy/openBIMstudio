@@ -1,7 +1,7 @@
 /**
  * tests/v68-acceptance.test.cjs
  *
- * MASTER PROMPT MODULE 2E — integration/acceptance scenarios.
+ * Design spec MODULE 2E — integration/acceptance scenarios.
  * Run: `node tests/v68-acceptance.test.cjs`
  */
 

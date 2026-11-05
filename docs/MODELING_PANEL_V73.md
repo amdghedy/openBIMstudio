@@ -1,6 +1,6 @@
 # Intelligent Modeling, Dynamic Properties Panel, Justification & Smart Snapping — v0.73.0
 
-Implementation record for the **MASTER PROMPT — OpenBIMStudio Intelligent Modeling,
+Implementation record for the **Design spec — OpenBIMStudio Intelligent Modeling,
 Dynamic Properties Panel, Justification & Smart Snapping Engine**. Every item below
 names the real module/function it lives in — nothing in this document describes a
 planned-only behavior.
@@ -139,7 +139,7 @@ the four suites + verify script are wired into `.github/workflows/unit-tests.yml
 3. **M2 boot (`setupBimGaps`) remains unwired** — the stairs/railing/ramp/roof/ceiling
    module + room tool exist in the repo but their bootstrap is dead code. Wiring it
    changes ribbon routing for several tools and is a separate integration task; the
-   master prompt's tool list is fully covered by the wired tools above.
+   design spec's tool list is fully covered by the wired tools above.
 4. **Rotation propagation** for endpoint-constrained walls: translation moves are
    applied to dependents; rotation keeps the existing registry-eval reporting path
    (consistent with the v71 Group-1 behavior).

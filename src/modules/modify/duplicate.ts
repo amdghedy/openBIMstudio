@@ -1,6 +1,6 @@
 /**
  * Duplicating Modify commands: Copy, Array (linear/radial), Mirror
- * (MASTER PROMPT MODULE 2C.8).
+ * (Design spec MODULE 2C.8).
  *
  * Identifier policy (spec 2C.8): every copy receives a fresh id via the
  * context allocator; instance parameters are cloned; hosts are remapped

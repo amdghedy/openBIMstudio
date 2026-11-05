@@ -1,6 +1,6 @@
 /**
  * Modify Group 2 — Align, Split-with-Gap, Wall Corner Trim/Extend
- * (MASTER PROMPT MODULE 2C — Groups 2–3 expansion)
+ * (Design spec MODULE 2C — Groups 2–3 expansion)
  *
  * Pure module: no DOM — safe to unit-test in Node.
  */

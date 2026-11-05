@@ -1,7 +1,7 @@
 /**
  * verify-v67.mjs — v0.67 milestone checks (engineering engine package).
  *
- * Asserts the four "Revit-killer" engines landed with the expected shape:
+ * Asserts the four "engineering" engines landed with the expected shape:
  *   - src/modules/constraints        (numeric geometric constraint solver)
  *   - src/modules/analytical-model   (2D frame FEM + steel/RC code checks)
  *   - src/modules/mep/pressure.ts    (duct/pipe hydraulics, worst path)

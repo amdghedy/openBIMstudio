@@ -26,7 +26,7 @@ function has(re, p) {
   if (!re.test(read(p))) throw new Error(`${p}: pattern not found: ${re}`);
 }
 
-/* ── Justification engine (MASTER PROMPT §3) ───────────────────────────── */
+/* ── Justification engine (Design spec §3) ───────────────────────────── */
 
 check("justification module exists and is pure", () =>
   has(/justificationShiftMeters|resolveWallJustification/, "src/modules/justification/index.ts"));
@@ -187,7 +187,7 @@ check("CI runs the v73 suites", () => {
 });
 check("documentation exists", () => {
   const d = read("docs/MODELING_PANEL_V73.md");
-  if (!/MASTER PROMPT|Justification|Snap/i.test(d)) throw new Error("doc lacks the spec mapping");
+  if (!/Design spec|Justification|Snap/i.test(d)) throw new Error("doc lacks the spec mapping");
 });
 
 console.log(`\nverify-v73: ${pass} passed, ${fail} failed`);

@@ -1,5 +1,5 @@
 /**
- * Unified Modify command architecture (MASTER PROMPT MODULE 2C.1, 2C.11).
+ * Unified Modify command architecture (Design spec MODULE 2C.1, 2C.11).
  *
  * Every modify tool implements IModifyCommand with the spec's contract:
  * CanExecute, Begin, UpdatePreview, Validate, Commit, Cancel,

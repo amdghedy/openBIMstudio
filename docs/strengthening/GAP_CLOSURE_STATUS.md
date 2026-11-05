@@ -49,7 +49,7 @@
 - ~~Persistent relationship registry + reconnection policies~~ ✅ v0.68 — `src/modules/relationships`
 - ~~MEP connector intelligence (compatibility, fittings, topology)~~ ✅ v0.68 — `src/modules/mep/connectors.ts`
 - ~~Unified Modify command engine~~ ✅ v0.68 — `src/modules/modify`
-- ~~Modify Group 1 behavioral spec: Selection engine + Reference acquisition + Move/Rotate/Mirror full catalogs~~ ✅ v0.71 — `src/modules/selection`, `src/modules/references`, `src/modules/modify/group1.ts` (transaction undo/redo, hosted rigid follow, mirror relationship cloning; spec-first per `docs/MODIFY_GROUP1_SPEC_V71.md`, registers continued A-10…/D-13…; Groups 2–7 of the Modify master prompt remain)
+- ~~Modify Group 1 behavioral spec: Selection engine + Reference acquisition + Move/Rotate/Mirror full catalogs~~ ✅ v0.71 — `src/modules/selection`, `src/modules/references`, `src/modules/modify/group1.ts` (transaction undo/redo, hosted rigid follow, mirror relationship cloning; spec-first per `docs/MODIFY_GROUP1_SPEC_V71.md`, registers continued A-10…/D-13…; Groups 2–7 of the Modify design spec remain)
 - ~~Modify Engine Expansion (Group 2): Linear/Radial Array, Align with Lock Constraints, Split with Gap, Wall Corner Trim/Extend~~ ✅ v0.74+ — `src/modules/modify/duplicate.ts`, `src/modules/modify/group2.ts`
 - ~~2D Detail Hatching: ANSI31, Concrete, and Earth crosshatch fills for drafting sections~~ ✅ v0.74+ — `src/modules/detail-patterns/hatch-patterns.ts`
 - ~~glTF / GLB 3D Exporter: High-speed export of the native twin model to GLB for web, AR, and rendering~~ ✅ v0.74+ — `src/modules/export/gltf-native-twin.ts`

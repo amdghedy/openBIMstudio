@@ -1,7 +1,7 @@
 /**
  * Authoring core — parametric graph, registry, solids, snapping, relationships.
  *
- * Implements the MASTER PROMPT authorized modules (1, 2, 2B, 2C, 2D, 2E)
+ * Implements the Design spec authorized modules (1, 2, 2B, 2C, 2D, 2E)
  * as pure engines and exposes them on window.__obs* for the console,
  * ribbon, automation and AI tools:
  *

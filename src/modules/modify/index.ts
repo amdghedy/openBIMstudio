@@ -1,5 +1,5 @@
 /**
- * Modify engine — public barrel (MASTER PROMPT MODULE 2C).
+ * Modify engine — public barrel (Design spec MODULE 2C).
  */
 export * from "./command";
 export * from "./transform";

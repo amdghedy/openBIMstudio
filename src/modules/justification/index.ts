@@ -1,5 +1,5 @@
 /**
- * Justification & location-line engine (MASTER PROMPT §3).
+ * Justification & location-line engine (Design spec §3).
  *
  * Determines how an object's reference line sits relative to its actual
  * geometry, and produces the endpoint shift that constructs the geometry

@@ -1,7 +1,7 @@
 /**
  * tests/v73-relationships.test.cjs
  *
- * MASTER PROMPT §5/§6 — persistent relationships from snapping and
+ * Design spec §5/§6 — persistent relationships from snapping and
  * dependent-geometry updates. Verifies the exact code paths the live app
  * now exercises: snap → endpoint-constraint / wall-column binds, and
  * moving the referenced object re-resolves dependent geometry.

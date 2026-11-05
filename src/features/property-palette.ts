@@ -582,7 +582,7 @@ function renderHeader(mode: "defaults" | "edit", typeLabel: string, elementName?
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Modeling tool panel (MASTER PROMPT §2) — contextual per-tool parameters
+   Modeling tool panel (Design spec §2) — contextual per-tool parameters
    rendered from the declarative registry in tool-panels.ts. Values write
    to the type defaults (what the NEXT placed element receives) or to live
    authoring state (location line, chain, slope, justification…), and every
@@ -847,7 +847,7 @@ function render() {
   else panel.style.display = "flex";
 
   const schema = getSchema(target.type);
-  // MASTER PROMPT §2 — while a draw tool is active, its contextual panel
+  // Design spec §2 — while a draw tool is active, its contextual panel
   // renders even when the element type has no other schema yet.
   const toolPanelDesc = target.mode === "defaults" ? getToolPanel(getActiveTool()) : null;
   if (!schema && !toolPanelDesc) {
@@ -1206,7 +1206,7 @@ export function setupPropertyPalette(): void {
   // force it open. The palette stays closed unless the user opened it
   // via the ribbon, User Interface menu, Ctrl+1, the command palette,
   // or openPropertyPalette().
-  // MASTER PROMPT §2.1 — selecting a modeling tool opens its contextual
+  // Design spec §2.1 — selecting a modeling tool opens its contextual
   // properties panel automatically. (Supersedes the earlier
   // closed-by-default behaviour for tool activation only: selection and
   // manual open/close still behave exactly as before.)

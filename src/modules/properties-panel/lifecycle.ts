@@ -1,5 +1,5 @@
 /**
- * Property editing lifecycle (MASTER PROMPT MODULE 2D.2, 2D.7).
+ * Property editing lifecycle (Design spec MODULE 2D.2, 2D.7).
  *
  * Implements the spec's 12-step edit lifecycle with the named functions:
  *   GetPropertyDefinitions / GetPropertyValue / GetEffectivePropertyValue /

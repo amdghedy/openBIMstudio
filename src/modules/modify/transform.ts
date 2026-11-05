@@ -1,6 +1,6 @@
 /**
  * Transformation Modify commands: Move, Rotate, Align
- * (MASTER PROMPT MODULE 2C.3–2C.5).
+ * (Design spec MODULE 2C.3–2C.5).
  *
  * Math (spec formulas):
  *   Move:    P' = P + Δ ;  T' = T_Δ · T

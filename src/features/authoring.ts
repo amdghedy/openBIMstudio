@@ -174,7 +174,7 @@ let gripDrag: {
 let lastSnapValid = false;
 let lastSnapResult: import("./snapping").SnapResult | null = null;
 /** Last hover event — used by refreshPreview() to redraw the ghost after
- *  a parameter change in the modeling panel (MASTER PROMPT §2.3). */
+ *  a parameter change in the modeling panel (Design spec §2.3). */
 let lastHoverEvent: MouseEvent | null = null;
 
 let hoveredWall: { wallId: string; offset: number; point: THREE.Vector3 } | null = null;
@@ -520,7 +520,7 @@ export function setWallJoinStatus(v: WallJoinStatus) { wallJoinStatus = v; }
 export function getWallRadius() { return wallRadius; }
 export function setWallRadius(v: number) { wallRadius = v; }
 
-/* ── Beam / MEP justification state (MASTER PROMPT §3) ─────────────── */
+/* ── Beam / MEP justification state (Design spec §3) ─────────────── */
 /** Horizontal justification across the profile width. */
 export type HJustification = "center" | "outer" | "inner";
 /** Vertical justification of a beam relative to the draw elevation. */
@@ -586,7 +586,7 @@ function effectiveDrawParams(type: ElementType): {
 }
 
 /**
- * MASTER PROMPT §3.2 — justification affects the ACTUAL construction:
+ * Design spec §3.2 — justification affects the ACTUAL construction:
  * resolve the per-tool justification against the reference segment and
  * return the placed start/end (+ elevation / endElevation adjustments).
  * The reference path itself is never moved (switching modes re-solves).
@@ -629,7 +629,7 @@ function justifyLinearSegment(
       shift: justificationShiftMeters(mepJustification, dp.thickness),
     });
     // Reuse the plan-path slope state so chained 3D runs accumulate
-    // elevation exactly like plan-drawn runs (MASTER PROMPT §2.2 MEP).
+    // elevation exactly like plan-drawn runs (Design spec §2.2 MEP).
     const sloped = slopedElevations(tool, s[0], s[1], e[0], e[1]);
     return {
       start: r.start, end: r.end,
@@ -2873,7 +2873,7 @@ function deleteElements(ids: string[]) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Snap-derived persistent relationships + dependent propagation
-// (MASTER PROMPT §4.3 commit, §5 magnetic behavior, §6 update-on-modify)
+// (Design spec §4.3 commit, §5 magnetic behavior, §6 update-on-modify)
 // ═══════════════════════════════════════════════════════════════════════════
 
 function snapRegistry(): any | null {
@@ -3011,7 +3011,7 @@ export interface ParamPatch {
 }
 
 /**
- * MASTER PROMPT §6 — moving a referenced object updates dependent
+ * Design spec §6 — moving a referenced object updates dependent
  * geometry. Collects (without applying) the parameter patches for every
  * endpoint-constraint dependent of the moved elements:
  *   • wall-column constraints re-resolve the wall endpoint against the
@@ -3313,7 +3313,7 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
           const tool = activeTool as ElementType;
           const dp = effectiveDrawParams(tool);
           const placed = justifyLinearSegment(tool, startPt, endPt, dp);
-          // MASTER PROMPT §3.3 — the committed element records HOW it sits
+          // Design spec §3.3 — the committed element records HOW it sits
           // on the reference, so later edits can reproduce the offset.
           const drawProps: Record<string, unknown> = {};
           if (tool === "wall" || tool === "curtain-wall") {
@@ -3488,7 +3488,7 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
           const candidates = movers.map((m0) => { const c = JSON.parse(JSON.stringify(m0)) as AuthoredElement; shiftParams(c, dx, dz); return c; });
           const candById = new Map(candidates.map((c) => [c.id, c]));
           if (!rejectInvalidOperation(elements.map((item) => candById.get(item.id) ?? item), new Set(movers.map((m0) => m0.id)), `move ${label}`)) {
-            // MASTER PROMPT §6 — dependents follow the move in the SAME
+            // Design spec §6 — dependents follow the move in the SAME
             // undo transaction (endpoint constraints / wall-column binds).
             const depPatches = collectDependentPatches(movers.map((m0) => m0.id), dx, dz);
             const snaps = movers.map((m0) => ({ el: m0, before: JSON.parse(JSON.stringify(m0.params)), after: JSON.parse(JSON.stringify(candById.get(m0.id)!.params)) }));
@@ -3924,7 +3924,7 @@ function updatePreview(e: MouseEvent | null) {
       (preview as THREE.Mesh).rotation.y = Math.atan2(-(bz - az), bx - ax);
       previewGroup.add(preview);
       // BIM-style dashed alignment / extension guides, then the
-      // MASTER PROMPT §3.3 reference-line visualisation on top: the
+      // Design spec §3.3 reference-line visualisation on top: the
       // reference path (light), offset ties (yellow) to the justified face.
       try {
         updateAlignmentGuides(a, pt);
@@ -4567,7 +4567,7 @@ export function isDrawToolActive(): boolean {
 /**
  * Re-run the placement preview with the last known pointer position so a
  * parameter change in the modeling panel updates the ghost immediately
- * (MASTER PROMPT §2.3 "update the modeling preview immediately").
+ * (Design spec §2.3 "update the modeling preview immediately").
  */
 export function refreshPreview(): void {
   if (!activeTool || activeTool === "select") return;
@@ -6135,7 +6135,7 @@ export function setupAuthoring() {
         }
         gizmoFollowBase = null;
       }
-      // MASTER PROMPT §6 — drag-move also updates bound dependents.
+      // Design spec §6 — drag-move also updates bound dependents.
       const depPatches = collectDependentPatches(Object.keys(after), delta.x, delta.z);
       for (const el of elements) {
         if (before[el.id]) el.params = JSON.parse(JSON.stringify(before[el.id]));
@@ -6335,7 +6335,7 @@ export function setupAuthoring() {
     lastHoverEvent = e;
 
     // Feed the snap engine the draw context (chain base) so magnetic
-    // perpendicular/parallel snaps can be computed (MASTER PROMPT §5).
+    // perpendicular/parallel snaps can be computed (Design spec §5).
     try { snapping.setDrawContext(chainStart); } catch { /* */ }
 
     // Snap indicator updates regardless of tool.
@@ -6459,7 +6459,7 @@ export function setupAuthoring() {
       return;
     }
 
-    // MASTER PROMPT §4.3 — Tab cycles overlapping snap candidates in the
+    // Design spec §4.3 — Tab cycles overlapping snap candidates in the
     // 3D viewport (Shift+Tab cycles backwards). Pointer movement resets.
     if (e.key === "Tab" && activeTool && activeTool !== "select") {
       const cycled = snapping.cycleNext(e.shiftKey ? -1 : 1);
@@ -6556,7 +6556,7 @@ export function setupAuthoring() {
     getWallJoinStatus,
     setWallJoinStatus: (v) => setWallJoinStatus(v as any),
 
-    // MASTER PROMPT §2/§3 — modeling panel + justification state
+    // Design spec §2/§3 — modeling panel + justification state
     isDrawToolActive,
     refreshPreview,
     resetTypeDefaults,

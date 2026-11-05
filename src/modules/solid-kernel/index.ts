@@ -1,5 +1,5 @@
 /**
- * Solid geometry kernel — public barrel (MASTER PROMPT MODULE 2.7–2.9, 2.12).
+ * Solid geometry kernel — public barrel (Design spec MODULE 2.7–2.9, 2.12).
  */
 export { meshVolume, profileArea, sweepProfile, type IndexedMesh, type Pt3, type ProfilePt } from "../adaptive";
 export * from "./brep";

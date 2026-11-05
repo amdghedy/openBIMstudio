@@ -1,5 +1,5 @@
 /**
- * Automatic wall-to-column connection (MASTER PROMPT MODULE 2B.3).
+ * Automatic wall-to-column connection (Design spec MODULE 2B.3).
  *
  * When a wall is drawn toward (or ends at) a column, the wall endpoint is
  * resolved against the column's actual boundary geometry — not against a

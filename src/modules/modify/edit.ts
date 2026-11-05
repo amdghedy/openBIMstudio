@@ -1,6 +1,6 @@
 /**
  * Editing Modify commands: Offset, Trim/Extend, Split
- * (MASTER PROMPT MODULE 2C.6, 2C.7, 2C.10).
+ * (Design spec MODULE 2C.6, 2C.7, 2C.10).
  *
  * Offset (spec): P'(s) = P(s) + d·n(s) with corner intersection handling
  * and self-intersection detection (reuses the solid-kernel ring test).

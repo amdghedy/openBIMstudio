@@ -1,6 +1,6 @@
 # MODIFY GROUP 1 BEHAVIORAL SPECIFICATION — v0.71
 
-**Master prompt:** *Modifying, Editing, and Object Behavior Specification* (uploaded spec, 15 sections).
+**Design spec:** *Modifying, Editing, and Object Behavior Specification* (uploaded spec, 15 sections).
 **Scope of this document:** Group 1 only — **Selection, Reference Acquisition, Move, Rotate, Mirror** (spec §15, group 1 of 7).
 **Execution discipline (spec §15):** this specification, its data model, function catalog and validation rules are complete BEFORE any implementation code. Work stops after Group 1.
 

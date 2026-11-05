@@ -1,7 +1,7 @@
 /**
  * tests/v68-authoring-interaction.test.cjs
  *
- * Unit tests for MASTER PROMPT Module 2B (snapping, state machine,
+ * Unit tests for Design spec Module 2B (snapping, state machine,
  * wall-column, alignment, relationships, MEP connectors), Module 2C
  * (modify engine) and Module 2D (property panel engine).
  *

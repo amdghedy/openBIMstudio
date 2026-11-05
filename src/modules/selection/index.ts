@@ -1,7 +1,7 @@
 /**
  * Selection engine — MODIFY GROUP 1 spec §2 (docs/MODIFY_GROUP1_SPEC_V71.md).
  *
- * Implements the uploaded Modify master prompt §4.1: hit-testing with
+ * Implements the uploaded Modify design spec §4.1: hit-testing with
  * deterministic overlap priority, window/crossing selection, category /
  * type / parameter / id selection, inversion, hosted / connected /
  * dependent / related expansion, and the hidden / pinned / read-only /

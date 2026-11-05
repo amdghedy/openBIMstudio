@@ -1,7 +1,7 @@
 /**
  * Document-level parameter evaluation engine.
  *
- * Implements MASTER PROMPT MODULE 1.6 (parameter evaluation engine) and
+ * Implements Design spec MODULE 1.6 (parameter evaluation engine) and
  * MODULE 2.3 (type and instance parameters / EffectiveValue).
  *
  * Scope: a *document* owns parameter definitions; elements own instance

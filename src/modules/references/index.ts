@@ -2,7 +2,7 @@
  * Reference acquisition service — MODIFY GROUP 1 spec §3
  * (docs/MODIFY_GROUP1_SPEC_V71.md).
  *
- * Implements the uploaded Modify master prompt §4.2: typed acquisition of
+ * Implements the uploaded Modify design spec §4.2: typed acquisition of
  * faces, edges, vertices, centerlines, location lines, reference planes,
  * grids, levels, work planes, connectors, analytical axes and host
  * surfaces — each with a right-handed orthonormal canonical frame,

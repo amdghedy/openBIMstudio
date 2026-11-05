@@ -1,7 +1,7 @@
 /**
  * tests/v73-justification.test.cjs
  *
- * MASTER PROMPT §3 — Justification & location-line engine.
+ * Design spec §3 — Justification & location-line engine.
  * Closed-form checks: face shifts (finish/core, exterior/interior),
  * path preservation under mode switching, compound-core parsing,
  * and the wall location-line → endpoint shift contract shared by the

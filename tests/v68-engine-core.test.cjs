@@ -1,7 +1,7 @@
 /**
  * tests/v68-engine-core.test.cjs
  *
- * Unit tests for the MASTER PROMPT authoring core (v0.68):
+ * Unit tests for the Design spec authoring core (v0.68):
  *   - Module 1.1–1.3  dependency graph + incremental evaluation + cycles
  *   - Module 1.6/2.3  parameter engine (EffectiveValue, formulas, units)
  *   - Module 2.1–2.2  object hierarchy + identity

@@ -1,5 +1,5 @@
 /**
- * Per-tool modeling panel descriptors (MASTER PROMPT §2).
+ * Per-tool modeling panel descriptors (Design spec §2).
  *
  * Declarative, framework-free registry that says WHICH parameters each
  * modeling tool exposes, how they bind, and how they validate. The

@@ -1,5 +1,5 @@
 /**
- * Property panel engine — authoring-spec additions (MASTER PROMPT 2D).
+ * Property panel engine — authoring-spec additions (Design spec 2D).
  */
 export * from "./schema";
 export * from "./lifecycle";

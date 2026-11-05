@@ -182,7 +182,7 @@ class SnapManager {
   private orthoBase: THREE.Vector3 | null = null;
   private orthoAxis: "x" | "y" | "z" | null = null;
 
-  /** MASTER PROMPT §4.3 — Alt-hold suspension, Tab-pinned candidate,
+  /** Design spec §4.3 — Alt-hold suspension, Tab-pinned candidate,
    *  hysteresis lock, and the magnetic draw context (chain base). */
   private suspended = false;
   private pinned: SnapResult | null = null;
@@ -442,7 +442,7 @@ class SnapManager {
         this.collectAuthoredSnaps(el, add, authored, cursorWorld, tolWorld);
       }
 
-      // Magnetic alignment (MASTER PROMPT §5): while drawing from a base
+      // Magnetic alignment (Design spec §5): while drawing from a base
       // point, detect perpendicular feet / parallel companions / crossings
       // on nearby linear elements and snap the preview to them.
       if (this.drawBase && cursorWorld) {
@@ -598,7 +598,7 @@ class SnapManager {
       const y = el.params.elevation ?? this.workPlaneY;
       const p = el.params;
 
-      // MASTER PROMPT §4.2 — magnetic prefilter: skip elements whose AABB
+      // Design spec §4.2 — magnetic prefilter: skip elements whose AABB
       // cannot produce a candidate near the cursor at the current zoom.
       const curXZ: [number, number] | null = cursorWorld
         ? [cursorWorld.x, cursorWorld.z]

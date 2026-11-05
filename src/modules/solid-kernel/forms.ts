@@ -1,5 +1,5 @@
 /**
- * Parametric form generation (MASTER PROMPT MODULE 2.8).
+ * Parametric form generation (Design spec MODULE 2.8).
  *
  * Extrusions, revolutions, sweeps and blends from validated 2D profiles,
  * producing watertight indexed meshes with outward winding so that

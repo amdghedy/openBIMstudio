@@ -1,4 +1,4 @@
-# Authoring Core — v0.68 (MASTER PROMPT Modules 1, 2, 2B, 2C, 2D, 2E)
+# Authoring Core — v0.68 (Design spec Modules 1, 2, 2B, 2C, 2D, 2E)
 
 This document is the implementation record for the authorized modules of the
 *Next-Generation BIM Authoring Engine* specification. It follows the spec's

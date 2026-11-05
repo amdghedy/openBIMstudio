@@ -1,5 +1,5 @@
 /**
- * Interactive modeling state machine (MASTER PROMPT MODULE 2B.1).
+ * Interactive modeling state machine (Design spec MODULE 2B.1).
  *
  * States: Idle, ToolActivated, Selection, FirstPoint, Endpoint,
  * SnapAcquisition, TempConstraint, PlacementPreview, Validation, Commit,

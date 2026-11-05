@@ -1084,7 +1084,7 @@ function keydown(e: KeyboardEvent) {
     if (tool && tool !== "select") snapping.setOrtho(true, null);
   }
 
-  // MASTER PROMPT §4.3 — hold Alt to temporarily suspend snapping
+  // Design spec §4.3 — hold Alt to temporarily suspend snapping
   // (per-category toggles live in the snap settings panel; Shift+S is the
   // global ON/OFF toggle; Shift remains the orthogonal constraint).
   if (e.key === "Alt") {

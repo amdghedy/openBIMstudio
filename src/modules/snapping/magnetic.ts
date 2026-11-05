@@ -1,5 +1,5 @@
 /**
- * Magnetic alignment & snap-candidate math (MASTER PROMPT §4/§5).
+ * Magnetic alignment & snap-candidate math (Design spec §4/§5).
  *
  * Pure 2D XZ-plane math shared by the runtime snap manager
  * (features/snapping.ts). Kept free of DOM/three.js imports so it is

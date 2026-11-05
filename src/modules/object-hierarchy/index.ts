@@ -1,7 +1,7 @@
 /**
  * Object hierarchy and identity management.
  *
- * Implements MASTER PROMPT MODULE 2.1 (object hierarchy) and 2.2
+ * Implements Design spec MODULE 2.1 (object hierarchy) and 2.2
  * (identifier management).
  *
  * Storage architecture (spec 2.1 asks for an explicit comparison):

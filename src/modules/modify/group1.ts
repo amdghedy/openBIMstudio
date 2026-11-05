@@ -2,7 +2,7 @@
  * Group 1 Modify tools — full function catalogs for Move, Rotate, Mirror
  * (MODIFY GROUP 1 spec §4–§6, docs/MODIFY_GROUP1_SPEC_V71.md).
  *
- * Implements the uploaded Modify master prompt §5.1/§5.2/§5.3 mandated
+ * Implements the uploaded Modify design spec §5.1/§5.2/§5.3 mandated
  * catalogs ON TOP of the existing v0.68 IModifyCommand engines:
  *
  *   MoveTool    BeginMove, AcquireMoveBasePoint, ResolveMoveTarget,

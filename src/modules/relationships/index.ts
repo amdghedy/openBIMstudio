@@ -1,5 +1,5 @@
 /**
- * Persistent relationship registry (MASTER PROMPT MODULE 2B.5–2B.6).
+ * Persistent relationship registry (Design spec MODULE 2B.5–2B.6).
  *
  * A typed relationship model connecting elements through geometric
  * references with explicit lifecycle: creation, validation, query,

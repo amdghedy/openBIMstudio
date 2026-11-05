@@ -1,7 +1,7 @@
 /**
  * Parametric dependency graph and incremental evaluation engine.
  *
- * Implements MASTER PROMPT MODULE 1.1–1.3 (parametric relationship engine):
+ * Implements Design spec MODULE 1.1–1.3 (parametric relationship engine):
  * a central graph connecting parameters, formulas, geometry, constraints,
  * hosts, types, connectors, views, quantities and derived caches, with
  * dirty-flag invalidation, generation-stamped evaluation, change coalescing,
@@ -10,7 +10,7 @@
  * Evidence classification (per spec §2/§3): every rule here is level E
  * (proposed engine behavior). Nothing in this file claims to reproduce
  * Autodesk's internal implementation; the observable contract we honour is
- * the one specified in the MASTER PROMPT itself.
+ * the one specified in the Design spec itself.
  *
  * Key semantics
  * -------------
@@ -30,7 +30,7 @@
  * Pure module: no DOM, no three.js — safe to unit-test in Node.
  */
 
-/** Node kinds from MASTER PROMPT 1.1. */
+/** Node kinds from Design spec 1.1. */
 export type NodeKind =
   | "parameter"
   | "formula"
@@ -43,7 +43,7 @@ export type NodeKind =
   | "quantity"
   | "cache";
 
-/** Edge types from MASTER PROMPT 1.1. */
+/** Edge types from Design spec 1.1. */
 export type EdgeKind =
   | "parameter-dependency"
   | "formula-dependency"

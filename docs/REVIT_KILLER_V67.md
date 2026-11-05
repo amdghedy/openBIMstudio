@@ -1,4 +1,4 @@
-# v0.67 — Engineering Engine Package ("Revit killer" milestone)
+# v0.67 — Engineering Engine Package
 
 Four production-grade engineering engines landed in v0.67, closing the
 highest-value items left in `docs/strengthening/GAP_CLOSURE_STATUS.md`.

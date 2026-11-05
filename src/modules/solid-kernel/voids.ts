@@ -1,5 +1,5 @@
 /**
- * Solid–void interaction engine (MASTER PROMPT MODULE 2.9).
+ * Solid–void interaction engine (Design spec MODULE 2.9).
  *
  * Pipeline for cutting voids out of solids:
  *   1. Void generation from parametric definitions (boxes, cylinders).

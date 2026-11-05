@@ -186,7 +186,7 @@ Both are wired into the Unit tests CI workflow.
 
 ## 6. Acceptance criteria mapping
 
-| Acceptance criterion (master prompt §13) | Status | Where |
+| Acceptance criterion (design spec §13) | Status | Where |
 |---|---|---|
 | Functional ViewCube visible in the real viewer | ✅ | `viewcube.ts` booted from `main.ts` into `ctx.rightHost` |
 | All six faces navigate correctly | ✅ | derived mapping + tests (exact closed forms) |

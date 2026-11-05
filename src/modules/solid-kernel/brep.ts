@@ -1,5 +1,5 @@
 /**
- * B-Rep topology model (MASTER PROMPT MODULE 2.7).
+ * B-Rep topology model (Design spec MODULE 2.7).
  *
  * The kernel keeps THREE representations, with clear authority (spec 5.1):
  *   1. Parametric definition (profile, depth, axis, path) — authoritative.

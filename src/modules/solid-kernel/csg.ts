@@ -1,5 +1,5 @@
 /**
- * Boolean solid operations (MASTER PROMPT MODULE 2.7/2.9).
+ * Boolean solid operations (Design spec MODULE 2.7/2.9).
  *
  * Algorithm: exact half-space clipping (Sutherland–Hodgman solid
  * clipping) against the cutter's supporting planes — self-contained and

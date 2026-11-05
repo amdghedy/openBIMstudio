@@ -1,5 +1,5 @@
 /**
- * Geometry validation diagnostics (MASTER PROMPT MODULE 2.12).
+ * Geometry validation diagnostics (Design spec MODULE 2.12).
  *
  * Reusable across the engine: profiles, B-Rep solids, boolean results,
  * hosts and references. Every diagnostic carries a severity, a stable

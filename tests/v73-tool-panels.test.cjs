@@ -1,7 +1,7 @@
 /**
  * tests/v73-tool-panels.test.cjs
  *
- * MASTER PROMPT §2 — dynamic modeling properties panel descriptors.
+ * Design spec §2 — dynamic modeling properties panel descriptors.
  * Guards the contract that every real draw tool exposes its own
  * parameter set, that unsupported parameters are never shown
  * (§2.2 "hide or disable unsupported parameters"), and that numeric
