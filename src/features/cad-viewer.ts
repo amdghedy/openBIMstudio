@@ -5795,7 +5795,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   /** Space executes only a complete command/alias, never a partial match or argument. */
   function isExactCadCommandToken(rawInput: string): boolean {
     const token = rawInput.trim();
-    if (!token || /\\s/.test(token)) return false;
+    if (!token || token.includes(" ")) return false;
     const resolved = resolveCadToken(token, CAD_COMMANDS);
     return CAD_COMMANDS.some((command) => command.name === resolved);
   }
