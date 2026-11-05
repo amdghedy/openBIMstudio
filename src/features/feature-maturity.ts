@@ -392,6 +392,24 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     ],
     affirmedIn: APP_VERSION,
   },
+  {
+    id: "plan-command-line",
+    area: "Drawings",
+    status: "limited",
+    source: [
+      "src/modules/plan/plan-commands.ts",
+      "src/features/plan-command-line.ts",
+      "src/features/plan-view-panel.ts",
+    ],
+    evidence: ["tests/plan-commands.test.cjs"],
+    limitations: [
+      "Command table, aliases and coordinate parsing (x,z  @dx,dz  d<angle  length) are unit-tested; the command line and Esc cancel-all have not been tried in a browser",
+      "Direct coordinates are metres and only drive Place tools (linear paths and point elements), not dimensions, tags or Move",
+      "Esc no longer closes the plan view; use the Close button or the CLOSE command",
+      "SELECTALL selects every authored element, not only those on the current level",
+    ],
+    affirmedIn: APP_VERSION,
+  },
 ] as const;
 
 /** Look up a feature's maturity by id. */

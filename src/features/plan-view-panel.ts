@@ -1597,7 +1597,11 @@ let cadImageEl: SVGImageElement | null = null;
 // This enables the "trace over DWG" workflow: walls snap to DWG endpoints.
 import { storeUnderlayFromDxf, clearUnderlayData, setUnderlaySnapEnabled, isUnderlaySnapEnabled } from "./cad-underlay-snap";
 import { uiAlert } from "../core/notify";
-import { promptLine, openFormModal } from "./form-modal";
+import { promptLine, openFormModal, showTableDialog } from "./form-modal";
+import { shortcuts } from "./shortcuts";
+import { registerEscapeScope } from "../core/escape-all";
+import { createPlanCommandLine, planHelpRows, type PlanCommandLine } from "./plan-command-line";
+import { resolveCommand, parsePointEntry } from "../modules/plan/plan-commands";
 
 async function loadCadFileAsUnderlay(file: File) {
   if (cadUnderlayUrl) URL.revokeObjectURL(cadUnderlayUrl);
@@ -4092,14 +4096,15 @@ canvasWrap.addEventListener(
   { passive: false },
 );
 
-canvasWrap.addEventListener("dblclick", () => {
+function fitPlanView(): void {
   currentZoom = 1;
   panX = 0;
   panY = 0;
   planViewUserAdjusted = false;
   if (currentPlan) renderPlan(currentPlan);
   footerStatus("Fit view");
-});
+}
+canvasWrap.addEventListener("dblclick", fitPlanView);
 
 /* -------------------------------------------------------------------------
    Generation
@@ -4487,6 +4492,196 @@ export function setPlanToolFromRibbon(tool: string) {
   }
 }
 
+
+/* -------------------------------------------------------------------------
+   Command line + cancel-all (CAD behaviour)
+   ------------------------------------------------------------------------- */
+let planCmdLine: PlanCommandLine | null = null;
+let lastPlanCommand = "";
+
+/**
+ * Esc: cancel every active order in the plan at once - unfinished paths, typed
+ * lengths, dimension picks, in-flight drags and box selections, the active
+ * tool and the selection. Returns true when anything was active.
+ */
+export function cancelAllPlan(): boolean {
+  const hadSelection = planSelectedIds.size > 0 || !!planAnnoSel || !!planDimSel;
+  const active =
+    planMode !== "select" || planChain.length > 0 || !!planDrawStart || !!planTypedLength ||
+    planDimChainPts.length > 0 || !!planAutoPick?.p1 || !!planAutoPick?.p2 || !!planDimStartRef ||
+    !!planDimSeg1 || !!planDimPendingRefs || planBoxDragging || planMoveDragging || !!planDimDrag || !!planAnnoDrag;
+  if (!active && !hadSelection) return false;
+
+  // Roll back a drag that already changed something so Esc leaves no half edit.
+  if (planDimDrag?.moved) restoreDims(planDimDrag.before);
+  if (planAnnoDrag?.moved) restoreAnno(planAnnoDrag.before);
+  planDimDrag = null;
+  planAnnoDrag = null;
+  planBoxDragging = false;
+  planBoxStart = null;
+  planBoxCur = null;
+  try { planBoxOverlay?.remove(); } catch { /* */ }
+  planBoxOverlay = null;
+  planMoveDragging = false;
+  planMoveLast = null;
+
+  try { cancelDimChain(); } catch { /* */ }
+  planTypedLength = "";
+  planChain = [];
+  planDrawStart = null;
+  planDimStartRef = null;
+  planDimSeg1 = null;
+  planDimPendingRefs = null;
+  planAutoPick = null;
+  planCursor = null;
+  planSnap = null;
+  void import("./authoring").then((m) => m.clearLastPlanLinear?.()).catch(() => {});
+
+  planMode = "select";
+  canvasWrap.style.cursor = "default";
+  toolHint.textContent = "Modify | Select \u00b7 click \u00b7 box \u00b7 Delete \u00b7 Ctrl+Z";
+  try { showWallOpts(false); } catch { /* */ }
+
+  planSelectedIds.clear();
+  planAnnoSel = null;
+  planDimSel = null;
+  try { setPlanSelectedElement(null); } catch { /* */ }
+  try { renderPlanProperties(); } catch { /* */ }
+  try { updateSnapOverlay(); } catch { /* */ }
+  try { clearPlanCursorOverlay(); } catch { /* */ }
+  if (currentPlan) renderPlan(currentPlan);
+  footerStatus("Cancelled \u2014 all commands ended");
+  planCmdLine?.refresh();
+  return true;
+}
+
+function planKey(key: string): void {
+  window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+}
+
+function planPrompt(): string {
+  switch (planMode) {
+    case "linear":
+      return planChain.length
+        ? `${planLinearType.toUpperCase()}  next point or length`
+        : `${planLinearType.toUpperCase()}  specify start point`;
+    case "point": return `${(planPointPreset || planPointType).toUpperCase()}  specify insertion point`;
+    case "dim": return planDimStyle === "auto" ? "AUTODIM  pick edges" : "DIM  pick boundary";
+    case "tag": return "TAG  pick element";
+    case "text": return "TEXT  specify location";
+    case "move": return "MOVE  drag selection";
+    case "navigate": return "PAN  drag to pan";
+    default: return "Command";
+  }
+}
+
+function planDirectPoint(text: string): boolean {
+  const last = planChain.length ? planChain[planChain.length - 1] : planDrawStart;
+  const pe = parsePointEntry(text, last);
+  if (!pe) return false;
+  if (planMode === "point" && pe.kind === "point") {
+    void createAuthoredPoint(pe.x, pe.z);
+    return true;
+  }
+  if (planMode !== "linear") return false;
+  let p: { x: number; z: number };
+  if (pe.kind === "point") p = { x: pe.x, z: pe.z };
+  else {
+    if (!last) { footerStatus("Enter a start point first, for example 0,0"); return true; }
+    const len = parseLength(text);
+    if (len == null) { footerStatus("Invalid length"); return true; }
+    p = pointAtLength(last, planCursor ?? { x: last.x + 1, z: last.z }, len);
+  }
+  if (!last) {
+    planChain.push(p);
+    planDrawStart = p;
+    footerStatus(`Start ${p.x.toFixed(3)}, ${p.z.toFixed(3)} m \u2014 next point (x,z  @dx,dz  d<angle) or a length`);
+  } else {
+    if (Math.hypot(p.x - last.x, p.z - last.z) < 0.001) { footerStatus("Zero-length segment ignored"); return true; }
+    planChain.push(p);
+    planDrawStart = p;
+    void createAuthoredLinear(last.x, last.z, p.x, p.z);
+  }
+  planCursor = p;
+  return true;
+}
+
+function runPlanCommand(text: string): string | void {
+  const r = resolveCommand(text);
+  if (!r) {
+    // Fall back to the user's own shortcut sequences (e.g. a custom "xx").
+    const key = text.trim().toLowerCase();
+    const sc = shortcuts.list().find((x) => x.keys.toLowerCase() === key && (!x.when || x.when()));
+    if (sc) {
+      try {
+        sc.handler(new KeyboardEvent("keydown", { key }));
+        footerStatus(`Shortcut: ${sc.label}`);
+        return;
+      } catch (err) { console.warn("[plan] shortcut fallback", err); }
+    }
+    footerStatus(`Unknown command "${text.trim()}" \u2014 type ? for the list`);
+    return;
+  }
+  const { command, arg } = r;
+  if (command.action !== "repeat") lastPlanCommand = text.trim();
+  if (command.tool) {
+    setPlanToolFromRibbon(command.tool);
+    return;
+  }
+  switch (command.action) {
+    case "zoom-extents":
+      if (arg && !/^(E|EXTENTS|A|ALL)$/i.test(arg)) { footerStatus("ZOOM options: E (extents) or A (all)"); return; }
+      fitPlanView();
+      return;
+    case "pan": setPlanToolFromRibbon("pan"); return;
+    case "select": setPlanToolFromRibbon("select"); return;
+    case "select-all":
+      void (async () => {
+        try {
+          const a = await import("./authoring");
+          const ids = a.getElements().map((e: any) => String(e.id));
+          planSelectedIds.clear();
+          ids.forEach((id: string) => planSelectedIds.add(id));
+          a.setSelectedAuthored(ids, "replace");
+          renderPlanProperties();
+          if (currentPlan) renderPlan(currentPlan);
+          footerStatus(`${ids.length} element(s) selected`);
+        } catch (err) { console.warn("[plan] select all", err); }
+      })();
+      return;
+    case "undo": void planHistory.undo(); footerStatus("Undo"); return;
+    case "redo": void planHistory.redo(); footerStatus("Redo"); return;
+    case "delete":
+      if (!planSelectedIds.size && !planAnnoSel && !planDimSel) { footerStatus("Nothing selected \u2014 select elements first, then ERASE"); return; }
+      planKey("Delete");
+      return;
+    case "cancel": cancelAllPlan(); return;
+    case "finish": planKey("Enter"); return;
+    case "repeat":
+      if (lastPlanCommand) { footerStatus(`Repeat: ${lastPlanCommand}`); runPlanCommand(lastPlanCommand); }
+      else planKey(" ");
+      return;
+    case "regen": void regenerate(); footerStatus("Regenerating plan"); return;
+    case "close-plan": togglePlanView(); return;
+    case "help":
+      void showTableDialog("2D plan commands", ["Group", "Command", "Aliases", "What it does"], planHelpRows(),
+        "Enter or Space on an empty line repeats the last command. While drawing: x,z  @dx,dz  d<angle  or a length. Esc cancels everything.");
+      return;
+  }
+}
+
+function ensurePlanCommandLine(): PlanCommandLine {
+  if (planCmdLine) return planCmdLine;
+  planCmdLine = createPlanCommandLine({
+    run: runPlanCommand,
+    point: planDirectPoint,
+    isDrawing: () => planMode === "linear" || planMode === "point",
+    promptText: planPrompt,
+    cancelAll: () => { if (!cancelAllPlan()) footerStatus("Nothing to cancel"); },
+  });
+  return planCmdLine;
+}
+
 export function setupPlanViewPanel() {
 
 // Keep the authored element cache fresh for snap lookups.
@@ -4505,8 +4700,9 @@ try {
 
   document.body.appendChild(overlay);
   planBody.append(planProps, canvasWrap);
-  overlay.append(header, planBody, footer);
+  overlay.append(header, planBody, ensurePlanCommandLine().el, footer);
   renderPlanProperties();
+  registerEscapeScope({ id: "plan-view", priority: 900, cancel: () => isPlanViewVisible() && cancelAllPlan() });
 
   // Flag for 3D handlers to defer when plan is open
   (window as any).__obsPlanVisible = () => isPlanViewVisible();
@@ -4691,58 +4887,22 @@ try {
       }
     }
 
-    // Esc � BIM order cancel:
-    //  1) Cancel in-progress path (discard unfinished chain) stay in tool if had segments
-    //  2) Exit tool ? Modify / Select
-    //  3) Already Select ? close Floor Plan
+    // Esc: cancel EVERY active order (path, typed length, dimension picks, drags,
+    // box selection, active tool, selection) in one press. Never closes the plan;
+    // use the Close button or the CLOSE command for that.
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopImmediatePropagation();
-      // 1) In-progress linear path: discard unfinished and return to idle Place mode
-      if (planMode === "linear" && (planChain.length > 0 || planDrawStart)) {
-        const hadSegments = planChain.length > 1;
-        planChain = [];
-        planDrawStart = null;
-        planCursor = null;
-        planSnap = null;
-        void import("./authoring").then((m) => m.clearLastPlanLinear?.()).catch(() => {});
-        if (currentPlan) renderPlan(currentPlan);
-        if (hadSegments) {
-          // BIM: Esc after some segments keeps Place Wall active
-          footerStatus(`Place ${planLinearType}: cancelled path � click start of next � Esc = Modify`);
-          toolHint.textContent = `Modify | Place ${planLinearType} � Esc cancel � Space repeat`;
-        } else {
-          // No segments yet ? exit to Select
-          planMode = "select";
-          canvasWrap.style.cursor = "default";
-          toolHint.textContent = "Modify | Select � click � box � Delete � Ctrl+Z";
-          footerStatus("Cancelled � Select");
-          try { showWallOpts(false); } catch { /* */ }
-        }
-        return;
-      }
-      // 2) Cancel active tool (dim/point/tag/text/linear idle) ? Select
-      if (planMode !== "pan" || planDrawStart) {
-        planMode = "select";
-        planDrawStart = null;
-        planDimStartRef = null;
-        planDimSeg1 = null;
-        planChain = [];
-        planSnap = null;
-        planCursor = null;
-        canvasWrap.style.cursor = "default";
-        toolHint.textContent = "Modify | Select � click � box � Delete � Ctrl+Z";
-        footerStatus("Cancelled � Select");
-        try { showWallOpts(false); } catch { /* */ }
-        try {
-          window.dispatchEvent(new CustomEvent("obs-toast", {
-            detail: { message: "Cancelled � Select", kind: "info" },
-          }));
-        } catch { /* */ }
-        return;
-      }
-      // 3) Already Select ? close Floor Plan (back to 3D)
-      togglePlanView();
+      if (!cancelAllPlan()) footerStatus("Nothing to cancel");
+      return;
+    }
+
+    // CAD-style command entry: a bare letter (or @) starts the command line.
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && /[a-zA-Z?@]/.test(e.key)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      ensurePlanCommandLine().focus(e.key);
+      return;
     }
   }, true);
 
