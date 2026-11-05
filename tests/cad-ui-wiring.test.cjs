@@ -157,14 +157,15 @@ t("super copy: clipboard engine wired into tools, hotkeys, ribbon and commands",
     "function applyClipCarryOver(): void {",
     "missingClipDeps(doc, clip)",
     // Tab-switch awareness
-    "Ctrl+V to paste into this drawing",
+    "Ctrl+V or Ctrl+Shift+V to paste into this drawing",
   ];
   for (const m of mustContain) assert.ok(viewer.includes(m), `cad-viewer.ts drift: missing "${m}"`);
-  // Hotkeys: Ctrl+C copy, Ctrl+X cut, Ctrl+V paste, Ctrl+Shift+V paste-to-origin
+  // Hotkeys: Ctrl+C / Ctrl+Shift+C copy, Ctrl+X cut, Ctrl+V / Ctrl+Shift+V paste, Ctrl+Alt+V paste-to-origin
   assert.ok(viewer.includes('if (modKey && lower === "c") {'), "Ctrl+C hotkey missing");
+  assert.ok(viewer.includes("(Ctrl+C / Ctrl+Shift+C)"), "Ctrl+Shift+C copy hint missing");
   assert.ok(viewer.includes("if (copySelection()) eraseSelected();"), "Ctrl+X cut missing");
-  assert.ok(viewer.includes("if (ev.shiftKey) pasteOrig();"), "Ctrl+Shift+V missing");
-  assert.ok(viewer.includes("else pasteClip();"), "Ctrl+V missing");
+  assert.ok(viewer.includes("if (ev.altKey) pasteOrig();"), "Ctrl+Alt+V paste-to-origin missing");
+  assert.ok(viewer.includes("else pasteClip();"), "Ctrl+V paste missing");
   // Ribbon Clipboard panel buttons
   for (const a of ['data-a="clipcopy"', 'data-a="clipcut"', 'data-a="clippaste"', 'data-a="pasteorig"']) {
     assert.ok(viewer.includes(a), `ribbon button ${a} missing`);

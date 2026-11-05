@@ -293,7 +293,7 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 
 The standalone CAD Editor ribbon has a full **Modify** group with AutoCAD-grade transform tools. Select objects first (noun–verb), then run the command — or start the command and pick objects, then press **Enter / right-click** to finish the selection stage. Every transform shows a live yellow dashed ghost preview, supports osnap / ortho, numeric entry typed into the command line, and a single Undo step (Ctrl+Z).
 
-**Multi-document workspace.** The editor opens any number of DWG/DXF files at once, one drawing per file tab (native-CAD-style tab strip with unsaved-changes dots, middle-click close, right-click tab menu with Save / Save All / Close Others / Close All, and `Ctrl+Tab` / `Ctrl+Shift+Tab` to cycle drawings). Drawings interact through **Super Copy**: `COPYCLIP` (Ctrl+C) places the selected objects on a shared cross-drawing clipboard together with the layer, linetype and text style definitions they reference, and mirrors the payload to local storage so the clipboard survives a reload and works across app windows; `PASTECLIP` (Ctrl+V) attaches the clipboard to the cursor as a ghost preview — every click drops a copy (repeatable, AutoCAD-style) and missing layer/linetype/style definitions are carried over into the target drawing so pasted geometry keeps its source colours, dash patterns and fonts; `PASTEORIG` (Ctrl+Shift+V) pastes at the original source coordinates — so plans, details, and legends can be assembled across files without any export/import step.
+**Multi-document workspace.** The editor opens any number of DWG/DXF files at once, one drawing per file tab (native-CAD-style tab strip with unsaved-changes dots, middle-click close, right-click tab menu with Save / Save All / Close Others / Close All, and `Ctrl+Tab` / `Ctrl+Shift+Tab` to cycle drawings). Drawings interact through **Super Copy**: `COPYCLIP` (Ctrl+C / Ctrl+Shift+C) places the selected objects on a shared cross-drawing clipboard together with the layer, linetype and text style definitions they reference, and mirrors the payload to local storage so the clipboard survives a reload and works across app windows; `PASTECLIP` (Ctrl+V / Ctrl+Shift+V) attaches the clipboard to the cursor as a ghost preview — every click drops a copy (repeatable, AutoCAD-style) and missing layer/linetype/style definitions are carried over into the target drawing so pasted geometry keeps its source colours, dash patterns and fonts; `PASTEORIG` (Ctrl+Alt+V) pastes at the original source coordinates — so plans, details, and legends can be assembled across files without any export/import step.
 
 | Command | Alias | What it does |
 |---------|-------|--------------|
@@ -303,9 +303,9 @@ The standalone CAD Editor ribbon has a full **Modify** group with AutoCAD-grade 
 | MIRROR | `MI` | Mirror about a two-point axis; type `Y` to erase source objects, Enter keeps them |
 | SCALE | `SC` | Scale about a base point; drag the factor or type it (e.g. `2`) |
 | OFFSET | `O` | Parallel concentric copy: click two points (or type distance) → object → side |
-| COPYCLIP | `CC` | Super Copy: copy the selection with its layer/linetype/text-style definitions to the cross-drawing clipboard (Ctrl+C) |
-| PASTECLIP | — | Paste the clipboard: ghost follows the cursor, click to place, click again for another copy (Ctrl+V) |
-| PASTEORIG | — | Paste the clipboard verbatim at the original source coordinates (Ctrl+Shift+V) |
+| COPYCLIP | `CC` | Super Copy: copy the selection with its layer/linetype/text-style definitions to the cross-drawing clipboard (Ctrl+C / Ctrl+Shift+C) |
+| PASTECLIP | — | Paste the clipboard: ghost follows the cursor, click to place, click again for another copy (Ctrl+V / Ctrl+Shift+V) |
+| PASTEORIG | — | Paste the clipboard verbatim at the original source coordinates (Ctrl+Alt+V) |
 
 Notes:
 

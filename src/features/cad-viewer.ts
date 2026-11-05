@@ -181,9 +181,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DATAEXTRACT", aliases: ["EATTEXT", "DX"], description: "Export all entity data (layer, type, colour, geometry) to a CSV file" },
   { name: "LANDXMLIN", aliases: ["XMLIN"], description: "Import survey points from a LandXML CgPoints file" },
   { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
-  { name: "COPYCLIP", aliases: ["CC"], description: "Super Copy: copy selected objects with their layers, linetypes and text styles to the cross-drawing clipboard (Ctrl+C)" },
-  { name: "PASTECLIP", aliases: [], description: "Paste clipboard objects into this drawing — click to place, repeat for multiple copies (Ctrl+V)" },
-  { name: "PASTEORIG", aliases: [], description: "Paste clipboard at the original coordinates (Ctrl+Shift+V)" },
+  { name: "COPYCLIP", aliases: ["CC"], description: "Super Copy: copy selected objects with their layers, linetypes and text styles to the cross-drawing clipboard (Ctrl+C / Ctrl+Shift+C)" },
+  { name: "PASTECLIP", aliases: [], description: "Paste clipboard objects into this drawing — click to place, repeat for multiple copies (Ctrl+V / Ctrl+Shift+V)" },
+  { name: "PASTEORIG", aliases: [], description: "Paste clipboard at the original coordinates (Ctrl+Alt+V)" },
   { name: "SAVEALL", aliases: ["SALL"], description: "Save every open drawing tab" },
   { name: "CLOSE", aliases: [], description: "Close the current drawing tab" },
   { name: "CLEANSCREEN", aliases: ["CLEAN"], description: "Toggle clean screen mode (Ctrl+0)" },
@@ -3762,10 +3762,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     tools.innerHTML =
       rg(
         "Clipboard",
-        rb("copy", "Copy", `data-a="clipcopy"`, "Copy selection to the cross-drawing clipboard (Ctrl+C / COPYCLIP)") +
+        rb("copy", "Copy", `data-a="clipcopy"`, "Copy selection to the cross-drawing clipboard (Ctrl+C / Ctrl+Shift+C / COPYCLIP)") +
           rb("cut", "Cut", `data-a="clipcut"`, "Cut selection to the clipboard (Ctrl+X)") +
-          rb("paste", "Paste", `data-a="clippaste"`, "Paste clipboard at the cursor — click to place, click again for another copy (Ctrl+V / PASTECLIP)") +
-          rb("ref-plane", "Paste to Origin", `data-a="pasteorig"`, "Paste clipboard at original coordinates (Ctrl+Shift+V / PASTEORIG)"),
+          rb("paste", "Paste", `data-a="clippaste"`, "Paste clipboard at the cursor — click to place, click again for another copy (Ctrl+V / Ctrl+Shift+V / PASTECLIP)") +
+          rb("ref-plane", "Paste to Origin", `data-a="pasteorig"`, "Paste clipboard at original coordinates (Ctrl+Alt+V / PASTEORIG)"),
         "",
         "",
         "home",
@@ -4374,7 +4374,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         // (AutoCAD PASTECLIP). The style carry-over is applied once per session,
         // before the first placement, so even the ghost renders true.
         if (!clip || !clip.entities.length) {
-          logCmd("PASTECLIP: clipboard is empty — COPYCLIP objects in any drawing tab first (Ctrl+C).");
+          logCmd("PASTECLIP: clipboard is empty — COPYCLIP objects in any drawing tab first (Ctrl+C / Ctrl+Shift+C).");
           tool = "select";
           tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => b.classList.toggle("on", b.dataset.t === "select"));
           draw();
@@ -5388,7 +5388,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     executeAutoCadCommand(last);
   }
 
-  /** Undo / Redo / Esc / Delete / Ctrl+C/V/X / Space·Enter repeat — work anywhere while this drawing is active. */
+  /** Undo / Redo / Esc / Delete / Ctrl+C·Shift+C copy / Ctrl+X cut / Ctrl+V·Shift+V paste / Ctrl+Alt+V paste-orig / Space·Enter repeat — work anywhere while this drawing is active. */
   const onCadEditorHotkeys = (ev: KeyboardEvent): void => {
     if (!screenTypeActive) return;
     if (!page.isConnected || page.style.display === "none") return;
@@ -5478,6 +5478,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (modKey && lower === "c") {
+      // Ctrl+C / Ctrl+Shift+C — Super Copy (COPYCLIP): snapshot selection + style deps
       ev.preventDefault();
       ev.stopImmediatePropagation();
       copySelection();
@@ -5492,7 +5493,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (modKey && lower === "v") {
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      if (ev.shiftKey) pasteOrig();
+      // Ctrl+V / Ctrl+Shift+V — PASTECLIP: clipboard ghosts on the cursor, click to place
+      // Ctrl+Alt+V — PASTEORIG: verbatim paste at the source coordinates
+      if (ev.altKey) pasteOrig();
       else pasteClip();
       return;
     }
@@ -6730,7 +6733,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       deps.linetypes ? `${Object.keys(deps.linetypes).length} linetype(s)` : null,
       deps.textStyles ? `${Object.keys(deps.textStyles).length} text style(s)` : null,
     ].filter(Boolean).join(", ");
-    logCmd(`COPYCLIP: ${list.length} object(s)${carried ? ` + ${carried}` : ""} — switch file tab and press Ctrl+V to paste.`);
+    logCmd(`COPYCLIP: ${list.length} object(s)${carried ? ` + ${carried}` : ""} — switch file tab and press Ctrl+V (or Ctrl+Shift+V) to paste.`);
     return true;
   }
 
@@ -7407,7 +7410,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // on the clipboard, so the Ctrl+C → tab → Ctrl+V flow is discoverable.
       const c = ensureClip();
       if (c && c.entities.length && doc) {
-        logCmd(`Clipboard: ${c.entities.length} object(s)${c.sourceName ? ` from ${c.sourceName}` : ""} — Ctrl+V to paste into this drawing, Ctrl+Shift+V for original coordinates.`);
+        logCmd(`Clipboard: ${c.entities.length} object(s)${c.sourceName ? ` from ${c.sourceName}` : ""} — Ctrl+V or Ctrl+Shift+V to paste into this drawing, Ctrl+Alt+V for original coordinates.`);
       }
       try { cv.focus({ preventScroll: true }); } catch { /* */ }
     },
