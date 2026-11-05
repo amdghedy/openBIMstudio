@@ -126,6 +126,9 @@ planProps.append(planPropsHeader, planPropsBody, planPropsFooter);
 /** Active Floor Plan selection. Ctrl+LeftClick adds/toggles without clearing prior items. */
 let planSelectedId: string | null = null;
 const planSelectedIds = new Set<string>();
+/** Snapshot of the authored elements used for snapping and tagging (refreshed on regenerate and on a timer). */
+let authoredCache: any[] = [];
+let authoredRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 type DimensionUnit = "mm" | "cm" | "m";
 type DimensionTick = "diagonal" | "dot" | "arrow";
@@ -440,7 +443,7 @@ function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggl
     else planSelectedIds.add(el.id);
   }
   planSelectedId = planSelectedIds.size === 1 ? [...planSelectedIds][0] : null;
-  const selected = (((window as any).__obsAuthoredElements ?? []) as any[]).filter((x) => planSelectedIds.has(x.id));
+  const selected = (authoredCache as any[]).filter((x) => planSelectedIds.has(x.id));
   (window as any).__obsPlanSelectedEl = selected.length === 1 ? selected[0] : null;
   (window as any).__obsPlanSelectedEls = selected;
   try {
@@ -455,7 +458,7 @@ function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggl
 };
 
 function nearestAuthoredAt(hit: { x: number; z: number }): { element: any | null; distance: number } {
-  const els = ((window as any).__obsAuthoredElements ?? []) as any[];
+  const els = authoredCache as any[];
   let best: any = null;
   let bestD = 1.25; // meters � generous so thick ducts/walls are easy to click
   for (const el of els) {
@@ -563,7 +566,7 @@ function findDimensionBoundary(point: { x: number; z: number }) {
     if (auth?.getElements) els = auth.getElements();
   } catch { /* */ }
   if (!els.length) {
-    els = ((window as any).__obsAuthoredElements ?? []) as any[];
+    els = authoredCache as any[];
   }
 
   if (!els.length && currentPlan && currentPlan.segments.length) {
@@ -591,7 +594,7 @@ function findDimensionBoundary(point: { x: number; z: number }) {
   }
 
   if (els.length) {
-    (window as any).__obsAuthoredElements = els;
+    authoredCache = els;
   }
 
   if (!els.length) return null;
@@ -651,9 +654,9 @@ function resolvePlanDimensionRef(ref?: PlanDimensionRef): {x:number;z:number} | 
   }
   if (!ref.elementId) return null;
   if (ref.kind === "polygon-vertex" || ref.kind === "hosted") {
-    return resolveElementRef(ref as any, ((window as any).__obsAuthoredElements ?? []) as any[]);
+    return resolveElementRef(ref as any, authoredCache as any[]);
   }
-  const els=((window as any).__obsAuthoredElements ?? []) as any[];
+  const els=authoredCache as any[];
   const el=els.find((e)=>String(e?.id)===String(ref.elementId));
   if (!el?.params) return null;
   const p=el.params;
@@ -686,8 +689,8 @@ function finishAutoRange(linePos?: number): void {
   const pk = planAutoPick;
   if (!pk?.p1 || !pk.p2 || !pk.axis) return;
   const auth: any = (ctx.features as any).authoring;
-  const els: any[] = (auth?.getElements?.() ?? ((window as any).__obsAuthoredElements ?? [])) as any[];
-  (window as any).__obsAuthoredElements = els;
+  const els: any[] = (auth?.getElements?.() ?? authoredCache) as any[];
+  authoredCache = els;
   const res = buildRangeDimension(els, { axis: pk.axis, p1: pk.p1 as any, p2: pk.p2 as any, linePos, offset: 0.5, stack: 0.5 });
   planAutoPick = null;
   if (!res.length) { footerStatus("Auto Dimension: nothing between those edges - pick the first edge again"); return; }
@@ -734,8 +737,8 @@ async function runAutoDimension(): Promise<void> {
     const cm = parseFloat(raw);
     if (!Number.isFinite(cm) || cm < 0) { footerStatus("Auto Dimension: invalid distance"); return; }
     const auth: any = (ctx.features as any).authoring;
-    const els: any[] = (auth?.getElements?.() ?? ((window as any).__obsAuthoredElements ?? [])) as any[];
-    (window as any).__obsAuthoredElements = els;
+    const els: any[] = (auth?.getElements?.() ?? authoredCache) as any[];
+    authoredCache = els;
     const res = buildAutoDimensions(els, { offset: cm / 100, stack: cm / 100, categories: ["column", "wall"] });
     if (!res.length) { footerStatus("Auto Dimension: no columns or walls found"); return; }
     const beforeSnap = dimSnapshot();
@@ -1208,7 +1211,7 @@ try {
 
 const TAG_H = () => paperMmToWorld(3.0);
 const NOTE_H = () => paperMmToWorld(2.5);
-function authoredEls(): any[] { return ((window as any).__obsAuthoredElements ?? []) as any[]; }
+function authoredEls(): any[] { return authoredCache as any[]; }
 /** Tag text follows the element (Mark, size, elevation...) unless it is a free-text tag. */
 function liveTagText(t: PlanTag): string {
   if (t.elementId && t.mode && t.mode !== "custom") {
@@ -1262,7 +1265,7 @@ const SNAP_TOL = 0.35; // meters
 function findNearestSegment(point: { x: number; z: number }, tol = 0.8): {
   x1: number; z1: number; x2: number; z2: number; elementId?: string; distance: number;
 } | null {
-  const els = ((window as any).__obsAuthoredElements ?? []) as any[];
+  const els = authoredCache as any[];
   let best: { x1: number; z1: number; x2: number; z2: number; elementId?: string; distance: number } | null = null;
   for (const el of els) {
     const p = el?.params;
@@ -1317,7 +1320,7 @@ function segmentAngleDeg(s1: { x1: number; z1: number; x2: number; z2: number },
 function findNearestPointElement(point: { x: number; z: number }, tol = 1.0): {
   x: number; z: number; elev: number; elementId?: string; distance: number;
 } | null {
-  const els = ((window as any).__obsAuthoredElements ?? []) as any[];
+  const els = authoredCache as any[];
   let best: { x: number; z: number; elev: number; elementId?: string; distance: number } | null = null;
   for (const el of els) {
     const p = el?.params;
@@ -1960,7 +1963,7 @@ try {
 /** Revit-style Edit Boundary: drag vertices, drag edge midpoints to add vertices, Shift+click a vertex to delete it. */
 function renderBoundaryUi(elId: string, zoomedW: number): void {
   const NS = "http://www.w3.org/2000/svg";
-  const find = () => (((window as any).__obsAuthoredElements ?? []) as any[]).find((x) => x.id === elId);
+  const find = () => (authoredCache as any[]).find((x) => x.id === elId);
   const el0 = find();
   if (!el0?.params?.polygon || el0.properties?.pinned) return;
   const hs = Math.max(zoomedW / 130, 0.01);
@@ -2013,7 +2016,7 @@ function renderBoundaryUi(elId: string, zoomedW: number): void {
     const { setElementPolygon } = await import("./authoring");
     if (!isValidBoundary(poly)) { footerStatus("Boundary would cross itself \u2014 change reverted"); void regenerate(); return; }
     if (setElementPolygon(elId, poly, label)) footerStatus(`${label} \u00b7 Ctrl+Z to undo`);
-    (window as any).__obsAuthoredElements = (await import("./authoring")).getElements();
+    authoredCache = (await import("./authoring")).getElements();
     void regenerate();
   };
 
@@ -3119,7 +3122,7 @@ function updateSnapOverlay(): void {
  */
 try {
   (window as any).__obsSnapDebug = () => {
-    const els: any[] = ((window as any).__obsAuthoredElements ?? []);
+    const els: any[] = authoredCache;
     console.log("[snap-debug] authored elements:", els.length);
     console.log("[snap-debug] plan bounds:", currentPlan?.bounds);
     console.log("[snap-debug] overlay mounted:", !!(__planCursorOverlay && __planCursorOverlay.parentElement));
@@ -3305,7 +3308,7 @@ async function commitPlanBoxSelect(additive: boolean) {
     try {
       const { getElements } = await import("./authoring");
       const els = getElements();
-      (window as any).__obsAuthoredElements = els;
+      authoredCache = els;
       // Prefer thickness-aware nearest pick (ducts/walls easier to click)
       const near = nearestAuthoredAt(hit);
       let best = near.element;
@@ -3783,7 +3786,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
     // Refresh authored cache so click always sees latest elements
     try {
       void import("./authoring").then((m) => {
-        (window as any).__obsAuthoredElements = m.getElements();
+        authoredCache = m.getElements();
       });
     } catch { /* */ }
     const hit = clientToWorld(e.clientX, e.clientY);
@@ -3831,7 +3834,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
       try {
         const { getElements } = await import("./authoring");
         const els = getElements();
-        (window as any).__obsAuthoredElements = els;
+        authoredCache = els;
         let best: any = null;
         let bestD = 0.6;
         for (const el of els) {
@@ -4167,7 +4170,7 @@ async function regenerateNow() {
     currentPlan = plan;
     try {
       const { getElements } = await import("./authoring");
-      (window as any).__obsAuthoredElements = getElements();
+      authoredCache = getElements();
     } catch { /* authored layer optional */ }
     // Preserve zoom/pan (BIM: regenerating plan does NOT fit � only explicit Fit / first open)
     if (!planViewUserAdjusted) {
@@ -4686,12 +4689,12 @@ export function setupPlanViewPanel() {
 
 // Keep the authored element cache fresh for snap lookups.
 try {
-  if (!(window as any).__obsAuthoredElementsRefreshTimer) {
-    (window as any).__obsAuthoredElementsRefreshTimer = setInterval(() => {
+  if (!authoredRefreshTimer) {
+    authoredRefreshTimer = setInterval(() => {
       try {
         const auth: any = (ctx.features as any).authoring;
         if (auth?.getElements) {
-          (window as any).__obsAuthoredElements = auth.getElements();
+          authoredCache = auth.getElements();
         }
       } catch { /* */ }
     }, 500);

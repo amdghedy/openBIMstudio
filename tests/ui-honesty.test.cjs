@@ -37,7 +37,7 @@ for (const f of srcFiles) globalsUsed += (fs.readFileSync(f, "utf8").match(/__ob
 // import would defeat code-splitting; the flag lets the BIM shortcut registry
 // yield Ctrl+Shift+C/V (and the other CAD editing combos) while a drawing tab
 // is active. Do not add further globals.
-const GLOBALS_BASELINE = 877;
+const GLOBALS_BASELINE = 854;
 ok("window.__obs* usage does not grow (baseline " + GLOBALS_BASELINE + ", now " + globalsUsed + ")", globalsUsed <= GLOBALS_BASELINE, "use imports / core/services instead of a new global");
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
