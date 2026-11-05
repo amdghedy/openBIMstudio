@@ -19,6 +19,7 @@ import {
 } from "./authoring";
 import { gizmo, type GizmoMode } from "./gizmo";
 import { listModifyCommandDefinitions, resolveModifyCapability, type ModifyCommandId } from "../modules/modify/registry";
+import { ctx } from "../core/context";
 
 type Any = Record<string, any>;
 
@@ -158,7 +159,7 @@ export function runModifyAction(id: ModifyActionId): void {
       break;
     case "match-props":
       (window as Any).__obsRevitParity?.matchProperties?.(ids[0]);
-      (window as Any).__obsBimParity?.matchProperties?.(ids[0]);
+      (ctx.features as any).bimParity?.matchProperties?.(ids[0]);
       toast("Match Properties — pick target", "info");
       break;
     case "select-similar":

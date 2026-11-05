@@ -171,20 +171,20 @@ function buildBody(host: HTMLElement): void {
   host.appendChild(
     section("Architecture", [
       btn("Straight Stair", "Parametric run", async () => {
-        await (window as Any).__obsBimParity?.placeStair?.("straight");
-      }, has("__obsStairs") || has("__obsBimParity")),
+        await (ctx.features as any).bimParity?.placeStair?.("straight");
+      }, has("__obsStairs") || !!(ctx.features as any).bimParity),
       btn("L-Stair", "Landing turn", async () => {
-        await (window as Any).__obsBimParity?.placeStair?.("l-shape");
-      }, has("__obsStairs") || has("__obsBimParity")),
+        await (ctx.features as any).bimParity?.placeStair?.("l-shape");
+      }, has("__obsStairs") || !!(ctx.features as any).bimParity),
       btn("U-Stair", "Switchback", async () => {
-        await (window as Any).__obsBimParity?.placeStair?.("u-shape");
-      }, has("__obsStairs") || has("__obsBimParity")),
+        await (ctx.features as any).bimParity?.placeStair?.("u-shape");
+      }, has("__obsStairs") || !!(ctx.features as any).bimParity),
       btn("Railing", "Path + balusters", async () => {
-        await (window as Any).__obsBimParity?.placeRailing?.();
-      }, has("__obsRailings") || has("__obsBimParity")),
+        await (ctx.features as any).bimParity?.placeRailing?.();
+      }, has("__obsRailings") || !!(ctx.features as any).bimParity),
       btn("Curtain Wall", "Mullions + panels", async () => {
-        await (window as Any).__obsBimParity?.placeCurtainWall?.();
-      }, has("__obsCurtainWall") || has("__obsBimParity")),
+        await (ctx.features as any).bimParity?.placeCurtainWall?.();
+      }, has("__obsCurtainWall") || !!(ctx.features as any).bimParity),
       btn("Parametric Fam", "Ctrl+Shift+F", () => {
         (window as Any).__obsParamFamilyPanel?.toggle?.();
       }, true),
@@ -219,12 +219,12 @@ function buildBody(host: HTMLElement): void {
         toast(n ? `Distributed ${n}` : "Need 3+ selected", n ? "success" : "info");
       }, has("__obsAlign")),
       btn("Match Props", "Pick source", () => {
-        (window as Any).__obsBimParity?.matchPropertiesPickSource?.();
-      }, has("__obsBimParity")),
+        (ctx.features as any).bimParity?.matchPropertiesPickSource?.();
+      }, !!(ctx.features as any).bimParity),
       btn("Paint Props", "Apply to selection", () => {
-        const n = (window as Any).__obsBimParity?.matchPropertiesApply?.() ?? 0;
+        const n = (ctx.features as any).bimParity?.matchPropertiesApply?.() ?? 0;
         toast(n ? `Painted ${n}` : "Pick source first", n ? "success" : "info");
-      }, has("__obsBimParity")),
+      }, !!(ctx.features as any).bimParity),
       btn("Create Group", "From selection", () => {
         const ids = selIds();
         if (!ids.length) {
@@ -238,7 +238,7 @@ function buildBody(host: HTMLElement): void {
         });
       }, has("__obsGroups")),
       btn("Create Similar", "Same type tool", () => {
-        (window as Any).__obsBimParity?.createSimilar?.();
+        (ctx.features as any).bimParity?.createSimilar?.();
       }, true),
     ]),
   );

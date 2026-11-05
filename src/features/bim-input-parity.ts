@@ -219,7 +219,7 @@ async function registerBIMShortcuts(): Promise<void> {
     keys: "ma",
     category: "tool",
     handler: () => {
-      (window as Any).__obsBimParity?.matchPropertiesPickSource?.();
+      (ctx.features as any).bimParity?.matchPropertiesPickSource?.();
     },
   });
   reg({
@@ -228,7 +228,7 @@ async function registerBIMShortcuts(): Promise<void> {
     keys: "cs",
     category: "tool",
     handler: () => {
-      (window as Any).__obsBimParity?.createSimilar?.();
+      (ctx.features as any).bimParity?.createSimilar?.();
     },
   });
   reg({
