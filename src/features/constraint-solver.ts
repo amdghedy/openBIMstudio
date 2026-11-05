@@ -16,7 +16,7 @@ function getFeatures(): Any {
 
 function getAuthoring(): Any | null {
   const f = getFeatures();
-  return (f.authoring as Any) ?? (window as Any).__obsAuthoring ?? null;
+  return (f.authoring as Any) ?? null;
 }
 
 function getElements(): Any[] {

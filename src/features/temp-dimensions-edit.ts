@@ -152,7 +152,7 @@ function flashInvalid(input: HTMLInputElement): void {
 function clearNode(n: Node): void { while (n.firstChild) n.removeChild(n.firstChild); }
 
 function elementOf(id: string): Any | null {
-  try { return (window as Any).__obsAuthoring?.getElementById?.(id) ?? null; } catch { return null; }
+  try { return (ctx.features as any).authoring?.getElementById?.(id) ?? null; } catch { return null; }
 }
 
 /** Re-anchor wall-like length/height/thickness dims onto the wall face at base

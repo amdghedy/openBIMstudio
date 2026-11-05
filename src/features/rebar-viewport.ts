@@ -93,7 +93,7 @@ function extractHostFromElement(el: Any): RebarHost | null {
  * viewport. Returns the number of bars generated, or 0 on failure.
  */
 export function generateRebarForSelection(): number {
-  const auth = (ctx.features as any)?.authoring ?? (window as any).__obsAuthoring;
+  const auth = (ctx.features as any)?.authoring;
   if (!auth) {
     console.warn("[rebar-viewport] authoring service not available");
     return 0;
@@ -248,7 +248,7 @@ export function exportBBS(): void {
   let totalMass = 0;
 
   for (const [hostId, layout] of rebarLayouts.entries()) {
-    const auth = (ctx.features as any)?.authoring ?? (window as any).__obsAuthoring;
+    const auth = (ctx.features as any)?.authoring;
     const el = auth?.getElementById?.(hostId);
     const name = el?.name ?? hostId;
     const bbs = generateBBS(layout, name);
@@ -278,7 +278,7 @@ export function exportBBS(): void {
 
   // Also print text table to console for quick review.
   for (const [hostId, layout] of rebarLayouts.entries()) {
-    const auth = (ctx.features as any)?.authoring ?? (window as any).__obsAuthoring;
+    const auth = (ctx.features as any)?.authoring;
     const el = auth?.getElementById?.(hostId);
     const name = el?.name ?? hostId;
     const bbs = generateBBS(layout, name);

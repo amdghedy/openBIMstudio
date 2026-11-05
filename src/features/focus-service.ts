@@ -131,7 +131,7 @@ function getFragmentSelection(): Record<string, Set<number>> {
 
 function getAuthoredSelection(): string[] {
   const cont = c();
-  const auth = cont.features?.authoring || w().__obsAuthoring;
+  const auth = cont.features?.authoring;
 
   const raw =
     auth?.getSelectedIds?.() ??
@@ -199,7 +199,7 @@ function includeObject(obj: any, box: THREE.Box3): void {
 
 function getAuthoredBox(ids: string[]): THREE.Box3 | null {
   const cont = c();
-  const auth = cont.features?.authoring || w().__obsAuthoring;
+  const auth = cont.features?.authoring;
 
   if (!auth || !ids.length) return null;
 
@@ -513,7 +513,7 @@ async function pickAndFocus(event: any): Promise<boolean> {
   if (!event) return false;
 
   const cont = c();
-  const auth = cont.features?.authoring || w().__obsAuthoring;
+  const auth = cont.features?.authoring;
 
   try {
     const authoredId = auth?.pickAuthoredElementAt?.(event);

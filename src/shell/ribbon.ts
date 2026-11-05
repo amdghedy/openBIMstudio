@@ -340,7 +340,7 @@ function toolBtn(icon: IconName, label: string, tool: string, kbd = ""): HTMLBut
     const current = getActiveTool() as string | null;
     active = current === tool || (current != null && label.length > 0 && current === tool);
     try {
-      const preset = (window as any).__obsAuthoring?.getActivePreset?.();
+      const preset = (ctx.features as any).authoring?.getActivePreset?.();
       if (preset === tool) active = true;
     } catch { /* */ }
   } catch { /* */ }
@@ -351,7 +351,7 @@ function toolBtn(icon: IconName, label: string, tool: string, kbd = ""): HTMLBut
       try {
         const cur = getActiveTool() as string | null;
         let preset: string | null = null;
-        try { preset = (window as any).__obsAuthoring?.getActivePreset?.() ?? null; } catch { /* */ }
+        try { preset = (ctx.features as any).authoring?.getActivePreset?.() ?? null; } catch { /* */ }
         if (cur === tool || preset === tool) {
           setAuthoringTool(null);
           toast(`${label} off`, "info", 1200);
@@ -832,7 +832,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("dim-aligned", "Lock Dim", safe(async () => {
         const c = (window as any).__obsConstraints;
         if (!c) { toast("Constraints module not loaded", "warn"); return; }
-        const auth = (window as any).__obsAuthoring;
+        const auth = (ctx.features as any).authoring;
         const ids = auth?.getSelectedIds?.() ?? [];
         if (ids.length < 2) { toast("Select 2 elements to lock the dimension between them", "warn"); return; }
         const { promptLine } = await import("../features/form-modal");
@@ -852,7 +852,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("dim-aligned", "Equality", safe(() => {
         const c = (window as any).__obsConstraints;
         if (!c) { toast("Constraints module not loaded", "warn"); return; }
-        const auth = (window as any).__obsAuthoring;
+        const auth = (ctx.features as any).authoring;
         const ids = auth?.getSelectedIds?.() ?? [];
         if (ids.length < 3) { toast("Select 3+ elements to set equal spacing", "warn"); return; }
         c.equality(ids, "spacing");
@@ -1184,7 +1184,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         const m = (window as any).__obsMaterials;
         if (!m) { toast("Materials module not loaded", "warn"); return; }
         const list = m.list();
-        const auth = (window as any).__obsAuthoring;
+        const auth = (ctx.features as any).authoring;
         const ids = auth?.getSelectedIds?.() ?? [];
         if (!ids.length) {
           toast(`Available materials: ${list.map((x: any) => x.name).join(", ")}`, "info", 5000);
@@ -1398,7 +1398,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("text", "Assign Keynote", safe(async () => {
         const k = (window as any).__obsKeynotes;
         if (!k) { toast("Keynotes module not loaded", "warn"); return; }
-        const auth = (window as any).__obsAuthoring;
+        const auth = (ctx.features as any).authoring;
         const ids = auth?.getSelectedIds?.() ?? [];
         if (!ids.length) { toast("Select an element first", "warn"); return; }
         const { promptLine } = await import("../features/form-modal");
@@ -1459,7 +1459,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("model-curve", "Model Curve", safe(() => {
         const mc = (window as any).__obsModelCurves;
         if (!mc) { toast("Model curves module not loaded", "warn"); return; }
-        const auth = (window as any).__obsAuthoring;
+        const auth = (ctx.features as any).authoring;
         const ids = auth?.getSelectedIds?.() ?? [];
         if (!ids.length) { toast("Select an element face first, then draw curves on it", "warn"); return; }
         toast(`Model curve mode: click on face of "${ids[0]}" to draw curves`, "success");
@@ -2668,12 +2668,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         console.table(list.map((w: any) => ({ id: w.id, name: w.name, owner: w.owner, elements: w.elementIds.size })));
       }, "List worksets"), { title: "List all worksets with element counts" }),
       b("workset", "Borrow", safe(() => {
-        const ids = (window as any).__obsAuthoring?.getSelectedIds?.() ?? [];
+        const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
         if (!ids.length) { toast("Select an element first", "warn"); return; }
         (window as any).__obsWorksets?.borrow?.(ids[0]);
       }, "Borrow"), { title: "Borrow selected element for editing" }),
       b("workset", "Release", safe(() => {
-        const ids = (window as any).__obsAuthoring?.getSelectedIds?.() ?? [];
+        const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
         if (!ids.length) { toast("Select an element first", "warn"); return; }
         (window as any).__obsWorksets?.release?.(ids[0]);
         toast(`Released element ${ids[0]}`, "success");

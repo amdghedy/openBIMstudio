@@ -39,7 +39,7 @@ World axes: X east, Y up, Z north. Element params such as `start`, `end` and `po
 ## Known structural debt
 
 - Several generations of the same feature exist in places (the per-release `scripts/verify-v*.mjs` gates and some parallel panels; the old `v40/v67/v68-register` files are now `module-globals`, `engineering-engines`, `authoring-core`). New work should reuse the current implementation rather than adding another.
-- `window.__obs*` globals (about 901 references) are still used for cross-feature calls; `tests/ui-honesty.test.cjs` only lets the count go down.
+- `window.__obs*` globals (about 871 references) are still used for cross-feature calls; `tests/ui-honesty.test.cjs` only lets the count go down.
 - No native `prompt()`/`confirm()`/`alert()` calls remain; `tests/ui-honesty.test.cjs` keeps it that way.
 - Unit tests cover logic. Browser-level coverage is one Playwright spec (`tests/e2e/edit-undo-save.spec.ts`) and needs to grow.
 

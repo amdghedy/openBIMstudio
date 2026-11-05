@@ -45,7 +45,7 @@ export function parseFragKey(k: string): { modelId: string; localId: number } | 
   return Number.isFinite(localId) ? { modelId: rest.slice(0, i), localId } : null;
 }
 
-const authoring = (): Any | null => ((ctx.features as Any).authoring ?? (window as Any).__obsAuthoring ?? null);
+const authoring = (): Any | null => ((ctx.features as Any).authoring ?? null);
 
 /** Authored element ids + fragment keys currently selected. */
 export function getSelectedKeys(): string[] {

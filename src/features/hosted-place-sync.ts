@@ -9,7 +9,7 @@ function c(): Any {
 
 function getAuthoring(): Any | null {
   const cont = c();
-  return (cont.features as Any)?.authoring ?? (window as Any).__obsAuthoring ?? null;
+  return (cont.features as Any)?.authoring ?? null;
 }
 
 // place-sync: reconcile hosted door/window mesh transforms to the SAME

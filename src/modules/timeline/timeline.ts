@@ -220,7 +220,7 @@ function applyElementStyle(
   const isVisible = mode !== "hidden";
 
   // 1. Check if it's a locally authored element
-  const auth = (window as any).__obsAuthoring;
+  const auth = (ctx.features as any).authoring;
   const el = auth?.getElementById?.(id);
   if (el) {
     if (auth.setElementVisibility) auth.setElementVisibility(id, isVisible);
@@ -254,7 +254,7 @@ function restoreAll() {
   }
 
   // 2. Restore authored elements
-  const auth = (window as any).__obsAuthoring;
+  const auth = (ctx.features as any).authoring;
   if (auth?.getAuthoredGroup) {
     auth.getAuthoredGroup().traverse((obj: any) => {
       obj.visible = true;

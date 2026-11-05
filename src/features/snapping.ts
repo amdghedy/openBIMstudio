@@ -161,7 +161,7 @@ type AuthoredLite = {
 
 function getAuthoredSafe(): AuthoredLite[] {
   try {
-    const mod = (window as any).__obsAuthoring;
+    const mod = (ctx.features as any).authoring;
     if (mod?.getElements) return mod.getElements() as AuthoredLite[];
   } catch { /* */ }
   try {
@@ -236,7 +236,7 @@ class SnapManager {
     let name = "";
     try {
       const el = this.pinned.elementId
-        ? (window as any).__obsAuthoring?.getElementById?.(this.pinned.elementId)
+        ? (ctx.features as any).authoring?.getElementById?.(this.pinned.elementId)
         : null;
       if (el?.name) name = el.name;
     } catch { /* */ }

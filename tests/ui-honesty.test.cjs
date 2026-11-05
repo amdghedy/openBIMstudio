@@ -31,7 +31,7 @@ ok("prompt()/confirm() count does not grow (baseline " + BASELINE + ", now " + b
 // Legacy cross-feature globals (window.__obs*): the total may only go down. New code should use imports or core/services.
 let globalsUsed = 0;
 for (const f of srcFiles) globalsUsed += (fs.readFileSync(f, "utf8").match(/__obs[A-Za-z0-9]+/g) || []).length;
-const GLOBALS_BASELINE = 901;
+const GLOBALS_BASELINE = 871;
 ok("window.__obs* usage does not grow (baseline " + GLOBALS_BASELINE + ", now " + globalsUsed + ")", globalsUsed <= GLOBALS_BASELINE, "use imports / core/services instead of a new global");
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

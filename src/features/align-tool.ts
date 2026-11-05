@@ -21,7 +21,7 @@ interface Alignable {
 }
 
 function getAuthoring(): Any | null {
-  return (ctx.features as Any)?.authoring ?? (window as Any).__obsAuthoring ?? null;
+  return (ctx.features as Any)?.authoring ?? null;
 }
 
 function getSelectionIds(): string[] {

@@ -19,7 +19,7 @@ import { roomsStore, type Room } from "../rooms/rooms";
 import { detectAllRooms, detectRoomAt, interiorPoint, type DetectedRoom, type RoomWall, type Vec2 } from "./room-detect";
 
 type Any = Record<string, any>;
-const authoring = (): Any | null => ((ctx.features as Any).authoring ?? (window as Any).__obsAuthoring ?? null);
+const authoring = (): Any | null => ((ctx.features as Any).authoring ?? null);
 const CUT_HEIGHT = 1.2; // plan cut plane above the level, like BIM's view range
 
 /* ------------------------------------------------------------------ levels */

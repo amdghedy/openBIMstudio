@@ -53,7 +53,7 @@ function features(): Any {
 
 function wallsFromAuthoring(): WallLike[] {
   const c = ctx as Any;
-  const auth = c.features?.authoring ?? w.__obsAuthoring ?? null;
+  const auth = c.features?.authoring ?? (ctx.features as any).authoring ?? null;
   if (!auth) return [];
   try {
     if (typeof auth.getElements === "function") {
@@ -68,7 +68,7 @@ function wallsFromAuthoring(): WallLike[] {
 
 function commitWalls(): void {
   const c = ctx as Any;
-  const auth = c.features?.authoring ?? w.__obsAuthoring ?? null;
+  const auth = c.features?.authoring ?? (ctx.features as any).authoring ?? null;
   try {
     if (typeof auth?.rebuildAuthored === "function") auth.rebuildAuthored();
     else if (typeof auth?.rebuild === "function") auth.rebuild();

@@ -4,7 +4,7 @@ type Any = Record<string, any>;
 
 function getAuthoring(): Any | null {
   const c = ctx as Any;
-  return (c.features as Any)?.authoring as Any ?? (window as Any).__obsAuthoring ?? null;
+  return (c.features as Any)?.authoring as Any ?? null;
 }
 
 function getElements(): Any[] {

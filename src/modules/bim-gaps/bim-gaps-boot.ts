@@ -26,7 +26,7 @@ export interface StepStatus { name: string; ok: boolean; detail: string }
 export const BIM_GAPS_VERSION = "1.2.0-m3";
 const status: StepStatus[] = [];
 
-const authoring = (): Any | null => ((ctx.features as Any).authoring ?? (window as Any).__obsAuthoring ?? null);
+const authoring = (): Any | null => ((ctx.features as Any).authoring ?? null);
 
 /** Build the IFC text for the current authored model + rooms. */
 export async function buildModelIfc(schema: IfcSchema = "IFC4") {
