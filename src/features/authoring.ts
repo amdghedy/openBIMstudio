@@ -3240,7 +3240,8 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
     if (!e) return;
     const wall = wallAtPoint(e);
     if (!wall) return;
-    const d = DEFAULTS[activeTool];
+    // Options-bar values (width / height / sill) override the built-in defaults.
+    const d: Record<string, any> = { ...DEFAULTS[activeTool], ...getTypeDefaults(activeTool).params };
     const w = d.width ?? 0.9;
     const hostEl = elements.find((x) => x.id === wall.wallId);
     if (!hostEl?.params.start || !hostEl.params.end) return;
@@ -3255,7 +3256,7 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
       {
         width: w,
         offsetAlongHost: snap(offset, 0.05),
-        sillHeight: activeTool === "window" ? 0.9 : 0,
+        sillHeight: d.sillHeight ?? (activeTool === "window" ? 0.9 : 0),
         frameThickness: activeTool === "window" ? 0.05 : 0.06,
         doorPanel: activeTool === "door" ? "swing" : undefined,
         windowPanel: activeTool === "window" ? "casement" : undefined,
@@ -3869,7 +3870,8 @@ function updatePreview(e: MouseEvent | null) {
     const [bx, bz] = hostEl.params.end;
     const L = Math.hypot(bx - ax, bz - az);
     if (L < 0.1) return;
-    const d = DEFAULTS[activeTool];
+    // Options-bar values (width / height / sill) override the built-in defaults.
+    const d: Record<string, any> = { ...DEFAULTS[activeTool], ...getTypeDefaults(activeTool).params };
     const w = d.width ?? 0.9;
     const half = w / 2;
     const offset = Math.max(half, Math.min(L - half, wall.offset));
@@ -3881,7 +3883,7 @@ function updatePreview(e: MouseEvent | null) {
         height: d.height, thickness: d.thickness, width: w,
         elevation: hostEl.params.elevation,
         offsetAlongHost: offset,
-        sillHeight: activeTool === "window" ? 0.9 : 0,
+        sillHeight: d.sillHeight ?? (activeTool === "window" ? 0.9 : 0),
         frameThickness: 0.05,
       },
     };

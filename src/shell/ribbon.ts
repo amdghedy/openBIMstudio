@@ -2993,7 +2993,7 @@ let ctxTool: string | null = null;
 let tabBeforeCtx: string | null = null;
 const CTX_LABEL: Record<string, string> = {
   wall: "Wall", "curtain-wall": "Curtain Wall", beam: "Beam", strip: "Wall Foundation", duct: "Duct", pipe: "Pipe",
-  "cable-tray": "Cable Tray", conduit: "Conduit", column: "Column", slab: "Floor", footing: "Isolated Foundation", brace: "Brace",
+  "cable-tray": "Cable Tray", conduit: "Conduit", column: "Column", slab: "Floor", footing: "Isolated Foundation", brace: "Brace", door: "Door", window: "Window",
 };
 function pressKey(key: string) { window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })); }
 function ctxItems(tool: string): HTMLElement[] {

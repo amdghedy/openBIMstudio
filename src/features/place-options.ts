@@ -18,7 +18,7 @@ const MEP = new Set(["duct", "pipe", "cable-tray", "conduit"]);
 const ROUND = new Set(["pipe", "conduit"]);
 const LINEAR = new Set([...WALLS, ...BEAMS, ...MEP, "mline"]);
 
-export const PLACE_TOOLS = new Set([...WALLS, ...BEAMS, ...MEP, "column", "slab", "footing", "brace"]);
+export const PLACE_TOOLS = new Set([...WALLS, ...BEAMS, ...MEP, "column", "slab", "footing", "brace", "door", "window"]);
 
 const LOCATION_LINES: Array<[WallLocationLine, string]> = [
   ["wall-centerline", "Wall Centerline"], ["core-centerline", "Core Centerline"],
@@ -120,6 +120,16 @@ export function buildPlaceOptions(tool: string, bar: HTMLElement): void {
     bar.append(label("Justification:"), select(getMepJustification(), [["center", "Center"], ["outer", "Outer"], ["inner", "Inner"]], (v) => setMepJustification(v as HJustification), 90));
     bar.append(label("Slope %:"), num(getDrawSlope(), "Slope of new runs (%) - 0 is flat", (v) => setDrawSlope(v), { step: 0.1, width: 56 }));
     bar.append(check("Chain", getWallChain(), (v) => setWallChain(v)));
+    return;
+  }
+
+  if (tool === "door" || tool === "window") {
+    const win = tool === "window";
+    bar.append(label("Width:"), num(Number(p().width ?? (win ? 1.2 : 0.9)), `${win ? "Window" : "Door"} width (m)`, (v) => dim("width", v), { min: 0.1, width: 64 }));
+    bar.append(label("Height:"), num(Number(p().height ?? (win ? 1.4 : 2.1)), `${win ? "Window" : "Door"} height (m)`, (v) => dim("height", v), { min: 0.1, width: 64 }));
+    bar.append(label("Sill height:"), num(Number(p().sillHeight ?? (win ? 0.9 : 0)), "Height of the bottom above the level (m)", (v) => dim("sillHeight", v), { min: 0, width: 64 }), sep());
+    const hint = mk("span", "obs-rv-label"); hint.textContent = "Move over a wall and click to place";
+    bar.append(hint);
     return;
   }
 
