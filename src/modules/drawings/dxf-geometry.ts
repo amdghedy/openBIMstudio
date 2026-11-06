@@ -294,6 +294,8 @@ export function flipEntityX(e: DxfEntity): DxfEntity {
     case "CIRCLE": return { ...e, center: fp(e.center) };
     case "ARC": return { ...e, center: fp(e.center), startAngle: 180 - e.endAngle, endAngle: 180 - e.startAngle };
     case "LWPOLYLINE": return { ...e, points: e.points.map(fp), ...(e.hatch ? { hatch: { ...e.hatch, angle: 180 - (e.hatch.angle ?? 0), loops: e.hatch.loops.map((l) => l.map(fp)) } } : {}) };
+    case "RAY":
+    case "XLINE": return { ...e, start: fp(e.start), direction: fp(e.direction) };
     case "TEXT": return { ...e, position: fp(e.position), rotation: 180 - (e.rotation ?? 0), align: e.align === "left" ? "right" : e.align === "right" ? "left" : e.align };
   }
 }
