@@ -48,6 +48,12 @@ jobs:
       - name: Production build (includes TypeScript typecheck)
         run: npm run build
 
+      - name: Type-check Cloudflare Worker sources
+        run: npx tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM worker/index.ts worker/linkedin.ts
+
+      - name: Validate Cloudflare Worker bundle and bindings
+        run: npx --yes wrangler@4 deploy --dry-run --outdir .wrangler-dry-run
+
       - name: Locale catalog integrity
         run: |
           node --input-type=commonjs <<'SCRIPT'
