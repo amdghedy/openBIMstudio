@@ -10,7 +10,7 @@ test("LinkedIn OAuth requests only the required self-service member scopes", () 
   const source = read("worker/linkedin.ts");
   assert.match(source, /scope", "openid profile w_member_social"/);
   assert.match(source, /oauth\/v2\/authorization/);
-  assert.match(source, /oauth\/v2\/accessToken/);
+  assert.match(source, /oauth\/v2\/accessToken:/);
   assert.match(source, /consume-state/);
 });
 
