@@ -40,6 +40,7 @@ test("Worker routes LinkedIn requests and binds the dedicated Durable Object", (
   const worker = read("worker/index.ts");
   const config = JSON.parse(read("wrangler.jsonc"));
   assert.ok(worker.includes("handleLinkedInRequest(request, env)"));
+  assert.ok(worker.includes("export { LinkedInVault }"));
   assert.ok(config.durable_objects.bindings.some(
     (binding) => binding.name === "LINKEDIN_VAULT" && binding.class_name === "LinkedInVault",
   ));
