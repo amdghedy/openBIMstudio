@@ -1306,9 +1306,41 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.textAlign = e.align ?? "left";
         c.textBaseline = "alphabetic";
         {
-          const lines = String(e.value ?? "").split("\n");
+          // Visual lines as runs: explicit breaks + the MTEXT column wrap, the
+          // same view drawing, hit-testing and the bbox all share (M.textRuns).
+          const lines = M.textRuns(e);
           const bl = M.textLineBaselines(e);
-          for (let li = 0; li < lines.length; li++) c.fillText(lines[li], 0, -bl[li] * v.scale);
+          const styled = !!e.runs?.some((r) => r.color != null || r.rgb != null || r.bold || r.italic);
+          if (!styled) {
+            for (let li = 0; li < lines.length; li++)
+              c.fillText(lines[li].map((r) => r.text).join(""), 0, -bl[li] * v.scale);
+          } else {
+            // Inline \\C / \\f codes: paint run by run with its own colour and
+            // weight, aligned by the canvas' own measurements like native CAD.
+            // paintEntities already set fillStyle to the entity colour — keep it
+            // as the fallback for bare runs and restore it after each line.
+            const base = c.fillStyle;
+            c.textAlign = "left";
+            for (let li = 0; li < lines.length; li++) {
+              const line = lines[li];
+              if (!line.length) continue;
+              const pxs = Math.min(px, 600);
+              const widths = line.map((r) => {
+                c.font = M.textFontCss(r.bold != null || r.italic != null ? { ...e, bold: r.bold, italic: r.italic } : e, pxs);
+                return c.measureText(r.text).width;
+              });
+              const total = widths.reduce((a, b) => a + b, 0);
+              let x = e.align === "center" ? -total / 2 : e.align === "right" ? -total : 0;
+              line.forEach((r, ri) => {
+                if (r.bold != null || r.italic != null)
+                  c.font = M.textFontCss({ ...e, bold: r.bold, italic: r.italic }, pxs);
+                c.fillStyle = r.rgb != null ? rgbToCss(r.rgb & 0xffffff) : r.color != null ? rgbToCss(aciToRgb(r.color, fg())) : base as string;
+                c.fillText(r.text, x, -bl[li] * v.scale);
+                x += widths[ri];
+              });
+              c.fillStyle = base;
+            }
+          }
         }
         c.restore();
         break;

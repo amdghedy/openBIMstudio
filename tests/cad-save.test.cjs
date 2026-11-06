@@ -92,5 +92,35 @@ t("empty document still writes a valid DXF",()=>{
   assert.strictEqual(back.entities.length,0);
 });
 
+t("multi-line TEXT saves as one TEXT per line — never a broken group stream",()=>{
+  // MTEXT \P paragraphs read back as one TEXT whose value holds "\n"; a raw
+  // newline inside a TEXT record would corrupt the code/value pairs on re-import.
+  const doc2={
+    units:"mm",
+    layers:[{name:"0",color:7}],
+    entities:[
+      {type:"TEXT",layer:"0",position:{x:0,y:0},height:2.5,value:"Line one\nLine two\nLine three"},
+      {type:"TEXT",layer:"0",position:{x:10,y:0},height:2.5,value:"rotated\nlines",rotation:30,valign:"top",align:"center"},
+    ],
+  };
+  const s=writeDxf(doc2);
+  const back=parseDxf(s); // a corrupted stream would throw or drop entities here
+  assert.strictEqual(back.entities.length,5);
+  assert.deepStrictEqual(back.entities.map(e=>e.value),["Line one","Line two","Line three","rotated","lines"]);
+  // Vertical pitch mirrors the on-screen baselines: 2.5 × 5/3 between lines.
+  const first=back.entities[0],second=back.entities[1];
+  const pitch=2.5*5/3;
+  assert.ok(Math.abs((first.position.y-second.position.y)-pitch)<1e-9);
+  // Rotation carries the offset along the text's own baseline direction:
+  // local +Y' (line 0 minus line 1) = (-sin r, cos r) × pitch.
+  const r4=back.entities[3],r5=back.entities[4];
+  const a=30*Math.PI/180;
+  assert.ok(Math.abs((r4.position.x-r5.position.x)+Math.sin(a)*pitch)<1e-9);
+  assert.ok(Math.abs((r4.position.y-r5.position.y)-Math.cos(a)*pitch)<1e-9);
+  // Horizontal alignment survives per line; no vertical flag is written.
+  assert.strictEqual(back.entities[3].align,"center");
+  assert.ok(!back.entities[3].valign||back.entities[3].valign==="baseline");
+});
+
 console.log(`\ncad-save: ${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

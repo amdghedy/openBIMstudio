@@ -81,4 +81,21 @@ t("text styles: STYLE table font/width/oblique resolve onto TEXT; entity overrid
   assert.strictEqual(a.font,"romans.shx");near(a.widthFactor,0.8);near(a.oblique,15);
   near(b.widthFactor,1.5);assert.strictEqual(b.oblique,undefined);
   assert.strictEqual(c.font,"Times New Roman");assert.strictEqual(c.bold,true);assert.strictEqual(c.italic,true)});
+
+t("MTEXT: column width (41), line spacing (44) and inline colour runs are kept",()=>{
+  const ents=D(
+    "0","MTEXT","8","Plain","10","0","20","0","40","2.5","41","30","44","2","71","1","1","Note \\P wraps \\C1;red",
+    "0","MTEXT","8","Plain","10","0","20","10","40","2.5","71","1","1","plain",
+  );
+  const d=parseDxf(file({ents}));const [a,b]=d.entities;
+  assert.strictEqual(a.wrapWidth,30);
+  assert.strictEqual(a.lineSpacing,2);
+  assert.ok(Array.isArray(a.runs)&&a.runs.length===2,"styled runs missing");
+  assert.strictEqual(a.runs[0].text,"Note \n wraps ");
+  assert.strictEqual(a.runs[1].text,"red");
+  assert.strictEqual(a.runs[1].color,1);
+  assert.strictEqual(b.runs,undefined);
+  assert.strictEqual(b.wrapWidth,undefined);
+  assert.strictEqual(b.lineSpacing,undefined);
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

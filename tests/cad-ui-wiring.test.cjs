@@ -250,5 +250,39 @@ t("ray/xline: infinite construction lines are read, drawn edge-to-edge and saved
   assert.ok(writer.includes("} else if (e.type === \"RAY\" || e.type === \"XLINE\") {"), "dxf-writer must write RAY/XLINE");
 });
 
+// ── 9. MTEXT fidelity: column wrap, inline runs, native measurement text ──
+t("mtext fidelity: readers keep width/spacing/runs, viewer wraps and paints runs, writer splits multi-line TEXT", () => {
+  // The decoder owns the structured runs and the reader-facing extras
+  const mt = read("modules", "drawings", "mtext.ts");
+  for (const m of ["export function mtextRuns(", "export function mtextExtras("]) {
+    assert.ok(mt.includes(m), `mtext.ts drift: missing "${m}"`);
+  }
+  // All three readers attach the MTEXT extras (column width, line spacing, runs)
+  const reader = read("modules", "drawings", "dxf-reader.ts");
+  assert.ok(reader.includes("...mtextExtras(chunks, d.n(41, 0), d.n(44, 1))"), "dxf-reader must keep MTEXT wrap/spacing/runs");
+  const dwg = read("modules", "drawings", "dwg-convert.ts");
+  assert.ok(dwg.includes("mtextExtras("), "dwg-convert must keep MTEXT wrap/spacing/runs");
+  const acad = read("modules", "drawings", "acad-engine.ts");
+  assert.ok(acad.includes("mtextExtras("), "acad-engine must keep MTEXT wrap/spacing/runs");
+  // The viewer draws through textRuns (wrap-aware) and paints styled runs per colour/weight
+  for (const m of ["const lines = M.textRuns(e);", "r.rgb != null ? rgbToCss(r.rgb & 0xffffff)"]) {
+    assert.ok(viewer.includes(m), `cad-viewer.ts drift: missing "${m}"`);
+  }
+  // viewer-math owns the wrap + runs view shared by drawing, hit-test and bbox
+  const vm = read("modules", "cad-viewer", "viewer-math.ts");
+  for (const m of ["export function textRuns(", "function wrapLine(", "e.lineSpacing ?? 1"]) {
+    assert.ok(vm.includes(m), `viewer-math.ts drift: missing "${m}"`);
+  }
+  // The writer must never emit a raw newline inside a TEXT record
+  const writer = read("modules", "drawings", "dxf-writer.ts");
+  for (const m of ["const emitText = (value: string, pos: DxfPoint", "lines.length <= 1", "TEXT_LINE_PITCH"]) {
+    assert.ok(writer.includes(m), `dxf-writer.ts drift: missing "${m}"`);
+  }
+  // Native dimension measurement formatting (DIMDEC / DIMPOST / DIMLFAC)
+  for (const m of ["const decimals = Math.max(0, Math.min(8, d.has(271) ? d.n(271) : st?.decimals ?? 2));", "const postFix = st?.postFix ?? \"\";"]) {
+    assert.ok(reader.includes(m), `dxf-reader.ts drift: missing "${m}"`);
+  }
+});
+
 console.log(`\ncad-ui-wiring: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

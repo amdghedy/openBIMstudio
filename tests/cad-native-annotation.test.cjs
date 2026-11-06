@@ -163,6 +163,40 @@ t("cad-viewer draws real glyphs down to 0.75 px (drift guard)", () => {
   assert.ok(src.includes("Native CAD keeps drawing real glyphs at any zoom"), "explanatory comment missing");
 });
 
+// Measurement formatting: DIMDEC (271), DIMPOST (3) and DIMLFAC (143) from the
+// DIMSTYLE table, with the per-entity 271 override, like native CAD.
+const DIMSTYLE_FMT = sec("TABLES", D(
+  D("0", "TABLE", "2", "DIMSTYLE", "70", "1",
+    "0", "DIMSTYLE", "2", "SITE", "70", "0", "40", "1", "140", "3.5", "271", "0", "3", " mm", "143", "2",
+    "0", "ENDTAB"),
+));
+const LIN_DIM_SITE = D(
+  "0", "DIMENSION", "8", "DIM", "70", "0", "3", "SITE",
+  "13", "0", "23", "0", "14", "100", "24", "0", "10", "50", "20", "20",
+  "50", "0", "1", "<>",
+);
+
+t("measurement text honours DIMDEC / DIMPOST / DIMLFAC from the style", () => {
+  const d = parseDxf(file({ tables: DIMSTYLE_FMT, ents: LIN_DIM_SITE }));
+  const texts = d.entities.filter((e) => e.type === "TEXT");
+  assert.strictEqual(texts.length, 1, "measurement text missing");
+  // meas 100 × DIMLFAC 2 = 200, DIMDEC 0 decimals, DIMPOST " mm".
+  assert.strictEqual(texts[0].value, "200 mm");
+  // An entity-level DIMDEC override (271) wins over the style.
+  const d2 = parseDxf(file({ tables: DIMSTYLE_FMT, ents: D(LIN_DIM_SITE, "271", "1") }));
+  const t2 = d2.entities.filter((e) => e.type === "TEXT");
+  assert.strictEqual(t2[0].value, "200.0 mm");
+  // A measurement override string keeps working, with <> expanded natively.
+  const LIN_DIM_OVR = D(
+    "0", "DIMENSION", "8", "DIM", "70", "0", "3", "SITE",
+    "13", "0", "23", "0", "14", "100", "24", "0", "10", "50", "20", "20",
+    "50", "0", "1", "EL. <> above datum",
+  );
+  const d3 = parseDxf(file({ tables: DIMSTYLE_FMT, ents: LIN_DIM_OVR }));
+  const t3 = d3.entities.filter((e) => e.type === "TEXT");
+  assert.strictEqual(t3[0].value, "EL. 200 mm above datum");
+});
+
 fs.rmSync(out, { recursive: true, force: true });
 console.log(`\ncad-native-annotation: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

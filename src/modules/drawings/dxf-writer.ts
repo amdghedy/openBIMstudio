@@ -5,6 +5,7 @@
 
 import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfViewport } from "./dxf-types";
 import { ensureLinetypes, fontDxfFile, isTrueTypeFont, lineweightToDxf, linetypesInUse } from "./cad-styles";
+import { TEXT_LINE_PITCH } from "../cad-viewer/viewer-math";
 
 function pair(code: number, value: string | number): string {
   return `${code}\n${value}\n`;
@@ -252,23 +253,52 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
       s += pair(20, p.y);
     }
   } else if (e.type === "TEXT") {
-    s += pair(0, "TEXT");
-    s += common(e);
-    s += writePoint([10, 20, 30], e.position);
-    s += pair(40, e.height);
-    s += pair(1, e.value);
-    if (e.rotation != null) s += pair(50, e.rotation);
-    if (e.widthFactor && Math.abs(e.widthFactor - 1) > 1e-6) s += pair(41, e.widthFactor);
-    if (e.oblique && Math.abs(e.oblique) > 1e-6) s += pair(51, e.oblique);
-    s += pair(7, styleName(e));
-    const tg = (e.backwards ? 2 : 0) | (e.upsideDown ? 4 : 0);
-    if (tg) s += pair(71, tg);
-    const h = e.align === "center" ? 1 : e.align === "right" ? 2 : 0;
-    const v = e.valign === "bottom" ? 1 : e.valign === "middle" ? 2 : e.valign === "top" ? 3 : 0;
-    if (h !== 0 || v !== 0) {
-      s += pair(72, h);
-      s += writePoint([11, 21, 31], e.position);
-      s += pair(73, v);
+    // A DXF TEXT record cannot hold a line break — a multi-line value (MTEXT
+    // \P paragraphs read back as one TEXT) would corrupt the code/value stream
+    // on re-import. Native CAD does the same: emit one TEXT per visual line,
+    // offset along the text's own baseline direction exactly as drawn.
+    const emitText = (value: string, pos: DxfPoint, withValign: boolean): string => {
+      let t = pair(0, "TEXT");
+      t += common(e);
+      t += writePoint([10, 20, 30], pos);
+      t += pair(40, e.height);
+      t += pair(1, value);
+      if (e.rotation != null) t += pair(50, e.rotation);
+      if (e.widthFactor && Math.abs(e.widthFactor - 1) > 1e-6) t += pair(41, e.widthFactor);
+      if (e.oblique && Math.abs(e.oblique) > 1e-6) t += pair(51, e.oblique);
+      t += pair(7, styleName(e));
+      const tg = (e.backwards ? 2 : 0) | (e.upsideDown ? 4 : 0);
+      if (tg) t += pair(71, tg);
+      // Horizontal alignment always; the vertical anchor only on the single-line
+      // record — per-line records have it baked into their shifted position.
+      const h = e.align === "center" ? 1 : e.align === "right" ? 2 : 0;
+      const v = withValign ? (e.valign === "bottom" ? 1 : e.valign === "middle" ? 2 : e.valign === "top" ? 3 : 0) : 0;
+      if (h !== 0 || v !== 0) {
+        t += pair(72, h);
+        t += writePoint([11, 21, 31], pos);
+        t += pair(73, v);
+      }
+      return t;
+    };
+    const lines = String(e.value ?? "").split("\n");
+    if (lines.length <= 1) {
+      s += emitText(e.value, e.position, true);
+    } else {
+      // Mirror viewer-math textLineBaselines: baseline i sits (top - h - i*pitch)
+      // from the anchor, in the text's own frame (rotation applies to the offset).
+      const pitch = e.height * Math.max(e.lineSpacing ?? 1, 0.1) * TEXT_LINE_PITCH;
+      const H = e.height + (lines.length - 1) * pitch;
+      const top = e.valign === "top" ? 0 : e.valign === "middle" ? H / 2 : e.valign === "bottom" ? H : e.height;
+      const rot = ((e.rotation ?? 0) * Math.PI) / 180;
+      const ux = -Math.sin(rot), uy = Math.cos(rot);
+      lines.forEach((line, li) => {
+        const bl = top - e.height - li * pitch;
+        s += emitText(line, {
+          x: e.position.x + ux * bl,
+          y: e.position.y + uy * bl,
+          z: e.position.z,
+        }, false);
+      });
     }
   } else if (e.type === "POINT") {
     s += pair(0, "POINT");

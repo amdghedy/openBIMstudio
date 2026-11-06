@@ -132,6 +132,15 @@ export type DxfEntity =
       backwards?: boolean;
       /** DXF group 71 flag 4: flipped vertically (reads upside down). */
       upsideDown?: boolean;
+      /** MTEXT column width (group 41) in drawing units — wrap visual lines to this width like native CAD. */
+      wrapWidth?: number;
+      /** MTEXT line-spacing factor (group 44, 0.25-4.0; 1 = the default 3-on-5 pitch). */
+      lineSpacing?: number;
+      /**
+       * Inline-formatted runs of an MTEXT (from \C / \c colour and \f bold/italic codes).
+       * `value` stays the plain concatenated text; when absent the entity renders as one run.
+       */
+      runs?: Array<{ text: string; color?: number; rgb?: number; bold?: boolean; italic?: boolean }>;
     })
   | (DxfEntityBase & {
       type: "POINT";
@@ -194,6 +203,12 @@ export interface DxfDimStyle {
   extExtend?: number;
   /** DIMGAP (group 147) — gap around the dimension text. */
   textGap?: number;
+  /** DIMDEC (group 271) — decimal places of the measurement text. */
+  decimals?: number;
+  /** DIMPOST (group 3) — suffix / prefix for the measurement ("<>" is the measurement). */
+  postFix?: string;
+  /** DIMLFAC (group 143) — linear measurement scale factor. */
+  linearFactor?: number;
 }
 
 export interface DxfDocument {

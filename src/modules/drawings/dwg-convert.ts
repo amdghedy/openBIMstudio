@@ -15,7 +15,7 @@ import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges, insUnitsToUnits,
   transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
 } from "./dxf-geometry";
-import { cleanText } from "./dxf-reader";
+import { cleanText, mtextExtras } from "./mtext";
 
 type Any = Record<string, any>;
 const TWO_PI = Math.PI * 2;
@@ -283,6 +283,14 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
             ...c, type: "TEXT", position: al.useAlignPoint ? al.point! : pos,
             height: toNum(pick(e, ["textHeight", "height", "fontSize"]), 2.5),
             value, rotation: rot, align: al.align, valign: al.valign,
+            // MTEXT: native column wrap, line spacing and inline colour/weight runs.
+            ...(type === "MTEXT"
+              ? mtextExtras(
+                  String(pick(e, ["text", "textString", "value", "contents"]) ?? ""),
+                  pick(e, ["rectWidth", "columnWidth", "definedWidth", "width"]),
+                  pick(e, ["lineSpacingFactor", "lineSpacing"]),
+                )
+              : {}),
             ...dwgTextStyle(e, cx),
           });
           break;

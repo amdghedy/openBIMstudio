@@ -56,4 +56,31 @@ t("diff: duplicates are counted, tolerance absorbs noise",()=>{const A=[L(0,0,1,
 t("diff: reversed polyline is the same",()=>{const a=P([[0,0],[1,0],[1,1]],false),b=P([[1,1],[1,0],[0,0]],false);const d=m.diffEntities([a],[b],0.01);assert.strictEqual(d.removed.length+d.added.length,0)});
 t("paper sizes and plot pixels",()=>{const p=m.paperMm("A3",true);near(p.w,420);near(p.h,297);const q=m.paperMm("nope",false);near(q.w,210);near(q.h,297);const px=m.plotPixels(420,297,8,150);assert.ok(px.w>2300&&px.w<2500);const big=m.plotPixels(1189,841,8,300);assert.ok(Math.max(big.w,big.h)<=6000)});
 t("quick measure parts",()=>{const c=m.quickMeasureParts(C(0,0,2));assert.ok(c.some(x=>x.label==="R"&&x.value===2));assert.ok(c.some(x=>x.label==="Area"&&x.power===2));assert.strictEqual(m.quickMeasureParts(T(0,0,1,"a")).length,0);const l=m.quickMeasureParts(L(0,0,3,4));near(l[0].value,5)});
+// ── MTEXT fidelity: column wrap, inline runs, line spacing ──
+const MT=(over)=>({type:"TEXT",layer:"0",position:{x:0,y:0},height:2,value:"",...over});
+const lineText=(lines)=>lines.map(l=>l.map(r=>r.text).join(""));
+t("textRuns: MTEXT wraps at its column width like native CAD",()=>{ // charW = 2*0.6 = 1.2 -> 9/1.2 = 7 chars per line
+  const lines=m.textRuns(MT({value:"aaa bbb ccc ddd",wrapWidth:9}));
+  assert.deepStrictEqual(lineText(lines),["aaa bbb","ccc ddd"]);
+});
+t("textRuns: a word longer than the column is hard-split",()=>{
+  const lines=m.textRuns(MT({value:"ABCDEFGHIJ",wrapWidth:4.8})); // maxChars = 4
+  assert.deepStrictEqual(lineText(lines),["ABCD","EFGH","IJ"]);
+});
+t("textRuns: styled runs split on explicit breaks and keep their colour",()=>{
+  const e=MT({value:"Red\nWhite",runs:[{text:"Red\n",color:1},{text:"White",color:7}]});
+  const lines=m.textRuns(e);
+  assert.deepStrictEqual(lineText(lines),["Red","White"]);
+  assert.strictEqual(lines[0][0].color,1);assert.strictEqual(lines[1][0].color,7);
+});
+t("MTEXT line-spacing factor scales the pitch; plain TEXT keeps 5/3",()=>{
+  const base=MT({value:"a\nb"}); // pitch = 2*5/3
+  const spaced=MT({value:"a\nb",lineSpacing:2}); // pitch = 2*2*5/3
+  near(m.textLineBaselines(base)[1],-2*5/3);
+  near(m.textLineBaselines(spaced)[1],-2*2*5/3);
+  near(m.textBox(spaced).h,2+2*2*5/3);
+  // box width follows the longest wrapped line, never the raw 16-char value
+  const wrapped=MT({value:"aaa bbb ccc ddd",wrapWidth:9});
+  near(m.textBox(wrapped).w,2*0.6*7);
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

@@ -80,16 +80,108 @@ export function textFontCss(e: Extract<DxfEntity, { type: "TEXT" }>, px: number)
 /** AutoCAD default MTEXT line pitch = 5/3 of the text height. */
 export const TEXT_LINE_PITCH = 5 / 3;
 
-function linesOf(e: Extract<DxfEntity, { type: "TEXT" }>): string[] {
-  return String(e.value ?? "").split("\n");
+/** A styled slice of text inside a TEXT/MTEXT (from inline MTEXT format codes). */
+export interface TextViewRun {
+  text: string;
+  color?: number;
+  rgb?: number;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+const estCharW = (e: Extract<DxfEntity, { type: "TEXT" }>): number =>
+  Math.max(e.height * 0.6 * (e.widthFactor && e.widthFactor > 0 ? e.widthFactor : 1), 1e-9);
+
+const linePitch = (e: Extract<DxfEntity, { type: "TEXT" }>): number =>
+  e.height * Math.max(e.lineSpacing ?? 1, 0.1) * TEXT_LINE_PITCH;
+
+/** Words and gaps of one logical line, keeping the run each token came from. */
+function tokensOf(line: TextViewRun[]): Array<{ text: string; run: TextViewRun }> {
+  const out: Array<{ text: string; run: TextViewRun }> = [];
+  for (const run of line)
+    for (const tk of run.text.split(/(\s+)/)) if (tk) out.push({ text: tk, run });
+  return out;
+}
+
+/**
+ * Greedy word-wrap of one logical line at `maxChars` estimated characters —
+ * native CAD wraps MTEXT at its column width and hard-splits words that do not fit.
+ */
+function wrapLine(line: TextViewRun[], maxChars: number): TextViewRun[][] {
+  if (maxChars < 1) return [line];
+  const out: TextViewRun[][] = [];
+  let cur: TextViewRun[] = [];
+  let curLen = 0;
+  const flush = () => {
+    // A trailing gap at a wrap point is invisible — drop it like native CAD.
+    while (cur.length && /^\s+$/.test(cur[cur.length - 1].text)) {
+      curLen -= cur[cur.length - 1].text.length;
+      cur.pop();
+    }
+    out.push(cur);
+    cur = [];
+    curLen = 0;
+  };
+  for (const tk of tokensOf(line)) {
+    if (/^\s+$/.test(tk.text)) {
+      // Wrapped lines never start with the leftover gap, and a trailing gap that no
+      // longer fits is simply dropped — it would be invisible anyway.
+      if (!curLen || curLen + tk.text.length > maxChars) continue;
+      cur.push({ ...tk.run, text: tk.text });
+      curLen += tk.text.length;
+      continue;
+    }
+    if (curLen && curLen + tk.text.length > maxChars) flush();
+    let rem = tk.text;
+    if (rem.length > maxChars) {
+      // A single word longer than the whole column is hard-split like native CAD.
+      if (curLen) {
+        const take = Math.max(0, maxChars - curLen);
+        if (take) { cur.push({ ...tk.run, text: rem.slice(0, take) }); rem = rem.slice(take); }
+        flush();
+      }
+      while (rem.length > maxChars) {
+        cur.push({ ...tk.run, text: rem.slice(0, maxChars) });
+        rem = rem.slice(maxChars);
+        flush();
+      }
+    }
+    if (rem) { cur.push({ ...tk.run, text: rem }); curLen += rem.length; }
+  }
+  flush();
+  return out;
+}
+
+/**
+ * Visual runs per line of a TEXT/MTEXT: explicit "\n" breaks first, then the
+ * MTEXT column width (wrapWidth) word-wrap. This is the single source of truth
+ * for drawing, hit-testing and the bounding box.
+ */
+export function textRuns(e: Extract<DxfEntity, { type: "TEXT" }>): TextViewRun[][] {
+  const raw: TextViewRun[] = e.runs?.length
+    ? e.runs.map((r) => ({ text: String(r.text ?? ""), color: r.color, rgb: r.rgb, bold: r.bold, italic: r.italic }))
+    : [{ text: String(e.value ?? "") }];
+  const logical: TextViewRun[][] = [[]];
+  for (const r of raw) {
+    const parts = r.text.split("\n");
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) logical.push([]);
+      if (parts[i]) logical[logical.length - 1].push({ ...r, text: parts[i] });
+    }
+  }
+  if (!e.wrapWidth || e.wrapWidth <= 0) return logical;
+  const maxChars = Math.max(1, Math.floor(e.wrapWidth / estCharW(e) + 1e-9));
+  const out: TextViewRun[][] = [];
+  for (const line of logical) for (const wrapped of wrapLine(line, maxChars)) out.push(wrapped);
+  return out;
 }
 
 export function textBox(e: Extract<DxfEntity, { type: "TEXT" }>): { w: number; h: number } {
-  const lines = linesOf(e);
-  const longest = Math.max(...lines.map((l) => l.length), 0);
+  const lines = textRuns(e);
+  const longest = Math.max(...lines.map((l) => l.reduce((s, r) => s + r.text.length, 0)), 0);
   return {
     w: Math.max(e.height * 0.6 * longest * (e.widthFactor && e.widthFactor > 0 ? e.widthFactor : 1), e.height * 0.3),
-    h: e.height + (lines.length - 1) * e.height * TEXT_LINE_PITCH,
+    h: e.height + (lines.length - 1) * linePitch(e),
   };
 }
 
@@ -98,9 +190,9 @@ export function textBox(e: Extract<DxfEntity, { type: "TEXT" }>): { w: number; h
  * honouring the vertical anchor. Single-line text keeps the previous behaviour.
  */
 export function textLineBaselines(e: Extract<DxfEntity, { type: "TEXT" }>): number[] {
-  const n = linesOf(e).length, h = e.height, H = textBox(e).h;
+  const n = textRuns(e).length, h = e.height, H = textBox(e).h;
   const top = e.valign === "top" ? 0 : e.valign === "middle" ? H / 2 : e.valign === "bottom" ? H : h;
-  return Array.from({ length: n }, (_, i) => top - h - i * h * TEXT_LINE_PITCH);
+  return Array.from({ length: n }, (_, i) => top - h - i * linePitch(e));
 }
 
 /** Lower-left corner of the text box relative to its insertion point, in the text's own frame. */

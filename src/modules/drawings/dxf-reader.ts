@@ -94,7 +94,7 @@ function num(v: string | undefined, d = 0): number {
   return Number.isFinite(n) ? n : d;
 }
 
-import { cleanText, mtextFont, mtextWidthFactor, mtextColor } from "./mtext";
+import { cleanText, mtextFont, mtextWidthFactor, mtextColor, mtextExtras } from "./mtext";
 import { imageGeometry, clipBoundaryLoop, fileLabel } from "./dxf-image";
 export { cleanText };
 
@@ -246,6 +246,13 @@ function nativeDimension(d: Data, styles: Record<string, DxfDimStyle>): DxfEntit
   const extOff = (st?.extOffset ?? d.n(42, 0.625)) * dimScale;
   const extExt = (st?.extExtend ?? d.n(44, 1.25)) * dimScale;
   const gap = (st?.textGap ?? d.n(147, 0.625)) * dimScale;
+  // Measurement text: decimal places (DIMDEC), suffix/prefix (DIMPOST) and the
+  // linear factor (DIMLFAC) come from the style, like native CAD. An entity-level
+  // override (the DIMENSION carries the group itself) wins over the style. Note
+  // group 3 of a DIMENSION entity is the style NAME, never DIMPOST.
+  const decimals = Math.max(0, Math.min(8, d.has(271) ? d.n(271) : st?.decimals ?? 2));
+  const postFix = st?.postFix ?? "";
+  const linFac = d.has(143) && d.n(143) > 0 ? d.n(143) : st?.linearFactor ?? 1;
 
   const arrow = (tip: DxfPoint, ux: number, uy: number): DxfEntity => {
     const tri = [
@@ -262,9 +269,9 @@ function nativeDimension(d: Data, styles: Record<string, DxfDimStyle>): DxfEntit
     return a;
   };
   const measText = (m: number, prefix = ""): string => {
+    const num = `${prefix}${(m * linFac).toFixed(decimals)}${postFix}`;
     const override = cleanText(d.s(1) ?? "");
-    const s = !override || override === "<>" ? `${prefix}${m.toFixed(2)}` : override.replace(/<>/g, `${prefix}${m.toFixed(2)}`);
-    return s;
+    return !override || override === "<>" ? num : override.replace(/<>/g, num);
   };
 
   if (dimType === 0 || dimType === 1) {
@@ -418,6 +425,9 @@ export function parseDxf(text: string): DxfDocument {
             ...(d.has(42) ? { extOffset: d.n(42) } : {}),
             ...(d.has(44) ? { extExtend: d.n(44) } : {}),
             ...(d.has(147) ? { textGap: d.n(147) } : {}),
+            ...(d.has(271) ? { decimals: Math.max(0, Math.min(8, d.n(271))) } : {}),
+            ...(d.has(3) ? { postFix: d.s(3) } : {}),
+            ...(d.has(143) && d.n(143) > 0 ? { linearFactor: d.n(143) } : {}),
           };
         }
       } else if (r.type === "LAYER" && table === "LAYER") {
@@ -670,11 +680,14 @@ function expandRecs(
         if (rot === undefined && (d.has(11) || d.has(21))) rot = Math.atan2(d.n(21), d.n(11)) / DEG;
         const ap = d.n(71, 1);
         const col = mtextColor(chunks);
+        // Native CAD wraps MTEXT at its column width (41) and honours the line-spacing
+        // factor (44); the inline \C/\f codes become styled runs so notes keep their colours.
         push({
           ...c, type: "TEXT", position: d.pt(10, 20, 30), height: textHeight(d, 40, 2.5),
           value: cleanText(chunks), rotation: rot,
           align: (["left", "center", "right"] as const)[Math.max(0, Math.min(2, (ap - 1) % 3))],
           valign: (["top", "middle", "bottom"] as const)[Math.max(0, Math.min(2, Math.floor((ap - 1) / 3)))],
+          ...mtextExtras(chunks, d.n(41, 0), d.n(44, 1)),
           ...(col.color != null ? { color: col.color } : {}),
           ...(col.rgb != null ? { rgb: col.rgb } : {}),
           ...textStyleFields(d, chunks),

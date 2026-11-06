@@ -34,7 +34,7 @@ import {
   transformEntity,
   type InsertXform,
 } from "./dxf-geometry";
-import { cleanText, mtextFont, mtextWidthFactor } from "./mtext";
+import { cleanText, mtextFont, mtextWidthFactor, mtextExtras } from "./mtext";
 
 type Any = Record<string, any>;
 
@@ -499,6 +499,14 @@ function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | nul
         if (f.italic) base.italic = true;
         const wf = mtextWidthFactor(String(e.value ?? ""));
         if (wf) base.widthFactor = wf;
+        // Native column wrap, line spacing and inline colour/weight runs, when the
+        // engine artifact carries the MTEXT width and spacing at all.
+        const raw = e as Any;
+        Object.assign(base, mtextExtras(
+          String(e.value ?? ""),
+          raw.rectWidth ?? raw.columnWidth ?? raw.definedWidth,
+          raw.lineSpacingFactor ?? raw.lineSpacing,
+        ));
       }
       if (typeof e.style === "string" && e.style) base.style = e.style;
       return [base];

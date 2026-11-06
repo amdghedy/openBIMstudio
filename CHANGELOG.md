@@ -21,6 +21,16 @@ file — the project adopted a written changelog at 0.73.0.
 Everything below is covered by unit tests and a type-check; none of it has been
 run in a browser yet (see `tests/e2e/README.md`).
 
+- **MTEXT reads like native CAD.** The column width and line-spacing factor of
+  an MTEXT are kept: notes word-wrap inside their own column instead of
+  stretching one long line across the drawing, hard-splitting words that do
+  not fit like AutoCAD. Inline `\C`/`\c` colours and `\f` bold/italic flags
+  become styled runs the viewer paints per segment, so a note keeps its red
+  warnings and bold titles. The DXF writer no longer corrupts the group stream
+  when a multi-line text is saved: one TEXT per visual line, offset along the
+  text's own baseline direction exactly as drawn. Measurement text of
+  dimensions honours DIMDEC, DIMPOST and DIMLFAC from the DIMSTYLE table (with
+  entity-level overrides), so "200 mm" renders instead of "200.00".
 - **2D plan command line.** Type a command or alias (`WA`, `L`, `DI`, `Z`, `U`,
   `E`...) with autocomplete and history; Enter or Space repeats the last command;
   `x,z`, `@dx,dz`, `d<angle` and plain lengths place points directly. Esc cancels
