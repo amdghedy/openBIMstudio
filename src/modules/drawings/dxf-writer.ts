@@ -3,7 +3,7 @@
  * Pure TypeScript - no native deps.
  */
 
-import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint } from "./dxf-types";
+import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfViewport } from "./dxf-types";
 import { ensureLinetypes, fontDxfFile, isTrueTypeFont, lineweightToDxf, linetypesInUse } from "./cad-styles";
 
 function pair(code: number, value: string | number): string {
@@ -195,6 +195,31 @@ function writeHatch(e: Extract<DxfEntity, { type: "LWPOLYLINE" }>): string {
   return s;
 }
 
+/** Mark an entity record as paper space (group 67 = 1 right after the type). */
+function inPaperSpace(rec: string): string {
+  return rec.replace(/^(0\n[^\n]+\n)/, "$167\n1\n");
+}
+
+function writeViewport(vp: DxfViewport, id: number): string {
+  let s = pair(0, "VIEWPORT") + pair(8, "0") + pair(67, 1) + pair(100, "AcDbViewport");
+  s += pair(10, vp.center.x) + pair(20, vp.center.y) + pair(30, 0);
+  s += pair(40, vp.width) + pair(41, vp.height);
+  s += pair(68, 1) + pair(69, id);
+  s += pair(12, vp.viewCenter.x) + pair(22, vp.viewCenter.y);
+  s += pair(45, vp.viewHeight);
+  if (vp.twist) s += pair(51, vp.twist);
+  return s;
+}
+
+/**
+ * Layouts that a DXF save cannot keep: only the first sheet is written (as the
+ * active paper space). Extra layouts need BLOCK_RECORD and LAYOUT objects that are
+ * not written yet, so callers should tell the user how many were left out.
+ */
+export function layoutsNotSaved(doc: Pick<DxfDocument, "layouts">): number {
+  return Math.max(0, (doc.layouts?.length ?? 0) - 1);
+}
+
 function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TEXT" }>) => string): string {
   let s = "";
 
@@ -333,6 +358,13 @@ export function writeDxf(doc: DxfDocument): string {
   s += pair(2, "ENTITIES");
   for (const e of doc.entities) {
     s += writeEntity(e, styles.nameFor);
+  }
+  // The first paper-space layout is the drawing's active sheet: its entities and
+  // viewports are written with group 67 = 1, which is how DXF stores paper space.
+  const sheet = doc.layouts?.[0];
+  if (sheet) {
+    for (const e of sheet.entities) s += inPaperSpace(writeEntity(e, styles.nameFor));
+    sheet.viewports.forEach((vp, i) => { s += writeViewport(vp, i + 2); });
   }
   s += pair(0, "ENDSEC");
 

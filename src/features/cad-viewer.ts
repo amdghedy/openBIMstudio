@@ -22,7 +22,8 @@
 
 import { readCadFile } from "../modules/cad-link/index";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
-import { downloadDxf, writeDxf } from "../modules/drawings/dxf-writer";
+import { downloadDxf, writeDxf, layoutsNotSaved } from "../modules/drawings/dxf-writer";
+import { uiAlert } from "../core/notify";
 import { exportDxfToDwg, validateDxfForDwgExport } from "../modules/drawings/acad-engine";
 import {
   makeClip,
@@ -6597,6 +6598,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const fn = `${base()}.dxf`;
     downloadDxf({ ...doc, entities }, fn);
     logCmd(`Saved ${fn} — ${entities.length} entities, ${doc.layers.length} layers.`);
+    const lost = layoutsNotSaved(doc);
+    if (lost) uiAlert(`${fn} was saved with the first sheet only. ${lost} other layout${lost === 1 ? "" : "s"} could not be saved to DXF yet.`);
     status(`Saved ${fn}`);
     markSaved();
     setTimeout(() => status(""), 4000);

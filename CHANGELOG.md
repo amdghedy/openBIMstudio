@@ -11,6 +11,34 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Milestone: polish and CAD/plan workflow pass
+
+Everything below is covered by unit tests and a type-check; none of it has been
+run in a browser yet (see `tests/e2e/README.md`).
+
+- **2D plan command line.** Type a command or alias (`WA`, `L`, `DI`, `Z`, `U`,
+  `E`...) with autocomplete and history; Enter or Space repeats the last command;
+  `x,z`, `@dx,dz`, `d<angle` and plain lengths place points directly. Esc cancels
+  every active order (paths, typed lengths, dimension picks, drags, tool,
+  selection) and no longer closes the plan.
+- **CAD editor.** 40 linetypes, 24 lineweights, 28 fonts and 10 text styles with
+  managers, Match Properties, and a DXF writer that keeps linetypes, true colour,
+  text styles, layer state, hatch fills and the first paper-space layout.
+- **Walls.** Baseboards, cornices and wainscots export to IFC; reveals are cut into
+  straight walls and export as IfcOpeningElement. Doors and windows have an options
+  bar for width, height and sill height.
+- **UI.** Double-click a ribbon tab to collapse it; full screen hides command bars;
+  Clash Review is dockable; every blocking prompt/confirm/alert is a dialog.
+- **Honesty and structure.** Feature Status registry, UI-honesty guard tests, an
+  architecture document, release-specific names removed, and the number of
+  `window.__obs*` references reduced from 901 to 818 behind a ratchet test.
+
+### Known gaps
+
+- LAZ, E57 and RWCX point clouds (LAZ needs the `laz-perf` dependency).
+- DXF: blocks are saved exploded and layouts after the first are not saved.
+- Browser smoke tests exist but are not in CI.
+
 ### Added
 
 - Revit-style section box face arrows: each of the six crop faces now carries
