@@ -42,13 +42,13 @@ npx wrangler secret put LINKEDIN_PUBLISH_SECRET
 
 Use the same exact HTTPS callback URL in the LinkedIn app and `LINKEDIN_REDIRECT_URI`. Generate a strong independent publishing secret, for example with `openssl rand -hex 32`, and enter it when Wrangler prompts for `LINKEDIN_PUBLISH_SECRET`. Do not paste secrets into source files, issues, pull requests, or chat.
 
-Optional Worker variable: `LINKEDIN_VERSION`. If omitted, the implementation currently defaults to `202610`; confirm that this version is available to your app before production use.
+Optional Worker variable: `LINKEDIN_VERSION`. If omitted, the implementation defaults to `202610`, which LinkedIn currently lists as the October 2026 latest Marketing API version. The version is pinned in the request header and should be updated on the monthly release cadence.
 
 Deploy the Worker after the branch is reviewed and merged:
 
 ```bash
 npm install
-npx wrangler deploy
+npx wrangler@4 deploy
 ```
 
 The Wrangler configuration adds a dedicated SQLite-backed Durable Object namespace for the token vault. Deploying applies its migration.
