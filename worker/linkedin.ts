@@ -61,7 +61,7 @@ interface StorageLike {
   delete(key: string): Promise<boolean>;
 }
 
-const STATE_KEY = "linkedin:oauth-state";
+const STATE_KEY_PREFIX = "linkedin:oauth-state:";
 const TOKEN_KEY = "linkedin:member-token";
 const STATE_TTL_MS = 10 * 60 * 1000;
 const MAX_COMMENTARY_LENGTH = 3000;
@@ -348,7 +348,7 @@ export class LinkedInVault {
       if (request.method === "POST" && url.pathname === "/state") {
         const body = await request.json() as VaultState;
         if (typeof body.value !== "string" || typeof body.expiresAt !== "number") return json({ error: "invalid state" }, 400);
-        await this.storage.put(STATE_KEY, body);
+        if (!/^[A-Za-z0-9_-]{32,128}$/.test(body.value) || body.expiresAt <= Date.now() || body.expiresAt > Date.now() + STATE_TTL_MS + 60_000) return json({ error: "invalid state" }, 400);\n        await this.storage.put(`${STATE_KEY_PREFIX}${body.value}`, body);
         return json({ stored: true });
       }
       if (request.method === "POST" && url.pathname === "/consume-state") {
