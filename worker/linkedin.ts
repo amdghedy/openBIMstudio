@@ -219,7 +219,8 @@ async function finishOAuth(request: Request, env: LinkedInEnv): Promise<Response
     expires_in?: number;
     scope?: string;
   };
-  if (!token.access_token || !Number.isFinite(token.expires_in) || (token.expires_in ?? 0) <= 0) {
+  const expiresIn = token.expires_in;
+  if (!token.access_token || typeof expiresIn !== "number" || !Number.isFinite(expiresIn) || expiresIn <= 0) {
     return html("LinkedIn returned an incomplete token response. Please reconnect.", 502);
   }
 
@@ -238,7 +239,7 @@ async function finishOAuth(request: Request, env: LinkedInEnv): Promise<Response
   const stored: StoredToken = {
     accessToken: token.access_token,
     personId: profile.sub,
-    expiresAt: Date.now() + token.expires_in * 1000,
+    expiresAt: Date.now() + expiresIn * 1000,
     scope: token.scope ?? "unknown",
   };
   await vaultRequest(env, "/token", "POST", stored);
