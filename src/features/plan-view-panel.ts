@@ -4648,7 +4648,7 @@ function runPlanCommand(text: string): string | void {
           a.setSelectedAuthored(ids, "replace");
           renderPlanProperties();
           if (currentPlan) renderPlan(currentPlan);
-          footerStatus(`${ids.length} element(s) selected`);
+          footerStatus(`${ids.length} element(s) selected on all levels`);
         } catch (err) { console.warn("[plan] select all", err); }
       })();
       return;

@@ -50,7 +50,7 @@ export const PLAN_COMMANDS: readonly PlanCommand[] = [
   c("Annotate", "TEXT", ["T", "DT", "MT", "MTEXT"], "Place text", { tool: "text" }),
   c("Annotate", "SPOTELEV", ["SE"], "Spot elevation", { tool: "spot-elev" }),
   c("Modify", "SELECT", ["SEL"], "Select elements (box: left-to-right window, right-to-left crossing)", { action: "select" }),
-  c("Modify", "SELECTALL", ["SA", "AL"], "Select every element in the plan", { action: "select-all" }),
+  c("Modify", "SELECTALL", ["SA", "AL"], "Select every authored element (all levels)", { action: "select-all" }),
   c("Modify", "MOVE", ["M", "MV"], "Move the selected elements", { tool: "move" }),
   c("Modify", "ERASE", ["E", "DEL", "DELETE"], "Delete the selected elements", { action: "delete" }),
   c("Modify", "UNDO", ["U"], "Undo the last change", { action: "undo" }),

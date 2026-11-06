@@ -406,7 +406,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
       "Command table, aliases and coordinate parsing (x,z  @dx,dz  d<angle  length) are unit-tested; the command line and Esc cancel-all have not been tried in a browser",
       "Direct coordinates are metres and only drive Place tools (linear paths and point elements), not dimensions, tags or Move",
       "Esc no longer closes the plan view; use the Close button or the CLOSE command",
-      "SELECTALL selects every authored element, not only those on the current level",
+      "SELECTALL and box selection pick authored elements on every level, not only the level shown in the plan",
     ],
     affirmedIn: APP_VERSION,
   },
