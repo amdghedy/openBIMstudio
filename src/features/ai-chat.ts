@@ -24,7 +24,7 @@
  *   4. Execute approved tools, feed results back
  *   5. Stop when the provider returns a text-only response
  */
-import { PRESETS } from "./ai-presets";
+import { PRESETS, type Preset } from "./ai-presets";
 import { ctx } from "../core/context";
 import { makeDockable, type DockHandle } from "./dockable";
 import {
