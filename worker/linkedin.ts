@@ -353,8 +353,10 @@ export class LinkedInVault {
       }
       if (request.method === "POST" && url.pathname === "/consume-state") {
         const body = await request.json() as { value?: string };
-        const saved = await this.storage.get<VaultState>(STATE_KEY);
-        await this.storage.delete(STATE_KEY);
+        if (typeof body.value !== "string" || !/^[A-Za-z0-9_-]{32,128}$/.test(body.value)) return json({ valid: false });
+        const key = `${STATE_KEY_PREFIX}${body.value}`;
+        const saved = await this.storage.get<VaultState>(key);
+        if (saved) await this.storage.delete(key);
         return json({ valid: Boolean(saved && saved.expiresAt > Date.now() && saved.value === body.value) });
       }
       if (url.pathname === "/token" && request.method === "POST") {
