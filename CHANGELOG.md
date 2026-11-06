@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### AI assistant
+- Claude is now a native provider (Anthropic Messages API: streaming, tool use, model list, specific error messages). Each user pastes their own Anthropic API key; it is stored in the encrypted local store and never shared. Old "OpenAI-compatible + api.anthropic.com" setups migrate automatically.
+- A Claude.ai free/Pro login cannot be used by third-party apps, so there is no "sign in with Claude" path. Not yet exercised against the live API.
+
 ### Milestone: polish and CAD/plan workflow pass
 
 Everything below is covered by unit tests and a type-check; none of it has been

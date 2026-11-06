@@ -10,9 +10,13 @@
 import { secureGet, secureSet, secureRemove } from "../core/secure-store";
 import { notify } from "../core/notify";
 import { ensureAiConsent, isPrivateEndpoint, redactForCloud, redactJsonStringsForCloud } from "./ai-privacy";
+import {
+  ANTHROPIC_BASE, anthropicHeaders, anthropicErrorMessage, buildAnthropicBody,
+  parseAnthropicResponse, AnthropicStreamReducer, looksLikeAnthropicKey,
+} from "./anthropic-messages";
 
 
-export type ProviderKind = "ollama" | "openai";
+export type ProviderKind = "ollama" | "openai" | "anthropic";
 
 export interface ProviderConfig {
   kind: ProviderKind;
@@ -59,7 +63,7 @@ export function loadProviderConfig(): ProviderConfig {
     const parsed = JSON.parse(raw);
 
     // Validate each field independently — a bad `kind` doesn't reset `model`.
-    const kind: ProviderKind = parsed?.kind === "openai" ? "openai" : "ollama";
+    const kind: ProviderKind = parsed?.kind === "openai" || parsed?.kind === "anthropic" ? parsed.kind : "ollama";
     const endpoint = typeof parsed?.endpoint === "string" && parsed.endpoint
       ? parsed.endpoint
       : DEFAULT_CONFIG.endpoint;
@@ -74,6 +78,10 @@ export function loadProviderConfig(): ProviderConfig {
       try { localStorage.setItem(CONFIG_KEY, JSON.stringify({ kind, endpoint, model })); } catch { /* */ }
     }
 
+    // Older builds reached Anthropic through the OpenAI-compat route; use the native API now.
+    if (kind === "openai" && /api\.anthropic\.com/i.test(endpoint)) {
+      return { kind: "anthropic", endpoint: "https://api.anthropic.com", model: model.startsWith("claude") ? model : "claude-sonnet-4-5", apiKey };
+    }
     return { kind, endpoint, model, apiKey };
   } catch (err) {
     console.warn("[ai-providers] load failed, using defaults", err);
@@ -201,6 +209,7 @@ export async function callChat(cfg: ProviderConfig, req: ChatRequest): Promise<C
   await ensureAiConsent(cfg.kind === "ollama" ? "/ollama" : cfg.endpoint);
   req = redactRequestForCloud(cfg, req);
   if (cfg.kind === "ollama") return callOllama(cfg, req);
+  if (cfg.kind === "anthropic") return callAnthropic(cfg, req);
   return callOpenAICompat(cfg, req);
 }
 
@@ -212,6 +221,7 @@ export async function callChatStream(
   await ensureAiConsent(cfg.kind === "ollama" ? "/ollama" : cfg.endpoint);
   req = redactRequestForCloud(cfg, req);
   if (cfg.kind === "ollama") return callOllamaStream(cfg, req, onToken);
+  if (cfg.kind === "anthropic") return callAnthropicStream(cfg, req, onToken);
   return callOpenAIStream(cfg, req, onToken);
 }
 
@@ -236,6 +246,87 @@ function resolveEndpoint(cfg: ProviderConfig): string {
   if (ep.includes("api.anthropic.com")) return "/anthropic";
   return cfg.endpoint;
 }
+
+
+/* ── Anthropic native Messages API (user's own API key) ───────────────── */
+function anthropicUrl(cfg: ProviderConfig, path: string): string {
+  // Dev server proxies /anthropic; a deployed site calls api.anthropic.com
+  // directly (allowed by the CSP and by the browser-access header).
+  let base = (cfg.endpoint || ANTHROPIC_BASE).trim() || ANTHROPIC_BASE;
+  try {
+    const host = typeof location !== "undefined" ? location.hostname : "";
+    if ((host === "localhost" || host === "127.0.0.1") && base.includes("api.anthropic.com")) base = "/anthropic";
+  } catch { /* */ }
+  return joinUrl(base, path);
+}
+
+function requireAnthropicKey(cfg: ProviderConfig): void {
+  if (!cfg.apiKey) {
+    throw new Error(
+      "Claude needs your own Anthropic API key (console.anthropic.com → API keys). " +
+      "A Claude.ai free-plan login cannot be used by other apps. Paste the key in AI settings → API key.",
+    );
+  }
+}
+
+async function anthropicFetch(cfg: ProviderConfig, path: string, init: RequestInit): Promise<Response> {
+  let res: Response;
+  try { res = await fetch(anthropicUrl(cfg, path), init); }
+  catch (err) { throw new Error(networkErrorHint(err, cfg)); }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(anthropicErrorMessage(res.status, txt));
+  }
+  return res;
+}
+
+async function callAnthropic(cfg: ProviderConfig, req: ChatRequest): Promise<ChatResult> {
+  requireAnthropicKey(cfg);
+  const body = buildAnthropicBody(cfg.model, req.messages, req.tools, false);
+  const res = await anthropicFetch(cfg, "/v1/messages", { method: "POST", headers: anthropicHeaders(cfg.apiKey), body: JSON.stringify(body), signal: req.signal });
+  const parsed = parseAnthropicResponse(await res.json());
+  return { message: { role: "assistant", content: parsed.content, ...(parsed.toolCalls.length ? { toolCalls: parsed.toolCalls } : {}) }, toolCalls: parsed.toolCalls };
+}
+
+async function callAnthropicStream(cfg: ProviderConfig, req: ChatRequest, onToken: TokenCallback): Promise<ChatResult> {
+  requireAnthropicKey(cfg);
+  const body = buildAnthropicBody(cfg.model, req.messages, req.tools, true);
+  const res = await anthropicFetch(cfg, "/v1/messages", { method: "POST", headers: anthropicHeaders(cfg.apiKey), body: JSON.stringify(body), signal: req.signal });
+  if (!res.body) throw new Error("Anthropic returned no response body");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const reducer = new AnthropicStreamReducer();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        let ev: any;
+        try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+        const delta = reducer.push(ev);
+        if (delta) onToken(delta);
+      }
+    }
+  } finally { try { reader.releaseLock(); } catch { /* */ } }
+  if (reducer.error) throw new Error(`Anthropic stream error: ${reducer.error}`);
+  const parsed = reducer.result();
+  return { message: { role: "assistant", content: parsed.content, ...(parsed.toolCalls.length ? { toolCalls: parsed.toolCalls } : {}) }, toolCalls: parsed.toolCalls };
+}
+
+async function listAnthropicModels(cfg: ProviderConfig): Promise<string[]> {
+  requireAnthropicKey(cfg);
+  const res = await anthropicFetch(cfg, "/v1/models?limit=100", { headers: anthropicHeaders(cfg.apiKey) });
+  const json: any = await res.json();
+  return (json?.data ?? []).map((m: any) => String(m?.id ?? "")).filter(Boolean);
+}
+
+export { looksLikeAnthropicKey };
 
 function isGeminiEndpoint(cfg: ProviderConfig): boolean {
   return cfg.endpoint.includes("generativelanguage.googleapis.com");
@@ -495,6 +586,10 @@ function normaliseArgs(raw: any): Record<string, any> {
 }
 
 export async function testProvider(cfg: ProviderConfig): Promise<string> {
+  if (cfg.kind === "anthropic") {
+    const ids = await listAnthropicModels(cfg);
+    return `OK · Anthropic key accepted · ${ids.length} model(s): ${ids.slice(0, 4).join(", ")}`;
+  }
   if (cfg.kind === "ollama") {
     const url = joinUrl(resolveEndpoint(cfg), "/api/tags");
     let res: Response;
@@ -520,6 +615,7 @@ export async function testProvider(cfg: ProviderConfig): Promise<string> {
 }
 
 export async function listModels(cfg: ProviderConfig): Promise<string[]> {
+  if (cfg.kind === "anthropic") return listAnthropicModels(cfg);
   if (cfg.kind === "ollama") {
     const url = joinUrl(resolveEndpoint(cfg), "/api/tags");
     let res: Response;

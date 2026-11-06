@@ -250,10 +250,11 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     id: "ai-assistant",
     area: "Platform",
     status: "limited",
-    source: ["src/features/ai-providers.ts", "src/features/ai-privacy.ts"],
-    evidence: ["tests/"],
+    source: ["src/features/ai-providers.ts", "src/features/ai-privacy.ts", "src/features/anthropic-messages.ts"],
+    evidence: ["tests/ai-privacy.test.cjs", "tests/anthropic-messages.test.cjs"],
     limitations: [
       "Cloud providers receive redacted prompts by design; local providers (Ollama) use a separate path",
+      "Claude uses the user's own Anthropic API key (billed to their account); a Claude.ai free/Pro login is not an API credential and cannot be used. Request/stream mapping is unit-tested but has not been run against the live Anthropic API",
       "Custom endpoint URLs require deployment-side CSP extension (docs/CSP.md)",
     ],
     affirmedIn: APP_VERSION,

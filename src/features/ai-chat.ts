@@ -921,13 +921,15 @@ const PRESETS: Preset[] = [
   },
   {
     group: "Cloud (paid)",
-    label: "Anthropic · claude-3.5",
+    label: "Claude · Sonnet",
     needsKey: true,
-    cfg: {
-      kind: "openai",
-      endpoint: "https://api.anthropic.com",
-      model: "claude-3-5-sonnet-20241022",
-    },
+    cfg: { kind: "anthropic", endpoint: "https://api.anthropic.com", model: "claude-sonnet-4-5" },
+  },
+  {
+    group: "Cloud (paid)",
+    label: "Claude · Haiku (fast, cheap)",
+    needsKey: true,
+    cfg: { kind: "anthropic", endpoint: "https://api.anthropic.com", model: "claude-haiku-4-5" },
   },
 ];
 
@@ -983,7 +985,8 @@ function renderSettings(): void {
   pSel.style.cssText = INPUT_CSS;
   pSel.innerHTML =
     `<option value="ollama">Ollama (local)</option>` +
-    `<option value="openai">OpenAI-compatible</option>`;
+    `<option value="openai">OpenAI-compatible</option>` +
+    `<option value="anthropic">Claude (Anthropic API key)</option>`;
   pSel.value = cfg.kind;
   pSel.onchange = () => {
     cfg.kind = pSel.value as any;
@@ -991,6 +994,9 @@ function renderSettings(): void {
       cfg.endpoint = "http://localhost:11434";
       cfg.model = "llama3.1";
       cfg.apiKey = undefined;
+    } else if (cfg.kind === "anthropic") {
+      cfg.endpoint = "https://api.anthropic.com";
+      cfg.model = "claude-sonnet-4-5";
     } else {
       cfg.endpoint = "https://api.openai.com";
       cfg.model = "gpt-4o-mini";
@@ -1014,6 +1020,22 @@ function renderSettings(): void {
       "3. If you open the app from workers.dev, start Ollama with CORS:<br>" +
       "&nbsp;&nbsp;<code style=\"font-size:10px\">OLLAMA_ORIGINS=* ollama serve</code><br>" +
       "4. Click <b>Test connection</b> — your installed models will appear.";
+    settingsPane.appendChild(tip);
+  }
+
+  if (cfg.kind === "anthropic") {
+    const tip = document.createElement("div");
+    tip.style.cssText =
+      "font-size:10.5px;line-height:1.5;color:var(--text-secondary,#a0a6b5);" +
+      "padding:8px 10px;margin:2px 0 6px;border-radius:6px;" +
+      "background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.22)";
+    tip.innerHTML =
+      "<b style=\"color:var(--accent,#38bdf8)\">Claude with your own account</b><br>" +
+      "1. Create an API key at <b>console.anthropic.com</b> → API keys<br>" +
+      "2. Paste it below. It is encrypted and stays in this browser; each user uses their own.<br>" +
+      "3. Click <b>Test connection</b>.<br>" +
+      "A Claude.ai chat login (free or Pro) is not an API key and cannot be used by other apps. " +
+      "API usage is billed to your Anthropic account. Prompts are redacted for credentials before sending.";
     settingsPane.appendChild(tip);
   }
 
@@ -1067,12 +1089,12 @@ function renderSettings(): void {
   /* ── API key ──
      oninput → saves on every keystroke. onpaste → belt-and-braces for
      browser autofill and middle-click paste. */
-  if (cfg.kind === "openai") {
+  if (cfg.kind === "openai" || cfg.kind === "anthropic") {
     const k = document.createElement("input");
     k.type = "password";
     k.value = cfg.apiKey ?? "";
     k.style.cssText = INPUT_CSS;
-    k.placeholder = "paste your key here";
+    k.placeholder = cfg.kind === "anthropic" ? "sk-ant-… (your Anthropic API key)" : "paste your key here";
     k.oninput = () => {
       cfg.apiKey = k.value || undefined;
       commitConfig();
@@ -1262,7 +1284,7 @@ function renderSettings(): void {
         ) as HTMLInputElement | null;
         const liveKey = liveKeyInput?.value || cfg.apiKey;
 
-        const keepKey = p.cfg.kind === "openai" ? liveKey : undefined;
+        const keepKey = p.cfg.kind !== "ollama" ? liveKey : undefined;
         cfg = { ...p.cfg, apiKey: keepKey };
         commitConfig();
         renderHeader();
