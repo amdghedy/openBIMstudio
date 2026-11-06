@@ -1,3 +1,5 @@
+import { handleLinkedInRequest, LinkedInVault, type LinkedInEnv } from "./linkedin";
+
 /**
  * Open BIM Studio edge worker.
  *
@@ -54,7 +56,7 @@ interface CounterNamespace {
   get(id: unknown): CounterStub;
 }
 
-interface Env {
+interface Env extends LinkedInEnv {
   /** Static Assets binding (wrangler.jsonc → assets.binding). */
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   /** Durable Object namespace holding the visit counters. */
