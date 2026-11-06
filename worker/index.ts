@@ -174,8 +174,12 @@ export class VisitCounter {
   }
 }
 
+export { LinkedInVault };
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const linkedInResponse = await handleLinkedInRequest(request, env);
+    if (linkedInResponse) return linkedInResponse;
     const url = new URL(request.url);
     if (url.pathname === "/api/visits") {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_PREFLIGHT });
