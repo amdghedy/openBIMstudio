@@ -130,6 +130,16 @@ function constantTimeEqual(left: string, right: string): boolean {
   return difference === 0;
 }
 
+function oauthCookie(request: Request): string | null {
+  const cookieHeader = request.headers.get("cookie") ?? "";
+  const match = cookieHeader.match(/(?:^|;\\s*)__Host-obs-linkedin-oauth=([^;]+)/);
+  return match?.[1] ?? null;
+}
+
+function clearOAuthCookie(): string {
+  return "__Host-obs-linkedin-oauth=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
+}
+
 function configured(env: LinkedInEnv): boolean {
   return Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET && env.LINKEDIN_REDIRECT_URI);
 }
@@ -153,7 +163,7 @@ async function startOAuth(env: LinkedInEnv): Promise<Response> {
   authorization.searchParams.set("redirect_uri", env.LINKEDIN_REDIRECT_URI!);
   authorization.searchParams.set("state", state);
   authorization.searchParams.set("scope", "openid profile w_member_social");
-  return Response.redirect(authorization.toString(), 302);
+  return new Response(null, {\n    status: 302,\n    headers: {\n      location: authorization.toString(),\n      "set-cookie": `__Host-obs-linkedin-oauth=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,\n      "cache-control": "no-store",\n    },\n  });
 }
 
 async function finishOAuth(request: Request, env: LinkedInEnv): Promise<Response> {
@@ -213,7 +223,7 @@ async function finishOAuth(request: Request, env: LinkedInEnv): Promise<Response
     scope: token.scope ?? "unknown",
   };
   await vaultRequest(env, "/token", "POST", stored);
-  return html("Your personal LinkedIn profile is connected to OpenBIMStudio. The access token is stored privately on the server and was not displayed.");
+  return new Response(await html("Your personal LinkedIn profile is connected to OpenBIMStudio. The access token is stored privately on the server and was not displayed.").text(), {\n    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "set-cookie": clearOAuthCookie() },\n  });
 }
 
 async function publish(request: Request, env: LinkedInEnv): Promise<Response> {
