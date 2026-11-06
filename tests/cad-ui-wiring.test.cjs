@@ -228,5 +228,27 @@ t("super copy hotkey ownership: app-level handlers stand down while a drawing ta
   }
 });
 
+// ── 8. RAY / XLINE construction lines drawn like native CAD ──
+t("ray/xline: infinite construction lines are read, drawn edge-to-edge and saved", () => {
+  // The viewer clips the infinite line to the view and never culls it by its
+  // degenerate anchor box
+  for (const m of ["case \"RAY\":", "case \"XLINE\": {", "M.infiniteLineSegment(e, v)", "const infinite = e.type === \"RAY\" || e.type === \"XLINE\";"]) {
+    assert.ok(viewer.includes(m), `cad-viewer.ts drift: missing "${m}"`);
+  }
+  // The math module owns the clip + anchor-only bbox + infinite-line picking
+  const vm = read("modules", "cad-viewer", "viewer-math.ts");
+  for (const m of ["export function infiniteLineSegment(", "case \"RAY\":\n    case \"XLINE\": return { minX: e.start.x"]) {
+    assert.ok(vm.includes(m), `viewer-math.ts drift: missing "${JSON.stringify(m)}"`);
+  }
+  // The readers turn the file records into entities (no longer skipped)
+  const reader = read("modules", "drawings", "dxf-reader.ts");
+  assert.ok(reader.includes("case \"RAY\":\n      case \"XLINE\": {"), "dxf-reader must parse RAY/XLINE");
+  const dwg = read("modules", "drawings", "dwg-convert.ts");
+  assert.ok(dwg.includes("case \"RAY\":\n        case \"XLINE\": {"), "dwg-convert must convert RAY/XLINE");
+  // The DXF writer keeps them on save
+  const writer = read("modules", "drawings", "dxf-writer.ts");
+  assert.ok(writer.includes("} else if (e.type === \"RAY\" || e.type === \"XLINE\") {"), "dxf-writer must write RAY/XLINE");
+});
+
 console.log(`\ncad-ui-wiring: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

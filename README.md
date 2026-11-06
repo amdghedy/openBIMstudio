@@ -326,6 +326,7 @@ Functions absorbed from the OpenCADStudio project (github.com/HakanSeven12/OpenC
 | BAK / SV$ recovery | open / drop a `.bak` or `.sv$` file | AutoCAD drawing backup and autosave files open like native CAD, with a "recovered from backup" note in the command line. |
 | LandXML CgPoints | drop a `.xml`, or `LANDXMLIN` | Survey points import as POINT entities with name labels on a "LandXML Points" layer (north → CAD Y, east → CAD X). |
 | Entity data extract | `DATAEXTRACT`, or App menu › Export Entity Data (CSV) | Every entity's handle, type, layer, colour, linetype, lineweight, text and anchor point exports to a CSV file. |
+| RAY / XLINE construction lines | open any DWG/DXF | Infinite construction lines read from the file and drawn edge-to-edge like native CAD (clipped to the view, linetype dashes and layer colours kept, pickable everywhere along the line, they never affect ZOOM Extents), moved/copied/mirrored/rotated by their anchor and written back on DXF save. |
 
 ---
 

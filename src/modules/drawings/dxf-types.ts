@@ -76,6 +76,20 @@ export type DxfEntity =
       end: DxfPoint;
     })
   | (DxfEntityBase & {
+      type: "RAY";
+      /** Point the ray starts at. */
+      start: DxfPoint;
+      /** Direction of the infinite extension. */
+      direction: DxfPoint;
+    })
+  | (DxfEntityBase & {
+      type: "XLINE";
+      /** A point on the infinite construction line. */
+      start: DxfPoint;
+      /** Direction of the line (both ways). */
+      direction: DxfPoint;
+    })
+  | (DxfEntityBase & {
       type: "CIRCLE";
       center: DxfPoint;
       radius: number;

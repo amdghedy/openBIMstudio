@@ -356,6 +356,18 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
           break;
         }
 
+        case "RAY":
+        case "XLINE": {
+          // Construction lines: one point on the line + a direction vector
+          // (libredwg-web names vary by build: start/point, dir/vector).
+          const start = toPt(pick(e, ["start", "point"]) ?? {});
+          const dir = toPt(pick(e, ["dir", "vector", "direction"]) ?? {});
+          if (Number.isFinite(start.x + start.y + dir.x + dir.y) && (dir.x !== 0 || dir.y !== 0)) {
+            out.push({ ...c, type: type as "RAY" | "XLINE", start, direction: dir });
+          } else cx.skip(type);
+          break;
+        }
+
         case "INSERT": {
           const name = String(e.name ?? e.blockName ?? "");
           const blk = cx.blocks.get(name);

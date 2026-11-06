@@ -2,12 +2,12 @@
  * DXF ASCII reader.
  *
  * Reads: LINE, CIRCLE, ARC, LWPOLYLINE (with bulges), POLYLINE/VERTEX,
- * TEXT, MTEXT, POINT, SPLINE, ELLIPSE, SOLID/TRACE/3DFACE, INSERT/MINSERT
- * with nested BLOCKS, DIMENSION (through its anonymous block), the layer
- * table and the drawing units ($INSUNITS).
+ * TEXT, MTEXT, POINT, RAY, XLINE, SPLINE, ELLIPSE, SOLID/TRACE/3DFACE,
+ * INSERT/MINSERT with nested BLOCKS, DIMENSION (through its anonymous
+ * block), the layer table and the drawing units ($INSUNITS).
  *
- * Everything is flattened into the simple DxfEntity set (LINE, CIRCLE, ARC,
- * LWPOLYLINE, TEXT, POINT) so every consumer (3D, plan, snap) handles one
+ * Everything is flattened into the simple DxfEntity set (LINE, RAY, XLINE,
+ * CIRCLE, ARC, LWPOLYLINE, TEXT, POINT) so every consumer (3D, plan, snap) handles one
  * small vocabulary. Entity types that are present but not drawn are counted
  * in `doc.skipped` so the UI can tell the user instead of failing silently.
  *
@@ -686,6 +686,18 @@ function expandRecs(
         push({ ...c, type: "POINT", position: d.pt(10, 20, 30) });
         break;
 
+      // RAY (10/20/30 start, 11/21/31 direction — one-sided infinity) and
+      // XLINE (same groups — infinite both ways): construction lines drawn
+      // edge-to-edge by native CAD.
+      case "RAY":
+      case "XLINE": {
+        const start = d.pt(10, 20, 30);
+        const dir = d.pt(11, 21, 31);
+        if (!Number.isFinite(start.x + start.y + dir.x + dir.y) || (dir.x === 0 && dir.y === 0)) { skip(r.type); break; }
+        push({ ...c, type: r.type, start, direction: dir });
+        break;
+      }
+
       case "SPLINE": {
         const closed = (d.n(70) & 1) === 1;
         const degree = d.n(71, 3);
@@ -786,7 +798,7 @@ function expandRecs(
       }
       case "MLINE":
       case "OLE2FRAME": case "REGION": case "3DSOLID": case "BODY":
-      case "RAY": case "XLINE": case "VIEWPORT":
+      case "VIEWPORT":
       case "TOLERANCE": case "MESH": case "SURFACE":
         skip(r.type);
         break;

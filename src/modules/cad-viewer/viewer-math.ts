@@ -115,6 +115,12 @@ export function textOrigin(e: Extract<DxfEntity, { type: "TEXT" }>): { dx: numbe
 export function entityBBox(e: DxfEntity): BBox {
   switch (e.type) {
     case "LINE": return { minX: Math.min(e.start.x, e.end.x), minY: Math.min(e.start.y, e.end.y), maxX: Math.max(e.start.x, e.end.x), maxY: Math.max(e.start.y, e.end.y) };
+    // Infinite construction lines: a degenerate box at the anchor point so
+    // zoom-extents and the spatial index ignore the unbounded extent (native
+    // CAD also ignores RAY/XLINE for ZOOM Extents). Drawing culls these by
+    // type instead of by box.
+    case "RAY":
+    case "XLINE": return { minX: e.start.x, minY: e.start.y, maxX: e.start.x, maxY: e.start.y };
     case "CIRCLE": return { minX: e.center.x - e.radius, minY: e.center.y - e.radius, maxX: e.center.x + e.radius, maxY: e.center.y + e.radius };
     case "ARC": {
       const pts: Pt[] = [arcPt(e, e.startAngle), arcPt(e, e.endAngle)];
@@ -184,13 +190,26 @@ export function distToEntity(e: DxfEntity, x: number, y: number): number {
       return Math.hypot(dx, dy);
     }
     case "POINT": return Math.hypot(x - e.position.x, y - e.position.y);
+    case "RAY":
+    case "XLINE": {
+      // Perpendicular distance to the infinite line; a RAY clamps behind its start.
+      const l2 = e.direction.x * e.direction.x + e.direction.y * e.direction.y;
+      const t = l2 < 1e-18 ? 0 : ((x - e.start.x) * e.direction.x + (y - e.start.y) * e.direction.y) / l2;
+      const tc = e.type === "RAY" && t < 0 ? 0 : t;
+      return Math.hypot(x - (e.start.x + tc * e.direction.x), y - (e.start.y + tc * e.direction.y));
+    }
   }
 }
-
-/** Closest point on the entity's outline to (x, y), or null for text / points. */
 export function nearestOnEntity(e: DxfEntity, x: number, y: number): Pt | null {
   switch (e.type) {
     case "LINE": return nearestOnSeg(x, y, e.start.x, e.start.y, e.end.x, e.end.y);
+    case "RAY":
+    case "XLINE": {
+      const l2 = e.direction.x * e.direction.x + e.direction.y * e.direction.y;
+      let t = l2 < 1e-18 ? 0 : ((x - e.start.x) * e.direction.x + (y - e.start.y) * e.direction.y) / l2;
+      if (e.type === "RAY" && t < 0) t = 0;
+      return { x: e.start.x + t * e.direction.x, y: e.start.y + t * e.direction.y };
+    }
     case "LWPOLYLINE": {
       let best: Pt | null = null, bd = Infinity;
       for (const [a, b] of polySegs(e)) { const p = nearestOnSeg(x, y, a.x, a.y, b.x, b.y), d = Math.hypot(x - p.x, y - p.y); if (d < bd) { bd = d; best = p; } }
@@ -205,6 +224,43 @@ export function nearestOnEntity(e: DxfEntity, x: number, y: number): Pt | null {
     }
     default: return null;
   }
+}
+
+/* ───────────────────────── infinite lines (RAY / XLINE) ───────────────────────── */
+
+/**
+ * Visible segment of an infinite construction line clipped against the view
+ * rect (plus a 5% margin), in world coordinates — null when the line never
+ * crosses the view. RAY clips the half-line (t ≥ 0), XLINE the full line.
+ * Native CAD draws construction lines edge-to-edge like this.
+ */
+export function infiniteLineSegment(
+  e: { type: "RAY" | "XLINE"; start: DxfPoint; direction: DxfPoint },
+  v: View,
+): [Pt, Pt] | null {
+  const tl = screenToWorld(v, 0, 0), br = screenToWorld(v, v.w, v.h);
+  const pad = 0.05 * Math.max(Math.abs(tl.x - br.x), Math.abs(tl.y - br.y));
+  const xmin = Math.min(tl.x, br.x) - pad, xmax = Math.max(tl.x, br.x) + pad;
+  const ymin = Math.min(tl.y, br.y) - pad, ymax = Math.max(tl.y, br.y) + pad;
+  const dx = e.direction.x, dy = e.direction.y;
+  let t0 = e.type === "RAY" ? 0 : -Infinity, t1 = Infinity;
+  if (Math.abs(dx) < 1e-12) { if (e.start.x < xmin || e.start.x > xmax) return null; }
+  else {
+    let ta = (xmin - e.start.x) / dx, tb = (xmax - e.start.x) / dx;
+    if (ta > tb) { const s = ta; ta = tb; tb = s; }
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+  }
+  if (Math.abs(dy) < 1e-12) { if (e.start.y < ymin || e.start.y > ymax) return null; }
+  else {
+    let ta = (ymin - e.start.y) / dy, tb = (ymax - e.start.y) / dy;
+    if (ta > tb) { const s = ta; ta = tb; tb = s; }
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+  }
+  if (!(t0 < t1)) return null;
+  return [
+    { x: e.start.x + t0 * dx, y: e.start.y + t0 * dy },
+    { x: e.start.x + t1 * dx, y: e.start.y + t1 * dy },
+  ];
 }
 
 /* ───────────────────────── measurements ───────────────────────── */
@@ -385,6 +441,8 @@ function keyPoints(e: DxfEntity): Snap[] {
     }
     case "TEXT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }];
     case "POINT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }];
+    case "RAY":
+    case "XLINE": return [{ x: e.start.x, y: e.start.y, kind: "endpoint" }];
   }
 }
 
@@ -710,6 +768,8 @@ export function entitySignature(e: DxfEntity, tol: number): string {
     case "LWPOLYLINE": { const f = e.points.map((p) => pointSig(p, q)).join(";"), r = [...e.points].reverse().map((p) => pointSig(p, q)).join(";"); return "P" + (e.closed ? "c" : "o") + (f < r ? f : r) + (e.hatch ? "h" : ""); }
     case "TEXT": return `T${pointSig(e.position, q)}${e.value}`;
     case "POINT": return `O${pointSig(e.position, q)}`;
+    case "RAY": return `R${pointSig(e.start, q)}${pointSig(e.direction, q)}`;
+    case "XLINE": return `X${pointSig(e.start, q)}${pointSig(e.direction, q)}`;
   }
 }
 

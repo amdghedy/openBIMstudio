@@ -78,6 +78,10 @@ export function translateEnt(e: DxfEntity, dx: number, dy: number): DxfEntity {
       return { ...e, position: translatePt(e.position, dx, dy) };
     case "POINT":
       return { ...e, position: translatePt(e.position, dx, dy) };
+    case "RAY":
+    case "XLINE":
+      // The anchor moves; the direction is relative and unchanged.
+      return { ...e, start: translatePt(e.start, dx, dy) };
   }
 }
 
@@ -111,6 +115,19 @@ export function rotateEnt(e: DxfEntity, cx: number, cy: number, deg: number): Dx
       };
     case "POINT":
       return { ...e, position: rotatePt(e.position, { x: cx, y: cy }, rad) };
+    case "RAY":
+    case "XLINE": {
+      // Rotate the anchor and swing the direction vector with it.
+      const d = e.direction;
+      return {
+        ...e,
+        start: rotatePt(e.start, { x: cx, y: cy }, rad),
+        direction: {
+          x: d.x * Math.cos(rad) - d.y * Math.sin(rad),
+          y: d.x * Math.sin(rad) + d.y * Math.cos(rad),
+        },
+      };
+    }
   }
 }
 
@@ -155,6 +172,13 @@ export function mirrorEnt(e: DxfEntity, a: Pt, b: Pt): DxfEntity {
       return { ...e, position: mirrorPt(e.position, a, b) };
     case "POINT":
       return { ...e, position: mirrorPt(e.position, a, b) };
+    case "RAY":
+    case "XLINE": {
+      // Mirror the anchor and reflect the direction through it.
+      const s = mirrorPt(e.start, a, b);
+      const tip = mirrorPt({ x: e.start.x + e.direction.x, y: e.start.y + e.direction.y }, a, b);
+      return { ...e, start: s, direction: { x: tip.x - s.x, y: tip.y - s.y } };
+    }
   }
 }
 
@@ -177,6 +201,10 @@ export function scaleEnt(e: DxfEntity, cx: number, cy: number, k: number): DxfEn
       return { ...e, position: scalePt(e.position, { x: cx, y: cy }, k), height: e.height * k };
     case "POINT":
       return { ...e, position: scalePt(e.position, { x: cx, y: cy }, k) };
+    case "RAY":
+    case "XLINE":
+      // Scale the anchor; a uniform scale leaves the direction parallel.
+      return { ...e, start: scalePt(e.start, { x: cx, y: cy }, k) };
   }
 }
 
@@ -1033,6 +1061,10 @@ export function stretchEnts(ents: DxfEntity[], win: { minX: number; minY: number
       case "TEXT":
       case "POINT":
         return inside(e.position) ? translateEnt(e, dp.x, dp.y) : e;
+      case "RAY":
+      case "XLINE":
+        // Stretch moves the anchor; the direction is relative and unchanged.
+        return inside(e.start) ? translateEnt(e, dp.x, dp.y) : e;
     }
   });
 }

@@ -1234,6 +1234,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.stroke();
         break;
       }
+      // RAY / XLINE: infinite construction lines, drawn edge-to-edge like
+      // native CAD by clipping the infinite line against the current view.
+      case "RAY":
+      case "XLINE": {
+        const seg = M.infiniteLineSegment(e, v);
+        if (seg) {
+          const a = P(seg[0].x, seg[0].y),
+            b = P(seg[1].x, seg[1].y);
+          c.moveTo(a.x, a.y);
+          c.lineTo(b.x, b.y);
+          c.stroke();
+        }
+        break;
+      }
       case "CIRCLE": {
         const p = P(e.center.x, e.center.y);
         c.arc(p.x, p.y, e.radius * v.scale, 0, Math.PI * 2);
@@ -1401,7 +1415,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   ): void {
     list.forEach((e, i) => {
       if (!shown(e) || (skipSel && sel.has(i))) return;
-      if (ix) {
+      // Infinite construction lines are never culled by their (degenerate,
+      // anchor-only) box — the clipped segment is computed per view instead.
+      const infinite = e.type === "RAY" || e.type === "XLINE";
+      if (ix && !infinite) {
         const bb = ix.boxes[i];
         if (!M.boxesIntersect(bb, cull)) return;
         if (
@@ -7011,6 +7028,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return `T|${e.layer}|${f(e.position.x)},${f(e.position.y)}|${e.value}`;
         case "POINT":
           return `D|${e.layer}|${f(e.position.x)},${f(e.position.y)}`;
+        case "RAY":
+          return `R|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.direction.x)},${f(e.direction.y)}`;
+        case "XLINE":
+          return `X|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.direction.x)},${f(e.direction.y)}`;
       }
     };
     for (const e of before) {

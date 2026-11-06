@@ -274,6 +274,12 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     s += pair(0, "POINT");
     s += common(e);
     s += writePoint([10, 20, 30], e.position);
+  } else if (e.type === "RAY" || e.type === "XLINE") {
+    // Construction lines: one point on the line (10/20/30) + direction (11/21/31).
+    s += pair(0, e.type);
+    s += common(e);
+    s += writePoint([10, 20, 30], e.start);
+    s += writePoint([11, 21, 31], e.direction);
   }
   return s;
 }
@@ -297,6 +303,8 @@ function computeExtents(entities: DxfEntity[]): { min: DxfPoint; max: DxfPoint }
       e.points.forEach(add);
     } else if (e.type === "TEXT" || e.type === "POINT") {
       add(e.position);
+    } else if (e.type === "RAY" || e.type === "XLINE") {
+      // Native behaviour: infinite lines do not define the drawing extents.
     }
   }
   if (!Number.isFinite(minX)) {

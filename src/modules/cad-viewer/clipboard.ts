@@ -134,6 +134,11 @@ export function translateEntity(e: DxfEntity, dx: number, dy: number): DxfEntity
     case "POINT":
       c.position = { x: c.position.x + dx, y: c.position.y + dy };
       break;
+    case "RAY":
+    case "XLINE":
+      // Construction lines move by their anchor; the direction is relative.
+      c.start = { x: c.start.x + dx, y: c.start.y + dy };
+      break;
   }
   return c;
 }
