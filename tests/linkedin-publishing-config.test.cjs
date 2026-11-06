@@ -11,7 +11,7 @@ test("LinkedIn OAuth requests only the required self-service member scopes", () 
   assert.match(source, /scope", "openid profile w_member_social"/);
   assert.match(source, /oauth\/v2\/authorization/);
   assert.match(source, /oauth\/v2\/accessToken:/);
-  assert.match(source, /consume-state/);
+  assert.match(source, /consume-state/);\n  assert.match(source, /__Host-obs-linkedin-oauth/);\n  assert.match(source, /constantTimeEqual\\(state, browserState\\)/);
 });
 
 test("LinkedIn tokens are stored in the private vault and not returned by status", () => {
