@@ -14,6 +14,8 @@ test("LinkedIn OAuth requests only the required self-service member scopes", () 
   assert.ok(source.includes("consume-state"));
   assert.ok(source.includes("__Host-obs-linkedin-oauth"));
   assert.ok(source.includes("constantTimeEqual(state, browserState)"));
+  assert.ok(source.includes('const STATE_KEY_PREFIX = "linkedin:oauth-state:"'));
+  assert.ok(source.includes("storage.put(`${STATE_KEY_PREFIX}${body.value}`, body)"));
 });
 
 test("LinkedIn tokens are stored in the private vault and not returned by status", () => {
@@ -33,6 +35,7 @@ test("Publishing is protected and targets the authenticated personal member", ()
   assert.ok(source.includes("if (!authorized(request, env))"));
   assert.ok(source.includes("urn:li:person:"));
   assert.ok(source.includes("https://api.linkedin.com/rest/posts"));
+  assert.ok(source.includes('const API_VERSION_DEFAULT = "202610"'));
   assert.ok(source.includes('lifecycleState: "PUBLISHED"'));
 });
 
