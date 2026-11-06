@@ -70,6 +70,32 @@ const doc = () => ({
     assert.ok(L.entities.length >= 1);
   });
 
+  await t("a single sheet comes back as one sheet, not two", async () => {
+    const one = (await A.parseWithAcadEngine(await A.exportDxfToDwg(W.writeDxf(doc())), "one.dwg")).doc;
+    assert.strictEqual((one.layouts || []).length, 1);
+  });
+  await t("several sheets survive DWG export with their entities and viewports", async () => {
+    const d3 = doc();
+    const vp = (w) => ({ center: P(10, 10), width: w, height: 50, viewCenter: P(0, 0), viewHeight: 100 });
+    const ln = (x) => ({ type: "LINE", layer: "0", start: P(0, 0), end: P(x, 0) });
+    d3.layouts = [
+      { name: "A1", entities: [ln(100)], viewports: [vp(50)] },
+      { name: "B", entities: [ln(200), ln(210)], viewports: [vp(60), vp(70)] },
+      { name: "C", entities: [ln(300)], viewports: [] },
+    ];
+    const back3 = (await A.parseWithAcadEngine(await A.exportDxfToDwg(W.writeDxf(d3, { allLayouts: true })), "ml.dwg")).doc;
+    assert.strictEqual(back3.layouts.length, 3);
+    assert.deepStrictEqual(back3.layouts.map((l) => l.entities.length), [1, 2, 1]);
+    assert.deepStrictEqual(back3.layouts.map((l) => l.viewports.length), [1, 2, 0]);
+    assert.strictEqual(back3.entities.length, 5, "model space is not polluted by sheet content: " + back3.entities.map((e) => e.type).join());
+  });
+  await t("plain DXF still writes only the first sheet (no unverified block structure)", () => {
+    const d2 = doc(); d2.layouts.push({ name: "B", entities: [], viewports: [] });
+    const text = W.writeDxf(d2);
+    assert.ok(!/\*Paper_Space1/.test(text));
+    assert.strictEqual(W.layoutsNotSaved(d2), 1);
+  });
+
   // Every DWG version the editor offers, through the real writer and reader.
   for (const v of W.DWG_VERSIONS) {
     await t(`version ${v.code} (${v.label}) writes a DWG of that version and keeps the content`, async () => {

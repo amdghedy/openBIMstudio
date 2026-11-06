@@ -774,6 +774,11 @@ function mapDocument(raw: Any, format: "dwg" | "dxf"): DxfDocument {
   for (const [name, blk] of cx.blocks) {
     for (const ent of blk.entities) claimed.add(String(ent.handle));
   }
+  // Entities owned by a paper-space block belong to that sheet, never to model space.
+  const paperOwned = new Set<string>();
+  for (const br of (raw.blockRecords ?? []) as Any[]) {
+    if (/^\*paper_space/i.test(String(br?.name ?? ""))) for (const h of (br.entityHandles ?? []) as string[]) paperOwned.add(String(h));
+  }
   const modelBlock = cx.blocks.get("*Model_Space") ?? cx.blocks.get("*MODEL_SPACE");
   let model: Any[];
   if (modelBlock) {
@@ -781,15 +786,22 @@ function mapDocument(raw: Any, format: "dwg" | "dxf"): DxfDocument {
     cx.blocks.delete("*Model_Space");
     cx.blocks.delete("*MODEL_SPACE");
   } else {
-    model = all.filter((e) => !claimed.has(String(e.handle)) && !e.paperSpace);
+    model = all.filter((e) => !claimed.has(String(e.handle)) && !e.paperSpace && !paperOwned.has(String(e.handle)));
   }
 
   // Paper space layouts: flagged entities, or the paper-space blocks.
   const layouts: DxfLayout[] = [];
-  const paperFlagged = all.filter((e) => e.paperSpace && !claimed.has(String(e.handle)));
   const paperNames = [...layoutBlockNames]
     .filter((n) => /paper/i.test(n))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  // An entity can be both flagged as paper space and listed in a *Paper_Space block
+  // record. Count it once, in the block, or every sheet shows up twice.
+  const inPaperBlock = new Set<string>();
+  for (const n of paperNames) {
+    const br = (raw.blockRecords ?? []).find((b: Any) => b.name === n);
+    for (const h of (br?.entityHandles ?? []) as string[]) inPaperBlock.add(String(h));
+  }
+  const paperFlagged = all.filter((e) => e.paperSpace && !claimed.has(String(e.handle)) && !inPaperBlock.has(String(e.handle)));
   const viewportsOf = (list: Any[]): DxfViewport[] =>
     list
       .filter((e) => e.type === "VIEWPORT" && Number(e.viewHeight ?? 0) > 0)

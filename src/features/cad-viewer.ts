@@ -6670,12 +6670,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // block DWG save. The writer serializes supported model entities; the rest
     // is reported so the user knows what is approximate.
     const skippedEntities = Object.values(doc.skipped ?? {}).reduce((sum, count) => sum + count, 0);
-    const layoutCount = layoutsNotSaved(doc);
+    const layoutCount = doc.layouts?.length ?? 0; // every sheet goes through the DWG converter
     const dimensionStyleCount = Math.max(doc.dimStyles?.length ?? 0, Object.keys(doc.dimStyleTable ?? {}).length);
     const customTextStyles = Object.keys(doc.textStyles ?? {}).filter((name) => !/^standard$/i.test(name));
     const notes = [
       skippedEntities ? `${skippedEntities} entity type(s) were skipped on import (not in model)` : "",
-      layoutCount ? `${layoutCount} further paper-space layout(s) not written (only the first sheet is saved)` : "",
+      layoutCount ? `${layoutCount} paper-space sheet(s) written; sheet names are not kept in DWG` : "",
       dimensionStyleCount ? `${dimensionStyleCount} dim style(s) may be simplified` : "",
       customTextStyles.length ? `${customTextStyles.length} custom text style(s) may map to Standard` : "",
     ].filter(Boolean);
@@ -6687,7 +6687,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // Real HATCH entities and the first paper-space sheet go through the converter;
       // tests/cad-dwg-roundtrip.test.cjs reads the DWG back with the real engine.
       const dwgVersion = currentDwgVersion();
-      const dxf = writeDxf({ ...doc, entities }, { version: dwgVersion });
+      const dxf = writeDxf({ ...doc, entities }, { version: dwgVersion, allLayouts: true });
       await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
       const blobBuffer = new ArrayBuffer(bytes.byteLength);

@@ -22,7 +22,7 @@ Without it, **DXF** still works fully; for DWG convert to DXF first (any CAD).
 | Import drawing | **DXF** | ✅ pure TypeScript parser |
 | Import drawing | **DWG** | ✅ if `@mlightcad/libredwg-web` installed |
 | Export CAD sketch | **DXF** | ✅ R2010 ASCII |
-| Export edited CAD drawing | **DWG** | 🧪 local acadrust WASM writer; 2D subset, read back with the same engine in tests (not opened in AutoCAD). Versions 2000 to 2018, chosen with `DWGVERSION` |
+| Export edited CAD drawing | **DWG** | ⚠️ local acadrust WASM writer; 2D subset, read back with the same engine in tests (not opened in AutoCAD). Versions 2000 to 2018, chosen with `DWGVERSION` |
 | Load into CAD overlay | DXF/DWG | ✅ lines, circles, arcs, polylines, text |
 | Load into 3D scene | DXF/DWG | ✅ THREE.Line preview |
 | Layers | DXF | ✅ read + write |

@@ -339,6 +339,13 @@ export interface WriteDxfOptions {
   hatches?: "hatch" | "outline";
   /** File version written to $ACADVER (and so the DWG version after conversion). Default AutoCAD 2010. */
   version?: DwgVersionCode;
+  /**
+   * Also write every layout after the first as a *Paper_Space block. Used only for the
+   * DWG converter, which reads them back as separate sheets (tests/cad-dwg-roundtrip).
+   * Plain DXF keeps the first sheet only: the extra block records and LAYOUT objects AutoCAD
+   * expects are not written, and an unchecked structure could stop the file opening.
+   */
+  allLayouts?: boolean;
 }
 
 export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
@@ -387,6 +394,23 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   s += layerTable(layers);
   s += styles.table;
   s += pair(0, "ENDSEC");
+
+  // BLOCKS: extra sheets (DWG conversion only)
+  const extraSheets = opts.allLayouts ? (doc.layouts ?? []).slice(1) : [];
+  if (extraSheets.length) {
+    s += pair(0, "SECTION");
+    s += pair(2, "BLOCKS");
+    extraSheets.forEach((sheet, i) => {
+      const name = `*Paper_Space${i + 1}`;
+      s += pair(0, "BLOCK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0");
+      s += pair(100, "AcDbBlockBegin") + pair(2, name) + pair(70, 0);
+      s += pair(10, 0) + pair(20, 0) + pair(30, 0) + pair(3, name) + pair(1, "");
+      for (const e of sheet.entities) s += inPaperSpace(writeEntity(e, styles.nameFor, (opts.hatches ?? "hatch") === "hatch"));
+      sheet.viewports.forEach((vp, k) => { s += writeViewport(vp, k + 2); });
+      s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0") + pair(100, "AcDbBlockEnd");
+    });
+    s += pair(0, "ENDSEC");
+  }
 
   // ENTITIES
   s += pair(0, "SECTION");

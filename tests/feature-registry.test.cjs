@@ -53,10 +53,11 @@ t("required feature ids are pinned (no silent removal)", () => {
   const required = ["authoring-tools", "modeling-panel", "modify-engine", "viewcube-navigation", "solid-kernel", "ifc-import-export", "dxf-import-export", "dwg-import", "dwg-export", "aps-conversion", "bcf-21", "ids-audit", "sheets-views-pdf", "schedules-cost", "clash-detection", "collaboration", "ai-assistant", "plugin-system", "encrypted-projects", "web-security", "pwa-offline"];
   const ids = new Set(entries.map((e) => e.id)); assert.deepStrictEqual(required.filter((r) => !ids.has(r)), []);
 });
-t("dwg-export is registered as experimental with implementation and limits", () => {
+t("dwg-export is registered as limited, backed by the real-engine round-trip test, with limits", () => {
   const e = entries.find((x) => x.id === "dwg-export");
-  assert.strictEqual(e.status, "experimental");
+  assert.strictEqual(e.status, "limited");
   assert.ok(e.source.includes("cad-engine-rust/src/lib.rs"));
+  assert.ok(e.evidence.includes("tests/cad-dwg-roundtrip.test.cjs"));
   assert.ok(e.evidence.includes("tests/cad-dwg-export.test.cjs"));
   assert.ok(/hatch|paper-space|unsupported/i.test(e.limitations.join(" ")));
 });

@@ -148,7 +148,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
   {
     id: "dwg-export",
     area: "Interoperability",
-    status: "experimental",
+    status: "limited",
     source: [
       "src/features/cad-viewer.ts",
       "src/modules/drawings/acad-engine.ts",
@@ -158,9 +158,9 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     evidence: ["tests/cad-dwg-roundtrip.test.cjs", "tests/cad-dwg-export.test.cjs", "tests/cad-acad-engine.test.cjs"],
     limitations: [
       "Local DXF-to-DWG conversion through acadrust (MPL-2.0); no paid SDK, remote service or API key",
-      "Verified by reading the written DWG back with the same engine (hatch fills, linetypes, lineweights, true colour, layer state, text styles, the first paper-space sheet with its viewports, all six offered versions, and the repo's DWG fixtures). No file has been opened in AutoCAD, so Autodesk compatibility is unverified; promotion beyond experimental waits for tests/cad-dwg-roundtrip.test.cjs to pass in CI",
+      "Verified by reading the written DWG back with the same engine (hatch fills, linetypes, lineweights, true colour, layer state, text styles, the first paper-space sheet with its viewports, all six offered versions, and the repo's DWG fixtures). No file has been opened in AutoCAD, so Autodesk compatibility is unverified; the round-trip test passes in CI",
       "Version choice (DWGVERSION): AutoCAD 2000 to 2018 and later; 2000 converts true colour to the nearest AutoCAD colour index",
-      "Blocks are written exploded, wipeouts as outlines, and only the first paper-space layout is saved (the editor says how many were left out); dimension styles may be simplified",
+      "Blocks are written exploded and wipeouts as outlines; every paper-space sheet is written (with its viewports) but sheet names are not kept in DWG, and plain DXF still saves only the first sheet; dimension styles may be simplified",
     ],
     affirmedIn: APP_VERSION,
   },
