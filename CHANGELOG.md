@@ -13,6 +13,7 @@ file — the project adopted a written changelog at 0.73.0.
 
 ### AI assistant
 - Claude is now a native provider (Anthropic Messages API: streaming, tool use, model list, specific error messages). Each user pastes their own Anthropic API key; it is stored in the encrypted local store and never shared. Old "OpenAI-compatible + api.anthropic.com" setups migrate automatically.
+- Added presets for xAI Grok, Fireworks, SambaNova, NVIDIA NIM, Hyperbolic, Moonshot Kimi, Alibaba Qwen and local llama.cpp / vLLM / Jan (alongside Ollama, LM Studio, Gemini, Groq, OpenRouter, Cerebras, OpenAI, DeepSeek, Mistral, Together, Claude). Presets moved to `ai-presets.ts`; a test checks every cloud host is in the CSP. Model ids are defaults and not live-checked; any other OpenAI-compatible service works via a custom endpoint.
 - A Claude.ai free/Pro login cannot be used by third-party apps, so there is no "sign in with Claude" path. Not yet exercised against the live API.
 
 ### Milestone: polish and CAD/plan workflow pass

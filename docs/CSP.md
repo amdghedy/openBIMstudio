@@ -76,7 +76,7 @@ outbound connection is opt-in through the user's own configuration:
 | Microsoft Graph / SharePoint | `graph.microsoft.com`, `*.sharepoint.com` | CDE provider | User-configured |
 | Dalux | `field.dalux.com` | CDE provider | User-configured |
 | Google Drive / Gemini | `www.googleapis.com`, `generativelanguage.googleapis.com` | CDE / AI provider | User-configured |
-| AI providers (Claude uses the native `/v1/messages` API with the user's own key) | `api.openai.com`, `api.anthropic.com`, `api.groq.com`, `openrouter.ai`, `api.cerebras.ai`, `api.deepseek.com`, `api.mistral.ai`, `api.together.xyz` | AI assistant | Auto-redaction applies before any cloud call (`src/features/ai-privacy.ts`) |
+| AI providers (Claude uses the native `/v1/messages` API with the user's own key) | `api.openai.com`, `api.anthropic.com`, `api.groq.com`, `openrouter.ai`, `api.cerebras.ai`, `api.deepseek.com`, `api.mistral.ai`, `api.together.xyz`, `api.x.ai`, `api.fireworks.ai`, `api.sambanova.ai`, `api.hyperbolic.xyz`, `integrate.api.nvidia.com`, `api.moonshot.ai`, `dashscope-intl.aliyuncs.com` | AI assistant | Auto-redaction applies before any cloud call (`src/features/ai-privacy.ts`) |
 | Dropbox | `api.dropboxapi.com`, `content.dropboxapi.com` | File storage | User-configured |
 | Local services | `localhost` / `127.0.0.1` any port, `ws://`/`wss://` localhost | Collaboration server, local AI (Ollama), dev HMR | Local-first default |
 
