@@ -909,3 +909,116 @@ export function quickMeasureParts(e: DxfEntity): Array<{ label: string; value: n
   if (m.sweep != null) out.push({ label: "Sweep°", value: m.sweep, power: 0 });
   return out;
 }
+
+/* ───────────────────────── grip editing ───────────────────────── */
+
+/** One AutoCAD grip hotspot on an entity (unselected: blue, hover: green, hot: red). */
+export interface Grip {
+  x: number;
+  y: number;
+  /** What dragging this grip does. */
+  role: "move" | "start" | "end" | "vertex" | "center" | "radius";
+  /** LWPOLYLINE: vertex index for "vertex" grips. ARC: 0 = start angle, 1 = end angle. */
+  vi?: number;
+}
+
+const gripCircle = (e: Extract<DxfEntity, { type: "CIRCLE" }>): Grip[] => [
+  { x: e.center.x, y: e.center.y, role: "move" },
+  ...[0, 90, 180, 270].map((q) => ({ ...arcPt(e, q), role: "radius" as const })),
+];
+
+/**
+ * AutoCAD grip hotspots for an entity: blue squares that can be dragged to
+ * stretch (LINE ends, polyline vertices), move (center / insertion), or
+ * resize (circle/arc radius, arc angles). Grip count is naturally bounded —
+ * callers may cap it for huge selections.
+ */
+export function entityGrips(e: DxfEntity): Grip[] {
+  switch (e.type) {
+    case "LINE":
+      return [
+        { x: e.start.x, y: e.start.y, role: "start" },
+        { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2, role: "move" },
+        { x: e.end.x, y: e.end.y, role: "end" },
+      ];
+    case "CIRCLE":
+      return gripCircle(e);
+    case "ARC":
+      return [
+        { x: e.center.x, y: e.center.y, role: "move" },
+        { ...arcPt(e, e.startAngle), role: "vertex" as const, vi: 0 },
+        { ...arcPt(e, e.endAngle), role: "vertex" as const, vi: 1 },
+        { ...arcPt(e, e.startAngle + arcSweepDeg(e.startAngle, e.endAngle) / 2), role: "radius" as const },
+      ];
+    case "LWPOLYLINE": {
+      if (e.hatch) return []; // hatched boundaries edit through HATCHEDIT-style flows, not grips
+      const out: Grip[] = e.points.map((p, i) => ({ x: p.x, y: p.y, role: "vertex" as const, vi: i }));
+      return out;
+    }
+    case "TEXT":
+      return [{ x: e.position.x, y: e.position.y, role: "move" }];
+    case "POINT":
+      return [{ x: e.position.x, y: e.position.y, role: "move" }];
+    case "RAY":
+    case "XLINE":
+      return [{ x: e.start.x, y: e.start.y, role: "move" }];
+    default:
+      return [];
+  }
+}
+
+/**
+ * GRIP DRAG: return a NEW entity with the grip `gi` of `entityGrips(e)` moved
+ * to `to`. Immutable like every modify helper — returns null when the grip
+ * does not apply (index stale, wrong role).
+ */
+export function applyGripDrag(e: DxfEntity, gi: number, to: Pt): DxfEntity | null {
+  const grips = entityGrips(e);
+  const g = grips[gi];
+  if (!g) return null;
+  switch (e.type) {
+    case "LINE": {
+      if (g.role === "start") return { ...e, start: { x: to.x, y: to.y } };
+      if (g.role === "end") return { ...e, end: { x: to.x, y: to.y } };
+      // Midpoint grip: move the whole line.
+      const d = { x: to.x - g.x, y: to.y - g.y };
+      return { ...e, start: { x: e.start.x + d.x, y: e.start.y + d.y }, end: { x: e.end.x + d.x, y: e.end.y + d.y } };
+    }
+    case "CIRCLE": {
+      if (g.role === "move") return { ...e, center: { x: to.x, y: to.y } };
+      if (g.role === "radius") {
+        const r = Math.hypot(to.x - e.center.x, to.y - e.center.y);
+        return r > 1e-12 ? { ...e, radius: r } : null;
+      }
+      return null;
+    }
+    case "ARC": {
+      if (g.role === "move") return { ...e, center: { x: to.x, y: to.y } };
+      if (g.role === "vertex") {
+        const a = (Math.atan2(to.y - e.center.y, to.x - e.center.x) * 180) / Math.PI;
+        return g.vi === 0 ? { ...e, startAngle: norm360(a) } : { ...e, endAngle: norm360(a) };
+      }
+      if (g.role === "radius") {
+        const r = Math.hypot(to.x - e.center.x, to.y - e.center.y);
+        return r > 1e-12 ? { ...e, radius: r } : null;
+      }
+      return null;
+    }
+    case "LWPOLYLINE": {
+      if (g.role === "vertex" && g.vi != null && g.vi >= 0 && g.vi < e.points.length) {
+        const pts = e.points.map((q) => ({ ...q }));
+        pts[g.vi] = { x: to.x, y: to.y };
+        return { ...e, points: pts, hatch: e.hatch ? { ...e.hatch, loops: [pts, ...e.hatch.loops.slice(1)] } : undefined };
+      }
+      return null;
+    }
+    case "TEXT":
+    case "POINT":
+      return { ...e, position: { x: to.x, y: to.y } };
+    case "RAY":
+    case "XLINE":
+      return { ...e, start: { x: to.x, y: to.y } };
+    default:
+      return null;
+  }
+}

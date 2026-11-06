@@ -40,6 +40,7 @@ import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
+import { evalExpr, isCalcExpr } from "../modules/cad-viewer/cad-cal";
 import { svgIcon, type IconName } from "./icon-set";
 import { promptLine, confirmDialog, pickFromList } from "./form-modal";
 import { loadCadAliases, resolveCadToken, openCadAliasEditor, effectiveAliases, registerCadAliasEditorOpener } from "./command-aliases";
@@ -122,7 +123,16 @@ type Tool =
   | "dimcenter"
   | "dimcont"
   | "dimbase"
-  | "table";
+  | "table"
+  | "lengthen"
+  | "divide"
+  | "measure"
+  | "ddedit"
+  | "layiso"
+  | "layoff"
+  | "laylck"
+  | "layunlck"
+  | "mleader";
 
 type ColorMode = "layer" | "bw" | "invert" | "style";
 interface Markup {
@@ -209,8 +219,21 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "EXPLODE", aliases: ["X"], description: "Explode polylines into individual segments" },
   { name: "STRETCH", aliases: ["S"], description: "Stretch objects through a crossing window" },
   { name: "ALIGN", aliases: ["AL"], description: "Move + rotate objects onto a two-point alignment" },
-  { name: "MATCHLAYER", aliases: ["ML"], description: "Move objects onto the source object's layer" },
+  { name: "MATCHLAYER", aliases: ["ML", "LAYMCH"], description: "Move objects onto the source object's layer" },
   { name: "ARRAY", aliases: ["AR"], description: "Rectangular array: rows, columns, row & column spacing" },
+  { name: "LENGTHEN", aliases: ["LEN"], description: "Stretch the end of a line/arc/polyline — click and drag, or LENGTHEN <total> / LENGTHEN D <delta>" },
+  { name: "DIVIDE", aliases: ["DIV"], description: "Divide a line/arc/polyline into N equal segments and place point objects" },
+  { name: "MEASURE", aliases: ["ME"], description: "Place point objects at fixed intervals along a line/arc/polyline" },
+  { name: "DDEDIT", aliases: ["ED", "TEXTEDIT"], description: "Edit the text content of a picked TEXT / MTEXT object" },
+  { name: "LAYISO", aliases: ["LAYISOLATE"], description: "Isolate the layer of the picked object — hide every other layer (LAYUNISO restores)" },
+  { name: "LAYUNISO", aliases: [], description: "Restore the layers hidden by LAYISO" },
+  { name: "LAYOFF", aliases: [], description: "Turn off the layer of the picked object" },
+  { name: "LAYLCK", aliases: [], description: "Lock the layer of the picked object" },
+  { name: "LAYUNLCK", aliases: ["LAYUNLOCK"], description: "Unlock the layer of the picked object" },
+  { name: "MLEADER", aliases: ["MLD", "LE", "LEADER"], description: "Draw a leader line with annotation text: arrow point → landing end → type the text" },
+  { name: "QSELECT", aliases: ["QSI"], description: "Quick select: QSELECT TYPE LINE · QSELECT LAYER <name> · QSELECT ALL" },
+  { name: "PEDIT", aliases: ["PE"], description: "Edit polylines: PEDIT J (join selection) · PEDIT C (close) · PEDIT O (open) · PEDIT R (reverse)" },
+  { name: "CAL", aliases: ["QUICKCALC", "QC"], description: "Evaluate an expression: CAL 2*PI*25 · sin/cos/tan (degrees) · sqrt/abs/round/min/max" },
   { name: "FIND", aliases: ["FIND"], description: "Find and replace text in the drawing" },
   { name: "VIEW", aliases: ["V"], description: "Named views: VIEW S <name> saves, VIEW R <name> restores" },
   { name: "LAYERSTATE", aliases: ["LAS", "LAYSTATE"], description: "Layer states: LAYERSTATE S|R <name>" },
@@ -1842,6 +1865,63 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.restore();
     }
 
+    // AutoCAD grips: blue squares on the selection, green under the cursor, red while dragging.
+    if (withUi && (tool === "select" || tool === "box") && !mod && !pick && !gripDrag) {
+      const drawGrip = (x: number, y: number, fill: string): void => {
+        const s = M.worldToScreen(v, x, y);
+        if (s.x < -8 || s.y < -8 || s.x > v.w + 8 || s.y > v.h + 8) return;
+        c.fillStyle = fill;
+        c.strokeStyle = "rgba(15,23,42,.9)";
+        c.lineWidth = 1;
+        c.beginPath();
+        c.rect(s.x - 3.5, s.y - 3.5, 7, 7);
+        c.fill();
+        c.stroke();
+      };
+      if (sel.size <= 128) {
+        c.save();
+        c.setLineDash([]);
+        let budget = 400;
+        for (const i of sel) {
+          const e = ents[i];
+          if (!e || !visible(e)) continue;
+          const grips = M.entityGrips(e);
+          for (let gi = 0; gi < grips.length && budget > 0; gi++, budget--) {
+            const g = grips[gi];
+            const hot = gripHover && gripHover.i === i && gripHover.gi === gi;
+            drawGrip(g.x, g.y, hot ? "#22c55e" : "#3b82f6");
+          }
+          if (budget <= 0) break;
+        }
+        c.restore();
+      }
+    }
+
+    // LENGTHEN dynamic stretch preview (dashed yellow, same language as the modify ghost)
+    if (withUi && pick && pick.kind === "lengthen" && pick.ghost) {
+      c.save();
+      c.setLineDash([6, 4]);
+      c.lineWidth = lw + 1;
+      c.strokeStyle = "#facc15";
+      drawEntity(c, pick.ghost, v);
+      c.restore();
+    }
+
+    // MLEADER preview: arrow point → cursor while waiting for the landing end
+    if (withUi && pick && pick.kind === "mleader" && pick.stage === "landing" && pick.p1 && cursor) {
+      const a = M.worldToScreen(v, pick.p1.x, pick.p1.y);
+      const b2 = M.worldToScreen(v, cursor.x, cursor.y);
+      c.save();
+      c.strokeStyle = "rgba(250,204,21,.8)";
+      c.setLineDash([4, 4]);
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(a.x, a.y);
+      c.lineTo(b2.x, b2.y);
+      c.stroke();
+      c.restore();
+    }
+
     // Modify ghost preview (MOVE / COPY / ROTATE / MIRROR / SCALE) — AutoCAD drag style
     if (modGhost && modGhost.length) {
       c.save();
@@ -2534,6 +2614,39 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let offTarget = -1;
   let pendingNumeric: ((v: number) => void) | null = null;
   let pendingYesNo: ((yes: boolean) => void) | null = null;
+  /** DDEDIT / MLEADER: the next command-line entry is annotation text, not a command. */
+  let pendingText: ((s: string) => void) | null = null;
+  /** LAYISO snapshot — the hidden set before isolation (LAYUNISO restores it). */
+  let preIsoHidden: string[] | null = null;
+
+  /* ── AutoCAD grip editing: select → drag blue hotspots (endpoints, vertices, centers) ── */
+  interface GripDrag {
+    i: number; // entity index in ents
+    gi: number; // grip index in entityGrips(e)
+    orig: DxfEntity; // untouched pre-drag object (undo "before")
+    startW: M.Pt; // world point where the drag started (Shift axis lock)
+    moved: boolean;
+  }
+  let gripDrag: GripDrag | null = null;
+  let gripHover: { i: number; gi: number } | null = null;
+
+  /** Screen-space hit-test on the grips of the current selection (≤ 400 grips, AutoCAD behaviour). */
+  function gripAt(sp: { x: number; y: number }): { i: number; gi: number } | null {
+    if (!sel.size || sel.size > 128) return null;
+    let budget = 400;
+    for (const i of sel) {
+      const e = ents[i];
+      if (!e || !visible(e)) continue;
+      const grips = M.entityGrips(e);
+      for (let gi = 0; gi < grips.length && budget > 0; gi++, budget--) {
+        const g = grips[gi];
+        const s = M.worldToScreen(view, g.x, g.y);
+        if (Math.abs(s.x - sp.x) <= 6 && Math.abs(s.y - sp.y) <= 6) return { i, gi };
+      }
+      if (budget <= 0) return null;
+    }
+    return null;
+  }
 
   const isModTool = (t: Tool): t is ModKind =>
     t === "move" || t === "copy" || t === "paste" || t === "rotate" || t === "mirror" || t === "scale";
@@ -2547,6 +2660,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     offTarget = -1;
     pendingNumeric = null;
     pendingYesNo = null;
+    pendingText = null;
   }
 
   const modTargets = (): DxfEntity[] =>
@@ -2777,10 +2891,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── Cutting / staged pick tools (TRIM / EXTEND / BREAK / FILLET / CHAMFER /
      JOIN / STRETCH / ALIGN / MATCHLAYER) ── */
-  type PickKind = "trim" | "extend" | "break" | "fillet" | "chamfer" | "join" | "stretch" | "align" | "matchlayer";
+  type PickKind = "trim" | "extend" | "break" | "fillet" | "chamfer" | "join" | "stretch" | "align" | "matchlayer" | "lengthen" | "divide" | "measure" | "ddedit" | "layiso" | "layoff" | "laylck" | "layunlck" | "mleader";
   interface PickOp {
     kind: PickKind;
-    stage: "edges" | "targets" | "obj" | "p1" | "p2" | "win1" | "win2" | "base" | "second" | "src1" | "src2" | "dst1" | "dst2";
+    stage: "edges" | "targets" | "obj" | "p1" | "p2" | "win1" | "win2" | "base" | "second" | "src1" | "src2" | "dst1" | "dst2" | "newend" | "landing";
     edges: number[]; // cutting edges / boundary entities / join members
     obj: number; // BREAK: picked entity
     p1: M.Pt | null;
@@ -2789,6 +2903,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     src: [M.Pt, M.Pt] | null; // ALIGN source axis
     dst: [M.Pt, M.Pt] | null; // ALIGN destination axis
     srcLayer: string; // MATCHLAYER source layer
+    /** LENGTHEN: which end the user grabbed (projection of the first pick). */
+    nearEnd: "start" | "end";
+    /** LENGTHEN: preset mode — "dyn" (default, two clicks) / "total" / "delta". */
+    lenMode: "dyn" | "total" | "delta";
+    /** LENGTHEN: preset length for total / delta modes. */
+    lenVal: number;
+    /** LENGTHEN dynamic: live ghost of the lengthened entity. */
+    ghost: DxfEntity | null;
+    /** MLEADER: landing end point (text goes there). */
+    landing: M.Pt | null;
   }
   let pick: PickOp | null = null;
   let filletR = 10;
@@ -2802,11 +2926,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const isPickTool = (t: Tool): t is PickKind =>
     t === "trim" || t === "extend" || t === "break" || t === "fillet" || t === "chamfer" ||
-    t === "join" || t === "stretch" || t === "align" || t === "matchlayer";
+    t === "join" || t === "stretch" || t === "align" || t === "matchlayer" ||
+    t === "lengthen" || t === "divide" || t === "measure" || t === "ddedit" ||
+    t === "layiso" || t === "layoff" || t === "laylck" || t === "layunlck" || t === "mleader";
 
   function clearPickState(): void {
     pick = null;
     pendingNumeric = null;
+    pendingText = null;
   }
 
   function pickPrompt(): string {
@@ -2830,15 +2957,41 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return pick.stage === "src1" ? "Specify first source point:" : pick.stage === "src2" ? "Specify second source point:" : pick.stage === "dst1" ? "Specify first destination point:" : "Specify second destination point:";
       case "matchlayer":
         return pick.stage === "edges" ? "Select the source object:" : "Select destination objects: (Esc to finish)";
+      case "lengthen":
+        return pick.stage === "obj"
+          ? pick.lenMode === "dyn"
+            ? "Select an object or specify total length: (click near the end to stretch)"
+            : "Select an object to lengthen:"
+          : "Specify new end point (stretches along the object's direction):";
+      case "divide":
+        return "Select a line, arc or polyline to divide:";
+      case "measure":
+        return "Select a line, arc or polyline to measure:";
+      case "ddedit":
+        return "Select a text object to edit:";
+      case "layiso":
+      case "layoff":
+      case "laylck":
+      case "layunlck":
+        return "Select an object on the target layer:";
+      case "mleader":
+        return pick.stage === "obj" ? "Specify leader arrowhead location:" : pick.stage === "landing" ? "Specify leader landing end:" : "Enter leader text: (type in the command line, empty Enter = cancel)";
     }
   }
 
   function startPick(kind: PickKind): void {
     clearModState();
     const twoStage = kind === "trim" || kind === "extend" || kind === "matchlayer";
+    const firstStage: PickOp["stage"] =
+      twoStage ? "edges"
+      : kind === "break" ? "obj"
+      : kind === "stretch" ? "win1"
+      : kind === "align" ? "src1"
+      : kind === "mleader" ? "obj"
+      : "targets";
     pick = {
       kind,
-      stage: twoStage ? "edges" : kind === "break" ? "obj" : kind === "stretch" ? "win1" : kind === "align" ? "src1" : "targets",
+      stage: firstStage,
       edges: [],
       obj: -1,
       p1: null,
@@ -2847,6 +3000,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       src: null,
       dst: null,
       srcLayer: "",
+      nearEnd: "end",
+      lenMode: "dyn",
+      lenVal: 0,
+      ghost: null,
+      landing: null,
     };
     if (kind === "fillet") logCmd(`Current fillet radius = ${fmt(filletR)} (FILLET R <value> to change)`);
     if (kind === "chamfer") logCmd(`Current chamfer distances = ${fmt(chamferD[0])} and ${fmt(chamferD[1])} (CHAMFER <d1> <d2> to change)`);
@@ -2854,6 +3012,22 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   const pickTargets = (): DxfEntity[] => (pick?.edges ?? []).map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+
+  /** First/last point of the drawable span of a LINEAR entity (LENGTHEN end detection). */
+  function spanEnd(e: DxfEntity, isStart: boolean): M.Pt | null {
+    switch (e.type) {
+      case "LINE":
+        return isStart ? e.start : e.end;
+      case "ARC": {
+        const a = isStart ? e.startAngle : e.endAngle;
+        return { x: e.center.x + e.radius * Math.cos((a * Math.PI) / 180), y: e.center.y + e.radius * Math.sin((a * Math.PI) / 180) };
+      }
+      case "LWPOLYLINE":
+        return e.closed || !e.points.length ? null : isStart ? e.points[0] : e.points[e.points.length - 1];
+      default:
+        return null;
+    }
+  }
 
   /** Commits the staged FILLET / CHAMFER between two picked LINE entities. */
   function commitFilletChamfer(a: DxfEntity, b: DxfEntity): void {
@@ -3080,6 +3254,194 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const e = ents[hit];
         commitReplace([e], [{ ...e, layer: pick.srcLayer }]);
         logCmd(`MATCHLAYER: moved to ${pick.srcLayer}.`);
+        return true;
+      }
+      case "lengthen": {
+        const supported = (e: DxfEntity | undefined): boolean => !!e && (e.type === "LINE" || e.type === "ARC" || (e.type === "LWPOLYLINE" && !e.closed && !e.hatch && e.points.length >= 2));
+        if (pick.stage === "obj") {
+          if (hit < 0 || !supported(ents[hit])) {
+            logCmd(hit < 0 ? "0 found" : "LENGTHEN: pick a LINE, ARC or open polyline.");
+            return true;
+          }
+          pick.obj = hit;
+          const e = ents[hit];
+          // Which end did the user click near? Compare distance to each span end.
+          const a = spanEnd(e, true),
+            b = spanEnd(e, false);
+          pick.nearEnd = a && b && Math.hypot(wp.x - a.x, wp.y - a.y) < Math.hypot(wp.x - b.x, wp.y - b.y) ? "start" : "end";
+          if (pick.lenMode === "dyn") {
+            pick.stage = "newend";
+            logCmd(pickPrompt());
+          } else {
+            const after = pick.lenMode === "total"
+              ? X.lengthenTotal(e, pick.nearEnd, pick.lenVal)
+              : X.lengthenTotal(e, pick.nearEnd, Math.max(1e-9, X.entitySpanLength(e) + pick.lenVal));
+            if (!after) logCmd("LENGTHEN: cannot apply that length to this object.");
+            else {
+              commitModify([e], [after]);
+              logCmd(`LENGTHEN ${pick.lenMode === "total" ? "total" : "delta"} = ${fmt(pick.lenVal)}: new length = ${fmt(X.entitySpanLength(after))}.`);
+            }
+            clearPickState();
+            setTool("select");
+            draw();
+          }
+          return true;
+        }
+        // stage "newend": dynamic stretch — the click point projected onto the end tangent.
+        const e = ents[pick.obj];
+        if (!e || !supported(e)) return true;
+        const s2 = snapped(wp);
+        const after = X.lengthenTo(e, pick.nearEnd, s2 ? { x: s2.x, y: s2.y } : wp);
+        if (!after) return true;
+        commitModify([e], [after]);
+        logCmd(`LENGTHEN: new length = ${fmt(X.entitySpanLength(after))}.`);
+        clearPickState();
+        setTool("select");
+        draw();
+        return true;
+      }
+      case "divide":
+      case "measure": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const e = ents[hit];
+        if (e.type !== "LINE" && e.type !== "ARC" && !(e.type === "LWPOLYLINE" && !e.closed && !e.hatch && e.points.length >= 2)) {
+          logCmd(`${pick.kind === "divide" ? "DIVIDE" : "MEASURE"}: pick a LINE, ARC or open polyline.`);
+          return true;
+        }
+        pick.obj = hit;
+        setSel([hit]);
+        const ask = pick.kind === "divide" ? "Enter the number of segments:" : "Specify length of segments:";
+        logCmd(ask);
+        pendingNumeric = (v) => {
+          pendingNumeric = null;
+          if (!pick || (pick.kind !== "divide" && pick.kind !== "measure")) return;
+          const ent = ents[pick.obj];
+          if (!ent) return;
+          const pts2 = pick.kind === "divide" ? X.divPoints(ent, Math.round(v)) : X.measPoints(ent, v);
+          if (!pts2.length) {
+            logCmd(pick.kind === "divide" ? `DIVIDE: ${Math.round(v)} segment(s) do not fit.` : "MEASURE: that spacing does not fit on the object.");
+          } else {
+            const list: DxfEntity[] = pts2.map((q) => ({ type: "POINT", layer: currentLayer, ...newObjectProps(), position: { x: q.x, y: q.y } }));
+            addEntities(list);
+            logCmd(`${pick.kind === "divide" ? "DIVIDE" : "MEASURE"}: ${list.length} point(s) placed on ${currentLayer}.`);
+          }
+          clearPickState();
+          setTool("select");
+          draw();
+        };
+        return true;
+      }
+      case "ddedit": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const e = ents[hit];
+        if (e.type !== "TEXT") {
+          logCmd("DDEDIT: pick a TEXT / MTEXT object.");
+          return true;
+        }
+        pick.obj = hit;
+        setSel([hit]);
+        logCmd(`Current text: ${e.value}`);
+        logCmd("Enter new text: (empty Enter keeps the existing text, Esc cancels)");
+        pendingText = (s) => {
+          pendingText = null;
+          const ent = ents[pick?.obj ?? -1];
+          if (!ent || ent.type !== "TEXT" || !s) {
+            logCmd("DDEDIT: text unchanged.");
+          } else {
+            commitModify([ent], [{ ...ent, value: s }]);
+            logCmd("DDEDIT: text updated.");
+          }
+          clearPickState();
+          setTool("select");
+          draw();
+        };
+        return true;
+      }
+      case "layiso": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const layerName = ents[hit].layer;
+        if (!preIsoHidden) preIsoHidden = [...hidden];
+        hidden.clear();
+        for (const l of doc?.layers ?? []) if (l.name !== layerName) hidden.add(l.name);
+        logCmd(`LAYISO: layer "${layerName}" isolated — ${hidden.size} layer(s) hidden. LAYUNISO to restore.`);
+        clearPickState();
+        setTool("select");
+        draw();
+        return true;
+      }
+      case "layoff": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        hidden.add(ents[hit].layer);
+        logCmd(`LAYOFF: layer "${ents[hit].layer}" is now off.`);
+        clearPickState();
+        setTool("select");
+        draw();
+        return true;
+      }
+      case "laylck":
+      case "layunlck": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const layerName = ents[hit].layer;
+        const lyr = doc?.layers.find((l) => l.name === layerName);
+        if (lyr) {
+          lyr.locked = pick.kind === "laylck";
+          logCmd(`${pick.kind === "laylck" ? "LAYLCK" : "LAYUNLCK"}: layer "${layerName}" is now ${lyr.locked ? "locked" : "unlocked"}.`);
+        } else logCmd(`Layer "${layerName}" is not in the layer table.`);
+        clearPickState();
+        setTool("select");
+        draw();
+        return true;
+      }
+      case "mleader": {
+        const pt = { x: wp.x, y: wp.y };
+        if (pick.stage === "obj") {
+          pick.p1 = pt;
+          pick.stage = "landing";
+          logCmd(pickPrompt());
+          return true;
+        }
+        if (pick.stage === "landing") {
+          if (!pick.p1) return true;
+          pick.landing = pt;
+          logCmd("Enter leader text: (type in the command line, empty Enter = cancel)");
+          pendingText = (s) => {
+            pendingText = null;
+            const a = pick?.p1,
+              b = pick?.landing;
+            if (!a || !b) return;
+            if (!s) {
+              logCmd("MLEADER: cancelled (no text).");
+            } else {
+              const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
+              const h = span > 0 ? span / 100 : 2;
+              addEntities([
+                { type: "LINE", layer: currentLayer, ...newObjectProps(), start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y } },
+                { type: "TEXT", layer: currentLayer, ...newObjectProps(), position: { x: b.x + h * 0.25, y: b.y + h * 0.25 }, height: h, value: s },
+              ]);
+              logCmd(`MLEADER: leader with text "${s}" added.`);
+            }
+            clearPickState();
+            setTool("select");
+            draw();
+          };
+          pick.stage = "obj";
+          return true;
+        }
         return true;
       }
     }
@@ -3783,6 +4145,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ["text", "Text", "T"],
     ["match", "Match Properties", "MA"],
     ["calibrate", "Calibrate", "K"],
+    ["lengthen", "Lengthen", "LEN"],
+    ["divide", "Divide", "DIV"],
+    ["measure", "Measure", "ME"],
+    ["mleader", "MLeader", "MLD"],
   ];
 
   /* Ribbon-style button / group builders (shared by buildBar + buildBar2) */
@@ -3882,6 +4248,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         tb("join", "join", "Join") +
           tb("fillet", "fillet", "Fillet") +
           tb("chamfer", "chamfer", "Chamfer") +
+          tb("lengthen", "stretch", "Lengthen") +
           tb("explode", "explode", "Explode") +
           tb("align", "align", "Align") +
           tb("erase", "delete", "Erase"),
@@ -3894,7 +4261,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         tb("text", "text", "Text") +
           rb("model-text", "MText", `data-a="mtext"`, "Place multiline text (MTEXT)") +
           tb("table", "table", "Table") +
-          tb("leader", "tag", "Leader"),
+          tb("leader", "tag", "Leader") +
+          tb("mleader", "tag-all", "MLeader") +
+          rb("text", "Edit Text", `data-a="ddedit"`, "Edit the text content of a picked TEXT / MTEXT object (ED / DDEDIT)"),
         "",
         "",
         "home",
@@ -3916,6 +4285,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("radius", "dim-radial", "Radius") +
           tb("coord", "spot-coord", "ID Point") +
           tb("angle", "dim-angular", "Angle") +
+          tb("divide", "point", "Divide") +
+          tb("measure", "measure", "Measure") +
           rb("report", "List", `data-a="list"`, "List properties of the selection (LI / LIST)"),
         "",
         "",
@@ -3931,7 +4302,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "Layers",
-        rb("schedules", "Manager", `data-a="lyr-mgr"`, "AutoCAD Layer Properties Manager (LA)"),
+        rb("schedules", "Manager", `data-a="lyr-mgr"`, "AutoCAD Layer Properties Manager (LA)") +
+          rb("isolate", "LayIso", `data-a="layiso"`, "Isolate the layer of a picked object — hide every other layer (LAYISO)") +
+          rb("show-all", "LayUniso", `data-a="layuniso"`, "Restore the layers hidden by LAYISO (LAYUNISO)") +
+          rb("masking-region", "LayOff", `data-a="layoff"`, "Turn off the layer of a picked object (LAYOFF)"),
         "",
         "",
         "home",
@@ -4211,6 +4585,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           }
         });
       },
+      // AutoCAD expansion pack: layer isolation + quick edit shortcuts
+      layiso: () => executeAutoCadCommand("LAYISO"),
+      layoff: () => executeAutoCadCommand("LAYOFF"),
+      layuniso: () => executeAutoCadCommand("LAYUNISO"),
+      ddedit: () => executeAutoCadCommand("DDEDIT"),
+      qselect: () => executeAutoCadCommand("QSELECT"),
+      pedit: () => executeAutoCadCommand("PEDIT"),
     });
 
     tools.querySelectorAll<HTMLElement>("button[data-a]").forEach((b) => {
@@ -4372,6 +4753,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       offDist = abs;
       offStage = "pickObj";
       logCmd(`Offset distance = ${fmt(abs)}`);
+      showAcadPrompt();
+      return true;
+    }
+    if (tool === "lengthen" && pick) {
+      pick.lenMode = "total";
+      pick.lenVal = abs;
+      logCmd(`LENGTHEN: total length = ${fmt(abs)}. Select an object:`);
       showAcadPrompt();
       return true;
     }
@@ -4578,6 +4966,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // Right → left  = CROSSING (dotted green) — any entity that touches the box
     // Shift/Ctrl adds to the current selection. Pan is middle-button or PAN tool only.
     if (tool === "box" || tool === "select") {
+      // Grip editing: a click on a hotspot of the selection starts a grip drag
+      // (AutoCAD blue-grip behaviour) instead of a rubber band.
+      if (!mod && !pick) {
+        const g = gripAt(sp);
+        if (g && ents[g.i]) {
+          const w0 = M.screenToWorld(view, sp.x, sp.y);
+          gripDrag = { i: g.i, gi: g.gi, orig: ents[g.i], startW: { x: w0.x, y: w0.y }, moved: false };
+          gripHover = null;
+          capture(ev.pointerId);
+          cv.style.cursor = "grabbing";
+          return;
+        }
+      }
       press = {
         x: sp.x,
         y: sp.y,
@@ -5165,6 +5566,26 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (orthoOn && pts.length >= 1) cur = M.orthoConstrain(pts[pts.length - 1], cur);
     cursor = cur;
     if (mod) updateModGhost(cur);
+    // Grip drag: live update of the dragged object (committed with undo on release).
+    if (gripDrag) {
+      const e = ents[gripDrag.i];
+      if (e) {
+        let to: M.Pt = { x: cur.x, y: cur.y };
+        if (ev.shiftKey) to = M.orthoConstrain(gripDrag.startW, to);
+        const moved = M.applyGripDrag(e, gripDrag.gi, to);
+        if (moved) ents[gripDrag.i] = moved;
+        gripDrag.moved = true;
+      }
+      draw();
+      return;
+    }
+    // LENGTHEN dynamic: stretch preview follows the cursor.
+    if (pick && pick.kind === "lengthen" && pick.stage === "newend") {
+      const e = ents[pick.obj];
+      pick.ghost = e ? X.lengthenTo(e, pick.nearEnd, cur) : null;
+    }
+    // Grip hover highlight (unselected tool state only — cheap cap keeps it that way).
+    gripHover = !mod && !pick && (tool === "select" || tool === "box") ? gripAt(sp) : null;
     updateStatus(cursor);
     draw();
   });
@@ -5206,6 +5627,26 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const endDrag = (ev: PointerEvent) => {
     ptrs.delete(ev.pointerId);
     if (ptrs.size < 2) pinch = 0;
+    // Grip drag release: commit as a single modify undo action (AutoCAD grip edit).
+    if (gripDrag) {
+      const after = ents[gripDrag.i];
+      if (gripDrag.moved && after && after !== gripDrag.orig) {
+        undoStack.push({ type: "modify", before: [gripDrag.orig], after: [after] });
+        markDirty();
+        redoStack.length = 0;
+        const nb = M.entityBBox(after);
+        if (nb) bounds = bounds ? M.unionBBox(bounds, nb) : nb;
+        rebuildIndex();
+        showProps();
+        logCmd("Grip edit: object updated (Ctrl+Z to undo).");
+      } else {
+        ents[gripDrag.i] = gripDrag.orig; // click without drag — nothing changed
+      }
+      gripDrag = null;
+      cv.style.cursor = tool === "pan" ? "grab" : "crosshair";
+      draw();
+      return;
+    }
     if (press && press.id === ev.pointerId) {
       if (press.band && press.moved && rband && idx && ev.type === "pointerup") {
         // Screen X direction decides mode (AutoCAD): L→R window, R→L crossing
@@ -5330,6 +5771,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     hover = null;
     cursor = null;
     modGhost = null;
+    // Grip drag in progress: revert the in-place grip move.
+    if (gripDrag) {
+      ents[gripDrag.i] = gripDrag.orig;
+      gripDrag = null;
+    }
+    gripHover = null;
     try {
       cmdAutoEl.style.display = "none";
     } catch {
@@ -5867,6 +6314,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function executeAutoCadCommand(rawInput: string): void {
     const trimmed = rawInput.trim();
     if (!trimmed) return;
+    // DDEDIT / MLEADER: the typed line is annotation text, not a command.
+    if (pendingText) {
+      const f = pendingText;
+      pendingText = null;
+      cmdInput.value = "";
+      cmdAutoEl.style.display = "none";
+      logCmd(trimmed);
+      f(trimmed);
+      return;
+    }
     cmdHistory.push(trimmed);
     cmdHistoryIdx = cmdHistory.length;
     cmdInput.value = "";
@@ -6350,6 +6807,140 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
 
+    /* ── AutoCAD expansion pack: LENGTHEN / DIVIDE / MEASURE / DDEDIT / LAYER tools /
+          MLEADER / QSELECT / PEDIT / CAL ── */
+    if (cmd === "LEN" || cmd === "LENGTHEN") {
+      setTool("lengthen");
+      const lower = parts.slice(1).map((s) => s.toUpperCase());
+      const nums = parts.slice(1).map(parseFloat).filter((v) => Number.isFinite(v));
+      if (lower.includes("D") || lower.includes("DELTA")) {
+        if (pick && nums.length) {
+          pick.lenMode = "delta";
+          pick.lenVal = nums[0];
+          logCmd(`LENGTHEN: delta = ${fmt(nums[0])}. Select an object:`);
+        } else logCmd("LENGTHEN: specify a delta, e.g. LENGTHEN D 5.");
+      } else if (nums.length && pick) {
+        pick.lenMode = "total";
+        pick.lenVal = Math.abs(nums[0]);
+        logCmd(`LENGTHEN: total length = ${fmt(pick.lenVal)}. Select an object:`);
+      }
+      return;
+    }
+    if (cmd === "DIV" || cmd === "DIVIDE") {
+      setTool("divide");
+      return;
+    }
+    if (cmd === "ME" || cmd === "MEASURE") {
+      setTool("measure");
+      return;
+    }
+    if (cmd === "ED" || cmd === "DDEDIT" || cmd === "TEXTEDIT") {
+      setTool("ddedit");
+      return;
+    }
+    if (cmd === "LAYUNISO") {
+      if (preIsoHidden) {
+        hidden.clear();
+        for (const l of preIsoHidden) hidden.add(l);
+        preIsoHidden = null;
+        logCmd("LAYUNISO: layer visibility restored.");
+        draw();
+      } else logCmd("LAYUNISO: no LAYISO snapshot to restore.");
+      return;
+    }
+    if (cmd === "LAYISO" || cmd === "LAYISOLATE" || cmd === "LAYOFF" || cmd === "LAYLCK" || cmd === "LAYUNLCK" || cmd === "LAYUNLOCK") {
+      setTool(cmd === "LAYISO" || cmd === "LAYISOLATE" ? "layiso" : cmd === "LAYOFF" ? "layoff" : cmd === "LAYLCK" ? "laylck" : "layunlck");
+      return;
+    }
+    if (cmd === "MLD" || cmd === "MLEADER" || cmd === "LE" || cmd === "LEADER") {
+      setTool("mleader");
+      return;
+    }
+    if (cmd === "QSELECT" || cmd === "QSI") {
+      const what = (parts[1] ?? "").toUpperCase();
+      const val = parts.slice(2).join(" ").trim();
+      const all = ents.map((_, i) => i).filter((i) => visible(ents[i]));
+      let ids: number[] = [];
+      if (what === "ALL") ids = all;
+      else if (what === "TYPE") ids = all.filter((i) => ents[i].type === val.toUpperCase());
+      else if (what === "LAYER") ids = all.filter((i) => ents[i].layer.toLowerCase() === val.toLowerCase());
+      if (what === "ALL" || what === "TYPE" || what === "LAYER") {
+        setSel(ids);
+        logCmd(`QSELECT ${what}${val ? " " + val : ""}: ${ids.length} object(s) selected.`);
+      } else logCmd("QSELECT: use QSELECT TYPE <LINE|CIRCLE|ARC|LWPOLYLINE|TEXT|POINT> · QSELECT LAYER <name> · QSELECT ALL.");
+      return;
+    }
+    if (cmd === "PE" || cmd === "PEDIT") {
+      const sub = (parts[1] ?? "").toUpperCase();
+      const targets = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+      const polys = targets.filter((e): e is Extract<DxfEntity, { type: "LWPOLYLINE" }> => e.type === "LWPOLYLINE");
+      if (!targets.length) {
+        logCmd("PEDIT: select polyline(s) first, then PEDIT J (join) | C (close) | O (open) | R (reverse).");
+        return;
+      }
+      if (sub === "J" || sub === "JOIN") {
+        const merged = X.chainPolyline(targets);
+        if (!merged) logCmd(`PEDIT: ${targets.length} object(s) do not form a connected chain (LINE / open LWPOLYLINE only).`);
+        else {
+          commitReplace(targets, [merged]);
+          logCmd(`PEDIT: ${targets.length} object(s) joined into 1 polyline.`);
+          draw();
+        }
+      } else if (sub === "C" || sub === "CLOSE") {
+        const open = polys.filter((e) => !e.closed);
+        if (!open.length) logCmd("PEDIT: no open polyline in the selection.");
+        else {
+          commitModify(open, open.map((e) => ({ ...e, closed: true })));
+          logCmd(`PEDIT: ${open.length} polyline(s) closed.`);
+          draw();
+        }
+      } else if (sub === "O" || sub === "OPEN") {
+        const closed = polys.filter((e) => !!e.closed);
+        if (!closed.length) logCmd("PEDIT: no closed polyline in the selection.");
+        else {
+          commitModify(closed, closed.map((e) => ({ ...e, closed: false })));
+          logCmd(`PEDIT: ${closed.length} polyline(s) opened.`);
+          draw();
+        }
+      } else if (sub === "R" || sub === "REVERSE") {
+        if (!polys.length) logCmd("PEDIT: no polyline in the selection.");
+        else {
+          commitModify(polys, polys.map((e) => ({ ...e, points: e.points.slice().reverse() })));
+          logCmd(`PEDIT: ${polys.length} polyline(s) reversed.`);
+          draw();
+        }
+      } else logCmd("PEDIT options: J (join selection) · C (close) · O (open) · R (reverse).");
+      return;
+    }
+    if (cmd === "CAL" || cmd === "QUICKCALC" || cmd === "QC") {
+      const expr = trimmed.slice(parts[0].length).trim();
+      if (!expr) logCmd("CAL: enter an expression — e.g. CAL 2*PI*25 · sin/cos/tan (degrees) · sqrt/abs/round/min/max.");
+      else {
+        const v = evalExpr(expr);
+        logCmd(v == null ? `CAL: cannot evaluate "${expr}".` : `CAL = ${v}`);
+      }
+      return;
+    }
+    // Bare arithmetic expression while a tool waits for a number (AutoCAD CAL on the fly)
+    if (isCalcExpr(trimmed)) {
+      const v = evalExpr(trimmed);
+      if (v != null && Number.isFinite(v)) {
+        if (applyDirectDistance(v)) {
+          draw();
+          return;
+        }
+        if (pendingNumeric) {
+          const f = pendingNumeric;
+          pendingNumeric = null;
+          f(v);
+          draw();
+          return;
+        }
+        logCmd(`CAL = ${v}`);
+        return;
+      }
+    }
+
     logCmd(`Unknown command "${trimmed}". Press ? for AutoCAD command list.`);
   }
 
@@ -6400,7 +6991,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       e.preventDefault();
       const v = cmdInput.value.trim();
       if (!v) {
-        repeatLastCommand();
+        // DDEDIT / MLEADER: empty Enter = keep existing text / cancel, not repeat.
+        if (pendingText) {
+          const f = pendingText;
+          pendingText = null;
+          f("");
+        } else repeatLastCommand();
         return;
       }
       executeAutoCadCommand(cmdInput.value);

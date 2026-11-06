@@ -1027,6 +1027,201 @@ export function donutLoops(cx: number, cy: number, rOuter: number, rInner: numbe
   return [ellipseLoop(cx, cy, rOuter, rOuter, 64), ellipseLoop(cx, cy, rInner, rInner, 48)];
 }
 
+/* ── LENGTHEN / DIVIDE / MEASURE ── */
+
+/** Which end of a LINEAR entity the user grabbed (smaller arc length = start side). */
+export type LengthenEnd = "start" | "end";
+
+/** Total length of the drawable span of an entity (LINE / ARC / open LWPOLYLINE). */
+export function entitySpanLength(e: DxfEntity): number {
+  switch (e.type) {
+    case "LINE":
+      return Math.hypot(e.end.x - e.start.x, e.end.y - e.start.y);
+    case "ARC": {
+      const sw = norm360(e.endAngle - e.startAngle) || 360;
+      return e.radius * sw * DEG;
+    }
+    case "LWPOLYLINE": {
+      if (e.closed || e.points.length < 2) return 0;
+      let len = 0;
+      for (let i = 1; i < e.points.length; i++) len += Math.hypot(e.points[i].x - e.points[i - 1].x, e.points[i].y - e.points[i - 1].y);
+      return len;
+    }
+    default:
+      return 0;
+  }
+}
+
+/** LENGTHEN (dynamic): replace the grabbed end with `to` projected on the entity's end tangent. */
+export function lengthenTo(e: DxfEntity, end: LengthenEnd, to: Pt): DxfEntity | null {
+  switch (e.type) {
+    case "LINE": {
+      // Project the cursor onto the infinite line through start→end.
+      const dx = e.end.x - e.start.x,
+        dy = e.end.y - e.start.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-18) return null;
+      const t = ((to.x - e.start.x) * dx + (to.y - e.start.y) * dy) / len2;
+      const p = P(e.start.x + dx * t, e.start.y + dy * t);
+      return end === "end" ? { ...e, end: p } : { ...e, start: p };
+    }
+    case "ARC": {
+      // Cursor angle becomes the new start/end angle; sweep keeps the CCW direction.
+      const a = Math.atan2(to.y - e.center.y, to.x - e.center.x) * RAD;
+      return end === "end" ? { ...e, endAngle: norm360(a) } : { ...e, startAngle: norm360(a) };
+    }
+    case "LWPOLYLINE": {
+      if (e.closed || e.points.length < 2) return null;
+      const pts = e.points.map((q) => ({ ...q }));
+      if (end === "end") {
+        const a = pts[pts.length - 2],
+          b = pts[pts.length - 1];
+        const dx = b.x - a.x,
+          dy = b.y - a.y,
+          len2 = dx * dx + dy * dy;
+        if (len2 < 1e-18) return null;
+        const t = ((to.x - a.x) * dx + (to.y - a.y) * dy) / len2;
+        pts[pts.length - 1] = P(a.x + dx * t, a.y + dy * t);
+      } else {
+        const a = pts[1],
+          b = pts[0];
+        const dx = b.x - a.x,
+          dy = b.y - a.y,
+          len2 = dx * dx + dy * dy;
+        if (len2 < 1e-18) return null;
+        const t = ((to.x - a.x) * dx + (to.y - a.y) * dy) / len2;
+        pts[0] = P(a.x + dx * t, a.y + dy * t);
+      }
+      return { ...e, points: pts, hatch: e.hatch ? { ...e.hatch, loops: [pts, ...e.hatch.loops.slice(1)] } : undefined };
+    }
+    default:
+      return null;
+  }
+}
+
+/** LENGTHEN <total>: set the grabbed end so the entity measures exactly `total`. */
+export function lengthenTotal(e: DxfEntity, end: LengthenEnd, total: number): DxfEntity | null {
+  const cur = entitySpanLength(e);
+  if (cur < 1e-12 || total < 1e-9) return null;
+  switch (e.type) {
+    case "LINE": {
+      const k = total / cur;
+      const dx = e.end.x - e.start.x,
+        dy = e.end.y - e.start.y;
+      if (end === "end") return { ...e, end: P(e.start.x + dx * k, e.start.y + dy * k) };
+      return { ...e, start: P(e.end.x - dx * k, e.end.y - dy * k) };
+    }
+    case "ARC": {
+      const k = total / cur;
+      const sw = norm360(e.endAngle - e.startAngle) || 360;
+      if (end === "end") return { ...e, endAngle: norm360(e.startAngle + sw * k) };
+      return { ...e, startAngle: norm360(e.endAngle - sw * k) };
+    }
+    case "LWPOLYLINE": {
+      if (e.closed || e.points.length < 2) return null;
+      // Walk from the opposite end and cut the last segment at the remainder.
+      const pts = e.points.map((q) => ({ ...q }));
+      let remain = total;
+      if (end === "end") {
+        const out: DxfPoint[] = [];
+        out.push(pts[0]);
+        for (let i = 1; i < pts.length && remain > 1e-12; i++) {
+          const d = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+          if (d <= remain) {
+            out.push(pts[i]);
+            remain -= d;
+          } else {
+            const t = remain / d;
+            out.push(P(pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t, pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t));
+            remain = 0;
+          }
+        }
+        return { ...e, points: out };
+      }
+      const rev = pts.slice().reverse();
+      const out: DxfPoint[] = [];
+      out.push(rev[0]);
+      for (let i = 1; i < rev.length && remain > 1e-12; i++) {
+        const d = Math.hypot(rev[i].x - rev[i - 1].x, rev[i].y - rev[i - 1].y);
+        if (d <= remain) {
+          out.push(rev[i]);
+          remain -= d;
+        } else {
+          const t = remain / d;
+          out.push(P(rev[i - 1].x + (rev[i].x - rev[i - 1].x) * t, rev[i - 1].y + (rev[i].y - rev[i - 1].y) * t));
+          remain = 0;
+        }
+      }
+      const fixed = out.reverse();
+      return { ...e, points: fixed };
+    }
+    default:
+      return null;
+  }
+}
+
+/** DIVIDE: N-1 interior points that split the entity into N equal parts. */
+export function divPoints(e: DxfEntity, n: number): Pt[] {
+  if (n < 2 || n > 10000) return [];
+  const total = entitySpanLength(e);
+  if (total < 1e-12) return [];
+  const out: Pt[] = [];
+  for (let i = 1; i < n; i++) {
+    const p = pointAtSpan(e, (total * i) / n);
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+/** MEASURE: points every `spacing` along the entity, from the start. */
+export function measPoints(e: DxfEntity, spacing: number): Pt[] {
+  if (!(spacing > 1e-12)) return [];
+  const total = entitySpanLength(e);
+  if (total < 1e-12) return [];
+  const out: Pt[] = [];
+  for (let d = spacing; d < total - 1e-9; d += spacing) {
+    const p = pointAtSpan(e, d);
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+/** Point at arc-length `d` from the entity start (LINE / ARC / open LWPOLYLINE). */
+export function pointAtSpan(e: DxfEntity, d: number): Pt | null {
+  switch (e.type) {
+    case "LINE": {
+      const len = entitySpanLength(e);
+      if (len < 1e-12) return null;
+      const t = d / len;
+      return P(e.start.x + (e.end.x - e.start.x) * t, e.start.y + (e.end.y - e.start.y) * t);
+    }
+    case "ARC": {
+      const sw = norm360(e.endAngle - e.startAngle) || 360;
+      const len = e.radius * sw * DEG;
+      if (len < 1e-12) return null;
+      const a = e.startAngle + sw * (d / len);
+      return P(e.center.x + e.radius * Math.cos(a * DEG), e.center.y + e.radius * Math.sin(a * DEG));
+    }
+    case "LWPOLYLINE": {
+      if (e.closed || e.points.length < 2) return null;
+      let remain = d;
+      for (let i = 1; i < e.points.length; i++) {
+        const a = e.points[i - 1],
+          b = e.points[i];
+        const seg = Math.hypot(b.x - a.x, b.y - a.y);
+        if (seg >= remain) {
+          const t = seg > 1e-18 ? remain / seg : 0;
+          return P(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+        }
+        remain -= seg;
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
 /* ── STRETCH ──────────────────────────────────────────────────────────────── */
 
 /**

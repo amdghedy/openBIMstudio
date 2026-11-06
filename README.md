@@ -306,6 +306,17 @@ The standalone CAD Editor ribbon has a full **Modify** group with AutoCAD-grade 
 | COPYCLIP | `CC` | Super Copy: copy the selection with its layer/linetype/text-style definitions to the cross-drawing clipboard (Ctrl+C / Ctrl+Shift+C) |
 | PASTECLIP | — | Paste the clipboard: ghost follows the cursor, click to place, click again for another copy (Ctrl+V / Ctrl+Shift+V) |
 | PASTEORIG | — | Paste the clipboard verbatim at the original source coordinates (Ctrl+Alt+V) |
+| LENGTHEN | `LEN` | Stretch the end of a line/arc/polyline: click near the end and drag (live preview), or `LENGTHEN 50` for an exact total / `LENGTHEN D 5` for a delta |
+| DIVIDE | `DIV` | Place point objects dividing a line/arc/polyline into N equal segments (`DIVIDE` → object → N) |
+| MEASURE | `ME` | Place point objects at a fixed spacing along a line/arc/polyline |
+| DDEDIT | `ED` | Edit the text content of a picked TEXT / MTEXT object from the command line |
+| LAYISO / LAYUNISO | — | Isolate the layer of a picked object (hide every other layer) / restore what LAYISO hid |
+| LAYOFF / LAYLCK / LAYUNLCK | — | Turn off, lock or unlock the layer of a picked object |
+| MLEADER | `MLD`, `LE` | Leader annotation: arrow point → landing end → type the text |
+| QSELECT | — | Quick select: `QSELECT TYPE LINE` · `QSELECT LAYER Walls` · `QSELECT ALL` |
+| PEDIT | `PE` | Polyline edit on the selection: `J` join into one polyline · `C` close · `O` open · `R` reverse |
+| CAL | `QC` | Calculator on the command line: `CAL 2*PI*25` — sin/cos/tan take degrees; any numeric prompt also accepts a bare expression like `3*sqrt(2)` |
+| Grip editing | — | Select objects → drag the blue hotspots: line endpoints & midpoints, polyline vertices, circle/arc centers, quadrants and radii, text insertion points (Shift = ortho lock, Ctrl+Z undoes) |
 
 While a drawing tab is active, the CAD editor owns Ctrl+Shift+C and Ctrl+Shift+V — app-level features that bind the same combos (Clash Review, View Tools Manager, Saved Views, Validation, VG dialog) stand down until you leave the drawing view; those features stay reachable from their menus.
 
