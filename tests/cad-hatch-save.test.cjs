@@ -46,4 +46,9 @@ t("a plain closed polyline is still a polyline", () => {
   const text=writeDxf({units:"mm",layers:[{name:"0",color:7}],entities:[{type:"LWPOLYLINE",layer:"0",points:sq(0,0,5),closed:true}]});
   assert.ok(/\nLWPOLYLINE\n/.test(text)&&!/\nHATCH\n/.test(text));
 });
+t("outline mode (used by the DWG exporter) keeps hatches as closed polylines", () => {
+  const e=hatchPoly([sq(0,0,10)],{solid:true});
+  const text=writeDxf({units:"mm",layers:[{name:"0",color:7}],entities:[e]},{hatches:"outline"});
+  assert.ok(!/\nHATCH\n/.test(text)); assert.ok(/\nLWPOLYLINE\n/.test(text));
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail?1:0);

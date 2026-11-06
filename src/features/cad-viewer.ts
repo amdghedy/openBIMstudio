@@ -22,7 +22,7 @@
 
 import { readCadFile } from "../modules/cad-link/index";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
-import { downloadDxf, writeDxf, layoutsNotSaved } from "../modules/drawings/dxf-writer";
+import { downloadDxf, writeDxf, layoutsNotSaved, DWG_VERSIONS, DEFAULT_DWG_VERSION, dwgVersionLabel, type DwgVersionCode } from "../modules/drawings/dxf-writer";
 import { uiAlert } from "../core/notify";
 import { exportDxfToDwg, validateDxfForDwgExport } from "../modules/drawings/acad-engine";
 import {
@@ -41,7 +41,7 @@ import { resolveDblClick } from "../shell/ribbon-collapse";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import { svgIcon, type IconName } from "./icon-set";
-import { promptLine, confirmDialog } from "./form-modal";
+import { promptLine, confirmDialog, pickFromList } from "./form-modal";
 import { loadCadAliases, resolveCadToken, openCadAliasEditor, effectiveAliases, registerCadAliasEditorOpener } from "./command-aliases";
 import {
   renderAppearanceEditor, openLinetypeManager, openTextStyleManager, placeText, editLayerProperty,
@@ -179,7 +179,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "PLOT", aliases: ["PRINT"], description: "Plot drawing to PDF or physical paper" },
   { name: "QSAVE", aliases: ["SAVE"], description: "Save the edited drawing as a DXF file" },
   { name: "SAVEAS", aliases: ["SA"], description: "Choose DXF or DWG for export" },
-  { name: "DWGSAVE", aliases: ["EXPORTDWG"], description: "Export the edited drawing as a native DWG file" },
+  { name: "DWGSAVE", aliases: ["EXPORTDWG"], description: "Export the edited drawing as a native DWG file (in the version set by DWGVERSION)" },
+  { name: "DWGVERSION", aliases: ["DWGVER"], description: "Choose the AutoCAD version that DWG export writes (2000 to 2018)" },
   { name: "DATAEXTRACT", aliases: ["EATTEXT", "DX"], description: "Export all entity data (layer, type, colour, geometry) to a CSV file" },
   { name: "LANDXMLIN", aliases: ["XMLIN"], description: "Import survey points from a LandXML CgPoints file" },
   { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
@@ -6078,6 +6079,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       void saveDwg();
       return;
     }
+    if (cmd === "DWGVERSION" || cmd === "DWGVER") {
+      void chooseDwgVersion();
+      return;
+    }
     if (cmd === "COPYCLIP") {
       copySelection();
       return;
@@ -6605,14 +6610,38 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     setTimeout(() => status(""), 4000);
   }
 
-  /** Export the live edited model as a real binary DWG using the local acadrust WASM writer. */
+    /** DWG version used by DWGSAVE; remembered per browser. */
+  const DWG_VERSION_KEY = "obs.cad.dwgVersion";
+  function currentDwgVersion(): DwgVersionCode {
+    try {
+      const v = localStorage.getItem(DWG_VERSION_KEY);
+      if (v && DWG_VERSIONS.some((x) => x.code === v)) return v as DwgVersionCode;
+    } catch { /* storage unavailable */ }
+    return DEFAULT_DWG_VERSION;
+  }
+  async function chooseDwgVersion(): Promise<void> {
+    const cur = currentDwgVersion();
+    const picked = await pickFromList(
+      "DWG version",
+      "Write DWG files that open in:",
+      DWG_VERSIONS.map((v) => ({ value: v.code, label: v.label })),
+      cur,
+    );
+    if (!picked) { logCmd(`DWG version unchanged: ${dwgVersionLabel(cur)}.`); return; }
+    try { localStorage.setItem(DWG_VERSION_KEY, picked); } catch { /* storage unavailable */ }
+    const note = DWG_VERSIONS.find((v) => v.code === picked)?.note;
+    logCmd(`DWG export now writes ${dwgVersionLabel(picked)}.${note ? " " + note : ""}`);
+    status(`DWG version: ${dwgVersionLabel(picked)}`);
+  }
+
+/** Export the live edited model as a real binary DWG using the local acadrust WASM writer. */
   async function saveDwg(): Promise<void> {
     if (!doc) {
       logCmd("Nothing to export — open or create a drawing first.");
       status("Nothing to export");
       return;
     }
-    // Always export model-space geometry (paper layouts stay as metadata warnings).
+    // Model-space geometry is exported; the first paper-space sheet comes along from doc.layouts.
     const entities = layoutI < 0 ? ents : modelEnts;
     const fn = `${base()}.dwg`;
     if (!entities.length) {
@@ -6623,15 +6652,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // Advisory only: layouts / dim styles / text styles / import skips must NOT
     // block DWG save. The writer serializes supported model entities; the rest
     // is reported so the user knows what is approximate.
-    const hatchBoundaries = entities.filter((e) => e.type === "LWPOLYLINE" && !!(e as any).hatch).length;
     const skippedEntities = Object.values(doc.skipped ?? {}).reduce((sum, count) => sum + count, 0);
-    const layoutCount = doc.layouts?.length ?? 0;
+    const layoutCount = layoutsNotSaved(doc);
     const dimensionStyleCount = Math.max(doc.dimStyles?.length ?? 0, Object.keys(doc.dimStyleTable ?? {}).length);
     const customTextStyles = Object.keys(doc.textStyles ?? {}).filter((name) => !/^standard$/i.test(name));
     const notes = [
-      hatchBoundaries ? `${hatchBoundaries} hatch(es) exported as solid/boundary` : "",
       skippedEntities ? `${skippedEntities} entity type(s) were skipped on import (not in model)` : "",
-      layoutCount ? `${layoutCount} paper-space layout(s) not written (model space only)` : "",
+      layoutCount ? `${layoutCount} further paper-space layout(s) not written (only the first sheet is saved)` : "",
       dimensionStyleCount ? `${dimensionStyleCount} dim style(s) may be simplified` : "",
       customTextStyles.length ? `${customTextStyles.length} custom text style(s) may map to Standard` : "",
     ].filter(Boolean);
@@ -6640,7 +6667,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     try {
       status("Exporting DWG…");
-      const dxf = writeDxf({ ...doc, entities, layouts: undefined });
+      // Real HATCH entities and the first paper-space sheet go through the converter;
+      // tests/cad-dwg-roundtrip.test.cjs reads the DWG back with the real engine.
+      const dwgVersion = currentDwgVersion();
+      const dxf = writeDxf({ ...doc, entities }, { version: dwgVersion });
       await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
       const blobBuffer = new ArrayBuffer(bytes.byteLength);
@@ -6655,7 +6685,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       a.click();
       a.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      logCmd(`Exported ${fn} — ${entities.length} entities, ${doc.layers.length} layers.`);
+      logCmd(`Exported ${fn} — ${entities.length} entities, ${doc.layers.length} layers, ${dwgVersionLabel(dwgVersion)} (change with DWGVERSION).`);
       status(`Exported ${fn}`);
       markSaved();
     } catch (error) {

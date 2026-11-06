@@ -220,7 +220,7 @@ export function layoutsNotSaved(doc: Pick<DxfDocument, "layouts">): number {
   return Math.max(0, (doc.layouts?.length ?? 0) - 1);
 }
 
-function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TEXT" }>) => string): string {
+function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TEXT" }>) => string, hatchEntities = true): string {
   let s = "";
 
   if (e.type === "LINE") {
@@ -240,7 +240,7 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     s += pair(40, e.radius);
     s += pair(50, e.startAngle);
     s += pair(51, e.endAngle);
-  } else if (e.type === "LWPOLYLINE" && e.hatch && !e.hatch.wipeout && e.hatch.loops.some((l) => l.length >= 3)) {
+  } else if (hatchEntities && e.type === "LWPOLYLINE" && e.hatch && !e.hatch.wipeout && e.hatch.loops.some((l) => l.length >= 3)) {
     s += writeHatch(e);
   } else if (e.type === "LWPOLYLINE") {
     s += pair(0, "LWPOLYLINE");
@@ -306,7 +306,34 @@ function computeExtents(entities: DxfEntity[]): { min: DxfPoint; max: DxfPoint }
 }
 
 /** Serialize a document to DXF R2010 ASCII. */
-export function writeDxf(doc: DxfDocument): string {
+/** DWG / DXF file versions the writer can target. All were round-tripped through the real DWG engine. */
+export type DwgVersionCode = "AC1015" | "AC1018" | "AC1021" | "AC1024" | "AC1027" | "AC1032";
+
+export const DWG_VERSIONS: ReadonlyArray<{ code: DwgVersionCode; label: string; note?: string }> = [
+  { code: "AC1015", label: "AutoCAD 2000 / 2000i / 2002", note: "True colours are converted to the nearest AutoCAD colour index." },
+  { code: "AC1018", label: "AutoCAD 2004 / 2005 / 2006" },
+  { code: "AC1021", label: "AutoCAD 2007 / 2008 / 2009" },
+  { code: "AC1024", label: "AutoCAD 2010 / 2011 / 2012 (default)" },
+  { code: "AC1027", label: "AutoCAD 2013 to 2017" },
+  { code: "AC1032", label: "AutoCAD 2018 and later" },
+];
+export const DEFAULT_DWG_VERSION: DwgVersionCode = "AC1024";
+
+export function dwgVersionLabel(code: string): string {
+  return DWG_VERSIONS.find((v) => v.code === code)?.label ?? code;
+}
+
+export interface WriteDxfOptions {
+  /**
+   * How hatch fills are written. "hatch" (default) writes real HATCH entities, which
+   * the DWG converter keeps as fills. "outline" keeps them as closed polylines.
+   */
+  hatches?: "hatch" | "outline";
+  /** File version written to $ACADVER (and so the DWG version after conversion). Default AutoCAD 2010. */
+  version?: DwgVersionCode;
+}
+
+export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   const layers =
     doc.layers.length > 0
       ? doc.layers
@@ -324,7 +351,7 @@ export function writeDxf(doc: DxfDocument): string {
   s += pair(0, "SECTION");
   s += pair(2, "HEADER");
   s += pair(9, "$ACADVER");
-  s += pair(1, "AC1024");
+  s += pair(1, opts.version ?? DEFAULT_DWG_VERSION);
   s += pair(9, "$INSUNITS");
   const unitsMap: Record<string, number> = {
     unitless: 0,
@@ -357,13 +384,13 @@ export function writeDxf(doc: DxfDocument): string {
   s += pair(0, "SECTION");
   s += pair(2, "ENTITIES");
   for (const e of doc.entities) {
-    s += writeEntity(e, styles.nameFor);
+    s += writeEntity(e, styles.nameFor, (opts.hatches ?? "hatch") === "hatch");
   }
   // The first paper-space layout is the drawing's active sheet: its entities and
   // viewports are written with group 67 = 1, which is how DXF stores paper space.
   const sheet = doc.layouts?.[0];
   if (sheet) {
-    for (const e of sheet.entities) s += inPaperSpace(writeEntity(e, styles.nameFor));
+    for (const e of sheet.entities) s += inPaperSpace(writeEntity(e, styles.nameFor, (opts.hatches ?? "hatch") === "hatch"));
     sheet.viewports.forEach((vp, i) => { s += writeViewport(vp, i + 2); });
   }
   s += pair(0, "ENDSEC");

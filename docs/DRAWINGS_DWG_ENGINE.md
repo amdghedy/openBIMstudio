@@ -22,7 +22,7 @@ Without it, **DXF** still works fully; for DWG convert to DXF first (any CAD).
 | Import drawing | **DXF** | ✅ pure TypeScript parser |
 | Import drawing | **DWG** | ✅ if `@mlightcad/libredwg-web` installed |
 | Export CAD sketch | **DXF** | ✅ R2010 ASCII |
-| Export edited CAD drawing | **DWG** | 🧪 local acadrust WASM writer; experimental 2D subset, read-back validation |
+| Export edited CAD drawing | **DWG** | 🧪 local acadrust WASM writer; 2D subset, read back with the same engine in tests (not opened in AutoCAD). Versions 2000 to 2018, chosen with `DWGVERSION` |
 | Load into CAD overlay | DXF/DWG | ✅ lines, circles, arcs, polylines, text |
 | Load into 3D scene | DXF/DWG | ✅ THREE.Line preview |
 | Layers | DXF | ✅ read + write |
@@ -35,6 +35,7 @@ Without it, **DXF** still works fully; for DWG convert to DXF first (any CAD).
 | **Ctrl+Shift+G** | Drawings panel |
 | CAD Editor application menu → **Save DWG…** | Local native DWG export |
 | CAD command line → `DWGSAVE` / `EXPORTDWG` | Local native DWG export |
+| CAD command line → `DWGVERSION` | Pick the AutoCAD version to write (2000, 2004, 2007, 2010, 2013, 2018+) |
 | CAD panel → **Import DXF / Export DXF** | |
 | Command Center → **Drawings DXF / Export DXF** | |
 | Ctrl+P → “Import DXF / DWG” | |

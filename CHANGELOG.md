@@ -27,6 +27,10 @@ run in a browser yet (see `tests/e2e/README.md`).
 - **Walls.** Baseboards, cornices and wainscots export to IFC; reveals are cut into
   straight walls and export as IfcOpeningElement. Doors and windows have an options
   bar for width, height and sill height.
+- **DWG.** Export now keeps hatch fills and the first paper-space sheet, and you can
+  choose the AutoCAD version it writes (`DWGVERSION`, 2000 to 2018+). A new test runs
+  the real DWG engine in Node: DXF to DWG to read-back for every version and for the
+  repo's DWG fixtures. Not yet opened in AutoCAD itself.
 - **UI.** Double-click a ribbon tab to collapse it; full screen hides command bars;
   Clash Review is dockable; every blocking prompt/confirm/alert is a dialog.
 - **Honesty and structure.** Feature Status registry, UI-honesty guard tests, an
@@ -36,7 +40,7 @@ run in a browser yet (see `tests/e2e/README.md`).
 ### Known gaps
 
 - LAZ, E57 and RWCX point clouds (LAZ needs the `laz-perf` dependency).
-- DXF: blocks are saved exploded and layouts after the first are not saved.
+- DXF/DWG: blocks are saved exploded and layouts after the first are not saved; Autodesk compatibility of written DWG files is unverified.
 - Browser smoke tests exist but are not in CI.
 
 ### Added
