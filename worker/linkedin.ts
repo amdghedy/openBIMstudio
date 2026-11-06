@@ -132,7 +132,7 @@ function constantTimeEqual(left: string, right: string): boolean {
 
 function oauthCookie(request: Request): string | null {
   const cookieHeader = request.headers.get("cookie") ?? "";
-  const match = cookieHeader.match(/(?:^|;\\s*)__Host-obs-linkedin-oauth=([^;]+)/);
+  const match = cookieHeader.match(/(?:^|;\s*)__Host-obs-linkedin-oauth=([^;]+)/);
   return match?.[1] ?? null;
 }
 
@@ -170,14 +170,26 @@ async function finishOAuth(request: Request, env: LinkedInEnv): Promise<Response
   if (!configured(env)) return html("LinkedIn OAuth is not configured on this deployment.", 503);
   const url = new URL(request.url);
   const providerError = url.searchParams.get("error");
-  if (providerError) return html("LinkedIn authorization was not completed. Return to OpenBIMStudio and try again.", 400);
+  if (providerError) return new Response(await html("LinkedIn authorization was not completed. Return to OpenBIMStudio and try again.", 400).text(), {
+    status: 400,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "set-cookie": clearOAuthCookie() },
+  });
 
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  if (!code || !state || state.length > 256) return html("The authorization response is incomplete. Please restart the connection.", 400);
+  const browserState = oauthCookie(request);
+  if (!code || !state || state.length > 256 || !browserState || !constantTimeEqual(state, browserState)) {
+    return new Response(await html("The authorization response could not be verified in this browser. Please restart the connection.", 400).text(), {
+      status: 400,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "set-cookie": clearOAuthCookie() },
+    });
+  }
 
   const consumed = await vaultRequest<{ valid: boolean }>(env, "/consume-state", "POST", { value: state });
-  if (!consumed.valid) return html("The authorization request expired or could not be verified. Please restart the connection.", 400);
+  if (!consumed.valid) return new Response(await html("The authorization request expired. Please restart the connection.", 400).text(), {
+    status: 400,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "set-cookie": clearOAuthCookie() },
+  });
 
   const tokenResponse = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
     method: "POST",
