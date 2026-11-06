@@ -1,0 +1,54 @@
+name: Publish LinkedIn post
+
+on:
+  workflow_dispatch:
+    inputs:
+      commentary:
+        description: Text to publish to the connected personal LinkedIn profile
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linkedin-personal-publishing
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish personal LinkedIn post
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate and publish
+        env:
+          POST_TEXT: ${{ inputs.commentary }}
+          WORKER_URL: ${{ secrets.LINKEDIN_WORKER_URL }}
+          PUBLISH_SECRET: ${{ secrets.LINKEDIN_PUBLISH_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$WORKER_URL" || -z "$PUBLISH_SECRET" ]]; then
+            echo "::error::Configure LINKEDIN_WORKER_URL and LINKEDIN_PUBLISH_SECRET in repository Actions secrets."
+            exit 1
+          fi
+          if [[ "${#POST_TEXT}" -lt 1 || "${#POST_TEXT}" -gt 3000 ]]; then
+            echo "::error::Post text must contain between 1 and 3000 characters."
+            exit 1
+          fi
+          WORKER_URL="${WORKER_URL%/}"
+          payload="$(jq -n --arg commentary "$POST_TEXT" '{commentary: $commentary}')"
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' \
+            --request POST "$WORKER_URL/api/linkedin/publish" \
+            --header "Authorization: Bearer $PUBLISH_SECRET" \
+            --header 'Content-Type: application/json' \
+            --data "$payload")"
+          cat "$response_file" | jq .
+          rm -f "$response_file"
+          if [[ "$status" != "201" ]]; then
+            echo "::error::LinkedIn publishing failed with HTTP $status."
+            exit 1
+          fi
+          echo "LinkedIn accepted the post."

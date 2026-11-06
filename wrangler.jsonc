@@ -12,6 +12,10 @@
       {
         "name": "COUNTER",
         "class_name": "VisitCounter"
+      },
+      {
+        "name": "LINKEDIN_VAULT",
+        "class_name": "LinkedInVault"
       }
     ]
   },
@@ -20,6 +24,12 @@
       "tag": "v1",
       "new_sqlite_classes": [
         "VisitCounter"
+      ]
+    },
+    {
+      "tag": "v2-linkedin-vault",
+      "new_sqlite_classes": [
+        "LinkedInVault"
       ]
     }
   ]
