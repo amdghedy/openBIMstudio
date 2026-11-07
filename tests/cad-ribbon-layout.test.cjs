@@ -73,7 +73,7 @@ t("every ribbon group is tagged with exactly one of the six tabs", () => {
     Clipboard: "home", Select: "home", Draw: "home", "Draw II": "home", Modify: "home", "Modify II": "home",
     Annotation: "home", Properties: "home", Utilities: "home", History: "home", Layers: "home", Styles: "home",
     // Insert
-    Import: "insert", Data: "insert",
+    Block: "insert", Import: "insert", Fields: "insert", Data: "insert",
     // Annotate
     Text: "annotate", Dimensions: "annotate", Markup: "annotate", Tables: "annotate", "Markup Files": "annotate",
     // View
@@ -152,10 +152,10 @@ t("toolbar actions still wired: tool buttons, toggles, selects", () => {
 });
 
 // ── 6. Native-engine drafting ribbon: every button lands on a real tool ──
-t("all 31 ribbon groups exist after the native-engine reorganization", () => {
+t("all 33 ribbon groups exist after the native-engine reorganization", () => {
   for (const label of [
     "Clipboard", "Select", "Draw", "Draw II", "Modify", "Modify II", "Annotation", "Properties", "Utilities", "History", "Layers", "Styles",
-    "Import", "Data",
+    "Block", "Import", "Fields", "Data",
     "Text", "Dimensions", "Markup", "Tables", "Markup Files",
     "Navigate", "Saved Views", "Visual Styles", "Modes", "UCS", "Show",
     "Units", "Drawing", "Layer States",

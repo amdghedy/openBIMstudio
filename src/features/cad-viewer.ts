@@ -4369,7 +4369,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "insert",
       ) +
       rg(
-        "Annotation",
+        "Fields",
         rb("text", "Field", `data-a="ins-field"`, "Insert text computed from the drawing: date, name, length, area (FIELD)") +
           rb("table", "Table", `data-a="ins-table"`, "Draw a rows × columns table (TABLE)") +
           rb("model-text", "MText", `data-a="mtext"`, "Place multiline text (MTEXT)"),
