@@ -464,7 +464,10 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
   display: grid;
   grid-auto-flow: column;
   grid-template-rows: repeat(var(--rbb-rows), var(--rbb-btn-h));
-  grid-auto-columns: var(--rbb-btn-w);
+  /* Tracks start at the standard button width but grow to fit longer labels
+     ("MEP Toolkit", "Auto-Route…", "BIM / Navisworks…") so the label never
+     truncates to "MEP Too…". The strip scrolls horizontally when needed. */
+  grid-auto-columns: minmax(var(--rbb-btn-w), auto);
   gap: var(--rbb-gap);
   align-content: center;
   justify-content: center;
@@ -484,7 +487,7 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
 }
 
 .obs-rb {
-  width: var(--rbb-btn-w);
+  min-width: var(--rbb-btn-w);
   height: var(--rbb-btn-h);
   padding: 3px 2px 2px;
   display: flex;
