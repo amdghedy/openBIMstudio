@@ -1396,6 +1396,12 @@ export function setupClash() {
   };
 
   ctx.fragments.list.onItemSet.add(() => { categoryCache.clear(); scheduleRefresh(); });
+  // Native elements appear in the A/B tree as they are modelled (refresh only when the count changes).
+  let lastNativeCount = (authoringApi()?.getElements?.() ?? []).length;
+  window.addEventListener("obs:authoring-changed", () => {
+    const n = (authoringApi()?.getElements?.() ?? []).length;
+    if (n !== lastNativeCount) { lastNativeCount = n; scheduleRefresh(); }
+  });
   ctx.fragments.list.onItemDeleted.add(() => {
     categoryCache.clear();
     scheduleRefresh();

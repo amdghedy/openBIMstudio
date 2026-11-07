@@ -109,6 +109,7 @@
     "test:anthropic": "node tests/anthropic-messages.test.cjs",
     "test:ai-presets": "node tests/ai-presets.test.cjs",
     "test:cad-insert": "node tests/cad-insert.test.cjs",
+    "test:ui-reachability": "node tests/ui-reachability.test.cjs",
     "test:clash-engine": "node tests/clash-engine.test.cjs",
     "test:clash-selection": "node tests/clash-selection-plan.test.cjs",
     "test:ai-modeling": "node tests/ai-native-modeling.test.cjs",
