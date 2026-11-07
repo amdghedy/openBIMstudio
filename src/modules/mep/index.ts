@@ -16,6 +16,10 @@ import {
 } from "./pressure";
 import type { MepSize, MepSystem, RouteRequest, RouteResult, SizingResult } from "./types";
 import { MepModelLifecycle } from "./model-lifecycle";
+import { optimizeCsdPacking as optimizeCsdPackingImpl } from "./csd-packing";
+import type { CsdPackingRequest, CsdPackingResult, CsdSectionBoundary, CsdServiceItem, CsdRelationship } from "./csd-packing";
+import { compileKbCsdRules as compileKbCsdRulesImpl } from "./kb-csd-rules";
+import type { KbCsdRuleCompilation, KbCsdRuleContext, KbCsdRuleProfile } from "./kb-csd-rules";
 import * as mepPlumbing from "./plumbing";
 import * as mepConvert from "./convert";
 import * as mepFire from "./fire";
@@ -27,6 +31,8 @@ export * from "./types";
 export * from "./connectors";
 export * from "./electrical";
 export * from "./model-lifecycle";
+export * from "./csd-packing";
+export * from "./kb-csd-rules";
 export { route, routeSimple } from "./router";
 export { sizeForSystem, validateSize, defaultVelocityFor, maxVelocityFor } from "./sizing";
 export {
@@ -57,6 +63,10 @@ export interface MepService {
   maxVelocityFor(system: MepSystem): number;
   /** Native model lifecycle: connectors, electrical assignments, schedules and diagnostics. */
   lifecycle: MepModelLifecycle;
+  /** Deterministic KB-BIM CSD candidate generator. */
+  optimizeCsdPacking(request: CsdPackingRequest): CsdPackingResult;
+  /** Compile approved, traceable project rules into solver-ready constraints. */
+  compileKbCsdRules(input: { profile: KbCsdRuleProfile; context: KbCsdRuleContext; boundary: CsdSectionBoundary; items: CsdServiceItem[]; baseRelationships?: CsdRelationship[] }): KbCsdRuleCompilation;
 }
 
 let installed = false;
@@ -75,6 +85,8 @@ export function setupMep(): MepService {
     defaultVelocityFor,
     maxVelocityFor,
     lifecycle: new MepModelLifecycle(),
+    optimizeCsdPacking: optimizeCsdPackingImpl,
+    compileKbCsdRules: compileKbCsdRulesImpl,
   };
 
   // v0.67: pressure-loss engineering rides on the same service.
