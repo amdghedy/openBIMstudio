@@ -107,8 +107,6 @@
     "test:north": "node tests/north.test.cjs",
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
     "test:anthropic": "node tests/anthropic-messages.test.cjs",
-    "test:account-cloud": "node tests/account-cloud.test.cjs",
-    "test:account-client": "node tests/account-client.test.cjs",
     "test:ai-presets": "node tests/ai-presets.test.cjs",
     "test:cad-insert": "node tests/cad-insert.test.cjs",
     "test:ui-reachability": "node tests/ui-reachability.test.cjs",

@@ -94,12 +94,6 @@ function download(blob: Blob, name: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** The open project as an in-memory .obsproj blob (used by cloud save). Null when no project is open. */
-export async function buildOpenProjectBlob(): Promise<{ blob: Blob; id: string; name: string } | null> {
-  const snap = await snapshotFile();
-  return snap ? { blob: snap.blob, id: snap.doc.id, name: snap.doc.name } : null;
-}
-
 /** Save the open project to a .obsproj file. `asNew` always asks for a new file (Save As / backup copy). */
 export async function saveProjectToFile(asNew = false): Promise<boolean> {
   if (writing) return false;

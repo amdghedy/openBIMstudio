@@ -431,8 +431,6 @@ function bootstrapCommands(): void {
       });
     },
   });
-  registerCommand({ id: "account.open", label: "Account: sign in / cloud projects (open on any device)", category: "File", run: () => { void import("./account-ui").then((m) => m.openAccountDialog()); } });
-  registerCommand({ id: "account.save-cloud", label: "Account: save open project to the cloud", category: "File", run: () => { void import("./account-ui").then((m) => m.saveOpenProjectToCloud().catch((e) => notify("error", e instanceof Error ? e.message : String(e)))); } });
   registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
   registerCommand({ id: "command.ks", label: "KS — Command aliases / keyboard shortcuts", category: "App", run: () => { void import("./command-aliases").then((m) => m.openKs()); } });
   registerCommand({ id: "view.graphic-options", label: "Graphic Display Options…", category: "View", run: () => { void import("./view-graphics").then((m) => m.openGraphicDisplayOptions()); } });

@@ -60,14 +60,4 @@ t("Earlier features stay reachable: plan command line, DWG version, place option
   must(read("src/shell/ribbon.ts").includes('"Reveal"'), "Reveal button missing");
   must(/makeDockable/.test(read("src/features/clash-review.ts")), "clash review dock missing");
 });
-t("Accounts: worker routes, UI entry points (ribbon, palette, home), CSP and private-cache exclusion", () => {
-  const w = read("worker/index.ts"), cmd = read("src/features/command-palette.ts"), home = read("src/shell/home-screen.ts"), sw = read("public/sw.js");
-  must(/handleCloud\(request, env\)/.test(w), "worker does not route /api/auth and /api/cloud");
-  must(/account-ui/.test(read("src/shell/ribbon.ts")) && /Account & Cloud/.test(read("src/shell/ribbon.ts")), "ribbon File tab has no Account button");
-  must(/account\.open/.test(cmd) && /account\.save-cloud/.test(cmd), "palette commands missing");
-  must(/obs-account/.test(home), "home screen has no Account button");
-  must(/auth-callback/.test(read("src/features/account-ui.ts")) && fs.existsSync("public/auth-callback.html"), "Microsoft callback page missing");
-  must(html.includes("https://accounts.google.com/gsi/client") && /frame-src https:\/\/accounts\.google\.com\/gsi\//.test(html), "CSP does not allow Google sign-in");
-  must(/\/api\\\/\(auth\|cloud\)/.test(sw), "service worker may cache private account responses");
-});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail ? 1 : 0);

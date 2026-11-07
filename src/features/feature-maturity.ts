@@ -51,20 +51,6 @@ export const MATURITY_STATUSES: readonly MaturityStatus[] = [
 
 export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
   {
-    id: "accounts-cloud-projects",
-    area: "Collaboration",
-    status: "experimental",
-    source: ["worker/auth.ts", "worker/cloud.ts", "src/features/account-client.ts", "src/features/account-ui.ts"],
-    evidence: ["tests/account-cloud.test.cjs", "tests/account-client.test.cjs"],
-    limitations: [
-      "Needs the Cloudflare worker deployment plus an operator-provided Google/Microsoft OAuth client ID, SESSION_SECRET and an R2 bucket (docs/ACCOUNTS.md); other hosts show a clear 'not available' message",
-      "Verified with generated keys and an in-memory store only; not yet exercised against live Google, Microsoft or Cloudflare R2",
-      "Manual save/open of whole .obsproj files; no automatic background sync or merge, a newer copy from another device is detected and you choose overwrite or keep",
-      "Files are stored unencrypted in the operator's bucket; use the password-protected save for sensitive projects",
-    ],
-    affirmedIn: APP_VERSION,
-  },
-  {
     id: "authoring-tools",
     area: "Modeling",
     status: "verified",

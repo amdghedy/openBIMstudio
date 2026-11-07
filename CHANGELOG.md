@@ -11,12 +11,6 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
-### Accounts and cloud projects (experimental)
-- Optional sign-in with Google or Microsoft, then save projects to your account and open them from a phone or another computer (File tab → Account & Cloud, Home screen, command palette).
-- Edge worker verifies provider ID tokens (signature, issuer, audience, expiry, nonce), issues an HttpOnly session cookie and stores one R2 object per project under an opaque per-user key; CSRF header + origin checks, 100 MB / 200-project limits, and a conflict check when another device saved a newer copy.
-- Service worker no longer caches `/api/auth` and `/api/cloud` responses; CSP allows only Google's sign-in script, frame and button styles.
-- Needs operator setup (OAuth client ID, SESSION_SECRET, R2 bucket): see docs/ACCOUNTS.md. Tested with generated keys and an in-memory store only, not against live providers.
-
 ### Clash detection (audit and fixes)
 - Found by test and fixed: an element fully inside another (a pipe embedded in a wall) was never reported as a clash; elements whose boxes overlapped but whose surfaces were apart were falsely reported as "touching"; heavy elements had triangles silently skipped (now all or nothing, up to 120,000 triangles, never thinned).
 - Native elements modelled in this app are now part of clash tests (they were offered in the category dialog but never reached the engine).
