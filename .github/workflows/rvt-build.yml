@@ -1,13 +1,13 @@
 name: Build Revit reader
 
-# Builds the rvt-rs WebAssembly decoder (scripts/build-rvt-wasm.mjs) and uploads it
-# as an artifact, so it can be committed to public/rvt/ and served by every host
+# Builds the rvt-rs WebAssembly decoder (scripts/build-rvt-wasm.mjs), smoke-tests it on
+# the upstream sample files, and commits it to public/rvt/ so every host serves it
 # (including ones with no Rust toolchain, such as Vercel). Run manually.
 on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -23,12 +23,20 @@ jobs:
           targets: wasm32-unknown-unknown
       - run: cargo install wasm-pack --locked
       - run: node scripts/build-rvt-wasm.mjs --strict
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rvt-decoder
-          path: |
-            public/rvt/rvt.js
-            public/rvt/rvt_bg.wasm
-            public/rvt/rvt.d.ts
-            public/rvt/rvt_bg.wasm.d.ts
-          if-no-files-found: error
+      - name: Smoke test the built decoder on the upstream sample files (real wasm, real parse)
+        run: |
+          SHA=$(grep -oP 'RVT_RS_COMMIT = "\K[0-9a-f]+' scripts/build-rvt-wasm.mjs)
+          for f in architectural-2024 structural-2023 mep-2024; do
+            curl -fsSL -o "/tmp/$f.rvt" "https://raw.githubusercontent.com/DrunkOnJava/rvt-rs/$SHA/corpus/tier1/$f/$f.rvt"
+            ls -l "/tmp/$f.rvt"
+            node scripts/rvt-smoke.mjs "/tmp/$f.rvt" --expect-glb
+          done
+      - name: Commit the built decoder so every host serves it
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f public/rvt/rvt.js public/rvt/rvt_bg.wasm
+          if git diff --cached --quiet; then echo "decoder unchanged"; exit 0; fi
+          git commit -m "chore: built Revit reader (rvt-rs $(grep -oP 'RVT_RS_COMMIT = "\K.{7}' scripts/build-rvt-wasm.mjs)) [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main

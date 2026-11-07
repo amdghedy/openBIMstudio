@@ -8,21 +8,25 @@
 import { notify } from "../core/notify";
 import { RVT_JS_URL, RVT_WASM_URL, isRevitName, isWasmBytes, preflight, summarizeDiagnostics, viewFileName, type RvtDiagnostics } from "../modules/rvt/rvt-core";
 
-let availability: Promise<boolean> | null = null;
+let availability: Promise<{ ok: boolean; why: string }> | null = null;
 
-/** True when this deployment ships the decoder. A missing file on an SPA host answers 200 + HTML, so the bytes are checked. */
-export function rvtDecoderAvailable(): Promise<boolean> {
+/** Why the decoder can or cannot be used on this deployment. A missing file on an SPA host answers 200 + HTML, so the bytes are checked. */
+export function rvtDecoderStatus(): Promise<{ ok: boolean; why: string }> {
   availability ??= (async () => {
     try {
-      const [w, j] = await Promise.all([fetch(RVT_WASM_URL), fetch(RVT_JS_URL)]);
-      if (!w.ok || !j.ok) return false;
+      const [w, j] = await Promise.all([fetch(RVT_WASM_URL, { cache: "no-cache" }), fetch(RVT_JS_URL, { cache: "no-cache" })]);
+      if (!w.ok) return { ok: false, why: `${RVT_WASM_URL} answered ${w.status}` };
+      if (!j.ok) return { ok: false, why: `${RVT_JS_URL} answered ${j.status}` };
       const head = new Uint8Array(await w.arrayBuffer()).subarray(0, 4);
-      const jsType = j.headers.get("content-type") ?? "";
-      return isWasmBytes(head) && !/html/i.test(jsType);
-    } catch { return false; }
+      if (!isWasmBytes(head)) return { ok: false, why: `${RVT_WASM_URL} is not a WebAssembly file (the host returned a web page, so the decoder was not deployed)` };
+      if (/html/i.test(j.headers.get("content-type") ?? "")) return { ok: false, why: `${RVT_JS_URL} is a web page, not the decoder` };
+      return { ok: true, why: "" };
+    } catch (e) { return { ok: false, why: `could not fetch the decoder (${e instanceof Error ? e.message : e})` }; }
   })();
   return availability;
 }
+
+export async function rvtDecoderAvailable(): Promise<boolean> { return (await rvtDecoderStatus()).ok; }
 
 const UNAVAILABLE =
   "Viewing Revit files directly is not installed on this deployment (the decoder was not built into it). " +
@@ -50,7 +54,8 @@ function decodeInWorker(bytes: Uint8Array, onProgress: (t: string) => void, larg
 
 export async function openRevitFile(file: File): Promise<boolean> {
   if (!isRevitName(file.name)) { notify("error", `"${file.name}" is not a Revit file.`); return false; }
-  if (!(await rvtDecoderAvailable())) { notify("error", UNAVAILABLE, { timeout: 14000 }); return false; }
+  const st = await rvtDecoderStatus();
+  if (!st.ok) { console.warn("[rvt] decoder unavailable:", st.why); notify("error", `${UNAVAILABLE} (Detail: ${st.why}.)`, { timeout: 16000 }); return false; }
   const bytes = new Uint8Array(await file.arrayBuffer());
   const pre = preflight(file.name, bytes);
   if (!pre.ok) { notify("error", pre.reason, { timeout: 12000 }); return false; }
