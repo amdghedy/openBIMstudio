@@ -74,7 +74,6 @@ const validDate = (v: string | undefined): boolean => {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === v;
 };
 const normalized = (v: string): string => v.trim().toLowerCase();
-const pairKey = (a: string, b: string): string => [normalized(a), normalized(b)].sort().join("|");
 const hasText = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
 
 export function validateKbCsdRuleProfile(profile: KbCsdRuleProfile): KbRuleDiagnostic[] {
@@ -107,6 +106,10 @@ export function validateKbCsdRuleProfile(profile: KbCsdRuleProfile): KbRuleDiagn
     if (rule.effectiveTo && !validDate(rule.effectiveTo)) add("RULE_EFFECTIVE_TO_INVALID", "Rule " + rule.id + " has an invalid effectiveTo date.", [rule.id]);
     if (rule.effectiveFrom && rule.effectiveTo && validDate(rule.effectiveFrom) && validDate(rule.effectiveTo) && rule.effectiveFrom > rule.effectiveTo)
       add("RULE_EFFECTIVE_RANGE_INVALID", "Rule " + rule.id + " ends before it becomes effective.", [rule.id]);
+    if (!["pair-clearance", "edge-clearance", "preferred-side", "service-order", "discipline-restriction", "system-priority"].includes((rule as any).kind)) {
+      add("RULE_KIND_UNSUPPORTED", "Rule " + rule.id + " has an unsupported kind.", [rule.id]);
+      continue;
+    }
     switch (rule.kind) {
       case "pair-clearance":
         if (!Array.isArray(rule.systems) || rule.systems.length !== 2 || !rule.systems.every(hasText) || normalized(rule.systems[0]) === normalized(rule.systems[1]))
@@ -137,8 +140,6 @@ export function validateKbCsdRuleProfile(profile: KbCsdRuleProfile): KbRuleDiagn
         if (!hasText(rule.system) || !Number.isFinite(rule.priority))
           add("RULE_PRIORITY_INVALID", "System-priority rule " + rule.id + " requires a system and finite priority.", [rule.id]);
         break;
-      default:
-        add("RULE_KIND_UNSUPPORTED", "Rule " + rule.id + " has an unsupported kind.", [rule.id]);
     }
   }
   return out;
@@ -187,11 +188,15 @@ export function compileKbCsdRules(input: {
     return result;
   }
 
-  const effectiveRules = profile.rules.filter(r => isEffective(r, context.effectiveDate));
-  const active = effectiveRules.filter(r => r.kind !== "preferred-side").concat(
-    effectiveRules.filter((r): r is Extract<KbCsdRule, { kind: "preferred-side" }> => r.kind === "preferred-side")
-      .sort((a, b) => b.strength - a.strength || a.id.localeCompare(b.id)),
-  );
+  const active = profile.rules.filter(r => isEffective(r, context.effectiveDate));
+  active.sort((a, b) => {
+    const aPreferred = a.kind === "preferred-side";
+    const bPreferred = b.kind === "preferred-side";
+    if (aPreferred !== bPreferred) return aPreferred ? 1 : -1;
+    if (aPreferred && bPreferred) return (b as Extract<KbCsdRule, { kind: "preferred-side" }>).strength -
+      (a as Extract<KbCsdRule, { kind: "preferred-side" }>).strength || a.id.localeCompare(b.id);
+    return a.id.localeCompare(b.id);
+  });
   const preferredSideByItem = new Map<string, string>();
   for (const draft of profile.rules.filter(r => r.approval !== "approved")) {
     result.diagnostics.push({ code: "RULE_DRAFT_IGNORED", message: "Draft rule " + draft.id + " was not applied.",
