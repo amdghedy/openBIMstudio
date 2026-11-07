@@ -26,6 +26,7 @@ import { importSvg } from "../modules/drawings/svg-import";
 import { FIELD_KINDS, evaluateField, type FieldKind } from "../modules/drawings/cad-fields";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
 import { downloadDxf, writeDxf, layoutsNotSaved, DWG_VERSIONS, DEFAULT_DWG_VERSION, dwgVersionLabel, type DwgVersionCode } from "../modules/drawings/dxf-writer";
+import { recordRecentDrawing, recentFormatOf } from "./cad-recent";
 import { uiAlert } from "../core/notify";
 import { exportDxfToDwg, validateDxfForDwgExport } from "../modules/drawings/acad-engine";
 import {
@@ -812,6 +813,9 @@ function openFile(file: File): void {
   const tab = createTab(file.name);
   activate(tab);
   void tab.engine.load(file);
+  // 2D file history (welcome-screen drafting zone): record every real drawing
+  // that is opened — picker, drag & drop and the welcome-screen zone all land here.
+  void recordRecentDrawing({ name: file.name, format: recentFormatOf(file.name), size: file.size, blob: file });
 }
 
 function openBlank(): void {
@@ -7432,7 +7436,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // serialize from modelEnts — it is kept in sync by add/erase/undo/redo.
     const entities = layoutI < 0 ? ents : modelEnts;
     const fn = `${base()}.dxf`;
-    downloadDxf({ ...doc, entities }, fn);
+    const text = writeDxf({ ...doc, entities });
+    const blob = new Blob([text], { type: "application/dxf" });
+    download(blob, fn);
+    // Refresh the welcome-screen drawing history with the freshly saved bytes.
+    void recordRecentDrawing({ name: fn, format: "DXF", size: blob.size, blob });
     logCmd(`Saved ${fn} — ${entities.length} entities, ${doc.layers.length} layers.`);
     const lost = layoutsNotSaved(doc);
     if (lost) uiAlert(`${fn} was saved with the first sheet only. ${lost} other layout${lost === 1 ? "" : "s"} could not be saved to DXF yet.`);
@@ -7507,6 +7515,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const blobBuffer = new ArrayBuffer(bytes.byteLength);
       new Uint8Array(blobBuffer).set(bytes);
       const blob = new Blob([blobBuffer], { type: "application/acad" });
+      // Record the exported DWG in the welcome-screen drawing history.
+      void recordRecentDrawing({ name: fn, format: "DWG", size: blob.size, blob });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

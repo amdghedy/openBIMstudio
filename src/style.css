@@ -1557,3 +1557,105 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   .obs-fgrid { grid-template-columns: 1fr; }
   .obs-page { padding: 18px; }
 }
+
+/* ═══ v54 — 2D / 3D file zones: options · history · info ═══
+   Left zone = 2D drawing files (options, recent drawings, engine info).
+   Right zone = 3D BIM project files (options, recent projects, platform info). */
+.obs-zones {
+  display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: 13px; align-items: start;
+}
+.obs-zone {
+  --zg: var(--accent); --zg-dim: rgba(56,189,248,.10); --zg-line: rgba(56,189,248,.26);
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; gap: 15px;
+  border: 1px solid var(--zg-line); border-radius: 16px; padding: 19px 19px 17px;
+  background:
+    radial-gradient(560px 200px at 108% -26%, var(--zg-dim), transparent 60%),
+    linear-gradient(180deg, var(--bg-surface), var(--bg-base));
+  box-shadow: 0 12px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.obs-zone--2d { --zg: #38BDF8; --zg-dim: rgba(56,189,248,.10); --zg-line: rgba(56,189,248,.26); }
+.obs-zone--3d { --zg: #818CF8; --zg-dim: rgba(129,140,248,.11); --zg-line: rgba(129,140,248,.28); }
+.obs-zone::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--zg), transparent 74%);
+}
+.obs-zone__head { display: flex; gap: 12px; align-items: flex-start; }
+.obs-zone__glyph {
+  flex: 0 0 auto; width: 40px; height: 40px; border-radius: 10px;
+  display: grid; place-items: center;
+  font: 800 12.5px var(--font-mono); letter-spacing: -.03em; color: #06121c;
+  background: linear-gradient(140deg, var(--zg), color-mix(in srgb, var(--zg) 72%, white));
+  box-shadow: 0 5px 16px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.32);
+}
+.obs-zone__eyebrow { color: var(--zg); font: 700 8.5px var(--font-mono); letter-spacing: 1px; }
+.obs-zone__headtext h2 { margin-top: 4px; font: 700 16.5px/1.2 var(--font-sans); letter-spacing: -.02em; color: var(--text-primary); }
+.obs-zone__headtext p { margin-top: 4px; color: var(--text-tertiary); font-size: 10.5px; line-height: 1.5; max-width: 460px; }
+
+.obs-zone__options { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.obs-zone__options .obs-create-row { flex: 1 1 100%; margin-top: 0; }
+.obs-zone__options .obs-create-hint { margin-top: 0; }
+
+.obs-zone__block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.obs-zone__sub {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font: 700 9px var(--font-mono); letter-spacing: .9px; text-transform: uppercase;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;
+}
+.obs-zone__linkbtn {
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+  font: 600 9.5px var(--font-sans); letter-spacing: .3px; text-transform: none;
+  color: var(--text-tertiary); border-radius: 4px;
+}
+.obs-zone__linkbtn:hover { color: #fca5a5; background: rgba(239,68,68,.08); }
+
+/* 2D history rows */
+.obs-2d-history { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.obs-2d-row {
+  display: flex; align-items: center; gap: 9px; min-width: 0;
+  padding: 7px 9px; border-radius: 9px;
+  border: 1px solid var(--border-subtle); background: var(--bg-inset);
+  transition: border-color .15s var(--ease), background .15s var(--ease);
+}
+.obs-2d-row:hover { border-color: var(--zg-line); background: var(--bg-hover); }
+.obs-2d-row__fmt {
+  flex: 0 0 auto; min-width: 34px; text-align: center; padding: 3px 5px; border-radius: 5px;
+  font: 700 8px var(--font-mono); letter-spacing: .5px;
+  color: var(--text-secondary); border: 1px solid var(--border-default); background: var(--bg-base);
+}
+.obs-2d-row__fmt--dwg { color: #38BDF8; border-color: rgba(56,189,248,.34); background: rgba(56,189,248,.10); }
+.obs-2d-row__body { min-width: 0; flex: 1; }
+.obs-2d-row__body b { display: block; font-size: 11px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obs-2d-row__body small { display: block; margin-top: 1px; color: var(--text-tertiary); font-size: 9.3px; }
+.obs-2d-row__open { flex: 0 0 auto; }
+.obs-2d-row__stale { flex: 0 0 auto; color: var(--text-tertiary); font-size: 9px; opacity: .75; }
+.obs-2d-empty {
+  padding: 14px 12px; border: 1px dashed var(--border-default); border-radius: 10px;
+  color: var(--text-tertiary); font-size: 10.5px; line-height: 1.55; text-align: center;
+}
+.obs-2d-empty strong { display: block; margin-bottom: 3px; color: var(--text-secondary); font-size: 11px; }
+
+/* Zone stat cards (compact KPI) */
+.obs-zone__stats { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
+.obs-zone__stats .obs-kpi { min-height: 0; padding: 10px 12px; border-radius: 10px; }
+.obs-zone__stats .obs-kpi strong { margin-top: 4px; font-size: 17px; }
+.obs-zone__stats .obs-kpi small { margin-top: 3px; font-size: 9px; }
+.obs-zone__stats .obs-kpi::after { width: 56px; height: 56px; right: -18px; top: -20px; }
+
+/* 3D zone: project cards live inside the zone now */
+.obs-home__grid--inzone { grid-template-columns: minmax(0,1fr); gap: 7px; }
+.obs-home__grid--inzone .obs-project-card { padding: 11px 12px; }
+.obs-home__grid--inzone .obs-card__icon { width: 30px; height: 30px; font-size: 9px; }
+.obs-home__grid--inzone .obs-card__title { font-size: 12px; }
+.obs-zone .obs-workspace-grid { margin-top: 2px; }
+
+/* Responsive */
+@media (max-width: 940px) {
+  .obs-zones { grid-template-columns: 1fr; }
+}
+@media (max-width: 680px) {
+  .obs-zone { padding: 15px 13px 13px; }
+  .obs-zone__stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}

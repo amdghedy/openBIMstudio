@@ -5,6 +5,7 @@ import { createProject, openProject, deleteProjectById, getCurrentProject, onPro
 import type { ProjectTemplate } from "../modules/projects/types";
 import { mountLanguageButton } from "../features/language-button";
 import { mountAccountButton } from "../features/cloud-account";
+import { clearRecentDrawings, getRecentDrawingBlob, listRecentDrawings, type RecentDrawing } from "../features/cad-recent";
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>\"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" } as Record<string, string>)[c],
@@ -46,10 +47,10 @@ const SHOWCASE = [
     title: "A real CAD engine — front and center.",
     copy:
       "No more hunting through tabs: the drafting engine is one click from this screen. " +
-      "118 keyboard-first commands, file-faithful layer and style handling, and a LibreDWG-grade " +
+      "116 keyboard-first commands, file-faithful layer and style handling, and a LibreDWG-grade " +
       "DWG/DXF pipeline that reads r13–r2018 and writes back in the version you choose.",
     cards: [
-      ["C>_", "118-command line", "AutoCAD-style commands, type-ahead, custom aliases and dynamic input at the cursor."],
+      ["C>_", "116-command line", "AutoCAD-style commands, type-ahead, custom aliases and dynamic input at the cursor."],
       ["LAY", "Layers, linetypes & styles", "Layer manager, linetype scale, and text/dim styles adopted straight from the file."],
       ["HAT", "Hatches & dimensions", "Associative hatches, dimension chains, leaders and automatic dimensioning."],
       ["DWG", "DWG & DXF, r13–r2018", "Open legacy and current drawings; export DXF or native DWG 2000–2018."],
@@ -203,6 +204,75 @@ function open3dPlatform(): void {
   emitWorkspace("coordination");
 }
 
+/* ── 2D drafting-zone history (left file zone of the welcome screen) ────────
+   The 2D counterpart of “Recent projects”: every drawing the engine opens or
+   saves is recorded (with its bytes) by cad-recent, so this list reopens a
+   drawing with one click. Fails soft when storage is unavailable. */
+function fmtBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+function ago(ts: number): string {
+  const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.round(h / 24)} d ago`;
+}
+
+async function render2dHistory(): Promise<void> {
+  const list = inner.querySelector("#obs-2d-history") as HTMLElement | null;
+  const stats = inner.querySelector("#obs-2d-stats") as HTMLElement | null;
+  if (!list) return;
+  let recent: RecentDrawing[] = [];
+  try {
+    recent = await listRecentDrawings();
+  } catch {
+    recent = [];
+  }
+  if (!recent.length) {
+    list.innerHTML = `<div class="obs-2d-empty"><strong>No drawings yet</strong>Open a DWG / DXF file or start a new drawing — everything you open or save shows up here for one-click reopen.</div>`;
+  } else {
+    list.innerHTML = recent.map((r) => `
+      <div class="obs-2d-row" data-name="${esc(r.name)}">
+        <span class="obs-2d-row__fmt${r.format === "DWG" ? " obs-2d-row__fmt--dwg" : ""}">${esc(r.format)}</span>
+        <span class="obs-2d-row__body">
+          <b>${esc(r.name)}</b>
+          <small>${fmtBytes(r.size)} · ${ago(r.ts)}${r.hasBytes ? "" : " · reopen from your original file"}</small>
+        </span>
+        ${r.hasBytes
+          ? `<button class="obs-btn obs-btn--sm obs-2d-row__open" type="button">Open</button>`
+          : `<span class="obs-2d-row__stale">bytes evicted</span>`}
+      </div>`).join("");
+  }
+  list.querySelectorAll<HTMLButtonElement>(".obs-2d-row__open").forEach((btn) => {
+    btn.onclick = () => {
+      const name = (btn.closest(".obs-2d-row") as HTMLElement | null)?.dataset.name ?? "";
+      void getRecentDrawingBlob(name).then((blob) => {
+        if (!blob) {
+          void render2dHistory();
+          return;
+        }
+        void import("../features/cad-viewer").then((m) => m.openCadViewer(new File([blob], name)));
+      });
+    };
+  });
+  if (stats) {
+    const cards = [
+      ["Drawings on device", String(recent.length), "Reopen with one click"],
+      ["Commands", "116", "AutoCAD-style command line"],
+      ["Read / write", "DWG · DXF", "r13–r2018 in · 2000–2018 out"],
+      ["Plot", "PDF", "Single sheet or batch sets"],
+    ];
+    stats.innerHTML = cards.map(([label, value, note]) => `
+      <div class="obs-kpi"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`).join("");
+  }
+}
+
 /* Cumulative visit counter. Counting happens server-side on the Cloudflare
    edge (Durable Object): one visit per visitor per 30-min session window,
    identical for every visitor on every device — never a per-PC number.
@@ -262,7 +332,7 @@ function buildStatic() {
       <div class="obs-center-header-meta">
         <span class="obs-center-badge">LOCAL-FIRST</span>
         <span class="obs-center-badge obs-center-badge--muted">IFC · BCF · IDS</span>
-        <span class="obs-center-version">v53</span>
+        <span class="obs-center-version">v54</span>
       </div>
     </header>
 
@@ -276,7 +346,7 @@ function buildStatic() {
           <span class="obs-mega__body">
             <b class="obs-mega__title">CAD Drafting Engine</b>
             <span class="obs-mega__desc">Draw, annotate and plot in a full-screen drafting session — opens instantly, even without a project.</span>
-            <span class="obs-mega__specs">118 COMMANDS · DWG/DXF r13–r2018 · LAYERS · HATCHES · PLOT</span>
+            <span class="obs-mega__specs">116 COMMANDS · DWG/DXF r13–r2018 · LAYERS · HATCHES · PLOT</span>
           </span>
           <span class="obs-mega__go" aria-hidden="true">→</span>
         </button>
@@ -302,27 +372,71 @@ function buildStatic() {
       </div>
     </section>
 
-    <section class="obs-kpi-grid" id="obs-kpis"></section>
-
-    <section class="obs-command-grid">
-      <div class="obs-command-card obs-command-card--primary">
-        <div class="obs-command-eyebrow">START A PROJECT</div>
-        <h2>Set up a BIM workspace</h2>
-        <p>Choose a delivery template. Project data stays in your browser unless you explicitly export it.</p>
-        <div class="obs-create-row">
-          <input id="obs-new-name" autocomplete="off" placeholder="Project name — e.g. HSR PK3 MEP Stations" aria-label="Project name" />
-          <select id="obs-template" aria-label="Project template">
-            ${Object.entries(TEMPLATE_LABELS).map(([id, t]) => `<option value="${id}">${esc(t.label)}</option>`).join("")}
-          </select>
-          <button class="obs-btn obs-btn--primary" id="obs-create-project">Create project</button>
-          <button class="obs-btn" id="obs-open-file" title="Open a .obsproj project file from your computer">Open file\u2026</button>
+    <!-- ═══ File zones: 2D (left) and 3D (right) — each with its own
+         options, history and info, mirroring the two hero buttons. ═══ -->
+    <section class="obs-zones" aria-label="2D and 3D files">
+      <!-- ── 2D drafting zone — drawing files · history · engine info ── -->
+      <div class="obs-zone obs-zone--2d">
+        <div class="obs-zone__head">
+          <span class="obs-zone__glyph" aria-hidden="true">2D</span>
+          <div class="obs-zone__headtext">
+            <div class="obs-zone__eyebrow">2D DRAWING FILES</div>
+            <h2>Drafting drawings</h2>
+            <p>Open a drawing straight into the full-screen drafting engine — no project setup, no hunting through tabs.</p>
+          </div>
         </div>
-        <div class="obs-create-hint" id="obs-template-note"></div>
+        <div class="obs-zone__options">
+          <button class="obs-btn obs-btn--primary" id="obs-2d-new" type="button">New drawing</button>
+          <button class="obs-btn" id="obs-2d-open" type="button" title="Open a DWG, DXF or LandXML file in the drafting engine">Open DWG / DXF\u2026</button>
+          <input id="obs-2d-file" type="file" accept=".dwg,.dxf,.bak,.sv$,*.xml" multiple hidden />
+        </div>
+        <div class="obs-zone__block">
+          <div class="obs-zone__sub"><span>History — recent drawings</span><button class="obs-zone__linkbtn" id="obs-2d-clear" type="button">Clear</button></div>
+          <div class="obs-2d-history" id="obs-2d-history"></div>
+        </div>
+        <div class="obs-zone__block">
+          <div class="obs-zone__sub"><span>Engine info</span></div>
+          <div class="obs-zone__stats" id="obs-2d-stats"></div>
+          <div class="obs-chiprow">
+            <span class="obs-chip">DWG / DXF r13–r2018</span>
+            <span class="obs-chip">LAYERS · LTYPES · STYLES</span>
+            <span class="obs-chip">HATCH · DIMS · LEADERS</span>
+            <span class="obs-chip">BATCH PLOT → PDF</span>
+            <span class="obs-chip">AUDIT · TABLES · CENSUS</span>
+          </div>
+        </div>
       </div>
-      <div class="obs-command-card">
-        <div class="obs-command-eyebrow">FAST ACCESS</div>
-        <h2>Open BIM workflows</h2>
-        <div class="obs-workspace-grid" id="obs-workspaces"></div>
+
+      <!-- ── 3D BIM zone — project files · history · platform info ── -->
+      <div class="obs-zone obs-zone--3d">
+        <div class="obs-zone__head">
+          <span class="obs-zone__glyph obs-zone__glyph--3d" aria-hidden="true">3D</span>
+          <div class="obs-zone__headtext">
+            <div class="obs-zone__eyebrow">3D BIM PROJECT FILES</div>
+            <h2>BIM projects</h2>
+            <p>Create a workspace or reopen a project — data stays in your browser unless you explicitly export it.</p>
+          </div>
+        </div>
+        <div class="obs-zone__options">
+          <div class="obs-create-row">
+            <input id="obs-new-name" autocomplete="off" placeholder="Project name — e.g. HSR PK3 MEP Stations" aria-label="Project name" />
+            <select id="obs-template" aria-label="Project template">
+              ${Object.entries(TEMPLATE_LABELS).map(([id, t]) => `<option value="${id}">${esc(t.label)}</option>`).join("")}
+            </select>
+            <button class="obs-btn obs-btn--primary" id="obs-create-project">Create project</button>
+            <button class="obs-btn" id="obs-open-file" title="Open a .obsproj project file from your computer">Open file\u2026</button>
+          </div>
+          <div class="obs-create-hint" id="obs-template-note"></div>
+        </div>
+        <div class="obs-zone__block">
+          <div class="obs-zone__sub"><span>History — recent projects</span><span class="obs-home__section-count" id="obs-count"></span></div>
+          <div class="obs-home__grid obs-home__grid--inzone" id="obs-grid"></div>
+        </div>
+        <div class="obs-zone__block">
+          <div class="obs-zone__sub"><span>Platform info</span></div>
+          <div class="obs-zone__stats" id="obs-3d-stats"></div>
+          <div class="obs-workspace-grid" id="obs-workspaces"></div>
+        </div>
       </div>
     </section>
 
@@ -348,14 +462,6 @@ function buildStatic() {
         </div>
       </article>`).join("")}
     </div>
-
-    <section>
-      <div class="obs-home__section-title">
-        <span>Recent projects</span>
-        <span class="obs-home__section-count" id="obs-count"></span>
-      </div>
-      <div class="obs-home__grid" id="obs-grid"></div>
-    </section>
 
     <footer class="obs-home__footer">
       <span>Open BIM Studio · local-first · <a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;text-decoration:none">GitHub</a> · <a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" style="color:#fbbf24;text-decoration:none">⭐ Star</a> · <a href="https://github.com/amdghedy/openBIMstudio/issues/new/choose" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;text-decoration:none">Report issue</a></span>
@@ -394,14 +500,6 @@ function buildStatic() {
 
   const ws = inner.querySelector("#obs-workspaces") as HTMLElement;
   ws.innerHTML = `
-    <button class="obs-workspace-card obs-workspace-card--cad" data-cad2d>
-      <span class="obs-workspace-card__marker obs-workspace-card__marker--cad"></span>
-      <span class="obs-workspace-card__content">
-        <b>2D CAD Studio</b>
-        <small>The full drafting engine — 118 commands, DWG/DXF, plotting. One click, no setup.</small>
-      </span>
-      <span class="obs-workspace-card__arrow">→</span>
-    </button>
     ${WORKSPACES.map(([id, label, description]) => `
     <button class="obs-workspace-card" data-workspace="${id}">
       <span class="obs-workspace-card__marker"></span>
@@ -411,11 +509,28 @@ function buildStatic() {
       </span>
       <span class="obs-workspace-card__arrow">→</span>
     </button>`).join("")}`;
-  ws.querySelectorAll<HTMLButtonElement>("[data-cad2d]").forEach((button) => {
-    button.onclick = open2dEngine;
-  });
   ws.querySelectorAll<HTMLButtonElement>("[data-workspace]").forEach((button) => {
     button.onclick = () => emitWorkspace(button.dataset.workspace ?? "coordination");
+  });
+
+  /* ── 2D drafting zone: file options + drawing history ── */
+  const file2d = inner.querySelector("#obs-2d-file") as HTMLInputElement | null;
+  (inner.querySelector("#obs-2d-new") as HTMLButtonElement | null)?.addEventListener("click", open2dEngine);
+  (inner.querySelector("#obs-2d-open") as HTMLButtonElement | null)?.addEventListener("click", () => file2d?.click());
+  file2d?.addEventListener("change", () => {
+    const files = [...(file2d.files ?? [])];
+    file2d.value = "";
+    if (!files.length) return;
+    void import("../features/cad-viewer").then((m) => {
+      for (const f of files) m.openCadViewer(f);
+    });
+  });
+  (inner.querySelector("#obs-2d-clear") as HTMLButtonElement | null)?.addEventListener("click", () => {
+    void confirmDialog("Clear drawing history", "Remove the recent-drawings list from this browser? Your drawing files are not touched.").then(async (ok) => {
+      if (!ok) return;
+      await clearRecentDrawings();
+      void render2dHistory();
+    });
   });
 
   /* Welcome-screen headline CTAs + showcase page CTAs */
@@ -432,7 +547,7 @@ function buildStatic() {
 }
 
 function renderKpis(docs: any[]) {
-  const kpi = inner.querySelector("#obs-kpis") as HTMLElement | null;
+  const kpi = inner.querySelector("#obs-3d-stats") as HTMLElement | null;
   if (!kpi) return;
   const models = docs.reduce((sum, d) => sum + (d.models?.length ?? 0), 0);
   const elements = docs.reduce((sum, d) => sum + (d.elements?.length ?? 0), 0);
@@ -510,6 +625,7 @@ async function renderList() {
 
 export function showHome() {
   void renderList();
+  void render2dHistory();
   overlay.classList.add("is-open");
 }
 export function hideHome() { overlay.classList.remove("is-open"); }
