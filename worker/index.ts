@@ -1,5 +1,5 @@
 import { handleLinkedInRequest, LinkedInVault, type LinkedInEnv } from "./linkedin";
-import { AuthVault, googleStartUrl, googleCallback, googleSetupNeeded } from "./auth";
+import { AuthVault, googleStartUrl, googleCallback, googleSetupPage, googleStatus } from "./auth";
 
 /**
  * Open BIM Studio edge worker.
@@ -198,9 +198,14 @@ export default {
       }
     }
     // ── Cloud accounts + per-user project storage (same-origin, cookie sessions).
+    if (url.pathname === "/api/auth/google/status") {
+      return googleStatus(env);
+    }
     if (url.pathname === "/api/auth/google/start") {
       const start = googleStartUrl(request, env);
-      if (!start) return googleSetupNeeded();
+      // Not configured: a styled explanation page instead of raw JSON — this is
+      // a top-level browser navigation, the user would otherwise see JSON.
+      if (!start) return googleSetupPage(request);
       return Response.redirect(start, 302);
     }
     if (url.pathname === "/api/auth/google/callback") {
@@ -212,14 +217,14 @@ export default {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ email: info.email, name: info.name, googleId: info.sub }),
         }));
-        if (!upsert.ok) return json({ error: "Could not create the account." }, 502);
+        if (!upsert.ok) return googleSetupPage(request, { reason: "Google sign-in could not create the account (vault unavailable).", status: 502 });
         const setCookie = upsert.headers.get("set-cookie") ?? "";
         return new Response(null, { status: 302, headers: { location: "/", "set-cookie": setCookie } });
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : "error";
-        if (code === "google-not-configured") return googleSetupNeeded();
+        if (code === "google-not-configured") return googleSetupPage(request);
         console.warn("[auth] google callback failed:", cause);
-        return json({ error: `Google sign-in failed (${code}).` }, 502);
+        return googleSetupPage(request, { reason: `Google sign-in failed (${code}). Please try again.`, status: 502 });
       }
     }
     if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/projects")) {

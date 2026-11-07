@@ -17,7 +17,10 @@
  *   POST /api/auth/login      {email,password}
  *   GET  /api/auth/me
  *   POST /api/auth/logout
- *   GET  /api/auth/google/start        → 302 Google consent (needs GOOGLE_CLIENT_ID/SECRET)
+ *   GET  /api/auth/google/status      → {configured:boolean} — lets the UI
+ *         grey out / explain Google sign-in before navigating away
+ *   GET  /api/auth/google/start        → 302 Google consent, or a friendly
+ *         HTML setup page when GOOGLE_CLIENT_ID/SECRET are not configured
  *   GET  /api/auth/google/callback     → upsert user, set cookie, 302 /
  *   GET  /api/projects                 → list of the signed-in user's cloud projects
  *   POST /api/projects                 → save {name, data(base64 .obsproj)} (upsert by name)
@@ -363,6 +366,88 @@ function publicUser(user: UserRecord): { email: string; name: string; provider: 
 
 // ── Google OAuth 2.0 (worker-side helpers) ────────────────────────────────
 
+/** Cheap, side-effect-free probe so the UI can react before navigating away. */
+export function googleStatus(env: AuthEnv): Response {
+  return json({ configured: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) });
+}
+
+function esc(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * Friendly full-page fallback for /api/auth/google/start (a top-level browser
+ * navigation). Instead of raw JSON the user gets a styled page that explains
+ * what works right now (email accounts) and exactly how the deployment owner
+ * turns Google sign-in on.
+ */
+export function googleSetupPage(request: Request, opts: { reason?: string; status?: number } = {}): Response {
+  const origin = new URL(request.url).origin;
+  const redirectUri = `${origin}/api/auth/google/callback`;
+  const reason = opts.reason
+    ? `<p class="reason">${esc(opts.reason)}</p>`
+    : `<p class="reason">Google sign-in isn't configured on this deployment yet.</p>`;
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Google sign-in — Open BIM Studio</title>
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:#0a0e14;color:#e2e8f0;font:14px/1.55 system-ui,-apple-system,sans-serif;padding:20px}
+  .card{width:min(560px,100%);border-radius:14px;border:1px solid rgba(148,163,184,.25);
+    background:#0d1219;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:26px 28px}
+  h1{margin:0 0 6px;font-size:19px;color:#f1f5f9}
+  .reason{margin:0 0 14px;color:#fcd34d;font-size:13px}
+  p{margin:8px 0}
+  .ok{color:#7dd3fc}
+  ol{margin:10px 0 4px;padding-left:22px}
+  li{margin:7px 0}
+  code{background:#0a0e14;border:1px solid rgba(148,163,184,.25);border-radius:6px;
+    padding:1px 6px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#93c5fd;word-break:break-all}
+  .uri{display:block;margin:6px 0 2px;padding:8px 10px;border-radius:8px;background:#0a0e14;
+    border:1px solid rgba(56,189,248,.35);color:#7dd3fc;font:12px ui-monospace,monospace;word-break:break-all}
+  .back{display:inline-block;margin-top:16px;padding:9px 16px;border-radius:8px;background:#0ea5e9;
+    color:#04121d;font-weight:700;text-decoration:none;font-size:13px}
+  .back:hover{background:#38bdf8}
+  .fine{margin-top:14px;color:#64748b;font-size:12px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Google sign-in isn't set up here yet</h1>
+  ${reason}
+  <p class="ok"><strong>You can sign in right now with an email account</strong> — open
+  <a href="/" style="color:#38bdf8">Open BIM Studio</a>, press the <strong>Sign in</strong> button
+  (top-left, next to the logo) and choose <strong>Create account</strong>. Cloud project
+  saving and opening from any device work the same way.</p>
+  <p>To switch on “Continue with Google”, the deployment owner does a one-time setup:</p>
+  <ol>
+    <li>In <a href="https://console.cloud.google.com/apis/credentials" style="color:#38bdf8">Google Cloud Console → APIs &amp; Services → Credentials</a>,
+        create an <strong>OAuth client ID → Web application</strong> and add this
+        <strong>Authorized redirect URI</strong>:
+        <span class="uri">${esc(redirectUri)}</span></li>
+    <li>Set the two Worker secrets (Cloudflare dashboard → Workers → openbimstudio → Settings →
+        Variables and Secrets, or <code>npx wrangler secret put GOOGLE_CLIENT_ID</code> and
+        <code>npx wrangler secret put GOOGLE_CLIENT_SECRET</code>):
+        <span class="uri">GOOGLE_CLIENT_ID · GOOGLE_CLIENT_SECRET</span></li>
+    <li>Redeploy / retry — the “Continue with Google” button starts working automatically.</li>
+  </ol>
+  <a class="back" href="/">← Back to Open BIM Studio</a>
+  <p class="fine">Your projects are stored per account in a private cloud vault —
+  sign in with the same account on any device to see them.</p>
+</div>
+</body>
+</html>`;
+  return new Response(html, {
+    status: opts.status ?? 503,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
 /** Build the Google consent redirect. Returns null when credentials are missing. */
 export function googleStartUrl(request: Request, env: AuthEnv): string | null {
   if (!env.GOOGLE_CLIENT_ID) return null;
@@ -406,14 +491,4 @@ export async function googleCallback(request: Request, env: AuthEnv): Promise<{ 
   const info = await infoRes.json() as { email?: string; name?: string; sub?: string };
   if (!info.email) throw new Error("no-email");
   return { email: info.email, name: info.name ?? info.email.split("@")[0], sub: info.sub };
-}
-
-export function googleSetupNeeded(): Response {
-  return json(
-    {
-      error: "Google sign-in is not configured on this deployment yet.",
-      hint: "Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET as Worker secrets, then retry. Email accounts work right now.",
-    },
-    503,
-  );
 }

@@ -108,6 +108,38 @@ type SessionUser = { email: string; name: string; provider: string };
 
 let currentUser: SessionUser | null = null;
 let meRequest: Promise<void> | null = null;
+let googleReady: boolean | null = null;
+
+/**
+ * Probe (and cache) whether this deployment has Google OAuth configured.
+ * Lets the UI explain — inside the dialog — instead of navigating away to a
+ * bare "not configured" response when the owner has not set the secrets yet.
+ */
+async function googleConfigured(): Promise<boolean> {
+  if (googleReady !== null) return googleReady;
+  try {
+    const res = await fetch("/api/auth/google/status", { credentials: "same-origin" });
+    googleReady = Boolean((await res.json() as { configured?: boolean }).configured);
+  } catch {
+    googleReady = false;
+  }
+  return googleReady;
+}
+
+/** Amber, once-per-dialog note explaining the state and the owner setup steps. */
+function showGoogleSetupHint(anchor: HTMLElement): void {
+  if (anchor.parentElement?.querySelector(":scope > .obs-acct-hint")) return;
+  const hint = document.createElement("div");
+  hint.className = "obs-acct-hint";
+  hint.textContent =
+    "Google sign-in isn't set up on this deployment yet — email accounts work right now " +
+    "(create one above). To enable Google: in Google Cloud Console create an OAuth client ID " +
+    "(Web application) with redirect URI " +
+    `${location.origin}/api/auth/google/callback` +
+    ", then set the GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET Worker secrets. " +
+    "The button starts working after the next deploy — no code changes needed.";
+  anchor.insertAdjacentElement("afterend", hint);
+}
 
 function toast(kind: string, msg: string): void {
   try {
@@ -242,7 +274,14 @@ function buildMenu(menu: HTMLElement): void {
     menuItem(menu, "Sign in…", () => void openAuthDialog(false));
     menuItem(menu, "Create account…", () => void openAuthDialog(true));
     menuItem(menu, "Continue with Google", () => {
-      window.location.href = "/api/auth/google/start";
+      void (async () => {
+        if (await googleConfigured()) {
+          window.location.href = "/api/auth/google/start";
+        } else {
+          // Explains inside the dialog instead of navigating to a dead end.
+          void openAuthDialog(false);
+        }
+      })();
     });
   } else {
     const title = document.createElement("div");
@@ -337,6 +376,16 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
   google.innerHTML =
     `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">` +
     `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg><span>Continue with Google</span>`;
+  google.addEventListener("click", (e) => {
+    e.preventDefault();
+    void (async () => {
+      if (await googleConfigured()) {
+        window.location.href = "/api/auth/google/start";
+      } else {
+        showGoogleSetupHint(google);
+      }
+    })();
+  });
   const note = document.createElement("div");
   note.className = "obs-acct-note";
   note.textContent = "Your projects are stored in your account's private vault — sign in on any device to open them.";
@@ -384,6 +433,11 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
   body.append(err, submit, swap, google, note);
   render();
   emailInput.focus();
+  // If Google isn't configured, surface the amber note immediately so the
+  // user knows email sign-in is the working path before clicking anything.
+  void googleConfigured().then((ok) => {
+    if (!ok && document.contains(google)) showGoogleSetupHint(google);
+  });
 }
 
 // ── cloud project vault ───────────────────────────────────────────────────
