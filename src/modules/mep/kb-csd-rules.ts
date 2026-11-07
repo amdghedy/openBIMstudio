@@ -68,8 +68,11 @@ export interface KbCsdRuleCompilation {
 }
 
 const isFiniteNonNegative = (v: number): boolean => Number.isFinite(v) && v >= 0;
-const validDate = (v: string | undefined): boolean =>
-  !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z"));
+const validDate = (v: string | undefined): boolean => {
+  if (!v || !/^\\d{4}-\\d{2}-\\d{2}$/.test(v)) return false;
+  const parsed = new Date(v + "T00:00:00Z");
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === v;
+};
 const normalized = (v: string): string => v.trim().toLowerCase();
 const pairKey = (a: string, b: string): string => [normalized(a), normalized(b)].sort().join("|");
 const hasText = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
