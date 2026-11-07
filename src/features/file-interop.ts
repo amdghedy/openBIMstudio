@@ -7,10 +7,12 @@ import { markDirty } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
 
 export const ACCEPT_ALL =
-  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.dwg,.dxf,.skp";
+  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp";
 
 const DESKTOP_ONLY: Record<string, string> = {
   rvt: "BIM files cannot be converted in the browser.\n\nIn BIM: File → Export → IFC → export the model, then import the .ifc here.",
+  rte: "Revit templates cannot be converted in the browser here.\n\nOpen the template in Revit and export a project as IFC.",
+  rft: "Revit family templates cannot be converted in the browser here.\n\nOpen the template in Revit and export as IFC.",
   rfa: "BIM families cannot be converted in the browser.\n\nLoad the family into a BIM project, then export the project as IFC and import it here.",
   dwg: "DWG cannot be converted in the browser.\n\nIn AutoCAD: save as DXF, or better export the model as IFC / OBJ, then import here.",
   skp: "SketchUp files cannot be converted in the browser.\n\nIn SketchUp: File → Export → IFC / OBJ / DAE (3D model), then import here.",
@@ -228,6 +230,12 @@ export async function importFiles(files: File[]) {
         m.setupCadLinks();
         await m.linkCadFileInteractive(file);
         continue;
+      }
+
+      if (e === "rvt" || e === "rfa" || e === "rte" || e === "rft") {
+        // View-only, decoded in the browser by the rvt-rs WebAssembly reader (docs/RVT-VIEWER.md).
+        const { openRevitFile, rvtDecoderAvailable } = await import("./rvt-viewer");
+        if (await rvtDecoderAvailable()) { await openRevitFile(file); continue; }
       }
 
       if (DESKTOP_ONLY[e]) { uiAlert(DESKTOP_ONLY[e]); continue; }

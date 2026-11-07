@@ -55,6 +55,14 @@ jobs:
       - name: Stage freshly built CAD engine WebAssembly
         run: node scripts/copy-cad-engine-wasm.mjs
 
+      # Optional feature: view-only Revit files. A failure here must not block the
+      # deployment; the app then reports the feature as not installed (docs/RVT-VIEWER.md).
+      - name: Build Revit reader (rvt-rs WebAssembly)
+        continue-on-error: true
+        run: |
+          cargo install wasm-pack --locked
+          node scripts/build-rvt-wasm.mjs
+
       - name: Install dependencies
         env:
           npm_config_registry: https://registry.npmjs.org/

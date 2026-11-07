@@ -11,6 +11,12 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### View Revit files (experimental, view only)
+- Open `.rvt` / `.rfa` files for viewing, decoded inside the browser tab (nothing uploaded) by the third-party rvt-rs reader compiled to WebAssembly. Entry points: drag and drop / Open, File tab → View Revit File, command palette.
+- Every open states the decoder's own confidence; a file that decodes to structure only is reported as "nothing to draw", not as success. Result is view-only geometry (no Revit parameters, not in clash tests).
+- The decoder is an optional build step (`npm run build:rvt`, run automatically and non-blocking by the deploy workflow); without it the app says so and points to IFC export. Pinned to a specific rvt-rs commit; Apache-2.0 licence and notice are shipped in `public/rvt/`.
+- Tested with a fake decoder only. Not yet run against the real WebAssembly or a real Revit file.
+
 ### Clash detection (audit and fixes)
 - Found by test and fixed: an element fully inside another (a pipe embedded in a wall) was never reported as a clash; elements whose boxes overlapped but whose surfaces were apart were falsely reported as "touching"; heavy elements had triangles silently skipped (now all or nothing, up to 120,000 triangles, never thinned).
 - Native elements modelled in this app are now part of clash tests (they were offered in the category dialog but never reached the engine).

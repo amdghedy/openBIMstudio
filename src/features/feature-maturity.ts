@@ -51,6 +51,20 @@ export const MATURITY_STATUSES: readonly MaturityStatus[] = [
 
 export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
   {
+    id: "revit-view-only",
+    area: "Interoperability",
+    status: "experimental",
+    source: ["src/modules/rvt/rvt-core.ts", "src/features/rvt-viewer.ts", "src/workers/rvt.worker.ts", "scripts/build-rvt-wasm.mjs"],
+    evidence: ["tests/rvt-viewer.test.cjs"],
+    limitations: [
+      "View only: geometry is reconstructed by the third-party rvt-rs reader (Apache-2.0); shapes can be simplified or missing, there are no Revit parameters, and it is not part of clash tests or authoring",
+      "Never run against a real .rvt file or the real WebAssembly decoder by this project's tests (fake decoder only); decoder confidence is shown to the user on every open",
+      "The decoder is an optional build step (npm run build:rvt, docs/RVT-VIEWER.md): a deployment without it says so and points to IFC export",
+      "The reader's own support matrix applies (stable measured geometry for Revit 2023 to 2025 projects; other releases experimental); large files need a lot of memory",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "authoring-tools",
     area: "Modeling",
     status: "verified",

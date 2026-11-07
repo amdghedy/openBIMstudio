@@ -715,6 +715,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("save", "Save As File", safe(async () => { (await import("../modules/projects/project-file-io")).saveProjectToFile(true); }, "Save as file"), {
         kbd: "^\u21e7S", title: "Save a copy of the project to a new .obsproj file (also a manual backup)",
       }),
+      b("folder", "View Revit File", safe(async () => { (await import("../features/rvt-viewer")).pickRevitFile(); }, "View Revit file"), {
+        title: "Open a .rvt / .rfa file for viewing only. Decoded inside your browser, nothing is uploaded. Geometry is a reconstruction and can be incomplete.",
+      }),
       b("folder", "Open File", safe(async () => { (await import("../modules/projects/project-file-io")).openProjectFromFile(); }, "Open file"), {
         title: "Open a .obsproj project file from your computer",
       }),

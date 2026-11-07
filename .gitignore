@@ -63,3 +63,10 @@ interop-report.json
 # Generated versioned web-ifc assets (scripts/sync-web-ifc-assets.mjs)
 public/web-ifc/0.*/
 .cad-dwg-export-independent-*/
+
+# Revit reader built from rvt-rs (scripts/build-rvt-wasm.mjs); licence/notice files stay tracked
+public/rvt/rvt.js
+public/rvt/rvt_bg.wasm
+public/rvt/*.d.ts
+public/rvt/package.json
+public/rvt/.gitignore

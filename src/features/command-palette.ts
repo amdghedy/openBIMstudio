@@ -431,6 +431,7 @@ function bootstrapCommands(): void {
       });
     },
   });
+  registerCommand({ id: "file.view-rvt", label: "View a Revit file (.rvt / .rfa), view only, decoded in your browser", category: "File", run: () => { void import("./rvt-viewer").then((m) => m.pickRevitFile()); } });
   registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
   registerCommand({ id: "command.ks", label: "KS — Command aliases / keyboard shortcuts", category: "App", run: () => { void import("./command-aliases").then((m) => m.openKs()); } });
   registerCommand({ id: "view.graphic-options", label: "Graphic Display Options…", category: "View", run: () => { void import("./view-graphics").then((m) => m.openGraphicDisplayOptions()); } });

@@ -60,4 +60,10 @@ t("Earlier features stay reachable: plan command line, DWG version, place option
   must(read("src/shell/ribbon.ts").includes('"Reveal"'), "Reveal button missing");
   must(/makeDockable/.test(read("src/features/clash-review.ts")), "clash review dock missing");
 });
+t("Revit view: routed from import, ribbon and palette entry points, honest fallback when the decoder is absent", () => {
+  must(/rvt-viewer/.test(read("src/features/file-interop.ts")), "import router does not open Revit files");
+  must(/View Revit File/.test(read("src/shell/ribbon.ts")), "ribbon button missing");
+  must(/file\.view-rvt/.test(read("src/features/command-palette.ts")), "palette command missing");
+  must(/not installed on this deployment/.test(read("src/features/rvt-viewer.ts")), "missing-decoder message missing");
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail ? 1 : 0);
