@@ -69,7 +69,7 @@ export interface KbCsdRuleCompilation {
 
 const isFiniteNonNegative = (v: number): boolean => Number.isFinite(v) && v >= 0;
 const validDate = (v: string | undefined): boolean => {
-  if (!v || !/^\\d{4}-\\d{2}-\\d{2}$/.test(v)) return false;
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
   const parsed = new Date(v + "T00:00:00Z");
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === v;
 };
