@@ -148,7 +148,7 @@ t("super copy: clipboard engine wired into tools, hotkeys, ribbon and commands",
     'setTool("paste")',
     'kind: "paste", stage: "second"',
     "case \"paste\": {",
-    "PASTECLIP: ${placed.length} object(s) placed",
+    'mod.placeLabel ?? "PASTECLIP"}: ${placed.length} object(s) placed',
     // Copy side: dependency snapshot + persistence
     "collectClipDeps(list, doc)",
     "persistClip();",
