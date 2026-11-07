@@ -41,4 +41,14 @@ t("CSP already allows same-origin wasm + workers (no new origins needed)",()=>{c
 t("build script pins a full commit SHA, verifies it, never fails a plain build",()=>{const s=read("scripts/build-rvt-wasm.mjs");const sha=(s.match(/RVT_RS_COMMIT = "([0-9a-f]+)"/)||[])[1];ok(sha&&sha.length===40,"pin");ok(/head !== RVT_RS_COMMIT/.test(s)&&/strict \? 1 : 0/.test(s));});
 t("decoder is built by a manual workflow that smoke-tests it and pushes it to a branch; licence + notice tracked",()=>{const w=read(".github/workflows/rvt-build.yml");ok(/workflow_dispatch/.test(w)&&/rvt-smoke\.mjs/.test(w)&&/--expect-glb/.test(w)&&/git add -f public\/rvt\/rvt\.js public\/rvt\/rvt_bg\.wasm/.test(w)&&/--strict/.test(w));ok(!/public\/rvt\/rvt_bg\.wasm/.test(read(".gitignore")),"wasm must not be ignored");ok(/Apache License/.test(read("public/rvt/LICENSE-rvt-rs.txt"))&&/Autodesk/.test(read("public/rvt/NOTICE-rvt-rs.txt")));});
 t("unavailable message names the concrete reason",()=>{const s=read("src/features/rvt-viewer.ts");ok(/answered \$\{w\.status\}/.test(s)&&/Detail:/.test(s));});
-console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);
+
+// Real WebAssembly decoder, when present (committed under public/rvt/). Synthetic fixture: proves the pipeline runs, not geometry quality.
+(async()=>{
+  if(!fs.existsSync("public/rvt/rvt_bg.wasm")){console.log("  SKIP real decoder tests (public/rvt/rvt_bg.wasm not built)");return;}
+  const api=await import(require("url").pathToFileURL(path.resolve("public/rvt/rvt.js")).href);
+  await api.default({module_or_path:fs.readFileSync("public/rvt/rvt_bg.wasm")});
+  const bytes=new Uint8Array(fs.readFileSync("tests/fixtures/rvt/architectural-2024.rvt"));
+  t("REAL wasm: decodeRevit runs on a real Revit-format file and returns a glTF binary",()=>{const stages=[];const r=m.decodeRevit(api,bytes,{stage:s=>stages.push(s)});ok(Buffer.from(r.glb.slice(0,4)).toString("latin1")==="glTF","glb magic");ok(stages.includes("schema-parse"),"stage hook");ok(r.diagnostics.input.revit_version===2024,"version");});
+  t("REAL wasm: synthetic scaffold file is reported as NOT drawable (honest summary)",()=>{const r=m.decodeRevit(api,bytes);const s=m.summarizeDiagnostics(r.diagnostics);ok(!s.drawable&&s.confidencePct===25&&/Nothing to draw/.test(s.headline),s.headline);});
+  t("REAL wasm: garbage input throws instead of hanging or crashing the page",()=>{let e;try{m.decodeRevit(api,new Uint8Array(4096).fill(7))}catch(x){e=x}ok(e,"expected an error");});
+})().then(()=>{console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0)});

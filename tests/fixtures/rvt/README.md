@@ -1,0 +1,1 @@
+`architectural-2024.rvt` is a 20 KB **synthetic** Revit-format fixture from the rvt-rs corpus (Apache-2.0, https://github.com/DrunkOnJava/rvt-rs, `corpus/tier1/`). It is not a real building: the decoder reports it as "scaffold" (project structure, no geometry). It proves the decoder runs and the call sequence is right, nothing about geometry quality.
