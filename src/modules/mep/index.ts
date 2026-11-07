@@ -16,6 +16,12 @@ import {
 } from "./pressure";
 import type { MepSize, MepSystem, RouteRequest, RouteResult, SizingResult } from "./types";
 import { MepModelLifecycle } from "./model-lifecycle";
+import * as mepPlumbing from "./plumbing";
+import * as mepConvert from "./convert";
+import * as mepFire from "./fire";
+import * as mepElectricalCalc from "./electrical-calc";
+import * as mepInsulation from "./insulation";
+import * as mepRunTools from "./run-tools";
 
 export * from "./types";
 export * from "./connectors";
@@ -30,6 +36,12 @@ export {
 export type {
   DuctSegment, PipeSegment, PressureEdge, PressureNetwork, PressureResult, WorstPathResult,
 } from "./pressure";
+export * from "./plumbing";
+export * from "./convert";
+export * from "./fire";
+export * from "./electrical-calc";
+export * from "./insulation";
+export * from "./run-tools";
 
 /** Public MEP service interface - what consumers call. */
 export interface MepService {
@@ -72,6 +84,16 @@ export function setupMep(): MepService {
   svcAny.worstPath = worstPathImpl;
   svcAny.classifyFrictionRate = classifyImpl;
 
+  // v0.75: parametric superhero pack — plumbing demand, unit/cross-section
+  // conversions, sprinkler hydraulics, electrical quick calc, insulation
+  // and run-editing tools ride on the same service.
+  svcAny.plumbing = mepPlumbing;
+  svcAny.convert = mepConvert;
+  svcAny.fire = mepFire;
+  svcAny.electricalCalc = mepElectricalCalc;
+  svcAny.insulation = mepInsulation;
+  svcAny.runTools = mepRunTools;
+
   // Register in the typed service registry + legacy ctx.features bag.
   try {
     register("mep" as any, svc as any);
@@ -82,8 +104,10 @@ export function setupMep(): MepService {
   try { (window as any).__obsMep = svc; } catch { /* */ }
 
   console.log(
-    "[mep] ready. A* router + ASHRAE sizing online. Use __obsMep.route({...}) " +
-    "or the 'MEP Auto-Route…' command in the fabrication panel.",
+    "[mep] ready. A* router + ASHRAE sizing + parametric superhero pack online. " +
+    "Use the __obsMep service (.route, .plumbing.fixtureUnitsToDemand, .fire.designDemand, " +
+    ".electricalCalc.voltageDrop, .insulation, .runTools) or the " +
+    "'MEP Auto-Route…' / 'MEP Design Toolkit…' commands.",
   );
 
   return svc;

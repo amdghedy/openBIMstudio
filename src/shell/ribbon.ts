@@ -79,6 +79,8 @@ import { toggleBimToolbox, isBimToolboxVisible } from "../features/bim-toolbox";
 
 // ── MEP category coloring ──────────────────────────────────────────────
 import { toggleMepColors, isMepColoringActive } from "../features/mep-coloring";
+// ── MEP parametric design toolkit ──────────────────────────────────────
+import { openMepDesignToolkit } from "../features/mep-fabrication";
 
 // ── Unified select-all ─────────────────────────────────────────────────
 import { selectAllObjects, clearAllSelection } from "../features/select-all";
@@ -549,6 +551,20 @@ function mepFabButton(): HTMLButtonElement {
     ev.stopPropagation();
     const svc = (ctx.features as any).mepFabrication;
     if (svc?.toggle) svc.toggle();
+  };
+  return btn;
+}
+
+function mepToolkitButton(): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.className = "obs-rb";
+  btn.title = "MEP Design Toolkit — Hunter fixture-unit demand, sprinkler hydraulics, voltage drop, insulation heat loss, duct equivalents, ACH, water hammer and unit conversions";
+  btn.innerHTML =
+    `<span class="obs-rb__icon">${svgIcon("calc" as IconName)}</span>` +
+    `<span class="obs-rb__label">MEP Toolkit</span>`;
+  btn.onclick = (ev) => {
+    ev.stopPropagation();
+    void openMepDesignToolkit();
   };
   return btn;
 }
@@ -1067,6 +1083,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Systems"),
       systemBrowserButton(),
       mepFabButton(),
+      mepToolkitButton(),
       pidModelerButton(),
       sep(),
       sep(),

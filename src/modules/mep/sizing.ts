@@ -64,6 +64,7 @@ const DEFAULT_VELOCITY: Record<MepSystem, number> = {
   "gas":            5.0,
   "medical-vacuum": 1.0,
   "medical-oxygen": 1.5,
+  "sprinkler":      5.0,   // NFPA practice keeps well under 6.1 m/s
   "cable-tray":     0,    // not flow-driven
   "conduit":        0,
 };
@@ -83,6 +84,7 @@ const MAX_VELOCITY: Record<MepSystem, number> = {
   "gas":            8.0,
   "medical-vacuum": 2.0,
   "medical-oxygen": 2.0,
+  "sprinkler":      6.1,   // 20 ft/s practice limit (NFPA 13)
   "cable-tray":     0,
   "conduit":        0,
 };

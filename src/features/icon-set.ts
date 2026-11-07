@@ -76,9 +76,10 @@ export type IconName =
   | "stretch" | "join" | "fillet" | "chamfer" | "explode" | "align"
   | "matchprop" | "find" | "table" | "center-mark" | "dim-arclen"
   | "dim-diameter" | "dim-baseline" | "dim-continue" | "ucs" | "purge"
-  | "audit" | "layer-state" | "import";
+  | "audit" | "layer-state" | "import" | "calc";
 
 const PATHS: Record<IconName, string> = {
+  calc: `<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7 H16 M8 12 H11 M13 12 H16 M8 16 H11 M13 16 H16"/>`,
   // ── App / file ──────────────────────────────────────────────────────
   menu: `<path d="M4 7h16M4 12h16M4 17h16"/>`,
   home: `<path d="M4 11 L12 4 L20 11 M6 10 V20 H18 V10"/>`,

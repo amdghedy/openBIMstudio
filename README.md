@@ -154,6 +154,8 @@ npm run deploy
 - **Rebar** modeling
 - Ducts, pipes, cable trays, conduits — with pressure & connectivity checks
 - Routing, fittings (elbow geometry), fabrication parts
+- **MEP Design Toolkit** — parametric calculators: Hunter fixture-unit demand, sprinkler density/area hydraulics, voltage drop & conductor check, pipe/duct insulation heat loss + condensation screening + takeoff, ASHRAE round↔rect duct equivalents, air-changes airflow, Joukowsky water-hammer surge, unit conversions
+- **Sprinkler system** — fire piping joins the sizing/color/routing systems
 - P&ID-related workflows
 - Analytical / structural model export paths, structural loads & connections
 

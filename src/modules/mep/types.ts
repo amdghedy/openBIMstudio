@@ -23,6 +23,7 @@ export type MepSystem =
   | "gas"             // fuel gas pipe
   | "medical-vacuum"  // medical vacuum pipe
   | "medical-oxygen"  // medical oxygen pipe
+  | "sprinkler"       // fire sprinkler piping
   | "cable-tray"      // cable tray (electrical)
   | "conduit";        // conduit (electrical)
 
@@ -138,6 +139,7 @@ export function elementTypeFor(system: MepSystem): MepElementType {
     case "gas":
     case "medical-vacuum":
     case "medical-oxygen":
+    case "sprinkler":
       return "pipe";
     case "cable-tray":
       return "cable-tray";
@@ -172,6 +174,7 @@ export function colorFor(system: MepSystem): string {
     case "gas": return "#facc15";              // yellow
     case "medical-vacuum": return "#94a3b8";   // slate
     case "medical-oxygen": return "#22d3ee";   // light cyan
+    case "sprinkler": return "#e11d48";        // fire red
     case "cable-tray": return "#f59e0b";      // amber
     case "conduit": return "#a855f7";          // purple
   }
