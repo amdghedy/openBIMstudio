@@ -19,6 +19,7 @@
       }
     ]
   },
+  // Accounts + cloud projects (optional): add an R2 binding named PROJECTS and the secrets described in docs/ACCOUNTS.md.
   "migrations": [
     {
       "tag": "v1",

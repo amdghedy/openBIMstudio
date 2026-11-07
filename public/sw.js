@@ -48,6 +48,8 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // local AI proxies and the dev server are never cached
   if (/^\/(ollama|lmstudio|anthropic)\//.test(url.pathname)) return;
+  // account + cloud-project responses are private: never stored in the shared cache
+  if (/^\/api\/(auth|cloud)\//.test(url.pathname)) return;
 
   if (req.mode === "navigate") {
     // app shell: always fresh from the network (cache:"reload" bypasses the HTTP

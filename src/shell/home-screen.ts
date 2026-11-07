@@ -116,6 +116,7 @@ function buildStatic() {
           </select>
           <button class="obs-btn obs-btn--primary" id="obs-create-project">Create project</button>
           <button class="obs-btn" id="obs-open-file" title="Open a .obsproj project file from your computer">Open file\u2026</button>
+          <button class="obs-btn" id="obs-account" title="Sign in with Google or Microsoft to open your projects from any device">Account &amp; cloud\u2026</button>
         </div>
         <div class="obs-create-hint" id="obs-template-note"></div>
       </div>
@@ -145,6 +146,9 @@ function buildStatic() {
   const template = inner.querySelector("#obs-template") as HTMLSelectElement;
   const note = inner.querySelector("#obs-template-note") as HTMLElement;
   const createBtn = inner.querySelector("#obs-create-project") as HTMLButtonElement;
+  (inner.querySelector("#obs-account") as HTMLButtonElement | null)?.addEventListener("click", () => {
+    void import("../features/account-ui").then((m) => m.openAccountDialog());
+  });
   (inner.querySelector("#obs-open-file") as HTMLButtonElement | null)?.addEventListener("click", () => {
     void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile());
   });

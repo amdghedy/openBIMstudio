@@ -717,6 +717,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("folder", "Open File", safe(async () => { (await import("../modules/projects/project-file-io")).openProjectFromFile(); }, "Open file"), {
         title: "Open a .obsproj project file from your computer",
       }),
+      b("home", "Account & Cloud", safe(async () => { (await import("../features/account-ui")).openAccountDialog(); }, "Account"), {
+        title: "Sign in with Google or Microsoft to save projects to your account and open them from your phone or another device",
+      }),
       sep(),
       groupLabel("New"),
       b("home", "New Project", safe(() => showHome(), "New project")),

@@ -1,3 +1,4 @@
+import { handleCloud, type CloudEnv } from "./cloud";
 import { handleLinkedInRequest, LinkedInVault, type LinkedInEnv } from "./linkedin";
 
 /**
@@ -56,7 +57,7 @@ interface CounterNamespace {
   get(id: unknown): CounterStub;
 }
 
-interface Env extends LinkedInEnv {
+interface Env extends LinkedInEnv, CloudEnv {
   /** Static Assets binding (wrangler.jsonc → assets.binding). */
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   /** Durable Object namespace holding the visit counters. */
@@ -180,6 +181,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const linkedInResponse = await handleLinkedInRequest(request, env);
     if (linkedInResponse) return linkedInResponse;
+    const cloudResponse = await handleCloud(request, env);
+    if (cloudResponse) return cloudResponse;
     const url = new URL(request.url);
     if (url.pathname === "/api/visits") {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_PREFLIGHT });
