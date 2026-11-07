@@ -255,6 +255,18 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "BLOCKLIB", aliases: ["BLOCKS", "BLIB"], description: "Block library: list, insert, rename, delete, export" },
   { name: "SVGIMPORT", aliases: ["SVG"], description: "Import an SVG file as polylines and circles" },
   { name: "FIELD", aliases: ["FLD"], description: "Insert text computed from the drawing (date, name, length, area...)" },
+  { name: "DWGOPEN", aliases: [], description: "Open DWG / DXF drawings as new tabs in this editor (LibreDWG reader worker)" },
+  { name: "DWGJSONIMP", aliases: ["JSONDUMP"], description: "Re-import a dwg2json database dump into the editor (JSON round trip)" },
+  { name: "DWGREWRITE", aliases: ["SAVETODXF"], description: "Re-save the drawing through the DXF writer (LibreDWG dwgrewrite parity)" },
+  { name: "DWG2JSON", aliases: [], description: "Dump the full drawing database as JSON (dwgread -O JSON parity)" },
+  { name: "DWG2SVG", aliases: [], description: "Flattened 2D vector export with per-entity colors (dwg2SVG parity)" },
+  { name: "DWG2GEOJSON", aliases: [], description: "Points / lines / polygons GeoJSON in drawing coordinates (dwg2geojson parity)" },
+  { name: "DWG2PS", aliases: [], description: "EPS export via moveto/lineto/arc — prints anywhere (dwg2ps parity)" },
+  { name: "DWGAUDIT", aliases: [], description: "DWG-grade integrity report: zero-length geometry, dangling refs, census (dwg_audit parity)" },
+  { name: "DWGTABLES", aliases: [], description: "Browse the LAYER / LTYPE / STYLE / DIMSTYLE tables (dwgread parity)" },
+  { name: "DWGCENSUS", aliases: [], description: "Count entities by type in model space (dwgread census parity)" },
+  { name: "DWGTHUMB", aliases: ["DWGBMP"], description: "Extract the embedded preview bitmap from a DWG file (dwg_bmp parity)" },
+  { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select all objects sharing type and layer with the current selection" },
   { name: "KS", aliases: ["ALIASEDIT", "ALIASES", "SHORTCUTS"], description: "Edit command aliases (abbreviations) — AutoCAD-style" },
 ];
 
@@ -4358,6 +4370,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "insert",
       ) +
       rg(
+        "Open Drawing",
+        rb("file", "DWG…", `data-a="dwg-open"`, "Open DWG drawings as new tabs — parsed locally in the reader worker (LibreDWG WASM)") +
+          rb("folder", "DXF…", `data-a="dwg-open-dxf"`, "Open DXF drawings as new tabs") +
+          rb("import", "JSON dump…", `data-a="dwg-jsonimp"`, "Re-import a dwg2json database dump into the editor (JSON round trip)"),
+        "",
+        "",
+        "insert",
+      ) +
+      rg(
         "Import",
         rb("import", "DWG / DXF…", `data-a="import"`, "Merge a DWG or DXF file into the current drawing (IMPORT)") +
           rb("file", "File as Block", `data-a="blk-file"`, "Read a DWG / DXF as a block and place it (INSERT from file)") +
@@ -4500,8 +4521,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "manage",
       ) +
       rg(
+        "DWG Inspect",
+        rb("audit", "DWG Audit…", `data-a="dwg-audit"`, "Integrity report — zero-length geometry, dangling layer/style refs, empty layers (dwg_audit parity)") +
+          rb("table", "Tables…", `data-a="dwg-tables"`, "LAYER / LTYPE / STYLE / DIMSTYLE / layouts table browser") +
+          rb("find", "Census…", `data-a="dwg-census"`, "Entity counts by type in model space"),
+        "",
+        "",
+        "manage",
+      ) +
+      rg(
         "Plot",
         rb("print", "Plot…", `data-a="plot"`, "Plot to PDF / paper (PLOT)"),
+        "",
+        "",
+        "output",
+      ) +
+      rg(
+        "DWG Data",
+        rb("save", "Save DXF…", `data-a="dwg-rewrite"`, "Re-save the drawing through the DXF writer (LibreDWG dwgrewrite parity)") +
+          rb("csv", "dwg2json", `data-a="dwg-2json"`, "Full database dump as JSON — entities, layers, tables, skipped census (dwgread -O JSON parity)") +
+          rb("spline", "dwg2SVG", `data-a="dwg-2svg"`, "Flattened 2D vector export with per-entity colors (dwg2SVG parity)") +
+          rb("topo", "dwg2geojson", `data-a="dwg-2geojson"`, "Points / lines / polygons FeatureCollection in drawing coordinates (dwg2geojson parity)") +
+          rb("print", "dwg2ps", `data-a="dwg-2ps"`, "EPS via moveto/lineto/arc — prints anywhere (dwg2ps parity)") +
+          rb("camera", "Thumbnail…", `data-a="dwg-thumb"`, "Extract the embedded preview bitmap from a DWG file — no geometry parsing (dwg_bmp parity)"),
         "",
         "",
         "output",
@@ -4652,6 +4694,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ddedit: () => executeAutoCadCommand("DDEDIT"),
       qselect: () => executeAutoCadCommand("QSELECT"),
       pedit: () => executeAutoCadCommand("PEDIT"),
+      "dwg-open": () => executeAutoCadCommand("DWGOPEN DWG"),
+      "dwg-open-dxf": () => executeAutoCadCommand("DWGOPEN DXF"),
+      "dwg-jsonimp": () => executeAutoCadCommand("DWGJSONIMP"),
+      "dwg-rewrite": () => executeAutoCadCommand("DWGREWRITE"),
+      "dwg-2json": () => executeAutoCadCommand("DWG2JSON"),
+      "dwg-2svg": () => executeAutoCadCommand("DWG2SVG"),
+      "dwg-2geojson": () => executeAutoCadCommand("DWG2GEOJSON"),
+      "dwg-2ps": () => executeAutoCadCommand("DWG2PS"),
+      "dwg-audit": () => executeAutoCadCommand("DWGAUDIT"),
+      "dwg-tables": () => executeAutoCadCommand("DWGTABLES"),
+      "dwg-census": () => executeAutoCadCommand("DWGCENSUS"),
+      "dwg-thumb": () => executeAutoCadCommand("DWGTHUMB"),
     });
 
     tools.querySelectorAll<HTMLElement>("button[data-a]").forEach((b) => {
@@ -6957,6 +7011,51 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       } else logCmd("QSELECT: use QSELECT TYPE <LINE|CIRCLE|ARC|LWPOLYLINE|TEXT|POINT> · QSELECT LAYER <name> · QSELECT ALL.");
       return;
     }
+    if (cmd === "SELECTSIMILAR" || cmd === "SELSIM") {
+      const src = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+      if (!src.length) {
+        logCmd("SELECTSIMILAR: select one or more source objects first.");
+        return;
+      }
+      const types = new Set(src.map((e) => e.type));
+      const layers = new Set(src.map((e) => e.layer));
+      const ids = ents.map((_, i) => i).filter((i) => visible(ents[i]) && types.has(ents[i].type) && layers.has(ents[i].layer));
+      setSel(ids);
+      logCmd(`SELECTSIMILAR: ${ids.length} object(s) share type and layer with the selection.`);
+      return;
+    }
+    /* ── LibreDWG utility belt on the command line (same paths as the ribbon groups) ── */
+    if (cmd === "DWGOPEN") {
+      const kind = (parts[1] ?? "").toUpperCase() === "DXF" ? ".dxf" : (parts[1] ?? "").toUpperCase() === "DWG" ? ".dwg" : ".dwg,.dxf";
+      void import("./libredwg-toolkit").then((m) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.multiple = true;
+        input.accept = kind;
+        input.onchange = () => { if (input.files?.length) void m.openDrawingFiles(input.files); };
+        input.click();
+      });
+      return;
+    }
+    if (cmd === "DWGJSONIMP" || cmd === "JSONDUMP") {
+      void import("./libredwg-toolkit").then((m) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json";
+        input.onchange = () => { const f = input.files?.[0]; if (f) void m.importJsonDumpFile(f); };
+        input.click();
+      });
+      return;
+    }
+    if (cmd === "DWGREWRITE" || cmd === "SAVETODXF") { void import("../modules/drawings/dwg-engine").then((m) => m.exportActiveDxf()); return; }
+    if (cmd === "DWG2JSON") { void import("./libredwg-toolkit").then((m) => m.exportDwgJson()); return; }
+    if (cmd === "DWG2SVG") { void import("./libredwg-toolkit").then((m) => m.exportDwgSvg()); return; }
+    if (cmd === "DWG2GEOJSON") { void import("./libredwg-toolkit").then((m) => m.exportDwgGeoJson()); return; }
+    if (cmd === "DWG2PS") { void import("./libredwg-toolkit").then((m) => m.exportDwgPs()); return; }
+    if (cmd === "DWGAUDIT") { void import("./libredwg-toolkit").then((m) => m.auditDialog()); return; }
+    if (cmd === "DWGTABLES") { void import("./libredwg-toolkit").then((m) => void m.tablesDialog()); return; }
+    if (cmd === "DWGCENSUS") { void import("./libredwg-toolkit").then((m) => m.censusDialog()); return; }
+    if (cmd === "DWGTHUMB" || cmd === "DWGBMP") { void import("./libredwg-toolkit").then((m) => void m.thumbnailDialog()); return; }
     if (cmd === "PE" || cmd === "PEDIT") {
       const sub = (parts[1] ?? "").toUpperCase();
       const targets = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);

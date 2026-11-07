@@ -168,5 +168,32 @@ t("Audit: empty drawing is an error", () => {
   assert.ok(r.issues.some((i) => i.code === "empty-drawing" && i.severity === "error"));
 });
 
+/* ── UI relocation: the toolkit lives INSIDE the 2D engine, never as a tab of
+      the 3D platform (user directive). Guarded by markers, like cad-ui-wiring. ── */
+const viewer = fs.readFileSync(path.join(__dirname, "..", "src", "features", "cad-viewer.ts"), "utf8");
+const shellRibbon = fs.readFileSync(path.join(__dirname, "..", "src", "shell", "ribbon.ts"), "utf8");
+t("3D platform ribbon hosts NO LibreDWG tab", () => {
+  assert.ok(!shellRibbon.includes('label: "LibreDWG"'), "the LibreDWG tab must not sit in the 3D platform ribbon");
+  assert.ok(!/id: "dwg"/.test(shellRibbon), "stale dwg tab id in the 3D ribbon");
+});
+t("2D engine ribbon hosts the toolkit groups", () => {
+  for (const marker of [
+    '"Open Drawing"', '"DWG Data"', '"DWG Inspect"',
+    'data-a="dwg-open"', 'data-a="dwg-open-dxf"', 'data-a="dwg-jsonimp"',
+    'data-a="dwg-rewrite"', 'data-a="dwg-2json"', 'data-a="dwg-2svg"',
+    'data-a="dwg-2geojson"', 'data-a="dwg-2ps"',
+    'data-a="dwg-audit"', 'data-a="dwg-tables"', 'data-a="dwg-census"', 'data-a="dwg-thumb"',
+  ]) assert.ok(viewer.includes(marker), `missing ${marker}`);
+});
+t("2D command line exposes the LibreDWG utility belt + SELECTSIMILAR", () => {
+  for (const c of ["DWGOPEN", "DWGJSONIMP", "DWGREWRITE", "DWG2JSON", "DWG2SVG", "DWG2GEOJSON", "DWG2PS", "DWGAUDIT", "DWGTABLES", "DWGCENSUS", "DWGTHUMB", "SELECTSIMILAR"]) {
+    assert.ok(viewer.includes(`name: "${c}"`), `missing CAD_COMMANDS entry ${c}`);
+  }
+  for (const branch of ['cmd === "DWG2JSON"', 'cmd === "DWG2SVG"', 'cmd === "DWG2PS"', 'cmd === "DWGAUDIT"', 'cmd === "DWGTABLES"', 'cmd === "DWGCENSUS"', 'cmd === "SELECTSIMILAR" || cmd === "SELSIM"']) {
+    assert.ok(viewer.includes(branch), `missing dispatcher branch: ${branch}`);
+  }
+  assert.ok(viewer.includes('import("../modules/drawings/dwg-engine").then((m) => m.exportActiveDxf())'), "DWGREWRITE must route to exportActiveDxf");
+});
+
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

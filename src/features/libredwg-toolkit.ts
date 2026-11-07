@@ -17,9 +17,15 @@
  *   dwgrewrite           →   "Save DXF…" — re-save through the DXF writer
  *   (JSON round trip)    →   "JSON dump…" — re-import a dump into the editor
  *
- * UI surfaces: a dedicated "LibreDWG" ribbon tab (see shell/ribbon.ts),
- * command-palette entries (dwg.*), and dialogs. No window.__obs* globals —
- * state flows through imports and ctx.features (ui-honesty budget).
+ * UI surfaces — everything lives INSIDE the native 2D CAD engine, never as a
+ * tab of the 3D platform:
+ *   Insert tab → "Open Drawing" group (DWG… / DXF… / JSON dump…)
+ *   Output tab → "DWG Data" group (Save DXF · dwg2json · dwg2SVG · dwg2geojson · dwg2ps · Thumbnail)
+ *   Manage tab → "DWG Inspect" group (Audit… / Tables… / Census…)
+ *   engine command line → DWGOPEN · DWGJSONIMP · DWGREWRITE · DWG2JSON ·
+ *   DWG2SVG · DWG2GEOJSON · DWG2PS · DWGAUDIT · DWGTABLES · DWGCENSUS · DWGTHUMB
+ *   plus command-palette entries (dwg.*) and dialogs. No window.__obs* globals —
+ *   state flows through imports and ctx.features (ui-honesty budget).
  */
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";

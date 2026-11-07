@@ -73,15 +73,15 @@ t("every ribbon group is tagged with exactly one of the six tabs", () => {
     Clipboard: "home", Select: "home", Draw: "home", "Draw II": "home", Modify: "home", "Modify II": "home",
     Annotation: "home", Properties: "home", Utilities: "home", History: "home", Layers: "home", Styles: "home",
     // Insert
-    Block: "insert", Import: "insert", Fields: "insert", Data: "insert",
+    Block: "insert", "Open Drawing": "insert", Import: "insert", Fields: "insert", Data: "insert",
     // Annotate
     Text: "annotate", Dimensions: "annotate", Markup: "annotate", Tables: "annotate", "Markup Files": "annotate",
     // View
     Navigate: "view", "Saved Views": "view", "Visual Styles": "view", Modes: "view", UCS: "view", Show: "view",
     // Manage
-    Units: "manage", Drawing: "manage", "Layer States": "manage",
+    Units: "manage", Drawing: "manage", "Layer States": "manage", "DWG Inspect": "manage",
     // Output
-    Plot: "output", Export: "output", Window: "output",
+    Plot: "output", "DWG Data": "output", Export: "output", Window: "output",
   };
   const found = {};
   const re = /rg\(\s*(?:\n\s*)?"((?:[^"\\]|\\.)+)",([\s\S]*?)"(home|insert|annotate|view|manage|output)"\s*\)?/g;

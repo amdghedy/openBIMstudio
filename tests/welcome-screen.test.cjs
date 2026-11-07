@@ -68,7 +68,7 @@ t("showcase: three pages numbered 01/02/03 with distinct accents", () => {
 t("showcase: every claim maps to a real module surface", () => {
   // Verified against the repository (do not loosen without evidence):
   const claims = [
-    "106-command",                 // CAD_COMMANDS length = 106 (cad-viewer.ts)
+    "118-command",                 // CAD_COMMANDS length = 118 (cad-viewer.ts, incl. the LibreDWG belt)
     "r13–r2018",                   // LibreDWG toolkit version coverage
     "DWG 2000–2018",               // DWGVERSION export range
     "BVH/GJK clash engine",        // modules/clash: triangle-bvh + gjk

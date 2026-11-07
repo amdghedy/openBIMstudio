@@ -1319,66 +1319,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
   },
 
   // ═════════════════════════════ ANNOTATE ══════════════════════════════
-  // ═════════════════════════════ LIBREDWG ════════════════════════
-  {
-    id: "dwg",
-    label: "LibreDWG",
-    items: () => [
-      groupLabel("Open"),
-      b("file", "DWG…", safe(() => {
-        pickFiles(".dwg", true, (files) => {
-          void import("../features/libredwg-toolkit").then((m) => m.openDrawingFiles(files));
-        });
-      }, "Open DWG"), { title: "Import AutoCAD DWG (R12–2018) — parsed locally in the reader worker (LibreDWG WASM)" }),
-      b("folder", "DXF…", safe(() => {
-        pickFiles(".dxf", true, (files) => {
-          void import("../features/libredwg-toolkit").then((m) => m.openDrawingFiles(files));
-        });
-      }, "Open DXF"), { title: "Import AutoCAD DXF" }),
-      b("import", "JSON dump…", safe(() => {
-        void import("../features/libredwg-toolkit").then((m) => {
-          const input = document.createElement("input");
-          input.type = "file";
-          input.accept = ".json";
-          input.onchange = () => { const f = input.files?.[0]; if (f) void m.importJsonDumpFile(f); };
-          input.click();
-        });
-      }, "Import JSON dump"), { title: "Re-import a dwg2json database dump into the drawing editor (JSON round trip)" }),
-      sep(),
-      groupLabel("Convert"),
-      b("save", "Save DXF…", safe(() => {
-        void import("../modules/drawings/dwg-engine").then((m) => m.exportActiveDxf());
-      }, "Save DXF"), { title: "Re-save the drawing through the DXF writer (LibreDWG dwgrewrite parity)" }),
-      b("csv", "JSON", safe(() => {
-        void import("../features/libredwg-toolkit").then((m) => m.exportDwgJson());
-      }, "dwg2json"), { title: "Full database dump as JSON — entities, layers, tables, skipped census (dwgread -O JSON parity)" }),
-      b("spline", "SVG", safe(() => {
-        void import("../features/libredwg-toolkit").then((m) => m.exportDwgSvg());
-      }, "dwg2SVG"), { title: "Flattened 2D vector export with per-entity colors (LibreDWG dwg2SVG parity)" }),
-      b("topo", "GeoJSON", safe(() => {
-        void import("../features/libredwg-toolkit").then((m) => m.exportDwgGeoJson());
-      }, "dwg2geojson"), { title: "Points / lines / polygons FeatureCollection in drawing coordinates (dwg2geojson parity)" }),
-      b("print", "PostScript", safe(() => {
-        void import("../features/libredwg-toolkit").then((m) => m.exportDwgPs());
-      }, "dwg2ps"), { title: "EPS via moveto/lineto/arc — prints anywhere (LibreDWG dwg2ps parity)" }),
-      sep(),
-      groupLabel("Inspect"),
-      b("audit", "Audit…", safe(() => {
-        void import("../features/libredwg-toolkit").then((m) => m.auditDialog());
-      }, "dwg_audit"), { title: "Integrity report — zero-length geometry, dangling layer/style refs, empty layers, skipped types + .txt/.json report" }),
-      b("table", "Tables…", safe(() => {
-        void import("../features/libredwg-toolkit").then((m) => void m.tablesDialog());
-      }, "Tables"), { title: "LAYER / LTYPE / STYLE / DIMSTYLE / layouts table browser" }),
-      b("find", "Census…", safe(() => {
-        void import("../features/libredwg-toolkit").then((m) => m.censusDialog());
-      }, "Census"), { title: "Entity counts by type (model space)" }),
-      sep(),
-      groupLabel("Extract"),
-      b("camera", "Thumbnail…", safe(() => {
-        void import("../features/libredwg-toolkit").then((m) => void m.thumbnailDialog());
-      }, "dwg_bmp"), { title: "Extract the embedded preview bitmap from a DWG file — no geometry parsing (dwg_bmp parity)" }),
-    ],
-  },
   {
     id: "annotate",
     label: "Annotate",
