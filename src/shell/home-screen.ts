@@ -35,9 +35,172 @@ const WORKSPACES = [
   ["qa", "QA / QC", "Run clash detection, IDS validation, issue review and model health checks."],
 ] as const;
 
+/* ── Welcome-screen showcase ────────────────────────────────────────────────
+   Three marketing-style pages that surface the platform's strongest tools.
+   Every claim here is backed by real modules/commands in this repository. */
+const SHOWCASE = [
+  {
+    cls: "obs-page--2d",
+    num: "01",
+    eyebrow: "2D DRAFTING & CAD",
+    title: "A real CAD engine — front and center.",
+    copy:
+      "No more hunting through tabs: the drafting engine is one click from this screen. " +
+      "106 keyboard-first commands, file-faithful layer and style handling, and a LibreDWG-grade " +
+      "DWG/DXF pipeline that reads r13–r2018 and writes back in the version you choose.",
+    cards: [
+      ["C>_", "106-command line", "AutoCAD-style commands, type-ahead, custom aliases and dynamic input at the cursor."],
+      ["LAY", "Layers, linetypes & styles", "Layer manager, linetype scale, and text/dim styles adopted straight from the file."],
+      ["HAT", "Hatches & dimensions", "Associative hatches, dimension chains, leaders and automatic dimensioning."],
+      ["DWG", "DWG & DXF, r13–r2018", "Open legacy and current drawings; export DXF or native DWG 2000–2018."],
+      ["AUD", "Audit, tables & census", "Drawing audit, layer/table browser, entity census and thumbnail previews."],
+      ["PLT", "Batch plot & register", "Plot sets to PDF in batch and track issues in the drawing register."],
+    ],
+    chips: ["LINE", "PLINE", "OFFSET", "TRIM", "FILLET", "ARRAY", "HATCH", "MTEXT", "OSNAP", "ORTHO", "MATCHPROP", "PURGE", "QSAVE", "PLOT"],
+    cta: ["data-open2d", "Launch the 2D engine"],
+  },
+  {
+    cls: "obs-page--3d",
+    num: "02",
+    eyebrow: "3D BIM & COORDINATION",
+    title: "Author, federate and coordinate in one 3D environment.",
+    copy:
+      "The 3D platform covers the full delivery arc: architectural and structural authoring, MEP " +
+      "fabrication, federation, clash detection and issue round-trips — with 4D sequencing and 5D " +
+      "quantities tied directly to the model you are looking at.",
+    cards: [
+      ["BLD", "Author everything", "Walls, slabs, stairs, roofs, curtain wall, railings, ramps, rooms and site topography."],
+      ["REB", "Rebar & structure", "Rebar authoring with lap splices, structural connections, loads and trusses."],
+      ["MEP", "MEP systems", "Duct, pipe, tray and fabrication parts with sizing and balance reviews."],
+      ["CLS", "Clash detection & BCF", "BVH/GJK clash engine with reports and BCF issue round-trip to other tools."],
+      ["4D5", "4D & 5D delivery", "Sequencing timelines and cost takeoff computed from model elements."],
+      ["ENV", "Analysis & environment", "Sun settings, daylighting and energy analysis on the analytical model."],
+    ],
+    chips: ["IFC", "FEDERATION", "SECTION BOX", "WALK MODE", "VIEWCUBE", "SCHEDULES", "SHEETS", "IDS", "WORKSETS", "DESIGN OPTIONS", "POINT CLOUD"],
+    cta: ["data-open3d", "Enter the 3D BIM platform"],
+  },
+  {
+    cls: "obs-page--del",
+    num: "03",
+    eyebrow: "DELIVER, AUTOMATE & SCALE",
+    title: "From model to deliverable — and to every device you own.",
+    copy:
+      "Local-first by design, cloud-connected when you want it. Sign in from any device and open the " +
+      "same project vault, exchange every AEC format, automate the repetitive work and run the whole " +
+      "interface in ten languages including right-to-left Arabic.",
+    cards: [
+      ["CLD", "Cloud projects", "Email or Google sign-in; the same vault opens from desktop, tablet or phone."],
+      ["FMT", "Every format in, out", "IFC, BCF, IDS, DWG/DXF, NWC bridge, SVG, JSON, GeoJSON and PostScript."],
+      ["SCH", "Schedules & sheets", "Live schedules, sheet sets and drawing production with batch plot."],
+      ["AUT", "Automation & plugins", "Generative design, automation pipelines and an installable plugin marketplace."],
+      ["AI", "AI command bar", "Ask about the model in plain language — query, filter and navigate results."],
+      ["L10", "10 languages · offline", "Full UI translation incl. RTL Arabic; installable PWA that works offline."],
+    ],
+    chips: ["IFC", "BCF", "IDS", "DWG/DXF", "NWC", "SVG", "JSON", "GeoJSON", "PS", ".obsproj", "PWA"],
+    cta: ["data-focus-create", "Start a project below"],
+  },
+] as const;
+
+/* Decorative product visuals, pure inline SVG (no assets, aria-hidden). */
+const VISUAL_2D = `
+<svg viewBox="0 0 340 212" role="presentation" focusable="false">
+  <defs>
+    <pattern id="obsp-grid" width="15" height="15" patternUnits="userSpaceOnUse">
+      <path d="M15 0H0V15" fill="none" stroke="rgba(56,189,248,.10)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="340" height="212" fill="url(#obsp-grid)"/>
+  <rect x="40" y="34" width="148" height="90" fill="none" stroke="#38BDF8" stroke-width="1.6"/>
+  <circle cx="114" cy="79" r="29" fill="none" stroke="#7DD3FC" stroke-width="1.3"/>
+  <path d="M188 34 L262 34 L262 124 L296 124" fill="none" stroke="#7DD3FC" stroke-width="1.3"/>
+  <path d="M40 158 H296" stroke="#F59E0B" stroke-width="1"/>
+  <path d="M40 154 v8 M296 154 v8" stroke="#F59E0B" stroke-width="1"/>
+  <path d="M44 155.6 40 158 44 160.4 M292 155.6 296 158 292 160.4" fill="none" stroke="#F59E0B" stroke-width="1"/>
+  <text x="150" y="152" fill="#F59E0B" font-family="monospace" font-size="10">25600</text>
+  <g class="obsp-cross">
+    <path d="M236 64 v-18 M236 64 v18 M236 64 h-18 M236 64 h18" stroke="rgba(232,234,240,.75)" stroke-width="1"/>
+    <rect x="232.5" y="60.5" width="7" height="7" fill="none" stroke="#38BDF8" stroke-width="1.2"/>
+  </g>
+  <rect x="22" y="180" width="296" height="21" rx="4" fill="rgba(11,13,18,.85)" stroke="#1E2029"/>
+  <text x="32" y="194" fill="#6B7280" font-family="monospace" font-size="9.5">Command: _line 25600,18400&#8250;</text>
+  <rect class="obsp-caret" x="238" y="185" width="6" height="11" fill="#38BDF8"/>
+</svg>`;
+
+const VISUAL_3D = `
+<svg viewBox="0 0 340 212" role="presentation" focusable="false">
+  <defs>
+    <linearGradient id="obsp-fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(129,140,248,.16)"/><stop offset="1" stop-color="rgba(129,140,248,0)"/>
+    </linearGradient>
+  </defs>
+  <rect width="340" height="212" fill="url(#obsp-fade)"/>
+  <g stroke-width="1.2" stroke-linejoin="round">
+    <polygon points="60,84 100,64 140,84 100,104" fill="#4c5270" stroke="#818CF8"/>
+    <polygon points="60,84 60,138 100,158 100,104" fill="#262a3e" stroke="#818CF8"/>
+    <polygon points="140,84 140,138 100,158 100,104" fill="#313652" stroke="#818CF8"/>
+    <polygon points="150,58 196,35 242,58 196,81" fill="#575e85" stroke="#818CF8"/>
+    <polygon points="150,58 150,134 196,157 196,81" fill="#2b2f46" stroke="#818CF8"/>
+    <polygon points="242,58 242,134 196,157 196,81" fill="#3a3f5e" stroke="#818CF8"/>
+    <polygon points="222,112 258,94 294,112 258,130" fill="#4c5270" stroke="#818CF8"/>
+    <polygon points="222,112 222,150 258,168 258,130" fill="#262a3e" stroke="#818CF8"/>
+    <polygon points="294,112 294,150 258,168 258,130" fill="#313652" stroke="#818CF8"/>
+  </g>
+  <path d="M36 190 L312 52" stroke="#38BDF8" stroke-width="1.1" stroke-dasharray="5 4"/>
+  <polygon points="36,190 312,52 312,38 36,176" fill="rgba(56,189,248,.10)"/>
+  <g class="obsp-clash">
+    <circle cx="173" cy="120" r="9" fill="rgba(239,68,68,.18)" stroke="#EF4444" stroke-width="1.4"/>
+    <circle cx="173" cy="120" r="2.6" fill="#EF4444"/>
+    <text x="188" y="116" fill="#EF4444" font-family="monospace" font-size="9">BCF-014</text>
+  </g>
+</svg>`;
+
+const VISUAL_DEL = `
+<svg viewBox="0 0 340 212" role="presentation" focusable="false">
+  <defs>
+    <linearGradient id="obsp-cloud" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(34,197,94,.20)"/><stop offset="1" stop-color="rgba(34,197,94,.04)"/>
+    </linearGradient>
+  </defs>
+  <rect width="340" height="212" fill="url(#obsp-cloud)"/>
+  <g class="obsp-float">
+    <rect x="52" y="52" width="108" height="132" rx="7" fill="#12141B" stroke="#2A2E3A" transform="rotate(-7 106 118)"/>
+    <text x="70" y="98" fill="#22C55E" font-family="monospace" font-size="12" transform="rotate(-7 106 118)">IFC</text>
+    <path d="M70 112 h68 M70 124 h68 M70 136 h44" stroke="#2A2E3A" stroke-width="2" transform="rotate(-7 106 118)"/>
+  </g>
+  <g class="obsp-float obsp-float--d1">
+    <rect x="118" y="40" width="108" height="132" rx="7" fill="#12141B" stroke="#2A2E3A" transform="rotate(4 172 106)"/>
+    <text x="136" y="86" fill="#38BDF8" font-family="monospace" font-size="12" transform="rotate(4 172 106)">DWG</text>
+    <path d="M136 100 h68 M136 112 h68 M136 124 h40" stroke="#2A2E3A" stroke-width="2" transform="rotate(4 172 106)"/>
+  </g>
+  <g class="obsp-float obsp-float--d2">
+    <rect x="186" y="58" width="104" height="128" rx="7" fill="#12141B" stroke="#2A2E3A" transform="rotate(11 238 122)"/>
+    <text x="204" y="102" fill="#818CF8" font-family="monospace" font-size="12" transform="rotate(11 238 122)">BCF</text>
+    <path d="M204 116 h64 M204 128 h64 M204 140 h38" stroke="#2A2E3A" stroke-width="2" transform="rotate(11 238 122)"/>
+  </g>
+  <path d="M170 178 c-26 0 -26 -24 -8 -26 c-2 -14 18 -20 26 -10 c16 -8 34 6 26 20 c14 0 12 16 -4 16 z" fill="rgba(34,197,94,.14)" stroke="#22C55E" stroke-width="1.3"/>
+  <path d="M120 196 h140" stroke="#2A2E3A" stroke-width="1"/>
+  <text x="122" y="208" fill="#6B7280" font-family="monospace" font-size="9">SAME VAULT · EVERY DEVICE</text>
+</svg>`;
+
 function emitWorkspace(id: string) {
   window.dispatchEvent(new CustomEvent("obs-workspace", { detail: { id } }));
   hideHome();
+}
+
+/* The two headline entries of the welcome screen.
+   2D → full-screen CAD editor; opens a blank drawing, no BIM project needed.
+   3D → the BIM platform: with a project, just leave the landing screen;
+   without one, enter the default Coordination workspace (same path as the
+   workspace cards, so behavior stays consistent). */
+function open2dEngine(): void {
+  void import("../features/cad-viewer").then((m) => m.openCadViewer());
+}
+function open3dPlatform(): void {
+  if (getCurrentProject()) {
+    hideHome();
+    return;
+  }
+  emitWorkspace("coordination");
 }
 
 /* Cumulative visit counter. Counting happens server-side on the Cloudflare
@@ -99,9 +262,45 @@ function buildStatic() {
       <div class="obs-center-header-meta">
         <span class="obs-center-badge">LOCAL-FIRST</span>
         <span class="obs-center-badge obs-center-badge--muted">IFC · BCF · IDS</span>
-        <span class="obs-center-version">v52</span>
+        <span class="obs-center-version">v53</span>
       </div>
     </header>
+
+    <section class="obs-hero" aria-label="Quick launch">
+      <div class="obs-hero__eyebrow">ONE PLATFORM · 2D + 3D · OPEN STANDARDS</div>
+      <h1 class="obs-hero__title">Your <em>CAD engine</em> and your <em>BIM platform</em> — one click from here.</h1>
+      <p class="obs-hero__sub">No more buried tools. Launch a full drafting session or the complete 3D BIM environment straight from the welcome screen — no project setup required.</p>
+      <div class="obs-hero__cta-row">
+        <button class="obs-mega obs-mega--2d" id="obs-hero-2d" type="button">
+          <span class="obs-mega__glyph" aria-hidden="true">2D</span>
+          <span class="obs-mega__body">
+            <b class="obs-mega__title">CAD Drafting Engine</b>
+            <span class="obs-mega__desc">Draw, annotate and plot in a full-screen drafting session — opens instantly, even without a project.</span>
+            <span class="obs-mega__specs">106 COMMANDS · DWG/DXF r13–r2018 · LAYERS · HATCHES · PLOT</span>
+          </span>
+          <span class="obs-mega__go" aria-hidden="true">→</span>
+        </button>
+        <button class="obs-mega obs-mega--3d" id="obs-hero-3d" type="button">
+          <span class="obs-mega__glyph" aria-hidden="true">3D</span>
+          <span class="obs-mega__body">
+            <b class="obs-mega__title">3D BIM Platform</b>
+            <span class="obs-mega__desc">Author, federate, clash-check and deliver — the complete openBIM environment.</span>
+            <span class="obs-mega__specs">IFC · BCF · IDS · 4D/5D · MEP &amp; REBAR · SHEETS</span>
+          </span>
+          <span class="obs-mega__go" aria-hidden="true">→</span>
+        </button>
+      </div>
+      <div class="obs-hero__trust" aria-label="Supported standards">
+        <span class="obs-trust-chip">IFC</span>
+        <span class="obs-trust-chip">DWG / DXF r13–r2018</span>
+        <span class="obs-trust-chip">BCF</span>
+        <span class="obs-trust-chip">IDS</span>
+        <span class="obs-trust-chip">NWC</span>
+        <span class="obs-trust-chip">SVG · JSON · PS</span>
+        <span class="obs-trust-chip">10 LANGUAGES</span>
+        <span class="obs-trust-chip obs-trust-chip--hot">LOCAL-FIRST</span>
+      </div>
+    </section>
 
     <section class="obs-kpi-grid" id="obs-kpis"></section>
 
@@ -126,6 +325,29 @@ function buildStatic() {
         <div class="obs-workspace-grid" id="obs-workspaces"></div>
       </div>
     </section>
+
+    <div class="obs-pages" id="obs-pages">
+      ${SHOWCASE.map((p) => `
+      <article class="obs-page ${p.cls}">
+        <div class="obs-page__text">
+          <div class="obs-page__head"><span class="obs-page__num">${p.num}</span><span class="obs-page__eyebrow">${esc(p.eyebrow)}</span></div>
+          <h3 class="obs-page__title">${esc(p.title)}</h3>
+          <p class="obs-page__copy">${esc(p.copy)}</p>
+          <div class="obs-fgrid">
+            ${p.cards.map(([icon, title, desc]) => `
+            <div class="obs-fcard">
+              <span class="obs-fcard__icon" aria-hidden="true">${esc(icon)}</span>
+              <span class="obs-fcard__body"><b>${esc(title)}</b><small>${esc(desc)}</small></span>
+            </div>`).join("")}
+          </div>
+          <div class="obs-chiprow">${p.chips.map((c) => `<span class="obs-chip">${esc(c)}</span>`).join("")}</div>
+          <button class="obs-page__cta" ${p.cta[0]} type="button">${esc(p.cta[1])} <span aria-hidden="true">→</span></button>
+        </div>
+        <div class="obs-page__visual" aria-hidden="true">
+          ${p.cls === "obs-page--2d" ? VISUAL_2D : p.cls === "obs-page--3d" ? VISUAL_3D : VISUAL_DEL}
+        </div>
+      </article>`).join("")}
+    </div>
 
     <section>
       <div class="obs-home__section-title">
@@ -171,7 +393,16 @@ function buildStatic() {
   });
 
   const ws = inner.querySelector("#obs-workspaces") as HTMLElement;
-  ws.innerHTML = WORKSPACES.map(([id, label, description]) => `
+  ws.innerHTML = `
+    <button class="obs-workspace-card obs-workspace-card--cad" data-cad2d>
+      <span class="obs-workspace-card__marker obs-workspace-card__marker--cad"></span>
+      <span class="obs-workspace-card__content">
+        <b>2D CAD Studio</b>
+        <small>The full drafting engine — 106 commands, DWG/DXF, plotting. One click, no setup.</small>
+      </span>
+      <span class="obs-workspace-card__arrow">→</span>
+    </button>
+    ${WORKSPACES.map(([id, label, description]) => `
     <button class="obs-workspace-card" data-workspace="${id}">
       <span class="obs-workspace-card__marker"></span>
       <span class="obs-workspace-card__content">
@@ -179,9 +410,24 @@ function buildStatic() {
         <small>${esc(description)}</small>
       </span>
       <span class="obs-workspace-card__arrow">→</span>
-    </button>`).join("");
+    </button>`).join("")}`;
+  ws.querySelectorAll<HTMLButtonElement>("[data-cad2d]").forEach((button) => {
+    button.onclick = open2dEngine;
+  });
   ws.querySelectorAll<HTMLButtonElement>("[data-workspace]").forEach((button) => {
     button.onclick = () => emitWorkspace(button.dataset.workspace ?? "coordination");
+  });
+
+  /* Welcome-screen headline CTAs + showcase page CTAs */
+  (inner.querySelector("#obs-hero-2d") as HTMLButtonElement | null)?.addEventListener("click", open2dEngine);
+  (inner.querySelector("#obs-hero-3d") as HTMLButtonElement | null)?.addEventListener("click", open3dPlatform);
+  inner.querySelectorAll<HTMLButtonElement>("[data-open2d]").forEach((b) => { b.onclick = open2dEngine; });
+  inner.querySelectorAll<HTMLButtonElement>("[data-open3d]").forEach((b) => { b.onclick = open3dPlatform; });
+  inner.querySelectorAll<HTMLButtonElement>("[data-focus-create]").forEach((b) => {
+    b.onclick = () => {
+      nameInput.scrollIntoView({ behavior: "smooth", block: "center" });
+      nameInput.focus({ preventScroll: true });
+    };
   });
 }
 
