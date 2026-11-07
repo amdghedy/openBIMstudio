@@ -345,6 +345,10 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./features/drawings-panel");
     m.setupDrawingsPanel?.();
   });
+  await safe("libredwg-toolkit", async () => {
+    const m: Any = await import("./features/libredwg-toolkit");
+    m.setupLibreDwgToolkit?.();
+  });
   await safe("parity-tab-bar", async () => {
     const m: Any = await import("./features/parity-tab-bar");
     m.setupParityTabBar?.();

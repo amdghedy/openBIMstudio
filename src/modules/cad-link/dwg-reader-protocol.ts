@@ -35,10 +35,27 @@ export interface DwgParseRequest {
   fileName: string;
 }
 
+/** dwg_bmp parity: extract the embedded preview bitmap of a DWG. */
+export interface DwgThumbnailRequest {
+  id: number;
+  kind: "thumbnail";
+  bytes: ArrayBuffer;
+  fileName: string;
+}
+
+export type DwgReaderRequest = DwgParseRequest | DwgThumbnailRequest;
+
 export type DwgParseResponse =
   | { id: number; kind: "started" }
   | { id: number; ok: true; doc: unknown; summary: string; version: string; entityCount: number }
   | { id: number; ok: false; code: DwgReaderErrorCode; message: string; detail?: string };
+
+export type DwgThumbnailResponse =
+  | { id: number; kind: "started" }
+  | { id: number; kind: "thumbnail"; ok: true; mime: string; dataB64: string }
+  | { id: number; kind: "thumbnail"; ok: false; code: DwgReaderErrorCode; message: string; detail?: string };
+
+export type DwgReaderResponse = DwgParseResponse | DwgThumbnailResponse;
 
 /** Known DWG version stamps (offset 0, 6 ASCII chars) -> human readable label. */
 const DWG_VERSION_LABELS: Record<string, string> = {

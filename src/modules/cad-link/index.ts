@@ -88,6 +88,7 @@ const DWG_PARSE_TIMEOUT_MS = 120_000;
 const DWG_START_BACKSTOP_MS = 60_000;
 
 interface DwgParseSuccess { doc: DxfDocument; summary: string; version: string; entityCount: number }
+interface DwgThumbSuccess { mime: string; dataB64: string }
 
 let readerWorker: Worker | null = null;
 let readerWorkerFailed = false;
@@ -97,7 +98,8 @@ let nextParseId = 0;
  *  file's whole parse (dropping several drawings made every timer dishonest). */
 let parseChain: Promise<void> = Promise.resolve();
 const pendingParses = new Map<number, {
-  resolve: (r: DwgParseSuccess) => void;
+  kind: "parse" | "thumbnail";
+  resolve: (r: DwgParseSuccess | DwgThumbSuccess) => void;
   reject: (e: Error) => void;
   timer: ReturnType<typeof setTimeout>;
   fileName: string;
@@ -154,6 +156,12 @@ function ensureReaderWorker(): Worker {
     }
     pendingParses.delete(res.id);
     clearTimeout(p.timer);
+    if (p.kind === "thumbnail") {
+      const t = res as { ok?: boolean; mime?: string; dataB64?: string; code?: string; message?: string; detail?: string };
+      if (t.ok) p.resolve({ mime: t.mime ?? "image/bmp", dataB64: t.dataB64 ?? "" });
+      else p.reject(new Error(describeDwgError({ code: String(t.code ?? "internal"), message: String(t.message ?? "thumbnail failed"), detail: t.detail })));
+      return;
+    }
     if (res.ok) {
       p.resolve({ doc: res.doc as DxfDocument, summary: res.summary, version: res.version, entityCount: res.entityCount });
     } else {
@@ -184,9 +192,42 @@ export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: 
         resetReaderWorker();
         reject(new Error(`${file.name}: the DWG reader did not start within ${Math.round(DWG_START_BACKSTOP_MS / 1000)}s. Reload the page and retry.`));
       }, DWG_START_BACKSTOP_MS);
-      pendingParses.set(id, { resolve, reject, timer, fileName: file.name });
+      pendingParses.set(id, { kind: "parse", resolve: resolve as (r: DwgParseSuccess | DwgThumbSuccess) => void, reject, timer, fileName: file.name });
       try {
         worker.postMessage({ id, kind: "parse", bytes, fileName: file.name } satisfies import("./dwg-reader-protocol").DwgParseRequest, [bytes]);
+      } catch (e) {
+        pendingParses.delete(id);
+        clearTimeout(timer);
+        resetReaderWorker();
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  const result = parseChain.then(run, run);
+  parseChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+/**
+ * Extract a DWG's embedded preview bitmap through the reader worker
+ * (LibreDWG dwg_bmp parity) — no geometry conversion, just the thumbnail.
+ */
+export async function readDwgThumbnail(file: File): Promise<DwgThumbSuccess> {
+  const bytes = await file.arrayBuffer();
+  const id = ++nextParseId;
+  const run = (): Promise<DwgThumbSuccess> =>
+    new Promise((resolve, reject) => {
+      const worker = ensureReaderWorker();
+      const timer = setTimeout(() => {
+        pendingParses.delete(id);
+        resetReaderWorker();
+        reject(new Error(`${file.name}: the DWG thumbnail reader did not start within ${Math.round(DWG_START_BACKSTOP_MS / 1000)}s. Reload the page and retry.`));
+      }, DWG_START_BACKSTOP_MS);
+      pendingParses.set(id, { kind: "thumbnail", resolve: resolve as (r: DwgParseSuccess | DwgThumbSuccess) => void, reject, timer, fileName: file.name });
+      try {
+        worker.postMessage({ id, kind: "thumbnail", bytes, fileName: file.name }, [bytes]);
       } catch (e) {
         pendingParses.delete(id);
         clearTimeout(timer);

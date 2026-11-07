@@ -8,17 +8,30 @@
  * worker has no DOM, no BIM state and no network I/O beyond loading its own
  * wasm asset from the same origin.
  */
-import { parseDwgBytes, toDwgParseError } from "./dwg-parse-core";
-import type { DwgParseRequest, DwgParseResponse } from "./dwg-reader-protocol";
+import { parseDwgBytes, extractDwgThumbnail, toDwgParseError } from "./dwg-parse-core";
+import type { DwgReaderRequest, DwgReaderResponse } from "./dwg-reader-protocol";
 
-self.addEventListener("message", (ev: MessageEvent<DwgParseRequest>) => {
+self.addEventListener("message", (ev: MessageEvent<DwgReaderRequest>) => {
   const req = ev.data;
-  if (!req || typeof req.id !== "number" || req.kind !== "parse") return;
+  if (!req || typeof req.id !== "number") return;
+  const post = (res: DwgReaderResponse) => (self as unknown as Worker).postMessage(res);
+  if (req.kind === "thumbnail") {
+    post({ id: req.id, kind: "started" });
+    extractDwgThumbnail(req.bytes, req.fileName)
+      .then((thumb): DwgReaderResponse => ({ id: req.id, kind: "thumbnail", ok: true, mime: thumb.mime, dataB64: thumb.dataB64 }))
+      .catch((e): DwgReaderResponse => {
+        const { code, message, detail } = toDwgParseError(e);
+        return { id: req.id, kind: "thumbnail", ok: false, code, message, detail };
+      })
+      .then(post);
+    return;
+  }
+  if (req.kind !== "parse") return;
   // Ack before touching the bytes: the worker processes messages sequentially,
   // so this also tells the main thread when its parse timer actually starts.
-  (self as unknown as Worker).postMessage({ id: req.id, kind: "started" } satisfies DwgParseResponse);
+  post({ id: req.id, kind: "started" });
   parseDwgBytes(req.bytes, req.fileName)
-    .then((res): DwgParseResponse => ({
+    .then((res): DwgReaderResponse => ({
       id: req.id,
       ok: true,
       doc: res.doc,
@@ -26,12 +39,12 @@ self.addEventListener("message", (ev: MessageEvent<DwgParseRequest>) => {
       version: res.version,
       entityCount: res.entityCount,
     }))
-    .catch((e): DwgParseResponse => {
+    .catch((e): DwgReaderResponse => {
       const { code, message, detail } = toDwgParseError(e);
       return { id: req.id, ok: false, code, message, detail };
     })
     .then((res) => {
       // Transfer the doc back; DxfDocument is plain JSON data.
-      (self as unknown as Worker).postMessage(res);
+      post(res);
     });
 });

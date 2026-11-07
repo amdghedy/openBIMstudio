@@ -146,6 +146,59 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
   return { doc: res.doc, summary: res.summary, version: sniff.code, entityCount: res.doc.entities.length };
 }
 
+/**
+ * Extract the embedded preview bitmap of a DWG (LibreDWG dwg_bmp parity).
+ * Returns a browser-displayable MIME type plus base64 payload:
+ *   BMP (type 2) -> image/bmp, PNG (type 6) -> image/png,
+ *   WMF (type 3) -> image/x-wmf (not browser-renderable; callers show it
+ *   as a download instead of an image).
+ */
+export async function extractDwgThumbnail(buffer: ArrayBuffer, fileName: string): Promise<{ mime: string; dataB64: string }> {
+  const bytes = new Uint8Array(buffer);
+  const sniff = sniffDwgVersion(bytes);
+  if (!sniff) {
+    throw new DwgParseError("invalid-file", `${fileName} is not a DWG file (missing DWG version stamp such as AC1032).`);
+  }
+  const { lib, FileType } = await getReader();
+  let dwg: Any | null = null;
+  const errors: string[] = [];
+  for (const input of [bytes, bytes.buffer] as Any[]) {
+    try { dwg = lib.dwg_read_data(input, FileType?.DWG ?? 0); if (dwg) break; }
+    catch (e) { errors.push(e instanceof Error ? e.message : String(e)); }
+  }
+  if (!dwg) {
+    throw new DwgParseError(
+      "parse-failed",
+      "LibreDWG could not read this DWG to extract its preview.",
+      `${sniff.label} (${sniff.code}) - ${errors[0] ?? "dwg_read_data returned no data"}`,
+    );
+  }
+  let thumb: { data?: Uint8Array | null; type?: number } | null = null;
+  try {
+    thumb = typeof lib.dwg_bmp === "function" ? lib.dwg_bmp(dwg) : null;
+  } finally {
+    try { lib.dwg_free?.(dwg); } catch { /* best-effort native cleanup */ }
+  }
+  const data = thumb?.data;
+  if (!thumb || !data || !data.length) {
+    throw new DwgParseError(
+      "parse-failed",
+      "This DWG has no embedded preview bitmap (it was saved without a thumbnail). Export SVG instead for a live preview.",
+    );
+  }
+  const mime = thumb.type === 6 ? "image/png" : thumb.type === 3 ? "image/x-wmf" : "image/bmp";
+  return { mime, dataB64: b64encodeChunked(data) };
+}
+
+/** Chunked base64 (avoids String.fromCharCode call-size limits on big blobs). */
+function b64encodeChunked(view: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < view.length; i += 0x8000) {
+    bin += String.fromCharCode(...view.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
 /** Map any thrown value to a structured code (worker boundary + tests). */
 export function toDwgParseError(e: unknown): { code: DwgReaderErrorCode; message: string; detail?: string } {
   if (e && typeof e === "object" && "code" in (e as Any) && typeof (e as Any).code === "string") {
