@@ -74,6 +74,7 @@ import { toggleFileMenu, isFileMenuVisible } from "./file-menu";
 import { pickAndImport } from "../features/file-interop";
 import { svgIcon, type IconName } from "../features/icon-set";
 import { mountLanguageButton } from "../features/language-button";
+import { mountAccountButton } from "../features/cloud-account";
 import { openProjectInfo } from "../features/project-info";
 import { toggleBimToolbox, isBimToolboxVisible } from "../features/bim-toolbox";
 
@@ -3160,6 +3161,7 @@ function renderTabs() {
   version.textContent = "v54";
   brand.appendChild(version);
   tabsRow.appendChild(brand);
+  mountAccountButton(tabsRow);
 
   for (const t of [...TABS, ...(ctxTab ? [ctxTab] : [])] as TabDef[]) {
 

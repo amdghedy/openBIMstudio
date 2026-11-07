@@ -320,6 +320,7 @@ await step("context-menu", () => setupContextMenu());
 await step("viewport-toolbar", () => setupViewportToolbar());
 
 await step("projects", async () => setupProjects());
+await step("cloud-account", async () => (await import("./features/cloud-account")).setupCloudAccount());
 await step("pwa", async () => (await import("./core/pwa")).setupPwa());
 await step("north-compass", async () => (await import("./features/north-ui")).setupNorthCompass());
 await step("project-file", async () => (await import("./modules/projects/project-file-io")).setupProjectFileIO());

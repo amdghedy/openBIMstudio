@@ -16,6 +16,10 @@
       {
         "name": "LINKEDIN_VAULT",
         "class_name": "LinkedInVault"
+      },
+      {
+        "name": "AUTH",
+        "class_name": "AuthVault"
       }
     ]
   },
@@ -30,6 +34,12 @@
       "tag": "v2-linkedin-vault",
       "new_sqlite_classes": [
         "LinkedInVault"
+      ]
+    },
+    {
+      "tag": "v3-auth-vault",
+      "new_sqlite_classes": [
+        "AuthVault"
       ]
     }
   ]

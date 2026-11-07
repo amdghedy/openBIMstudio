@@ -4,6 +4,7 @@ import * as store from "../modules/projects/store";
 import { createProject, openProject, deleteProjectById, getCurrentProject, onProjectChanged } from "../modules/projects/projects";
 import type { ProjectTemplate } from "../modules/projects/types";
 import { mountLanguageButton } from "../features/language-button";
+import { mountAccountButton } from "../features/cloud-account";
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>\"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" } as Record<string, string>)[c],
@@ -141,6 +142,7 @@ function buildStatic() {
     </footer>`;
 
   mountLanguageButton(inner.querySelector(".obs-center-header"));
+  mountAccountButton(inner.querySelector(".obs-center-header") as HTMLElement);
   const nameInput = inner.querySelector("#obs-new-name") as HTMLInputElement;
   const template = inner.querySelector("#obs-template") as HTMLSelectElement;
   const note = inner.querySelector("#obs-template-note") as HTMLElement;

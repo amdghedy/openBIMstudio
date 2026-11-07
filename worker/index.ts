@@ -1,4 +1,5 @@
 import { handleLinkedInRequest, LinkedInVault, type LinkedInEnv } from "./linkedin";
+import { AuthVault, googleStartUrl, googleCallback, googleSetupNeeded } from "./auth";
 
 /**
  * Open BIM Studio edge worker.
@@ -61,6 +62,11 @@ interface Env extends LinkedInEnv {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   /** Durable Object namespace holding the visit counters. */
   COUNTER: CounterNamespace;
+  /** Durable Object namespace holding accounts + cloud projects. */
+  AUTH: CounterNamespace;
+  /** Google OAuth credentials (Worker secrets — optional). */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 }
 
 /** CORS-open so any deployment of the studio (Cloudflare, Vercel, Netlify, …)
@@ -174,7 +180,7 @@ export class VisitCounter {
   }
 }
 
-export { LinkedInVault };
+export { LinkedInVault, AuthVault };
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -189,6 +195,42 @@ export default {
       } catch (cause) {
         console.warn("[visits] counter unavailable:", cause);
         return json({ visits: null, loads: null, uniques: null }, 503);
+      }
+    }
+    // ── Cloud accounts + per-user project storage (same-origin, cookie sessions).
+    if (url.pathname === "/api/auth/google/start") {
+      const start = googleStartUrl(request, env);
+      if (!start) return googleSetupNeeded();
+      return Response.redirect(start, 302);
+    }
+    if (url.pathname === "/api/auth/google/callback") {
+      try {
+        const info = await googleCallback(request, env);
+        const stub = env.AUTH.get(env.AUTH.idFromName("global"));
+        const upsert = await stub.fetch(new Request("https://do/api/auth/google-upsert", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: info.email, name: info.name, googleId: info.sub }),
+        }));
+        if (!upsert.ok) return json({ error: "Could not create the account." }, 502);
+        const setCookie = upsert.headers.get("set-cookie") ?? "";
+        return new Response(null, { status: 302, headers: { location: "/", "set-cookie": setCookie } });
+      } catch (cause) {
+        const code = cause instanceof Error ? cause.message : "error";
+        if (code === "google-not-configured") return googleSetupNeeded();
+        console.warn("[auth] google callback failed:", cause);
+        return json({ error: `Google sign-in failed (${code}).` }, 502);
+      }
+    }
+    if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/projects")) {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_PREFLIGHT });
+      try {
+        const stub = env.AUTH.get(env.AUTH.idFromName("global"));
+        // Forward the original request (cookies intact) with the real pathname.
+        return stub.fetch(new Request(`https://do${url.pathname}${url.search}`, request));
+      } catch (cause) {
+        console.warn("[auth] vault unavailable:", cause);
+        return json({ error: "Account service unavailable." }, 503);
       }
     }
     return env.ASSETS.fetch(request);
