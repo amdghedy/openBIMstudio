@@ -15,18 +15,11 @@ View-only, decoded inside the browser tab. Nothing is uploaded.
 * Reader coverage is the reader's own: measured geometry for Revit 2023–2025 projects is its stable range; other releases are experimental. Very large files need a lot of memory (the app warns above 300 MB and refuses above 1.5 GB).
 * Revit is a trademark of Autodesk, Inc. This project is not affiliated with or endorsed by Autodesk.
 
-## Installing the decoder (operators)
+## The decoder
 
-The decoder is a build artifact, not committed. Without it the app says "not installed on this deployment" and points to IFC export.
+The built decoder (`public/rvt/rvt.js` and `rvt_bg.wasm`, about 10 MB) is committed, so every host (Cloudflare, Vercel, any static host) serves it with no Rust toolchain. If it is ever missing, the app says "not installed on this deployment" and names the exact file and HTTP status it could not load.
 
-```bash
-rustup target add wasm32-unknown-unknown
-cargo install wasm-pack --locked
-npm run build:rvt          # writes public/rvt/rvt.js and rvt_bg.wasm
-npm run build
-```
-
-`scripts/build-rvt-wasm.mjs` fetches rvt-rs at one pinned commit, checks the commit, and builds only the `rvt-wasm` crate. Missing tools are reported and the script exits 0 (use `--strict` to fail instead). The deploy workflow runs it as a non-blocking step. To update the reader, change `RVT_RS_COMMIT`, rebuild and test with a real file before shipping.
+To rebuild or upgrade it: change `RVT_RS_COMMIT` in `scripts/build-rvt-wasm.mjs`, then run the **Build Revit reader** workflow (Actions tab). It builds, runs `scripts/rvt-smoke.mjs` on three upstream sample files, and pushes the result to the branch `rvt-decoder-build`; open a pull request from it (main is protected). Locally: `rustup target add wasm32-unknown-unknown`, `cargo install wasm-pack --locked`, `npm run build:rvt`.
 
 The Content-Security-Policy needs nothing new: the decoder is same-origin, and `'wasm-unsafe-eval'` and `worker-src 'self'` were already allowed.
 
@@ -36,4 +29,6 @@ The Content-Security-Policy needs nothing new: the decoder is same-origin, and `
 
 ## Verification status
 
-`tests/rvt-viewer.test.cjs` covers file checks, the decode sequence and the honesty of the summary with a **fake** decoder, plus wiring. The real WebAssembly was **not** built here (the build environment could not reach the Rust package registry) and **no real `.rvt` file** was opened, so orientation, units and geometry quality are unverified. Try it on a real file after the first deploy.
+`tests/rvt-viewer.test.cjs` covers file checks, the decode sequence and the honesty of the summary with a fake decoder, and (when `public/rvt/` is present) runs the **real WebAssembly** on a synthetic 20 KB fixture from the rvt-rs corpus: it decodes, produces a glTF binary, is reported as "nothing to draw" (scaffold, 25%), and garbage input throws. The workflow's smoke test did the same on three upstream samples in Node.
+
+Not verified: opening a **real project** `.rvt` (the fixtures have no geometry), the worker and the display in a real browser, orientation, units and geometry quality. Try it with one of your own files.
