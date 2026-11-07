@@ -55,6 +55,7 @@ type InMessage =
         boxA: [number, number, number, number, number, number];
         boxB: [number, number, number, number, number, number];
         point: [number, number, number] | null;
+        contained?: boolean;
       }>;
     }
   | { type: "error"; requestId: string; message: string; stack?: string };
@@ -68,6 +69,7 @@ type OutMessage =
       rules: ClashRules;
       method: ClashMethod;
       selfPairs: boolean;
+      sides?: number[];
     }
   | { type: "cancel"; requestId: string };
 
@@ -113,6 +115,7 @@ type SerializedClash = {
   boxA: [number, number, number, number, number, number];
   boxB: [number, number, number, number, number, number];
   point: [number, number, number] | null;
+  contained?: boolean;
 };
 
 function rehydrateClash(s: SerializedClash): ElementClash {
@@ -139,6 +142,7 @@ function rehydrateClash(s: SerializedClash): ElementClash {
     boxA,
     boxB,
     point,
+    ...(s.contained ? { contained: true } : {}),
   };
 }
 
@@ -297,6 +301,7 @@ export async function runClashOffThread(
         rules,
         method,
         selfPairs: allowSelfPairs,
+        ...(collected.sides ? { sides: collected.sides } : {}),
       };
       w.postMessage(runMsg, transfer);
     } catch (err) {

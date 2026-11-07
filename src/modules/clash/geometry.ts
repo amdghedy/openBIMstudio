@@ -6,7 +6,27 @@ import { TriangleBVH } from "./triangle-bvh";
 
 export type Tri = Float32Array; // 9 floats: ax,ay,az, bx,by,bz, cx,cy,cz
 
-const MAX_TRIS_PER_ITEM = 2500;
+/**
+ * Largest triangle count kept for one element. Triangles are NEVER thinned: dropping
+ * triangles punches holes in the surface and silently hides clashes. An element above
+ * the cap is reported as "no triangles" so the engine tests it by bounding box and says so.
+ */
+export const MAX_TRIS_PER_ITEM = 120_000;
+
+/** Why an element has no triangles (shown in the coverage report). */
+const noTriangleReason = new Map<object, Map<number, "too-many" | "no-geometry">>();
+export function getNoTriangleReason(modelObj: object, localId: number): "too-many" | "no-geometry" | undefined {
+  return noTriangleReason.get(modelObj)?.get(localId);
+}
+function markNoTriangles(modelObj: object, localId: number, why: "too-many" | "no-geometry"): void {
+  let m = noTriangleReason.get(modelObj);
+  if (!m) { m = new Map(); noTriangleReason.set(modelObj, m); }
+  m.set(localId, why);
+}
+/** Pure rule: keep every triangle when within the cap, otherwise keep none (never a partial surface). */
+export function triangleBudgetOk(triangleCount: number, cap = MAX_TRIS_PER_ITEM): boolean {
+  return triangleCount >= 1 && triangleCount <= cap;
+}
 
 const cacheByModel = new WeakMap<object, Map<number, Tri[] | null>>();
 
@@ -58,6 +78,7 @@ export function getElementTriangles(modelObj: any, localId: number): Tri[] | nul
   const out: Tri[] = [];
   const m = new THREE.Matrix4();
   const v = new THREE.Vector3();
+  let overBudget = false;
 
   modelObj.traverse((obj: any) => {
     if (!obj?.isMesh) return;
@@ -97,16 +118,13 @@ export function getElementTriangles(modelObj: any, localId: number): Tri[] | nul
       const end = Math.min(idx ? idx.count : pos.count, Math.ceil(range.end));
       const total = end - start;
       if (total < 3) return;
-      const stride =
-        total > MAX_TRIS_PER_ITEM * 3
-          ? 3 * Math.ceil(total / (MAX_TRIS_PER_ITEM * 3))
-          : 3;
+      if (!triangleBudgetOk(Math.floor(total / 3))) { overBudget = true; return; }
       if (idx) {
-        for (let i = start; i + 2 < end; i += stride) {
+        for (let i = start; i + 2 < end; i += 3) {
           pushTri(idx.getX(i), idx.getX(i + 1), idx.getX(i + 2));
         }
       } else {
-        for (let i = start; i + 2 < end; i += stride) {
+        for (let i = start; i + 2 < end; i += 3) {
           pushTri(i, i + 1, i + 2);
         }
       }
@@ -115,7 +133,8 @@ export function getElementTriangles(modelObj: any, localId: number): Tri[] | nul
 
     // Fallback for exporters that bake one element per mesh (no idRanges).
     const triCount = idx ? idx.count / 3 : pos.count / 3;
-    if (triCount <= MAX_TRIS_PER_ITEM) {
+    if (!triangleBudgetOk(triCount)) { overBudget = true; return; }
+    {
       if (idx) {
         for (let i = 0; i + 2 < idx.count; i += 3) {
           pushTri(idx.getX(i), idx.getX(i + 1), idx.getX(i + 2));
@@ -128,7 +147,8 @@ export function getElementTriangles(modelObj: any, localId: number): Tri[] | nul
     }
   });
 
-  const result = out.length ? out : null;
+  const result = out.length && !overBudget ? out : null;
+  if (!result) markNoTriangles(modelObj, localId, overBudget ? "too-many" : "no-geometry");
   cache.set(localId, result);
   return result;
 }

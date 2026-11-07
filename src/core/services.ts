@@ -262,6 +262,9 @@ export interface ClashService {
   swapSelections(): void;
   clearSelectionA(): void;
   clearSelectionB(): void;
+  /** Exact picks: { modelId: Set<localId>, authored: Set<elementId> }. */
+  setSelectionA(m: Record<string, Set<number | string>>): void;
+  setSelectionB(m: Record<string, Set<number | string>>): void;
   isolateSelectionA(): Promise<void>;
   isolateSelectionB(): Promise<void>;
   showAllElements(): Promise<void>;

@@ -13,6 +13,9 @@ import {
   type ElementClash,
 } from "./clash-engine";
 import { runClashOffThread } from "./clash-worker-client";
+import { getLastCollectionReport, type AuthoredInput, type CollectionReport } from "./clash-engine";
+import { AUTHORED_MODEL_ID, authoredLocalId, authoredElementId } from "./clash-authored";
+import { planScope, mergeExplicit, type Resolved } from "../modules/clash/selection-plan";
 import { getAuthor } from "../modules/issues/issues";
 import { getElementWorldBox } from "../modules/geometry/world-box";
 import { register, tryUse, type ClashService } from "../core/services";
@@ -188,6 +191,18 @@ clashListEl.style.cssText = "margin-top:8px;max-height:260px;overflow:auto;font-
 
 const selectionA = new Set<string>();
 const selectionB = new Set<string>();
+/** Exact element picks (from the category dialog / API); resolved together with the tree ticks. */
+const explicitA = new Map<string, Set<number>>();
+const explicitB = new Map<string, Set<number>>();
+
+function authoringApi(): any { return (ctx.features as any).authoring; }
+/** Native authored elements by category, as numeric clash ids. Never cached: they change as you model. */
+function authoredCategories(): Record<string, number[]> {
+  const out: Record<string, number[]> = {};
+  const els: Array<{ id: string; type: string }> = authoringApi()?.getElements?.() ?? [];
+  for (const el of els) (out[`NATIVE_${String(el.type).toLowerCase()}`] ??= []).push(authoredLocalId(el.id));
+  return out;
+}
 
 /* ── A/B persistence ── */
 const SEL_A_KEY = "obs.clash.selectionA";
@@ -313,6 +328,7 @@ exportCsvBtn.onclick = () => exportClashCsv();
 const categoryCache = new Map<string, Record<string, number[]>>();
 
 async function loadCategoriesForModel(modelId: string): Promise<Record<string, number[]>> {
+  if (modelId === AUTHORED_MODEL_ID) return authoredCategories();
   if (categoryCache.has(modelId)) return categoryCache.get(modelId)!;
   const model = ctx.fragments.list.get(modelId);
   const result: Record<string, number[]> = {};
@@ -338,6 +354,7 @@ async function loadCategoriesForModel(modelId: string): Promise<Record<string, n
 }
 
 async function ensureCategoriesCached(modelId: string): Promise<void> {
+  if (modelId === AUTHORED_MODEL_ID) return;
   if (!categoryCache.has(modelId)) await loadCategoriesForModel(modelId);
 }
 
@@ -387,7 +404,7 @@ function buildSelectionTree(
   };
 
   const modelLabel = document.createElement("span");
-  modelLabel.textContent = modelId;
+  modelLabel.textContent = modelId === AUTHORED_MODEL_ID ? "Native elements (modelled in this app)" : modelId;
   modelLabel.style.cssText =
     "font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
   modelLabel.title = modelId;
@@ -418,7 +435,7 @@ function buildSelectionTree(
       persistSelections();
     };
     const span = document.createElement("span");
-    const nice = cat.replace(/^IFC/i, "");
+    const nice = cat.replace(/^IFC/i, "").replace(/^NATIVE_/i, "");
     span.textContent = `${nice} (${cats[cat].length})`;
     span.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
     row.append(cb, span);
@@ -447,6 +464,8 @@ export async function refreshModelSelectionUI() {
     seen.add(id);
     ids.push(id);
   }
+
+  if ((authoringApi()?.getElements?.() ?? []).length) ids.push(AUTHORED_MODEL_ID);
 
   if (!ids.length) {
     selABox.innerHTML = "<div style='opacity:.5'>Load models first</div>";
@@ -519,6 +538,12 @@ async function refreshElementWorldBox(
   modelId: string, localId: number,
 ): Promise<THREE.Box3 | null> {
   try {
+    if (modelId === AUTHORED_MODEL_ID) {
+      const api = authoringApi();
+      const eid = authoredElementId(localId);
+      const el = eid ? api?.getElementById?.(eid) : null;
+      return el ? (api.getElementWorldBox?.(el) ?? null) : null;
+    }
     const model: any = ctx.fragments.list.get(modelId);
     if (!model) return null;
     return await getElementWorldBox(model, localId, modelId);
@@ -577,21 +602,28 @@ async function selectClashPair(c: ElementClash) {
   for (const name of ["clash", "clashA", "clashB"]) {
     try { await ctx.highlighter.clear(name); } catch { /* */ }
   }
+  // Native authored elements are not fragments: select them through the authoring tools.
+  const nativeIds = [c.a, c.b].filter((r) => r.modelId === AUTHORED_MODEL_ID)
+    .map((r) => authoredElementId(r.localId)).filter((x): x is string => !!x);
+  if (nativeIds.length) { try { authoringApi()?.setSelectedAuthored?.(nativeIds, "replace"); } catch { /* */ } }
+  if (c.a.modelId !== AUTHORED_MODEL_ID) {
+    try {
+      await ctx.highlighter.highlightByID(
+        "clashA", { [c.a.modelId]: new Set([c.a.localId]) } as OBC.ModelIdMap, true,
+      );
+    } catch (e) { console.warn("[clash] highlight A", e); }
+  }
+  if (c.b.modelId !== AUTHORED_MODEL_ID) {
+    try {
+      await ctx.highlighter.highlightByID(
+        "clashB", { [c.b.modelId]: new Set([c.b.localId]) } as OBC.ModelIdMap, true,
+      );
+    } catch (e) { console.warn("[clash] highlight B", e); }
+  }
   try {
-    await ctx.highlighter.highlightByID(
-      "clashA", { [c.a.modelId]: new Set([c.a.localId]) } as OBC.ModelIdMap, true,
-    );
-  } catch (e) { console.warn("[clash] highlight A", e); }
-  try {
-    await ctx.highlighter.highlightByID(
-      "clashB", { [c.b.modelId]: new Set([c.b.localId]) } as OBC.ModelIdMap, true,
-    );
-  } catch (e) { console.warn("[clash] highlight B", e); }
-  try {
-    ctx.props.update({
-      [c.a.modelId]: new Set([c.a.localId]),
-      [c.b.modelId]: new Set([c.b.localId]),
-    } as OBC.ModelIdMap);
+    const frag: Record<string, Set<number>> = {};
+    for (const r of [c.a, c.b]) if (r.modelId !== AUTHORED_MODEL_ID) (frag[r.modelId] ??= new Set()).add(r.localId);
+    if (Object.keys(frag).length) ctx.props.update(frag as OBC.ModelIdMap);
   } catch { /* */ }
 
   await applyCropBox(c, cropMargin);
@@ -604,7 +636,9 @@ async function selectClashPair(c: ElementClash) {
     duplicate: "#a855f7",
   };
   const gapTxt =
-    c.kind === "intersect"
+    c.kind === "intersect" && c.contained
+      ? "One element lies fully inside the other"
+      : c.kind === "intersect"
       ? `Overlap ${(c.depthVol * 1e6).toFixed(1)} cm³`
       : c.kind === "duplicate"
         ? `Identical (Δ ≤ ${(c.minGap * 1000).toFixed(1)} mm)`
@@ -622,10 +656,9 @@ async function selectClashPair(c: ElementClash) {
 export async function isolateClashPair(c: ElementClash) {
   try {
     const hider: any = ctx.hider;
-    const keep = {
-      [c.a.modelId]: new Set([c.a.localId]),
-      [c.b.modelId]: new Set([c.b.localId]),
-    };
+    const keep: Record<string, Set<number>> = {};
+    for (const r of [c.a, c.b]) if (r.modelId !== AUTHORED_MODEL_ID) (keep[r.modelId] ??= new Set()).add(r.localId);
+    if (!Object.keys(keep).length) return;
     if (typeof hider.isolate === "function") await hider.isolate(keep);
     else if (typeof hider.set === "function") {
       await hider.set(false);
@@ -767,6 +800,15 @@ function renderMemberRow(c: ElementClash, group: ClashGroup): HTMLElement {
 // ═══════════════════════════════════════════════════════════════════════════
 // Run
 // ═══════════════════════════════════════════════════════════════════════════
+/** One line saying what the last run really covered, so "no clashes" can be trusted (or not). */
+export function coverageSummary(r: CollectionReport | null): { text: string; warn: boolean } {
+  if (!r) return { text: "", warn: false };
+  const bits = [`${r.totalTested} element(s) tested`];
+  if (r.totalBoxOnly) bits.push(`${r.totalBoxOnly} by bounding box only (no usable geometry or too complex, may over-report)`);
+  if (r.totalSkipped) bits.push(`${r.totalSkipped} skipped (no bounding box, empty or oversized)`);
+  return { text: ` · ${bits.join(" · ")}`, warn: r.totalBoxOnly > 0 || r.totalSkipped > 0 };
+}
+
 export async function runElementClashDetection() {
   if (cancelToken) { clashToast("A test is already running.", "warn"); return; }
   if (ctx.features.appLoader?.isActive?.()) {
@@ -822,79 +864,75 @@ export async function runElementClashDetection() {
     const cancelHandle = { cancelled: false };
     cancelToken = cancelHandle;
 
-    const allModels = Array.from(ctx.fragments.list.entries());
-    if (!allModels.length) { clashToast("Load a model first.", "warn"); return; }
+    const allModels = Array.from(ctx.fragments.list.entries()) as Array<[string, any]>;
+    const authoredEls: Array<{ id: string }> = authoringApi()?.getElements?.() ?? [];
+    if (!allModels.length && !authoredEls.length) { clashToast("Load a model or model something first.", "warn"); return; }
 
-    const resolvedA = resolveSelection(selectionA);
-    const resolvedB = resolveSelection(selectionB);
-    const inputs: {
-      modelId: string; model: any; allowedIds: Set<number> | "ALL" | null;
-    }[] = [];
+    // Make sure every model named in a selection has its categories resolved.
+    const referenced = new Set<string>();
+    for (const k of [...selectionA, ...selectionB]) referenced.add(k.includes("::") ? k.split("::")[0] : k);
+    for (const m of referenced) await ensureCategoriesCached(m);
 
-    for (const [modelId, model] of allModels) {
-      let allowed: Set<number> | "ALL" | null = null;
-
-      if (scope === "viewport") {
-        const ids = viewportSel[modelId];
-        if (!ids || !ids.size) continue;
-        allowed = ids;
-      } else if (scope === "aOnly") {
-        const inA = selectionA.has(modelId) ||
-          [...selectionA].some((k) => k.startsWith(modelId + "::"));
-        if (!inA) continue;
-        allowed = resolvedA.get(modelId) ?? null;
-      } else if (scope === "bOnly") {
-        const inB = selectionB.has(modelId) ||
-          [...selectionB].some((k) => k.startsWith(modelId + "::"));
-        if (!inB) continue;
-        allowed = resolvedB.get(modelId) ?? null;
-      } else if (scope === "both") {
-        const inA = selectionA.has(modelId) ||
-          [...selectionA].some((k) => k.startsWith(modelId + "::"));
-        const inB = selectionB.has(modelId) ||
-          [...selectionB].some((k) => k.startsWith(modelId + "::"));
-        if (!inA && !inB) continue;
-        if (inA && !inB) allowed = resolvedA.get(modelId) ?? null;
-        else if (!inA && inB) allowed = resolvedB.get(modelId) ?? null;
-        else {
-          const a = resolvedA.get(modelId);
-          const b = resolvedB.get(modelId);
-          if (a === "ALL" || b === "ALL") allowed = "ALL";
-          else {
-            const u = new Set<number>();
-            if (a instanceof Set) for (const x of a) u.add(x);
-            if (b instanceof Set) for (const x of b) u.add(x);
-            allowed = u.size ? u : null;
-          }
-        }
+    const resolveAll = (set: Set<string>, explicit: Map<string, Set<number>>): Resolved => {
+      const r = resolveSelection(set);
+      // Native elements resolve against the live element list, not the cache.
+      for (const key of set) {
+        const [mid, cat] = key.includes("::") ? key.split("::") : [key, ""];
+        if (mid !== AUTHORED_MODEL_ID) continue;
+        if (!cat) { r.set(AUTHORED_MODEL_ID, "ALL"); continue; }
+        const ids = authoredCategories()[cat] ?? [];
+        const cur = r.get(AUTHORED_MODEL_ID);
+        if (cur === "ALL") continue;
+        r.set(AUTHORED_MODEL_ID, new Set([...(cur ?? []), ...ids]));
       }
-      inputs.push({ modelId, model, allowedIds: allowed });
+      return mergeExplicit(r, explicit);
+    };
+    const resolvedA = resolveAll(selectionA, explicitA);
+    const resolvedB = resolveAll(selectionB, explicitB);
+
+    const modelIds = [...allModels.map(([id]) => id), ...(authoredEls.length ? [AUTHORED_MODEL_ID] : [])];
+    if (scope === "viewport") {
+      const sel = authoringApi()?.getSelectedIds?.() as string[] | undefined;
+      if (sel?.length) viewportSel[AUTHORED_MODEL_ID] = new Set(sel.map((id) => authoredLocalId(id)));
     }
-
-    if (inputs.length < 1) {
-      const aEmpty = selectionA.size === 0;
-      const bEmpty = selectionB.size === 0;
-      if (scope === "both" && aEmpty && bEmpty) {
-        clashStatusEl.textContent = "Selection A and B are empty — tick models in the tree above.";
-      } else if (scope === "both" && aEmpty) {
-        clashStatusEl.textContent = "Selection A is empty — tick at least one model in Selection A.";
-      } else if (scope === "both" && bEmpty) {
-        clashStatusEl.textContent = "Selection B is empty — tick at least one model in Selection B.";
-      } else {
-        clashStatusEl.textContent = "No models match the chosen scope.";
-      }
+    const plan = planScope(scope, modelIds, resolvedA, resolvedB, viewportSel);
+    if (!plan.models.length) {
+      clashStatusEl.textContent = plan.empty ?? "No models match the chosen scope.";
       clashToast("Nothing to test with the current scope.", "warn");
       return;
     }
 
+    const inputs: {
+      modelId: string; model: any; allowedIds: Set<number> | "ALL" | null;
+      sideA: Set<number> | "ALL" | null; sideB: Set<number> | "ALL" | null;
+    }[] = [];
+    let authored: AuthoredInput | null = null;
+    const toEl = (s: Set<number> | "ALL" | null): Set<string> | "ALL" | null => {
+      if (s === "ALL" || s === null) return s;
+      const out = new Set<string>();
+      for (const n of s) { const e = authoredElementId(n); if (e) out.add(e); }
+      return out;
+    };
+    for (const m of plan.models) {
+      if (m.modelId === AUTHORED_MODEL_ID) {
+        authored = { allowed: toEl(m.allowed) ?? new Set<string>(), sideA: toEl(m.sideA), sideB: toEl(m.sideB) };
+        continue;
+      }
+      const model = ctx.fragments.list.get(m.modelId);
+      if (!model) continue;
+      inputs.push({ modelId: m.modelId, model, allowedIds: m.allowed, sideA: m.sideA, sideB: m.sideB });
+    }
+
     clashStatusEl.textContent = `Running ${testNameInput.value} · ${method}…`;
-    loader?.set?.(`Reading models · ${inputs.length} model(s)`, 0.05);
+    loader?.set?.(`Reading models · ${inputs.length} model(s)${authored ? " + native elements" : ""}`, 0.05);
 
     const results = await runClashOffThread(inputs, {
       rules,
       method,
       signal: cancelHandle,
-      allowSelfPairs: scope !== "both",
+      allowSelfPairs: !plan.useSides,
+      useSides: plan.useSides,
+      authored,
       onProgress: (p) => {
         const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
         clashProgressInner.style.width = `${pct}%`;
@@ -924,12 +962,13 @@ export async function runElementClashDetection() {
     loader?.finish?.();
   }
 
+  const cov = coverageSummary(getLastCollectionReport());
   if (clashResults.length) {
-    clashStatusEl.textContent = `${testNameInput.value} · ${method}: ${clashResults.length} clash(es). Click a row to focus.`;
-    clashToast(`${clashResults.length} clash(es) found (${method}).`, "success");
+    clashStatusEl.textContent = `${testNameInput.value} · ${method}: ${clashResults.length} clash(es). Click a row to focus.${cov.text}`;
+    clashToast(`${clashResults.length} clash(es) found (${method}).${cov.warn ? " Some elements were not tested exactly — see status." : ""}`, cov.warn ? "warn" : "success", cov.warn ? 4000 : 2000);
   } else {
-    clashStatusEl.textContent = `${testNameInput.value} · ${method}: No clashes found.`;
-    clashToast("No clashes found.", "info");
+    clashStatusEl.textContent = `${testNameInput.value} · ${method}: No clashes found.${cov.text}`;
+    clashToast(cov.warn ? "No clashes found, but some elements were not tested exactly — see status." : "No clashes found.", cov.warn ? "warn" : "info", cov.warn ? 4000 : 2000);
   }
   updateSummary();
   renderClashList();
@@ -1324,9 +1363,10 @@ export async function isolateGroup(groupId: string): Promise<void> {
   if (!g) return;
   const keep: Record<string, Set<number>> = {};
   for (const c of g.members) {
-    (keep[c.a.modelId] ??= new Set()).add(c.a.localId);
-    (keep[c.b.modelId] ??= new Set()).add(c.b.localId);
+    if (c.a.modelId !== AUTHORED_MODEL_ID) (keep[c.a.modelId] ??= new Set()).add(c.a.localId);
+    if (c.b.modelId !== AUTHORED_MODEL_ID) (keep[c.b.modelId] ??= new Set()).add(c.b.localId);
   }
+  if (!Object.keys(keep).length) return;
   try {
     const hider: any = ctx.hider;
     if (typeof hider.isolate === "function") await hider.isolate(keep);
@@ -1402,6 +1442,8 @@ export function setupClash() {
     swapSelections,
     clearSelectionA,
     clearSelectionB,
+    setSelectionA,
+    setSelectionB,
     isolateSelectionA,
     isolateSelectionB,
     showAllElements,
@@ -1487,9 +1529,25 @@ export function swapSelections(): void {
   clashToast("Swapped A ↔ B", "info", 1500);
 }
 
+function applyExplicit(target: Map<string, Set<number>>, m: Record<string, Set<number | string>> | null | undefined): void {
+  target.clear();
+  for (const [modelId, ids] of Object.entries(m ?? {})) {
+    if (!ids || !ids.size) continue;
+    const isNative = modelId === "authored" || modelId === AUTHORED_MODEL_ID;
+    const key = isNative ? AUTHORED_MODEL_ID : modelId;
+    const set = target.get(key) ?? new Set<number>();
+    for (const id of ids) set.add(typeof id === "number" ? id : authoredLocalId(String(id)));
+    target.set(key, set);
+  }
+}
+/** Exact picks for Selection A: { modelId: Set<localId>, authored: Set<elementId> }. */
+export function setSelectionA(m: Record<string, Set<number | string>>): void { applyExplicit(explicitA, m); }
+export function setSelectionB(m: Record<string, Set<number | string>>): void { applyExplicit(explicitB, m); }
+
 export function clearSelectionA(): void {
-  const n = selectionA.size;
+  const n = selectionA.size + explicitA.size;
   selectionA.clear();
+  explicitA.clear();
   persistSelections();
   void refreshModelSelectionUI();
   clashStatusEl.textContent = "Cleared Selection A";
@@ -1497,8 +1555,9 @@ export function clearSelectionA(): void {
 }
 
 export function clearSelectionB(): void {
-  const n = selectionB.size;
+  const n = selectionB.size + explicitB.size;
   selectionB.clear();
+  explicitB.clear();
   persistSelections();
   void refreshModelSelectionUI();
   clashStatusEl.textContent = "Cleared Selection B";

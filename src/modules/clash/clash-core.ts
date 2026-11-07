@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { PointCloudConvex, gjk } from "./gjk";
 import { meshFaceClash, meshFaceClashBVH, type Tri } from "./geometry";
 import { TriangleBVH } from "./triangle-bvh";
+import { meshInsideMesh, triTriDistance } from "./mesh-queries";
 import { SpatialHash } from "../../core/spatial-hash";
 
 /* ── Public types (serializable) ─────────────────────────────────────── */
@@ -57,6 +58,8 @@ export interface ElementClash {
   boxA: THREE.Box3;
   boxB: THREE.Box3;
   point: THREE.Vector3 | null;
+  /** True when one element lies entirely inside the other (surfaces never cross). */
+  contained?: boolean;
 }
 
 export interface ClashCoreItem {
@@ -83,6 +86,12 @@ export interface ClashCoreOptions {
   groups: number[][];
   /** When true, also test every item against the other items in its own group. */
   selfPairs: boolean;
+  /**
+   * Optional per-item side flags (1 = selection A, 2 = selection B, 3 = both), same length as the items.
+   * When given, ONLY A-vs-B pairs are tested (works inside one model, across models and for linked
+   * models alike) and `groups` / `selfPairs` are ignored.
+   */
+  sides?: number[];
   onProgress?: (p: ClashProgress) => void;
   shouldCancel?: () => boolean;
   yieldEvery?: number;
@@ -158,6 +167,24 @@ interface DetectionResult {
   minGap: number;
   depthVol: number;
   point: THREE.Vector3 | null;
+  contained?: boolean;
+}
+
+function boxInside(inner: THREE.Box3, outer: THREE.Box3, eps: number): boolean {
+  return inner.min.x >= outer.min.x - eps && inner.min.y >= outer.min.y - eps && inner.min.z >= outer.min.z - eps &&
+    inner.max.x <= outer.max.x + eps && inner.max.y <= outer.max.y + eps && inner.max.z <= outer.max.z + eps;
+}
+
+/** True when any triangle of A is within `tol` of any triangle of B (exact distance, not box distance). */
+function meshesWithin(ea: RuntimeItem, eb: RuntimeItem, tol: number): boolean {
+  if (!ea.bvh || !eb.bvh) return false;
+  let hit = false;
+  const A = ea.bvh.tris, B = eb.bvh.tris;
+  ea.bvh.visitCandidatePairs(eb.bvh, tol, (i, j) => {
+    if (triTriDistance(A[i], B[j]) <= tol) { hit = true; return false; }
+    return true;
+  });
+  return hit;
 }
 
 function detectPair(
@@ -200,8 +227,33 @@ function detectPair(
           out.triPairs = t.pairs; out.point = t.point;
         } catch { /* */ }
       }
-      if (out.triPairs > 0) { out.kind = "intersect"; out.minGap = 0; }
-      else if (tol > 0 && boxGap <= tol) out.kind = "touching";
+      if (out.triPairs > 0) {
+        out.minGap = 0;
+        // Contact is not a clash: if the boxes overlap by no more than the tolerance along their
+        // thinnest axis, neither element can penetrate the other by more than the tolerance.
+        let thin = Infinity;
+        if (tol > 0 && depthVol >= 0 && ea.box.intersectsBox(eb.box)) {
+          _inter.copy(ea.box).intersect(eb.box);
+          _inter.getSize(_isize);
+          thin = Math.min(_isize.x, _isize.y, _isize.z);
+        }
+        out.kind = thin <= tol ? "touching" : "intersect";
+        return out;
+      }
+      // Surfaces never cross: either one element is entirely inside the other, or they are apart.
+      if (boxGap === 0) {
+        const eps = Math.max(tol, 1e-6);
+        const aIn = boxInside(ea.box, eb.box, eps) ? meshInsideMesh(ea.tris, eb.tris) : null;
+        const bIn = !aIn?.inside && boxInside(eb.box, ea.box, eps) ? meshInsideMesh(eb.tris, ea.tris) : null;
+        const hit = aIn?.inside ? aIn : bIn?.inside ? bIn : null;
+        if (hit) {
+          out.kind = "intersect"; out.minGap = 0; out.contained = true; out.triPairs = 0;
+          if (hit.point) out.point = new THREE.Vector3(hit.point[0], hit.point[1], hit.point[2]);
+          return out;
+        }
+      }
+      // "Touching" means the real surfaces are within tolerance, not that the boxes overlap.
+      if (tol > 0 && boxGap <= tol && meshesWithin(ea, eb, tol)) out.kind = "touching";
       return out;
     }
 
@@ -365,7 +417,7 @@ export async function runClashCore(
     const ea = items[ai];
     if (!ea) continue;
 
-    const groupA = groupOf.get(ai);
+    const groupA = opts.sides ? 0 : groupOf.get(ai);
     if (groupA === undefined) continue;
 
     const maxA = Math.max(
@@ -383,11 +435,16 @@ export async function runClashCore(
       const eb = items[bi];
       if (!eb) continue;
 
-      const groupB = groupOf.get(bi);
+      const groupB = opts.sides ? 0 : groupOf.get(bi);
       if (groupB === undefined) continue;
 
-      const sameGroup = groupA === groupB;
-      if (sameGroup && !opts.selfPairs) continue;
+      if (opts.sides) {
+        const fa = opts.sides[ai] ?? 0, fb = opts.sides[bi] ?? 0;
+        if (!(((fa & 1) && (fb & 2)) || ((fa & 2) && (fb & 1)))) continue;
+      } else {
+        const sameGroup = groupA === groupB;
+        if (sameGroup && !opts.selfPairs) continue;
+      }
 
       const key = `${ai}:${bi}`;
       if (seen.has(key)) continue;
@@ -441,6 +498,7 @@ export async function runClashCore(
         boxA: ea.box.clone(),
         boxB: eb.box.clone(),
         point: d.point,
+        ...(d.contained ? { contained: true } : {}),
       });
     }
   }

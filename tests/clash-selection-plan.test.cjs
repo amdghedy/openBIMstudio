@@ -1,0 +1,22 @@
+const { execSync } = require("child_process"); const fs=require("fs"); const os=require("os"); const path=require("path");
+const out=fs.mkdtempSync(path.join(os.tmpdir(),"csp-"));
+execSync(`npx tsc src/modules/clash/selection-plan.ts --outDir ${out} --module commonjs --target es2020 --lib es2020 --skipLibCheck --ignoreDeprecations 5.0`,{stdio:"inherit"});
+const files=[];(function w(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);fs.statSync(p).isDirectory()?w(p):files.push(p)}})(out);
+const P=require(files.find(f=>f.endsWith("selection-plan.js")));
+let pass=0,fail=0;const t=(n,fn)=>{try{fn();pass++;console.log("  PASS",n)}catch(e){fail++;console.log("  FAIL",n+": "+e.message)}};
+const eq=(a,b,m)=>{const j=x=>JSON.stringify(x,(k,v)=>v instanceof Set?{set:[...v].sort((p,q)=>p-q)}:v);if(j(a)!==j(b))throw new Error((m||"")+" got "+j(a)+" want "+j(b));};
+const R=(o)=>new Map(Object.entries(o).map(([k,v])=>[k,v==="ALL"?"ALL":new Set(v)]));
+const models=["arch","mep","link","__authored__"];
+
+t("both: category A vs category B inside ONE model",()=>{const p=P.planScope("both",["arch"],R({arch:[1,2,3]}),R({arch:[7,8]}));eq(p.useSides,true);eq(p.models.length,1);eq(p.models[0].allowed,new Set([1,2,3,7,8]));eq(p.models[0].sideA,new Set([1,2,3]));eq(p.models[0].sideB,new Set([7,8]));});
+t("both: linked model vs host model",()=>{const p=P.planScope("both",models,R({arch:"ALL"}),R({link:"ALL"}));eq(p.models.map(m=>m.modelId),["arch","link"]);eq(p.models[0].sideB,null);eq(p.models[1].sideA,null);});
+t("both: native authored elements vs IFC model",()=>{const p=P.planScope("both",models,R({__authored__:[1,2]}),R({mep:"ALL"}));eq(p.models.map(m=>m.modelId),["mep","__authored__"]);});
+t("both: ALL wins over partial sets in the union",()=>{const p=P.planScope("both",["arch"],R({arch:"ALL"}),R({arch:[1]}));eq(p.models[0].allowed,"ALL");});
+t("both: empty A / empty B / both empty give specific messages",()=>{if(!/Selection A is empty/.test(P.planScope("both",models,R({}),R({arch:"ALL"})).empty))throw new Error("A");if(!/Selection B is empty/.test(P.planScope("both",models,R({arch:"ALL"}),R({})).empty))throw new Error("B");if(!/A and B are empty/.test(P.planScope("both",models,R({}),R({})).empty))throw new Error("AB");eq(P.planScope("both",models,R({}),R({})).models,[]);});
+t("aOnly / bOnly test every pair inside the chosen set",()=>{const p=P.planScope("aOnly",models,R({arch:[1,2],link:"ALL"}),R({mep:"ALL"}));eq(p.useSides,false);eq(p.models.map(m=>m.modelId),["arch","link"]);const q=P.planScope("bOnly",models,R({arch:[1]}),R({mep:"ALL"}));eq(q.models.map(m=>m.modelId),["mep"]);});
+t("all: every model including native, all elements",()=>{const p=P.planScope("all",models,R({}),R({}));eq(p.models.length,4);eq(p.models.every(m=>m.allowed==="ALL"),true);});
+t("viewport: only models with picked elements",()=>{const p=P.planScope("viewport",models,R({}),R({}),{mep:new Set([5,6])});eq(p.models.length,1);eq(p.models[0].allowed,new Set([5,6]));eq(P.planScope("viewport",models,R({}),R({}),{}).empty,"Nothing is selected in the viewport.");});
+t("selections naming models that are not loaded are ignored",()=>{const p=P.planScope("both",["arch"],R({ghost:"ALL",arch:[1]}),R({arch:[2]}));eq(p.models.length,1);});
+t("mergeExplicit adds picks, keeps ALL, does not mutate input",()=>{const base=R({arch:[1],mep:"ALL"});const m=P.mergeExplicit(base,new Map([["arch",new Set([2,3])],["mep",new Set([9])],["link",new Set([4])],["x",new Set()]]));eq(m.get("arch"),new Set([1,2,3]));eq(m.get("mep"),"ALL");eq(m.get("link"),new Set([4]));eq(m.has("x"),false);eq(base.get("arch"),new Set([1]));});
+t("unionIdSets",()=>{eq(P.unionIdSets(null,null),null);eq(P.unionIdSets(new Set([1]),null),new Set([1]));eq(P.unionIdSets("ALL",new Set([1])),"ALL");});
+console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

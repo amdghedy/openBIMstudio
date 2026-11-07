@@ -24,6 +24,7 @@ type InMessage =
       rules: ClashRules;
       method: ClashMethod;
       selfPairs: boolean;
+      sides?: number[];
     }
   | { type: "cancel"; requestId: string };
 
@@ -53,6 +54,7 @@ interface SerializedClash {
   boxA: [number, number, number, number, number, number];
   boxB: [number, number, number, number, number, number];
   point: [number, number, number] | null;
+  contained?: boolean;
 }
 
 const cancelled = new Set<string>();
@@ -97,6 +99,7 @@ function serializeClash(c: ElementClash): SerializedClash {
     boxA: [c.boxA.min.x, c.boxA.min.y, c.boxA.min.z, c.boxA.max.x, c.boxA.max.y, c.boxA.max.z],
     boxB: [c.boxB.min.x, c.boxB.min.y, c.boxB.min.z, c.boxB.max.x, c.boxB.max.y, c.boxB.max.z],
     point: c.point ? [c.point.x, c.point.y, c.point.z] : null,
+    ...(c.contained ? { contained: true } : {}),
   };
 }
 
@@ -126,6 +129,7 @@ self.addEventListener("message", (event: MessageEvent<InMessage>) => {
         method: data.method,
         groups: data.groups,
         selfPairs: data.selfPairs,
+        ...(data.sides ? { sides: data.sides } : {}),
         onProgress: (p) => post({ type: "progress", requestId, progress: p }),
         shouldCancel: () => cancelled.has(requestId),
         yield: () => Promise.resolve(),

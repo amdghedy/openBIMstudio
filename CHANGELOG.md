@@ -11,6 +11,15 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Clash detection (audit and fixes)
+- Found by test and fixed: an element fully inside another (a pipe embedded in a wall) was never reported as a clash; elements whose boxes overlapped but whose surfaces were apart were falsely reported as "touching"; heavy elements had triangles silently skipped (now all or nothing, up to 120,000 triangles, never thinned).
+- Native elements modelled in this app are now part of clash tests (they were offered in the category dialog but never reached the engine).
+- Selection A versus B now means exactly that: category against category inside one IFC file, host against linked model, native against IFC. Before, two selections in the same model tested nothing.
+- The "Clash by category" dialog called a function that did not exist, so it always ran with empty selections; fixed.
+- Contact up to the tolerance is "touching" (a wall resting on a slab is no longer a clash); distance is now measured on the real surfaces, not the boxes.
+- The status line now says how many elements were tested, how many only by bounding box, and how many were skipped, so "No clashes found" can be judged.
+- 36 new tests on real triangle meshes (engine) and scope planning. Not run against real IFC files in a browser; 100% detection cannot be guaranteed.
+
 ### CAD Insert tab
 - New Insert tab groups: Block (Insert, Create, Write Block, Library, Explode), Import (DWG/DXF, File as Block, SVG) and Annotation (Field, Table, MText). Commands BLOCK/B, INSERT/I, WBLOCK/W, BLOCKLIB, SVGIMPORT, FIELD. `INSERT` now inserts a block as in AutoCAD; merging a file is `IMPORT`.
 - Blocks are editable copies with a library shared by all tabs (stored in this browser). No block references, attributes, raster images, XREF or PDF import yet. Logic is unit-tested; the UI has not been run in a browser.
