@@ -1,0 +1,34 @@
+name: Build Revit reader
+
+# Builds the rvt-rs WebAssembly decoder (scripts/build-rvt-wasm.mjs) and uploads it
+# as an artifact, so it can be committed to public/rvt/ and served by every host
+# (including ones with no Rust toolchain, such as Vercel). Run manually.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - run: cargo install wasm-pack --locked
+      - run: node scripts/build-rvt-wasm.mjs --strict
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rvt-decoder
+          path: |
+            public/rvt/rvt.js
+            public/rvt/rvt_bg.wasm
+            public/rvt/rvt.d.ts
+            public/rvt/rvt_bg.wasm.d.ts
+          if-no-files-found: error
