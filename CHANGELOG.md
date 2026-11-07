@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### CAD Insert tab
+- New Insert tab groups: Block (Insert, Create, Write Block, Library, Explode), Import (DWG/DXF, File as Block, SVG) and Annotation (Field, Table, MText). Commands BLOCK/B, INSERT/I, WBLOCK/W, BLOCKLIB, SVGIMPORT, FIELD. `INSERT` now inserts a block as in AutoCAD; merging a file is `IMPORT`.
+- Blocks are editable copies with a library shared by all tabs (stored in this browser). No block references, attributes, raster images, XREF or PDF import yet. Logic is unit-tested; the UI has not been run in a browser.
+
 ### AI assistant
 - Claude is now a native provider (Anthropic Messages API: streaming, tool use, model list, specific error messages). Each user pastes their own Anthropic API key; it is stored in the encrypted local store and never shared. Old "OpenAI-compatible + api.anthropic.com" setups migrate automatically.
 - Added presets for xAI Grok, Fireworks, SambaNova, NVIDIA NIM, Hyperbolic, Moonshot Kimi, Alibaba Qwen and local llama.cpp / vLLM / Jan (alongside Ollama, LM Studio, Gemini, Groq, OpenRouter, Cerebras, OpenAI, DeepSeek, Mistral, Together, Claude). Presets moved to `ai-presets.ts`; a test checks every cloud host is in the CSP. Model ids are defaults and not live-checked; any other OpenAI-compatible service works via a custom endpoint.

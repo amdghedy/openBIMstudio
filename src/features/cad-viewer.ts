@@ -21,6 +21,9 @@
  */
 
 import { readCadFile } from "../modules/cad-link/index";
+import { BlockLibrary, makeBlock, instantiateBlock, blockToDocument, blockExtent, validateBlockName, type BlockDef } from "../modules/drawings/cad-blocks";
+import { importSvg } from "../modules/drawings/svg-import";
+import { FIELD_KINDS, evaluateField, type FieldKind } from "../modules/drawings/cad-fields";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
 import { downloadDxf, writeDxf, layoutsNotSaved, DWG_VERSIONS, DEFAULT_DWG_VERSION, dwgVersionLabel, type DwgVersionCode } from "../modules/drawings/dxf-writer";
 import { uiAlert } from "../core/notify";
@@ -42,7 +45,7 @@ import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import { evalExpr, isCalcExpr } from "../modules/cad-viewer/cad-cal";
 import { svgIcon, type IconName } from "./icon-set";
-import { promptLine, confirmDialog, pickFromList } from "./form-modal";
+import { promptLine, confirmDialog, pickFromList, openFormModal, showTableDialog } from "./form-modal";
 import { loadCadAliases, resolveCadToken, openCadAliasEditor, effectiveAliases, registerCadAliasEditorOpener } from "./command-aliases";
 import {
   renderAppearanceEditor, openLinetypeManager, openTextStyleManager, placeText, editLayerProperty,
@@ -245,7 +248,13 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DIMCONTINUE", aliases: ["DCO", "DIMCONT"], description: "Continue a dimension from the last one" },
   { name: "DIMBASELINE", aliases: ["DBA", "DIMBASE"], description: "Baseline dimension from the last one" },
   { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
-  { name: "IMPORT", aliases: ["INSERT", "IMP"], description: "Merge a DWG / DXF file into the current drawing" },
+  { name: "IMPORT", aliases: ["IMP"], description: "Merge a DWG / DXF file into the current drawing" },
+  { name: "BLOCK", aliases: ["B", "BMAKE"], description: "Create a block from the selected objects (base point, name)" },
+  { name: "INSERT", aliases: ["I", "DDINSERT"], description: "Insert a block from the library (scale, rotation) or a drawing file as a block" },
+  { name: "WBLOCK", aliases: ["W"], description: "Write the selected objects (or a library block) to a DXF file" },
+  { name: "BLOCKLIB", aliases: ["BLOCKS", "BLIB"], description: "Block library: list, insert, rename, delete, export" },
+  { name: "SVGIMPORT", aliases: ["SVG"], description: "Import an SVG file as polylines and circles" },
+  { name: "FIELD", aliases: ["FLD"], description: "Insert text computed from the drawing (date, name, length, area...)" },
   { name: "KS", aliases: ["ALIASEDIT", "ALIASES", "SHORTCUTS"], description: "Edit command aliases (abbreviations) — AutoCAD-style" },
 ];
 
@@ -302,6 +311,19 @@ let xmlPicker: HTMLInputElement | null = null;
 let tabs: DocTab[] = [];
 let active: DocTab | null = null;
 let nextTabId = 1;
+/** Block library shared by every drawing tab; persisted in this browser. */
+const BLOCK_LIB_KEY = "obs.cad.blocks";
+const blockLib: BlockLibrary = (() => {
+  try {
+    const raw = localStorage.getItem(BLOCK_LIB_KEY);
+    if (raw) return BlockLibrary.fromJSON(JSON.parse(raw)).lib;
+  } catch { /* storage unavailable or corrupt: start empty */ }
+  return new BlockLibrary();
+})();
+/** Returns false when the browser refused to store (quota), so the caller can say so. */
+function persistBlockLib(): boolean {
+  try { localStorage.setItem(BLOCK_LIB_KEY, JSON.stringify(blockLib.toJSON())); return true; } catch { return false; }
+}
 /** Shared cross-drawing clipboard (COPYCLIP in one tab, PASTECLIP in another). */
 let clip: CadClip | null = null;
 
@@ -2605,7 +2627,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     carried?: boolean;
     /** PASTE: total entities placed across all clicks in this session. */
     placedCount?: number;
+    /** Command name shown in the log (PASTECLIP, INSERT, SVGIMPORT, FIELD). */
+    placeLabel?: string;
   }
+  /** Entities queued by INSERT / SVGIMPORT / FIELD for the ghost-placement session. */
+  let pendingPlacement: { entities: DxfEntity[]; base: { x: number; y: number }; label: string } | null = null;
   let mod: ModOp | null = null;
   let modGhost: DxfEntity[] | null = null;
   let offStage: OffStage = "dist";
@@ -2866,10 +2892,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     } else if (mod.stage === "second" && (mod.kind === "copy" || mod.kind === "paste")) {
       const wasPaste = mod.kind === "paste";
       const placedCount = wasPaste ? mod.placedCount ?? 0 : 0;
+      const placeLabel = mod.placeLabel ?? "PASTECLIP";
       const kind = mod.kind;
       clearModState();
       setTool("select");
-      logCmd(`Command: _${wasPaste ? `PASTECLIP completed (${placedCount} object(s) placed)` : kind === "copy" ? "COPY completed" : kind.toUpperCase() + " completed"}`);
+      logCmd(`Command: _${wasPaste ? `${placeLabel} completed (${placedCount} object(s) placed)` : kind === "copy" ? "COPY completed" : kind.toUpperCase() + " completed"}`);
       draw();
     } else if (mod.stage === "eraseAsk") {
       const f = pendingYesNo;
@@ -3638,7 +3665,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           }
           selected = sel.size ? [...sel][sel.size - 1] : -1;
           showProps();
-          logCmd(`PASTECLIP: ${placed.length} object(s) placed — click again for another copy, Enter / Esc to finish`);
+          logCmd(`${mod.placeLabel ?? "PASTECLIP"}: ${placed.length} object(s) placed — click again for another copy, Enter / Esc to finish`);
           return true;
         }
         case "rotate": {
@@ -4319,9 +4346,33 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "home",
       ) +
       rg(
+        "Block",
+        rb("component", "Insert", `data-a="blk-insert"`, "Insert a block from the library with scale and rotation (INSERT, I)") +
+          rb("symbol", "Create", `data-a="blk-make"`, "Create a block from the selected objects (BLOCK, B)") +
+          rb("file-frag", "Write Block", `data-a="blk-write"`, "Save the selected objects as a DXF file (WBLOCK, W)") +
+          rb("new-family", "Library", `data-a="blk-lib"`, "List, insert, rename, delete or export blocks (BLOCKLIB)") +
+          rb("delete", "Explode", `data-a="blk-explode"`, "Explode the selected polylines (EXPLODE)") +
+          `<input type="file" data-r="blockfile" accept=".dwg,.dxf" style="display:none">`,
+        "",
+        "",
+        "insert",
+      ) +
+      rg(
         "Import",
         rb("import", "DWG / DXF…", `data-a="import"`, "Merge a DWG or DXF file into the current drawing (IMPORT)") +
-          `<input type="file" data-r="importfile" accept=".dwg,.dxf" style="display:none">`,
+          rb("file", "File as Block", `data-a="blk-file"`, "Read a DWG / DXF as a block and place it (INSERT from file)") +
+          rb("model-curve", "SVG…", `data-a="svg-import"`, "Import an SVG as polylines and circles (SVGIMPORT)") +
+          `<input type="file" data-r="importfile" accept=".dwg,.dxf" style="display:none">` +
+          `<input type="file" data-r="svgfile" accept=".svg,image/svg+xml" style="display:none">`,
+        "",
+        "",
+        "insert",
+      ) +
+      rg(
+        "Annotation",
+        rb("text", "Field", `data-a="ins-field"`, "Insert text computed from the drawing: date, name, length, area (FIELD)") +
+          rb("table", "Table", `data-a="ins-table"`, "Draw a rows × columns table (TABLE)") +
+          rb("model-text", "MText", `data-a="mtext"`, "Place multiline text (MTEXT)"),
         "",
         "",
         "insert",
@@ -4513,6 +4564,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       list: () => showSelectionList(),
       // Insert tab
       import: () => tools.querySelector<HTMLInputElement>("[data-r=importfile]")?.click(),
+      "blk-make": () => void createBlockCmd([]),
+      "blk-insert": () => void insertBlockCmd(),
+      "blk-file": () => tools.querySelector<HTMLInputElement>("[data-r=blockfile]")?.click(),
+      "blk-write": () => void wblockCmd(),
+      "blk-lib": () => void blockLibraryCmd(),
+      "blk-explode": () => explodeSelection(),
+      "svg-import": () => tools.querySelector<HTMLInputElement>("[data-r=svgfile]")?.click(),
+      "ins-field": () => void fieldCmd(),
+      "ins-table": () => setTool("table"),
       takeoff2: () => doTakeoff(),
       info2: () => doInfo(),
       // OpenCADStudio absorption: entity CSV export + LandXML survey import
@@ -4606,6 +4666,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         for (const f of files) await mergeCadFile(f);
       })();
       importIn.value = "";
+    };
+
+    const blockIn = tools.querySelector<HTMLInputElement>("[data-r=blockfile]");
+    if (blockIn) blockIn.onchange = () => {
+      const f = blockIn.files?.[0];
+      blockIn.value = "";
+      if (f) void blockFromFile(f).then((n) => { if (n) void insertBlockCmd(n); });
+    };
+    const svgIn = tools.querySelector<HTMLInputElement>("[data-r=svgfile]");
+    if (svgIn) svgIn.onchange = () => {
+      const f = svgIn.files?.[0];
+      svgIn.value = "";
+      if (f) void importSvgFile(f);
     };
 
     const sel = (a: string) => tools.querySelector<HTMLSelectElement>(`[data-a=${a}]`)!;
@@ -4816,6 +4889,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         // Super Copy placement: the clipboard ghosts onto the cursor immediately
         // (AutoCAD PASTECLIP). The style carry-over is applied once per session,
         // before the first placement, so even the ghost renders true.
+        const place = pendingPlacement;
+        pendingPlacement = null;
+        if (place) {
+          mod = { kind: "paste", stage: "second", ghostOf: [], base: place.base, ref: null, pasteSrc: place.entities, carried: true, placedCount: 0, placeLabel: place.label };
+          logCmd(`Command: _${place.label} — click to place, click again for more, Enter / Esc to finish.`);
+          draw();
+          return;
+        }
         if (!clip || !clip.entities.length) {
           logCmd("PASTECLIP: clipboard is empty — COPYCLIP objects in any drawing tab first (Ctrl+C / Ctrl+Shift+C).");
           tool = "select";
@@ -6678,7 +6759,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       layerStateCommand(parts.slice(1));
       return;
     }
-    if (cmd === "IMPORT" || cmd === "INSERT" || cmd === "IMP") {
+    if (cmd === "BLOCK" || cmd === "B" || cmd === "BMAKE") { void createBlockCmd(parts.slice(1)); return; }
+    if (cmd === "INSERT" || cmd === "I" || cmd === "DDINSERT" || cmd === "-INSERT") { void insertBlockCmd(parts[1]); return; }
+    if (cmd === "WBLOCK" || cmd === "W") { void wblockCmd(); return; }
+    if (cmd === "BLOCKLIB" || cmd === "BLOCKS" || cmd === "BLIB") { void blockLibraryCmd(); return; }
+    if (cmd === "SVGIMPORT" || cmd === "SVG") { tools.querySelector<HTMLInputElement>("[data-r=svgfile]")?.click(); return; }
+    if (cmd === "FIELD" || cmd === "FLD") { void fieldCmd(); return; }
+    if (cmd === "IMPORT" || cmd === "IMP") {
       tools.querySelector<HTMLInputElement>("[data-r=importfile]")?.click();
       return;
     }
@@ -7873,6 +7960,215 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       addEntities(copies);
       logCmd(`ARRAY: ${copies.length} copies added (${rows} rows × ${cols} columns).`);
     });
+  }
+
+  /* ── Insert tab: blocks, file-as-block, SVG import, fields ── */
+  function ensureDocLayers(defs: Array<{ name: string; color: number }>): void {
+    if (!doc) return;
+    const have = new Set(doc.layers.map((l) => l.name));
+    let added = 0;
+    for (const l of defs) if (!have.has(l.name)) { doc.layers.push({ ...(l as any) }); added++; }
+    if (added) { for (const l of doc.layers) if ((l as any).off || (l as any).frozen) hidden.add(l.name); buildLayers(); }
+  }
+
+  /** Ghost-place `entities` at the cursor; each click drops one copy, Enter / Esc ends. */
+  function beginPlacement(entities: DxfEntity[], base: { x: number; y: number }, label: string): void {
+    pendingPlacement = { entities, base, label };
+    setTool("paste");
+    draw();
+  }
+
+  function blockBaseChoices(b: M.BBox | null): Array<[string, string]> {
+    return [
+      ["ll", "Lower-left of the selection"],
+      ["center", "Centre of the selection"],
+      ["origin", "Drawing origin (0,0)"],
+    ];
+  }
+  function resolveBlockBase(choice: string, b: M.BBox | null): { x: number; y: number } {
+    if (choice === "origin" || !b) return { x: 0, y: 0 };
+    return choice === "center" ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : { x: b.minX, y: b.minY };
+  }
+
+  async function createBlockCmd(args: string[]): Promise<void> {
+    if (!doc) { logCmd("BLOCK: open or start a drawing first."); return; }
+    if (!sel.size) { logCmd("BLOCK: 0 found — select the objects first, then run BLOCK."); return; }
+    const list = [...sel].map((i) => ents[i]).filter(Boolean);
+    const b = idx ? M.bboxOfSet(idx, sel) : null;
+    const r = await openFormModal({
+      title: "Create Block",
+      subtitle: `${list.length} object(s) selected`,
+      fields: [
+        { kind: "text", key: "name", label: "Name", default: args[0] ?? `Block${blockLib.size + 1}`, validate: (v) => validateBlockName(String(v)) },
+        { kind: "select", key: "base", label: "Base point", options: blockBaseChoices(b), default: "ll", hint: "The point that lands on your click when the block is inserted." },
+        { kind: "text", key: "desc", label: "Description", default: "" },
+        { kind: "checkbox", key: "remove", label: "Remove the selected objects from the drawing", default: false },
+      ],
+      submitLabel: "Create",
+    });
+    if (!r) { logCmd("BLOCK cancelled."); return; }
+    const nm = String(r.name).trim();
+    if (blockLib.has(nm) && !(await confirmDialog("Redefine block", `A block named "${nm}" already exists. Replace its definition?`))) { logCmd("BLOCK cancelled."); return; }
+    try {
+      const def = makeBlock(nm, list, resolveBlockBase(String(r.base), b), doc.layers as any, String(r.desc || "") || undefined);
+      blockLib.add(def, true);
+      const stored = persistBlockLib();
+      logCmd(`BLOCK: "${def.name}" defined from ${list.length} object(s).${stored ? "" : " (Could not store it in this browser; it lasts until you close the page.)"}`);
+      if (r.remove) eraseSelected();
+    } catch (err) { logCmd(`BLOCK failed: ${(err as Error).message}`); }
+  }
+
+  async function blockFromFile(f: File): Promise<string | null> {
+    try {
+      const r = await readCadFile(f);
+      const incoming = r.doc.entities.filter((e) => { const bb = M.entityBBox(e); return Number.isFinite(bb.minX + bb.maxX + bb.minY + bb.maxY); });
+      if (!incoming.length) throw new Error("the file has no drawable geometry");
+      let nm = f.name.replace(/\.[^.]+$/, "").replace(/[<>/\\":;?*|,=`]/g, "_").trim() || "Imported";
+      if (nm.startsWith("*")) nm = "_" + nm.slice(1);
+      if (blockLib.has(nm) && !(await confirmDialog("Redefine block", `A block named "${nm}" already exists. Replace it with the contents of ${f.name}?`))) return null;
+      blockLib.add(makeBlock(nm, incoming, { x: 0, y: 0 }, r.doc.layers as any, `From ${f.name}`), true);
+      persistBlockLib();
+      logCmd(`INSERT: ${f.name} read as block "${nm}" (${incoming.length} objects, base point 0,0).`);
+      return nm;
+    } catch (err) {
+      logCmd(`INSERT failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  async function insertBlockCmd(preselect?: string): Promise<void> {
+    if (!doc) { logCmd("INSERT: open or start a drawing first."); return; }
+    if (!blockLib.size) {
+      logCmd("INSERT: the block library is empty. Use BLOCK on selected objects, or 'Insert file as block' to bring in a DWG / DXF.");
+      uiAlert("There are no blocks yet. Create one with BLOCK (select objects first), or use Insert file as block on the Insert tab.");
+      return;
+    }
+    const names = blockLib.names();
+    const lastScale = Number(localStorage.getItem("obs.cad.insScale")) || 1;
+    const r = await openFormModal({
+      title: "Insert Block",
+      fields: [
+        { kind: "select", key: "name", label: "Block", options: names.map((n) => {
+            const d = blockLib.get(n)!; const ex = blockExtent(d);
+            return [n, `${n} — ${d.entities.length} obj${ex ? `, ${fmt(ex.w)} × ${fmt(ex.h)}` : ""}`] as [string, string];
+          }), default: preselect && blockLib.has(preselect) ? blockLib.get(preselect)!.name : names[0] },
+        { kind: "number", key: "scale", label: "Scale", default: lastScale, min: 0.000001, step: 0.1, hint: "Uniform scale about the base point." },
+        { kind: "number", key: "rot", label: "Rotation", default: 0, unit: "°" },
+        { kind: "select", key: "layer", label: "Layer", options: [["", "Keep the block's own layers"], ...doc.layers.map((l) => [l.name, l.name] as [string, string])], default: "" },
+      ],
+      submitLabel: "Place",
+    });
+    if (!r) { logCmd("INSERT cancelled."); return; }
+    const def = blockLib.get(String(r.name));
+    if (!def) { logCmd("INSERT: block not found."); return; }
+    try {
+      const scale = Number(r.scale), rot = Number(r.rot) || 0;
+      const placed = instantiateBlock(def, def.base, { scale, rotation: rot, layer: String(r.layer) || undefined });
+      try { localStorage.setItem("obs.cad.insScale", String(scale)); } catch { /* */ }
+      if (!r.layer) ensureDocLayers(def.layers as any);
+      beginPlacement(placed, def.base, "INSERT");
+    } catch (err) { logCmd(`INSERT failed: ${(err as Error).message}`); }
+  }
+
+  async function wblockCmd(): Promise<void> {
+    if (!doc) { logCmd("WBLOCK: open or start a drawing first."); return; }
+    let def: BlockDef | undefined;
+    if (sel.size) {
+      const list = [...sel].map((i) => ents[i]).filter(Boolean);
+      const b = idx ? M.bboxOfSet(idx, sel) : null;
+      const r = await openFormModal({
+        title: "Write Block",
+        subtitle: `${list.length} object(s) selected`,
+        fields: [
+          { kind: "text", key: "name", label: "File name", default: `Block${blockLib.size + 1}`, validate: (v) => validateBlockName(String(v)) },
+          { kind: "select", key: "base", label: "Base point (becomes 0,0)", options: blockBaseChoices(b), default: "ll" },
+        ],
+        submitLabel: "Save DXF",
+      });
+      if (!r) { logCmd("WBLOCK cancelled."); return; }
+      try { def = makeBlock(String(r.name), list, resolveBlockBase(String(r.base), b), doc.layers as any); }
+      catch (err) { logCmd(`WBLOCK failed: ${(err as Error).message}`); return; }
+    } else if (blockLib.size) {
+      const picked = await pickFromList("Write Block", "No objects selected. Export which library block?", blockLib.names().map((n) => ({ value: n, label: n })));
+      if (!picked) { logCmd("WBLOCK cancelled."); return; }
+      def = blockLib.get(picked);
+    } else { logCmd("WBLOCK: 0 found — select objects first."); return; }
+    if (!def) return;
+    const fn = `${def.name}.dxf`;
+    downloadDxf(blockToDocument(def, doc.units), fn);
+    logCmd(`WBLOCK: wrote ${fn} (${def.entities.length} objects, base point at 0,0).`);
+  }
+
+  async function blockLibraryCmd(): Promise<void> {
+    if (!blockLib.size) { logCmd("BLOCKLIB: no blocks yet. Select objects and run BLOCK."); uiAlert("The block library is empty. Select objects and run BLOCK to add one."); return; }
+    await showTableDialog(
+      "Block library",
+      ["Name", "Objects", "Size", "Base point", "Description"],
+      blockLib.names().map((n) => { const d = blockLib.get(n)!; const ex = blockExtent(d); return [n, d.entities.length, ex ? `${fmt(ex.w)} × ${fmt(ex.h)}` : "-", `${fmt(d.base.x)}, ${fmt(d.base.y)}`, d.description ?? ""]; }),
+      `${blockLib.size} block(s) — shared by every drawing in this browser`,
+    );
+    const pick = await pickFromList("Block library", "Choose a block to work with (Cancel to close)", blockLib.names().map((n) => ({ value: n, label: n })));
+    if (!pick) return;
+    const act = await pickFromList(`Block "${pick}"`, "Action", [
+      { value: "insert", label: "Insert into the drawing" },
+      { value: "rename", label: "Rename" },
+      { value: "export", label: "Export as DXF file" },
+      { value: "delete", label: "Delete from the library" },
+    ], "insert");
+    if (act === "insert") await insertBlockCmd(pick);
+    else if (act === "export") {
+      const d = blockLib.get(pick)!;
+      downloadDxf(blockToDocument(d, doc?.units), `${d.name}.dxf`);
+      logCmd(`BLOCKLIB: exported ${d.name}.dxf`);
+    } else if (act === "rename") {
+      const nn = await promptLine("Rename block", "New name", pick);
+      if (!nn) return;
+      try { blockLib.rename(pick, nn); persistBlockLib(); logCmd(`BLOCKLIB: "${pick}" renamed to "${nn.trim()}".`); }
+      catch (err) { logCmd(`BLOCKLIB: ${(err as Error).message}`); uiAlert((err as Error).message); }
+    } else if (act === "delete") {
+      if (await confirmDialog("Delete block", `Delete "${pick}" from the library? Copies already in drawings are not affected.`)) {
+        blockLib.remove(pick); persistBlockLib(); logCmd(`BLOCKLIB: "${pick}" deleted.`);
+      }
+    }
+  }
+
+  async function importSvgFile(f: File): Promise<void> {
+    if (!doc) { logCmd("SVGIMPORT: open or start a drawing first."); return; }
+    try {
+      const text = await f.text();
+      const sc = await promptLine("SVG import", "Drawing units per SVG unit (SVG pixels: 1 px = this many units)", localStorage.getItem("obs.cad.svgScale") || "1");
+      if (sc == null) { logCmd("SVGIMPORT cancelled."); return; }
+      const scale = parseFloat(sc);
+      if (!(scale > 0)) { logCmd("SVGIMPORT: the scale must be a positive number."); return; }
+      try { localStorage.setItem("obs.cad.svgScale", String(scale)); } catch { /* */ }
+      const res = importSvg(text, { layer: currentLayer, scale });
+      if (!res.entities.length) { logCmd(`SVGIMPORT: ${f.name} has no lines, shapes or paths I can read.`); uiAlert(`${f.name} contains no importable geometry (text, images and styling are not imported).`); return; }
+      let bb: M.BBox | null = null;
+      for (const e of res.entities) { const eb = M.entityBBox(e); bb = bb ? M.unionBBox(bb, eb) : eb; }
+      const skipped = Object.entries(res.skipped).map(([k, v]) => `${v} ${k}`).join(", ");
+      logCmd(`SVGIMPORT: ${f.name} — ${res.entities.length} objects${skipped ? `; not imported: ${skipped}` : ""}.`);
+      beginPlacement(res.entities, { x: bb!.minX, y: bb!.minY }, "SVGIMPORT");
+    } catch (err) { logCmd(`SVGIMPORT failed: ${(err as Error).message}`); }
+  }
+
+  async function fieldCmd(): Promise<void> {
+    if (!doc) { logCmd("FIELD: open or start a drawing first."); return; }
+    const kind = await pickFromList("Insert Field", "Field", FIELD_KINDS.map((k) => ({ value: k.kind, label: k.label })), "date");
+    if (!kind) return;
+    try {
+      const value = evaluateField(kind as FieldKind, {
+        now: new Date(), drawingName: name || base(), entityCount: modelEnts.length, layerCount: doc.layers.length,
+        selected: [...sel].map((i) => ents[i]).filter(Boolean),
+      });
+      const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 100;
+      const guess = Number((span / 100).toPrecision(2)) || 2.5;
+      const h = await promptLine("Field text height", `Text will read "${value}". Height in drawing units`, String(guess));
+      if (h == null) return;
+      const height = parseFloat(h);
+      if (!(height > 0)) { logCmd("FIELD: the height must be a positive number."); return; }
+      logCmd(`FIELD: "${value}" (static text; run FIELD again to refresh).`);
+      beginPlacement([{ type: "TEXT", layer: currentLayer, position: { x: 0, y: 0 }, height, value } as DxfEntity], { x: 0, y: 0 }, "FIELD");
+    } catch (err) { logCmd(`FIELD: ${(err as Error).message}`); uiAlert((err as Error).message); }
   }
 
   /* ── INSERT: merge a DWG / DXF file into the current drawing ── */

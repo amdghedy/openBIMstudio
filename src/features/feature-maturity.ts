@@ -376,6 +376,27 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "cad-insert-tab",
+    area: "Drawings",
+    status: "experimental",
+    source: [
+      "src/modules/drawings/cad-blocks.ts",
+      "src/modules/drawings/svg-import.ts",
+      "src/modules/drawings/cad-fields.ts",
+      "src/features/cad-viewer.ts",
+    ],
+    evidence: ["tests/cad-insert.test.cjs"],
+    limitations: [
+      "Block, insert, scale/rotation, write-block, SVG flattening and field maths are unit-tested; the dialogs, ghost placement and ribbon have not been run in a browser",
+      "Inserted blocks are ordinary editable copies (like INSERT then EXPLODE): there is no block-reference identity, redefinition, attributes, dynamic blocks or non-uniform scale",
+      "The block library is shared by all drawings in this browser and is not written into saved DWG / DXF files",
+      "SVG import flattens curves to polylines; text, images, gradients, clip paths and <use> are skipped and reported",
+      "Fields are evaluated once when inserted and do not update afterwards",
+      "Not available: raster image attach, XREF / underlays, PDF import, point clouds, hyperlinks, data links, OLE",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "cad-editor-styles",
     area: "Drawings",
     status: "limited",

@@ -102,6 +102,7 @@
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
     "test:anthropic": "node tests/anthropic-messages.test.cjs",
     "test:ai-presets": "node tests/ai-presets.test.cjs",
+    "test:cad-insert": "node tests/cad-insert.test.cjs",
     "test:ai-modeling": "node tests/ai-native-modeling.test.cjs",
     "test:constraints": "node tests/constraint-solver.test.cjs",
     "test:structural": "node tests/structural.test.cjs",
