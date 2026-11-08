@@ -83,6 +83,17 @@ Tool selection and BIM workflows:
 - Before reporting completion, verify actual element counts/IDs and run an appropriate available validation or clash tool when requested. State clearly when no dedicated validation tool exists.
 - Deletion and clearing tools require explicit approval.`;
 
+/** Appended to the system prompt while the panel is docked inside the 2D CAD engine. */
+const CAD_AI_ADDENDUM = `
+
+## 2D CAD drafting mode
+The AI panel is currently docked inside the openBIMstudio 2D CAD engine (DWG/DXF drafting, AutoCAD-style ribbon). Ground every answer in the 2D drawing state:
+- Call get_cad_state first to check that the 2D engine is open and to learn the active drawing name, modified flag, entity count, active tool, and current ribbon tab.
+- Use run_cad_command to drive the active drawing exactly like the user typing in the command line: command name plus arguments separated by spaces (for example "ZOOM E", "LINE", "LAYER S WALL", "FILLET R 50"). Commands are AutoCAD-style names (LINE, PLINE, CIRCLE, ARC, RECTANG, MOVE, COPY, OFFSET, TRIM, EXTEND, FILLET, CHAMFER, HATCH, DIM*, TEXT, MTEXT, LAYER, ZOOM, PAN, ERASE, UNDO, ...)
+- run_cad_command changes the drawing, so it always shows an approval card first. Prefer a dry read (get_cad_state) before any write, and keep commands small and verifiable: run one command, re-read state, then continue.
+- Interactive commands that need mouse picks in the canvas (LINE endpoints, MOVE base point) start the command but wait for canvas input. Either tell the user what to click next, or pass coordinates/arguments in the command text where the command accepts typed values (for example "ZOOM E" or numeric distances after starting a command).
+- Units, layer names and coordinates come from the drawing itself; never invent layer names or scales. If the drawing is empty or the engine is closed, say so instead of running commands.`;
+
 const MAX_ITERATIONS = 8;
 const CONV_KEY = "obs.ai.conversations";
 const MAX_CONVERSATIONS = 40;
@@ -145,6 +156,11 @@ let cfg: ProviderConfig = loadProviderConfig();
 let busy = false;
 let abort: AbortController | null = null;
 let dock: DockHandle | null = null;
+/** Where the panel is currently mounted + the dock persistence id in use. */
+let dockHost: HTMLElement | null = null;
+let dockId = "ai-chat";
+/** True while the panel is docked inside the 2D CAD engine shell. */
+let cadHosted = false;
 let showSettings = false;
 let autoScroll = true;
 let showAllModels = false;
@@ -1544,7 +1560,7 @@ async function runAgentLoop(): Promise<void> {
   regenBtn.style.display = "none";
 
   try {
-    const sys: ChatMessage = { role: "system", content: SYSTEM_PROMPT };
+    const sys: ChatMessage = { role: "system", content: cadHosted ? SYSTEM_PROMPT + CAD_AI_ADDENDUM : SYSTEM_PROMPT };
 
     for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
       const bubble = createStreamingBubble();
@@ -1771,6 +1787,68 @@ export function isAiChatVisible(): boolean {
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
+   Host switching — the same AI engine docked inside the 2D CAD engine
+   ═════════════════════════════════════════════════════════════════════════ */
+/** (Re)create the dockable controller for a host. The old handle is disposed
+    first so drag/resize listeners and handles are never duplicated. */
+function mountDock(host: HTMLElement, id: string): DockHandle {
+  try { dock?.dispose(); } catch { /* */ }
+  dockHost = host;
+  dockId = id;
+  dock = makeDockable(panel, {
+    id,
+    host,
+    header,
+    minWidth: 320,
+    minHeight: 360,
+    defaultDock: "float",   // start floating; user docks when they want
+    defaultWidth: 420,
+    defaultHeight: 640,
+    margin: 8,
+    snapThreshold: 32,
+  });
+  try { dock.hide(); } catch { /* */ }
+  return dock;
+}
+
+/** True while the panel lives inside the 2D CAD engine shell. */
+export function isAiChatCadHosted(): boolean {
+  return cadHosted;
+}
+
+/** Mount the AI panel inside an arbitrary host (the 2D CAD shell) and show it.
+    Uses its own dock persistence id so the CAD layout never clobbers the
+    BIM workspace layout. */
+export function openAiChatInHost(host: HTMLElement, opts?: { storageId?: string }): void {
+  if (panel.parentElement !== host) host.appendChild(panel);
+  const id = opts?.storageId ?? "ai-chat-cad";
+  if (dockHost !== host || dockId !== id) mountDock(host, id);
+  cadHosted = true;
+  openAiChat();
+}
+
+/** Move the panel back to the BIM workspace host (called when the 2D CAD
+    engine closes). No-op when the panel is not CAD-hosted. */
+export function releaseAiChatToDefaultHost(): void {
+  if (!cadHosted) return;
+  cadHosted = false;
+  try { closeAiChat(); } catch { /* */ }
+  if (panel.parentElement !== ctx.rightHost) ctx.rightHost.appendChild(panel);
+  if (dockHost !== ctx.rightHost || dockId !== "ai-chat") mountDock(ctx.rightHost, "ai-chat");
+}
+
+/** Show the panel (wherever it is currently mounted) and send a prepared
+    question — used by the 2D CAD "AI: Drawing Info" button. */
+export function askAiChat(text: string): void {
+  const q = String(text ?? "").trim();
+  if (!q) return;
+  openAiChat();
+  if (busy) return;
+  input.value = q;
+  void send();
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
    Setup
    ═════════════════════════════════════════════════════════════════════════ */
 export function setupAiChat(): void {
@@ -1783,19 +1861,9 @@ export function setupAiChat(): void {
   loadConversationsFromStorage();
 
   ctx.rightHost.appendChild(panel);
+  dockHost = ctx.rightHost;
 
-  dock = makeDockable(panel, {
-    id: "ai-chat",
-    host: ctx.rightHost,
-    header,
-    minWidth: 320,
-    minHeight: 360,
-    defaultDock: "float",   // start floating; user docks when they want
-    defaultWidth: 420,
-    defaultHeight: 640,
-    margin: 8,
-    snapThreshold: 32,
-  });
+  dock = mountDock(ctx.rightHost, "ai-chat");
 
   // CRITICAL: panel must stay hidden until the user presses the AI button.
   // makeDockable can restore layout; never auto-show on boot or home screen.

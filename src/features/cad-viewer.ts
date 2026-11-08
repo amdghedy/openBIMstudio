@@ -46,6 +46,9 @@ import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import { evalExpr, isCalcExpr } from "../modules/cad-viewer/cad-cal";
 import { svgIcon, type IconName } from "./icon-set";
+import {
+  openAiChatInHost, closeAiChat, isAiChatVisible, isAiChatCadHosted, releaseAiChatToDefaultHost, askAiChat,
+} from "./ai-chat";
 import { promptLine, confirmDialog, pickFromList, openFormModal, showTableDialog } from "./form-modal";
 import { loadCadAliases, resolveCadToken, openCadAliasEditor, effectiveAliases, registerCadAliasEditorOpener } from "./command-aliases";
 import {
@@ -330,6 +333,10 @@ const BG: Record<string, string> = {
 
 interface CadEngineApi {
   load(f: File): Promise<void>;
+  /** Execute raw command-line text in this drawing (AI copilot bridge). */
+  runCommandText(text: string): void;
+  /** AI snapshot: active tool and entity count of this drawing. */
+  aiSnapshot(): { tool: string; entityCount: number };
   close(): void;
   activate(): void;
   deactivate(): void;
@@ -582,6 +589,71 @@ function saveAll(): void {
 
 function hideShell(): void {
   if (shell) shell.style.display = "none";
+  // If the AI panel was docked inside the CAD shell, send it back to the BIM
+  // workspace so it never gets trapped in the hidden shell.
+  releaseAiChatToDefaultHost();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AI copilot bridge — the shared AI agent engine (3D workspace) docked in
+   the 2D CAD shell. Toggle from the Quick Access toolbar (✦) or the ribbon
+   "AI Copilot" group; the panel mounts with its own dock layout id and
+   returns to the BIM workspace when the shell closes (hideShell).
+   ═══════════════════════════════════════════════════════════════════════════ */
+function toggleCadAi(): void {
+  if (!shell) return;
+  if (isAiChatVisible() && isAiChatCadHosted()) {
+    closeAiChat();
+    return;
+  }
+  openAiChatInHost(shell, { storageId: "ai-chat-cad" });
+}
+
+/** Open the AI copilot inside the shell and ask a prepared question
+    (ribbon "AI: Drawing Info" button). */
+function askCadAi(question: string): void {
+  if (!shell) return;
+  openAiChatInHost(shell, { storageId: "ai-chat-cad" });
+  askAiChat(question);
+}
+
+/** AI tool bridge (get_cad_state): state of the 2D engine + active drawing. */
+export function getCadAiState(): {
+  open: boolean;
+  drawing: string | null;
+  dirty: boolean;
+  tool: string | null;
+  entityCount: number | null;
+  ribbonTab: string;
+} {
+  if (!shell || shell.style.display === "none" || !ribbonActive) {
+    return { open: false, drawing: null, dirty: false, tool: null, entityCount: null, ribbonTab };
+  }
+  const snap = ribbonActive.aiSnapshot();
+  return {
+    open: true,
+    drawing: ribbonActive.fileName() || null,
+    dirty: ribbonActive.isDirty(),
+    tool: snap.tool,
+    entityCount: snap.entityCount,
+    ribbonTab,
+  };
+}
+
+/** AI tool bridge (run_cad_command): run a command-line string in the active
+    drawing exactly as if the user typed it. Returns ok=false with the reason
+    when the engine is closed or the drawing rejected the text. */
+export function runCadAiCommand(text: string): { ok: boolean; error?: string } {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed) return { ok: false, error: "No command text given." };
+  if (!shell || shell.style.display === "none") return { ok: false, error: "The 2D CAD engine is not open." };
+  if (!ribbonActive) return { ok: false, error: "No active 2D drawing." };
+  try {
+    ribbonActive.runCommandText(trimmed);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 function openTabMenu(x: number, y: number, tab: DocTab): void {
@@ -699,6 +771,7 @@ function ensureShell(): void {
     qatBtn("undo", "undo", "Undo (Ctrl+Z)") +
     qatBtn("undo", "redo", "Redo (Ctrl+Y)", true) +
     qatBtn("fit", "ext", "Zoom extents (Z E)") +
+    qatBtn("generative", "ai", "AI Copilot — ask questions or run commands in this drawing") +
     `</div></div>` +
     `<div class="cadrb-strip" data-r="ribbonstrip"></div>` +
     `<div data-r="tabstrip" role="tablist" aria-label="Open drawings" style="${tabstripStyle}"></div>` +
@@ -738,6 +811,7 @@ function ensureShell(): void {
     if (q) {
       const a = q.dataset.qat!;
       if (a === "open") picker!.click();
+      else if (a === "ai") toggleCadAi();
       else ribbonActive?.exec(a);
     }
   });
@@ -4804,6 +4878,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "home",
       ) +
       rg(
+        "AI Copilot",
+        rb("generative", "AI Copilot", `data-a="aicopilot"`, "Open the AI copilot docked in this drawing — ask questions, inspect the drawing, or run commands with approval") +
+          rb("find", "AI: Drawing Info", `data-a="aicopilot-info"`, "Ask the AI copilot about this drawing (opens the copilot and pre-fills a drawing question)"),
+        "",
+        "",
+        "home",
+      ) +
+      rg(
         "Select",
         tb("select", "select-all", "Select") +
           tb("box", "isolate", "Box") +
@@ -5458,6 +5540,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       props: () => executeAutoCadCommand("PROPERTIES"),
       cal: () => executeAutoCadCommand("CAL"),
       dwgversion: () => executeAutoCadCommand("DWGVERSION"),
+      // AI copilot — opens the shared AI panel docked inside this shell
+      aicopilot: () => toggleCadAi(),
+      "aicopilot-info": () =>
+        askCadAi(
+          "Summarize this 2D drawing: name, units, layers, entity counts by type, and anything that looks unfinished or inconsistent.",
+        ),
     });
 
     tools.querySelectorAll<HTMLElement>("button[data-a]").forEach((b) => {
@@ -9416,6 +9504,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     fileName: () => name,
     focus: () => cv.focus({ preventScroll: true }),
     importLandXml: (f: File) => importLandXml(f),
+    runCommandText: (text: string) => {
+      executeAutoCadCommand(text);
+    },
+    aiSnapshot: () => ({ tool: String(tool), entityCount: ents.length }),
     exec: (a: string) => {
       const f = act[a] ?? act2[a];
       if (f) f();

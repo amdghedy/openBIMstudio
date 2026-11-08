@@ -48,6 +48,7 @@ const WRITE_TOOLS = new Set<string>([
   "create_walls_from_cad",
   "create_issue",
   "create_schedule",
+  "run_cad_command",
 ]);
 
 export function isDestructiveTool(name: string): boolean {
@@ -378,6 +379,34 @@ export const TOOLS: ToolDef[] = [
     },
   },
 
+  // ── 2D CAD engine (docked AI copilot) ────────────────────────────
+  {
+    name: "get_cad_state",
+    description:
+      "2D CAD engine state: whether the 2D drafting engine is open, and for " +
+      "the active drawing its name, modified flag, entity count, active tool " +
+      "and current ribbon tab. Call this before any 2D CAD command.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "run_cad_command",
+    description:
+      "Runs a command in the active 2D CAD drawing exactly like the user " +
+      "typing it in the command line: command name plus optional arguments " +
+      "separated by spaces (e.g. 'ZOOM E', 'LAYER S WALL', 'FILLET R 50'). " +
+      "Commands are AutoCAD-style names (LINE, PLINE, CIRCLE, ARC, RECTANG, " +
+      "MOVE, COPY, OFFSET, TRIM, EXTEND, FILLET, HATCH, TEXT, MTEXT, LAYER, " +
+      "ZOOM, ERASE, UNDO, ...). Changes the drawing — approval required. " +
+      "Call get_cad_state first.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "Command-line text, e.g. 'ZOOM E' or 'LAYER M WALL'." },
+      },
+      required: ["command"],
+    },
+  },
+
   // ── Destructive ────────────────────────────────────────────────────
   {
     name: "delete_elements",
@@ -433,6 +462,9 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       case "create_linear_elements": return await createLinearElementsTool(call.args);
       case "list_cad_links": return await listCadLinksTool();
       case "create_walls_from_cad": return await createWallsFromCadTool(call.args);
+
+      case "get_cad_state": return await getCadStateTool();
+      case "run_cad_command": return await runCadCommandTool(call.args);
 
       case "delete_elements": return await deleteElementsTool(call.args);
       case "clear_all_elements": return await clearAllElementsTool();
@@ -1371,6 +1403,33 @@ async function createWallsFromCadTool(args: Record<string, any>): Promise<ToolRe
   }
   try { await executeTool({ id: "t", name: "focus_camera", args: {} }); } catch { /* */ }
   return { ok: true, data: { ...summary, created, heightMetres: height, elevationMetres: elevation } };
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   2D CAD engine bridge (docked AI copilot)
+   ═════════════════════════════════════════════════════════════════════════ */
+async function getCadStateTool(): Promise<ToolResult> {
+  const cad = await import("./cad-viewer");
+  return { ok: true, data: cad.getCadAiState() };
+}
+
+async function runCadCommandTool(args: Record<string, any>): Promise<ToolResult> {
+  const text = String(args?.command ?? "").trim();
+  if (!text) return { ok: false, error: "No command text given. Pass the command line text in 'command'." };
+  const cad = await import("./cad-viewer");
+  const res = cad.runCadAiCommand(text);
+  if (!res.ok) return { ok: false, error: res.error };
+  const state = cad.getCadAiState();
+  return {
+    ok: true,
+    data: {
+      executed: text,
+      drawing: state.drawing,
+      dirty: state.dirty,
+      entityCount: state.entityCount,
+      note: "Command was handed to the drawing command line like typed input. Re-read get_cad_state to verify.",
+    },
+  };
 }
 
 export function setupAiTools(): void {
