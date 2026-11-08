@@ -431,6 +431,9 @@ function bootstrapCommands(): void {
       });
     },
   });
+  registerCommand({ id: "revit.browser", label: "Revit: open the element browser (search, group, select, hide)", category: "File", run: () => { void import("./revit-view").then((m) => m.openRevitBrowser()); } });
+  registerCommand({ id: "revit.show-all", label: "Revit: show all hidden elements", category: "File", run: () => { void import("./revit-view").then((m) => m.showAllRevit()); } });
+  registerCommand({ id: "revit.export-csv", label: "Revit: export all elements to CSV", category: "File", run: () => { void import("./revit-view").then((m) => m.exportScheduleCsv()); } });
   registerCommand({ id: "file.view-rvt", label: "View a Revit file (.rvt / .rfa), view only, decoded in your browser", category: "File", run: () => { void import("./rvt-viewer").then((m) => m.pickRevitFile()); } });
   registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
   registerCommand({ id: "command.ks", label: "KS — Command aliases / keyboard shortcuts", category: "App", run: () => { void import("./command-aliases").then((m) => m.openKs()); } });

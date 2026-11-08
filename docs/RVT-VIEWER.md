@@ -16,6 +16,14 @@ View-only, decoded inside the browser tab. Nothing is uploaded.
 * Properties are embedded in the 3D file (glTF node extras), so they come back when the project is reopened or opened on another device.
 * A twin is a tessellated copy: it is not Revit's parametric definition (no Revit families or constraints) and is never written back to the `.rvt`. Only properties the decoder can read appear; Revit parameters it cannot decode are absent.
 
+## Browser, multi-select and schedule export
+
+* **Revit browser** (File tab → *Revit Browser*, or the command palette): all elements in a tree, grouped by class, level or material; search matches names, classes, levels, materials, ids and property values (every word must match). Click selects, Shift/Ctrl-click adds or removes, double-click zooms, a group's *select* and eye buttons act on the whole group.
+* **Multi-select:** Shift/Ctrl-click in the model. Right-clicking an element that is part of the selection keeps the selection.
+* **Hide / Isolate / Show all / Select same class, level or material** are in the panel and the right-click menu. Hidden state lasts for the session only; elements with a native twin stay hidden by design.
+* **Make editable native twins** works on the whole selection (elements that already have a twin are skipped).
+* **Export CSV** writes the selected elements (or all) with identity, level, material, placement, size and one column per decoded property (up to 80). Lengths are metres. Text that looks like a spreadsheet formula is prefixed with an apostrophe.
+
 ## What it is not
 
 * **Not Revit's own display.** The geometry is reconstructed from the file. Shapes can be simplified (doors and windows may be boxes) or missing.

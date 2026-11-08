@@ -65,5 +65,6 @@ t("Revit view: routed from import, ribbon and palette entry points, honest fallb
   must(/View Revit File/.test(read("src/shell/ribbon.ts")), "ribbon button missing");
   must(/file\.view-rvt/.test(read("src/features/command-palette.ts")), "palette command missing");
   must(/not installed on this deployment/.test(read("src/features/rvt-viewer.ts")), "missing-decoder message missing");
+  must(/Revit Browser/.test(read("src/shell/ribbon.ts")) && /revit\.browser/.test(read("src/features/command-palette.ts")), "Revit browser has no ribbon button or palette command");
 });
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail ? 1 : 0);

@@ -11,6 +11,12 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Revit view: browser and tools (experimental)
+- **Revit browser** (File tab, command palette): every element of an opened Revit file in a tree grouped by IFC class, level or material, with search across names, classes, levels, materials, ids and property values; click to select (Shift/Ctrl for several), double-click to zoom, per-group select and show/hide.
+- **Multi-select** (Shift/Ctrl-click) with a combined panel; **Hide**, **Isolate**, **Show all**; **Select same class / level / material**; **Make editable native twins** for the whole selection.
+- **Export to CSV**: a schedule of the selected (or all) elements with identity, level, material, placement, size and one column per decoded property; spreadsheet formulas in property text are neutralised.
+- Hide/isolate is per session (not saved with the project). Tested as pure logic; the panels and menus have not been run in a browser.
+
 ### Revit view: select, inspect, make editable (experimental)
 - Click an element of an opened `.rvt` / `.rfa` to select it and see the properties the decoder read (identity, level, material, placement and size, property sets; metric with the file's imperial value alongside). Properties are embedded in the 3D file itself, so they survive saving the project, reopening it and opening it on another device.
 - Right-click an element → **Make editable native twin**: creates a real authored element (same path as IFC Native Twins) with the element's triangles and properties; the Revit source is hidden while the twin exists and returns if the twin is deleted. Twins take part in clash tests, schedules and edits like any native element.

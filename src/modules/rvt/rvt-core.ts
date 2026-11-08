@@ -372,3 +372,78 @@ export function twinPropertySets(info: RvtElementInfo, sourceFile: string): Reco
 export function isRevitNodeData(u: any): u is { entityIndex: number; ifcType: string; revit: RvtElementInfo } {
   return !!u && typeof u.entityIndex === "number" && !!u.revit && typeof u.revit.name === "string";
 }
+
+/* ═══════════════════════ browsing, filtering, schedule (pure) ═══════════════════════ */
+
+export interface BrowseItem { key: string; entityIndex: number; info: RvtElementInfo }
+export type GroupBy = "category" | "level" | "material";
+export interface BrowseGroup<T extends BrowseItem = BrowseItem> { id: string; label: string; items: T[] }
+
+const groupValue = (i: RvtElementInfo, by: GroupBy): string =>
+  by === "category" ? i.ifcType || "(no class)" : by === "level" ? i.storey || "(no level)" : i.material || "(no material)";
+
+/** Groups sorted by label (levels by elevation when known), items by name. */
+export function groupItems<T extends BrowseItem>(items: T[], by: GroupBy): BrowseGroup<T>[] {
+  const map = new Map<string, BrowseGroup<T>>();
+  for (const it of items) {
+    const label = groupValue(it.info, by);
+    let g = map.get(label); if (!g) map.set(label, (g = { id: `${by}:${label}`, label, items: [] }));
+    g.items.push(it);
+  }
+  const groups = [...map.values()];
+  for (const g of groups) g.items.sort((a, b) => a.info.name.localeCompare(b.info.name, undefined, { numeric: true }));
+  if (by === "level") {
+    const elev = (g: BrowseGroup<T>) => g.items.find((x) => x.info.storeyElevationM !== undefined)?.info.storeyElevationM ?? Infinity;
+    groups.sort((a, b) => elev(a) - elev(b) || a.label.localeCompare(b.label));
+  } else groups.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  return groups;
+}
+
+/** Every whitespace-separated word must appear in the element's name, class, level, material, ids or property values. */
+export function filterItems<T extends BrowseItem>(items: T[], query: string): T[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return items;
+  return items.filter((it) => {
+    const i = it.info;
+    const hay = [i.name, i.ifcType, i.storey, i.material, i.elementId, i.globalId, i.predefinedType, ...i.groups.flatMap((g) => g.rows.map((r) => `${r[0]} ${r[1]}`))]
+      .filter(Boolean).join("\n").toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+}
+
+export function selectSimilar<T extends BrowseItem>(items: T[], ref: RvtElementInfo, by: GroupBy): T[] {
+  const v = groupValue(ref, by);
+  return items.filter((it) => groupValue(it.info, by) === v);
+}
+
+const csvCell = (v: unknown): string => {
+  let s = v === undefined || v === null ? "" : String(v);
+  // Neutralise spreadsheet formula injection from property text (=, +, -, @ at the start).
+  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = "'" + s;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/** Spreadsheet schedule of the given elements: fixed columns, then one column per property seen (capped). */
+export function elementsCsv(items: BrowseItem[], opts: { bom?: boolean; maxPropertyColumns?: number } = {}): string {
+  const cap = opts.maxPropertyColumns ?? 80;
+  const propCols: string[] = [];
+  const seen = new Set<string>();
+  for (const it of items) for (const g of it.info.groups) for (const [n] of g.rows) {
+    const c = `${g.name}.${n}`;
+    if (!seen.has(c) && propCols.length < cap) { seen.add(c); propCols.push(c); }
+  }
+  const fixed = ["Name", "IFC class", "Revit element id", "GlobalId", "Predefined type", "Level", "Level elevation (m)", "Material",
+    "X (m)", "Y (m)", "Z (m)", "Rotation (deg)", "Length/width (m)", "Thickness/depth (m)", "Height (m)"];
+  const lines = [[...fixed, ...propCols].map(csvCell).join(",")];
+  for (const it of items) {
+    const i = it.info;
+    const props = new Map<string, string>();
+    for (const g of i.groups) for (const [n, v] of g.rows) props.set(`${g.name}.${n}`, v);
+    lines.push([
+      i.name, i.ifcType, i.elementId, i.globalId, i.predefinedType, i.storey, i.storeyElevationM, i.material,
+      i.locationM?.[0], i.locationM?.[1], i.locationM?.[2], i.rotationDeg, i.extentsM?.width, i.extentsM?.depth, i.extentsM?.height,
+      ...propCols.map((c) => props.get(c)),
+    ].map(csvCell).join(","));
+  }
+  return (opts.bom ? "﻿" : "") + lines.join("\r\n") + "\r\n";
+}
