@@ -9,6 +9,9 @@ updates:
       minor-and-patch:
         update-types: [minor, patch]
     ignore:
+      # web-ifc is pinned together with the mirrored WebAssembly under public/web-ifc/ (tests/webifc-abi.test.cjs checks the
+      # glue/wasm ABI). A bare version bump breaks it; update both together by hand.
+      - dependency-name: web-ifc
       # TypeScript 7 changes the tsc CLI (TS5112: tsconfig ignored when files are passed), which the test
       # scripts rely on. Move to it deliberately, not through an automatic PR.
       - dependency-name: typescript
