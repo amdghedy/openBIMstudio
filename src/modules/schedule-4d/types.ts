@@ -24,7 +24,7 @@ export interface SchedTask {
 }
 
 export interface ParsedSchedule {
-  source: "xer" | "pmxml";
+  source: "xer" | "pmxml" | "mspdi" | "csv";
   projectName: string;
   tasks: SchedTask[];
   warnings: string[];

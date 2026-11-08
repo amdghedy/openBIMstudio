@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### 4D/5D schedule import (experimental)
+- **Microsoft Project XML (MSPDI)** and **CSV task schedules** can be imported in the timeline panel next to Primavera P6. The format is detected from the content. Binary `.mpp` is not supported. Tested only against hand-written fixtures, not files from real MS Project.
+
 ### Revit view: browser and tools (experimental)
 - **Revit browser** (File tab, command palette): every element of an opened Revit file in a tree grouped by IFC class, level or material, with search across names, classes, levels, materials, ids and property values; click to select (Shift/Ctrl for several), double-click to zoom, per-group select and show/hide.
 - **Multi-select** (Shift/Ctrl-click) with a combined panel; **Hide**, **Isolate**, **Show all**; **Select same class / level / material**; **Make editable native twins** for the whole selection.

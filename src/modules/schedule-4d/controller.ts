@@ -2,7 +2,7 @@
  * Glue between the pure schedule engine (P6 parser, linking, 5D/6D curves) and the live app:
  * authored elements, the cost take-off (5D) and the 4D timeline phases.
  */
-import { parseP6 } from "./p6-parser";
+import { parseSchedule } from "./p6-parser";
 import { linkTasksToElements, type LinkElement, type LinkResult } from "./task-linking";
 import { buildCostItems, buildCarbonItems, valueAt, total, curve, authoredQuantity, elementCarbon, type SpreadItem, type CarbonFactor } from "./curves";
 import { scheduleRange, taskStatusAt } from "./schedule-model";
@@ -88,7 +88,7 @@ export async function relinkSchedule(): Promise<void> {
 }
 
 export async function importScheduleText(text: string, fileName = ""): Promise<{ tasks: number; linked: number; warnings: string[] }> {
-  const parsed = parseP6(text);
+  const parsed = parseSchedule(text, fileName);
   st.schedule = parsed; st.fileName = fileName;
   await relinkSchedule();
   setProgress(0);
