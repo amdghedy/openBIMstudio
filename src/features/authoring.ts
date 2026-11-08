@@ -18,6 +18,8 @@ import { endpointForLength, rotateTransformAboutPivot, normalizeDeg, twinElevati
 import { escapeHtml } from "../core/html-escape";
 import { fittingArmLength } from "../modules/mep/fitting-outline";
 import { mitreEndFaces, type JoinPeer } from "../modules/geometry/linear-join";
+import { collectDeleteCascade } from "../modules/hosts/cascade";
+import { detectVerticalStacks, stackChains, validateStacks, type StackWall } from "../modules/wall-join/vertical-join";
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
 import * as THREE from "three";
 import { CSG } from "three-csg-ts";
@@ -1124,6 +1126,20 @@ function computeClampedOffset(el: AuthoredElement, wallLength: number): number {
   return Math.round(clamped * 1000) / 1000;
 }
 
+/**
+ * Arc metrics for a curved wall (chord length L, arc height arcH):
+ * radius, sweep angle and TRUE arc length. Hosted opening offsets on a
+ * curved wall are measured along the ARC (Revit semantics — matching
+ * hosting/index.ts curve-length parameterisation), never the chord.
+ */
+function wallArcMetrics(L: number, arcH: number): { R: number; theta: number; arcLen: number } | null {
+  const h = Math.abs(arcH);
+  if (!(h > 0.05) || !(L > 0.5)) return null;
+  const R = (h * h + (L / 2) * (L / 2)) / (2 * h);
+  const theta = 2 * Math.asin(Math.min(1, (L / 2) / R));
+  return { R, theta, arcLen: R * theta };
+}
+
 function openingsForWall(wallId: string): WallOpening[] {
   const out: WallOpening[] = [];
   const wall = elements.find((e) => e.id === wallId);
@@ -1135,22 +1151,25 @@ function openingsForWall(wallId: string): WallOpening[] {
     L = Math.hypot(bx - ax, bz - az);
   }
   const H = Number(wp?.height ?? 3);
+  // Curved walls host openings along the ARC length, not the chord.
+  const arcM = wallArcMetrics(L, Number((wp as any)?.arcHeight ?? 0));
+  const hostLen = arcM ? arcM.arcLen : L;
   for (const el of getHostedForWall(wallId)) {
     const p = el.params;
     const w = p.width ?? DEFAULTS[el.type]?.width ?? 0.9;
     const h = p.height;
     const sill = el.type === "window" ? (p.sillHeight ?? 0.9) : (p.sillHeight ?? 0);
 
-    const offset = computeClampedOffset(el, L);
+    const offset = computeClampedOffset(el, hostLen);
 
     const u0 = Math.max(0, offset - w / 2);
-    const u1 = Math.min(L, offset + w / 2);
+    const u1 = Math.min(hostLen, offset + w / 2);
     const v0 = Math.max(0, sill);
     const v1 = Math.min(H, sill + h);
     const holeW = u1 - u0;
     const holeH = v1 - v0;
     const degenerate = holeW < 0.02 || holeH < 0.02;
-    const fullFace = L > 0.05 && H > 0.05 && holeW >= L * 0.9 && holeH >= H * 0.9;
+    const fullFace = hostLen > 0.05 && H > 0.05 && holeW >= hostLen * 0.9 && holeH >= H * 0.9;
     if (degenerate || fullFace) continue;
     out.push({ offset, width: w, height: h, sill });
   }
@@ -1413,12 +1432,37 @@ function buildWallWithOpenings(
       // Centre of the opening, in WORLD coordinates:
       //   cx, cz  : on the wall's centreline, at distance `op.offset` from start
       //   cy      : elevation + sill + half opening height (vertical mid-point)
-      const cx = ax + dirX * op.offset;
-      const cz = az + dirZ * op.offset;
-      const cy = p.elevation + op.sill + op.height / 2;
-
-      holeMesh.position.set(cx, cy, cz);
-      holeMesh.quaternion.copy(mesh.quaternion);
+      //
+      // STRAIGHT walls: the centreline is the chord — position = start + dir·offset.
+      // CURVED walls (arcHeight ≠ 0): openings are hosted along the TRUE ARC
+      // (openingsForWall clamps against arc length), so the hole must sit on
+      // the arc centreline at the matching parameter and yaw to the local
+      // tangent — otherwise the hole is cut at the chord point, off the wall.
+      const isArc = Math.abs(arcH) > 0.05 && L > 0.5;
+      let cy = p.elevation + op.sill + op.height / 2;
+      if (isArc) {
+        const m = wallArcMetrics(L, arcH)!;
+        const sign = Math.sign(arcH);
+        const s = Math.max(0, Math.min(m.arcLen, op.offset));
+        const a = -m.theta / 2 + (s / m.arcLen) * m.theta;
+        const cX = L / 2;
+        const cY = T / 2 - sign * m.R;
+        // Arc centreline in the wall's LOCAL shape frame (x along chord, y along normal)
+        const lx = cX + m.R * Math.sin(a);
+        const ly = cY + sign * m.R * Math.cos(a);
+        // Local tangent at a, then yaw within the mesh's local frame
+        const tx = Math.cos(a);
+        const ty = -sign * Math.sin(a);
+        const yaw = Math.atan2(ty, tx);
+        holeMesh.position.copy(mesh.localToWorld(new THREE.Vector3(lx, ly, cy - p.elevation)));
+        holeMesh.quaternion.copy(mesh.quaternion)
+          .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), yaw));
+      } else {
+        const cx = ax + dirX * op.offset;
+        const cz = az + dirZ * op.offset;
+        holeMesh.position.set(cx, cy, cz);
+        holeMesh.quaternion.copy(mesh.quaternion);
+      }
       holeMesh.updateMatrixWorld(true);
 
       try {
@@ -2851,12 +2895,25 @@ function deleteElements(ids: string[]) {
   const targets = elements.filter((e) => ids.includes(e.id));
   if (!targets.length) return;
 
-  const cascade = new Set<string>(ids);
-  for (const t of targets) {
-    if (t.type === "wall") {
-      for (const host of elements) if (host.hostId === t.id) cascade.add(host.id);
-    }
+  // Transitive host→child cascade for ANY host type (wall, beam, floor,
+  // curtain wall, ...): children referenced via hostId die with their host,
+  // transitively, cycle-safe. Replaces the old wall-only, 1-level-deep scan.
+  let cascade = new Set<string>(ids);
+  let cascadeSummary = "";
+  try {
+    const result = collectDeleteCascade(ids, elements as any);
+    cascade = new Set([...result.seeds.filter((id) => elements.some((e) => e.id === id)), ...result.dependents]);
+    cascadeSummary = result.summary;
+  } catch { /* cascade is best-effort; fall back to the seed set */ }
+
+  if (cascadeSummary) {
+    try {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: { message: cascadeSummary, kind: "info" },
+      }));
+    } catch { /* toast is cosmetic */ }
   }
+
   const allTargets = elements.filter((e) => cascade.has(e.id));
   const indices = allTargets.map((t) => elements.indexOf(t));
 
