@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Fixed
+- Dropping a Revit, GLB/OBJ/FBX, GeoJSON or Shapefile onto the viewport did nothing (only IFC, FRAG and DWG/DXF were handled). These now go through the universal importer.
+
 ### Link many files in one step
 - Selecting several files (Insert → Any model…, Link CAD, the Revit picker, or the palette command "Link many files at once") now links each kind together: several DWG/DXF files share **one** link dialog and the same placement settings, several Revit files open in sequence with one combined result line, several IFC files load as one batch. Unreadable files are skipped and listed instead of stopping the batch.
 

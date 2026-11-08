@@ -79,4 +79,8 @@ t("Multi-file linking: Revit picker is multi-select; DWG/DXF, Revit and IFC batc
   must(/linkCadFilesBatch/.test(read("src/features/link-tools.ts")), "Link CAD still links one by one");
   must(/link\.many/.test(read("src/features/command-palette.ts")), "no palette entry for multi-file linking");
 });
+t("Drag-and-drop: files other than IFC/FRAG/CAD reach the universal importer instead of being ignored", () => {
+  const im = read("src/features/importer.ts");
+  must(/others\.length\) void import\("\.\/file-interop"\)/.test(im), "viewport drop ignores Revit / GLB / GeoJSON files");
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail ? 1 : 0);
