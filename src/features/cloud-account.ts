@@ -407,9 +407,17 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
     submit.disabled = true;
     err.textContent = "";
     try {
+      // Friendly pre-flight check — mirrors the server's validEmail rule — so a
+      // mistyped value (e.g. "gemini-3.6-flash") gets a helpful inline message
+      // instead of a generic "Wrong email or password." from the server.
+      const email = emailInput.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 254) {
+        err.textContent = "Enter a valid email address — for example you@example.com";
+        return;
+      }
       const payload = isRegister
-        ? { email: emailInput.value, password: passInput.value, name: nameInput.value }
-        : { email: emailInput.value, password: passInput.value };
+        ? { email, password: passInput.value, name: nameInput.value }
+        : { email, password: passInput.value };
       const res = await api<{ ok: true }>(isRegister ? "/api/auth/register" : "/api/auth/login", {
         method: "POST",
         body: JSON.stringify(payload),

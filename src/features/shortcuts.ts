@@ -128,7 +128,9 @@ class ShortcutRegistry {
     if (e.ctrlKey || e.metaKey) parts.push("ctrl");
     if (e.shiftKey) parts.push("shift");
     if (e.altKey) parts.push("alt");
-    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase();
+    // Synthetic key events can carry key === undefined — bail out instead of crashing.
+    const key = (e.key ?? "").toLowerCase();
+    if (!key) return;
     const combo = [...parts, key].join("+");
     // Physical-key variant so the CAD yield below also matches non-Latin
     // keyboard layouts, where e.key is not the Latin letter (ev.code is).

@@ -29,7 +29,7 @@ const scripts = [
   "test:v69", "test:v70", "test:v71", "test:v72",
   "test:v73-just", "test:v73-mag", "test:v73-panels", "test:v73-rel",
   "test:pdf-underlay-loader", "test:dep-safety", "test:webifc-abi", "test:ribbon-collapse", "test:server-hardening", "test:plugins", "test:feature-registry", "test:escape-all",
-  "test:welcome-screen", "test:cad-ai",
+  "test:welcome-screen", "test:cad-ai", "test:walk-key-guard",
   "verify:v70", "verify:v71", "verify:v72", "verify:v73", "verify:v68",
 ];
 

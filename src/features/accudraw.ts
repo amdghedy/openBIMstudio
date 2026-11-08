@@ -309,7 +309,8 @@ class AccuDrawManager {
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-    const k = e.key.toLowerCase();
+    const k = (e.key ?? "").toLowerCase();
+    if (!k) return;
 
     if (k === "x") {
       e.preventDefault(); e.stopImmediatePropagation();

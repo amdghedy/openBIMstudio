@@ -569,7 +569,10 @@ function onKeyDown(e: KeyboardEvent) {
     if (tag === "input" || tag === "textarea" || t.isContentEditable) return;
   }
 
-  const k = e.key.toLowerCase();
+  // Synthetic key events (password managers, IMEs, extensions) can arrive with
+  // key === undefined — never crash the global capture handler on them.
+  const k = (e.key ?? "").toLowerCase();
+  if (!k) return;
 
   // Modifier combos (Ctrl/Alt/Meta + another key) belong to the app.
   // Ctrl alone is captured below (crouch).
@@ -615,7 +618,12 @@ function onWheel(e: WheelEvent) {
 }
 
 function onKeyUp(e: KeyboardEvent) {
-  const k = e.key.toLowerCase();
+  // This handler is registered site-wide for the whole session (setupWalkMode),
+  // so it must mirror onKeyDown's enabled check — and tolerate synthetic events
+  // whose `key` is undefined (they crashed sign-in dialogs with a raw TypeError).
+  if (!state.enabled) return;
+  const k = (e.key ?? "").toLowerCase();
+  if (!k) return;
   state.keys.delete(k === " " ? "space" : k);
 }
 

@@ -71,7 +71,9 @@ function onKeyDown(e: KeyboardEvent): void {
   const ctrl = e.ctrlKey || e.metaKey;
   if (!ctrl) return;
 
-  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase();
+  // Synthetic key events can carry key === undefined — bail out instead of crashing.
+  const key = (e.key ?? "").toLowerCase();
+  if (!key) return;
 
   // Ctrl+Z → Undo (not Ctrl+Shift+Z)
   if (key === "z" && !e.shiftKey && !e.altKey) {

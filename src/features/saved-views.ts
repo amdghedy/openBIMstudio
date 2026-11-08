@@ -268,7 +268,7 @@ export function setupSavedViews(): void {
     "keydown",
     (e) => {
       if (isCadHotkeyOwnerActive()) return;
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "v") {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key ?? "").toLowerCase() === "v") {
         e.preventDefault();
         e.stopImmediatePropagation();
         toggleSavedViewsPanel();

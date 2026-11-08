@@ -451,7 +451,8 @@ function onKeyDown(e: KeyboardEvent): void {
     }
   }
 
-  const k = e.key.toLowerCase();
+  const k = (e.key ?? "").toLowerCase();
+  if (!k) return;
 
   if (k === "escape") {
     e.preventDefault();

@@ -133,6 +133,7 @@
     "test:cad-link": "node tests/cad-link.test.cjs",
     "test:welcome-screen": "node tests/welcome-screen.test.cjs",
     "test:cad-ai": "node tests/cad-ai-integration.test.cjs",
+    "test:walk-key-guard": "node tests/walk-key-guard.test.cjs",
     "server": "node server/index.mjs",
     "verify": "node scripts/verify-input-focus.mjs",
     "test:v68-core": "node tests/v68-engine-core.test.cjs",
