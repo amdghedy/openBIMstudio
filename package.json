@@ -211,7 +211,7 @@
     "@mui/material": "^9.5.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^8.18.0",
-    "@reduxjs/toolkit": "^2.2.7",
+    "@reduxjs/toolkit": "^2.14.0",
     "@thatopen/components": "^3.4.9",
     "@thatopen/components-front": "^3.4.5",
     "@thatopen/fragments": "^3.4.7",
