@@ -2,6 +2,9 @@ export * from "./types";
 export * from "./fem";
 export * from "./checks";
 export * from "./sections";
+export * from "./fem3d";
+export * from "./analytical-model";
+export * from "./combo-sweep";
 
 let installed = false;
 export function setupanalyticalModel() {

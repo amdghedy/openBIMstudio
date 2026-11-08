@@ -37,6 +37,14 @@ import {
   solveFrame,
   type FemModel, type FemResult, type FemNode, type FemMember,
 } from "../modules/analytical-model/fem";
+import {
+  generateAnalyticalModel,
+  type AnalyticalSourceElement,
+} from "../modules/analytical-model/analytical-model";
+import {
+  sweepCombinations,
+  type SweepLoadCase, type SweepLoadCombination,
+} from "../modules/analytical-model/combo-sweep";
 import { checkSteel, checkRcBeam } from "../modules/analytical-model/checks";
 import { STEEL_SECTIONS, findSection, type SteelSection } from "../modules/analytical-model/sections";
 import {
@@ -384,6 +392,124 @@ export async function openFrameSolverDialog(): Promise<void> {
     notify("success", `Frame solved: ${s.members} members, ΣRy = ${s.reactionSumKkN.toFixed(1)} kN`);
   } catch (e) {
     notify("error", `Frame solve failed: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * Analyze Building (3D): auto-generates the analytical model from the
+ * authored columns / beams / braces, applies dead / live / wind cases with
+ * self-weight, sweeps every LRFD combination and reports the governing
+ * envelope — the Revit-style structural workflow end to end.
+ */
+export async function openAnalyzeBuildingDialog(): Promise<void> {
+  const els = authoredList() as unknown as AnalyticalSourceElement[];
+  const struct = els.filter((e) => e.type === "column" || e.type === "beam" || e.type === "brace");
+  if (struct.length === 0) {
+    notify("error", "No structural elements found — draw columns, beams or braces first.");
+    return;
+  }
+  const r = await openFormModal({
+    title: "Analyze Building (3D)",
+    subtitle: `${struct.filter((e) => e.type === "column").length} columns · ${struct.filter((e) => e.type === "beam").length} beams · ${struct.filter((e) => e.type === "brace").length} braces → analytical model → LRFD combination sweep`,
+    fields: [
+      { kind: "number", key: "eGPa", label: "Young's modulus E", default: 30, unit: "GPa", step: 1, min: 1 },
+      { kind: "number", key: "density", label: "Density", default: 24, unit: "kN/m³", step: 0.5, min: 0.5 },
+      { kind: "select", key: "base", label: "Base fixity", default: "fixed", options: [["fixed", "Fixed"], ["pinned", "Pinned"]] },
+      { kind: "checkbox", key: "trussBraces", label: "Braces as pin-ended trusses", default: true },
+      { kind: "number", key: "weldTol", label: "Joint weld tolerance", default: 0.4, unit: "m", step: 0.05, min: 0.05 },
+      { kind: "number", key: "deadKnm", label: "Beam dead load", default: 5, unit: "kN/m", step: 0.5, min: 0 },
+      { kind: "number", key: "liveKnm", label: "Beam live load", default: 3, unit: "kN/m", step: 0.5, min: 0 },
+      { kind: "number", key: "windKnm", label: "Wind on columns (+X)", default: 0, unit: "kN/m", step: 0.5, min: 0 },
+      { kind: "checkbox", key: "selfWeight", label: "Include self-weight (dead ×1)", default: true },
+    ],
+    submitLabel: "Analyze Building",
+  });
+  if (!r) return;
+  try {
+    const gen = generateAnalyticalModel(struct, {
+      E: Number(r.eGPa) * 1e9,
+      density: Number(r.density) * 1000,
+      baseFixity: r.base === "pinned" ? "pinned" : "fixed",
+      braceAsTruss: r.trussBraces === true,
+      weldTolerance: Number(r.weldTol),
+    });
+    if (gen.model.members.length === 0) {
+      notify("error", `Analytical model is empty: ${gen.diagnostics.warnings[0] ?? "no valid members"}`);
+      return;
+    }
+
+    // Load cases (N, N/m) — self-weight rides on the dead case.
+    const cases: SweepLoadCase[] = [
+      {
+        id: "lc-dead", name: "Dead", category: "dead", type: "line",
+        magnitude: Number(r.deadKnm) * 1000,
+        selfWeightMultiplier: r.selfWeight === true ? 1 : 0,
+      },
+      {
+        id: "lc-live", name: "Live", category: "live", type: "line",
+        magnitude: Number(r.liveKnm) * 1000, selfWeightMultiplier: 0,
+      },
+      {
+        id: "lc-wind", name: "Wind", category: "wind", type: "line",
+        magnitude: Number(r.windKnm) * 1000, selfWeightMultiplier: 0,
+        direction: { x: 1, y: 0, z: 0 },
+      },
+    ];
+    const combos: SweepLoadCombination[] = [
+      { id: "k1", name: "1.4D", cases: [{ caseId: "lc-dead", factor: 1.4 }] },
+      { id: "k2", name: "1.2D + 1.6L", cases: [{ caseId: "lc-dead", factor: 1.2 }, { caseId: "lc-live", factor: 1.6 }] },
+      { id: "k3", name: "1.2D + 1.0W + 0.5L", cases: [{ caseId: "lc-dead", factor: 1.2 }, { caseId: "lc-wind", factor: 1.0 }, { caseId: "lc-live", factor: 0.5 }] },
+    ];
+
+    const rep = sweepCombinations(gen.model, cases, combos, { density: Number(r.density) * 1000 });
+    if (rep.results.length === 0) {
+      notify("error", `Solve failed: ${rep.warnings[0] ?? "unstable structure"}`);
+      return;
+    }
+
+    // Governing results by role.
+    let maxColN = { value: 0, combo: "" };
+    let maxBeamM = { value: 0, combo: "" };
+    let maxDefl = { value: 0, combo: "" };
+    for (const [mId, env] of rep.envelope) {
+      const role = gen.memberRoles.get(mId)?.role ?? "other";
+      if (role === "column" && -env.NCompression.value > maxColN.value) {
+        maxColN = { value: -env.NCompression.value, combo: env.NCompression.combo };
+      }
+      if (role === "beam") {
+        if (Math.abs(env.MzMax.value) > Math.abs(maxBeamM.value)) {
+          maxBeamM = { value: env.MzMax.value, combo: env.MzMax.combo };
+        }
+        if (env.deflMax.value > maxDefl.value) maxDefl = { value: env.deflMax.value, combo: env.deflMax.combo };
+      }
+    }
+    const eqOk = rep.equilibrium.every((e) => e.ok);
+    const d = gen.diagnostics;
+
+    showReportCard("Analyze Building — 3D Results", [
+      ["Analytical nodes / members", `${d.nodes} / ${gen.model.members.length}`],
+      ["Joint weld adjustments", `${d.weldedAdjustments} (max ${Math.round(d.maxWeldDz * 1000)} mm)`],
+      ["Combinations solved", `${rep.results.length} of ${combos.length}`],
+      ["Governing column compression", `${(maxColN.value / 1000).toFixed(1)} kN — ${maxColN.combo}`],
+      ["Governing beam moment", `${(maxBeamM.value / 1000).toFixed(1)} kN·m — ${maxBeamM.combo}`],
+      ["Max beam deflection", `${(maxDefl.value * 1000).toFixed(2)} mm — ${maxDefl.combo}`],
+      ["Equilibrium (ΣR = −ΣF)", eqOk ? "OK for all combinations" : "FAILED — check console"],
+      ["Warnings", d.warnings.length + rep.warnings.length],
+    ], d.warnings.slice(0, 4).concat(rep.warnings.slice(0, 4)).join("\n") || "All combinations solved.");
+
+    console.table([...rep.envelope.entries()].map(([id, env]) => ({
+      member: id,
+      role: gen.memberRoles.get(id)?.role ?? "?",
+      "N max (kN)": (env.NTension.value / 1000).toFixed(1),
+      "N min (kN)": (env.NCompression.value / 1000).toFixed(1),
+      "Mz max (kN·m)": (env.MzMax.value / 1000).toFixed(1),
+      "Mz min (kN·m)": (env.MzMin.value / 1000).toFixed(1),
+      "defl (mm)": (env.deflMax.value * 1000).toFixed(2),
+      governing: env.MzMax.combo || env.NCompression.combo,
+    })));
+    notify("success", `Analyzed: ${d.nodes} nodes, ${gen.model.members.length} members, ${rep.results.length} combinations`);
+  } catch (e) {
+    notify("error", `Analyze Building failed: ${(e as Error).message}`);
   }
 }
 

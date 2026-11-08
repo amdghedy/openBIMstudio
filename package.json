@@ -123,6 +123,7 @@
     "test:constraints": "node tests/constraint-solver.test.cjs",
     "test:parametric-closure": "node tests/parametric-closure.test.cjs",
     "test:structural": "node tests/structural.test.cjs",
+    "test:structural-3d": "node tests/structural-3d.test.cjs",
     "test:mep-pressure": "node tests/mep-pressure.test.cjs",
     "test:adaptive": "node tests/adaptive.test.cjs",
     "test:project-crypto": "node tests/project-crypto.test.cjs",

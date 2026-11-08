@@ -123,7 +123,7 @@ import {
 import { toggleBimObjectStudio, isBimObjectStudioVisible } from "../features/bim-object-studio";
 import { gizmo as _gizmoForEdit } from "../features/gizmo";
 import {
-  openFrameSolverDialog, openSteelCheckDialog, openRcBeamDialog,
+  openAnalyzeBuildingDialog, openFrameSolverDialog, openSteelCheckDialog, openRcBeamDialog,
   openDuctPressureDialog, openPipePressureDialog, openWorstPathDialog,
   openAdaptiveSweepDialog, openAdaptiveRepeatDialog,
   openExtrudeDialog, openRevolveDialog, openSolidSweepDialog, openBlendDialog,
@@ -1714,6 +1714,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Run generative"), { title: "Run default generative design study" }),
       sep(),
       groupLabel("Structural FEM"),
+      b("column", "Analyze Building (3D)", safe(() => void openAnalyzeBuildingDialog(), "Analyze the authored structural model in 3D"), {
+        title: "Auto-generate the analytical model from columns/beams/braces, sweep LRFD load combinations — governing axial, moment and deflection per member",
+      }),
       b("beam", "Frame Solver", safe(() => void openFrameSolverDialog(), "Frame FEM solver"), {
         title: "Solve a single-storey frame with the built-in Euler-Bernoulli FEM — reactions, member forces, deflection",
       }),
