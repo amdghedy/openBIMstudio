@@ -12,6 +12,11 @@ updates:
       # web-ifc is pinned together with the mirrored WebAssembly under public/web-ifc/ (tests/webifc-abi.test.cjs checks the
       # glue/wasm ABI). A bare version bump breaks it; update both together by hand.
       - dependency-name: web-ifc
+      # three 0.187 ships examples/jsm/loaders/TTFLoader.js with `import ... from "https://cdn.jsdelivr.net/..."`. Any bundle that
+      # pulls that file breaks under our CSP (script-src 'self') and the app shows a black screen. Hold three at 0.182.x until
+      # that is verified fixed upstream or the file is aliased out, then bump deliberately.
+      - dependency-name: three
+        update-types: [version-update:semver-minor, version-update:semver-major]
       # monaco-editor 0.57.x pulls a DOMPurify with critical advisories, which fails `npm audit` in CI. Revisit once it ships a fixed DOMPurify.
       - dependency-name: monaco-editor
         update-types: [version-update:semver-minor, version-update:semver-major]
