@@ -72,4 +72,11 @@ t("GIS and schedule imports: reachable from Open File and the timeline pickers",
   must(/gis-import/.test(read("src/features/file-interop.ts")), "import router does not open GIS files");
   must(/\.xer,\.xml,\.txt,\.csv/.test(read("src/features/timeline-panel.ts")), "timeline picker does not accept CSV / MS Project XML");
 });
+t("Multi-file linking: Revit picker is multi-select; DWG/DXF, Revit and IFC batches run in one step", () => {
+  must(/multiple = true/.test(read("src/features/rvt-viewer.ts")), "Revit picker is single-file");
+  const fi = read("src/features/file-interop.ts");
+  must(/linkCadFilesBatch/.test(fi) && /openRevitFiles/.test(fi) && /handled\.has\(file\)/.test(fi), "importFiles has no batch pass");
+  must(/linkCadFilesBatch/.test(read("src/features/link-tools.ts")), "Link CAD still links one by one");
+  must(/link\.many/.test(read("src/features/command-palette.ts")), "no palette entry for multi-file linking");
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail ? 1 : 0);

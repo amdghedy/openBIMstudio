@@ -91,9 +91,24 @@ export async function openRevitFile(file: File): Promise<boolean> {
   return true;
 }
 
+/** Open several Revit files one after another; one combined result line at the end. */
+export async function openRevitFiles(files: File[]): Promise<{ opened: number; failed: string[] }> {
+  const failed: string[] = [];
+  let opened = 0;
+  for (const f of files) {
+    let ok = false;
+    try { ok = await openRevitFile(f); } catch { ok = false; }
+    if (ok) opened++; else failed.push(f.name);
+  }
+  if (files.length > 1) {
+    notify(failed.length ? "warn" : "info", `Revit files: ${opened} of ${files.length} opened.` + (failed.length ? ` Not opened: ${failed.slice(0, 5).join(", ")}${failed.length > 5 ? ", …" : ""} (see the messages above).` : ""), { timeout: 14000 });
+  }
+  return { opened, failed };
+}
+
 export function pickRevitFile(): void {
   const input = document.createElement("input");
-  input.type = "file"; input.accept = ".rvt,.rfa,.rte,.rft";
-  input.onchange = () => { const f = input.files?.[0]; if (f) void openRevitFile(f); };
+  input.type = "file"; input.accept = ".rvt,.rfa,.rte,.rft"; input.multiple = true;
+  input.onchange = () => { const fs = Array.from(input.files ?? []); if (fs.length) void openRevitFiles(fs); };
   input.click();
 }

@@ -1159,7 +1159,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Load FRAG as-is — coordinates preserved (old FRAG linker)",
       }),
       b("folder", "Any model…", safe(() => void pickAndImport(), "Import any model"), {
-        title: "Universal import (IFC / FRAG / OBJ / GLB / …)",
+        title: "Select many files at once, any mix of formats (IFC, Revit, DWG/DXF, GLB/OBJ/FBX…): each kind is linked in one step",
       }),
       sep(),
       groupLabel("Link CAD / BIM"),

@@ -340,6 +340,7 @@ function bootstrapCommands(): void {
     });
   }});
   registerCommand({ id: "project.home", label: "Home screen", category: "Project", kbd: "Ctrl+H", run: () => showHome() });
+  registerCommand({ id: "link.many", label: "Link many files at once (any formats)…", category: "File", run: () => void pickAndImport() });
   registerCommand({ id: "project.open", label: "Open any file…", category: "Project", kbd: "Ctrl+O", run: () => void pickAndImport() });
 
   // Tools

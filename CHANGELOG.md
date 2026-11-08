@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Link many files in one step
+- Selecting several files (Insert → Any model…, Link CAD, the Revit picker, or the palette command "Link many files at once") now links each kind together: several DWG/DXF files share **one** link dialog and the same placement settings, several Revit files open in sequence with one combined result line, several IFC files load as one batch. Unreadable files are skipped and listed instead of stopping the batch.
+
 ### GIS site context (experimental)
 - **GeoJSON and Shapefile** (`.geojson`, `.shp` with optional `.dbf`) open from Open File as flat outlines on the ground plane. Context only: not georeferenced to the model, `.prj` not read. Tested on hand-built files only.
 

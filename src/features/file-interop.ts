@@ -199,7 +199,27 @@ async function parseModelBytes(buf: ArrayBuffer, name: string): Promise<THREE.Ob
 
 // ── Router ──
 export async function importFiles(files: File[]) {
+  // Batch pass: several files of one linkable kind are handled together (one dialog / one summary), then skipped below.
+  const handled = new Set<File>();
+  const group = (re: RegExp) => files.filter((f) => re.test(f.name));
+  const cadBatch = group(/\.(dwg|dxf)$/i);
+  if (cadBatch.length > 1) {
+    cadBatch.forEach((f) => handled.add(f));
+    try { const m = await import("../modules/cad-link"); m.setupCadLinks(); await m.linkCadFilesBatch(cadBatch); }
+    catch (err: any) { console.error("[file-interop]", err); uiAlert(`Failed to link CAD files:\n${err?.message ?? err}`); }
+  }
+  const rvtBatch = group(/\.(rvt|rfa|rte|rft)$/i);
+  if (rvtBatch.length > 1) {
+    try {
+      const { openRevitFiles, rvtDecoderAvailable } = await import("./rvt-viewer");
+      if (await rvtDecoderAvailable()) { rvtBatch.forEach((f) => handled.add(f)); await openRevitFiles(rvtBatch); }
+    } catch (err: any) { console.error("[file-interop]", err); }
+  }
+  const ifcBatch = group(/\.ifc$/i);
+  if (ifcBatch.length > 1) { ifcBatch.forEach((f) => handled.add(f)); loadIfcFiles(ifcBatch); }
+
   for (const file of files) {
+    if (handled.has(file)) continue;
     const e = ext(file.name);
     try {
       if (e === "ifc") { loadIfcFiles([file]); continue; }
