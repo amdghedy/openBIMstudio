@@ -93,7 +93,9 @@ t("unavailable message names the concrete reason",()=>{const s=read("src/feature
       const meshes=[];gltf.scene.traverse(o=>{if(o.isMesh)meshes.push(o)});
       t("REAL GLTFLoader: the element mesh keeps its embedded Revit properties in userData",()=>{const mm=meshes.find(x=>m.isRevitNodeData(x.userData));ok(mm,"no mesh with userData.revit");ok(mm.userData.entityIndex===patched.idx&&mm.userData.revit.name==="Basic Wall:Generic - 200mm"&&mm.userData.revit.groups[0].rows.length===4);});
       t("REAL GLTFLoader: twin geometry has the wall's real size, in metres, with Y up (height is the Y extent)",()=>{const parts=meshes.filter(x=>m.isRevitNodeData(x.userData)).map(x=>({positions:x.geometry.getAttribute("position").array,index:x.geometry.index?x.geometry.index.array:null,matrix:x.matrixWorld.elements}));const g=m.buildTwinGeometry(parts);ok(g&&g.triangleCount>=12,"triangles "+(g&&g.triangleCount));
-        const [sx,sy,sz]=g.size;ok(Math.abs(sy-3.048)<0.01,"Y extent (height) should be 3.048 m, got "+sy);const plan=[sx,sz].sort((a,b)=>a-b);ok(plan[0]>0.15&&plan[0]<0.3&&Math.abs(plan[1]-6.1)<0.6,"plan size "+plan.join(" x "));
+        const [sx,sy,sz]=g.size;ok(Math.abs(sy-3.048)<0.01,"Y extent (height) should be 3.048 m, got "+sy);// the wall is 20 ft x 0.65 ft rotated 0.5 rad about the up axis: its plan bounding box is the rotated rectangle's
+        const w=20*0.3048,d=0.65*0.3048,c=Math.cos(0.5),sn=Math.sin(0.5);const exp=[w*c+d*sn,w*sn+d*c].sort((a,b)=>a-b);const plan=[sx,sz].sort((a,b)=>a-b);
+        ok(Math.abs(plan[0]-exp[0])<0.01&&Math.abs(plan[1]-exp[1])<0.01,"plan bbox "+plan.join(" x ")+" expected "+exp.join(" x "));
         ok(g.positions.every(Number.isFinite)&&g.positions.length===g.triangleCount*9,"positions");
         // positions are re-based on the centre: their own bounding box is centred on the origin
         let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];for(let i=0;i<g.positions.length;i+=3)for(let k=0;k<3;k++){mn[k]=Math.min(mn[k],g.positions[i+k]);mx[k]=Math.max(mx[k],g.positions[i+k]);}ok([0,1,2].every(k=>Math.abs(mn[k]+mx[k])<1e-6),"not centred");});
