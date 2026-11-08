@@ -11,6 +11,27 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### STEP / IGES / BREP and Rhino 3dm view (experimental)
+- Open `.step .stp .iges .igs .brep` (occt-import-js) and `.3dm` (rhino3dm) from Open File, drag-and-drop or Link many. Tessellated, view-only copies in metres; summary lists what could not be drawn. The prebuilt WebAssembly is vendored by the "Vendor CAD readers" workflow (licences: docs/THIRD-PARTY-VENDOR.md). Tested on cube fixtures and upstream sample files only.
+
+### Fixed
+- Dropping a Revit, GLB/OBJ/FBX, GeoJSON or Shapefile onto the viewport did nothing (only IFC, FRAG and DWG/DXF were handled). These now go through the universal importer.
+
+### Link many files in one step
+- Selecting several files (Insert → Any model…, Link CAD, the Revit picker, or the palette command "Link many files at once") now links each kind together: several DWG/DXF files share **one** link dialog and the same placement settings, several Revit files open in sequence with one combined result line, several IFC files load as one batch. Unreadable files are skipped and listed instead of stopping the batch.
+
+### GIS site context (experimental)
+- **GeoJSON and Shapefile** (`.geojson`, `.shp` with optional `.dbf`) open from Open File as flat outlines on the ground plane. Context only: not georeferenced to the model, `.prj` not read. Tested on hand-built files only.
+
+### 4D/5D schedule import (experimental)
+- **Microsoft Project XML (MSPDI)** and **CSV task schedules** can be imported in the timeline panel next to Primavera P6. The format is detected from the content. Binary `.mpp` is not supported. Tested only against hand-written fixtures, not files from real MS Project.
+
+### Revit view: browser and tools (experimental)
+- **Revit browser** (File tab, command palette): every element of an opened Revit file in a tree grouped by IFC class, level or material, with search across names, classes, levels, materials, ids and property values; click to select (Shift/Ctrl for several), double-click to zoom, per-group select and show/hide.
+- **Multi-select** (Shift/Ctrl-click) with a combined panel; **Hide**, **Isolate**, **Show all**; **Select same class / level / material**; **Make editable native twins** for the whole selection.
+- **Export to CSV**: a schedule of the selected (or all) elements with identity, level, material, placement, size and one column per decoded property; spreadsheet formulas in property text are neutralised.
+- Hide/isolate is per session (not saved with the project). Tested as pure logic; the panels and menus have not been run in a browser.
+
 ### Revit view: select, inspect, make editable (experimental)
 - Click an element of an opened `.rvt` / `.rfa` to select it and see the properties the decoder read (identity, level, material, placement and size, property sets; metric with the file's imperial value alongside). Properties are embedded in the 3D file itself, so they survive saving the project, reopening it and opening it on another device.
 - Right-click an element → **Make editable native twin**: creates a real authored element (same path as IFC Native Twins) with the element's triangles and properties; the Revit source is hidden while the twin exists and returns if the twin is deleted. Twins take part in clash tests, schedules and edits like any native element.

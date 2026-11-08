@@ -117,6 +117,21 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./modules/curtain-wall/curtain-wall");
     m.setupCurtainWall?.();
   });
+  // Vertical (stacked) wall joins across level boundaries
+  await safe("wall-join-vertical", async () => {
+    const m: Any = await import("./modules/wall-join/setup");
+    m.setupVerticalJoin?.();
+  });
+  // Transitive host→child delete cascade + orphan detection
+  await safe("host-cascade", async () => {
+    const m: Any = await import("./modules/hosts/setup");
+    m.setupHostCascade?.();
+  });
+  // Sloped floors (per-corner elevations + slab mesh builder)
+  await safe("sloped-floors", async () => {
+    const m: Any = await import("./modules/floors/setup");
+    m.setupSlopedFloors?.();
+  });
 
   // MEP auto-routing + ASHRAE sizing
   await safe("mep", async () => {

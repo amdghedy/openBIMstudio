@@ -39,7 +39,7 @@ export function pickAndImportP6() {
   setVisible(true);
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = ".xer,.xml,.txt";
+  input.accept = ".xer,.xml,.txt,.csv";
   input.onchange = async () => {
     const f = input.files?.[0];
     if (!f) return;
@@ -49,7 +49,7 @@ export function pickAndImportP6() {
         message: r.tasks ? `Imported ${r.tasks} activities from ${f.name}; ${r.linked} linked to model elements.` : `No activities found in ${f.name}. ${r.warnings[0] ?? ""}`,
         kind: r.tasks ? "success" : "error" } }));
     } catch (e) {
-      window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "P6 import failed: " + (e instanceof Error ? e.message : String(e)), kind: "error" } }));
+      window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Schedule import failed: " + (e instanceof Error ? e.message : String(e)), kind: "error" } }));
     }
   };
   input.click();
@@ -385,7 +385,7 @@ function render() {
       if (act === "p6-import") {
         const input = document.createElement("input");
         input.type = "file";
-        input.accept = ".xer,.xml,.txt";
+        input.accept = ".xer,.xml,.txt,.csv";
         input.onchange = async () => {
           const f = input.files?.[0];
           if (!f) return;
@@ -396,7 +396,7 @@ function render() {
               : `No activities found in ${f.name}. ${r.warnings[0] ?? ""}`;
             window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: msg, kind: r.tasks ? "success" : "error" } }));
           } catch (e) {
-            window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "P6 import failed: " + (e instanceof Error ? e.message : String(e)), kind: "error" } }));
+            window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Schedule import failed: " + (e instanceof Error ? e.message : String(e)), kind: "error" } }));
           }
         };
         input.click();

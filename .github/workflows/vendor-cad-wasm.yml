@@ -1,0 +1,65 @@
+name: Vendor CAD readers
+
+# Downloads the prebuilt WebAssembly readers for STEP/IGES/BREP (occt-import-js) and Rhino .3dm (rhino3dm)
+# from npm, smoke-tests them in Node, and pushes them on branch vendor-cad-build (main needs a pull request)
+# so they can be committed under public/vendor/. Nothing is added to package.json or package-lock.json.
+# Run manually.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Download the packages (outside the repo, so the lockfile is untouched)
+        run: |
+          mkdir -p /tmp/vend && cd /tmp/vend && npm init -y >/dev/null
+          npm install --ignore-scripts occt-import-js rhino3dm
+          for p in occt-import-js rhino3dm; do
+            node -e "const j=require('/tmp/vend/node_modules/$p/package.json');console.log('$p',j.version,'license:',j.license)"
+          done
+          find node_modules/occt-import-js node_modules/rhino3dm -maxdepth 2 \( -name '*.wasm' -o -name '*.js' -o -iname 'LICENSE*' \) | sort
+      - name: Copy into public/vendor
+        run: |
+          set -e
+          V=/tmp/vend/node_modules
+          mkdir -p public/vendor/occt public/vendor/rhino3dm
+          cp $V/occt-import-js/dist/occt-import-js.js $V/occt-import-js/dist/occt-import-js.wasm public/vendor/occt/
+          cp $V/rhino3dm/rhino3dm.js $V/rhino3dm/rhino3dm.wasm public/vendor/rhino3dm/
+          for p in occt-import-js:occt rhino3dm:rhino3dm; do
+            n=${p%%:*}; d=${p##*:}
+            cp $V/$n/LICENSE* public/vendor/$d/ 2>/dev/null || echo "WARNING: no LICENSE file shipped by $n"
+            node -e "const j=require('$V/$n/package.json');require('fs').writeFileSync('public/vendor/$d/VERSION.json',JSON.stringify({package:j.name,version:j.version,license:j.license,homepage:j.homepage},null,2))"
+          done
+          ls -l public/vendor/*
+      - name: Smoke test occt-import-js on the upstream sample files (real wasm, real parse)
+        run: |
+          git clone --depth 1 https://github.com/kovacsv/occt-import-js /tmp/occt-src
+          find /tmp/occt-src/test -type f \( -iname '*.stp' -o -iname '*.step' -o -iname '*.igs' -o -iname '*.iges' -o -iname '*.brep' \) | sort | head -20
+          for ext in stp step igs iges brep; do
+            f=$(find /tmp/occt-src/test -type f -iname "*.$ext" | head -1)
+            if [ -n "$f" ]; then node scripts/vendor-smoke.mjs occt "$f"; else echo "no sample for .$ext"; fi
+          done
+      - name: Smoke test rhino3dm (write and read back a .3dm)
+        run: node scripts/vendor-smoke.mjs rhino
+      - name: Smoke test rhino3dm on sample .3dm files found in the upstream repositories
+        run: |
+          git clone --depth 1 https://github.com/mcneel/rhino3dm /tmp/rh-src
+          find /tmp/rh-src -type f -iname '*.3dm' -size -8M | sort | head -10
+          for f in $(find /tmp/rh-src -type f -iname '*.3dm' -size -8M | head -4); do node scripts/vendor-smoke.mjs rhino "$f" || echo "FAILED on $f"; done
+      - name: Commit to a side branch (main is protected; merge it by pull request)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f public/vendor
+          if git diff --cached --quiet; then echo "unchanged"; exit 0; fi
+          git commit -m "chore: vendored STEP/IGES/BREP and Rhino 3dm readers"
+          git push --force origin HEAD:refs/heads/vendor-cad-build

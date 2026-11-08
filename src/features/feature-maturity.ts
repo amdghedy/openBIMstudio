@@ -51,6 +51,45 @@ export const MATURITY_STATUSES: readonly MaturityStatus[] = [
 
 export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
   {
+    id: "schedule-import-formats",
+    area: "4D/5D scheduling",
+    status: "experimental",
+    source: ["src/modules/schedule-4d/msproject-parser.ts", "src/modules/schedule-4d/csv-schedule.ts", "src/modules/schedule-4d/p6-parser.ts"],
+    evidence: ["tests/schedule-import.test.cjs", "tests/schedule-4d.test.cjs"],
+    limitations: [
+      "Microsoft Project XML and CSV readers are tested against hand-written fixtures only, never a file exported by real MS Project; binary .mpp is not supported",
+      "Lags become calendar days (working calendars are not applied) and MSPDI cost is assumed to be stored in hundredths of the currency unit",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "solid-model-view",
+    area: "Interoperability",
+    status: "experimental",
+    source: ["src/modules/solids/solid-core.ts", "src/features/solid-import.ts", ".github/workflows/vendor-cad-wasm.yml"],
+    evidence: ["tests/solids.test.cjs"],
+    limitations: [
+      "STEP, IGES, BREP and Rhino 3dm open as tessellated, view-only geometry (no CAD features, no parametric edit, not part of clash tests); colours come from STEP only",
+      "3dm: only meshes and surface models saved with render meshes are drawn; curves, annotations, block instances, extrusions and SubD are counted and reported, not drawn",
+      "Tests run the real occt-import-js wasm on small cube fixtures and the Rhino reader only in CI on upstream samples; no real assembly or building-scale STEP file is in the suite, and the browser path was never run in a real browser",
+      "Files are decoded on the main thread (200 MB cap) so a big file can freeze the tab; the readers are prebuilt third-party WebAssembly vendored under public/vendor/ (docs/THIRD-PARTY-VENDOR.md)",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "gis-site-context",
+    area: "Interoperability",
+    status: "experimental",
+    source: ["src/modules/gis/gis-core.ts", "src/features/gis-import.ts"],
+    evidence: ["tests/gis-core.test.cjs"],
+    limitations: [
+      "GeoJSON and Shapefile open as flat outlines on the ground plane, centred at the model origin: context only, not georeferenced to the model and not part of clash tests",
+      "Lon/lat data uses an equirectangular approximation; projected data is assumed to be in metres because the .prj file is not read, so the CRS and units are not verified",
+      "Tested on hand-built files, not on real municipal datasets; the UI path was never run in a real browser",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "revit-view-only",
     area: "Interoperability",
     status: "experimental",

@@ -139,9 +139,7 @@ export function linkCad() {
     if (ext === "dwg" || ext === "dxf") {
       const m = await import("../modules/cad-link");
       m.setupCadLinks();
-      for (const f of files) {
-        if (["dwg", "dxf"].includes((f.name.split(".").pop() ?? "").toLowerCase())) await m.linkCadFileInteractive(f);
-      }
+      await m.linkCadFilesBatch(files.filter((f) => ["dwg", "dxf"].includes((f.name.split(".").pop() ?? "").toLowerCase())));
       return;
     }
 

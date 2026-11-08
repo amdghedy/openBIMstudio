@@ -2,7 +2,15 @@
 // openingsForWall() in authoring.ts already re-clamps hosted offsets at READ time on
 // the single rebuild the placement/move commit performs, so the solver must NOT also
 // solve on pointerup. The [S] button calls solveHostedConstraints() deliberately.
+//
+// Since the solver-bridge landed, this button is the parametric engine's trigger:
+// it enforces EVERY stored constraint (locked dimensions, equality, alignment,
+// parallel, perpendicular) through the numeric L-M solver, then re-clamps hosted
+// opening offsets. Previously it only clamped openings and stored constraints
+// were dead metadata.
 import { ctx } from "../core/context";
+import { getAllConstraints } from "../modules/parametric-constraints/types";
+import { solveStoredConstraints } from "../modules/parametric-constraints/solver-bridge";
 
 type Any = Record<string, any>;
 
@@ -53,6 +61,60 @@ function pair(v: Any): [number, number] | null {
   return null;
 }
 
+/** Clamp hosted openings back onto their host span (read-time invariant). */
+function clampHostedOpenings(elements: Any[]): number {
+  let changed = 0;
+
+  const hosts = new Map<string, Any>();
+  for (const el of elements) {
+    if (!el || !el.id || !el.params) continue;
+    const t = String(el.type ?? "");
+    if ((t === "wall" || t === "beam" || t === "line" || t === "mline") && el.params.start && el.params.end) {
+      hosts.set(String(el.id), el);
+    }
+  }
+
+  for (const el of elements) {
+    if (!el || !el.hostId || !el.params) continue;
+    const t = String(el.type ?? "");
+    if (t !== "door" && t !== "window" && t !== "opening" && t !== "fitting") continue;
+
+    const host = hosts.get(String(el.hostId));
+    if (!host || !host.params) continue;
+
+    const p = el.params as Any;
+    const hp = host.params as Any;
+    const start = pair(hp.start);
+    const end = pair(hp.end);
+    if (!start || !end) continue;
+
+    const ax = start[0], az = start[1], bx = end[0], bz = end[1];
+    const dx = bx - ax, dz = bz - az;
+    const L = Math.hypot(dx, dz);
+    if (!Number.isFinite(L) || L < 0.01) continue;
+
+    const half = Number(p.width ?? p.WIDTH ?? 0.9) / 2;
+    const current = Number(p.offsetAlongHost ?? p.offset ?? L / 2);
+    const min = Math.min(half, L / 2);
+    const max = Math.max(L - half, L / 2);
+    const clamped = Math.max(min, Math.min(max, current));
+
+    if (typeof p.offsetAlongHost !== "number" || Math.abs(clamped - current) > 1e-4) {
+      p.offsetAlongHost = Math.round(clamped * 1000) / 1000;
+      changed++;
+    }
+  }
+  return changed;
+}
+
+/**
+ * Full parametric solve pass:
+ *   1. stored constraints (locked dims / equality / alignment / parallel /
+ *      perpendicular) via the numeric L-M solver, with wall auto-join and
+ *      per-wall length pinning;
+ *   2. hosted opening re-clamp onto the (possibly moved) hosts.
+ * Returns the number of elements changed. Safe to call re-entrantly.
+ */
 export function solveHostedConstraints(): number {
   if (solving) return 0;
   solving = true;
@@ -60,46 +122,22 @@ export function solveHostedConstraints(): number {
     const elements = getElements();
     if (!elements.length) return 0;
 
-    const hosts = new Map<string, Any>();
-    for (const el of elements) {
-      if (!el || !el.id || !el.params) continue;
-      const t = String(el.type ?? "");
-      if ((t === "wall" || t === "beam" || t === "line" || t === "mline") && el.params.start && el.params.end) {
-        hosts.set(String(el.id), el);
-      }
-    }
-
     let changed = 0;
-    for (const el of elements) {
-      if (!el || !el.hostId || !el.params) continue;
-      const t = String(el.type ?? "");
-      if (t !== "door" && t !== "window" && t !== "opening" && t !== "fitting") continue;
 
-      const host = hosts.get(String(el.hostId));
-      if (!host || !host.params) continue;
-
-      const p = el.params as Any;
-      const hp = host.params as Any;
-      const start = pair(hp.start);
-      const end = pair(hp.end);
-      if (!start || !end) continue;
-
-      const ax = start[0], az = start[1], bx = end[0], bz = end[1];
-      const dx = bx - ax, dz = bz - az;
-      const L = Math.hypot(dx, dz);
-      if (!Number.isFinite(L) || L < 0.01) continue;
-
-      const half = Number(p.width ?? p.WIDTH ?? 0.9) / 2;
-      const current = Number(p.offsetAlongHost ?? p.offset ?? L / 2);
-      const min = Math.min(half, L / 2);
-      const max = Math.max(L - half, L / 2);
-      const clamped = Math.max(min, Math.min(max, current));
-
-      if (typeof p.offsetAlongHost !== "number" || Math.abs(clamped - current) > 1e-4) {
-        p.offsetAlongHost = Math.round(clamped * 1000) / 1000;
-        changed++;
+    // 1. Stored parametric constraints — the previously-dead metadata.
+    let stored: { changed: number; errors: string[] } | null = null;
+    try {
+      stored = solveStoredConstraints(elements as Any[], getAllConstraints());
+      changed += stored.changed;
+      if (stored.errors?.length) {
+        console.warn("[constraint-solver] stored-constraint issues:", stored.errors.slice(0, 5));
       }
+    } catch (err) {
+      console.warn("[constraint-solver] stored solve skipped:", err instanceof Error ? err.message : err);
     }
+
+    // 2. Opening clamp on the (possibly moved) hosts.
+    changed += clampHostedOpenings(elements);
 
     if (changed) rebuildAuthoring();
     return changed;
@@ -110,7 +148,13 @@ export function solveHostedConstraints(): number {
 
 export function setupConstraintSolver(): void {
   const f = getFeatures();
-  f.constraintSolver = { solve: solveHostedConstraints };
+  f.constraintSolver = { solve: solveHostedConstraints, solveAll: solveHostedConstraints };
+  // NOTE: no new cross-feature globals here — the ui-honesty budget forbids
+  // growth. The pre-existing window alias now runs the FULL pipeline (stored
+  // constraints + openings), and ribbon/command callers can reach solveAll
+  // via ctx.features.constraintSolver.
   (window as Any).__obsSolveHostedConstraints = solveHostedConstraints;
-  console.log("[constraint-solver] button-driven ready (no pointerup auto-solve; openingsForWall clamps at read)");
+  console.log(
+    "[constraint-solver] ready — stored constraints solved via L-M bridge, openings re-clamped (button-driven)",
+  );
 }

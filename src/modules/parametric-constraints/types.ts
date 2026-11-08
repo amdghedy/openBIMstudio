@@ -6,9 +6,15 @@
  * constraints make a set of dimensions equal (e.g. equal spacing
  * between columns).
  *
- * This module stores constraint metadata. The constraint solver
- * (already in src/features/constraint-solver.ts) applies them during
- * element move/edit operations.
+ * This module stores constraint metadata. The solver bridge
+ * (solver-bridge.ts) converts it into equations for the numeric geometric
+ * solver (src/modules/constraints/solver.ts); the [S] solve button in
+ * src/features/constraint-solver.ts runs that bridge over the authoring
+ * model, so locked dimensions survive element moves and edits.
+ *
+ * (Historical note: this comment used to claim the old
+ * features/constraint-solver.ts applied these constraints — it did not;
+ * they were dead metadata until the bridge landed.)
  */
 
 /** Constraint type. */
@@ -60,6 +66,38 @@ export function addEquality(
     type: "equality",
     elementIds,
     dimensionLabel,
+    active: true,
+    createdAt: Date.now(),
+  };
+  constraints.push(c);
+  return c;
+}
+
+/** Add a parallel constraint (two linear elements stay parallel). */
+export function addParallel(
+  elementId1: string,
+  elementId2: string,
+): ParametricConstraint {
+  const c: ParametricConstraint = {
+    id: `par-${++idCounter}`,
+    type: "parallel",
+    elementIds: [elementId1, elementId2],
+    active: true,
+    createdAt: Date.now(),
+  };
+  constraints.push(c);
+  return c;
+}
+
+/** Add a perpendicular constraint (two linear elements stay at 90°). */
+export function addPerpendicular(
+  elementId1: string,
+  elementId2: string,
+): ParametricConstraint {
+  const c: ParametricConstraint = {
+    id: `perp-${++idCounter}`,
+    type: "perpendicular",
+    elementIds: [elementId1, elementId2],
     active: true,
     createdAt: Date.now(),
   };

@@ -4,6 +4,8 @@
  */
 import type { ParsedSchedule, RelType, SchedTask } from "./types";
 import { DAY_MS } from "./types";
+import { isMspdi, parseMspdi } from "./msproject-parser";
+import { parseCsvSchedule } from "./csv-schedule";
 
 /* ───────────────────────────── helpers ───────────────────────────── */
 
@@ -160,5 +162,18 @@ export function parsePmxml(xml: string): ParsedSchedule {
 export function parseP6(text: string): ParsedSchedule {
   const head = text.slice(0, 2000);
   if (/^\s*</.test(head) || /<(?:\w+:)?APIBusinessObjects|<(?:\w+:)?Project\b/.test(head)) return parsePmxml(text);
+  return parseXer(text);
+}
+
+/** Detect any supported schedule format (P6 XER / PMXML, MS Project XML, CSV) and parse it. */
+export function parseSchedule(text: string, fileName = ""): ParsedSchedule {
+  const head = text.replace(/^\uFEFF/, "").slice(0, 4000);
+  if (/^\s*</.test(head)) {
+    if (/APIBusinessObjects/.test(head)) return parsePmxml(text);
+    if (isMspdi(text)) return parseMspdi(text);
+    return parsePmxml(text);
+  }
+  if (/^ERMHDR|^%T\t/m.test(head)) return parseXer(text);
+  if (/\.csv$/i.test(fileName) || /^[^\n]*(name|task|activity)[^\n]*(start|begin)/i.test(head)) return parseCsvSchedule(text);
   return parseXer(text);
 }

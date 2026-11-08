@@ -718,6 +718,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("folder", "View Revit File", safe(async () => { (await import("../features/rvt-viewer")).pickRevitFile(); }, "View Revit file"), {
         title: "Open a .rvt / .rfa file for viewing only. Decoded inside your browser, nothing is uploaded. Geometry is a reconstruction and can be incomplete.",
       }),
+      b("folder", "Revit Browser", safe(async () => { (await import("../features/revit-view")).openRevitBrowser(); }, "Revit browser"), {
+        title: "Search, group, select, hide and isolate the elements of an opened Revit file; export them to CSV",
+      }),
       b("folder", "Open File", safe(async () => { (await import("../modules/projects/project-file-io")).openProjectFromFile(); }, "Open file"), {
         title: "Open a .obsproj project file from your computer",
       }),
@@ -1156,7 +1159,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Load FRAG as-is — coordinates preserved (old FRAG linker)",
       }),
       b("folder", "Any model…", safe(() => void pickAndImport(), "Import any model"), {
-        title: "Universal import (IFC / FRAG / OBJ / GLB / …)",
+        title: "Select many files at once, any mix of formats (IFC, Revit, DWG/DXF, GLB/OBJ/FBX…): each kind is linked in one step",
       }),
       sep(),
       groupLabel("Link CAD / BIM"),

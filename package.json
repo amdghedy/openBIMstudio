@@ -103,6 +103,9 @@
     "test:dimension-edit": "node tests/dimension-edit.test.cjs",
     "test:schedule-4d": "node tests/schedule-4d.test.cjs",
     "test:schedule-4d-ui": "node tests/schedule-4d-ui.test.cjs",
+    "test:schedule-import": "node tests/schedule-import.test.cjs",
+    "test:gis": "node tests/gis-core.test.cjs",
+    "test:solids": "node tests/solids.test.cjs",
     "test:twin-export": "node tests/twin-export-geometry.test.cjs",
     "test:pick-arbiter": "node tests/pick-arbiter.test.cjs",
     "test:nav-math": "node tests/nav-math.test.cjs",
@@ -118,6 +121,7 @@
     "test:clash-selection": "node tests/clash-selection-plan.test.cjs",
     "test:ai-modeling": "node tests/ai-native-modeling.test.cjs",
     "test:constraints": "node tests/constraint-solver.test.cjs",
+    "test:parametric-closure": "node tests/parametric-closure.test.cjs",
     "test:structural": "node tests/structural.test.cjs",
     "test:mep-pressure": "node tests/mep-pressure.test.cjs",
     "test:adaptive": "node tests/adaptive.test.cjs",
@@ -134,6 +138,7 @@
     "test:welcome-screen": "node tests/welcome-screen.test.cjs",
     "test:cad-ai": "node tests/cad-ai-integration.test.cjs",
     "test:walk-key-guard": "node tests/walk-key-guard.test.cjs",
+    "test:modeling-depth": "node tests/modeling-depth.test.cjs",
     "test:auth-ux": "node tests/auth-ux.test.cjs",
     "server": "node server/index.mjs",
     "verify": "node scripts/verify-input-focus.mjs",
@@ -206,7 +211,7 @@
     "@mui/material": "^9.5.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^8.18.0",
-    "@reduxjs/toolkit": "^2.2.7",
+    "@reduxjs/toolkit": "^2.14.0",
     "@thatopen/components": "^3.4.9",
     "@thatopen/components-front": "^3.4.5",
     "@thatopen/fragments": "^3.4.7",
@@ -220,24 +225,24 @@
     "monaco-editor": "^0.52.2",
     "papaparse": "^5.4.1",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^6.4.299",
+    "pdfjs-dist": "^6.5.438",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-redux": "^9.3.1",
     "three": "^0.182.0",
     "three-csg-ts": "^3.2.0",
-    "three-mesh-bvh": "^0.9.16",
+    "three-mesh-bvh": "^0.9.18",
     "web-ifc": "0.0.77",
     "y-websocket": "^2.0.1",
     "yjs": "^13.6.14",
-    "zod": "^4.6.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
-    "vite": "^8.3.5"
+    "vite": "^8.3.6"
   },
   "engines": {
     "node": ">=20"

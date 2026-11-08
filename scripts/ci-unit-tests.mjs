@@ -18,7 +18,7 @@ const scripts = [
   "test:walk", "test:elbow", "test:props", "test:fitting-outline", "test:slope",
   "test:cad-viewer", "test:cad-ribbon-layout", "test:cad-native-engine", "test:cad-save", "test:cad-dwg-export", "test:cad-styles", "test:cad-ribbon-collapse", "test:plan-commands", "test:cad-dwg-roundtrip", "test:cad-layout-save", "test:cad-hatch-save", "test:wall-reveal-cutter", "test:clash-review-dock", "test:door-window-place", "test:cad-clipboard", "test:cad-ray-xline", "test:cad-tools", "test:ocs", "test:dxf-features", "test:dwg-features", "test:dwg-convert-limits", "test:cad-acad-engine",
   "test:north", "test:nav-math", "test:controls-target", "test:cursor-zoom", "test:viewcube-pole", "test:ai-modeling",
-  "test:native-twin-resize", "test:twin-dimensions", "test:twin-export", "test:mtext", "test:level-constraints", "test:mep-stretch", "test:linear-follow", "test:point-cloud", "test:ui-honesty", "test:wall-sweep-ifc", "test:wall-detect", "test:shortcut-keys", "test:shortcut-sequences", "test:magnet", "test:up-axis", "test:nwc-bridge", "test:section-handle-filter", "test:dimension-edit", "test:schedule-4d", "test:schedule-4d-ui", "test:bulk-native-twin", "test:ai-privacy", "test:anthropic", "test:ai-presets", "test:cad-insert", "test:ui-reachability", "test:rvt", "test:clash-engine", "test:clash-selection", "test:constraints", "test:structural",
+  "test:native-twin-resize", "test:twin-dimensions", "test:twin-export", "test:mtext", "test:level-constraints", "test:mep-stretch", "test:linear-follow", "test:point-cloud", "test:ui-honesty", "test:wall-sweep-ifc", "test:wall-detect", "test:shortcut-keys", "test:shortcut-sequences", "test:magnet", "test:up-axis", "test:nwc-bridge", "test:section-handle-filter", "test:dimension-edit", "test:schedule-4d", "test:schedule-4d-ui", "test:schedule-import", "test:gis", "test:solids", "test:bulk-native-twin", "test:ai-privacy", "test:anthropic", "test:ai-presets", "test:cad-insert", "test:ui-reachability", "test:rvt", "test:clash-engine", "test:clash-selection", "test:constraints", "test:structural", "test:parametric-closure",
   "test:mep-pressure", "test:adaptive", "test:project-crypto", "test:secret-crypto",
   "test:server-security", "test:safe-expr", "test:mep-connectivity", "test:boundary-edit",
   "test:project-file", "test:project-journal", "test:plan-tags", "test:dim-geometry", "test:auto-dim",
@@ -29,7 +29,7 @@ const scripts = [
   "test:v69", "test:v70", "test:v71", "test:v72",
   "test:v73-just", "test:v73-mag", "test:v73-panels", "test:v73-rel",
   "test:pdf-underlay-loader", "test:dep-safety", "test:webifc-abi", "test:ribbon-collapse", "test:server-hardening", "test:plugins", "test:feature-registry", "test:escape-all",
-  "test:welcome-screen", "test:cad-ai", "test:walk-key-guard", "test:auth-ux",
+  "test:welcome-screen", "test:cad-ai", "test:walk-key-guard", "test:auth-ux", "test:modeling-depth",
   "verify:v70", "verify:v71", "verify:v72", "verify:v73", "verify:v68",
 ];
 

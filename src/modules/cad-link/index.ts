@@ -790,6 +790,40 @@ export async function linkCadFileInteractive(file: File): Promise<CadLink | null
   return link;
 }
 
+/**
+ * Link several DWG/DXF files in one step. The link dialog is shown once (for the first readable file) and the
+ * same placement options (units, insertion, layers) are applied to every file, so all files share one origin.
+ * Unreadable or empty files are skipped and listed in a single summary instead of one dialog each.
+ */
+export async function linkCadFilesBatch(files: File[]): Promise<CadLink[]> {
+  if (files.length === 1) { const l = await linkCadFileInteractive(files[0]); return l ? [l] : []; }
+  const done: CadLink[] = [];
+  const skipped: string[] = [];
+  let options: Awaited<ReturnType<typeof openLinkDialog>> = null;
+  let asked = false;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    toast(`Reading ${file.name} (${i + 1} of ${files.length})...`, "info");
+    let parsed: Awaited<ReturnType<typeof readCadFile>>;
+    try { parsed = await readCadFile(file); } catch (e) { skipped.push(`${file.name}: ${e instanceof Error ? e.message : String(e)}`); continue; }
+    if (!parsed.doc.entities.length) { skipped.push(`${file.name}: no drawable model-space geometry`); continue; }
+    if (!asked) {
+      asked = true;
+      options = await openLinkDialog({
+        title: `Link ${files.length} CAD files (same settings for all)`, fileName: file.name, doc: parsed.doc,
+        summary: parsed.summary, initial: DEFAULT_LINK_OPTIONS, confirmLabel: `Link ${files.length} files`,
+      });
+      if (!options) return done; // cancelled: nothing linked
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    done.push(addCadLink({ name: file.name, format: parsed.format, doc: parsed.doc, summary: parsed.summary, options: options!, bytes }));
+  }
+  if (done.length) void zoomToCadLink(done[done.length - 1].id);
+  const msg = `Linked ${done.length} of ${files.length} CAD file(s) with the same settings.` + (skipped.length ? ` Skipped ${skipped.length}: ${skipped.slice(0, 3).join("; ")}${skipped.length > 3 ? "; …" : ""}` : "");
+  if (skipped.length) uiAlert(msg); else toast(msg, "success");
+  return done;
+}
+
 /** Change placement of an existing link (Manage Links -> Settings). */
 export async function editCadLinkInteractive(id: string): Promise<void> {
   const l = links.get(id);
@@ -869,7 +903,7 @@ export function setupCadLinks(): void {
     remove: removeCadLink, reload: reloadCadLink, setVisible: setCadLinkVisible,
     setLayerVisible: setCadLayerVisible, zoomTo: zoomToCadLink, getBox: getCadLinksBox,
     getPlanItems: getCadLinkPlanItems, getPlanBounds: getCadLinksPlanBounds,
-    linkFile: linkCadFileInteractive, createElements: createElementsFromCad, edit: editCadLinkInteractive, refresh: refreshCadLinks,
+    linkFile: linkCadFileInteractive, linkFiles: linkCadFilesBatch, createElements: createElementsFromCad, edit: editCadLinkInteractive, refresh: refreshCadLinks,
     restoreFromBlob: restoreCadLinkFromBlob, onChange: onCadLinksChanged,
   };
   (ctx.features as Any).cadLinks = api;

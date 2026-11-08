@@ -139,7 +139,7 @@ async function openCtxMenu(e: MouseEvent) {
     const hit = rv.pickRevitAt(e);
     if (hit) {
       const a = pickAuthoredHitAt(e);              // a nearer authored element (e.g. an existing twin) wins
-      if (!(a && a.distance < hit.distance)) { rv.selectRevitElement(hit); revitItems = rv.revitMenuItems(hit) as MenuItem[]; }
+      if (!(a && a.distance < hit.distance)) { rv.ensureSelected(hit); revitItems = rv.revitMenuItems(hit) as MenuItem[]; }
     }
   } catch { /* the Revit menu is optional */ }
   const snap = revitItems ? {} as Record<string, Set<number>> : await resolveLinkedSelection(e);

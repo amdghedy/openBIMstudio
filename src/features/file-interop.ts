@@ -7,7 +7,7 @@ import { markDirty } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
 
 export const ACCEPT_ALL =
-  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp";
+  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp,.geojson,.shp,.dbf,.step,.stp,.iges,.igs,.brep,.3dm";
 
 const DESKTOP_ONLY: Record<string, string> = {
   rvt: "BIM files cannot be converted in the browser.\n\nIn BIM: File → Export → IFC → export the model, then import the .ifc here.",
@@ -148,6 +148,18 @@ export async function restoreAux(blob: Blob, name: string, modelId?: string) {
     return;
   }
   const buf = await blob.arrayBuffer();
+  if (/\.(geojson|shp)$/i.test(name)) {
+    const { openGis } = await import("./gis-import");
+    const r = openGis(buf, name);
+    if (r.object) addAuxObject(r.object, name);
+    return;
+  }
+  if (/\.(step|stp|iges|igs|brep|brp|3dm)$/i.test(name)) {
+    const { openSolid } = await import("./solid-import");
+    const r = await openSolid(buf, name);
+    if (r.object) addAuxObject(r.object, name);
+    return;
+  }
   const obj = await parseModelBytes(buf, name);
   if (obj) addAuxObject(obj, name);
 }
@@ -193,7 +205,27 @@ async function parseModelBytes(buf: ArrayBuffer, name: string): Promise<THREE.Ob
 
 // ── Router ──
 export async function importFiles(files: File[]) {
+  // Batch pass: several files of one linkable kind are handled together (one dialog / one summary), then skipped below.
+  const handled = new Set<File>();
+  const group = (re: RegExp) => files.filter((f) => re.test(f.name));
+  const cadBatch = group(/\.(dwg|dxf)$/i);
+  if (cadBatch.length > 1) {
+    cadBatch.forEach((f) => handled.add(f));
+    try { const m = await import("../modules/cad-link"); m.setupCadLinks(); await m.linkCadFilesBatch(cadBatch); }
+    catch (err: any) { console.error("[file-interop]", err); uiAlert(`Failed to link CAD files:\n${err?.message ?? err}`); }
+  }
+  const rvtBatch = group(/\.(rvt|rfa|rte|rft)$/i);
+  if (rvtBatch.length > 1) {
+    try {
+      const { openRevitFiles, rvtDecoderAvailable } = await import("./rvt-viewer");
+      if (await rvtDecoderAvailable()) { rvtBatch.forEach((f) => handled.add(f)); await openRevitFiles(rvtBatch); }
+    } catch (err: any) { console.error("[file-interop]", err); }
+  }
+  const ifcBatch = group(/\.ifc$/i);
+  if (ifcBatch.length > 1) { ifcBatch.forEach((f) => handled.add(f)); loadIfcFiles(ifcBatch); }
+
   for (const file of files) {
+    if (handled.has(file)) continue;
     const e = ext(file.name);
     try {
       if (e === "ifc") { loadIfcFiles([file]); continue; }
@@ -238,6 +270,38 @@ export async function importFiles(files: File[]) {
         // View-only, decoded in the browser by the rvt-rs WebAssembly reader (docs/RVT-VIEWER.md).
         const { openRevitFile, rvtDecoderAvailable } = await import("./rvt-viewer");
         if (await rvtDecoderAvailable()) { await openRevitFile(file); continue; }
+      }
+
+      if (e === "geojson" || e === "shp") {
+        // Site context (GeoJSON / Shapefile): flat overlay, see docs/COMPATIBILITY.md. A .dbf with the same base name is picked up for attributes.
+        const { openGis } = await import("./gis-import");
+        const base = file.name.replace(/\.[^.]+$/, "").toLowerCase();
+        const sib = e === "shp" ? files.find((f) => ext(f.name) === "dbf" && f.name.replace(/\.[^.]+$/, "").toLowerCase() === base) : undefined;
+        const buf = await file.arrayBuffer();
+        const r = openGis(buf, file.name, sib ? await sib.arrayBuffer() : undefined);
+        if (r.object) {
+          addAuxObject(r.object, file.name);
+          (ctx.features.projects as any)?.onModelImported?.(`aux-${uid()}`, file.name, new Uint8Array(buf));
+        }
+        uiAlert(r.message);
+        continue;
+      }
+      if (e === "step" || e === "stp" || e === "iges" || e === "igs" || e === "brep" || e === "brp" || e === "3dm") {
+        // Tessellated view of solid models via vendored WebAssembly readers (docs/COMPATIBILITY.md).
+        const { openSolid } = await import("./solid-import");
+        const buf = await file.arrayBuffer();
+        const r = await openSolid(buf, file.name);
+        if (r.object) {
+          addAuxObject(r.object, file.name);
+          (ctx.features.projects as any)?.onModelImported?.(`aux-${uid()}`, file.name, new Uint8Array(buf));
+        }
+        uiAlert(r.message);
+        continue;
+      }
+      if (e === "dbf" || e === "shx" || e === "prj" || e === "cpg") {
+        if (files.some((f) => ext(f.name) === "shp")) continue; // companion of a shapefile opened in the same batch
+        uiAlert(`".${e}" is a shapefile companion file. Open the .shp (optionally together with its .dbf) instead.`);
+        continue;
       }
 
       if (DESKTOP_ONLY[e]) { uiAlert(DESKTOP_ONLY[e]); continue; }

@@ -1465,6 +1465,10 @@ export function setupImporter() {
         for (const f of cadFiles) m.openCadViewer(f);
       });
     }
+    // Everything else (Revit, GLB/OBJ/FBX…, GeoJSON/Shapefile, ZIP…) goes through the universal importer, which
+    // batches same-kind files and shows an honest message for formats it cannot read, instead of ignoring the drop.
+    const others = files.filter((f) => !/\.(frag|ifc|ifczip|dwg|dxf)$/i.test(f.name));
+    if (others.length) void import("./file-interop").then((m) => m.importFiles(others));
   });
 
   ctx.features.importer = {
