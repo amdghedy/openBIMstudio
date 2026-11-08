@@ -7,7 +7,7 @@ import { markDirty } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
 
 export const ACCEPT_ALL =
-  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp,.geojson,.shp,.dbf";
+  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp,.geojson,.shp,.dbf,.step,.stp,.iges,.igs,.brep,.3dm";
 
 const DESKTOP_ONLY: Record<string, string> = {
   rvt: "BIM files cannot be converted in the browser.\n\nIn BIM: File → Export → IFC → export the model, then import the .ifc here.",
@@ -154,6 +154,12 @@ export async function restoreAux(blob: Blob, name: string, modelId?: string) {
     if (r.object) addAuxObject(r.object, name);
     return;
   }
+  if (/\.(step|stp|iges|igs|brep|brp|3dm)$/i.test(name)) {
+    const { openSolid } = await import("./solid-import");
+    const r = await openSolid(buf, name);
+    if (r.object) addAuxObject(r.object, name);
+    return;
+  }
   const obj = await parseModelBytes(buf, name);
   if (obj) addAuxObject(obj, name);
 }
@@ -273,6 +279,18 @@ export async function importFiles(files: File[]) {
         const sib = e === "shp" ? files.find((f) => ext(f.name) === "dbf" && f.name.replace(/\.[^.]+$/, "").toLowerCase() === base) : undefined;
         const buf = await file.arrayBuffer();
         const r = openGis(buf, file.name, sib ? await sib.arrayBuffer() : undefined);
+        if (r.object) {
+          addAuxObject(r.object, file.name);
+          (ctx.features.projects as any)?.onModelImported?.(`aux-${uid()}`, file.name, new Uint8Array(buf));
+        }
+        uiAlert(r.message);
+        continue;
+      }
+      if (e === "step" || e === "stp" || e === "iges" || e === "igs" || e === "brep" || e === "brp" || e === "3dm") {
+        // Tessellated view of solid models via vendored WebAssembly readers (docs/COMPATIBILITY.md).
+        const { openSolid } = await import("./solid-import");
+        const buf = await file.arrayBuffer();
+        const r = await openSolid(buf, file.name);
         if (r.object) {
           addAuxObject(r.object, file.name);
           (ctx.features.projects as any)?.onModelImported?.(`aux-${uid()}`, file.name, new Uint8Array(buf));

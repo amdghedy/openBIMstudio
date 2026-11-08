@@ -52,6 +52,8 @@ is the Phase 4 deliverable (`docs/INTEROPERABILITY_MATRIX.md`).
 | Task schedule CSV (`.csv`) | import | experimental | `src/modules/schedule-4d/csv-schedule.ts` | `test:schedule-import` | Needs name, start and finish/duration columns; predecessors as `A1;A2FS+2d`; dd/mm vs mm/dd ambiguity is flagged, use yyyy-mm-dd | No |
 | GeoJSON (`.geojson`) | import | experimental | `src/modules/gis/gis-core.ts` + `src/features/gis-import.ts` | `test:gis` on hand-built data | Flat outlines on the ground plane, centred at the model origin; WGS84 only (equirectangular); not georeferenced to the model | No |
 | Shapefile (`.shp` + optional `.dbf`) | import | experimental | same | `test:gis` on hand-built binary files | Point, polyline, polygon (Z/M read as 2D); MultiPatch skipped; `.prj` not read, so non-lon/lat data is assumed to be metres | No |
+| STEP / IGES / BREP (`.step .stp .iges .igs .brep`) | import (view) | experimental | occt-import-js 0.0.23 WebAssembly, vendored (`src/features/solid-import.ts`, `docs/THIRD-PARTY-VENDOR.md`) | `test:solids` runs the real wasm on cube fixtures; CI workflow on upstream samples | Tessellated view only, converted to metres from the file's units (BREP has none); no CAD features; main-thread decode, 200 MB cap | No |
+| Rhino (`.3dm`) | import (view) | experimental | rhino3dm 8.35.0 WebAssembly, vendored | CI workflow on upstream sample files | Draws meshes and surface models saved with render meshes; curves, annotations, blocks, extrusions, SubD are reported, not drawn | No |
 
 ## Known non-goals and honest absences
 

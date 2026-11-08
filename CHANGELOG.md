@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### STEP / IGES / BREP and Rhino 3dm view (experimental)
+- Open `.step .stp .iges .igs .brep` (occt-import-js) and `.3dm` (rhino3dm) from Open File, drag-and-drop or Link many. Tessellated, view-only copies in metres; summary lists what could not be drawn. The prebuilt WebAssembly is vendored by the "Vendor CAD readers" workflow (licences: docs/THIRD-PARTY-VENDOR.md). Tested on cube fixtures and upstream sample files only.
+
 ### Fixed
 - Dropping a Revit, GLB/OBJ/FBX, GeoJSON or Shapefile onto the viewport did nothing (only IFC, FRAG and DWG/DXF were handled). These now go through the universal importer.
 

@@ -63,6 +63,20 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "solid-model-view",
+    area: "Interoperability",
+    status: "experimental",
+    source: ["src/modules/solids/solid-core.ts", "src/features/solid-import.ts", ".github/workflows/vendor-cad-wasm.yml"],
+    evidence: ["tests/solids.test.cjs"],
+    limitations: [
+      "STEP, IGES, BREP and Rhino 3dm open as tessellated, view-only geometry (no CAD features, no parametric edit, not part of clash tests); colours come from STEP only",
+      "3dm: only meshes and surface models saved with render meshes are drawn; curves, annotations, block instances, extrusions and SubD are counted and reported, not drawn",
+      "Tests run the real occt-import-js wasm on small cube fixtures and the Rhino reader only in CI on upstream samples; no real assembly or building-scale STEP file is in the suite, and the browser path was never run in a real browser",
+      "Files are decoded on the main thread (200 MB cap) so a big file can freeze the tab; the readers are prebuilt third-party WebAssembly vendored under public/vendor/ (docs/THIRD-PARTY-VENDOR.md)",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "gis-site-context",
     area: "Interoperability",
     status: "experimental",

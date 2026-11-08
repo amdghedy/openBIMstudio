@@ -83,4 +83,9 @@ t("Drag-and-drop: files other than IFC/FRAG/CAD reach the universal importer ins
   const im = read("src/features/importer.ts");
   must(/others\.length\) void import\("\.\/file-interop"\)/.test(im), "viewport drop ignores Revit / GLB / GeoJSON files");
 });
+t("Solid models: STEP/IGES/BREP/3dm routed from Open File and drop, with an honest missing-reader message", () => {
+  must(/\.step,\.stp,\.iges,\.igs,\.brep,\.3dm/.test(read("src/features/file-interop.ts")), "Open File does not accept solid formats");
+  must(/solid-import/.test(read("src/features/file-interop.ts")), "import router does not open solid formats");
+  must(/not installed on this deployment/.test(read("src/features/solid-import.ts")), "missing-reader message missing");
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail ? 1 : 0);
