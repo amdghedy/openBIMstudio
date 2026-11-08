@@ -24,7 +24,7 @@ const scripts = [
   "test:project-file", "test:project-journal", "test:plan-tags", "test:dim-geometry", "test:auto-dim",
   "test:section-plane", "test:snap-points", "test:plan-draw", "test:view-lock",
   "test:wheel-zoom", "test:section-box", "test:section-box-arrows", "test:cad-tables-fidelity",
-  "test:cad-ui-wiring", "test:cad-ocs-absorb", "test:cad-native-annotation",
+  "test:cad-ui-wiring", "test:cad-ocs-absorb", "test:cad-native-annotation", "test:cad-tabs-parity",
   "test:v68-core", "test:v68-solids", "test:v68-interaction", "test:v68-acceptance",
   "test:v69", "test:v70", "test:v71", "test:v72",
   "test:v73-just", "test:v73-mag", "test:v73-panels", "test:v73-rel",

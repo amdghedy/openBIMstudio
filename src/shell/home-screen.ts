@@ -47,10 +47,10 @@ const SHOWCASE = [
     title: "A real CAD engine — front and center.",
     copy:
       "No more hunting through tabs: the drafting engine is one click from this screen. " +
-      "116 keyboard-first commands, file-faithful layer and style handling, and a LibreDWG-grade " +
+      "150 keyboard-first commands, file-faithful layer and style handling, and a LibreDWG-grade " +
       "DWG/DXF pipeline that reads r13–r2018 and writes back in the version you choose.",
     cards: [
-      ["C>_", "116-command line", "AutoCAD-style commands, type-ahead, custom aliases and dynamic input at the cursor."],
+      ["C>_", "150-command line", "AutoCAD-style commands, type-ahead, custom aliases and dynamic input at the cursor."],
       ["LAY", "Layers, linetypes & styles", "Layer manager, linetype scale, and text/dim styles adopted straight from the file."],
       ["HAT", "Hatches & dimensions", "Associative hatches, dimension chains, leaders and automatic dimensioning."],
       ["DWG", "DWG & DXF, r13–r2018", "Open legacy and current drawings; export DXF or native DWG 2000–2018."],
@@ -264,7 +264,7 @@ async function render2dHistory(): Promise<void> {
   if (stats) {
     const cards = [
       ["Drawings on device", String(recent.length), "Reopen with one click"],
-      ["Commands", "116", "AutoCAD-style command line"],
+      ["Commands", "150", "AutoCAD-style command line"],
       ["Read / write", "DWG · DXF", "r13–r2018 in · 2000–2018 out"],
       ["Plot", "PDF", "Single sheet or batch sets"],
     ];
@@ -346,7 +346,7 @@ function buildStatic() {
           <span class="obs-mega__body">
             <b class="obs-mega__title">CAD Drafting Engine</b>
             <span class="obs-mega__desc">Draw, annotate and plot in a full-screen drafting session — opens instantly, even without a project.</span>
-            <span class="obs-mega__specs">116 COMMANDS · DWG/DXF r13–r2018 · LAYERS · HATCHES · PLOT</span>
+            <span class="obs-mega__specs">150 COMMANDS · DWG/DXF r13–r2018 · LAYERS · HATCHES · PLOT</span>
           </span>
           <span class="obs-mega__go" aria-hidden="true">→</span>
         </button>

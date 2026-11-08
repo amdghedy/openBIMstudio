@@ -59,6 +59,7 @@
     "test:cad-tables-fidelity": "node tests/cad-tables-fidelity.test.cjs",
     "test:cad-acad-engine": "node tests/cad-acad-engine.test.cjs",
     "test:cad-ui-wiring": "node tests/cad-ui-wiring.test.cjs",
+    "test:cad-tabs-parity": "node tests/cad-tabs-parity.test.cjs",
     "test:cad-ocs-absorb": "node tests/cad-ocs-absorb.test.cjs",
     "test:cad-native-annotation": "node tests/cad-native-annotation.test.cjs",
     "test:view-lock": "node tests/view-lock.test.cjs",

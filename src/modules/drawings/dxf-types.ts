@@ -136,6 +136,8 @@ export type DxfEntity =
       wrapWidth?: number;
       /** MTEXT line-spacing factor (group 44, 0.25-4.0; 1 = the default 3-on-5 pitch). */
       lineSpacing?: number;
+      /** Express Tools TEXTMASK: draw a background-coloured box behind the text. */
+      mask?: boolean;
       /**
        * Inline-formatted runs of an MTEXT (from \C / \c colour and \f bold/italic codes).
        * `value` stays the plain concatenated text; when absent the entity renders as one run.

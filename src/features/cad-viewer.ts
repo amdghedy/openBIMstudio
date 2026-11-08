@@ -64,6 +64,7 @@ import {
   type PlotStyleTable,
 } from "../modules/drawings/plot-styles";
 import { isLandXml, parseLandXmlPoints } from "../modules/drawings/landxml";
+import * as P from "./cad-params";
 
 type Tool =
   | "pan"
@@ -136,7 +137,18 @@ type Tool =
   | "layoff"
   | "laylck"
   | "layunlck"
-  | "mleader";
+  | "mleader"
+  // Parametric constraints (one-shot geometric fixes) + Express Tools
+  | "con2p"
+  | "confix"
+  | "txt2mtxt"
+  | "explodetext"
+  | "textfit"
+  | "arctext"
+  | "textmask"
+  | "breakline"
+  | "laymrg"
+  | "laydel";
 
 type ColorMode = "layer" | "bw" | "invert" | "style";
 interface Markup {
@@ -269,6 +281,43 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DWGTHUMB", aliases: ["DWGBMP"], description: "Extract the embedded preview bitmap from a DWG file (dwg_bmp parity)" },
   { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select all objects sharing type and layer with the current selection" },
   { name: "KS", aliases: ["ALIASEDIT", "ALIASES", "SHORTCUTS"], description: "Edit command aliases (abbreviations) — AutoCAD-style" },
+  /* ── Parametric tab: one-shot geometric + dimensional constraints ── */
+  { name: "AUTOCONSTRAIN", aliases: ["ACON"], description: "Detect and exactify near-horizontal / vertical / concentric relations" },
+  { name: "FIX", aliases: ["CONSTRAINTFIX"], description: "Pin objects — edits are refused until UNFIX" },
+  { name: "UNFIX", aliases: ["CONSTRAINTUNFIX"], description: "Release the FIX constraint on picked objects" },
+  { name: "HORIZONTAL", aliases: [], description: "Force the picked line level" },
+  { name: "VERTICAL", aliases: [], description: "Force the picked line plumb" },
+  { name: "PERPENDICULAR", aliases: ["PERP"], description: "Make the second line perpendicular to the first" },
+  { name: "PARALLEL", aliases: ["PAR"], description: "Make the second line parallel to the first" },
+  { name: "TANGENT", aliases: ["TAN"], description: "Translate the line so it touches the circle exactly" },
+  { name: "CONCENTRIC", aliases: ["CENC"], description: "Snap the second circle onto the first one's center" },
+  { name: "COINCIDENT", aliases: ["COINC"], description: "Snap the second line's nearest endpoint onto the first" },
+  { name: "SYMMETRIC", aliases: ["SYM"], description: "Mirror the first pick about the axis line picked second" },
+  { name: "EQUAL", aliases: ["EQ"], description: "Equalize lengths / radii of two objects" },
+  { name: "DCLINEAR", aliases: ["DCLIN"], description: "Set a line to an exact length" },
+  { name: "DCRADIUS", aliases: ["DCRAD"], description: "Set a circle or arc to an exact radius" },
+  { name: "DCDIAMETER", aliases: ["DCDIA"], description: "Set a circle or arc to an exact diameter" },
+  { name: "DCANGULAR", aliases: ["DCANG"], description: "Set the angle between two lines" },
+  { name: "CONSTRAINTBAR", aliases: ["CONBAR"], description: "Show or hide the FIX constraint markers" },
+  { name: "DELCONSTRAINT", aliases: ["DELCON"], description: "Release every FIX constraint" },
+  /* ── Express Tools tab ── */
+  { name: "TXT2MTXT", aliases: ["TXT2MTEXT"], description: "Convert single-line TEXT into a wrapped MTEXT column" },
+  { name: "EXPLODETEXT", aliases: ["XTEXT"], description: "Explode MTEXT back to plain TEXT" },
+  { name: "TEXTFIT", aliases: ["TFIT"], description: "Squeeze or stretch a text's width factor to span two points" },
+  { name: "ARCTEXT", aliases: ["ARCALIGNEDTEXT"], description: "Lay text characters along an arc or circle" },
+  { name: "TEXTMASK", aliases: ["TMASK"], description: "Toggle a background mask behind text" },
+  { name: "FLATTEN", aliases: ["FLAT"], description: "Set every object to Z = 0" },
+  { name: "BREAKLINE", aliases: ["BRKLN"], description: "Draw a break line with the standard zig-zag symbol" },
+  { name: "LAYMRG", aliases: ["LAYMERGE"], description: "Merge one layer into another and remove it" },
+  { name: "LAYDEL", aliases: ["LAYDELETE"], description: "Delete a layer and everything on it" },
+  { name: "LAYWALK", aliases: ["LWALK"], description: "Walk the drawing layer by layer" },
+  { name: "LAYFRZ", aliases: ["LFRZ"], description: "Freeze the layers of the selected objects" },
+  { name: "LAYTHW", aliases: ["LTHW"], description: "Thaw every frozen layer" },
+  /* ── Collaborate tab ── */
+  { name: "PUBLISH", aliases: ["PUB"], description: "Batch-write every open drawing to DWG" },
+  { name: "SHAREVIEW", aliases: ["SHARE"], description: "Export the current view as a PNG" },
+  { name: "DWGHISTORY", aliases: ["HISTORY"], description: "Session command history + undo depth" },
+  { name: "CHECKSTANDARDS", aliases: ["CHKSTD"], description: "Audit layers / linetypes / text styles against the standard rules" },
 ];
 
 const BG: Record<string, string> = {
@@ -350,9 +399,12 @@ const RIBBON_TABS: ReadonlyArray<{ id: string; label: string }> = [
   { id: "home", label: "Home" },
   { id: "insert", label: "Insert" },
   { id: "annotate", label: "Annotate" },
+  { id: "parametric", label: "Parametric" },
   { id: "view", label: "View" },
   { id: "manage", label: "Manage" },
   { id: "output", label: "Output" },
+  { id: "express", label: "Express Tools" },
+  { id: "collaborate", label: "Collaborate" },
 ];
 let ribbonTab = "home";
 try {
@@ -895,9 +947,12 @@ const CAD_CSS = `
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="home"] .cadrg[data-cadtab="home"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="insert"] .cadrg[data-cadtab="insert"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="annotate"] .cadrg[data-cadtab="annotate"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="parametric"] .cadrg[data-cadtab="parametric"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="view"] .cadrg[data-cadtab="view"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="manage"] .cadrg[data-cadtab="manage"],
-    .obs-cad-shell .cadrb-strip[data-ribbon-tab="output"] .cadrg[data-cadtab="output"]{display:flex}
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="output"] .cadrg[data-cadtab="output"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="express"] .cadrg[data-cadtab="express"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="collaborate"] .cadrg[data-cadtab="collaborate"]{display:flex}
     /* AutoCAD In-Canvas ViewCube */
     .obs-cad-viewcube {
       position: absolute; top: 16px; right: 28px; width: 68px; height: 68px;
@@ -1158,6 +1213,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const layoutIdxCache = new Map<number, M.SpatialIndex>();
   let press: { x: number; y: number; moved: boolean; id: number; band?: boolean; add?: boolean } | null = null;
   const sel = new Set<number>();
+  /** FIX constraint: entities pinned by the Parametric tab (object identity — survives index shifts). */
+  const fixedEnts = new Set<DxfEntity>();
+  /** Parametric overlay: constraint badges / FIX markers on canvas (CONSTRAINTBAR). */
+  let conBarOn = true;
   let rband: { a: M.Pt; b: M.Pt } | null = null;
   let layerFilter = "";
   const ptrs = new Map<number, M.Pt>();
@@ -1371,6 +1430,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           // same view drawing, hit-testing and the bbox all share (M.textRuns).
           const lines = M.textRuns(e);
           const bl = M.textLineBaselines(e);
+          // Express Tools TEXTMASK: paint a background-coloured box behind the
+          // glyphs so the text stays readable over dense linework.
+          if (e.mask && bl.length) {
+            const wpx = Math.max(1, ...lines.map((ls) => c.measureText(ls.map((r) => r.text).join("")).width));
+            const top = -bl[0] * v.scale - px * 0.85;
+            const bot = -bl[bl.length - 1] * v.scale + px * 0.25;
+            const xoff = (e.align ?? "left") === "center" ? -wpx / 2 : (e.align ?? "left") === "right" ? -wpx : 0;
+            c.save();
+            c.fillStyle = BG[bg] ?? "#212830";
+            c.fillRect(xoff - px * 0.15, top, wpx + px * 0.3, Math.max(px, bot - top));
+            c.restore();
+          }
           const styled = !!e.runs?.some((r) => r.color != null || r.rgb != null || r.bold || r.italic);
           if (!styled) {
             for (let li = 0; li < lines.length; li++)
@@ -2186,6 +2257,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.strokeRect(p.x - 6, p.y - 6, 12, 12);
       }
 
+      // Parametric constraint overlay: FIX padlocks (CONSTRAINTBAR toggles)
+      if (conBarOn && fixedEnts.size) {
+        c.save();
+        c.strokeStyle = "#38bdf8";
+        c.fillStyle = "#38bdf8";
+        c.lineWidth = 1.5;
+        for (const fe of fixedEnts) {
+          const anchor = P.anchorPoint(fe);
+          if (!anchor) continue;
+          const p = M.worldToScreen(v, anchor.x, anchor.y);
+          c.beginPath();
+          c.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          c.stroke();
+          c.fillRect(p.x - 1.5, p.y - 9, 3, 5); // padlock shank
+        }
+        c.restore();
+      }
+
       // Object Snap glyph
       if (hover && snapOn) {
         paintSnapGlyph(c, v, hover);
@@ -2508,6 +2597,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("Command: ERASE — 0 found");
       return;
     }
+    const fixedSel = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e && fixedEnts.has(e));
+    if (fixedSel.length) {
+      logCmd("CONSTRAINT: fixed object(s) in the selection — run UNFIX to erase them.");
+      return;
+    }
     const removed: DxfEntity[] = [];
     const keep: DxfEntity[] = [];
     ents.forEach((e, i) => {
@@ -2758,6 +2852,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /** In-place transform commit with a single modify undo action. */
   function commitModify(before: DxfEntity[], after: DxfEntity[]): void {
+    if (before.some((e) => fixedEnts.has(e))) {
+      logCmd("CONSTRAINT: a fixed object is in the selection (FIX). Run UNFIX on it to allow edits.");
+      return;
+    }
     for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
     undoStack.push({ type: "modify", before, after });
     markDirty();
@@ -2776,6 +2874,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   /** N→M replacement commit (TRIM / BREAK / EXPLODE / JOIN / FILLET / CHAMFER / AUDIT). */
   function commitReplace(before: DxfEntity[], after: DxfEntity[]): void {
     if (!before.length) return;
+    if (before.some((e) => fixedEnts.has(e))) {
+      logCmd("CONSTRAINT: a fixed object is in the selection (FIX). Run UNFIX on it to allow edits.");
+      return;
+    }
     const beforeSet = new Set(before);
     const kept = ents.filter((e) => !beforeSet.has(e));
     kept.push(...after);
@@ -2934,7 +3036,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── Cutting / staged pick tools (TRIM / EXTEND / BREAK / FILLET / CHAMFER /
      JOIN / STRETCH / ALIGN / MATCHLAYER) ── */
-  type PickKind = "trim" | "extend" | "break" | "fillet" | "chamfer" | "join" | "stretch" | "align" | "matchlayer" | "lengthen" | "divide" | "measure" | "ddedit" | "layiso" | "layoff" | "laylck" | "layunlck" | "mleader";
+  type PickKind = "trim" | "extend" | "break" | "fillet" | "chamfer" | "join" | "stretch" | "align" | "matchlayer" | "lengthen" | "divide" | "measure" | "ddedit" | "layiso" | "layoff" | "laylck" | "layunlck" | "mleader" | "con2p" | "confix" | "txt2mtxt" | "explodetext" | "textfit" | "arctext" | "textmask" | "breakline" | "laymrg" | "laydel";
   interface PickOp {
     kind: PickKind;
     stage: "edges" | "targets" | "obj" | "p1" | "p2" | "win1" | "win2" | "base" | "second" | "src1" | "src2" | "dst1" | "dst2" | "newend" | "landing";
@@ -2956,6 +3058,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ghost: DxfEntity | null;
     /** MLEADER: landing end point (text goes there). */
     landing: M.Pt | null;
+    /** CONSTRAINT: which one-shot constraint is being applied (see startConstraint). */
+    con: string;
+    /** CONSTRAINT: first picked entity (source of the relation). */
+    conSrc: number;
   }
   let pick: PickOp | null = null;
   let filletR = 10;
@@ -2971,7 +3077,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     t === "trim" || t === "extend" || t === "break" || t === "fillet" || t === "chamfer" ||
     t === "join" || t === "stretch" || t === "align" || t === "matchlayer" ||
     t === "lengthen" || t === "divide" || t === "measure" || t === "ddedit" ||
-    t === "layiso" || t === "layoff" || t === "laylck" || t === "layunlck" || t === "mleader";
+    t === "layiso" || t === "layoff" || t === "laylck" || t === "layunlck" || t === "mleader" ||
+    t === "con2p" || t === "confix" || t === "txt2mtxt" || t === "explodetext" || t === "textfit" ||
+    t === "arctext" || t === "textmask" || t === "breakline" || t === "laymrg" || t === "laydel";
 
   function clearPickState(): void {
     pick = null;
@@ -3019,18 +3127,45 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return "Select an object on the target layer:";
       case "mleader":
         return pick.stage === "obj" ? "Specify leader arrowhead location:" : pick.stage === "landing" ? "Specify leader landing end:" : "Enter leader text: (type in the command line, empty Enter = cancel)";
+      case "con2p":
+        return pick.stage === "obj"
+          ? pick.con === "dcradius" || pick.con === "dcdiameter"
+            ? "Select a circle or arc:"
+            : pick.con === "dclinear"
+              ? "Select a line to dimension:"
+              : "Select first object:"
+          : "Select second object:";
+      case "confix":
+        return "Select objects to fix / unfix:";
+      case "txt2mtxt":
+        return "Select single-line text objects: (click · Enter / right-click to end)";
+      case "explodetext":
+        return "Select MTEXT objects to explode:";
+      case "textmask":
+        return "Select text objects to toggle the mask:";
+      case "laymrg":
+        return pick.stage === "obj" ? "Select the source object (its layer is merged away):" : "Select an object on the destination layer:";
+      case "laydel":
+        return "Select an object on the layer to delete:";
+      case "textfit":
+        return pick.stage === "obj" ? "Select a text object to fit:" : "Specify the end point the text should span to:";
+      case "arctext":
+        return "Select an arc or circle for the text to follow:";
+      case "breakline":
+        return pick.stage === "p1" ? "Specify first point of the break line:" : "Specify second point:";
     }
   }
 
   function startPick(kind: PickKind): void {
     clearModState();
-    const twoStage = kind === "trim" || kind === "extend" || kind === "matchlayer";
+    const twoStage = kind === "trim" || kind === "extend" || kind === "matchlayer" || kind === "laymrg";
     const firstStage: PickOp["stage"] =
       twoStage ? "edges"
-      : kind === "break" ? "obj"
+      : kind === "break" || kind === "textfit" || kind === "arctext" ? "obj"
       : kind === "stretch" ? "win1"
       : kind === "align" ? "src1"
-      : kind === "mleader" ? "obj"
+      : kind === "mleader" || kind === "con2p" ? "obj"
+      : kind === "breakline" ? "p1"
       : "targets";
     pick = {
       kind,
@@ -3048,10 +3183,115 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lenVal: 0,
       ghost: null,
       landing: null,
+      con: "",
+      conSrc: -1,
     };
+    // laymrg reuses the "edges" stage for the source-layer pick
+    if (kind === "laymrg") pick.stage = "obj";
     if (kind === "fillet") logCmd(`Current fillet radius = ${fmt(filletR)} (FILLET R <value> to change)`);
     if (kind === "chamfer") logCmd(`Current chamfer distances = ${fmt(chamferD[0])} and ${fmt(chamferD[1])} (CHAMFER <d1> <d2> to change)`);
     logCmd(pickPrompt());
+  }
+
+  /** Arm a one-shot parametric constraint (Parametric tab + command line). */
+  function startConstraint(con: string): void {
+    setTool("con2p");
+    if (pick) {
+      pick.con = con;
+      logCmd(pickPrompt());
+    }
+  }
+
+  /* ── Parametric / Express / Collaborate command bodies (shared by the
+     ribbon buttons and the command-line dispatcher) ── */
+  function runAutoConstrain(): void {
+    if (!ents.length) {
+      logCmd("AUTOCONSTRAIN: the drawing is empty.");
+      return;
+    }
+    const before = [...ents];
+    const res = P.autoConstrain(before, (10 / view.scale) * 2);
+    if (!res.fixed) {
+      logCmd("AUTOCONSTRAIN: no near-miss relations found within tolerance.");
+      return;
+    }
+    commitReplace(before, res.entities);
+    logCmd(`AUTOCONSTRAIN: ${res.fixed} constraint(s) applied within tolerance.`);
+    for (const a of res.applied.slice(0, 6)) logCmd(`  · ${a}`);
+    if (res.applied.length > 6) logCmd(`  … +${res.applied.length - 6} more`);
+    draw();
+  }
+  function toggleConBar(): void {
+    conBarOn = !conBarOn;
+    logCmd(`CONSTRAINTBAR: ${conBarOn ? "on — FIX markers shown" : "off"}`);
+    draw();
+  }
+  function unfixAll(): void {
+    const n = fixedEnts.size;
+    fixedEnts.clear();
+    logCmd(`DELCONSTRAINT: removed FIX from ${n} object(s).`);
+    draw();
+  }
+  function runFlatten(): void {
+    if (!ents.length) {
+      logCmd("FLATTEN: the drawing is empty.");
+      return;
+    }
+    const before = [...ents];
+    const after = before.map((e) => P.flattenEnt(e) ?? e);
+    const n = after.filter((e, i) => e !== before[i]).length;
+    if (!n) {
+      logCmd("FLATTEN: everything is already at Z = 0.");
+      return;
+    }
+    commitReplace(before, after);
+    logCmd(`FLATTEN: ${n} object(s) moved to Z = 0 (Elevation 0).`);
+    draw();
+  }
+  function runLayFrz(): void {
+    if (!doc || !sel.size) {
+      logCmd("LAYFRZ: select object(s) first, then run LAYFRZ to freeze their layers.");
+      return;
+    }
+    const names = new Set([...sel].map((i) => ents[i]?.layer).filter((n): n is string => !!n));
+    for (const l of doc.layers) if (names.has(l.name)) l.frozen = true;
+    for (const n of names) hidden.add(n);
+    logCmd(`LAYFRZ: froze ${names.size} layer(s): ${[...names].join(", ")}`);
+    draw();
+  }
+  function runLayThw(): void {
+    if (!doc) return;
+    let n = 0;
+    for (const l of doc.layers) if (l.frozen) { l.frozen = false; n++; }
+    if (n) {
+      hidden.clear();
+      for (const l of doc.layers) if (l.off) hidden.add(l.name);
+    }
+    logCmd(`LAYTHW: thawed ${n} layer(s).`);
+    draw();
+  }
+  function publishAll(): void {
+    const all = [...ribbonEngines.keys()];
+    if (!all.length) {
+      logCmd("PUBLISH: no open drawings.");
+      return;
+    }
+    let n = 0;
+    for (const eng of all) {
+      try {
+        if (eng.isDirty()) {
+          eng.saveDwg();
+          n++;
+        }
+      } catch { /* a drawing that cannot save is skipped */ }
+    }
+    logCmd(`PUBLISH: ${n} of ${all.length} open drawing(s) written to DWG${n < all.length ? " (clean drawings skipped)" : ""}.`);
+  }
+  function shareView(): void {
+    cv.toBlob((blob) => {
+      if (blob) download(blob, `${name || "drawing"}-view.png`);
+    }, "image/png");
+    logCmd("SHAREVIEW: current view exported as PNG — attach it to your CDE share or email.");
   }
 
   const pickTargets = (): DxfEntity[] => (pick?.edges ?? []).map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
@@ -3487,6 +3727,326 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         return true;
       }
+      case "con2p": {
+        // One-shot geometric constraints (Parametric tab). Single-pick fixes
+        // apply immediately and stay armed; two-pick relations take a source
+        // ("obj") and a destination ("targets") pick. Every application is a
+        // real geometry edit through commitModify (undoable).
+        const pk = pick;
+        const twoPick =
+          pk.con === "perpendicular" || pk.con === "parallel" || pk.con === "tangent" ||
+          pk.con === "concentric" || pk.con === "coincident" || pk.con === "symmetric" ||
+          pk.con === "equal" || pk.con === "dcangular";
+        if (pk.stage === "obj") {
+          if (hit < 0) {
+            logCmd("0 found");
+            return true;
+          }
+          const src = ents[hit];
+          if (!src) return true;
+          if (pk.con === "horizontal" || pk.con === "vertical") {
+            const after = pk.con === "horizontal" ? P.fixHorizontal(src) : P.fixVertical(src);
+            if (!after) {
+              logCmd(`${pk.con.toUpperCase()}: pick a LINE.`);
+              return true;
+            }
+            commitModify([src], [after]);
+            logCmd(`${pk.con.toUpperCase()} constraint applied.`);
+            draw();
+            return true;
+          }
+          if (pk.con === "dcradius" || pk.con === "dcdiameter") {
+            if (!P.isCircle(src) && !P.isArc(src)) {
+              logCmd(`${pk.con.toUpperCase()}: pick a circle or arc.`);
+              return true;
+            }
+            pk.conSrc = hit;
+            logCmd(`Current ${pk.con === "dcradius" ? "radius" : "diameter"} = ${fmt(pk.con === "dcradius" ? src.radius : src.radius * 2)}. Enter value:`);
+            pendingNumeric = (v) => {
+              pendingNumeric = null;
+              const e = ents[pk.conSrc];
+              if (!e) return;
+              const r = pk.con === "dcdiameter" ? v / 2 : v;
+              const after = P.dimRadius(e, r);
+              if (!after) {
+                logCmd("DC: value must be positive.");
+                return;
+              }
+              commitModify([e], [after]);
+              logCmd(`${pk.con === "dcdiameter" ? "DCDIAMETER" : "DCRADIUS"}: ${pk.con === "dcdiameter" ? "diameter" : "radius"} set to ${fmt(v)}.`);
+              draw();
+            };
+            return true;
+          }
+          if (pk.con === "dclinear") {
+            if (!P.isLine(src)) {
+              logCmd("DCLINEAR: pick a LINE.");
+              return true;
+            }
+            pk.conSrc = hit;
+            logCmd(`Current length = ${fmt(Math.hypot(src.end.x - src.start.x, src.end.y - src.start.y))}. Enter value:`);
+            pendingNumeric = (v) => {
+              pendingNumeric = null;
+              const e = ents[pk.conSrc];
+              if (!e) return;
+              const after = P.dimLinear(e, v);
+              if (!after) {
+                logCmd("DCLINEAR: value must be positive.");
+                return;
+              }
+              commitModify([e], [after]);
+              logCmd(`DCLINEAR: length set to ${fmt(v)}.`);
+              draw();
+            };
+            return true;
+          }
+          if (!twoPick) {
+            logCmd(`CONSTRAINT: unknown constraint "${pk.con}".`);
+            return true;
+          }
+          // two-pick relations: remember the source, arm the second stage
+          pk.conSrc = hit;
+          pk.stage = "targets";
+          logCmd(pickPrompt());
+          return true;
+        }
+        // stage "targets" — apply the relation between the source and this pick
+        if (hit < 0) return true;
+        const a = ents[pk.conSrc];
+        const b = ents[hit];
+        if (!a || !b || a === b) return true;
+        if (pk.con === "dcangular") {
+          logCmd("Enter angle in degrees:");
+          pendingNumeric = (v) => {
+            pendingNumeric = null;
+            const after = P.dimAngular(a, b, v);
+            if (!after) {
+              logCmd("DCANGULAR: pick two LINEs.");
+              return;
+            }
+            commitModify([b], [after]);
+            logCmd(`DCANGULAR: angle set to ${fmt(v)}°.`);
+            draw();
+          };
+          return true;
+        }
+        const after =
+          pk.con === "parallel" ? P.fixParallel(a, b)
+          : pk.con === "perpendicular" ? P.fixPerpendicular(a, b)
+          : pk.con === "tangent" ? P.fixTangent(a, b)
+          : pk.con === "concentric" ? P.fixConcentric(a, b)
+          : pk.con === "coincident" ? P.fixCoincident(a, b)
+          : pk.con === "symmetric" ? P.fixSymmetric(a, b)
+          : pk.con === "equal" ? P.fixEqual(a, b)
+          : null;
+        if (!after) {
+          logCmd(`${pk.con.toUpperCase()}: those object types cannot be constrained this way.`);
+          return true;
+        }
+        commitModify([b], [after]);
+        logCmd(`${pk.con.toUpperCase()} constraint applied to the second object.`);
+        draw();
+        pk.stage = "obj";
+        logCmd(pickPrompt());
+        return true;
+      }
+      case "confix": {
+        // FIX / UNFIX — pin or release the picked object
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const src = ents[hit];
+        if (!src) return true;
+        if (fixedEnts.has(src)) {
+          fixedEnts.delete(src);
+          logCmd("UNFIX: constraint removed from object.");
+        } else {
+          fixedEnts.add(src);
+          logCmd("FIX: object pinned — edits are refused until UNFIX.");
+        }
+        draw();
+        return true;
+      }
+      case "txt2mtxt": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const src = ents[hit];
+        const after = src ? P.textToMText(src) : null;
+        if (!src || !after) {
+          logCmd("TXT2MTXT: pick a single-line TEXT object (MTEXT is skipped).");
+          return true;
+        }
+        commitModify([src], [after]);
+        logCmd("TXT2MTXT: converted to MTEXT (wrapped column).");
+        draw();
+        return true;
+      }
+      case "explodetext": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const src = ents[hit];
+        const after = src ? P.mTextToText(src) : null;
+        if (!src || !after) {
+          logCmd("EXPLODETEXT: pick an MTEXT (wrapped) object.");
+          return true;
+        }
+        commitModify([src], [after]);
+        logCmd("EXPLODETEXT: MTEXT exploded back to plain TEXT.");
+        draw();
+        return true;
+      }
+      case "textmask": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const src = ents[hit];
+        const after = src ? P.textMaskToggle(src) : null;
+        if (!src || !after) {
+          logCmd("TEXTMASK: pick a TEXT / MTEXT object.");
+          return true;
+        }
+        commitModify([src], [after]);
+        logCmd(`TEXTMASK: mask ${after.type === "TEXT" && after.mask ? "ON — background box drawn behind the text" : "OFF"}.`);
+        draw();
+        return true;
+      }
+      case "laymrg": {
+        if (pick.stage === "obj") {
+          if (hit < 0) {
+            logCmd("0 found");
+            return true;
+          }
+          const src = ents[hit];
+          if (!src) return true;
+          pick.srcLayer = src.layer;
+          pick.stage = "targets";
+          logCmd(`Source layer: ${src.layer}. ${pickPrompt()}`);
+          return true;
+        }
+        if (hit < 0) return true;
+        const dst = ents[hit];
+        if (!dst) return true;
+        const target = dst.layer;
+        const srcLayer = pick.srcLayer;
+        if (target.toUpperCase() === srcLayer.toUpperCase()) {
+          logCmd("LAYMRG: pick an object on a DIFFERENT layer as the destination.");
+          return true;
+        }
+        const doomed = ents.filter((e) => e.layer.toUpperCase() === srcLayer.toUpperCase());
+        if (!doomed.length) {
+          logCmd("LAYMRG: source layer has no objects.");
+        } else {
+          const after = doomed.map((e) => ({ ...e, layer: target }));
+          commitReplace(doomed, after);
+          if (doc) doc.layers = doc.layers.filter((l) => l.name.toUpperCase() !== srcLayer.toUpperCase());
+          logCmd(`LAYMRG: merged layer "${srcLayer}" into "${target}" (${doomed.length} object(s) moved).`);
+        }
+        clearPickState();
+        setTool("select");
+        draw();
+        return true;
+      }
+      case "laydel": {
+        if (hit < 0) {
+          logCmd("0 found");
+          return true;
+        }
+        const src = ents[hit];
+        if (!src) return true;
+        const lyr = src.layer;
+        const doomed = ents.filter((e) => e.layer.toUpperCase() === lyr.toUpperCase());
+        const keep = ents.filter((e) => e.layer.toUpperCase() !== lyr.toUpperCase());
+        if (doc) {
+          doc.layers = doc.layers.filter((l) => l.name.toUpperCase() !== lyr.toUpperCase());
+          hidden.delete(lyr);
+        }
+        undoStack.push({ type: "delete", entities: doomed });
+        markDirty();
+        redoStack.length = 0;
+        ents = keep;
+        if (layoutI < 0) modelEnts = keep;
+        sel.clear();
+        selected = -1;
+        rebuildIndex();
+        logCmd(`LAYDEL: deleted layer "${lyr}" and ${doomed.length} object(s).`);
+        clearPickState();
+        setTool("select");
+        draw();
+        return true;
+      }
+      case "textfit": {
+        if (pick.stage === "obj") {
+          if (hit < 0 || ents[hit]?.type !== "TEXT") {
+            logCmd("TEXTFIT: pick a TEXT / MTEXT object.");
+            return true;
+          }
+          pick.conSrc = hit;
+          pick.stage = "newend";
+          logCmd(pickPrompt());
+          return true;
+        }
+        const e = ents[pick.conSrc];
+        if (!e || e.type !== "TEXT") return true;
+        const after = P.textFit(e, e.position, { x: wp.x, y: wp.y });
+        if (!after) return true;
+        commitModify([e], [after]);
+        logCmd(`TEXTFIT: width factor set to ${fmt(after.type === "TEXT" ? (after.widthFactor ?? 1) : 1)}.`);
+        clearPickState();
+        setTool("select");
+        draw();
+        return true;
+      }
+      case "arctext": {
+        if (hit < 0 || !(ents[hit]?.type === "ARC" || ents[hit]?.type === "CIRCLE")) {
+          logCmd("ARCTEXT: pick an ARC or CIRCLE for the text to follow.");
+          return true;
+        }
+        const arc = ents[hit];
+        logCmd("Enter text to lay along the arc: (type in the command line, empty Enter = cancel)");
+        pendingText = (s) => {
+          pendingText = null;
+          if (!s || !arc) {
+            logCmd("ARCTEXT: cancelled.");
+            return;
+          }
+          const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
+          const h = span > 0 ? span / 100 : 2;
+          const res = P.arcText(arc, s, h);
+          if (!res || !res.entities.length) {
+            logCmd("ARCTEXT: could not lay text on that curve.");
+            return;
+          }
+          addEntities(res.entities);
+          logCmd(`ARCTEXT: ${res.entities.length} glyph(s) laid along the curve.`);
+          clearPickState();
+          setTool("select");
+          draw();
+        };
+        return true;
+      }
+      case "breakline": {
+        if (pick.stage === "p1") {
+          pick.p1 = { x: wp.x, y: wp.y };
+          pick.stage = "p2";
+          logCmd(pickPrompt());
+          return true;
+        }
+        if (!pick.p1) return true;
+        const ent = P.breakline(pick.p1, { x: wp.x, y: wp.y }, currentLayer);
+        addEntities([ent]);
+        logCmd("BREAKLINE: break symbol added.");
+        pick.p1 = null;
+        pick.stage = "p1";
+        logCmd(pickPrompt());
+        draw();
+        return true;
+      }
     }
   }
 
@@ -3738,6 +4298,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       modelIdx = M.buildIndex(modelEnts, modelBounds);
       layoutIdxCache.clear();
       hidden.clear();
+      fixedEnts.clear();
       for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
       markups = [];
       results = [];
@@ -4192,6 +4753,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ["divide", "Divide", "DIV"],
     ["measure", "Measure", "ME"],
     ["mleader", "MLeader", "MLD"],
+    ["txt2mtxt", "TXT2MTXT", "TXT2MTXT"],
+    ["explodetext", "ExplodeText", "EXPLODETEXT"],
+    ["textfit", "TextFit", "TEXTFIT"],
+    ["arctext", "ArcText", "ARCTEXT"],
+    ["textmask", "TextMask", "TEXTMASK"],
+    ["breakline", "Break-line", "BREAKLINE"],
+    ["laymrg", "Layer Merge", "LAYMRG"],
+    ["laydel", "Layer Delete", "LAYDEL"],
   ];
 
   /* Ribbon-style button / group builders (shared by buildBar + buildBar2) */
@@ -4551,6 +5120,144 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "",
         "",
         "output",
+      ) +
+      /* ── Parametric tab — geometric + dimensional constraints ── */
+      rg(
+        "Geometric",
+        rb("generative", "Auto Constrain", `data-a="con-auto"`, "Detect and exactify near-horizontal / near-vertical / concentric relations (AUTOCONSTRAIN)") +
+          rb("anchor", "Fix", `data-a="con-fix"`, "Pin objects — edits are refused until UNFIX (FIX)") +
+          rb("grid", "Horizontal", `data-a="con-hor"`, "Force the picked line level (HORIZONTAL)") +
+          rb("top", "Vertical", `data-a="con-ver"`, "Force the picked line plumb (VERTICAL)") +
+          rb("orthographic", "Perpendicular", `data-a="con-perp"`, "Make the second line perpendicular to the first (PERPENDICULAR)") +
+          rb("ramp", "Parallel", `data-a="con-par"`, "Make the second line parallel to the first (PARALLEL)") +
+          rb("circle", "Tangent", `data-a="con-tan"`, "Translate the line so it touches the circle exactly (TANGENT)") +
+          rb("donut", "Concentric", `data-a="con-conc"`, "Snap the second circle onto the first one's center (CONCENTRIC)") +
+          rb("conn", "Coincident", `data-a="con-coin"`, "Snap the second line's nearest endpoint onto the first (COINCIDENT)") +
+          rb("mirror", "Symmetric", `data-a="con-sym"`, "Mirror the first pick about the axis line picked second (SYMMETRIC)") +
+          rb("matchprop", "Equal", `data-a="con-eq"`, "Equalize lengths / radii of two objects (EQUAL)"),
+        "",
+        "",
+        "parametric",
+      ) +
+      rg(
+        "Dimensional",
+        rb("dim-linear", "DC Linear", `data-a="dc-linear"`, "Set a line to an exact length (DCLINEAR)") +
+          rb("circle", "DC Radius", `data-a="dc-radius"`, "Set a circle / arc to an exact radius (DCRADIUS)") +
+          rb("donut", "DC Diameter", `data-a="dc-dia"`, "Set a circle / arc to an exact diameter (DCDIAMETER)") +
+          rb("fillet", "DC Angular", `data-a="dc-ang"`, "Set the angle between two lines (DCANGULAR)"),
+        "",
+        "",
+        "parametric",
+      ) +
+      rg(
+        "Manage",
+        rb("tag", "Constraint Bar", `data-a="con-bar"`, "Show or hide the FIX constraint markers (CONSTRAINTBAR)", "on") +
+          rb("purge", "Unfix All", `data-a="con-unfixall"`, "Release every FIX constraint (DELCONSTRAINT)"),
+        "",
+        "",
+        "parametric",
+      ) +
+      /* ── Express Tools tab ── */
+      rg(
+        "Text",
+        tb("txt2mtxt", "text", "TXT2MTXT") +
+          tb("explodetext", "explode", "ExplodeText") +
+          tb("textfit", "bounds", "TextFit") +
+          tb("arctext", "ramp", "ArcText") +
+          tb("textmask", "wipeout", "TextMask"),
+        "",
+        "",
+        "express",
+      ) +
+      rg(
+        "Modify",
+        rb("slab", "Flatten", `data-a="flatten"`, "Set every object to Z = 0 (FLATTEN)") +
+          rb("purge", "Overkill", `data-a="overkill"`, "Delete duplicate / overlapping objects (OVERKILL)") +
+          tb("breakline", "break", "Break-line"),
+        "",
+        "",
+        "express",
+      ) +
+      rg(
+        "Layers",
+        tb("laymrg", "workset", "LayMrg") +
+          tb("laydel", "delete", "LayDel") +
+          rb("walk", "LayWalk", `data-a="laywalk"`, "Walk the drawing layer by layer (LAYWALK)") +
+          rb("clear", "LayFrz", `data-a="layfrz"`, "Freeze the layers of the selected objects (LAYFRZ)") +
+          rb("refresh", "LayThw", `data-a="laythw"`, "Thaw every frozen layer (LAYTHW)") +
+          tb("matchlayer", "matchprop", "Layer Match"),
+        "",
+        "",
+        "express",
+      ) +
+      rg(
+        "Tools",
+        rb("settings", "Command Aliases", `data-a="aliases"`, "Edit the command alias list (ALIASEDIT / KS)") +
+          rb("insulation", "Linetypes", `data-a="lt-mgr"`, "Linetype Manager (LT)"),
+        "",
+        "",
+        "express",
+      ) +
+      /* ── Collaborate tab ── */
+      rg(
+        "Publish",
+        rb("save", "Publish All", `data-a="publish"`, "Batch-write every open drawing to DWG (PUBLISH)") +
+          rb("print", "Plot…", `data-a="plot"`, "Plot this drawing to PDF / paper (PLOT)"),
+        "",
+        "",
+        "collaborate",
+      ) +
+      rg(
+        "Share",
+        rb("camera", "Share View", `data-a="shareview"`, "Export the current view as a PNG for CDE / email (SHAREVIEW)") +
+          rb("report", "DWG Version", `data-a="dwgversion"`, "Which DWG version is this file (DWGVERSION)"),
+        "",
+        "",
+        "collaborate",
+      ) +
+      rg(
+        "History",
+        rb("timeline", "Drawing History", `data-a="dwghistory"`, "Session command history + undo depth (DWGHISTORY)"),
+        "",
+        "",
+        "collaborate",
+      ) +
+      rg(
+        "Standards",
+        rb("check", "Check Standards", `data-a="checkstd"`, "Audit layers / linetypes / text styles (CHECKSTANDARDS)"),
+        "",
+        "",
+        "collaborate",
+      ) +
+      /* ── Manage tab additions — customization + standards ── */
+      rg(
+        "Customization",
+        rb("settings", "Aliases", `data-a="aliases"`, "Command alias editor (ALIASEDIT / KS)") +
+          rb("menu", "Ribbon", `data-a="ribbon-min"`, "Minimize or restore the ribbon (double-click a tab works too)") +
+          rb("crop", "Clean Screen", `data-a="cleanscreen"`, "Hide every chrome element (CLEANSCREEN)"),
+        "",
+        "",
+        "manage",
+      ) +
+      rg(
+        "CAD Standards",
+        rb("check", "Check Standards", `data-a="checkstd"`, "Audit layers / linetypes / text styles (CHECKSTANDARDS)"),
+        "",
+        "",
+        "manage",
+      ) +
+      /* ── View tab additions — palettes ── */
+      rg(
+        "Palettes",
+        rb("property", "Properties", `data-a="props"`, "Properties inspector (PROPERTIES / PR)") +
+          rb("schedules", "Layers", `data-a="lyr-mgr"`, "Layer Properties Manager (LA)") +
+          rb("insulation", "Linetypes", `data-a="lt-mgr"`, "Linetype Manager (LT)") +
+          rb("find", "Quick Select", `data-a="qselect"`, "Filter a selection by type / property (QSELECT)") +
+          rb("text", "Find Text", `data-a="find"`, "Find and replace text (FIND)") +
+          rb("bench", "QuickCalc", `data-a="cal"`, "Open the calculator (CAL / QUICKCALC)"),
+        "",
+        "",
+        "view",
       );
     tools.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => (b.onclick = () => setTool(b.dataset.t as Tool)));
 
@@ -4710,6 +5417,47 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       "dwg-tables": () => executeAutoCadCommand("DWGTABLES"),
       "dwg-census": () => executeAutoCadCommand("DWGCENSUS"),
       "dwg-thumb": () => executeAutoCadCommand("DWGTHUMB"),
+    });
+
+    /* ── Parametric / Express Tools / Collaborate actions ── */
+    Object.assign(act, {
+      // Parametric — one-shot geometric constraints
+      "con-auto": () => runAutoConstrain(),
+      "con-bar": () => toggleConBar(),
+      "con-unfixall": () => unfixAll(),
+      "con-hor": () => startConstraint("horizontal"),
+      "con-ver": () => startConstraint("vertical"),
+      "con-perp": () => startConstraint("perpendicular"),
+      "con-par": () => startConstraint("parallel"),
+      "con-tan": () => startConstraint("tangent"),
+      "con-conc": () => startConstraint("concentric"),
+      "con-coin": () => startConstraint("coincident"),
+      "con-sym": () => startConstraint("symmetric"),
+      "con-eq": () => startConstraint("equal"),
+      "con-fix": () => startConstraint("confix"),
+      "dc-linear": () => startConstraint("dclinear"),
+      "dc-radius": () => startConstraint("dcradius"),
+      "dc-dia": () => startConstraint("dcdiameter"),
+      "dc-ang": () => startConstraint("dcangular"),
+      // Express Tools — modify / layers
+      flatten: () => runFlatten(),
+      layfrz: () => runLayFrz(),
+      laythw: () => runLayThw(),
+      laywalk: () => openLayWalk(),
+      // Collaborate — publish / share / history / standards
+      publish: () => publishAll(),
+      shareview: () => shareView(),
+      dwghistory: () => openDwgHistory(),
+      checkstd: () => openCheckStandards(),
+      // Manage — customization
+      aliases: () => executeAutoCadCommand("KS"),
+      "ribbon-min": () => applyCadRibbonMinimized(!ribbonMinimized),
+      cleanscreen: () => executeAutoCadCommand("CLEANSCREEN"),
+      // panel buttons that forward to existing commands
+      overkill: () => executeAutoCadCommand("OVERKILL"),
+      props: () => executeAutoCadCommand("PROPERTIES"),
+      cal: () => executeAutoCadCommand("CAL"),
+      dwgversion: () => executeAutoCadCommand("DWGVERSION"),
     });
 
     tools.querySelectorAll<HTMLElement>("button[data-a]").forEach((b) => {
@@ -7102,6 +7850,43 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       } else logCmd("PEDIT options: J (join selection) · C (close) · O (open) · R (reverse).");
       return;
     }
+    /* ── Parametric tab — one-shot geometric + dimensional constraints ── */
+    if (cmd === "AUTOCONSTRAIN" || cmd === "ACON") { runAutoConstrain(); return; }
+    if (cmd === "CONSTRAINTBAR" || cmd === "CONBAR") { toggleConBar(); return; }
+    if (cmd === "DELCONSTRAINT" || cmd === "DELCON") { unfixAll(); return; }
+    if (cmd === "FIX" || cmd === "CONSTRAINTFIX") { setTool("confix"); return; }
+    if (cmd === "UNFIX" || cmd === "CONSTRAINTUNFIX") { setTool("confix"); return; }
+    if (cmd === "HORIZONTAL") { startConstraint("horizontal"); return; }
+    if (cmd === "VERTICAL") { startConstraint("vertical"); return; }
+    if (cmd === "PERPENDICULAR" || cmd === "PERP") { startConstraint("perpendicular"); return; }
+    if (cmd === "PARALLEL" || cmd === "PAR") { startConstraint("parallel"); return; }
+    if (cmd === "TANGENT" || cmd === "TAN") { startConstraint("tangent"); return; }
+    if (cmd === "CONCENTRIC" || cmd === "CENC") { startConstraint("concentric"); return; }
+    if (cmd === "COINCIDENT" || cmd === "COINC") { startConstraint("coincident"); return; }
+    if (cmd === "SYMMETRIC" || cmd === "SYM") { startConstraint("symmetric"); return; }
+    if (cmd === "EQUAL" || cmd === "EQ") { startConstraint("equal"); return; }
+    if (cmd === "DCLINEAR" || cmd === "DCLIN") { startConstraint("dclinear"); return; }
+    if (cmd === "DCRADIUS" || cmd === "DCRAD") { startConstraint("dcradius"); return; }
+    if (cmd === "DCDIAMETER" || cmd === "DCDIA") { startConstraint("dcdiameter"); return; }
+    if (cmd === "DCANGULAR" || cmd === "DCANG") { startConstraint("dcangular"); return; }
+    /* ── Express Tools tab ── */
+    if (cmd === "TXT2MTXT" || cmd === "TXT2MTEXT") { setTool("txt2mtxt"); return; }
+    if (cmd === "EXPLODETEXT" || cmd === "XTEXT") { setTool("explodetext"); return; }
+    if (cmd === "TEXTFIT" || cmd === "TFIT") { setTool("textfit"); return; }
+    if (cmd === "ARCTEXT" || cmd === "ARCALIGNEDTEXT") { setTool("arctext"); return; }
+    if (cmd === "TEXTMASK" || cmd === "TMASK") { setTool("textmask"); return; }
+    if (cmd === "FLATTEN" || cmd === "FLAT") { runFlatten(); return; }
+    if (cmd === "BREAKLINE" || cmd === "BRKLN") { setTool("breakline"); return; }
+    if (cmd === "LAYMRG" || cmd === "LAYMERGE") { setTool("laymrg"); return; }
+    if (cmd === "LAYDEL" || cmd === "LAYDELETE") { setTool("laydel"); return; }
+    if (cmd === "LAYWALK" || cmd === "LWALK") { openLayWalk(); return; }
+    if (cmd === "LAYFRZ" || cmd === "LFRZ") { runLayFrz(); return; }
+    if (cmd === "LAYTHW" || cmd === "LTHW") { runLayThw(); return; }
+    /* ── Collaborate tab ── */
+    if (cmd === "PUBLISH" || cmd === "PUB") { publishAll(); return; }
+    if (cmd === "SHAREVIEW" || cmd === "SHARE") { shareView(); return; }
+    if (cmd === "DWGHISTORY" || cmd === "HISTORY") { openDwgHistory(); return; }
+    if (cmd === "CHECKSTANDARDS" || cmd === "CHKSTD") { openCheckStandards(); return; }
     if (cmd === "CAL" || cmd === "QUICKCALC" || cmd === "QC") {
       const expr = trimmed.slice(parts[0].length).trim();
       if (!expr) logCmd("CAL: enter an expression — e.g. CAL 2*PI*25 · sin/cos/tan (degrees) · sqrt/abs/round/min/max.");
@@ -7224,6 +8009,81 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     helpEl?.remove();
     helpEl = null;
     cv.focus({ preventScroll: true });
+  }
+
+  /* ── Express Tools / Collaborate dialogs ── */
+
+  /** LAYWALK — walk the drawing layer by layer; close restores the previous visibility. */
+  function openLayWalk(): void {
+    if (!doc) return;
+    const prev = new Set(hidden);
+    const panel = openOverlay(
+      `<b style="font-size:15px;color:#38bdf8">LAYWALK — walk the drawing layer by layer</b>` +
+      `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;max-height:280px;overflow:auto">` +
+      doc.layers.map((l) => `<button data-lw="${escapeHtml(l.name)}" style="padding:5px 10px">${escapeHtml(l.name)}</button>`).join("") +
+      `</div>` +
+      `<div style="margin-top:12px;font-size:11px;color:#9aa4b2">Click layers to show only that layer (toggle = add / remove). Close restores what was visible before.</div>` +
+      `<div style="margin-top:12px;text-align:right"><button data-r="lw-close" style="padding:6px 14px">Close — restore all</button></div>`,
+    );
+    const walking = new Set<string>();
+    panel.querySelectorAll<HTMLButtonElement>("[data-lw]").forEach((b) => {
+      b.onclick = () => {
+        const n = b.dataset.lw!;
+        if (walking.has(n)) walking.delete(n);
+        else walking.add(n);
+        hidden.clear();
+        if (walking.size) {
+          for (const l of doc!.layers) if (!walking.has(l.name)) hidden.add(l.name);
+        } else {
+          for (const h of prev) hidden.add(h);
+        }
+        b.classList.toggle("on", walking.has(n));
+        draw();
+      };
+    });
+    panel.querySelector("[data-r=lw-close]")?.addEventListener("click", () => {
+      hidden.clear();
+      for (const h of prev) hidden.add(h);
+      closeOverlay();
+      draw();
+    });
+  }
+
+  /** DWGHISTORY — the session command history of this drawing (audit trail). */
+  function openDwgHistory(): void {
+    const lines = cmdHistEl ? Array.from(cmdHistEl.children).map((d) => d.textContent ?? "") : [];
+    const tail = lines.slice(-300).join("\n") || "(no commands run yet in this session)";
+    const panel = openOverlay(
+      `<b style="font-size:15px;color:#38bdf8">DWGHISTORY — session command history</b>` +
+      `<div style="font-size:11px;color:#9aa4b2;margin-top:4px">${escapeHtml(name || "Drawing")} · last ${Math.min(300, lines.length)} entries · ${undoStack.length} undo step(s) deep</div>` +
+      `<pre style="white-space:pre-wrap;font:11px/1.5 ui-monospace,monospace;background:#0b0d12;border:1px solid #2a3140;border-radius:8px;padding:12px;margin-top:12px;max-height:320px;overflow:auto">${escapeHtml(tail)}</pre>` +
+      `<div style="margin-top:12px;text-align:right"><button data-r="h-close" style="padding:6px 14px">Close</button></div>`,
+    );
+    panel.querySelector("[data-r=h-close]")?.addEventListener("click", closeOverlay);
+  }
+
+  /** CHECKSTANDARDS — audit layers / linetypes / text styles against the standard rules. */
+  function openCheckStandards(): void {
+    if (!doc) return;
+    const issues = P.checkStandards(doc);
+    const body = issues.length
+      ? issues
+          .map(
+            (i) =>
+              `<div style="display:flex;gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid #222a37">` +
+              `<span style="flex:none;font-weight:600;color:${i.severity === "error" ? "#f87171" : "#fbbf24"}">${i.severity === "error" ? "ERROR" : "WARN"}</span>` +
+              `<span>${escapeHtml(i.message)}</span></div>`,
+          )
+          .join("")
+      : `<div style="color:#4ade80;padding:8px 0">No standards problems found — layers, linetypes and text styles all resolve.</div>`;
+    const panel = openOverlay(
+      `<b style="font-size:15px;color:#38bdf8">CHECKSTANDARDS — drawing standards audit</b>` +
+      `<div style="font-size:11px;color:#9aa4b2;margin-top:4px">${escapeHtml(name || "Drawing")} · ${doc.layers.length} layers · ${ents.length} objects · ${issues.length} issue(s)</div>` +
+      `<div style="margin-top:12px;font-size:12px">${body}</div>` +
+      `<div style="margin-top:14px;text-align:right"><button data-r="s-close" style="padding:6px 14px">Close</button></div>`,
+    );
+    panel.querySelector("[data-r=s-close]")?.addEventListener("click", closeOverlay);
+    logCmd(`CHECKSTANDARDS: ${issues.length} issue(s) found — ${issues.filter((i) => i.severity === "error").length} error(s), ${issues.filter((i) => i.severity === "warning").length} warning(s).`);
   }
 
   function openOverlay(html: string): HTMLDivElement {
