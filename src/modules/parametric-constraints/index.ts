@@ -1,4 +1,5 @@
 export * from "./types";
+export * from "./solver-bridge";
 let installed = false;
 export function setupParametricConstraints() {
   if (installed) return; installed = true;

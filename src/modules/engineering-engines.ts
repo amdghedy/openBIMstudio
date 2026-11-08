@@ -18,6 +18,10 @@ import { solve, type Constraint, type SolverPoint, type SolveResult } from "./co
 import {
   solveAndApply, type WallLike,
 } from "./constraints";
+import { getAllConstraints } from "./parametric-constraints/types";
+import {
+  buildSystem, storedToSolverConstraints,
+} from "./parametric-constraints/solver-bridge";
 
 import {
   solveFrame, memberDeflectionProfile,
@@ -94,11 +98,26 @@ export function setupEngineeringEngines(): void {
       const result = solve(pts, cons);
       return { result, points: pts };
     },
-    /** Solve the current model's walls so coincident ends heal and lengths hold. */
+    /** Solve the current model's walls so coincident ends heal, locked
+     *  dimensions from the parametric-constraints store hold, and lengths
+     *  stay pinned. */
     solveWalls: (pinnedIds: string[] = []): { changed: number; result: SolveResult } => {
       const walls = wallsFromAuthoring();
       if (!walls.length) return { changed: 0, result: { status: "converged", iterations: 0, maxResidual: 0, dof: 0, ms: 0 } };
-      const out = solveAndApply(walls, pinnedIds);
+      // Stored locked-dimension / parallel / perpendicular constraints that
+      // reference two of these walls become extra solver equations. The
+      // all-segment point layout (2i start, 2i+1 end) matches buildSystem's
+      // invariant, so index spaces line up.
+      let extra: Constraint[] | undefined;
+      try {
+        const stored = getAllConstraints().filter((c) => c?.active);
+        if (stored.length) {
+          const sys = buildSystem(walls as Any[]);
+          const conv = storedToSolverConstraints(stored, sys);
+          if (conv.cons.length) extra = conv.cons;
+        }
+      } catch { /* stored constraints are an enhancement, never a blocker */ }
+      const out = solveAndApply(walls, pinnedIds, extra ? { extra } : {});
       if (out.changed) commitWalls();
       return { changed: out.changed, result: out.result };
     },

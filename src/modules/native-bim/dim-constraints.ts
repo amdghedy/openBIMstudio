@@ -51,6 +51,18 @@ export function applyDimConstraints(
     } else if (c.param === "sillHeight") {
       p.sillHeight = c.value;
       updates.push({ elementId: c.elementId, param: "sillHeight", value: c.value });
+    } else if (c.param === "angle" && p.start && p.end) {
+      // Rotate the end about the start to the locked plan angle (radians,
+      // CCW from +x with plan z as "up"), preserving the current length.
+      const [sx, sz] = p.start as [number, number];
+      const [ex, ez] = p.end as [number, number];
+      const len = Math.hypot(ex - sx, ez - sz);
+      if (len < 1e-9) { failures.push({ elementId: c.elementId, reason: "zero-length element" }); continue; }
+      p.end = [sx + Math.cos(c.value) * len, sz + Math.sin(c.value) * len];
+      updates.push({ elementId: c.elementId, param: "end", value: c.value });
+    } else if (c.param === "elevation") {
+      p.elevation = c.value;
+      updates.push({ elementId: c.elementId, param: "elevation", value: c.value });
     } else {
       failures.push({ elementId: c.elementId, reason: `unsupported param ${c.param}` });
     }
