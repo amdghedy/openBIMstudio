@@ -28,10 +28,25 @@ if (kind === "occt") {
   const r = occt[fn](bytes, null);
   const tris = (r.meshes ?? []).reduce((s, m) => s + (m.index?.array?.length ?? 0) / 3, 0);
   console.log(JSON.stringify({ file: path.basename(file), fn, success: r.success, meshes: (r.meshes ?? []).length, triangles: tris, hasRoot: !!r.root, keys: Object.keys(r.meshes?.[0] ?? {}), attrKeys: Object.keys(r.meshes?.[0]?.attributes ?? {}) }));
+  const bbox = (res) => { let mn = [1e300, 1e300, 1e300], mx = [-1e300, -1e300, -1e300]; for (const m of res.meshes ?? []) { const a = m.attributes.position.array; for (let i = 0; i < a.length; i += 3) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], a[i + k]); mx[k] = Math.max(mx[k], a[i + k]); } } return mx.map((v, k) => +(v - mn[k]).toFixed(4)); };
+  const units = {};
+  for (const u of ["millimeter", "meter"]) { try { const rr = occt[fn](bytes, { linearUnit: u }); units[u] = rr.success ? bbox(rr) : "failed"; } catch (e) { units[u] = "threw: " + e; } }
+  console.log(JSON.stringify({ file: path.basename(file), bboxDefault: bbox(r), bboxByLinearUnit: units }));
   if (!r.success || !tris) { console.error("no geometry decoded"); process.exit(1); }
 } else if (kind === "rhino") {
   const { dir, mod: factory } = loadUmd("rhino3dm", "rhino3dm.js");
   const rhino = await factory({ locateFile: (n) => path.join(dir, n) });
+  if (file) {
+    const real = rhino.File3dm.fromByteArray(new Uint8Array(fs.readFileSync(file)));
+    const objs = real.objects(); const types = {}; let meshVerts = 0, brepFaceMeshes = 0, brepFaces = 0;
+    for (let i = 0; i < objs.count; i++) {
+      const g = objs.get(i).geometry(); const t = String(g.objectType?.constructor?.name ?? "") + ":" + (g.objectType?.value ?? g.objectType); types[t] = (types[t] ?? 0) + 1;
+      if (g.vertices) meshVerts += g.vertices().count;
+      if (g.faces && g.objectType?.value === 16) for (let f = 0; f < g.faces().count; f++) { brepFaces++; const m = g.faces().get(f).getMesh(rhino.MeshType.Any); if (m) { brepFaceMeshes++; meshVerts += m.vertices().count; } }
+    }
+    console.log(JSON.stringify({ real: path.basename(file), objects: objs.count, types, brepFaces, brepFaceMeshes, meshVerts, units: real.settings?.().modelUnitSystem, layers: real.layers().count }));
+    process.exit(0);
+  }
   const doc = new rhino.File3dm();
   const info = { version: rhino.version?.() ?? null, geometry: [] };
   // Add a mesh through whichever constructor this build offers, write the file, read it back.

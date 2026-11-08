@@ -50,6 +50,11 @@ jobs:
           done
       - name: Smoke test rhino3dm (write and read back a .3dm)
         run: node scripts/vendor-smoke.mjs rhino
+      - name: Smoke test rhino3dm on sample .3dm files found in the upstream repositories
+        run: |
+          git clone --depth 1 https://github.com/mcneel/rhino3dm /tmp/rh-src
+          find /tmp/rh-src -type f -iname '*.3dm' -size -8M | sort | head -10
+          for f in $(find /tmp/rh-src -type f -iname '*.3dm' -size -8M | head -4); do node scripts/vendor-smoke.mjs rhino "$f" || echo "FAILED on $f"; done
       - name: Commit to a side branch (main is protected; merge it by pull request)
         run: |
           git config user.name "github-actions[bot]"
