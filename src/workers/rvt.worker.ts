@@ -5,7 +5,7 @@
  *
  *   main -> worker: { type: "parse", bytes: Uint8Array, largeModel?: boolean }
  *   worker -> main: { type: "progress", text } | { type: "stage", stage, done, total }
- *                 | { type: "ready", glb, diagnostics, phases, types } | { type: "error", message }
+ *                 | { type: "ready", glb, diagnostics, phases, types, propertyCount } | { type: "error", message }
  */
 import { decodeRevit, type RvtWasmApi } from "../modules/rvt/rvt-core";
 
@@ -26,7 +26,7 @@ self.addEventListener("message", async (ev: MessageEvent) => {
       step: (text) => send({ type: "progress", text }),
       stage: (stage, done, total) => send({ type: "stage", stage, done, total }),
     }, { largeModel: !!msg.largeModel });
-    send({ type: "ready", glb: r.glb, diagnostics: r.diagnostics, phases: r.phases, types: r.types }, [r.glb.buffer as ArrayBuffer]);
+    send({ type: "ready", glb: r.glb, diagnostics: r.diagnostics, phases: r.phases, types: r.types, propertyCount: r.propertyCount }, [r.glb.buffer as ArrayBuffer]);
   } catch (e) {
     send({ type: "error", message: e instanceof Error ? e.message : String(e) });
   }

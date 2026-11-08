@@ -32,7 +32,7 @@ const UNAVAILABLE =
   "Viewing Revit files directly is not installed on this deployment (the decoder was not built into it). " +
   "In Revit use File → Export → IFC and open the .ifc here instead, or ask the administrator to follow docs/RVT-VIEWER.md.";
 
-interface Ready { glb: Uint8Array; diagnostics: RvtDiagnostics }
+interface Ready { glb: Uint8Array; diagnostics: RvtDiagnostics; propertyCount: number }
 
 function decodeInWorker(bytes: Uint8Array, onProgress: (t: string) => void, largeModel: boolean): Promise<Ready> {
   return new Promise((resolve, reject) => {
@@ -42,7 +42,7 @@ function decodeInWorker(bytes: Uint8Array, onProgress: (t: string) => void, larg
       const m = ev.data;
       if (m?.type === "progress") onProgress(m.text);
       else if (m?.type === "stage") onProgress(`Decoding: ${m.stage}${m.total ? ` ${Math.round((m.done / m.total) * 100)}%` : ""}`);
-      else if (m?.type === "ready") { done(); resolve({ glb: m.glb, diagnostics: m.diagnostics }); }
+      else if (m?.type === "ready") { done(); resolve({ glb: m.glb, diagnostics: m.diagnostics, propertyCount: m.propertyCount ?? 0 }); }
       else if (m?.type === "error") { done(); reject(new Error(m.message)); }
     };
     w.onerror = (e) => { done(); reject(new Error(e.message || "The Revit decoder stopped unexpectedly.")); };
@@ -84,7 +84,10 @@ export async function openRevitFile(file: File): Promise<boolean> {
 
   const { importFiles } = await import("./file-interop");
   await importFiles([new File([result.glb as BlobPart], viewFileName(file.name), { type: "model/gltf-binary" })]);
-  notify("info", summary.headline + " View-only: no Revit parameters, and not part of clash tests.", { timeout: 16000 });
+  const how = result.propertyCount > 0
+    ? ` Click an element to see its properties; right-click it and choose “Make editable native twin” to get an editable copy (${result.propertyCount} elements have decoded properties).`
+    : " No element properties could be read from this file, so elements cannot be inspected; the geometry is view-only.";
+  notify("info", summary.headline + how + " The Revit view itself is not part of clash tests; twins are.", { timeout: 20000 });
   return true;
 }
 

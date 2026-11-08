@@ -125,6 +125,8 @@ function applyBIMIsoView() {
 function addAuxObject(obj: THREE.Object3D, label: string) {
   obj.name = label;
   auxGroup.add(obj);
+  // Revit view files carry per-element properties: enable click selection and Native Twin for them.
+  void import("./revit-view").then((m) => { if (m.hasRevitElements(obj)) { m.installRevitView(); m.syncTwinVisibility(); } }).catch(() => { /* optional */ });
   computeSceneBounds();
   fitAll();
   // Override the default fit view with a BIM-style isometric view

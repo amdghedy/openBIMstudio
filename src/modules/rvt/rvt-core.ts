@@ -65,6 +65,8 @@ export interface RvtDecodeResult {
   diagnostics: RvtDiagnostics;
   phases: unknown[];
   types: string[];
+  /** How many elements had their properties embedded in the glb (0 when extraction failed). */
+  propertyCount: number;
 }
 export interface DecodeHooks { step?(text: string): void; stage?(stage: string, done: number, total: number | null): void }
 
@@ -83,7 +85,15 @@ export function decodeRevit(api: RvtWasmApi, bytes: Uint8Array, hooks: DecodeHoo
   hooks.step?.("Building the 3D view");
   const glb = api.modelToGlb(res.model);
   if (!(glb instanceof Uint8Array) || glb.length < 12) throw new Error("The decoder produced no 3D data.");
-  return { glb, diagnostics: (res.diagnostics ?? {}) as RvtDiagnostics, phases: res.phases ?? [], types };
+  // Per-element properties travel INSIDE the glb (node extras), so they survive saving the
+  // project, reopening it and opening it on another device. Failure here must not lose the view.
+  let out = glb, propertyCount = 0;
+  try {
+    const infos = extractElementInfos(res.model);
+    const patched = embedElementInfo(glb, infos);
+    if (patched) { out = patched.glb; propertyCount = patched.count; }
+  } catch { /* geometry without properties is still useful */ }
+  return { glb: out, diagnostics: (res.diagnostics ?? {}) as RvtDiagnostics, phases: res.phases ?? [], types, propertyCount };
 }
 
 /* ── what the decoder reports about itself ── */
@@ -146,4 +156,219 @@ export function summarizeDiagnostics(d: RvtDiagnostics | undefined | null, drawn
 export function viewFileName(original: string): string {
   const base = original.replace(/\.(rvt|rfa|rte|rft)$/i, "").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 100) || "Revit model";
   return `${base} (Revit view).glb`;
+}
+
+
+/* ═══════════════════════════ element properties ═══════════════════════════ */
+
+export const FT = 0.3048;
+const PASCAL: Record<string, string> = Object.fromEntries(
+  ("IfcAirTerminal IfcAlarm IfcBeam IfcBuildingElementProxy IfcBuildingStorey IfcCableCarrierFitting IfcCableCarrierSegment IfcColumn IfcCovering IfcCurtainWall IfcDoor IfcDuctFitting IfcDuctSegment IfcElectricAppliance IfcFireSuppressionTerminal IfcFooting IfcFurniture IfcGrid IfcLightFixture IfcMember IfcOpeningElement IfcPipeFitting IfcPipeSegment IfcPlate IfcRailing IfcRamp IfcReinforcingBar IfcRoof IfcSanitaryTerminal IfcShadingDevice IfcSlab IfcSpace IfcStair IfcStairFlight IfcTransportElement IfcWall IfcWasteTerminal IfcWindow")
+    .split(" ").map((n) => [n.toUpperCase(), n]),
+);
+/** "IFCWALL" -> "IfcWall" for the classes the decoder emits; anything else is returned unchanged. */
+export function ifcClassName(raw: string): string { return PASCAL[String(raw).toUpperCase()] ?? String(raw); }
+
+export interface RvtPropertyGroup { name: string; rows: [string, string][] }
+export interface RvtElementInfo {
+  name: string;
+  ifcType: string;
+  elementId?: string;
+  globalId?: string;
+  predefinedType?: string;
+  storey?: string;
+  storeyElevationM?: number;
+  material?: string;
+  /** Revit placement, metres, in the file's own frame (Z up). */
+  locationM?: [number, number, number];
+  rotationDeg?: number;
+  /** Extrusion extents, metres. */
+  extentsM?: { width: number; depth: number; height: number };
+  groups: RvtPropertyGroup[];
+}
+
+const get = (o: any, k: string) => (o instanceof Map ? o.get(k) : o?.[k]);
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const m3 = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(3));
+
+/** One decoder PropertyValue ({kind, value}) as text: metric first, the file's imperial value in brackets. */
+export function formatPropertyValue(pv: any): string {
+  if (pv == null) return "";
+  const kind = String(get(pv, "kind") ?? ""), v = get(pv, "value");
+  const n = num(v);
+  switch (kind) {
+    case "Text": case "Label": case "Identifier": return String(v ?? "");
+    case "Integer": case "CountValue": return String(v);
+    case "Real": return n === null ? String(v) : String(Math.round(n * 1e6) / 1e6);
+    case "Boolean": return v ? "Yes" : "No";
+    case "Logical": return v === true ? "Yes" : v === false ? "No" : "Unknown";
+    case "LengthFeet": case "PositiveLengthFeet": return n === null ? String(v) : `${m3(n * FT)} m (${n.toFixed(3)} ft)`;
+    case "AreaSquareFeet": return n === null ? String(v) : `${m3(n * FT * FT)} m² (${n.toFixed(2)} sq ft)`;
+    case "VolumeCubicFeet": return n === null ? String(v) : `${m3(n * FT * FT * FT)} m³ (${n.toFixed(2)} cu ft)`;
+    case "AngleRadians": return n === null ? String(v) : `${(n * 180 / Math.PI).toFixed(1)}°`;
+    case "MassPounds": return n === null ? String(v) : `${(n * 0.45359237).toFixed(2)} kg (${n.toFixed(1)} lb)`;
+    case "TimeSeconds": return n === null ? String(v) : `${n} s`;
+    case "List": return Array.isArray(v) ? v.map(formatPropertyValue).join(", ") : String(v ?? "");
+    case "Enumerated": return Array.isArray(v) ? v.join(", ") : String(v ?? "");
+    default: return n === null ? `${v ?? ""}` : `${n} (${kind})`;
+  }
+}
+
+/** Per-element properties from the decoder's model, keyed by entity index (the glTF node's `entityIndex`). */
+export function extractElementInfos(model: any, cap = 100_000): Record<number, RvtElementInfo> {
+  const out: Record<number, RvtElementInfo> = {};
+  const entities: any[] = Array.isArray(model?.entities) ? model.entities : [];
+  const storeys: any[] = Array.isArray(model?.building_storeys) ? model.building_storeys : [];
+  const materials: any[] = Array.isArray(model?.materials) ? model.materials : [];
+  const guids = model?.global_ids?.elements;
+  let n = 0;
+  for (let i = 0; i < entities.length && n < cap; i++) {
+    const e = entities[i];
+    if (get(e, "kind") !== "BuildingElement") continue;
+    const ifcType = ifcClassName(String(get(e, "ifc_type") ?? ""));
+    const info: RvtElementInfo = { name: String(get(e, "name") ?? "") || ifcType, ifcType, groups: [] };
+    const tag = get(e, "type_guid"); if (tag != null && tag !== "") info.elementId = String(tag);
+    const gid = guids instanceof Map ? guids.get(i) : guids?.[i]; if (gid) info.globalId = String(gid);
+    const pt = get(e, "predefined_type"); if (pt) info.predefinedType = String(pt);
+    const si = num(get(e, "storey_index"));
+    if (si !== null && storeys[si]) {
+      info.storey = String(get(storeys[si], "name") ?? "");
+      const el = num(get(storeys[si], "elevation_feet")); if (el !== null) info.storeyElevationM = Math.round(el * FT * 1000) / 1000;
+    }
+    const mi = num(get(e, "material_index"));
+    if (mi !== null && materials[mi]) info.material = String(get(materials[mi], "name") ?? "");
+    const loc = get(e, "location_feet");
+    if (Array.isArray(loc) && loc.length === 3 && loc.every((x) => num(x) !== null)) info.locationM = loc.map((x: number) => Math.round(x * FT * 1000) / 1000) as [number, number, number];
+    const rot = num(get(e, "rotation_radians")); if (rot !== null) info.rotationDeg = Math.round(rot * 180 / Math.PI * 10) / 10;
+    const ex = get(e, "extrusion");
+    if (ex) {
+      const w = num(get(ex, "width_feet")), d = num(get(ex, "depth_feet")), h = num(get(ex, "height_feet"));
+      if (w !== null && d !== null && h !== null) info.extentsM = { width: Math.round(w * FT * 1000) / 1000, depth: Math.round(d * FT * 1000) / 1000, height: Math.round(h * FT * 1000) / 1000 };
+    }
+    const ps = get(e, "property_set");
+    if (ps) {
+      const props: any[] = get(ps, "properties") ?? [];
+      const rows: [string, string][] = props.map((p) => [String(get(p, "name") ?? ""), formatPropertyValue(get(p, "value"))]);
+      if (rows.length) info.groups.push({ name: String(get(ps, "name") ?? "Properties"), rows });
+    }
+    out[i] = info; n++;
+  }
+  return out;
+}
+
+/* ── GLB patching: add `extras.revit` to each element node ── */
+const JSON_CHUNK = 0x4e4f534a;
+
+export function readGlbJson(glb: Uint8Array): { json: any; rest: Uint8Array } | null {
+  if (glb.length < 20) return null;
+  const dv = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+  if (dv.getUint32(0, true) !== 0x46546c67 /* glTF */ || dv.getUint32(4, true) !== 2) return null;
+  const len = dv.getUint32(12, true);
+  if (dv.getUint32(16, true) !== JSON_CHUNK || 20 + len > glb.length) return null;
+  try { return { json: JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + len))), rest: glb.subarray(20 + len) }; } catch { return null; }
+}
+
+export function writeGlb(json: unknown, rest: Uint8Array): Uint8Array {
+  const text = new TextEncoder().encode(JSON.stringify(json));
+  const pad = (4 - (text.length % 4)) % 4;
+  const jsonLen = text.length + pad;
+  const total = 12 + 8 + jsonLen + rest.length;
+  const out = new Uint8Array(total);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, 0x46546c67, true); dv.setUint32(4, 2, true); dv.setUint32(8, total, true);
+  dv.setUint32(12, jsonLen, true); dv.setUint32(16, JSON_CHUNK, true);
+  out.set(text, 20); out.fill(0x20, 20 + text.length, 20 + jsonLen);
+  out.set(rest, 20 + jsonLen);
+  return out;
+}
+
+/** Returns a new glb whose element nodes carry their properties, or null when the glb cannot be read. */
+export function embedElementInfo(glb: Uint8Array, infos: Record<number, RvtElementInfo>): { glb: Uint8Array; count: number } | null {
+  const parsed = readGlbJson(glb);
+  if (!parsed) return null;
+  let count = 0;
+  for (const node of parsed.json.nodes ?? []) {
+    const idx = node?.extras?.entityIndex;
+    if (typeof idx === "number" && infos[idx]) { node.extras.revit = infos[idx]; count++; }
+  }
+  return count ? { glb: writeGlb(parsed.json, parsed.rest), count } : { glb, count: 0 };
+}
+
+/* ═══════════════════════ native twin input (pure) ═══════════════════════ */
+
+export interface MeshPart {
+  /** x,y,z triples in the mesh's own space */
+  positions: ArrayLike<number>;
+  /** triangle indices; absent = consecutive triples */
+  index?: ArrayLike<number> | null;
+  /** column-major 4x4 world matrix */
+  matrix: ArrayLike<number>;
+}
+export interface TwinGeometry {
+  /** triangle soup relative to `center` */
+  positions: number[];
+  center: [number, number, number];
+  size: [number, number, number];
+  min: [number, number, number];
+  max: [number, number, number];
+  triangleCount: number;
+}
+
+/** World-space triangle soup of one element (all its layer meshes) re-based on its bounding-box centre. */
+export function buildTwinGeometry(parts: MeshPart[]): TwinGeometry | null {
+  const world: number[] = [];
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (const part of parts) {
+    const p = part.positions, mx = part.matrix;
+    if (mx.length < 16) continue;
+    const tx = (i: number, out: number[]) => {
+      const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2];
+      out[0] = mx[0] * x + mx[4] * y + mx[8] * z + mx[12];
+      out[1] = mx[1] * x + mx[5] * y + mx[9] * z + mx[13];
+      out[2] = mx[2] * x + mx[6] * y + mx[10] * z + mx[14];
+    };
+    const vcount = Math.floor(p.length / 3);
+    const idx = part.index;
+    const tcount = Math.floor((idx ? idx.length : vcount) / 3);
+    const a = [0, 0, 0], b = [0, 0, 0], c = [0, 0, 0];
+    for (let t = 0; t < tcount; t++) {
+      const i0 = idx ? idx[t * 3] : t * 3, i1 = idx ? idx[t * 3 + 1] : t * 3 + 1, i2 = idx ? idx[t * 3 + 2] : t * 3 + 2;
+      if (i0 >= vcount || i1 >= vcount || i2 >= vcount) continue;
+      tx(i0, a); tx(i1, b); tx(i2, c);
+      if (![...a, ...b, ...c].every(Number.isFinite)) continue;
+      // drop zero-area triangles
+      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+      const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+      if (cx * cx + cy * cy + cz * cz < 1e-18) continue;
+      for (const v of [a, b, c]) {
+        world.push(v[0], v[1], v[2]);
+        for (let k = 0; k < 3; k++) { if (v[k] < min[k]) min[k] = v[k]; if (v[k] > max[k]) max[k] = v[k]; }
+      }
+    }
+  }
+  if (world.length < 9) return null;
+  const center: [number, number, number] = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+  const positions = new Array<number>(world.length);
+  for (let i = 0; i < world.length; i += 3) { positions[i] = world[i] - center[0]; positions[i + 1] = world[i + 1] - center[1]; positions[i + 2] = world[i + 2] - center[2]; }
+  return { positions, center, size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]], min, max, triangleCount: world.length / 9 };
+}
+
+/** The Native Twin's property sets: every decoded group, plus an identity group naming where it came from. */
+export function twinPropertySets(info: RvtElementInfo, sourceFile: string): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {};
+  const id: Record<string, string> = { "Source": `Revit file “${sourceFile}” (decoded read-only)`, "IFC class": info.ifcType };
+  if (info.elementId) id["Revit element id"] = info.elementId;
+  if (info.globalId) id["GlobalId"] = info.globalId;
+  if (info.predefinedType) id["Predefined type"] = info.predefinedType;
+  if (info.storey) id["Level"] = info.storeyElevationM !== undefined ? `${info.storey} (${info.storeyElevationM} m)` : info.storey;
+  if (info.material) id["Material"] = info.material;
+  out["Revit_Source"] = id;
+  for (const g of info.groups) out[g.name] = { ...(out[g.name] ?? {}), ...Object.fromEntries(g.rows) };
+  return out;
+}
+
+/** True for the glTF node extras this feature writes. */
+export function isRevitNodeData(u: any): u is { entityIndex: number; ifcType: string; revit: RvtElementInfo } {
+  return !!u && typeof u.entityIndex === "number" && !!u.revit && typeof u.revit.name === "string";
 }

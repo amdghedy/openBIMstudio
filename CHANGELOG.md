@@ -11,6 +11,12 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Revit view: select, inspect, make editable (experimental)
+- Click an element of an opened `.rvt` / `.rfa` to select it and see the properties the decoder read (identity, level, material, placement and size, property sets; metric with the file's imperial value alongside). Properties are embedded in the 3D file itself, so they survive saving the project, reopening it and opening it on another device.
+- Right-click an element → **Make editable native twin**: creates a real authored element (same path as IFC Native Twins) with the element's triangles and properties; the Revit source is hidden while the twin exists and returns if the twin is deleted. Twins take part in clash tests, schedules and edits like any native element.
+- The twin is a tessellated copy, not Revit's parametric definition, and nothing is written back to the `.rvt`. Only properties the decoder can read are shown.
+- Verified with the real WebAssembly decoder on a synthetic wall (its properties match the decoder's own info panel). Not yet exercised on a real project file in a browser.
+
 ### View Revit files (experimental, view only)
 - Open `.rvt` / `.rfa` files for viewing, decoded inside the browser tab (nothing uploaded) by the third-party rvt-rs reader compiled to WebAssembly. Entry points: drag and drop / Open, File tab → View Revit File, command palette.
 - Every open states the decoder's own confidence; a file that decodes to structure only is reported as "nothing to draw", not as success. Result is view-only geometry (no Revit parameters, not in clash tests).

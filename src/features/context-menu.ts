@@ -8,6 +8,7 @@ import {
   setAuthoringTool,
   setSelectedAuthored,
   pickAuthoredElementAt,
+  pickAuthoredHitAt,
 } from "./authoring";
 import { beginEdit, beginEditFromSelection, openFragEditPanel } from "./frag-edit";
 import { buildContextMenu, type MenuItem } from "./context-menu-model";
@@ -131,12 +132,22 @@ async function resolveLinkedSelection(e?: MouseEvent): Promise<Record<string, Se
 }
 
 async function openCtxMenu(e: MouseEvent) {
-  const snap = await resolveLinkedSelection(e);
+  // An element of an opened Revit file under the cursor gets its own menu (Make editable native twin).
+  let revitItems: MenuItem[] | null = null;
+  try {
+    const rv = await import("./revit-view");
+    const hit = rv.pickRevitAt(e);
+    if (hit) {
+      const a = pickAuthoredHitAt(e);              // a nearer authored element (e.g. an existing twin) wins
+      if (!(a && a.distance < hit.distance)) { rv.selectRevitElement(hit); revitItems = rv.revitMenuItems(hit) as MenuItem[]; }
+    }
+  } catch { /* the Revit menu is optional */ }
+  const snap = revitItems ? {} as Record<string, Set<number>> : await resolveLinkedSelection(e);
   const authoredIds = getAuthoredSelection(); // read AFTER resolving: a right-click may have selected one
   const actionCount = Object.values(snap).reduce((a, v) => a + (v?.size ?? 0), 0);
 
   const have = new Set(listBimCommands().map((c) => c.id));
-  const items: MenuItem[] = buildContextMenu({
+  const items: MenuItem[] = revitItems ?? buildContextMenu({
     authoredCount: authoredIds.length,
     linkedCount: actionCount,
     clipboardCount: getModifyClipboardCount(),
