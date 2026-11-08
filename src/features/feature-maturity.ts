@@ -51,6 +51,31 @@ export const MATURITY_STATUSES: readonly MaturityStatus[] = [
 
 export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
   {
+    id: "schedule-import-formats",
+    area: "4D/5D scheduling",
+    status: "experimental",
+    source: ["src/modules/schedule-4d/msproject-parser.ts", "src/modules/schedule-4d/csv-schedule.ts", "src/modules/schedule-4d/p6-parser.ts"],
+    evidence: ["tests/schedule-import.test.cjs", "tests/schedule-4d.test.cjs"],
+    limitations: [
+      "Microsoft Project XML and CSV readers are tested against hand-written fixtures only, never a file exported by real MS Project; binary .mpp is not supported",
+      "Lags become calendar days (working calendars are not applied) and MSPDI cost is assumed to be stored in hundredths of the currency unit",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "gis-site-context",
+    area: "Interoperability",
+    status: "experimental",
+    source: ["src/modules/gis/gis-core.ts", "src/features/gis-import.ts"],
+    evidence: ["tests/gis-core.test.cjs"],
+    limitations: [
+      "GeoJSON and Shapefile open as flat outlines on the ground plane, centred at the model origin: context only, not georeferenced to the model and not part of clash tests",
+      "Lon/lat data uses an equirectangular approximation; projected data is assumed to be in metres because the .prj file is not read, so the CRS and units are not verified",
+      "Tested on hand-built files, not on real municipal datasets; the UI path was never run in a real browser",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "revit-view-only",
     area: "Interoperability",
     status: "experimental",

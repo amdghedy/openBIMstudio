@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### GIS site context (experimental)
+- **GeoJSON and Shapefile** (`.geojson`, `.shp` with optional `.dbf`) open from Open File as flat outlines on the ground plane. Context only: not georeferenced to the model, `.prj` not read. Tested on hand-built files only.
+
 ### 4D/5D schedule import (experimental)
 - **Microsoft Project XML (MSPDI)** and **CSV task schedules** can be imported in the timeline panel next to Primavera P6. The format is detected from the content. Binary `.mpp` is not supported. Tested only against hand-written fixtures, not files from real MS Project.
 

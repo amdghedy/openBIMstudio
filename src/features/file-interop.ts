@@ -7,7 +7,7 @@ import { markDirty } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
 
 export const ACCEPT_ALL =
-  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp";
+  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp,.geojson,.shp,.dbf";
 
 const DESKTOP_ONLY: Record<string, string> = {
   rvt: "BIM files cannot be converted in the browser.\n\nIn BIM: File → Export → IFC → export the model, then import the .ifc here.",
@@ -148,6 +148,12 @@ export async function restoreAux(blob: Blob, name: string, modelId?: string) {
     return;
   }
   const buf = await blob.arrayBuffer();
+  if (/\.(geojson|shp)$/i.test(name)) {
+    const { openGis } = await import("./gis-import");
+    const r = openGis(buf, name);
+    if (r.object) addAuxObject(r.object, name);
+    return;
+  }
   const obj = await parseModelBytes(buf, name);
   if (obj) addAuxObject(obj, name);
 }
@@ -238,6 +244,26 @@ export async function importFiles(files: File[]) {
         // View-only, decoded in the browser by the rvt-rs WebAssembly reader (docs/RVT-VIEWER.md).
         const { openRevitFile, rvtDecoderAvailable } = await import("./rvt-viewer");
         if (await rvtDecoderAvailable()) { await openRevitFile(file); continue; }
+      }
+
+      if (e === "geojson" || e === "shp") {
+        // Site context (GeoJSON / Shapefile): flat overlay, see docs/COMPATIBILITY.md. A .dbf with the same base name is picked up for attributes.
+        const { openGis } = await import("./gis-import");
+        const base = file.name.replace(/\.[^.]+$/, "").toLowerCase();
+        const sib = e === "shp" ? files.find((f) => ext(f.name) === "dbf" && f.name.replace(/\.[^.]+$/, "").toLowerCase() === base) : undefined;
+        const buf = await file.arrayBuffer();
+        const r = openGis(buf, file.name, sib ? await sib.arrayBuffer() : undefined);
+        if (r.object) {
+          addAuxObject(r.object, file.name);
+          (ctx.features.projects as any)?.onModelImported?.(`aux-${uid()}`, file.name, new Uint8Array(buf));
+        }
+        uiAlert(r.message);
+        continue;
+      }
+      if (e === "dbf" || e === "shx" || e === "prj" || e === "cpg") {
+        if (files.some((f) => ext(f.name) === "shp")) continue; // companion of a shapefile opened in the same batch
+        uiAlert(`".${e}" is a shapefile companion file. Open the .shp (optionally together with its .dbf) instead.`);
+        continue;
       }
 
       if (DESKTOP_ONLY[e]) { uiAlert(DESKTOP_ONLY[e]); continue; }

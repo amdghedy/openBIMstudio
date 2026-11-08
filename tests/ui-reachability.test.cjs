@@ -67,4 +67,9 @@ t("Revit view: routed from import, ribbon and palette entry points, honest fallb
   must(/not installed on this deployment/.test(read("src/features/rvt-viewer.ts")), "missing-decoder message missing");
   must(/Revit Browser/.test(read("src/shell/ribbon.ts")) && /revit\.browser/.test(read("src/features/command-palette.ts")), "Revit browser has no ribbon button or palette command");
 });
+t("GIS and schedule imports: reachable from Open File and the timeline pickers", () => {
+  must(/\.geojson,\.shp/.test(read("src/features/file-interop.ts")), "Open File does not accept GeoJSON/Shapefile");
+  must(/gis-import/.test(read("src/features/file-interop.ts")), "import router does not open GIS files");
+  must(/\.xer,\.xml,\.txt,\.csv/.test(read("src/features/timeline-panel.ts")), "timeline picker does not accept CSV / MS Project XML");
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail ? 1 : 0);

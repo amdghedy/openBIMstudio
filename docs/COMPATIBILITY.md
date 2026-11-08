@@ -50,6 +50,8 @@ is the Phase 4 deliverable (`docs/INTEROPERABILITY_MATRIX.md`).
 | Primavera P6 (`.xer`, PMXML) | import | limited | `src/modules/schedule-4d/p6-parser.ts` | `test:schedule-4d` | Activities, WBS, dates, % complete, relationships and resource cost; calendars are not applied | No |
 | Microsoft Project XML (MSPDI, `.xml`) | import | experimental | `src/modules/schedule-4d/msproject-parser.ts` | `test:schedule-import` against a hand-written fixture, **not** a file exported by real MS Project | Summary tasks skipped; lags converted to calendar days (not working time); cost assumed to be hundredths of currency units; binary `.mpp` is not supported (save as XML) | No |
 | Task schedule CSV (`.csv`) | import | experimental | `src/modules/schedule-4d/csv-schedule.ts` | `test:schedule-import` | Needs name, start and finish/duration columns; predecessors as `A1;A2FS+2d`; dd/mm vs mm/dd ambiguity is flagged, use yyyy-mm-dd | No |
+| GeoJSON (`.geojson`) | import | experimental | `src/modules/gis/gis-core.ts` + `src/features/gis-import.ts` | `test:gis` on hand-built data | Flat outlines on the ground plane, centred at the model origin; WGS84 only (equirectangular); not georeferenced to the model | No |
+| Shapefile (`.shp` + optional `.dbf`) | import | experimental | same | `test:gis` on hand-built binary files | Point, polyline, polygon (Z/M read as 2D); MultiPatch skipped; `.prj` not read, so non-lon/lat data is assumed to be metres | No |
 
 ## Known non-goals and honest absences
 
