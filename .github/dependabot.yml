@@ -12,6 +12,9 @@ updates:
       # web-ifc is pinned together with the mirrored WebAssembly under public/web-ifc/ (tests/webifc-abi.test.cjs checks the
       # glue/wasm ABI). A bare version bump breaks it; update both together by hand.
       - dependency-name: web-ifc
+      # monaco-editor 0.57.x pulls a DOMPurify with critical advisories, which fails `npm audit` in CI. Revisit once it ships a fixed DOMPurify.
+      - dependency-name: monaco-editor
+        update-types: [version-update:semver-minor, version-update:semver-major]
       # TypeScript 7 changes the tsc CLI (TS5112: tsconfig ignored when files are passed), which the test
       # scripts rely on. Move to it deliberately, not through an automatic PR.
       - dependency-name: typescript
