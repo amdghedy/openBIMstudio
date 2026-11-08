@@ -1,5 +1,5 @@
 import { handleLinkedInRequest, LinkedInVault, type LinkedInEnv } from "./linkedin";
-import { AuthVault, googleStartUrl, googleCallback, googleSetupPage, googleStatus } from "./auth";
+import { AuthVault, googleStartUrl, googleCallback, googleSetupPage, googleStatus, googlePopupCallbackPage, sendResetEmail } from "./auth";
 
 /**
  * Open BIM Studio edge worker.
@@ -67,6 +67,10 @@ interface Env extends LinkedInEnv {
   /** Google OAuth credentials (Worker secrets — optional). */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  /** Transactional email for password resets (Worker secret — optional). When
+   *  absent, the forgot-password flow returns the one-time link to the UI. */
+  RESEND_API_KEY?: string;
+  RESEND_FROM?: string;
 }
 
 /** CORS-open so any deployment of the studio (Cloudflare, Vercel, Netlify, …)
@@ -209,6 +213,7 @@ export default {
       return Response.redirect(start, 302);
     }
     if (url.pathname === "/api/auth/google/callback") {
+      const popup = new URL(request.url).searchParams.get("state") === "popup";
       try {
         const info = await googleCallback(request, env);
         const stub = env.AUTH.get(env.AUTH.idFromName("global"));
@@ -217,14 +222,50 @@ export default {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ email: info.email, name: info.name, googleId: info.sub }),
         }));
-        if (!upsert.ok) return googleSetupPage(request, { reason: "Google sign-in could not create the account (vault unavailable).", status: 502 });
         const setCookie = upsert.headers.get("set-cookie") ?? "";
-        return new Response(null, { status: 302, headers: { location: "/", "set-cookie": setCookie } });
+        if (!upsert.ok) {
+          const reason = "Google sign-in could not create the account (vault unavailable).";
+          return popup
+            ? googlePopupCallbackPage(false, reason)
+            : googleSetupPage(request, { reason, status: 502 });
+        }
+        // Popup: tell the opener and close. Top-level: land with ?signedin=1 so
+        // the app greets the returning user and remembers the account.
+        return popup
+          ? googlePopupCallbackPage(true)
+          : new Response(null, { status: 302, headers: { location: "/?signedin=1", "set-cookie": setCookie } });
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : "error";
-        if (code === "google-not-configured") return googleSetupPage(request);
+        if (code === "google-not-configured") return popup ? googlePopupCallbackPage(false, "Google sign-in is not configured on this deployment.") : googleSetupPage(request);
         console.warn("[auth] google callback failed:", cause);
-        return googleSetupPage(request, { reason: `Google sign-in failed (${code}). Please try again.`, status: 502 });
+        const reason = `Google sign-in failed (${code}). Please try again.`;
+        return popup ? googlePopupCallbackPage(false, reason) : googleSetupPage(request, { reason, status: 502 });
+      }
+    }
+    if (url.pathname === "/api/auth/forgot" && request.method === "POST") {
+      // Orchestrated here (not the raw DO forward) so the worker can email the
+      // reset link when RESEND_API_KEY exists, or return the one-time link to
+      // the UI when the deployment has no mail delivery.
+      try {
+        const raw = await request.text();
+        const stub = env.AUTH.get(env.AUTH.idFromName("global"));
+        const doRes = await stub.fetch(new Request("https://do/api/auth/forgot", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: raw,
+        }));
+        const body = await doRes.json() as { ok?: boolean; hasAccount?: boolean; token?: string; error?: string } | null;
+        if (!doRes.ok || !body?.ok) return json({ error: body?.error || "Could not start the password reset." }, doRes.status);
+        if (body.hasAccount && body.token) {
+          const email = (((JSON.parse(raw || "{}") as { email?: string }).email ?? "")).trim().toLowerCase();
+          const resetUrl = `${url.origin}/?reset=${encodeURIComponent(body.token)}`;
+          const mailed = await sendResetEmail(env, email, resetUrl);
+          return json({ ok: true, mailSent: mailed, resetUrl: mailed ? undefined : resetUrl });
+        }
+        return json({ ok: true, mailSent: false });
+      } catch (cause) {
+        console.warn("[auth] forgot failed:", cause);
+        return json({ error: "Account service unavailable." }, 503);
       }
     }
     if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/projects")) {

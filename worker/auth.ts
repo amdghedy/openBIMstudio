@@ -11,16 +11,26 @@
  *   p:<email>:<projectId>          project meta {id,name,updatedAt,size,chunks}
  *   c:<email>:<projectId>:<nnnn>   base64 chunk of the .obsproj project file
  *   t:<email>:<minute>             login rate-limit marker
+ *   f:<email>:<minute>             forgot-password rate-limit marker
+ *   rt:<sha256(token)>             password-reset token {e,exp} — 30 min TTL,
+ *                                  single-use; only the SHA-256 is stored so a
+ *                                  vault snapshot cannot be replayed as a link
  *
  * API (all same-origin; cookies are HttpOnly so scripts can never read them):
  *   POST /api/auth/register   {email,password,name}
  *   POST /api/auth/login      {email,password}
  *   GET  /api/auth/me
  *   POST /api/auth/logout
+ *   POST /api/auth/forgot     {email} → creates a reset token; the worker
+ *                             emails it (RESEND_API_KEY) or returns a one-time
+ *                             link for deployments without mail delivery
+ *   POST /api/auth/reset      {token,password} → sets the new password and
+ *                             signs the user in (session cookie)
  *   GET  /api/auth/google/status      → {configured:boolean} — lets the UI
  *         grey out / explain Google sign-in before navigating away
  *   GET  /api/auth/google/start        → 302 Google consent, or a friendly
- *         HTML setup page when GOOGLE_CLIENT_ID/SECRET are not configured
+ *         HTML setup page when GOOGLE_CLIENT_ID/SECRET are not configured;
+ *         ?popup=1 marks the state so the callback can message the opener
  *   GET  /api/auth/google/callback     → upsert user, set cookie, 302 /
  *   GET  /api/projects                 → list of the signed-in user's cloud projects
  *   POST /api/projects                 → save {name, data(base64 .obsproj)} (upsert by name)
@@ -40,6 +50,8 @@ const CHUNK_B64 = 100_000;
 const MAX_PROJECT_B64 = 48 * 1024 * 1024; // ~36 MB raw project file
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_ATTEMPTS = 10;
+const FORGOT_MAX_PER_MIN = 5;
+const RESET_TTL_MS = 30 * 60 * 1000; // reset links live 30 minutes
 
 /** KV-style DO storage (matches the VisitCounter pattern). */
 interface AuthStorage {
@@ -125,6 +137,11 @@ function randomB64(bytes = 16): string {
   return b64encode(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
+async function sha256hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function validEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && email.length <= 254;
 }
@@ -165,6 +182,8 @@ export class AuthVault {
       if (path === "/api/auth/me" && request.method === "GET") return this.me(request);
       if (path === "/api/auth/logout" && request.method === "POST") return json({ ok: true }, 200, { "set-cookie": clearCookie() });
       if (path === "/api/auth/google-upsert" && request.method === "POST") return this.googleUpsert(request);
+      if (path === "/api/auth/forgot" && request.method === "POST") return this.forgotPassword(request);
+      if (path === "/api/auth/reset" && request.method === "POST") return this.resetPassword(request);
       if (path === "/api/projects" && request.method === "GET") return this.listProjects(request);
       if (path === "/api/projects" && request.method === "POST") return this.saveProject(request);
       if (path.startsWith("/api/projects/") && request.method === "GET") return this.loadProject(request, decodeURIComponent(path.slice("/api/projects/".length)));
@@ -287,6 +306,57 @@ export class AuthVault {
     await this.storage.put(key, user);
     const token = await this.signToken(email);
     return json({ ok: true }, 200, { "set-cookie": sessionCookie(token) });
+  }
+
+  // ── forgot / reset password ──────────────────────────────────────────────
+
+  /**
+   * Creates a single-use reset token for a password account. The DO returns
+   * the raw token to the worker only; the worker decides whether to email it
+   * (RESEND_API_KEY configured) or hand back a one-time link for deployments
+   * without mail delivery. Responses are uniform for unknown emails so the
+   * endpoint cannot enumerate accounts (the dev-link absence is the only hint,
+   * acceptable for a single-owner deployment and rate-limited per minute).
+   */
+  private async forgotPassword(request: Request): Promise<Response> {
+    const body = await request.json().catch(() => null) as { email?: string } | null;
+    const email = (body?.email ?? "").trim().toLowerCase();
+    if (!validEmail(email)) return json({ error: "Enter a valid email address." }, 400);
+    const minute = Math.floor(Date.now() / RATE_WINDOW_MS);
+    const rateKey = `f:${email}:${minute}`;
+    const attempts = (await this.storage.get<number>(rateKey)) ?? 0;
+    if (attempts >= FORGOT_MAX_PER_MIN) return json({ error: "Too many reset requests. Wait a minute and try again." }, 429);
+    await this.storage.put(rateKey, attempts + 1);
+    const user = await this.storage.get<UserRecord>(`u:${email}`);
+    if (!user || user.provider !== "password") return json({ ok: true, hasAccount: false });
+    const token = b64url(crypto.getRandomValues(new Uint8Array(32)));
+    await this.storage.put(`rt:${await sha256hex(token)}`, { e: email, exp: Date.now() + RESET_TTL_MS });
+    return json({ ok: true, hasAccount: true, token });
+  }
+
+  /** Consumes a reset token, sets the new password and signs the user in. */
+  private async resetPassword(request: Request): Promise<Response> {
+    const body = await request.json().catch(() => null) as { token?: string; password?: string } | null;
+    const token = (body?.token ?? "").trim();
+    const password = body?.password ?? "";
+    if (!token) return json({ error: "This reset link is missing its code — request a new one." }, 400);
+    if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
+    const recordKey = `rt:${await sha256hex(token)}`;
+    const record = await this.storage.get<{ e: string; exp: number }>(recordKey);
+    if (!record || typeof record.exp !== "number" || record.exp < Date.now()) {
+      return json({ error: "This reset link has expired or was already used — request a new one." }, 400);
+    }
+    const user = await this.storage.get<UserRecord>(`u:${record.e}`);
+    if (!user) return json({ error: "This account no longer exists." }, 400);
+    // Single-use: burn the token before writing anything else.
+    await this.storage.delete(recordKey);
+    const salt = randomB64(16);
+    user.salt = salt;
+    user.hash = await passwordHash(password, salt);
+    user.provider = "password";
+    await this.storage.put(`u:${user.email}`, user);
+    const session = await this.signToken(user.email);
+    return json({ ok: true, user: publicUser(user) }, 200, { "set-cookie": sessionCookie(session) });
   }
 
   // ── project storage ─────────────────────────────────────────────────────
@@ -451,7 +521,13 @@ export function googleSetupPage(request: Request, opts: { reason?: string; statu
 /** Build the Google consent redirect. Returns null when credentials are missing. */
 export function googleStartUrl(request: Request, env: AuthEnv): string | null {
   if (!env.GOOGLE_CLIENT_ID) return null;
-  const origin = new URL(request.url).origin;
+  const url = new URL(request.url);
+  const origin = url.origin;
+  // Popup flow: carry the marker in the OAuth `state` (Google echoes it back
+  // verbatim) so the callback can message + close the opener window instead
+  // of navigating the whole app away. `prompt=select_account` makes Google
+  // list the previously used accounts, speeding up repeat sign-ins.
+  const popup = url.searchParams.get("popup") === "1";
   const params = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID,
     redirect_uri: `${origin}/api/auth/google/callback`,
@@ -459,8 +535,56 @@ export function googleStartUrl(request: Request, env: AuthEnv): string | null {
     scope: "openid email profile",
     access_type: "online",
     prompt: "select_account",
+    state: popup ? "popup" : "app",
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
+/**
+ * Email the reset link through Resend when the deployment sets RESEND_API_KEY
+ * (optional). Returns false when mail delivery is not configured — the caller
+ * then falls back to showing the one-time link in the UI.
+ */
+export async function sendResetEmail(env: AuthEnv & { RESEND_API_KEY?: string; RESEND_FROM?: string }, to: string, resetUrl: string): Promise<boolean> {
+  if (!env.RESEND_API_KEY) return false;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        from: env.RESEND_FROM || "Open BIM Studio <onboarding@resend.dev>",
+        to: [to],
+        subject: "Reset your Open BIM Studio password",
+        html:
+          `<p>Hi,</p><p>Use this one-time link within <strong>30 minutes</strong> to choose a new password:</p>` +
+          `<p><a href="${esc(resetUrl)}">${esc(resetUrl)}</a></p>` +
+          `<p>If you didn't request this, you can safely ignore this email — your current password keeps working.</p>`,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tiny self-closing page returned to the OAuth popup after Google consent:
+ * it posts the result to the opener (same origin) and closes itself.
+ */
+export function googlePopupCallbackPage(ok: boolean, message = ""): Response {
+  const payload = JSON.stringify({ type: "obs-oauth", ok, message }).replace(/</g, "\\u003c");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Signing in…</title></head>
+<body style="font:14px system-ui;background:#0a0e14;color:#e2e8f0;display:grid;place-items:center;height:100vh;margin:0">
+<div style="text-align:center">
+  <p>${ok ? "Signed in — closing this window..." : (esc(message) || "Sign-in failed — closing this window...")}</p>
+  <p style="color:#64748b;font-size:12px">If this window doesn't close, close it and return to Open BIM Studio.</p>
+</div>
+<script>
+  try { window.opener && window.opener.postMessage(${payload}, window.location.origin); } catch (e) {}
+  setTimeout(function () { window.close(); }, 400);
+</script>
+</body></html>`;
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
 /** Exchange the consent code for the Google profile userinfo. Throws on failure. */

@@ -4,13 +4,19 @@
  * (desktop, tablet or phone browser).
  *
  * Backend: worker/auth.ts — AuthVault Durable Object on the same origin:
- *   POST /api/auth/register | login | logout, GET /api/auth/me
+ *   POST /api/auth/register | login | logout | forgot | reset, GET /api/auth/me
  *   GET  /api/auth/google/start → Google consent (when the deployment has
- *         GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET secrets configured)
+ *         GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET secrets configured); opened
+ *         as a popup that messages the opener and closes itself
  *   GET/POST /api/projects, GET/DELETE /api/projects/<id>
  *
  * The session lives in an HttpOnly cookie, so the page scripts can only ask
- * "am I signed in?" — the token itself is never readable from JS.
+ * "am I signed in?" — the token itself is never readable from JS. Returning
+ * users are signed in automatically for 30 days; the dialog also remembers
+ * the last used emails (localStorage) as one-click "Continue as" chips.
+ * Forgot password: POST /api/auth/forgot creates a single-use token; the
+ * worker emails the link (RESEND_API_KEY) or shows it inline, and
+ * /?reset=<token> opens the "choose a new password" dialog.
  *
  * UI:
  *   - An account button in the ribbon tab row (next to the brand) and in the
@@ -84,6 +90,17 @@ const STYLE = `
 .obs-acct-swap{background:transparent;border:0;color:#38bdf8;font:12px system-ui;cursor:pointer;
   text-align:center;padding:2px}
 .obs-acct-err{color:#fca5a5;font:12px system-ui;min-height:15px;white-space:pre-wrap}
+.obs-acct-ok{color:#86efac;font:12px/1.55 system-ui;white-space:pre-wrap}
+.obs-acct-ok a{color:#38bdf8;font-weight:600}
+.obs-acct-chip{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:999px;
+  border:1px solid rgba(56,189,248,.4);background:rgba(56,189,248,.1);color:#7dd3fc;
+  font:600 12px system-ui,sans-serif;cursor:pointer;max-width:100%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.obs-acct-chip:hover{background:rgba(56,189,248,.22)}
+.obs-acct-chips{display:flex;flex-wrap:wrap;gap:6px}
+.obs-acct-forgot{background:transparent;border:0;color:#94a3b8;font:12px system-ui;cursor:pointer;
+  text-align:center;padding:2px;text-decoration:underline;text-underline-offset:3px}
+.obs-acct-forgot:hover{color:#e2e8f0}
 .obs-acct-note{color:#64748b;font:11px/1.5 system-ui,sans-serif}
 .obs-acct-hint{border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);
   color:#fcd34d;font:11px/1.5 system-ui,sans-serif;border-radius:8px;padding:8px 10px}
@@ -147,6 +164,65 @@ function toast(kind: string, msg: string): void {
   } catch {
     console.log(`[cloud-acct] ${msg}`);
   }
+}
+
+// ── remembered logins (localStorage — one-click refill for returning users) ─
+
+const REMEMBER_KEY = "obs:acct:emails";
+
+function rememberedEmails(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(REMEMBER_KEY) ?? "[]") as unknown;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((x): x is string => typeof x === "string" && x.includes("@") && x.length <= 254).slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
+function rememberEmail(email: string): void {
+  const clean = email.trim().toLowerCase();
+  if (!clean.includes("@")) return;
+  const next = [clean, ...rememberedEmails().filter((e) => e !== clean)].slice(0, 3);
+  try {
+    localStorage.setItem(REMEMBER_KEY, JSON.stringify(next));
+  } catch { /* private browsing */ }
+}
+
+// ── Google OAuth popup ────────────────────────────────────────────────────
+
+let googleListenerReady = false;
+
+/**
+ * Opens the Google consent as a popup window: Google lists the previously
+ * used accounts (select_account), the callback page posts the result back to
+ * this window and closes itself — the app never navigates away. Falls back
+ * to the classic full-page redirect when the popup is blocked.
+ */
+function openGoogleOAuth(onDone?: (ok: boolean, message: string) => void): void {
+  if (!googleListenerReady) {
+    googleListenerReady = true;
+    window.addEventListener("message", (e) => {
+      if (e.origin !== location.origin) return;
+      const d = e.data as { type?: string; ok?: boolean; message?: string } | null;
+      if (!d || d.type !== "obs-oauth") return;
+      void refreshAccountState().then(() => {
+        remountAll();
+        const ok = Boolean(d.ok && currentUser);
+        if (ok) {
+          rememberEmail(currentUser!.email);
+          toast("success", `Welcome, ${buttonLabel()}! Signed in with Google.`);
+        } else if (d.ok) {
+          toast("error", "Google finished but the session did not stick — try again.");
+        } else {
+          toast("error", d.message || "Google sign-in failed.");
+        }
+        onDone?.(ok, d.message ?? "");
+      });
+    });
+  }
+  const popup = window.open("/api/auth/google/start?popup=1", "obsGoogleOAuth", "popup=yes,width=480,height=640");
+  if (!popup) window.location.href = "/api/auth/google/start"; // popup blocked → full-page flow
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -276,7 +352,7 @@ function buildMenu(menu: HTMLElement): void {
     menuItem(menu, "Continue with Google", () => {
       void (async () => {
         if (await googleConfigured()) {
-          window.location.href = "/api/auth/google/start";
+          openGoogleOAuth();
         } else {
           // Explains inside the dialog instead of navigating to a dead end.
           void openAuthDialog(false);
@@ -364,10 +440,43 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
   const nameInput = field(body, "Name", "text", "name");
   const emailInput = field(body, "Email", "email", "email");
   const passInput = field(body, "Password", "password", "current-password");
+
+  // Remembered logins — prefill the last email and offer one-click chips so
+  // returning users only type their password.
+  const remembered = rememberedEmails();
+  if (remembered.length) {
+    emailInput.value = remembered[0];
+    const chips = document.createElement("div");
+    chips.className = "obs-acct-chips";
+    for (const em of remembered) {
+      const chip = document.createElement("button");
+      chip.className = "obs-acct-chip";
+      chip.type = "button";
+      chip.textContent = `Continue as ${em}`;
+      chip.onclick = (e) => {
+        e.preventDefault();
+        emailInput.value = em;
+        err.textContent = "";
+        passInput.focus();
+      };
+      chips.appendChild(chip);
+    }
+    body.appendChild(chips);
+  }
+
   const err = document.createElement("div");
   err.className = "obs-acct-err";
   const submit = document.createElement("button");
   submit.className = "obs-acct-submit";
+  const forgot = document.createElement("button");
+  forgot.className = "obs-acct-forgot";
+  forgot.type = "button";
+  forgot.textContent = "Forgot password?";
+  forgot.onclick = (e) => {
+    e.preventDefault();
+    close();
+    void openForgotDialog(emailInput.value);
+  };
   const swap = document.createElement("button");
   swap.className = "obs-acct-swap";
   const google = document.createElement("a");
@@ -380,7 +489,10 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
     e.preventDefault();
     void (async () => {
       if (await googleConfigured()) {
-        window.location.href = "/api/auth/google/start";
+        // Popup window → Google account chooser → posts back + closes itself.
+        openGoogleOAuth((ok) => {
+          if (ok) close();
+        });
       } else {
         showGoogleSetupHint(google);
       }
@@ -393,6 +505,7 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
   function render(): void {
     nameInput.parentElement!.style.display = isRegister ? "" : "none";
     submit.textContent = isRegister ? "Create account" : "Sign in";
+    forgot.style.display = isRegister ? "none" : "";
     swap.textContent = isRegister
       ? "Already have an account? Sign in"
       : "New here? Create an account";
@@ -423,6 +536,7 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
         body: JSON.stringify(payload),
       });
       void res;
+      rememberEmail(email);
       await refreshAccountState();
       remountAll();
       close();
@@ -437,8 +551,20 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
   passInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") void doSubmit();
   });
+  emailInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      passInput.focus();
+    }
+  });
+  nameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      emailInput.focus();
+    }
+  });
 
-  body.append(err, submit, swap, google, note);
+  body.append(err, submit, forgot, swap, google, note);
   render();
   emailInput.focus();
   // If Google isn't configured, surface the amber note immediately so the
@@ -446,6 +572,167 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
   void googleConfigured().then((ok) => {
     if (!ok && document.contains(google)) showGoogleSetupHint(google);
   });
+}
+
+// ── forgot password ───────────────────────────────────────────────────────
+
+/** Step 1 of the reset: ask for the email and request a one-time reset link. */
+async function openForgotDialog(presetEmail = ""): Promise<void> {
+  const { body } = dialogShell("Reset your password");
+  const info = document.createElement("div");
+  info.className = "obs-acct-note";
+  info.textContent =
+    "Enter the email you signed up with — we create a one-time reset link that works for 30 minutes.";
+  const emailInput = field(body, "Email", "email", "email");
+  emailInput.value = presetEmail;
+  const out = document.createElement("div");
+  out.className = "obs-acct-err";
+  const submit = document.createElement("button");
+  submit.className = "obs-acct-submit";
+  submit.textContent = "Send reset link";
+  const back = document.createElement("button");
+  back.className = "obs-acct-swap";
+  back.textContent = "← Back to sign in";
+  back.onclick = (e) => {
+    e.preventDefault();
+    void openAuthDialog(false);
+  };
+  async function doSend(): Promise<void> {
+    submit.disabled = true;
+    out.textContent = "";
+    out.classList.remove("obs-acct-ok");
+    try {
+      const email = emailInput.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 254) {
+        out.textContent = "Enter a valid email address — for example you@example.com";
+        return;
+      }
+      const res = await api<{ ok: true; mailSent?: boolean; resetUrl?: string }>("/api/auth/forgot", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+      out.classList.add("obs-acct-ok");
+      if (res.mailSent) {
+        out.textContent = `Reset link sent to ${email} — check your inbox (and spam). It works once and expires in 30 minutes.`;
+      } else if (res.resetUrl) {
+        // No mail provider on this deployment: hand over the one-time link directly.
+        const label = document.createElement("div");
+        label.textContent =
+          "Email delivery isn't configured on this deployment, so your one-time reset link is right here:";
+        const link = document.createElement("a");
+        link.href = res.resetUrl;
+        link.textContent = "Open the password reset page →";
+        out.append(label, link);
+      } else {
+        // Uniform wording — never confirms whether the address exists. Points
+        // Google-only accounts at the Google button instead.
+        out.textContent =
+          "If that email has an account, its reset link has been created. Signed up with Google? Just use “Continue with Google”.";
+      }
+      submit.style.display = "none";
+      emailInput.parentElement!.style.display = "none";
+      info.textContent = "Keep this dialog open if you still need the link.";
+    } catch (e) {
+      out.textContent = e instanceof Error ? e.message : "Something went wrong.";
+    } finally {
+      submit.disabled = false;
+    }
+  }
+  submit.onclick = () => void doSend();
+  emailInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void doSend();
+    }
+  });
+  body.append(out, submit, back);
+  emailInput.focus();
+}
+
+/** Step 2 (landed from /?reset=<token>): pick a new password, auto sign-in. */
+async function openResetDialog(token: string): Promise<void> {
+  const { body, close } = dialogShell("Choose a new password");
+  const info = document.createElement("div");
+  info.className = "obs-acct-note";
+  info.textContent = "Your reset link is valid. Pick a new password (at least 6 characters) — you'll be signed in automatically.";
+  const passInput = field(body, "New password", "password", "new-password");
+  const confirmInput = field(body, "Repeat the new password", "password", "new-password");
+  const err = document.createElement("div");
+  err.className = "obs-acct-err";
+  const submit = document.createElement("button");
+  submit.className = "obs-acct-submit";
+  submit.textContent = "Save password & sign in";
+  async function doReset(): Promise<void> {
+    submit.disabled = true;
+    err.textContent = "";
+    try {
+      if (passInput.value.length < 6) {
+        err.textContent = "Password must be at least 6 characters.";
+        return;
+      }
+      if (passInput.value !== confirmInput.value) {
+        err.textContent = "The two passwords don't match.";
+        return;
+      }
+      await api<{ ok: true }>("/api/auth/reset", {
+        method: "POST",
+        body: JSON.stringify({ token, password: passInput.value }),
+      });
+      await refreshAccountState();
+      remountAll();
+      close();
+      toast("success", `Password updated — welcome back, ${buttonLabel()}!`);
+    } catch (e) {
+      err.textContent = e instanceof Error ? e.message : "Something went wrong.";
+    } finally {
+      submit.disabled = false;
+    }
+  }
+  submit.onclick = () => void doReset();
+  const onEnter = (e: KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void doReset();
+    }
+  };
+  passInput.addEventListener("keydown", onEnter);
+  confirmInput.addEventListener("keydown", onEnter);
+  body.append(err, submit);
+  passInput.focus();
+}
+
+// ── URL landings ──────────────────────────────────────────────────────────
+
+/**
+ * Reacts to the two app landings, then cleans the address bar:
+ *   /?reset=<token>  → open the "choose a new password" dialog (email link
+ *                      or the inline link from the forgot dialog)
+ *   /?signedin=1     → returning from the full-page Google callback: greet
+ *                      the user and remember the account
+ */
+export function handleAuthUrlParams(): void {
+  const url = new URL(location.href);
+  const clean = () => {
+    url.searchParams.delete("reset");
+    url.searchParams.delete("signedin");
+    history.replaceState(null, "", `${url.pathname}${url.searchParams.toString() ? `?${url.searchParams}` : ""}${url.hash}`);
+  };
+  const reset = url.searchParams.get("reset");
+  if (reset) {
+    clean();
+    void openResetDialog(reset);
+    return;
+  }
+  if (url.searchParams.get("signedin") === "1") {
+    clean();
+    void refreshAccountState().then(() => {
+      remountAll();
+      if (currentUser) {
+        rememberEmail(currentUser.email);
+        toast("success", `Welcome back, ${buttonLabel()}! Signed in with Google.`);
+      }
+    });
+  }
 }
 
 // ── cloud project vault ───────────────────────────────────────────────────
@@ -612,16 +899,20 @@ export function setupCloudAccount(): void {
   installed = true;
   ensureStyle();
   void refreshAccountState();
+  // Password-reset links (/?reset=…) and Google full-page returns (/?signedin=1).
+  handleAuthUrlParams();
   try {
     (ctx.features as Record<string, unknown>).cloudAccount = {
       open: () => void openCloudProjectsDialog(),
       save: () => void saveCurrentProjectToCloud(),
       signIn: () => void openAuthDialog(false),
+      forgot: () => void openForgotDialog(),
       refresh: () => refreshAccountState(),
     };
   } catch { /* features registry unavailable during early boot */ }
   try {
     registerCommand({ id: "acct.signin", label: "Account — Sign in / Create account", category: "Account", run: () => void openAuthDialog(!currentUser) });
+    registerCommand({ id: "acct.forgot", label: "Account — Forgot password (reset link)", category: "Account", run: () => void openForgotDialog() });
     registerCommand({ id: "acct.projects", label: "Cloud — My projects (open from any device)", category: "Account", run: () => void openCloudProjectsDialog() });
     registerCommand({ id: "acct.save", label: "Cloud — Save current project", category: "Account", run: () => void saveCurrentProjectToCloud() });
   } catch { /* command palette deferred */ }
