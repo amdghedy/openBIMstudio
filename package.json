@@ -216,7 +216,7 @@
     "@thatopen/components": "^3.4.9",
     "@thatopen/components-front": "^3.4.5",
     "@thatopen/fragments": "^3.4.7",
-    "@thatopen/ui": "^3.4.14",
+    "@thatopen/ui": "^3.4.19",
     "@thatopen/ui-obc": "^3.4.3",
     "@tldraw/editor": "^5.6.0",
     "axios": "^1.21.0",
