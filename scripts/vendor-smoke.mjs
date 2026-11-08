@@ -8,10 +8,19 @@ import { fileURLToPath } from "node:url";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const [kind, file] = process.argv.slice(2);
+import os from "node:os";
+// The repo's package.json is "type": "module", which would make Node parse these UMD files as ES modules.
+// Copy the vendored folder next to a CommonJS package.json to load it the way a classic <script> would.
+function loadUmd(sub, entry) {
+  const src = path.join(root, "public/vendor", sub);
+  const dst = fs.mkdtempSync(path.join(os.tmpdir(), "vendor-"));
+  for (const f of fs.readdirSync(src)) fs.copyFileSync(path.join(src, f), path.join(dst, f));
+  fs.writeFileSync(path.join(dst, "package.json"), '{"type":"commonjs"}');
+  return { dir: dst, mod: require(path.join(dst, entry)) };
+}
 
 if (kind === "occt") {
-  const dir = path.join(root, "public/vendor/occt");
-  const factory = require(path.join(dir, "occt-import-js.js"));
+  const { dir, mod: factory } = loadUmd("occt", "occt-import-js.js");
   const occt = await factory({ locateFile: (n) => path.join(dir, n) });
   const bytes = new Uint8Array(fs.readFileSync(file));
   const ext = path.extname(file).toLowerCase();
@@ -21,8 +30,7 @@ if (kind === "occt") {
   console.log(JSON.stringify({ file: path.basename(file), fn, success: r.success, meshes: (r.meshes ?? []).length, triangles: tris, hasRoot: !!r.root, keys: Object.keys(r.meshes?.[0] ?? {}), attrKeys: Object.keys(r.meshes?.[0]?.attributes ?? {}) }));
   if (!r.success || !tris) { console.error("no geometry decoded"); process.exit(1); }
 } else if (kind === "rhino") {
-  const dir = path.join(root, "public/vendor/rhino3dm");
-  const factory = require(path.join(dir, "rhino3dm.js"));
+  const { dir, mod: factory } = loadUmd("rhino3dm", "rhino3dm.js");
   const rhino = await factory({ locateFile: (n) => path.join(dir, n) });
   const doc = new rhino.File3dm();
   const info = { version: rhino.version?.() ?? null, geometry: [] };
