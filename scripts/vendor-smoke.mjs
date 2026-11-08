@@ -41,8 +41,9 @@ if (kind === "occt") {
     const objs = real.objects(); const types = {}; let meshVerts = 0, brepFaceMeshes = 0, brepFaces = 0;
     for (let i = 0; i < objs.count; i++) {
       const g = objs.get(i).geometry(); const t = String(g.objectType?.constructor?.name ?? "") + ":" + (g.objectType?.value ?? g.objectType); types[t] = (types[t] ?? 0) + 1;
+      if (g.objectType?.value === 1073741824) { let em = null; try { em = g.getMesh(rhino.MeshType.Any); } catch (e) { em = "threw " + e; } console.log(JSON.stringify({ extrusionGetMesh: em && typeof em === "object" ? "mesh with " + em.vertices().count + " vertices" : String(em) })); }
       if (g.vertices) meshVerts += g.vertices().count;
-      if (g.faces && g.objectType?.value === 16) for (let f = 0; f < g.faces().count; f++) { brepFaces++; const m = g.faces().get(f).getMesh(rhino.MeshType.Any); if (m) { brepFaceMeshes++; meshVerts += m.vertices().count; } }
+      if (g.faces && g.objectType?.value === 16) for (let f = 0; f < g.faces().count; f++) { brepFaces++; const m = g.faces().get(f).getMesh(rhino.MeshType.Any); if (m) { brepFaceMeshes++; meshVerts += m.vertices().count; if (brepFaceMeshes === 1) { const j = JSON.parse(m.toThreejsJSON()); const pa = j.data?.attributes?.position; console.log(JSON.stringify({ threejsJson: { type: j.metadata?.type ?? j.type, keys: Object.keys(j), dataKeys: Object.keys(j.data ?? {}), posItemSize: pa?.itemSize, posLen: pa?.array?.length, hasIndex: !!j.data?.index, indexLen: j.data?.index?.array?.length } })); } } }
     }
     console.log(JSON.stringify({ real: path.basename(file), objects: objs.count, types, brepFaces, brepFaceMeshes, meshVerts, units: real.settings?.().modelUnitSystem, layers: real.layers().count }));
     process.exit(0);
