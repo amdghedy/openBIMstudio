@@ -53,7 +53,19 @@ export default defineConfig({
       },
     },
   },
-  resolve: { dedupe: ["lit", "lit-html", "lit-element", "@lit/reactive-element"] },
+  resolve: {
+    dedupe: ["lit", "lit-html", "lit-element", "@lit/reactive-element"],
+    // three ≥ r187's TTFLoader imports opentype.js from a CDN at runtime —
+    // that makes the whole boot depend on third-party reachability and
+    // blanks the app wherever CDNs are blocked (corporate filters, some
+    // regional ISPs). Alias the CDN specifier to the same-origin package.
+    alias: [
+      {
+        find: "https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/+esm",
+        replacement: "opentype.js",
+      },
+    ],
+  },
   worker: {
     format: "es",
   },
