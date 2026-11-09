@@ -5898,10 +5898,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return { sp, wp: M.screenToWorld(view, sp.x, sp.y) };
   };
 
-  const snapped = (wp: M.Pt): M.Snap | null =>
-    !idx || !snapOn
-      ? null
-      : M.findSnap(idx, ents, wp.x, wp.y, 14 / view.scale, [...snapModes], visible);
+  const snapped = (wp: M.Pt): M.Snap | null => {
+    if (!idx || !snapOn) return null;
+    // AutoCAD: when a point is already picked, enable PERP against that base
+    const from = pts.length ? pts[pts.length - 1] : mod?.base ? mod.base : null;
+    return M.findSnap(idx, ents, wp.x, wp.y, 14 / view.scale, [...snapModes], visible, from);
+  };
 
   cv.addEventListener("pointerdown", (ev) => {
     if (!doc) return;

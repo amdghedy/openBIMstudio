@@ -1,4 +1,5 @@
-﻿/**
+import { getCachedFrag, setCachedFrag, hashFileKey } from "./revit-trust-gates";
+/**
  * IFC importer with 5 BIM-style positioning modes + live offset control.
  *
  * Position pinning
@@ -1305,6 +1306,24 @@ export async function convertIfcToFragBytes(
   const sizeMB = file.size / (1024 * 1024);
   const onProgress = opts?.onProgress ?? (() => {});
 
+  // Large-model path: reuse IndexedDB FRAG cache (Revit-class "convert once")
+  try {
+    const cacheKey = await hashFileKey(file);
+    const cached = await getCachedFrag(cacheKey);
+    if (cached && cached.byteLength > 32) {
+      onProgress(100, "loaded from FRAG cache");
+      return {
+        frag: cached,
+        fileName: file.name.replace(/\.ifc(zip)?$/i, "") + ".frag",
+        schema: "cached",
+        sizeMB,
+      };
+    }
+    (opts as any).__cacheKey = cacheKey;
+  } catch {
+    /* cache optional */
+  }
+
   if (sizeMB > ifcSettings.maxSizeMB) {
     throw new Error(
       `File is ${sizeMB.toFixed(0)} MB (hard limit ${ifcSettings.maxSizeMB} MB).`,
@@ -1358,6 +1377,12 @@ export async function convertIfcToFragBytes(
     }
     onProgress(100, "done");
     const base = file.name.replace(/\.ifc$/i, "") || "model";
+    try {
+      const ck = (opts as any)?.__cacheKey;
+      if (ck) await setCachedFrag(ck, frag);
+    } catch {
+      /* cache optional */
+    }
     return { frag, fileName: `${base}.frag`, schema, sizeMB };
   } finally {
     rejectActive = null;

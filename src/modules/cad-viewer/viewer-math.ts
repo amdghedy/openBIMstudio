@@ -514,9 +514,9 @@ export function pickEntity(idx: SpatialIndex, entities: DxfEntity[], x: number, 
 
 /* ───────────────────────── snapping ───────────────────────── */
 
-export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "intersection" | "nearest";
+export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "intersection" | "perpendicular" | "nearest";
 export interface Snap { x: number; y: number; kind: SnapKind }
-export const ALL_SNAPS: SnapKind[] = ["endpoint", "midpoint", "center", "quadrant", "intersection", "nearest"];
+export const ALL_SNAPS: SnapKind[] = ["endpoint", "midpoint", "center", "quadrant", "intersection", "perpendicular", "nearest"];
 
 function keyPoints(e: DxfEntity): Snap[] {
   switch (e.type) {
@@ -547,9 +547,34 @@ export function segSegIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
   return { x: a.x + t * r.x, y: a.y + t * r.y };
 }
 
-const TIER: Record<SnapKind, number> = { endpoint: 0, midpoint: 0, center: 0, quadrant: 0, intersection: 1, nearest: 2 };
+const TIER: Record<SnapKind, number> = { endpoint: 0, midpoint: 0, center: 0, quadrant: 0, intersection: 1, perpendicular: 1, nearest: 2 };
 
-export function findSnap(idx: SpatialIndex, entities: DxfEntity[], x: number, y: number, tol: number, modes: SnapKind[] = ALL_SNAPS, visible: (e: DxfEntity) => boolean = () => true): Snap | null {
+/**
+ * Object snap. Optional `fromPt` enables AutoCAD-style PERPENDICULAR: the foot
+ * of the perpendicular from `fromPt` onto nearby segments, when that foot is
+ * within `tol` of the cursor (so the user is aiming near the true foot).
+ */
+
+/** Closest point on segment AB to point P (clamped to the segment). */
+export function nearestOnSegment(p: Pt, a: Pt, b: Pt): Pt {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-24) return { x: a.x, y: a.y };
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+
+export function findSnap(
+  idx: SpatialIndex,
+  entities: DxfEntity[],
+  x: number,
+  y: number,
+  tol: number,
+  modes: SnapKind[] = ALL_SNAPS,
+  visible: (e: DxfEntity) => boolean = () => true,
+  fromPt?: Pt | null,
+): Snap | null {
   const on = new Set(modes);
   const ids = queryIndex(idx, x, y, tol).filter((i) => visible(entities[i]) && !isHatchEntity(entities[i]));
   let best: Snap | null = null, bd = tol;
@@ -566,6 +591,24 @@ export function findSnap(idx: SpatialIndex, entities: DxfEntity[], x: number, y:
     for (let i = 0; i < segs.length && i < 60; i++) for (let j = i + 1; j < segs.length && j < 60; j++) {
       const p = segSegIntersection(segs[i][0], segs[i][1], segs[j][0], segs[j][1]);
       if (p) consider({ ...p, kind: "intersection" });
+    }
+  }
+  // PERPENDICULAR (AutoCAD PERP): from the previous point drop a foot onto
+  // nearby segments; offer it when the cursor is close to that foot.
+  if (on.has("perpendicular") && fromPt) {
+    const segs: Array<[Pt, Pt]> = [];
+    for (const i of ids) segs.push(...entitySegments(entities[i]));
+    // Also query a wider band from fromPt for long lines
+    const wide = queryIndex(idx, fromPt.x, fromPt.y, Math.max(tol * 40, 1)).filter((i) => visible(entities[i]));
+    for (const i of wide) segs.push(...entitySegments(entities[i]));
+    const seen = new Set<string>();
+    for (const [a, b] of segs) {
+      const key = `${a.x},${a.y},${b.x},${b.y}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const foot = nearestOnSegment(fromPt, a, b);
+      if (!foot) continue;
+      consider({ x: foot.x, y: foot.y, kind: "perpendicular" });
     }
   }
   if (!best && on.has("nearest")) {

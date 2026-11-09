@@ -38,11 +38,17 @@ interface StrokeOpts {
   dashArray?: number[];
 }
 
+/** Plot-style lineweight floor so fine model lines remain visible on sheet PDF (Revit-like print). */
+const MIN_PRINT_LINEWEIGHT_PT = 0.18;
+
 function strokeOptions(stroke: StrokeStyle): StrokeOpts {
   const c = hexToRgb(stroke.color);
+  // Honour authoring stroke width; clamp to a readable print minimum (documentation chain).
+  const raw = Number(stroke.widthPt);
+  const thickness = Math.max(MIN_PRINT_LINEWEIGHT_PT, Number.isFinite(raw) && raw > 0 ? raw : 0.25);
   const opts: StrokeOpts = {
     color: rgb(c.r, c.g, c.b),
-    thickness: Math.max(0.1, stroke.widthPt),
+    thickness,
   };
   if (stroke.dash && stroke.dash.length) {
     opts.dashArray = stroke.dash.map((d) => d * MM_TO_PT);
