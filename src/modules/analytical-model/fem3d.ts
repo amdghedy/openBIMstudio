@@ -2,7 +2,7 @@
  * 3D frame finite-element solver (Euler-Bernoulli, 6 DOF per node).
  *
  * Extends the 2D solver (fem.ts) to full spatial frames — the analytical
- * model Revit maintains for structural columns / beams / braces:
+ * model RVT maintains for structural columns / beams / braces:
  *
  *   - 12×12 prismatic frame element stiffness: axial (EA), torsion (GJ)
  *     and biaxial bending (EIzz strong / EIyy weak) with consistent
