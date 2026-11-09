@@ -56,6 +56,7 @@ let hud: HTMLDivElement | null = null;
 let unsubGesture: (() => void) | null = null;
 let unsubHover: (() => void) | null = null;
 let unsubCancel: (() => void) | null = null;
+let unsubAuthoring: (() => void) | null = null;
 
 function ndcOf(event: MouseEvent | PointerEvent): THREE.Vector2 | null {
   const host = ctx.rightHost;
@@ -493,9 +494,11 @@ function disposeAdaptiveInteraction(): void {
   unsubGesture?.();
   unsubHover?.();
   unsubCancel?.();
+  unsubAuthoring?.();
   unsubGesture = null;
   unsubHover = null;
   unsubCancel = null;
+  unsubAuthoring = null;
   removeObject(previewRoot);
   removeObject(gripRoot);
   previewRoot = null;
@@ -574,6 +577,10 @@ export function setupAdaptiveInteraction(targetApi: Any): Any {
       backspacePlacementPoint();
     }
   });
+  const authoring = (ctx.features as Any)?.authoring;
+  if (typeof authoring?.onAuthoringChange === "function") {
+    unsubAuthoring = authoring.onAuthoringChange(() => refreshAdaptiveGrips());
+  }
   window.addEventListener("obs:authoring-changed", () => refreshAdaptiveGrips());
   window.addEventListener("resize", () => refreshAdaptiveGrips());
 
