@@ -62,10 +62,10 @@ t("Earlier features stay reachable: plan command line, DWG version, place option
 });
 t("Revit view: routed from import, ribbon and palette entry points, honest fallback when the decoder is absent", () => {
   must(/rvt-viewer/.test(read("src/features/file-interop.ts")), "import router does not open Revit files");
-  must(/View Revit File/.test(read("src/shell/ribbon.ts")), "ribbon button missing");
+  must(/View RVT Model/.test(read("src/shell/ribbon.ts")), "ribbon button missing");
   must(/file\.view-rvt/.test(read("src/features/command-palette.ts")), "palette command missing");
   must(/not installed on this deployment/.test(read("src/features/rvt-viewer.ts")), "missing-decoder message missing");
-  must(/Revit Browser/.test(read("src/shell/ribbon.ts")) && /revit\.browser/.test(read("src/features/command-palette.ts")), "Revit browser has no ribbon button or palette command");
+  must(/RVT Model Browser/.test(read("src/shell/ribbon.ts")) && /revit\.browser/.test(read("src/features/command-palette.ts")), "Revit browser has no ribbon button or palette command");
 });
 t("GIS and schedule imports: reachable from Open File and the timeline pickers", () => {
   must(/\.geojson,\.shp/.test(read("src/features/file-interop.ts")), "Open File does not accept GeoJSON/Shapefile");

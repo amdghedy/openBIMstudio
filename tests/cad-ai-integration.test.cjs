@@ -66,7 +66,7 @@ t("ai-chat: host switching API exported", () => {
 
 t("ai-chat: drawing-mode addendum appended while docked", () => {
   assert.ok(chat.includes("const CAD_AI_ADDENDUM"), "CAD_AI_ADDENDUM missing");
-  assert.ok(chat.includes("## 2D drawing mode"), "addendum heading missing");
+  assert.ok(chat.includes("## 2D drawing drafting mode"), "addendum heading missing");
   assert.ok(chat.includes("Call get_cad_state first"), "addendum must teach get_cad_state");
   assert.ok(chat.includes("run_cad_command"), "addendum must teach run_cad_command");
   assert.ok(
