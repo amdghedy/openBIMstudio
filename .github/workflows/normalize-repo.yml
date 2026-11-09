@@ -1,8 +1,12 @@
-name: Repository terminology normalization
+name: Repository text cleanup
 
 on:
-  # One-time maintenance only. Run manually after reviewing the normalization script.
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/normalize-repo.yml"
+      - "scripts/normalize-repo-terms.mjs"
 
 permissions:
   contents: write
@@ -27,5 +31,5 @@ jobs:
             echo "No repository changes were required."
             exit 0
           fi
-          git commit -m "chore: normalize repository vocabulary"
+          git commit -m "chore: clean repository terminology"
           git push origin HEAD:main
