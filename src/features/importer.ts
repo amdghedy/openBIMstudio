@@ -22,6 +22,7 @@ import {
 } from "./camera-tools";
 import { refreshModelSelectionUI } from "./clash";
 import { uiAlert } from "../core/notify";
+import { fmtNumber } from "../core/region";
 
 // Injected by vite.config.ts (define) from node_modules/web-ifc/package.json.
 // The WASM is served from /web-ifc/<version>/ so a build can never be paired
@@ -689,7 +690,7 @@ function refreshTaskRow(t: ImportTask) {
   const col = statusColor[t.status] ?? "#94a3b8";
   const active = isActiveStatus(t.status);
   const size = t.sizeMB >= 1 ? `${t.sizeMB.toFixed(1)} MB` : `${(t.sizeMB * 1024).toFixed(0)} KB`;
-  const elements = t.elements != null ? ` · ${t.elements.toLocaleString()} elements` : "";
+  const elements = t.elements != null ? ` · ${fmtNumber(t.elements)} elements` : "";
   const eta = active && t.progress > 3 && t.progress < 100 && t.elapsedMs > 0
     ? `ETA ~${fmtDur((t.elapsedMs / t.progress) * (100 - t.progress))}` : "";
 

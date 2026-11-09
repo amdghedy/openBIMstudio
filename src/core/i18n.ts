@@ -23,6 +23,8 @@
  */
 import { diagnostics } from "./diagnostics";
 
+import { formatIcu, hasIcuSyntax, type IcuVars } from "./icu-lite";
+
 export type Locale =
   | "en" | "ar" | "de" | "fr" | "es" | "pt-BR" | "it"
   | "zh-CN" | "zh-TW" | "ja" | "ko"
@@ -202,6 +204,10 @@ class I18nService {
     }
 
     if (typeof value === "string") {
+      // ICU subset ({n, plural, one {…} other {…}}, select, number, date) when present; plain strings keep the old path.
+      if (hasIcuSyntax(value)) {
+        return formatIcu(value, (vars ?? {}) as IcuVars, this.current, (n) => this.pluralRule(this.current, n));
+      }
       return interpolate(value, vars);
     }
 

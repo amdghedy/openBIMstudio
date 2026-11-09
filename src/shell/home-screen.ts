@@ -6,6 +6,7 @@ import type { ProjectTemplate } from "../modules/projects/types";
 import { mountLanguageButton } from "../features/language-button";
 import { mountAccountButton } from "../features/cloud-account";
 import { clearRecentDrawings, getRecentDrawingBlob, listRecentDrawings, type RecentDrawing } from "../features/cad-recent";
+import { fmtNumber } from "../core/region";
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>\"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" } as Record<string, string>)[c],
@@ -582,9 +583,9 @@ function projectCard(doc: any): HTMLElement {
     <div class="obs-card__title">${esc(s.name)}</div>
     <div class="obs-project-card__template">${esc(template)}</div>
     <div class="obs-card__meta">
-      <span>${s.elementCount.toLocaleString()} objects</span><span class="sep">·</span>
-      <span>${s.modelCount.toLocaleString()} model(s)</span><span class="sep">·</span>
-      <span>${s.issueCount.toLocaleString()} issue(s)</span>
+      <span>${fmtNumber(s.elementCount)} objects</span><span class="sep">·</span>
+      <span>${fmtNumber(s.modelCount)} model(s)</span><span class="sep">·</span>
+      <span>${fmtNumber(s.issueCount)} issue(s)</span>
     </div>
     <div class="obs-project-card__identity">${esc(meta || "No project metadata yet")}</div>
     <div class="obs-card__actions"></div>`;

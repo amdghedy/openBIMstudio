@@ -11,6 +11,11 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### ICU messages and region-aware formatting (issue #140, partly)
+- Catalog strings may now use an ICU MessageFormat **subset**: `{n, plural, =0{…} one{# …} other{# …}}`, `select`, `{n, number}`, `{d, date}`, nesting and apostrophe quoting (`src/core/icu-lite.ts`). Plain `{name}` strings and the existing `{one, other}` plural objects keep working unchanged. Plural categories are checked for en, ar, ru, pl and fr.
+- New `fmtNumber`, `fmtDate`, `fmtTime`, `fmtDateTime` in `src/core/region.ts`; about 15 UI files that used the browser's own locale (`toLocaleString()`) now follow the active region profile. A test fails if new ones appear in `src/features` or `src/shell`.
+- **Not done:** the `intl-messageformat` library was not added (no package install available); `selectordinal`, plural offsets and date/time styles are unsupported. `toLocaleString()` calls in `src/modules` (reports, exports) are not migrated, and no catalog has been rewritten to use ICU yet.
+
 ### Standards packs as JSON (issue #144)
 - Standards → **Load pack file…** (or drop a file on the panel) loads a rule pack written as JSON: data only, validated, with documented operators, units and limits (`docs/STANDARDS-PACK-SCHEMA.md`, `docs/schemas/standards-pack.schema.json`, example in `docs/examples/`). Not done: exporting the built-in packs to JSON (their rules are code), and ajv validation (no dependency; hand-written validator).
 

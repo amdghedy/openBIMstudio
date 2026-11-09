@@ -68,6 +68,7 @@ import {
 } from "../modules/drawings/plot-styles";
 import { isLandXml, parseLandXmlPoints } from "../modules/drawings/landxml";
 import * as P from "./cad-params";
+import { fmtTime } from "../core/region";
 
 type Tool =
   | "pan"
@@ -8525,7 +8526,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const restored = parseClip(localStorage.getItem(CLIP_STORAGE_KEY));
       if (restored) {
         clip = restored;
-        const age = restored.savedAt ? ` (${new Date(restored.savedAt).toLocaleTimeString()})` : "";
+        const age = restored.savedAt ? ` (${fmtTime(restored.savedAt)})` : "";
         logCmd(`Clipboard restored${restored.sourceName ? ` from ${restored.sourceName}` : ""}${age} — ${restored.entities.length} object(s).`);
       }
     } catch {

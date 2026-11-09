@@ -31,6 +31,7 @@ import {
 } from "./clash";
 import type { ElementClash, ClashKind } from "./clash-engine";
 import { uiAlert } from "../core/notify";
+import { fmtDateTime } from "../core/region";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Constants
@@ -311,7 +312,7 @@ function render(): void {
         ${state.comments.map((cm) => `
           <div style="background:var(--bg-inset,#0e1017);border-radius:5px;padding:6px 8px">
             <div style="font-size:9.5px;color:#6b7280;margin-bottom:3px">
-              <b style="color:#a0a6b5">${esc(cm.author)}</b> · ${new Date(cm.date).toLocaleString()}
+              <b style="color:#a0a6b5">${esc(cm.author)}</b> · ${fmtDateTime(cm.date)}
             </div>
             <div style="font-size:11px;line-height:1.4;word-break:break-word">${esc(cm.text)}</div>
           </div>

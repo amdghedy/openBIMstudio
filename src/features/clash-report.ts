@@ -14,6 +14,7 @@ import {
 } from "./clash";
 import { getCurrentProject } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
+import { fmtDateTime } from "../core/region";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Shared data extraction
@@ -86,7 +87,7 @@ const esc = (s: string) =>
   String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as any)[c]);
 
-const fmtDate = (t: number) => new Date(t).toLocaleString();
+const fmtDate = (t: number) => fmtDateTime(t);
 
 /* ═════════════════════════════════════════════════════════════════════════
    HTML report

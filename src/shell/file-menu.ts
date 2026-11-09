@@ -12,6 +12,7 @@ import { pickAndImport } from "../features/file-interop";
 import { settingsBox } from "../features/importer";
 import { exportFragFromMenu } from "../modules/export/frag";
 import { uiAlert } from "../core/notify";
+import { fmtDateTime } from "../core/region";
 
 const menu = document.createElement("div");
 menu.style.cssText = "position:fixed;top:100px;left:10px;width:760px;max-width:calc(100vw - 20px);z-index:250;display:none;background:#1b1c26;border:1px solid #34353f;border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.6);color:#e2e8f0;font:12px system-ui,sans-serif;overflow:hidden";
@@ -194,7 +195,7 @@ async function renderRecents() {
     const info = document.createElement("div");
     info.style.cssText = "flex:1;min-width:0";
     info.innerHTML = `<div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ${esc(doc.name)}</div>
-      <div style="opacity:.5;font-size:10px">${doc.elements?.length ?? 0} objects · ${doc.models?.length ?? 0} model(s) · ${new Date(doc.updatedAt).toLocaleString()}</div>`;
+      <div style="opacity:.5;font-size:10px">${doc.elements?.length ?? 0} objects · ${doc.models?.length ?? 0} model(s) · ${fmtDateTime(doc.updatedAt)}</div>`;
     const open = document.createElement("button");
     open.textContent = "Open";
     open.style.cssText = "padding:4px 10px;background:#2563eb;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:10px;font-weight:600";

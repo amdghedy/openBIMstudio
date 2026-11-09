@@ -20,6 +20,7 @@ import { markDirty } from "../modules/projects/projects";
 import { openToolWindow } from "./tool-windows";
 import { uiAlert } from "../core/notify";
 import { confirmDialog } from "./form-modal";
+import { fmtNumber } from "../core/region";
 
 function pickAccept(accept: string, multiple: boolean, onFiles: (files: File[]) => void | Promise<void>) {
   const input = document.createElement("input");
@@ -230,7 +231,7 @@ async function importPointCloudFiles(files: File[]) {
           "OK = move the cloud to the model origin (recommended)\nCancel = keep the survey coordinates (the model must use the same coordinates)",
         );
         await addPointsToScene(file.name, parsed.positions, parsed.colors, parsed.kept > 500_000 ? 0.03 : 0.05, far && !recentre ? parsed.origin : [0, 0, 0]);
-        toast(`${file.name}: ${parsed.info}, ${parsed.kept.toLocaleString()} of ${parsed.total.toLocaleString()} points`, "success");
+        toast(`${file.name}: ${parsed.info}, ${fmtNumber(parsed.kept)} of ${fmtNumber(parsed.total)} points`, "success");
       } else if (["xyz", "pts", "txt", "csv", "pcd"].includes(ext)) {
         await loadAsciiPointCloud(file);
       } else if (ext === "ply") {

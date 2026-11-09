@@ -14,6 +14,7 @@ import {
 import { services, tryUse } from "../core/services";
 import { getCurrentProject } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
+import { fmtDateTime } from "../core/region";
 
 interface StandardsViolation {
   ruleId: string;
@@ -73,7 +74,7 @@ const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as any)[c]);
 
-const fmtDate = (t: number) => new Date(t).toLocaleString();
+const fmtDate = (t: number) => fmtDateTime(t);
 
 function section(id: string, title: string): string {
   return `<h2 id="${id}">${esc(title)}</h2>`;

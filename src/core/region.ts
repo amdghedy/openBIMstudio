@@ -302,6 +302,24 @@ export function fmtCurrency(value: number, opts: { decimals?: number } = {}): st
   }
 }
 
+/* Region-aware number / date formatting (issue #140): one place, so output follows the active region profile
+   instead of whatever the browser happens to be set to. Falls back to the default locale if the profile's is invalid. */
+function regionLocale(): string | undefined {
+  try { return region.getResolved().locale; } catch { return undefined; }
+}
+export function fmtNumber(value: number, opts: Intl.NumberFormatOptions = {}): string {
+  const n = Number.isFinite(value) ? value : 0;
+  try { return new Intl.NumberFormat(regionLocale(), opts).format(n); } catch { return new Intl.NumberFormat(undefined, opts).format(n); }
+}
+const dt = (v: Date | number | string, o: Intl.DateTimeFormatOptions): string => {
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return "";
+  try { return new Intl.DateTimeFormat(regionLocale(), o).format(d); } catch { return new Intl.DateTimeFormat(undefined, o).format(d); }
+};
+export const fmtDate = (v: Date | number | string = Date.now()): string => dt(v, { dateStyle: "short" });
+export const fmtTime = (v: Date | number | string = Date.now()): string => dt(v, { timeStyle: "medium" });
+export const fmtDateTime = (v: Date | number | string = Date.now()): string => dt(v, { dateStyle: "short", timeStyle: "medium" });
+
 /** Register the region-aware formatting hooks on the i18n singleton side. */
 export function applyRegionToServices(setLocale: (l: Locale) => void): void {
   const r = region.getResolved();

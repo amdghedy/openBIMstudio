@@ -52,6 +52,7 @@ import type {
 } from "../modules/schedules/schedule-types";
 import { uiAlert } from "../core/notify";
 import { promptLine } from "./form-modal";
+import { fmtDateTime, fmtTime } from "../core/region";
 
 /* ═════════════════════════════════════════════════════════════════════════
    State
@@ -633,7 +634,7 @@ function renderDiffView(): void {
     "display:flex;align-items:center;gap:12px;font-size:12px";
   banner.innerHTML =
     `<b>Diff against "${diff.snapshotLabel}"</b> ` +
-    `<span style="opacity:.6">(${new Date(diff.snapshotAt).toLocaleString()})</span>` +
+    `<span style="opacity:.6">(${fmtDateTime(diff.snapshotAt)})</span>` +
     `<span style="margin-left:auto;opacity:.7">${summarizeDiff(diff)}</span>`;
 
   const back = document.createElement("button");
@@ -762,7 +763,7 @@ async function takeSnapshotNow(): Promise<void> {
     return;
   }
   const run = currentRun;
-  const label = await promptLine("Take snapshot", "Snapshot label:", `Run ${new Date().toLocaleString()}`);
+  const label = await promptLine("Take snapshot", "Snapshot label:", `Run ${fmtDateTime()}`);
   if (label == null) return;
   takeSnapshot(run, label);
   uiAlert(`Snapshot saved with ${run.rows.length} rows.`);
@@ -825,7 +826,7 @@ function renderFooter(): void {
       `${currentRun.rows.filter((r) => r.source === "authored").length} authored · ` +
       `${currentRun.rows.filter((r) => r.source === "ifc").length} IFC · ` +
       `${currentRun.rows.filter((r) => r.subtotal).length} group rows · ` +
-      `generated ${new Date(currentRun.generatedAt).toLocaleTimeString()}`;
+      `generated ${fmtTime(currentRun.generatedAt)}`;
   } else {
     info.textContent = "No schedule yet";
   }

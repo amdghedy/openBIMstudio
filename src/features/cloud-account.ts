@@ -37,6 +37,7 @@ import { getCurrentProject, saveProject } from "../modules/projects/projects";
 import * as store from "../modules/projects/store";
 import { buildProjectFile, suggestedFileName } from "../modules/projects/project-file";
 import { importProjectFile } from "../modules/projects/project-file-io";
+import { fmtDateTime } from "../core/region";
 
 const STYLE = `
 .obs-acct{position:relative;display:inline-flex;align-items:center;z-index:80;flex:0 0 auto}
@@ -845,7 +846,7 @@ async function openCloudProjectsDialog(): Promise<void> {
     nm.title = p.name;
     const meta = document.createElement("div");
     meta.className = "obs-acct-row__meta";
-    meta.textContent = `${new Date(p.updatedAt).toLocaleString()} · ${formatSize(p.size)}`;
+    meta.textContent = `${fmtDateTime(p.updatedAt)} · ${formatSize(p.size)}`;
     main.append(nm, meta);
     const openBtn = document.createElement("button");
     openBtn.textContent = "Open";

@@ -13,6 +13,7 @@ import { isCadHotkeyOwnerActive } from "../core/cad-hotkey-ownership";
 import { getProjection, setProjection, updateClipping } from "./camera-tools";
 import { getCurrentProject, onProjectChanged } from "../modules/projects/projects";
 import { syncOrthoZoom } from "../core/ortho-zoom";
+import { fmtDateTime } from "../core/region";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Types + storage
@@ -216,7 +217,7 @@ function renderPanel(): void {
     name.title = v.name;
     const meta = document.createElement("div");
     meta.style.cssText = "font-size:10px;color:var(--text-tertiary);margin-top:1px";
-    meta.textContent = `${v.projection === "orthographic" ? "Ortho" : "Persp"} · ${new Date(v.createdAt).toLocaleString()}`;
+    meta.textContent = `${v.projection === "orthographic" ? "Ortho" : "Persp"} · ${fmtDateTime(v.createdAt)}`;
     info.append(name, meta);
 
     const del = document.createElement("button");

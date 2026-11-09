@@ -54,6 +54,7 @@ import {
   DEFAULT_EMBEDDING_CONFIG,
   type EmbeddingConfig,
 } from "./ai-embeddings";
+import { fmtDateTime, fmtNumber } from "../core/region";
 
 const SYSTEM_PROMPT = `You are the AI BIM agent inside openBIMstudio, a browser-based openBIM authoring and coordination environment.
 
@@ -715,7 +716,7 @@ function toggleHistoryDropdown(anchor: HTMLElement): void {
       "font-weight:600;font-size:11.5px;overflow:hidden;" +
       "text-overflow:ellipsis;white-space:nowrap";
     const meta = document.createElement("div");
-    meta.textContent = `${c.messages.length} msg · ${new Date(c.updatedAt).toLocaleString()}`;
+    meta.textContent = `${c.messages.length} msg · ${fmtDateTime(c.updatedAt)}`;
     meta.style.cssText = "font-size:9.5px;color:var(--text-tertiary,#6b7280)";
     info.append(name, meta);
 
@@ -1153,9 +1154,9 @@ function renderSettings(): void {
 
   void getIndexStats().then((stats) => {
     idxStatus.innerHTML = stats.total
-      ? `${stats.total.toLocaleString()} element(s) indexed · ` +
+      ? `${fmtNumber(stats.total)} element(s) indexed · ` +
         `${Object.keys(stats.byModel).length} model(s) · ` +
-        `updated ${new Date(stats.updatedAt ?? 0).toLocaleString()}`
+        `updated ${fmtDateTime(stats.updatedAt ?? 0)}`
       : `Index is empty. Click Build to enable semantic search.`;
   });
 
@@ -1183,7 +1184,7 @@ function renderSettings(): void {
         },
       });
       const stats = await getIndexStats();
-      idxStatus.innerHTML = `${stats.total.toLocaleString()} element(s) indexed`;
+      idxStatus.innerHTML = `${fmtNumber(stats.total)} element(s) indexed`;
     } catch (err) {
       idxStatus.textContent = `Failed: ${err instanceof Error ? err.message : err}`;
     } finally {
@@ -1333,7 +1334,7 @@ function updateTokenCount(): void {
     const text = m.content || "";
     total += Math.ceil(text.length / 4);
   }
-  if (total > 0) tokenCountEl.textContent = `~${total.toLocaleString()} tok`;
+  if (total > 0) tokenCountEl.textContent = `~${fmtNumber(total)} tok`;
   else tokenCountEl.textContent = "";
 }
 

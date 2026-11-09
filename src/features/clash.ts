@@ -25,6 +25,7 @@ import {
   summarizeGroups,
   type ClashGroup,
 } from "../modules/clash/grouping";
+import { fmtDateTime } from "../core/region";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Toast
@@ -1262,7 +1263,7 @@ function renderScenarioList() {
     meta.style.cssText = "flex:1;min-width:0;cursor:pointer";
     const runInfo = sc.lastRun ? ` · last ${sc.lastRun.total}` : "";
     meta.innerHTML = `<b style="color:#e2e8f0">${escapeHtml(sc.name)}</b><br/>
-      <span style="opacity:.55">${new Date(sc.updatedAt).toLocaleString()} · A:${
+      <span style="opacity:.55">${fmtDateTime(sc.updatedAt)} · A:${
       sc.selectionA?.length || 0
     } B:${sc.selectionB?.length || 0}${sc.method ? ` · ${sc.method}` : ""}${runInfo}</span>`;
     meta.onclick = () => void loadScenario(sc.id);

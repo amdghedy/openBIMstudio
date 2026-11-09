@@ -14,6 +14,7 @@ import { history } from "../features/history";
 import { selection } from "../features/selection";
 import { snapping } from "../features/snapping";
 import { gizmo, type GizmoMode } from "../features/gizmo";
+import { fmtNumber } from "../core/region";
 
 const T_BAR = "display:flex;align-items:center;gap:2px;padding:4px";
 const T_BTN = "display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;background:transparent;color:var(--text-secondary);border:1px solid transparent;cursor:pointer;font-size:15px;transition:background .12s,border-color .12s,color .12s";
@@ -136,7 +137,7 @@ export function setupViewportToolbar() {
   count.title = "Selection size";
   selection.onChange(() => {
     const n = selection.size();
-    count.textContent = n === 0 ? "0" : n.toLocaleString();
+    count.textContent = n === 0 ? "0" : fmtNumber(n);
     count.style.color = n ? "var(--accent)" : "var(--text-tertiary)";
     count.style.borderColor = n ? "var(--accent)" : "var(--border-default)";
   });

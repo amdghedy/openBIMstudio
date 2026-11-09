@@ -108,6 +108,8 @@
     "test:solids": "node tests/solids.test.cjs",
     "test:seed-families": "node tests/seed-families.test.cjs",
     "test:standards-json-pack": "node tests/standards-json-pack.test.cjs",
+    "test:icu-lite": "node tests/icu-lite.test.cjs",
+    "test:region-format": "node tests/region-format.test.cjs",
     "test:twin-export": "node tests/twin-export-geometry.test.cjs",
     "test:pick-arbiter": "node tests/pick-arbiter.test.cjs",
     "test:nav-math": "node tests/nav-math.test.cjs",

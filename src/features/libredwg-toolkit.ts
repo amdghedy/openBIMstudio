@@ -47,6 +47,7 @@ import {
 import type { DxfDocument } from "../modules/drawings/dxf-types";
 import { readDwgThumbnail } from "../modules/cad-link";
 import { showTableDialog, pickFromList } from "./form-modal";
+import { fmtDateTime } from "../core/region";
 
 type Any = Record<string, any>;
 
@@ -266,7 +267,7 @@ export function auditDialog(): void {
   const r = auditDrawing(doc, meta);
   const { body, close } = shell(
     "LibreDWG — Drawing audit",
-    `${source} · dwg_audit parity · ${new Date().toLocaleString()}`,
+    `${source} · dwg_audit parity · ${fmtDateTime()}`,
   );
 
   const verdict = document.createElement("div");
