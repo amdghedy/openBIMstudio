@@ -697,6 +697,7 @@ export function setupAdaptiveAuthoring(): {
   listFamilyTypeChoices: typeof getAdaptiveFamilyTypeChoices;
   bindFamilyType: typeof bindAdaptiveFamilyType;
   connectFamilyTypePropagation: typeof connectAdaptiveFamilyTypePropagation;
+  propagateFamilyTypes: typeof propagateAdaptiveFamilyTypes;
 } {
   if (!installed) {
     const builders = ((ctx.features as Any).meshBuilders ??= {}) as Any;
@@ -714,6 +715,7 @@ export function setupAdaptiveAuthoring(): {
       listFamilyTypeChoices: getAdaptiveFamilyTypeChoices,
       bindFamilyType: bindAdaptiveFamilyType,
       connectFamilyTypePropagation: connectAdaptiveFamilyTypePropagation,
+      propagateFamilyTypes: propagateAdaptiveFamilyTypes,
     };
     (ctx.features as Any).adaptiveAuthoring = api;
     installed = true;
