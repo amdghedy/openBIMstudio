@@ -1,7 +1,7 @@
 /**
  * Plan Region — view-specific cropped plan at a different cut plane.
  *
- * BIM-equivalent of Revit's "Plan Region" tool. A plan region is a closed
+ * BIM-equivalent of RVT's "Plan Region" tool. A plan region is a closed
  * 2D outline within a plan view that overrides the view's default cut plane
  * elevation for elements contained within.
  *

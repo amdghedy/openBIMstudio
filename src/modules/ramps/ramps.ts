@@ -1,7 +1,7 @@
 /**
  * Ramp Generator — sloped floor ramps with optional landings.
  *
- * BIM-equivalent of Revit's "Ramp" tool. Produces a single-slope ramp
+ * BIM-equivalent of RVT's "Ramp" tool. Produces a single-slope ramp
  * slab with optional mid-landing, slope percentage and side rails.
  *
  * Geometry convention: ramp runs along +X direction (modified by `angle`),
