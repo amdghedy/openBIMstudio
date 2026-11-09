@@ -89,7 +89,7 @@ function authoring(): Any | null {
   return (ctx.features as Any)?.authoring ?? null;
 }
 
-function validateDefinition(input: AdaptiveElementDefinition): AdaptiveElementDefinition {
+function validateDefinition(input: AdaptiveElementDefinition, driverIndex?: number): AdaptiveElementDefinition {
   if (!input || input.schemaVersion !== 1) throw new Error("Unsupported adaptive definition version");
   if (!String(input.familyId ?? "").trim()) throw new Error("Adaptive family id is required");
   if (!String(input.familyName ?? "").trim()) throw new Error("Adaptive family name is required");
@@ -115,7 +115,7 @@ function validateDefinition(input: AdaptiveElementDefinition): AdaptiveElementDe
       !String(input.familyBinding.typeId ?? "").trim())) {
     throw new Error("Shared family binding requires both family and type ids");
   }
-  const solvedPoints = solveAdaptivePointConstraints(input.points, input.constraints ?? []);
+  const solvedPoints = solveAdaptivePointConstraints(input.points, input.constraints ?? [], driverIndex);
   return { ...input, points: solvedPoints };
 }
 
@@ -131,8 +131,8 @@ function pathForDefinition(definition: AdaptiveElementDefinition): Pt3[] {
 }
 
 /** Build the indexed sweep without allocating any Three.js objects. */
-function indexedMeshForDefinition(definition: AdaptiveElementDefinition) {
-  const def = validateDefinition(definition);
+function indexedMeshForDefinition(definition: AdaptiveElementDefinition, driverIndex?: number) {
+  const def = validateDefinition(definition, driverIndex);
   const indexed = sweepProfile(def.profile, pathForDefinition(def));
   if (indexed.vertices.length < 3 || indexed.faces.length < 1) {
     throw new Error("Adaptive geometry is empty");
@@ -336,6 +336,250 @@ export function getAdaptiveDefinition(elementId: string): AdaptiveElementDefinit
   return def ? clone(def) : null;
 }
 
+
+
+function snapshotElement(element: AuthoredElement): AdaptiveElementSnapshot {
+  const definition = clone((element.properties as Any)?.adaptiveDefinition as AdaptiveElementDefinition);
+  return {
+    definition,
+    params: clone(element.params),
+    name: element.name,
+    color: element.color,
+    properties: clone(element.properties ?? {}),
+    familyId: element.familyId,
+    familyTypeId: element.familyTypeId,
+  };
+}
+
+/** Apply a full adaptive state atomically, including undo/redo and point drags. */
+function applyElementSnapshot(auth: Any, element: AuthoredElement, snapshot: AdaptiveElementSnapshot): void {
+  const previous = snapshotElement(element);
+  element.properties = clone(snapshot.properties);
+  element.params = clone(snapshot.params);
+  element.name = snapshot.name;
+  element.color = snapshot.color;
+  element.familyId = snapshot.familyId;
+  element.familyTypeId = snapshot.familyTypeId;
+  try {
+    markAndRebuild(auth);
+  } catch (error) {
+    element.properties = clone(previous.properties);
+    element.params = clone(previous.params);
+    element.name = previous.name;
+    element.color = previous.color;
+    element.familyId = previous.familyId;
+    element.familyTypeId = previous.familyTypeId;
+    try {
+      markAndRebuild(auth);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError],
+        "Adaptive component '" + element.name + "' state update failed and rollback was incomplete");
+    }
+    throw error;
+  }
+}
+
+function rectangleProfile(width: number, depth: number): ProfilePt[] {
+  if (!Number.isFinite(width) || !Number.isFinite(depth) || width <= 0 || depth <= 0) {
+    throw new Error("Linked family dimensions must be finite and positive");
+  }
+  const u = width / 2, v = depth / 2;
+  return [{ u: -u, v: -v }, { u, v: -v }, { u, v }, { u: -u, v }];
+}
+
+function circleProfile(radius: number, segments = 24): ProfilePt[] {
+  if (!Number.isFinite(radius) || radius <= 0) throw new Error("Linked family radius must be finite and positive");
+  return Array.from({ length: Math.max(8, Math.min(96, Math.round(segments))) }, (_, i) => {
+    const a = (i / Math.max(8, Math.min(96, Math.round(segments)))) * Math.PI * 2;
+    return { u: radius * Math.cos(a), v: radius * Math.sin(a) };
+  });
+}
+
+function resolveProfileRef(ref: Any, params: Any): number {
+  const value = Number(resolveNumber(ref, params));
+  if (!Number.isFinite(value)) throw new Error("Linked family profile contains an invalid dimension");
+  return value;
+}
+
+/** Adapt the supported shared BIM family cross-sections to the adaptive sweep profile. */
+function profileFromFamilyType(familyId: string, typeId: string): { name: string; profile: ProfilePt[] } {
+  const familyService = (ctx.features as Any)?.family;
+  if (!familyService || typeof familyService.get !== "function" || typeof familyService.resolveParams !== "function") {
+    throw new Error("The shared family/type service is not ready");
+  }
+  const family = familyService.get(familyId);
+  if (!family) throw new Error("The selected shared family no longer exists");
+  const type = (family.types ?? []).find((entry: Any) => entry.id === typeId);
+  if (!type) throw new Error("The selected shared family type no longer exists");
+  const params = familyService.resolveParams(familyId, typeId);
+  if (!params) throw new Error("The selected shared family type could not be resolved");
+  const geometry = family.geometry as Any;
+  let profile: ProfilePt[];
+  if (geometry?.kind === "box") {
+    profile = rectangleProfile(resolveProfileRef(geometry.w, params), resolveProfileRef(geometry.d, params));
+  } else if (geometry?.kind === "cylinder") {
+    profile = circleProfile(resolveProfileRef(geometry.r, params), geometry.segments ?? 24);
+  } else if (geometry?.kind === "extrusion") {
+    const spec = geometry.profile as Any;
+    if (spec?.kind === "rect") {
+      profile = rectangleProfile(resolveProfileRef(spec.w, params), resolveProfileRef(spec.h, params));
+    } else if (spec?.kind === "circle") {
+      profile = circleProfile(resolveProfileRef(spec.r, params), spec.segments ?? 24);
+    } else if (spec?.kind === "polygon" && Array.isArray(spec.points)) {
+      profile = spec.points.map((point: number[]) => ({ u: Number(point[0]), v: Number(point[1]) }));
+    } else {
+      throw new Error("Only rectangular, circular and polygon extrusion profiles can drive adaptive components");
+    }
+  } else {
+    throw new Error("This shared family geometry cannot currently be mapped to an adaptive sweep profile");
+  }
+  validateProfile(profile);
+  return { name: family.name + " · " + type.name, profile };
+}
+
+export function getAdaptiveFamilyTypeChoices(): AdaptiveFamilyTypeChoice[] {
+  const familyService = (ctx.features as Any)?.family;
+  if (!familyService || typeof familyService.list !== "function") return [];
+  const choices: AdaptiveFamilyTypeChoice[] = [];
+  for (const family of familyService.list() as Any[]) {
+    if (!family?.id || !Array.isArray(family.types)) continue;
+    for (const type of family.types) {
+      if (!type?.id) continue;
+      try {
+        profileFromFamilyType(String(family.id), String(type.id));
+        choices.push({
+          familyId: String(family.id),
+          typeId: String(type.id),
+          label: String(family.name) + " · " + String(type.name),
+        });
+      } catch { /* unsupported family geometry is not offered */ }
+    }
+  }
+  return choices.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+export function bindAdaptiveFamilyType(elementId: string, familyId: string, typeId: string): boolean {
+  const resolved = profileFromFamilyType(familyId, typeId);
+  return updateAdaptiveElement(elementId, {
+    familyName: resolved.name,
+    profile: resolved.profile,
+    familyBinding: { familyId, typeId },
+  });
+}
+
+/** Regenerate linked adaptive instances when a shared family or type changes. */
+export async function propagateAdaptiveFamilyTypes(): Promise<number> {
+  const auth = authoring();
+  const elements = auth?.getElements?.() as AuthoredElement[] | undefined;
+  if (!auth || !Array.isArray(elements) || familyPropagationBusy) return 0;
+  const changes: Array<{ id: string; profile: ProfilePt[]; name: string }> = [];
+  for (const element of elements) {
+    if (element.type !== "adaptive-component") continue;
+    const definition = (element.properties as Any)?.adaptiveDefinition as AdaptiveElementDefinition | undefined;
+    const binding = definition?.familyBinding;
+    if (!binding) continue;
+    try {
+      const resolved = profileFromFamilyType(binding.familyId, binding.typeId);
+      if (JSON.stringify(resolved.profile) !== JSON.stringify(definition.profile) ||
+          resolved.name !== definition.familyName) {
+        changes.push({ id: element.id, profile: resolved.profile, name: resolved.name });
+      }
+    } catch (error) {
+      console.warn("[adaptive] linked family type could not be propagated", element.id, error);
+    }
+  }
+  if (!changes.length) return 0;
+  familyPropagationBusy = true;
+  try {
+    await history.transaction("Propagate shared adaptive family type changes", async () => {
+      for (const change of changes) {
+        updateAdaptiveElement(change.id, { profile: change.profile, familyName: change.name });
+      }
+    });
+  } finally {
+    familyPropagationBusy = false;
+  }
+  return changes.length;
+}
+
+export function connectAdaptiveFamilyTypePropagation(): void {
+  const familyService = (ctx.features as Any)?.family;
+  if (familyUnsubscribe || typeof familyService?.onChange !== "function") return;
+  familyUnsubscribe = familyService.onChange(() => {
+    void propagateAdaptiveFamilyTypes().catch((error) => {
+      console.warn("[adaptive] family type propagation failed", error);
+    });
+  });
+}
+
+/** Snapshot the full definition before a placement-point grip drag. */
+export function beginAdaptivePointEdit(elementId: string): AdaptiveElementSnapshot | null {
+  const element = (authoring()?.getElements?.() ?? []).find((entry: Any) => entry?.id === elementId) as AuthoredElement | undefined;
+  if (!element || element.type !== "adaptive-component") return null;
+  return snapshotElement(element);
+}
+
+/** Transient live update during a grip drag; it deliberately creates no history item. */
+export function previewAdaptivePointEdit(
+  elementId: string,
+  pointIndex: number,
+  point: Pt3,
+  baseline: AdaptiveElementSnapshot,
+): boolean {
+  const auth = authoring();
+  const element = (auth?.getElements?.() ?? []).find((entry: Any) => entry?.id === elementId) as AuthoredElement | undefined;
+  if (!auth || !element || element.type !== "adaptive-component") return false;
+  if (!Number.isInteger(pointIndex) || pointIndex < 0 || pointIndex >= baseline.definition.points.length) return false;
+  const points = clone(baseline.definition.points);
+  points[pointIndex] = { x: point.x, y: point.y, z: point.z };
+  const definition = validateDefinition({ ...clone(baseline.definition), points }, pointIndex);
+  indexedMeshForDefinition(definition, pointIndex);
+  const properties = {
+    ...clone(baseline.properties),
+    adaptiveDefinition: clone(definition),
+    adaptiveFamilyName: definition.familyName,
+    adaptivePointCount: definition.pointCount,
+  };
+  applyElementSnapshot(auth, element, {
+    ...clone(baseline),
+    definition,
+    params: paramsFor(definition),
+    properties,
+  });
+  return true;
+}
+
+/** Commit the live point drag as exactly one undoable command. */
+export function commitAdaptivePointEdit(
+  elementId: string,
+  baseline: AdaptiveElementSnapshot,
+): boolean {
+  const element = (authoring()?.getElements?.() ?? []).find((entry: Any) => entry?.id === elementId) as AuthoredElement | undefined;
+  if (!element || element.type !== "adaptive-component") return false;
+  const after = snapshotElement(element);
+  if (JSON.stringify(baseline) === JSON.stringify(after)) return false;
+  const auth = authoring();
+  if (!auth) return false;
+  history.push({
+    label: "Move adaptive placement point · " + element.name,
+    apply: () => applyElementSnapshot(auth, element, after),
+    revert: () => applyElementSnapshot(auth, element, baseline),
+  });
+  return true;
+}
+
+/** Restore the original definition when a grip drag is cancelled. */
+export function cancelAdaptivePointEdit(
+  elementId: string,
+  baseline: AdaptiveElementSnapshot,
+): boolean {
+  const auth = authoring();
+  const element = (auth?.getElements?.() ?? []).find((entry: Any) => entry?.id === elementId) as AuthoredElement | undefined;
+  if (!auth || !element || element.type !== "adaptive-component") return false;
+  applyElementSnapshot(auth, element, baseline);
+  return true;
+}
+
 export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementPatch): boolean {
   const auth = authoring();
   const elements = auth?.getElements?.() as AuthoredElement[] | undefined;
@@ -434,12 +678,21 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
   return true;
 }
 
+
 export function setupAdaptiveAuthoring(): {
+
   create: typeof createAdaptiveElement;
   createMany: typeof createAdaptiveElements;
   update: typeof updateAdaptiveElement;
   getDefinition: typeof getAdaptiveDefinition;
   buildMesh: typeof buildAdaptiveElementMesh;
+  beginPointEdit: typeof beginAdaptivePointEdit;
+  previewPointEdit: typeof previewAdaptivePointEdit;
+  commitPointEdit: typeof commitAdaptivePointEdit;
+  cancelPointEdit: typeof cancelAdaptivePointEdit;
+  listFamilyTypeChoices: typeof getAdaptiveFamilyTypeChoices;
+  bindFamilyType: typeof bindAdaptiveFamilyType;
+  connectFamilyTypePropagation: typeof connectAdaptiveFamilyTypePropagation;
 } {
   if (!installed) {
     const builders = ((ctx.features as Any).meshBuilders ??= {}) as Any;
