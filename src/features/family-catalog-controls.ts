@@ -1,4 +1,5 @@
 import { services } from "../core/services";
+import { openFormModal } from "./form-modal";
 import type { SharedParameterType } from "../modules/families/shared-parameters";
 import type { TypeCatalog } from "../modules/families/type-catalog";
 
@@ -30,25 +31,62 @@ function renderSharedParameterManager(root: HTMLElement): void {
   addButton.type = "button";
   addButton.textContent = "Add parameter";
   addButton.addEventListener("click", () => {
-    const name = window.prompt("Parameter name:")?.trim();
-    if (!name) return;
-    const group = window.prompt("Parameter group:", "General")?.trim() || "General";
-    const typeInput = window.prompt("Type (number, string, boolean, length, area):", "string")?.trim();
-    if (!typeInput) return;
     const allowed: SharedParameterType[] = ["number", "string", "boolean", "length", "area"];
-    if (!allowed.includes(typeInput as SharedParameterType)) {
-      notify(`Unsupported parameter type: ${typeInput}`, "error");
-      return;
-    }
-    try {
-      services.use("sharedParameters").create({
-        name, group, type: typeInput as SharedParameterType, defaultValue: "", isInstance: true,
-      });
-      renderSharedParameterManager(root);
-      notify(`Created shared parameter "${name}".`);
-    } catch (error) {
-      notify(error instanceof Error ? error.message : String(error), "error");
-    }
+    void openFormModal({
+      title: "Add shared parameter",
+      subtitle: "Create a reusable parameter definition.",
+      width: 480,
+      submitLabel: "Create parameter",
+      fields: [
+        {
+          kind: "text",
+          key: "name",
+          label: "Parameter name",
+          placeholder: "e.g. Fire Rating",
+          validate: (value) => typeof value !== "string" || !value.trim()
+            ? "Enter a parameter name."
+            : null,
+        },
+        {
+          kind: "text",
+          key: "group",
+          label: "Parameter group",
+          default: "General",
+          placeholder: "General",
+        },
+        {
+          kind: "select",
+          key: "type",
+          label: "Data type",
+          default: "string",
+          options: allowed.map((type) => [type, type]),
+        },
+      ],
+      onSubmit: (values) => {
+        const name = String(values.name ?? "").trim();
+        const group = String(values.group ?? "General").trim() || "General";
+        const typeInput = String(values.type ?? "string");
+        if (!allowed.includes(typeInput as SharedParameterType)) {
+          notify(`Unsupported parameter type: ${typeInput}`, "error");
+          return false;
+        }
+        try {
+          services.use("sharedParameters").create({
+            name,
+            group,
+            type: typeInput as SharedParameterType,
+            defaultValue: "",
+            isInstance: true,
+          });
+          renderSharedParameterManager(root);
+          notify(`Created shared parameter "${name}".`);
+          return true;
+        } catch (error) {
+          notify(error instanceof Error ? error.message : String(error), "error");
+          return false;
+        }
+      },
+    });
   });
   root.append(heading, addButton);
   try {
@@ -115,10 +153,6 @@ function mountControls(): void {
   });
   manage.addEventListener("click", openSharedParameters);
   importButton.addEventListener("click", () => fileInput.click());
-  controls.addEventListener("click", (event) => {
-    const target = event.target;
-    if (target instanceof HTMLElement && target.dataset.catalogAction === "manage-shared-parameters") openSharedParameters();
-  });
   controls.append(manage, importButton, fileInput);
   familyPanel.appendChild(controls);
 }
