@@ -942,29 +942,50 @@ export async function openAdaptiveEditDialog(): Promise<void> {
   }
   const pointsText = definition.points.map((p: Pt3) => `${p.x},${p.y},${p.z}`).join("\n");
   const profileText = definition.profile.map((p: ProfilePt) => `${p.u},${p.v}`).join("\n");
+  const familyTypeChoices = api.listFamilyTypeChoices?.() ?? [];
+  const familyTypeOptions: [string, string][] = [
+    ["", "No shared family type"],
+    ...familyTypeChoices.map((choice: Any) => [choice.familyId + "::" + choice.typeId, choice.label] as [string, string]),
+  ];
+  const linkedTypeValue = definition.familyBinding
+    ? definition.familyBinding.familyId + "::" + definition.familyBinding.typeId
+    : "";
   const r = await openFormModal({
     title: `Edit Adaptive Component · ${element.name}`,
-    subtitle: "Edit the stored placement points and profile. Geometry regenerates when you apply the change.",
+    subtitle: "Edit placement points, persistent geometric constraints and the profile. A shared family type link keeps the cross-section synchronized with the family catalog.",
     fields: [
       { kind: "textarea", key: "points", label: "Ordered placement points (x,y,z; 1–8 points)", default: pointsText },
-      { kind: "textarea", key: "profile", label: "Cross-section profile (u,v)", default: profileText },
+      { kind: "textarea", key: "profile", label: "Manual cross-section profile (u,v)", default: profileText },
+      { kind: "textarea", key: "constraints", label: "Persistent point constraints (JSON)", default: JSON.stringify(definition.constraints ?? [], null, 2) },
+      { kind: "select", key: "familyType", label: "Shared family type", default: linkedTypeValue, options: familyTypeOptions },
       { kind: "number", key: "pointLength", label: "One-point extrusion length", default: definition.pointLength ?? 1, unit: "m", step: 0.1, min: 0.001 },
       { kind: "text", key: "name", label: "Instance name", default: element.name },
     ],
     submitLabel: "Apply & Regenerate",
-    width: 600,
+    width: 640,
   });
   if (!r) return;
   try {
     const points = parsePointList(String(r.points));
-    let profile = profileForAdaptiveSweep(parseProfile(String(r.profile)));
+    const profile = profileForAdaptiveSweep(parseProfile(String(r.profile)));
+    const constraints = JSON.parse(String(r.constraints || "[]"));
+    if (!Array.isArray(constraints)) throw new Error("Persistent constraints must be a JSON array");
     if (points.length < 1 || points.length > 8) throw new Error("Enter between 1 and 8 placement points");
     if (points.length === 1 && (!Number.isFinite(Number(r.pointLength)) || Number(r.pointLength) <= 0)) {
       throw new Error("One-point extrusion length must be positive");
     }
+    let familyBinding: { familyId: string; typeId: string } | null = null;
+    const typeValue = String(r.familyType ?? "");
+    if (typeValue) {
+      const split = typeValue.split("::");
+      if (split.length !== 2 || !split[0] || !split[1]) throw new Error("The shared family type selection is invalid");
+      familyBinding = { familyId: split[0], typeId: split[1] };
+    }
     const updated = api.update?.(element.id, {
       points,
       profile,
+      constraints,
+      familyBinding,
       ...(points.length === 1 ? { pointLength: Number(r.pointLength) } : {}),
       name: String(r.name ?? "").trim() || element.name,
     });
@@ -2134,6 +2155,12 @@ export async function openReferencePickerDialog(): Promise<void> {
 }
 
 export function setupEngineUi(): void {
+  void import("./adaptive-interaction").then((module) => {
+    const adaptive = nativeAdaptiveApi();
+    if (typeof adaptive.create === "function") module.setupAdaptiveInteraction(adaptive);
+  }).catch((error) => {
+    console.warn("[adaptive] viewport interaction failed to initialize", error);
+  });
   w.__obsEngineUi = {
     // structural
     openFrameSolverDialog, openSteelCheckDialog, openRcBeamDialog,
