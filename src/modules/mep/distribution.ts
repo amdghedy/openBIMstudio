@@ -11,7 +11,7 @@
  *     up the tree. `buildDistributionSummary` does the same for links
  *     supplied by the model, with cycle/multi-parent guards and
  *     feeder-breaker adequacy checks.
- *   - Revit panel schedules can show wire sizes. `enhancePanelSchedule`
+ *   - RVT panel schedules can show wire sizes. `enhancePanelSchedule`
  *     auto-selects a conductor from the design current (IEC 60364-5-52
  *     style reference table) and reports the voltage drop when the
  *     circuit's route length is known.

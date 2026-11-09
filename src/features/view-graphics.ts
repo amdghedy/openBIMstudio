@@ -1,5 +1,5 @@
 /**
- * View / graphics control layer — Revit-style model display presets.
+ * View / graphics control layer — RVT-style model display presets.
  *
  * Wireframe · Hidden Line · Shaded · Shaded+Edges · Consistent Colors ·
  * Realistic · Ray Trace (enhanced realistic approximation).

@@ -1,7 +1,7 @@
 /**
  * Toposurface Generator — triangulated irregular network (TIN) from survey points.
  *
- * BIM-equivalent of Revit's "Toposurface" tool. Accepts a set of 3D survey
+ * BIM-equivalent of RVT's "Toposurface" tool. Accepts a set of 3D survey
  * points and produces a triangulated surface mesh suitable for cut/fill
  * volume calculations, building pads, subregions and graded regions.
  *
