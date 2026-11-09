@@ -117,6 +117,10 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./modules/curtain-wall/curtain-wall");
     m.setupCurtainWall?.();
   });
+  await safe("architecture-depth", async () => {
+    const m: Any = await import("./modules/architecture-depth");
+    m.setupArchitectureDepth?.();
+  });
   // Vertical (stacked) wall joins across level boundaries
   await safe("wall-join-vertical", async () => {
     const m: Any = await import("./modules/wall-join/setup");

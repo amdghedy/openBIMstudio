@@ -220,6 +220,19 @@ export function getTypeDefaults(type: string): TypeDefaults {
       properties: {},
       color: COLORS[type] ?? "#cccccc",
     };
+    // Architectural default: compound exterior wall (finish | core | finish)
+    // Format consumed by parseWallLayers / buildCompoundWall.
+    if (type === "wall") {
+      d.params.thickness = d.params.thickness ?? 0.255;
+      d.properties.layers =
+        "Exterior Finish 0.025|#c4b59a; Structure Core 0.20|#a8a29e; Interior Finish 0.03|#e7e5e4";
+      d.name = d.name || "Basic Wall: Compound Exterior";
+    }
+    if (type === "curtain-wall") {
+      d.params.thickness = 0.12;
+      d.name = d.name || "Curtain Wall: System Panel";
+      d.properties.system = "mullion-panel";
+    }
     typeDefaults.set(type, d);
   }
   return d;
@@ -257,7 +270,7 @@ export function markAuthoringDirty(): void {
 // Defaults & colors
 // ═══════════════════════════════════════════════════════════════════════════
 const DEFAULTS: Record<string, { height: number; thickness: number; width?: number }> = {
-  wall: { height: 3.0, thickness: 0.2 },
+  wall: { height: 3.0, thickness: 0.255 },
   slab: { height: 0.2, thickness: 0.2 },
   column: { height: 3.0, thickness: 0.3 },
   beam: { height: 0.5, thickness: 0.25 },
@@ -1309,6 +1322,73 @@ function computeWallEndFaces(
   return { left: plainLeft, right: plainRight, joined: false };
 }
 
+
+/**
+ * Cut door/window openings through a wall mesh or compound Group (all layers).
+ * Preserves Revit-like behaviour: openings pierce every compound layer.
+ */
+function cutOpeningsInWallObject(
+  root: THREE.Object3D,
+  el: AuthoredElement,
+  openings: WallOpening[],
+): THREE.Object3D | null {
+  if (!openings.length) return root;
+  const p = el.params;
+  if (!p.start || !p.end) return root;
+  const [ax, az] = p.start;
+  const [bx, bz] = p.end;
+  const L = Math.hypot(bx - ax, bz - az);
+  if (L < 0.05) return root;
+  const T = Number(p.thickness) || 0.2;
+  const dirX = (bx - ax) / L;
+  const dirZ = (bz - az) / L;
+  const normalX = dirZ, normalZ = -dirX;
+
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh);
+  });
+  if (!meshes.length) return root;
+
+  for (let mi = 0; mi < meshes.length; mi++) {
+    let mesh = meshes[mi];
+    const mat = mesh.material;
+    for (const op of openings) {
+      try {
+        const holeGeo = new THREE.BoxGeometry(op.width, T + 0.35, op.height);
+        const holeMesh = new THREE.Mesh(holeGeo, new THREE.MeshLambertMaterial({ visible: false }));
+        const cx = ax + dirX * op.offset;
+        const cz = az + dirZ * op.offset;
+        const cy = (p.elevation ?? 0) + op.sill + op.height / 2;
+        holeMesh.position.set(cx, cy, cz);
+        // Orient hole: width along wall, thickness through wall, height up
+        const up = new THREE.Vector3(0, 1, 0);
+        const along = new THREE.Vector3(dirX, 0, dirZ);
+        const through = new THREE.Vector3(normalX, 0, normalZ);
+        const m = new THREE.Matrix4().makeBasis(along, up, through);
+        holeMesh.quaternion.setFromRotationMatrix(m);
+        holeMesh.updateMatrixWorld(true);
+        mesh.updateMatrixWorld(true);
+        const result = CSG.toMesh(CSG.fromMesh(mesh).subtract(CSG.fromMesh(holeMesh)), mesh.matrix, mat as THREE.Material);
+        result.userData = { ...mesh.userData };
+        result.position.copy(mesh.position);
+        result.quaternion.copy(mesh.quaternion);
+        result.scale.copy(mesh.scale);
+        if (mesh.parent) {
+          mesh.parent.add(result);
+          mesh.parent.remove(mesh);
+        }
+        mesh = result;
+        meshes[mi] = mesh;
+      } catch (err) {
+        console.warn("[compound] opening cut failed", err);
+      }
+    }
+  }
+  root.userData.elementId = el.id;
+  return root;
+}
+
 function buildWallWithOpenings(
   el: AuthoredElement,
   openings: WallOpening[],
@@ -1936,7 +2016,8 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
 
   if (el.type === "wall" && p.start && p.end) {
     const openings = openingsForWall(el.id);
-    // BIM-style compound wall hook
+    // Compound (multi-layer) walls: build layered solids, then cut host openings
+    // so doors/windows still punch every layer (Revit compound behavior).
     const __layerStr = (el.properties as any)?.layers as string | undefined;
     if (__layerStr) {
       try {
@@ -1944,13 +2025,30 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
         const __builder = __w.__obsMeshBuilders?.["wall"];
         if (typeof __builder === "function") {
           const __mesh = __builder(el);
-          if (__mesh) return __mesh;
+          if (__mesh) {
+            return cutOpeningsInWallObject(__mesh, el, openings) ?? __mesh;
+          }
         }
       } catch (__err) {
         console.warn("[authoring] compound wall builder failed", __err);
       }
     }
     return buildWallWithOpenings(el, openings);
+  }
+
+  // Curtain wall system — mullions + panels (not a solid wall slab)
+  if (el.type === "curtain-wall" && p.start && p.end) {
+    try {
+      const cw = (window as any).__obsCurtainWall;
+      if (cw && typeof cw.buildFromElement === "function") {
+        const g = cw.buildFromElement(el);
+        if (g) return g;
+      }
+    } catch (err) {
+      console.warn("[authoring] curtain-wall builder failed", err);
+    }
+    // Fallback: thin solid with openings so the element is never invisible
+    return buildWallWithOpenings(el, openingsForWall(el.id));
   }
 
   // miter-beam-v1

@@ -110,7 +110,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     source: ["src/features/authoring.ts"],
     evidence: ["tests/", "npm run verify:v68", "npm run verify:v73"],
     limitations: [
-      "Doors/windows host only on walls authored in-app (not arbitrary linked-geometry hosts)",
+      "Doors/windows host on in-app walls (straight and curved); openings cut compound layers; linked-IFC hosts still limited",
     ],
     affirmedIn: APP_VERSION,
   },
@@ -387,7 +387,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     evidence: ["tests/magnet.test.cjs"],
     limitations: [
       "Join/follow planning is unit-tested as pure logic; interactive behaviour has not been browser-tested",
-      "Applies to straight linear elements (walls, beams, strips, ducts, pipes, trays, conduits); arcs are not joined",
+      "Straight linear elements join with miter/butt; arc walls join at chord endpoints; compound layers receive shared openings",
     ],
     affirmedIn: APP_VERSION,
   },

@@ -426,20 +426,67 @@ export function buildCurtainCorner(
   return { mullion: placement, object: mesh };
 }
 
+/**
+ * Build a curtain-wall system from an authored linear element (start/end/height).
+ * Maps the wall path to a vertical plane of mullions + glazed panels.
+ */
+export function buildCurtainFromElement(el: {
+  id?: string;
+  params?: {
+    start?: [number, number];
+    end?: [number, number];
+    height?: number;
+    elevation?: number;
+    thickness?: number;
+  };
+  properties?: Record<string, unknown>;
+}): THREE.Object3D | null {
+  const p = el.params;
+  if (!p?.start || !p?.end) return null;
+  const [ax, az] = p.start;
+  const [bx, bz] = p.end;
+  const width = Math.hypot(bx - ax, bz - az);
+  if (width < 0.2) return null;
+  const height = Number(p.height) || 3;
+  const elevation = Number(p.elevation) || 0;
+  const angle = Math.atan2(bz - az, bx - ax);
+  const vDiv = Math.max(2, Math.min(12, Math.round(width / 1.2)));
+  const hDiv = Math.max(1, Math.min(6, Math.round(height / 1.4)));
+  const props = el.properties ?? {};
+  const result = buildCurtainWall({
+    width,
+    height,
+    origin: { x: ax, y: elevation, z: az },
+    angle,
+    vDivisions: Number(props.vDivisions) || vDiv,
+    hDivisions: Number(props.hDivisions) || hDiv,
+    mullionDepth: Number(p.thickness) || 0.12,
+    mullionThickness: 0.06,
+    panelThickness: 0.02,
+    mullionProfile: (props.mullionProfile as MullionProfile) || "rect",
+    panelType: (props.panelType as PanelType) || "glazed",
+  });
+  result.object.userData.elementId = el.id;
+  result.object.userData.curtainSystem = {
+    panels: result.panelCount,
+    mullions: result.mullionCount,
+    width,
+    height,
+  };
+  result.object.name = el.id ? `curtain-wall:${el.id}` : "curtain-wall";
+  return result.object;
+}
+
 export function setupCurtainWall(): void {
-  (ctx.features as any).curtainWall = {
+  const api = {
     buildCurtainWall,
     buildCurvedCurtainWall,
     buildCurtainCorner,
+    buildFromElement: buildCurtainFromElement,
     insertGridLine,
     mullionGeometry,
   };
-  (window as any).__obsCurtainWall = {
-    buildCurtainWall,
-    buildCurvedCurtainWall,
-    buildCurtainCorner,
-    insertGridLine,
-    mullionGeometry,
-  };
-  console.log("[curtain-wall] system ready (profiles, panel types, curved walls, corner mullions)");
+  (ctx.features as any).curtainWall = api;
+  (window as any).__obsCurtainWall = api;
+  console.log("[curtain-wall] system ready (profiles, panel types, curved, corners, authored path)");
 }
