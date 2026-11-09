@@ -1,0 +1,587 @@
+/**
+ * Native 3D placement and point-grip interaction for adaptive components.
+ *
+ * This feature deliberately uses the shared viewport gesture router and
+ * snapping service. It does not install competing pointer listeners.
+ */
+import * as THREE from "three";
+import { ctx } from "../core/context";
+import { inputRouter } from "../core/input-router";
+import { snapping } from "./snapping";
+import { notify } from "../core/notify";
+import type {
+  AdaptiveElementCreateInput,
+  AdaptiveElementSnapshot,
+} from "../modules/adaptive/native-integration";
+import type { Pt3 } from "../modules/adaptive";
+
+type Any = Record<string, any>;
+
+interface AdaptiveInteractionApi {
+  create(input: AdaptiveElementCreateInput): Any;
+  buildMesh(element: Any): THREE.Object3D | null;
+  getDefinition(elementId: string): Any | null;
+  beginPointEdit(elementId: string): AdaptiveElementSnapshot | null;
+  previewPointEdit(elementId: string, pointIndex: number, point: Pt3, baseline: AdaptiveElementSnapshot): boolean;
+  commitPointEdit(elementId: string, baseline: AdaptiveElementSnapshot): boolean;
+  cancelPointEdit(elementId: string, baseline: AdaptiveElementSnapshot): boolean;
+}
+
+interface PlacementSession {
+  input: Omit<AdaptiveElementCreateInput, "points">;
+  pointCount: number;
+  points: Pt3[];
+  resolve: (element: Any | null) => void;
+}
+
+interface GripDrag {
+  elementId: string;
+  pointIndex: number;
+  baseline: AdaptiveElementSnapshot;
+  plane: THREE.Plane;
+  changed: boolean;
+}
+
+const HANDLE_COLOR = 0xf59e0b;
+const HANDLE_HOVER = 0x22c55e;
+let installed = false;
+let api: AdaptiveInteractionApi | null = null;
+let placement: PlacementSession | null = null;
+let gripDrag: GripDrag | null = null;
+let hoverSequence = 0;
+let lastSnap: { point: THREE.Vector3; x: number; y: number } | null = null;
+let previewRoot: THREE.Group | null = null;
+let gripRoot: THREE.Group | null = null;
+let hud: HTMLDivElement | null = null;
+let unsubGesture: (() => void) | null = null;
+let unsubHover: (() => void) | null = null;
+let unsubCancel: (() => void) | null = null;
+
+function ndcOf(event: MouseEvent | PointerEvent): THREE.Vector2 | null {
+  const host = ctx.rightHost;
+  if (!host) return null;
+  const rect = host.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return null;
+  return new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+}
+
+function rayFor(event: MouseEvent | PointerEvent): THREE.Raycaster | null {
+  const ndc = ndcOf(event);
+  const camera = ctx.world?.camera?.three as THREE.Camera | undefined;
+  if (!ndc || !camera) return null;
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, camera);
+  return ray;
+}
+
+function isUnder(object: THREE.Object3D, root: THREE.Object3D | null): boolean {
+  if (!root) return false;
+  let node: THREE.Object3D | null = object;
+  while (node) {
+    if (node === root) return true;
+    node = node.parent;
+  }
+  return false;
+}
+
+function surfacePoint(event: MouseEvent | PointerEvent, excludeElementId?: string): THREE.Vector3 | null {
+  const ray = rayFor(event);
+  const scene = ctx.world?.scene?.three as THREE.Scene | undefined;
+  if (!ray || !scene) return null;
+  const hits = ray.intersectObjects(scene.children, true);
+  for (const hit of hits) {
+    const object = hit.object as THREE.Object3D;
+    if (isUnder(object, previewRoot) || isUnder(object, gripRoot)) continue;
+    if (object === ctx.groundPlane || object.name === "groundPlane") continue;
+    if (!object.visible) continue;
+    if (excludeElementId && String(object.userData?.elementId ?? "") === excludeElementId) continue;
+    if ((object as THREE.Mesh).isMesh || (object as any).isInstancedMesh) return hit.point.clone();
+  }
+  return null;
+}
+
+function workPlanePoint(event: MouseEvent | PointerEvent, y = snapping.getWorkPlaneY()): THREE.Vector3 | null {
+  const ray = rayFor(event);
+  if (!ray) return null;
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -y);
+  const point = new THREE.Vector3();
+  return ray.ray.intersectPlane(plane, point) ? point : null;
+}
+
+function placementPoint(event: MouseEvent | PointerEvent): THREE.Vector3 | null {
+  return surfacePoint(event) ?? workPlanePoint(event);
+}
+
+function cursorMatchesSnap(event: MouseEvent | PointerEvent): THREE.Vector3 | null {
+  if (!lastSnap) return null;
+  if (Math.hypot(event.clientX - lastSnap.x, event.clientY - lastSnap.y) > 14) return null;
+  return lastSnap.point.clone();
+}
+
+function removeObject(root: THREE.Group | null): void {
+  if (!root) return;
+  root.parent?.remove(root);
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.geometry) mesh.geometry.dispose();
+    const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+    for (const material of materials) material.dispose();
+  });
+}
+
+function ensureGroups(): void {
+  const scene = ctx.world?.scene?.three;
+  if (!scene) throw new Error("The 3D viewport is not ready");
+  if (!previewRoot) {
+    previewRoot = new THREE.Group();
+    previewRoot.name = "adaptive-placement-preview";
+    previewRoot.userData.adaptiveInteractionOverlay = true;
+    scene.add(previewRoot);
+  }
+  if (!gripRoot) {
+    gripRoot = new THREE.Group();
+    gripRoot.name = "adaptive-placement-grips";
+    gripRoot.userData.adaptiveInteractionOverlay = true;
+    scene.add(gripRoot);
+  }
+}
+
+function pointCountLabel(): string {
+  if (!placement) return "";
+  return "Point " + Math.min(placement.points.length + 1, placement.pointCount) +
+    " of " + placement.pointCount;
+}
+
+function updateHud(): void {
+  if (!hud || !placement) return;
+  const family = placement.input.familyName || "Adaptive component";
+  const count = placement.points.length;
+  const next = Math.min(count + 1, placement.pointCount);
+  hud.querySelector<HTMLElement>("[data-status]")!.textContent =
+    family + " · " + count + "/" + placement.pointCount + " points placed";
+  hud.querySelector<HTMLElement>("[data-step]")!.textContent =
+    count < placement.pointCount ? "Click to place " + pointCountLabel() : "Finalizing component…";
+  const undo = hud.querySelector<HTMLButtonElement>("[data-undo]");
+  if (undo) undo.disabled = count === 0;
+  void next;
+}
+
+function ensureHud(): void {
+  if (hud || !ctx.rightHost) return;
+  hud = document.createElement("div");
+  hud.dataset.adaptivePlacementHud = "true";
+  hud.style.cssText =
+    "position:absolute;z-index:75;top:14px;left:50%;transform:translateX(-50%);" +
+    "display:flex;align-items:center;gap:12px;min-width:360px;padding:10px 12px;" +
+    "background:rgba(15,17,23,.96);border:1px solid #475569;border-radius:9px;" +
+    "box-shadow:0 10px 28px rgba(0,0,0,.35);color:#e5e7eb;font:12px system-ui,sans-serif";
+  const info = document.createElement("div");
+  info.style.cssText = "display:flex;flex-direction:column;gap:3px;flex:1;min-width:0";
+  const status = document.createElement("strong");
+  status.dataset.status = "true";
+  status.style.cssText = "font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+  const step = document.createElement("span");
+  step.dataset.step = "true";
+  step.style.cssText = "font-size:11px;color:#94a3b8";
+  info.append(status, step);
+  const undo = document.createElement("button");
+  undo.dataset.undo = "true";
+  undo.textContent = "Undo point";
+  undo.title = "Remove the last placed point (Backspace)";
+  const cancel = document.createElement("button");
+  cancel.textContent = "Cancel";
+  for (const button of [undo, cancel]) {
+    button.type = "button";
+    button.style.cssText =
+      "border:1px solid #475569;border-radius:6px;padding:6px 9px;background:#1e293b;" +
+      "color:#e2e8f0;font:11px system-ui;cursor:pointer";
+  }
+  undo.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!placement || placement.points.length === 0) return;
+    placement.points.pop();
+    drawPlacementPreview(null);
+    updateHud();
+  });
+  cancel.addEventListener("click", (event) => {
+    event.stopPropagation();
+    finishPlacement(null);
+  });
+  hud.append(info, undo, cancel);
+  ctx.rightHost.appendChild(hud);
+}
+
+function disposePreview(): void {
+  if (!previewRoot) return;
+  while (previewRoot.children.length) {
+    const child = previewRoot.children[0];
+    previewRoot.remove(child);
+    child.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.geometry) mesh.geometry.dispose();
+      const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+      for (const material of materials) material.dispose();
+    });
+  }
+}
+
+function drawPlacementPreview(cursor: THREE.Vector3 | null): void {
+  if (!placement || !api || !previewRoot) return;
+  disposePreview();
+  const points = placement.points.map((p) => ({ ...p }));
+  if (cursor) points.push({ x: cursor.x, y: cursor.y, z: cursor.z });
+  if (points.length) {
+    try {
+      const definition = {
+        schemaVersion: 1,
+        familyId: String(placement.input.familyId),
+        familyName: String(placement.input.familyName),
+        pointCount: points.length,
+        points,
+        profile: placement.input.profile,
+        ...(placement.input.pointLength === undefined ? {} : { pointLength: placement.input.pointLength }),
+      };
+      const mesh = api.buildMesh({
+        id: "adaptive-placement-preview",
+        type: "adaptive-component",
+        color: "#f59e0b",
+        properties: { adaptiveDefinition: definition },
+      });
+      if (mesh) {
+        mesh.traverse((obj) => {
+          const child = obj as THREE.Mesh;
+          if (!child.isMesh) return;
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          child.material = materials.map((material) => {
+            const clone = material.clone();
+            (clone as THREE.Material).transparent = true;
+            (clone as THREE.Material).opacity = 0.38;
+            (clone as THREE.Material).depthWrite = false;
+            if ((clone as any).color) (clone as any).color.set("#f59e0b");
+            return clone;
+          }) as any;
+          child.renderOrder = 900;
+        });
+        previewRoot.add(mesh);
+      }
+    } catch { /* partial placement may not yet define a valid sweep */ }
+  }
+  if (points.length > 0) {
+    const geometry = new THREE.BufferGeometry().setFromPoints(
+      points.map((p) => new THREE.Vector3(p.x, p.y, p.z)),
+    );
+    const material = new THREE.LineBasicMaterial({ color: 0xfbbf24, depthTest: false });
+    const line = new THREE.Line(geometry, material);
+    line.renderOrder = 901;
+    previewRoot.add(line);
+    points.forEach((point, index) => {
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.045, 12, 8),
+        new THREE.MeshBasicMaterial({ color: index === points.length - 1 ? 0x22c55e : 0xf59e0b, depthTest: false }),
+      );
+      marker.position.set(point.x, point.y, point.z);
+      marker.renderOrder = 902;
+      previewRoot!.add(marker);
+    });
+  }
+}
+
+function finishPlacement(element: Any | null): void {
+  if (!placement) return;
+  const current = placement;
+  placement = null;
+  hoverSequence++;
+  lastSnap = null;
+  snapping.hideIndicator();
+  removeObject(previewRoot);
+  previewRoot = null;
+  if (hud?.parentElement) hud.parentElement.removeChild(hud);
+  hud = null;
+  current.resolve(element);
+  try { (window as Any).obsRefreshRibbon?.(); } catch { /* */ }
+}
+
+async function placeCurrentPoint(event: MouseEvent | PointerEvent): Promise<void> {
+  if (!placement || !api) return;
+  const world = cursorMatchesSnap(event) ?? placementPoint(event);
+  if (!world) {
+    notify("warn", "No 3D surface or active work plane was found under the cursor.");
+    return;
+  }
+  placement.points.push({ x: world.x, y: world.y, z: world.z });
+  if (placement.points.length < placement.pointCount) {
+    drawPlacementPreview(null);
+    updateHud();
+    return;
+  }
+  const current = placement;
+  try {
+    const element = api.create({ ...current.input, points: current.points });
+    finishPlacement(element);
+    notify("success", "Placed native adaptive component: " + String(element?.name ?? current.input.familyName));
+    refreshAdaptiveGrips();
+  } catch (error) {
+    current.points.pop();
+    drawPlacementPreview(null);
+    updateHud();
+    notify("error", "Adaptive placement failed: " + (error as Error).message);
+  }
+}
+
+function handlePlacementHover(event: PointerEvent): void {
+  if (!placement) return;
+  const cursor = placementPoint(event);
+  const sequence = ++hoverSequence;
+  if (!cursor) {
+    lastSnap = null;
+    snapping.hideIndicator();
+    drawPlacementPreview(null);
+    return;
+  }
+  drawPlacementPreview(cursor);
+  void snapping.query(event, cursor).then((result) => {
+    if (!placement || sequence !== hoverSequence) return;
+    if (result) {
+      lastSnap = { point: result.point.clone(), x: event.clientX, y: event.clientY };
+      snapping.showIndicator(result);
+      drawPlacementPreview(result.point);
+    } else {
+      lastSnap = null;
+      snapping.hideIndicator();
+    }
+  }).catch(() => { /* snapping is an enhancement; plane/surface picking still works */ });
+}
+
+function gripSize(point: THREE.Vector3): number {
+  const camera = ctx.world?.camera?.three as any;
+  const host = ctx.rightHost;
+  if (!camera || !host) return 0.07;
+  const pixels = 8;
+  if (camera.isOrthographicCamera) {
+    return Math.max(0.025, Math.min(0.12,
+      Math.abs((camera.top - camera.bottom) / (camera.zoom || 1)) / Math.max(1, host.clientHeight) * pixels));
+  }
+  const distance = Math.max(0.1, camera.position.distanceTo(point));
+  const fov = THREE.MathUtils.degToRad(camera.fov ?? 50);
+  return Math.max(0.025, Math.min(0.16,
+    2 * distance * Math.tan(fov / 2) * pixels / Math.max(1, host.clientHeight)));
+}
+
+export function refreshAdaptiveGrips(): void {
+  if (!gripRoot || !api) return;
+  while (gripRoot.children.length) {
+    const child = gripRoot.children[0];
+    gripRoot.remove(child);
+    child.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.geometry) mesh.geometry.dispose();
+      const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+      for (const material of materials) material.dispose();
+    });
+  }
+  const authoring = (ctx.features as Any)?.authoring;
+  const selected = authoring?.getSelectedIds?.() ?? [];
+  for (const id of selected) {
+    const element = (authoring?.getElements?.() ?? []).find((item: Any) => item.id === id && item.type === "adaptive-component");
+    const definition = element?.properties?.adaptiveDefinition;
+    if (!definition || !Array.isArray(definition.points)) continue;
+    definition.points.forEach((point: Pt3, pointIndex: number) => {
+      const position = new THREE.Vector3(point.x, point.y, point.z);
+      const handle = new THREE.Mesh(
+        new THREE.SphereGeometry(gripSize(position), 16, 12),
+        new THREE.MeshBasicMaterial({ color: HANDLE_COLOR, depthTest: false, transparent: true, opacity: 0.98 }),
+      );
+      handle.position.copy(position);
+      handle.renderOrder = 1100;
+      handle.userData.adaptivePlacementGrip = true;
+      handle.userData.elementId = element.id;
+      handle.userData.pointIndex = pointIndex;
+      gripRoot!.add(handle);
+    });
+  }
+}
+
+function gripAt(event: MouseEvent | PointerEvent): { elementId: string; pointIndex: number } | null {
+  if (!gripRoot || !gripRoot.children.length) return null;
+  const ray = rayFor(event);
+  if (!ray) return null;
+  const hit = ray.intersectObjects(gripRoot.children, true)[0];
+  if (!hit) return null;
+  const object = hit.object as THREE.Object3D;
+  const elementId = String(object.userData.elementId ?? "");
+  const pointIndex = Number(object.userData.pointIndex);
+  return elementId && Number.isInteger(pointIndex) ? { elementId, pointIndex } : null;
+}
+
+function pointOnDragPlane(event: MouseEvent | PointerEvent, drag: GripDrag): THREE.Vector3 | null {
+  const ray = rayFor(event);
+  if (!ray) return null;
+  const point = new THREE.Vector3();
+  return ray.ray.intersectPlane(drag.plane, point) ? point : surfacePoint(event, drag.elementId);
+}
+
+function updateGripFromEvent(event: MouseEvent | PointerEvent, point?: THREE.Vector3): void {
+  if (!gripDrag || !api) return;
+  const world = point ?? pointOnDragPlane(event, gripDrag);
+  if (!world) return;
+  try {
+    const changed = api.previewPointEdit(gripDrag.elementId, gripDrag.pointIndex, {
+      x: world.x, y: world.y, z: world.z,
+    }, gripDrag.baseline);
+    gripDrag.changed = gripDrag.changed || changed;
+    refreshAdaptiveGrips();
+  } catch (error) {
+    console.warn("[adaptive] live placement grip update rejected", error);
+  }
+}
+
+function beginGripDrag(event: MouseEvent | PointerEvent): boolean {
+  if (!api) return false;
+  const grip = gripAt(event);
+  if (!grip) return false;
+  const baseline = api.beginPointEdit(grip.elementId);
+  const camera = ctx.world?.camera?.three as THREE.Camera | undefined;
+  if (!baseline || !camera) return false;
+  const definition = baseline.definition as Any;
+  const point = definition.points?.[grip.pointIndex] as Pt3 | undefined;
+  if (!point) return false;
+  const anchor = new THREE.Vector3(point.x, point.y, point.z);
+  const normal = new THREE.Vector3();
+  camera.getWorldDirection(normal);
+  gripDrag = {
+    elementId: grip.elementId,
+    pointIndex: grip.pointIndex,
+    baseline,
+    plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, anchor),
+    changed: false,
+  };
+  return true;
+}
+
+function cancelActive(): boolean {
+  if (placement) {
+    finishPlacement(null);
+    notify("info", "Adaptive placement cancelled.");
+    return true;
+  }
+  if (gripDrag && api) {
+    const drag = gripDrag;
+    gripDrag = null;
+    try { api.cancelPointEdit(drag.elementId, drag.baseline); } catch (error) {
+      notify("error", "Could not restore adaptive point: " + (error as Error).message);
+    }
+    refreshAdaptiveGrips();
+    if (ctx.rightHost) ctx.rightHost.style.cursor = "";
+    return true;
+  }
+  return false;
+}
+
+function backspacePlacementPoint(): boolean {
+  if (!placement) return false;
+  if (placement.points.length) placement.points.pop();
+  drawPlacementPreview(null);
+  updateHud();
+  return true;
+}
+
+export function setupAdaptiveInteraction(targetApi: Any): Any {
+  if (installed) return (ctx.features as Any).adaptiveInteraction;
+  api = targetApi as AdaptiveInteractionApi;
+  if (!ctx.world?.scene?.three || !ctx.rightHost) {
+    throw new Error("Adaptive viewport interaction requires an initialized 3D viewport");
+  }
+  ensureGroups();
+  unsubGesture = inputRouter.subscribe((gesture) => {
+    if (placement) {
+      if (gesture.kind === "drag-start" && gesture.button === 0) return true;
+      if (gesture.kind === "click" && gesture.button === 0) {
+        void placeCurrentPoint(gesture.event);
+        return true;
+      }
+      if (gesture.kind === "rmb-click") return backspacePlacementPoint();
+      return false;
+    }
+    if (gripDrag) {
+      if (gesture.kind === "drag-move") {
+        updateGripFromEvent(gesture.event);
+        const drag = gripDrag;
+        const raw = pointOnDragPlane(gesture.event, drag);
+        if (raw) {
+          const sequence = ++hoverSequence;
+          void snapping.query(gesture.event, raw).then((result) => {
+            if (gripDrag === drag && sequence === hoverSequence && result) updateGripFromEvent(gesture.event, result.point);
+          }).catch(() => {});
+        }
+        return true;
+      }
+      if (gesture.kind === "drag-end") {
+        const drag = gripDrag;
+        gripDrag = null;
+        try {
+          if (drag.changed) api?.commitPointEdit(drag.elementId, drag.baseline);
+          else api?.cancelPointEdit(drag.elementId, drag.baseline);
+        } catch (error) {
+          try { api?.cancelPointEdit(drag.elementId, drag.baseline); } catch { /* keep failure visible */ }
+          notify("error", "Adaptive grip commit failed: " + (error as Error).message);
+        }
+        if (ctx.rightHost) ctx.rightHost.style.cursor = "";
+        refreshAdaptiveGrips();
+        return true;
+      }
+      return false;
+    }
+    if (gesture.kind === "drag-start" && gesture.button === 0 && beginGripDrag(gesture.event)) {
+      if (ctx.rightHost) ctx.rightHost.style.cursor = "grabbing";
+      return true;
+    }
+    if (gesture.kind === "click" && gesture.button === 0) {
+      refreshAdaptiveGrips();
+    }
+    return false;
+  }, 80);
+  unsubHover = inputRouter.subscribeHover((event) => {
+    if (placement) handlePlacementHover(event);
+  });
+  unsubCancel = inputRouter.registerCancel(cancelActive);
+  ctx.rightHost.addEventListener("keydown", (event) => {
+    if (event.key === "Backspace" && placement) {
+      event.preventDefault();
+      backspacePlacementPoint();
+    }
+  });
+  window.addEventListener("obs:authoring-changed", () => refreshAdaptiveGrips());
+  window.addEventListener("resize", () => refreshAdaptiveGrips());
+
+  const beginPlacement = (input: Omit<AdaptiveElementCreateInput, "points"> & { pointCount: number }): Promise<Any | null> => {
+    if (placement) finishPlacement(null);
+    if (!Number.isInteger(input.pointCount) || input.pointCount < 1 || input.pointCount > 8) {
+      throw new Error("Adaptive placement requires between 1 and 8 points");
+    }
+    const { pointCount, ...createInput } = input;
+    return new Promise((resolve) => {
+      placement = { input: createInput, pointCount, points: [], resolve };
+      ensureHud();
+      updateHud();
+      drawPlacementPreview(null);
+      ctx.rightHost.style.cursor = "crosshair";
+      notify("info", "Adaptive placement: click the 3D model to place each ordered point. Escape cancels.");
+    }).finally(() => {
+      if (ctx.rightHost) ctx.rightHost.style.cursor = "";
+    });
+  };
+
+  const interactionApi = { beginPlacement, cancelPlacement: cancelActive, refreshGrips: refreshAdaptiveGrips };
+  targetApi.beginPlacement = beginPlacement;
+  targetApi.cancelPlacement = cancelActive;
+  targetApi.refreshGrips = refreshAdaptiveGrips;
+  (ctx.features as Any).adaptiveInteraction = interactionApi;
+  (window as Any).__obsAdaptiveInteraction = interactionApi;
+  if (typeof targetApi.connectFamilyTypePropagation === "function") targetApi.connectFamilyTypePropagation();
+  installed = true;
+  refreshAdaptiveGrips();
+  return interactionApi;
+}
