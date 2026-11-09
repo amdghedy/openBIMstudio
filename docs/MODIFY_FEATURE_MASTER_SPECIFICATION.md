@@ -24,13 +24,13 @@ Do not treat an Autodesk command name as proof that the command is available for
 
 ### Primary Autodesk evidence (consulted 2026-11-02)
 
-- external BIM authoring software 2027 What's New, including Options Bar removal, new wall-host behavior, rebar enhancements, fabrication editing and tag leaders: https://help.autodesk.com/cloudhelp/2027/ENU/external BIM authoring software-WhatsNew/files/GUID-C81929D7-02CB-4BF7-A637-9B98EC9EB38B.htm
-- external BIM authoring software 2027 About Modifying Elements: https://help.autodesk.com/cloudhelp/2027/ENU/external BIM authoring software-Model/files/GUID-8A9B4506-D0F2-447C-91EC-BDD59C7607AE.htm
-- external BIM authoring software 2026 Selection: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-GetStarted/files/GUID-AC1CAA25-037D-4EA1-B357-D59CE29FE754.htm
-- external BIM authoring software 2026 Constraints: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-Model/files/GUID-91CBCCF3-66D1-496B-80B3-D893065D1A50.htm
-- external BIM authoring software 2026 Duct system modification: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-MEPEng/files/GUID-252DCF21-4258-4F87-86F5-C1703690642B.htm
-- external BIM authoring software 2026 Rebar shape modification: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-StructEng/files/GUID-F1BCB08A-73C8-479B-9AB5-C22241CCEA19.htm
-- external BIM authoring software 2026 Rebar constraint editing: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-StructEng/files/GUID-CF33FBA7-6B3B-4839-A60F-B42130A6DA4F.htm
+- external BIM authoring software 2027 What's New, including Options Bar removal, new wall-host behavior, rebar enhancements, fabrication editing and tag leaders
+- external BIM authoring software 2027 About Modifying Elements
+- external BIM authoring software 2026 Selection
+- external BIM authoring software 2026 Constraints
+- external BIM authoring software 2026 Duct system modification
+- external BIM authoring software 2026 Rebar shape modification
+- external BIM authoring software 2026 Rebar constraint editing
 - external BIM authoring software 2027 Join Geometry / Cut Geometry / Split Elements: https://help.autodesk.com/
 - external BIM authoring software 2027 Keyboard Shortcuts: https://help.autodesk.com/
 
