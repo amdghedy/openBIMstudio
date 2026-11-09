@@ -1,9 +1,9 @@
-// AutoCAD expansion pack — source drift-guard test.
+// DWG expansion pack — source drift-guard test.
 //
 // Guards the second wave of native-engine CAD tools (commit "cad engine
 // expansion"): LENGTHEN / DIVIDE / MEASURE / DDEDIT / LAYISO / LAYOFF /
 // LAYUNISO / LAYLCK / LAYUNLCK / MLEADER / QSELECT / PEDIT / CAL, plus the
-// AutoCAD grip-editing layer (blue hotspots on the selection).
+// DWG grip-editing layer (blue hotspots on the selection).
 //
 // Marker-based on the real sources, plus logic checks of the CAL evaluator
 // and the DIVIDE / LENGTHEN / grip math compiled straight from the modules.
@@ -30,7 +30,7 @@ function loadModule(rel) {
   return require(path.join(TMP, ...rel).replace(/\.ts$/, ".js"));
 }
 
-// ── 1. Command table: every expansion command with its AutoCAD aliases ──
+// ── 1. Command table: every expansion command with its DWG aliases ──
 t("command table rows + aliases", () => {
   const rows = [
     ['{ name: "LENGTHEN", aliases: ["LEN"]', "LENGTHEN"],
@@ -68,7 +68,7 @@ t("pick machinery covers the new tools", () => {
 t("pendingText capture wired", () => {
   assert.ok(viewer.includes("let pendingText"), "pendingText state missing");
   const consumption = viewer.match(/if \(pendingText\) \{[\s\S]{0,200}?f\(trimmed\)/);
-  assert.ok(consumption, "executeAutoCadCommand must consume pendingText before treating input as a command");
+  assert.ok(consumption, "executeDwgCommand must consume pendingText before treating input as a command");
   assert.ok(viewer.includes('f("")'), "empty Enter must cancel pendingText (keep existing text)");
 });
 
@@ -93,12 +93,12 @@ t("grip editing layer", () => {
   assert.ok(viewer.includes("!mod && !pick && !gripDrag"), "grips must hide during modify / pick ops");
 });
 
-// ── 6. Ribbon: buttons reachable from the AutoCAD ribbon ──
+// ── 6. Ribbon: buttons reachable from the DWG ribbon ──
 t("ribbon buttons for the new tools", () => {
   for (const btn of ['tb("lengthen", "stretch", "Lengthen")', 'tb("mleader", "tag-all", "MLeader")', 'tb("divide", "point", "Divide")', 'tb("measure", "measure", "Measure")', 'data-a="ddedit"', 'data-a="layiso"', 'data-a="layuniso"', 'data-a="layoff"']) {
     assert.ok(viewer.includes(btn), `ribbon drift: missing "${btn}"`);
   }
-  for (const actName of ["layiso: () => executeAutoCadCommand", "layuniso: () => executeAutoCadCommand", "ddedit: () => executeAutoCadCommand"]) {
+  for (const actName of ["layiso: () => executeDwgCommand", "layuniso: () => executeDwgCommand", "ddedit: () => executeDwgCommand"]) {
     assert.ok(viewer.includes(actName), `act map drift: missing "${actName}"`);
   }
   for (const tip of ['["lengthen", "Lengthen", "LEN"]', '["divide", "Divide", "DIV"]', '["measure", "Measure", "ME"]', '["mleader", "MLeader", "MLD"]']) {
