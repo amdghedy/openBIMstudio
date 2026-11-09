@@ -768,7 +768,7 @@ export async function openAdaptiveSweepDialog(): Promise<void> {
     fields: [
       { kind: "select", key: "profile", label: "Profile source", default: "family",
         options: [["family", "From family"], ["rect", "Rectangle w×h"], ["circle", "Circle radius"]] },
-      { kind: "select", key: "family", label: "Family", default: families[0]?.id ?? "rect-post",
+      { kind: "select", key: "family", label: "Family", default: families.find((family: AdaptiveFamily) => family.pointCount === 2)?.id ?? families[0]?.id ?? "rect-post",
         options: families.map((f: AdaptiveFamily) => [f.id, f.name] as [string, string]) },
       { kind: "number", key: "rw", label: "Rect width", default: 0.1, unit: "m", step: 0.01, min: 0.001 },
       { kind: "number", key: "rh", label: "Rect height", default: 0.1, unit: "m", step: 0.01, min: 0.001 },
