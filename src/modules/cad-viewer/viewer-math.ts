@@ -514,9 +514,9 @@ export function pickEntity(idx: SpatialIndex, entities: DxfEntity[], x: number, 
 
 /* ───────────────────────── snapping ───────────────────────── */
 
-export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "intersection" | "perpendicular" | "nearest";
+export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent" | "parallel" | "nearest";
 export interface Snap { x: number; y: number; kind: SnapKind }
-export const ALL_SNAPS: SnapKind[] = ["endpoint", "midpoint", "center", "quadrant", "intersection", "perpendicular", "nearest"];
+export const ALL_SNAPS: SnapKind[] = ["endpoint", "midpoint", "center", "quadrant", "intersection", "perpendicular", "tangent", "parallel", "nearest"];
 
 function keyPoints(e: DxfEntity): Snap[] {
   switch (e.type) {
@@ -547,7 +547,7 @@ export function segSegIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
   return { x: a.x + t * r.x, y: a.y + t * r.y };
 }
 
-const TIER: Record<SnapKind, number> = { endpoint: 0, midpoint: 0, center: 0, quadrant: 0, intersection: 1, perpendicular: 1, nearest: 2 };
+const TIER: Record<SnapKind, number> = { endpoint: 0, midpoint: 0, center: 0, quadrant: 0, intersection: 1, perpendicular: 1, tangent: 1, parallel: 1, nearest: 2 };
 
 /**
  * Object snap. Optional `fromPt` enables AutoCAD-style PERPENDICULAR: the foot
@@ -593,22 +593,55 @@ export function findSnap(
       if (p) consider({ ...p, kind: "intersection" });
     }
   }
-  // PERPENDICULAR (AutoCAD PERP): from the previous point drop a foot onto
-  // nearby segments; offer it when the cursor is close to that foot.
+  // Reference-dependent snaps use a wider search around the previous point.
+  const referenceIds = fromPt
+    ? queryIndex(idx, fromPt.x, fromPt.y, Math.max(tol * 40, 1)).filter((i) => visible(entities[i]) && !isHatchEntity(entities[i]))
+    : [];
+  const referenceSegments: Array<[Pt, Pt]> = [];
+  for (const i of [...new Set([...ids, ...referenceIds])]) referenceSegments.push(...entitySegments(entities[i]));
+
+  // PERPENDICULAR (AutoCAD PERP): foot from the previous point to a segment.
   if (on.has("perpendicular") && fromPt) {
-    const segs: Array<[Pt, Pt]> = [];
-    for (const i of ids) segs.push(...entitySegments(entities[i]));
-    // Also query a wider band from fromPt for long lines
-    const wide = queryIndex(idx, fromPt.x, fromPt.y, Math.max(tol * 40, 1)).filter((i) => visible(entities[i]));
-    for (const i of wide) segs.push(...entitySegments(entities[i]));
     const seen = new Set<string>();
-    for (const [a, b] of segs) {
+    for (const [a, b] of referenceSegments) {
       const key = `${a.x},${a.y},${b.x},${b.y}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const foot = nearestOnSegment(fromPt, a, b);
-      if (!foot) continue;
       consider({ x: foot.x, y: foot.y, kind: "perpendicular" });
+    }
+  }
+
+  // PARALLEL: project the cursor onto a line through the previous point,
+  // parallel to each nearby LINE / polyline segment.
+  if (on.has("parallel") && fromPt) {
+    const seen = new Set<string>();
+    for (const [a, b] of referenceSegments) {
+      const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+      if (l2 < 1e-18) continue;
+      const key = `${dx / Math.sqrt(l2)},${dy / Math.sqrt(l2)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const t = ((x - fromPt.x) * dx + (y - fromPt.y) * dy) / l2;
+      consider({ x: fromPt.x + t * dx, y: fromPt.y + t * dy, kind: "parallel" });
+    }
+  }
+
+  // TANGENT: from the previous point, calculate both tangent points to each
+  // visible circle/arc and offer the one the cursor is aiming at.
+  if (on.has("tangent") && fromPt) {
+    for (const i of referenceIds) {
+      const e = entities[i];
+      if (e.type !== "CIRCLE" && e.type !== "ARC") continue;
+      const dx = fromPt.x - e.center.x, dy = fromPt.y - e.center.y;
+      const d2 = dx * dx + dy * dy, r2 = e.radius * e.radius;
+      if (d2 <= r2 + 1e-12 || e.radius <= 0) continue;
+      const base = Math.atan2(dy, dx), alpha = Math.acos(Math.min(1, e.radius / Math.sqrt(d2)));
+      for (const angle of [base + alpha, base - alpha]) {
+        const deg = ((angle / DEG) % 360 + 360) % 360;
+        if (e.type === "ARC" && !angleInArc(deg, e.startAngle, e.endAngle)) continue;
+        consider({ x: e.center.x + e.radius * Math.cos(angle), y: e.center.y + e.radius * Math.sin(angle), kind: "tangent" });
+      }
     }
   }
   if (!best && on.has("nearest")) {
