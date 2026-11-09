@@ -583,7 +583,7 @@ export function setupAdaptiveInteraction(targetApi: Any): Any {
       throw new Error("Adaptive placement requires between 1 and 8 points");
     }
     const { pointCount, ...createInput } = input;
-    return new Promise((resolve) => {
+    return new Promise<Any | null>((resolve) => {
       placement = { input: createInput, pointCount, points: [], resolve };
       ensureHud();
       updateHud();
