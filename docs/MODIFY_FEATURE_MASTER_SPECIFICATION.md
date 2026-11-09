@@ -1,9 +1,9 @@
 # OpenBIMstudio Modify Subsystem — Master Functional & Engineering Specification
 
-**Document:** MODIFY_FEATURE_MASTER_SPECIFICATION.md  
-**Status:** Research baseline / implementation blueprint (not a claim of complete external BIM authoring software equivalence)  
-**Reference baseline:** Autodesk external BIM authoring software 2027 Help, with 2024–2026 deltas called out  
-**Repository baseline:** `main` at `65ca9e0395880a59efaaf95b97a872faedd5bbdb` (2026-11-02 audit)  
+**Document:** MODIFY_FEATURE_MASTER_SPECIFICATION.md 
+**Status:** Research baseline / implementation blueprint (not a claim of complete external BIM authoring software equivalence) 
+**Reference baseline:** Autodesk external BIM authoring software 2027 Help, with 2024–2026 deltas called out 
+**Repository baseline:** `main` at `65ca9e0395880a59efaaf95b97a872faedd5bbdb` (2026-11-02 audit) 
 **Purpose:** Clean-room functional specification for an independent openBIM authoring platform.
 
 ---
@@ -31,7 +31,7 @@ Do not treat an Autodesk command name as proof that the command is available for
 - external BIM authoring software 2026 Duct system modification: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-MEPEng/files/GUID-252DCF21-4258-4F87-86F5-C1703690642B.htm
 - external BIM authoring software 2026 Rebar shape modification: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-StructEng/files/GUID-F1BCB08A-73C8-479B-9AB5-C22241CCEA19.htm
 - external BIM authoring software 2026 Rebar constraint editing: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-StructEng/files/GUID-CF33FBA7-6B3B-4839-A60F-B42130A6DA4F.htm
-- external BIM authoring software 2027 Join Geometry / Cut Geometry / Split Elements: https://help.autodesk.com/cloudhelp/2027/ENU/external BIM authoring software-Model/files/GUID-F3D6884F-F1E3-471B-81FB-ECE93D9C2671.htm ; https://help.autodesk.com/cloudhelp/2027/ENU/external BIM authoring software-Model/files/GUID-FE932AF0-4C84-4D59-B0AA-08F3E6D7A9E8.htm ; https://help.autodesk.com/
+- external BIM authoring software 2027 Join Geometry / Cut Geometry / Split Elements: https://help.autodesk.com/
 - external BIM authoring software 2027 Keyboard Shortcuts: https://help.autodesk.com/
 
 **Version interpretation:** external BIM authoring software 2027 is the latest documented release found for this research date. 2027 is the primary reference; 2024–2026 are retained for compatibility and migration. The version matrix below only records differences supported by release documentation. Blank/unknown cells mean "not verified", not "feature absent".
@@ -487,23 +487,23 @@ Warnings include disconnected-but-permitted MEP ends, constraint auto-relaxation
 
 ```
 Ribbon / Context Menu / Command Search / Properties / Canvas Handles
-                         ↓
+ ↓
 ModifyCommandRegistry + CapabilityResolver
-                         ↓
+ ↓
 Command Orchestrator (preview / validate / commit / cancel)
-                         ↓
+ ↓
 Selection + Reference Engine
-                         ↓
+ ↓
 Transaction / History Engine
-                         ↓
+ ↓
 Parametric Model + Parameter Schema
-        ↙                ↓                 ↘
-Constraint Solver   Geometry Kernel   Relationship Graph
-        ↘                ↓                 ↙
-          MEP Connectivity / Systems / Rebar / Host Services
-                         ↓
+ ↙ ↓ ↘
+Constraint Solver Geometry Kernel Relationship Graph
+ ↘ ↓ ↙
+ MEP Connectivity / Systems / Rebar / Host Services
+ ↓
 Incremental Regeneration + Quantities + Schedules + Views
-                         ↓
+ ↓
 Persistence / IFC Mapping / Audit Trail
 ```
 
@@ -513,19 +513,19 @@ Use TypeScript and extend the existing `src/modules/modify/command.ts` contract 
 
 ```ts
 interface IModifyCommand {
-  readonly id: string;
-  canExecute(ctx: ModifyExecutionContext): CapabilityResult;
-  begin(ctx: ModifyExecutionContext): void;
-  updatePreview(input: CommandInput): PreviewResult; // no model writes
-  validate(): ValidationResult;
-  getAffectedElements(): ElementId[];
-  getDependencies(): DependencyDelta[];
-  getWarnings(): Diagnostic[];
-  getErrors(): Diagnostic[];
-  commit(tx: TransactionContext): CommitResult;
-  rollback(): void;
-  undo(tx: TransactionContext): void;
-  redo(tx: TransactionContext): void;
+ readonly id: string
+ canExecute(ctx: ModifyExecutionContext): CapabilityResult
+ begin(ctx: ModifyExecutionContext): void
+ updatePreview(input: CommandInput): PreviewResult; // no model writes
+ validate(): ValidationResult
+ getAffectedElements(): ElementId[]
+ getDependencies(): DependencyDelta[]
+ getWarnings(): Diagnostic[]
+ getErrors(): Diagnostic[]
+ commit(tx: TransactionContext): CommitResult
+ rollback(): void
+ undo(tx: TransactionContext): void
+ redo(tx: TransactionContext): void
 }
 ```
 
