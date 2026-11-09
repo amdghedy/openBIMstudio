@@ -715,11 +715,11 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("save", "Save As File", safe(async () => { (await import("../modules/projects/project-file-io")).saveProjectToFile(true); }, "Save as file"), {
         kbd: "^\u21e7S", title: "Save a copy of the project to a new .obsproj file (also a manual backup)",
       }),
-      b("folder", "View Revit File", safe(async () => { (await import("../features/rvt-viewer")).pickRevitFile(); }, "View Revit file"), {
+      b("folder", "View RVT Model", safe(async () => { (await import("../features/rvt-viewer")).pickRevitFile(); }, "View RVT model"), {
         title: "Open a .rvt / .rfa file for viewing only. Decoded inside your browser, nothing is uploaded. Geometry is a reconstruction and can be incomplete.",
       }),
-      b("folder", "Revit Browser", safe(async () => { (await import("../features/revit-view")).openRevitBrowser(); }, "Revit browser"), {
-        title: "Search, group, select, hide and isolate the elements of an opened Revit file; export them to CSV",
+      b("folder", "RVT Model Browser", safe(async () => { (await import("../features/revit-view")).openRevitBrowser(); }, "RVT model browser"), {
+        title: "Search, group, select, hide and isolate the elements of an opened RVT model; export them to CSV",
       }),
       b("folder", "Open File", safe(async () => { (await import("../modules/projects/project-file-io")).openProjectFromFile(); }, "Open file"), {
         title: "Open a .obsproj project file from your computer",
@@ -1159,17 +1159,17 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Load FRAG as-is — coordinates preserved (old FRAG linker)",
       }),
       b("folder", "Any model…", safe(() => void pickAndImport(), "Import any model"), {
-        title: "Select many files at once, any mix of formats (IFC, Revit, DWG/DXF, GLB/OBJ/FBX…): each kind is linked in one step",
+        title: "Select many files at once, any mix of formats (IFC, RVT/RFA, DWG/DXF, GLB/OBJ/FBX…): each kind is linked in one step",
       }),
       sep(),
       groupLabel("Link CAD / BIM"),
       b("system", "Link CAD", safe(() => linkCad(), "Link CAD underlay"), {
-        title: "DXF / SVG / PNG underlay for plan tracing, or 3D CAD reference",
+        title: "DXF / SVG / PNG underlay for plan tracing, or 3D drawing reference",
       }),
       b("folder", "CAD Query", safe(() => {
         void import("../features/cad-query-panel").then((m) => m.toggleCadQueryPanel());
       }, "CAD Query"), {
-        title: "Query linked CAD by layer, element type, name / text, colour, linetype",
+        title: "Query linked drawings by layer, element type, name / text, colour, linetype",
       }),
       b("file", "Link BIM", safe(() => linkBIM(), "Link BIM via IFC"), {
         title: "Export IFC from BIM, then link here",

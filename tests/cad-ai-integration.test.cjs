@@ -64,9 +64,9 @@ t("ai-chat: host switching API exported", () => {
   assert.ok(chat.includes("try { dock?.dispose(); } catch { /* */ }"), "mountDock must dispose the previous dock handle");
 });
 
-t("ai-chat: CAD drafting addendum appended while docked", () => {
+t("ai-chat: drawing-mode addendum appended while docked", () => {
   assert.ok(chat.includes("const CAD_AI_ADDENDUM"), "CAD_AI_ADDENDUM missing");
-  assert.ok(chat.includes("## 2D CAD drafting mode"), "addendum heading missing");
+  assert.ok(chat.includes("## 2D drawing mode"), "addendum heading missing");
   assert.ok(chat.includes("Call get_cad_state first"), "addendum must teach get_cad_state");
   assert.ok(chat.includes("run_cad_command"), "addendum must teach run_cad_command");
   assert.ok(

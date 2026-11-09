@@ -357,13 +357,13 @@ export function buildTwinGeometry(parts: MeshPart[]): TwinGeometry | null {
 /** The Native Twin's property sets: every decoded group, plus an identity group naming where it came from. */
 export function twinPropertySets(info: RvtElementInfo, sourceFile: string): Record<string, Record<string, string>> {
   const out: Record<string, Record<string, string>> = {};
-  const id: Record<string, string> = { "Source": `Revit file “${sourceFile}” (decoded read-only)`, "IFC class": info.ifcType };
+  const id: Record<string, string> = { "Source": `RVT model file “${sourceFile}” (decoded read-only)`, "IFC class": info.ifcType };
   if (info.elementId) id["Source element id"] = info.elementId;
   if (info.globalId) id["GlobalId"] = info.globalId;
   if (info.predefinedType) id["Predefined type"] = info.predefinedType;
   if (info.storey) id["Level"] = info.storeyElevationM !== undefined ? `${info.storey} (${info.storeyElevationM} m)` : info.storey;
   if (info.material) id["Material"] = info.material;
-  out["Revit_Source"] = id;
+  out["BIM_Source"] = id;
   for (const g of info.groups) out[g.name] = { ...(out[g.name] ?? {}), ...Object.fromEntries(g.rows) };
   return out;
 }

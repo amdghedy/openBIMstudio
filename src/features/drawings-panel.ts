@@ -122,7 +122,7 @@ async function pickAndImport(): Promise<void> {
       if (doc) {
         toast("success", `Loaded ${file.name}`);
         refreshList();
-        // Open CAD so user sees geometry
+        // Open the drawing editor so the user sees geometry
         (window as Any).__obsCad?.open?.();
       }
     } catch (e) {
@@ -146,7 +146,7 @@ function buildPanel(): void {
       <div class="dw-row">
         <button class="dw-btn" data-act="import" type="button">
           Import DXF / DWG
-          <small>Load into CAD + 3D</small>
+          <small>Load into drawing editor + 3D</small>
         </button>
         <button class="dw-btn" data-act="export-cad" type="button">
           Export CAD - DXF

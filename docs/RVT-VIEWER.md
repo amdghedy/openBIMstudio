@@ -12,7 +12,7 @@ View-only, decoded inside the browser tab. Nothing is uploaded.
 
 * **Click** an element: it is highlighted and a panel shows what the decoder read from the file: name, IFC class, external BIM authoring software element id, GlobalId, level, material, placement and size, and the property sets (lengths, areas and volumes in metric with the file's imperial value in brackets).
 * **Right-click** an element: *Make editable native twin*, *Properties*, *Zoom to element*.
-* The **native twin** is a real authored element made from the element's triangles and carrying its properties (the external BIM authoring software identity is kept in a `Revit_Source` property set). It is edited, moved, scheduled and clash-tested like any native element. The external BIM authoring software source mesh is hidden while its twin exists and shown again if the twin is deleted.
+* The **native twin** is a real authored element made from the element's triangles and carrying its properties (the external BIM authoring software identity is kept in a `BIM_Source` property set). It is edited, moved, scheduled and clash-tested like any native element. The external BIM authoring software source mesh is hidden while its twin exists and shown again if the twin is deleted.
 * Properties are embedded in the 3D file (glTF node extras), so they come back when the project is reopened or opened on another device.
 * A twin is a tessellated copy: it is not external BIM authoring software's parametric definition (no external BIM authoring software families or constraints) and is never written back to the `.rvt`. Only properties the decoder can read appear; external BIM authoring software parameters it cannot decode are absent.
 

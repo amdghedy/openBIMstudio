@@ -165,7 +165,7 @@ let planDetailLevel: "Coarse" | "Medium" | "Fine" = "Medium";
 let planDisplayModel = true;
 let planCropView = false;
 const PLAN_CROP_ID = "plan-view-1";
-/** Typed length while drawing a linear element (Revit-style temporary dimension entry). */
+/** Typed length while drawing a linear element (BIM authoring convention-style temporary dimension entry). */
 let planTypedLength = "";
 let planAnnotationCrop = false;
 let planUnderlay = "None";
@@ -235,7 +235,7 @@ function renderPlanViewProperties() {
   row("Display Model", check(planDisplayModel, v=>{planDisplayModel=v; if(currentPlan) renderPlan(currentPlan);}));
   row("Crop View", check(getCropRegion(PLAN_CROP_ID).enabled, v=>{planCropView=v; setCropRegion(PLAN_CROP_ID,{enabled:v}); if(v) setCropActiveView(PLAN_CROP_ID); if(currentPlan) renderPlan(currentPlan);}));
   row("Annotation Crop", check(planAnnotationCrop, v=>{planAnnotationCrop=v; if(currentPlan) renderPlan(currentPlan);}));
-  row("Underlay", select([["None","None"],["Below","Below"],["Link CAD","CAD Underlay"]], planUnderlay, v=>{ planUnderlay=v; }));
+  row("Underlay", select([["None","None"],["Below","Below"],["Link drawing","Drawing underlay"]], planUnderlay, v=>{ planUnderlay=v; }));
 
   section("View Range");
   row("Cut Plane", num(cutHeight,0.05,v=>{ if(Number.isFinite(v)){cutHeight=v; cutSlider.value=String(v); cutLabel.textContent=`Cut: ${v.toFixed(2)} m`; void regenerate(); }}));
@@ -917,7 +917,7 @@ const btn = (label: string, onclick: () => void, primary = false) => {
 };
 
 const renderBtn = btn("? Regenerate", () => void regenerate(), true);
-const cadBtn = btn("?? Link CAD", () => void linkCadUnderlay());
+const cadBtn = btn("?? Link drawing", () => void linkCadUnderlay());
 const clearCadBtn = btn("Clear CAD", () => clearCadUnderlay());
 const printBtn = btn("?? Print", () => printPlan());
 const exportBtn = btn("? SVG", () => exportSvg());
@@ -1010,7 +1010,7 @@ interface PlanDimension {
   chainId?: string;
   /** Text typed by the user instead of the measured value. */
   textOverride?: string;
-  /** Equality display: segments of the chain show "EQ" while they are all equal (Revit). */
+  /** Equality display: segments of the chain show "EQ" while they are all equal (BIM authoring convention). */
   eq?: boolean;
 }
 const planDims: PlanDimension[] = [];
@@ -1545,7 +1545,7 @@ function showWallOpts(on: boolean) {
   wallOptsWrap.style.display = on ? "flex" : "none";
 }
 
-/* Professional international 2D modeling toolbar layout (BIM / ArchiCAD / AutoCAD style)
+/* Professional international 2D modeling toolbar layout (BIM / ArchiCAD / desktop drafting software style)
  * Groups: Identity | Level & Cut | Drawing scale & units | Active tool hint | Element params | Underlay & export
  */
 function makeGroupLabel(text: string): HTMLElement {
@@ -1590,7 +1590,7 @@ if (lastG) lastG.style.borderRight = "none";
 canvasWrap.style.background = "#ffffff";
 overlay.style.background = "#1a1d27";
 
-/* -- CAD / DWG underlay for tracing & modeling --------------------------- */
+/* -- drawing / DWG underlay for tracing & modeling --------------------------- */
 let cadUnderlayUrl: string | null = null;
 let cadUnderlayOpacity = 0.45;
 let cadUnderlayVisible = true;
@@ -1645,7 +1645,7 @@ async function linkCadUnderlay() {
         await loadCadFileAsUnderlay(pending);
         return;
       } catch (err) {
-        console.error("[plan] pending CAD failed", err);
+        console.error("[plan] pending drawing link failed", err);
       }
     }
     const input = document.createElement("input");
@@ -1658,13 +1658,13 @@ async function linkCadUnderlay() {
         if (await linkCadVector(file)) return;
         await loadCadFileAsUnderlay(file);
       } catch (err) {
-        console.error("[plan] CAD link failed", err);
+        console.error("[plan] drawing link failed", err);
         uiAlert("Could not load drawing underlay. Use SVG, PNG, JPG, or DXF.");
       }
     };
     input.click();
   } catch (err) {
-    console.error("[plan] CAD picker failed", err);
+    console.error("[plan] drawing picker failed", err);
   }
 }
 
@@ -1692,7 +1692,7 @@ try {
     try {
       if (added) { planViewUserAdjusted = false; currentZoom = 1; panX = 0; panY = 0; }
       if (currentPlan && svg) renderPlan(currentPlan);
-      // Plan not generated yet (opened on an empty model): build it so the CAD shows.
+      // Plan not generated yet (opened on an empty model): build it so the drawing shows.
       else if (added && svg.isConnected) void regenerate();
     } catch { /* plan not open */ }
   });
@@ -1960,7 +1960,7 @@ try {
 } catch { /* */ }
 
 
-/** Revit-style Edit Boundary: drag vertices, drag edge midpoints to add vertices, Shift+click a vertex to delete it. */
+/** BIM authoring convention-style Edit Boundary: drag vertices, drag edge midpoints to add vertices, Shift+click a vertex to delete it. */
 function renderBoundaryUi(elId: string, zoomedW: number): void {
   const NS = "http://www.w3.org/2000/svg";
   const find = () => (authoredCache as any[]).find((x) => x.id === elId);
@@ -2055,7 +2055,7 @@ function renderPlan(plan: PlanView) {
   if (!isFinite(b.minX) || b.maxX - b.minX < 0.1) {
     b = { minX: -10, maxX: 10, minZ: -10, maxZ: 10 };
   }
-  // Linked CAD (true world coordinates) extends the visible area, like Revit.
+  // Linked drawing (true world coordinates) extends the visible area, like BIM authoring convention.
   const cadApi: any = (ctx.features as any).cadLinks;
   const planElev = (plan as any).level?.elevation ?? (plan as any).elevation;
   const cadBounds = cadApi?.getPlanBounds?.(typeof planElev === "number" ? planElev : undefined);
@@ -2066,7 +2066,7 @@ function renderPlan(plan: PlanView) {
       minZ: Math.min(b.minZ, cadBounds.minZ), maxZ: Math.max(b.maxZ, cadBounds.maxZ),
     };
   }
-  // Crop region (Revit "Crop View"): fit to the model on first use, keep it in view.
+  // Crop region (BIM authoring convention "Crop View"): fit to the model on first use, keep it in view.
   const crop = getCropRegion(PLAN_CROP_ID);
   if (crop.enabled) {
     const pb = plan.bounds;
@@ -2100,7 +2100,7 @@ function renderPlan(plan: PlanView) {
     `${finalMinX} ${finalMinY} ${zoomedW} ${zoomedH}`,
   );
 
-  // -- Linked CAD vectors (behind the model) --
+  // -- Linked drawing vectors (behind the model) --
   if (cadApi) {
     const NS = "http://www.w3.org/2000/svg";
     const cg = document.createElementNS(NS, "g");
@@ -2212,7 +2212,7 @@ function renderPlan(plan: PlanView) {
     g.appendChild(path);
   }
 
-  // -- Selected element feedback: Revit-style blue outline of the whole element --
+  // -- Selected element feedback: BIM authoring convention-style blue outline of the whole element --
   if (planDisplayModel && planSelectedIds.size) {
     const SVGNS = "http://www.w3.org/2000/svg";
     const hs = Math.max(zoomedW / 1200, 1e-6);
@@ -3418,7 +3418,7 @@ async function moveSelectedInPlan(dx: number, dz: number) {
 }
 
 
-// Right-click while placing (Revit): Finish chain / Cancel / Repeat. Never the browser menu.
+// Right-click while placing (BIM authoring convention): Finish chain / Cancel / Repeat. Never the browser menu.
 canvasWrap.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   e.stopPropagation();
@@ -3790,7 +3790,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
       });
     } catch { /* */ }
     const hit = clientToWorld(e.clientX, e.clientY);
-    // Dimensions are selectable / draggable like Revit: click a dimension line or its text.
+    // Dimensions are selectable / draggable like BIM authoring convention: click a dimension line or its text.
     if (planMode === "select" && hit && e.button === 0) {
       const dh = hitDimension(hit.x, hit.z);
       if (dh) {
@@ -4070,7 +4070,7 @@ canvasWrap.addEventListener(
     e.preventDefault();
     e.stopPropagation();
 
-    // Zoom toward cursor (CAD / BIM plan behavior � not fixed to center)
+    // Zoom toward cursor (drawing / BIM plan behavior � not fixed to center)
     const rect = canvasWrap.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return;
     const ratioX = (e.clientX - rect.left) / rect.width;
@@ -4715,7 +4715,7 @@ try {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea") return;
 
-    // Tab: cycle through the overlapping snap points under the cursor (Revit).
+    // Tab: cycle through the overlapping snap points under the cursor (BIM authoring convention).
     if (e.key === "Tab" && planMode === "dim" && planCursor) {
       e.preventDefault(); e.stopImmediatePropagation();
       planSnapCycle += e.shiftKey ? -1 : 1;
@@ -4750,7 +4750,7 @@ try {
     }
 
     // Typed length while a segment is being drawn: digits, then Enter places it
-    // along the current cursor direction (Revit temporary-dimension entry).
+    // along the current cursor direction (BIM authoring convention temporary-dimension entry).
     if (planMode === "linear" && planDrawStart && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const startsEntry = /^[0-9.,]$/.test(e.key);
       if ((planTypedLength ? isLengthChar(e.key) : startsEntry)) {
@@ -4900,7 +4900,7 @@ try {
       return;
     }
 
-    // CAD-style command entry: a bare letter (or @) starts the command line.
+    // drawing-style command entry: a bare letter (or @) starts the command line.
     if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && /[a-zA-Z?@]/.test(e.key)) {
       e.preventDefault();
       e.stopImmediatePropagation();

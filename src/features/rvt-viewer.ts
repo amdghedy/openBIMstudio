@@ -45,7 +45,7 @@ function decodeInWorker(bytes: Uint8Array, onProgress: (t: string) => void, larg
       else if (m?.type === "ready") { done(); resolve({ glb: m.glb, diagnostics: m.diagnostics, propertyCount: m.propertyCount ?? 0 }); }
       else if (m?.type === "error") { done(); reject(new Error(m.message)); }
     };
-    w.onerror = (e) => { done(); reject(new Error(e.message || "The Revit decoder stopped unexpectedly.")); };
+    w.onerror = (e) => { done(); reject(new Error(e.message || "The model decoder stopped unexpectedly.")); };
     // Copy: the original bytes stay usable if a retry is needed.
     const copy = bytes.slice();
     w.postMessage({ type: "parse", bytes: copy, largeModel }, [copy.buffer]);
@@ -53,7 +53,7 @@ function decodeInWorker(bytes: Uint8Array, onProgress: (t: string) => void, larg
 }
 
 export async function openRevitFile(file: File): Promise<boolean> {
-  if (!isRevitName(file.name)) { notify("error", `"${file.name}" is not a Revit file.`); return false; }
+  if (!isRevitName(file.name)) { notify("error", `"${file.name}" is not a supported RVT or RFA file.`); return false; }
   const st = await rvtDecoderStatus();
   if (!st.ok) { console.warn("[rvt] decoder unavailable:", st.why); notify("error", `${UNAVAILABLE} (Detail: ${st.why}.)`, { timeout: 16000 }); return false; }
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -67,7 +67,7 @@ export async function openRevitFile(file: File): Promise<boolean> {
     result = await decodeInWorker(bytes, () => { /* progress is shown once, at the end, to keep toasts quiet */ }, false);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    notify("error", `Could not read "${file.name}": ${msg}. Try exporting IFC from Revit.`, { timeout: 14000 });
+    notify("error", `Could not read "${file.name}": ${msg}. Try exporting IFC from your BIM authoring application.`, { timeout: 14000 });
     return false;
   }
 
@@ -87,11 +87,11 @@ export async function openRevitFile(file: File): Promise<boolean> {
   const how = result.propertyCount > 0
     ? ` Click an element to see its properties; right-click it and choose “Make editable native twin” to get an editable copy (${result.propertyCount} elements have decoded properties).`
     : " No element properties could be read from this file, so elements cannot be inspected; the geometry is view-only.";
-  notify("info", summary.headline + how + " The Revit view itself is not part of clash tests; twins are.", { timeout: 20000 });
+  notify("info", summary.headline + how + " The read-only model view is not part of clash tests; twins are.", { timeout: 20000 });
   return true;
 }
 
-/** Open several Revit files one after another; one combined result line at the end. */
+/** Open several RVT/RFA model files one after another; one combined result line at the end. */
 export async function openRevitFiles(files: File[]): Promise<{ opened: number; failed: string[] }> {
   const failed: string[] = [];
   let opened = 0;
@@ -101,7 +101,7 @@ export async function openRevitFiles(files: File[]): Promise<{ opened: number; f
     if (ok) opened++; else failed.push(f.name);
   }
   if (files.length > 1) {
-    notify(failed.length ? "warn" : "info", `Revit files: ${opened} of ${files.length} opened.` + (failed.length ? ` Not opened: ${failed.slice(0, 5).join(", ")}${failed.length > 5 ? ", …" : ""} (see the messages above).` : ""), { timeout: 14000 });
+    notify(failed.length ? "warn" : "info", `RVT/RFA files: ${opened} of ${files.length} opened.` + (failed.length ? ` Not opened: ${failed.slice(0, 5).join(", ")}${failed.length > 5 ? ", …" : ""} (see the messages above).` : ""), { timeout: 14000 });
   }
   return { opened, failed };
 }

@@ -29,7 +29,7 @@ const t = (n, f) => { try { f(); pass++; console.log("  PASS " + n); } catch (e)
 // ── 1. Drawing Database Status reports everything the reader pulled out ──
 t("info dialog: full database status markers", () => {
   const mustContain = [
-    "AutoCAD Drawing Database Status",
+    "Drawing Database Status",
     "Linetype Table:",
     "LTSCALE:",
     "Text Style Table:",

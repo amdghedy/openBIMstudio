@@ -1,23 +1,23 @@
 /**
- * CAD Editor – Standalone AutoCAD-Grade 2D DWG/DXF Environment (100% AutoCAD Parity).
+ * Drawing Editor — Standalone 2D DWG/DXF Environment.
  *
  * Provides:
- * - Classic AutoCAD Model Space & Layout / Paper Space views
- * - Full AutoCAD Crosshairs with central Pickbox
+ * - Model Space and Layout / Paper Space views
+ * - Full-screen crosshairs with central pickbox
  * - Object Snap support (F3) with colored glyphs and snap tooltips
- * - AutoCAD Dynamic Input HUD (F12) with real-time coordinate & polar @dist<ang readouts
+ * - Dynamic Input HUD (F12) with real-time coordinate & polar @dist<ang readouts
  * - Authentic User Coordinate System (UCS) 2D/3D icon with World (WCS) & custom origin markers
  * - Interactive in-canvas ViewCube (Top/Front/Roll) and Navigation Bar (Pan/Zoom Extents/Window)
- * - Multi-line AutoCAD Command Window with real-time Autocomplete popup, command history & aliases:
+ * - Multi-line command window with real-time Autocomplete popup, command history & aliases:
  *   L (LINE), PL (PLINE), C (CIRCLE), REC (RECTANG), A (ARC), E (ERASE), DI (DIST), AA (AREA),
  *   ID, LI (LIST), Z (ZOOM [All/Extents/Window/Previous]), P (PAN), LA (LAYER), PR (PROPERTIES),
  *   RE (REGEN), UN (UNITS), UCS, PU (PURGE), U (UNDO), REDO, ORTHO (F8), OSNAP (F3), GRID (F7), DYN (F12)
- * - Real AutoCAD Drafting: Line, Polyline, Circle, Rectangle, Arc drafting with Undo/Redo stack
- * - AutoCAD-Grade Modify tools: MOVE (M), COPY (CO), ROTATE (RO), MIRROR (MI), SCALE (SC),
+ * - Native 2D drawing tools: Line, Polyline, Circle, Rectangle, Arc drafting with Undo/Redo stack
+ * - Professional drawing modification tools: MOVE (M), COPY (CO), ROTATE (RO), MIRROR (MI), SCALE (SC),
  *   OFFSET (O) — base-point flows, live ghost preview, dynamic-input prompts, Undo/Redo support
- * - Full AutoCAD Layer Properties Manager (LA) with On/Off, Freeze, Lock, ACI Colors, and Linetypes
+ * - Full Layer Properties Manager (LA) with On/Off, Freeze, Lock, ACI Colors, and Linetypes
  * - Standard Window (blue solid) vs Crossing (green dashed) selection modes
- * - Modern AutoCAD Dark Charcoal Canvas (#212830) with adaptive major/minor grid & colored axes
+ * - Modern dark charcoal canvas (#212830) with adaptive major/minor grid & colored axes
  */
 
 import { readCadFile } from "../modules/cad-link/index";
@@ -106,7 +106,7 @@ type Tool =
   | "rotate"
   | "mirror"
   | "scale"
-  // native-engine drafting tools (full AutoCAD 2D ribbon)
+  // native-engine drafting tools (full 2D drawing ribbon)
   | "polygon"
   | "spline"
   | "ellipse"
@@ -220,7 +220,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "SAVEALL", aliases: ["SALL"], description: "Save every open drawing tab" },
   { name: "CLOSE", aliases: [], description: "Close the current drawing tab" },
   { name: "CLEANSCREEN", aliases: ["CLEAN"], description: "Toggle clean screen mode (Ctrl+0)" },
-  // ── Native-engine drafting commands (full AutoCAD 2D ribbon) ──
+  // ── Native-engine drafting commands (full 2D drawing ribbon) ──
   { name: "XLINE", aliases: ["XL"], description: "Create an infinite construction line" },
   { name: "RAY", aliases: ["RAY"], description: "Create a one-sided ray from a point" },
   { name: "POLYGON", aliases: ["POL"], description: "Create a regular polygon (3-1024 sides)" },
@@ -325,7 +325,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
 ];
 
 const BG: Record<string, string> = {
-  autocad: "#212830", // Official AutoCAD Model Space dark charcoal
+  autocad: "#212830", // Drawing workspace dark charcoal
   black: "#000000",
   dark: "#1c2128",
   grey: "#808080",
@@ -398,7 +398,7 @@ function persistBlockLib(): boolean {
 let clip: CadClip | null = null;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Shell ribbon (AutoCAD MDI chrome). The ribbon lives ONCE at shell level:
+   Shell ribbon (multi-document interface). The ribbon lives ONCE at shell level:
    ribbon tabs row → active tab's panels → drawing file tabs → viewport.
    Every drawing contributes its own panel set; only the active drawing's
    panels are visible, and the ribbon tabs filter which panel groups show.
@@ -512,7 +512,7 @@ export function openCadViewer(file?: File): void {
   try {
     (window as any).__obsCadOwnsEsc = () => !!shell && shell.style.display !== "none";
     // Keyboard ownership: while a drawing tab is active the BIM global shortcut
-    // registry yields the CAD editing combos to this viewer (see shortcuts.ts).
+    // registry yields the drawing-editor shortcuts to this viewer (see shortcuts.ts).
     (window as any).__obsCadOwnsKeys = () => !!active && !!shell && shell.style.display !== "none";
   } catch {
     /* */
@@ -760,7 +760,7 @@ function ensureShell(): void {
     `</button>`;
   shell.innerHTML =
     `<style>${CAD_CSS}</style>` +
-    // AutoCAD chrome: ribbon tabs row → ribbon panels → drawing file tabs → viewport
+    // Drawing editor chrome: ribbon tabs row → ribbon panels → drawing file tabs → viewport
     `<div class="cad-chrome">` +
     `<div class="cad-ribbon-tabs" data-r="ribbontabs">` +
     `<button class="cad-appmenu" data-r="appmenu" title="Application menu" aria-label="Application menu">A</button>` +
@@ -1133,7 +1133,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     <div style="flex:1;position:relative;min-width:0" data-r="stage">
       <canvas data-r="cv" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;outline:none" tabindex="0"></canvas>
 
-      <!-- In-Canvas AutoCAD ViewCube -->
+      <!-- In-Canvas ViewCube -->
       <div class="obs-cad-viewcube">
         <div class="vc-box" data-r="vc-home" title="ViewCube — Top View / Extents (Home)">
           <div class="vc-compass">N</div>
@@ -1823,7 +1823,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     c.restore();
   }
 
-  /** Paints AutoCAD Dynamic Input HUD attached to cursor (F12) */
+  /** Paints Dynamic Input HUD attached to cursor (F12) */
   function paintDynamicInput(c: CanvasRenderingContext2D, v: M.View): void {
     if (!cursor || !dynOn || !doc) return;
     const cp = M.worldToScreen(v, cursor.x, cursor.y);
@@ -2364,7 +2364,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // AutoCAD Infinite Crosshairs & Pickbox
       paintAutoCadCrosshairs(c, v);
 
-      // AutoCAD Dynamic Input HUD (F12)
+      // Dynamic Input HUD (F12)
       paintDynamicInput(c, v);
 
       // AutoCAD Window (Blue solid) vs Crossing (Green dashed) selection rects
@@ -4544,7 +4544,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     draw();
   };
 
-  /** Open Full AutoCAD Layer Properties Manager (LA / LAYER) */
+  /** Open Full Layer Properties Manager (LA / LAYER) */
   function openLayerPropertiesManager(): void {
     if (!doc) return;
     const counts = M.countByLayer(ents);

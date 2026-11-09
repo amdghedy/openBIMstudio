@@ -125,7 +125,7 @@ function applyBIMIsoView() {
 function addAuxObject(obj: THREE.Object3D, label: string) {
   obj.name = label;
   auxGroup.add(obj);
-  // Revit view files carry per-element properties: enable click selection and Native Twin for them.
+  // RVT view files carry per-element properties: enable click selection and Native Twin for them.
   void import("./revit-view").then((m) => { if (m.hasRevitElements(obj)) { m.installRevitView(); m.syncTwinVisibility(); } }).catch(() => { /* optional */ });
   computeSceneBounds();
   fitAll();
@@ -212,7 +212,7 @@ export async function importFiles(files: File[]) {
   if (cadBatch.length > 1) {
     cadBatch.forEach((f) => handled.add(f));
     try { const m = await import("../modules/cad-link"); m.setupCadLinks(); await m.linkCadFilesBatch(cadBatch); }
-    catch (err: any) { console.error("[file-interop]", err); uiAlert(`Failed to link CAD files:\n${err?.message ?? err}`); }
+    catch (err: any) { console.error("[file-interop]", err); uiAlert(`Failed to link drawing files:\n${err?.message ?? err}`); }
   }
   const rvtBatch = group(/\.(rvt|rfa|rte|rft)$/i);
   if (rvtBatch.length > 1) {

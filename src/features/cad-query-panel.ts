@@ -207,7 +207,7 @@ function fillSelects(root: HTMLElement) {
   const prevLayer = layerSel.value;
   const prevType = typeSel.value;
 
-  linkSel.innerHTML = `<option value="">All linked CAD</option>`;
+  linkSel.innerHTML = `<option value="">All linked drawings</option>`;
   for (const l of links) {
     const o = document.createElement("option");
     o.value = l.id;
@@ -242,7 +242,7 @@ function buildPanel(): HTMLDivElement {
 
   const head = el("div", CSS.head);
   head.innerHTML =
-    `<span style="font-weight:700;flex:1">CAD Query</span>` +
+    `<span style="font-weight:700;flex:1">Drawing Query</span>` +
     `<span style="opacity:.55;font-size:11px">layer · type · name</span>`;
   const close = el("button", CSS.btn, "✕");
   close.onclick = () => hideCadQueryPanel();
@@ -292,7 +292,7 @@ function buildPanel(): HTMLDivElement {
   vis.append(visCb, document.createTextNode(" Only currently visible layers"));
 
   body.append(
-    field("CAD file", linkSel),
+    field("Drawing file", linkSel),
     field("Layer", layerSel),
     field("Layer contains", layerSub),
     field("Element type", typeSel),
