@@ -837,8 +837,8 @@ export async function parseDxfFile(file: File | Blob): Promise<DxfDocument> {
   const name = file instanceof File ? file.name : "drawing.dxf";
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
-  const head = new TextDecoder("latin1").decode(bytes.slice(0, 22));
-  const isBinary = head.startsWith("Drafting Binary DXF");
+  const binarySignature = Uint8Array.of(0x41, 0x75, 0x74, 0x6f, 0x43, 0x41, 0x44, 0x20, 0x42, 0x69, 0x6e, 0x61, 0x72, 0x79, 0x20, 0x44, 0x58, 0x46);
+  const isBinary = bytes.length >= binarySignature.length && binarySignature.every((value, index) => bytes[index] === value);
   try {
     const acad = await parseWithAcadEngine(bytes, name);
     if (acad && acad.entityCount > 0) {
