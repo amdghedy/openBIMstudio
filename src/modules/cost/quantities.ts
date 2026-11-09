@@ -239,6 +239,38 @@ function authoredRows(): TakeoffRow[] {
       const d = p.depth ?? p.thickness;
       volume = w * d * p.height;
       area = 2 * (w * d) + 2 * (w + d) * p.height;
+    } else if (el.type === "adaptive-component") {
+      // Native adaptive definitions are the source of truth. Derive quantities
+      // from the stored profile and point path, not from display tessellation.
+      const definition = (el.properties as any)?.adaptiveDefinition;
+      const profile = definition?.profile;
+      const points = definition?.points;
+      if (Array.isArray(profile) && profile.length >= 3 && Array.isArray(points) && points.length >= 1 && points.length <= 8) {
+        let twiceArea = 0;
+        let valid = true;
+        for (let i = 0; i < profile.length; i++) {
+          const a = profile[i], b = profile[(i + 1) % profile.length];
+          if (!Number.isFinite(a?.u) || !Number.isFinite(a?.v) || !Number.isFinite(b?.u) || !Number.isFinite(b?.v)) { valid = false; break; }
+          twiceArea += a.u * b.v - b.u * a.v;
+        }
+        let pathLength = 0;
+        if (points.length === 1) {
+          pathLength = Number(definition.pointLength ?? 1);
+        } else {
+          for (let i = 1; i < points.length; i++) {
+            const a = points[i - 1], b = points[i];
+            if (![a?.x, a?.y, a?.z, b?.x, b?.y, b?.z].every(Number.isFinite)) { valid = false; break; }
+            pathLength += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+          }
+        }
+        const sectionArea = Math.abs(twiceArea) / 2;
+        if (valid && Number.isFinite(pathLength) && pathLength > 0 && Number.isFinite(sectionArea) && sectionArea > 0) {
+          length = pathLength;
+          area = sectionArea;
+          volume = sectionArea * pathLength;
+          detailSuffix = `adaptive native (section area; ${points.length} placement point(s))`;
+        }
+      }
     } else if (el.type === "mline") {
       length =
         p.start && p.end
