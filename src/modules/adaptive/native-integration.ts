@@ -588,11 +588,14 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
   const element = elements?.find((entry) => entry.id === elementId);
   if (!auth || !element || element.type !== "adaptive-component") return false;
   const beforeDefinition = clone((element.properties as Any)?.adaptiveDefinition as AdaptiveElementDefinition);
+  const linkedProfile = patch.familyBinding
+    ? profileFromFamilyType(patch.familyBinding.familyId, patch.familyBinding.typeId)
+    : null;
   const afterDefinition = validateDefinition({
     ...beforeDefinition,
-    familyName: patch.familyName ?? beforeDefinition.familyName,
+    familyName: linkedProfile?.name ?? patch.familyName ?? beforeDefinition.familyName,
     points: patch.points ? clone(patch.points) : beforeDefinition.points,
-    profile: patch.profile ? clone(patch.profile) : beforeDefinition.profile,
+    profile: linkedProfile?.profile ?? (patch.profile ? clone(patch.profile) : beforeDefinition.profile),
     pointCount: patch.points ? patch.points.length : beforeDefinition.pointCount,
     pointLength: patch.pointLength ?? beforeDefinition.pointLength,
     constraints: patch.constraints ? clone(patch.constraints) : beforeDefinition.constraints,
