@@ -6136,7 +6136,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           const entities = buildLinearDimension({
             first, second, placement, mode: tool === "dimlinear" ? "linear" : "aligned",
             layer: currentLayer, text: unit === "units" ? label : label + " " + unit,
-            textHeight: Math.max(1e-6, M.convertLength(2.5, "mm", doc.units ?? "mm")),
+            textHeight: Math.max(1e-6, M.convertLength(2.5, "mm", doc.units === "unitless" ? "drawing" : (doc.units ?? "mm")),
           });
           if (entities.length) {
             addEntities(entities);
