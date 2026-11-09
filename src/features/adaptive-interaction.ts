@@ -591,14 +591,16 @@ export function setupAdaptiveInteraction(targetApi: Any): Any {
     }
     const { pointCount, ...createInput } = input;
     return new Promise<Any | null>((resolve) => {
-      placement = { input: createInput, pointCount, points: [], resolve };
+      const resolvePlacement = (element: Any | null): void => {
+        if (ctx.rightHost) ctx.rightHost.style.cursor = "";
+        resolve(element);
+      };
+      placement = { input: createInput, pointCount, points: [], resolve: resolvePlacement };
       ensureHud();
       updateHud();
       drawPlacementPreview(null);
       ctx.rightHost.style.cursor = "crosshair";
       notify("info", "Adaptive placement: click the 3D model to place each ordered point. Escape cancels.");
-    }).finally(() => {
-      if (ctx.rightHost) ctx.rightHost.style.cursor = "";
     });
   };
 
