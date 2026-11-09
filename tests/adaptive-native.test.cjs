@@ -33,12 +33,19 @@ const adaptive = require(path.join(out, "modules/adaptive/native-integration.js"
 const elements = [];
 const selected = [];
 let rebuildCount = 0;
+let failNextRebuild = false;
 const authoring = {
   getElements: () => elements,
   getSelectedIds: () => selected.slice(),
   getActiveLevelId: () => "LEVEL-01",
   setSelectedAuthored(ids) { selected.splice(0, selected.length, ...ids); },
-  rebuildAuthored() { rebuildCount++; },
+  rebuildAuthored() {
+    rebuildCount++;
+    if (failNextRebuild) {
+      failNextRebuild = false;
+      throw new Error("simulated adaptive rebuild failure");
+    }
+  },
 };
 ctx.features.authoring = authoring;
 
@@ -100,11 +107,37 @@ async function main() {
   const updatedPositions = meshPositions(api.buildMesh(first));
   assert.notDeepEqual(updatedPositions, initialPositions);
 
+  const updatedDefinition = api.getDefinition(first.id);
+  const undoDepthBeforeFailedUpdate = history.depth().undo;
+  failNextRebuild = true;
+  await assert.rejects(history.undo(), /simulated adaptive rebuild failure/);
+  assert.deepEqual(api.getDefinition(first.id), updatedDefinition, "failed undo restores the edited definition");
+  assert.equal(first.name, "Rafter A revised", "failed undo restores the edited name");
+  assert.equal(history.depth().undo, undoDepthBeforeFailedUpdate, "failed undo remains retryable");
+
   await history.undo();
   assert.deepEqual(api.getDefinition(first.id).points, [p(0, 0, 0), p(3, 0, 0), p(3, 0, 2)]);
   assert.equal(first.name, "Rafter A");
+
+  failNextRebuild = true;
+  await assert.rejects(history.redo(), /simulated adaptive rebuild failure/);
+  assert.deepEqual(api.getDefinition(first.id).points, [p(0, 0, 0), p(3, 0, 0), p(3, 0, 2)], "failed redo keeps the pre-redo definition");
   await history.redo();
   assert.deepEqual(api.getDefinition(first.id).points, updatedPoints);
+
+  // A failed initial rebuild must not insert a half-created authored element
+  // or add an undo command.
+  const createFailureBaseline = elements.length;
+  const createUndoDepth = history.depth().undo;
+  failNextRebuild = true;
+  assert.throws(() => api.create({
+    familyId: "failed-create",
+    familyName: "Failed Create",
+    points: [p(10, 0, 0), p(11, 0, 0)],
+    profile: square(0.1),
+  }), /simulated adaptive rebuild failure/);
+  assert.equal(elements.length, createFailureBaseline, "failed creation leaves no project element");
+  assert.equal(history.depth().undo, createUndoDepth, "failed creation adds no undo command");
 
   // One-point components extrude along local +Y and are regular authored elements.
   const post = api.create({
@@ -125,6 +158,32 @@ async function main() {
   });
   near(Math.min(...ys), 1);
   near(Math.max(...ys), 3.5);
+
+  // Undo/redo rebuild failures must leave the one-point instance in its
+  // original state and keep the failed command available for retry.
+  const elementsWithPost = elements.length;
+  failNextRebuild = true;
+  await assert.rejects(history.undo(), /simulated adaptive rebuild failure/);
+  assert.equal(elements.length, elementsWithPost, "failed undo restores the removed element");
+  assert.ok(elements.some((element) => element.id === post.id));
+  await history.undo();
+  assert.ok(!elements.some((element) => element.id === post.id), "successful undo removes the post");
+  failNextRebuild = true;
+  await assert.rejects(history.redo(), /simulated adaptive rebuild failure/);
+  assert.ok(!elements.some((element) => element.id === post.id), "failed redo removes the partially-added element");
+  await history.redo();
+  assert.ok(elements.some((element) => element.id === post.id), "successful redo restores the post");
+
+  // A normal edit whose first rebuild fails must also restore the old model
+  // definition before reporting the error.
+  const beforeFailedEdit = api.getDefinition(first.id);
+  const failedEditUndoDepth = history.depth().undo;
+  failNextRebuild = true;
+  assert.throws(() => api.update(first.id, {
+    points: [p(0, 0, 0), p(9, 0, 0), p(9, 0, 2)],
+  }), /simulated adaptive rebuild failure/);
+  assert.deepEqual(api.getDefinition(first.id), beforeFailedEdit, "failed edit restores its prior definition");
+  assert.equal(history.depth().undo, failedEditUndoDepth, "failed edit adds no undo command");
 
   // Invalid edits are rejected before mutating the authored element.
   const beforeInvalid = api.getDefinition(first.id);
