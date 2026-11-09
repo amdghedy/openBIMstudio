@@ -14,6 +14,8 @@ import {
 } from "./authoring";
 import { selection } from "./selection";
 import { runModifyAction } from "./modify-actions";
+import { listWallTypePresets, applyWallTypePreset } from "../modules/architecture-depth";
+
 import { startMultiMove } from "./multi-move";
 import { startArray } from "./array-tool";
 import { startRotate } from "./rotate-tool";
@@ -24,6 +26,8 @@ let unsub: (() => void) | null = null;
 let unsubSel: (() => void) | null = null;
 let timer = 0;
 let lastTool: string | null = null;
+let wallTypePresetId = "compound-exterior";
+
 
 const DRAW = new Set([
   "wall", "slab", "column", "beam", "brace", "truss", "footing", "strip", "mline",
@@ -87,6 +91,21 @@ function render(): void {
     `<span style="width:1px;height:16px;background:#2f3846"></span>`;
 
   if (tool === "wall" || tool === "curtain-wall") {
+    // Wall Type catalog (Revit-like type selector for next placement)
+    const presets = listWallTypePresets().filter((pr) =>
+      tool === "curtain-wall" ? pr.kind === "curtain" : pr.kind !== "curtain",
+    );
+    if (!presets.some((pr) => pr.id === wallTypePresetId)) {
+      wallTypePresetId = presets[0]?.id ?? wallTypePresetId;
+    }
+    html += field(
+      "Type",
+      sel(
+        "wallTypePreset",
+        wallTypePresetId,
+        presets.map((pr) => [pr.id, pr.name] as [string, string]),
+      ),
+    );
     html += field("Location Line", sel("wallLocationLine", getWallLocationLine(), [
       ["wall-centerline", "Wall Centerline"], ["core-centerline", "Core Centerline"],
       ["finish-exterior", "Finish Exterior"], ["finish-interior", "Finish Interior"],
@@ -161,6 +180,13 @@ function render(): void {
 function apply(k: string, v: any): void {
   try {
     switch (k) {
+      case "wallTypePreset": {
+        wallTypePresetId = v;
+        applyWallTypePreset(v);
+        // Refresh bar so height/thickness match the type
+        render();
+        break;
+      }
       case "wallLocationLine": setWallLocationLine(v); break;
       case "wallJoinStatus": setWallJoinStatus(v); break;
       case "wallChain": setWallChain(!!v); break;

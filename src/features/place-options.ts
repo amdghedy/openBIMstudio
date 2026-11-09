@@ -11,6 +11,7 @@ import {
   getMepJustification, setMepJustification, getDrawSlope, setDrawSlope,
   type WallLocationLine, type WallJoinStatus, type HJustification, type ZJustification,
 } from "./authoring";
+import { listWallTypePresets, applyWallTypePreset } from "../modules/architecture-depth";
 
 const WALLS = new Set(["wall", "curtain-wall"]);
 const BEAMS = new Set(["beam", "strip"]);
@@ -90,6 +91,25 @@ export function buildPlaceOptions(tool: string, bar: HTMLElement): void {
     bar.append(label("Height:"), num(Number(p().height ?? 3), "Wall height (m)", (v) => dim("height", v), { min: 0.01, width: 64 }));
     bar.append(label("Thickness:"), num(Number(p().thickness ?? 0.2), "Wall thickness (m)", (v) => dim("thickness", v), { min: 0.005, width: 64 }));
     bar.append(label("Base offset:"), num(getOffset(tool), "Base offset from the level (m)", (v) => setOffset(tool, v), { width: 64 }), sep());
+    const typeOpts = listWallTypePresets()
+      .filter((pr) => (tool === "curtain-wall" ? pr.kind === "curtain" : pr.kind !== "curtain"))
+      .map((pr) => [pr.id, pr.name] as [string, string]);
+    if (typeOpts.length) {
+      const preferred = tool === "curtain-wall" ? "curtain-system" : "compound-exterior";
+      const cur = typeOpts.some(([id]) => id === preferred) ? preferred : typeOpts[0][0];
+      bar.append(
+        label("Type:"),
+        select(cur, typeOpts, (v) => {
+          applyWallTypePreset(v);
+          // Re-sync thickness/height fields by re-invoking parent render if exposed
+          try {
+            (window as any).__obsRefreshPlaceOptions?.();
+          } catch {
+            /* */
+          }
+        }, 200),
+      );
+    }
     bar.append(label("Location Line:"), select(getWallLocationLine(), LOCATION_LINES, (v) => setWallLocationLine(v as WallLocationLine), 170));
     bar.append(check("Chain", getWallChain(), (v) => setWallChain(v)));
     bar.append(label("Offset:"), num(getWallOffset(), "Offset of the location line (m)", (v) => setWallOffset(v), { width: 64 }));
