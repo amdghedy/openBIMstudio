@@ -44,7 +44,7 @@ Individual create/edit operations use the existing History manager. Failed geome
 
 ## Known limitations
 
-This is the first native-integration milestone, not a claim of full adaptive-family authoring parity.
+This is the first native-integration milestone, not a claim of complete adaptive-family authoring capability.
 
 - Placement points are entered as coordinates in the dialog; interactive 3D point picking and editable viewport grips are not implemented yet.
 - Geometric point constraints, reference-plane constraints and dimension-driven point relationships are not yet attached to the native definition.
