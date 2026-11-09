@@ -121,6 +121,10 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./modules/architecture-depth");
     m.setupArchitectureDepth?.();
   });
+  await safe("parametric-wire", async () => {
+    const m: Any = await import("./modules/parametric/wire-authoring");
+    m.wireParametricToAuthoring?.();
+  });
   // Vertical (stacked) wall joins across level boundaries
   await safe("wall-join-vertical", async () => {
     const m: Any = await import("./modules/wall-join/setup");

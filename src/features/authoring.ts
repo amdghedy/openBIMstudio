@@ -5151,6 +5151,15 @@ export function applyElementParamChange(
   markDirty();
   notifyAuthoringChange();
   if (TWIN_PLACEMENT_KEYS.has(key)) syncTwinGizmoPosition(el.id);
+  // Parametric equal-param groups (height/thickness/…) follow the driver
+  try {
+    const vNum = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(vNum)) {
+      import("../modules/parametric/wire-authoring").then((m) => {
+        m.onParametricParamWritten?.(el.id, key, vNum);
+      }).catch(() => {});
+    }
+  } catch { /* */ }
   console.info(
     `[authoring] param ${key}=${String(value)} applied to ${el.id} (${el.type}); geometry rebuilt`,
   );

@@ -7,3 +7,4 @@ export * from "./compound-layers";
 export * from "./family-formula-engine";
 export * from "./mass-to-elements";
 export * from "./roof-attachment";
+export * from "./wire-authoring";

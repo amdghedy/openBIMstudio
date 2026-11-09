@@ -53,6 +53,7 @@ import {
   applyWallTypeToElements,
   inferWallTypeId,
 } from "../modules/architecture-depth";
+import { linkEqualParam } from "../modules/parametric/wire-authoring";
 import type { AuthoredElement } from "../modules/projects/types";
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -150,6 +151,15 @@ function writeValue(
         }));
         return;
       }
+      // Parametric model: equal height/thickness groups follow the driver
+      try {
+        const vNum = typeof value === "number" ? value : Number(value);
+        if (Number.isFinite(vNum)) {
+          import("../modules/parametric/wire-authoring").then((m) => {
+            m.onParametricParamWritten?.(element.id, key, vNum);
+          }).catch(() => {});
+        }
+      } catch { /* */ }
     } else if (target === "root") {
       (element as any)[key] = value;
     } else if (target === "params") {
@@ -1025,8 +1035,33 @@ function makeWallTypeMultiBlock(elementIds: string[]): HTMLElement {
   hint.style.cssText = "font-size:10px;color:var(--text-tertiary,#6b7280)";
   hint.textContent = "Applies the same type to every selected wall in one step.";
 
+  const paramRow = document.createElement("div");
+  paramRow.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:4px";
+  const mkBtn = (label: string, key: string) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.title = `Keep ${key} equal across selection (parametric)`;
+    b.style.cssText =
+      "font-size:11px;padding:4px 8px;border-radius:4px;cursor:pointer;" +
+      "background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);" +
+      "color:var(--text-primary,#e8eaf0)";
+    b.onclick = () => {
+      linkEqualParam(elementIds, key);
+      try { render(); } catch { /* */ }
+    };
+    return b;
+  };
+  paramRow.append(
+    mkBtn("Equal height", "height"),
+    mkBtn("Equal thickness", "thickness"),
+  );
+  const paramHint = document.createElement("div");
+  paramHint.style.cssText = "font-size:10px;color:var(--text-tertiary,#6b7280)";
+  paramHint.textContent = "Parametric: changing height/thickness on one wall updates the linked set.";
+
   row.append(lbl, sel);
-  list.append(row, hint);
+  list.append(row, hint, paramRow, paramHint);
   block.append(headerRow, list);
   return block;
 }
