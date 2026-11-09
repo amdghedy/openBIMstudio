@@ -87,7 +87,7 @@ export function planesOfConvex(mesh: IndexedMesh): SupportPlane[] {
 const distTo = (p: Pt3, pl: SupportPlane): number => dot(pl.normal, p) - pl.w;
 
 /**
- * Point-in-solid test by ray-cast parity (Möller–Trumbore). The ray
+ * Point-in-solid test by ray-cast compatibility (Möller–Trumbore). The ray
  * leaves along `dir` (callers pass the face normal so the ray cannot
  * graze along the face plane). Odd crossing count = inside.
  *
@@ -118,7 +118,7 @@ export function pointInsideMesh(mesh: IndexedMesh, origin: Pt3, dir: Pt3): boole
 }
 
 /**
- * Robust point-in-solid: parity vote over 3 deterministic, mutually
+ * Robust point-in-solid: odd-even vote over 3 deterministic, mutually
  * non-axis directions. A single ray can double-count when it passes
  * through a shared triangle edge; with 3 directions that requires the
  * point to be edge-aligned in all 3 families simultaneously (degenerate

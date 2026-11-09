@@ -126,7 +126,7 @@ export function setupMep(): MepService {
   svcAny.insulation = mepInsulation;
   svcAny.runTools = mepRunTools;
 
-  // Revit-parity engineering pack: friction/static-regain sizing methods,
+  // RVT-compatibility engineering pack: friction/static-regain sizing methods,
   // model-native network audit (System Inspector / Pressure Loss Report),
   // fan & pump duty selection, DFU drainage sizing and the electrical
   // distribution cascade with wire-sized panel schedules.
@@ -157,7 +157,7 @@ export function setupMep(): MepService {
   try { (window as any).__obsMep = svc; } catch { /* */ }
 
   console.log(
-    "[mep] ready. A* router + ASHRAE sizing + parametric superhero pack + Revit-parity engineering pack online. " +
+    "[mep] ready. A* router + ASHRAE sizing + parametric superhero pack + RVT-compatibility engineering pack online. " +
     "Use the __obsMep service (.route, .plumbing.fixtureUnitsToDemand, .fire.designDemand, " +
     ".electricalCalc.voltageDrop, .insulation, .runTools, .sizingMethods, .network.auditNetwork, " +
     ".equipment.fanSelection/.pumpSelection, .drainage.sizeDrain, .distribution.buildDistributionSummary, " +

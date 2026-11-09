@@ -6,7 +6,7 @@
 # From your OpenBIMStudio project root
 cp -r path/to/artifacts/src/* src/
 # or unzip:
-# unzip OpenBIMStudio-BIM-Parity.zip -d /tmp/parity && cp -r /tmp/parity/src/* src/
+# unzip OpenBIMStudio-BIM-Compatibility.zip -d /tmp/compatibility && cp -r /tmp/compatibility/src/* src/
 
 npm run typecheck
 npm run dev

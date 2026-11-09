@@ -1,5 +1,5 @@
 /**
- * Critical Gaps Boot - wires every BIM-parity module.
+ * Critical Gaps Boot - wires every BIM-compatibility module.
  *
  * Import once from main.ts (`import "./critical-gaps-boot"`).
  *
@@ -68,7 +68,7 @@ async function runOnce(): Promise<void> {
   await safe("focus-service", async () => { await import("./features/focus-service"); });
   await safe("hosted-place-sync", async () => { await import("./features/hosted-place-sync"); });
 
-  // Core BIM-parity stores
+  // Core BIM-compatibility stores
   await safe("rooms", async () => {
     const m: Any = await import("./modules/rooms/rooms");
     m.setupRooms?.();
@@ -328,9 +328,9 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./features/ui-items-register-patch");
     m.registerClosedGapUiItems?.();
   });
-  await safe("bim-parity-bridge", async () => {
-    const m: Any = await import("./features/bim-parity-bridge");
-    m.setupBimParityBridge?.();
+  await safe("bim-compatibility-bridge", async () => {
+    const m: Any = await import("./features/bim-compatibility-bridge");
+    m.setupBimCompatibilityBridge?.();
   });
   await safe("bim-command-center", async () => {
     const m: Any = await import("./features/bim-command-center");
@@ -352,13 +352,13 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./features/nav-selection-pivot-patch");
     m.setupNavSelectionPivotPatch?.();
   });
-  await safe("bim-input-parity", async () => {
-    const m: Any = await import("./features/bim-input-parity");
-    m.setupBimInputParity?.();
+  await safe("bim-input-compatibility", async () => {
+    const m: Any = await import("./features/bim-input-compatibility");
+    m.setupBimInputCompatibility?.();
   });
-  await safe("cad-parity", async () => {
-    const m: Any = await import("./features/cad-parity");
-    m.setupCadParity?.();
+  await safe("cad-compatibility", async () => {
+    const m: Any = await import("./features/cad-compatibility");
+    m.setupCadCompatibility?.();
   });
   await safe("dwg-engine", async () => {
     const m: Any = await import("./modules/drawings/dwg-engine");
@@ -372,9 +372,9 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./features/libredwg-toolkit");
     m.setupLibreDwgToolkit?.();
   });
-  await safe("parity-tab-bar", async () => {
-    const m: Any = await import("./features/parity-tab-bar");
-    m.setupParityTabBar?.();
+  await safe("compatibility-tab-bar", async () => {
+    const m: Any = await import("./features/compatibility-tab-bar");
+    m.setupCompatibilityTabBar?.();
   });
   await safe("section-arrow-select-block", async () => {
     const m: Any = await import("./features/section-arrow-select-block");
@@ -384,7 +384,7 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./features/section-cut-interaction");
     m.setupSectionCutInteraction?.();
   });
-  await safe("ribbon-parity-inject", async () => {
+  await safe("ribbon-compatibility-inject", async () => {
   });
   await safe("critical-gaps-ui", async () => {
     const m: Any = await import("./features/critical-gaps-ui");
