@@ -1,0 +1,42 @@
+name: Browser smoke
+
+# Runs the Playwright specs in tests/e2e against the built app in real Chromium. Informational: it is not a required
+# check and does not block merges (continue-on-error), because these are the first real-browser runs of this UI.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["src/**", "tests/e2e/**", "index.html", "package.json", "playwright.config.ts", ".github/workflows/browser-smoke.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chromium:
+    name: Chromium smoke (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright (not saved to the lockfile)
+        run: npm i --no-save @playwright/test@1.49.1 && npx playwright install --with-deps chromium
+      - name: Run browser specs
+        run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts --reporter=list
+      - name: Upload report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-results
+          path: test-results/
+          if-no-files-found: ignore

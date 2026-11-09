@@ -12,4 +12,4 @@ npx playwright test --project=chromium tests/e2e/smoke.spec.ts
 - `smoke.spec.ts` - boots the app, opens the 2D plan, and checks the command line and Esc. Uses visible UI only.
 - `edit-undo-save.spec.ts` - `fixme`: it needs `data-testid` hooks the app does not have yet.
 
-Until someone runs these, nothing in the UI has been verified in a browser.
+CI runs `smoke.spec.ts` and `orbit-rtl.spec.ts` in Chromium via `.github/workflows/browser-smoke.yml` (informational, non-blocking). Nothing else in the UI has been verified in a browser.
