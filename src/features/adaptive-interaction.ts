@@ -488,6 +488,24 @@ function backspacePlacementPoint(): boolean {
   return true;
 }
 
+function disposeAdaptiveInteraction(): void {
+  cancelActive();
+  unsubGesture?.();
+  unsubHover?.();
+  unsubCancel?.();
+  unsubGesture = null;
+  unsubHover = null;
+  unsubCancel = null;
+  removeObject(previewRoot);
+  removeObject(gripRoot);
+  previewRoot = null;
+  gripRoot = null;
+  if (hud?.parentElement) hud.parentElement.removeChild(hud);
+  hud = null;
+  installed = false;
+  api = null;
+}
+
 export function setupAdaptiveInteraction(targetApi: Any): Any {
   if (installed) return (ctx.features as Any).adaptiveInteraction;
   api = targetApi as AdaptiveInteractionApi;
@@ -577,7 +595,7 @@ export function setupAdaptiveInteraction(targetApi: Any): Any {
     });
   };
 
-  const interactionApi = { beginPlacement, cancelPlacement: cancelActive, refreshGrips: refreshAdaptiveGrips };
+  const interactionApi = { beginPlacement, cancelPlacement: cancelActive, refreshGrips: refreshAdaptiveGrips, dispose: disposeAdaptiveInteraction };
   targetApi.beginPlacement = beginPlacement;
   targetApi.cancelPlacement = cancelActive;
   targetApi.refreshGrips = refreshAdaptiveGrips;
