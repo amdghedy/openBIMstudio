@@ -8,7 +8,7 @@ automation, AI tools and future UI panels.
 
 ## 1. Numeric geometric constraint solver — `src/modules/constraints/`
 
-The parametric core Revit is built on. When users drag constrained
+The parametric core external BIM authoring software is built on. When users drag constrained
 geometry, relations hold instead of breaking.
 
 - **Method**: damped least squares (Levenberg–Marquardt) over a flattened
@@ -37,7 +37,7 @@ __obsConstraints.solve(points, constraints) // ad-hoc systems
 ## 2. Structural analysis + member code checks — `src/modules/analytical-model/`
 
 The analytical model graduated from a data stub to a working solver —
-the first step toward Revit + Robot replacement.
+the first step toward external BIM authoring software + Robot replacement.
 
 **FEM (`fem.ts`)** — 2D frame finite elements (Euler–Bernoulli):
 
@@ -98,7 +98,7 @@ the `mep` barrel and merged into the `__obsMep` service.
 
 ## 4. Adaptive components — `src/modules/adaptive/`
 
-Revit's adaptive parts: point-placed flexible families for rafters,
+external BIM authoring software's adaptive parts: point-placed flexible families for rafters,
 façade fins, mullions on divided paths.
 
 - `AdaptiveFamily` = closed 2D profile + 2–4 placement points;

@@ -180,9 +180,9 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 - **Depends on:** nothing; blocks P1-04
 
 **Tasks**
-- [ ] Create/collect per the plan's Table 5 composition: Revit IFC4 arch x4, Revit IFC2x3 arch x2, Revit IFC4 MEP x3, Revit IFC4 structure x2, ArchiCAD x2, Tekla x2, BlenderBIM x2, FreeCAD x1, synthetic IFC4 x1, synthetic IFC2x3 x1
+- [ ] Create/collect per the plan's Table 5 composition: external BIM authoring software IFC4 arch x4, external BIM authoring software IFC2x3 arch x2, external BIM authoring software IFC4 MEP x3, external BIM authoring software IFC4 structure x2, ArchiCAD x2, Tekla x2, BlenderBIM x2, FreeCAD x1, synthetic IFC4 x1, synthetic IFC2x3 x1
 - [ ] All fixtures self-authored or openly licensed; record source tool + version + license in `tests/fixtures/ifc-corpus/MANIFEST.md`
-- [ ] Author one dedicated Revit test project for exports (no client data, ever)
+- [ ] Author one dedicated external BIM authoring software test project for exports (no client data, ever)
 - [ ] Commit normalized snapshots directory (initial expected values)
 
 **Acceptance criteria**

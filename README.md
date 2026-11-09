@@ -18,7 +18,7 @@
 [![CI](https://github.com/amdghedy/openBIMstudio/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/amdghedy/openBIMstudio/actions/workflows/unit-tests.yml)
 [![BIM validation](https://github.com/amdghedy/openBIMstudio/actions/workflows/native-bim-validation.yml/badge.svg)](https://github.com/amdghedy/openBIMstudio/actions/workflows/native-bim-validation.yml)
 
-**Local-first · Zero install · Open standards · IFC · FRAG · BCF · IDS · PDF · CAD · AI-ready**
+**Local-first · Zero install · Open standards · IFC · FRAG · BCF · IDS · PDF · drawing · AI-ready**
 
 <p align="center">
   <a href="https://open-bi-mstudio.vercel.app"><img src="https://img.shields.io/badge/🚀_Live_demo-open--bi--mstudio.vercel.app-00C853?style=for-the-badge" alt="Live demo"></a>
@@ -68,7 +68,7 @@ One install (none, actually — it's your browser). One license (MIT — yours).
 
 > **Status:** OpenBIMStudio is under active development and maturity varies by feature. Each capability is rated *verified*, *limited*, *experimental*, *planned* or *unavailable*, with its known limitations, in the app under **User Interface -> Feature Status** (source: `src/features/feature-maturity.ts`). See also [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for file-format support, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code is organised, and the [Master Tool Catalogue](documentation/MASTER_TOOL_CATALOG.md).
 >
-> Not decodable in a browser: LAZ, E57, RCP/RCS, RWCX and FLS point clouds (export to LAS first); Native DWG export from the CAD editor is experimental and uses a local MPL-2.0 acadrust WASM writer; unsupported content is rejected rather than silently dropped.
+> Not decodable in a browser: LAZ, E57, RCP/RCS, RWCX and FLS point clouds (export to LAS first); Native DWG export from the drawing editor is experimental and uses a local MPL-2.0 acadrust WASM writer; unsupported content is rejected rather than silently dropped.
 
 ---
 
@@ -137,7 +137,7 @@ npm run deploy
 - Hide / isolate / category visibility
 - Measure, temporary dimensions, snapping
 - Saved views, model tree, properties panel
-- CAD & PDF underlays, point cloud viewing
+- drawing & PDF underlays, point cloud viewing
 
 ### Model (architecture)
 - Walls (including layered / compound), floors, roofs, ceilings
@@ -182,7 +182,7 @@ npm run deploy
 - Tags (elements, rooms, materials), keynotes
 - Sheets, viewports, title blocks, revisions, matchlines
 - View templates, view filters & graphic overrides, filled regions, detail components, hatch patterns
-- **PDF** export · CAD import/export paths · PDF underlay
+- **PDF** export · drawing import/export paths · PDF underlay
 
 ### Quantify & plan
 - Schedules and quantity take-off
@@ -291,11 +291,11 @@ Use the **ribbon**, **bottom toolbar**, **Command Center (RC)**, or **Ctrl+P** c
 | **Delete** | Delete selection |
 | **Ctrl+Z / Ctrl+Y** | Undo / Redo (when history is active) |
 
-### CAD Editor (DWG/DXF) — Modify tools
+### Drawing Editor (DWG/DXF) — Modify tools
 
-The standalone CAD Editor ribbon has a full **Modify** group with AutoCAD-grade transform tools. Select objects first (noun–verb), then run the command — or start the command and pick objects, then press **Enter / right-click** to finish the selection stage. Every transform shows a live yellow dashed ghost preview, supports osnap / ortho, numeric entry typed into the command line, and a single Undo step (Ctrl+Z).
+The standalone Drawing Editor ribbon has a full **Modify** group with professional drafting transform tools. Select objects first (noun–verb), then run the command — or start the command and pick objects, then press **Enter / right-click** to finish the selection stage. Every transform shows a live yellow dashed ghost preview, supports osnap / ortho, numeric entry typed into the command line, and a single Undo step (Ctrl+Z).
 
-**Multi-document workspace.** The editor opens any number of DWG/DXF files at once, one drawing per file tab (native-CAD-style tab strip with unsaved-changes dots, middle-click close, right-click tab menu with Save / Save All / Close Others / Close All, and `Ctrl+Tab` / `Ctrl+Shift+Tab` to cycle drawings). Drawings interact through **Super Copy**: `COPYCLIP` (Ctrl+C / Ctrl+Shift+C) places the selected objects on a shared cross-drawing clipboard together with the layer, linetype and text style definitions they reference, and mirrors the payload to local storage so the clipboard survives a reload and works across app windows; `PASTECLIP` (Ctrl+V / Ctrl+Shift+V) attaches the clipboard to the cursor as a ghost preview — every click drops a copy (repeatable, AutoCAD-style) and missing layer/linetype/style definitions are carried over into the target drawing so pasted geometry keeps its source colours, dash patterns and fonts; `PASTEORIG` (Ctrl+Alt+V) pastes at the original source coordinates — so plans, details, and legends can be assembled across files without any export/import step.
+**Multi-document workspace.** The editor opens any number of DWG/DXF files at once, one drawing per file tab (native-drawing-style tab strip with unsaved-changes dots, middle-click close, right-click tab menu with Save / Save All / Close Others / Close All, and `Ctrl+Tab` / `Ctrl+Shift+Tab` to cycle drawings). Drawings interact through **Super Copy**: `COPYCLIP` (Ctrl+C / Ctrl+Shift+C) places the selected objects on a shared cross-drawing clipboard together with the layer, linetype and text style definitions they reference, and mirrors the payload to local storage so the clipboard survives a reload and works across app windows; `PASTECLIP` (Ctrl+V / Ctrl+Shift+V) attaches the clipboard to the cursor as a ghost preview — every click drops a copy (repeatable, repeat-placement) and missing layer/linetype/style definitions are carried over into the target drawing so pasted geometry keeps its source colours, dash patterns and fonts; `PASTEORIG` (Ctrl+Alt+V) pastes at the original source coordinates — so plans, details, and legends can be assembled across files without any export/import step.
 
 | Command | Alias | What it does |
 |---------|-------|--------------|
@@ -320,26 +320,26 @@ The standalone CAD Editor ribbon has a full **Modify** group with AutoCAD-grade 
 | CAL | `QC` | Calculator on the command line: `CAL 2*PI*25` — sin/cos/tan take degrees; any numeric prompt also accepts a bare expression like `3*sqrt(2)` |
 | Grip editing | — | Select objects → drag the blue hotspots: line endpoints & midpoints, polyline vertices, circle/arc centers, quadrants and radii, text insertion points (Shift = ortho lock, Ctrl+Z undoes) |
 
-While a drawing tab is active, the CAD editor owns Ctrl+Shift+C and Ctrl+Shift+V — app-level features that bind the same combos (Clash Review, View Tools Manager, Saved Views, Validation, VG dialog) stand down until you leave the drawing view; those features stay reachable from their menus.
+While a drawing tab is active, the drawing editor owns Ctrl+Shift+C and Ctrl+Shift+V — app-level features that bind the same combos (Clash Review, View Tools Manager, Saved Views, Validation, VG dialog) stand down until you leave the drawing view; those features stay reachable from their menus.
 
 Notes:
 
-- OFFSET works on lines, circles, arcs and polylines with **curve-aware joins** — corners are extended/trimmed by exact intersection (AutoCAD's offset-with-trim), shallow-angle spikes clamp to the classic 4× mitre, and a closed loop whose inset would collapse past its centroid is refused with "cannot offset that", exactly like native CAD. Hatch boundaries offset with their polyline.
+- OFFSET works on lines, circles, arcs and polylines with **curve-aware joins** — corners are extended/trimmed by exact intersection (desktop drafting software's offset-with-trim), shallow-angle spikes clamp to the classic 4× mitre, and a closed loop whose inset would collapse past its centroid is refused with "cannot offset that", exactly like native drawing editor. Hatch boundaries offset with their polyline.
 - MIRROR keeps text readable (MIRRTEXT=0 behaviour) and handles arc sweep correctly.
 - The Modify engine reuses the drawing undo stack, so `U` / Ctrl+Z reverts each operation in one step, and `REDO` / Ctrl+Y reapplies it.
 
-### CAD Editor — absorbed from OpenCADStudio (options & functions grab)
+### Drawing Editor — absorbed from OpenCADStudio (options & functions grab)
 
 Functions absorbed from the OpenCADStudio project (github.com/HakanSeven12/OpenCADStudio) under their own licenses — the GPL-3.0 application code is **not** copied; only permissively-licensed parts are ported and the rest is re-implemented against public formats:
 
 | Feature | Entry | What it does |
 |---------|-------|--------------|
-| Embedded DWG preview | open any DWG | The drawing's native thumbnail (extracted from the DWG preview container at byte 0x0D) is shown instantly while the full parse runs — big drawings open like native CAD. Also listed in the Info dialog. Ported from the MIT/Apache-2.0 `dwg-thumbnailer` crate. |
-| CTB / STB plot styles | PLOT › Load CTB / STB… | Load a real AutoCAD plot style table; the plot maps every entity through it — forced pen colours, grayscale policy, screen (ink) levels and pen lineweights. Validated against ezdxf-generated fixtures. |
-| BAK / SV$ recovery | open / drop a `.bak` or `.sv$` file | AutoCAD drawing backup and autosave files open like native CAD, with a "recovered from backup" note in the command line. |
-| LandXML CgPoints | drop a `.xml`, or `LANDXMLIN` | Survey points import as POINT entities with name labels on a "LandXML Points" layer (north → CAD Y, east → CAD X). |
+| Embedded DWG preview | open any DWG | The drawing's native thumbnail (extracted from the DWG preview container at byte 0x0D) is shown instantly while the full parse runs — big drawings open like native drawing editor. Also listed in the Info dialog. Ported from the MIT/Apache-2.0 `dwg-thumbnailer` crate. |
+| CTB / STB plot styles | PLOT › Load CTB / STB… | Load a real standard plot style table; the plot maps every entity through it — forced pen colours, grayscale policy, screen (ink) levels and pen lineweights. Validated against ezdxf-generated fixtures. |
+| BAK / SV$ recovery | open / drop a `.bak` or `.sv$` file | drawing backup and autosave files open like native drawing editor, with a "recovered from backup" note in the command line. |
+| LandXML CgPoints | drop a `.xml`, or `LANDXMLIN` | Survey points import as POINT entities with name labels on a "LandXML Points" layer (north → drawing Y, east → drawing X). |
 | Entity data extract | `DATAEXTRACT`, or App menu › Export Entity Data (CSV) | Every entity's handle, type, layer, colour, linetype, lineweight, text and anchor point exports to a CSV file. |
-| RAY / XLINE construction lines | open any DWG/DXF | Infinite construction lines read from the file and drawn edge-to-edge like native CAD (clipped to the view, linetype dashes and layer colours kept, pickable everywhere along the line, they never affect ZOOM Extents), moved/copied/mirrored/rotated by their anchor and written back on DXF save. |
+| RAY / XLINE construction lines | open any DWG/DXF | Infinite construction lines read from the file and drawn edge-to-edge like native drawing editor (clipped to the view, linetype dashes and layer colours kept, pickable everywhere along the line, they never affect ZOOM Extents), moved/copied/mirrored/rotated by their anchor and written back on DXF save. |
 
 ---
 
@@ -380,7 +380,7 @@ Functions absorbed from the OpenCADStudio project (github.com/HakanSeven12/OpenC
 | **BCF** | Coordination issue exchange | Import & export |
 | **IDS** | Information requirements checking | Validation |
 | **DXF** | 2D drawing exchange | Import & export |
-| **DWG** | Drawing import & link (LibreDWG WASM) | Import & link; experimental 2D CAD editor export via local acadrust WASM |
+| **DWG** | Drawing import & link (LibreDWG WASM) | Import & link; experimental 2D drawing editor export via local acadrust WASM |
 | **PDF** | Drawing sheets issue + PDF underlay | Export & underlay |
 | **CSV** | Schedules, take-off, cost | Import & export |
 | **gbXML** | Energy-related export path | Export (where enabled) |

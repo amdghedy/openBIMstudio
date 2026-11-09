@@ -16,8 +16,8 @@ These decisions adapt the uploaded spec to this platform without weakening it:
 | A2 | Existing-engine mapping (anti-re-specification) | Selection state machine hooks → `src/modules/snapping/state-machine.ts`; snapping → `src/modules/snapping/engine.ts`; persistent relationships → `src/modules/relationships/index.ts`; identity → `src/modules/object-hierarchy` `IdentityService` (never-reused IDs); undo/redo → `src/modules/transaction` `TransactionService`. |
 | A3 | Units & tolerances (spec leaves these open) | Internal length unit: **metre** (matches parameter-engine `"1500 mm" → 1.5`). Geometric tolerance (hit-testing, coincidence): **1e-6 m**. Solver tolerance: **1e-9 m**. Angular tolerance: **1e-12 rad**. |
 | A4 | Diagnostic IDs (§3.6 of object spec) | Convention `MOD-<CMD>-<NNN>`: `MOD-SEL-nnn`, `MOD-REF-nnn`, `MOD-MOV-nnn`, `MOD-ROT-nnn`, `MOD-MIR-nnn`. Severity ∈ {info, warning, error}. Errors block commit. |
-| A5 | Registers (§11) | **Continue** the platform registers — v0.70 ended at A-9 / D-12. New assumptions start at **A-10**, deviations at **D-13**. Evidence entries use the spec §11 classes E1–E6 (E1 verified observable, E2 verified API, E3 documented, E4 inferred internal, E5 proposed engine, E6 unverified). Honesty rule: every behavioral claim in this document is **E5** unless marked otherwise; no claim of Revit-internal knowledge is made anywhere. |
-| A6 | Clean-room clause (§11 hardening) | Evidence may come from public documentation and behavioral observation only. No decompilation of Autodesk assemblies, no copied code, no invented Revit API methods. |
+| A5 | Registers (§11) | **Continue** the platform registers — v0.70 ended at A-9 / D-12. New assumptions start at **A-10**, deviations at **D-13**. Evidence entries use the spec §11 classes E1–E6 (E1 verified observable, E2 verified API, E3 documented, E4 inferred internal, E5 proposed engine, E6 unverified). Honesty rule: every behavioral claim in this document is **E5** unless marked otherwise; no claim of external BIM authoring software-internal knowledge is made anywhere. |
+| A6 | Clean-room clause (§11 hardening) | Evidence may come from public documentation and behavioral observation only. No decompilation of Autodesk assemblies, no copied code, no invented external BIM authoring software API methods. |
 | A7 | Performance budgets (§13.25) | Group 1 budgets, Node-tested: selection hit-test over 10 000 elements ≤ 50 ms; window selection over 10 000 elements ≤ 100 ms; a Move/Rotate/Mirror preview regeneration over 1 000 selected elements ≤ 100 ms. |
 
 ---
@@ -299,7 +299,7 @@ Zero-radius guard: any element whose position coincides with the pivot within 1e
 |---|---|
 | Command ID | `mirror` |
 | Required references | mirror line (point + direction) — acquired from edge / centerline / location-line / reference-plane / grid |
-| Modes | `copy=true` (default): mirrored COPIES, originals preserved. `copy=false`: originals transformed in place (requires explicit confirmation flag in UI; E5 Revit-like default is copy) |
+| Modes | `copy=true` (default): mirrored COPIES, originals preserved. `copy=false`: originals transformed in place (requires explicit confirmation flag in UI; E5 external BIM authoring software-like default is copy) |
 | Transaction boundary | one transaction per commit, name `"Mirror"` |
 
 ### 6.2 Geometric algorithm
@@ -360,7 +360,7 @@ Legend: ✔ supported · ✖ unsupported in Group 1 (reason) · ◐ conditional.
 | MEP fittings / equipment | ✔ | ✔ | ✔ | ✖ handed equipment (explicit ✖ per spec §12) |
 | Generic families | ✔ | ✔ | ✔ | ✔ |
 | Adaptive families | ✔ | ✔ | ✔ | ◐ placement points mirror (Group 6 validation) |
-| Levels / Grids / Ref planes | ✔ | ✔ | ✖ datums don't rotate ( Revit-consistent, E3/E5) | ✖ |
+| Levels / Grids / Ref planes | ✔ | ✔ | ✖ datums don't rotate ( external BIM authoring software-consistent, E3/E5) | ✖ |
 | Openings / Shafts / Voids | ✔ | ✔ (with host) | ◐ | ◐ |
 | Curtain walls / systems | ✔ | ✔ | ✔ | ◐ grids regenerate |
 | Site elements | ✔ | ✔ | ◐ | ✖ topo surfaces (Group 6) |
@@ -400,7 +400,7 @@ No Group 1 behavior is "complete" without the test evidence above (spec §13 clo
 | ID | Behavior | Class | Basis |
 |---|---|---|---|
 | E-M1-01 | selection hit priority vertex>edge>connector>datum>body | E5 | proposed engine behavior, deterministic ranking |
-| E-M1-02 | window vs crossing semantics | E5 | proposed (matches common CAD semantics; no Revit-internal claim) |
+| E-M1-02 | window vs crossing semantics | E5 | proposed (matches common drawing semantics; no external BIM authoring software-internal claim) |
 | E-M1-03 | pinned selectable / not editable | E5 | platform rule from v0.68 spec 2C.9 |
 | E-M1-04 | reference command-scoped non-persistence | E5 | spec §2.3 binding rule |
 | E-M1-05 | move P'=P+Δ, T'=T_ΔT | E1 | closed-form math, test-verified |
@@ -408,7 +408,7 @@ No Group 1 behavior is "complete" without the test evidence above (spec §13 clo
 | E-M1-07 | mirror M = 2ddᵀ − I, θ' = 2φ − θ | E1 | closed-form math, test-verified |
 | E-M1-08 | hosted rigid-follow policy | E5 | consistent with existing follow-source reconnection |
 | E-M1-09 | mirror copies start unpinned | E5 | proposed |
-| E-M1-10 | Revit moves hosted elements with host | E3 | documented product behavior (public docs); platform reproduces via follow policy |
+| E-M1-10 | external BIM authoring software moves hosted elements with host | E3 | documented product behavior (public docs); platform reproduces via follow policy |
 
 ### 9.2 Assumptions Register (continuation — starts at A-10)
 
@@ -418,9 +418,9 @@ No Group 1 behavior is "complete" without the test evidence above (spec §13 clo
 
 ### 9.3 Deviation Register (continuation — starts at D-13)
 
-- **D-13** — Revit mirrors hosted elements by mirroring within the host context; this engine detaches mirrored hosted copies whose host is not mirrored (MOD-MIR-010) rather than silently re-hosting on an unrelated host. Justification: explicit over implicit; the warning is actionable.
+- **D-13** — external BIM authoring software mirrors hosted elements by mirroring within the host context; this engine detaches mirrored hosted copies whose host is not mirrored (MOD-MIR-010) rather than silently re-hosting on an unrelated host. Justification: explicit over implicit; the warning is actionable.
 - **D-14** — datum elements do not rotate/mirror in Group 1. Justification: datum orientation changes are datum-edit operations, not modify-tool operations.
-- **D-15** — grid snap of rotation is off by default in the programmatic API (Revit UI defaults on). Justification: engine-level determinism; the UI layer enables snapping.
+- **D-15** — grid snap of rotation is off by default in the programmatic API (external BIM authoring software UI defaults on). Justification: engine-level determinism; the UI layer enables snapping.
 - **D-16** — for hosted rigid follow the TOOL is the sole geometry writer during commit (exact same-Δ / same-pivot-θ math), and the relationship registry's stored reference geometry is refreshed afterwards via `updateRelationshipReference`; non-host relationships reconcile through the registry as before. Justification: the registry's `follow-source` evaluation rotates stored offsets about the source's *stored* reference position, which coincides with the tool's rigid-body result only for translations and rotations whose pivot is that stored reference — the tool's math is exact for arbitrary pivots, so it wins, and the refresh keeps subsequent evaluations coherent. Out-of-plane rotation axes are rejected in Group 1 (MOD-ROT-022) pending the 3-D element model (Group 6).
 
 ### 9.4 Known limitations / open questions (spec §14 items 21–22)

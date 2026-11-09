@@ -34,7 +34,7 @@ beams, braces, duct / pipe / cable tray / conduit runs, doors and windows with r
 (`IfcOpeningElement` + void + fill relations), equipment (box), rooms as `IfcSpace` with `BaseQuantities`. Native twins are
 tessellated. Storeys come from levels; every element carries an `OpenBIMStudio` property set (element id, type, family,
 all primitive `properties`) and a material when `properties.material` is set. Anything else (stairs, railings, curtain
-walls placed by the parity buttons, trusses, fittings) is listed in the console as "not exported" - never silently dropped.
+walls placed by the feature alignment buttons, trusses, fittings) is listed in the console as "not exported" - never silently dropped.
 
 ## How this was verified (and what was not)
 
@@ -67,7 +67,7 @@ NOT done here, please check on your machine:
   double-encoded characters in the chunks). Use `Get-Content -Raw -Encoding UTF8` and write with
   `Out-File -Encoding utf8`. All files in this package are plain ASCII.
 
-## Roadmap to BIM-level parity (what remains, in order)
+## Roadmap to BIM-level feature alignment (what remains, in order)
 
 Matching BIM "from all sides" is several milestones of work; this is the dependency order.
 

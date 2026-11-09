@@ -8,19 +8,19 @@ The AI Assistant is an operator for openBIMstudio's own application services. Th
 
 The agent is instructed to follow a read → plan → act → verify sequence:
 
-1. **Read:** inspect the active project, loaded models, relevant elements, CAD links, and available commands with read-only tools.
+1. **Read:** inspect the active project, loaded models, relevant elements, drawing links, and available commands with read-only tools.
 2. **Plan:** determine the smallest supported sequence of operations. Ask for missing placement, dimensions, system constraints, or design criteria instead of inventing them.
 3. **Approve:** project-writing operations display a confirmation card with the tool arguments before execution.
 4. **Act:** call registered native application tools. Do not simulate unsupported functionality with unrelated geometry.
 5. **Verify:** inspect tool results and actual committed element counts/IDs. Run an available validation or clash check when requested; state clearly when no suitable validator exists.
 
-Read-only inspection tools remain available without a confirmation prompt. The following write operations require explicit approval: native linear element creation, CAD-derived wall creation, BCF issue creation, custom schedule creation, and all destructive operations. Destructive operations retain their existing confirmation behavior.
+Read-only inspection tools remain available without a confirmation prompt. The following write operations require explicit approval: native linear element creation, drawing-derived wall creation, BCF issue creation, custom schedule creation, and all destructive operations. Destructive operations retain their existing confirmation behavior.
 
 ## Implemented native capabilities
 
 - Read active project state, model categories, element properties/evidence, and filtered element queries.
 - Create straight native walls, beams, strips, ducts, pipes, cable trays, conduits, and linear members using `create_linear_elements`.
-- Analyze linked CAD layers and create native walls from supported CAD wall geometry using `create_walls_from_cad`.
+- Analyze linked drawing layers and create native walls from supported drawing wall geometry using `create_walls_from_cad`.
 - Run registered clash and schedule tools, and create supported BCF issues or custom schedules after approval.
 
 Native linear coordinates use metres in plan X/Z; elevation is Y. The authoring service creates the geometry, so successful commits participate in native editing/history. The AI must report the actual returned count and IDs, not the requested count.
@@ -52,7 +52,7 @@ The model provider is used for language understanding and tool selection. The na
 - Honest capability boundaries and actionable error reporting.
 
 ### Stage 2 — Context-aware authoring
-- Resolve placements from explicit user picks, active views, levels, grids, and verified CAD/model geometry.
+- Resolve placements from explicit user picks, active views, levels, grids, and verified drawing/model geometry.
 - Provide editable previews and grouped approval for bounded modeling plans.
 - Add dedicated hosted/area/point tools for slabs, columns, openings, doors, and windows.
 

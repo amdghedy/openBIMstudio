@@ -10,7 +10,7 @@ elements. This package is cumulative (M1 + M2).
 1. Copy `src/modules/bim-gaps/` over your project's folder (10 files, all plain ASCII).
 2. `node scripts/install-bim-gaps.mjs <projectRoot>` (use `--dry-run` first if you like). It is idempotent and now makes six
    small edits (M1: boot hook, File menu, native-twin GlobalIds. M2: `createMesh` asks `window.__obsMeshBuilders` for unknown
-   types, cost takeoff gets rows for the new types, the three parity buttons start the click tools). Originals go to
+   types, cost takeoff gets rows for the new types, the three feature alignment buttons start the click tools). Originals go to
    `.bim-gaps-backup/`; CRLF/LF is preserved; an anchor that is not found is reported, never guessed.
 3. `npx tsc --noEmit`, `npm run dev`. Console: `[bim-gaps] 1.1.0-m2: 6/6 steps started` (7/7 with M3).
 4. Tests: copy `tests/` next to `package.json`, `node tests/run-tests.mjs` (works on Windows).

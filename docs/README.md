@@ -25,7 +25,7 @@ read (and where a new document belongs).
 | [SNAP_ENGINE.md](SNAP_ENGINE.md) | Snapping and magnet relationships |
 | [PARAMETRIC_ENGINE.md](PARAMETRIC_ENGINE.md) | Families, formulas, constraints |
 | [MEP_SYSTEMS_ENGINE.md](MEP_SYSTEMS_ENGINE.md) | Duct/pipe/tray systems, pressure, connectivity |
-| [DRAWINGS_DWG_ENGINE.md](DRAWINGS_DWG_ENGINE.md) | CAD editor and DWG/DXF pipeline |
+| [DRAWINGS_DWG_ENGINE.md](DRAWINGS_DWG_ENGINE.md) | drawing editor and DWG/DXF pipeline |
 | [NATIVE_BIM_VALIDATION.md](NATIVE_BIM_VALIDATION.md) | Native QA checks and rule packs |
 | [NATIVE_TWIN.md](NATIVE_TWIN.md) / [DIGITAL_TWIN_CAPABILITY_MATRIX.md](DIGITAL_TWIN_CAPABILITY_MATRIX.md) | Digital-twin reconstruction |
 | [SOURCE_INFORMATION_PRESERVATION.md](SOURCE_INFORMATION_PRESERVATION.md) | Import fidelity |
@@ -33,7 +33,7 @@ read (and where a new document belongs).
 
 ## Milestone records (historical)
 
-The `*_V67`–`*_V73` documents (e.g. `REVIT_KILLER_V67.md`,
+The `*_V67`–`*_V73` documents (e.g. `BIM_AUTHORING_REVIEW_V67.md`,
 `AUTHORING_CORE_V68.md`, `MODIFY_GROUP1_SPEC_V71.md`, `MODELING_PANEL_V73.md`)
 and `REVIT_GAPS_M1–M3` are **design-and-delivery records for specific
 milestones**. They explain why a subsystem looks the way it does, and the

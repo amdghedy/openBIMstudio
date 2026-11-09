@@ -73,7 +73,7 @@
 - [ ] **Standards packs architecture**: pluggable pack (building on `src/modules/standards`) shipping rule sets + templates: **ISO 16739/IFC, EN, DIN 276 (cost), BS 1192/ISO 19650 (naming & CDE), NBCS, GB/T 51235 (China), Singapore/BCA hints**; IDS templates per region (`src/modules/validation`).
 - [ ] **Naming-convention enforcement**: ISO 19650 field-based filenames/levels/types configurable per region; validation surfaced in Model Checker.
 - [ ] **Local symbol sets**: rebar symbols (ASTM vs BS vs GB), hatch patterns per region, seismic/wind load defaults per country code in `src/modules/structural-loads-ui`.
-- [ ] **Input method friendliness**: IME-safe text entry in Revit-style command line (CJK), numeric keypad decimal variants.
+- [ ] **Input method friendliness**: IME-safe text entry in external BIM authoring software-style command line (CJK), numeric keypad decimal variants.
 
 **Exit criteria:** a project created in Riyadh (mm, A-series, Arabic, DD/MM) and one in Dallas (ft-in, ANSI, fractional scales) both export correct PDF/BCF/CSV without manual tweaks. Golden-file round-trip tests extended per locale (`golden-roundtrip.yml`).
 

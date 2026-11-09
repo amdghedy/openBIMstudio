@@ -32,7 +32,7 @@ npm run dev
 | Curtain walls | ✅ | `modules/curtain-wall/curtain-wall.ts` |
 | Align / distribute | ✅ | `features/align-tool.ts` |
 | Match properties | ✅ | `features/bim-parity-bridge.ts` |
-| Create similar | ✅ | parity bridge → authoring |
+| Create similar | ✅ | feature alignment bridge → authoring |
 | Temporary dimensions | ✅ | `features/temp-dimensions.ts` |
 | Temporary hide / isolate | ✅ | `modules/visibility/visibility-filter.ts` |
 | Copy / Monitor | ✅ | `modules/copy-monitor/copy-monitor.ts` |
@@ -42,7 +42,7 @@ npm run dev
 | Hosted doors/windows + openings | ✅ | existing |
 | Clash / IDS / BCF / 4D / 5D | ✅ | existing |
 | Sheets / schedules / views | ✅ | existing |
-| Command palette integration | ✅ | parity bridge registers 20+ cmds |
+| Command palette integration | ✅ | feature alignment bridge registers 20+ cmds |
 
 ---
 
@@ -90,7 +90,7 @@ Search categories **Architecture**, **Modify**, **View**, **Panels** for:
 
 ---
 
-## Still future (not critical for openBIM parity)
+## Still future (not critical for openBIM feature alignment)
 
 | Item | Why deferred |
 |------|----------------|

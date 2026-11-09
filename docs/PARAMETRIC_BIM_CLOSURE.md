@@ -62,7 +62,7 @@ svc.propagateType(familyId, typeId, instances)
 | Align / match props / temp dims / hide-isolate | ✅ |
 | Copy/Monitor | ✅ |
 | Mouse/keyboard BIM map | ✅ |
-| CAD + DXF/DWG drawings | ✅ |
+| drawing + DXF/DWG drawings | ✅ |
 | Command Center UI | ✅ |
 
 ## Boot log (success)

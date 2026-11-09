@@ -49,4 +49,4 @@ The connector and electrical tests are also included in the CI batch runner.
 4. Add true graph-based system assignment and continuity checks that distinguish intentional terminal branches from disconnected runs.
 5. Add phase-aware panel load balancing, short-circuit/fault-current inputs, voltage-drop and code-profile checks.
 6. Wire the circuit/panel data model to authoring UI, schedules, IFC property sets and round-trip persistence.
-7. Run large-model, undo/redo, reload and model-edit regression tests before claiming production parity.
+7. Run large-model, undo/redo, reload and model-edit regression tests before claiming production feature alignment.

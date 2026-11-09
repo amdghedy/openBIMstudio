@@ -1,6 +1,6 @@
 # Tool Spec: <tool.id>
 
-Problem: which user job this serves; which documented Revit-parity gap it closes.
+Problem: which user job this serves; which documented external BIM authoring software-feature alignment gap it closes.
 Scope: explicitly in scope; explicitly out of scope.
 
 Acceptance criteria (each independently verifiable):

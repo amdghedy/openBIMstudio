@@ -98,7 +98,7 @@ For federation, validate units, origin, rotation, elevation, link transforms and
 
 ## 4. BIM authoring and element domains
 
-These modules indicate the project's authoring scope. They do not establish parity with a commercial parametric BIM engine.
+These modules indicate the project's authoring scope. They do not establish feature alignment with a commercial parametric BIM engine.
 
 | Domain | Source reference | Required documentation |
 |---|---|---|
@@ -204,7 +204,7 @@ Never commit credentials. Document whether prompts or model data leave the works
 |---|---|---|
 | Panel wiring | src/features/panel-wiring.ts | Federation, Standards and CDE command registration; missing-panel handling. |
 | UI registration | src/features/ui-items-register.ts; src/modules/ui-registry.ts | Registered IDs, unavailable placeholders and stable identifiers. |
-| BIM/CAD parity bridges | src/features/bim-parity-bridge.ts; src/features/bim-input-parity.ts; src/features/cad-parity.ts | Actual implemented paths, not parity aspirations. |
+| BIM/drawing feature alignment bridges | src/features/bim-feature alignment-bridge.ts; src/features/bim-input-feature alignment.ts; src/features/drawing-feature alignment.ts | Actual implemented paths, not feature alignment aspirations. |
 | Critical-gaps boot/UI | src/critical-gaps-boot.ts; src/features/critical-gaps-ui.ts; src/modules/bim-gaps/ | Registration and module-specific startup errors. |
 | Extras/panels | src/features/_extras.ts; src/features/panels/ | Inventory every setup function and visible action. |
 

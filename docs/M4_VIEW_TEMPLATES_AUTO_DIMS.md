@@ -1,6 +1,6 @@
 # M4 — View Templates + Visibility/Graphics + Auto-Dimensions
 
-BIM-parity package for **openBIMstudio**.
+BIM-feature alignment package for **openBIMstudio**.
 
 ## What this adds
 

@@ -2,7 +2,7 @@
 
 The v0.70 wave closes the platform's biggest remaining solid-modeling
 technique gap — the v0.68 Authoring Core's **Deviation D-3** (boolean
-operations restricted to convex operands) — and adds two Revit-grade
+operations restricted to convex operands) — and adds two external BIM authoring software-grade
 modeling techniques on top: **shell/hollow** and **multi-section loft**.
 Everything ships as pure, Node-testable engines with closed-form-verified
 tests, and every function is wired to ribbon buttons.
@@ -143,7 +143,7 @@ polygon soups; form outputs are unaffected).
 
 **Evidence classification.** Everything in v0.70 is **level E** (proposed
 engine behavior, verified against closed forms by automated tests). No
-claim in this repository is "verified against Revit" — no Revit
+claim in this repository is "verified against external BIM authoring software" — no external BIM authoring software
 installation is attached (inherited from the v0.68 registers).
 
 **Deviation register additions:**

@@ -1,6 +1,6 @@
 # Vendored WebAssembly readers
 
-Prebuilt files under `public/vendor/` are downloaded unmodified from npm by the **Vendor CAD readers** workflow
+Prebuilt files under `public/vendor/` are downloaded unmodified from npm by the **Vendor drawing readers** workflow
 (`.github/workflows/vendor-cad-wasm.yml`), smoke-tested there on real sample files, and pushed to the branch `vendor-cad-build`.
 Nothing is added to `package.json` / `package-lock.json`.
 

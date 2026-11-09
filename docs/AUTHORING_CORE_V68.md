@@ -7,9 +7,9 @@ architecture deliverables and the three mandatory registers. Modules 3–6
 implemented, per the spec's strict-scope rule.
 
 Evidence discipline (spec §2): every behavioral claim below is classified.
-Nothing in this repository claims "verified against Revit" — the platform
-has no Autodesk Revit installation attached, so no level A (verified
-observable) or level B (verified API) evidence exists. All Revit-adjacent
+Nothing in this repository claims "verified against external BIM authoring software" — the platform
+has no Autodesk external BIM authoring software installation attached, so no level A (verified
+observable) or level B (verified API) evidence exists. All external BIM authoring software-adjacent
 statements are level C (public documentation), D (inference, labelled), or
 E (proposed engine behavior). Everything actually shipped in v0.68 is
 level E with closed-form-verified automated tests.
@@ -203,37 +203,37 @@ new local frame).
 
 | ID | Feature | Evidence level | Source | Confidence | Notes |
 |----|---------|----------------|--------|------------|-------|
-| RE-1 | Formula parameters are read-only/computed | E | Platform design (safe-expr) | High | Consistent with public Revit documentation of formula-driven parameters (level C context) |
+| RE-1 | Formula parameters are read-only/computed | E | Platform design (safe-expr) | High | Consistent with public external BIM authoring software documentation of formula-driven parameters (level C context) |
 | RE-2 | Temporary snaps are not persistent constraints | E | Spec §3.4 mandate | High | Enforced by API: `temporary-snap` records are refused |
-| RE-3 | Walls join/heal at coincident endpoints; locked distances survive edits | D | Public Revit user docs describe constraint persistence; internal mechanism unobserved | Medium | Implemented via the numeric LM solver (v0.67) |
-| RE-4 | Wall endpoints land on column faces accounting for wall thickness | D | Observable Revit behavior widely documented in user guides; exact pullback formula is our derivation | Medium | Δ = ℓ·\|p·n\|/\|d·n\| is level E mathematics |
+| RE-3 | Walls join/heal at coincident endpoints; locked distances survive edits | D | Public external BIM authoring software user docs describe constraint persistence; internal mechanism unobserved | Medium | Implemented via the numeric LM solver (v0.67) |
+| RE-4 | Wall endpoints land on column faces accounting for wall thickness | D | Observable external BIM authoring software behavior widely documented in user guides; exact pullback formula is our derivation | Medium | Δ = ℓ·\|p·n\|/\|d·n\| is level E mathematics |
 | RE-5 | Openings keep their position along a resized wall | D | Public user docs; not experimentally verified here | Medium | Implemented as constant curve parameter `s` |
-| RE-6 | Type-value changes propagate to non-overriding instances | D | Public Revit docs on type/instance parameters | Medium | EffectiveValue precedence chain, tested |
+| RE-6 | Type-value changes propagate to non-overriding instances | D | Public external BIM authoring software docs on type/instance parameters | Medium | EffectiveValue precedence chain, tested |
 | RE-7 | Duct/pipe size transitions require fittings, not refusal | D | Public MEP documentation; fitting families | Medium | Reducer/transition in `calculateRequiredFittings` |
 | RE-8 | Element ids never reused after deletion; copies get new ids | D | Public API docs describe ElementId/UniqueId semantics | Medium | IdentityService policy |
-| RE-9 | Pinned elements reject Modify commands | D | Public Revit docs (pinning) | High | Gate in `CanExecute` |
+| RE-9 | Pinned elements reject Modify commands | D | Public external BIM authoring software docs (pinning) | High | Gate in `CanExecute` |
 | RE-10 | Contact ≠ join ≠ connectivity | E | Spec §3.4 mandate | High | Distinct relationship types |
 
 No entry is marked level A or B. The register intentionally contains no
-"verified against Revit" rows (spec §10 completion rule).
+"verified against external BIM authoring software" rows (spec §10 completion rule).
 
 ## 3. Assumptions and Open Questions Register (spec 3.11.2)
 
 | ID | Assumption / question | Priority | Validation method | Status |
 |----|----------------------|----------|-------------------|--------|
-| A-1 | "Exterior = approach side" for wall justification when a wall meets a column | Medium | Compare against Revit experiments (user-owned) | Open |
-| A-2 | Openings keep curve parameter `s` (not absolute world position) on host curve edits | Medium | Revit experiment: move a wall's end, observe window behaviour | Open |
+| A-1 | "Exterior = approach side" for wall justification when a wall meets a column | Medium | Compare against external BIM authoring software experiments (user-owned) | Open |
+| A-2 | Openings keep curve parameter `s` (not absolute world position) on host curve edits | Medium | external BIM authoring software experiment: move a wall's end, observe window behaviour | Open |
 | A-3 | Locked-distance allowed move along the proposed ray (t* solution) matches user expectation vs interactive re-solve | Medium | UI prototype + user testing | Open |
 | A-4 | Round-size compatibility step (25 mm) for "no reducer needed" | Low | Compare with manufacturer fitting catalogues | Open |
-| A-5 | Exact oblique pull-back Δ = ℓ·\|p·n\|/\|d·n\| vs Revit's interactive join cleanup at obtuse angles | High | Revit experiment with 45°/60° wall-to-column approaches | Open |
+| A-5 | Exact oblique pull-back Δ = ℓ·\|p·n\|/\|d·n\| vs external BIM authoring software's interactive join cleanup at obtuse angles | High | external BIM authoring software experiment with 45°/60° wall-to-column approaches | Open |
 | A-6 | Snap priority table values (endpoint 100 … nearest 20) | Low | Usability testing; configurable via `SnapSettings.priority` | Open (configurable) |
 | A-7 | Boolean outputs are polygon soups; topology validation welds first — downstream consumers must not rely on shared vertex indices | High | Internal contract; documented here | Accepted (documented) |
 
-## 4. Revit Compatibility Deviation Register (spec 3.11.3)
+## 4. external BIM authoring software Compatibility Deviation Register (spec 3.11.3)
 
 | ID | Deviation | Reason | User impact | Interop impact | Status |
 |----|-----------|--------|-------------|----------------|--------|
-| D-1 | No "verified against Revit" claims anywhere | No Revit installation available; spec forbids unevidenced claims | None (honest documentation) | None | Approved |
+| D-1 | No "verified against external BIM authoring software" claims anywhere | No external BIM authoring software installation available; spec forbids unevidenced claims | None (honest documentation) | None | Approved |
 | D-2 | Constraint cycles among geometry/constraint nodes are legal (simultaneous systems) | Matches the numeric-solver architecture; spec 1.1 distinguishes them from formula cycles | Positive (richer modelling) | None | Approved |
 | D-3 | `union`/`intersect` throw on coplanar operands; subtract requires a convex cutter | Half-space clipping is exact and testable where a full CSG kernel would be risky; wrong geometry is worse than a precise error | Errors carry actionable messages; void cutting (the dominant case) is unaffected | IFC import paths unaffected (no boolean round-trips) | Approved — full CSG kernel is a tracked future milestone |
 | D-4 | Boolean output is a polygon soup; validators weld before topology checks | Keeps the kernel dependency-free and Node-testable | None visible | None | Approved |
@@ -267,7 +267,7 @@ milestone (see §8).
 
 Status per feature = max reached stage. Stages: Specified → Implemented →
 Unit-tested → Integration-tested → Regression-tested → Verified-against-
-Revit (NOT CLAIMED anywhere).
+external BIM authoring software (NOT CLAIMED anywhere).
 
 | Feature | Status |
 |---------|--------|
@@ -287,7 +287,7 @@ Revit (NOT CLAIMED anywhere).
 | MEP connectors + topology | Integration-tested (2E.4) |
 | Modify commands (9) | Integration-tested (2E.6, 2E.7) |
 | Property panel engine + dimensions | Integration-tested (2E.5, 2E.9) |
-| Verified-against-Revit | **Not claimed (register RE/D above)** |
+| Verified-against-external BIM authoring software | **Not claimed (register RE/D above)** |
 
 ## 7. Verification
 

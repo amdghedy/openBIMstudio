@@ -18,8 +18,8 @@ This directory contains user, developer and tool-reference documentation for Ope
 - [M4 view templates and automatic dimensions](../docs/M4_VIEW_TEMPLATES_AUTO_DIMS.md)
 - Existing engineering gap reviews and milestone notes in the repository's legacy documentation.
 - [Critical gaps closure](../docs/CRITICAL_GAPS_CLOSURE.md)
-- [CAD gaps closure](../docs/CAD_GAPS_CLOSURE.md)
-- Input interaction and parity notes in the repository's legacy documentation.
+- [drawing gaps closure](../docs/DRAWING_GAPS_CLOSURE.md)
+- Input interaction and feature alignment notes in the repository's legacy documentation.
 - Parametric implementation gap notes in the repository's legacy documentation.
 
 ## Documentation policy

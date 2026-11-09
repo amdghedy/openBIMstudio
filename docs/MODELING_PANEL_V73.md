@@ -39,7 +39,7 @@ Pure engine: **`modules/justification/index.ts`** (no DOM/three — Node-testabl
 
 - `justificationShiftMeters(mode, width)` — Center / Outer Edge / Inner Edge
   (0 / +w⁄2 / −w⁄2 along the left normal).
-- `wallShiftForLocationLine` — six Revit-style lines; core faces use the **core
+- `wallShiftForLocationLine` — six external BIM authoring software-style lines; core faces use the **core
   thickness** from the compound layer string (`coreThicknessFromLayers`).
 - `applyJustificationToSegment` / `resolveWallJustification` — shift both endpoints
   along the segment's left normal so the chosen face lands on the drawn line; the

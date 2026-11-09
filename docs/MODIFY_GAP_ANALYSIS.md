@@ -66,7 +66,7 @@ The primary gap is **integration and semantic completeness**: multiple layers ex
 | Group edit | Yes | group store |  | ✓ | group edit session, exclusions/restores, transaction propagation | P2 | `src/modules/groups` |
 | Assemblies | Yes | no complete subsystem evidence |  |  | member/type/views/sheets | P3 | `src/modules/assemblies` |
 | Parts | Yes | no complete subsystem evidence |  |  | derived provenance, divide/merge, boundary editing | P3 | `src/modules/parts` |
-| Linked model selection | Yes | linked model/CAD snap foundations |  | ✓ | source IDs, subelement selection, read-only enforcement, copy/monitor | P1 | `src/modules/links` |
+| Linked model selection | Yes | linked model/drawing snap foundations |  | ✓ | source IDs, subelement selection, read-only enforcement, copy/monitor | P1 | `src/modules/links` |
 | View/sheet/viewport | Yes | crop/scope/view modules |  | ✓ | sheet placement, viewport alignment/title, open placed views | P2 | `src/modules/views` |
 | Annotation edit | Yes | annotation layers/interactions |  | ✓ | tags/text/keynotes/dim leaders and reference updates | P2 | `src/modules/views` |
 | Analytical model | Yes | not enough source evidence |  |  | analytical object model, loads/supports/combinations | P3 | `src/modules/analytical` |

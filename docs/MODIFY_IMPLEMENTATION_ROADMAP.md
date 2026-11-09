@@ -30,7 +30,7 @@
 
 ### P0.3 — Selection/reference identity
 - Define `ElementRef` with modelId, elementId, sourceKind, sourceModelId, subElementId, geometryRevision.
-- Unify OBC fragments, authored native objects, linked CAD/IFC, point cloud, annotations and connector/bar handles.
+- Unify OBC fragments, authored native objects, linked drawing/IFC, point cloud, annotations and connector/bar handles.
 - Add stale reference detection and deterministic Tab candidate cycling.
 - Tests: same GUID in two linked models, link reload, geometry revision, nested pick candidates, window/crossing.
 

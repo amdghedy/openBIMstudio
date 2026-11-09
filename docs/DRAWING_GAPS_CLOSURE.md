@@ -1,4 +1,4 @@
-# CAD Gaps Closed
+# drawing Gaps Closed
 
 ## Install
 
@@ -7,7 +7,7 @@ cp -r artifacts/src/* <OpenBIMStudio>/src/
 npm run typecheck && npm run dev
 ```
 
-## Full CAD tool matrix
+## Full drawing tool matrix
 
 | Tool | Keys | Notes |
 |------|------|-------|
@@ -34,9 +34,9 @@ npm run typecheck && npm run dev
 
 | Entry | |
 |-------|--|
-| Yellow **CAD** button | bottom-left |
-| **Ctrl+Shift+D** | CAD panel |
-| Command Center → **CAD / Drafting** | |
+| Yellow **drawing** button | bottom-left |
+| **Ctrl+Shift+D** | drawing panel |
+| Command Center → **drawing / Drafting** | |
 | Gold **command line** bar | bottom center during tools |
 
 ## Workflow examples
@@ -51,7 +51,7 @@ npm run typecheck && npm run dev
 1. Set radius with **Fillet R** → FI → click two lines  
 
 **Layers**
-1. CAD panel → Layers row → click layer name to make active  
+1. drawing panel → Layers row → click layer name to make active  
 
 ## Runtime API
 

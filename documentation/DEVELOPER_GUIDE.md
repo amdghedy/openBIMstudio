@@ -2,7 +2,7 @@
 
 ## 1. Stack and runtime
 
-The inspected package manifest identifies React 18 and TypeScript; Vite; Three.js, React Three Fiber and Drei; That Open components/fragments/UI packages; web-ifc; Redux Toolkit; Yjs/y-websocket; Material UI; Monaco Editor; PDF tooling; JSZip; CSV parsing; and CAD/DWG-related dependencies.
+The inspected package manifest identifies React 18 and TypeScript; Vite; Three.js, React Three Fiber and Drei; That Open components/fragments/UI packages; web-ifc; Redux Toolkit; Yjs/y-websocket; Material UI; Monaco Editor; PDF tooling; JSZip; CSV parsing; and drawing/DWG-related dependencies.
 
 A package dependency is not proof that every feature uses it or that a production service is configured. Trace imports and runtime paths before documenting an integration.
 

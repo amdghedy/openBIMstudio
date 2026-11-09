@@ -52,7 +52,7 @@ jobs:
       - name: Build native DWG writer
         run: cargo build --locked --release --target wasm32-unknown-unknown --manifest-path cad-engine-rust/Cargo.toml
 
-      - name: Stage freshly built CAD engine WebAssembly
+      - name: Stage freshly built native drawing engine WebAssembly
         run: node scripts/copy-cad-engine-wasm.mjs
 
       - name: Install dependencies

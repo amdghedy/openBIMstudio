@@ -1,6 +1,6 @@
 # Modify Context Matrix
 
-**Reference:** Revit 2027 primary; 2024–2026 retained. **Status values describe OpenBIMstudio evidence at the audit commit**, not Revit availability.
+**Reference:** external BIM authoring software 2027 primary; 2024–2026 retained. **Status values describe OpenBIMstudio evidence at the audit commit**, not external BIM authoring software availability.
 
 Legend: C = context-specific; D = discipline-specific; L = linked/reference; P = planned/partial capability. “Common” means shared Modify commands, not a claim that all category-specific contextual ribbon tabs are identical.
 
@@ -25,19 +25,19 @@ Legend: C = context-specific; D = discipline-specific; L = linked/reference; P =
 | Plumbing/MEP fixtures/accessories | MEP component | transform, type, properties | connector connect/disconnect, system assignment | connector domain, host and flow direction | connector derivation partial; category family support incomplete |
 | Electrical fixture/device | Electrical | transform, type, properties | circuit add/remove, panel assignment, circuit path | voltage, phase, poles, circuit rules | electrical calculation/model module exists; complete editing UI and validation gaps |
 | Panel/circuit | Electrical system | properties, select members | circuit membership, numbering, panel schedule, loads, panel capacity | panel distribution system and connected loads | data model/calculations exist; complete UI workflows need implementation |
-| Fabrication part | Fabrication | move, rotate, copy, properties | service/spec, fabrication connector, part edit, hanger/support | fabrication database/service, spool status | fabrication module exists; editing and documentation parity not verified |
+| Fabrication part | Fabrication | move, rotate, copy, properties | service/spec, fabrication connector, part edit, hanger/support | fabrication database/service, spool status | fabrication module exists; editing and documentation feature alignment not verified |
 | Group | Group | move, rotate, copy, pin, delete | edit group, add/remove/exclude/restore, ungroup | group type and instance membership | group store exists; robust edit mode/transaction semantics require tests |
 | Assembly | Assembly | transform, properties | add/remove members, assembly views/sheet/type | assembly membership and view regeneration | no complete assembly workflow evidenced |
 | Part | Parts | transform, properties | divide, merge, include/exclude, boundary/shape handles | host provenance; edits may not write back to host | no complete parts subsystem evidenced |
-| Linked Revit/IFC | Reference model | select, pin, visibility, override, reload | select linked element, copy/monitor, copy to native | source identity, transform, reload/version | linked model/CAD snap foundations exist; source read-only boundary required |
-| CAD/DWG | Underlay/reference | select link instance, pin, visibility, snap | reference snap, align, move link, reload | source file coordinate system, layer visibility | CAD underlay snap exists; user-requested manual alignment snap integration must be verified |
+| Linked external BIM authoring software/IFC | Reference model | select, pin, visibility, override, reload | select linked element, copy/monitor, copy to native | source identity, transform, reload/version | linked model/drawing snap foundations exist; source read-only boundary required |
+| drawing/DWG | Underlay/reference | select link instance, pin, visibility, snap | reference snap, align, move link, reload | source file coordinate system, layer visibility | drawing underlay snap exists; user-requested manual alignment snap integration must be verified |
 | Coordination model | Coordination | select model instance, visibility, override | markup/coordination only | external source remains read-only | coordination features exist; no native element parameter editing |
 | Point cloud | Scan reference | select cloud, pin, visibility, crop | scan region/crop/registration if supported | point cloud source, coordinate transform | parsers/import and point-cloud modules exist; edit operations are reference-only |
 | View | View context | select/open, duplicate, properties | crop, scope box, view range, template, overrides | view type and template control | view/crop/section modules exist; complete command integration partial |
 | Sheet/viewport | Sheet context | select, move, align, properties | open placed view, viewport title/label, placement | sheet coordinates, viewport uniqueness | sheet placement workflow not fully evidenced |
 | Dimension | Annotation | move, delete, type/properties | witness refs, text, equality, segments, units | referenced geometry and view | annotation modules exist; driving dimension/constraint binding partial |
 | Tag/text/keynote | Annotation | move, rotate, copy, type/properties | label, leader endpoints, text edit | referenced element, tag family, view | annotation layer exists; category-specific tag editors partial |
-| Detail/model lines | Curve/detail | move, rotate, trim, split, offset | line style, work plane, view/model scope | view plane or model work plane | CAD geometry/modify math exists; full authoring integration requires verification |
+| Detail/model lines | Curve/detail | move, rotate, trim, split, offset | line style, work plane, view/model scope | view plane or model work plane | drawing geometry/modify math exists; full authoring integration requires verification |
 | Grid/level/reference plane | Datum | move, rotate, pin, properties | datum extents, bubbles, 2D/3D extent, name | level/host references and constraints | level constraints exist; datum extent/bubble editor needs work |
 | Scope box | View reference | move, rotate, pin | extents, view assignment | associated views | scope/section box code exists; full contextual UX not established |
 | Analytical member/panel/load/support | Analytical | properties, selection | analytical geometry, releases, loads, combinations, boundary conditions | physical/analytical association and engineering checks | not enough evidence for complete analytical edit subsystem |

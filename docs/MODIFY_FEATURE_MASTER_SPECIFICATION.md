@@ -1,8 +1,8 @@
 # OpenBIMstudio Modify Subsystem — Master Functional & Engineering Specification
 
 **Document:** MODIFY_FEATURE_MASTER_SPECIFICATION.md  
-**Status:** Research baseline / implementation blueprint (not a claim of complete Revit equivalence)  
-**Reference baseline:** Autodesk Revit 2027 Help, with 2024–2026 deltas called out  
+**Status:** Research baseline / implementation blueprint (not a claim of complete external BIM authoring software equivalence)  
+**Reference baseline:** Autodesk external BIM authoring software 2027 Help, with 2024–2026 deltas called out  
 **Repository baseline:** `main` at `65ca9e0395880a59efaaf95b97a872faedd5bbdb` (2026-11-02 audit)  
 **Purpose:** Clean-room functional specification for an independent openBIM authoring platform.
 
@@ -17,24 +17,24 @@ This is a **reverse-functional specification**, not an interface-copying exercis
 - **Context-specific** — appears only for a particular category, selection, view, or edit mode.
 - **Discipline-specific** — only relevant to architecture, structure, MEP, documentation, or site.
 - **Conditional** — available only if the selected element, host, view, connector, or model state supports it.
-- **Inferred design requirement** — an OpenBIMstudio behavior proposed to deliver equivalent professional outcomes; not a claim about Revit internals.
+- **Inferred design requirement** — an OpenBIMstudio behavior proposed to deliver equivalent professional outcomes; not a claim about external BIM authoring software internals.
 - **Unverified** — needs release-specific UI/API observation before being represented as exact Autodesk behavior.
 
 Do not treat an Autodesk command name as proof that the command is available for every category. Do not infer an exact default shortcut from memory; Autodesk allows users to assign multiple shortcuts and customize/import/export them. Exact key bindings must come from the matching release's official shortcut export/PDF or an installation-specific XML.
 
 ### Primary Autodesk evidence (consulted 2026-11-02)
 
-- Revit 2027 What's New, including Options Bar removal, new wall-host behavior, rebar enhancements, fabrication editing and tag leaders: https://help.autodesk.com/cloudhelp/2027/ENU/Revit-WhatsNew/files/GUID-C81929D7-02CB-4BF7-A637-9B98EC9EB38B.htm
-- Revit 2027 About Modifying Elements: https://help.autodesk.com/cloudhelp/2027/ENU/Revit-Model/files/GUID-8A9B4506-D0F2-447C-91EC-BDD59C7607AE.htm
-- Revit 2026 Selection: https://help.autodesk.com/cloudhelp/2026/ENU/Revit-GetStarted/files/GUID-AC1CAA25-037D-4EA1-B357-D59CE29FE754.htm
-- Revit 2026 Constraints: https://help.autodesk.com/cloudhelp/2026/ENU/Revit-Model/files/GUID-91CBCCF3-66D1-496B-80B3-D893065D1A50.htm
-- Revit 2026 Duct system modification: https://help.autodesk.com/cloudhelp/2026/ENU/Revit-MEPEng/files/GUID-252DCF21-4258-4F87-86F5-C1703690642B.htm
-- Revit 2026 Rebar shape modification: https://help.autodesk.com/cloudhelp/2026/ENU/Revit-StructEng/files/GUID-F1BCB08A-73C8-479B-9AB5-C22241CCEA19.htm
-- Revit 2026 Rebar constraint editing: https://help.autodesk.com/cloudhelp/2026/ENU/Revit-StructEng/files/GUID-CF33FBA7-6B3B-4839-A60F-B42130A6DA4F.htm
-- Revit 2027 Join Geometry / Cut Geometry / Split Elements: https://help.autodesk.com/cloudhelp/2027/ENU/Revit-Model/files/GUID-F3D6884F-F1E3-471B-81FB-ECE93D9C2671.htm ; https://help.autodesk.com/cloudhelp/2027/ENU/Revit-Model/files/GUID-FE932AF0-4C84-4D59-B0AA-08F3E6D7A9E8.htm ; https://help.autodesk.com/cloudhelp/2027/ENU/RevitLT-Model/files/GUID-1FD99EBE-5F75-4B54-858B-B18D7DE297C6.htm
-- Revit 2027 Keyboard Shortcuts: https://help.autodesk.com/cloudhelp/2027/ENU/RevitLT-Customize/files/GUID-39D549F2-75EE-4C06-8B6A-3DADE1FBEF59.htm
+- external BIM authoring software 2027 What's New, including Options Bar removal, new wall-host behavior, rebar enhancements, fabrication editing and tag leaders: https://help.autodesk.com/cloudhelp/2027/ENU/external BIM authoring software-WhatsNew/files/GUID-C81929D7-02CB-4BF7-A637-9B98EC9EB38B.htm
+- external BIM authoring software 2027 About Modifying Elements: https://help.autodesk.com/cloudhelp/2027/ENU/external BIM authoring software-Model/files/GUID-8A9B4506-D0F2-447C-91EC-BDD59C7607AE.htm
+- external BIM authoring software 2026 Selection: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-GetStarted/files/GUID-AC1CAA25-037D-4EA1-B357-D59CE29FE754.htm
+- external BIM authoring software 2026 Constraints: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-Model/files/GUID-91CBCCF3-66D1-496B-80B3-D893065D1A50.htm
+- external BIM authoring software 2026 Duct system modification: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-MEPEng/files/GUID-252DCF21-4258-4F87-86F5-C1703690642B.htm
+- external BIM authoring software 2026 Rebar shape modification: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-StructEng/files/GUID-F1BCB08A-73C8-479B-9AB5-C22241CCEA19.htm
+- external BIM authoring software 2026 Rebar constraint editing: https://help.autodesk.com/cloudhelp/2026/ENU/external BIM authoring software-StructEng/files/GUID-CF33FBA7-6B3B-4839-A60F-B42130A6DA4F.htm
+- external BIM authoring software 2027 Join Geometry / Cut Geometry / Split Elements: https://help.autodesk.com/cloudhelp/2027/ENU/external BIM authoring software-Model/files/GUID-F3D6884F-F1E3-471B-81FB-ECE93D9C2671.htm ; https://help.autodesk.com/cloudhelp/2027/ENU/external BIM authoring software-Model/files/GUID-FE932AF0-4C84-4D59-B0AA-08F3E6D7A9E8.htm ; https://help.autodesk.com/cloudhelp/2027/ENU/RevitLT-Model/files/GUID-1FD99EBE-5F75-4B54-858B-B18D7DE297C6.htm
+- external BIM authoring software 2027 Keyboard Shortcuts: https://help.autodesk.com/cloudhelp/2027/ENU/RevitLT-Customize/files/GUID-39D549F2-75EE-4C06-8B6A-3DADE1FBEF59.htm
 
-**Version interpretation:** Revit 2027 is the latest documented release found for this research date. 2027 is the primary reference; 2024–2026 are retained for compatibility and migration. The version matrix below only records differences supported by release documentation. Blank/unknown cells mean "not verified", not "feature absent".
+**Version interpretation:** external BIM authoring software 2027 is the latest documented release found for this research date. 2027 is the primary reference; 2024–2026 are retained for compatibility and migration. The version matrix below only records differences supported by release documentation. Blank/unknown cells mean "not verified", not "feature absent".
 
 ---
 
@@ -81,7 +81,7 @@ Use one status only per feature, with evidence:
 
 ---
 
-## 2. Revit command taxonomy and inventory boundaries
+## 2. external BIM authoring software command taxonomy and inventory boundaries
 
 The canonical command records are in `MODIFY_COMMAND_REGISTRY.json`. They are grouped by behavior, not copied ribbon panels. The registry intentionally separates commands that have different geometry or relationship semantics:
 
@@ -130,7 +130,7 @@ Context tabs are selection-dependent and may combine category and selection card
 | Group | Group editor | edit/add/remove/exclude/restore/ungroup; instance/type behavior |
 | Assembly | Assembly | add/remove members, assembly views/sheets, type membership |
 | Part | Parts | divide/include/exclude/merge/edit boundaries/shape handles |
-| Link/CAD/IFC/coordination/point cloud | Reference model | select/link subelements if supported, pin, reload, visibility/override, coordinates; source content not directly edited |
+| Link/drawing/IFC/coordination/point cloud | Reference model | select/link subelements if supported, pin, reload, visibility/override, coordinates; source content not directly edited |
 | View/sheet/viewport | Documentation | open view, move/align viewport, crop, title/reference, view-specific controls |
 | Dimension/tag/text/detail | Annotation | text/leader/witness/reference edits, type and graphics |
 | Grid/level/reference plane/scope box | Datum/reference | move/rotate/extent/3D-2D extents, bubble/label/visibility, pin/constraints |
@@ -175,7 +175,7 @@ The state machine is explicit and persisted in UI state only; transient preview 
 
 - Hover highlights one candidate without changing selection.
 - Tab cycles deterministic candidates under cursor (element, face/edge/vertex, connector, connected chain, linked subelement according to mode).
-- Ctrl adds; Shift removes (Revit documented behavior). OpenBIMstudio may retain its own Alt-remove convention only if it is discoverable, consistent, and tested; avoid conflicting modifiers.
+- Ctrl adds; Shift removes (external BIM authoring software documented behavior). OpenBIMstudio may retain its own Alt-remove convention only if it is discoverable, consistent, and tested; avoid conflicting modifiers.
 - Left-to-right window = fully contained; right-to-left = crossing. Selection respects active view visibility, category filters, selection filters, hidden state, and link inclusion.
 - Pinned and read-only elements remain selectable for inspection/unpin; edit commands gate on editability.
 - Linked subelement selection records both link instance ID and source element ID. It does not grant write access to the linked source.
@@ -228,11 +228,11 @@ Acquire boundary and target element(s); choose retained side using pick location
 
 ### 6.2 Split / split with gap
 
-Split Element creates two logical elements with stable identity policy: original retains ID, new segment gets a new ID; parameters, phase, type, host, system, and relevant metadata are copied deliberately. Endpoint references and connectors are reassigned. Split with Gap additionally removes a specified interval; minimum lengths and category-specific rules apply. Split Face is a face-region/material operation and must not be conflated with splitting an element. Revit 2027 documents different supported categories for split and split-with-gap; maintain category capability tables.
+Split Element creates two logical elements with stable identity policy: original retains ID, new segment gets a new ID; parameters, phase, type, host, system, and relevant metadata are copied deliberately. Endpoint references and connectors are reassigned. Split with Gap additionally removes a specified interval; minimum lengths and category-specific rules apply. Split Face is a face-region/material operation and must not be conflated with splitting an element. external BIM authoring software 2027 documents different supported categories for split and split-with-gap; maintain category capability tables.
 
 ### 6.3 Join / cut relationships
 
-Join Geometry is a persistent geometric relationship between compatible intersecting solids; it is not just a boolean union. Revit documents category precedence/cutting behavior, including walls/columns and host elements. OpenBIMstudio must store join/cut relationship, precedence, operand references, and source solids so unjoin/uncut/switch order can be deterministic. Do not collapse semantic IFC elements into one untraceable solid. A cut may be a void, host opening, or category-specific cut relationship.
+Join Geometry is a persistent geometric relationship between compatible intersecting solids; it is not just a boolean union. external BIM authoring software documents category precedence/cutting behavior, including walls/columns and host elements. OpenBIMstudio must store join/cut relationship, precedence, operand references, and source solids so unjoin/uncut/switch order can be deterministic. Do not collapse semantic IFC elements into one untraceable solid. A cut may be a void, host opening, or category-specific cut relationship.
 
 ### 6.4 Edit profile / sketch / shape
 
@@ -254,7 +254,7 @@ Split Face subdivides a face's display/material region without changing the host
 - Documentation: dimension witness references and annotation placement constraints (view-scoped).
 - Group/array: membership, transform relationship, count/spacing association.
 
-Do not advertise a solver constraint unless the solver implements it and tests cover under/over-constrained, contradictory, singular and cyclic cases. Revit public docs distinguish explicit locked constraints, looser alignments/dimensions, and implied host/join relationships; explicit conflicts are errors, while loose constraints may be dropped in conflict. OpenBIMstudio should not silently drop an explicit constraint.
+Do not advertise a solver constraint unless the solver implements it and tests cover under/over-constrained, contradictory, singular and cyclic cases. external BIM authoring software public docs distinguish explicit locked constraints, looser alignments/dimensions, and implied host/join relationships; explicit conflicts are errors, while loose constraints may be dropped in conflict. OpenBIMstudio should not silently drop an explicit constraint.
 
 ### 7.2 Temporary vs permanent dimensions
 
@@ -330,7 +330,7 @@ Operation rules:
 6. Commit all geometry and topology changes atomically.
 7. Refresh pressure/flow/quantity/schedules only for impacted systems.
 
-Revit docs explicitly describe duct offsets/diameters, routing solutions, system division, sizing, justification and insulation/lining operations. The exact control location is release-specific; 2027 states the Options Bar controls were removed and relocated into Properties/ribbon generally.
+external BIM authoring software docs explicitly describe duct offsets/diameters, routing solutions, system division, sizing, justification and insulation/lining operations. The exact control location is release-specific; 2027 states the Options Bar controls were removed and relocated into Properties/ribbon generally.
 
 ### 10.3 Equipment and fixtures
 
@@ -350,7 +350,7 @@ Report open connectors, incompatible connector pairs, disconnected branches, dup
 
 ### 11.1 Architecture
 
-- Walls: location line, base/top constraints, offsets, unconnected height, profile, joins, attachments, inserts, room-bounding, compound structure, wall-hosted relationships. Revit 2027 documents walls hosted on other walls; host changes, offsets and rehosting must be represented as new version capability.
+- Walls: location line, base/top constraints, offsets, unconnected height, profile, joins, attachments, inserts, room-bounding, compound structure, wall-hosted relationships. external BIM authoring software 2027 documents walls hosted on other walls; host changes, offsets and rehosting must be represented as new version capability.
 - Curtain walls: grid layout, panel/mullion replacement, pin/unpin, host relationship and system constraints.
 - Doors/windows: host opening, facing/hand flip, sill/head offsets, rehost and type.
 - Floors/roofs/ceilings: boundary sketch, slope arrows, shape points, thickness/layers, joins/cuts, openings.
@@ -365,7 +365,7 @@ Structural columns/framing/foundations: section/type, justification, end offsets
 
 ### 11.3 Rebar (dedicated)
 
-Rebar instance shape, bar type/diameter, hooks, end treatments, layout rule, quantity, spacing, partition/number, host cover, bar plane, constraints and visibility are separate data. Editing shape handles preserves host cover constraints unless the user changes the target/constraint. Rebar shape family editing differs from project instance editing. Rebar constraints use valid planar targets; circular references must be rejected. Layout modes include single, fixed number, maximum spacing and release-specific enhanced spacing rules. Revit 2027 What's New reports 3D path distribution, enhanced spacing formulas, longitudinal bars driven by transverse reinforcement, and free-form splice improvements; implement only when the relevant geometry/data model is ready.
+Rebar instance shape, bar type/diameter, hooks, end treatments, layout rule, quantity, spacing, partition/number, host cover, bar plane, constraints and visibility are separate data. Editing shape handles preserves host cover constraints unless the user changes the target/constraint. Rebar shape family editing differs from project instance editing. Rebar constraints use valid planar targets; circular references must be rejected. Layout modes include single, fixed number, maximum spacing and release-specific enhanced spacing rules. external BIM authoring software 2027 What's New reports 3D path distribution, enhanced spacing formulas, longitudinal bars driven by transverse reinforcement, and free-form splice improvements; implement only when the relevant geometry/data model is ready.
 
 ### 11.4 Fabrication parts
 
@@ -377,7 +377,7 @@ Fabrication MEP parts need connector-aware geometry, fabrication service/specifi
 
 ### 12.1 View/sheet
 
-Viewport position and rotation on sheet, title/label, view reference, crop boundary, annotation crop, scope box, view range, template, detail level, visual style and view-specific overrides. Crop geometry is view-scoped; model geometry outside crop is not deleted. Sheet viewport move/align changes sheet layout only. Revit 2026.1 notes opening placed views from sheets and in-canvas editing of compatible view-reference labels.
+Viewport position and rotation on sheet, title/label, view reference, crop boundary, annotation crop, scope box, view range, template, detail level, visual style and view-specific overrides. Crop geometry is view-scoped; model geometry outside crop is not deleted. Sheet viewport move/align changes sheet layout only. external BIM authoring software 2026.1 notes opening placed views from sheets and in-canvas editing of compatible view-reference labels.
 
 ### 12.2 Annotation
 
@@ -404,10 +404,10 @@ Parts are derived from host layers/geometry but may have independently edited bo
 - **Editable:** link instance placement/rotation/pin/visibility/overrides and link-level coordinate settings, if host owns those settings.
 - **Indirectly editable:** select source elements, copy/monitor, map/copy into native model, or open source project with write permission.
 - **Coordination-only:** coordination model selection/visibility/markup; no native parametric edit.
-- **Reference-only:** point cloud/CAD/IFC geometry used for snapping/measurement/overlay; source remains external.
+- **Reference-only:** point cloud/drawing/IFC geometry used for snapping/measurement/overlay; source remains external.
 - **Non-editable:** source geometry and source properties in a read-only link.
 
-Selection records source-model identity. Snapping to linked DWG/CAD/IFC is a reference operation; it must not modify the linked source. Link reload/replace requires coordinate and identity reconciliation.
+Selection records source-model identity. Snapping to linked DWG/drawing/IFC is a reference operation; it must not modify the linked source. Link reload/replace requires coordinate and identity reconciliation.
 
 ---
 
@@ -419,7 +419,7 @@ Build menu from command registry and selection capabilities. Common actions: sel
 
 ### 14.2 Options Bar evolution
 
-The Options Bar is a historical/contextual control strip, not a stable API contract. Revit 2027 What's New explicitly says controls previously located on the Options Bar were relocated to Properties and ribbon. Therefore OpenBIMstudio should expose a context-aware **Command Options** surface with stable semantics, while allowing layout changes. Examples: copy toggle, constrain, disjoin, multiple, radius/diameter, offset, justification, slope, rebar shape selector, array count/spacing. Store command option defaults per user/project where safe; never persist transient target/reference data.
+The Options Bar is a historical/contextual control strip, not a stable API contract. external BIM authoring software 2027 What's New explicitly says controls previously located on the Options Bar were relocated to Properties and ribbon. Therefore OpenBIMstudio should expose a context-aware **Command Options** surface with stable semantics, while allowing layout changes. Examples: copy toggle, constrain, disjoin, multiple, radius/diameter, offset, justification, slope, rebar shape selector, array count/spacing. Store command option defaults per user/project where safe; never persist transient target/reference data.
 
 ### 14.3 Keyboard and mouse
 
@@ -432,10 +432,10 @@ The Options Bar is a historical/contextual control strip, not a stable API contr
 - Left drag: window select or direct manipulation according to active tool.
 - Right click: context menu or command cancel; menu must not accidentally commit preview.
 - Alt/Ctrl combinations: only bind after conflict audit and user customization.
-- Double-click: context-specific edit/open; configurable in Revit and should be configurable in OpenBIMstudio.
+- Double-click: context-specific edit/open; configurable in external BIM authoring software and should be configurable in OpenBIMstudio.
 - Hover: preview highlight only; no write.
 - Drag grips: preview-only until pointer release/confirm, then one transaction.
-- Keyboard shortcuts: registry supports multiple aliases, customization, import/export and conflict detection. The official release shortcut file is the source of truth for exact Revit defaults.
+- Keyboard shortcuts: registry supports multiple aliases, customization, import/export and conflict detection. The official release shortcut file is the source of truth for exact external BIM authoring software defaults.
 
 ---
 
@@ -562,7 +562,7 @@ Audit of the repository tree and source files found real foundations:
 - `src/modules/rebar` includes geometry, layout, shapes, standards, schedules and clash detection.
 - `src/modules/groups`, `src/modules/model-groups`, view annotation modules, context menu, property schema/palette, and many tests.
 
-This proves code and tests exist, **not** end-to-end completeness. For example, current MEP connectivity is geometry-derived and has explicit tolerance behavior; production connector identity/compatibility and graph persistence still need verification. Rebar layout code documents axis-aligned assumptions for beam/column/slab layouts; arbitrary orientation and full Revit-like rebar constraint editing are not established by that module alone. Existing modify Group 1 spec explicitly limits itself to selection/reference/move/rotate/mirror; Group 2 covers align/split-gap/wall-corner trim. Do not assume remaining command families are complete.
+This proves code and tests exist, **not** end-to-end completeness. For example, current MEP connectivity is geometry-derived and has explicit tolerance behavior; production connector identity/compatibility and graph persistence still need verification. Rebar layout code documents axis-aligned assumptions for beam/column/slab layouts; arbitrary orientation and full external BIM authoring software-like rebar constraint editing are not established by that module alone. Existing modify Group 1 spec explicitly limits itself to selection/reference/move/rotate/mirror; Group 2 covers align/split-gap/wall-corner trim. Do not assume remaining command families are complete.
 
 The detailed status and exact source paths are in `MODIFY_GAP_ANALYSIS.md`.
 
@@ -598,7 +598,7 @@ Acceptance criteria:
 
 ## 19. Release matrix (documented evidence only)
 
-| Feature / behavior | Revit 2024 | Revit 2025 | Revit 2026 | Revit 2027 | Notes |
+| Feature / behavior | external BIM authoring software 2024 | external BIM authoring software 2025 | external BIM authoring software 2026 | external BIM authoring software 2027 | Notes |
 |---|---|---|---|---|---|
 | Basic selection, Ctrl add / Shift remove, Tab cycling, window/crossing | Confirmed | Confirmed baseline | Confirmed | Confirmed | Verify exact setting names per release |
 | Contextual ribbon on selection | Confirmed | Confirmed | Confirmed | Confirmed | User can configure activation/focus |
@@ -606,7 +606,7 @@ Acceptance criteria:
 | Join/cut/split families | Confirmed | Confirmed | Confirmed | Confirmed | Supported categories vary by command |
 | Duct system modification / routing | Confirmed | Confirmed | Confirmed | Confirmed | Options and panel names can move |
 | Rebar shape/constraint editing | Confirmed | Confirmed | Confirmed | Confirmed | 2027 adds documented distribution/spacing enhancements |
-| Revit 2027 Options Bar control relocation | — | — | — | **New** | 2027 What's New says prior Options Bar controls moved to Properties/ribbon |
+| external BIM authoring software 2027 Options Bar control relocation | — | — | — | **New** | 2027 What's New says prior Options Bar controls moved to Properties/ribbon |
 | Host wall on another wall | — | — | — | **New** | 2027 What's New |
 | Rule-based model element numbering | — | — | — | **New** | 2027 What's New |
 | 3D path rebar distribution / enhanced spacing | — | — | — | **New** | 2027 What's New |

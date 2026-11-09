@@ -28,7 +28,7 @@ flowchart TD
 2. Global error handlers are installed before feature boot. Secure storage and the viewer are initialized first. If the viewer is unavailable, startup aborts rather than initializing tools against a missing world.
 3. The shared viewer context is defined in `src/core/context.ts` and populated by `src/core/setup.ts`. It exposes the components/world, fragments manager, highlighter, clipper, viewport hosts, camera/scene helpers and a legacy feature bag.
 4. The input router, diagnostics and core interaction systems are initialized before most feature panels and tools.
-5. Domain and UI setup functions are then registered in sequence: authoring, projects, families, issues/BCF, cost/CDE, standards/IDS, model tree, schedules, file interop, CAD, navigation, MEP, AI, automation, sheets and workspace components.
+5. Domain and UI setup functions are then registered in sequence: authoring, projects, families, issues/BCF, cost/CDE, standards/IDS, model tree, schedules, file interop, drawing, navigation, MEP, AI, automation, sheets and workspace components.
 6. The shell, shortcuts and workspace chrome are initialized; the plugin system boots last so its services are available.
 
 Most named steps are wrapped by `step(name, fn)`: an individual failure is logged and the viewer continues without that feature. Viewer initialization failure is a hard stop. Therefore, a successful page load alone does not prove that every booted feature initialized; use diagnostics and the feature-maturity registry.
@@ -41,7 +41,7 @@ Most named steps are wrapped by `step(name, fn)`: an individual failure is logge
 | Runtime/core | `src/core/` | Viewer context, typed services, input routing, errors, diagnostics, units, locale, secure storage and common infrastructure. Keep domain decisions out of core. |
 | Shell/workspace | `src/shell/`, `src/modules/workspace-layout.ts` | Ribbon, file menu, home screen, status bar, viewport toolbar and workspace layout. Shell code should call feature/domain contracts rather than reimplement them. |
 | UI features | `src/features/` | User-facing panels, interaction controllers and adapters. A UI handler should validate input and delegate domain work. |
-| Domain modules | `src/modules/` | BIM, geometry, CAD, MEP, coordination, data, project and engineering rules. Prefer deterministic logic with explicit inputs/outputs so it can be tested without a browser. Not every legacy module is fully pure today. |
+| Domain modules | `src/modules/` | BIM, geometry, drawing, MEP, coordination, data, project and engineering rules. Prefer deterministic logic with explicit inputs/outputs so it can be tested without a browser. Not every legacy module is fully pure today. |
 | Services | `src/services/` | Cross-cutting conversion/interop services such as BIM round-trip/import helpers. Inspect the implementation before claiming an external workflow is supported. |
 | Workers | `src/workers/`, worker entrypoints | Background compute and server worker code. Heavy geometry/parser work should avoid blocking the UI thread where practical. |
 | Plugins | `src/plugins/` | Extension API, types, loader and boot boundary. Plugin operations must use supported host services and report unsupported actions honestly. |
@@ -75,9 +75,9 @@ Multi-model coordination, issues, standards, model checking, live collaboration 
 
 `bcf` · `cde` · `clash` · `collaboration` · `copy-monitor` · `federation` · `issues` · `model-checker` · `references` · `relationships` · `standards` · `validation`
 
-### CAD, drawing production and file exchange
+### drawing, drawing production and file exchange
 
-CAD editing/linking, drawings, parsers, export formats and point-cloud underlays.
+drawing editing/linking, drawings, parsers, export formats and point-cloud underlays.
 
 `cad` · `cad-link` · `cad-viewer` · `drawings` · `dwg-linking` · `export` · `pdf-review` · `pdf-underlay` · `gis` · `point-cloud` · `rvt` · `solids`
 
@@ -345,7 +345,7 @@ The APS integration is explicitly experimental in `src/features/feature-maturity
 - The source contains 116 top-level directories under `src/modules/`; this is a broad, historically grown domain surface, not proof of 116 independently bounded packages.
 - Several legacy registration modules still expose `window.__obs*` globals; `src/core/services.ts` and the service migration are the intended direction. The current UI-honesty test uses a non-increasing count as a ratchet, so the count itself remains debt.
 - `src/main.ts` is a large composition root with many sequential setup steps. The per-step error containment improves resilience but can leave a feature unavailable while the rest of the viewer continues; boot diagnostics must remain visible and actionable.
-- Browser-level tests are materially fewer than logic-level tests. Important editing, IFC, CAD and MEP workflows need end-to-end tests against the production build and representative models.
+- Browser-level tests are materially fewer than logic-level tests. Important editing, IFC, drawing and MEP workflows need end-to-end tests against the production build and representative models.
 - The existing IFC golden-roundtrip workflow notes that its export leg is currently a second independent parse because a general web-ifc exporter is not available in that harness. Treat its green result as parser/corpus regression evidence, not proof of a complete IFC import-export round-trip.
 - Some collaboration and worksharing components are local/client-side abstractions; production multi-user guarantees require end-to-end server, authorization, concurrency and recovery evidence.
 - The module map is intentionally a directory inventory, not an architecture dependency graph. Add dependency/layer checks only after a reviewed boundary policy exists; do not invent a rule that the current code does not satisfy.

@@ -2,7 +2,7 @@
 
 ## 1. Product overview
 
-OpenBIMstudio is a browser-based BIM/openBIM development project. The package describes a local-first workflow spanning authoring, federation, coordination, documentation, 4D/5D, IDS, BCF, automation, AI and linked-model/native-twin work. This is the stated scope, not a guarantee of full feature parity. Use the [Master Tool Catalogue](MASTER_TOOL_CATALOG.md) for source references and verification boundaries.
+OpenBIMstudio is a browser-based BIM/openBIM development project. The package describes a local-first workflow spanning authoring, federation, coordination, documentation, 4D/5D, IDS, BCF, automation, AI and linked-model/native-twin work. This is the stated scope, not a guarantee of full feature feature alignment. Use the [Master Tool Catalogue](MASTER_TOOL_CATALOG.md) for source references and verification boundaries.
 
 ## 2. Requirements
 
@@ -78,7 +78,7 @@ For each command establish:
 - Persisted fields and schedule inclusion.
 - Save/reopen behavior.
 - Undo/redo support.
-- IFC, CAD, PDF, COBie and quantity workflow inclusion.
+- IFC, drawing, PDF, COBie and quantity workflow inclusion.
 
 A sample mesh, UI button or source module is not proof of a fully associative BIM element. See [Master Tool Catalogue — Authoring](MASTER_TOOL_CATALOG.md#4-bim-authoring-and-element-domains).
 

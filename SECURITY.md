@@ -13,7 +13,7 @@ files you choose to save. Nothing is sent anywhere unless you turn on a feature 
 | Imported files | Text coming from IFC / DXF / IDS / family files is HTML-escaped before it is shown. Family formulas run in a small interpreter with no access to scripts, globals or the DOM. |
 | Plugins | Loaded only from the app's own `/plugins/<id>/` folder; ids and entry paths are validated; the all-powers wildcard is refused for non-first-party plugins. |
 | Web headers | `nosniff`, `no-referrer`, `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, camera / microphone / location blocked, same-origin resource policy, HSTS (hosted). |
-| Collaboration server | Binds to `127.0.0.1` by default; browser requests only from an allowed-origin list; optional bearer token; ids validated; uploads restricted to model/CAD types with sanitised file names. |
+| Collaboration server | Binds to `127.0.0.1` by default; browser requests only from an allowed-origin list; optional bearer token; ids validated; uploads restricted to model/drawing types with sanitised file names. |
 
 ## Running the collaboration server safely
 

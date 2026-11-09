@@ -1,4 +1,4 @@
-# Open BIM Studio — BIM Parity Package
+# Open BIM Studio — BIM feature alignment Package
 
 ## Install (one step)
 

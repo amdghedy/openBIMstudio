@@ -16,7 +16,7 @@ file — the project adopted a written changelog at 0.73.0.
 
 ### Right-to-left readiness (issue #141, partly)
 - The core stylesheets (`src/style.css`, `src/styles.css`) now use logical properties (`margin-inline-end`, `border-inline-start`, `inset-inline-end`, `text-align: start`) instead of left/right, so the ribbon, toasts, cards and KPIs mirror under `<html dir="rtl">` (set already for Arabic, Persian, Hebrew, Urdu) and render the same as before in LTR. A test keeps physical properties from coming back.
-- **Not done and not verified:** nothing was viewed in a browser in Arabic or Hebrew. Inline styles written in TypeScript (`style.cssText` in about 200 places), directional icons (undo/redo, chevrons, arrows), the 3D viewport tools and the CAD editor were not audited, and the issue's 100-string pseudo-localisation pass was not done.
+- **Not done and not verified:** nothing was viewed in a browser in Arabic or Hebrew. Inline styles written in TypeScript (`style.cssText` in about 200 places), directional icons (undo/redo, chevrons, arrows), the 3D viewport tools and the drawing editor were not audited, and the issue's 100-string pseudo-localisation pass was not done.
 
 ### ICU messages and region-aware formatting (issue #140, partly)
 - Catalog strings may now use an ICU MessageFormat **subset**: `{n, plural, =0{…} one{# …} other{# …}}`, `select`, `{n, number}`, `{d, date}`, nesting and apostrophe quoting (`src/core/icu-lite.ts`). Plain `{name}` strings and the existing `{one, other}` plural objects keep working unchanged. Plural categories are checked for en, ar, ru, pl and fr.
@@ -27,15 +27,15 @@ file — the project adopted a written changelog at 0.73.0.
 - Standards → **Load pack file…** (or drop a file on the panel) loads a rule pack written as JSON: data only, validated, with documented operators, units and limits (`docs/STANDARDS-PACK-SCHEMA.md`, `docs/schemas/standards-pack.schema.json`, example in `docs/examples/`). Not done: exporting the built-in packs to JSON (their rules are code), and ajv validation (no dependency; hand-written validator).
 
 ### STEP / IGES / BREP and Rhino 3dm view (experimental)
-- Open `.step .stp .iges .igs .brep` (occt-import-js) and `.3dm` (rhino3dm) from Open File, drag-and-drop or Link many. Tessellated, view-only copies in metres; summary lists what could not be drawn. The prebuilt WebAssembly is vendored by the "Vendor CAD readers" workflow (licences: docs/THIRD-PARTY-VENDOR.md). Tested on cube fixtures and upstream sample files only.
+- Open `.step .stp .iges .igs .brep` (occt-import-js) and `.3dm` (rhino3dm) from Open File, drag-and-drop or Link many. Tessellated, view-only copies in metres; summary lists what could not be drawn. The prebuilt WebAssembly is vendored by the "Vendor drawing readers" workflow (licences: docs/THIRD-PARTY-VENDOR.md). Tested on cube fixtures and upstream sample files only.
 
 ### Fixed
 - Seed families **Rectangular Concrete Column** and **Universal Steel I-Beam** were rejected at boot ("not a valid FamilyDefinition") because they had no geometry; both now define it (the beam gains a `length` parameter, default 6 m).
 - Boot no longer logs a missing `standards.title` translation, a blocked Google Fonts stylesheet, or a failing request to the retired `api.counterapi.dev` counter; garbled `Â·` in one log line fixed.
-- Dropping a Revit, GLB/OBJ/FBX, GeoJSON or Shapefile onto the viewport did nothing (only IFC, FRAG and DWG/DXF were handled). These now go through the universal importer.
+- Dropping a external BIM authoring software, GLB/OBJ/FBX, GeoJSON or Shapefile onto the viewport did nothing (only IFC, FRAG and DWG/DXF were handled). These now go through the universal importer.
 
 ### Link many files in one step
-- Selecting several files (Insert → Any model…, Link CAD, the Revit picker, or the palette command "Link many files at once") now links each kind together: several DWG/DXF files share **one** link dialog and the same placement settings, several Revit files open in sequence with one combined result line, several IFC files load as one batch. Unreadable files are skipped and listed instead of stopping the batch.
+- Selecting several files (Insert → Any model…, Link drawing, the external BIM authoring software picker, or the palette command "Link many files at once") now links each kind together: several DWG/DXF files share **one** link dialog and the same placement settings, several external BIM authoring software files open in sequence with one combined result line, several IFC files load as one batch. Unreadable files are skipped and listed instead of stopping the batch.
 
 ### GIS site context (experimental)
 - **GeoJSON and Shapefile** (`.geojson`, `.shp` with optional `.dbf`) open from Open File as flat outlines on the ground plane. Context only: not georeferenced to the model, `.prj` not read. Tested on hand-built files only.
@@ -43,23 +43,23 @@ file — the project adopted a written changelog at 0.73.0.
 ### 4D/5D schedule import (experimental)
 - **Microsoft Project XML (MSPDI)** and **CSV task schedules** can be imported in the timeline panel next to Primavera P6. The format is detected from the content. Binary `.mpp` is not supported. Tested only against hand-written fixtures, not files from real MS Project.
 
-### Revit view: browser and tools (experimental)
-- **Revit browser** (File tab, command palette): every element of an opened Revit file in a tree grouped by IFC class, level or material, with search across names, classes, levels, materials, ids and property values; click to select (Shift/Ctrl for several), double-click to zoom, per-group select and show/hide.
+### external BIM authoring software view: browser and tools (experimental)
+- **external BIM authoring software browser** (File tab, command palette): every element of an opened external BIM authoring software file in a tree grouped by IFC class, level or material, with search across names, classes, levels, materials, ids and property values; click to select (Shift/Ctrl for several), double-click to zoom, per-group select and show/hide.
 - **Multi-select** (Shift/Ctrl-click) with a combined panel; **Hide**, **Isolate**, **Show all**; **Select same class / level / material**; **Make editable native twins** for the whole selection.
 - **Export to CSV**: a schedule of the selected (or all) elements with identity, level, material, placement, size and one column per decoded property; spreadsheet formulas in property text are neutralised.
 - Hide/isolate is per session (not saved with the project). Tested as pure logic; the panels and menus have not been run in a browser.
 
-### Revit view: select, inspect, make editable (experimental)
+### external BIM authoring software view: select, inspect, make editable (experimental)
 - Click an element of an opened `.rvt` / `.rfa` to select it and see the properties the decoder read (identity, level, material, placement and size, property sets; metric with the file's imperial value alongside). Properties are embedded in the 3D file itself, so they survive saving the project, reopening it and opening it on another device.
-- Right-click an element → **Make editable native twin**: creates a real authored element (same path as IFC Native Twins) with the element's triangles and properties; the Revit source is hidden while the twin exists and returns if the twin is deleted. Twins take part in clash tests, schedules and edits like any native element.
-- The twin is a tessellated copy, not Revit's parametric definition, and nothing is written back to the `.rvt`. Only properties the decoder can read are shown.
+- Right-click an element → **Make editable native twin**: creates a real authored element (same path as IFC Native Twins) with the element's triangles and properties; the external BIM authoring software source is hidden while the twin exists and returns if the twin is deleted. Twins take part in clash tests, schedules and edits like any native element.
+- The twin is a tessellated copy, not external BIM authoring software's parametric definition, and nothing is written back to the `.rvt`. Only properties the decoder can read are shown.
 - Verified with the real WebAssembly decoder on a synthetic wall (its properties match the decoder's own info panel). Not yet exercised on a real project file in a browser.
 
-### View Revit files (experimental, view only)
-- Open `.rvt` / `.rfa` files for viewing, decoded inside the browser tab (nothing uploaded) by the third-party rvt-rs reader compiled to WebAssembly. Entry points: drag and drop / Open, File tab → View Revit File, command palette.
-- Every open states the decoder's own confidence; a file that decodes to structure only is reported as "nothing to draw", not as success. Result is view-only geometry (no Revit parameters, not in clash tests).
+### View external BIM authoring software files (experimental, view only)
+- Open `.rvt` / `.rfa` files for viewing, decoded inside the browser tab (nothing uploaded) by the third-party rvt-rs reader compiled to WebAssembly. Entry points: drag and drop / Open, File tab → View external BIM authoring software File, command palette.
+- Every open states the decoder's own confidence; a file that decodes to structure only is reported as "nothing to draw", not as success. Result is view-only geometry (no external BIM authoring software parameters, not in clash tests).
 - The decoder is an optional build step (`npm run build:rvt`, run automatically and non-blocking by the deploy workflow); without it the app says so and points to IFC export. Pinned to a specific rvt-rs commit; Apache-2.0 licence and notice are shipped in `public/rvt/`.
-- Tested with a fake decoder only. Not yet run against the real WebAssembly or a real Revit file.
+- Tested with a fake decoder only. Not yet run against the real WebAssembly or a real external BIM authoring software file.
 
 ### Clash detection (audit and fixes)
 - Found by test and fixed: an element fully inside another (a pipe embedded in a wall) was never reported as a clash; elements whose boxes overlapped but whose surfaces were apart were falsely reported as "touching"; heavy elements had triangles silently skipped (now all or nothing, up to 120,000 triangles, never thinned).
@@ -70,8 +70,8 @@ file — the project adopted a written changelog at 0.73.0.
 - The status line now says how many elements were tested, how many only by bounding box, and how many were skipped, so "No clashes found" can be judged.
 - 36 new tests on real triangle meshes (engine) and scope planning. Not run against real IFC files in a browser; 100% detection cannot be guaranteed.
 
-### CAD Insert tab
-- New Insert tab groups: Block (Insert, Create, Write Block, Library, Explode), Import (DWG/DXF, File as Block, SVG) and Annotation (Field, Table, MText). Commands BLOCK/B, INSERT/I, WBLOCK/W, BLOCKLIB, SVGIMPORT, FIELD. `INSERT` now inserts a block as in AutoCAD; merging a file is `IMPORT`.
+### drawing Insert tab
+- New Insert tab groups: Block (Insert, Create, Write Block, Library, Explode), Import (DWG/DXF, File as Block, SVG) and Annotation (Field, Table, MText). Commands BLOCK/B, INSERT/I, WBLOCK/W, BLOCKLIB, SVGIMPORT, FIELD. `INSERT` now inserts a block as in desktop drafting software; merging a file is `IMPORT`.
 - Blocks are editable copies with a library shared by all tabs (stored in this browser). No block references, attributes, raster images, XREF or PDF import yet. Logic is unit-tested; the UI has not been run in a browser.
 
 ### AI assistant
@@ -79,15 +79,15 @@ file — the project adopted a written changelog at 0.73.0.
 - Added presets for xAI Grok, Fireworks, SambaNova, NVIDIA NIM, Hyperbolic, Moonshot Kimi, Alibaba Qwen and local llama.cpp / vLLM / Jan (alongside Ollama, LM Studio, Gemini, Groq, OpenRouter, Cerebras, OpenAI, DeepSeek, Mistral, Together, Claude). Presets moved to `ai-presets.ts`; a test checks every cloud host is in the CSP. Model ids are defaults and not live-checked; any other OpenAI-compatible service works via a custom endpoint.
 - A Claude.ai free/Pro login cannot be used by third-party apps, so there is no "sign in with Claude" path. Not yet exercised against the live API.
 
-### Milestone: polish and CAD/plan workflow pass
+### Milestone: polish and drawing/plan workflow pass
 
 Everything below is covered by unit tests and a type-check; none of it has been
 run in a browser yet (see `tests/e2e/README.md`).
 
-- **MTEXT reads like native CAD.** The column width and line-spacing factor of
+- **MTEXT reads like native drawing.** The column width and line-spacing factor of
   an MTEXT are kept: notes word-wrap inside their own column instead of
   stretching one long line across the drawing, hard-splitting words that do
-  not fit like AutoCAD. Inline `\C`/`\c` colours and `\f` bold/italic flags
+  not fit like desktop drafting software. Inline `\C`/`\c` colours and `\f` bold/italic flags
   become styled runs the viewer paints per segment, so a note keeps its red
   warnings and bold titles. The DXF writer no longer corrupts the group stream
   when a multi-line text is saved: one TEXT per visual line, offset along the
@@ -99,16 +99,16 @@ run in a browser yet (see `tests/e2e/README.md`).
   `x,z`, `@dx,dz`, `d<angle` and plain lengths place points directly. Esc cancels
   every active order (paths, typed lengths, dimension picks, drags, tool,
   selection) and no longer closes the plan.
-- **CAD editor.** 40 linetypes, 24 lineweights, 28 fonts and 10 text styles with
+- **drawing editor.** 40 linetypes, 24 lineweights, 28 fonts and 10 text styles with
   managers, Match Properties, and a DXF writer that keeps linetypes, true colour,
   text styles, layer state, hatch fills and the first paper-space layout.
 - **Walls.** Baseboards, cornices and wainscots export to IFC; reveals are cut into
   straight walls and export as IfcOpeningElement. Doors and windows have an options
   bar for width, height and sill height.
 - **DWG.** Export now keeps hatch fills and every paper-space sheet (names are not kept), and you can
-  choose the AutoCAD version it writes (`DWGVERSION`, 2000 to 2018+). A new test runs
+  choose the desktop drafting software version it writes (`DWGVERSION`, 2000 to 2018+). A new test runs
   the real DWG engine in Node: DXF to DWG to read-back for every version and for the
-  repo's DWG fixtures. Not yet opened in AutoCAD itself.
+  repo's DWG fixtures. Not yet opened in desktop drafting software itself.
 - **DWG reading fix.** A DWG with one sheet used to open as two identical sheets, and
   content of extra sheets could appear in model space; both are fixed and tested.
 - **UI.** Double-click a ribbon tab to collapse it; full screen hides command bars;
@@ -125,7 +125,7 @@ run in a browser yet (see `tests/e2e/README.md`).
 
 ### Added
 
-- Revit-style section box face arrows: each of the six crop faces now carries
+- external BIM authoring software-style section box face arrows: each of the six crop faces now carries
   a double-headed drag arrow pointing along its face normal, next to the
   translucent drag quad. Grabbing the arrow (or the quad) stretches or
   shrinks that face live; hovering highlights the face. Arrow orientation is
@@ -179,8 +179,8 @@ run in a browser yet (see `tests/e2e/README.md`).
 
 ### Changed
 
-- AutoCAD-style CAD shell ribbon (tabs above, panels below, drawing tabs under
-  the ribbon); Revit-style contextual placement tabs with a real options bar
+- desktop drafting software-style drawing shell ribbon (tabs above, panels below, drawing tabs under
+  the ribbon); external BIM authoring software-style contextual placement tabs with a real options bar
   (level, dimensions, location line, join, chain, offset, justification,
   slope) for every placement tool.
 
