@@ -433,10 +433,10 @@ function bootstrapCommands(): void {
       });
     },
   });
-  registerCommand({ id: "revit.browser", label: "Revit: open the element browser (search, group, select, hide)", category: "File", run: () => { void import("./revit-view").then((m) => m.openRevitBrowser()); } });
-  registerCommand({ id: "revit.show-all", label: "Revit: show all hidden elements", category: "File", run: () => { void import("./revit-view").then((m) => m.showAllRevit()); } });
-  registerCommand({ id: "revit.export-csv", label: "Revit: export all elements to CSV", category: "File", run: () => { void import("./revit-view").then((m) => m.exportScheduleCsv()); } });
-  registerCommand({ id: "file.view-rvt", label: "View a Revit file (.rvt / .rfa), view only, decoded in your browser", category: "File", run: () => { void import("./rvt-viewer").then((m) => m.pickRevitFile()); } });
+  registerCommand({ id: "revit.browser", label: "RVT model: open the element browser (search, group, select, hide)", category: "File", run: () => { void import("./revit-view").then((m) => m.openRevitBrowser()); } });
+  registerCommand({ id: "revit.show-all", label: "RVT model: show all hidden elements", category: "File", run: () => { void import("./revit-view").then((m) => m.showAllRevit()); } });
+  registerCommand({ id: "revit.export-csv", label: "RVT model: export all elements to CSV", category: "File", run: () => { void import("./revit-view").then((m) => m.exportScheduleCsv()); } });
+  registerCommand({ id: "file.view-rvt", label: "View an RVT model (.rvt / .rfa), view only, decoded in your browser", category: "File", run: () => { void import("./rvt-viewer").then((m) => m.pickRevitFile()); } });
   registerCommand({ id: "file.open-file", label: "Open project from file (.obsproj)", category: "File", run: () => { void import("../modules/projects/project-file-io").then((m) => m.openProjectFromFile()); } });
   registerCommand({ id: "command.ks", label: "KS — Command aliases / keyboard shortcuts", category: "App", run: () => { void import("./command-aliases").then((m) => m.openKs()); } });
   registerCommand({ id: "view.graphic-options", label: "Graphic Display Options…", category: "View", run: () => { void import("./view-graphics").then((m) => m.openGraphicDisplayOptions()); } });
@@ -447,7 +447,7 @@ function bootstrapCommands(): void {
   registerCommand({ id: "view.realistic", label: "Display: Realistic", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("realistic")); } });
   registerCommand({ id: "view.ray-trace", label: "Display: Ray Trace", category: "View", run: () => { void import("./view-graphics").then((m) => m.setVisualPreset("ray-trace")); } });
   registerCommand({ id: "ifc.to-frag", label: "Convert IFC → FRAG (download)", category: "Insert", run: () => { void import("./ifc-to-frag").then((m) => m.showIfcToFragPanel()); } });
-  registerCommand({ id: "cad.query", label: "Query linked CAD (layer / type / name)", category: "Insert", run: () => { void import("./cad-query-panel").then((m) => m.showCadQueryPanel()); } });
+  registerCommand({ id: "cad.query", label: "Query linked drawings (layer / type / name)", category: "Insert", run: () => { void import("./cad-query-panel").then((m) => m.showCadQueryPanel()); } });
   registerCommand({ id: "file.export-frag", label: "Export model(s) as ThatOpen FRAG (.frag)", category: "File", run: () => { void import("../modules/export/frag").then((m) => m.exportFragFromMenu()); } });
   registerCommand({ id: "tools.walk", label: toggleLabel("Walk mode", isWalkModeEnabled), category: "Tools", run: () => toggleWalkMode() });
   registerCommand({
@@ -464,7 +464,7 @@ function bootstrapCommands(): void {
     },
   });
   registerCommand({ id: "app.install", label: "Install as desktop app (works offline)", category: "File", run: () => { void import("../core/pwa").then((m) => m.installApp()); } });
-  registerCommand({ id: "cad.viewer", label: "CAD Editor: open DWG / DXF…", category: "Tools", run: () => { void import("./cad-viewer").then((m) => m.openCadViewer()); } });
+  registerCommand({ id: "cad.viewer", label: "Drawing Editor: open DWG / DXF…", category: "Tools", run: () => { void import("./cad-viewer").then((m) => m.openCadViewer()); } });
   registerCommand({ id: "north.true", label: "Rotate True North…", category: "Tools", run: () => { void import("./north-ui").then((m) => m.promptTrueNorth()); } });
   registerCommand({ id: "north.orient-project", label: "Plan orientation: Project North", category: "Tools", run: () => { void import("../modules/north/north").then((m) => m.setNorthState({ planOrientation: "project" })); } });
   registerCommand({ id: "north.orient-true", label: "Plan orientation: True North", category: "Tools", run: () => { void import("../modules/north/north").then((m) => m.setNorthState({ planOrientation: "true" })); } });

@@ -51,7 +51,7 @@ const SHOWCASE = [
       "150 keyboard-first commands, file-faithful layer and style handling, and a LibreDWG-grade " +
       "DWG/DXF pipeline that reads r13–r2018 and writes back in the version you choose.",
     cards: [
-      ["C>_", "150-command line", "AutoCAD-style commands, type-ahead, custom aliases and dynamic input at the cursor."],
+      ["C>_", "150-command line", "standard drafting commands, type-ahead, custom aliases and dynamic input at the cursor."],
       ["LAY", "Layers, linetypes & styles", "Layer manager, linetype scale, and text/dim styles adopted straight from the file."],
       ["HAT", "Hatches & dimensions", "Associative hatches, dimension chains, leaders and automatic dimensioning."],
       ["DWG", "DWG & DXF, r13–r2018", "Open legacy and current drawings; export DXF or native DWG 2000–2018."],
@@ -265,7 +265,7 @@ async function render2dHistory(): Promise<void> {
   if (stats) {
     const cards = [
       ["Drawings on device", String(recent.length), "Reopen with one click"],
-      ["Commands", "150", "AutoCAD-style command line"],
+      ["Commands", "150", "drafting command line"],
       ["Read / write", "DWG · DXF", "r13–r2018 in · 2000–2018 out"],
       ["Plot", "PDF", "Single sheet or batch sets"],
     ];

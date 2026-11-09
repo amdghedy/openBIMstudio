@@ -17,7 +17,7 @@
  *   dwgrewrite           →   "Save DXF…" — re-save through the DXF writer
  *   (JSON round trip)    →   "JSON dump…" — re-import a dump into the editor
  *
- * UI surfaces — everything lives INSIDE the native 2D CAD engine, never as a
+ * UI surfaces — everything lives INSIDE the native 2D drawing engine, never as a
  * tab of the 3D platform:
  *   Insert tab → "Open Drawing" group (DWG… / DXF… / JSON dump…)
  *   Output tab → "DWG Data" group (Save DXF · dwg2json · dwg2SVG · dwg2geojson · dwg2ps · Thumbnail)
@@ -117,13 +117,13 @@ function baseName(name: string): string {
   return name.replace(/\.(dwg|dxf|json|obsproj)$/i, "") || "drawing";
 }
 
-/** The active drawing document — the loaded CAD/DWG drawing, else the CAD model. */
+/** The active drawing document — the loaded drawing, else the model. */
 function currentDoc(): { doc: DxfDocument; name: string; source: string; meta: DwgExportMeta } {
   const drawing = getActiveDrawing();
   if (drawing) {
     return { doc: drawing.doc, name: baseName(drawing.name), source: `${drawing.format.toUpperCase()} drawing`, meta: { fileName: drawing.name } };
   }
-  return { doc: cadToDxfDocument(), name: "cad-model", source: "the CAD model", meta: { fileName: "cad-model.dxf" } };
+  return { doc: cadToDxfDocument(), name: "drawing-model", source: "the drawing model", meta: { fileName: "cad-model.dxf" } };
 }
 
 /* ── exporters (ribbon + palette entry points) ──────────────────────────── */
@@ -237,9 +237,9 @@ function table(headers: string[], rows: Array<Array<string | number>>): HTMLElem
 
 function auditReportText(r: DwgAuditReport): string {
   const lines: string[] = [];
-  lines.push("LibreDWG toolkit — drawing audit (dwg_audit parity)");
+  lines.push("LibreDWG toolkit — drawing audit (native drawing-audit workflow)");
   lines.push("=".repeat(56));
-  lines.push(`File: ${r.meta.fileName ?? "(active CAD model)"}  Version: ${r.meta.version ?? "(not recorded)"}`);
+  lines.push(`File: ${r.meta.fileName ?? "(active drawing model)"}  Version: ${r.meta.version ?? "(not recorded)"}`);
   lines.push(`Units: ${r.meta.units ?? "unitless"}  Extents: ${r.meta.extents ? `${r.meta.extents.min.x},${r.meta.extents.min.y} → ${r.meta.extents.max.x},${r.meta.extents.max.y}` : "(none)"}`);
   lines.push(`Entities: ${r.totals.entities}  Layers: ${r.totals.layerCount} (empty: ${r.totals.emptyLayers})  Layouts: ${r.totals.layoutCount} (${r.totals.entitiesInLayouts} entities)`);
   lines.push(`Issues: ${r.issueCounts.error} error(s), ${r.issueCounts.warning} warning(s), ${r.issueCounts.info} info`);
@@ -267,7 +267,7 @@ export function auditDialog(): void {
   const r = auditDrawing(doc, meta);
   const { body, close } = shell(
     "LibreDWG — Drawing audit",
-    `${source} · dwg_audit parity · ${fmtDateTime()}`,
+    `${source} · native drawing-audit workflow · ${fmtDateTime()}`,
   );
 
   const verdict = document.createElement("div");
@@ -398,7 +398,7 @@ export function censusDialog(): void {
   );
 }
 
-/* ── thumbnail (dwg_bmp parity, via the reader worker) ──────────────────── */
+/* ── thumbnail (native thumbnail workflow, via the reader worker) ──────────────────── */
 
 export async function thumbnailDialog(): Promise<void> {
   const input = document.createElement("input");
@@ -410,7 +410,7 @@ export async function thumbnailDialog(): Promise<void> {
     toast("info", `Extracting the embedded preview of ${file.name}…`);
     try {
       const thumb = await readDwgThumbnail(file);
-      const { body, close } = shell("LibreDWG — DWG thumbnail", `${file.name} · dwg_bmp parity · ${thumb.mime}`);
+      const { body, close } = shell("LibreDWG — DWG thumbnail", `${file.name} · native thumbnail workflow · ${thumb.mime}`);
       if (thumb.mime !== "image/x-wmf") {
         const img = document.createElement("img");
         img.className = "thumb";
@@ -440,7 +440,7 @@ export async function thumbnailDialog(): Promise<void> {
       body.appendChild(actions);
       const note = document.createElement("div");
       note.className = "note";
-      note.textContent = "The thumbnail is the bitmap AutoCAD bakes into the file on save — it shows the model exactly as it looked at save time, without parsing any geometry.";
+      note.textContent = "The thumbnail is the bitmap desktop drafting applications write into the file on save — it shows the model exactly as it looked at save time, without parsing any geometry.";
       body.appendChild(note);
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Thumbnail extraction failed.");

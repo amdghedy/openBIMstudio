@@ -1,5 +1,5 @@
 /**
- * Selecting elements of an opened Revit file, reading their properties, and turning
+ * Selecting elements of an opened RVT model, reading their properties, and turning
  * one into an editable Native Twin.
  *
  * The decoder embeds each element's properties in its glTF node (see rvt-core
@@ -123,7 +123,7 @@ export function selectRevitElement(hit: RevitHit | null) { selectRevitElements(h
 export const getSelectedRevitElement = () => selection[0] ?? null;
 export const getSelectedRevitElements = () => [...selection];
 
-/* ── element index over all loaded Revit files ── */
+/* ── element index over all loaded RVT models ── */
 export function revitRoots(): THREE.Object3D[] { return auxRoots().filter(hasRevitElements); }
 function itemsOf(root: THREE.Object3D): (BrowseItem & { hit: RevitHit })[] {
   const seen = new Map<number, THREE.Mesh>();
@@ -275,7 +275,7 @@ function showPanel() {
   const byClass = new Map<string, number>(); for (const h of hits) byClass.set(h.info.ifcType, (byClass.get(h.info.ifcType) ?? 0) + 1);
   const head = multi
     ? `<div style="font-weight:700;font-size:13px">${hits.length} Revit elements selected</div><div style="opacity:.65">${[...byClass].map(([k, n]) => `${escapeHtml(k)} × ${n}`).join(" · ")}</div>`
-    : `<div style="font-weight:700;font-size:13px;word-break:break-word">${escapeHtml(i.name)}</div><div style="opacity:.65">${escapeHtml(i.ifcType)} · from Revit file, read-only</div>`;
+    : `<div style="font-weight:700;font-size:13px;word-break:break-word">${escapeHtml(i.name)}</div><div style="opacity:.65">${escapeHtml(i.ifcType)} · from RVT model, read-only</div>`;
   el.innerHTML =
     `<div style="display:flex;align-items:flex-start;gap:8px"><div style="flex:1">${head}</div><button data-x aria-label="Close" style="background:none;border:0;color:inherit;cursor:pointer;font-size:16px">✕</button></div>` +
     `<div style="display:flex;gap:6px;margin:10px 0 6px"><button data-twin style="flex:1;${BTN_P}">${twinCount === hits.length ? "Select editable twin" + (multi ? "s" : "") : multi ? `Make ${hits.length - twinCount} editable native twin(s)` : "Make editable native twin"}</button><button data-zoom style="${BTN}">Zoom</button></div>` +
@@ -349,7 +349,7 @@ function refreshBrowserSelection() {
 
 export function openRevitBrowser() {
   if (browser) { browser.remove(); browser = null; return; }
-  if (!revitRoots().length) { notify("info", "Open a Revit file first (File tab → View Revit File)."); return; }
+  if (!revitRoots().length) { notify("info", "Open a RVT model first (File tab → View Revit File)."); return; }
   const el = document.createElement("div");
   el.setAttribute("data-obs-ui", "1");
   el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Revit browser");

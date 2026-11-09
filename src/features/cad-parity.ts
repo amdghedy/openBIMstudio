@@ -1,8 +1,8 @@
 /**
- * CAD Parity - AutoCAD-style tools, shortcuts, and panel on top of cad-engine
+ * Drawing tools, shortcuts, and panel for the native drafting engine
  * + existing drafting-2d overlay.
  *
- * Shortcuts (classic CAD):
+ * Shortcuts (drafting):
  *   L  line - PL polyline - REC rectangle - C circle - A arc - T text
  *   O  offset - E erase - M move-copy last - MI mirror
  *   ORTHO (F8) - GRID (F7) - U undo - REDO
@@ -863,7 +863,7 @@ async function registerCadShortcuts(): Promise<void> {
     },
   });
 
-  console.log("[cad-parity] CAD shortcuts registered");
+  console.log("[drawing-tools] drafting shortcuts registered");
 }
 
 /* -- Setup ----------------------------------------------------------------- */

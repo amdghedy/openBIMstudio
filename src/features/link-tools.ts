@@ -2,7 +2,7 @@
  * Insert / Link tools — professional federation & import helpers.
  *
  * Activates every Insert-tab action with stable, production behaviour:
- * Link IFC, Link CAD, Link BIM, Point cloud, Topography, Family, Library.
+ * Link IFC, Link drawing, Link BIM, Point cloud, Topography, Family, Library.
  */
 import { pickFiles, loadIfcFiles, loadFragFiles } from "./importer";
 import { pickAndImport, importFiles } from "./file-interop";
@@ -128,9 +128,9 @@ export function linkFrag() {
 }
 
 /**
- * Link CAD underlay / reference.
+ * Link drawing underlay / reference.
  * - DXF/SVG/images → open Plan view and prompt underlay workflow
- * - Also accepts OBJ/GLB as 3D CAD reference via universal importer
+ * - Also accepts OBJ/GLB as 3D model reference via universal importer
  */
 export function linkCad() {
   pickAccept(".dxf,.dwg,.svg,.png,.jpg,.jpeg,.webp,.gif,.pdf,.obj,.glb,.gltf", true, async (files) => {
@@ -145,13 +145,13 @@ export function linkCad() {
     }
 
     if (["svg", "png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
-      // Open plan view — user clicks Link CAD there, or we stash file for plan
+      // Open plan view — user clicks Link drawing there, or we stash file for plan
       try {
         (window as any).__obsPendingCadFile = file;
       } catch { /* */ }
       togglePlanView();
       toast(
-        `CAD file ready: ${file.name}. In Plan view click “Link CAD” or the underlay will attach if auto-linked.`,
+        `CAD file ready: ${file.name}. In Plan view click “Link drawing” or the underlay will attach if auto-linked.`,
         "success",
       );
       // Try auto-link into plan if handler exists
@@ -164,7 +164,7 @@ export function linkCad() {
       return;
     }
 
-    // 3D CAD references
+    // 3D model references
     await importFiles(files);
     markDirty();
     toast(`Linked CAD reference: ${file.name}`, "success");
@@ -391,7 +391,7 @@ export function linkTopography() {
       uiAlert(
         "Raster DEM / contour images:\n" +
         "Convert to mesh (OBJ/STL) in Civil 3D, QGIS or Blender, then link again.\n\n" +
-        "For 2D site plans use Link CAD with DXF/PNG in Plan view.",
+        "For 2D site plans use Link drawing with DXF/PNG in Plan view.",
       );
       return;
     }
@@ -429,7 +429,7 @@ export async function linkAutodesk() {
     "Recommended open workflow:\n" +
     "• BIM → Export IFC → Link IFC here\n" +
     "• Navisworks → Export IFC or exchange via BCF\n" +
-    "• AutoCAD → DXF / IFC → Link CAD or Link IFC\n\n" +
+    "• desktop drafting application → DXF / IFC → Link drawing or Link IFC\n\n" +
     "OK = pick an IFC / FRAG / model file now.",
   );
   if (go) pickAndImport();

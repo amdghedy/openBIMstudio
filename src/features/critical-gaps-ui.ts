@@ -1,5 +1,5 @@
 /**
- * Critical Gaps UI - bottom toolbar with one-click access to BIM-parity tools.
+ * Critical Gaps UI - bottom toolbar with one-click access to BIM workflow tools.
  * Extends the original advanced toolbar with Architecture / Modify / View actions.
  */
 
@@ -223,7 +223,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
   document.body.appendChild(toolbar);
   // Migrated to top ribbon - keep buttons in DOM for programmatic click, hide bar
   toolbar.style.display = "none";
-  toolbar.setAttribute("data-parity-ribbon-migrated", "1");
+  toolbar.setAttribute("data-workflow-ribbon-migrated", "1");
   refreshDraft();
 
   // Command palette extras

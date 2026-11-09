@@ -1,5 +1,5 @@
 /**
- * Live Move / Copy command — Revit-parity interaction.
+ * Live Move / Copy command — BIM modification interaction.
  */
 import type {
   InteractiveCommand,

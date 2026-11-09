@@ -1,5 +1,5 @@
 /**
- * View Templates + Visibility/Graphics – shared types (BIM parity).
+ * View Templates + Visibility/Graphics – shared types (BIM workflow alignment).
  * Compatible with existing VisibilityFilter category overrides.
  */
 

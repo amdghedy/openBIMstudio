@@ -1,4 +1,4 @@
-/** Revit-style contextual Options Bar. Switches with the active tool.
+/** BIM-style contextual Options Bar. Switches with the active tool.
  *  Modify tools (Move/Copy/Rotate/…) appear only when something is selected.
  */
 import { ctx } from "../core/context";
@@ -69,7 +69,7 @@ function render(): void {
   lastTool = tool;
 
   // Drawing tools → always show type options.
-  // Select / modify → only when there is a selection (Revit Modify contextual).
+  // Select / modify → only when there is a selection (BIM Modify contextual).
   const isDraw = DRAW.has(tool) || tool === "wall" || tool === "curtain-wall" ||
     tool === "beam" || tool === "strip" ||
     tool === "duct" || tool === "pipe" || tool === "cable-tray" || tool === "conduit";

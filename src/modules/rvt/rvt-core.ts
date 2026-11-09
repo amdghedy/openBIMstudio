@@ -1,5 +1,5 @@
 /**
- * View-only Revit (.rvt / .rfa) support: pure helpers.
+ * View-only RVT / RFA model support: pure helpers.
  *
  * The decoding itself is done by `rvt-rs` (Apache-2.0, clean-room Revit reader,
  * https://github.com/DrunkOnJava/rvt-rs) compiled to WebAssembly and loaded from
@@ -358,7 +358,7 @@ export function buildTwinGeometry(parts: MeshPart[]): TwinGeometry | null {
 export function twinPropertySets(info: RvtElementInfo, sourceFile: string): Record<string, Record<string, string>> {
   const out: Record<string, Record<string, string>> = {};
   const id: Record<string, string> = { "Source": `Revit file “${sourceFile}” (decoded read-only)`, "IFC class": info.ifcType };
-  if (info.elementId) id["Revit element id"] = info.elementId;
+  if (info.elementId) id["Source element id"] = info.elementId;
   if (info.globalId) id["GlobalId"] = info.globalId;
   if (info.predefinedType) id["Predefined type"] = info.predefinedType;
   if (info.storey) id["Level"] = info.storeyElevationM !== undefined ? `${info.storey} (${info.storeyElevationM} m)` : info.storey;
@@ -432,7 +432,7 @@ export function elementsCsv(items: BrowseItem[], opts: { bom?: boolean; maxPrope
     const c = `${g.name}.${n}`;
     if (!seen.has(c) && propCols.length < cap) { seen.add(c); propCols.push(c); }
   }
-  const fixed = ["Name", "IFC class", "Revit element id", "GlobalId", "Predefined type", "Level", "Level elevation (m)", "Material",
+  const fixed = ["Name", "IFC class", "Source element id", "GlobalId", "Predefined type", "Level", "Level elevation (m)", "Material",
     "X (m)", "Y (m)", "Z (m)", "Rotation (deg)", "Length/width (m)", "Thickness/depth (m)", "Height (m)"];
   const lines = [[...fixed, ...propCols].map(csvCell).join(",")];
   for (const it of items) {

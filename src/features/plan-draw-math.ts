@@ -1,4 +1,4 @@
-/** Pure drawing helpers for plan-view placement (Revit-style constraints and typed entry). */
+/** Pure drawing helpers for plan-view placement (BIM authoring constraints and typed entry). */
 export interface P2 { x: number; z: number }
 
 /** Shift constraint: lock the segment to the dominant axis (horizontal or vertical). */

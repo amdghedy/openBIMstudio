@@ -1,4 +1,4 @@
-/** Shared interactive modify command types — Revit-parity state machine. */
+/** Shared interactive modify command types — BIM modification state machine. */
 
 export type ModifyState =
   | "idle"

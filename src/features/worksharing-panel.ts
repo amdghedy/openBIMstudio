@@ -1,7 +1,7 @@
 /**
  * Enterprise Worksets & Worksharing Panel
  *
- * Provides Revit-parity worksharing interface:
+ * Provides a model worksharing interface:
  * - Active workset selector
  * - Workset list with ownership & open/closed toggle
  * - Granular element borrow / relinquish controls

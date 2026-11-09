@@ -1,6 +1,6 @@
 /**
- * Parity Tab Bar - docks all floating tools into bottom tabbed ribbon.
- * Tabs: Home | Architecture | Modify | View | CAD | Drawings | Families | Project
+ * Unified Tab Bar - docks all floating tools into bottom tabbed ribbon.
+ * Tabs: Home | Architecture | Modify | View | Drawing | Drawings | Families | Project
  */
 
 type Any = Record<string, any>;
@@ -27,10 +27,10 @@ function hideFloaters(): void {
     const el = document.getElementById(id);
     if (el) {
       el.style.display = "none";
-      el.setAttribute("data-parity-hidden", "1");
+      el.setAttribute("data-tabbed-hidden", "1");
     }
   }
-  // Hide any leftover floating parity launchers
+  // Hide any leftover floating tabbed launchers
   document.querySelectorAll("[id^=obs-][id$=-launch]").forEach((el) => {
     (el as HTMLElement).style.display = "none";
   });
@@ -40,7 +40,7 @@ function run(fn: () => void): void {
   try {
     fn();
   } catch (e) {
-    console.warn("[parity-tabs]", e);
+    console.warn("[tabbed-tabs]", e);
   }
 }
 
@@ -197,11 +197,11 @@ function tabs(): TabDef[] {
     },
     {
       id: "cad",
-      label: "CAD",
+      label: "Drawing",
       buttons: [
         {
           id: "cadpanel",
-          label: "CAD Tools",
+          label: "Drawing Tools",
           title: "Ctrl+Shift+D",
           run: () => (window as Any).__obsCad?.open?.() ?? (window as Any).__obsCad?.toggle?.(),
         },
@@ -318,11 +318,11 @@ function render(): void {
 }
 
 function installStyle(): void {
-  if (document.getElementById("obs-parity-tabs-style")) return;
+  if (document.getElementById("obs-tabbed-tabs-style")) return;
   const s = document.createElement("style");
-  s.id = "obs-parity-tabs-style";
+  s.id = "obs-tabbed-tabs-style";
   s.textContent = `
-#obs-parity-tabs {
+#obs-tabbed-tabs {
   position: fixed;
   left: 50%;
   bottom: 8px;
@@ -335,8 +335,8 @@ function installStyle(): void {
   max-width: min(960px, calc(100vw - 24px));
   pointer-events: none;
 }
-#obs-parity-tabs .pt-tabs,
-#obs-parity-tabs .pt-tools {
+#obs-tabbed-tabs .pt-tabs,
+#obs-tabbed-tabs .pt-tools {
   pointer-events: auto;
   display: flex;
   flex-wrap: wrap;
@@ -348,7 +348,7 @@ function installStyle(): void {
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0,0,0,.45);
 }
-#obs-parity-tabs .pt-tab {
+#obs-tabbed-tabs .pt-tab {
   border: 1px solid transparent;
   background: transparent;
   color: #94a3b8;
@@ -357,13 +357,13 @@ function installStyle(): void {
   border-radius: 7px;
   cursor: pointer;
 }
-#obs-parity-tabs .pt-tab:hover { color: #e8eaf0; background: #1e2029; }
-#obs-parity-tabs .pt-tab.is-active {
+#obs-tabbed-tabs .pt-tab:hover { color: #e8eaf0; background: #1e2029; }
+#obs-tabbed-tabs .pt-tab.is-active {
   color: #e8eaf0;
   background: #243044;
   border-color: #3b82f6;
 }
-#obs-parity-tabs .pt-btn {
+#obs-tabbed-tabs .pt-btn {
   border: 1px solid #2a2e3a;
   background: #1a1d27;
   color: #e8eaf0;
@@ -373,7 +373,7 @@ function installStyle(): void {
   cursor: pointer;
   white-space: nowrap;
 }
-#obs-parity-tabs .pt-btn:hover {
+#obs-tabbed-tabs .pt-btn:hover {
   border-color: #3b82f6;
   background: #232633;
 }
@@ -381,25 +381,25 @@ function installStyle(): void {
   document.head.appendChild(s);
 }
 
-export function setupParityTabBar(): void {
+export function setuptabbedTabBar(): void {
   if (installed) return;
   installed = true;
   // Migrated to top ribbon - do not show bottom tab bar
   const RIBBON_MIGRATED = true;
   if (RIBBON_MIGRATED) {
     const kill = () => {
-      const el = document.getElementById("obs-parity-tabs");
+      const el = document.getElementById("obs-tabbed-tabs");
       if (el) el.style.display = "none";
     };
     kill();
     window.setTimeout(kill, 500);
-    console.log("[parity-tab-bar] skipped UI - tools moved to top ribbon");
+    console.log("[tabbed-tab-bar] skipped UI - tools moved to top ribbon");
     return;
   }
   installStyle();
 
   root = document.createElement("div");
-  root.id = "obs-parity-tabs";
+  root.id = "obs-tabbed-tabs";
   document.body.appendChild(root);
   render();
 
@@ -413,18 +413,18 @@ export function setupParityTabBar(): void {
   const mo = new MutationObserver(() => hideFloaters());
   mo.observe(document.body, { childList: true, subtree: true });
 
-  (window as Any).__obsParityTabs = {
+  (window as Any).__obstabbedTabs = {
     setTab: (id: string) => {
       activeTab = id;
       render();
     },
     showFloaters: () => {
-      document.querySelectorAll("[data-parity-hidden]").forEach((el) => {
+      document.querySelectorAll("[data-tabbed-hidden]").forEach((el) => {
         (el as HTMLElement).style.display = "";
-        el.removeAttribute("data-parity-hidden");
+        el.removeAttribute("data-tabbed-hidden");
       });
     },
   };
 
-  console.log("[parity-tab-bar] tabbed ribbon ready (floaters hidden)");
+  console.log("[tabbed-tab-bar] tabbed ribbon ready (floaters hidden)");
 }

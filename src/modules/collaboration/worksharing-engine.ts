@@ -2,7 +2,7 @@
  * Enterprise BIM Worksharing Engine — Multi-user worksets, element borrowing,
  * permissions, and sync-with-central reconcile protocol.
  *
- * Provides Revit-parity worksharing mechanics:
+ * Provides model-based worksharing mechanics:
  * 1. Workset Management: Named element partitions (Architecture, Structure, MEP, etc.)
  * 2. Granular Borrowing: Check out individual elements without locking whole worksets.
  * 3. Borrow Requests: Request-to-borrow queue with grant/deny lifecycle.

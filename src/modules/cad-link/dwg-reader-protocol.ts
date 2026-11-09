@@ -35,7 +35,7 @@ export interface DwgParseRequest {
   fileName: string;
 }
 
-/** dwg_bmp parity: extract the embedded preview bitmap of a DWG. */
+/** thumbnail extraction: extract the embedded preview bitmap of a DWG. */
 export interface DwgThumbnailRequest {
   id: number;
   kind: "thumbnail";

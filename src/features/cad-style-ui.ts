@@ -366,7 +366,7 @@ export function openLinetypeManager(api: CadStyleApi): void {
 /**
  * Fonts offered by the style editor: the built-in CAD font list plus every font
  * the open drawing references (STYLE table + text entities), so fonts read from
- * the file are selectable, exactly like AutoCAD listing SHX + TTF faces.
+ * the file are selectable, with SHX and TTF font faces supplied by the drawing.
  */
 export function fontOptionsFor(api: CadStyleApi | null): Array<[string, string]> {
   const fileFonts = new Set<string>();
@@ -543,7 +543,7 @@ export async function editLayerProperty(api: CadStyleApi, layerName: string, fie
   if (field === "color") {
     const v = await openFormModal({
       title: `Layer "${layerName}" colour`,
-      fields: [{ kind: "number", key: "aci", label: "AutoCAD colour index (1-255)", default: lyr.color || 7, min: 1, max: 255, step: 1, hint: "1 red, 2 yellow, 3 green, 4 cyan, 5 blue, 6 magenta, 7 white/black" }],
+      fields: [{ kind: "number", key: "aci", label: "ACI colour index (1-255)", default: lyr.color || 7, min: 1, max: 255, step: 1, hint: "1 red, 2 yellow, 3 green, 4 cyan, 5 blue, 6 magenta, 7 white/black" }],
       submitLabel: "Set colour",
     });
     if (!v) return false;

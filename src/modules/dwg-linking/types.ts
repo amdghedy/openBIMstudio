@@ -1,5 +1,5 @@
 /**
- * DWG linking — attach CAD files as underlays in 3D + 2D views.
+ * DWG linking — attach drawing files as underlays in 3D + 2D views.
  *
  * Unlike "import" (which converts geometry), "link" maintains a live
  * reference to the DWG file so it can be reloaded when the source
@@ -74,5 +74,5 @@ export function setupDwgLinking() {
     add: addDwgLink, list: listDwgLinks, get: getDwgLink,
     remove: removeDwgLink, reload: reloadDwgLink, toggleLayer: toggleDwgLayer,
   };
-  console.log("[dwg-linking] ready. Link CAD files via __obsDwgLinks.add(name, source).");
+  console.log("[dwg-linking] ready. Link drawing files via __obsDwgLinks.add(name, source).");
 }

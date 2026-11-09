@@ -1144,7 +1144,7 @@ function computeClampedOffset(el: AuthoredElement, wallLength: number): number {
 /**
  * Arc metrics for a curved wall (chord length L, arc height arcH):
  * radius, sweep angle and TRUE arc length. Hosted opening offsets on a
- * curved wall are measured along the ARC (Revit semantics — matching
+ * curved wall are measured along the ARC (BIM authoring software semantics — matching
  * hosting/index.ts curve-length parameterisation), never the chord.
  */
 function wallArcMetrics(L: number, arcH: number): { R: number; theta: number; arcLen: number } | null {
@@ -1327,7 +1327,7 @@ function computeWallEndFaces(
 
 /**
  * Cut door/window openings through a wall mesh or compound Group (all layers).
- * Preserves Revit-like behaviour: openings pierce every compound layer.
+ * Preserves BIM authoring software-like behaviour: openings pierce every compound layer.
  */
 function cutOpeningsInWallObject(
   root: THREE.Object3D,
@@ -2019,7 +2019,7 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
   if (el.type === "wall" && p.start && p.end) {
     const openings = openingsForWall(el.id);
     // Compound (multi-layer) walls: build layered solids, then cut host openings
-    // so doors/windows still punch every layer (Revit compound behavior).
+    // so doors/windows still punch every layer (BIM authoring software compound behavior).
     const __layerStr = (el.properties as any)?.layers as string | undefined;
     if (__layerStr) {
       try {
@@ -2321,7 +2321,7 @@ function applyLevelConstraints(): void {
 
 /**
  * After placing a wall, magnetically share joinStatus with nearby ends and
- * force a geometry rebuild so L / T miters appear immediately (Revit-like).
+ * force a geometry rebuild so L / T miters appear immediately (BIM authoring software-like).
  */
 function autoJoinNewWall(el: AuthoredElement): void {
   if (!el.params.start || !el.params.end) return;
@@ -5789,7 +5789,7 @@ export function setMoveConnectedMep(on: boolean): void {
   try { localStorage.setItem("obs.moveConnectedMep", on ? "1" : "0"); } catch { /* */ }
 }
 /**
- * Revit-style Tab on an MEP part: 1st press selects its branch (up to the next junction),
+ * BIM authoring software-style Tab on an MEP part: 1st press selects its branch (up to the next junction),
  * 2nd press selects the whole connected network, 3rd press returns to the single part.
  * Returns the stage applied, or null when the selection is not a single MEP part / cycle.
  */
@@ -5819,7 +5819,7 @@ export function expandConnectedIds(ids: Iterable<string>): string[] {
   return [...ids];
 }
 /**
- * Revit-style follow: patches for the MEP parts that stay behind when `movedIds` move by (dx,dz,dy):
+ * BIM authoring software-style follow: patches for the MEP parts that stay behind when `movedIds` move by (dx,dz,dy):
  * fittings at the moved ends follow, the other runs on them stretch. Empty when the option is off.
  * `baseline` (id -> params) plans against a pre-drag state so live drags stay idempotent.
  */
@@ -5916,7 +5916,7 @@ export async function addLinearElement(
             lastPlanLinear.end[1] - parent.params.start[1],
           );
           const nextLen = Math.hypot(ex - sx, ez - sz);
-          // Revit-style elbow: centreline radius 1.5 x width, shrunk only when the
+          // BIM authoring software-style elbow: centreline radius 1.5 x width, shrunk only when the
           // adjoining runs are too short. Runs end at the true tangent points
           // (tangent length = r * tan(turn / 2), not r, for non-90 degree bends).
           const bendX = lastPlanLinear.end[0];
@@ -6208,7 +6208,7 @@ export function migrateMepFittingRadii(onlyId?: string, forceRadius?: number): n
     const stored = Number((f.params as any).bendRadius);
     const legacy = !(Number.isFinite(stored) && stored > 0);
     const oldR = legacy ? ductWidth / 2 : stored;
-    // Only legacy fittings (no stored radius) get the Revit default; an explicit radius is never overridden.
+    // Only legacy fittings (no stored radius) get the BIM authoring software default; an explicit radius is never overridden.
     const newR = forceRadius != null && forceRadius > 0 ? forceRadius : legacy ? defaultBendRadius(ductWidth) : oldR;
 
     const cx = (f.params as any).point?.[0];
@@ -6858,8 +6858,8 @@ export function setupAuthoring() {
   try { (window as any).__obsAuthoring = api; } catch { /* */ }
 }
 /* ═══════════════════════════════════════════════════════════════════════
-   Revit-style editable temporary dimensions + dimensional constraints.
-   Appended by the modeling-parity patch. Uses module-scoped authoring state.
+   BIM authoring software-style editable temporary dimensions + dimensional constraints.
+   Appended by the modeling update. Uses module-scoped authoring state.
    ═══════════════════════════════════════════════════════════════════════ */
 
 interface DimLock { elementId: string; param: string; value: number; }

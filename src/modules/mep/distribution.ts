@@ -6,8 +6,8 @@
  * Complements src/modules/mep/electrical.ts (panels/circuits) and
  * electrical-calc.ts (conductors/voltage drop), which it imports.
  *
- * What Revit parity means here:
- *   - Revit panels know their upstream panel/transformer and roll demand
+ * How the model-native distribution workflow behaves:
+ *   - BIM distribution panels track their upstream panel/transformer and roll demand
  *     up the tree. `buildDistributionSummary` does the same for links
  *     supplied by the model, with cycle/multi-parent guards and
  *     feeder-breaker adequacy checks.

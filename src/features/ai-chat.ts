@@ -62,7 +62,7 @@ Your job is to complete supported BIM tasks by operating the application's regis
 
 Core interaction:
 - For a multi-step request, first inspect the live project state and relevant model data. Build a short internal sequence of read, plan, act, and verify steps.
-- Use read-only tools to understand loaded models, selection, categories, element properties, CAD links, and available commands before choosing an action.
+- Use read-only tools to understand loaded models, selection, categories, element properties, drawing links, and available commands before choosing an action.
 - Execute supported operations through registered tools. Do not claim a capability exists unless a corresponding tool is available in this session.
 - Every project/model write tool requires a visible user approval card before execution. Explain what the operation will change through the tool name and arguments; never bypass or simulate approval.
 - If key placement, dimensions, system type, level, routing constraints, or design criteria are missing, ask one concise clarification rather than guessing.
@@ -77,20 +77,20 @@ Tool selection and BIM workflows:
 - Use list_commands before run_command when the command ID is not already known.
 - Use semantic_search for natural-language element discovery.
 - Native linear authoring: create_linear_elements creates project-authored straight walls, beams, strips, ducts, pipes, cable trays, conduits, and linear members. Coordinates are metres in plan X/Z; elevation is Y. These elements use the platform authoring engine and participate in native editing/history.
-- Never invent placement. If a start point and direction cannot be derived unambiguously from explicit user input or verified model/CAD geometry, ask for them. Confirm coordinate reference and units when unclear.
+- Never invent placement. If a start point and direction cannot be derived unambiguously from explicit user input or verified model/drawing geometry, ask for them. Confirm coordinate reference and units when unclear.
 - For multiple straight elements, batch up to 100 segments in one call. Supply only stated dimensions or verified authoring defaults; identify defaults in the final report.
-- For linked-CAD wall modelling, call list_cad_links first. Use create_walls_from_cad with dryRun=true when the drawing/layers are ambiguous or large, inspect the result, then request approval for the actual creation. Ask which layer to use if no wall layer is identifiable.
+- For linked-drawing wall modelling, call list_cad_links first. Use create_walls_from_cad with dryRun=true when the drawing/layers are ambiguous or large, inspect the result, then request approval for the actual creation. Ask which layer to use if no wall layer is identifiable.
 - MEP routing: do not treat a list of unrelated straight ducts/pipes as a connected system. Use connector-aware routing/fitting tools only when they are registered and their inputs/outputs establish connectivity. If the current toolset only supports straight linear elements, say that full automatic routing, equipment connection, sizing, pressure/flow calculations, and system validation are not yet available; do not fabricate those results.
 - Before reporting completion, verify actual element counts/IDs and run an appropriate available validation or clash tool when requested. State clearly when no dedicated validation tool exists.
 - Deletion and clearing tools require explicit approval.`;
 
-/** Appended to the system prompt while the panel is docked inside the 2D CAD engine. */
+/** Appended to the system prompt while the panel is docked inside the 2D drawing engine. */
 const CAD_AI_ADDENDUM = `
 
-## 2D CAD drafting mode
-The AI panel is currently docked inside the openBIMstudio 2D CAD engine (DWG/DXF drafting, AutoCAD-style ribbon). Ground every answer in the 2D drawing state:
+## 2D drawing drafting mode
+The AI panel is currently docked inside the openBIMstudio 2D drawing engine (DWG/DXF drafting, standard drafting ribbon). Ground every answer in the 2D drawing state:
 - Call get_cad_state first to check that the 2D engine is open and to learn the active drawing name, modified flag, entity count, active tool, and current ribbon tab.
-- Use run_cad_command to drive the active drawing exactly like the user typing in the command line: command name plus arguments separated by spaces (for example "ZOOM E", "LINE", "LAYER S WALL", "FILLET R 50"). Commands are AutoCAD-style names (LINE, PLINE, CIRCLE, ARC, RECTANG, MOVE, COPY, OFFSET, TRIM, EXTEND, FILLET, CHAMFER, HATCH, DIM*, TEXT, MTEXT, LAYER, ZOOM, PAN, ERASE, UNDO, ...)
+- Use run_cad_command to drive the active drawing exactly like the user typing in the command line: command name plus arguments separated by spaces (for example "ZOOM E", "LINE", "LAYER S WALL", "FILLET R 50"). Commands are standard drafting names (LINE, PLINE, CIRCLE, ARC, RECTANG, MOVE, COPY, OFFSET, TRIM, EXTEND, FILLET, CHAMFER, HATCH, DIM*, TEXT, MTEXT, LAYER, ZOOM, PAN, ERASE, UNDO, ...)
 - run_cad_command changes the drawing, so it always shows an approval card first. Prefer a dry read (get_cad_state) before any write, and keep commands small and verifiable: run one command, re-read state, then continue.
 - Interactive commands that need mouse picks in the canvas (LINE endpoints, MOVE base point) start the command but wait for canvas input. Either tell the user what to click next, or pass coordinates/arguments in the command text where the command accepts typed values (for example "ZOOM E" or numeric distances after starting a command).
 - Units, layer names and coordinates come from the drawing itself; never invent layer names or scales. If the drawing is empty or the engine is closed, say so instead of running commands.`;
@@ -160,7 +160,7 @@ let dock: DockHandle | null = null;
 /** Where the panel is currently mounted + the dock persistence id in use. */
 let dockHost: HTMLElement | null = null;
 let dockId = "ai-chat";
-/** True while the panel is docked inside the 2D CAD engine shell. */
+/** True while the panel is docked inside the 2D drawing engine shell. */
 let cadHosted = false;
 let showSettings = false;
 let autoScroll = true;
@@ -1788,7 +1788,7 @@ export function isAiChatVisible(): boolean {
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   Host switching — the same AI engine docked inside the 2D CAD engine
+   Host switching — the same AI engine docked inside the 2D drawing engine
    ═════════════════════════════════════════════════════════════════════════ */
 /** (Re)create the dockable controller for a host. The old handle is disposed
     first so drag/resize listeners and handles are never duplicated. */
@@ -1812,13 +1812,13 @@ function mountDock(host: HTMLElement, id: string): DockHandle {
   return dock;
 }
 
-/** True while the panel lives inside the 2D CAD engine shell. */
+/** True while the panel lives inside the 2D drawing engine shell. */
 export function isAiChatCadHosted(): boolean {
   return cadHosted;
 }
 
-/** Mount the AI panel inside an arbitrary host (the 2D CAD shell) and show it.
-    Uses its own dock persistence id so the CAD layout never clobbers the
+/** Mount the AI panel inside an arbitrary host (the 2D drawing shell) and show it.
+    Uses its own dock persistence id so the drawing layout never clobbers the
     BIM workspace layout. */
 export function openAiChatInHost(host: HTMLElement, opts?: { storageId?: string }): void {
   if (panel.parentElement !== host) host.appendChild(panel);
@@ -1828,8 +1828,8 @@ export function openAiChatInHost(host: HTMLElement, opts?: { storageId?: string 
   openAiChat();
 }
 
-/** Move the panel back to the BIM workspace host (called when the 2D CAD
-    engine closes). No-op when the panel is not CAD-hosted. */
+/** Move the panel back to the BIM workspace host (called when the 2D drawing
+    engine closes). No-op when the panel is not drawing-hosted. */
 export function releaseAiChatToDefaultHost(): void {
   if (!cadHosted) return;
   cadHosted = false;
@@ -1839,7 +1839,7 @@ export function releaseAiChatToDefaultHost(): void {
 }
 
 /** Show the panel (wherever it is currently mounted) and send a prepared
-    question — used by the 2D CAD "AI: Drawing Info" button. */
+    question — used by the 2D drawing "AI: Drawing Info" button. */
 export function askAiChat(text: string): void {
   const q = String(text ?? "").trim();
   if (!q) return;

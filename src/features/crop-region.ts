@@ -1,7 +1,7 @@
 /**
  * Crop Region — 2D rectangular crop applied to a plan / section / elevation view.
  *
- * BIM-equivalent of Revit's "Crop Region" tool. Each view has its own
+ * BIM view-crop tool. Each view has its own
  * crop state (min/max in view-space XZ), with 4 corner + 4 edge handles
  * that the user can drag to resize.
  *

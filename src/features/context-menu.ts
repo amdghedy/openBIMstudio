@@ -132,7 +132,7 @@ async function resolveLinkedSelection(e?: MouseEvent): Promise<Record<string, Se
 }
 
 async function openCtxMenu(e: MouseEvent) {
-  // An element of an opened Revit file under the cursor gets its own menu (Make editable native twin).
+  // An element of an opened RVT model under the cursor gets its own menu (Make editable native twin).
   let revitItems: MenuItem[] | null = null;
   try {
     const rv = await import("./revit-view");

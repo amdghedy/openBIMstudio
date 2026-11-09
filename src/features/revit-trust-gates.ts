@@ -1,5 +1,5 @@
 /**
- * Revit-class trust gates — product integrity layer.
+ * BIM authoring trust gates — product integrity layer.
  *
  * Four gates that must hold for production use:
  *  1. Authoring integrity  — undo transactions, no silent geometry loss

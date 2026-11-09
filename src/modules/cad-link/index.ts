@@ -212,7 +212,7 @@ export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: 
 
 /**
  * Extract a DWG's embedded preview bitmap through the reader worker
- * (LibreDWG dwg_bmp parity) — no geometry conversion, just the thumbnail.
+ * (LibreDWG thumbnail extraction) — no geometry conversion, just the thumbnail.
  */
 export async function readDwgThumbnail(file: File): Promise<DwgThumbSuccess> {
   const bytes = await file.arrayBuffer();

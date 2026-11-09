@@ -1,7 +1,7 @@
 /**
  * Zone HVAC Heating & Cooling Load Analysis — CLTD-style, orientation-aware.
  *
- * Parity target: Revit's "Heating and Cooling Loads" dialog. The old
+ * Reference workflow: engineering heating and cooling load analysis. The old
  * mechanical-loads.ts rule-of-thumb (W/m² by occupancy) is kept for quick
  * estimates; this module is the engineering upgrade: it accepts the actual
  * envelope construction (U-values, areas, orientations), glazing (SHGC),

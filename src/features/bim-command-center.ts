@@ -1,5 +1,5 @@
 /**
- * Command Center - clear, grouped UI for every parity tool.
+ * Command Center - clear, grouped UI for every registered BIM command.
  *
  * Dockable panel (top-left of viewport) with sections:
  *   Architecture - Modify - View - Project - Coordinate
@@ -286,13 +286,13 @@ function buildBody(host: HTMLElement): void {
     ]),
   );
 
-  // CAD
+  // Drawing
   host.appendChild(
-    section("CAD / Drafting", [
-      btn("CAD Panel", "Ctrl+Shift+D", () => {
+    section("Drawing / Drafting", [
+      btn("Drawing Panel", "Ctrl+Shift+D", () => {
         const c = (window as Any).__obsCad;
         if (c?.toggle) c.toggle();
-        else toast("CAD loading...", "info");
+        else toast("Drawing loading...", "info");
       }, true),
       btn("Line", "L", () => {
         (window as Any).__obsCad?.open?.();
@@ -337,7 +337,7 @@ function buildBody(host: HTMLElement): void {
       btn("Drawings DXF", "Ctrl+Shift+G", () => {
         (window as Any).__obsDrawingsPanel?.toggle?.();
       }, true),
-      btn("Export DXF", "CAD - file", () => {
+      btn("Export DXF", "Drawing - file", () => {
         (window as Any).__obsDrawings?.exportCadAsDxf?.();
       }, true),
     ]),

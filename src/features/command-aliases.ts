@@ -1,5 +1,5 @@
 /**
- * AutoCAD-style command aliases (abbreviations).
+ * standard drafting command aliases (abbreviations).
  *
  * Type KS or ALIASEDIT to open the editor. Aliases are stored in localStorage
  * and applied on top of the built-in CAD_COMMANDS list.
@@ -96,8 +96,8 @@ let host: HTMLDivElement | null = null;
 export type AliasRow = { name: string; aliases: string[]; description: string };
 
 /**
- * Open the AutoCAD-style alias editor.
- * @param commands full command list from the CAD editor
+ * Open the command-alias editor.
+ * @param commands full command list from the drawing editor
  * @param onApply called after save so the host can refresh autocomplete
  */
 export function openCadAliasEditor(

@@ -60,7 +60,7 @@ export function isDestructiveTool(name: string): boolean {
  * geometry or creates a persistent project artifact must be approved first.
  */
 export function requiresUserApproval(name: string, args: Record<string, any> = {}): boolean {
-  // A CAD dry-run only analyzes geometry and does not write to the project.
+  // A drawing dry-run only analyzes geometry and does not write to the project.
   if (name === "create_walls_from_cad" && args.dryRun === true) return false;
   return DESTRUCTIVE_TOOLS.has(name) || WRITE_TOOLS.has(name);
 }
@@ -351,22 +351,22 @@ export const TOOLS: ToolDef[] = [
     }
   },
 
-  // ── Auto-modelling from linked CAD ─────────────────────────────────
+  // ── Auto-modelling from linked drawing ─────────────────────────────────
   {
     name: "list_cad_links",
     description:
-      "Lists linked CAD drawings (DWG/DXF) with their layers, line counts per layer and whether a layer looks like walls. Call this before creating elements from a CAD link.",
+      "Lists linked drawing drawings (DWG/DXF) with their layers, line counts per layer and whether a layer looks like walls. Call this before creating elements from a drawing link.",
     parameters: { type: "object", properties: {} },
   },
   {
     name: "create_walls_from_cad",
     description:
-      "Detects the walls in a linked CAD drawing and models them as native walls. Pairs the two parallel face lines of each wall into ONE centre-line wall with the measured thickness, merges broken/duplicate lines, bridges door and window openings, and joins corners. " +
+      "Detects the walls in a linked drawing drawing and models them as native walls. Pairs the two parallel face lines of each wall into ONE centre-line wall with the measured thickness, merges broken/duplicate lines, bridges door and window openings, and joins corners. " +
       "If no layers are given, layers whose names look like walls are used. Use dryRun=true to report what would be created without creating anything. Use includeSingleLines=true when the drawing shows each wall as a single line.",
     parameters: {
       type: "object",
       properties: {
-        linkId: { type: "string", description: "CAD link id (default: the only / first link)." },
+        linkId: { type: "string", description: "drawing link id (default: the only / first link)." },
         layers: { type: "array", items: { type: "string" }, description: "Layer names to read. Default: auto-detect wall layers." },
         height: { type: "number", description: "Wall height in metres (default 3)." },
         defaultThickness: { type: "number", description: "Thickness (m) for single-line walls (default 0.2)." },
@@ -379,22 +379,22 @@ export const TOOLS: ToolDef[] = [
     },
   },
 
-  // ── 2D CAD engine (docked AI copilot) ────────────────────────────
+  // ── 2D drawing engine (docked AI copilot) ────────────────────────────
   {
     name: "get_cad_state",
     description:
-      "2D CAD engine state: whether the 2D drafting engine is open, and for " +
+      "2D drawing engine state: whether the 2D drafting engine is open, and for " +
       "the active drawing its name, modified flag, entity count, active tool " +
-      "and current ribbon tab. Call this before any 2D CAD command.",
+      "and current ribbon tab. Call this before any 2D drawing command.",
     parameters: { type: "object", properties: {} },
   },
   {
     name: "run_cad_command",
     description:
-      "Runs a command in the active 2D CAD drawing exactly like the user " +
+      "Runs a command in the active 2D drawing drawing exactly like the user " +
       "typing it in the command line: command name plus optional arguments " +
       "separated by spaces (e.g. 'ZOOM E', 'LAYER S WALL', 'FILLET R 50'). " +
-      "Commands are AutoCAD-style names (LINE, PLINE, CIRCLE, ARC, RECTANG, " +
+      "Commands are standard drafting names (LINE, PLINE, CIRCLE, ARC, RECTANG, " +
       "MOVE, COPY, OFFSET, TRIM, EXTEND, FILLET, HATCH, TEXT, MTEXT, LAYER, " +
       "ZOOM, ERASE, UNDO, ...). Changes the drawing — approval required. " +
       "Call get_cad_state first.",
@@ -1191,7 +1191,7 @@ async function clearAllElementsTool(): Promise<ToolResult> {
    Setup — register AI-friendly commands
    ═════════════════════════════════════════════════════════════════════════ */
 /* ═════════════════════════════════════════════════════════════════════════
-   Auto-modelling from linked CAD
+   Auto-modelling from linked drawing
    ═════════════════════════════════════════════════════════════════════════ */
 const WALL_LAYER_RE = /wall|a-wall|mur|muro|parede|wand|walls|جدار|حائط|حوائط/i;
 
@@ -1202,7 +1202,7 @@ function cadApi(): any {
 async function listCadLinksTool(): Promise<ToolResult> {
   const api = cadApi();
   const links: any[] = api?.list?.() ?? [];
-  if (!links.length) return { ok: false, error: "No CAD drawing is linked. Link a DWG/DXF first (Insert > Link CAD)." };
+  if (!links.length) return { ok: false, error: "No drawing drawing is linked. Link a DWG/DXF first (Insert > Link drawing)." };
   const { collectLayerSegments } = await import("../modules/cad-link/core");
   return {
     ok: true,
@@ -1350,9 +1350,9 @@ async function createLinearElementsTool(args: Record<string, any>): Promise<Tool
 async function createWallsFromCadTool(args: Record<string, any>): Promise<ToolResult> {
   const api = cadApi();
   const links: any[] = api?.list?.() ?? [];
-  if (!links.length) return { ok: false, error: "No CAD drawing is linked. Link a DWG/DXF first (Insert > Link CAD)." };
+  if (!links.length) return { ok: false, error: "No drawing drawing is linked. Link a DWG/DXF first (Insert > Link drawing)." };
   const link = (args.linkId ? links.find((l) => l.id === args.linkId) : links[0]) as any;
-  if (!link) return { ok: false, error: `CAD link not found: ${args.linkId}` };
+  if (!link) return { ok: false, error: `drawing link not found: ${args.linkId}` };
 
   const allLayers: string[] = [...new Set<string>(link.geoPlan.groups.map((g: any) => g.layer))];
   let layers: string[] = Array.isArray(args.layers) && args.layers.length ? args.layers.map(String) : allLayers.filter((n) => WALL_LAYER_RE.test(n));
@@ -1406,7 +1406,7 @@ async function createWallsFromCadTool(args: Record<string, any>): Promise<ToolRe
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   2D CAD engine bridge (docked AI copilot)
+   2D drawing engine bridge (docked AI copilot)
    ═════════════════════════════════════════════════════════════════════════ */
 async function getCadStateTool(): Promise<ToolResult> {
   const cad = await import("./cad-viewer");

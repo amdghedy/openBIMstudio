@@ -11,10 +11,10 @@ export const ACCEPT_ALL =
 
 const DESKTOP_ONLY: Record<string, string> = {
   rvt: "BIM files cannot be converted in the browser.\n\nIn BIM: File → Export → IFC → export the model, then import the .ifc here.",
-  rte: "Revit templates cannot be converted in the browser here.\n\nOpen the template in Revit and export a project as IFC.",
-  rft: "Revit family templates cannot be converted in the browser here.\n\nOpen the template in Revit and export as IFC.",
+  rte: "RVT templates cannot be converted in the browser here.\n\nOpen the template in a BIM authoring application and export a project as IFC.",
+  rft: "RFA family templates cannot be converted in the browser here.\n\nOpen the template in a BIM authoring application and export as IFC.",
   rfa: "BIM families cannot be converted in the browser.\n\nLoad the family into a BIM project, then export the project as IFC and import it here.",
-  dwg: "DWG cannot be converted in the browser.\n\nIn AutoCAD: save as DXF, or better export the model as IFC / OBJ, then import here.",
+  dwg: "DWG cannot be converted in the browser.\n\nIn a desktop drafting application: save as DXF, or export the model as IFC / OBJ, then import here.",
   skp: "SketchUp files cannot be converted in the browser.\n\nIn SketchUp: File → Export → IFC / OBJ / DAE (3D model), then import here.",
 };
 

@@ -1,5 +1,5 @@
 /**
- * Object snap system (AutoCAD / BIM class).
+ * Object snap system (professional drafting / BIM conventions).
  *
  * Each snap type has:
  *   - A priority level. Higher priority wins over a closer low-priority

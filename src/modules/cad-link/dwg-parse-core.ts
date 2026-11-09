@@ -147,7 +147,7 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
 }
 
 /**
- * Extract the embedded preview bitmap of a DWG (LibreDWG dwg_bmp parity).
+ * Extract the embedded preview bitmap of a DWG (LibreDWG thumbnail extraction).
  * Returns a browser-displayable MIME type plus base64 payload:
  *   BMP (type 2) -> image/bmp, PNG (type 6) -> image/png,
  *   WMF (type 3) -> image/x-wmf (not browser-renderable; callers show it

@@ -1,5 +1,5 @@
 /**
- * LibreDWG-parity exporters + audit for the Drawings engine.
+ * DWG exporters and audit helpers for the Drawings engine.
  *
  * These are the in-browser equivalents of the LibreDWG utility programs:
  *   documentToJsonDump     ~ dwgread -O JSON   (full database dump)
@@ -148,7 +148,7 @@ function num(v: number): string {
 
 /**
  * Flatten the model space of `doc` to a standalone SVG document (LibreDWG
- * dwg2SVG parity: geometry group is y-flipped so DXF coordinates can be used
+ * dwg2SVG-compatible behavior: geometry group is y-flipped so DXF coordinates can be used
  * directly; text is emitted un-flipped with per-glyph transforms so labels
  * stay readable).
  */

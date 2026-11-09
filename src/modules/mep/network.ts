@@ -2,8 +2,8 @@
  * Model-native MEP network audit — flow accumulation, section auto-sizing,
  * per-section pressure losses, critical path and equipment duty.
  *
- * This is the parity item for Revit's System Inspector / Duct & Pipe
- * Pressure Loss Report / Auto-Size: it walks the *actual* distribution
+ * This implements model-native system inspection, duct and pipe
+ * pressure-loss reporting and automatic sizing: it walks the *actual* distribution
  * tree of the model (segments between nodes), accumulates the design flow
  * from the terminals upstream to the source, sizes or checks every
  * section, computes every section's pressure loss with the same physics

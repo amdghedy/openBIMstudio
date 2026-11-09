@@ -1,5 +1,5 @@
 /**
- * Open Revit files (.rvt / .rfa) for VIEWING, inside the browser tab.
+ * Open RVT model files (.rvt / .rfa) for VIEWING, inside the browser tab.
  * Nothing is uploaded: the file is decoded by the rvt-rs WebAssembly reader in
  * a worker and the result is added to the scene as view-only geometry (like an
  * imported mesh: no BIM properties, not part of clash tests or authoring).
@@ -29,8 +29,8 @@ export function rvtDecoderStatus(): Promise<{ ok: boolean; why: string }> {
 export async function rvtDecoderAvailable(): Promise<boolean> { return (await rvtDecoderStatus()).ok; }
 
 const UNAVAILABLE =
-  "Viewing Revit files directly is not installed on this deployment (the decoder was not built into it). " +
-  "In Revit use File → Export → IFC and open the .ifc here instead, or ask the administrator to follow docs/RVT-VIEWER.md.";
+  "Viewing RVT model files directly is not installed on this deployment (the decoder was not built into it). " +
+  "In your BIM authoring application use File → Export → IFC and open the .ifc here instead, or ask the administrator to follow docs/RVT-VIEWER.md.";
 
 interface Ready { glb: Uint8Array; diagnostics: RvtDiagnostics; propertyCount: number }
 

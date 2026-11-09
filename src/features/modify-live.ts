@@ -1,5 +1,5 @@
 /**
- * Viewport wiring for the Revit-parity Modification Command Framework.
+ * Viewport wiring for the BIM Modification Command Framework.
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
@@ -225,5 +225,5 @@ export function setupModifyLive(): void {
     isActive: isModifyLiveActive,
     escape: modifyLiveEscape,
   };
-  console.log("[modify-live] Revit-parity command host ready (Move/Copy)");
+  console.log("[modify-live] BIM command host ready (Move/Copy)");
 }

@@ -3,7 +3,7 @@
  * connected graph accumulates it upstream to the source, and the result
  * feeds the network audit directly from model geometry.
  *
- * Parity target: Revit's "flow" column, which is not typed by the user per
+ * Flow reporting follows common BIM distribution conventions, which is not typed by the user per
  * segment — it is derived from the terminals (diffusers, coils, fixtures)
  * and accumulated through the distribution tree. Until now our network
  * audit needed a hand-built JSON tree; this module builds that tree from
@@ -304,7 +304,7 @@ export interface AuditFromModelOptions extends AuditOptions, FlowBuildOptions {}
 
 /**
  * One call: build from model elements and run the full network audit
- * (Revit System Inspector / Pressure Loss Report parity, model-native).
+ * (model-native system inspection and pressure-loss reporting, model-native).
  */
 export function auditFromModel(elements: MepLike[], options: AuditFromModelOptions = {}): NetworkAuditReport & { modelWarnings: string[] } {
   const build = buildNetworkFromElements(elements, { sourceElementId: options.sourceElementId });

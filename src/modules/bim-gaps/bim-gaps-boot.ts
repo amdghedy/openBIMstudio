@@ -88,7 +88,7 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
   await step("m2-elements", () => {
     const r = setupM2Register();
     installM2Redirects();
-    return { ok: r.ok, detail: r.detail + "; ST/RA/CW/RF/CL tools and parity buttons redirected" };
+    return { ok: r.ok, detail: r.detail + "; ST/RA/CW/RF/CL tools and legacy shortcut buttons redirected" };
   });
   await step("m3-views", setupM3);
   await step("ifc-export", () => ({ ok: true, detail: "File > Export > Model > IFC4 / IFC2X3" }));

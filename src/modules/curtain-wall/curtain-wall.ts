@@ -4,7 +4,7 @@
  * Defines a rectangular curtain wall on a vertical plane, subdivided by
  * horizontal and vertical grid lines. Generates mullion boxes + panel faces.
  *
- * DEPTH PACK (Revit-parity push):
+ * DEPTH PACK (advanced authoring update):
  *  - mullion CROSS-SECTIONS: rect / L / T / I extruded profiles (not boxes);
  *  - per-panel TYPES: glazed / solid / door / void with type-aware materials
  *    and IFC mapping metadata;

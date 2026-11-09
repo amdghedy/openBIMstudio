@@ -700,7 +700,7 @@ async function unitConvertCalc(): Promise<void> {
   ]);
 }
 
-// ── Revit-parity engineering calculators ─────────────────────────────────
+// ── model-native engineering calculators ─────────────────────────────────
 
 async function frictionSizeCalc(): Promise<void> {
   const vals = await openFormModal({
@@ -791,7 +791,7 @@ async function networkAuditCalc(): Promise<void> {
   }, null, 1);
   const vals = await openFormModal({
     title: "MEP Network Audit (Pressure Loss Report)",
-    subtitle: "System-Inspector parity: flow accumulation \u2192 per-section sizing/losses \u2192 critical path \u2192 fan/pump duty",
+    subtitle: "Model-native system inspection: flow accumulation \u2192 per-section sizing/losses \u2192 critical path \u2192 fan/pump duty",
     width: 560,
     fields: [
       { kind: "textarea", key: "json", label: "Network JSON", default: SAMPLE, hint: "segments: {id, from, to, lengthM, system, width+height | diameter, fittings[]}; terminals: node \u2192 demand (m\u00B3/s air, L/s water); source: node id." },

@@ -38,7 +38,7 @@ export function handleSize(cameraDistance: number, boxMaxDim: number): number {
 }
 
 /**
- * Dimensions of the Revit-style double-headed drag arrow, in local handle
+ * Dimensions of the BIM-style double-headed section-box arrow, in local handle
  * units (a face plane is 0.6 × 0.6). The arrow is built along local +Z —
  * which each face's rotation maps onto the outward face normal — and is
  * pre-lifted so it straddles the face: the inner head pokes slightly into

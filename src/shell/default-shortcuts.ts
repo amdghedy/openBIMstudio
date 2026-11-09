@@ -61,7 +61,7 @@ export function registerDefaultShortcuts(): void {
   label: "Toggle Clash Review window",
   keys: "ctrl+shift+c",
   category: "app",
-  // While a CAD drawing tab is active, Ctrl+Shift+C belongs to the CAD editor
+  // While a drawing tab is active, Ctrl+Shift+C belongs to the drawing editor
   // (COPYCLIP — Super Copy). Clash Review stays reachable from its menu entry.
   when: () => !isCadHotkeyOwnerActive(),
   handler: () => {
@@ -121,7 +121,7 @@ export function registerDefaultShortcuts(): void {
     label: "Cancel tool / Clear selection",
     keys: "escape",
     category: "select",
-    // CAD drawing owns Esc while its shell is visible (AutoCAD-style cancel in 2D view)
+    // drawing editor owns Esc while its shell is visible (standard drafting cancel behavior in 2D view)
     when: () => {
       try {
         if ((window as any).__obsCadOwnsEsc?.()) return false;
@@ -229,7 +229,7 @@ export function registerDefaultShortcuts(): void {
     });
   }
 
-    /* ── Direct Modeling (SketchUp-parity) ─────────────────────────────── */
+    /* ── Direct Modeling workflow ─────────────────────────────── */
   shortcuts.register({
     id: "push-pull-shortcut",
     label: "Push/Pull",
@@ -347,7 +347,7 @@ export function registerDefaultShortcuts(): void {
   });
   shortcuts.register({
     id: "view.tools-manager", label: "View Tools Manager", keys: "ctrl+shift+v", category: "view",
-    // While a CAD drawing tab is active, Ctrl+Shift+V belongs to the CAD editor
+    // While a drawing tab is active, Ctrl+Shift+V belongs to the drawing editor
     // (PASTECLIP — Super Copy). The manager stays reachable from the View menu.
     when: () => !isCadHotkeyOwnerActive(),
     handler: () => { (window as any).__obsOpenViewToolsManager?.(); },

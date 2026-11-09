@@ -1,6 +1,6 @@
 /**
  * Sloped floors — a floor slab whose top surface falls at a percentage
- * toward a drain edge/direction (Revit: "slope arrow" / define slope).
+ * toward a drain edge/direction (common slope-arrow / define-slope workflow).
  *
  * Pure math: per-corner elevations, fall checks and validation. The 3D
  * builder consumes the returned vertex elevations; the checker consumes
@@ -46,7 +46,7 @@ export const MAX_SLOPE_PCT = 15;
  * Per-corner top-surface elevations for a uniformly sloped slab.
  * The projection of each vertex onto the fall direction determines its
  * rise; the set is normalised so the LOWEST vertex sits at baseElevation
- * (matching Revit: the slope arrow tail defines the low point).
+ * (the slope-arrow tail defines the low point).
  */
 export function slopedFloorGeometry(spec: SlopedFloorSpec): SlopedFloorGeometry & { issues: SlopedFloorIssue[] } {
   const issues = validateSlopedFloor(spec);

@@ -5,8 +5,8 @@
 // a translucent Plane mesh positioned at the centre of its face, oriented
 // perpendicular to the face normal. Dragging the handle moves that face only.
 //
-// Extended (Revit parity): every face now also carries a double-headed drag
-// arrow pointing along its face normal (Revit's section-box face handles).
+// Extended (BIM workflow): every face now also carries a double-headed drag
+// arrow pointing along its face normal (standard section-box face handles).
 // The arrow is a real drag target — grabbing it stretches or shrinks that
 // face exactly like dragging the quad — and hovering either highlights the
 // whole face. Arrow geometry is built along local +Z, which each face's
@@ -184,7 +184,7 @@ function buildHelper(): void {
 }
 
 /**
- * Build the 6 face handles: a translucent drag quad plus a Revit-style
+ * Build the 6 face handles: a translucent drag quad plus a BIM-style
  * double-headed arrow on each face. Both carry the same "section-box-face"
  * userData, so the existing drag logic treats them as one handle per face.
  */
