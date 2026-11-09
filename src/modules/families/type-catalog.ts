@@ -1,4 +1,4 @@
-/** Revit-style type catalog CSV parser and serializer. */
+/** BIM type catalog CSV parser and serializer. */
 export type CatalogParameterType =
   | "length" | "area" | "volume" | "angle" | "number" | "string" | "yesno" | "integer";
 
@@ -118,7 +118,7 @@ function coerceValue(raw: string, type: CatalogParameterType): string | number |
 }
 
 export class TypeCatalogManager {
-  /** Parse a Revit-style catalog with a ##TYPE marker and typed header row. */
+  /** Parse a BIM type catalog with a ##TYPE marker and typed header row. */
   static parseCSV(csvContent: string): TypeCatalog {
     if (typeof csvContent !== "string" || !csvContent.trim()) {
       throw new Error("Type catalog content is empty or not a string.");
