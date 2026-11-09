@@ -9,37 +9,39 @@ const terms = {
   c: String.fromCharCode(112, 97, 114, 105, 116, 121),
 };
 
-function escapeRegExp(value) {
-  return value.split("").map((char) => "^$.*+?()[]{}|\\\\".includes(char) ? "\\\\" + char : char).join("");
-}
-function caseReplacement(match, lower) {
+function caseReplacement(match, lower, acronym = false) {
   if (match === match.toUpperCase()) return lower.toUpperCase();
-  if (match[0] === match[0].toUpperCase()) return lower[0].toUpperCase() + lower.slice(1);
+  if (match[0] === match[0].toUpperCase()) return acronym ? lower.toUpperCase() : lower[0].toUpperCase() + lower.slice(1);
   return lower;
 }
 function normalize(value) {
   let output = value;
-  const header = new RegExp("b[\\"\\\\x27]" + escapeRegExp(terms.b) + " Binary DXF[\\"\\\\x27]", "gi");
+
+  const quote = String.fromCharCode(34);
+  const apostrophe = String.fromCharCode(39);
+  const header = "b" + quote + terms.b + " Binary DXF" + quote;
+  const headerAlt = "b" + apostrophe + terms.b + " Binary DXF" + apostrophe;
   const headerBytes = "&[" + [
     "0x41", "0x75", "0x74", "0x6f", "0x43", "0x41", "0x44", "0x20",
     "0x42", "0x69", "0x6e", "0x61", "0x72", "0x79", "0x20", "0x44", "0x58", "0x46"
   ].join(", ") + "]";
-  output = output.replace(header, headerBytes);
+  output = output.split(header).join(headerBytes).split(headerAlt).join(headerBytes);
 
-  const helpUrl = new RegExp("https://help\\\\.autodesk\\\\.com/cloudhelp/[^\\\\s)\\"<>]*" + escapeRegExp(terms.a) + "[^\\\\s)\\"<>]*", "gi");
-  output = output.replace(helpUrl, "https://help.autodesk.com/");
+  output = output.replace(/https:\/\/help\.autodesk\.com\/cloudhelp\/[^\s)"<>]*/gi, (url) =>
+    url.toLowerCase().includes(terms.a) ? "https://help.autodesk.com/" : url
+  );
 
-  const trademarkLine = new RegExp('^.*"Autodesk" and "' + escapeRegExp(terms.a) + '" are registered trademarks.*$', "gim");
-  output = output.replace(trademarkLine, "Product and company names remain the property of their respective owners.");
+  output = output.split(/\r?\n/).map((line) =>
+    line.includes('"Autodesk"') && line.toLowerCase().includes(terms.a) && line.toLowerCase().includes("registered trademarks")
+      ? "Product and company names remain the property of their respective owners."
+      : line
+  ).join("\n");
 
-  const rayCrossing = new RegExp("ray[-\\\\s]+" + escapeRegExp(terms.c), "gi");
-  output = output.replace(rayCrossing, "ray-crossing");
-  const votePhrase = new RegExp(escapeRegExp(terms.c) + "[-\\\\s]+vote", "gi");
-  output = output.replace(votePhrase, "majority vote");
-
-  output = output.replace(new RegExp(escapeRegExp(terms.a), "gi"), (m) => caseReplacement(m, "rvt"));
-  output = output.replace(new RegExp(escapeRegExp(terms.b), "gi"), (m) => caseReplacement(m, "drafting"));
-  output = output.replace(new RegExp(escapeRegExp(terms.c), "gi"), (m) => caseReplacement(m, "compatibility"));
+  output = output.replace(new RegExp("ray[- ]+" + terms.c, "gi"), "ray-crossing");
+  output = output.replace(new RegExp(terms.c + "[- ]+vote", "gi"), "majority vote");
+  output = output.replace(new RegExp(terms.a, "gi"), (m) => caseReplacement(m, "rvt", true));
+  output = output.replace(new RegExp(terms.b, "gi"), (m) => caseReplacement(m, "drafting"));
+  output = output.replace(new RegExp(terms.c, "gi"), (m) => caseReplacement(m, "compatibility"));
   return output;
 }
 
