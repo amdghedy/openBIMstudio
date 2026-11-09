@@ -145,10 +145,10 @@ EOF
 )"
 
 mk_issue "P1-03 Assemble 20-fixture IFC golden corpus (licensed, snapshotted)" "hardening,P1,high" "$(cat <<'EOF'
-**Blocks:** P1-04. Composition per the plan's Table 5: Revit IFC4 arch x4, Revit IFC2x3 arch x2, Revit IFC4 MEP x3, Revit IFC4 structure x2, ArchiCAD x2, Tekla x2, BlenderBIM x2, FreeCAD x1, synthetic IFC4 x1, synthetic IFC2x3 x1.
+**Blocks:** P1-04. Composition per the plan's Table 5: RVT IFC4 arch x4, RVT IFC2x3 arch x2, RVT IFC4 MEP x3, RVT IFC4 structure x2, ArchiCAD x2, Tekla x2, BlenderBIM x2, FreeCAD x1, synthetic IFC4 x1, synthetic IFC2x3 x1.
 
 **Tasks**
-- [ ] Create/collect fixtures; dedicated Revit test project (no client data ever)
+- [ ] Create/collect fixtures; dedicated RVT test project (no client data ever)
 - [ ] All self-authored or openly licensed; MANIFEST.md with source tool + version + license
 - [ ] Commit initial expected snapshots
 

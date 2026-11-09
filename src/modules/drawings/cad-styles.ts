@@ -18,7 +18,7 @@ export interface LinetypeDef {
 
 const lt = (name: string, description: string, pattern: number[], group: LinetypeDef["group"]): LinetypeDef => ({ name, description, pattern, group });
 
-/** Standard AutoCAD acadiso.lin set plus a few drafting-office extras. Patterns in mm. */
+/** Standard Drafting acadiso.lin set plus a few drafting-office extras. Patterns in mm. */
 export const LINETYPE_LIBRARY: readonly LinetypeDef[] = [
   lt("DASHED", "Dashed", [12.7, -6.35], "Basic"),
   lt("DASHED2", "Dashed (.5x)", [6.35, -3.175], "Basic"),
@@ -127,7 +127,7 @@ export function previewDash(pattern: number[], unit = 1.6): number[] {
 
 /* ───────────────────────────── lineweights ───────────────────────────── */
 
-/** AutoCAD standard lineweights in mm. */
+/** Drafting standard lineweights in mm. */
 export const LINEWEIGHTS_MM: readonly number[] = [
   0, 0.05, 0.09, 0.13, 0.15, 0.18, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.53, 0.6, 0.7, 0.8, 0.9, 1, 1.06, 1.2, 1.4, 1.58, 2, 2.11,
 ];
@@ -159,7 +159,7 @@ export interface CadFont {
 
 const f = (id: string, label: string, css: string, kind: FontKind, file: string): CadFont => ({ id, label, css, kind, file });
 
-/** System fonts plus on-screen equivalents of the common AutoCAD stroke (SHX) fonts. */
+/** System fonts plus on-screen equivalents of the common Drafting stroke (SHX) fonts. */
 export const CAD_FONTS: readonly CadFont[] = [
   f("Arial", "Arial", '"Arial", "Helvetica", sans-serif', "sans", "arial.ttf"),
   f("Arial Narrow", "Arial Narrow", '"Arial Narrow", "Arial", sans-serif', "sans", "arialn.ttf"),

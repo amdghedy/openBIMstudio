@@ -1,7 +1,7 @@
 /**
  * Shell / hollow solid technique (v0.70 "deep modeling" wave).
  *
- * Revit-grade behavior: give a closed profile a wall thickness —
+ * RVT-grade behavior: give a closed profile a wall thickness —
  * hollow extrusions for generic models, casings, trays, shafts.
  *
  * `offsetClosedRing` is the geometric core: a miter inward/outward

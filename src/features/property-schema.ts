@@ -616,7 +616,7 @@ export function getSchema(type: ElementType | string): ElementSchema | null {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   Revit-style full parameter set
+   RVT-style full parameter set
    Every element schema gets the standard instance parameters (Constraints /
    Identity Data / Phasing / IFC Parameters / Other), and fittings get the
    mechanical + dimension parameters (angle, bend radius, tangent, arc length).
@@ -640,7 +640,7 @@ function levelOptions(unconnected: boolean): { value: string; label: string }[] 
   return unconnected ? [{ value: "", label: "Unconnected" }, ...rows] : rows;
 }
 
-/** Revit-style Base / Top constraints for vertical elements. */
+/** RVT-style Base / Top constraints for vertical elements. */
 function levelConstraintFields(): PropertyField[] {
   const G = CONSTRAINTS;
   return [

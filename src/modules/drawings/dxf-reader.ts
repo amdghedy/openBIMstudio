@@ -48,7 +48,7 @@ function textStyleFields(d: Data, mtextSrc?: string): { style?: string; font?: s
 /**
  * Text height for TEXT/ATTRIB/MTEXT: the entity's group 40, falling back to
  * the STYLE table's fixed height (group 40) when the entity says 0 — exactly
- * what AutoCAD does for fixed-height styles.
+ * what Drafting does for fixed-height styles.
  */
 function textHeight(d: Data, code: number, fallback: number): number {
   const h = d.n(code, 0);
@@ -233,7 +233,7 @@ function textAnchor(d: Data, vCode: number): { position: DxfPoint; align: "left"
  * Covers the types that carry the measurement in their points:
  *   0 rotated linear, 1 aligned, 4 radius, 3 diameter.
  * Style sizes come from the file's DIMSTYLE table (DIMTXT/DIMASZ/DIMEXO/
- * DIMEXE/DIMGAP × DIMSCALE) with metric defaults, like AutoCAD's.
+ * DIMEXE/DIMGAP × DIMSCALE) with metric defaults, like Drafting's.
  */
 function nativeDimension(d: Data, styles: Record<string, DxfDimStyle>): DxfEntity[] | null {
   const dimType = d.n(70, 0) & 7;
@@ -781,7 +781,7 @@ function expandRecs(
           break;
         }
         // No anonymous block (written by third-party tools): compute the
-        // geometry natively from the definition points, like AutoCAD does.
+        // geometry natively from the definition points, like Drafting does.
         const dim = nativeDimension(d, dimStyleTable);
         if (dim) for (const e of dim) push({ ...c, ...e });
         else skip("DIMENSION");
@@ -838,7 +838,7 @@ export async function parseDxfFile(file: File | Blob): Promise<DxfDocument> {
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
   const head = new TextDecoder("latin1").decode(bytes.slice(0, 22));
-  const isBinary = head.startsWith("AutoCAD Binary DXF");
+  const isBinary = head.startsWith("Drafting Binary DXF");
   try {
     const acad = await parseWithAcadEngine(bytes, name);
     if (acad && acad.entityCount > 0) {

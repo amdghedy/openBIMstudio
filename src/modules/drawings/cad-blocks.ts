@@ -2,7 +2,7 @@
  * Block definitions for the CAD editor (BLOCK / INSERT / WBLOCK).
  * Pure: no DOM, no storage. The editor model has no block-reference entity,
  * so inserting a block places ordinary, editable copies (like INSERT followed
- * by EXPLODE in AutoCAD). A library keeps the definitions so a symbol can be
+ * by EXPLODE in Drafting). A library keeps the definitions so a symbol can be
  * placed again and again.
  */
 import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint } from "./dxf-types";
@@ -20,7 +20,7 @@ export interface BlockDef {
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
-/** AutoCAD forbids  < > / \ " : ; ? * | , = `  in names; max 255 chars. Returns an error or null. */
+/** Drafting forbids  < > / \ " : ; ? * | , = `  in names; max 255 chars. Returns an error or null. */
 export function validateBlockName(name: string): string | null {
   const n = (name ?? "").trim();
   if (!n) return "Block name cannot be empty.";
@@ -112,7 +112,7 @@ export class BlockLibrary {
   has(name: string): boolean { return this.defs.has(this.key(name)); }
   get size(): number { return this.defs.size; }
 
-  /** Names are case-insensitive like AutoCAD. Throws when the name is taken unless `replace`. */
+  /** Names are case-insensitive like Drafting. Throws when the name is taken unless `replace`. */
   add(def: BlockDef, replace = false): void {
     const err = validateBlockName(def.name);
     if (err) throw new Error(err);

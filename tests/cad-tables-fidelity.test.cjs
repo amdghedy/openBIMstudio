@@ -1,6 +1,6 @@
-// AutoCAD table/entity reading fidelity — DXF tables round-trip.
+// Drafting table/entity reading fidelity — DXF tables round-trip.
 //
-// The CAD editor must read the drawing like AutoCAD does: layer true colour /
+// The CAD editor must read the drawing like Drafting does: layer true colour /
 // transparency / plot flag, the STYLE table (fixed height, backwards /
 // upside-down, big font), the DIMSTYLE table, per-entity linetype scale and
 // transparency, MTEXT inline colours, and fixed-height styles driving

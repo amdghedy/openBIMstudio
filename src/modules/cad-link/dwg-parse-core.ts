@@ -122,7 +122,7 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
     const detail = errors.length ? errors[0] : "dwg_read_data returned no data";
     throw new DwgParseError(
       "parse-failed",
-      "libredwg could not read this DWG (very new AutoCAD version, encrypted or damaged file)",
+      "libredwg could not read this DWG (very new Drafting version, encrypted or damaged file)",
       `${sniff.label} (${sniff.code}) - ${detail}`,
     );
   }

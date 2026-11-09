@@ -1,7 +1,7 @@
 /**
  * Geometric constraint solver — numeric, damped least-squares (Levenberg-Marquardt).
  *
- * This is the parametric core that Revit is famous for: sketch or model
+ * This is the parametric core that RVT is famous for: sketch or model
  * geometry constrained by dimensions and relations that survive edits.
  * When the user drags a wall, locked distances hold, parallel walls stay
  * parallel, endpoints that were joined stay joined.

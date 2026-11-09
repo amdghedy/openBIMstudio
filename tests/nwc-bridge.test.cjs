@@ -204,13 +204,13 @@ async function testDetect() {
     assertEq(det.classifyNavisworksDir("Navisworks Simulate 2024"), { sku: "Simulate", year: 2024 }, "simulate");
     assertEq(det.classifyNavisworksDir("Navisworks Freedom 2025"), null, "freedom excluded");
     assertEq(det.classifyNavisworksDir("Navisworks Manage 2019"), { sku: "Manage", year: 2019 }, "old year still classified");
-    assertEq(det.classifyNavisworksDir("Revit 2025"), null, "other product");
+    assertEq(det.classifyNavisworksDir("RVT 2025"), null, "other product");
   });
   await t("detect: install scan newest-first, exe required", () => {
     const joinPosix = (a, b) => (a ? `${a}/${b}` : b);
     const installs = det.findNavisworksInstalls(
       "C:/Program Files/Autodesk",
-      ["Navisworks Manage 2025", "Navisworks Simulate 2024", "Revit 2025", "Navisworks Manage 2023"],
+      ["Navisworks Manage 2025", "Navisworks Simulate 2024", "RVT 2025", "Navisworks Manage 2023"],
       (p) => !p.includes("2023"), // 2023 lacks the exe
       joinPosix,
     );

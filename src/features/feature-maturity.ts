@@ -104,10 +104,10 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
-    id: "revit-view-only",
+    id: "rvt-view-only",
     area: "Interoperability",
     status: "experimental",
-    source: ["src/modules/rvt/rvt-core.ts", "src/features/rvt-viewer.ts", "src/features/revit-view.ts", "src/workers/rvt.worker.ts", "scripts/build-rvt-wasm.mjs"],
+    source: ["src/modules/rvt/rvt-core.ts", "src/features/rvt-viewer.ts", "src/features/rvt-view.ts", "src/workers/rvt.worker.ts", "scripts/build-rvt-wasm.mjs"],
     evidence: ["tests/rvt-viewer.test.cjs"],
     limitations: [
       "The RVT view is read-only: geometry is reconstructed by the third-party rvt-rs reader (Apache-2.0), shapes can be simplified or missing, and only the properties the decoder can read are shown (not every native model parameter). Editing happens on a Native Twin made from an element, which is a tessellated copy (not the source application's parametric definition) and cannot be written back to the .rvt",

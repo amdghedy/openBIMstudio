@@ -1,4 +1,4 @@
-// Revit-style section box arrow grips — runtime + source drift-guard test.
+// RVT-style section box arrow grips — runtime + source drift-guard test.
 //
 // src/features/section-box.ts builds 6 translucent drag quads PLUS one
 // double-headed arrow per face (geometry along local +Z, pre-lifted so the

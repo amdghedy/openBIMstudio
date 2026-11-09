@@ -32,7 +32,7 @@ export function tangentLength(r: number, aIn: number, aOut: number): number {
   return r * Math.tan(Math.abs(turnAngle(aIn, aOut)) / 2);
 }
 
-/** Revit-style default: centreline radius of 1.5 x the duct/pipe width. */
+/** RVT-style default: centreline radius of 1.5 x the duct/pipe width. */
 export function defaultBendRadius(width: number): number {
   return Math.max(0.025, 1.5 * width);
 }

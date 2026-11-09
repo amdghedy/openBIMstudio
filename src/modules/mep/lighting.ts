@@ -2,7 +2,7 @@
  * Interior lighting design — lumen method, point-by-point illuminance and
  * lighting power density checks.
  *
- * Parity target: Revit MEP electrical workflow — lighting fixture schedules
+ * Compatibility target: RVT MEP electrical workflow — lighting fixture schedules
  * with average maintained illuminance estimates (the "Lighting Calculation"
  * schedule fields), spacing-to-mounting-height verification and lighting
  * power density reporting. The classic layout numbers an electrical

@@ -55,7 +55,7 @@ class VisibilityFilter {
   }
 
   isolateElements(ids: string[]): void {
-    // Isolating nothing must not hide the whole model (Revit: no-op).
+    // Isolating nothing must not hide the whole model (RVT: no-op).
     if (!ids || ids.length === 0) return;
     this.tempIsolated = new Set(ids);
     this.emit();

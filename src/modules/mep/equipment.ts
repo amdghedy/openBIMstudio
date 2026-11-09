@@ -1,5 +1,5 @@
 /**
- * Air-side and hydronic equipment duty selection — the numbers Revit's
+ * Air-side and hydronic equipment duty selection — the numbers RVT's
  * system inspector gives you for fan/pump selection.
  *
  * Pure module: no DOM, no three.js, no ctx. Safe to unit-test in Node.

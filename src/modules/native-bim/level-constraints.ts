@@ -1,5 +1,5 @@
 /**
- * Revit-style level constraints for vertical elements (walls, columns).
+ * RVT-style level constraints for vertical elements (walls, columns).
  *   base elevation = baseLevel.elevation + baseOffset
  *   top            = topLevel.elevation  + topOffset   (or "Unconnected": height is a free value)
  * Pure; the authoring layer applies the result through its normal validated param path.

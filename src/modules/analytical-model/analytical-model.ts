@@ -1,21 +1,21 @@
 /**
  * Analytical model auto-generation from the physical authored model.
  *
- * The signature structural workflow a Revit competitor must own: physical
+ * The signature structural workflow a RVT competitor must own: physical
  * columns / beams / braces are scanned and their ANALYTICAL lines are
  * generated automatically, with:
  *
  *   - Node welding — members that meet (beam end onto column top, stacked
  *     columns through a level, brace into a beam-column joint) share ONE
  *     analytical node. Horizontal position must match (≤ 10 mm); vertical
- *     gaps up to `weldTolerance` (default 0.4 m ≈ Revit's 15" analytical
+ *     gaps up to `weldTolerance` (default 0.4 m ≈ RVT's 15" analytical
  *     adjustment) are snapped, and every snap is reported in diagnostics.
  *   - Section inference — rectangular sections from the physical
  *     dimensions (beam depth = height, width = thickness; column square
  *     on its thickness). Torsion constant J from Roark's St-Venant
  *     approximation for rectangles.
  *   - Base fixity — nodes at the model's lowest elevation that terminate a
- *     column become supports (fixed or pinned per option), like Revit
+ *     column become supports (fixed or pinned per option), like RVT
  *     assigning foundation conditions to the lowest analytical nodes.
  *   - Material defaults — E = 30 GPa, ν = 0.2 (normal-weight concrete);
  *     density 24 kN/m³ feeds self-weight multipliers.

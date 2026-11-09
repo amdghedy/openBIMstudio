@@ -536,7 +536,7 @@ export function setupNavigation(): void {
       if (Math.abs(x2 - x1) < 3 && Math.abs(y2 - y1) < 3) return false;
 
       const mode: "window" | "crossing" = x2 >= x1 ? "window" : "crossing";
-      // Revit-style modifiers: Ctrl adds to the selection, Shift removes.
+      // RVT-style modifiers: Ctrl adds to the selection, Shift removes.
       const modifier: "replace" | "add" | "remove" =
         g.mods.ctrl || g.mods.meta ? "add" : g.mods.shift || g.mods.alt ? "remove" : "replace";
       void (ctx.features as any).boxSelection?.commit?.(

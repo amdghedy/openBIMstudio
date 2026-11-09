@@ -1,4 +1,4 @@
-// Builds the Revit reader (rvt-rs, Apache-2.0) to WebAssembly into public/rvt/.
+// Builds the RVT reader (rvt-rs, Apache-2.0) to WebAssembly into public/rvt/.
 //   node scripts/build-rvt-wasm.mjs        (npm run build:rvt)
 // Needs: git, Rust (stable) with the wasm32-unknown-unknown target, and wasm-pack
 // (cargo install wasm-pack --locked). Output: public/rvt/rvt.js + rvt_bg.wasm.
@@ -28,7 +28,7 @@ function have(cmd, args = ["--version"]) {
 }
 function skip(msg) {
   console.log(`[rvt] ${msg}`);
-  console.log("[rvt] The Revit viewer will report itself as not installed on this build. See docs/RVT-VIEWER.md.");
+  console.log("[rvt] The RVT viewer will report itself as not installed on this build. See docs/RVT-VIEWER.md.");
   process.exit(strict ? 1 : 0);
 }
 

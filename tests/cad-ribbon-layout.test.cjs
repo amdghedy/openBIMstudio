@@ -1,7 +1,7 @@
 /**
- * CAD editor AutoCAD-style SHELL RIBBON layout suite — native-engine edition.
+ * CAD editor Drafting-style SHELL RIBBON layout suite — native-engine edition.
  *
- * Pins the AutoCAD MDI chrome stacking order, the full six-tab drafting
+ * Pins the Drafting MDI chrome stacking order, the full six-tab drafting
  * ribbon (Home / Insert / Annotate / View / Manage / Output) and the wiring
  * of every panel button to a real engine command or tool:
  *   application menu (red A) + ribbon tabs + Quick Access toolbar
@@ -24,7 +24,7 @@ const src = fs.readFileSync(path.join(ROOT, "src/features/cad-viewer.ts"), "utf8
 const icons = fs.readFileSync(path.join(ROOT, "src/features/icon-set.ts"), "utf8");
 
 // ── 1. Shell stacking order: ribbon tabs row → ribbon panels → drawing tabs → pages ──
-t("shell mounts chrome in AutoCAD order: ribbon tabs, panels, drawing tabs, pages", () => {
+t("shell mounts chrome in Drafting order: ribbon tabs, panels, drawing tabs, pages", () => {
   const ensure = src.slice(src.indexOf("function ensureShell"), src.indexOf("function createTab"));
   const iTabs = ensure.indexOf('data-r="ribbontabs"');
   const iStrip = ensure.indexOf('data-r="ribbonstrip"');
@@ -35,7 +35,7 @@ t("shell mounts chrome in AutoCAD order: ribbon tabs, panels, drawing tabs, page
   assert.ok(iFiles >= 0, "drawing file tabstrip missing from shell");
   assert.ok(iPages >= 0, "pages host missing from shell");
   assert.ok(iTabs < iStrip, "ribbon tabs row must be ABOVE the ribbon panels");
-  assert.ok(iStrip < iFiles, "drawing file tabs must be BELOW the ribbon (AutoCAD layout)");
+  assert.ok(iStrip < iFiles, "drawing file tabs must be BELOW the ribbon (Drafting layout)");
   assert.ok(iFiles < iPages, "drawing tabs must be ABOVE the drawing pages");
 });
 
@@ -171,7 +171,7 @@ t("all 33 ribbon groups exist after the native-engine reorganization", () => {
     assert.ok(src.includes(`"${label}"`), `group "${label}" lost`);
   }
 });
-t("Home Draw + Modify panels carry the full AutoCAD tool set", () => {
+t("Home Draw + Modify panels carry the full Drafting tool set", () => {
   const bar = src.slice(src.indexOf("tools.innerHTML ="), src.indexOf('tools.querySelectorAll<HTMLButtonElement>("[data-t]")'));
   for (const tool of ["line", "poly", "polygon", "rect", "arc", "circle", "spline", "ellipse", "donut", "point",
     "hatch", "wipeout", "xline", "ray",
@@ -181,7 +181,7 @@ t("Home Draw + Modify panels carry the full AutoCAD tool set", () => {
   }
 });
 t("typed commands dispatch to the staged pick machine and draw tools", () => {
-  const disp = src.slice(src.indexOf("function executeAutoCadCommand"));
+  const disp = src.slice(src.indexOf("function executeDraftingCommand"));
   const must = ["TRIM", "EXTEND", "BREAK", "FILLET", "CHAMFER", "JOIN", "EXPLODE", "STRETCH", "ALIGN",
     "MATCHLAYER", "XLINE", "RAY", "POLYGON", "SPLINE", "ELLIPSE", "DONUT", "POINT", "HATCH", "WIPEOUT",
     "DIMANGULAR", "DIMARC", "DIMDIAMETER", "DIMCENTER", "DIMCONTINUE", "DIMBASELINE", "TABLE", "ARRAY", "FIND", "VIEW", "LAYERSTATE", "IMPORT"];

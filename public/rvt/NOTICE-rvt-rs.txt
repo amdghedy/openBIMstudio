@@ -1,4 +1,4 @@
-rvt-rs — open reader for Autodesk Revit files
+rvt-rs — open reader for Autodesk RVT files
 Copyright 2026 Griffin Long
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
@@ -7,16 +7,16 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 Trademark and attribution notices
 ==============================================================================
 
-"Autodesk" and "Revit" are registered trademarks of Autodesk, Inc.
+Product and company names remain the property of their respective owners.
 This project is not affiliated with, endorsed by, or sponsored by
-Autodesk. All references to "Autodesk" and "Revit" in this project's
+Autodesk. All references to "Autodesk" and "RVT" in this project's
 source, tests, documentation, and output are nominative fair use —
 they identify the file format this reader parses, and no more.
 
 This project neither uses nor distributes any Autodesk source code,
 object code, proprietary SDK components, or header files. All
 file-format observations documented here were obtained by inspecting
-the bytes of files written by Autodesk Revit — publicly shipped
+the bytes of files written by Autodesk RVT — publicly shipped
 sample content — using only public tools (the Microsoft Compound
 File Binary Format specification [MS-CFB], RFC 1952 gzip, and
 standard Rust crates).
@@ -26,7 +26,7 @@ Interoperability basis
 ==============================================================================
 
 Reverse engineering for the sole purpose of achieving interoperability
-between independently-developed software and the Autodesk Revit file
+between independently-developed software and the Autodesk RVT file
 format is recognised as lawful fair use under:
 
   * United States — Sega Enterprises v. Accolade, 977 F.2d 1510
@@ -43,7 +43,7 @@ published public specification; the compression (RFC 1951 DEFLATE)
 is an Internet standard.
 
 No access-control or rights-management technology has been
-circumvented by this project — the underlying Revit files are not
+circumvented by this project — the underlying RVT files are not
 encrypted and carry no technological protection measures.
 
 ==============================================================================
@@ -70,7 +70,7 @@ Test-corpus attribution
 
 The integration test suite uses the publicly-available
 `rac_basic_sample_family` RFA fixture family distributed by
-Autodesk as part of every Revit release, and curated into a
+Autodesk as part of every RVT release, and curated into a
 Git-LFS-hosted repository by Andreas Philipp at
 https://github.com/phi-ag/rvt under the Unlicense. The sample
 family files themselves are Autodesk property; this project

@@ -62,7 +62,7 @@ import { buildPanel } from "./features/panel";
 import { setupToolWindows } from "./features/tool-windows";
 
 import { history } from "./features/history";
-import { setupRevitTrustGates } from "./features/revit-trust-gates";
+import { setupRVTTrustGates } from "./features/rvt-trust-gates";
 import { selection, setupClickToSelect } from "./features/selection";
 import { snapping } from "./features/snapping";
 import { gizmo } from "./features/gizmo";
@@ -264,7 +264,7 @@ await step("selection-click", () => { setupClickToSelect(); });
 await step("box-selection", () => setupBoxSelection());
 await step("snapping", () => { (ctx.features as any).snapping = snapping; });
 await step("history", () => { (ctx.features as any).history = history; });
-await step("trust-gates", () => setupRevitTrustGates());
+await step("trust-gates", () => setupRVTTrustGates());
 await step("gizmo", () => {
   gizmo.setup(ctx.rightHost);
   (ctx.features as any).gizmo = gizmo;

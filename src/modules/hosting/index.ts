@@ -211,7 +211,7 @@ export interface HostChangeResult {
 /**
  * Re-evaluate every hosted opening after a host edit. Openings keep their
  * curve parameter s (level E policy: the dependent follows the host's
- * parametric position, matching the observable Revit behavior that a
+ * parametric position, matching the observable RVT behavior that a
  * window stays at its position along the wall when the wall is resized
  * or re-curved). Positions beyond the new length are reported invalid.
  */

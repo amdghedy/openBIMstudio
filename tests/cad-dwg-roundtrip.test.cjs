@@ -2,7 +2,7 @@
  * Runs the committed acadrust WASM (public/cad-engine/obim-cad-engine.wasm) in Node:
  * what the CAD editor's DXF writer produces is converted to a binary DWG by the real
  * writer and read back by the real reader. No mocks. This proves the subset below
- * survives OUR converter; it does not prove AutoCAD opens the file. */
+ * survives OUR converter; it does not prove Drafting opens the file. */
 const fs = require("fs"), os = require("os"), path = require("path"), assert = require("assert");
 const { execSync } = require("child_process");
 const root = path.join(__dirname, "..");
@@ -109,10 +109,10 @@ const doc = () => ({
       else assert.strictEqual(l.rgb, 0xff8800);
     });
   }
-  await t("the default version is AutoCAD 2010 and every option has a label", () => {
+  await t("the default version is Drafting 2010 and every option has a label", () => {
     assert.strictEqual(W.DEFAULT_DWG_VERSION, "AC1024");
     assert.strictEqual(W.DWG_VERSIONS.length, 6);
-    assert.strictEqual(W.dwgVersionLabel("AC1018"), "AutoCAD 2004 / 2005 / 2006");
+    assert.strictEqual(W.dwgVersionLabel("AC1018"), "Drafting 2004 / 2005 / 2006");
   });
 
   // Real DWG files from the repo: DWG -> DXF -> DWG loses nothing we can see.

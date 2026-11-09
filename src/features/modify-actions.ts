@@ -153,13 +153,13 @@ export function runModifyAction(id: ModifyActionId): void {
         createSimilarFromSelection();
         toast("Create Similar — place next instance", "info");
       } catch {
-        (window as Any).__obsRevitParity?.createSimilar?.(ids[0]);
+        (window as Any).__obsRVTCompatibility?.createSimilar?.(ids[0]);
         toast("Create Similar", "info");
       }
       break;
     case "match-props":
-      (window as Any).__obsRevitParity?.matchProperties?.(ids[0]);
-      (ctx.features as any).bimParity?.matchProperties?.(ids[0]);
+      (window as Any).__obsRVTCompatibility?.matchProperties?.(ids[0]);
+      (ctx.features as any).bimCompatibility?.matchProperties?.(ids[0]);
       toast("Match Properties — pick target", "info");
       break;
     case "select-similar":

@@ -1,4 +1,4 @@
-/** Options bar for a selection (Revit "Modify | Walls" options row): edit the dimensions of ALL selected
+/** Options bar for a selection (RVT "Modify | Walls" options row): edit the dimensions of ALL selected
  *  elements at once. A value shown blank ("-") means the selection has different values. Units: metres. */
 import { getSelectedIds, getElementById, editSelectedParams } from "./authoring";
 

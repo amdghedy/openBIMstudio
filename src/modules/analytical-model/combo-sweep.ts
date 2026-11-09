@@ -8,7 +8,7 @@
  * non-zero selfWeightMultiplier, solve, and collect member forces,
  * reactions and deflection. The envelope tracks, per member, the extremes
  * of axial force / shear / bending / deflection and which combination
- * governs each — the same governing-case logic engineers read off Revit +
+ * governs each — the same governing-case logic engineers read off RVT +
  * Robot results.
  *
  * Load application conventions (LoadCase from structural-loads-ui):

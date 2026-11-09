@@ -1,7 +1,7 @@
 /**
  * Dependent Views — primary/dependent view pairs for sheet composition.
  *
- * BIM-equivalent of Revit's "Dependent View" feature. A dependent view
+ * BIM-equivalent of RVT's "Dependent View" feature. A dependent view
  * shares all properties of its primary (geometry, annotations, dimensions)
  * but has its own crop region, so the same model can be split across
  * multiple sheets while staying synchronised.

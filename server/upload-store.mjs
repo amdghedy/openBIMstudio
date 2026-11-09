@@ -21,9 +21,9 @@ import crypto from "node:crypto";
 const EXT_SIG = {
   ".ifc": (head) => /^ISO-10303-21/.test(head),
   ".dxf": (head, buf) => {
-    // DXF is ASCII (or binary with sentinel "AutoCAD Binary DXF"). Accept
+    // DXF is ASCII (or binary with sentinel "Drafting Binary DXF"). Accept
     // either a text control pair at the start or the binary sentinel.
-    if (/^AutoCAD Binary DXF/.test(head)) return true;
+    if (/^Drafting Binary DXF/.test(head)) return true;
     const text = buf.subarray(0, 4096).toString("latin1");
     return /\b0\s*\r?\n\s*SECTION\b/.test(text) || /\b999\b/.test(text.slice(0, 64));
   },

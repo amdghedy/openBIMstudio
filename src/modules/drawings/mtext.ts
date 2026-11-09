@@ -1,5 +1,5 @@
 /**
- * MTEXT / TEXT inline-format decoder (AutoCAD codes) -> plain text with "\n" line breaks.
+ * MTEXT / TEXT inline-format decoder (Drafting codes) -> plain text with "\n" line breaks.
  * Pure. Handles paragraph breaks, stacked fractions, unicode escapes, %% symbols and strips
  * font/height/colour/width/oblique/tracking/alignment/underline/overline/strike codes.
  *

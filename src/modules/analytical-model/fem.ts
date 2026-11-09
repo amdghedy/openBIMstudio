@@ -1,7 +1,7 @@
 /**
  * 2D frame finite-element solver (Euler-Bernoulli) for the analytical model.
  *
- * Supports the day-one structural workflow a Revit competitor needs:
+ * Supports the day-one structural workflow a RVT competitor needs:
  * define analytical lines for beams/columns/braces, apply gravity and
  * lateral loads, get displacements, reactions and member end forces, then
  * feed them into member code checks (checks.ts).

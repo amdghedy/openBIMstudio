@@ -1,7 +1,7 @@
 /**
  * Model Checker — QA/QC rules engine for BIM models.
  *
- * BIM-equivalent of Revit's "Model Checker" / Solibri Model Checker. Runs
+ * BIM-equivalent of RVT's "Model Checker" / Solibri Model Checker. Runs
  * rule-based checks against loaded IFC elements and produces a structured
  * report grouped by severity (error / warning / info).
  *

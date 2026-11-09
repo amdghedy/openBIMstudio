@@ -1,13 +1,13 @@
 /**
  * Hosted MEP elements — the parametric host-relationship engine.
  *
- * Parity target: Revit's hosted-element behaviour — light fixtures hosted
+ * Compatibility target: RVT's hosted-element behaviour — light fixtures hosted
  * to ceilings, air terminals to ducts, sprinklers to pipes, receptacles to
  * walls. A hosted element stores its host, its parametric anchor on the
  * host face/axis and an offset; when the host moves or resizes, the hosted
  * element's world position is re-derived, not remembered. Delete the host
  * and the hosted element is orphaned and reported — exactly the dependency
- * engine that makes Revit models edit-proof.
+ * engine that makes RVT models edit-proof.
  *
  * Host kinds and their parametric frames:
  *   - wall            : vertical face, anchor = (u along wall axis, v up
@@ -185,7 +185,7 @@ export function hostedWorldPosition(host: HostGeometry, rec: HostedRecord): Vec3
   }
 }
 
-// ─── Compatibility table (Revit-style host/workplane rules) ───────────────
+// ─── Compatibility table (RVT-style host/workplane rules) ───────────────
 
 const COMPAT: Record<HostedKind, HostKind[]> = {
   "light-fixture": ["ceiling", "roof", "wall", "equipment"],
@@ -259,7 +259,7 @@ export interface HostAuditInput {
 
 /**
  * Full host audit:
- *   - orphaned  : hosted element whose host no longer exists (Revit flags
+ *   - orphaned  : hosted element whose host no longer exists (RVT flags
  *                 these the moment the host is deleted).
  *   - issues    : kind incompatibility (host replaced by another kind),
  *                 off-host drift beyond tolerance, linear anchors out of
@@ -319,7 +319,7 @@ export function auditHostedElements(input: HostAuditInput): HostAudit {
  * After the host moved or resized, re-project every hosted element of that
  * host and return their new world positions (positions to write back into
  * the model). Hosted elements keep their parametric anchor — the essence
- * of Revit hosting.
+ * of RVT hosting.
  */
 export function applyHostChange(hosts: HostGeometry[], hosted: HostedRecord[], hostId: string): Array<{ hostedId: string; newPosition: Vec3T }> {
   const host = hosts.find(h => h.id === hostId);
@@ -334,7 +334,7 @@ export function applyHostChange(hosts: HostGeometry[], hosted: HostedRecord[], h
 
 /**
  * Suggest the nearest compatible host for an orphaned element — the
- * "Rehost" picker Revit shows. Linear distance to the host anchor point.
+ * "Rehost" picker RVT shows. Linear distance to the host anchor point.
  */
 export function suggestHosts(
   kind: HostedKind,

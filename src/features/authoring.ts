@@ -6160,7 +6160,7 @@ export function transformElements(
     revert: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(before[i])))); rebuild(); markDirty(); },
   });
   rebuild(); markDirty();
-  // Revit parity: locked dims / equality / alignment re-enforce themselves
+  // RVT compatibility: locked dims / equality / alignment re-enforce themselves
   // right after the move commit (debounced; toggle lives with the Solve control).
   try { scheduleAutoSolve(); } catch { /* auto-solve is best-effort */ }
 }

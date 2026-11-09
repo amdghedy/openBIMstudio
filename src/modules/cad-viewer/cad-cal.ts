@@ -1,8 +1,8 @@
 /**
- * AutoCAD CAL — a small, safe expression evaluator for the command line.
+ * Drafting CAL — a small, safe expression evaluator for the command line.
  *
- * Accepted syntax (AutoCAD QuickCalc subset, degrees for trig like the
- * AutoCAD UI prompts, not radians):
+ * Accepted syntax (Drafting QuickCalc subset, degrees for trig like the
+ * Drafting UI prompts, not radians):
  *
  *   CAL 2*PI*25              → 157.0796
  *   CAL (3+4)*abs(-2)        → 14
@@ -84,7 +84,7 @@ export function isCalcExpr(src: string): boolean {
   const s = src.trim();
   if (!s || !/[0-9]/.test(s)) return false;
   if (!/[+\-*/^()]/.test(s)) return false;
-  if (/\s/.test(s)) return false; // AutoCAD numeric entry never contains spaces
+  if (/\s/.test(s)) return false; // Drafting numeric entry never contains spaces
   return tokenize(s) !== null;
 }
 

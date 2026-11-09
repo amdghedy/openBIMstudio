@@ -715,10 +715,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("save", "Save As File", safe(async () => { (await import("../modules/projects/project-file-io")).saveProjectToFile(true); }, "Save as file"), {
         kbd: "^\u21e7S", title: "Save a copy of the project to a new .obsproj file (also a manual backup)",
       }),
-      b("folder", "View RVT Model", safe(async () => { (await import("../features/rvt-viewer")).pickRevitFile(); }, "View RVT model"), {
+      b("folder", "View RVT Model", safe(async () => { (await import("../features/rvt-viewer")).pickRVTFile(); }, "View RVT model"), {
         title: "Open a .rvt / .rfa file for viewing only. Decoded inside your browser, nothing is uploaded. Geometry is a reconstruction and can be incomplete.",
       }),
-      b("folder", "RVT Model Browser", safe(async () => { (await import("../features/revit-view")).openRevitBrowser(); }, "RVT model browser"), {
+      b("folder", "RVT Model Browser", safe(async () => { (await import("../features/rvt-view")).openRVTBrowser(); }, "RVT model browser"), {
         title: "Search, group, select, hide and isolate the elements of an opened RVT model; export them to CSV",
       }),
       b("folder", "Open File", safe(async () => { (await import("../modules/projects/project-file-io")).openProjectFromFile(); }, "Open file"), {
@@ -3019,7 +3019,7 @@ window.addEventListener("obs-fullscreen-toggle", () => {
 });
 
 /* ═════════════════════════════════════════════════════════════════════════
-   Contextual tab - "Modify | Place Wall" (Revit style). Appears when a placement
+   Contextual tab - "Modify | Place Wall" (RVT style). Appears when a placement
    tool starts, so the user can adjust the options and then start modelling; it
    disappears (returning to the previous tab) when the tool ends.
    ═════════════════════════════════════════════════════════════════════════ */
@@ -3066,7 +3066,7 @@ function ctxItems(tool: string): HTMLElement[] {
   if (tool === "wall") items.push(mod("join-walls", "wall", undefined, { title: "Join the selected walls" }));
   return items;
 }
-/** Revit "Modify | Walls": every modification tool for the current selection, with category-specific extras. */
+/** RVT "Modify | Walls": every modification tool for the current selection, with category-specific extras. */
 function selectionItems(types: Set<string>): HTMLElement[] {
   const act = (id: string) => safe(() => { void runModifyAction(id as ModifyActionId); }, id);
   const mod = (id: ModifyActionId, icon: IconName, label?: string, options: any = {}) => {
