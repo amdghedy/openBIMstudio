@@ -148,8 +148,8 @@ t("repeatAlongPath: sliding window produces path−points+1 instances", () => {
 // ── 9. Validation errors ────────────────────────────────────────────────────
 t("validation: point count, profile, unknown family", () => {
   let threw = false;
-  try { ad.registerFamily({ id: "bad", name: "bad", pointCount: 5, profile: rect(1, 1) }); } catch { threw = true; }
-  assert(threw, "pointCount 5 should throw");
+  try { ad.registerFamily({ id: "bad", name: "bad", pointCount: 9, profile: rect(1, 1) }); } catch { threw = true; }
+  assert(threw, "pointCount 9 should throw");
   threw = false;
   try { ad.instantiate("nope", [P(0, 0, 0), P(1, 0, 0)]); } catch { threw = true; }
   assert(threw, "unknown family should throw");
@@ -158,7 +158,40 @@ t("validation: point count, profile, unknown family", () => {
   assert(threw, "wrong point count should throw");
 });
 
-// ── 10. Curved path: chord vs arc sanity ────────────────────────────────────
+// ── 10. Expanded point range and one-point extrusion ─────────────────────────
+t("1-point family: explicit pointLength extrudes from one placement point", () => {
+  const profile = rect(0.05, 0.05);
+  ad.registerFamily({ id: "single-post", name: "Single point post", pointCount: 1, pointLength: 2.5, profile });
+  const mesh = ad.instantiate("single-post", [P(1, 3, 2)]);
+  near(ad.meshVolume(mesh), Math.abs(ad.profileArea(profile)) * 2.5, 1e-9);
+  near(Math.min(...mesh.vertices.map(v => v.y)), 3, 1e-9);
+  near(Math.max(...mesh.vertices.map(v => v.y)), 5.5, 1e-9);
+});
+
+t("8-point family: ordered placement points are accepted and swept", () => {
+  ad.registerFamily({ id: "eight-point", name: "Eight point family", pointCount: 8, profile: rect(0.05, 0.05) });
+  const points = Array.from({ length: 8 }, (_, i) => P(i, 0, (i % 2) * 0.25));
+  const mesh = ad.instantiate("eight-point", points);
+  assert(mesh.vertices.length > 0 && mesh.faces.length > 0, "eight-point sweep should produce geometry");
+  near(ad.meshVolume(mesh), Math.abs(ad.profileArea(rect(0.05, 0.05))) * ad.pathLength(points), 1e-8);
+});
+
+t("adaptive validation: point count and placement coordinates must be valid", () => {
+  let threw = false;
+  try { ad.registerFamily({ id: "zero", name: "zero", pointCount: 0, profile: rect(1, 1) }); } catch { threw = true; }
+  assert(threw, "pointCount 0 should throw");
+  threw = false;
+  try { ad.instantiate("eight-point", [P(0, 0, 0), P(1, 0, 0)]); } catch { threw = true; }
+  assert(threw, "wrong point count should throw");
+  threw = false;
+  try { ad.sweepProfile(rect(0.05, 0.05), Array.from({ length: 9 }, (_, i) => P(i, 0, 0))); } catch { threw = true; }
+  assert(threw, "nine-point sweep should throw");
+  threw = false;
+  try { ad.sweepProfile(rect(0.05, 0.05), [P(0, 0, 0), P(NaN, 0, 0)]); } catch { threw = true; }
+  assert(threw, "non-finite point should throw");
+});
+
+// ── 13. Curved path: chord vs arc sanity ────────────────────────────────────
 t("arc-path repeat: chordal volume under exact arc volume", () => {
   // 4-point family along an arc; chord polyline is shorter than the arc,
   // so swept chord volume must be slightly below area × arc length.
