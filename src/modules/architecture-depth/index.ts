@@ -84,6 +84,7 @@ export function applyWallTypePreset(presetId: string): WallTypePreset | null {
     a.setTypeDefault(tool, "params", "thickness", preset.thickness);
     a.setTypeDefault(tool, "params", "height", preset.height);
     a.setTypeDefault(tool, "root", "name", preset.name);
+    a.setTypeDefault(tool, "properties", "wallTypeId", preset.id);
     if (preset.layers) a.setTypeDefault(tool, "properties", "layers", preset.layers);
     else if (preset.kind === "basic") a.setTypeDefault(tool, "properties", "layers", "");
     if (preset.kind === "curtain") {
@@ -106,6 +107,89 @@ export function applyWallTypePreset(presetId: string): WallTypePreset | null {
   return preset;
 }
 
+
+/**
+ * Change the type of an already placed wall / curtain-wall element.
+ * Updates thickness, layers (compound), curtain system props, and name.
+ */
+export function applyWallTypeToElement(elementId: string, presetId: string): boolean {
+  const preset = getWallTypePreset(presetId);
+  if (!preset) return false;
+  const a = auth();
+  if (!a?.getElements) return false;
+  const els = a.getElements() as Any[];
+  const el = els.find((e) => e && String(e.id) === String(elementId));
+  if (!el) return false;
+  const isCurtain = preset.kind === "curtain";
+  if (isCurtain && el.type !== "curtain-wall") {
+    // Switching basic wall → curtain is a type change of the element kind
+    el.type = "curtain-wall";
+  } else if (!isCurtain && el.type === "curtain-wall") {
+    el.type = "wall";
+  } else if (!isCurtain && el.type !== "wall") {
+    return false;
+  }
+
+  el.params = { ...(el.params || {}) };
+  el.params.thickness = preset.thickness;
+  if (preset.height && !el.params.height) el.params.height = preset.height;
+  // Keep existing height when retargeting type (instance dimension), only set thickness/layers
+  el.properties = { ...(el.properties || {}) };
+  el.properties.wallTypeId = preset.id;
+  el.name = preset.name;
+  if (preset.layers) {
+    el.properties.layers = preset.layers;
+  } else {
+    delete el.properties.layers;
+  }
+  if (isCurtain) {
+    el.properties.system = "mullion-panel";
+    el.properties.panelType = preset.panelType || "glazed";
+    el.properties.mullionProfile = preset.mullionProfile || "rect";
+  } else {
+    delete el.properties.system;
+    delete el.properties.panelType;
+    delete el.properties.mullionProfile;
+  }
+
+  try {
+    if (typeof a.rebuildAuthored === "function") a.rebuildAuthored();
+    else if (typeof a.rebuild === "function") a.rebuild();
+    if (typeof a.markAuthoringDirty === "function") a.markAuthoringDirty();
+  } catch (err) {
+    console.warn("[architecture-depth] rebuild after type change failed", err);
+  }
+  try {
+    window.dispatchEvent(
+      new CustomEvent("obs-toast", {
+        detail: { message: `Type → ${preset.name}`, kind: "success" },
+      }),
+    );
+  } catch {
+    /* */
+  }
+  return true;
+}
+
+/** Infer which catalog preset best matches a placed element. */
+export function inferWallTypeId(el: Any): string | null {
+  if (!el) return null;
+  const stored = el.properties?.wallTypeId;
+  if (stored && getWallTypePreset(String(stored))) return String(stored);
+  const layers = String(el.properties?.layers || "");
+  const kind = el.type === "curtain-wall" ? "curtain" : layers ? "compound" : "basic";
+  if (kind === "curtain") {
+    const pt = String(el.properties?.panelType || "glazed");
+    return pt === "solid" ? "curtain-solid" : "curtain-system";
+  }
+  for (const p of WALL_TYPE_PRESETS) {
+    if (p.kind === "curtain") continue;
+    if (p.layers && p.layers === layers) return p.id;
+  }
+  if (!layers) return "basic-generic-200";
+  return "compound-exterior";
+}
+
 export function setupArchitectureDepth(): void {
   wireJoinsToAuthoring();
   try {
@@ -119,10 +203,12 @@ export function setupArchitectureDepth(): void {
     (window as any).__obsArchitectureDepth = {
       wireJoinsToAuthoring,
       applyWallTypePreset,
+      applyWallTypeToElement,
+      inferWallTypeId,
       listWallTypePresets,
       getWallTypePreset,
       presets: WALL_TYPE_PRESETS,
-      version: 2,
+      version: 3,
     };
   } catch {
     /* */

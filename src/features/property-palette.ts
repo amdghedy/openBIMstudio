@@ -47,6 +47,11 @@ import { svgIcon, type IconName } from "./icon-set";
 import { levels } from "../modules/levels";
 import { makeDockable, type DockHandle } from "./dockable";
 import { selection } from "./selection";
+import {
+  listWallTypePresets,
+  applyWallTypeToElement,
+  inferWallTypeId,
+} from "../modules/architecture-depth";
 import type { AuthoredElement } from "../modules/projects/types";
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -912,6 +917,12 @@ function render() {
     try { body.appendChild(makeFamilyIdentityBlock(element)); }
     catch (err) { console.warn("[property-palette] family identity failed", err); }
   }
+
+  // Architectural wall / curtain type identity (catalog)
+  if (element && (element.type === "wall" || element.type === "curtain-wall")) {
+    try { body.appendChild(makeWallTypeIdentityBlock(element)); }
+    catch (err) { console.warn("[property-palette] wall type identity failed", err); }
+  }
 }
 
 /** Element types that carry a BIM-style "Base Constraint" (level). */
@@ -933,6 +944,79 @@ const LEVEL_CONSTRAINED_TYPES = new Set<string>([
  *   (element.params.elevation - level.elevation)
  * so a user who edited elevation manually sees a stable offset.
  */
+
+/** Type identity for walls / curtain walls — change catalog type on a placed instance. */
+function makeWallTypeIdentityBlock(element: AuthoredElement): HTMLElement {
+  const block = document.createElement("div");
+  block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
+
+  const headerRow = document.createElement("div");
+  headerRow.style.cssText =
+    "display:flex;align-items:center;gap:6px;padding:7px 12px;" +
+    "background:var(--bg-elevated,#181a23);user-select:none";
+  const caret = document.createElement("span");
+  caret.textContent = "▾";
+  caret.style.cssText = "width:10px;font-size:9px;color:var(--text-tertiary,#6b7280)";
+  const title = document.createElement("span");
+  title.textContent = "Type";
+  title.style.cssText = "font-weight:600;font-size:11.5px;letter-spacing:.2px";
+  headerRow.append(caret, title);
+
+  const list = document.createElement("div");
+  list.style.cssText = "padding:6px 12px 10px;display:grid;gap:6px";
+
+  const row = document.createElement("div");
+  row.style.cssText =
+    "display:grid;grid-template-columns:90px 1fr;gap:8px;align-items:center";
+  const lbl = document.createElement("label");
+  lbl.textContent = "Wall Type";
+  lbl.style.cssText = "font-size:11px;color:var(--text-secondary,#a0a6b5)";
+
+  const presets = listWallTypePresets().filter((pr) =>
+    element.type === "curtain-wall" ? pr.kind === "curtain" : pr.kind !== "curtain",
+  );
+  // When editing, offer both families if user wants to switch wall ↔ curtain
+  const allForSelect =
+    element.type === "wall" || element.type === "curtain-wall"
+      ? listWallTypePresets()
+      : presets;
+
+  const sel = document.createElement("select");
+  sel.style.cssText =
+    "width:100%;box-sizing:border-box;padding:4px 6px;" +
+    "background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);" +
+    "border-radius:4px;color:var(--text-primary,#e8eaf0);font:12px system-ui";
+  const current = inferWallTypeId(element) || allForSelect[0]?.id || "";
+  sel.innerHTML = allForSelect
+    .map(
+      (pr) =>
+        `<option value="${pr.id}" ${pr.id === current ? "selected" : ""}>${pr.name}</option>`,
+    )
+    .join("");
+  sel.value = current;
+  sel.onchange = () => {
+    const ok = applyWallTypeToElement(String(element.id), sel.value);
+    if (ok) {
+      // Refresh palette for new thickness/layers
+      try {
+        render();
+      } catch {
+        /* */
+      }
+    }
+  };
+
+  const hint = document.createElement("div");
+  hint.style.cssText = "font-size:10px;color:var(--text-tertiary,#6b7280);grid-column:1/-1";
+  hint.textContent =
+    "Changing type updates layers / system on this instance and rebuilds geometry.";
+
+  row.append(lbl, sel);
+  list.append(row, hint);
+  block.append(headerRow, list);
+  return block;
+}
+
 function makeLevelConstraintsBlock(element: AuthoredElement): HTMLElement {
   const block = document.createElement("div");
   block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
