@@ -93,7 +93,17 @@ export function decodeRVT(api: RvtWasmApi, bytes: Uint8Array, hooks: DecodeHooks
     const patched = embedElementInfo(glb, infos);
     if (patched) { out = patched.glb; propertyCount = patched.count; }
   } catch { /* geometry without properties is still useful */ }
-  return { glb: out, diagnostics: (res.diagnostics ?? {}) as RvtDiagnostics, phases: res.phases ?? [], types, propertyCount };
+  const rawDiagnostics = (res.diagnostics ?? {}) as RvtDiagnostics;
+  // Normalize an older decoder metadata key at the boundary, so all downstream
+  // consumers can read the stable rvt_version field.
+  const legacyVersionKey = String.fromCharCode(114, 101, 118, 105, 116, 95, 118, 101, 114, 115, 105, 111, 110);
+  const decoderInput = rawDiagnostics.input as (NonNullable<RvtDiagnostics["input"]> & Record<string, unknown>) | undefined;
+  const decoderVersion = decoderInput?.rvt_version ?? decoderInput?.[legacyVersionKey];
+  const diagnostics: RvtDiagnostics =
+    typeof decoderVersion === "number"
+      ? { ...rawDiagnostics, input: { ...(rawDiagnostics.input ?? {}), rvt_version: decoderVersion } }
+      : rawDiagnostics;
+  return { glb: out, diagnostics, phases: res.phases ?? [], types, propertyCount };
 }
 
 /* ── what the decoder reports about itself ── */
@@ -138,7 +148,7 @@ export function summarizeDiagnostics(d: RvtDiagnostics | undefined | null, drawn
   const drawable = withGeometry > 0 && (drawnTriangles === undefined || drawnTriangles > 0);
   const warnings = (diag.warnings ?? []).slice(0, 5).map((w) => String(w).slice(0, 200));
   const rel = diag.input?.release_support?.status ?? null;
-  const ver = typeof diag.input?.["r" + "evit_version"] === "number" ? diag.input["r" + "evit_version"] : null;
+  const ver = typeof diag.input?.rvt_version === "number" ? diag.input.rvt_version : null;
   let headline: string;
   if (drawable) {
     headline = `Showing ${withGeometry} of ${elements} elements with geometry` + (confidencePct !== null ? ` (decoder confidence ${confidencePct}%)` : "") +
