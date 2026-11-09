@@ -266,3 +266,123 @@ function norm3(a: Pt3): Pt3 {
   if (l < 1e-12) throw new Error("cannot normalise zero vector");
   return { x: a.x / l, y: a.y / l, z: a.z / l };
 }
+
+/**
+ * Persistent geometric relationships between adaptive placement points.
+ * Stored with the instance definition, so constraints survive project save/reopen.
+ */
+export type AdaptivePointConstraint =
+  | { kind: "fixed"; pointIndex: number; value: Pt3 }
+  | { kind: "axis"; pointIndex: number; axis: "x" | "y" | "z"; value: number }
+  | { kind: "coincident"; a: number; b: number; driven?: "a" | "b" }
+  | { kind: "distance"; a: number; b: number; distance: number; driven?: "a" | "b" };
+
+function clonePt3(point: Pt3): Pt3 {
+  return { x: point.x, y: point.y, z: point.z };
+}
+
+function constraintPointIndex(index: number, count: number, label: string): void {
+  if (!Number.isInteger(index) || index < 0 || index >= count) {
+    throw new Error(label + " must reference a placement point from 1 to " + count);
+  }
+}
+
+/** Validate stored adaptive point constraints without changing them. */
+export function validateAdaptivePointConstraints(
+  constraints: AdaptivePointConstraint[] | undefined,
+  pointCount: number,
+): AdaptivePointConstraint[] {
+  if (constraints === undefined) return [];
+  if (!Array.isArray(constraints) || constraints.length > 128) {
+    throw new Error("Adaptive point constraints must be an array of at most 128 entries");
+  }
+  for (const constraint of constraints) {
+    if (!constraint || typeof constraint !== "object") throw new Error("Invalid adaptive point constraint");
+    if (constraint.kind === "fixed") {
+      constraintPointIndex(constraint.pointIndex, pointCount, "Fixed constraint");
+      const p = constraint.value;
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) {
+        throw new Error("Fixed point constraint requires finite x, y and z coordinates");
+      }
+    } else if (constraint.kind === "axis") {
+      constraintPointIndex(constraint.pointIndex, pointCount, "Axis constraint");
+      if (!["x", "y", "z"].includes(constraint.axis) || !Number.isFinite(constraint.value)) {
+        throw new Error("Axis constraint requires a valid axis and finite coordinate");
+      }
+    } else if (constraint.kind === "coincident" || constraint.kind === "distance") {
+      constraintPointIndex(constraint.a, pointCount, "Constraint endpoint A");
+      constraintPointIndex(constraint.b, pointCount, "Constraint endpoint B");
+      if (constraint.a === constraint.b) throw new Error("A point constraint must reference two different points");
+      if (constraint.driven !== undefined && constraint.driven !== "a" && constraint.driven !== "b") {
+        throw new Error("Constraint driven endpoint must be 'a' or 'b'");
+      }
+      if (constraint.kind === "distance" && (!Number.isFinite(constraint.distance) || constraint.distance <= 0)) {
+        throw new Error("Adaptive point distance must be finite and positive");
+      }
+    } else {
+      throw new Error("Unsupported adaptive point constraint kind");
+    }
+  }
+  return constraints;
+}
+
+/**
+ * Solve point relationships on a copied point list. driverIndex is supplied
+ * while dragging: the point under the cursor drives its linked counterpart.
+ * Without a drag, each relationship uses its persisted driven endpoint.
+ */
+export function solveAdaptivePointConstraints(
+  source: Pt3[],
+  constraints: AdaptivePointConstraint[] = [],
+  driverIndex?: number,
+): Pt3[] {
+  if (!Array.isArray(source) || source.length < 1 || source.length > 8) {
+    throw new Error("Adaptive constraints require 1 to 8 placement points");
+  }
+  const points = source.map((point, i) => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+      throw new Error("Placement point " + (i + 1) + " must have finite x, y and z coordinates");
+    }
+    return clonePt3(point);
+  });
+  validateAdaptivePointConstraints(constraints, points.length);
+  if (driverIndex !== undefined) constraintPointIndex(driverIndex, points.length, "Drag driver");
+
+  for (const constraint of constraints) {
+    if (constraint.kind !== "coincident" && constraint.kind !== "distance") continue;
+    const driven = driverIndex === constraint.a ? "a"
+      : driverIndex === constraint.b ? "b"
+      : (constraint.driven ?? "b");
+    const movingIndex = driven === "a" ? constraint.a : constraint.b;
+    const anchorIndex = driven === "a" ? constraint.b : constraint.a;
+    const moving = points[movingIndex];
+    const anchor = points[anchorIndex];
+    if (constraint.kind === "coincident") {
+      points[movingIndex] = clonePt3(anchor);
+      continue;
+    }
+    let dx = moving.x - anchor.x;
+    let dy = moving.y - anchor.y;
+    let dz = moving.z - anchor.z;
+    let length = Math.hypot(dx, dy, dz);
+    if (length < 1e-9) {
+      dx = 1; dy = 0; dz = 0; length = 1;
+    }
+    const scale = constraint.distance / length;
+    points[movingIndex] = {
+      x: anchor.x + dx * scale,
+      y: anchor.y + dy * scale,
+      z: anchor.z + dz * scale,
+    };
+  }
+
+  // Absolute locks are applied last and cannot be displaced by relationships.
+  for (const constraint of constraints) {
+    if (constraint.kind === "fixed") {
+      points[constraint.pointIndex] = clonePt3(constraint.value);
+    } else if (constraint.kind === "axis") {
+      points[constraint.pointIndex][constraint.axis] = constraint.value;
+    }
+  }
+  return points;
+}
