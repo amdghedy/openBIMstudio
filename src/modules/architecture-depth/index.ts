@@ -262,18 +262,30 @@ export async function placeStackedWallFromDef(def: StackedWallDef): Promise<numb
     throw new Error("Invalid stacked wall: " + v.issues.map((i) => i.message).join("; "));
   }
   const members = expandStackedWall(def);
-  const a = auth();
-  if (!a || typeof a.addLinearElement !== "function") {
+  // addLinearElement lives on the authoring MODULE, not in the ctx.features
+  // api bag — lazy import keeps the dependency cycle-free (authoring does
+  // not import architecture-depth).
+  let place: Function | null = null;
+  try {
+    const mod: Any = await import("../../features/authoring");
+    if (typeof (mod as Any).addLinearElement === "function") place = (mod as Any).addLinearElement;
+  } catch { /* fall through to the bag */ }
+  if (!place) {
+    const a = auth();
+    if (typeof (a as Any)?.addLinearElement === "function") place = (a as Any).addLinearElement.bind(a);
+  }
+  if (!place) {
     throw new Error("Authoring is not ready — open a model first");
   }
+  const a = auth();
   let placed = 0;
   for (const m of members) {
-    // Member wall type drives the next-wall defaults (layers/name) when known.
-    if (m.wallType && getWallTypePreset(m.wallType)) applyWallTypePreset(m.wallType);
-    await a.addLinearElement(
-      "wall", m.x1, m.z1, m.x2, m.z2, m.elev,
-      { thickness: m.thickness, height: m.height },
-    );
+    // Member wall type drives the next-wall defaults (layers/name) when the
+    // bag exposes setTypeDefault; geometry (elev/height/thickness) is explicit.
+    if (m.wallType && getWallTypePreset(m.wallType) && typeof (a as Any)?.setTypeDefault === "function") {
+      applyWallTypePreset(m.wallType);
+    }
+    await place("wall", m.x1, m.z1, m.x2, m.z2, m.elev, { thickness: m.thickness, height: m.height });
     placed++;
   }
   try {
