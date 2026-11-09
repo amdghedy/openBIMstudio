@@ -1,4 +1,4 @@
-/** Revit-style editable temporary dimensions.
+/** RVT-style editable temporary dimensions.
  *  Click a dimension label -> type a value -> geometry updates.
  *  Lock button -> persistent dimensional constraint.
  *  Cycle button -> moves the dimension line through 4 witness sides.
@@ -123,7 +123,7 @@ function fmt(v: number): string {
 /**
  * Parse a user-typed dimension value. Accepts the formatted unit that the
  * chip itself displays ("3.564 m", "200 mm") plus plain numbers (metres,
- * the internal unit) — matching Revit's behaviour of typing what you see.
+ * the internal unit) — matching RVT's behaviour of typing what you see.
  */
 function parseDimInput(raw: string, kind: TempDimKind): number | null {
   const t = String(raw ?? "").trim().toLowerCase().replace(",", ".");

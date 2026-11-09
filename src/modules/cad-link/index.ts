@@ -1,6 +1,6 @@
 /**
  * CAD link engine (runtime): DWG / DXF links shown in 3D and in plan views,
- * placed with Revit-style options (units, positioning, rotation, level),
+ * placed with RVT-style options (units, positioning, rotation, level),
  * with per-layer visibility, snapping, persistence and reload.
  *
  * Pure maths lives in ./core.ts; this file owns the THREE group, the link
@@ -149,7 +149,7 @@ function ensureReaderWorker(): Worker {
         pendingParses.delete(res.id);
         resetReaderWorker(); // cancel = terminate the parser; the next import gets a fresh worker
         p.reject(new Error(
-          `${p.fileName}: the DWG parser did not finish within ${Math.round(DWG_PARSE_TIMEOUT_MS / 1000)}s and was cancelled. The drawing may be very large — retry once (the reader warms up), or re-save it from AutoCAD (SAVEAS, R2018) which usually shrinks the file.`,
+          `${p.fileName}: the DWG parser did not finish within ${Math.round(DWG_PARSE_TIMEOUT_MS / 1000)}s and was cancelled. The drawing may be very large — retry once (the reader warms up), or re-save it from DWG (SAVEAS, R2018) which usually shrinks the file.`,
         ));
       }, DWG_PARSE_TIMEOUT_MS);
       return;
@@ -245,12 +245,12 @@ export async function readDwgThumbnail(file: File): Promise<DwgThumbSuccess> {
 
 export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {
   const e = ext(file.name);
-  // .bak and .sv$ are AutoCAD drawing backup / autosave files — same DWG
+  // .bak and .sv$ are DWG drawing backup / autosave files — same DWG
   // container, so native CAD opens them directly ("recover from backup").
   const isDwg = e === "dwg" || e === "bak" || e === "sv$";
   if (isDwg) {
     const r = await readDwg(file);
-    const suffix = e === "dwg" ? "" : ` — recovered from AutoCAD ${e === "bak" ? "backup" : "autosave"} (.${e})`;
+    const suffix = e === "dwg" ? "" : ` — recovered from DWG ${e === "bak" ? "backup" : "autosave"} (.${e})`;
     return { ...r, summary: `${r.summary}${suffix}`, format: "dwg" };
   }
   if (e === "dxf") {
@@ -621,7 +621,7 @@ export async function restoreCadLinkFromBlob(blob: Blob, name: string, modelId?:
 }
 
 /* ------------------------------------------------------------------ */
-/* Dialog (Revit "Link CAD Formats")                                   */
+/* Dialog (RVT "Link CAD Formats")                                   */
 /* ------------------------------------------------------------------ */
 interface DialogInput {
   title: string;
@@ -748,7 +748,7 @@ export async function openLinkDialog(input: DialogInput): Promise<LinkOptions | 
 /* ------------------------------------------------------------------ */
 /* Interactive link / settings                                          */
 /* ------------------------------------------------------------------ */
-/** Revit-style: read the file, ask for placement, create the link. */
+/** RVT-style: read the file, ask for placement, create the link. */
 export async function linkCadFileInteractive(file: File): Promise<CadLink | null> {
   toast(`Reading ${file.name}...`, "info");
   let parsed: Awaited<ReturnType<typeof readCadFile>>;
@@ -760,7 +760,7 @@ export async function linkCadFileInteractive(file: File): Promise<CadLink | null
     uiAlert(
       `Could not read "${file.name}":\n${msg}\n\n` +
       (ext(file.name) === "dwg"
-        ? "Tip: in AutoCAD use SAVEAS and choose a DXF (ASCII, R2013 or R2018), then link the DXF."
+        ? "Tip: in DWG use SAVEAS and choose a DXF (ASCII, R2013 or R2018), then link the DXF."
         : "The file may not be an ASCII DXF. Binary DXF is not supported - save as ASCII DXF."),
     );
     return null;

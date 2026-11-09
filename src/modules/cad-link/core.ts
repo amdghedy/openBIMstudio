@@ -6,7 +6,7 @@
  * placed at world (X, Y, Z) = ( x', elevation + z*s, y' ) where (x', y') is
  * the scaled, rotated and translated drawing point.
  *
- * Positioning mirrors Revit's "Link CAD Formats" options:
+ * Positioning mirrors RVT's "Link CAD Formats" options:
  *   origin  - Auto - Origin to Origin (drawing 0,0 on the project origin)
  *   center  - Auto - Center to Center (drawing centre on the model centre)
  *   shared  - Auto - By Shared Coordinates (drawing is in survey coordinates)

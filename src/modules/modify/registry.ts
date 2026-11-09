@@ -23,7 +23,7 @@ export interface ModifyCommandDefinition {
   readonly group: ModifyCommandGroup;
   readonly kind: ModifyCommandKind;
   readonly icon: string;
-  /** Revit-style command alias, not a promise of a physical keyboard binding. */
+  /** RVT-style command alias, not a promise of a physical keyboard binding. */
   readonly commandAlias?: string;
   readonly selection: ModifySelectionRequirement;
   readonly sourceKinds: readonly ModifySourceKind[];
