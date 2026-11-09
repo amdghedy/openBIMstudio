@@ -367,9 +367,9 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding-right: var(--sp-3);
-  margin-right: var(--sp-3);
-  border-right: 1px solid var(--border-subtle);
+  padding-inline-end: var(--sp-3);
+  margin-inline-end: var(--sp-3);
+  border-inline-end: 1px solid var(--border-subtle);
   font: 600 12px var(--font-sans);
   color: var(--text-primary);
   letter-spacing: -0.01em;
@@ -415,7 +415,7 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
 .obs-ribbon__tab--file[data-active="1"]::after { background: var(--info); box-shadow: 0 0 8px var(--info); }
 
 .obs-ribbon__pill {
-  margin-left: auto;
+  margin-inline-start: auto;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
@@ -452,12 +452,12 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
   flex-direction: column;
   align-items: center;
   padding: 0 4px;
-  border-right: 1px solid var(--border-subtle);
+  border-inline-end: 1px solid var(--border-subtle);
   min-width: 0;
   flex: none;
   height: 100%;
 }
-.obs-ribbon-group:last-child { border-right: none; }
+.obs-ribbon-group:last-child { border-inline-end: none; }
 
 .obs-ribbon-group__body {
   flex: 1;
@@ -565,7 +565,7 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
 .obs-rb[data-planned="1"]::after {
   content: "";
   position: absolute;
-  top: 3px; right: 3px;
+  top: 3px; inset-inline-end: 3px;
   width: 3px; height: 3px;
   border-radius: 50%;
   background: var(--warning);
@@ -784,7 +784,7 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
 }
 .obs-card::before {
   content: "";
-  position: absolute; left: 0; top: 0; bottom: 0;
+  position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
   width: 2px;
   background: var(--accent);
   opacity: 0;
@@ -932,7 +932,7 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
   pointer-events: auto;
   background: var(--bg-floating);
   border: 1px solid var(--border-default);
-  border-left: 3px solid var(--accent);
+  border-inline-start: 3px solid var(--accent);
   color: var(--text-primary);
   padding: 9px 14px;
   border-radius: var(--r-md);
@@ -942,9 +942,9 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
   opacity: 0; transform: translateY(8px);
   animation: obs-toast-in .18s ease forwards;
 }
-.obs-toast[data-kind="warn"]    { border-left-color: var(--warning); }
-.obs-toast[data-kind="info"]    { border-left-color: var(--info); }
-.obs-toast[data-kind="success"] { border-left-color: var(--success); }
+.obs-toast[data-kind="warn"]    { border-inline-start-color: var(--warning); }
+.obs-toast[data-kind="info"]    { border-inline-start-color: var(--info); }
+.obs-toast[data-kind="success"] { border-inline-start-color: var(--success); }
 @keyframes obs-toast-in { to { opacity: 1; transform: translateY(0); } }
 .obs-toast.obs-toast--out { animation: obs-toast-out .2s ease forwards; }
 @keyframes obs-toast-out { to { opacity: 0; transform: translateY(8px); } }
@@ -1039,7 +1039,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   min-height: 88px; position: relative; overflow: hidden;
 }
 .obs-kpi::after {
-  content: ""; position: absolute; right: -20px; top: -24px; width: 80px; height: 80px; border-radius: 50%;
+  content: ""; position: absolute; inset-inline-end: -20px; top: -24px; width: 80px; height: 80px; border-radius: 50%;
   background: radial-gradient(circle, var(--accent-dim), transparent 65%);
 }
 .obs-kpi span { display: block; color: var(--text-tertiary); font-size: 10px; text-transform: uppercase; letter-spacing: .7px; }
@@ -1071,7 +1071,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 
 .obs-workspace-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; margin-top: 10px; }
 .obs-workspace-card {
-  display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 8px; text-align: left;
+  display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 8px; text-align: start;
   padding: 10px; border: 1px solid var(--border-subtle); border-radius: var(--r-md); background: var(--bg-base);
   color: var(--text-primary); transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), transform var(--dur) var(--ease);
 }
@@ -1419,7 +1419,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 .obs-mega {
   --mg: var(--accent); --mg-soft: rgba(56,189,248,.12); --mg-line: rgba(56,189,248,.34); --mg-glow: rgba(56,189,248,.22);
   position: relative; overflow: hidden;
-  display: flex; align-items: flex-start; gap: 14px; text-align: left;
+  display: flex; align-items: flex-start; gap: 14px; text-align: start;
   padding: 17px 18px; border-radius: 14px; cursor: pointer;
   border: 1px solid var(--mg-line);
   background: linear-gradient(180deg, var(--bg-elevated), var(--bg-surface));
@@ -1451,7 +1451,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 .obs-mega__desc { color: var(--text-tertiary); font-size: 10.5px; line-height: 1.5; }
 .obs-mega__specs { margin-top: 3px; color: var(--mg); font: 700 8.5px var(--font-mono); letter-spacing: .55px; }
 .obs-mega__go {
-  margin-left: auto; align-self: center; color: var(--mg);
+  margin-inline-start: auto; align-self: center; color: var(--mg);
   font-size: 19px; transition: transform .18s var(--ease);
 }
 .obs-mega:hover .obs-mega__go { transform: translateX(4px); }
@@ -1642,7 +1642,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 .obs-zone__stats .obs-kpi { min-height: 0; padding: 10px 12px; border-radius: 10px; }
 .obs-zone__stats .obs-kpi strong { margin-top: 4px; font-size: 17px; }
 .obs-zone__stats .obs-kpi small { margin-top: 3px; font-size: 9px; }
-.obs-zone__stats .obs-kpi::after { width: 56px; height: 56px; right: -18px; top: -20px; }
+.obs-zone__stats .obs-kpi::after { width: 56px; height: 56px; inset-inline-end: -18px; top: -20px; }
 
 /* 3D zone: project cards live inside the zone now */
 .obs-home__grid--inzone { grid-template-columns: minmax(0,1fr); gap: 7px; }

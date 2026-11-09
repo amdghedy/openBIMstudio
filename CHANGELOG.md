@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Right-to-left readiness (issue #141, partly)
+- The core stylesheets (`src/style.css`, `src/styles.css`) now use logical properties (`margin-inline-end`, `border-inline-start`, `inset-inline-end`, `text-align: start`) instead of left/right, so the ribbon, toasts, cards and KPIs mirror under `<html dir="rtl">` (set already for Arabic, Persian, Hebrew, Urdu) and render the same as before in LTR. A test keeps physical properties from coming back.
+- **Not done and not verified:** nothing was viewed in a browser in Arabic or Hebrew. Inline styles written in TypeScript (`style.cssText` in about 200 places), directional icons (undo/redo, chevrons, arrows), the 3D viewport tools and the CAD editor were not audited, and the issue's 100-string pseudo-localisation pass was not done.
+
 ### ICU messages and region-aware formatting (issue #140, partly)
 - Catalog strings may now use an ICU MessageFormat **subset**: `{n, plural, =0{…} one{# …} other{# …}}`, `select`, `{n, number}`, `{d, date}`, nesting and apostrophe quoting (`src/core/icu-lite.ts`). Plain `{name}` strings and the existing `{one, other}` plural objects keep working unchanged. Plural categories are checked for en, ar, ru, pl and fr.
 - New `fmtNumber`, `fmtDate`, `fmtTime`, `fmtDateTime` in `src/core/region.ts`; about 15 UI files that used the browser's own locale (`toLocaleString()`) now follow the active region profile. A test fails if new ones appear in `src/features` or `src/shell`.
