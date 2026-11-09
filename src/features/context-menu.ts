@@ -133,21 +133,21 @@ async function resolveLinkedSelection(e?: MouseEvent): Promise<Record<string, Se
 
 async function openCtxMenu(e: MouseEvent) {
   // An element of an opened RVT model under the cursor gets its own menu (Make editable native twin).
-  let revitItems: MenuItem[] | null = null;
+  let rvtItems: MenuItem[] | null = null;
   try {
-    const rv = await import("./revit-view");
-    const hit = rv.pickRevitAt(e);
+    const rv = await import("./rvt-view");
+    const hit = rv.pickRVTAt(e);
     if (hit) {
       const a = pickAuthoredHitAt(e);              // a nearer authored element (e.g. an existing twin) wins
-      if (!(a && a.distance < hit.distance)) { rv.ensureSelected(hit); revitItems = rv.revitMenuItems(hit) as MenuItem[]; }
+      if (!(a && a.distance < hit.distance)) { rv.ensureSelected(hit); rvtItems = rv.rvtMenuItems(hit) as MenuItem[]; }
     }
-  } catch { /* the Revit menu is optional */ }
-  const snap = revitItems ? {} as Record<string, Set<number>> : await resolveLinkedSelection(e);
+  } catch { /* the RVT menu is optional */ }
+  const snap = rvtItems ? {} as Record<string, Set<number>> : await resolveLinkedSelection(e);
   const authoredIds = getAuthoredSelection(); // read AFTER resolving: a right-click may have selected one
   const actionCount = Object.values(snap).reduce((a, v) => a + (v?.size ?? 0), 0);
 
   const have = new Set(listBimCommands().map((c) => c.id));
-  const items: MenuItem[] = revitItems ?? buildContextMenu({
+  const items: MenuItem[] = rvtItems ?? buildContextMenu({
     authoredCount: authoredIds.length,
     linkedCount: actionCount,
     clipboardCount: getModifyClipboardCount(),
