@@ -34,6 +34,11 @@ import { calcZoneLoadsDetailed } from "../modules/mep/hvac-loads";
 import type { ZoneLoadInput } from "../modules/mep/hvac-loads";
 import { buildPanelSchedule } from "../modules/mep/electrical";
 import type { ElectricalPanel, ElectricalLoad } from "../modules/mep/electrical";
+import { lumenMethod } from "../modules/mep/lighting";
+import { auditHostedElements } from "../modules/mep/hosted-elements";
+import type { HostGeometry, HostedRecord } from "../modules/mep/hosted-elements";
+import { panelDemandRollup } from "../modules/mep/demand-factors";
+import type { DemandItem, Occupancy } from "../modules/mep/demand-factors";
 import { fanSelection, pumpSelection } from "../modules/mep/equipment";
 import { sizeDrain, sizeDrainFromFixtures, totalDfu } from "../modules/mep/drainage";
 import type { DrainSlopeInFt } from "../modules/mep/drainage";
@@ -1091,7 +1096,154 @@ async function drainageDirectCalc(): Promise<void> {
   }
 }
 
-// ── Toolkit dispatcher ───────────────────────────────────────────────────
+/** Lighting design — lumen method layout + LPD check. */
+async function lightingLumenCalc(): Promise<void> {
+  const SAMPLE = JSON.stringify({
+    room: { name: "Open office", areaM2: 60, ceilingHeightM: 3, workPlaneM: 0.75, lengthM: 10, widthM: 6, reflectances: { ceiling: 70, wall: 50, floor: 20 } },
+    luminaire: { name: "600x600 LED panel", lampLumens: 4000, wattageW: 32, efficiency: 0.9, shrMax: 1.25 },
+    target: { targetLux: 500 },
+    spaceType: "office-open",
+  }, null, 1);
+  const vals = await openFormModal({
+    title: "Lighting Design \u2014 Lumen Method & LPD",
+    subtitle: "Room \u2192 maintained average lux, rows \u00D7 columns layout with SHR check and ASHRAE 90.1-style LPD",
+    width: 560,
+    fields: [
+      { kind: "textarea", key: "json", label: "Design JSON", default: SAMPLE, hint: "room{areaM2, ceilingHeightM, workPlaneM, lengthM, widthM, reflectances}, luminaire{lampLumens, wattageW, efficiency, shrMax, lampLumenDepreciation, luminaireDirtDepreciation}, target{targetLux, fixedCount?}, spaceType (office-open, classroom, warehouse-storage\u2026)." },
+    ],
+    submitLabel: "Design",
+  });
+  if (!vals) return;
+  let parsed: { room?: any; luminaire?: any; target?: any; spaceType?: string };
+  try { parsed = JSON.parse(String(vals.json)); } catch {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Design JSON is invalid", kind: "error" } }));
+    return;
+  }
+  if (!parsed.room || !parsed.luminaire || !parsed.target) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Provide 'room', 'luminaire' and 'target'", kind: "error" } }));
+    return;
+  }
+  try {
+    const r = lumenMethod(parsed.room, parsed.luminaire, parsed.target, parsed.spaceType);
+    showResultDialog("Lighting Design \u2014 Lumen Method", [
+      { label: "Luminaires", value: `${r.luminaireCount} (${r.rows} \u00D7 ${r.columns} grid)`, strong: true },
+      { label: "Maintained average", value: `${r.averageLux.toFixed(0)} lx (target ${parsed.target.targetLux} lx)` },
+      { label: "CU / LLF / RCR", value: `${r.cu.toFixed(2)} / ${r.llf.toFixed(2)} / ${r.rcr.toFixed(1)}` },
+      { label: "Spacing along \u00D7 across", value: `${r.spacingAlongM.toFixed(2)} \u00D7 ${r.spacingAcrossM.toFixed(2)} m ${r.spacingOk ? "\u2713 SHR ok" : "\u26A0 exceeds SHR"}`, strong: !r.spacingOk },
+      { label: "Installed power", value: `${r.installedPowerW.toFixed(0)} W \u00B7 LPD ${r.lpdWm2.toFixed(1)} W/m\u00B2${r.lpdAllowanceWm2 != null ? ` (allowance ${r.lpdAllowanceWm2} W/m\u00B2 \u2014 ${r.lpdOk ? "pass" : "FAIL"})` : ""}`, strong: r.lpdAllowanceWm2 != null && !r.lpdOk },
+    ], [
+      "Lumen method: N = E\u00B7A / (\u03A6\u00B7CU\u00B7LLF); CU estimated from RCR + reflectances; LLF = LLD\u00B7LDD\u00B7environment.",
+      "Spacing guard: grid spacing \u2264 SHR_max \u00D7 mounting height. Photometric layout (AGi32/Relux class) governs the final design.",
+      ...r.warnings,
+    ]);
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Lighting design failed: ${(e as Error).message}`, kind: "error" } }));
+  }
+}
+
+/** NEC 220 demand roll-up + dwelling optional method. */
+async function demandRollupCalc(): Promise<void> {
+  const SAMPLE = JSON.stringify({
+    occupancy: "office",
+    loads: [
+      { loadId: "L1", name: "Office lighting", connectedVA: 5000 },
+      { loadId: "R1", name: "Receptacles A", connectedVA: 12000 },
+      { loadId: "R2", name: "Receptacles B", connectedVA: 6000 },
+      { loadId: "M1", name: "AHU supply fan", connectedVA: 5500, isMotor: true },
+      { loadId: "M2", name: "Chilled pump", connectedVA: 3000, isMotor: true },
+      { loadId: "E1", name: "EV charger", connectedVA: 7200 },
+    ],
+  }, null, 1);
+  const vals = await openFormModal({
+    title: "Panel Demand \u2014 NEC 220 Code Factors",
+    subtitle: "Classified load pools: 220.42 lighting, 220.44 receptacles, 430.24 motors, 210.19 continuous \u2014 explicit demandFactor overrides win",
+    width: 560,
+    fields: [
+      { kind: "textarea", key: "json", label: "Loads JSON", default: SAMPLE, hint: "occupancy (dwelling|hotel|hospital|warehouse|school|office|retail|industrial); loads[{loadId, name, connectedVA, demandFactor?, isMotor?, isContinuous?}]." },
+    ],
+    submitLabel: "Roll up",
+  });
+  if (!vals) return;
+  let parsed: { occupancy?: Occupancy; loads?: DemandItem[] };
+  try { parsed = JSON.parse(String(vals.json)); } catch {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Loads JSON is invalid", kind: "error" } }));
+    return;
+  }
+  if (!Array.isArray(parsed.loads) || parsed.loads.length === 0) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Provide at least one load", kind: "error" } }));
+    return;
+  }
+  try {
+    const r = panelDemandRollup(parsed.loads as DemandItem[], parsed.occupancy ?? "office");
+    showResultDialog("Panel Demand \u2014 Code Roll-up", [
+      { label: "Connected / demand", value: `${r.connectedTotalVA.toFixed(0)} / ${r.demandTotalVA.toFixed(0)} VA`, strong: true },
+      { label: "Overall demand factor", value: `${(r.overallFactor * 100).toFixed(1)}%` },
+      ...r.categories.map((c) => ({
+        label: `${c.type} \u2014 ${c.connectedVA.toFixed(0)} VA connected`,
+        value: `${c.demandVA.toFixed(0)} VA \u00B7 ${c.rule}`,
+      })),
+    ], [
+      "Explicit per-load demandFactor always wins over the code table.",
+      "Abridged NEC tables for design aid \u2014 the governing installation code wins.",
+      ...r.notes,
+    ]);
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Demand roll-up failed: ${(e as Error).message}`, kind: "error" } }));
+  }
+}
+
+/** Hosted elements audit — orphans, mismatches, parametric follow. */
+async function hostedAuditCalc(): Promise<void> {
+  const SAMPLE = JSON.stringify({
+    hosts: [
+      { id: "wall-1", kind: "wall", origin: { x: 0, y: 0, z: 0 }, direction: { x: 1, y: 0, z: 0 }, lengthM: 8, heightM: 3, thicknessM: 0.2 },
+      { id: "duct-1", kind: "duct", origin: { x: 0, y: 2.8, z: 0 }, direction: { x: 1, y: 0, z: 0 }, lengthM: 12, sizeM: 0.4 },
+    ],
+    hosted: [
+      { id: "rec-1", kind: "receptacle", hostId: "wall-1", offsetM: 0.05, anchor: { u: 2, v: 1.1 } },
+      { id: "atm-1", kind: "air-terminal", hostId: "duct-1", offsetM: 0, anchor: { t: 0.25 } },
+      { id: "spk-1", kind: "sprinkler", hostId: "deleted-pipe", offsetM: 0, anchor: { t: 0.5 } },
+    ],
+  }, null, 1);
+  const vals = await openFormModal({
+    title: "Hosted Elements \u2014 Audit & Orphans",
+    subtitle: "Host relationships: fixtures\u2192ceiling, terminals\u2192duct, sprinklers\u2192pipe, receptacles\u2192wall \u2014 orphan/mismatch detection with parametric follow",
+    width: 560,
+    fields: [
+      { kind: "textarea", key: "json", label: "Model JSON", default: SAMPLE, hint: "hosts[{id, kind (wall|ceiling|floor|roof|duct|pipe|cable-tray|conduit|equipment), origin, direction, lengthM, heightM?, thicknessM?, sizeM?}], hosted[{id, kind, hostId, offsetM, anchor{u?,v?,v2?,t?}}]." },
+    ],
+    submitLabel: "Audit",
+  });
+  if (!vals) return;
+  let parsed: { hosts?: HostGeometry[]; hosted?: HostedRecord[] };
+  try { parsed = JSON.parse(String(vals.json)); } catch {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Model JSON is invalid", kind: "error" } }));
+    return;
+  }
+  if (!Array.isArray(parsed.hosted)) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Provide 'hosted'", kind: "error" } }));
+    return;
+  }
+  try {
+    const a = auditHostedElements({ hosts: (parsed.hosts ?? []) as HostGeometry[], hosted: parsed.hosted as HostedRecord[] });
+    const kindText = Object.entries(a.byKind).map(([k, n]) => `${n}\u00D7 ${k}`).join(", ") || "none";
+    showResultDialog("Hosted Elements \u2014 Audit", [
+      { label: "Hosted elements", value: `${a.total} (${kindText})`, strong: true },
+      { label: "Orphaned (host deleted)", value: `${a.orphaned.length}`, strong: a.orphaned.length > 0 },
+      { label: "Issues", value: `${a.issues.length}`, strong: a.issues.length > 0 },
+      { label: "Positions re-derived", value: `${a.updated.length} follow their hosts parametrically` },
+      ...a.orphaned.map((d) => ({ label: `\u26A0 ${d.code}`, value: d.message, strong: true })),
+      ...a.issues.map((d) => ({ label: `\u26A0 ${d.code}`, value: d.message, strong: true })),
+    ], [
+      "A hosted element keeps a parametric anchor on its host (u,v / t) \u2014 when the host moves, positions re-derive.",
+      "Deleted hosts orphan their hosted elements \u2014 rehost or delete them (Revit behaviour).",
+    ]);
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Host audit failed: ${(e as Error).message}`, kind: "error" } }));
+  }
+}
+
+// ── Toolkit dispatcher ────────────────────────────────────────────
 
 const TOOLKIT_ITEMS: Array<{ value: string; label: string }> = [
   { value: "fixture-demand", label: "Fixture-Unit Demand (Hunter curve)" },
@@ -1111,6 +1263,9 @@ const TOOLKIT_ITEMS: Array<{ value: string; label: string }> = [
   { value: "ach", label: "Air Changes \u2192 Airflow" },
   { value: "water-hammer", label: "Water Hammer Surge (Joukowsky)" },
   { value: "unit-convert", label: "Unit Converter" },
+  { value: "lighting-lumen", label: "Lighting Design \u2014 Lumen Method & LPD" },
+  { value: "demand-rollup", label: "Panel Demand \u2014 NEC 220 Code Factors" },
+  { value: "hosted-audit", label: "Hosted Elements \u2014 Audit & Orphans" },
 ];
 
 /**
@@ -1143,6 +1298,9 @@ export async function openMepDesignToolkit(): Promise<void> {
     "ach": achCalc,
     "water-hammer": waterHammerCalc,
     "unit-convert": unitConvertCalc,
+    "lighting-lumen": lightingLumenCalc,
+    "demand-rollup": demandRollupCalc,
+    "hosted-audit": hostedAuditCalc,
   };
   const run = runners[pick];
   if (run) await run();

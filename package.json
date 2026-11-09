@@ -216,7 +216,10 @@
     "test:kb-bim-rules": "node tests/kb-bim-rules.test.cjs",
     "test:mep-hvac-loads": "node tests/mep-hvac-loads.test.cjs",
     "test:mep-flow-assignment": "node tests/mep-flow-assignment.test.cjs",
-    "test:mep-panel-wire": "node tests/mep-panel-wire.test.cjs"
+    "test:mep-panel-wire": "node tests/mep-panel-wire.test.cjs",
+    "test:mep-lighting": "node tests/mep-lighting.test.cjs",
+    "test:mep-hosted-elements": "node tests/mep-hosted-elements.test.cjs",
+    "test:mep-demand-factors": "node tests/mep-demand-factors.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",

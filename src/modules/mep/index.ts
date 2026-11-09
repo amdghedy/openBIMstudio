@@ -33,6 +33,9 @@ import * as mepDrainage from "./drainage";
 import * as mepDistribution from "./distribution";
 import * as mepHvacLoads from "./hvac-loads";
 import * as mepFlowAssignment from "./flow-assignment";
+import * as mepLighting from "./lighting";
+import * as mepHostedElements from "./hosted-elements";
+import * as mepDemandFactors from "./demand-factors";
 
 export * from "./types";
 export * from "./connectors";
@@ -62,6 +65,9 @@ export * from "./drainage";
 export * from "./distribution";
 export * from "./hvac-loads";
 export * from "./flow-assignment";
+export * from "./lighting";
+export * from "./hosted-elements";
+export * from "./demand-factors";
 
 /** Public MEP service interface - what consumers call. */
 export interface MepService {
@@ -135,6 +141,12 @@ export function setupMep(): MepService {
   svcAny.hvacLoads = mepHvacLoads;
   svcAny.flowAssignment = mepFlowAssignment;
 
+  // MEP final-gap pack: lumen-method lighting design, the hosted-element
+  // (host relationship) engine and NEC 220 code demand factors.
+  svcAny.lighting = mepLighting;
+  svcAny.hostedElements = mepHostedElements;
+  svcAny.demandFactors = mepDemandFactors;
+
   // Register in the typed service registry + legacy ctx.features bag.
   try {
     register("mep" as any, svc as any);
@@ -149,7 +161,8 @@ export function setupMep(): MepService {
     "Use the __obsMep service (.route, .plumbing.fixtureUnitsToDemand, .fire.designDemand, " +
     ".electricalCalc.voltageDrop, .insulation, .runTools, .sizingMethods, .network.auditNetwork, " +
     ".equipment.fanSelection/.pumpSelection, .drainage.sizeDrain, .distribution.buildDistributionSummary, " +
-    ".hvacLoads.calcZoneLoadsDetailed, .flowAssignment.auditFromModel) " +
+    ".hvacLoads.calcZoneLoadsDetailed, .flowAssignment.auditFromModel, .lighting.lumenMethod, " +
+    ".hostedElements.auditHostedElements, .demandFactors.panelDemandRollup) " +
     "or the 'MEP Auto-Route…' / 'MEP Design Toolkit…' commands.",
   );
 
