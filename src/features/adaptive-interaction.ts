@@ -609,7 +609,6 @@ export function setupAdaptiveInteraction(targetApi: Any): Any {
   targetApi.cancelPlacement = cancelActive;
   targetApi.refreshGrips = refreshAdaptiveGrips;
   (ctx.features as Any).adaptiveInteraction = interactionApi;
-  (window as Any).__obsAdaptiveInteraction = interactionApi;
   if (typeof targetApi.connectFamilyTypePropagation === "function") targetApi.connectFamilyTypePropagation();
   installed = true;
   refreshAdaptiveGrips();
