@@ -2244,9 +2244,11 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
 
   if (!mesh) {
     try {
-      const __builders = (window as any).__obsMeshBuilders;
-      if (__builders && typeof __builders[el.type] === "function") {
-        const __custom = __builders[el.type](el);
+      const __featureBuilders = (ctx.features as any)?.meshBuilders;
+      const __legacyBuilders = (window as any).__obsMeshBuilders;
+      const __builder = __featureBuilders?.[el.type] ?? __legacyBuilders?.[el.type];
+      if (typeof __builder === "function") {
+        const __custom = __builder(el);
         if (__custom) {
           __custom.traverse((m: any) => {
             if (m.isMesh) {

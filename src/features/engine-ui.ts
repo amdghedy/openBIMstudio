@@ -32,6 +32,7 @@
 
 import { openFormModal } from "./form-modal";
 import { notify } from "../core/notify";
+import { ctx } from "../core/context";
 
 import {
   solveFrame,
@@ -740,7 +741,7 @@ export function rectProfile(halfW: number, halfD: number): ProfilePt[] {
 }
 
 function nativeAdaptiveApi(): Any {
-  return w.__obsAdaptiveAuthoring ?? w.__obsAdaptive ?? {};
+  return (ctx.features as Any).adaptiveComponents ?? {};
 }
 
 function profileForAdaptiveSweep(profile: ProfilePt[]): ProfilePt[] {

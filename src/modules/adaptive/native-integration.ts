@@ -50,7 +50,6 @@ export interface AdaptiveElementPatch {
   color?: string;
 }
 
-const w: Any = typeof window !== "undefined" ? (window as unknown as Any) : {};
 let installed = false;
 let idCounter = 0;
 
@@ -59,7 +58,7 @@ function clone<T>(value: T): T {
 }
 
 function authoring(): Any | null {
-  return (ctx as Any).features?.authoring ?? w.__obsAuthoring ?? null;
+  return (ctx.features as Any)?.authoring ?? null;
 }
 
 function validateDefinition(input: AdaptiveElementDefinition): AdaptiveElementDefinition {
@@ -297,12 +296,13 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
 
 export function setupAdaptiveAuthoring(): {
   create: typeof createAdaptiveElement;
+  createMany: typeof createAdaptiveElements;
   update: typeof updateAdaptiveElement;
   getDefinition: typeof getAdaptiveDefinition;
   buildMesh: typeof buildAdaptiveElementMesh;
 } {
   if (!installed) {
-    const builders = (w.__obsMeshBuilders ??= {}) as Any;
+    const builders = ((ctx.features as Any).meshBuilders ??= {}) as Any;
     builders["adaptive-component"] = buildAdaptiveElementMesh;
     const api = {
       create: createAdaptiveElement,
@@ -311,9 +311,8 @@ export function setupAdaptiveAuthoring(): {
       getDefinition: getAdaptiveDefinition,
       buildMesh: buildAdaptiveElementMesh,
     };
-    w.__obsAdaptiveAuthoring = api;
     (ctx.features as Any).adaptiveAuthoring = api;
     installed = true;
   }
-  return w.__obsAdaptiveAuthoring;
+  return (ctx.features as Any).adaptiveAuthoring;
 }

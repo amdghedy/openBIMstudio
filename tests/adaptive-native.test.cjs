@@ -25,7 +25,7 @@ execSync(
 );
 
 // Establish the minimum browser globals before importing the feature.
-global.window = { __obsMeshBuilders: {} };
+global.window = {};
 const { ctx } = require(path.join(out, "core/context.js"));
 const { history } = require(path.join(out, "features/history.js"));
 const adaptive = require(path.join(out, "modules/adaptive/native-integration.js"));
@@ -66,7 +66,7 @@ async function main() {
   assert.equal(typeof api.create, "function");
   assert.equal(typeof api.createMany, "function");
   assert.equal(typeof api.update, "function");
-  assert.equal(window.__obsMeshBuilders["adaptive-component"], adaptive.buildAdaptiveElementMesh);
+  assert.equal(ctx.features.meshBuilders["adaptive-component"], adaptive.buildAdaptiveElementMesh);
 
   const first = api.create({
     familyId: "test-rafter",
