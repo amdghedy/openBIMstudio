@@ -108,7 +108,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Interoperability",
     status: "experimental",
     source: ["src/modules/rvt/rvt-core.ts", "src/features/rvt-viewer.ts", "src/features/rvt-view.ts", "src/workers/rvt.worker.ts", "scripts/build-rvt-wasm.mjs"],
-    evidence: ["tests/rvt-viewer.test.cjs"],
+    evidence: ["tests/rvt-model-viewer.test.cjs"],
     limitations: [
       "The RVT view is read-only: geometry is reconstructed by the third-party rvt-rs reader (Apache-2.0), shapes can be simplified or missing, and only the properties the decoder can read are shown (not every native model parameter). Editing happens on a Native Twin made from an element, which is a tessellated copy (not the source application's parametric definition) and cannot be written back to the .rvt",
       "Tests run the real WebAssembly decoder and the real glTF loader only on synthetic data (a 20 KB fixture and a synthetic wall); no real project .rvt is in the test suite. Decoder confidence is shown on every open",

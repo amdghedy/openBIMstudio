@@ -68,7 +68,9 @@ t("wiring: DWG pipeline tries acadrust first, DXF file path too", () => {
   const libIdx = dwgCore.indexOf("await getReader()");
   assert.ok(acadIdx >= 0 && libIdx > acadIdx, "acadrust path must run before the libredwg reader");
   assert.ok(dxfReader.includes("parseWithAcadEngine"), "dxf-reader must call the acadrust engine");
-  assert.ok(dxfReader.includes(String.fromCharCode(65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70)), "binary DXF must be detected");
+  // the binary sentinel is written as char codes in the source (no vendor literal);
+  // assert the same detection expression is present
+  assert.ok(dxfReader.includes("String.fromCharCode(65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70)"), "binary DXF must be detected");
 });
 
 t("types: DxfHatch carries real pattern lines", () => {
