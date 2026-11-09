@@ -40,6 +40,7 @@ import {
   type DuctSegment, type PipeSegment, type PressureNetwork, type PressureResult,
 } from "./mep/pressure";
 
+import { setupAdaptiveAuthoring } from "./adaptive/native-integration";
 import {
   registerFamily, getFamily, listFamilies, instantiate, sweepProfile,
   meshVolume, profileArea, divideLine, divideArc, repeatAlongPath, pathLength,
@@ -162,8 +163,13 @@ export function setupEngineeringEngines(): void {
     repeatAlongPath,
     pathLength,
   };
-  w.__obsAdaptive = adaptiveApi;
-  features().adaptiveComponents = adaptiveApi;
+  // Native integration uses the existing authoring mesh-builder hook. The
+  // project element stores its family snapshot and placement points; meshes
+  // are regenerated from that stored definition on every authoring rebuild.
+  const adaptiveAuthoringApi = setupAdaptiveAuthoring();
+  const integratedAdaptiveApi = { ...adaptiveApi, ...adaptiveAuthoringApi };
+  w.__obsAdaptive = integratedAdaptiveApi;
+  features().adaptiveComponents = integratedAdaptiveApi;
 
   console.log(
     "[obs] v67 engines registered: __obsConstraints (numeric solver), __obsStructural (FEM + code checks), __obsMepPressure (hydraulics), __obsAdaptive (adaptive components)",
