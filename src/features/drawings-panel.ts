@@ -270,7 +270,7 @@ export function setupDrawingsPanel(): void {
       });
       cp.registerCommand?.({
         id: "drawings.exportCad",
-        label: "Export CAD to DXF",
+        label: "Export drawing to DXF",
         category: "Drafting",
         run: () => drawings().exportCadAsDxf?.(),
       });

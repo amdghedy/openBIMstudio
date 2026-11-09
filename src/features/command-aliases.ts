@@ -129,7 +129,7 @@ export function openCadAliasEditor(
   card.innerHTML =
     `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid #2a2e3a;background:#181a23;border-radius:10px 10px 0 0">` +
     `<div style="flex:1"><div style="font-weight:700;font-size:15px">Command Aliases <span style="color:#38bdf8;font-weight:600">(KS)</span></div>` +
-    `<div style="font-size:11px;color:#94a3b8;margin-top:2px">AutoCAD-style abbreviations — edit the alias, then Save. Example: L → LINE, C → CIRCLE.</div></div>` +
+    `<div style="font-size:11px;color:#94a3b8;margin-top:2px">standard drafting abbreviations — edit the alias, then Save. Example: L → LINE, C → CIRCLE.</div></div>` +
     `<button type="button" data-close style="width:28px;height:28px;border-radius:4px;background:transparent;color:#94a3b8;border:1px solid #2a2e3a;cursor:pointer">✕</button></div>`;
 
   const bar = document.createElement("div");
@@ -251,7 +251,7 @@ export function openCadAliasEditor(
   resetBtn.onclick = async () => {
     const ok = await confirmDialog(
       "Reset aliases",
-      "Clear all custom abbreviations and restore built-in AutoCAD-style defaults?",
+      "Clear all custom abbreviations and restore built-in standard drafting defaults?",
     );
     if (!ok) return;
     resetCadAliases();
@@ -279,7 +279,7 @@ export function closeCadAliasEditor(): void {
   host = null;
 }
 
-/** Open alias editor if CAD commands are available, else keyboard shortcuts. */
+/** Open alias editor if drawing commands are available, else keyboard shortcuts. */
 let cadAliasEditorOpener: (() => void) | null = null;
 
 /** Register the active drawing's alias editor without adding a window global. */

@@ -1613,7 +1613,7 @@ async function loadCadFileAsUnderlay(file: File) {
     const text = await file.text();
     // Store entity data for snap querying (lines, polylines, circles).
     const snapCount = storeUnderlayFromDxf(text);
-    console.log(`[plan] CAD underlay: ${snapCount} snap points stored for tracing`);
+    console.log(`[plan] Drawing underlay: ${snapCount} snap points stored for tracing`);
     const svgContent = dxfToSvgUnderlay(text);
     const blob = new Blob([svgContent], { type: "image/svg+xml" });
     cadUnderlayUrl = URL.createObjectURL(blob);
@@ -1624,7 +1624,7 @@ async function loadCadFileAsUnderlay(file: File) {
   }
   cadUnderlayVisible = true;
   applyCadUnderlay();
-  footerStatus(`CAD underlay linked: ${file.name} — trace walls/columns on top (snap enabled)`);
+  footerStatus(`Drawing underlay linked: ${file.name} — trace walls/columns on top (snap enabled)`);
 }
 
 async function linkCadVector(file: File): Promise<boolean> {
@@ -1659,7 +1659,7 @@ async function linkCadUnderlay() {
         await loadCadFileAsUnderlay(file);
       } catch (err) {
         console.error("[plan] CAD link failed", err);
-        uiAlert("Could not load CAD underlay. Use SVG, PNG, JPG, or DXF.");
+        uiAlert("Could not load drawing underlay. Use SVG, PNG, JPG, or DXF.");
       }
     };
     input.click();
@@ -1682,7 +1682,7 @@ function clearCadUnderlay() {
     cadImageEl?.remove();
     cadImageEl = null;
     clearUnderlayData();
-    footerStatus("CAD underlay cleared (snap data removed)");
+    footerStatus("Drawing underlay cleared (snap data removed)");
   } catch { /* */ }
 }
 
@@ -1735,7 +1735,7 @@ function applyCadUnderlay() {
 export function toggleUnderlayVisibility(): boolean {
   cadUnderlayVisible = !cadUnderlayVisible;
   applyCadUnderlay();
-  footerStatus(`CAD underlay: ${cadUnderlayVisible ? "visible" : "hidden"}`);
+  footerStatus(`Drawing underlay: ${cadUnderlayVisible ? "visible" : "hidden"}`);
   return cadUnderlayVisible;
 }
 
@@ -1743,7 +1743,7 @@ export function toggleUnderlayVisibility(): boolean {
 export function toggleUnderlaySnap(): boolean {
   const newState = !isUnderlaySnapEnabled();
   setUnderlaySnapEnabled(newState);
-  footerStatus(`CAD underlay snap: ${newState ? "ON" : "OFF"}`);
+  footerStatus(`Drawing underlay snap: ${newState ? "ON" : "OFF"}`);
   return newState;
 }
 
@@ -2601,7 +2601,7 @@ function renderPlan(plan: PlanView) {
     tip.setAttribute("font-size", String(0.4 * dimScale));
     tip.setAttribute("text-anchor", "middle");
     tip.setAttribute("font-family", "system-ui,sans-serif");
-    tip.textContent = "Floor Plan � use Wall tool to draw � Link CAD to trace � or load an IFC model";
+    tip.textContent = "Floor Plan � use Wall tool to draw � Link drawing to trace � or load an IFC model";
     g.appendChild(tip);
   }
 

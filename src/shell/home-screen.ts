@@ -44,8 +44,8 @@ const SHOWCASE = [
   {
     cls: "obs-page--2d",
     num: "01",
-    eyebrow: "2D DRAFTING & CAD",
-    title: "A real CAD engine — front and center.",
+    eyebrow: "2D DRAWING & DRAFTING",
+    title: "A native drawing engine — front and center.",
     copy:
       "No more hunting through tabs: the drafting engine is one click from this screen. " +
       "150 keyboard-first commands, file-faithful layer and style handling, and a LibreDWG-grade " +
@@ -190,7 +190,7 @@ function emitWorkspace(id: string) {
 }
 
 /* The two headline entries of the welcome screen.
-   2D → full-screen CAD editor; opens a blank drawing, no BIM project needed.
+   2D → full-screen drawing editor; opens a blank drawing, no BIM project needed.
    3D → the BIM platform: with a project, just leave the landing screen;
    without one, enter the default Coordination workspace (same path as the
    workspace cards, so behavior stays consistent). */
@@ -345,7 +345,7 @@ function buildStatic() {
         <button class="obs-mega obs-mega--2d" id="obs-hero-2d" type="button">
           <span class="obs-mega__glyph" aria-hidden="true">2D</span>
           <span class="obs-mega__body">
-            <b class="obs-mega__title">CAD Drafting Engine</b>
+            <b class="obs-mega__title">Drawing Engine</b>
             <span class="obs-mega__desc">Draw, annotate and plot in a full-screen drafting session — opens instantly, even without a project.</span>
             <span class="obs-mega__specs">150 COMMANDS · DWG/DXF r13–r2018 · LAYERS · HATCHES · PLOT</span>
           </span>

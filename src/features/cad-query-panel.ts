@@ -1,5 +1,5 @@
 /**
- * CAD Query panel — filter linked DXF/DWG entities by layer, type, name, colour, linetype.
+ * Drawing Query panel — filter linked DXF/DWG entities by layer, type, name, colour, linetype.
  * Actions: isolate matching layers, zoom to results, show/hide layers.
  */
 import { ctx } from "../core/context";
@@ -159,7 +159,7 @@ function showAllLayers() {
     ]);
     for (const name of allLayers) setCadLayerVisible(link.id, name, true);
   }
-  toast("All CAD layers visible", "info");
+  toast("All drawing layers visible", "info");
 }
 
 async function zoomToHits(hits: CadQueryHit[]) {
@@ -310,7 +310,7 @@ function buildPanel(): HTMLDivElement {
   actions.append(runBtn, isolateBtn, zoomBtn, resetBtn);
   body.appendChild(actions);
 
-  const status = el("div", "color:#94a3b8;font:11.5px system-ui", "Link CAD files, then run a query.");
+  const status = el("div", "color:#94a3b8;font:11.5px system-ui", "Link a drawing, then run a query.");
   body.appendChild(status);
 
   const tableWrap = el("div", CSS.tableWrap);
@@ -329,8 +329,8 @@ function buildPanel(): HTMLDivElement {
   const run = () => {
     const links = listCadLinks();
     if (!links.length) {
-      toast("No linked CAD drawings — Insert → Link CAD", "warn");
-      status.textContent = "No linked CAD drawings";
+      toast("No linked drawings — Insert → Link drawing", "warn");
+      status.textContent = "No linked drawings";
       tbody.innerHTML = "";
       return;
     }
@@ -398,5 +398,5 @@ export function setupCadQueryPanel(): void {
       isOpen: isCadQueryPanelOpen,
     };
   } catch { /* */ }
-  console.log("[cad-query] panel ready — query linked CAD by layer / type / name");
+  console.log("[cad-query] panel ready — query linked drawings by layer / type / name");
 }

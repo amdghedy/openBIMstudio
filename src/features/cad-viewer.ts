@@ -4,7 +4,7 @@
  * Provides:
  * - Classic AutoCAD Model Space & Layout / Paper Space views
  * - Full AutoCAD Crosshairs with central Pickbox
- * - Accurate AutoCAD Object Snaps (OSNAP F3) with official colored glyphs & snap tooltips
+ * - Object Snap support (F3) with colored glyphs and snap tooltips
  * - AutoCAD Dynamic Input HUD (F12) with real-time coordinate & polar @dist<ang readouts
  * - Authentic User Coordinate System (UCS) 2D/3D icon with World (WCS) & custom origin markers
  * - Interactive in-canvas ViewCube (Top/Front/Roll) and Navigation Bar (Pan/Zoom Extents/Window)
@@ -210,7 +210,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "QSAVE", aliases: ["SAVE"], description: "Save the edited drawing as a DXF file" },
   { name: "SAVEAS", aliases: ["SA"], description: "Choose DXF or DWG for export" },
   { name: "DWGSAVE", aliases: ["EXPORTDWG"], description: "Export the edited drawing as a native DWG file (in the version set by DWGVERSION)" },
-  { name: "DWGVERSION", aliases: ["DWGVER"], description: "Choose the AutoCAD version that DWG export writes (2000 to 2018)" },
+  { name: "DWGVERSION", aliases: ["DWGVER"], description: "Choose the target DWG version for export (2000 to 2018)" },
   { name: "DATAEXTRACT", aliases: ["EATTEXT", "DX"], description: "Export all entity data (layer, type, colour, geometry) to a CSV file" },
   { name: "LANDXMLIN", aliases: ["XMLIN"], description: "Import survey points from a LandXML CgPoints file" },
   { name: "SVGSAVE", aliases: ["EXPORTSVG"], description: "Export the current view as an SVG image" },
@@ -274,17 +274,17 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "FIELD", aliases: ["FLD"], description: "Insert text computed from the drawing (date, name, length, area...)" },
   { name: "DWGOPEN", aliases: [], description: "Open DWG / DXF drawings as new tabs in this editor (LibreDWG reader worker)" },
   { name: "DWGJSONIMP", aliases: ["JSONDUMP"], description: "Re-import a dwg2json database dump into the editor (JSON round trip)" },
-  { name: "DWGREWRITE", aliases: ["SAVETODXF"], description: "Re-save the drawing through the DXF writer (LibreDWG dwgrewrite parity)" },
-  { name: "DWG2JSON", aliases: [], description: "Dump the full drawing database as JSON (dwgread -O JSON parity)" },
-  { name: "DWG2SVG", aliases: [], description: "Flattened 2D vector export with per-entity colors (dwg2SVG parity)" },
-  { name: "DWG2GEOJSON", aliases: [], description: "Points / lines / polygons GeoJSON in drawing coordinates (dwg2geojson parity)" },
-  { name: "DWG2PS", aliases: [], description: "EPS export via moveto/lineto/arc — prints anywhere (dwg2ps parity)" },
-  { name: "DWGAUDIT", aliases: [], description: "DWG-grade integrity report: zero-length geometry, dangling refs, census (dwg_audit parity)" },
-  { name: "DWGTABLES", aliases: [], description: "Browse the LAYER / LTYPE / STYLE / DIMSTYLE tables (dwgread parity)" },
-  { name: "DWGCENSUS", aliases: [], description: "Count entities by type in model space (dwgread census parity)" },
-  { name: "DWGTHUMB", aliases: ["DWGBMP"], description: "Extract the embedded preview bitmap from a DWG file (dwg_bmp parity)" },
+  { name: "DWGREWRITE", aliases: ["SAVETODXF"], description: "Re-save the drawing through the DXF writer" },
+  { name: "DWG2JSON", aliases: [], description: "Dump the full drawing database as JSON" },
+  { name: "DWG2SVG", aliases: [], description: "Flattened 2D vector export with per-entity colors" },
+  { name: "DWG2GEOJSON", aliases: [], description: "Points / lines / polygons GeoJSON in drawing coordinates" },
+  { name: "DWG2PS", aliases: [], description: "EPS export via moveto/lineto/arc — prints anywhere" },
+  { name: "DWGAUDIT", aliases: [], description: "Drawing integrity report: zero-length geometry, dangling references and entity counts" },
+  { name: "DWGTABLES", aliases: [], description: "Browse the LAYER / LTYPE / STYLE / DIMSTYLE tables" },
+  { name: "DWGCENSUS", aliases: [], description: "Count entities by type in model space" },
+  { name: "DWGTHUMB", aliases: ["DWGBMP"], description: "Extract the embedded preview bitmap from a DWG file" },
   { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select all objects sharing type and layer with the current selection" },
-  { name: "KS", aliases: ["ALIASEDIT", "ALIASES", "SHORTCUTS"], description: "Edit command aliases (abbreviations) — AutoCAD-style" },
+  { name: "KS", aliases: ["ALIASEDIT", "ALIASES", "SHORTCUTS"], description: "Edit command aliases (abbreviations)" },
   /* ── Parametric tab: one-shot geometric + dimensional constraints ── */
   { name: "AUTOCONSTRAIN", aliases: ["ACON"], description: "Detect and exactify near-horizontal / vertical / concentric relations" },
   { name: "FIX", aliases: ["CONSTRAINTFIX"], description: "Pin objects — edits are refused until UNFIX" },
@@ -647,7 +647,7 @@ export function getCadAiState(): {
 export function runCadAiCommand(text: string): { ok: boolean; error?: string } {
   const trimmed = String(text ?? "").trim();
   if (!trimmed) return { ok: false, error: "No command text given." };
-  if (!shell || shell.style.display === "none") return { ok: false, error: "The 2D CAD engine is not open." };
+  if (!shell || shell.style.display === "none") return { ok: false, error: "The drawing editor is not open." };
   if (!ribbonActive) return { ok: false, error: "No active 2D drawing." };
   try {
     ribbonActive.runCommandText(trimmed);
@@ -691,7 +691,7 @@ function openTabMenu(x: number, y: number, tab: DocTab): void {
   }, 0);
 }
 
-/** AutoCAD application menu — the red "A" button dropdown. Dispatches to the
+/** Drawing application menu — the red "A" button dropdown. Dispatches to the
  *  active drawing's engine (shell-level actions like New/Save All stay here). */
 function openAppMenu(anchor: HTMLElement): void {
   document.querySelectorAll(".obs-cad-shell .cadmenu").forEach((m) => m.remove());
@@ -1098,7 +1098,7 @@ const CAD_CSS = `
       background: #0284c7; color: white;
     }
 
-    /* AutoCAD Status Tray Toggles */
+    /* Drawing status-tray toggles */
     .obs-status-btn {
       padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 600;
       background: transparent; border: 1px solid transparent; color: #94a3b8; cursor: pointer;
@@ -1135,7 +1135,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
       <!-- In-Canvas AutoCAD ViewCube -->
       <div class="obs-cad-viewcube">
-        <div class="vc-box" data-r="vc-home" title="AutoCAD ViewCube — Top View / Extents (Home)">
+        <div class="vc-box" data-r="vc-home" title="ViewCube — Top View / Extents (Home)">
           <div class="vc-compass">N</div>
           <div class="vc-label">TOP</div>
           <div class="vc-controls">
@@ -1156,7 +1156,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       </div>
 
       <div data-r="empty" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#9aa4b2;pointer-events:none">
-        <div style="font-size:18px;font-weight:600;color:#cbd5e1">AutoCAD Engine Ready — Drop DWG or DXF file here</div>
+        <div style="font-size:18px;font-weight:600;color:#cbd5e1">Drawing Engine Ready — Drop a DWG or DXF file here</div>
         <div style="font-size:12px;color:#64748b">or click Open from the Quick Access toolbar</div>
       </div>
 
@@ -1184,7 +1184,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   <!-- AutoCAD Command Window (Scrollable History + Autocomplete) -->
   <div class="obs-cad-cmd-container">
     <div class="obs-cad-cmd-history" data-r="cmdhist">
-      <div>Command: AutoCAD 2D/3D Engine Initialized. Type a command or alias (L, C, REC, Z, DI, LA...)</div>
+      <div>Command: Drawing engine initialized. Type a command or alias (L, C, REC, Z, DI, LA...)</div>
     </div>
     <div class="obs-cad-cmd-input-row">
       <span style="color:#38bdf8;font-weight:700;font-size:12px">Command:</span>
@@ -1197,7 +1197,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   <!-- AutoCAD Layout Tabs (Model, Layout1, Layout2...) -->
   <div data-r="tabs" style="display:none;gap:2px;padding:3px 8px 0;background:#151a23;border-top:1px solid #2a3140"></div>
 
-  <!-- AutoCAD Status Bar Tray -->
+  <!-- Drawing status-bar tray -->
   <div data-r="status" style="display:flex;align-items:center;gap:12px;padding:3px 10px;background:#0f1218;border-top:1px solid #2a3140;color:#9aa4b2;font-size:11px;font-variant-numeric:tabular-nums"></div>
   `;
 
@@ -1242,7 +1242,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     du: M.DisplayUnit = "drawing";
   const hidden = new Set<string>();
 
-  // AutoCAD Status toggles
+  // Drawing status toggles
   let snapOn = true;
   const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
   let orthoOn = false;
@@ -1897,7 +1897,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     c.restore();
   }
 
-  /** Paints AutoCAD Object Snap glyphs with tooltips */
+  /** Paints Object Snap glyphs with tooltips */
   function paintSnapGlyph(c: CanvasRenderingContext2D, v: M.View, s: M.Snap): void {
     const p = M.worldToScreen(v, s.x, s.y);
     c.save();
@@ -4768,7 +4768,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     measEl.innerHTML = results.length
       ? results.map((r) => `<div>${escapeHtml(r)}</div>`).join("") +
         `<div style="display:flex;gap:4px;margin-top:6px"><button data-r="mclr">Clear</button><button data-r="mcopy">Copy</button><button data-r="mcsv">CSV</button></div>`
-      : `<span style="color:#778">AutoCAD controls ready. Wheel zooms, drag pans, click selects. Type commands or pick tools.</span>`;
+      : `<span style="color:#778">Drawing controls ready. Wheel zooms, drag pans, click selects. Type commands or pick tools.</span>`;
     const b = measEl.querySelector<HTMLButtonElement>("[data-r=mclr]");
     if (b)
       b.onclick = () => {
@@ -5194,9 +5194,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "DWG Data",
-        rb("save", "Save DXF…", `data-a="dwg-rewrite"`, "Re-save the drawing through the DXF writer (LibreDWG dwgrewrite parity)") +
+        rb("save", "Save DXF…", `data-a="dwg-rewrite"`, "Re-save the drawing through the DXF writer") +
           rb("csv", "dwg2json", `data-a="dwg-2json"`, "Full database dump as JSON — entities, layers, tables, skipped census (dwgread -O JSON parity)") +
-          rb("spline", "dwg2SVG", `data-a="dwg-2svg"`, "Flattened 2D vector export with per-entity colors (dwg2SVG parity)") +
+          rb("spline", "dwg2SVG", `data-a="dwg-2svg"`, "Flattened 2D vector export with per-entity colors") +
           rb("topo", "dwg2geojson", `data-a="dwg-2geojson"`, "Points / lines / polygons FeatureCollection in drawing coordinates (dwg2geojson parity)") +
           rb("print", "dwg2ps", `data-a="dwg-2ps"`, "EPS via moveto/lineto/arc — prints anywhere (dwg2ps parity)") +
           rb("camera", "Thumbnail…", `data-a="dwg-thumb"`, "Extract the embedded preview bitmap from a DWG file — no geometry parsing (dwg_bmp parity)"),
@@ -7203,7 +7203,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       dynCommandInput.type = "text";
       dynCommandInput.autocomplete = "off";
       dynCommandInput.spellcheck = false;
-      dynCommandInput.setAttribute("aria-label", "CAD command or numeric input");
+      dynCommandInput.setAttribute("aria-label", "Drawing command or numeric input");
       dynCommandInput.placeholder = "Enter command…";
       dynCommandInput.style.cssText = "flex:1;min-width:0;background:transparent;border:0;outline:0;color:#f8fafc;font:12px Consolas,monospace";
       dynCommandHint = document.createElement("div");
@@ -8509,7 +8509,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd(`DWG export failed: ${message}`);
         status("DWG export failed");
       }
-      console.error("[CAD] DWG export failed:", error);
+      console.error("[Drawing] DWG export failed:", error);
     }
     window.setTimeout(() => status(""), 5000);
   }
@@ -8718,7 +8718,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   function doInfo(): void {
     if (!doc) return;
-    // Full AutoCAD-style STATUS report — everything the reader pulled out of
+    // Full drawing status report — everything the reader pulled out of
     // the file's tables and entities, so "what did we read" is answerable in UI.
     const ltNames = Object.keys(doc.linetypes ?? {});
     const styleEntries = Object.entries(doc.textStyles ?? {});
@@ -8734,7 +8734,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       .filter(([, n]) => n > 0)
       .map(([k, n]) => `${k} (${n})`);
     const panel = openOverlay(`
-        <b style="font-size:15px;color:#38bdf8">AutoCAD Drawing Database Status</b>
+        <b style="font-size:15px;color:#38bdf8">Drawing Database Status</b>
         <table style="margin-top:10px;font-size:12px;width:100%">
           <tr><td>File Name:</td><td>${escapeHtml(name)}</td></tr>
           <tr><td>Database Format:</td><td>${escapeHtml((doc.sourceFormat ?? "").toUpperCase())}</td></tr>
@@ -9317,7 +9317,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "Window",
         rb("issues", "Help", `data-a="help"`, "AutoCAD Shortcuts & Commands (?)") +
-          rb("close", "Close", `data-a="close"`, "Close the CAD viewer", "cadrb--danger"),
+          rb("close", "Close", `data-a="close"`, "Close the drawing editor", "cadrb--danger"),
         "",
         "cadrg--end",
         "output",

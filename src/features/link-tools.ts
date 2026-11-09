@@ -151,7 +151,7 @@ export function linkCad() {
       } catch { /* */ }
       togglePlanView();
       toast(
-        `CAD file ready: ${file.name}. In Plan view click “Link drawing” or the underlay will attach if auto-linked.`,
+        `Drawing file ready: ${file.name}. In Plan view click “Link drawing” or the underlay will attach if auto-linked.`,
         "success",
       );
       // Try auto-link into plan if handler exists
@@ -159,7 +159,7 @@ export function linkCad() {
         const auto = (window as any).__obsAutoLinkCad;
         if (typeof auto === "function") await auto(file);
       } catch (e) {
-        console.warn("[link-cad] auto underlay", e);
+        console.warn("[link-drawing] auto underlay", e);
       }
       return;
     }
@@ -167,7 +167,7 @@ export function linkCad() {
     // 3D model references
     await importFiles(files);
     markDirty();
-    toast(`Linked CAD reference: ${file.name}`, "success");
+    toast(`Linked drawing reference: ${file.name}`, "success");
   });
 }
 
