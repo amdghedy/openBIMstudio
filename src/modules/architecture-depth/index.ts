@@ -229,21 +229,17 @@ export function setupArchitectureDepth(): void {
   } catch {
     /* authoring may boot later */
   }
-  try {
-    (window as any).__obsArchitectureDepth = {
-      wireJoinsToAuthoring,
-      applyWallTypePreset,
-      applyWallTypeToElement,
-      applyWallTypeToElements,
-      inferWallTypeId,
-      listWallTypePresets,
-      getWallTypePreset,
-      presets: WALL_TYPE_PRESETS,
-      version: 4,
-    };
-  } catch {
-    /* */
-  }
+  (ctx.features as Any).architectureDepth = {
+    wireJoinsToAuthoring,
+    applyWallTypePreset,
+    applyWallTypeToElement,
+    applyWallTypeToElements,
+    inferWallTypeId,
+    listWallTypePresets,
+    getWallTypePreset,
+    presets: WALL_TYPE_PRESETS,
+    version: 4,
+  };
   console.log(
     "[architecture-depth] compound walls + openings, curtain systems, joins service wired",
   );

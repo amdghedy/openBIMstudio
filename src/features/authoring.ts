@@ -2041,7 +2041,7 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
   // Curtain wall system — mullions + panels (not a solid wall slab)
   if (el.type === "curtain-wall" && p.start && p.end) {
     try {
-      const cw = (window as any).__obsCurtainWall;
+      const cw = (ctx.features as any).curtainWall;
       if (cw && typeof cw.buildFromElement === "function") {
         const g = cw.buildFromElement(el);
         if (g) return g;

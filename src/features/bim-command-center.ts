@@ -157,7 +157,7 @@ function buildBody(host: HTMLElement): void {
   const ready: string[] = [];
   if (has("__obsStairs")) ready.push("Stairs");
   if (has("__obsRailings")) ready.push("Railings");
-  if (has("__obsCurtainWall")) ready.push("Curtain");
+  if ((ctx.features as Any).curtainWall) ready.push("Curtain");
   if (has("__obsRooms")) ready.push("Rooms");
   if (has("__obsPhases")) ready.push("Phases");
   if ((ctx.features as any).visibility) ready.push("Visibility");
@@ -184,7 +184,7 @@ function buildBody(host: HTMLElement): void {
       }, has("__obsRailings") || !!(ctx.features as any).bimParity),
       btn("Curtain Wall", "Mullions + panels", async () => {
         await (ctx.features as any).bimParity?.placeCurtainWall?.();
-      }, has("__obsCurtainWall") || !!(ctx.features as any).bimParity),
+      }, !!(ctx.features as any).curtainWall || !!(ctx.features as any).bimParity),
       btn("Parametric Fam", "Ctrl+Shift+F", () => {
         (window as Any).__obsParamFamilyPanel?.toggle?.();
       }, true),

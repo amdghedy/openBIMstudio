@@ -88,8 +88,9 @@ export function buildPlaceOptions(tool: string, bar: HTMLElement): void {
   }, 150), sep());
 
   if (WALLS.has(tool)) {
-    bar.append(label("Height:"), num(Number(p().height ?? 3), "Wall height (m)", (v) => dim("height", v), { min: 0.01, width: 64 }));
-    bar.append(label("Thickness:"), num(Number(p().thickness ?? 0.2), "Wall thickness (m)", (v) => dim("thickness", v), { min: 0.005, width: 64 }));
+    const heightControl = num(Number(p().height ?? 3), "Wall height (m)", (v) => dim("height", v), { min: 0.01, width: 64 });
+    const thicknessControl = num(Number(p().thickness ?? 0.2), "Wall thickness (m)", (v) => dim("thickness", v), { min: 0.005, width: 64 });
+    bar.append(label("Height:"), heightControl, label("Thickness:"), thicknessControl);
     bar.append(label("Base offset:"), num(getOffset(tool), "Base offset from the level (m)", (v) => setOffset(tool, v), { width: 64 }), sep());
     const typeOpts = listWallTypePresets()
       .filter((pr) => (tool === "curtain-wall" ? pr.kind === "curtain" : pr.kind !== "curtain"))
@@ -100,13 +101,12 @@ export function buildPlaceOptions(tool: string, bar: HTMLElement): void {
       bar.append(
         label("Type:"),
         select(cur, typeOpts, (v) => {
-          applyWallTypePreset(v);
-          // Re-sync thickness/height fields by re-invoking parent render if exposed
-          try {
-            (window as any).__obsRefreshPlaceOptions?.();
-          } catch {
-            /* */
-          }
+          const preset = applyWallTypePreset(v);
+          if (!preset) return;
+          const heightInput = heightControl.querySelector("input");
+          const thicknessInput = thicknessControl.querySelector("input");
+          if (heightInput) heightInput.value = String(preset.height);
+          if (thicknessInput) thicknessInput.value = String(preset.thickness);
         }, 200),
       );
     }

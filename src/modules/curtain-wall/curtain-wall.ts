@@ -487,6 +487,5 @@ export function setupCurtainWall(): void {
     mullionGeometry,
   };
   (ctx.features as any).curtainWall = api;
-  (window as any).__obsCurtainWall = api;
   console.log("[curtain-wall] system ready (profiles, panel types, curved, corners, authored path)");
 }

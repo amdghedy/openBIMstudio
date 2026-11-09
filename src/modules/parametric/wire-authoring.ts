@@ -161,17 +161,5 @@ export function wireParametricToAuthoring(): void {
     a?.rebuildAuthored?.();
   });
 
-  try {
-    (window as any).__obsParametric = {
-      linkEqualParam,
-      unlinkEqualParam,
-      propagateEqualParam,
-      onParametricParamWritten,
-      wireParametricToAuthoring,
-      version: 1,
-    };
-  } catch {
-    /* */
-  }
   console.log("[parametric] regen wired to authoring · equal height/thickness links live");
 }
