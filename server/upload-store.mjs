@@ -23,8 +23,9 @@ const EXT_SIG = {
   ".dxf": (head, buf) => {
     // DXF is ASCII (or binary with sentinel String.fromCharCode(65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70)). Accept
     // either a text control pair at the start or the binary sentinel.
-    if (head.startsWith(String.fromCharCode(65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70))) return true;
-    const text = buf.subarray(0, 4096).toString("latin1");
+    const binarySignature = [65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70];
+    if (buf.length >= binarySignature.length && binarySignature.every((value, index) => buf[index] === value)) return true;
+    const text = Buffer.from(buf.subarray(0, 4096)).toString("latin1");
     return /\b0\s*\r?\n\s*SECTION\b/.test(text) || /\b999\b/.test(text.slice(0, 64));
   },
   ".dwg": (head) => /^AC10(1[2-9]|2[0-9]|3[0-9])/.test(head),

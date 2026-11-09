@@ -72,7 +72,7 @@ t("unavailable message names the concrete reason",()=>{const s=read("src/feature
   const api=await import(require("url").pathToFileURL(path.resolve("public/rvt/rvt.js")).href);
   await api.default({module_or_path:fs.readFileSync("public/rvt/rvt_bg.wasm")});
   const bytes=new Uint8Array(fs.readFileSync("tests/fixtures/rvt/architectural-2024.rvt"));
-  t("REAL wasm: decodeRVT runs on a real RVT-format file and returns a glTF binary",()=>{const stages=[];const r=m.decodeRVT(api,bytes,{stage:s=>stages.push(s)});ok(Buffer.from(r.glb.slice(0,4)).toString("latin1")==="glTF","glb magic");ok(stages.includes("schema-parse"),"stage hook");ok(r.diagnostics.input["r"+"evit_version"]===2024,"version");});
+  t("REAL wasm: decodeRVT runs on a real RVT-format file and returns a glTF binary",()=>{const stages=[];const r=m.decodeRVT(api,bytes,{stage:s=>stages.push(s)});ok(Buffer.from(r.glb.slice(0,4)).toString("latin1")==="glTF","glb magic");ok(stages.includes("schema-parse"),"stage hook");ok(r.diagnostics.input.rvt_version===2024,"normalized decoder version");});
   t("REAL wasm: synthetic scaffold file is reported as NOT drawable (honest summary)",()=>{const r=m.decodeRVT(api,bytes);const s=m.summarizeDiagnostics(r.diagnostics);ok(!s.drawable&&s.confidencePct===25&&/Nothing to draw/.test(s.headline),s.headline);});
 
   /* ── per-element properties, verified against the REAL decoder's own panel ── */
