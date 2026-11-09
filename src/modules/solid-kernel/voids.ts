@@ -374,7 +374,7 @@ export function cutVoids(solid: IndexedMesh, voids: VoidShape[]): VoidCutResult 
     }
     if (!confirmed) {
       // Contained void: no surface crossing, but the void centre may sit
-      // inside the solid — robust parity vote settles it.
+      // inside the solid — robust odd-even vote settles it.
       const c = voids[vi].center;
       if (isInsideRobust(current, { x: c.x, y: c.y, z: c.z })) confirmed = true;
     }

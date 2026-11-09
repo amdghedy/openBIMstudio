@@ -269,7 +269,7 @@ export function startM2Tool(kind: M2Kind, shape: StairShape = "straight"): void 
 /* ----------------------------------------------------------------- redirects */
 
 let wrapped = false;
-/** Route the legacy tool names (ST / RA / CW / RF / CL, ramp) and the origin-dropping parity buttons to these tools. */
+/** Route the legacy tool names (ST / RA / CW / RF / CL, ramp) and the origin-dropping compatibility buttons to these tools. */
 export function installM2Redirects(): void {
   const w = window as Any;
   w.__obsM2 = { start: startM2Tool, cancel: cancelM2Tool, create: createM2Element, ceilingsFromRooms };

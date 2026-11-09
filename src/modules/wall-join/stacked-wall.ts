@@ -1,13 +1,13 @@
 /**
  * Stacked wall element — one authored wall composed of vertical members
- * with different wall types (Revit: "Stacked Wall", e.g. brick base 0–2.4 m
+ * with different wall types (RVT: "Stacked Wall", e.g. brick base 0–2.4 m
  * + metal panel 2.4–4.2 m placed and edited as a single element).
  *
- * Parity notes (documented honestly):
- *   - Revit's stacked-wall UI allows 2 members; the data model allows N and
+ * Compatibility notes (documented honestly):
+ *   - RVT's stacked-wall UI allows 2 members; the data model allows N and
  *     so do we (2 is the common case, N covers precast/composite builds).
  *   - All members share the plan location line — by construction here.
- *   - Revit requires a single thickness across members; we flag mixed
+ *   - RVT requires a single thickness across members; we flag mixed
  *     thicknesses as a warning instead of rejecting (precast edges case).
  *   - Members are contiguous: member i's top is member i+1's base. Gaps
  *     and overlaps are impossible in the expanded output — validation is
@@ -121,7 +121,7 @@ export function validateStackedWall(def: StackedWallDef, opts: { warnMixedThickn
   if (members.length >= 2 && warnMixed && eff.some((t) => Math.abs(t - eff[0]) > 1e-9)) {
     issues.push({
       code: "thickness",
-      message: `members have mixed thicknesses (${eff.map((t) => t.toFixed(3)).join(", ")} m) — Revit stacked walls share one thickness`,
+      message: `members have mixed thicknesses (${eff.map((t) => t.toFixed(3)).join(", ")} m) — RVT stacked walls share one thickness`,
     });
   }
 

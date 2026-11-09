@@ -161,7 +161,7 @@ export function setupConstraintSolver(): void {
   );
 }
 
-// ─── Live drag-solve (Revit parity: constraints re-enforce after a move) ──
+// ─── Live drag-solve (RVT compatibility: constraints re-enforce after a move) ──
 
 const AUTO_SOLVE_KEY = "obs-constraint-autosolve";
 let autoEngine: AutoSolveEngine | null = null;

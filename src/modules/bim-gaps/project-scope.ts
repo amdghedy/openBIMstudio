@@ -1,5 +1,5 @@
 /**
- * Per-project persistence for the "BIM parity" stores.
+ * Per-project persistence for the "BIM compatibility" stores.
  *
  * Problem this fixes: rooms, areas, phases, design options, groups, reference
  * planes, shared / project parameters and copy-monitor rules were saved only in
