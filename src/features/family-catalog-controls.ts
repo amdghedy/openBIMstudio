@@ -59,7 +59,7 @@ function renderSharedParameterManager(root: HTMLElement): void {
           key: "type",
           label: "Data type",
           default: "string",
-          options: allowed.map((type) => [type, type]),
+          options: allowed.map((type) => [type, type] as [string, string]),
         },
       ],
       onSubmit: (values) => {
