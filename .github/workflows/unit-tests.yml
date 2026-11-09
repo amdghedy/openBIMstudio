@@ -133,6 +133,7 @@ jobs:
 
   browser-smoke:
     name: Browser smoke (non-blocking)
+    needs: quality
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -147,6 +148,8 @@ jobs:
         run: npm ci
       - name: Install Playwright and Chromium
         run: npm i --no-save @playwright/test@1.49.1 && npx playwright install --with-deps chromium
+      - name: Build production app for browser tests
+        run: npm run build
       - name: Run browser specs
         run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts --reporter=list
       - name: Upload report and screenshots
