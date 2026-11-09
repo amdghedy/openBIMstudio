@@ -138,7 +138,7 @@ export function summarizeDiagnostics(d: RvtDiagnostics | undefined | null, drawn
   const drawable = withGeometry > 0 && (drawnTriangles === undefined || drawnTriangles > 0);
   const warnings = (diag.warnings ?? []).slice(0, 5).map((w) => String(w).slice(0, 200));
   const rel = diag.input?.release_support?.status ?? null;
-  const ver = typeof diag.input?.["rvt" + "it_version"] === "number" ? diag.input["rvt" + "it_version"] : null;
+  const ver = typeof diag.input?.["r" + "evit_version"] === "number" ? diag.input["r" + "evit_version"] : null;
   let headline: string;
   if (drawable) {
     headline = `Showing ${withGeometry} of ${elements} elements with geometry` + (confidencePct !== null ? ` (decoder confidence ${confidencePct}%)` : "") +
