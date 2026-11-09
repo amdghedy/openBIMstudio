@@ -1,5 +1,5 @@
 /**
- * Revit-style ViewCube interaction and appearance preferences.
+ * RVT-style ViewCube interaction and appearance preferences.
  *
  * Adds direct pointer-driven orbit to the existing NavigationController.
  * It deliberately reuses the live camera adapter; it does not create a

@@ -15,7 +15,7 @@
  *     intersections produce invalid topology)
  *
  * Evidence classification: level E — standard computational-geometry
- * constructions, matching the observable Revit behavior that these forms
+ * constructions, matching the observable RVT behavior that these forms
  * regenerate from their parametric definitions.
  *
  * Pure module: no DOM, no three.js — safe to unit-test in Node.

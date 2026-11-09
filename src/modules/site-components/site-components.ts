@@ -1,7 +1,7 @@
 /**
  * Site Components Library — parking, planting, site furniture, equipment.
  *
- * BIM-equivalent of Revit's "Site Component" / "Parking Component" /
+ * BIM-equivalent of RVT's "Site Component" / "Parking Component" /
  * "Planting" tools. Generates lightweight parametric objects suitable for
  * scattering on a toposurface or pad.
  *

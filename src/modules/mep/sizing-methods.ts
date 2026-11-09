@@ -1,6 +1,6 @@
 /**
  * MEP sizing by friction rate and static regain — the two sizing methods
- * Revit offers alongside velocity sizing.
+ * RVT offers alongside velocity sizing.
  *
  * Pure module: no DOM, no three.js, no ctx. Safe to unit-test in Node.
  *
