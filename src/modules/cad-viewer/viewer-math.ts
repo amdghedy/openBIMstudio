@@ -61,7 +61,7 @@ export function angleInArc(a: number, s: number, e: number): boolean {
 export const arcSweepDeg = (s: number, e: number) => norm360(e - s) || 360;
 
 /**
- * Canvas font stack for a TEXT. AutoCAD SHX stroke fonts have no web equivalent, so they map to the
+ * Canvas font stack for a TEXT. DWG SHX stroke fonts have no web equivalent, so they map to the
  * closest look: simplex/iso/romans/standard -> clean sans, txt/monotxt -> monospace, roman/times/serif TTFs -> serif.
  */
 export function textFontCss(e: Extract<DxfEntity, { type: "TEXT" }>, px: number): string {
@@ -77,7 +77,7 @@ export function textFontCss(e: Extract<DxfEntity, { type: "TEXT" }>, px: number)
   return `${e.italic ? "italic " : ""}${e.bold ? "bold " : ""}${px}px ${stack}`;
 }
 
-/** AutoCAD default MTEXT line pitch = 5/3 of the text height. */
+/** DWG default MTEXT line pitch = 5/3 of the text height. */
 export const TEXT_LINE_PITCH = 5 / 3;
 
 /** A styled slice of text inside a TEXT/MTEXT (from inline MTEXT format codes). */
@@ -550,7 +550,7 @@ export function segSegIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
 const TIER: Record<SnapKind, number> = { endpoint: 0, midpoint: 0, center: 0, quadrant: 0, intersection: 1, perpendicular: 1, tangent: 1, parallel: 1, nearest: 2 };
 
 /**
- * Object snap. Optional `fromPt` enables AutoCAD-style PERPENDICULAR: the foot
+ * Object snap. Optional `fromPt` enables DWG-style PERPENDICULAR: the foot
  * of the perpendicular from `fromPt` onto nearby segments, when that foot is
  * within `tol` of the cursor (so the user is aiming near the true foot).
  */
@@ -600,7 +600,7 @@ export function findSnap(
   const referenceSegments: Array<[Pt, Pt]> = [];
   for (const i of [...new Set([...ids, ...referenceIds])]) referenceSegments.push(...entitySegments(entities[i]));
 
-  // PERPENDICULAR (AutoCAD PERP): foot from the previous point to a segment.
+  // PERPENDICULAR (DWG PERP): foot from the previous point to a segment.
   if (on.has("perpendicular") && fromPt) {
     const seen = new Set<string>();
     for (const [a, b] of referenceSegments) {
@@ -769,7 +769,7 @@ export function hatchFamilies(pattern: string | undefined, angle = 0, scale = 1)
   return row.map(([a, sp]) => ({ angle: a + angle, spacing: sp * sc }));
 }
 
-/** Lines of one hatch family covering `box`, anchored at the drawing origin like AutoCAD. Segment = [x1,y1,x2,y2]. */
+/** Lines of one hatch family covering `box`, anchored at the drawing origin like DWG. Segment = [x1,y1,x2,y2]. */
 export function hatchLineSegments(box: BBox, angleDeg: number, spacing: number, maxLines = 4000): Array<[number, number, number, number]> {
   if (!(spacing > 0)) return [];
   const a = angleDeg * DEG, dx = Math.cos(a), dy = Math.sin(a), nx = -dy, ny = dx;
@@ -789,7 +789,7 @@ export function hatchLineSegments(box: BBox, angleDeg: number, spacing: number, 
  * Each family is one pattern-line definition straight from the file (already
  * transformed into drawing space by the mapper): `angle` in radians, `base`
  * the line's anchor point, `offset` the vector to the next parallel line
- * (perpendicular spacing plus the along-line shift AutoCAD uses) and `dashes`
+ * (perpendicular spacing plus the along-line shift DWG uses) and `dashes`
  * the alternating dash(+)/gap(−) lengths anchored at each line origin.
  * Segment = [x1,y1,x2,y2] in world coordinates.
  */
@@ -842,7 +842,7 @@ export function hatchPatternLineSegments(
         continue;
       }
       // Dashed family line: dash pattern repeats with period patternLen,
-      // anchored at the line origin (w = 0) like AutoCAD.
+      // anchored at the line origin (w = 0) like DWG.
       const first = Math.floor(wMin / patternLen);
       const last = Math.ceil(wMax / patternLen);
       for (let rep = first; rep <= last; rep++) {
@@ -988,7 +988,7 @@ export function quickMeasureParts(e: DxfEntity): Array<{ label: string; value: n
 
 /* ───────────────────────── grip editing ───────────────────────── */
 
-/** One AutoCAD grip hotspot on an entity (unselected: blue, hover: green, hot: red). */
+/** One DWG grip hotspot on an entity (unselected: blue, hover: green, hot: red). */
 export interface Grip {
   x: number;
   y: number;
@@ -1004,7 +1004,7 @@ const gripCircle = (e: Extract<DxfEntity, { type: "CIRCLE" }>): Grip[] => [
 ];
 
 /**
- * AutoCAD grip hotspots for an entity: blue squares that can be dragged to
+ * DWG grip hotspots for an entity: blue squares that can be dragged to
  * stretch (LINE ends, polyline vertices), move (center / insertion), or
  * resize (circle/arc radius, arc angles). Grip count is naturally bounded —
  * callers may cap it for huge selections.

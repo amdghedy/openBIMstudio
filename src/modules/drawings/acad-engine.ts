@@ -720,7 +720,7 @@ function hatchOf(e: Any, cx: Ctx): DxfHatch | null {
   // Real pattern definition lines — lets the renderer draw the actual
   // ANSI/ISO pattern instead of a placeholder. The file stores the definition
   // in pattern space; apply the hatch's pattern angle and scale here so the
-  // renderer receives drawing-space families (same transform AutoCAD applies).
+  // renderer receives drawing-space families (same transform DWG applies).
   const lines = (e.patternLines ?? []) as Any[];
   if (!solid && lines.length) {
     const sc = Number(e.patternScale ?? 1) || 1;
@@ -964,5 +964,5 @@ export function looksLikeDrawing(bytes: Uint8Array): boolean {
   const head = String.fromCharCode(...bytes.slice(0, 6));
   if (/^A[CD]10\d{2}$/.test(head)) return true;
   const text = new TextDecoder().decode(bytes.slice(0, 64));
-  return /^\s*0\r?\n|AutoCAD Binary DXF/.test(text);
+  return /^\s*0\r?\n|DWG Binary DXF/.test(text);
 }

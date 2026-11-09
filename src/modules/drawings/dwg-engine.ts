@@ -57,7 +57,7 @@ export function aciToHex(aci: number): string {
     9: "#c0c0c0",
   };
   if (table[aci]) return table[aci];
-  // AutoCAD ACI approximate
+  // DWG ACI approximate
   const idx = ((aci % 255) + 255) % 255;
   const h = (idx * 37) % 360;
   return `hsl(${h} 70% 55%)`;

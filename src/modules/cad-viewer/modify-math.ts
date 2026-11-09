@@ -276,13 +276,13 @@ function offsetArc(e: Extract<DxfEntity, { type: "ARC" }>, d: number, side: Pt):
  *
  *  1. every segment is offset by `d` on the picked side;
  *  2. adjacent offset segments are joined by infinite-line INTERSECTION, so
- *     corners are extended/trimmed exactly like AutoCAD (no bisector overshoot
+ *     corners are extended/trimmed exactly like DWG (no bisector overshoot
  *     on dense arc approximations — the join lands on the true offset);
  *  3. tangential/parallel joins fall back to the shared offset endpoint;
  *  4. joins further than 4·d from the source vertex (very shallow angle spikes)
- *     clamp to the classic miter cap, matching AutoCAD's default 4× mitre limit;
+ *     clamp to the classic miter cap, matching DWG's default 4× mitre limit;
  *  5. a closed loop whose offset flips orientation (the shape collapsed
- *     inward past its centroid) is refused with null — AutoCAD's "cannot
+ *     inward past its centroid) is refused with null — DWG's "cannot
  *     offset that" for inner offsets of circles and thin shapes.
  */
 function offsetPolyline(
@@ -321,7 +321,7 @@ function offsetPolyline(
       offA.push(P(loop[i].x + dx, loop[i].y + dy));
       offB.push(P(loop[(i + 1) % n].x + dx, loop[(i + 1) % n].y + dy));
     }
-    const capDist = 4 * Math.abs(d); // AutoCAD's default mitre ratio
+    const capDist = 4 * Math.abs(d); // DWG's default mitre ratio
     const out: DxfPoint[] = [];
     const join = (i: number, prev: number): DxfPoint => {
       const d1 = dirs[prev],
@@ -361,7 +361,7 @@ function offsetPolyline(
     }
     // Collapse detection on the JOINED loop: an inward offset that ends up
     // covering more (signed) area than the source has folded past the
-    // centroid — AutoCAD refuses with "cannot offset that". Outward offsets
+    // centroid — DWG refuses with "cannot offset that". Outward offsets
     // legitimately grow, so only the inward direction is checked.
     if (closed) {
       const a0 = signedArea(loop);
