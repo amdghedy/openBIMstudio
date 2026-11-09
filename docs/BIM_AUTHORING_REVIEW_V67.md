@@ -101,8 +101,9 @@ the `mep` barrel and merged into the `__obsMep` service.
 external BIM authoring software's adaptive parts: point-placed flexible families for rafters,
 façade fins, mullions on divided paths.
 
-- `AdaptiveFamily` = closed 2D profile + 2–4 placement points;
-  registry + validation.
+- `AdaptiveFamily` = closed 2D profile + 1–8 ordered placement points;
+  a one-point family uses an explicit local +Y extrusion length; the adaptive
+  registry validates the profile and placement definition.
 - `sweepProfile()` sweeps the section along the point polyline with a
   per-segment frame (vertical-segment fallback), producing a **closed
   indexed mesh**; `meshVolume()` recovers exact volume via the
