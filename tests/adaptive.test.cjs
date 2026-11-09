@@ -232,6 +232,8 @@ t("adaptive point constraints: distance remains exact while a point is dragged",
     [{ kind: "distance", a: 0, b: 1, distance: 2 }],
     0,
   );
+  assert(JSON.stringify(result[0]) === JSON.stringify(P(0, 0, 0)), "the dragged endpoint remains at the cursor point");
+  assert(JSON.stringify(result[1]) === JSON.stringify(P(1.2, 1.6, 0)), "the dependent endpoint follows at the exact constrained distance");
   near(Math.hypot(
     result[1].x - result[0].x,
     result[1].y - result[0].y,
