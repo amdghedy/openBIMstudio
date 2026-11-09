@@ -2,7 +2,7 @@
  * MEP pressure-loss engineering — duct and pipe hydraulics.
  *
  * Complements sizing.ts (which picks standard sizes from flow/velocity)
- * with the physics Revit's system inspector reports: friction pressure
+ * with the physics RVT's system inspector reports: friction pressure
  * drop, fitting losses, and the available-pressure budget along the
  * worst path of a distribution tree.
  *

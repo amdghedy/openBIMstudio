@@ -1,7 +1,7 @@
 /**
  * Adaptive components — point-placed parametric families.
  *
- * Revit's adaptive components place flexible families on N ordered points
+ * RVT's adaptive components place flexible families on N ordered points
  * (rafters following a curved grid, curtain-wall mullions on a divided
  * path, façade fins between floors). This engine brings the same concept:
  *
@@ -192,7 +192,7 @@ export function divideArc(
 /**
  * Slide a family along a divided path: a window of `pointCount` points
  * steps one bay at a time, producing path.length − pointCount + 1
- * instances (the Revit "Repeater" behaviour for point arrays).
+ * instances (the RVT "Repeater" behaviour for point arrays).
  */
 export function repeatAlongPath(familyId: string, path: Pt3[]): AdaptiveInstance[] {
   const fam = families.get(familyId);

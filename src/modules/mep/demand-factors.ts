@@ -2,7 +2,7 @@
  * Electrical demand factors — NEC 220-style code roll-ups for panel
  * schedules and distribution summaries.
  *
- * Parity target: Revit panel schedules' demand-factor handling and the
+ * Compatibility target: RVT panel schedules' demand-factor handling and the
  * NEC load-calculation worksheets behind "Electrical - Loads" (220.42
  * general lighting, 220.44 receptacles, 220.82 dwelling optional method,
  * 220.84 multi-family, 210.19/215.2 continuous-load 125%).

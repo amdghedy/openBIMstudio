@@ -113,9 +113,9 @@ export async function setupCriticalGapsUI(): Promise<void> {
     } catch { flash(solveBtn, "[!]"); }
   });
 
-  // Revit parity: constraints re-enforce themselves right after a move/drag
+  // RVT compatibility: constraints re-enforce themselves right after a move/drag
   // commit (debounced). Toggle persists across sessions.
-  const autoBtn = makeButton("obs-adv-autosolve", "[A] Auto: on", "Constraint auto-solve after move commits (Revit-like live parametric)", () => {
+  const autoBtn = makeButton("obs-adv-autosolve", "[A] Auto: on", "Constraint auto-solve after move commits (RVT-like live parametric)", () => {
     try {
       const next = !isConstraintAutoSolveEnabled();
       setConstraintAutoSolve(next);
@@ -127,15 +127,15 @@ export async function setupCriticalGapsUI(): Promise<void> {
 
   // -- Architecture generators ---------------------------------------
   const stairBtn = makeButton("obs-adv-stair", "Stair", "Place straight stair", () => {
-    void (window as Any).__obsBIMParity?.placeStair?.("straight");
+    void (window as Any).__obsBIMCompatibility?.placeStair?.("straight");
     flash(stairBtn, "[OK]");
   });
   const railBtn = makeButton("obs-adv-rail", "Railing", "Place path railing", () => {
-    void (window as Any).__obsBIMParity?.placeRailing?.();
+    void (window as Any).__obsBIMCompatibility?.placeRailing?.();
     flash(railBtn, "[OK]");
   });
   const cwBtn = makeButton("obs-adv-cw", "[C] Curtain", "Place curtain wall", () => {
-    void (window as Any).__obsBIMParity?.placeCurtainWall?.();
+    void (window as Any).__obsBIMCompatibility?.placeCurtainWall?.();
     flash(cwBtn, "[OK]");
   });
   const roomBtn = makeButton("obs-adv-room", "[R] Room", "Create sample room", () => {
@@ -152,11 +152,11 @@ export async function setupCriticalGapsUI(): Promise<void> {
     flash(alignBtn, n ? `[OK] ${n}` : "[--]");
   });
   const matchBtn = makeButton("obs-adv-match", "Match", "Match properties (pick source)", () => {
-    (window as Any).__obsBIMParity?.matchPropertiesPickSource?.();
+    (window as Any).__obsBIMCompatibility?.matchPropertiesPickSource?.();
     flash(matchBtn, "SRC");
   });
   const matchApplyBtn = makeButton("obs-adv-match-apply", "Paint", "Apply matched properties", () => {
-    const n = (window as Any).__obsBIMParity?.matchPropertiesApply?.() ?? 0;
+    const n = (window as Any).__obsBIMCompatibility?.matchPropertiesApply?.() ?? 0;
     flash(matchApplyBtn, n ? `[OK] ${n}` : "[--]");
   });
   const groupBtn = makeButton("obs-adv-group", "Group", "Group selection", () => {

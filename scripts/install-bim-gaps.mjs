@@ -11,7 +11,7 @@
  *       3. src/modules/export/native-twin-ifc.ts  valid IFC GlobalIds
  *   M2  4. src/features/authoring.ts              createMesh asks window.__obsMeshBuilders first
  *       5. src/modules/cost/quantities.ts         takeoff rows for the new element types
- *       6. src/features/bim-parity-bridge.ts    Place Stair / Railing / Curtain Wall buttons start the click tools
+ *       6. src/features/bim-compatibility-bridge.ts    Place Stair / Railing / Curtain Wall buttons start the click tools
  *   M3  7. 8. src/modules/views/generators/plan.ts       drop base geometry of M2 types, then add poche, room tags, symbols, marks
  *       9. src/modules/views/generators/section.ts       real cut sections (poche, oblique cuts, openings)
  *       10. src/modules/views/generators/elevation.ts    real elevations (silhouettes with openings, roof slope)
@@ -129,8 +129,8 @@ patch("src/modules/cost/quantities.ts", "cost takeoff", (t) => {
   return t.slice(0, m.index) + block + t.slice(m.index + m[0].length);
 }, MARK2);
 
-// 6. M2: the parity buttons used to drop fixed-size objects at the origin
-patch("src/features/bim-parity-bridge.ts", "parity buttons", (t) => {
+// 6. M2: the compatibility buttons used to drop fixed-size objects at the origin
+patch("src/features/bim-compatibility-bridge.ts", "compatibility buttons", (t) => {
   const heads = [
     [/^(async function placeStair\([^)]*\)[^{\n]*\{\n)/m, `  if ((window as any).__obsM2?.start) { (window as any).__obsM2.start("stairs", runType === "l-shape" ? "L" : runType === "u-shape" ? "U" : "straight"); return; } // ${MARK2}\n`],
     [/^(async function placeRailing\([^)]*\)[^{\n]*\{\n)/m, `  if ((window as any).__obsM2?.start) { (window as any).__obsM2.start("railing"); return; } // ${MARK2}\n`],

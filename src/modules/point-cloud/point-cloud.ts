@@ -1,7 +1,7 @@
 /**
  * Point Cloud Import — E57 / LAS / PCD / PLY loader with subsampling + clipping.
  *
- * BIM-equivalent of Revit's "Point Cloud" tool. Loads .e57 / .las / .pcd /
+ * BIM-equivalent of RVT's "Point Cloud" tool. Loads .e57 / .las / .pcd /
  * .ply point cloud files, decimates to a target point budget and renders as
  * a THREE.Points object with per-vertex colour.
  *

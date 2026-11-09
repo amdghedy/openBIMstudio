@@ -171,20 +171,20 @@ function buildBody(host: HTMLElement): void {
   host.appendChild(
     section("Architecture", [
       btn("Straight Stair", "Parametric run", async () => {
-        await (ctx.features as any).bimParity?.placeStair?.("straight");
-      }, has("__obsStairs") || !!(ctx.features as any).bimParity),
+        await (ctx.features as any).bimCompatibility?.placeStair?.("straight");
+      }, has("__obsStairs") || !!(ctx.features as any).bimCompatibility),
       btn("L-Stair", "Landing turn", async () => {
-        await (ctx.features as any).bimParity?.placeStair?.("l-shape");
-      }, has("__obsStairs") || !!(ctx.features as any).bimParity),
+        await (ctx.features as any).bimCompatibility?.placeStair?.("l-shape");
+      }, has("__obsStairs") || !!(ctx.features as any).bimCompatibility),
       btn("U-Stair", "Switchback", async () => {
-        await (ctx.features as any).bimParity?.placeStair?.("u-shape");
-      }, has("__obsStairs") || !!(ctx.features as any).bimParity),
+        await (ctx.features as any).bimCompatibility?.placeStair?.("u-shape");
+      }, has("__obsStairs") || !!(ctx.features as any).bimCompatibility),
       btn("Railing", "Path + balusters", async () => {
-        await (ctx.features as any).bimParity?.placeRailing?.();
-      }, has("__obsRailings") || !!(ctx.features as any).bimParity),
+        await (ctx.features as any).bimCompatibility?.placeRailing?.();
+      }, has("__obsRailings") || !!(ctx.features as any).bimCompatibility),
       btn("Curtain Wall", "Mullions + panels", async () => {
-        await (ctx.features as any).bimParity?.placeCurtainWall?.();
-      }, !!(ctx.features as any).curtainWall || !!(ctx.features as any).bimParity),
+        await (ctx.features as any).bimCompatibility?.placeCurtainWall?.();
+      }, !!(ctx.features as any).curtainWall || !!(ctx.features as any).bimCompatibility),
       btn("Parametric Fam", "Ctrl+Shift+F", () => {
         (window as Any).__obsParamFamilyPanel?.toggle?.();
       }, true),
@@ -219,12 +219,12 @@ function buildBody(host: HTMLElement): void {
         toast(n ? `Distributed ${n}` : "Need 3+ selected", n ? "success" : "info");
       }, has("__obsAlign")),
       btn("Match Props", "Pick source", () => {
-        (ctx.features as any).bimParity?.matchPropertiesPickSource?.();
-      }, !!(ctx.features as any).bimParity),
+        (ctx.features as any).bimCompatibility?.matchPropertiesPickSource?.();
+      }, !!(ctx.features as any).bimCompatibility),
       btn("Paint Props", "Apply to selection", () => {
-        const n = (ctx.features as any).bimParity?.matchPropertiesApply?.() ?? 0;
+        const n = (ctx.features as any).bimCompatibility?.matchPropertiesApply?.() ?? 0;
         toast(n ? `Painted ${n}` : "Pick source first", n ? "success" : "info");
-      }, !!(ctx.features as any).bimParity),
+      }, !!(ctx.features as any).bimCompatibility),
       btn("Create Group", "From selection", () => {
         const ids = selIds();
         if (!ids.length) {
@@ -238,7 +238,7 @@ function buildBody(host: HTMLElement): void {
         });
       }, has("__obsGroups")),
       btn("Create Similar", "Same type tool", () => {
-        (ctx.features as any).bimParity?.createSimilar?.();
+        (ctx.features as any).bimCompatibility?.createSimilar?.();
       }, true),
     ]),
   );
@@ -470,7 +470,7 @@ export function setupBimCommandCenter(): void {
     try {
       const cp: Any = await import("./command-palette");
       cp.registerCommand?.({
-        id: "parity.commandCenter",
+        id: "compatibility.commandCenter",
         label: "Command Center",
         category: "Panels",
         kbd: "Ctrl+Shift+R",

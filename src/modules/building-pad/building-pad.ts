@@ -1,7 +1,7 @@
 /**
  * Building Pad Generator — flat platform cut/fill into a toposurface.
  *
- * BIM-equivalent of Revit's "Building Pad" tool. Given a toposurface mesh
+ * BIM-equivalent of RVT's "Building Pad" tool. Given a toposurface mesh
  * and a closed 2D outline (in XZ plane), produces:
  *  - the pad floor (at specified elevation),
  *  - the cut slope up to existing grade on the high side,

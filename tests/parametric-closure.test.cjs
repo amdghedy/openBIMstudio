@@ -63,7 +63,7 @@ const ptypes = require(path.join(tmpOut, "modules/parametric-constraints/types.j
 const dim = require(path.join(tmpOut, "modules/native-bim/dim-constraints.js"));
 const graph = require(path.join(tmpOut, "modules/families/constraint-graph.js"));
 
-// ── 1. Locked dimension survives moving a wall (the Revit hallmark) ─────────
+// ── 1. Locked dimension survives moving a wall (the RVT hallmark) ─────────
 t("locked-dimension restored after a wall is dragged", () => {
   const walls = [
     { id: "a", type: "wall", params: { start: [0, 0], end: [4, 0] } },
@@ -73,7 +73,7 @@ t("locked-dimension restored after a wall is dragged", () => {
     { id: "lock-1", type: "locked-dimension", elementIds: ["a", "b"], value: 2, active: true, createdAt: 0 },
   ];
   // User drags wall b 3 m to the right: gap grows to 5. Wall a is the
-  // anchor (Revit semantics: the locked-to host stays, the follower heals).
+  // anchor (RVT semantics: the locked-to host stays, the follower heals).
   walls[1].params.start = [9, 0];
   walls[1].params.end = [13, 0];
   const out = bridge.solveStoredConstraints(walls, stored, { pinnedIds: ["a"] });

@@ -1,5 +1,5 @@
 /**
- * Constraint auto-solve — the live-drag half of Revit's parametric
+ * Constraint auto-solve — the live-drag half of RVT's parametric
  * behaviour: locked dimensions, equality, alignment, parallel and
  * perpendicular constraints re-enforce themselves right after a move /
  * drag commit, without the user pressing the Solve button.

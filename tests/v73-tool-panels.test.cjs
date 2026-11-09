@@ -58,7 +58,7 @@ t("unknown tools resolve to null (no invented UI)", () => {
 });
 
 // ── §2.2 — only parameters the engine actually uses ─────────────────────
-t("walls expose the six Revit-style location lines", () => {
+t("walls expose the six RVT-style location lines", () => {
   const wall = TP.getToolPanel("wall");
   const fields = wall.groups.flatMap((g) => g.fields);
   const loc = fields.filter((f) => f.bind && f.bind.kind === "authoring" && f.bind.stateKey === "wallLocationLine");

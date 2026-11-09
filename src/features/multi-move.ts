@@ -1,4 +1,4 @@
-/** Revit-style multi-selection live Move/Copy controller.
+/** RVT-style multi-selection live Move/Copy controller.
  *  Boundary box + base-point pick + ghost preview + single undo commit.
  *  Selection is retained after commit; tool stays active until Esc.
  */

@@ -1,7 +1,7 @@
 /**
  * Project base point & survey point — shared coordinate system.
  *
- * Revit's "Project Base Point" defines the internal origin used for
+ * RVT's "Project Base Point" defines the internal origin used for
  * all geometry. The "Survey Point" defines the real-world coordinate
  * (GIS/ GPS) used for site coordination. Together they enable
  * federated models from different sources to align.

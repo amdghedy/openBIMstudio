@@ -1,5 +1,5 @@
 /**
- * DXF ASCII writer (AutoCAD R2010 / AC1024 compatible subset).
+ * DXF ASCII writer (Drafting R2010 / AC1024 compatible subset).
  * Pure TypeScript - no native deps.
  */
 
@@ -348,12 +348,12 @@ function computeExtents(entities: DxfEntity[]): { min: DxfPoint; max: DxfPoint }
 export type DwgVersionCode = "AC1015" | "AC1018" | "AC1021" | "AC1024" | "AC1027" | "AC1032";
 
 export const DWG_VERSIONS: ReadonlyArray<{ code: DwgVersionCode; label: string; note?: string }> = [
-  { code: "AC1015", label: "AutoCAD 2000 / 2000i / 2002", note: "True colours are converted to the nearest AutoCAD colour index." },
-  { code: "AC1018", label: "AutoCAD 2004 / 2005 / 2006" },
-  { code: "AC1021", label: "AutoCAD 2007 / 2008 / 2009" },
-  { code: "AC1024", label: "AutoCAD 2010 / 2011 / 2012 (default)" },
-  { code: "AC1027", label: "AutoCAD 2013 to 2017" },
-  { code: "AC1032", label: "AutoCAD 2018 and later" },
+  { code: "AC1015", label: "Drafting 2000 / 2000i / 2002", note: "True colours are converted to the nearest Drafting colour index." },
+  { code: "AC1018", label: "Drafting 2004 / 2005 / 2006" },
+  { code: "AC1021", label: "Drafting 2007 / 2008 / 2009" },
+  { code: "AC1024", label: "Drafting 2010 / 2011 / 2012 (default)" },
+  { code: "AC1027", label: "Drafting 2013 to 2017" },
+  { code: "AC1032", label: "Drafting 2018 and later" },
 ];
 export const DEFAULT_DWG_VERSION: DwgVersionCode = "AC1024";
 
@@ -367,12 +367,12 @@ export interface WriteDxfOptions {
    * the DWG converter keeps as fills. "outline" keeps them as closed polylines.
    */
   hatches?: "hatch" | "outline";
-  /** File version written to $ACADVER (and so the DWG version after conversion). Default AutoCAD 2010. */
+  /** File version written to $ACADVER (and so the DWG version after conversion). Default Drafting 2010. */
   version?: DwgVersionCode;
   /**
    * Also write every layout after the first as a *Paper_Space block. Used only for the
    * DWG converter, which reads them back as separate sheets (tests/cad-dwg-roundtrip).
-   * Plain DXF keeps the first sheet only: the extra block records and LAYOUT objects AutoCAD
+   * Plain DXF keeps the first sheet only: the extra block records and LAYOUT objects Drafting
    * expects are not written, and an unchecked structure could stop the file opening.
    */
   allLayouts?: boolean;

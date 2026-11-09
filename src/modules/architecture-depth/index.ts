@@ -1,5 +1,5 @@
 /**
- * Architectural modeling depth — closes remaining gaps vs Revit-class walls:
+ * Architectural modeling depth — closes remaining gaps vs RVT-class walls:
  *  - compound layer defaults + openings through every layer
  *  - curtain-wall systems from authored paths
  *  - joins service bound to live authored walls
@@ -248,7 +248,7 @@ export function setupArchitectureDepth(): void {
   );
 }
 
-// ─── Stacked wall element (Revit "Stacked Wall") ───────────────────────────
+// ─── Stacked wall element (RVT "Stacked Wall") ───────────────────────────
 
 /**
  * Validate + place a stacked wall as a contiguous member chain sharing one

@@ -1,5 +1,5 @@
 /**
- * Architectural wall type catalog (Revit-like type picker data).
+ * Architectural wall type catalog (RVT-like type picker data).
  * Layers string format: "Name thickness|#hex; Name thickness|#hex; ..."
  * consumed by parseWallLayers / buildCompoundWall.
  */

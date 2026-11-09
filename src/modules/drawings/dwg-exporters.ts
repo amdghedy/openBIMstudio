@@ -238,7 +238,7 @@ export function documentToSvg(doc: DxfDocument): { svg: string; width: number; h
 /* ── dwg2geojson ────────────────────────────────────────────────────────── */
 
 /**
- * GeoJSON FeatureCollection (LibreDWG dwg2geojson parity, plain Cartesian
+ * GeoJSON FeatureCollection (LibreDWG dwg2geojson compatibility, plain Cartesian
  * coordinates — no CRS transform is applied to the drawing coordinates).
  */
 export function documentToGeoJson(doc: DxfDocument, meta: DwgExportMeta = {}): string {
@@ -316,7 +316,7 @@ function psEscape(s: string): string {
 }
 
 /**
- * EPS writer (LibreDWG dwg2ps parity). PostScript is y-up like DXF, so no
+ * EPS writer (LibreDWG dwg2ps compatibility). PostScript is y-up like DXF, so no
  * coordinate flip is needed — drawing coordinates are used directly.
  */
 export function documentToPostScript(doc: DxfDocument, title = "Open BIM Studio drawing"): string {

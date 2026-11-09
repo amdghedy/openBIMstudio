@@ -64,7 +64,7 @@ interop-report.json
 public/web-ifc/0.*/
 .cad-dwg-export-independent-*/
 
-# Revit reader built from rvt-rs (scripts/build-rvt-wasm.mjs, committed by the "Build Revit reader" workflow); only generated extras are ignored
+# RVT reader built from rvt-rs (scripts/build-rvt-wasm.mjs, committed by the "Build RVT reader" workflow); only generated extras are ignored
 public/rvt/*.d.ts
 public/rvt/package.json
 public/rvt/.gitignore

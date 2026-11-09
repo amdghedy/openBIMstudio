@@ -1,7 +1,7 @@
 /**
  * tests/modeling-depth.test.cjs
  *
- * Modeling & parametric depth pack — closes the gaps flagged in the Revit
+ * Modeling & parametric depth pack — closes the gaps flagged in the RVT
  * comparison evaluation:
  *   1. transitive host→child delete cascade (any host type, cycle-safe);
  *   2. vertical (stacked) wall joins across level boundaries;

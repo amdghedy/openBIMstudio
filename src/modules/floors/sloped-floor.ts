@@ -102,7 +102,7 @@ export function validateSlopedFloor(spec: SlopedFloorSpec): SlopedFloorIssue[] {
 
 /**
  * Bottom-surface elevations: the slab keeps CONSTANT thickness measured
- * perpendicular to the top surface (Revit variable-thickness slabs are
+ * perpendicular to the top surface (RVT variable-thickness slabs are
  * rare; constant perpendicular thickness keeps quantities honest).
  */
 export function slabBottomElevation(spec: SlopedFloorSpec): number {

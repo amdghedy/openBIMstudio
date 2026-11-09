@@ -1,7 +1,7 @@
-// AutoCAD-grade CAD reading, wired into the UI/UX — source drift-guard test.
+// Drafting-grade CAD reading, wired into the UI/UX — source drift-guard test.
 //
 // The engine reads the file's tables (LAYER / LTYPE / STYLE / DIMSTYLE) and
-// entities the way AutoCAD does (commit 73d381c). This suite guards the
+// entities the way Drafting does (commit 73d381c). This suite guards the
 // UI/UX wiring that surfaces everything that was read:
 //
 //   1. Drawing Database Status (Info) reports the whole database:
@@ -80,7 +80,7 @@ t("viewport keyboard opens a cursor-positioned command prompt and reuses command
     'openDynamicCommand(ev.key)',
     'position:absolute;z-index:15',
     'dynCommandInput.addEventListener("keydown"',
-    'executeAutoCadCommand(value)',
+    'executeDraftingCommand(value)',
     'closeDynamicCommand();',
     'CAD_COMMANDS.filter((item)',
     'dynCommandInput.addEventListener("input"',
@@ -90,7 +90,7 @@ t("viewport keyboard opens a cursor-positioned command prompt and reuses command
   assert.ok(viewer.includes('dynCommandInput.setSelectionRange(initialText.length, initialText.length);'), "initial typed character is not retained");
 });
 
-// ── 5. AutoCAD command activation: Space executes exact commands and aliases ──
+// ── 5. Drafting command activation: Space executes exact commands and aliases ──
 t("command entry: Space executes exact commands in both command inputs without eating argument spaces", () => {
   assert.ok(viewer.includes("function isExactCadCommandToken(rawInput: string): boolean"), "exact command-token guard missing");
   assert.ok(viewer.includes("const resolved = resolveCadToken(token, CAD_COMMANDS);"), "custom and built-in aliases are not resolved");
@@ -121,7 +121,7 @@ t("runtime: fileStyleToTextStyle + fontOptionsFor behaviour", () => {
   assert.strictEqual(st.height, 3.5);
   assert.strictEqual(st.widthFactor, 0.8);
   assert.strictEqual(st.oblique, 15);
-  // Zero height (AutoCAD "fixed height 0" = height set per entity) falls back to an editable default
+  // Zero height (Drafting "fixed height 0" = height set per entity) falls back to an editable default
   const zero = mod.fileStyleToTextStyle("STANDARD", { font: "txt.shx", height: 0 });
   assert.strictEqual(zero.height, 2.5);
   // Font options include the file fonts, labelled, after the built-ins

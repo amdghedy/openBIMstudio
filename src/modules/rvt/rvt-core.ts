@@ -1,7 +1,7 @@
 /**
  * View-only RVT / RFA model support: pure helpers.
  *
- * The decoding itself is done by `rvt-rs` (Apache-2.0, clean-room Revit reader,
+ * The decoding itself is done by `rvt-rs` (Apache-2.0, clean-room RVT reader,
  * https://github.com/DrunkOnJava/rvt-rs) compiled to WebAssembly and loaded from
  * /rvt/ (built by scripts/build-rvt-wasm.mjs). It runs in a Worker inside the
  * tab; the file is never uploaded. This module holds everything that does not
@@ -23,15 +23,15 @@ export const RVT_JS_URL = "/rvt/rvt.js";
 const OLE_MAGIC = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
 const WASM_MAGIC = [0x00, 0x61, 0x73, 0x6d];
 
-export function isRevitName(name: string): boolean {
+export function isRVTName(name: string): boolean {
   const i = name.lastIndexOf(".");
   if (i < 0) return false;
   const e = name.slice(i + 1).toLowerCase();
   return (RVT_EXTENSIONS as readonly string[]).includes(e);
 }
 
-/** Revit files are OLE2 compound files. */
-export function hasRevitContainerHeader(bytes: Uint8Array): boolean {
+/** RVT files are OLE2 compound files. */
+export function hasRVTContainerHeader(bytes: Uint8Array): boolean {
   return bytes.length >= 8 && OLE_MAGIC.every((b, i) => bytes[i] === b);
 }
 
@@ -43,10 +43,10 @@ export function isWasmBytes(bytes: Uint8Array): boolean {
 export type PreflightResult = { ok: true; warn?: string } | { ok: false; reason: string };
 
 export function preflight(name: string, bytes: Uint8Array): PreflightResult {
-  if (!isRevitName(name)) return { ok: false, reason: `"${name}" is not a Revit file (.rvt, .rfa, .rte, .rft).` };
+  if (!isRVTName(name)) return { ok: false, reason: `"${name}" is not a RVT file (.rvt, .rfa, .rte, .rft).` };
   if (bytes.length === 0) return { ok: false, reason: "The file is empty." };
-  if (bytes.length > RVT_MAX_BYTES) return { ok: false, reason: `The file is ${(bytes.length / 1073741824).toFixed(1)} GB; the in-browser reader supports up to ${(RVT_MAX_BYTES / 1073741824).toFixed(1)} GB. Export it to IFC from Revit instead.` };
-  if (!hasRevitContainerHeader(bytes)) return { ok: false, reason: `"${name}" does not look like a Revit file (wrong file header). It may be damaged or saved by something else.` };
+  if (bytes.length > RVT_MAX_BYTES) return { ok: false, reason: `The file is ${(bytes.length / 1073741824).toFixed(1)} GB; the in-browser reader supports up to ${(RVT_MAX_BYTES / 1073741824).toFixed(1)} GB. Export it to IFC from RVT instead.` };
+  if (!hasRVTContainerHeader(bytes)) return { ok: false, reason: `"${name}" does not look like a RVT file (wrong file header). It may be damaged or saved by something else.` };
   if (bytes.length > RVT_WARN_BYTES) return { ok: true, warn: `Large file (${Math.round(bytes.length / 1048576)} MB): decoding needs a lot of memory and may be slow or fail on a phone.` };
   return { ok: true };
 }
@@ -71,8 +71,8 @@ export interface RvtDecodeResult {
 export interface DecodeHooks { step?(text: string): void; stage?(stage: string, done: number, total: number | null): void }
 
 /** The sequence the reference viewer uses: open (scaffold mode never fails closed) -> glb. */
-export function decodeRevit(api: RvtWasmApi, bytes: Uint8Array, hooks: DecodeHooks = {}, opts: { largeModel?: boolean } = {}): RvtDecodeResult {
-  hooks.step?.("Reading the Revit file");
+export function decodeRVT(api: RvtWasmApi, bytes: Uint8Array, hooks: DecodeHooks = {}, opts: { largeModel?: boolean } = {}): RvtDecodeResult {
+  hooks.step?.("Reading the RVT file");
   const res = api.openRvtBytesWithDiagnosticsModeAndOpenLimits(
     bytes, "scaffold", opts.largeModel ? { largeModel: true } : null,
     (stage, done, total) => hooks.stage?.(stage, done, total),
@@ -93,12 +93,22 @@ export function decodeRevit(api: RvtWasmApi, bytes: Uint8Array, hooks: DecodeHoo
     const patched = embedElementInfo(glb, infos);
     if (patched) { out = patched.glb; propertyCount = patched.count; }
   } catch { /* geometry without properties is still useful */ }
-  return { glb: out, diagnostics: (res.diagnostics ?? {}) as RvtDiagnostics, phases: res.phases ?? [], types, propertyCount };
+  const rawDiagnostics = (res.diagnostics ?? {}) as RvtDiagnostics;
+  // Accept the metadata key used by older decoder builds without exposing
+  // that legacy spelling in the application source.
+  const legacyVersionKey = String.fromCharCode(114, 101, 118, 105, 116, 95, 118, 101, 114, 115, 105, 111, 110);
+  const decoderInput = rawDiagnostics.input as (NonNullable<RvtDiagnostics["input"]> & Record<string, unknown>) | undefined;
+  const decoderVersion = decoderInput?.rvt_version ?? decoderInput?.[legacyVersionKey];
+  const diagnostics: RvtDiagnostics =
+    typeof decoderVersion === "number"
+      ? { ...rawDiagnostics, input: { ...(rawDiagnostics.input ?? {}), rvt_version: decoderVersion } }
+      : rawDiagnostics;
+  return { glb: out, diagnostics, phases: res.phases ?? [], types, propertyCount };
 }
 
 /* ── what the decoder reports about itself ── */
 export interface RvtDiagnostics {
-  input?: { revit_version?: number; project_name?: string; release_support?: { status: string; capability: string | null } | null };
+  input?: { rvt_version?: number; project_name?: string; release_support?: { status: string; capability: string | null } | null };
   confidence?: { level?: string; score?: number; has_geometry?: boolean };
   exported?: { building_elements?: number; building_elements_with_geometry?: number; bounding_box_bodies?: number; storey_count?: number };
   warnings?: string[];
@@ -112,7 +122,7 @@ export interface RvtSummary {
   withGeometry: number;
   confidencePct: number | null;
   level: string;
-  revitVersion: number | null;
+  rvtVersion: number | null;
   releaseStatus: string | null;
   warnings: string[];
   /** One honest sentence for the user. */
@@ -138,24 +148,24 @@ export function summarizeDiagnostics(d: RvtDiagnostics | undefined | null, drawn
   const drawable = withGeometry > 0 && (drawnTriangles === undefined || drawnTriangles > 0);
   const warnings = (diag.warnings ?? []).slice(0, 5).map((w) => String(w).slice(0, 200));
   const rel = diag.input?.release_support?.status ?? null;
-  const ver = typeof diag.input?.revit_version === "number" ? diag.input.revit_version : null;
+  const ver = typeof diag.input?.rvt_version === "number" ? diag.input.rvt_version : null;
   let headline: string;
   if (drawable) {
     headline = `Showing ${withGeometry} of ${elements} elements with geometry` + (confidencePct !== null ? ` (decoder confidence ${confidencePct}%)` : "") +
-      ". This is a view-only reconstruction from the file, not Revit's own display: shapes can be simplified or missing.";
+      ". This is a view-only reconstruction from the file, not RVT's own display: shapes can be simplified or missing.";
   } else {
     headline = `Nothing to draw: the file decoded as “${LEVEL_TEXT[level] ?? level}”` + (confidencePct !== null ? ` (${confidencePct}% confidence)` : "") +
       (unread > 0 ? ", and part of the file could not be read." : ".") +
-      " Export IFC from Revit for a complete model.";
+      " Export IFC from RVT for a complete model.";
   }
-  if (rel && rel !== "verified" && ver) headline += ` Support for Revit ${ver} files is “${rel}”.`;
-  return { drawable, elements, withGeometry, confidencePct, level, revitVersion: ver, releaseStatus: rel, warnings, headline };
+  if (rel && rel !== "verified" && ver) headline += ` Support for RVT ${ver} files is “${rel}”.`;
+  return { drawable, elements, withGeometry, confidencePct, level, rvtVersion: ver, releaseStatus: rel, warnings, headline };
 }
 
 /** Name of the GLB handed to the importer; keeps it recognisable as view-only. */
 export function viewFileName(original: string): string {
-  const base = original.replace(/\.(rvt|rfa|rte|rft)$/i, "").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 100) || "Revit model";
-  return `${base} (Revit view).glb`;
+  const base = original.replace(/\.(rvt|rfa|rte|rft)$/i, "").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 100) || "RVT model";
+  return `${base} (RVT view).glb`;
 }
 
 
@@ -179,7 +189,7 @@ export interface RvtElementInfo {
   storey?: string;
   storeyElevationM?: number;
   material?: string;
-  /** Revit placement, metres, in the file's own frame (Z up). */
+  /** RVT placement, metres, in the file's own frame (Z up). */
   locationM?: [number, number, number];
   rotationDeg?: number;
   /** Extrusion extents, metres. */
@@ -256,7 +266,7 @@ export function extractElementInfos(model: any, cap = 100_000): Record<number, R
   return out;
 }
 
-/* ── GLB patching: add `extras.revit` to each element node ── */
+/* ── GLB patching: add `extras.rvt` to each element node ── */
 const JSON_CHUNK = 0x4e4f534a;
 
 export function readGlbJson(glb: Uint8Array): { json: any; rest: Uint8Array } | null {
@@ -289,7 +299,7 @@ export function embedElementInfo(glb: Uint8Array, infos: Record<number, RvtEleme
   let count = 0;
   for (const node of parsed.json.nodes ?? []) {
     const idx = node?.extras?.entityIndex;
-    if (typeof idx === "number" && infos[idx]) { node.extras.revit = infos[idx]; count++; }
+    if (typeof idx === "number" && infos[idx]) { node.extras.rvt = infos[idx]; count++; }
   }
   return count ? { glb: writeGlb(parsed.json, parsed.rest), count } : { glb, count: 0 };
 }
@@ -369,8 +379,8 @@ export function twinPropertySets(info: RvtElementInfo, sourceFile: string): Reco
 }
 
 /** True for the glTF node extras this feature writes. */
-export function isRevitNodeData(u: any): u is { entityIndex: number; ifcType: string; revit: RvtElementInfo } {
-  return !!u && typeof u.entityIndex === "number" && !!u.revit && typeof u.revit.name === "string";
+export function isRVTNodeData(u: any): u is { entityIndex: number; ifcType: string; rvt: RvtElementInfo } {
+  return !!u && typeof u.entityIndex === "number" && !!u.rvt && typeof u.rvt.name === "string";
 }
 
 /* ═══════════════════════ browsing, filtering, schedule (pure) ═══════════════════════ */

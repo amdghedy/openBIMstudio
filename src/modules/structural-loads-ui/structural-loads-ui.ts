@@ -1,7 +1,7 @@
 /**
  * Structural Loads UI — load case / load combination manager.
  *
- * BIM-equivalent of Revit's "Structural Loads" tool. Manages load cases
+ * BIM-equivalent of RVT's "Structural Loads" tool. Manages load cases
  * (dead, live, wind, seismic, snow, etc.) and load combinations per
  * ASCE 7 / Eurocode 0 / IBC.
  *

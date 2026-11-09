@@ -7,7 +7,7 @@
  *   worker -> main: { type: "progress", text } | { type: "stage", stage, done, total }
  *                 | { type: "ready", glb, diagnostics, phases, types, propertyCount } | { type: "error", message }
  */
-import { decodeRevit, type RvtWasmApi } from "../modules/rvt/rvt-core";
+import { decodeRVT, type RvtWasmApi } from "../modules/rvt/rvt-core";
 
 const send = (m: unknown, transfer?: Transferable[]) => (self as unknown as { postMessage(m: unknown, t?: Transferable[]): void }).postMessage(m, transfer);
 let api: (RvtWasmApi & { default: (o: { module_or_path: string }) => Promise<unknown> }) | null = null;
@@ -17,12 +17,12 @@ self.addEventListener("message", async (ev: MessageEvent) => {
   if (!msg || msg.type !== "parse") return;
   try {
     if (!api) {
-      send({ type: "progress", text: "Loading the Revit decoder" });
+      send({ type: "progress", text: "Loading the RVT decoder" });
       // Same-origin file generated at build time; not part of the Vite bundle.
       api = await import(/* @vite-ignore */ new URL("/rvt/rvt.js", self.location.origin).href);
       await api!.default({ module_or_path: new URL("/rvt/rvt_bg.wasm", self.location.origin).href });
     }
-    const r = decodeRevit(api!, msg.bytes as Uint8Array, {
+    const r = decodeRVT(api!, msg.bytes as Uint8Array, {
       step: (text) => send({ type: "progress", text }),
       stage: (stage, done, total) => send({ type: "stage", stage, done, total }),
     }, { largeModel: !!msg.largeModel });

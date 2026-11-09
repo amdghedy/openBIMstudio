@@ -1,4 +1,4 @@
-/** Pure anchor rules for editing temporary dimensions (Revit-style).
+/** Pure anchor rules for editing temporary dimensions (RVT-style).
  *  Plan: the RIGHT end stays fixed and the LEFT end moves; for a vertical wall the
  *  BOTTOM end stays fixed. Wall thickness keeps the bottom/right face fixed.
  *  Vertical: base elevation is fixed, the top moves.

@@ -1,4 +1,4 @@
-/** Revit-style Rotate controller. Pivot -> reference ray -> cursor angle. */
+/** RVT-style Rotate controller. Pivot -> reference ray -> cursor angle. */
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { rotateSelected } from "./authoring";

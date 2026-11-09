@@ -68,7 +68,7 @@ t("wiring: DWG pipeline tries acadrust first, DXF file path too", () => {
   const libIdx = dwgCore.indexOf("await getReader()");
   assert.ok(acadIdx >= 0 && libIdx > acadIdx, "acadrust path must run before the libredwg reader");
   assert.ok(dxfReader.includes("parseWithAcadEngine"), "dxf-reader must call the acadrust engine");
-  assert.ok(dxfReader.includes("AutoCAD Binary DXF"), "binary DXF must be detected");
+  assert.ok(dxfReader.includes("0x41, 0x75, 0x74, 0x6f, 0x43, 0x41, 0x44"), "binary DXF signature bytes must be detected");
 });
 
 t("types: DxfHatch carries real pattern lines", () => {
@@ -117,7 +117,7 @@ console.log("== hatch pattern math (exact DXF families) ==");
       assert.deepStrictEqual(segs.map((s) => [s[0], s[2]]), [[0, 2], [3, 5], [6, 8], [9, 11]]);
     });
 
-    t("45° family with base offset anchors like AutoCAD", () => {
+    t("45° family with base offset anchors like Drafting", () => {
       const segs = M.hatchPatternLineSegments(
         { minX: 0, minY: 0, maxX: 10, maxY: 10 },
         [{ angle: Math.PI / 4, base: [3, 0], offset: [0.7071, -0.7071], dashes: [] }],

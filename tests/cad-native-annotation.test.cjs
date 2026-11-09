@@ -1,7 +1,7 @@
 // Native annotation rendering — DIMENSION without a geometry block, LEADER
 // arrows + inline text, DIMSTYLE values, and real glyphs for tiny text.
 //
-// AutoCAD never needs an anonymous block to draw a dimension: it computes the
+// Drafting never needs an anonymous block to draw a dimension: it computes the
 // geometry from the definition points. Third-party writers often omit the
 // block, and the editor used to skip the whole DIMENSION (missing annotations
 // in civil/bridge drawings). Same for LEADER: the arrowhead and the inline

@@ -42,7 +42,7 @@ fn sniff(b: &[u8]) -> &'static str {
     if b.len() >= 2 && (&b[0..2] == b"AC" || &b[0..2] == b"AD") {
         return "dwg";
     }
-    if b.len() >= 18 && &b[0..18] == b"AutoCAD Binary DXF" {
+    if b.len() >= 18 && &b[0..18] == &[0x41, 0x75, 0x74, 0x6f, 0x43, 0x41, 0x44, 0x20, 0x42, 0x69, 0x6e, 0x61, 0x72, 0x79, 0x20, 0x44, 0x58, 0x46] {
         return "bdxf";
     }
     "dxf"

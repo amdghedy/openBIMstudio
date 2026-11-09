@@ -1,7 +1,7 @@
 /**
  * Scope Box — 3D cropping volume that can be applied to multiple views.
  *
- * BIM-equivalent of Revit's "Scope Box" tool. Defines a rectangular volume
+ * BIM-equivalent of RVT's "Scope Box" tool. Defines a rectangular volume
  * (XZ footprint + min/max elevation) that crops visible geometry in any
  * view it is applied to.
  *

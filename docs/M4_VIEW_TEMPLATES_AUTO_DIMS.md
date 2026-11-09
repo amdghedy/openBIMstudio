@@ -24,10 +24,10 @@ From the **openBIMstudio project root**:
 ```bash
 # Copy package next to the repo (or unzip)
 # Then:
-node path/to/bim-parity-m4/scripts/install-m4.mjs .
+node path/to/bim-compatibility-m4/scripts/install-m4.mjs .
 
 # Dry-run first (optional):
-node path/to/bim-parity-m4/scripts/install-m4.mjs . --dry-run
+node path/to/bim-compatibility-m4/scripts/install-m4.mjs . --dry-run
 
 npm run typecheck
 npm run dev

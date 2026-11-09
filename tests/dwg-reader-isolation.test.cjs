@@ -93,7 +93,7 @@ assert.ok(corePath, "compiled dwg-parse-core.js not found");
     assert.ok(!/(^|\s)'unsafe-eval'/.test(csp[1]), "main CSP must NOT allow JS string evaluation");
   });
 
-  console.log("=== B. Local asset loading + scoped worker CSP parity ===");
+  console.log("=== B. Local asset loading + scoped worker CSP compatibility ===");
   t("scoped worker CSP identical across vite.config.ts, vercel.json, public/_headers", () => {
     const workerCsp =
       "default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'";

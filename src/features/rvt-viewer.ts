@@ -6,7 +6,7 @@
  * See src/modules/rvt/rvt-core.ts and docs/RVT-VIEWER.md.
  */
 import { notify } from "../core/notify";
-import { RVT_JS_URL, RVT_WASM_URL, isRevitName, isWasmBytes, preflight, summarizeDiagnostics, viewFileName, type RvtDiagnostics } from "../modules/rvt/rvt-core";
+import { RVT_JS_URL, RVT_WASM_URL, isRVTName, isWasmBytes, preflight, summarizeDiagnostics, viewFileName, type RvtDiagnostics } from "../modules/rvt/rvt-core";
 
 let availability: Promise<{ ok: boolean; why: string }> | null = null;
 
@@ -52,8 +52,8 @@ function decodeInWorker(bytes: Uint8Array, onProgress: (t: string) => void, larg
   });
 }
 
-export async function openRevitFile(file: File): Promise<boolean> {
-  if (!isRevitName(file.name)) { notify("error", `"${file.name}" is not a supported RVT or RFA file.`); return false; }
+export async function openRVTFile(file: File): Promise<boolean> {
+  if (!isRVTName(file.name)) { notify("error", `"${file.name}" is not a supported RVT or RFA file.`); return false; }
   const st = await rvtDecoderStatus();
   if (!st.ok) { console.warn("[rvt] decoder unavailable:", st.why); notify("error", `${UNAVAILABLE} (Detail: ${st.why}.)`, { timeout: 16000 }); return false; }
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -92,12 +92,12 @@ export async function openRevitFile(file: File): Promise<boolean> {
 }
 
 /** Open several RVT/RFA model files one after another; one combined result line at the end. */
-export async function openRevitFiles(files: File[]): Promise<{ opened: number; failed: string[] }> {
+export async function openRVTFiles(files: File[]): Promise<{ opened: number; failed: string[] }> {
   const failed: string[] = [];
   let opened = 0;
   for (const f of files) {
     let ok = false;
-    try { ok = await openRevitFile(f); } catch { ok = false; }
+    try { ok = await openRVTFile(f); } catch { ok = false; }
     if (ok) opened++; else failed.push(f.name);
   }
   if (files.length > 1) {
@@ -106,9 +106,9 @@ export async function openRevitFiles(files: File[]): Promise<{ opened: number; f
   return { opened, failed };
 }
 
-export function pickRevitFile(): void {
+export function pickRVTFile(): void {
   const input = document.createElement("input");
   input.type = "file"; input.accept = ".rvt,.rfa,.rte,.rft"; input.multiple = true;
-  input.onchange = () => { const fs = Array.from(input.files ?? []); if (fs.length) void openRevitFiles(fs); };
+  input.onchange = () => { const fs = Array.from(input.files ?? []); if (fs.length) void openRVTFiles(fs); };
   input.click();
 }

@@ -399,7 +399,7 @@ export async function openFrameSolverDialog(): Promise<void> {
  * Analyze Building (3D): auto-generates the analytical model from the
  * authored columns / beams / braces, applies dead / live / wind cases with
  * self-weight, sweeps every LRFD combination and reports the governing
- * envelope — the Revit-style structural workflow end to end.
+ * envelope — the RVT-style structural workflow end to end.
  */
 export async function openAnalyzeBuildingDialog(): Promise<void> {
   const els = authoredList() as unknown as AnalyticalSourceElement[];

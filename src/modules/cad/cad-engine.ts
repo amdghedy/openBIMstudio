@@ -1,5 +1,5 @@
 /**
- * CAD Engine - AutoCAD-class 2D drafting operations on screen-space entities.
+ * CAD Engine - Drafting-class 2D drafting operations on screen-space entities.
  *
  * Works with the existing drafting-2d overlay (screen SVG) and adds:
  *   polyline, arc, offset, erase-last, move, copy, mirror, layers, ortho, grid

@@ -1,7 +1,7 @@
 /**
  * Selection Box — auto-fit section box / crop region to selected elements.
  *
- * BIM-equivalent of Revit's right-click → "Show Selection Box" command
+ * BIM-equivalent of RVT's right-click → "Show Selection Box" command
  * (wraps a section box tightly around the selected element(s)) and the
  * "Crop to Selection" command (auto-sizes a 2D crop region in the active
  * plan/section/elevation view to fit the selected elements).

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Drift-guard: the native 2D CAD engine carries the full AutoCAD ribbon —
+/* Drift-guard: the native 2D CAD engine carries the full Drafting ribbon —
  * 9 tabs (Home, Insert, Annotate, Parametric, View, Manage, Output, Express
  * Tools, Collaborate) with their related buttons and commands. */
 const fs = require("fs");
@@ -22,9 +22,9 @@ const ok = (cond, msg) => {
   }
 };
 
-console.log("cad-tabs-parity: AutoCAD ribbon parity in the native 2D engine");
+console.log("cad-tabs-compatibility: Drafting ribbon compatibility in the native 2D engine");
 
-/* 1 — the 9 ribbon tabs in AutoCAD workspace order */
+/* 1 — the 9 ribbon tabs in Drafting workspace order */
 ok(/id: "home"[\s\S]*id: "insert"[\s\S]*id: "annotate"[\s\S]*id: "parametric"[\s\S]*id: "view"[\s\S]*id: "manage"[\s\S]*id: "output"[\s\S]*id: "express"[\s\S]*id: "collaborate"/.test(viewer),
   "RIBBON_TABS: Home → Insert → Annotate → Parametric → View → Manage → Output → Express Tools → Collaborate");
 ok(/label: "Parametric"/.test(viewer), "Parametric tab present");
@@ -91,7 +91,7 @@ for (const cmd of [
 
 /* 8 — command-line dispatch wires every new command */
 for (const cmd of ["AUTOCONSTRAIN", "DCLINEAR", "TXT2MTXT", "LAYMRG", "LAYWALK", "PUBLISH", "CHECKSTANDARDS"]) {
-  ok(new RegExp(`cmd === "${cmd}"`).test(viewer), `executeAutoCadCommand dispatches ${cmd}`);
+  ok(new RegExp(`cmd === "${cmd}"`).test(viewer), `executeDraftingCommand dispatches ${cmd}`);
 }
 
 /* 9 — pure geometry helpers exist in cad-params.ts */

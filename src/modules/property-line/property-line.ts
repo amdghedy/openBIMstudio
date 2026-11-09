@@ -1,7 +1,7 @@
 /**
  * Property Line Generator — site boundary with bearings + distances.
  *
- * BIM-equivalent of Revit's "Property Line" tool. Accepts a closed polyline
+ * BIM-equivalent of RVT's "Property Line" tool. Accepts a closed polyline
  * (bearing + distance style survey data) and produces a planar boundary
  * with metes-and-bounds table.
  *

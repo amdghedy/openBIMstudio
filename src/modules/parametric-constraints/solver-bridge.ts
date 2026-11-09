@@ -412,7 +412,7 @@ export function solveStoredConstraints(
   const sys = buildSystem(elements);
   if (!sys.pts.length) return { changed: 0, result: null, errors };
 
-  // Anchor elements never move (Revit semantics: the locked-to host stays,
+  // Anchor elements never move (RVT semantics: the locked-to host stays,
   // followers heal to it).
   const pinned = new Set(opts.pinnedIds ?? []);
   for (const id of pinned) {
@@ -474,7 +474,7 @@ export function solveStoredConstraints(
 
   const result = solve(sys.pts, cons);
   // Only a converged solve may touch the model: an over-constrained or
-  // unconverged system is reported, never silently applied (Revit behaves
+  // unconverged system is reported, never silently applied (RVT behaves
   // the same — it flags the conflict instead of mangling geometry).
   if (result.status !== "converged") {
     errors.push(
@@ -487,7 +487,7 @@ export function solveStoredConstraints(
 
   // Alignment post-projection: point-on-line leaves the tangential direction
   // free, and the L-M diagonal clamp can amplify Jacobian noise into huge
-  // slides along the line. Revit semantics: alignment keeps the point's
+  // slides along the line. RVT semantics: alignment keeps the point's
   // parametric position along the host — project the ORIGINAL position onto
   // the solved line (foot of perpendicular).
   if (alignmentPairs.length) {
