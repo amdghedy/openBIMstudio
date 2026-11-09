@@ -201,6 +201,7 @@ function definitionFromInput(input: AdaptiveElementCreateInput): AdaptiveElement
     points,
     profile: clone(input.profile),
     ...(input.pointLength === undefined ? {} : { pointLength: Number(input.pointLength) }),
+    ...(input.constraints?.length ? { constraints: clone(input.constraints) } : {}),
   };
   return validateDefinition(def);
 }
@@ -680,7 +681,6 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
 
 
 export function setupAdaptiveAuthoring(): {
-
   create: typeof createAdaptiveElement;
   createMany: typeof createAdaptiveElements;
   update: typeof updateAdaptiveElement;
@@ -703,6 +703,13 @@ export function setupAdaptiveAuthoring(): {
       update: updateAdaptiveElement,
       getDefinition: getAdaptiveDefinition,
       buildMesh: buildAdaptiveElementMesh,
+      beginPointEdit: beginAdaptivePointEdit,
+      previewPointEdit: previewAdaptivePointEdit,
+      commitPointEdit: commitAdaptivePointEdit,
+      cancelPointEdit: cancelAdaptivePointEdit,
+      listFamilyTypeChoices: getAdaptiveFamilyTypeChoices,
+      bindFamilyType: bindAdaptiveFamilyType,
+      connectFamilyTypePropagation: connectAdaptiveFamilyTypePropagation,
     };
     (ctx.features as Any).adaptiveAuthoring = api;
     installed = true;
