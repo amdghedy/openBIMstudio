@@ -5,7 +5,7 @@ let pass = 0, fail = 0;
 const ok = (name, cond, detail) => { if (cond) { pass++; console.log("  PASS " + name); } else { fail++; console.log("  FAIL " + name + (detail ? " — " + detail : "")); } };
 
 const ribbon = fs.readFileSync("src/shell/ribbon.ts", "utf8");
-const toasts = [...ribbon.matchAll(/toast\(\s*([\x60"'])((?:\\.|(?!\\1)[\s\S])*)\\1/g)].map((m) => m[2]);
+const toasts = [...ribbon.matchAll(/toast\(\s*([\x60"'])((?:\\.|(?!\1)[\s\S])*)\1/g)].map((m) => m[2]);
 const bad = toasts.filter((t) => /__obs[A-Za-z]+/.test(t) || (/console/i.test(t) && !/failed/i.test(t)));
 ok("ribbon toasts never point users at the console or __obs* globals", bad.length === 0, bad.join(" | "));
 
