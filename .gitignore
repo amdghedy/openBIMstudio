@@ -68,3 +68,4 @@ public/web-ifc/0.*/
 public/rvt/*.d.ts
 public/rvt/package.json
 public/rvt/.gitignore
+.sketch-test-*/

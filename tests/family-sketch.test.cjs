@@ -2,7 +2,10 @@
 // i.e. in CI) the 3-D geometry the spec actually builds: footprint, height, elevation, orientation.
 const { execSync } = require("child_process");
 const fs = require("fs"), path = require("path"), os = require("os"), assert = require("assert");
-const out = fs.mkdtempSync(path.join(os.tmpdir(), "sketch-"));
+// Compile inside the project so the compiled files resolve `three` from the repo's node_modules (a temp dir would not).
+const out = fs.mkdtempSync(path.join(__dirname, "..", ".sketch-test-"));
+fs.writeFileSync(path.join(out, "package.json"), '{"type":"commonjs"}'); // the repo is "type": "module"
+process.on("exit", () => { try { fs.rmSync(out, { recursive: true, force: true }); } catch { /* */ } });
 const build = (files) => { try { execSync(`npx tsc ${files} --outDir ${out} --module commonjs --target es2020 --skipLibCheck --moduleResolution node --esModuleInterop`, { stdio: "pipe" }); } catch (e) { /* type errors from missing packages locally still emit */ } };
 build("src/modules/families/sketch-core.ts src/modules/families/parametric-geometry.ts");
 const find = (n) => { const w = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = w(p); if (r) return r; } else if (f.name === n) return p; } }; return w(out); };
