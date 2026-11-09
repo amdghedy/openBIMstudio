@@ -68,7 +68,7 @@ t("pick machinery covers the new tools", () => {
 t("pendingText capture wired", () => {
   assert.ok(viewer.includes("let pendingText"), "pendingText state missing");
   const consumption = viewer.match(/if \(pendingText\) \{[\s\S]{0,200}?f\(trimmed\)/);
-  assert.ok(consumption, "executeDwgCommand must consume pendingText before treating input as a command");
+  assert.ok(consumption, "executeDraftingCommand must consume pendingText before treating input as a command");
   assert.ok(viewer.includes('f("")'), "empty Enter must cancel pendingText (keep existing text)");
 });
 
@@ -98,7 +98,7 @@ t("ribbon buttons for the new tools", () => {
   for (const btn of ['tb("lengthen", "stretch", "Lengthen")', 'tb("mleader", "tag-all", "MLeader")', 'tb("divide", "point", "Divide")', 'tb("measure", "measure", "Measure")', 'data-a="ddedit"', 'data-a="layiso"', 'data-a="layuniso"', 'data-a="layoff"']) {
     assert.ok(viewer.includes(btn), `ribbon drift: missing "${btn}"`);
   }
-  for (const actName of ["layiso: () => executeDwgCommand", "layuniso: () => executeDwgCommand", "ddedit: () => executeDwgCommand"]) {
+  for (const actName of ["layiso: () => executeDraftingCommand", "layuniso: () => executeDraftingCommand", "ddedit: () => executeDraftingCommand"]) {
     assert.ok(viewer.includes(actName), `act map drift: missing "${actName}"`);
   }
   for (const tip of ['["lengthen", "Lengthen", "LEN"]', '["divide", "Divide", "DIV"]', '["measure", "Measure", "ME"]', '["mleader", "MLeader", "MLD"]']) {

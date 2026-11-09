@@ -329,7 +329,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
 ];
 
 const BG: Record<string, string> = {
-  autocad: "#212830", // Drawing workspace dark charcoal
+  drafting: "#212830", // Drawing workspace dark charcoal
   black: "#000000",
   dark: "#1c2128",
   grey: "#808080",
@@ -827,7 +827,7 @@ function ensureShell(): void {
 
   picker = document.createElement("input");
   picker.type = "file";
-  // .bak / .sv$ are AutoCAD drawing backups (openable like native CAD); .xml
+  // .bak / .sv$ are Drafting drawing backups (openable like native CAD); .xml
   // routes to the LandXML CgPoints importer.
   picker.accept = ".dxf,.dwg,.bak,.sv$,.xml";
   picker.multiple = true;
@@ -851,7 +851,7 @@ function ensureShell(): void {
 
   // Drag & drop: the empty state promises "Drop DWG or DXF file here", so the
   // shell accepts .dwg/.dxf drops anywhere over the editor (multi-file too).
-  // AutoCAD backup extensions (.bak, .sv$) open like native CAD; LandXML .xml
+  // Drafting backup extensions (.bak, .sv$) open like native CAD; LandXML .xml
   // files import their CgPoints into the active drawing.
   shell.addEventListener("dragover", (e) => e.preventDefault());
   shell.addEventListener("drop", (e) => {
@@ -969,7 +969,7 @@ const CAD_CSS = `
     .obs-cad-viewer td:first-child{color:#9aa4b2}
 
     /* Ribbon-style toolbar: icon over label, grouped, caption underneath (same look as the main app ribbon).
-       The strip lives in the SHELL chrome (shared across drawing tabs, AutoCAD MDI style), so every
+       The strip lives in the SHELL chrome (shared across drawing tabs, Drafting MDI style), so every
        ribbon rule is scoped to both the viewer page and the shell. */
     .obs-cad-viewer,.obs-cad-shell{--cadrb-w:56px;--cadrb-h:36px;--cadrb-gap:2px;--cadrb-icon:16px;--cadrb-label:9px}
     .obs-cad-viewer .cadrb-strip,.obs-cad-shell .cadrb-strip{display:flex;align-items:stretch;flex:none;height:104px;padding:7px 8px;overflow-x:auto;overflow-y:hidden;background:linear-gradient(180deg,var(--bg-surface,#12141b) 0%,var(--bg-base,#0b0d12) 100%);border-bottom:1px solid var(--border-default,#2a2e3a);user-select:none;scrollbar-width:thin}
@@ -995,8 +995,8 @@ const CAD_CSS = `
     .obs-cad-viewer .cadrb-field,.obs-cad-shell .cadrb-field{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:var(--cadrb-h);padding:0 3px;font:500 9px var(--font-sans,system-ui);color:var(--text-tertiary,#6b7280);text-transform:uppercase;letter-spacing:.5px}
     .obs-cad-viewer .cadrb-field select,.obs-cad-shell .cadrb-field select{background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);color:var(--text-primary,#e8eaf0);font:500 10px var(--font-mono,monospace);padding:3px 4px;border-radius:3px;min-width:70px;outline:none;cursor:pointer;text-transform:none;letter-spacing:0}
 
-    /* AutoCAD shell chrome: application menu (red A) + ribbon tabs + Quick Access toolbar,
-       then the ribbon strip, then the drawing file tabs — exactly the AutoCAD stacking order. */
+    /* Drafting shell chrome: application menu (red A) + ribbon tabs + Quick Access toolbar,
+       then the ribbon strip, then the drawing file tabs — exactly the Drafting stacking order. */
     .obs-cad-shell .cad-chrome{flex:none;display:flex;flex-direction:column;min-height:0}
     .obs-cad-shell .cad-ribbon-tabs{display:flex;align-items:stretch;height:32px;padding:0 8px;background:#0b0d12;border-bottom:1px solid #2a3140;user-select:none;flex:none}
     .obs-cad-shell .cad-appmenu{width:32px;min-width:32px;margin:3px 8px 3px 0;padding:0;display:flex;align-items:center;justify-content:center;border-radius:5px;background:linear-gradient(180deg,#e05252,#b91c1c);border:1px solid #7f1d1d;color:#fff;font:700 15px/1 var(--font-sans,system-ui);cursor:pointer}
@@ -1021,7 +1021,7 @@ const CAD_CSS = `
     /* Per-engine ribbon content: only the active drawing's panels are mounted/visible */
     .obs-cad-shell .cadrb-enginewrap{display:none;flex:1;min-width:0;align-items:stretch}
     .obs-cad-shell .cadrb-enginewrap.on{display:flex}
-    /* Ribbon tabs filter the panels of the active drawing (AutoCAD tab → panels) */
+    /* Ribbon tabs filter the panels of the active drawing (Drafting tab → panels) */
     .obs-cad-shell .cadrb-strip .cadrg{display:none}
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="home"] .cadrg[data-cadtab="home"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="insert"] .cadrg[data-cadtab="insert"],
@@ -1032,7 +1032,7 @@ const CAD_CSS = `
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="output"] .cadrg[data-cadtab="output"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="express"] .cadrg[data-cadtab="express"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="collaborate"] .cadrg[data-cadtab="collaborate"]{display:flex}
-    /* AutoCAD In-Canvas ViewCube */
+    /* Drafting In-Canvas ViewCube */
     .obs-cad-viewcube {
       position: absolute; top: 16px; right: 28px; width: 68px; height: 68px;
       user-select: none; z-index: 10; pointer-events: auto;
@@ -1060,7 +1060,7 @@ const CAD_CSS = `
     }
     .obs-cad-viewcube .vc-btn:hover { background: #0284c7; color: white; }
 
-    /* AutoCAD Navigation Bar */
+    /* Drafting Navigation Bar */
     .obs-cad-navbar {
       position: absolute; right: 28px; top: 96px; z-index: 10;
       background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(148, 163, 184, 0.3);
@@ -1075,7 +1075,7 @@ const CAD_CSS = `
       background: rgba(56, 189, 248, 0.2); color: #38bdf8;
     }
 
-    /* AutoCAD Command Line Container */
+    /* Drafting Command Line Container */
     .obs-cad-cmd-container {
       position: relative; background: #12151c; border-top: 1px solid #2a3140;
       display: flex; flex-direction: column; font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
@@ -1150,7 +1150,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         </div>
       </div>
 
-      <!-- In-Canvas AutoCAD Navigation Bar -->
+      <!-- In-Canvas Drafting Navigation Bar -->
       <div class="obs-cad-navbar">
         <button data-r="nav-pan" title="Pan (P)">✋</button>
         <button data-r="nav-ext" title="Zoom Extents (Z E)">⛶</button>
@@ -1167,7 +1167,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <div data-r="busy" style="display:none;position:absolute;left:50%;top:14px;transform:translateX(-50%);background:#1b212c;padding:6px 14px;border-radius:6px;border:1px solid #334155;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,0.3)"></div>
     </div>
 
-    <!-- AutoCAD Side Panels -->
+    <!-- Drafting Side Panels -->
     <div class="side">
       <h4>
         <span>Layers</span>
@@ -1185,7 +1185,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     </div>
   </div>
 
-  <!-- AutoCAD Command Window (Scrollable History + Autocomplete) -->
+  <!-- Drafting Command Window (Scrollable History + Autocomplete) -->
   <div class="obs-cad-cmd-container">
     <div class="obs-cad-cmd-history" data-r="cmdhist">
       <div>Command: Drawing engine initialized. Type a command or alias (L, C, REC, Z, DI, LA...)</div>
@@ -1198,7 +1198,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     <div class="obs-cad-cmd-auto-popup" data-r="cmdauto"></div>
   </div>
 
-  <!-- AutoCAD Layout Tabs (Model, Layout1, Layout2...) -->
+  <!-- Drafting Layout Tabs (Model, Layout1, Layout2...) -->
   <div data-r="tabs" style="display:none;gap:2px;padding:3px 8px 0;background:#151a23;border-top:1px solid #2a3140"></div>
 
   <!-- Drawing status-bar tray -->
@@ -1207,7 +1207,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const $ = <T extends HTMLElement>(k: string) => root!.querySelector(`[data-r="${k}"]`) as T;
   // Ribbon panels are built per drawing but MOUNTED in the shell chrome above the
-  // drawing tabs (AutoCAD MDI style) — only the active drawing's panels show.
+  // drawing tabs (Drafting MDI style) — only the active drawing's panels show.
   const tools = document.createElement("div"),
     tools2 = document.createElement("div");
   tools.className = "cadrb-host";
@@ -1240,7 +1240,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let view: M.View = { cx: 0, cy: 0, scale: 1, w: 800, h: 600 };
   const history: M.View[] = [];
   let tool: Tool = "select";
-  let bg = "autocad",
+  let bg = "drafting",
     cmode: ColorMode = "layer",
     lw = 1,
     du: M.DisplayUnit = "drawing";
@@ -1301,7 +1301,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const ptrs = new Map<number, M.Pt>();
   let pinch = 0;
 
-  // AutoCAD Drafting Undo / Redo Stacks
+  // Drafting Drafting Undo / Redo Stacks
   interface UndoAction {
     type: "add" | "delete" | "modify" | "replace";
     entities?: DxfEntity[];
@@ -1326,7 +1326,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   };
   const redoStack: UndoAction[] = [];
 
-  // AutoCAD Command History
+  // Drafting Command History
   const cmdHistory: string[] = [];
   let cmdHistoryIdx = -1;
 
@@ -1358,7 +1358,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (inv()) rgb = 0xffffff ^ rgb;
     // Plot style table active (PLOT with a CTB/STB loaded): map through the pen
-    // table — forced colour, grayscale policy — like AutoCAD plot previews.
+    // table — forced colour, grayscale policy — like Drafting plot previews.
     if (cmode === "style" && plotStyle) {
       const r = resolvePlotStyle(plotStyle.table, plotEntryOf(e));
       let ch: [number, number, number] = r.color ?? rgbToChannels(rgb);
@@ -1419,7 +1419,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const ro = new ResizeObserver(resize);
   ro.observe(cv);
 
-  /* ── AutoCAD Rendering Engine ── */
+  /* ── Drafting Rendering Engine ── */
 
   function drawEntity(c: CanvasRenderingContext2D, e: DxfEntity, v: M.View, flipY = true): void {
     const P = (x: number, y: number) => M.worldToScreen(v, x, y);
@@ -1586,7 +1586,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.closePath();
     }
     const fams = h.solid ? [] : M.hatchFamilies(h.pattern, h.angle, h.scale);
-    if (h.wipeout) { c.fillStyle = BG[bg] || BG.autocad; c.fill("evenodd"); }
+    if (h.wipeout) { c.fillStyle = BG[bg] || BG.drafting; c.fill("evenodd"); }
     else if (h.solid) c.fill("evenodd");
     else if (Math.min(...fams.map((f) => f.spacing)) * v.scale < 3) {
       c.globalAlpha = 0.35;
@@ -1685,7 +1685,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     c.globalAlpha = 1;
   }
 
-  /** Paints the AutoCAD major/minor grid and red/green axes through (0,0) */
+  /** Paints the Drafting major/minor grid and red/green axes through (0,0) */
   function paintGrid(c: CanvasRenderingContext2D, v: M.View): void {
     const st = M.gridStep(v.scale),
       tl = M.screenToWorld(v, 0, 0),
@@ -1724,7 +1724,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     c.stroke();
 
-    // AutoCAD Colored Axes passing through (0,0): X is Red, Y is Green
+    // Drafting Colored Axes passing through (0,0): X is Red, Y is Green
     const originScreen = M.worldToScreen(v, 0, 0);
     if (originScreen.y >= 0 && originScreen.y <= v.h) {
       c.strokeStyle = "rgba(239, 68, 68, 0.55)"; // Red X-axis
@@ -1744,7 +1744,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     c.restore();
   }
 
-  /** Paints the AutoCAD UCS icon at the bottom-left corner */
+  /** Paints the Drafting UCS icon at the bottom-left corner */
   function paintUcsIcon(c: CanvasRenderingContext2D, v: M.View): void {
     const x0 = 42;
     const y0 = v.h - 42;
@@ -1796,8 +1796,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     c.restore();
   }
 
-  /** Paints AutoCAD Infinite Crosshairs with central Pickbox */
-  function paintAutoCadCrosshairs(c: CanvasRenderingContext2D, v: M.View): void {
+  /** Paints Drafting Infinite Crosshairs with central Pickbox */
+  function paintDraftingCrosshairs(c: CanvasRenderingContext2D, v: M.View): void {
     if (!cursor) return;
     const cp = M.worldToScreen(v, cursor.x, cursor.y);
     const boxSize = 8;
@@ -1978,7 +1978,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   function render(c: CanvasRenderingContext2D, v: M.View, withUi: boolean): void {
     c.save();
-    c.fillStyle = BG[bg] || BG.autocad;
+    c.fillStyle = BG[bg] || BG.drafting;
     c.fillRect(0, 0, v.w, v.h);
     if (!doc) {
       c.restore();
@@ -2053,7 +2053,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.restore();
     }
 
-    // AutoCAD grips: blue squares on the selection, green under the cursor, red while dragging.
+    // Drafting grips: blue squares on the selection, green under the cursor, red while dragging.
     if (withUi && (tool === "select" || tool === "box") && !mod && !pick && !gripDrag) {
       const drawGrip = (x: number, y: number, fill: string): void => {
         const s = M.worldToScreen(v, x, y);
@@ -2110,7 +2110,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.restore();
     }
 
-    // Modify ghost preview (MOVE / COPY / ROTATE / MIRROR / SCALE) — AutoCAD drag style
+    // Modify ghost preview (MOVE / COPY / ROTATE / MIRROR / SCALE) — Drafting drag style
     if (modGhost && modGhost.length) {
       c.save();
       c.setLineDash([6, 4]);
@@ -2217,7 +2217,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.strokeStyle = "#ef4444";
         c.fillStyle = "#ef4444";
       } else if (m.kind === "dimang" && m.pts.length >= 3) {
-        // Angular dimension: vertex + two ray points (AutoCAD DIMANGULAR 3-point flow)
+        // Angular dimension: vertex + two ray points (Drafting DIMANGULAR 3-point flow)
         const v0 = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
         const a = M.worldToScreen(v, m.pts[1].x, m.pts[1].y);
         const b = M.worldToScreen(v, m.pts[2].x, m.pts[2].y);
@@ -2362,16 +2362,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // Scale bar
       paintScaleBar(c, v);
 
-      // AutoCAD UCS Icon
+      // Drafting UCS Icon
       paintUcsIcon(c, v);
 
-      // AutoCAD Infinite Crosshairs & Pickbox
-      paintAutoCadCrosshairs(c, v);
+      // Drafting Infinite Crosshairs & Pickbox
+      paintDraftingCrosshairs(c, v);
 
       // Dynamic Input HUD (F12)
       paintDynamicInput(c, v);
 
-      // AutoCAD Window (Blue solid) vs Crossing (Green dashed) selection rects
+      // Drafting Window (Blue solid) vs Crossing (Green dashed) selection rects
       if (rband) {
         const x = rband.a.x,
           y = rband.a.y,
@@ -2512,7 +2512,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── Style tools (linetypes, fonts, text styles, match properties) ── */
   let matchSrc: DxfEntity | null = null;
-  /** CIRCLE creation mode — AutoCAD: Center-radius (default), 2P, 3P. */
+  /** CIRCLE creation mode — Drafting: Center-radius (default), 2P, 3P. */
   let circleMode: "center" | "2p" | "3p" = "center";
   /** Last status prompt shown (for dyn input / status bar). */
   let acadPromptText = "";
@@ -2657,7 +2657,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     logCmd(`DATAEXTRACT: ${modelEnts.length} entities written to ${base()}-entities.csv`);
   }
 
-  /* ── AutoCAD Drafting Engine ── */
+  /* ── Drafting Drafting Engine ── */
   function addDraftEntity(e: DxfEntity): void {
     ents.push(e);
     if (layoutI < 0) modelEnts.push(e);
@@ -2800,7 +2800,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     logCmd("Command: REDO");
   }
 
-  /* ── AutoCAD Modify Engine (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET) ── */
+  /* ── Drafting Modify Engine (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET) ── */
   type ModKind = "move" | "copy" | "paste" | "rotate" | "mirror" | "scale";
   type ModStage = "select" | "base" | "second" | "eraseAsk";
   type OffStage = "dist" | "dist2" | "pickObj" | "pickSide";
@@ -2834,7 +2834,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   /** LAYISO snapshot — the hidden set before isolation (LAYUNISO restores it). */
   let preIsoHidden: string[] | null = null;
 
-  /* ── AutoCAD grip editing: select → drag blue hotspots (endpoints, vertices, centers) ── */
+  /* ── Drafting grip editing: select → drag blue hotspots (endpoints, vertices, centers) ── */
   interface GripDrag {
     i: number; // entity index in ents
     gi: number; // grip index in entityGrips(e)
@@ -2845,7 +2845,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let gripDrag: GripDrag | null = null;
   let gripHover: { i: number; gi: number } | null = null;
 
-  /** Screen-space hit-test on the grips of the current selection (≤ 400 grips, AutoCAD behaviour). */
+  /** Screen-space hit-test on the grips of the current selection (≤ 400 grips, Drafting behaviour). */
   function gripAt(sp: { x: number; y: number }): { i: number; gi: number } | null {
     if (!sel.size || sel.size > 128) return null;
     let budget = 400;
@@ -2940,7 +2940,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     markDirty();
     redoStack.length = 0;
     rebuildIndex();
-    // Keep the transformed objects selected, like AutoCAD grips.
+    // Keep the transformed objects selected, like Drafting grips.
     sel.clear();
     for (const e of after) {
       const i = ents.indexOf(e);
@@ -4296,7 +4296,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return true;
         }
         case "copy": {
-          // AutoCAD COPY keeps the original base point for every placement.
+          // Drafting COPY keeps the original base point for every placement.
           // Do not rebase on the previous destination or offsets become cumulative.
           placeCopy({ x: wp.x - b.x, y: wp.y - b.y });
           logCmd("Specify second point or [Exit]:");
@@ -4585,7 +4585,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     const el = openOverlay(`
       <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155;padding-bottom:10px;margin-bottom:12px">
-        <b style="font-size:15px;color:#38bdf8">AutoCAD Layer Properties Manager</b>
+        <b style="font-size:15px;color:#38bdf8">Drafting Layer Properties Manager</b>
         <div style="display:flex;gap:6px">
           <button data-r="lyr-new" style="background:#0284c7;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">＋ New Layer</button>
           <button data-r="lyr-close" style="padding:4px 10px">Close</button>
@@ -4868,7 +4868,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     };
     const tb = (k: Tool, icon: IconName, label: string): string => rb(icon, label, `data-t="${k}"`, tip(k));
     const bgOpts = Object.keys(BG)
-      .map((k) => `<option value="${k}" ${k === "autocad" ? "selected" : ""}>${k}</option>`)
+      .map((k) => `<option value="${k}" ${k === "drafting" ? "selected" : ""}>${k}</option>`)
       .join("");
     const unitOpts = ["drawing", "mm", "cm", "m", "in", "ft"].map((u) => `<option>${u}</option>`).join("");
 
@@ -5002,7 +5002,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "Layers",
-        rb("schedules", "Manager", `data-a="lyr-mgr"`, "AutoCAD Layer Properties Manager (LA)") +
+        rb("schedules", "Manager", `data-a="lyr-mgr"`, "Drafting Layer Properties Manager (LA)") +
           rb("isolate", "LayIso", `data-a="layiso"`, "Isolate the layer of a picked object — hide every other layer (LAYISO)") +
           rb("show-all", "LayUniso", `data-a="layuniso"`, "Restore the layers hidden by LAYISO (LAYUNISO)") +
           rb("masking-region", "LayOff", `data-a="layoff"`, "Turn off the layer of a picked object (LAYOFF)"),
@@ -5184,7 +5184,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "DWG Inspect",
-        rb("audit", "DWG Audit…", `data-a="dwg-audit"`, "Integrity report — zero-length geometry, dangling layer/style refs, empty layers (dwg_audit parity)") +
+        rb("audit", "DWG Audit…", `data-a="dwg-audit"`, "Integrity report — zero-length geometry, dangling layer/style refs, empty layers (dwg_audit compatibility)") +
           rb("table", "Tables…", `data-a="dwg-tables"`, "LAYER / LTYPE / STYLE / DIMSTYLE / layouts table browser") +
           rb("find", "Census…", `data-a="dwg-census"`, "Entity counts by type in model space"),
         "",
@@ -5201,11 +5201,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "DWG Data",
         rb("save", "Save DXF…", `data-a="dwg-rewrite"`, "Re-save the drawing through the DXF writer") +
-          rb("csv", "dwg2json", `data-a="dwg-2json"`, "Full database dump as JSON — entities, layers, tables, skipped census (dwgread -O JSON parity)") +
+          rb("csv", "dwg2json", `data-a="dwg-2json"`, "Full database dump as JSON — entities, layers, tables, skipped census (dwgread -O JSON compatibility)") +
           rb("spline", "dwg2SVG", `data-a="dwg-2svg"`, "Flattened 2D vector export with per-entity colors") +
-          rb("topo", "dwg2geojson", `data-a="dwg-2geojson"`, "Points / lines / polygons FeatureCollection in drawing coordinates (dwg2geojson parity)") +
-          rb("print", "dwg2ps", `data-a="dwg-2ps"`, "EPS via moveto/lineto/arc — prints anywhere (dwg2ps parity)") +
-          rb("camera", "Thumbnail…", `data-a="dwg-thumb"`, "Extract the embedded preview bitmap from a DWG file — no geometry parsing (dwg_bmp parity)"),
+          rb("topo", "dwg2geojson", `data-a="dwg-2geojson"`, "Points / lines / polygons FeatureCollection in drawing coordinates (dwg2geojson compatibility)") +
+          rb("print", "dwg2ps", `data-a="dwg-2ps"`, "EPS via moveto/lineto/arc — prints anywhere (dwg2ps compatibility)") +
+          rb("camera", "Thumbnail…", `data-a="dwg-thumb"`, "Extract the embedded preview bitmap from a DWG file — no geometry parsing (dwg_bmp compatibility)"),
         "",
         "",
         "output",
@@ -5487,25 +5487,25 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           }
         });
       },
-      // AutoCAD expansion pack: layer isolation + quick edit shortcuts
-      layiso: () => executeAutoCadCommand("LAYISO"),
-      layoff: () => executeAutoCadCommand("LAYOFF"),
-      layuniso: () => executeAutoCadCommand("LAYUNISO"),
-      ddedit: () => executeAutoCadCommand("DDEDIT"),
-      qselect: () => executeAutoCadCommand("QSELECT"),
-      pedit: () => executeAutoCadCommand("PEDIT"),
-      "dwg-open": () => executeAutoCadCommand("DWGOPEN DWG"),
-      "dwg-open-dxf": () => executeAutoCadCommand("DWGOPEN DXF"),
-      "dwg-jsonimp": () => executeAutoCadCommand("DWGJSONIMP"),
-      "dwg-rewrite": () => executeAutoCadCommand("DWGREWRITE"),
-      "dwg-2json": () => executeAutoCadCommand("DWG2JSON"),
-      "dwg-2svg": () => executeAutoCadCommand("DWG2SVG"),
-      "dwg-2geojson": () => executeAutoCadCommand("DWG2GEOJSON"),
-      "dwg-2ps": () => executeAutoCadCommand("DWG2PS"),
-      "dwg-audit": () => executeAutoCadCommand("DWGAUDIT"),
-      "dwg-tables": () => executeAutoCadCommand("DWGTABLES"),
-      "dwg-census": () => executeAutoCadCommand("DWGCENSUS"),
-      "dwg-thumb": () => executeAutoCadCommand("DWGTHUMB"),
+      // Drafting expansion pack: layer isolation + quick edit shortcuts
+      layiso: () => executeDraftingCommand("LAYISO"),
+      layoff: () => executeDraftingCommand("LAYOFF"),
+      layuniso: () => executeDraftingCommand("LAYUNISO"),
+      ddedit: () => executeDraftingCommand("DDEDIT"),
+      qselect: () => executeDraftingCommand("QSELECT"),
+      pedit: () => executeDraftingCommand("PEDIT"),
+      "dwg-open": () => executeDraftingCommand("DWGOPEN DWG"),
+      "dwg-open-dxf": () => executeDraftingCommand("DWGOPEN DXF"),
+      "dwg-jsonimp": () => executeDraftingCommand("DWGJSONIMP"),
+      "dwg-rewrite": () => executeDraftingCommand("DWGREWRITE"),
+      "dwg-2json": () => executeDraftingCommand("DWG2JSON"),
+      "dwg-2svg": () => executeDraftingCommand("DWG2SVG"),
+      "dwg-2geojson": () => executeDraftingCommand("DWG2GEOJSON"),
+      "dwg-2ps": () => executeDraftingCommand("DWG2PS"),
+      "dwg-audit": () => executeDraftingCommand("DWGAUDIT"),
+      "dwg-tables": () => executeDraftingCommand("DWGTABLES"),
+      "dwg-census": () => executeDraftingCommand("DWGCENSUS"),
+      "dwg-thumb": () => executeDraftingCommand("DWGTHUMB"),
     });
 
     /* ── Parametric / Express Tools / Collaborate actions ── */
@@ -5539,14 +5539,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       dwghistory: () => openDwgHistory(),
       checkstd: () => openCheckStandards(),
       // Manage — customization
-      aliases: () => executeAutoCadCommand("KS"),
+      aliases: () => executeDraftingCommand("KS"),
       "ribbon-min": () => applyCadRibbonMinimized(!ribbonMinimized),
-      cleanscreen: () => executeAutoCadCommand("CLEANSCREEN"),
+      cleanscreen: () => executeDraftingCommand("CLEANSCREEN"),
       // panel buttons that forward to existing commands
-      overkill: () => executeAutoCadCommand("OVERKILL"),
-      props: () => executeAutoCadCommand("PROPERTIES"),
-      cal: () => executeAutoCadCommand("CAL"),
-      dwgversion: () => executeAutoCadCommand("DWGVERSION"),
+      overkill: () => executeDraftingCommand("OVERKILL"),
+      props: () => executeDraftingCommand("PROPERTIES"),
+      cal: () => executeDraftingCommand("CAL"),
+      dwgversion: () => executeDraftingCommand("DWGVERSION"),
       // AI copilot — opens the shared AI panel docked inside this shell
       aicopilot: () => toggleCadAi(),
       "aicopilot-info": () =>
@@ -5624,7 +5624,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
 
-  /** AutoCAD-style command prompt for the active tool and stage. */
+  /** Drafting-style command prompt for the active tool and stage. */
   function toolPrompt(): string {
     const n = pts.length;
     switch (tool) {
@@ -5684,7 +5684,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /**
-   * AutoCAD direct distance / radius entry while a tool is waiting for a point.
+   * Drafting direct distance / radius entry while a tool is waiting for a point.
    * Returns true if the numeric value was consumed.
    */
   function applyDirectDistance(value: number): boolean {
@@ -5788,7 +5788,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (isModTool(t)) {
       if (t === "paste") {
         // Super Copy placement: the clipboard ghosts onto the cursor immediately
-        // (AutoCAD PASTECLIP). The style carry-over is applied once per session,
+        // (Drafting PASTECLIP). The style carry-over is applied once per session,
         // before the first placement, so even the ghost renders true.
         const place = pendingPlacement;
         pendingPlacement = null;
@@ -5906,7 +5906,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const snapped = (wp: M.Pt): M.Snap | null => {
     if (!idx || !snapOn) return null;
-    // AutoCAD: when a point is already picked, enable PERP against that base
+    // Drafting: when a point is already picked, enable PERP against that base
     const from = pts.length ? pts[pts.length - 1] : mod?.base ? mod.base : null;
     return M.findSnap(idx, ents, wp.x, wp.y, 14 / view.scale, [...snapModes], visible, from);
   };
@@ -5945,13 +5945,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     if (ev.button !== 0) return;
 
-    // AutoCAD SELECT: left-click drag always starts a selection rectangle.
+    // Drafting SELECT: left-click drag always starts a selection rectangle.
     // Left → right  = WINDOW (solid blue) — only entities fully inside
     // Right → left  = CROSSING (dotted green) — any entity that touches the box
     // Shift/Ctrl adds to the current selection. Pan is middle-button or PAN tool only.
     if (tool === "box" || tool === "select") {
       // Grip editing: a click on a hotspot of the selection starts a grip drag
-      // (AutoCAD blue-grip behaviour) instead of a rubber band.
+      // (Drafting blue-grip behaviour) instead of a rubber band.
       if (!mod && !pick) {
         const g = gripAt(sp);
         if (g && ents[g.i]) {
@@ -5985,7 +5985,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
 
-    // AutoCAD Modify tools (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET)
+    // Drafting Modify tools (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET)
     if (isModTool(tool) || tool === "offset") {
       const s2 = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind };
       let mp: M.Pt = { x: s2.x, y: s2.y };
@@ -6018,7 +6018,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             end: { x: pts[1].x, y: pts[1].y },
           });
           logCmd(`Line added: length = ${fmt(M.distance(pts[0], pts[1]))}`);
-          pts = [p]; // Chain next line like AutoCAD
+          pts = [p]; // Chain next line like Drafting
         }
         showAcadPrompt();
         break;
@@ -6610,7 +6610,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
   }
 
-  // Right-click = Enter (AutoCAD: confirm selection / accept defaults)
+  // Right-click = Enter (Drafting: confirm selection / accept defaults)
   cv.addEventListener("contextmenu", (ev) => {
     ev.preventDefault();
     if (pick) confirmPickStep();
@@ -6629,7 +6629,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const endDrag = (ev: PointerEvent) => {
     ptrs.delete(ev.pointerId);
     if (ptrs.size < 2) pinch = 0;
-    // Grip drag release: commit as a single modify undo action (AutoCAD grip edit).
+    // Grip drag release: commit as a single modify undo action (Drafting grip edit).
     if (gripDrag) {
       const after = ents[gripDrag.i];
       if (gripDrag.moved && after && after !== gripDrag.orig) {
@@ -6651,7 +6651,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (press && press.id === ev.pointerId) {
       if (press.band && press.moved && rband && idx && ev.type === "pointerup") {
-        // Screen X direction decides mode (AutoCAD): L→R window, R→L crossing
+        // Screen X direction decides mode (Drafting): L→R window, R→L crossing
         const isWindow = rband.b.x >= rband.a.x;
         const mode: "window" | "crossing" = isWindow ? "window" : "crossing";
         const a = M.screenToWorld(view, rband.a.x, rband.a.y);
@@ -6830,9 +6830,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     resetDrawingSession("Esc");
   }
 
-    // Keyboard Shortcuts (AutoCAD Standard: F3, F7, F8, F12, Ctrl+Z, Ctrl+Y, Space/Enter)
+    // Keyboard Shortcuts (Drafting Standard: F3, F7, F8, F12, Ctrl+Z, Ctrl+Y, Space/Enter)
   // Printable keys open the in-canvas command prompt from ANYWHERE on screen while this
-  // drawing is the active CAD tab (AutoCAD behaviour — not limited to the command line).
+  // drawing is the active CAD tab (Drafting behaviour — not limited to the command line).
   let screenTypeActive = false;
 
   function isUiTextField(target: EventTarget | null): boolean {
@@ -6858,7 +6858,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (ev.repeat) return;
     if (ev.key.length !== 1) return;
-    // Letters, digits, and common AutoCAD punctuation for command entry
+    // Letters, digits, and common Drafting punctuation for command entry
     if (!/^[a-zA-Z0-9._+-]$/.test(ev.key)) return;
     if (isUiTextField(ev.target)) return;
     if (dynCommandEl && dynCommandInput && document.activeElement === dynCommandInput) return;
@@ -6889,7 +6889,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     logCmd(`Repeat: ${last}`);
-    executeAutoCadCommand(last);
+    executeDraftingCommand(last);
   }
 
   /** Undo / Redo / Esc / Delete / Ctrl+C·Shift+C copy / Ctrl+X cut / Ctrl+V·Shift+V paste / Ctrl+Alt+V paste-orig / Space·Enter repeat — work anywhere while this drawing is active. */
@@ -6956,7 +6956,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
 
     if (key === "Delete" || key === "Backspace") {
-      // Backspace only deletes selection when not typing a command (AutoCAD: Delete)
+      // Backspace only deletes selection when not typing a command (Drafting: Delete)
       if (key === "Backspace" && (pts.length || pick || mod)) return;
       if (!mod) {
         ev.preventDefault();
@@ -7015,7 +7015,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
 
-    // Enter / Space: finish current op, end drawing command, or repeat last (AutoCAD)
+    // Enter / Space: finish current op, end drawing command, or repeat last (Drafting)
     if (key === "Enter" || key === " ") {
       if (pick) {
         ev.preventDefault();
@@ -7031,7 +7031,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         ev.preventDefault();
         return;
       }
-      // LINE / PLINE: Enter ends the command (AutoCAD)
+      // LINE / PLINE: Enter ends the command (Drafting)
       if (tool === "line" || tool === "poly" || tool === "cloud" || tool === "spline" || tool === "wipeout") {
         ev.preventDefault();
         ev.stopImmediatePropagation();
@@ -7048,7 +7048,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         finishMeasure();
         return;
       }
-      // CIRCLE/ARC incomplete: Enter cancels like AutoCAD
+      // CIRCLE/ARC incomplete: Enter cancels like Drafting
       if (tool !== "select" && tool !== "pan") {
         ev.preventDefault();
         endCurrentCommand();
@@ -7200,7 +7200,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   root.querySelector("[data-r=open-layer-mgr]")?.addEventListener("click", openLayerPropertiesManager);
 
-  /* ── AutoCAD Command Line Execution & In-Canvas Dynamic Command Entry ── */
+  /* ── Drafting Command Line Execution & In-Canvas Dynamic Command Entry ── */
   const cmdInput = root.querySelector<HTMLInputElement>("[data-r=cmd]")!;
   let dynCommandEl: HTMLDivElement | null = null;
   let dynCommandInput: HTMLInputElement | null = null;
@@ -7255,7 +7255,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             event.preventDefault();
             const value = dynCommandInput.value;
             closeDynamicCommand();
-            executeAutoCadCommand(value);
+            executeDraftingCommand(value);
           }
           return;
         }
@@ -7263,7 +7263,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           event.preventDefault();
           const value = dynCommandInput.value;
           closeDynamicCommand();
-          executeAutoCadCommand(value);
+          executeDraftingCommand(value);
           return;
         }
         if (event.key === "Tab") {
@@ -7313,7 +7313,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return CAD_COMMANDS.some((command) => command.name === resolved);
   }
 
-  function executeAutoCadCommand(rawInput: string): void {
+  function executeDraftingCommand(rawInput: string): void {
     const trimmed = rawInput.trim();
     if (!trimmed) return;
     // DDEDIT / MLEADER: the typed line is annotation text, not a command.
@@ -7375,7 +7375,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
 
-    // KS / ALIASEDIT — command alias editor (AutoCAD-style abbreviations)
+    // KS / ALIASEDIT — command alias editor (Drafting-style abbreviations)
     if (cmd === "KS" || cmd === "ALIASEDIT" || cmd === "ALIASES" || cmd === "SHORTCUTS") {
       openCadAliasEditor(
         CAD_COMMANDS.map((c) => ({
@@ -7391,7 +7391,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
 
-    // Standard AutoCAD command matching
+    // Standard Drafting command matching
     if (cmd === "L" || cmd === "LINE") {
       setTool("line");
       return;
@@ -7817,7 +7817,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
 
-    /* ── AutoCAD expansion pack: LENGTHEN / DIVIDE / MEASURE / DDEDIT / LAYER tools /
+    /* ── Drafting expansion pack: LENGTHEN / DIVIDE / MEASURE / DDEDIT / LAYER tools /
           MLEADER / QSELECT / PEDIT / CAL ── */
     if (cmd === "LEN" || cmd === "LENGTHEN") {
       setTool("lengthen");
@@ -8013,7 +8013,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       return;
     }
-    // Bare arithmetic expression while a tool waits for a number (AutoCAD CAL on the fly)
+    // Bare arithmetic expression while a tool waits for a number (Drafting CAL on the fly)
     if (isCalcExpr(trimmed)) {
       const v = evalExpr(trimmed);
       if (v != null && Number.isFinite(v)) {
@@ -8033,7 +8033,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
     }
 
-    logCmd(`Unknown command "${trimmed}". Press ? for AutoCAD command list.`);
+    logCmd(`Unknown command "${trimmed}". Press ? for Drafting command list.`);
   }
 
   cmdInput.addEventListener("input", () => {
@@ -8066,7 +8066,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     cmdAutoEl.querySelectorAll(".obs-cmd-auto-item").forEach((item) => {
       item.addEventListener("click", () => {
-        executeAutoCadCommand(item.getAttribute("data-cmd") || "");
+        executeDraftingCommand(item.getAttribute("data-cmd") || "");
       });
     });
   });
@@ -8075,7 +8075,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (e.key === " " || e.code === "Space") {
       if (isExactCadCommandToken(cmdInput.value)) {
         e.preventDefault();
-        executeAutoCadCommand(cmdInput.value);
+        executeDraftingCommand(cmdInput.value);
       }
       return;
     }
@@ -8091,7 +8091,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         } else repeatLastCommand();
         return;
       }
-      executeAutoCadCommand(cmdInput.value);
+      executeDraftingCommand(cmdInput.value);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       if (cmdHistoryIdx > 0) {
@@ -8111,13 +8111,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       e.preventDefault();
       const first = cmdAutoEl.querySelector<HTMLElement>(".obs-cmd-auto-item");
       if (first) {
-        executeAutoCadCommand(first.getAttribute("data-cmd") || "");
+        executeDraftingCommand(first.getAttribute("data-cmd") || "");
       }
     }
   });
 
   root.querySelector("[data-r=cmdrun]")?.addEventListener("click", () => {
-    executeAutoCadCommand(cmdInput.value);
+    executeDraftingCommand(cmdInput.value);
   });
 
   /* ── Overlays: Help, Units, Plot ── */
@@ -8219,7 +8219,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   function openUnitsDialog(): void {
     const panel = openOverlay(`
-      <b style="font-size:15px;color:#38bdf8">AutoCAD Drawing Units (UNITS)</b>
+      <b style="font-size:15px;color:#38bdf8">Drafting Drawing Units (UNITS)</b>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
         <div>
           <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Length Type:</label>
@@ -8256,7 +8256,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       );
     }
     const panel = openOverlay(`
-      <b style="font-size:14px;color:#38bdf8">AutoCAD Database Entity List (LIST)</b><br>
+      <b style="font-size:14px;color:#38bdf8">Drafting Database Entity List (LIST)</b><br>
       <span style="color:#9aa4b2">${sel.size} objects selected · Total length: ${escapeHtml(fmt(totalLen))}</span>
       <table style="width:100%;margin-top:10px;font-size:12px">
         <thead><tr style="color:#9aa4b2;text-align:left"><th>#</th><th>Type</th><th>Layer</th><th style="text-align:right">Length</th></tr></thead>
@@ -8273,7 +8273,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     const panel = openOverlay(`
-      <b style="font-size:15px;color:#38bdf8">AutoCAD Command &amp; Shortcut Guide</b>
+      <b style="font-size:15px;color:#38bdf8">Drafting Command &amp; Shortcut Guide</b>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;font-size:12px">
         <div>
           <b style="color:#f8fafc">Modify Commands:</b><br>
@@ -8307,7 +8307,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function openPlot(): void {
     if (!doc) return;
     const panel = openOverlay(`
-      <b style="font-size:15px;color:#38bdf8">AutoCAD Plot — Model / Sheet to PDF</b>
+      <b style="font-size:15px;color:#38bdf8">Drafting Plot — Model / Sheet to PDF</b>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-top:12px;align-items:center;font-size:12px">
         <label>Paper Size:</label>
         <select data-p="paper">${Object.keys(M.PAPER_MM).map((k) => `<option ${k === "A3" ? "selected" : ""}>${k}</option>`).join("")}</select>
@@ -8331,7 +8331,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     `);
     const gP = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-p=${k}]`)!;
     gP("cancel").onclick = closeOverlay;
-    // Pen table: load a real AutoCAD CTB/STB file and plot through it.
+    // Pen table: load a real Drafting CTB/STB file and plot through it.
     gP("ctbload").onclick = () => gP("ctbfile").click();
     gP("ctbfile").onchange = async () => {
       const f = gP("ctbfile").files?.[0];
@@ -8712,7 +8712,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${v.w}" height="${v.h}" viewBox="0 0 ${v.w} ${
       v.h
-    }"><rect width="100%" height="100%" fill="${BG[bg] || BG.autocad}"/>${o.join("")}</svg>`;
+    }"><rect width="100%" height="100%" fill="${BG[bg] || BG.drafting}"/>${o.join("")}</svg>`;
     download(new Blob([svg], { type: "image/svg+xml" }), `${base()}.svg`);
   }
 
@@ -9342,7 +9342,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "Window",
-        rb("issues", "Help", `data-a="help"`, "AutoCAD Shortcuts & Commands (?)") +
+        rb("issues", "Help", `data-a="help"`, "Drafting Shortcuts & Commands (?)") +
           rb("close", "Close", `data-a="close"`, "Close the drawing editor", "cadrb--danger"),
         "",
         "cadrg--end",
@@ -9534,7 +9534,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     focus: () => cv.focus({ preventScroll: true }),
     importLandXml: (f: File) => importLandXml(f),
     runCommandText: (text: string) => {
-      executeAutoCadCommand(text);
+      executeDraftingCommand(text);
     },
     aiSnapshot: () => ({ tool: String(tool), entityCount: ents.length }),
     exec: (a: string) => {

@@ -27,21 +27,21 @@ function camTools(): Any {
   return (c.cam as Any) ?? (window as Any).__OBS_CAMERA_TOOLS ?? {};
 }
 
-// Debounce so rapid left-clicks through a coordination model do not queue
-// dozens of overlapping Fragments worker round-trips (getElementWorldBoxes
-// is async and slow on large models).
-let pendingPivot: number | null = null;
-
-function schedulePivotOnSelection(): void {
-  if (pendingPivot !== null) {
-    window.clearTimeout(pendingPivot);
-  }
-  pendingPivot = window.setTimeout(() => {
-    pendingPivot = null;
-    pivotOnSelectionSafe();
-  }, 40);
-}
-
+// Debounce so rapid left-clicks through a coordination model do not queue
+// dozens of overlapping Fragments worker round-trips (getElementWorldBoxes
+// is async and slow on large models).
+let pendingPivot: number | null = null;
+
+function schedulePivotOnSelection(): void {
+  if (pendingPivot !== null) {
+    window.clearTimeout(pendingPivot);
+  }
+  pendingPivot = window.setTimeout(() => {
+    pendingPivot = null;
+    pivotOnSelectionSafe();
+  }, 40);
+}
+
 function pivotOnSelectionSafe(): void {
   try {
     const t = camTools();
