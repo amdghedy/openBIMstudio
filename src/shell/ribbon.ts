@@ -125,7 +125,7 @@ import { gizmo as _gizmoForEdit } from "../features/gizmo";
 import {
   openAnalyzeBuildingDialog, openFrameSolverDialog, openSteelCheckDialog, openRcBeamDialog,
   openDuctPressureDialog, openPipePressureDialog, openWorstPathDialog,
-  openAdaptiveSweepDialog, openAdaptiveRepeatDialog,
+  openAdaptiveSweepDialog, openAdaptiveRepeatDialog, openAdaptiveEditDialog,
   openExtrudeDialog, openRevolveDialog, openSolidSweepDialog, openBlendDialog,
   openBooleanDialog, openVoidDialog, validateLastSolid,
   openGeneralBooleanDialog, openShellDialog, openLoftDialog, openFuseDialog,
@@ -801,6 +801,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("component", "Divide & Repeat", safe(() => void openAdaptiveRepeatDialog(), "Divide path and repeat family"), {
         title: "Divide a line into equal bays and repeat a 2-point adaptive family along it",
+      }),
+      b("component", "Edit Adaptive", safe(() => void openAdaptiveEditDialog(), "Edit selected adaptive component"), {
+        title: "Edit the selected adaptive component's placement points and profile; regenerate its native geometry",
       }),
       sep(),
       groupLabel("Datum"),

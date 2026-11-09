@@ -714,6 +714,7 @@ export async function openWorstPathDialog(): Promise<void> {
 
 function ensureDefaultAdaptiveFamilies(): void {
   if (!listFamilies().length) {
+    registerFamily({ id: "point-post", name: "Point-placed post 100×100", pointCount: 1, pointLength: 3, profile: [{ u: -0.05, v: -0.05 }, { u: 0.05, v: -0.05 }, { u: 0.05, v: 0.05 }, { u: -0.05, v: 0.05 }] });
     registerFamily({ id: "rect-post", name: "Rectangular post 100×100", pointCount: 2, profile: [{ u: -0.05, v: -0.05 }, { u: 0.05, v: -0.05 }, { u: 0.05, v: 0.05 }, { u: -0.05, v: 0.05 }] });
     registerFamily({ id: "round-mullion", name: "Round mullion Ø60", pointCount: 2, profile: circleProfile(0.03, 16) });
     registerFamily({ id: "fin-300", name: "Sunshade fin 300×40", pointCount: 2, profile: [{ u: -0.15, v: -0.02 }, { u: 0.15, v: -0.02 }, { u: 0.15, v: 0.02 }, { u: -0.15, v: 0.02 }] });
@@ -721,6 +722,7 @@ function ensureDefaultAdaptiveFamilies(): void {
 }
 
 export function circleProfile(radius: number, segments = 24): ProfilePt[] {
+  if (!Number.isFinite(radius) || radius <= 0) throw new Error("circle radius must be positive");
   const out: ProfilePt[] = [];
   for (let i = 0; i < segments; i++) {
     const a = (i / segments) * Math.PI * 2;
@@ -737,88 +739,208 @@ export function rectProfile(halfW: number, halfD: number): ProfilePt[] {
   ];
 }
 
+function nativeAdaptiveApi(): Any {
+  return w.__obsAdaptiveAuthoring ?? w.__obsAdaptive ?? {};
+}
+
+function profileForAdaptiveSweep(profile: ProfilePt[]): ProfilePt[] {
+  const ring = profile.map((p) => ({ u: Number(p.u), v: Number(p.v) }));
+  if (ring.length > 3) {
+    const first = ring[0], last = ring[ring.length - 1];
+    if (Math.abs(first.u - last.u) < 1e-9 && Math.abs(first.v - last.v) < 1e-9) ring.pop();
+  }
+  if (ring.length < 3) throw new Error("adaptive profile requires at least three distinct points");
+  return ring;
+}
+
+function adaptivePathForPreview(points: Pt3[], pointLength: number): Pt3[] {
+  if (points.length !== 1) return points;
+  return [points[0], { x: points[0].x, y: points[0].y + pointLength, z: points[0].z }];
+}
+
+/** Create an adaptive instance as a native AuthoredElement, not a viewport-only mesh. */
 export async function openAdaptiveSweepDialog(): Promise<void> {
   ensureDefaultAdaptiveFamilies();
+  const families = listFamilies();
   const r = await openFormModal({
-    title: "Adaptive Sweep",
-    subtitle: "Sweep a family profile along a 3D path — watertight mesh, exact divergence-theorem volume",
+    title: "Place Native Adaptive Component",
+    subtitle: "Create a project-authored component from 1–8 ordered placement points. Its editable profile and points are saved with the project.",
     fields: [
       { kind: "select", key: "profile", label: "Profile source", default: "family",
         options: [["family", "From family"], ["rect", "Rectangle w×h"], ["circle", "Circle radius"]] },
-      { kind: "select", key: "family", label: "Family", default: "rect-post",
-        options: listFamilies().map((f: AdaptiveFamily) => [f.id, f.name] as [string, string]) },
-      { kind: "number", key: "rw", label: "Rect width", default: 0.1, unit: "m", step: 0.01, min: 0.01 },
-      { kind: "number", key: "rh", label: "Rect height", default: 0.1, unit: "m", step: 0.01, min: 0.01 },
-      { kind: "number", key: "cr", label: "Circle radius", default: 0.05, unit: "m", step: 0.005, min: 0.005 },
-      { kind: "textarea", key: "path", label: "Path points (x,y,z per line or x,z pairs)",
-        default: "0,0,0\n6,0,0\n6,0,2.5", placeholder: "x,y,z per line" },
+      { kind: "select", key: "family", label: "Family", default: families.find((family: AdaptiveFamily) => family.pointCount === 2)?.id ?? families[0]?.id ?? "rect-post",
+        options: families.map((f: AdaptiveFamily) => [f.id, f.name] as [string, string]) },
+      { kind: "number", key: "rw", label: "Rect width", default: 0.1, unit: "m", step: 0.01, min: 0.001 },
+      { kind: "number", key: "rh", label: "Rect height", default: 0.1, unit: "m", step: 0.01, min: 0.001 },
+      { kind: "number", key: "cr", label: "Circle radius", default: 0.05, unit: "m", step: 0.005, min: 0.001 },
+      { kind: "number", key: "pointLength", label: "One-point extrusion length", default: 3, unit: "m", step: 0.1, min: 0.001 },
+      { kind: "textarea", key: "path", label: "Ordered placement points (x,y,z per line; 1–8 points)",
+        default: "0,0,0\n6,0,0", placeholder: "x,y,z per line (metres)" },
+      { kind: "text", key: "name", label: "Instance name", default: "Adaptive Component" },
     ],
-    submitLabel: "Create Sweep",
-    width: 560,
+    submitLabel: "Create Native Component",
+    width: 600,
   });
   if (!r) return;
   try {
-    const path = parsePointList(String(r.path).split(/\n+/).join(";"));
-    if (path.length < 2) throw new Error("path needs at least 2 points");
+    const points = parsePointList(String(r.path));
+    if (points.length < 1 || points.length > 8) throw new Error("Enter between 1 and 8 placement points");
+    let family: AdaptiveFamily | undefined;
     let profile: ProfilePt[];
+    let familyId: string;
+    let familyName: string;
+    let pointLength = Number(r.pointLength);
     if (r.profile === "family") {
-      const fam = listFamilies().find((f: AdaptiveFamily) => f.id === r.family);
-      if (!fam) throw new Error(`unknown family '${r.family}'`);
-      profile = fam.profile;
-    } else if (r.profile === "circle") {
-      profile = circleProfile(Number(r.cr));
+      family = listFamilies().find((f: AdaptiveFamily) => f.id === String(r.family));
+      if (!family) throw new Error(`unknown adaptive family '${r.family}'`);
+      if (family.pointCount !== points.length) {
+        throw new Error(`Family '${family.name}' requires exactly ${family.pointCount} placement point(s); you supplied ${points.length}`);
+      }
+      profile = family.profile;
+      familyId = family.id;
+      familyName = family.name;
+      pointLength = family.pointLength ?? pointLength;
     } else {
-      const w2 = Number(r.rw) / 2, h2 = Number(r.rh) / 2;
-      profile = [{ u: -w2, v: -h2 }, { u: w2, v: -h2 }, { u: w2, v: h2 }, { u: -w2, v: h2 }];
+      if (!Number.isFinite(pointLength) || pointLength <= 0) throw new Error("One-point extrusion length must be positive");
+      profile = r.profile === "circle"
+        ? circleProfile(Number(r.cr))
+        : rectProfile(Number(r.rw) / 2, Number(r.rh) / 2);
+      familyId = `custom-adaptive-${Date.now().toString(36)}`;
+      familyName = r.profile === "circle" ? "Custom circular adaptive profile" : "Custom rectangular adaptive profile";
     }
-    const mesh = sweepProfile(profile, path);
-    const vol = meshVolume(mesh);
-    const area = profileArea(profile);
-    showReportCard("Adaptive Sweep Created", [
-      ["Path length", `${pathLength(path).toFixed(3)} m`],
-      ["Profile area", `${(area * 1e4).toFixed(1)} cm²`],
+    profile = profileForAdaptiveSweep(profile);
+    const previewPath = adaptivePathForPreview(points, pointLength);
+    const previewMesh = sweepProfile(profile, previewPath);
+    const vol = Math.abs(meshVolume(previewMesh));
+    const api = nativeAdaptiveApi();
+    if (typeof api.create !== "function") throw new Error("Native adaptive authoring is not ready. Restart the project and try again.");
+    const element = api.create({
+      familyId,
+      familyName,
+      points,
+      profile,
+      ...(points.length === 1 ? { pointLength } : {}),
+      name: String(r.name ?? "").trim() || familyName,
+    });
+    showReportCard("Native Adaptive Component Created", [
+      ["Element", element.name],
+      ["Family", familyName],
+      ["Placement points", points.length],
+      ["Path length", `${(points.length === 1 ? pointLength : pathLength(points)).toFixed(3)} m`],
+      ["Profile area", `${(Math.abs(profileArea(profile)) * 1e4).toFixed(1)} cm²`],
       ["Mesh volume", `${(vol * 1e6).toFixed(1)} L`],
-      ["Check area × length", `${(area * pathLength(path) * 1e6).toFixed(1)} L`],
-      ["Vertices / triangles", `${mesh.vertices.length} / ${mesh.faces.length}`],
-    ], "Volume is computed from the watertight mesh (divergence theorem) and matches area × length for straight runs.");
-    notify("success", `Sweep created: ${mesh.faces.length} triangles, ${(vol * 1e6).toFixed(0)} L`);
+      ["Storage", "Native project element · editable definition saved"],
+    ], "The project stores the profile and ordered points. The visible mesh is regenerated from that definition when the authored model rebuilds.");
+    notify("success", `Created native adaptive component: ${element.name}`);
   } catch (e) {
-    notify("error", `Adaptive sweep failed: ${(e as Error).message}`);
+    notify("error", `Adaptive component creation failed: ${(e as Error).message}`);
   }
 }
 
+/** Repeat family instances along divided points; the full operation is one undo step. */
 export async function openAdaptiveRepeatDialog(): Promise<void> {
   ensureDefaultAdaptiveFamilies();
+  const families = listFamilies();
   const r = await openFormModal({
     title: "Adaptive Divide & Repeat",
-    subtitle: "Divide a line into equal bays and repeat a 2-point family along it",
+    subtitle: "Divide a path and create native authored instances. Family placement-point count may be 1–8.",
     fields: [
       { kind: "select", key: "family", label: "Family", default: "round-mullion",
-        options: listFamilies().filter((f: AdaptiveFamily) => f.pointCount === 2).map((f: AdaptiveFamily) => [f.id, f.name] as [string, string]) },
+        options: families.map((f: AdaptiveFamily) => [f.id, f.name] as [string, string]) },
       { kind: "text", key: "start", label: "Path start", default: "0,0,0", placeholder: "x,y,z" },
       { kind: "text", key: "end", label: "Path end", default: "6,0,2.5", placeholder: "x,y,z" },
       { kind: "number", key: "bays", label: "Bays", default: 6, min: 1, max: 100, step: 1 },
     ],
-    submitLabel: "Repeat Components",
+    submitLabel: "Create Native Components",
   });
   if (!r) return;
   try {
+    const family = listFamilies().find((f: AdaptiveFamily) => f.id === String(r.family));
+    if (!family) throw new Error(`unknown adaptive family '${r.family}'`);
     const s = parsePointList(String(r.start))[0];
     const e = parsePointList(String(r.end))[0];
     if (!s || !e) throw new Error("start and end points are required");
     const bays = Math.max(1, Math.round(Number(r.bays)));
     const divisions = divideLine(s, e, bays);
-    const instances = repeatAlongPath(String(r.family), divisions);
-    showReportCard("Divide & Repeat", [
-      ["Family", String(r.family)],
+    const instances = repeatAlongPath(family.id, divisions);
+    if (!instances.length) throw new Error(`The divided path does not contain enough points for family '${family.name}' (${family.pointCount} needed)`);
+    const api = nativeAdaptiveApi();
+    if (typeof api.createMany !== "function") throw new Error("Native adaptive batch placement is not ready. Restart the project and try again.");
+    const inputs = instances.map((instance: { points: Pt3[] }, i: number) => ({
+      familyId: family.id,
+      familyName: family.name,
+      points: instance.points,
+      profile: family.profile,
+      ...(instance.points.length === 1 && family.pointLength !== undefined ? { pointLength: family.pointLength } : {}),
+      name: `${family.name} ${i + 1}`,
+    }));
+    const created = await api.createMany(inputs);
+    showReportCard("Native Adaptive Divide & Repeat", [
+      ["Family", family.name],
+      ["Instances created", created.length],
+      ["Placement points / instance", family.pointCount],
       ["Path length", `${pathLength([s, e]).toFixed(3)} m`],
       ["Bays", bays],
       ["Bay spacing", `${(pathLength([s, e]) / bays).toFixed(3)} m`],
-      ["Instances placed", instances.length],
-    ], `Placement points: ${divisions.map((p) => `(${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)})`).join("  ")}`);
-    notify("success", `${instances.length} instances repeated along ${bays} bays`);
+      ["Undo", "One step removes the full repeated set"],
+    ], "Each instance stores its own editable profile and placement-point definition in the project.");
+    notify("success", `Created ${created.length} native '${family.name}' component(s)`);
   } catch (e) {
-    notify("error", `Divide & repeat failed: ${(e as Error).message}`);
+    notify("error", `Adaptive divide & repeat failed: ${(e as Error).message}`);
+  }
+}
+
+/** Edit the definition of one selected native adaptive component. */
+export async function openAdaptiveEditDialog(): Promise<void> {
+  const auth = w.__obsAuthoring;
+  const ids: string[] = typeof auth?.getSelectedIds === "function" ? auth.getSelectedIds().map(String) : [];
+  if (ids.length !== 1) {
+    notify("warn", "Select exactly one native adaptive component before choosing Edit Adaptive.");
+    return;
+  }
+  const element = (auth?.getElements?.() ?? []).find((el: Any) => el.id === ids[0]);
+  if (!element || element.type !== "adaptive-component") {
+    notify("warn", "The selected element is not a native adaptive component.");
+    return;
+  }
+  const api = nativeAdaptiveApi();
+  const definition = api.getDefinition?.(element.id);
+  if (!definition) {
+    notify("error", "This adaptive component has no editable definition. Its project data may be incomplete.");
+    return;
+  }
+  const pointsText = definition.points.map((p: Pt3) => `${p.x},${p.y},${p.z}`).join("\n");
+  const profileText = definition.profile.map((p: ProfilePt) => `${p.u},${p.v}`).join("\n");
+  const r = await openFormModal({
+    title: `Edit Adaptive Component · ${element.name}`,
+    subtitle: "Edit the stored placement points and profile. Geometry regenerates when you apply the change.",
+    fields: [
+      { kind: "textarea", key: "points", label: "Ordered placement points (x,y,z; 1–8 points)", default: pointsText },
+      { kind: "textarea", key: "profile", label: "Cross-section profile (u,v)", default: profileText },
+      { kind: "number", key: "pointLength", label: "One-point extrusion length", default: definition.pointLength ?? 1, unit: "m", step: 0.1, min: 0.001 },
+      { kind: "text", key: "name", label: "Instance name", default: element.name },
+    ],
+    submitLabel: "Apply & Regenerate",
+    width: 600,
+  });
+  if (!r) return;
+  try {
+    const points = parsePointList(String(r.points));
+    let profile = profileForAdaptiveSweep(parseProfile(String(r.profile)));
+    if (points.length < 1 || points.length > 8) throw new Error("Enter between 1 and 8 placement points");
+    if (points.length === 1 && (!Number.isFinite(Number(r.pointLength)) || Number(r.pointLength) <= 0)) {
+      throw new Error("One-point extrusion length must be positive");
+    }
+    const updated = api.update?.(element.id, {
+      points,
+      profile,
+      ...(points.length === 1 ? { pointLength: Number(r.pointLength) } : {}),
+      name: String(r.name ?? "").trim() || element.name,
+    });
+    if (!updated) throw new Error("The selected adaptive component could not be updated");
+    notify("success", `Updated and regenerated ${element.name}`);
+  } catch (e) {
+    notify("error", `Adaptive component edit failed: ${(e as Error).message}`);
   }
 }
 
@@ -1987,7 +2109,7 @@ export function setupEngineUi(): void {
     // hydraulics
     openDuctPressureDialog, openPipePressureDialog, openWorstPathDialog,
     // adaptive
-    openAdaptiveSweepDialog, openAdaptiveRepeatDialog,
+    openAdaptiveSweepDialog, openAdaptiveRepeatDialog, openAdaptiveEditDialog,
     // solids
     openExtrudeDialog, openRevolveDialog, openSolidSweepDialog, openBlendDialog,
     openBooleanDialog, openVoidDialog, validateLastSolid, getLastSolid,
