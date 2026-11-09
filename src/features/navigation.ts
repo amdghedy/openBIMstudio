@@ -4,6 +4,7 @@
  *
  * Canonical BIM mouse map:
  *   MMB drag              Pan
+ *   Shift + LMB drag      Orbit (around target)
  *   Shift + MMB drag      Orbit (around target)
  *   Ctrl + MMB drag       Orbit around selection
  *   Wheel                 Zoom to cursor
@@ -473,6 +474,18 @@ export function setupNavigation(): void {
       return false;
     }
 
+    if (g.kind === "drag-start" && g.button === 0 && g.mods.shift) {
+      if (blocked() || isUiTarget(g.event)) return false;
+      // Shift+left-drag is an explicit orbit gesture. Claim it before the
+      // normal left-drag selection path so it cannot create a selection box.
+      disableNativeCameraMouse();
+      try { forceResumeCameraControls(); } catch { /* */ }
+      beginOrbitSync(g.event, getOrbitPivot());
+      lastOrbitEvent = g.event;
+      ctx.rightHost.style.cursor = "grabbing";
+      return true;
+    }
+
     if (g.kind === "drag-start" && g.button === 0) {
       if (blocked() || isUiTarget(g.event)) return false;
       const probe: Extract<Gesture, { kind: "drag-move" }> = {
@@ -500,6 +513,12 @@ export function setupNavigation(): void {
       return true;
     }
 
+    if (g.kind === "drag-move" && g.button === 0 && state.kind === "orbit") {
+      lastOrbitEvent = g.event;
+      orbitFrame.push(g.dx, g.dy);
+      return true;
+    }
+
     if (g.kind === "drag-move" && state.kind === "box-select") {
       for (const d of dragDelegates) {
         try {
@@ -524,6 +543,12 @@ export function setupNavigation(): void {
         g.event.clientX - rect.left,
         g.event.clientY - rect.top,
       );
+      return true;
+    }
+
+    if (g.kind === "drag-end" && g.button === 0 && state.kind === "orbit") {
+      orbitFrame.flush();
+      endNavGesture();
       return true;
     }
 
