@@ -7,6 +7,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run build && npm run preview',
     port: 4173,
+    timeout: 180000,
     reuseExistingServer: !process.env.CI,
   },
   use: { baseURL: 'http://localhost:4173', video: 'retain-on-failure' },
