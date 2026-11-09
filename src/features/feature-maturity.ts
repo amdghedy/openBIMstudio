@@ -63,6 +63,25 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "adaptive-native-integration",
+    area: "Families",
+    status: "experimental",
+    source: [
+      "src/modules/adaptive/index.ts",
+      "src/modules/adaptive/native-integration.ts",
+      "src/modules/engineering-engines.ts",
+      "src/features/engine-ui.ts",
+      "src/shell/ribbon.ts",
+    ],
+    evidence: ["tests/adaptive.test.cjs", "tests/adaptive-native.test.cjs"],
+    limitations: [
+      "Native adaptive elements persist their profile and ordered 1–8 placement points and regenerate through the existing authoring mesh-builder hook; the placement dialog currently accepts coordinate text rather than interactive 3D point picking",
+      "Editing supports the stored point list and cross-section profile; project-persistent geometric constraints, live 3D grips, shared family-catalog/type propagation and IFC entity mapping remain follow-up work",
+      "The native integration test uses a mock authoring service and JSON serialization; browser placement, real project save/reopen and a representative building model still require end-to-end validation",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "family-sketch-editor",
     area: "Families",
     status: "experimental",
