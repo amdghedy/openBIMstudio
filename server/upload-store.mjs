@@ -23,7 +23,7 @@ const EXT_SIG = {
   ".dxf": (_head, buf) => {
     // DXF may be ASCII or use the binary header signature.
     const binarySignature = Buffer.from([0x41, 0x75, 0x74, 0x6f, 0x43, 0x41, 0x44, 0x20, 0x42, 0x69, 0x6e, 0x61, 0x72, 0x79, 0x20, 0x44, 0x58, 0x46]);
-    if (buf.length >= binarySignature.length && buf.subarray(0, binarySignature.length).equals(binarySignature)) return true;
+    if (buf.length >= binarySignature.length && binarySignature.every((value, index) => buf[index] === value)) return true;
     const text = buf.subarray(0, 4096).toString("latin1");
     return /\b0\s*\r?\n\s*SECTION\b/.test(text) || /\b999\b/.test(text.slice(0, 64));
   },
