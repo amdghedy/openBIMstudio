@@ -26,6 +26,13 @@ import {
 import { designDemand, HAZARD_PRESETS, K_FACTORS } from "../modules/mep/fire";
 import { voltageDrop, selectConductor, CONDUCTOR_SIZES } from "../modules/mep/electrical-calc";
 import { insulatePipe, insulateDuct, condensationRisk, runTakeoff } from "../modules/mep/insulation";
+import {
+  sizeRectDuctByFriction, sizeRoundDuctByFriction, sizePipeByFriction, staticRegainSeries,
+} from "../modules/mep/sizing-methods";
+import { auditNetwork } from "../modules/mep/network";
+import { fanSelection, pumpSelection } from "../modules/mep/equipment";
+import { sizeDrain, sizeDrainFromFixtures, totalDfu } from "../modules/mep/drainage";
+import type { DrainSlopeInFt } from "../modules/mep/drainage";
 
 interface FabPart {
   id: string;
@@ -177,6 +184,9 @@ export function setupMepFabrication(): void {
   registerCommand({ id: "mep.fixture-demand", label: "Fixture-Unit Demand (Hunter curve)", category: "MEP", run: () => void fixtureDemandCalc() });
   registerCommand({ id: "mep.sprinkler-demand", label: "Sprinkler Design Demand", category: "MEP", run: () => void sprinklerCalc() });
   registerCommand({ id: "mep.voltage-drop", label: "Voltage Drop Check", category: "MEP", run: () => void voltageDropCalc() });
+  registerCommand({ id: "mep.network-audit", label: "MEP Network Audit \u2014 Pressure Loss Report", category: "MEP", run: () => void networkAuditCalc() });
+  registerCommand({ id: "mep.drainage-dfu", label: "Drainage Size (DFU, IPC 710)", category: "MEP", run: () => void drainageCalc() });
+  registerCommand({ id: "mep.drainage-direct", label: "DFU \u2192 Pipe Size (direct)", category: "MEP", run: () => void drainageDirectCalc() });
 }
 
 // ─── Auto-Route modal ────────────────────────────────────────────────────
@@ -679,12 +689,289 @@ async function unitConvertCalc(): Promise<void> {
   ]);
 }
 
+// ── Revit-parity engineering calculators ─────────────────────────────────
+
+async function frictionSizeCalc(): Promise<void> {
+  const vals = await openFormModal({
+    title: "Auto-Size by Friction Rate",
+    subtitle: "Revit's friction method: smallest standard section at or below the target Pa/m (Colebrook\u2013White)",
+    fields: [
+      { kind: "select", key: "shape", label: "Cross-section", options: [["rect", "Rectangular duct"], ["round", "Round duct"], ["pipe", "Circular pipe"]], default: "rect" },
+      { kind: "number", key: "flow", label: "Design flow", default: 1, unit: "m\u00B3/s (ducts) \u00B7 L/s (pipes)", validate: mustBePositive },
+      { kind: "number", key: "target", label: "Target friction rate", default: 0.8, unit: "Pa/m (ducts) \u00B7 Pa/m (pipes)", validate: mustBePositive },
+      { kind: "number", key: "pipeTarget", label: "Pipe target (when pipe)", default: 150, unit: "Pa/m" },
+    ],
+    submitLabel: "Size",
+  });
+  if (!vals) return;
+  const rows: ResultRow[] = [];
+  const notes: string[] = ["Friction targets: low-velocity supply 0.8\u20131.0 Pa/m, quiet systems 0.4\u20130.6 Pa/m, water mains 100\u2013400 Pa/m."];
+  if (vals.shape === "pipe") {
+    const r = sizePipeByFriction(Number(vals.flow), Number(vals.pipeTarget) || 150);
+    rows.push(
+      { label: "Selected pipe", value: `DN ${(r.diameter * 1000).toFixed(0)} mm`, strong: true },
+      { label: "Velocity", value: `${r.velocity.toFixed(2)} m/s` },
+      { label: "Friction rate", value: `${r.frictionRatePaM.toFixed(1)} Pa/m` },
+      { label: "Head loss", value: `${r.headLossPer100m.toFixed(2)} m / 100 m` },
+      { label: "Rule", value: r.rule },
+    );
+    notes.push(...r.warnings);
+  } else {
+    const r = vals.shape === "round"
+      ? sizeRoundDuctByFriction(Number(vals.flow), Number(vals.target))
+      : sizeRectDuctByFriction(Number(vals.flow), Number(vals.target));
+    rows.push(
+      { label: "Selected duct", value: r.round ? `\u2300 ${(r.thickness * 1000).toFixed(0)} mm` : `${(r.thickness * 1000).toFixed(0)}\u00D7${(r.height * 1000).toFixed(0)} mm`, strong: true },
+      { label: "Velocity", value: `${r.velocity.toFixed(2)} m/s` },
+      { label: "Friction rate", value: `${r.frictionRatePaM.toFixed(3)} Pa/m` },
+      { label: "Rule", value: r.rule },
+    );
+    notes.push(...r.warnings);
+  }
+  showResultDialog("Friction-Method Auto-Size", rows, notes);
+}
+
+async function staticRegainCalc(): Promise<void> {
+  const SAMPLE = '[{"flow":1.0,"length":12},{"flow":0.6,"length":8},{"flow":0.3,"length":6}]';
+  const vals = await openFormModal({
+    title: "Static Regain Duct Main",
+    subtitle: "Classic static-regain sizing: each section may run slower only while velocity-head regain covers its friction",
+    fields: [
+      { kind: "textarea", key: "sections", label: "Main sections JSON", default: SAMPLE, placeholder: "[{flow: m\u00B3/s, length: m}, ...] in order from the fan", hint: "First section is sized by the friction method; successors downsize only when regain pays the friction." },
+      { kind: "number", key: "target", label: "Initial friction target", default: 0.8, unit: "Pa/m" },
+    ],
+    submitLabel: "Size series",
+  });
+  if (!vals) return;
+  let sections: Array<{ flowM3s: number; lengthM: number }>;
+  try {
+    const parsed = JSON.parse(String(vals.sections));
+    sections = (Array.isArray(parsed) ? parsed : []).map((s: any) => ({ flowM3s: Number(s.flow ?? s.flowM3s), lengthM: Number(s.length ?? s.lengthM) }));
+  } catch {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Sections must be a JSON array", kind: "error" } }));
+    return;
+  }
+  try {
+    const results = staticRegainSeries(sections, { targetFrictionPaM: Number(vals.target) || 0.8 });
+    const rows: ResultRow[] = results.map((r, i) => ({
+      label: `Section ${i + 1} \u2014 ${(sections[i].flowM3s).toFixed(2)} m\u00B3/s, ${sections[i].lengthM} m`,
+      value: `${(r.thickness * 1000).toFixed(0)}\u00D7${(r.height * 1000).toFixed(0)} mm @ ${r.velocity.toFixed(2)} m/s (${r.sizedBy})`,
+      strong: i === 0,
+    }));
+    const notes = results.flatMap((r) => r.warnings);
+    notes.push("Regain sizing keeps static pressure roughly constant along the main \u2014 branches balance without dampers.");
+    showResultDialog("Static Regain Series", rows, notes);
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Static regain failed: ${(e as Error).message}`, kind: "error" } }));
+  }
+}
+
+async function networkAuditCalc(): Promise<void> {
+  const SAMPLE = JSON.stringify({
+    source: "ahu1",
+    terminals: { t1: 0.4, t2: 0.35, t3: 0.25 },
+    segments: [
+      { id: "s1", from: "ahu1", to: "j1", lengthM: 15, system: "supply-air", width: 0.5, height: 0.3, fittings: [{ kind: "elbow-90-radius", count: 2 }] },
+      { id: "s2", from: "j1", to: "t1", lengthM: 8, system: "supply-air", width: 0.35, height: 0.25, fittings: [{ kind: "diffuser" }] },
+      { id: "s3", from: "j1", to: "j2", lengthM: 10, system: "supply-air", width: 0.4, height: 0.25 },
+      { id: "s4", from: "j2", to: "t2", lengthM: 7, system: "supply-air", width: 0.3, height: 0.2, fittings: [{ kind: "diffuser" }] },
+      { id: "s5", from: "j2", to: "t3", lengthM: 9, system: "supply-air", width: 0.3, height: 0.2, fittings: [{ kind: "diffuser" }] },
+    ],
+  }, null, 1);
+  const vals = await openFormModal({
+    title: "MEP Network Audit (Pressure Loss Report)",
+    subtitle: "System-Inspector parity: flow accumulation \u2192 per-section sizing/losses \u2192 critical path \u2192 fan/pump duty",
+    width: 560,
+    fields: [
+      { kind: "textarea", key: "json", label: "Network JSON", default: SAMPLE, hint: "segments: {id, from, to, lengthM, system, width+height | diameter, fittings[]}; terminals: node \u2192 demand (m\u00B3/s air, L/s water); source: node id." },
+      { kind: "select", key: "method", label: "Sizing for unsized/undersized sections", options: [["velocity", "Velocity method"], ["friction", "Friction method"]], default: "velocity" },
+      { kind: "number", key: "lift", label: "Static lift (water only)", default: 0, unit: "m" },
+    ],
+    submitLabel: "Audit",
+  });
+  if (!vals) return;
+  let parsed: any;
+  try { parsed = JSON.parse(String(vals.json)); } catch {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Network JSON is invalid", kind: "error" } }));
+    return;
+  }
+  try {
+    const report = auditNetwork(parsed.segments, parsed.terminals ?? {}, parsed.source, {
+      method: vals.method === "friction" ? "friction" : "velocity",
+      staticLiftM: Number(vals.lift) || 0,
+    });
+    const rows: ResultRow[] = [
+      { label: "System", value: report.system },
+      { label: "Source flow", value: `${report.sourceFlowNative.toFixed(3)} ${report.system.includes("air") ? "m\u00B3/s" : "L/s"}`, strong: true },
+      { label: "Sections audited", value: `${report.rows.length}` },
+      ...report.rows.map((r) => ({
+        label: `${r.id} (${r.flowNative.toFixed(2)}) ${r.resized ? "\u21BB" : ""}`,
+        value: `${(r.size.thickness * 1000).toFixed(0)}${r.size.height !== r.size.thickness ? `\u00D7${(r.size.height * 1000).toFixed(0)}` : ""} mm \u00B7 ${r.velocity.toFixed(1)} m/s \u00B7 ${r.dpTotal.toFixed(0)} Pa`,
+      })),
+      { label: "Critical path", value: report.criticalPathSegmentIds.join(" \u2192 ") || "\u2014", strong: true },
+      { label: "Worst-path drop", value: `${report.worstPathDpPa.toFixed(0)} Pa`, strong: true },
+    ];
+    if (report.fan) {
+      rows.push(
+        { label: "Fan total / static", value: `${report.fan.fanTotalPressurePa.toFixed(0)} / ${report.fan.fanStaticPressurePa.toFixed(0)} Pa` },
+        { label: "Fan shaft power", value: `${(report.fan.shaftPowerW / 1000).toFixed(2)} kW \u2192 motor ${report.fan.recommendedMotorKw} kW` },
+      );
+    }
+    if (report.pump) {
+      rows.push(
+        { label: "Pump duty head", value: `${report.pump.dutyHeadM.toFixed(1)} m (${report.pump.dutyHeadBar.toFixed(2)} bar)` },
+        { label: "Pump shaft power", value: `${(report.pump.shaftPowerW / 1000).toFixed(2)} kW \u2192 motor ${report.pump.recommendedMotorKw} kW` },
+      );
+    }
+    const notes = [...report.diagnostics, ...report.warnings.slice(0, 8)];
+    if (notes.length === 0) notes.push("No velocity, friction or topology warnings \u2014 the tree passes.");
+    showResultDialog("Network Audit \u2014 " + report.system, rows, notes);
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Audit failed: ${(e as Error).message}`, kind: "error" } }));
+  }
+}
+
+async function fanDutyCalc(): Promise<void> {
+  const vals = await openFormModal({
+    title: "Fan Duty Selection",
+    subtitle: "Total/static pressure, air power and the standard IEC motor frame",
+    fields: [
+      { kind: "number", key: "dp", label: "Worst-path system drop", default: 320, unit: "Pa", validate: (x) => Number(x) >= 0 ? null : "Must be \u2265 0" },
+      { kind: "number", key: "flow", label: "Design airflow", default: 2.5, unit: "m\u00B3/s", validate: mustBePositive },
+      { kind: "number", key: "exit", label: "Discharge velocity", default: 6, unit: "m/s (0 = ignore)" },
+      { kind: "number", key: "safety", label: "Safety factor", default: 1.1 },
+      { kind: "number", key: "eff", label: "Fan mechanical efficiency", default: 0.65, min: 0.05, max: 1 },
+    ],
+    submitLabel: "Select",
+  });
+  if (!vals) return;
+  const r = fanSelection({
+    worstPathDpPa: Number(vals.dp), flowM3s: Number(vals.flow),
+    exitVelocityMs: Number(vals.exit) > 0 ? Number(vals.exit) : 0,
+    safetyFactor: Number(vals.safety) || 1.1, mechanicalEfficiency: Number(vals.eff) || 0.65,
+  });
+  showResultDialog("Fan Duty", [
+    { label: "Fan total pressure", value: `${r.fanTotalPressurePa.toFixed(0)} Pa`, strong: true },
+    { label: "Fan static pressure", value: `${r.fanStaticPressurePa.toFixed(0)} Pa`, strong: true },
+    { label: "Exit velocity head", value: `${r.exitVelocityHeadPa.toFixed(0)} Pa` },
+    { label: "Air power", value: `${(r.airPowerW / 1000).toFixed(2)} kW` },
+    { label: "Shaft power", value: `${(r.shaftPowerW / 1000).toFixed(2)} kW` },
+    { label: "Recommended motor", value: `${r.recommendedMotorKw} kW (IEC frame)`, strong: true },
+  ], [...r.warnings, "Selection aid \u2014 verify against the manufacturer fan curve and the fire/smoke mode duties."]);
+}
+
+async function pumpDutyCalc(): Promise<void> {
+  const vals = await openFormModal({
+    title: "Pump Duty Selection",
+    subtitle: "Duty head = worst-path loss + static lift + terminal residual, with IEC motor frame",
+    fields: [
+      { kind: "number", key: "loss", label: "Worst-path head loss", default: 6, unit: "m", validate: (x) => Number(x) >= 0 ? null : "Must be \u2265 0" },
+      { kind: "number", key: "lift", label: "Static lift", default: 12, unit: "m" },
+      { kind: "number", key: "residual", label: "Terminal residual head", default: 3, unit: "m" },
+      { kind: "number", key: "flow", label: "Design flow", default: 5, unit: "L/s", validate: mustBePositive },
+      { kind: "number", key: "safety", label: "Safety factor", default: 1.1 },
+      { kind: "number", key: "eff", label: "Pump efficiency", default: 0.7, min: 0.05, max: 1 },
+    ],
+    submitLabel: "Select",
+  });
+  if (!vals) return;
+  const r = pumpSelection({
+    worstPathHeadLossM: Number(vals.loss), staticLiftM: Number(vals.lift),
+    terminalResidualHeadM: Number(vals.residual), flowLs: Number(vals.flow),
+    safetyFactor: Number(vals.safety) || 1.1, pumpEfficiency: Number(vals.eff) || 0.7,
+  });
+  showResultDialog("Pump Duty", [
+    { label: "Duty head", value: `${r.dutyHeadM.toFixed(1)} m`, strong: true },
+    { label: "Duty pressure", value: `${r.dutyHeadKPa.toFixed(0)} kPa (${r.dutyHeadBar.toFixed(2)} bar)`, strong: true },
+    { label: "Hydraulic power", value: `${(r.hydraulicPowerW / 1000).toFixed(2)} kW` },
+    { label: "Shaft power", value: `${(r.shaftPowerW / 1000).toFixed(2)} kW` },
+    { label: "Recommended motor", value: `${r.recommendedMotorKw} kW (IEC frame)`, strong: true },
+  ], [...r.warnings, "Selection aid \u2014 verify against the pump curve, NPSH and the commissioning tolerance."]);
+}
+
+async function drainageCalc(): Promise<void> {
+  const SAMPLE = JSON.stringify({
+    "water-closet-public-1.6-gpf": 6,
+    "lavatory": 8,
+    "floor-drain": 3,
+  });
+  const vals = await openFormModal({
+    title: "Drainage Size (DFU)",
+    subtitle: "IPC Tables 709.1 / 710.1(1) / 710.1(2) \u2014 a capability Revit ships only through add-ins",
+    fields: [
+      { kind: "textarea", key: "fixtures", label: "Fixture counts JSON", default: SAMPLE, hint: "Keys: water-closet-public-1.6-gpf, water-closet-private-1.6-gpf, urinal-standard, lavatory, shower-5.7-gpm-or-less, floor-drain, kitchen-sink-domestic, bathtub, \u2026" },
+      { kind: "select", key: "element", label: "Element to size", options: [["building-drain", "Building drain / sewer"], ["horizontal-branch", "Horizontal branch"], ["stack", "Stack"]], default: "building-drain" },
+      { kind: "select", key: "slope", label: "Slope (building drain)", options: [["0.0625", "1/16 in/ft"], ["0.125", "1/8 in/ft"], ["0.25", "1/4 in/ft"], ["0.5", "1/2 in/ft"]], default: "0.25" },
+      { kind: "select", key: "intervals", label: "Stack branch intervals", options: [["1", "One interval"], ["2", "Two intervals"], ["3-or-less", "Three or fewer"], ["over-3", "More than three"]], default: "3-or-less" },
+      { kind: "checkbox", key: "wc", label: "Serves a water closet (3 in minimum)", default: true },
+    ],
+    submitLabel: "Size",
+  });
+  if (!vals) return;
+  let counts: Record<string, number>;
+  try { counts = JSON.parse(String(vals.fixtures)); } catch {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Fixture JSON is invalid", kind: "error" } }));
+    return;
+  }
+  const dfu = totalDfu(counts);
+  if (dfu < 0) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Unknown fixture key \u2014 see the hint for valid names", kind: "error" } }));
+    return;
+  }
+  try {
+    const element = String(vals.element) as "building-drain" | "horizontal-branch" | "stack";
+    const r = sizeDrain(element, dfu, {
+      slopeInFt: Number(vals.slope) as DrainSlopeInFt,
+      intervals: String(vals.intervals) as any,
+      servesWaterCloset: !!vals.wc,
+    });
+    showResultDialog("Drainage Sizing (DFU)", [
+      { label: "Total load", value: `${r.dfu} DFU` },
+      { label: "Required size", value: `${r.diameterIn} in (${r.diameterMm.toFixed(0)} mm nom.)`, strong: true },
+      { label: "Capacity", value: `${r.capacityDfu} DFU` },
+      { label: "Sizing rule", value: r.rule },
+    ], [...r.notes, ...r.warnings, "Sizing aid \u2014 the AHJ and the governing local code (IPC / UPC / EN 12056) win."]);
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Drainage sizing failed: ${(e as Error).message}`, kind: "error" } }));
+  }
+}
+
+async function drainageDirectCalc(): Promise<void> {
+  const vals = await openFormModal({
+    title: "DFU \u2192 Pipe Size (direct)",
+    subtitle: "Enter the DFU load directly",
+    fields: [
+      { kind: "number", key: "dfu", label: "Drainage fixture units", default: 90, validate: mustBePositive },
+      { kind: "select", key: "element", label: "Element to size", options: [["building-drain", "Building drain / sewer"], ["horizontal-branch", "Horizontal branch"], ["stack", "Stack"]], default: "horizontal-branch" },
+    ],
+    submitLabel: "Size",
+  });
+  if (!vals) return;
+  try {
+    const r = sizeDrain(String(vals.element) as "building-drain" | "horizontal-branch" | "stack", Number(vals.dfu));
+    showResultDialog("DFU \u2192 Pipe Size", [
+      { label: "Load", value: `${r.dfu} DFU` },
+      { label: "Required size", value: `${r.diameterIn} in (${r.diameterMm.toFixed(0)} mm nom.)`, strong: true },
+      { label: "Capacity", value: `${r.capacityDfu} DFU` },
+      { label: "Sizing rule", value: r.rule },
+    ], r.notes);
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Sizing failed: ${(e as Error).message}`, kind: "error" } }));
+  }
+}
+
 // ── Toolkit dispatcher ───────────────────────────────────────────────────
 
 const TOOLKIT_ITEMS: Array<{ value: string; label: string }> = [
   { value: "fixture-demand", label: "Fixture-Unit Demand (Hunter curve)" },
   { value: "sprinkler", label: "Sprinkler Design Demand (density/area)" },
   { value: "voltage-drop", label: "Voltage Drop & Conductor Check" },
+  { value: "friction-size", label: "Auto-Size by Friction Rate (Revit method)" },
+  { value: "static-regain", label: "Static Regain Duct Main (Revit method)" },
+  { value: "network-audit", label: "Network Audit \u2014 Pressure Loss Report" },
+  { value: "fan-duty", label: "Fan Duty Selection" },
+  { value: "pump-duty", label: "Pump Duty Selection" },
+  { value: "drainage-dfu", label: "Drainage Size (DFU, IPC 710)" },
   { value: "pipe-insulation", label: "Pipe Insulation Heat Loss" },
   { value: "duct-insulation", label: "Duct Insulation Heat Loss" },
   { value: "equivalent-duct", label: "Round \u2194 Rectangular Duct Equivalent" },
@@ -709,6 +996,12 @@ export async function openMepDesignToolkit(): Promise<void> {
     "fixture-demand": fixtureDemandCalc,
     "sprinkler": sprinklerCalc,
     "voltage-drop": voltageDropCalc,
+    "friction-size": frictionSizeCalc,
+    "static-regain": staticRegainCalc,
+    "network-audit": networkAuditCalc,
+    "fan-duty": fanDutyCalc,
+    "pump-duty": pumpDutyCalc,
+    "drainage-dfu": drainageCalc,
     "pipe-insulation": pipeInsulationCalc,
     "duct-insulation": ductInsulationCalc,
     "equivalent-duct": equivalentDuctCalc,

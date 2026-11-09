@@ -27,18 +27,18 @@
 import type { MepSize, MepSystem, SizingResult } from "./types";
 
 /** Standard rectangular duct widths (m). ASHRAE recommended sizes. */
-const DUCT_WIDTHS = [
+export const DUCT_WIDTHS = [
   0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
   0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.4, 1.6, 1.8, 2.0,
 ];
 
 /** Standard rectangular duct heights (m). */
-const DUCT_HEIGHTS = [
+export const DUCT_HEIGHTS = [
   0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0,
 ];
 
 /** Standard circular pipe diameters (m). DN sizes per ISO 6708. */
-const PIPE_DN = [
+export const PIPE_DN = [
   0.015, 0.020, 0.025, 0.032, 0.040, 0.050, 0.065, 0.080, 0.100,
   0.125, 0.150, 0.200, 0.250, 0.300, 0.350, 0.400, 0.450, 0.500,
 ];
@@ -50,7 +50,7 @@ const TRAY_WIDTHS = [0.1, 0.15, 0.2, 0.3, 0.45, 0.6, 0.9];
 const CONDUIT_DN = [0.016, 0.02, 0.025, 0.032, 0.04, 0.05, 0.063];
 
 /** Default target velocities per system (m/s). */
-const DEFAULT_VELOCITY: Record<MepSystem, number> = {
+export const DEFAULT_VELOCITY: Record<MepSystem, number> = {
   "supply-air":     4.5,  // quiet commercial supply
   "return-air":     4.0,
   "exhaust-air":    5.0,
@@ -70,7 +70,7 @@ const DEFAULT_VELOCITY: Record<MepSystem, number> = {
 };
 
 /** Maximum allowable velocity per system (m/s). Above this, sizing warns. */
-const MAX_VELOCITY: Record<MepSystem, number> = {
+export const MAX_VELOCITY: Record<MepSystem, number> = {
   "supply-air":     6.0,  // noisy above this in commercial
   "return-air":     5.5,
   "exhaust-air":    7.0,

@@ -26,6 +26,11 @@ import * as mepFire from "./fire";
 import * as mepElectricalCalc from "./electrical-calc";
 import * as mepInsulation from "./insulation";
 import * as mepRunTools from "./run-tools";
+import * as mepSizingMethods from "./sizing-methods";
+import * as mepNetwork from "./network";
+import * as mepEquipment from "./equipment";
+import * as mepDrainage from "./drainage";
+import * as mepDistribution from "./distribution";
 
 export * from "./types";
 export * from "./connectors";
@@ -48,6 +53,11 @@ export * from "./fire";
 export * from "./electrical-calc";
 export * from "./insulation";
 export * from "./run-tools";
+export * from "./sizing-methods";
+export * from "./network";
+export * from "./equipment";
+export * from "./drainage";
+export * from "./distribution";
 
 /** Public MEP service interface - what consumers call. */
 export interface MepService {
@@ -106,6 +116,16 @@ export function setupMep(): MepService {
   svcAny.insulation = mepInsulation;
   svcAny.runTools = mepRunTools;
 
+  // Revit-parity engineering pack: friction/static-regain sizing methods,
+  // model-native network audit (System Inspector / Pressure Loss Report),
+  // fan & pump duty selection, DFU drainage sizing and the electrical
+  // distribution cascade with wire-sized panel schedules.
+  svcAny.sizingMethods = mepSizingMethods;
+  svcAny.network = mepNetwork;
+  svcAny.equipment = mepEquipment;
+  svcAny.drainage = mepDrainage;
+  svcAny.distribution = mepDistribution;
+
   // Register in the typed service registry + legacy ctx.features bag.
   try {
     register("mep" as any, svc as any);
@@ -116,10 +136,11 @@ export function setupMep(): MepService {
   try { (window as any).__obsMep = svc; } catch { /* */ }
 
   console.log(
-    "[mep] ready. A* router + ASHRAE sizing + parametric superhero pack online. " +
+    "[mep] ready. A* router + ASHRAE sizing + parametric superhero pack + Revit-parity engineering pack online. " +
     "Use the __obsMep service (.route, .plumbing.fixtureUnitsToDemand, .fire.designDemand, " +
-    ".electricalCalc.voltageDrop, .insulation, .runTools) or the " +
-    "'MEP Auto-Route…' / 'MEP Design Toolkit…' commands.",
+    ".electricalCalc.voltageDrop, .insulation, .runTools, .sizingMethods, .network.auditNetwork, " +
+    ".equipment.fanSelection/.pumpSelection, .drainage.sizeDrain, .distribution.buildDistributionSummary) " +
+    "or the 'MEP Auto-Route…' / 'MEP Design Toolkit…' commands.",
   );
 
   return svc;
