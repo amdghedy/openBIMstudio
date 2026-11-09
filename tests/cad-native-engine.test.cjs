@@ -196,7 +196,7 @@ t("translate/rotate/scale/mirror entity transforms still work", () => {
   assert.ok(ptClose(mi.end, { x: -1, y: 0 }));
 });
 
-// ── 15. AutoCAD-style revision cloud and repeated COPY workflow ──
+// ── 15. DWG-style revision cloud and repeated COPY workflow ──
 t("revision clouds are native closed polylines so they can be selected and exported", () => {
   const viewer = fs.readFileSync(path.join(ROOT, "src/features/cad-viewer.ts"), "utf8");
   assert.ok(viewer.includes('{ name: "REVCLOUD", aliases: ["RC", "CLOUD"]'), "REVCLOUD command and aliases missing");

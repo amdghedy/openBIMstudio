@@ -277,7 +277,7 @@ const loadTable = async (name) => plotMod.parsePlotStyleTable(fixture(name));
     const xs = in5.points.map((p) => p.x);
     assert.ok(Math.abs(Math.max(...xs) - 5) < 1e-9, `shrunk to 5, got ${Math.max(...xs)}`);
     const in25 = X.offsetEnt(square(), 25, P(0, 0)); // 20-wide square − 25 → collapse
-    assert.strictEqual(in25, null, "collapse must be refused (AutoCAD 'cannot offset')");
+    assert.strictEqual(in25, null, "collapse must be refused (DWG 'cannot offset')");
   });
 
   t("open chain keeps its free ends exactly d away", () => {
@@ -288,7 +288,7 @@ const loadTable = async (name) => plotMod.parsePlotStyleTable(fixture(name));
     assert.ok(Math.abs(off.points[1].y + 7) < 1e-9);
   });
 
-  t("corner join is the exact intersection (extended/trimmed like AutoCAD)", () => {
+  t("corner join is the exact intersection (extended/trimmed like DWG)", () => {
     // L-shape: offset outward must extend both legs to a sharp corner at 15,15
     const l = {
       type: "LWPOLYLINE", layer: "0",
@@ -352,7 +352,7 @@ const loadTable = async (name) => plotMod.parsePlotStyleTable(fixture(name));
     const core = read("src", "modules", "cad-link", "index.ts");
     for (const m of [
       'e === "dwg" || e === "bak" || e === "sv$"',
-      "recovered from AutoCAD",
+      "recovered from DWG",
     ]) assert.ok(core.includes(m), `missing: ${m}`);
   });
 
