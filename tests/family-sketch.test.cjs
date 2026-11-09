@@ -48,6 +48,31 @@ const nf = S.newFamilyFromSketch({ id: "u.f", name: "  Plinth ", points: [[0, 0]
 ok(nf.ok && nf.family.name === "Plinth" && nf.family.geometry.kind === "extrusion" && nf.family.types.length === 1 && nf.family.types[0].id === "u.f.default", "new family: one extrusion, default type");
 ok(!S.newFamilyFromSketch({ id: "x", name: " ", points: [[0, 0], [1, 0], [1, 1]], depth: 1 }).ok, "name required");
 
+// ---- holes
+const outerSq = [[0, 0], [4, 0], [4, 4], [0, 4]];
+const hh = S.addSketchToFamily(base, outerSq, { depth: 1, holes: [[[1, 1], [2, 1], [2, 2], [1, 2]]] });
+ok(hh.ok && hh.family.geometry.parts[1].holes.length === 1, "hole stored on the extrusion");
+near(hh.area, 15);
+ok(!S.addSketchToFamily(base, outerSq, { depth: 1, holes: [[[3, 3], [5, 3], [5, 5], [3, 5]]] }).ok, "hole sticking out refused");
+ok(!S.addSketchToFamily(base, outerSq, { depth: 1, holes: [[[5, 5], [6, 5], [6, 6], [5, 6]]] }).ok, "hole outside refused");
+ok(!S.addSketchToFamily(base, outerSq, { depth: 1, holes: [[[1, 1], [2, 1], [2, 2], [1, 2]], [[1.5, 1.5], [2.5, 1.5], [2.5, 2.5], [1.5, 2.5]]] }).ok, "overlapping holes refused");
+ok(S.addSketchToFamily(base, outerSq, { depth: 1, holes: [[[1, 1], [1.5, 1], [1.5, 1.5], [1, 1.5]], [[2.5, 2.5], [3, 2.5], [3, 3], [2.5, 3]]] }).ok, "two separate holes ok");
+ok(S.pointInPolygon([1, 1], outerSq) && !S.pointInPolygon([5, 1], outerSq), "point in polygon");
+// concave outline: a hole inside the notch is outside the shape
+ok(!S.addSketchToFamily(base, [[0, 0], [4, 0], [4, 4], [2, 1], [0, 4]], { depth: 1, holes: [[[1.8, 2.5], [2.2, 2.5], [2.2, 3], [1.8, 3]]] }).ok, "hole in a concave notch refused");
+
+// ---- parametric rect / circle
+const pr = S.addShapeToFamily(base, { kind: "rect", cx: 1, cy: 2, width: 3, length: 5 }, { depth: 0.4 });
+ok(pr.ok && pr.sizeParams.join() === "sketchWidth,sketchLength" && pr.family.geometry.parts[1].profile.kind === "rect", "rect uses width/length parameters");
+near(pr.area, 15);
+const pc = S.addShapeToFamily(base, { kind: "circle", cx: 0, cy: 0, radius: 0.5 }, { depth: 0.4 });
+ok(pc.ok && pc.sizeParams[0] === "sketchRadius" && pc.family.geometry.parts[1].profile.kind === "circle", "circle uses a radius parameter");
+ok(!S.addShapeToFamily(base, { kind: "rect", cx: 0, cy: 0, width: 0, length: 1 }, { depth: 1 }).ok && !S.addShapeToFamily(base, { kind: "circle", cx: 0, cy: 0, radius: -1 }, { depth: 1 }).ok, "non-positive sizes refused");
+const pr2 = S.addShapeToFamily(pr.family, { kind: "rect", cx: 0, cy: 0, width: 1, length: 1 }, { depth: 1 });
+ok(pr2.sizeParams.join() === "sketchWidth2,sketchLength2", "unique size parameter names");
+const nr = S.newFamilyFromSketch({ id: "u.r", name: "Pad", shape: { kind: "rect", cx: 0, cy: 0, width: 2, length: 1 }, depth: 0.1 });
+ok(nr.ok && nr.family.geometry.kind === "extrusion", "new family from a parametric rect");
+
 // ---- real geometry (needs the real three.js; skipped locally where only a stub is installed)
 let THREE = null; try { THREE = require("three"); if (typeof THREE.ExtrudeGeometry !== "function" || typeof THREE.Box3 !== "function") THREE = null; } catch { THREE = null; }
 if (THREE) {
@@ -62,5 +87,18 @@ if (THREE) {
   const lo = G.buildParametricGeometry(l.family.geometry, params(l.family)); lo.updateMatrixWorld(true);
   const lb = new THREE.Box3().setFromObject(lo);
   near(lb.min.y, 2, 1e-5); near(lb.max.y, 2.5, 1e-5); near(lb.min.x, 0, 1e-5); near(lb.max.x, 4, 1e-5); near(lb.min.z, 0, 1e-5); near(lb.max.z, 3, 1e-5);
+  // parametric rect: centre translate and resizing with the parameter
+  const prg = S.newFamilyFromSketch({ id: "u.p", name: "P", shape: { kind: "rect", cx: 3, cy: 2, width: 2, length: 1 }, depth: 0.5 });
+  let pg = G.buildParametricGeometry(prg.family.geometry, params(prg.family)); pg.updateMatrixWorld(true);
+  let pb = new THREE.Box3().setFromObject(pg);
+  near(pb.min.x, 2, 1e-5); near(pb.max.x, 4, 1e-5); near(pb.min.z, 1.5, 1e-5); near(pb.max.z, 2.5, 1e-5);
+  const wider = { ...params(prg.family), sketchWidth: 6 };
+  pg = G.buildParametricGeometry(prg.family.geometry, wider); pg.updateMatrixWorld(true); pb = new THREE.Box3().setFromObject(pg);
+  near(pb.max.x - pb.min.x, 6, 1e-5);
+  // hole: footprint unchanged but the solid has less volume-bearing triangles; check hole walls exist via vertex count growth
+  const solid = S.newFamilyFromSketch({ id: "u.s", name: "S", points: outerSq, depth: 1 });
+  const holed = S.newFamilyFromSketch({ id: "u.h", name: "H", points: outerSq, holes: [[[1, 1], [2, 1], [2, 2], [1, 2]]], depth: 1 });
+  const cnt = (f) => { const g = G.buildParametricGeometry(f.family.geometry, params(f.family)); let c = 0; g.traverse((m) => { if (m.geometry) c += m.geometry.attributes.position.count; }); return c; };
+  ok(cnt(holed) > cnt(solid), "hole adds wall geometry");
   console.log(`family-sketch: ${n} assertions passed (real geometry checked)`);
 } else console.log(`family-sketch: ${n} assertions passed (real three.js absent: geometry checks skipped here, they run in CI)`);

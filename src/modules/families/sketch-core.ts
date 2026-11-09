@@ -5,8 +5,9 @@
  * Sketch plane: the PLAN. The outline is drawn as seen from above (x right, y up the screen = +Z / north in the app) and
  * extruded upwards from an elevation. In family space that is an `extrusion` rotated +90° about X (profile XY -> plan XZ,
  * extrusion axis Z -> vertical) and translated so the solid's base sits at the elevation.
- * Limits (documented in docs/FAMILY-SKETCH.md): single outline per extrusion, straight edges only (circles are polygons),
- * no holes or voids yet, no arcs/splines, no sweep/revolve from the sketch.
+ * Shapes: a free polygon (optionally with polygon holes), or a PARAMETRIC rectangle / circle whose width, length or radius are
+ * family parameters (so it resizes). Limits (docs/FAMILY-SKETCH.md): one outer outline per extrusion, straight edges only (a free
+ * circle is a polygon), no arcs/splines, no sweep/revolve, holes are fixed polygons inside a polygon outline.
  */
 import type { FamilyCategory, FamilyDefinition, FamilyGeometrySpec, FamilyParameter } from "./types";
 
@@ -101,54 +102,125 @@ export interface SketchOptions {
   label?: string;
 }
 
-/** The extrusion spec for an outline, referencing parameters by name. */
-export function extrusionSpec(points: Pt[], depthParam: string, elevParam: string): FamilyGeometrySpec {
-  return {
+/** Ray-casting point-in-polygon (points exactly on an edge count as outside, which is what we want for holes). */
+export function pointInPolygon(p: Pt, poly: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+export const MAX_HOLES = 20;
+
+/** Check holes against an outer outline: each valid, strictly inside the outer, and not touching/overlapping each other. */
+export function validateHoles(outer: Pt[], holes: Pt[][]): { ok: boolean; errors: string[]; holes: Pt[][] } {
+  const errors: string[] = [];
+  if (holes.length > MAX_HOLES) errors.push(`At most ${MAX_HOLES} holes are allowed.`);
+  const clean: Pt[][] = [];
+  holes.slice(0, MAX_HOLES).forEach((h, i) => {
+    const v = validateSketch(h);
+    if (!v.ok) { errors.push(`Hole ${i + 1}: ${v.errors[0]}`); return; }
+    if (!v.points.every((p) => pointInPolygon(p, outer))) { errors.push(`Hole ${i + 1} is not fully inside the outline.`); return; }
+    const n = outer.length;
+    for (let a = 0; a < v.points.length; a++) for (let b = 0; b < n; b++) {
+      if (segmentsCross(v.points[a], v.points[(a + 1) % v.points.length], outer[b], outer[(b + 1) % n])) { errors.push(`Hole ${i + 1} crosses the outline.`); return; }
+    }
+    clean.push(v.points);
+  });
+  for (let i = 0; i < clean.length; i++) for (let j = i + 1; j < clean.length; j++) {
+    const A = clean[i], B = clean[j];
+    const cross = A.some((p, a) => B.some((_, b) => segmentsCross(p, A[(a + 1) % A.length], B[b], B[(b + 1) % B.length])));
+    if (cross || A.some((p) => pointInPolygon(p, B)) || B.some((p) => pointInPolygon(p, A))) errors.push(`Holes ${i + 1} and ${j + 1} overlap.`);
+  }
+  return { ok: errors.length === 0, errors, holes: clean };
+}
+
+export type ShapeInput =
+  | { kind: "polygon"; points: Pt[]; holes?: Pt[][] }
+  | { kind: "rect"; cx: number; cy: number; width: number; length: number }
+  | { kind: "circle"; cx: number; cy: number; radius: number };
+
+const poly = (points: Pt[]) => ({ kind: "polygon" as const, points: points.map((p) => [round6(p[0]), round6(p[1])] as Pt) });
+
+/** The extrusion spec for a free polygon outline (with optional holes), referencing depth/elevation parameters by name. */
+export function extrusionSpec(points: Pt[], depthParam: string, elevParam: string, holes: Pt[][] = []): FamilyGeometrySpec {
+  const spec: any = {
     kind: "extrusion",
-    profile: { kind: "polygon", points: points.map((p) => [round6(p[0]), round6(p[1])] as Pt) },
+    profile: poly(points),
     depth: { ref: depthParam },
     transform: {
       rotate: [{ const: Math.PI / 2 }, { const: 0 }, { const: 0 }],
       translate: [{ const: 0 }, { expr: `${elevParam} + ${depthParam} / 2` }, { const: 0 }],
     },
-  } as FamilyGeometrySpec;
+  };
+  if (holes.length) spec.holes = holes.map(poly);
+  return spec as FamilyGeometrySpec;
 }
 const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
-export type SketchResult = { ok: true; family: FamilyDefinition; depthParam: string; elevationParam: string; area: number } | { ok: false; errors: string[] };
+export type SketchResult = { ok: true; family: FamilyDefinition; depthParam: string; elevationParam: string; area: number; sizeParams: string[] } | { ok: false; errors: string[] };
 
-/** Add the outline to a family as a new extrusion (the original definition is not mutated). */
-export function addSketchToFamily(def: FamilyDefinition, points: Pt[], opts: SketchOptions): SketchResult {
-  const v = validateSketch(points);
-  if (!v.ok) return { ok: false, errors: v.errors };
+const lengthParam = (name: string, label: string, value: number, min = 0.001): FamilyParameter =>
+  ({ name, label, type: "length", scope: "type", default: value, editable: true, min, step: 0.05, unit: "m", group: "Sketch" });
+
+/** Add a shape to a family as a new extrusion (the original definition is not mutated). */
+export function addShapeToFamily(def: FamilyDefinition, shape: ShapeInput, opts: SketchOptions): SketchResult {
   if (!(opts.depth > 0) || !Number.isFinite(opts.depth) || opts.depth > 1000) return { ok: false, errors: ["Depth must be a positive length of at most 1000 m."] };
   const elev = opts.elevation ?? 0;
   if (!Number.isFinite(elev)) return { ok: false, errors: ["Elevation must be a number."] };
   const names = new Set(def.parameters.map((p) => p.name));
-  const depthParam = uniqueName(names, "sketchDepth"); names.add(depthParam);
-  const elevParam = uniqueName(names, "sketchElevation");
+  const take = (base: string) => { const n = uniqueName(names, base); names.add(n); return n; };
   const label = opts.label ? ` (${opts.label})` : "";
-  const params: FamilyParameter[] = [
-    { name: depthParam, label: "Sketch depth" + label, type: "length", scope: "type", default: opts.depth, editable: true, min: 0.001, step: 0.05, unit: "m", group: "Sketch" },
-    { name: elevParam, label: "Sketch elevation" + label, type: "length", scope: "type", default: elev, editable: true, step: 0.05, unit: "m", group: "Sketch" },
-  ];
-  const part = extrusionSpec(v.points, depthParam, elevParam);
+  const depthParam = take("sketchDepth"), elevParam = take("sketchElevation");
+  const params: FamilyParameter[] = [lengthParam(depthParam, "Sketch depth" + label, opts.depth), lengthParam(elevParam, "Sketch elevation" + label, elev, -1000)];
+  params[1].min = undefined;
+  let part: FamilyGeometrySpec; let area = 0; const sizeParams: string[] = [];
+  const lift = { expr: `${elevParam} + ${depthParam} / 2` };
+  const rot = [{ const: Math.PI / 2 }, { const: 0 }, { const: 0 }];
+  if (shape.kind === "polygon") {
+    const v = validateSketch(shape.points);
+    if (!v.ok) return { ok: false, errors: v.errors };
+    const h = validateHoles(v.points, shape.holes ?? []);
+    if (!h.ok) return { ok: false, errors: h.errors };
+    area = v.area - h.holes.reduce((s, x) => s + Math.abs(signedArea(x)), 0);
+    part = extrusionSpec(v.points, depthParam, elevParam, h.holes);
+  } else if (shape.kind === "rect") {
+    if (!(shape.width > 0 && shape.length > 0) || !Number.isFinite(shape.width + shape.length + shape.cx + shape.cy)) return { ok: false, errors: ["Width and length must be positive."] };
+    const w = take("sketchWidth"), l = take("sketchLength");
+    params.push(lengthParam(w, "Sketch width" + label, round6(shape.width)), lengthParam(l, "Sketch length" + label, round6(shape.length)));
+    sizeParams.push(w, l); area = shape.width * shape.length;
+    part = { kind: "extrusion", profile: { kind: "rect", w: { ref: w }, h: { ref: l } }, depth: { ref: depthParam }, transform: { rotate: rot as any, translate: [{ const: round6(shape.cx) }, lift, { const: round6(shape.cy) }] } } as FamilyGeometrySpec;
+  } else {
+    if (!(shape.radius > 0) || !Number.isFinite(shape.radius + shape.cx + shape.cy)) return { ok: false, errors: ["Radius must be positive."] };
+    const r = take("sketchRadius");
+    params.push(lengthParam(r, "Sketch radius" + label, round6(shape.radius)));
+    sizeParams.push(r); area = Math.PI * shape.radius * shape.radius;
+    part = { kind: "extrusion", profile: { kind: "circle", r: { ref: r }, segments: 64 }, depth: { ref: depthParam }, transform: { rotate: rot as any, translate: [{ const: round6(shape.cx) }, lift, { const: round6(shape.cy) }] } } as FamilyGeometrySpec;
+  }
   const geometry: FamilyGeometrySpec = def.geometry && !(def.geometry.kind === "custom" && !def.geometry.builder)
     ? (def.geometry.kind === "composed" ? { kind: "composed", parts: [...def.geometry.parts, part] } : { kind: "composed", parts: [def.geometry, part] })
     : part;
-  return { ok: true, family: { ...def, parameters: [...def.parameters, ...params], geometry, builtIn: false }, depthParam, elevationParam: elevParam, area: v.area };
+  return { ok: true, family: { ...def, parameters: [...def.parameters, ...params], geometry, builtIn: false }, depthParam, elevationParam: elevParam, area, sizeParams };
 }
 
-export interface NewFamilyInput { id: string; name: string; category?: FamilyCategory; ifcEntity?: string; points: Pt[]; depth: number; elevation?: number }
+/** Add a free polygon outline (the original, simple entry point). */
+export function addSketchToFamily(def: FamilyDefinition, points: Pt[], opts: SketchOptions & { holes?: Pt[][] }): SketchResult {
+  return addShapeToFamily(def, { kind: "polygon", points, holes: opts.holes }, opts);
+}
+
+export interface NewFamilyInput { id: string; name: string; category?: FamilyCategory; ifcEntity?: string; points?: Pt[]; holes?: Pt[][]; shape?: ShapeInput; depth: number; elevation?: number }
 
 /** A brand-new user family whose whole geometry is the sketched extrusion, with one default type. */
 export function newFamilyFromSketch(input: NewFamilyInput): SketchResult {
   if (!input.name.trim()) return { ok: false, errors: ["Give the family a name."] };
+  const shape: ShapeInput = input.shape ?? { kind: "polygon", points: input.points ?? [], holes: input.holes };
   const empty: FamilyDefinition = {
     id: input.id, name: input.name.trim().slice(0, 100), category: input.category ?? "generic", ifcEntity: input.ifcEntity ?? "IfcBuildingElementProxy",
-    schemaVersion: 1, parameters: [], geometry: { kind: "composed", parts: [] }, types: [], builtIn: false,
+    schemaVersion: 1, parameters: [], geometry: { kind: "custom", builder: "" }, types: [], builtIn: false,
   };
-  const r = addSketchToFamily({ ...empty, geometry: { kind: "custom", builder: "" } }, input.points, { depth: input.depth, elevation: input.elevation });
+  const r = addShapeToFamily(empty, shape, { depth: input.depth, elevation: input.elevation });
   if (!r.ok) return r;
   r.family.types = [{ id: `${input.id}.default`, name: "Default", values: {} }];
   return r;

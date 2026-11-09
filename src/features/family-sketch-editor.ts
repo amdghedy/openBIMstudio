@@ -5,7 +5,7 @@
  * Docs: docs/FAMILY-SKETCH.md. Never exercised in a real browser while it was written.
  */
 import {
-  addSketchToFamily, circlePoints, newFamilyFromSketch, rectPoints, snapPt, validateSketch, type Pt,
+  addShapeToFamily, circlePoints, newFamilyFromSketch, rectPoints, type ShapeInput, snapPt, validateSketch, type Pt,
 } from "../modules/families/sketch-core";
 
 type Any = any;
@@ -41,6 +41,10 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
   let scale = 80;            // pixels per metre
   let grid = 0.25;
   let snapOn = true;
+  let outer: Pt[] | null = null;   // finished outline, while holes are being drawn
+  let outerShape: ShapeInput | null = null;
+  let holes: Pt[][] = [];
+  let lastShape: ShapeInput | null = null; // rect / circle just drawn, for parametric mode
 
   const root = document.createElement("div");
   root.setAttribute("data-sketch-editor", "");
@@ -59,12 +63,14 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
       <label style="display:flex;gap:3px;align-items:center"><input data-snap type="checkbox" checked> Snap</label>
       <button data-zoom="-1" type="button" title="Zoom out">−</button><button data-zoom="1" type="button" title="Zoom in">+</button>
       <button data-undo type="button">Undo point</button><button data-clear type="button">Clear</button><button data-close type="button">Close outline</button>
+      <button data-hole type="button" title="Keep this shape as the outline and draw a hole inside it">Next: draw hole</button>
     </div>
     <svg data-svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="background:#0b0e14;border:1px solid #2a2e3a;border-radius:6px;max-width:100%;touch-action:none;cursor:crosshair"></svg>
     <div data-hint style="margin:6px 0;opacity:.75"></div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
       <label>Depth (m) <input data-depth type="number" value="0.3" min="0.001" max="1000" step="0.05" style="width:70px"></label>
       <label>Elevation (m) <input data-elev type="number" value="0" step="0.05" style="width:70px"></label>
+      <label title="Rectangle / circle become family parameters (width, length, radius) so the shape resizes"><input data-param type="checkbox" checked> Size as parameters</label>
       ${target ? "" : `<label>Name <input data-name type="text" value="Sketch family" maxlength="100" style="width:150px"></label>
       <label>Category <select data-cat><option>generic</option><option>equipment</option><option>column</option><option>beam</option><option>slab</option><option>footing</option><option>fitting</option></select></label>`}
     </div>
@@ -106,6 +112,9 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
     svg.appendChild(el("line", { x1: W / 2, y1: 0, x2: W / 2, y2: H, stroke: "#3b82f6", "stroke-width": 1, opacity: 0.6 }));
     svg.appendChild(el("line", { x1: 0, y1: H / 2, x2: W, y2: H / 2, stroke: "#ef4444", "stroke-width": 1, opacity: 0.6 }));
     svg.appendChild(el("text", { x: 6, y: 14, fill: "#94a3b8", "font-size": 10 }, "Plan view · +X right · +Y up (north) · origin at centre"));
+    const ring = (r: Pt[], stroke: string, fill: string) => svg.appendChild(el("path", { d: r.map((p, i) => { const [x, y] = toScreen(p); return `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`; }).join(" ") + " Z", fill, stroke, "stroke-width": 2 }));
+    if (outer) ring(outer, "#60a5fa", "rgba(59,130,246,.18)");
+    holes.forEach((h) => ring(h, "#f97316", "#0b0e14"));
     const outline = currentOutline();
     const preview: Pt[] = [...outline];
     if (!closed && hover) {
@@ -125,7 +134,7 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
     const v = validateSketch(done ? pts : []);
     status.style.color = v.ok ? "#86efac" : "#fbbf24";
     if (!done) status.textContent = "";
-    else if (v.ok && v.bbox) status.textContent = `Outline ok: ${(v.bbox.maxX - v.bbox.minX).toFixed(2)} × ${(v.bbox.maxY - v.bbox.minY).toFixed(2)} m, area ${v.area.toFixed(3)} m², ${v.points.length} points.`;
+    else if (v.ok && v.bbox) status.textContent = `${outer ? "Hole" : "Outline"} ok: ${(v.bbox.maxX - v.bbox.minX).toFixed(2)} × ${(v.bbox.maxY - v.bbox.minY).toFixed(2)} m, area ${v.area.toFixed(3)} m², ${v.points.length} points.`;
     else status.textContent = v.errors.join("\n");
     hint.textContent = tool === "polygon"
       ? (closed ? "Outline closed. Change tool or Clear to start again." : "Click to add points. Click the green first point, press Enter, or use “Close outline” to finish. Backspace removes the last point.")
@@ -133,7 +142,7 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
     root.querySelectorAll("[data-tool]").forEach((b) => ((b as HTMLElement).style.outline = (b as HTMLElement).getAttribute("data-tool") === tool ? "2px solid #3b82f6" : "none"));
   }
 
-  function reset(t?: Tool): void { if (t) tool = t; pts = []; closed = false; anchor = null; draw(); }
+  function reset(t?: Tool): void { if (t) tool = t; pts = []; closed = false; anchor = null; if (!t) { outer = null; outerShape = null; holes = []; } lastShape = null; draw(); }
   function tryClose(): void { if (tool === "polygon" && pts.length >= 3) { closed = true; draw(); } }
 
   function pointerPos(e: PointerEvent): [number, number] {
@@ -149,8 +158,8 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
       if (pts.length >= 3) { const [fx, fy] = toScreen(pts[0]); if (Math.hypot(fx - sx, fy - sy) < 9) { tryClose(); return; } }
       pts.push(p);
     } else if (!anchor) { anchor = p; pts = []; }
-    else if (tool === "rect") { pts = rectPoints(anchor[0], anchor[1], p[0], p[1]); anchor = null; }
-    else { pts = circlePoints(anchor[0], anchor[1], Math.hypot(p[0] - anchor[0], p[1] - anchor[1]) || 0.001); anchor = null; }
+    else if (tool === "rect") { pts = rectPoints(anchor[0], anchor[1], p[0], p[1]); lastShape = { kind: "rect", cx: (anchor[0] + p[0]) / 2, cy: (anchor[1] + p[1]) / 2, width: Math.abs(p[0] - anchor[0]), length: Math.abs(p[1] - anchor[1]) }; anchor = null; }
+    else { const rad = Math.hypot(p[0] - anchor[0], p[1] - anchor[1]) || 0.001; pts = circlePoints(anchor[0], anchor[1], rad); lastShape = { kind: "circle", cx: anchor[0], cy: anchor[1], radius: rad }; anchor = null; }
     draw();
   });
 
@@ -161,6 +170,17 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
   q("[data-undo]").addEventListener("click", () => { if (closed) closed = false; else pts.pop(); draw(); });
   q("[data-clear]").addEventListener("click", () => reset());
   q("[data-close]").addEventListener("click", tryClose);
+  const shapeDone = () => closed || (tool !== "polygon" && pts.length > 0);
+  /** Move the finished shape to the outline (first press) or add it as a hole (later presses), then start a fresh hole. */
+  q("[data-hole]").addEventListener("click", () => {
+    if (!shapeDone()) { status.style.color = "#fbbf24"; status.textContent = "Finish the current shape first."; return; }
+    const v = validateSketch(pts);
+    if (!v.ok) { status.style.color = "#fbbf24"; status.textContent = v.errors.join("\n"); return; }
+    if (!outer) { outer = v.points; outerShape = tool === "polygon" ? { kind: "polygon", points: v.points } : (lastShape ?? { kind: "polygon", points: v.points }); }
+    else { holes.push(v.points); }
+    pts = []; closed = false; anchor = null; lastShape = null; draw();
+    status.style.color = "#86efac"; status.textContent = `${holes.length} hole(s) so far. Draw the next hole, then Apply (the shape being drawn counts as a hole).`;
+  });
 
   const close = () => { root.remove(); open = null; window.removeEventListener("keydown", onKey, true); };
   function onKey(e: KeyboardEvent): void {
@@ -177,13 +197,21 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
   root.addEventListener("pointerdown", (e) => { if (e.target === root) close(); });
 
   q("[data-apply]").addEventListener("click", () => {
-    const done = closed || (tool !== "polygon" && pts.length > 0);
-    if (!done) { status.style.color = "#fbbf24"; status.textContent = "Finish the outline first (close the polygon, or complete the rectangle / circle)."; return; }
+    const done = shapeDone();
+    if (!done && !outer) { status.style.color = "#fbbf24"; status.textContent = "Finish the outline first (close the polygon, or complete the rectangle / circle)."; return; }
+    // Build the shape: with an outline set aside, whatever is drawn now is one more hole.
+    const allHoles: Pt[][] = [...holes, ...(outer && done ? [pts] : [])];
+    const useParams = q<HTMLInputElement>("[data-param]").checked;
+    let shape: ShapeInput;
+    if (outer) shape = { kind: "polygon", points: outer, holes: allHoles };
+    else if (useParams && lastShape && tool !== "polygon") shape = lastShape;
+    else shape = { kind: "polygon", points: pts };
+    if (outer && outerShape && outerShape.kind !== "polygon" && allHoles.length === 0) shape = useParams ? outerShape : { kind: "polygon", points: outer };
     const depth = parseFloat(q<HTMLInputElement>("[data-depth]").value);
     const elevation = parseFloat(q<HTMLInputElement>("[data-elev]").value || "0");
     try {
       if (target) {
-        const r = addSketchToFamily(target, pts, { depth, elevation, label: "sketch" });
+        const r = addShapeToFamily(target, shape, { depth, elevation, label: "sketch" });
         if (!r.ok) { status.style.color = "#fbbf24"; status.textContent = r.errors.join("\n"); return; }
         let id = target.id;
         if (target.builtIn) { // built-in families are not edited in place: work on a copy
@@ -196,7 +224,7 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
         close(); opts.onDone?.(id);
       } else {
         const name = q<HTMLInputElement>("[data-name]").value;
-        const r = newFamilyFromSketch({ id: "pending", name, category: q<HTMLSelectElement>("[data-cat]").value as Any, points: pts, depth, elevation });
+        const r = newFamilyFromSketch({ id: "pending", name, category: q<HTMLSelectElement>("[data-cat]").value as Any, shape, depth, elevation });
         if (!r.ok) { status.style.color = "#fbbf24"; status.textContent = r.errors.join("\n"); return; }
         const { id: _drop, schemaVersion: _s, builtIn: _b, ...rest } = r.family as Any;
         const tid = `t_${Date.now().toString(36)}`;

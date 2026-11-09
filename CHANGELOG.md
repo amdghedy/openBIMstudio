@@ -13,6 +13,7 @@ file — the project adopted a written changelog at 0.73.0.
 
 ### Family sketch editor (experimental)
 - Parametric Families panel: **Sketch profile…** and **New from sketch…** open a grid canvas to draw a plan outline (polygon, rectangle, circle), set depth and elevation, and add it to a family (built-ins are copied) or create a new one. Outlines are validated (≥3 points, no self-crossing). Limits and verification: `docs/FAMILY-SKETCH.md`.
+- Sketch shapes can now be **parametric** (rectangle → width/length parameters, circle → radius parameter, so they resize) and can have **holes** (draw the outline, press *Next: draw hole*, draw holes; holes must lie inside the outline and not overlap). Core and CI geometry checks added; the drawing window still has not been used in a real browser.
 
 ### Right-to-left readiness (issue #141, partly)
 - The core stylesheets (`src/style.css`, `src/styles.css`) now use logical properties (`margin-inline-end`, `border-inline-start`, `inset-inline-end`, `text-align: start`) instead of left/right, so the ribbon, toasts, cards and KPIs mirror under `<html dir="rtl">` (set already for Arabic, Persian, Hebrew, Urdu) and render the same as before in LTR. A test keeps physical properties from coming back.
