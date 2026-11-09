@@ -1,3 +1,4 @@
+// One-time tracked-text cleanup trigger; the workflow removes this runner after its verified pass.
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
