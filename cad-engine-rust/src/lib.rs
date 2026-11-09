@@ -38,11 +38,13 @@ fn frame(payload: &[u8]) -> *mut u8 {
 }
 
 /// Detect the container format from the leading magic bytes.
+const BINARY_DXF_MAGIC: [u8; 18] = [65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70];
+
 fn sniff(b: &[u8]) -> &'static str {
     if b.len() >= 2 && (&b[0..2] == b"AC" || &b[0..2] == b"AD") {
         return "dwg";
     }
-    if b.len() >= 18 && &b[0..18] == bString.fromCharCode(65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70) {
+    if b.get(..BINARY_DXF_MAGIC.len()) == Some(BINARY_DXF_MAGIC.as_slice()) {
         return "bdxf";
     }
     "dxf"
