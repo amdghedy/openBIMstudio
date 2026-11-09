@@ -30,6 +30,10 @@ import {
   sizeRectDuctByFriction, sizeRoundDuctByFriction, sizePipeByFriction, staticRegainSeries,
 } from "../modules/mep/sizing-methods";
 import { auditNetwork } from "../modules/mep/network";
+import { calcZoneLoadsDetailed } from "../modules/mep/hvac-loads";
+import type { ZoneLoadInput } from "../modules/mep/hvac-loads";
+import { buildPanelSchedule } from "../modules/mep/electrical";
+import type { ElectricalPanel, ElectricalLoad } from "../modules/mep/electrical";
 import { fanSelection, pumpSelection } from "../modules/mep/equipment";
 import { sizeDrain, sizeDrainFromFixtures, totalDfu } from "../modules/mep/drainage";
 import type { DrainSlopeInFt } from "../modules/mep/drainage";
@@ -185,6 +189,8 @@ export function setupMepFabrication(): void {
   registerCommand({ id: "mep.sprinkler-demand", label: "Sprinkler Design Demand", category: "MEP", run: () => void sprinklerCalc() });
   registerCommand({ id: "mep.voltage-drop", label: "Voltage Drop Check", category: "MEP", run: () => void voltageDropCalc() });
   registerCommand({ id: "mep.network-audit", label: "MEP Network Audit \u2014 Pressure Loss Report", category: "MEP", run: () => void networkAuditCalc() });
+  registerCommand({ id: "mep.zone-loads", label: "Zone Heating & Cooling Loads (CLTD)", category: "MEP", run: () => void zoneLoadCalc() });
+  registerCommand({ id: "mep.panel-wire", label: "Panel Schedule \u2014 Wire Size & Voltage Drop", category: "MEP", run: () => void panelWireCalc() });
   registerCommand({ id: "mep.drainage-dfu", label: "Drainage Size (DFU, IPC 710)", category: "MEP", run: () => void drainageCalc() });
   registerCommand({ id: "mep.drainage-direct", label: "DFU \u2192 Pipe Size (direct)", category: "MEP", run: () => void drainageDirectCalc() });
 }
@@ -831,6 +837,131 @@ async function networkAuditCalc(): Promise<void> {
   }
 }
 
+// ── Zone heating & cooling loads (CLTD, orientation-aware) ───────────────
+
+async function zoneLoadCalc(): Promise<void> {
+  const SAMPLE = JSON.stringify({
+    zones: [{
+      id: "Z1", name: "Open office", areaM2: 60, ceilingHeightM: 2.9,
+      surfaces: [
+        { id: "roof", kind: "roof", areaM2: 60, uValueWm2K: 0.28 },
+        { id: "wall-s", kind: "wall", orientationDeg: 180, areaM2: 20, uValueWm2K: 0.45 },
+        { id: "wall-w", kind: "wall", orientationDeg: 270, areaM2: 18, uValueWm2K: 0.45 },
+      ],
+      glazing: [
+        { id: "glaz-s", orientationDeg: 180, areaM2: 6, uValueWm2K: 1.8, shgc: 0.42 },
+        { id: "glaz-w", orientationDeg: 270, areaM2: 5, uValueWm2K: 1.8, shgc: 0.42 },
+      ],
+      gains: { people: 8, lightingWm2: 9, equipmentWm2: 14 },
+      outdoorAirLsPerPerson: 10, infiltrationAch: 0.5,
+    }],
+    conditions: { summerOutdoorC: 35, winterOutdoorC: -5 },
+    supplyDeltaTC: 12,
+  }, null, 1);
+  const vals = await openFormModal({
+    title: "Zone Heating & Cooling Loads (CLTD)",
+    subtitle: "Orientation-aware sol-air + solar gains + internal + ventilation/infiltration \u2014 sensible/latent split and supply airflow",
+    width: 560,
+    fields: [
+      { kind: "textarea", key: "json", label: "Zones JSON", default: SAMPLE, hint: "zones: {id, name, areaM2, ceilingHeightM, surfaces[{kind: wall|roof|floor, orientationDeg, areaM2, uValueWm2K}], glazing[{orientationDeg, areaM2, uValueWm2K, shgc}], gains{people, lightingWm2, equipmentWm2}, outdoorAirLsPerPerson, infiltrationAch}; conditions{summerOutdoorC, summerIndoorC, winterOutdoorC, winterIndoorC, groundC}." },
+      { kind: "number", key: "dt", label: "Supply air \u0394T", default: 12, unit: "K", validate: mustBePositive },
+    ],
+    submitLabel: "Analyse",
+  });
+  if (!vals) return;
+  let parsed: { zones?: ZoneLoadInput[]; conditions?: Record<string, number> };
+  try { parsed = JSON.parse(String(vals.json)); } catch {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Zones JSON is invalid", kind: "error" } }));
+    return;
+  }
+  if (!Array.isArray(parsed.zones) || parsed.zones.length === 0) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Provide at least one zone in 'zones'", kind: "error" } }));
+    return;
+  }
+  try {
+    const { zones, totals } = calcZoneLoadsDetailed(parsed.zones as ZoneLoadInput[], {
+      conditions: parsed.conditions,
+      supplyDeltaTC: Number(vals.dt) || 12,
+    });
+    const rows: ResultRow[] = [
+      { label: "Zones analysed", value: String(zones.length) },
+      { label: "Building cooling total", value: `${totals.coolingW.toFixed(0)} W (${totals.tons.toFixed(2)} tons)`, strong: true },
+      { label: "Building heating total", value: `${totals.heatingW.toFixed(0)} W`, strong: true },
+      { label: "Cooling airflow total", value: `${totals.airflowLs.toFixed(0)} L/s (${Math.round(totals.airflowLs * 2.11888)} CFM)` },
+      { label: "Outdoor air total", value: `${totals.outdoorAirLs.toFixed(0)} L/s` },
+      ...zones.slice(0, 6).map((z) => ({
+        label: `${z.zoneName}: cool ${z.cooling.sensibleW.toFixed(0)}S+${z.cooling.latentW.toFixed(0)}L W, SHR ${z.cooling.shr}`,
+        value: `${z.cooling.airflowLs.toFixed(0)} L/s (${z.cooling.airflowCfm} CFM) \u00B7 heat ${z.heating.totalW.toFixed(0)} W`,
+      })),
+    ];
+    if (zones.length > 6) rows.push({ label: "\u2026", value: `${zones.length - 6} more zones in the JSON export` });
+    showResultDialog("Zone Loads \u2014 CLTD Analysis", rows, [
+      "Sol-air walls (AS structural \u03B1=0.26, h\u1D62=22.7), clear-sky solar peaks per fa\u00E7ade, people 75S/55L W, OA per ASHRAE 62.1 style rate, infiltration from ACH.",
+      "Heating excludes solar and internal gains (conservative). Design aid \u2014 the project code and a full heat-balance run govern the final plant sizing.",
+    ]);
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Zone load analysis failed: ${(e as Error).message}`, kind: "error" } }));
+  }
+}
+
+// ── Panel schedule wire size + voltage drop ──────────────────────────────
+
+async function panelWireCalc(): Promise<void> {
+  const SAMPLE = JSON.stringify({
+    panel: {
+      id: "P1", name: "LP-1", voltageV: 230, phase: 1, busRatingA: 100, circuitSpaces: 24,
+      circuits: [
+        { id: "c1", panelId: "P1", circuitNumber: 1, loadIds: ["l1"], breakerRatingA: 16, poles: 1, voltageV: 230, phase: 1, wireLengthM: 35 },
+        { id: "c2", panelId: "P1", circuitNumber: 2, loadIds: ["l2"], breakerRatingA: 20, poles: 1, voltageV: 230, phase: 1, wireLengthM: 90 },
+      ],
+    },
+    loads: [
+      { id: "l1", name: "Office lighting", apparentPowerVA: 1800, voltageV: 230, phase: 1, poles: 1, powerFactor: 0.95 },
+      { id: "l2", name: "Workshop sockets", apparentPowerVA: 3200, voltageV: 230, phase: 1, poles: 1, powerFactor: 0.9 },
+    ],
+  }, null, 1);
+  const vals = await openFormModal({
+    title: "Panel Schedule \u2014 Wire Size & Voltage Drop",
+    subtitle: "Auto conductor selection from the design current + per-circuit voltage drop (3% advisory, 5% limit)",
+    width: 560,
+    fields: [
+      { kind: "textarea", key: "json", label: "Panel + loads JSON", default: SAMPLE, hint: "panel{id,name,voltageV,phase,busRatingA,circuitSpaces,circuits[{id,panelId,circuitNumber,loadIds,breakerRatingA,poles,voltageV,phase,wireLengthM?}]}; loads[{id,name,apparentPowerVA,voltageV,phase,poles,powerFactor?,demandFactor?}]." },
+    ],
+    submitLabel: "Build schedule",
+  });
+  if (!vals) return;
+  let parsed: { panel?: ElectricalPanel; loads?: ElectricalLoad[] };
+  try { parsed = JSON.parse(String(vals.json)); } catch {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Panel JSON is invalid", kind: "error" } }));
+    return;
+  }
+  if (!parsed.panel) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Provide a 'panel' object", kind: "error" } }));
+    return;
+  }
+  try {
+    const schedule = buildPanelSchedule(parsed.panel, parsed.loads ?? []);
+    const rows: ResultRow[] = [
+      { label: "Panel", value: `${schedule.panelName} \u00B7 ${schedule.voltageV} V ${schedule.phase}\u00D8` },
+      { label: "Connected / demand", value: `${schedule.totalConnectedVA.toFixed(0)} / ${schedule.totalDemandVA.toFixed(0)} VA` },
+      { label: "Demand current", value: `${schedule.estimatedDemandCurrentA.toFixed(1)} A \u00B7 bus ${schedule.busRatingA} A` },
+      { label: "Spaces used", value: `${schedule.usedSpaces} / ${schedule.usedSpaces + schedule.availableSpaces}` },
+      ...schedule.rows.map((r) => ({
+        label: `Ckt ${r.circuitNumber} \u2014 ${r.loadNames.join(", ") || "\u2014"} (${r.demandVA.toFixed(0)} VA, ${r.designCurrentA.toFixed(1)} A)`,
+        value: `${r.wireSizeMm2 != null ? `${r.wireSizeMm2} mm\u00B2` : "no wire fits"}${r.voltageDropPercent != null ? ` \u00B7 ${r.voltageDropPercent.toFixed(2)}% drop` : ""} \u00B7 ${r.status.toUpperCase()}`,
+        strong: r.status !== "ok",
+      })),
+    ];
+    const notes = schedule.diagnostics
+      .filter((d) => d.severity !== "ok")
+      .map((d) => `${d.code}: ${d.message}`);
+    if (notes.length === 0) notes.push("All circuits pass ampacity and voltage-drop checks.");
+    showResultDialog("Panel Schedule \u2014 " + schedule.panelName, rows, notes);
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Panel schedule failed: ${(e as Error).message}`, kind: "error" } }));
+  }
+}
+
 async function fanDutyCalc(): Promise<void> {
   const vals = await openFormModal({
     title: "Fan Duty Selection",
@@ -969,6 +1100,8 @@ const TOOLKIT_ITEMS: Array<{ value: string; label: string }> = [
   { value: "friction-size", label: "Auto-Size by Friction Rate (Revit method)" },
   { value: "static-regain", label: "Static Regain Duct Main (Revit method)" },
   { value: "network-audit", label: "Network Audit \u2014 Pressure Loss Report" },
+  { value: "zone-loads", label: "Zone Heating & Cooling Loads (CLTD)" },
+  { value: "panel-wire", label: "Panel Schedule \u2014 Wire Size & Voltage Drop" },
   { value: "fan-duty", label: "Fan Duty Selection" },
   { value: "pump-duty", label: "Pump Duty Selection" },
   { value: "drainage-dfu", label: "Drainage Size (DFU, IPC 710)" },
@@ -999,6 +1132,8 @@ export async function openMepDesignToolkit(): Promise<void> {
     "friction-size": frictionSizeCalc,
     "static-regain": staticRegainCalc,
     "network-audit": networkAuditCalc,
+    "zone-loads": zoneLoadCalc,
+    "panel-wire": panelWireCalc,
     "fan-duty": fanDutyCalc,
     "pump-duty": pumpDutyCalc,
     "drainage-dfu": drainageCalc,

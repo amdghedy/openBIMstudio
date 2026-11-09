@@ -31,6 +31,8 @@ import * as mepNetwork from "./network";
 import * as mepEquipment from "./equipment";
 import * as mepDrainage from "./drainage";
 import * as mepDistribution from "./distribution";
+import * as mepHvacLoads from "./hvac-loads";
+import * as mepFlowAssignment from "./flow-assignment";
 
 export * from "./types";
 export * from "./connectors";
@@ -58,6 +60,8 @@ export * from "./network";
 export * from "./equipment";
 export * from "./drainage";
 export * from "./distribution";
+export * from "./hvac-loads";
+export * from "./flow-assignment";
 
 /** Public MEP service interface - what consumers call. */
 export interface MepService {
@@ -126,6 +130,11 @@ export function setupMep(): MepService {
   svcAny.drainage = mepDrainage;
   svcAny.distribution = mepDistribution;
 
+  // MEP depth pack: orientation-aware zone loads (CLTD) and model-native
+  // terminal flow assignment feeding the network audit.
+  svcAny.hvacLoads = mepHvacLoads;
+  svcAny.flowAssignment = mepFlowAssignment;
+
   // Register in the typed service registry + legacy ctx.features bag.
   try {
     register("mep" as any, svc as any);
@@ -139,7 +148,8 @@ export function setupMep(): MepService {
     "[mep] ready. A* router + ASHRAE sizing + parametric superhero pack + Revit-parity engineering pack online. " +
     "Use the __obsMep service (.route, .plumbing.fixtureUnitsToDemand, .fire.designDemand, " +
     ".electricalCalc.voltageDrop, .insulation, .runTools, .sizingMethods, .network.auditNetwork, " +
-    ".equipment.fanSelection/.pumpSelection, .drainage.sizeDrain, .distribution.buildDistributionSummary) " +
+    ".equipment.fanSelection/.pumpSelection, .drainage.sizeDrain, .distribution.buildDistributionSummary, " +
+    ".hvacLoads.calcZoneLoadsDetailed, .flowAssignment.auditFromModel) " +
     "or the 'MEP Auto-Route…' / 'MEP Design Toolkit…' commands.",
   );
 
