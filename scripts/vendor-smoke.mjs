@@ -19,8 +19,27 @@ function loadUmd(sub, entry) {
   return { dir: dst, mod: require(path.join(dst, entry)) };
 }
 
+function resolveFactory(mod, packageName) {
+  // Node may expose a CommonJS factory directly or an ESM namespace with a default export.
+  const candidates = [
+    mod,
+    mod?.default,
+    mod?.occtimportjs,
+    mod?.occtImportJs,
+    mod?.rhino3dm,
+  ];
+  const factory = candidates.find((candidate) => typeof candidate === "function");
+  if (!factory) {
+    throw new TypeError(
+      `${packageName} did not expose an initializer function; exports: ${Object.keys(mod ?? {}).join(", ") || typeof mod}`,
+    );
+  }
+  return factory;
+}
+
 if (kind === "occt") {
-  const { dir, mod: factory } = loadUmd("occt", "occt-import-js.js");
+  const { dir, mod } = loadUmd("occt", "occt-import-js.js");
+  const factory = resolveFactory(mod, "occt-import-js");
   const occt = await factory({ locateFile: (n) => path.join(dir, n) });
   const bytes = new Uint8Array(fs.readFileSync(file));
   const ext = path.extname(file).toLowerCase();
@@ -34,7 +53,8 @@ if (kind === "occt") {
   console.log(JSON.stringify({ file: path.basename(file), bboxDefault: bbox(r), bboxByLinearUnit: units }));
   if (!r.success || !tris) { console.error("no geometry decoded"); process.exit(1); }
 } else if (kind === "rhino") {
-  const { dir, mod: factory } = loadUmd("rhino3dm", "rhino3dm.js");
+  const { dir, mod } = loadUmd("rhino3dm", "rhino3dm.js");
+  const factory = resolveFactory(mod, "rhino3dm");
   const rhino = await factory({ locateFile: (n) => path.join(dir, n) });
   if (file) {
     const real = rhino.File3dm.fromByteArray(new Uint8Array(fs.readFileSync(file)));
