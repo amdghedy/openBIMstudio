@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Fixed: 3D orbit rolling and stuttering
+- Orbiting (middle-mouse + modifier, and Shift+left-drag) now restores the camera's up vector to world +Y at the start of the drag, so a tilt left behind by a Top/saved/section view no longer makes rotation roll the picture, and applies at most one camera update per animation frame instead of one per pointer event. Logic covered by `tests/orbit-frame.test.cjs`. **Not verified in a real browser or on your model**; if it still lags, the cost is likely in a per-camera-update listener (view cube, section sync, dimension labels) and needs a profile.
+
 ### Family sketch editor (experimental)
 - Parametric Families panel: **Sketch profile…** and **New from sketch…** open a grid canvas to draw a plan outline (polygon, rectangle, circle), set depth and elevation, and add it to a family (built-ins are copied) or create a new one. Outlines are validated (≥3 points, no self-crossing). Limits and verification: `docs/FAMILY-SKETCH.md`.
 - Sketch shapes can now be **parametric** (rectangle → width/length parameters, circle → radius parameter, so they resize) and can have **holes** (draw the outline, press *Next: draw hole*, draw holes; holes must lie inside the outline and not overlap). Core and CI geometry checks added; the drawing window still has not been used in a real browser.

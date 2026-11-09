@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { inputRouter, type Gesture } from "../core/input-router";
 import { forceResumeCameraControls } from "../core/camera-gate";
+import { ensureUprightForOrbit, frameCoalesced } from "../core/orbit-frame";
 
 type Any = Record<string, any>;
 
@@ -129,6 +130,7 @@ function pivotNow(): THREE.Vector3 {
 function beginOrbit(e: PointerEvent, pivot: THREE.Vector3): void {
   const cam = camera();
   if (!cam) return;
+  ensureUprightForOrbit(cam as Any, controls());
   const offset = new THREE.Vector3().subVectors(cam.position, pivot);
   const spherical = new THREE.Spherical().setFromVector3(offset);
   const host = (ctx as Any).rightHost as HTMLElement | undefined;
@@ -147,6 +149,8 @@ function beginOrbit(e: PointerEvent, pivot: THREE.Vector3): void {
   }
   if (host) host.style.cursor = "grabbing";
 }
+
+const orbitFrame = frameCoalesced((dx: number, dy: number) => applyOrbit(dx, dy));
 
 function applyOrbit(dx: number, dy: number): void {
   if (!orbit) return;
@@ -194,6 +198,7 @@ function applyOrbit(dx: number, dy: number): void {
 }
 
 function endOrbit(): void {
+  orbitFrame.flush();
   orbit = null;
   try {
     const host = (ctx as Any).rightHost as HTMLElement | undefined;
@@ -217,7 +222,7 @@ function onGesture(g: Gesture): boolean {
   }
   if (g.kind === "drag-move" && g.button === 0) {
     if (!orbit) return false;
-    applyOrbit(g.dx, g.dy);
+    orbitFrame.push(g.dx, g.dy);
     return true;
   }
   if (g.kind === "drag-end" && g.button === 0) {

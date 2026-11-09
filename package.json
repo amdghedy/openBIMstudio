@@ -115,6 +115,7 @@
     "test:standards-json-pack": "node tests/standards-json-pack.test.cjs",
     "test:icu-lite": "node tests/icu-lite.test.cjs",
     "test:family-sketch": "node tests/family-sketch.test.cjs",
+    "test:orbit-frame": "node tests/orbit-frame.test.cjs",
     "test:rtl-css": "node tests/rtl-css.test.cjs",
     "test:region-format": "node tests/region-format.test.cjs",
     "test:twin-export": "node tests/twin-export-geometry.test.cjs",

@@ -17,6 +17,7 @@
  * CameraControls mouse/touch are forced OFF so only this module drives the view.
  * Every gesture ends with forceResumeCameraControls to prevent 3D hang-ups.
  */
+import { ensureUprightForOrbit, frameCoalesced } from "../core/orbit-frame";
 import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
@@ -225,6 +226,7 @@ function applyPan(dxTotal: number, dyTotal: number): void {
 
 function beginOrbitSync(e: PointerEvent, pivot: THREE.Vector3): void {
   const cam = camera();
+  ensureUprightForOrbit(cam as any, controls());
   const camToPivot = cam.position.clone().sub(pivot);
   const spherical = new THREE.Spherical().setFromVector3(camToPivot);
   const rect = ctx.rightHost.getBoundingClientRect();
@@ -261,6 +263,8 @@ async function selectionCenter(): Promise<THREE.Vector3> {
   }
   return getTarget();
 }
+
+const orbitFrame = frameCoalesced((dx: number, dy: number) => applyOrbit(dx, dy));
 
 function applyOrbit(dxTotal: number, dyTotal: number): void {
   if (state.kind !== "orbit") return;
@@ -453,7 +457,7 @@ export function setupNavigation(): void {
         return true;
       }
       if (state.kind === "orbit") {
-        applyOrbit(g.dx, g.dy);
+        orbitFrame.push(g.dx, g.dy);
         return true;
       }
       return false;
@@ -461,6 +465,7 @@ export function setupNavigation(): void {
 
     if (g.kind === "drag-end" && g.button === 1) {
       if (state.kind === "pan" || state.kind === "orbit") {
+        if (state.kind === "orbit") orbitFrame.flush();
         endNavGesture();
         return true;
       }
