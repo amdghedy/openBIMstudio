@@ -21,6 +21,7 @@ import {
   validateAdaptivePointConstraints,
 } from "./index";
 import { resolveNumber } from "../families/parametric-geometry";
+import type { NumberRef } from "../families/types";
 
 type Any = Record<string, any>;
 
@@ -396,7 +397,7 @@ function circleProfile(radius: number, segments = 24): ProfilePt[] {
   });
 }
 
-function resolveProfileRef(ref: Any, params: Any): number {
+function resolveProfileRef(ref: NumberRef, params: Any): number {
   const value = Number(resolveNumber(ref, params));
   if (!Number.isFinite(value)) throw new Error("Linked family profile contains an invalid dimension");
   return value;
