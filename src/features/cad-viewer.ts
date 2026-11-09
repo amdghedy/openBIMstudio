@@ -68,6 +68,7 @@ import {
 } from "../modules/drawings/plot-styles";
 import { isLandXml, parseLandXmlPoints } from "../modules/drawings/landxml";
 import * as P from "./cad-params";
+import { buildLinearDimension } from "../modules/cad-viewer/dimension-tools";
 import { fmtTime } from "../core/region";
 
 type Tool =
@@ -86,6 +87,7 @@ type Tool =
   | "radius"
   | "id"
   | "dim"
+  | "dimlinear"
   | "calibrate"
   | "origin"
   | "stamp"
@@ -258,6 +260,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "VIEW", aliases: ["V"], description: "Named views: VIEW S <name> saves, VIEW R <name> restores" },
   { name: "LAYERSTATE", aliases: ["LAS", "LAYSTATE"], description: "Layer states: LAYERSTATE S|R <name>" },
   { name: "OVERKILL", aliases: ["OVERKILL"], description: "Remove duplicate / overlapping entities" },
+  { name: "DIMALIGNED", aliases: ["DAL"], description: "Place an aligned dimension with two measured points and a line location" },
+  { name: "DIMLINEAR", aliases: ["DLI"], description: "Place a horizontal or vertical dimension" },
   { name: "DIMANGULAR", aliases: ["DAN", "DIMANG"], description: "Angular dimension from a vertex and two rays" },
   { name: "DIMARC", aliases: ["DAR"], description: "Arc-length dimension on a picked arc" },
   { name: "DIMDIAMETER", aliases: ["DDI", "DIMDIA"], description: "Diameter dimension on a circle" },
@@ -4806,6 +4810,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ["dist", "Distance", "D"],
     ["area", "Area", "AA"],
     ["dim", "Dimension", "Q"],
+    ["dimlinear", "Linear Dimension", "DLI"],
     ["erase", "Erase", "E"],
     ["box", "Box", "B"],
     ["zoomwin", "Zoom Window", "W"],
@@ -5073,7 +5078,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "Dimensions",
-        tb("dim", "dim-aligned", "Linear") +
+        tb("dim", "dim-aligned", "Aligned") +
+          tb("dimlinear", "dim-linear", "Linear") +
           tb("dimang", "dim-angular", "Angular") +
           tb("dimarc", "dim-arclen", "Arc Len") +
           tb("dimdia", "dim-diameter", "Diameter") +
@@ -6112,14 +6118,32 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         break;
       }
-      case "dim": {
+      case "dim":
+      case "dimlinear": {
         pts.push(p);
         if (pts.length === 2) {
-          const d = M.distance(pts[0], pts[1]);
-          const label = fmt(d);
-          markups.push({ kind: "dim", pts: [...pts], text: label });
-          results.push(`Dimension: ${label}`);
-          drawn.push({ kind: "dist", pts: [...pts] });
+          const dx = Math.abs(pts[1].x - pts[0].x), dy = Math.abs(pts[1].y - pts[0].y);
+          const measured = tool === "dimlinear" ? Math.max(dx, dy) : M.distance(pts[0], pts[1]);
+          if (measured < 1e-9) { logCmd("Dimension: points must be different."); pts = []; break; }
+          logCmd("Specify dimension line location (third point):");
+          showAcadPrompt();
+        } else if (pts.length === 3) {
+          const first = pts[0], second = pts[1], placement = pts[2];
+          const dx = Math.abs(second.x - first.x), dy = Math.abs(second.y - first.y);
+          const measured = tool === "dimlinear" ? Math.max(dx, dy) : M.distance(first, second);
+          const value = M.convertLength(measured * scaleCal, doc.units, du);
+          const label = fmt(value), unit = M.unitLabel(doc.units, du);
+          const entities = buildLinearDimension({
+            first, second, placement, mode: tool === "dimlinear" ? "linear" : "aligned",
+            layer: currentLayer, text: unit === "units" ? label : label + " " + unit,
+            textHeight: Math.max(1e-6, M.convertLength(2.5, "mm", doc.units ?? "mm")),
+          });
+          if (entities.length) {
+            addEntities(entities);
+            results.push("Dimension: " + label + " " + unit);
+            drawn.push({ kind: "dist", pts: [first, second] });
+            logCmd((tool === "dimlinear" ? "DIMLINEAR" : "DIMALIGNED") + ": " + label + " " + unit + ". Dimension placed.");
+          } else logCmd("Dimension could not be created — check the picked points.");
           pts = [];
           showMeas();
         }
@@ -7756,6 +7780,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       setTool("matchlayer");
       return;
     }
+    if (cmd === "DIMALIGNED" || cmd === "DAL") { setTool("dim"); return; }
+    if (cmd === "DIMLINEAR" || cmd === "DLI") { setTool("dimlinear"); return; }
     if (cmd === "DIMANGULAR" || cmd === "DAN" || cmd === "DIMANG") {
       setTool("dimang");
       return;
