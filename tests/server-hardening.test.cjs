@@ -202,7 +202,11 @@ const uploadTests = (m) => {
 
   t("signature sniff: DXF text SECTION and binary sentinel", () => {
     assert.ok(m.sniffSignature(Buffer.from("0\nSECTION\n  2\nHEADER\n"), ".dxf").ok);
-    assert.ok(m.sniffSignature(Buffer.from(String.fromCharCode(65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70) + "\r\n\u001a\u0000"), ".dxf").ok);
+    const signature = String.fromCharCode(65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70);
+    const binary = Buffer.from(signature + "\r\n\u001a\u0000");
+    assert.ok(m.sniffSignature(binary, ".dxf").ok);
+    assert.ok(m.sniffSignature(new Uint8Array(binary), ".dxf").ok, "binary typed-array input");
+    assert.ok(m.sniffSignature(new Uint8Array(Buffer.from("0\nSECTION\n  2\nHEADER\n")), ".dxf").ok, "ASCII typed-array input");
     assert.strictEqual(m.sniffSignature(Buffer.from("<html>hello"), ".dxf").ok, false);
   });
 
