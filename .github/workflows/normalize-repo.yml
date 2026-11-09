@@ -16,10 +16,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.ref_name }}
       - name: Normalize tracked files
         run: node scripts/normalize-repo-terms.mjs
       - name: Commit changes
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
         run: |
           rm -f .github/workflows/normalize-repo.yml scripts/normalize-repo-terms.mjs
           git config user.name "github-actions[bot]"
@@ -30,4 +32,4 @@ jobs:
             exit 0
           fi
           git commit -m "chore: normalize repository vocabulary"
-          git push origin HEAD:main
+          git push origin "HEAD:${TARGET_BRANCH}"

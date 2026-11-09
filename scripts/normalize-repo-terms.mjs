@@ -35,7 +35,7 @@ function normalize(value) {
     line.includes('"Autodesk"') && line.toLowerCase().includes(terms.a) && line.toLowerCase().includes("registered trademarks")
       ? "Product and company names remain the property of their respective owners."
       : line
-  ).join("\n");
+  ).join(output.includes("\r\n") ? "\r\n" : "\n");
 
   output = output.replace(new RegExp("ray[- ]+" + terms.c, "gi"), "ray-crossing");
   output = output.replace(new RegExp(terms.c + "[- ]+vote", "gi"), "majority vote");
