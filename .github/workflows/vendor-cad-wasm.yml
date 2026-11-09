@@ -3,9 +3,15 @@ name: Vendor CAD readers
 # Downloads the prebuilt WebAssembly readers for STEP/IGES/BREP (occt-import-js) and Rhino .3dm (rhino3dm)
 # from npm, smoke-tests them in Node, and pushes them on branch vendor-cad-build (main needs a pull request)
 # so they can be committed under public/vendor/. Nothing is added to package.json or package-lock.json.
-# Run manually.
+# Run manually, and automatically whenever the vendor smoke harness or vendored readers change.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/vendor-cad-wasm.yml"
+      - "scripts/vendor-smoke.mjs"
+      - "public/vendor/**"
 
 permissions:
   contents: write
