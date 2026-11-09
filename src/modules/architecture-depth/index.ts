@@ -9,6 +9,7 @@
  */
 import { getJoinsCleanupService } from "../joins-cleanup";
 import { ctx } from "../../core/context";
+import { WALL_TYPE_PRESETS, getWallTypePreset, listWallTypePresets, type WallTypePreset } from "./wall-types";
 
 type Any = Record<string, any>;
 
@@ -71,6 +72,40 @@ export function wireJoinsToAuthoring(): void {
   );
 }
 
+
+/** Apply a catalog wall type to authoring type defaults (next walls / curtain walls). */
+export function applyWallTypePreset(presetId: string): WallTypePreset | null {
+  const preset = getWallTypePreset(presetId);
+  if (!preset) return null;
+  const a = auth();
+  if (!a?.setTypeDefault) return preset;
+  const tool = preset.kind === "curtain" ? "curtain-wall" : "wall";
+  try {
+    a.setTypeDefault(tool, "params", "thickness", preset.thickness);
+    a.setTypeDefault(tool, "params", "height", preset.height);
+    a.setTypeDefault(tool, "root", "name", preset.name);
+    if (preset.layers) a.setTypeDefault(tool, "properties", "layers", preset.layers);
+    else if (preset.kind === "basic") a.setTypeDefault(tool, "properties", "layers", "");
+    if (preset.kind === "curtain") {
+      a.setTypeDefault(tool, "properties", "panelType", preset.panelType || "glazed");
+      a.setTypeDefault(tool, "properties", "mullionProfile", preset.mullionProfile || "rect");
+      a.setTypeDefault(tool, "properties", "system", "mullion-panel");
+    }
+    try {
+      window.dispatchEvent(
+        new CustomEvent("obs-toast", {
+          detail: { message: `Wall type: ${preset.name}`, kind: "info" },
+        }),
+      );
+    } catch {
+      /* */
+    }
+  } catch (err) {
+    console.warn("[architecture-depth] applyWallTypePreset failed", err);
+  }
+  return preset;
+}
+
 export function setupArchitectureDepth(): void {
   wireJoinsToAuthoring();
   try {
@@ -83,7 +118,11 @@ export function setupArchitectureDepth(): void {
   try {
     (window as any).__obsArchitectureDepth = {
       wireJoinsToAuthoring,
-      version: 1,
+      applyWallTypePreset,
+      listWallTypePresets,
+      getWallTypePreset,
+      presets: WALL_TYPE_PRESETS,
+      version: 2,
     };
   } catch {
     /* */
@@ -92,3 +131,6 @@ export function setupArchitectureDepth(): void {
     "[architecture-depth] compound walls + openings, curtain systems, joins service wired",
   );
 }
+
+export { WALL_TYPE_PRESETS, getWallTypePreset, listWallTypePresets } from "./wall-types";
+export type { WallTypePreset } from "./wall-types";

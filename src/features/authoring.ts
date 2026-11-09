@@ -2315,7 +2315,71 @@ function applyLevelConstraints(): void {
   } catch { /* constraints are best-effort; never block a level edit */ }
 }
 
+/** Persist clamped offsetAlongHost so stretch/shorten of a host never leaves openings off the wall. */
+
+/**
+ * After placing a wall, magnetically share joinStatus with nearby ends and
+ * force a geometry rebuild so L / T miters appear immediately (Revit-like).
+ */
+function autoJoinNewWall(el: AuthoredElement): void {
+  if (!el.params.start || !el.params.end) return;
+  if (String(el.properties?.joinStatus ?? "allow") === "disallow") return;
+  const ends = [el.params.start, el.params.end];
+  const tol = Math.max(0.25, (Number(el.params.thickness) || 0.2) * 2);
+  let touched = false;
+  for (const o of elements) {
+    if (o.id === el.id) continue;
+    if (o.type !== "wall" && o.type !== "curtain-wall") continue;
+    if (!o.params.start || !o.params.end) continue;
+    if (String(o.properties?.joinStatus ?? "allow") === "disallow") continue;
+    for (const ep of ends) {
+      for (const op of [o.params.start, o.params.end]) {
+        if (Math.hypot(ep[0] - op[0], ep[1] - op[1]) <= tol) {
+          el.properties = { ...(el.properties ?? {}), joinStatus: "allow" };
+          o.properties = { ...(o.properties ?? {}), joinStatus: "allow" };
+          touched = true;
+        }
+      }
+      // T-join: new end lands on other centerline
+      const [ox1, oz1] = o.params.start;
+      const [ox2, oz2] = o.params.end;
+      const odx = ox2 - ox1, odz = oz2 - oz1;
+      const oL2 = odx * odx + odz * odz || 1;
+      const tpar = ((ep[0] - ox1) * odx + (ep[1] - oz1) * odz) / oL2;
+      if (tpar > 0.02 && tpar < 0.98) {
+        const px = ox1 + tpar * odx, pz = oz1 + tpar * odz;
+        const dist = Math.hypot(ep[0] - px, ep[1] - pz);
+        const maxD = (Number(o.params.thickness) || 0.2) / 2 + (Number(el.params.thickness) || 0.2) / 2 + 0.05;
+        if (dist <= maxD) {
+          el.properties = { ...(el.properties ?? {}), joinStatus: "allow" };
+          o.properties = { ...(o.properties ?? {}), joinStatus: "allow" };
+          touched = true;
+        }
+      }
+    }
+  }
+  if (touched) rebuild();
+}
+
+function normalizeHostedOffsets(): void {
+  for (const el of elements) {
+    if ((el.type !== "door" && el.type !== "window") || !el.hostId) continue;
+    const host = elements.find((h) => h.id === el.hostId);
+    if (!host?.params.start || !host.params.end) continue;
+    const [ax, az] = host.params.start;
+    const [bx, bz] = host.params.end;
+    const chord = Math.hypot(bx - ax, bz - az);
+    const arcM = wallArcMetrics(chord, Number((host.params as any).arcHeight ?? 0));
+    const hostLen = arcM ? arcM.arcLen : chord;
+    const next = computeClampedOffset(el, hostLen);
+    if (Math.abs((el.params.offsetAlongHost ?? next) - next) > 1e-4) {
+      el.params.offsetAlongHost = next;
+    }
+  }
+}
+
 function rebuild() {
+  normalizeHostedOffsets();
   while (group.children.length) {
     const ch = group.children[0];
     group.remove(ch);
@@ -2955,6 +3019,15 @@ async function createElement(
     properties: {
       ...userDefaults.properties,
       ...(activePreset ? { category: activePreset, family: activePreset } : {}),
+      ...(type === "curtain-wall"
+        ? {
+            system: "mullion-panel",
+            vDivisions: userDefaults.properties?.vDivisions ?? undefined,
+            hDivisions: userDefaults.properties?.hDivisions ?? undefined,
+            panelType: userDefaults.properties?.panelType ?? "glazed",
+            mullionProfile: userDefaults.properties?.mullionProfile ?? "rect",
+          }
+        : {}),
       ...(props ?? {}),
     },
   };
@@ -2977,6 +3050,9 @@ async function createElement(
       if (!elements.includes(el)) elements.push(el);
       rebuild();
       markDirty();
+      if (type === "wall" || type === "curtain-wall") {
+        try { autoJoinNewWall(el); } catch (e) { console.warn("[join] autoJoinNewWall", e); }
+      }
     },
     revert: () => {
       const i = elements.indexOf(el);
