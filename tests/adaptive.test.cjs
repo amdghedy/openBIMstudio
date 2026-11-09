@@ -213,8 +213,8 @@ t("adaptive point constraints: fixed and axis locks are preserved", () => {
     { kind: "fixed", pointIndex: 0, value: P(1, 2, 3) },
     { kind: "axis", pointIndex: 1, axis: "y", value: 4 },
   ]);
-  assert.deepEqual(solved, [P(1, 2, 3), P(2, 4, 3)]);
-  assert.deepEqual(source, [P(0, 0, 0), P(2, 1, 3)], "solver does not mutate its input");
+  assert(JSON.stringify(solved) === JSON.stringify([P(1, 2, 3), P(2, 4, 3)]), "fixed and axis locks are applied");
+  assert(JSON.stringify(source) === JSON.stringify([P(0, 0, 0), P(2, 1, 3)]), "solver does not mutate its input");
 });
 
 t("adaptive point constraints: coincident relation follows the dragged point", () => {
@@ -223,7 +223,7 @@ t("adaptive point constraints: coincident relation follows the dragged point", (
     [{ kind: "coincident", a: 0, b: 1 }],
     0,
   );
-  assert.deepEqual(result, [P(0, 0, 0), P(0, 0, 0)]);
+  assert(JSON.stringify(result) === JSON.stringify([P(0, 0, 0), P(0, 0, 0)]), "coincident points are aligned");
 });
 
 t("adaptive point constraints: distance remains exact while a point is dragged", () => {
