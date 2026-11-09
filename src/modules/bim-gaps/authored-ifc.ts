@@ -26,6 +26,15 @@ import { buildElementGeo, m2Quantities } from "./m2-geometry";
 import { resolveTwinExportGeometry } from "../native-twin/twin-export-geometry";
 import { generateWallSweep, generateRevealCutter } from "../wall-sweeps/geometry";
 import { getProfile, type WallSweepPlacement } from "../wall-sweeps/types";
+import {
+  cutSlabHoles as voCutSlabHoles,
+  openingFootprint as voOpeningFootprint,
+  openingZSpan as voOpeningZSpan,
+  netSlabArea as voNetSlabArea,
+  footprintsOverlap as voFootprintsOverlap,
+  zSpansIntersect as voZSpansIntersect,
+  type OpeningLike as VerticalOpeningLike,
+} from "../vertical-openings/vertical-openings";
 
 export type Vec2 = [number, number];
 export type IfcSchema = "IFC4" | "IFC2X3";
@@ -453,6 +462,11 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
 
   const walls = elementsIn.filter((e) => e.type === "wall" && e.params.start && e.params.end);
   const order = [...walls, ...elementsIn.filter((e) => !(e.type === "wall" && e.params.start && e.params.end))];
+  // vertical openings export as IfcOpeningElement voids attached to each
+  // slab/roof/ceiling they cut, never as standalone products
+  const vertOpenings = elementsIn
+    .filter((e) => e.type === "vertical-opening" && e.params.point != null)
+    .map((e) => e as unknown as VerticalOpeningLike);
 
   for (const el of order) {
     const p = el.params;
@@ -461,6 +475,9 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
     const T = Number(p.thickness) || 0;
     const rgb = parseColor(el.color, DEFAULT_COLOR[el.type] ?? "#cccccc");
     try {
+      /* ---- vertical openings: exported alongside their slab hosts ---- */
+      if (el.type === "vertical-opening") continue;
+
       /* ---- native twin: baked triangles ---- */
       if (el.nativeGeometry?.positions && el.nativeGeometry.positions.length >= 9) {
         const storey = storeyFor(el.levelId, elev);
@@ -616,14 +633,57 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
         if (area2 < 0) pts.reverse();
         const storey = storeyFor(el.levelId, elev);
         const axis = axisAt(0, 0, elev - storey.lv.elevation);
-        const solid = extrude({ k: "poly", pts }, H || T || 0.2);
+        const slabThk = H || T || 0.2;
+        // vertical openings: cut real voids through this slab (holes in the
+        // profile) and export each cutting opening as IfcOpeningElement
+        const slabElev = elev;
+        const slabTop = slabElev + slabThk;
+        const cutting = vertOpenings.filter((op) => {
+          const [z0, z1] = voOpeningZSpan(op);
+          if (!voZSpansIntersect([z0, z1], [slabElev, slabTop])) return false;
+          return voFootprintsOverlap(voOpeningFootprint(op), p.polygon as Array<[number, number]>);
+        });
+        const holeRings = cutting.length
+          ? voCutSlabHoles(p.polygon as Array<[number, number]>, cutting.map((op) => ({ id: op.id, fp: voOpeningFootprint(op) }))).holes
+          : [];
+        const holes = holeRings
+          .map((h) => h.map(([x, z]) => [x, -z] as Vec2))
+          .map((h) => {
+            let a2 = 0;
+            for (let i = 0; i < h.length; i++) { const a = h[i], b = h[(i + 1) % h.length]; a2 += a[0] * b[1] - b[0] * a[1]; }
+            return a2 > 0 ? h.reverse() : h;
+          });
+        const solid = holes.length ? extrude({ k: "poly", pts, holes }, slabThk) : extrude({ k: "poly", pts }, slabThk);
         const name = `${el.name || ""} ${el.familyTypeId || ""} ${el.type}`.toLowerCase();
         const asCeiling = el.type === "ceiling" || /ceiling/.test(name);
         const cd = asCeiling ? classFor("covering", schema) : classFor("slab", schema, /roof/.test(name) ? ".ROOF." : ".FLOOR.");
         const id = f.add(cd.name, baseAttrs(el, el.id, place(storey.pl, axis), rep([solid], "SweptSolid"), cd.tail));
         emitted.set(el.id, { id, storey });
         finishProduct(el, id, storey, cd.name, rgb, [solid]);
-        quantities(id, [["L", "Width", H || T], ["A", "GrossArea", Math.abs(area2) / 2], ["V", "GrossVolume", (Math.abs(area2) / 2) * (H || T)]], el.id);
+        const grossArea = Math.abs(area2) / 2;
+        const netArea = holes.length ? voNetSlabArea(p.polygon as Array<[number, number]>, holeRings) : grossArea;
+        quantities(id, [
+          ["L", "Width", slabThk],
+          ["A", "GrossArea", grossArea],
+          ...(holes.length ? ([["A", "NetArea", netArea]] as Array<["A", string, number]>) : []),
+          ["V", "GrossVolume", grossArea * slabThk],
+          ...(holes.length ? ([["V", "NetVolume", netArea * slabThk]] as Array<["V", string, number]>) : []),
+        ], el.id);
+        // one IfcOpeningElement + IfcRelVoidsElement per cutting opening
+        for (const op of cutting) {
+          const opFp = voOpeningFootprint(op).map(([x, z]) => [x, -z] as Vec2);
+          let opA2 = 0;
+          for (let i = 0; i < opFp.length; i++) { const a = opFp[i], b = opFp[(i + 1) % opFp.length]; opA2 += a[0] * b[1] - b[0] * a[1]; }
+          if (opA2 < 0) opFp.reverse();
+          const opSolid = extrude({ k: "poly", pts: opFp }, slabThk);
+          const opName = `Vertical opening ${(op.params.point ?? [0, 0]).map((v) => v.toFixed(2)).join(", ")}`;
+          const openId = f.add("IFCOPENINGELEMENT", [
+            S(guid("vopen:" + op.id + ":" + el.id)), ref(oh), S(opName), "$", S("Opening"),
+            ref(place(storey.pl, axis)), ref(rep([opSolid], "SweptSolid")), "$", ...(v4 ? [".OPENING."] : []),
+          ]);
+          f.add("IFCRELVOIDSELEMENT", [S(guid("vvoid:" + op.id + ":" + el.id)), ref(oh), "$", "$", ref(id), ref(openId)]);
+          stats.openings++;
+        }
         continue;
       }
 

@@ -214,8 +214,12 @@ modeling.content.append(
     action("Floor / Roof", () => setAuthoringTool("slab")),
   ),
   row(
+    action("Vertical Opening", () => setAuthoringTool("vertical-opening")),
     action("Beam / Brace", () => setAuthoringTool("beam")),
+  ),
+  row(
     action("Column", () => setAuthoringTool("column")),
+    action("Isolated Foundation", () => setAuthoringTool("footing")),
   ),
   row(
     action("Duct", () => setAuthoringTool("duct")),

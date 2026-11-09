@@ -55,7 +55,7 @@ The following inventory is generated from a repository inspection of `src/module
 
 Authored elements, geometry, constraints, hosted features, levels, site placement and parametric regeneration.
 
-`adaptive` · `analytical-model` · `architecture-depth` · `area-plans` · `building-pad` · `constraints` · `curtain-wall` · `curtainWall` · `dependency-graph` · `dependent-views` · `design-options` · `detail-components` · `detail-patterns` · `detailing` · `filled-regions` · `geometry` · `grid-bubbles` · `groups` · `hosting` · `in-place-mass` · `joins-cleanup` · `justification` · `levels` · `modify` · `model-curves` · `model-groups` · `parametric` · `parametric-constraints` · `parametric-regen` · `parameter-engine` · `phases` · `plan-region` · `project-base-point` · `property-line` · `railings` · `ramps` · `ref-planes` · `roofs` · `rooms` · `stairs` · `toposurface` · `trusses` · `wall-sweeps` · `work-planes` · `transaction`
+`adaptive` · `analytical-model` · `architecture-depth` · `area-plans` · `building-pad` · `constraints` · `curtain-wall` · `curtainWall` · `dependency-graph` · `dependent-views` · `design-options` · `detail-components` · `detail-patterns` · `detailing` · `filled-regions` · `geometry` · `grid-bubbles` · `groups` · `hosting` · `in-place-mass` · `joins-cleanup` · `justification` · `levels` · `modify` · `model-curves` · `model-groups` · `parametric` · `parametric-constraints` · `parametric-regen` · `parameter-engine` · `phases` · `plan-region` · `project-base-point` · `property-line` · `railings` · `ramps` · `ref-planes` · `roofs` · `rooms` · `stairs` · `toposurface` · `trusses` · `vertical-openings` · `wall-sweeps` · `work-planes` · `transaction`
 
 ### MEP, fabrication and structural engineering
 
@@ -153,6 +153,7 @@ Site components/topography plus daylight, energy and generative-design analysis.
       "toposurface",
       "transaction",
       "trusses",
+      "vertical-openings",
       "wall-join",
       "wall-sweeps",
       "work-planes"

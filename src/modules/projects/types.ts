@@ -23,6 +23,7 @@ export type ElementType =
   | "fitting"
   | "door"
   | "window"
+  | "vertical-opening"
   | "roof"
   | "stairs"
   | "railing"
@@ -59,6 +60,8 @@ export interface AuthoredElement {
     point?: Vec2;
     width?: number;
     depth?: number;
+    /** Vertical-opening plan rotation, degrees (0 = axis-aligned). */
+    rotation?: number;
     height: number;
     thickness: number;
     elevation: number;

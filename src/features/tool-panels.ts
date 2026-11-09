@@ -210,6 +210,21 @@ const COLUMN_GROUPS: ToolPanelGroup[] = [
   ]),
 ];
 
+const VERTICAL_OPENING_GROUPS: ToolPanelGroup[] = [
+  dims([
+    numField("Width", "width", { min: 0.1 }),
+    numField("Depth", "depth", { min: 0.1 }),
+    numField("Cut Height", "height", { min: 0.1, helpText: "Z span of the cut — tall spans cut every slab they cross (shaft)" }),
+  ]),
+  constraints([
+    numField("Base Elevation", "elevation", { step: 0.1, min: undefined, helpText: "Cut starts here; lower it to also cut the slab below" }),
+  ]),
+  behavior([
+    numField("Rotation (°)", "rotation", { unit: "deg", step: 15, min: 0, max: 359 }),
+    { kind: "info", label: "", text: "Click to place · cuts slab/ceiling hosts whose outline and Z span it reaches · renders red until cut" },
+  ]),
+];
+
 const FOOTING_GROUPS: ToolPanelGroup[] = [
   dims([
     numField("Width", "thickness", { min: 0.01 }),
@@ -376,6 +391,11 @@ export const TOOL_PANELS: Record<string, ToolPanelDescriptor> = {
     tool: "footing", elementType: "footing",
     title: "Isolated Foundation", subtitle: "Parameters apply to the next footing you place",
     groups: FOOTING_GROUPS,
+  },
+  "vertical-opening": {
+    tool: "vertical-opening", elementType: "vertical-opening",
+    title: "Vertical Opening", subtitle: "Parameters apply to the next opening you place",
+    groups: VERTICAL_OPENING_GROUPS,
   },
   duct: {
     tool: "duct", elementType: "duct",

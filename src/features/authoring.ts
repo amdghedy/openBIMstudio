@@ -21,6 +21,13 @@ import { mitreEndFaces, type JoinPeer } from "../modules/geometry/linear-join";
 import { scheduleAutoSolve } from "./constraint-solver";
 import { collectDeleteCascade } from "../modules/hosts/cascade";
 import { detectVerticalStacks, stackChains, validateStacks, type StackWall } from "../modules/wall-join/vertical-join";
+import {
+  cutSlabHoles as voCutSlabHoles,
+  openingFootprint as voOpeningFootprint,
+  openingZSpan as voOpeningZSpan,
+  auditVerticalOpenings as voAuditVerticalOpenings,
+  type OpeningLike as VerticalOpeningLike,
+} from "../modules/vertical-openings/vertical-openings";
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
 import * as THREE from "three";
 import { CSG } from "three-csg-ts";
@@ -99,6 +106,7 @@ type Tool =
   | "wall" | "slab" | "column" | "beam" | "brace" | "truss" | "footing" | "strip" | "mline"
   | "duct" | "pipe" | "cable-tray" | "conduit" | "equipment"
   | "door" | "window" | "curtain-wall"
+  | "vertical-opening"
   | "grid" | "level"
   | "terrain";
 
@@ -272,7 +280,7 @@ export function markAuthoringDirty(): void {
 // ═══════════════════════════════════════════════════════════════════════════
 // Defaults & colors
 // ═══════════════════════════════════════════════════════════════════════════
-const DEFAULTS: Record<string, { height: number; thickness: number; width?: number }> = {
+const DEFAULTS: Record<string, { height: number; thickness: number; width?: number; depth?: number; rotation?: number }> = {
   wall: { height: 3.0, thickness: 0.255 },
   slab: { height: 0.2, thickness: 0.2 },
   column: { height: 3.0, thickness: 0.3 },
@@ -307,6 +315,7 @@ const DEFAULTS: Record<string, { height: number; thickness: number; width?: numb
   generator: { height: 1.8, thickness: 2.0 },
   opening: { height: 2.1, thickness: 0.9, width: 0.9 },
   shaft: { height: 3.0, thickness: 1.2 },
+  "vertical-opening": { height: 3.0, thickness: 1.0, width: 1.0, depth: 1.0, rotation: 0 },
   stairs: { height: 3.0, thickness: 0.2, width: 1.2 },
   railing: { height: 1.1, thickness: 0.08, width: 1.0 },
   ramp: { height: 1.5, thickness: 0.2, width: 1.5 },
@@ -386,7 +395,8 @@ export const TOOL_ALIASES: Record<string, Tool> = {
   pad: "footing",
   pile: "footing",
   opening: "door",
-  shaft: "column",
+  shaft: "vertical-opening",
+  "vertical-opening": "vertical-opening",
   "ref-plane": "level",
   "duct-fitting": "duct",
   "flex-duct": "duct",
@@ -453,6 +463,7 @@ const COLORS: Record<string, string> = {
   conduit: "#a3e635", equipment: "#c084fc",
   door: "#92400e", window: "#0369a1",
   fitting: "#38bdf8",
+  "vertical-opening": "#ef4444",
 };
 
 const DOOR_COLOR_PANEL = "#fde68a";
@@ -469,6 +480,7 @@ const DRAW_TOOLS = new Set<Tool>([
   "footing", "strip", "mline",
   "duct", "pipe", "cable-tray", "conduit", "equipment",
   "door", "window", "curtain-wall", "terrain",
+  "vertical-opening",
 ]);
 
 /** Element types whose chains get an auto-fitting at every bend. */
@@ -1917,6 +1929,34 @@ function createMesh(el: AuthoredElement): THREE.Object3D | null {
   return m;
 }
 
+/**
+ * vertical-openings: compute the THREE.Path holes a slab-like element
+ * receives from every vertical opening whose footprint overlaps it in plan
+ * and whose Z span reaches it. Holes are mapped into the slab shape space
+ * (x, -z) used by the ExtrudeGeometry builders below.
+ */
+function verticalOpeningHolePaths(slabEl: AuthoredElement): THREE.Path[] {
+  const poly = slabEl.params.polygon;
+  if (!poly || poly.length < 3) return [];
+  const base = Number(slabEl.params.elevation ?? 0);
+  const zs: [number, number] = [base, base + Number(slabEl.params.height ?? slabEl.params.thickness ?? 0.2)];
+  const openings = elements
+    .filter((e) => e.type === "vertical-opening" && e.params.point)
+    .map((e) => ({ id: e.id, fp: voOpeningFootprint(e as unknown as VerticalOpeningLike) }))
+    .filter((o) => {
+      const [oz0, oz1] = voOpeningZSpan((elements.find((e) => e.id === o.id) ?? { params: {} }) as unknown as VerticalOpeningLike);
+      return oz1 > zs[0] && oz0 < zs[1];
+    });
+  if (!openings.length) return [];
+  const { holes } = voCutSlabHoles(poly as Array<[number, number]>, openings);
+  return holes.map((ring) => {
+    const path = new THREE.Path();
+    ring.forEach(([x, z], i) => (i === 0 ? path.moveTo(x, -z) : path.lineTo(x, -z)));
+    path.closePath();
+    return path;
+  });
+}
+
 function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
   const p = el.params;
 
@@ -2160,10 +2200,25 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
     const shape = new THREE.Shape();
     p.polygon.forEach(([x, z], i) => (i === 0 ? shape.moveTo(x, -z) : shape.lineTo(x, -z)));
     shape.closePath();
+    // vertical-openings: shaft/vertical/skylight openings punch real holes
+    // through slabs (and roofs/ceilings via the same builder below)
+    for (const path of verticalOpeningHolePaths(el)) shape.holes.push(path);
     const geo = new THREE.ExtrudeGeometry(shape, { depth: p.height, bevelEnabled: false });
     mesh = new THREE.Mesh(geo, mat);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = p.elevation;
+  }
+
+  if (!mesh && el.type === "vertical-opening" && p.point) {
+    // the opening itself renders as a red wireframe cage spanning its cut
+    const w = p.width ?? 1, d = p.depth ?? p.width ?? 1, h = p.height ?? 3;
+    const cage = new THREE.BoxGeometry(w, h, d);
+    const cageMesh = new THREE.LineSegments(
+      new THREE.EdgesGeometry(cage),
+      new THREE.LineBasicMaterial({ color: 0xef4444 }),
+    );
+    cageMesh.position.set(p.point[0], p.elevation + h / 2, p.point[1]);
+    mesh = cageMesh as unknown as THREE.Mesh;
   }
 
   if (!mesh && el.type === "equipment" && p.point) {
@@ -3662,6 +3717,9 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
     case "footing":
       void createElement("footing", { point: [pt.x, pt.z] });
       break;
+    case "vertical-opening":
+      void createElement("vertical-opening", { point: [pt.x, pt.z] }, { cutNote: "Cuts every slab/roof/ceiling its footprint and Z span reach" });
+      break;
     case "grid": {
       if (!chainStart) {
         chainStart = pt.clone();
@@ -4244,6 +4302,23 @@ function updatePreview(e: MouseEvent | null) {
     const y = activeTool === "footing" ? level - d.height / 2 : level + d.height / 2;
     preview.position.set(pt.x, y, pt.z);
     previewGroup.add(preview);
+  } else if (pt && activeTool === "vertical-opening") {
+    const d = DEFAULTS["vertical-opening"];
+    // dashed-feel affordance: red rectangle outline at the cut base + one at the top
+    const fp = voOpeningFootprint({
+      id: "preview", type: "vertical-opening",
+      params: { point: [pt.x, pt.z], width: d.width, depth: d.depth ?? d.width, rotation: d.rotation ?? 0 },
+    });
+    for (const y of [level, level + d.height]) {
+      const g = new THREE.BufferGeometry().setFromPoints(
+        [...fp, fp[0]].map(([x, z]) => new THREE.Vector3(x, y, z)),
+      );
+      const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xef4444 }));
+      previewGroup.add(line);
+    }
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, d.height, 0.05), pm);
+    post.position.set(pt.x, level + d.height / 2, pt.z);
+    previewGroup.add(post);
   }
 }
 
@@ -4613,7 +4688,7 @@ function refreshEditor() {
 
   const addNum = (
     label: string,
-    key: "height" | "thickness" | "depth" | "width" | "sillHeight" | "frameThickness" | "offsetAlongHost",
+    key: "height" | "thickness" | "depth" | "width" | "sillHeight" | "frameThickness" | "offsetAlongHost" | "rotation",
     step: number,
   ) => {
     const val =
@@ -4692,6 +4767,12 @@ function refreshEditor() {
     case "column":
     case "equipment":
       addNum("Height (m)", "height", 0.1); addNum("Width (m)", "thickness", 0.05); addNum("Depth (m)", "depth", 0.05);
+      break;
+    case "vertical-opening":
+      addNum("Width (m)", "width", 0.05);
+      addNum("Depth (m)", "depth", 0.05);
+      addNum("Cut height (m)", "height", 0.1);
+      addNum("Rotation (°)", "rotation", 15);
       break;
     case "footing":
       addNum("Pad thickness (m)", "height", 0.05); addNum("Width (m)", "thickness", 0.05); addNum("Depth (m)", "depth", 0.05);
@@ -6840,6 +6921,13 @@ export function setupAuthoring() {
     onAuthoringChange,
     migrateMepFittingRadii,
     setElbowBendRadius,
+
+    // vertical-openings: model-health audit for shaft/vertical/skylight openings
+    auditVerticalOpenings: () =>
+      voAuditVerticalOpenings(
+        elements.filter((e) => e.type === "vertical-opening") as unknown as VerticalOpeningLike[],
+        elements.filter((e) => e.type === "slab" || e.type === "roof" || e.type === "ceiling") as never,
+      ),
 
     // Remediation Phase 1.4 — real element creation for plugin/API callers.
     // Delegates to the SAME history-wrapped createElement the draw tools use

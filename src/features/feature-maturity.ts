@@ -406,6 +406,23 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "vertical-openings",
+    area: "Modeling",
+    status: "verified",
+    source: [
+      "src/modules/vertical-openings/vertical-openings.ts",
+      "src/features/authoring.ts",
+      "src/modules/bim-gaps/authored-ifc.ts",
+    ],
+    evidence: ["tests/vertical-openings.test.cjs"],
+    limitations: [
+      "Cuts polygon slab/roof/ceiling hosts; generator-built roofs (hip/gable/shed/valley in m2-geometry) are not cut yet",
+      "Openings crossing a slab edge are clipped to the slab interior and reported, not resolved as edge splits",
+      "Clipping assumes a convex opening footprint (rectangles); concave openings would need polygon boolean",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "wall-sweeps",
     area: "Modeling",
     status: "limited",
