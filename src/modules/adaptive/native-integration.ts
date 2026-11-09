@@ -85,15 +85,29 @@ function validateDefinition(input: AdaptiveElementDefinition): AdaptiveElementDe
   return input;
 }
 
-function meshForDefinition(definition: AdaptiveElementDefinition, color = "#60a5fa"): THREE.Group {
+function pathForDefinition(definition: AdaptiveElementDefinition): Pt3[] {
+  if (definition.points.length === 1) {
+    const point = definition.points[0];
+    return [
+      point,
+      { x: point.x, y: point.y + (definition.pointLength ?? 1), z: point.z },
+    ];
+  }
+  return definition.points;
+}
+
+/** Build the indexed sweep without allocating any Three.js objects. */
+function indexedMeshForDefinition(definition: AdaptiveElementDefinition) {
   const def = validateDefinition(definition);
-  const path = def.points.length === 1
-    ? [
-        def.points[0],
-        { x: def.points[0].x, y: def.points[0].y + (def.pointLength ?? 1), z: def.points[0].z },
-      ]
-    : def.points;
-  const indexed = sweepProfile(def.profile, path);
+  const indexed = sweepProfile(def.profile, pathForDefinition(def));
+  if (indexed.vertices.length < 3 || indexed.faces.length < 1) {
+    throw new Error("Adaptive geometry is empty");
+  }
+  return { definition: def, indexed };
+}
+
+function meshForDefinition(definition: AdaptiveElementDefinition, color = "#60a5fa"): THREE.Group {
+  const { definition: def, indexed } = indexedMeshForDefinition(definition);
   const positions = new Float32Array(indexed.vertices.length * 3);
   indexed.vertices.forEach((p, i) => {
     positions[i * 3] = p.x;
@@ -184,14 +198,66 @@ function markAndRebuild(auth: Any): void {
   auth.rebuildAuthored();
 }
 
+/** Insert + rebuild as one model mutation; restore the array if rebuild fails. */
+function insertElementAndRebuild(
+  auth: Any,
+  elements: AuthoredElement[],
+  element: AuthoredElement,
+): void {
+  if (elements.some((entry) => entry.id === element.id)) return;
+  elements.push(element);
+  try {
+    markAndRebuild(auth);
+  } catch (error) {
+    const index = elements.findIndex((entry) => entry.id === element.id);
+    if (index >= 0) elements.splice(index, 1);
+    try {
+      markAndRebuild(auth);
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        `Adaptive element '${element.name}' failed to build and rollback was incomplete`,
+      );
+    }
+    throw error;
+  }
+}
+
+/** Remove + rebuild as one model mutation; restore the original position on failure. */
+function removeElementAndRebuild(
+  auth: Any,
+  elements: AuthoredElement[],
+  element: AuthoredElement,
+): void {
+  const index = elements.findIndex((entry) => entry.id === element.id);
+  if (index < 0) return;
+  elements.splice(index, 1);
+  try {
+    markAndRebuild(auth);
+  } catch (error) {
+    elements.splice(Math.min(index, elements.length), 0, element);
+    try {
+      markAndRebuild(auth);
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        `Adaptive element '${element.name}' could not be removed and rollback was incomplete`,
+      );
+    }
+    throw error;
+  }
+}
+
 export function createAdaptiveElement(input: AdaptiveElementCreateInput): AuthoredElement {
   const auth = authoring();
   if (!auth || typeof auth.getElements !== "function" || typeof auth.rebuildAuthored !== "function") {
     throw new Error("Native authoring is not ready");
   }
   const definition = definitionFromInput(input);
-  // Validate/build before inserting anything into the project.
-  meshForDefinition(definition, input.color);
+  // Validate the complete sweep before inserting anything into the project.
+  // This is a pure geometry pass: do not allocate temporary THREE.Mesh /
+  // Material objects that would need disposal after a validation-only build.
+  indexedMeshForDefinition(definition);
   const levelId = typeof auth.getActiveLevelId === "function" ? auth.getActiveLevelId() : null;
   const element: AuthoredElement = {
     id: nextId(),
@@ -208,25 +274,14 @@ export function createAdaptiveElement(input: AdaptiveElementCreateInput): Author
     },
   };
   const elements = auth.getElements() as AuthoredElement[];
-  const apply = () => {
-    if (!elements.some((entry) => entry.id === element.id)) elements.push(element);
-    markAndRebuild(auth);
-    auth.setSelectedAuthored?.([element.id], "replace");
-  };
-  const revert = () => {
-    const index = elements.findIndex((entry) => entry.id === element.id);
-    if (index >= 0) elements.splice(index, 1);
-    markAndRebuild(auth);
-  };
-  try {
-    apply();
-    history.push({ label: `Place adaptive component · ${element.name}`, apply, revert });
-  } catch (error) {
-    const index = elements.findIndex((entry) => entry.id === element.id);
-    if (index >= 0) elements.splice(index, 1);
-    try { markAndRebuild(auth); } catch { /* preserve the original error */ }
-    throw error;
-  }
+  const apply = () => insertElementAndRebuild(auth, elements, element);
+  const revert = () => removeElementAndRebuild(auth, elements, element);
+
+  apply();
+  // Selection is UI state rather than model state. A selection-panel failure
+  // must not turn a successfully-created model element into a failed command.
+  try { auth.setSelectedAuthored?.([element.id], "replace"); } catch { /* ignore */ }
+  history.push({ label: `Place adaptive component · ${element.name}`, apply, revert });
   return element;
 }
 
@@ -260,8 +315,8 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
     pointCount: patch.points ? patch.points.length : beforeDefinition.pointCount,
     pointLength: patch.pointLength ?? beforeDefinition.pointLength,
   });
-  // Build first so a malformed edit cannot leave a broken project element.
-  meshForDefinition(afterDefinition, patch.color ?? element.color);
+  // Validate the complete sweep before touching the authored element.
+  indexedMeshForDefinition(afterDefinition);
   const beforeParams = clone(element.params);
   const afterParams = paramsFor(afterDefinition);
   const beforeName = element.name;
@@ -274,6 +329,13 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
     name: string,
     color: string | undefined,
   ) => {
+    // History replay (undo/redo) must be just as atomic as the initial edit.
+    // Keep a complete local snapshot so a failed rebuild cannot strand changed
+    // parameters or metadata without a matching regenerated mesh.
+    const previousProperties = clone(element.properties ?? {});
+    const previousParams = clone(element.params);
+    const previousName = element.name;
+    const previousColor = element.color;
     element.properties = {
       ...(element.properties ?? {}),
       adaptiveDefinition: clone(definition),
@@ -283,7 +345,23 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
     element.params = clone(params);
     element.name = name;
     element.color = color;
-    markAndRebuild(auth);
+    try {
+      markAndRebuild(auth);
+    } catch (error) {
+      element.properties = previousProperties;
+      element.params = previousParams;
+      element.name = previousName;
+      element.color = previousColor;
+      try {
+        markAndRebuild(auth);
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          `Adaptive component '${element.name}' edit failed and rollback was incomplete`,
+        );
+      }
+      throw error;
+    }
   };
   applyState(afterDefinition, afterParams, afterName, afterColor);
   history.push({
