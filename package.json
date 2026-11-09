@@ -125,7 +125,7 @@
     "test:ai-privacy": "node tests/ai-privacy.test.cjs",
     "test:anthropic": "node tests/anthropic-messages.test.cjs",
     "build:rvt": "node scripts/build-rvt-wasm.mjs",
-    "test:rvt": "tests/rvt-model-viewer.test.cjs",
+    "test:rvt": "node tests/rvt-model-viewer.test.cjs",
     "test:ai-presets": "node tests/ai-presets.test.cjs",
     "test:cad-insert": "node tests/cad-insert.test.cjs",
     "test:ui-reachability": "node tests/ui-reachability.test.cjs",
