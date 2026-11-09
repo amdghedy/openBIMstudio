@@ -10,6 +10,8 @@ import { makeDockable, type DockHandle } from "./dockable";
 import { t, scoped, i18n } from "../core/i18n";
 import { register } from "../core/services";
 import { listPacks, registerStandardPacks } from "../modules/standards/rules";
+import { registerPack } from "../modules/standards/rules/registry";
+import { loadPackText } from "../modules/standards/rules/json-pack";
 import { runRules, type RunResult } from "../modules/standards/rules/engine";
 import type { RulePack, RuleViolation, RuleSeverity } from "../modules/standards/rules/types";
 
@@ -79,6 +81,47 @@ allOff.textContent = "Clear";
 allOff.style.cssText = allOn.style.cssText;
 selectAllRow.append(allOn, allOff);
 left.appendChild(selectAllRow);
+
+/* ── Load a community pack (JSON file, data only: docs/STANDARDS-PACK-SCHEMA.md) ── */
+const loadRow = document.createElement("div");
+loadRow.style.cssText = "margin-bottom:10px;font-size:10.5px";
+const loadBtn = document.createElement("button");
+loadBtn.textContent = "Load pack file… (.json)";
+loadBtn.title = "Load a standards pack from a JSON file, or drop the file on this panel. Packs are data only and cannot run code.";
+loadBtn.style.cssText =
+  "width:100%;padding:5px;background:transparent;color:var(--accent,#38bdf8);" +
+  "border:1px dashed var(--border-default,#2a2e3a);border-radius:4px;cursor:pointer";
+const loadMsg = document.createElement("div");
+loadMsg.style.cssText = "margin-top:4px;color:var(--text-tertiary,#6b7280);white-space:pre-wrap;word-break:break-word";
+loadRow.append(loadBtn, loadMsg);
+left.appendChild(loadRow);
+
+async function loadPackFiles(files: File[]): Promise<void> {
+  const out: string[] = [];
+  for (const f of files) {
+    if (!/\.json$/i.test(f.name)) { out.push(`${f.name}: not a .json file`); continue; }
+    const r = loadPackText(await f.text());
+    if (!r.pack) { out.push(`${f.name}: not loaded\n  - ` + r.errors.slice(0, 8).join("\n  - ")); continue; }
+    registerPack(r.pack);
+    selected.add(r.pack.id);
+    out.push(`${f.name}: loaded "${r.pack.name}" (${r.pack.rules.length} rules)` + (r.warnings.length ? `, ${r.warnings.length} note(s)` : ""));
+  }
+  loadMsg.textContent = out.join("\n");
+  renderPacks();
+}
+loadBtn.onclick = () => {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = ".json,application/json"; input.multiple = true;
+  input.onchange = () => { const fs = Array.from(input.files ?? []); if (fs.length) void loadPackFiles(fs); };
+  input.click();
+};
+left.addEventListener("dragover", (e) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); });
+left.addEventListener("drop", (e) => {
+  const fs = Array.from(e.dataTransfer?.files ?? []);
+  if (!fs.length) return;
+  e.preventDefault(); e.stopPropagation();
+  void loadPackFiles(fs);
+});
 
 const packList = document.createElement("div");
 left.appendChild(packList);

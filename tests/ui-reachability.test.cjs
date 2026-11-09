@@ -88,4 +88,9 @@ t("Solid models: STEP/IGES/BREP/3dm routed from Open File and drop, with an hone
   must(/solid-import/.test(read("src/features/file-interop.ts")), "import router does not open solid formats");
   must(/not installed on this deployment/.test(read("src/features/solid-import.ts")), "missing-reader message missing");
 });
+t("Standards: JSON pack loading is reachable from the panel (button and drop)", () => {
+  const sp = read("src/features/standards-panel.ts");
+  must(/Load pack file/.test(sp) && /loadPackText/.test(sp), "no Load pack file button");
+  must(/addEventListener\("drop"/.test(sp), "no drop target for pack files");
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail ? 1 : 0);

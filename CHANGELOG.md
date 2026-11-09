@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Standards packs as JSON (issue #144)
+- Standards → **Load pack file…** (or drop a file on the panel) loads a rule pack written as JSON: data only, validated, with documented operators, units and limits (`docs/STANDARDS-PACK-SCHEMA.md`, `docs/schemas/standards-pack.schema.json`, example in `docs/examples/`). Not done: exporting the built-in packs to JSON (their rules are code), and ajv validation (no dependency; hand-written validator).
+
 ### STEP / IGES / BREP and Rhino 3dm view (experimental)
 - Open `.step .stp .iges .igs .brep` (occt-import-js) and `.3dm` (rhino3dm) from Open File, drag-and-drop or Link many. Tessellated, view-only copies in metres; summary lists what could not be drawn. The prebuilt WebAssembly is vendored by the "Vendor CAD readers" workflow (licences: docs/THIRD-PARTY-VENDOR.md). Tested on cube fixtures and upstream sample files only.
 

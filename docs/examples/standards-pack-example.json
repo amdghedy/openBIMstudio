@@ -1,0 +1,44 @@
+{
+  "format": "openbimstudio-standards-pack",
+  "formatVersion": 1,
+  "id": "example-community-pack",
+  "name": "Example community pack",
+  "description": "A small illustrative pack: it shows the file format and is NOT a statement of any real building code.",
+  "version": "0.1.0",
+  "jurisdiction": "intl",
+  "rules": [
+    {
+      "id": "door-clear-width",
+      "name": "Door clear width of at least 850 mm",
+      "standard": "Example standard (illustrative)",
+      "severity": "warning",
+      "category": "Accessibility",
+      "appliesTo": ["IFCDOOR", "IFCDOORSTANDARDCASE"],
+      "require": { "property": ["Pset_DoorCommon.ClearWidth", "Pset_DoorCommon.Width", "OverallWidth"], "op": "gte", "value": 850, "unit": "mm" },
+      "message": "Clear width is {actual}; required: {required}",
+      "missing": "info"
+    },
+    {
+      "id": "external-wall-fire-rating",
+      "name": "External walls state a fire rating",
+      "severity": "error",
+      "category": "Fire",
+      "appliesTo": ["IFCWALL", "IFCWALLSTANDARDCASE"],
+      "when": { "property": "Pset_WallCommon.IsExternal", "op": "equals", "value": "true" },
+      "require": { "property": "Pset_WallCommon.FireRating", "op": "exists" },
+      "message": "External wall has no fire rating recorded",
+      "missing": "fail"
+    },
+    {
+      "id": "slab-load-bearing-material",
+      "name": "Load-bearing slabs are concrete or steel",
+      "severity": "info",
+      "appliesTo": ["IFCSLAB"],
+      "when": { "property": "Pset_SlabCommon.LoadBearing", "op": "equals", "value": "true" },
+      "require": { "any": [
+        { "property": "Material", "op": "contains", "value": "concrete" },
+        { "property": "Material", "op": "contains", "value": "steel" }
+      ] }
+    }
+  ]
+}
