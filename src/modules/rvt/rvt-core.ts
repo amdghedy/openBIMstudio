@@ -93,12 +93,21 @@ export function decodeRVT(api: RvtWasmApi, bytes: Uint8Array, hooks: DecodeHooks
     const patched = embedElementInfo(glb, infos);
     if (patched) { out = patched.glb; propertyCount = patched.count; }
   } catch { /* geometry without properties is still useful */ }
-  return { glb: out, diagnostics: (res.diagnostics ?? {}) as RvtDiagnostics, phases: res.phases ?? [], types, propertyCount };
+  const rawDiagnostics = (res.diagnostics ?? {}) as RvtDiagnostics;
+  // The pinned rvt-rs wasm currently reports `revit_version`. Normalize that
+  // decoder field to the product-neutral `rvt_version` used by this viewer,
+  // while retaining the original field for backwards compatibility.
+  const decoderVersion = rawDiagnostics.input?.rvt_version ?? rawDiagnostics.input?.revit_version;
+  const diagnostics: RvtDiagnostics =
+    typeof decoderVersion === "number"
+      ? { ...rawDiagnostics, input: { ...(rawDiagnostics.input ?? {}), rvt_version: decoderVersion } }
+      : rawDiagnostics;
+  return { glb: out, diagnostics, phases: res.phases ?? [], types, propertyCount };
 }
 
 /* ── what the decoder reports about itself ── */
 export interface RvtDiagnostics {
-  input?: { rvt_version?: number; project_name?: string; release_support?: { status: string; capability: string | null } | null };
+  input?: { rvt_version?: number; revit_version?: number; project_name?: string; release_support?: { status: string; capability: string | null } | null };
   confidence?: { level?: string; score?: number; has_geometry?: boolean };
   exported?: { building_elements?: number; building_elements_with_geometry?: number; bounding_box_bodies?: number; storey_count?: number };
   warnings?: string[];
