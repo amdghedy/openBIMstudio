@@ -221,7 +221,8 @@
     "test:mep-hosted-elements": "node tests/mep-hosted-elements.test.cjs",
     "test:mep-demand-factors": "node tests/mep-demand-factors.test.cjs",
     "test:stacked-wall": "node tests/stacked-wall.test.cjs",
-    "test:constraint-autosolve": "node tests/constraint-autosolve.test.cjs"
+    "test:constraint-autosolve": "node tests/constraint-autosolve.test.cjs",
+    "test:cad-dimension-tools": "node tests/cad-dimension-tools.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
