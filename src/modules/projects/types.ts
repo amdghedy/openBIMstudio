@@ -32,6 +32,7 @@ export type ElementType =
   | "area"
   | "ceiling" | "terrain"
   | "curtain-wall"
+  | "adaptive-component"
   | "grid"
   | "level"
   | "generic";
