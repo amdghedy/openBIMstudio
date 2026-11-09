@@ -350,11 +350,15 @@ export function solveAdaptivePointConstraints(
 
   for (const constraint of constraints) {
     if (constraint.kind !== "coincident" && constraint.kind !== "distance") continue;
-    const driven = driverIndex === constraint.a ? "a"
-      : driverIndex === constraint.b ? "b"
-      : (constraint.driven ?? "b");
-    const movingIndex = driven === "a" ? constraint.a : constraint.b;
-    const anchorIndex = driven === "a" ? constraint.b : constraint.a;
+    // While dragging, the cursor point is the driver and the opposite
+    // endpoint follows it. Outside a drag, the persisted driven field names
+    // the dependent endpoint (defaults to b).
+    const movingIndex = driverIndex === constraint.a
+      ? constraint.b
+      : driverIndex === constraint.b
+        ? constraint.a
+        : (constraint.driven ?? "b") === "a" ? constraint.a : constraint.b;
+    const anchorIndex = movingIndex === constraint.a ? constraint.b : constraint.a;
     const moving = points[movingIndex];
     const anchor = points[anchorIndex];
     if (constraint.kind === "coincident") {
