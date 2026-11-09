@@ -15,6 +15,8 @@ file — the project adopted a written changelog at 0.73.0.
 - Open `.step .stp .iges .igs .brep` (occt-import-js) and `.3dm` (rhino3dm) from Open File, drag-and-drop or Link many. Tessellated, view-only copies in metres; summary lists what could not be drawn. The prebuilt WebAssembly is vendored by the "Vendor CAD readers" workflow (licences: docs/THIRD-PARTY-VENDOR.md). Tested on cube fixtures and upstream sample files only.
 
 ### Fixed
+- Seed families **Rectangular Concrete Column** and **Universal Steel I-Beam** were rejected at boot ("not a valid FamilyDefinition") because they had no geometry; both now define it (the beam gains a `length` parameter, default 6 m).
+- Boot no longer logs a missing `standards.title` translation, a blocked Google Fonts stylesheet, or a failing request to the retired `api.counterapi.dev` counter; garbled `Â·` in one log line fixed.
 - Dropping a Revit, GLB/OBJ/FBX, GeoJSON or Shapefile onto the viewport did nothing (only IFC, FRAG and DWG/DXF were handled). These now go through the universal importer.
 
 ### Link many files in one step

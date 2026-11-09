@@ -12,6 +12,10 @@ import { ctx } from "./context";
 // (→ dist/Worker/worker.mjs, self-contained ESM with no bare imports).
 import fragmentsWorkerUrl from "@thatopen/fragments/worker?url";
 
+// @thatopen/ui injects a Google Fonts stylesheet on init. Our CSP (style-src 'self') blocks it, which only produced a console
+// error and a silent fall-back to system fonts, and it would send every visitor's IP to Google if the CSP were opened.
+// An empty fontsUrl makes the library skip the link (Manager.addFonts returns early when the URL is empty).
+BUI.Manager.config = { fontsUrl: "" } as any;
 BUI.Manager.init();
 
 export async function setupViewer() {

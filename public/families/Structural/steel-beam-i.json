@@ -53,6 +53,16 @@
       "default": "S355JR",
       "editable": true,
       "group": "Materials"
+    },
+    {
+      "name": "length",
+      "type": "length",
+      "scope": "instance",
+      "default": 6.0,
+      "editable": true,
+      "step": 0.1,
+      "unit": "m",
+      "group": "Dimensions"
     }
   ],
   "types": [
@@ -76,5 +86,85 @@
         "steelGrade": "S355JR"
       }
     }
-  ]
+  ],
+  "geometry": {
+    "kind": "composed",
+    "parts": [
+      {
+        "kind": "box",
+        "w": {
+          "ref": "length"
+        },
+        "d": {
+          "ref": "flangeWidth"
+        },
+        "h": {
+          "ref": "flangeThickness"
+        },
+        "transform": {
+          "translate": [
+            {
+              "const": 0
+            },
+            {
+              "expr": "flangeThickness / 2"
+            },
+            {
+              "const": 0
+            }
+          ]
+        }
+      },
+      {
+        "kind": "box",
+        "w": {
+          "ref": "length"
+        },
+        "d": {
+          "ref": "webThickness"
+        },
+        "h": {
+          "expr": "sectionDepth - 2 * flangeThickness"
+        },
+        "transform": {
+          "translate": [
+            {
+              "const": 0
+            },
+            {
+              "expr": "sectionDepth / 2"
+            },
+            {
+              "const": 0
+            }
+          ]
+        }
+      },
+      {
+        "kind": "box",
+        "w": {
+          "ref": "length"
+        },
+        "d": {
+          "ref": "flangeWidth"
+        },
+        "h": {
+          "ref": "flangeThickness"
+        },
+        "transform": {
+          "translate": [
+            {
+              "const": 0
+            },
+            {
+              "expr": "sectionDepth - flangeThickness / 2"
+            },
+            {
+              "const": 0
+            }
+          ]
+        }
+      }
+    ]
+  }
 }

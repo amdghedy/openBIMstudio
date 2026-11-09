@@ -106,6 +106,7 @@
     "test:schedule-import": "node tests/schedule-import.test.cjs",
     "test:gis": "node tests/gis-core.test.cjs",
     "test:solids": "node tests/solids.test.cjs",
+    "test:seed-families": "node tests/seed-families.test.cjs",
     "test:twin-export": "node tests/twin-export-geometry.test.cjs",
     "test:pick-arbiter": "node tests/pick-arbiter.test.cjs",
     "test:nav-math": "node tests/nav-math.test.cjs",

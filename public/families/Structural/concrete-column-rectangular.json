@@ -72,5 +72,30 @@
         "concreteGrade": "C40/50"
       }
     }
-  ]
+  ],
+  "geometry": {
+    "kind": "box",
+    "w": {
+      "ref": "width"
+    },
+    "d": {
+      "ref": "depth"
+    },
+    "h": {
+      "ref": "height"
+    },
+    "transform": {
+      "translate": [
+        {
+          "const": 0
+        },
+        {
+          "expr": "height / 2"
+        },
+        {
+          "const": 0
+        }
+      ]
+    }
+  }
 }

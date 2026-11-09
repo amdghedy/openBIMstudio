@@ -7,7 +7,7 @@
  */
 import { ctx } from "../core/context";
 import { makeDockable, type DockHandle } from "./dockable";
-import { t, scoped } from "../core/i18n";
+import { t, scoped, i18n } from "../core/i18n";
 import { register } from "../core/services";
 import { listPacks, registerStandardPacks } from "../modules/standards/rules";
 import { runRules, type RunResult } from "../modules/standards/rules/engine";
@@ -31,7 +31,15 @@ header.style.cssText =
   "background:var(--bg-elevated,#181a23);flex-shrink:0;cursor:grab;user-select:none";
 header.innerHTML =
   `<span style="display:flex;color:var(--accent,#38bdf8)">⚖</span>` +
-  `<span style="font-weight:700;flex:1">${t("standards.title", { defaultValue: "Standards" } as any) ?? "Standards"}</span>`;
+  `<span id="obs-standards-title" style="font-weight:700;flex:1">Standards</span>`;
+// The panel is built before the locale catalogues are registered at boot, so look the title up once they are
+// (calling t() now logged a spurious "missing key" warning) and again whenever the language changes.
+{
+  const titleEl = header.querySelector("#obs-standards-title") as HTMLElement;
+  const setTitle = () => { titleEl.textContent = i18n.has("standards.title") ? t("standards.title") : "Standards"; };
+  setTitle();
+  i18n.onChange(setTitle);
+}
 
 const body = document.createElement("div");
 body.style.cssText = "flex:1;display:flex;min-height:0";

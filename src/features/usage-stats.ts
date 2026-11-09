@@ -14,7 +14,7 @@ function getEnv(key: string): string | undefined {
     return meta?.env?.[key];
   } catch { return undefined; }
 }
-const COUNTER_API = getEnv('VITE_COUNTER_API') ?? 'https://api.counterapi.dev/v1/openbimstudio/visits';
+const COUNTER_API = getEnv('VITE_COUNTER_API') ?? '';
 const GEO_API = getEnv('VITE_GEO_API') ?? 'https://ipapi.co/json/';
 
 export interface LocalUsage {
@@ -113,6 +113,9 @@ export function trackVisit(): void {
 }
 
 async function fetchGlobal(): Promise<void> {
+  // Only runs when a counter service is configured (VITE_COUNTER_API). The former default, api.counterapi.dev, now answers
+  // 410 Gone, so by default no request is sent to any third party.
+  if (!COUNTER_API) return;
   if (Date.now() - cache.globalFetchedAt < GLOBAL_CACHE_MS) return;
   try {
     const r = await fetch(`${COUNTER_API}/up`, { method: 'POST' });

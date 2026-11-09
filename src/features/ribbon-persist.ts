@@ -151,8 +151,8 @@ export function setupRibbonPersist(): void {
     });
 
     console.log(
-      "[ribbon-persist] restored Â· tab=" + (saved.activeTab ?? "default") +
-      " Â· collapsed=" + saved.collapsedGroups.length,
+      "[ribbon-persist] restored \u00b7 tab=" + (saved.activeTab ?? "default") +
+      " \u00b7 collapsed=" + saved.collapsedGroups.length,
     );
   };
 

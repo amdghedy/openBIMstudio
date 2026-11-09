@@ -78,7 +78,7 @@ outbound connection is opt-in through the user's own configuration:
 | Google Drive / Gemini | `www.googleapis.com`, `generativelanguage.googleapis.com` | CDE / AI provider | User-configured |
 | AI providers (Claude uses the native `/v1/messages` API with the user's own key) | `api.openai.com`, `api.anthropic.com`, `api.groq.com`, `openrouter.ai`, `api.cerebras.ai`, `api.deepseek.com`, `api.mistral.ai`, `api.together.xyz`, `api.x.ai`, `api.fireworks.ai`, `api.sambanova.ai`, `api.hyperbolic.xyz`, `integrate.api.nvidia.com`, `api.moonshot.ai`, `dashscope-intl.aliyuncs.com` | AI assistant | Auto-redaction applies before any cloud call (`src/features/ai-privacy.ts`) |
 | Dropbox | `api.dropboxapi.com`, `content.dropboxapi.com` | File storage | User-configured |
-| Usage badge telemetry | `api.counterapi.dev`, `ipapi.co` | Global "visits worldwide" counter + country flag on the welcome badge (`src/features/usage-stats.ts`) | Non-critical, no project data leaves the browser; badge degrades silently if blocked |
+| Usage badge telemetry | `ipapi.co` (and an optional counter service set with `VITE_COUNTER_API`; the old default `api.counterapi.dev` is gone and was removed) | Optional global "visits worldwide" counter + country flag on the welcome badge (`src/features/usage-stats.ts`) | Non-critical, no project data leaves the browser; badge degrades silently if blocked |
 | Local services | `localhost` / `127.0.0.1` any port, `ws://`/`wss://` localhost | Collaboration server, local AI (Ollama), dev HMR | Local-first default |
 
 ## External AI destinations
