@@ -547,7 +547,10 @@ export function setupAdaptiveInteraction(targetApi: Any): Any {
     if (placement) handlePlacementHover(event);
   });
   unsubCancel = inputRouter.registerCancel(cancelActive);
-  ctx.rightHost.addEventListener("keydown", (event) => {
+  window.addEventListener("keydown", (event) => {
+    const target = event.target as HTMLElement | null;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" || target.isContentEditable)) return;
     if (event.key === "Backspace" && placement) {
       event.preventDefault();
       backspacePlacementPoint();
