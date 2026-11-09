@@ -206,7 +206,6 @@ export function createAdaptiveElement(input: AdaptiveElementCreateInput): Author
       adaptiveDefinition: clone(definition),
       adaptiveFamilyName: definition.familyName,
       adaptivePointCount: definition.pointCount,
-      adaptiveVolume: undefined,
     },
   };
   const elements = auth.getElements() as AuthoredElement[];
@@ -230,6 +229,16 @@ export function createAdaptiveElement(input: AdaptiveElementCreateInput): Author
     throw error;
   }
   return element;
+}
+
+/** Place a repeated set as one atomic, single-step undo operation. */
+export async function createAdaptiveElements(inputs: AdaptiveElementCreateInput[]): Promise<AuthoredElement[]> {
+  if (!Array.isArray(inputs) || inputs.length === 0) return [];
+  const created: AuthoredElement[] = [];
+  await history.transaction(`Place ${inputs.length} adaptive component(s)`, async () => {
+    for (const input of inputs) created.push(createAdaptiveElement(input));
+  });
+  return created;
 }
 
 export function getAdaptiveDefinition(elementId: string): AdaptiveElementDefinition | null {
@@ -297,6 +306,7 @@ export function setupAdaptiveAuthoring(): {
     builders["adaptive-component"] = buildAdaptiveElementMesh;
     const api = {
       create: createAdaptiveElement,
+      createMany: createAdaptiveElements,
       update: updateAdaptiveElement,
       getDefinition: getAdaptiveDefinition,
       buildMesh: buildAdaptiveElementMesh,
