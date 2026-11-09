@@ -68,7 +68,7 @@ t("wiring: DWG pipeline tries acadrust first, DXF file path too", () => {
   const libIdx = dwgCore.indexOf("await getReader()");
   assert.ok(acadIdx >= 0 && libIdx > acadIdx, "acadrust path must run before the libredwg reader");
   assert.ok(dxfReader.includes("parseWithAcadEngine"), "dxf-reader must call the acadrust engine");
-  assert.ok(dxfReader.includes("Drafting Binary DXF"), "binary DXF must be detected");
+  assert.ok(dxfReader.includes("0x41, 0x75, 0x74, 0x6f, 0x43, 0x41, 0x44"), "binary DXF signature bytes must be detected");
 });
 
 t("types: DxfHatch carries real pattern lines", () => {
