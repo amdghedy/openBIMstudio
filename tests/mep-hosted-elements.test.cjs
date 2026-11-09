@@ -9,7 +9,7 @@ const wall = { id:"w-1", kind:"wall", origin:{x:0,y:0,z:0}, direction:{x:1,y:0,z
 const duct = { id:"d-1", kind:"duct", origin:{x:0,y:2.8,z:0}, direction:{x:1,y:0,z:0}, lengthM:12, sizeM:0.4 };
 const ceiling = { id:"c-1", kind:"ceiling", origin:{x:0,y:3.0,z:0}, direction:{x:1,y:0,z:0}, lengthM:1 };
 
-t("compatibility table matches Revit hosting rules",()=>{
+t("compatibility table matches RVT hosting rules",()=>{
   assert.ok(m.isCompatibleHost("receptacle","wall"));
   assert.ok(m.isCompatibleHost("air-terminal","duct"));
   assert.ok(m.isCompatibleHost("light-fixture","ceiling"));

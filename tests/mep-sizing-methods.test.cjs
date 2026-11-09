@@ -2,7 +2,7 @@
  * tests/mep-sizing-methods.test.cjs
  *
  * Unit tests for the friction-rate and static-regain sizing methods
- * (src/modules/mep/sizing-methods.ts) — Revit's other two sizing methods.
+ * (src/modules/mep/sizing-methods.ts) — RVT's other two sizing methods.
  * Cross-checked against the pressure.ts physics (same Colebrook core).
  *
  * Run: `node tests/mep-sizing-methods.test.cjs`

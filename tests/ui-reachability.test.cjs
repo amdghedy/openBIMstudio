@@ -60,28 +60,28 @@ t("Earlier features stay reachable: plan command line, DWG version, place option
   must(read("src/shell/ribbon.ts").includes('"Reveal"'), "Reveal button missing");
   must(/makeDockable/.test(read("src/features/clash-review.ts")), "clash review dock missing");
 });
-t("Revit view: routed from import, ribbon and palette entry points, honest fallback when the decoder is absent", () => {
-  must(/rvt-viewer/.test(read("src/features/file-interop.ts")), "import router does not open Revit files");
+t("RVT view: routed from import, ribbon and palette entry points, honest fallback when the decoder is absent", () => {
+  must(/rvt-viewer/.test(read("src/features/file-interop.ts")), "import router does not open RVT files");
   must(/View RVT Model/.test(read("src/shell/ribbon.ts")), "ribbon button missing");
   must(/file\.view-rvt/.test(read("src/features/command-palette.ts")), "palette command missing");
   must(/not installed on this deployment/.test(read("src/features/rvt-viewer.ts")), "missing-decoder message missing");
-  must(/RVT Model Browser/.test(read("src/shell/ribbon.ts")) && /revit\.browser/.test(read("src/features/command-palette.ts")), "Revit browser has no ribbon button or palette command");
+  must(/RVT Model Browser/.test(read("src/shell/ribbon.ts")) && /rvt\.browser/.test(read("src/features/command-palette.ts")), "RVT browser has no ribbon button or palette command");
 });
 t("GIS and schedule imports: reachable from Open File and the timeline pickers", () => {
   must(/\.geojson,\.shp/.test(read("src/features/file-interop.ts")), "Open File does not accept GeoJSON/Shapefile");
   must(/gis-import/.test(read("src/features/file-interop.ts")), "import router does not open GIS files");
   must(/\.xer,\.xml,\.txt,\.csv/.test(read("src/features/timeline-panel.ts")), "timeline picker does not accept CSV / MS Project XML");
 });
-t("Multi-file linking: Revit picker is multi-select; DWG/DXF, Revit and IFC batches run in one step", () => {
-  must(/multiple = true/.test(read("src/features/rvt-viewer.ts")), "Revit picker is single-file");
+t("Multi-file linking: RVT picker is multi-select; DWG/DXF, RVT and IFC batches run in one step", () => {
+  must(/multiple = true/.test(read("src/features/rvt-viewer.ts")), "RVT picker is single-file");
   const fi = read("src/features/file-interop.ts");
-  must(/linkCadFilesBatch/.test(fi) && /openRevitFiles/.test(fi) && /handled\.has\(file\)/.test(fi), "importFiles has no batch pass");
+  must(/linkCadFilesBatch/.test(fi) && /openRVTFiles/.test(fi) && /handled\.has\(file\)/.test(fi), "importFiles has no batch pass");
   must(/linkCadFilesBatch/.test(read("src/features/link-tools.ts")), "Link CAD still links one by one");
   must(/link\.many/.test(read("src/features/command-palette.ts")), "no palette entry for multi-file linking");
 });
 t("Drag-and-drop: files other than IFC/FRAG/CAD reach the universal importer instead of being ignored", () => {
   const im = read("src/features/importer.ts");
-  must(/others\.length\) void import\("\.\/file-interop"\)/.test(im), "viewport drop ignores Revit / GLB / GeoJSON files");
+  must(/others\.length\) void import\("\.\/file-interop"\)/.test(im), "viewport drop ignores RVT / GLB / GeoJSON files");
 });
 t("Solid models: STEP/IGES/BREP/3dm routed from Open File and drop, with an honest missing-reader message", () => {
   must(/\.step,\.stp,\.iges,\.igs,\.brep,\.3dm/.test(read("src/features/file-interop.ts")), "Open File does not accept solid formats");
