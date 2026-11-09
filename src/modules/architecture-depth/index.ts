@@ -112,36 +112,23 @@ export function applyWallTypePreset(presetId: string): WallTypePreset | null {
  * Change the type of an already placed wall / curtain-wall element.
  * Updates thickness, layers (compound), curtain system props, and name.
  */
-export function applyWallTypeToElement(elementId: string, presetId: string): boolean {
-  const preset = getWallTypePreset(presetId);
-  if (!preset) return false;
-  const a = auth();
-  if (!a?.getElements) return false;
-  const els = a.getElements() as Any[];
-  const el = els.find((e) => e && String(e.id) === String(elementId));
-  if (!el) return false;
+function mutateElementWallType(el: Any, preset: WallTypePreset): boolean {
   const isCurtain = preset.kind === "curtain";
-  if (isCurtain && el.type !== "curtain-wall") {
-    // Switching basic wall → curtain is a type change of the element kind
-    el.type = "curtain-wall";
-  } else if (!isCurtain && el.type === "curtain-wall") {
-    el.type = "wall";
-  } else if (!isCurtain && el.type !== "wall") {
-    return false;
-  }
+  if (el.type !== "wall" && el.type !== "curtain-wall") return false;
+
+  if (isCurtain) el.type = "curtain-wall";
+  else el.type = "wall";
 
   el.params = { ...(el.params || {}) };
   el.params.thickness = preset.thickness;
   if (preset.height && !el.params.height) el.params.height = preset.height;
-  // Keep existing height when retargeting type (instance dimension), only set thickness/layers
+
   el.properties = { ...(el.properties || {}) };
   el.properties.wallTypeId = preset.id;
   el.name = preset.name;
-  if (preset.layers) {
-    el.properties.layers = preset.layers;
-  } else {
-    delete el.properties.layers;
-  }
+  if (preset.layers) el.properties.layers = preset.layers;
+  else delete el.properties.layers;
+
   if (isCurtain) {
     el.properties.system = "mullion-panel";
     el.properties.panelType = preset.panelType || "glazed";
@@ -151,7 +138,10 @@ export function applyWallTypeToElement(elementId: string, presetId: string): boo
     delete el.properties.panelType;
     delete el.properties.mullionProfile;
   }
+  return true;
+}
 
+function rebuildAuthoring(a: Any): void {
   try {
     if (typeof a.rebuildAuthored === "function") a.rebuildAuthored();
     else if (typeof a.rebuild === "function") a.rebuild();
@@ -159,6 +149,18 @@ export function applyWallTypeToElement(elementId: string, presetId: string): boo
   } catch (err) {
     console.warn("[architecture-depth] rebuild after type change failed", err);
   }
+}
+
+export function applyWallTypeToElement(elementId: string, presetId: string): boolean {
+  const preset = getWallTypePreset(presetId);
+  if (!preset) return false;
+  const a = auth();
+  if (!a?.getElements) return false;
+  const els = a.getElements() as Any[];
+  const el = els.find((e) => e && String(e.id) === String(elementId));
+  if (!el) return false;
+  if (!mutateElementWallType(el, preset)) return false;
+  rebuildAuthoring(a);
   try {
     window.dispatchEvent(
       new CustomEvent("obs-toast", {
@@ -169,6 +171,34 @@ export function applyWallTypeToElement(elementId: string, presetId: string): boo
     /* */
   }
   return true;
+}
+
+/** Apply one catalog type to many walls / curtain walls (single rebuild). */
+export function applyWallTypeToElements(elementIds: string[], presetId: string): number {
+  const preset = getWallTypePreset(presetId);
+  if (!preset || !elementIds.length) return 0;
+  const a = auth();
+  if (!a?.getElements) return 0;
+  const els = a.getElements() as Any[];
+  const idSet = new Set(elementIds.map(String));
+  let n = 0;
+  for (const el of els) {
+    if (!el || !idSet.has(String(el.id))) continue;
+    if (mutateElementWallType(el, preset)) n++;
+  }
+  if (n > 0) {
+    rebuildAuthoring(a);
+    try {
+      window.dispatchEvent(
+        new CustomEvent("obs-toast", {
+          detail: { message: `Type → ${preset.name} (${n} wall${n === 1 ? "" : "s"})`, kind: "success" },
+        }),
+      );
+    } catch {
+      /* */
+    }
+  }
+  return n;
 }
 
 /** Infer which catalog preset best matches a placed element. */
@@ -204,11 +234,12 @@ export function setupArchitectureDepth(): void {
       wireJoinsToAuthoring,
       applyWallTypePreset,
       applyWallTypeToElement,
+      applyWallTypeToElements,
       inferWallTypeId,
       listWallTypePresets,
       getWallTypePreset,
       presets: WALL_TYPE_PRESETS,
-      version: 3,
+      version: 4,
     };
   } catch {
     /* */

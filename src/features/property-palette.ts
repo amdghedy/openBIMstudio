@@ -50,6 +50,7 @@ import { selection } from "./selection";
 import {
   listWallTypePresets,
   applyWallTypeToElement,
+  applyWallTypeToElements,
   inferWallTypeId,
 } from "../modules/architecture-depth";
 import type { AuthoredElement } from "../modules/projects/types";
@@ -851,6 +852,22 @@ function render() {
   if (dockHandle) dockHandle.show();
   else panel.style.display = "flex";
 
+  // Multi-select walls: type-only panel
+  if (target.mode === "edit-multi") {
+    header.innerHTML = "";
+    const t = document.createElement("div");
+    t.textContent = `${target.elementIds.length} walls selected`;
+    t.style.cssText = "font-weight:600;flex:1";
+    header.appendChild(t);
+    body.innerHTML = "";
+    try {
+      body.appendChild(makeWallTypeMultiBlock(target.elementIds));
+    } catch (err) {
+      console.warn("[property-palette] multi wall type failed", err);
+    }
+    return;
+  }
+
   const schema = getSchema(target.type);
   // Design spec §2 — while a draw tool is active, its contextual panel
   // renders even when the element type has no other schema yet.
@@ -946,6 +963,74 @@ const LEVEL_CONSTRAINED_TYPES = new Set<string>([
  */
 
 /** Type identity for walls / curtain walls — change catalog type on a placed instance. */
+
+/** Multi-select wall type: apply one catalog type to every selected wall. */
+function makeWallTypeMultiBlock(elementIds: string[]): HTMLElement {
+  const block = document.createElement("div");
+  block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
+
+  const headerRow = document.createElement("div");
+  headerRow.style.cssText =
+    "display:flex;align-items:center;gap:6px;padding:7px 12px;" +
+    "background:var(--bg-elevated,#181a23);user-select:none";
+  const title = document.createElement("span");
+  title.textContent = `Type (${elementIds.length} walls)`;
+  title.style.cssText = "font-weight:600;font-size:11.5px;letter-spacing:.2px";
+  headerRow.append(title);
+
+  const list = document.createElement("div");
+  list.style.cssText = "padding:6px 12px 10px;display:grid;gap:6px";
+
+  const els = elementIds
+    .map((id) => getElements().find((e) => e.id === id))
+    .filter(Boolean) as AuthoredElement[];
+  const inferred = els.map((e) => inferWallTypeId(e));
+  const same = inferred.length && inferred.every((id) => id === inferred[0]);
+  const current = same ? (inferred[0] || "") : "";
+
+  const row = document.createElement("div");
+  row.style.cssText =
+    "display:grid;grid-template-columns:90px 1fr;gap:8px;align-items:center";
+  const lbl = document.createElement("label");
+  lbl.textContent = "Wall Type";
+  lbl.style.cssText = "font-size:11px;color:var(--text-secondary,#a0a6b5)";
+
+  const sel = document.createElement("select");
+  sel.style.cssText =
+    "width:100%;box-sizing:border-box;padding:4px 6px;" +
+    "background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);" +
+    "border-radius:4px;color:var(--text-primary,#e8eaf0);font:12px system-ui";
+  const allForSelect = listWallTypePresets();
+  const opts = [
+    !same ? `<option value="" selected>— mixed types —</option>` : "",
+    ...allForSelect.map(
+      (pr) =>
+        `<option value="${pr.id}" ${pr.id === current ? "selected" : ""}>${pr.name}</option>`,
+    ),
+  ];
+  sel.innerHTML = opts.join("");
+  sel.onchange = () => {
+    if (!sel.value) return;
+    const n = applyWallTypeToElements(elementIds, sel.value);
+    if (n > 0) {
+      try {
+        render();
+      } catch {
+        /* */
+      }
+    }
+  };
+
+  const hint = document.createElement("div");
+  hint.style.cssText = "font-size:10px;color:var(--text-tertiary,#6b7280)";
+  hint.textContent = "Applies the same type to every selected wall in one step.";
+
+  row.append(lbl, sel);
+  list.append(row, hint);
+  block.append(headerRow, list);
+  return block;
+}
+
 function makeWallTypeIdentityBlock(element: AuthoredElement): HTMLElement {
   const block = document.createElement("div");
   block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
@@ -1316,6 +1401,21 @@ export function setupPropertyPalette(): void {
           const el = getElements().find((x) => x.id === selIds[0]);
           if (el) {
             setPaletteTarget({ mode: "edit", type: el.type as any, elementId: el.id });
+            if (!visible) openPropertyPalette(); else render();
+            return;
+          }
+        }
+        if (selIds.length > 1) {
+          const selected = selIds
+            .map((id) => getElements().find((x) => x.id === id))
+            .filter(Boolean) as AuthoredElement[];
+          const walls = selected.filter((e) => e.type === "wall" || e.type === "curtain-wall");
+          if (walls.length >= 2 && walls.length === selected.length) {
+            setPaletteTarget({
+              mode: "edit-multi",
+              elementIds: walls.map((w) => w.id),
+              type: "wall" as any,
+            });
             if (!visible) openPropertyPalette(); else render();
             return;
           }

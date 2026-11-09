@@ -187,6 +187,8 @@ let hoveredWall: { wallId: string; offset: number; point: THREE.Vector3 } | null
 type PaletteTarget =
   | { mode: "defaults"; type: ElementType }
   | { mode: "edit"; elementId: string; type: ElementType }
+  /** Multi-select edit (e.g. change wall type on many walls at once). */
+  | { mode: "edit-multi"; elementIds: string[]; type: ElementType }
   | null;
 
 interface TypeDefaults {
