@@ -73,6 +73,12 @@ async function main() {
   assert.equal(typeof api.create, "function");
   assert.equal(typeof api.createMany, "function");
   assert.equal(typeof api.update, "function");
+  assert.equal(typeof api.beginPointEdit, "function");
+  assert.equal(typeof api.previewPointEdit, "function");
+  assert.equal(typeof api.commitPointEdit, "function");
+  assert.equal(typeof api.cancelPointEdit, "function");
+  assert.equal(typeof api.bindFamilyType, "function");
+  assert.equal(typeof api.propagateFamilyTypes, "function");
   assert.equal(ctx.features.meshBuilders["adaptive-component"], adaptive.buildAdaptiveElementMesh);
 
   const first = api.create({
@@ -191,6 +197,89 @@ async function main() {
     profile: [{ u: 0, v: 0 }, { u: 1, v: 0 }, { u: 2, v: 0 }],
   }), /area|profile/i);
   assert.deepEqual(api.getDefinition(first.id), beforeInvalid);
+
+
+  // Live viewport grip editing previews geometry without adding history until release.
+  const gripBaseline = api.beginPointEdit(first.id);
+  assert.ok(gripBaseline, "selected adaptive element exposes a point edit snapshot");
+  const gripUndoBaseline = history.depth().undo;
+  assert.equal(api.previewPointEdit(first.id, 1, p(5, 0, 0), gripBaseline), true);
+  assert.deepEqual(api.getDefinition(first.id).points[1], p(5, 0, 0), "live preview updates stored point data");
+  assert.equal(history.depth().undo, gripUndoBaseline, "pointer-move previews do not create undo entries");
+  assert.equal(api.commitPointEdit(first.id, gripBaseline), true);
+  assert.equal(history.depth().undo, gripUndoBaseline + 1, "pointer release commits exactly one undo entry");
+  await history.undo();
+  assert.deepEqual(api.getDefinition(first.id).points, updatedPoints, "undo restores the pre-drag points");
+  await history.redo();
+  assert.deepEqual(api.getDefinition(first.id).points[1], p(5, 0, 0), "redo reapplies the committed grip move");
+
+  // Escape/cancel restores the baseline and does not add a history item.
+  const cancelBaseline = api.beginPointEdit(first.id);
+  const cancelUndoDepth = history.depth().undo;
+  assert.equal(api.previewPointEdit(first.id, 1, p(6, 0, 0), cancelBaseline), true);
+  assert.equal(api.cancelPointEdit(first.id, cancelBaseline), true);
+  assert.deepEqual(api.getDefinition(first.id).points[1], p(5, 0, 0));
+  assert.equal(history.depth().undo, cancelUndoDepth);
+
+  // Geometric constraints are saved in the project definition and solved at creation.
+  const constrained = api.create({
+    familyId: "constrained-beam",
+    familyName: "Constrained Beam",
+    points: [p(0, 0, 0), p(3, 0, 0)],
+    profile: square(0.1),
+    constraints: [{ kind: "distance", a: 0, b: 1, distance: 5, driven: "b" }],
+  });
+  assert.deepEqual(constrained.properties.adaptiveDefinition.constraints, [
+    { kind: "distance", a: 0, b: 1, distance: 5, driven: "b" },
+  ]);
+  near(constrained.properties.adaptiveDefinition.points[1].x, 5);
+  const constrainedReopened = JSON.parse(JSON.stringify(constrained));
+  assert.deepEqual(constrainedReopened.properties.adaptiveDefinition.constraints,
+    constrained.properties.adaptiveDefinition.constraints, "constraints survive ordinary project JSON persistence");
+
+  // Shared family-type binding drives the adaptive section and propagates type edits.
+  let sharedWidth = 0.1;
+  let familyChanged = null;
+  const sharedFamily = {
+    id: "catalog-box",
+    name: "Catalog Box",
+    types: [{ id: "type-a", name: "Type A" }],
+    geometry: {
+      kind: "box",
+      w: { ref: "width" },
+      d: { ref: "depth" },
+      h: { ref: "height" },
+    },
+  };
+  ctx.features.family = {
+    get: (id) => id === sharedFamily.id ? sharedFamily : null,
+    list: () => [sharedFamily],
+    resolveParams: () => ({ width: sharedWidth, depth: 0.2, height: 3 }),
+    onChange(callback) {
+      familyChanged = callback;
+      return () => { familyChanged = null; };
+    },
+  };
+  api.connectFamilyTypePropagation();
+  assert.ok(api.listFamilyTypeChoices().some((choice) =>
+    choice.familyId === "catalog-box" && choice.typeId === "type-a"));
+  assert.equal(api.bindFamilyType(constrained.id, "catalog-box", "type-a"), true);
+  assert.deepEqual(api.getDefinition(constrained.id).familyBinding,
+    { familyId: "catalog-box", typeId: "type-a" });
+  assert.equal(constrained.familyId, "catalog-box");
+  assert.equal(constrained.familyTypeId, "type-a");
+  near(Math.max(...api.getDefinition(constrained.id).profile.map((point) => point.u)) -
+    Math.min(...api.getDefinition(constrained.id).profile.map((point) => point.u)), 0.1);
+  sharedWidth = 0.3;
+  assert.equal(await api.propagateFamilyTypes(), 1, "shared type change updates linked adaptive instances");
+  near(Math.max(...api.getDefinition(constrained.id).profile.map((point) => point.u)) -
+    Math.min(...api.getDefinition(constrained.id).profile.map((point) => point.u)), 0.3);
+  sharedWidth = 0.4;
+  assert.equal(typeof familyChanged, "function", "family change listener is connected");
+  familyChanged();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  near(Math.max(...api.getDefinition(constrained.id).profile.map((point) => point.u)) -
+    Math.min(...api.getDefinition(constrained.id).profile.map((point) => point.u)), 0.4);
 
   // Repeated placement is grouped into one undoable operation.
   const batchBefore = elements.length;
