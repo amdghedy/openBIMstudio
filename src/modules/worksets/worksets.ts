@@ -1,7 +1,7 @@
 /**
  * Worksets — element-level workset partitioning for worksharing.
  *
- * BIM-equivalent of Revit's "Worksets" feature. A workset is a named bucket
+ * BIM-equivalent of RVT's "Worksets" feature. A workset is a named bucket
  * of elements; each element belongs to exactly one workset. Worksets can be
  * visible/invisible per user and can be borrowed (locked) for editing.
  *
