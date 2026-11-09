@@ -1,10 +1,8 @@
 name: Repository terminology normalization
 
 on:
-  push:
-    paths:
-      - ".github/workflows/normalize-repo.yml"
-      - "scripts/normalize-repo-terms.mjs"
+  # One-time maintenance only. Run manually after reviewing the normalization script.
+  workflow_dispatch:
 
 permissions:
   contents: write
