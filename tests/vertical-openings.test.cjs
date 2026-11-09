@@ -1,8 +1,8 @@
 /**
  * tests/vertical-openings.test.cjs
  *
- * Unit tests for the vertical-openings module (Revit Shaft / Vertical
- * opening / Skylight parity). Validates:
+ * Unit tests for the vertical-openings module (Shaft / Vertical
+ * opening / Skylight behavior). Validates:
  *   - rectFootprint placement and rotation
  *   - pointInFootprint / footprintsOverlap / clipFootprint geometry
  *   - cutSlabHoles: inside → hole, edge-crossing → clipped hole + warning,

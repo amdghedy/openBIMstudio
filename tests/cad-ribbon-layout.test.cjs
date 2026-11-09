@@ -181,7 +181,7 @@ t("Home Draw + Modify panels carry the full DWG tool set", () => {
   }
 });
 t("typed commands dispatch to the staged pick machine and draw tools", () => {
-  const disp = src.slice(src.indexOf("function executeAutoCadCommand"));
+  const disp = src.slice(src.indexOf("function executeDrawingCommand"));
   const must = ["TRIM", "EXTEND", "BREAK", "FILLET", "CHAMFER", "JOIN", "EXPLODE", "STRETCH", "ALIGN",
     "MATCHLAYER", "XLINE", "RAY", "POLYGON", "SPLINE", "ELLIPSE", "DONUT", "POINT", "HATCH", "WIPEOUT",
     "DIMANGULAR", "DIMARC", "DIMDIAMETER", "DIMCENTER", "DIMCONTINUE", "DIMBASELINE", "TABLE", "ARRAY", "FIND", "VIEW", "LAYERSTATE", "IMPORT"];

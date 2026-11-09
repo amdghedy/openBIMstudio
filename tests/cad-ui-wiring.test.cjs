@@ -80,7 +80,7 @@ t("viewport keyboard opens a cursor-positioned command prompt and reuses command
     'openDynamicCommand(ev.key)',
     'position:absolute;z-index:15',
     'dynCommandInput.addEventListener("keydown"',
-    'executeAutoCadCommand(value)',
+    'executeDrawingCommand(value)',
     'closeDynamicCommand();',
     'CAD_COMMANDS.filter((item)',
     'dynCommandInput.addEventListener("input"',

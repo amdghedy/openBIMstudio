@@ -91,7 +91,7 @@ for (const cmd of [
 
 /* 8 — command-line dispatch wires every new command */
 for (const cmd of ["AUTOCONSTRAIN", "DCLINEAR", "TXT2MTXT", "LAYMRG", "LAYWALK", "PUBLISH", "CHECKSTANDARDS"]) {
-  ok(new RegExp(`cmd === "${cmd}"`).test(viewer), `executeAutoCadCommand dispatches ${cmd}`);
+  ok(new RegExp(`cmd === "${cmd}"`).test(viewer), `executeDrawingCommand dispatches ${cmd}`);
 }
 
 /* 9 — pure geometry helpers exist in cad-params.ts */

@@ -1,7 +1,7 @@
 /**
  * src/modules/vertical-openings/vertical-openings.ts
  *
- * Vertical openings through horizontal hosts — Revit's "Shaft opening",
+ * Vertical openings through horizontal hosts — common "Shaft opening",
  * "Vertical opening" and "Skylight" family, closed as pure, dependency-free
  * geometry so it compiles alone in Node tests and runs in the browser.
  *
@@ -12,7 +12,7 @@
  * IFCARBITRARYPROFILEDEFWITHVOIDS + IfcOpeningElement/IfcRelVoidsElement
  * in the IFC export).
  *
- * Semantics honoured from Revit:
+ * Semantics implemented by this module:
  *   - One opening can cut MANY floors (shaft mode: tall Z span).
  *   - An opening whose footprint crosses the slab edge is clipped to the
  *     slab interior and the cut is reported honestly (warning), not faked.
@@ -280,7 +280,7 @@ export function cuttingSlabs(op: OpeningLike, slabs: SlabLike[]): string[] {
 /**
  * Suggested shaft Z span covering every level from `baseElev` upward:
  * [base − 0.3 m embed, highest level + 0.3 m] so newly added floors stay
- * inside the shaft until its Top Constraint is raised (Revit-like default).
+ * inside the shaft until its Top Constraint is raised (standard host-span default).
  */
 export function suggestShaftSpan(baseElev: number, levelElevations: number[]): [number, number] {
   const lv = levelElevations.filter((e) => Number.isFinite(e));
