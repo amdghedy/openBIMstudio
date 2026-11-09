@@ -139,6 +139,7 @@
     "test:no-cdn": "node tests/no-cdn-imports.test.cjs",
     "test:mep-pressure": "node tests/mep-pressure.test.cjs",
     "test:adaptive": "node tests/adaptive.test.cjs",
+    "test:adaptive-native": "node tests/adaptive-native.test.cjs",
     "test:project-crypto": "node tests/project-crypto.test.cjs",
     "test:secret-crypto": "node tests/secret-crypto.test.cjs",
     "test:server-security": "node tests/server-security.test.cjs",
