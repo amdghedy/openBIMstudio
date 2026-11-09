@@ -6,11 +6,11 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   webServer: {
     command: 'npm run preview -- --host 127.0.0.1',
-    port: 4173,
+    port: 3000,
     timeout: 60000,
     reuseExistingServer: !process.env.CI,
   },
-  use: { baseURL: 'http://localhost:4173', video: 'retain-on-failure' },
+  use: { baseURL: 'http://127.0.0.1:3000', video: 'retain-on-failure' },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'],
       launchOptions: { args: ['--use-gl=swiftshader'] } } },
