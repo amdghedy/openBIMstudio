@@ -3,7 +3,7 @@
  *
  * Unlike "import" (which converts geometry), "link" maintains a live
  * reference to the DWG file so it can be reloaded when the source
- * changes. Matches Revit's "Link CAD" feature.
+ * changes. Matches RVT's "Link CAD" feature.
  */
 
 export interface DwgLink {

@@ -4,7 +4,7 @@
  *
  * Pure module: no DOM, no three.js, no ctx. Safe to unit-test in Node.
  *
- * This is a capability Revit does not ship out of the box (Revit sizes
+ * This is a capability RVT does not ship out of the box (RVT sizes
  * drainage by flow only; DFU sizing needs an add-in or a separate tool).
  *
  * Data (verified against the published ICC tables, 2024 IPC):

@@ -334,7 +334,7 @@ export class WorksharingEngine {
   }
 
   /**
-   * Performs "Sync with Central" (Revit-parity Reconcile)
+   * Performs "Sync with Central" (RVT-compatibility Reconcile)
    * 1. Checks if central model has new revisions (upstream fetch)
    * 2. Resolves potential conflicts
    * 3. Pushes staged local transactions

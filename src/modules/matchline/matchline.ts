@@ -1,7 +1,7 @@
 /**
  * Matchline — sheet composition annotation marking view overlap region.
  *
- * BIM-equivalent of Revit's "Matchline" tool. A matchline is a polyline drawn
+ * BIM-equivalent of RVT's "Matchline" tool. A matchline is a polyline drawn
  * in a view that, when the view is split across multiple sheets, marks where
  * the views overlap and shows a "View Reference" annotation pointing to the
  * adjacent sheet.
