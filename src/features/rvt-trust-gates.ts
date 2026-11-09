@@ -8,7 +8,7 @@
  *  4. CAD command contract — Esc, selection, OSNAP (incl. PERP), grips
  *
  * This module does not replace domain code; it activates, documents, and
- * hardens cross-cutting behaviour so the platform approaches Revit-level
+ * hardens cross-cutting behaviour so the platform approaches RVT-level
  * reliability on the paths that block professional trust.
  */
 import { history } from "./history";
@@ -69,7 +69,7 @@ export function readCheckpoint(): Checkpoint | null {
 }
 
 /**
- * Run a compound authoring mutation as ONE undoable transaction (Revit-style
+ * Run a compound authoring mutation as ONE undoable transaction (RVT-style
  * single Ctrl+Z for multi-element ops).
  */
 export async function authoringTransaction(label: string, fn: () => void | Promise<void>): Promise<void> {
@@ -151,7 +151,7 @@ export async function setCachedFrag(key: string, bytes: Uint8Array): Promise<voi
 
 /* ── Boot ──────────────────────────────────────────────────────────────── */
 
-export function setupRevitTrustGates(): void {
+export function setupRVTTrustGates(): void {
   // After any history change, refresh checkpoint so a refresh can report state
   try {
     history.onChange(() => {
