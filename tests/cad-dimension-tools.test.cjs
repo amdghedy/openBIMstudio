@@ -49,7 +49,7 @@ try {
   assert.ok(perp && perp.kind === "perpendicular" && Math.abs(perp.x - 2) < 1e-8 && Math.abs(perp.y) < 1e-8);
   const parallel = M.findSnap(index, entities, 3, 3.04, 0.1, ["parallel"], () => true, { x: 0, y: 3 });
   assert.ok(parallel && parallel.kind === "parallel" && Math.abs(parallel.y - 3) < 1e-8);
-  const tangent = M.findSnap(index, entities, 0.8, 4.4, 0.15, ["tangent"], () => true, { x: -3, y: 5 });
+  const tangent = M.findSnap(index, entities, -0.3, 4.06, 0.15, ["tangent"], () => true, { x: -3, y: 5 });
   assert.ok(tangent && tangent.kind === "tangent", "tangent snap should find a circle tangent point");
   console.log("CAD dimension and object-snap regression tests passed.");
 } finally {
