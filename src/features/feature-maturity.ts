@@ -63,6 +63,20 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "family-sketch-editor",
+    area: "Families",
+    status: "experimental",
+    source: ["src/modules/families/sketch-core.ts", "src/features/family-sketch-editor.ts"],
+    evidence: ["tests/family-sketch.test.cjs"],
+    limitations: [
+      "Plan outlines only: one straight-edged outline per extrusion (circles are 48-sided polygons), no holes or voids, arcs, splines, sweeps, revolves, reference planes or dimension-driven sketch constraints",
+      "The outline itself is fixed data; only depth and elevation are parameters, so the shape does not resize with other family parameters",
+      "The core is tested, and the 3-D result (footprint, height, elevation, orientation) is checked only where real three.js is installed (CI); the drawing window was never used in a real browser",
+      "Built-in families are copied before a sketch is added, so the original stays intact",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "solid-model-view",
     area: "Interoperability",
     status: "experimental",

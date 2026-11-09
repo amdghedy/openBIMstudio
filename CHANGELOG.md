@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Family sketch editor (experimental)
+- Parametric Families panel: **Sketch profile…** and **New from sketch…** open a grid canvas to draw a plan outline (polygon, rectangle, circle), set depth and elevation, and add it to a family (built-ins are copied) or create a new one. Outlines are validated (≥3 points, no self-crossing). Limits and verification: `docs/FAMILY-SKETCH.md`.
+
 ### Right-to-left readiness (issue #141, partly)
 - The core stylesheets (`src/style.css`, `src/styles.css`) now use logical properties (`margin-inline-end`, `border-inline-start`, `inset-inline-end`, `text-align: start`) instead of left/right, so the ribbon, toasts, cards and KPIs mirror under `<html dir="rtl">` (set already for Arabic, Persian, Hebrew, Urdu) and render the same as before in LTR. A test keeps physical properties from coming back.
 - **Not done and not verified:** nothing was viewed in a browser in Arabic or Hebrew. Inline styles written in TypeScript (`style.cssText` in about 200 places), directional icons (undo/redo, chevrons, arrows), the 3D viewport tools and the CAD editor were not audited, and the issue's 100-string pseudo-localisation pass was not done.

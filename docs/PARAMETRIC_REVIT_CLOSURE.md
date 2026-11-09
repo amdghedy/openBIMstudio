@@ -73,9 +73,13 @@ svc.propagateType(familyId, typeId, instances)
 [critical-gaps-boot] all critical gaps wired
 ```
 
+## Family sketch editor (first version)
+
+See `docs/FAMILY-SKETCH.md`: draw a plan outline (polygon / rectangle / circle), set depth and elevation, add it to a family or create a new one.
+
 ## Intentionally later
 
-- Full family sketch editor (draw extrusions in UI)  
+- Family sketch editor beyond plan outlines: holes/voids, arcs, constraints, sweeps and revolves  
 - Native `.rfa` import  
 - Adaptive components  
 - Worksharing element locks  

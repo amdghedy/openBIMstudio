@@ -93,4 +93,9 @@ t("Standards: JSON pack loading is reachable from the panel (button and drop)", 
   must(/Load pack file/.test(sp) && /loadPackText/.test(sp), "no Load pack file button");
   must(/addEventListener\("drop"/.test(sp), "no drop target for pack files");
 });
+t("Family sketch editor is reachable from the Parametric Families panel and the palette", () => {
+  const pf = read("src/features/parametric-family-panel.ts");
+  must(/data-act="sketch"/.test(pf) && /data-act="sketch-new"/.test(pf) && /family-sketch-editor/.test(pf), "panel has no sketch buttons");
+  must(/family\.sketch-new/.test(read("src/features/command-palette.ts")), "no palette command for the family sketch");
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail ? 1 : 0);

@@ -119,6 +119,8 @@ function buildPanel(): void {
         <button class="pf-btn" data-act="place" type="button">Place instance</button>
         <button class="pf-btn" data-act="apply-type" type="button">Save type values</button>
         <button class="pf-btn" data-act="constraints" type="button">Show constraints</button>
+        <button class="pf-btn" data-act="sketch" type="button" title="Draw an outline and extrude it into the selected family">Sketch profile…</button>
+        <button class="pf-btn" data-act="sketch-new" type="button" title="Draw an outline and make a new family from it">New from sketch…</button>
       </div>
       <div class="pf-status" data-status>Select a family to edit parameters.</div>
     </div>
@@ -198,6 +200,15 @@ function buildPanel(): void {
       svc.updateType?.(selectedFamilyId, selectedTypeId, { values });
       toast("success", "Type values saved");
       refreshParams();
+    }
+    if (act === "sketch" || act === "sketch-new") {
+      if (act === "sketch" && !selectedFamilyId) { toast("info", "Select a family first, or use New from sketch"); return; }
+      void import("./family-sketch-editor").then((m) =>
+        m.openFamilySketchEditor({
+          familyId: act === "sketch" ? selectedFamilyId ?? undefined : undefined,
+          onDone: (id) => { selectedFamilyId = id; selectedTypeId = null; refreshFamilies(); refreshTypes(); refreshParams(); },
+        }),
+      );
     }
     if (act === "constraints") {
       const list = svc.getConstraints?.(selectedFamilyId) ?? [];
