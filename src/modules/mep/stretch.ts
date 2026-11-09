@@ -74,7 +74,7 @@ export function planMepStretch(elements: MepLike[], runId: string, next: Stretch
 }
 
 /**
- * Revit-style move (pure). The selected parts move rigidly; the parts attached to them FOLLOW
+ * RVT-style move (pure). The selected parts move rigidly; the parts attached to them FOLLOW
  * instead of the whole network being dragged: a fitting at a moved end moves with it, and the
  * other runs on that fitting stretch/shrink (their far ends stay). Equipment never follows.
  * Returns patches for the parts that did NOT move, plus angle patches for moved elbows whose

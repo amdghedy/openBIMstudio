@@ -5,7 +5,7 @@
  *   - Walls become constrained point pairs (start/end in plan x/z → solver x/y).
  *   - Endpoints that coincide in the current model (within tolerance) are
  *     auto-joined with `coincident` constraints, so a chain of walls behaves
- *     like Revit's sketch: drag one end and the neighbours follow.
+ *     like RVT's sketch: drag one end and the neighbours follow.
  *   - Locked dimensions from the parametric-constraints store and explicit
  *     relations from the user become solver constraints.
  *

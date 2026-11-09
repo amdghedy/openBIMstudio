@@ -3,7 +3,7 @@
  *
  * Each arm is a rectangle of the duct/pipe width running from the junction centre. The outline of the
  * union is every arm's two side lines minus the parts that lie inside another arm - exactly what a
- * Revit tee looks like in plan (run continues, branch opens into it, no end caps where runs join).
+ * RVT tee looks like in plan (run continues, branch opens into it, no end caps where runs join).
  */
 export interface Seg { x1: number; z1: number; x2: number; z2: number }
 

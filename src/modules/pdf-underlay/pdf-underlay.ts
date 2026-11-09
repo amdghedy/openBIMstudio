@@ -1,7 +1,7 @@
 /**
  * PDF Underlay — rasterise a PDF page and embed as a plan-view underlay.
  *
- * BIM-equivalent of Revit's "PDF Underlay" tool. Loads a PDF, rasterises
+ * BIM-equivalent of RVT's "PDF Underlay" tool. Loads a PDF, rasterises
  * the requested page to a canvas, and produces a textured THREE.Mesh that
  * can be placed in plan views at a chosen scale + rotation.
  *
