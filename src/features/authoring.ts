@@ -18,6 +18,7 @@ import { endpointForLength, rotateTransformAboutPivot, normalizeDeg, twinElevati
 import { escapeHtml } from "../core/html-escape";
 import { fittingArmLength } from "../modules/mep/fitting-outline";
 import { mitreEndFaces, type JoinPeer } from "../modules/geometry/linear-join";
+import { scheduleAutoSolve } from "./constraint-solver";
 import { collectDeleteCascade } from "../modules/hosts/cascade";
 import { detectVerticalStacks, stackChains, validateStacks, type StackWall } from "../modules/wall-join/vertical-join";
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
@@ -6159,6 +6160,9 @@ export function transformElements(
     revert: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(before[i])))); rebuild(); markDirty(); },
   });
   rebuild(); markDirty();
+  // Revit parity: locked dims / equality / alignment re-enforce themselves
+  // right after the move commit (debounced; toggle lives with the Solve control).
+  try { scheduleAutoSolve(); } catch { /* auto-solve is best-effort */ }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

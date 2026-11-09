@@ -10,6 +10,7 @@
 import { getJoinsCleanupService } from "../joins-cleanup";
 import { ctx } from "../../core/context";
 import { WALL_TYPE_PRESETS, getWallTypePreset, listWallTypePresets, type WallTypePreset } from "./wall-types";
+import { expandStackedWall, validateStackedWall, type StackedWallDef } from "../wall-join/stacked-wall";
 
 type Any = Record<string, any>;
 
@@ -222,6 +223,7 @@ export function inferWallTypeId(el: Any): string | null {
 
 export function setupArchitectureDepth(): void {
   wireJoinsToAuthoring();
+  registerStackedWallCommand();
   try {
     const a = auth();
     a?.getTypeDefaults?.("wall");
@@ -238,11 +240,100 @@ export function setupArchitectureDepth(): void {
     listWallTypePresets,
     getWallTypePreset,
     presets: WALL_TYPE_PRESETS,
-    version: 4,
+    placeStackedWall: placeStackedWallFromDef,
+    version: 5,
   };
   console.log(
-    "[architecture-depth] compound walls + openings, curtain systems, joins service wired",
+    "[architecture-depth] compound walls + openings, curtain systems, joins service, stacked walls wired",
   );
+}
+
+// ─── Stacked wall element (Revit "Stacked Wall") ───────────────────────────
+
+/**
+ * Validate + place a stacked wall as a contiguous member chain sharing one
+ * plan location line. Members inherit their wall-type preset (layers/name)
+ * when one matches, and explicit geometry (elev/height/thickness) always.
+ * Returns the number of members placed; throws on invalid definitions.
+ */
+export async function placeStackedWallFromDef(def: StackedWallDef): Promise<number> {
+  const v = validateStackedWall(def);
+  if (!v.ok) {
+    throw new Error("Invalid stacked wall: " + v.issues.map((i) => i.message).join("; "));
+  }
+  const members = expandStackedWall(def);
+  const a = auth();
+  if (!a || typeof a.addLinearElement !== "function") {
+    throw new Error("Authoring is not ready — open a model first");
+  }
+  let placed = 0;
+  for (const m of members) {
+    // Member wall type drives the next-wall defaults (layers/name) when known.
+    if (m.wallType && getWallTypePreset(m.wallType)) applyWallTypePreset(m.wallType);
+    await a.addLinearElement(
+      "wall", m.x1, m.z1, m.x2, m.z2, m.elev,
+      { thickness: m.thickness, height: m.height },
+    );
+    placed++;
+  }
+  try {
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: {
+        message: `Stacked wall placed: ${placed} members, ${v.totalHeight.toFixed(2)} m total, ${v.lengthM.toFixed(2)} m run (vertical stack joins are detected automatically)`,
+        kind: "success",
+      },
+    }));
+  } catch { /* */ }
+  return placed;
+}
+
+function registerStackedWallCommand(): void {
+  void (async () => {
+    try {
+      const { registerCommand } = await import("../../features/command-palette");
+      const { openFormModal } = await import("../../features/form-modal");
+      const SAMPLE = JSON.stringify({
+        start: [0, 0], end: [8, 0], baseElevation: 0, thickness: 0.3,
+        members: [
+          { wallType: "compound-exterior", height: 2.4 },
+          { wallType: "basic-generic-200", height: 1.8, thickness: 0.2 },
+        ],
+      }, null, 1);
+      registerCommand({
+        id: "arch.stacked-wall",
+        label: "Stacked Wall — Place Member Chain",
+        category: "Architecture",
+        run: async () => {
+          const vals = await openFormModal({
+            title: "Stacked Wall — Place Member Chain",
+            subtitle: "One wall composed of vertical members with different types (brick base + panel above) — members share the plan line and stack contiguously",
+            width: 560,
+            fields: [
+              { kind: "textarea", key: "json", label: "Stacked wall JSON", default: SAMPLE, hint: "start/end [x,z], baseElevation, thickness (shared default), members[{wallType (catalog id), height, thickness?}] bottom-up." },
+            ],
+            submitLabel: "Place",
+          });
+          if (!vals) return;
+          let def: StackedWallDef;
+          try { def = JSON.parse(String(vals.json)); } catch {
+            try {
+              window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Stacked wall JSON is invalid", kind: "error" } }));
+            } catch { /* */ }
+            return;
+          }
+          try {
+            await placeStackedWallFromDef(def);
+          } catch (err) {
+            try {
+              window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Stacked wall failed: ${(err as Error).message}`, kind: "error" } }));
+            } catch { /* */ }
+          }
+        },
+      });
+    } catch {
+      /* command palette may not be booted in headless tests */
+    }
+  })();
 }
 
 export { WALL_TYPE_PRESETS, getWallTypePreset, listWallTypePresets } from "./wall-types";

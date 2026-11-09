@@ -4,6 +4,7 @@
  */
 
 import { ctx } from "../core/context";
+import { setConstraintAutoSolve, isConstraintAutoSolveEnabled } from "./constraint-solver";
 type Any = Record<string, any>;
 
 let toolbar: HTMLDivElement | null = null;
@@ -112,6 +113,18 @@ export async function setupCriticalGapsUI(): Promise<void> {
     } catch { flash(solveBtn, "[!]"); }
   });
 
+  // Revit parity: constraints re-enforce themselves right after a move/drag
+  // commit (debounced). Toggle persists across sessions.
+  const autoBtn = makeButton("obs-adv-autosolve", "[A] Auto: on", "Constraint auto-solve after move commits (Revit-like live parametric)", () => {
+    try {
+      const next = !isConstraintAutoSolveEnabled();
+      setConstraintAutoSolve(next);
+      autoBtn.textContent = `[A] Auto: ${next ? "on" : "off"}`;
+      flash(autoBtn, next ? "[ON]" : "[OFF]");
+    } catch { flash(autoBtn, "[!]"); }
+  });
+  try { autoBtn.textContent = `[A] Auto: ${isConstraintAutoSolveEnabled() ? "on" : "off"}`; } catch { /* */ }
+
   // -- Architecture generators ---------------------------------------
   const stairBtn = makeButton("obs-adv-stair", "Stair", "Place straight stair", () => {
     void (window as Any).__obsBIMParity?.placeStair?.("straight");
@@ -207,7 +220,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
   toolbar.append(
     ccBtn,
     sep(),
-    draftBtn, hostBtn, solveBtn,
+    draftBtn, hostBtn, solveBtn, autoBtn,
     sep(),
     stairBtn, railBtn, cwBtn, roomBtn,
     sep(),

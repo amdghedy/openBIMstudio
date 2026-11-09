@@ -219,7 +219,9 @@
     "test:mep-panel-wire": "node tests/mep-panel-wire.test.cjs",
     "test:mep-lighting": "node tests/mep-lighting.test.cjs",
     "test:mep-hosted-elements": "node tests/mep-hosted-elements.test.cjs",
-    "test:mep-demand-factors": "node tests/mep-demand-factors.test.cjs"
+    "test:mep-demand-factors": "node tests/mep-demand-factors.test.cjs",
+    "test:stacked-wall": "node tests/stacked-wall.test.cjs",
+    "test:constraint-autosolve": "node tests/constraint-autosolve.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",

@@ -11,6 +11,7 @@
 import { ctx } from "../core/context";
 import { getAllConstraints } from "../modules/parametric-constraints/types";
 import { solveStoredConstraints } from "../modules/parametric-constraints/solver-bridge";
+import { createAutoSolveEngine, type AutoSolveEngine } from "../modules/parametric-constraints/auto-solve";
 
 type Any = Record<string, any>;
 
@@ -154,7 +155,48 @@ export function setupConstraintSolver(): void {
   // constraints + openings), and ribbon/command callers can reach solveAll
   // via ctx.features.constraintSolver.
   (window as Any).__obsSolveHostedConstraints = solveHostedConstraints;
+  setupAutoSolve(f);
   console.log(
-    "[constraint-solver] ready — stored constraints solved via L-M bridge, openings re-clamped (button-driven)",
+    "[constraint-solver] ready — stored constraints solved via L-M bridge, openings re-clamped (button-driven + auto-solve after move commits)",
   );
+}
+
+// ─── Live drag-solve (Revit parity: constraints re-enforce after a move) ──
+
+const AUTO_SOLVE_KEY = "obs-constraint-autosolve";
+let autoEngine: AutoSolveEngine | null = null;
+
+function persistedAutoSolve(): boolean {
+  try { return localStorage.getItem(AUTO_SOLVE_KEY) !== "off"; } catch { return true; }
+}
+
+/** Bind the pure auto-solve engine to solveHostedConstraints (called once). */
+export function setupAutoSolve(features: Any): void {
+  if (autoEngine) return;
+  autoEngine = createAutoSolveEngine(() => { solveHostedConstraints(); });
+  autoEngine.setEnabled(persistedAutoSolve());
+  features.constraintSolver.auto = autoEngine;
+  features.constraintSolver.setAutoSolve = setConstraintAutoSolve;
+  features.constraintSolver.isAutoSolveEnabled = isConstraintAutoSolveEnabled;
+}
+
+/** Enable/disable the post-commit auto-solve (persisted). */
+export function setConstraintAutoSolve(on: boolean): void {
+  if (!autoEngine) setupAutoSolve(getFeatures());
+  autoEngine!.setEnabled(on);
+  try { localStorage.setItem(AUTO_SOLVE_KEY, on ? "on" : "off"); } catch { /* private mode */ }
+}
+
+export function isConstraintAutoSolveEnabled(): boolean {
+  return autoEngine ? autoEngine.isEnabled() : persistedAutoSolve();
+}
+
+/**
+ * Queue the debounced solve after a geometry commit (move/drag/parametric
+ * edit). Called from authoring.ts transformElements — the one commit point
+ * every pointer-drag and property edit funnels through.
+ */
+export function scheduleAutoSolve(): void {
+  if (!autoEngine) return; // boot order: features first, engine binds on setup
+  autoEngine.schedule();
 }
