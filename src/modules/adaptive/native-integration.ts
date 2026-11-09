@@ -16,7 +16,11 @@ import {
   validateProfile,
   type ProfilePt,
   type Pt3,
+  type AdaptivePointConstraint,
+  solveAdaptivePointConstraints,
+  validateAdaptivePointConstraints,
 } from "./index";
+import { resolveNumber } from "../families/parametric-geometry";
 
 type Any = Record<string, any>;
 
@@ -29,6 +33,9 @@ export interface AdaptiveElementDefinition {
   profile: ProfilePt[];
   /** Used only for one-point components; extrusion is along local +Y. */
   pointLength?: number;
+  constraints?: AdaptivePointConstraint[];
+  /** Optional link to a shared BIM family and family type. */
+  familyBinding?: { familyId: string; typeId: string };
 }
 
 export interface AdaptiveElementCreateInput {
@@ -39,6 +46,7 @@ export interface AdaptiveElementCreateInput {
   pointLength?: number;
   name?: string;
   color?: string;
+  constraints?: AdaptivePointConstraint[];
 }
 
 export interface AdaptiveElementPatch {
@@ -48,9 +56,29 @@ export interface AdaptiveElementPatch {
   familyName?: string;
   name?: string;
   color?: string;
+  constraints?: AdaptivePointConstraint[];
+  familyBinding?: { familyId: string; typeId: string } | null;
+}
+
+export interface AdaptiveElementSnapshot {
+  definition: AdaptiveElementDefinition;
+  params: AuthoredElement["params"];
+  name: string;
+  color?: string;
+  properties: Record<string, unknown>;
+  familyId?: string;
+  familyTypeId?: string;
+}
+
+export interface AdaptiveFamilyTypeChoice {
+  familyId: string;
+  typeId: string;
+  label: string;
 }
 
 let installed = false;
+let familyUnsubscribe: (() => void) | null = null;
+let familyPropagationBusy = false;
 let idCounter = 0;
 
 function clone<T>(value: T): T {
@@ -78,11 +106,17 @@ function validateDefinition(input: AdaptiveElementDefinition): AdaptiveElementDe
     }
   }
   validateProfile(input.profile);
+  validateAdaptivePointConstraints(input.constraints, input.points.length);
   if (input.points.length === 1 && input.pointLength !== undefined &&
       (!Number.isFinite(input.pointLength) || input.pointLength <= 0)) {
     throw new Error("One-point adaptive extrusion length must be positive");
   }
-  return input;
+  if (input.familyBinding && (!String(input.familyBinding.familyId ?? "").trim() ||
+      !String(input.familyBinding.typeId ?? "").trim())) {
+    throw new Error("Shared family binding requires both family and type ids");
+  }
+  const solvedPoints = solveAdaptivePointConstraints(input.points, input.constraints ?? []);
+  return { ...input, points: solvedPoints };
 }
 
 function pathForDefinition(definition: AdaptiveElementDefinition): Pt3[] {
@@ -264,7 +298,8 @@ export function createAdaptiveElement(input: AdaptiveElementCreateInput): Author
     type: "adaptive-component",
     name: input.name?.trim() || definition.familyName,
     color: input.color || "#60a5fa",
-    familyId: definition.familyId,
+    familyId: definition.familyBinding?.familyId ?? definition.familyId,
+    familyTypeId: definition.familyBinding?.typeId,
     levelId: levelId || undefined,
     params: paramsFor(definition),
     properties: {
@@ -314,6 +349,10 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
     profile: patch.profile ? clone(patch.profile) : beforeDefinition.profile,
     pointCount: patch.points ? patch.points.length : beforeDefinition.pointCount,
     pointLength: patch.pointLength ?? beforeDefinition.pointLength,
+    constraints: patch.constraints ? clone(patch.constraints) : beforeDefinition.constraints,
+    familyBinding: patch.familyBinding === undefined
+      ? beforeDefinition.familyBinding
+      : patch.familyBinding ? clone(patch.familyBinding) : undefined,
   });
   // Validate the complete sweep before touching the authored element.
   indexedMeshForDefinition(afterDefinition);
@@ -323,11 +362,25 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
   const afterName = patch.name?.trim() || beforeName;
   const beforeColor = element.color;
   const afterColor = patch.color ?? beforeColor;
+  const beforeFamilyId = element.familyId;
+  const beforeFamilyTypeId = element.familyTypeId;
+  const afterFamilyId = afterDefinition.familyBinding?.familyId ?? afterDefinition.familyId;
+  const afterFamilyTypeId = afterDefinition.familyBinding?.typeId;
+  const beforeProperties = clone(element.properties ?? {});
+  const afterProperties = {
+    ...beforeProperties,
+    adaptiveDefinition: clone(afterDefinition),
+    adaptiveFamilyName: afterDefinition.familyName,
+    adaptivePointCount: afterDefinition.pointCount,
+  };
   const applyState = (
     definition: AdaptiveElementDefinition,
     params: AuthoredElement["params"],
     name: string,
     color: string | undefined,
+    familyId: string | undefined,
+    familyTypeId: string | undefined,
+    properties: Record<string, unknown>,
   ) => {
     // History replay (undo/redo) must be just as atomic as the initial edit.
     // Keep a complete local snapshot so a failed rebuild cannot strand changed
@@ -336,15 +389,14 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
     const previousParams = clone(element.params);
     const previousName = element.name;
     const previousColor = element.color;
-    element.properties = {
-      ...(element.properties ?? {}),
-      adaptiveDefinition: clone(definition),
-      adaptiveFamilyName: definition.familyName,
-      adaptivePointCount: definition.pointCount,
-    };
+    const previousFamilyId = element.familyId;
+    const previousFamilyTypeId = element.familyTypeId;
+    element.properties = clone(properties);
     element.params = clone(params);
     element.name = name;
     element.color = color;
+    element.familyId = familyId;
+    element.familyTypeId = familyTypeId;
     try {
       markAndRebuild(auth);
     } catch (error) {
@@ -352,6 +404,8 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
       element.params = previousParams;
       element.name = previousName;
       element.color = previousColor;
+      element.familyId = previousFamilyId;
+      element.familyTypeId = previousFamilyTypeId;
       try {
         markAndRebuild(auth);
       } catch (rollbackError) {
@@ -363,11 +417,19 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
       throw error;
     }
   };
-  applyState(afterDefinition, afterParams, afterName, afterColor);
+  const beforeState: AdaptiveElementSnapshot = {
+    definition: beforeDefinition, params: beforeParams, name: beforeName, color: beforeColor,
+    properties: beforeProperties, familyId: beforeFamilyId, familyTypeId: beforeFamilyTypeId,
+  };
+  const afterState: AdaptiveElementSnapshot = {
+    definition: afterDefinition, params: afterParams, name: afterName, color: afterColor,
+    properties: afterProperties, familyId: afterFamilyId, familyTypeId: afterFamilyTypeId,
+  };
+  applyState(afterDefinition, afterParams, afterName, afterColor, afterFamilyId, afterFamilyTypeId, afterProperties);
   history.push({
     label: `Edit adaptive component · ${element.name}`,
-    apply: () => applyState(afterDefinition, afterParams, afterName, afterColor),
-    revert: () => applyState(beforeDefinition, beforeParams, beforeName, beforeColor),
+    apply: () => applyElementSnapshot(auth, element, afterState),
+    revert: () => applyElementSnapshot(auth, element, beforeState),
   });
   return true;
 }
