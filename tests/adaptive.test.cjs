@@ -206,5 +206,51 @@ t("arc-path repeat: chordal volume under exact arc volume", () => {
   assert(chordLen < arcLen, "chord shorter than arc");
 });
 
+
+t("adaptive point constraints: fixed and axis locks are preserved", () => {
+  const source = [P(0, 0, 0), P(2, 1, 3)];
+  const solved = ad.solveAdaptivePointConstraints(source, [
+    { kind: "fixed", pointIndex: 0, value: P(1, 2, 3) },
+    { kind: "axis", pointIndex: 1, axis: "y", value: 4 },
+  ]);
+  assert.deepEqual(solved, [P(1, 2, 3), P(2, 4, 3)]);
+  assert.deepEqual(source, [P(0, 0, 0), P(2, 1, 3)], "solver does not mutate its input");
+});
+
+t("adaptive point constraints: coincident relation follows the dragged point", () => {
+  const result = ad.solveAdaptivePointConstraints(
+    [P(0, 0, 0), P(2, 0, 0)],
+    [{ kind: "coincident", a: 0, b: 1 }],
+    0,
+  );
+  assert.deepEqual(result, [P(0, 0, 0), P(0, 0, 0)]);
+});
+
+t("adaptive point constraints: distance remains exact while a point is dragged", () => {
+  const result = ad.solveAdaptivePointConstraints(
+    [P(0, 0, 0), P(3, 4, 0)],
+    [{ kind: "distance", a: 0, b: 1, distance: 2 }],
+    0,
+  );
+  near(Math.hypot(
+    result[1].x - result[0].x,
+    result[1].y - result[0].y,
+    result[1].z - result[0].z,
+  ), 2, 1e-9);
+});
+
+t("adaptive point constraints: invalid point references and dimensions are rejected", () => {
+  let threw = false;
+  try {
+    ad.validateAdaptivePointConstraints([{ kind: "coincident", a: 0, b: 2 }], 2);
+  } catch { threw = true; }
+  assert(threw, "out-of-range point index should be rejected");
+  threw = false;
+  try {
+    ad.validateAdaptivePointConstraints([{ kind: "distance", a: 0, b: 1, distance: 0 }], 2);
+  } catch { threw = true; }
+  assert(threw, "zero distance should be rejected");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
