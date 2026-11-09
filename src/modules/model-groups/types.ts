@@ -1,7 +1,7 @@
 /**
  * Model groups — group elements for reuse + placement.
  *
- * Revit's "Model Groups" let users group elements (walls, doors,
+ * RVT's "Model Groups" let users group elements (walls, doors,
  * furniture, etc.) into a reusable unit. The group can be placed
  * multiple times — editing one instance updates all.
  *

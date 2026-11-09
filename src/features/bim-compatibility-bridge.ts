@@ -1,12 +1,12 @@
 /**
- * BIM Parity Bridge - single integration layer that:
+ * BIM Compatibility Bridge - single integration layer that:
  *   1. Registers palette / toolbox commands for every gap-closure module
  *   2. Places stairs, railings, curtain walls into the live THREE scene
  *   3. Hooks selection - temporary dimensions
  *   4. Applies visibility filter on authoring rebuild events
  *   5. Exposes Match Properties + Create Similar helpers
  *
- * Call setupBimParityBridge() from critical-gaps-boot (already wired).
+ * Call setupBimCompatibilityBridge() from critical-gaps-boot (already wired).
  */
 
 import { promptLine } from "./form-modal";
@@ -58,7 +58,7 @@ function rebuild(): void {
 
 /* -- Geometry placement helpers ------------------------------------------ */
 
-const placedGroupName = "obs-parity-placed";
+const placedGroupName = "obs-compatibility-placed";
 
 function placedRoot(): THREE.Group | null {
   const s = scene();
@@ -78,7 +78,7 @@ function placeObject(obj: THREE.Object3D, label: string): void {
     notify("warn", "Scene not ready");
     return;
   }
-  obj.userData.parityPlaced = true;
+  obj.userData.compatibilityPlaced = true;
   obj.userData.label = label;
   root.add(obj);
   notify("success", `Placed ${label}`, { timeout: 1600 });
@@ -254,76 +254,76 @@ async function registerCommands(): Promise<void> {
 
   const cmds: Any[] = [
     {
-      id: "parity.stair.straight",
+      id: "compatibility.stair.straight",
       label: "Place Stair (Straight)",
       category: "Architecture",
       run: () => void placeStair("straight"),
     },
     {
-      id: "parity.stair.lshape",
+      id: "compatibility.stair.lshape",
       label: "Place Stair (L-Shape)",
       category: "Architecture",
       run: () => void placeStair("l-shape"),
     },
     {
-      id: "parity.stair.ushape",
+      id: "compatibility.stair.ushape",
       label: "Place Stair (U-Shape)",
       category: "Architecture",
       run: () => void placeStair("u-shape"),
     },
     {
-      id: "parity.railing",
+      id: "compatibility.railing",
       label: "Place Railing",
       category: "Architecture",
       run: () => void placeRailing(),
     },
     {
-      id: "parity.curtainWall",
+      id: "compatibility.curtainWall",
       label: "Place Curtain Wall",
       category: "Architecture",
       run: () => void placeCurtainWall(),
     },
     {
-      id: "parity.align.x",
+      id: "compatibility.align.x",
       label: "Align Selection (X)",
       category: "Modify",
       kbd: "AL",
       run: () => (window as Any).__obsAlign?.alignSelection?.("x", "min"),
     },
     {
-      id: "parity.align.z",
+      id: "compatibility.align.z",
       label: "Align Selection (Z)",
       category: "Modify",
       run: () => (window as Any).__obsAlign?.alignSelection?.("z", "min"),
     },
     {
-      id: "parity.distribute.x",
+      id: "compatibility.distribute.x",
       label: "Distribute Selection (X)",
       category: "Modify",
       run: () => (window as Any).__obsAlign?.distributeSelection?.("x"),
     },
     {
-      id: "parity.match.pick",
+      id: "compatibility.match.pick",
       label: "Match Properties - Pick Source",
       category: "Modify",
       kbd: "MA",
       run: () => matchPropertiesPickSource(),
     },
     {
-      id: "parity.match.apply",
+      id: "compatibility.match.apply",
       label: "Match Properties - Apply",
       category: "Modify",
       run: () => matchPropertiesApply(),
     },
     {
-      id: "parity.createSimilar",
+      id: "compatibility.createSimilar",
       label: "Create Similar",
       category: "Modify",
       kbd: "CS",
       run: () => createSimilar(),
     },
     {
-      id: "parity.tempHide",
+      id: "compatibility.tempHide",
       label: "Temporary Hide Selected",
       category: "View",
       kbd: "HH",
@@ -334,7 +334,7 @@ async function registerCommands(): Promise<void> {
       },
     },
     {
-      id: "parity.isolate",
+      id: "compatibility.isolate",
       label: "Temporary Isolate Selected",
       category: "View",
       kbd: "HI",
@@ -345,7 +345,7 @@ async function registerCommands(): Promise<void> {
       },
     },
     {
-      id: "parity.resetTemp",
+      id: "compatibility.resetTemp",
       label: "Reset Temporary Hide/Isolate",
       category: "View",
       kbd: "HR",
@@ -355,37 +355,37 @@ async function registerCommands(): Promise<void> {
       },
     },
     {
-      id: "parity.panel.rooms",
+      id: "compatibility.panel.rooms",
       label: "Rooms & Areas Panel",
       category: "Panels",
       run: () => window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "rooms" } })),
     },
     {
-      id: "parity.panel.phases",
+      id: "compatibility.panel.phases",
       label: "Phasing Panel",
       category: "Panels",
       run: () => window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "phases" } })),
     },
     {
-      id: "parity.panel.options",
+      id: "compatibility.panel.options",
       label: "Design Options Panel",
       category: "Panels",
       run: () => window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "design-options" } })),
     },
     {
-      id: "parity.panel.groups",
+      id: "compatibility.panel.groups",
       label: "Model Groups Panel",
       category: "Panels",
       run: () => window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "groups" } })),
     },
     {
-      id: "parity.panel.copyMonitor",
+      id: "compatibility.panel.copyMonitor",
       label: "Copy / Monitor Panel",
       category: "Panels",
       run: () => window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "copy-monitor" } })),
     },
     {
-      id: "parity.group.create",
+      id: "compatibility.group.create",
       label: "Create Group from Selection",
       category: "Modify",
       run: () => {
@@ -402,7 +402,7 @@ async function registerCommands(): Promise<void> {
       },
     },
     {
-      id: "parity.room.create",
+      id: "compatibility.room.create",
       label: "Create Room (sample boundary)",
       category: "Architecture",
       run: () => {
@@ -419,7 +419,7 @@ async function registerCommands(): Promise<void> {
       },
     },
     {
-      id: "parity.workplane.xy",
+      id: "compatibility.workplane.xy",
       label: "Set Work Plane - Floor (XY)",
       category: "Architecture",
       run: () => {
@@ -428,7 +428,7 @@ async function registerCommands(): Promise<void> {
       },
     },
     {
-      id: "parity.workplane.xz",
+      id: "compatibility.workplane.xz",
       label: "Set Work Plane - Front (XZ)",
       category: "Architecture",
       run: () => {
@@ -443,17 +443,17 @@ async function registerCommands(): Promise<void> {
       register(c);
     } catch { /* */ }
   }
-  console.log(`[bim-parity-bridge] registered ${cmds.length} commands`);
+  console.log(`[bim-compatibility-bridge] registered ${cmds.length} commands`);
 }
 
 /* -- Setup --------------------------------------------------------------- */
 
-export function setupBimParityBridge(): void {
+export function setupBimCompatibilityBridge(): void {
   hookTempDims();
   hookVisibility();
   void registerCommands();
 
-  (ctx.features as Any).bimParity = {
+  (ctx.features as Any).bimCompatibility = {
     placeStair,
     placeRailing,
     placeCurtainWall,
@@ -461,7 +461,7 @@ export function setupBimParityBridge(): void {
     matchPropertiesApply,
     createSimilar,
   };
-  (window as Any).__obsBimParity = (ctx.features as Any).bimParity;
+  (window as Any).__obsBimCompatibility = (ctx.features as Any).bimCompatibility;
 
-  console.log("[bim-parity-bridge] ready");
+  console.log("[bim-compatibility-bridge] ready");
 }

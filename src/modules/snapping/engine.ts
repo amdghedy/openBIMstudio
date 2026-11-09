@@ -8,7 +8,7 @@
  *   → CreateTemporarySnapConstraint / ValidateSnapConstraint
  *   → ConvertSnapToPersistentRelationship
  *
- * Geometry model (level E, matches the observable Revit contract that the
+ * Geometry model (level E, matches the observable RVT contract that the
  * platform needs): geometry providers expose candidate points with a
  * semantic reference class; the engine filters by tool compatibility,
  * measures SCREEN-SPACE distance (spec: d_s = |p_s − q_s|), verifies

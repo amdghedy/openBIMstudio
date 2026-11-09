@@ -2,7 +2,7 @@
  * Scope Box Visualizer — renders scope boxes in the 3D viewport with
  * draggable corner + edge handles so the user can resize them live.
  *
- * BIM-equivalent of Revit's scope box 3D gizmo. Each scope box has:
+ * BIM-equivalent of RVT's scope box 3D gizmo. Each scope box has:
  *   - A wireframe Box3Helper showing the bounds
  *   - 8 corner spheres (drag to scale all 3 axes)
  *   - 6 face handles (drag to move that face only)

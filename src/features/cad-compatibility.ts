@@ -868,7 +868,7 @@ async function registerCadShortcuts(): Promise<void> {
 
 /* -- Setup ----------------------------------------------------------------- */
 
-export function setupCadParity(): void {
+export function setupCadCompatibility(): void {
   if (installed) return;
   installed = true;
 
@@ -887,7 +887,7 @@ export function setupCadParity(): void {
 
   // Floating launcher removed (was the yellow "CAD" pill, bottom-left).
   // The CAD Tools panel stays reachable via Ctrl+Shift+D, the command
-  // palette ("CAD Tools Panel") and the parity tab bar.
+  // palette ("CAD Tools Panel") and the compatibility tab bar.
 
   (ctx.features as Any).cad = {
     engine: cadEngine,
@@ -928,5 +928,5 @@ export function setupCadParity(): void {
     } catch { /* */ }
   })();
 
-  console.log("[cad-parity] ready - CAD button or Ctrl+Shift+D");
+  console.log("[cad-compatibility] ready - CAD button or Ctrl+Shift+D");
 }

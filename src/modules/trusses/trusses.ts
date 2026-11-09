@@ -1,7 +1,7 @@
 /**
  * Truss Generator — pitched chord Pratt / Howe / Warren trusses.
  *
- * BIM-equivalent of Revit's "Truss" tool. Produces a triangulated truss
+ * BIM-equivalent of RVT's "Truss" tool. Produces a triangulated truss
  * with top chord, bottom chord and web members, based on span / depth /
  * panel count.
  *

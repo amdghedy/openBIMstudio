@@ -1,7 +1,7 @@
 /**
  * Multi-section loft (v0.70 "deep modeling" wave).
  *
- * Revit's loft-through-sections technique: N >= 2 closed sections at
+ * RVT's loft-through-sections technique: N >= 2 closed sections at
  * explicit or evenly spaced levels, connected by ruled side bands with
  * capped ends. Section correspondence uses the same polar-angle
  * resampling as `blend`, so a 2-section loft is volume-identical to a

@@ -1,7 +1,7 @@
 /**
  * Structural Connections Library — steel moment / shear / base-plate / cap-plate / gussets.
  *
- * BIM-equivalent of Revit's "Structural Connection" tool. Generates
+ * BIM-equivalent of RVT's "Structural Connection" tool. Generates
  * connection plates, bolt arrays, stiffeners, and capacity check reports at joints.
  */
 

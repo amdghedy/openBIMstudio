@@ -1,7 +1,7 @@
 /**
  * Fabrication Parts Library — ASTM/SMACNA MEP fabrication parts.
  *
- * BIM-equivalent of Revit's "Fabrication Parts" tool. Generates ductwork
+ * BIM-equivalent of RVT's "Fabrication Parts" tool. Generates ductwork
  * and pipework fittings from fabrication standards (SMACNA, ASTM F532).
  *
  * Each part is identified by an ASTM-compatible code and produces parametric

@@ -1,4 +1,4 @@
-import { getCachedFrag, setCachedFrag, hashFileKey } from "./revit-trust-gates";
+import { getCachedFrag, setCachedFrag, hashFileKey } from "./rvt-trust-gates";
 /**
  * IFC importer with 5 BIM-style positioning modes + live offset control.
  *
@@ -1306,7 +1306,7 @@ export async function convertIfcToFragBytes(
   const sizeMB = file.size / (1024 * 1024);
   const onProgress = opts?.onProgress ?? (() => {});
 
-  // Large-model path: reuse IndexedDB FRAG cache (Revit-class "convert once")
+  // Large-model path: reuse IndexedDB FRAG cache (RVT-class "convert once")
   try {
     const cacheKey = await hashFileKey(file);
     const cached = await getCachedFrag(cacheKey);
@@ -1491,7 +1491,7 @@ export function setupImporter() {
         for (const f of cadFiles) m.openCadViewer(f);
       });
     }
-    // Everything else (Revit, GLB/OBJ/FBX…, GeoJSON/Shapefile, ZIP…) goes through the universal importer, which
+    // Everything else (RVT, GLB/OBJ/FBX…, GeoJSON/Shapefile, ZIP…) goes through the universal importer, which
     // batches same-kind files and shows an honest message for formats it cannot read, instead of ignoring the drop.
     const others = files.filter((f) => !/\.(frag|ifc|ifczip|dwg|dxf)$/i.test(f.name));
     if (others.length) void import("./file-interop").then((m) => m.importFiles(others));

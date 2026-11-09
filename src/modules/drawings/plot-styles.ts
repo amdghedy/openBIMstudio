@@ -1,5 +1,5 @@
 /**
- * AutoCAD plot style tables — CTB (colour-dependent) and STB (named) reading
+ * DWG plot style tables — CTB (colour-dependent) and STB (named) reading
  * and application.
  *
  * Absorbed as part of the OpenCADStudio feature grab ("grab more options and
@@ -18,7 +18,7 @@
  * Colour values are packed 32-bit ints (type byte << 24 | r << 16 | g << 8 | b);
  * strings are written with a leading quote and terminated by end of line.
  *
- * Style mapping: in a CTB, `plot_style` block `i` applies to AutoCAD Colour
+ * Style mapping: in a CTB, `plot_style` block `i` applies to DWG Colour
  * Index `i + 1`; in an STB, blocks carry their own names (`Normal` is special —
  * it leaves objects as drawn).
  */

@@ -1,7 +1,7 @@
 /**
  * Work planes — set the active sketch/reference plane for modeling.
  *
- * Revit's "Set Work Plane" lets users pick a face or named plane to
+ * RVT's "Set Work Plane" lets users pick a face or named plane to
  * draw on. All subsequent sketch operations (extrude, sweep, model
  * lines) are projected onto this plane.
  *

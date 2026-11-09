@@ -91,7 +91,7 @@ function render(): void {
     `<span style="width:1px;height:16px;background:#2f3846"></span>`;
 
   if (tool === "wall" || tool === "curtain-wall") {
-    // Wall Type catalog (Revit-like type selector for next placement)
+    // Wall Type catalog (RVT-like type selector for next placement)
     const presets = listWallTypePresets().filter((pr) =>
       tool === "curtain-wall" ? pr.kind === "curtain" : pr.kind !== "curtain",
     );
@@ -141,7 +141,7 @@ function render(): void {
     if (defaults.params.width != null) html += field("Width", num("width", defaults.params.width ?? 1));
     html += field("Elevation", num("elevation", defaults.params.elevation ?? 0));
   } else {
-    // Selection present → Modify tools (Revit contextual Modify)
+    // Selection present → Modify tools (RVT contextual Modify)
     const n = (() => {
       try { return getSelectedIds().length || selection.size(); } catch { return 0; }
     })();

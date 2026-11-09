@@ -89,7 +89,7 @@ function pushAll<T>(out: T[], arr: readonly T[] | null | undefined): void {
  *  INSERT / MINSERT references multiply into millions of objects (the worker is
  *  synchronous — an unbounded conversion stalls it past the parse timeout). */
 const ENTITY_BUDGET = 1_200_000;
-/** Hard cap on one INSERT's row×column grid (AutoCAD MINSERT). */
+/** Hard cap on one INSERT's row×column grid (DWG MINSERT). */
 const MAX_INSERT_CELLS = 4096;
 
 function colorOf(e: Any): { color?: number; rgb?: number } {
@@ -215,7 +215,7 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
     const ltRaw = pick(e, ["lineType", "lineTypeName", "linetype", "ltype"]);
     const ltName = typeof ltRaw === "string" ? ltRaw.trim() : "";
     const ltUp = ltName.toUpperCase();
-    // Per-entity linetype scale + transparency (AutoCAD-fidelity properties).
+    // Per-entity linetype scale + transparency (DWG-fidelity properties).
     const ltScale = toNum(pick(e, ["linetypeScale", "ltScale", "lineTypeScale"]), 0);
     const transRaw = toNum(pick(e, ["transparency", "transparencyValue"]), 0);
     const transparency = transRaw > 0 ? Math.max(0, Math.min(90, transRaw <= 90 ? transRaw : (transRaw >>> 24) & 0xff)) : 0;

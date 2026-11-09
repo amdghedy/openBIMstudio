@@ -1,7 +1,7 @@
 /**
  * Vertical (stacked) wall joins — the horizontal counterpart in
  * `geometry/linear-join.ts` handles plan joins; this module handles walls
- * that continue vertically across level boundaries (Revit: a wall on L2
+ * that continue vertically across level boundaries (RVT: a wall on L2
  * whose base sits on the top of the L1 wall, sharing the same plan line).
  *
  * Detected relationships:
@@ -10,7 +10,7 @@
  *   - stack chains: connected components of stack pairs (wall rising
  *     through 4 levels = chain of 4);
  *   - gap/overlap validation: a stack pair with |gap| > tol is flagged
- *     (Revit keeps the join but geometry-checker warns).
+ *     (RVT keeps the join but geometry-checker warns).
  *
  * Pure module: no DOM — safe to unit-test in Node.
  */

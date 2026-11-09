@@ -1,7 +1,7 @@
 /**
  * Daylighting Analysis — daylight factor + sDA + ASE metrics.
  *
- * BIM-equivalent of Revit's "Lighting Analysis" plugin. Computes:
+ * BIM-equivalent of RVT's "Lighting Analysis" plugin. Computes:
  *  - Daylight Factor (DF) at each analysis point on a workplane
  *  - Spatial Daylight Autonomy (sDA300/50%)
  *  - Annual Sunlight Exposure (ASE300/250h)

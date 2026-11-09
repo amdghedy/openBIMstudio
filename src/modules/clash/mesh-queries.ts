@@ -3,7 +3,7 @@
  * (9 floats each), no three.js, no DOM.
  *
  *  - triTriDistance  : exact minimum distance between two triangles (0 when they intersect)
- *  - pointInMesh     : is a point inside a closed mesh (ray-parity, 3 directions, majority vote)
+ *  - pointInMesh     : is a point inside a closed mesh (ray-crossing, 3 directions, majority vote)
  *  - containedPoints : sample surface points of A that lie inside the solid B
  */
 import { triTriIntersect, type Tri } from "./geometry";
@@ -105,7 +105,7 @@ const DIRS: V[] = [
   [0.1913, -0.6427, 0.7431],
 ];
 
-/** Inside test by ray-parity with a 2-of-3 vote. Meaningful for closed meshes only. */
+/** Inside test by ray-crossing with a 2-of-3 vote. Meaningful for closed meshes only. */
 export function pointInMesh(tris: readonly Tri[], p: V): boolean {
   let inside = 0;
   for (const d of DIRS) {

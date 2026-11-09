@@ -13,7 +13,7 @@ const { parseDxf } = require(path.join(dir, "dxf-reader.js"));
 let pass = 0, fail = 0;
 const t = (n, f) => { try { f(); pass++; console.log("  PASS " + n); } catch (e) { fail++; console.log("  FAIL " + n + ": " + e.message); } };
 
-t("linetype library has the standard AutoCAD set with valid patterns", () => {
+t("linetype library has the standard DWG set with valid patterns", () => {
   assert.ok(S.LINETYPE_LIBRARY.length >= 35);
   const names = new Set();
   for (const l of S.LINETYPE_LIBRARY) {

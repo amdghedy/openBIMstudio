@@ -1,5 +1,5 @@
 /**
- * AutoCAD Color Index (ACI) -> RGB.
+ * DWG Color Index (ACI) -> RGB.
  *
  * Indices 1-9 are the named colours, 10-249 are 24 hues x 10 shade/tint
  * steps, 250-255 are greys. Index 7 is "white or black" depending on the

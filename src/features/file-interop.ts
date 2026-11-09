@@ -126,7 +126,7 @@ function addAuxObject(obj: THREE.Object3D, label: string) {
   obj.name = label;
   auxGroup.add(obj);
   // RVT view files carry per-element properties: enable click selection and Native Twin for them.
-  void import("./revit-view").then((m) => { if (m.hasRevitElements(obj)) { m.installRevitView(); m.syncTwinVisibility(); } }).catch(() => { /* optional */ });
+  void import("./rvt-view").then((m) => { if (m.hasRVTElements(obj)) { m.installRVTView(); m.syncTwinVisibility(); } }).catch(() => { /* optional */ });
   computeSceneBounds();
   fitAll();
   // Override the default fit view with a BIM-style isometric view
@@ -217,8 +217,8 @@ export async function importFiles(files: File[]) {
   const rvtBatch = group(/\.(rvt|rfa|rte|rft)$/i);
   if (rvtBatch.length > 1) {
     try {
-      const { openRevitFiles, rvtDecoderAvailable } = await import("./rvt-viewer");
-      if (await rvtDecoderAvailable()) { rvtBatch.forEach((f) => handled.add(f)); await openRevitFiles(rvtBatch); }
+      const { openRVTFiles, rvtDecoderAvailable } = await import("./rvt-viewer");
+      if (await rvtDecoderAvailable()) { rvtBatch.forEach((f) => handled.add(f)); await openRVTFiles(rvtBatch); }
     } catch (err: any) { console.error("[file-interop]", err); }
   }
   const ifcBatch = group(/\.ifc$/i);
@@ -268,8 +268,8 @@ export async function importFiles(files: File[]) {
 
       if (e === "rvt" || e === "rfa" || e === "rte" || e === "rft") {
         // View-only, decoded in the browser by the rvt-rs WebAssembly reader (docs/RVT-VIEWER.md).
-        const { openRevitFile, rvtDecoderAvailable } = await import("./rvt-viewer");
-        if (await rvtDecoderAvailable()) { await openRevitFile(file); continue; }
+        const { openRVTFile, rvtDecoderAvailable } = await import("./rvt-viewer");
+        if (await rvtDecoderAvailable()) { await openRVTFile(file); continue; }
       }
 
       if (e === "geojson" || e === "shp") {

@@ -1,7 +1,7 @@
 /**
  * View Filters — rule-based graphics overrides applied per-view.
  *
- * BIM-equivalent of Revit's "View Filters" tool. A filter is a named rule
+ * BIM-equivalent of RVT's "View Filters" tool. A filter is a named rule
  * (category + parameter predicate) bound to graphics overrides
  * (colour, lineweight, pattern, transparency, halftone, hidden).
  *

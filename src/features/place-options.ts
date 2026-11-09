@@ -1,4 +1,4 @@
-/** Options bar controls for placement tools (the Revit "Modify | Place …" options row).
+/** Options bar controls for placement tools (the RVT "Modify | Place …" options row).
  *  Every control reads and writes the real drawing state used by authoring.ts:
  *  level, type defaults (dimensions), wall location line / join / offset / chain / radius,
  *  beam & MEP justification and MEP slope. Units: metres. */

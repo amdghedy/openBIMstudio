@@ -1,5 +1,5 @@
 /**
- * Transitive host→child delete cascade (Revit behavior: deleting a host
+ * Transitive host→child delete cascade (RVT behavior: deleting a host
  * deletes EVERY dependent element that can only exist while its host
  * exists — doors in the wall, panels in the curtain wall, etc.).
  *

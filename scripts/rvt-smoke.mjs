@@ -1,7 +1,7 @@
-// Runs the BUILT Revit decoder (public/rvt/) in Node on a real file and prints what it found.
+// Runs the BUILT RVT decoder (public/rvt/) in Node on a real file and prints what it found.
 //   node scripts/rvt-smoke.mjs path/to/file.rvt [--expect-glb]
-// Same call sequence as src/modules/rvt/rvt-core.ts decodeRevit(). Exit 1 when decoding throws
-// or (with --expect-glb) when no glTF binary comes out. Used by the "Build Revit reader" workflow.
+// Same call sequence as src/modules/rvt/rvt-core.ts decodeRVT(). Exit 1 when decoding throws
+// or (with --expect-glb) when no glTF binary comes out. Used by the "Build RVT reader" workflow.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,7 +20,7 @@ const d = res.diagnostics ?? {};
 const magic = Buffer.from(glb.slice(0, 4)).toString("latin1");
 console.log(JSON.stringify({
   file: path.basename(file), bytes: bytes.length, ms: Date.now() - t0,
-  revitVersion: d.input?.revit_version, releaseSupport: d.input?.release_support,
+  rvtVersion: d.input?.rvt_version, releaseSupport: d.input?.release_support,
   confidence: d.confidence, elements: d.exported?.building_elements, withGeometry: d.exported?.building_elements_with_geometry,
   warnings: (d.warnings ?? []).length, stages: [...stages], glbBytes: glb.length, glbMagic: magic,
 }, null, 1));

@@ -1,4 +1,4 @@
-/** Revit-style Array controller — base, direction, live count preview, single undo. */
+/** RVT-style Array controller — base, direction, live count preview, single undo. */
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { duplicateSelected } from "./authoring";

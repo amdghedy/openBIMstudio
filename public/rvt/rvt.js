@@ -94,7 +94,7 @@ export function elementInfoPanel(model, entity_index) {
  * [`rvt::metadata::FileMetadata`] JS object. Reads only the two
  * identity streams straight from `bytes` (no copy of the file), so it
  * returns instantly on any file size. Errors when `bytes` is not a
- * readable Revit file.
+ * readable RVT file.
  * @param {Uint8Array} bytes
  * @returns {any}
  */
@@ -181,8 +181,8 @@ export function modelToIfcStep(model) {
  * coverage cannot satisfy the requested bar — the viewer uses this to
  * surface honest confidence rather than over-claiming geometry.
  *
- * Doors and windows are drawn from the meshes Revit saved for them, as
- * `rvt-ifc` does by default, on Revit 2023 to 2027 files.
+ * Doors and windows are drawn from the meshes RVT saved for them, as
+ * `rvt-ifc` does by default, on RVT 2023 to 2027 files.
  * @param {Uint8Array} bytes
  * @param {string} mode
  * @returns {any}
@@ -223,8 +223,8 @@ export function openRvtBytesWithDiagnosticsMode(bytes, mode) {
  * - `maxInflateBytes` caps one gzip member's inflated size; a stream's
  *   members together may inflate to this or 1 GiB, whichever is larger.
  *   A value past what a 32-bit `usize` holds saturates at 4 GiB minus 1.
- * - `savedMeshes` (default `true`) draws the doors and windows of Revit 2023
- *   to 2027 files from the meshes Revit saved for them, as `rvt-ifc` does
+ * - `savedMeshes` (default `true`) draws the doors and windows of RVT 2023
+ *   to 2027 files from the meshes RVT saved for them, as `rvt-ifc` does
  *   without `--no-saved-meshes`; `false` keeps their bounding boxes and
  *   skips the extra pass over the file's saved graphics.
  * - `phase` (a phase's name, matched exactly first, or its ElementId as a
@@ -359,7 +359,7 @@ export function renderPlanSvg(model, options) {
  * defaults), and dropped when it returns: nothing of the file stays in this
  * instance. The page calls it in a worker of its own, for one element at a
  * time, and ends that worker when it has answered. An id that is not a whole
- * number, a file that is not a Revit file and a file whose parameters cannot
+ * number, a file that is not a RVT file and a file whose parameters cannot
  * be read throw.
  * @param {Uint8Array} bytes
  * @param {Float64Array} ids

@@ -1,7 +1,7 @@
 /**
  * Generative Design — iterative optimisation engine for BIM models.
  *
- * BIM-equivalent of Revit's "Generative Design" tool. Defines a study with
+ * BIM-equivalent of RVT's "Generative Design" tool. Defines a study with
  * design variables (parameters), objectives (fitness functions), and
  * constraints, then runs random sampling / genetic search to discover
  * optimal design configurations.

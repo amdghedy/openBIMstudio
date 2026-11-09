@@ -2,7 +2,7 @@
  * tests/cad-link.test.cjs
  *
  * CAD import / link pipeline (pure parts): DXF reader, libredwg-web database
- * converter, ACI colours, and the Revit-style placement + geometry core.
+ * converter, ACI colours, and the RVT-style placement + geometry core.
  */
 const { execSync } = require("child_process");
 const fs = require("fs");

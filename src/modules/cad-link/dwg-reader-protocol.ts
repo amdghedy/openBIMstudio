@@ -59,16 +59,16 @@ export type DwgReaderResponse = DwgParseResponse | DwgThumbnailResponse;
 
 /** Known DWG version stamps (offset 0, 6 ASCII chars) -> human readable label. */
 const DWG_VERSION_LABELS: Record<string, string> = {
-  AC1006: "AutoCAD R10",
-  AC1009: "AutoCAD R11/R12",
-  AC1012: "AutoCAD R13",
-  AC1014: "AutoCAD R14",
-  AC1015: "AutoCAD 2000",
-  AC1018: "AutoCAD 2004",
-  AC1021: "AutoCAD 2007",
-  AC1024: "AutoCAD 2010",
-  AC1027: "AutoCAD 2013",
-  AC1032: "AutoCAD 2018",
+  AC1006: "DWG R10",
+  AC1009: "DWG R11/R12",
+  AC1012: "DWG R13",
+  AC1014: "DWG R14",
+  AC1015: "DWG 2000",
+  AC1018: "DWG 2004",
+  AC1021: "DWG 2007",
+  AC1024: "DWG 2010",
+  AC1027: "DWG 2013",
+  AC1032: "DWG 2018",
 };
 
 /**

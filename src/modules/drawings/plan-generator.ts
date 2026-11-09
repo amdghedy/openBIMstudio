@@ -287,7 +287,7 @@ function emitLinearThick(
   let piecesA = [sideA], piecesB = [sideB];
   const runType = el.type;
   if (runType === "duct" || runType === "pipe" || runType === "cable-tray" || runType === "conduit") {
-    // A tee / cross / wye on this run opens its side line where the branch joins (Revit).
+    // A tee / cross / wye on this run opens its side line where the branch joins (RVT).
     try {
       for (const f of getElements()) {
         if (f.type !== "fitting") continue;
@@ -321,7 +321,7 @@ function emitLinearThick(
     } catch { /* fittings optional */ }
   }
   for (const sg of [...piecesA, ...piecesB]) push({ ...sg, kind, source: el.id });
-  // Runs joined to an elbow continue into the fitting outline: no end cap there (Revit).
+  // Runs joined to an elbow continue into the fitting outline: no end cap there (RVT).
   const joinable = el.type === "duct" || el.type === "pipe" || el.type === "cable-tray" || el.type === "conduit";
   if (!(joinable && connectedToFitting(el, ax, az))) {
     push({ x1: ax + nx * t2, z1: az + nz * t2, x2: ax - nx * t2, z2: az - nz * t2, kind, source: el.id });

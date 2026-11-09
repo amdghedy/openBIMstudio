@@ -705,7 +705,7 @@ async function unitConvertCalc(): Promise<void> {
 async function frictionSizeCalc(): Promise<void> {
   const vals = await openFormModal({
     title: "Auto-Size by Friction Rate",
-    subtitle: "Revit's friction method: smallest standard section at or below the target Pa/m (Colebrook\u2013White)",
+    subtitle: "RVT's friction method: smallest standard section at or below the target Pa/m (Colebrook\u2013White)",
     fields: [
       { kind: "select", key: "shape", label: "Cross-section", options: [["rect", "Rectangular duct"], ["round", "Round duct"], ["pipe", "Circular pipe"]], default: "rect" },
       { kind: "number", key: "flow", label: "Design flow", default: 1, unit: "m\u00B3/s (ducts) \u00B7 L/s (pipes)", validate: mustBePositive },
@@ -1033,7 +1033,7 @@ async function drainageCalc(): Promise<void> {
   });
   const vals = await openFormModal({
     title: "Drainage Size (DFU)",
-    subtitle: "IPC Tables 709.1 / 710.1(1) / 710.1(2) \u2014 a capability Revit ships only through add-ins",
+    subtitle: "IPC Tables 709.1 / 710.1(1) / 710.1(2) \u2014 a capability RVT ships only through add-ins",
     fields: [
       { kind: "textarea", key: "fixtures", label: "Fixture counts JSON", default: SAMPLE, hint: "Keys: water-closet-public-1.6-gpf, water-closet-private-1.6-gpf, urinal-standard, lavatory, shower-5.7-gpm-or-less, floor-drain, kitchen-sink-domestic, bathtub, \u2026" },
       { kind: "select", key: "element", label: "Element to size", options: [["building-drain", "Building drain / sewer"], ["horizontal-branch", "Horizontal branch"], ["stack", "Stack"]], default: "building-drain" },
@@ -1236,7 +1236,7 @@ async function hostedAuditCalc(): Promise<void> {
       ...a.issues.map((d) => ({ label: `\u26A0 ${d.code}`, value: d.message, strong: true })),
     ], [
       "A hosted element keeps a parametric anchor on its host (u,v / t) \u2014 when the host moves, positions re-derive.",
-      "Deleted hosts orphan their hosted elements \u2014 rehost or delete them (Revit behaviour).",
+      "Deleted hosts orphan their hosted elements \u2014 rehost or delete them (RVT behaviour).",
     ]);
   } catch (e) {
     window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Host audit failed: ${(e as Error).message}`, kind: "error" } }));
@@ -1249,8 +1249,8 @@ const TOOLKIT_ITEMS: Array<{ value: string; label: string }> = [
   { value: "fixture-demand", label: "Fixture-Unit Demand (Hunter curve)" },
   { value: "sprinkler", label: "Sprinkler Design Demand (density/area)" },
   { value: "voltage-drop", label: "Voltage Drop & Conductor Check" },
-  { value: "friction-size", label: "Auto-Size by Friction Rate (Revit method)" },
-  { value: "static-regain", label: "Static Regain Duct Main (Revit method)" },
+  { value: "friction-size", label: "Auto-Size by Friction Rate (RVT method)" },
+  { value: "static-regain", label: "Static Regain Duct Main (RVT method)" },
   { value: "network-audit", label: "Network Audit \u2014 Pressure Loss Report" },
   { value: "zone-loads", label: "Zone Heating & Cooling Loads (CLTD)" },
   { value: "panel-wire", label: "Panel Schedule \u2014 Wire Size & Voltage Drop" },

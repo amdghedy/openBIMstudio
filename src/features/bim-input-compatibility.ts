@@ -1,5 +1,5 @@
 /**
- * Input Parity - keyboard shortcuts + mouse/view help that match
+ * Input Compatibility - keyboard shortcuts + mouse/view help that match
  * typical BIM navigation and command keys.
  *
  * Mouse map is owned by navigation.ts (already BIM-correct).
@@ -219,7 +219,7 @@ async function registerBIMShortcuts(): Promise<void> {
     keys: "ma",
     category: "tool",
     handler: () => {
-      (ctx.features as any).bimParity?.matchPropertiesPickSource?.();
+      (ctx.features as any).bimCompatibility?.matchPropertiesPickSource?.();
     },
   });
   reg({
@@ -228,7 +228,7 @@ async function registerBIMShortcuts(): Promise<void> {
     keys: "cs",
     category: "tool",
     handler: () => {
-      (ctx.features as any).bimParity?.createSimilar?.();
+      (ctx.features as any).bimCompatibility?.createSimilar?.();
     },
   });
   reg({
@@ -286,7 +286,7 @@ async function registerBIMShortcuts(): Promise<void> {
     handler: () => toggleInputHelp(),
   });
 
-  console.log("[bim-input-parity] BIM shortcuts registered");
+  console.log("[bim-input-compatibility] BIM shortcuts registered");
 }
 
 /* -- Mouse / CameraControls guard ------------------------------------------ */
@@ -468,7 +468,7 @@ export function toggleInputHelp(): void {
 
 /* -- Setup ----------------------------------------------------------------- */
 
-export function setupBimInputParity(): void {
+export function setupBimInputCompatibility(): void {
   void registerBIMShortcuts();
 
   // Re-assert nav ownership after boot (CameraControls can re-enable)
@@ -498,7 +498,7 @@ export function setupBimInputParity(): void {
     try {
       const cp: Any = await import("./command-palette");
       cp.registerCommand?.({
-        id: "parity.inputHelp",
+        id: "compatibility.inputHelp",
         label: "Mouse & Keyboard Help (BIM map)",
         category: "View",
         kbd: "Ctrl+/",
@@ -507,5 +507,5 @@ export function setupBimInputParity(): void {
     } catch { /* */ }
   })();
 
-  console.log("[bim-input-parity] ready - Ctrl+/ for mouse & keyboard map");
+  console.log("[bim-input-compatibility] ready - Ctrl+/ for mouse & keyboard map");
 }

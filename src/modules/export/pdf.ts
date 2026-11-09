@@ -38,7 +38,7 @@ interface StrokeOpts {
   dashArray?: number[];
 }
 
-/** Plot-style lineweight floor so fine model lines remain visible on sheet PDF (Revit-like print). */
+/** Plot-style lineweight floor so fine model lines remain visible on sheet PDF (RVT-like print). */
 const MIN_PRINT_LINEWEIGHT_PT = 0.18;
 
 function strokeOptions(stroke: StrokeStyle): StrokeOpts {

@@ -31,7 +31,7 @@ npm run dev
 | Railings | ✅ | `modules/railings/railings.ts` |
 | Curtain walls | ✅ | `modules/curtain-wall/curtain-wall.ts` |
 | Align / distribute | ✅ | `features/align-tool.ts` |
-| Match properties | ✅ | `features/bim-parity-bridge.ts` |
+| Match properties | ✅ | `features/bim-compatibility-bridge.ts` |
 | Create similar | ✅ | feature alignment bridge → authoring |
 | Temporary dimensions | ✅ | `features/temp-dimensions.ts` |
 | Temporary hide / isolate | ✅ | `modules/visibility/visibility-filter.ts` |
@@ -85,7 +85,7 @@ Search categories **Architecture**, **Modify**, **View**, **Panels** for:
 | `__obsTypeCatalog` | Type catalogs |
 | `__obsAlign` | Align / distribute |
 | `__obsTempDims` | Temporary dimensions |
-| `__obsBIMParity` | Placement + match props bridge |
+| `__obsBIMCompatibility` | Placement + match props bridge |
 | `__obsFamilyParametric` | Parametric family service |
 
 ---

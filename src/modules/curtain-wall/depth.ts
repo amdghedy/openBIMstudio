@@ -1,6 +1,6 @@
 /**
  * Curtain wall DEPTH pack — the pieces the evaluation flagged against
- * Revit: mullion profiles, per-panel types, curved (arc) curtain walls,
+ * RVT: mullion profiles, per-panel types, curved (arc) curtain walls,
  * and corner mullions for L-plans.
  *
  * Pure math only (no THREE) so the grid/arc/profile logic is unit-testable
@@ -11,7 +11,7 @@
  *    (u ∈ [0,1] along width, v ∈ [0,1] along height);
  *  - a curved curtain wall wraps a PLAN ARC (center, radius, angles, in
  *    the XZ plane, Y up) — u ∈ [0,1] maps to angle along the arc, so
- *    panel/mullion widths follow true arc length, matching Revit.
+ *    panel/mullion widths follow true arc length, matching RVT.
  */
 
 export type MullionProfile = "rect" | "L" | "T" | "I";
@@ -224,7 +224,7 @@ export interface CornerMullion {
 /**
  * Corner post where two straight curtain walls meet at a shared endpoint.
  * The post is centered on the corner and yawed to the bisector of the two
- * directions measured AWAY from the corner (Revit places the corner
+ * directions measured AWAY from the corner (RVT places the corner
  * mullion on the bisector of the interior angle).
  */
 export function cornerMullionPlacement(
