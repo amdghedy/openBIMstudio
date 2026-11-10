@@ -16,6 +16,8 @@ const checks = [
   ["zoom selected is available", /addItem\("Zoom to Selected",zoomSelection/],
   ["selection and editing actions are available", /Select Similar \(Type \+ Layer\)[\s\S]*?Erase Selected/],
   ["right-click opens CAD menu when idle", /if \(tool === "select"\) \{ showCadContextMenu\(ev\); return; \}/],
+  ["3D viewport menu defers right-clicks inside the CAD editor", /\.obs-cad-viewer, \.obs-cad-shell/],
+  ["cross-drawing clipboard operations are exposed", /Copy to Clipboard[\s\S]*?Paste at Original Coordinates/],
   ["active placement and modify operations retain right-click confirm", /if \(pick\) \{ ev\.preventDefault\(\); confirmPickStep\(\); return; \}[\s\S]*?if \(mod\) \{ ev\.preventDefault\(\); confirmModStep\(\); return; \}/],
 ];
 let failed = 0;
