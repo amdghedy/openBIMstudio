@@ -154,20 +154,21 @@ function armWorkPlaneFromFace(event: MouseEvent | PointerEvent): boolean {
   while (root.parent && !root.userData?.elementId) root = root.parent;
   const elementId = String(root.userData?.elementId ?? object.userData?.elementId ?? "");
   const sceneRoot = elementId ? root : object;
-  let meshIndex = 0;
+  let meshIndex = -1;
+  let meshCursor = 0;
   sceneRoot.traverse((node) => {
-    if (node === object) return;
-    if ((node as THREE.Mesh).isMesh && node !== object) meshIndex++;
+    if (!(node as THREE.Mesh).isMesh) return;
+    if (node === object) meshIndex = meshCursor;
+    meshCursor++;
   });
   const localOrigin = object.worldToLocal(worldOrigin.clone());
-  const inverseNormal = normalMatrix.clone().invert();
   const localNormal = hit.face.normal.clone().normalize();
   const face = {
     ...(elementId ? { elementId } : {}),
-    meshIndex,
+    ...(meshIndex >= 0 ? { meshIndex } : {}),
     ...(Number.isInteger(hit.faceIndex) ? { faceIndex: hit.faceIndex } : {}),
-    localOrigin: { x: localOrigin.x, y: localOrigin.y, z: localOrigin.z },
-    localNormal: { x: localNormal.x, y: localNormal.y, z: localNormal.z },
+    localOrigin: [localOrigin.x, localOrigin.y, localOrigin.z] as [number, number, number],
+    localNormal: [localNormal.x, localNormal.y, localNormal.z] as [number, number, number],
   };
   const plane = createWorkPlane(
     "Adaptive face · " + (root.name || object.name || elementId || "Picked surface"),
@@ -184,7 +185,6 @@ function armWorkPlaneFromFace(event: MouseEvent | PointerEvent): boolean {
   snapping.hideIndicator();
   lastSnap = null;
   notify("success", "Adaptive work plane set from picked face.");
-  void inverseNormal;
   return true;
 }
 
@@ -453,9 +453,22 @@ function handlePlacementHover(event: PointerEvent): void {
   void snapping.query(event, cursor).then((result) => {
     if (!placement || sequence !== hoverSequence) return;
     if (result) {
-      lastSnap = { point: result.point.clone(), x: event.clientX, y: event.clientY };
-      snapping.showIndicator(result);
-      drawPlacementPreview(result.point);
+      const active = getActiveWorkPlane();
+      const snapped = active
+        ? new THREE.Vector3(
+            ...active.normal.map((n, i) => 0) as [number, number, number],
+          )
+        : result.point.clone();
+      if (active) {
+        const normal = new THREE.Vector3(active.normal[0], active.normal[1], active.normal[2]).normalize();
+        const origin = new THREE.Vector3(active.origin[0], active.origin[1], active.origin[2]);
+        const distance = result.point.clone().sub(origin).dot(normal);
+        snapped.copy(result.point).addScaledVector(normal, -distance);
+      }
+      const snapResult = { ...result, point: snapped };
+      lastSnap = { point: snapped.clone(), x: event.clientX, y: event.clientY };
+      snapping.showIndicator(snapResult);
+      drawPlacementPreview(snapped);
     } else {
       lastSnap = null;
       snapping.hideIndicator();
@@ -570,6 +583,15 @@ function beginGripDrag(event: MouseEvent | PointerEvent): boolean {
 }
 
 function cancelActive(): boolean {
+  if (placement && workPlanePickArmed) {
+    workPlanePickArmed = false;
+    const button = hud?.querySelector<HTMLButtonElement>("[data-work-plane]");
+    if (button) button.textContent = "Pick Work Plane";
+    const step = hud?.querySelector<HTMLElement>("[data-step]");
+    if (step) step.textContent = "Continue placing points on the active plane.";
+    notify("info", "Face work-plane picking cancelled.");
+    return true;
+  }
   if (placement) {
     finishPlacement(null);
     notify("info", "Adaptive placement cancelled.");
