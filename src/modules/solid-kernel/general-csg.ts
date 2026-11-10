@@ -77,7 +77,7 @@
  */
 
 import type { IndexedMesh, Pt3 } from "../adaptive";
-import { dot, cross, sub, isInsideRobust, type SupportPlane } from "./csg";
+import { dot, cross, sub, createRobustInsideTester, type SupportPlane } from "./csg";
 
 const SPLIT_EPS = 1e-9; // half-space side tolerance during splitting
 const ON_PLANE_EPS = 1e-8; // vertex-on-plane tolerance for coplanar tagging/edges
@@ -481,10 +481,13 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
   // Broad-phase AABBs for the inside probes.
   const bbA = meshAabb(a);
   const bbB = meshAabb(b);
+  // Build each triangle hierarchy once and reuse it for every fragment probe.
+  const testInsideA = createRobustInsideTester(a);
+  const testInsideB = createRobustInsideTester(b);
   const insideB = (p: Pt3): boolean =>
-    inAabb(bbB, p) && isInsideRobust(b, p);
+    inAabb(bbB, p) && testInsideB(p);
   const insideA = (p: Pt3): boolean =>
-    inAabb(bbA, p) && isInsideRobust(a, p);
+    inAabb(bbA, p) && testInsideA(p);
 
   const vertices: Pt3[] = [];
   const faces: [number, number, number][] = [];
