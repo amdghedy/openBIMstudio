@@ -620,7 +620,7 @@ export async function propagateAdaptiveFamilyTypes(): Promise<number> {
   const auth = authoring();
   const elements = auth?.getElements?.() as AuthoredElement[] | undefined;
   if (!auth || !Array.isArray(elements) || familyPropagationBusy) return 0;
-  const changes: Array<{ id: string; profile: ProfilePt[]; name: string }> = [];
+  const changes: Array<{ id: string; profile: ProfilePt[]; profileParts: AdaptiveProfilePart[]; name: string }> = [];
   for (const element of elements) {
     if (element.type !== "adaptive-component") continue;
     const definition = (element.properties as Any)?.adaptiveDefinition as AdaptiveElementDefinition | undefined;
@@ -846,6 +846,7 @@ export function setupAdaptiveAuthoring(): {
   cancelPointEdit: typeof cancelAdaptivePointEdit;
   listFamilyTypeChoices: typeof getAdaptiveFamilyTypeChoices;
   bindFamilyType: typeof bindAdaptiveFamilyType;
+  registerCustomFamilyProfileAdapter: typeof registerAdaptiveCustomFamilyProfileAdapter;
   connectFamilyTypePropagation: typeof connectAdaptiveFamilyTypePropagation;
   propagateFamilyTypes: typeof propagateAdaptiveFamilyTypes;
 } {
@@ -864,6 +865,7 @@ export function setupAdaptiveAuthoring(): {
       cancelPointEdit: cancelAdaptivePointEdit,
       listFamilyTypeChoices: getAdaptiveFamilyTypeChoices,
       bindFamilyType: bindAdaptiveFamilyType,
+      registerCustomFamilyProfileAdapter: registerAdaptiveCustomFamilyProfileAdapter,
       connectFamilyTypePropagation: connectAdaptiveFamilyTypePropagation,
       propagateFamilyTypes: propagateAdaptiveFamilyTypes,
     };
