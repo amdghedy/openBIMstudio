@@ -59,6 +59,7 @@ try {
   assert.equal(wp.getActiveWorkPlane(), null);
   wp.restoreWorkPlanes(snapshot);
   assert.equal(wp.getActiveWorkPlane().id, uvPlane.id);
+  near(wp.getActiveWorkPlane().rotation, Math.PI / 2);
   assert.equal(wp.get("wp-2").face.elementId, "wall-01");
   assert.equal(wp.setActiveWorkPlane("missing"), false);
 
