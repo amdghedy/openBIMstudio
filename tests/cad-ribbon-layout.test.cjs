@@ -184,8 +184,19 @@ t("typed commands dispatch to the staged pick machine and draw tools", () => {
   const disp = src.slice(src.indexOf("function executeDrawingCommand"));
   const must = ["TRIM", "EXTEND", "BREAK", "FILLET", "CHAMFER", "JOIN", "EXPLODE", "STRETCH", "ALIGN",
     "MATCHLAYER", "XLINE", "RAY", "POLYGON", "SPLINE", "ELLIPSE", "DONUT", "POINT", "HATCH", "WIPEOUT",
-    "DIMANGULAR", "DIMARC", "DIMDIAMETER", "DIMCENTER", "DIMCONTINUE", "DIMBASELINE", "TABLE", "ARRAY", "FIND", "VIEW", "LAYERSTATE", "IMPORT"];
+    "DIMANGULAR", "DIMARC", "DIMDIAMETER", "DIMCENTER", "DIMCONTINUE", "DIMBASELINE", "TABLE", "ARRAY", "ARRAYPOLAR", "FIND", "VIEW", "LAYERSTATE", "IMPORT"];
   for (const c of must) assert.ok(disp.includes(`"${c}"`), `command "${c}" not dispatched`);
+});
+t("rectangular and polar array controls are exposed and wired in Modify II", () => {
+  const bar = src.slice(src.indexOf("function buildBar()"), src.indexOf("function buildBar2()"));
+  for (const control of ['data-a="array-rect"', 'data-a="array-polar"']) assert.ok(bar.includes(control), `missing ribbon control ${control}`);
+  assert.ok(src.includes('"array-rect": () => executeDrawingCommand("ARRAY")'), "rectangular array action not wired");
+  assert.ok(src.includes('"array-polar": () => executeDrawingCommand("ARRAYPOLAR")'), "polar array action not wired");
+});
+t("quick selection accepts type, layer, colour, linetype and text filters", () => {
+  for (const filter of ['what === "COLOR"', 'what === "LINETYPE"', 'what === "TEXT"', 'mode === "COLOR"', 'mode === "LINETYPE"']) {
+    assert.ok(src.includes(filter), `selection filter missing: ${filter}`);
+  }
 });
 t("dimension family renders on canvas: angular, arc-length, diameter, center mark", () => {
   const render = src.slice(src.indexOf("function render("));
