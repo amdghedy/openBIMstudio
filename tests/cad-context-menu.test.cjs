@@ -22,8 +22,8 @@ const checks = [
   ["active placement and modify operations retain right-click confirm", /if \(pick\) \{ ev\.preventDefault\(\); confirmPickStep\(\); return; \}[\s\S]*?if \(mod\) \{ ev\.preventDefault\(\); confirmModStep\(\); return; \}/],
 ];
 let failed = 0;
-for (const [label, pattern] of checks) {
-  try { assert.match(source, pattern); console.log("  PASS " + label); }
+for (const [label, pattern, haystack = source] of checks) {
+  try { assert.match(haystack, pattern); console.log("  PASS " + label); }
   catch (error) { failed++; console.error("  FAIL " + label + ": " + error.message); }
 }
 console.log(`=== CAD context menu: ${checks.length - failed} passed, ${failed} failed ===`);
