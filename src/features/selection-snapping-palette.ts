@@ -116,7 +116,7 @@ function checkbox(label: string, checked: boolean, onChange: (v:boolean)=>void):
   wrap.append(input, el("span", label));
   return wrap;
 }
-function section(title: string): HTMLDivElement {
+function section(title: string): HTMLElement {
   const s = el("section");
   style(s, "border-top:1px solid #34445a;padding-top:10px;margin-top:10px");
   const h = el("div", title.toUpperCase());
