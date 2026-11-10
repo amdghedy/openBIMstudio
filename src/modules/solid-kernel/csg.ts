@@ -128,27 +128,97 @@ const distTo = (p: Pt3, pl: SupportPlane): number => dot(pl.normal, p) - pl.w;
  * NOTE: a single ray can double-count when it hits a shared triangle
  * edge; robust callers use isInsideRobust (majority vote).
  */
-export function pointInsideMesh(mesh: IndexedMesh, origin: Pt3, dir: Pt3): boolean {
-  let crossings = 0;
-  const eps = 1e-9;
-  for (const [ia, ib, ic] of mesh.faces) {
-    const v0 = mesh.vertices[ia], v1 = mesh.vertices[ib], v2 = mesh.vertices[ic];
-    const e1 = sub(v1, v0);
-    const e2 = sub(v2, v0);
-    const pv = cross(dir, e2);
-    const det = dot(e1, pv);
-    if (Math.abs(det) < eps) continue; // ray parallel to triangle
-    const inv = 1 / det;
-    const tv = sub(origin, v0);
-    const u = dot(tv, pv) * inv;
-    if (u < -eps || u > 1 + eps) continue;
-    const qv = cross(tv, e1);
-    const v = dot(dir, qv) * inv;
-    if (v < -eps || u + v > 1 + eps) continue;
-    const t = dot(e2, qv) * inv;
-    if (t > eps) crossings++;
+interface TriangleBounds {
+  minX:number; minY:number; minZ:number;
+  maxX:number; maxY:number; maxZ:number;
+}
+interface TriangleBvhNode extends TriangleBounds {
+  left:TriangleBvhNode|null;
+  right:TriangleBvhNode|null;
+  triangles:number[]|null;
+}
+export interface TriangleBvh {
+  readonly mesh:IndexedMesh;
+  readonly root:TriangleBvhNode|null;
+  readonly triangleCount:number;
+}
+const BVH_LEAF_SIZE=8;
+
+function triangleBounds(mesh:IndexedMesh,index:number):TriangleBounds {
+  const [ia,ib,ic]=mesh.faces[index],a=mesh.vertices[ia],b=mesh.vertices[ib],c=mesh.vertices[ic];
+  return {
+    minX:Math.min(a.x,b.x,c.x),minY:Math.min(a.y,b.y,c.y),minZ:Math.min(a.z,b.z,c.z),
+    maxX:Math.max(a.x,b.x,c.x),maxY:Math.max(a.y,b.y,c.y),maxZ:Math.max(a.z,b.z,c.z),
+  };
+}
+function mergeBounds(items:TriangleBounds[]):TriangleBounds {
+  return items.reduce((b,v)=>({
+    minX:Math.min(b.minX,v.minX),minY:Math.min(b.minY,v.minY),minZ:Math.min(b.minZ,v.minZ),
+    maxX:Math.max(b.maxX,v.maxX),maxY:Math.max(b.maxY,v.maxY),maxZ:Math.max(b.maxZ,v.maxZ),
+  }),{minX:Infinity,minY:Infinity,minZ:Infinity,maxX:-Infinity,maxY:-Infinity,maxZ:-Infinity});
+}
+function buildBvhNode(mesh:IndexedMesh,indices:number[],boundsByTriangle:TriangleBounds[]):TriangleBvhNode {
+  const bounds=mergeBounds(indices.map(i=>boundsByTriangle[i]));
+  if(indices.length<=BVH_LEAF_SIZE) return {...bounds,left:null,right:null,triangles:indices};
+  const sx=bounds.maxX-bounds.minX,sy=bounds.maxY-bounds.minY,sz=bounds.maxZ-bounds.minZ;
+  const axis:sx extends never ? never : "x"|"y"|"z" = sx>=sy&&sx>=sz?"x":sy>=sz?"y":"z";
+  const center=(i:number)=>{const b=boundsByTriangle[i];return axis==="x"?(b.minX+b.maxX)/2:axis==="y"?(b.minY+b.maxY)/2:(b.minZ+b.maxZ)/2;};
+  indices.sort((a,b)=>center(a)-center(b));
+  const mid=Math.floor(indices.length/2);
+  return {...bounds,left:buildBvhNode(mesh,indices.slice(0,mid),boundsByTriangle),right:buildBvhNode(mesh,indices.slice(mid),boundsByTriangle),triangles:null};
+}
+
+/** Build a reusable median-split triangle BVH for repeated ray/inside queries. */
+export function createTriangleBvh(mesh:IndexedMesh):TriangleBvh {
+  const triangleCount=mesh.faces.length;
+  if(!triangleCount) return {mesh,root:null,triangleCount:0};
+  const bounds=mesh.faces.map((_,i)=>triangleBounds(mesh,i));
+  return {mesh,root:buildBvhNode(mesh,Array.from({length:triangleCount},(_,i)=>i),bounds),triangleCount};
+}
+function rayIntersectsBounds(node:TriangleBounds,origin:Pt3,dir:Pt3,eps:number):boolean {
+  let near=eps,far=Number.POSITIVE_INFINITY;
+  for(const [o,d,min,max] of [[origin.x,dir.x,node.minX,node.maxX],[origin.y,dir.y,node.minY,node.maxY],[origin.z,dir.z,node.minZ,node.maxZ]] as number[][]) {
+    if(Math.abs(d)<1e-15) {if(o<min-eps||o>max+eps)return false;continue;}
+    let a=(min-eps-o)/d,b=(max+eps-o)/d;
+    if(a>b){const t=a;a=b;b=t;}
+    near=Math.max(near,a);far=Math.min(far,b);
+    if(far<near)return false;
   }
-  return crossings % 2 === 1;
+  return far>eps;
+}
+function rayHitsTriangle(mesh:IndexedMesh,index:number,origin:Pt3,dir:Pt3,eps:number):boolean {
+  const [ia,ib,ic]=mesh.faces[index],v0=mesh.vertices[ia],v1=mesh.vertices[ib],v2=mesh.vertices[ic];
+  const e1=sub(v1,v0),e2=sub(v2,v0),pv=cross(dir,e2),det=dot(e1,pv);
+  if(Math.abs(det)<eps)return false;
+  const inv=1/det,tv=sub(origin,v0),u=dot(tv,pv)*inv;
+  if(u < -eps || u > 1+eps)return false;
+  const qv=cross(tv,e1),v=dot(dir,qv)*inv;
+  if(v < -eps || u+v > 1+eps)return false;
+  return dot(e2,qv)*inv>eps;
+}
+
+/** Cast a ray through a previously built BVH; triangle predicate is unchanged. */
+export function pointInsideMeshWithBvh(bvh:TriangleBvh,origin:Pt3,dir:Pt3):boolean {
+  if(!bvh.root)return false;
+  const eps=1e-9;
+  let crossings=0;
+  const stack:TriangleBvhNode[]=[bvh.root];
+  while(stack.length) {
+    const node=stack.pop()!;
+    if(!rayIntersectsBounds(node,origin,dir,eps))continue;
+    if(node.triangles) {
+      for(const index of node.triangles) if(rayHitsTriangle(bvh.mesh,index,origin,dir,eps))crossings++;
+    } else {
+      if(node.left)stack.push(node.left);
+      if(node.right)stack.push(node.right);
+    }
+  }
+  return crossings%2===1;
+}
+
+/** Compatibility helper: builds a temporary BVH for a single ray query. */
+export function pointInsideMesh(mesh:IndexedMesh,origin:Pt3,dir:Pt3):boolean {
+  return pointInsideMeshWithBvh(createTriangleBvh(mesh),origin,dir);
 }
 
 /**
@@ -158,17 +228,23 @@ export function pointInsideMesh(mesh: IndexedMesh, origin: Pt3, dir: Pt3): boole
  * point to be edge-aligned in all 3 families simultaneously (degenerate
  * by construction for BIM geometry).
  */
-export function isInsideRobust(mesh: IndexedMesh, p: Pt3): boolean {
-  const dirs: Array<[number, number, number]> = [
-    [2, 3, 5], [-3, 5, 2], [5, -2, 3],
-  ];
-  let inside = 0;
-  for (const d0 of dirs) {
-    const l = Math.hypot(d0[0], d0[1], d0[2]);
-    const dir: Pt3 = { x: d0[0] / l, y: d0[1] / l, z: d0[2] / l };
-    if (pointInsideMesh(mesh, p, dir)) inside++;
-  }
-  return inside >= 2; // majority of 3
+/** Create a reusable robust inside-solid tester; build cost is paid once for many probes. */
+export function createRobustInsideTester(mesh:IndexedMesh):(p:Pt3)=>boolean {
+  const bvh=createTriangleBvh(mesh);
+  return (p:Pt3):boolean=>{
+    const dirs:Array<[number,number,number]>=[[2,3,5],[-3,5,2],[5,-2,3]];
+    let inside=0;
+    for(const d0 of dirs) {
+      const l=Math.hypot(d0[0],d0[1],d0[2]);
+      const dir:Pt3={x:d0[0]/l,y:d0[1]/l,z:d0[2]/l};
+      if(pointInsideMeshWithBvh(bvh,p,dir))inside++;
+    }
+    return inside>=2;
+  };
+}
+/** Compatibility helper for one-off queries. Reuse createRobustInsideTester for batches. */
+export function isInsideRobust(mesh:IndexedMesh,p:Pt3):boolean {
+  return createRobustInsideTester(mesh)(p);
 }
 
 // ── Convex splitting primitive ──────────────────────────────────────────
