@@ -484,8 +484,91 @@ function resolveProfileRef(ref: NumberRef, params: Any): number {
   return value;
 }
 
-/** Adapt the supported shared BIM family cross-sections to the adaptive sweep profile. */
-function profileFromFamilyType(familyId: string, typeId: string): { name: string; profile: ProfilePt[] } {
+function profileFromSpec(spec: Any, params: Any): ProfilePt[] {
+  if (spec?.kind === "rect") {
+    return rectangleProfile(resolveProfileRef(spec.w, params), resolveProfileRef(spec.h, params));
+  }
+  if (spec?.kind === "circle") {
+    return circleProfile(resolveProfileRef(spec.r, params), spec.segments ?? 24);
+  }
+  if (spec?.kind === "polygon" && Array.isArray(spec.points)) {
+    return spec.points.map((point: number[]) => ({ u: Number(point[0]), v: Number(point[1]) }));
+  }
+  throw new Error("Unsupported adaptive extrusion profile");
+}
+
+/** Apply the part's supported in-plane transform before sweeping the section. */
+function transformFamilyProfile(
+  profile: ProfilePt[],
+  transform: Any,
+  params: Any,
+): ProfilePt[] {
+  if (!transform) return profile;
+  const rotate = transform.rotate ?? [];
+  const rx = rotate[0] ? resolveProfileRef(rotate[0], params) : 0;
+  const ry = rotate[1] ? resolveProfileRef(rotate[1], params) : 0;
+  const rz = rotate[2] ? resolveProfileRef(rotate[2], params) : 0;
+  if (Math.abs(rx) > 1e-8 || Math.abs(rz) > 1e-8) {
+    throw new Error("Adaptive compound sections currently support in-plane rotation about the family Y axis only");
+  }
+  const scale = transform.scale ?? [];
+  const sx = scale[0] ? resolveProfileRef(scale[0], params) : 1;
+  const sz = scale[2] ? resolveProfileRef(scale[2], params) : 1;
+  if (!(sx > 0) || !(sz > 0)) throw new Error("Adaptive compound profile scales must be positive");
+  const translate = transform.translate ?? [];
+  const tx = translate[0] ? resolveProfileRef(translate[0], params) : 0;
+  const tz = translate[2] ? resolveProfileRef(translate[2], params) : 0;
+  const c = Math.cos(ry), si = Math.sin(ry);
+  return profile.map((point) => {
+    const u = point.u * sx, v = point.v * sz;
+    return { u: u * c + v * si + tx, v: -u * si + v * c + tz };
+  });
+}
+
+function profilesFromFamilyGeometry(
+  geometry: Any,
+  params: Any,
+): AdaptiveProfilePart[] {
+  if (!geometry || typeof geometry !== "object") throw new Error("Family geometry is missing");
+  if (geometry.kind === "composed") {
+    if (!Array.isArray(geometry.parts) || geometry.parts.length === 0) throw new Error("Composed family has no geometry parts");
+    return geometry.parts.flatMap((part: Any) => profilesFromFamilyGeometry(part, params));
+  }
+  if (geometry.kind === "custom") {
+    const adapter = adaptiveCustomProfileAdapters.get(String(geometry.builder ?? ""));
+    if (!adapter) {
+      throw new Error("Custom family builder '" + String(geometry.builder ?? "") + "' has no registered adaptive profile adapter");
+    }
+    const parts = adapter(params, (ref) => resolveNumber(ref, params), geometry);
+    if (!Array.isArray(parts) || parts.length === 0 || parts.length > 64) {
+      throw new Error("Custom adaptive profile adapter must return 1 to 64 section parts");
+    }
+    for (const part of parts) validateProfile(part.profile);
+    return clone(parts);
+  }
+  let profile: ProfilePt[];
+  if (geometry.kind === "box") {
+    profile = rectangleProfile(resolveProfileRef(geometry.w, params), resolveProfileRef(geometry.d, params));
+  } else if (geometry.kind === "cylinder") {
+    profile = circleProfile(resolveProfileRef(geometry.r, params), geometry.segments ?? 24);
+  } else if (geometry.kind === "extrusion") {
+    if (Array.isArray(geometry.holes) && geometry.holes.length) {
+      throw new Error("Extrusion profiles with voids require a custom adaptive profile adapter");
+    }
+    profile = profileFromSpec(geometry.profile, params);
+  } else {
+    throw new Error("Unsupported shared family geometry kind '" + String(geometry.kind) + "'");
+  }
+  profile = transformFamilyProfile(profile, geometry.transform, params);
+  validateProfile(profile);
+  return [{ profile, name: geometry.kind }];
+}
+
+/** Resolve a shared family type into every supported cross-section part. */
+function profileFromFamilyType(
+  familyId: string,
+  typeId: string,
+): { name: string; profile: ProfilePt[]; profileParts: AdaptiveProfilePart[] } {
   const familyService = (ctx.features as Any)?.family;
   if (!familyService || typeof familyService.get !== "function" || typeof familyService.resolveParams !== "function") {
     throw new Error("The shared family/type service is not ready");
@@ -496,28 +579,9 @@ function profileFromFamilyType(familyId: string, typeId: string): { name: string
   if (!type) throw new Error("The selected shared family type no longer exists");
   const params = familyService.resolveParams(familyId, typeId);
   if (!params) throw new Error("The selected shared family type could not be resolved");
-  const geometry = family.geometry as Any;
-  let profile: ProfilePt[];
-  if (geometry?.kind === "box") {
-    profile = rectangleProfile(resolveProfileRef(geometry.w, params), resolveProfileRef(geometry.d, params));
-  } else if (geometry?.kind === "cylinder") {
-    profile = circleProfile(resolveProfileRef(geometry.r, params), geometry.segments ?? 24);
-  } else if (geometry?.kind === "extrusion") {
-    const spec = geometry.profile as Any;
-    if (spec?.kind === "rect") {
-      profile = rectangleProfile(resolveProfileRef(spec.w, params), resolveProfileRef(spec.h, params));
-    } else if (spec?.kind === "circle") {
-      profile = circleProfile(resolveProfileRef(spec.r, params), spec.segments ?? 24);
-    } else if (spec?.kind === "polygon" && Array.isArray(spec.points)) {
-      profile = spec.points.map((point: number[]) => ({ u: Number(point[0]), v: Number(point[1]) }));
-    } else {
-      throw new Error("Only rectangular, circular and polygon extrusion profiles can drive adaptive components");
-    }
-  } else {
-    throw new Error("This shared family geometry cannot currently be mapped to an adaptive sweep profile");
-  }
-  validateProfile(profile);
-  return { name: family.name + " · " + type.name, profile };
+  const profileParts = profilesFromFamilyGeometry(family.geometry, params);
+  const profile = clone(profileParts[0].profile);
+  return { name: family.name + " · " + type.name, profile, profileParts };
 }
 
 export function getAdaptiveFamilyTypeChoices(): AdaptiveFamilyTypeChoice[] {
@@ -546,6 +610,7 @@ export function bindAdaptiveFamilyType(elementId: string, familyId: string, type
   return updateAdaptiveElement(elementId, {
     familyName: resolved.name,
     profile: resolved.profile,
+    profileParts: resolved.profileParts,
     familyBinding: { familyId, typeId },
   });
 }
@@ -563,9 +628,9 @@ export async function propagateAdaptiveFamilyTypes(): Promise<number> {
     if (!binding) continue;
     try {
       const resolved = profileFromFamilyType(binding.familyId, binding.typeId);
-      if (JSON.stringify(resolved.profile) !== JSON.stringify(definition.profile) ||
+      if (JSON.stringify(resolved.profileParts) !== JSON.stringify(definition.profileParts ?? [{ profile: definition.profile }]) ||
           resolved.name !== definition.familyName) {
-        changes.push({ id: element.id, profile: resolved.profile, name: resolved.name });
+        changes.push({ id: element.id, profile: resolved.profile, profileParts: resolved.profileParts, name: resolved.name });
       }
     } catch (error) {
       console.warn("[adaptive] linked family type could not be propagated", element.id, error);
@@ -576,7 +641,7 @@ export async function propagateAdaptiveFamilyTypes(): Promise<number> {
   try {
     await history.transaction("Propagate shared adaptive family type changes", async () => {
       for (const change of changes) {
-        updateAdaptiveElement(change.id, { profile: change.profile, familyName: change.name });
+        updateAdaptiveElement(change.id, { profile: change.profile, profileParts: change.profileParts, familyName: change.name });
       }
     });
   } finally {
@@ -677,6 +742,7 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
     familyName: linkedProfile?.name ?? patch.familyName ?? beforeDefinition.familyName,
     points: patch.points ? clone(patch.points) : beforeDefinition.points,
     profile: linkedProfile?.profile ?? (patch.profile ? clone(patch.profile) : beforeDefinition.profile),
+    profileParts: linkedProfile?.profileParts ?? (patch.profile ? undefined : patch.profileParts ? clone(patch.profileParts) : beforeDefinition.profileParts),
     pointCount: patch.points ? patch.points.length : beforeDefinition.pointCount,
     pointLength: patch.pointLength ?? beforeDefinition.pointLength,
     constraints: patch.constraints ? clone(patch.constraints) : beforeDefinition.constraints,
