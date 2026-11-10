@@ -12,7 +12,7 @@ const checks = [
   ["custom profile persistence", palette.includes("obs.drafting-profiles.v1") && palette.includes("persistProfiles")],
   ["configurable snap priority API", snapping.includes("setPriority(type: SnapType") && snapping.includes("this.priorities as Record<string, number>")],
   ["snap priorities bounded and validated", snapping.includes("Math.max(0, Math.min(1000")],
-  ["selection category filter applied to real pointer picks", selection.includes("passesCategoryFilter(hit.modelId, hit.localId)")],
+  ["selection category filter applied to real pointer picks and hover", selection.includes("passesCategoryFilter(hit.modelId, hit.localId)") && selection.includes("passesCategoryFilter(modelId, localId)")],
   ["category index cached per linked model and invalidated on model replacement", selection.includes("categoryCache = new Map") && selection.includes("cached.model !== model")],
   ["category filter applied to authored native picks", selection.includes("matchesAuthoredCategoryFilter") && read("src/features/authoring.ts").includes("selection.matchesAuthoredCategoryFilter")],
   ["temporary Alt snap suspension", palette.includes('e.key === "Alt"') && palette.includes("snapping.setSuspended(false)")],
