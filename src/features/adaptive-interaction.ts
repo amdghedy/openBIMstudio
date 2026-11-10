@@ -167,7 +167,7 @@ function armWorkPlaneFromFace(event: MouseEvent | PointerEvent): boolean {
   const face = {
     ...(elementId ? { elementId } : {}),
     ...(meshIndex >= 0 ? { meshIndex } : {}),
-    ...(Number.isInteger(hit.faceIndex) ? { faceIndex: hit.faceIndex } : {}),
+    ...(typeof hit.faceIndex === "number" && Number.isInteger(hit.faceIndex) ? { faceIndex: hit.faceIndex } : {}),
     localOrigin: [localOrigin.x, localOrigin.y, localOrigin.z] as [number, number, number],
     localNormal: [localNormal.x, localNormal.y, localNormal.z] as [number, number, number],
   };
