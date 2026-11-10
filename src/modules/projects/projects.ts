@@ -30,6 +30,18 @@ let current: ProjectDoc | null = null;
 let dirty = false;
 let detachedModels = 0;
 const listeners = new Set<() => void>();
+let workPlaneListenerInstalled = false;
+let restoringWorkPlanes = false;
+
+async function restoreProjectWorkPlanes(snapshot: ProjectDoc["workPlanes"]): Promise<void> {
+  restoringWorkPlanes = true;
+  try {
+    const workPlanes = await import("../work-planes/types");
+    workPlanes.restoreWorkPlanes(snapshot ?? { schemaVersion: 1, activeId: null, planes: [] });
+  } finally {
+    restoringWorkPlanes = false;
+  }
+}
 
 export function getCurrentProject() { return current; }
 export function isDirty() { return dirty; }
@@ -283,8 +295,7 @@ export async function createProject(name: string, options: CreateProjectOptions 
     setIssues([]); setCostData(null);
     setGrids([]); setLevels([]);
     try {
-      const workPlanes = await import("../work-planes/types");
-      workPlanes.restoreWorkPlanes({ schemaVersion: 1, activeId: null, planes: [] });
+      await restoreProjectWorkPlanes({ schemaVersion: 1, activeId: null, planes: [] });
     } catch (e) { console.warn("[projects] work plane reset failed", e); }
     dirty = false;
 
@@ -402,8 +413,7 @@ export async function openProject(id: string) {
     setLevels(doc.levels ?? []);
     setElements(doc.elements ?? []);
     try {
-      const workPlanes = await import("../work-planes/types");
-      workPlanes.restoreWorkPlanes(doc.workPlanes ?? { schemaVersion: 1, activeId: null, planes: [] });
+      await restoreProjectWorkPlanes(doc.workPlanes);
     } catch (e) { console.warn("[projects] work plane restore failed", e); }
     try {
       const lifecycle = (ctx.features as any).mep?.lifecycle;
@@ -576,6 +586,12 @@ export function onModelImported(modelId: string, name: string, bytes: Uint8Array
    Setup
    ═════════════════════════════════════════════════════════════════════════ */
 export function setupProjects() {
+  if (!workPlaneListenerInstalled) {
+    window.addEventListener("obs:work-plane-changed", () => {
+      if (!restoringWorkPlanes) markDirty();
+    });
+    workPlaneListenerInstalled = true;
+  }
   ctx.features.projects = {
     getCurrentProject, isDirty, createProject, openProject,
     deleteProjectById, saveProject, onModelImported, markDirty,
