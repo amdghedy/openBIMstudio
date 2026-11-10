@@ -345,6 +345,29 @@ async function main() {
     Math.min(...api.getDefinition(customInstance.id).profileParts[0].profile.map((point) => point.u)), 0.5);
 
 
+  // A manually-defined arbitrary work plane is retained with its own plane constraints.
+  const planeLocked = api.create({
+    familyId: "custom-work-plane",
+    familyName: "Custom work plane",
+    points: [p(0, 3, 0), p(2, 3, 0)],
+    profile: square(0.1),
+    constraints: [
+      { kind: "plane", pointIndex: 0, origin: p(0, 1, 0), normal: p(0, 1, 0) },
+      { kind: "plane", pointIndex: 1, origin: p(0, 1, 0), normal: p(0, 1, 0) },
+    ],
+    workPlane: {
+      id: "custom-wp",
+      name: "Custom section plane",
+      origin: p(0, 1, 0),
+      normal: p(0, 1, 0),
+      rotation: Math.PI / 6,
+    },
+  });
+  assert.equal(api.getDefinition(planeLocked.id).workPlane.rotation, Math.PI / 6);
+  near(api.getDefinition(planeLocked.id).points[0].y, 1);
+  near(api.getDefinition(planeLocked.id).points[1].y, 1);
+  assert.equal(api.getDefinition(planeLocked.id).constraints[0].kind, "plane");
+
   // Persistent face locks rebind their saved local face plane when the host moves.
   const faceLocked = api.create({
     familyId: "face-locked",
