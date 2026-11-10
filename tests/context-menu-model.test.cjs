@@ -44,4 +44,16 @@ t("Delete is the only danger item and sits last in the Modify flyout",()=>{
 t("selection label reflects authored vs linked selection; Native Twin / Properties follow selection",()=>{
   assert.strictEqual(m.buildContextMenu(deps({authoredCount:3}))[0].text,"Authored: 3 element(s)");assert.strictEqual(m.buildContextMenu(deps({linkedCount:2}))[0].text,"Selection: 2 item(s)");
   const e=m.buildContextMenu(deps());assert.ok(acts(e).find(a=>a.text==="Make Editable Native Twin").disabled);const s=m.buildContextMenu(deps({linkedCount:1}));assert.ok(!acts(s).find(a=>a.text==="Properties").disabled)});
+t("3D context menu exposes explicit selected-object navigation and visibility actions",()=>{
+  calls.length=0;
+  const items=m.buildContextMenu(deps({authoredCount:1}));
+  const view=sub(items,"View"),vis=sub(items,"Visibility");
+  assert.ok(acts(view).some(a=>a.text==="Zoom to Selected"&&!a.disabled));
+  assert.ok(acts(vis).some(a=>a.text==="Hide Selected"&&!a.disabled));
+  assert.ok(acts(vis).some(a=>a.text==="Isolate Selected"&&!a.disabled));
+  assert.ok(acts(vis).some(a=>a.text==="Show All / Reveal Hidden Elements"&&!a.disabled));
+  acts(view).find(a=>a.text==="Zoom to Selected").onclick();
+  acts(vis).find(a=>a.text==="Hide Selected").onclick();
+  assert.deepStrictEqual(calls,[["cmd","review.focus"],["cmd","review.hide"]]);
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);
