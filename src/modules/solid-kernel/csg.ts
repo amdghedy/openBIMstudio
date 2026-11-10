@@ -132,7 +132,7 @@ interface TriangleBounds {
   minX:number; minY:number; minZ:number;
   maxX:number; maxY:number; maxZ:number;
 }
-interface TriangleBvhNode extends TriangleBounds {
+export interface TriangleBvhNode extends TriangleBounds {
   left:TriangleBvhNode|null;
   right:TriangleBvhNode|null;
   triangles:number[]|null;
