@@ -114,7 +114,7 @@ type Tool =
 
 interface GripSpec {
   elementId: string;
-  kind: "start" | "end" | "vertex" | "point" | "point-footprint" | "hosted-offset";
+  kind: "start" | "end" | "vertex" | "edge-midpoint" | "point" | "point-footprint" | "hosted-offset";
   vertexIndex?: number;
   footprintGrip?: FootprintGrip;
   position: THREE.Vector3;
@@ -2637,7 +2637,12 @@ function buildGripsFor(el: AuthoredElement): GripSpec[] {
     const footprint = pointFootprintHandles({ point: [p.point[0], p.point[1]], width, depth });
     for (const h of footprint) addGrip("point-footprint", new THREE.Vector3(h.point[0], p.elevation, h.point[1]), undefined, h.grip);
   } else if (p.polygon) {
-    p.polygon.forEach((v, i) => addGrip("vertex", new THREE.Vector3(v[0], p.elevation, v[1]), i));
+    p.polygon.forEach((v, i) => {
+      const next = p.polygon[(i + 1) % p.polygon.length];
+      addGrip("vertex", new THREE.Vector3(v[0], p.elevation, v[1]), i);
+      // Mid-edge grips let users pull a new boundary point out of an edge.
+      addGrip("edge-midpoint", new THREE.Vector3((v[0] + next[0]) / 2, p.elevation, (v[1] + next[1]) / 2), i);
+    });
   }
 
   if ((el.type === "door" || el.type === "window") && el.hostId) {
@@ -2835,13 +2840,16 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
       p[widthKey] = resized.width;
       p.depth = resized.depth;
     }
-  } else if (kind === "vertex" && p.polygon && vertexIndex !== undefined) {
+  } else if ((kind === "vertex" || kind === "edge-midpoint") && p.polygon && vertexIndex !== undefined) {
     const basePolygon = (gripDrag.snapshot as any).polygon as [number, number][] | undefined;
-    const candidate = (basePolygon ?? p.polygon).map((v: [number, number]) => [...v] as [number, number]);
-    candidate[vertexIndex] = [x, z];
-    p.polygon = isValidBoundary(candidate)
-      ? candidate
-      : (basePolygon ?? p.polygon).map((v: [number, number]) => [...v] as [number, number]);
+    const source = basePolygon ?? p.polygon;
+    const candidate = source.map((v: [number, number]) => [...v] as [number, number]);
+    if (kind === "vertex") candidate[vertexIndex] = [x, z];
+    else candidate.splice(vertexIndex + 1, 0, [x, z]);
+    // Invalid edits retain the last valid geometry; midpoint drags insert a
+    // real vertex only once the proposed boundary is valid.
+    if (isValidBoundary(candidate)) p.polygon = candidate;
+    else p.polygon = source.map((v: [number, number]) => [...v] as [number, number]);
   }
 
   // Magnetic join: a dragged end of a wall/beam/strip/duct/pipe/tray/conduit locks onto a nearby free end of
