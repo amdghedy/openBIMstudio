@@ -248,20 +248,84 @@ function meshForDefinition(definition: AdaptiveElementDefinition, color = "#60a5
   return group;
 }
 
+/**
+ * Resolve saved picked-face references against the current authored source mesh.
+ * The reference is stored in source-mesh local coordinates; on every rebuild we
+ * transform its point and normal back to world coordinates. If the source is
+ * missing, the last saved world plane remains the safe fallback.
+ */
+function resolveAdaptiveFaceLocks(definition: AdaptiveElementDefinition): AdaptiveElementDefinition {
+  const auth = authoring();
+  const authoredGroup = auth?.getAuthoredGroup?.() as THREE.Object3D | undefined;
+  if (!authoredGroup) return clone(definition);
+  const resolved = clone(definition);
+
+  const resolveReference = (face: AdaptiveWorkPlaneSnapshot["face"]): { origin: Pt3; normal: Pt3 } | null => {
+    if (!face?.elementId || !face.localOrigin || !face.localNormal) return null;
+    const candidates: THREE.Mesh[] = [];
+    authoredGroup.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      let node: THREE.Object3D | null = mesh;
+      let ownerId = "";
+      while (node && !ownerId) {
+        ownerId = String(node.userData?.elementId ?? "");
+        node = node.parent;
+      }
+      if (ownerId === face.elementId) candidates.push(mesh);
+    });
+    const mesh = candidates[face.meshIndex ?? 0] ?? candidates[0];
+    if (!mesh) return null;
+    mesh.updateWorldMatrix(true, false);
+    const localOrigin = new THREE.Vector3(face.localOrigin.x, face.localOrigin.y, face.localOrigin.z);
+    const worldOrigin = mesh.localToWorld(localOrigin);
+    const normalMatrix = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
+    const worldNormal = new THREE.Vector3(face.localNormal.x, face.localNormal.y, face.localNormal.z)
+      .applyMatrix3(normalMatrix)
+      .normalize();
+    return {
+      origin: { x: worldOrigin.x, y: worldOrigin.y, z: worldOrigin.z },
+      normal: { x: worldNormal.x, y: worldNormal.y, z: worldNormal.z },
+    };
+  };
+
+  for (const constraint of resolved.constraints ?? []) {
+    if (constraint.kind !== "face-lock" || !constraint.face) continue;
+    const plane = resolveReference(constraint.face);
+    if (!plane) continue;
+    constraint.origin = plane.origin;
+    constraint.normal = plane.normal;
+  }
+  if (resolved.workPlane?.face) {
+    const plane = resolveReference(resolved.workPlane.face);
+    if (plane) {
+      resolved.workPlane.origin = plane.origin;
+      resolved.workPlane.normal = plane.normal;
+    }
+  }
+  return resolved;
+}
+
 /** Mesh-builder hook used by authoring.ts when it rebuilds an authored element. */
 export function buildAdaptiveElementMesh(element: Any): THREE.Object3D | null {
   const definition = element?.properties?.adaptiveDefinition as AdaptiveElementDefinition | undefined;
   if (!definition) return null;
   try {
-    const group = meshForDefinition(definition, String(element.color ?? "#60a5fa"));
+    const resolvedDefinition = resolveAdaptiveFaceLocks(definition);
+    const group = meshForDefinition(resolvedDefinition, String(element.color ?? "#60a5fa"));
     group.traverse((object) => {
       object.userData.elementId = element.id;
       object.userData.baseColor = element.color || "#60a5fa";
       object.userData.adaptiveComponent = true;
     });
+    // The source face may have moved since placement. Persist its re-resolved
+    // world plane while retaining the source-local anchor for future rebuilds.
+    if (JSON.stringify(resolvedDefinition) !== JSON.stringify(definition)) {
+      element.properties.adaptiveDefinition = clone(resolvedDefinition);
+    }
     // Keep a deterministic triangle-soup cache for the shared authored IFC
     // exporter. The editable definition remains the source of truth.
-    element.nativeGeometry = { positions: triangleSoupForDefinition(definition) };
+    element.nativeGeometry = { positions: triangleSoupForDefinition(resolvedDefinition) };
     return group;
   } catch (error) {
     console.warn("[adaptive] failed to rebuild native adaptive component", element?.id, error);
