@@ -408,25 +408,34 @@ async function placeCurrentPoint(event: MouseEvent | PointerEvent): Promise<void
   const current = placement;
   try {
     const activePlane = getActiveWorkPlane();
+    const faceReference = activePlane?.face ? {
+      ...(activePlane.face.elementId ? { elementId: activePlane.face.elementId } : {}),
+      ...(activePlane.face.meshIndex !== undefined ? { meshIndex: activePlane.face.meshIndex } : {}),
+      ...(activePlane.face.faceIndex !== undefined ? { faceIndex: activePlane.face.faceIndex } : {}),
+      ...(activePlane.face.localOrigin ? { localOrigin: { x: activePlane.face.localOrigin[0], y: activePlane.face.localOrigin[1], z: activePlane.face.localOrigin[2] } } : {}),
+      ...(activePlane.face.localNormal ? { localNormal: { x: activePlane.face.localNormal[0], y: activePlane.face.localNormal[1], z: activePlane.face.localNormal[2] } } : {}),
+    } : undefined;
     const faceConstraints = activePlane?.face
       ? current.points.map((_, pointIndex) => ({
           kind: "face-lock" as const,
           pointIndex,
           origin: { x: activePlane.origin[0], y: activePlane.origin[1], z: activePlane.origin[2] },
           normal: { x: activePlane.normal[0], y: activePlane.normal[1], z: activePlane.normal[2] },
-          face: {
-            ...(activePlane.face.elementId ? { elementId: activePlane.face.elementId } : {}),
-            ...(activePlane.face.meshIndex !== undefined ? { meshIndex: activePlane.face.meshIndex } : {}),
-            ...(activePlane.face.faceIndex !== undefined ? { faceIndex: activePlane.face.faceIndex } : {}),
-            ...(activePlane.face.localOrigin ? { localOrigin: { x: activePlane.face.localOrigin[0], y: activePlane.face.localOrigin[1], z: activePlane.face.localOrigin[2] } } : {}),
-            ...(activePlane.face.localNormal ? { localNormal: { x: activePlane.face.localNormal[0], y: activePlane.face.localNormal[1], z: activePlane.face.localNormal[2] } } : {}),
-          },
+          face: faceReference,
         }))
       : [];
+    const workPlane = activePlane ? {
+      id: activePlane.id,
+      name: activePlane.name,
+      origin: { x: activePlane.origin[0], y: activePlane.origin[1], z: activePlane.origin[2] },
+      normal: { x: activePlane.normal[0], y: activePlane.normal[1], z: activePlane.normal[2] },
+      ...(faceReference ? { face: faceReference } : {}),
+    } : undefined;
     const element = api.create({
       ...current.input,
       points: current.points,
       constraints: [...(current.input.constraints ?? []), ...faceConstraints],
+      ...(workPlane ? { workPlane } : {}),
     });
     finishPlacement(element);
     notify("success", "Placed native adaptive component: " + String(element?.name ?? current.input.familyName));
