@@ -253,8 +253,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LAYLCK", aliases: [], description: "Lock the layer of the picked object" },
   { name: "LAYUNLCK", aliases: ["LAYUNLOCK"], description: "Unlock the layer of the picked object" },
   { name: "MLEADER", aliases: ["MLD", "LE", "LEADER"], description: "Draw a leader line with annotation text: arrow point → landing end → type the text" },
-  { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type, layer, ACI/RGB colour, linetype, text content or all visible objects" },
-  { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour or linetype" },
+  { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type, layer, ACI/RGB colour, linetype, lineweight, text content or all visible objects" },
+  { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour, linetype or lineweight" },
   { name: "ARRAYPOLAR", aliases: ["ARP"], description: "Create a polar array around a centre point; choose item count, sweep angle and whether items rotate" },
   { name: "PEDIT", aliases: ["PE"], description: "Edit polylines: PEDIT J (join selection) · PEDIT C (close) · PEDIT O (open) · PEDIT R (reverse)" },
   { name: "CAL", aliases: ["QUICKCALC", "QC"], description: "Evaluate an expression: CAL 2*PI*25 · sin/cos/tan (degrees) · sqrt/abs/round/min/max" },
@@ -8064,14 +8064,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       } else if (what === "LINETYPE" && val) {
         const key = val.toUpperCase();
         ids = all.filter((i) => (ents[i].lineType ?? "BYLAYER").toUpperCase() === key);
+      } else if (what === "LINEWEIGHT" && val) {
+        if (/^(bylayer|default)$/i.test(val)) ids = all.filter((i) => ents[i].lineweight == null);
+        else {
+          const weight = Number(val);
+          if (Number.isFinite(weight) && weight >= 0) ids = all.filter((i) => ents[i].lineweight != null && Math.abs(ents[i].lineweight - weight) < 0.001);
+        }
       } else if (what === "TEXT" && val) {
         const q = val.toLowerCase();
         ids = all.filter((i) => ents[i].type === "TEXT" && ents[i].value.toLowerCase().includes(q));
       }
-      if (["ALL", "TYPE", "LAYER", "COLOR", "LINETYPE", "TEXT"].includes(what) && (what === "ALL" || !!val)) {
+      if (["ALL", "TYPE", "LAYER", "COLOR", "LINETYPE", "LINEWEIGHT", "TEXT"].includes(what) && (what === "ALL" || !!val)) {
         setSel(ids);
         logCmd(`QSELECT ${what}${val ? " " + val : ""}: ${ids.length} object(s) selected.`);
-      } else logCmd("QSELECT: use ALL · TYPE <entity> · LAYER <name> · COLOR <ACI|#RRGGBB|BYLAYER> · LINETYPE <name|BYLAYER> · TEXT <contains>.");
+      } else logCmd("QSELECT: use ALL · TYPE <entity> · LAYER <name> · COLOR <ACI|#RRGGBB|BYLAYER> · LINETYPE <name|BYLAYER> · LINEWEIGHT <mm|BYLAYER> · TEXT <contains>.");
       return;
     }
     if (cmd === "SELECTSIMILAR" || cmd === "SELSIM") {
@@ -8089,6 +8095,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (mode === "LAYER") return e.layer === candidate.layer;
         if (mode === "COLOR") return colorKey(e) === colorKey(candidate);
         if (mode === "LINETYPE") return (e.lineType ?? "BYLAYER").toUpperCase() === (candidate.lineType ?? "BYLAYER").toUpperCase();
+        if (mode === "LINEWEIGHT") return (e.lineweight ?? null) === (candidate.lineweight ?? null);
         return e.type === candidate.type && e.layer === candidate.layer;
       };
       const ids = ents.map((e, i) => ({ e, i })).filter(({ e }) => visible(e) && src.some((candidate) => matches(e, candidate))).map(({ i }) => i);
