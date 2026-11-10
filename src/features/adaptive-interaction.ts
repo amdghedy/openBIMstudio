@@ -659,7 +659,8 @@ function gripAt(event: MouseEvent | PointerEvent): { elementId: string; pointInd
   if (!gripRoot || !gripRoot.children.length) return null;
   const ray = rayFor(event);
   if (!ray) return null;
-  const hit = ray.intersectObjects(gripRoot.children, true)[0];
+  const hit = ray.intersectObjects(gripRoot.children, true)
+    .find((candidate) => candidate.object.userData?.adaptivePlacementGrip === true);
   if (!hit) return null;
   const object = hit.object as THREE.Object3D;
   const elementId = String(object.userData.elementId ?? "");
@@ -786,7 +787,17 @@ export function setupAdaptiveInteraction(targetApi: Any): Any {
         void placeCurrentPoint(gesture.event);
         return true;
       }
-      if (gesture.kind === "rmb-click") return workPlanePickArmed ? (workPlanePickArmed = false, true) : backspacePlacementPoint();
+      if (gesture.kind === "rmb-click") {
+        if (workPlanePickArmed) {
+          workPlanePickArmed = false;
+          const button = hud?.querySelector<HTMLButtonElement>("[data-work-plane]");
+          if (button) button.textContent = "Pick Work Plane";
+          const step = hud?.querySelector<HTMLElement>("[data-step]");
+          if (step) step.textContent = "Continue placing points on the active plane.";
+          return true;
+        }
+        return backspacePlacementPoint();
+      }
       return false;
     }
     if (gripDrag) {
