@@ -97,6 +97,11 @@ try {
   assert.strictEqual(newText.value, "3000.000");
   assert.ok(!batch.before.some((e) => e.meta.dimId !== "dim-test-1"), "restyle only touches its own dimension");
 
+  // ── Convert semantics (DIMUPDATE): record switched to another style rebuilds with that style ──
+  const rec2 = { ...rec, styleName: "ISO-25 Large" };
+  const conv = sys.buildDimEntities(rec2, styleMap.get("ISO-25 Large"), "3000.00");
+  assert.strictEqual(conv.find((e) => e.type === "TEXT").height, 5, "converted record rebuilds with the target style geometry");
+
   // ── endpointsOf coverage ──
   assert.strictEqual(sys.endpointsOf({ type: "LINE", layer: "0", start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }).length, 2);
   assert.strictEqual(sys.endpointsOf({ type: "LWPOLYLINE", layer: "0", points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }] }).length, 3);

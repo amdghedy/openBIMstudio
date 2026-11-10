@@ -8049,11 +8049,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       for (const i of sel) { const d = ents[i]?.meta?.dimId; if (d) ids.add(d); }
       if (!ids.size) { logCmd("DIMUPDATE: no associative dimensions in the selection."); return; }
       const targets = [...ids].map((id) => dimRecords.get(id)!).filter(Boolean);
+      if (!targets.length) { logCmd("DIMUPDATE: selected dimension ids have no records (pre-system dimension?)."); return; }
       const st = currentDimStyle();
-      const affected = targets.filter((r) => r.styleName === st.name);
-      if (!affected.length) { logCmd(`DIMUPDATE: selected dimensions use other styles than "${st.name}" — nothing to update.`); return; }
-      const batch = DIM.restyleBatch(affected, new Map(dimStyleList.map((s) => [s.name, s])), ents, (r, s) => dimTextFor(r, s));
-      if (batch.before.length) { commitReplace(batch.before, batch.after); logCmd(`DIMUPDATE: ${affected.length} dimension(s) re-rendered with style "${st.name}".`); }
+      const converted = targets.map((r) => (r.styleName === st.name ? r : { ...r, styleName: st.name }));
+      for (const rec of converted) dimRecords.set(rec.id, rec);
+      const batch = DIM.restyleBatch(converted, new Map(dimStyleList.map((s) => [s.name, s])), ents, (r, s) => dimTextFor(r, s));
+      if (batch.before.length) { commitReplace(batch.before, batch.after); logCmd(`DIMUPDATE: ${converted.length} dimension(s) re-rendered with style "${st.name}".`); }
       return;
     }
     if (cmd === "DIMALIGNED" || cmd === "DAL") { setTool("dim"); return; }
@@ -8660,21 +8661,32 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       suffix: gD("suf").value,
       linearScale: Math.max(1e-4, parseFloat(gD("lf").value) || 1),
     });
-    const applyStyleTo = (targets: DIM.DimRecord[], label: string): void => {
+    const applyStyleTo = (targets: DIM.DimRecord[], label: string, convert: boolean): void => {
       const st = currentDimStyle();
-      const affected = targets.filter((r) => r.styleName === st.name);
-      if (!affected.length) { logCmd(`No dimensions use style "${st.name}" — nothing to update.`); return; }
-      const batch = DIM.restyleBatch(affected, new Map(dimStyleList.map((s) => [s.name, s])), ents, (r, s) => dimTextFor(r, s));
+      if (!targets.length) { logCmd("No dimensions to update."); return; }
+      // convert=true (Apply buttons) switches the targeted dimensions to the
+      // current style (AutoCAD DIMUPDATE semantics); convert=false (Save)
+      // only re-renders dimensions that already use the edited style.
+      const converted = convert
+        ? targets.map((r) => (r.styleName === st.name ? r : { ...r, styleName: st.name }))
+        : targets.filter((r) => r.styleName === st.name);
+      if (!converted.length) {
+        logCmd(convert ? "No dimensions to update." : `No dimensions use style "${st.name}" — nothing to update.`);
+        return;
+      }
+      for (const rec of converted) dimRecords.set(rec.id, rec);
+      const batch = DIM.restyleBatch(converted, new Map(dimStyleList.map((s) => [s.name, s])), ents, (r, s) => dimTextFor(r, s));
       if (!batch.before.length) { logCmd("No dimension entities found to update."); return; }
       commitReplace(batch.before, batch.after);
-      logCmd(`${label}: ${affected.length} dimension(s) re-rendered with style "${st.name}".`);
+      const switched = convert ? converted.filter((r, i) => targets[i].styleName !== st.name).length : 0;
+      logCmd(`${label}: ${converted.length} dimension(s) re-rendered with style "${st.name}"${switched ? ` (${switched} converted)` : ""}.`);
     };
     gD("close").onclick = closeOverlay;
     gD("save").onclick = () => {
       const edits = readEdits();
       const i = dimStyleList.findIndex((s) => s.name === style.name);
       dimStyleList[i] = edits;
-      applyStyleTo([...dimRecords.values()], "DIMSTYLE");
+      applyStyleTo([...dimRecords.values()], "DIMSTYLE", false);
       logCmd(`DIMSTYLE: style "${style.name}" saved (ht ${edits.textHeight}, dec ${edits.precision}${edits.suffix ? `, suffix "${edits.suffix}"` : ""}${edits.linearScale !== 1 ? `, factor ${edits.linearScale}` : ""}).`);
       closeOverlay();
     };
@@ -8690,12 +8702,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         openDimStyleManager();
       });
     };
-    gD("applyall").onclick = () => { applyStyleTo([...dimRecords.values()], "DIMSTYLE (all)"); closeOverlay(); };
+    gD("applyall").onclick = () => { applyStyleTo([...dimRecords.values()], "DIMSTYLE (all)", true); closeOverlay(); };
     gD("applysel").onclick = () => {
       const ids = new Set<string>();
       for (const i of sel) { const d = ents[i]?.meta?.dimId; if (d) ids.add(d); }
       const targets = [...ids].map((id) => dimRecords.get(id)!).filter(Boolean);
-      applyStyleTo(targets, "DIMUPDATE");
+      applyStyleTo(targets, "DIMUPDATE", true);
       closeOverlay();
     };
     // Row click = switch the current style.
