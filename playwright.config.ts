@@ -9,6 +9,7 @@ export default defineConfig({
     port: 3000,
     timeout: 60000,
     reuseExistingServer: !process.env.CI,
+    timeout: 300000, // tsc + vite build of the whole app takes longer than the 60 s default
   },
   use: { baseURL: 'http://127.0.0.1:3000', video: 'retain-on-failure' },
   projects: [
