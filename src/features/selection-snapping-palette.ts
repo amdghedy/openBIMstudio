@@ -173,7 +173,7 @@ function render(): void {
   category.type = "text"; category.placeholder = "e.g. IfcWall, IfcDoor (blank = all)";
   category.value = (selection.getFilter() ?? []).join(", ");
   style(category, "width:100%;box-sizing:border-box;background:#111c2b;border:1px solid #40516a;color:#f1f5f9;border-radius:5px;padding:7px");
-  category.addEventListener("change", () => selection.setFilter(category.value.split(",").map(x=>x.trim()).filter(Boolean));
+  category.addEventListener("change", () => selection.setFilter(category.value.split(",").map(x=>x.trim()).filter(Boolean)));
   selectionSection.append(fieldLabel("IFC categories", category));
   body.append(selectionSection);
 
