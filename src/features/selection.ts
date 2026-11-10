@@ -181,6 +181,12 @@ class SelectionManager {
     }
 
     if (revision !== this.filterRevision || filter !== this.filter) return;
+    // A selection may be added on another model while category indexes are
+    // loading. Retry with the expanded model set instead of dropping that work.
+    if (Object.keys(this.map).some(modelId => !categoryByModel.has(modelId))) {
+      void this.reconcileFilter();
+      return;
+    }
     const next: SelectionSnapshot = {};
     for (const [modelId, ids] of Object.entries(this.map)) {
       const byId = categoryByModel.get(modelId);
