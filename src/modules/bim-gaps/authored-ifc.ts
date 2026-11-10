@@ -478,6 +478,45 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
       /* ---- vertical openings: exported alongside their slab hosts ---- */
       if (el.type === "vertical-opening") continue;
 
+      /* ---- native adaptive component: tessellated solid + editable definition Pset ---- */
+      if (el.type === "adaptive-component") {
+        const definition = el.properties?.adaptiveDefinition as Record<string, any> | undefined;
+        if (!definition || definition.schemaVersion !== 1) {
+          skip(el, "adaptive definition is missing or has an unsupported schema version");
+          continue;
+        }
+        const positions = el.nativeGeometry?.positions;
+        if (!positions || positions.length < 9) {
+          skip(el, "adaptive component has no regenerated tessellated geometry; rebuild the authored model before IFC export");
+          continue;
+        }
+        const storey = storeyFor(el.levelId, elev);
+        const baked = bakeTriangles(Array.from(positions), el.transform, storey);
+        if (!baked) {
+          skip(el, "adaptive component geometry has no valid triangles");
+          continue;
+        }
+        const cd = classFor("proxy", schema);
+        const pl = place(storey.pl, axisAt(0, 0, 0));
+        const id = f.add(cd.name, baseAttrs(el, el.id, pl, rep([baked.item], baked.repType), cd.tail, "AdaptiveComponent"));
+        emitted.set(el.id, { id, storey });
+        finishProduct(el, id, storey, cd.name, rgb, [baked.item]);
+        const jsonText = (value: unknown): string => JSON.stringify(value ?? null);
+        propertySet(id, "Pset_OBS_AdaptiveComponent", [
+          ["DefinitionSchemaVersion", `IFCINTEGER(${Number(definition.schemaVersion) || 1})`],
+          ["AdaptiveFamilyId", `IFCIDENTIFIER('${esc(String(definition.familyId ?? ""))}')`],
+          ["AdaptiveFamilyName", `IFCLABEL('${esc(String(definition.familyName ?? el.name ?? ""))}')`],
+          ["PlacementPointCount", `IFCINTEGER(${Number(definition.pointCount) || 0})`],
+          ["PlacementPointsJSON", `IFCTEXT('${esc(jsonText(definition.points))}')`],
+          ["ProfileJSON", `IFCTEXT('${esc(jsonText(definition.profile))}')`],
+          ["ProfilePartsJSON", `IFCTEXT('${esc(jsonText(definition.profileParts ?? [{ profile: definition.profile }]))}')`],
+          ["GeometricConstraintsJSON", `IFCTEXT('${esc(jsonText(definition.constraints ?? []))}')`],
+          ["WorkPlaneJSON", `IFCTEXT('${esc(jsonText(definition.workPlane))}')`],
+          ["FamilyBindingJSON", `IFCTEXT('${esc(jsonText(definition.familyBinding))}')`],
+        ], el.id + ":adaptive-definition");
+        continue;
+      }
+
       /* ---- native twin: baked triangles ---- */
       if (el.nativeGeometry?.positions && el.nativeGeometry.positions.length >= 9) {
         const storey = storeyFor(el.levelId, elev);
