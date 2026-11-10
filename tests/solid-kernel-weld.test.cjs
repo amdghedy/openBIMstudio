@@ -1,0 +1,26 @@
+/** Spatial-hash vertex welding regression and scale tests. */
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { execFileSync } = require("node:child_process");
+const root = path.resolve(__dirname, "..");
+const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-weld-"));
+execFileSync("npx", ["tsc", "--rootDir", "src", "--outDir", out, "--module", "commonjs", "--moduleResolution", "node", "--target", "ES2022", "--skipLibCheck", "--noCheck", "src/modules/solid-kernel/brep.ts"], { cwd: root, stdio: "pipe" });
+fs.writeFileSync(path.join(out, "package.json"), '{"type":"commonjs"}');
+const { weldVertices } = require(path.join(out, "modules/solid-kernel/brep.js"));
+const solid = (vertices, faces=[]) => ({ id:"test", vertices, faces:faces.map((loop,i)=>({id:"f"+i,loop,surface:"general"})), edges:new Map() });
+const v = (x,y=0,z=0) => ({x,y,z});
+assert.equal(weldVertices(solid([v(0),v(0.5e-9),v(1.5e-9)])).vertices.length,2);
+assert.equal(weldVertices(solid([v(0.99e-9),v(1.01e-9)])).vertices.length,1);
+assert.equal(weldVertices(solid([v(0),v(0.9e-9,0.9e-9,0.9e-9)])).vertices.length,1);
+assert.deepEqual(weldVertices(solid([v(0),v(1.5e-9),v(0.75e-9)])).vertices,[v(0),v(1.5e-9)]);
+const remapped = weldVertices(solid([v(0),v(1),v(0),v(0,1),v(0,0,1)],[[0,1,3,4],[0,2,3]]));
+assert.equal(remapped.faces.length,1);
+assert.deepEqual(remapped.faces[0].loop,[0,1,2,3]);
+assert.ok(remapped.edges.size>0);
+assert.equal(weldVertices(solid([v(0),v(0),v(1)]),0).vertices.length,2);
+assert.equal(weldVertices(solid([v(0),v(0),v(1)]),-1).vertices.length,3);
+const points=Array.from({length:60000},(_,i)=>v(i*0.01,(i%17)*0.01,0));
+assert.equal(weldVertices(solid(points)).vertices.length,points.length);
+console.log("PASS: spatial-hash vertex welding regression and 60k vertex scale test");
