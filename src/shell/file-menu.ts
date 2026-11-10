@@ -13,6 +13,7 @@ import { settingsBox } from "../features/importer";
 import { exportFragFromMenu } from "../modules/export/frag";
 import { uiAlert } from "../core/notify";
 import { fmtDateTime } from "../core/region";
+import { togglePlanView, isPlanViewVisible } from "../features/plan-view-panel";
 
 const menu = document.createElement("div");
 menu.style.cssText = "position:fixed;top:100px;left:10px;width:760px;max-width:calc(100vw - 20px);z-index:250;display:none;background:#1b1c26;border:1px solid #34353f;border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.6);color:#e2e8f0;font:12px system-ui,sans-serif;overflow:hidden";
@@ -21,6 +22,47 @@ menu.addEventListener("mousedown", (e) => e.stopPropagation());
 const BTN = "display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;background:transparent;color:#dbe2ea;border:none;border-radius:6px;cursor:pointer;font:500 12.5px system-ui,sans-serif;text-align:left";
 const BTN_H = BTN + ";background:#24252f";
 const SECTION = "font:700 10px system-ui,sans-serif;color:#64748b;text-transform:uppercase;letter-spacing:.6px;padding:10px 12px 4px";
+
+/**
+ * Green/red zone system — the File menu is partitioned the way the app is
+ * partitioned: the 🟢 3D MODEL ZONE owns files/options/info for the model
+ * world, the 🔴 2D DOCS ZONE owns the plan/sheets/P&ID/Print counterparts.
+ */
+type Zone = "3d" | "2d" | "app";
+const ZONE_COLOR: Record<Zone, string> = { "3d": "#22c55e", "2d": "#ef4444", app: "#64748b" };
+
+function zoneHeader(zone: Zone, text: string): HTMLElement {
+  const h = document.createElement("div");
+  const c = ZONE_COLOR[zone];
+  h.style.cssText =
+    `display:flex;align-items:center;gap:7px;margin:12px 8px 4px;padding:6px 10px;` +
+    `border-radius:7px;border:1px solid ${c}44;background:${c}14;` +
+    `font:700 10.5px system-ui,sans-serif;color:${c};text-transform:uppercase;letter-spacing:.8px`;
+  h.innerHTML =
+    `<span style="width:9px;height:9px;border-radius:50%;background:${c};box-shadow:0 0 6px ${c}88;flex:none"></span>` +
+    `<span style="flex:1">${esc(text)}</span>` +
+    `<span style="font:600 9px system-ui;color:${c};opacity:.75;border:1px solid ${c}55;border-radius:4px;padding:1px 5px">${zone === "3d" ? "3D" : zone === "2d" ? "2D" : "APP"}</span>`;
+  h.title =
+    zone === "3d"
+      ? "Green zone — everything that acts on the 3D model world: files, options, history and model info"
+      : zone === "2d"
+        ? "Red zone — 2D documentation counterparts: floor plan, sheets, P&ID and print output"
+        : "Application-level commands that leave a project";
+  return h;
+}
+
+function zitem(zone: Zone, icon: string, label: string, onclick: () => void, hint = "", danger = false): HTMLElement {
+  const b = item(icon, label, onclick, hint, danger);
+  const c = ZONE_COLOR[zone];
+  // item() resets cssText on hover — re-own the handlers so the zone accent survives.
+  const accent = `;border-left:2px solid ${zone === "app" ? "transparent" : c}55;border-radius:0 6px 6px 0;margin-left:8px`;
+  const base = BTN + (danger ? ";color:#fca5a5" : "") + accent;
+  const hover = BTN_H + (danger ? ";color:#fca5a5" : "") + accent;
+  b.style.cssText = base;
+  b.onmouseenter = () => (b.style.cssText = hover);
+  b.onmouseleave = () => (b.style.cssText = base);
+  return b;
+}
 
 const esc = (s: string) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const uid = () => (crypto as any).randomUUID?.() ?? `p-${Date.now()}`;
@@ -126,8 +168,11 @@ function openOptions() {
   const card = document.createElement("div");
   card.style.cssText = "background:#1b1c26;border:1px solid #34353f;border-radius:10px;padding:16px;width:420px;max-height:80vh;overflow:auto;color:#e2e8f0;font:12px system-ui,sans-serif";
   const t = document.createElement("div");
-  t.textContent = "Options";
-  t.style.cssText = "font-weight:700;font-size:14px;margin-bottom:10px";
+  t.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:10px";
+  t.innerHTML =
+    `<span style="width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e88;flex:none"></span>` +
+    `<span style="font-weight:700;font-size:14px">Options</span>` +
+    `<span style="font:600 9px system-ui;color:#22c55e;border:1px solid #22c55e55;background:#22c55e14;border-radius:4px;padding:2px 6px;text-transform:uppercase;letter-spacing:.6px">3D Model Zone</span>`;
   const close = document.createElement("button");
   close.textContent = "Close";
   close.style.cssText = "margin-top:10px;padding:7px 14px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600";
@@ -143,28 +188,33 @@ function build() {
   const row = document.createElement("div");
   row.style.cssText = "display:flex;gap:0;min-height:380px";
 
+  const openPid = () => { const svc = (ctx.features as any).pidModeler; if (svc?.toggle) svc.toggle(); else uiAlert("P&ID Modeler is still loading — try again in a moment."); };
+  const openSheets = () => { const svc = (ctx.features as any).sheets2dPanel; if (svc?.toggle) svc.toggle(); else uiAlert("Sheets 2D is still loading — try again in a moment."); };
+
   const left = document.createElement("div");
-  left.style.cssText = "width:300px;flex:none;border-right:1px solid #24252f;padding:6px";
+  left.style.cssText = "width:320px;flex:none;border-right:1px solid #24252f;padding:4px 6px 10px";
   left.append(
-    Object.assign(document.createElement("div"), { style: SECTION, textContent: "Application" }),
-    item("🆕", "New", () => showHome(), "Ctrl+N"),
-    item("📂", "Open Project…", () => showHome()),
-    item("🧬", "Open File… (any format)", () => pickAndImport(), "IFC · GLB · OBJ · FBX …"),
-    item("📑", "Open Project File…", () => importProjectFile(), ".obs.json"),
-    Object.assign(document.createElement("div"), { style: SECTION, textContent: "Save" }),
-    item("💾", "Save", () => void saveProject(), "Ctrl+S"),
-    item("📝", "Save As…", () => void saveAs()),
-    Object.assign(document.createElement("div"), { style: SECTION, textContent: "Export" }),
-    item("🗣", "Issues → BCF", () => exportBCF()),
-    item("💰", "Cost → CSV", () => exportCostCsv()),
-    item("🧊", "Scene → GLB", () => void exportGlb()),
-    item("🧱", "Model → FRAG (ThatOpen)", () => void exportFragFromMenu(), ".frag"),
-    item("🖼", "Project → JSON", () => exportProjectJson(), "backup"),
-    Object.assign(document.createElement("div"), { style: SECTION, textContent: "Document" }),
-    item("🖨", "Print…", () => printView()),
-    item("⚙️", "Options", () => openOptions()),
-    item("🚪", "Close", () => closeProject()),
-    item("⏻", "Exit", () => closeProject()),
+    zoneHeader("3d", "3D Model Zone — files · options · info"),
+    zitem("3d", "🆕", "New", () => showHome(), "Ctrl+N"),
+    zitem("3d", "📂", "Open Project…", () => showHome()),
+    zitem("3d", "🧬", "Open File… (any format)", () => pickAndImport(), "IFC · GLB · OBJ · FBX …"),
+    zitem("3d", "📑", "Open Project File…", () => importProjectFile(), ".obs.json"),
+    zitem("3d", "💾", "Save", () => void saveProject(), "Ctrl+S"),
+    zitem("3d", "📝", "Save As…", () => void saveAs()),
+    zitem("3d", "🧊", "Scene → GLB", () => void exportGlb(), "3D mesh export"),
+    zitem("3d", "🧱", "Model → FRAG (ThatOpen)", () => void exportFragFromMenu(), ".frag"),
+    zitem("3d", "🖼", "Project → JSON", () => exportProjectJson(), "backup"),
+    zitem("3d", "🗣", "Issues → BCF", () => exportBCF()),
+    zitem("3d", "💰", "Cost → CSV", () => exportCostCsv()),
+    zitem("3d", "⚙️", "Options", () => openOptions(), "3D settings"),
+    zoneHeader("2d", "2D Docs Zone — plan · sheets · print"),
+    zitem("2d", "📐", "Floor Plan (2D)", () => { closeFileMenu(); togglePlanView(); }, isPlanViewVisible() ? "open — click to close" : "open the plan view"),
+    zitem("2d", "🗂", "Sheets 2D", () => { closeFileMenu(); openSheets(); }, "production drawing sheets"),
+    zitem("2d", "🏭", "P&ID Modeler", () => { closeFileMenu(); openPid(); }, "2D process diagram"),
+    zitem("2d", "🖨", "Print…", () => printView(), "2D output"),
+    zoneHeader("app", "Application"),
+    zitem("app", "🚪", "Close", () => closeProject()),
+    zitem("app", "⏻", "Exit", () => closeProject()),
   );
 
   const right = document.createElement("div");
@@ -180,6 +230,7 @@ function build() {
 }
 
 async function renderRecents() {
+  // Recent Documents are 3D-model files — the header carries the zone dot.
   const list = menu.querySelector("#obs-filemenu-recent") as HTMLElement;
   if (!list) return;
   list.innerHTML = `<div style="opacity:.5;padding:8px">Loading…</div>`;

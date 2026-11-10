@@ -1,5 +1,7 @@
 import { getProjection } from "../features/camera-tools";
 import { ctx } from "../core/context";
+import { togglePlanView, isPlanViewVisible } from "../features/plan-view-panel";
+import { isSheets2dPanelVisible } from "../features/sheets-2d-panel";
 import {
   getCurrentProject, isDirty, getDetachedModelCount, onProjectChanged,
 } from "../modules/projects/projects";
@@ -25,13 +27,42 @@ coordsSeg.style.cssText =
   "min-width:260px;justify-content:flex-end";
 coordsSeg.textContent = "X —   Y —   Z —  (BIM: Z↑)";
 
+// ── Green/red zone switcher ────────────────────────────────────────────────
+// The workspace is partitioned: 🟢 3D MODEL ZONE (viewport, files, options,
+// history, info) vs 🔴 2D DOCS ZONE (floor plan, sheets, P&ID, print). The
+// chip shows which zone owns the current context and lets the user jump.
+const zoneSeg = document.createElement("div");
+zoneSeg.className = "bb-status__seg";
+zoneSeg.style.cssText = "gap:0;margin:0 10px";
+
+const z3d = document.createElement("button");
+z3d.textContent = "3D MODEL";
+z3d.title = "Green zone — 3D model world: viewport, files, options, history and model info. Click to leave the 2D docs and return to the model.";
+const z2d = document.createElement("button");
+z2d.textContent = "2D DOCS";
+z2d.title = "Red zone — 2D documentation: floor plan, sheets, P&ID and print. Click to open the floor plan.";
+for (const b of [z3d, z2d]) {
+  b.style.cssText =
+    "font:700 9.5px system-ui,sans-serif;letter-spacing:.5px;padding:3px 9px;border:none;cursor:pointer;" +
+    "background:transparent;color:#5b6472;transition:background .15s,color .15s";
+  b.addEventListener("click", () => {
+    const in2d = isPlanViewVisible() || isSheets2dPanelVisible();
+    const want2d = b === z2d;
+    if (want2d !== in2d) {
+      togglePlanView(); // plan is the gateway between the zones
+      if (b === z3d) { const svc = (ctx.features as any).sheets2dPanel; if (svc?.close) svc.close(); }
+    }
+  });
+}
+zoneSeg.append(z3d, z2d);
+
 const spacer2 = document.createElement("div");
 spacer2.className = "bb-status__spacer";
 
 const right = document.createElement("div");
 right.className = "bb-status__seg";
 
-bar.append(left, spacer, center, coordsSeg, spacer2, right);
+bar.append(left, spacer, center, zoneSeg, coordsSeg, spacer2, right);
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) =>
@@ -51,7 +82,19 @@ function kbd(label: string) {
   return `<span class="bb-status__kbd">${label}</span>`;
 }
 
+function styleZoneChip(active: "3d" | "2d") {
+  const base = "font:700 9.5px system-ui,sans-serif;letter-spacing:.5px;padding:3px 9px;border:none;cursor:pointer;";
+  const off = base + "background:transparent;color:#5b6472";
+  z3d.style.cssText = active === "3d"
+    ? base + "background:#22c55e;color:#0b0d12;border-radius:4px 0 0 4px;box-shadow:0 0 8px #22c55e66"
+    : off + ";border-radius:4px 0 0 4px";
+  z2d.style.cssText = active === "2d"
+    ? base + "background:#ef4444;color:#160909;border-radius:0 4px 4px 0;box-shadow:0 0 8px #ef444466"
+    : off + ";border-radius:0 4px 4px 0";
+}
+
 function update() {
+  styleZoneChip(isPlanViewVisible() || isSheets2dPanelVisible() ? "2d" : "3d");
   const tool = getActiveTool();
   const levelVal = getLevel();
   

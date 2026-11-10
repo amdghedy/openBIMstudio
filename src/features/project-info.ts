@@ -24,7 +24,10 @@ function build(): HTMLDivElement {
     <div class="obs-modal obs-project-info" role="dialog" aria-modal="true" aria-labelledby="obs-project-info-title">
       <div class="obs-modal__header">
         <div>
-          <div class="obs-modal__eyebrow">PROJECT CONTROL CENTER</div>
+          <div class="obs-modal__eyebrow" style="display:flex;align-items:center;gap:8px">
+            <span>PROJECT CONTROL CENTER</span>
+            <span title="Green zone — model info belongs to the 3D model world" style="font:600 9px system-ui;color:#22c55e;border:1px solid #22c55e55;background:#22c55e14;border-radius:4px;padding:2px 6px;text-transform:uppercase;letter-spacing:.6px">🟢 3D Model Zone</span>
+          </div>
           <h2 id="obs-project-info-title">Project Information</h2>
           <p>Keep project identity, delivery stage and model units consistent across the BIM workspace.</p>
         </div>
