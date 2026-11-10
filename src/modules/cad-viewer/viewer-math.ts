@@ -367,6 +367,20 @@ export function orthoConstrain(a: Pt, b: Pt): Pt {
   return dx >= dy ? { x: b.x, y: a.y } : { x: a.x, y: b.y };
 }
 
+/**
+ * Polar tracking: preserve the cursor distance while constraining its angle
+ * to the nearest configured increment. Invalid increments leave B unchanged.
+ */
+export function polarConstrain(a: Pt, b: Pt, angleStep = 90): Pt {
+  if (!Number.isFinite(angleStep) || angleStep <= 0 || angleStep > 360) return { ...b };
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (!Number.isFinite(len) || len < 1e-12) return { ...b };
+  const increment = (angleStep * Math.PI) / 180;
+  const angle = Math.round(Math.atan2(dy, dx) / increment) * increment;
+  return { x: a.x + Math.cos(angle) * len, y: a.y + Math.sin(angle) * len };
+}
+
 /** Shortest distance from point P to segment AB, and the foot of the perpendicular. */
 export function distPointToSeg(p: Pt, a: Pt, b: Pt): { dist: number; foot: Pt; t: number } {
   const dx = b.x - a.x, dy = b.y - a.y;
