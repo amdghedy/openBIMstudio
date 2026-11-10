@@ -44,6 +44,7 @@ class SelectionManager {
   private map: SelectionSnapshot = {};
   private listeners = new Set<() => void>();
   private filter: Set<string> | null = null;
+  private filterRevision = 0;
   private highlightStyle = "select";
 
   onChange(cb: () => void): () => void {
@@ -85,11 +86,13 @@ class SelectionManager {
     if (!this.map[modelId]) this.map[modelId] = new Set();
     this.map[modelId].add(localId);
     this.emit();
+    if (this.filter) void this.reconcileFilter();
   }
   addMany(modelId: string, ids: Iterable<number>): void {
     if (!this.map[modelId]) this.map[modelId] = new Set();
     for (const id of ids) this.map[modelId].add(id);
     this.emit();
+    if (this.filter) void this.reconcileFilter();
   }
   remove(modelId: string, localId: number): void {
     this.map[modelId]?.delete(localId);
@@ -107,12 +110,13 @@ class SelectionManager {
     if (this.has(modelId, localId)) this.remove(modelId, localId);
     else this.add(modelId, localId);
   }
-  replace(snap: SelectionSnapshot): void {
+  replace(snap: SelectionSnapshot, reconcile = true): void {
     this.map = {};
     for (const [m, s] of Object.entries(snap)) {
       if (s.size) this.map[m] = new Set(s);
     }
     this.emit();
+    if (reconcile && this.filter) void this.reconcileFilter();
   }
   clear(): void {
     this.map = {};
@@ -141,7 +145,61 @@ class SelectionManager {
   // ── Filter ──
   setFilter(categories: string[] | null): void {
     this.filter = categories && categories.length ? new Set(categories) : null;
+    this.filterRevision++;
     this.emit();
+    if (this.filter) void this.reconcileFilter();
+  }
+
+  /**
+   * Remove stale selections that are outside the active category filter.
+   * The operation is atomic: if any model category index cannot be read, keep
+   * the current selection rather than partially deleting valid user work.
+   */
+  async reconcileFilter(): Promise<void> {
+    const revision = this.filterRevision;
+    const filter = this.filter;
+    if (!filter?.size) return;
+
+    const categoryByModel = new Map<string, Map<number, string>>();
+    try {
+      for (const modelId of Object.keys(this.map)) {
+        const model: any = ctx.fragments.list.get(modelId);
+        if (!model?.getItemsOfCategories) {
+          categoryByModel.set(modelId, new Map());
+          continue;
+        }
+        const categories = await model.getItemsOfCategories([/.+/]);
+        const byId = new Map<number, string>();
+        for (const [category, ids] of Object.entries(categories ?? {})) {
+          for (const id of (ids as number[]) ?? []) byId.set(id, category);
+        }
+        categoryByModel.set(modelId, byId);
+      }
+    } catch (err) {
+      console.warn("[selection] category reconciliation failed; preserving current selection", err);
+      return;
+    }
+
+    if (revision !== this.filterRevision || filter !== this.filter) return;
+    // A selection may be added on another model while category indexes are
+    // loading. Retry with the expanded model set instead of dropping that work.
+    if (Object.keys(this.map).some(modelId => !categoryByModel.has(modelId))) {
+      void this.reconcileFilter();
+      return;
+    }
+    const next: SelectionSnapshot = {};
+    for (const [modelId, ids] of Object.entries(this.map)) {
+      const byId = categoryByModel.get(modelId);
+      if (!byId) continue;
+      const keep = new Set<number>();
+      for (const id of ids) {
+        const category = byId.get(id);
+        if (category && categoryMatchesFilter(filter, category)) keep.add(id);
+      }
+      if (keep.size) next[modelId] = keep;
+    }
+    this.replace(next, false);
+    await this.applyToHighlighter();
   }
   getFilter(): string[] | null {
     return this.filter ? [...this.filter] : null;
@@ -195,11 +253,12 @@ class SelectionManager {
         console.warn("[selection] selectAll category lookup failed", err);
       }
     }
-    this.replace(next);
+    this.replace(next, false);
     await this.applyToHighlighter();
   }
 
   async selectSimilar(modelId: string, localId: number): Promise<void> {
+    await this.reconcileFilter();
     const model = ctx.fragments.list.get(modelId);
     if (!model) return;
     try {
@@ -217,7 +276,7 @@ class SelectionManager {
       if (!keep.size) return;
       if (!merged[modelId]) merged[modelId] = new Set();
       for (const id of keep) merged[modelId].add(id);
-      this.replace(merged);
+      this.replace(merged, false);
       await this.applyToHighlighter();
     } catch (e) {
       console.warn("[selection] selectSimilar failed", e);
@@ -239,7 +298,7 @@ class SelectionManager {
         console.warn("[selection] invert category lookup failed", err);
       }
     }
-    this.replace(next);
+    this.replace(next, false);
     await this.applyToHighlighter();
   }
 
@@ -293,7 +352,10 @@ class SelectionManager {
       }
     };
     for (const c of candidates) scan(c, 0);
-    if (Object.keys(snap).length) this.replace(snap);
+    if (Object.keys(snap).length) {
+      this.replace(snap, false);
+      void this.reconcileFilter();
+    }
   }
 
   // ── Selection sets ──
@@ -331,7 +393,8 @@ class SelectionManager {
     if (!set) return;
     const snap: SelectionSnapshot = {};
     for (const [m, arr] of Object.entries(set.snapshot)) snap[m] = new Set(arr);
-    this.replace(snap);
+    this.replace(snap, false);
+    await this.reconcileFilter();
     await this.applyToHighlighter();
   }
   deleteSet(id: string): void {
