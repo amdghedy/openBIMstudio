@@ -138,6 +138,7 @@
     "test:structural-3d": "node tests/structural-3d.test.cjs",
     "test:no-cdn": "node tests/no-cdn-imports.test.cjs",
     "test:mep-pressure": "node tests/mep-pressure.test.cjs",
+    "test:work-planes": "node tests/work-planes.test.cjs",
     "test:adaptive": "node tests/adaptive.test.cjs",
     "test:adaptive-native": "node tests/adaptive-native.test.cjs",
     "test:project-crypto": "node tests/project-crypto.test.cjs",
