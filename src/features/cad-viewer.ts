@@ -7411,6 +7411,30 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           executeDrawingCommand(value);
           return;
         }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          if (cmdHistoryIdx < 0) cmdHistoryIdx = cmdHistory.length;
+          if (cmdHistoryIdx > 0) {
+            cmdHistoryIdx--;
+            dynCommandInput.value = cmdHistory[cmdHistoryIdx];
+            dynCommandInput.dispatchEvent(new Event("input"));
+            dynCommandInput.setSelectionRange(dynCommandInput.value.length, dynCommandInput.value.length);
+          }
+          return;
+        }
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (cmdHistoryIdx < cmdHistory.length - 1) {
+            cmdHistoryIdx++;
+            dynCommandInput.value = cmdHistory[cmdHistoryIdx];
+          } else {
+            cmdHistoryIdx = cmdHistory.length;
+            dynCommandInput.value = "";
+          }
+          dynCommandInput.dispatchEvent(new Event("input"));
+          dynCommandInput.setSelectionRange(dynCommandInput.value.length, dynCommandInput.value.length);
+          return;
+        }
         if (event.key === "Tab") {
           const query = dynCommandInput.value.trim().toUpperCase();
           const match = CAD_COMMANDS.find((item) => cadCommandMatches(item, query));
