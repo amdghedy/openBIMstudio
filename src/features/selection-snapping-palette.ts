@@ -6,6 +6,7 @@
  */
 import { selection } from "./selection";
 import { snapping, type SnapType } from "./snapping";
+import { promptLine } from "./form-modal";
 import { getSelectionPrefs, setSelectionPref } from "../core/selection-prefs";
 import { hasUnderlayData, isUnderlaySnapEnabled, setUnderlaySnapEnabled } from "./cad-underlay-snap";
 
@@ -150,8 +151,8 @@ function render(): void {
   profiles.append(fieldLabel("Profile", select));
   const profileActions = el("div");
   style(profileActions, "display:flex;gap:6px;margin-top:8px");
-  profileActions.append(button("Save current as…", () => {
-    const name = window.prompt("Name this drafting profile");
+  profileActions.append(button("Save current as…", async () => {
+    const name = await promptLine("Save drafting profile", "Profile name:", "My profile");
     if (!name?.trim()) return;
     const id = "custom-" + Date.now().toString(36);
     customProfiles = [{ ...currentProfile(), id, name: name.trim() }, ...customProfiles];
