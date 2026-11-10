@@ -4581,6 +4581,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Rotate",()=>setTool("rotate"),!hasSelection,false,"RO");
     addItem("Mirror",()=>setTool("mirror"),!hasSelection,false,"MI");
     addItem("Scale",()=>setTool("scale"),!hasSelection,false,"SC");
+    addItem("Select Similar",()=>executeDrawingCommand("SELECTSIMILAR"),!hasSelection,false,"SELSIM");
     addItem("Array",()=>executeDrawingCommand("ARRAY"),!hasSelection,false,"AR");
     addItem("Polar Array",()=>executeDrawingCommand("ARRAYPOLAR"),!hasSelection,false,"ARP");
     addItem("Offset",()=>setTool("offset"),!hasSelection,false,"O");
@@ -5029,7 +5030,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         tb("select", "select-all", "Select") +
           tb("box", "isolate", "Box") +
           tb("erase", "delete", "Erase") +
-          rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)"),
+          rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)") +
+          rb("select-all", "Similar", `data-a="selsim"`, "Select objects matching the selected set by type, layer, colour, linetype or lineweight (SELECTSIMILAR)"),
         "",
         "",
         "home",
@@ -5630,6 +5632,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       layuniso: () => executeDrawingCommand("LAYUNISO"),
       ddedit: () => executeDrawingCommand("DDEDIT"),
       qselect: () => executeDrawingCommand("QSELECT"),
+      selsim: () => executeDrawingCommand("SELECTSIMILAR"),
       pedit: () => executeDrawingCommand("PEDIT"),
       "dwg-open": () => executeDrawingCommand("DWGOPEN DWG"),
       "dwg-open-dxf": () => executeDrawingCommand("DWGOPEN DXF"),
