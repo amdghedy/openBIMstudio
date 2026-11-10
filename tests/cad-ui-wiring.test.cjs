@@ -292,5 +292,27 @@ t("mtext fidelity: readers keep width/spacing/runs, viewer wraps and paints runs
   }
 });
 
+t("polar tracking, snap mode configuration and live quick measure are wired", () => {
+  const vm = read("modules", "cad-viewer", "viewer-math.ts");
+  assert.ok(vm.includes("export function polarConstrain("), "polar geometry helper missing");
+  for (const marker of [
+    '{ name: "POLAR", aliases: ["F10"]',
+    '{ name: "POLARANG", aliases: ["PANG"]',
+    '{ name: "OSNAPSET", aliases: ["OSMODE"]',
+    '{ name: "QMEASURE", aliases: ["QM"]',
+    'if (key === "F10")',
+    'data-a="snap-modes"',
+    'data-a="polar-angle"',
+    'data-s=quick-readout',
+    'function openOsnapSettings()',
+    'M.polarConstrain(anchor, point, polarAngle)',
+    'setQuickMeasure(!quick)',
+  ]) assert.ok(viewer.includes(marker), `CAD mode feature missing: ${marker}`);
+  assert.ok(viewer.includes('statusEl.querySelector("[data-s=polar]")'), "Polar status toggle missing");
+  assert.ok(viewer.includes('statusEl.querySelector("[data-s=quick]")'), "Quick Measure status toggle missing");
+  assert.ok(viewer.includes('quickReadout.textContent = quickMeasureText(p)'), "Quick Measure must use the cursor fast path");
+  assert.ok(viewer.includes('sel("polar-angle").onchange'), "Polar angle selector is not wired");
+});
+
 console.log(`\ncad-ui-wiring: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

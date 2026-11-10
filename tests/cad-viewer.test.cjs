@@ -139,4 +139,24 @@ t("CAD renderer uses viewport candidates and cursor-only status updates",()=>{
   assert.match(src,/M\.queryIndexBox\(ix, list, cull\)/);
   assert.match(src,/coords\.textContent = xy;\s*return;/);
 });
+t("polar tracking quantizes direction and preserves cursor distance",()=>{
+  const a={x:10,y:20};
+  const p=m.polarConstrain(a,{x:13,y:24},90);
+  near(Math.hypot(p.x-a.x,p.y-a.y),5);
+  near(p.x,a.x);
+  const q=m.polarConstrain(a,{x:13,y:24},45);
+  near(Math.atan2(q.y-a.y,q.x-a.x)*180/Math.PI,45);
+  near(Math.hypot(q.x-a.x,q.y-a.y),5);
+});
+t("polar tracking supports negative directions and custom increments",()=>{
+  const p=m.polarConstrain({x:0,y:0},{x:-4,y:-3},30);
+  near(Math.atan2(p.y,p.x)*180/Math.PI,-150);
+  near(Math.hypot(p.x,p.y),5);
+});
+t("polar tracking safely handles invalid increments and zero-length vectors",()=>{
+  const b={x:3,y:4};
+  assert.deepStrictEqual(m.polarConstrain({x:0,y:0},b,0),b);
+  assert.deepStrictEqual(m.polarConstrain({x:0,y:0},b,NaN),b);
+  assert.deepStrictEqual(m.polarConstrain({x:2,y:2},{x:2,y:2},15),{x:2,y:2});
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);
