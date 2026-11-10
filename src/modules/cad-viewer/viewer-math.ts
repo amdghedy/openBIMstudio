@@ -492,13 +492,18 @@ export function buildIndex(entities: DxfEntity[], bounds: BBox, targetCells = 25
 
 /** Entity indices whose bounding box could be within `radius` of (x, y). */
 export function queryIndex(idx: SpatialIndex, x: number, y: number, radius: number): number[] {
-  const out = new Set<number>(idx.big);
+  const infinite = new Set(idx.infinite);
+  const out = new Set<number>([...idx.big, ...idx.infinite]);
   const c0 = Math.floor((x - radius - idx.minX) / idx.cell), c1 = Math.floor((x + radius - idx.minX) / idx.cell);
   const r0 = Math.floor((y - radius - idx.minY) / idx.cell), r1 = Math.floor((y + radius - idx.minY) / idx.cell);
   for (let r = Math.max(r0, 0); r <= Math.min(r1, idx.rows - 1); r++) for (let c = Math.max(c0, 0); c <= Math.min(c1, idx.cols - 1); c++) {
     const a = idx.cells.get(r * idx.cols + c); if (a) for (const i of a) out.add(i);
   }
-  return [...out].filter((i) => { const b = idx.boxes[i]; return x >= b.minX - radius && x <= b.maxX + radius && y >= b.minY - radius && y <= b.maxY + radius; });
+  return [...out].filter((i) => {
+    if (infinite.has(i)) return true;
+    const b = idx.boxes[i];
+    return !!b && x >= b.minX - radius && x <= b.maxX + radius && y >= b.minY - radius && y <= b.maxY + radius;
+  });
 }
 
 /**
@@ -727,6 +732,28 @@ function segHitsRect(a: Pt, b: Pt, r: BBox): boolean {
 }
 
 /**
+ * True when an infinite construction line (or forward-only ray) intersects a
+ * selection rectangle. The start point may be far outside the selection box.
+ */
+function infiniteLineHitsRect(e: Extract<DxfEntity, { type: "RAY" | "XLINE" }>, rect: BBox): boolean {
+  const dx = e.direction.x, dy = e.direction.y;
+  if (Math.hypot(dx, dy) < 1e-18) return false;
+  let tMin = e.type === "RAY" ? 0 : -Infinity;
+  let tMax = Infinity;
+  const clipAxis = (origin: number, direction: number, min: number, max: number): boolean => {
+    if (Math.abs(direction) < 1e-18) return origin >= min && origin <= max;
+    const a = (min - origin) / direction;
+    const b = (max - origin) / direction;
+    tMin = Math.max(tMin, Math.min(a, b));
+    tMax = Math.min(tMax, Math.max(a, b));
+    return tMin <= tMax;
+  };
+  return clipAxis(e.start.x, dx, rect.minX, rect.maxX) &&
+    clipAxis(e.start.y, dy, rect.minY, rect.maxY) &&
+    tMin <= tMax;
+}
+
+/**
  * Entities picked by a world-space rectangle.
  * "window": entity must lie fully inside. "crossing": entity only has to touch the rectangle.
  */
@@ -735,6 +762,12 @@ export function selectInRect(idx: SpatialIndex, entities: DxfEntity[], rect: BBo
   for (const i of queryIndexBox(idx, entities, rect)) {
     const b = idx.boxes[i], e = entities[i];
     if (!visible(e)) continue;
+    if (e.type === "RAY" || e.type === "XLINE") {
+      // Infinite construction lines cannot be fully enclosed by a window
+      // selection, but must participate in crossing selection along their path.
+      if (mode === "crossing" && infiniteLineHitsRect(e, rect)) out.push(i);
+      continue;
+    }
     if (mode === "window") { if (boxContains(rect, b)) out.push(i); continue; }
     if (!boxesIntersect(b, rect)) continue;
     const segs = entitySegments(e);

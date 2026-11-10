@@ -97,6 +97,31 @@ t("viewport query always retains off-screen anchored construction lines",()=>{
   const ix=m.buildIndex(es,{minX:-1000,minY:-500,maxX:1000,maxY:500});
   assert.deepStrictEqual(m.queryIndexBox(ix,es,{minX:0,minY:0,maxX:10,maxY:10}),[1,2]);
 });
+t("infinite RAY/XLINE remain pickable when their anchors are off-screen",()=>{
+  const es=[
+    {type:"RAY",layer:"0",start:{x:-1000,y:5},direction:{x:1,y:0}},
+    {type:"XLINE",layer:"0",start:{x:5,y:-1000},direction:{x:0,y:1}},
+    {type:"RAY",layer:"0",start:{x:20,y:15},direction:{x:1,y:0}}
+  ];
+  const ix=m.buildIndex(es,{minX:-1000,minY:-1000,maxX:20,maxY:20});
+  assert.strictEqual(m.pickEntity(ix,es,30,5,0.1),0);
+  assert.strictEqual(m.pickEntity(ix,es,5,20,0.1),1);
+  assert.strictEqual(m.pickEntity(ix,es,10,15,0.1),-1,"a ray pointing away from the cursor must not be picked");
+  const snap=m.findSnap(ix,es,30,5,0.1,["nearest"]);
+  assert.strictEqual(snap.kind,"nearest");near(snap.x,30);near(snap.y,5);
+});
+t("crossing selection detects infinite lines but window selection does not",()=>{
+  const es=[
+    {type:"RAY",layer:"0",start:{x:-1000,y:5},direction:{x:1,y:0}},
+    {type:"XLINE",layer:"0",start:{x:5,y:-1000},direction:{x:0,y:1}},
+    {type:"RAY",layer:"0",start:{x:20,y:5},direction:{x:1,y:0}},
+    {type:"RAY",layer:"0",start:{x:-1000,y:20},direction:{x:0,y:0}}
+  ];
+  const ix=m.buildIndex(es,{minX:-1000,minY:-1000,maxX:20,maxY:20});
+  const rect={minX:0,minY:0,maxX:10,maxY:10};
+  assert.deepStrictEqual(m.selectInRect(ix,es,rect,"crossing"),[0,1]);
+  assert.deepStrictEqual(m.selectInRect(ix,es,rect,"window"),[]);
+});
 t("viewport query culls large drawings to local candidates",()=>{
   const many=Array.from({length:5000},(_,i)=>L(i*10,i*10,i*10+2,i*10+2));
   const ix=m.buildIndex(many,{minX:0,minY:0,maxX:50000,maxY:50000});

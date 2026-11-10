@@ -88,6 +88,9 @@ t("viewport keyboard opens a cursor-positioned command prompt and reuses command
   for (const marker of mustContain) assert.ok(viewer.includes(marker), `in-canvas command entry missing "${marker}"`);
   assert.ok(viewer.includes('dynCommandInput.placeholder = "Enter command…";'), "dynamic prompt placeholder missing");
   assert.ok(viewer.includes('dynCommandInput.setSelectionRange(initialText.length, initialText.length);'), "initial typed character is not retained");
+  assert.ok(viewer.includes('if (event.key === "ArrowUp")'), "in-canvas prompt must browse previous commands");
+  assert.ok(viewer.includes('if (event.key === "ArrowDown")'), "in-canvas prompt must browse newer commands");
+  assert.ok(viewer.includes("cmdHistoryIdx = cmdHistory.length;"), "command history must return to a blank prompt after the newest entry");
 });
 
 // ── 5. DWG command activation: Space executes exact commands and aliases ──
@@ -232,11 +235,16 @@ t("super copy hotkey ownership: app-level handlers stand down while a drawing ta
 t("ray/xline: infinite construction lines are read, drawn edge-to-edge and saved", () => {
   // The viewer clips the infinite line to the view and never culls it by its
   // degenerate anchor box
-  for (const m of ["case \"RAY\":", "case \"XLINE\": {", "M.infiniteLineSegment(e, v)", "const infinite = e.type === \"RAY\" || e.type === \"XLINE\";"]) {
+  for (const m of ["case \"RAY\":", "case \"XLINE\": {", "M.infiniteLineSegment(e, v)"]) {
     assert.ok(viewer.includes(m), `cad-viewer.ts drift: missing "${m}"`);
   }
+  // Indexed rendering now keeps construction geometry in the query result
+  // instead of special-casing it in the draw loop.
+  assert.ok(viewer.includes("M.queryIndexBox(ix, list, cull)"), "viewport renderer must use the spatial query");
   // The math module owns the clip + anchor-only bbox + infinite-line picking
   const vm = read("modules", "cad-viewer", "viewer-math.ts");
+  assert.ok(vm.includes('idx.infinite.push(i)'), "spatial index must retain RAY/XLINE candidates independently of their anchor boxes");
+  assert.ok(vm.includes("const infinite = new Set(idx.infinite)") && vm.includes("for (const i of infinite) candidates.add(i)"), "viewport query must include all construction lines");
   for (const m of ["export function infiniteLineSegment(", "case \"RAY\":\n    case \"XLINE\": return { minX: e.start.x"]) {
     assert.ok(vm.includes(m), `viewer-math.ts drift: missing "${JSON.stringify(m)}"`);
   }
