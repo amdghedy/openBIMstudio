@@ -131,20 +131,67 @@ function centroidOf(poly: Pt3[]): Pt3 {
  * tessellated quad shares its plane). Unlike `planesOfConvex` this does
  * NOT merge co-family planes and does not require convexity.
  */
+const PLANE_MATCH_EPS = 1e-9;
+type PlaneBuckets = Map<string, number[]>;
+
+function planeMatches(a: SupportPlane, b: SupportPlane): boolean {
+  return Math.abs(a.normal.x-b.normal.x)<PLANE_MATCH_EPS &&
+    Math.abs(a.normal.y-b.normal.y)<PLANE_MATCH_EPS &&
+    Math.abs(a.normal.z-b.normal.z)<PLANE_MATCH_EPS &&
+    Math.abs(a.w-b.w)<PLANE_MATCH_EPS;
+}
+
+function planeCell(v: number): number { return Math.floor(v / PLANE_MATCH_EPS); }
+function planeBucketKey(x: number, y: number, z: number, w: number): string {
+  return `${x},${y},${z},${w}`;
+}
+function planeIsHashable(p: SupportPlane): boolean {
+  return [p.normal.x,p.normal.y,p.normal.z,p.w].every((v) =>
+    Number.isFinite(v) && Number.isSafeInteger(planeCell(v)));
+}
+function addPlaneBucket(buckets: PlaneBuckets, p: SupportPlane, index: number): void {
+  if (!planeIsHashable(p)) return;
+  const key=planeBucketKey(planeCell(p.normal.x),planeCell(p.normal.y),planeCell(p.normal.z),planeCell(p.w));
+  const list=buckets.get(key);
+  if(list) list.push(index); else buckets.set(key,[index]);
+}
+
+/** Find the earliest plane matching the historical component-wise tolerance. */
+function findPlaneIndex(planes: SupportPlane[], p: SupportPlane, buckets?: PlaneBuckets, overflow: number[] = []): number {
+  if (!buckets || !planeIsHashable(p)) {
+    for(let i=0;i<planes.length;i++) if(planeMatches(planes[i],p)) return i;
+    return -1;
+  }
+  const cx=planeCell(p.normal.x), cy=planeCell(p.normal.y), cz=planeCell(p.normal.z), cw=planeCell(p.w);
+  let best=Number.POSITIVE_INFINITY;
+  for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++)
+    for(let dz=-1;dz<=1;dz++) for(let dw=-1;dw<=1;dw++) {
+      const list=buckets.get(planeBucketKey(cx+dx,cy+dy,cz+dz,cw+dw));
+      if(!list) continue;
+      for(const i of list) if(i<best && planeMatches(planes[i],p)) best=i;
+    }
+  for(const i of overflow) if(i<best && planeMatches(planes[i],p)) best=i;
+  return Number.isFinite(best)?best:-1;
+}
+
+/**
+ * All oriented triangle support planes. The spatial hash replaces the
+ * former linear scan over every previously discovered plane. Exact legacy
+ * matching semantics and first-plane ownership are retained.
+ */
 export function allPlanesOf(mesh: IndexedMesh): SupportPlane[] {
-  const out: SupportPlane[] = [];
-  for (const [ia, ib, ic] of mesh.faces) {
-    const n = triNormal([mesh.vertices[ia], mesh.vertices[ib], mesh.vertices[ic]]);
-    if (!n) continue;
-    const w = dot(n, mesh.vertices[ia]);
-    const dup = out.find(
-      (p) =>
-        Math.abs(p.normal.x - n.x) < 1e-9 &&
-        Math.abs(p.normal.y - n.y) < 1e-9 &&
-        Math.abs(p.normal.z - n.z) < 1e-9 &&
-        Math.abs(p.w - w) < 1e-9,
-    );
-    if (!dup) out.push({ normal: n, w });
+  const out: SupportPlane[]=[];
+  const buckets: PlaneBuckets=new Map();
+  const overflow: number[]=[];
+  for(const [ia,ib,ic] of mesh.faces) {
+    const n=triNormal([mesh.vertices[ia],mesh.vertices[ib],mesh.vertices[ic]]);
+    if(!n) continue;
+    const candidate={normal:n,w:dot(n,mesh.vertices[ia])};
+    if(findPlaneIndex(out,candidate,buckets,overflow)>=0) continue;
+    const index=out.length;
+    out.push(candidate);
+    if(planeIsHashable(candidate)) addPlaneBucket(buckets,candidate,index);
+    else overflow.push(index);
   }
   return out;
 }
@@ -264,6 +311,12 @@ interface CutObj {
 function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B"): CutObj[] {
   const objs: CutObj[] = [];
   const seen = new Set<string>();
+  const planeBuckets: PlaneBuckets = new Map();
+  const planeOverflow: number[] = [];
+  planes.forEach((plane, index) => {
+    if (planeIsHashable(plane)) addPlaneBucket(planeBuckets, plane, index);
+    else planeOverflow.push(index);
+  });
   const push = (pl: SupportPlane, isFacePlane: boolean, planeIdx: number): void => {
     const k =
       [pl.normal.x, pl.normal.y, pl.normal.z, pl.w].map((v) => v.toFixed(10)).join("|") +
@@ -277,14 +330,7 @@ function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B
     const nrm = triNormal(tri);
     if (!nrm) continue;
     const w = dot(nrm, tri[0]);
-    let planeIdx = -1;
-    for (let i = 0; i < planes.length; i++) {
-      const p = planes[i];
-      if (
-        Math.abs(p.normal.x - nrm.x) < 1e-9 && Math.abs(p.normal.y - nrm.y) < 1e-9 &&
-        Math.abs(p.normal.z - nrm.z) < 1e-9 && Math.abs(p.w - w) < 1e-9
-      ) { planeIdx = i; break; }
-    }
+    const planeIdx = findPlaneIndex(planes, { normal: nrm, w }, planeBuckets, planeOverflow);
     push({ normal: nrm, w }, true, planeIdx);
     for (let i = 0; i < 3; i++) {
       const p = tri[i];
@@ -581,29 +627,60 @@ export function fuseAll(meshes: IndexedMesh[]): IndexedMesh {
  * far above split interpolation noise.
  */
 export function weldMesh(mesh: IndexedMesh, tol = 1e-7): IndexedMesh {
-  const map = new Map<number, number>();
-  const accepted: Pt3[] = [];
-  for (let i = 0; i < mesh.vertices.length; i++) {
-    const v = mesh.vertices[i];
-    let found = -1;
-    for (let j = 0; j < accepted.length; j++) {
-      const a = accepted[j];
-      if (
-        Math.abs(a.x - v.x) <= tol &&
-        Math.abs(a.y - v.y) <= tol &&
-        Math.abs(a.z - v.z) <= tol
-      ) { found = j; break; }
+  const map=new Map<number,number>();
+  const accepted:Pt3[]=[];
+  const buckets=new Map<string,number[]>();
+  const overflow:number[]=[];
+  const cell=(v:number)=>Math.floor(v/tol);
+  const keyOf=(x:number,y:number,z:number)=>`${x},${y},${z}`;
+  const hashable=(v:Pt3)=>tol>0 && Number.isFinite(tol) &&
+    Number.isFinite(v.x)&&Number.isFinite(v.y)&&Number.isFinite(v.z)&&
+    [v.x,v.y,v.z].every(n=>Number.isSafeInteger(cell(n)));
+
+  for(let i=0;i<mesh.vertices.length;i++) {
+    const v=mesh.vertices[i];
+    let found=-1;
+    if(hashable(v)) {
+      const cx=cell(v.x),cy=cell(v.y),cz=cell(v.z);
+      let best=Number.POSITIVE_INFINITY;
+      for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
+        const list=buckets.get(keyOf(cx+dx,cy+dy,cz+dz));
+        if(!list) continue;
+        for(const j of list) {
+          if(j>=best) continue;
+          const a=accepted[j];
+          if(Math.abs(a.x-v.x)<=tol&&Math.abs(a.y-v.y)<=tol&&Math.abs(a.z-v.z)<=tol) best=j;
+        }
+      }
+      for(const j of overflow) {
+        if(j>=best) continue;
+        const a=accepted[j];
+        if(Math.abs(a.x-v.x)<=tol&&Math.abs(a.y-v.y)<=tol&&Math.abs(a.z-v.z)<=tol) best=j;
+      }
+      if(Number.isFinite(best)) found=best;
+    } else {
+      for(let j=0;j<accepted.length;j++) {
+        const a=accepted[j];
+        if(Math.abs(a.x-v.x)<=tol&&Math.abs(a.y-v.y)<=tol&&Math.abs(a.z-v.z)<=tol) {found=j;break;}
+      }
     }
-    if (found >= 0) map.set(i, found);
-    else { map.set(i, accepted.length); accepted.push(v); }
+    if(found>=0) {map.set(i,found);continue;}
+    const index=accepted.length;
+    map.set(i,index);
+    accepted.push(v);
+    if(hashable(v)) {
+      const key=keyOf(cell(v.x),cell(v.y),cell(v.z));
+      const list=buckets.get(key);
+      if(list) list.push(index); else buckets.set(key,[index]);
+    } else overflow.push(index);
   }
-  const faces: [number, number, number][] = [];
-  for (const [ia, ib, ic] of mesh.faces) {
-    const a = map.get(ia)!, b = map.get(ib)!, c = map.get(ic)!;
-    if (a === b || b === c || a === c) continue;
-    faces.push([a, b, c]);
+  const faces:[number,number,number][]=[];
+  for(const [ia,ib,ic] of mesh.faces) {
+    const a=map.get(ia)!,b=map.get(ib)!,c=map.get(ic)!;
+    if(a===b||b===c||a===c) continue;
+    faces.push([a,b,c]);
   }
-  return { vertices: accepted, faces };
+  return {vertices:accepted,faces};
 }
 
 // ── AABB broad phase ─────────────────────────────────────────────────────

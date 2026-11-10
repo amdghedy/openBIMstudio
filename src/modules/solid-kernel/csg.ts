@@ -62,25 +62,59 @@ export interface SupportPlane {
  * winding, as produced by the platform's form generators). Duplicate
  * planes (tessellated cylinders share plane families) are merged.
  */
+const PLANE_EPS = 1e-9;
+function samePlane(a: SupportPlane,b: SupportPlane): boolean {
+  return Math.abs(a.normal.x-b.normal.x)<PLANE_EPS &&
+    Math.abs(a.normal.y-b.normal.y)<PLANE_EPS &&
+    Math.abs(a.normal.z-b.normal.z)<PLANE_EPS &&
+    Math.abs(a.w-b.w)<PLANE_EPS;
+}
+function planeCell(v:number):number { return Math.floor(v/PLANE_EPS); }
+function planeKey(x:number,y:number,z:number,w:number):string { return `${x},${y},${z},${w}`; }
+function hashablePlane(p:SupportPlane):boolean {
+  return [p.normal.x,p.normal.y,p.normal.z,p.w].every(v=>Number.isFinite(v)&&Number.isSafeInteger(planeCell(v)));
+}
+
+/**
+ * Extract unique oriented support planes using a tolerance-sized 4D hash.
+ * Neighbour-cell checks preserve the former component-wise tolerance and
+ * first-plane ownership. Unsafe coordinate/tolerance ratios use a linear
+ * comparison path to retain the legacy behavior.
+ */
 export function planesOfConvex(mesh: IndexedMesh): SupportPlane[] {
-  const out: SupportPlane[] = [];
-  for (const [ia, ib, ic] of mesh.faces) {
-    const a = mesh.vertices[ia], b = mesh.vertices[ib], c = mesh.vertices[ic];
-    const n = cross(sub(b, a), sub(c, a));
-    const l = Math.hypot(n.x, n.y, n.z);
-    if (l < 1e-12) continue; // degenerate
-    const normal = { x: n.x / l, y: n.y / l, z: n.z / l };
-    const w = dot(normal, a);
-    const dup = out.find((p) =>
-      Math.abs(p.normal.x - normal.x) < 1e-9 &&
-      Math.abs(p.normal.y - normal.y) < 1e-9 &&
-      Math.abs(p.normal.z - normal.z) < 1e-9 &&
-      Math.abs(p.w - w) < 1e-9);
-    if (!dup) out.push({ normal, w });
+  const out:SupportPlane[]=[];
+  const buckets=new Map<string,number[]>();
+  const overflow:number[]=[];
+  for(const [ia,ib,ic] of mesh.faces) {
+    const a=mesh.vertices[ia],b=mesh.vertices[ib],c=mesh.vertices[ic];
+    const n=cross(sub(b,a),sub(c,a));
+    const l=Math.hypot(n.x,n.y,n.z);
+    if(l<1e-12) continue;
+    const candidate:SupportPlane={normal:{x:n.x/l,y:n.y/l,z:n.z/l},w:0};
+    candidate.w=dot(candidate.normal,a);
+    let best=Number.POSITIVE_INFINITY;
+    if(hashablePlane(candidate)) {
+      const cx=planeCell(candidate.normal.x),cy=planeCell(candidate.normal.y),cz=planeCell(candidate.normal.z),cw=planeCell(candidate.w);
+      for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++)
+        for(let dz=-1;dz<=1;dz++) for(let dw=-1;dw<=1;dw++) {
+          const list=buckets.get(planeKey(cx+dx,cy+dy,cz+dz,cw+dw));
+          if(!list) continue;
+          for(const i of list) if(i<best&&samePlane(out[i],candidate)) best=i;
+        }
+      for(const i of overflow) if(i<best&&samePlane(out[i],candidate)) best=i;
+    } else {
+      for(let i=0;i<out.length;i++) if(samePlane(out[i],candidate)) {best=i;break;}
+    }
+    if(Number.isFinite(best)) continue;
+    const index=out.length;
+    out.push(candidate);
+    if(hashablePlane(candidate)) {
+      const key=planeKey(planeCell(candidate.normal.x),planeCell(candidate.normal.y),planeCell(candidate.normal.z),planeCell(candidate.w));
+      const list=buckets.get(key);
+      if(list) list.push(index); else buckets.set(key,[index]);
+    } else overflow.push(index);
   }
-  if (out.length < 4) {
-    throw new Error("planesOfConvex: fewer than 4 supporting planes — mesh is not a closed convex solid");
-  }
+  if(out.length<4) throw new Error("planesOfConvex: fewer than 4 supporting planes — mesh is not a closed convex solid");
   return out;
 }
 
