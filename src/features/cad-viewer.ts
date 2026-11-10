@@ -253,7 +253,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LAYLCK", aliases: [], description: "Lock the layer of the picked object" },
   { name: "LAYUNLCK", aliases: ["LAYUNLOCK"], description: "Unlock the layer of the picked object" },
   { name: "MLEADER", aliases: ["MLD", "LE", "LEADER"], description: "Draw a leader line with annotation text: arrow point → landing end → type the text" },
-  { name: "QSELECT", aliases: ["QSI"], description: "Quick select: QSELECT TYPE LINE · QSELECT LAYER <name> · QSELECT ALL" },
+  { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type, layer, ACI/RGB colour, linetype, lineweight, text content or all visible objects" },
+  { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour, linetype or lineweight" },
+  { name: "ARRAYPOLAR", aliases: ["ARP"], description: "Create a polar array around a centre point; choose item count, sweep angle and whether items rotate" },
   { name: "PEDIT", aliases: ["PE"], description: "Edit polylines: PEDIT J (join selection) · PEDIT C (close) · PEDIT O (open) · PEDIT R (reverse)" },
   { name: "CAL", aliases: ["QUICKCALC", "QC"], description: "Evaluate an expression: CAL 2*PI*25 · sin/cos/tan (degrees) · sqrt/abs/round/min/max" },
   { name: "FIND", aliases: ["FIND"], description: "Find and replace text in the drawing" },
@@ -4653,7 +4655,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Rotate",()=>setTool("rotate"),!hasSelection,false,"RO");
     addItem("Mirror",()=>setTool("mirror"),!hasSelection,false,"MI");
     addItem("Scale",()=>setTool("scale"),!hasSelection,false,"SC");
+    addItem("Select Similar",()=>executeDrawingCommand("SELECTSIMILAR"),!hasSelection,false,"SELSIM");
     addItem("Array",()=>executeDrawingCommand("ARRAY"),!hasSelection,false,"AR");
+    addItem("Polar Array",()=>executeDrawingCommand("ARRAYPOLAR"),!hasSelection,false,"ARP");
     addItem("Offset",()=>setTool("offset"),!hasSelection,false,"O");
     addItem("Match Properties",()=>setTool("match"),!hasSelection,false,"MA");
     addItem("Erase Selected",()=>setTool("erase"),!hasSelection,true,"E");
@@ -5101,7 +5105,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         tb("select", "select-all", "Select") +
           tb("box", "isolate", "Box") +
           tb("erase", "delete", "Erase") +
-          rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)"),
+          rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)") +
+          rb("select-all", "Similar", `data-a="selsim"`, "Select objects matching the selected set by type, layer, colour, linetype or lineweight (SELECTSIMILAR)"),
         "",
         "",
         "home",
@@ -5156,7 +5161,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("lengthen", "stretch", "Lengthen") +
           tb("explode", "explode", "Explode") +
           tb("align", "align", "Align") +
-          tb("erase", "delete", "Erase"),
+          tb("erase", "delete", "Erase") +
+          rb("array", "Array Rect", `data-a="array-rect"`, "Create a rectangular array with row/column spacing and a rotated grid") +
+          rb("array", "Array Polar", `data-a="array-polar"`, "Create a polar array with centre, item count, sweep and rotation options"),
         "",
         "",
         "home",
@@ -5591,6 +5598,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       },
       undo,
       redo,
+      "array-rect": () => executeDrawingCommand("ARRAY"),
+      "array-polar": () => executeDrawingCommand("ARRAYPOLAR"),
       erase: eraseSelected,
       plot: openPlot,
       "save-dxf": saveDxf,
@@ -5698,6 +5707,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       layuniso: () => executeDrawingCommand("LAYUNISO"),
       ddedit: () => executeDrawingCommand("DDEDIT"),
       qselect: () => executeDrawingCommand("QSELECT"),
+      selsim: () => executeDrawingCommand("SELECTSIMILAR"),
       pedit: () => executeDrawingCommand("PEDIT"),
       "dwg-open": () => executeDrawingCommand("DWGOPEN DWG"),
       "dwg-open-dxf": () => executeDrawingCommand("DWGOPEN DXF"),
@@ -7917,6 +7927,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       arrayRect();
       return;
     }
+    if (cmd === "ARRAYPOLAR" || cmd === "ARP") {
+      void arrayPolar();
+      return;
+    }
     if (cmd === "VIEW" || cmd === "V") {
       viewCommand(parts.slice(1));
       return;
@@ -8132,14 +8146,34 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const what = (parts[1] ?? "").toUpperCase();
       const val = parts.slice(2).join(" ").trim();
       const all = ents.map((_, i) => i).filter((i) => visible(ents[i]));
+      const colorKey = (e: DxfEntity): string => e.rgb != null
+        ? `rgb:${(e.rgb & 0xffffff).toString(16).padStart(6, "0")}`
+        : e.color != null ? `aci:${e.color}` : "bylayer";
       let ids: number[] = [];
       if (what === "ALL") ids = all;
-      else if (what === "TYPE") ids = all.filter((i) => ents[i].type === val.toUpperCase());
-      else if (what === "LAYER") ids = all.filter((i) => ents[i].layer.toLowerCase() === val.toLowerCase());
-      if (what === "ALL" || what === "TYPE" || what === "LAYER") {
+      else if (what === "TYPE" && val) ids = all.filter((i) => ents[i].type === val.toUpperCase());
+      else if (what === "LAYER" && val) ids = all.filter((i) => ents[i].layer.toLowerCase() === val.toLowerCase());
+      else if (what === "COLOR" && val) {
+        const key = /^#?[0-9a-f]{6}$/i.test(val) ? `rgb:${val.replace(/^#/, "").toLowerCase()}`
+          : /^(bylayer|default)$/i.test(val) ? "bylayer" : `aci:${Number(val)}`;
+        ids = all.filter((i) => colorKey(ents[i]) === key);
+      } else if (what === "LINETYPE" && val) {
+        const key = val.toUpperCase();
+        ids = all.filter((i) => (ents[i].lineType ?? "BYLAYER").toUpperCase() === key);
+      } else if (what === "LINEWEIGHT" && val) {
+        if (/^(bylayer|default)$/i.test(val)) ids = all.filter((i) => ents[i].lineweight == null);
+        else {
+          const weight = Number(val);
+          if (Number.isFinite(weight) && weight >= 0) ids = all.filter((i) => ents[i].lineweight != null && Math.abs(ents[i].lineweight - weight) < 0.001);
+        }
+      } else if (what === "TEXT" && val) {
+        const q = val.toLowerCase();
+        ids = all.filter((i) => ents[i].type === "TEXT" && ents[i].value.toLowerCase().includes(q));
+      }
+      if (["ALL", "TYPE", "LAYER", "COLOR", "LINETYPE", "LINEWEIGHT", "TEXT"].includes(what) && (what === "ALL" || !!val)) {
         setSel(ids);
         logCmd(`QSELECT ${what}${val ? " " + val : ""}: ${ids.length} object(s) selected.`);
-      } else logCmd("QSELECT: use QSELECT TYPE <LINE|CIRCLE|ARC|LWPOLYLINE|TEXT|POINT> · QSELECT LAYER <name> · QSELECT ALL.");
+      } else logCmd("QSELECT: use ALL · TYPE <entity> · LAYER <name> · COLOR <ACI|#RRGGBB|BYLAYER> · LINETYPE <name|BYLAYER> · LINEWEIGHT <mm|BYLAYER> · TEXT <contains>.");
       return;
     }
     if (cmd === "SELECTSIMILAR" || cmd === "SELSIM") {
@@ -8148,11 +8182,25 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd("SELECTSIMILAR: select one or more source objects first.");
         return;
       }
-      const types = new Set(src.map((e) => e.type));
-      const layers = new Set(src.map((e) => e.layer));
-      const ids = ents.map((_, i) => i).filter((i) => visible(ents[i]) && types.has(ents[i].type) && layers.has(ents[i].layer));
+      const mode = (parts[1] ?? "").toUpperCase();
+      if (mode && !["TYPE", "LAYER", "COLOR", "LINETYPE", "LINEWEIGHT"].includes(mode)) {
+        logCmd("SELECTSIMILAR: use TYPE · LAYER · COLOR · LINETYPE · LINEWEIGHT (or omit the option for type + layer).");
+        return;
+      }
+      const colorKey = (e: DxfEntity): string => e.rgb != null
+        ? `rgb:${(e.rgb & 0xffffff).toString(16).padStart(6, "0")}`
+        : e.color != null ? `aci:${e.color}` : "bylayer";
+      const matches = (e: DxfEntity, candidate: DxfEntity): boolean => {
+        if (mode === "TYPE") return e.type === candidate.type;
+        if (mode === "LAYER") return e.layer === candidate.layer;
+        if (mode === "COLOR") return colorKey(e) === colorKey(candidate);
+        if (mode === "LINETYPE") return (e.lineType ?? "BYLAYER").toUpperCase() === (candidate.lineType ?? "BYLAYER").toUpperCase();
+        if (mode === "LINEWEIGHT") return (e.lineweight ?? null) === (candidate.lineweight ?? null);
+        return e.type === candidate.type && e.layer === candidate.layer;
+      };
+      const ids = ents.map((e, i) => ({ e, i })).filter(({ e }) => visible(e) && src.some((candidate) => matches(e, candidate))).map(({ i }) => i);
       setSel(ids);
-      logCmd(`SELECTSIMILAR: ${ids.length} object(s) share type and layer with the selection.`);
+      logCmd(`SELECTSIMILAR${mode ? " " + mode : ""}: ${ids.length} object(s) selected.`);
       return;
     }
     /* ── LibreDWG utility belt on the command line (same paths as the ribbon groups) ── */
@@ -9383,27 +9431,69 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("ARRAY: select objects first.");
       return;
     }
-    void promptLine("Rectangular Array", "rows columns rowSpacing colSpacing (e.g. 3 4 500 400)", "2 2 100 100").then((s) => {
+    void promptLine("Rectangular Array", "rows columns rowSpacing colSpacing [gridAngleDeg] (maximum 10,000 new objects)", "2 2 100 100 0").then((s) => {
       const m = (s ?? "").trim().split(/\s+/).map(Number);
-      if (m.length !== 4 || m.some((x) => !Number.isFinite(x))) {
-        logCmd("ARRAY: need 4 numbers — rows, columns, row spacing, column spacing.");
+      if ((m.length !== 4 && m.length !== 5) || m.some((x) => !Number.isFinite(x))) {
+        logCmd("ARRAY: enter rows columns rowSpacing colSpacing and optional grid angle.");
         return;
       }
-      const [rows, cols, rs, cs] = m;
-      if (rows < 1 || cols < 1 || (rows === 1 && cols === 1)) {
-        logCmd("ARRAY: array must have at least 2 items.");
-        return;
-      }
+      const [rows, cols, rs, cs, angle = 0] = m;
       const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
-      const copies: DxfEntity[] = [];
-      for (let r = 0; r < Math.min(rows, 100); r++)
-        for (let c = 0; c < Math.min(cols, 100); c++) {
-          if (!r && !c) continue;
-          for (const e of before) copies.push(X.translateEnt(e, c * cs, r * rs));
-        }
-      addEntities(copies);
-      logCmd(`ARRAY: ${copies.length} copies added (${rows} rows × ${cols} columns).`);
+      try {
+        const copies = X.rectArrayEnts(before, rows, cols, rs, cs, angle);
+        if (!copies.length) { logCmd("ARRAY: choose more than one row/column position."); return; }
+        addEntities(copies);
+        logCmd(`ARRAY: ${copies.length} copies added (${rows} rows × ${cols} columns, grid rotated ${angle.toFixed(2)}°).`);
+      } catch (err) {
+        logCmd(`ARRAY: ${(err as Error).message}`);
+      }
     });
+  }
+
+  async function arrayPolar(): Promise<void> {
+    if (!sel.size) {
+      logCmd("ARRAYPOLAR: select objects first.");
+      return;
+    }
+    const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+    if (!before.length) return;
+    const box = idx ? M.bboxOfSet(idx, sel) : null;
+    const defaultCenter = box ? { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 } : { x: 0, y: 0 };
+    const centerText = await promptLine("Polar Array — Centre", "Enter centre X,Y in drawing coordinates (the selected extents centre is the default)", `${defaultCenter.x.toPrecision(8)}, ${defaultCenter.y.toPrecision(8)}`);
+    if (centerText == null) return;
+    const centerParts = centerText.trim().split(/[,;\s]+/).filter(Boolean).map(Number);
+    if (centerParts.length !== 2 || centerParts.some((n) => !Number.isFinite(n))) {
+      logCmd("ARRAYPOLAR: centre must be two finite coordinates, for example 0,0.");
+      return;
+    }
+    const countText = await promptLine("Polar Array — Items", "Total positions including the original (2–360)", "6");
+    if (countText == null) return;
+    const count = Number(countText);
+    if (!Number.isInteger(count) || count < 2 || count > 360) {
+      logCmd("ARRAYPOLAR: item count must be an integer from 2 to 360.");
+      return;
+    }
+    const angleText = await promptLine("Polar Array — Fill Angle", "Sweep in degrees; 360 makes a full circle, negative values run clockwise", "360");
+    if (angleText == null) return;
+    const angle = Number(angleText);
+    if (!Number.isFinite(angle) || Math.abs(angle) < 1e-9 || Math.abs(angle) > 360) {
+      logCmd("ARRAYPOLAR: sweep must be non-zero and no greater than 360 degrees.");
+      return;
+    }
+    const rotateText = await promptLine("Polar Array — Rotate Items", "Rotate each copy with the array? (Yes/No)", "Yes");
+    if (rotateText == null) return;
+    if (!/^(y|yes|n|no|true|false|1|0)$/i.test(rotateText.trim())) {
+      logCmd("ARRAYPOLAR: answer Yes or No for Rotate Items.");
+      return;
+    }
+    const rotateItems = /^(y|yes|true|1)$/i.test(rotateText.trim());
+    try {
+      const copies = X.polarArrayEnts(before, { x: centerParts[0], y: centerParts[1] }, count, angle, rotateItems);
+      addEntities(copies);
+      logCmd(`ARRAYPOLAR: ${copies.length} copies added around (${fmt(centerParts[0])}, ${fmt(centerParts[1])}), ${count} positions over ${angle}°.`);
+    } catch (err) {
+      logCmd(`ARRAYPOLAR: ${(err as Error).message}`);
+    }
   }
 
   /* ── Insert tab: blocks, file-as-block, SVG import, fields ── */
