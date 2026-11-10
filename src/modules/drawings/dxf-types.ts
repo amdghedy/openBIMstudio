@@ -39,6 +39,12 @@ interface DxfEntityBase {
   ltScale?: number;
   /** Entity transparency in percent 0-90 (DXF group 440); 0/undefined = opaque. */
   transparency?: number;
+  /**
+   * In-memory grouping metadata — never written to DXF/DWG output. Dimensions
+   * tag their constituent LINE/TEXT entities with a shared dimId + role so the
+   * dimension can be restyled (DIMSTYLE) and re-measured associatively.
+   */
+  meta?: { dimId?: string; role?: "ext" | "dimline" | "arrow" | "text" };
 }
 
 /** Hatch data carried on a closed polyline (`points` is the outer loop). */

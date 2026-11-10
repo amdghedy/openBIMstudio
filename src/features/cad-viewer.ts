@@ -68,7 +68,7 @@ import {
 } from "../modules/drawings/plot-styles";
 import { isLandXml, parseLandXmlPoints } from "../modules/drawings/landxml";
 import * as P from "./cad-params";
-import { buildLinearDimension } from "../modules/cad-viewer/dimension-tools";
+import * as DIM from "../modules/cad-viewer/dimension-system";
 import { fmtTime } from "../core/region";
 
 type Tool =
@@ -268,6 +268,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DIMCENTER", aliases: ["DCE"], description: "Center mark on a circle or arc" },
   { name: "DIMCONTINUE", aliases: ["DCO", "DIMCONT"], description: "Continue a dimension from the last one" },
   { name: "DIMBASELINE", aliases: ["DBA", "DIMBASE"], description: "Baseline dimension from the last one" },
+  { name: "DIMSTYLE", aliases: ["D", "DST", "DSTYLE"], description: "Open the Dimension Style Manager: text height, tick size, precision, suffix, measurement factor — apply to all or selected dimensions" },
+  { name: "DIMUPDATE", aliases: ["DIMUPD"], description: "Re-render the selected dimensions with their current style (re-measured)" },
   { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
   { name: "IMPORT", aliases: ["IMP"], description: "Merge a DWG / DXF file into the current drawing" },
   { name: "BLOCK", aliases: ["B", "BMAKE"], description: "Create a block from the selected objects (base point, name)" },
@@ -1230,6 +1232,67 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   let doc: DxfDocument | null = null,
     name = "";
+  /* ── Dimension system state (DIMSTYLE + associativity) ── */
+  let dimStyleList: DIM.DimStyle[] = DIM.defaultDimStyles();
+  let currentDimStyleName = "ISO-25";
+  const dimRecords = new Map<string, DIM.DimRecord>();
+  let dimSeq = 0;
+  const currentDimStyle = (): DIM.DimStyle =>
+    dimStyleList.find((s) => s.name === currentDimStyleName) ?? dimStyleList[0];
+  /** Text shown on a dimension record, mirroring the DIMLINEAR tool maths. */
+  function dimTextFor(rec: DIM.DimRecord, style: DIM.DimStyle): string {
+    if (!doc) return DIM.formatMeasurement(DIM.measureRecord(rec), style);
+    const measured = DIM.measureRecord(rec);
+    const value = M.convertLength(measured * scaleCal, doc.units, du);
+    const label = DIM.formatMeasurement(value, style);
+    const unit = M.unitLabel(doc.units, du);
+    return unit === "units" ? label : label + " " + unit;
+  }
+  /** Registers a newly placed dimension and returns its tagged entities. */
+  function createDimEntities(args: {
+    first: M.Pt; second: M.Pt; placement: M.Pt; mode: "linear" | "aligned";
+  }): DxfEntity[] {
+    const style = currentDimStyle();
+    const rec: DIM.DimRecord = {
+      id: `dim-${Date.now().toString(36)}-${++dimSeq}`,
+      styleName: style.name,
+      mode: args.mode,
+      layer: currentLayer,
+      p1: { ...args.first },
+      p2: { ...args.second },
+      placement: { ...args.placement },
+    };
+    const entities = DIM.buildDimEntities(rec, style, dimTextFor(rec, style));
+    if (entities.length) dimRecords.set(rec.id, rec);
+    return entities;
+  }
+  /**
+   * Associativity: given the before/after entity pairs of a transform commit,
+   * returns extra old/new pairs for dimensions whose defpoints rode along —
+   * splice them into the same commit so one Undo restores everything.
+   */
+  function withAssociativeDims(before: DxfEntity[], after: DxfEntity[]): {
+    before: DxfEntity[]; after: DxfEntity[];
+  } {
+    if (!dimRecords.size || !before.length) return { before, after };
+    const movedSet = new Set<DxfEntity>([...before, ...after]);
+    const tol = Math.max(1e-6, (bounds ? Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 100) * 1e-9);
+    const changed = DIM.trackDimensionDefpoints([...dimRecords.values()], before, after, tol);
+    if (!changed.length) return { before, after };
+    const extBefore: DxfEntity[] = [];
+    const extAfter: DxfEntity[] = [];
+    for (const rec of changed) {
+      const style = dimStyleList.find((s) => s.name === rec.styleName) ?? currentDimStyle();
+      const old = DIM.entitiesOfDim(ents, rec.id);
+      if (!old.length || old.some((e) => movedSet.has(e))) continue; // moved manually this commit
+      const fresh = DIM.buildDimEntities(rec, style, dimTextFor(rec, style));
+      if (!fresh.length) continue;
+      dimRecords.set(rec.id, rec);
+      extBefore.push(...old);
+      extAfter.push(...fresh);
+    }
+    return { before: [...before, ...extBefore], after: [...after, ...extAfter] };
+  }
   /** Loaded CTB/STB plot style table (PLOT › Load CTB/STB…), applied while plotting. */
   let plotStyle: { table: PlotStyleTable; fileName: string } | null = null;
   /** Embedded DWG preview of the loaded file (shown while reading + Info dialog). */
@@ -2942,6 +3005,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("CONSTRAINT: a fixed object is in the selection (FIX). Run UNFIX on it to allow edits.");
       return;
     }
+    // Associative dimensions: defpoints that coincide with moved endpoints
+    // ride along, and the rebuilt dimensions join the same undo step.
+    const ext = withAssociativeDims(before, after);
+    before = ext.before;
+    after = ext.after;
     for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
     undoStack.push({ type: "modify", before, after });
     markDirty();
@@ -2964,6 +3032,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("CONSTRAINT: a fixed object is in the selection (FIX). Run UNFIX on it to allow edits.");
       return;
     }
+    // Associative dimensions follow cutting tools too (TRIM moves an endpoint).
+    const ext = withAssociativeDims(before, after);
+    before = ext.before;
+    after = ext.after;
     const beforeSet = new Set(before);
     const kept = ents.filter((e) => !beforeSet.has(e));
     kept.push(...after);
@@ -4387,6 +4459,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       fixedEnts.clear();
       for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
       markups = [];
+      dimRecords.clear();
+      dimSeq = 0;
       results = [];
       layerFilter = "";
       origin = null;
@@ -4596,6 +4670,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addSep();
     addLabel("ANNOTATION & DIMENSIONS");
     for (const [label,t] of [["Text","text"],["Edit Text","ddedit"],["Leader","leader"],["Multileader","mleader"],["Table","table"],["Dimension","dim"],["Linear Dimension","dimlinear"],["Angular Dimension","dimang"],["Arc Length Dimension","dimarc"],["Diameter Dimension","dimdia"],["Center Mark","dimcenter"],["Continue Dimension","dimcont"],["Baseline Dimension","dimbase"]] as Array<[string,Tool]>) addItem(label,()=>setTool(t));
+    addItem("Dimension Style…",()=>openDimStyleManager(),!doc,false,"DIMSTYLE");
     addSep();
     addLabel("DRAWING");
     addItem("Layer Properties",openLayerPropertiesManager);
@@ -6259,20 +6334,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           showAcadPrompt();
         } else if (pts.length === 3) {
           const first = pts[0], second = pts[1], placement = pts[2];
-          const dx = Math.abs(second.x - first.x), dy = Math.abs(second.y - first.y);
-          const measured = tool === "dimlinear" ? Math.max(dx, dy) : M.distance(first, second);
-          const value = M.convertLength(measured * scaleCal, doc.units, du);
-          const label = fmt(value), unit = M.unitLabel(doc.units, du);
-          const entities = buildLinearDimension({
-            first, second, placement, mode: tool === "dimlinear" ? "linear" : "aligned",
-            layer: currentLayer, text: unit === "units" ? label : label + " " + unit,
-            textHeight: Math.max(1e-6, M.convertLength(2.5, "mm", doc.units === "unitless" ? "drawing" : (doc.units ?? "mm"))),
+          const entities = createDimEntities({
+            first, second, placement,
+            mode: tool === "dimlinear" ? "linear" : "aligned",
           });
           if (entities.length) {
             addEntities(entities);
+            const rec = dimRecords.get(entities[0].meta?.dimId ?? "");
+            const style = currentDimStyle();
+            const label = rec ? DIM.formatMeasurement(M.convertLength(DIM.measureRecord(rec) * scaleCal, doc.units, du), style) : "";
+            const unit = M.unitLabel(doc.units, du);
             results.push("Dimension: " + label + " " + unit);
             drawn.push({ kind: "dist", pts: [first, second] });
-            logCmd((tool === "dimlinear" ? "DIMLINEAR" : "DIMALIGNED") + ": " + label + " " + unit + ". Dimension placed.");
+            logCmd((tool === "dimlinear" ? "DIMLINEAR" : "DIMALIGNED") + ": " + label + " " + unit + ". Dimension placed [" + style.name + "].");
           } else logCmd("Dimension could not be created — check the picked points.");
           pts = [];
           showMeas();
@@ -6767,7 +6841,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (gripDrag) {
       const after = ents[gripDrag.i];
       if (gripDrag.moved && after && after !== gripDrag.orig) {
-        undoStack.push({ type: "modify", before: [gripDrag.orig], after: [after] });
+        const ext = withAssociativeDims([gripDrag.orig], [after]);
+        for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
+        undoStack.push({ type: "modify", before: ext.before, after: ext.after });
         markDirty();
         redoStack.length = 0;
         const nb = M.entityBBox(after);
@@ -7949,6 +8025,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       setTool("matchlayer");
       return;
     }
+    if (cmd === "DIMSTYLE" || cmd === "D" || cmd === "DST" || cmd === "DSTYLE") {
+      openDimStyleManager();
+      return;
+    }
+    if (cmd === "DIMUPDATE" || cmd === "DIMUPD") {
+      if (!sel.size) { logCmd("DIMUPDATE: select dimension geometry first, then run DIMUPDATE."); return; }
+      const ids = new Set<string>();
+      for (const i of sel) { const d = ents[i]?.meta?.dimId; if (d) ids.add(d); }
+      if (!ids.size) { logCmd("DIMUPDATE: no associative dimensions in the selection."); return; }
+      const targets = [...ids].map((id) => dimRecords.get(id)!).filter(Boolean);
+      const st = currentDimStyle();
+      const affected = targets.filter((r) => r.styleName === st.name);
+      if (!affected.length) { logCmd(`DIMUPDATE: selected dimensions use other styles than "${st.name}" — nothing to update.`); return; }
+      const batch = DIM.restyleBatch(affected, new Map(dimStyleList.map((s) => [s.name, s])), ents, (r, s) => dimTextFor(r, s));
+      if (batch.before.length) { commitReplace(batch.before, batch.after); logCmd(`DIMUPDATE: ${affected.length} dimension(s) re-rendered with style "${st.name}".`); }
+      return;
+    }
     if (cmd === "DIMALIGNED" || cmd === "DAL") { setTool("dim"); return; }
     if (cmd === "DIMLINEAR" || cmd === "DLI") { setTool("dimlinear"); return; }
     if (cmd === "DIMANGULAR" || cmd === "DAN" || cmd === "DIMANG") {
@@ -8470,6 +8563,102 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <div style="margin-top:14px;text-align:right"><button data-r="help-close" style="padding:6px 14px">OK</button></div>
     `);
     panel.querySelector("[data-r=help-close]")?.addEventListener("click", closeOverlay);
+  }
+
+  /* ── Dimension Style Manager (DIMSTYLE) ─────────────────────────────── */
+  function openDimStyleManager(): void {
+    if (!doc) return;
+    const style = currentDimStyle();
+    const rows = dimStyleList.map((s) =>
+      `<tr data-style="${s.name}" style="cursor:pointer;background:${s.name === currentDimStyleName ? "#0e3a4a" : "transparent"}">
+        <td style="padding:4px 8px;${s.name === currentDimStyleName ? "color:#38bdf8;font-weight:700" : ""}">${s.name}${s.name === currentDimStyleName ? " ◀ current" : ""}</td>
+        <td style="padding:4px 8px;text-align:right">${s.textHeight}</td>
+        <td style="padding:4px 8px;text-align:right">${s.arrowSize || "auto"}</td>
+        <td style="padding:4px 8px;text-align:right">${s.precision}</td>
+        <td style="padding:4px 8px">${s.suffix || "—"}</td>
+        <td style="padding:4px 8px;text-align:right">${s.linearScale}</td>
+      </tr>`,
+    ).join("");
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Dimension Style Manager</b>
+      <div style="font-size:11px;color:#9aa4b2;margin-top:2px">Styles drive every associative dimension — applying a style re-renders and re-measures its dimensions.</div>
+      <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;border:1px solid #2a3340">
+        <thead><tr style="color:#9aa4b2;text-align:left"><th style="padding:4px 8px">Style</th><th style="padding:4px 8px;text-align:right">Text ht</th><th style="padding:4px 8px;text-align:right">Tick</th><th style="padding:4px 8px;text-align:right">Dec</th><th style="padding:4px 8px">Suffix</th><th style="padding:4px 8px;text-align:right">Factor</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-top:12px;align-items:center;font-size:12px">
+        <label>Text height:</label><input data-d="th" type="number" min="0.1" step="0.5" value="${style.textHeight}" style="width:110px">
+        <label>Tick size:</label><input data-d="ar" type="number" min="0" step="0.5" value="${style.arrowSize}" style="width:110px" title="0 = derive from text height">
+        <label>Decimals:</label><select data-d="pr">${[0,1,2,3,4,5,6].map((p) => `<option ${p === style.precision ? "selected" : ""}>${p}</option>`).join("")}</select>
+        <label>Suffix:</label><input data-d="suf" type="text" value="${style.suffix}" style="width:110px" placeholder='e.g. " mm"'>
+        <label>Factor (DIMLFAC):</label><input data-d="lf" type="number" min="0.0001" step="0.1" value="${style.linearScale}" style="width:110px">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        <button data-d="save" style="padding:6px 12px;background:#0284c7;color:#fff;border:none;border-radius:4px;font-weight:600">Save changes to style</button>
+        <button data-d="new" style="padding:6px 12px">New from current…</button>
+        <button data-d="applyall" style="padding:6px 12px;background:#166534;color:#fff;border:none;border-radius:4px;font-weight:600">Apply style to ALL dims</button>
+        <button data-d="applysel" style="padding:6px 12px" ${sel.size ? "" : "disabled title='No selection'"}>Apply to SELECTED dims</button>
+        <span style="flex:1"></span>
+        <button data-d="close" style="padding:6px 12px">Close</button>
+      </div>
+      <div style="font-size:11px;color:#7c8593;margin-top:8px">${dimRecords.size} associative dimension(s) in this drawing · DIMLINEAR/DIMALIGNED follow moved geometry automatically.</div>
+    `);
+    const gD = (k: string) => panel.querySelector<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(`[data-d=${k}]`)!;
+    const readEdits = (): DIM.DimStyle => ({
+      ...style,
+      textHeight: Math.max(0.1, parseFloat(gD("th").value) || style.textHeight),
+      arrowSize: Math.max(0, parseFloat(gD("ar").value) || 0),
+      precision: Math.max(0, Math.min(6, parseInt(gD("pr").value, 10) || 0)),
+      suffix: gD("suf").value,
+      linearScale: Math.max(1e-4, parseFloat(gD("lf").value) || 1),
+    });
+    const applyStyleTo = (targets: DIM.DimRecord[], label: string): void => {
+      const st = currentDimStyle();
+      const affected = targets.filter((r) => r.styleName === st.name);
+      if (!affected.length) { logCmd(`No dimensions use style "${st.name}" — nothing to update.`); return; }
+      const batch = DIM.restyleBatch(affected, new Map(dimStyleList.map((s) => [s.name, s])), ents, (r, s) => dimTextFor(r, s));
+      if (!batch.before.length) { logCmd("No dimension entities found to update."); return; }
+      commitReplace(batch.before, batch.after);
+      logCmd(`${label}: ${affected.length} dimension(s) re-rendered with style "${st.name}".`);
+    };
+    gD("close").onclick = closeOverlay;
+    gD("save").onclick = () => {
+      const edits = readEdits();
+      const i = dimStyleList.findIndex((s) => s.name === style.name);
+      dimStyleList[i] = edits;
+      applyStyleTo([...dimRecords.values()], "DIMSTYLE");
+      logCmd(`DIMSTYLE: style "${style.name}" saved (ht ${edits.textHeight}, dec ${edits.precision}${edits.suffix ? `, suffix "${edits.suffix}"` : ""}${edits.linearScale !== 1 ? `, factor ${edits.linearScale}` : ""}).`);
+      closeOverlay();
+    };
+    gD("new").onclick = () => {
+      void promptLine("New dimension style", "Style name", `${style.name} copy`).then((nm) => {
+        const trimmed = (nm ?? "").trim();
+        if (!trimmed) return;
+        if (dimStyleList.some((s) => s.name === trimmed)) { logCmd(`A style named "${trimmed}" already exists.`); return; }
+        dimStyleList.push({ ...readEdits(), name: trimmed });
+        currentDimStyleName = trimmed;
+        logCmd(`DIMSTYLE: created and switched to "${trimmed}". New DIMLINEAR/DIMALIGNED dimensions use it.`);
+        closeOverlay();
+        openDimStyleManager();
+      });
+    };
+    gD("applyall").onclick = () => { applyStyleTo([...dimRecords.values()], "DIMSTYLE (all)"); closeOverlay(); };
+    gD("applysel").onclick = () => {
+      const ids = new Set<string>();
+      for (const i of sel) { const d = ents[i]?.meta?.dimId; if (d) ids.add(d); }
+      const targets = [...ids].map((id) => dimRecords.get(id)!).filter(Boolean);
+      applyStyleTo(targets, "DIMUPDATE");
+      closeOverlay();
+    };
+    // Row click = switch the current style.
+    for (const tr of panel.querySelectorAll<HTMLTableRowElement>("tr[data-style]")) {
+      tr.onclick = () => {
+        currentDimStyleName = tr.dataset.style!;
+        logCmd(`DIMSTYLE: current style is now "${currentDimStyleName}".`);
+        closeOverlay();
+        openDimStyleManager();
+      };
+    }
   }
 
   /* ── Plot / PDF Exporter ── */
