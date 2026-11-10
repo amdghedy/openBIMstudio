@@ -194,7 +194,7 @@ t("rectangular and polar array controls are exposed and wired in Modify II", () 
   assert.ok(src.includes('"array-polar": () => executeDrawingCommand("ARRAYPOLAR")'), "polar array action not wired");
 });
 t("quick selection accepts type, layer, colour, linetype and text filters", () => {
-  for (const filter of ['what === "COLOR"', 'what === "LINETYPE"', 'what === "TEXT"', 'mode === "COLOR"', 'mode === "LINETYPE"']) {
+  for (const filter of ['what === "COLOR"', 'what === "LINETYPE"', 'what === "LINEWEIGHT"', 'what === "TEXT"', 'mode === "COLOR"', 'mode === "LINETYPE"', 'mode === "LINEWEIGHT"']) {
     assert.ok(src.includes(filter), `selection filter missing: ${filter}`);
   }
 });
