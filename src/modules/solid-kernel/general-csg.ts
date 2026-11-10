@@ -8,16 +8,15 @@
  *
  * Algorithm (level E, closed-form-verified by tests/v70):
  *
- *  1. PLANE-ARRANGEMENT SPLITTING. Every triangle of A is split by the
- *     plane of every B triangle — with NO early exit, because for a
- *     non-convex solid "in front of some face plane" does NOT imply
- *     outside. Splitting a convex piece by a plane yields convex pieces,
- *     so every fragment stays convex, and after the full pass each
- *     fragment lies (within tolerance) on ONE side of every cutter
- *     plane. A cutter's surface is contained in the union of its
- *     triangle planes, so a fragment that does not cross any cutter
- *     plane cannot cross the cutter's surface: it is homogeneous
- *     inside/outside.
+ *  1. PLANE-ARRANGEMENT SPLITTING. Each source triangle is split by
+ *     planes whose finite generating triangle/edge patches have AABBs
+ *     overlapping the source triangle. The support planes remain
+ *     infinite; the BVH indexes only their finite generating patches.
+ *     A real surface intersection necessarily has overlapping AABBs.
+ *     No early exit is used, because for a non-convex solid "in front of
+ *     some face plane" does NOT imply outside. Splitting a convex piece
+ *     by a plane yields convex pieces, so every fragment stays convex.
+ *     The exact signed-distance test and stable cut ordering are retained.
  *
  *  2. CLASSIFICATION by probe. Each fragment is classified with the
  *     robust 3-direction majority point-in-solid test (isInsideRobust),
@@ -516,8 +515,8 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
   const edgesA = planesA.map((pl) => edgesOnPlane(a, pl));
 
   // GLOBAL cut set: face planes + edge-perpendicular planes of BOTH
-  // meshes; every triangle of both meshes is split by every object so
-  // the subdivision is seam-consistent (no T-junctions).
+  // meshes. Finite support patches are indexed once; each source triangle
+  // queries conservative overlapping candidates in original cut order.
   const allCuts = [...cutObjectsOf(a, planesA, "A"), ...cutObjectsOf(b, planesB, "B")];
   const cutSupportEntries=allCuts.flatMap((cut,itemIndex)=>cut.supportBounds.map(bounds=>({itemIndex,bounds})));
   const cutSupportIndex=createAabbIndex(cutSupportEntries,allCuts.length);
