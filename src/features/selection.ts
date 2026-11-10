@@ -493,6 +493,11 @@ async function updateHover(canvas: HTMLCanvasElement): Promise<void> {
       await clearHover();
       return;
     }
+    // Hover feedback must obey the same category policy as committed picks.
+    if (!(await passesCategoryFilter(modelId, localId))) {
+      await clearHover();
+      return;
+    }
     const next = { [modelId]: new Set([localId]) };
     const same = Object.keys(hoveredMap).length === 1 && hoveredMap[modelId]?.size === 1 && hoveredMap[modelId].has(localId);
     if (same) return;
