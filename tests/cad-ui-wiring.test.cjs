@@ -244,7 +244,7 @@ t("ray/xline: infinite construction lines are read, drawn edge-to-edge and saved
   // The math module owns the clip + anchor-only bbox + infinite-line picking
   const vm = read("modules", "cad-viewer", "viewer-math.ts");
   assert.ok(vm.includes('idx.infinite.push(i)'), "spatial index must retain RAY/XLINE candidates independently of their anchor boxes");
-  assert.ok(vm.includes("for (const i of idx.infinite) candidates.add(i)"), "viewport query must include all construction lines");
+  assert.ok(vm.includes("const infinite = new Set(idx.infinite)") && vm.includes("for (const i of infinite) candidates.add(i)"), "viewport query must include all construction lines");
   for (const m of ["export function infiniteLineSegment(", "case \"RAY\":\n    case \"XLINE\": return { minX: e.start.x"]) {
     assert.ok(vm.includes(m), `viewer-math.ts drift: missing "${JSON.stringify(m)}"`);
   }
