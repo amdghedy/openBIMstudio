@@ -763,7 +763,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Doc"),
       b("new-sheet", "Sheets", safe(() => toggleSheetsPanel(), "Sheets"), { active: isSheetsPanelVisible() }),
-      b("plan", "Plan + CAD", safe(() => togglePlanView(), "Plan view with CAD link"), { active: isPlanViewVisible() }),
+      b("plan", "Plan", safe(() => togglePlanView(), "Plan view"), { active: isPlanViewVisible() }),
       sep(),
       groupLabel("AI"),
       aiChatButton(),
