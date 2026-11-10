@@ -64,8 +64,17 @@ function square(size = 0.1) {
   ];
 }
 function p(x, y, z) { return { x, y, z }; }
-function near(a, b, tol = 1e-6) {
-  assert.ok(Math.abs(a - b) <= tol, `expected ${a} ≈ ${b} (tol ${tol})`);
+function near(a, b, tol = 1e-6, message) {
+  // Allow a readable assertion message as the third argument without
+  // accidentally treating that string as a numeric tolerance.
+  if (typeof tol === "string") {
+    message = tol;
+    tol = 1e-6;
+  }
+  assert.ok(
+    Math.abs(a - b) <= tol,
+    message || `expected ${a} ≈ ${b} (tol ${tol})`,
+  );
 }
 function meshPositions(object) {
   const values = [];
