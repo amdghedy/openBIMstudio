@@ -9,7 +9,7 @@ import { ctx } from "../core/context";
 import { inputRouter } from "../core/input-router";
 import { snapping } from "./snapping";
 import { notify } from "../core/notify";
-import { createWorkPlane, getActiveWorkPlane } from "../modules/work-planes/types";
+import { createWorkPlane, getActiveWorkPlane, setWorkPlaneRotation } from "../modules/work-planes/types";
 import type {
   AdaptiveElementCreateInput,
   AdaptiveElementSnapshot,
@@ -55,6 +55,7 @@ let workPlanePickArmed = false;
 let previewRoot: THREE.Group | null = null;
 let gripRoot: THREE.Group | null = null;
 let hud: HTMLDivElement | null = null;
+let planeEditor: HTMLDivElement | null = null;
 let unsubGesture: (() => void) | null = null;
 let unsubHover: (() => void) | null = null;
 let unsubCancel: (() => void) | null = null;
@@ -242,6 +243,92 @@ function updateHud(): void {
   void next;
 }
 
+function closePlaneEditor(): void {
+  if (planeEditor?.parentElement) planeEditor.parentElement.removeChild(planeEditor);
+  planeEditor = null;
+}
+
+function parsePlaneVector(raw: string, label: string): [number, number, number] {
+  const values = String(raw).trim().split(/[,;\\s]+/).map(Number);
+  if (values.length !== 3 || values.some((value) => !Number.isFinite(value))) {
+    throw new Error(label + " must contain exactly three finite coordinates");
+  }
+  return [values[0], values[1], values[2]];
+}
+
+function openCustomPlaneEditor(step: HTMLElement, button: HTMLButtonElement): void {
+  if (planeEditor) {
+    closePlaneEditor();
+    return;
+  }
+  const current = getActiveWorkPlane();
+  planeEditor = document.createElement("div");
+  planeEditor.dataset.adaptiveWorkPlaneEditor = "true";
+  planeEditor.style.cssText =
+    "position:absolute;z-index:78;top:66px;left:50%;transform:translateX(-50%);" +
+    "display:flex;flex-direction:column;gap:8px;width:340px;padding:12px;" +
+    "background:rgba(15,17,23,.98);border:1px solid #475569;border-radius:9px;" +
+    "box-shadow:0 12px 30px rgba(0,0,0,.42);color:#e5e7eb;font:11px system-ui,sans-serif";
+  const heading = document.createElement("strong");
+  heading.textContent = "Define Arbitrary Work Plane";
+  const makeField = (labelText: string, value: string) => {
+    const wrap = document.createElement("label");
+    wrap.style.cssText = "display:flex;flex-direction:column;gap:4px;color:#cbd5e1";
+    wrap.textContent = labelText;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = value;
+    input.style.cssText =
+      "box-sizing:border-box;width:100%;padding:7px 8px;border:1px solid #475569;border-radius:5px;" +
+      "background:#0b1220;color:#f8fafc;font:12px ui-monospace,monospace";
+    wrap.appendChild(input);
+    return { wrap, input };
+  };
+  const origin = makeField("Origin X, Y, Z (metres)",
+    current ? current.origin.join(", ") : "0, 0, 0");
+  const normal = makeField("Normal NX, NY, NZ",
+    current ? current.normal.join(", ") : "0, 1, 0");
+  const rotation = makeField("Local sketch rotation (radians)",
+    String(current?.rotation ?? 0));
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;justify-content:flex-end;gap:7px";
+  const apply = document.createElement("button");
+  apply.type = "button";
+  apply.textContent = "Set Work Plane";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "Close";
+  for (const action of [apply, close]) action.style.cssText =
+    "border:1px solid #475569;border-radius:5px;padding:6px 9px;background:#1e293b;color:#e2e8f0;cursor:pointer";
+  close.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closePlaneEditor();
+  });
+  apply.addEventListener("click", (event) => {
+    event.stopPropagation();
+    try {
+      const point = parsePlaneVector(origin.input.value, "Work plane origin");
+      const direction = parsePlaneVector(normal.input.value, "Work plane normal");
+      const angle = Number(rotation.input.value);
+      if (!Number.isFinite(angle)) throw new Error("Work plane rotation must be a finite number");
+      const plane = createWorkPlane("Adaptive custom work plane", point, direction);
+      setWorkPlaneRotation(plane.id, angle);
+      workPlanePickArmed = false;
+      button.textContent = "Pick Work Plane";
+      step.textContent = "Active plane: " + plane.name;
+      closePlaneEditor();
+      snapping.hideIndicator();
+      lastSnap = null;
+      notify("success", "Arbitrary adaptive work plane activated.");
+    } catch (error) {
+      notify("error", (error as Error).message);
+    }
+  });
+  actions.append(apply, close);
+  planeEditor.append(heading, origin.wrap, normal.wrap, rotation.wrap, actions);
+  ctx.rightHost?.appendChild(planeEditor);
+}
+
 function ensureHud(): void {
   if (hud || !ctx.rightHost) return;
   hud = document.createElement("div");
@@ -269,9 +356,13 @@ function ensureHud(): void {
   pickPlane.type = "button";
   pickPlane.textContent = "Pick Work Plane";
   pickPlane.title = "Use a model face as the active adaptive work plane";
+  const definePlane = document.createElement("button");
+  definePlane.type = "button";
+  definePlane.textContent = "Define Plane";
+  definePlane.title = "Define any 3D work plane by origin, normal and sketch rotation";
   const cancel = document.createElement("button");
   cancel.textContent = "Cancel";
-  for (const button of [undo, pickPlane, cancel]) {
+  for (const button of [undo, pickPlane, definePlane, cancel]) {
     button.type = "button";
     button.style.cssText =
       "border:1px solid #475569;border-radius:6px;padding:6px 9px;background:#1e293b;" +
@@ -293,11 +384,17 @@ function ensureHud(): void {
       : "Continue placing points on the active plane.";
     notify("info", workPlanePickArmed ? "Click a visible 3D face to set the adaptive work plane." : "Face picking cancelled.");
   });
+  definePlane.addEventListener("click", (event) => {
+    event.stopPropagation();
+    workPlanePickArmed = false;
+    pickPlane.textContent = "Pick Work Plane";
+    openCustomPlaneEditor(step, pickPlane);
+  });
   cancel.addEventListener("click", (event) => {
     event.stopPropagation();
     finishPlacement(null);
   });
-  hud.append(info, undo, pickPlane, cancel);
+  hud.append(info, undo, pickPlane, definePlane, cancel);
   ctx.rightHost.appendChild(hud);
 }
 
@@ -388,6 +485,7 @@ function finishPlacement(element: Any | null): void {
   previewRoot = null;
   if (hud?.parentElement) hud.parentElement.removeChild(hud);
   hud = null;
+  closePlaneEditor();
   current.resolve(element);
   try { (window as Any).obsRefreshRibbon?.(); } catch { /* */ }
 }
@@ -415,13 +513,13 @@ async function placeCurrentPoint(event: MouseEvent | PointerEvent): Promise<void
       ...(activePlane.face.localOrigin ? { localOrigin: { x: activePlane.face.localOrigin[0], y: activePlane.face.localOrigin[1], z: activePlane.face.localOrigin[2] } } : {}),
       ...(activePlane.face.localNormal ? { localNormal: { x: activePlane.face.localNormal[0], y: activePlane.face.localNormal[1], z: activePlane.face.localNormal[2] } } : {}),
     } : undefined;
-    const faceConstraints = activePlane?.face
+    const planeConstraints = activePlane
       ? current.points.map((_, pointIndex) => ({
-          kind: "face-lock" as const,
+          kind: (faceReference ? "face-lock" : "plane") as "face-lock" | "plane",
           pointIndex,
           origin: { x: activePlane.origin[0], y: activePlane.origin[1], z: activePlane.origin[2] },
           normal: { x: activePlane.normal[0], y: activePlane.normal[1], z: activePlane.normal[2] },
-          face: faceReference,
+          ...(faceReference ? { face: faceReference } : {}),
         }))
       : [];
     const workPlane = activePlane ? {
@@ -435,7 +533,7 @@ async function placeCurrentPoint(event: MouseEvent | PointerEvent): Promise<void
     const element = api.create({
       ...current.input,
       points: current.points,
-      constraints: [...(current.input.constraints ?? []), ...faceConstraints],
+      constraints: [...(current.input.constraints ?? []), ...planeConstraints],
       ...(workPlane ? { workPlane } : {}),
     });
     finishPlacement(element);
@@ -766,6 +864,7 @@ function disposeAdaptiveInteraction(): void {
   gripRoot = null;
   if (hud?.parentElement) hud.parentElement.removeChild(hud);
   hud = null;
+  closePlaneEditor();
   installed = false;
   api = null;
 }
