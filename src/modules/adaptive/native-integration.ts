@@ -815,7 +815,9 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
     familyName: linkedProfile?.name ?? patch.familyName ?? beforeDefinition.familyName,
     points: patch.points ? clone(patch.points) : beforeDefinition.points,
     profile: linkedProfile?.profile ?? (patch.profile ? clone(patch.profile) : beforeDefinition.profile),
-    profileParts: linkedProfile?.profileParts ?? (patch.profile ? undefined : patch.profileParts ? clone(patch.profileParts) : beforeDefinition.profileParts),
+    profileParts: linkedProfile?.profileParts ?? (patch.profileParts !== undefined
+      ? clone(patch.profileParts)
+      : patch.profile !== undefined ? undefined : beforeDefinition.profileParts),
     pointCount: patch.points ? patch.points.length : beforeDefinition.pointCount,
     pointLength: patch.pointLength ?? beforeDefinition.pointLength,
     constraints: patch.constraints ? clone(patch.constraints) : beforeDefinition.constraints,
