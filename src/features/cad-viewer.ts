@@ -259,6 +259,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "MLEADER", aliases: ["MLD", "LE", "LEADER"], description: "Draw a leader line with annotation text: arrow point → landing end → type the text" },
   { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type, layer, ACI/RGB colour, linetype, lineweight, text content or all visible objects" },
   { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour, linetype or lineweight" },
+  { name: "SELECTIONCYCLING", aliases: ["SELCYCLE"], description: "Choose which overlapping object is selected at the cursor (Ctrl+W)" },
   { name: "ARRAYPOLAR", aliases: ["ARP"], description: "Create a polar array around a centre point; choose item count, sweep angle and whether items rotate" },
   { name: "PEDIT", aliases: ["PE"], description: "Edit polylines: PEDIT J (join selection) · PEDIT C (close) · PEDIT O (open) · PEDIT R (reverse)" },
   { name: "CAL", aliases: ["QUICKCALC", "QC"], description: "Evaluate an expression: CAL 2*PI*25 · sin/cos/tan (degrees) · sqrt/abs/round/min/max" },
@@ -1366,6 +1367,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const layoutIdxCache = new Map<number, M.SpatialIndex>();
   let press: { x: number; y: number; moved: boolean; id: number; band?: boolean; add?: boolean } | null = null;
   const sel = new Set<number>();
+  let selectionCyclingOn = true;
+  let selectionCycleEl: HTMLDivElement | null = null;
+  let selectionCycleOutside: ((event: PointerEvent) => void) | null = null;
   /** FIX constraint: entities pinned by the Parametric tab (object identity — survives index shifts). */
   const fixedEnts = new Set<DxfEntity>();
   /** Parametric overlay: constraint badges / FIX markers on canvas (CONSTRAINTBAR). */
@@ -2939,6 +2943,81 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (budget <= 0) return null;
     }
     return null;
+  }
+
+  function closeSelectionCycle(): void {
+    if (selectionCycleOutside) {
+      document.removeEventListener("pointerdown", selectionCycleOutside);
+      selectionCycleOutside = null;
+    }
+    selectionCycleEl?.remove();
+    selectionCycleEl = null;
+  }
+
+  function toggleSelectionCycling(): void {
+    selectionCyclingOn = !selectionCyclingOn;
+    closeSelectionCycle();
+    tools.querySelector("[data-a=selection-cycle]")?.classList.toggle("on", selectionCyclingOn);
+    logCmd("SELECTIONCYCLING: <" + (selectionCyclingOn ? "ON" : "OFF") + "> (Ctrl+W)");
+  }
+
+  function chooseSelectionCandidate(index: number, add: boolean): void {
+    const entity = ents[index];
+    if (!entity) return;
+    closeSelectionCycle();
+    setSel([index], add);
+    logCmd("Selected " + entity.type + " on layer " + entity.layer + ".");
+    draw();
+  }
+
+  function openSelectionCycle(candidates: M.PickCandidate[], sp: M.Pt, add: boolean): void {
+    closeSelectionCycle();
+    const menu = document.createElement("div");
+    menu.className = "obs-cad-selection-cycle";
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", "Choose overlapping drawing object");
+    menu.style.cssText = "position:fixed;z-index:2147483000;width:250px;max-width:calc(100vw - 16px);max-height:min(360px,60vh);overflow:auto;padding:8px;border:1px solid #475569;border-radius:9px;background:#111827;color:#e5e7eb;box-shadow:0 14px 38px rgba(0,0,0,.38);font:12px system-ui,sans-serif";
+    const heading = document.createElement("div");
+    heading.textContent = "Choose object · 1–9 or Esc";
+    heading.style.cssText = "font-weight:700;padding:3px 5px 8px;color:#cbd5e1";
+    menu.append(heading);
+    candidates.forEach((candidate, position) => {
+      const entity = ents[candidate.index];
+      if (!entity) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("role", "option");
+      button.style.cssText = "display:block;width:100%;text-align:left;border:0;border-radius:5px;padding:7px 8px;margin:2px 0;background:#1f2937;color:#f8fafc;cursor:pointer;font:inherit";
+      const detail = entity.type === "TEXT" ? " · " + String(entity.value ?? "").slice(0, 28) : "";
+      button.textContent = (position + 1) + ".  " + entity.type + " · Layer " + entity.layer + detail;
+      button.addEventListener("mouseenter", () => { button.style.background = "#334155"; });
+      button.addEventListener("mouseleave", () => { button.style.background = "#1f2937"; });
+      button.addEventListener("click", () => chooseSelectionCandidate(candidate.index, add));
+      menu.append(button);
+    });
+    menu.addEventListener("pointerdown", (event) => event.stopPropagation());
+    document.body.append(menu);
+    const rect = cv.getBoundingClientRect();
+    const left = Math.max(8, Math.min(window.innerWidth - 258, rect.left + sp.x + 14));
+    const top = Math.max(8, Math.min(window.innerHeight - Math.min(menu.offsetHeight, 360) - 8, rect.top + sp.y + 14));
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+    selectionCycleEl = menu;
+    selectionCycleOutside = (event: PointerEvent) => {
+      if (!menu.contains(event.target as Node)) closeSelectionCycle();
+    };
+    document.addEventListener("pointerdown", selectionCycleOutside);
+    menu.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+  }
+
+  function handleSelectionClick(sp: M.Pt, wp: M.Pt, add: boolean): void {
+    const candidates = idx ? M.pickEntities(idx, ents, wp.x, wp.y, 8 / view.scale, visible, 32) : [];
+    if (selectionCyclingOn && candidates.length > 1) {
+      openSelectionCycle(candidates, sp, add);
+      return;
+    }
+    if (candidates.length) chooseSelectionCandidate(candidates[0].index, add);
+    else if (!add) setSel([]);
   }
 
   const isModTool = (t: Tool): t is ModKind =>
@@ -5116,6 +5195,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("erase", "delete", "Erase") +
           rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)") +
           rb("select-all", "Similar", `data-a="selsim"`, "Select objects matching the selected set by type, layer, colour, linetype or lineweight (SELECTSIMILAR)"),
+          rb("layers", "Cycle", `data-a="selection-cycle"`, "Choose between overlapping entities (SELECTIONCYCLING / Ctrl+W)"),
         "",
         "",
         "home",
@@ -5600,6 +5680,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       },
       polar: () => setPolarTracking(!polarOn),
       "snap-modes": () => openOsnapSettings(),
+      "selection-cycle": () => toggleSelectionCycling(),
       quick: () => setQuickMeasure(!quick),
       dyn: () => {
         dynOn = !dynOn;
@@ -6008,6 +6089,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function setTool(t: Tool) {
+    closeSelectionCycle();
     clearModState();
     clearPickState();
     matchSrc = null;
@@ -6920,16 +7002,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
               : `Crossing selected ${ids.length} object(s) (any touch)`,
           );
         } else {
-          const { wp } = rawPoint(ev);
-          const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 8 / view.scale, visible) : -1;
-          if (i >= 0) setSel([i], !!press.add);
-          else if (!press.add) setSel([]);
+          const { wp, sp } = rawPoint(ev);
+          handleSelectionClick(sp, wp, !!press.add);
         }
       } else if (!press.moved && doc && ev.type === "pointerup") {
-        const { wp } = rawPoint(ev);
-        const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 8 / view.scale, visible) : -1;
-        if (i >= 0) setSel([i], !!press.add);
-        else if (!press.add) setSel([]);
+        const { wp, sp } = rawPoint(ev);
+        handleSelectionClick(sp, wp, !!press.add);
       }
       rband = null;
       draw();
@@ -7106,6 +7184,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!screenTypeActive) return;
     if (!page.isConnected || page.style.display === "none") return;
     if (!shell || shell.style.display === "none") return;
+    if (selectionCycleEl) return;
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (ev.repeat) return;
     if (ev.key.length !== 1) return;
@@ -7148,6 +7227,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!screenTypeActive) return;
     if (!page.isConnected || page.style.display === "none") return;
     if (!shell || shell.style.display === "none") return;
+    if (selectionCycleEl) {
+      const buttons = [...selectionCycleEl.querySelectorAll<HTMLButtonElement>("button")];
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); closeSelectionCycle(); return; }
+      if (/^[1-9]$/.test(ev.key)) { ev.preventDefault(); ev.stopImmediatePropagation(); buttons[Number(ev.key) - 1]?.click(); return; }
+      if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        ev.preventDefault(); ev.stopImmediatePropagation();
+        const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        const next = (current + (ev.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[next]?.focus(); return;
+      }
+      if (ev.key === "Enter") { ev.preventDefault(); ev.stopImmediatePropagation(); (document.activeElement as HTMLButtonElement)?.click?.(); return; }
+      ev.preventDefault(); ev.stopImmediatePropagation(); return;
+    }
     if (isUiTextField(ev.target) && ev.target !== cv) {
       // Allow Esc to still cancel CAD tools even from non-command inputs in the shell
       if (ev.key !== "Escape") return;
@@ -7231,6 +7323,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
 
     // Ctrl/Cmd shortcuts
+    if (modKey && hotKey === "w") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      toggleSelectionCycling();
+      return;
+    }
     if (modKey && hotKey === "z" && !ev.shiftKey) {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -8000,6 +8098,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       return;
     }
+    if (cmd === "SELECTIONCYCLING" || cmd === "SELCYCLE") { toggleSelectionCycling(); return; }
     if (cmd === "OSNAPSET" || cmd === "OSMODE") {
       openOsnapSettings();
       return;
