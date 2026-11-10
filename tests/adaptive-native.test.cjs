@@ -79,6 +79,7 @@ async function main() {
   assert.equal(typeof api.cancelPointEdit, "function");
   assert.equal(typeof api.bindFamilyType, "function");
   assert.equal(typeof api.propagateFamilyTypes, "function");
+  assert.equal(typeof api.registerCustomFamilyProfileAdapter, "function");
   assert.equal(ctx.features.meshBuilders["adaptive-component"], adaptive.buildAdaptiveElementMesh);
 
   const first = api.create({
@@ -251,10 +252,35 @@ async function main() {
       h: { ref: "height" },
     },
   };
+  const composedFamily = {
+    id: "catalog-composed",
+    name: "Compound Bracket",
+    types: [{ id: "type-a", name: "Type A" }],
+    geometry: {
+      kind: "composed",
+      parts: [
+        { kind: "box", w: { ref: "width" }, d: { const: 0.12 }, h: { const: 0.25 },
+          transform: { translate: [{ const: 0 }, { const: 0 }, { const: 0 }] } },
+        { kind: "cylinder", r: { ref: "radius" }, h: { const: 0.4 },
+          transform: { translate: [{ const: 0.3 }, { const: 0 }, { const: 0 }] } },
+      ],
+    },
+  };
+  const customFamily = {
+    id: "catalog-custom",
+    name: "Custom Assembly",
+    types: [{ id: "type-a", name: "Type A" }],
+    geometry: { kind: "custom", builder: "test-custom-section" },
+  };
+  const sharedFamilies = [sharedFamily, composedFamily, customFamily];
+  api.registerCustomFamilyProfileAdapter("test-custom-section", (params) => [
+    { name: "Custom leg", profile: square(Number(params.width)) },
+    { name: "Custom flange", profile: square(Number(params.depth)) },
+  ]);
   ctx.features.family = {
-    get: (id) => id === sharedFamily.id ? sharedFamily : null,
-    list: () => [sharedFamily],
-    resolveParams: () => ({ width: sharedWidth, depth: 0.2, height: 3 }),
+    get: (id) => sharedFamilies.find((family) => family.id === id) ?? null,
+    list: () => sharedFamilies,
+    resolveParams: () => ({ width: sharedWidth, depth: 0.2, radius: 0.04, height: 3 }),
     onChange(callback) {
       familyChanged = callback;
       return () => { familyChanged = null; };
@@ -280,6 +306,36 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   near(Math.max(...api.getDefinition(constrained.id).profile.map((point) => point.u)) -
     Math.min(...api.getDefinition(constrained.id).profile.map((point) => point.u)), 0.4);
+
+  // Composite family types preserve every independently swept part in the model.
+  const compoundInstance = api.create({
+    familyId: "compound-seed",
+    familyName: "Compound seed",
+    points: [p(0, 0, 0), p(2, 0, 0)],
+    profile: square(0.1),
+  });
+  assert.equal(api.bindFamilyType(compoundInstance.id, "catalog-composed", "type-a"), true);
+  const compoundDefinition = api.getDefinition(compoundInstance.id);
+  assert.equal(compoundDefinition.profileParts.length, 2);
+  assert.equal(api.buildMesh(elements.find((entry) => entry.id === compoundInstance.id)).children.length, 2);
+  assert.equal(compoundDefinition.familyBinding.familyId, "catalog-composed");
+
+  // Registered custom-family adapters map custom builder parameters to exact
+  // profile parts; unsupported builders remain excluded from the type picker.
+  const customInstance = api.create({
+    familyId: "custom-seed",
+    familyName: "Custom seed",
+    points: [p(0, 0, 0), p(1, 0, 0)],
+    profile: square(0.1),
+  });
+  assert.equal(api.bindFamilyType(customInstance.id, "catalog-custom", "type-a"), true);
+  assert.equal(api.getDefinition(customInstance.id).profileParts.length, 2);
+  assert.equal(api.buildMesh(elements.find((entry) => entry.id === customInstance.id)).children.length, 2);
+  sharedWidth = 0.5;
+  assert.equal(await api.propagateFamilyTypes(), 2, "compound and custom linked family sections update together");
+  assert.equal(api.getDefinition(compoundInstance.id).profileParts.length, 2);
+  near(Math.max(...api.getDefinition(customInstance.id).profileParts[0].profile.map((point) => point.u)) -
+    Math.min(...api.getDefinition(customInstance.id).profileParts[0].profile.map((point) => point.u)), 0.5);
 
   // Repeated placement is grouped into one undoable operation.
   const batchBefore = elements.length;
