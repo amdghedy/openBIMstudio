@@ -1,4 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+/** Leave the welcome screen the way a user does (the 3D BIM Platform card); it covers the ribbon on first load. */
+async function enterPlatform(page: Page): Promise<void> {
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect(page.locator('.obs-home.is-open')).toHaveCount(0, { timeout: 15000 });
+}
 
 // Browser smoke tests. They use the visible UI only (no test hooks), so they
 // double as a check that the controls a user sees are really there.
@@ -16,6 +22,7 @@ test('the app boots without uncaught errors and draws a 3D canvas', async ({ pag
 test('2D plan: command line starts a tool and Esc cancels everything', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 30000 });
+  await enterPlatform(page);
   const ribbon = page.locator('.obs-ribbon');
   await ribbon.getByRole('button', { name: 'View', exact: true }).click();
   await ribbon.getByRole('button', { name: 'Plan', exact: true }).click();
@@ -37,6 +44,7 @@ test('2D plan: command line starts a tool and Esc cancels everything', async ({ 
 
 test('2D plan: unknown command is reported, not ignored', async ({ page }) => {
   await page.goto('/');
+  await enterPlatform(page);
   const ribbon = page.locator('.obs-ribbon');
   await ribbon.getByRole('button', { name: 'View', exact: true }).click();
   await ribbon.getByRole('button', { name: 'Plan', exact: true }).click();
