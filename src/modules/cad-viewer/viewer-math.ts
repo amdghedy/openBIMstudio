@@ -552,6 +552,32 @@ export function queryIndexBox(idx: SpatialIndex, entities: DxfEntity[], box: BBo
   return out;
 }
 
+export interface PickCandidate { index: number; distance: number }
+
+/**
+ * Return all visible entities hit by a point, ordered by geometric distance.
+ * Equal-distance hits prefer later drawing order (the visually top-most entity).
+ * Kept separate from pickEntity so existing modify tools retain their behavior.
+ */
+export function pickEntities(
+  idx: SpatialIndex, entities: DxfEntity[], x: number, y: number, tol: number,
+  visible: (e: DxfEntity) => boolean = () => true, maxResults = 32,
+): PickCandidate[] {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(tol) || tol < 0) return [];
+  const hits: PickCandidate[] = [];
+  for (const index of queryIndex(idx, x, y, tol)) {
+    const entity = entities[index];
+    if (!entity || !visible(entity)) continue;
+    const d = distToEntity(entity, x, y) + (isHatchEntity(entity) ? tol * 0.6 : 0);
+    if (Number.isFinite(d) && d <= tol + 1e-12) hits.push({ index, distance: d });
+  }
+  hits.sort((a, b) => {
+    const delta = a.distance - b.distance;
+    return Math.abs(delta) <= 1e-12 ? b.index - a.index : delta;
+  });
+  const limit = Number.isFinite(maxResults) ? Math.max(1, Math.min(256, Math.floor(maxResults))) : 32;
+  return hits.slice(0, limit);
+}
 /** Index of the entity nearest the point within `tol` (world units), preferring smaller entities on ties. */
 export function pickEntity(idx: SpatialIndex, entities: DxfEntity[], x: number, y: number, tol: number, visible: (e: DxfEntity) => boolean = () => true): number {
   let best = -1, bd = tol;
