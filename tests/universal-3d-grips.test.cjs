@@ -9,7 +9,7 @@ assert.strictEqual(handles.length, 8);
 const east = g.resizePointFootprint(base, "edge-e", [3, 0]);
 assert.deepStrictEqual(east, { point: [0.5, 0], width: 5, depth: 2 });
 const nw = g.resizePointFootprint(base, "corner-nw", [-3, -2]);
-assert.deepStrictEqual(nw, { point: [0.5, 0.5], width: 5, depth: 3 });
+assert.deepStrictEqual(nw, { point: [-0.5, -0.5], width: 5, depth: 3 });
 assert.strictEqual(g.resizePointFootprint(base, "edge-e", [NaN, 0]), null);
 assert.strictEqual(g.resizePointFootprint(base, "unknown", [3, 0]), null);
 console.log("Universal 3D grip geometry tests passed.");
