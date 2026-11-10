@@ -53,3 +53,41 @@ test('Arabic locale boots right-to-left without uncaught errors', async ({ page 
   await page.screenshot({ path: 'test-results/rtl-ar.png' });
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('editable grips show an open hand on hover and a closed hand while dragging, and the drag moves the vertex', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await page.waitForFunction(() => !!(window as any).__obsAuthoring && !!(window as any).__OBS_CTX__?.world?.camera?.three, null, { timeout: 30000 });
+
+  // Draw a slab by clicking four corners on the ground, then Enter, then select it.
+  const box = (await page.locator('canvas').first().boundingBox())!;
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  await page.evaluate(() => (window as any).__obsAuthoring.setAuthoringTool('slab'));
+  for (const [dx, dy] of [[-120, -80], [120, -80], [120, 80], [-120, 80]]) { await page.mouse.move(cx + dx, cy + dy); await page.mouse.click(cx + dx, cy + dy); }
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => (window as any).__obsAuthoring.getElementCount() >= 1, null, { timeout: 10000 });
+  await page.evaluate(() => (window as any).__obsAuthoring.setAuthoringTool('select'));
+  await page.mouse.move(cx, cy); await page.mouse.click(cx, cy);
+
+  const info = await page.evaluate(() => {
+    const a = (window as any).__obsAuthoring, cam = (window as any).__OBS_CTX__.world.camera.three;
+    const el = a.getElements().find((e: any) => e.type === 'slab');
+    const v = el.params.polygon[0];
+    const p = { x: v[0], y: el.params.elevation, z: v[1] };
+    const w = cam.position.constructor; const vec = new w(p.x, p.y, p.z).project(cam);
+    const r = document.querySelector('canvas')!.getBoundingClientRect();
+    return { id: el.id, v, sx: r.left + (vec.x + 1) / 2 * r.width, sy: r.top + (1 - vec.y) / 2 * r.height };
+  });
+  const host = () => page.evaluate(() => (document.querySelector('canvas')!.parentElement as HTMLElement).style.cursor);
+  await page.mouse.move(info.sx + 40, info.sy + 40); await page.mouse.move(info.sx, info.sy);
+  expect(await page.evaluate(() => Array.from(document.querySelectorAll('*')).some((n) => (n as HTMLElement).style?.cursor === 'grab')), 'a grab cursor is set while hovering the grip').toBe(true);
+  await page.mouse.down(); await page.mouse.move(info.sx + 30, info.sy + 20, { steps: 8 });
+  expect(await page.evaluate(() => Array.from(document.querySelectorAll('*')).some((n) => (n as HTMLElement).style?.cursor === 'grabbing')), 'grabbing cursor during the drag').toBe(true);
+  await page.mouse.up();
+  const after = await page.evaluate((id) => (window as any).__obsAuthoring.getElementById(id).params.polygon[0], info.id);
+  expect(Math.hypot(after[0] - info.v[0], after[1] - info.v[1]), 'vertex moved').toBeGreaterThan(0.05);
+  void host;
+  expect(errors, errors.join('\n')).toEqual([]);
+});

@@ -6750,6 +6750,14 @@ export function setupAuthoring() {
     if (gripDrag) return;
     lastHoverEvent = e;
 
+    // Open hand over an editable (orange) grip so the user knows it can be grabbed and dragged.
+    try {
+      const host = ctx.rightHost as HTMLElement;
+      const overGrip = (activeTool === "select" || activeTool === null) && !!gripAt(e);
+      if (overGrip) { if (host.style.cursor !== "grab") host.style.cursor = "grab"; }
+      else if (host.style.cursor === "grab") host.style.cursor = "";
+    } catch { /* */ }
+
     // Feed the snap engine the draw context (chain base) so magnetic
     // perpendicular/parallel snaps can be computed (Design spec §5).
     try { snapping.setDrawContext(chainStart); } catch { /* */ }

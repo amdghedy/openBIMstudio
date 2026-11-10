@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Changed: grips show a grab hand
+- Hovering an editable (orange) grip in select mode now shows an open-hand cursor; the closed hand while dragging was already there. Covered by a real-browser spec (`tests/e2e/orbit-rtl.spec.ts`, informational CI job).
+
 ### Fixed: 3D orbit rolling and stuttering
 - Orbiting (middle-mouse + modifier, and Shift+left-drag) now restores the camera's up vector to world +Y at the start of the drag, so a tilt left behind by a Top/saved/section view no longer makes rotation roll the picture, and applies at most one camera update per animation frame instead of one per pointer event. Logic covered by `tests/orbit-frame.test.cjs`. **Not verified in a real browser or on your model**; if it still lags, the cost is likely in a per-camera-update listener (view cube, section sync, dimension labels) and needs a profile.
 
