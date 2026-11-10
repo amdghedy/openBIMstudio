@@ -6353,11 +6353,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             addEntities(entities);
             const rec = dimRecords.get(entities[0].meta?.dimId ?? "");
             const style = currentDimStyle();
-            const label = rec ? DIM.formatMeasurement(M.convertLength(DIM.measureRecord(rec) * scaleCal, doc.units, du), style) : "";
-            const unit = M.unitLabel(doc.units, du);
-            results.push("Dimension: " + label + " " + unit);
+            // Report exactly what the entity shows — dimTextFor honours the
+            // style suffix and skips the automatic unit label when present.
+            const label = rec ? dimTextFor(rec, style) : "";
+            results.push("Dimension: " + label);
             drawn.push({ kind: "dist", pts: [first, second] });
-            logCmd((tool === "dimlinear" ? "DIMLINEAR" : "DIMALIGNED") + ": " + label + " " + unit + ". Dimension placed [" + style.name + "].");
+            logCmd((tool === "dimlinear" ? "DIMLINEAR" : "DIMALIGNED") + ": " + label + ". Dimension placed [" + style.name + "].");
           } else logCmd("Dimension could not be created — check the picked points.");
           pts = [];
           showMeas();
