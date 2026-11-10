@@ -106,11 +106,7 @@ export function transformSolid(
   return { ...solid, vertices, edges: new Map() };
 }
 
-/**
- * Weld coincident vertices within COINCIDENT_TOL (spec 5.2: never exact
- * float equality). Returns a new solid; topology indices are remapped.
- */
-export function weldVertices(solid: BRepSolid, tol = COINCIDENT_TOL): BRepSolid {
+function weldVerticesLinear(solid: BRepSolid, tol: number): BRepSolid {
   const map = new Map<number, number>();
   const accepted: Pt3[] = [];
   for (let i = 0; i < solid.vertices.length; i++) {
@@ -118,23 +114,77 @@ export function weldVertices(solid: BRepSolid, tol = COINCIDENT_TOL): BRepSolid 
     let found = -1;
     for (let j = 0; j < accepted.length; j++) {
       const a = accepted[j];
-      if (
-        Math.abs(a.x - v.x) <= tol &&
-        Math.abs(a.y - v.y) <= tol &&
-        Math.abs(a.z - v.z) <= tol
-      ) {
-        found = j;
-        break;
-      }
+      if (Math.abs(a.x-v.x)<=tol && Math.abs(a.y-v.y)<=tol && Math.abs(a.z-v.z)<=tol) { found=j; break; }
     }
     if (found >= 0) map.set(i, found);
-    else {
-      map.set(i, accepted.length);
-      accepted.push(v);
-    }
+    else { map.set(i, accepted.length); accepted.push(v); }
   }
-  const faces = solid.faces
-    .map((f) => ({ ...f, loop: f.loop.map((i) => map.get(i)!) }))
+  const faces = solid.faces.map((f) => ({ ...f, loop: f.loop.map((i) => map.get(i)!) }))
+    .filter((f) => new Set(f.loop).size === f.loop.length && f.loop.length >= 3);
+  const out: BRepSolid = { ...solid, vertices: accepted, faces, edges: new Map() };
+  buildEdges(out);
+  return out;
+}
+
+/**
+ * Spatial-hash welding. Exact component-wise tolerance checks and first-match
+ * canonical vertex semantics are preserved. Expected O(V + C); pathological
+ * dense buckets can still degrade. Unsafe coordinate/tolerance ratios use
+ * the conservative linear implementation.
+ */
+export function weldVertices(solid: BRepSolid, tol = COINCIDENT_TOL): BRepSolid {
+  if (!(tol > 0) || !Number.isFinite(tol)) return weldVerticesLinear(solid, tol);
+
+  const map = new Map<number, number>();
+  const accepted: Pt3[] = [];
+  const buckets = new Map<string, number[]>();
+  const overflow: number[] = [];
+  const cell = (v: number) => Math.floor(v / tol);
+  const keyOf = (x: number, y: number, z: number) => `${x},${y},${z}`;
+  const hashable = (v: Pt3) =>
+    Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z) &&
+    [v.x, v.y, v.z].every((n) => Number.isSafeInteger(cell(n)));
+
+  for (let i = 0; i < solid.vertices.length; i++) {
+    const v = solid.vertices[i];
+    let found = -1;
+    if (hashable(v)) {
+      const cx = cell(v.x), cy = cell(v.y), cz = cell(v.z);
+      let best = Number.POSITIVE_INFINITY;
+      for (let dx=-1; dx<=1; dx++) for (let dy=-1; dy<=1; dy++) for (let dz=-1; dz<=1; dz++) {
+        const candidates = buckets.get(keyOf(cx+dx, cy+dy, cz+dz));
+        if (!candidates) continue;
+        for (const j of candidates) {
+          if (j >= best) continue;
+          const a = accepted[j];
+          if (Math.abs(a.x-v.x)<=tol && Math.abs(a.y-v.y)<=tol && Math.abs(a.z-v.z)<=tol) best=j;
+        }
+      }
+      for (const j of overflow) {
+        if (j >= best) continue;
+        const a = accepted[j];
+        if (Math.abs(a.x-v.x)<=tol && Math.abs(a.y-v.y)<=tol && Math.abs(a.z-v.z)<=tol) best=j;
+      }
+      if (Number.isFinite(best)) found = best;
+    } else {
+      for (let j=0; j<accepted.length; j++) {
+        const a = accepted[j];
+        if (Math.abs(a.x-v.x)<=tol && Math.abs(a.y-v.y)<=tol && Math.abs(a.z-v.z)<=tol) { found=j; break; }
+      }
+    }
+
+    if (found >= 0) { map.set(i, found); continue; }
+    const index = accepted.length;
+    map.set(i, index);
+    accepted.push(v);
+    if (hashable(v)) {
+      const key = keyOf(cell(v.x), cell(v.y), cell(v.z));
+      const list = buckets.get(key);
+      if (list) list.push(index); else buckets.set(key, [index]);
+    } else overflow.push(index);
+  }
+
+  const faces = solid.faces.map((f) => ({ ...f, loop: f.loop.map((i) => map.get(i)!) }))
     .filter((f) => new Set(f.loop).size === f.loop.length && f.loop.length >= 3);
   const out: BRepSolid = { ...solid, vertices: accepted, faces, edges: new Map() };
   buildEdges(out);
