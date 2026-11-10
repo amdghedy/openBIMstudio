@@ -137,6 +137,24 @@ class SelectionManager {
     return this.filter != null && this.filter.size > 0;
   }
 
+  /** Apply the active category filter consistently to native authored picks.
+   *  IFC aliases are accepted alongside native element type names.
+   */
+  matchesAuthoredCategoryFilter(type: string, properties?: Record<string, unknown> | null): boolean {
+    if (!this.filter?.size) return true;
+    const candidates = [
+      type,
+      properties?.ifcType,
+      properties?.ifcEntity,
+      properties?.ifcClass,
+      properties?.entity,
+      properties?.predefinedType,
+    ].filter((value): value is string => typeof value === "string" && value.length > 0);
+    const normalize = (value: string) => value.trim().toLowerCase().replace(/^ifc/, "").replace(/[^a-z0-9]/g, "");
+    const allowed = new Set([...this.filter].map(normalize));
+    return candidates.some(value => allowed.has(normalize(value)));
+  }
+
   // ── Bulk operations ──
   async selectAll(): Promise<void> {
     this.map = {};
@@ -362,24 +380,27 @@ let clickToSelectInstalled = false;
 let highlighterSyncInstalled = false;
 let hoverPending = false;
 let hoveredMap: Record<string, Set<number>> = {};
-const categoryCache = new Map<string, Map<number, string>>();
+const categoryCache = new Map<string, { model: object; byId: Map<number, string> }>();
 
 async function passesCategoryFilter(modelId: string, localId: number): Promise<boolean> {
   const allowed = selection.getFilter();
   if (!allowed?.length) return true;
   try {
-    let byId = categoryCache.get(modelId);
-    if (!byId) {
-      const model: any = ctx.fragments.list.get(modelId);
-      if (!model?.getItemsOfCategories) return false;
+    const model: any = ctx.fragments.list.get(modelId);
+    if (!model?.getItemsOfCategories) return false;
+    let cached = categoryCache.get(modelId);
+    // Model IDs can be reused after unload/reload. Never apply a stale category
+    // index to a different model instance with the same ID.
+    if (!cached || cached.model !== model) {
       const categories = await model.getItemsOfCategories([/.+/]);
-      byId = new Map<number, string>();
+      const byId = new Map<number, string>();
       for (const [category, ids] of Object.entries(categories ?? {})) {
         for (const id of (ids as number[]) ?? []) byId.set(id, category);
       }
-      categoryCache.set(modelId, byId);
+      cached = { model, byId };
+      categoryCache.set(modelId, cached);
     }
-    const category = byId.get(localId);
+    const category = cached.byId.get(localId);
     return !!category && allowed.includes(category);
   } catch (err) {
     console.warn("[selection] category filter lookup failed; rejecting pick", err);
