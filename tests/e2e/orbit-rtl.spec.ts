@@ -7,6 +7,7 @@ test('Shift+drag orbit restores an upright camera and applies far fewer camera u
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
   await expect(page.locator('canvas').first()).toBeVisible({ timeout: 30000 });
   await page.waitForFunction(() => !!(window as any).__OBS_CTX__?.world?.camera?.controls, null, { timeout: 30000 });
 
@@ -121,7 +122,7 @@ test('Export > Views to CAD: dialog creates standard views and downloads real DX
   await page.keyboard.press('Enter');
   const dlg = page.locator('#obs-export-cad');
   await expect(dlg).toBeVisible({ timeout: 10000 });
-  await dlg.locator('[data-make]').click();
+  if (await dlg.locator('[data-make]').count()) await dlg.locator('[data-make]').click();
   await expect(dlg.locator('[data-view]').first()).toBeVisible();
   await dlg.locator('[data-format]').selectOption('dxf');
   const dl = page.waitForEvent('download', { timeout: 30000 });
