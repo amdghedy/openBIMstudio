@@ -15,6 +15,7 @@ const checks = [
   ["selection category filter applied to real pointer picks and hover", selection.includes("passesCategoryFilter(hit.modelId, hit.localId)") && selection.includes("passesCategoryFilter(modelId, localId)")],
   ["category index cached per linked model and invalidated on model replacement", selection.includes("categoryCache = new Map") && selection.includes("cached.model !== model")],
   ["category filter applied to authored native picks", selection.includes("matchesAuthoredCategoryFilter") && read("src/features/authoring.ts").includes("selection.matchesAuthoredCategoryFilter")],
+  ["category filter applied to 2D plan click, box, and hover selection", read("src/features/plan-view-panel.ts").includes("selection.matchesAuthoredCategoryFilter") && read("src/features/plan-view-panel.ts").includes("elementInPlanBox")],
   ["temporary Alt snap suspension", palette.includes('e.key === "Alt"') && palette.includes("snapping.setSuspended(false)")],
   ["palette keyboard shortcut", palette.includes('e.key.toLowerCase() === "p"')],
   ["palette booted", main.includes("setupSelectionSnappingPalette()")],
