@@ -169,6 +169,51 @@ t("room -> IfcSpace with a void profile for the island hole", () => {
   assert.ok(r.text.includes("IFCSPACE('"));
 });
 
+t("native adaptive component exports tessellation and Pset_OBS_AdaptiveComponent", () => {
+  const adaptive = {
+    id: "adaptive-ifc-01",
+    type: "adaptive-component",
+    name: "Adaptive compound bracket",
+    levelId: "L0",
+    familyId: "family-bracket",
+    familyTypeId: "type-300",
+    params: { height: 2, thickness: 0.3, elevation: 0 },
+    nativeGeometry: {
+      positions: [
+        0, 0, 0, 2, 0, 0, 2, 0.2, 0,
+        0, 0, 0, 2, 0.2, 0, 0, 0.2, 0,
+      ],
+    },
+    properties: {
+      adaptiveDefinition: {
+        schemaVersion: 1,
+        familyId: "family-bracket",
+        familyName: "Bracket",
+        pointCount: 2,
+        points: [{ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }],
+        profile: [{ u: -0.05, v: -0.05 }, { u: 0.05, v: -0.05 }, { u: 0.05, v: 0.05 }, { u: -0.05, v: 0.05 }],
+        profileParts: [{ name: "web", profile: [{ u: -0.05, v: -0.05 }, { u: 0.05, v: -0.05 }, { u: 0.05, v: 0.05 }, { u: -0.05, v: 0.05 }] }],
+        constraints: [{ kind: "face-lock", pointIndex: 0, origin: { x: 0, y: 0, z: 0 }, normal: { x: 0, y: 1, z: 0 }, face: { elementId: "wall-01", meshIndex: 0, faceIndex: 3 } }],
+        workPlane: { id: "wp-1", name: "Wall face", origin: { x: 0, y: 0, z: 0 }, normal: { x: 0, y: 1, z: 0 } },
+        familyBinding: { familyId: "family-bracket", typeId: "type-300" },
+      },
+    },
+  };
+  for (const schema of ["IFC4", "IFC2X3"]) {
+    const result = exportAuthoredToIfc([adaptive], { schema, levels, timestamp: "2026-10-10T12:00:00Z" });
+    validate(result.text, schema);
+    assert.strictEqual(result.stats.byClass.IFCBUILDINGELEMENTPROXY, 1);
+    assert.ok(result.text.includes("Pset_OBS_AdaptiveComponent"));
+    assert.ok(result.text.includes("PlacementPointsJSON"));
+    assert.ok(result.text.includes("ProfilePartsJSON"));
+    assert.ok(result.text.includes("GeometricConstraintsJSON"));
+    assert.ok(result.text.includes("WorkPlaneJSON"));
+    assert.ok(result.text.includes("FamilyBindingJSON"));
+    assert.ok(schema === "IFC4" ? result.text.includes("IFCTRIANGULATEDFACESET") : result.text.includes("IFCFACETEDBREP"));
+    assert.deepStrictEqual(result.stats.skipped, []);
+  }
+});
+
 /* ---------------- M2 element types ---------------- */
 const base3 = { height: 3, thickness: 0.2, elevation: 0 };
 const m2model = [
