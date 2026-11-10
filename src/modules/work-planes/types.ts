@@ -217,19 +217,5 @@ let installed = false;
 export function setupWorkPlanes() {
   if (installed) return;
   installed = true;
-  (window as any).__obsWorkPlanes = {
-    create: createWorkPlane,
-    setActive: setActiveWorkPlane,
-    setRotation: setWorkPlaneRotation,
-    getActive: getActiveWorkPlane,
-    get: getWorkPlane,
-    list: listWorkPlanes,
-    remove: removeWorkPlane,
-    project: projectOntoWorkPlane,
-    projectWorld: projectWorldPoint,
-    distance: distanceToWorkPlane,
-    serialize: serializeWorkPlanes,
-    restore: restoreWorkPlanes,
-  };
   console.log("[work-planes] ready — arbitrary sketch planes and picked-face references available.");
 }
