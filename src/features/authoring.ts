@@ -6670,6 +6670,14 @@ export function setupAuthoring() {
   // context-menu have declined.
   const unsubGesture = inputRouter.subscribe(handleAuthoringGesture, 10);
   const unsubHover = inputRouter.subscribeHover(handleAuthoringHover);
+
+  // The router reports drag-start only after the pointer has moved a few pixels, which can be off the (small) grip.
+  // Remember which grip was under the pointer at press time so that exact grip is the one dragged.
+  let pressGrip: GripSpec | null = null;
+  (ctx.rightHost as HTMLElement).addEventListener("pointerdown", (e: PointerEvent) => {
+    pressGrip = e.button === 0 && (activeTool === "select" || activeTool === null) ? gripAt(e) : null;
+  }, true);
+  window.addEventListener("pointerup", () => { setTimeout(() => { pressGrip = null; }, 0); }, true);
   const unsubCancel = inputRouter.registerCancel(handleAuthoringCancel);
 
   // Space / Enter only — Escape is owned by registerCancel.
@@ -6680,7 +6688,7 @@ export function setupAuthoring() {
   function handleAuthoringGesture(g: Gesture): boolean {
     // Grip drag owns its own gesture from drag-start to drag-end.
     if (g.kind === "drag-start") {
-      const grip = gripAt(g.event);
+      const grip = (g.button === 0 ? pressGrip : null) ?? gripAt(g.event);
       if (grip && (activeTool === "select" || activeTool === null)) {
         const pt = groundPoint(g.event);
         if (pt) {
