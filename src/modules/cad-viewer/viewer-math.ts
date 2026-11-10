@@ -472,13 +472,13 @@ export function formatQty(v: number, from: DxfUnits | undefined, to: DisplayUnit
 
 /* ───────────────────────── spatial index ───────────────────────── */
 
-export interface SpatialIndex { cell: number; minX: number; minY: number; cols: number; rows: number; cells: Map<number, number[]>; big: number[]; infinite: number[]; boxes: BBox[] }
+export interface SpatialIndex { cell: number; minX: number; minY: number; cols: number; rows: number; cells: Map<number, number[]>; big: number[]; overflow: number[]; infinite: number[]; boxes: BBox[] }
 
 export function buildIndex(entities: DxfEntity[], bounds: BBox, targetCells = 256): SpatialIndex {
   const w = Math.max(bounds.maxX - bounds.minX, 1e-9), h = Math.max(bounds.maxY - bounds.minY, 1e-9);
   const cell = Math.max(w, h) / targetCells;
   const cols = Math.ceil(w / cell) + 1, rows = Math.ceil(h / cell) + 1;
-  const idx: SpatialIndex = { cell, minX: bounds.minX, minY: bounds.minY, cols, rows, cells: new Map(), big: [], infinite: [], boxes: new Array(entities.length) };
+  const idx: SpatialIndex = { cell, minX: bounds.minX, minY: bounds.minY, cols, rows, cells: new Map(), big: [], overflow: [], infinite: [], boxes: new Array(entities.length) };
   entities.forEach((e, i) => {
     const b = entityBBox(e); idx.boxes[i] = b;
     if (e.type === "RAY" || e.type === "XLINE") idx.infinite.push(i);
@@ -490,10 +490,45 @@ export function buildIndex(entities: DxfEntity[], bounds: BBox, targetCells = 25
   return idx;
 }
 
+/**
+ * Append one newly-created entity without rebuilding the entire index.
+ * Entities outside the original grid are kept in a small overflow list; the
+ * caller can rebuild occasionally when that list grows. Very large objects
+ * and infinite construction lines retain their dedicated query paths.
+ */
+export function appendIndex(idx: SpatialIndex, entity: DxfEntity, entityIndex: number): void {
+  const b = entityBBox(entity);
+  idx.boxes[entityIndex] = b;
+  if (entity.type === "RAY" || entity.type === "XLINE") {
+    idx.infinite.push(entityIndex);
+    return;
+  }
+  const c0 = Math.floor((b.minX - idx.minX) / idx.cell);
+  const c1 = Math.floor((b.maxX - idx.minX) / idx.cell);
+  const r0 = Math.floor((b.minY - idx.minY) / idx.cell);
+  const r1 = Math.floor((b.maxY - idx.minY) / idx.cell);
+  if ((c1 - c0 + 1) * (r1 - r0 + 1) > 64) {
+    idx.big.push(entityIndex);
+    return;
+  }
+  if (c0 < 0 || r0 < 0 || c1 >= idx.cols || r1 >= idx.rows) {
+    idx.overflow.push(entityIndex);
+    return;
+  }
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      const key = r * idx.cols + c;
+      const cell = idx.cells.get(key);
+      if (cell) cell.push(entityIndex);
+      else idx.cells.set(key, [entityIndex]);
+    }
+  }
+}
+
 /** Entity indices whose bounding box could be within `radius` of (x, y). */
 export function queryIndex(idx: SpatialIndex, x: number, y: number, radius: number): number[] {
   const infinite = new Set(idx.infinite);
-  const out = new Set<number>([...idx.big, ...idx.infinite]);
+  const out = new Set<number>([...idx.big, ...idx.overflow, ...idx.infinite]);
   const c0 = Math.floor((x - radius - idx.minX) / idx.cell), c1 = Math.floor((x + radius - idx.minX) / idx.cell);
   const r0 = Math.floor((y - radius - idx.minY) / idx.cell), r1 = Math.floor((y + radius - idx.minY) / idx.cell);
   for (let r = Math.max(r0, 0); r <= Math.min(r1, idx.rows - 1); r++) for (let c = Math.max(c0, 0); c <= Math.min(c1, idx.cols - 1); c++) {
@@ -513,7 +548,7 @@ export function queryIndex(idx: SpatialIndex, x: number, y: number, radius: numb
  * returned because their anchor-only bounding boxes do not describe visibility.
  */
 export function queryIndexBox(idx: SpatialIndex, entities: DxfEntity[], box: BBox): number[] {
-  const candidates = new Set<number>(idx.big);
+  const candidates = new Set<number>([...idx.big, ...idx.overflow]);
   const c0 = Math.floor((box.minX - idx.minX) / idx.cell);
   const c1 = Math.floor((box.maxX - idx.minX) / idx.cell);
   const r0 = Math.floor((box.minY - idx.minY) / idx.cell);
