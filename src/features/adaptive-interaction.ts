@@ -249,7 +249,7 @@ function closePlaneEditor(): void {
 }
 
 function parsePlaneVector(raw: string, label: string): [number, number, number] {
-  const values = String(raw).trim().split(/[,;\\s]+/).map(Number);
+  const values = String(raw).trim().split(/[,;\s]+/).map(Number);
   if (values.length !== 3 || values.some((value) => !Number.isFinite(value))) {
     throw new Error(label + " must contain exactly three finite coordinates");
   }
