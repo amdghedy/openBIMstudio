@@ -137,7 +137,7 @@ t("CAD window and crossing selection use spatial candidates",()=>{
 t("CAD renderer uses viewport candidates and cursor-only status updates",()=>{
   const src=fs.readFileSync(path.join(__dirname,"../src/features/cad-viewer.ts"),"utf8");
   assert.match(src,/M\.queryIndexBox\(ix, list, cull\)/);
-  assert.match(src,/coords\.textContent = xy;\s*return;/);
+  assert.match(src,/coords\.textContent = xy;\s*const quickReadout = statusEl\.querySelector<HTMLElement>\("\[data-s=quick-readout\]"\);[\s\S]*?return;/);
 });
 t("polar tracking quantizes direction and preserves cursor distance",()=>{
   const a={x:10,y:20};
