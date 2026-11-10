@@ -362,6 +362,30 @@ let clickToSelectInstalled = false;
 let highlighterSyncInstalled = false;
 let hoverPending = false;
 let hoveredMap: Record<string, Set<number>> = {};
+const categoryCache = new Map<string, Map<number, string>>();
+
+async function passesCategoryFilter(modelId: string, localId: number): Promise<boolean> {
+  const allowed = selection.getFilter();
+  if (!allowed?.length) return true;
+  try {
+    let byId = categoryCache.get(modelId);
+    if (!byId) {
+      const model: any = ctx.fragments.list.get(modelId);
+      if (!model?.getItemsOfCategories) return false;
+      const categories = await model.getItemsOfCategories([/.+/]);
+      byId = new Map<number, string>();
+      for (const [category, ids] of Object.entries(categories ?? {})) {
+        for (const id of (ids as number[]) ?? []) byId.set(id, category);
+      }
+      categoryCache.set(modelId, byId);
+    }
+    const category = byId.get(localId);
+    return !!category && allowed.includes(category);
+  } catch (err) {
+    console.warn("[selection] category filter lookup failed; rejecting pick", err);
+    return false;
+  }
+}
 
 function anyBlockingToolActive(): boolean {
   try {
@@ -536,6 +560,9 @@ export function setupClickToSelect(): void {
       // Edit-tab "Select Links" OFF → linked federation models are not
       // selectable (the authored document stays editable).
       if (hit && !getSelectionPrefs().links) hit = null;
+      // Category filters are applied to the actual pointer pick, not only
+      // bulk Select All. The per-model category map is cached after first use.
+      if (hit && !(await passesCategoryFilter(hit.modelId, hit.localId))) hit = null;
 
       // Depth arbitration: an authored element (e.g. a converted Native Twin) that is nearer than
       // the linked-model hit owns the click. The fragment raycaster cannot see authored meshes, so
