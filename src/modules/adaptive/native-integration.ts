@@ -30,6 +30,7 @@ export interface AdaptiveWorkPlaneSnapshot {
   name: string;
   origin: Pt3;
   normal: Pt3;
+  rotation?: number;
   face?: {
     elementId?: string;
     meshIndex?: number;
