@@ -8,16 +8,15 @@
  *
  * Algorithm (level E, closed-form-verified by tests/v70):
  *
- *  1. PLANE-ARRANGEMENT SPLITTING. Every triangle of A is split by the
- *     plane of every B triangle — with NO early exit, because for a
- *     non-convex solid "in front of some face plane" does NOT imply
- *     outside. Splitting a convex piece by a plane yields convex pieces,
- *     so every fragment stays convex, and after the full pass each
- *     fragment lies (within tolerance) on ONE side of every cutter
- *     plane. A cutter's surface is contained in the union of its
- *     triangle planes, so a fragment that does not cross any cutter
- *     plane cannot cross the cutter's surface: it is homogeneous
- *     inside/outside.
+ *  1. PLANE-ARRANGEMENT SPLITTING. Each source triangle is split by
+ *     planes whose finite generating triangle/edge patches have AABBs
+ *     overlapping the source triangle. The support planes remain
+ *     infinite; the BVH indexes only their finite generating patches.
+ *     A real surface intersection necessarily has overlapping AABBs.
+ *     No early exit is used, because for a non-convex solid "in front of
+ *     some face plane" does NOT imply outside. Splitting a convex piece
+ *     by a plane yields convex pieces, so every fragment stays convex.
+ *     The exact signed-distance test and stable cut ordering are retained.
  *
  *  2. CLASSIFICATION by probe. Each fragment is classified with the
  *     robust 3-direction majority point-in-solid test (isInsideRobust),
@@ -79,6 +78,7 @@
 
 import type { IndexedMesh, Pt3 } from "../adaptive";
 import { dot, cross, sub, createRobustInsideTester, type SupportPlane } from "./csg";
+import { createAabbIndex, queryAabbIndex, type Aabb3 } from "./csg-cut-index";
 
 const SPLIT_EPS = 1e-9; // half-space side tolerance during splitting
 const ON_PLANE_EPS = 1e-8; // vertex-on-plane tolerance for coplanar tagging/edges
@@ -305,25 +305,37 @@ interface CutObj {
   isFacePlane: boolean;
   /** Index into the owner mesh's plane list (face planes only). */
   planeIdx: number;
+  /** Finite source patches for this (infinite) plane; all are indexed. */
+  supportBounds: Aabb3[];
+}
+
+/** Bounds of finite points; used only for conservative candidate lookup. */
+function boundsOfPoints(points:Pt3[]):Aabb3 {
+  return {
+    minX:Math.min(...points.map(p=>p.x)),minY:Math.min(...points.map(p=>p.y)),minZ:Math.min(...points.map(p=>p.z)),
+    maxX:Math.max(...points.map(p=>p.x)),maxY:Math.max(...points.map(p=>p.y)),maxZ:Math.max(...points.map(p=>p.z)),
+  };
 }
 
 /** Face-plane + edge-perp cutting objects of one mesh, deduped. */
 function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B"): CutObj[] {
   const objs: CutObj[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string,CutObj>();
   const planeBuckets: PlaneBuckets = new Map();
   const planeOverflow: number[] = [];
   planes.forEach((plane, index) => {
     if (planeIsHashable(plane)) addPlaneBucket(planeBuckets, plane, index);
     else planeOverflow.push(index);
   });
-  const push = (pl: SupportPlane, isFacePlane: boolean, planeIdx: number): void => {
+  const push = (pl: SupportPlane, isFacePlane: boolean, planeIdx: number, supportBounds:Aabb3): void => {
     const k =
       [pl.normal.x, pl.normal.y, pl.normal.z, pl.w].map((v) => v.toFixed(10)).join("|") +
       (isFacePlane ? `#${planeIdx}` : "");
-    if (seen.has(k)) return;
-    seen.add(k);
-    objs.push({ pl, owner, isFacePlane, planeIdx });
+    const existing=seen.get(k);
+    if(existing) { existing.supportBounds.push(supportBounds); return; }
+    const cut:CutObj={pl,owner,isFacePlane,planeIdx,supportBounds:[supportBounds]};
+    seen.set(k,cut);
+    objs.push(cut);
   };
   for (const [ia, ib, ic] of mesh.faces) {
     const tri = [mesh.vertices[ia], mesh.vertices[ib], mesh.vertices[ic]];
@@ -331,7 +343,8 @@ function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B
     if (!nrm) continue;
     const w = dot(nrm, tri[0]);
     const planeIdx = findPlaneIndex(planes, { normal: nrm, w }, planeBuckets, planeOverflow);
-    push({ normal: nrm, w }, true, planeIdx);
+    const supportBounds=boundsOfPoints(tri);
+    push({ normal: nrm, w }, true, planeIdx, supportBounds);
     for (let i = 0; i < 3; i++) {
       const p = tri[i];
       const q = tri[(i + 1) % 3];
@@ -345,6 +358,7 @@ function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B
         { normal: { x: n.x / l, y: n.y / l, z: n.z / l }, w: dot(n, p) / l },
         false,
         -1,
+        supportBounds,
       );
     }
   }
@@ -358,11 +372,14 @@ function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B
  * plane for which the source triangle is wholly on one strict side can
  * never split a descendant or create a coplanar tag. This classification
  * mirrors splitPoly's first pass and preserves the original cut order.
- * CutObj planes are infinite, so no finite cutter AABB is assumed.
+ * The spatial query indexes finite source patches (triangles/edges), not
+ * infinite planes. Any real surface intersection implies overlapping
+ * 3D AABBs; the exact signed-distance test then preserves split semantics.
  */
-function cutCandidatesForTriangle(tri: Pt3[], cuts: CutObj[]): CutObj[] {
+function cutCandidatesForTriangle(tri: Pt3[], cuts: CutObj[], candidateIndices:number[]): CutObj[] {
   const candidates: CutObj[] = [];
-  for (const cut of cuts) {
+  for (const index of candidateIndices) {
+    const cut=cuts[index];
     let allBack = true;
     let allFront = true;
     let onPlane = true;
@@ -498,9 +515,11 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
   const edgesA = planesA.map((pl) => edgesOnPlane(a, pl));
 
   // GLOBAL cut set: face planes + edge-perpendicular planes of BOTH
-  // meshes; every triangle of both meshes is split by every object so
-  // the subdivision is seam-consistent (no T-junctions).
+  // meshes. Finite support patches are indexed once; each source triangle
+  // queries conservative overlapping candidates in original cut order.
   const allCuts = [...cutObjectsOf(a, planesA, "A"), ...cutObjectsOf(b, planesB, "B")];
+  const cutSupportEntries=allCuts.flatMap((cut,itemIndex)=>cut.supportBounds.map(bounds=>({itemIndex,bounds})));
+  const cutSupportIndex=createAabbIndex(cutSupportEntries,allCuts.length);
 
   // Broad-phase AABBs for the inside probes.
   const bbA = meshAabb(a);
@@ -528,7 +547,9 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
     const tri = [a.vertices[ia], a.vertices[ib], a.vertices[ic]];
     const nrm = triNormal(tri);
     if (!nrm) continue;
-    const triangleCuts = cutCandidatesForTriangle(tri, allCuts);
+    const triangleBounds=boundsOfPoints(tri);
+    const nearbyCutIndices=queryAabbIndex(cutSupportIndex,triangleBounds);
+    const triangleCuts = cutCandidatesForTriangle(tri, allCuts, nearbyCutIndices);
     for (const frag of splitFragment(tri, triangleCuts, "B")) {
       if (frag.coplanar !== null) {
         // Coplanar fragment: classify EACH in-plane cell. Cells are cut
@@ -564,7 +585,9 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
     const tri = [b.vertices[ia], b.vertices[ib], b.vertices[ic]];
     const nrm = triNormal(tri);
     if (!nrm) continue;
-    const triangleCuts = cutCandidatesForTriangle(tri, allCuts);
+    const triangleBounds=boundsOfPoints(tri);
+    const nearbyCutIndices=queryAabbIndex(cutSupportIndex,triangleBounds);
+    const triangleCuts = cutCandidatesForTriangle(tri, allCuts, nearbyCutIndices);
     for (const frag of splitFragment(tri, triangleCuts, "A")) {
       if (frag.coplanar !== null) {
         if (op === "subtract") continue; // coplanar void skin: A's cells own the plane
