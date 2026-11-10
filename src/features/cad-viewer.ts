@@ -242,7 +242,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "STRETCH", aliases: ["S"], description: "Stretch objects through a crossing window" },
   { name: "ALIGN", aliases: ["AL"], description: "Move + rotate objects onto a two-point alignment" },
   { name: "MATCHLAYER", aliases: ["ML", "LAYMCH"], description: "Move objects onto the source object's layer" },
-  { name: "ARRAY", aliases: ["AR"], description: "Rectangular array: rows, columns, row & column spacing" },
+  { name: "ARRAY", aliases: ["AR"], description: "Create rectangular, polar, or path arrays" },
+  { name: "ARRAYPOLAR", aliases: ["ARRAYCIRCULAR", "AP"], description: "Create a polar array around a selected center point" },
+  { name: "ARRAYPATH", aliases: ["PATHARRAY", "APATH"], description: "Distribute selected objects along a selected polyline path" },
   { name: "LENGTHEN", aliases: ["LEN"], description: "Stretch the end of a line/arc/polyline — click and drag, or LENGTHEN <total> / LENGTHEN D <delta>" },
   { name: "DIVIDE", aliases: ["DIV"], description: "Divide a line/arc/polyline into N equal segments and place point objects" },
   { name: "MEASURE", aliases: ["ME"], description: "Place point objects at fixed intervals along a line/arc/polyline" },
@@ -5081,6 +5083,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("lengthen", "stretch", "Lengthen") +
           tb("explode", "explode", "Explode") +
           tb("align", "align", "Align") +
+          rb("copy", "Array", `data-a="array"`, "Rectangular, polar, or path array (ARRAY / AR)") +
           tb("erase", "delete", "Erase"),
         "",
         "",
@@ -5517,6 +5520,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       undo,
       redo,
       erase: eraseSelected,
+      array: () => arrayCommand(),
       plot: openPlot,
       "save-dxf": saveDxf,
       "save-dwg": () => void saveDwg(),
@@ -7838,7 +7842,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "ARRAY" || cmd === "AR") {
-      arrayRect();
+      arrayCommand(parts[1]);
+      return;
+    }
+    if (cmd === "ARRAYPOLAR" || cmd === "ARRAYPATH") {
+      arrayCommand(cmd === "ARRAYPOLAR" ? "POLAR" : "PATH");
       return;
     }
     if (cmd === "VIEW" || cmd === "V") {
@@ -9188,32 +9196,104 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     logCmd(`FIND: ${before.length} text object(s) updated.`);
   }
 
-  /* ── Rectangular ARRAY ── */
-  function arrayRect(): void {
+  /* ── Rectangular / polar / path ARRAY ── */
+  function arrayCommand(modeHint?: string): void {
     if (!sel.size) {
-      logCmd("ARRAY: select objects first.");
+      logCmd("ARRAY: select source objects first. For ARRAY PATH, select the path polyline last.");
       return;
     }
-    void promptLine("Rectangular Array", "rows columns rowSpacing colSpacing (e.g. 3 4 500 400)", "2 2 100 100").then((s) => {
-      const m = (s ?? "").trim().split(/\s+/).map(Number);
-      if (m.length !== 4 || m.some((x) => !Number.isFinite(x))) {
-        logCmd("ARRAY: need 4 numbers — rows, columns, row spacing, column spacing.");
+    const launch = (raw: string) => {
+      const mode = raw.trim().toUpperCase();
+      if (["R", "RECT", "RECTANG", "RECTANGULAR"].includes(mode)) { runRectangularArray(); return; }
+      if (["P", "POLAR", "CIRCULAR"].includes(mode)) { runPolarArray(); return; }
+      if (["PATH", "PA"].includes(mode)) { runPathArray(); return; }
+      logCmd("ARRAY: choose RECTANGULAR, POLAR, or PATH.");
+    };
+    if (modeHint) { launch(modeHint); return; }
+    void promptLine("Array Type", "RECTANGULAR / POLAR / PATH", "RECTANGULAR").then((s) => {
+      if (s) launch(s);
+    });
+  }
+
+  function selectedArrayEntities(excludedIndex = -1): DxfEntity[] {
+    return [...sel].filter((i) => i !== excludedIndex).map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+  }
+
+  function runRectangularArray(): void {
+    const before = selectedArrayEntities();
+    void promptLine("Rectangular Array", "rows columns rowSpacing columnSpacing", "2 2 100 100").then((s) => {
+      if (!s) return;
+      const values = s.trim().split(/[\s,]+/).map(Number);
+      if (values.length !== 4 || values.some((x) => !Number.isFinite(x))) {
+        logCmd("ARRAY RECTANGULAR: enter rows, columns, row spacing, and column spacing.");
         return;
       }
-      const [rows, cols, rs, cs] = m;
-      if (rows < 1 || cols < 1 || (rows === 1 && cols === 1)) {
-        logCmd("ARRAY: array must have at least 2 items.");
+      try {
+        const [rows, columns, rowSpacing, columnSpacing] = values;
+        const copies = X.rectangularArrayCopies(before, rows, columns, rowSpacing, columnSpacing);
+        if (!copies.length) { logCmd("ARRAY: no copies were generated."); return; }
+        addEntities(copies);
+        logCmd("ARRAY RECTANGULAR: " + copies.length.toLocaleString() + " copies added (" + rows + " rows × " + columns + " columns).");
+      } catch (error) {
+        logCmd("ARRAY: " + (error instanceof Error ? error.message : String(error)));
+      }
+    });
+  }
+
+  function runPolarArray(): void {
+    const before = selectedArrayEntities();
+    void promptLine("Polar Array", "count sweepDegrees centerX centerY rotateItems(0|1)", "8 360 0 0 0").then((s) => {
+      if (!s) return;
+      const values = s.trim().split(/[\s,]+/).map(Number);
+      if (values.length !== 5 || values.some((x) => !Number.isFinite(x))) {
+        logCmd("ARRAY POLAR: enter count, sweep, center X, center Y, and rotate-items 0 or 1.");
         return;
       }
-      const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
-      const copies: DxfEntity[] = [];
-      for (let r = 0; r < Math.min(rows, 100); r++)
-        for (let c = 0; c < Math.min(cols, 100); c++) {
-          if (!r && !c) continue;
-          for (const e of before) copies.push(X.translateEnt(e, c * cs, r * rs));
-        }
-      addEntities(copies);
-      logCmd(`ARRAY: ${copies.length} copies added (${rows} rows × ${cols} columns).`);
+      try {
+        const [count, sweep, centerX, centerY, rotateFlag] = values;
+        if (rotateFlag !== 0 && rotateFlag !== 1) throw new RangeError("rotateItems must be 0 (keep orientation) or 1 (rotate each copy).");
+        const b = before.reduce((box, entity) => M.unionBBox(box, M.entityBBox(entity)), null as M.BBox | null);
+        if (!b) throw new RangeError("Select source objects first.");
+        const base = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 };
+        const copies = X.polarArrayCopies(before, { x: centerX, y: centerY }, base, count, sweep, rotateFlag === 1);
+        if (!copies.length) { logCmd("ARRAY POLAR: no copies were generated."); return; }
+        addEntities(copies);
+        logCmd("ARRAY POLAR: " + copies.length.toLocaleString() + " copies added (" + count + " total items, " + sweep + "° sweep).");
+      } catch (error) {
+        logCmd("ARRAY POLAR: " + (error instanceof Error ? error.message : String(error)));
+      }
+    });
+  }
+
+  function runPathArray(): void {
+    const selected = [...sel].map((i) => ({ i, entity: ents[i] })).filter((x): x is { i: number; entity: DxfEntity } => !!x.entity);
+    const pathEntry = [...selected].reverse().find((x) => x.entity.type === "LWPOLYLINE" && !x.entity.hatch && x.entity.points.length >= 2);
+    if (!pathEntry || pathEntry.entity.type !== "LWPOLYLINE") {
+      logCmd("ARRAY PATH: select source objects, then select one open or closed polyline path last.");
+      return;
+    }
+    const before = selectedArrayEntities(pathEntry.i);
+    if (!before.length) {
+      logCmd("ARRAY PATH: select at least one source object before selecting the path.");
+      return;
+    }
+    void promptLine("Path Array", "spacing alignToPath(0|1)", "100 0").then((s) => {
+      if (!s) return;
+      const values = s.trim().split(/[\s,]+/).map(Number);
+      if (values.length !== 2 || values.some((x) => !Number.isFinite(x))) {
+        logCmd("ARRAY PATH: enter a positive spacing and align-to-path 0 or 1.");
+        return;
+      }
+      try {
+        const [spacing, alignFlag] = values;
+        if (alignFlag !== 0 && alignFlag !== 1) throw new RangeError("alignToPath must be 0 (keep orientation) or 1 (follow path direction).");
+        const copies = X.pathArrayCopies(before, pathEntry.entity, spacing, alignFlag === 1);
+        if (!copies.length) { logCmd("ARRAY PATH: no copies were generated."); return; }
+        addEntities(copies);
+        logCmd("ARRAY PATH: " + copies.length.toLocaleString() + " copies added at " + spacing + " spacing.");
+      } catch (error) {
+        logCmd("ARRAY PATH: " + (error instanceof Error ? error.message : String(error)));
+      }
     });
   }
 

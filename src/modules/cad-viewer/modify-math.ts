@@ -1263,3 +1263,157 @@ export function stretchEnts(ents: DxfEntity[], win: { minX: number; minY: number
     }
   });
 }
+
+/* ── Multi-mode arrays ── */
+
+/** Hard ceiling for generated entities in one array operation. */
+export const MAX_ARRAY_ENTITY_COUNT = 10000;
+
+function validateArraySource(entities: DxfEntity[], totalInstances: number): void {
+  if (!entities.length) throw new RangeError("Select at least one source object.");
+  if (!Number.isInteger(totalInstances) || totalInstances < 2) throw new RangeError("An array must contain at least two instances.");
+  if (totalInstances * entities.length > MAX_ARRAY_ENTITY_COUNT) {
+    throw new RangeError("Array exceeds the " + MAX_ARRAY_ENTITY_COUNT.toLocaleString() + " generated-entity safety limit.");
+  }
+}
+
+function validateArrayCount(count: number): void {
+  if (!Number.isInteger(count) || count < 2) throw new RangeError("Array count must be an integer of at least 2.");
+}
+
+function validateArrayPoint(p: Pt, label: string): void {
+  if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) throw new RangeError(label + " must contain finite X and Y coordinates.");
+}
+
+/**
+ * Rectangular array. Rows and columns include the original selection;
+ * the return value contains only the additional copies.
+ */
+export function rectangularArrayCopies(
+  entities: DxfEntity[],
+  rows: number,
+  columns: number,
+  rowSpacing: number,
+  columnSpacing: number,
+): DxfEntity[] {
+  validateArrayCount(rows * columns);
+  if (!Number.isInteger(rows) || !Number.isInteger(columns) || rows < 1 || columns < 1) {
+    throw new RangeError("Rows and columns must be positive integers.");
+  }
+  if (!Number.isFinite(rowSpacing) || !Number.isFinite(columnSpacing)) {
+    throw new RangeError("Array spacing must be finite.");
+  }
+  validateArraySource(entities, rows * columns);
+  const copies: DxfEntity[] = [];
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      if (row === 0 && column === 0) continue;
+      for (const entity of entities) {
+        copies.push(translateEnt(entity, column * columnSpacing, row * rowSpacing));
+      }
+    }
+  }
+  return copies;
+}
+
+/**
+ * Polar/circular array. Count includes the original source. A 360-degree sweep
+ * does not duplicate the first item at the end; partial sweeps include both
+ * ends. When rotateItems is false, each copy keeps its original orientation.
+ */
+export function polarArrayCopies(
+  entities: DxfEntity[],
+  center: Pt,
+  basePoint: Pt,
+  count: number,
+  sweepDegrees = 360,
+  rotateItems = false,
+): DxfEntity[] {
+  validateArrayCount(count);
+  validateArrayPoint(center, "Array center");
+  validateArrayPoint(basePoint, "Array base point");
+  if (!Number.isFinite(sweepDegrees) || Math.abs(sweepDegrees) < 1e-9 || Math.abs(sweepDegrees) > 360 + 1e-9) {
+    throw new RangeError("Polar sweep must be greater than 0 degrees and no more than 360 degrees in either direction.");
+  }
+  validateArraySource(entities, count);
+  const closedSweep = Math.abs(Math.abs(sweepDegrees) - 360) < 1e-9;
+  const divisor = closedSweep ? count : count - 1;
+  const copies: DxfEntity[] = [];
+  for (let item = 1; item < count; item++) {
+    const angle = sweepDegrees * item / divisor;
+    if (rotateItems) {
+      for (const entity of entities) copies.push(rotateEnt(entity, center.x, center.y, angle));
+    } else {
+      const target = rotatePt(basePoint, center, angle * DEG);
+      const dx = target.x - basePoint.x, dy = target.y - basePoint.y;
+      for (const entity of entities) copies.push(translateEnt(entity, dx, dy));
+    }
+  }
+  return copies;
+}
+
+/**
+ * Path array along an open or closed lightweight polyline. The first path
+ * vertex is the placement base point; source objects should be positioned
+ * there before running the command. The path object itself is not copied.
+ */
+export function pathArrayCopies(
+  entities: DxfEntity[],
+  path: Extract<DxfEntity, { type: "LWPOLYLINE" }>,
+  spacing: number,
+  alignToPath = false,
+): DxfEntity[] {
+  if (!entities.length) throw new RangeError("Select at least one source object.");
+  if (path.hatch || path.points.length < 2) throw new RangeError("Path array requires an open or closed polyline with at least two vertices.");
+  if (!Number.isFinite(spacing) || spacing <= 0) throw new RangeError("Path spacing must be a positive finite number.");
+
+  const points = path.points.map((p) => ({ x: p.x, y: p.y }));
+  const segments: Array<{ a: Pt; b: Pt; length: number }> = [];
+  const segmentCount = path.closed ? points.length : points.length - 1;
+  let totalLength = 0;
+  for (let i = 0; i < segmentCount; i++) {
+    const a = points[i], b = points[(i + 1) % points.length];
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    if (length > 1e-9) {
+      segments.push({ a, b, length });
+      totalLength += length;
+    }
+  }
+  if (totalLength <= 1e-9) throw new RangeError("Path array cannot use a zero-length path.");
+
+  const closed = !!path.closed;
+  const maxCopies = Math.floor((totalLength + 1e-9) / spacing);
+  const count = closed && Math.abs(maxCopies * spacing - totalLength) < 1e-9 ? maxCopies - 1 : maxCopies;
+  if (count < 1) throw new RangeError("Spacing is longer than the path; no array copies would be created.");
+  validateArraySource(entities, count + 1);
+
+  const origin = points[0];
+  const copies: DxfEntity[] = [];
+  for (let item = 1; item <= count; item++) {
+    const targetDistance = item * spacing;
+    if (closed && targetDistance >= totalLength - 1e-9) break;
+    let remaining = targetDistance;
+    let target: Pt | null = null;
+    let tangent = 0;
+    for (const segment of segments) {
+      if (remaining <= segment.length + 1e-9) {
+        const t = Math.max(0, Math.min(1, remaining / segment.length));
+        target = {
+          x: segment.a.x + (segment.b.x - segment.a.x) * t,
+          y: segment.a.y + (segment.b.y - segment.a.y) * t,
+        };
+        tangent = Math.atan2(segment.b.y - segment.a.y, segment.b.x - segment.a.x) * RAD;
+        break;
+      }
+      remaining -= segment.length;
+    }
+    if (!target) continue;
+    const dx = target.x - origin.x, dy = target.y - origin.y;
+    for (const entity of entities) {
+      const translated = translateEnt(entity, dx, dy);
+      copies.push(alignToPath ? rotateEnt(translated, target.x, target.y, tangent) : translated);
+    }
+  }
+  return copies;
+}
+
