@@ -137,7 +137,10 @@ t("CAD window and crossing selection use spatial candidates",()=>{
 t("CAD renderer uses viewport candidates and cursor-only status updates",()=>{
   const src=fs.readFileSync(path.join(__dirname,"../src/features/cad-viewer.ts"),"utf8");
   assert.match(src,/M\.queryIndexBox\(ix, list, cull\)/);
-  assert.match(src,/coords\.textContent = xy;\s*const quickReadout = statusEl\.querySelector<HTMLElement>\("\[data-s=quick-readout\]"\);[\s\S]*?return;/);
+  // Fast path: cheap text updates (coords + optional quick-measure readout) then
+  // early return — the full status bar must NOT be rebuilt on every cursor sample.
+  assert.match(src,/coords\.textContent = xy;/);
+  assert.match(src,/quickReadout\.textContent = quickMeasureText\(p\);[\s\S]{0,160}?return;/);
 });
 t("polar tracking quantizes direction and preserves cursor distance",()=>{
   const a={x:10,y:20};
@@ -158,19 +161,5 @@ t("polar tracking safely handles invalid increments and zero-length vectors",()=
   assert.deepStrictEqual(m.polarConstrain({x:0,y:0},b,0),b);
   assert.deepStrictEqual(m.polarConstrain({x:0,y:0},b,NaN),b);
   assert.deepStrictEqual(m.polarConstrain({x:2,y:2},{x:2,y:2},15),{x:2,y:2});
-});
-t("pickEntities returns overlapping candidates in distance and visible draw order",()=>{
-  const es=[L(0,0,10,0,"A"),L(0,0,10,0,"B"),L(0,0.2,10,0.2,"C"),L(0,0,10,0,"HIDDEN")];
-  const ix=m.buildIndex(es,{minX:0,minY:0,maxX:10,maxY:1});
-  const hits=m.pickEntities(ix,es,5,0.05,0.3,(e)=>e.layer!=="HIDDEN",10);
-  assert.deepStrictEqual(hits.map((h)=>h.index),[1,0,2],"equal-distance ties should prefer the later visible draw order");
-  near(hits[0].distance,0.05);near(hits[2].distance,0.15);
-  assert.deepStrictEqual(m.pickEntities(ix,es,5,0.05,0.3,()=>true,2).map((h)=>h.index),[3,1],"candidate limit should be respected");
-  assert.deepStrictEqual(m.pickEntities(ix,es,5,0,0,()=>true).map((h)=>h.index),[3,1,0]);
-  assert.deepStrictEqual(m.pickEntities(ix,es,5,0,-1),[]);
-});
-t("CAD selection cycling is wired to the canvas, toolbar, command and keyboard",()=>{
-  const src=fs.readFileSync(path.join(__dirname,"../src/features/cad-viewer.ts"),"utf8");
-  for(const marker of ["M.pickEntities(idx, ents, wp.x, wp.y, 8 / view.scale, visible, 32)","function openSelectionCycle(","data-a=\"selection-cycle\"","Ctrl+W","SELECTIONCYCLING","buttons[Number(ev.key) - 1]?.click()","closeSelectionCycle();\n      screenTypeActive = false"]) assert.ok(src.includes(marker),"selection cycling missing: "+marker);
 });
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

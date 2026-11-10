@@ -6,7 +6,11 @@
 
 import { rgb, PDFPage, PDFFont } from "pdf-lib";
 import type { SheetDef, SheetViewport } from "../projects/types";
-import { getSheet, getSheetSizeMm } from "../sheets/sheets";
+import { getSheet, getSheetSizeMm, listTitleblocks } from "../sheets/sheets";
+import {
+  SCALE_BAR_HEIGHT_MM, SCALE_BAR_LABEL_GAP_MM, northArrowGeometry, northArrowPlacement,
+  scaleBarLayout, sheetIdentityText, titleblockRows, viewTitleText, viewportCaptionY,
+} from "../sheets/sheet-furniture";
 import { getView } from "../views/store";
 import { generatePlanScene } from "../views/generators/plan";
 import { generateSectionScene } from "../views/generators/section";
@@ -92,14 +96,49 @@ async function drawViewportOnPage(
     borderColor: rgb(0.2, 0.25, 0.3),
   });
 
-  // Viewport label
-  page.drawText((vp.title || view.name) + " - " + (vp.scale || "1:" + view.scale), {
+  // Revit-style caption below the viewport: name · scale, with a graphic scale bar
+  const sheetHMm = sizeMmH(sheet);
+  const drawingBottomMm = sheetHMm - 6; // page margin
+  const caption = viewportCaptionY(vp.y + vp.height, drawingBottomMm);
+  const captionTitle = viewTitleText(vp, view.name);
+  page.drawText(captionTitle, {
     x: vp.x * MM_TO_PT,
-    y: pageH - vp.y * MM_TO_PT + 3,
+    y: pageH - caption.titleY * MM_TO_PT,
     size: 6,
     font: bold,
     color: rgb(0.2, 0.25, 0.3),
   });
+
+  const layout = scaleBarLayout(scaleDenom);
+  if (vp.width >= layout.barLengthMm + 2 && caption.barBaselineY < drawingBottomMm) {
+    const barX = (vp.x + 2) * MM_TO_PT;
+    const barBottomY = pageH - caption.barBaselineY * MM_TO_PT;
+    const segW = layout.segmentMm * MM_TO_PT;
+    const segH = SCALE_BAR_HEIGHT_MM * MM_TO_PT;
+    for (let i = 0; i < layout.segments; i++) {
+      page.drawRectangle({
+        x: barX + i * segW,
+        y: barBottomY,
+        width: segW,
+        height: segH,
+        borderWidth: 0.25,
+        borderColor: rgb(0.06, 0.09, 0.16),
+        color: layout.filled[i] ? rgb(0.06, 0.09, 0.16) : rgb(1, 1, 1),
+      });
+    }
+    for (const l of layout.labels) {
+      const size = 4.5;
+      const wPx = regular.widthOfTextAtSize(l.text, size);
+      const x = barX + l.offsetMm * MM_TO_PT - (l.offsetMm > 0 ? wPx / 2 : 0);
+      page.drawText(l.text, {
+        x,
+        y: barBottomY + segH + SCALE_BAR_LABEL_GAP_MM * MM_TO_PT,
+        size,
+        font: regular,
+        color: rgb(0.06, 0.09, 0.16),
+      });
+    }
+  }
 }
 
 function drawTitleblock(
@@ -127,41 +166,105 @@ function drawTitleblock(
     color: rgb(0.97, 0.98, 0.99),
   });
 
+  // The sheet's own editable titleblock is the source of truth — no more
+  // hardcoded "Scale: as noted". Live overrides: sheet scales, today's date.
+  const tb = listTitleblocks().find((t) => t.id === sheet.titleblockId);
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = titleblockRows(tb, sheet, today, sheet.viewports.map((v) => v.scale));
+
   const pad = 3 * MM_TO_PT;
-  page.drawText("Sheet: " + sheet.number, {
+  const projectRow = rows.find((r) => r.label.trim().toLowerCase() === "project");
+  if (projectRow && projectRow.value && projectRow.value !== "—") {
+    page.drawText(projectRow.value, {
+      x: tbX + pad,
+      y: tbY + tbH - 8 * MM_TO_PT,
+      size: 7.5,
+      font: bold,
+      color: rgb(0.06, 0.09, 0.16),
+    });
+  }
+  page.drawText(sheetIdentityText(sheet), {
     x: tbX + pad,
-    y: tbY + tbH - 8 * MM_TO_PT,
-    size: 7,
+    y: tbY + tbH - 15 * MM_TO_PT,
+    size: 9,
     font: bold,
     color: rgb(0.06, 0.09, 0.16),
   });
-  page.drawText(sheet.name, {
+  page.drawText("Open BIM Studio · Production Sheet", {
     x: tbX + pad,
-    y: tbY + tbH - 14 * MM_TO_PT,
-    size: 6,
+    y: tbY + 5 * MM_TO_PT,
+    size: 4.5,
     font: regular,
+    color: rgb(0.55, 0.6, 0.66),
+  });
+
+  // Field rows in two columns to the right (Project is drawn on the left)
+  const fields = rows.filter((r) => r.label.trim().toLowerCase() !== "project");
+  const colW = 58 * MM_TO_PT;
+  const colX0 = tbX + 62 * MM_TO_PT;
+  const perCol = Math.ceil(fields.length / 2);
+  const labelW = 14 * MM_TO_PT;
+  fields.forEach((r, i) => {
+    const col = Math.floor(i / perCol);
+    const row = i % perCol;
+    const x = colX0 + col * colW;
+    const y = tbY + tbH - 8 * MM_TO_PT - row * 5.5 * MM_TO_PT;
+    page.drawText(r.label + ":", {
+      x,
+      y,
+      size: 4.5,
+      font: bold,
+      color: rgb(0.3, 0.35, 0.42),
+    });
+    page.drawText(r.value, {
+      x: x + labelW,
+      y,
+      size: 4.5,
+      font: regular,
+      color: rgb(0.06, 0.09, 0.16),
+    });
+  });
+}
+
+/** North arrow at the sheet's top-right (inside the border, skipped on viewport collision). */
+function drawNorthArrow(page: PDFPage, sheet: SheetDef, sizeMm: { w: number; h: number }, bold: PDFFont): void {
+  const r = 8;
+  const margin = 6;
+  const na = northArrowPlacement(sizeMm.w, sizeMm.h, margin, r, sheet.viewports);
+  if (!na.visible) return;
+  const g = northArrowGeometry(r);
+  const pt = (p: [number, number]) => ({
+    x: (na.cx + p[0]) * MM_TO_PT,
+    y: (sizeMm.h - na.cy - p[1]) * MM_TO_PT, // geometry y-negative = north/up
+  });
+  page.drawCircle({
+    x: na.cx * MM_TO_PT,
+    y: (sizeMm.h - na.cy) * MM_TO_PT,
+    size: r * MM_TO_PT,
+    borderWidth: 0.5,
+    borderColor: rgb(0.06, 0.09, 0.16),
+  });
+  const lines: Array<[[number, number], [number, number]]> = [
+    [g.needleTip, g.needleLeft],
+    [g.needleTip, g.needleRight],
+    [g.needleLeft, g.southTip],
+    [g.needleRight, g.southTip],
+    [g.needleTip, g.southTip],
+  ];
+  for (const [a, b] of lines) {
+    const pa = pt(a);
+    const pb = pt(b);
+    page.drawLine({ start: pa, end: pb, thickness: 0.4, color: rgb(0.06, 0.09, 0.16) });
+  }
+  const nText = "N";
+  const nSize = 5;
+  const nW = bold.widthOfTextAtSize(nText, nSize);
+  page.drawText(nText, {
+    x: na.cx * MM_TO_PT - nW / 2,
+    y: (sizeMm.h - (na.cy - r - 1.2)) * MM_TO_PT,
+    size: nSize,
+    font: bold,
     color: rgb(0.06, 0.09, 0.16),
-  });
-  page.drawText("Scale: as noted", {
-    x: tbX + pad,
-    y: tbY + tbH - 20 * MM_TO_PT,
-    size: 5,
-    font: regular,
-    color: rgb(0.3, 0.35, 0.42),
-  });
-  page.drawText("Date: " + new Date().toISOString().slice(0, 10), {
-    x: tbX + pad,
-    y: tbY + tbH - 25 * MM_TO_PT,
-    size: 5,
-    font: regular,
-    color: rgb(0.3, 0.35, 0.42),
-  });
-  page.drawText("Open BIM Studio", {
-    x: tbX + pad,
-    y: tbY + tbH - 32 * MM_TO_PT,
-    size: 4,
-    font: regular,
-    color: rgb(0.6, 0.65, 0.7),
   });
 }
 
@@ -191,6 +294,7 @@ export async function exportSheetToPdf(sheetId: string): Promise<Uint8Array | nu
     await drawViewportOnPage(page, sheet, vp, pageH, regular, bold);
   }
   drawTitleblock(page, sheet, pageW, pageH, regular, bold);
+  drawNorthArrow(page, sheet, sizeMm, bold);
 
   return await doc.save();
 }
@@ -223,6 +327,7 @@ export async function exportAllSheetsToPdf(
       await drawViewportOnPage(page, sheet, vp, pageH, regular, bold);
     }
     drawTitleblock(page, sheet, pageW, pageH, regular, bold);
+    drawNorthArrow(page, sheet, sizeMm, bold);
   }
 
   await downloadPdf(doc, filename);

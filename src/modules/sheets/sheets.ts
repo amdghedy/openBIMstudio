@@ -126,74 +126,9 @@ export function getSheetSizeMm(size: SheetDef["size"], orientation: SheetDef["or
   return { w: Math.max(base.w, base.h), h: Math.min(base.w, base.h) };
 }
 
-/** Generate a production SVG for the sheet (titleblock + viewport frames). */
-export function renderSheetSvg(sheetId: string): string {
-  const sheet = getSheet(sheetId);
-  if (!sheet) return "";
-  const { w, h } = getSheetSizeMm(sheet.size, sheet.orientation);
-  const tb = titleblocks.find((t) => t.id === sheet.titleblockId) ?? ensureDefaultTitleblock();
-
-  const titleH = 40;
-  const margin = 10;
-
-  let vps = "";
-  for (const vp of sheet.viewports) {
-    vps += `
-      <rect x="${vp.x}" y="${vp.y}" width="${vp.width}" height="${vp.height}"
-            fill="#f8fafc" stroke="#334155" stroke-width="0.5"/>
-      <text x="${vp.x + 2}" y="${vp.y + 6}" font-size="4" fill="#64748b" font-family="sans-serif">
-        ${escapeXml(vp.title ?? vp.viewType)} · ${escapeXml(vp.scale)}
-      </text>`;
-  }
-
-  const fields = (tb.fields ?? [])
-    .map(
-      (f, i) =>
-        `<text x="${w - 90}" y="${h - titleH + 8 + i * 5}" font-size="3.5" fill="#0f172a" font-family="sans-serif">
-          <tspan font-weight="600">${escapeXml(f.label)}:</tspan> ${escapeXml(f.value || "—")}
-        </text>`,
-    )
-    .join("");
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">
-  <rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>
-  <rect x="${margin}" y="${margin}" width="${w - margin * 2}" height="${h - margin * 2 - titleH}"
-        fill="none" stroke="#0f172a" stroke-width="0.8"/>
-  ${vps}
-  <!-- Titleblock area -->
-  <rect x="${margin}" y="${h - margin - titleH}" width="${w - margin * 2}" height="${titleH}"
-        fill="#f1f5f9" stroke="#0f172a" stroke-width="0.6"/>
-  <text x="${margin + 4}" y="${h - margin - titleH + 10}" font-size="6" font-weight="700" fill="#0f172a" font-family="sans-serif">
-    ${escapeXml(sheet.number)} — ${escapeXml(sheet.name)}
-  </text>
-  <text x="${margin + 4}" y="${h - margin - titleH + 18}" font-size="3.5" fill="#475569" font-family="sans-serif">
-    Open BIM Studio · Production Sheet
-  </text>
-  ${fields}
-</svg>`;
-}
-
-function escapeXml(s: string) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-export function exportSheetSvg(sheetId: string, filename?: string) {
-  const svg = renderSheetSvg(sheetId);
-  if (!svg) return;
-  const sheet = getSheet(sheetId);
-  const blob = new Blob([svg], { type: "image/svg+xml" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename ?? `${sheet?.number ?? "sheet"}.svg`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
+// Sheet SVG composition & SVG export live in `./sheet-composer` (WYSIWYG:
+// real viewport scenes + titleblock fields + furniture). sheets.ts stays the
+// pure store — importing the composer here would create a module cycle.
 
 export function loadSheetsFromProject(list: SheetDef[] | undefined, tbs?: TitleblockDef[]) {
   sheets = list ? list.map((s) => ({ ...s })) : [];

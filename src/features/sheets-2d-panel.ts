@@ -14,7 +14,7 @@ import { ctx } from "../core/context";
 import {
   listSheets, getSheet, createSheet, deleteSheet, updateSheet,
   addViewport, removeViewport, onSheetsChange, getSheetSizeMm,
-  ensureDefaultTitleblock,
+  ensureDefaultTitleblock, listTitleblocks,
 } from "../modules/sheets/sheets";
 import { listViews, getView } from "../modules/views/store";
 import { generatePlanScene } from "../modules/views/generators/plan";
@@ -24,6 +24,10 @@ import { renderSceneToSvg } from "../modules/views/renderers/svg";
 import { buildAnnotationLayer } from "../modules/views/annotation-layer";
 import { emptyScene, type Scene2D } from "../modules/views/scene";
 import { computeViewportTransform } from "../modules/views/sheet-layout";
+import {
+  northArrowPlacement, northArrowSvg, scaleBarLayout,
+  scaleBarSvg, titleblockRows, viewTitleText, viewportCaptionY,
+} from "../modules/sheets/sheet-furniture";
 import { downloadSingleSheetPdf, exportAllSheetsToPdf } from "../modules/export/sheet-pdf";
 import type { ViewDef } from "../modules/views/types";
 import type { SheetDef, SheetViewport } from "../modules/projects/types";
@@ -455,6 +459,14 @@ async function drawSheet(sheet: SheetDef): Promise<void> {
   tb.setAttribute("stroke-width", "0.3");
   svg.appendChild(tb);
 
+  // North arrow — top-right inside the border, same placement as the exports
+  const na = northArrowPlacement(sheetWmm, sheetHmm, 6, 8, sheet.viewports);
+  if (na.visible) {
+    const naG = document.createElementNS(SVG_NS, "g");
+    naG.innerHTML = northArrowSvg(na.cx, na.cy, 8);
+    svg.appendChild(naG);
+  }
+
   const addText = (x: number, y: number, text: string, size: number, weight: number, color: string) => {
     const t = document.createElementNS(SVG_NS, "text");
     t.setAttribute("x", String(x));
@@ -468,8 +480,21 @@ async function drawSheet(sheet: SheetDef): Promise<void> {
   };
   addText(tbX + 3, tbY + 8, "Sheet: " + sheet.number, 5, 700, "#111827");
   addText(tbX + 3, tbY + 15, sheet.name, 4, 400, "#111827");
-  addText(tbX + 3, tbY + 22, "Scale: as noted", 3.5, 400, "#475569");
-  addText(tbX + 3, tbY + 28, "Date: " + new Date().toISOString().slice(0, 10), 3.5, 400, "#475569");
+  // Real titleblock fields — same source of truth as the SVG / PDF exports
+  const tbDef = listTitleblocks().find((t) => t.id === sheet.titleblockId);
+  const rows = titleblockRows(tbDef, sheet, new Date().toISOString().slice(0, 10), sheet.viewports.map((v) => v.scale));
+  const priority = ["scale", "date", "rev", "drawn", "checked"];
+  const picked = rows
+    .filter((r) => r.label.trim().toLowerCase() !== "project")
+    .sort((a, b) => {
+      const ai = priority.indexOf(a.label.trim().toLowerCase());
+      const bi = priority.indexOf(b.label.trim().toLowerCase());
+      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+    })
+    .slice(0, 3);
+  picked.forEach((r, i) => {
+    addText(tbX + 3, tbY + 22 + i * 6, r.label + ": " + r.value, 3.5, 400, "#475569");
+  });
   addText(tbX + 3, tbY + 34, "Open BIM Studio", 3, 400, "#94a3b8");
 
   // Draw viewports
@@ -580,15 +605,25 @@ function drawViewport(
   borderRect.setAttribute("data-viewport-border", vp.id);
   svg.appendChild(borderRect);
 
-  const label = document.createElementNS(SVG_NS, "text");
-  label.setAttribute("x", String(tf.x + 1));
-  label.setAttribute("y", String(tf.y - 1.5));
-  label.setAttribute("font-size", "3.5");
-  label.setAttribute("font-weight", "600");
-  label.setAttribute("fill", "#334155");
-  label.setAttribute("font-family", "system-ui, sans-serif");
-  label.textContent = (vp.title || viewDef.name) + " - " + (vp.scale || "1:" + viewDef.scale);
-  svg.appendChild(label);
+  // Revit-style caption below the viewport (name · scale) + graphic scale bar —
+  // mirrors the SVG / PDF composers so the screen tells the same truth.
+  const sheetHmm = getSheetSizeMm(sheet.size, sheet.orientation).h;
+  const caption = viewportCaptionY(vp.y + vp.height, sheetHmm - 7);
+  const capText = document.createElementNS(SVG_NS, "text");
+  capText.setAttribute("x", String(tf.x));
+  capText.setAttribute("y", String(caption.titleY));
+  capText.setAttribute("font-size", "3");
+  capText.setAttribute("font-weight", "600");
+  capText.setAttribute("fill", "#334155");
+  capText.setAttribute("font-family", "system-ui, sans-serif");
+  capText.textContent = viewTitleText(vp, viewDef.name);
+  svg.appendChild(capText);
+  const layout = scaleBarLayout(tf.scaleDenom);
+  if (vp.width >= layout.barLengthMm + 2 && caption.barBaselineY < sheetHmm - 7) {
+    const barG = document.createElementNS(SVG_NS, "g");
+    barG.innerHTML = scaleBarSvg(tf.x + 2, caption.barBaselineY, layout);
+    svg.appendChild(barG);
+  }
 }
 
 async function getSceneForView(viewDef: ViewDef): Promise<Scene2D> {

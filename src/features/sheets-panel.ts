@@ -10,12 +10,12 @@ import {
   deleteSheet,
   addViewport,
   removeViewport,
-  exportSheetSvg,
   createDefaultSheetSet,
   ensureDefaultTitleblock,
   onSheetsChange,
   getSheetSizeMm,
 } from "../modules/sheets/sheets";
+import { exportSheetSvg } from "../modules/sheets/sheet-composer";
 import { exportAllSheetsToPdf, downloadSingleSheetPdf } from "../modules/export/sheet-pdf";
 import type { SheetDef } from "../modules/projects/types";
 import { uiAlert } from "../core/notify";
