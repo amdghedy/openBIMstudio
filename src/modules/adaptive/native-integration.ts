@@ -39,6 +39,29 @@ export interface AdaptiveWorkPlaneSnapshot {
   };
 }
 
+export interface AdaptiveProfilePart {
+  /** One swept solid in the family cross-section. Multiple parts preserve a compound family. */
+  profile: ProfilePt[];
+  name?: string;
+}
+
+export type AdaptiveCustomFamilyProfileAdapter = (
+  params: Record<string, any>,
+  resolve: (ref: NumberRef) => number,
+  geometry: Record<string, any>,
+) => AdaptiveProfilePart[];
+
+const adaptiveCustomProfileAdapters = new Map<string, AdaptiveCustomFamilyProfileAdapter>();
+
+export function registerAdaptiveCustomFamilyProfileAdapter(
+  builder: string,
+  adapter: AdaptiveCustomFamilyProfileAdapter,
+): void {
+  const key = String(builder ?? "").trim();
+  if (!key || typeof adapter !== "function") throw new Error("A custom family builder name and adaptive profile adapter are required");
+  adaptiveCustomProfileAdapters.set(key, adapter);
+}
+
 export interface AdaptiveElementDefinition {
   schemaVersion: 1;
   familyId: string;
@@ -46,6 +69,8 @@ export interface AdaptiveElementDefinition {
   pointCount: number;
   points: Pt3[];
   profile: ProfilePt[];
+  /** Optional compound section profiles; profile remains the legacy single-part fallback. */
+  profileParts?: AdaptiveProfilePart[];
   /** Used only for one-point components; extrusion is along local +Y. */
   pointLength?: number;
   constraints?: AdaptivePointConstraint[];
@@ -60,6 +85,7 @@ export interface AdaptiveElementCreateInput {
   familyName: string;
   points: Pt3[];
   profile: ProfilePt[];
+  profileParts?: AdaptiveProfilePart[];
   pointLength?: number;
   name?: string;
   color?: string;
@@ -70,6 +96,7 @@ export interface AdaptiveElementCreateInput {
 export interface AdaptiveElementPatch {
   points?: Pt3[];
   profile?: ProfilePt[];
+  profileParts?: AdaptiveProfilePart[];
   pointLength?: number;
   familyName?: string;
   name?: string;
@@ -125,6 +152,12 @@ function validateDefinition(input: AdaptiveElementDefinition, driverIndex?: numb
     }
   }
   validateProfile(input.profile);
+  if (input.profileParts !== undefined) {
+    if (!Array.isArray(input.profileParts) || input.profileParts.length < 1 || input.profileParts.length > 64) {
+      throw new Error("Adaptive compound sections require 1 to 64 profile parts");
+    }
+    for (const part of input.profileParts) validateProfile(part.profile);
+  }
   validateAdaptivePointConstraints(input.constraints, input.points.length);
   if (input.points.length === 1 && input.pointLength !== undefined &&
       (!Number.isFinite(input.pointLength) || input.pointLength <= 0)) {
@@ -150,57 +183,68 @@ function pathForDefinition(definition: AdaptiveElementDefinition): Pt3[] {
 }
 
 /** Build the indexed sweep without allocating any Three.js objects. */
-function indexedMeshForDefinition(definition: AdaptiveElementDefinition, driverIndex?: number) {
+function indexedMeshesForDefinition(definition: AdaptiveElementDefinition, driverIndex?: number) {
   const def = validateDefinition(definition, driverIndex);
-  const indexed = sweepProfile(def.profile, pathForDefinition(def));
-  if (indexed.vertices.length < 3 || indexed.faces.length < 1) {
-    throw new Error("Adaptive geometry is empty");
-  }
-  return { definition: def, indexed };
+  const parts = def.profileParts?.length ? def.profileParts : [{ profile: def.profile }];
+  const indexedParts = parts.map((part) => {
+    const indexed = sweepProfile(part.profile, pathForDefinition(def));
+    if (indexed.vertices.length < 3 || indexed.faces.length < 1) throw new Error("Adaptive compound part is empty");
+    return { name: part.name, indexed };
+  });
+  return { definition: def, indexed: indexedParts[0].indexed, indexedParts };
+}
+
+/** Build the indexed sweep without allocating any Three.js objects. */
+function indexedMeshForDefinition(definition: AdaptiveElementDefinition, driverIndex?: number) {
+  const result = indexedMeshesForDefinition(definition, driverIndex);
+  return { definition: result.definition, indexed: result.indexed };
 }
 
 function triangleSoupForDefinition(definition: AdaptiveElementDefinition): number[] {
-  const indexed = indexedMeshForDefinition(definition).indexed;
+  const { indexedParts } = indexedMeshesForDefinition(definition);
   const positions: number[] = [];
-  for (const face of indexed.faces) {
-    for (const index of face) {
-      const point = indexed.vertices[index];
-      positions.push(point.x, point.y, point.z);
+  for (const part of indexedParts) {
+    for (const face of part.indexed.faces) {
+      for (const index of face) {
+        const point = part.indexed.vertices[index];
+        positions.push(point.x, point.y, point.z);
+      }
     }
   }
   return positions;
 }
 
 function meshForDefinition(definition: AdaptiveElementDefinition, color = "#60a5fa"): THREE.Group {
-  const { definition: def, indexed } = indexedMeshForDefinition(definition);
-  const positions = new Float32Array(indexed.vertices.length * 3);
-  indexed.vertices.forEach((p, i) => {
-    positions[i * 3] = p.x;
-    positions[i * 3 + 1] = p.y;
-    positions[i * 3 + 2] = p.z;
-  });
-  const indices = indexed.faces.flat();
-  if (positions.length < 9 || indices.length < 3) throw new Error("Adaptive geometry is empty");
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  geometry.computeBoundingBox();
-  geometry.computeBoundingSphere();
-
-  const material = new THREE.MeshLambertMaterial({
-    color: new THREE.Color(color || "#60a5fa"),
-    side: THREE.DoubleSide,
-  });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = "adaptive-component-solid";
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.userData.adaptiveDefinition = clone(def);
-
+  const { definition: def, indexedParts } = indexedMeshesForDefinition(definition);
   const group = new THREE.Group();
   group.name = "adaptive-component";
-  group.add(mesh);
+  indexedParts.forEach((part, partIndex) => {
+    const positions = new Float32Array(part.indexed.vertices.length * 3);
+    part.indexed.vertices.forEach((p, i) => {
+      positions[i * 3] = p.x;
+      positions[i * 3 + 1] = p.y;
+      positions[i * 3 + 2] = p.z;
+    });
+    const indices = part.indexed.faces.flat();
+    if (positions.length < 9 || indices.length < 3) throw new Error("Adaptive geometry is empty");
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+    const material = new THREE.MeshLambertMaterial({
+      color: new THREE.Color(color || "#60a5fa"),
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = indexedParts.length > 1 ? "adaptive-component-part-" + (partIndex + 1) : "adaptive-component-solid";
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData.adaptiveDefinition = clone(def);
+    mesh.userData.adaptivePartName = part.name;
+    group.add(mesh);
+  });
   return group;
 }
 
@@ -234,6 +278,7 @@ function definitionFromInput(input: AdaptiveElementCreateInput): AdaptiveElement
     pointCount: points.length,
     points,
     profile: clone(input.profile),
+    ...(input.profileParts?.length ? { profileParts: clone(input.profileParts) } : {}),
     ...(input.pointLength === undefined ? {} : { pointLength: Number(input.pointLength) }),
     ...(input.constraints?.length ? { constraints: clone(input.constraints) } : {}),
     ...(input.workPlane ? { workPlane: clone(input.workPlane) } : {}),
@@ -242,7 +287,9 @@ function definitionFromInput(input: AdaptiveElementCreateInput): AdaptiveElement
 }
 
 function paramsFor(def: AdaptiveElementDefinition): AuthoredElement["params"] {
-  const us = def.profile.map((p) => p.u), vs = def.profile.map((p) => p.v);
+  const profiles = def.profileParts?.length ? def.profileParts.map((part) => part.profile) : [def.profile];
+  const points = profiles.flat();
+  const us = points.map((p) => p.u), vs = points.map((p) => p.v);
   const profileSize = Math.max(
     Math.max(...us) - Math.min(...us),
     Math.max(...vs) - Math.min(...vs),
