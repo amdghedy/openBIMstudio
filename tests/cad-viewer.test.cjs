@@ -83,4 +83,35 @@ t("MTEXT line-spacing factor scales the pitch; plain TEXT keeps 5/3",()=>{
   const wrapped=MT({value:"aaa bbb ccc ddd",wrapWidth:9});
   near(m.textBox(wrapped).w,2*0.6*7);
 });
+t("viewport query matches a brute-force bbox scan and keeps draw order",()=>{
+  const es=[L(0,0,10,0),L(40,40,50,50),C(5,5,2),P([[20,20],[22,20],[22,22]],true),T(100,100,2,"offscreen")];
+  const ix=m.buildIndex(es,{minX:0,minY:0,maxX:110,maxY:110});
+  const box={minX:-1,minY:-1,maxX:25,maxY:25};
+  const expected=es.map((e,i)=>({e,i})).filter(({e})=>{const b=m.entityBBox(e);return !(b.maxX<box.minX||b.minX>box.maxX||b.maxY<box.minY||b.minY>box.maxY)}).map(({i})=>i);
+  assert.deepStrictEqual(m.queryIndexBox(ix,es,box),expected);
+});
+t("viewport query always retains off-screen anchored construction lines",()=>{
+  const ray={type:"RAY",layer:"0",start:{x:-1000,y:500},direction:{x:1,y:0}};
+  const xline={type:"XLINE",layer:"0",start:{x:1000,y:-500},direction:{x:0,y:1}};
+  const es=[L(500,500,510,510),ray,xline];
+  const ix=m.buildIndex(es,{minX:-1000,minY:-500,maxX:1000,maxY:500});
+  assert.deepStrictEqual(m.queryIndexBox(ix,es,{minX:0,minY:0,maxX:10,maxY:10}),[1,2]);
+});
+t("viewport query culls large drawings to local candidates",()=>{
+  const many=Array.from({length:5000},(_,i)=>L(i*10,i*10,i*10+2,i*10+2));
+  const ix=m.buildIndex(many,{minX:0,minY:0,maxX:50000,maxY:50000});
+  const local=m.queryIndexBox(ix,many,{minX:0,minY:0,maxX:20,maxY:20});
+  assert.ok(local.length>0);
+  assert.ok(local.length<many.length/10,"expected local query to skip most of 5000 entities; got "+local.length);
+  assert.deepStrictEqual(local,[...local].sort((a,b)=>a-b));
+});
+t("CAD window and crossing selection use spatial candidates",()=>{
+  const src=fs.readFileSync(path.join(__dirname,"../src/modules/cad-viewer/viewer-math.ts"),"utf8");
+  assert.match(src,/for \(const i of queryIndexBox\(idx, entities, rect\)\)/);
+});
+t("CAD renderer uses viewport candidates and cursor-only status updates",()=>{
+  const src=fs.readFileSync(path.join(__dirname,"../src/features/cad-viewer.ts"),"utf8");
+  assert.match(src,/M\.queryIndexBox\(ix, list, cull\)/);
+  assert.match(src,/coords\.textContent = xy;\s*return;/);
+});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

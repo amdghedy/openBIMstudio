@@ -1659,20 +1659,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     cull: M.BBox,
     skipSel: boolean,
   ): void {
-    list.forEach((e, i) => {
-      if (!shown(e) || (skipSel && sel.has(i))) return;
-      // Infinite construction lines are never culled by their (degenerate,
-      // anchor-only) box — the clipped segment is computed per view instead.
-      const infinite = e.type === "RAY" || e.type === "XLINE";
-      if (ix && !infinite) {
+    const paintAt = (i: number): void => {
+      const e = list[i];
+      if (!e || !shown(e) || (skipSel && sel.has(i))) return;
+      // The viewport query has already culled ordinary geometry. Construction
+      // lines are deliberately included by queryIndexBox and clipped per view.
+      if (ix && e.type !== "RAY" && e.type !== "XLINE") {
         const bb = ix.boxes[i];
-        if (!M.boxesIntersect(bb, cull)) return;
+        if (!bb) return;
         if (
           e.type !== "POINT" &&
           (bb.maxX - bb.minX) * v.scale < 0.4 &&
           (bb.maxY - bb.minY) * v.scale < 0.4
-        )
-          return;
+        ) return;
       }
       const col = colorOf(e);
       c.strokeStyle = col;
@@ -1682,7 +1681,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.globalAlpha = alphaOf(e);
       drawEntity(c, e, v);
       c.globalAlpha = 1;
-    });
+    };
+    if (ix) {
+      for (const i of M.queryIndexBox(ix, list, cull)) paintAt(i);
+    } else {
+      for (let i = 0; i < list.length; i++) paintAt(i);
+    }
     c.setLineDash([]);
     c.lineWidth = lwtOn ? lw : 1;
     c.globalAlpha = 1;
@@ -7245,12 +7249,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       xy = `${ax.toFixed(4)}, ${ay.toFixed(4)}, 0.0000`;
     }
 
+    // Pointer movement can fire hundreds of times per second. Update only the
+    // coordinate text instead of rebuilding the complete status bar and
+    // reattaching every button handler on each cursor sample.
+    if (p) {
+      const coords = statusEl.querySelector<HTMLElement>("[data-s=coords]");
+      if (coords) {
+        coords.textContent = xy;
+        return;
+      }
+    }
+
     const promptBit = acadPromptText
       ? `<span style="color:#fbbf24;font-weight:600;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${acadPromptText.replace(/"/g, "&quot;")}">${acadPromptText}</span><span class="sep"></span>`
       : "";
     statusEl.innerHTML = `
       ${promptBit}
-      <span style="color:#f8fafc;font-weight:600">${xy}</span>
+      <span style="color:#f8fafc;font-weight:600" data-s="coords">${xy}</span>
       <span class="sep"></span>
       <button class="obs-status-btn active" data-s="space">${layoutI >= 0 ? "PAPER" : "MODEL"}</button>
       <button class="obs-status-btn ${showGrid ? "active" : ""}" data-s="grid" title="Grid (F7)">GRID</button>
