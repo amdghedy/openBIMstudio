@@ -9267,8 +9267,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   function runPathArray(): void {
     const selected = [...sel].map((i) => ({ i, entity: ents[i] })).filter((x): x is { i: number; entity: DxfEntity } => !!x.entity);
-    const pathEntry = [...selected].reverse().find((x) => x.entity.type === "LWPOLYLINE" && !x.entity.hatch && x.entity.points.length >= 2);
-    if (!pathEntry || pathEntry.entity.type !== "LWPOLYLINE") {
+    const pathEntry = [...selected].reverse().find((x): x is { i: number; entity: Extract<DxfEntity, { type: "LWPOLYLINE" }> } => x.entity.type === "LWPOLYLINE" && !x.entity.hatch && x.entity.points.length >= 2);
+    if (!pathEntry) {
       logCmd("ARRAY PATH: select source objects, then select one open or closed polyline path last.");
       return;
     }
