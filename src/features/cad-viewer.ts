@@ -1245,6 +1245,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     lw = 1,
     du: M.DisplayUnit = "drawing";
   const hidden = new Set<string>();
+  // Per-entity temporary visibility complements layer visibility for CAD context actions.
+  const hiddenEntities = new Set<DxfEntity>();
+  const visibilityHistory: Array<{ layers: Set<string>; entities: Set<DxfEntity> }> = [];
 
   // Drawing status toggles
   let snapOn = true;
@@ -1340,7 +1343,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
-  const visible = (e: DxfEntity) => !hidden.has(e.layer) && (typeFilter.size === 0 || typeFilter.has(e.type));
+  const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type));
   const shown = (e: DxfEntity) =>
     visible(e) && !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch);
   const layerOf = (n: string) => doc?.layers.find((l) => l.name === n);
@@ -4480,7 +4483,118 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
   function zoomSelection(): void {
     if (idx && sel.size) zoomToBox(M.bboxOfSet(idx, sel));
+    else logCmd("Select one or more objects before Zoom to Selected.");
   }
+
+  function saveVisibilityState(): void {
+    visibilityHistory.push({ layers: new Set(hidden), entities: new Set(hiddenEntities) });
+    if (visibilityHistory.length > 20) visibilityHistory.shift();
+  }
+
+  function hideCadSelection(isolate: boolean): void {
+    if (!sel.size) { logCmd("Select one or more objects first."); return; }
+    saveVisibilityState();
+    const keep = new Set([...sel].map((i) => ents[i]).filter(Boolean));
+    if (isolate) {
+      hidden.clear();
+      hiddenEntities.clear();
+      for (const entity of ents) if (!keep.has(entity)) hiddenEntities.add(entity);
+      logCmd(`Isolated ${keep.size} object(s).`);
+    } else {
+      for (const entity of keep) hiddenEntities.add(entity);
+      logCmd(`Hid ${keep.size} object(s).`);
+    }
+    sel.clear(); selected = -1;
+    showProps(); draw();
+  }
+
+  function restoreCadVisibility(): void {
+    const previous = visibilityHistory.pop();
+    if (previous) {
+      hidden.clear(); previous.layers.forEach((x) => hidden.add(x));
+      hiddenEntities.clear(); previous.entities.forEach((x) => hiddenEntities.add(x));
+    } else {
+      hidden.clear(); hiddenEntities.clear();
+    }
+    buildLayers(); draw();
+    logCmd("Visibility restored.");
+  }
+
+  function showAllCadObjects(): void {
+    visibilityHistory.length = 0;
+    hidden.clear(); hiddenEntities.clear();
+    buildLayers(); draw();
+    logCmd("All objects and layers are visible.");
+  }
+
+  function showCadContextMenu(ev: MouseEvent): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    document.querySelectorAll(".obs-cad-context-menu").forEach((n) => n.remove());
+    const menu = document.createElement("div");
+    menu.className = "obs-cad-context-menu";
+    menu.setAttribute("data-obs-ui", "1");
+    menu.style.cssText = "position:fixed;z-index:20000;min-width:245px;max-height:80vh;overflow:auto;padding:5px 0;background:#171d27;color:#e6edf5;border:1px solid #354254;border-radius:7px;box-shadow:0 12px 32px rgba(0,0,0,.48);font:12px 'Segoe UI',system-ui,sans-serif";
+    menu.addEventListener("mousedown", (e) => e.stopPropagation());
+    const hasSelection = sel.size > 0;
+    const addSep = () => { const d=document.createElement("div"); d.style.cssText="height:1px;background:#303b4b;margin:4px 7px"; menu.appendChild(d); };
+    const addLabel = (label: string) => { const d=document.createElement("div"); d.textContent=label; d.style.cssText="padding:5px 11px 3px;color:#8fa0b4;font-size:9px;font-weight:700;letter-spacing:.08em"; menu.appendChild(d); };
+    const addItem = (label: string, run: () => void, disabled = false, danger = false, shortcut = "") => {
+      const b=document.createElement("button"); b.type="button"; b.disabled=disabled; b.textContent=label;
+      b.style.cssText="display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:left;color:"+(danger?"#f87171":"inherit")+";font:inherit;cursor:"+(disabled?"default":"pointer")+";opacity:"+(disabled?".38":"1");
+      if(shortcut){const k=document.createElement("span");k.textContent=shortcut;k.style.cssText="margin-left:auto;color:#8291a5;font-size:10px";b.appendChild(k);}
+      b.onmouseenter=()=>{if(!disabled)b.style.background="#263447";}; b.onmouseleave=()=>b.style.background="transparent";
+      b.onclick=()=>{menu.remove();run();}; menu.appendChild(b);
+    };
+    const action=(label:string,toolName:Tool)=>addItem(label,()=>setTool(toolName),!hasSelection);
+    if (hasSelection) addLabel(`${sel.size} OBJECT(S) SELECTED`);
+    else addLabel("DRAWING COMMANDS");
+    addItem("Zoom to Selected",zoomSelection,!hasSelection,"","ZS");
+    addItem("Zoom Extents",zoomExtents,!bounds);
+    addItem("Zoom Previous",()=>{const previous=history.pop();if(previous){view={...previous};draw();}else logCmd("No previous view.");},history.length===0);
+    addItem("Pan",()=>setTool("pan"));
+    addSep();
+    addLabel("SELECTION");
+    addItem("Select All",()=>setSel(ents.map((e,i)=>visible(e)?i:-1).filter(i=>i>=0)) ,ents.length===0,"","Ctrl+A");
+    addItem("Select Similar (Type + Layer)",()=>{const first=ents[[...sel][0]];if(first)setSel(ents.map((e,i)=>e.type===first.type&&e.layer===first.layer&&visible(e)?i:-1).filter(i=>i>=0));},!hasSelection);
+    addItem("Invert Selection",()=>setSel(ents.map((e,i)=>visible(e)&&!sel.has(i)?i:-1).filter(i=>i>=0)),ents.length===0);
+    addItem("Deselect All",()=>setSel([]),!hasSelection);
+    addSep();
+    addLabel("VISIBILITY");
+    addItem("Hide Selected",()=>hideCadSelection(false),!hasSelection);
+    addItem("Isolate Selected",()=>hideCadSelection(true),!hasSelection);
+    addItem("Show All",showAllCadObjects,hidden.size===0&&hiddenEntities.size===0);
+    addItem("Restore Previous Visibility",restoreCadVisibility,visibilityHistory.length===0);
+    addSep();
+    addLabel("CLIPBOARD & TRANSFORM");
+    addItem("Copy",()=>setTool("copy"),!hasSelection,"","CO");
+    addItem("Move",()=>setTool("move"),!hasSelection,"","M");
+    addItem("Rotate",()=>setTool("rotate"),!hasSelection,"","RO");
+    addItem("Mirror",()=>setTool("mirror"),!hasSelection,"","MI");
+    addItem("Scale",()=>setTool("scale"),!hasSelection,"","SC");
+    addItem("Offset",()=>setTool("offset"),!hasSelection,"","O");
+    addItem("Erase Selected",()=>setTool("erase"),!hasSelection,true,"E");
+    addSep();
+    addLabel("EDIT & DRAW");
+    for (const [label,t] of [["Trim","trim"],["Extend","extend"],["Break","break"],["Fillet","fillet"],["Chamfer","chamfer"],["Join","join"],["Explode","explode"],["Stretch","stretch"],["Align","align"]] as Array<[string,Tool]>) addItem(label,()=>setTool(t),!hasSelection);
+    addSep();
+    addLabel("ANNOTATION & OBJECTS");
+    for (const [label,t] of [["Line","line"],["Polyline","poly"],["Circle","circle"],["Rectangle","rect"],["Arc","arc"],["Hatch","hatch"],["Text","text"],["Dimension","dim"]] as Array<[string,Tool]>) addItem(label,()=>setTool(t));
+    addSep();
+    addLabel("DRAWING");
+    addItem("Layer Properties",openLayerPropertiesManager);
+    addItem("Object Properties",()=>{showProps();});
+    addItem("Undo",undo,undoStack.length===0,"","Ctrl+Z");
+    addItem("Redo",redo,redoStack.length===0,"","Ctrl+Y");
+    document.body.appendChild(menu);
+    const rect=menu.getBoundingClientRect();
+    menu.style.left=`${Math.max(6,Math.min(ev.clientX,window.innerWidth-rect.width-6))}px`;
+    menu.style.top=`${Math.max(6,Math.min(ev.clientY,window.innerHeight-rect.height-6))}px`;
+    const close=(e:PointerEvent)=>{if(!menu.contains(e.target as Node)){menu.remove();document.removeEventListener("pointerdown",close,true);}};
+    document.addEventListener("pointerdown",close,true);
+    menu.addEventListener("keydown",(e)=>{if(e.key==="Escape"){menu.remove();}});
+  }
+
   function zoomLayer(n: string): void {
     if (!idx) return;
     zoomToBox(M.bboxOfSet(idx, ents.map((e, i) => (e.layer === n ? i : -1)).filter((i) => i >= 0)));
@@ -6612,10 +6726,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   // Right-click = Enter (drawing workspace: confirm selection / accept defaults)
   cv.addEventListener("contextmenu", (ev) => {
-    ev.preventDefault();
-    if (pick) confirmPickStep();
-    else if (mod) confirmModStep();
-    else if (tool === "offset" && offStage === "pickSide") {
+    if (pick) { ev.preventDefault(); confirmPickStep(); return; }
+    if (mod) { ev.preventDefault(); confirmModStep(); return; }
+    if (tool === "offset" && offStage === "pickSide") {
+      ev.preventDefault();
       offStage = "pickObj";
       offTarget = -1;
       sel.clear();
@@ -6623,7 +6737,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       showProps();
       logCmd("Select object to offset:");
       draw();
+      return;
     }
+    // In idle selection mode, right-click opens the complete CAD context menu.
+    if (tool === "select") { showCadContextMenu(ev); return; }
+    ev.preventDefault();
   });
 
   const endDrag = (ev: PointerEvent) => {
