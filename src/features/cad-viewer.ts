@@ -1248,7 +1248,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const value = M.convertLength(measured * scaleCal, doc.units, du);
     const label = DIM.formatMeasurement(value, style);
     const unit = M.unitLabel(doc.units, du);
-    return unit === "units" ? label : label + " " + unit;
+    // A style suffix is the user's explicit unit statement — don't double it.
+    return unit === "units" || style.suffix ? label : label + " " + unit;
   }
   /** Registers a newly placed dimension and returns its tagged entities. */
   function createDimEntities(args: {
