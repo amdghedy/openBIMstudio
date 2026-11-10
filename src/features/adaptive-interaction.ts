@@ -463,11 +463,7 @@ function handlePlacementHover(event: PointerEvent): void {
     if (!placement || sequence !== hoverSequence) return;
     if (result) {
       const active = getActiveWorkPlane();
-      const snapped = active
-        ? new THREE.Vector3(
-            ...active.normal.map((n, i) => 0) as [number, number, number],
-          )
-        : result.point.clone();
+      const snapped = result.point.clone();
       if (active) {
         const normal = new THREE.Vector3(active.normal[0], active.normal[1], active.normal[2]).normalize();
         const origin = new THREE.Vector3(active.origin[0], active.origin[1], active.origin[2]);
@@ -498,6 +494,128 @@ function gripSize(point: THREE.Vector3): number {
   const fov = THREE.MathUtils.degToRad(camera.fov ?? 50);
   return Math.max(0.025, Math.min(0.16,
     2 * distance * Math.tan(fov / 2) * pixels / Math.max(1, host.clientHeight)));
+}
+
+function addConstraintLine(
+  points: THREE.Vector3[],
+  kind: string,
+  color: number,
+  elementId: string,
+): void {
+  if (!gripRoot || points.length < 2) return;
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const line = new THREE.Line(
+    geometry,
+    new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.95 }),
+  );
+  line.renderOrder = 1090;
+  line.userData.adaptiveConstraintGlyph = kind;
+  line.userData.elementId = elementId;
+  gripRoot.add(line);
+}
+
+function addConstraintGlyph(
+  constraint: Any,
+  points: Pt3[],
+  elementId: string,
+): void {
+  if (!gripRoot) return;
+  const at = (index: number): THREE.Vector3 | null => {
+    const p = points[index];
+    return p && Number.isInteger(index) ? new THREE.Vector3(p.x, p.y, p.z) : null;
+  };
+  const addMarker = (position: THREE.Vector3, kind: string, color: number, size = 0.045) => {
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(size, 10, 8),
+      new THREE.MeshBasicMaterial({ color, depthTest: false }),
+    );
+    marker.position.copy(position);
+    marker.renderOrder = 1105;
+    marker.userData.adaptiveConstraintGlyph = kind;
+    marker.userData.elementId = elementId;
+    gripRoot!.add(marker);
+  };
+  const kind = String(constraint?.kind ?? "");
+  const colors: Record<string, number> = {
+    fixed: 0x60a5fa, axis: 0x22d3ee, plane: 0x38bdf8, "face-lock": 0x38bdf8,
+    coincident: 0x34d399, distance: 0xfbbf24, horizontal: 0x4ade80,
+    vertical: 0x4ade80, parallel: 0xa78bfa, perpendicular: 0xfb923c,
+    equalLength: 0x2dd4bf, angle: 0xf472b6,
+  };
+  const color = colors[kind] ?? 0xe5e7eb;
+
+  if (kind === "fixed" || kind === "axis") {
+    const p = at(constraint.pointIndex);
+    if (!p) return;
+    if (kind === "fixed") {
+      const axis = 0.11;
+      addConstraintLine([p.clone().add(new THREE.Vector3(-axis, 0, 0)), p.clone().add(new THREE.Vector3(axis, 0, 0))], kind, color, elementId);
+      addConstraintLine([p.clone().add(new THREE.Vector3(0, -axis, 0)), p.clone().add(new THREE.Vector3(0, axis, 0))], kind, color, elementId);
+      addConstraintLine([p.clone().add(new THREE.Vector3(0, 0, -axis)), p.clone().add(new THREE.Vector3(0, 0, axis))], kind, color, elementId);
+    } else {
+      const direction = constraint.axis === "x" ? new THREE.Vector3(1, 0, 0)
+        : constraint.axis === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+      addConstraintLine([p.clone().addScaledVector(direction, -0.2), p.clone().addScaledVector(direction, 0.2)], kind, color, elementId);
+    }
+    addMarker(p, kind, color, 0.055);
+    return;
+  }
+
+  if (kind === "plane" || kind === "face-lock") {
+    const origin = constraint.origin;
+    const normal = constraint.normal;
+    if (!origin || !normal) return;
+    const n = new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.7, 0.7),
+      new THREE.MeshBasicMaterial({
+        color, side: THREE.DoubleSide, transparent: true, opacity: 0.12,
+        depthTest: false, depthWrite: false,
+      }),
+    );
+    plane.position.set(origin.x, origin.y, origin.z);
+    plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+    plane.renderOrder = 1080;
+    plane.userData.adaptiveConstraintGlyph = kind;
+    plane.userData.elementId = elementId;
+    gripRoot.add(plane);
+    const end = plane.position.clone().addScaledVector(n, 0.24);
+    addConstraintLine([plane.position.clone(), end], kind, color, elementId);
+    addMarker(plane.position, kind, color, 0.04);
+    return;
+  }
+
+  const a = at(constraint.a), b = at(constraint.b);
+  if (a && b && ["coincident", "distance", "horizontal", "vertical"].includes(kind)) {
+    addConstraintLine([a, b], kind, color, elementId);
+    addMarker(a, kind, color, 0.035);
+    addMarker(b, kind, color, 0.035);
+    if (kind === "distance") {
+      addMarker(a.clone().lerp(b, 0.5), kind, color, 0.055);
+    } else if (kind === "coincident") {
+      addMarker(a.clone().lerp(b, 0.5), kind, color, 0.065);
+    }
+    return;
+  }
+
+  const c = at(constraint.c), d = at(constraint.d);
+  if (!a || !b || !c || !d) return;
+  addConstraintLine([a, b], kind, color, elementId);
+  addConstraintLine([c, d], kind, color, elementId);
+  const midAB = a.clone().lerp(b, 0.5);
+  const midCD = c.clone().lerp(d, 0.5);
+  addConstraintLine([midAB, midCD], kind, color, elementId);
+  addMarker(midAB, kind, color, 0.05);
+  addMarker(midCD, kind, color, 0.05);
+  if (kind === "perpendicular") {
+    const ab = b.clone().sub(a).normalize().multiplyScalar(0.13);
+    const cd = d.clone().sub(c).normalize().multiplyScalar(0.13);
+    const corner = midAB.clone();
+    addConstraintLine([corner, corner.clone().add(ab), corner.clone().add(ab).add(cd), corner.clone().add(cd)], kind, color, elementId);
+  } else if (kind === "equalLength") {
+    addMarker(midAB, "equalLength-tick", color, 0.075);
+    addMarker(midCD, "equalLength-tick", color, 0.075);
+  }
 }
 
 export function refreshAdaptiveGrips(): void {
@@ -531,6 +649,9 @@ export function refreshAdaptiveGrips(): void {
       handle.userData.pointIndex = pointIndex;
       gripRoot!.add(handle);
     });
+    for (const constraint of definition.constraints ?? []) {
+      addConstraintGlyph(constraint, definition.points as Pt3[], element.id);
+    }
   }
 }
 
