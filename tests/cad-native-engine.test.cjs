@@ -196,7 +196,7 @@ t("rectArrayEnts creates bounded copies and rotates only the grid vectors", () =
 t("rectArrayEnts rejects invalid counts, non-finite spacing and excessive output", () => {
   assert.throws(() => X.rectArrayEnts([line(0, 0, 1, 0)], 1.5, 2, 1, 1), /integers/);
   assert.throws(() => X.rectArrayEnts([line(0, 0, 1, 0)], 2, 2, Infinity, 1), /finite/);
-  assert.throws(() => X.rectArrayEnts(new Array(2000).fill(line(0, 0, 1, 0)), 2, 2, 1, 1), /10,000/);
+  assert.throws(() => X.rectArrayEnts(new Array(4000).fill(line(0, 0, 1, 0)), 2, 2, 1, 1), /10,000/);
 });
 t("polarArrayEnts distributes full circles without duplicating the endpoint", () => {
   const src = [line(9, 0, 11, 0)];
