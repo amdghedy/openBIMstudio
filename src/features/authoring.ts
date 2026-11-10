@@ -2816,12 +2816,20 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
   else if (kind === "end" && p.end) p.end = [x, z];
   else if (kind === "point" && p.point) p.point = [x, z];
   else if (kind === "point-footprint" && p.point && footprintGrip) {
-    const resized = resizePointFootprint({ point: [Number(p.point[0]), Number(p.point[1])], width: Number(p.width ?? p.thickness ?? 0.3), depth: Number(p.depth ?? p.thickness ?? p.width ?? 0.3) }, footprintGrip, [x, z]);
+    const base = gripDrag.snapshot;
+    const resized = resizePointFootprint({
+      point: [Number(base.point?.[0] ?? p.point[0]), Number(base.point?.[1] ?? p.point[1])],
+      width: Number(base.width ?? base.thickness ?? 0.3),
+      depth: Number(base.depth ?? base.thickness ?? base.width ?? 0.3),
+    }, footprintGrip, [x, z]);
     if (resized) { p.point = resized.point; p.width = resized.width; p.depth = resized.depth; }
   } else if (kind === "vertex" && p.polygon && vertexIndex !== undefined) {
-    const candidate = p.polygon.map((v: [number, number]) => [...v] as [number, number]);
+    const basePolygon = (gripDrag.snapshot as any).polygon as [number, number][] | undefined;
+    const candidate = (basePolygon ?? p.polygon).map((v: [number, number]) => [...v] as [number, number]);
     candidate[vertexIndex] = [x, z];
-    if (isValidBoundary(candidate)) p.polygon = candidate;
+    p.polygon = isValidBoundary(candidate)
+      ? candidate
+      : (basePolygon ?? p.polygon).map((v: [number, number]) => [...v] as [number, number]);
   }
 
   // Magnetic join: a dragged end of a wall/beam/strip/duct/pipe/tray/conduit locks onto a nearby free end of
