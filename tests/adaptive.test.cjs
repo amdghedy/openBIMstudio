@@ -256,5 +256,87 @@ t("adaptive point constraints: invalid point references and dimensions are rejec
   assert(threw, "zero distance should be rejected");
 });
 
+
+t("adaptive constraints: arbitrary face planes project points onto a saved plane", () => {
+  const input = [P(1, 4, 2), P(3, 7, 5)];
+  const solved = ad.solveAdaptivePointConstraints(input, [
+    { kind: "face-lock", pointIndex: 0, origin: P(0, 2, 0), normal: P(0, 1, 0) },
+    { kind: "plane", pointIndex: 1, origin: P(1, 0, 0), normal: P(1, 1, 0) },
+  ]);
+  near(solved[0].y, 2);
+  near(solved[1].x + solved[1].y - 1, 0, 1e-8);
+});
+
+t("adaptive constraints: horizontal and vertical relationships stay orthogonal to model axes", () => {
+  const solved = ad.solveAdaptivePointConstraints(
+    [P(1, 0, 1), P(4, 3, 5), P(2, 1, 2), P(7, 9, 8)],
+    [
+      { kind: "horizontal", a: 0, b: 1 },
+      { kind: "vertical", a: 2, b: 3 },
+    ],
+  );
+  near(solved[1].y, solved[0].y);
+  near(solved[3].x, solved[2].x);
+  near(solved[3].z, solved[2].z);
+});
+
+t("adaptive constraints: parallel and perpendicular segment networks converge", () => {
+  const parallel = ad.solveAdaptivePointConstraints(
+    [P(0, 0, 0), P(3, 0, 0), P(1, 1, 0), P(1, 3, 1)],
+    [{ kind: "parallel", a: 0, b: 1, c: 2, d: 3 }],
+  );
+  const ab = P(parallel[1].x - parallel[0].x, parallel[1].y - parallel[0].y, parallel[1].z - parallel[0].z);
+  const cd = P(parallel[3].x - parallel[2].x, parallel[3].y - parallel[2].y, parallel[3].z - parallel[2].z);
+  const parallelCross = P(ab.y * cd.z - ab.z * cd.y, ab.z * cd.x - ab.x * cd.z, ab.x * cd.y - ab.y * cd.x);
+  near(Math.hypot(parallelCross.x, parallelCross.y, parallelCross.z), 0, 1e-7);
+
+  const perpendicular = ad.solveAdaptivePointConstraints(
+    [P(0, 0, 0), P(3, 0, 0), P(1, 1, 0), P(4, 1, 0)],
+    [{ kind: "perpendicular", a: 0, b: 1, c: 2, d: 3 }],
+  );
+  const pAB = P(perpendicular[1].x - perpendicular[0].x, perpendicular[1].y - perpendicular[0].y, perpendicular[1].z - perpendicular[0].z);
+  const pCD = P(perpendicular[3].x - perpendicular[2].x, perpendicular[3].y - perpendicular[2].y, perpendicular[3].z - perpendicular[2].z);
+  near(pAB.x * pCD.x + pAB.y * pCD.y + pAB.z * pCD.z, 0, 1e-7);
+});
+
+t("adaptive constraints: equal length and angular relationships are enforced", () => {
+  const equal = ad.solveAdaptivePointConstraints(
+    [P(0, 0, 0), P(4, 0, 0), P(1, 1, 0), P(2, 1, 0)],
+    [{ kind: "equalLength", a: 0, b: 1, c: 2, d: 3 }],
+  );
+  near(Math.hypot(equal[3].x - equal[2].x, equal[3].y - equal[2].y, equal[3].z - equal[2].z), 4, 1e-7);
+
+  const angle = ad.solveAdaptivePointConstraints(
+    [P(0, 0, 0), P(2, 0, 0), P(0, 1, 0), P(0, 3, 0)],
+    [{ kind: "angle", a: 0, b: 1, c: 2, d: 3, radians: Math.PI / 2, axis: P(0, 1, 0) }],
+  );
+  const vector = P(angle[3].x - angle[2].x, angle[3].y - angle[2].y, angle[3].z - angle[2].z);
+  near(vector.x, 0, 1e-7);
+  near(vector.z, -2, 1e-7);
+});
+
+t("adaptive constraints: a multi-link network converges and contradictory dimensions are rejected", () => {
+  const solved = ad.solveAdaptivePointConstraints(
+    [P(0, 0, 0), P(1, 0, 0), P(2, 0, 0)],
+    [
+      { kind: "distance", a: 0, b: 1, distance: 2 },
+      { kind: "distance", a: 1, b: 2, distance: 3 },
+    ],
+  );
+  near(solved[1].x, 2);
+  near(solved[2].x, 5);
+  let threw = false;
+  try {
+    ad.solveAdaptivePointConstraints(
+      [P(0, 0, 0), P(1, 0, 0)],
+      [
+        { kind: "distance", a: 0, b: 1, distance: 2 },
+        { kind: "distance", a: 0, b: 1, distance: 3 },
+      ],
+    );
+  } catch (error) { threw = /did not converge/.test(String(error)); }
+  assert(threw, "contradictory dimensions must not be silently persisted");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
