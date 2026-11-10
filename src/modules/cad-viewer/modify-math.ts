@@ -208,6 +208,109 @@ export function scaleEnt(e: DxfEntity, cx: number, cy: number, k: number): DxfEn
   }
 }
 
+/**
+ * Stable object anchor used by polar arrays. Lines use their midpoint;
+ * curves use their centre; polylines use the centre of their extents.
+ */
+export function entityArrayAnchor(e: DxfEntity): Pt {
+  switch (e.type) {
+    case "LINE":
+      return { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2 };
+    case "CIRCLE":
+    case "ARC":
+      return { x: e.center.x, y: e.center.y };
+    case "LWPOLYLINE": {
+      if (!e.points.length) return { x: 0, y: 0 };
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of e.points) {
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+      }
+      return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+    }
+    case "TEXT":
+    case "POINT":
+      return { x: e.position.x, y: e.position.y };
+    case "RAY":
+    case "XLINE":
+      return { x: e.start.x, y: e.start.y };
+  }
+}
+
+/**
+ * Rectangular array offsets. Grid orientation rotates the row/column vectors,
+ * not the copied entities. The source selection remains the original instance.
+ */
+export function rectArrayEnts(
+  entities: DxfEntity[],
+  rows: number,
+  columns: number,
+  rowSpacing: number,
+  columnSpacing: number,
+  gridAngleDeg = 0,
+): DxfEntity[] {
+  if (!Number.isInteger(rows) || !Number.isInteger(columns) || rows < 1 || columns < 1 || rows > 100 || columns > 100 || rows * columns > 10000) {
+    throw new RangeError("Array rows and columns must be integers from 1 to 100 (maximum 10,000 cells).");
+  }
+  if (![rowSpacing, columnSpacing, gridAngleDeg].every(Number.isFinite)) {
+    throw new TypeError("Array spacing and angle must be finite numbers.");
+  }
+  if (entities.length * (rows * columns - 1) > 10000) {
+    throw new RangeError("Array would create more than 10,000 entities.");
+  }
+  const a = gridAngleDeg * DEG, c = Math.cos(a), s = Math.sin(a);
+  const out: DxfEntity[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < columns; col++) {
+      if (r === 0 && col === 0) continue;
+      const x = col * columnSpacing, y = r * rowSpacing;
+      const dx = x * c - y * s, dy = x * s + y * c;
+      for (const e of entities) out.push(translateEnt(e, dx, dy));
+    }
+  }
+  return out;
+}
+
+/**
+ * Polar array with count total positions including the original source.
+ * A full 360° sweep omits the duplicate endpoint; partial sweeps include it.
+ * When rotateItems is false, copies keep their original orientation.
+ */
+export function polarArrayEnts(
+  entities: DxfEntity[],
+  center: Pt,
+  count: number,
+  fillAngleDeg = 360,
+  rotateItems = true,
+): DxfEntity[] {
+  if (!Number.isInteger(count) || count < 2 || count > 360) {
+    throw new RangeError("Polar array item count must be an integer from 2 to 360.");
+  }
+  if (![center.x, center.y, fillAngleDeg].every(Number.isFinite) || Math.abs(fillAngleDeg) < 1e-9 || Math.abs(fillAngleDeg) > 360) {
+    throw new RangeError("Polar array needs a finite centre and a non-zero sweep up to 360 degrees.");
+  }
+  if (entities.length * (count - 1) > 10000) {
+    throw new RangeError("Polar array would create more than 10,000 entities.");
+  }
+  const fullCircle = Math.abs(Math.abs(fillAngleDeg) - 360) < 1e-9;
+  const step = fillAngleDeg / (fullCircle ? count : count - 1);
+  const out: DxfEntity[] = [];
+  for (let i = 1; i < count; i++) {
+    const angle = step * i, rad = angle * DEG;
+    const c = Math.cos(rad), s = Math.sin(rad);
+    for (const e of entities) {
+      const anchor = entityArrayAnchor(e);
+      const dx = anchor.x - center.x, dy = anchor.y - center.y;
+      const target = { x: center.x + dx * c - dy * s, y: center.y + dx * s + dy * c };
+      const moved = rotateItems
+        ? rotateEnt(e, center.x, center.y, angle)
+        : translateEnt(e, target.x - anchor.x, target.y - anchor.y);
+      out.push(moved);
+    }
+  }
+  return out;
+}
+
 const norm360 = (a: number): number => ((a % 360) + 360) % 360;
 
 /* ── OFFSET ── */
