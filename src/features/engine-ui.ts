@@ -765,76 +765,106 @@ export async function openAdaptiveSweepDialog(): Promise<void> {
   const families = listFamilies();
   const r = await openFormModal({
     title: "Place Native Adaptive Component",
-    subtitle: "Create a project-authored component from 1–8 ordered placement points. Its editable profile and points are saved with the project.",
+    subtitle: "Choose a profile, then pick its ordered placement points directly in the 3D viewport. Coordinate entry remains available as a fallback. Optional point constraints are saved with the instance.",
     fields: [
+      { kind: "select", key: "placement", label: "Placement method", default: "viewport",
+        options: [["viewport", "Interactive 3D point picking"], ["coordinates", "Enter coordinates manually"]] },
       { kind: "select", key: "profile", label: "Profile source", default: "family",
         options: [["family", "From family"], ["rect", "Rectangle w×h"], ["circle", "Circle radius"]] },
-      { kind: "select", key: "family", label: "Family", default: families.find((family: AdaptiveFamily) => family.pointCount === 2)?.id ?? families[0]?.id ?? "rect-post",
+      { kind: "select", key: "family", label: "Adaptive profile family", default: families.find((family: AdaptiveFamily) => family.pointCount === 2)?.id ?? families[0]?.id ?? "rect-post",
         options: families.map((f: AdaptiveFamily) => [f.id, f.name] as [string, string]) },
+      { kind: "number", key: "pointCount", label: "Placement point count (custom profiles)", default: 2, step: 1, min: 1, max: 8 },
       { kind: "number", key: "rw", label: "Rect width", default: 0.1, unit: "m", step: 0.01, min: 0.001 },
       { kind: "number", key: "rh", label: "Rect height", default: 0.1, unit: "m", step: 0.01, min: 0.001 },
       { kind: "number", key: "cr", label: "Circle radius", default: 0.05, unit: "m", step: 0.005, min: 0.001 },
       { kind: "number", key: "pointLength", label: "One-point extrusion length", default: 3, unit: "m", step: 0.1, min: 0.001 },
-      { kind: "textarea", key: "path", label: "Ordered placement points (x,y,z per line; 1–8 points)",
+      { kind: "textarea", key: "constraints", label: "Persistent point constraints (JSON; optional)", default: "[]",
+        placeholder: '[{"kind":"coincident","a":0,"b":1}]' },
+      { kind: "textarea", key: "path", label: "Manual coordinates (used only with coordinate placement)",
         default: "0,0,0\n6,0,0", placeholder: "x,y,z per line (metres)" },
       { kind: "text", key: "name", label: "Instance name", default: "Adaptive Component" },
     ],
-    submitLabel: "Create Native Component",
-    width: 600,
+    submitLabel: "Start Adaptive Placement",
+    width: 620,
   });
   if (!r) return;
   try {
-    const points = parsePointList(String(r.path));
-    if (points.length < 1 || points.length > 8) throw new Error("Enter between 1 and 8 placement points");
     let family: AdaptiveFamily | undefined;
     let profile: ProfilePt[];
     let familyId: string;
     let familyName: string;
     let pointLength = Number(r.pointLength);
+    let pointCount = Math.round(Number(r.pointCount));
     if (r.profile === "family") {
       family = listFamilies().find((f: AdaptiveFamily) => f.id === String(r.family));
-      if (!family) throw new Error(`unknown adaptive family '${r.family}'`);
-      if (family.pointCount !== points.length) {
-        throw new Error(`Family '${family.name}' requires exactly ${family.pointCount} placement point(s); you supplied ${points.length}`);
-      }
+      if (!family) throw new Error("Unknown adaptive family '" + r.family + "'");
       profile = family.profile;
       familyId = family.id;
       familyName = family.name;
+      pointCount = family.pointCount;
       pointLength = family.pointLength ?? pointLength;
     } else {
+      if (!Number.isInteger(pointCount) || pointCount < 1 || pointCount > 8) {
+        throw new Error("Custom adaptive placement point count must be from 1 to 8");
+      }
       if (!Number.isFinite(pointLength) || pointLength <= 0) throw new Error("One-point extrusion length must be positive");
       profile = r.profile === "circle"
         ? circleProfile(Number(r.cr))
         : rectProfile(Number(r.rw) / 2, Number(r.rh) / 2);
-      familyId = `custom-adaptive-${Date.now().toString(36)}`;
+      familyId = "custom-adaptive-" + Date.now().toString(36);
       familyName = r.profile === "circle" ? "Custom circular adaptive profile" : "Custom rectangular adaptive profile";
     }
     profile = profileForAdaptiveSweep(profile);
-    const previewPath = adaptivePathForPreview(points, pointLength);
-    const previewMesh = sweepProfile(profile, previewPath);
-    const vol = Math.abs(meshVolume(previewMesh));
+    let constraints: Any[] = [];
+    try {
+      const parsed = JSON.parse(String(r.constraints || "[]"));
+      if (!Array.isArray(parsed)) throw new Error("Constraints must be a JSON array");
+      constraints = parsed;
+    } catch (error) {
+      throw new Error("Persistent point constraints are invalid JSON: " + (error as Error).message);
+    }
     const api = nativeAdaptiveApi();
     if (typeof api.create !== "function") throw new Error("Native adaptive authoring is not ready. Restart the project and try again.");
-    const element = api.create({
-      familyId,
-      familyName,
-      points,
-      profile,
-      ...(points.length === 1 ? { pointLength } : {}),
-      name: String(r.name ?? "").trim() || familyName,
-    });
+    let points: Pt3[];
+    let element: Any;
+    if (r.placement === "viewport") {
+      if (typeof api.beginPlacement !== "function") throw new Error("Interactive adaptive point picking has not initialized. Reload the project and try again.");
+      const placed = await api.beginPlacement({
+        familyId, familyName, pointCount, profile,
+        ...(pointCount === 1 ? { pointLength } : {}),
+        ...(constraints.length ? { constraints } : {}),
+        name: String(r.name ?? "").trim() || familyName,
+      });
+      if (!placed) return;
+      element = placed;
+      points = api.getDefinition(element.id)?.points ?? [];
+    } else {
+      points = parsePointList(String(r.path));
+      if (points.length !== pointCount) {
+        throw new Error("This adaptive family requires exactly " + pointCount + " placement point(s); you supplied " + points.length);
+      }
+      const previewPath = adaptivePathForPreview(points, pointLength);
+      element = api.create({
+        familyId, familyName, points, profile,
+        ...(points.length === 1 ? { pointLength } : {}),
+        ...(constraints.length ? { constraints } : {}),
+        name: String(r.name ?? "").trim() || familyName,
+      });
+    }
+    const vol = Math.abs(meshVolume(sweepProfile(profile, adaptivePathForPreview(points, pointLength))));
     showReportCard("Native Adaptive Component Created", [
       ["Element", element.name],
       ["Family", familyName],
       ["Placement points", points.length],
-      ["Path length", `${(points.length === 1 ? pointLength : pathLength(points)).toFixed(3)} m`],
-      ["Profile area", `${(Math.abs(profileArea(profile)) * 1e4).toFixed(1)} cm²`],
-      ["Mesh volume", `${(vol * 1e6).toFixed(1)} L`],
+      ["Path length", (points.length === 1 ? pointLength : pathLength(points)).toFixed(3) + " m"],
+      ["Profile area", (Math.abs(profileArea(profile)) * 1e4).toFixed(1) + " cm²"],
+      ["Mesh volume", (vol * 1e6).toFixed(1) + " L"],
+      ["Persistent constraints", constraints.length],
       ["Storage", "Native project element · editable definition saved"],
-    ], "The project stores the profile and ordered points. The visible mesh is regenerated from that definition when the authored model rebuilds.");
-    notify("success", `Created native adaptive component: ${element.name}`);
+    ], "The project stores the ordered 3D points, cross-section and geometric constraints. Rebuilds regenerate the mesh from that saved definition.");
+    notify("success", "Created native adaptive component: " + element.name);
   } catch (e) {
-    notify("error", `Adaptive component creation failed: ${(e as Error).message}`);
+    notify("error", "Adaptive component creation failed: " + (e as Error).message);
   }
 }
 
@@ -912,29 +942,50 @@ export async function openAdaptiveEditDialog(): Promise<void> {
   }
   const pointsText = definition.points.map((p: Pt3) => `${p.x},${p.y},${p.z}`).join("\n");
   const profileText = definition.profile.map((p: ProfilePt) => `${p.u},${p.v}`).join("\n");
+  const familyTypeChoices = api.listFamilyTypeChoices?.() ?? [];
+  const familyTypeOptions: [string, string][] = [
+    ["", "No shared family type"],
+    ...familyTypeChoices.map((choice: Any) => [choice.familyId + "::" + choice.typeId, choice.label] as [string, string]),
+  ];
+  const linkedTypeValue = definition.familyBinding
+    ? definition.familyBinding.familyId + "::" + definition.familyBinding.typeId
+    : "";
   const r = await openFormModal({
     title: `Edit Adaptive Component · ${element.name}`,
-    subtitle: "Edit the stored placement points and profile. Geometry regenerates when you apply the change.",
+    subtitle: "Edit placement points, persistent geometric constraints and the profile. A shared family type link keeps the cross-section synchronized with the family catalog.",
     fields: [
       { kind: "textarea", key: "points", label: "Ordered placement points (x,y,z; 1–8 points)", default: pointsText },
-      { kind: "textarea", key: "profile", label: "Cross-section profile (u,v)", default: profileText },
+      { kind: "textarea", key: "profile", label: "Manual cross-section profile (u,v)", default: profileText },
+      { kind: "textarea", key: "constraints", label: "Persistent point constraints (JSON)", default: JSON.stringify(definition.constraints ?? [], null, 2) },
+      { kind: "select", key: "familyType", label: "Shared family type", default: linkedTypeValue, options: familyTypeOptions },
       { kind: "number", key: "pointLength", label: "One-point extrusion length", default: definition.pointLength ?? 1, unit: "m", step: 0.1, min: 0.001 },
       { kind: "text", key: "name", label: "Instance name", default: element.name },
     ],
     submitLabel: "Apply & Regenerate",
-    width: 600,
+    width: 640,
   });
   if (!r) return;
   try {
     const points = parsePointList(String(r.points));
-    let profile = profileForAdaptiveSweep(parseProfile(String(r.profile)));
+    const profile = profileForAdaptiveSweep(parseProfile(String(r.profile)));
+    const constraints = JSON.parse(String(r.constraints || "[]"));
+    if (!Array.isArray(constraints)) throw new Error("Persistent constraints must be a JSON array");
     if (points.length < 1 || points.length > 8) throw new Error("Enter between 1 and 8 placement points");
     if (points.length === 1 && (!Number.isFinite(Number(r.pointLength)) || Number(r.pointLength) <= 0)) {
       throw new Error("One-point extrusion length must be positive");
     }
+    let familyBinding: { familyId: string; typeId: string } | null = null;
+    const typeValue = String(r.familyType ?? "");
+    if (typeValue) {
+      const split = typeValue.split("::");
+      if (split.length !== 2 || !split[0] || !split[1]) throw new Error("The shared family type selection is invalid");
+      familyBinding = { familyId: split[0], typeId: split[1] };
+    }
     const updated = api.update?.(element.id, {
       points,
       profile,
+      constraints,
+      familyBinding,
       ...(points.length === 1 ? { pointLength: Number(r.pointLength) } : {}),
       name: String(r.name ?? "").trim() || element.name,
     });
@@ -2104,6 +2155,12 @@ export async function openReferencePickerDialog(): Promise<void> {
 }
 
 export function setupEngineUi(): void {
+  void import("./adaptive-interaction").then((module) => {
+    const adaptive = nativeAdaptiveApi();
+    if (typeof adaptive.create === "function") module.setupAdaptiveInteraction(adaptive);
+  }).catch((error) => {
+    console.warn("[adaptive] viewport interaction failed to initialize", error);
+  });
   w.__obsEngineUi = {
     // structural
     openFrameSolverDialog, openSteelCheckDialog, openRcBeamDialog,

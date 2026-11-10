@@ -30,6 +30,18 @@ let current: ProjectDoc | null = null;
 let dirty = false;
 let detachedModels = 0;
 const listeners = new Set<() => void>();
+let workPlaneListenerInstalled = false;
+let restoringWorkPlanes = false;
+
+async function restoreProjectWorkPlanes(snapshot: ProjectDoc["workPlanes"]): Promise<void> {
+  restoringWorkPlanes = true;
+  try {
+    const workPlanes = await import("../work-planes/types");
+    workPlanes.restoreWorkPlanes(snapshot ?? { schemaVersion: 1, activeId: null, planes: [] });
+  } finally {
+    restoringWorkPlanes = false;
+  }
+}
 
 export function getCurrentProject() { return current; }
 export function isDirty() { return dirty; }
@@ -107,6 +119,10 @@ export async function saveProject(silent = false) {
   } catch (e) { console.warn("[projects] MEP lifecycle snapshot failed", e); }
   current.grids = getGrids();
   current.levels = getLevels();
+  try {
+    const workPlanes = await import("../work-planes/types");
+    current.workPlanes = workPlanes.serializeWorkPlanes();
+  } catch (e) { console.warn("[projects] work plane snapshot failed", e); }
   current.issues = getIssues();
   current.cost = getCostData();
   current.appState = snapshotAppState();
@@ -278,6 +294,9 @@ export async function createProject(name: string, options: CreateProjectOptions 
     detachedModels = 0;
     setIssues([]); setCostData(null);
     setGrids([]); setLevels([]);
+    try {
+      await restoreProjectWorkPlanes({ schemaVersion: 1, activeId: null, planes: [] });
+    } catch (e) { console.warn("[projects] work plane reset failed", e); }
     dirty = false;
 
     // openbim-levels:ui-wired:projects
@@ -393,6 +412,9 @@ export async function openProject(id: string) {
     setGrids(doc.grids ?? []);
     setLevels(doc.levels ?? []);
     setElements(doc.elements ?? []);
+    try {
+      await restoreProjectWorkPlanes(doc.workPlanes);
+    } catch (e) { console.warn("[projects] work plane restore failed", e); }
     try {
       const lifecycle = (ctx.features as any).mep?.lifecycle;
       if (typeof lifecycle?.hydrate === "function") lifecycle.hydrate(doc.mepLifecycle ?? {});
@@ -564,6 +586,12 @@ export function onModelImported(modelId: string, name: string, bytes: Uint8Array
    Setup
    ═════════════════════════════════════════════════════════════════════════ */
 export function setupProjects() {
+  if (!workPlaneListenerInstalled) {
+    window.addEventListener("obs:work-plane-changed", () => {
+      if (!restoringWorkPlanes) markDirty();
+    });
+    workPlaneListenerInstalled = true;
+  }
   ctx.features.projects = {
     getCurrentProject, isDirty, createProject, openProject,
     deleteProjectById, saveProject, onModelImported, markDirty,

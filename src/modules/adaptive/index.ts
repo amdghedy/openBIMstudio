@@ -266,3 +266,325 @@ function norm3(a: Pt3): Pt3 {
   if (l < 1e-12) throw new Error("cannot normalise zero vector");
   return { x: a.x / l, y: a.y / l, z: a.z / l };
 }
+
+/**
+ * Persistent geometric relationships between adaptive placement points.
+ * Stored with the instance definition, so constraints survive project save/reopen.
+ */
+
+export interface AdaptiveFaceLockReference {
+  /** Stable authored-element id when the source face belongs to a native element. */
+  elementId?: string;
+  /** Mesh order within the authored element's rebuilt geometry. */
+  meshIndex?: number;
+  /** Face index at the time of picking (diagnostic/provenance only). */
+  faceIndex?: number;
+  /** Picked face in source-mesh local coordinates. */
+  localOrigin?: Pt3;
+  localNormal?: Pt3;
+}
+
+export type AdaptivePointConstraint =
+  | { kind: "fixed"; pointIndex: number; value: Pt3 }
+  | { kind: "axis"; pointIndex: number; axis: "x" | "y" | "z"; value: number }
+  | { kind: "coincident"; a: number; b: number; driven?: "a" | "b" }
+  | { kind: "distance"; a: number; b: number; distance: number; driven?: "a" | "b" }
+  | { kind: "plane" | "face-lock"; pointIndex: number; origin: Pt3; normal: Pt3; face?: AdaptiveFaceLockReference }
+  | { kind: "horizontal"; a: number; b: number; driven?: "a" | "b" }
+  | { kind: "vertical"; a: number; b: number; driven?: "a" | "b" }
+  | { kind: "parallel" | "perpendicular" | "equalLength"; a: number; b: number; c: number; d: number; driven?: "ab" | "cd" }
+  | { kind: "angle"; a: number; b: number; c: number; d: number; radians: number; axis: Pt3; driven?: "ab" | "cd" };
+
+function clonePt3(point: Pt3): Pt3 {
+  return { x: point.x, y: point.y, z: point.z };
+}
+function subPt3(a: Pt3, b: Pt3): Pt3 {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
+function addPt3(a: Pt3, b: Pt3): Pt3 {
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+function scalePt3(a: Pt3, k: number): Pt3 {
+  return { x: a.x * k, y: a.y * k, z: a.z * k };
+}
+function dotPt3(a: Pt3, b: Pt3): number {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+function crossPt3(a: Pt3, b: Pt3): Pt3 {
+  return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+}
+function lengthPt3(a: Pt3): number {
+  return Math.hypot(a.x, a.y, a.z);
+}
+function unitPt3(a: Pt3): Pt3 {
+  const length = lengthPt3(a);
+  if (length < 1e-10) throw new Error("Constraint direction cannot be zero");
+  return scalePt3(a, 1 / length);
+}
+function constraintPointIndex(index: number, count: number, label: string): void {
+  if (!Number.isInteger(index) || index < 0 || index >= count) {
+    throw new Error(label + " must reference a placement point from 1 to " + count);
+  }
+}
+function validateFaceLockReference(face: AdaptiveFaceLockReference | undefined): void {
+  if (!face) return;
+  if (face.elementId !== undefined && !String(face.elementId).trim()) throw new Error("Face lock element reference cannot be empty");
+  if (face.meshIndex !== undefined && (!Number.isInteger(face.meshIndex) || face.meshIndex < 0)) throw new Error("Face lock mesh index must be a non-negative integer");
+  if (face.faceIndex !== undefined && (!Number.isInteger(face.faceIndex) || face.faceIndex < 0)) throw new Error("Face lock face index must be a non-negative integer");
+  for (const [label, point] of [["local origin", face.localOrigin], ["local normal", face.localNormal]] as const) {
+    if (point && (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z))) {
+      throw new Error("Face lock " + label + " must contain finite coordinates");
+    }
+  }
+  if (face.localNormal && lengthPt3(face.localNormal) < 1e-10) throw new Error("Face lock local normal cannot be zero");
+}
+
+/** Validate stored adaptive point constraints without changing them. */
+export function validateAdaptivePointConstraints(
+  constraints: AdaptivePointConstraint[] | undefined,
+  pointCount: number,
+): AdaptivePointConstraint[] {
+  if (constraints === undefined) return [];
+  if (!Array.isArray(constraints) || constraints.length > 128) {
+    throw new Error("Adaptive point constraints must be an array of at most 128 entries");
+  }
+  for (const constraint of constraints) {
+    if (!constraint || typeof constraint !== "object") throw new Error("Invalid adaptive point constraint");
+    if (constraint.kind === "fixed") {
+      constraintPointIndex(constraint.pointIndex, pointCount, "Fixed constraint");
+      const p = constraint.value;
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) {
+        throw new Error("Fixed point constraint requires finite x, y and z coordinates");
+      }
+    } else if (constraint.kind === "axis") {
+      constraintPointIndex(constraint.pointIndex, pointCount, "Axis constraint");
+      if (!["x", "y", "z"].includes(constraint.axis) || !Number.isFinite(constraint.value)) {
+        throw new Error("Axis constraint requires a valid axis and finite coordinate");
+      }
+    } else if (constraint.kind === "coincident" || constraint.kind === "distance" ||
+               constraint.kind === "horizontal" || constraint.kind === "vertical") {
+      constraintPointIndex(constraint.a, pointCount, "Constraint point A");
+      constraintPointIndex(constraint.b, pointCount, "Constraint point B");
+      if (constraint.a === constraint.b) throw new Error("A point constraint must reference two different points");
+      if (constraint.driven !== undefined && constraint.driven !== "a" && constraint.driven !== "b") {
+        throw new Error("Constraint driven endpoint must be 'a' or 'b'");
+      }
+      if (constraint.kind === "distance" && (!Number.isFinite(constraint.distance) || constraint.distance <= 0)) {
+        throw new Error("Adaptive point distance must be finite and positive");
+      }
+    } else if (constraint.kind === "plane" || constraint.kind === "face-lock") {
+      constraintPointIndex(constraint.pointIndex, pointCount, "Plane constraint");
+      if (!constraint.origin || !Number.isFinite(constraint.origin.x) || !Number.isFinite(constraint.origin.y) || !Number.isFinite(constraint.origin.z) ||
+          !constraint.normal || !Number.isFinite(constraint.normal.x) || !Number.isFinite(constraint.normal.y) || !Number.isFinite(constraint.normal.z) ||
+          lengthPt3(constraint.normal) < 1e-10) {
+        throw new Error("Plane constraint requires a finite origin and non-zero normal");
+      }
+      validateFaceLockReference(constraint.face);
+    } else if (constraint.kind === "parallel" || constraint.kind === "perpendicular" ||
+               constraint.kind === "equalLength" || constraint.kind === "angle") {
+      for (const [index, label] of [[constraint.a, "A"], [constraint.b, "B"], [constraint.c, "C"], [constraint.d, "D"]] as const) {
+        constraintPointIndex(index, pointCount, "Segment constraint endpoint " + label);
+      }
+      if (constraint.a === constraint.b || constraint.c === constraint.d) {
+        throw new Error("Each constrained segment requires two different endpoints");
+      }
+      if (constraint.driven !== undefined && constraint.driven !== "ab" && constraint.driven !== "cd") {
+        throw new Error("Segment relationship driver must be 'ab' or 'cd'");
+      }
+      if (constraint.kind === "angle") {
+        if (!Number.isFinite(constraint.radians) || !constraint.axis || lengthPt3(constraint.axis) < 1e-10) {
+          throw new Error("Angle constraint requires a finite angle and a non-zero rotation axis");
+        }
+      }
+    } else {
+      throw new Error("Unsupported adaptive point constraint kind");
+    }
+  }
+  return constraints;
+}
+
+function dependentPoint(
+  a: number,
+  b: number,
+  driven: "a" | "b" | undefined,
+  driverIndex: number | undefined,
+): { moving: number; anchor: number } {
+  const moving = driverIndex === a ? b : driverIndex === b ? a : driven === "a" ? a : b;
+  return { moving, anchor: moving === a ? b : a };
+}
+
+function projectPointToPlane(point: Pt3, origin: Pt3, normal: Pt3): Pt3 {
+  const n = unitPt3(normal);
+  const distance = dotPt3(subPt3(point, origin), n);
+  return subPt3(point, scalePt3(n, distance));
+}
+function rotateAroundAxis(vector: Pt3, axis: Pt3, radians: number): Pt3 {
+  const n = unitPt3(axis);
+  const c = Math.cos(radians), s = Math.sin(radians);
+  return addPt3(addPt3(scalePt3(vector, c), scalePt3(crossPt3(n, vector), s)),
+    scalePt3(n, dotPt3(n, vector) * (1 - c)));
+}
+
+function pointResidual(points: Pt3[], constraint: AdaptivePointConstraint): number {
+  if (constraint.kind === "fixed") return lengthPt3(subPt3(points[constraint.pointIndex], constraint.value));
+  if (constraint.kind === "axis") return Math.abs(points[constraint.pointIndex][constraint.axis] - constraint.value);
+  if (constraint.kind === "plane" || constraint.kind === "face-lock") {
+    return Math.abs(dotPt3(subPt3(points[constraint.pointIndex], constraint.origin), unitPt3(constraint.normal)));
+  }
+  if (constraint.kind === "coincident") return lengthPt3(subPt3(points[constraint.a], points[constraint.b]));
+  if (constraint.kind === "distance") return Math.abs(lengthPt3(subPt3(points[constraint.a], points[constraint.b])) - constraint.distance);
+  if (constraint.kind === "horizontal") return Math.abs(points[constraint.a].y - points[constraint.b].y);
+  if (constraint.kind === "vertical") {
+    const delta = subPt3(points[constraint.a], points[constraint.b]);
+    return Math.hypot(delta.x, delta.z);
+  }
+  if (!("a" in constraint && "b" in constraint && "c" in constraint && "d" in constraint)) return Infinity;
+  const ab = subPt3(points[constraint.b], points[constraint.a]);
+  const cd = subPt3(points[constraint.d], points[constraint.c]);
+  const abLen = lengthPt3(ab), cdLen = lengthPt3(cd);
+  if (constraint.kind === "equalLength") return Math.abs(abLen - cdLen);
+  if (abLen < 1e-10 || cdLen < 1e-10) return Infinity;
+  const u = unitPt3(ab), v = unitPt3(cd);
+  if (constraint.kind === "parallel") return lengthPt3(crossPt3(u, v));
+  if (constraint.kind === "perpendicular") return Math.abs(dotPt3(u, v));
+  if (constraint.kind === "angle") {
+    const target = rotateAroundAxis(u, constraint.axis, constraint.radians);
+    return lengthPt3(subPt3(target, v));
+  }
+  return Infinity;
+}
+
+/**
+ * Multi-pass geometric projection solver for adaptive placement networks.
+ * Applies all relationships repeatedly until the complete network satisfies
+ * its constraints, or rejects the edit instead of persisting a conflict.
+ *
+ * During a grip drag, the cursor endpoint is treated as the driver for pair
+ * constraints. Face-lock planes are captured as persistent world-space plane
+ * data; an optional source face reference is retained for provenance/rebinding.
+ */
+export function solveAdaptivePointConstraints(
+  source: Pt3[],
+  constraints: AdaptivePointConstraint[] = [],
+  driverIndex?: number,
+  options: { tolerance?: number; maxIterations?: number } = {},
+): Pt3[] {
+  if (!Array.isArray(source) || source.length < 1 || source.length > 8) {
+    throw new Error("Adaptive constraints require 1 to 8 placement points");
+  }
+  const points = source.map((point, i) => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+      throw new Error("Placement point " + (i + 1) + " must have finite x, y and z coordinates");
+    }
+    return clonePt3(point);
+  });
+  validateAdaptivePointConstraints(constraints, points.length);
+  if (driverIndex !== undefined) constraintPointIndex(driverIndex, points.length, "Drag driver");
+  const tolerance = Math.max(1e-9, options.tolerance ?? 1e-6);
+  const maxIterations = Math.max(1, Math.min(256, Math.floor(options.maxIterations ?? 64)));
+
+  const solveOne = (constraint: AdaptivePointConstraint): void => {
+    if (constraint.kind === "fixed") {
+      points[constraint.pointIndex] = clonePt3(constraint.value);
+      return;
+    }
+    if (constraint.kind === "axis") {
+      points[constraint.pointIndex][constraint.axis] = constraint.value;
+      return;
+    }
+    if (constraint.kind === "plane" || constraint.kind === "face-lock") {
+      points[constraint.pointIndex] = projectPointToPlane(points[constraint.pointIndex], constraint.origin, constraint.normal);
+      return;
+    }
+    if (constraint.kind === "coincident" || constraint.kind === "distance" ||
+        constraint.kind === "horizontal" || constraint.kind === "vertical") {
+      const { moving, anchor } = dependentPoint(constraint.a, constraint.b, constraint.driven, driverIndex);
+      const from = points[anchor], target = points[moving];
+      if (constraint.kind === "coincident") {
+        points[moving] = clonePt3(from);
+      } else if (constraint.kind === "distance") {
+        let direction = subPt3(target, from);
+        if (lengthPt3(direction) < 1e-10) direction = { x: 1, y: 0, z: 0 };
+        points[moving] = addPt3(from, scalePt3(unitPt3(direction), constraint.distance));
+      } else if (constraint.kind === "horizontal") {
+        points[moving].y = from.y;
+      } else {
+        points[moving].x = from.x;
+        points[moving].z = from.z;
+      }
+      return;
+    }
+    if (!("a" in constraint && "b" in constraint && "c" in constraint && "d" in constraint)) return;
+
+    const first = subPt3(points[constraint.b], points[constraint.a]);
+    const second = subPt3(points[constraint.d], points[constraint.c]);
+    const firstLen = lengthPt3(first), secondLen = lengthPt3(second);
+    if (firstLen < 1e-10 || secondLen < 1e-10) return;
+    const referenceSegment = driverIndex === constraint.a || driverIndex === constraint.b
+      ? "ab"
+      : driverIndex === constraint.c || driverIndex === constraint.d
+        ? "cd"
+        : constraint.driven === "ab" ? "cd" : "ab";
+    const targetSegment = referenceSegment === "ab" ? "cd" : "ab";
+    const refA = referenceSegment === "ab" ? constraint.a : constraint.c;
+    const refB = referenceSegment === "ab" ? constraint.b : constraint.d;
+    const movA = targetSegment === "ab" ? constraint.a : constraint.c;
+    const movB = targetSegment === "ab" ? constraint.b : constraint.d;
+    const reference = unitPt3(subPt3(points[refB], points[refA]));
+    const movingLength = targetSegment === "ab" ? firstLen : secondLen;
+    const referenceLength = referenceSegment === "ab" ? firstLen : secondLen;
+    const length = constraint.kind === "equalLength" ? referenceLength : movingLength;
+    let targetDirection = reference;
+    if (constraint.kind === "perpendicular") {
+      let candidate = subPt3(subPt3(points[movB], points[movA]),
+        scalePt3(reference, dotPt3(subPt3(points[movB], points[movA]), reference)));
+      if (lengthPt3(candidate) < 1e-8) {
+        const fallback = Math.abs(reference.y) < 0.85 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+        candidate = crossPt3(reference, fallback);
+      }
+      targetDirection = unitPt3(candidate);
+    } else if (constraint.kind === "angle") {
+      targetDirection = unitPt3(rotateAroundAxis(reference, constraint.axis, constraint.radians));
+    } else if (constraint.kind === "parallel") {
+      const old = subPt3(points[movB], points[movA]);
+      if (dotPt3(old, reference) < 0) targetDirection = scalePt3(reference, -1);
+    }
+    if (constraint.kind === "equalLength") {
+      targetDirection = unitPt3(subPt3(points[movB], points[movA]));
+    }
+    // If both segments share a placement-point index, preserve the common
+    // vertex and solve only the unshared endpoint. This is the common CAD case
+    // for an angle or perpendicular constraint at a joint.
+    const sharedIndex = [movA, movB].find((index) => index === refA || index === refB);
+    if (sharedIndex !== undefined) {
+      const freeIndex = sharedIndex === movA ? movB : movA;
+      const direction = freeIndex === movB ? targetDirection : scalePt3(targetDirection, -1);
+      points[freeIndex] = addPt3(points[sharedIndex], scalePt3(direction, length));
+      return;
+    }
+    const movingIsA = targetSegment === "ab" ? driverIndex === constraint.a : driverIndex === constraint.c;
+    const movingIsB = targetSegment === "ab" ? driverIndex === constraint.b : driverIndex === constraint.d;
+    if (movingIsA || movingIsB) {
+      const fixedIndex = movingIsA ? movA : movB;
+      const freeIndex = movingIsA ? movB : movA;
+      const direction = movingIsA ? targetDirection : scalePt3(targetDirection, -1);
+      points[freeIndex] = addPt3(points[fixedIndex], scalePt3(direction, length));
+    } else {
+      const midpoint = scalePt3(addPt3(points[movA], points[movB]), 0.5);
+      const half = scalePt3(targetDirection, length / 2);
+      points[movA] = subPt3(midpoint, half);
+      points[movB] = addPt3(midpoint, half);
+    }
+  };
+
+  let residual = Infinity;
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    for (const constraint of constraints) solveOne(constraint);
+    residual = constraints.reduce((max, constraint) => Math.max(max, pointResidual(points, constraint)), 0);
+    if (residual <= tolerance) return points;
+  }
+  if (residual > tolerance) {
+    throw new Error("Adaptive geometric constraints did not converge; maximum residual is " + residual.toExponential(2));
+  }
+  return points;
+}

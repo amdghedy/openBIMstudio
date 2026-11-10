@@ -1,3 +1,4 @@
+import type { WorkPlaneSnapshot } from "../work-planes/types";
 import type { Issue } from "../issues/types";
 import type { CostData } from "../cost/types";
 import type { MepModelSnapshot } from "../mep/model-lifecycle";
@@ -299,6 +300,8 @@ export interface ProjectDoc {
   cost?: CostData;
   grids?: GridDatum[];
   levels?: LevelDatum[];
+  /** Saved named/active 3D sketch work planes, including picked-face references. */
+  workPlanes?: WorkPlaneSnapshot;
 
   /** Element type catalog (families / types). */
   elementTypes?: ElementTypeDef[];

@@ -27,7 +27,7 @@ The definition is a snapshot of the source profile. This is intentional in this 
 
 src/modules/adaptive/index.ts owns profile validation, ordered point validation, sweep generation and volume calculations. It accepts one to eight placement points. A one-point family extrudes its profile along local +Y by pointLength (defaulting to one metre at the engine level).
 
-src/modules/adaptive/native-integration.ts registers the adaptive-component builder in the typed ctx.features.meshBuilders registry. During authoring.rebuildAuthored(), authoring.ts checks that registry first and retains the existing compatibility registry as a fallback for other installed element builders. The adaptive builder reads properties.adaptiveDefinition, regenerates the indexed sweep, and returns a Three.js group tagged with the authored element ID.
+src/modules/adaptive/native-integration.ts registers the adaptive-component builder in the typed ctx.features.meshBuilders registry. During authoring.rebuildAuthored(), authoring.ts checks that registry first and retains the existing compatibility registry as a fallback for other installed element builders. The adaptive builder reads properties.adaptiveDefinition, regenerates the indexed sweep, and returns a Three.js group tagged with the authored element ID. Create/edit validation uses the same pure indexed sweep path without allocating temporary Three.js meshes or materials. Create, edit, undo and redo restore the prior project data if an authoring rebuild fails.
 
 The Architecture ribbon exposes:
 - Adaptive Sweep — create a native component from a family or custom rectangular/circular profile and one to eight coordinate points.
@@ -39,7 +39,7 @@ Individual create/edit operations use the existing History manager. Failed geome
 ## Tests
 
 - tests/adaptive.test.cjs verifies the 1–8 point engine range, one-point extrusion, eight-point sweeps, finite coordinates and volume.
-- tests/adaptive-native.test.cjs verifies native element creation, mesh-builder registration, rebuild, JSON save/reopen reconstruction, point/profile editing, undo/redo and batch rollback.
+- tests/adaptive-native.test.cjs verifies native element creation, mesh-builder registration, rebuild, JSON save/reopen reconstruction, point/profile editing, undo/redo, batch rollback, and recovery from failed create/edit/undo/redo rebuilds.
 - scripts/ci-unit-tests.mjs includes both adaptive suites.
 
 ## Known limitations
