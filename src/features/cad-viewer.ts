@@ -7401,7 +7401,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const metrics = M.entityMetrics(entity);
     const unit = M.unitLabel(doc.units, du);
     const factor = M.convertLength(scaleCal, doc.units, du);
-    const parts = [entity.type];
+    const parts: string[] = [entity.type];
     if (metrics.length != null) parts.push(`L ${fmt(metrics.length * factor)} ${unit}`);
     if (metrics.area != null) parts.push(`A ${fmt(metrics.area * factor * factor)} ${unit}²`);
     if (metrics.radius != null) parts.push(`R ${fmt(metrics.radius * factor)} ${unit}`);
