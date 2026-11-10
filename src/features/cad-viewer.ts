@@ -5195,7 +5195,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("erase", "delete", "Erase") +
           rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)") +
           rb("select-all", "Similar", `data-a="selsim"`, "Select objects matching the selected set by type, layer, colour, linetype or lineweight (SELECTSIMILAR)"),
-          rb("layers", "Cycle", `data-a="selection-cycle"`, "Choose between overlapping entities (SELECTIONCYCLING / Ctrl+W)"),
+          rb("layers", "Cycle", `data-a="selection-cycle"`, "Choose between overlapping entities (SELECTIONCYCLING / Ctrl+W)", "on"),
         "",
         "",
         "home",
