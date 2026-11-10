@@ -171,6 +171,6 @@ t("pickEntities returns overlapping candidates in distance and visible draw orde
 });
 t("CAD selection cycling is wired to the canvas, toolbar, command and keyboard",()=>{
   const src=fs.readFileSync(path.join(__dirname,"../src/features/cad-viewer.ts"),"utf8");
-  for(const marker of ["M.pickEntities(idx, ents, wp.x, wp.y, 8 / view.scale, visible, 32)","function openSelectionCycle(","data-a=\"selection-cycle\"","Ctrl+W","SELECTIONCYCLING","buttons[Number(ev.key) - 1]?.click()"]) assert.ok(src.includes(marker),"selection cycling missing: "+marker);
+  for(const marker of ["M.pickEntities(idx, ents, wp.x, wp.y, 8 / view.scale, visible, 32)","function openSelectionCycle(","data-a=\"selection-cycle\"","Ctrl+W","SELECTIONCYCLING","buttons[Number(ev.key) - 1]?.click()","closeSelectionCycle();\n      screenTypeActive = false"]) assert.ok(src.includes(marker),"selection cycling missing: "+marker);
 });
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);
