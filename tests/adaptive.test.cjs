@@ -299,6 +299,17 @@ t("adaptive constraints: parallel and perpendicular segment networks converge", 
   near(pAB.x * pCD.x + pAB.y * pCD.y + pAB.z * pCD.z, 0, 1e-7);
 });
 
+t("adaptive constraints: angular joints preserve a shared vertex", () => {
+  const solved = ad.solveAdaptivePointConstraints(
+    [P(0, 0, 0), P(2, 0, 0), P(0, 2, 0)],
+    [{ kind: "angle", a: 0, b: 1, c: 0, d: 2, radians: Math.PI / 2, axis: P(0, 1, 0) }],
+  );
+  assert(JSON.stringify(solved[0]) === JSON.stringify(P(0, 0, 0)), "joint vertex is unchanged");
+  near(solved[2].x, 0, 1e-7);
+  near(solved[2].y, 0, 1e-7);
+  near(solved[2].z, -2, 1e-7);
+});
+
 t("adaptive constraints: equal length and angular relationships are enforced", () => {
   const equal = ad.solveAdaptivePointConstraints(
     [P(0, 0, 0), P(4, 0, 0), P(1, 1, 0), P(2, 1, 0)],
