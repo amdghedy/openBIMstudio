@@ -82,17 +82,19 @@ test('editable grips show an open hand on hover and a closed hand while dragging
   });
   const host = () => page.evaluate(() => (document.querySelector('canvas')!.parentElement as HTMLElement).style.cursor);
   await page.mouse.move(info.sx + 40, info.sy + 40); await page.mouse.move(info.sx, info.sy);
-  expect(await page.evaluate(() => Array.from(document.querySelectorAll('*')).some((n) => (n as HTMLElement).style?.cursor === 'grab')), 'a grab cursor is set while hovering the grip').toBe(true);
+  const hostCursor = () => page.evaluate(() => ((window as any).__OBS_CTX__.rightHost as HTMLElement).style.cursor);
+  const selected = await page.evaluate(() => (window as any).__obsAuthoring.getSelectedIds());
+  expect(await hostCursor(), `open hand over the grip (selected: ${JSON.stringify(selected)}, grip at ${info.sx.toFixed(0)},${info.sy.toFixed(0)})`).toBe('grab');
   await page.mouse.down();
   const cursors: string[] = [];
-  const sample = () => page.evaluate(() => Array.from(new Set(Array.from(document.querySelectorAll('*')).map((n) => (n as HTMLElement).style?.cursor).filter(Boolean))).join('|'));
+  const sample = hostCursor;
   for (let i = 1; i <= 8; i++) { await page.mouse.move(info.sx + i * 4, info.sy + i * 3); cursors.push(await sample()); }
   const mid = await page.evaluate((id) => (window as any).__obsAuthoring.getElementById(id).params.polygon[0], info.id);
   await page.mouse.up();
   const after = await page.evaluate((id) => (window as any).__obsAuthoring.getElementById(id).params.polygon[0], info.id);
   const moved = Math.hypot(after[0] - info.v[0], after[1] - info.v[1]);
   const diag = `cursors during drag: ${JSON.stringify(cursors)}; vertex before ${info.v} mid ${mid} after ${after}; grip screen pos ${info.sx.toFixed(0)},${info.sy.toFixed(0)}`;
-  expect(cursors.some((c) => c.includes('grabbing')), 'grabbing cursor during the drag. ' + diag).toBe(true);
+  expect(cursors.some((c) => c === 'grabbing'), 'grabbing cursor during the drag. ' + diag).toBe(true);
   expect(moved, 'vertex moved. ' + diag).toBeGreaterThan(0.05);
   void host;
   expect(errors, errors.join('\n')).toEqual([]);
