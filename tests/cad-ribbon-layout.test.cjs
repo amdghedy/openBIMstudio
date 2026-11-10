@@ -189,9 +189,10 @@ t("typed commands dispatch to the staged pick machine and draw tools", () => {
 });
 t("rectangular and polar array controls are exposed and wired in Modify II", () => {
   const bar = src.slice(src.indexOf("function buildBar()"), src.indexOf("function buildBar2()"));
-  for (const control of ['data-a="array-rect"', 'data-a="array-polar"']) assert.ok(bar.includes(control), `missing ribbon control ${control}`);
+  for (const control of ['data-a="array-rect"', 'data-a="array-polar"', 'data-a="selsim"']) assert.ok(bar.includes(control), `missing ribbon control ${control}`);
   assert.ok(src.includes('"array-rect": () => executeDrawingCommand("ARRAY")'), "rectangular array action not wired");
   assert.ok(src.includes('"array-polar": () => executeDrawingCommand("ARRAYPOLAR")'), "polar array action not wired");
+  assert.ok(src.includes('selsim: () => executeDrawingCommand("SELECTSIMILAR")'), "Select Similar action not wired");
 });
 t("quick selection accepts type, layer, colour, linetype and text filters", () => {
   for (const filter of ['what === "COLOR"', 'what === "LINETYPE"', 'what === "LINEWEIGHT"', 'what === "TEXT"', 'mode === "COLOR"', 'mode === "LINETYPE"', 'mode === "LINEWEIGHT"']) {
