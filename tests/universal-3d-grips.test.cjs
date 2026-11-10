@@ -1,0 +1,15 @@
+const { execSync } = require("child_process");
+const fs = require("fs"), os = require("os"), path = require("path"), assert = require("assert");
+const out = fs.mkdtempSync(path.join(os.tmpdir(), "universal-grips-"));
+execSync(`npx tsc src/modules/views/grip-geometry.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreDeprecations 5.0`, { stdio: "inherit" });
+const g = require(path.join(out, "grip-geometry.js"));
+const base = { point: [0, 0], width: 4, depth: 2 };
+const handles = g.pointFootprintHandles(base);
+assert.strictEqual(handles.length, 8);
+const east = g.resizePointFootprint(base, "edge-e", [3, 0]);
+assert.deepStrictEqual(east, { point: [0.5, 0], width: 5, depth: 2 });
+const nw = g.resizePointFootprint(base, "corner-nw", [-3, -2]);
+assert.deepStrictEqual(nw, { point: [-0.5, -0.5], width: 5, depth: 3 });
+assert.strictEqual(g.resizePointFootprint(base, "edge-e", [NaN, 0]), null);
+assert.strictEqual(g.resizePointFootprint(base, "unknown", [3, 0]), null);
+console.log("Universal 3D grip geometry tests passed.");

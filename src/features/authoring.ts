@@ -47,6 +47,7 @@ import { planLinearFollow, FOLLOW_LINEAR, magnetSameTypeEnd, joinedEnds } from "
 import { generateWallSweep, generateRevealCutter } from "../modules/wall-sweeps/geometry";
 import type { WallSweepPlacement } from "../modules/wall-sweeps/types";
 import { isValidBoundary } from "../modules/views/boundary-edit";
+import { pointFootprintHandles, resizePointFootprint, type FootprintGrip } from "../modules/views/grip-geometry";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import { makeAxisLock, projectOnAxis } from "./grip-axis-lock";
 import type { AxisLock } from "./grip-axis-lock";
@@ -113,8 +114,9 @@ type Tool =
 
 interface GripSpec {
   elementId: string;
-  kind: "start" | "end" | "vertex" | "point" | "hosted-offset";
+  kind: "start" | "end" | "vertex" | "point" | "point-footprint" | "hosted-offset";
   vertexIndex?: number;
+  footprintGrip?: FootprintGrip;
   position: THREE.Vector3;
   mesh: THREE.Mesh;
 }
@@ -2609,15 +2611,16 @@ function buildGripsFor(el: AuthoredElement): GripSpec[] {
   const grips: GripSpec[] = [];
   const p = el.params;
 
-  const addGrip = (kind: GripSpec["kind"], pos: THREE.Vector3, vertexIndex?: number) => {
+  const addGrip = (kind: GripSpec["kind"], pos: THREE.Vector3, vertexIndex?: number, footprintGrip?: FootprintGrip) => {
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(GRIP_SIZE, 12, 10), gripMaterial());
     mesh.position.copy(pos);
     mesh.renderOrder = 900;
     mesh.userData.gripElementId = el.id;
     mesh.userData.gripKind = kind;
     if (vertexIndex !== undefined) mesh.userData.gripVertexIndex = vertexIndex;
+    if (footprintGrip) mesh.userData.gripFootprint = footprintGrip;
     gripGroup.add(mesh);
-    grips.push({ elementId: el.id, kind, vertexIndex, position: pos.clone(), mesh });
+    grips.push({ elementId: el.id, kind, vertexIndex, footprintGrip, position: pos.clone(), mesh });
   };
 
   if (p.start && p.end) {
@@ -2625,6 +2628,8 @@ function buildGripsFor(el: AuthoredElement): GripSpec[] {
     addGrip("end", new THREE.Vector3(p.end[0], p.endElevation ?? p.elevation, p.end[1]));
   } else if (p.point) {
     addGrip("point", new THREE.Vector3(p.point[0], p.elevation, p.point[1]));
+    const footprint = pointFootprintHandles({ point: [p.point[0], p.point[1]], width: Number(p.width ?? p.thickness ?? 0.3), depth: Number(p.depth ?? p.thickness ?? p.width ?? 0.3) });
+    for (const h of footprint) addGrip("point-footprint", new THREE.Vector3(h.point[0], p.elevation, h.point[1]), undefined, h.grip);
   } else if (p.polygon) {
     p.polygon.forEach((v, i) => addGrip("vertex", new THREE.Vector3(v[0], p.elevation, v[1]), i));
   }
@@ -2678,7 +2683,8 @@ function gripAt(e: MouseEvent): GripSpec | null {
   const id = mesh.userData.gripElementId as string;
   const kind = mesh.userData.gripKind as GripSpec["kind"];
   const vi = mesh.userData.gripVertexIndex as number | undefined;
-  return { elementId: id, kind, vertexIndex: vi, position: mesh.position.clone(), mesh };
+  const footprintGrip = mesh.userData.gripFootprint as FootprintGrip | undefined;
+  return { elementId: id, kind, vertexIndex: vi, footprintGrip, position: mesh.position.clone(), mesh };
 }
 
 function startGripDrag(g: GripSpec, worldPt: THREE.Vector3) {
@@ -2719,7 +2725,7 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
   const p = el.params;
   let x = snap(worldPt.x);
   let z = snap(worldPt.z);
-  const { kind, vertexIndex } = gripDrag.grip;
+  const { kind, vertexIndex, footprintGrip } = gripDrag.grip;
 
   // ⇧ axis lock — the endpoint may only slide along the element's own length
   // axis (perpendicular direction locked), so the element stretches/shrinks
@@ -2809,7 +2815,22 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
   } else if (kind === "start" && p.start) p.start = [x, z];
   else if (kind === "end" && p.end) p.end = [x, z];
   else if (kind === "point" && p.point) p.point = [x, z];
-  else if (kind === "vertex" && p.polygon && vertexIndex !== undefined) p.polygon[vertexIndex] = [x, z];
+  else if (kind === "point-footprint" && p.point && footprintGrip) {
+    const base = gripDrag.snapshot;
+    const resized = resizePointFootprint({
+      point: [Number(base.point?.[0] ?? p.point[0]), Number(base.point?.[1] ?? p.point[1])],
+      width: Number(base.width ?? base.thickness ?? 0.3),
+      depth: Number(base.depth ?? base.thickness ?? base.width ?? 0.3),
+    }, footprintGrip, [x, z]);
+    if (resized) { p.point = resized.point; p.width = resized.width; p.depth = resized.depth; }
+  } else if (kind === "vertex" && p.polygon && vertexIndex !== undefined) {
+    const basePolygon = (gripDrag.snapshot as any).polygon as [number, number][] | undefined;
+    const candidate = (basePolygon ?? p.polygon).map((v: [number, number]) => [...v] as [number, number]);
+    candidate[vertexIndex] = [x, z];
+    p.polygon = isValidBoundary(candidate)
+      ? candidate
+      : (basePolygon ?? p.polygon).map((v: [number, number]) => [...v] as [number, number]);
+  }
 
   // Magnetic join: a dragged end of a wall/beam/strip/duct/pipe/tray/conduit locks onto a nearby free end of
   // another element of the same type (never one of its own joined neighbours).
