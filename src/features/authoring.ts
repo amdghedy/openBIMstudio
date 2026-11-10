@@ -2637,8 +2637,9 @@ function buildGripsFor(el: AuthoredElement): GripSpec[] {
     const footprint = pointFootprintHandles({ point: [p.point[0], p.point[1]], width, depth });
     for (const h of footprint) addGrip("point-footprint", new THREE.Vector3(h.point[0], p.elevation, h.point[1]), undefined, h.grip);
   } else if (p.polygon) {
-    p.polygon.forEach((v, i) => {
-      const next = p.polygon[(i + 1) % p.polygon.length];
+    const polygon = p.polygon;
+    polygon.forEach((v, i) => {
+      const next = polygon[(i + 1) % polygon.length];
       addGrip("vertex", new THREE.Vector3(v[0], p.elevation, v[1]), i);
       // Mid-edge grips let users pull a new boundary point out of an edge.
       addGrip("edge-midpoint", new THREE.Vector3((v[0] + next[0]) / 2, p.elevation, (v[1] + next[1]) / 2), i);
