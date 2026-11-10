@@ -83,6 +83,7 @@ import { toggleBimToolbox, isBimToolboxVisible } from "../features/bim-toolbox";
 import { toggleMepColors, isMepColoringActive } from "../features/mep-coloring";
 // ── MEP parametric design toolkit ──────────────────────────────────────
 import { openMepDesignToolkit } from "../features/mep-fabrication";
+import { openParametricToolkit } from "../features/parametric-tools";
 
 // ── Unified select-all ─────────────────────────────────────────────────
 import { selectAllObjects, clearAllSelection } from "../features/select-all";
@@ -622,6 +623,20 @@ function mepToolkitButton(): HTMLButtonElement {
   return btn;
 }
 
+function parametricToolkitButton(): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.className = "obs-rb";
+  btn.title = "Parametric Modeling Toolkit — wall join doctor, stacked-wall heal across levels, curtain grid editor, constraint store report";
+  btn.innerHTML =
+    `<span class="obs-rb__icon">${svgIcon("calc" as IconName)}</span>` +
+    `<span class="obs-rb__label">Parametric</span>`;
+  btn.onclick = (ev) => {
+    ev.stopPropagation();
+    void openParametricToolkit();
+  };
+  return btn;
+}
+
 function pidModelerButton(): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.className = "obs-rb";
@@ -945,6 +960,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         c.equality(ids, "spacing");
         toast(`Equal spacing applied to ${ids.length} elements`, "success");
       }, "Equality"), { title: "Make spacing between selected elements equal" }),
+      parametricToolkitButton(),
       sep(),
       // groupLabel("Modify") REPLACED BY CONTEXTUAL TAB,
       toolBtn("select-all", "Select", "select", "Esc"),

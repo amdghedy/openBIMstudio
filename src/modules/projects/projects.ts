@@ -22,6 +22,7 @@ import {
 } from "../../features/authoring";
 import { refreshModelSelectionUI, clearClash } from "../../features/clash";
 import { getIssues, setIssues, onIssuesChanged } from "../issues/issues";
+import { exportConstraints, importConstraints } from "../parametric-constraints/types";
 import { getCostData, setCostData, onCostChanged } from "../cost/cost";
 import { uiAlert } from "../../core/notify";
 import { history } from "../../features/history";
@@ -123,6 +124,14 @@ export async function saveProject(silent = false) {
     const workPlanes = await import("../work-planes/types");
     current.workPlanes = workPlanes.serializeWorkPlanes();
   } catch (e) { console.warn("[projects] work plane snapshot failed", e); }
+  // Parametric persistence: locked dimensions + the constraint store survive reloads.
+  try {
+    current.parametricConstraints = exportConstraints();
+  } catch (e) { console.warn("[projects] constraint export failed", e); }
+  try {
+    const locks = (ctx.features as any).authoring?.getDimLocks?.();
+    current.dimLocks = Array.isArray(locks) ? locks : [];
+  } catch (e) { console.warn("[projects] dim-lock export failed", e); }
   current.issues = getIssues();
   current.cost = getCostData();
   current.appState = snapshotAppState();
@@ -412,6 +421,17 @@ export async function openProject(id: string) {
     setGrids(doc.grids ?? []);
     setLevels(doc.levels ?? []);
     setElements(doc.elements ?? []);
+    // Parametric restore: constraints + dim locks back into their stores
+    // (passive — the saved elements already sit at their locked values).
+    try {
+      const n = importConstraints((doc as any).parametricConstraints ?? []);
+      if (n > 0) console.log(`[projects] restored ${n} parametric constraint(s)`);
+    } catch (e) { console.warn("[projects] constraint restore failed", e); }
+    try {
+      const locks = (doc as any).dimLocks ?? [];
+      const restored = (ctx.features as any).authoring?.setDimLocks?.(locks);
+      if (restored > 0) console.log(`[projects] restored ${restored} dimension lock(s)`);
+    } catch (e) { console.warn("[projects] dim-lock restore failed", e); }
     try {
       await restoreProjectWorkPlanes(doc.workPlanes);
     } catch (e) { console.warn("[projects] work plane restore failed", e); }

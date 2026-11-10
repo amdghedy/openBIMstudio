@@ -26,6 +26,7 @@ import {
   type PanelType,
   type PlanArc,
 } from "./depth";
+import { parseCurtainGridProps } from "./grid-props";
 
 export interface CurtainWallParams {
   /** Width along local X (m). */
@@ -427,8 +428,26 @@ export function buildCurtainCorner(
 }
 
 /**
+ * Parse + attach explicit grid lines / panel overrides from element properties.
+ * Thin, exported wrapper so features/tests can validate curtain properties
+ * without touching THREE.
+ */
+export function curtainEngineParamsFromProps(props: Record<string, unknown>): {
+  vGrid?: number[];
+  hGrid?: number[];
+  panelOverrides?: Array<{ col: number; row: number; type: PanelType }>;
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  const gp = parseCurtainGridProps(props, warnings);
+  return { vGrid: gp.vGrid, hGrid: gp.hGrid, panelOverrides: gp.panelOverrides, warnings };
+}
+
+/**
  * Build a curtain-wall system from an authored linear element (start/end/height).
  * Maps the wall path to a vertical plane of mullions + glazed panels.
+ * Explicit grid lines / per-panel types persisted on the element are honored
+ * (sanitized through grid-props.ts; invalid data warns and falls back).
  */
 export function buildCurtainFromElement(el: {
   id?: string;
@@ -453,6 +472,11 @@ export function buildCurtainFromElement(el: {
   const vDiv = Math.max(2, Math.min(12, Math.round(width / 1.2)));
   const hDiv = Math.max(1, Math.min(6, Math.round(height / 1.4)));
   const props = el.properties ?? {};
+  // Explicit grid lines / per-panel types persisted on the element (Parametric
+  // Toolkit → Curtain Grid Editor) — sanitized; invalid data falls back to
+  // even divisions with a console warning instead of vanishing silently.
+  const gridProps = curtainEngineParamsFromProps(props);
+  if (gridProps.warnings.length) console.warn("[curtain-wall]", el.id ?? "(new)", gridProps.warnings.join("; "));
   const result = buildCurtainWall({
     width,
     height,
@@ -465,6 +489,9 @@ export function buildCurtainFromElement(el: {
     panelThickness: 0.02,
     mullionProfile: (props.mullionProfile as MullionProfile) || "rect",
     panelType: (props.panelType as PanelType) || "glazed",
+    vGrid: gridProps.vGrid,
+    hGrid: gridProps.hGrid,
+    panelOverrides: gridProps.panelOverrides,
   });
   result.object.userData.elementId = el.id;
   result.object.userData.curtainSystem = {
@@ -472,6 +499,8 @@ export function buildCurtainFromElement(el: {
     mullions: result.mullionCount,
     width,
     height,
+    vGrid: gridProps.vGrid ?? null,
+    hGrid: gridProps.hGrid ?? null,
   };
   result.object.name = el.id ? `curtain-wall:${el.id}` : "curtain-wall";
   return result.object;

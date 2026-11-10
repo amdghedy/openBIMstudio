@@ -160,3 +160,48 @@ export function getLockedValue(elementId1: string, elementId2: string): number |
   );
   return c?.value ?? null;
 }
+
+// ── Persistence (project save / restore) ─────────────────────────────────
+// The store is module state; ProjectDoc carries a serialized copy so locked
+// dimensions and equality/alignment constraints survive a reload.
+
+const CONSTRAINT_TYPES: ConstraintType[] = ["locked-dimension", "equality", "alignment", "parallel", "perpendicular"];
+
+/** Deep copy of the current constraints, ready for `ProjectDoc.parametricConstraints`. */
+export function exportConstraints(): ParametricConstraint[] {
+  return constraints.map((c) => ({ ...c, elementIds: [...c.elementIds] }));
+}
+
+/**
+ * Replace the whole store from a persisted payload. Malformed entries are
+ * dropped (counted in the return value's complement — this returns how many
+ * were imported). Re-importing an export round-trips exactly.
+ */
+export function importConstraints(list: unknown): number {
+  if (!Array.isArray(list)) return 0;
+  const next: ParametricConstraint[] = [];
+  for (const raw of list) {
+    const r = raw as Record<string, unknown> | null;
+    const type = r?.type as ConstraintType;
+    const elementIds = Array.isArray(r?.elementIds) ? (r!.elementIds as unknown[]).filter((x): x is string => typeof x === "string" && x.length > 0) : [];
+    if (!CONSTRAINT_TYPES.includes(type) || elementIds.length === 0) continue;
+    if (type === "locked-dimension" && (elementIds.length < 2 || !Number.isFinite(Number(r?.value)))) continue;
+    next.push({
+      id: typeof r?.id === "string" && r.id ? r.id : `c-${++idCounter}-${Date.now().toString(36)}`,
+      type,
+      elementIds,
+      value: Number.isFinite(Number(r?.value)) ? Number(r!.value) : undefined,
+      dimensionLabel: typeof r?.dimensionLabel === "string" ? r!.dimensionLabel as string : undefined,
+      active: r?.active !== false,
+      createdAt: Number.isFinite(Number(r?.createdAt)) ? Number(r!.createdAt) : Date.now(),
+    });
+  }
+  constraints.length = 0;
+  constraints.push(...next);
+  return next.length;
+}
+
+/** Drop every constraint (used before a fresh import and by tests). */
+export function clearConstraints(): void {
+  constraints.length = 0;
+}

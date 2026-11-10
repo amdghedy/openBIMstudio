@@ -7035,6 +7035,9 @@ export function setupAuthoring() {
     getActiveFamilyId, getActiveFamilyTypeId, setActiveFamily,
     syncFamilyInstances,
 
+    // Dim-lock store (Parametric Toolkit report + project persistence)
+    getDimLocks, setDimLocks,
+
     onAuthoringChange,
     migrateMepFittingRadii,
     setElbowBendRadius,
@@ -7232,6 +7235,23 @@ function toggleDimLock(spec: TempDimSpec): boolean {
 function cycleDimSide(spec: TempDimSpec): boolean {
   dimSides.set(spec.id, (dimSides.get(spec.id) ?? 0) + 1);
   return true;
+}
+
+/** Snapshot of the dim-lock store (for project save + the Parametric Toolkit report). */
+export function getDimLocks(): DimLock[] {
+  return dimLocks.map((l) => ({ ...l }));
+}
+
+/** Replace the dim-lock store from a persisted payload. Returns the count accepted. */
+export function setDimLocks(list: Array<{ elementId: string; param: string; value: number }>): number {
+  dimLocks.length = 0;
+  for (const l of Array.isArray(list) ? list : []) {
+    if (l && typeof l.elementId === "string" && typeof l.param === "string" && Number.isFinite(Number(l.value))) {
+      dimLocks.push({ elementId: l.elementId, param: l.param, value: Number(l.value) });
+    }
+  }
+  notifyAuthoringChange();
+  return dimLocks.length;
 }
 
 function applyDimLocks(): void {

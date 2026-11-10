@@ -303,6 +303,19 @@ export interface ProjectDoc {
   /** Saved named/active 3D sketch work planes, including picked-face references. */
   workPlanes?: WorkPlaneSnapshot;
 
+  /** Persisted parametric constraint store (locked dims, equality, alignment, parallel, perpendicular). */
+  parametricConstraints?: Array<{
+    id: string;
+    type: string;
+    elementIds: string[];
+    value?: number;
+    dimensionLabel?: string;
+    active: boolean;
+    createdAt: number;
+  }>;
+  /** Persisted editable-dimension locks (element + param + value) from the temp-dimension editor. */
+  dimLocks?: Array<{ elementId: string; param: string; value: number }>;
+
   /** Element type catalog (families / types). */
   elementTypes?: ElementTypeDef[];
   /** Project + shared parameters. */

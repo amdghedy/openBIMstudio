@@ -127,6 +127,23 @@ export function registerUiItems(): void {
     },
   });
 
+  // ── Parametric Modeling Toolkit ─────────────────────────────────
+  registerUiItem({
+    id: "parametric-tools",
+    label: "Parametric Modeling Toolkit",
+    group: "panels",
+    available: true,
+    isVisible: () => {
+      try { return !!F.parametricTools?.isVisible?.(); } catch { return false; }
+    },
+    toggle: () => {
+      try {
+        if (F.parametricTools?.toggle) F.parametricTools.toggle();
+        else void import("./parametric-tools").then((m: any) => { m.setupParametricTools?.(); m.toggleParametricTools?.(); });
+      } catch { /* */ }
+    },
+  });
+
   // ── P&ID Modeler ─────────────────────────────────────────────────
   // Implemented (features/pid-modeler.ts) — see the honesty note above.
   registerUiItem({
