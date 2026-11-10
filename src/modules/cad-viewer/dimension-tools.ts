@@ -10,8 +10,15 @@ import type { DxfEntity } from "../drawings/dxf-types";
 export interface DimensionPoint { x: number; y: number }
 export type LinearDimensionMode = "aligned" | "linear";
 
-const line = (layer: string, a: DimensionPoint, b: DimensionPoint): DxfEntity => ({
+const lineTagged = (
+  layer: string,
+  a: DimensionPoint,
+  b: DimensionPoint,
+  dimId: string | undefined,
+  role: "ext" | "dimline" | "arrow",
+): DxfEntity => ({
   type: "LINE", layer, start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y },
+  ...(dimId ? { meta: { dimId, role } } : {}),
 });
 
 export function buildLinearDimension(args: {
@@ -23,8 +30,10 @@ export function buildLinearDimension(args: {
   text: string;
   textHeight: number;
   arrowSize?: number;
+  /** Group id — when set, every emitted entity carries meta {dimId, role}. */
+  dimId?: string;
 }): DxfEntity[] {
-  const { first: p1, second: p2, placement, mode, layer, text, textHeight } = args;
+  const { first: p1, second: p2, placement, mode, layer, text, textHeight, dimId } = args;
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
   const length = Math.hypot(dx, dy);
   if (!Number.isFinite(length) || length < 1e-9) return [];
@@ -59,17 +68,17 @@ export function buildLinearDimension(args: {
 
   const e1 = { x: q1.x + nx * sign * ext, y: q1.y + ny * sign * ext };
   const e2 = { x: q2.x + nx * sign * ext, y: q2.y + ny * sign * ext };
-  if (Math.hypot(e1.x - p1.x, e1.y - p1.y) > 1e-9) out.push(line(layer, p1, e1));
-  if (Math.hypot(e2.x - p2.x, e2.y - p2.y) > 1e-9) out.push(line(layer, p2, e2));
-  out.push(line(layer, q1, q2));
+  if (Math.hypot(e1.x - p1.x, e1.y - p1.y) > 1e-9) out.push(lineTagged(layer, p1, e1, dimId, "ext"));
+  if (Math.hypot(e2.x - p2.x, e2.y - p2.y) > 1e-9) out.push(lineTagged(layer, p2, e2, dimId, "ext"));
+  out.push(lineTagged(layer, q1, q2, dimId, "dimline"));
 
   // Closed-looking architectural ticks: two strokes at each measured endpoint.
   for (const [tip, direction] of [[q1, 1], [q2, -1]] as Array<[DimensionPoint, number]>) {
     const bx = tip.x + ux * arrow * direction;
     const by = tip.y + uy * arrow * direction;
     const half = arrow * 0.32;
-    out.push(line(layer, tip, { x: bx + nx * half, y: by + ny * half }));
-    out.push(line(layer, tip, { x: bx - nx * half, y: by - ny * half }));
+    out.push(lineTagged(layer, tip, { x: bx + nx * half, y: by + ny * half }, dimId, "arrow"));
+    out.push(lineTagged(layer, tip, { x: bx - nx * half, y: by - ny * half }, dimId, "arrow"));
   }
 
   const mid = { x: (q1.x + q2.x) / 2 + nx * sign * textHeight * 0.8, y: (q1.y + q2.y) / 2 + ny * sign * textHeight * 0.8 };
@@ -79,6 +88,7 @@ export function buildLinearDimension(args: {
   out.push({
     type: "TEXT", layer, position: mid, height: textHeight, value: text,
     rotation, align: "center", valign: "middle",
+    ...(dimId ? { meta: { dimId, role: "text" as const } } : {}),
   });
   return out;
 }

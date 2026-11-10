@@ -87,7 +87,7 @@ t("grip editing layer", () => {
   assert.ok(viewer.includes("M.entityGrips(e)"), "viewer must consult entityGrips");
   assert.ok(viewer.includes("M.applyGripDrag(e, gripDrag.gi, to)"), "viewer must apply grip drags");
   assert.ok(viewer.includes("let gripDrag: GripDrag"), "grip drag state missing");
-  assert.ok(viewer.includes('type: "modify", before: [gripDrag.orig], after: [after]'), "grip release must push a modify undo action");
+  assert.ok(viewer.includes('type: "modify", before: ext.before, after: ext.after'), "grip release must push a modify undo action (with associative dimension pairs)");
   assert.ok(viewer.includes("ents[gripDrag.i] = gripDrag.orig;"), "Esc must revert an in-flight grip drag");
   assert.ok(viewer.includes('drawGrip(g.x, g.y, hot ? "#22c55e" : "#3b82f6")'), "grip painting (blue / hover green) missing");
   assert.ok(viewer.includes("!mod && !pick && !gripDrag"), "grips must hide during modify / pick ops");
