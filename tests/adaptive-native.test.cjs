@@ -11,6 +11,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
+const THREE = require("three");
 
 const root = path.resolve(__dirname, "..");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-adaptive-native-"));
@@ -38,6 +39,7 @@ const authoring = {
   getElements: () => elements,
   getSelectedIds: () => selected.slice(),
   getActiveLevelId: () => "LEVEL-01",
+  getAuthoredGroup: () => faceSourceGroup,
   setSelectedAuthored(ids) { selected.splice(0, selected.length, ...ids); },
   rebuildAuthored() {
     rebuildCount++;
@@ -47,6 +49,11 @@ const authoring = {
     }
   },
 };
+const faceSourceGroup = new THREE.Group();
+const faceSourceMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 0.2, 2), new THREE.MeshBasicMaterial());
+faceSourceMesh.userData.elementId = "wall-face-host";
+faceSourceMesh.position.y = 2;
+faceSourceGroup.add(faceSourceMesh);
 ctx.features.authoring = authoring;
 
 function square(size = 0.1) {
@@ -332,10 +339,41 @@ async function main() {
   assert.equal(api.getDefinition(customInstance.id).profileParts.length, 2);
   assert.equal(api.buildMesh(elements.find((entry) => entry.id === customInstance.id)).children.length, 2);
   sharedWidth = 0.5;
-  assert.equal(await api.propagateFamilyTypes(), 2, "compound and custom linked family sections update together");
+  assert.equal(await api.propagateFamilyTypes(), 3, "box, compound and custom linked family sections update together");
   assert.equal(api.getDefinition(compoundInstance.id).profileParts.length, 2);
   near(Math.max(...api.getDefinition(customInstance.id).profileParts[0].profile.map((point) => point.u)) -
     Math.min(...api.getDefinition(customInstance.id).profileParts[0].profile.map((point) => point.u)), 0.5);
+
+
+  // Persistent face locks rebind their saved local face plane when the host moves.
+  const faceLocked = api.create({
+    familyId: "face-locked",
+    familyName: "Face locked",
+    points: [p(0, 2, 0), p(2, 2, 0)],
+    profile: square(0.1),
+    constraints: [
+      {
+        kind: "face-lock",
+        pointIndex: 0,
+        origin: p(0, 0, 0),
+        normal: p(0, 1, 0),
+        face: {
+          elementId: "wall-face-host",
+          meshIndex: 0,
+          faceIndex: 0,
+          localOrigin: p(0, 0, 0),
+          localNormal: p(0, 1, 0),
+        },
+      },
+    ],
+  });
+  api.buildMesh(faceLocked);
+  near(api.getDefinition(faceLocked.id).constraints[0].origin.y, 2);
+  faceSourceMesh.position.y = 4;
+  api.buildMesh(faceLocked);
+  near(api.getDefinition(faceLocked.id).constraints[0].origin.y, 4,
+    "the adaptive face lock follows its source mesh transform");
+  assert.deepEqual(api.getDefinition(faceLocked.id).constraints[0].face.localOrigin, p(0, 0, 0));
 
   // Repeated placement is grouped into one undoable operation.
   const batchBefore = elements.length;
