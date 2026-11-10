@@ -282,6 +282,10 @@ export async function createProject(name: string, options: CreateProjectOptions 
     detachedModels = 0;
     setIssues([]); setCostData(null);
     setGrids([]); setLevels([]);
+    try {
+      const workPlanes = await import("../work-planes/types");
+      workPlanes.restoreWorkPlanes({ schemaVersion: 1, activeId: null, planes: [] });
+    } catch (e) { console.warn("[projects] work plane reset failed", e); }
     dirty = false;
 
     // openbim-levels:ui-wired:projects
