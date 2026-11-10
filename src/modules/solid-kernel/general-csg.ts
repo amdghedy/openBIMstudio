@@ -157,7 +157,7 @@ function addPlaneBucket(buckets: PlaneBuckets, p: SupportPlane, index: number): 
 }
 
 /** Find the earliest plane matching the historical component-wise tolerance. */
-function findPlaneIndex(planes: SupportPlane[], p: SupportPlane, buckets?: PlaneBuckets): number {
+function findPlaneIndex(planes: SupportPlane[], p: SupportPlane, buckets?: PlaneBuckets, overflow: number[] = []): number {
   if (!buckets || !planeIsHashable(p)) {
     for(let i=0;i<planes.length;i++) if(planeMatches(planes[i],p)) return i;
     return -1;
@@ -170,6 +170,7 @@ function findPlaneIndex(planes: SupportPlane[], p: SupportPlane, buckets?: Plane
       if(!list) continue;
       for(const i of list) if(i<best && planeMatches(planes[i],p)) best=i;
     }
+  for(const i of overflow) if(i<best && planeMatches(planes[i],p)) best=i;
   return Number.isFinite(best)?best:-1;
 }
 
@@ -181,14 +182,16 @@ function findPlaneIndex(planes: SupportPlane[], p: SupportPlane, buckets?: Plane
 export function allPlanesOf(mesh: IndexedMesh): SupportPlane[] {
   const out: SupportPlane[]=[];
   const buckets: PlaneBuckets=new Map();
+  const overflow: number[]=[];
   for(const [ia,ib,ic] of mesh.faces) {
     const n=triNormal([mesh.vertices[ia],mesh.vertices[ib],mesh.vertices[ic]]);
     if(!n) continue;
     const candidate={normal:n,w:dot(n,mesh.vertices[ia])};
-    if(findPlaneIndex(out,candidate,buckets)>=0) continue;
+    if(findPlaneIndex(out,candidate,buckets,overflow)>=0) continue;
     const index=out.length;
     out.push(candidate);
-    addPlaneBucket(buckets,candidate,index);
+    if(planeIsHashable(candidate)) addPlaneBucket(buckets,candidate,index);
+    else overflow.push(index);
   }
   return out;
 }
@@ -308,6 +311,12 @@ interface CutObj {
 function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B"): CutObj[] {
   const objs: CutObj[] = [];
   const seen = new Set<string>();
+  const planeBuckets: PlaneBuckets = new Map();
+  const planeOverflow: number[] = [];
+  planes.forEach((plane, index) => {
+    if (planeIsHashable(plane)) addPlaneBucket(planeBuckets, plane, index);
+    else planeOverflow.push(index);
+  });
   const push = (pl: SupportPlane, isFacePlane: boolean, planeIdx: number): void => {
     const k =
       [pl.normal.x, pl.normal.y, pl.normal.z, pl.w].map((v) => v.toFixed(10)).join("|") +
@@ -321,7 +330,7 @@ function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B
     const nrm = triNormal(tri);
     if (!nrm) continue;
     const w = dot(nrm, tri[0]);
-    const planeIdx = findPlaneIndex(planes, { normal: nrm, w });
+    const planeIdx = findPlaneIndex(planes, { normal: nrm, w }, planeBuckets, planeOverflow);
     push({ normal: nrm, w }, true, planeIdx);
     for (let i = 0; i < 3; i++) {
       const p = tri[i];
