@@ -183,7 +183,49 @@ t("stretchEnts drags whole point entities anchored inside", () => {
   assert.ok(ptClose(out.position, { x: 6, y: 1 }));
 });
 
-// ── 14. transform helpers still intact ──
+// ── 14. array geometry ──
+t("rectArrayEnts creates bounded copies and rotates only the grid vectors", () => {
+  const src = [line(0, 0, 2, 0)];
+  const copies = X.rectArrayEnts(src, 2, 3, 10, 20, 90);
+  assert.strictEqual(copies.length, 5);
+  assert.ok(ptClose(copies[0].start, { x: 0, y: 20 }));
+  assert.ok(ptClose(copies[1].start, { x: 0, y: 40 }));
+  assert.ok(ptClose(copies[2].start, { x: -10, y: 0 }));
+  assert.ok(ptClose(copies[0].end, { x: 2, y: 20 }), "grid rotation must not rotate object orientation");
+});
+t("rectArrayEnts rejects invalid counts, non-finite spacing and excessive output", () => {
+  assert.throws(() => X.rectArrayEnts([line(0, 0, 1, 0)], 1.5, 2, 1, 1), /integers/);
+  assert.throws(() => X.rectArrayEnts([line(0, 0, 1, 0)], 2, 2, Infinity, 1), /finite/);
+  assert.throws(() => X.rectArrayEnts(new Array(2000).fill(line(0, 0, 1, 0)), 2, 2, 1, 1), /10,000/);
+});
+t("polarArrayEnts distributes full circles without duplicating the endpoint", () => {
+  const src = [line(9, 0, 11, 0)];
+  const copies = X.polarArrayEnts(src, { x: 0, y: 0 }, 4, 360, true);
+  assert.strictEqual(copies.length, 3);
+  assert.ok(ptClose(copies[0].start, { x: 0, y: 9 }));
+  assert.ok(ptClose(copies[0].end, { x: 0, y: 11 }));
+  assert.ok(ptClose(copies[1].start, { x: -9, y: 0 }));
+  assert.ok(ptClose(copies[2].start, { x: 0, y: -9 }));
+});
+t("polarArrayEnts supports partial clockwise sweeps and fixed-orientation copies", () => {
+  const src = [line(9, 0, 11, 0)];
+  const clockwise = X.polarArrayEnts(src, { x: 0, y: 0 }, 3, -90, false);
+  assert.strictEqual(clockwise.length, 2);
+  assert.ok(ptClose(clockwise[0].start, { x: 10 * Math.SQRT1_2 - 1, y: -10 * Math.SQRT1_2 }));
+  assert.ok(ptClose(clockwise[0].end, { x: 10 * Math.SQRT1_2 + 1, y: -10 * Math.SQRT1_2 }));
+  assert.ok(ptClose(clockwise[1].start, { x: -1, y: -10 }));
+  assert.ok(ptClose(clockwise[1].end, { x: 1, y: -10 }));
+  const rotated = X.polarArrayEnts(src, { x: 0, y: 0 }, 3, -90, true);
+  assert.ok(close(rotated[0].end.x - rotated[0].start.x, Math.SQRT1_2 * 2));
+  assert.ok(close(rotated[0].end.y - rotated[0].start.y, -Math.SQRT1_2 * 2));
+});
+t("polarArrayEnts validates item limits, sweep and output size", () => {
+  assert.throws(() => X.polarArrayEnts([line(0, 0, 1, 0)], { x: 0, y: 0 }, 1), /2 to 360/);
+  assert.throws(() => X.polarArrayEnts([line(0, 0, 1, 0)], { x: 0, y: 0 }, 3, 0), /sweep/);
+  assert.throws(() => X.polarArrayEnts(new Array(4000).fill(line(0, 0, 1, 0)), { x: 0, y: 0 }, 4), /10,000/);
+});
+
+// ── 15. transform helpers still intact ──
 t("translate/rotate/scale/mirror entity transforms still work", () => {
   const l = line(0, 0, 1, 0);
   const mv = X.translateEnt(l, 2, 3);
