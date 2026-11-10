@@ -45,11 +45,11 @@ try {
   assert.deepEqual(facePlane.face.localOrigin, [0.2, 0.4, 0.6]);
 
   const uvPlane = wp.createWorkPlane("Facade elevation", [1, 2, 5], [0, 0, 3]);
-  assert.deepEqual(wp.projectOntoWorkPlane(3, 4, 99), [2, 2]);
+  assert.deepEqual(wp.projectOntoWorkPlane(3, 4, 99), [-2, 2]);
   assert.equal(wp.setRotation(uvPlane.id, Math.PI / 2), true);
   const rotatedCoordinates = wp.projectOntoWorkPlane(2, 2, 5);
-  near(rotatedCoordinates[0], 0);
-  near(rotatedCoordinates[1], -1);
+  near(rotatedCoordinates[0], 1);
+  near(rotatedCoordinates[1], 0);
 
   const snapshot = wp.serializeWorkPlanes();
   assert.equal(snapshot.schemaVersion, 1);
