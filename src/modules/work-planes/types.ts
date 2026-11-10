@@ -92,6 +92,14 @@ export function setActiveWorkPlane(id: string): boolean {
   return true;
 }
 
+export function setWorkPlaneRotation(id: string, rotation: number): boolean {
+  const plane = planes.get(id);
+  if (!plane || !Number.isFinite(rotation)) return false;
+  plane.rotation = rotation;
+  try { window.dispatchEvent(new CustomEvent("obs:work-plane-changed", { detail: { id, plane } })); } catch { /* */ }
+  return true;
+}
+
 export function getActiveWorkPlane(): WorkPlane | null {
   return activeId ? planes.get(activeId) ?? null : null;
 }
@@ -106,6 +114,7 @@ export function removeWorkPlane(id: string): void {
     const plane = planes.get(activeId);
     if (plane) plane.active = false;
     activeId = null;
+    try { (window as any).__obsSnapping?.setWorkPlaneY?.(0); } catch { /* */ }
   }
   planes.delete(id);
   try { window.dispatchEvent(new CustomEvent("obs:work-plane-changed", { detail: { id: activeId, plane: getActiveWorkPlane() } })); } catch { /* */ }
@@ -148,14 +157,25 @@ export function projectOntoWorkPlane(worldX: number, worldY: number, worldZ: num
     reference[2] * nx - reference[0] * nz,
     reference[0] * ny - reference[1] * nx,
   ], "Work plane U axis");
-  const v = [
+  let v = [
     ny * u[2] - nz * u[1],
     nz * u[0] - nx * u[2],
     nx * u[1] - ny * u[0],
   ] as [number, number, number];
+  const c = Math.cos(plane.rotation), si = Math.sin(plane.rotation);
+  const rotatedU = [
+    u[0] * c + v[0] * si,
+    u[1] * c + v[1] * si,
+    u[2] * c + v[2] * si,
+  ] as [number, number, number];
+  v = [
+    -u[0] * si + v[0] * c,
+    -u[1] * si + v[1] * c,
+    -u[2] * si + v[2] * c,
+  ];
   const relative = [worldX - plane.origin[0], worldY - plane.origin[1], worldZ - plane.origin[2]];
   return [
-    relative[0] * u[0] + relative[1] * u[1] + relative[2] * u[2],
+    relative[0] * rotatedU[0] + relative[1] * rotatedU[1] + relative[2] * rotatedU[2],
     relative[0] * v[0] + relative[1] * v[1] + relative[2] * v[2],
   ];
 }
@@ -188,6 +208,9 @@ export function restoreWorkPlanes(snapshot: WorkPlaneSnapshot): void {
     if (match) idCounter = Math.max(idCounter, Number(match[1]));
   }
   if (snapshot.activeId) setActiveWorkPlane(snapshot.activeId);
+  else {
+    try { (window as any).__obsSnapping?.setWorkPlaneY?.(0); } catch { /* */ }
+  }
 }
 
 let installed = false;
@@ -197,6 +220,7 @@ export function setupWorkPlanes() {
   (window as any).__obsWorkPlanes = {
     create: createWorkPlane,
     setActive: setActiveWorkPlane,
+    setRotation: setWorkPlaneRotation,
     getActive: getActiveWorkPlane,
     get: getWorkPlane,
     list: listWorkPlanes,
