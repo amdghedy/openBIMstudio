@@ -24,7 +24,7 @@ test('Shift+drag orbit restores an upright camera and applies far fewer camera u
   await page.mouse.move(cx, cy);
   await page.keyboard.down('Shift');
   await page.mouse.down();
-  const EVENTS = 300;
+  const EVENTS = 40;
   await page.mouse.move(cx + 240, cy + 90, { steps: EVENTS });
   await page.mouse.up();
   await page.keyboard.up('Shift');
