@@ -9,6 +9,7 @@ import { ctx } from "../core/context";
 import { inputRouter } from "../core/input-router";
 import { snapping } from "./snapping";
 import { notify } from "../core/notify";
+import { createWorkPlane, getActiveWorkPlane } from "../modules/work-planes/types";
 import type {
   AdaptiveElementCreateInput,
   AdaptiveElementSnapshot,
@@ -50,6 +51,7 @@ let placement: PlacementSession | null = null;
 let gripDrag: GripDrag | null = null;
 let hoverSequence = 0;
 let lastSnap: { point: THREE.Vector3; x: number; y: number } | null = null;
+let workPlanePickArmed = false;
 let previewRoot: THREE.Group | null = null;
 let gripRoot: THREE.Group | null = null;
 let hud: HTMLDivElement | null = null;
@@ -104,16 +106,86 @@ function surfacePoint(event: MouseEvent | PointerEvent, excludeElementId?: strin
   return null;
 }
 
-function workPlanePoint(event: MouseEvent | PointerEvent, y = snapping.getWorkPlaneY()): THREE.Vector3 | null {
+function activeWorkPlaneIntersection(event: MouseEvent | PointerEvent): THREE.Vector3 | null {
   const ray = rayFor(event);
   if (!ray) return null;
-  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -y);
+  const active = getActiveWorkPlane();
+  const plane = active
+    ? new THREE.Plane(
+        new THREE.Vector3(active.normal[0], active.normal[1], active.normal[2]).normalize(),
+        -new THREE.Vector3(active.normal[0], active.normal[1], active.normal[2]).normalize().dot(
+          new THREE.Vector3(active.origin[0], active.origin[1], active.origin[2]),
+        ),
+      )
+    : new THREE.Plane(new THREE.Vector3(0, 1, 0), -snapping.getWorkPlaneY());
   const point = new THREE.Vector3();
   return ray.ray.intersectPlane(plane, point) ? point : null;
 }
 
 function placementPoint(event: MouseEvent | PointerEvent): THREE.Vector3 | null {
-  return surfacePoint(event) ?? workPlanePoint(event);
+  const active = getActiveWorkPlane();
+  if (active) return activeWorkPlaneIntersection(event);
+  return surfacePoint(event) ?? activeWorkPlaneIntersection(event);
+}
+
+function firstFaceHit(event: MouseEvent | PointerEvent): THREE.Intersection | null {
+  const ray = rayFor(event);
+  const scene = ctx.world?.scene?.three as THREE.Scene | undefined;
+  if (!ray || !scene) return null;
+  return ray.intersectObjects(scene.children, true).find((hit) => {
+    const object = hit.object as THREE.Object3D;
+    return !!hit.face && object.visible && !isUnder(object, previewRoot) && !isUnder(object, gripRoot) &&
+      object !== ctx.groundPlane && object.name !== "groundPlane";
+  }) ?? null;
+}
+
+function armWorkPlaneFromFace(event: MouseEvent | PointerEvent): boolean {
+  const hit = firstFaceHit(event);
+  if (!hit?.face) {
+    notify("warn", "Pick a visible model face to define the adaptive work plane.");
+    return false;
+  }
+  const object = hit.object as THREE.Mesh;
+  object.updateWorldMatrix(true, false);
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(object.matrixWorld);
+  const worldNormal = hit.face.normal.clone().applyMatrix3(normalMatrix).normalize();
+  const worldOrigin = hit.point.clone();
+  let root: THREE.Object3D = object;
+  while (root.parent && !root.userData?.elementId) root = root.parent;
+  const elementId = String(root.userData?.elementId ?? object.userData?.elementId ?? "");
+  const sceneRoot = elementId ? root : object;
+  let meshIndex = 0;
+  sceneRoot.traverse((node) => {
+    if (node === object) return;
+    if ((node as THREE.Mesh).isMesh && node !== object) meshIndex++;
+  });
+  const localOrigin = object.worldToLocal(worldOrigin.clone());
+  const inverseNormal = normalMatrix.clone().invert();
+  const localNormal = hit.face.normal.clone().normalize();
+  const face = {
+    ...(elementId ? { elementId } : {}),
+    meshIndex,
+    ...(Number.isInteger(hit.faceIndex) ? { faceIndex: hit.faceIndex } : {}),
+    localOrigin: { x: localOrigin.x, y: localOrigin.y, z: localOrigin.z },
+    localNormal: { x: localNormal.x, y: localNormal.y, z: localNormal.z },
+  };
+  const plane = createWorkPlane(
+    "Adaptive face · " + (root.name || object.name || elementId || "Picked surface"),
+    [worldOrigin.x, worldOrigin.y, worldOrigin.z],
+    [worldNormal.x, worldNormal.y, worldNormal.z],
+    face,
+  );
+  workPlanePickArmed = false;
+  if (hud) {
+    const button = hud.querySelector<HTMLButtonElement>("[data-work-plane]");
+    if (button) button.textContent = "Pick Work Plane";
+    hud.querySelector<HTMLElement>("[data-step]")!.textContent = "Active plane: " + plane.name;
+  }
+  snapping.hideIndicator();
+  lastSnap = null;
+  notify("success", "Adaptive work plane set from picked face.");
+  void inverseNormal;
+  return true;
 }
 
 function cursorMatchesSnap(event: MouseEvent | PointerEvent): THREE.Vector3 | null {
@@ -192,9 +264,14 @@ function ensureHud(): void {
   undo.dataset.undo = "true";
   undo.textContent = "Undo point";
   undo.title = "Remove the last placed point (Backspace)";
+  const pickPlane = document.createElement("button");
+  pickPlane.dataset.workPlane = "true";
+  pickPlane.type = "button";
+  pickPlane.textContent = "Pick Work Plane";
+  pickPlane.title = "Use a model face as the active adaptive work plane";
   const cancel = document.createElement("button");
   cancel.textContent = "Cancel";
-  for (const button of [undo, cancel]) {
+  for (const button of [undo, pickPlane, cancel]) {
     button.type = "button";
     button.style.cssText =
       "border:1px solid #475569;border-radius:6px;padding:6px 9px;background:#1e293b;" +
@@ -207,11 +284,20 @@ function ensureHud(): void {
     drawPlacementPreview(null);
     updateHud();
   });
+  pickPlane.addEventListener("click", (event) => {
+    event.stopPropagation();
+    workPlanePickArmed = !workPlanePickArmed;
+    pickPlane.textContent = workPlanePickArmed ? "Click a Face…" : "Pick Work Plane";
+    step.textContent = workPlanePickArmed
+      ? "Click a visible model face. Escape cancels plane picking."
+      : "Continue placing points on the active plane.";
+    notify("info", workPlanePickArmed ? "Click a visible 3D face to set the adaptive work plane." : "Face picking cancelled.");
+  });
   cancel.addEventListener("click", (event) => {
     event.stopPropagation();
     finishPlacement(null);
   });
-  hud.append(info, undo, cancel);
+  hud.append(info, undo, pickPlane, cancel);
   ctx.rightHost.appendChild(hud);
 }
 
@@ -294,6 +380,7 @@ function finishPlacement(element: Any | null): void {
   if (!placement) return;
   const current = placement;
   placement = null;
+  workPlanePickArmed = false;
   hoverSequence++;
   lastSnap = null;
   snapping.hideIndicator();
@@ -320,7 +407,27 @@ async function placeCurrentPoint(event: MouseEvent | PointerEvent): Promise<void
   }
   const current = placement;
   try {
-    const element = api.create({ ...current.input, points: current.points });
+    const activePlane = getActiveWorkPlane();
+    const faceConstraints = activePlane?.face
+      ? current.points.map((_, pointIndex) => ({
+          kind: "face-lock" as const,
+          pointIndex,
+          origin: { x: activePlane.origin[0], y: activePlane.origin[1], z: activePlane.origin[2] },
+          normal: { x: activePlane.normal[0], y: activePlane.normal[1], z: activePlane.normal[2] },
+          face: {
+            ...(activePlane.face.elementId ? { elementId: activePlane.face.elementId } : {}),
+            ...(activePlane.face.meshIndex !== undefined ? { meshIndex: activePlane.face.meshIndex } : {}),
+            ...(activePlane.face.faceIndex !== undefined ? { faceIndex: activePlane.face.faceIndex } : {}),
+            ...(activePlane.face.localOrigin ? { localOrigin: { x: activePlane.face.localOrigin[0], y: activePlane.face.localOrigin[1], z: activePlane.face.localOrigin[2] } } : {}),
+            ...(activePlane.face.localNormal ? { localNormal: { x: activePlane.face.localNormal[0], y: activePlane.face.localNormal[1], z: activePlane.face.localNormal[2] } } : {}),
+          },
+        }))
+      : [];
+    const element = api.create({
+      ...current.input,
+      points: current.points,
+      constraints: [...(current.input.constraints ?? []), ...faceConstraints],
+    });
     finishPlacement(element);
     notify("success", "Placed native adaptive component: " + String(element?.name ?? current.input.familyName));
     refreshAdaptiveGrips();
@@ -520,10 +627,14 @@ export function setupAdaptiveInteraction(targetApi: Any): Any {
     if (placement) {
       if (gesture.kind === "drag-start" && gesture.button === 0) return true;
       if (gesture.kind === "click" && gesture.button === 0) {
+        if (workPlanePickArmed) {
+          armWorkPlaneFromFace(gesture.event);
+          return true;
+        }
         void placeCurrentPoint(gesture.event);
         return true;
       }
-      if (gesture.kind === "rmb-click") return backspacePlacementPoint();
+      if (gesture.kind === "rmb-click") return workPlanePickArmed ? (workPlanePickArmed = false, true) : backspacePlacementPoint();
       return false;
     }
     if (gripDrag) {
