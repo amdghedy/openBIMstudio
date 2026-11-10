@@ -253,7 +253,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LAYLCK", aliases: [], description: "Lock the layer of the picked object" },
   { name: "LAYUNLCK", aliases: ["LAYUNLOCK"], description: "Unlock the layer of the picked object" },
   { name: "MLEADER", aliases: ["MLD", "LE", "LEADER"], description: "Draw a leader line with annotation text: arrow point → landing end → type the text" },
-  { name: "QSELECT", aliases: ["QSI"], description: "Quick select: QSELECT TYPE LINE · QSELECT LAYER <name> · QSELECT ALL" },
+  { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type, layer, ACI/RGB colour, linetype, text content or all visible objects" },
+  { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour or linetype" },
+  { name: "ARRAYPOLAR", aliases: ["ARP"], description: "Create a polar array around a centre point; choose item count, sweep angle and whether items rotate" },
   { name: "PEDIT", aliases: ["PE"], description: "Edit polylines: PEDIT J (join selection) · PEDIT C (close) · PEDIT O (open) · PEDIT R (reverse)" },
   { name: "CAL", aliases: ["QUICKCALC", "QC"], description: "Evaluate an expression: CAL 2*PI*25 · sin/cos/tan (degrees) · sqrt/abs/round/min/max" },
   { name: "FIND", aliases: ["FIND"], description: "Find and replace text in the drawing" },
@@ -7841,6 +7843,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       arrayRect();
       return;
     }
+    if (cmd === "ARRAYPOLAR" || cmd === "ARP") {
+      void arrayPolar();
+      return;
+    }
     if (cmd === "VIEW" || cmd === "V") {
       viewCommand(parts.slice(1));
       return;
@@ -8039,14 +8045,28 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const what = (parts[1] ?? "").toUpperCase();
       const val = parts.slice(2).join(" ").trim();
       const all = ents.map((_, i) => i).filter((i) => visible(ents[i]));
+      const colorKey = (e: DxfEntity): string => e.rgb != null
+        ? `rgb:${(e.rgb & 0xffffff).toString(16).padStart(6, "0")}`
+        : e.color != null ? `aci:${e.color}` : "bylayer";
       let ids: number[] = [];
       if (what === "ALL") ids = all;
-      else if (what === "TYPE") ids = all.filter((i) => ents[i].type === val.toUpperCase());
-      else if (what === "LAYER") ids = all.filter((i) => ents[i].layer.toLowerCase() === val.toLowerCase());
-      if (what === "ALL" || what === "TYPE" || what === "LAYER") {
+      else if (what === "TYPE" && val) ids = all.filter((i) => ents[i].type === val.toUpperCase());
+      else if (what === "LAYER" && val) ids = all.filter((i) => ents[i].layer.toLowerCase() === val.toLowerCase());
+      else if (what === "COLOR" && val) {
+        const key = /^#?[0-9a-f]{6}$/i.test(val) ? `rgb:${val.replace(/^#/, "").toLowerCase()}`
+          : /^(bylayer|default)$/i.test(val) ? "bylayer" : `aci:${Number(val)}`;
+        ids = all.filter((i) => colorKey(ents[i]) === key);
+      } else if (what === "LINETYPE" && val) {
+        const key = val.toUpperCase();
+        ids = all.filter((i) => (ents[i].lineType ?? "BYLAYER").toUpperCase() === key);
+      } else if (what === "TEXT" && val) {
+        const q = val.toLowerCase();
+        ids = all.filter((i) => ents[i].type === "TEXT" && ents[i].value.toLowerCase().includes(q));
+      }
+      if (["ALL", "TYPE", "LAYER", "COLOR", "LINETYPE", "TEXT"].includes(what) && (what === "ALL" || !!val)) {
         setSel(ids);
         logCmd(`QSELECT ${what}${val ? " " + val : ""}: ${ids.length} object(s) selected.`);
-      } else logCmd("QSELECT: use QSELECT TYPE <LINE|CIRCLE|ARC|LWPOLYLINE|TEXT|POINT> · QSELECT LAYER <name> · QSELECT ALL.");
+      } else logCmd("QSELECT: use ALL · TYPE <entity> · LAYER <name> · COLOR <ACI|#RRGGBB|BYLAYER> · LINETYPE <name|BYLAYER> · TEXT <contains>.");
       return;
     }
     if (cmd === "SELECTSIMILAR" || cmd === "SELSIM") {
@@ -8055,11 +8075,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd("SELECTSIMILAR: select one or more source objects first.");
         return;
       }
-      const types = new Set(src.map((e) => e.type));
-      const layers = new Set(src.map((e) => e.layer));
-      const ids = ents.map((_, i) => i).filter((i) => visible(ents[i]) && types.has(ents[i].type) && layers.has(ents[i].layer));
+      const mode = (parts[1] ?? "").toUpperCase();
+      const colorKey = (e: DxfEntity): string => e.rgb != null
+        ? `rgb:${(e.rgb & 0xffffff).toString(16).padStart(6, "0")}`
+        : e.color != null ? `aci:${e.color}` : "bylayer";
+      const matches = (e: DxfEntity, candidate: DxfEntity): boolean => {
+        if (mode === "TYPE") return e.type === candidate.type;
+        if (mode === "LAYER") return e.layer === candidate.layer;
+        if (mode === "COLOR") return colorKey(e) === colorKey(candidate);
+        if (mode === "LINETYPE") return (e.lineType ?? "BYLAYER").toUpperCase() === (candidate.lineType ?? "BYLAYER").toUpperCase();
+        return e.type === candidate.type && e.layer === candidate.layer;
+      };
+      const ids = ents.map((e, i) => ({ e, i })).filter(({ e }) => visible(e) && src.some((candidate) => matches(e, candidate))).map(({ i }) => i);
       setSel(ids);
-      logCmd(`SELECTSIMILAR: ${ids.length} object(s) share type and layer with the selection.`);
+      logCmd(`SELECTSIMILAR${mode ? " " + mode : ""}: ${ids.length} object(s) selected.`);
       return;
     }
     /* ── LibreDWG utility belt on the command line (same paths as the ribbon groups) ── */
