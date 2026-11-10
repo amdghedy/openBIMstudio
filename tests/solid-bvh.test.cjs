@@ -57,6 +57,6 @@ for(const p of queries){
  assert.equal(sk.createRobustInsideTester(large)(p),bruteRobust(large,p),`robust mismatch at ${JSON.stringify(p)}`);
 }
 const reusable=sk.createRobustInsideTester(large);
-assert.equal(reusable({x:0,y:0,z:0}),true);
-assert.equal(reusable({x:3,y:0,z:0}),false);
+assert.equal(reusable({x:0,y:0,z:7}),true);
+assert.equal(reusable({x:3,y:0,z:7}),false);
 console.log(`PASS: triangle BVH matches brute-force ray tests across ${large.faces.length} triangles`);
