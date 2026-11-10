@@ -1664,7 +1664,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (!e || !shown(e) || (skipSel && sel.has(i))) return;
       // The viewport query has already culled ordinary geometry. Construction
       // lines are deliberately included by queryIndexBox and clipped per view.
-      if (ix && e.type !== "RAY" && e.type !== "XLINE") {
+      const infinite = e.type === "RAY" || e.type === "XLINE";
+      if (ix && !infinite) {
         const bb = ix.boxes[i];
         if (!bb) return;
         if (
