@@ -472,15 +472,16 @@ export function formatQty(v: number, from: DxfUnits | undefined, to: DisplayUnit
 
 /* ───────────────────────── spatial index ───────────────────────── */
 
-export interface SpatialIndex { cell: number; minX: number; minY: number; cols: number; rows: number; cells: Map<number, number[]>; big: number[]; boxes: BBox[] }
+export interface SpatialIndex { cell: number; minX: number; minY: number; cols: number; rows: number; cells: Map<number, number[]>; big: number[]; infinite: number[]; boxes: BBox[] }
 
 export function buildIndex(entities: DxfEntity[], bounds: BBox, targetCells = 256): SpatialIndex {
   const w = Math.max(bounds.maxX - bounds.minX, 1e-9), h = Math.max(bounds.maxY - bounds.minY, 1e-9);
   const cell = Math.max(w, h) / targetCells;
   const cols = Math.ceil(w / cell) + 1, rows = Math.ceil(h / cell) + 1;
-  const idx: SpatialIndex = { cell, minX: bounds.minX, minY: bounds.minY, cols, rows, cells: new Map(), big: [], boxes: new Array(entities.length) };
+  const idx: SpatialIndex = { cell, minX: bounds.minX, minY: bounds.minY, cols, rows, cells: new Map(), big: [], infinite: [], boxes: new Array(entities.length) };
   entities.forEach((e, i) => {
     const b = entityBBox(e); idx.boxes[i] = b;
+    if (e.type === "RAY" || e.type === "XLINE") idx.infinite.push(i);
     const c0 = Math.floor((b.minX - bounds.minX) / cell), c1 = Math.floor((b.maxX - bounds.minX) / cell);
     const r0 = Math.floor((b.minY - bounds.minY) / cell), r1 = Math.floor((b.maxY - bounds.minY) / cell);
     if ((c1 - c0 + 1) * (r1 - r0 + 1) > 64) { idx.big.push(i); return; }
@@ -498,6 +499,38 @@ export function queryIndex(idx: SpatialIndex, x: number, y: number, radius: numb
     const a = idx.cells.get(r * idx.cols + c); if (a) for (const i of a) out.add(i);
   }
   return [...out].filter((i) => { const b = idx.boxes[i]; return x >= b.minX - radius && x <= b.maxX + radius && y >= b.minY - radius && y <= b.maxY + radius; });
+}
+
+/**
+ * Entity indices whose bounds intersect a world-space viewport / selection box.
+ * Cell lookup avoids walking the complete drawing on every repaint. Results
+ * are sorted to preserve DXF draw order; long construction lines are always
+ * returned because their anchor-only bounding boxes do not describe visibility.
+ */
+export function queryIndexBox(idx: SpatialIndex, entities: DxfEntity[], box: BBox): number[] {
+  const candidates = new Set<number>(idx.big);
+  const c0 = Math.floor((box.minX - idx.minX) / idx.cell);
+  const c1 = Math.floor((box.maxX - idx.minX) / idx.cell);
+  const r0 = Math.floor((box.minY - idx.minY) / idx.cell);
+  const r1 = Math.floor((box.maxY - idx.minY) / idx.cell);
+  for (let r = Math.max(0, r0); r <= Math.min(idx.rows - 1, r1); r++) {
+    for (let c = Math.max(0, c0); c <= Math.min(idx.cols - 1, c1); c++) {
+      const cell = idx.cells.get(r * idx.cols + c);
+      if (cell) for (const i of cell) candidates.add(i);
+    }
+  }
+  const infinite = new Set(idx.infinite);
+  for (const i of infinite) candidates.add(i);
+  const out = [...candidates].filter((i) => {
+    if (infinite.has(i)) return true;
+    const b = idx.boxes[i];
+    return !!b && !(b.maxX < box.minX || b.minX > box.maxX || b.maxY < box.minY || b.minY > box.maxY);
+  }).sort((a, b) => a - b);
+  // Avoid a needless candidate sort in the common zoom-extents / tiny drawing case.
+  if (entities.length && out.length >= entities.length * 0.8) {
+    return Array.from({ length: entities.length }, (_, i) => i);
+  }
+  return out;
 }
 
 /** Index of the entity nearest the point within `tol` (world units), preferring smaller entities on ties. */
@@ -699,7 +732,7 @@ function segHitsRect(a: Pt, b: Pt, r: BBox): boolean {
  */
 export function selectInRect(idx: SpatialIndex, entities: DxfEntity[], rect: BBox, mode: "window" | "crossing", visible: (e: DxfEntity) => boolean = () => true): number[] {
   const out: number[] = [];
-  for (let i = 0; i < entities.length; i++) {
+  for (const i of queryIndexBox(idx, entities, rect)) {
     const b = idx.boxes[i], e = entities[i];
     if (!visible(e)) continue;
     if (mode === "window") { if (boxContains(rect, b)) out.push(i); continue; }
