@@ -112,6 +112,7 @@
     "test:schedule-import": "node tests/schedule-import.test.cjs",
     "test:gis": "node tests/gis-core.test.cjs",
     "test:solids": "node tests/solids.test.cjs",
+    "test:solid-kernel-weld": "node tests/solid-kernel-weld.test.cjs",
     "test:seed-families": "node tests/seed-families.test.cjs",
     "test:standards-json-pack": "node tests/standards-json-pack.test.cjs",
     "test:icu-lite": "node tests/icu-lite.test.cjs",
