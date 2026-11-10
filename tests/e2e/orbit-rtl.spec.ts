@@ -94,8 +94,9 @@ test('editable grips show an open hand on hover and a closed hand while dragging
   await page.mouse.up();
   const after = await page.evaluate((id) => (window as any).__obsAuthoring.getElementById(id).params.polygon[0], info.id);
   const moved = Math.hypot(after[0] - info.v[0], after[1] - info.v[1]);
+  const dbg = await page.evaluate(() => JSON.stringify(((window as any).__gripDebug ?? []).slice(0, 6)));
   const poly = await page.evaluate((id) => JSON.stringify((window as any).__obsAuthoring.getElementById(id).params.polygon), info.id);
-  const diag = `polygon ${poly}; cursors during drag: ${JSON.stringify(cursors)}; vertex before ${info.v} mid ${mid} after ${after}; grip screen pos ${info.sx.toFixed(0)},${info.sy.toFixed(0)}; errors: ${errors.join(" // ").slice(0, 400)}`;
+  const diag = `debug ${dbg}; polygon ${poly}; cursors during drag: ${JSON.stringify(cursors)}; vertex before ${info.v} mid ${mid} after ${after}; grip screen pos ${info.sx.toFixed(0)},${info.sy.toFixed(0)}; errors: ${errors.join(" // ").slice(0, 400)}`;
   expect(cursors.some((c) => c === 'grabbing'), 'grabbing cursor during the drag. ' + diag).toBe(true);
   expect(moved, 'vertex moved. ' + diag).toBeGreaterThan(0.05);
   void host;
