@@ -2628,7 +2628,13 @@ function buildGripsFor(el: AuthoredElement): GripSpec[] {
     addGrip("end", new THREE.Vector3(p.end[0], p.endElevation ?? p.elevation, p.end[1]));
   } else if (p.point) {
     addGrip("point", new THREE.Vector3(p.point[0], p.elevation, p.point[1]));
-    const footprint = pointFootprintHandles({ point: [p.point[0], p.point[1]], width: Number(p.width ?? p.thickness ?? 0.3), depth: Number(p.depth ?? p.thickness ?? p.width ?? 0.3) });
+    // Point-authored solids use thickness as their X footprint dimension
+    // (columns, footings and equipment); vertical openings use width.
+    // Keep grips bound to the exact parameters consumed by createMeshBase.
+    const widthKey = el.type === "vertical-opening" ? "width" : "thickness";
+    const width = Number(p[widthKey] ?? p.thickness ?? p.width ?? 0.3);
+    const depth = Number(p.depth ?? p.thickness ?? width);
+    const footprint = pointFootprintHandles({ point: [p.point[0], p.point[1]], width, depth });
     for (const h of footprint) addGrip("point-footprint", new THREE.Vector3(h.point[0], p.elevation, h.point[1]), undefined, h.grip);
   } else if (p.polygon) {
     p.polygon.forEach((v, i) => addGrip("vertex", new THREE.Vector3(v[0], p.elevation, v[1]), i));
@@ -2817,12 +2823,18 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
   else if (kind === "point" && p.point) p.point = [x, z];
   else if (kind === "point-footprint" && p.point && footprintGrip) {
     const base = gripDrag.snapshot;
+    const widthKey = el.type === "vertical-opening" ? "width" : "thickness";
+    const baseWidth = Number(base[widthKey] ?? base.thickness ?? base.width ?? 0.3);
     const resized = resizePointFootprint({
       point: [Number(base.point?.[0] ?? p.point[0]), Number(base.point?.[1] ?? p.point[1])],
-      width: Number(base.width ?? base.thickness ?? 0.3),
-      depth: Number(base.depth ?? base.thickness ?? base.width ?? 0.3),
+      width: baseWidth,
+      depth: Number(base.depth ?? base.thickness ?? baseWidth),
     }, footprintGrip, [x, z]);
-    if (resized) { p.point = resized.point; p.width = resized.width; p.depth = resized.depth; }
+    if (resized) {
+      p.point = resized.point;
+      p[widthKey] = resized.width;
+      p.depth = resized.depth;
+    }
   } else if (kind === "vertex" && p.polygon && vertexIndex !== undefined) {
     const basePolygon = (gripDrag.snapshot as any).polygon as [number, number][] | undefined;
     const candidate = (basePolygon ?? p.polygon).map((v: [number, number]) => [...v] as [number, number]);
