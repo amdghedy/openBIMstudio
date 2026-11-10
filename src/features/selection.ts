@@ -11,6 +11,7 @@ import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import { ctx } from "../core/context";
 import { register, tryUse, type SelectionService } from "../core/services";
+import { getSelectionPrefs } from "../core/selection-prefs";
 
 export interface SelectionSnapshot {
   [modelId: string]: Set<number>;
@@ -530,7 +531,11 @@ export function setupClickToSelect(): void {
       if ((ctx.features as any).gizmo?.isDragging?.()) return;
       if (anyBlockingToolActive()) return;
 
-      const hit = await pickFragmentAtPointer();
+      let hit = await pickFragmentAtPointer();
+
+      // Edit-tab "Select Links" OFF → linked federation models are not
+      // selectable (the authored document stays editable).
+      if (hit && !getSelectionPrefs().links) hit = null;
 
       // Depth arbitration: an authored element (e.g. a converted Native Twin) that is nearer than
       // the linked-model hit owns the click. The fragment raycaster cannot see authored meshes, so

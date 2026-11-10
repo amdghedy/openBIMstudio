@@ -82,8 +82,24 @@ import { toggleBimToolbox, isBimToolboxVisible } from "../features/bim-toolbox";
 // ── MEP category coloring ──────────────────────────────────────────────
 import { toggleMepColors, isMepColoringActive } from "../features/mep-coloring";
 // ── MEP parametric design toolkit ──────────────────────────────────────
-import { openMepDesignToolkit } from "../features/mep-fabrication";
+import { openMepDesignToolkit, showResultDialog, type ResultRow } from "../features/mep-fabrication";
 import { openParametricToolkit } from "../features/parametric-tools";
+
+// ── Selection prefs (Edit-tab toggles — real engine gating) ───────────
+import { getSelectionPrefs, setSelectionPref } from "../core/selection-prefs";
+
+// ── Orphan-panel wiring: previously-built UI that had no entry point ───
+import { toggleModelHealth } from "../features/model-health";
+import { openModelQADialog } from "../features/model-qa-summary";
+import { openMepBalancePanel } from "../features/mep-balance-panel";
+import { openMepLifecyclePanel } from "../features/mep-lifecycle-panel";
+import { openNLQueryModal } from "../features/nl-query-bar";
+import { openRebarClashReview } from "../features/rebar-clash-review";
+import { openDrawingRegisterPanel } from "../features/drawing-register-panel";
+import { previewCoordinationReportHtml, exportCoordinationReportHtml } from "../features/standards-report";
+import { openTrayFillDialog, openHangerSpacingDialog } from "../features/mep-engineering-dialogs";
+import { exportCobie } from "../modules/export/cobie";
+import { exportClashesBcf } from "../modules/export/bcf21";
 
 // ── Unified select-all ─────────────────────────────────────────────────
 import { selectAllObjects, clearAllSelection } from "../features/select-all";
@@ -1053,6 +1069,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("rebar", "Export BBS", safe(() => {
         (window as any).__obsRebarViewport?.exportBBS?.();
       }, "Export BBS"), { title: "Export Bar Bending Schedule as CSV" }),
+      b("check", "Clash Review", safe(() => openRebarClashReview(), "Rebar clash review"), {
+        title: "Interactive rebar clash, lap-splice and standards review (EC2 / ACI / BS) for the generated rebar",
+      }),
       sep(),
       groupLabel("Properties"),
       propertiesButton(),
@@ -1363,6 +1382,17 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Views"),
       planButton(),
       schedulesButton(),
+      sep(),
+      groupLabel("Engineering"),
+      b("system", "MEP Systems", safe(() => openMepLifecyclePanel(), "MEP systems diagnostics"), {
+        title: "Connector-network + electrical distribution diagnostics, panel schedules and load/circuit management for the native MEP model",
+      }),
+      b("duct-fitting", "Tray Fill Calc", safe(() => void openTrayFillDialog(), "Cable tray fill calculator"), {
+        title: "NEC 392 tray fill ratio + suggested standard width for a cable bundle",
+      }),
+      b("conn", "Hanger Spacing", safe(() => void openHangerSpacingDialog(), "Hanger spacing calculator"), {
+        title: "SMACNA / MSS SP-69 hanger count, spacing and rod sizing for a straight run",
+      }),
     ],
   },
 
@@ -1669,12 +1699,36 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           return;
         }
         const report = (window as any).__obsModelChecker.run(elements);
-        console.log("[model-checker]", report);
+        const rows: ResultRow[] = [
+          { label: "Elements checked", value: String(report.totalElements ?? elements.length) },
+          { label: "Errors", value: String(report.summary?.errors ?? 0), strong: true },
+          { label: "Warnings", value: String(report.summary?.warnings ?? 0), strong: true },
+          { label: "Infos", value: String(report.summary?.infos ?? 0) },
+          { label: "Duration", value: `${report.durationMs} ms` },
+        ];
+        const findings = (report.results ?? []).slice(0, 8).map((f: any) =>
+          `${f.ruleName ?? f.ruleId}: ${f.message}${f.elementIds?.length ? ` (elements ${f.elementIds.slice(0, 4).join(", ")})` : ""}`);
+        showResultDialog("Model Checker Report", rows, findings.length ? findings : ["No findings — all shipped rules passed."]);
       }, "Run model checker"), { title: "Run QA rules against loaded elements" }),
       b("inspect", "List Rules", safe(() => {
         const rules = (window as any).__obsModelChecker.listRules();
         toast(`Shipped rules: ${rules.join(", ")}`, "info", 4000);
       }, "List rules"), { title: "List shipped model-checker rule IDs" }),
+      sep(),
+      groupLabel("Health & QA"),
+      b("inspect", "Model Health", safe(() => {
+        void toggleModelHealth();
+      }, "Model health dashboard"), { title: "BIM QA dashboard — duplicate GlobalIds, missing names/properties, orphan geometry; findings are clickable" }),
+      b("inspect", "Model QA", safe(async () => {
+        const m = await import("../features/model-qa-summary");
+        m.openModelQADialog();
+      }, "Model QA dialog"), { title: "Scan for unhosted doors/windows, zero-length beams, unclosed rooms, missing materials" }),
+      b("check", "Coordination Report", safe(async () => {
+        await previewCoordinationReportHtml();
+      }, "Coordination report"), { title: "Combined clashes + standards-compliance report (single HTML, printable / emailable)" }),
+      b("check", "Export Report", safe(async () => {
+        await exportCoordinationReportHtml();
+      }, "Export coordination report"), { title: "Download the combined coordination report as an HTML file" }),
       sep(),
       groupLabel("Daylight"),
       b("sun", "Daylight", safe(() => {
@@ -1687,8 +1741,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           gridResolution: 0.5,
           exteriorIlluminance: 10000,
         });
-        console.log("[daylighting]", r);
-      }, "Daylight"), { title: "Compute daylight factor + sDA + ASE for default room" }),
+        showResultDialog("Daylight Factor Analysis — 6 × 4 × 3 m room", [
+          { label: "Average daylight factor", value: `${r.averageDF?.toFixed?.(2) ?? r.averageDF}%`, strong: true },
+          { label: "sDA (spatial daylight autonomy)", value: String(r.sDA), strong: true },
+          { label: "ASE (annual sunlight exposure)", value: String(r.ASE) },
+          { label: "Classification", value: String((window as any).__obsDaylighting.classify?.(r.averageDF) ?? "") },
+        ], ["Demo room 6 × 4 × 3 m, 4 m² window, VT 0.7. Parametric room studies arrive with the generative design editor."]);
+      }, "Daylight"), { title: "Compute daylight factor + sDA + ASE for the default room" }),
       b("sun", "Solar", safe(() => {
         const sun = (window as any).__obsSun;
         if (!sun) { toast("Sun module not loaded", "warn"); return; }
@@ -1738,8 +1797,42 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
             { name: "wwr-floor", check: (s: any) => s.wwr > 0.15 },
           ],
         });
-        console.log("[generative]", result);
-      }, "Run generative"), { title: "Run default generative design study" }),
+        const top = (result.paretoFront ?? []).slice(0, 6).map((p: any) => {
+          const s = p.sample ?? {};
+          const sc = p.scores ?? {};
+          return `wwr ${Number(s.wwr ?? 0).toFixed(2)} · depth ${Number(s.depth ?? 0).toFixed(1)} m · ${Object.entries(sc).map(([k, v]) => `${k} ${Number(v).toFixed(1)}`).join(", ")}${p.feasible ? "" : " (infeasible)"}`;
+        });
+        showResultDialog("Generative Study — Window-to-Wall Ratio", [
+          { label: "Evaluations", value: String(result.evaluated ?? 0) },
+          { label: "Pareto-optimal solutions", value: String(result.paretoFront?.length ?? 0), strong: true },
+        ], top.length ? top : ["No Pareto candidates returned."]);
+      }, "Run generative"), { title: "Run the default generative design study (WWR vs depth trade-off)" }),
+      sep(),
+      groupLabel("MEP Analysis"),
+      b("inspect", "MEP Balance", safe(() => openMepBalancePanel(), "MEP flow balance panel"), {
+        title: "Flow balancing, duct/pipe pressure drops and cable-tray fill inspection across authored systems",
+      }),
+      b("duct-fitting", "Tray Fill Calc", safe(() => void openTrayFillDialog(), "Cable tray fill calculator"), {
+        title: "NEC 392 tray fill ratio + suggested standard width for a cable bundle",
+      }),
+      b("conn", "Hanger Spacing", safe(() => void openHangerSpacingDialog(), "Hanger spacing calculator"), {
+        title: "SMACNA / MSS SP-69 hanger count, spacing and rod sizing for a straight run",
+      }),
+      b("system", "BCF 2.1", safe(() => {
+        void exportClashesBcf();
+      }, "Export clash topics as BCF 2.1"), {
+        title: "Export clash test results as a BCF 2.1 archive for BIMcollab / Bimplus / Revit round-trips",
+      }),
+      b("folder", "COBie", safe(() => {
+        void exportCobie();
+      }, "Export COBie workbook"), {
+        title: "Export a COBie 2.4 workbook (Facility / Floor / Space / Type / Component worksheets) from the loaded model",
+      }),
+      sep(),
+      groupLabel("AI"),
+      b("system", "Ask the Model", safe(() => openNLQueryModal(), "Natural-language BIM query"), {
+        title: "Ask questions about the loaded model in plain language — 'show walls thicker than 200mm' — and select the results",
+      }),
       sep(),
       groupLabel("Structural FEM"),
       b("column", "Analyze Building (3D)", safe(() => void openAnalyzeBuildingDialog(), "Analyze the authored structural model in 3D"), {
@@ -2035,60 +2128,48 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Select"),
       b("modify", "Modify", safe(() => {
         try { (ctx.features as any).selection?.clear?.(); } catch {}
+        setAuthoringTool("select");
         toast("Modify: click an element to edit", "info");
       }, "Modify tool"), { kbd: "Esc", title: "Press Esc to exit any active tool" }),
       b("check", "Links", safe(() => {
-        const on = !(window as any).__obsSelLinks;
-        (window as any).__obsSelLinks = on;
-        toast("Select links: " + (on ? "ON" : "OFF"), "info");
-      }, "Select links"), { title: "Allow selecting elements in linked files" }),
-      b("check", "Underlay", safe(() => {
-        const on = !(window as any).__obsSelUnderlay;
-        (window as any).__obsSelUnderlay = on;
-        toast("Select underlay: " + (on ? "ON" : "OFF"), "info");
-      }, "Select underlay"), { title: "Allow selecting underlay elements" }),
+        const next = !getSelectionPrefs().links;
+        setSelectionPref("links", next);
+        toast("Select links: " + (next ? "ON — linked models are selectable" : "OFF — linked models are protected from selection"), "info");
+      }, "Select links"), { title: "Allow selecting elements in linked federation models" }),
       b("check", "Pinned", safe(() => {
-        const on = !(window as any).__obsSelPinned;
-        (window as any).__obsSelPinned = on;
-        toast("Select pinned: " + (on ? "ON" : "OFF"), "info");
-      }, "Select pinned"), { title: "Allow selecting pinned elements" }),
-      b("check", "By Face", safe(() => {
-        const on = !(window as any).__obsSelByFace;
-        (window as any).__obsSelByFace = on;
-        toast("Select by face: " + (on ? "ON" : "OFF"), "info");
-      }, "Select by face"), { title: "Select individual faces instead of the whole element" }),
-      b("check", "Drag Sel", safe(() => {
-        const on = !(window as any).__obsSelDrag;
-        (window as any).__obsSelDrag = on;
-        toast("Drag on selection: " + (on ? "ON" : "OFF"), "info");
-      }, "Drag on selection"), { title: "Dragging on selected element moves it" }),
+        const next = !getSelectionPrefs().pinned;
+        setSelectionPref("pinned", next);
+        toast("Select pinned: " + (next ? "ON" : "OFF — pinned elements are skipped by every pick"), "info");
+      }, "Select pinned"), { title: "Allow selecting pinned elements (Modify ▸ Pin to pin)" }),
+      planned("check", "By Face", "Face sub-selection is planned for a future release. Element-level selection and FRAG edit (vertex editing) are available today."),
+      planned("check", "Drag Sel", "Drag-on-selection is planned for a future release. Move is available via grips, the Move tool and Modify ▸ Move."),
       sep(),
 
       groupLabel("Clipboard"),
       b("copy", "Copy", safe(() => {
-        try {
-          const snap = (ctx.features as any).selection?.snapshot?.();
-          (window as any).__obsClipboard = snap;
-          const n = snap ? Object.values(snap).reduce((a: number, s: any) => a + (s?.size ?? 0), 0) : 0;
-          toast(n ? `Copied ${n} element(s)` : "Nothing selected to copy", "info");
-        } catch { toast("Copy failed", "warn"); }
-      }, "Copy")),
+        void import("../features/modify-actions").then((m) => m.copySelectionToClipboard());
+      }, "Copy"), { kbd: "Ctrl+C" }),
       b("clear", "Cut", safe(() => {
-        try {
-          const snap = (ctx.features as any).selection?.snapshot?.();
-          (window as any).__obsClipboard = snap;
-          (ctx.features as any).selection?.clear?.();
-          toast("Cut: elements staged", "info");
-        } catch { toast("Cut failed", "warn"); }
-      }, "Cut")),
+        void import("../features/modify-actions").then((m) => {
+          const n = m.copySelectionToClipboard();
+          if (!n) return; // nothing selected — copySelectionToClipboard already warned
+          try { deleteSelectedElement(); toast(`Cut ${n} element(s) — Ctrl+V to paste`, "success"); }
+          catch { toast("Cut failed while deleting selection", "warn"); }
+        });
+      }, "Cut"), { kbd: "Ctrl+X", title: "Copy the selection to the clipboard, then delete it" }),
       b("save", "Paste", safe(() => {
-        const cb = (window as any).__obsClipboard;
-        if (!cb) { toast("Clipboard empty", "warn"); return; }
-        toast("Paste: click a point to place", "info");
-      }, "Paste")),
-      b("beam", "Join", safe(() => {
-        toast("Join geometry: pick two elements to merge", "info");
-      }, "Join geometry")),
+        void import("../features/modify-actions").then((m) => m.pasteFromClipboard());
+      }, "Paste"), { kbd: "Ctrl+V", title: "Place copies of the clipboard slightly offset from the originals" }),
+      b("beam", "Join", safe(async () => {
+        try {
+          const { getJoinsCleanupService } = await import("../modules/joins-cleanup");
+          const svc = getJoinsCleanupService();
+          const joins = await svc.autoJoin();
+          toast(joins.length ? `Join geometry: ${joins.length} join(s) created/cleaned` : "Join geometry: no joinable element pairs found", joins.length ? "success" : "info");
+        } catch (err) {
+          toast("Join geometry failed — see console for details", "warn");
+        }
+      }, "Join geometry"), { title: "Auto-join geometry of authored elements (walls, floors, frames) and clean duplicate overlaps" }),
       sep(),
 
       groupLabel("BIM Authoring"),
@@ -2559,6 +2640,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         } catch { /* */ }
         toggleSheetsPanel();
       }, "Sheet"), { title: "Create / manage drawing sheets" }),
+      b("report", "Drawing Register", safe(() => openDrawingRegisterPanel(), "Drawing register" ), {
+        title: "Formal sheet register + transmittal table with CSV / HTML export",
+      }),
       b("new-sheet", "Title blk", safe(() => {
         toggleSheetsPanel();
         toast("Title blocks — edit in Sheets panel", "info");

@@ -334,14 +334,14 @@ function placePart(part: FabPart): void {
 // form-modal → result-dialog pair; everything is also reachable from the
 // command palette (mep.* commands) and from the MEP ribbon tab.
 
-interface ResultRow {
+export interface ResultRow {
   label: string;
   value: string;
   strong?: boolean;
 }
 
 /** Lightweight result dialog — dark card matching the form-modal look. */
-function showResultDialog(title: string, rows: ResultRow[], notes: string[] = []): void {
+export function showResultDialog(title: string, rows: ResultRow[], notes: string[] = []): void {
   const overlay = document.createElement("div");
   overlay.style.cssText =
     "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100001;" +

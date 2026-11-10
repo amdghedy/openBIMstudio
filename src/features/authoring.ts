@@ -33,6 +33,7 @@ import * as THREE from "three";
 import { CSG } from "three-csg-ts";
 import { ctx } from "../core/context";
 import { register, type AuthoringService } from "../core/services";
+import { getSelectionPrefs } from "../core/selection-prefs";
 import { inputRouter, type Gesture, type Mods } from "../core/input-router";
 import { notify } from "../core/notify";
 import { setMeasureEnabled } from "./measure";
@@ -2973,13 +2974,26 @@ function elementAt(e: MouseEvent): string | null {
     ray.params.Line = { threshold: 0.15 };
     ray.params.Points = { threshold: 0.2 };
     ray.setFromCamera(ndcOf(e), ctx.world.camera.three);
+    // Edit-tab "Select Pinned" OFF → pinned elements are skipped for every
+    // authored pick (selection, host picking,Modify tools) — BIM semantics.
+    const allowPinned = getSelectionPrefs().pinned;
     // Prefer authored group; include nested meshes
     const hits = ray.intersectObjects(group.children, true);
     for (const h of hits) {
       if (!visibleChain(h.object)) continue;
       let o: THREE.Object3D | null = h.object;
       while (o) {
-        if (o.userData?.elementId) return String(o.userData.elementId);
+        if (o.userData?.elementId) {
+          const id = String(o.userData.elementId);
+          if (!allowPinned) {
+            const el = elements.find((x) => String((x as any).id) === id) as any;
+            if (el?.properties?.pinned) {
+              o = o.parent;
+              continue;
+            }
+          }
+          return id;
+        }
         o = o.parent;
       }
     }
@@ -5889,6 +5903,7 @@ export function pickAuthoredElementAt(e: MouseEvent): string | null {
 export function pickAuthoredHitAt(e: MouseEvent): { id: string; distance: number; isNativeTwin: boolean } | null {
   try {
     if (!ctx.world?.camera?.three || !group.children.length) return null;
+    const allowPinned = getSelectionPrefs().pinned;
     const ray = new THREE.Raycaster();
     ray.params.Line = { threshold: 0.15 };
     ray.params.Points = { threshold: 0.2 };
@@ -5900,6 +5915,10 @@ export function pickAuthoredHitAt(e: MouseEvent): { id: string; distance: number
         const id = o.userData?.elementId;
         if (id) {
           const el = elements.find((x) => x.id === String(id));
+          if (!allowPinned && (el as any)?.properties?.pinned) {
+            o = o.parent;
+            continue;
+          }
           return { id: String(id), distance: h.distance, isNativeTwin: !!(el?.properties as any)?.nativeTwin };
         }
         o = o.parent;

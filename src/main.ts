@@ -73,6 +73,8 @@ import { setupViewportToolbar } from "./shell/viewport-toolbar";
 import { registerDefaultShortcuts } from "./shell/default-shortcuts";
 import { setupUserInterfaceMenu } from "./features/user-interface-menu";
 import { setupNavigationBar } from "./features/navigation-bar";
+import { setupOrthoHook } from "./features/ortho-hook";
+import { setupNewFeatureBadges } from "./features/new-feature-badges";
 import { setupViewCube } from "./features/viewcube";
 import { setupSystemBrowser } from "./features/system-browser";
 import { setupMepFabrication } from "./features/mep-fabrication";
@@ -388,6 +390,12 @@ await step("panel", () => { buildPanel(); setupToolWindows(); });
 await step("workspace-layout", () => setupWorkspaceLayout());
 await step("ribbon-persist", () => setupRibbonPersist());
 await step("status-bar-extras", () => setupStatusBarExtras());
+
+// Ortho projection hook — re-fits the frustum when the camera switches
+// perspective ↔ orthographic so the visible size stays consistent.
+await step("ortho-hook", () => setupOrthoHook());
+// New-feature discovery badges — green dots on newly shipped controls.
+await step("new-feature-badges", () => setupNewFeatureBadges());
 
 // Plugin SDK boots last, after every service is registered and the viewport
 // is interactive. Plugins depend on `services.tryUse("authoring")` etc.
