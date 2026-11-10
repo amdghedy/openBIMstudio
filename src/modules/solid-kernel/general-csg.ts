@@ -586,7 +586,9 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
     const tri = [b.vertices[ia], b.vertices[ib], b.vertices[ic]];
     const nrm = triNormal(tri);
     if (!nrm) continue;
-    const triangleCuts = cutCandidatesForTriangle(tri, allCuts);
+    const triangleBounds=boundsOfPoints(tri);
+    const nearbyCutIndices=queryAabbIndex(cutSupportIndex,triangleBounds);
+    const triangleCuts = cutCandidatesForTriangle(tri, allCuts, nearbyCutIndices);
     for (const frag of splitFragment(tri, triangleCuts, "A")) {
       if (frag.coplanar !== null) {
         if (op === "subtract") continue; // coplanar void skin: A's cells own the plane
