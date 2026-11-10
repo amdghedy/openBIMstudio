@@ -143,7 +143,7 @@ t("polar tracking quantizes direction and preserves cursor distance",()=>{
   const a={x:10,y:20};
   const p=m.polarConstrain(a,{x:13,y:24},90);
   near(Math.hypot(p.x-a.x,p.y-a.y),5);
-  near(p.y,a.y);
+  near(p.x,a.x);
   const q=m.polarConstrain(a,{x:13,y:24},45);
   near(Math.atan2(q.y-a.y,q.x-a.x)*180/Math.PI,45);
   near(Math.hypot(q.x-a.x,q.y-a.y),5);
