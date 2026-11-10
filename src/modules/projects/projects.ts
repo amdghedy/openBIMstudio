@@ -107,6 +107,10 @@ export async function saveProject(silent = false) {
   } catch (e) { console.warn("[projects] MEP lifecycle snapshot failed", e); }
   current.grids = getGrids();
   current.levels = getLevels();
+  try {
+    const workPlanes = await import("../work-planes/types");
+    current.workPlanes = workPlanes.serializeWorkPlanes();
+  } catch (e) { console.warn("[projects] work plane snapshot failed", e); }
   current.issues = getIssues();
   current.cost = getCostData();
   current.appState = snapshotAppState();
@@ -393,6 +397,10 @@ export async function openProject(id: string) {
     setGrids(doc.grids ?? []);
     setLevels(doc.levels ?? []);
     setElements(doc.elements ?? []);
+    try {
+      const workPlanes = await import("../work-planes/types");
+      workPlanes.restoreWorkPlanes(doc.workPlanes ?? { schemaVersion: 1, activeId: null, planes: [] });
+    } catch (e) { console.warn("[projects] work plane restore failed", e); }
     try {
       const lifecycle = (ctx.features as any).mep?.lifecycle;
       if (typeof lifecycle?.hydrate === "function") lifecycle.hydrate(doc.mepLifecycle ?? {});
