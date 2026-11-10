@@ -27,6 +27,19 @@ export interface SelectionSet {
 
 const SETS_KEY = "obs.selection-sets.v1";
 
+function normalizeSelectionCategory(value: string): string {
+  return value.trim().toLowerCase().replace(/^ifc/, "").replace(/[^a-z0-9]/g, "");
+}
+
+function categoryMatchesFilter(filter: Iterable<string> | null, category: string): boolean {
+  if (!filter) return true;
+  const target = normalizeSelectionCategory(category);
+  for (const value of filter) {
+    if (normalizeSelectionCategory(value) === target) return true;
+  }
+  return false;
+}
+
 class SelectionManager {
   private map: SelectionSnapshot = {};
   private listeners = new Set<() => void>();
@@ -140,6 +153,10 @@ class SelectionManager {
   /** Apply the active category filter consistently to native authored picks.
    *  IFC aliases are accepted alongside native element type names.
    */
+  matchesCategoryName(category: string): boolean {
+    return categoryMatchesFilter(this.filter, category);
+  }
+
   matchesAuthoredCategoryFilter(type: string, properties?: Record<string, unknown> | null): boolean {
     if (!this.filter?.size) return true;
     const candidates = [
@@ -150,31 +167,35 @@ class SelectionManager {
       properties?.entity,
       properties?.predefinedType,
     ].filter((value): value is string => typeof value === "string" && value.length > 0);
-    const normalize = (value: string) => value.trim().toLowerCase().replace(/^ifc/, "").replace(/[^a-z0-9]/g, "");
-    const allowed = new Set([...this.filter].map(normalize));
-    return candidates.some(value => allowed.has(normalize(value)));
+    return candidates.some(value => this.matchesCategoryName(value));
+  }
+
+  private async filteredGeometryIds(model: any, geometryIds: number[]): Promise<Set<number>> {
+    if (!this.filter?.size) return new Set(geometryIds);
+    const categories = await model.getItemsOfCategories([/.+/]);
+    const geometry = new Set(geometryIds);
+    const allowed = new Set<number>();
+    for (const [category, ids] of Object.entries(categories ?? {})) {
+      if (!this.matchesCategoryName(category)) continue;
+      for (const id of (ids as number[]) ?? []) if (geometry.has(id)) allowed.add(id);
+    }
+    return allowed;
   }
 
   // ── Bulk operations ──
   async selectAll(): Promise<void> {
-    this.map = {};
+    const next: SelectionSnapshot = {};
     for (const [modelId, model] of ctx.fragments.list) {
       try {
         const ids = (await (model as any).getItemsIdsWithGeometry()) as number[];
         if (!ids?.length) continue;
-        if (this.filter) {
-          const cats = await (model as any).getItemsOfCategories([/.+/]);
-          const keep = new Set<number>();
-          for (const [cat, list] of Object.entries(cats ?? {})) {
-            if (this.filter.has(cat)) for (const id of (list as number[]) || []) keep.add(id);
-          }
-          if (keep.size) this.map[modelId] = keep;
-        } else {
-          this.map[modelId] = new Set(ids);
-        }
-      } catch { /* */ }
+        const keep = await this.filteredGeometryIds(model, ids);
+        if (keep.size) next[modelId] = keep;
+      } catch (err) {
+        console.warn("[selection] selectAll category lookup failed", err);
+      }
     }
-    this.emit();
+    this.replace(next);
     await this.applyToHighlighter();
   }
 
@@ -183,15 +204,19 @@ class SelectionManager {
     if (!model) return;
     try {
       const cats = await (model as any).getItemsOfCategories([/.+/]);
-      let cat: string | null = null;
-      for (const [c, list] of Object.entries(cats ?? {})) {
-        if (((list as number[]) || []).includes(localId)) { cat = c; break; }
+      let category: string | null = null;
+      for (const [name, list] of Object.entries(cats ?? {})) {
+        if (((list as number[]) || []).includes(localId)) { category = name; break; }
       }
-      if (!cat) return;
-      const ids = ((cats as any)[cat] as number[]) || [];
+      if (!category || !this.matchesCategoryName(category)) return;
+      const geometryIds = (await (model as any).getItemsIdsWithGeometry()) as number[];
+      const geometry = new Set(geometryIds ?? []);
+      const ids = ((cats as any)[category] as number[] | undefined) ?? [];
       const merged: SelectionSnapshot = this.snapshot();
+      const keep = new Set((ids ?? []).filter(id => geometry.has(id)));
+      if (!keep.size) return;
       if (!merged[modelId]) merged[modelId] = new Set();
-      for (const id of ids) merged[modelId].add(id);
+      for (const id of keep) merged[modelId].add(id);
       this.replace(merged);
       await this.applyToHighlighter();
     } catch (e) {
@@ -200,18 +225,21 @@ class SelectionManager {
   }
 
   async invert(): Promise<void> {
+    const next: SelectionSnapshot = {};
     for (const [modelId, model] of ctx.fragments.list) {
       try {
         const all = (await (model as any).getItemsIdsWithGeometry()) as number[];
         if (!all?.length) continue;
-        const cur = this.map[modelId] ?? new Set<number>();
-        const inv = new Set<number>();
-        for (const id of all) if (!cur.has(id)) inv.add(id);
-        if (inv.size) this.map[modelId] = inv;
-        else delete this.map[modelId];
-      } catch { /* */ }
+        const universe = await this.filteredGeometryIds(model, all);
+        const current = this.map[modelId] ?? new Set<number>();
+        const inverse = new Set<number>();
+        for (const id of universe) if (!current.has(id)) inverse.add(id);
+        if (inverse.size) next[modelId] = inverse;
+      } catch (err) {
+        console.warn("[selection] invert category lookup failed", err);
+      }
     }
-    this.emit();
+    this.replace(next);
     await this.applyToHighlighter();
   }
 
@@ -401,7 +429,7 @@ async function passesCategoryFilter(modelId: string, localId: number): Promise<b
       categoryCache.set(modelId, cached);
     }
     const category = cached.byId.get(localId);
-    return !!category && allowed.includes(category);
+    return !!category && categoryMatchesFilter(allowed, category);
   } catch (err) {
     console.warn("[selection] category filter lookup failed; rejecting pick", err);
     return false;
