@@ -46,7 +46,7 @@ try {
 
   const uvPlane = wp.createWorkPlane("Facade elevation", [1, 2, 5], [0, 0, 3]);
   assert.deepEqual(wp.projectOntoWorkPlane(3, 4, 99), [2, 2]);
-  assert.equal(wp.setRotation(uvPlane.id, Math.PI / 2), true);
+  assert.equal(wp.setWorkPlaneRotation(uvPlane.id, Math.PI / 2), true);
   const rotatedCoordinates = wp.projectOntoWorkPlane(2, 2, 5);
   near(rotatedCoordinates[0], 0);
   near(rotatedCoordinates[1], -1);
@@ -60,7 +60,7 @@ try {
   wp.restoreWorkPlanes(snapshot);
   assert.equal(wp.getActiveWorkPlane().id, uvPlane.id);
   near(wp.getActiveWorkPlane().rotation, Math.PI / 2);
-  assert.equal(wp.get("wp-2").face.elementId, "wall-01");
+  assert.equal(wp.getWorkPlane("wp-2").face.elementId, "wall-01");
   assert.equal(wp.setActiveWorkPlane("missing"), false);
 
   assert.throws(() => wp.createWorkPlane("bad", [0, 0, 0], [0, 0, 0]), /zero vector/);
