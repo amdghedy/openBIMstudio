@@ -157,15 +157,15 @@ function mergeBounds(items:TriangleBounds[]):TriangleBounds {
     maxX:Math.max(b.maxX,v.maxX),maxY:Math.max(b.maxY,v.maxY),maxZ:Math.max(b.maxZ,v.maxZ),
   }),{minX:Infinity,minY:Infinity,minZ:Infinity,maxX:-Infinity,maxY:-Infinity,maxZ:-Infinity});
 }
-function buildBvhNode(mesh:IndexedMesh,indices:number[],boundsByTriangle:TriangleBounds[]):TriangleBvhNode {
+function buildBvhNode(indices:number[],boundsByTriangle:TriangleBounds[]):TriangleBvhNode {
   const bounds=mergeBounds(indices.map(i=>boundsByTriangle[i]));
   if(indices.length<=BVH_LEAF_SIZE) return {...bounds,left:null,right:null,triangles:indices};
   const sx=bounds.maxX-bounds.minX,sy=bounds.maxY-bounds.minY,sz=bounds.maxZ-bounds.minZ;
-  const axis:sx extends never ? never : "x"|"y"|"z" = sx>=sy&&sx>=sz?"x":sy>=sz?"y":"z";
+  const axis:"x"|"y"|"z" = sx>=sy&&sx>=sz?"x":sy>=sz?"y":"z";
   const center=(i:number)=>{const b=boundsByTriangle[i];return axis==="x"?(b.minX+b.maxX)/2:axis==="y"?(b.minY+b.maxY)/2:(b.minZ+b.maxZ)/2;};
   indices.sort((a,b)=>center(a)-center(b));
   const mid=Math.floor(indices.length/2);
-  return {...bounds,left:buildBvhNode(mesh,indices.slice(0,mid),boundsByTriangle),right:buildBvhNode(mesh,indices.slice(mid),boundsByTriangle),triangles:null};
+  return {...bounds,left:buildBvhNode(indices.slice(0,mid),boundsByTriangle),right:buildBvhNode(indices.slice(mid),boundsByTriangle),triangles:null};
 }
 
 /** Build a reusable median-split triangle BVH for repeated ray/inside queries. */
@@ -173,7 +173,7 @@ export function createTriangleBvh(mesh:IndexedMesh):TriangleBvh {
   const triangleCount=mesh.faces.length;
   if(!triangleCount) return {mesh,root:null,triangleCount:0};
   const bounds=mesh.faces.map((_,i)=>triangleBounds(mesh,i));
-  return {mesh,root:buildBvhNode(mesh,Array.from({length:triangleCount},(_,i)=>i),bounds),triangleCount};
+  return {mesh,root:buildBvhNode(Array.from({length:triangleCount},(_,i)=>i),bounds),triangleCount};
 }
 function rayIntersectsBounds(node:TriangleBounds,origin:Pt3,dir:Pt3,eps:number):boolean {
   let near=eps,far=Number.POSITIVE_INFINITY;
