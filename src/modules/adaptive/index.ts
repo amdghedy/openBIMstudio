@@ -441,6 +441,7 @@ function pointResidual(points: Pt3[], constraint: AdaptivePointConstraint): numb
   const ab = subPt3(points[constraint.b], points[constraint.a]);
   const cd = subPt3(points[constraint.d], points[constraint.c]);
   const abLen = lengthPt3(ab), cdLen = lengthPt3(cd);
+  if (!("a" in constraint && "b" in constraint && "c" in constraint && "d" in constraint)) return Infinity;
   if (constraint.kind === "equalLength") return Math.abs(abLen - cdLen);
   if (abLen < 1e-10 || cdLen < 1e-10) return Infinity;
   const u = unitPt3(ab), v = unitPt3(cd);
@@ -510,6 +511,7 @@ export function solveAdaptivePointConstraints(
       }
       return;
     }
+    if (!("a" in constraint && "b" in constraint && "c" in constraint && "d" in constraint)) return;
 
     const first = subPt3(points[constraint.b], points[constraint.a]);
     const second = subPt3(points[constraint.d], points[constraint.c]);
