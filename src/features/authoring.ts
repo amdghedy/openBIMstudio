@@ -34,6 +34,7 @@ import { CSG } from "three-csg-ts";
 import { ctx } from "../core/context";
 import { register, type AuthoringService } from "../core/services";
 import { getSelectionPrefs } from "../core/selection-prefs";
+import { selection } from "./selection";
 import { inputRouter, type Gesture, type Mods } from "../core/input-router";
 import { notify } from "../core/notify";
 import { setMeasureEnabled } from "./measure";
@@ -2985,6 +2986,11 @@ function elementAt(e: MouseEvent): string | null {
       while (o) {
         if (o.userData?.elementId) {
           const id = String(o.userData.elementId);
+          const authoredElement = elements.find((x) => String(x.id) === id);
+          if (authoredElement && !selection.matchesAuthoredCategoryFilter(authoredElement.type, authoredElement.properties as any)) {
+            o = o.parent;
+            continue;
+          }
           if (!allowPinned) {
             const el = elements.find((x) => String((x as any).id) === id) as any;
             if (el?.properties?.pinned) {
@@ -5915,6 +5921,10 @@ export function pickAuthoredHitAt(e: MouseEvent): { id: string; distance: number
         const id = o.userData?.elementId;
         if (id) {
           const el = elements.find((x) => x.id === String(id));
+          if (el && !selection.matchesAuthoredCategoryFilter(el.type, el.properties as any)) {
+            o = o.parent;
+            continue;
+          }
           if (!allowPinned && (el as any)?.properties?.pinned) {
             o = o.parent;
             continue;

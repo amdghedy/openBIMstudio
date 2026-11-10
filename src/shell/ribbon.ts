@@ -116,6 +116,7 @@ import { toggleAutomationPanel, isAutomationPanelVisible } from "../features/aut
 
 // ── Object snaps (all modes) ───────────────────────────────────────────
 import { toggleSnapSettings, isSnapSettingsVisible, snapping } from "../features/snapping";
+import { toggleSelectionSnappingPalette, isSelectionSnappingPaletteVisible } from "../features/selection-snapping-palette";
 import { resolveDblClick } from "./ribbon-collapse";
 import { toggleAppFullScreen, isAppFullScreen } from "./fullscreen-chrome";
 
@@ -2126,6 +2127,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "Edit",
     items: () => [
       groupLabel("Select"),
+      b("settings", "Selection & Snapping", safe(() => toggleSelectionSnappingPalette(), "Selection and snapping palette"), { active: isSelectionSnappingPaletteVisible(), title: "Configure selection filters, object snap modes, snap priorities and drafting profiles (Ctrl+Shift+P)" }),
       b("modify", "Modify", safe(() => {
         try { (ctx.features as any).selection?.clear?.(); } catch {}
         setAuthoringTool("select");

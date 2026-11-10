@@ -174,6 +174,7 @@ function getAuthoredSafe(): AuthoredLite[] {
 class SnapManager {
   private enabled = true;
   private types: Set<SnapType> = new Set(ALL_TYPES);
+  private priorities: Record<SnapType, number> = { ...SNAP_PRIORITY };
   private gridSize = 0.1;
   private pixelTolerance = 20;
   private workPlaneY = 0;
@@ -250,7 +251,18 @@ class SnapManager {
   setWorkPlaneY(y: number) { this.workPlaneY = y; }
   getWorkPlaneY() { return this.workPlaneY; }
 
-  setTypes(types: SnapType[]) { this.types = new Set(types); }
+  setTypes(types: SnapType[]) { this.types = new Set(types.filter((t) => ALL_TYPES.includes(t))); }
+  getPriorities(): Record<SnapType, number> { return { ...this.priorities }; }
+  setPriority(type: SnapType, priority: number): void {
+    if (!ALL_TYPES.includes(type) || !Number.isFinite(priority)) return;
+    this.priorities[type] = Math.max(0, Math.min(1000, Math.round(priority)));
+  }
+  setPriorities(priorities: Partial<Record<SnapType, number>>): void {
+    for (const type of ALL_TYPES) {
+      const value = priorities[type];
+      if (typeof value === "number" && Number.isFinite(value)) this.setPriority(type, value);
+    }
+  }
   getTypes(): SnapType[] { return [...this.types]; }
   getAllTypes(): SnapType[] { return [...ALL_TYPES]; }
 
@@ -575,7 +587,7 @@ class SnapManager {
       // higher-priority snap wins over a closer lower-priority one.
       const ranked = rankCandidates(
         candidates.map((c) => ({ ...c, kind: c.type })),
-        SNAP_PRIORITY as Record<string, number>,
+        this.priorities as Record<string, number>,
       ).map(({ kind: _kind, ...rest }) => rest as SnapResult);
 
       this.lastCandidates = ranked;

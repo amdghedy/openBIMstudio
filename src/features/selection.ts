@@ -137,6 +137,24 @@ class SelectionManager {
     return this.filter != null && this.filter.size > 0;
   }
 
+  /** Apply the active category filter consistently to native authored picks.
+   *  IFC aliases are accepted alongside native element type names.
+   */
+  matchesAuthoredCategoryFilter(type: string, properties?: Record<string, unknown> | null): boolean {
+    if (!this.filter?.size) return true;
+    const candidates = [
+      type,
+      properties?.ifcType,
+      properties?.ifcEntity,
+      properties?.ifcClass,
+      properties?.entity,
+      properties?.predefinedType,
+    ].filter((value): value is string => typeof value === "string" && value.length > 0);
+    const normalize = (value: string) => value.trim().toLowerCase().replace(/^ifc/, "").replace(/[^a-z0-9]/g, "");
+    const allowed = new Set([...this.filter].map(normalize));
+    return candidates.some(value => allowed.has(normalize(value)));
+  }
+
   // ── Bulk operations ──
   async selectAll(): Promise<void> {
     this.map = {};
@@ -362,6 +380,33 @@ let clickToSelectInstalled = false;
 let highlighterSyncInstalled = false;
 let hoverPending = false;
 let hoveredMap: Record<string, Set<number>> = {};
+const categoryCache = new Map<string, { model: object; byId: Map<number, string> }>();
+
+async function passesCategoryFilter(modelId: string, localId: number): Promise<boolean> {
+  const allowed = selection.getFilter();
+  if (!allowed?.length) return true;
+  try {
+    const model: any = ctx.fragments.list.get(modelId);
+    if (!model?.getItemsOfCategories) return false;
+    let cached = categoryCache.get(modelId);
+    // Model IDs can be reused after unload/reload. Never apply a stale category
+    // index to a different model instance with the same ID.
+    if (!cached || cached.model !== model) {
+      const categories = await model.getItemsOfCategories([/.+/]);
+      const byId = new Map<number, string>();
+      for (const [category, ids] of Object.entries(categories ?? {})) {
+        for (const id of (ids as number[]) ?? []) byId.set(id, category);
+      }
+      cached = { model, byId };
+      categoryCache.set(modelId, cached);
+    }
+    const category = cached.byId.get(localId);
+    return !!category && allowed.includes(category);
+  } catch (err) {
+    console.warn("[selection] category filter lookup failed; rejecting pick", err);
+    return false;
+  }
+}
 
 function anyBlockingToolActive(): boolean {
   try {
@@ -445,6 +490,11 @@ async function updateHover(canvas: HTMLCanvasElement): Promise<void> {
     const localId = r?.localId ?? r?.localIds?.[0] ?? r?.itemId ?? r?.id;
     const modelId = r?.modelId ?? r?.fragments?.modelId ?? r?.fragments?.[0]?.modelId ?? r?.model?.modelId ?? r?.model?.id;
     if (typeof localId !== "number" || typeof modelId !== "string" || !ctx.fragments.list.has(modelId)) {
+      await clearHover();
+      return;
+    }
+    // Hover feedback must obey the same category policy as committed picks.
+    if (!(await passesCategoryFilter(modelId, localId))) {
       await clearHover();
       return;
     }
@@ -536,6 +586,9 @@ export function setupClickToSelect(): void {
       // Edit-tab "Select Links" OFF → linked federation models are not
       // selectable (the authored document stays editable).
       if (hit && !getSelectionPrefs().links) hit = null;
+      // Category filters are applied to the actual pointer pick, not only
+      // bulk Select All. The per-model category map is cached after first use.
+      if (hit && !(await passesCategoryFilter(hit.modelId, hit.localId))) hit = null;
 
       // Depth arbitration: an authored element (e.g. a converted Native Twin) that is nearer than
       // the linked-model hit owns the click. The fragment raycaster cannot see authored meshes, so
