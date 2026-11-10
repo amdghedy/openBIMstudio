@@ -311,7 +311,7 @@ export function buildAdaptiveElementMesh(element: Any): THREE.Object3D | null {
   const definition = element?.properties?.adaptiveDefinition as AdaptiveElementDefinition | undefined;
   if (!definition) return null;
   try {
-    const resolvedDefinition = resolveAdaptiveFaceLocks(definition);
+    const resolvedDefinition = validateDefinition(resolveAdaptiveFaceLocks(definition));
     const group = meshForDefinition(resolvedDefinition, String(element.color ?? "#60a5fa"));
     group.traverse((object) => {
       object.userData.elementId = element.id;
@@ -577,11 +577,19 @@ function transformFamilyProfile(
   }
   const scale = transform.scale ?? [];
   const sx = scale[0] ? resolveProfileRef(scale[0], params) : 1;
+  const sy = scale[1] ? resolveProfileRef(scale[1], params) : 1;
   const sz = scale[2] ? resolveProfileRef(scale[2], params) : 1;
-  if (!(sx > 0) || !(sz > 0)) throw new Error("Adaptive compound profile scales must be positive");
+  if (!(sx > 0) || !(sy > 0) || !(sz > 0)) throw new Error("Adaptive compound profile scales must be positive");
+  if (Math.abs(sy - 1) > 1e-8) {
+    throw new Error("Adaptive family section transforms cannot scale along the adaptive path axis");
+  }
   const translate = transform.translate ?? [];
   const tx = translate[0] ? resolveProfileRef(translate[0], params) : 0;
+  const ty = translate[1] ? resolveProfileRef(translate[1], params) : 0;
   const tz = translate[2] ? resolveProfileRef(translate[2], params) : 0;
+  if (Math.abs(ty) > 1e-8) {
+    throw new Error("Adaptive family section transforms cannot translate along the adaptive path axis");
+  }
   const c = Math.cos(ry), si = Math.sin(ry);
   return profile.map((point) => {
     const u = point.u * sx, v = point.v * sz;
