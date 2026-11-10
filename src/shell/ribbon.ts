@@ -1160,6 +1160,17 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         { active: isMepColoringActive(),
           title: "Color MEP categories so fittings match the runs they belong to" }),
       sep(),
+      groupLabel("Engineering"),
+      b("system", "MEP Systems", safe(() => openMepLifecyclePanel(), "MEP systems diagnostics"), {
+        title: "Connector-network + electrical distribution diagnostics, panel schedules and load/circuit management for the native MEP model",
+      }),
+      b("duct-fitting", "Tray Fill Calc", safe(() => void openTrayFillDialog(), "Cable tray fill calculator"), {
+        title: "NEC 392 tray fill ratio + suggested standard width for a cable bundle",
+      }),
+      b("conn", "Hanger Spacing", safe(() => void openHangerSpacingDialog(), "Hanger spacing calculator"), {
+        title: "SMACNA / MSS SP-69 hanger count, spacing and rod sizing for a straight run",
+      }),
+      sep(),
       groupLabel("Properties"),
       propertiesButton(),
     ],
@@ -1382,17 +1393,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Views"),
       planButton(),
       schedulesButton(),
-      sep(),
-      groupLabel("Engineering"),
-      b("system", "MEP Systems", safe(() => openMepLifecyclePanel(), "MEP systems diagnostics"), {
-        title: "Connector-network + electrical distribution diagnostics, panel schedules and load/circuit management for the native MEP model",
-      }),
-      b("duct-fitting", "Tray Fill Calc", safe(() => void openTrayFillDialog(), "Cable tray fill calculator"), {
-        title: "NEC 392 tray fill ratio + suggested standard width for a cable bundle",
-      }),
-      b("conn", "Hanger Spacing", safe(() => void openHangerSpacingDialog(), "Hanger spacing calculator"), {
-        title: "SMACNA / MSS SP-69 hanger count, spacing and rod sizing for a straight run",
-      }),
     ],
   },
 
