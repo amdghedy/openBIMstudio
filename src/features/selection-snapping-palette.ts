@@ -7,6 +7,7 @@
 import { selection } from "./selection";
 import { snapping, type SnapType } from "./snapping";
 import { getSelectionPrefs, setSelectionPref } from "../core/selection-prefs";
+import { hasUnderlayData, isUnderlaySnapEnabled, setUnderlaySnapEnabled } from "./cad-underlay-snap";
 
 type DraftingProfile = {
   id: string;
@@ -189,6 +190,18 @@ function render(): void {
     typesGrid.append(checkbox(type[0].toUpperCase()+type.slice(1), active.has(type), v => { snapping.toggleType(type, v); }));
   }
   snapSection.append(typesGrid);
+  const snapActions = el("div");
+  style(snapActions, "display:flex;gap:6px;margin-top:8px");
+  snapActions.append(
+    button("Enable all", () => { snapping.enableAllTypes(); render(); }),
+    button("Disable all", () => { snapping.disableAllTypes(); render(); }),
+  );
+  snapSection.append(snapActions);
+  snapSection.append(checkbox(
+    "Snap to linked CAD (DWG / DXF)" + (hasUnderlayData() ? "" : " — no drawing loaded"),
+    isUnderlaySnapEnabled(),
+    setUnderlaySnapEnabled,
+  ));
   body.append(snapSection);
 
   const priorities = section("Snap priority");
