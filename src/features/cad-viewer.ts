@@ -202,7 +202,11 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "PURGE", aliases: ["PU"], description: "Remove unused named items and empty layers" },
   { name: "AUDIT", aliases: ["AUDIT"], description: "Audit drawing database integrity" },
   { name: "ORTHO", aliases: ["ORTHOMODE", "F8"], description: "Constrain cursor movement horizontally/vertically" },
+  { name: "POLAR", aliases: ["F10"], description: "Toggle angular tracking from the last picked point" },
+  { name: "POLARANG", aliases: ["PANG"], description: "Set the polar tracking angle increment in degrees" },
   { name: "OSNAP", aliases: ["F3"], description: "Toggle Object Snaps" },
+  { name: "OSNAPSET", aliases: ["OSMODE"], description: "Choose which object snap modes are active" },
+  { name: "QMEASURE", aliases: ["QM"], description: "Show live geometric measurements while hovering over objects" },
   { name: "GRID", aliases: ["F7"], description: "Toggle coordinate grid display" },
   { name: "DYN", aliases: ["DYNMODE", "F12"], description: "Toggle Dynamic Input HUD at cursor" },
   { name: "SNAP", aliases: ["F9"], description: "Toggle grid snapping" },
@@ -1320,6 +1324,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
   let orthoOn = false;
   let polarOn = false;
+  let polarAngle = 90;
   let dynOn = true; // Dynamic Input HUD F12
   let lwtOn = true; // Lineweight display
   let showGrid = true;
@@ -5081,6 +5086,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       .map((k) => `<option value="${k}" ${k === "drafting" ? "selected" : ""}>${k}</option>`)
       .join("");
     const unitOpts = ["drawing", "mm", "cm", "m", "in", "ft"].map((u) => `<option>${u}</option>`).join("");
+    const polarAngleOpts = [5, 10, 15, 22.5, 30, 45, 90]
+      .map((angle) => `<option value="${angle}" ${angle === polarAngle ? "selected" : ""}>${angle}°</option>`)
+      .join("");
 
     tools.innerHTML =
       rg(
@@ -5356,8 +5364,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "Modes",
         rb("grid", "Grid", `data-a="grid"`, "Grid (F7)", "on") +
           rb("origin", "Snap", `data-a="snap"`, "Object snap (F3)", "on") +
+          rb("origin", "Snap Modes", `data-a="snap-modes"`, "Configure endpoint, midpoint, center and other object snaps (OSNAPSET)") +
           rb("orthographic", "Ortho", `data-a="ortho"`, "Ortho (F8)") +
+          rb("dim-angular", "Polar", `data-a="polar"`, "Polar Tracking (F10)") +
+          `<label class="cadrb-field"><span>Polar step</span><select data-a="polar-angle">${polarAngleOpts}</select></label>` +
           rb("dim-linear", "DYN", `data-a="dyn"`, "Dynamic Input HUD (F12)", "on") +
+          rb("measure", "Quick", `data-a="quick"`, "Live length, area, radius and angle under the cursor (QMEASURE)") +
           rb("strip", "LWT", `data-a="lwt"`, "Lineweight display", "on"),
         "",
         "",
@@ -5586,6 +5598,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         updateStatus();
         draw();
       },
+      polar: () => setPolarTracking(!polarOn),
+      "snap-modes": () => openOsnapSettings(),
+      quick: () => setQuickMeasure(!quick),
       dyn: () => {
         dynOn = !dynOn;
         tools.querySelector("[data-a=dyn]")!.classList.toggle("on", dynOn);
@@ -5807,6 +5822,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       du = (e.target as HTMLSelectElement).value as M.DisplayUnit;
       showProps();
       draw();
+    };
+    sel("polar-angle").onchange = (e) => {
+      const value = Number((e.target as HTMLSelectElement).value);
+      if (!setPolarAngle(value)) logCmd("POLARANG: invalid angular increment.");
     };
     sel("ecol").onchange = (e) => {
       const v = (e.target as HTMLSelectElement).value;
@@ -6127,6 +6146,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return M.findSnap(idx, ents, wp.x, wp.y, 14 / view.scale, [...snapModes], visible, from);
   };
 
+  const constrainInputPoint = (point: M.Pt, anchor: M.Pt | null, hasObjectSnap: boolean): M.Pt => {
+    if (!anchor) return point;
+    if (orthoOn) return M.orthoConstrain(anchor, point);
+    if (polarOn && !hasObjectSnap) return M.polarConstrain(anchor, point, polarAngle);
+    return point;
+  };
+
   cv.addEventListener("pointerdown", (ev) => {
     if (!doc) return;
     cv.focus();
@@ -6203,9 +6229,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     // drawing workspace Modify tools (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET)
     if (isModTool(tool) || tool === "offset") {
-      const s2 = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind };
-      let mp: M.Pt = { x: s2.x, y: s2.y };
-      if (orthoOn && mod?.base && mod.stage === "second") mp = M.orthoConstrain(mod.base, mp);
+      const snapPoint = snapped(wp);
+      let mp: M.Pt = snapPoint ? { x: snapPoint.x, y: snapPoint.y } : wp;
+      const anchor = mod?.base && mod.stage === "second" ? mod.base : null;
+      mp = constrainInputPoint(mp, anchor, !!snapPoint);
       if (onModPointerDown(mp)) {
         draw();
         return;
@@ -6219,9 +6246,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
 
-    const s = snapped(wp) ?? { ...wp, kind: "nearest" as M.SnapKind };
-    let p = { x: s.x, y: s.y };
-    if (orthoOn && pts.length >= 1) p = M.orthoConstrain(pts[pts.length - 1], p);
+    const snapPoint = snapped(wp);
+    let p = snapPoint ? { x: snapPoint.x, y: snapPoint.y } : wp;
+    const anchor = pts.length >= 1 ? pts[pts.length - 1] : null;
+    p = constrainInputPoint(p, anchor, !!snapPoint);
 
     switch (tool) {
       case "line": {
@@ -6780,7 +6808,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     hover = snapped(wp);
     let cur = hover ? { x: hover.x, y: hover.y } : wp;
-    if (orthoOn && pts.length >= 1) cur = M.orthoConstrain(pts[pts.length - 1], cur);
+    const anchor = pts.length >= 1 ? pts[pts.length - 1] : mod?.base && mod.stage === "second" ? mod.base : null;
+    cur = constrainInputPoint(cur, anchor, !!hover);
     cursor = cur;
     if (mod) updateModGhost(cur);
     // Grip drag: live update of the dragged object (committed with undo on release).
@@ -7166,6 +7195,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`ORTHOMODE: <${orthoOn ? "ON" : "OFF"}>`);
       return;
     }
+    if (key === "F10") {
+      ev.preventDefault();
+      setPolarTracking(!polarOn);
+      return;
+    }
     if (key === "F12") {
       ev.preventDefault();
       dynOn = !dynOn;
@@ -7323,6 +7357,59 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     logCmd(`CleanScreen: <${cleanScreen ? "ON" : "OFF"}>`);
   }
 
+  function setPolarTracking(enabled: boolean): void {
+    polarOn = enabled;
+    tools.querySelector("[data-a=polar]")?.classList.toggle("on", polarOn);
+    updateStatus();
+    draw();
+    logCmd(`POLAR: <${polarOn ? "ON" : "OFF"}> · increment ${polarAngle}°`);
+  }
+
+  function setPolarAngle(value: number): boolean {
+    if (!Number.isFinite(value) || value <= 0 || value > 180) return false;
+    polarAngle = value;
+    const select = tools.querySelector<HTMLSelectElement>("[data-a=polar-angle]");
+    if (select) {
+      if (![...select.options].some((option) => Number(option.value) === value)) {
+        const option = document.createElement("option");
+        option.value = String(value);
+        option.textContent = `${value}°`;
+        select.add(option);
+      }
+      select.value = String(value);
+    }
+    updateStatus();
+    draw();
+    logCmd(`POLARANG: ${value}°`);
+    return true;
+  }
+
+  function setQuickMeasure(enabled: boolean): void {
+    quick = enabled;
+    tools.querySelector("[data-a=quick]")?.classList.toggle("on", quick);
+    updateStatus();
+    draw();
+    logCmd(`QMEASURE: <${quick ? "ON" : "OFF"}>`);
+  }
+
+  function quickMeasureText(point?: M.Pt | null): string {
+    if (!quick) return "";
+    if (!point || !idx || !doc) return "Move over an object";
+    const hit = M.pickEntity(idx, ents, point.x, point.y, 10 / view.scale, visible);
+    if (hit < 0) return "No object";
+    const entity = ents[hit];
+    const metrics = M.entityMetrics(entity);
+    const unit = M.unitLabel(doc.units, du);
+    const factor = M.convertLength(scaleCal, doc.units, du);
+    const parts = [entity.type];
+    if (metrics.length != null) parts.push(`L ${fmt(metrics.length * factor)} ${unit}`);
+    if (metrics.area != null) parts.push(`A ${fmt(metrics.area * factor * factor)} ${unit}²`);
+    if (metrics.radius != null) parts.push(`R ${fmt(metrics.radius * factor)} ${unit}`);
+    if (metrics.diameter != null) parts.push(`D ${fmt(metrics.diameter * factor)} ${unit}`);
+    if (metrics.angle != null) parts.push(`∠ ${fmt(metrics.angle)}°`);
+    return parts.join(" · ");
+  }
+
   /* ── Status Bar Update ── */
   function updateStatus(p?: M.Pt) {
     const c = p ?? cursor;
@@ -7343,6 +7430,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const coords = statusEl.querySelector<HTMLElement>("[data-s=coords]");
       if (coords) {
         coords.textContent = xy;
+        const quickReadout = statusEl.querySelector<HTMLElement>("[data-s=quick-readout]");
+        if (quickReadout) {
+          quickReadout.textContent = quickMeasureText(p);
+          quickReadout.style.display = quick ? "inline-flex" : "none";
+        }
         return;
       }
     }
@@ -7362,6 +7454,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <button class="obs-status-btn ${dynOn ? "active" : ""}" data-s="dyn" title="Dynamic Input (F12)">DYN</button>
       <button class="obs-status-btn ${lwtOn ? "active" : ""}" data-s="lwt" title="Lineweight">LWT</button>
       <button class="obs-status-btn ${quick ? "active" : ""}" data-s="quick" title="Quick Measure">QUICK</button>
+      <span data-s="quick-readout" style="display:${quick ? "inline-flex" : "none"};max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a7f3d0;font-size:10px">${escapeHtml(quickMeasureText(c))}</span>
       <span class="sep"></span>
       <span>${escapeHtml(unit)} · ${zoomPct}%</span>
       <span style="flex:1"></span>
@@ -7384,6 +7477,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       updateStatus();
       draw();
     });
+    statusEl.querySelector("[data-s=polar]")?.addEventListener("click", () => setPolarTracking(!polarOn));
+    statusEl.querySelector("[data-s=quick]")?.addEventListener("click", () => setQuickMeasure(!quick));
     statusEl.querySelector("[data-s=dyn]")?.addEventListener("click", () => {
       dynOn = !dynOn;
       updateStatus();
@@ -7884,6 +7979,32 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       updateStatus();
       draw();
       logCmd(`OSNAP: <${snapOn ? "ON" : "OFF"}>`);
+      return;
+    }
+    if (cmd === "POLAR") {
+      const state = (parts[1] ?? "").toUpperCase();
+      setPolarTracking(state === "ON" ? true : state === "OFF" ? false : !polarOn);
+      return;
+    }
+    if (cmd === "POLARANG" || cmd === "PANG") {
+      if (arg) {
+        const value = Number(arg);
+        if (!setPolarAngle(value)) logCmd("POLARANG: enter an angle greater than 0 and no more than 180 degrees.");
+      } else {
+        void promptLine("Polar Tracking Angle", "Angular increment in degrees (0 < angle <= 180)", String(polarAngle)).then((value) => {
+          if (value == null || !value.trim()) return;
+          const angle = Number(value);
+          if (!setPolarAngle(angle)) logCmd("POLARANG: enter an angle greater than 0 and no more than 180 degrees.");
+        });
+      }
+      return;
+    }
+    if (cmd === "OSNAPSET" || cmd === "OSMODE") {
+      openOsnapSettings();
+      return;
+    }
+    if (cmd === "QMEASURE" || cmd === "QM") {
+      setQuickMeasure(!quick);
       return;
     }
     if (cmd === "GRID") {
@@ -8529,6 +8650,56 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return el;
   }
 
+  function openOsnapSettings(): void {
+    const modes: Array<{ id: M.SnapKind; label: string; detail: string }> = [
+      { id: "endpoint", label: "Endpoint", detail: "Line and polyline endpoints" },
+      { id: "midpoint", label: "Midpoint", detail: "Middle of a line or polyline segment" },
+      { id: "center", label: "Center", detail: "Circle and arc centers" },
+      { id: "quadrant", label: "Quadrant", detail: "Circle and arc 0° / 90° / 180° / 270° points" },
+      { id: "intersection", label: "Intersection", detail: "Crossings between supported line segments" },
+      { id: "perpendicular", label: "Perpendicular", detail: "Projection from the last picked point" },
+      { id: "tangent", label: "Tangent", detail: "Tangent snap candidates" },
+      { id: "parallel", label: "Parallel", detail: "Parallel snap candidates" },
+      { id: "nearest", label: "Nearest", detail: "Nearest point on supported geometry" },
+    ];
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Object Snap Modes (OSNAPSET)</b>
+      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Choose the snap types used while drafting. F3 switches object snapping on or off.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
+        ${modes.map((mode) => `<label style="display:flex;gap:8px;align-items:flex-start;padding:7px;border:1px solid #293548;border-radius:6px"><input type="checkbox" data-snap-mode="${mode.id}" ${snapModes.has(mode.id) ? "checked" : ""} style="margin-top:3px"><span><b>${mode.label}</b><br><small style="color:#94a3b8">${mode.detail}</small></span></label>`).join("")}
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button data-r="snap-all" style="padding:6px 10px">All</button>
+        <button data-r="snap-none" style="padding:6px 10px">None</button>
+        <button data-r="snap-default" style="padding:6px 10px">Defaults</button>
+        <button data-r="snap-close" style="padding:6px 12px;background:#0284c7;color:white;border:0;border-radius:4px">Done</button>
+      </div>
+    `);
+    const refresh = (next: M.SnapKind[]): void => {
+      snapModes.clear();
+      for (const mode of next) snapModes.add(mode);
+      panel.querySelectorAll<HTMLInputElement>("[data-snap-mode]").forEach((input) => {
+        input.checked = snapModes.has(input.dataset.snapMode as M.SnapKind);
+      });
+      updateStatus();
+      draw();
+    };
+    panel.querySelectorAll<HTMLInputElement>("[data-snap-mode]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const mode = input.dataset.snapMode as M.SnapKind;
+        if (!modes.some((candidate) => candidate.id === mode)) return;
+        if (input.checked) snapModes.add(mode);
+        else snapModes.delete(mode);
+        updateStatus();
+        draw();
+      });
+    });
+    panel.querySelector("[data-r=snap-all]")?.addEventListener("click", () => refresh(M.ALL_SNAPS));
+    panel.querySelector("[data-r=snap-none]")?.addEventListener("click", () => refresh([]));
+    panel.querySelector("[data-r=snap-default]")?.addEventListener("click", () => refresh(M.ALL_SNAPS));
+    panel.querySelector("[data-r=snap-close]")?.addEventListener("click", closeOverlay);
+  }
+
   function openUnitsDialog(): void {
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">drawing workspace Drawing Units (UNITS)</b>
@@ -8604,9 +8775,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           • Right-click or Enter finishes the Select objects stage<br>
           • Numeric input (angle / factor / distance) is typed in the command line<br>
           • Yellow dashed ghost previews every transform before you click<br>
-          • <b>F3</b> — Object Snap (OSNAP) ON/OFF<br>
+          • <b>F3</b> — Object Snap ON/OFF · <b>OSNAPSET</b> configures snap modes<br>
           • <b>F8</b> — Ortho mode ON/OFF<br>
+          • <b>F10</b> — Polar tracking ON/OFF · <b>POLARANG</b> sets the angle increment<br>
           • <b>F12</b> — Dynamic Input HUD ON/OFF<br>
+          • <b>QMEASURE</b> — Live length, area, radius and angle under the cursor<br>
           • <b>LA / LAYER</b> — Layer Properties Manager<br>
         </div>
       </div>
