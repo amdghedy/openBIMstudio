@@ -235,7 +235,6 @@ export function setupSelectionSnappingPalette(): void {
     const editing = !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
     if (e.key === "Alt" && !editing) snapping.setSuspended(true);
     if (editing) return;
-    if (e.key === "F3") { e.preventDefault(); snapping.setEnabled(!snapping.isEnabled()); if (visible) render(); }
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
       e.preventDefault(); toggleSelectionSnappingPalette();
     }
