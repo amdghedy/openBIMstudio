@@ -442,7 +442,6 @@ function pointResidual(points: Pt3[], constraint: AdaptivePointConstraint): numb
   const ab = subPt3(points[constraint.b], points[constraint.a]);
   const cd = subPt3(points[constraint.d], points[constraint.c]);
   const abLen = lengthPt3(ab), cdLen = lengthPt3(cd);
-  if (!("a" in constraint && "b" in constraint && "c" in constraint && "d" in constraint)) return Infinity;
   if (constraint.kind === "equalLength") return Math.abs(abLen - cdLen);
   if (abLen < 1e-10 || cdLen < 1e-10) return Infinity;
   const u = unitPt3(ab), v = unitPt3(cd);
@@ -549,8 +548,6 @@ export function solveAdaptivePointConstraints(
     } else if (constraint.kind === "parallel") {
       const old = subPt3(points[movB], points[movA]);
       if (dotPt3(old, reference) < 0) targetDirection = scalePt3(reference, -1);
-    } else if (constraint.kind === "angle") {
-      targetDirection = unitPt3(rotateAroundAxis(reference, constraint.axis, constraint.radians));
     }
     if (constraint.kind === "equalLength") {
       targetDirection = unitPt3(subPt3(points[movB], points[movA]));
