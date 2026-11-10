@@ -385,8 +385,8 @@ export function validateAdaptivePointConstraints(
       for (const [index, label] of [[constraint.a, "A"], [constraint.b, "B"], [constraint.c, "C"], [constraint.d, "D"]] as const) {
         constraintPointIndex(index, pointCount, "Segment constraint endpoint " + label);
       }
-      if (new Set([constraint.a, constraint.b, constraint.c, constraint.d]).size !== 4) {
-        throw new Error("A segment relationship requires four distinct placement points");
+      if (constraint.a === constraint.b || constraint.c === constraint.d) {
+        throw new Error("Each constrained segment requires two different endpoints");
       }
       if (constraint.driven !== undefined && constraint.driven !== "ab" && constraint.driven !== "cd") {
         throw new Error("Segment relationship driver must be 'ab' or 'cd'");
