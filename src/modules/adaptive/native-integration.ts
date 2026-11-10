@@ -25,6 +25,20 @@ import type { NumberRef } from "../families/types";
 
 type Any = Record<string, any>;
 
+export interface AdaptiveWorkPlaneSnapshot {
+  id?: string;
+  name: string;
+  origin: Pt3;
+  normal: Pt3;
+  face?: {
+    elementId?: string;
+    meshIndex?: number;
+    faceIndex?: number;
+    localOrigin?: Pt3;
+    localNormal?: Pt3;
+  };
+}
+
 export interface AdaptiveElementDefinition {
   schemaVersion: 1;
   familyId: string;
@@ -35,6 +49,8 @@ export interface AdaptiveElementDefinition {
   /** Used only for one-point components; extrusion is along local +Y. */
   pointLength?: number;
   constraints?: AdaptivePointConstraint[];
+  /** Active arbitrary work plane captured at placement time. */
+  workPlane?: AdaptiveWorkPlaneSnapshot;
   /** Optional link to a shared BIM family and family type. */
   familyBinding?: { familyId: string; typeId: string };
 }
@@ -48,6 +64,7 @@ export interface AdaptiveElementCreateInput {
   name?: string;
   color?: string;
   constraints?: AdaptivePointConstraint[];
+  workPlane?: AdaptiveWorkPlaneSnapshot;
 }
 
 export interface AdaptiveElementPatch {
@@ -58,6 +75,7 @@ export interface AdaptiveElementPatch {
   name?: string;
   color?: string;
   constraints?: AdaptivePointConstraint[];
+  workPlane?: AdaptiveWorkPlaneSnapshot | null;
   familyBinding?: { familyId: string; typeId: string } | null;
 }
 
@@ -141,6 +159,18 @@ function indexedMeshForDefinition(definition: AdaptiveElementDefinition, driverI
   return { definition: def, indexed };
 }
 
+function triangleSoupForDefinition(definition: AdaptiveElementDefinition): number[] {
+  const indexed = indexedMeshForDefinition(definition).indexed;
+  const positions: number[] = [];
+  for (const face of indexed.faces) {
+    for (const index of face) {
+      const point = indexed.vertices[index];
+      positions.push(point.x, point.y, point.z);
+    }
+  }
+  return positions;
+}
+
 function meshForDefinition(definition: AdaptiveElementDefinition, color = "#60a5fa"): THREE.Group {
   const { definition: def, indexed } = indexedMeshForDefinition(definition);
   const positions = new Float32Array(indexed.vertices.length * 3);
@@ -185,6 +215,9 @@ export function buildAdaptiveElementMesh(element: Any): THREE.Object3D | null {
       object.userData.baseColor = element.color || "#60a5fa";
       object.userData.adaptiveComponent = true;
     });
+    // Keep a deterministic triangle-soup cache for the shared authored IFC
+    // exporter. The editable definition remains the source of truth.
+    element.nativeGeometry = { positions: triangleSoupForDefinition(definition) };
     return group;
   } catch (error) {
     console.warn("[adaptive] failed to rebuild native adaptive component", element?.id, error);
@@ -203,6 +236,7 @@ function definitionFromInput(input: AdaptiveElementCreateInput): AdaptiveElement
     profile: clone(input.profile),
     ...(input.pointLength === undefined ? {} : { pointLength: Number(input.pointLength) }),
     ...(input.constraints?.length ? { constraints: clone(input.constraints) } : {}),
+    ...(input.workPlane ? { workPlane: clone(input.workPlane) } : {}),
   };
   return validateDefinition(def);
 }
@@ -599,6 +633,9 @@ export function updateAdaptiveElement(elementId: string, patch: AdaptiveElementP
     pointCount: patch.points ? patch.points.length : beforeDefinition.pointCount,
     pointLength: patch.pointLength ?? beforeDefinition.pointLength,
     constraints: patch.constraints ? clone(patch.constraints) : beforeDefinition.constraints,
+    workPlane: patch.workPlane === undefined
+      ? beforeDefinition.workPlane
+      : patch.workPlane ? clone(patch.workPlane) : undefined,
     familyBinding: patch.familyBinding === undefined
       ? beforeDefinition.familyBinding
       : patch.familyBinding ? clone(patch.familyBinding) : undefined,
