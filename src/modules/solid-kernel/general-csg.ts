@@ -70,8 +70,9 @@
  *  - Cells with area below 1e-12 m² are dropped as measure-zero noise.
  *  - union(A,B) and union(B,A) produce the same shape; coplanar overlap
  *    skins are owned by A, so triangulations may differ.
- *  - Cost is O(T_A * T_B) fragment splits plus one robust inside test
- *    per fragment — fine for BIM-scale solids, not a meshing kernel.
+ *  - The broad phase filters cut planes once per source triangle before
+ *    fragment splitting; the worst case remains quadratic in mesh size
+ *    when most infinite planes intersect most source triangles.
  *
  * Pure module: no DOM, no three.js — safe to unit-test in Node.
  */
@@ -292,12 +293,11 @@ interface Frag {
  * One cutting object of the GLOBAL cut set: a face plane or an edge-
  * perpendicular plane (contains the edge, perpendicular to the face it
  * belongs to). Splitting EVERY triangle of BOTH meshes by EVERY cut
- * object makes the subdivision seam-consistent by construction: any
- * vertex created on a face is mirrored on the neighbour across every
- * edge it touches, because the neighbour is cut by the same objects.
- * This eliminates the T-junction class that otherwise appears where a
- * cutter plane crosses a face but merely touches its neighbour (and
- * where internal triangulation diagonals cross the other mesh).
+ * object that can affect the source triangle makes the subdivision
+ * seam-consistent by construction: the conservative candidate filter
+ * only removes planes that cannot touch that triangle or any descendant.
+ * Shared edges therefore retain the same relevant cuts on adjacent faces,
+ * avoiding T-junctions where cutter planes cross a face or triangulation.
  */
 interface CutObj {
   pl: SupportPlane;
