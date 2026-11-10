@@ -70,8 +70,9 @@
  *  - Cells with area below 1e-12 m² are dropped as measure-zero noise.
  *  - union(A,B) and union(B,A) produce the same shape; coplanar overlap
  *    skins are owned by A, so triangulations may differ.
- *  - Cost is O(T_A * T_B) fragment splits plus one robust inside test
- *    per fragment — fine for BIM-scale solids, not a meshing kernel.
+ *  - The broad phase filters cut planes once per source triangle before
+ *    fragment splitting; the worst case remains quadratic in mesh size
+ *    when most infinite planes intersect most source triangles.
  *
  * Pure module: no DOM, no three.js — safe to unit-test in Node.
  */
@@ -292,12 +293,11 @@ interface Frag {
  * One cutting object of the GLOBAL cut set: a face plane or an edge-
  * perpendicular plane (contains the edge, perpendicular to the face it
  * belongs to). Splitting EVERY triangle of BOTH meshes by EVERY cut
- * object makes the subdivision seam-consistent by construction: any
- * vertex created on a face is mirrored on the neighbour across every
- * edge it touches, because the neighbour is cut by the same objects.
- * This eliminates the T-junction class that otherwise appears where a
- * cutter plane crosses a face but merely touches its neighbour (and
- * where internal triangulation diagonals cross the other mesh).
+ * object that can affect the source triangle makes the subdivision
+ * seam-consistent by construction: the conservative candidate filter
+ * only removes planes that cannot touch that triangle or any descendant.
+ * Shared edges therefore retain the same relevant cuts on adjacent faces,
+ * avoiding T-junctions where cutter planes cross a face or triangulation.
  */
 interface CutObj {
   pl: SupportPlane;
@@ -352,12 +352,36 @@ function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B
 }
 
 /**
- * Split a triangle by the GLOBAL cut set (no early exit — non-convex
- * cutters make "in front of one plane" meaningless, and full cross-
- * cutting is what keeps seams consistent). A fragment landing exactly
- * on a FACE PLANE of the other mesh is tagged (first tag wins; the tag
- * survives further splitting) and is later resolved by the coplanar
- * rules. Splitting convex pieces keeps every fragment convex.
+ * Keep only cuts that can change this source triangle or tag it coplanar.
+ *
+ * Every descendant fragment is contained in the source triangle, so a
+ * plane for which the source triangle is wholly on one strict side can
+ * never split a descendant or create a coplanar tag. This classification
+ * mirrors splitPoly's first pass and preserves the original cut order.
+ * CutObj planes are infinite, so no finite cutter AABB is assumed.
+ */
+function cutCandidatesForTriangle(tri: Pt3[], cuts: CutObj[]): CutObj[] {
+  const candidates: CutObj[] = [];
+  for (const cut of cuts) {
+    let allBack = true;
+    let allFront = true;
+    let onPlane = true;
+    for (const p of tri) {
+      const d = distTo(p, cut.pl);
+      if (d > SPLIT_EPS) { allBack = false; onPlane = false; }
+      else if (d < -SPLIT_EPS) { allFront = false; onPlane = false; }
+    }
+    if (onPlane || (!allBack && !allFront)) candidates.push(cut);
+  }
+  return candidates;
+}
+
+/**
+ * Split a triangle by its conservative GLOBAL cut candidates (no early
+ * exit — non-convex cutters make "in front of one plane" meaningless).
+ * Candidate filtering runs once per source triangle; every plane that
+ * can affect any descendant fragment remains in the ordered cut list.
+ * A fragment landing exactly on a FACE PLANE is tagged as before.
  */
 function splitFragment(tri: Pt3[], cuts: CutObj[], tagOwner: "A" | "B"): Frag[] {
   let frags: Frag[] = [{ poly: tri, coplanar: null }];
@@ -504,7 +528,8 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
     const tri = [a.vertices[ia], a.vertices[ib], a.vertices[ic]];
     const nrm = triNormal(tri);
     if (!nrm) continue;
-    for (const frag of splitFragment(tri, allCuts, "B")) {
+    const triangleCuts = cutCandidatesForTriangle(tri, allCuts);
+    for (const frag of splitFragment(tri, triangleCuts, "B")) {
       if (frag.coplanar !== null) {
         // Coplanar fragment: classify EACH in-plane cell. Cells are cut
         // by the other mesh's coplanar edges (including internal
@@ -539,7 +564,8 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
     const tri = [b.vertices[ia], b.vertices[ib], b.vertices[ic]];
     const nrm = triNormal(tri);
     if (!nrm) continue;
-    for (const frag of splitFragment(tri, allCuts, "A")) {
+    const triangleCuts = cutCandidatesForTriangle(tri, allCuts);
+    for (const frag of splitFragment(tri, triangleCuts, "A")) {
       if (frag.coplanar !== null) {
         if (op === "subtract") continue; // coplanar void skin: A's cells own the plane
         const P = planesA[frag.coplanar];
