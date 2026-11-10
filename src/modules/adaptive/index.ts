@@ -547,6 +547,16 @@ export function solveAdaptivePointConstraints(
     if (constraint.kind === "equalLength") {
       targetDirection = unitPt3(subPt3(points[movB], points[movA]));
     }
+    // If both segments share a placement-point index, preserve the common
+    // vertex and solve only the unshared endpoint. This is the common CAD case
+    // for an angle or perpendicular constraint at a joint.
+    const sharedIndex = [movA, movB].find((index) => index === refA || index === refB);
+    if (sharedIndex !== undefined) {
+      const freeIndex = sharedIndex === movA ? movB : movA;
+      const direction = freeIndex === movB ? targetDirection : scalePt3(targetDirection, -1);
+      points[freeIndex] = addPt3(points[sharedIndex], scalePt3(direction, length));
+      return;
+    }
     const movingIsA = targetSegment === "ab" ? driverIndex === constraint.a : driverIndex === constraint.c;
     const movingIsB = targetSegment === "ab" ? driverIndex === constraint.b : driverIndex === constraint.d;
     if (movingIsA || movingIsB) {
