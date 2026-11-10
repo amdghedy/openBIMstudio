@@ -83,11 +83,17 @@ test('editable grips show an open hand on hover and a closed hand while dragging
   const host = () => page.evaluate(() => (document.querySelector('canvas')!.parentElement as HTMLElement).style.cursor);
   await page.mouse.move(info.sx + 40, info.sy + 40); await page.mouse.move(info.sx, info.sy);
   expect(await page.evaluate(() => Array.from(document.querySelectorAll('*')).some((n) => (n as HTMLElement).style?.cursor === 'grab')), 'a grab cursor is set while hovering the grip').toBe(true);
-  await page.mouse.down(); await page.mouse.move(info.sx + 30, info.sy + 20, { steps: 8 });
-  expect(await page.evaluate(() => Array.from(document.querySelectorAll('*')).some((n) => (n as HTMLElement).style?.cursor === 'grabbing')), 'grabbing cursor during the drag').toBe(true);
+  await page.mouse.down();
+  const cursors: string[] = [];
+  const sample = () => page.evaluate(() => Array.from(new Set(Array.from(document.querySelectorAll('*')).map((n) => (n as HTMLElement).style?.cursor).filter(Boolean))).join('|'));
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(info.sx + i * 4, info.sy + i * 3); cursors.push(await sample()); }
+  const mid = await page.evaluate((id) => (window as any).__obsAuthoring.getElementById(id).params.polygon[0], info.id);
   await page.mouse.up();
   const after = await page.evaluate((id) => (window as any).__obsAuthoring.getElementById(id).params.polygon[0], info.id);
-  expect(Math.hypot(after[0] - info.v[0], after[1] - info.v[1]), 'vertex moved').toBeGreaterThan(0.05);
+  const moved = Math.hypot(after[0] - info.v[0], after[1] - info.v[1]);
+  const diag = `cursors during drag: ${JSON.stringify(cursors)}; vertex before ${info.v} mid ${mid} after ${after}; grip screen pos ${info.sx.toFixed(0)},${info.sy.toFixed(0)}`;
+  expect(cursors.some((c) => c.includes('grabbing')), 'grabbing cursor during the drag. ' + diag).toBe(true);
+  expect(moved, 'vertex moved. ' + diag).toBeGreaterThan(0.05);
   void host;
   expect(errors, errors.join('\n')).toEqual([]);
 });
