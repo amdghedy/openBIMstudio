@@ -429,6 +429,7 @@ async function placeCurrentPoint(event: MouseEvent | PointerEvent): Promise<void
       name: activePlane.name,
       origin: { x: activePlane.origin[0], y: activePlane.origin[1], z: activePlane.origin[2] },
       normal: { x: activePlane.normal[0], y: activePlane.normal[1], z: activePlane.normal[2] },
+      rotation: activePlane.rotation,
       ...(faceReference ? { face: faceReference } : {}),
     } : undefined;
     const element = api.create({
