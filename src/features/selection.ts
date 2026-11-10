@@ -86,11 +86,13 @@ class SelectionManager {
     if (!this.map[modelId]) this.map[modelId] = new Set();
     this.map[modelId].add(localId);
     this.emit();
+    if (this.filter) void this.reconcileFilter();
   }
   addMany(modelId: string, ids: Iterable<number>): void {
     if (!this.map[modelId]) this.map[modelId] = new Set();
     for (const id of ids) this.map[modelId].add(id);
     this.emit();
+    if (this.filter) void this.reconcileFilter();
   }
   remove(modelId: string, localId: number): void {
     this.map[modelId]?.delete(localId);
@@ -108,12 +110,13 @@ class SelectionManager {
     if (this.has(modelId, localId)) this.remove(modelId, localId);
     else this.add(modelId, localId);
   }
-  replace(snap: SelectionSnapshot): void {
+  replace(snap: SelectionSnapshot, reconcile = true): void {
     this.map = {};
     for (const [m, s] of Object.entries(snap)) {
       if (s.size) this.map[m] = new Set(s);
     }
     this.emit();
+    if (reconcile && this.filter) void this.reconcileFilter();
   }
   clear(): void {
     this.map = {};
@@ -189,7 +192,7 @@ class SelectionManager {
       }
       if (keep.size) next[modelId] = keep;
     }
-    this.replace(next);
+    this.replace(next, false);
     await this.applyToHighlighter();
   }
   getFilter(): string[] | null {
@@ -244,7 +247,7 @@ class SelectionManager {
         console.warn("[selection] selectAll category lookup failed", err);
       }
     }
-    this.replace(next);
+    this.replace(next, false);
     await this.applyToHighlighter();
   }
 
@@ -267,7 +270,7 @@ class SelectionManager {
       if (!keep.size) return;
       if (!merged[modelId]) merged[modelId] = new Set();
       for (const id of keep) merged[modelId].add(id);
-      this.replace(merged);
+      this.replace(merged, false);
       await this.applyToHighlighter();
     } catch (e) {
       console.warn("[selection] selectSimilar failed", e);
@@ -289,7 +292,7 @@ class SelectionManager {
         console.warn("[selection] invert category lookup failed", err);
       }
     }
-    this.replace(next);
+    this.replace(next, false);
     await this.applyToHighlighter();
   }
 
@@ -344,7 +347,7 @@ class SelectionManager {
     };
     for (const c of candidates) scan(c, 0);
     if (Object.keys(snap).length) {
-      this.replace(snap);
+      this.replace(snap, false);
       void this.reconcileFilter();
     }
   }
@@ -384,7 +387,7 @@ class SelectionManager {
     if (!set) return;
     const snap: SelectionSnapshot = {};
     for (const [m, arr] of Object.entries(set.snapshot)) snap[m] = new Set(arr);
-    this.replace(snap);
+    this.replace(snap, false);
     await this.reconcileFilter();
     await this.applyToHighlighter();
   }
