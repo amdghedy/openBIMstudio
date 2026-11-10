@@ -88,6 +88,9 @@ t("viewport keyboard opens a cursor-positioned command prompt and reuses command
   for (const marker of mustContain) assert.ok(viewer.includes(marker), `in-canvas command entry missing "${marker}"`);
   assert.ok(viewer.includes('dynCommandInput.placeholder = "Enter command…";'), "dynamic prompt placeholder missing");
   assert.ok(viewer.includes('dynCommandInput.setSelectionRange(initialText.length, initialText.length);'), "initial typed character is not retained");
+  assert.ok(viewer.includes('if (event.key === "ArrowUp")'), "in-canvas prompt must browse previous commands");
+  assert.ok(viewer.includes('if (event.key === "ArrowDown")'), "in-canvas prompt must browse newer commands");
+  assert.ok(viewer.includes("cmdHistoryIdx = cmdHistory.length;"), "command history must return to a blank prompt after the newest entry");
 });
 
 // ── 5. DWG command activation: Space executes exact commands and aliases ──
