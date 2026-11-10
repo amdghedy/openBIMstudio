@@ -13,6 +13,7 @@
  *     fragment and authored elements in one call.
  *   - Property palette state is published via onAuthoringChange.
  */
+import { onNavDrag } from "./navigation";
 import { resolveVertical, inferBase, levelChangeUpdates } from "../modules/native-bim/level-constraints";
 import { endpointForLength, rotateTransformAboutPivot, normalizeDeg, twinElevationShift } from "../modules/native-twin/twin-dimensions";
 import { escapeHtml } from "../core/html-escape";
@@ -6699,6 +6700,8 @@ export function setupAuthoring() {
     pressGrip = e.button === 0 && (activeTool === "select" || activeTool === null) ? gripAt(e) : null;
   }, true);
   window.addEventListener("pointerup", () => { setTimeout(() => { pressGrip = null; }, 0); }, true);
+  // Tell navigation not to start a selection box when the press began on a grip, so the grip drag reaches us.
+  onNavDrag((g) => g.button === 0 && !!pressGrip && !g.mods.shift);
   const unsubCancel = inputRouter.registerCancel(handleAuthoringCancel);
 
   // Space / Enter only — Escape is owned by registerCancel.
