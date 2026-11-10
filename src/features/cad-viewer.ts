@@ -10235,6 +10235,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       try { cv.focus({ preventScroll: true }); } catch { /* */ }
     },
     deactivate() {
+      closeSelectionCycle();
       screenTypeActive = false;
       try {
         // Hand Ctrl+Shift+C / Ctrl+Shift+V back to the app-level handlers.
