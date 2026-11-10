@@ -69,3 +69,4 @@ public/rvt/*.d.ts
 public/rvt/package.json
 public/rvt/.gitignore
 .sketch-test-*/
+.vtc-test-*/

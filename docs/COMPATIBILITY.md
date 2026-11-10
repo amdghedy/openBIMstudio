@@ -54,6 +54,7 @@ is the Phase 4 deliverable (`docs/INTEROPERABILITY_MATRIX.md`).
 | Shapefile (`.shp` + optional `.dbf`) | import | experimental | same | `test:gis` on hand-built binary files | Point, polyline, polygon (Z/M read as 2D); MultiPatch skipped; `.prj` not read, so non-lon/lat data is assumed to be metres | No |
 | STEP / IGES / BREP (`.step .stp .iges .igs .brep`) | import (view) | experimental | occt-import-js 0.0.23 WebAssembly, vendored (`src/features/solid-import.ts`, `docs/THIRD-PARTY-VENDOR.md`) | `test:solids` runs the real wasm on cube fixtures; CI workflow on upstream samples | Tessellated view only, converted to metres from the file's units (BREP has none); no drawing features; main-thread decode, 200 MB cap | No |
 | Rhino (`.3dm`) | import (view) | experimental | rhino3dm 8.35.0 WebAssembly, vendored | CI workflow on upstream sample files | Draws meshes and surface models saved with render meshes; curves, annotations, blocks, extrusions, SubD are reported, not drawn | No |
+| Views → DWG / DXF | export (2D views) | experimental | Built-in DXF writer + bundled CAD engine for DWG | `tests/view-to-cad.test.cjs` (conversion + DXF text) | Plan/section/elevation only, layers by view layer, no blocks, not the 3D view; not opened in AutoCAD/Revit | No |
 
 ## Known non-goals and honest absences
 

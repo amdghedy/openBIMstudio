@@ -23,6 +23,7 @@ import * as ModifyGroup2 from "./modules/modify/group2";
 import "./features/worksharing-panel";
 import "./features/streaming-panel";
 import "./features/batch-plot-panel";
+import { setupExportCadViews } from "./features/export-cad-views";
 import "./features/hatch-panel";
 import "./features/arc-wall-tool";
 import "./features/gltf-export-tool";
@@ -53,6 +54,7 @@ declare global {
 }
 
 export function bootStrengtheningModules(): void {
+  setupExportCadViews();
   const txn = getTransactionService();
   const regen = getParametricRegenService();
   const props = getPropertiesPanelService();

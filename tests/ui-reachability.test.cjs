@@ -9,6 +9,13 @@ let pass = 0, fail = 0;
 const t = (n, fn) => { try { fn(); pass++; console.log("  PASS", n); } catch (e) { fail++; console.log("  FAIL", n + ": " + e.message); } };
 const must = (c, m) => { if (!c) throw new Error(m); };
 
+t("Export: Views -> CAD is reachable from the File menu and the command palette", () => {
+  const fm = read("src/shell/file-menu.ts"), ex = read("src/features/export-cad-views.ts"), boot = read("src/critical-gaps-boot-strength.ts");
+  must(/Views → CAD/.test(fm) && /export-cad-views/.test(fm), "file menu item missing");
+  must(/id: "export\.cad_views"/.test(ex), "command not registered");
+  must(/setupExportCadViews\(\)/.test(boot), "setup not called at boot");
+  must(/data-go/.test(ex) && /buildCadExport\(req\)/.test(ex), "dialog export button not wired");
+});
 t("CAD Insert tab: every new button has a ribbon entry AND a handler", () => {
   for (const id of ["blk-make", "blk-insert", "blk-file", "blk-write", "blk-lib", "blk-explode", "svg-import", "ins-field", "ins-table"]) {
     must(cad.includes(`data-a="${id}"`), `${id}: no ribbon button`);

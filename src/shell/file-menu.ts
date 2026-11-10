@@ -211,6 +211,7 @@ function build() {
     zitem("2d", "📐", "Floor Plan (2D)", () => { closeFileMenu(); togglePlanView(); }, isPlanViewVisible() ? "open — click to close" : "open the plan view"),
     zitem("2d", "🗂", "Sheets 2D", () => { closeFileMenu(); openSheets(); }, "production drawing sheets"),
     zitem("2d", "🏭", "P&ID Modeler", () => { closeFileMenu(); openPid(); }, "2D process diagram"),
+    zitem("2d", "📐", "Views → CAD (DWG / DXF)…", () => { closeFileMenu(); void import("../features/export-cad-views").then((m) => m.openExportCadDialog()); }, "plan · section · elevation → CAD"),
     zitem("2d", "🖨", "Print…", () => printView(), "2D output"),
     zoneHeader("app", "Application"),
     zitem("app", "🚪", "Close", () => closeProject()),

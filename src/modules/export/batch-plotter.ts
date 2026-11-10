@@ -51,7 +51,7 @@ export interface SheetIndexEntry {
   date: string;
 }
 
-async function sceneForView(viewId: string): Promise<Scene2D> {
+export async function sceneForView(viewId: string): Promise<Scene2D> {
   const v = getView(viewId);
   if (!v) return emptyScene();
   let scene: Scene2D;

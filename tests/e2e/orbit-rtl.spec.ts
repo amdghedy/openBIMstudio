@@ -100,3 +100,36 @@ test('editable grips show an open hand on hover and a closed hand while dragging
   void host;
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('Export > Views to CAD: dialog creates standard views and downloads real DXF files', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await page.waitForFunction(() => !!(window as any).__obsAuthoring, null, { timeout: 30000 });
+
+  // A wall so the views have something to draw.
+  await page.evaluate(() => (window as any).__obsAuthoring.setAuthoringTool('wall'));
+  const box = (await page.locator('canvas').first().boundingBox())!;
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  await page.mouse.move(cx - 100, cy); await page.mouse.click(cx - 100, cy);
+  await page.mouse.move(cx + 100, cy); await page.mouse.click(cx + 100, cy);
+  await page.keyboard.press('Enter'); await page.keyboard.press('Escape');
+
+  await page.keyboard.press('Control+p');
+  await page.keyboard.type('Views to CAD');
+  await page.keyboard.press('Enter');
+  const dlg = page.locator('#obs-export-cad');
+  await expect(dlg).toBeVisible({ timeout: 10000 });
+  await dlg.locator('[data-make]').click();
+  await expect(dlg.locator('[data-view]').first()).toBeVisible();
+  await dlg.locator('[data-format]').selectOption('dxf');
+  const dl = page.waitForEvent('download', { timeout: 30000 });
+  await dlg.locator('[data-go]').click();
+  const d = await dl;
+  const name = d.suggestedFilename();
+  expect(name.endsWith('.zip') || name.endsWith('.dxf'), `downloaded ${name}`).toBe(true);
+  const msg = await dlg.locator('[data-msg]').innerText();
+  expect(msg, msg).toMatch(/Exported \d+ DXF file/);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
