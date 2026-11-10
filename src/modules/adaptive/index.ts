@@ -438,6 +438,7 @@ function pointResidual(points: Pt3[], constraint: AdaptivePointConstraint): numb
     const delta = subPt3(points[constraint.a], points[constraint.b]);
     return Math.hypot(delta.x, delta.z);
   }
+  if (!("a" in constraint && "b" in constraint && "c" in constraint && "d" in constraint)) return Infinity;
   const ab = subPt3(points[constraint.b], points[constraint.a]);
   const cd = subPt3(points[constraint.d], points[constraint.c]);
   const abLen = lengthPt3(ab), cdLen = lengthPt3(cd);
@@ -447,8 +448,11 @@ function pointResidual(points: Pt3[], constraint: AdaptivePointConstraint): numb
   const u = unitPt3(ab), v = unitPt3(cd);
   if (constraint.kind === "parallel") return lengthPt3(crossPt3(u, v));
   if (constraint.kind === "perpendicular") return Math.abs(dotPt3(u, v));
-  const target = rotateAroundAxis(u, constraint.axis, constraint.radians);
-  return lengthPt3(subPt3(target, v));
+  if (constraint.kind === "angle") {
+    const target = rotateAroundAxis(u, constraint.axis, constraint.radians);
+    return lengthPt3(subPt3(target, v));
+  }
+  return Infinity;
 }
 
 /**
@@ -545,6 +549,8 @@ export function solveAdaptivePointConstraints(
     } else if (constraint.kind === "parallel") {
       const old = subPt3(points[movB], points[movA]);
       if (dotPt3(old, reference) < 0) targetDirection = scalePt3(reference, -1);
+    } else if (constraint.kind === "angle") {
+      targetDirection = unitPt3(rotateAroundAxis(reference, constraint.axis, constraint.radians));
     }
     if (constraint.kind === "equalLength") {
       targetDirection = unitPt3(subPt3(points[movB], points[movA]));
