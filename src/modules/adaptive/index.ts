@@ -447,7 +447,7 @@ function pointResidual(points: Pt3[], constraint: AdaptivePointConstraint): numb
   if (constraint.kind === "parallel") return lengthPt3(crossPt3(u, v));
   if (constraint.kind === "perpendicular") return Math.abs(dotPt3(u, v));
   const target = rotateAroundAxis(u, constraint.axis, constraint.radians);
-  return lengthPt3(crossPt3(target, v));
+  return lengthPt3(subPt3(target, v));
 }
 
 /**
@@ -519,14 +519,16 @@ export function solveAdaptivePointConstraints(
       ? "ab"
       : driverIndex === constraint.c || driverIndex === constraint.d
         ? "cd"
-        : constraint.driven === "ab" ? "cd" : "cd";
+        : constraint.driven === "ab" ? "cd" : "ab";
     const targetSegment = referenceSegment === "ab" ? "cd" : "ab";
     const refA = referenceSegment === "ab" ? constraint.a : constraint.c;
     const refB = referenceSegment === "ab" ? constraint.b : constraint.d;
     const movA = targetSegment === "ab" ? constraint.a : constraint.c;
     const movB = targetSegment === "ab" ? constraint.b : constraint.d;
     const reference = unitPt3(subPt3(points[refB], points[refA]));
-    const length = targetSegment === "ab" ? firstLen : secondLen;
+    const movingLength = targetSegment === "ab" ? firstLen : secondLen;
+    const referenceLength = referenceSegment === "ab" ? firstLen : secondLen;
+    const length = constraint.kind === "equalLength" ? referenceLength : movingLength;
     let targetDirection = reference;
     if (constraint.kind === "perpendicular") {
       let candidate = subPt3(subPt3(points[movB], points[movA]),
