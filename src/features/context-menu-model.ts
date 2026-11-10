@@ -107,13 +107,13 @@ export function buildContextMenu(d: MenuDeps): MenuItem[] {
   });
 
   const view: MenuItem[] = [];
-  for (const [id, t, k] of [["view.fit", "Zoom to Fit", "ZF"], ["review.focus", "Zoom to Selection", "ZS"], ["view.home", "Default 3D View", ""], ["view.top", "Top / Plan", ""], ["view.front", "Front Elevation", ""], ["view.ortho", "Orthographic", ""], ["view.perspective", "Perspective", ""]] as const) {
+  for (const [id, t, k] of [["view.fit", "Zoom to Fit", "ZF"], ["review.focus", "Zoom to Selected", "ZS"], ["view.home", "Default 3D View", ""], ["view.top", "Top / Plan", ""], ["view.front", "Front Elevation", ""], ["view.ortho", "Orthographic", ""], ["view.perspective", "Perspective", ""]] as const) {
     const c = cmd(id, t, undefined, k || undefined, id === "review.focus" && total === 0); if (c) view.push(c);
   }
   if (view.length) items.push({ type: "sub", text: "View", icon: "◉", items: view });
 
   const vis: MenuItem[] = [];
-  for (const [id, t] of [["review.isolate", "Temporary Isolate"], ["review.hide", "Temporary Hide"], ["review.reveal", "Reveal Hidden Elements"]] as const) {
+  for (const [id, t] of [["review.isolate", "Isolate Selected"], ["review.hide", "Hide Selected"], ["review.reveal", "Show All / Reveal Hidden Elements"]] as const) {
     const c = cmd(id, t, undefined, undefined, id !== "review.reveal" && total === 0); if (c) vis.push(c);
   }
   if (vis.length) items.push({ type: "sub", text: "Visibility", icon: "◐", items: vis });
