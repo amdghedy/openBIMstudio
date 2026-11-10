@@ -214,7 +214,7 @@ export function setupContextMenu() {
   const onCtx = (e: Event) => {
     const me = e as MouseEvent;
     const t = me.target as HTMLElement | null;
-    if (t?.closest?.(".obs-ribbon, .obs-panel, .obs-modal, [data-obs-ui]")) return;
+    if (t?.closest?.(".obs-ribbon, .obs-panel, .obs-modal, .obs-cad-viewer, .obs-cad-shell, [data-obs-ui]")) return;
     me.preventDefault();
     me.stopPropagation();
     void openCtxMenu(me);
