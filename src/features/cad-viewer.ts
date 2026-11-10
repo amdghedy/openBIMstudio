@@ -8087,6 +8087,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return;
       }
       const mode = (parts[1] ?? "").toUpperCase();
+      if (mode && !["TYPE", "LAYER", "COLOR", "LINETYPE", "LINEWEIGHT"].includes(mode)) {
+        logCmd("SELECTSIMILAR: use TYPE · LAYER · COLOR · LINETYPE · LINEWEIGHT (or omit the option for type + layer).");
+        return;
+      }
       const colorKey = (e: DxfEntity): string => e.rgb != null
         ? `rgb:${(e.rgb & 0xffffff).toString(16).padStart(6, "0")}`
         : e.color != null ? `aci:${e.color}` : "bylayer";
@@ -9247,7 +9251,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const copies = X.rectArrayEnts(before, rows, cols, rs, cs, angle);
         if (!copies.length) { logCmd("ARRAY: choose more than one row/column position."); return; }
         addEntities(copies);
-        logCmd(`ARRAY: ${copies.length} copies added (${rows} rows × ${cols} columns, grid rotated ${fmt(angle)}°).`);
+        logCmd(`ARRAY: ${copies.length} copies added (${rows} rows × ${cols} columns, grid rotated ${angle.toFixed(2)}°).`);
       } catch (err) {
         logCmd(`ARRAY: ${(err as Error).message}`);
       }
@@ -9263,7 +9267,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!before.length) return;
     const box = idx ? M.bboxOfSet(idx, sel) : null;
     const defaultCenter = box ? { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 } : { x: 0, y: 0 };
-    const centerText = await promptLine("Polar Array — Centre", "Enter centre X,Y (the selected extents centre is the default)", `${fmt(defaultCenter.x)}, ${fmt(defaultCenter.y)}`);
+    const centerText = await promptLine("Polar Array — Centre", "Enter centre X,Y in drawing coordinates (the selected extents centre is the default)", `${defaultCenter.x.toPrecision(8)}, ${defaultCenter.y.toPrecision(8)}`);
     if (centerText == null) return;
     const centerParts = centerText.trim().split(/[,;\s]+/).filter(Boolean).map(Number);
     if (centerParts.length !== 2 || centerParts.some((n) => !Number.isFinite(n))) {
@@ -9286,11 +9290,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     const rotateText = await promptLine("Polar Array — Rotate Items", "Rotate each copy with the array? (Yes/No)", "Yes");
     if (rotateText == null) return;
-    const rotateItems = !/^(n|no|false|0)$/i.test(rotateText.trim());
+    if (!/^(y|yes|n|no|true|false|1|0)$/i.test(rotateText.trim())) {
+      logCmd("ARRAYPOLAR: answer Yes or No for Rotate Items.");
+      return;
+    }
+    const rotateItems = /^(y|yes|true|1)$/i.test(rotateText.trim());
     try {
       const copies = X.polarArrayEnts(before, { x: centerParts[0], y: centerParts[1] }, count, angle, rotateItems);
       addEntities(copies);
-      logCmd(`ARRAYPOLAR: ${copies.length} copies added around (${fmt(centerParts[0])}, ${fmt(centerParts[1])}), ${count} positions over ${fmt(angle)}°.`);
+      logCmd(`ARRAYPOLAR: ${copies.length} copies added around (${fmt(centerParts[0])}, ${fmt(centerParts[1])}), ${count} positions over ${angle}°.`);
     } catch (err) {
       logCmd(`ARRAYPOLAR: ${(err as Error).message}`);
     }
