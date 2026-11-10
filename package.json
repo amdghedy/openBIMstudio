@@ -235,7 +235,8 @@
     "test:stacked-wall": "node tests/stacked-wall.test.cjs",
     "test:constraint-autosolve": "node tests/constraint-autosolve.test.cjs",
     "test:cad-dimension-tools": "node tests/cad-dimension-tools.test.cjs",
-    "test:universal-3d-grips": "node tests/universal-3d-grips.test.cjs"
+    "test:universal-3d-grips": "node tests/universal-3d-grips.test.cjs",
+    "test:cad-array-modes": "node tests/cad-array-modes.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
