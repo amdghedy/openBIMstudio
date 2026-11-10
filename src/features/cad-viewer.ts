@@ -4582,6 +4582,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Mirror",()=>setTool("mirror"),!hasSelection,false,"MI");
     addItem("Scale",()=>setTool("scale"),!hasSelection,false,"SC");
     addItem("Array",()=>executeDrawingCommand("ARRAY"),!hasSelection,false,"AR");
+    addItem("Polar Array",()=>executeDrawingCommand("ARRAYPOLAR"),!hasSelection,false,"ARP");
     addItem("Offset",()=>setTool("offset"),!hasSelection,false,"O");
     addItem("Match Properties",()=>setTool("match"),!hasSelection,false,"MA");
     addItem("Erase Selected",()=>setTool("erase"),!hasSelection,true,"E");
@@ -5083,7 +5084,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("lengthen", "stretch", "Lengthen") +
           tb("explode", "explode", "Explode") +
           tb("align", "align", "Align") +
-          tb("erase", "delete", "Erase"),
+          tb("erase", "delete", "Erase") +
+          rb("array", "Array Rect", `data-a="array-rect"`, "Create a rectangular array with row/column spacing and a rotated grid") +
+          rb("array", "Array Polar", `data-a="array-polar"`, "Create a polar array with centre, item count, sweep and rotation options"),
         "",
         "",
         "home",
@@ -5518,6 +5521,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       },
       undo,
       redo,
+      "array-rect": () => executeDrawingCommand("ARRAY"),
+      "array-polar": () => executeDrawingCommand("ARRAYPOLAR"),
       erase: eraseSelected,
       plot: openPlot,
       "save-dxf": saveDxf,
@@ -9223,27 +9228,65 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("ARRAY: select objects first.");
       return;
     }
-    void promptLine("Rectangular Array", "rows columns rowSpacing colSpacing (e.g. 3 4 500 400)", "2 2 100 100").then((s) => {
+    void promptLine("Rectangular Array", "rows columns rowSpacing colSpacing [gridAngleDeg] (maximum 10,000 new objects)", "2 2 100 100 0").then((s) => {
       const m = (s ?? "").trim().split(/\s+/).map(Number);
-      if (m.length !== 4 || m.some((x) => !Number.isFinite(x))) {
-        logCmd("ARRAY: need 4 numbers — rows, columns, row spacing, column spacing.");
+      if ((m.length !== 4 && m.length !== 5) || m.some((x) => !Number.isFinite(x))) {
+        logCmd("ARRAY: enter rows columns rowSpacing colSpacing and optional grid angle.");
         return;
       }
-      const [rows, cols, rs, cs] = m;
-      if (rows < 1 || cols < 1 || (rows === 1 && cols === 1)) {
-        logCmd("ARRAY: array must have at least 2 items.");
-        return;
-      }
+      const [rows, cols, rs, cs, angle = 0] = m;
       const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
-      const copies: DxfEntity[] = [];
-      for (let r = 0; r < Math.min(rows, 100); r++)
-        for (let c = 0; c < Math.min(cols, 100); c++) {
-          if (!r && !c) continue;
-          for (const e of before) copies.push(X.translateEnt(e, c * cs, r * rs));
-        }
-      addEntities(copies);
-      logCmd(`ARRAY: ${copies.length} copies added (${rows} rows × ${cols} columns).`);
+      try {
+        const copies = X.rectArrayEnts(before, rows, cols, rs, cs, angle);
+        if (!copies.length) { logCmd("ARRAY: choose more than one row/column position."); return; }
+        addEntities(copies);
+        logCmd(`ARRAY: ${copies.length} copies added (${rows} rows × ${cols} columns, grid rotated ${fmt(angle)}°).`);
+      } catch (err) {
+        logCmd(`ARRAY: ${(err as Error).message}`);
+      }
     });
+  }
+
+  async function arrayPolar(): Promise<void> {
+    if (!sel.size) {
+      logCmd("ARRAYPOLAR: select objects first.");
+      return;
+    }
+    const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+    if (!before.length) return;
+    const box = idx ? M.bboxOfSet(idx, sel) : null;
+    const defaultCenter = box ? { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 } : { x: 0, y: 0 };
+    const centerText = await promptLine("Polar Array — Centre", "Enter centre X,Y (the selected extents centre is the default)", `${fmt(defaultCenter.x)}, ${fmt(defaultCenter.y)}`);
+    if (centerText == null) return;
+    const centerParts = centerText.trim().split(/[,;\s]+/).filter(Boolean).map(Number);
+    if (centerParts.length !== 2 || centerParts.some((n) => !Number.isFinite(n))) {
+      logCmd("ARRAYPOLAR: centre must be two finite coordinates, for example 0,0.");
+      return;
+    }
+    const countText = await promptLine("Polar Array — Items", "Total positions including the original (2–360)", "6");
+    if (countText == null) return;
+    const count = Number(countText);
+    if (!Number.isInteger(count) || count < 2 || count > 360) {
+      logCmd("ARRAYPOLAR: item count must be an integer from 2 to 360.");
+      return;
+    }
+    const angleText = await promptLine("Polar Array — Fill Angle", "Sweep in degrees; 360 makes a full circle, negative values run clockwise", "360");
+    if (angleText == null) return;
+    const angle = Number(angleText);
+    if (!Number.isFinite(angle) || Math.abs(angle) < 1e-9 || Math.abs(angle) > 360) {
+      logCmd("ARRAYPOLAR: sweep must be non-zero and no greater than 360 degrees.");
+      return;
+    }
+    const rotateText = await promptLine("Polar Array — Rotate Items", "Rotate each copy with the array? (Yes/No)", "Yes");
+    if (rotateText == null) return;
+    const rotateItems = !/^(n|no|false|0)$/i.test(rotateText.trim());
+    try {
+      const copies = X.polarArrayEnts(before, { x: centerParts[0], y: centerParts[1] }, count, angle, rotateItems);
+      addEntities(copies);
+      logCmd(`ARRAYPOLAR: ${copies.length} copies added around (${fmt(centerParts[0])}, ${fmt(centerParts[1])}), ${count} positions over ${fmt(angle)}°.`);
+    } catch (err) {
+      logCmd(`ARRAYPOLAR: ${(err as Error).message}`);
+    }
   }
 
   /* ── Insert tab: blocks, file-as-block, SVG import, fields ── */
