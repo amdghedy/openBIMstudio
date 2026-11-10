@@ -513,3 +513,38 @@ export function solveStoredConstraints(
 /** Re-export for call sites that also want raw ad-hoc solving. */
 export { solve as solveGeometry };
 export type { Constraint, SolverPoint, SolveResult };
+
+/* ── UI-facing gap capture ────────────────────────────────────────────────
+ * The bridge maps a stored locked-dimension to the distance between the
+ * NEAREST endpoint pair of the two elements. UI tools that "lock the
+ * current gap" must capture exactly the same value, or the solver would
+ * move geometry the instant the constraint is created. This helper is the
+ * single source of that semantics. */
+
+function endpointsOf(el: ElementLike): Vec[] {
+  if (!el?.params) return [];
+  const s = readVec(el.params.start);
+  const e = readVec(el.params.end);
+  if (s && e) return [s, e];
+  const c = pointOf(el);
+  return c ? [c] : [];
+}
+
+/**
+ * Current nearest-endpoint-pair distance between two elements (metres), or
+ * null when either element carries no solver-representable geometry
+ * (segment with start/end, or point with point/position).
+ */
+export function nearestEndpointDistance(a: ElementLike, b: ElementLike): number | null {
+  const ptsA = endpointsOf(a);
+  const ptsB = endpointsOf(b);
+  if (!ptsA.length || !ptsB.length) return null;
+  let best = Infinity;
+  for (const p of ptsA) {
+    for (const q of ptsB) {
+      const d = dist(p, q);
+      if (d < best) best = d;
+    }
+  }
+  return Number.isFinite(best) ? best : null;
+}

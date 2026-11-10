@@ -114,9 +114,16 @@ function clampHostedOpenings(elements: Any[]): number {
  *      perpendicular) via the numeric L-M solver, with wall auto-join and
  *      per-wall length pinning;
  *   2. hosted opening re-clamp onto the (possibly moved) hosts.
+ *
+ * focusIds: element ids treated as ANCHORS (the solver pins their geometry
+ * and heals everything else). After a move commit the moved element is the
+ * anchor — RVT semantics: where the user dropped it stays, the constraints
+ * pull the neighbours to it. Without focus ids every element is free and
+ * the solver may distribute corrections across both sides.
+ *
  * Returns the number of elements changed. Safe to call re-entrantly.
  */
-export function solveHostedConstraints(): number {
+export function solveHostedConstraints(focusIds?: string[]): number {
   if (solving) return 0;
   solving = true;
   try {
@@ -128,7 +135,9 @@ export function solveHostedConstraints(): number {
     // 1. Stored parametric constraints — the previously-dead metadata.
     let stored: { changed: number; errors: string[] } | null = null;
     try {
-      stored = solveStoredConstraints(elements as Any[], getAllConstraints());
+      const known = new Set(elements.map((e) => String(e.id)));
+      const pinnedIds = (focusIds ?? []).map(String).filter((id) => known.has(id));
+      stored = solveStoredConstraints(elements as Any[], getAllConstraints(), pinnedIds.length ? { pinnedIds } : {});
       changed += stored.changed;
       if (stored.errors?.length) {
         console.warn("[constraint-solver] stored-constraint issues:", stored.errors.slice(0, 5));
@@ -173,7 +182,7 @@ function persistedAutoSolve(): boolean {
 /** Bind the pure auto-solve engine to solveHostedConstraints (called once). */
 export function setupAutoSolve(features: Any): void {
   if (autoEngine) return;
-  autoEngine = createAutoSolveEngine(() => { solveHostedConstraints(); });
+  autoEngine = createAutoSolveEngine((ids) => { solveHostedConstraints(ids); });
   autoEngine.setEnabled(persistedAutoSolve());
   features.constraintSolver.auto = autoEngine;
   features.constraintSolver.setAutoSolve = setConstraintAutoSolve;
@@ -194,9 +203,13 @@ export function isConstraintAutoSolveEnabled(): boolean {
 /**
  * Queue the debounced solve after a geometry commit (move/drag/parametric
  * edit). Called from authoring.ts transformElements — the one commit point
- * every pointer-drag and property edit funnels through.
+ * every pointer-drag and property edit funnels through — plus from the
+ * temp-dimension commit and dim-lock re-apply paths.
+ *
+ * focusIds: ids of the elements the user just moved/edited; they stay fixed
+ * while the stored constraints heal the surrounding geometry.
  */
-export function scheduleAutoSolve(): void {
+export function scheduleAutoSolve(focusIds?: string[]): void {
   if (!autoEngine) return; // boot order: features first, engine binds on setup
-  autoEngine.schedule();
+  autoEngine.schedule(focusIds);
 }

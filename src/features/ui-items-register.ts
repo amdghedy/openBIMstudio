@@ -63,14 +63,23 @@ export function registerUiItems(): void {
   });
 
   // ── System Browser ───────────────────────────────────────────────
+  // Implemented (features/system-browser.ts). These rows used to claim
+  // "not yet implemented" — an honesty regression if the runtime patch
+  // (ui-items-register-patch) ever failed to load.
   registerUiItem({
     id: "system-browser",
     label: "System Browser",
     group: "panels",
-    available: false,
-    unavailableHint: "MEP System Browser not yet implemented. Use the Model Tree for MEP categories.",
-    isVisible: () => false,
-    toggle: () => {},
+    available: true,
+    isVisible: () => {
+      try { return !!F.systemBrowser?.isVisible?.(); } catch { return false; }
+    },
+    toggle: () => {
+      try {
+        if (F.systemBrowser?.toggle) F.systemBrowser.toggle();
+        else void import("./system-browser").then((m: any) => { m.setupSystemBrowser?.(); m.toggleSystemBrowser?.(); });
+      } catch { /* */ }
+    },
   });
 
   // ── Properties
@@ -101,25 +110,39 @@ export function registerUiItems(): void {
   });
 
   // ── MEP Fabrication Parts ────────────────────────────────────────
+  // Implemented (features/mep-fabrication.ts) — see the honesty note above.
   registerUiItem({
     id: "mep-fabrication",
     label: "MEP Fabrication Parts",
     group: "panels",
-    available: false,
-    unavailableHint: "Fabrication-parts catalog integration is on the roadmap.",
-    isVisible: () => false,
-    toggle: () => {},
+    available: true,
+    isVisible: () => {
+      try { return !!F.mepFabrication?.isVisible?.(); } catch { return false; }
+    },
+    toggle: () => {
+      try {
+        if (F.mepFabrication?.toggle) F.mepFabrication.toggle();
+        else void import("./mep-fabrication").then((m: any) => { m.setupMepFabrication?.(); m.toggleMepFabrication?.(); });
+      } catch { /* */ }
+    },
   });
 
   // ── P&ID Modeler ─────────────────────────────────────────────────
+  // Implemented (features/pid-modeler.ts) — see the honesty note above.
   registerUiItem({
     id: "pid-modeler",
     label: "P&ID Modeler",
     group: "panels",
-    available: false,
-    unavailableHint: "P&ID Modeler is on the roadmap.",
-    isVisible: () => false,
-    toggle: () => {},
+    available: true,
+    isVisible: () => {
+      try { return !!F.pidModeler?.isVisible?.(); } catch { return false; }
+    },
+    toggle: () => {
+      try {
+        if (F.pidModeler?.toggle) F.pidModeler.toggle();
+        else void import("./pid-modeler").then((m: any) => { m.setupPidModeler?.(); m.togglePidModeler?.(); });
+      } catch { /* */ }
+    },
   });
 
   // ── Status Bar ───────────────────────────────────────────────────

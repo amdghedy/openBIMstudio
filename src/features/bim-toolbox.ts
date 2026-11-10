@@ -260,11 +260,15 @@ constraints.content.append(
   ),
   row(
     action("Join Selected Walls", () => { const n = joinSelectedWalls(); toast(n ? `Joined ${n} wall run(s).` : "Select authored walls near a corner.", n ? "success" : "warn"); }),
-    action("Pick Work Plane", () => toast("Work Plane order: select a face or datum, then start placement. The active ground plane remains the default reference.")),
+    action("Work Plane XY", () => { const rp = (ctx.features as any)?.refPlanes; if (!rp?.setActiveWorkPlane) { toast("Reference planes module not loaded yet.", "warn"); return; } rp.setActiveWorkPlane("rp-xy"); toast("Work plane: Floor (XY)", "success"); }),
   ),
   row(
+    action("Work Plane XZ (Front)", () => { const rp = (ctx.features as any)?.refPlanes; if (!rp?.setActiveWorkPlane) { toast("Reference planes module not loaded yet.", "warn"); return; } rp.setActiveWorkPlane("rp-xz"); toast("Work plane: Front (XZ)", "success"); }),
     action("Level / Datum", () => setAuthoringTool("level")),
+  ),
+  row(
     action("Grid / Datum", () => setAuthoringTool("grid")),
+    action("Ramp", () => setAuthoringTool("ramp")),
   ),
 );
 
@@ -283,7 +287,22 @@ modify.content.append(
     action("Align Z", () => { const n = alignSelectedAxis("z"); toast(n ? `Aligned ${n} element(s) to the first selection.` : "Select at least two authored elements.", n ? "success" : "warn"); }),
   ),
   row(
+    action("Lock Distance", () => { const t = (ctx as any).features?.constraintTools; if (!t) { toast("Constraint tools still loading…", "warn"); return; } t.lockDistance(); }),
+    action("Equal Length", () => { const t = (ctx as any).features?.constraintTools; if (!t) { toast("Constraint tools still loading…", "warn"); return; } t.equalLength(); }),
+  ),
+  row(
+    action("Parallel", () => { const t = (ctx as any).features?.constraintTools; if (!t) { toast("Constraint tools still loading…", "warn"); return; } t.parallel(); }),
+    action("Perpendicular", () => { const t = (ctx as any).features?.constraintTools; if (!t) { toast("Constraint tools still loading…", "warn"); return; } t.perpendicular(); }),
+  ),
+  row(
+    action("Align (Constraint)", () => { const t = (ctx as any).features?.constraintTools; if (!t) { toast("Constraint tools still loading…", "warn"); return; } t.alignment(); }),
+    action("Manage Constraints", () => { const t = (ctx as any).features?.constraintTools; if (!t) { toast("Constraint tools still loading…", "warn"); return; } t.manage(); }),
+  ),
+  row(
+    action("Solve Constraints", () => { const t = (ctx as any).features?.constraintTools; if (!t) { toast("Constraint tools still loading…", "warn"); return; } t.solve(); }),
     action("Properties", () => { if (!isPropertyPaletteVisible()) togglePropertyPalette(); }),
+  ),
+  row(
     action("Project Browser", () => { if (!isProjectBrowserVisible()) toggleProjectBrowser(); }),
   ),
 );
@@ -296,7 +315,7 @@ annotation.content.append(
   ),
   row(
     action("Angular Dimension", () => { setPlanTool("dim-angular"); }),
-    action("Spot Elevation", () => { setPlanTool("spot-elevation"); }),
+    action("Spot Elevation", () => { setPlanTool("spot-elev"); }),
   ),
   row(
     action("Tag Element", () => setPlanTool("tag")),
@@ -348,7 +367,7 @@ graphics.content.append(
   ),
   row(
     action("Section Box / Cut", () => { void import("./section-box").then((m) => m.toggleSectionBox()); }),
-    action("View Template Concept", () => toast("Use Saved Views as the current view-standard layer; view templates remain a longer-term standards engine.")),
+    action("View Templates", () => { window.dispatchEvent(new CustomEvent("obs:bim-command", { detail: { id: "view.templates" } })); }),
   ),
 );
 

@@ -265,7 +265,7 @@ function getModeForTool(tool: string | null): ExperienceMode {
   if (["move", "copy", "rotate", "mirror", "array", "offset"].includes(tool)) return "modify";
   if (["select"].includes(tool)) return "modify";
   if (["mline"].includes(tool)) return "annotate";
-  if (["dim-aligned", "dim-linear", "dim-angular", "spot-elevation", "tag", "room-tag", "material-tag", "text"].includes(tool)) return "annotate";
+  if (["dim-aligned", "dim-linear", "dim-angular", "spot-elev", "spot-elevation", "tag", "room-tag", "material-tag", "text"].includes(tool)) return "annotate";
   return "place";
 }
 
@@ -723,7 +723,7 @@ function createCommandCatalog() {
   // Annotation family — every entry maps to the plan tool where supported.
   const annotate: [string, string][] = [
     ["dim-aligned", "Aligned Dimension"], ["dim-linear", "Linear Dimension"], ["dim-angular", "Angular Dimension"],
-    ["spot-elevation", "Spot Elevation"], ["tag", "Tag by Category"], ["room-tag", "Room Tag"],
+    ["spot-elev", "Spot Elevation"], ["tag", "Tag by Category"], ["room-tag", "Room Tag"],
     ["material-tag", "Material Tag"], ["text", "Text Note"], ["mline", "Detail Line"],
   ];
   for (const [tool, label] of annotate) registerBimCommand({
@@ -861,18 +861,20 @@ function renderOptionsBar() {
   }
 
   if (mode === "annotate") {
-    optionsBar.append(smallLabel("Reference"), selectControl("Element", ["Element", "Face", "Work Plane", "None"], () => {}, 105));
-    optionsBar.append(numberControl(0.45, "Offset", () => {}));
-    optionsBar.append(button("Leader", "↗", () => toast("Leader toggled", "info", 1200), false));
-    optionsBar.append(button("Multiple", "∞", () => toast("Multiple annotation mode", "info", 1200), false));
+    optionsBar.append(smallLabel("Reference"), selectControl("Element", ["Element", "Face", "Work Plane", "None"], () => toast("Tag reference targeting is planned — tags currently anchor to the clicked element", "info", 1800), 105));
+    optionsBar.append(numberControl(0.45, "Offset", () => toast("Tag offset is planned for a future release", "info", 1500)));
+    optionsBar.append(button("Leader", "↗", () => toast("Tag leader lines are planned for a future release", "info", 1500), false));
+    optionsBar.append(button("Multiple", "∞", () => toast("Multi-element annotation placement is planned for a future release", "info", 1500), false));
     return;
   }
 
   // Modify options.
   optionsBar.append(smallLabel("Selection"), `${selectionSummary().authored + selectionSummary().fragments} element(s)` as any, separator());
   if (buildModifyOptions(optionsBar)) optionsBar.append(separator());
-  optionsBar.append(button("Constrain", "⊙", () => toast("Constraint mode — click target geometry", "info"), false));
-  optionsBar.append(button("Disjoin", "⊘", () => toast("Disjoin mode toggled", "info"), false));
+  // Constrain opens the parametric constraint manager (real capability);
+  // Disjoin has no backing engine yet and says so honestly.
+  optionsBar.append(button("Constrain", "⊙", () => { const t = (ctx.features as any)?.constraintTools; if (t?.manage) t.manage(); else toast("Constraint tools still loading…", "warn"); }, false));
+  optionsBar.append(button("Disjoin", "⊘", () => toast("Disjoin (move without join healing) is planned for a future release", "info"), false));
   optionsBar.append(button("Pin", "●", () => { pinSelected(true); refresh(); }, false));
   optionsBar.append(button("Unpin", "○", () => { pinSelected(false); refresh(); }, false));
   optionsBar.append(button("Create Similar", "＋", () => { const t = createSimilarFromSelection(); if (t) toast(`Create Similar — ${labelForTool(t)}`, "success"); }, false));

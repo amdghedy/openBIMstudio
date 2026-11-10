@@ -463,6 +463,32 @@ async function runOnce(): Promise<void> {
     m.setupGlobalUndo?.();
   });
 
+  // ── Parametric constraint tools (UI creation surface for the solver) ───
+  await safe("constraint-tools", async () => {
+    const m: Any = await import("./features/constraint-tools");
+    m.setupConstraintTools?.();
+  });
+
+  // ── Federation panel (registers ctx.features.federationPanel) ──────────
+  await safe("federation-panel", async () => {
+    const m: Any = await import("./features/federation-panel");
+    m.setupFederationPanel?.();
+  });
+
+  // ── Ramp mesh builder (authored ramp elements render as real ramps) ────
+  await safe("ramp-builder", async () => {
+    const m: Any = await import("./features/ramp-builder");
+    m.setupRampBuilder?.();
+  });
+
+  // ── M4 layer: View Templates + Visibility/Graphics + Auto-Dimensions ───
+  // The installer (scripts/install-m4.mjs) was never applied to this boot,
+  // so modules/auto-dimensions + view-templates sat unreachable.
+  await safe("m4-view-dims", async () => {
+    const m: Any = await import("./features/m4-view-dims-boot");
+    await m.setupM4ViewDims?.();
+  });
+
   console.log("[critical-gaps-boot] all critical gaps wired");
 }
 

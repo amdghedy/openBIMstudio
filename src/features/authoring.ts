@@ -18,7 +18,6 @@ import { endpointForLength, rotateTransformAboutPivot, normalizeDeg, twinElevati
 import { escapeHtml } from "../core/html-escape";
 import { fittingArmLength } from "../modules/mep/fitting-outline";
 import { mitreEndFaces, type JoinPeer } from "../modules/geometry/linear-join";
-import { scheduleAutoSolve } from "./constraint-solver";
 import { collectDeleteCascade } from "../modules/hosts/cascade";
 import { detectVerticalStacks, stackChains, validateStacks, type StackWall } from "../modules/wall-join/vertical-join";
 import {
@@ -97,6 +96,7 @@ import { lengthKeepRight, thicknessKeepFace, openingWidthKeepRight, heightKeepBa
 import { registerTempDimProvider, type TempDimSpec, setupEditableTempDims } from "./temp-dimensions-edit";
 import { setupOptionsBar } from "./options-bar";
 import { promptLine, confirmDialog } from "./form-modal";
+import { scheduleAutoSolve } from "./constraint-solver";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -108,7 +108,8 @@ type Tool =
   | "door" | "window" | "curtain-wall"
   | "vertical-opening"
   | "grid" | "level"
-  | "terrain";
+  | "terrain"
+  | "ramp";
 
 interface GripSpec {
   elementId: string;
@@ -390,7 +391,8 @@ export const TOOL_ALIASES: Record<string, Tool> = {
   mat: "slab",
   stairs: "equipment",
   railing: "equipment",
-  ramp: "equipment",
+  // Ramp is a first-class authored element now — no equipment alias. The
+  // mesh comes from the ramp-builder feature (real sloped slab + rails).
   "curtain-wall": "curtain-wall" as any,
   pad: "footing",
   pile: "footing",
@@ -481,6 +483,7 @@ const DRAW_TOOLS = new Set<Tool>([
   "duct", "pipe", "cable-tray", "conduit", "equipment",
   "door", "window", "curtain-wall", "terrain",
   "vertical-opening",
+  "ramp",
 ]);
 
 /** Element types whose chains get an auto-fitting at every bend. */
@@ -2197,16 +2200,48 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
   }
 
   if (!mesh && el.type === "slab" && p.polygon && p.polygon.length >= 3) {
-    const shape = new THREE.Shape();
-    p.polygon.forEach(([x, z], i) => (i === 0 ? shape.moveTo(x, -z) : shape.lineTo(x, -z)));
-    shape.closePath();
-    // vertical-openings: shaft/vertical/skylight openings punch real holes
-    // through slabs (and roofs/ceilings via the same builder below)
-    for (const path of verticalOpeningHolePaths(el)) shape.holes.push(path);
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: p.height, bevelEnabled: false });
-    mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = p.elevation;
+    // Sloped floor: properties.slope (%) + properties.slopeDirection (deg,
+    // 0 = +X) drive the sloped-floor engine (modules/floors). The lowest
+    // edge stays at params.elevation — the slope-arrow tail convention.
+    const slopePct = Number(el.properties?.slope ?? 0);
+    const slopeDirDeg = Number(el.properties?.slopeDirection ?? 0);
+    const slopedApi = (ctx.features as any)?.slopedFloors as Record<string, any> | undefined;
+    const slopedGeo = slopePct > 0.01 && slopedApi?.buildSlopedFloorMesh
+      ? slopedApi.buildSlopedFloorMesh({
+          polygon: p.polygon as Array<[number, number]>,
+          thickness: p.height ?? 0.2,
+          slopePct,
+          directionDeg: slopeDirDeg,
+          baseElevation: p.elevation ?? 0,
+        })
+      : null;
+    if (slopedGeo) {
+      // Geometry is built in world XZ with baked Y elevations — no rotation.
+      mesh = new THREE.Mesh(slopedGeo, mat);
+      mesh.position.y = 0;
+      const holes = verticalOpeningHolePaths(el);
+      if (holes.length) {
+        console.warn(
+          `[authoring] slab ${el.id} is sloped with ${holes.length} vertical opening(s): ` +
+          "hole punching on sloped slabs is not supported yet — openings are drawn flat. " +
+          "Set slope back to 0 or move the openings to a flat slab.",
+        );
+      }
+    } else {
+      if (slopePct > 0.01) {
+        console.warn(`[authoring] sloped-floor geometry rejected for slab ${el.id} (slope ${slopePct}% out of range or degenerate polygon) — rendering flat.`);
+      }
+      const shape = new THREE.Shape();
+      p.polygon.forEach(([x, z], i) => (i === 0 ? shape.moveTo(x, -z) : shape.lineTo(x, -z)));
+      shape.closePath();
+      // vertical-openings: shaft/vertical/skylight openings punch real holes
+      // through slabs (and roofs/ceilings via the same builder below)
+      for (const path of verticalOpeningHolePaths(el)) shape.holes.push(path);
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: p.height, bevelEnabled: false });
+      mesh = new THREE.Mesh(geo, mat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = p.elevation;
+    }
   }
 
   if (!mesh && el.type === "vertical-opening" && p.point) {
@@ -3716,6 +3751,11 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
     case "equipment":
       void createElement("equipment", { point: [pt.x, pt.z] });
       break;
+    case "ramp":
+      // Real authored ramp: params.height = rise, width/thickness from draw
+      // defaults; slope/run/angle live in properties (see property-schema).
+      void createElement("ramp", { point: [pt.x, pt.z] });
+      break;
     case "footing":
       void createElement("footing", { point: [pt.x, pt.z] });
       break;
@@ -4769,6 +4809,9 @@ function refreshEditor() {
     case "column":
     case "equipment":
       addNum("Height (m)", "height", 0.1); addNum("Width (m)", "thickness", 0.05); addNum("Depth (m)", "depth", 0.05);
+      break;
+    case "ramp":
+      addNum("Rise (m)", "height", 0.1); addNum("Width (m)", "width", 0.1); addNum("Slab thickness (m)", "thickness", 0.02);
       break;
     case "vertical-opening":
       addNum("Width (m)", "width", 0.05);
@@ -6245,7 +6288,9 @@ export function transformElements(
   rebuild(); markDirty();
   // RVT compatibility: locked dims / equality / alignment re-enforce themselves
   // right after the move commit (debounced; toggle lives with the Solve control).
-  try { scheduleAutoSolve(); } catch { /* auto-solve is best-effort */ }
+  // The moved elements are the anchors — where the user dropped them stays,
+  // the constraints pull the neighbours to them.
+  try { scheduleAutoSolve(targets.map((t) => t.id)); } catch { /* auto-solve is best-effort */ }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -7098,6 +7143,12 @@ function commitEditableTempDim(spec: TempDimSpec, value: number): boolean {
   if (lock) lock.value = value;
   // One undo step covers the edited part AND every fitting / neighbouring run it dragged along.
   pushMepParamsHistory(`Edit dimension · ${el.name}`, beforeSnap, snapshotMepParams(el));
+  // Dimension-driven editing: queue the debounced constraint solve so stored
+  // constraints (locked distances, equality, alignment, parallel,
+  // perpendicular) re-enforce on the elements the edit pushed around — the
+  // RVT semantic where typing a dimension heals the dependent geometry.
+  // The edited element is the anchor.
+  scheduleAutoSolve([spec.elementId]);
   return true;
 }
 
@@ -7135,6 +7186,10 @@ function applyDimLocks(): void {
   rebuild();
   markDirty();
   notifyAuthoringChange();
+  // Re-applying locked params moved geometry — stored inter-element
+  // constraints must re-enforce on the neighbours it pushed. The locked
+  // elements keep their values (they are the anchors).
+  scheduleAutoSolve(dimLocks.map((l) => l.elementId));
 }
 
 registerTempDimProvider({

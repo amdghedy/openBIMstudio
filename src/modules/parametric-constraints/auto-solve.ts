@@ -19,10 +19,15 @@
  */
 
 export interface AutoSolveEngine {
-  /** Queue a solve after the debounce window (no-op when disabled). */
-  schedule(): void;
+  /**
+   * Queue a solve after the debounce window (no-op when disabled).
+   * focusIds: element ids that should stay FIXED while the solver heals
+   * everything else — the RVT semantic where the element the user just
+   * moved/edited is the anchor and the constraints pull its neighbours.
+   */
+  schedule(focusIds?: string[]): void;
   /** Solve immediately (bypasses the debounce; still re-entrant safe). */
-  flush(): void;
+  flush(focusIds?: string[]): void;
   setEnabled(on: boolean): void;
   isEnabled(): boolean;
   /** Diagnostics: schedules queued, flushes run, solves skipped (busy). */
@@ -32,7 +37,7 @@ export interface AutoSolveEngine {
 }
 
 export function createAutoSolveEngine(
-  fire: () => void | Promise<void>,
+  fire: (focusIds?: string[]) => void | Promise<void>,
   opts: { debounceMs?: number } = {},
 ): AutoSolveEngine {
   const debounceMs = Math.max(0, opts.debounceMs ?? 120);
@@ -43,25 +48,31 @@ export function createAutoSolveEngine(
   let scheduled = 0;
   let flushed = 0;
   let skipped = 0;
+  /** Focus ids from the most recent schedule (last-writer-wins). */
+  let focusIds: string[] | undefined;
 
   const run = async (): Promise<void> => {
     if (busy) { rerunQueued = true; skipped++; return; }
     busy = true;
-    try { await fire(); } catch { /* the feature layer logs its own errors */ } finally {
+    const ids = focusIds;
+    focusIds = undefined;
+    try { await fire(ids); } catch { /* the feature layer logs its own errors */ } finally {
       busy = false;
       if (rerunQueued) { rerunQueued = false; await run(); }
     }
   };
 
   return {
-    schedule() {
+    schedule(ids?: string[]) {
       if (!enabled) return;
       scheduled++;
+      if (ids && ids.length) focusIds = [...ids];
       if (timer != null) clearTimeout(timer);
       timer = setTimeout(() => { timer = null; void run(); }, debounceMs);
     },
-    flush() {
+    flush(ids?: string[]) {
       if (!enabled) return;
+      if (ids && ids.length) focusIds = [...ids];
       if (timer != null) { clearTimeout(timer); timer = null; }
       scheduled++;
       flushed++;

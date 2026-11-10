@@ -22,6 +22,7 @@ panel.append(header, body);
 
 let expandedId: string | null = null;
 let newFormOpen = false;
+let bodyCollapsed = false;
 const fileInput = document.createElement("input");
 fileInput.type = "file"; fileInput.accept = ".bcfzip,.zip,.bcf"; fileInput.style.display = "none";
 
@@ -54,7 +55,12 @@ function renderHeader() {
     void exportBCF(undefined, `${(p?.name ?? "issues").replace(/[^\w-]+/g, "_")}-issues.bcfzip`);
   }, "Export all issues as BCF 2.1"));
   header.appendChild(miniBtn("⬆", () => fileInput.click(), "Import BCF file"));
-  header.appendChild(miniBtn(panel.style.display === "none" ? "▾" : "▴", () => {}, ""));
+  header.appendChild(miniBtn(bodyCollapsed ? "▾" : "▴", () => {
+    // Collapse/expand the panel body (this button used to be an empty handler).
+    bodyCollapsed = !bodyCollapsed;
+    body.style.display = bodyCollapsed ? "none" : "flex";
+    renderHeader();
+  }, bodyCollapsed ? "Expand the issues list" : "Collapse the issues list"));
 }
 
 function renderNewForm(container: HTMLElement) {

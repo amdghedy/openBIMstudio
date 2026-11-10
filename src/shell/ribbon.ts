@@ -18,6 +18,7 @@ import {
   getScreenshotPreset, setScreenshotPreset, type ScreenshotPreset,
 } from "../features/camera-tools";
 import { toggleMeasure, isMeasureEnabled, clearMeasurements } from "../features/measure";
+import { generateLegend as keynoteLegend, legendToCSV as keynoteLegendCSV } from "../modules/keynotes/types";
 import { toggleToolWindow, openToolWindow, isToolWindowOpen } from "../features/tool-windows";
 import { toggleAlign } from "../features/model-align";
 import { toggleSection, isSectionOn } from "../features/section";
@@ -313,6 +314,57 @@ function planned(
   hint = "This tool is planned for a future release.",
 ): HTMLButtonElement {
   return b(icon, label, () => toast(hint, "info"), { planned: true, title: `${label} — planned` });
+}
+
+/* ── Shared In-Place Mass flows (Edit tab + Massing & Site tab) ──────────
+ * Both tabs expose the same capability; they previously duplicated the
+ * logic and the Massing & Site copy targeted a global that never existed
+ * (__obsInPlaceMass). One implementation, two call sites. */
+async function openInPlaceMassDialog(): Promise<void> {
+  const mc = (window as any).__obsMass;
+  if (!mc) { toast("Mass module not loaded", "warn"); return; }
+  const { openFormModal } = await import("../features/form-modal");
+  const r = await openFormModal({
+    title: "Create In-Place Mass",
+    subtitle: "Conceptual mass element (extruded polygon)",
+    fields: [
+      { kind: "number", key: "width", label: "Width", default: 5, unit: "m", step: 0.5, min: 0.5 },
+      { kind: "number", key: "height", label: "Height", default: 10, unit: "m", step: 0.5, min: 0.5 },
+    ],
+    submitLabel: "Create Mass",
+  });
+  if (!r) return;
+  const w = parseFloat(r.width);
+  const h = parseFloat(r.height);
+  if (isNaN(w) || isNaN(h)) { toast("Invalid input", "warn"); return; }
+  const poly: Array<[number, number]> = [[0, 0], [w, 0], [w, w], [0, w]];
+  const m = mc.create(poly, h, `Mass ${mc.list().length + 1}`);
+  toast(`Created "${m.name}": ${w}×${w}×${h}m, area=${w * w}m²`, "success");
+}
+
+async function openMassFloorsDialog(): Promise<void> {
+  const mc = (window as any).__obsMass;
+  if (!mc) { toast("Mass module not loaded", "warn"); return; }
+  const masses = mc.list();
+  if (!masses.length) { toast("No masses created yet", "info"); return; }
+  const { showObjectsDialog } = await import("../features/form-modal");
+  const rows: Array<Record<string, unknown>> = [];
+  for (const m of masses) {
+    const floors = mc.getFloors(m.id);
+    if (floors.length) for (const f of floors) rows.push({ mass: m.name ?? m.id, ...f });
+    else rows.push({ mass: m.name ?? m.id });
+  }
+  await showObjectsDialog("Mass floors", rows, `${masses.length} mass(es)`);
+}
+
+function exportKeynoteLegendCsv(count: number): void {
+  const csv = keynoteLegendCSV();
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "keynote-legend.csv"; a.click();
+  URL.revokeObjectURL(url);
+  toast(`Keynote legend exported: ${count} entries`, "success");
 }
 
 function sep(): HTMLElement {
@@ -908,39 +960,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Massing"),
       b("mass", "In-Place Mass", safe(async () => {
-        const mc = (window as any).__obsMass;
-        if (!mc) { toast("Mass module not loaded", "warn"); return; }
-        const { openFormModal } = await import("../features/form-modal");
-        const r = await openFormModal({
-          title: "Create In-Place Mass",
-          subtitle: "Conceptual mass element (extruded polygon)",
-          fields: [
-            { kind: "number", key: "width", label: "Width", default: 5, unit: "m", step: 0.5, min: 0.5 },
-            { kind: "number", key: "height", label: "Height", default: 10, unit: "m", step: 0.5, min: 0.5 },
-          ],
-          submitLabel: "Create Mass",
-        });
-        if (!r) return;
-        const w = parseFloat(r.width);
-        const h = parseFloat(r.height);
-        if (isNaN(w) || isNaN(h)) { toast("Invalid input", "warn"); return; }
-        const poly: Array<[number, number]> = [[0, 0], [w, 0], [w, w], [0, w]];
-        const m = mc.create(poly, h, `Mass ${mc.list().length + 1}`);
-        toast(`Created "${m.name}": ${w}×${w}×${h}m, area=${w * w}m²`, "success");
+        await openInPlaceMassDialog();
       }, "In-place mass"), { title: "Create a conceptual mass element (extruded polygon)" }),
       b("mass", "Mass Floors", safe(async () => {
-        const mc = (window as any).__obsMass;
-        if (!mc) { toast("Mass module not loaded", "warn"); return; }
-        const masses = mc.list();
-        if (!masses.length) { toast("No masses created yet", "info"); return; }
-        const { showObjectsDialog } = await import("../features/form-modal");
-        const rows: Array<Record<string, unknown>> = [];
-        for (const m of masses) {
-          const floors = mc.getFloors(m.id);
-          if (floors.length) for (const f of floors) rows.push({ mass: m.name ?? m.id, ...f });
-          else rows.push({ mass: m.name ?? m.id });
-        }
-        await showObjectsDialog("Mass floors", rows, `${masses.length} mass(es)`);
+        await openMassFloorsDialog();
       }, "Mass floors"), { title: "Extract mass floor areas from conceptual masses" }),
       sep(),
       groupLabel("Properties"),
@@ -1450,17 +1473,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(`Keynote "${code}" assigned to element`, "success");
       }, "Assign keynote"), { title: "Assign a keynote to the selected element" }),
       b("text", "Keynote Legend", safe(() => {
-        const k = (window as any).__obsKeynotes;
-        if (!k) { toast("Keynotes module not loaded", "warn"); return; }
-        const legend = k.legend();
+        const legend = keynoteLegend();
         if (!legend.length) { toast("No keynotes assigned yet", "info"); return; }
-        const csv = k.legendCSV();
-        const blob = new Blob([csv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = "keynote-legend.csv"; a.click();
-        URL.revokeObjectURL(url);
-        toast(`Keynote legend exported: ${legend.length} entries`, "success");
+        exportKeynoteLegendCsv(legend.length);
       }, "Keynote legend"), { title: "Export keynote legend as CSV" }),
       sep(),
       groupLabel("Detail"),
@@ -1590,38 +1605,28 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
         toast("Space tag: place a space marker", "info");
       }, "Space tag")),
-      b("view", "View Ref", safe(() => {
-        toast("View Reference: pick a callout to link", "info");
-      }, "View Reference")),
-      b("stairs", "Tread", safe(() => {
-        toast("Tread Number: annotate stair treads", "info");
-      }, "Tread Number")),
-      b("component", "Group", safe(() => {
-        toast("Detail Group: group selected annotations", "info");
-      }, "Detail Group")),
-      b("check", "Spell", safe(() => {
-        toast("Check Spelling: scan text annotations", "info");
-      }, "Check Spelling")),
-      b("report", "Find", safe(() => {
-        toast("Find / Replace across text annotations", "info");
-      }, "Find / Replace")),
+      // Honest placeholders: these annotate actions had toast-only handlers
+      // that pretended success. planned() labels them truthfully until the
+      // capability ships (see the feature-maturity table in the UI menu).
+      planned("view", "View Ref", "View Reference annotation is planned for a future release."),
+      planned("stairs", "Tread", "Tread Number annotation is planned for a future release."),
+      planned("component", "Group", "Detail Group annotation is planned for a future release."),
+      planned("check", "Spell", "Check Spelling is planned for a future release."),
+      planned("report", "Find / Replace", "Find / Replace across annotations is planned for a future release."),
       sep(),
       groupLabel("Legend"),
       b("text", "Keynote", safe(() => {
-        toast("Keynote legend: pick a keynote file", "info");
+        // Same working keynote-legend export as the Keynote Legend button —
+        // this duplicate used to be a toast-only stub.
+        const legend = keynoteLegend();
+        if (!legend.length) { toast("No keynotes assigned yet — assign a keynote to a selected element first", "info"); return; }
+        exportKeynoteLegendCsv(legend.length);
       }, "Keynote")),
-      b("duct", "Duct", safe(() => {
-        toast("Duct Legend: place a duct system legend", "info");
-      }, "Duct Legend")),
-      b("pipe", "Pipe", safe(() => {
-        toast("Pipe Legend: place a pipe system legend", "info");
-      }, "Pipe Legend")),
-      b("color-legend", "Color Fill", safe(() => {
-        toast("Color Fill Legend: choose a color scheme", "info");
-      }, "Color Fill Legend")),
-      b("symbol", "Symbol", safe(() => {
-        toast("Symbol: place a legend symbol", "info");
-      }, "Symbol")),      sep(),
+      planned("duct", "Duct", "Duct Legend placement is planned for a future release. System colors are available via MEP coloring."),
+      planned("pipe", "Pipe", "Pipe Legend placement is planned for a future release. System colors are available via MEP coloring."),
+      planned("color-legend", "Color Fill", "Color Fill Legend placement is planned for a future release."),
+      planned("symbol", "Symbol", "Legend Symbol placement is planned for a future release."),
+      sep(),
       b("clear", "Clear", safe(() => {
         const pv = (ctx.features as any).planView;
         if (pv?.isVisible?.()) { pv.setTool?.("clear-annotations"); return; }
@@ -1676,12 +1681,16 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Solar study"), { title: "Open solar study panel" }),
       sep(),
       groupLabel("Energy"),
-      b("energy", "Heat Loss", safe(() => {
-        (window as any).__obsEnergyAnalysis?.run?.();
-        toast("Energy analysis — heat loss per room", "info");
+      b("energy", "Heat Loss", safe(async () => {
+        // Runs the real energy engine over authored rooms (see energy-ui.ts).
+        // The old handler called __obsEnergyAnalysis — a global that never
+        // existed — so this button silently did nothing behind a toast.
+        const m = await import("../features/energy-ui");
+        await m.runHeatLossReport();
       }, "Heat loss"), { title: "Run steady-state heat loss per room" }),
-      b("energy", "gbXML", safe(() => {
-        (window as any).__obsEnergyAnalysis?.exportGbxml?.();
+      b("energy", "gbXML", safe(async () => {
+        const m = await import("../features/energy-ui");
+        await m.exportGbXmlFile();
       }, "gbXML"), { title: "Export gbXML for external energy simulators" }),
       sep(),
       groupLabel("Loads"),
@@ -1782,9 +1791,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           ],
         });
       }, "Property line"), { title: "Create property line from bearings + distances" }),
-      b("property", "Subregion", safe(() => {
-        toast("Subregion: draw closed polyline on toposurface, then mark subregion", "info");
-      }, "Subregion"), { title: "Define a subregion within a toposurface" }),
+      planned("property", "Subregion", "Subregion definition inside a toposurface is planned for a future release."),
       sep(),
       groupLabel("Site"),
       b("parking", "Parking", safe(() => {
@@ -1807,12 +1814,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Fire hydrant"), { title: "Place a fire hydrant" }),
       sep(),
       groupLabel("Massing"),
-      b("mass", "In-Place Mass", safe(() => {
-        (window as any).__obsInPlaceMass?.create?.();
-        toast("In-Place Mass: extrude/sweep/revolve in viewport", "info");
+      b("mass", "In-Place Mass", safe(async () => {
+        // Same flow as the Edit tab's working In-Place Mass button — the old
+        // handler called __obsInPlaceMass (a global that never exists).
+        await openInPlaceMassDialog();
       }, "In-place mass"), { title: "Create an in-place massing form" }),
       b("mass", "Mass Floors", safe(async () => {
-        (window as any).__obsInPlaceMass?.massFloors?.();
+        await openMassFloorsDialog();
       }, "Mass floors"), { title: "Slice mass into mass floors per level" }),
     ],
   },

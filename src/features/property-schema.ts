@@ -606,6 +606,41 @@ if (!SCHEMAS.terrain) {
   };
 }
 
+// ── Slab slope fields (sloped-floor engine) ───────────────────────────
+// properties.slope is in PERCENT for slabs (drainage convention, 0.5–15%)
+// and properties.slopeDirection in degrees (0 = +X). The lowest polygon
+// edge stays at the slab elevation — the slope-arrow tail convention.
+// Terrain keeps its own degree-based slope; the two are intentionally
+// separate because the engines differ.
+if (SCHEMAS.slab) {
+  SCHEMAS.slab.fields.push(
+    { key: "slope", label: "Slope", group: "Dimensions", type: "number", target: "properties", unit: "%", step: 0.5, default: 0 },
+    { key: "slopeDirection", label: "Slope Direction", group: "Dimensions", type: "number", target: "properties", unit: "deg", step: 15, default: 0 }
+  );
+}
+
+// ── Ramp Schema ───────────────────────────────────────────────────────
+// Rendered by features/ramp-builder.ts from modules/ramps. rise/width/
+// thickness are params (draw defaults); slope/run/angle/sideRails live in
+// properties. Default slope 8.333% = the 1:12 accessible maximum.
+if (!SCHEMAS.ramp) {
+  SCHEMAS.ramp = {
+    type: "ramp" as any,
+    label: "Ramp",
+    icon: "equipment",
+    groups: ["Dimensions", "Constraints", "Identity", "Materials"],
+    fields: [
+      { key: "height", label: "Rise", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.05, default: 1.5 },
+      { key: "width", label: "Width", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.1, default: 1.5 },
+      { key: "thickness", label: "Slab Thickness", group: "Dimensions", type: "number", target: "params", unit: "m", step: 0.02, default: 0.2 },
+      { key: "slope", label: "Slope", group: "Constraints", type: "number", target: "properties", unit: "%", step: 0.5, default: 8.333 },
+      { key: "run", label: "Run (0 = from slope)", group: "Constraints", type: "number", target: "properties", unit: "m", step: 0.25, default: 0 },
+      { key: "angle", label: "Plan Rotation", group: "Constraints", type: "number", target: "properties", unit: "deg", step: 15, default: 0 },
+      { key: "sideRails", label: "Side Rails", group: "Constraints", type: "boolean", target: "properties", default: false }
+    ]
+  };
+}
+
 export function hasSchema(type: ElementType | string | null | undefined): boolean {
   if (!type) return false;
   return !!SCHEMAS[type as ElementType];
