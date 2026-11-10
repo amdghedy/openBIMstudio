@@ -23,6 +23,8 @@ const checks = [
   ["changing the category filter reconciles existing selections", selection.includes("if (this.filter) void this.reconcileFilter()") && selection.includes("async reconcileFilter(): Promise<void>")],
   ["restored selection sets are reconciled with the active category filter", selection.includes("await this.reconcileFilter();")],
   ["highlighter-adopted selections are reconciled with the active category filter", selection.includes("void this.reconcileFilter();")],
+  ["selection replace and add APIs enforce the active category filter", selection.includes("if (reconcile && this.filter) void this.reconcileFilter()") && selection.includes("if (this.filter) void this.reconcileFilter();")],
+  ["highlighter selection synchronization flows through filter-aware replacement", selection.includes("(selection as any).replace(snap)")],
   ["temporary Alt snap suspension", palette.includes('e.key === "Alt"') && palette.includes("snapping.setSuspended(false)")],
   ["palette keyboard shortcut", palette.includes('e.key.toLowerCase() === "p"')],
   ["palette booted", main.includes("setupSelectionSnappingPalette()")],
