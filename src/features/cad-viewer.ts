@@ -4568,7 +4568,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addSep();
     addLabel("CLIPBOARD & TRANSFORM");
     addItem("Copy",()=>setTool("copy"),!hasSelection,false,"CO");
+    addItem("Copy to Clipboard",()=>copySelection(),!hasSelection,false,"Ctrl+Shift+C");
     addItem("Paste",()=>setTool("paste"),!clip || !clip.entities.length,false,"Ctrl+V");
+    addItem("Paste at Original Coordinates",()=>pasteOrig(),!clip || !clip.entities.length);
     addItem("Move",()=>setTool("move"),!hasSelection,false,"M");
     addItem("Rotate",()=>setTool("rotate"),!hasSelection,false,"RO");
     addItem("Mirror",()=>setTool("mirror"),!hasSelection,false,"MI");
