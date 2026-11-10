@@ -11,6 +11,7 @@ import { escapeHtml } from "../core/html-escape";
 import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
+import { selection } from "./selection";
 import { buildTagAll, elementAnchor, leaderEnd, pointInBox, tagLabel, textBox, type TagMode } from "../modules/views/plan-tags";
 import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan-dim-geometry";
 import { history as planHistory } from "./history";
@@ -432,6 +433,8 @@ applyBtn.onclick = () => {
 };
 
 function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggle" = "replace") {
+  // The plan canvas shares the same category policy as 3D picking.
+  if (el && !selection.matchesAuthoredCategoryFilter(el.type, el.properties)) el = null;
   if (el) { planDimSel = null; planAnnoSel = null; }
   if (mode === "replace") {
     planSelectedIds.clear();
@@ -462,6 +465,7 @@ function nearestAuthoredAt(hit: { x: number; z: number }): { element: any | null
   let best: any = null;
   let bestD = 1.25; // meters � generous so thick ducts/walls are easy to click
   for (const el of els) {
+    if (!selection.matchesAuthoredCategoryFilter(el?.type ?? "", el?.properties)) continue;
     const p = el?.params ?? {};
     const half = Math.max(0.04, Number(p.thickness ?? p.width ?? 0.2) * 0.55);
     if (p.start && p.end) {
@@ -3316,6 +3320,7 @@ async function commitPlanBoxSelect(additive: boolean) {
         // Fallback wider search for thin lines
         let bestD = 1.2;
         for (const el of els) {
+          if (!selection.matchesAuthoredCategoryFilter(el?.type ?? "", el?.properties)) continue;
           const p = el.params;
           if (p?.start && p?.end) {
             const ax = p.start[0], az = p.start[1], bx = p.end[0], bz = p.end[1];
@@ -3355,7 +3360,10 @@ async function commitPlanBoxSelect(additive: boolean) {
   try {
     const { getElements, setSelectedAuthored } = await import("./authoring");
     const els = getElements();
-    const hits = els.filter((el: any) => elementInPlanBox(el, minX, maxX, minZ, maxZ, crossing));
+    const hits = els.filter((el: any) =>
+      selection.matchesAuthoredCategoryFilter(el?.type ?? "", el?.properties) &&
+      elementInPlanBox(el, minX, maxX, minZ, maxZ, crossing),
+    );
     const ids = hits.map((el: any) => el.id);
     if (!additive) planSelectedIds.clear();
     for (const id of ids) planSelectedIds.add(id);
