@@ -107,11 +107,11 @@ t("viewport query culls large drawings to local candidates",()=>{
 });
 t("CAD window and crossing selection use spatial candidates",()=>{
   const src=fs.readFileSync(path.join(__dirname,"../src/modules/cad-viewer/viewer-math.ts"),"utf8");
-  assert.match(src,/for \\(const i of queryIndexBox\\(idx, entities, rect\\)\\)/);
+  assert.match(src,/for \(const i of queryIndexBox\(idx, entities, rect\)\)/);
 });
 t("CAD renderer uses viewport candidates and cursor-only status updates",()=>{
   const src=fs.readFileSync(path.join(__dirname,"../src/features/cad-viewer.ts"),"utf8");
-  assert.match(src,/M\\.queryIndexBox\\(ix, list, cull\\)/);
-  assert.match(src,/coords\\.textContent = xy;\\s*return;/);
+  assert.match(src,/M\.queryIndexBox\(ix, list, cull\)/);
+  assert.match(src,/coords\.textContent = xy;\s*return;/);
 });
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);
