@@ -2720,6 +2720,8 @@ function startGripDrag(g: GripSpec, worldPt: THREE.Vector3) {
     const js = joinedEnds(elements as any, el as any, g.kind);
     if (js.length) follow = js.map((j) => ({ ...j, before: JSON.parse(JSON.stringify(elements.find((q) => q.id === j.id)!.params)) }));
   }
+  // The snap result left over from hovering is the grip's own position; using it would pin the drag in place.
+  lastSnapValid = false; lastSnapResult = null;
   gripDrag = {
     mepBase,
     follow,
@@ -2732,7 +2734,6 @@ function startGripDrag(g: GripSpec, worldPt: THREE.Vector3) {
 }
 
 function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
-  try { ((window as any).__gripDebug ??= []).push({ upd: [worldPt.x, worldPt.z], has: !!gripDrag }); } catch { /* debug */ }
   if (!gripDrag) return;
   const el = elements.find((e) => e.id === gripDrag!.grip.elementId);
   if (!el) return;
@@ -2851,7 +2852,6 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
     else candidate.splice(vertexIndex + 1, 0, [x, z]);
     // Invalid edits retain the last valid geometry; midpoint drags insert a
     // real vertex only once the proposed boundary is valid.
-    try { ((window as any).__gripDebug ??= []).push({ kind, vertexIndex, x, z, valid: isValidBoundary(candidate) }); } catch { /* debug */ }
     if (isValidBoundary(candidate)) p.polygon = candidate;
     else p.polygon = source.map((v: [number, number]) => [...v] as [number, number]);
   }
@@ -6729,6 +6729,13 @@ export function setupAuthoring() {
     if (g.kind === "drag-move" && gripDrag) {
       const pt = groundPoint(g.event);
       if (pt) updateGripDrag(pt, (g.event as PointerEvent | MouseEvent).shiftKey === true);
+      // Hover (which normally refreshes the snap) is suspended during the drag, so refresh it here; it is used by the next move.
+      try {
+        const ray = new THREE.Raycaster();
+        ray.setFromCamera(ndcOf(g.event), ctx.world.camera.three);
+        const hit = ctx.groundPlane ? ray.intersectObjects([ctx.groundPlane], false) : [];
+        void updateSnapAsync(g.event, hit.length ? hit[0].point.clone() : null);
+      } catch { /* */ }
       return true;
     }
 
