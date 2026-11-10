@@ -1545,15 +1545,17 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         setAuthoringTool("equipment");
       }, "Detail component"), { title: "Pick a detail component from the library" }),
       b("filled-region", "Filled Region", safe(() => {
-        const fr = (window as any).__obsFilledRegions;
-        if (!fr) { toast("Filled regions module not loaded", "warn"); return; }
-        setAuthoringTool("slab");
-        toast("Filled region — click polygon points, Enter to finish. Pattern: concrete.", "success");
-      }, "Filled region"), { title: "Draw a filled region with hatch pattern" }),
+        const pv = (ctx.features as any).planView;
+        if (!pv?.startRegion) { toast("Plan view engine not loaded", "warn"); return; }
+        if (!pv.isVisible?.()) { toast("Filled Region needs a plan view — open one from the 2D zone (Menu → Floor Plan (2D))", "warn"); return; }
+        pv.startRegion("filled");
+      }, "Filled region"), { title: "Draw a filled region with hatch pattern (plan view)" }),
       b("masking-region", "Masking Region", safe(() => {
-        setAuthoringTool("slab");
-        toast("Masking region — draw polygon to mask", "success");
-      }, "Masking region"), { title: "Draw a masking region (hide geometry)" }),
+        const pv = (ctx.features as any).planView;
+        if (!pv?.startRegion) { toast("Plan view engine not loaded", "warn"); return; }
+        if (!pv.isVisible?.()) { toast("Masking Region needs a plan view — open one from the 2D zone (Menu → Floor Plan (2D))", "warn"); return; }
+        pv.startRegion("masking");
+      }, "Masking region"), { title: "Draw a masking region to hide geometry (plan view)" }),
       b("model-curve", "Model Curve", safe(() => {
         const mc = (window as any).__obsModelCurves;
         if (!mc) { toast("Model curves module not loaded", "warn"); return; }

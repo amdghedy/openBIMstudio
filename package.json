@@ -76,6 +76,7 @@
     "test:auto-dim": "node tests/auto-dim-chains.test.cjs",
     "test:dim-geometry": "node tests/plan-dim-geometry.test.cjs",
     "test:plan-tags": "node tests/plan-tags.test.cjs",
+    "test:filled-regions": "node tests/filled-regions.test.cjs",
     "test:project-file": "node tests/project-file.test.cjs",
     "test:sheet-furniture": "node tests/sheet-furniture.test.cjs",
     "test:fitting-outline": "node tests/fitting-outline.test.cjs",

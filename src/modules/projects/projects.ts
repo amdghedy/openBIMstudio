@@ -190,6 +190,8 @@ export async function saveProject(silent = false) {
     if (Array.isArray(pd)) current.planDimensions = pd;
     const pa = (window as any).__obsPlanAnno?.serialize?.();
     if (pa) current.planAnnotations = pa;
+    const pr = (window as any).__obsPlanRegions?.serialize?.();
+    if (Array.isArray(pr)) current.planRegions2d = pr;
   } catch { /* plan dimensions optional */ }
 
   current.updatedAt = Date.now();
@@ -464,6 +466,9 @@ export async function openProject(id: string) {
       const paApi = (window as any).__obsPlanAnno;
       if (paApi?.load) paApi.load(doc.planAnnotations ?? null);
       else (window as any).__obsPendingPlanAnno = doc.planAnnotations ?? null;
+      const prApi = (window as any).__obsPlanRegions;
+      if (prApi?.load) prApi.load((doc as any).planRegions2d ?? []);
+      else (window as any).__obsPendingPlanRegions = (doc as any).planRegions2d ?? [];
     } catch { /* */ }
 
     // If no saved offsets, apply the saved positioning mode instead.

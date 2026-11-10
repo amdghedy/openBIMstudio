@@ -7,7 +7,7 @@
 
 import { listPatterns, getPattern, type HatchPatternDef } from "../modules/detail-patterns/hatch-patterns";
 import { registerCommand } from "./command-palette";
-import { uiAlert } from "../core/notify";
+import { ctx } from "../core/context";
 
 export function openHatchPatternPanel(): void {
   const existing = document.getElementById("obs-hatch-pattern-modal");
@@ -136,9 +136,31 @@ export function openHatchPatternPanel(): void {
   document.getElementById("obs-hatch-scale")?.addEventListener("input", renderPreview);
   document.getElementById("obs-hatch-rot")?.addEventListener("input", renderPreview);
 
+  const toast = (message: string, kind: "success" | "info" | "warn" = "success") => {
+    try {
+      window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message, kind } }));
+    } catch { /* toast optional */ }
+  };
+
+  // Apply: real action — pattern goes onto the selected region, or primes the
+  // filled-region drawing tool in the plan view. No fake "applied" alerts.
   document.getElementById("obs-hatch-apply-btn")?.addEventListener("click", () => {
-    uiAlert(`Applied hatch pattern '${selectedPatternId}' to active drafting section.`);
-    overlay.remove();
+    const scale = parseFloat((document.getElementById("obs-hatch-scale") as HTMLInputElement)?.value || "1.0");
+    const rot = parseFloat((document.getElementById("obs-hatch-rot") as HTMLInputElement)?.value || "0");
+    const pat = getPattern(selectedPatternId);
+    const pv = (ctx.features as any).planView;
+
+    if (pv?.applyPatternToSelectedRegion?.(selectedPatternId, Math.max(0.1, scale), rot)) {
+      toast(`Applied ${pat?.name ?? selectedPatternId} to the selected region`, "success");
+      overlay.remove();
+      return;
+    }
+    if (pv?.isVisible?.() && pv?.startRegion?.("filled", selectedPatternId, Math.max(0.1, scale), rot)) {
+      toast(`${pat?.name ?? selectedPatternId}: draw the region polygon in the plan view (3+ points, close on the first point or Enter)`, "info");
+      overlay.remove();
+      return;
+    }
+    toast("Open a plan view first (2D zone → Floor Plan) — then Apply fills the selected region or starts a new one", "warn");
   });
 
   renderPreview();

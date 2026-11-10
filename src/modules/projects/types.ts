@@ -360,6 +360,8 @@ export interface ProjectDoc {
   planDimensions?: unknown[];
   /** Plan-view tags and text notes. */
   planAnnotations?: { tags: unknown[]; notes: unknown[] };
+  /** Filled / masking regions drawn in 2D plan views (Region2D records). */
+  planRegions2d?: unknown[];
 
   /** Native MEP connector graph, electrical assignments and lifecycle revision. */
   mepLifecycle?: MepModelSnapshot;

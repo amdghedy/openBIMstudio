@@ -48,6 +48,8 @@ export const PLAN_COMMANDS: readonly PlanCommand[] = [
   c("Annotate", "TAGALL", ["TAL"], "Tag all elements", { tool: "tag-all" }),
   c("Annotate", "ROOMTAG", ["RT"], "Tag rooms", { tool: "room-tag" }),
   c("Annotate", "TEXT", ["T", "DT", "MT", "MTEXT"], "Place text", { tool: "text" }),
+  c("Annotate", "REGION", ["REG"], "Filled region (hatch-pattern polygon)", { tool: "filled-region" }),
+  c("Annotate", "WIPEOUT", ["MASK", "MREG"], "Masking region (hide geometry under a polygon)", { tool: "masking-region" }),
   c("Annotate", "SPOTELEV", ["SE"], "Spot elevation", { tool: "spot-elev" }),
   c("Modify", "SELECT", ["SEL"], "Select elements (box: left-to-right window, right-to-left crossing)", { action: "select" }),
   c("Modify", "SELECTALL", ["SA", "AL"], "Select every authored element (all levels)", { action: "select-all" }),

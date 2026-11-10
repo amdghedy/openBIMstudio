@@ -26,6 +26,11 @@ import {
 } from "../modules/drawings/plan-generator";
 import type { PlanView } from "../modules/drawings/plan-types";
 import { getSchema, type PropertyField } from "./property-schema";
+import {
+  addRegion, getRegions, removeRegion, updateRegion, moveRegion, hitTestRegion,
+  serializeRegions, loadRegions, regionsToEntities, type Region2D,
+} from "../modules/filled-regions/types";
+import { getPattern } from "../modules/detail-patterns/hatch-patterns";
 
 /* -------------------------------------------------------------------------
    State
@@ -928,7 +933,7 @@ const exportBtn = btn("? SVG", () => exportSvg());
 const closeBtn = btn("? Close", () => togglePlanView());
 
 /* -- Plan modeling state (tools come from ribbon tabs only) -- */
-type PlanMode = "pan" | "select" | "navigate" | "move" | "linear" | "point" | "dim" | "tag" | "text";
+type PlanMode = "pan" | "select" | "navigate" | "move" | "linear" | "point" | "dim" | "tag" | "text" | "region";
 type LinearKind = "wall" | "beam" | "strip" | "duct" | "pipe" | "cable-tray" | "conduit" | "mline" | "brace" | "truss";
 type PointKind = "column" | "footing" | "equipment";
 
@@ -1212,6 +1217,97 @@ try {
   const pend = (window as any).__obsPendingPlanAnno;
   if (pend) { planTags.push(...(pend.tags ?? [])); planNotes.push(...(pend.notes ?? [])); (window as any).__obsPendingPlanAnno = undefined; }
 } catch { /* */ }
+
+// ── Filled / masking regions (BIM: Annotate > Detail > Region) ──
+/** Regions are keyed per plan view; the plan panel derives a stable id from the level name. */
+function planRegionViewId(p: PlanView): string {
+  return `plan:${p.level?.name ?? "Level"}`;
+}
+interface RegionDraftState {
+  type: "filled" | "masking";
+  pts: { x: number; z: number }[];
+}
+let regionDraft: RegionDraftState | null = null;
+let planRegionSel: string | null = null;
+let planRegionDrag: { id: string; viewId: string; lastW: { x: number; z: number }; before: string; moved: boolean } | null = null;
+let pendingRegionPattern: { pattern: string; patternScale: number; patternRotation: number } =
+  { pattern: "ANSI31", patternScale: 1, patternRotation: 0 };
+
+function regionSnapshot(): string { return JSON.stringify(serializeRegions()); }
+function restoreRegions(json: string): void {
+  try { loadRegions(JSON.parse(json)); } catch { /* */ }
+  planRegionSel = null;
+  planRegionDrag = null;
+  if (currentPlan) renderPlan(currentPlan);
+}
+function recordRegions(label: string, before: string): void {
+  const after = regionSnapshot();
+  if (before === after) return;
+  try { planHistory.push({ label, apply: () => restoreRegions(after), revert: () => restoreRegions(before) }); } catch { /* */ }
+  markPlanDimsDirty();
+}
+(window as any).__obsPlanRegions = {
+  serialize: () => serializeRegions(),
+  load: (arr: unknown) => {
+    loadRegions(Array.isArray(arr) ? arr : []);
+    planRegionSel = null;
+    if (currentPlan) renderPlan(currentPlan);
+  },
+};
+try {
+  const pr = (window as any).__obsPendingPlanRegions;
+  if (Array.isArray(pr)) { loadRegions(pr); (window as any).__obsPendingPlanRegions = undefined; }
+} catch { /* */ }
+
+/** Close the current region polygon: create the region, keep the tool active (BIM repeat). */
+function finishRegionDraft(): void {
+  const d = regionDraft;
+  if (!d) return;
+  if (d.pts.length < 3) {
+    footerStatus("Region: at least 3 points needed — keep clicking, or Esc to cancel");
+    return;
+  }
+  const viewId = currentPlan ? planRegionViewId(currentPlan) : "plan:default";
+  const before = regionSnapshot();
+  const filled = d.type === "filled";
+  const r = addRegion({
+    viewId,
+    type: d.type,
+    boundary: d.pts.map((p) => [p.x, p.z] as [number, number]),
+    pattern: filled ? pendingRegionPattern.pattern : undefined,
+    patternScale: filled ? pendingRegionPattern.patternScale : undefined,
+    patternRotation: filled ? pendingRegionPattern.patternRotation : undefined,
+    color: filled ? "#1f2937" : undefined,
+    background: filled ? "rgba(148,163,184,0.16)" : undefined,
+    maskOpacity: filled ? undefined : 1,
+    lineWeightMm: 0.35,
+    lineColor: filled ? "#1f2937" : "#e2e8f0",
+  });
+  recordRegions(filled ? "Add filled region" : "Add masking region", before);
+  regionDraft = { type: d.type, pts: [] };
+  if (currentPlan) renderPlan(currentPlan);
+  footerStatus(`${filled ? "Filled" : "Masking"} region placed (${r.id}) — draw next, Enter/Esc to end`);
+}
+
+function selectRegion(id: string | null): void {
+  planRegionSel = id;
+  if (currentPlan) renderPlan(currentPlan);
+}
+
+/** True when a region was selected and the pattern was applied to it. */
+function applyPatternToSelectedRegion(pattern: string, scale: number, rotation: number): boolean {
+  if (!planRegionSel) return false;
+  const viewId = currentPlan ? planRegionViewId(currentPlan) : "plan:default";
+  const before = regionSnapshot();
+  const updated = updateRegion(viewId, planRegionSel, {
+    pattern, patternScale: Math.max(0.1, scale), patternRotation: ((rotation % 360) + 360) % 360,
+    type: "filled",
+  });
+  if (!updated) return false;
+  recordRegions("Region pattern", before);
+  if (currentPlan) renderPlan(currentPlan);
+  return true;
+}
 
 const TAG_H = () => paperMmToWorld(3.0);
 const NOTE_H = () => paperMmToWorld(2.5);
@@ -2339,6 +2435,97 @@ function renderPlan(plan: PlanView) {
     g.insertBefore(gl, paper.nextSibling);
   }
 
+  // -- Filled / masking regions (BIM Annotate > Detail > Region; above geometry, below dimensions) --
+  {
+    const NSR = "http://www.w3.org/2000/svg";
+    const regionViewId = planRegionViewId(plan);
+    const strokeScale = zoomedW / 1200;
+    // Pattern generators work in paper millimetres; convert via the view scale
+    // so the hatch stays paper-true while zooming (1 unit = unitPerMm paper mm).
+    const unitPerMm = Math.max(1, planViewScale) / 1000;
+
+    for (const ent of regionsToEntities(regionViewId, unitPerMm)) {
+      const reg = ent.region;
+      if (!reg.boundary || reg.boundary.length < 3) continue;
+      const gEl = document.createElementNS(NSR, "g");
+      gEl.setAttribute("data-obs-region", reg.id);
+      const regSelected = planRegionSel === reg.id;
+      if (regSelected) gEl.setAttribute("data-obs-region-selected", "1");
+      const ptsAttr = reg.boundary.map(([x, z]) => `${x},${-z}`).join(" ");
+      const selColor = "#f59e0b";
+
+      if (reg.type === "masking") {
+        const poly = document.createElementNS(NSR, "polygon");
+        poly.setAttribute("points", ptsAttr);
+        poly.setAttribute("fill", "#ffffff");
+        poly.setAttribute("fill-opacity", String(ent.maskOpacity ?? 1));
+        poly.setAttribute("stroke", regSelected ? selColor : reg.lineColor);
+        poly.setAttribute("stroke-width", String(Math.max(strokeScale * 0.6, 0.004) * (regSelected ? 1.8 : 1)));
+        gEl.appendChild(poly);
+      } else {
+        if (ent.fillColor) {
+          const tint = document.createElementNS(NSR, "polygon");
+          tint.setAttribute("points", ptsAttr);
+          tint.setAttribute("fill", ent.fillColor);
+          gEl.appendChild(tint);
+        }
+        if (ent.patternLines?.length) {
+          // Clip pattern lines with an SVG clipPath (robust for concave polygons).
+          const cpId = `obs-region-clip-${reg.id}`;
+          let defs = svg.querySelector("defs");
+          if (!defs) {
+            defs = document.createElementNS(NSR, "defs");
+            svg.insertBefore(defs, svg.firstChild);
+          }
+          const cp = document.createElementNS(NSR, "clipPath");
+          cp.setAttribute("id", cpId);
+          const cpPoly = document.createElementNS(NSR, "polygon");
+          cpPoly.setAttribute("points", ptsAttr);
+          cp.appendChild(cpPoly);
+          defs.appendChild(cp);
+          const lg = document.createElementNS(NSR, "g");
+          lg.setAttribute("clip-path", `url(#${cpId})`);
+          lg.setAttribute("stroke", reg.color ?? "#1f2937");
+          lg.setAttribute("stroke-width", String(Math.max(strokeScale * 0.35, 0.002)));
+          lg.setAttribute("stroke-linecap", "round");
+          for (const l of ent.patternLines) {
+            const ln = document.createElementNS(NSR, "line");
+            ln.setAttribute("x1", String(l.x1)); ln.setAttribute("y1", String(-l.y1));
+            ln.setAttribute("x2", String(l.x2)); ln.setAttribute("y2", String(-l.y2));
+            lg.appendChild(ln);
+          }
+          gEl.appendChild(lg);
+        }
+        const bp = document.createElementNS(NSR, "polygon");
+        bp.setAttribute("points", ptsAttr);
+        bp.setAttribute("fill", "none");
+        bp.setAttribute("stroke", regSelected ? selColor : reg.lineColor);
+        bp.setAttribute("stroke-width", String(Math.max(strokeScale * 0.6, 0.004) * (regSelected ? 1.8 : 1)));
+        gEl.appendChild(bp);
+      }
+
+      // Transparent hit target: click selects, drag moves (select mode only)
+      const hit = document.createElementNS(NSR, "polygon");
+      hit.setAttribute("points", ptsAttr);
+      hit.setAttribute("fill", "transparent");
+      hit.setAttribute("stroke", "none");
+      hit.style.pointerEvents = "all";
+      if (planMode === "select") hit.style.cursor = "move";
+      hit.addEventListener("mousedown", (ev) => {
+        if (planMode !== "select" || ev.button !== 0) return;
+        ev.stopPropagation();
+        ev.preventDefault();
+        const wStart = clientToWorld(ev.clientX, ev.clientY);
+        if (!wStart) return;
+        selectRegion(reg.id);
+        const before = regionSnapshot();
+        planRegionDrag = { id: reg.id, viewId: regionViewId, lastW: wStart, before, moved: false };
+      });
+      gEl.appendChild(hit);
+      g.appendChild(gEl);
+    }
+  }
+
   // -- Plan dimensions � BIM style (all kinds) --
   const dimStyle = getDimensionStyle();
   const sw = dimensionWorldStroke(dimStyle);
@@ -3058,6 +3245,42 @@ function updateSnapOverlayLegacy(): void {
   // Snap marker
   // Snap marker now rendered by updateSnapOverlay()
 
+  // Rubber-band + committed vertices for the region polygon draft (cheap overlay path)
+  if (planMode === "region" && regionDraft && regionDraft.pts.length > 0) {
+    const committed = regionDraft.pts;
+    const stroke = regionDraft.type === "masking" ? "#e2e8f0" : "#f59e0b";
+    const lw = Math.max(zoomedW * 0.0009, 0.004);
+    if (committed.length >= 2) {
+      let d = "";
+      for (const p of committed) d += `${d ? "L" : "M"}${p.x} ${-p.z}`;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", stroke);
+      path.setAttribute("stroke-width", String(lw));
+      __planCursorSvg.appendChild(path);
+    }
+    const tip = planCursor ?? committed[committed.length - 1];
+    if (planCursor) {
+      const last = committed[committed.length - 1];
+      const seg = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      seg.setAttribute("x1", String(last.x)); seg.setAttribute("y1", String(-last.z));
+      seg.setAttribute("x2", String(tip.x)); seg.setAttribute("y2", String(-tip.z));
+      seg.setAttribute("stroke", stroke);
+      seg.setAttribute("stroke-width", String(lw));
+      seg.setAttribute("stroke-dasharray", `${zoomedW * 0.003} ${zoomedW * 0.002}`);
+      seg.setAttribute("opacity", "0.85");
+      __planCursorSvg.appendChild(seg);
+    }
+    for (const p of committed) {
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", String(p.x)); dot.setAttribute("cy", String(-p.z));
+      dot.setAttribute("r", String(Math.max(zoomedW * 0.0016, 0.008)));
+      dot.setAttribute("fill", stroke);
+      __planCursorSvg.appendChild(dot);
+    }
+  }
+
   // Rubber-band for dim preview
   if (planMode === "dim" && planCursor && planDrawStart &&
       (planDimStyle === "aligned" || planDimStyle === "linear" || planDimStyle === "arc")) {
@@ -3460,7 +3683,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
 
   // Modeling / annotation tools only (select / navigate / move handled below)
-  if (planMode === "linear" || planMode === "point" || planMode === "dim" || planMode === "tag" || planMode === "text") {
+  if (planMode === "linear" || planMode === "point" || planMode === "dim" || planMode === "tag" || planMode === "text" || planMode === "region") {
     let w = clientToWorld(e.clientX, e.clientY);
     if (!w) return;
     let sn = findPlanSnap(w.x, w.z);
@@ -3474,6 +3697,25 @@ canvasWrap.addEventListener("mousedown", (e) => {
     planSnap = sn;
     e.preventDefault();
     e.stopPropagation();
+
+    // -- Filled / masking region polygon (click = vertex, first point or Enter = close) --
+    if (planMode === "region" && regionDraft) {
+      if (regionDraft.pts.length >= 3) {
+        const first = regionDraft.pts[0];
+        if (Math.hypot(w.x - first.x, w.z - first.z) <= worldPerPixel() * 12) {
+          finishRegionDraft();
+          return;
+        }
+      }
+      if (regionDraft.pts.length >= 1) {
+        const last = regionDraft.pts[regionDraft.pts.length - 1];
+        if (Math.hypot(w.x - last.x, w.z - last.z) < 0.001) return;
+      }
+      regionDraft.pts.push({ x: w.x, z: w.z });
+      if (currentPlan) renderPlan(currentPlan);
+      footerStatus(`Region: ${regionDraft.pts.length} point(s) — close by clicking the first point or Enter, Esc cancels`);
+      return;
+    }
 
     if (planMode === "linear") {
       // BIM continuous path: each click adds a segment
@@ -4002,6 +4244,22 @@ window.addEventListener("mousemove", (e) => {
     return;
   }
 
+  // 2b. Region drag (select mode: click a region and drag it)
+  if (planRegionDrag) {
+    const w = clientToWorld(e.clientX, e.clientY);
+    if (w) {
+      const dx = w.x - planRegionDrag.lastW.x;
+      const dz = w.z - planRegionDrag.lastW.z;
+      if (dx || dz) {
+        planRegionDrag.lastW = w;
+        moveRegion(planRegionDrag.viewId, planRegionDrag.id, dx, dz);
+        planRegionDrag.moved = true;
+        if (currentPlan) renderPlan(currentPlan);
+      }
+    }
+    return;
+  }
+
   // 3. Move selected elements
   if (planMoveDragging && planMoveLast) {
     const w = clientToWorld(e.clientX, e.clientY);
@@ -4062,6 +4320,14 @@ window.addEventListener("mouseup", (e) => {
   if (planBoxDragging) {
     const additive = !!(e && (e.ctrlKey || e.metaKey || e.shiftKey));
     void commitPlanBoxSelect(additive);
+  }
+  if (planRegionDrag) {
+    const d = planRegionDrag;
+    planRegionDrag = null;
+    if (d.moved) {
+      recordRegions("Move region", d.before);
+      footerStatus("Region moved — Ctrl+Z undo");
+    }
   }
   if (planMoveDragging) {
     planMoveDragging = false;
@@ -4490,6 +4756,21 @@ export function setPlanToolFromRibbon(tool: string) {
     planMode = "text";
     canvasWrap.style.cursor = "crosshair";
     toolHint.textContent = "Text � click to place note";
+  } else if (tool === "filled-region" || tool === "masking-region" || tool === "region") {
+    planMode = "region";
+    regionDraft = { type: tool === "masking-region" ? "masking" : "filled", pts: [] };
+    planChain = [];
+    planDrawStart = null;
+    canvasWrap.style.cursor = "crosshair";
+    try { showWallOpts(false); } catch { /* */ }
+    const pat = getPattern(pendingRegionPattern.pattern);
+    if (tool === "masking-region") {
+      toolHint.textContent = "Masking Region - click polygon points, close on the first point or Enter";
+      footerStatus("Masking region: click at least 3 points, close by clicking the first point or Enter");
+    } else {
+      toolHint.textContent = `Filled Region - click polygon points, pattern: ${pat?.name ?? pendingRegionPattern.pattern}`;
+      footerStatus(`Filled region (${pat?.name ?? pendingRegionPattern.pattern}): click at least 3 points, close by clicking the first point or Enter`);
+    }
   } else if (tool === "clear-annotations" || tool === "clear") {
     const beforeSnap = dimSnapshot();
     planDims.length = 0;
@@ -4516,11 +4797,12 @@ let lastPlanCommand = "";
  * tool and the selection. Returns true when anything was active.
  */
 export function cancelAllPlan(): boolean {
-  const hadSelection = planSelectedIds.size > 0 || !!planAnnoSel || !!planDimSel;
+  const hadSelection = planSelectedIds.size > 0 || !!planAnnoSel || !!planDimSel || !!planRegionSel;
   const active =
-    planMode !== "select" || planChain.length > 0 || !!planDrawStart || !!planTypedLength ||
+    planMode === "region" || planMode !== "select" || planChain.length > 0 || !!planDrawStart || !!planTypedLength ||
     planDimChainPts.length > 0 || !!planAutoPick?.p1 || !!planAutoPick?.p2 || !!planDimStartRef ||
-    !!planDimSeg1 || !!planDimPendingRefs || planBoxDragging || planMoveDragging || !!planDimDrag || !!planAnnoDrag;
+    !!planDimSeg1 || !!planDimPendingRefs || planBoxDragging || planMoveDragging || !!planDimDrag || !!planAnnoDrag ||
+    !!regionDraft?.pts.length;
   if (!active && !hadSelection) return false;
 
   // Roll back a drag that already changed something so Esc leaves no half edit.
@@ -4528,6 +4810,9 @@ export function cancelAllPlan(): boolean {
   if (planAnnoDrag?.moved) restoreAnno(planAnnoDrag.before);
   planDimDrag = null;
   planAnnoDrag = null;
+  regionDraft = null;
+  planRegionSel = null;
+  planRegionDrag = null;
   planBoxDragging = false;
   planBoxStart = null;
   planBoxCur = null;
@@ -4580,6 +4865,7 @@ function planPrompt(): string {
     case "dim": return planDimStyle === "auto" ? "AUTODIM  pick edges" : "DIM  pick boundary";
     case "tag": return "TAG  pick element";
     case "text": return "TEXT  specify location";
+    case "region": return regionDraft && regionDraft.pts.length ? "REGION  next point / close" : "REGION  specify first point";
     case "move": return "MOVE  drag selection";
     case "navigate": return "PAN  drag to pan";
     default: return "Command";
@@ -4793,6 +5079,14 @@ try {
       }
     }
 
+    // Enter → finish the region polygon (BIM repeat: tool stays active)
+    if (e.key === "Enter" && planMode === "region" && regionDraft && regionDraft.pts.length > 0) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      finishRegionDraft();
+      return;
+    }
+
     // Enter � finish continuous path
     if (e.key === "Enter" && planMode === "linear" && planChain.length > 0) {
       finishPlanChain();
@@ -4825,6 +5119,22 @@ try {
         }
       })();
       return;
+    }
+
+    // Selected region: Delete removes it, Esc deselects.
+    if (planRegionSel && planMode !== "dim" && planMode !== "linear" && planMode !== "region") {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault(); e.stopImmediatePropagation();
+        const beforeRegions = regionSnapshot();
+        const viewId = currentPlan ? planRegionViewId(currentPlan) : "plan:default";
+        const gone = removeRegion(viewId, planRegionSel);
+        planRegionSel = null;
+        if (gone) recordRegions("Delete region", beforeRegions);
+        if (currentPlan) renderPlan(currentPlan);
+        footerStatus(gone ? "Region deleted - Ctrl+Z undo" : "Region not found");
+        return;
+      }
+      if (e.key === "Escape") { e.preventDefault(); selectRegion(null); return; }
     }
 
     // Selected tag / note: Delete removes it, Esc deselects.
@@ -4947,5 +5257,20 @@ try {
     isVisible: isPlanViewVisible,
     regenerate: () => void regenerate(),
     setTool: setPlanToolFromRibbon,
+    /** Start the filled/masking region tool, optionally priming the hatch pattern (from the hatch panel or ribbon). */
+    startRegion: (type: "filled" | "masking", pattern?: string, scale?: number, rotation?: number) => {
+      if (pattern) {
+        pendingRegionPattern = {
+          pattern,
+          patternScale: Math.max(0.1, scale ?? 1),
+          patternRotation: ((rotation ?? 0) % 360 + 360) % 360,
+        };
+      }
+      setPlanToolFromRibbon(type === "masking" ? "masking-region" : "filled-region");
+      return true;
+    },
+    /** Apply a pattern to the currently selected region; false when nothing is selected. */
+    applyPatternToSelectedRegion: (pattern: string, scale: number, rotation: number) =>
+      applyPatternToSelectedRegion(pattern, scale, rotation),
   };
 }
