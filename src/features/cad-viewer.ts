@@ -4573,7 +4573,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Rotate",()=>setTool("rotate"),!hasSelection,false,"RO");
     addItem("Mirror",()=>setTool("mirror"),!hasSelection,false,"MI");
     addItem("Scale",()=>setTool("scale"),!hasSelection,false,"SC");
-    addItem("Array",()=>setTool("array" as Tool),!hasSelection,false,"AR");
+    addItem("Array",()=>executeDrawingCommand("ARRAY"),!hasSelection,false,"AR");
     addItem("Offset",()=>setTool("offset"),!hasSelection,false,"O");
     addItem("Match Properties",()=>setTool("match"),!hasSelection,false,"MA");
     addItem("Erase Selected",()=>setTool("erase"),!hasSelection,true,"E");
