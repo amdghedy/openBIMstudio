@@ -16,7 +16,9 @@ test('the app boots without uncaught errors and draws a 3D canvas', async ({ pag
 test('2D plan: command line starts a tool and Esc cancels everything', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 30000 });
-  await page.locator('.obs-ribbon').getByRole('button', { name: 'Plan + CAD', exact: true }).click();
+  const ribbon = page.locator('.obs-ribbon');
+  await ribbon.getByRole('button', { name: 'View', exact: true }).click();
+  await ribbon.getByRole('button', { name: 'Plan', exact: true }).click();
   const line = page.locator('#obs-plan-cmdline input');
   await expect(line).toBeVisible();
 
@@ -35,7 +37,9 @@ test('2D plan: command line starts a tool and Esc cancels everything', async ({ 
 
 test('2D plan: unknown command is reported, not ignored', async ({ page }) => {
   await page.goto('/');
-  await page.locator('.obs-ribbon').getByRole('button', { name: 'Plan + CAD', exact: true }).click();
+  const ribbon = page.locator('.obs-ribbon');
+  await ribbon.getByRole('button', { name: 'View', exact: true }).click();
+  await ribbon.getByRole('button', { name: 'Plan', exact: true }).click();
   const line = page.locator('#obs-plan-cmdline input');
   await line.focus();
   await line.fill('nonsense');
