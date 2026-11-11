@@ -217,10 +217,11 @@ function projectElement(
       out.push({ kind: "line", x1: x0, z1: y0, x2: x0, z2: y1, stroke: PROJECT_STYLE });
       out.push({ kind: "line", x1: x1, z1: y0, x2: x1, z2: y1, stroke: PROJECT_STYLE });
       // Top edge only where the cut geometry does not already cover it.
-      const top = projectedTopEdge(
+      for (const top of projectedTopEdge(
         Math.min(x0, x1), Math.max(x0, x1), y1, cutTops, PROJECT_STYLE,
-      );
-      if (top) out.push(top);
+      )) {
+        out.push(top);
+      }
       // Hosted openings read on the projected face (doors/windows).
       const L = Math.hypot(bx - ax, bz - az);
       const openings = hostedOpeningsForWall(hostedByWall.get(el.id) ?? [], L, p.height);

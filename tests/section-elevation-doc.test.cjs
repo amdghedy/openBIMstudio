@@ -146,18 +146,36 @@ t("cut through a window: sill + head slices, jamb lines, glass line", () => {
 
 // ── projectedTopEdge ─────────────────────────────────────────────────────
 t("projected top edge emitted when nothing covers it", () => {
-  const e = m.projectedTopEdge(2, 6, 4, [], { color: "#6b7280", widthPt: 0.2, dash: null });
-  assert.ok(e && e.kind === "line");
-  near(e.z1, 4);
+  const es = m.projectedTopEdge(2, 6, 4, [], { color: "#6b7280", widthPt: 0.2, dash: null });
+  assert.strictEqual(es.length, 1);
+  assert.strictEqual(es[0].kind, "line");
+  near(es[0].z1, 4);
 });
-t("suppressed where cut geometry is at least as tall", () => {
+t("suppressed inside same-height cut cover, pokes out on both sides", () => {
   const cutTops = [{ x0: 0, x1: 5, top: 3 }];
-  assert.strictEqual(m.projectedTopEdge(2, 6, 3, cutTops, CUT), null);
-  assert.ok(m.projectedTopEdge(2, 6, 4, cutTops, CUT));   // taller back wall pokes above
+  const es = m.projectedTopEdge(2, 6, 3, cutTops, CUT);
+  assert.strictEqual(es.length, 1);            // 5..6 only
+  near(es[0].x1, 5); near(es[0].x2, 6);
+  const es2 = m.projectedTopEdge(-2, 6, 3, cutTops, CUT);
+  assert.strictEqual(es2.length, 2);           // -2..0 and 5..6
+  near(es2[0].x1, -2); near(es2[0].x2, 0);
+  near(es2[1].x1, 5); near(es2[1].x2, 6);
+});
+t("fully covered edge emits nothing", () => {
+  const cutTops = [{ x0: 0, x1: 10, top: 3 }];
+  assert.deepStrictEqual(m.projectedTopEdge(2, 6, 3, cutTops, CUT), []);
+  const taller = [{ x0: 0, x1: 10, top: 4 }];
+  assert.deepStrictEqual(m.projectedTopEdge(2, 6, 3, taller, CUT), []);
+});
+t("lower cut geometry does not suppress the edge above it", () => {
+  const cutTops = [{ x0: 0, x1: 5, top: 2 }];
+  const es = m.projectedTopEdge(2, 6, 3, cutTops, CUT);
+  assert.strictEqual(es.length, 1);
+  near(es[0].x1, 2); near(es[0].x2, 6);
 });
 t("x-disjoint cut tops do not suppress", () => {
   const cutTops = [{ x0: 10, x1: 20, top: 3 }];
-  assert.ok(m.projectedTopEdge(2, 6, 3, cutTops, CUT));
+  assert.strictEqual(m.projectedTopEdge(2, 6, 3, cutTops, CUT).length, 1);
 });
 
 // ── projectedOpeningShapes ───────────────────────────────────────────────

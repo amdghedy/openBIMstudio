@@ -198,26 +198,42 @@ export function cutWallPieces(o: {
 export interface CutTop { x0: number; x1: number; top: number }
 
 /**
- * The projected (behind-the-cut) wall's top edge — but only where it is
- * actually visible above the cut geometry covering the same x-range.
- * A spurious horizontal line inside a taller cut wall's poché is worse
- * than no line, so overlapping covered tops suppress the edge.
+ * The projected (behind-the-cut) wall's top edge, emitted segment-wise:
+ * the edge shows wherever no cut rect at least as tall covers it, and is
+ * suppressed inside cut poché (a spurious horizontal line inside a taller
+ * cut wall is worse than no line). A same-height cut wall in front of part
+ * of the back wall therefore yields the two poking-out side segments.
  */
 export function projectedTopEdge(
   x0: number, x1: number, yTop: number,
   cutTops: CutTop[],
   stroke: StrokeStyle,
   tol = 1e-6,
-): SceneEntity | null {
-  let visible = true;
+): SceneEntity[] {
+  // Covered x-intervals: cut rects at least as tall as this wall's top.
+  const covered: Array<[number, number]> = [];
   for (const c of cutTops) {
-    if (c.x0 <= x1 + tol && c.x1 >= x0 - tol && yTop <= c.top + tol) {
-      visible = false;
-      break;
-    }
+    if (c.top + tol < yTop) continue;
+    const a = Math.max(x0, c.x0);
+    const b = Math.min(x1, c.x1);
+    if (a < b - 0.01) covered.push([a, b]);
   }
-  if (!visible) return null;
-  return { kind: "line", x1: x0, z1: yTop, x2: x1, z2: yTop, stroke };
+  if (!covered.length) {
+    return [{ kind: "line", x1: x0, z1: yTop, x2: x1, z2: yTop, stroke }];
+  }
+  covered.sort((p, q) => p[0] - q[0]);
+  const out: SceneEntity[] = [];
+  let cursor = x0;
+  for (const [a, b] of covered) {
+    if (a > cursor + 0.01) {
+      out.push({ kind: "line", x1: cursor, z1: yTop, x2: a, z2: yTop, stroke });
+    }
+    cursor = Math.max(cursor, b);
+  }
+  if (cursor < x1 - 0.01) {
+    out.push({ kind: "line", x1: cursor, z1: yTop, x2: x1, z2: yTop, stroke });
+  }
+  return out;
 }
 
 /**
