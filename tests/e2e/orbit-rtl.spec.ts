@@ -310,3 +310,25 @@ test('PROFILE: orbit a 1,600-wall model with the CPU profiler on (prints the hot
   (await import('fs')).writeFileSync('test-results/orbit-profile.txt', report);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('smooth navigation lowers the render resolution while dragging and restores it afterwards', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__?.world?.renderer?.three), { timeout: 30000 }).toBe(true);
+  const ratio = () => page.evaluate(() => (window as any).__OBS_CTX__.world.renderer.three.getPixelRatio() as number);
+  const before = await ratio();
+  const box = (await page.locator('canvas').first().boundingBox())!;
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(cx + 60, cy + 20, { steps: 6 });
+  const during = await ratio();
+  await page.mouse.up({ button: 'middle' });
+  await page.waitForTimeout(600);
+  const after = await ratio();
+  expect(during, `during drag (before ${before})`).toBeLessThan(before);
+  expect(after, 'restored after the drag').toBe(before);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
