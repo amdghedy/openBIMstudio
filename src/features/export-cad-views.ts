@@ -10,6 +10,7 @@ import { writeDxf, DWG_VERSIONS, DEFAULT_DWG_VERSION, type DwgVersionCode } from
 import { getLevels, getElements, getSelectedIds } from "./authoring";
 import { meshesToDxf3d, layerForElementType, layerForIfcCategory, type MeshInput } from "../modules/export/model-to-dxf3d";
 import { ctx } from "../core/context";
+import { fmtNumber } from "../core/region";
 import { registerCommand } from "./command-palette";
 import { uiAlert } from "../core/notify";
 
@@ -194,13 +195,13 @@ export function openExportCadDialog(): void {
           msg.style.color = "#cbd5e1"; msg.textContent = "Reading imported models…";
           const ifc = await collectIfcMeshes((d, t) => { msg.textContent = `Reading imported models… ${d}/${t}`; });
           meshes = meshes.concat(ifc.meshes); elements += ifc.elements;
-          if (ifc.elements || ifc.failed) ifcNote = `\nImported models: ${ifc.elements} element(s) exported` + (ifc.failed ? `, ${ifc.failed} without readable geometry` : "") + (ifc.capped ? `. Stopped at ${IFC_EXPORT_TRIANGLE_CAP.toLocaleString()} triangles; export a section of the model for the rest.` : ".");
+          if (ifc.elements || ifc.failed) ifcNote = `\nImported models: ${ifc.elements} element(s) exported` + (ifc.failed ? `, ${ifc.failed} without readable geometry` : "") + (ifc.capped ? `. Stopped at ${fmtNumber(IFC_EXPORT_TRIANGLE_CAP)} triangles; export a section of the model for the rest.` : ".");
         } else if (selOnly) ifcNote = "\nSelected-only applies to authored elements; imported models were not included.";
         const r = meshesToDxf3d(meshes, { units: q<HTMLSelectElement>("[data-units]").value as CadUnits, layerPrefix: q<HTMLInputElement>("[data-prefix]").value.replace(/[^A-Za-z0-9_\-$]/g, "").slice(0, 20) });
         if (!r.faces) { msg.style.color = "#fbbf24"; msg.textContent = "No 3D elements to export." + ifcNote; return; }
         download("openbimstudio-model-3d.dxf", new TextEncoder().encode(r.dxf), "application/dxf");
         msg.style.color = "#86efac";
-        msg.textContent = `Exported ${r.faces.toLocaleString()} 3D faces from ${elements} element(s) on ${Object.keys(r.byLayer).length} layer(s).` + (r.skippedDegenerate ? `\n${r.skippedDegenerate} degenerate triangle(s) skipped.` : "") + ifcNote;
+        msg.textContent = `Exported ${fmtNumber(r.faces)} 3D faces from ${elements} element(s) on ${Object.keys(r.byLayer).length} layer(s).` + (r.skippedDegenerate ? `\n${r.skippedDegenerate} degenerate triangle(s) skipped.` : "") + ifcNote;
       } catch (e) { msg.style.color = "#fca5a5"; msg.textContent = "3D export failed: " + (e instanceof Error ? e.message : String(e)); }
       finally { btn.disabled = false; }
     });
