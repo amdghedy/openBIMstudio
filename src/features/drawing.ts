@@ -6,15 +6,25 @@
  * state and adds nothing to the scene.
  */
 import {
-  activeToolLabel as authoringLabel,
   isDrawingActive as authoringIsDrawing,
   setAuthoringTool,
   getActiveTool,
   clearAllElements,
 } from "./authoring";
 
-/** Re-export authoring's live tool label so the panel and ribbon share one. */
-export const activeToolLabel = authoringLabel;
+/**
+ * Live re-export of authoring's tool label so the panel and ribbon share one.
+ *
+ * This MUST stay a pure `export { … } from` re-export, not
+ * `export const activeToolLabel = authoringLabel`. authoring.ts ↔ drawing.ts
+ * sit in an import cycle (authoring → measure/section → drawing), and an
+ * eagerly-evaluated snapshot binding is read at module-evaluation time: when
+ * the entry graph reaches drawing.ts while authoring.ts is still
+ * mid-evaluation, the read hits the TDZ and the whole app fails to boot with
+ * "Cannot access 'activeToolLabel' before initialization" (white screen).
+ * A pure re-export resolves lazily at each access — cycle-safe and live.
+ */
+export { activeToolLabel } from "./authoring";
 
 /** True while any authoring tool (draw or modify) is active. */
 export function isDrawingActive(): boolean {
