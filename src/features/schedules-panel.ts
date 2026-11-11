@@ -51,6 +51,7 @@ import type {
   GroupLevel,
 } from "../modules/schedules/schedule-types";
 import { uiAlert } from "../core/notify";
+import { register as registerService } from "../core/services";
 import { listViews, createView, updateView, getView as getViewDef } from "../modules/views/store";
 import {
   listSheets, createSheet, addViewport,
@@ -980,4 +981,19 @@ export function setupSchedulesPanel() {
       return stored;
     },
   };
+
+  // The panel's feature handle historically lived on ctx.features.schedules,
+  // but the command palette, the schedule templates and the workspace boot
+  // all resolve the panel under the service key "schedulesPanel". Nothing
+  // ever registered that service, so every "Toggle Schedules" / "Schedule:
+  // …" palette command and the workspace tile silently no-opped. Register
+  // the PanelService facade and alias the feature handle under the key the
+  // rest of the app looks up.
+  try {
+    registerService("schedulesPanel", {
+      toggle: toggleSchedules,
+      isVisible: isSchedulesVisible,
+    });
+  } catch { /* re-registration during HMR overwrites — safe to ignore */ }
+  (ctx.features as Record<string, unknown>).schedulesPanel = ctx.features.schedules;
 }

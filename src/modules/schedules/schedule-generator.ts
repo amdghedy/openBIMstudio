@@ -24,6 +24,7 @@ import type {
   GroupLevel,
 } from "./schedule-types";
 import { compileFormula, validateFormula } from "./schedule-formula";
+import { summableColumnKeys } from "./schedule-totals";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Geometry math (shared with quantities.ts)
@@ -397,6 +398,11 @@ function evaluateFormulas(rows: ScheduleRow[], compiled: CompiledCol[]): void {
   }
 }
 
+/**
+ * Which columns a totals row may sum — policy lives in the pure module
+ * schedule-totals.ts (unit-tested there); this generator only applies it.
+ */
+
 function aggregateOver(
   rows: ScheduleRow[],
   header: string,
@@ -557,6 +563,15 @@ export async function runSchedule(
 
   onProg({ phase: "Reading authored elements", current: 0, total: 3 });
 
+  // Warm the take-off cache BEFORE building authored rows. authoredRow()
+  // attaches live Length/Area/Volume from the cache; ensureTakeoff() used to
+  // run only inside ifcRows() below, so on every cold run (>30 s since the
+  // last one) authored rows were built while the cache was still null and
+  // every geometry-derived column came out empty. First run of a wall
+  // schedule showed no Length/Area/Volume at all; a re-run within 30 s
+  // appeared to "fix" it — a classic stale-order bug.
+  if (def.useLiveQuantities) await ensureTakeoff();
+
   const authoredRows: ScheduleRow[] = [];
   for (const el of getElements()) {
     if (opts.signal?.cancelled) break;
@@ -599,10 +614,12 @@ export async function runSchedule(
   const compiled = compileFormulaColumns(def);
   if (compiled.length) evaluateFormulas(all, compiled);
 
-  // Grand totals (before grouping so we don't count subtotal rows)
-  const numericCols = def.columns
-    .filter((c) => c.format !== "text" && c.format !== "date")
-    .map((c) => c.key);
+  // Grand totals (before grouping so we don't count subtotal rows).
+  // Only quantity columns are totalled — summing per-element dimensions
+  // (thickness/height/width/elevation) produces meaningless "totals".
+  const numericCols = summableColumnKeys(
+    def.columns.filter((c) => c.format !== "text" && c.format !== "date"),
+  );
   const totals: Record<string, number> = {};
   for (const c of numericCols) {
     let s = 0;

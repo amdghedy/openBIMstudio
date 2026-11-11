@@ -608,7 +608,10 @@ function registerAuthoringCommands(): void {
 
 function registerPanelCommands(): void {
   const panels: Array<[string, string, string]> = [
-    ["schedulesPanel", "Schedules", "Ctrl+Shift+S"],
+    // No kbd for Schedules: "Ctrl+Shift+S" is bound to the Scope Box
+    // Visualizer in shell/default-shortcuts.ts — advertising it here made
+    // the palette lie (the pressed key opened the wrong feature).
+    ["schedulesPanel", "Schedules", ""],
     ["sheetsPanel", "Sheets", ""],
     ["issuesPanel", "Issues / BCF", "Ctrl+I"],
     ["timelinePanel", "Timeline", ""],
