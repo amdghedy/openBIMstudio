@@ -341,6 +341,21 @@ Functions absorbed from the OpenCADStudio project (github.com/HakanSeven12/OpenC
 | Entity data extract | `DATAEXTRACT`, or App menu › Export Entity Data (CSV) | Every entity's handle, type, layer, colour, linetype, lineweight, text and anchor point exports to a CSV file. |
 | RAY / XLINE construction lines | open any DWG/DXF | Infinite construction lines read from the file and drawn edge-to-edge like native drawing editor (clipped to the view, linetype dashes and layer colours kept, pickable everywhere along the line, they never affect ZOOM Extents), moved/copied/mirrored/rotated by their anchor and written back on DXF save. |
 
+### Convert PDF to DWG — video tip
+
+A quick tip on converting a **vector PDF** into a **DWG drawing** using the free, open-source online tool **Open CAD Studio**: the conversion runs locally in the browser and the PDF is not uploaded to the cloud, so user data stays secure — the same local-first privacy model OpenBIMStudio follows. Watch the video: <https://lnkd.in/dzWK2bzS>
+
+Original announcement:
+
+> This quick tip shows how to convert vector #PDF to #DWG drawing using free open source online tool: Open CAD Studio. The PDF is not uploaded to the cloud, so user data is secure.
+> Watch the video here: https://lnkd.in/dzWK2bzS
+> #OpenCADStudio is developed under the OpenAEC Foundation i.o. umbrella.
+> #SPBProduction
+> SPB PRODUCTION
+> PDF
+> DWG
+> Convert PDF to DWG
+
 ---
 
 ## How to use (day to day)
