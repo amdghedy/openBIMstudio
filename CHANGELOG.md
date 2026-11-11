@@ -15,6 +15,9 @@ file — the project adopted a written changelog at 0.73.0.
 - File menu → Export → *Views → CAD*, and the *Export: Views to CAD* command, export plan / RCP / section / elevation views as DWG or DXF (one file per view, ZIP for several) with AIA-style layers, true colours, lineweights, dashed linetypes, text sized from paper height × scale, hatches, units (mm / m), layer prefix and DWG version. Details and limits: `docs/EXPORT-VIEW-TO-CAD.md`. Not opened in AutoCAD/Revit.
 - Same dialog: **3D model → DXF** writes the authored 3D model as 3DFACE triangles (DXF R12) on layers by element type with Z up, in mm or m, optionally selected/visible elements only. Includes loaded IFC/Revit models (layers by IFC entity, 4M-triangle cap) via the Native Twin geometry reader; no solids; no DWG. The IFC path has not been run on a real model in a browser.
 
+### Verified: the DWG path of Export views to CAD
+- `tests/export-cad-dwg.test.cjs` converts a view to DXF, then to binary DWG in the real CAD WASM, and reads it back: layers, entities, text height, hatches, colours, linetypes and mm coordinates survive. Not opened in AutoCAD/Revit.
+
 ### Changed: grips show a grab hand
 - Hovering an editable (orange) grip in select mode now shows an open-hand cursor; the closed hand while dragging was already there. Covered by a real-browser spec (`tests/e2e/orbit-rtl.spec.ts`, informational CI job).
 

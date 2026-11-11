@@ -29,6 +29,13 @@ tags, dimensions text), `A-SYMB` (symbols), `A-ANNO-TTLB` (title). Colours and l
 - Text uses the default text style; fonts are not embedded.
 - Views are exported only as the app's generators draw them. They are as complete as the on-screen views, no more.
 
+## DWG path (verified in the real CAD engine)
+`tests/export-cad-dwg.test.cjs` runs the committed CAD WASM in Node: a view scene → DXF → **binary DWG** → read back by the
+real reader. Layers, lines, arcs, circles, text (including its height), solid and patterned hatches, true colours,
+dashed linetypes and millimetre coordinates all survive. That proves our converter and the engine keep the content; it
+does **not** prove AutoCAD opens the file. For 3D faces the engine also converts DXF → DWG and the read-back keeps the Z
+values, but the 3D dialog stays DXF-only until that is checked in a real CAD program.
+
 ## Verification
 `tests/view-to-cad.test.cjs` checks the conversion (units, layers, colours, linetypes, arcs, hatches, text height, file names,
 ZIP) and that the DXF text is complete. **Not verified:** that AutoCAD / BricsCAD / Revit open the produced DWG/DXF without
