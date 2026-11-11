@@ -179,7 +179,7 @@ test('3D export includes an imported IFC model, with the wall on layer A-WALL', 
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.locator('#obs-hero-3d').click({ timeout: 30000 });
-  await page.waitForFunction(() => !!(window as any).__OBS_CTX__?.fragments, null, { timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__?.fragments), { timeout: 30000 }).toBe(true);
 
   // Drop the IFC file onto the viewport, as a user would.
   await page.evaluate(async (text) => {
@@ -188,7 +188,7 @@ test('3D export includes an imported IFC model, with the wall on layer A-WALL', 
     dt.items.add(new File([text], 'wall.ifc', { type: 'application/octet-stream' }));
     host.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
   }, WALL_IFC);
-  await page.waitForFunction(() => (window as any).__OBS_CTX__.fragments.list.size >= 1, null, { timeout: 90000 });
+  await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), { timeout: 90000, message: 'IFC model loaded into the scene' }).toBeGreaterThanOrEqual(1);
   await page.waitForTimeout(1500);
 
   await page.keyboard.press('Control+p');
