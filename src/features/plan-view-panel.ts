@@ -25,6 +25,8 @@ import {
   listAvailableLevels,
 } from "../modules/drawings/plan-generator";
 import type { PlanView } from "../modules/drawings/plan-types";
+import { POCHE_PATTERN_LINE } from "../modules/drawings/plan-poche";
+import { getPattern as getTilePattern } from "../modules/views/hatch-patterns";
 import { getSchema, type PropertyField } from "./property-schema";
 import {
   addRegion, getRegions, removeRegion, updateRegion, moveRegion, hitTestRegion,
@@ -169,6 +171,13 @@ let planViewScale = (() => {
 })();
 let planDetailLevel: "Coarse" | "Medium" | "Fine" = "Medium";
 let planDisplayModel = true;
+/** Wall poché (Revit cut-fill) on floor plans; persisted like the view scale. */
+const PLAN_POCHE_KEY = "obs.bim.plan-poche.v1";
+let planPocheEnabled = (() => {
+  try {
+    return localStorage.getItem(PLAN_POCHE_KEY) !== "0";
+  } catch { return true; }
+})();
 let planCropView = false;
 const PLAN_CROP_ID = "plan-view-1";
 /** Typed length while drawing a linear element (BIM authoring convention-style temporary dimension entry). */
@@ -239,6 +248,7 @@ function renderPlanViewProperties() {
 
   section("Graphics");
   row("Display Model", check(planDisplayModel, v=>{planDisplayModel=v; if(currentPlan) renderPlan(currentPlan);}));
+  row("Wall Poché", check(planPocheEnabled, v=>{planPocheEnabled=v; try{localStorage.setItem(PLAN_POCHE_KEY,v?"1":"0");}catch{}; if(currentPlan) renderPlan(currentPlan);}));
   row("Crop View", check(getCropRegion(PLAN_CROP_ID).enabled, v=>{planCropView=v; setCropRegion(PLAN_CROP_ID,{enabled:v}); if(v) setCropActiveView(PLAN_CROP_ID); if(currentPlan) renderPlan(currentPlan);}));
   row("Annotation Crop", check(planAnnotationCrop, v=>{planAnnotationCrop=v; if(currentPlan) renderPlan(currentPlan);}));
   row("Underlay", select([["None","None"],["Below","Below"],["Link drawing","Drawing underlay"]], planUnderlay, v=>{ planUnderlay=v; }));
@@ -2257,6 +2267,69 @@ function renderPlan(plan: PlanView) {
     g.setAttribute("clip-path", "url(#obs-plan-crop-clip)");
     svg.querySelector("[data-obs-cad-link]")?.setAttribute("clip-path", "url(#obs-plan-crop-clip)");
     renderCropUi(crop, zoomedW);
+  }
+
+  // -- Wall poché (Revit cut-fill): filled cut faces under the outline --
+  if (planPocheEnabled && planDisplayModel) {
+    const NSP = "http://www.w3.org/2000/svg";
+    // Paper-true pattern scale: pattern tiles are defined in paper mm at 1:1,
+    // so a brick tile reads the same size at 1:50 and 1:200 (like regions).
+    const k = paperMmToWorld(1);
+    const defs = document.createElementNS(NSP, "defs");
+    const seenPatterns = new Set<string>();
+    for (const f of (plan.fills ?? [])) {
+      if (!f.pattern || seenPatterns.has(f.pattern)) continue;
+      const tileDef = getTilePattern(f.pattern);
+      if (!tileDef) continue;
+      seenPatterns.add(f.pattern);
+      const tw = tileDef.tile[0] * k, th = tileDef.tile[1] * k;
+      if (!(tw > 0) || !(th > 0)) continue;
+      const pat = document.createElementNS(NSP, "pattern");
+      pat.setAttribute("id", `obs-poche-${f.pattern}`);
+      pat.setAttribute("width", String(tw));
+      pat.setAttribute("height", String(th));
+      pat.setAttribute("patternUnits", "userSpaceOnUse");
+      for (const seg of tileDef.segments) {
+        const ln = document.createElementNS(NSP, "line");
+        ln.setAttribute("x1", String((seg[0] / tileDef.tile[0]) * tw));
+        ln.setAttribute("y1", String((seg[1] / tileDef.tile[1]) * th));
+        ln.setAttribute("x2", String((seg[2] / tileDef.tile[0]) * tw));
+        ln.setAttribute("y2", String((seg[3] / tileDef.tile[1]) * th));
+        ln.setAttribute("stroke", POCHE_PATTERN_LINE);
+        ln.setAttribute("stroke-width", String(Math.max(tileDef.strokeWidth * k, 0.002)));
+        pat.appendChild(ln);
+      }
+      for (const d of tileDef.dots ?? []) {
+        const c = document.createElementNS(NSP, "circle");
+        c.setAttribute("cx", String((d[0] / tileDef.tile[0]) * tw));
+        c.setAttribute("cy", String((d[1] / tileDef.tile[1]) * th));
+        c.setAttribute("r", String(Math.max(d[2] * k, 0.002)));
+        c.setAttribute("fill", POCHE_PATTERN_LINE);
+        pat.appendChild(c);
+      }
+      defs.appendChild(pat);
+    }
+    if (defs.childElementCount) svg.insertBefore(defs, svg.firstChild);
+    for (const f of (plan.fills ?? [])) {
+      if (!f.points || f.points.length < 3) continue;
+      const ptsAttr = f.points.map(([x, z]) => `${x},${-z}`).join(" ");
+      const usePattern = !!(f.pattern && seenPatterns.has(f.pattern));
+      if (usePattern && f.color) {
+        const tint = document.createElementNS(NSP, "polygon");
+        tint.setAttribute("points", ptsAttr);
+        tint.setAttribute("fill", f.color);
+        tint.setAttribute("pointer-events", "none");
+        tint.setAttribute("data-obs-poche", f.source ?? "1");
+        g.appendChild(tint);
+      }
+      const poly = document.createElementNS(NSP, "polygon");
+      poly.setAttribute("points", ptsAttr);
+      poly.setAttribute("fill", usePattern ? `url(#obs-poche-${f.pattern})` : f.color);
+      poly.setAttribute("stroke", "none");
+      poly.setAttribute("pointer-events", "none");
+      poly.setAttribute("data-obs-poche", f.source ?? "1");
+      g.appendChild(poly);
+    }
   }
 
   // -- Segments --

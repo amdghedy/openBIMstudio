@@ -25,8 +25,12 @@ import {
 } from "../../features/authoring";
 import type { AuthoredElement } from "../projects/types";
 import type {
-  PlanArc, PlanGenerationOptions, PlanSegment, PlanText, PlanView,
+  PlanArc, PlanFill, PlanGenerationOptions, PlanSegment, PlanText, PlanView,
 } from "./plan-types";
+import {
+  pocheStyleFor, rectQuad, spanQuad,
+  type PocheFaces, type PocheSpan,
+} from "./plan-poche";
 
 const EDGE_ROUND = 1000; // 1 mm dedup
 const MIN_EDGE_LEN = 0.005; // 5 mm — kill degenerate projections
@@ -59,6 +63,7 @@ export async function generatePlanView(
   const segments: PlanSegment[] = [];
   const arcs: PlanArc[] = [];
   const texts: PlanText[] = [];
+  const fills: PlanFill[] = [];
   let truncated = false;
   const edgeSeen = new Set<string>();
 
@@ -70,6 +75,15 @@ export async function generatePlanView(
     const len = Math.hypot(s.x2 - s.x1, s.z2 - s.z1);
     if (len < MIN_EDGE_LEN) return;
     segments.push(s);
+  };
+
+  /** Wall poché: cut-face fills under the outline segments (Revit parity). */
+  const pushFill = (f: PlanFill) => {
+    if (fills.length >= opts.maxSegments) {
+      truncated = true;
+      return;
+    }
+    fills.push(f);
   };
 
   // ── 1. Authored elements (all modeling categories) ───────────────────
@@ -96,7 +110,7 @@ export async function generatePlanView(
 
   for (const el of authoredInBand) {
     if (opts.signal?.cancelled) break;
-    emitAuthoredSymbol(el, segments, arcs, texts, pushSeg, hostedByWall, cutElevation, bandLow, bandHigh);
+    emitAuthoredSymbol(el, segments, arcs, texts, pushSeg, pushFill, hostedByWall, cutElevation, bandLow, bandHigh);
   }
 
   // ── 2. Fragments (triangle edge extraction) ──────────────────────────
@@ -226,6 +240,7 @@ export async function generatePlanView(
     segments,
     arcs,
     texts,
+    fills,
     bounds: { minX, minZ, maxX, maxZ },
     generatedAt: Date.now(),
     truncated,
@@ -337,6 +352,7 @@ function emitAuthoredSymbol(
   arcs: PlanArc[],
   texts: PlanText[],
   push: (s: PlanSegment) => void,
+  pushFill: (f: PlanFill) => void,
   hostedByWall: Map<string, AuthoredElement[]>,
   cutElevation: number,
   bandLow = 0,
@@ -438,6 +454,39 @@ function emitAuthoredSymbol(
       }
       emitSides(cursor, L);
 
+      // -- Wall poché (Revit cut-fill): each solid span between openings is
+      //    filled with the wall type's cut pattern, spans reusing the exact
+      //    cursor walk as emitSides so fills sit flush under the outline. --
+      if (elevKind === "cut") {
+        const props = (el.properties ?? {}) as Record<string, unknown>;
+        const pocheStyle = pocheStyleFor(
+          el.type,
+          el.name,
+          typeof props.wallType === "string" ? props.wallType : "",
+          typeof props.material === "string" ? props.material : "",
+        );
+        const faces: PocheFaces = {
+          startLeft: startFaces.left, startRight: startFaces.right,
+          endLeft: endFaces.left, endRight: endFaces.right,
+        };
+        const fillSpans: PocheSpan[] = [];
+        let fCursor = 0;
+        for (const o of merged) {
+          fillSpans.push({ start: fCursor, end: o.start });
+          fCursor = o.end;
+        }
+        fillSpans.push({ start: fCursor, end: L });
+        for (const sp of fillSpans) {
+          if (sp.end - sp.start < 0.02) continue;
+          pushFill({
+            points: spanQuad(faces, L, sp),
+            source: el.id,
+            pattern: pocheStyle.pattern,
+            color: pocheStyle.color,
+          });
+        }
+      }
+
       if (!startFaces.joined) {
         push({
           x1: startFaces.left.x, z1: startFaces.left.z,
@@ -491,6 +540,23 @@ function emitAuthoredSymbol(
       push({ x1: x + hw, z1: z - hd, x2: x + hw, z2: z + hd, kind: "cut", source: el.id });
       push({ x1: x + hw, z1: z + hd, x2: x - hw, z2: z + hd, kind: "cut", source: el.id });
       push({ x1: x - hw, z1: z + hd, x2: x - hw, z2: z - hd, kind: "cut", source: el.id });
+      // Poché: cut columns and footings read as solids (Revit parity);
+      // equipment stays outline-only, like Revit's specialty equipment.
+      if (el.type === "column" || el.type === "footing") {
+        const props = (el.properties ?? {}) as Record<string, unknown>;
+        const pocheStyle = pocheStyleFor(
+          el.type,
+          el.name,
+          typeof props.wallType === "string" ? props.wallType : "",
+          typeof props.material === "string" ? props.material : "",
+        );
+        pushFill({
+          points: rectQuad(x, z, w, d),
+          source: el.id,
+          pattern: pocheStyle.pattern,
+          color: pocheStyle.color,
+        });
+      }
       break;
     }
 

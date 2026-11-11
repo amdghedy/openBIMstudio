@@ -5,6 +5,7 @@
 
 import { generatePlanView } from "../../drawings/plan-generator";
 import type { PlanView } from "../../drawings/plan-types";
+import { POCHE_PATTERN_LINE } from "../../drawings/plan-poche";
 import type { ViewDef } from "../types";
 import type { Scene2D, SceneEntity, StrokeStyle } from "../scene";
 import { emptyScene } from "../scene";
@@ -43,6 +44,30 @@ export async function generatePlanScene(def: ViewDef): Promise<Scene2D> {
     maxX: planView.bounds.maxX,
     maxZ: planView.bounds.maxZ,
   };
+
+  // Wall poché cut-fills: patterned fills become hatch entities (paper-true
+  // via the view scale), solid fills become filled polylines — both in the
+  // cut layer so sheets and PDF exports inherit the Revit-style poché.
+  for (const f of planView.fills ?? []) {
+    if (!f.points || f.points.length < 3) continue;
+    if (f.pattern && f.pattern !== "poche") {
+      scene.layers.cut.push({
+        kind: "hatch",
+        polygon: f.points,
+        pattern: f.pattern,
+        color: POCHE_PATTERN_LINE,
+        scale: Math.max(1, def.scale),
+      });
+    } else {
+      scene.layers.cut.push({
+        kind: "polyline",
+        points: f.points,
+        closed: true,
+        stroke: { color: POCHE_PATTERN_LINE, widthPt: 0.12, dash: null },
+        fill: { color: f.color, opacity: 1 },
+      });
+    }
+  }
 
   for (const seg of planView.segments) {
     const style = (STYLE as any)[seg.kind] ?? STYLE.cut;

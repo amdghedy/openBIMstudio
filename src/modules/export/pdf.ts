@@ -7,6 +7,8 @@
 
 import { PDFDocument, PDFPage, PDFFont, StandardFonts, rgb } from "pdf-lib";
 import type { Scene2D, SceneEntity, StrokeStyle } from "../views/scene";
+import { generateHatchLines } from "../views/hatch-patterns";
+import { clipLinesToPolygon } from "../filled-regions/polygon";
 
 const PT_PER_INCH = 72;
 const MM_PER_INCH = 25.4;
@@ -149,6 +151,39 @@ function drawEntity(ctx: PdfPageContext, e: SceneEntity): void {
           thickness: s.thickness,
           color: s.color,
           dashArray: s.dashArray,
+        });
+      }
+      break;
+    }
+    case "hatch": {
+      // Wall poché / pattern fill (cut fills). Solid "poche" uses the color
+      // directly; material patterns draw their hatch lines clipped to the
+      // polygon — paper-true spacing via the entity scale (view scale),
+      // matching the SVG renderer's pattern defs.
+      const poly = e.polygon;
+      if (!poly || poly.length < 3) break;
+      const hc = hexToRgb(e.color);
+      if (e.pattern === "poche") {
+        const d = poly.map(([x, z], i) => {
+          const [px, py] = worldToPdf(ctx, x, -z);
+          return (i === 0 ? "M " : "L ") + px.toFixed(3) + " " + py.toFixed(3);
+        }).join(" ") + " Z";
+        ctx.page.drawSvgPath(d, { x: 0, y: 0, color: rgb(hc.r, hc.g, hc.b) });
+        break;
+      }
+      const lines = generateHatchLines(e.pattern, poly, e.scale);
+      const clipped = clipLinesToPolygon(
+        lines.map((l) => ({ x1: l.x0, y1: l.y0, x2: l.x1, y2: l.y1 })),
+        poly.map(([x, z]) => ({ x, y: z })),
+      );
+      for (const l of clipped) {
+        const [x1, y1] = worldToPdf(ctx, l.x1, -l.y1);
+        const [x2, y2] = worldToPdf(ctx, l.x2, -l.y2);
+        ctx.page.drawLine({
+          start: { x: x1, y: y1 },
+          end: { x: x2, y: y2 },
+          thickness: MIN_PRINT_LINEWEIGHT_PT,
+          color: rgb(hc.r, hc.g, hc.b),
         });
       }
       break;

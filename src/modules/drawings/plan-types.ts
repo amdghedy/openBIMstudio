@@ -27,6 +27,21 @@ export interface PlanArc {
   source?: string;
 }
 
+/**
+ * Cut-fill polygon (wall poché): the solid face of an element cut by the plan
+ * plane. Points are world XZ metres; `pattern` is a hatch id from
+ * modules/views/hatch-patterns.ts or null/"poche" for a solid fill.
+ */
+export interface PlanFill {
+  points: Array<[number, number]>;
+  /** Authored element that produced this fill (selection highlight). */
+  source?: string;
+  /** Cut pattern id, or null for solid poché. */
+  pattern?: string | null;
+  /** Background tint / solid color. */
+  color: string;
+}
+
 export interface PlanText {
   x: number; z: number;
   text: string;
@@ -42,6 +57,8 @@ export interface PlanView {
   segments: PlanSegment[];
   arcs: PlanArc[];
   texts: PlanText[];
+  /** Wall poché: cut fills rendered under the outline segments. */
+  fills: PlanFill[];
   bounds: { minX: number; minZ: number; maxX: number; maxZ: number };
   generatedAt: number;
   truncated: boolean;
