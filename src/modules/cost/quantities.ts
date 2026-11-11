@@ -200,8 +200,24 @@ function authoredRows(): TakeoffRow[] {
     if ((el.type === "wall" || el.type === "strip") && p.start && p.end) {
       const L = Math.hypot(p.end[0] - p.start[0], p.end[1] - p.start[1]);
       length = L;
-      area = L * p.height * 2;
-      volume = L * p.height * p.thickness;
+      const H = p.height ?? 3;
+      const T = p.thickness ?? 0.2;
+      // Hosted doors/windows pierce the wall (the 3D mesh is cut through every
+      // layer), so the takeoff must deduct their face area — a BIM tool's wall
+      // Volume excludes openings; leaving them in overstated every wall with a
+      // door or window by exactly the punched-through volume.
+      let cutArea = 0;
+      for (const op of getElements()) {
+        if (op.hostId !== el.id || (op.type !== "door" && op.type !== "window")) continue;
+        const sill = Number(op.params.sillHeight ?? (op.type === "window" ? 0.9 : 0)) || 0;
+        const oh = Number(op.params.height ?? (op.type === "door" ? 2.1 : 1.2));
+        const ow = Number(op.params.width ?? (op.type === "door" ? 0.9 : 1.2));
+        const within = Math.max(0, Math.min(sill + oh, H) - sill);
+        if (within > 0 && ow > 0) cutArea += ow * within;
+      }
+      const gross = L * H;
+      area = Math.max(0, (gross - cutArea) * 2);
+      volume = Math.max(0, (gross - cutArea) * T);
     } else if (el.type === "slab" && p.polygon && p.polygon.length >= 3) {
       const A = shoelaceArea(p.polygon);
       area = A;

@@ -5884,6 +5884,14 @@ export function setLevels(list: LevelDatum[] | undefined | null) {
 export function setElements(list: AuthoredElement[]) {
   elements.length = 0;
   for (const el of list) elements.push(el);
+  try {
+    const repaired = repairMistypedOpenings();
+    if (repaired > 0) {
+      console.info(`[authoring] repaired ${repaired} plan-placed door/window element(s) authored with the wrong type`);
+    }
+  } catch (err) {
+    console.warn("[authoring] opening repair failed", err);
+  }
   for (const k of Object.keys(counters)) delete counters[k];
   for (const el of elements) {
     const n = parseInt(el.name.split(" ").pop() ?? "0", 10);
@@ -6330,6 +6338,101 @@ export async function addPointElement(
       }),
     );
   } catch { /* */ }
+}
+
+/** Nearest wall whose centerline passes within grab distance of a world point. */
+function hostedWallAt(x: number, z: number): { wallId: string; offset: number } | null {
+  let best: { wallId: string; offset: number } | null = null;
+  let bestDist = Infinity;
+  for (const el of elements) {
+    if (el.type !== "wall" || !el.params.start || !el.params.end) continue;
+    const [ax, az] = el.params.start;
+    const [bx, bz] = el.params.end;
+    const dx = bx - ax, dz = bz - az;
+    const L = Math.hypot(dx, dz);
+    if (L < 0.05) continue;
+    const t = ((x - ax) * dx + (z - az) * dz) / (L * L);
+    if (t < 0 || t > 1) continue;
+    const dist = Math.hypot(x - (ax + t * dx), z - (az + t * dz));
+    const grab = (el.params.thickness ?? 0.2) / 2 + 0.3;
+    if (dist > grab || dist >= bestDist) continue;
+    bestDist = dist;
+    best = { wallId: el.id, offset: Math.round(t * L * 1000) / 1000 };
+  }
+  return best;
+}
+
+/**
+ * Place a hosted door/window from the 2D Floor Plan.
+ *
+ * The plan-view door/window tools used to route through addPointElement as
+ * type "equipment" with no hostId: the wall was never cut, the plan drew a
+ * plain equipment box instead of the swing symbol, and Door/Window schedules
+ * (IFCDOOR / IFCWINDOW) returned 0 rows. This mirrors the 3D-viewport hosted
+ * path (onDrawClick for door/window): find the wall under the point, clamp
+ * the offset along the host, and create a properly typed, hosted element.
+ * With no wall under the point nothing is placed — a door must be hosted.
+ */
+export async function addHostedOpening(
+  kind: "door" | "window",
+  x: number,
+  z: number,
+  elev?: number,
+): Promise<{ ok: boolean; reason?: "no-wall" | "rejected" }> {
+  const host = hostedWallAt(x, z);
+  if (!host) return { ok: false, reason: "no-wall" };
+  if (elev != null) level = elev;
+  const d: Record<string, any> = { ...DEFAULTS[kind], ...getTypeDefaults(kind).params };
+  const el = await createElement(kind, {
+    width: d.width ?? (kind === "door" ? 0.9 : 1.2),
+    offsetAlongHost: host.offset,
+    sillHeight: d.sillHeight ?? (kind === "window" ? 0.9 : 0),
+    frameThickness: kind === "window" ? 0.05 : 0.06,
+    doorPanel: kind === "door" ? "swing" : undefined,
+    windowPanel: kind === "window" ? "casement" : undefined,
+  }, undefined, host.wallId);
+  if (!el) return { ok: false, reason: "rejected" };
+  try {
+    window.dispatchEvent(
+      new CustomEvent("obs-toast", {
+        detail: { message: `${kind} placed from Floor Plan`, kind: "success" },
+      }),
+    );
+  } catch { /* */ }
+  return { ok: true };
+}
+
+/**
+ * Repair doors/windows authored by the old plan-view path, which created
+ * them as type "equipment" (properties.category "door"/"window", a point,
+ * no hostId). Type-driven consumers all missed them: Door/Window schedules
+ * returned 0 rows, walls were never cut in 3D, plan drawings drew an
+ * equipment box instead of the swing symbol, and clash / export layers
+ * misclassified them. Runs whenever a project document is loaded
+ * (setElements). Elements with no wall under their point are left untouched
+ * rather than converted into invisible hostless doors (a door mesh only
+ * builds against its host).
+ */
+function repairMistypedOpenings(): number {
+  let fixed = 0;
+  for (const el of elements) {
+    if (el.type !== "equipment" || el.hostId) continue;
+    const cat = (el.properties as any)?.category;
+    if (cat !== "door" && cat !== "window") continue;
+    const pt = el.params.point;
+    if (!pt) continue;
+    const host = hostedWallAt(pt[0], pt[1]);
+    if (!host) continue;
+    el.type = cat;
+    if ((el.properties as any)?.category === cat) delete (el.properties as any).category;
+    if ((el.properties as any)?.family === cat) delete (el.properties as any).family;
+    el.hostId = host.wallId;
+    el.params.offsetAlongHost = host.offset;
+    delete el.params.point;
+    if (el.color === COLORS.equipment) el.color = COLORS[cat] ?? el.color;
+    fixed++;
+  }
+  return fixed;
 }
 
 const followPending = new Map<string, Record<string, unknown>>();

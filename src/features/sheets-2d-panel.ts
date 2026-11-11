@@ -11,6 +11,7 @@
  */
 
 import { ctx } from "../core/context";
+import { register as registerService } from "../core/services";
 import {
   listSheets, getSheet, createSheet, deleteSheet, updateSheet,
   addViewport, removeViewport, onSheetsChange, getSheetSizeMm,
@@ -76,6 +77,18 @@ function scheduleRender(): void {
 export function setupSheets2dPanel(): void {
   ensureDefaultTitleblock();
 
+  // The command palette ("Sheets" panel command) and drafting-bridge resolve
+  // the panel under the service key "sheetsPanel" — a key nothing registered,
+  // so "Toggle Sheets" only toasted "Sheets panel is not loaded" (same break
+  // class the schedules panel had). Register the facade under the key the
+  // rest of the app looks up, and alias the feature handle.
+  try {
+    registerService("sheetsPanel", {
+      toggle: () => toggleSheets2dPanel(),
+      isVisible: () => visible,
+    });
+  } catch { /* re-registration during HMR overwrites — safe to ignore */ }
+
   panel = document.createElement("div");
   panel.id = PANEL_ID;
   panel.style.cssText = [
@@ -84,7 +97,10 @@ export function setupSheets2dPanel(): void {
     "top:90px",
     "right:14px",
     "bottom:40px",
-    "z-index:36",
+    // Above the plan workspace overlay (z=200) — at the old z=36 the panel
+    // opened INVISIBLE behind the Floor Plan, so sheets could only be seen
+    // from the CAD/3D workspaces. Same tier as the Schedules overlay (340).
+    "z-index:340",
     "display:none",
     "flex-direction:column",
     "background:#1a1d27",
@@ -201,6 +217,11 @@ export function setupSheets2dPanel(): void {
     isVisible: () => visible,
     invalidateCache: () => sceneCache.clear(),
   };
+  // Alias under the key drafting-bridge (and older callers) look up. The
+  // facade has no addToCurrentSheet, so drafting-bridge will report the
+  // truthful "does not support drafting attachment yet" instead of lying
+  // about a missing panel.
+  (ctx.features as any).sheetsPanel = (ctx.features as any).sheets2dPanel;
 }
 
 function getDocumentationDiagnostics() {

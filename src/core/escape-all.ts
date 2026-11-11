@@ -326,8 +326,17 @@ function builtinScopes(getMods: () => Any): EscapeScope[] {
           if (cp?.isOpen?.() === true) { cp.close?.(); any = true; }
         } catch { /* */ }
         try {
+          // The DOM fallback must require the panel to EXIST and be visible.
+          // `getElementById(...)?.style.display !== "none"` evaluated to TRUE
+          // whenever the element was absent (undefined !== "none"), so this
+          // scope claimed a cancel on EVERY bare Escape and the sweep then
+          // consumed the key (stopImmediatePropagation) — starving every
+          // legacy Escape listener app-wide (panel "Esc to close", overlays,
+          // in-place editors all went dead).
+          const cqDom = document.getElementById("obs-cad-query-panel");
+          const cqDomOpen = !!cqDom && (cqDom.offsetWidth > 0 || cqDom.offsetHeight > 0);
           const cq: Any = f?.cadQuery ?? W().__obsCadQuery;
-          if (cq?.isOpen?.() === true || (cq?.toggle && document.getElementById("obs-cad-query-panel")?.style.display !== "none")) {
+          if (cq?.isOpen?.() === true || (cq?.toggle && cqDomOpen)) {
             cq.close?.(); cq.hide?.(); any = true;
           }
         } catch { /* */ }

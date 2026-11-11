@@ -945,7 +945,7 @@ const closeBtn = btn("? Close", () => togglePlanView());
 /* -- Plan modeling state (tools come from ribbon tabs only) -- */
 type PlanMode = "pan" | "select" | "navigate" | "move" | "linear" | "point" | "dim" | "tag" | "text" | "region";
 type LinearKind = "wall" | "beam" | "strip" | "duct" | "pipe" | "cable-tray" | "conduit" | "mline" | "brace" | "truss";
-type PointKind = "column" | "footing" | "equipment";
+type PointKind = "column" | "footing" | "equipment" | "door" | "window";
 
 let planMode: PlanMode = "select";
 let planViewUserAdjusted = false;
@@ -3496,6 +3496,21 @@ async function createAuthoredPoint(x: number, z: number) {
     const selected = levels[Number(levelSelect.value) || 0] ?? levels[0];
     auth.setLevel(selected.elevation);
     const elev = selected.elevation + planElevOffset;
+    // Doors/windows are hosted: they must land ON a wall. With no wall under
+    // the click nothing is placed and the tool stays active so the user can
+    // click on a wall (matches the on-canvas hint "click on a wall to insert").
+    if (planPointType === "door" || planPointType === "window") {
+      const kind = planPointType;
+      const r = await (auth as any).addHostedOpening(kind, x, z, elev);
+      if (!r?.ok) {
+        footerStatus(`${kind === "door" ? "Door" : "Window"}: click on a wall to insert`);
+        return;
+      }
+      auth.setAuthoringTool("select");
+      await regenerate();
+      footerStatus(`${kind} placed — hosted in wall, synced to 3D`);
+      return;
+    }
     const fitKinds = ["elbow", "tee", "cross", "transition", "cap", "union", "wye", "fitting"];
     if (planPointPreset && fitKinds.includes(planPointPreset)) {
       const kind = planPointPreset === "fitting" ? "elbow" : planPointPreset;
@@ -4691,8 +4706,14 @@ export function setPlanToolFromRibbon(tool: string) {
     "air-terminal": { type: "equipment", preset: "air-terminal" },
     transformer: { type: "equipment", preset: "transformer" },
     generator: { type: "equipment", preset: "generator" },
-    door: { type: "equipment", preset: "door" },
-    window: { type: "equipment", preset: "window" },
+    // door/window are HOSTED elements (authored as type "door"/"window" on a
+    // wall) — never generic equipment. createAuthoredPoint routes them to
+    // authoring.addHostedOpening, which finds the wall under the click, hosts
+    // the element and lets the wall poché / swing symbol / 3D cut / schedules
+    // all see it. The old { type: "equipment", preset: "door" } mapping broke
+    // every one of those consumers.
+    door: { type: "door" },
+    window: { type: "window" },
   };
   // Remember for Backspace repeat
   try {
@@ -4724,8 +4745,13 @@ export function setPlanToolFromRibbon(tool: string) {
     planPointType = points[tool].type;
     planPointPreset = points[tool].preset ?? null;
     canvasWrap.style.cursor = "crosshair";
-    toolHint.textContent = `${tool} � click to place � Esc cancel � Backspace repeat`;
-    footerStatus(`Plan ${tool}: click to place`);
+    const hosted = planPointType === "door" || planPointType === "window";
+    toolHint.textContent = hosted
+      ? `${tool} � click ON a wall to insert (hosted) � Esc cancel`
+      : `${tool} � click to place � Esc cancel � Backspace repeat`;
+    footerStatus(hosted
+      ? `Plan ${tool}: click on a wall to insert`
+      : `Plan ${tool}: click to place`);
     setPlanSelectedElement(null);
     renderPlanProperties();
     try { showWallOpts(false); } catch { /* */ }
@@ -5286,10 +5312,17 @@ try {
     // Esc: cancel EVERY active order (path, typed length, dimension picks, drags,
     // box selection, active tool, selection) in one press. Never closes the plan;
     // use the Close button or the CLOSE command for that.
+    // Consume the key ONLY when something was actually canceled. Unconditional
+    // stopImmediatePropagation here starved every other Escape consumer the
+    // moment the plan view was open — panels stacked above the plan (Schedules
+    // "Esc to close", Sheets, dialogs) never saw Escape at all, which broke the
+    // documented escape-all contract ("with nothing active the key is NOT
+    // consumed").
     if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (!cancelAllPlan()) footerStatus("Nothing to cancel");
+      if (cancelAllPlan()) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
       return;
     }
 
