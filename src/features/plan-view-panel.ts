@@ -299,7 +299,7 @@ function renderPlanProperties() {
     typeKey = el.type;
   }
 
-  if (!el && planMode === "pan") {
+  if (!el && (planMode === "pan" || planMode === "navigate")) {
     renderPlanViewProperties();
     return;
   }
@@ -4738,6 +4738,8 @@ export function setPlanToolFromRibbon(tool: string) {
     toolHint.textContent = "Pan � drag to pan � wheel zoom � view kept";
     footerStatus("Pan mode � view is not reset");
     try { showWallOpts(false); } catch { /* */ }
+    setPlanSelectedElement(null);
+    renderPlanProperties();
   } else if (tool === "select" || tool === "copy") {
     planMode = "select";
     planChain = [];
