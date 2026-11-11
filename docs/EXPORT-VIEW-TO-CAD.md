@@ -22,7 +22,7 @@ tags, dimensions text), `A-SYMB` (symbols), `A-ANNO-TTLB` (title). Colours and l
 (true colour and pen weight in mm); dashed strokes use a `DASHED` linetype.
 
 ## Limits (be aware)
-- **3D model export is separate and limited:** the same dialog has *3D model → DXF* (3DFACE triangles, layers by element type, Z up, DXF R12). It covers **authored elements only** (not imported IFC/Revit models), writes triangles not solids, and offers DXF only (DWG for 3D faces was not verified). "Export the current 3D camera view as 2D lines" (hidden-line removal) is not implemented.
+- **3D model export is separate and limited:** the same dialog has *3D model → DXF* (3DFACE triangles, layers by element type, Z up, DXF R12). It covers authored elements and, optionally, every geometric element of the loaded IFC/Revit models (layers by IFC entity: A-WALL, S-COLS, M-DUCT…; capped at 4 million triangles; the selected/visible filters apply to authored elements only). It writes triangles not solids, and offers DXF only (DWG for 3D faces was not verified). "Export the current 3D camera view as 2D lines" (hidden-line removal) is not implemented.
 - Layers are by *view layer*, not by Revit category (wall, door…), because the view scene does not carry the category.
 - Symbols (doors, etc.) are written as a circle plus a label; there are no CAD blocks or xrefs.
 - Hatches are written with the pattern name; the receiving CAD program substitutes its own definition.

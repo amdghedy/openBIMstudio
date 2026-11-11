@@ -106,3 +106,20 @@ export function meshesToDxf3d(meshes: MeshInput[], opts: Dxf3dOptions = {}): Dxf
   const dxf = head + "\n" + (faceRecords.length ? faceRecords.join("\n") + "\n" : "") + tail;
   return { dxf, faces, byLayer, skippedDegenerate: degenerate, bounds: min && max ? { min, max } : null };
 }
+
+/** Layer for an IFC entity name (e.g. "IFCWALLSTANDARDCASE" → A-WALL). Unknown entities get A-<NAME>. */
+export function layerForIfcCategory(category: string | undefined): string {
+  const c = (category ?? "").toUpperCase().replace(/^IFC/, "");
+  const rules: Array<[RegExp, string]> = [
+    [/^WALL/, "A-WALL"], [/^CURTAINWALL/, "A-GLAZ-CWMG"], [/^SLAB/, "A-FLOR"], [/^ROOF/, "A-ROOF"], [/^COVERING/, "A-CLNG"],
+    [/^DOOR/, "A-DOOR"], [/^WINDOW/, "A-GLAZ"], [/^STAIR/, "A-STRS"], [/^RAMP/, "A-RAMP"], [/^RAILING/, "A-RAIL"],
+    [/^COLUMN/, "S-COLS"], [/^BEAM/, "S-BEAM"], [/^MEMBER/, "S-MEMB"], [/^PLATE/, "S-PLAT"], [/^FOOTING|^PILE/, "S-FNDN"], [/^REINFORCING/, "S-REBR"],
+    [/^FURNISHING|^FURNITURE/, "I-FURN"], [/^SPACE/, "A-AREA"],
+    [/^DUCT|^AIRTERMINAL|^FAN|^DAMPER/, "M-DUCT"], [/^PIPE|^VALVE|^PUMP|^TANK|^SANITARY/, "P-PIPE"],
+    [/^CABLE|^ELECTRIC|^LIGHT|^OUTLET|^SWITCH/, "E-POWR"],
+    [/^BUILDINGELEMENTPROXY|^PROXY/, "A-PROXY"],
+  ];
+  for (const [re, layer] of rules) if (re.test(c)) return layer;
+  const clean = c.replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+  return clean ? "A-" + clean : "A-MODEL";
+}

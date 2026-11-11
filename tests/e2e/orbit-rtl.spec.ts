@@ -143,3 +143,71 @@ test('Export > Views to CAD: dialog creates standard views and downloads real DX
   expect(text3.trimEnd().endsWith('EOF')).toBe(true);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+const WALL_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('wall.ifc','2026-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,(#20),#10);
+#10=IFCUNITASSIGNMENT((#11));
+#11=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);
+#21=IFCAXIS2PLACEMENT3D(#22,$,$);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+#30=IFCSITE('2VqzM6bXH7ugTO1ZoXRFzp',$,'S',$,$,#31,$,$,.ELEMENT.,$,$,$,$,$);
+#31=IFCLOCALPLACEMENT($,#21);
+#40=IFCRELAGGREGATES('3VqzM6bXH7ugTO1ZoXRFzq',$,$,$,#1,(#30));
+#50=IFCWALL('1VqzM6bXH7ugTO1ZoXRFzr',$,'Wall 1',$,$,#51,#60,$,.STANDARD.);
+#51=IFCLOCALPLACEMENT(#31,#21);
+#60=IFCPRODUCTDEFINITIONSHAPE($,$,(#61));
+#61=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#62));
+#62=IFCEXTRUDEDAREASOLID(#63,#21,#64,3.);
+#63=IFCRECTANGLEPROFILEDEF(.AREA.,$,#65,5.,0.2);
+#64=IFCDIRECTION((0.,0.,1.));
+#65=IFCAXIS2PLACEMENT2D(#66,$);
+#66=IFCCARTESIANPOINT((0.,0.));
+#70=IFCRELCONTAINEDINSPATIALSTRUCTURE('4VqzM6bXH7ugTO1ZoXRFzs',$,$,$,(#50),#30);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+test('3D export includes an imported IFC model, with the wall on layer A-WALL', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await page.waitForFunction(() => !!(window as any).__OBS_CTX__?.fragments, null, { timeout: 30000 });
+
+  // Drop the IFC file onto the viewport, as a user would.
+  await page.evaluate(async (text) => {
+    const host = (window as any).__OBS_CTX__.rightHost as HTMLElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File([text], 'wall.ifc', { type: 'application/octet-stream' }));
+    host.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }, WALL_IFC);
+  await page.waitForFunction(() => (window as any).__OBS_CTX__.fragments.list.size >= 1, null, { timeout: 90000 });
+  await page.waitForTimeout(1500);
+
+  await page.keyboard.press('Control+p');
+  await page.keyboard.type('Views to CAD');
+  await page.keyboard.press('Enter');
+  const dlg = page.locator('#obs-export-cad');
+  await expect(dlg).toBeVisible({ timeout: 10000 });
+  const dl = page.waitForEvent('download', { timeout: 60000 });
+  await dlg.locator('[data-go3d]').click();
+  const d = await dl;
+  const text = (await import('fs')).readFileSync((await d.path())!, 'utf8');
+  const msg = await dlg.locator('[data-msg]').innerText();
+  expect(text, `3D DXF from IFC. Dialog said: ${msg}`).toContain('3DFACE');
+  expect(text, msg).toContain('A-WALL');
+  // The wall is 5 m x 0.2 m x 3 m: the exported extents should be about that, in millimetres.
+  const xs = Array.from(text.matchAll(/\n10\n(-?[\d.]+)\n/g)).map((m) => parseFloat(m[1]));
+  const zs = Array.from(text.matchAll(/\n30\n(-?[\d.]+)\n/g)).map((m) => parseFloat(m[1]));
+  expect(Math.max(...zs) - Math.min(...zs), `height span (mm). ${msg}`).toBeGreaterThan(2900);
+  expect(Math.max(...zs) - Math.min(...zs)).toBeLessThan(3100);
+  expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(4900);
+  expect(errors, errors.join('\n')).toEqual([]);
+});

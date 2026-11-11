@@ -8,7 +8,8 @@ import { sceneToDxfDocument, cadFileName, SCENE_LAYER_NAMES, type CadUnits } fro
 import { zipStore, type ZipFile } from "../modules/export/zip-store";
 import { writeDxf, DWG_VERSIONS, DEFAULT_DWG_VERSION, type DwgVersionCode } from "../modules/drawings/dxf-writer";
 import { getLevels, getElements, getSelectedIds } from "./authoring";
-import { meshesToDxf3d, layerForElementType, type MeshInput } from "../modules/export/model-to-dxf3d";
+import { meshesToDxf3d, layerForElementType, layerForIfcCategory, type MeshInput } from "../modules/export/model-to-dxf3d";
+import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
 import { uiAlert } from "../core/notify";
 
@@ -76,6 +77,44 @@ export function collectModelMeshes(opts: { selectedOnly: boolean; visibleOnly: b
   return { meshes, elements: seen.size };
 }
 
+/** Triangle cap for the IFC export so a huge federation cannot exhaust the browser; the dialog reports when it is hit. */
+export const IFC_EXPORT_TRIANGLE_CAP = 4_000_000;
+
+/**
+ * World-space meshes of every loaded IFC/Fragments model, one MeshInput per element, layered by IFC entity.
+ * Uses the same extractor as the Native Twin conversion (getItemsGeometry with the model-world decision).
+ */
+export async function collectIfcMeshes(onProgress?: (done: number, total: number) => void): Promise<{ meshes: MeshInput[]; elements: number; failed: number; capped: boolean }> {
+  const { extractElementGeometry } = await import("../modules/native-twin/geometry-extract");
+  const meshes: MeshInput[] = [];
+  let elements = 0, failed = 0, tris = 0, capped = false;
+  const models = Array.from((ctx as any).fragments?.list ?? []) as Array<[string, any]>;
+  for (const [modelId, model] of models) {
+    let ids: number[] = [];
+    try { ids = (await model.getItemsIdsWithGeometry()) ?? []; } catch { continue; }
+    const catBy = new Map<number, string>();
+    try {
+      const cats = await model.getItemsOfCategories([/.+/]);
+      for (const [c, list] of Object.entries(cats ?? {})) for (const id of (list as number[]) ?? []) catBy.set(id, c);
+    } catch { /* layer falls back to A-MODEL */ }
+    const BATCH = 12;
+    for (let i = 0; i < ids.length && !capped; i += BATCH) {
+      const slice = ids.slice(i, i + BATCH);
+      const results = await Promise.all(slice.map((id) => extractElementGeometry(model, id, modelId).catch(() => null)));
+      results.forEach((r, j) => {
+        if (!r || !r.ok || !r.tris.length) { failed++; return; }
+        const pos = new Float32Array(r.tris.length * 9);
+        r.tris.forEach((t, k) => pos.set(t, k * 9));
+        tris += r.tris.length; elements++;
+        meshes.push({ layer: layerForIfcCategory(catBy.get(slice[j])), positions: pos, index: null, matrix: null });
+      });
+      if (tris >= IFC_EXPORT_TRIANGLE_CAP) capped = true;
+      onProgress?.(Math.min(i + BATCH, ids.length), ids.length);
+    }
+  }
+  return { meshes, elements, failed, capped };
+}
+
 function download(name: string, bytes: Uint8Array, type: string): void {
   const buf = new ArrayBuffer(bytes.byteLength); new Uint8Array(buf).set(bytes);
   const url = URL.createObjectURL(new Blob([buf], { type }));
@@ -134,6 +173,7 @@ export function openExportCadDialog(): void {
         <div style="opacity:.75;margin-bottom:6px">The authored 3D model as 3DFACE triangles on layers by element type (wall, slab, column…), Z up. Uses the units above. DXF only.</div>
         <label style="margin-right:12px"><input type="checkbox" data-3d-sel> Selected elements only</label>
         <label style="margin-right:12px"><input type="checkbox" data-3d-vis checked> Visible only</label>
+        <label style="margin-right:12px" title="Every geometric element of the loaded IFC / Revit models (all of them; the selected/visible filters apply to authored elements only)"><input type="checkbox" data-3d-ifc checked> Include imported IFC models</label>
         <button data-go3d style="${inp};cursor:pointer">Export 3D model DXF</button>
       </div>
       <div data-msg style="min-height:18px;margin-top:12px;font-size:12px;white-space:pre-wrap"></div>
@@ -143,16 +183,26 @@ export function openExportCadDialog(): void {
       </div>`;
     const q = <T extends Element>(s: string) => card.querySelector(s) as T;
     card.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
-    q<HTMLButtonElement>("[data-go3d]").addEventListener("click", () => {
-      const msg = q<HTMLElement>("[data-msg]");
+    q<HTMLButtonElement>("[data-go3d]").addEventListener("click", async () => {
+      const msg = q<HTMLElement>("[data-msg]"), btn = q<HTMLButtonElement>("[data-go3d]");
+      btn.disabled = true;
       try {
-        const { meshes, elements } = collectModelMeshes({ selectedOnly: q<HTMLInputElement>("[data-3d-sel]").checked, visibleOnly: q<HTMLInputElement>("[data-3d-vis]").checked });
+        const selOnly = q<HTMLInputElement>("[data-3d-sel]").checked;
+        const authored = collectModelMeshes({ selectedOnly: selOnly, visibleOnly: q<HTMLInputElement>("[data-3d-vis]").checked });
+        let meshes = authored.meshes, elements = authored.elements, ifcNote = "";
+        if (q<HTMLInputElement>("[data-3d-ifc]").checked && !selOnly) {
+          msg.style.color = "#cbd5e1"; msg.textContent = "Reading imported models…";
+          const ifc = await collectIfcMeshes((d, t) => { msg.textContent = `Reading imported models… ${d}/${t}`; });
+          meshes = meshes.concat(ifc.meshes); elements += ifc.elements;
+          if (ifc.elements || ifc.failed) ifcNote = `\nImported models: ${ifc.elements} element(s) exported` + (ifc.failed ? `, ${ifc.failed} without readable geometry` : "") + (ifc.capped ? `. Stopped at ${IFC_EXPORT_TRIANGLE_CAP.toLocaleString()} triangles; export a section of the model for the rest.` : ".");
+        } else if (selOnly) ifcNote = "\nSelected-only applies to authored elements; imported models were not included.";
         const r = meshesToDxf3d(meshes, { units: q<HTMLSelectElement>("[data-units]").value as CadUnits, layerPrefix: q<HTMLInputElement>("[data-prefix]").value.replace(/[^A-Za-z0-9_\-$]/g, "").slice(0, 20) });
-        if (!r.faces) { msg.style.color = "#fbbf24"; msg.textContent = "No authored 3D elements to export" + (q<HTMLInputElement>("[data-3d-sel]").checked ? " (nothing selected?)." : ". Imported IFC/Revit models are not included."); return; }
+        if (!r.faces) { msg.style.color = "#fbbf24"; msg.textContent = "No 3D elements to export." + ifcNote; return; }
         download("openbimstudio-model-3d.dxf", new TextEncoder().encode(r.dxf), "application/dxf");
         msg.style.color = "#86efac";
-        msg.textContent = `Exported ${r.faces} 3D faces from ${elements} element(s) on ${Object.keys(r.byLayer).length} layer(s).` + (r.skippedDegenerate ? `\n${r.skippedDegenerate} degenerate triangle(s) skipped.` : "");
+        msg.textContent = `Exported ${r.faces.toLocaleString()} 3D faces from ${elements} element(s) on ${Object.keys(r.byLayer).length} layer(s).` + (r.skippedDegenerate ? `\n${r.skippedDegenerate} degenerate triangle(s) skipped.` : "") + ifcNote;
       } catch (e) { msg.style.color = "#fca5a5"; msg.textContent = "3D export failed: " + (e instanceof Error ? e.message : String(e)); }
+      finally { btn.disabled = false; }
     });
     q<HTMLButtonElement>("[data-make]")?.addEventListener("click", () => { createStandardViews(); render(); });
     q<HTMLButtonElement>("[data-go]").addEventListener("click", async () => {
