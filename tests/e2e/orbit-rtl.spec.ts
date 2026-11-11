@@ -332,3 +332,57 @@ test('smooth navigation lowers the render resolution while dragging and restores
   expect(after, 'restored after the drag').toBe(before);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('Family sketch window: a parametric rectangle and a polygon with a hole create real families', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__?.features?.family), { timeout: 30000 }).toBe(true);
+  const open = async () => {
+    await page.keyboard.press('Control+p');
+    await page.keyboard.type('Family sketch: new family');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-sketch-editor]')).toBeVisible({ timeout: 10000 });
+  };
+  const click = async (fx: number, fy: number) => {
+    const b = (await page.locator('[data-sketch-editor] [data-svg]').boundingBox())!;
+    await page.mouse.click(b.x + b.width * fx, b.y + b.height * fy);
+  };
+  const familyByName = (name: string) => page.evaluate((n) => {
+    const svc = (window as any).__OBS_CTX__.features.family;
+    const f = svc.list().find((x: any) => x.name === n);
+    return f ? JSON.parse(JSON.stringify(f)) : null;
+  }, name);
+
+  // 1) Parametric rectangle.
+  await open();
+  const ed = page.locator('[data-sketch-editor]');
+  await ed.locator('[data-name]').fill('E2E Pad');
+  await ed.locator('[data-tool="rect"]').click();
+  await click(0.4, 0.4); await click(0.6, 0.55);
+  await ed.locator('[data-apply]').click();
+  await expect(ed).toHaveCount(0, { timeout: 10000 });
+  const pad = await familyByName('E2E Pad');
+  expect(pad, 'family created').not.toBeNull();
+  const names = pad.parameters.map((p: any) => p.name);
+  expect(names, JSON.stringify(names)).toEqual(expect.arrayContaining(['sketchWidth', 'sketchLength', 'sketchDepth']));
+  expect(pad.geometry.profile?.kind ?? pad.geometry.parts?.[0]?.profile?.kind, 'rect profile kept parametric').toBe('rect');
+
+  // 2) Square outline with a square hole.
+  await open();
+  await ed.locator('[data-name]').fill('E2E Holed');
+  await ed.locator('[data-tool="polygon"]').click();
+  for (const [x, y] of [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]]) await click(x, y);
+  await ed.locator('[data-close]').click();
+  await ed.locator('[data-hole]').click();
+  await ed.locator('[data-tool="rect"]').click();
+  await click(0.45, 0.45); await click(0.55, 0.55);
+  await ed.locator('[data-apply]').click();
+  await expect(ed).toHaveCount(0, { timeout: 10000 });
+  const holed = await familyByName('E2E Holed');
+  expect(holed, 'holed family created').not.toBeNull();
+  const g = holed.geometry.holes ? holed.geometry : holed.geometry.parts?.find((p: any) => p.holes);
+  expect(g?.holes?.length, JSON.stringify(holed.geometry).slice(0, 300)).toBe(1);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
