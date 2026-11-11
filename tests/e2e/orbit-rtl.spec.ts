@@ -386,3 +386,83 @@ test('Family sketch window: a parametric rectangle and a polygon with a hole cre
   expect(g?.holes?.length, JSON.stringify(holed.geometry).slice(0, 300)).toBe(1);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+// ---- 3D sectioning: does the Section Box really clip the model on screen?
+async function loadWallIfc(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__?.fragments), { timeout: 30000 }).toBe(true);
+  await page.evaluate(async (text) => {
+    const host = (window as any).__OBS_CTX__.rightHost as HTMLElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File([text], 'wall.ifc', { type: 'application/octet-stream' }));
+    host.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }, WALL_IFC);
+  await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), { timeout: 90000, message: 'IFC model loaded' }).toBeGreaterThanOrEqual(1);
+  await page.waitForTimeout(1500);
+}
+
+/** Number of canvas pixels that differ clearly from the canvas corner colour (a crude "something is drawn" measure). */
+async function drawnPixels(page: import('@playwright/test').Page): Promise<number> {
+  const box = (await page.locator('canvas').first().boundingBox())!;
+  const shot = await page.screenshot({ clip: { x: box.x, y: box.y, width: box.width, height: box.height } });
+  return await page.evaluate(async (b64) => {
+    const blob = await (await fetch('data:image/png;base64,' + b64)).blob();
+    const bmp = await createImageBitmap(blob);
+    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+    const g = c.getContext('2d')!; g.drawImage(bmp, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    const bg = [d[0], d[1], d[2]];
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) > 60) n++;
+    return n;
+  }, shot.toString('base64'));
+}
+
+test('SECTION BOX: clips the model on screen and restores it when switched off', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  // Look straight down at the wall (5 m x 0.2 m x 3 m) from above.
+  await page.evaluate(async () => {
+    const c = (window as any).__OBS_CTX__.world.camera.controls;
+    await c.setLookAt(2.5, 14, 0.1, 2.5, 0, 0.1, false);
+  });
+  await page.waitForTimeout(500);
+  const before = await drawnPixels(page);
+  await page.screenshot({ path: 'test-results/section-0-before.png' });
+
+  const info = await page.evaluate(() => {
+    const sb = (window as any).__OBS_CTX__.features.sectionBox;
+    sb.enable(0.5);
+    const b = sb.getBox();
+    return { active: sb.isActive(), min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z], planes: ((window as any).__OBS_CTX__.world.renderer.three.clippingPlanes ?? []).length };
+  });
+  await page.waitForTimeout(500);
+  const full = await drawnPixels(page);
+  await page.screenshot({ path: 'test-results/section-1-box-on.png' });
+
+  // Cut the box in half along X (keep x <= 2.5).
+  const half = await page.evaluate(() => {
+    const sb = (window as any).__OBS_CTX__.features.sectionBox; const b = sb.getBox(); b.max.x = 2.5; sb.setBox(b);
+    return true;
+  });
+  await page.waitForTimeout(500);
+  const halved = await drawnPixels(page);
+  await page.screenshot({ path: 'test-results/section-2-halved.png' });
+
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionBox.disable());
+  await page.waitForTimeout(500);
+  const after = await drawnPixels(page);
+  const planesAfter = await page.evaluate(() => ((window as any).__OBS_CTX__.world.renderer.three.clippingPlanes ?? []).length);
+
+  const diag = `before ${before}, box-on ${full}, halved ${halved}, after-off ${after}; box ${JSON.stringify(info)}; planes after off ${planesAfter}; halfOk ${half}`;
+  console.log('SECTION-DIAG ' + diag);
+  expect(info.active, diag).toBe(true);
+  expect(halved, 'half the wall is clipped away. ' + diag).toBeLessThan(full * 0.8);
+  expect(halved, 'something remains. ' + diag).toBeGreaterThan(0);
+  expect(Math.abs(after - before), 'switching off restores the view. ' + diag).toBeLessThan(before * 0.1 + 50);
+  expect(planesAfter, diag).toBe(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
