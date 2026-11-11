@@ -11,6 +11,13 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Fixed: schedules chain verified in a real browser — three breaks found and closed
+- Drawing walls and running a Wall Schedule end-to-end (command palette → panel → template → quantities → totals → place on sheet) was exercised in a live browser for the first time. Three breaks surfaced and are fixed:
+  - **"Toggle Schedules" and every "Schedule: …" palette command did nothing.** The panel exposed `ctx.features.schedules`, but the palette, the built-in templates and the workspace boot resolve the service key `schedulesPanel`, which nothing registered. The panel now registers the service facade (and the palette no longer advertises `Ctrl+Shift+S` for it — that key toggles the Scope Box Visualizer).
+  - **First run of a schedule showed empty Length/Area/Volume for authored elements.** The take-off cache was warmed only after the authored rows were built, so every cold run attached no geometry quantities. The cache now warms first; a wall schedule run shows 19.422 m / 116.532 m² / 11.653 m³ on the first run, matching a direct take-off probe.
+  - **Subtotals and grand totals summed per-element dimensions** — a wall schedule total read "Height 6.000 m" (3+3) and "Thickness 0.400" (0.2+0.2). Totalling policy now lives in `src/modules/schedules/schedule-totals.ts` (quantities and formula columns sum; width/height/thickness/depth/elevation and text/date never do) and is covered by `tests/schedule-totals.test.cjs` (8 checks, `test:schedule-totals`).
+- Also fixed on the way: the app failed to boot in dev mode with "Cannot access 'activeToolLabel' before initialization" (white screen) — the drawing.ts shim read `authoringLabel` eagerly across the authoring ↔ drawing import cycle; it is a pure re-export now (`7e557d3`).
+
 ### Added: Export views to CAD (DWG / DXF)
 - File menu → Export → *Views → CAD*, and the *Export: Views to CAD* command, export plan / RCP / section / elevation views as DWG or DXF (one file per view, ZIP for several) with AIA-style layers, true colours, lineweights, dashed linetypes, text sized from paper height × scale, hatches, units (mm / m), layer prefix and DWG version. Details and limits: `docs/EXPORT-VIEW-TO-CAD.md`. Not opened in AutoCAD/Revit.
 - Same dialog: **3D model → DXF** writes the authored 3D model as 3DFACE triangles (DXF R12) on layers by element type with Z up, in mm or m, optionally selected/visible elements only. Includes loaded IFC/Revit models (layers by IFC entity, 4M-triangle cap) via the Native Twin geometry reader; no solids; no DWG. The IFC path has not been run on a real model in a browser.
