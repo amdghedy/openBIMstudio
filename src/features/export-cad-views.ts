@@ -7,7 +7,8 @@ import type { ViewDef } from "../modules/views/types";
 import { sceneToDxfDocument, cadFileName, SCENE_LAYER_NAMES, type CadUnits } from "../modules/export/view-to-cad";
 import { zipStore, type ZipFile } from "../modules/export/zip-store";
 import { writeDxf, DWG_VERSIONS, DEFAULT_DWG_VERSION, type DwgVersionCode } from "../modules/drawings/dxf-writer";
-import { getLevels } from "./authoring";
+import { getLevels, getElements, getSelectedIds } from "./authoring";
+import { meshesToDxf3d, layerForElementType, type MeshInput } from "../modules/export/model-to-dxf3d";
 import { registerCommand } from "./command-palette";
 import { uiAlert } from "../core/notify";
 
@@ -48,6 +49,31 @@ export async function buildCadExport(req: CadExportRequest): Promise<CadExportRe
     }
   }
   return { files, notes };
+}
+
+/** Collect the authored elements' visible meshes from the 3D scene, grouped on layers by element type. */
+export function collectModelMeshes(opts: { selectedOnly: boolean; visibleOnly: boolean }): { meshes: MeshInput[]; elements: number } {
+  const ctx: any = (window as any).__OBS_CTX__;
+  const scene = ctx?.world?.scene?.three;
+  if (!scene) return { meshes: [], elements: 0 };
+  const types = new Map<string, string>(getElements().map((e: any) => [e.id, e.type]));
+  const selected = new Set<string>(getSelectedIds());
+  const meshes: MeshInput[] = [];
+  const seen = new Set<string>();
+  scene.updateMatrixWorld(true);
+  scene.traverse((o: any) => {
+    if (!o.isMesh || !o.geometry || o.isInstancedMesh) return;
+    let id: string | undefined; let visible = true;
+    for (let p = o; p; p = p.parent) { if (id === undefined && p.userData?.elementId) id = p.userData.elementId; if (p.visible === false) visible = false; }
+    if (!id || !types.has(id)) return;
+    if (opts.visibleOnly && !visible) return;
+    if (opts.selectedOnly && !selected.has(id)) return;
+    const pos = o.geometry.getAttribute("position");
+    if (!pos) return;
+    seen.add(id);
+    meshes.push({ layer: layerForElementType(types.get(id)), positions: pos.array as ArrayLike<number>, index: o.geometry.index ? (o.geometry.index.array as ArrayLike<number>) : null, matrix: o.matrixWorld.elements });
+  });
+  return { meshes, elements: seen.size };
 }
 
 function download(name: string, bytes: Uint8Array, type: string): void {
@@ -103,6 +129,13 @@ export function openExportCadDialog(): void {
         <label>Layers</label><div>${layerChecks}</div>
         <label>View title</label><label><input type="checkbox" data-title checked> Add the view name and scale under the drawing</label>
       </div>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155">
+        <div style="font-weight:600;margin-bottom:4px">3D model → DXF (3D faces)</div>
+        <div style="opacity:.75;margin-bottom:6px">The authored 3D model as 3DFACE triangles on layers by element type (wall, slab, column…), Z up. Uses the units above. DXF only.</div>
+        <label style="margin-right:12px"><input type="checkbox" data-3d-sel> Selected elements only</label>
+        <label style="margin-right:12px"><input type="checkbox" data-3d-vis checked> Visible only</label>
+        <button data-go3d style="${inp};cursor:pointer">Export 3D model DXF</button>
+      </div>
       <div data-msg style="min-height:18px;margin-top:12px;font-size:12px;white-space:pre-wrap"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
         <button data-close style="${inp};cursor:pointer">Cancel</button>
@@ -110,6 +143,17 @@ export function openExportCadDialog(): void {
       </div>`;
     const q = <T extends Element>(s: string) => card.querySelector(s) as T;
     card.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
+    q<HTMLButtonElement>("[data-go3d]").addEventListener("click", () => {
+      const msg = q<HTMLElement>("[data-msg]");
+      try {
+        const { meshes, elements } = collectModelMeshes({ selectedOnly: q<HTMLInputElement>("[data-3d-sel]").checked, visibleOnly: q<HTMLInputElement>("[data-3d-vis]").checked });
+        const r = meshesToDxf3d(meshes, { units: q<HTMLSelectElement>("[data-units]").value as CadUnits, layerPrefix: q<HTMLInputElement>("[data-prefix]").value.replace(/[^A-Za-z0-9_\-$]/g, "").slice(0, 20) });
+        if (!r.faces) { msg.style.color = "#fbbf24"; msg.textContent = "No authored 3D elements to export" + (q<HTMLInputElement>("[data-3d-sel]").checked ? " (nothing selected?)." : ". Imported IFC/Revit models are not included."); return; }
+        download("openbimstudio-model-3d.dxf", new TextEncoder().encode(r.dxf), "application/dxf");
+        msg.style.color = "#86efac";
+        msg.textContent = `Exported ${r.faces} 3D faces from ${elements} element(s) on ${Object.keys(r.byLayer).length} layer(s).` + (r.skippedDegenerate ? `\n${r.skippedDegenerate} degenerate triangle(s) skipped.` : "");
+      } catch (e) { msg.style.color = "#fca5a5"; msg.textContent = "3D export failed: " + (e instanceof Error ? e.message : String(e)); }
+    });
     q<HTMLButtonElement>("[data-make]")?.addEventListener("click", () => { createStandardViews(); render(); });
     q<HTMLButtonElement>("[data-go]").addEventListener("click", async () => {
       const msg = q<HTMLElement>("[data-msg]"), go = q<HTMLButtonElement>("[data-go]");

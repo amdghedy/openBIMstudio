@@ -86,9 +86,9 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Interoperability",
     status: "experimental",
     source: ["src/modules/export/view-to-cad.ts", "src/features/export-cad-views.ts"],
-    evidence: ["tests/view-to-cad.test.cjs"],
+    evidence: ["tests/view-to-cad.test.cjs", "tests/model-to-dxf3d.test.cjs"],
     limitations: [
-      "Exports plan, RCP, section and elevation views only; there is no 3D (3DFACE / solid) export and no export of the current 3D camera view",
+      "2D views: plan, RCP, section, elevation. A separate 3D model → DXF writes 3DFACE triangles for authored elements only (no imported IFC/Revit, no solids, no DWG); there is no export of the current 3D camera view as lines",
       "Layers are by view layer (cut, projected, grid, annotation, symbols), not by element category; symbols are circles plus a label, with no blocks or xrefs",
       "The DXF text is checked for completeness; AutoCAD, BricsCAD and Revit have not been used to open the DWG/DXF, and the dialog has not been used by a person",
     ],

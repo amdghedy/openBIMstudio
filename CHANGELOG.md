@@ -12,7 +12,8 @@ file — the project adopted a written changelog at 0.73.0.
 ## [Unreleased]
 
 ### Added: Export views to CAD (DWG / DXF)
-- File menu → Export → *Views → CAD*, and the *Export: Views to CAD* command, export plan / RCP / section / elevation views as DWG or DXF (one file per view, ZIP for several) with AIA-style layers, true colours, lineweights, dashed linetypes, text sized from paper height × scale, hatches, units (mm / m), layer prefix and DWG version. Details and limits: `docs/EXPORT-VIEW-TO-CAD.md`. **Not** a 3D export; not opened in AutoCAD/Revit.
+- File menu → Export → *Views → CAD*, and the *Export: Views to CAD* command, export plan / RCP / section / elevation views as DWG or DXF (one file per view, ZIP for several) with AIA-style layers, true colours, lineweights, dashed linetypes, text sized from paper height × scale, hatches, units (mm / m), layer prefix and DWG version. Details and limits: `docs/EXPORT-VIEW-TO-CAD.md`. Not opened in AutoCAD/Revit.
+- Same dialog: **3D model → DXF** writes the authored 3D model as 3DFACE triangles (DXF R12) on layers by element type with Z up, in mm or m, optionally selected/visible elements only. Authored elements only; not imported IFC/Revit models; no solids; no DWG.
 
 ### Changed: grips show a grab hand
 - Hovering an editable (orange) grip in select mode now shows an open-hand cursor; the closed hand while dragging was already there. Covered by a real-browser spec (`tests/e2e/orbit-rtl.spec.ts`, informational CI job).

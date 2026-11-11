@@ -123,6 +123,7 @@
     "test:family-sketch": "node tests/family-sketch.test.cjs",
     "test:orbit-frame": "node tests/orbit-frame.test.cjs",
     "test:view-to-cad": "node tests/view-to-cad.test.cjs",
+    "test:model-to-dxf3d": "node tests/model-to-dxf3d.test.cjs",
     "test:rtl-css": "node tests/rtl-css.test.cjs",
     "test:region-format": "node tests/region-format.test.cjs",
     "test:twin-export": "node tests/twin-export-geometry.test.cjs",

@@ -134,5 +134,12 @@ test('Export > Views to CAD: dialog creates standard views and downloads real DX
   expect(name.endsWith('.zip') || name.endsWith('.dxf'), `downloaded ${name}`).toBe(true);
   const msg = await dlg.locator('[data-msg]').innerText();
   expect(msg, msg).toMatch(/Exported \d+ DXF file/);
+  const dl3 = page.waitForEvent('download', { timeout: 30000 });
+  await dlg.locator('[data-go3d]').click();
+  const d3 = await dl3;
+  expect(d3.suggestedFilename()).toBe('openbimstudio-model-3d.dxf');
+  const text3 = (await import('fs')).readFileSync((await d3.path())!, 'utf8');
+  expect(text3, 'real 3D DXF content').toContain('3DFACE');
+  expect(text3.trimEnd().endsWith('EOF')).toBe(true);
   expect(errors, errors.join('\n')).toEqual([]);
 });
