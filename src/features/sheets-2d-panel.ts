@@ -20,6 +20,7 @@ import { listViews, getView } from "../modules/views/store";
 import { generatePlanScene } from "../modules/views/generators/plan";
 import { generateSectionScene } from "../modules/views/generators/section";
 import { generateElevationScene } from "../modules/views/generators/elevation";
+import { generateScheduleScene } from "../modules/views/generators/schedule";
 import { renderSceneToSvg } from "../modules/views/renderers/svg";
 import { buildAnnotationLayer } from "../modules/views/annotation-layer";
 import { emptyScene, type Scene2D } from "../modules/views/scene";
@@ -618,11 +619,13 @@ function drawViewport(
   capText.setAttribute("font-family", "system-ui, sans-serif");
   capText.textContent = viewTitleText(vp, viewDef.name);
   svg.appendChild(capText);
-  const layout = scaleBarLayout(tf.scaleDenom);
-  if (vp.width >= layout.barLengthMm + 2 && caption.barBaselineY < sheetHmm - 7) {
-    const barG = document.createElementNS(SVG_NS, "g");
-    barG.innerHTML = scaleBarSvg(tf.x + 2, caption.barBaselineY, layout);
-    svg.appendChild(barG);
+  if (vp.viewType !== "schedule") {
+    const layout = scaleBarLayout(tf.scaleDenom);
+    if (vp.width >= layout.barLengthMm + 2 && caption.barBaselineY < sheetHmm - 7) {
+      const barG = document.createElementNS(SVG_NS, "g");
+      barG.innerHTML = scaleBarSvg(tf.x + 2, caption.barBaselineY, layout);
+      svg.appendChild(barG);
+    }
   }
 }
 
@@ -638,6 +641,8 @@ async function getSceneForView(viewDef: ViewDef): Promise<Scene2D> {
     scene = await generateSectionScene(viewDef);
   } else if (viewDef.kind === "elevation") {
     scene = await generateElevationScene(viewDef);
+  } else if (viewDef.kind === "schedule") {
+    scene = await generateScheduleScene(viewDef);
   } else {
     scene = emptyScene();
   }
@@ -717,10 +722,12 @@ function addSelectedViewport(): void {
   const offset = sheet.viewports.length * 15;
   const vpWidth = Math.min(400, sizeMm.w * 0.5);
   const vpHeight = Math.min(280, sizeMm.h * 0.5);
+  const isSchedule = viewDef.kind === "schedule";
   const viewType: SheetViewport["viewType"] =
     (viewDef.kind === "plan" || viewDef.kind === "rcp") ? "plan"
     : viewDef.kind === "section" ? "section"
     : viewDef.kind === "elevation" ? "elevation"
+    : isSchedule ? "schedule"
     : "3d";
 
   addViewport(currentSheetId, {
@@ -730,9 +737,24 @@ function addSelectedViewport(): void {
     y: 20 + offset,
     width: vpWidth,
     height: vpHeight,
-    scale: "1:" + viewDef.scale,
+    scale: isSchedule ? "1:1" : "1:" + viewDef.scale,
     title: viewDef.name,
   });
+  if (isSchedule) {
+    // Fit the viewport to the table's true paper size (scene units are mm/1000).
+    void getSceneForView(viewDef).then((scene) => {
+      const sh = getSheet(currentSheetId!);
+      if (!sh) return;
+      const vp2 = sh.viewports[sh.viewports.length - 1];
+      if (!vp2 || vp2.viewId !== viewDef.id) return;
+      const wMm = Math.ceil((scene.bounds.maxX - scene.bounds.minX) * 1000) + 8;
+      const hMm = Math.ceil((scene.bounds.maxZ - scene.bounds.minZ) * 1000) + 8;
+      vp2.width = Math.min(Math.max(60, wMm), sizeMm.w - 40);
+      vp2.height = Math.min(Math.max(40, hMm), sizeMm.h - 60);
+      updateSheet(currentSheetId!, {});
+      render();
+    }).catch(() => { /* placeholder scene already renders */ });
+  }
   render();
 }
 

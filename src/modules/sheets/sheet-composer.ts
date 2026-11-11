@@ -18,6 +18,7 @@ import { getView } from "../views/store";
 import { generatePlanScene } from "../views/generators/plan";
 import { generateSectionScene } from "../views/generators/section";
 import { generateElevationScene } from "../views/generators/elevation";
+import { generateScheduleScene } from "../views/generators/schedule";
 import { renderSceneToSvg } from "../views/renderers/svg";
 import { buildAnnotationLayer } from "../views/annotation-layer";
 import { computeViewportTransform } from "../views/sheet-layout";
@@ -55,6 +56,7 @@ async function sceneForView(viewId: string, scaleDenom: number): Promise<Scene2D
   if (v.kind === "plan" || v.kind === "rcp") scene = await generatePlanScene(v);
   else if (v.kind === "section") scene = await generateSectionScene(v);
   else if (v.kind === "elevation") scene = await generateElevationScene(v);
+  else if (v.kind === "schedule") scene = await generateScheduleScene(v);
   else scene = emptyScene();
   const ann = buildAnnotationLayer(v.id, scaleDenom);
   scene.layers.annotation = ann.entities;
@@ -120,10 +122,12 @@ async function viewportSvg(sheet: SheetDef, vp: SheetViewport, drawingBottomMm: 
     `<text x="${vp.x}" y="${caption.titleY.toFixed(2)}" font-size="3" font-weight="600" ` +
     `fill="#334155" font-family="sans-serif">${escapeXml(captionTitle)}</text>`,
   );
-  const layout = scaleBarLayout(scaleDenom);
-  barLengthMm = layout.barLengthMm;
-  if (vp.width >= barLengthMm + BAR_INSET_MM && caption.barBaselineY < drawingBottomMm) {
-    parts.push(scaleBarSvg(vp.x + BAR_INSET_MM, caption.barBaselineY, layout));
+  if (vp.viewType !== "schedule") {
+    const layout = scaleBarLayout(scaleDenom);
+    barLengthMm = layout.barLengthMm;
+    if (vp.width >= barLengthMm + BAR_INSET_MM && caption.barBaselineY < drawingBottomMm) {
+      parts.push(scaleBarSvg(vp.x + BAR_INSET_MM, caption.barBaselineY, layout));
+    }
   }
   return parts.join("\n");
 }

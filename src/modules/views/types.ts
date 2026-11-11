@@ -63,6 +63,13 @@ export interface ViewDef {
   section?: SectionConfig;
   elevation?: ElevationConfig;
   detail?: DetailConfig;
+  /** For kind: "schedule" — the saved schedule definition placed on the sheet. */
+  schedule?: ScheduleViewConfig;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface ScheduleViewConfig {
+  /** StoredSchedule id in the schedule store. */
+  scheduleId: string;
 }

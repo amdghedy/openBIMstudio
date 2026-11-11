@@ -78,6 +78,7 @@
     "test:plan-tags": "node tests/plan-tags.test.cjs",
     "test:filled-regions": "node tests/filled-regions.test.cjs",
     "test:plan-poche": "node tests/plan-poche.test.cjs",
+    "test:schedule-sheet": "node tests/schedule-sheet.test.cjs",
     "test:project-file": "node tests/project-file.test.cjs",
     "test:sheet-furniture": "node tests/sheet-furniture.test.cjs",
     "test:fitting-outline": "node tests/fitting-outline.test.cjs",

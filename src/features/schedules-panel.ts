@@ -51,6 +51,11 @@ import type {
   GroupLevel,
 } from "../modules/schedules/schedule-types";
 import { uiAlert } from "../core/notify";
+import { listViews, createView, updateView, getView as getViewDef } from "../modules/views/store";
+import {
+  listSheets, createSheet, addViewport,
+} from "../modules/sheets/sheets";
+import { openSheets2dPanel } from "./sheets-2d-panel";
 import { promptLine } from "./form-modal";
 import { fmtDateTime, fmtTime } from "../core/region";
 
@@ -831,11 +836,56 @@ function renderFooter(): void {
     info.textContent = "No schedule yet";
   }
   const savedCount = listSavedSchedules().length;
+
+  const placeBtn = document.createElement("button");
+  placeBtn.textContent = "Place on sheet";
+  placeBtn.title = "Create a schedule view and drop it on a drawing sheet at 1:1 paper scale";
+  placeBtn.style.cssText =
+    "margin-left:auto;padding:3px 10px;background:var(--bg-elevated,#181a23);" +
+    "color:var(--text-primary,#e8eaf0);border:1px solid var(--border-default,#2a2e3a);" +
+    "border-radius:4px;cursor:pointer;font-size:11px";
+  placeBtn.onclick = () => void placeOnSheet();
+
   const hint = document.createElement("span");
   hint.style.cssText = "margin-left:auto;opacity:.55";
   hint.textContent =
     `${savedCount} saved · ƒ = formula · Esc to close`;
-  footer.append(info, hint);
+  footer.append(info, placeBtn, hint);
+}
+
+/**
+ * Place the current schedule on a drawing sheet: creates (or reuses) a
+ * kind:"schedule" ViewDef pointing at the saved definition, then drops a
+ * 1:1 viewport on the first sheet (creating one when none exists).
+ */
+async function placeOnSheet(): Promise<void> {
+  const id = currentDefinition.id;
+  if (!id || !listSavedSchedules().some((s) => s.id === id)) {
+    uiAlert("Save the schedule first, then place it on a sheet.");
+    return;
+  }
+  const existing = listViews().find((v) => v.kind === "schedule" && v.schedule?.scheduleId === id);
+  const view = existing ?? (() => {
+    const created = createView("schedule", currentDefinition.name || "Schedule");
+    updateView(created.id, { schedule: { scheduleId: id }, scale: 1 });
+    return getViewDef(created.id) ?? created;
+  })();
+
+  let sheet = listSheets()[0];
+  if (!sheet) sheet = createSheet({ name: `Schedules — ${currentDefinition.name || "Schedule"}` });
+
+  addViewport(sheet.id, {
+    viewId: view.id,
+    viewType: "schedule",
+    x: 20,
+    y: 20,
+    width: 300,
+    height: 200,
+    scale: "1:1",
+    title: currentDefinition.name || "Schedule",
+  });
+  uiAlert(`Placed "${currentDefinition.name || "Schedule"}" on sheet ${sheet.number}.`);
+  openSheets2dPanel();
 }
 
 /* ═════════════════════════════════════════════════════════════════════════

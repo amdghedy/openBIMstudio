@@ -15,6 +15,7 @@ import { getView } from "../views/store";
 import { generatePlanScene } from "../views/generators/plan";
 import { generateSectionScene } from "../views/generators/section";
 import { generateElevationScene } from "../views/generators/elevation";
+import { generateScheduleScene } from "../views/generators/schedule";
 import { buildAnnotationLayer } from "../views/annotation-layer";
 import { emptyScene, type Scene2D } from "../views/scene";
 import { createPdfDocument, drawScene2DToPdf, MM_TO_PT, downloadPdf } from "./pdf";
@@ -26,6 +27,7 @@ async function sceneForView(viewId: string): Promise<Scene2D> {
   if (v.kind === "plan" || v.kind === "rcp") scene = await generatePlanScene(v);
   else if (v.kind === "section") scene = await generateSectionScene(v);
   else if (v.kind === "elevation") scene = await generateElevationScene(v);
+  else if (v.kind === "schedule") scene = await generateScheduleScene(v);
   else scene = emptyScene();
   const ann = buildAnnotationLayer(v.id, v.scale);
   scene.layers.annotation = ann.entities;
@@ -109,8 +111,8 @@ async function drawViewportOnPage(
     color: rgb(0.2, 0.25, 0.3),
   });
 
-  const layout = scaleBarLayout(scaleDenom);
-  if (vp.width >= layout.barLengthMm + 2 && caption.barBaselineY < drawingBottomMm) {
+  const layout = vp.viewType === "schedule" ? null : scaleBarLayout(scaleDenom);
+  if (layout && vp.width >= layout.barLengthMm + 2 && caption.barBaselineY < drawingBottomMm) {
     const barX = (vp.x + 2) * MM_TO_PT;
     const barBottomY = pageH - caption.barBaselineY * MM_TO_PT;
     const segW = layout.segmentMm * MM_TO_PT;
