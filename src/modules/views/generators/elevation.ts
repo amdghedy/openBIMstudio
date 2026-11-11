@@ -4,6 +4,10 @@
  * Projects authored elements onto a horizontal viewing axis. Produces a
  * silhouette line drawing: each linear element becomes a rectangle outline,
  * each point element becomes a small box.
+ *
+ * Documentation truth (Revit parity): hosted doors and windows are drawn on
+ * the projected wall face — until now an elevation showed no openings at
+ * all, which made it a box diagram rather than a facade drawing.
  */
 
 import { getElements } from "../../../features/authoring";
@@ -11,8 +15,12 @@ import type { AuthoredElement } from "../../projects/types";
 import type { ViewDef } from "../types";
 import type { Scene2D, SceneEntity, StrokeStyle } from "../scene";
 import { emptyScene } from "../scene";
+import {
+  hostedOpeningsForWall, elevationOpeningShapes,
+} from "../../drawings/section-elevation-doc";
 
 const OUTLINE: StrokeStyle = { color: "#111827", widthPt: 0.25, dash: null };
+const OPENING: StrokeStyle = { color: "#374151", widthPt: 0.18, dash: null };
 
 function axisForDir(dir: string): [number, number] {
   switch (dir) {
@@ -33,13 +41,24 @@ export async function generateElevationScene(def: ViewDef): Promise<Scene2D> {
   const xs: number[] = [];
   const zs: number[] = [];
 
+  // Hosted doors/windows grouped by host wall — same source of truth the
+  // plan and section generators use.
+  const hostedByWall = new Map<string, AuthoredElement[]>();
   for (const el of elements) {
-    const shapes = projectElement(el, axis);
+    if (typeof el.hostId !== "string" || !el.hostId) continue;
+    if (el.type !== "door" && el.type !== "window") continue;
+    if (!hostedByWall.has(el.hostId)) hostedByWall.set(el.hostId, []);
+    hostedByWall.get(el.hostId)!.push(el);
+  }
+
+  for (const el of elements) {
+    const shapes = projectElement(el, axis, hostedByWall);
     if (!shapes) continue;
     for (const s of shapes) {
       scene.layers.project.push(s);
       if (s.kind === "line") { xs.push(s.x1, s.x2); zs.push(s.z1, s.z2); }
       else if (s.kind === "polyline") { for (const [x, z] of s.points) { xs.push(x); zs.push(z); } }
+      else if (s.kind === "hatch") { for (const [x, z] of s.polygon) { xs.push(x); zs.push(z); } }
     }
   }
 
@@ -53,7 +72,11 @@ export async function generateElevationScene(def: ViewDef): Promise<Scene2D> {
   return scene;
 }
 
-function projectElement(el: AuthoredElement, axis: [number, number]): SceneEntity[] | null {
+function projectElement(
+  el: AuthoredElement,
+  axis: [number, number],
+  hostedByWall: Map<string, AuthoredElement[]>,
+): SceneEntity[] | null {
   const p = el.params;
   const out: SceneEntity[] = [];
 
@@ -67,6 +90,15 @@ function projectElement(el: AuthoredElement, axis: [number, number]): SceneEntit
       points: [[uA, y0], [uB, y0], [uB, y1], [uA, y1]],
       stroke: OUTLINE,
     });
+    // Hosted openings read on the face: door rects, window rects + sill.
+    const L = Math.hypot(p.end[0] - p.start[0], p.end[1] - p.start[1]);
+    const openings = hostedOpeningsForWall(hostedByWall.get(el.id) ?? [], L, p.height);
+    for (const s of elevationOpeningShapes({
+      openings, L, wallX0: uA, wallX1: uB, wallY0: y0,
+      outline: OPENING, sillStroke: OPENING,
+    })) {
+      out.push(s);
+    }
   } else if (p.point) {
     const uC = p.point[0] * axis[0] + p.point[1] * axis[1];
     const w = (p.thickness ?? 0.3) / 2;

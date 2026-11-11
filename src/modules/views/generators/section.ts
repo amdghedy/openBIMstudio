@@ -3,6 +3,15 @@
  *
  *   section-2D X = distance along the cut line
  *   section-2D Z = world Y (elevation)
+ *
+ * Documentation truth (Revit parity):
+ *   • cut faces carry material-aware poché (patterned hatch or solid tint)
+ *     instead of a flat gray wash — same conventions as the plan generator;
+ *   • a cut through a hosted opening shows the void: doors read as an open
+ *     passage with a lintel above, windows keep sill and head slices with a
+ *     glazing line between; jamb reveal lines close the void;
+ *   • walls behind the cut keep their verticals, gain their (visible) top
+ *     edge, and project their hosted openings as outlines.
  */
 
 import { getElements } from "../../../features/authoring";
@@ -10,6 +19,11 @@ import type { AuthoredElement } from "../../projects/types";
 import type { ViewDef } from "../types";
 import type { Scene2D, SceneEntity, StrokeStyle } from "../scene";
 import { emptyScene } from "../scene";
+import {
+  hostedOpeningsForWall, openingAt, cutWallPieces,
+  projectedTopEdge, projectedOpeningShapes, styleForNames,
+  type CutTop,
+} from "../../drawings/section-elevation-doc";
 
 const CUT_STYLE: StrokeStyle = { color: "#111827", widthPt: 0.5, dash: null };
 const PROJECT_STYLE: StrokeStyle = { color: "#6b7280", widthPt: 0.2, dash: null };
@@ -48,15 +62,32 @@ export async function generateSectionScene(def: ViewDef): Promise<Scene2D> {
   const allX: number[] = [];
   const allZ: number[] = [];
 
+  // Hosted doors/windows grouped by host wall — same pattern as the plan
+  // generator, so both views agree on where openings are.
+  const hostedByWall = new Map<string, AuthoredElement[]>();
   for (const el of elements) {
-    const slice = cutElement(el, plane);
-    if (slice) {
-      for (const e of slice) { scene.layers.cut.push(e); updateBoundsFromEntity(e, allX, allZ); }
-    }
-    const projection = projectElement(el, plane, def.section);
-    if (projection) {
-      for (const e of projection) { scene.layers.project.push(e); updateBoundsFromEntity(e, allX, allZ); }
-    }
+    if (typeof el.hostId !== "string" || !el.hostId) continue;
+    if (el.type !== "door" && el.type !== "window") continue;
+    if (!hostedByWall.has(el.hostId)) hostedByWall.set(el.hostId, []);
+    hostedByWall.get(el.hostId)!.push(el);
+  }
+
+  const hatchScale = Math.max(1, def.scale);
+
+  // Pass 1 — cut. Collect cut x-ranges + tops so pass 2 can suppress
+  // projected top edges that would sit inside cut poché.
+  const cutTops: CutTop[] = [];
+  for (const el of elements) {
+    const slice = cutElement(el, plane, hostedByWall, hatchScale, cutTops);
+    if (!slice) continue;
+    for (const e of slice) { scene.layers.cut.push(e); updateBoundsFromEntity(e, allX, allZ); }
+  }
+
+  // Pass 2 — project.
+  for (const el of elements) {
+    const projection = projectElement(el, plane, def.section, hostedByWall, cutTops);
+    if (!projection) continue;
+    for (const e of projection) { scene.layers.project.push(e); updateBoundsFromEntity(e, allX, allZ); }
   }
 
   if (allX.length) {
@@ -69,7 +100,13 @@ export async function generateSectionScene(def: ViewDef): Promise<Scene2D> {
   return scene;
 }
 
-function cutElement(el: AuthoredElement, plane: CutPlane): SceneEntity[] | null {
+function cutElement(
+  el: AuthoredElement,
+  plane: CutPlane,
+  hostedByWall: Map<string, AuthoredElement[]>,
+  hatchScale: number,
+  cutTops: CutTop[],
+): SceneEntity[] | null {
   const p = el.params;
 
   if (p.start && p.end) {
@@ -84,13 +121,20 @@ function cutElement(el: AuthoredElement, plane: CutPlane): SceneEntity[] | null 
       const x = alongCut(plane, cx, cz);
       const y0 = p.elevation;
       const y1 = p.elevation + p.height;
-      const w = (p.thickness ?? 0.2) / 2;
-      return [{
-        kind: "polyline", closed: true,
-        points: [[x - w, y0], [x + w, y0], [x + w, y1], [x - w, y1]],
-        stroke: CUT_STYLE,
-        fill: { color: "#cbd5e1", opacity: 0.6 },
-      }];
+      const halfT = (p.thickness ?? 0.2) / 2;
+      const L = Math.hypot(bx - ax, bz - az);
+      const openings = hostedOpeningsForWall(hostedByWall.get(el.id) ?? [], L, p.height);
+      const op = openingAt(openings, t * L);
+      const props = (el.properties ?? {}) as Record<string, unknown>;
+      const style = styleForNames(
+        el.type, el.name,
+        typeof props.wallType === "string" ? props.wallType : undefined,
+        typeof props.material === "string" ? props.material : undefined,
+      );
+      cutTops.push({ x0: x - halfT, x1: x + halfT, top: y1 });
+      return cutWallPieces({
+        x, halfT, y0, y1, op, style, hatchScale, cutStyle: CUT_STYLE,
+      });
     }
     return null;
   }
@@ -98,18 +142,21 @@ function cutElement(el: AuthoredElement, plane: CutPlane): SceneEntity[] | null 
   if (p.point) {
     const [px, pz] = p.point;
     const d = signedDist(plane, px, pz);
-    const w = (p.thickness ?? 0.3) / 2;
-    if (Math.abs(d) > w) return null;
+    const halfT = (p.thickness ?? 0.3) / 2;
+    if (Math.abs(d) > halfT) return null;
     const x = alongCut(plane, px, pz);
     const y0 = p.elevation;
     const y1 = p.elevation + p.height;
-    const halfW = (p.depth ?? p.thickness ?? 0.3) / 2;
-    return [{
-      kind: "polyline", closed: true,
-      points: [[x - halfW, y0], [x + halfW, y0], [x + halfW, y1], [x - halfW, y1]],
-      stroke: CUT_STYLE,
-      fill: { color: "#cbd5e1", opacity: 0.6 },
-    }];
+    const props = (el.properties ?? {}) as Record<string, unknown>;
+    const style = styleForNames(
+      el.type, el.name,
+      typeof props.wallType === "string" ? props.wallType : undefined,
+      typeof props.material === "string" ? props.material : undefined,
+    );
+    cutTops.push({ x0: x - halfT, x1: x + halfT, top: y1 });
+    return cutWallPieces({
+      x, halfT, y0, y1, op: null, style, hatchScale, cutStyle: CUT_STYLE,
+    });
   }
 
   if (p.polygon && p.polygon.length >= 3) {
@@ -131,12 +178,17 @@ function cutElement(el: AuthoredElement, plane: CutPlane): SceneEntity[] | null 
       const x1 = Math.max(...crossings);
       const y0 = p.elevation;
       const y1 = p.elevation + p.height;
-      return [{
-        kind: "polyline", closed: true,
-        points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
-        stroke: CUT_STYLE,
-        fill: { color: "#94a3b8", opacity: 0.6 },
-      }];
+      const props = (el.properties ?? {}) as Record<string, unknown>;
+      const style = styleForNames(
+        el.type, el.name,
+        typeof props.wallType === "string" ? props.wallType : undefined,
+        typeof props.material === "string" ? props.material : undefined,
+      );
+      cutTops.push({ x0, x1, top: y1 });
+      return cutWallPieces({
+        x: (x0 + x1) / 2, halfT: (x1 - x0) / 2, y0, y1,
+        op: null, style, hatchScale, cutStyle: CUT_STYLE,
+      });
     }
   }
 
@@ -144,7 +196,11 @@ function cutElement(el: AuthoredElement, plane: CutPlane): SceneEntity[] | null 
 }
 
 function projectElement(
-  el: AuthoredElement, plane: CutPlane, cfg: NonNullable<ViewDef["section"]>,
+  el: AuthoredElement,
+  plane: CutPlane,
+  cfg: NonNullable<ViewDef["section"]>,
+  hostedByWall: Map<string, AuthoredElement[]>,
+  cutTops: CutTop[],
 ): SceneEntity[] | null {
   const p = el.params;
   const out: SceneEntity[] = [];
@@ -160,6 +216,17 @@ function projectElement(
       const y1 = p.elevation + p.height;
       out.push({ kind: "line", x1: x0, z1: y0, x2: x0, z2: y1, stroke: PROJECT_STYLE });
       out.push({ kind: "line", x1: x1, z1: y0, x2: x1, z2: y1, stroke: PROJECT_STYLE });
+      // Top edge only where the cut geometry does not already cover it.
+      const top = projectedTopEdge(
+        Math.min(x0, x1), Math.max(x0, x1), y1, cutTops, PROJECT_STYLE,
+      );
+      if (top) out.push(top);
+      // Hosted openings read on the projected face (doors/windows).
+      const L = Math.hypot(bx - ax, bz - az);
+      const openings = hostedOpeningsForWall(hostedByWall.get(el.id) ?? [], L, p.height);
+      for (const s of projectedOpeningShapes(openings, L, x0, x1, y0, PROJECT_STYLE)) {
+        out.push(s);
+      }
     }
   }
   return out.length ? out : null;
@@ -170,5 +237,6 @@ function updateBoundsFromEntity(e: SceneEntity, xs: number[], zs: number[]): voi
   else if (e.kind === "polyline") { for (const [x, z] of e.points) { xs.push(x); zs.push(z); } }
   else if (e.kind === "arc") { xs.push(e.cx - e.r, e.cx + e.r); zs.push(e.cz - e.r, e.cz + e.r); }
   else if (e.kind === "circle") { xs.push(e.cx - e.r, e.cx + e.r); zs.push(e.cz - e.r, e.cz + e.r); }
+  else if (e.kind === "hatch") { for (const [x, z] of e.polygon) { xs.push(x); zs.push(z); } }
   else if (e.kind === "text" || e.kind === "symbol") { xs.push(e.x); zs.push(e.z); }
 }
