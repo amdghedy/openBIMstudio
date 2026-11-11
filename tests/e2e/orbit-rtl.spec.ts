@@ -211,3 +211,102 @@ test('3D export includes an imported IFC model, with the wall on layer A-WALL', 
   expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(4900);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+/** An IFC with a grid of walls (n x n), to give the viewport a realistic amount of geometry. */
+function manyWallsIfc(n: number): string {
+  const head = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('walls.ifc','2026-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,(#20),#10);
+#10=IFCUNITASSIGNMENT((#11));
+#11=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);
+#21=IFCAXIS2PLACEMENT3D(#22,$,$);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+#30=IFCSITE('2VqzM6bXH7ugTO1ZoXRFzp',$,'S',$,$,#31,$,$,.ELEMENT.,$,$,$,$,$);
+#31=IFCLOCALPLACEMENT($,#21);
+#40=IFCRELAGGREGATES('3VqzM6bXH7ugTO1ZoXRFzq',$,$,$,#1,(#30));
+#63=IFCRECTANGLEPROFILEDEF(.AREA.,$,#65,4.,0.2);
+#64=IFCDIRECTION((0.,0.,1.));
+#65=IFCAXIS2PLACEMENT2D(#66,$);
+#66=IFCCARTESIANPOINT((0.,0.));
+`;
+  const body: string[] = []; const ids: string[] = [];
+  let id = 100;
+  const guid = (i: number) => { const a = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$'; let s = ''; let v = i + 12345; for (let k = 0; k < 22; k++) { s += a[v % 64]; v = Math.floor(v / 64) + k * 7 + 1; } return s; };
+  for (let x = 0; x < n; x++) for (let y = 0; y < n; y++) {
+    const pt = id++, ax = id++, lp = id++, solid = id++, rep = id++, pds = id++, wall = id++;
+    body.push(`#${pt}=IFCCARTESIANPOINT((${x * 6}.,${y * 6}.,0.));`);
+    body.push(`#${ax}=IFCAXIS2PLACEMENT3D(#${pt},$,$);`);
+    body.push(`#${lp}=IFCLOCALPLACEMENT(#31,#${ax});`);
+    body.push(`#${solid}=IFCEXTRUDEDAREASOLID(#63,#21,#64,3.);`);
+    body.push(`#${rep}=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#${solid}));`);
+    body.push(`#${pds}=IFCPRODUCTDEFINITIONSHAPE($,$,(#${rep}));`);
+    body.push(`#${wall}=IFCWALL('${guid(wall)}',$,'W${wall}',$,$,#${lp},#${pds},$,.STANDARD.);`);
+    ids.push(`#${wall}`);
+  }
+  const rel = `#${id}=IFCRELCONTAINEDINSPATIALSTRUCTURE('4VqzM6bXH7ugTO1ZoXRFzs',$,$,$,(${ids.join(',')}),#30);`;
+  return head + body.join('\n') + '\n' + rel + '\nENDSEC;\nEND-ISO-10303-21;\n';
+}
+
+test('PROFILE: orbit a 1,600-wall model with the CPU profiler on (prints the hottest functions)', async ({ page }) => {
+  test.setTimeout(240000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__?.fragments), { timeout: 30000 }).toBe(true);
+  const ifc = manyWallsIfc(40);
+  await page.evaluate(async (text) => {
+    const host = (window as any).__OBS_CTX__.rightHost as HTMLElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File([text], 'walls.ifc', { type: 'application/octet-stream' }));
+    host.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }, ifc);
+  await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), { timeout: 180000, message: 'model loaded' }).toBeGreaterThanOrEqual(1);
+  await page.waitForTimeout(3000);
+
+  const box = (await page.locator('canvas').first().boundingBox())!;
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Profiler.enable');
+  await cdp.send('Profiler.setSamplingInterval', { interval: 500 });
+  await page.evaluate(() => {
+    (window as any).__long = [];
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) (window as any).__long.push(Math.round(e.duration)); }).observe({ entryTypes: ['longtask'] });
+  });
+  await cdp.send('Profiler.start');
+  const t0 = Date.now();
+  await page.keyboard.down('Shift');
+  await page.mouse.down();
+  for (let i = 0; i < 6; i++) { await page.mouse.move(cx + 200 * Math.sin(i), cy + 80 * Math.cos(i), { steps: 40 }); }
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  const wall = Date.now() - t0;
+  const { profile } = await cdp.send('Profiler.stop');
+
+  // Self time per function.
+  const nodes = new Map<number, any>(profile.nodes.map((n: any) => [n.id, n]));
+  const self = new Map<string, number>();
+  const dt: number[] = profile.timeDeltas;
+  profile.samples.forEach((id: number, i: number) => {
+    const n = nodes.get(id)!; const f = n.callFrame;
+    const key = `${f.functionName || '(anonymous)'}  ${f.url.split('/').slice(-2).join('/')}:${f.lineNumber + 1}`;
+    self.set(key, (self.get(key) ?? 0) + (dt[i] ?? 0));
+  });
+  const total = Array.from(self.values()).reduce((a, b) => a + b, 0);
+  const top = Array.from(self.entries()).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => `${(v / 1000).toFixed(0).padStart(6)} ms  ${(100 * v / total).toFixed(1).padStart(5)}%  ${k}`);
+  const long = await page.evaluate(() => (window as any).__long as number[]);
+  const stats = await page.evaluate(() => { const c = (window as any).__OBS_CTX__; let meshes = 0, tris = 0; c.world.scene.three.traverse((o: any) => { if (o.isMesh) { meshes++; const g = o.geometry; tris += g?.index ? g.index.count / 3 : (g?.attributes?.position?.count ?? 0) / 3; } }); return { meshes, tris: Math.round(tris), models: c.fragments.list.size }; });
+  const report = `ORBIT PROFILE  wall time ${wall} ms for 240 mouse moves; models ${stats.models}, meshes ${stats.meshes}, triangles ${stats.tris}\nlong tasks (ms): ${long.length} total, longest ${Math.max(0, ...long)}, sum ${long.reduce((a, b) => a + b, 0)}\n--- top self time ---\n${top.join('\n')}`;
+  console.log(report);
+  test.info().annotations.push({ type: 'orbit-profile', description: report });
+  (await import('fs')).mkdirSync('test-results', { recursive: true });
+  (await import('fs')).writeFileSync('test-results/orbit-profile.txt', report);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
