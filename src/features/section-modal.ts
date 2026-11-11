@@ -4,6 +4,7 @@ import { notify } from "../core/notify";
 import { planeForAxis } from "./section-plane-math";
 import { isSectionOn, setSectionOn, deleteSectionPlanes, onSectionModeChange } from "./section";
 import { setMeasureEnabled } from "./measure";
+import { getSceneBox } from "./camera-tools";
 
 let modalEl: HTMLDivElement | null = null;
 let activePlane: THREE.Plane | null = null;
@@ -98,8 +99,24 @@ export function openSectionModal() {
   
   const posSlider = document.createElement("input");
   posSlider.type = "range";
-  posSlider.min = "-50";
-  posSlider.max = "50";
+  // Range follows the model bounds (±20% margin) instead of a hardcoded
+  // ±50 m so a small house isn't chopped at ±50 m and a 200 m plant isn't
+  // out of reach. Falls back to ±50 m when the scene is empty.
+  const posRange = (() => {
+    try {
+      const box = getSceneBox();
+      if (box && Number.isFinite(box.min.x) && !box.isEmpty()) {
+        const c = box.getCenter(new THREE.Vector3());
+        const s = box.getSize(new THREE.Vector3());
+        const half = Math.max(s.x, s.y, s.z) / 2 + c.length();
+        const r = Math.ceil(Math.max(5, half * 1.2) * 10) / 10;
+        return { min: -r, max: r };
+      }
+    } catch { /* scene not ready */ }
+    return { min: -50, max: 50 };
+  })();
+  posSlider.min = String(posRange.min);
+  posSlider.max = String(posRange.max);
   posSlider.step = "0.1";
   posSlider.value = "0";
   posSlider.style.cssText = "width:100%;cursor:pointer;";
@@ -160,7 +177,7 @@ export function openSectionModal() {
   exactInp.oninput = () => {
     const v = currentPos();
     if (!Number.isFinite(v)) return;
-    posSlider.value = String(Math.max(-50, Math.min(50, v)));
+    posSlider.value = String(Math.max(posRange.min, Math.min(posRange.max, v)));
     updatePosLabel(v);
     applySection(axisSel.value as "x"|"y"|"z", v);
   };

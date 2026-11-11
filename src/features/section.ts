@@ -10,6 +10,11 @@ import * as OBC from "@thatopen/components";
 import { ctx } from "../core/context";
 import { isMeasureEnabled, setMeasureEnabled } from "./measure";
 import { isDrawingActive } from "./drawing";
+import { getAuthoredGroup } from "./authoring";
+import { startAuthoredClipSync } from "./section-authored-clip";
+import {
+  worldFaceNormal, flipTowardCamera, planeThroughPoint,
+} from "./section-authored-clip-math";
 
 export interface SectionPlaneState {
   location: [number, number, number];
@@ -41,6 +46,20 @@ export function setSectionOn(on: boolean) {
     try { (ctx.clipper as any).enabled = true; } catch { /* */ }
     try { (ctx.world.renderer as any).three.localClippingEnabled = true; } catch { /* */ }
   }
+  // Turning the tool OFF must stop the cut (Revit parity): re-enabling the
+  // mode restores the planes exactly as they were. Per-plane enabled drives
+  // world.renderer.setPlane, so fragments, authored meshes (via the sync)
+  // and the plane visuals all follow the same switch.
+  try {
+    const list = (ctx.clipper as any)?.list;
+    const items: any[] =
+      typeof list?.values === "function" ? [...list.values()]
+      : Array.isArray(list) ? list
+      : (list && typeof list[Symbol.iterator] === "function" ? [...list] : []);
+    for (const item of items) {
+      if (item && typeof item.enabled === "boolean") item.enabled = on;
+    }
+  } catch { /* clipper absent or API drift */ }
   const el = checkboxEl ?? document.querySelector("bim-checkbox[data-section]");
   if (el) el.checked = on;
 }
@@ -199,7 +218,77 @@ export function deleteSectionPlanes(): number {
   return removed;
 }
 
+/** Authoring-pick result: world-space hit point + camera-facing face normal. */
+interface AuthoredFaceHit {
+  point: THREE.Vector3;
+  normal: THREE.Vector3;
+}
+
+/**
+ * Raycast the AUTHORED group under the double-click. Authored elements are
+ * plain three.js meshes the OBC raycaster never registers, so without this
+ * the section cut simply cannot pick the model the user drew.
+ * Returns null when nothing authored is under the pointer.
+ */
+function pickAuthoredFace(e: MouseEvent, canvas: HTMLCanvasElement): AuthoredFaceHit | null {
+  const group = getAuthoredGroup();
+  if (!group) return null;
+  const rect = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(ndc, ctx.world.camera.three as THREE.Camera);
+  const hits = raycaster.intersectObjects(group.children, true);
+  const hit = hits.find((h) => h.face && h.object.visible !== false);
+  if (!hit || !hit.face) return null;
+
+  const localN = hit.face.normal;
+  const worldN = worldFaceNormal(
+    { x: localN.x, y: localN.y, z: localN.z },
+    (hit.object.matrixWorld.elements as unknown as number[]),
+  );
+  if (!worldN.x && !worldN.y && !worldN.z) return null;
+
+  const camDir = new THREE.Vector3();
+  (ctx.world.camera.three as THREE.Camera).getWorldDirection(camDir);
+  const facing = flipTowardCamera(worldN, { x: camDir.x, y: camDir.y, z: camDir.z });
+  return {
+    point: hit.point.clone(),
+    normal: new THREE.Vector3(facing.x, facing.y, facing.z),
+  };
+}
+
+/** Create the Clipper plane through `point` facing along `normal`. Handles SDK API drift. */
+function createClipperPlane(clipper: any, point: THREE.Vector3, normal: THREE.Vector3): boolean {
+  // Flip toward camera so "front" always faces the user (Revit keeps the seen side).
+  const camDir = new THREE.Vector3();
+  (ctx.world.camera.three as THREE.Camera).getWorldDirection(camDir);
+  const n = normal.clone();
+  if (n.dot(camDir) > 0) n.negate();
+
+  if (typeof clipper?.createFromNormalAndCoplanarPoint === "function") {
+    clipper.createFromNormalAndCoplanarPoint(ctx.world, n, point);
+    return true;
+  }
+  if (typeof clipper?.create === "function") {
+    const item: any = clipper.create(ctx.world);
+    const plane: THREE.Plane | undefined = item?.three?.plane ?? item?.plane ?? item?.three;
+    if (plane?.normal) {
+      plane.normal.copy(n);
+      plane.constant = -point.dot(n);
+      return true;
+    }
+  }
+  return false;
+}
+
 export function setupSection() {
+  // Mirror Clipper planes onto authored meshes so section cuts work on the
+  // model the user draws — not only on IFC fragments.
+  startAuthoredClipSync();
+
   ctx.rightHost.addEventListener("dblclick", async (e: MouseEvent) => {
     if (isDrawingActive() || isMeasureEnabled() || !enabled) return;
 
@@ -209,54 +298,51 @@ export function setupSection() {
     const clipper: any = ctx.clipper;
     let created = false;
 
+    // 1) Authored geometry first — plain three.js meshes the OBC raycaster
+    //    never sees. Double-clicking an authored wall must cut that wall.
     try {
-      const caster: any = (ctx.components as any).get(OBC.Raycasters).get(ctx.world);
-      const hit: any = await caster.castRay();
-
-      if (hit) {
-        const pt = hit.point
-          ? new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z)
-          : (hit.ray?.origin && hit.distance != null
-              ? hit.ray.origin.clone().add(hit.ray.direction.clone().multiplyScalar(hit.distance))
-              : null);
-
-        let normal: THREE.Vector3 | null = null;
-        const rawN = hit.normal ?? hit.face?.normal ?? null;
-        if (rawN) {
-          normal = new THREE.Vector3(rawN.x, rawN.y, rawN.z);
-          if (hit.object && hit.object.matrixWorld) {
-            try {
-              const nm = new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld);
-              normal.applyMatrix3(nm).normalize();
-            } catch { normal.normalize(); }
-          } else {
-            normal.normalize();
-          }
-        }
-
-        if (pt && normal) {
-          // Flip toward camera so "front" always faces the user
-          const camDir = new THREE.Vector3();
-          (ctx.world.camera.three as THREE.Camera).getWorldDirection(camDir);
-          if (normal.dot(camDir) > 0) normal.negate();
-
-          if (typeof clipper.createFromNormalAndCoplanarPoint === "function") {
-            clipper.createFromNormalAndCoplanarPoint(ctx.world, normal, pt);
-            created = true;
-          } else if (typeof clipper.create === "function") {
-            const item: any = clipper.create(ctx.world);
-            const plane: THREE.Plane | undefined =
-              item?.three?.plane ?? item?.plane ?? item?.three;
-            if (plane?.normal) {
-              plane.normal.copy(normal);
-              plane.constant = -pt.dot(normal);
-              created = true;
-            }
-          }
-        }
+      const authored = pickAuthoredFace(e, canvas);
+      if (authored) {
+        created = createClipperPlane(clipper, authored.point, authored.normal);
       }
     } catch (err) {
-      console.warn("[section] face-aligned create failed", err);
+      console.warn("[section] authored face pick failed", err);
+    }
+
+    // 2) Fragments (IFC models) via the OBC raycaster, as before.
+    if (!created) {
+      try {
+        const caster: any = (ctx.components as any).get(OBC.Raycasters).get(ctx.world);
+        const hit: any = await caster.castRay();
+
+        if (hit) {
+          const pt = hit.point
+            ? new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z)
+            : (hit.ray?.origin && hit.distance != null
+                ? hit.ray.origin.clone().add(hit.ray.direction.clone().multiplyScalar(hit.distance))
+                : null);
+
+          let normal: THREE.Vector3 | null = null;
+          const rawN = hit.normal ?? hit.face?.normal ?? null;
+          if (rawN) {
+            normal = new THREE.Vector3(rawN.x, rawN.y, rawN.z);
+            if (hit.object && hit.object.matrixWorld) {
+              try {
+                const nm = new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld);
+                normal.applyMatrix3(nm).normalize();
+              } catch { normal.normalize(); }
+            } else {
+              normal.normalize();
+            }
+          }
+
+          if (pt && normal) {
+            created = createClipperPlane(clipper, pt, normal);
+          }
+        }
+      } catch (err) {
+        console.warn("[section] face-aligned create failed", err);
+      }
     }
 
     if (!created) {

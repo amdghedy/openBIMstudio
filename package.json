@@ -79,6 +79,7 @@
     "test:filled-regions": "node tests/filled-regions.test.cjs",
     "test:plan-poche": "node tests/plan-poche.test.cjs",
     "test:section-elevation-doc": "node tests/section-elevation-doc.test.cjs",
+    "test:section-authored-clip": "node tests/section-authored-clip.test.cjs",
     "test:schedule-sheet": "node tests/schedule-sheet.test.cjs",
     "test:project-file": "node tests/project-file.test.cjs",
     "test:sheet-furniture": "node tests/sheet-furniture.test.cjs",
