@@ -57,13 +57,14 @@ export function setSmoothNavEnabled(on: boolean): void {
 
 export function setupNavLowRes(): void {
   try { enabled = localStorage.getItem(KEY) !== "0"; } catch { /* default on */ }
-  const host = (ctx as any).rightHost as HTMLElement | undefined;
-  if (!host) return;
-  host.addEventListener("pointerdown", () => { held = true; begin(); }, true);
-  const up = () => { held = false; scheduleEnd(); };
+  // The viewport host may not exist yet when this runs, so listen on the document and filter on the WebGL canvas.
+  const r0 = () => renderer()?.domElement as HTMLElement | undefined;
+  const onCanvas = (e: Event) => { const c = r0(); return !!c && (e.target === c || (e.target instanceof Node && c.contains(e.target))); };
+  document.addEventListener("pointerdown", (e) => { if (onCanvas(e)) { held = true; begin(); } }, true);
+  const up = () => { if (held) { held = false; scheduleEnd(); } };
   window.addEventListener("pointerup", up, true);
   window.addEventListener("pointercancel", up, true);
-  host.addEventListener("wheel", () => { begin(); scheduleEnd(); }, { passive: true, capture: true });
+  document.addEventListener("wheel", (e) => { if (onCanvas(e)) { begin(); scheduleEnd(); } }, { passive: true, capture: true });
   registerCommand({
     id: "view.smooth_nav",
     label: "View: Smooth navigation (lower resolution while moving)",
