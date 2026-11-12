@@ -794,6 +794,27 @@ export function setupWalkMode(): void {
     enable: enableWalkMode,
     disable: disableWalkMode,
     toggle: toggleWalkMode,
+    /** Diagnostic: the fragments model's own raycast API, fired from (x,y,z) along (dx,dy,dz) through a temporary camera. */
+    probeModelRaycast: async (x: number, y: number, z: number, dx: number, dy: number, dz: number) => {
+      const out: any = { names: [], results: [] };
+      const cam = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
+      cam.position.set(x, y, z); cam.lookAt(x + dx, y + dy, z + dz); cam.updateMatrixWorld(true); cam.updateProjectionMatrix();
+      const dom = ctx.world.renderer?.three.domElement as HTMLElement;
+      for (const [, m] of ctx.fragments.list as any) {
+        const names = new Set<string>();
+        for (let o = m; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) for (const k of Object.getOwnPropertyNames(o)) if (/ray|pick|hit|snap|geometry/i.test(k)) names.add(k);
+        out.names = [...names];
+        for (const fn of ["raycast", "rawRaycast"]) {
+          if (typeof m[fn] !== "function") continue;
+          const t0 = performance.now();
+          try {
+            const r = await m[fn]({ camera: cam, mouse: new THREE.Vector2(0, 0), dom, snappingClasses: [] });
+            out.results.push({ fn, ms: Math.round(performance.now() - t0), r: r ? { keys: Object.keys(r), distance: r.distance, point: r.point ? [r.point.x, r.point.y, r.point.z] : null, normal: r.normal ? [r.normal.x, r.normal.y, r.normal.z] : null, localId: r.localId } : null });
+          } catch (e) { out.results.push({ fn, err: String(e).slice(0, 200) }); }
+        }
+      }
+      return out;
+    },
     /** Diagnostic: what a collision ray from (x,y,z) along (dx,dy,dz) hits, using exactly the walker's targets. */
     probe: (x: number, y: number, z: number, dx: number, dy: number, dz: number) => {
       const targets = getCollisionTargets();
