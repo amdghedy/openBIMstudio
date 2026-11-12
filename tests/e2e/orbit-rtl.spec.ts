@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import zlib from 'node:zlib';
 
 // Real-browser checks for two things that were only unit-tested: Shift+drag orbit, and Arabic (right-to-left) boot.
 // Run on CI by .github/workflows/browser-smoke.yml (not part of the unit-test job).
@@ -402,21 +403,39 @@ async function loadWallIfc(page: import('@playwright/test').Page): Promise<void>
   await page.waitForTimeout(1500);
 }
 
+/** Minimal 8-bit non-interlaced PNG decoder (the page CSP blocks decoding inside the browser). Returns RGB(A) bytes. */
+function decodePng(buf: Buffer): { w: number; h: number; bpp: number; data: Buffer } {
+  let o = 8, w = 0, h = 0, ct = 0; const idat: Buffer[] = [];
+  while (o < buf.length) {
+    const len = buf.readUInt32BE(o), type = buf.toString('ascii', o + 4, o + 8), d = buf.subarray(o + 8, o + 8 + len);
+    if (type === 'IHDR') { w = d.readUInt32BE(0); h = d.readUInt32BE(4); ct = d[9]; }
+    if (type === 'IDAT') idat.push(d);
+    o += 12 + len;
+  }
+  const bpp = ct === 6 ? 4 : 3; const raw = zlib.inflateSync(Buffer.concat(idat)); const stride = w * bpp;
+  const out = Buffer.alloc(h * stride);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)], src = y * (stride + 1) + 1, dst = y * stride;
+    for (let x = 0; x < stride; x++) {
+      const v = raw[src + x], a = x >= bpp ? out[dst + x - bpp] : 0, b = y > 0 ? out[dst - stride + x] : 0, c = x >= bpp && y > 0 ? out[dst - stride + x - bpp] : 0;
+      let r = v;
+      if (f === 1) r = v + a; else if (f === 2) r = v + b; else if (f === 3) r = v + ((a + b) >> 1);
+      else if (f === 4) { const pp = a + b - c, pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c); r = v + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c); }
+      out[dst + x] = r & 255;
+    }
+  }
+  return { w, h, bpp, data: out };
+}
+
 /** Number of canvas pixels that differ clearly from the canvas corner colour (a crude "something is drawn" measure). */
 async function drawnPixels(page: import('@playwright/test').Page): Promise<number> {
   const box = (await page.locator('canvas').first().boundingBox())!;
   const shot = await page.screenshot({ clip: { x: box.x, y: box.y, width: box.width, height: box.height } });
-  return await page.evaluate(async (b64) => {
-    const blob = await (await fetch('data:image/png;base64,' + b64)).blob();
-    const bmp = await createImageBitmap(blob);
-    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
-    const g = c.getContext('2d')!; g.drawImage(bmp, 0, 0);
-    const d = g.getImageData(0, 0, c.width, c.height).data;
-    const bg = [d[0], d[1], d[2]];
-    let n = 0;
-    for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) > 60) n++;
-    return n;
-  }, shot.toString('base64'));
+  const { data, bpp } = decodePng(shot);
+  const bg = [data[0], data[1], data[2]];
+  let n = 0;
+  for (let i = 0; i < data.length; i += bpp) if (Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) > 60) n++;
+  return n;
 }
 
 test('SECTION BOX: clips the model on screen and restores it when switched off', async ({ page }) => {
