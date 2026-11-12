@@ -160,14 +160,15 @@ export function toggleMeasure() {
 
 export function clearMeasurements() {
   try {
-    const list = (ctx.lengthMeasurer as any)?.list;
-    if (list?.clear) list.clear();
-    else if (typeof (ctx.lengthMeasurer as any)?.deleteAll === "function") {
-      (ctx.lengthMeasurer as any).deleteAll();
-    }
+    const lm: any = ctx.lengthMeasurer;
+    try { lm?.cancelCreation?.(); } catch { /* */ }
+    if (typeof lm?.deleteAll === "function") lm.deleteAll(); // disposes the 3D dimension objects too
+    if (lm?.list?.size > 0 && lm.list.clear) lm.list.clear();
   } catch (e) {
     console.warn("[measure] clear failed", e);
   }
+  dropPendingBalls();
+  pendingPts = [];
   clearXyzGraphics();
   chainTotal = 0;
   updateHud();
@@ -196,11 +197,7 @@ export function cancelPending(update = true): boolean {
   } catch {
     /* */
   }
-  // Remove temporary endpoint balls only when canceling mid-pick — keep finished dims
-  if (any) {
-    // strip only cyan pending balls by clearing graphics that belong to pending
-    // Keep last completed labels unless full clear requested
-  }
+  if (pendingBalls.length) { dropPendingBalls(); any = true; }
   if (update) updateHud();
   return any;
 }
@@ -224,6 +221,18 @@ function line3(a: THREE.Vector3, b: THREE.Vector3, color: number) {
   return l;
 }
 
+/** Cyan "first point picked" markers of the dimension being drawn. They must go when it is cancelled or finished. */
+let pendingBalls: THREE.Object3D[] = [];
+function dropPendingBalls(): void {
+  for (const b of pendingBalls) {
+    xyzGroup.remove(b);
+    const m = b as THREE.Mesh;
+    m.geometry?.dispose?.();
+    (m.material as THREE.Material | undefined)?.dispose?.();
+  }
+  pendingBalls = [];
+}
+
 function ball(p: THREE.Vector3, color: number, r = 0.045) {
   const m = new THREE.Mesh(
     new THREE.SphereGeometry(r, 12, 12),
@@ -235,7 +244,7 @@ function ball(p: THREE.Vector3, color: number, r = 0.045) {
 }
 
 function drawXyzDimension(a: THREE.Vector3, b: THREE.Vector3) {
-  clearXyzGraphics();
+  dropPendingBalls(); // earlier finished dimensions stay on screen until deleted
   const dx = b.x - a.x,
     dy = b.y - a.y,
     dz = b.z - a.z;
@@ -260,7 +269,7 @@ function drawXyzDimension(a: THREE.Vector3, b: THREE.Vector3) {
 }
 
 function drawDistance(a: THREE.Vector3, b: THREE.Vector3) {
-  clearXyzGraphics();
+  dropPendingBalls(); // earlier finished dimensions stay on screen until deleted
   xyzGroup.add(line3(a, b, 0x38bdf8));
   addMeasureLabel(formatLength(a.distanceTo(b)), a.clone().lerp(b, 0.5));
   xyzGroup.add(ball(a, 0xffffff));
@@ -268,7 +277,7 @@ function drawDistance(a: THREE.Vector3, b: THREE.Vector3) {
 }
 
 function drawAngle(a: THREE.Vector3, vertex: THREE.Vector3, c: THREE.Vector3) {
-  clearXyzGraphics();
+  dropPendingBalls(); // earlier finished dimensions stay on screen until deleted
   xyzGroup.add(line3(vertex, a, 0xfbbf24));
   xyzGroup.add(line3(vertex, c, 0xfbbf24));
   const va = a.clone().sub(vertex).normalize();
@@ -331,7 +340,9 @@ async function pickPoint(clientX?: number, clientY?: number): Promise<THREE.Vect
 
 function commitPoint(pt: THREE.Vector3) {
   pendingPts.push(pt.clone());
-  xyzGroup.add(ball(pt, 0x22d3ee));
+  const pb = ball(pt, 0x22d3ee);
+  pendingBalls.push(pb);
+  xyzGroup.add(pb);
 
   if (mode === "distance" || mode === "xyz") {
     if (pendingPts.length >= 2) {
@@ -350,14 +361,14 @@ function commitPoint(pt: THREE.Vector3) {
     if (pendingPts.length >= 2) {
       const a = pendingPts[pendingPts.length - 2];
       const b = pendingPts[pendingPts.length - 1];
-      if (pendingPts.length === 2) {
-        // first segment — clear old graphics
-        clearXyzGraphics();
-        xyzGroup.add(ball(a, 0xffffff));
-      }
+      dropPendingBalls();
+      if (pendingPts.length === 2) xyzGroup.add(ball(a, 0xffffff));
       drawChainSegment(a, b);
       // keep last point as start of next segment
       pendingPts = [b.clone()];
+      const nb = ball(b, 0x22d3ee);
+      pendingBalls.push(nb);
+      xyzGroup.add(nb);
     }
   }
   updateHud();
@@ -511,10 +522,12 @@ export function setupMeasure() {
     }
     // Esc handled by escape-all; local fallback if escape-all not installed
     if (e.code === "Escape") {
-      if (cancelPending()) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      // 1st Esc cancels the dimension being drawn; with nothing pending, Esc ends the dimension command.
+      // Finished dimensions are never removed by Esc - use Clear measurements for that.
+      const hadPending = cancelPending();
+      if (!hadPending) setMeasureEnabled(false);
+      e.preventDefault();
+      e.stopPropagation();
     }
   });
 
@@ -527,6 +540,7 @@ export function setupMeasure() {
     clear: clearMeasurements,
     cancel: cancelMeasure,
     cancelPending,
+    state: () => ({ enabled: isMeasureEnabled(), pending: pendingPts.length, pendingBalls: pendingBalls.length, graphics: xyzGroup.children.length, labels: measureLabels.length, obcDims: (ctx.lengthMeasurer as any)?.list?.size ?? 0 }),
     setMode: setMeasureMode,
     getMode: getMeasureMode,
     setUnits: setMeasureUnits,

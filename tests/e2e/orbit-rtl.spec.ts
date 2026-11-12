@@ -530,3 +530,48 @@ test('SECTION BOX: dragging a face arrow with a real mouse moves that face and k
   expect(after.planes.renderer, 'still exactly 6 planes. ' + diag).toBe(6);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('3D DIMENSION (Measure): Esc cancels the unfinished dimension, then ends the command; finished ones stay until deleted; Clear deletes all', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  await page.evaluate(async () => {
+    const c = (window as any).__OBS_CTX__.world.camera.controls;
+    await c.setLookAt(2.5, 14, 0.1, 2.5, 0, 0.1, false);
+  });
+  await page.waitForTimeout(500);
+  const box = (await page.locator('canvas').first().boundingBox())!;
+  const at = (fx: number, fy: number) => ({ x: box.x + box.width * fx, y: box.y + box.height * fy });
+  const st = () => page.evaluate(() => (window as any).__obsMeasure.state());
+  const click = async (fx: number, fy: number) => { const p = at(fx, fy); await page.mouse.click(p.x, p.y); await page.waitForTimeout(500); };
+  await page.evaluate(() => { (window as any).__obsMeasure.setMode('distance'); (window as any).__obsMeasure.enable(); });
+  await page.waitForTimeout(400);
+
+  await click(0.35, 0.4); await click(0.65, 0.4);          // dimension 1
+  const one = await st();
+  await click(0.35, 0.6); await click(0.65, 0.6);          // dimension 2
+  const two = await st();
+  await click(0.5, 0.3);                                    // first point of dimension 3
+  const pend = await st();
+  await page.keyboard.press('Escape');
+  const afterEsc1 = await st();
+  await page.keyboard.press('Escape');
+  const afterEsc2 = await st();
+  const diag = JSON.stringify({ one, two, pend, afterEsc1, afterEsc2 });
+  console.log('MEASURE-DIAG ' + diag);
+  expect(one.labels, 'dimension 1 is drawn. ' + diag).toBeGreaterThan(0);
+  expect(two.labels, 'dimension 2 is added, not replacing 1. ' + diag).toBeGreaterThan(one.labels);
+  expect(pend.pending, 'first point of dimension 3 is pending. ' + diag).toBe(1);
+  expect(afterEsc1.pending + afterEsc1.pendingBalls, 'Esc cancels the unfinished dimension and its marker. ' + diag).toBe(0);
+  expect(afterEsc1.enabled, 'first Esc keeps the tool on. ' + diag).toBe(true);
+  expect(afterEsc1.labels, 'Esc does not delete finished dimensions. ' + diag).toBe(two.labels);
+  expect(afterEsc2.enabled, 'second Esc ends the dimension command. ' + diag).toBe(false);
+  expect(afterEsc2.labels, 'finished dimensions remain. ' + diag).toBe(two.labels);
+
+  await page.evaluate(() => (window as any).__obsMeasure.clear());
+  const cleared = await st();
+  console.log('MEASURE-CLEARED ' + JSON.stringify(cleared));
+  expect(cleared.labels + cleared.graphics + cleared.obcDims + cleared.pending, 'Clear deletes every dimension. ' + JSON.stringify(cleared)).toBe(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
