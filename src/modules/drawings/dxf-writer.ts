@@ -178,8 +178,15 @@ function writeHatch(e: Extract<DxfEntity, { type: "LWPOLYLINE" }>): string {
   s += pair(75, 0); // hatch style: normal
   s += pair(76, 1); // pattern type: predefined
   if (!solid) {
-    s += pair(52, h.angle ?? 0);
-    s += pair(41, h.scale ?? 1);
+    // Pattern-space families (authored hatches, DXF HATCH imports) still carry
+    // the hatch's own angle/scale — write both so native CAD applies them.
+    // Drawing-space families (DWG imports, already transformed by the mapper)
+    // must export at 0/1 or native CAD would apply the transform twice.
+    // Hatches without families keep their angle/scale: native CAD resolves the
+    // predefined pattern name from its own library and applies them there.
+    const baked = !!h.patternLines?.length && !h.patternSpace;
+    s += pair(52, baked ? 0 : h.angle ?? 0);
+    s += pair(41, baked ? 1 : h.scale ?? 1);
     s += pair(77, 0);
     const lines = h.patternLines ?? [];
     s += pair(78, lines.length);

@@ -38,7 +38,7 @@ import {
   parseClip,
   type CadClip,
 } from "../modules/cad-viewer/clipboard";
-import type { DxfDocument, DxfEntity } from "../modules/drawings/dxf-types";
+import type { DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
@@ -67,6 +67,8 @@ import {
   type PlotStyleTable,
 } from "../modules/drawings/plot-styles";
 import { isLandXml, parseLandXmlPoints } from "../modules/drawings/landxml";
+import { HATCH_PATTERN_NAMES, DEFAULT_HATCH_PATTERN, isKnownHatchPattern, patternDefinition, transformToDrawingSpace, type HatchFamilyDef } from "../modules/drawings/hatch-patterns";
+import { collectHatchGeometry, detectLoopAt, type BoundaryResult } from "../modules/drawings/hatch-boundary";
 import * as P from "./cad-params";
 import * as DIM from "../modules/cad-viewer/dimension-system";
 import { fmtTime } from "../core/region";
@@ -234,7 +236,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "ELLIPSE", aliases: ["EL"], description: "Create an ellipse from center and two axes" },
   { name: "DONUT", aliases: ["DO"], description: "Create a filled ring (donut) from center and radius" },
   { name: "POINT", aliases: ["PO"], description: "Place a point object" },
-  { name: "HATCH", aliases: ["H", "BHATCH"], description: "Fill a closed polyline with a solid hatch" },
+  { name: "HATCH", aliases: ["H", "BHATCH"], description: "Hatch an enclosed area — pick a point and the boundary is detected, or pick a closed polyline; ANSI/ISO-style patterns with scale and angle. HATCH <pattern> [scale] [angle] presets, HATCH opens the pattern panel" },
+  { name: "BOUNDARY", aliases: ["BPOLY"], description: "Pick a point inside an enclosed area — its outline is created as a closed polyline on the current layer, without fill" },
+  { name: "HATCHEDIT", aliases: ["HE"], description: "Apply the current pattern, scale and angle to selected hatches (or HATCHEDIT <pattern> [scale] [angle]); HATCHEDIT REMOVE strips them" },
   { name: "WIPEOUT", aliases: ["WI", "WIPE"], description: "Mask drawing content behind a polygon frame" },
   { name: "TRIM", aliases: ["TR", "TRIM"], description: "Trim objects at cutting edges" },
   { name: "EXTEND", aliases: ["EX"], description: "Extend objects to boundary edges" },
@@ -1399,6 +1403,54 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let typeFilter = new Set<string>();
   let scaleCal = 1;
 
+  /* ── HATCH 2.0 — pattern hatching, boundary detection, hatch panel ── */
+  interface HatchSettings { pattern: string; scale: number; angle: number }
+  const HATCH_DEFAULTS_KEY = "obs.cad.hatchDefaults";
+  function loadHatchDefaults(): HatchSettings {
+    try {
+      const raw = JSON.parse(localStorage.getItem(HATCH_DEFAULTS_KEY) || "{}") as Partial<HatchSettings>;
+      const pattern = typeof raw.pattern === "string" && isKnownHatchPattern(raw.pattern) ? raw.pattern.toUpperCase() : DEFAULT_HATCH_PATTERN;
+      const scale = Number.isFinite(raw.scale) && (raw.scale as number) > 0 ? (raw.scale as number) : 1;
+      const angle = Number.isFinite(raw.angle) ? (raw.angle as number) : 0;
+      return { pattern, scale, angle };
+    } catch {
+      return { pattern: DEFAULT_HATCH_PATTERN, scale: 1, angle: 0 };
+    }
+  }
+  const hatchDefaults: HatchSettings = loadHatchDefaults();
+  function saveHatchDefaults(): void {
+    try { localStorage.setItem(HATCH_DEFAULTS_KEY, JSON.stringify(hatchDefaults)); } catch { /* private mode */ }
+  }
+  /** "fill" hatches what the click hits; "boundary" (BOUNDARY/BPOLY) only creates the outline. */
+  let hatchMode: "fill" | "boundary" = "fill";
+  /** DxfHatch authored from the panel settings for one boundary loop (pattern space). */
+  function authoredHatchFor(loops: DxfPoint[][]): Extract<DxfEntity, { type: "LWPOLYLINE" }>["hatch"] {
+    const solid = hatchDefaults.pattern === "SOLID";
+    return {
+      solid,
+      pattern: hatchDefaults.pattern,
+      angle: hatchDefaults.angle,
+      scale: hatchDefaults.scale,
+      loops,
+      ...(solid
+        ? {}
+        : {
+            patternLines: patternDefinition(hatchDefaults.pattern) ?? undefined,
+            patternSpace: true,
+          }),
+    };
+  }
+  function hatchLabel(): string {
+    return hatchDefaults.pattern === "SOLID"
+      ? "solid"
+      : `${hatchDefaults.pattern} scale ${hatchDefaults.scale} angle ${hatchDefaults.angle}°`;
+  }
+  /** Run the boundary detector on the visible drawing at a pick point. */
+  function detectBoundaryAt(wp: M.Pt): BoundaryResult {
+    const geom = collectHatchGeometry(ents, visible);
+    return detectLoopAt(geom, { x: wp.x, y: wp.y });
+  }
+
   let selected = -1,
     hover: M.Snap | null = null,
     cursor: M.Pt | null = null;
@@ -1724,7 +1776,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       });
       c.closePath();
     }
-    const fams = h.solid ? [] : M.hatchFamilies(h.pattern, h.angle, h.scale);
+    const fams = h.solid
+      ? []
+      : h.patternLines?.length
+        ? (h.patternSpace
+            ? transformToDrawingSpace(h.patternLines, h.angle ?? 0, h.scale ?? 1)
+            : h.patternLines
+          ).map((f) => ({ angle: (f.angle * 180) / Math.PI, spacing: Math.hypot(f.offset[0], f.offset[1]) }))
+        : M.hatchFamilies(h.pattern, h.angle, h.scale);
     if (h.wipeout) { c.fillStyle = BG[bg] || BG.drafting; c.fill("evenodd"); }
     else if (h.solid) c.fill("evenodd");
     else if (Math.min(...fams.map((f) => f.spacing)) * v.scale < 3) {
@@ -1745,14 +1804,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.setLineDash([]);
         c.beginPath();
         if (h.patternLines?.length) {
-          // Real pattern definition from the file (acadrust engine): draw the
-          // actual ANSI/ISO line families with their native dash motifs
-          // instead of a generic spacing fallback.
+          // Real pattern definition: pattern-space families (authored hatches,
+          // DXF HATCH imports) get the hatch's own angle/scale applied here;
+          // drawing-space families (DWG imports) are drawn as-is.
+          const pfams = h.patternSpace
+            ? transformToDrawingSpace(h.patternLines, h.angle ?? 0, h.scale ?? 1)
+            : h.patternLines;
           const step = Math.min(
-            ...h.patternLines.map((f) => Math.hypot(f.offset[0], f.offset[1])),
+            ...pfams.map((f) => Math.hypot(f.offset[0], f.offset[1])),
           );
           if (step * v.scale >= 2) {
-            for (const sg of M.hatchPatternLineSegments(box, h.patternLines)) {
+            for (const sg of M.hatchPatternLineSegments(box, pfams)) {
               const a = M.worldToScreen(v, sg[0], sg[1]),
                 b = M.worldToScreen(v, sg[2], sg[3]);
               c.moveTo(a.x, a.y);
@@ -4817,6 +4879,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addSep();
     addLabel("DRAWING & SHAPES");
     for (const [label,t] of [["Line","line"],["Polyline","poly"],["Circle","circle"],["Rectangle","rect"],["Arc","arc"],["Polygon","polygon"],["Spline","spline"],["Ellipse","ellipse"],["Donut","donut"],["Point","point"],["XLine","xline"],["Ray","ray"],["Hatch","hatch"],["Wipeout","wipeout"]] as Array<[string,Tool]>) addItem(label,()=>setTool(t));
+    addItem("Boundary from Pick…",()=>{ hatchMode = "boundary"; setTool("hatch"); });
+    addItem("Hatch & Boundaries Panel…",()=>{ hatchMode = "fill"; void showHatchPalette(); setTool("hatch"); });
+    addItem("Edit Hatch…",()=>{ hatchEditCmd(); });
     addSep();
     addLabel("ANNOTATION & DIMENSIONS");
     for (const [label,t] of [["Text","text"],["Edit Text","ddedit"],["Leader","leader"],["Multileader","mleader"],["Table","table"],["Dimension","dim"],["Linear Dimension","dimlinear"],["Angular Dimension","dimang"],["Arc Length Dimension","dimarc"],["Diameter Dimension","dimdia"],["Center Mark","dimcenter"],["Continue Dimension","dimcont"],["Baseline Dimension","dimbase"]] as Array<[string,Tool]>) addItem(label,()=>setTool(t));
@@ -5281,6 +5346,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "Draw II",
         tb("hatch", "hatch", "Hatch") +
+          rb("polygon", "Boundary", `data-a="boundary"`, "Pick a point inside an enclosed area — its outline becomes a closed polyline, no fill (BOUNDARY / BPOLY)") +
+          rb("hatch", "HatchEdit", `data-a="hatchedit"`, "Apply the current pattern, scale and angle to selected hatches (HATCHEDIT); REMOVE strips them") +
+          rb("grid", "Hatch Panel", `data-a="hatchpanel"`, "Open the Hatch & Boundaries panel — ANSI/ISO-style patterns with live previews, scale and angle (HATCH)") +
           tb("wipeout", "wipeout", "Wipeout") +
           tb("xline", "xline", "XLine") +
           tb("ray", "ray", "Ray"),
@@ -5935,6 +6003,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // AI agent bridge — the dock that connects external AI clients
       "agent-bridge": () => {
         void import("../features/agent-bridge").then((m) => m.openAgentPanel()).catch(() => {});
+      },
+      // HATCH 2.0 — boundary, hatch editing, pattern panel
+      boundary: () => {
+        hatchMode = "boundary";
+        setTool("hatch");
+        logCmd("BOUNDARY: pick a point inside an enclosed area — its outline becomes a closed polyline (Esc ends).");
+      },
+      hatchedit: () => hatchEditCmd(),
+      hatchpanel: () => {
+        hatchMode = "fill";
+        void showHatchPalette();
+        setTool("hatch");
       },
       "aicopilot-info": () =>
         askCadAi(
@@ -6749,20 +6829,61 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       case "hatch": {
         const hi = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
-        if (hi < 0) {
-          logCmd("0 found — pick a closed polyline to hatch.");
+        const picked = hi >= 0 ? ents[hi] : undefined;
+        const poly = picked && picked.type === "LWPOLYLINE" ? picked : undefined;
+        if (hatchMode === "boundary") {
+          // BOUNDARY / BPOLY: outline only, no fill. The entity pick is ignored —
+          // the click point decides the region, like the fill path.
+          const res = detectBoundaryAt(wp);
+          if (!res.ok) {
+            logCmd(
+              res.reason === "too-complex"
+                ? `BOUNDARY: ${res.segs} open segments exceed the face-tracing limit — hatch from a closed polyline instead.`
+                : "BOUNDARY: no enclosed area found around that point — the outline must close (text and construction lines do not count).",
+            );
+            break;
+          }
+          addDraftEntity({ type: "LWPOLYLINE", layer: currentLayer, ...newObjectProps(), points: res.loop, closed: true });
+          logCmd(
+            `BOUNDARY: closed polyline created — area ${fmt(res.area)}, perimeter ${fmt(res.perimeter)} (${res.source === "entity" ? "from the enclosing object" : "traced through crossings"}).`,
+          );
+          hatchMode = "fill";
           break;
         }
-        const e = ents[hi];
-        if (e.type !== "LWPOLYLINE" || !e.closed) {
-          logCmd("HATCH: that object is not a closed polyline.");
+        if (poly?.closed && poly.hatch) {
+          commitReplace([poly], [{ ...poly, hatch: undefined }]);
+          logCmd("HATCH: hatch removed (toggle).");
           break;
         }
-        const after: DxfEntity = e.hatch
-          ? { ...e, hatch: undefined }
-          : { ...e, hatch: { solid: true, pattern: "SOLID", loops: [e.points] } };
-        commitReplace([e], [after]);
-        logCmd(e.hatch ? "HATCH: hatch removed (toggle)." : "HATCH: solid hatch applied.");
+        if (poly?.closed) {
+          commitReplace([poly], [{ ...poly, hatch: authoredHatchFor([poly.points]) }]);
+          logCmd(`HATCH: ${hatchLabel()} hatch applied to the closed polyline. Pick it again to remove.`);
+          break;
+        }
+        if (picked) {
+          logCmd("HATCH: that object is not a closed polyline — pick inside an enclosed area instead (rooms of loose lines work too).");
+          break;
+        }
+        const res = detectBoundaryAt(wp);
+        if (!res.ok) {
+          logCmd(
+            res.reason === "too-complex"
+              ? `HATCH: ${res.segs} open segments exceed the face-tracing limit — hatch from a closed polyline instead.`
+              : "HATCH: no boundary found around that point — pick a closed polyline, or a point inside a fully enclosed area (text and construction lines do not count).",
+          );
+          break;
+        }
+        addDraftEntity({
+          type: "LWPOLYLINE",
+          layer: currentLayer,
+          ...newObjectProps(),
+          points: res.loop,
+          closed: true,
+          hatch: authoredHatchFor([res.loop]),
+        });
+        logCmd(
+          `HATCH: ${hatchLabel()} — boundary ${res.source === "entity" ? "from the enclosing object" : "traced through crossings"}, area ${fmt(res.area)}.`,
+        );
         break;
       }
       case "xline": {
@@ -8289,7 +8410,60 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "HATCH" || cmd === "H" || cmd === "BHATCH") {
+      // Optional presets: HATCH <pattern> [scale] [angle] — agent/CLI friendly;
+      // plain HATCH opens the pattern panel and starts the pick.
+      const argParts = arg.trim().split(/\s+/).filter(Boolean);
+      if (argParts.length) {
+        const p = argParts[0].toUpperCase();
+        if (p === "PANEL") {
+          void showHatchPalette();
+          setTool("hatch");
+          return;
+        }
+        if (p === "REMOVE") {
+          hatchEditCmd("REMOVE");
+          return;
+        }
+        if (!isKnownHatchPattern(p)) {
+          logCmd(`HATCH: unknown pattern "${argParts[0]}" — patterns: ${HATCH_PATTERN_NAMES.join(", ")}.`);
+          return;
+        }
+        hatchDefaults.pattern = p;
+        if (argParts[1] != null) {
+          const s = Number(argParts[1]);
+          if (!(s > 0)) {
+            logCmd("HATCH: the scale must be a positive number.");
+            return;
+          }
+          hatchDefaults.scale = s;
+        }
+        if (argParts[2] != null) {
+          const a = Number(argParts[2]);
+          if (!Number.isFinite(a)) {
+            logCmd("HATCH: the angle must be a number in degrees.");
+            return;
+          }
+          hatchDefaults.angle = a;
+        }
+        saveHatchDefaults();
+        hatchMode = "fill";
+        setTool("hatch");
+        logCmd(`HATCH: ${hatchLabel()} — pick inside an enclosed area, or pick a closed polyline.`);
+        return;
+      }
+      void showHatchPalette();
+      hatchMode = "fill";
       setTool("hatch");
+      return;
+    }
+    if (cmd === "BOUNDARY" || cmd === "BPOLY") {
+      hatchMode = "boundary";
+      setTool("hatch");
+      logCmd("BOUNDARY: pick a point inside an enclosed area — its outline becomes a closed polyline (Esc ends).");
+      return;
+    }
+    if (cmd === "HATCHEDIT" || cmd === "HE") {
+      hatchEditCmd(arg.trim().toUpperCase() || undefined);
       return;
     }
     if (cmd === "WIPEOUT" || cmd === "WI" || cmd === "WIPE") {
@@ -10046,6 +10220,271 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         blockLib.remove(pick); persistBlockLib(); logCmd(`BLOCKLIB: "${pick}" deleted.`);
       }
     }
+  }
+
+  /* ── HATCHEDIT — restyle or remove hatches from the current selection ── */
+  function hatchEditCmd(arg?: string): void {
+    if (!doc) {
+      logCmd("HATCHEDIT: open or start a drawing first.");
+      return;
+    }
+    const remove = arg === "REMOVE";
+    if (arg && !remove) {
+      const parts = arg.split(/\s+/).filter(Boolean);
+      const p = parts[0];
+      if (!isKnownHatchPattern(p)) {
+        logCmd(`HATCHEDIT: unknown pattern "${p}" — patterns: ${HATCH_PATTERN_NAMES.join(", ")}.`);
+        return;
+      }
+      hatchDefaults.pattern = p;
+      if (parts[1] != null) {
+        const s = Number(parts[1]);
+        if (!(s > 0)) {
+          logCmd("HATCHEDIT: the scale must be a positive number.");
+          return;
+        }
+        hatchDefaults.scale = s;
+      }
+      if (parts[2] != null) {
+        const a = Number(parts[2]);
+        if (!Number.isFinite(a)) {
+          logCmd("HATCHEDIT: the angle must be a number in degrees.");
+          return;
+        }
+        hatchDefaults.angle = a;
+      }
+      saveHatchDefaults();
+    }
+    const targets = [...sel]
+      .map((i) => ents[i])
+      .filter((e): e is Extract<DxfEntity, { type: "LWPOLYLINE" }> => !!e && e.type === "LWPOLYLINE" && e.closed === true && !!e.hatch);
+    if (!targets.length) {
+      logCmd(
+        remove
+          ? "HATCHEDIT REMOVE: no hatched object selected — click a hatch fill or its boundary edge first."
+          : "HATCHEDIT: no hatched object selected — select one (a hatch fill picks on its inside), set the pattern in the Hatch panel, then run HATCHEDIT.",
+      );
+      return;
+    }
+    const after = targets.map((e) =>
+      remove ? ({ ...e, hatch: undefined } as DxfEntity) : ({ ...e, hatch: authoredHatchFor(e.hatch?.loops.length ? e.hatch.loops : [e.points]) } as DxfEntity),
+    );
+    commitReplace(targets, after);
+    logCmd(
+      remove
+        ? `HATCHEDIT REMOVE: hatch stripped from ${targets.length} object(s).`
+        : `HATCHEDIT: ${hatchLabel()} applied to ${targets.length} hatch(es).`,
+    );
+  }
+
+  /* ── Hatch & Boundary panel — pattern gallery with live previews ── */
+  let hatchPanelEl: HTMLDivElement | null = null;
+  function closeHatchPanel(): void {
+    hatchPanelEl?.remove();
+    hatchPanelEl = null;
+  }
+  function showHatchPalette(): void {
+    if (!doc) {
+      logCmd("HATCH: open or start a drawing first.");
+      return;
+    }
+    closeHatchPanel();
+    const panel = document.createElement("div");
+    panel.className = "obs-hatch-panel";
+    panel.style.cssText = [
+      "position:fixed", "top:84px", "right:16px", "z-index:90000",
+      "width:300px", "max-height:min(640px,80vh)", "overflow-y:auto",
+      "background:#1c1e28", "color:#e8eaf0", "border:1px solid #2a2e3a",
+      "border-radius:10px", "box-shadow:0 24px 60px rgba(0,0,0,.65)",
+      "font:12px system-ui,-apple-system,'Segoe UI',Roboto,sans-serif",
+      "user-select:none",
+    ].join(";");
+    hatchPanelEl = panel;
+
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #2a2e3a;background:#181a23;cursor:grab;border-radius:10px 10px 0 0";
+    header.innerHTML = `<div style="flex:1;font-weight:700;font-size:13px">Hatch &amp; Boundaries</div>`;
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "✕";
+    closeBtn.style.cssText = "width:24px;height:24px;border-radius:4px;background:transparent;color:#94a3b8;border:1px solid #2a2e3a;cursor:pointer";
+    closeBtn.onclick = () => closeHatchPanel();
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    const body = document.createElement("div");
+    body.style.cssText = "padding:10px 12px;display:flex;flex-direction:column;gap:10px";
+    panel.appendChild(body);
+
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(4,1fr);gap:6px";
+    body.appendChild(grid);
+
+    const tiles: Array<{ name: string; canvas: HTMLCanvasElement }> = [];
+    const paintTile = (canvas: HTMLCanvasElement, name: string): void => {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#14161e";
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = hatchDefaults.pattern === name ? "#4f7cff" : "#8a93a5";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+      if (name === "SOLID") {
+        ctx.fillStyle = "#c9d1e0";
+        ctx.fillRect(3, 3, w - 6, h - 6);
+        return;
+      }
+      // The preview draws exactly what the drawing gets: the library families
+      // transformed by the current scale/angle, clipped to the tile.
+      const fams = drawingFamiliesForPreview(name);
+      if (!fams) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(2, 2, w - 4, h - 4);
+      ctx.clip();
+      ctx.strokeStyle = "#c9d1e0";
+      ctx.lineWidth = Math.max(0.6, Math.min(1.4, hatchDefaults.scale));
+      const step = 12 / Math.max(0.35, Math.min(6, hatchDefaults.scale)) / 4;
+      const box = { minX: 0, minY: 0, maxX: w * step, maxY: h * step };
+      ctx.beginPath();
+      for (const sg of M.hatchPatternLineSegments(box, fams, 400)) {
+        ctx.moveTo((sg[0] / step), (sg[1] / step));
+        ctx.lineTo((sg[2] / step), (sg[3] / step));
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+    for (const name of HATCH_PATTERN_NAMES) {
+      const tile = document.createElement("div");
+      tile.style.cssText = "display:flex;flex-direction:column;gap:2px;align-items:center;cursor:pointer";
+      const canvas = document.createElement("canvas");
+      canvas.width = 60;
+      canvas.height = 44;
+      canvas.style.cssText = "border-radius:4px";
+      tile.appendChild(canvas);
+      const label = document.createElement("div");
+      label.textContent = name;
+      label.style.cssText = "font-size:9px;color:#94a3b8;text-align:center;line-height:1.1";
+      tile.appendChild(label);
+      tile.onclick = () => {
+        hatchDefaults.pattern = name;
+        saveHatchDefaults();
+        refreshTiles();
+      };
+      grid.appendChild(tile);
+      tiles.push({ name, canvas });
+    }
+    const refreshTiles = (): void => {
+      for (const t of tiles) paintTile(t.canvas, t.name);
+      status.textContent = `Pattern ${hatchDefaults.pattern} · scale ${hatchDefaults.scale} · angle ${hatchDefaults.angle}°`;
+    };
+    const drawingFamiliesForPreview = (name: string): HatchFamilyDef[] | null => {
+      const def = patternDefinition(name);
+      return def ? transformToDrawingSpace(def, hatchDefaults.angle, hatchDefaults.scale * 2) : null;
+    };
+
+    const controls = document.createElement("div");
+    controls.style.cssText = "display:flex;gap:8px";
+    const mkNum = (label: string, value: number, on: (v: number) => void): HTMLInputElement => {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "flex:1;display:flex;flex-direction:column;gap:2px";
+      const l = document.createElement("div");
+      l.textContent = label;
+      l.style.cssText = "font-size:10px;color:#94a3b8";
+      wrap.appendChild(l);
+      const input = document.createElement("input");
+      input.type = "number";
+      input.value = String(value);
+      input.step = "0.1";
+      input.min = label === "Angle (°)" ? "-360" : "0.01";
+      input.style.cssText = "width:100%;background:#12141b;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px 6px;font:12px inherit";
+      input.onchange = () => {
+        const v = Number(input.value);
+        if (!Number.isFinite(v) || (label !== "Angle (°)" && !(v > 0))) return;
+        on(v);
+        saveHatchDefaults();
+        refreshTiles();
+      };
+      wrap.appendChild(input);
+      return input as HTMLInputElement;
+    };
+    controls.appendChild(mkNum("Scale", hatchDefaults.scale, (v) => { hatchDefaults.scale = v; }));
+    controls.appendChild(mkNum("Angle (°)", hatchDefaults.angle, (v) => { hatchDefaults.angle = v; }));
+    body.appendChild(controls);
+
+    const mkBtn = (label: string, onClick: () => void, accent = false): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.style.cssText = [
+        "width:100%", "padding:7px 8px", "border-radius:6px", "cursor:pointer",
+        "font:12px inherit", "font-weight:600",
+        accent
+          ? "background:#2b5bd7;border:1px solid #3f6dff;color:#fff"
+          : "background:#232633;border:1px solid #2a2e3a;color:#e8eaf0",
+      ].join(";");
+      b.onclick = onClick;
+      return b;
+    };
+
+    const btnRow1 = document.createElement("div");
+    btnRow1.style.cssText = "display:flex;gap:8px";
+    btnRow1.appendChild(
+      mkBtn("Pick inside an area", () => {
+        hatchMode = "fill";
+        setTool("hatch");
+        status.textContent = "Pick inside an enclosed area, or pick a closed polyline. Esc ends.";
+      }, true),
+    );
+    body.appendChild(btnRow1);
+    const btnRow2 = document.createElement("div");
+    btnRow2.style.cssText = "display:flex;gap:8px";
+    btnRow2.appendChild(
+      mkBtn("Boundary only", () => {
+        hatchMode = "boundary";
+        setTool("hatch");
+        status.textContent = "Pick a point — the outline becomes a closed polyline, no fill. Esc ends.";
+      }),
+    );
+    btnRow2.appendChild(
+      mkBtn("Edit hatch", () => {
+        hatchEditCmd();
+        closeHatchPanel();
+      }),
+    );
+    body.appendChild(btnRow2);
+    const btnRow3 = document.createElement("div");
+    btnRow3.style.cssText = "display:flex;gap:8px";
+    btnRow3.appendChild(
+      mkBtn("Remove hatch", () => {
+        hatchEditCmd("REMOVE");
+        closeHatchPanel();
+      }),
+    );
+    body.appendChild(btnRow3);
+
+    const status = document.createElement("div");
+    status.style.cssText = "font-size:10px;color:#8a93a5;line-height:1.35;border-top:1px solid #2a2e3a;padding-top:8px";
+    body.appendChild(status);
+    refreshTiles();
+
+    // Drag by the header; remember the spot for this browser.
+    let drag: { dx: number; dy: number } | null = null;
+    header.addEventListener("pointerdown", (e) => {
+      const r = panel.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      header.setPointerCapture(e.pointerId);
+    });
+    header.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      panel.style.left = `${Math.max(0, e.clientX - drag.dx)}px`;
+      panel.style.top = `${Math.max(0, e.clientY - drag.dy)}px`;
+      panel.style.right = "auto";
+    });
+    header.addEventListener("pointerup", () => { drag = null; });
+
+    document.body.appendChild(panel);
+    logCmd("HATCH: pattern panel open — pick a pattern, then pick inside an area or a closed polyline.");
   }
 
   async function importSvgFile(f: File): Promise<void> {

@@ -4,6 +4,7 @@
  */
 import { findFont } from "../drawings/cad-styles";
 import type { DxfEntity, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
+import { pointInPolygon } from "../drawings/hatch-patterns";
 
 export type Pt = { x: number; y: number };
 export interface BBox { minX: number; minY: number; maxX: number; maxY: number }
@@ -559,6 +560,28 @@ export interface PickCandidate { index: number; distance: number }
  * Equal-distance hits prefer later drawing order (the visually top-most entity).
  * Kept separate from pickEntity so existing modify tools retain their behavior.
  */
+/** True when (x, y) lands inside the fill of a closed hatched polyline (even-odd over its loops). */
+export function hatchFillHit(e: DxfEntity, x: number, y: number): boolean {
+  if (e.type !== "LWPOLYLINE" || !e.hatch || !e.closed || e.hatch.wipeout) return false;
+  for (const loop of e.hatch.loops) {
+    if (pointInPolygon({ x, y }, loop)) return true;
+  }
+  return false;
+}
+
+/**
+ * Pick distance for one entity: edge distance (+ hatch penalty when it is a
+ * hatch edge, so a line under the cursor beats it), or a inside-fill hit at
+ * 0.75·tol — clicking inside an empty hatch area selects the hatch, but an
+ * object actually under the cursor still wins.
+ */
+function pickDistance(e: DxfEntity, x: number, y: number, tol: number): number {
+  const d0 = distToEntity(e, x, y);
+  if (d0 <= tol) return d0 + (isHatchEntity(e) ? tol * 0.6 : 0);
+  if (hatchFillHit(e, x, y)) return tol * 0.75;
+  return d0;
+}
+
 export function pickEntities(
   idx: SpatialIndex, entities: DxfEntity[], x: number, y: number, tol: number,
   visible: (e: DxfEntity) => boolean = () => true, maxResults = 32,
@@ -568,7 +591,7 @@ export function pickEntities(
   for (const index of queryIndex(idx, x, y, tol)) {
     const entity = entities[index];
     if (!entity || !visible(entity)) continue;
-    const d = distToEntity(entity, x, y) + (isHatchEntity(entity) ? tol * 0.6 : 0);
+    const d = pickDistance(entity, x, y, tol);
     if (Number.isFinite(d) && d <= tol + 1e-12) hits.push({ index, distance: d });
   }
   hits.sort((a, b) => {
@@ -584,7 +607,7 @@ export function pickEntity(idx: SpatialIndex, entities: DxfEntity[], x: number, 
   for (const i of queryIndex(idx, x, y, tol)) {
     const e = entities[i];
     if (!visible(e)) continue;
-    const d = distToEntity(e, x, y) + (isHatchEntity(e) ? tol * 0.6 : 0); // a line near the cursor beats a hatch edge
+    const d = pickDistance(e, x, y, tol); // a line near the cursor beats a hatch edge; inside a hatch fill selects the hatch
     if (d < bd - 1e-12) { bd = d; best = i; }
   }
   return best;

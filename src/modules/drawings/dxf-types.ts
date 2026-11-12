@@ -71,6 +71,15 @@ export interface DxfHatch {
     offset: [number, number];
     dashes: number[];
   }>;
+  /**
+   * Pattern-space marker for `patternLines`. True (authored hatches and DXF
+   * HATCH imports): the families still carry the hatch's own angle/scale and
+   * the renderer applies them before drawing. Absent (DWG imports via the
+   * acadrust engine): the families are already in drawing space and the
+   * renderer draws them as-is, while the DXF writer emits angle 0 / scale 1
+   * so native CAD does not apply them twice.
+   */
+  patternSpace?: boolean;
   /** WIPEOUT: solid fill with the drawing background (masks what is behind it). */
   wipeout?: boolean;
 }

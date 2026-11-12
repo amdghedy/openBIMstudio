@@ -214,7 +214,36 @@ export function parseHatch(P: Pair[]): DxfHatch | null {
   const tail = new Data(P.slice(i));
   const solid = head.n(70) === 1;
   const pattern = head.s(2)?.trim();
-  return { solid: solid || pattern?.toUpperCase() === "SOLID", pattern, angle: tail.has(52) ? tail.n(52) : 0, scale: tail.has(41) ? tail.n(41, 1) : 1, loops };
+  // Pattern definition lines (78 families of 53/43/44/45/46/79 + 49 dashes),
+  // written by our own editor and most native CAD files. Pattern space —
+  // the hatch's own angle (52) / scale (41) still apply on top.
+  let patternLines: DxfHatch["patternLines"];
+  if (!solid && tail.has(78)) {
+    const nFam = Math.max(0, Math.min(64, tail.n(78)));
+    const dashVals = tail.all(49).map(num);
+    const fams: NonNullable<DxfHatch["patternLines"]> = [];
+    let di = 0;
+    for (let fi = 0; fi < nFam; fi++) {
+      const nDash = Math.max(0, Math.min(128, tail.n(79, 0, fi)));
+      fams.push({
+        angle: (tail.n(53, 0, fi) * Math.PI) / 180,
+        base: [tail.n(43, 0, fi), tail.n(44, 0, fi)],
+        offset: [tail.n(45, 0, fi), tail.n(46, 0, fi)],
+        dashes: dashVals.slice(di, di + nDash),
+      });
+      di += nDash;
+    }
+    if (fams.length) patternLines = fams;
+  }
+  const hatch: DxfHatch = {
+    solid: solid || pattern?.toUpperCase() === "SOLID",
+    pattern,
+    angle: tail.has(52) ? tail.n(52) : 0,
+    scale: tail.has(41) ? tail.n(41, 1) : 1,
+    loops,
+    ...(patternLines ? { patternLines, patternSpace: true } : {}),
+  };
+  return hatch;
 }
 
 /** TEXT/ATTRIB anchor from the justification codes. */
