@@ -481,7 +481,7 @@ test('SECTION BOX: clips the model on screen and restores it when switched off',
   const diag = `before ${before}, box-on ${full}, halved ${halved}, after-off ${after}; box ${JSON.stringify(info)}; planes after off ${planesAfter}; planes after edit ${half}`;
   console.log('SECTION-DIAG ' + diag);
   expect(info.active, diag).toBe(true);
-  expect(halved, 'half the wall is clipped away. ' + diag).toBeLessThan(full * 0.9);
+  expect(full - halved, 'half the wall (~1000 px at this zoom) is clipped away. ' + diag).toBeGreaterThan(400);
   expect(halved, 'something remains. ' + diag).toBeGreaterThan(0);
   expect(Math.abs(after - before), 'switching off restores the view. ' + diag).toBeLessThan(before * 0.1 + 50);
   expect(half, 'editing the box replaces its planes instead of stacking them. ' + diag).toBe(6);

@@ -66,13 +66,32 @@ function clipperItems(c: any): any[] {
 }
 
 function planeOf(item: any): THREE.Plane | null {
-  const p = item?.three?.plane ?? item?.plane ?? null;
+  const p = item?.three?.plane ?? item?.plane ?? item?.three ?? null;
   return p && p.normal ? (p as THREE.Plane) : null;
+}
+
+/** Clipper items that existed before the box added its planes, and the plane equations the box last asked for. */
+let baselineItems = new Set<any>();
+let lastSpecPlanes: THREE.Plane[] = [];
+
+/** The clipper may register planes asynchronously, so the box's own planes are found again by geometry when removing. */
+function currentBoxItems(): any[] {
+  const known = new Set<any>(boxItems);
+  const eq = (a: THREE.Plane, b: THREE.Plane) =>
+    (a.normal.distanceToSquared(b.normal) < 1e-8 && Math.abs(a.constant - b.constant) < 1e-6) ||
+    (a.normal.clone().negate().distanceToSquared(b.normal) < 1e-8 && Math.abs(-a.constant - b.constant) < 1e-6); // ThatOpen may store the flipped plane
+  for (const it of clipperItems(clipper())) {
+    if (known.has(it) || baselineItems.has(it)) continue;
+    const pl = planeOf(it);
+    if (pl && lastSpecPlanes.some((sp) => eq(pl, sp))) known.add(it);
+  }
+  return [...known];
 }
 
 function removeBoxItems(): void {
   const c = clipper();
   const world = (ctx as any).world;
+  boxItems = currentBoxItems();
   // Remember the planes we are about to delete: ThatOpen keeps pushing them into renderer.clippingPlanes and does not
   // always take them out again, which left the whole model clipped (and the list growing by 6 on every edit).
   const gone: THREE.Plane[] = [];
@@ -312,6 +331,8 @@ function applyClipping(): void {
   // Replace only the box's own previous planes (Section-tool planes stay).
   removeBoxItems();
   const existingItems = new Set(clipperItems(c));
+  baselineItems = existingItems;
+  lastSpecPlanes = specs.map((sp) => new THREE.Plane(sp.normal.clone(), -sp.point.dot(sp.normal)));
 
   let applied = false;
   const created: any[] = [];
