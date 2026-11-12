@@ -574,3 +574,61 @@ test('3D DIMENSION (Measure): one Esc cancels the active dimension command and i
   expect(cleared.labels + cleared.graphics + cleared.obcDims + cleared.pending, 'Clear deletes every dimension. ' + JSON.stringify(cleared)).toBe(0);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('3D DIMENSION (Measure): XYZ, angle and chain modes complete, Esc cancels each unfinished one, Clear deletes all', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  await page.evaluate(async () => {
+    await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(2.5, 14, 0.1, 2.5, 0, 0.1, false);
+  });
+  await page.waitForTimeout(500);
+  const box = (await page.locator('canvas').first().boundingBox())!;
+  const st = () => page.evaluate(() => (window as any).__obsMeasure.state());
+  const click = async (fx: number, fy: number) => { await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy); await page.waitForTimeout(450); };
+  const start = (m: string) => page.evaluate((mode) => { const o = (window as any).__obsMeasure; o.setMode(mode); o.enable(); }, m);
+  const log: Record<string, unknown> = {};
+
+  await start('xyz'); await page.waitForTimeout(300);
+  await click(0.3, 0.35); await click(0.6, 0.5);
+  log.xyzDone = await st();
+  await click(0.4, 0.7);
+  log.xyzPending = await st();
+  await page.keyboard.press('Escape');
+  log.xyzEsc = await st();
+
+  await start('angle'); await page.waitForTimeout(300);
+  await click(0.3, 0.3); await click(0.5, 0.5); await click(0.7, 0.3);
+  log.angleDone = await st();
+  await click(0.4, 0.7); await click(0.5, 0.8);
+  log.anglePending = await st();
+  await page.keyboard.press('Escape');
+  log.angleEsc = await st();
+
+  await start('chain'); await page.waitForTimeout(300);
+  await click(0.3, 0.7); await click(0.4, 0.75); await click(0.5, 0.7);
+  log.chainDone = await st();
+  await page.keyboard.press('Escape');
+  log.chainEsc = await st();
+
+  await page.evaluate(() => (window as any).__obsMeasure.clear());
+  log.cleared = await st();
+  const d = JSON.stringify(log);
+  console.log('MEASURE-MODES ' + d);
+  const L = log as any;
+  expect(L.xyzDone.labels, 'xyz draws X/Y/Z + total labels. ' + d).toBeGreaterThanOrEqual(2);
+  expect(L.xyzPending.pending, d).toBe(1);
+  expect(L.xyzEsc.pending + L.xyzEsc.pendingBalls, 'xyz Esc cancels pending. ' + d).toBe(0);
+  expect(L.xyzEsc.enabled, d).toBe(false);
+  expect(L.xyzEsc.labels, 'xyz Esc keeps finished. ' + d).toBe(L.xyzDone.labels);
+  expect(L.angleDone.labels, 'angle adds a label. ' + d).toBeGreaterThan(L.xyzEsc.labels);
+  expect(L.anglePending.pending, d).toBe(2);
+  expect(L.angleEsc.pending + L.angleEsc.pendingBalls, 'angle Esc cancels pending. ' + d).toBe(0);
+  expect(L.angleEsc.labels, 'angle Esc keeps finished. ' + d).toBe(L.angleDone.labels);
+  expect(L.chainDone.labels, 'chain adds segment labels. ' + d).toBeGreaterThan(L.angleEsc.labels);
+  expect(L.chainEsc.pending + L.chainEsc.pendingBalls, 'chain Esc leaves no marker. ' + d).toBe(0);
+  expect(L.chainEsc.enabled, d).toBe(false);
+  expect(L.cleared.labels + L.cleared.graphics + L.cleared.pending + L.cleared.pendingBalls, 'Clear deletes all. ' + d).toBe(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
