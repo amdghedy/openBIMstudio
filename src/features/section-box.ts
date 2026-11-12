@@ -419,15 +419,17 @@ function attachPointerHandlers(): void {
   raycaster = new THREE.Raycaster();
   pointerNDC = new THREE.Vector2();
   canvas.addEventListener("pointerdown", onCanvasPointerDown, true);
-  window.addEventListener("pointermove", onCanvasPointerMove);
-  window.addEventListener("pointerup", onCanvasPointerUp);
+  window.addEventListener("pointermove", onCanvasPointerMove, true); // capture: the input router stops propagation of moves during its own drags
+  window.addEventListener("pointerup", onCanvasPointerUp, true);
+  window.addEventListener("pointercancel", onCanvasPointerUp, true);
 }
 
 function detachPointerHandlers(): void {
   const canvas = (ctx as any).world?.renderer?.three?.domElement as HTMLElement | undefined;
   canvas?.removeEventListener("pointerdown", onCanvasPointerDown, true);
-  window.removeEventListener("pointermove", onCanvasPointerMove);
-  window.removeEventListener("pointerup", onCanvasPointerUp);
+  window.removeEventListener("pointermove", onCanvasPointerMove, true);
+  window.removeEventListener("pointerup", onCanvasPointerUp, true);
+  window.removeEventListener("pointercancel", onCanvasPointerUp, true);
   if (faceDragState && faceDragState.controlsWasEnabled !== false) setControls(true);
   faceDragState = null;
 }
