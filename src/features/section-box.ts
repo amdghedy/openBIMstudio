@@ -98,7 +98,9 @@ function removeBoxItems(): void {
   for (const item of boxItems) { const pl = planeOf(item); if (pl) gone.push(pl); }
   for (const item of boxItems) {
     try {
-      if (typeof c?.delete === "function") c.delete(world, item);
+      // Clipper.delete(world, id) takes the list KEY, not the plane object - passing the object silently did nothing.
+      const key = c?.list?.getKey?.(item);
+      if (key != null && typeof c.list.delete === "function") c.list.delete(key);
       else item?.dispose?.();
     } catch { try { item?.dispose?.(); } catch { /* */ } }
   }
