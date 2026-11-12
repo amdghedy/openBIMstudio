@@ -648,6 +648,8 @@ test('WALK MODE: smooth constant-speed walking, stops at a wall without passing 
   const enabled = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.isEnabled());
   expect(enabled, 'walk mode starts').toBe(true);
   // Sample the walker pose on every animation frame while W is held.
+  const startPose = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+  console.log('WALK-START ' + JSON.stringify(startPose));
   await page.evaluate(() => {
     const w = window as any; w.__walkSamples = []; w.__walkRec = true;
     const loop = (t: number) => { const p = w.__OBS_CTX__.features.walkMode.getPose(); if (p) w.__walkSamples.push([t, p.x, p.y, p.z]); if (w.__walkRec) requestAnimationFrame(loop); };
@@ -675,6 +677,7 @@ test('WALK MODE: smooth constant-speed walking, stops at a wall without passing 
   const frameMs = samples.length > 1 ? (samples[samples.length - 1][0] - samples[0][0]) / (samples.length - 1) : 0;
   const diag = { frames: samples.length, frameMs: +frameMs.toFixed(1), cruiseFrames: cruise.length, meanSpeed: +mean.toFixed(2), sdSpeed: +sd.toFixed(2), minZ: +minZ.toFixed(3), lastZ: +lastZ.toFixed(3), jitterAtWall: +jitterAtWall.toFixed(4), eyeYRange: +yRange.toFixed(4) };
   console.log('WALK-DIAG ' + JSON.stringify(diag));
+  console.log('WALK-TAIL ' + JSON.stringify(samples.slice(-22).map((q) => [Math.round(q[0]), +q[1].toFixed(3), +q[3].toFixed(3)])));
   const d = JSON.stringify(diag);
   expect(cruise.length, 'it actually walked at normal speed. ' + d).toBeGreaterThan(5);
   expect(sd / mean, 'speed is steady while walking (low frame-to-frame variation). ' + d).toBeLessThan(0.15);
