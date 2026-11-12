@@ -801,13 +801,13 @@ export function setupWalkMode(): void {
       groundRay.far = 50;
       let n = 0, first: number | null = null, kinds: string[] = [];
       try { const hits = groundRay.intersectObjects(targets, true); n = hits.length; first = hits[0]?.distance ?? null; kinds = hits.slice(0, 3).map((h) => h.object.type + (h.face ? "+face" : "")); } catch (e) { kinds = [String(e)]; }
-      const per: Array<{ type: string; name: string; ok: boolean; err?: string; geo?: string; inst?: number; raycastSrc?: string }> = [];
+      const per: Array<{ type: string; name: string; ok: boolean; err?: string; geo?: string; inst?: number; raycastSrc?: string; plain?: unknown; mat?: string; groups?: number; bvh?: boolean }> = [];
       for (const t of targets) t.traverse((o: any) => {
         if (!o.isMesh && !o.isLine && !o.isPoints) return;
         if (per.length >= 12) return;
         const rc = new THREE.Raycaster(new THREE.Vector3(x, y, z), new THREE.Vector3(dx, dy, dz).normalize(), 0, 50);
         try { rc.intersectObject(o, false); per.push({ type: o.type, name: o.name, ok: true, geo: o.geometry?.type + ":" + (o.geometry?.index ? "idx" : "noidx") + ":" + (o.geometry?.attributes?.position?.count ?? "?"), inst: o.count }); }
-        catch (e) { per.push({ type: o.type, name: o.name, ok: false, err: String(e).slice(0, 80), geo: o.geometry?.type + ":" + (o.geometry?.index ? "idx" : "noidx") + ":" + (o.geometry?.attributes?.position?.count ?? "?"), inst: o.count, raycastSrc: String(o.raycast).slice(0, 160) }); }
+        catch (e) { per.push({ type: o.type, name: o.name, ok: false, err: String((e as Error)?.stack ?? e).slice(0, 700), plain: (() => { try { const h: THREE.Intersection[] = []; THREE.Mesh.prototype.raycast.call(o, rc, h); return h.length; } catch (e2) { return "plain-throws " + String(e2).slice(0, 60); } })(), mat: Array.isArray(o.material) ? "array" + o.material.length : typeof o.material, groups: o.geometry?.groups?.length, bvh: !!o.geometry?.boundsTree, geo: o.geometry?.type + ":" + (o.geometry?.index ? "idx" : "noidx") + ":" + (o.geometry?.attributes?.position?.count ?? "?"), inst: o.count, raycastSrc: String(o.raycast).slice(0, 160) }); }
       });
       return { targets: targets.length, hits: n, first, kinds, per };
     },
