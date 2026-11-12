@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Fixed
+- **Section Box leaked clip planes.** Editing the box (dragging a face, grow/shrink, reset) added six new ThatOpen clipper planes without removing the old ones, and switching the box off left them all active, so the model stayed clipped. Cause: `Clipper.delete(world, id)` takes the list key, not the plane. Planes are now found by geometry and deleted by key. Verified in real Chromium (CI): 6 planes on, still 6 after an edit, 0 after Off, and half the wall disappears when the box is halved.
+
 ### Fixed: the plan-view openings chain verified in a real browser — six breaks found and closed
 - The core documentation chain (draw wall → place door/window → annotate → schedules → sheets → export) was walked end-to-end in a live browser. Six real breaks surfaced and are fixed, each now guarded by `tests/openings-chain.test.cjs` (`test:openings-chain`):
   - **Doors/windows placed in the Floor Plan were authored as unhosted `equipment`.** The plan view mapped the door/window tools onto the generic point placement (`type: "equipment", preset: "door"`), so the element carried the wrong type and no `hostId`: Door/Window schedules (IFCDOOR / IFCWINDOW) returned 0 rows with a door in the model, the wall was never cut in 3D, the plan drew a plain equipment box instead of the swing symbol, and clash/export layers misclassified them. Plan door/window placement now routes through a new `authoring.addHostedOpening()` (finds the wall under the click, hosts the element, clamps the offset, mirrors the 3D path's parameters), and clicking off-wall keeps the tool active with "click on a wall to insert". Verified live: plan shows the poché gap + swing arc, the 3D wall mesh drops from 11.098 to 10.384 m³ (112 triangles), and Door/Window/Wall schedules each return their row.

@@ -615,7 +615,7 @@ export function setupSectionBox(): void {
     reset: resetSectionBox,
     isActive: isSectionBoxActive,
     getBox: () => box ? box.clone() : null,
-    debugPlanes: () => ({ dump: (() => { try { const c: any = clipper(); const it: any = clipperItems(c)[0]; return { keys: it ? Object.keys(it).slice(0, 25) : [], three: it?.three ? Object.keys(it.three).slice(0, 15) : null, normal: it?.normal ? [it.normal.x, it.normal.y, it.normal.z] : null, origin: it?.origin ? [it.origin.x, it.origin.y, it.origin.z] : null, plane: planeOf(it) ? [planeOf(it)!.normal.x, planeOf(it)!.normal.y, planeOf(it)!.normal.z, planeOf(it)!.constant] : null, del: String(c?.delete).slice(0, 400), listType: c?.list?.constructor?.name, wantFirst: lastSpecPlanes[0] ? [lastSpecPlanes[0].normal.x, lastSpecPlanes[0].constant] : null }; } catch (e) { return String(e); } })(), boxItems: boxItems.length, clipperList: clipperItems(clipper()).length, renderer: ((ctx as any).world?.renderer?.three?.clippingPlanes ?? []).length }),
+    debugPlanes: () => ({ boxItems: boxItems.length, clipperList: clipperItems(clipper()).length, renderer: ((ctx as any).world?.renderer?.three?.clippingPlanes ?? []).length }),
     setBox: (b: THREE.Box3) => {
       box = b.clone();
       if (helper) helper.box.copy(box);
