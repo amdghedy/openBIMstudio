@@ -632,3 +632,62 @@ test('3D DIMENSION (Measure): XYZ, angle and chain modes complete, Esc cancels e
   expect(L.cleared.labels + L.cleared.graphics + L.cleared.pending + L.cleared.pendingBalls, 'Clear deletes all. ' + d).toBe(0);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('WALK MODE: smooth constant-speed walking, stops at a wall without passing or jittering, Esc leaves cleanly', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  // Stand 6 m in front of the wall (wall at z=0, spanning x -2.5..2.5) looking at it.
+  await page.evaluate(async () => {
+    await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(0, 1.7, 6, 0, 1.7, 0, false);
+  });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.enable());
+  await page.waitForTimeout(600);
+  const enabled = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.isEnabled());
+  expect(enabled, 'walk mode starts').toBe(true);
+  // Sample the walker pose on every animation frame while W is held.
+  await page.evaluate(() => {
+    const w = window as any; w.__walkSamples = []; w.__walkRec = true;
+    const loop = (t: number) => { const p = w.__OBS_CTX__.features.walkMode.getPose(); if (p) w.__walkSamples.push([t, p.x, p.y, p.z]); if (w.__walkRec) requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  });
+  await page.keyboard.down('w');
+  await page.waitForTimeout(4500);
+  await page.keyboard.up('w');
+  await page.waitForTimeout(700);
+  const samples: number[][] = await page.evaluate(() => { const w = window as any; w.__walkRec = false; return w.__walkSamples; });
+  // Speeds per frame.
+  const v: number[] = [], t: number[] = [];
+  for (let i = 1; i < samples.length; i++) {
+    const dt = (samples[i][0] - samples[i - 1][0]) / 1000; if (dt <= 0) continue;
+    v.push(Math.hypot(samples[i][1] - samples[i - 1][1], samples[i][3] - samples[i - 1][3]) / Math.min(dt, 0.05)); t.push(samples[i][0]);
+  }
+  const cruise = v.filter((x) => x > 2.5 && x < 4);
+  const mean = cruise.reduce((a, b) => a + b, 0) / Math.max(1, cruise.length);
+  const sd = Math.sqrt(cruise.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, cruise.length));
+  const minZ = Math.min(...samples.map((s) => s[3]));
+  const lastZ = samples[samples.length - 1][3];
+  const lastSecond = samples.filter((s) => s[0] > samples[samples.length - 1][0] - 1000);
+  const jitterAtWall = Math.max(...lastSecond.map((s) => s[3])) - Math.min(...lastSecond.map((s) => s[3]));
+  const ys = samples.map((s) => s[2]); const yRange = Math.max(...ys) - Math.min(...ys);
+  const frameMs = samples.length > 1 ? (samples[samples.length - 1][0] - samples[0][0]) / (samples.length - 1) : 0;
+  const diag = { frames: samples.length, frameMs: +frameMs.toFixed(1), cruiseFrames: cruise.length, meanSpeed: +mean.toFixed(2), sdSpeed: +sd.toFixed(2), minZ: +minZ.toFixed(3), lastZ: +lastZ.toFixed(3), jitterAtWall: +jitterAtWall.toFixed(4), eyeYRange: +yRange.toFixed(4) };
+  console.log('WALK-DIAG ' + JSON.stringify(diag));
+  const d = JSON.stringify(diag);
+  expect(cruise.length, 'it actually walked at normal speed. ' + d).toBeGreaterThan(5);
+  expect(sd / mean, 'speed is steady while walking (low frame-to-frame variation). ' + d).toBeLessThan(0.15);
+  expect(minZ, 'the walker never passes through the wall (z=0, half thickness 0.1 + body 0.32). ' + d).toBeGreaterThan(0.1);
+  expect(jitterAtWall, 'no shaking while pressed against the wall. ' + d).toBeLessThan(0.02);
+  expect(yRange, 'eye height stays level on flat floor. ' + d).toBeLessThan(0.05);
+
+  // Esc leaves cleanly and hands the camera back.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => { const c = (window as any).__OBS_CTX__; return { walking: c.features.walkMode.isEnabled(), controls: c.world.camera.controls.enabled, up: c.world.camera.three.up.y }; });
+  console.log('WALK-AFTER ' + JSON.stringify(after));
+  expect(after.walking, 'Esc exits walk mode').toBe(false);
+  expect(after.controls, 'orbit controls are back').toBe(true);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
