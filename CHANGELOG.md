@@ -12,6 +12,7 @@ file — the project adopted a written changelog at 0.73.0.
 ## [Unreleased]
 
 ### Fixed
+- **3D dimensions (Measure tool).** Esc now cancels the dimension being drawn, removes its leftover first-point marker and ends the dimension command in one press. Finished dimensions stay on screen (previously each new dimension erased the previous one's lines and labels) until you press Clear measurements, which deletes them all. Verified in real Chromium with real clicks: 2 dimensions stay, a half-drawn third is cancelled by Esc, Clear leaves 0 graphics, 0 labels.
 - **Section Box face arrows could not be dragged, and froze the camera.** Pressing an arrow disabled the orbit controls, but the move/up events never reached the handler (the input router stops them), so the face did not move and the controls stayed disabled. The handler now listens in the capture phase. Verified in real Chromium with a real mouse drag: the +X face moved from 3.0 to 1.77, still exactly 6 planes, camera released afterwards.
 - **Section Box leaked clip planes.** Editing the box (dragging a face, grow/shrink, reset) added six new ThatOpen clipper planes without removing the old ones, and switching the box off left them all active, so the model stayed clipped. Cause: `Clipper.delete(world, id)` takes the list key, not the plane. Planes are now found by geometry and deleted by key. Verified in real Chromium (CI): 6 planes on, still 6 after an edit, 0 after Off, and half the wall disappears when the box is halved.
 
