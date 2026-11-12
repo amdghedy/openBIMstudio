@@ -697,7 +697,7 @@ test('PROBE: can the walker\'s collision ray hit the IFC wall?', async ({ page }
   await loadWallIfc(page);
   const r = await page.evaluate(() => {
     const w = (window as any).__OBS_CTX__.features.walkMode;
-    return { front: w.probe(0, 1.2, 3, 0, 0, -1), down: w.probe(0, 5, 0, 0, -1, 0), side: w.probe(-6, 1.2, 0, 1, 0, 0) };
+    return { front: w.probe(0, 1.2, 3, 0, 0, -1) };
   });
   console.log('WALK-PROBE ' + JSON.stringify(r));
 });
