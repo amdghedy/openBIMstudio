@@ -467,8 +467,8 @@ test('SECTION BOX: clips the model on screen and restores it when switched off',
     const sb = (window as any).__OBS_CTX__.features.sectionBox; const b = sb.getBox(); b.max.x = (b.min.x + b.max.x) / 2; sb.setBox(b);
     return ((window as any).__OBS_CTX__.world.renderer.three.clippingPlanes ?? []).length;
   });
-  await page.waitForTimeout(500);
-  const halved = await drawnPixels(page);
+  let halved = await drawnPixels(page);
+  for (let i = 0; i < 12 && full - halved <= 400; i++) { await page.waitForTimeout(500); halved = await drawnPixels(page); } // the clipper registers planes asynchronously
   await page.screenshot({ path: 'test-results/section-2-halved.png' });
 
   await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionBox.disable());
@@ -531,7 +531,7 @@ test('SECTION BOX: dragging a face arrow with a real mouse moves that face and k
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
-test('3D DIMENSION (Measure): Esc cancels the unfinished dimension, then ends the command; finished ones stay until deleted; Clear deletes all', async ({ page }) => {
+test('3D DIMENSION (Measure): one Esc cancels the active dimension command and its unfinished dimension; finished ones stay until deleted; Clear deletes all', async ({ page }) => {
   test.setTimeout(180000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -556,7 +556,7 @@ test('3D DIMENSION (Measure): Esc cancels the unfinished dimension, then ends th
   const pend = await st();
   await page.keyboard.press('Escape');
   const afterEsc1 = await st();
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape'); // pressing Esc again with nothing active must be harmless
   const afterEsc2 = await st();
   const diag = JSON.stringify({ one, two, pend, afterEsc1, afterEsc2 });
   console.log('MEASURE-DIAG ' + diag);
@@ -564,9 +564,8 @@ test('3D DIMENSION (Measure): Esc cancels the unfinished dimension, then ends th
   expect(two.labels, 'dimension 2 is added, not replacing 1. ' + diag).toBeGreaterThan(one.labels);
   expect(pend.pending, 'first point of dimension 3 is pending. ' + diag).toBe(1);
   expect(afterEsc1.pending + afterEsc1.pendingBalls, 'Esc cancels the unfinished dimension and its marker. ' + diag).toBe(0);
-  expect(afterEsc1.enabled, 'first Esc keeps the tool on. ' + diag).toBe(true);
+  expect(afterEsc1.enabled, 'one Esc cancels the dimension command completely. ' + diag).toBe(false);
   expect(afterEsc1.labels, 'Esc does not delete finished dimensions. ' + diag).toBe(two.labels);
-  expect(afterEsc2.enabled, 'second Esc ends the dimension command. ' + diag).toBe(false);
   expect(afterEsc2.labels, 'finished dimensions remain. ' + diag).toBe(two.labels);
 
   await page.evaluate(() => (window as any).__obsMeasure.clear());

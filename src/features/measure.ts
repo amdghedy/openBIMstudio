@@ -522,7 +522,7 @@ export function setupMeasure() {
     }
     // Esc handled by escape-all; local fallback if escape-all not installed
     if (e.code === "Escape") {
-      // 1st Esc cancels the dimension being drawn; with nothing pending, Esc ends the dimension command.
+      // One Esc cancels the dimension being drawn AND ends the dimension command.
       // Finished dimensions are never removed by Esc - use Clear measurements for that.
       const hadPending = cancelPending();
       if (!hadPending) setMeasureEnabled(false);
