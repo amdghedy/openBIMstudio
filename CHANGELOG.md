@@ -12,6 +12,7 @@ file — the project adopted a written changelog at 0.73.0.
 ## [Unreleased]
 
 ### Fixed
+- **Section Box face arrows could not be dragged, and froze the camera.** Pressing an arrow disabled the orbit controls, but the move/up events never reached the handler (the input router stops them), so the face did not move and the controls stayed disabled. The handler now listens in the capture phase. Verified in real Chromium with a real mouse drag: the +X face moved from 3.0 to 1.77, still exactly 6 planes, camera released afterwards.
 - **Section Box leaked clip planes.** Editing the box (dragging a face, grow/shrink, reset) added six new ThatOpen clipper planes without removing the old ones, and switching the box off left them all active, so the model stayed clipped. Cause: `Clipper.delete(world, id)` takes the list key, not the plane. Planes are now found by geometry and deleted by key. Verified in real Chromium (CI): 6 planes on, still 6 after an edit, 0 after Off, and half the wall disappears when the box is halved.
 
 ### Fixed: the plan-view openings chain verified in a real browser — six breaks found and closed
