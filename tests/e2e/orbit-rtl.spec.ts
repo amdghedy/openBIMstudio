@@ -638,6 +638,7 @@ test('WALK MODE: smooth constant-speed walking, stops at a wall without passing 
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await loadWallIfc(page);
+  await page.waitForTimeout(2500); // let the automatic zoom-to-model after loading finish before taking the camera
   // Stand 6 m in front of the wall (wall at z=0, spanning x -2.5..2.5) looking at it.
   await page.evaluate(async () => {
     await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(0, 1.7, 6, 0, 1.7, 0, false);
@@ -647,6 +648,8 @@ test('WALK MODE: smooth constant-speed walking, stops at a wall without passing 
   await page.waitForTimeout(600);
   const enabled = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.isEnabled());
   expect(enabled, 'walk mode starts').toBe(true);
+  const p0 = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+  expect(Math.abs(p0.yaw) + Math.abs(p0.pitch), 'walk starts facing where the camera looked. ' + JSON.stringify(p0)).toBeLessThan(0.05);
   // Sample the walker pose on every animation frame while W is held.
   const startPose = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
   console.log('WALK-START ' + JSON.stringify(startPose));

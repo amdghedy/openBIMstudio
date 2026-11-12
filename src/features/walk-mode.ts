@@ -391,15 +391,19 @@ function updateGroundTarget() {
   }
 }
 
-/** Block / slide the horizontal motion against walls. Returns true when blocked this frame. */
-function applyCollision(dt: number): void {
-  // Wall planes measured by the fragments sensors (IFC models): applied every frame, independent of answer latency.
+/** Wall planes measured by the fragments sensors (IFC models): applied every frame, independent of answer latency. */
+function applyWallContacts(): void {
   const nowMs = performance.now();
   wallContacts = wallContacts.filter((c) => nowMs - c.t < 1200);
   for (const c of wallContacts) {
     const r = constrainToWall(state.pos.x, state.pos.z, state.vel.x, state.vel.z, c, BODY_RADIUS);
     if (r.hit) { state.pos.x = r.x; state.pos.z = r.z; state.vel.x = r.vx; state.vel.z = r.vz; }
   }
+}
+
+/** Block / slide the horizontal motion against walls. Returns true when blocked this frame. */
+function applyCollision(dt: number): void {
+  applyWallContacts();
   const speed = Math.hypot(state.vel.x, state.vel.z);
   if (speed < 0.05) return;
   const models = getCollisionTargets();
@@ -809,6 +813,7 @@ function tickBody(now: number) {
 
   state.pos.x += state.vel.x * dt;
   state.pos.z += state.vel.z * dt;
+  applyWallContacts(); // resolve this frame's step too, so the drawn pose never dips into the wall
   if (!Number.isFinite(state.pos.x) || !Number.isFinite(state.pos.y) || !Number.isFinite(state.pos.z)) {
     // never hand NaN to the camera: recover to the position walk mode started from
     const sv = state.saved?.position;
