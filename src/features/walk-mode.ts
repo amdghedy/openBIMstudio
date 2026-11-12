@@ -808,8 +808,10 @@ export function setupWalkMode(): void {
           if (typeof m[fn] !== "function") continue;
           const t0 = performance.now();
           try {
-            const r = await m[fn]({ camera: cam, mouse: new THREE.Vector2(0, 0), dom, snappingClasses: [] });
-            out.results.push({ fn, ms: Math.round(performance.now() - t0), r: r ? { keys: Object.keys(r), distance: r.distance, point: r.point ? [r.point.x, r.point.y, r.point.z] : null, normal: r.normal ? [r.normal.x, r.normal.y, r.normal.z] : null, localId: r.localId } : null });
+            const rect = dom.getBoundingClientRect();
+            const px = new THREE.Vector2(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            const r = await m[fn]({ camera: cam, mouse: px, dom });
+            out.results.push({ fn, mode: "client-px-centre", ms: Math.round(performance.now() - t0), r: r ? { keys: Object.keys(r), distance: r.distance, point: r.point ? [r.point.x, r.point.y, r.point.z] : null, normal: r.normal ? [r.normal.x, r.normal.y, r.normal.z] : null, localId: r.localId } : null });
           } catch (e) { out.results.push({ fn, err: String(e).slice(0, 200) }); }
         }
       }
