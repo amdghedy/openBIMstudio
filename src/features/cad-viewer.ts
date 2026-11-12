@@ -171,14 +171,14 @@ interface CadCommandDef {
 
 const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LINE", aliases: ["L"], description: "Create straight line segments" },
-  { name: "PLINE", aliases: ["PL"], description: "Create a 2D polyline" },
+  { name: "PLINE", aliases: ["PL", "POLYLINE"], description: "Create a 2D polyline" },
   { name: "CIRCLE", aliases: ["C"], description: "Create a circle from center and radius" },
   { name: "RECTANG", aliases: ["REC", "RECTANGLE"], description: "Create a rectangular polyline" },
   { name: "ARC", aliases: ["A"], description: "Create an arc using 3 points" },
-  { name: "ERASE", aliases: ["E", "DEL"], description: "Erase selected objects" },
+  { name: "ERASE", aliases: ["E", "DEL", "DELETE"], description: "Erase selected objects" },
   { name: "MOVE", aliases: ["M"], description: "Move selected objects a distance and direction" },
   { name: "COPY", aliases: ["CO"], description: "Copy selected objects to multiple placements from one fixed base point" },
-  { name: "REVCLOUD", aliases: ["RC", "CLOUD"], description: "Create a revision cloud polyline; click boundary points, then Enter or double-click" },
+  { name: "REVCLOUD", aliases: ["RC", "CLOUD", "REVISIONCLOUD"], description: "Create a revision cloud polyline; click boundary points, then Enter or double-click" },
   { name: "ROTATE", aliases: ["RO"], description: "Rotate selected objects around a base point" },
   { name: "MIRROR", aliases: ["MI"], description: "Mirror selected objects about a two-point axis" },
   { name: "SCALE", aliases: ["SC"], description: "Scale selected objects about a base point" },
@@ -209,7 +209,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "QMEASURE", aliases: ["QM"], description: "Show live geometric measurements while hovering over objects" },
   { name: "GRID", aliases: ["F7"], description: "Toggle coordinate grid display" },
   { name: "DYN", aliases: ["DYNMODE", "F12"], description: "Toggle Dynamic Input HUD at cursor" },
-  { name: "SNAP", aliases: ["F9"], description: "Toggle grid snapping" },
+  { name: "SNAP", aliases: ["F9", "SNAPMODE"], description: "Toggle grid snapping" },
   { name: "UNDO", aliases: ["U"], description: "Undo the last drafting or modify operation" },
   { name: "REDO", aliases: ["REDO"], description: "Redo the previously undone operation" },
   { name: "PLOT", aliases: ["PRINT"], description: "Plot drawing to PDF or physical paper" },
@@ -280,7 +280,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
   { name: "IMPORT", aliases: ["IMP"], description: "Merge a DWG / DXF file into the current drawing" },
   { name: "BLOCK", aliases: ["B", "BMAKE"], description: "Create a block from the selected objects (base point, name)" },
-  { name: "INSERT", aliases: ["I", "DDINSERT"], description: "Insert a block from the library (scale, rotation) or a drawing file as a block" },
+  { name: "INSERT", aliases: ["I", "DDINSERT", "-INSERT"], description: "Insert a block from the library (scale, rotation) or a drawing file as a block" },
   { name: "WBLOCK", aliases: ["W"], description: "Write the selected objects (or a library block) to a DXF file" },
   { name: "BLOCKLIB", aliases: ["BLOCKS", "BLIB"], description: "Block library: list, insert, rename, delete, export" },
   { name: "SVGIMPORT", aliases: ["SVG"], description: "Import an SVG file as polylines and circles" },
@@ -296,7 +296,6 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DWGTABLES", aliases: [], description: "Browse the LAYER / LTYPE / STYLE / DIMSTYLE tables" },
   { name: "DWGCENSUS", aliases: [], description: "Count entities by type in model space" },
   { name: "DWGTHUMB", aliases: ["DWGBMP"], description: "Extract the embedded preview bitmap from a DWG file" },
-  { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select all objects sharing type and layer with the current selection" },
   { name: "KS", aliases: ["ALIASEDIT", "ALIASES", "SHORTCUTS"], description: "Edit command aliases (abbreviations)" },
   /* ── Parametric tab: one-shot geometric + dimensional constraints ── */
   { name: "AUTOCONSTRAIN", aliases: ["ACON"], description: "Detect and exactify near-horizontal / vertical / concentric relations" },
@@ -5245,6 +5244,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "Modify II",
         tb("join", "join", "Join") +
+          rb("join", "Pedit", `data-a="pedit"`, "Polyline edit on the selection: PEDIT J (join) · C (close) · O (open) · R (reverse)") +
           tb("fillet", "fillet", "Fillet") +
           tb("chamfer", "chamfer", "Chamfer") +
           tb("lengthen", "stretch", "Lengthen") +
