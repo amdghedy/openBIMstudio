@@ -488,3 +488,42 @@ test('SECTION BOX: clips the model on screen and restores it when switched off',
   expect(planesAfter, diag).toBe(0);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('SECTION BOX: dragging a face arrow with a real mouse moves that face and keeps exactly 6 planes', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  const setup = await page.evaluate(async () => {
+    const ctx = (window as any).__OBS_CTX__;
+    const sb = ctx.features.sectionBox; sb.enable(0.5);
+    const b = sb.getBox(); const cx = (b.min.x + b.max.x) / 2, cy = (b.min.y + b.max.y) / 2;
+    await ctx.world.camera.controls.setLookAt(cx, cy + 3, 14, cx, cy, 0, false);
+    await new Promise((r) => setTimeout(r, 600));
+    const cam = ctx.world.camera.three; cam.updateMatrixWorld(true);
+    let h: any = null;
+    ctx.world.scene.three.traverse((o: any) => { if (o.name === 'obs-section-box-handles') h = o; });
+    let target: any = null;
+    h?.traverse((o: any) => { const u = o.userData; if (!target && u?.kind === 'section-box-face' && u.axis === 'x' && u.sign === 1 && u.part === 'arrow') target = o; });
+    if (!target) return { err: 'no +X arrow handle found' };
+    const p = target.getWorldPosition(new (cam.position.constructor)());
+    p.project(cam);
+    const rect = ctx.world.renderer.three.domElement.getBoundingClientRect();
+    return { x: rect.left + (p.x * 0.5 + 0.5) * rect.width, y: rect.top + (-p.y * 0.5 + 0.5) * rect.height, maxX: b.max.x, w: rect.width };
+  });
+  expect((setup as any).err, JSON.stringify(setup)).toBeUndefined();
+  const s = setup as { x: number; y: number; maxX: number };
+  await page.mouse.move(s.x, s.y); await page.waitForTimeout(150);
+  const cursor = await page.evaluate(() => (window as any).__OBS_CTX__.world.renderer.three.domElement.style.cursor);
+  await page.mouse.down();
+  await page.mouse.move(s.x - 60, s.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; return { maxX: sb.getBox().max.x, planes: sb.debugPlanes() }; });
+  const diag = `start ${JSON.stringify(s)} cursorOnHover=${cursor} after ${JSON.stringify(after)}`;
+  console.log('SECTION-DRAG ' + diag);
+  expect(cursor, 'hovering the arrow shows a grab hand. ' + diag).toBe('grab');
+  expect(after.maxX, 'dragging left shrinks the +X face. ' + diag).toBeLessThan(s.maxX - 0.2);
+  expect(after.planes.renderer, 'still exactly 6 planes. ' + diag).toBe(6);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
