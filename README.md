@@ -358,6 +358,29 @@ Original announcement:
 > DWG
 > Convert PDF to DWG
 
+### Control the engines from AI agents — the AI Agent Bridge (AlphaCLI / AlphaCode)
+
+AI chats and agents can issue orders **directly into the engines** through the AI Agent Bridge (`AGENT` on the drawing command line, the **Agent Bridge** button in Home › AI Copilot, or `__obsAgentBridge.openPanel()` in the BIM workspace). Every order runs on the same paths a human uses — CAD strings go through the command-line dispatcher, natural language goes to the AI copilot — and lands in an audited order log on the dock. Four channels:
+
+| Channel | Who uses it | How |
+|---------|-------------|-----|
+| **window API** | console, browser automation, bookmarklets | `__obsAgentBridge.exec("CIRCLE 0,0 50")` · `await __obsAgentBridge.ask("draw a gear profile")` · `state()` · `commands()` (full catalog) · `log()` / `on()` |
+| **postMessage** | your platform client embedding the studio (e.g. AlphaCLI web) | `iframe.contentWindow.postMessage({ __obsAgent: true, id, type: "exec" \| "ask" \| "state" \| "commands", text }, targetOrigin)` — replies carry the same flag + `id`. Origin allow-list: same-origin + `https://alphacli.github.io` (extend via `localStorage.obs.agent.allowedOrigins`) |
+| **URL deep link** | one-shot orders, chat bots that can open a URL | `…/#agent-cmd=CIRCLE%200%2C0%2050` or `…/#agent-ask=draw%20a%20site%20plan` |
+| **local relay** | terminal AI agents (AlphaCLI / AlphaCode) | opt-in: **Agent Bridge → Connect Relay**, then `POST /api/agent/exec` on your local collab server; the order executes in the open studio and the HTTP response returns the result |
+
+Terminal example (AlphaCode can run this with its shell tool once the relay is connected):
+
+```sh
+curl -s -X POST http://localhost:4000/api/agent/exec \
+  -H "Authorization: Bearer $OBS_SERVER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"cmd":"CIRCLE 0,0 50"}'
+# → {"orderId":"…","ok":true,"state":{…}}
+```
+
+`{"ask":"…"}` sends natural language to the AI copilot instead. Privacy holds: the bridge is local-first, the relay is **opt-in** (off until you press Connect) and talks only to your own collab server — with no relay, no order ever leaves the device. The **Agent Bridge** dock also has a try-it box (Run / Ask AI) and a **Copy Snippet** button with the ready-to-paste examples above.
+
 ---
 
 ## How to use (day to day)

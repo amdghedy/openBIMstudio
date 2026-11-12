@@ -296,6 +296,10 @@ await step("section-modal", () => {
 
 await step("property-palette", () => setupPropertyPalette());
 await step("ai-chat", () => setupAiChat());
+await step("agent-bridge", async () => {
+  const m = await import("./features/agent-bridge");
+  m.setupAgentBridge();
+});
 await step("timeline-panel", () => setupTimelinePanel());
 await step("sheets-panel", () => setupSheetsPanel());
 await step("automation-panel", () => setupAutomationPanel());

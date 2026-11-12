@@ -1,6 +1,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { parseAllowedOrigins, originAllowed, corsHeaders, SECURITY_HEADERS, validId, tokenOk, safeUploadName } from "./security.mjs";
 import { resolveStartupConfig } from "./startup-config.mjs";
@@ -54,6 +55,20 @@ const ssePerIp = new Map(); // ip -> active SSE connection count
 let activeConversions = 0;
 
 const sseClients = new Map();
+
+/* AI agent relay state — studio sessions (browsers) + orders awaiting results */
+const AGENT_ORDER_TIMEOUT_MS = Number(process.env.OBS_AGENT_ORDER_TIMEOUT_MS || 20_000);
+const AGENT_SSE_MAX_PER_IP = Number(process.env.OBS_AGENT_SSE_MAX_PER_IP || 5);
+const agentStudioClients = new Set();
+const agentPendingOrders = new Map(); // orderId -> { resolve, timer }
+const agentSsePerIp = new Map(); // ip -> active agent stream count
+
+function broadcastAgent(event, data) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of agentStudioClients) {
+    try { res.write(payload); } catch { agentStudioClients.delete(res); }
+  }
+}
 
 function ensureStore() {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -313,6 +328,7 @@ const server = http.createServer(async (req, res) => {
   );
 
   const isSseEvents = /^\/api\/rooms\/[^/]+\/events$/.test(url.pathname);
+  const isAgentEvents = url.pathname === "/api/agent/events";
 
   /* Token policy (remediation Phase 1.2):
    *  - Non-SSE /api/ routes: Authorization: Bearer only. Query-string tokens
@@ -320,10 +336,15 @@ const server = http.createServer(async (req, res) => {
    *  - SSE events route only: EventSource cannot set headers, so a signed
    *    short-lived ?sse= token is preferred; the long-lived ?token= form is
    *    still accepted there (documented URL-leakage trade-off).
+   *  - Agent relay SSE (/api/agent/events): EventSource cannot set headers,
+   *    so Bearer OR the long-lived ?token= form is accepted there (same
+   *    documented trade-off as the room events route).
    */
   if (url.pathname.startsWith("/api/")) {
     let authed = false;
-    if (isSseEvents) {
+    if (isAgentEvents) {
+      authed = tokenOk(req.headers.authorization, url.searchParams.get("token"), AUTH_TOKEN);
+    } else if (isSseEvents) {
       const sseToken = url.searchParams.get("sse");
       if (sseToken) {
         const roomId = decodeURIComponent((url.pathname.match(/^\/api\/rooms\/([^/]+)\/events$/) || [])[1] || "");
@@ -515,6 +536,118 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  /* ═══════════ AI agent relay — terminal AI agents (AlphaCLI / AlphaCode)
+     POST an order; the connected openBIMstudio browser session executes it in
+     the engine and POSTs the result back; the original request resolves with
+     that result. Browsers subscribe over SSE (opt-in from the Agent Bridge). */
+  if (url.pathname === "/api/agent/exec" && req.method === "POST") {
+    const budget = mutationRate.check(`agent-exec|${key}`);
+    if (!budget.allowed) {
+      securityLog(console.log, "rate_limited", { requestId: reqId, scope: "agent-exec" });
+      res.setHeader("Retry-After", Math.ceil(budget.retryAfterMs / 1000));
+      return send(res, 429, { error: "Too many agent orders", requestId: reqId });
+    }
+
+    let body = {};
+    try {
+      const raw = await readBody(req);
+      body = raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      const tooLarge = e && e.code === "payload_too_large";
+      if (tooLarge) securityLog(console.log, "body_too_large", { requestId: reqId, route: "agent_exec" });
+      return send(res, tooLarge ? 413 : 400, { error: tooLarge ? "Payload too large" : "Invalid JSON body", requestId: reqId });
+    }
+
+    const cmd = typeof body.cmd === "string" ? body.cmd.trim().slice(0, 4000) : "";
+    const ask = typeof body.ask === "string" ? body.ask.trim().slice(0, 4000) : "";
+    if (!cmd && !ask) {
+      return send(res, 400, { error: "Provide a \"cmd\" (CAD command line) or an \"ask\" (natural language for the AI copilot)", requestId: reqId });
+    }
+    if (agentStudioClients.size === 0) {
+      securityLog(console.log, "agent_no_studio", { requestId: reqId });
+      return send(res, 503, { error: "No openBIMstudio session is connected to the relay. Open the app and press AI Agent Bridge → Connect Relay.", requestId: reqId });
+    }
+
+    const orderId = typeof body.orderId === "string" && body.orderId ? body.orderId.slice(0, 128) : randomUUID();
+    securityLog(console.log, "agent_order", { requestId: reqId, orderId, kind: cmd ? "cmd" : "ask" });
+    broadcastAgent("agent-order", {
+      orderId,
+      cmd: cmd || undefined,
+      ask: ask || undefined,
+      agent: typeof body.agent === "string" ? body.agent.slice(0, 120) : "external",
+    });
+
+    const result = await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        agentPendingOrders.delete(orderId);
+        resolve({ ok: false, error: "timeout", note: "The studio did not answer within 20s" });
+      }, AGENT_ORDER_TIMEOUT_MS);
+      agentPendingOrders.set(orderId, { resolve, timer });
+    });
+    return send(res, 200, { orderId, ...result });
+  }
+
+  if (url.pathname === "/api/agent/result" && req.method === "POST") {
+    let body = {};
+    try {
+      const raw = await readBody(req);
+      body = raw ? JSON.parse(raw) : {};
+    } catch {
+      return send(res, 400, { error: "Invalid JSON body", requestId: reqId });
+    }
+    const orderId = typeof body.orderId === "string" ? body.orderId : "";
+    const pending = orderId ? agentPendingOrders.get(orderId) : undefined;
+    if (!pending) {
+      return send(res, 404, { error: "Unknown or already-resolved orderId", requestId: reqId });
+    }
+    clearTimeout(pending.timer);
+    agentPendingOrders.delete(orderId);
+    pending.resolve({
+      ok: body.ok === true,
+      ...(body.error != null ? { error: String(body.error).slice(0, 2000) } : {}),
+      ...(body.state != null ? { state: body.state } : {}),
+    });
+    return send(res, 200, { ok: true });
+  }
+
+  if (url.pathname === "/api/agent/status" && req.method === "GET") {
+    return send(res, 200, {
+      studios: agentStudioClients.size,
+      pending: agentPendingOrders.size,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  if (isAgentEvents && req.method === "GET") {
+    const ipCount = agentSsePerIp.get(key) || 0;
+    if (ipCount >= AGENT_SSE_MAX_PER_IP) {
+      securityLog(console.log, "agent_sse_limit", { requestId: reqId, active: ipCount });
+      return send(res, 429, { error: "Too many agent event streams", requestId: reqId });
+    }
+    agentSsePerIp.set(key, ipCount + 1);
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      ...SECURITY_HEADERS,
+      ...(res.obsCors || {}),
+    });
+    res.write("retry: 2000\n\n");
+    res.write(`event: hello\ndata: ${JSON.stringify({ role: "studio", at: Date.now() })}\n\n`);
+
+    agentStudioClients.add(res);
+    securityLog(console.log, "agent_stream_open", { requestId: reqId, active: agentStudioClients.size });
+    res.on("close", () => {
+      agentStudioClients.delete(res);
+      const n = (agentSsePerIp.get(key) || 1) - 1;
+      if (n <= 0) agentSsePerIp.delete(key);
+      else agentSsePerIp.set(key, n);
+      securityLog(console.log, "agent_stream_close", { active: agentStudioClients.size });
+    });
+    return;
+  }
+
   if (isConvertRoute(url, req)) {
     await handleConvert(req, res, url, reqId);
     return;
@@ -522,7 +655,7 @@ const server = http.createServer(async (req, res) => {
 
   return send(res, 404, {
     error:
-      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/join or /api/convert",
+      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/join or /api/convert or /api/agent/exec or /api/agent/status",
   });
 });
 

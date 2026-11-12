@@ -335,6 +335,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "SHAREVIEW", aliases: ["SHARE"], description: "Export the current view as a PNG" },
   { name: "DWGHISTORY", aliases: ["HISTORY"], description: "Session command history + undo depth" },
   { name: "CHECKSTANDARDS", aliases: ["CHKSTD"], description: "Audit layers / linetypes / text styles against the standard rules" },
+  /* ── AI agent bridge ── */
+  { name: "AGENT", aliases: ["AGENTBRIDGE", "BRIDGE", "ALPHACLI", "ALPHACODE"], description: "Open the AI Agent Bridge — let external AI clients (AlphaCLI / AlphaCode) run orders in this engine" },
 ];
 
 const BG: Record<string, string> = {
@@ -668,6 +670,12 @@ export function runCadAiCommand(text: string): { ok: boolean; error?: string } {
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** AI tool bridge (get_cad_commands): the full command catalog so external AI
+    agents can discover every command name + alias they may run. */
+export function getCadCommandCatalog(): { name: string; aliases: string[]; description: string }[] {
+  return CAD_COMMANDS.map((c) => ({ name: c.name, aliases: [...c.aliases], description: c.description }));
 }
 
 function openTabMenu(x: number, y: number, tab: DocTab): void {
@@ -5236,7 +5244,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "AI Copilot",
         rb("generative", "AI Copilot", `data-a="aicopilot"`, "Open the AI copilot docked in this drawing — ask questions, inspect the drawing, or run commands with approval") +
-          rb("find", "AI: Drawing Info", `data-a="aicopilot-info"`, "Ask the AI copilot about this drawing (opens the copilot and pre-fills a drawing question)"),
+          rb("find", "AI: Drawing Info", `data-a="aicopilot-info"`, "Ask the AI copilot about this drawing (opens the copilot and pre-fills a drawing question)") +
+          rb("generative", "Agent Bridge", `data-a="agent-bridge"`, "Open the AI Agent Bridge — window API, postMessage, deep links and the local relay that let external AI clients (AlphaCLI / AlphaCode) run orders directly in this engine"),
         "",
         "",
         "home",
@@ -5923,6 +5932,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       dwgversion: () => executeDrawingCommand("DWGVERSION"),
       // AI copilot — opens the shared AI panel docked inside this shell
       aicopilot: () => toggleCadAi(),
+      // AI agent bridge — the dock that connects external AI clients
+      "agent-bridge": () => {
+        void import("../features/agent-bridge").then((m) => m.openAgentPanel()).catch(() => {});
+      },
       "aicopilot-info": () =>
         askCadAi(
           "Summarize this 2D drawing: name, units, layers, entity counts by type, and anything that looks unfinished or inconsistent.",
@@ -7900,6 +7913,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         },
       );
       logCmd("KS — Command Aliases editor");
+      return;
+    }
+
+    // AI agent bridge — open the dock that connects external AI clients
+    if (cmd === "AGENT" || cmd === "AGENTBRIDGE" || cmd === "BRIDGE" || cmd === "ALPHACLI" || cmd === "ALPHACODE") {
+      logCmd("AGENT — AI Agent Bridge");
+      void import("../features/agent-bridge").then((m) => m.openAgentPanel()).catch(() => {});
       return;
     }
 

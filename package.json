@@ -166,6 +166,7 @@
     "test:cad-link": "node tests/cad-link.test.cjs",
     "test:welcome-screen": "node tests/welcome-screen.test.cjs",
     "test:cad-ai": "node tests/cad-ai-integration.test.cjs",
+    "test:ai-agent": "node tests/ai-agent-bridge.test.cjs",
     "test:walk-key-guard": "node tests/walk-key-guard.test.cjs",
     "test:modeling-depth": "node tests/modeling-depth.test.cjs",
     "test:auth-ux": "node tests/auth-ux.test.cjs",
