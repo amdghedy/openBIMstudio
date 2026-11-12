@@ -65,9 +65,18 @@ function clipperItems(c: any): any[] {
   } catch { return []; }
 }
 
+function planeOf(item: any): THREE.Plane | null {
+  const p = item?.three?.plane ?? item?.plane ?? null;
+  return p && p.normal ? (p as THREE.Plane) : null;
+}
+
 function removeBoxItems(): void {
   const c = clipper();
   const world = (ctx as any).world;
+  // Remember the planes we are about to delete: ThatOpen keeps pushing them into renderer.clippingPlanes and does not
+  // always take them out again, which left the whole model clipped (and the list growing by 6 on every edit).
+  const gone: THREE.Plane[] = [];
+  for (const item of boxItems) { const pl = planeOf(item); if (pl) gone.push(pl); }
   for (const item of boxItems) {
     try {
       if (typeof c?.delete === "function") c.delete(world, item);
@@ -75,10 +84,17 @@ function removeBoxItems(): void {
     } catch { try { item?.dispose?.(); } catch { /* */ } }
   }
   boxItems = [];
-  if (usedNativeClipping) {
-    try { const r = world?.renderer?.three; if (r) r.clippingPlanes = []; } catch { /* */ }
-    usedNativeClipping = false;
-  }
+  try {
+    const r = world?.renderer?.three;
+    if (r) {
+      if (usedNativeClipping) r.clippingPlanes = [];
+      else if (Array.isArray(r.clippingPlanes) && gone.length) {
+        const same = (a: THREE.Plane, b: THREE.Plane) => a === b || (a.normal.distanceToSquared(b.normal) < 1e-12 && Math.abs(a.constant - b.constant) < 1e-9);
+        r.clippingPlanes = r.clippingPlanes.filter((p: THREE.Plane) => !gone.some((g) => same(p, g)));
+      }
+    }
+  } catch { /* */ }
+  usedNativeClipping = false;
 }
 
 export function isSectionBoxActive(): boolean { return enabled; }

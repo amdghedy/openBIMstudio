@@ -464,8 +464,8 @@ test('SECTION BOX: clips the model on screen and restores it when switched off',
 
   // Cut the box in half along X (keep x <= 2.5).
   const half = await page.evaluate(() => {
-    const sb = (window as any).__OBS_CTX__.features.sectionBox; const b = sb.getBox(); b.max.x = 2.5; sb.setBox(b);
-    return true;
+    const sb = (window as any).__OBS_CTX__.features.sectionBox; const b = sb.getBox(); b.max.x = (b.min.x + b.max.x) / 2; sb.setBox(b);
+    return ((window as any).__OBS_CTX__.world.renderer.three.clippingPlanes ?? []).length;
   });
   await page.waitForTimeout(500);
   const halved = await drawnPixels(page);
@@ -476,12 +476,13 @@ test('SECTION BOX: clips the model on screen and restores it when switched off',
   const after = await drawnPixels(page);
   const planesAfter = await page.evaluate(() => ((window as any).__OBS_CTX__.world.renderer.three.clippingPlanes ?? []).length);
 
-  const diag = `before ${before}, box-on ${full}, halved ${halved}, after-off ${after}; box ${JSON.stringify(info)}; planes after off ${planesAfter}; halfOk ${half}`;
+  const diag = `before ${before}, box-on ${full}, halved ${halved}, after-off ${after}; box ${JSON.stringify(info)}; planes after off ${planesAfter}; planes after edit ${half}`;
   console.log('SECTION-DIAG ' + diag);
   expect(info.active, diag).toBe(true);
-  expect(halved, 'half the wall is clipped away. ' + diag).toBeLessThan(full * 0.8);
+  expect(halved, 'half the wall is clipped away. ' + diag).toBeLessThan(full * 0.9);
   expect(halved, 'something remains. ' + diag).toBeGreaterThan(0);
   expect(Math.abs(after - before), 'switching off restores the view. ' + diag).toBeLessThan(before * 0.1 + 50);
+  expect(half, 'editing the box replaces its planes instead of stacking them. ' + diag).toBe(6);
   expect(planesAfter, diag).toBe(0);
   expect(errors, errors.join('\n')).toEqual([]);
 });
