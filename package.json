@@ -225,6 +225,7 @@
     "test:cad-tools": "node tests/cad-tools-expansion.test.cjs",
     "test:dwg-convert-limits": "node tests/dwg-convert-limits.test.cjs",
     "test:pdf-underlay-loader": "node tests/pdf-underlay-loader.test.cjs",
+    "test:pdf-vector": "node tests/pdf-vector-import.test.cjs",
     "test:modify-registry": "node tests/modify-command-registry.test.cjs",
     "test:architecture-map": "node tests/architecture-map.test.cjs",
     "test:project-journal": "node tests/project-journal.test.cjs",

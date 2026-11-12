@@ -74,7 +74,7 @@ t("every ribbon group is tagged with exactly one of the nine tabs", () => {
     Annotation: "home", Properties: "home", Utilities: "home", History: "home", Layers: "home", Styles: "home",
     "AI Copilot": "home",
     // Insert
-    Block: "insert", "Open Drawing": "insert", Import: "insert", Fields: "insert", Data: "insert",
+    Block: "insert", "Open Drawing": "insert", "PDF Import": "insert", Import: "insert", Fields: "insert", Data: "insert",
     // Annotate
     Text: "annotate", Dimensions: "annotate", Markup: "annotate", Tables: "annotate", "Markup Files": "annotate",
     // Parametric

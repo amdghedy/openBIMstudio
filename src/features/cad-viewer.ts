@@ -286,6 +286,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "SVGIMPORT", aliases: ["SVG"], description: "Import an SVG file as polylines and circles" },
   { name: "FIELD", aliases: ["FLD"], description: "Insert text computed from the drawing (date, name, length, area...)" },
   { name: "DWGOPEN", aliases: [], description: "Open DWG / DXF drawings as new tabs in this editor (LibreDWG reader worker)" },
+  { name: "PDFIN", aliases: ["PDFIMPORT", "PDF2DWG"], description: "Convert a vector PDF into an editable drawing — parsed locally, the PDF is not uploaded; then QSAVE (DXF) or DWGSAVE (DWG). PDFIN N converts page N" },
   { name: "DWGJSONIMP", aliases: ["JSONDUMP"], description: "Re-import a dwg2json database dump into the editor (JSON round trip)" },
   { name: "DWGREWRITE", aliases: ["SAVETODXF"], description: "Re-save the drawing through the DXF writer" },
   { name: "DWG2JSON", aliases: [], description: "Dump the full drawing database as JSON" },
@@ -736,6 +737,7 @@ function openAppMenu(anchor: HTMLElement): void {
   item("Export Measurements CSV", () => ribbonActive?.exec("csv"));
   item("Export Entity Data (CSV)", () => ribbonActive?.exec("dataextract"));
   item("Import LandXML CgPoints…", () => ribbonActive?.exec("landxmlin"));
+  item("Convert PDF to Drawing…", () => openPdfImportPicker());
   item("Quantity Takeoff (CSV)", () => ribbonActive?.exec("takeoff"));
   item("Drawing Information", () => ribbonActive?.exec("info"));
   sep();
@@ -836,8 +838,8 @@ function ensureShell(): void {
   picker = document.createElement("input");
   picker.type = "file";
   // .bak / .sv$ are drawing workspace drawing backups (openable like native CAD); .xml
-  // routes to the LandXML CgPoints importer.
-  picker.accept = ".dxf,.dwg,.bak,.sv$,.xml";
+  // routes to the LandXML CgPoints importer; .pdf converts a vector PDF into a drawing (PDFIN).
+  picker.accept = ".dxf,.dwg,.bak,.sv$,.xml,.pdf";
   picker.multiple = true;
   picker.style.cssText = "display:none";
   picker.onchange = () => {
@@ -860,12 +862,13 @@ function ensureShell(): void {
   // Drag & drop: the empty state promises "Drop DWG or DXF file here", so the
   // shell accepts .dwg/.dxf drops anywhere over the editor (multi-file too).
   // drawing workspace backup extensions (.bak, .sv$) open like native CAD; LandXML .xml
-  // files import their CgPoints into the active drawing.
+  // files import their CgPoints into the active drawing; .pdf converts a vector PDF
+  // into an editable drawing (PDFIN) — parsed locally, nothing is uploaded.
   shell.addEventListener("dragover", (e) => e.preventDefault());
   shell.addEventListener("drop", (e) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
-      /\.(dwg|dxf|bak|sv\$|xml)$/i.test(f.name),
+      /\.(dwg|dxf|bak|sv\$|xml|pdf)$/i.test(f.name),
     );
     for (const f of files) openFile(f);
   });
@@ -944,6 +947,12 @@ function openFile(file: File): void {
     }
     return;
   }
+  if (/\.pdf$/i.test(file.name)) {
+    // Vector PDF → editable drawing (PDFIN). Converted locally, then opened
+    // as a normal DXF drawing tab — nothing is uploaded anywhere.
+    void importPdfAsDrawing(file);
+    return;
+  }
   const existing = tabs.find((t) => t.title.toLowerCase() === file.name.toLowerCase());
   if (existing) {
     activate(existing);
@@ -955,6 +964,51 @@ function openFile(file: File): void {
   // 2D file history (welcome-screen drafting zone): record every real drawing
   // that is opened — picker, drag & drop and the welcome-screen zone all land here.
   void recordRecentDrawing({ name: file.name, format: recentFormatOf(file.name), size: file.size, blob: file });
+}
+
+/* ── PDFIN — Convert PDF to Drawing (vector PDF → editable drawing, local) ── */
+
+function cadToast(kind: string, message: string): void {
+  window.dispatchEvent(new CustomEvent("obs-toast", { detail: { kind, message, timeout: 3600 } }));
+}
+
+function openPdfImportPicker(): void {
+  ensureShell();
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".pdf,application/pdf";
+  input.multiple = true;
+  input.onchange = () => {
+    for (const f of [...(input.files ?? [])]) void importPdfAsDrawing(f);
+    input.value = "";
+  };
+  input.click();
+}
+
+/** Convert a vector PDF into an editable drawing — parsed locally, the PDF is not uploaded. */
+async function importPdfAsDrawing(file: File, page = 1): Promise<void> {
+  cadToast("info", `PDF import: parsing ${file.name} locally — the PDF is not uploaded to the cloud.`);
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { pdfToDxfDocument } = await import("../modules/drawings/pdf-vector");
+    const res = await pdfToDxfDocument(bytes, { page });
+    if (!res.doc.entities.length) {
+      cadToast("error", "PDF import: no vector content found on that page — scanned/raster PDFs cannot be converted (vector PDFs only).");
+      return;
+    }
+    const { writeDxf } = await import("../modules/drawings/dxf-writer");
+    const text = writeDxf(res.doc);
+    const base = file.name.replace(/\.pdf$/i, "");
+    openFile(new File([text], `${base}.pdf.dxf`, { type: "application/dxf" }));
+    const strokes = res.counts.polylines - res.counts.fills;
+    const skipped = res.counts.imagesSkipped ? `; ${res.counts.imagesSkipped} raster image(s) skipped` : "";
+    cadToast(
+      "success",
+      `PDF → drawing: ${res.counts.lines} line(s), ${strokes} polyline(s), ${res.counts.fills} filled boundar(ies), ${res.counts.texts} text(s)${skipped}. True size, 1 pt = 0.3528 mm. Save with QSAVE (DXF) or DWGSAVE (DWG).`,
+    );
+  } catch (err) {
+    cadToast("error", `PDF import failed: ${(err as Error).message}`);
+  }
 }
 
 function openBlank(): void {
@@ -1168,7 +1222,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       </div>
 
       <div data-r="empty" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#9aa4b2;pointer-events:none">
-        <div style="font-size:18px;font-weight:600;color:#cbd5e1">Drawing Engine Ready — Drop a DWG or DXF file here</div>
+        <div style="font-size:18px;font-weight:600;color:#cbd5e1">Drawing Engine Ready — Drop a DWG, DXF or vector PDF file here</div>
         <div style="font-size:12px;color:#64748b">or click Open from the Quick Access toolbar</div>
       </div>
 
@@ -5341,6 +5395,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "insert",
       ) +
       rg(
+        "PDF Import",
+        rb("model-curve", "PDF to Drawing…", `data-a="pdfin"`, "Convert a vector PDF into an editable drawing — parsed locally in this browser, the PDF is not uploaded (PDFIN); then QSAVE for DXF or DWGSAVE for DWG"),
+        "",
+        "",
+        "insert",
+      ) +
+      rg(
         "Import",
         rb("import", "DWG / DXF…", `data-a="import"`, "Merge a DWG or DXF file into the current drawing (IMPORT)") +
           rb("file", "File as Block", `data-a="blk-file"`, "Read a DWG / DXF as a block and place it (INSERT from file)") +
@@ -5731,6 +5792,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // OpenCADStudio absorption: entity CSV export + LandXML survey import
       dataextract: () => extractEntityCsv(),
       landxmlin: () => xmlPicker?.click(),
+      pdfin: () => openPdfImportPicker(),
       // View tab
       zscale: () => {
         void promptLine("Zoom Scale", "Enter a scale factor (2 = 2×, 0.5 = half)", "2").then((s) => {
@@ -8437,6 +8499,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         input.onchange = () => { if (input.files?.length) void m.openDrawingFiles(input.files); };
         input.click();
       });
+      return;
+    }
+    if (cmd === "PDFIN" || cmd === "PDFIMPORT" || cmd === "PDF2DWG") {
+      const pg = Number(parts[1]);
+      if (parts.length > 1 && Number.isFinite(pg) && pg >= 1) {
+        // PDFIN N — convert page N of the picked PDF.
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".pdf";
+        input.onchange = () => { const f = input.files?.[0]; if (f) void importPdfAsDrawing(f, Math.floor(pg)); };
+        input.click();
+      } else {
+        openPdfImportPicker();
+      }
       return;
     }
     if (cmd === "DWGJSONIMP" || cmd === "JSONDUMP") {

@@ -341,9 +341,11 @@ Functions absorbed from the OpenCADStudio project (github.com/HakanSeven12/OpenC
 | Entity data extract | `DATAEXTRACT`, or App menu › Export Entity Data (CSV) | Every entity's handle, type, layer, colour, linetype, lineweight, text and anchor point exports to a CSV file. |
 | RAY / XLINE construction lines | open any DWG/DXF | Infinite construction lines read from the file and drawn edge-to-edge like native drawing editor (clipped to the view, linetype dashes and layer colours kept, pickable everywhere along the line, they never affect ZOOM Extents), moved/copied/mirrored/rotated by their anchor and written back on DXF save. |
 
-### Convert PDF to DWG — video tip
+### Convert PDF to DWG — built into the editor (video tip)
 
-A quick tip on converting a **vector PDF** into a **DWG drawing** using the free, open-source online tool **Open CAD Studio**: the conversion runs locally in the browser and the PDF is not uploaded to the cloud, so user data stays secure — the same local-first privacy model OpenBIMStudio follows. Watch the video: <https://lnkd.in/dzWK2bzS>
+OpenBIMStudio converts a **vector PDF** into an editable drawing natively — **PDFIN** on the command line (aliases `PDFIMPORT`, `PDF2DWG`; `PDFIN N` for page N), the **Insert tab → PDF Import → PDF to Drawing…** ribbon button, the App menu → *Convert PDF to Drawing…*, the welcome screen *Open DWG / DXF / PDF…*, or just dropping a `.pdf` onto the editor. The conversion runs **locally in the browser** — the PDF is not uploaded to the cloud, so user data stays secure — and lands as a normal drawing tab: stroked paths become LINE/LWPOLYLINE, filled areas become boundaries, text stays text (position, height, rotation), colours are kept, and the drawing opens true-size in millimetres (1 pt = 0.3528 mm). Save with **QSAVE** (DXF) or **DWGSAVE** (DWG) to complete the PDF → DWG conversion. Details and limits: `docs/PDF-IMPORT.md`.
+
+The same workflow was popularised by the free, open-source online tool **Open CAD Studio** — watch their quick-tip video: <https://lnkd.in/dzWK2bzS>
 
 Original announcement:
 
@@ -396,7 +398,7 @@ Original announcement:
 | **IDS** | Information requirements checking | Validation |
 | **DXF** | 2D drawing exchange | Import & export |
 | **DWG** | Drawing import & link (LibreDWG WASM) | Import & link; experimental 2D drawing editor export via local acadrust WASM |
-| **PDF** | Drawing sheets issue + PDF underlay | Export & underlay |
+| **PDF** | Vector PDF → editable drawing (PDFIN, parsed locally) + drawing sheets issue + PDF underlay | Import (vector) & export & underlay |
 | **CSV** | Schedules, take-off, cost | Import & export |
 | **gbXML** | Energy-related export path | Export (where enabled) |
 

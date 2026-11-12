@@ -388,8 +388,8 @@ function buildStatic() {
         </div>
         <div class="obs-zone__options">
           <button class="obs-btn obs-btn--primary" id="obs-2d-new" type="button">New drawing</button>
-          <button class="obs-btn" id="obs-2d-open" type="button" title="Open a DWG, DXF or LandXML file in the drafting engine">Open DWG / DXF\u2026</button>
-          <input id="obs-2d-file" type="file" accept=".dwg,.dxf,.bak,.sv$,*.xml" multiple hidden />
+          <button class="obs-btn" id="obs-2d-open" type="button" title="Open a DWG, DXF, PDF or LandXML file in the drafting engine">Open DWG / DXF / PDF\u2026</button>
+          <input id="obs-2d-file" type="file" accept=".dwg,.dxf,.bak,.sv$,*.xml,.pdf" multiple hidden />
         </div>
         <div class="obs-zone__block">
           <div class="obs-zone__sub"><span>History — recent drawings</span><button class="obs-zone__linkbtn" id="obs-2d-clear" type="button">Clear</button></div>
