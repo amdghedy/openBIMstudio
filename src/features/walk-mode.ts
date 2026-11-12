@@ -794,6 +794,15 @@ export function setupWalkMode(): void {
     enable: enableWalkMode,
     disable: disableWalkMode,
     toggle: toggleWalkMode,
+    /** Diagnostic: what a collision ray from (x,y,z) along (dx,dy,dz) hits, using exactly the walker's targets. */
+    probe: (x: number, y: number, z: number, dx: number, dy: number, dz: number) => {
+      const targets = getCollisionTargets();
+      groundRay.set(new THREE.Vector3(x, y, z), new THREE.Vector3(dx, dy, dz).normalize());
+      groundRay.far = 50;
+      let n = 0, first: number | null = null, kinds: string[] = [];
+      try { const hits = groundRay.intersectObjects(targets, true); n = hits.length; first = hits[0]?.distance ?? null; kinds = hits.slice(0, 3).map((h) => h.object.type + (h.face ? "+face" : "")); } catch (e) { kinds = [String(e)]; }
+      return { targets: targets.length, hits: n, first, kinds };
+    },
   };
 }
 /** Slide the camera (and its target) horizontally before walk mode starts. */
