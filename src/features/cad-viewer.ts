@@ -133,6 +133,7 @@ type Tool =
   | "dimang"
   | "dimarc"
   | "dimdia"
+  | "arpath"
   | "dimcenter"
   | "dimcont"
   | "dimbase"
@@ -160,7 +161,7 @@ type Tool =
 
 type ColorMode = "layer" | "bw" | "invert" | "style";
 interface Markup {
-  kind: "line" | "note" | "dim" | "cloud" | "stamp" | "leader" | "dimang" | "dimarc" | "dimdia" | "dimcenter";
+  kind: "line" | "note" | "dim" | "cloud" | "stamp" | "leader" | "dimang" | "dimarc" | "dimdia" | "dimrad" | "dimcenter";
   pts: M.Pt[];
   text?: string;
 }
@@ -248,6 +249,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "JOIN", aliases: ["J"], description: "Join collinear lines / polylines into one polyline" },
   { name: "EXPLODE", aliases: ["X"], description: "Explode polylines into individual segments" },
   { name: "STRETCH", aliases: ["S"], description: "Stretch objects through a crossing window" },
+  { name: "DRAWORDER", aliases: ["DORD"], description: "Change the paint order of the selection — FRONT draws it over everything (control what hatches and wipes cover), BACK sends it behind" },
   { name: "ALIGN", aliases: ["AL"], description: "Move + rotate objects onto a two-point alignment" },
   { name: "MATCHLAYER", aliases: ["ML", "LAYMCH"], description: "Move objects onto the source object's layer" },
   { name: "ARRAY", aliases: ["AR"], description: "Rectangular array: rows, columns, row & column spacing" },
@@ -265,6 +267,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour, linetype or lineweight" },
   { name: "SELECTIONCYCLING", aliases: ["SELCYCLE"], description: "Choose which overlapping object is selected at the cursor (Ctrl+W)" },
   { name: "ARRAYPOLAR", aliases: ["ARP"], description: "Create a polar array around a centre point; choose item count, sweep angle and whether items rotate" },
+  { name: "ARRAYPATH", aliases: ["ARPATH"], description: "Place copies of the selection along a LINE, polyline, ARC or CIRCLE path; choose item count and whether copies align to the path tangent" },
   { name: "PEDIT", aliases: ["PE"], description: "Edit polylines: PEDIT J (join selection) · PEDIT C (close) · PEDIT O (open) · PEDIT R (reverse)" },
   { name: "CAL", aliases: ["QUICKCALC", "QC"], description: "Evaluate an expression: CAL 2*PI*25 · sin/cos/tan (degrees) · sqrt/abs/round/min/max" },
   { name: "FIND", aliases: ["FIND"], description: "Find and replace text in the drawing" },
@@ -276,6 +279,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DIMANGULAR", aliases: ["DAN", "DIMANG"], description: "Angular dimension from a vertex and two rays" },
   { name: "DIMARC", aliases: ["DAR"], description: "Arc-length dimension on a picked arc" },
   { name: "DIMDIAMETER", aliases: ["DDI", "DIMDIA"], description: "Diameter dimension on a circle" },
+  { name: "DIMRADIUS", aliases: ["DIMRAD", "DRA"], description: "Radial dimension: pick a circle or arc and place an R<radius> dimension from the centre to the picked edge" },
   { name: "DIMCENTER", aliases: ["DCE"], description: "Center mark on a circle or arc" },
   { name: "DIMCONTINUE", aliases: ["DCO", "DIMCONT"], description: "Continue a dimension from the last one" },
   { name: "DIMBASELINE", aliases: ["DBA", "DIMBASE"], description: "Baseline dimension from the last one" },
@@ -1494,12 +1498,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   // drawing workspace Drafting Undo / Redo Stacks
   interface UndoAction {
-    type: "add" | "delete" | "modify" | "replace";
+    type: "add" | "delete" | "modify" | "replace" | "order";
     entities?: DxfEntity[];
     /** Modify / replace: entity objects before the operation. */
     before?: DxfEntity[];
     /** Modify / replace: entity objects currently in the drawing. */
     after?: DxfEntity[];
+    /** DRAWORDER: the full entity paint order before / after the reorder. */
+    orderBefore?: DxfEntity[];
+    orderAfter?: DxfEntity[];
   }
   const undoStack: UndoAction[] = [];
   let dirty = false;
@@ -2489,6 +2496,25 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.fillText(m.text ?? "", e1.x + 6, e1.y - 4);
         c.strokeStyle = "#ef4444";
         c.fillStyle = "#ef4444";
+      } else if (m.kind === "dimrad" && m.pts.length >= 2) {
+        // Radius dimension: centre → picked edge line with the R label at the edge
+        const c0 = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
+        const e1 = M.worldToScreen(v, m.pts[1].x, m.pts[1].y);
+        c.strokeStyle = "#38bdf8";
+        c.fillStyle = "#38bdf8";
+        c.beginPath();
+        c.moveTo(c0.x, c0.y);
+        c.lineTo(e1.x, e1.y);
+        c.stroke();
+        for (const q of [c0, e1]) {
+          c.beginPath();
+          c.arc(q.x, q.y, 2.4, 0, 7);
+          c.fill();
+        }
+        c.font = "bold 12px system-ui,sans-serif";
+        c.fillText(m.text ?? "", e1.x + 6, e1.y - 4);
+        c.strokeStyle = "#ef4444";
+        c.fillStyle = "#ef4444";
       } else if (m.kind === "dimcenter" && m.pts.length >= 1) {
         // Center mark: cross at the circle / arc center
         const c0 = M.worldToScreen(v, m.pts[0].x, m.pts[0].y);
@@ -2948,6 +2974,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       for (let i = 0; i < after.length; i++) replaceEntity(after[i], before[i]);
       if (layoutI < 0) modelEnts = ents;
       redoStack.push(act);
+    } else if (act.type === "order") {
+      // DRAWORDER: restore the full paint order captured before the reorder.
+      if (act.orderBefore) {
+        ents = act.orderBefore.slice();
+        if (layoutI < 0) modelEnts = ents;
+      }
+      redoStack.push(act);
     } else if (act.type === "replace") {
       // N→M replacement (TRIM / BREAK / EXPLODE / JOIN / FILLET / CHAMFER):
       // drop the after-entities, restore the before-entities.
@@ -2989,6 +3022,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (layoutI < 0) modelEnts = ents;
       undoStack.push(act);
       markDirty();
+    } else if (act.type === "order") {
+      if (act.orderAfter) {
+        ents = act.orderAfter.slice();
+        if (layoutI < 0) modelEnts = ents;
+      }
+      undoStack.push(act);
+      markDirty();
     } else if (act.type === "replace") {
       const beforeSet = new Set(act.before ?? []);
       const produced = act.after ?? [];
@@ -3003,6 +3043,31 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     showProps();
     draw();
     logCmd("Command: REDO");
+  }
+
+  /** DRAWORDER — paint the selection over everything (front) or behind
+   *  everything (back). Entities render in array order, so this is a pure
+   *  reorder; the relative order inside the selection is preserved. */
+  function drawOrder(mode: "front" | "back"): void {
+    if (!sel.size) {
+      logCmd(`DRAWORDER: select objects first, then choose ${mode === "front" ? "Bring to Front" : "Send to Back"}.`);
+      return;
+    }
+    const picked = new Set([...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e));
+    if (!picked.size) {
+      logCmd("DRAWORDER: 0 found.");
+      return;
+    }
+    const orderBefore = ents.slice();
+    const keep = ents.filter((e) => !picked.has(e));
+    const moving = ents.filter((e) => picked.has(e));
+    ents = mode === "front" ? [...keep, ...moving] : [...moving, ...keep];
+    if (layoutI < 0) modelEnts = ents;
+    undoStack.push({ type: "order", orderBefore, orderAfter: ents.slice() });
+    markDirty();
+    rebuildIndex();
+    draw();
+    logCmd(`DRAWORDER: ${picked.size} object(s) sent to ${mode === "front" ? "front" : "back"}.`);
   }
 
   /* ── drawing workspace Modify Engine (MOVE / COPY / ROTATE / MIRROR / SCALE / OFFSET) ── */
@@ -4866,7 +4931,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Select Similar",()=>executeDrawingCommand("SELECTSIMILAR"),!hasSelection,false,"SELSIM");
     addItem("Array",()=>executeDrawingCommand("ARRAY"),!hasSelection,false,"AR");
     addItem("Polar Array",()=>executeDrawingCommand("ARRAYPOLAR"),!hasSelection,false,"ARP");
+    addItem("Path Array",()=>executeDrawingCommand("ARRAYPATH"),!hasSelection,false,"ARPATH");
     addItem("Offset",()=>setTool("offset"),!hasSelection,false,"O");
+    addItem("Bring to Front",()=>executeDrawingCommand("DRAWORDER FRONT"),!hasSelection);
+    addItem("Send to Back",()=>executeDrawingCommand("DRAWORDER BACK"),!hasSelection);
     addItem("Match Properties",()=>setTool("match"),!hasSelection,false,"MA");
     addItem("Erase Selected",()=>setTool("erase"),!hasSelection,true,"E");
     addSep();
@@ -5367,7 +5435,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("offset", "offset", "Offset") +
           tb("trim", "trim", "Trim") +
           tb("extend", "extend", "Extend") +
-          tb("break", "break", "Break"),
+          tb("break", "break", "Break") +
+          rb("front", "To Front", `data-a="dofront"`, "Paint the selection over everything else — control what hatches and wipes cover (DRAWORDER Front)") +
+          rb("back", "To Back", `data-a="doback"`, "Send the selection behind all other objects (DRAWORDER Back)"),
         "",
         "",
         "home",
@@ -5997,6 +6067,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       overkill: () => executeDrawingCommand("OVERKILL"),
       props: () => executeDrawingCommand("PROPERTIES"),
       cal: () => executeDrawingCommand("CAL"),
+      // draw order — control what hatches and wipes cover
+      dofront: () => executeDrawingCommand("DRAWORDER FRONT"),
+      doback: () => executeDrawingCommand("DRAWORDER BACK"),
       dwgversion: () => executeDrawingCommand("DWGVERSION"),
       // AI copilot — opens the shared AI panel docked inside this shell
       aicopilot: () => toggleCadAi(),
@@ -6660,14 +6733,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         break;
       case "radius": {
-        pts.push(p);
-        if (pts.length === 2) {
-          const r = M.distance(pts[0], pts[1]);
-          results.push(`Radius = ${fmt(r)}`);
-          drawn.push({ kind: "dist", pts: [...pts] });
-          pts = [];
-          showMeas();
-          logCmd(`Radius = ${fmt(r)}`);
+        // Real radial dimension (DIMRADIUS): pick a circle or arc, the dimension
+        // runs from the centre to the picked edge and reads R<radius>.
+        const ri = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        if (ri >= 0) {
+          const e = ents[ri];
+          if (e.type === "CIRCLE" || e.type === "ARC") {
+            const len = Math.hypot(wp.x - e.center.x, wp.y - e.center.y) || 1;
+            const edge = { x: e.center.x + (e.radius * (wp.x - e.center.x)) / len, y: e.center.y + (e.radius * (wp.y - e.center.y)) / len };
+            markups.push({ kind: "dimrad", pts: [e.center, edge], text: `R${fmt(e.radius)}` });
+            results.push(`Radius: ${fmt(e.radius)}`);
+            showMeas();
+            logCmd(`DIMRADIUS: R${fmt(e.radius)} placed.`);
+          } else logCmd("DIMRADIUS: pick a circle or arc.");
         }
         break;
       }
@@ -6964,6 +7042,46 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             results.push(`Diameter: ${fmt(2 * e.radius)}`);
             showMeas();
           } else logCmd("DIMDIAMETER: pick a circle or arc.");
+        }
+        break;
+      }
+      case "arpath": {
+        // ARRAYPATH: pick the path entity, then place copies of the selection
+        // along it at equal parameter intervals.
+        const pi = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        if (pi >= 0) {
+          const path = ents[pi];
+          if (path.type === "LINE" || path.type === "LWPOLYLINE" || path.type === "ARC" || path.type === "CIRCLE") {
+            const items = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+            if (!items.length) {
+              logCmd("ARRAYPATH: select the objects to array first, then run ARRAYPATH and pick the path.");
+            } else {
+              void promptLine("Path Array — Items", "Number of items placed along the path (2–500)", "6").then((countText) => {
+                if (countText == null) return;
+                const count = Number(countText.trim());
+                if (!Number.isInteger(count) || count < 2 || count > 500) {
+                  logCmd("ARRAYPATH: item count must be an integer from 2 to 500.");
+                  return;
+                }
+                return promptLine("Path Array — Align Items", "Align each copy to the path tangent? (Yes/No)", "Yes").then((alignText) => {
+                  if (alignText == null) return;
+                  if (!/^(y|yes|n|no|true|false|1|0)$/i.test(alignText.trim())) {
+                    logCmd("ARRAYPATH: answer Yes or No for Align Items.");
+                    return;
+                  }
+                  const align = /^(y|yes|true|1)$/i.test(alignText.trim());
+                  try {
+                    const copies = X.pathArrayEnts(items, path, count, align);
+                    addEntities(copies);
+                    logCmd(`ARRAYPATH: ${copies.length} copies placed along the ${path.type.toLowerCase()} path${align ? ", aligned to the tangent" : ""}.`);
+                  } catch (err) {
+                    logCmd(`ARRAYPATH: ${(err as Error).message}`);
+                  }
+                  setTool("select");
+                });
+              }).catch(() => {});
+            }
+          } else logCmd("ARRAYPATH: the path must be a LINE, polyline, ARC or CIRCLE.");
         }
         break;
       }
@@ -8356,6 +8474,22 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       void arrayPolar();
       return;
     }
+    if (cmd === "ARRAYPATH" || cmd === "ARPATH") {
+      if (!sel.size) {
+        logCmd("ARRAYPATH: select objects first, then run ARRAYPATH and pick the path.");
+        return;
+      }
+      setTool("arpath");
+      logCmd("ARRAYPATH: pick the path — a LINE, polyline, ARC or CIRCLE.");
+      return;
+    }
+    if (cmd === "DRAWORDER" || cmd === "DORD") {
+      const sub = (parts[1] ?? "").toUpperCase();
+      if (sub === "B" || sub === "BACK") drawOrder("back");
+      else if (sub === "" || sub === "F" || sub === "FRONT" || sub === "TOP") drawOrder("front");
+      else logCmd("DRAWORDER: specify Front or Back, for example DRAWORDER BACK.");
+      return;
+    }
     if (cmd === "VIEW" || cmd === "V") {
       viewCommand(parts.slice(1));
       return;
@@ -8547,6 +8681,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "DIMDIAMETER" || cmd === "DDI" || cmd === "DIMDIA") {
       setTool("dimdia");
+      return;
+    }
+    if (cmd === "DIMRADIUS" || cmd === "DIMRAD" || cmd === "DRA") {
+      setTool("radius");
       return;
     }
     if (cmd === "DIMCENTER" || cmd === "DCE") {

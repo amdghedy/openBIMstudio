@@ -204,7 +204,7 @@ t("dimension family renders on canvas: angular, arc-length, diameter, center mar
   for (const k of ['m.kind === "dimang"', 'm.kind === "dimarc"', 'm.kind === "dimdia"', 'm.kind === "dimcenter"']) {
     assert.ok(render.includes(k), `markup renderer for ${k} missing`);
   }
-  assert.ok(src.includes('"dimang" | "dimarc" | "dimdia" | "dimcenter"'), "Markup kind union missing the dim variants");
+  assert.ok(src.includes('"dimang" | "dimarc" | "dimdia" | "dimrad" | "dimcenter"'), "Markup kind union missing the dim variants");
 });
 t("PURGE / AUDIT / OVERKILL are real database operations, not stubs", () => {
   assert.ok(!src.includes('0 unreferenced objects purged'), "PURGE stub must be gone");

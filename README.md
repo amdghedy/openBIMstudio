@@ -353,6 +353,14 @@ The Drawing Editor hatches like a production tool now, not just solid fills:
 
 Details and limits (islands/holes are filled over in traced regions, text and construction lines never bound a hatch, face tracing caps at 2,500 segments): `docs/HATCHING.md`.
 
+### Draw order, radial dimensions and path arrays — the finishing layer
+
+The three most-requested 2D editing gaps are closed, all reachable from the Ribbon, the right-click menu, the command line and the AI Agent Bridge:
+
+- **DRAWORDER** (`DORD`; `DRAWORDER FRONT` / `DRAWORDER BACK`; Home › Modify › *To Front* / *To Back*; right-click › *Bring to Front* / *Send to Back*). Entities render in paint order, so a hatch dropped over a plan can now be sent behind the walls with one click — and `U` (undo) restores the exact previous order.
+- **DIMRADIUS** (`DIMRAD`, `DRA` — Home › Dimensions › *Radius*). A real radial dimension: pick a circle or arc and the dimension runs from the centre to the picked edge with an `R<radius>` label, persistent on the canvas like its diameter sibling.
+- **ARRAYPATH** (`ARPATH` — right-click › *Path Array*). Select objects, pick a LINE, polyline, ARC or CIRCLE path, choose the item count and whether copies align to the path tangent — columns along a curved wall, chairs around a circular table, posts along a site boundary.
+
 ### Convert PDF to DWG — built into the editor (video tip)
 
 OpenBIMStudio converts a **vector PDF** into an editable drawing natively — **PDFIN** on the command line (aliases `PDFIMPORT`, `PDF2DWG`; `PDFIN N` for page N), the **Insert tab → PDF Import → PDF to Drawing…** ribbon button, the App menu → *Convert PDF to Drawing…*, the welcome screen *Open DWG / DXF / PDF…*, or just dropping a `.pdf` onto the editor. The conversion runs **locally in the browser** — the PDF is not uploaded to the cloud, so user data stays secure — and lands as a normal drawing tab: stroked paths become LINE/LWPOLYLINE, filled areas become boundaries, text stays text (position, height, rotation), colours are kept, and the drawing opens true-size in millimetres (1 pt = 0.3528 mm). Save with **QSAVE** (DXF) or **DWGSAVE** (DWG) to complete the PDF → DWG conversion. Details and limits: `docs/PDF-IMPORT.md`.

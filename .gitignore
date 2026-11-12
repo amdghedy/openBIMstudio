@@ -73,3 +73,5 @@ public/rvt/.gitignore
 .m3d-test-*/
 .dwg-test-*/
 .tmp-pdf-vector-test/
+.tmp-hatch-test/
+.tmp-draworder-test/

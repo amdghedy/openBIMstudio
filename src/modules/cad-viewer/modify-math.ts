@@ -313,6 +313,138 @@ export function polarArrayEnts(
 
 const norm360 = (a: number): number => ((a % 360) + 360) % 360;
 
+/* ── PATH ARRAY ── */
+
+/** Total drawable length of a path entity (0 for unsupported types). */
+function pathLengthOf(e: DxfEntity): number {
+  switch (e.type) {
+    case "LINE":
+      return Math.hypot(e.end.x - e.start.x, e.end.y - e.start.y);
+    case "LWPOLYLINE": {
+      if (e.points.length < 2) return 0;
+      let total = 0;
+      const n = e.closed ? e.points.length : e.points.length - 1;
+      for (let i = 0; i < n; i++) {
+        const a = e.points[i], b = e.points[(i + 1) % e.points.length];
+        total += Math.hypot(b.x - a.x, b.y - a.y);
+      }
+      return total;
+    }
+    case "ARC": {
+      if (!(e.radius > 0)) return 0;
+      const sweep = ((e.endAngle - e.startAngle) % 360 + 360) % 360 || 360;
+      return (sweep * Math.PI * e.radius) / 180;
+    }
+    case "CIRCLE":
+      return e.radius > 0 ? 2 * Math.PI * e.radius : 0;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Sample a point and tangent direction (degrees) at parameter t ∈ [0, 1]
+ * along a path entity. Supports LINE, LWPOLYLINE (open and closed), ARC and
+ * CIRCLE — DXF arcs and circles run counter-clockwise from their start angle.
+ * Returns null for unsupported types and zero-length paths.
+ */
+export function pathPointTangent(e: DxfEntity, t: number): { p: Pt; deg: number } | null {
+  const tt = Math.min(1, Math.max(0, t));
+  switch (e.type) {
+    case "LINE": {
+      const dx = e.end.x - e.start.x, dy = e.end.y - e.start.y;
+      if (!(Math.hypot(dx, dy) > 1e-12)) return null;
+      return {
+        p: { x: e.start.x + dx * tt, y: e.start.y + dy * tt },
+        deg: Math.atan2(dy, dx) / DEG,
+      };
+    }
+    case "LWPOLYLINE": {
+      const pts = e.points;
+      if (pts.length < 2) return null;
+      const segs: Array<{ a: Pt; b: Pt; len: number }> = [];
+      let total = 0;
+      const n = e.closed ? pts.length : pts.length - 1;
+      for (let i = 0; i < n; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len > 1e-12) { segs.push({ a, b, len }); total += len; }
+      }
+      if (!(total > 1e-9)) return null;
+      let d = tt * total;
+      for (const s of segs) {
+        if (d <= s.len) {
+          const k = d / s.len;
+          return {
+            p: { x: s.a.x + (s.b.x - s.a.x) * k, y: s.a.y + (s.b.y - s.a.y) * k },
+            deg: Math.atan2(s.b.y - s.a.y, s.b.x - s.a.x) / DEG,
+          };
+        }
+        d -= s.len;
+      }
+      const last = segs[segs.length - 1];
+      return { p: { x: last.b.x, y: last.b.y }, deg: Math.atan2(last.b.y - last.a.y, last.b.x - last.a.x) / DEG };
+    }
+    case "ARC": {
+      if (!(e.radius > 0)) return null;
+      const sweep = ((e.endAngle - e.startAngle) % 360 + 360) % 360 || 360;
+      const a = e.startAngle + sweep * tt;
+      return {
+        p: { x: e.center.x + e.radius * Math.cos(a * DEG), y: e.center.y + e.radius * Math.sin(a * DEG) },
+        deg: a + 90,
+      };
+    }
+    case "CIRCLE": {
+      if (!(e.radius > 0)) return null;
+      const a = 360 * tt;
+      return {
+        p: { x: e.center.x + e.radius * Math.cos(a * DEG), y: e.center.y + e.radius * Math.sin(a * DEG) },
+        deg: a + 90,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Path array. Places `count` copies of the entities at equal parameter
+ * intervals along `path` (LINE / LWPOLYLINE / ARC / CIRCLE). Open paths put
+ * items from start to end inclusive; closed paths distribute items around the
+ * whole loop without duplicating the start point. When alignToPath is true,
+ * each copy is rotated so its local +X axis follows the path tangent
+ * (AutoCAD "Aligned" behaviour). The source selection itself never moves.
+ */
+export function pathArrayEnts(entities: DxfEntity[], path: DxfEntity, count: number, alignToPath = true): DxfEntity[] {
+  if (!Number.isInteger(count) || count < 2 || count > 500) {
+    throw new RangeError("Path array item count must be an integer from 2 to 500.");
+  }
+  if (entities.length * count > 10000) {
+    throw new RangeError("Path array would create more than 10,000 entities.");
+  }
+  const kind = path?.type;
+  if (kind !== "LINE" && kind !== "LWPOLYLINE" && kind !== "ARC" && kind !== "CIRCLE") {
+    throw new TypeError("Path array needs a LINE, polyline, ARC or CIRCLE path.");
+  }
+  if (!(pathLengthOf(path) > 1e-9)) {
+    throw new RangeError("Path array needs a path with a positive length.");
+  }
+  const closed = kind === "CIRCLE" || (kind === "LWPOLYLINE" && !!path.closed);
+  const out: DxfEntity[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = closed ? i / count : i / (count - 1);
+    const at = pathPointTangent(path, t);
+    if (!at) throw new TypeError("Path array path has no positive length.");
+    for (const src of entities) {
+      const anchor = entityArrayAnchor(src);
+      const rot = alignToPath ? rotateEnt(src, anchor.x, anchor.y, at.deg) : src;
+      const a2 = entityArrayAnchor(rot);
+      out.push(translateEnt(rot, at.p.x - a2.x, at.p.y - a2.y));
+    }
+  }
+  return out;
+}
+
 /* ── OFFSET ── */
 
 /**
