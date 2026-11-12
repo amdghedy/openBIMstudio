@@ -34,7 +34,8 @@ import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getLevel, getLevels, getAuthoredGroup, getElements } from "./authoring";
-import { clampSpeedFactor, isBlockingHit, nextLevelElevation, slideVelocity, yawFromDirection } from "./walk-physics";
+import { clampSpeedFactor, constrainToWall, isBlockingHit, nextLevelElevation, slideVelocity, yawFromDirection } from "./walk-physics";
+import type { WallContact } from "./walk-physics";
 import { getProjection, setProjection } from "./camera-tools";
 import { notify } from "../core/notify";
 
@@ -118,6 +119,84 @@ const OWNED_KEYS = new Set([
 ]);
 
 const groundRay = new THREE.Raycaster();
+
+/** Intersect each target on its own: one mesh that cannot be ray-tested (IFC tiles keep no CPU geometry) must not hide the rest. */
+function safeIntersect(ray: THREE.Raycaster, targets: THREE.Object3D[]): THREE.Intersection[] {
+  const out: THREE.Intersection[] = [];
+  for (const t of targets) {
+    try { out.push(...ray.intersectObject(t, true)); } catch { /* this target cannot be ray-tested */ }
+  }
+  return out.sort((a, b) => a.distance - b.distance);
+}
+
+/* ── Fragments (IFC) sensors ──
+   IFC models are drawn by the fragments engine and keep no triangles on the main thread, so plain three.js rays never hit them.
+   The model's own (worker-side) raycast is asynchronous, so it feeds the physics through world-fixed results: wall planes the
+   walker touched, and the floor height under it. They are applied every frame, whatever the answer latency. */
+let wallContacts: WallContact[] = [];
+let fragGround: { x: number; z: number; y: number; t: number } | null = null;
+const sensorBusy = { chest: false, knee: false, ground: false };
+
+function resetSensors(): void {
+  wallContacts = []; fragGround = null;
+  sensorBusy.chest = sensorBusy.knee = sensorBusy.ground = false;
+}
+
+async function modelRay(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, range: number): Promise<{ distance: number; point: THREE.Vector3; normal: THREE.Vector3 } | null> {
+  const dom = ctx.world.renderer?.three?.domElement as HTMLElement | undefined;
+  if (!dom) return null;
+  const cam = new THREE.PerspectiveCamera(30, 1, 0.01, range);
+  if (Math.abs(dy) > 0.99) cam.up.set(0, 0, -1);
+  cam.position.set(ox, oy, oz);
+  cam.lookAt(ox + dx, oy + dy, oz + dz);
+  cam.updateMatrixWorld(true);
+  cam.updateProjectionMatrix();
+  const rect = dom.getBoundingClientRect();
+  const mouse = new THREE.Vector2(rect.left + rect.width / 2, rect.top + rect.height / 2); // the camera axis = our ray
+  let best: { distance: number; point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
+  for (const [, m] of ctx.fragments.list as Iterable<[unknown, any]>) {
+    if (typeof m?.raycast !== "function") continue;
+    try {
+      const r = await m.raycast({ camera: cam, mouse, dom });
+      if (r && r.point && r.normal && Number.isFinite(r.distance) && r.distance <= range && (!best || r.distance < best.distance)) {
+        best = { distance: r.distance, point: r.point.clone(), normal: r.normal.clone() };
+      }
+    } catch { /* model not ready */ }
+  }
+  return best;
+}
+
+function fireSensors(): void {
+  const speed = Math.hypot(state.vel.x, state.vel.z);
+  const feetY = state.pos.y - eyeHeight();
+  const x = state.pos.x, z = state.pos.z;
+  if (speed > 0.2) {
+    const dx = state.vel.x / speed, dz = state.vel.z / speed;
+    const reach = BODY_RADIUS + 0.45 * speed + 0.4;
+    const heights: Array<["chest" | "knee", number]> = [["knee", feetY + MAX_STEP + 0.1], ["chest", feetY + 1.2]];
+    for (const [name, y] of heights) {
+      if (sensorBusy[name]) continue;
+      sensorBusy[name] = true;
+      void modelRay(x, y, z, dx, 0, dz, reach).then((h) => {
+        if (!state.enabled || !h) return;
+        const hl = Math.hypot(h.normal.x, h.normal.z);
+        if (Math.abs(h.normal.y) >= 0.7 || hl < 1e-6) return; // floor / ramp, not a wall
+        let nx = h.normal.x / hl, nz = h.normal.z / hl;
+        if (nx * dx + nz * dz > 0) { nx = -nx; nz = -nz; } // face the walker
+        const c: WallContact = { px: h.point.x, pz: h.point.z, nx, nz, t: performance.now() };
+        const same = wallContacts.findIndex((o) => o.nx * nx + o.nz * nz > 0.95 && Math.abs((o.px - c.px) * nx + (o.pz - c.pz) * nz) < 0.2);
+        if (same >= 0) wallContacts[same] = c; else { wallContacts.push(c); if (wallContacts.length > 6) wallContacts.shift(); }
+      }).finally(() => { sensorBusy[name] = false; });
+    }
+  }
+  if (!sensorBusy.ground) {
+    sensorBusy.ground = true;
+    const from = Math.max(feetY + MAX_STEP + 0.08, state.targetGroundY + MAX_STEP + 0.08);
+    void modelRay(x, from, z, 0, -1, 0, GROUND_RAY_LENGTH).then((h) => {
+      if (state.enabled && h) fragGround = { x, z, y: h.point.y, t: performance.now() };
+    }).finally(() => { sensorBusy.ground = false; });
+  }
+}
 
 // ── HUD ──
 let overlay: HTMLDivElement | null = null;
@@ -250,14 +329,16 @@ function raycastGround(x: number, z: number, fromY: number): number | null {
   groundRay.set(origin, new THREE.Vector3(0, -1, 0));
   groundRay.far = GROUND_RAY_LENGTH;
   const targets = getWalkTargets();
-  if (!targets.length) return null;
+  let found: number | null = null;
   try {
-    const hits = groundRay.intersectObjects(targets, true);
+    const hits = safeIntersect(groundRay, targets);
     for (const h of hits) {
-      if (h.point.y < fromY - 0.02) return h.point.y;
+      if (h.point.y < fromY - 0.02) { found = h.point.y; break; }
     }
   } catch { /* */ }
-  return null;
+  const fg = fragGround;
+  if (fg && performance.now() - fg.t < 1000 && Math.hypot(fg.x - x, fg.z - z) < 0.9 && fg.y < fromY - 0.02 && (found == null || fg.y > found)) found = fg.y;
+  return found;
 }
 
 function eyeHeight(): number {
@@ -309,6 +390,13 @@ function updateGroundTarget() {
 
 /** Block / slide the horizontal motion against walls. Returns true when blocked this frame. */
 function applyCollision(dt: number): void {
+  // Wall planes measured by the fragments sensors (IFC models): applied every frame, independent of answer latency.
+  const nowMs = performance.now();
+  wallContacts = wallContacts.filter((c) => nowMs - c.t < 800);
+  for (const c of wallContacts) {
+    const r = constrainToWall(state.pos.x, state.pos.z, state.vel.x, state.vel.z, c, BODY_RADIUS);
+    if (r.hit) { state.pos.x = r.x; state.pos.z = r.z; state.vel.x = r.vx; state.vel.z = r.vz; }
+  }
   const speed = Math.hypot(state.vel.x, state.vel.z);
   if (speed < 0.05) return;
   const models = getCollisionTargets();
@@ -322,7 +410,7 @@ function applyCollision(dt: number): void {
     groundRay.set(new THREE.Vector3(state.pos.x, y, state.pos.z), dir);
     groundRay.far = BODY_RADIUS + travel + 0.05;
     let hits: THREE.Intersection[] = [];
-    try { hits = groundRay.intersectObjects(models, true); } catch { /* */ }
+    hits = safeIntersect(groundRay, models);
     for (const h of hits) {
       if (!h.face) continue;
       if (!h.object.visible) continue;
@@ -468,6 +556,7 @@ function enableWalkModeInner(): void {
   // ── Show HUD, lock pointer ──
   const ov = ensureOverlay();
   ov.style.display = "block";
+  resetSensors();
   state.enabled = true;
   state.lastT = performance.now();
   state.raycastTick = 0;
@@ -488,6 +577,7 @@ function enableWalkModeInner(): void {
 export function disableWalkMode(): void {
   if (!state.enabled) return;
   state.enabled = false;
+  resetSensors();
 
   if (state.rafId != null) {
     cancelAnimationFrame(state.rafId);
@@ -710,6 +800,7 @@ function tickBody(now: number) {
   const alpha = 1 - Math.exp(-ACCEL * dt);
   state.vel.lerp(targetVel, alpha);
 
+  fireSensors();
   state.collideTick = (state.collideTick + 1) % COLLIDE_INTERVAL;
   if (state.collideTick === 0) applyCollision(dt);
 

@@ -34,3 +34,25 @@ export function nextLevelElevation(levels: number[], groundY: number, dir: 1 | -
   for (let i = sorted.length - 1; i >= 0; i--) if (sorted[i] < groundY - eps) return sorted[i];
   return null;
 }
+
+/** A wall plane the walker recently touched: a point on it and its horizontal unit normal facing the walker. */
+export interface WallContact { px: number; pz: number; nx: number; nz: number; t: number }
+
+/**
+ * Keep a walker of the given radius on the free side of a wall plane.
+ * Slides the velocity along the wall and pushes the position out of it. The wall only counts near the point it was
+ * measured at (`reach` metres sideways), so a doorway beside a wall is not blocked by its extended plane, and a
+ * walker that is already well behind the plane is left alone.
+ */
+export function constrainToWall(
+  x: number, z: number, vx: number, vz: number, c: WallContact, radius: number, reach = 1.5,
+): { x: number; z: number; vx: number; vz: number; hit: boolean } {
+  const dx = x - c.px, dz = z - c.pz;
+  const d = dx * c.nx + dz * c.nz;
+  const lateral = Math.abs(dx * -c.nz + dz * c.nx);
+  if (lateral > reach || d >= radius || d < -0.5) return { x, z, vx, vz, hit: false };
+  let [nvx, nvz] = [vx, vz];
+  if (vx * c.nx + vz * c.nz < 0) [nvx, nvz] = slideVelocity(vx, vz, c.nx, c.nz);
+  const push = radius - d;
+  return { x: x + c.nx * push, z: z + c.nz * push, vx: nvx, vz: nvz, hit: true };
+}
