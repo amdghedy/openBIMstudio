@@ -314,12 +314,14 @@ function applyClipping(): void {
   const existingItems = new Set(clipperItems(c));
 
   let applied = false;
+  const created: any[] = [];
 
   // API 1 — preferred
   if (c && world && typeof c.createFromNormalAndCoplanarPoint === "function") {
     try {
       for (const s of specs) {
-        c.createFromNormalAndCoplanarPoint(world, s.normal.clone(), s.point.clone());
+        const made = c.createFromNormalAndCoplanarPoint(world, s.normal.clone(), s.point.clone());
+        if (made && typeof made === "object") created.push(made);
       }
       applied = true;
     } catch (err) {
@@ -332,6 +334,7 @@ function applyClipping(): void {
     try {
       for (const s of specs) {
         const item: any = c.create(world);
+        if (item && typeof item === "object") created.push(item);
         const plane: THREE.Plane | undefined =
           item?.three?.plane ?? item?.plane ?? item?.three;
         if (plane?.normal) {
@@ -345,7 +348,10 @@ function applyClipping(): void {
     }
   }
 
-  if (applied) boxItems = clipperItems(c).filter((i) => !existingItems.has(i));
+  if (applied) {
+    const diff = clipperItems(c).filter((i) => !existingItems.has(i));
+    boxItems = created.length >= diff.length ? created : diff;
+  }
 
   // Fallback — native WebGLRenderer clippingPlanes (no ThatOpen raycaster)
   if (!applied) {
@@ -586,6 +592,7 @@ export function setupSectionBox(): void {
     reset: resetSectionBox,
     isActive: isSectionBoxActive,
     getBox: () => box ? box.clone() : null,
+    debugPlanes: () => ({ boxItems: boxItems.length, clipperList: clipperItems(clipper()).length, renderer: ((ctx as any).world?.renderer?.three?.clippingPlanes ?? []).length }),
     setBox: (b: THREE.Box3) => {
       box = b.clone();
       if (helper) helper.box.copy(box);

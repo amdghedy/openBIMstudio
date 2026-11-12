@@ -474,6 +474,8 @@ test('SECTION BOX: clips the model on screen and restores it when switched off',
   await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionBox.disable());
   await page.waitForTimeout(500);
   const after = await drawnPixels(page);
+  const dbg = await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionBox.debugPlanes());
+  console.log('SECTION-DBG ' + JSON.stringify(dbg));
   const planesAfter = await page.evaluate(() => ((window as any).__OBS_CTX__.world.renderer.three.clippingPlanes ?? []).length);
 
   const diag = `before ${before}, box-on ${full}, halved ${halved}, after-off ${after}; box ${JSON.stringify(info)}; planes after off ${planesAfter}; planes after edit ${half}`;
