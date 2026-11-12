@@ -516,7 +516,10 @@ test('SECTION BOX: dragging a face arrow with a real mouse moves that face and k
   await page.mouse.move(s.x, s.y); await page.waitForTimeout(150);
   const cursor = await page.evaluate(() => (window as any).__OBS_CTX__.world.renderer.three.domElement.style.cursor);
   await page.mouse.down();
+  const midDown = await page.evaluate(() => ({ dragging: (window as any).__OBS_CTX__.features.sectionBox.debugPlanes().dragging, controls: (window as any).__OBS_CTX__.world.camera.controls.enabled }));
   await page.mouse.move(s.x - 60, s.y, { steps: 8 });
+  const midMove = await page.evaluate(() => ({ dragging: (window as any).__OBS_CTX__.features.sectionBox.debugPlanes().dragging, maxX: (window as any).__OBS_CTX__.features.sectionBox.getBox().max.x }));
+  console.log('SECTION-MID ' + JSON.stringify({ midDown, midMove }));
   await page.mouse.up();
   await page.waitForTimeout(300);
   const after = await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; return { maxX: sb.getBox().max.x, planes: sb.debugPlanes() }; });

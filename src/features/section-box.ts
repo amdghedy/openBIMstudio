@@ -615,7 +615,7 @@ export function setupSectionBox(): void {
     reset: resetSectionBox,
     isActive: isSectionBoxActive,
     getBox: () => box ? box.clone() : null,
-    debugPlanes: () => ({ boxItems: boxItems.length, clipperList: clipperItems(clipper()).length, renderer: ((ctx as any).world?.renderer?.three?.clippingPlanes ?? []).length }),
+    debugPlanes: () => ({ dragging: !!faceDragState, boxItems: boxItems.length, clipperList: clipperItems(clipper()).length, renderer: ((ctx as any).world?.renderer?.three?.clippingPlanes ?? []).length }),
     setBox: (b: THREE.Box3) => {
       box = b.clone();
       if (helper) helper.box.copy(box);
