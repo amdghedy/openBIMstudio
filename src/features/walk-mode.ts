@@ -166,12 +166,15 @@ async function modelRay(ox: number, oy: number, oz: number, dx: number, dy: numb
   return best;
 }
 
-function fireSensors(): void {
-  const speed = Math.hypot(state.vel.x, state.vel.z);
+function fireSensors(wishX: number, wishZ: number, wishSpeed: number): void {
+  // Probe where the walker WANTS to go (keys held), not where it currently moves: while pressed against a wall the
+  // actual speed is ~0, and probing by speed let the wall contact expire and the body creep into the wall and bounce.
+  const speed = Math.hypot(wishX, wishZ) > 0.01 ? wishSpeed : Math.hypot(state.vel.x, state.vel.z);
   const feetY = state.pos.y - eyeHeight();
   const x = state.pos.x, z = state.pos.z;
   if (speed > 0.2) {
-    const dx = state.vel.x / speed, dz = state.vel.z / speed;
+    const useWish = Math.hypot(wishX, wishZ) > 0.01;
+    const dx = useWish ? wishX : state.vel.x / speed, dz = useWish ? wishZ : state.vel.z / speed;
     const reach = BODY_RADIUS + 0.45 * speed + 0.4;
     const heights: Array<["chest" | "knee", number]> = [["knee", feetY + MAX_STEP + 0.1], ["chest", feetY + 1.2]];
     for (const [name, y] of heights) {
@@ -392,7 +395,7 @@ function updateGroundTarget() {
 function applyCollision(dt: number): void {
   // Wall planes measured by the fragments sensors (IFC models): applied every frame, independent of answer latency.
   const nowMs = performance.now();
-  wallContacts = wallContacts.filter((c) => nowMs - c.t < 800);
+  wallContacts = wallContacts.filter((c) => nowMs - c.t < 1200);
   for (const c of wallContacts) {
     const r = constrainToWall(state.pos.x, state.pos.z, state.vel.x, state.vel.z, c, BODY_RADIUS);
     if (r.hit) { state.pos.x = r.x; state.pos.z = r.z; state.vel.x = r.vx; state.vel.z = r.vz; }
@@ -800,7 +803,7 @@ function tickBody(now: number) {
   const alpha = 1 - Math.exp(-ACCEL * dt);
   state.vel.lerp(targetVel, alpha);
 
-  fireSensors();
+  fireSensors(targetVel.x / (speed || 1), targetVel.z / (speed || 1), speed);
   state.collideTick = (state.collideTick + 1) % COLLIDE_INTERVAL;
   if (state.collideTick === 0) applyCollision(dt);
 
