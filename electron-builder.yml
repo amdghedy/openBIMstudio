@@ -18,7 +18,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: "OpenBIMStudio-Setup-\${version}-\${arch}.\${ext}"
+  artifactName: 'OpenBIMStudio-Setup-${version}-${arch}.${ext}'
 nsis:
   oneClick: false
   perMachine: false
