@@ -24,6 +24,7 @@ import "./features/worksharing-panel";
 import "./features/streaming-panel";
 import "./features/batch-plot-panel";
 import { setupExportCadViews } from "./features/export-cad-views";
+import { setupPdfToDwg } from "./features/pdf-to-dwg";
 import { setupNavLowRes } from "./features/nav-lowres";
 import "./features/hatch-panel";
 import "./features/arc-wall-tool";
@@ -56,6 +57,7 @@ declare global {
 
 export function bootStrengtheningModules(): void {
   setupExportCadViews();
+  setupPdfToDwg();
   setupNavLowRes();
   const txn = getTransactionService();
   const regen = getParametricRegenService();

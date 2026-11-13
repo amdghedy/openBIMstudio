@@ -294,6 +294,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "SVGIMPORT", aliases: ["SVG"], description: "Import an SVG file as polylines and circles" },
   { name: "FIELD", aliases: ["FLD"], description: "Insert text computed from the drawing (date, name, length, area...)" },
   { name: "DWGOPEN", aliases: [], description: "Open DWG / DXF drawings as new tabs in this editor (LibreDWG reader worker)" },
+  { name: "PDFTODWG", aliases: ["PDFDWG", "PDF2DWGFILE"], description: "PDF → DWG in one step: pick a vector PDF and pages, download .dwg (a zip for several pages) — converted locally, nothing is uploaded" },
   { name: "PDFIN", aliases: ["PDFIMPORT", "PDF2DWG"], description: "Convert a vector PDF into an editable drawing — parsed locally, the PDF is not uploaded; then QSAVE (DXF) or DWGSAVE (DWG). PDFIN N converts page N" },
   { name: "DWGJSONIMP", aliases: ["JSONDUMP"], description: "Re-import a dwg2json database dump into the editor (JSON round trip)" },
   { name: "DWGREWRITE", aliases: ["SAVETODXF"], description: "Re-save the drawing through the DXF writer" },
@@ -5543,7 +5544,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "PDF Import",
-        rb("model-curve", "PDF to Drawing…", `data-a="pdfin"`, "Convert a vector PDF into an editable drawing — parsed locally in this browser, the PDF is not uploaded (PDFIN); then QSAVE for DXF or DWGSAVE for DWG"),
+        rb("model-curve", "PDF to Drawing…", `data-a="pdfin"`, "Convert a vector PDF into an editable drawing — parsed locally in this browser, the PDF is not uploaded (PDFIN); then QSAVE for DXF or DWGSAVE for DWG") +
+        rb("export", "PDF → DWG file…", `data-a="pdftodwg"`, "Convert a vector PDF straight to a downloadable DWG (one per page, zipped when several) — converted locally, nothing is uploaded (PDFTODWG)"),
         "",
         "",
         "insert",
@@ -5940,6 +5942,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       dataextract: () => extractEntityCsv(),
       landxmlin: () => xmlPicker?.click(),
       pdfin: () => openPdfImportPicker(),
+      pdftodwg: () => { void import("./pdf-to-dwg").then((m) => m.openPdfToDwg()); },
       // View tab
       zscale: () => {
         void promptLine("Zoom Scale", "Enter a scale factor (2 = 2×, 0.5 = half)", "2").then((s) => {
@@ -8831,6 +8834,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         input.onchange = () => { if (input.files?.length) void m.openDrawingFiles(input.files); };
         input.click();
       });
+      return;
+    }
+    if (cmd === "PDFTODWG" || cmd === "PDFDWG" || cmd === "PDF2DWGFILE") {
+      void import("./pdf-to-dwg").then((m) => m.openPdfToDwg());
       return;
     }
     if (cmd === "PDFIN" || cmd === "PDFIMPORT" || cmd === "PDF2DWG") {

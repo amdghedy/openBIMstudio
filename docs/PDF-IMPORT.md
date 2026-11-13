@@ -7,6 +7,10 @@ drop a `.pdf` onto the drawing editor, welcome screen → *Open DWG / DXF / PDF�
 The converter turns a **vector PDF** into an editable drawing — lines, polylines, curves and text become
 real LINE / LWPOLYLINE / TEXT entities you can snap to, modify, dimension and re-issue.
 
+## One-step PDF → DWG
+
+Want just the DWG file? Use **File → PDF → DWG…**, the ribbon button *PDF → DWG file…*, or `PDFTODWG`. Pick the PDF, type the pages (`all`, `1`, `2-4`, `1,3`), choose DWG or DXF and the scale, and the file downloads (a zip with one DWG per page when several pages). It is the same extraction as `PDFIN` followed by the DWG writer, without opening a tab. Pages with no vector content are listed in the result message.
+
 ## Privacy — nothing is uploaded
 
 Parsing runs **locally in your browser** with the bundled PDF.js (loaded from the app itself, no CDN).

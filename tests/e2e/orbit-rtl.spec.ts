@@ -697,3 +697,41 @@ test('WALK MODE: smooth constant-speed walking, stops at a wall without passing 
   expect(after.controls, 'orbit controls are back').toBe(true);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+
+test('PDF -> DWG: one step in the browser - real PDF in, real binary DWG downloaded', async ({ page }) => {
+  test.setTimeout(120000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__obsPdfToDwg), { timeout: 30000 }).toBe('function');
+  // A one-page vector PDF built in the page.
+  const content = ['0 0 0 RG 1 w', '100 100 m 300 100 l 300 200 l S', '0 0 1 RG', '100 300 m 400 300 l S', 'BT /F1 12 Tf 100 500 Td (HELLO) Tj ET'].join('\n');
+  const objs: string[] = [];
+  objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objs[2] = '<< /Type /Pages /Kids [3 0 R] /Count 1 >>';
+  objs[3] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>';
+  objs[4] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+  objs[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  let pdf = '%PDF-1.4\n'; const off = [0];
+  for (let i = 1; i < objs.length; i++) { off[i] = pdf.length; pdf += `${i} 0 obj\n${objs[i]}\nendobj\n`; }
+  const x = pdf.length;
+  pdf += `xref\n0 ${objs.length}\n0000000000 65535 f \n`;
+  for (let i = 1; i < objs.length; i++) pdf += `${String(off[i]).padStart(10, '0')} 00000 n \n`;
+  pdf += `trailer\n<< /Size ${objs.length} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF\n`;
+  void page.evaluate((text) => (window as any).__obsPdfToDwg(new File([text], 'site plan.pdf', { type: 'application/pdf' })), pdf);
+  const submit = page.getByRole('button', { name: /Convert and download/i });
+  await expect(submit, 'the PDF to DWG dialog opens').toBeVisible({ timeout: 30000 });
+  const dl = page.waitForEvent('download', { timeout: 90000 });
+  await submit.click();
+  const d = await dl;
+  const name = d.suggestedFilename();
+  const fs = await import('node:fs');
+  const bytes = fs.readFileSync(await d.path());
+  console.log('PDF2DWG ' + JSON.stringify({ name, size: bytes.length, head: bytes.subarray(0, 6).toString() }));
+  expect(name, 'downloaded name').toBe('site plan.dwg');
+  expect(bytes.subarray(0, 6).toString(), 'binary DWG signature').toMatch(/^AC10/);
+  expect(bytes.length, 'a non-trivial DWG').toBeGreaterThan(500);
+  expect(errors, errors.join('\n')).toEqual([]);
+});

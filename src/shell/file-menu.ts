@@ -212,6 +212,7 @@ function build() {
     zitem("2d", "🗂", "Sheets 2D", () => { closeFileMenu(); openSheets(); }, "production drawing sheets"),
     zitem("2d", "🏭", "P&ID Modeler", () => { closeFileMenu(); openPid(); }, "2D process diagram"),
     zitem("2d", "📐", "Views → CAD (DWG / DXF)…", () => { closeFileMenu(); void import("../features/export-cad-views").then((m) => m.openExportCadDialog()); }, "plan · section · elevation → CAD"),
+    zitem("2d", "📄", "PDF → DWG…", () => { closeFileMenu(); void import("../features/pdf-to-dwg").then((m) => m.openPdfToDwg()); }, "vector PDF → DWG / DXF"),
     zitem("2d", "🖨", "Print…", () => printView(), "2D output"),
     zoneHeader("app", "Application"),
     zitem("app", "🚪", "Close", () => closeProject()),
