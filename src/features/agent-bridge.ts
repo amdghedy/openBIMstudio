@@ -23,6 +23,7 @@
  * the user's own local collab server.
  */
 import { notify } from "../core/notify";
+import { fmtDateTime } from "../core/region";
 
 export interface AgentEngineState {
   open: boolean;
@@ -73,7 +74,7 @@ function emit(entry: AgentLogEntry): void {
 
 function pushLog(kind: AgentLogEntry["kind"], source: string, text: string, ok: boolean, detail?: string): AgentLogEntry {
   const entry: AgentLogEntry = {
-    at: new Date().toLocaleTimeString(),
+    at: fmtDateTime(new Date()),
     source,
     kind,
     text: String(text ?? ""),

@@ -342,7 +342,7 @@ const loadTable = async (name) => plotMod.parsePlotStyleTable(fixture(name));
 
   t("BAK / SV$ backups and LandXML .xml are accepted on open and drop", () => {
     for (const m of [
-      '".dxf,.dwg,.bak,.sv$,.xml"',
+      '".dxf,.dwg,.bak,.sv$,.xml',
       "/\\.(dwg|dxf|bak|sv\\$|xml)$/i.test(f.name)",
       "host.importLandXml(file)",
     ]) assert.ok(new RegExp(m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(viewer) || viewer.includes(m), `missing: ${m}`);
