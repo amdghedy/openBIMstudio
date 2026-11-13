@@ -241,7 +241,7 @@ t("translate/rotate/scale/mirror entity transforms still work", () => {
 // ── 15. DWG-style revision cloud and repeated COPY workflow ──
 t("revision clouds are native closed polylines so they can be selected and exported", () => {
   const viewer = fs.readFileSync(path.join(ROOT, "src/features/cad-viewer.ts"), "utf8");
-  assert.ok(viewer.includes('{ name: "REVCLOUD", aliases: ["RC", "CLOUD"]'), "REVCLOUD command and aliases missing");
+  assert.ok(/\{ name: "REVCLOUD", aliases: \["RC", "CLOUD"[,\]]/.test(viewer), "REVCLOUD command and aliases missing");
   assert.ok(viewer.includes('if (cmd === "RC" || cmd === "CLOUD" || cmd === "REVCLOUD"'), "typed revision-cloud command is not dispatched");
   assert.ok(viewer.includes("const boundary = [...pts, pts[0]];"), "cloud boundary must close back to its first point");
   assert.ok(viewer.includes("const preview = M.revisionCloudPoints(p)"), "cloud must show a scalloped live preview while drawing");

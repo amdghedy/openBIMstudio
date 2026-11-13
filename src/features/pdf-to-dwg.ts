@@ -1,4 +1,5 @@
 /** "PDF → DWG…" - pick a vector PDF, choose pages, download .dwg (or a .zip of one DWG per page). Local, nothing is uploaded. */
+import { ctx } from "../core/context";
 import { openFormModal } from "./form-modal";
 import { zipStore } from "../modules/export/zip-store";
 import { parsePageSpec } from "../modules/drawings/pdf-to-dwg";
@@ -69,5 +70,5 @@ async function convertPdfToDwgPageCount(bytes: Uint8Array): Promise<number> {
 
 /** Boot hook: lets automated browser tests (and scripts) run the converter on a File without the OS file chooser. */
 export function setupPdfToDwg(): void {
-  (window as any).__obsPdfToDwg = (file: File) => runPdfToDwg(file);
+  (ctx.features as any).pdfToDwg = { run: (file: File) => runPdfToDwg(file) };
 }

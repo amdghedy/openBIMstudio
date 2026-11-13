@@ -705,7 +705,7 @@ test('PDF -> DWG: one step in the browser - real PDF in, real binary DWG downloa
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.locator('#obs-hero-3d').click({ timeout: 30000 });
-  await expect.poll(() => page.evaluate(() => typeof (window as any).__obsPdfToDwg), { timeout: 30000 }).toBe('function');
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__OBS_CTX__?.features?.pdfToDwg?.run), { timeout: 30000 }).toBe('function');
   // A one-page vector PDF built in the page.
   const content = ['0 0 0 RG 1 w', '100 100 m 300 100 l 300 200 l S', '0 0 1 RG', '100 300 m 400 300 l S', 'BT /F1 12 Tf 100 500 Td (HELLO) Tj ET'].join('\n');
   const objs: string[] = [];
@@ -720,7 +720,7 @@ test('PDF -> DWG: one step in the browser - real PDF in, real binary DWG downloa
   pdf += `xref\n0 ${objs.length}\n0000000000 65535 f \n`;
   for (let i = 1; i < objs.length; i++) pdf += `${String(off[i]).padStart(10, '0')} 00000 n \n`;
   pdf += `trailer\n<< /Size ${objs.length} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF\n`;
-  void page.evaluate((text) => (window as any).__obsPdfToDwg(new File([text], 'site plan.pdf', { type: 'application/pdf' })), pdf);
+  void page.evaluate((text) => (window as any).__OBS_CTX__.features.pdfToDwg.run(new File([text], 'site plan.pdf', { type: 'application/pdf' })), pdf);
   const submit = page.getByRole('button', { name: /Convert and download/i });
   await expect(submit, 'the PDF to DWG dialog opens').toBeVisible({ timeout: 30000 });
   const dl = page.waitForEvent('download', { timeout: 90000 });
