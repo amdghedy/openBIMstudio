@@ -19,6 +19,7 @@ import { generateScheduleScene } from "../views/generators/schedule";
 import { buildAnnotationLayer } from "../views/annotation-layer";
 import { emptyScene, type Scene2D } from "../views/scene";
 import { createPdfDocument, drawScene2DToPdf, MM_TO_PT, downloadPdf } from "./pdf";
+import { computeViewportTransform } from "../views/sheet-layout";
 
 async function sceneForView(viewId: string): Promise<Scene2D> {
   const v = getView(viewId);
@@ -71,13 +72,13 @@ async function drawViewportOnPage(
     return;
   }
 
-  const scaleDenom = parseScale(vp.scale, view.scale);
-  const worldW = (vp.width * scaleDenom) / 1000;
-  const worldToPt = (vp.width * MM_TO_PT) / worldW;   // points per metre
-
   const scene = await sceneForView(vp.viewId);
-  const sceneCx = (scene.bounds.minX + scene.bounds.maxX) / 2;
-  const sceneCz = (scene.bounds.minZ + scene.bounds.maxZ) / 2;
+  const tf = computeViewportTransform(vp, sheet, view, scene);
+  const scaleDenom = tf.scaleDenom;
+  const worldToPt = (tf.widthMm * MM_TO_PT) / Math.max(tf.viewBox.w, 1e-9);
+
+  const sceneCx = tf.viewBox.x + tf.viewBox.w / 2;
+  const sceneCz = -(tf.viewBox.y + tf.viewBox.h / 2);
 
   const vpCxMm = vp.x + vp.width / 2;
   const vpCyTopDown = vp.y + vp.height / 2;

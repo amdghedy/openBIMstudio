@@ -440,6 +440,23 @@ export async function showAllPreservingTwins(): Promise<void> {
 export function getEdits(): FragEdit[] {
   return [...runtime.values()].map((r) => r.edit);
 }
+/** Twins ready for IFC write-back; geometry refreshed from the live mesh when needed. */
+export function getTwinsForIfcExport(): FragEdit[] {
+  const out: FragEdit[] = [];
+  for (const rt of runtime.values()) {
+    const e = { ...rt.edit };
+    if ((!e.geometry?.positions || e.geometry.positions.length < 9) && rt.geometry) {
+      const attr = rt.geometry.getAttribute?.("position");
+      if (attr && attr.array && attr.count >= 3) {
+        const arr = Array.from(attr.array as ArrayLike<number>);
+        e.geometry = { positions: arr };
+      }
+    }
+    out.push(e);
+  }
+  return out;
+}
+
 export function getEditCount(): number { return runtime.size; }
 export function getSelectedEditId(): string | null { return selectedEditId; }
 export function isFragEditReady(): boolean { return initialized; }
@@ -1411,6 +1428,7 @@ export function setupFragEdit(): void {
     remove: removeEdit,
     clearAll: clearAllEdits,
     list: getEdits,
+    getTwinsForIfcExport,
     count: getEditCount,
     select: selectEdit,
     focus: focusEdit,

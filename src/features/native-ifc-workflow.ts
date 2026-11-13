@@ -45,6 +45,7 @@ function fragEdit(): Any | null {
 function listTwinEdits(): Any[] {
   const fe = fragEdit();
   try {
+    if (typeof fe?.getTwinsForIfcExport === "function") return fe.getTwinsForIfcExport() ?? [];
     if (typeof fe?.list === "function") return fe.list() ?? [];
     if (typeof fe?.serialize === "function") return fe.serialize() ?? [];
   } catch {
