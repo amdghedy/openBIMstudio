@@ -17,7 +17,8 @@ Use Node.js 24 and npm:
 \`\`\`powershell
 npm ci
 npm run build
-npm install --no-save --package-lock=false electron@latest electron-builder@latest
+npm pkg set "devDependencies.electron=45.3.2" "devDependencies.electron-builder=26.0.12"
+npm install --no-save --package-lock=false electron@45.3.2 electron-builder@26.0.12
 npx electron-builder --config electron-builder.yml --win nsis --x64
 \`\`\`
 
