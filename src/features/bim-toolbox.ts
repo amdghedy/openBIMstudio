@@ -287,6 +287,21 @@ modify.content.append(
     action("Align Z", () => { const n = alignSelectedAxis("z"); toast(n ? `Aligned ${n} element(s) to the first selection.` : "Select at least two authored elements.", n ? "success" : "warn"); }),
   ),
   row(
+    action("Native IFC: Make editable", () => {
+      const n = (ctx as any).features?.nativeIfc;
+      if (!n?.makeModelEditable) { toast("Native IFC workflow still loading…", "warn"); return; }
+      void n.makeModelEditable();
+    }),
+    action("Native IFC: Export IFC4", () => {
+      const n = (ctx as any).features?.nativeIfc;
+      if (!n?.exportUpdatedIfc) { toast("Native IFC workflow still loading…", "warn"); return; }
+      n.exportUpdatedIfc();
+    }),
+    action("Native IFC: Workflow panel", () => {
+      const n = (ctx as any).features?.nativeIfc;
+      if (!n?.open) { toast("Native IFC workflow still loading…", "warn"); return; }
+      n.open();
+    }),
     action("Lock Distance", () => { const t = (ctx as any).features?.constraintTools; if (!t) { toast("Constraint tools still loading…", "warn"); return; } t.lockDistance(); }),
     action("Equal Length", () => { const t = (ctx as any).features?.constraintTools; if (!t) { toast("Constraint tools still loading…", "warn"); return; } t.equalLength(); }),
   ),

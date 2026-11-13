@@ -125,6 +125,11 @@ async function runOnce(): Promise<void> {
     const m: Any = await import("./modules/parametric/wire-authoring");
     m.wireParametricToAuthoring?.();
   });
+  await safe("native-ifc-workflow", async () => {
+    const m: Any = await import("./features/native-ifc-workflow");
+    m.setupNativeIfcWorkflow?.();
+  });
+
   // Vertical (stacked) wall joins across level boundaries
   await safe("wall-join-vertical", async () => {
     const m: Any = await import("./modules/wall-join/setup");

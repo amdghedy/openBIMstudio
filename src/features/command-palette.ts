@@ -599,6 +599,36 @@ function registerAuthoringCommands(): void {
     });
   }
   registerCommand({
+    id: "authoring.nativeIfc.makeEditable",
+    label: "Native IFC: Make model editable",
+    category: "Authoring",
+    hint: "Convert linked IFC/FRAG elements into editable Native Twins",
+    run: async () => {
+      const m = await import("./native-ifc-workflow");
+      await m.makeModelEditable();
+    },
+  });
+  registerCommand({
+    id: "authoring.nativeIfc.export",
+    label: "Native IFC: Export updated IFC",
+    category: "Authoring",
+    hint: "Write-back Native Twin edits as IFC4 files",
+    run: async () => {
+      const m = await import("./native-ifc-workflow");
+      m.exportUpdatedIfc();
+    },
+  });
+  registerCommand({
+    id: "authoring.nativeIfc.panel",
+    label: "Native IFC: Workflow panel",
+    category: "Authoring",
+    hint: "Open native IFC workflow + change history",
+    run: async () => {
+      const m = await import("./native-ifc-workflow");
+      m.showNativeIfcPanel();
+    },
+  });
+  registerCommand({
     id: "authoring.fragEditPanel",
     label: "Open Native Twin panel",
     category: "Authoring",

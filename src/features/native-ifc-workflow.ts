@@ -1,0 +1,369 @@
+/**
+ * Native IFC workflow (browser) — openBIMstudio counterpart to “IFC as native model”.
+ *
+ * That Open’s Nov 2025 Revit product claims desktop RVT↔IFC bidirectional sync.
+ * This module delivers the *same user goals* inside openBIMstudio (web):
+ *   1. Open linked IFC/FRAG as editable Native Twins (system-like elements)
+ *   2. Edit in-app → export updated IFC4 (write-back without a separate “export only” dead-end)
+ *   3. Lightweight change history (“git for BIM” session log)
+ *   4. One-click commands from the UI
+ *
+ * Honest scope: this is NOT a Revit plugin and does not control Autodesk Revit.
+ * It is native authorship on IFC-derived geometry inside openBIMstudio.
+ */
+
+import { ctx } from "../core/context";
+import { bulkConvertLinkedToNativeTwin, type BulkConvertResult } from "./bulk-native-twin";
+import { downloadNativeTwinIfc } from "../modules/export/native-twin-ifc";
+
+type Any = Record<string, any>;
+
+const MAX_AUTO_CONVERT = 2500; // safety: browser memory
+const HISTORY_KEY = "obs.nativeIfc.history.v1";
+
+export interface IfcChangeRecord {
+  id: string;
+  at: number;
+  action: "make-editable" | "export-ifc" | "edit" | "delete" | "note";
+  summary: string;
+  modelId?: string;
+  count?: number;
+}
+
+function toast(msg: string, kind: "success" | "warn" | "error" | "info" = "info"): void {
+  try {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: msg, kind } }));
+  } catch {
+    console.log(`[native-ifc] ${kind}: ${msg}`);
+  }
+}
+
+function fragEdit(): Any | null {
+  return ((ctx as Any).features?.fragEdit as Any) ?? null;
+}
+
+function listTwinEdits(): Any[] {
+  const fe = fragEdit();
+  try {
+    if (typeof fe?.list === "function") return fe.list() ?? [];
+    if (typeof fe?.serialize === "function") return fe.serialize() ?? [];
+  } catch {
+    /* */
+  }
+  return [];
+}
+
+function loadHistory(): IfcChangeRecord[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.slice(-200) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(rows: IfcChangeRecord[]): void {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(rows.slice(-200)));
+  } catch {
+    /* quota */
+  }
+}
+
+export function recordIfcChange(
+  action: IfcChangeRecord["action"],
+  summary: string,
+  extra?: Partial<IfcChangeRecord>,
+): void {
+  const rows = loadHistory();
+  rows.push({
+    id: `ch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    at: Date.now(),
+    action,
+    summary,
+    ...extra,
+  });
+  saveHistory(rows);
+}
+
+export function getIfcChangeHistory(): IfcChangeRecord[] {
+  return loadHistory();
+}
+
+export function clearIfcChangeHistory(): void {
+  saveHistory([]);
+}
+
+/** Linked fragment model ids currently in the scene. */
+export function listLinkedModelIds(): string[] {
+  try {
+    const list = (ctx as Any).fragments?.list;
+    if (!list) return [];
+    if (typeof list.keys === "function") return Array.from(list.keys()).map(String);
+    if (list instanceof Map) return Array.from(list.keys()).map(String);
+  } catch {
+    /* */
+  }
+  return [];
+}
+
+async function geometryIdsForModel(modelId: string): Promise<number[]> {
+  try {
+    const model: Any = (ctx as Any).fragments?.list?.get?.(modelId);
+    if (!model) return [];
+    if (typeof model.getItemsIdsWithGeometry === "function") {
+      const ids = await model.getItemsIdsWithGeometry();
+      return Array.isArray(ids) ? ids.map(Number).filter((n) => Number.isFinite(n)) : [];
+    }
+  } catch (err) {
+    console.warn("[native-ifc] geometry ids failed", modelId, err);
+  }
+  return [];
+}
+
+/**
+ * Convert an entire linked IFC/FRAG model into editable Native Twins.
+ * Caps at MAX_AUTO_CONVERT elements to protect the tab.
+ */
+export async function makeModelEditable(modelId?: string): Promise<BulkConvertResult | null> {
+  const ids = listLinkedModelIds();
+  const mid = modelId || ids[0];
+  if (!mid) {
+    toast("No linked IFC/FRAG model. Insert → Link IFC or Link FRAG first.", "warn");
+    return null;
+  }
+
+  const localIds = await geometryIdsForModel(mid);
+  if (!localIds.length) {
+    toast(`Model “${mid}” has no drawable elements to convert.`, "warn");
+    return null;
+  }
+
+  let useIds = localIds;
+  if (localIds.length > MAX_AUTO_CONVERT) {
+    useIds = localIds.slice(0, MAX_AUTO_CONVERT);
+    toast(
+      `Model has ${localIds.length} elements — converting first ${MAX_AUTO_CONVERT} (browser safety cap). Select more and run again for the rest.`,
+      "warn",
+    );
+  }
+
+  toast(`Making ${useIds.length} elements editable (Native Twin)…`, "info");
+  const selection = { [mid]: useIds };
+  const result = await bulkConvertLinkedToNativeTwin({
+    selection,
+    quietPerItem: true,
+    openPanelOnSuccess: true,
+  });
+
+  recordIfcChange("make-editable", `Native twins from ${mid}: ${result.created} created`, {
+    modelId: mid,
+    count: result.created,
+  });
+
+  if (result.created > 0) {
+    toast(
+      `Native IFC workflow: ${result.created} editable element(s). Edit in Properties / grips, then Export Updated IFC.`,
+      "success",
+    );
+  }
+  return result;
+}
+
+/** Convert current selection only (linked elements → Native Twins). */
+export async function makeSelectionEditable(): Promise<BulkConvertResult> {
+  const result = await bulkConvertLinkedToNativeTwin({ quietPerItem: true, openPanelOnSuccess: true });
+  if (result.created > 0) {
+    recordIfcChange("make-editable", `Selection → ${result.created} native twin(s)`, {
+      count: result.created,
+    });
+  }
+  return result;
+}
+
+/**
+ * Export all Native Twin edits as IFC4 files (one download per twin, or first N).
+ * True single-file federated IFC merge is a follow-up; per-element write-back is reliable today.
+ */
+export function exportUpdatedIfc(opts?: { maxFiles?: number }): number {
+  const edits = listTwinEdits();
+  if (!edits.length) {
+    toast("No Native Twin edits to export. Make model editable first.", "warn");
+    return 0;
+  }
+  const max = Math.max(1, opts?.maxFiles ?? 40);
+  let n = 0;
+  for (const e of edits.slice(0, max)) {
+    try {
+      downloadNativeTwinIfc(e as any);
+      n++;
+    } catch (err) {
+      console.warn("[native-ifc] export twin failed", e?.id, err);
+    }
+  }
+  if (edits.length > max) {
+    toast(`Exported ${n} IFC file(s). ${edits.length - max} more twins remain — run export again or raise maxFiles.`, "warn");
+  } else {
+    toast(`Exported ${n} updated IFC4 file(s) from Native Twins.`, "success");
+  }
+  recordIfcChange("export-ifc", `Exported ${n} IFC4 twin file(s)`, { count: n });
+  return n;
+}
+
+/** Session status for panels / AI. */
+export function nativeIfcStatus(): {
+  linkedModels: number;
+  twinCount: number;
+  historyCount: number;
+} {
+  return {
+    linkedModels: listLinkedModelIds().length,
+    twinCount: listTwinEdits().length,
+    historyCount: getIfcChangeHistory().length,
+  };
+}
+
+/* ── Minimal UI panel ─────────────────────────────────────────────────── */
+
+let panel: HTMLDivElement | null = null;
+
+function ensurePanel(): HTMLDivElement {
+  if (panel) return panel;
+  const root = document.createElement("div");
+  root.id = "obs-native-ifc-workflow";
+  root.style.cssText =
+    "position:fixed;top:96px;right:18px;width:min(380px,calc(100vw - 28px));max-height:min(70vh,520px);" +
+    "display:none;flex-direction:column;z-index:9400;background:#161922;border:1px solid #2a2e3a;" +
+    "border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.45);color:#e8eaf0;font:12.5px system-ui,sans-serif;overflow:hidden";
+  root.innerHTML =
+    `<div style="padding:10px 12px;border-bottom:1px solid #2a2e3a;display:flex;align-items:center;gap:8px">` +
+    `<b style="flex:1">Native IFC workflow</b>` +
+    `<button type="button" data-x style="background:transparent;border:0;color:#94a3b8;cursor:pointer;font-size:16px">×</button></div>` +
+    `<div style="padding:10px 12px;font-size:11px;color:#94a3b8;line-height:1.4">` +
+    `Browser-native IFC authorship: link IFC → make editable → change geometry/properties → export updated IFC4. ` +
+    `Not a Revit plugin — same goals inside openBIMstudio.` +
+    `</div>` +
+    `<div data-body style="padding:8px 12px 12px;display:flex;flex-direction:column;gap:8px;overflow:auto"></div>`;
+  root.querySelector("[data-x]")?.addEventListener("click", () => hideNativeIfcPanel());
+  document.body.appendChild(root);
+  panel = root;
+  return root;
+}
+
+function btn(label: string, primary: boolean, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = label;
+  b.style.cssText = primary
+    ? "padding:8px 10px;border-radius:6px;border:1px solid #0284c7;background:#0369a1;color:#fff;font-weight:600;cursor:pointer;text-align:left"
+    : "padding:8px 10px;border-radius:6px;border:1px solid #3a3f4d;background:#2a2e3a;color:#e8eaf0;cursor:pointer;text-align:left";
+  b.onclick = () => {
+    try {
+      onClick();
+    } catch (err) {
+      console.warn("[native-ifc] action failed", err);
+      toast(err instanceof Error ? err.message : String(err), "error");
+    }
+  };
+  return b;
+}
+
+function renderPanel(): void {
+  const root = ensurePanel();
+  const body = root.querySelector("[data-body]") as HTMLDivElement;
+  if (!body) return;
+  body.innerHTML = "";
+  const st = nativeIfcStatus();
+  const stats = document.createElement("div");
+  stats.style.cssText = "font-size:11px;color:#cbd5e1";
+  stats.textContent = `Linked models: ${st.linkedModels} · Native twins: ${st.twinCount} · History: ${st.historyCount}`;
+  body.appendChild(stats);
+
+  body.append(
+    btn("1. Make linked model editable", true, () => {
+      void makeModelEditable();
+    }),
+    btn("Make selection editable", false, () => {
+      void makeSelectionEditable();
+    }),
+    btn("2. Export updated IFC4 (twins)", true, () => {
+      exportUpdatedIfc();
+    }),
+  );
+
+  const histTitle = document.createElement("div");
+  histTitle.style.cssText = "margin-top:6px;font-weight:600;font-size:11px;color:#94a3b8";
+  histTitle.textContent = "Change history (session)";
+  body.appendChild(histTitle);
+
+  const hist = getIfcChangeHistory().slice().reverse().slice(0, 12);
+  if (!hist.length) {
+    const empty = document.createElement("div");
+    empty.style.cssText = "font-size:11px;color:#64748b";
+    empty.textContent = "No changes recorded yet.";
+    body.appendChild(empty);
+  } else {
+    for (const h of hist) {
+      const row = document.createElement("div");
+      row.style.cssText = "font-size:10.5px;color:#94a3b8;padding:4px 0;border-bottom:1px solid #1e2230";
+      const when = new Date(h.at).toLocaleString();
+      row.textContent = `${when} · ${h.summary}`;
+      body.appendChild(row);
+    }
+  }
+
+  body.appendChild(
+    btn("Clear history", false, () => {
+      clearIfcChangeHistory();
+      renderPanel();
+    }),
+  );
+}
+
+export function showNativeIfcPanel(): void {
+  const p = ensurePanel();
+  p.style.display = "flex";
+  renderPanel();
+}
+
+export function hideNativeIfcPanel(): void {
+  if (panel) panel.style.display = "none";
+}
+
+export function toggleNativeIfcPanel(): void {
+  const p = ensurePanel();
+  if (p.style.display === "none" || !p.style.display) showNativeIfcPanel();
+  else hideNativeIfcPanel();
+}
+
+export function setupNativeIfcWorkflow(): void {
+  const api = {
+    makeModelEditable,
+    makeSelectionEditable,
+    exportUpdatedIfc,
+    getIfcChangeHistory,
+    clearIfcChangeHistory,
+    recordIfcChange,
+    listLinkedModelIds,
+    nativeIfcStatus,
+    open: showNativeIfcPanel,
+    toggle: toggleNativeIfcPanel,
+    version: 1,
+  };
+  try {
+    (ctx as Any).features = (ctx as Any).features || {};
+    (ctx as Any).features.nativeIfc = api;
+  } catch {
+    /* */
+  }
+  try {
+    (window as Any).__obsNativeIfc = api;
+  } catch {
+    /* */
+  }
+  console.log(
+    "[native-ifc] workflow ready — Make model editable · Export updated IFC · Change history (browser-native, not Revit)",
+  );
+}
