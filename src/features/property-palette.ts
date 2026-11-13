@@ -862,16 +862,27 @@ function render() {
   if (dockHandle) dockHandle.show();
   else panel.style.display = "flex";
 
-  // Multi-select walls: type-only panel
+  // Multi-select: constraints (any) + wall type when all are walls/curtain
   if (target.mode === "edit-multi") {
     header.innerHTML = "";
-    const t = document.createElement("div");
-    t.textContent = `${target.elementIds.length} walls selected`;
-    t.style.cssText = "font-weight:600;flex:1";
-    header.appendChild(t);
+    const ht = document.createElement("div");
+    ht.textContent = `${target.elementIds.length} elements selected`;
+    ht.style.cssText = "font-weight:600;flex:1";
+    header.appendChild(ht);
     body.innerHTML = "";
     try {
-      body.appendChild(makeWallTypeMultiBlock(target.elementIds));
+      body.appendChild(makeConstraintMultiBlock(target.elementIds));
+    } catch (err) {
+      console.warn("[property-palette] multi constraints failed", err);
+    }
+    try {
+      const selected = target.elementIds
+        .map((id) => getElements().find((e) => e.id === id))
+        .filter(Boolean) as AuthoredElement[];
+      const allWalls = selected.length > 0 && selected.every(
+        (e) => e.type === "wall" || e.type === "curtain-wall",
+      );
+      if (allWalls) body.appendChild(makeWallTypeMultiBlock(target.elementIds));
     } catch (err) {
       console.warn("[property-palette] multi wall type failed", err);
     }
@@ -975,6 +986,64 @@ const LEVEL_CONSTRAINED_TYPES = new Set<string>([
 /** Type identity for walls / curtain walls — change catalog type on a placed instance. */
 
 /** Multi-select wall type: apply one catalog type to every selected wall. */
+
+/** Multi-select parametric constraints (Lock Distance, Parallel, …). */
+function makeConstraintMultiBlock(elementIds: string[]): HTMLElement {
+  const block = document.createElement("div");
+  block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
+
+  const headerRow = document.createElement("div");
+  headerRow.style.cssText =
+    "display:flex;align-items:center;gap:6px;padding:7px 12px;" +
+    "background:var(--bg-elevated,#181a23);user-select:none";
+  const title = document.createElement("span");
+  title.textContent = `Constraints (${elementIds.length} selected)`;
+  title.style.cssText = "font-weight:600;font-size:11.5px;letter-spacing:.2px";
+  headerRow.append(title);
+
+  const list = document.createElement("div");
+  list.style.cssText = "padding:6px 12px 10px;display:flex;flex-wrap:wrap;gap:6px";
+
+  const tools = () => ((ctx as any).features?.constraintTools ?? null);
+
+  const mk = (label: string, run: () => void, primary = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.style.cssText =
+      "font-size:11px;padding:5px 10px;border-radius:4px;cursor:pointer;" +
+      (primary
+        ? "background:#0ea5e9;border:1px solid #0284c7;color:#0b0e14;font-weight:600;"
+        : "background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);color:var(--text-primary,#e8eaf0);");
+    b.onclick = () => {
+      try {
+        run();
+      } catch (err) {
+        console.warn("[property-palette] constraint action failed", err);
+      }
+    };
+    return b;
+  };
+
+  list.append(
+    mk("Lock Distance", () => tools()?.lockDistance?.(), true),
+    mk("Equal Length (solver)", () => tools()?.equalLength?.()),
+    mk("Parallel", () => tools()?.parallel?.()),
+    mk("Perpendicular", () => tools()?.perpendicular?.()),
+    mk("Align", () => tools()?.alignment?.()),
+    mk("Solve", () => tools()?.solve?.()),
+    mk("Manage…", () => tools()?.manage?.()),
+  );
+
+  const hint = document.createElement("div");
+  hint.style.cssText = "font-size:10px;color:var(--text-tertiary,#6b7280);padding:0 12px 10px";
+  hint.textContent =
+    "Lock Distance freezes the nearest-endpoint gap; after you move a wall, Auto-Solve pulls neighbours back. Requires two linear elements selected.";
+
+  block.append(headerRow, list, hint);
+  return block;
+}
+
 function makeWallTypeMultiBlock(elementIds: string[]): HTMLElement {
   const block = document.createElement("div");
   block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
@@ -1445,12 +1514,28 @@ export function setupPropertyPalette(): void {
           const selected = selIds
             .map((id) => getElements().find((x) => x.id === id))
             .filter(Boolean) as AuthoredElement[];
+          const constraintTypes = new Set([
+            "wall", "curtain-wall", "beam", "strip", "mline",
+            "duct", "pipe", "cable-tray", "conduit", "brace",
+          ]);
+          const linears = selected.filter((e) => constraintTypes.has(String(e.type)));
+          // Pure wall multi → type + constraints
           const walls = selected.filter((e) => e.type === "wall" || e.type === "curtain-wall");
           if (walls.length >= 2 && walls.length === selected.length) {
             setPaletteTarget({
               mode: "edit-multi",
               elementIds: walls.map((w) => w.id),
               type: "wall" as any,
+            });
+            if (!visible) openPropertyPalette(); else render();
+            return;
+          }
+          // 2+ linear elements (mixed types) → constraints panel
+          if (linears.length >= 2 && linears.length === selected.length) {
+            setPaletteTarget({
+              mode: "edit-multi",
+              elementIds: linears.map((w) => w.id),
+              type: (linears[0].type as any) || "wall",
             });
             if (!visible) openPropertyPalette(); else render();
             return;
