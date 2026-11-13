@@ -159,7 +159,8 @@ export async function makeModelEditable(modelId?: string): Promise<BulkConvertRe
     );
   }
 
-  const progress = openProgressDialog(useIds.length, mid);
+  const ac = new AbortController();
+  const progress = openProgressDialog(useIds.length, mid, () => ac.abort());
   const selection = { [mid]: useIds };
   let lastUi = 0;
   try {
@@ -167,6 +168,7 @@ export async function makeModelEditable(modelId?: string): Promise<BulkConvertRe
       selection,
       quietPerItem: true,
       openPanelOnSuccess: true,
+      signal: ac.signal,
       onProgress: (p) => {
         const now = Date.now();
         if (now - lastUi < 80 && p.index < p.total) return;
@@ -175,11 +177,20 @@ export async function makeModelEditable(modelId?: string): Promise<BulkConvertRe
       },
     });
     progress.close(result);
-    recordIfcChange("make-editable", `Native twins from ${mid}: ${result.created} created`, {
-      modelId: mid,
-      count: result.created,
-    });
-    if (result.created > 0) {
+    recordIfcChange(
+      "make-editable",
+      result.aborted
+        ? `Native twins from ${mid}: ${result.created} created (cancelled)`
+        : `Native twins from ${mid}: ${result.created} created`,
+      { modelId: mid, count: result.created },
+    );
+    if (result.aborted) {
+      toast(
+        `Cancelled — kept ${result.created} twin(s) already created.` +
+          (result.failed ? ` ${result.failed} failed.` : ""),
+        result.created ? "warn" : "info",
+      );
+    } else if (result.created > 0) {
       toast(
         `Native IFC: ${result.created} editable element(s)` +
           (result.failed ? `, ${result.failed} failed` : "") +
@@ -196,7 +207,11 @@ export async function makeModelEditable(modelId?: string): Promise<BulkConvertRe
   }
 }
 
-function openProgressDialog(total: number, modelId: string): {
+function openProgressDialog(
+  total: number,
+  modelId: string,
+  onCancel?: () => void,
+): {
   update: (i: number, t: number, created: number, failed: number) => void;
   close: (result: BulkConvertResult | null) => void;
 } {
@@ -216,21 +231,45 @@ function openProgressDialog(total: number, modelId: string): {
     `<div style="font-size:11px;color:#94a3b8;margin-bottom:10px">${modelId} · ${total} elements</div>` +
     `<div style="height:8px;background:#1e2230;border-radius:4px;overflow:hidden;margin-bottom:8px">` +
     `<div data-bar style="height:100%;width:0%;background:#0ea5e9;transition:width .15s"></div></div>` +
-    `<div data-txt style="font-size:11px;color:#cbd5e1">Starting…</div>`;
+    `<div data-txt style="font-size:11px;color:#cbd5e1;margin-bottom:10px">Starting…</div>` +
+    `<div style="display:flex;justify-content:flex-end">` +
+    `<button type="button" data-cancel style="padding:6px 12px;border-radius:6px;border:1px solid #3a3f4d;` +
+    `background:#2a2e3a;color:#e8eaf0;cursor:pointer;font-weight:600">Cancel</button></div>`;
   overlay.appendChild(card);
   document.body.appendChild(overlay);
   const bar = card.querySelector("[data-bar]") as HTMLDivElement;
   const txt = card.querySelector("[data-txt]") as HTMLDivElement;
+  const cancelBtn = card.querySelector("[data-cancel]") as HTMLButtonElement | null;
+  let cancelled = false;
+  cancelBtn?.addEventListener("click", () => {
+    if (cancelled) return;
+    cancelled = true;
+    if (cancelBtn) {
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = "Cancelling…";
+    }
+    if (txt) txt.textContent = "Cancelling after current element…";
+    try {
+      onCancel?.();
+    } catch {
+      /* */
+    }
+  });
   return {
     update(i, t, created, failed) {
       const pct = t > 0 ? Math.min(100, Math.round((i / t) * 100)) : 0;
       if (bar) bar.style.width = `${pct}%`;
-      if (txt) txt.textContent = `${i} / ${t} · ${created} created · ${failed} failed · ${pct}%`;
+      if (txt && !cancelled) {
+        txt.textContent = `${i} / ${t} · ${created} created · ${failed} failed · ${pct}%`;
+      }
     },
     close(result) {
+      if (cancelBtn) cancelBtn.disabled = true;
       if (result && txt && bar) {
         bar.style.width = "100%";
-        txt.textContent = `Done · ${result.created} created · ${result.failed} failed · ${result.skipped} skipped`;
+        const label = result.aborted ? "Cancelled" : "Done";
+        txt.textContent =
+          `${label} · ${result.created} created · ${result.failed} failed · ${result.skipped} skipped`;
       }
       setTimeout(() => overlay.remove(), result ? 900 : 0);
     },
