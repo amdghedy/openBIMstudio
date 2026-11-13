@@ -7,7 +7,7 @@ It describes the code as it is, including the parts that are still being consoli
 
 | Layer | Path | What lives there |
 |-------|------|------------------|
-| Boot | `src/main.ts` | Creates the viewer, then runs ~100 named `step(name, fn)` calls. A failing step is logged and skipped; it does not stop the rest. |
+| Boot | `src/main.ts` | Creates the viewer, then runs ~100 named `step(name, fn)` calls through `core/boot-runner.ts`. Every step is tracked, timed and retryable in `core/boot-health.ts`; a failing step is logged, surfaced in the Startup health panel, and skipped — it does not stop the rest. Boot completion is finalized once, at the end of the chain. |
 | Core | `src/core/` | The viewer context (`context.ts`), the typed service registry (`services.ts`), the input router, notifications, units, i18n, secure storage. No UI features. |
 | Features | `src/features/` | User-facing tools and panels (authoring, clash, schedules, link tools, shortcut editor, dialogs). Most are one `setupX()` called from `main.ts`. |
 | Modules | `src/modules/` | Logic that should not depend on the DOM where possible: parsers, geometry, engines (clash, wall detection, point-cloud parsers, magnet/join planning). Prefer putting new logic here so it can be unit-tested. |

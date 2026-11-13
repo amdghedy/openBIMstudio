@@ -30,7 +30,7 @@ import "./features/hatch-panel";
 import "./features/arc-wall-tool";
 import "./features/gltf-export-tool";
 import "./features/modify-group2-tool";
-import { bootHealth, setupBootHealth, trackedBootStep } from "./core/boot-health";
+import { bootHealth, trackedBootStep } from "./core/boot-health";
 
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
@@ -158,20 +158,17 @@ export async function bootStrengtheningModules(): Promise<void> {
 
     window.addEventListener("keydown", (e) => {
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
       const key = e.key.toLowerCase();
-      if ((e.ctrlKey || e.metaKey) && key === "z" && !e.shiftKey) {
-        if (txn.canUndo()) {
-          e.preventDefault();
-          txn.undo();
-        }
-      }
-      if ((e.ctrlKey || e.metaKey) && (key === "y" || (key === "z" && e.shiftKey))) {
-        if (txn.canRedo()) {
-          e.preventDefault();
-          txn.redo();
-        }
-      }
+      // Undo/Redo keys are NOT handled here. This listener used to call
+      // txn.undo()/txn.redo() on the transaction service's SEPARATE stack,
+      // diverging from every other keyboard path (features/global-undo.ts
+      // capture-phase handler and the shortcuts registry both drive the
+      // canonical history stack — and global-undo's stopPropagation already
+      // made this branch dead code in practice, except in race windows
+      // before it was installed). One keyboard, one stack: global-undo owns
+      // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z; programmatic transaction undo
+      // (modules/modify/group1.ts etc.) keeps using the txn API directly.
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "v") {
         // Stands down while a CAD drawing tab is active — the CAD editor owns
         // Ctrl+Shift+V for PASTECLIP / Super Copy.
@@ -190,11 +187,22 @@ export async function bootStrengtheningModules(): Promise<void> {
       ? `(with ${bootHealth.status().failed.length} failed step(s) — see Startup health)`
       : "clean",
   );
-  setupBootHealth();
-  bootHealth.finalize();
+  // NOTE: no bootHealth.finalize() and no setupBootHealth() here anymore.
+  // finalize() used to run when THIS module finished — but this module boots
+  // at import time, racing ahead of the ~90 tracked main.ts steps, so "boot
+  // complete" was claimed before the app was actually ready. setupBootHealth()
+  // is already wired once by critical-gaps-boot.ts; a second call only added
+  // duplicate chip listeners. boot-runner.finalize() at the end of main.ts is
+  // now the single authoritative completion event.
 }
 
-void bootStrengtheningModules();
+// Top-level async: a rejection here used to surface as an unhandled promise
+// rejection. safeStep never throws, but the final logging/UI wiring could —
+// route it through the error log instead of losing it silently.
+bootStrengtheningModules().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error("[Strengthening] boot failed", err);
+});
 
 export {
   getTransactionService,

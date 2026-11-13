@@ -23,6 +23,8 @@ export interface BootStepResult {
   ok: boolean;
   ms: number;
   error?: string;
+  /** Original thrown value, kept in memory for UI surfaces (never persisted). */
+  rawError?: unknown;
   /** Set when this success came from a retry after a failure. */
   retried?: boolean;
   at: number;
@@ -43,6 +45,8 @@ const listeners = new Set<() => void>();
 
 let steps: BootStepResult[] = [];
 let finalized = false;
+/** Step count at the last finalize — guards against duplicate finalize emits. */
+let finalizedAtStepCount = -1;
 
 function emit(): void {
   for (const l of listeners) {
@@ -77,21 +81,25 @@ function lastFailureFor(name: string): BootStepResult | undefined {
 }
 
 export const bootHealth = {
-  /** Run one named init step, timing it and recording the outcome. Never throws. */
-  async runStep(name: string, fn: () => unknown): Promise<boolean> {
+  /** Run one named init step, timing it and recording the outcome. Never throws.
+   *  Returns the recorded result; the original thrown value travels on
+   *  `rawError` so UI surfaces can show real stacks, not re-wrapped copies. */
+  async runStep(name: string, fn: () => unknown): Promise<BootStepResult> {
     const t0 = Date.now();
     try {
       await fn();
-      steps.push({ name, ok: true, ms: Date.now() - t0, at: Date.now(), ...(lastFailureFor(name) ? { retried: true } : {}) });
+      const result: BootStepResult = { name, ok: true, ms: Date.now() - t0, at: Date.now(), ...(lastFailureFor(name) ? { retried: true } : {}) };
+      steps.push(result);
       emit();
-      return true;
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      steps.push({ name, ok: false, ms: Date.now() - t0, error: message, at: Date.now() });
+      const result: BootStepResult = { name, ok: false, ms: Date.now() - t0, error: message, rawError: err, at: Date.now() };
+      steps.push(result);
       if (steps.length > MAX_STEPS) steps = steps.slice(-MAX_STEPS);
       diagnostics.warn("boot-health", `init step "${name}" failed: ${message}`, err);
       emit();
-      return false;
+      return result;
     }
   },
 
@@ -126,8 +134,8 @@ export const bootHealth = {
     for (const name of failedNames) {
       const runner = registry.get(name);
       if (!runner) continue;
-      const ok = await bootHealth.runStep(name, runner);
-      if (ok) fixed.push(name);
+      const result = await bootHealth.runStep(name, runner);
+      if (result.ok) fixed.push(name);
     }
     if (failedNames.length) {
       persist();
@@ -136,9 +144,17 @@ export const bootHealth = {
     return fixed;
   },
 
-  /** Mark the boot sequence complete — flips the chip on if anything failed. */
+  /** Mark the boot sequence complete — flips the chip on if anything failed.
+   *  Idempotent: re-calling while no new step results arrived does not
+   *  re-emit, so multiple boot modules can safely "claim" completion without
+   *  duplicate UI refreshes; the authoritative call site is the end of the
+   *  boot chain (boot-runner.finalize). */
   finalize(): BootHealthStatus {
+    if (finalized && finalizedAtStepCount === steps.length) {
+      return bootHealth.status();
+    }
     finalized = true;
+    finalizedAtStepCount = steps.length;
     persist();
     emit();
     return bootHealth.status();
@@ -165,6 +181,7 @@ export const bootHealth = {
   reset(): void {
     steps = [];
     finalized = false;
+    finalizedAtStepCount = -1;
     registry.clear();
     emit();
   },
@@ -317,8 +334,17 @@ export function showBootHealthPanel(): void {
   }
 }
 
+let uiWired = false;
+
 export function setupBootHealth(): void {
-  bootHealth.onChange(refreshChip);
+  // Both critical-gaps boot modules used to call this — each call registered
+  // another refreshChip listener (duplicate listeners, duplicated chip
+  // refreshes). One wiring is authoritative; later calls only refresh the
+  // feature alias.
+  if (!uiWired) {
+    uiWired = true;
+    bootHealth.onChange(refreshChip);
+  }
   refreshChip();
   try {
     (ctx as Any).features = (ctx as Any).features || {};

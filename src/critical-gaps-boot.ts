@@ -11,12 +11,12 @@
 
 import { ctx } from "./core/context";
 import { bootHealth, setupBootHealth, trackedBootStep } from "./core/boot-health";
+import { createListenerScope } from "./core/listener-scope";
 import { diagnostics } from "./core/diagnostics";
 
 type Any = Record<string, any>;
 
 let started = false;
-let timer: number | null = null;
 
 function isReady(): boolean {
   const c = ctx as Any;
@@ -511,26 +511,31 @@ async function runOnce(): Promise<void> {
   } catch {
     /* */
   }
-  // Boot sequence complete — flips the visible recovery chip if anything failed.
-  bootHealth.finalize();
+  // NOTE: no bootHealth.finalize() here — "boot complete" is claimed exactly
+  // once, by boot-runner at the end of main.ts's step chain, AFTER every
+  // tracked step (including the ~90 main.ts steps) has reported. Finalizing
+  // here raced ahead of most of the boot and could mark a broken boot clean.
 }
 
-timer = window.setInterval(() => {
-  if (isReady()) {
-    if (timer !== null) {
-      window.clearInterval(timer);
-      timer = null;
-    }
-    void runOnce();
-  }
-}, 200);
+// Readiness polling — owned by a listener scope so the interval AND the
+// 120s fallback timer are cleared together, deterministically (previously
+// two hand-managed ids with cross-clearing logic).
+const readinessScope = createListenerScope();
 
-window.setTimeout(() => {
-  if (timer !== null) {
-    window.clearInterval(timer);
-    timer = null;
+function armReadinessPolling(): void {
+  readinessScope.interval(() => {
+    if (isReady()) {
+      readinessScope.dispose();
+      void runOnce();
+    }
+  }, 200);
+  // Hard fallback: never wait forever (e.g. a renderer that never reports).
+  readinessScope.timeout(() => {
+    readinessScope.dispose();
     void runOnce();
-  }
-}, 120000);
+  }, 120000);
+}
+
+armReadinessPolling();
 
 setupBootHealth();

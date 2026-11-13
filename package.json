@@ -99,6 +99,7 @@
     "test:native-ifc-versions": "node tests/native-ifc-versions.test.cjs",
     "test:uniqueness": "node tests/uniqueness.test.cjs",
     "test:boot-health": "node tests/boot-health.test.cjs",
+    "test:boot-architecture": "node tests/boot-architecture.test.cjs",
     "test:cursor-zoom": "node tests/cursor-zoom.test.cjs",
     "test:controls-target": "node tests/controls-target.test.cjs",
     "test:context-menu": "node tests/context-menu-model.test.cjs",

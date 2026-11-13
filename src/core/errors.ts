@@ -54,7 +54,40 @@ function isBenign(msg: string): boolean {
   return BENIGN.some((re) => re.test(msg));
 }
 
+/** Exposed for call sites/tests that must apply the same filter. */
+export function isBenignErrorMessage(msg: string): boolean {
+  return isBenign(msg);
+}
+
+/* ── UI surface hook ─────────────────────────────────────────────────────
+ * The global handlers detect problems; a UI surface shows them. main.ts
+ * registers the error overlay here, so there is exactly ONE pair of window
+ * listeners (below) and ONE BENIGN filter for the whole app — previously
+ * main.ts added its own parallel listeners with a copied BENIGN list.
+ *                                                                        */
+let windowErrorSurface: ((title: string, err: unknown) => void) | null = null;
+
+export function setWindowErrorSurface(
+  fn: (title: string, err: unknown) => void,
+): void {
+  windowErrorSurface = fn;
+}
+
+function surface(title: string, err: unknown): void {
+  try {
+    windowErrorSurface?.(title, err);
+  } catch {
+    /* a broken surface must never break the handler */
+  }
+}
+
+let handlersInstalled = false;
+
 export function installGlobalErrorHandlers(): void {
+  // Idempotent: a second call must not stack duplicate listeners (each would
+  // log and surface every error twice).
+  if (handlersInstalled) return;
+  handlersInstalled = true;
   window.addEventListener("error", (e) => {
     const msg = String(e.error?.message ?? e.message ?? "");
     if (isBenign(msg)) {
@@ -62,6 +95,7 @@ export function installGlobalErrorHandlers(): void {
       return;
     }
     logError(e.error ?? e.message, "window.error");
+    surface("Unhandled error", e.error ?? e.message);
   });
   window.addEventListener("unhandledrejection", (e) => {
     const reason = e.reason;
@@ -75,6 +109,9 @@ export function installGlobalErrorHandlers(): void {
       return;
     }
     logError(e.reason, "unhandled-rejection");
+    // Production: show once, do not cascade-crash the app.
+    e.preventDefault();
+    surface("Background task failed (app continues)", e.reason);
   });
 }
 

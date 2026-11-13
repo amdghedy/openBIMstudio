@@ -120,12 +120,17 @@ import { setupStatusBarExtras } from "./features/status-bar-extras";
 
 import type { Dispatch } from 'react';
 import { Command } from './commands/CommandBase';
-import { installGlobalErrorHandlers, renderBootFailure, logError } from "./core/errors";
+import { installGlobalErrorHandlers, renderBootFailure, logError, setWindowErrorSurface, isBenignErrorMessage } from "./core/errors";
 import { dumpServiceRegistry } from "./core/services";
+import { createBootStepper } from "./core/boot-runner";
 import { bootTheme } from "./core/theme";
 import { setupExtras } from "./features/_extras";
 
-// Install global error handlers before anything else boots.
+// Install global error handlers before anything else boots. This is the ONLY
+// place window error/unhandledrejection listeners are registered — their UI
+// surface (the overlay below) is plugged in through setWindowErrorSurface,
+// so detection and display share one BENIGN filter instead of two drifting
+// copies.
 installGlobalErrorHandlers();
 
 
@@ -136,26 +141,16 @@ errOverlay.style.cssText =
   "padding:10px 14px;font:12px/1.5 monospace;white-space:pre-wrap;max-height:45vh;overflow:auto";
 document.body.appendChild(errOverlay);
 
-const BENIGN = [
-  /Fragments\s*:?\s*Model not found/i,
-  /ResizeObserver loop/i,
-  /Loading CSS chunk/i,
-  /Script error\.?/i,
-  /cancelled/i,
-  /AbortError/i,
-];
-
-function isBenign(msg: string) {
-  return BENIGN.some((re) => re.test(msg));
-}
-
 function showError(title: string, err: unknown) {
   const msg = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);
-  if (isBenign(msg)) {
+  if (isBenignErrorMessage(msg)) {
     console.warn(`[suppressed] ${title}: ${msg.split("\n")[0]}`);
     return;
   }
   console.error(`[OpenBIMStudio] ${title}`, err);
+  // Every surfaced error also lands in the ring buffer — previously boot-step
+  // failures shown here were invisible to recentErrors()/diagnostics exports.
+  logError(err, title);
   errOverlay.style.display = "block";
   errOverlay.innerHTML = "";
   const pre = document.createElement("pre");
@@ -170,40 +165,20 @@ function showError(title: string, err: unknown) {
   errOverlay.append(pre, dismiss);
 }
 
-window.addEventListener("error", (e) => {
-  const msg = String(e.error?.message ?? e.message ?? "");
-  if (isBenign(msg)) {
-    e.preventDefault();
-    return;
-  }
-  showError("Unhandled error", e.error ?? e.message);
+// Plug the overlay into the single global handler pair from core/errors.
+setWindowErrorSurface(showError);
+
+// One boot stepper for the whole chain: every step below is tracked, timed
+// and retryable in the Startup health panel, and finalize() is called here
+// at the true end of boot — not by whichever side module finishes first.
+const boot = createBootStepper({
+  onStepError: (title, err) => showError(title, err),
 });
 
-window.addEventListener("unhandledrejection", (e: PromiseRejectionEvent) => {
-  const reason: any = e.reason;
-  const msg =
-    reason instanceof Error ? reason.message
-    : typeof reason === "string" ? reason
-    : String(reason?.message ?? reason ?? "");
-  if (isBenign(msg)) {
-    console.warn("[suppressed benign] " + msg);
-    e.preventDefault();
-    return;
-  }
-  // Production: show once, do not cascade crash the app
-  e.preventDefault();
-  showError("Background task failed (app continues)", reason);
-});
-
-function step(name: string, fn: () => unknown | Promise<unknown>) {
-  return (async () => {
-    try {
-      await fn();
-      console.log(`[TOC boot] ✓ ${name}`);
-    } catch (err) {
-      showError(`Step failed: ${name} (viewer continues without it)`, err);
-    }
-  })();
+function step(name: string, fn: () => unknown | Promise<unknown>): Promise<void> {
+  // Tracked + timed + retryable via the Startup health panel; failures are
+  // reported once through the overlay with the original error object.
+  return boot.step(name, fn).then(() => undefined);
 }
 
 await step("secure-store", async () => (await import("./core/secure-store")).initSecureStore());
@@ -413,6 +388,20 @@ window.dispatchEvent(new Event("resize"));
 computeSceneBounds();
 
 try { dumpServiceRegistry(); } catch { /* */ }
+
+// THE authoritative "boot finished" event. Every step above is tracked, so
+// the Startup health chip now reflects the WHOLE chain (previously only the
+// critical-gaps side modules called finalize() — racing ahead of most of
+// these steps, so "boot complete" was claimed before the app was ready).
+// Idempotent: late side-module finalize calls become no-ops.
+const bootSummary = boot.finalize();
+if (!bootSummary.ok) {
+  console.warn(
+    `[Open BIM Studio] boot finished with ${bootSummary.failed.length} failed step(s):`,
+    bootSummary.failed.join(", "),
+    "— see the Startup health chip for retry.",
+  );
+}
 
 console.log(`[Open BIM Studio ${APP_VERSION}] ready`);
 
