@@ -1,5 +1,5 @@
 "use strict";
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, dialog } = require("electron");
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -122,7 +122,7 @@ function createWindow() {
     return { action:"deny" };
   });
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (!url.startsWith(localOrigin)) event.preventDefault();
+    try { if (new URL(url).origin !== localOrigin) event.preventDefault(); } catch { event.preventDefault(); }
   });
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.on("closed", () => { mainWindow = null; });
@@ -135,6 +135,7 @@ app.whenReady().then(async () => {
     app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   } catch (error) {
     console.error("[OpenBIMStudio] Startup failed:", error);
+    dialog.showErrorBox("OpenBIMStudio could not start", error && error.message ? error.message : String(error));
     app.quit();
   }
 });
