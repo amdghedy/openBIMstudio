@@ -13,8 +13,15 @@
  */
 
 import { ctx } from "../core/context";
+import { fmtDateTime } from "../core/region";
 import { bulkConvertLinkedToNativeTwin, type BulkConvertResult } from "./bulk-native-twin";
 import { downloadNativeTwinIfc, downloadFederatedNativeTwinIfc } from "../modules/export/native-twin-ifc";
+import {
+  setupNativeIfcVersions,
+  setIfcVersionChangeRecorder,
+  commitNativeIfcVersion,
+  renderVersionsSection,
+} from "./native-ifc-versions";
 
 type Any = Record<string, any>;
 
@@ -28,7 +35,7 @@ const RESUME_KEY = "obs.nativeIfc.resume.v1";
 export interface IfcChangeRecord {
   id: string;
   at: number;
-  action: "make-editable" | "export-ifc" | "edit" | "delete" | "note";
+  action: "make-editable" | "export-ifc" | "edit" | "delete" | "note" | "commit" | "restore";
   summary: string;
   modelId?: string;
   count?: number;
@@ -257,6 +264,17 @@ export async function makeModelEditable(modelId?: string): Promise<BulkConvertRe
           (still.length ? ` (${still.length} left — Resume)` : ""),
       { modelId: mid, count: result.created },
     );
+    // Git-for-BIM: baseline commit whenever conversion produced twins.
+    if (result.created > 0) {
+      commitNativeIfcVersion(
+        result.aborted
+          ? `Baseline after Make editable (cancelled) · ${result.created} twin(s), ${still.length} left`
+          : still.length
+            ? `Baseline after Make editable · ${result.created} twin(s), ${still.length} left`
+            : `Baseline after Make editable · ${result.created} twin(s)`,
+        { auto: true, silent: true },
+      );
+    }
     if (result.aborted) {
       toast(
         `Cancelled — kept ${result.created} twin(s). ${still.length} remaining — use Resume to continue.`,
@@ -392,6 +410,11 @@ export function exportUpdatedIfc(opts?: { maxFiles?: number; perTwin?: boolean }
       recordIfcChange("export-ifc", `Federated IFC4 · ${edits.length} element(s)`, {
         count: edits.length,
       });
+      // Git-for-BIM: every successful export is a version milestone.
+      commitNativeIfcVersion(`Export federated IFC4 · ${edits.length} element(s)`, {
+        auto: true,
+        silent: true,
+      });
       return edits.length;
     } catch (err) {
       console.warn("[native-ifc] federated export failed, falling back to per-twin", err);
@@ -409,6 +432,9 @@ export function exportUpdatedIfc(opts?: { maxFiles?: number; perTwin?: boolean }
   }
   toast(`Exported ${n} IFC4 file(s) from Native Twins.`, n ? "success" : "warn");
   recordIfcChange("export-ifc", `Exported ${n} IFC4 twin file(s)`, { count: n });
+  if (n > 0) {
+    commitNativeIfcVersion(`Export ${n} IFC4 twin file(s)`, { auto: true, silent: true });
+  }
   return n;
 }
 
@@ -502,6 +528,8 @@ function renderPanel(): void {
     }),
   );
 
+  renderVersionsSection(body, renderPanel);
+
   const histTitle = document.createElement("div");
   histTitle.style.cssText = "margin-top:6px;font-weight:600;font-size:11px;color:#94a3b8";
   histTitle.textContent = "Change history (session)";
@@ -517,7 +545,7 @@ function renderPanel(): void {
     for (const h of hist) {
       const row = document.createElement("div");
       row.style.cssText = "font-size:10.5px;color:#94a3b8;padding:4px 0;border-bottom:1px solid #1e2230";
-      const when = new Date(h.at).toLocaleString();
+      const when = fmtDateTime(h.at);
       row.textContent = `${when} · ${h.summary}`;
       body.appendChild(row);
     }
@@ -548,6 +576,15 @@ export function toggleNativeIfcPanel(): void {
 }
 
 export function setupNativeIfcWorkflow(): void {
+  // Git-for-BIM: route version events into the change history log.
+  try {
+    setIfcVersionChangeRecorder((action, summary, extra) => {
+      recordIfcChange(action as IfcChangeRecord["action"], summary, extra);
+    });
+    setupNativeIfcVersions();
+  } catch (err) {
+    console.warn("[native-ifc] versions layer unavailable", err);
+  }
   const api = {
     makeModelEditable,
     resumeModelEditable,
@@ -561,6 +598,7 @@ export function setupNativeIfcWorkflow(): void {
     nativeIfcStatus,
     open: showNativeIfcPanel,
     toggle: toggleNativeIfcPanel,
+    versions: () => (ctx as Any).features?.nativeIfcVersions ?? null,
     version: 1,
   };
   try {
@@ -575,6 +613,6 @@ export function setupNativeIfcWorkflow(): void {
     /* */
   }
   console.log(
-    "[native-ifc] workflow ready — Make model editable · Export updated IFC · Change history (browser-native, not Revit)",
+    "[native-ifc] workflow ready — Make model editable · Export updated IFC · Change history · Versions (git for BIM)",
   );
 }

@@ -639,6 +639,58 @@ function registerAuthoringCommands(): void {
     },
   });
   registerCommand({
+    id: "authoring.nativeIfc.commit",
+    label: "Native IFC: Commit version",
+    category: "Authoring",
+    hint: "Snapshot all Native Twins (git for BIM) with a commit message",
+    run: async () => {
+      const m = await import("./native-ifc-versions");
+      const { promptLine } = await import("./form-modal");
+      const msg = await promptLine(
+        "Commit version",
+        "Commit message",
+        "",
+        "e.g. Moved south wall, resized window",
+        "Snapshots every Native Twin (position, rotation, scale, properties).",
+      );
+      m.commitNativeIfcVersion(msg ?? undefined);
+    },
+  });
+  registerCommand({
+    id: "authoring.nativeIfc.diff",
+    label: "Native IFC: Diff last versions",
+    category: "Authoring",
+    hint: "Structured added/removed/changed report between the last two commits",
+    run: async () => {
+      const m = await import("./native-ifc-versions");
+      m.showNativeIfcDiffDialog();
+    },
+  });
+  registerCommand({
+    id: "authoring.nativeIfc.restore",
+    label: "Native IFC: Restore previous version",
+    category: "Authoring",
+    hint: "Checkout the previous commit (current edits auto-stashed)",
+    run: async () => {
+      const m = await import("./native-ifc-versions");
+      const versions = m.listNativeIfcVersions();
+      if (!versions.length) return;
+      const target = versions.find((v) => !versions[0] || v.id !== versions[0].id);
+      if (!target) return;
+      await m.restoreNativeIfcVersion(target.id);
+    },
+  });
+  registerCommand({
+    id: "authoring.nativeIfc.versions",
+    label: "Native IFC: Version log",
+    category: "Authoring",
+    hint: "Open the workflow panel version log — commit, diff, restore",
+    run: async () => {
+      const m = await import("./native-ifc-workflow");
+      m.showNativeIfcPanel();
+    },
+  });
+  registerCommand({
     id: "authoring.fragEditPanel",
     label: "Open Native Twin panel",
     category: "Authoring",
