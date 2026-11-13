@@ -5,8 +5,8 @@
  * localStorage (and in browser backups / disk dumps) are unreadable ciphertext. Reads are synchronous
  * from an in-memory copy loaded once at startup (`initSecureStore`).
  *
- * If WebCrypto or IndexedDB is unavailable the store falls back to plain localStorage so the app
- * still works, and says so in the console.
+ * If WebCrypto or IndexedDB is unavailable the secrets stay in memory for the
+ * session only — they are never written to localStorage as plaintext.
  */
 import { decryptString, encryptString, generateStorageKey } from "./secret-crypto";
 
@@ -18,6 +18,8 @@ let key: CryptoKey | null = null;
 let ready = false;
 const mem = new Map<string, string>();
 const pending = new Set<Promise<void>>();
+// Names written before initSecureStore finished; flushed once the key exists.
+const deferred = new Set<string>();
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -60,13 +62,23 @@ export async function initSecureStore(): Promise<void> {
     }
   } catch (e) {
     key = null;
-    console.warn("[secure-store] encryption unavailable, secrets stay in plain localStorage:", e);
+    console.warn("[secure-store] encryption unavailable, secrets stay in memory for this session only:", e);
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k && k.startsWith(PREFIX)) mem.set(k.slice(PREFIX.length), localStorage.getItem(k) ?? "");
     }
   }
   ready = true;
+  // Writes that arrived before init land now (encrypted) — or are dropped
+  // from the queue when encryption is unavailable (memory keeps them).
+  const queued = [...deferred];
+  deferred.clear();
+  if (key) {
+    for (const n of queued) {
+      const v = mem.get(n);
+      if (v !== undefined) persist(n, v);
+    }
+  }
 }
 
 export function secureEncryptionActive(): boolean { return !!key; }
@@ -93,7 +105,9 @@ export function secureNames(prefix = ""): string[] {
 export async function secureFlush(): Promise<void> { await Promise.all([...pending]); }
 
 function persist(name: string, value: string): void {
-  if (!key) { try { localStorage.setItem(PREFIX + name, value); } catch { /* */ } return; }
+  // No plaintext, ever: before the key is ready (or when WebCrypto/IndexedDB
+  // is unavailable) the value stays in memory only, never in localStorage.
+  if (!ready || !key) { deferred.add(name); return; }
   const k = key;
   const p = encryptString(k, value, name)
     .then((ct) => { if (mem.get(name) === value) localStorage.setItem(PREFIX + name, ct); })

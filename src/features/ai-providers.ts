@@ -246,7 +246,8 @@ function resolveEndpoint(cfg: ProviderConfig): string {
       if (host === "localhost" || host === "127.0.0.1") return "/lmstudio";
     } catch { /* */ }
   }
-  if (ep.includes("api.anthropic.com")) return "/anthropic";
+  const anthParts = urlHostParts(ep);
+  if (anthParts && (anthParts.host === "api.anthropic.com" || anthParts.host.endsWith(".api.anthropic.com"))) return "/anthropic";
   return cfg.endpoint;
 }
 

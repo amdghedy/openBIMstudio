@@ -108,9 +108,9 @@ function renderBody() {
   info.style.cssText =
     "margin-bottom:12px;padding:10px;background:var(--bg-elevated,#181a23);border-radius:6px;font-size:11px;line-height:1.6";
   info.innerHTML =
-    `<b>${currentDoc.title ?? "Untitled IDS"}</b>` +
-    (currentDoc.version ? ` · v${currentDoc.version}` : "") +
-    (currentDoc.author ? ` · ${currentDoc.author}` : "") +
+    `<b>${escapeHtml(currentDoc.title ?? "Untitled IDS")}</b>` +
+    (currentDoc.version ? ` · v${escapeHtml(currentDoc.version)}` : "") +
+    (currentDoc.author ? ` · ${escapeHtml(currentDoc.author)}` : "") +
     `<br>` +
     `${currentDoc.specifications.length} specification(s)`;
   body.appendChild(info);
