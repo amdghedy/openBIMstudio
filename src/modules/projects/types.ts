@@ -238,6 +238,8 @@ export interface SheetViewport {
   width: number;        // mm
   height: number;
   scale: string;        // e.g. "1:100"
+  /** content = fill viewport from scene bounds (default); scale = fixed paper scale */
+  fitMode?: "content" | "scale";
   title?: string;
 }
 
