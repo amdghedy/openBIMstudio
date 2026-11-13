@@ -886,7 +886,7 @@ function ensureShell(): void {
   shell.addEventListener("drop", (e) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
-      /\.(dwg|dxf|bak|sv\$|xml)$/i.test(f.name) || /\.pdf$/i.test(f.name),
+      /\.(dwg|dxf|bak|sv\$|xml|pdf)$/i.test(f.name),
     );
     for (const f of files) openFile(f);
   });
