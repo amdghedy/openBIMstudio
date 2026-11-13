@@ -40,8 +40,11 @@ jobs:
         run: npm ci
       - name: Build production application
         run: npm run build
-      - name: Install desktop packaging tools
-        run: npm install --no-save --package-lock=false electron@latest electron-builder@latest
+      - name: Install pinned desktop packaging tools
+        shell: pwsh
+        run: |
+          npm pkg set "devDependencies.electron=45.3.2" "devDependencies.electron-builder=26.0.12"
+          npm install --no-save --package-lock=false electron@45.3.2 electron-builder@26.0.12
       - name: Package Windows installer
         run: npx electron-builder --config electron-builder.yml --win nsis --x64
       - name: Verify installer output
