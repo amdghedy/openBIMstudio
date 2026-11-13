@@ -6468,6 +6468,12 @@ export function transformElements(
   // The moved elements are the anchors — where the user dropped them stays,
   // the constraints pull the neighbours to them.
   try { scheduleAutoSolve(targets.map((t) => t.id)); } catch { /* auto-solve is best-effort */ }
+  // Parametric equal-length groups: stretch one linked wall → peers match length
+  try {
+    import("../modules/parametric/wire-authoring").then((m) => {
+      m.syncEqualLengthAfterTransform?.(targets.map((t) => t.id));
+    }).catch(() => {});
+  } catch { /* */ }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -1055,10 +1055,11 @@ function makeWallTypeMultiBlock(elementIds: string[]): HTMLElement {
   paramRow.append(
     mkBtn("Equal height", "height"),
     mkBtn("Equal thickness", "thickness"),
+    mkBtn("Equal length", "length"),
   );
   const paramHint = document.createElement("div");
   paramHint.style.cssText = "font-size:10px;color:var(--text-tertiary,#6b7280)";
-  paramHint.textContent = "Parametric: changing height/thickness on one wall updates the linked set.";
+  paramHint.textContent = "Parametric: changing height/thickness/length on one wall updates the linked set.";
 
   row.append(lbl, sel);
   list.append(row, hint, paramRow, paramHint);
