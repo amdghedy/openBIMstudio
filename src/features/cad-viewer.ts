@@ -9626,9 +9626,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const pct = expected > 0 ? (lost * 100) / expected : 100;
         logCmd(
           `DWG writer reported ${lost} entit${lost === 1 ? "y" : "ies"} not re-read (${pct.toFixed(3)}%). ` +
-            (pct <= 2
-              ? "Saving DXF fallback (same geometry). Update the app to get soft DWG verify."
-              : "Saving DXF fallback."),
+            (pct <= 3
+              ? "Engine hard-verify failed; saving DXF fallback with the same geometry (open in CAD or re-export after update)."
+              : "Saving DXF fallback to avoid silent data loss."),
         );
         try {
           const dxfName = `${base()}.dxf`;
