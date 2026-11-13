@@ -305,10 +305,12 @@ await step("context-menu", () => setupContextMenu());
 await step("viewport-toolbar", () => setupViewportToolbar());
 
 await step("projects", async () => setupProjects());
+await step("persistence", async () => (await import("./modules/projects/persistence")).setupProjectPersistence());
 await step("cloud-account", async () => (await import("./features/cloud-account")).setupCloudAccount());
 await step("pwa", async () => (await import("./core/pwa")).setupPwa());
 await step("north-compass", async () => (await import("./features/north-ui")).setupNorthCompass());
 await step("project-file", async () => (await import("./modules/projects/project-file-io")).setupProjectFileIO());
+await step("project-recovery", async () => (await import("./features/project-recovery")).setupProjectRecovery());
 await step("authoring", () => setupAuthoring());
 await step("plan-authoring-bridge", () => setupPlanAuthoringBridge());
 await step("families", () => setupFamilies());

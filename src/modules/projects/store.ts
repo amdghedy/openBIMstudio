@@ -11,6 +11,7 @@ import {
   type ProjectJournalRecord,
   type ProjectRecoverySnapshot,
 } from "./project-journal";
+import { normalizeProjectDoc, repairProjectDocInPlace } from "./project-schema";
 
 const DB_NAME = "open-bim-studio";
 const DB_VERSION = 2;
@@ -149,6 +150,9 @@ function appendProjectSnapshot(
 }
 
 export async function putProject(doc: ProjectDoc): Promise<void> {
+  // Structural repair before write: a persisted record is always a document
+  // the opener can consume without further corruption triage.
+  repairProjectDocInPlace(doc);
   const db = await openDb();
   const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
   const done = transactionDone(tx);
@@ -169,7 +173,70 @@ export async function getProject(id: string): Promise<ProjectDoc | undefined> {
   const done = transactionDone(tx);
   const result = await reqAs(tx.objectStore(S_PROJECTS).get(id));
   await done;
+  if (result === undefined) return undefined;
+  // Normalize what can be normalized; if even that fails, return the raw
+  // record — corrupted data is reported, never silently discarded.
+  const parsed = normalizeProjectDoc(result);
+  if (parsed.ok) return parsed.doc;
+  console.error("[projects] stored record is corrupted:", parsed.fatal, parsed.issues, id);
   return result;
+}
+
+/** Read a project with explicit triage for the open path. */
+export async function loadProjectDoc(id: string): Promise<
+  { loaded: true; doc: ProjectDoc; issues: string[]; migrations: string[] } | { loaded: false; fatal: string; issues: string[]; raw: unknown }
+> {
+  const db = await openDb();
+  const tx = db.transaction(S_PROJECTS, "readonly");
+  const done = transactionDone(tx);
+  const result = await reqAs(tx.objectStore(S_PROJECTS).get(id));
+  await done;
+  if (result === undefined) return { loaded: false, fatal: "Project not found.", issues: [], raw: undefined };
+  const parsed = normalizeProjectDoc(result);
+  if (parsed.ok) return { loaded: true, doc: parsed.doc, issues: parsed.issues, migrations: parsed.migrations };
+  return { loaded: false, fatal: parsed.fatal, issues: parsed.issues, raw: result };
+}
+
+/**
+ * Persist a project document together with its model payloads in ONE
+ * transaction. Used by file import and Save-As copy so a crash can never
+ * leave a document whose metadata references payloads that were never
+ * written (or the reverse).
+ */
+export async function importProjectWithBlobs(
+  doc: ProjectDoc,
+  blobs: Array<{ modelId: string; name: string; blob: Blob }>,
+  replace = false,
+): Promise<void> {
+  repairProjectDocInPlace(doc);
+  const db = await openDb();
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
+  const done = transactionDone(tx);
+  const projects = tx.objectStore(S_PROJECTS);
+  const blobsStore = tx.objectStore(S_BLOBS);
+  if (replace) {
+    const keys = blobsStore.index("projectId").getAllKeys(doc.id);
+    keys.onsuccess = () => { for (const key of keys.result) blobsStore.delete(key); };
+  }
+  projects.put(doc);
+  for (const b of blobs) {
+    const key = `${doc.id}::${b.modelId}`;
+    blobsStore.put({ key, projectId: doc.id, modelId: b.modelId, name: b.name, blob: b.blob }, key);
+  }
+  await done;
+}
+
+/** Best-effort storage usage estimate for quota observability. */
+export async function estimateStorage(): Promise<{ usage: number; quota: number; supported: boolean }> {
+  try {
+    if (typeof navigator === "undefined" || !navigator.storage?.estimate) {
+      return { usage: 0, quota: 0, supported: false };
+    }
+    const est = await navigator.storage.estimate();
+    return { usage: est.usage ?? 0, quota: est.quota ?? 0, supported: true };
+  } catch {
+    return { usage: 0, quota: 0, supported: false };
+  }
 }
 
 export async function listProjectDocs(): Promise<ProjectDoc[]> {
@@ -178,7 +245,14 @@ export async function listProjectDocs(): Promise<ProjectDoc[]> {
   const done = transactionDone(tx);
   const result = await reqAs(tx.objectStore(S_PROJECTS).getAll());
   await done;
-  return result;
+  // Normalize every record; corrupted ones are kept raw so the user (and the
+  // journal) still see them instead of a project list that silently shrinks.
+  return result.map((record) => {
+    const parsed = normalizeProjectDoc(record);
+    if (parsed.ok) return parsed.doc;
+    console.error("[projects] stored record is corrupted:", parsed.fatal, record);
+    return record as ProjectDoc;
+  });
 }
 
 /**

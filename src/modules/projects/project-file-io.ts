@@ -10,6 +10,7 @@
 import { notify as toast } from "../../core/notify";
 import * as store from "./store";
 import type { ProjectDoc } from "./types";
+import { normalizeProjectDoc } from "./project-schema";
 import { buildProjectFile, parseProjectFile, ProjectFileError, PROJECT_FILE_EXT, PROJECT_FILE_MIME, suggestedFileName } from "./project-file";
 import { getCurrentProject, openProject, saveProject } from "./projects";
 import { decryptProjectBlob, encryptProjectBlob, isEncryptedProjectBlob, WrongPasswordError } from "./project-crypto";
@@ -203,29 +204,43 @@ export async function importProjectFile(file: Blob, handle: Handle | null = null
     }
   }
   const { doc, blobs } = await parseProjectFile(file);
-  const existing = await store.getProject(doc.id);
-  let id = doc.id;
+  // Validate the document inside the file BEFORE anything touches storage.
+  // A malformed file is refused with the exact problems listed — the file on
+  // disk is left untouched, so nothing is discarded and nothing is half-imported.
+  const parsed = normalizeProjectDoc(doc);
+  if (!parsed.ok) {
+    console.error("[project-file] refusing invalid project file:", parsed.fatal, parsed.issues);
+    throw new ProjectFileError(
+      `The project file contains invalid project data and was not imported.\n${parsed.fatal}` +
+      (parsed.issues.length ? `\n· ${parsed.issues.join("\n· ")}` : ""));
+  }
+  const clean = parsed.doc;
+  if (parsed.issues.length || parsed.migrations.length) {
+    console.warn("[project-file] repaired project on import:", [...parsed.migrations, ...parsed.issues]);
+  }
+  const existing = await store.getProject(clean.id);
+  let id = clean.id;
+  let replace = false;
   if (existing) {
     const when = new Date(existing.updatedAt).toLocaleString();
     const { confirmDialog } = await import("../../features/form-modal");
-    const replace = await confirmDialog(
+    replace = await confirmDialog(
       "Project already exists",
       `"${existing.name}" already exists in this browser (last saved ${when}).\n\n` +
       `Confirm = replace it with the file's version.\nCancel = open the file as a separate copy.`);
-    if (replace) {
-      await store.deleteModelBlobs(id);
-    } else {
-      id = (crypto as any).randomUUID?.() ?? `${doc.id}-copy-${Date.now()}`;
-      doc.id = id;
-      doc.name = `${doc.name} (copy)`;
+    if (!replace) {
+      id = (crypto as any).randomUUID?.() ?? `${clean.id}-copy-${Date.now()}`;
+      clean.id = id;
+      clean.name = `${clean.name} (copy)`;
     }
   }
-  doc.updatedAt = Date.now();
-  await store.putProject(doc);
-  for (const b of blobs) await store.putModelBlob(id, b.modelId, b.name, b.blob);
+  clean.updatedAt = Date.now();
+  // ONE transaction for the document and every model payload: an interrupted
+  // import can no longer leave metadata whose payloads were never written.
+  await store.importProjectWithBlobs(clean, blobs, replace);
   if (handle) { link = { projectId: id, handle, name: handle.name }; void saveLink(link); }
   await openProject(id);
-  toast("success", `Opened ${doc.name}${blobs.length ? ` with ${blobs.length} model(s)` : ""}`);
+  toast("success", `Opened ${clean.name}${blobs.length ? ` with ${blobs.length} model(s)` : ""}`);
   return true;
 }
 

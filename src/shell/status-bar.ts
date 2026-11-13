@@ -4,7 +4,10 @@ import { togglePlanView, isPlanViewVisible } from "../features/plan-view-panel";
 import { isSheets2dPanelVisible } from "../features/sheets-2d-panel";
 import {
   getCurrentProject, isDirty, getDetachedModelCount, onProjectChanged,
+  getSaveState,
 } from "../modules/projects/projects";
+import { saveProject } from "../modules/projects/projects";
+import { fmtDateTime } from "../core/region";
 import { getActiveTool, getElementCount, getLevel } from "../features/authoring";
 
 const bar = document.createElement("div");
@@ -127,15 +130,32 @@ function update() {
 
   const p = getCurrentProject();
   const detached = getDetachedModelCount();
+  // Save state machine → explicit, trustworthy status text. A failed save
+  // must never render as "saved"; it is clickable to retry.
+  const st = getSaveState();
+  let saveHtml = "";
+  if (p) {
+    if (st.state === "saving") {
+      saveHtml = `<span style="color:#6aa1ff" data-save-state="saving">● saving…</span>`;
+    } else if (st.state === "error") {
+      saveHtml = `<span data-save-retry="1" role="button" tabindex="0" ` +
+        `title="${esc(st.message)} — click to retry (or Ctrl+S)" ` +
+        `style="color:#f87171;cursor:pointer;text-decoration:underline dotted">⚠ save failed — click to retry</span>`;
+    } else if (st.state === "saved") {
+      saveHtml = `<span style="color:#7bb040" title="Last saved ${esc(fmtDateTime(st.at))}">● saved</span>`;
+    } else if (isDirty()) {
+      saveHtml = `<span style="color:#dca642">● unsaved</span>`;
+    } else {
+      saveHtml = `<span style="color:#7bb040">● saved</span>`;
+    }
+  }
   right.innerHTML =
     (detached ? `<span style="color:#dca642">⚠ ${detached} detached</span><span style="opacity:.4">·</span>` : "") +
     (p
       ? `<span style="opacity:.55">${esc(p.projectNumber || "Project") }:</span> <b>${esc(p.name)}</b>` +
         `<span style="opacity:.4">·</span><span style="opacity:.55">${esc((p.units ?? "metric").toUpperCase())}</span>` +
         `<span style="opacity:.4">·</span>` +
-        (isDirty()
-          ? ` <span style="color:#dca642">● unsaved</span>`
-          : ` <span style="color:#7bb040">● saved</span>`)
+        saveHtml
       : `<span style="opacity:.55">No project</span>`) +
     `<span style="opacity:.4">·</span>` +
     `<span style="opacity:.55">Open BIM Studio v54</span>` +
@@ -147,6 +167,14 @@ function update() {
 export function setupStatusBar() {
   (document.getElementById("app") as HTMLElement).appendChild(bar);
   onProjectChanged(update);
+  // Retry affordance for a failed save (delegated — the right segment is
+  // rebuilt via innerHTML on every update).
+  right.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement | null)?.closest?.("[data-save-retry]")) void saveProject();
+  });
+  window.addEventListener("obs:save-state", update);
+  window.addEventListener("obs:save-failed", update);
+  window.addEventListener("obs:project-saved", update);
   setInterval(update, 1200);
   update();
 }

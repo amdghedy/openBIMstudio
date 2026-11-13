@@ -236,6 +236,7 @@
     "test:modify-registry": "node tests/modify-command-registry.test.cjs",
     "test:architecture-map": "node tests/architecture-map.test.cjs",
     "test:project-journal": "node tests/project-journal.test.cjs",
+    "test:project-persistence": "node tests/project-persistence.test.cjs",
     "test:cad-dwg-export": "node tests/cad-dwg-export.test.cjs",
     "test:kb-bim-csd": "node tests/kb-bim-csd-packing.test.cjs",
     "test:kb-bim-rules": "node tests/kb-bim-rules.test.cjs",

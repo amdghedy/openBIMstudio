@@ -7,6 +7,7 @@ This directory contains user, developer and tool-reference documentation for Ope
 - [User Guide](USER_GUIDE.md) — local setup, common workflows, troubleshooting and safe verification.
 - [Master Tool Catalogue](MASTER_TOOL_CATALOG.md) — source-mapped inventory of tool families, with explicit verification boundaries.
 - [Developer Guide](DEVELOPER_GUIDE.md) — architecture, module registration, persistence, testing and security.
+- [Project Persistence & Recovery](RECOVERY.md) — save/autosave guarantees, failure modes, checkpoint restore, schema migrations.
 - [Tool Reference Pages](tools/README.md) — per-tool documentation template and priority list.
 
 ## Existing implementation and gap documents

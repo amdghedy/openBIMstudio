@@ -24,8 +24,9 @@ import { refreshModelSelectionUI, clearClash } from "../../features/clash";
 import { getIssues, setIssues, onIssuesChanged } from "../issues/issues";
 import { exportConstraints, importConstraints } from "../parametric-constraints/types";
 import { getCostData, setCostData, onCostChanged } from "../cost/cost";
-import { uiAlert } from "../../core/notify";
+import { uiAlert, notify as toast } from "../../core/notify";
 import { history } from "../../features/history";
+import { isQuotaError } from "./project-schema";
 
 let current: ProjectDoc | null = null;
 let dirty = false;
@@ -33,6 +34,38 @@ let detachedModels = 0;
 const listeners = new Set<() => void>();
 let workPlaneListenerInstalled = false;
 let restoringWorkPlanes = false;
+
+/* ── Save-state machine ──────────────────────────────────────────────────
+ * dirtyGeneration increments on every markDirty(). saveProject() captures
+ * the generation when it starts collecting state; only if no edit happened
+ * during the async write is the project marked clean. Edits made while a
+ * save is in flight therefore stay dirty and the next autosave flushes
+ * them — they can no longer be silently declared saved.
+ */
+let dirtyGeneration = 0;
+let saving = false;
+/** Guards open/create transitions: hydration must never mark the document
+ * dirty (a half-restored doc must not be autosaved). */
+let transitioning = false;
+export type SaveState =
+  | { state: "idle" }
+  | { state: "saving"; startedAt: number }
+  | { state: "saved"; at: number }
+  | { state: "error"; at: number; message: string; quota: boolean };
+let saveState: SaveState = { state: "idle" };
+let lastSilentErrorToastAt = 0;
+
+export function getSaveState(): SaveState {
+  return saveState;
+}
+/** True while open/create is tearing down or rehydrating the scene. */
+export function isTransitioning(): boolean {
+  return transitioning;
+}
+function setSaveState(next: SaveState) {
+  saveState = next;
+  try { window.dispatchEvent(new CustomEvent("obs:save-state", { detail: { ...next } })); } catch { /* */ }
+}
 
 async function restoreProjectWorkPlanes(snapshot: ProjectDoc["workPlanes"]): Promise<void> {
   restoringWorkPlanes = true;
@@ -53,7 +86,15 @@ function notify() {
     try { cb(); } catch { /* */ }
   }
 }
-export function markDirty() { dirty = true; notify(); }
+/** Mark the document dirty. Suppressed during open/create transitions so
+ * hydration side effects (issues/cost restore, level seeds) cannot flag a
+ * half-restored document for autosave. */
+export function markDirty() {
+  if (transitioning) return;
+  dirty = true;
+  dirtyGeneration += 1;
+  notify();
+}
 
 export type ProjectMetaPatch = Partial<Pick<
   ProjectDoc,
@@ -113,92 +154,121 @@ export async function saveProject(silent = false) {
     if (!silent) uiAlert("No project is open.");
     return;
   }
-  current.elements = getElements();
+  if (saving) return; // a write is already in flight; the generation check keeps newer edits dirty
+  saving = true;
+  setSaveState({ state: "saving", startedAt: Date.now() });
+  const gen = dirtyGeneration;
   try {
-    const lifecycle = (ctx.features as any).mep?.lifecycle;
-    if (typeof lifecycle?.snapshot === "function") current.mepLifecycle = lifecycle.snapshot();
-  } catch (e) { console.warn("[projects] MEP lifecycle snapshot failed", e); }
-  current.grids = getGrids();
-  current.levels = getLevels();
-  try {
-    const workPlanes = await import("../work-planes/types");
-    current.workPlanes = workPlanes.serializeWorkPlanes();
-  } catch (e) { console.warn("[projects] work plane snapshot failed", e); }
-  // Parametric persistence: locked dimensions + the constraint store survive reloads.
-  try {
-    current.parametricConstraints = exportConstraints();
-  } catch (e) { console.warn("[projects] constraint export failed", e); }
-  try {
-    const locks = (ctx.features as any).authoring?.getDimLocks?.();
-    current.dimLocks = Array.isArray(locks) ? locks : [];
-  } catch (e) { console.warn("[projects] dim-lock export failed", e); }
-  current.issues = getIssues();
-  current.cost = getCostData();
-  current.appState = snapshotAppState();
-  current.north = getNorthState();
+    current.elements = getElements();
+    try {
+      const lifecycle = (ctx.features as any).mep?.lifecycle;
+      if (typeof lifecycle?.snapshot === "function") current.mepLifecycle = lifecycle.snapshot();
+    } catch (e) { console.warn("[projects] MEP lifecycle snapshot failed", e); }
+    current.grids = getGrids();
+    current.levels = getLevels();
+    try {
+      const workPlanes = await import("../work-planes/types");
+      current.workPlanes = workPlanes.serializeWorkPlanes();
+    } catch (e) { console.warn("[projects] work plane snapshot failed", e); }
+    // Parametric persistence: locked dimensions + the constraint store survive reloads.
+    try {
+      current.parametricConstraints = exportConstraints();
+    } catch (e) { console.warn("[projects] constraint export failed", e); }
+    try {
+      const locks = (ctx.features as any).authoring?.getDimLocks?.();
+      current.dimLocks = Array.isArray(locks) ? locks : [];
+    } catch (e) { console.warn("[projects] dim-lock export failed", e); }
+    current.issues = getIssues();
+    current.cost = getCostData();
+    current.appState = snapshotAppState();
+    current.north = getNorthState();
 
-  // Persist per-model offset from importer.
-  try {
-    const importer: any = (ctx.features as any).importer;
-    for (const meta of current.models ?? []) {
-      const off = importer?.getModelOffset?.(meta.id);
-      if (off) meta.position = [off[0], off[1], off[2]];
-      const rot = importer?.getModelRotation?.(meta.id);
-      if (rot) meta.rotationY = rot;
+    // Persist per-model offset from importer.
+    try {
+      const importer: any = (ctx.features as any).importer;
+      for (const meta of current.models ?? []) {
+        const off = importer?.getModelOffset?.(meta.id);
+        if (off) meta.position = [off[0], off[1], off[2]];
+        const rot = importer?.getModelRotation?.(meta.id);
+        if (rot) meta.rotationY = rot;
+      }
+    } catch (e) {
+      console.warn("[projects] offset persistence failed", e);
     }
-  } catch (e) {
-    console.warn("[projects] offset persistence failed", e);
+
+    try {
+      const m = (ctx.features as any).importer?.getPositioningMode?.();
+      if (m) (current as any).positioningMode = m;
+    } catch { /* */ }
+
+    // openbim-levels:ui-wired:projects
+    try {
+      const activeId = (ctx.features as any).authoring?.getActiveLevelId?.() ?? null;
+      (current as any).activeLevelId = activeId;
+    } catch { /* */ }
+
+    try {
+      const serialize = (ctx.features as any).fragEdit?.serialize;
+      if (typeof serialize === "function") {
+        const edits = serialize();
+        (current as any).fragEdits = edits; // v48 legacy compatibility
+        (current as any).nativeTwins = edits; // rich Native Twin payload
+      }
+    } catch { /* */ }
+
+    try {
+      const clash = services.tryUse("clash");
+      (current as any).clashStates = clash?.serializeStates?.() ?? [];
+    } catch { /* */ }
+
+    try {
+      const annot = await import("../views/annotation-store");
+      current.annotations = annot.serializeAll();
+    } catch { /* annotations store optional */ }
+
+    try {
+      const pd = (window as any).__obsPlanDims?.serialize?.();
+      if (Array.isArray(pd)) current.planDimensions = pd;
+      const pa = (window as any).__obsPlanAnno?.serialize?.();
+      if (pa) current.planAnnotations = pa;
+      const pr = (window as any).__obsPlanRegions?.serialize?.();
+      if (Array.isArray(pr)) current.planRegions2d = pr;
+    } catch { /* plan dimensions optional */ }
+
+    current.updatedAt = Date.now();
+    await store.putProject(current);
+    // Only declare the document clean when nothing was edited while the write
+    // ran; otherwise the in-flight edits stay dirty for the next save.
+    if (dirtyGeneration === gen) dirty = false;
+    setSaveState({ state: "saved", at: current.updatedAt });
+    notify();
+    try { window.dispatchEvent(new CustomEvent("obs:project-saved", { detail: { silent } })); } catch { /* */ }
+  } catch (err) {
+    // A failed save must never look like a successful one. Keep the dirty
+    // flag, surface the reason, and let the status bar offer a retry.
+    dirty = true;
+    dirtyGeneration += 1;
+    const quota = isQuotaError(err);
+    const message = err instanceof Error ? err.message : String(err);
+    setSaveState({ state: "error", at: Date.now(), message: quota ? "Browser storage is full." : message, quota });
+    console.error("[projects] SAVE FAILED — project remains dirty", err);
+    if (!silent) {
+      uiAlert(quota
+        ? `Could not save: browser storage is full. Free space (or save a .obsproj backup via File → Save As) and try again.\n\n${message}`
+        : `Could not save the project: ${message}`);
+    } else if (Date.now() - lastSilentErrorToastAt > 60_000) {
+      // Autosave failures must not be silent either — but an alert on every
+      // 25 s tick would make the app unusable, so throttle the toast.
+      lastSilentErrorToastAt = Date.now();
+      toast("error", quota
+        ? "Autosave failed: browser storage is full. Save a .obsproj backup (File → Save As) to protect your work."
+        : `Autosave failed: ${message}`);
+    }
+    try { window.dispatchEvent(new CustomEvent("obs:save-failed", { detail: { message, quota, silent } })); } catch { /* */ }
+  } finally {
+    saving = false;
+    notify();
   }
-
-  try {
-    const m = (ctx.features as any).importer?.getPositioningMode?.();
-    if (m) (current as any).positioningMode = m;
-  } catch { /* */ }
-
-
-  // openbim-levels:ui-wired:projects
-
-  try {
-
-    const activeId = (ctx.features as any).authoring?.getActiveLevelId?.() ?? null;
-
-    (current as any).activeLevelId = activeId;
-
-  } catch { /* */ }
-
-  try {
-    const serialize = (ctx.features as any).fragEdit?.serialize;
-    if (typeof serialize === "function") {
-      const edits = serialize();
-      (current as any).fragEdits = edits; // v48 legacy compatibility
-      (current as any).nativeTwins = edits; // rich Native Twin payload
-    }
-  } catch { /* */ }
-
-  try {
-    const clash = services.tryUse("clash");
-    (current as any).clashStates = clash?.serializeStates?.() ?? [];
-  } catch { /* */ }
-
-  try {
-    const annot = await import("../views/annotation-store");
-    current.annotations = annot.serializeAll();
-  } catch { /* annotations store optional */ }
-
-  try {
-    const pd = (window as any).__obsPlanDims?.serialize?.();
-    if (Array.isArray(pd)) current.planDimensions = pd;
-    const pa = (window as any).__obsPlanAnno?.serialize?.();
-    if (pa) current.planAnnotations = pa;
-    const pr = (window as any).__obsPlanRegions?.serialize?.();
-    if (Array.isArray(pr)) current.planRegions2d = pr;
-  } catch { /* plan dimensions optional */ }
-
-  current.updatedAt = Date.now();
-  await store.putProject(current);
-  dirty = false;
-  notify();
-  try { window.dispatchEvent(new CustomEvent("obs:project-saved", { detail: { silent } })); } catch { /* */ }
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -273,6 +343,7 @@ export interface CreateProjectOptions {
 
 export async function createProject(name: string, options: CreateProjectOptions = {}) {
   const resumeHistory = await history.beginDocumentTransition();
+  transitioning = true; // hydration side effects must not mark the new document dirty
   const loader = (ctx.features as any).appLoader;
   try {
     // Flush the outgoing document while its scene is still available. The
@@ -321,7 +392,6 @@ export async function createProject(name: string, options: CreateProjectOptions 
 
     loader?.set?.("Writing to storage…", 0.85);
     await store.putProject(current);
-
     computeSceneBounds();
     try { void refreshModelSelectionUI(); } catch { /* */ }
     resetNorth();
@@ -330,6 +400,7 @@ export async function createProject(name: string, options: CreateProjectOptions 
     loader?.set?.("Done.", 1);
     notify();
   } finally {
+    transitioning = false;
     resumeHistory();
     setTimeout(() => loader?.finish?.(), 150);
   }
@@ -342,10 +413,24 @@ export async function openProject(id: string) {
   const loader = (ctx.features as any).appLoader;
   if (loader?.isActive?.()) return;
 
-  const doc = await store.getProject(id);
-  if (!doc) { uiAlert("Project not found."); return; }
+  // Triage the stored document BEFORE touching the scene: a corrupted or
+  // newer-schema record is reported here, never silently discarded.
+  const load = await store.loadProjectDoc(id);
+  if (!load.loaded) {
+    if (load.fatal === "Project not found.") {
+      uiAlert("Project not found.");
+      return;
+    }
+    console.error("[projects] refusing to open corrupted project", id, load.fatal, load.issues);
+    uiAlert(`This project's stored data is damaged and cannot be opened safely.\n\n${load.fatal}` +
+      (load.issues.length ? `\n\nDetails:\n· ${load.issues.join("\n· ")}` : "") +
+      `\n\nYour data was NOT deleted — restore a checkpoint via File → Recovery checkpoints…, or open a .obsproj backup.`);
+    return;
+  }
+  const doc = load.doc;
 
   const resumeHistory = await history.beginDocumentTransition();
+  transitioning = true; // hydration must not flag the document dirty (set after the await above so a rejection cannot latch it on)
   try {
     // Persist the outgoing project before tearing down its scene.
     if (current && current.id !== id && dirty) await saveProject(true);
@@ -519,10 +604,17 @@ export async function openProject(id: string) {
 
     loader?.set?.("Done.", 1);
     notify();
+    // Surface every repair made while loading — never a silent fix.
+    if (load.issues.length || load.migrations.length) {
+      const detail = [...load.migrations, ...load.issues].join(" ");
+      console.warn("[projects] project loaded with repairs:", detail);
+      toast("warn", `Project repaired on load: ${detail}`);
+    }
   } catch (err) {
     console.error("[projects] openProject failed", err);
     uiAlert(`Could not open project: ${err instanceof Error ? err.message : err}`);
   } finally {
+    transitioning = false;
     resumeHistory();
     setTimeout(() => loader?.finish?.(), 180);
   }
@@ -621,6 +713,7 @@ export function setupProjects() {
     getCurrentProject, isDirty, createProject, openProject,
     deleteProjectById, saveProject, onModelImported, markDirty,
     listProjectRecoverySnapshots, restoreProjectRecoverySnapshot,
+    getSaveState, isTransitioning,
   };
   onIssuesChanged(() => markDirty());
   onCostChanged(() => markDirty());
@@ -630,5 +723,7 @@ export function setupProjects() {
       void saveProject();
     }
   });
-  setInterval(() => { if (dirty && current) void saveProject(true); }, 25_000);
+  // NOTE: the autosave interval intentionally lives in ./persistence.ts
+  // (setupProjectPersistence), which adds an in-flight guard, a transition
+  // guard and unload safety. All time-based writes stay behind one owner.
 }
