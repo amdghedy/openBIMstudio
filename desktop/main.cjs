@@ -101,9 +101,7 @@ async function startLocalServer() {
       localServer.removeListener("error", onError);
       const port = localServer.address().port;
       localOrigin = "http://" + HOST + ":" + port;
-      const temporary = PORT_FILE + ".tmp";
-      fs.writeFileSync(temporary, String(port), "utf8");
-      fs.renameSync(temporary, PORT_FILE);
+      if (!savedPort) fs.writeFileSync(PORT_FILE, String(port), "utf8");
       resolve();
     };
     localServer.once("error", onError);
