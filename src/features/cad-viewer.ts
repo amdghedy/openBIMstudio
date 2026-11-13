@@ -5545,7 +5545,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "PDF Import",
         rb("model-curve", "PDF to Drawing…", `data-a="pdfin"`, "Convert a vector PDF into an editable drawing — parsed locally in this browser, the PDF is not uploaded (PDFIN); then QSAVE for DXF or DWGSAVE for DWG") +
-        rb("export", "PDF → DWG file…", `data-a="pdftodwg"`, "Convert a vector PDF straight to a downloadable DWG (one per page, zipped when several) — converted locally, nothing is uploaded (PDFTODWG)"),
+        rb("save", "PDF → DWG file…", `data-a="pdftodwg"`, "Convert a vector PDF straight to a downloadable DWG (one per page, zipped when several) — converted locally, nothing is uploaded (PDFTODWG)"),
         "",
         "",
         "insert",
