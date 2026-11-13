@@ -17,6 +17,7 @@ const MIME = {
 let localServer;
 let localOrigin;
 let mainWindow;
+const PORT_FILE = path.join(app.getPath("userData"), "local-server-port.txt");
 
 function distributionDirectory() {
   return app.isPackaged
@@ -81,13 +82,33 @@ function createStaticServer() {
 }
 async function startLocalServer() {
   localServer = createStaticServer();
+  fs.mkdirSync(path.dirname(PORT_FILE), { recursive: true });
+  let savedPort = 0;
+  try {
+    const parsed = Number(fs.readFileSync(PORT_FILE, "utf8").trim());
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) savedPort = parsed;
+  } catch {}
   await new Promise((resolve, reject) => {
-    localServer.once("error", reject);
-    localServer.listen(0, HOST, () => {
-      localServer.removeListener("error", reject);
-      localOrigin = "http://" + HOST + ":" + localServer.address().port;
+    const onError = error => {
+      localServer.removeListener("listening", onListening);
+      if (savedPort && error.code === "EADDRINUSE") {
+        reject(new Error("OpenBIMStudio's saved local port is already in use. Close the other application using port " + savedPort + " and restart OpenBIMStudio. Your local project storage has not been changed."));
+      } else {
+        reject(error);
+      }
+    };
+    const onListening = () => {
+      localServer.removeListener("error", onError);
+      const port = localServer.address().port;
+      localOrigin = "http://" + HOST + ":" + port;
+      const temporary = PORT_FILE + ".tmp";
+      fs.writeFileSync(temporary, String(port), "utf8");
+      fs.renameSync(temporary, PORT_FILE);
       resolve();
-    });
+    };
+    localServer.once("error", onError);
+    localServer.once("listening", onListening);
+    localServer.listen(savedPort, HOST);
   });
 }
 function createWindow() {
