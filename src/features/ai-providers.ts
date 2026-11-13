@@ -337,8 +337,17 @@ async function listAnthropicModels(cfg: ProviderConfig): Promise<string[]> {
 
 export { looksLikeAnthropicKey };
 
-function isGeminiEndpoint(cfg: ProviderConfig): boolean {
-  return cfg.endpoint.includes("generativelanguage.googleapis.com");
+export function isGeminiEndpoint(cfg: ProviderConfig): boolean {
+  // Exact hostname comparison — a substring match lets any URL that merely
+  // embeds the host string pass (endpoint spoofing).
+  const p = urlHostParts(cfg.endpoint);
+  return !!p && (p.host === "generativelanguage.googleapis.com" || p.host.endsWith(".generativelanguage.googleapis.com"));
+}
+
+/** True when the endpoint base really is api.anthropic.com (or a subdomain). */
+export function isAnthropicBase(endpoint: string): boolean {
+  const p = urlHostParts(endpoint);
+  return !!p && (p.host === "api.anthropic.com" || p.host.endsWith(".api.anthropic.com"));
 }
 
 function classifyHttpError(status: number, statusText: string, body: string): string {
@@ -556,7 +565,7 @@ async function callOpenAIStream(cfg: ProviderConfig, req: ChatRequest, onToken: 
 function buildOpenAIHeaders(cfg: ProviderConfig): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
-  if (cfg.endpoint.includes("api.anthropic.com")) {
+  if (isAnthropicBase(cfg.endpoint)) {
     headers["anthropic-version"] = "2023-06-01";
     headers["anthropic-dangerous-direct-browser-access"] = "true";
   }
@@ -621,7 +630,7 @@ export async function testProvider(cfg: ProviderConfig): Promise<string> {
   const url = joinUrl(resolveEndpoint(cfg), "/v1/models");
   const headers: Record<string, string> = {};
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
-  if (cfg.endpoint.includes("api.anthropic.com")) {
+  if (isAnthropicBase(cfg.endpoint)) {
     headers["anthropic-version"] = "2023-06-01";
     headers["anthropic-dangerous-direct-browser-access"] = "true";
   }
@@ -653,7 +662,7 @@ export async function listModels(cfg: ProviderConfig): Promise<string[]> {
   const url = joinUrl(resolveEndpoint(cfg), "/v1/models");
   const headers: Record<string, string> = {};
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
-  if (cfg.endpoint.includes("api.anthropic.com")) {
+  if (isAnthropicBase(cfg.endpoint)) {
     headers["anthropic-version"] = "2023-06-01";
     headers["anthropic-dangerous-direct-browser-access"] = "true";
   }

@@ -18,18 +18,26 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
-const EXT_SIG = {
-  ".ifc": (head) => /^ISO-10303-21/.test(head),
-  ".dxf": (head, buf) => {
-    // DXF is ASCII (or binary with sentinel String.fromCharCode(65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70)). Accept
-    // either a text control pair at the start or the binary sentinel.
-    const binarySignature = [65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70];
-    if (buf.length >= binarySignature.length && binarySignature.every((value, index) => buf[index] === value)) return true;
-    const text = Buffer.from(buf.subarray(0, 4096)).toString("latin1");
-    return /\b0\s*\r?\n\s*SECTION\b/.test(text) || /\b999\b/.test(text.slice(0, 64));
-  },
-  ".dwg": (head) => /^AC10(1[2-9]|2[0-9]|3[0-9])/.test(head),
-};
+// Explicit dispatch (no dynamic call through a client-influenced lookup):
+// each accepted extension is its own case, everything else falls to default.
+function verifySignature(e, head, buf) {
+  switch (e) {
+    case ".ifc":
+      return /^ISO-10303-21/.test(head);
+    case ".dxf": {
+      // DXF is ASCII (or binary with sentinel "AutoCAD Binary DXF"). Accept
+      // either a text control pair at the start or the binary sentinel.
+      const binarySignature = [65, 117, 116, 111, 67, 65, 68, 32, 66, 105, 110, 97, 114, 121, 32, 68, 88, 70];
+      if (buf.length >= binarySignature.length && binarySignature.every((value, index) => buf[index] === value)) return true;
+      const text = Buffer.from(buf.subarray(0, 4096)).toString("latin1");
+      return /\b0\s*\r?\n\s*SECTION\b/.test(text) || /\b999\b/.test(text.slice(0, 64));
+    }
+    case ".dwg":
+      return /^AC10(1[2-9]|2[0-9]|3[0-9])/.test(head);
+    default:
+      return null; // no signature rule for this extension
+  }
+}
 
 export function createUploadId(now = Date.now()) {
   return `${now.toString(36)}${crypto.randomBytes(12).toString("base64url")}`.slice(0, 32);
@@ -45,10 +53,9 @@ export function sniffSignature(buf, ext) {
   if (e === ".rvt" || e === ".nwd" || e === ".nwc") {
     return { ok: true, signatureChecked: false, note: "closed format — signature not verifiable" };
   }
-  const check = EXT_SIG[e];
-  if (!check) return { ok: false, signatureChecked: false, note: "no signature rule for extension" };
   const head = buf.subarray(0, 64).toString("latin1");
-  const ok = check(head, buf);
+  const ok = verifySignature(e, head, buf);
+  if (ok === null) return { ok: false, signatureChecked: false, note: "no signature rule for extension" };
   return { ok, signatureChecked: true, note: ok ? undefined : "file signature does not match extension" };
 }
 

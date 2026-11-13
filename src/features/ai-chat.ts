@@ -37,6 +37,7 @@ import {
   DEFAULT_CONFIG,
   type ChatMessage,
   type ProviderConfig,
+  isGeminiEndpoint,
 } from "./ai-providers";
 import { confirmDialog } from "./form-modal";
 import {
@@ -1251,7 +1252,7 @@ function renderSettings(): void {
       `3. Terminal: <span style="font-family:var(--font-mono,monospace)">ollama pull nomic-embed-text</span><br>` +
       `4. Click Test connection<br>` +
       `5. Build the semantic index`;
-  } else if (cfg.endpoint.includes("generativelanguage.googleapis.com")) {
+  } else if (isGeminiEndpoint(cfg)) {
     hint.innerHTML =
       `<b style="color:var(--text-secondary,#a0a6b5)">Google Gemini</b><br>` +
       `Get a free key at <b>aistudio.google.com</b>. ` +
