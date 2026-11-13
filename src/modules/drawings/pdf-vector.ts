@@ -135,9 +135,11 @@ function cmykToInt(c: number, m: number, y: number, k: number): number {
  */
 async function loadPdfjs(): Promise<any> {
   if (typeof document !== "undefined") {
-    const pdfjs = await import("pdfjs-dist");
+    // The LEGACY build: the modern one calls Uint8Array.prototype.toHex (and friends), which most installed browsers
+    // do not have yet - the conversion failed with "a.toHex is not a function" in a real browser.
+    const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as any;
     pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
+      "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
       import.meta.url,
     ).toString();
     return pdfjs;
