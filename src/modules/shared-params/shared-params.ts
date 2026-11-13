@@ -9,6 +9,10 @@
 import { ctx } from "../../core/context";
 import type { ParameterType } from "../families/types";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsSharedParams: any;
+
 export interface SharedParameter {
   guid: string;
   name: string;
@@ -254,7 +258,7 @@ export const sharedParamsStore = new SharedParamsStore();
 export function setupSharedParams(): typeof sharedParamsStore {
   sharedParamsStore.boot();
   (ctx.features as any).sharedParams = sharedParamsStore;
-  (window as any).__obsSharedParams = sharedParamsStore;
+  obsSharedParams = sharedParamsStore;
   console.log(
     "[shared-params] ready -",
     sharedParamsStore.listShared().length,

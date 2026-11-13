@@ -7,6 +7,10 @@ import { getElements, onAuthoringChange, rebuildAuthored } from "./authoring";
 import { history } from "./history";
 import { planElbowConnections, type ConnElbow, type ConnRun, type ElbowPlan } from "../modules/mep/elbow-connect";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsHealMepElbows: any;
+
 const MEP = new Set(["duct", "pipe", "cable-tray", "conduit"]);
 let installed = false;
 let timer: number | null = null;
@@ -111,6 +115,6 @@ export function setupMepJointHealer(): void {
   installed = true;
   onAuthoringChange(schedule);
   window.addEventListener("obs-history", () => { pausedUntil = Date.now() + 400; });
-  (window as any).__obsHealMepElbows = healMepElbows;
+  obsHealMepElbows = healMepElbows;
   schedule();
 }

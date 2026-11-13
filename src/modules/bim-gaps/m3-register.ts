@@ -17,6 +17,10 @@ import { cutSolids, capEntities, datumEntities, elevationFrame, entitiesBounds, 
 import { DEFAULT_PLAN_OPTIONS, planExtras, type PlanExtras, type PlanOptions, type PlanRoom } from "./m3-plan";
 import { fillPolygonPdf } from "./m3-pdf-fill";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsM3: any;
+
 type Any = Record<string, any>;
 const authoring = (): Any | null => ((ctx.features as Any).authoring ?? null);
 const KEY = "obs.m3.planOptions";
@@ -131,7 +135,7 @@ export function setupM3(): { ok: boolean; detail: string } {
     elevation: elevationScene,
   };
   w.__obsM3FillPolygon = fillPolygonPdf;
-  w.__obsM3 = { getPlanOptions, setPlanOption, refreshViews };
+  obsM3 = { getPlanOptions, setPlanOption, refreshViews };
   return { ok: true, detail: "plan content, true sections / elevations, PDF fills" };
 }
 

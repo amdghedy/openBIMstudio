@@ -29,10 +29,18 @@ const model = [
 
 const levels = [{ id: "L0", name: "Ground", elevation: 0 }];
 
-console.log("Generating IFC4 file...");
-const res = exportAuthoredToIfc(model, { schema: "IFC4", levels, projectName: "Sample Project", timestamp: new Date().toISOString() });
+// Optional env overrides so CI/ops can emit corpus variants:
+//   SCHEMA=IFC2X3 OUT=corpus/x.ifc PROJ="Name" MODEL='[...]' LEVELS='[...]'
+const schema = process.env.SCHEMA || "IFC4";
+const projectName = process.env.PROJ || "Sample Project";
+const outName = process.env.OUT || "sample-project.ifc";
+const modelSrc = process.env.MODEL ? JSON.parse(process.env.MODEL) : model;
+const levelsSrc = process.env.LEVELS ? JSON.parse(process.env.LEVELS) : levels;
 
-const outFile = path.join(root, "sample-project.ifc");
+console.log(`Generating ${schema} file...`);
+const res = exportAuthoredToIfc(modelSrc, { schema, levels: levelsSrc, projectName, timestamp: new Date().toISOString() });
+
+const outFile = path.join(root, outName);
 writeFileSync(outFile, res.text);
 console.log(`✅ Success! Generated ${outFile}`);
 console.log(`   Size: ${(res.text.length / 1024).toFixed(1)} KB`);

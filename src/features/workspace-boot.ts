@@ -17,6 +17,16 @@ import {
 } from "../modules/workspace-layout";
 import { registerCommand } from "./command-palette";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsBimCommandCenter: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsFeatures: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsWorkspace: any;
+
 interface PanelFeature {
   isVisible?: () => boolean;
   open?: () => void;
@@ -59,9 +69,9 @@ function hideStartupFloaters(): void {
     } catch { /* */ }
   }
   try { (window as any).__obsBIMCC?.close?.(); } catch { /* */ }
-  try { (window as any).__obsBimCommandCenter?.close?.(); } catch { /* */ }
+  try { obsBimCommandCenter?.close?.(); } catch { /* */ }
   try {
-    const feat = (window as any).__obsFeatures ?? {};
+    const feat = obsFeatures ?? {};
     feat.bimToolbox?.close?.();
     feat.propertyPalette?.close?.();
   } catch { /* */ }
@@ -122,7 +132,7 @@ export function setupWorkspaceLayout(): void {
   hideStartupFloaters();
 
   // Expose the API for tests and DevTools.
-  (window as any).__obsWorkspace = {
+  obsWorkspace = {
     save: saveWorkspace,
     restore: restoreWorkspace,
     reset: resetWorkspace,

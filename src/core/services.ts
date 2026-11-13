@@ -438,6 +438,7 @@ export interface ServiceMap {
 type ServiceKey = keyof ServiceMap;
 
 const registry = new Map<ServiceKey, ServiceMap[ServiceKey]>();
+const registeredAt = new Map<ServiceKey, number>();
 const readyResolvers = new Map<ServiceKey, Array<(v: ServiceMap[ServiceKey]) => void>>();
 
 /**
@@ -445,6 +446,7 @@ const readyResolvers = new Map<ServiceKey, Array<(v: ServiceMap[ServiceKey]) => 
  * `ready()` calls. This is what happens during HMR or a project reload.
  */
 export function register<K extends ServiceKey>(key: K, value: ServiceMap[K]): void {
+  if (!registry.has(key)) registeredAt.set(key, Date.now());
   registry.set(key, value);
 
   // Mirror into the legacy ctx.features bag so unmigrated code keeps working.
@@ -526,6 +528,8 @@ export const services = {
   use,
   tryUse,
   has: hasService,
+  lifecycle: serviceLifecycle,
+  missing: missingServices,
 };
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -542,4 +546,31 @@ export function dumpServiceRegistry(): void {
     console.log("  •", k);
   }
   console.groupEnd();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Lifecycle visibility
+   ══════════════════════════════════════════════════════════════════════ */
+export interface ServiceLifecycleEntry {
+  key: ServiceKey;
+  registeredAt: number;
+  pendingWaiters: number;
+}
+
+/** Snapshot of every registered service: when it became ready + waiters left. */
+export function serviceLifecycle(): ServiceLifecycleEntry[] {
+  return [...registry.keys()].map((key) => ({
+    key,
+    registeredAt: registeredAt.get(key) ?? 0,
+    pendingWaiters: readyResolvers.get(key)?.length ?? 0,
+  }));
+}
+
+/**
+ * Boot watchdog: which of the expected services are still missing.
+ * Returns the missing subset — empty means everything booted as designed.
+ * Consumed by the boot-health layer at finalize time.
+ */
+export function missingServices(keys: readonly ServiceKey[]): ServiceKey[] {
+  return keys.filter((k) => !registry.has(k));
 }

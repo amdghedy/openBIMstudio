@@ -1,6 +1,10 @@
 ﻿import { realtimeClient } from "./realtime-client";
 import { selection } from "../../features/selection";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsLastPresence: any;
+
 // Map of element ID -> { clientId, name }
 const lockedElements = new Map<string, { clientId: string; name: string }>();
 
@@ -35,7 +39,7 @@ export function setupWorkshareLocks() {
     const { type, clientId, payload } = change;
     
     // Find the name of the client who sent this
-    const presence = (window as any).__obsLastPresence || [];
+    const presence = obsLastPresence || [];
     const user = presence.find((p: any) => p.clientId === clientId);
     const name = user ? user.name : "Another User";
 
@@ -55,7 +59,7 @@ export function setupWorkshareLocks() {
 
   // Listen to presence to cache the last known names
   window.addEventListener("obs:presence", (e: Event) => {
-    (window as any).__obsLastPresence = (e as CustomEvent).detail?.presence || [];
+    obsLastPresence = (e as CustomEvent).detail?.presence || [];
   });
 
   // Clean up locks if a user disconnects

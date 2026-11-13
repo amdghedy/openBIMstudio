@@ -75,3 +75,4 @@ public/rvt/.gitignore
 .tmp-pdf-vector-test/
 .tmp-hatch-test/
 .tmp-draworder-test/
+test-results/

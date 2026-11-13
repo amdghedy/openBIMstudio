@@ -12,6 +12,10 @@
 import { ctx } from "../../core/context";
 import type { FamilyType } from "../families/types";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsTypeCatalog: any;
+
 export interface CatalogColumn {
   name: string;
   unitType: string; // length | other | angle | ...
@@ -144,6 +148,6 @@ export function applyCatalogToFamily(
 export function setupTypeCatalog(): void {
   const api = { parseTypeCatalog, exportTypeCatalog, applyCatalogToFamily };
   (ctx.features as any).typeCatalog = api;
-  (window as any).__obsTypeCatalog = api;
+  obsTypeCatalog = api;
   console.log("[type-catalog] ready");
 }

@@ -1,3 +1,7 @@
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsModelGroups: any;
+
 /**
  * Model groups — group elements for reuse + placement.
  *
@@ -67,7 +71,7 @@ export function dissolveGroup(id: string): string[] | null {
 let installed = false;
 export function setupModelGroups() {
   if (installed) return; installed = true;
-  (window as any).__obsModelGroups = {
+  obsModelGroups = {
     create: createGroup, list: listGroups, get: getGroup,
     place: placeGroupInstance, removeInstance: removeGroupInstance,
     delete: deleteGroup, dissolve: dissolveGroup,

@@ -30,6 +30,50 @@ import "./features/hatch-panel";
 import "./features/arc-wall-tool";
 import "./features/gltf-export-tool";
 import "./features/modify-group2-tool";
+import { bootHealth, setupBootHealth, trackedBootStep } from "./core/boot-health";
+
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsTransaction: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsParametricRegen: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsJoins: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsLOD: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsSiteTopo: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsDetailing: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsValidation: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsWorksharing: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsStreamingBudget: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsBatchPlot: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsDetailHatch: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsArcWall: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsGltfExporter: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsModifyGroup2: any;
 
 declare global {
   interface Window {
@@ -55,42 +99,62 @@ declare global {
   }
 }
 
-export function bootStrengtheningModules(): void {
-  setupExportCadViews();
-  setupPdfToDwg();
-  setupNavLowRes();
-  const txn = getTransactionService();
-  const regen = getParametricRegenService();
-  const props = getPropertiesPanelService();
-  const joins = getJoinsCleanupService();
-  const lod = getLODPerformanceService();
-  const views = getViewTemplatesService();
-  const site = getSiteTopoService();
-  const detail = getDetailingService();
-  const validation = getValidationService();
-  const worksharing = getWorksharingEngine();
-  const streaming = getMemoryBudgetManager();
+async function safeStep(label: string, fn: () => unknown): Promise<void> {
+  // Tracked + retryable via the Startup health panel. Previously one throw in
+  // any of these killed every module after it, silently.
+  trackedBootStep(label, fn);
+  await bootHealth.runStep(label, fn);
+}
 
-  if (typeof window !== "undefined") {
-    window.__obsTransaction = txn;
-    window.__obsParametricRegen = regen;
+export async function bootStrengtheningModules(): Promise<void> {
+  await safeStep("strength:export-cad-views", () => setupExportCadViews());
+  await safeStep("strength:pdf-to-dwg", () => setupPdfToDwg());
+  await safeStep("strength:nav-lowres", () => setupNavLowRes());
+  const txn = getTransactionService();
+  const txnBox: Record<string, any> = { txn };
+  await safeStep("strength:parametric-regen", () => { txnBox.regen = getParametricRegenService(); });
+  await safeStep("strength:properties-panel", () => { txnBox.props = getPropertiesPanelService(); });
+  await safeStep("strength:joins-cleanup", () => { txnBox.joins = getJoinsCleanupService(); });
+  await safeStep("strength:lod-performance", () => { txnBox.lod = getLODPerformanceService(); });
+  await safeStep("strength:view-templates", () => { txnBox.views = getViewTemplatesService(); });
+  await safeStep("strength:site-topo", () => { txnBox.site = getSiteTopoService(); });
+  await safeStep("strength:detailing", () => { txnBox.detail = getDetailingService(); });
+  await safeStep("strength:validation", () => { txnBox.validation = getValidationService(); });
+  await safeStep("strength:worksharing", () => { txnBox.worksharing = getWorksharingEngine(); });
+  await safeStep("strength:streaming-budget", () => { txnBox.streaming = getMemoryBudgetManager(); });
+
+  await safeStep("strength:globals-and-hotkeys", () => {
+    if (typeof window === "undefined") return;
+    const txn = getTransactionService();
+    const regen = txnBox.regen ?? getParametricRegenService();
+    const props = txnBox.props ?? getPropertiesPanelService();
+    const joins = txnBox.joins ?? getJoinsCleanupService();
+    const lod = txnBox.lod ?? getLODPerformanceService();
+    const views = txnBox.views ?? getViewTemplatesService();
+    const site = txnBox.site ?? getSiteTopoService();
+    const detail = txnBox.detail ?? getDetailingService();
+    const validation = txnBox.validation ?? getValidationService();
+    const worksharing = txnBox.worksharing ?? getWorksharingEngine();
+    const streaming = txnBox.streaming ?? getMemoryBudgetManager();
+    obsTransaction = txn;
+    obsParametricRegen = regen;
     window.__obsProperties = props;
-    window.__obsJoins = joins;
-    window.__obsLOD = lod;
+    obsJoins = joins;
+    obsLOD = lod;
     window.__obsViewTemplates = views;
-    window.__obsSiteTopo = site;
-    window.__obsDetailing = detail;
-    window.__obsValidation = validation;
-    window.__obsWorksharing = worksharing;
-    window.__obsStreamingBudget = streaming;
-    window.__obsBatchPlot = {
+    obsSiteTopo = site;
+    obsDetailing = detail;
+    obsValidation = validation;
+    obsWorksharing = worksharing;
+    obsStreamingBudget = streaming;
+    obsBatchPlot = {
       generateBatchPlotPdf,
       downloadBatchPlotPdf,
     };
-    window.__obsDetailHatch = HatchPatterns;
-    window.__obsArcWall = ArcWall;
-    window.__obsGltfExporter = GltfNativeTwin;
-    window.__obsModifyGroup2 = ModifyGroup2;
+    obsDetailHatch = HatchPatterns;
+    obsArcWall = ArcWall;
+    obsGltfExporter = GltfNativeTwin;
+    obsModifyGroup2 = ModifyGroup2;
 
     window.addEventListener("keydown", (e) => {
       const t = e.target as HTMLElement | null;
@@ -117,15 +181,20 @@ export function bootStrengtheningModules(): void {
         console.info("[Validation]", issues.length, "issue(s)", issues);
       }
     });
-  }
+  });
 
   console.info(
     "[Strengthening] P0–P2 enterprise modules booted:",
-    "Transaction, ParametricRegen, Properties, Joins, LOD, ViewTemplates, SiteTopo, Detailing, Validation, Worksharing, StreamingBudget, BatchPlot"
+    "Transaction, ParametricRegen, Properties, Joins, LOD, ViewTemplates, SiteTopo, Detailing, Validation, Worksharing, StreamingBudget, BatchPlot",
+    bootHealth.status().failed.length
+      ? `(with ${bootHealth.status().failed.length} failed step(s) — see Startup health)`
+      : "clean",
   );
+  setupBootHealth();
+  bootHealth.finalize();
 }
 
-bootStrengtheningModules();
+void bootStrengtheningModules();
 
 export {
   getTransactionService,

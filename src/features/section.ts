@@ -16,6 +16,10 @@ import {
   worldFaceNormal, flipTowardCamera, planeThroughPoint,
 } from "./section-authored-clip-math";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsGridInstalled: any;
+
 export interface SectionPlaneState {
   location: [number, number, number];
   direction: [number, number, number];
@@ -497,8 +501,8 @@ function applyGridVisible(on: boolean): void {
 }
 
 export function setupGridToggle(): void {
-  if ((window as any).__obsGridInstalled) return;
-  (window as any).__obsGridInstalled = true;
+  if (obsGridInstalled) return;
+  obsGridInstalled = true;
 
   (window as any).__obsGrid = {
     show: () => applyGridVisible(true),

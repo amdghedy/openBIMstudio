@@ -4,6 +4,10 @@
 import * as THREE from "three";
 import { ctx } from "../core/context";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsDraftingBridge: any;
+
 interface ScreenPt { x: number; y: number; }
 interface WorldPt  { x: number; y: number; z: number; }
 
@@ -102,7 +106,7 @@ export async function attachDraftingToCurrentSheet(): Promise<boolean> {
 }
 
 export function setupDraftingBridge(): void {
-  (window as any).__obsDraftingBridge = {
+  obsDraftingBridge = {
     exportDraftingToAnnotations: exportDraftingToAnnotations,
     attachDraftingToCurrentSheet: attachDraftingToCurrentSheet,
     screenToWorldXZ: screenToWorldXZ,

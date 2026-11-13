@@ -7,6 +7,10 @@
 
 import { parseNLQuery, type ParsedBimQuery } from "./parser";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsContext: any;
+
 export interface QueryExecutionResult {
   parsed: ParsedBimQuery;
   matchedCount: number;
@@ -92,7 +96,7 @@ export function executeNLQuery(
 
 function sampleOrGlobalElements(): Array<{ id: string; category: string; properties?: Record<string, any> }> {
   // Try to inspect global ctx if accessible
-  const ctx = (window as any).__obsContext || (window as any).ctx;
+  const ctx = obsContext || (window as any).ctx;
   if (ctx?.sceneElements) {
     return ctx.sceneElements;
   }

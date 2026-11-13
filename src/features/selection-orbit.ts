@@ -1,5 +1,9 @@
 import { ctx } from "../core/context";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsSelectionOrbit: any;
+
 type Any = Record<string, any>;
 
 /*
@@ -89,7 +93,7 @@ export function setupSelectionOrbit(): void {
     window.setTimeout(pivotOnSelectionSafe, 60);
   });
 
-  (window as Any).__obsSelectionOrbit = {
+  obsSelectionOrbit = {
     enabled: true,
     setPivot: setPivotSafe,
     pivotOnSelection: pivotOnSelectionSafe,

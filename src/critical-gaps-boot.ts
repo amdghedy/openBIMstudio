@@ -10,6 +10,8 @@
  */
 
 import { ctx } from "./core/context";
+import { bootHealth, setupBootHealth, trackedBootStep } from "./core/boot-health";
+import { diagnostics } from "./core/diagnostics";
 
 type Any = Record<string, any>;
 
@@ -28,11 +30,10 @@ function isReady(): boolean {
 }
 
 async function safe(label: string, fn: () => unknown): Promise<void> {
-  try {
-    await fn();
-  } catch (e) {
-    console.warn("[critical-gaps-boot]", label, e);
-  }
+  // Tracked: outcome lands in the startup-health panel (retryable), not just
+  // the console. Previously failures were invisible to users.
+  trackedBootStep(label, fn);
+  await bootHealth.runStep(label, fn);
 }
 
 async function runOnce(): Promise<void> {
@@ -494,7 +495,24 @@ async function runOnce(): Promise<void> {
     await m.setupM4ViewDims?.();
   });
 
-  console.log("[critical-gaps-boot] all critical gaps wired");
+  console.log("[critical-gaps-boot] all critical gaps wired", bootHealth.status().failed.length ? `(with ${bootHealth.status().failed.length} failed step(s) — see Startup health)` : "clean");
+  // Service lifecycle watchdog: which core services never registered?
+  try {
+    void (async () => {
+      const { services } = await import("./core/services");
+      const missing = services.missing(["selection", "authoring", "camera", "projects"] as const);
+      if (missing.length) {
+        diagnostics.warn(
+          "boot-health",
+          `core service(s) still unregistered after boot: ${missing.join(", ")}`,
+        );
+      }
+    })();
+  } catch {
+    /* */
+  }
+  // Boot sequence complete — flips the visible recovery chip if anything failed.
+  bootHealth.finalize();
 }
 
 timer = window.setInterval(() => {
@@ -514,3 +532,5 @@ window.setTimeout(() => {
     void runOnce();
   }
 }, 120000);
+
+setupBootHealth();

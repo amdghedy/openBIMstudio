@@ -1,3 +1,7 @@
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsDwgLinks: any;
+
 /**
  * DWG linking — attach drawing files as underlays in 3D + 2D views.
  *
@@ -70,7 +74,7 @@ export function toggleDwgLayer(linkId: string, layerName: string): void {
 let installed = false;
 export function setupDwgLinking() {
   if (installed) return; installed = true;
-  (window as any).__obsDwgLinks = {
+  obsDwgLinks = {
     add: addDwgLink, list: listDwgLinks, get: getDwgLink,
     remove: removeDwgLink, reload: reloadDwgLink, toggleLayer: toggleDwgLayer,
   };

@@ -8,6 +8,10 @@ import { buildToolSection, TOOL_SECTIONS, type ToolWindowId } from "./panel";
 import { makeDockable, type DockHandle, type DockSide } from "./dockable";
 import { ctx } from "../core/context";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsToolWindows: any;
+
 interface WinEntry {
   el: HTMLDivElement;
   dock: DockHandle;
@@ -210,7 +214,7 @@ export function toggleToolWindow(id: ToolWindowId): void {
 }
 
 export function setupToolWindows(): void {
-  (window as any).__obsToolWindows = {
+  obsToolWindows = {
     open: openToolWindow,
     close: closeToolWindow,
     toggle: toggleToolWindow,

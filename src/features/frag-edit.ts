@@ -32,6 +32,21 @@ function twinSourceKey(modelId: string, localId: number): string {
   return `${modelId}::${localId}`;
 }
 
+/**
+ * Bound a best-effort hider operation. The OBC Hider's promises occasionally
+ * never settle when the same element is re-hidden/un-hidden repeatedly (seen
+ * under SwiftShader in E2E), which would hang the whole edit/restore flow.
+ * Visibility is cosmetic — authoring must never block on it.
+ */
+function withHiderTimeout<T>(p: Promise<T>, ms = 5000): Promise<T | undefined> {
+  return Promise.race([
+    p,
+    new Promise<undefined>((resolve) => {
+      window.setTimeout(() => resolve(undefined), ms);
+    }),
+  ]);
+}
+
 
 export interface FragEdit {
   id: string;
@@ -384,8 +399,8 @@ async function hideOriginal(modelId: string, localId: number): Promise<void> {
     hiddenTwinSources.add(twinSourceKey(modelId, localId));
     const hider: any = ctx.hider;
     const map = { [modelId]: new Set([localId]) };
-    if (typeof hider.hide === "function") await hider.hide(map);
-    else if (typeof hider.set === "function") await hider.set(false, map);
+    if (typeof hider.hide === "function") await withHiderTimeout(hider.hide(map));
+    else if (typeof hider.set === "function") await withHiderTimeout(hider.set(false, map));
   } catch (e) {
     console.warn("[frag-edit] hide original failed", e);
   }
@@ -396,8 +411,8 @@ async function unhideOriginal(modelId: string, localId: number): Promise<void> {
     hiddenTwinSources.delete(twinSourceKey(modelId, localId));
     const hider: any = ctx.hider;
     const map = { [modelId]: new Set([localId]) };
-    if (typeof hider.set === "function") await hider.set(true, map);
-    else if (typeof hider.show === "function") await hider.show();
+    if (typeof hider.set === "function") await withHiderTimeout(hider.set(true, map));
+    else if (typeof hider.show === "function") await withHiderTimeout(hider.show());
   } catch (e) {
     console.warn("[frag-edit] unhide original failed", e);
   }

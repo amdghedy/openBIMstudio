@@ -3,6 +3,10 @@ import {
   serializeRegions, loadRegions, countRegions,
 } from "./types";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsFilledRegions: any;
+
 export * from "./types";
 export * from "./polygon";
 
@@ -16,7 +20,7 @@ let installed = false;
 export function setupFilledRegions() {
   if (installed) return;
   installed = true;
-  (window as any).__obsFilledRegions = {
+  obsFilledRegions = {
     add: (r: any) => addRegion(r),
     get: (v: string) => getRegions(v),
     remove: (v: string, id: string) => removeRegion(v, id),

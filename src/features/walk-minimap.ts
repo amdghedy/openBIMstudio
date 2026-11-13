@@ -14,6 +14,10 @@ import { ctx } from "../core/context";
 import { generatePlanView } from "../modules/drawings/plan-generator";
 import type { PlanView } from "../modules/drawings/plan-types";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsWalkMinimap: any;
+
 let installed = false;
 let enabled = false;
 
@@ -371,7 +375,7 @@ export function setupWalkMinimap(): void {
 
   setInterval(() => { void maybeRefreshPlan(); }, 2000);
 
-  (window as any).__obsWalkMinimap = {
+  obsWalkMinimap = {
     show: () => { enabled = true; if (overlay) overlay.style.display = "block"; void maybeRefreshPlan(true); if (arrowRaf == null) arrowRaf = requestAnimationFrame(arrowLoop); },
     hide: () => { enabled = false; if (overlay) overlay.style.display = "none"; },
     isEnabled: () => enabled,

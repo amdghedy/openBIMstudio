@@ -5,10 +5,33 @@
  * even if another listener stops propagation or the shortcut registry
  * has not finished installing.
  *
- * Also exposes window.__obsUndo / __obsRedo for ribbon buttons and
- * third-party modules.
+ * Undo/redo entry points live in features/history.ts — ribbon buttons and
+ * third-party modules import it directly (legacy window handles removed
+ * 2026-11-13, see scripts/eliminate-local-globals.mjs).
  */
 import { history } from "./history";
+
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsUndo: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsRedo: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsHistory: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsCanUndo: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsCanRedo: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsUndoLabel: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsRedoLabel: any;
 
 type Any = any;
 
@@ -108,13 +131,13 @@ export function setupGlobalUndo(): void {
   window.addEventListener("keydown", onKeyDown, true);
 
   const w = window as Any;
-  w.__obsUndo = () => void doUndo();
-  w.__obsRedo = () => void doRedo();
-  w.__obsHistory = history;
-  w.__obsCanUndo = () => history.canUndo();
-  w.__obsCanRedo = () => history.canRedo();
-  w.__obsUndoLabel = () => history.undoLabel();
-  w.__obsRedoLabel = () => history.redoLabel();
+  obsUndo = () => void doUndo();
+  obsRedo = () => void doRedo();
+  obsHistory = history;
+  obsCanUndo = () => history.canUndo();
+  obsCanRedo = () => history.canRedo();
+  obsUndoLabel = () => history.undoLabel();
+  obsRedoLabel = () => history.redoLabel();
 
   // Keep status / ribbon in sync when history changes
   history.onChange(() => {

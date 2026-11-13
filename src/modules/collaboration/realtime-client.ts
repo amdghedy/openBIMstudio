@@ -1,3 +1,7 @@
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsRealtimeClient: any;
+
 const API_BASE = String(
   (globalThis as any).__OPENBIM_COLLAB_API__ ||
     "http://localhost:4000/api",
@@ -221,7 +225,7 @@ class RealtimeClient {
 
 export const realtimeClient = new RealtimeClient();
 
-(globalThis as Any).__obsRealtimeClient = realtimeClient;
+obsRealtimeClient = realtimeClient;
 
 export function setupRealtimeClient(): void {
   console.log("[realtime-client] ready. Use __obsRealtimeClient.join(roomId, name)");

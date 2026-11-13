@@ -1,3 +1,7 @@
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsBasePoint: any;
+
 /**
  * Project base point & survey point — shared coordinate system.
  *
@@ -74,7 +78,7 @@ export function surveyToProject(x: number, y: number, z: number): [number, numbe
 let installed = false;
 export function setupProjectBasePoint() {
   if (installed) return; installed = true;
-  (window as any).__obsBasePoint = {
+  obsBasePoint = {
     get: getProjectBasePoint, set: setProjectBasePoint,
     getSurvey: getSurveyPoint, setSurvey: setSurveyPoint,
     toSurvey: projectToSurvey, toProject: surveyToProject,

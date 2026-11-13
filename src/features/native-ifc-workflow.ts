@@ -23,6 +23,10 @@ import {
   renderVersionsSection,
 } from "./native-ifc-versions";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsNativeIfc: any;
+
 type Any = Record<string, any>;
 
 /** Soft warning threshold — conversion continues in streamed batches past this. */
@@ -608,7 +612,7 @@ export function setupNativeIfcWorkflow(): void {
     /* */
   }
   try {
-    (window as Any).__obsNativeIfc = api;
+    obsNativeIfc = api;
   } catch {
     /* */
   }

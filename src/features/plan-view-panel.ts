@@ -1,3 +1,21 @@
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsPlanSelectedEls: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsPlanSelectedEl: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsAuthoredSelectionBridge: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsSnapDebug: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsPlanTagMode: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsPlanSyncTimer: any;
 /**
  * Full-screen plan view overlay.
  *
@@ -284,8 +302,8 @@ function renderPlanProperties() {
     } catch { /* */ }
   }
   // Use sync path via stored selection. Multi-select shows a compact summary.
-  const selectedEls = (((window as any).__obsPlanSelectedEls ?? []) as any[]).filter((x) => planSelectedIds.has(x.id));
-  const sel = (window as any).__obsPlanSelectedEl;
+  const selectedEls = ((obsPlanSelectedEls ?? []) as any[]).filter((x) => planSelectedIds.has(x.id));
+  const sel = obsPlanSelectedEl;
   if (selectedEls.length > 1) {
     planPropsHeader.innerHTML = `<span style="flex:1">${selectedEls.length} elements selected</span>`;
     const info = document.createElement("div");
@@ -462,16 +480,16 @@ function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggl
   }
   planSelectedId = planSelectedIds.size === 1 ? [...planSelectedIds][0] : null;
   const selected = (authoredCache as any[]).filter((x) => planSelectedIds.has(x.id));
-  (window as any).__obsPlanSelectedEl = selected.length === 1 ? selected[0] : null;
-  (window as any).__obsPlanSelectedEls = selected;
+  obsPlanSelectedEl = selected.length === 1 ? selected[0] : null;
+  obsPlanSelectedEls = selected;
   try {
-    (window as any).__obsAuthoredSelectionBridge?.(selected.map((x) => x.id));
+    obsAuthoredSelectionBridge?.(selected.map((x) => x.id));
   } catch { /* selection bridge optional */ }
   renderPlanProperties();
   if (currentPlan) renderPlan(currentPlan);
 }
 
-(window as any).__obsAuthoredSelectionBridge = (ids: string[]) => {
+obsAuthoredSelectionBridge = (ids: string[]) => {
   try { void import("./authoring").then((m) => m.setSelectedAuthored(ids, "replace")); } catch { /* optional */ }
 };
 
@@ -814,7 +832,7 @@ function makeSvgText(x: number, y: number, text: string, style: DimensionStyle, 
 }
 
 function renderTemporaryDimensions(g: SVGGElement, dimScale: number, b: any) {
-  const el = (window as any).__obsPlanSelectedEl;
+  const el = obsPlanSelectedEl;
   if (!el || !el.params) return;
   const style = getDimensionStyle();
   const p = el.params;
@@ -1716,6 +1734,7 @@ import { registerEscapeScope } from "../core/escape-all";
 import { createPlanCommandLine, planHelpRows, type PlanCommandLine } from "./plan-command-line";
 import { resolveCommand, parsePointEntry } from "../modules/plan/plan-commands";
 
+
 async function loadCadFileAsUnderlay(file: File) {
   if (cadUnderlayUrl) URL.revokeObjectURL(cadUnderlayUrl);
   const ext = (file.name.split(".").pop() ?? "").toLowerCase();
@@ -2424,7 +2443,7 @@ function renderPlan(plan: PlanView) {
   }
 
   // -- Selected element feedback (BIM-style blue selection) --
-  const selectedPlans = (((window as any).__obsPlanSelectedEls ?? []) as any[]).filter((x) => planSelectedIds.has(x.id));
+  const selectedPlans = ((obsPlanSelectedEls ?? []) as any[]).filter((x) => planSelectedIds.has(x.id));
   for (const selectedPlan of selectedPlans) {
     if (!selectedPlan?.params) continue;
     const pp = selectedPlan.params;
@@ -3424,7 +3443,7 @@ function updateSnapOverlay(): void {
  * to see what the snap engine sees at the current cursor position.
  */
 try {
-  (window as any).__obsSnapDebug = () => {
+  obsSnapDebug = () => {
     const els: any[] = authoredCache;
     console.log("[snap-debug] authored elements:", els.length);
     console.log("[snap-debug] plan bounds:", currentPlan?.bounds);
@@ -4062,7 +4081,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
     if (planMode === "tag") {
       const hit = nearestAuthoredAt(w);
       if (hit.element) {
-        const mode = (window as any).__obsPlanTagMode ?? "category";
+        const mode = obsPlanTagMode ?? "category";
         const p = hit.element.params ?? {};
         const mark = hit.element.properties?.Mark ?? hit.element.properties?.mark ?? hit.element.name ?? hit.element.type;
         const material = hit.element.properties?.Material ?? hit.element.properties?.material ?? "Material";
@@ -4853,7 +4872,7 @@ export function setPlanToolFromRibbon(tool: string) {
     void runTagAll();
   } else if (tool === "tag" || tool === "room-tag" || tool === "material-tag") {
     planMode = "tag";
-    (window as any).__obsPlanTagMode = tool === "room-tag" ? "room" : tool === "material-tag" ? "material" : "category";
+    obsPlanTagMode = tool === "room-tag" ? "room" : tool === "material-tag" ? "material" : "category";
     canvasWrap.style.cursor = "crosshair";
     toolHint.textContent = `${tool === "room-tag" ? "Room Tag" : tool === "material-tag" ? "Material Tag" : "Tag"} � click near element`;
   } else if (tool === "text" || tool === "model-text" || tool === "text-3d") {
@@ -5348,9 +5367,9 @@ try {
       onAuthoringChange(() => {
         if (!isPlanViewVisible() || generating) return;
         // Debounce regenerate
-        const t = (window as any).__obsPlanSyncTimer;
+        const t = obsPlanSyncTimer;
         if (t) clearTimeout(t);
-        (window as any).__obsPlanSyncTimer = setTimeout(() => {
+        obsPlanSyncTimer = setTimeout(() => {
           void regenerate();
         }, 400);
       });

@@ -18,6 +18,16 @@ import {
   mepFollowPatches,
 } from "./authoring";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsActiveToolLabel: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsStartLiveMove: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsStartLiveCopy: any;
+
 function shiftElParams(el: any, dx: number, dz: number): void {
   if (el.params?.start) el.params.start = [el.params.start[0] + dx, el.params.start[1] + dz];
   if (el.params?.end) el.params.end = [el.params.end[0] + dx, el.params.end[1] + dz];
@@ -36,7 +46,7 @@ let installed = false;
 
 function notifyStatus(status: ModifyStatus): void {
   try {
-    const label = (window as any).__obsActiveToolLabel as HTMLElement | undefined;
+    const label = obsActiveToolLabel as HTMLElement | undefined;
     if (label && status.prompt) {
       label.textContent = `Active Tool: ${status.tool ? status.tool[0].toUpperCase() + status.tool.slice(1) : "None"} · ${status.prompt}`;
     }
@@ -216,8 +226,8 @@ export function setupModifyLive(): void {
   if (installed) return;
   installed = true;
   ensureHost();
-  (window as any).__obsStartLiveMove = () => startLiveMove("move");
-  (window as any).__obsStartLiveCopy = () => startLiveMove("copy");
+  obsStartLiveMove = () => startLiveMove("move");
+  obsStartLiveCopy = () => startLiveMove("copy");
   (window as any).__obsModifyLive = {
     startMove: () => startLiveMove("move"),
     startCopy: () => startLiveMove("copy"),

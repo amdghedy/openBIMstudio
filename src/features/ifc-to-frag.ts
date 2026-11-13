@@ -19,6 +19,10 @@ import { loadFragFiles } from "./importer";
 import { openToolWindow } from "./tool-windows";
 import { confirmDialog } from "./form-modal";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsIfcToFrag: any;
+
 type Job = {
   id: number;
   sourceName: string;
@@ -389,13 +393,13 @@ export function toggleIfcToFragPanel(): void {
 }
 
 export function setupIfcToFrag(): void {
-  (window as any).__obsIfcToFrag = {
+  obsIfcToFrag = {
     open: showIfcToFragPanel,
     toggle: toggleIfcToFragPanel,
     queue: queueFiles,
   };
   try {
-    (ctx.features as any).ifcToFrag = (window as any).__obsIfcToFrag;
+    (ctx.features as any).ifcToFrag = obsIfcToFrag;
   } catch {
     /* */
   }

@@ -156,10 +156,14 @@ export function nativeIfcVersionBytes(): number {
 
 /** Stable element identity across versions. */
 export function twinIdentity(e: Any): string {
+  // Order matters: nativeElementId is re-minted when a twin is rebuilt from a
+  // snapshot (clearAllEdits drops the old native element), so the IFC element
+  // pair modelId:localId is the stable anchor; GlobalId stays first for
+  // cross-model portability.
   if (e?.sourceGlobalId) return `gid:${e.sourceGlobalId}`;
-  if (e?.nativeElementId) return `nat:${e.nativeElementId}`;
   const lid = Number(e?.localId);
   if (e?.modelId != null && Number.isFinite(lid)) return `el:${e.modelId}:${lid}`;
+  if (e?.nativeElementId) return `nat:${e.nativeElementId}`;
   return `id:${e?.id ?? "?"}`;
 }
 
@@ -380,7 +384,11 @@ export async function restoreNativeIfcVersion(id: string): Promise<boolean> {
     toast(`Restore failed: ${err instanceof Error ? err.message : String(err)}`, "error");
     return false;
   }
-  markDirty();
+  try {
+    markDirty();
+  } catch {
+    /* a broken dirty-listener must never swallow the restore record */
+  }
   record("restore", `Restored ${version.label} — ${version.twinCount} twin(s)`, { count: version.twinCount });
   toast(`Restored ${version.label}: ${version.message}`, "success");
   return true;

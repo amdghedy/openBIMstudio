@@ -5,6 +5,10 @@
 import { viewTemplatesStore, exposeViewTemplatesGlobal } from "./view-templates-store";
 import { setupVgDialog, openVgDialog } from "./vg-dialog";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsViewTemplateActions: any;
+
 type Any = Record<string, any>;
 
 function registerPaletteCommands(): void {
@@ -106,7 +110,7 @@ function registerPaletteCommands(): void {
 function patchCommandCenter(): void {
   try {
     // Soft integration: when Command Center rebuilds, it may read __obsViewTemplateActions
-    (window as Any).__obsViewTemplateActions = {
+    obsViewTemplateActions = {
       openVg: () => openVgDialog(),
       openTemplates: () => openVgDialog(),
       applyArchitectural: () => {

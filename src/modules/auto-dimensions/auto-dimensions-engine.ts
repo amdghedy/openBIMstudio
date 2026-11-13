@@ -19,6 +19,13 @@ import {
   defaultAutoDimOptions,
 } from "./types";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsUnits: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsAutoDimensions: any;
+
 type Any = Record<string, any>;
 
 function uid(prefix = "dim"): string {
@@ -31,7 +38,7 @@ function nowIso(): string {
 
 function formatLength(metres: number, style: DimensionStyle): string {
   try {
-    const units = (window as Any).__obsUnits ?? (window as Any).units;
+    const units = obsUnits ?? (window as Any).units;
     if (units?.format) return String(units.format("length", metres));
     if (units?.formatLength) return String(units.formatLength(metres));
   } catch { /* */ }
@@ -725,5 +732,5 @@ function escapeHtml(s: string): string {
 export const autoDimensionsEngine = new AutoDimensionsEngine();
 
 export function exposeAutoDimensionsGlobal(): void {
-  (window as Any).__obsAutoDimensions = autoDimensionsEngine;
+  obsAutoDimensions = autoDimensionsEngine;
 }

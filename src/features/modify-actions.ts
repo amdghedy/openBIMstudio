@@ -21,6 +21,10 @@ import { gizmo, type GizmoMode } from "./gizmo";
 import { listModifyCommandDefinitions, resolveModifyCapability, type ModifyCommandId } from "../modules/modify/registry";
 import { ctx } from "../core/context";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsRVTCompatibility: any;
+
 type Any = Record<string, any>;
 
 export type ModifyActionId = ModifyCommandId;
@@ -153,12 +157,12 @@ export function runModifyAction(id: ModifyActionId): void {
         createSimilarFromSelection();
         toast("Create Similar — place next instance", "info");
       } catch {
-        (window as Any).__obsRVTCompatibility?.createSimilar?.(ids[0]);
+        obsRVTCompatibility?.createSimilar?.(ids[0]);
         toast("Create Similar", "info");
       }
       break;
     case "match-props":
-      (window as Any).__obsRVTCompatibility?.matchProperties?.(ids[0]);
+      obsRVTCompatibility?.matchProperties?.(ids[0]);
       (ctx.features as any).bimCompatibility?.matchProperties?.(ids[0]);
       toast("Match Properties — pick target", "info");
       break;

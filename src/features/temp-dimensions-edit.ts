@@ -21,6 +21,10 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { setTempDimsEnabled } from "./temp-dimensions";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsTempDimsEdit: any;
+
 type Any = Record<string, any>;
 
 export type TempDimKind =
@@ -359,7 +363,7 @@ export function setupEditableTempDims(): void {
   raf = requestAnimationFrame(tick);
   const features = ((ctx as Any).features ??= {});
   features.tempDimsEdit = { refresh: refreshTempDims };
-  (window as Any).__obsTempDimsEdit = features.tempDimsEdit;
+  obsTempDimsEdit = features.tempDimsEdit;
 }
 
 export function destroyEditableTempDims(): void {

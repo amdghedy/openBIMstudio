@@ -15,6 +15,10 @@ import { getCurrentProject, openProject, saveProject } from "./projects";
 import { decryptProjectBlob, encryptProjectBlob, isEncryptedProjectBlob, WrongPasswordError } from "./project-crypto";
 import { askPassword } from "./password-dialog";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsProjectFile: any;
+
 type Handle = any; // FileSystemFileHandle (not in every TS lib)
 interface Link { projectId: string; handle: Handle; name: string }
 
@@ -269,5 +273,5 @@ export function setupProjectFileIO(): void {
       void saveProjectToFile(true);
     }
   }, true);
-  (window as any).__obsProjectFile = { save: () => saveProjectToFile(false), saveAs: () => saveProjectToFile(true), open: openProjectFromFile };
+  obsProjectFile = { save: () => saveProjectToFile(false), saveAs: () => saveProjectToFile(true), open: openProjectFromFile };
 }

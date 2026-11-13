@@ -153,6 +153,10 @@ import {
   openSelectionInspectorDialog, openReferencePickerDialog, group1Undo, group1Redo,
   openHostedOpeningDialog, openParameterManagerDialog, openModelIntelligencePanel,
 } from "../features/engine-ui";
+
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsShowHidden: any;
 const gizmo_setMode = (m: "move" | "rotate" | "scale" | "none") => _gizmoForEdit.setMode(m);
 const gizmo_getMode = () => _gizmoForEdit.getMode();
 
@@ -2553,8 +2557,8 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Thin lines — consistent line weight in model views",
       }),
       b("section", "Hidden", safe(() => {
-        const on = !(window as any).__obsShowHidden;
-        (window as any).__obsShowHidden = on;
+        const on = !obsShowHidden;
+        obsShowHidden = on;
         try {
           const hider = (ctx as any).hider;
           if (on) hider?.showAll?.();
@@ -2564,7 +2568,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         }
         refreshRibbon();
       }, "Show hidden"), {
-        active: !!(window as any).__obsShowHidden,
+        active: !!obsShowHidden,
         title: "Show / restore hidden elements",
       }),
       b("system", "MEP colors", safe(() => toggleMepColors(), "MEP colors"), {

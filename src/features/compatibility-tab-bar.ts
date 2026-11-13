@@ -1,3 +1,10 @@
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsBIMCommandCenter: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obstabbedTabs: any;
+
 /**
  * Unified Tab Bar - docks all floating tools into bottom tabbed ribbon.
  * Tabs: Home | Architecture | Modify | View | Drawing | Drawings | Families | Project
@@ -54,7 +61,7 @@ function tabs(): TabDef[] {
           id: "cc",
           label: "Command Center",
           title: "Ctrl+Shift+R",
-          run: () => (window as Any).__obsBIMCommandCenter?.toggle?.(),
+          run: () => obsBIMCommandCenter?.toggle?.(),
         },
         {
           id: "draft",
@@ -413,7 +420,7 @@ export function setuptabbedTabBar(): void {
   const mo = new MutationObserver(() => hideFloaters());
   mo.observe(document.body, { childList: true, subtree: true });
 
-  (window as Any).__obstabbedTabs = {
+  obstabbedTabs = {
     setTab: (id: string) => {
       activeTab = id;
       render();

@@ -3,6 +3,10 @@ import { registerCommand } from "./command-palette";
 import { uiAlert } from "../core/notify";
 import { openFormModal } from "./form-modal";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsOpenMepLifecyclePanel: any;
+
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" } as Record<string,string>)[c]);
 
 export function openMepLifecyclePanel(): void {
@@ -103,4 +107,4 @@ export function openMepLifecyclePanel(): void {
   render();
 }
 try { registerCommand({ id:"mep.nativeDiagnostics", label:"MEP — Connection Diagnostics & Panel Schedules", category:"MEP", hint:"Inspect connector relationships, topology diagnostics and electrical schedules", run:() => openMepLifecyclePanel() }); } catch { /* command palette may boot later */ }
-try { (window as any).__obsOpenMepLifecyclePanel = openMepLifecyclePanel; } catch { /* non-browser test */ }
+try { obsOpenMepLifecyclePanel = openMepLifecyclePanel; } catch { /* non-browser test */ }

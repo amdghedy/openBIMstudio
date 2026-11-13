@@ -10,6 +10,10 @@ import { inputRouter, type Gesture } from "../core/input-router";
 import { forceResumeCameraControls } from "../core/camera-gate";
 import { ensureUprightForOrbit, frameCoalesced } from "../core/orbit-frame";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsShiftLmbOrbit: any;
+
 type Any = Record<string, any>;
 
 let installed = false;
@@ -254,7 +258,7 @@ export function setupShiftLmbOrbit(): void {
   window.addEventListener("obs:selection-changed", () => void refreshCog());
   window.addEventListener("obs:authoring-selection-changed", () => void refreshCog());
 
-  (window as Any).__obsShiftLmbOrbit = {
+  obsShiftLmbOrbit = {
     refresh: refreshCog,
     getPivot: () => pivotNow(),
   };

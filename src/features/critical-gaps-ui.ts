@@ -5,6 +5,10 @@
 
 import { ctx } from "../core/context";
 import { setConstraintAutoSolve, isConstraintAutoSolveEnabled } from "./constraint-solver";
+
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsBIMCompatibility: any;
 type Any = Record<string, any>;
 
 let toolbar: HTMLDivElement | null = null;
@@ -127,15 +131,15 @@ export async function setupCriticalGapsUI(): Promise<void> {
 
   // -- Architecture generators ---------------------------------------
   const stairBtn = makeButton("obs-adv-stair", "Stair", "Place straight stair", () => {
-    void (window as Any).__obsBIMCompatibility?.placeStair?.("straight");
+    void obsBIMCompatibility?.placeStair?.("straight");
     flash(stairBtn, "[OK]");
   });
   const railBtn = makeButton("obs-adv-rail", "Railing", "Place path railing", () => {
-    void (window as Any).__obsBIMCompatibility?.placeRailing?.();
+    void obsBIMCompatibility?.placeRailing?.();
     flash(railBtn, "[OK]");
   });
   const cwBtn = makeButton("obs-adv-cw", "[C] Curtain", "Place curtain wall", () => {
-    void (window as Any).__obsBIMCompatibility?.placeCurtainWall?.();
+    void obsBIMCompatibility?.placeCurtainWall?.();
     flash(cwBtn, "[OK]");
   });
   const roomBtn = makeButton("obs-adv-room", "[R] Room", "Create sample room", () => {
@@ -152,11 +156,11 @@ export async function setupCriticalGapsUI(): Promise<void> {
     flash(alignBtn, n ? `[OK] ${n}` : "[--]");
   });
   const matchBtn = makeButton("obs-adv-match", "Match", "Match properties (pick source)", () => {
-    (window as Any).__obsBIMCompatibility?.matchPropertiesPickSource?.();
+    obsBIMCompatibility?.matchPropertiesPickSource?.();
     flash(matchBtn, "SRC");
   });
   const matchApplyBtn = makeButton("obs-adv-match-apply", "Paint", "Apply matched properties", () => {
-    const n = (window as Any).__obsBIMCompatibility?.matchPropertiesApply?.() ?? 0;
+    const n = obsBIMCompatibility?.matchPropertiesApply?.() ?? 0;
     flash(matchApplyBtn, n ? `[OK] ${n}` : "[--]");
   });
   const groupBtn = makeButton("obs-adv-group", "Group", "Group selection", () => {

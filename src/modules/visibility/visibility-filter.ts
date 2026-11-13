@@ -7,6 +7,10 @@ import { ctx } from "../../core/context";
 import { phasesStore, type PhaseAssignment } from "../phases/phases";
 import { designOptionsStore } from "../design-options/design-options";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsVisibility: any;
+
 export interface VisibilityElement {
   id: string;
   category?: string;
@@ -178,7 +182,7 @@ export function setupVisibilityFilter(): typeof visibilityFilter {
   try {
     (ctx.features as any).visibility = visibilityFilter;
   } catch { /* */ }
-  (window as any).__obsVisibility = visibilityFilter;
+  obsVisibility = visibilityFilter;
   console.log("[visibility-filter] ready");
   return visibilityFilter;
 }

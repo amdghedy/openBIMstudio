@@ -8,6 +8,10 @@ import { history } from "./history";
 import { notify } from "../core/notify";
 import type { AuthoredElement } from "../modules/projects/types";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsPushPull: any;
+
 type Dimension = "height" | "thickness" | "depth" | "length";
 
 interface HoverState {
@@ -326,6 +330,6 @@ export function setupPushPull(): void {
     isEnabled: () => pushPull.isEnabled(),
     onChange: (cb: () => void) => pushPull.onChange(cb),
   };
-  try { (window as any).__obsPushPull = pushPull; } catch {}
+  try { obsPushPull = pushPull; } catch {}
   console.log("[push-pull] setup complete");
 }

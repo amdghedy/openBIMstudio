@@ -1,3 +1,7 @@
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsNewFeatureBadges: any;
+
 /**
  * New-feature discovery badges.
  *
@@ -168,7 +172,7 @@ export function setupNewFeatureBadges(): void {
   });
   observer.observe(document.body, { childList: true, subtree: true });
 
-  (window as any).__obsNewFeatureBadges = {
+  obsNewFeatureBadges = {
     clear: (button: HTMLButtonElement) => clearBadge(button),
     rescan: () => scan(document),
     reset: () => { localStorage.removeItem(STORAGE_KEY); scan(document); },

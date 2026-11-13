@@ -12,6 +12,10 @@ import { setOrbitTargetKeepingView } from "../core/orbit-target";
 import { validateHome, type HomeView, type V3 } from "../modules/navigation/nav-math";
 import { uiAlert } from "../core/notify";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsRmbDragging: any;
+
 // ── Scene placement state ──
 let recenterEnabled = false;
 let sceneOffset: THREE.Vector3 | null = null;
@@ -1531,7 +1535,7 @@ export function setupCameraTools() {
     } catch { /* */ }
   }, 0);
 
-  (window as any).__obsRmbDragging = false;
+  obsRmbDragging = false;
 
   // Clipping is driven by the camera-controls "update" listener above.
   // Avoid a permanent rAF loop — it fights navigation and burns CPU.

@@ -9,9 +9,9 @@ const assert = require("assert");
 /* ── mirrors: twinIdentity ─────────────────────────────────────────────── */
 function twinIdentity(e) {
   if (e?.sourceGlobalId) return `gid:${e.sourceGlobalId}`;
-  if (e?.nativeElementId) return `nat:${e.nativeElementId}`;
   const lid = Number(e?.localId);
   if (e?.modelId != null && Number.isFinite(lid)) return `el:${e.modelId}:${lid}`;
+  if (e?.nativeElementId) return `nat:${e.nativeElementId}`;
   return `id:${e?.id ?? "?"}`;
 }
 
@@ -161,11 +161,13 @@ async function restoreSequence({ store, confirmYes, currentEdits, versionEdits, 
 }
 
 /* ═══════════════════════════════════════════════════════════════════════ */
-// Identity preference: GlobalId > nativeElementId > modelId:localId > id
+// Identity preference: GlobalId > modelId:localId (stable across rebuilds) > nativeElementId > id
 {
   assert.strictEqual(twinIdentity({ sourceGlobalId: "ABC" }), "gid:ABC");
-  assert.strictEqual(twinIdentity({ nativeElementId: "n1" }), "nat:n1");
   assert.strictEqual(twinIdentity({ modelId: "M", localId: 7 }), "el:M:7");
+  // nativeElementId re-mints on rebuild — modelId:localId wins when both exist
+  assert.strictEqual(twinIdentity({ modelId: "M", localId: 7, nativeElementId: "n1" }), "el:M:7");
+  assert.strictEqual(twinIdentity({ nativeElementId: "n1" }), "nat:n1");
   assert.strictEqual(twinIdentity({ id: "t1" }), "id:t1");
   assert.strictEqual(twinIdentity({}), "id:?");
   // localId NaN falls through to id

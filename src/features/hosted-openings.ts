@@ -1,5 +1,9 @@
 import { ctx } from "../core/context";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsRecomputeHostedOpenings: any;
+
 type Any = Record<string, any>;
 
 function getAuthoring(): Any | null {
@@ -207,6 +211,6 @@ export function recomputeHostedOpenings(): number {
 }
 
 export function setupHostedOpenings(): void {
-  (window as Any).__obsRecomputeHostedOpenings = recomputeHostedOpenings;
+  obsRecomputeHostedOpenings = recomputeHostedOpenings;
   console.log("[hosted-openings] ready");
 }

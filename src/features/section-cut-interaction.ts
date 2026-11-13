@@ -16,6 +16,13 @@ import { forceResumeCameraControls } from "../core/camera-gate";
 import { whenNavigationBlocked } from "./navigation";
 import { isGrabbableHandle, isStaleDrag, findDraggingControls, endControlsDrag } from "./section-handle-filter";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsSelectionSuspended: any;
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsSectionCut: any;
+
 type Any = Record<string, any>;
 
 let installed = false;
@@ -793,13 +800,13 @@ export function setupSectionCutInteraction(): void {
   try {
     const sel = (ctx.features as Any)?.selection;
     if (sel && typeof sel.setSuspended !== "function") {
-      (window as Any).__obsSelectionSuspended = () => isArrowMode();
+      obsSelectionSuspended = () => isArrowMode();
     }
   } catch {
     /* */
   }
 
-  (window as Any).__obsSectionCut = {
+  obsSectionCut = {
     release: () => releaseEverything(null),
     createAt: createPlaneAt,
     pickFace: pickModelFace,

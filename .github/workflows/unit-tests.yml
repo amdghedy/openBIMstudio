@@ -151,7 +151,7 @@ jobs:
       - name: Build production app for browser tests
         run: npm run build
       - name: Run browser specs
-        run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts --reporter=list
+        run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts --reporter=list
       - name: Upload report and screenshots
         if: always()
         uses: actions/upload-artifact@v4

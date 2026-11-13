@@ -14,6 +14,10 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsBimCompatibility: any;
+
 type Any = Record<string, any>;
 
 function scene(): THREE.Scene | null {
@@ -461,7 +465,7 @@ export function setupBimCompatibilityBridge(): void {
     matchPropertiesApply,
     createSimilar,
   };
-  (window as Any).__obsBimCompatibility = (ctx.features as Any).bimCompatibility;
+  obsBimCompatibility = (ctx.features as Any).bimCompatibility;
 
   console.log("[bim-compatibility-bridge] ready");
 }

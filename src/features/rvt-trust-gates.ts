@@ -13,6 +13,10 @@
  */
 import { history } from "./history";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsTrustGates: any;
+
 const GATE_VERSION = 1;
 const CHECKPOINT_KEY = "obs.trust.checkpoint.v1";
 const FRAG_DB = "obs-frag-cache-v1";
@@ -176,7 +180,7 @@ export function setupRVTTrustGates(): void {
   }
 
   try {
-    (window as any).__obsTrustGates = {
+    obsTrustGates = {
       version: GATE_VERSION,
       authoringTransaction,
       writeCheckpoint,

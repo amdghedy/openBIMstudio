@@ -97,6 +97,8 @@
     "test:native-twin-resize": "node tests/native-twin-vertical-resize.test.cjs",
     "test:bulk-native-twin": "node tests/bulk-native-twin.test.cjs",
     "test:native-ifc-versions": "node tests/native-ifc-versions.test.cjs",
+    "test:uniqueness": "node tests/uniqueness.test.cjs",
+    "test:boot-health": "node tests/boot-health.test.cjs",
     "test:cursor-zoom": "node tests/cursor-zoom.test.cjs",
     "test:controls-target": "node tests/controls-target.test.cjs",
     "test:context-menu": "node tests/context-menu-model.test.cjs",

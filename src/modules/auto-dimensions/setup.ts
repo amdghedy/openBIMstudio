@@ -5,6 +5,10 @@
 import { autoDimensionsEngine, exposeAutoDimensionsGlobal } from "./auto-dimensions-engine";
 import { setupAutoDimensionsUI, openAutoDimsPanel } from "./auto-dimensions-ui";
 
+// legacy module-local state (formerly on window)
+// eslint-disable-next-line no-unused-vars
+let obsAutoDimActions: any;
+
 type Any = Record<string, any>;
 
 function registerPaletteCommands(): void {
@@ -77,7 +81,7 @@ function registerPaletteCommands(): void {
     const map = ((window as Any).__obsPaletteCommands ??= {});
     for (const c of cmds) map[c.id] = c;
 
-    (window as Any).__obsAutoDimActions = {
+    obsAutoDimActions = {
       openPanel: openAutoDimsPanel,
       autoPlan: () => autoDimensionsEngine.autoDimensionPlan({ axis: "both" }),
       promote: () => autoDimensionsEngine.promoteTemporary(),
