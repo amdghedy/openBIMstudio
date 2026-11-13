@@ -599,6 +599,16 @@ function registerAuthoringCommands(): void {
     });
   }
   registerCommand({
+    id: "authoring.nativeIfc.resume",
+    label: "Native IFC: Resume convert",
+    category: "Authoring",
+    hint: "Continue Make model editable after cancel or cap",
+    run: async () => {
+      const m = await import("./native-ifc-workflow");
+      await m.resumeModelEditable();
+    },
+  });
+  registerCommand({
     id: "authoring.nativeIfc.makeEditable",
     label: "Native IFC: Make model editable",
     category: "Authoring",

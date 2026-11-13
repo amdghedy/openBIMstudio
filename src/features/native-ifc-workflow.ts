@@ -23,6 +23,7 @@ const WARN_CONVERT = 2500;
 /** Hard ceiling per single run (memory safety). */
 const MAX_AUTO_CONVERT = 12000;
 const HISTORY_KEY = "obs.nativeIfc.history.v1";
+const RESUME_KEY = "obs.nativeIfc.resume.v1";
 
 export interface IfcChangeRecord {
   id: string;
@@ -131,6 +132,53 @@ async function geometryIdsForModel(modelId: string): Promise<number[]> {
  * Convert an entire linked IFC/FRAG model into editable Native Twins.
  * Caps at MAX_AUTO_CONVERT elements to protect the tab.
  */
+
+interface ResumeState {
+  modelId: string;
+  total: number;
+  remaining: number;
+  at: number;
+}
+
+function saveResumeState(state: ResumeState | null): void {
+  try {
+    if (!state) localStorage.removeItem(RESUME_KEY);
+    else localStorage.setItem(RESUME_KEY, JSON.stringify(state));
+  } catch {
+    /* */
+  }
+}
+
+export function getResumeState(): ResumeState | null {
+  try {
+    const raw = localStorage.getItem(RESUME_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as ResumeState;
+    if (!s?.modelId || !(s.remaining > 0)) return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+/** LocalIds that do not already have a Native Twin. */
+async function pendingGeometryIds(modelId: string): Promise<number[]> {
+  const all = await geometryIdsForModel(modelId);
+  const fe = fragEdit();
+  let existing = new Set<string>();
+  try {
+    const list = typeof fe?.list === "function" ? fe.list() ?? [] : [];
+    existing = new Set(
+      list
+        .filter((e: Any) => e && String(e.modelId) === String(modelId))
+        .map((e: Any) => `${e.modelId}:${Number(e.localId)}`),
+    );
+  } catch {
+    /* */
+  }
+  return all.filter((id) => !existing.has(`${modelId}:${id}`));
+}
+
 export async function makeModelEditable(modelId?: string): Promise<BulkConvertResult | null> {
   const ids = listLinkedModelIds();
   const mid = modelId || ids[0];
@@ -139,22 +187,34 @@ export async function makeModelEditable(modelId?: string): Promise<BulkConvertRe
     return null;
   }
 
-  const localIds = await geometryIdsForModel(mid);
-  if (!localIds.length) {
-    toast(`Model “${mid}” has no drawable elements to convert.`, "warn");
+  const pending = await pendingGeometryIds(mid);
+  const allCount = (await geometryIdsForModel(mid)).length;
+  if (!pending.length) {
+    saveResumeState(null);
+    toast(
+      allCount
+        ? `Model “${mid}” is fully editable (${allCount} twin(s) already).`
+        : `Model “${mid}” has no drawable elements to convert.`,
+      allCount ? "success" : "warn",
+    );
     return null;
   }
 
-  let useIds = localIds;
-  if (localIds.length > MAX_AUTO_CONVERT) {
-    useIds = localIds.slice(0, MAX_AUTO_CONVERT);
+  let useIds = pending;
+  if (pending.length > MAX_AUTO_CONVERT) {
+    useIds = pending.slice(0, MAX_AUTO_CONVERT);
     toast(
-      `Model has ${localIds.length} elements — converting first ${MAX_AUTO_CONVERT} this run (hard safety cap). Run again for the rest.`,
+      `${pending.length} elements left — converting ${MAX_AUTO_CONVERT} this run. Use Resume for the rest.`,
       "warn",
     );
-  } else if (localIds.length > WARN_CONVERT) {
+  } else if (pending.length < allCount) {
     toast(
-      `Large model (${localIds.length} elements) — streamed conversion with live progress. Keep this tab open.`,
+      `Resuming: ${pending.length} of ${allCount} elements still need Native Twins.`,
+      "info",
+    );
+  } else if (pending.length > WARN_CONVERT) {
+    toast(
+      `Large model (${pending.length} elements) — streamed conversion with live progress.`,
       "info",
     );
   }
@@ -177,18 +237,35 @@ export async function makeModelEditable(modelId?: string): Promise<BulkConvertRe
       },
     });
     progress.close(result);
+    // Remaining work for Resume
+    const still = await pendingGeometryIds(mid);
+    if (still.length) {
+      saveResumeState({
+        modelId: mid,
+        total: allCount,
+        remaining: still.length,
+        at: Date.now(),
+      });
+    } else {
+      saveResumeState(null);
+    }
     recordIfcChange(
       "make-editable",
       result.aborted
-        ? `Native twins from ${mid}: ${result.created} created (cancelled)`
-        : `Native twins from ${mid}: ${result.created} created`,
+        ? `Native twins from ${mid}: ${result.created} created (cancelled, ${still.length} left)`
+        : `Native twins from ${mid}: ${result.created} created` +
+          (still.length ? ` (${still.length} left — Resume)` : ""),
       { modelId: mid, count: result.created },
     );
     if (result.aborted) {
       toast(
-        `Cancelled — kept ${result.created} twin(s) already created.` +
-          (result.failed ? ` ${result.failed} failed.` : ""),
-        result.created ? "warn" : "info",
+        `Cancelled — kept ${result.created} twin(s). ${still.length} remaining — use Resume to continue.`,
+        result.created || still.length ? "warn" : "info",
+      );
+    } else if (still.length) {
+      toast(
+        `Native IFC: ${result.created} created, ${still.length} left. Open workflow panel → Resume.`,
+        "warn",
       );
     } else if (result.created > 0) {
       toast(
@@ -276,7 +353,18 @@ function openProgressDialog(
   };
 }
 
+/** Continue Make editable for the last partial/cancelled model. */
+export async function resumeModelEditable(): Promise<BulkConvertResult | null> {
+  const s = getResumeState();
+  if (!s) {
+    toast("Nothing to resume — run Make model editable first.", "info");
+    return null;
+  }
+  return makeModelEditable(s.modelId);
+}
+
 /** Convert current selection only (linked elements → Native Twins). */
+
 export async function makeSelectionEditable(): Promise<BulkConvertResult> {
   const result = await bulkConvertLinkedToNativeTwin({ quietPerItem: true, openPanelOnSuccess: true });
   if (result.created > 0) {
@@ -390,12 +478,18 @@ function renderPanel(): void {
   const st = nativeIfcStatus();
   const stats = document.createElement("div");
   stats.style.cssText = "font-size:11px;color:#cbd5e1";
-  stats.textContent = `Linked models: ${st.linkedModels} · Native twins: ${st.twinCount} · History: ${st.historyCount}`;
+  const resume = getResumeState();
+  stats.textContent =
+    `Linked models: ${st.linkedModels} · Native twins: ${st.twinCount} · History: ${st.historyCount}` +
+    (resume ? ` · Resume: ${resume.remaining} left on ${resume.modelId}` : "");
   body.appendChild(stats);
 
   body.append(
     btn("1. Make linked model editable", true, () => {
       void makeModelEditable();
+    }),
+    btn("Resume last convert", false, () => {
+      void resumeModelEditable();
     }),
     btn("Make selection editable", false, () => {
       void makeSelectionEditable();
@@ -456,6 +550,8 @@ export function toggleNativeIfcPanel(): void {
 export function setupNativeIfcWorkflow(): void {
   const api = {
     makeModelEditable,
+    resumeModelEditable,
+    getResumeState,
     makeSelectionEditable,
     exportUpdatedIfc,
     getIfcChangeHistory,
