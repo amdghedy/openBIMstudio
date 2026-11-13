@@ -1156,18 +1156,43 @@ async function runTask(t: ImportTask) {
 
     try { computeSceneBounds(); } catch { /* */ }
 
+    // Critical: non-empty FRAG buffer can still have 0 drawable items (OOM / ABI).
+    // Do not report success with an empty scene.
+    let geomCount = -1;
+    try {
+      const model: any = ctx.fragments.list.get(modelId);
+      if (model && typeof model.getItemsIdsWithGeometry === "function") {
+        const ids = await model.getItemsIdsWithGeometry();
+        geomCount = Array.isArray(ids) ? ids.length : 0;
+        t.elements = geomCount;
+      }
+    } catch { /* count optional */ }
+    if (geomCount === 0) {
+      try { await (ctx.fragments.core as any)?.disposeModel?.(modelId); } catch { /* */ }
+      try { unregisterModel(modelId); } catch { /* */ }
+      throw new Error(
+        "IFC linked but the scene has 0 drawable elements (empty geometry). " +
+        "This usually means the browser ran out of memory mid-conversion or " +
+        "WASM/app versions are mismatched. Convert to .frag and use Link FRAG, " +
+        "or hard-reload (Ctrl+Shift+R) and retry.",
+      );
+    }
+
     try {
       (ctx.features.projects as any)?.onModelImported?.(modelId, t.file.name, projectBytes);
     } catch (e) { console.warn("[ifc] project persistence hook failed", e); }
 
     t.elapsedMs = performance.now() - t0;
-    t.status = "done"; t.phase = "done";
+    t.status = "done";
+    t.phase = geomCount > 0 ? `done · ${geomCount} elements` : "done";
     refreshTaskRow(t);
 
-    const model: any = ctx.fragments.list.get(modelId);
-    (model as any)?.getItemsIdsWithGeometry?.()
-      ?.then((ids: number[]) => { t.elements = ids?.length ?? undefined; refreshTaskRow(t); })
-      .catch(() => { /* */ });
+    if (geomCount < 0) {
+      const model: any = ctx.fragments.list.get(modelId);
+      (model as any)?.getItemsIdsWithGeometry?.()
+        ?.then((ids: number[]) => { t.elements = ids?.length ?? undefined; refreshTaskRow(t); })
+        .catch(() => { /* */ });
+    }
   } catch (err: any) {
     rejectActive = null;
     const msg = errorMessage(err);
@@ -1189,13 +1214,15 @@ async function runTask(t: ImportTask) {
       t.error = userMsg;
       // Large IFC/IFCZIP failures were previously only visible in the queue row.
       try {
-        uiAlert(
-          `IFC import failed: ${t.file.name}\n\n${userMsg}\n\n` +
-          (t.sizeMB > 80
-            ? "Tip: files over ~80–100 MB often exhaust browser WASM memory. " +
-              "Convert to .frag (ThatOpen) offline, or raise Importer max size and retry on a machine with more RAM."
-            : "Open Insert → Import Setup to inspect the queue and retry."),
-        );
+        // Prefer recovery dialog for empty-geometry / OOM — not a dead-end alert
+        if (/0 drawable|out of memory|OOM|empty geometry|too large|BindingError/i.test(userMsg) || t.sizeMB > 80) {
+          offerLargeIfcRecovery([t.file]);
+        } else {
+          uiAlert(
+            `IFC import failed: ${t.file.name}\n\n${userMsg}\n\n` +
+            "Open Insert → Import Setup to inspect the queue and retry.",
+          );
+        }
       } catch { /* */ }
     }
     refreshTaskRow(t);
@@ -1312,6 +1339,21 @@ export async function loadFragFiles(files: FileList | File[]) {
 
         await ctx.fragments.core.load(buffer, { modelId: id });
         registerModel(id);
+
+        try {
+          const model: any = ctx.fragments.list.get(id);
+          if (model?.getItemsIdsWithGeometry) {
+            const ids = await model.getItemsIdsWithGeometry();
+            if (Array.isArray(ids) && ids.length === 0) {
+              try { await (ctx.fragments.core as any)?.disposeModel?.(id); } catch { /* */ }
+              try { unregisterModel(id); } catch { /* */ }
+              throw new Error("FRAG has 0 drawable elements — file may be corrupt or incomplete.");
+            }
+          }
+        } catch (e) {
+          if (e instanceof Error && /0 drawable/.test(e.message)) throw e;
+          /* count optional */
+        }
 
         try {
           (ctx.features.projects as any)?.onModelImported?.(id, file.name, projectBytes);
