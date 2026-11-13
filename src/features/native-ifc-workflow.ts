@@ -14,7 +14,7 @@
 
 import { ctx } from "../core/context";
 import { bulkConvertLinkedToNativeTwin, type BulkConvertResult } from "./bulk-native-twin";
-import { downloadNativeTwinIfc } from "../modules/export/native-twin-ifc";
+import { downloadNativeTwinIfc, downloadFederatedNativeTwinIfc } from "../modules/export/native-twin-ifc";
 
 type Any = Record<string, any>;
 
@@ -184,14 +184,26 @@ export async function makeSelectionEditable(): Promise<BulkConvertResult> {
 }
 
 /**
- * Export all Native Twin edits as IFC4 files (one download per twin, or first N).
- * True single-file federated IFC merge is a follow-up; per-element write-back is reliable today.
+ * Export all Native Twin edits as one federated IFC4 (preferred write-back).
+ * Pass `{ perTwin: true }` for legacy one-file-per-twin downloads.
  */
-export function exportUpdatedIfc(opts?: { maxFiles?: number }): number {
+export function exportUpdatedIfc(opts?: { maxFiles?: number; perTwin?: boolean }): number {
   const edits = listTwinEdits();
   if (!edits.length) {
     toast("No Native Twin edits to export. Make model editable first.", "warn");
     return 0;
+  }
+  if (!opts?.perTwin) {
+    try {
+      downloadFederatedNativeTwinIfc(edits as any, "openbimstudio-native.ifc");
+      toast(`Exported 1 federated IFC4 with ${edits.length} element(s).`, "success");
+      recordIfcChange("export-ifc", `Federated IFC4 · ${edits.length} element(s)`, {
+        count: edits.length,
+      });
+      return edits.length;
+    } catch (err) {
+      console.warn("[native-ifc] federated export failed, falling back to per-twin", err);
+    }
   }
   const max = Math.max(1, opts?.maxFiles ?? 40);
   let n = 0;
@@ -203,11 +215,7 @@ export function exportUpdatedIfc(opts?: { maxFiles?: number }): number {
       console.warn("[native-ifc] export twin failed", e?.id, err);
     }
   }
-  if (edits.length > max) {
-    toast(`Exported ${n} IFC file(s). ${edits.length - max} more twins remain — run export again or raise maxFiles.`, "warn");
-  } else {
-    toast(`Exported ${n} updated IFC4 file(s) from Native Twins.`, "success");
-  }
+  toast(`Exported ${n} IFC4 file(s) from Native Twins.`, n ? "success" : "warn");
   recordIfcChange("export-ifc", `Exported ${n} IFC4 twin file(s)`, { count: n });
   return n;
 }
@@ -288,8 +296,11 @@ function renderPanel(): void {
     btn("Make selection editable", false, () => {
       void makeSelectionEditable();
     }),
-    btn("2. Export updated IFC4 (twins)", true, () => {
+    btn("2. Export federated IFC4", true, () => {
       exportUpdatedIfc();
+    }),
+    btn("Export per-twin IFC files", false, () => {
+      exportUpdatedIfc({ perTwin: true });
     }),
   );
 
