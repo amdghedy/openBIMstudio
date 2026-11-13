@@ -9,6 +9,7 @@
  * browser-safe limit need "Allow unsafe large IFC" and may OOM.
  */
 import { ctx } from "../core/context";
+import { escapeHtml } from "../core/html-escape";
 import { uiAlert } from "../core/notify";
 import {
   convertIfcToFragBytes,
@@ -206,12 +207,12 @@ function renderList() {
     const bar = Math.max(0, Math.min(100, j.progress));
     row.innerHTML =
       `<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">` +
-      `<span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${j.sourceName}">${j.sourceName}</span>` +
+      `<span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(j.sourceName)}">${escapeHtml(j.sourceName)}</span>` +
       `<span style="color:${col};font:700 10px system-ui;letter-spacing:.3px">${j.status.toUpperCase()}</span>` +
       `</div>` +
       `<div style="height:4px;background:#1e2230;border-radius:2px;overflow:hidden;margin-bottom:4px">` +
       `<div style="height:100%;width:${bar}%;background:${col};transition:width .2s"></div></div>` +
-      `<div style="font-size:11px;color:#94a3b8">${j.phase}${j.error ? ` · <span style="color:#f87171">${j.error}</span>` : ""}</div>`;
+      `<div style="font-size:11px;color:#94a3b8">${escapeHtml(j.phase)}${j.error ? ` · <span style="color:#f87171">${escapeHtml(j.error)}</span>` : ""}</div>`;
 
     if (j.status === "done" && j.frag && j.fragName) {
       const acts = document.createElement("div");

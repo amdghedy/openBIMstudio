@@ -7857,7 +7857,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
 
     const promptBit = acadPromptText
-      ? `<span style="color:#fbbf24;font-weight:600;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${acadPromptText.replace(/"/g, "&quot;")}">${acadPromptText}</span><span class="sep"></span>`
+      ? `<span style="color:#fbbf24;font-weight:600;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(acadPromptText)}">${escapeHtml(acadPromptText)}</span><span class="sep"></span>`
       : "";
     statusEl.innerHTML = `
       ${promptBit}

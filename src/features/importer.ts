@@ -904,7 +904,7 @@ export async function expandIfcSources(
 
 /** Critical large-model path: one-click handoff to IFC→FRAG instead of a dead-end alert. */
 function offerLargeIfcRecovery(files: File[]): void {
-  const names = files.map((f) => `• ${f.name} (${(f.size / (1024 * 1024)).toFixed(0)} MB)`).join("\n");
+  const names = files.map((f) => `• ${escapeHtml(f.name)} (${(f.size / (1024 * 1024)).toFixed(0)} MB)`).join("\n");
   try {
     const existing = document.getElementById("obs-large-ifc-recovery");
     if (existing) existing.remove();

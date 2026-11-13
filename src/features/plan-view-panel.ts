@@ -1825,6 +1825,9 @@ function applyCadUnderlay() {
     const vbH = (b.maxZ - b.minZ) + 2 * pad;
 
     const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+    // The underlay URL is always one of our own blob: object URLs; refuse
+    // anything else rather than hand a foreign scheme to an SVG <image>.
+    if (!cadUnderlayUrl.startsWith("blob:")) return;
     img.setAttribute("href", cadUnderlayUrl);
     img.setAttribute("x", String(vbMinX));
     img.setAttribute("y", String(vbMinY));
@@ -4558,7 +4561,7 @@ async function regenerateNow() {
 function populateLevels() {
   const levels = listAvailableLevels();
   levelSelect.innerHTML = levels
-    .map((l, i) => `<option value="${i}">${l.name} (+${l.elevation.toFixed(2)} m)</option>`)
+    .map((l, i) => `<option value="${i}">${escapeHtml(l.name)} (+${l.elevation.toFixed(2)} m)</option>`)
     .join("");
 }
 

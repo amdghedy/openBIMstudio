@@ -161,7 +161,27 @@ export function importSvg(svg: string, opts: SvgImportOptions = {}): SvgImportRe
     if (pts.length < 2) return;
     entities.push({ type: "LWPOLYLINE", layer, points: pts.map(([x, y]) => pt(m, x, y)), ...(closed ? { closed: true } : {}) } as DxfEntity);
   };
-  const noComments = svg.replace(/<!--[\s\S]*?-->/g, "").replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+  // Linear single-pass scanner: drop <!-- --> comments and <![CDATA[ ]]>
+  // blocks completely, in document order. A regex pre-strip is incomplete
+  // against adversarial nesting and can unhide markup between the two
+  // replaces; the state machine cannot be fooled by tag-like text inside
+  // either region and treats unterminated regions as dropped to EOF.
+  let stripped = "";
+  let scan = 0;
+  const len = svg.length;
+  while (scan < len) {
+    if (svg.startsWith("<!--", scan)) {
+      const end = svg.indexOf("-->", scan + 4);
+      scan = end === -1 ? len : end + 3;
+    } else if (svg.startsWith("<![CDATA[", scan)) {
+      const end = svg.indexOf("]]>", scan + 9);
+      scan = end === -1 ? len : end + 3;
+    } else {
+      stripped += svg[scan];
+      scan++;
+    }
+  }
+  const noComments = stripped;
   const stack: Mat[] = [I];
   const skipDepth: string[] = [];
   const re = /<(\/?)([A-Za-z][\w:-]*)([^>]*?)(\/?)>/g;

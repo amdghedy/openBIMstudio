@@ -639,7 +639,7 @@ function renderDiffView(): void {
     "border-bottom:1px solid var(--border-default,#2a2e3a);" +
     "display:flex;align-items:center;gap:12px;font-size:12px";
   banner.innerHTML =
-    `<b>Diff against "${diff.snapshotLabel}"</b> ` +
+    `<b>Diff against "${escapeHtml(diff.snapshotLabel)}"</b> ` +
     `<span style="opacity:.6">(${fmtDateTime(diff.snapshotAt)})</span>` +
     `<span style="margin-left:auto;opacity:.7">${summarizeDiff(diff)}</span>`;
 

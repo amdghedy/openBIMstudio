@@ -28,6 +28,7 @@
  *   state flows through imports and ctx.features (ui-honesty budget).
  */
 import { ctx } from "../core/context";
+import { escapeHtml } from "../core/html-escape";
 import { registerCommand } from "./command-palette";
 import {
   getActiveDrawing,
@@ -201,7 +202,7 @@ function shell(title: string, subtitle: string): { overlay: HTMLElement; body: H
   const head = document.createElement("div");
   head.className = "head";
   const h = document.createElement("div");
-  h.innerHTML = `<div class="title">${title}</div><div class="sub">${subtitle}</div>`;
+  h.innerHTML = `<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(subtitle)}</div>`;
   const x = document.createElement("button");
   x.className = "x";
   x.textContent = "✕";

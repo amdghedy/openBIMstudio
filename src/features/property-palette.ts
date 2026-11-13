@@ -112,6 +112,7 @@ function readValue(
 
 import { isElementLocked, getLockOwner } from "../modules/collaboration/workshare-locks";
 import { uiAlert } from "../core/notify";
+import { escapeHtml } from "../core/html-escape";
 
 function writeValue(
   target: FieldTarget,
@@ -1242,7 +1243,7 @@ function makeLevelConstraintsBlock(element: AuthoredElement): HTMLElement {
   selBase.innerHTML =
     "<option value=\"\">-- none --</option>" +
     all.map((l) =>
-      "<option value=\"" + l.id + "\">" + l.name + " (" + l.elevation.toFixed(2) + " m)</option>",
+      "<option value=\"" + escapeHtml(l.id) + "\">" + escapeHtml(l.name) + " (" + l.elevation.toFixed(2) + " m)</option>",
     ).join("");
   selBase.value = element.levelId ?? "";
   selBase.onchange = () => {

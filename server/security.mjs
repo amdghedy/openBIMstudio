@@ -46,7 +46,14 @@ export function validId(id) {
 /** Constant-time bearer token check. `token` empty = auth disabled. SSE may pass ?token= . */
 export function tokenOk(authHeader, queryToken, token) {
   if (!token) return true;
-  const given = (/^Bearer\s+(.+)$/i.exec(authHeader || "")?.[1] ?? queryToken ?? "").toString();
+  // Linear parsing — a backtracking regex over attacker-controlled headers
+  // (e.g. "Bearer " + thousands of spaces) burned quadratic CPU (ReDoS).
+  const header = String(authHeader || "");
+  let given = queryToken ?? "";
+  if (header.length >= 7 && header.slice(0, 7).toLowerCase() === "bearer ") {
+    given = header.slice(7).trim();
+  }
+  given = String(given);
   const a = crypto.createHash("sha256").update(given).digest();
   const b = crypto.createHash("sha256").update(String(token)).digest();
   return crypto.timingSafeEqual(a, b);

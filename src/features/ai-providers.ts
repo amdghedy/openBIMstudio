@@ -237,7 +237,10 @@ function resolveEndpoint(cfg: ProviderConfig): string {
     return ep || "http://127.0.0.1:11434";
   }
   const ep = cfg.endpoint.toLowerCase();
-  if (ep.includes("localhost:1234") || ep.includes("127.0.0.1:1234")) {
+  // Parse the endpoint as a URL and compare host/port exactly — a substring
+  // match let "https://evil.com/?x=localhost:1234" look like LM Studio.
+  const epParts = urlHostParts(ep);
+  if (epParts && (epParts.host === "localhost" || epParts.host === "127.0.0.1") && epParts.port === "1234") {
     try {
       const host = typeof location !== "undefined" ? location.hostname : "";
       if (host === "localhost" || host === "127.0.0.1") return "/lmstudio";
@@ -253,10 +256,15 @@ function anthropicUrl(cfg: ProviderConfig, path: string): string {
   // Dev server proxies /anthropic; a deployed site calls api.anthropic.com
   // directly (allowed by the CSP and by the browser-access header).
   let base = (cfg.endpoint || ANTHROPIC_BASE).trim() || ANTHROPIC_BASE;
-  try {
-    const host = typeof location !== "undefined" ? location.hostname : "";
-    if ((host === "localhost" || host === "127.0.0.1") && base.includes("api.anthropic.com")) base = "/anthropic";
-  } catch { /* */ }
+  // Exact host comparison — "https://api.anthropic.com.evil.com" must not
+  // match a substring check.
+  const baseParts = urlHostParts(base);
+  if (baseParts && (baseParts.host === "api.anthropic.com" || baseParts.host.endsWith(".api.anthropic.com"))) {
+    try {
+      const host = typeof location !== "undefined" ? location.hostname : "";
+      if (host === "localhost" || host === "127.0.0.1") base = "/anthropic";
+    } catch { /* */ }
+  }
   return joinUrl(base, path);
 }
 
@@ -568,6 +576,16 @@ function toOpenAIMessage(m: ChatMessage, isGemini: boolean): any {
     return { role: "assistant", content: m.content || null, tool_calls };
   }
   return { role: m.role, content: m.content };
+}
+
+/** hostname + port of a URL-ish string; accepts scheme-less "host:port". */
+function urlHostParts(url: string): { host: string; port: string } | null {
+  try {
+    const u = new URL(url.includes("://") ? url : `http://${url}`);
+    return { host: u.hostname, port: u.port };
+  } catch {
+    return null;
+  }
 }
 
 function joinUrl(base: string, path: string): string {
