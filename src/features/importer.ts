@@ -901,6 +901,71 @@ export async function expandIfcSources(
   return out;
 }
 
+
+/** Critical large-model path: one-click handoff to IFC→FRAG instead of a dead-end alert. */
+function offerLargeIfcRecovery(files: File[]): void {
+  const names = files.map((f) => `• ${f.name} (${(f.size / (1024 * 1024)).toFixed(0)} MB)`).join("\n");
+  try {
+    const existing = document.getElementById("obs-large-ifc-recovery");
+    if (existing) existing.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "obs-large-ifc-recovery";
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;" +
+      "align-items:center;justify-content:center;font:13px system-ui,sans-serif";
+    const card = document.createElement("div");
+    card.style.cssText =
+      "width:min(440px,92vw);background:#161922;border:1px solid #2a2e3a;border-radius:12px;" +
+      "box-shadow:0 16px 50px rgba(0,0,0,.5);color:#e8eaf0;overflow:hidden";
+    card.innerHTML =
+      `<div style="padding:12px 14px;border-bottom:1px solid #2a2e3a;font-weight:700">Large IFC — convert to FRAG</div>` +
+      `<div style="padding:12px 14px;font-size:12px;line-height:1.45;color:#c5cad6;white-space:pre-wrap">` +
+      `These file(s) are above the browser-safe direct-link limit:\n\n${names}\n\n` +
+      `Direct Link IFC often leaves an empty scene (OOM). Convert to .frag first, then Link FRAG.` +
+      `</div>`;
+    const acts = document.createElement("div");
+    acts.style.cssText = "padding:10px 14px 14px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end";
+    const mk = (label: string, primary: boolean, fn: () => void) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.style.cssText = primary
+        ? "padding:7px 12px;border-radius:6px;border:1px solid #0284c7;background:#0369a1;color:#fff;font-weight:600;cursor:pointer"
+        : "padding:7px 12px;border-radius:6px;border:1px solid #3a3f4d;background:#2a2e3a;color:#e8eaf0;cursor:pointer";
+      b.onclick = () => { try { fn(); } finally { overlay.remove(); } };
+      return b;
+    };
+    acts.append(
+      mk("Convert to FRAG…", true, () => {
+        void import("./ifc-to-frag").then((m) => {
+          m.showIfcToFragPanel?.();
+          void m.queueFiles?.(files);
+        }).catch((err) => {
+          console.warn("[importer] ifc-to-frag open failed", err);
+          try { uiAlert("Could not open IFC → FRAG converter. Use File / Insert → IFC → FRAG."); } catch { /* */ }
+        });
+      }),
+      mk("Allow unsafe + retry", false, () => {
+        ifcSettings.allowUnsafeLargeIfc = true;
+        try { saveIfcSettings(); } catch { /* */ }
+        enqueueIfc(files);
+      }),
+      mk("Close", false, () => {}),
+    );
+    card.appendChild(acts);
+    overlay.appendChild(card);
+    overlay.addEventListener("pointerdown", (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  } catch {
+    try {
+      uiAlert(
+        `These IFC file(s) are too large for reliable in-browser link:\n\n${names}\n\n` +
+        `Use IFC → FRAG converter, then Insert → Link FRAG.`,
+      );
+    } catch { /* */ }
+  }
+}
+
 function enqueueIfc(files: File | File[]) {
   const list = Array.isArray(files) ? files : [files];
   for (const file of list) {
@@ -933,16 +998,7 @@ function enqueueIfc(files: File | File[]) {
     return mb > ifcSettings.browserSafeMaxMB && mb <= ifcSettings.maxSizeMB && !ifcSettings.allowUnsafeLargeIfc;
   });
   if (skippedBig.length) {
-    const names = skippedBig.map((f) => `• ${f.name} (${(f.size / (1024 * 1024)).toFixed(0)} MB)`).join("\n");
-    try {
-      uiAlert(
-        `These IFC file(s) are too large to convert reliably in the browser:\n\n${names}\n\n` +
-        `Recommended:\n` +
-        `1. Convert IFC → .frag on a desktop tool (ThatOpen / IFC.js pipeline)\n` +
-        `2. Insert → Link FRAG\n\n` +
-        `Optional: Importer settings → enable "Allow unsafe large IFC" (often crashes the tab on 200–700 MB models).`,
-      );
-    } catch { /* */ }
+    offerLargeIfcRecovery(skippedBig);
   }
   void processQueue();
 }
