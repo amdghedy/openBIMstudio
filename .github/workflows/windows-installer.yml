@@ -33,7 +33,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: windows-installer-\${{ github.ref }}
+  group: windows-installer-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -58,7 +58,7 @@ jobs:
           npm pkg set "devDependencies.electron=45.3.2" "devDependencies.electron-builder=26.0.12"
           npm install --no-save --package-lock=false electron@45.3.2 electron-builder@26.0.12
       - name: Package Windows installer
-        run: npx electron-builder --config electron-builder.yml --win nsis --x64
+        run: npx electron-builder --config electron-builder.yml --win nsis --x64 --publish never
       - name: Verify installer output
         shell: pwsh
         run: |
