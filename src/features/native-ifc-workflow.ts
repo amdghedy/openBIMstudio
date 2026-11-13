@@ -18,7 +18,10 @@ import { downloadNativeTwinIfc, downloadFederatedNativeTwinIfc } from "../module
 
 type Any = Record<string, any>;
 
-const MAX_AUTO_CONVERT = 2500; // safety: browser memory
+/** Soft warning threshold — conversion continues in streamed batches past this. */
+const WARN_CONVERT = 2500;
+/** Hard ceiling per single run (memory safety). */
+const MAX_AUTO_CONVERT = 12000;
 const HISTORY_KEY = "obs.nativeIfc.history.v1";
 
 export interface IfcChangeRecord {
@@ -146,31 +149,92 @@ export async function makeModelEditable(modelId?: string): Promise<BulkConvertRe
   if (localIds.length > MAX_AUTO_CONVERT) {
     useIds = localIds.slice(0, MAX_AUTO_CONVERT);
     toast(
-      `Model has ${localIds.length} elements — converting first ${MAX_AUTO_CONVERT} (browser safety cap). Select more and run again for the rest.`,
+      `Model has ${localIds.length} elements — converting first ${MAX_AUTO_CONVERT} this run (hard safety cap). Run again for the rest.`,
       "warn",
     );
-  }
-
-  toast(`Making ${useIds.length} elements editable (Native Twin)…`, "info");
-  const selection = { [mid]: useIds };
-  const result = await bulkConvertLinkedToNativeTwin({
-    selection,
-    quietPerItem: true,
-    openPanelOnSuccess: true,
-  });
-
-  recordIfcChange("make-editable", `Native twins from ${mid}: ${result.created} created`, {
-    modelId: mid,
-    count: result.created,
-  });
-
-  if (result.created > 0) {
+  } else if (localIds.length > WARN_CONVERT) {
     toast(
-      `Native IFC workflow: ${result.created} editable element(s). Edit in Properties / grips, then Export Updated IFC.`,
-      "success",
+      `Large model (${localIds.length} elements) — streamed conversion with live progress. Keep this tab open.`,
+      "info",
     );
   }
-  return result;
+
+  const progress = openProgressDialog(useIds.length, mid);
+  const selection = { [mid]: useIds };
+  let lastUi = 0;
+  try {
+    const result = await bulkConvertLinkedToNativeTwin({
+      selection,
+      quietPerItem: true,
+      openPanelOnSuccess: true,
+      onProgress: (p) => {
+        const now = Date.now();
+        if (now - lastUi < 80 && p.index < p.total) return;
+        lastUi = now;
+        progress.update(p.index, p.total, p.createdSoFar, p.failedSoFar);
+      },
+    });
+    progress.close(result);
+    recordIfcChange("make-editable", `Native twins from ${mid}: ${result.created} created`, {
+      modelId: mid,
+      count: result.created,
+    });
+    if (result.created > 0) {
+      toast(
+        `Native IFC: ${result.created} editable element(s)` +
+          (result.failed ? `, ${result.failed} failed` : "") +
+          `. Export federated IFC when ready.`,
+        result.failed ? "warn" : "success",
+      );
+    } else if (result.failed) {
+      toast(`Native IFC: no twins created (${result.failed} failed).`, "error");
+    }
+    return result;
+  } catch (err) {
+    progress.close(null);
+    throw err;
+  }
+}
+
+function openProgressDialog(total: number, modelId: string): {
+  update: (i: number, t: number, created: number, failed: number) => void;
+  close: (result: BulkConvertResult | null) => void;
+} {
+  const existing = document.getElementById("obs-native-ifc-progress");
+  if (existing) existing.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "obs-native-ifc-progress";
+  overlay.style.cssText =
+    "position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.5);display:flex;" +
+    "align-items:center;justify-content:center;font:13px system-ui,sans-serif";
+  const card = document.createElement("div");
+  card.style.cssText =
+    "width:min(400px,92vw);background:#161922;border:1px solid #2a2e3a;border-radius:12px;" +
+    "padding:14px 16px;color:#e8eaf0;box-shadow:0 16px 50px rgba(0,0,0,.5)";
+  card.innerHTML =
+    `<div style="font-weight:700;margin-bottom:6px">Making model editable</div>` +
+    `<div style="font-size:11px;color:#94a3b8;margin-bottom:10px">${modelId} · ${total} elements</div>` +
+    `<div style="height:8px;background:#1e2230;border-radius:4px;overflow:hidden;margin-bottom:8px">` +
+    `<div data-bar style="height:100%;width:0%;background:#0ea5e9;transition:width .15s"></div></div>` +
+    `<div data-txt style="font-size:11px;color:#cbd5e1">Starting…</div>`;
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  const bar = card.querySelector("[data-bar]") as HTMLDivElement;
+  const txt = card.querySelector("[data-txt]") as HTMLDivElement;
+  return {
+    update(i, t, created, failed) {
+      const pct = t > 0 ? Math.min(100, Math.round((i / t) * 100)) : 0;
+      if (bar) bar.style.width = `${pct}%`;
+      if (txt) txt.textContent = `${i} / ${t} · ${created} created · ${failed} failed · ${pct}%`;
+    },
+    close(result) {
+      if (result && txt && bar) {
+        bar.style.width = "100%";
+        txt.textContent = `Done · ${result.created} created · ${result.failed} failed · ${result.skipped} skipped`;
+      }
+      setTimeout(() => overlay.remove(), result ? 900 : 0);
+    },
+  };
 }
 
 /** Convert current selection only (linked elements → Native Twins). */

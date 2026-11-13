@@ -13,6 +13,14 @@
 
 import { ctx } from "../core/context";
 
+function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
+    else setTimeout(resolve, 0);
+  });
+}
+
+
 export type BulkTwinStatus =
   | "created"
   | "skipped_existing"
@@ -261,6 +269,8 @@ export async function bulkConvertLinkedToNativeTwin(
         createdSoFar: result.created,
         failedSoFar: result.failed,
       });
+      // Keep the tab responsive on large models (thousands of elements)
+      if ((index + 1) % 25 === 0) await yieldToUi();
     }
   } finally {
     if (fragEdit) fragEdit.__bulkQuiet = prevQuiet;

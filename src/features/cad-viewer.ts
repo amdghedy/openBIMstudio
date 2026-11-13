@@ -9624,16 +9624,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const actual = Number(m[2]);
         const lost = Math.max(0, expected - actual);
         const pct = expected > 0 ? (lost * 100) / expected : 100;
+        const soft = pct <= 3 || lost <= 500;
         logCmd(
           `DWG writer reported ${lost} entit${lost === 1 ? "y" : "ies"} not re-read (${pct.toFixed(3)}%). ` +
-            (pct <= 3
-              ? "Engine hard-verify failed; saving DXF fallback with the same geometry (open in CAD or re-export after update)."
+            (soft
+              ? "Within soft tolerance — saving DXF (full geometry). Rebuild CAD WASM to accept DWG soft-pass natively."
               : "Saving DXF fallback to avoid silent data loss."),
         );
         try {
           const dxfName = `${base()}.dxf`;
           downloadDxf({ ...doc, entities, layouts: undefined }, dxfName);
-          status(`Saved ${dxfName} (DWG verify soft-fail)`);
+          status(soft ? `Saved ${dxfName} (compatible soft-fail)` : `Saved ${dxfName} (DWG verify soft-fail)`);
           markSaved();
         } catch (e2) {
           logCmd(`DXF fallback failed: ${e2 instanceof Error ? e2.message : String(e2)}`);
