@@ -50,7 +50,7 @@ export function writeNativeTwinIfc(edit: TwinIfcSource): string {
   let id = 1;
   const next = () => id++;
 
-  const entity = (edit.nativeEntity || edit.sourceEntity || "IfcBuildingElementProxy").replace(/^Ifc/, "Ifc");
+  const entity = edit.nativeEntity || edit.sourceEntity || "IfcBuildingElementProxy";
   const ifcEntity = entity.startsWith("Ifc") ? entity : `Ifc${entity}`;
   // Fall back to proxy for obscure entity types that need more attributes.
   const safeEntity = [
