@@ -1,0 +1,30 @@
+appId: com.openbimstudio.desktop
+productName: OpenBIMStudio
+directories:
+  output: release
+files:
+  - desktop/**
+  - package.json
+  - "!node_modules/**"
+extraResources:
+  - from: dist
+    to: app-dist
+    filter:
+      - "**/*"
+asar: true
+npmRebuild: false
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: "OpenBIMStudio-Setup-\${version}-\${arch}.\${ext}"
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: OpenBIMStudio
+  uninstallDisplayName: OpenBIMStudio

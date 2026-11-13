@@ -316,5 +316,6 @@
   },
   "bugs": {
     "url": "https://github.com/amdghedy/openBIMstudio/issues"
-  }
+  },
+  "main": "desktop/main.cjs"
 }

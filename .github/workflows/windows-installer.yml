@@ -1,0 +1,83 @@
+name: Windows Desktop Installer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "desktop/**"
+      - "electron-builder.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "public/**"
+      - "scripts/**"
+      - ".github/workflows/windows-installer.yml"
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - "desktop/**"
+      - "electron-builder.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "public/**"
+      - "scripts/**"
+      - ".github/workflows/windows-installer.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-installer-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Build production application
+        run: npm run build
+      - name: Install pinned desktop packaging tools
+        shell: pwsh
+        run: |
+          npm pkg set "devDependencies.electron=45.3.2" "devDependencies.electron-builder=26.0.12"
+          npm install --no-save --package-lock=false electron@45.3.2 electron-builder@26.0.12
+      - name: Package Windows installer
+        run: npx electron-builder --config electron-builder.yml --win nsis --x64
+      - name: Verify installer output
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter "*.exe" -File
+          if (-not $installer) { throw "No Windows installer EXE was produced." }
+          $installer | ForEach-Object {
+            Write-Host ("Installer: {0} ({1:N0} bytes)" -f $_.FullName, $_.Length)
+            if ($_.Length -lt 50MB) { throw "Installer is unexpectedly small; verify the packaged assets." }
+          }
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenBIMStudio-Windows-x64-Installer
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish installer to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.exe
+          generate_release_notes: true
