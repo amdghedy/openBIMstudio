@@ -270,7 +270,7 @@ function expect(cond, msg) {
     expect(/name: "HATCHEDIT", aliases: \["HE"\]/.test(catalogBlock), "HATCHEDIT entry");
     const names = [...catalogBlock.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]);
     expect(new Set(names).size === names.length, `duplicate catalog names (${names.length} entries)`);
-    expect(names.length === 167, `catalog has ${names.length} entries, expected 167`);
+    expect(names.length === 168, `catalog has ${names.length} entries, expected 168`); // tracks the real CAD_COMMANDS size (PDFTODWG added the 168th)
   });
 
   check("dispatcher: HATCH presets + PANEL, BOUNDARY/BPOLY arm, HATCHEDIT arm", () => {

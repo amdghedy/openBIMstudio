@@ -76,7 +76,7 @@ export type IconName =
   | "stretch" | "join" | "fillet" | "chamfer" | "explode" | "align"
   | "matchprop" | "find" | "table" | "center-mark" | "dim-arclen"
   | "dim-diameter" | "dim-baseline" | "dim-continue" | "ucs" | "purge"
-  | "audit" | "layer-state" | "import" | "calc";
+  | "audit" | "layer-state" | "import" | "export" | "calc";
 
 const PATHS: Record<IconName, string> = {
   calc: `<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7 H16 M8 12 H11 M13 12 H16 M8 16 H11 M13 16 H16"/>`,
@@ -346,6 +346,7 @@ const PATHS: Record<IconName, string> = {
   audit: `<circle cx="12" cy="12" r="8.5"/><path d="M8 12.5 L11 15.5 L16.5 9.5"/>`,
   "layer-state": `<path d="M12 3 L21 8 L12 13 L3 8 Z"/><path d="M3 13 L12 18 L21 13" opacity="0.65"/><path d="M3 17.5 L12 22 L21 17.5" opacity="0.35"/>`,
   import: `<path d="M12 3 V14 M8 10.5 L12 14.5 L16 10.5"/><path d="M4 14 V19 A2 2 0 0 0 6 21 H18 A2 2 0 0 0 20 19 V14"/>`,
+  export: `<path d="M12 14 V3 M8 6.5 L12 2.5 L16 6.5"/><path d="M4 14 V19 A2 2 0 0 0 6 21 H18 A2 2 0 0 0 20 19 V14"/>`,
 };
 
 /**

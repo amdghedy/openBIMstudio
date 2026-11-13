@@ -265,7 +265,7 @@ async function render2dHistory(): Promise<void> {
   if (stats) {
     const cards = [
       ["Drawings on device", String(recent.length), "Reopen with one click"],
-      ["Commands", "161", "drafting command line"],
+      ["Commands", "168", "drafting command line"],
       ["Read / write", "DWG · DXF", "r13–r2018 in · 2000–2018 out"],
       ["Plot", "PDF", "Single sheet or batch sets"],
     ];

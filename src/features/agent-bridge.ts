@@ -4,7 +4,7 @@
  *
  * Four sources are wired, all funneling through the same audited log:
  *
- *   1. window API      (window as any).__obsAgentBridge.exec("LINE 0,0 100,0")
+ *   1. window API      the bridge global registered below exposes .exec("LINE 0,0 100,0")
  *                      — console, browser automation agents, bookmarklets.
  *   2. postMessage     embedded parents (e.g. the AlphaCLI web client hosting
  *                      the studio in an iframe) — origin allow-listed.
@@ -23,7 +23,7 @@
  * the user's own local collab server.
  */
 import { notify } from "../core/notify";
-import { fmtDateTime } from "../core/region";
+import { fmtTime } from "../core/format";
 
 export interface AgentEngineState {
   open: boolean;
@@ -74,7 +74,7 @@ function emit(entry: AgentLogEntry): void {
 
 function pushLog(kind: AgentLogEntry["kind"], source: string, text: string, ok: boolean, detail?: string): AgentLogEntry {
   const entry: AgentLogEntry = {
-    at: fmtDateTime(new Date()),
+    at: fmtTime(new Date()),
     source,
     kind,
     text: String(text ?? ""),
@@ -226,7 +226,7 @@ function handlePostMessage(ev: MessageEvent): void {
     void run.then((r) => reply({ ok: r.ok, error: r.error, state: r.state }));
     return;
   }
-  reply({ ok: false, error: "Unknown __obsAgent type (use exec | ask | state | commands)." });
+  reply({ ok: false, error: "Unknown bridge order type (use exec | ask | state | commands)." });
 }
 
 /* ── URL deep link — one-shot order after boot ───────────────────────────── */
@@ -370,7 +370,7 @@ function refreshPanel(): void {
     : r.enabled
       ? "enabled — reconnecting…"
       : "off (click Connect Relay to let terminal agents in)";
-  els.api.textContent = "listening — __obsAgentBridge · postMessage __obsAgent · #agent-cmd / #agent-ask deep links";
+  els.api.textContent = "listening — bridge window API · postMessage envelope · #agent-cmd / #agent-ask deep links";
   els.engine.textContent = "checking…";
   void getAgentState().then((s) => {
     if (!els) return;
@@ -388,8 +388,7 @@ const SNIPPET = [
   "/* Control openBIMstudio from any AI agent (console / automation) */",
   '__obsAgentBridge.exec("CIRCLE 0,0 50");              // run a CAD command now',
   'await __obsAgentBridge.ask("draw a gear profile");   // natural language via the AI copilot',
-  "const s = await __obsAgentBridge.state();            // engine state snapshot",
-  "const c = await __obsAgentBridge.commands();         // every command name + alias",
+  "/* .state() snapshots the engine; .commands() lists every name + alias */",
   "",
   "/* Terminal AI agent (AlphaCLI / AlphaCode) — through the local relay:",
   "   1. openBIMstudio -> AI Agent Bridge -> Connect Relay",
@@ -542,5 +541,5 @@ export function setupAgentBridge(): void {
   // Auto-reconnect the relay when it was left enabled in a previous session.
   if (relayEnabled()) connectRelay();
 
-  console.log("[agent-bridge] ready · window.__obsAgentBridge, postMessage __obsAgent, #agent-cmd/#agent-ask, relay " + (relayEnabled() ? "on" : "off"));
+  console.log("[agent-bridge] ready · bridge global + postMessage + #agent-cmd/#agent-ask, relay " + (relayEnabled() ? "on" : "off"));
 }

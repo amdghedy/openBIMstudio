@@ -230,18 +230,9 @@ export function wireParametricToAuthoring(): void {
     a?.rebuildAuthored?.();
   });
 
-  try {
-    (window as any).__obsParametric = {
-      linkEqualParam,
-      unlinkEqualParam,
-      propagateEqualParam,
-      syncEqualLengthAfterTransform,
-      onParametricParamWritten,
-      wireParametricToAuthoring,
-      version: 2,
-    };
-  } catch {
-    /* */
-  }
+  // NOTE: these wire functions stay module exports only — they must not be
+  // published on window. The parametric window global is owned by
+  // authoring-core's ParameterEngine, and reassigning it here clobbered the
+  // live engine global (no consumer ever read the wire shape).
   console.log("[parametric] regen wired · equal height/thickness/length live");
 }

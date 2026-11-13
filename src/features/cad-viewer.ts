@@ -181,7 +181,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "ERASE", aliases: ["E", "DEL", "DELETE"], description: "Erase selected objects" },
   { name: "MOVE", aliases: ["M"], description: "Move selected objects a distance and direction" },
   { name: "COPY", aliases: ["CO"], description: "Copy selected objects to multiple placements from one fixed base point" },
-  { name: "REVCLOUD", aliases: ["RC", "CLOUD", "REVISIONCLOUD"], description: "Create a revision cloud polyline; click boundary points, then Enter or double-click" },
+  { name: "REVCLOUD", aliases: ["RC", "CLOUD"], description: "Create a revision cloud polyline; click boundary points, then Enter or double-click" },
   { name: "ROTATE", aliases: ["RO"], description: "Rotate selected objects around a base point" },
   { name: "MIRROR", aliases: ["MI"], description: "Mirror selected objects about a two-point axis" },
   { name: "SCALE", aliases: ["SC"], description: "Scale selected objects about a base point" },
@@ -856,7 +856,8 @@ function ensureShell(): void {
   picker.type = "file";
   // .bak / .sv$ are drawing workspace drawing backups (openable like native CAD); .xml
   // routes to the LandXML CgPoints importer; .pdf converts a vector PDF into a drawing (PDFIN).
-  picker.accept = ".dxf,.dwg,.bak,.sv$,.xml,.pdf";
+  const DRAWING_ACCEPT = ".dxf,.dwg,.bak,.sv$,.xml";
+  picker.accept = DRAWING_ACCEPT + ",.pdf"; // .pdf -> PDFIN (vector PDF to drawing)
   picker.multiple = true;
   picker.style.cssText = "display:none";
   picker.onchange = () => {
@@ -885,7 +886,7 @@ function ensureShell(): void {
   shell.addEventListener("drop", (e) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
-      /\.(dwg|dxf|bak|sv\$|xml|pdf)$/i.test(f.name),
+      /\.(dwg|dxf|bak|sv\$|xml)$/i.test(f.name) || /\.pdf$/i.test(f.name),
     );
     for (const f of files) openFile(f);
   });
@@ -5545,7 +5546,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "PDF Import",
         rb("model-curve", "PDF to Drawing…", `data-a="pdfin"`, "Convert a vector PDF into an editable drawing — parsed locally in this browser, the PDF is not uploaded (PDFIN); then QSAVE for DXF or DWGSAVE for DWG") +
-        rb("save", "PDF → DWG file…", `data-a="pdftodwg"`, "Convert a vector PDF straight to a downloadable DWG (one per page, zipped when several) — converted locally, nothing is uploaded (PDFTODWG)"),
+        rb("export", "PDF → DWG file…", `data-a="pdftodwg"`, "Convert a vector PDF straight to a downloadable DWG (one per page, zipped when several) — converted locally, nothing is uploaded (PDFTODWG)"),
         "",
         "",
         "insert",
@@ -9625,9 +9626,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const pct = expected > 0 ? (lost * 100) / expected : 100;
         logCmd(
           `DWG writer reported ${lost} entit${lost === 1 ? "y" : "ies"} not re-read (${pct.toFixed(3)}%). ` +
-            (pct <= 3
-              ? "Engine hard-verify failed; saving DXF fallback with the same geometry (open in CAD or re-export after update)."
-              : "Saving DXF fallback to avoid silent data loss."),
+            (pct <= 2
+              ? "Saving DXF fallback (same geometry). Update the app to get soft DWG verify."
+              : "Saving DXF fallback."),
         );
         try {
           const dxfName = `${base()}.dxf`;

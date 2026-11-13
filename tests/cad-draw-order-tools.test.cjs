@@ -159,7 +159,7 @@ function expect(cond, msg) {
       expect(re.test(blk), `catalog ${name} alias ${alias}`);
     }
     const names = [...blk.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]);
-    expect(names.length === 167, `catalog size ${names.length} (want 167)`);
+    expect(names.length === 168, `catalog size ${names.length} (want 168)`); // tracks the real CAD_COMMANDS size (PDFTODWG added the 168th)
   });
 
   check("dispatcher arms: ARRAYPATH, DRAWORDER and DIMRADIUS all routable", () => {
