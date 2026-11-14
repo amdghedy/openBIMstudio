@@ -814,18 +814,33 @@ test('LIVE IFC LINK: writes edits to the linked file, never overwrites an outsid
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
-test('PROBE: how are IFC fragments drawn (for section caps)?', async ({ page }) => {
-  test.setTimeout(120000);
+test('SECTION CAPS: a cut through a solid wall shows a solid hatched cut face; off restores the hollow look; no shader errors', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = []; const logs: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && /shader|WebGL|program/i.test(m.text())) logs.push(m.text().slice(0, 300)); });
   await loadWallIfc(page);
-  const r = await page.evaluate(() => {
-    const ctx = (window as any).__OBS_CTX__; const kinds: Record<string, number> = {}; const mats: Record<string, number> = {}; const sample: any[] = [];
-    for (const [, m] of ctx.fragments.list) m.object.traverse((o: any) => {
-      kinds[o.type] = (kinds[o.type] ?? 0) + 1;
-      if (o.isMesh) { const mm = Array.isArray(o.material) ? o.material : [o.material]; for (const x of mm) mats[x.type + ':' + (x.side) + ':' + !!x.transparent] = (mats[x.type + ':' + (x.side) + ':' + !!x.transparent] ?? 0) + 1;
-        if (sample.length < 3) sample.push({ type: o.type, count: o.count, geo: o.geometry?.type, pos: o.geometry?.attributes?.position?.count, idx: o.geometry?.index?.count, hasInst: !!o.instanceMatrix, drawRange: o.geometry?.drawRange, groups: o.geometry?.groups?.length, frustumCulled: o.frustumCulled, renderOrder: o.renderOrder, layers: o.layers.mask }); }
-    });
-    const r = ctx.world.renderer.three;
-    return { kinds, mats, sample, stencil: r.getContextAttributes?.().stencil, localClip: r.localClippingEnabled, autoClear: r.autoClear, clipPlanes: (r.clippingPlanes ?? []).length };
-  });
-  console.log('FRAG-PROBE ' + JSON.stringify(r));
+  await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; sb.enable(0.5); const b = sb.getBox(); b.max.x = (b.min.x + b.max.x) / 2; sb.setBox(b); });
+  // Look at the cut face (normal +X) from the +X side, level with the wall.
+  await page.evaluate(async () => { const c = (window as any).__OBS_CTX__.world.camera.controls; await c.setLookAt(10, 1.5, 0, -1.2, 1.5, 0, false); });
+  await page.waitForTimeout(900);
+  const crop = async () => { const box = (await page.locator('canvas').first().boundingBox())!;
+    return decodePng(await page.screenshot({ clip: { x: box.x + box.width * 0.3, y: box.y + box.height * 0.25, width: box.width * 0.4, height: box.height * 0.5 } })); };
+  const diffPx = (a: ReturnType<typeof decodePng>, b: ReturnType<typeof decodePng>) => { let n = 0; for (let i = 0; i < a.data.length && i < b.data.length; i += a.bpp) if (Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 1] - b.data[i + 1]) + Math.abs(a.data[i + 2] - b.data[i + 2]) > 60) n++; return n; };
+  const capsOn = await crop();
+  const patchedOn = await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.patched());
+  await page.screenshot({ path: 'test-results/caps-on.png' });
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.set(false));
+  await page.waitForTimeout(900);
+  const capsOff = await crop();
+  const patchedOff = await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.patched());
+  await page.screenshot({ path: 'test-results/caps-off.png' });
+  const changed = diffPx(capsOn, capsOff);
+  const diag = JSON.stringify({ patchedOn, patchedOff, changedPixels: changed, logs });
+  console.log('CAPS-DIAG ' + diag);
+  expect(patchedOn, 'materials patched while the box is on. ' + diag).toBeGreaterThan(0);
+  expect(patchedOff, 'restored when caps are turned off. ' + diag).toBe(0);
+  expect(changed, 'the cut face looks different with caps on (solid hatched face vs hollow). ' + diag).toBeGreaterThan(300);
+  expect(logs, 'no shader compile errors').toEqual([]);
+  expect(errors, errors.join('\n')).toEqual([]);
 });

@@ -16,6 +16,7 @@ import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getSceneBox } from "./camera-tools";
 import { registerCommand } from "./command-palette";
+import { syncSectionCaps } from "./section-caps";
 import {
   ARROW_SPEC,
   closestParamOnLine,
@@ -140,6 +141,7 @@ export function enableSectionBox(padding = 1.0): void {
   applyClipping();
   attachPointerHandlers();
   enabled = true;
+  syncSectionCaps(true);
   window.dispatchEvent(new CustomEvent("obs-toast", {
     detail: { message: "Section Box ON — drag the cyan arrows on each face to stretch or shrink", kind: "success" },
   }));
@@ -161,10 +163,12 @@ export function enableSectionBoxWithBox(b: THREE.Box3): void {
   applyClipping();
   attachPointerHandlers();
   enabled = true;
+  syncSectionCaps(true);
 }
 
 export function disableSectionBox(): void {
   if (!enabled) return;
+  syncSectionCaps(false);
   removeBoxItems();
   try {
     const renderer = (ctx as any).world?.renderer?.three;
