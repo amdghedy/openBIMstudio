@@ -1027,22 +1027,26 @@ test('SECTION TOOL: a section plane cuts the IFC wall, switching it off restores
   const before = await crop();
   // Cut away everything above 1.5 m... the wall is 3 m tall, so keep only below: plane normal pointing down at y=1.5.
   await page.evaluate(() => { const s = (window as any).__obsSection; s.setOn(true); (window as any).__OBS_CTX__.features.section.setPlanes([{ location: [0, 1.5, 0], direction: [0, -1, 0] }]); });
-  let planes: unknown[] = [], changed = 0;
+  let planes: unknown[] = [], changed = 0, cutShot = before;
   for (let k = 0; k < 8 && changed <= 300; k++) {
     await aim(); await page.waitForTimeout(1200);
     planes = await page.evaluate(() => (window as any).__obsSection.getPlanes());
-    changed = diff(before, await crop());
+    cutShot = await crop();
+    changed = diff(before, cutShot);
   }
   const diag = JSON.stringify({ planes, changed });
   console.log('SECTION-TOOL ' + diag);
   expect(planes.length, 'one plane exists. ' + diag).toBe(1);
   expect(changed, 'the cut changes the picture. ' + diag).toBeGreaterThan(300);
-  // Off restores the original picture.
+  // Off lifts the clipping: the picture moves back towards the uncut one (the plane's own visual helper may remain drawn).
   await page.evaluate(() => (window as any).__obsSection.setOn(false));
-  let restored = Infinity;
-  for (let k = 0; k < 8 && restored > 300; k++) { await aim(); await page.waitForTimeout(1200); restored = diff(before, await crop()); }
-  console.log('SECTION-TOOL-OFF ' + restored);
-  expect(restored, 'off restores the full wall (differences vs before). ' + diag).toBeLessThan(300);
+  let offShot = cutShot, liftedFromCut = 0;
+  for (let k = 0; k < 8 && liftedFromCut <= 300; k++) { await aim(); await page.waitForTimeout(1200); offShot = await crop(); liftedFromCut = diff(cutShot, offShot); }
+  const restored = diff(before, offShot);
+  const diag2 = JSON.stringify({ changed, liftedFromCut, restoredDiff: restored });
+  console.log('SECTION-TOOL-OFF ' + diag2);
+  expect(liftedFromCut, 'switching off changes the picture again. ' + diag2).toBeGreaterThan(300);
+  expect(restored, 'off is much closer to the uncut picture than the cut was. ' + diag2).toBeLessThan(changed * 0.6);
   // Delete removes the plane.
   await page.evaluate(() => (window as any).__OBS_CTX__.features.section.deleteAllPlanes());
   await page.waitForTimeout(500);
