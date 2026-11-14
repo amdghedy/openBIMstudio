@@ -612,10 +612,24 @@ test('3D DIMENSION (Measure): XYZ, angle and chain modes complete, Esc cancels e
   await page.keyboard.press('Escape');
   log.chainEsc = await st();
 
+  // Delete removes only the last finished dimension.
+  await start('distance'); await page.waitForTimeout(300);
+  await click(0.2, 0.2); await click(0.4, 0.2);
+  log.beforeDel = await st();
+  await page.keyboard.press('Delete');
+  log.afterDel = await st();
+  await page.keyboard.press('Backspace');
+  log.afterBack = await st();
   await page.evaluate(() => (window as any).__obsMeasure.clear());
   log.cleared = await st();
   const d = JSON.stringify(log);
   console.log('MEASURE-MODES ' + d);
+  {
+    const Lx = log as any;
+    expect(Lx.afterDel.labels, 'Delete removes the last dimension only. ' + d).toBeLessThan(Lx.beforeDel.labels);
+    expect(Lx.afterDel.labels, 'earlier dimensions stay. ' + d).toBeGreaterThan(0);
+    expect(Lx.afterBack.labels, 'Backspace removes the next one. ' + d).toBeLessThanOrEqual(Lx.afterDel.labels);
+  }
   const L = log as any;
   expect(L.xyzDone.labels, 'xyz draws X/Y/Z + total labels. ' + d).toBeGreaterThanOrEqual(2);
   expect(L.xyzPending.pending, d).toBe(1);

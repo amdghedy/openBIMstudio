@@ -170,6 +170,7 @@ export function clearMeasurements() {
   dropPendingBalls();
   pendingPts = [];
   clearXyzGraphics();
+  dimStack.length = 0;
   chainTotal = 0;
   updateHud();
 }
@@ -243,7 +244,44 @@ function ball(p: THREE.Vector3, color: number, r = 0.045) {
   return m;
 }
 
-function drawXyzDimension(a: THREE.Vector3, b: THREE.Vector3) {
+/** One entry per finished dimension, so the last one can be removed on its own. */
+const dimStack: { objs: THREE.Object3D[]; labels: MLabel[] }[] = [];
+function tracked<A extends unknown[]>(fn: (...a: A) => void) {
+  return (...a: A) => {
+    const beforeObjs = new Set(xyzGroup.children);
+    const beforeLabels = new Set(measureLabels);
+    fn(...a);
+    const objs = xyzGroup.children.filter((c) => !beforeObjs.has(c));
+    const labels = measureLabels.filter((l) => !beforeLabels.has(l));
+    if (objs.length || labels.length) dimStack.push({ objs, labels });
+  };
+}
+const drawXyzDimension = tracked(drawXyzDimensionRaw);
+const drawDistance = tracked(drawDistanceRaw);
+const drawAngle = tracked(drawAngleRaw);
+const drawChainSegment = tracked(drawChainSegmentRaw);
+
+/** Remove only the most recent finished dimension. Returns true if one was removed. */
+export function deleteLastMeasurement(): boolean {
+  const d = dimStack.pop();
+  if (!d) return false;
+  for (const o of d.objs) {
+    xyzGroup.remove(o);
+    const m = o as THREE.Mesh;
+    m.geometry?.dispose?.();
+    if (Array.isArray(m.material)) m.material.forEach((x) => x.dispose?.());
+    else (m.material as THREE.Material | undefined)?.dispose?.();
+  }
+  for (const l of d.labels) {
+    l.el.remove();
+    const i = measureLabels.indexOf(l);
+    if (i >= 0) measureLabels.splice(i, 1);
+  }
+  updateHud();
+  return true;
+}
+
+function drawXyzDimensionRaw(a: THREE.Vector3, b: THREE.Vector3) {
   dropPendingBalls(); // earlier finished dimensions stay on screen until deleted
   const dx = b.x - a.x,
     dy = b.y - a.y,
@@ -268,7 +306,7 @@ function drawXyzDimension(a: THREE.Vector3, b: THREE.Vector3) {
   xyzGroup.add(ball(b, 0xffffff));
 }
 
-function drawDistance(a: THREE.Vector3, b: THREE.Vector3) {
+function drawDistanceRaw(a: THREE.Vector3, b: THREE.Vector3) {
   dropPendingBalls(); // earlier finished dimensions stay on screen until deleted
   xyzGroup.add(line3(a, b, 0x38bdf8));
   addMeasureLabel(formatLength(a.distanceTo(b)), a.clone().lerp(b, 0.5));
@@ -276,7 +314,7 @@ function drawDistance(a: THREE.Vector3, b: THREE.Vector3) {
   xyzGroup.add(ball(b, 0xffffff));
 }
 
-function drawAngle(a: THREE.Vector3, vertex: THREE.Vector3, c: THREE.Vector3) {
+function drawAngleRaw(a: THREE.Vector3, vertex: THREE.Vector3, c: THREE.Vector3) {
   dropPendingBalls(); // earlier finished dimensions stay on screen until deleted
   xyzGroup.add(line3(vertex, a, 0xfbbf24));
   xyzGroup.add(line3(vertex, c, 0xfbbf24));
@@ -289,7 +327,7 @@ function drawAngle(a: THREE.Vector3, vertex: THREE.Vector3, c: THREE.Vector3) {
   xyzGroup.add(ball(c, 0xffffff));
 }
 
-function drawChainSegment(a: THREE.Vector3, b: THREE.Vector3) {
+function drawChainSegmentRaw(a: THREE.Vector3, b: THREE.Vector3) {
   const d = a.distanceTo(b);
   chainTotal += d;
   xyzGroup.add(line3(a, b, 0xa78bfa));
@@ -486,6 +524,14 @@ export function setupMeasure() {
     void onPick(e.clientX, e.clientY);
   });
 
+  // Capture phase so the element-delete shortcut does not also fire while a dimension is removed.
+  window.addEventListener("keydown", (e) => {
+    if (!isMeasureEnabled() || (e.key !== "Backspace" && e.key !== "Delete") || pendingPts.length) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (deleteLastMeasurement()) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+
   window.addEventListener("keydown", (e) => {
     if (!isMeasureEnabled()) return;
     const t = e.target as HTMLElement | null;
@@ -540,6 +586,7 @@ export function setupMeasure() {
     clear: clearMeasurements,
     cancel: cancelMeasure,
     cancelPending,
+    deleteLast: deleteLastMeasurement,
     state: () => ({ enabled: isMeasureEnabled(), pending: pendingPts.length, pendingBalls: pendingBalls.length, graphics: xyzGroup.children.length, labels: measureLabels.length, obcDims: (ctx.lengthMeasurer as any)?.list?.size ?? 0 }),
     setMode: setMeasureMode,
     getMode: getMeasureMode,

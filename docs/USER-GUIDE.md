@@ -129,6 +129,7 @@ Open the **Measure** tool (ribbon, toolbox, or Ctrl+P → "Measure"). Choose a m
 
 - Finished dimensions **stay on screen**. Draw as many as you need.
 - **Esc** cancels the dimension you are drawing, removes its first-point marker and ends the dimension command in one press. Esc never deletes finished dimensions.
+- **Delete** or **Backspace** removes the most recent finished dimension; press again for the one before.
 - **Clear measurements** (ribbon, or the Measure panel) deletes every dimension.
 
 **Tested in a real browser** with real clicks: distance, XYZ, angle and chain; Esc during each; Clear. **Not tested:** snapping to model corners and edges, cancelling mid-drag.
