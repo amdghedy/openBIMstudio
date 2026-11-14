@@ -54,6 +54,13 @@ import { pointFootprintHandles, resizePointFootprint, type FootprintGrip } from 
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import { makeAxisLock, projectOnAxis } from "./grip-axis-lock";
 import type { AxisLock } from "./grip-axis-lock";
+import {
+  applyEngineGrip,
+  gripCentre,
+  planGrips,
+  type EngineGripKind,
+  type GripParams,
+} from "../modules/grips/grips-engine";
 import type {
   AuthoredElement,
   DoorPanelType,
@@ -117,9 +124,12 @@ type Tool =
 
 interface GripSpec {
   elementId: string;
-  kind: "start" | "end" | "vertex" | "edge-midpoint" | "point" | "point-footprint" | "hosted-offset";
+  kind: "start" | "end" | "vertex" | "edge-midpoint" | "point" | "point-footprint" | "hosted-offset"
+    | EngineGripKind;
   vertexIndex?: number;
   footprintGrip?: FootprintGrip;
+  /** Polygon edge index for engine "edge" grips. */
+  edgeIndex?: number;
   position: THREE.Vector3;
   mesh: THREE.Mesh;
 }
@@ -186,6 +196,18 @@ let gripDrag: {
   axis: AxisLock | null;
   /** True while Shift is held during this move — drives smart-snap bypass. */
   shiftLock: boolean;
+  /** Engine grips: pointer Y at drag start (px) for vertical height/elevation drags. */
+  startPointerY?: number;
+  /** Engine grips: baseline scalar captured at drag start (height, elevation or polygon seed radius). */
+  startScalar?: number;
+  /** Engine grips: baseline angle (centroid → pointer) captured at rotate drag start. */
+  startAngle?: number;
+  /** Engine grips: last explicit warning surfaced — re-shown once per drag, not spammed. */
+  lastWarning?: string | null;
+  /** True when this drag runs through the Universal 3D Grips engine (numeric entry active). */
+  engine?: boolean;
+  /** Latest pointer world position during this drag — numeric Enter precision source. */
+  lastPointerWorld?: THREE.Vector3;
 } | null = null;
 
 let lastSnapValid = false;
@@ -2614,7 +2636,7 @@ function buildGripsFor(el: AuthoredElement): GripSpec[] {
   const grips: GripSpec[] = [];
   const p = el.params;
 
-  const addGrip = (kind: GripSpec["kind"], pos: THREE.Vector3, vertexIndex?: number, footprintGrip?: FootprintGrip) => {
+  const addGrip = (kind: GripSpec["kind"], pos: THREE.Vector3, vertexIndex?: number, footprintGrip?: FootprintGrip, edgeIndex?: number) => {
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(GRIP_SIZE, 12, 10), gripMaterial());
     mesh.position.copy(pos);
     mesh.renderOrder = 900;
@@ -2622,8 +2644,56 @@ function buildGripsFor(el: AuthoredElement): GripSpec[] {
     mesh.userData.gripKind = kind;
     if (vertexIndex !== undefined) mesh.userData.gripVertexIndex = vertexIndex;
     if (footprintGrip) mesh.userData.gripFootprint = footprintGrip;
+    if (edgeIndex !== undefined) mesh.userData.gripEdgeIndex = edgeIndex;
     gripGroup.add(mesh);
-    grips.push({ elementId: el.id, kind, vertexIndex, footprintGrip, position: pos.clone(), mesh });
+    grips.push({ elementId: el.id, kind, vertexIndex, footprintGrip, edgeIndex, position: pos.clone(), mesh });
+  };
+
+  /** Engine grips use distinct shapes + colors so each handle is recognisable. */
+  const addEngineGrip = (g: { kind: EngineGripKind; position: [number, number]; edgeIndex?: number }, groundY: number) => {
+    let geo: THREE.BufferGeometry;
+    let color: number = GRIP_COLOR;
+    switch (g.kind) {
+      case "move":
+        geo = new THREE.OctahedronGeometry(GRIP_SIZE * 1.25, 0);
+        color = 0x22d3ee; // cyan diamond — whole-object move
+        break;
+      case "rotate":
+        geo = new THREE.TorusGeometry(GRIP_SIZE * 1.3, GRIP_SIZE * 0.4, 8, 18);
+        color = 0xf59e0b; // amber ring — plan rotation
+        break;
+      case "scale":
+        geo = new THREE.OctahedronGeometry(GRIP_SIZE * 1.1, 0);
+        color = 0xec4899; // pink diamond — uniform scale
+        break;
+      case "height":
+        geo = new THREE.ConeGeometry(GRIP_SIZE * 0.9, GRIP_SIZE * 1.8, 10);
+        color = 0x34d399; // green cone — extrusion height
+        break;
+      case "elevation":
+        geo = new THREE.CylinderGeometry(GRIP_SIZE * 0.7, GRIP_SIZE * 0.7, GRIP_SIZE * 1.6, 10);
+        color = 0xfb923c; // orange cylinder — base elevation
+        break;
+      case "edge":
+        geo = new THREE.BoxGeometry(GRIP_SIZE * 1.4, GRIP_SIZE * 1.4, GRIP_SIZE * 1.4);
+        color = 0xa78bfa; // violet box — whole-edge move
+        break;
+      default:
+        geo = new THREE.SphereGeometry(GRIP_SIZE, 12, 10);
+    }
+    const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.95 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(g.position[0], groundY, g.position[1]);
+    mesh.renderOrder = 900;
+    mesh.userData.gripElementId = el.id;
+    mesh.userData.gripKind = g.kind;
+    if (g.edgeIndex !== undefined) {
+      mesh.userData.gripEdgeIndex = g.edgeIndex;
+      grips.push({ elementId: el.id, kind: g.kind, edgeIndex: g.edgeIndex, position: mesh.position.clone(), mesh });
+    } else {
+      grips.push({ elementId: el.id, kind: g.kind, position: mesh.position.clone(), mesh });
+    }
+    gripGroup.add(mesh);
   };
 
   if (p.start && p.end) {
@@ -2668,6 +2738,30 @@ function buildGripsFor(el: AuthoredElement): GripSpec[] {
       }
     }
   }
+
+  // Universal 3D Grips engine — move / rotate / scale / height / elevation /
+  // edge grips for every category whose parameters carry editable geometry.
+  // Door/window keep the hosted-offset grip only (host-driven placement).
+  if (el.type !== "door" && el.type !== "window") {
+    const engineParams: GripParams = {
+      start: p.start as [number, number] | undefined,
+      end: p.end as [number, number] | undefined,
+      polygon: p.polygon as [number, number][] | undefined,
+      point: p.point as [number, number] | undefined,
+      height: p.height,
+      elevation: p.elevation,
+    };
+    try {
+      for (const g of planGrips(engineParams)) {
+        const y = g.kind === "height" && Number(p.height) > 0
+          ? p.elevation + Number(p.height)
+          : p.elevation;
+        addEngineGrip(g, y + 0.02);
+      }
+    } catch (err) {
+      console.warn("[authoring] grip planning failed", el.id, err);
+    }
+  }
   return grips;
 }
 
@@ -2699,12 +2793,15 @@ function gripAt(e: MouseEvent): GripSpec | null {
   const kind = mesh.userData.gripKind as GripSpec["kind"];
   const vi = mesh.userData.gripVertexIndex as number | undefined;
   const footprintGrip = mesh.userData.gripFootprint as FootprintGrip | undefined;
-  return { elementId: id, kind, vertexIndex: vi, footprintGrip, position: mesh.position.clone(), mesh };
+  const edgeIndex = mesh.userData.gripEdgeIndex as number | undefined;
+  return { elementId: id, kind, vertexIndex: vi, footprintGrip, edgeIndex, position: mesh.position.clone(), mesh };
 }
 
-function startGripDrag(g: GripSpec, worldPt: THREE.Vector3) {
+function startGripDrag(g: GripSpec, worldPt: THREE.Vector3, pointerY?: number) {
   const el = elements.find((e) => e.id === g.elementId);
   if (!el) return;
+  const engineKind = g.kind === "move" || g.kind === "rotate" || g.kind === "height"
+    || g.kind === "elevation" || g.kind === "edge" || g.kind === "scale";
   // Capture the stretch axis (fixed opposite endpoint → gripped endpoint) so
   // Shift can lock the drag to the element's length for the whole gesture.
   let axis: AxisLock | null = null;
@@ -2724,6 +2821,20 @@ function startGripDrag(g: GripSpec, worldPt: THREE.Vector3) {
   }
   // The snap result left over from hovering is the grip's own position; using it would pin the drag in place.
   lastSnapValid = false; lastSnapResult = null;
+  // Engine drags: capture vertical + angular baselines for height/elevation/rotate/scale.
+  let startScalar: number | undefined;
+  let startAngle: number | undefined;
+  if (engineKind) {
+    const c = gripCentre(el.params as GripParams);
+    if (g.kind === "height") startScalar = Number(el.params.height) || 0;
+    else if (g.kind === "elevation") startScalar = Number(el.params.elevation) || 0;
+    else if (g.kind === "rotate" && c) {
+      startScalar = Math.hypot(worldPt.x - c[0], worldPt.z - c[1]);
+      startAngle = Math.atan2(worldPt.z - c[1], worldPt.x - c[0]);
+    } else if (g.kind === "scale" && c) {
+      startScalar = Math.hypot(worldPt.x - c[0], worldPt.z - c[1]);
+    }
+  }
   gripDrag = {
     mepBase,
     follow,
@@ -2732,17 +2843,55 @@ function startGripDrag(g: GripSpec, worldPt: THREE.Vector3) {
     original: worldPt.clone(),
     axis,
     shiftLock: false,
+    startPointerY: pointerY,
+    startScalar,
+    startAngle,
+    lastWarning: null,
+    engine: engineKind,
   };
+  // AccuDraw numeric entry works during grip drags too: typing a distance
+  // while dragging constrains the dragged point precisely (groundPoint →
+  // accuDraw.constrain), matching the drawing-tool behavior.
+  try { accuDraw.begin(worldPt.clone()); } catch { /* */ }
 }
 
-function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
+/** World units per screen pixel at a world position — vertical grip drag scaling. */
+function worldPerPixelAt(worldPos: THREE.Vector3): number {
+  try {
+    const cam = ctx.world.camera.three;
+    const host = ctx.rightHost;
+    const h = host.clientHeight || 800;
+    if ((cam as any).isOrthographicCamera) {
+      return Math.abs(((cam.top as number) - (cam.bottom as number)) / ((cam as any).zoom || 1)) / h;
+    }
+    const fovY = THREE.MathUtils.degToRad((cam as any).fov ?? 60);
+    const dist = Math.max(0.1, cam.position.distanceTo(worldPos));
+    return (2 * dist * Math.tan(fovY / 2)) / h;
+  } catch { return 0.01; }
+}
+
+/** Merge engine result geometry keys back into live element params. */
+function mergeEngineResult(p: AuthoredElement["params"], r: { params: GripParams }): void {
+  if (r.params.start) p.start = r.params.start;
+  if (r.params.end) p.end = r.params.end;
+  if (r.params.point) p.point = r.params.point;
+  if (r.params.polygon) p.polygon = r.params.polygon as Vec2[];
+  if (r.params.height !== undefined) p.height = r.params.height;
+  if (r.params.elevation !== undefined) p.elevation = r.params.elevation;
+}
+
+function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false, pointerY?: number) {
   if (!gripDrag) return;
   const el = elements.find((e) => e.id === gripDrag!.grip.elementId);
   if (!el) return;
   const p = el.params;
   let x = snap(worldPt.x);
   let z = snap(worldPt.z);
-  const { kind, vertexIndex, footprintGrip } = gripDrag.grip;
+  const { kind, vertexIndex, footprintGrip, edgeIndex } = gripDrag.grip;
+  gripDrag.lastPointerWorld = worldPt.clone();
+  if (pointerY !== undefined) {
+    if (gripDrag.startPointerY === undefined) gripDrag.startPointerY = pointerY;
+  }
 
   // ⇧ axis lock — the endpoint may only slide along the element's own length
   // axis (perpendicular direction locked), so the element stretches/shrinks
@@ -2759,7 +2908,42 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
   }
   gripDrag.shiftLock = axisLocked;
 
-  if (kind === "hosted-offset" && el.hostId) {
+  // ── Universal 3D Grips engine kinds (move/rotate/height/elevation/edge/scale) ──
+  // Edits flow through the pure engine, which validates input and rejects
+  // degenerate results with explicit warnings instead of silent loss.
+  // Every frame re-applies the TOTAL edit to the PRE-DRAG snapshot
+  // (idempotent, reversible mid-drag) — never to the already-edited params,
+  // which would compound rotate/scale/move per pointer event.
+  if (gripDrag.engine) {
+    const engineOpts: import("../modules/grips/grips-engine").ApplyGripOpts = { target: [x, z] };
+    if (kind === "height" && gripDrag.startPointerY !== undefined && pointerY !== undefined) {
+      // Vertical drag: pointer up → taller (screen-Y delta × world-per-pixel).
+      const wpp = worldPerPixelAt(gripDrag.original);
+      engineOpts.height = (gripDrag.startScalar ?? 0) + (gripDrag.startPointerY - pointerY) * wpp;
+    } else if (kind === "elevation" && gripDrag.startPointerY !== undefined && pointerY !== undefined) {
+      const wpp = worldPerPixelAt(gripDrag.original);
+      engineOpts.elevation = (gripDrag.startScalar ?? 0) + (gripDrag.startPointerY - pointerY) * wpp;
+    } else if (kind === "rotate" && gripDrag.startAngle !== undefined) {
+      const c = gripCentre(gripDrag.snapshot as GripParams);
+      if (c) engineOpts.angleRad = Math.atan2(worldPt.z - c[1], worldPt.x - c[0]) - gripDrag.startAngle;
+    }
+    if (kind === "edge") engineOpts.edgeIndex = edgeIndex;
+    let result: import("../modules/grips/grips-engine").GripEditResult | null = null;
+    try {
+      result = applyEngineGrip(kind as EngineGripKind, gripDrag.snapshot as GripParams, engineOpts);
+    } catch (err) {
+      console.warn("[authoring] engine grip failed", kind, err);
+      result = null;
+    }
+    if (result) {
+      mergeEngineResult(p, result);
+      if (result.warnings.length && result.warnings[0] !== gripDrag.lastWarning) {
+        gripDrag.lastWarning = result.warnings[0];
+        notify("warn", result.warnings.join(" "));
+      }
+    }
+    // Fall through to the shared rebuild below (parametric regeneration).
+  } else if (kind === "hosted-offset" && el.hostId) {
     const host = elements.find((e) => e.id === el.hostId);
     if (host?.params.start && host?.params.end) {
       const [ax, az] = host.params.start;
@@ -2905,6 +3089,7 @@ function updateGripDrag(worldPt: THREE.Vector3, shiftKey = false) {
 
 function endGripDrag() {
   if (!gripDrag) return;
+  try { accuDraw.end(); } catch { /* */ }
   const el = elements.find((e) => e.id === gripDrag!.grip.elementId);
   const before = gripDrag.snapshot;
   const after = el ? JSON.parse(JSON.stringify(el.params)) : null;
@@ -2918,6 +3103,21 @@ function endGripDrag() {
   try { snapFeedback.hide(); } catch { /* */ }
   if (!el || !after) return;
   if (JSON.stringify(before) === JSON.stringify(after)) return;
+
+  // IFC metadata sync: mark the source archive's dimension fields as
+  // native-modified for every param key the grip edit changed (same policy
+  // as palette edits via applyElementParamChange).
+  if (el.sourceArchive) {
+    try {
+      for (const k of Object.keys(after)) {
+        if (JSON.stringify((before as any)[k]) !== JSON.stringify((after as any)[k])) {
+          markNativeDimensionModified(el.sourceArchive, k);
+        }
+      }
+    } catch (err) {
+      console.warn("[authoring] grip source-archive sync failed", el.id, err);
+    }
+  }
 
   if (mepBase) {
     mepBase.set(el.id, before); // pre-drag state of the dragged run itself
@@ -2933,6 +3133,8 @@ function endGripDrag() {
     });
   }
   markDirty();
+  // Properties panel + dependent UIs stay in sync with the grip edit.
+  notifyAuthoringChange();
 
   // Persist wall–column link when the grip ended on a smart face/corner snap.
   if (smart && which && el.type === "wall" && el.params.start && el.params.end) {
@@ -2949,6 +3151,60 @@ function endGripDrag() {
       console.warn("[authoring] smart-perp link commit failed", err);
     }
   }
+}
+
+/** Abort an in-flight grip drag: restore the pre-drag params exactly (Esc). */
+function cancelGripDrag(): void {
+  if (!gripDrag) return;
+  const el = elements.find((e) => e.id === gripDrag!.grip.elementId);
+  const snapshot = gripDrag.snapshot;
+  gripDrag = null;
+  try { accuDraw.end(); } catch { /* */ }
+  try { snapFeedback.hide(); } catch { /* */ }
+  if (!el) return;
+  el.params = JSON.parse(JSON.stringify(snapshot));
+  rebuild();
+  applySelection();
+  refreshGrips();
+}
+
+/**
+ * Commit a typed numeric value during a grip drag (Enter key).
+ * height/elevation → exact metres; rotate → exact degrees; scale → exact
+ * factor — all applied to the PRE-DRAG snapshot so the typed value is the
+ * total edit. Planar grips → exact distance along the drag direction via
+ * AccuDraw's constrain (typed buffer wins over the raw pointer).
+ */
+function commitGripNumeric(typed: string): void {
+  if (!gripDrag) return;
+  const kind = gripDrag.grip.kind;
+  const v = parseFloat(typed);
+  if (!Number.isFinite(v)) return;
+  if (kind === "height" || kind === "elevation" || kind === "rotate" || kind === "scale") {
+    const el = elements.find((e) => e.id === gripDrag!.grip.elementId);
+    if (!el) return;
+    const opts: import("../modules/grips/grips-engine").ApplyGripOpts =
+      kind === "height" ? { height: v }
+      : kind === "elevation" ? { elevation: v }
+      : kind === "rotate" ? { angleRad: THREE.MathUtils.degToRad(v) }
+      : { scaleFactor: v };
+    try {
+      const result = applyEngineGrip(kind, gripDrag.snapshot as GripParams, opts);
+      if (result) {
+        mergeEngineResult(el.params, result);
+        if (result.warnings.length) notify("warn", result.warnings.join(" "));
+      }
+    } catch (err) {
+      console.warn("[authoring] numeric grip commit failed", kind, err);
+    }
+    endGripDrag();
+    return;
+  }
+  const last = gripDrag.lastPointerWorld ?? gripDrag.original;
+  const precise = accuDraw.constrain(last.clone());
+  accuDraw.consumeTypedDistance();
+  updateGripDrag(precise, false);
+  endGripDrag();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -6856,7 +7112,7 @@ export function setupAuthoring() {
       if (grip && (activeTool === "select" || activeTool === null)) {
         const pt = groundPoint(g.event);
         if (pt) {
-          startGripDrag(grip, pt);
+          startGripDrag(grip, pt, g.event.clientY - ctx.rightHost.getBoundingClientRect().top);
           ctx.rightHost.style.cursor = "grabbing";
           return true;
         }
@@ -6866,7 +7122,8 @@ export function setupAuthoring() {
 
     if (g.kind === "drag-move" && gripDrag) {
       const pt = groundPoint(g.event);
-      if (pt) updateGripDrag(pt, (g.event as PointerEvent | MouseEvent).shiftKey === true);
+      if (pt) updateGripDrag(pt, (g.event as PointerEvent | MouseEvent).shiftKey === true,
+        g.event.clientY - ctx.rightHost.getBoundingClientRect().top);
       // Hover (which normally refreshes the snap) is suspended during the drag, so refresh it here; it is used by the next move.
       try {
         const ray = new THREE.Raycaster();
@@ -6999,7 +7256,9 @@ export function setupAuthoring() {
     try { snapping.hideIndicator(); } catch { /* */ }
 
     if (gripDrag) {
-      try { endGripDrag(); } catch { /* */ }
+      // CAD semantics: Esc aborts an in-flight grip drag and restores the
+      // pre-drag state instead of committing the intermediate geometry.
+      try { cancelGripDrag(); } catch { /* */ }
       ctx.rightHost.style.cursor = "";
     }
 
@@ -7018,6 +7277,21 @@ export function setupAuthoring() {
     if (tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
 
     try { if ((window as any).__obsPlanVisible?.()) return; } catch { /* */ }
+
+    // ── Numeric entry during a grip drag: Enter commits precisely ──
+    // Digits typed while a grip is dragged land in AccuDraw's typed buffer
+    // (groundPoint → accuDraw.constrain). Enter applies the exact value:
+    //   height/elevation grips → exact metres; rotate → exact degrees;
+    //   scale → exact factor; planar grips → exact distance along the drag.
+    if (e.key === "Enter" && gripDrag) {
+      const typed = accuDraw.getTypedBuffer();
+      if (typed) {
+        e.preventDefault();
+        e.stopPropagation();
+        commitGripNumeric(typed);
+        return;
+      }
+    }
 
     // ── Arrow-key nudge of selection (objects, annotations, dims, grids) ──
     // Base step = grid size (default 0.1 m). Hold Shift → 10× larger step.
@@ -7177,6 +7451,9 @@ export function setupAuthoring() {
     getDimLocks, setDimLocks,
 
     onAuthoringChange,
+    // Lets overlay editors (wall-handles grips) fire the same change event as
+    // in-panel edits so the properties palette and dependent UIs stay in sync.
+    notifyAuthoringChange: () => notifyAuthoringChange(),
     migrateMepFittingRadii,
     setElbowBendRadius,
 

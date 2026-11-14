@@ -17,6 +17,8 @@ import { inputRouter, type Gesture } from "../core/input-router";
 import { history } from "./history";
 import { notify } from "../core/notify";
 import { units } from "../core/units";
+import { accuDraw } from "./accudraw";
+import { markNativeDimensionModified } from "../modules/native-twin/source-archive";
 import { makeAxisLock, projectOnAxis, snapAlongAxis } from "./grip-axis-lock";
 import type { AxisLock, XZ } from "./grip-axis-lock";
 import type { AuthoredElement } from "../modules/projects/types";
@@ -26,6 +28,8 @@ const HANDLE_HIT_RADIUS_PX = 12;
 const FLIP_HIT_RADIUS_PX = 16;
 const SNAP_SCREEN_TOL_PX = 14;
 const DIM_OFFSET_PX = 30;
+/** Minimum wall height the height grip may produce (m). */
+const MIN_WALL_HEIGHT = 0.01;
 
 const WALL_LIKE_TYPES = new Set<string>([
   "wall", "beam", "duct", "pipe", "cable-tray", "conduit", "strip", "mline",
@@ -33,11 +37,12 @@ const WALL_LIKE_TYPES = new Set<string>([
 
 interface ActiveWall { id: string; el: AuthoredElement; }
 interface ScreenPt { x: number; y: number; visible: boolean; }
-interface HandlePositions { start: ScreenPt | null; end: ScreenPt | null; mid: ScreenPt | null; }
+interface HandlePositions { start: ScreenPt | null; end: ScreenPt | null; mid: ScreenPt | null;
+  move: ScreenPt | null; height: ScreenPt | null; elev: ScreenPt | null; }
 
 interface DragState {
   wallId: string;
-  which: "start" | "end";
+  which: "start" | "end" | "move" | "height" | "elevation";
   baseline: AuthoredElement["params"];
   groundY: number;
   currentWorld: { x: number; z: number };
@@ -46,6 +51,12 @@ interface DragState {
   axis: AxisLock | null;
   /** True while Shift is held — perpendicular direction locked, length-only edit. */
   axisLocked: boolean;
+  /** Pointer Y at drag start (px) — vertical height/elevation drags. */
+  startPointerY?: number;
+  /** Baseline scalar: height or elevation at drag start (m). */
+  startScalar?: number;
+  /** Original midpoint (move grip baseline). */
+  originalMid?: { x: number; z: number };
 }
 
 class WallHandlesManager {
@@ -54,7 +65,7 @@ class WallHandlesManager {
   private dimG: SVGGElement | null = null;
   private hG: SVGGElement | null = null;
   private drag: DragState | null = null;
-  private handlePos: HandlePositions = { start: null, end: null, mid: null };
+  private handlePos: HandlePositions = { start: null, end: null, mid: null, move: null, height: null, elev: null };
   private unsubGesture: (() => void) | null = null;
   private installed = false;
   private rafScheduled = false;
@@ -176,7 +187,7 @@ class WallHandlesManager {
   private render(): void {
     if (!this.svg || !this.dimG || !this.hG) return;
     this.clearAll();
-    this.handlePos = { start: null, end: null, mid: null };
+    this.handlePos = { start: null, end: null, mid: null, move: null, height: null, elev: null };
 
     const wall = this.drag
       ? this.activeWallById(this.drag.wallId)
@@ -223,6 +234,38 @@ class WallHandlesManager {
     const mx = (s.x + e.x) / 2;
     const my = (s.y + e.y) / 2;
     this.handlePos.mid = { x: mx, y: my, visible: s.visible && e.visible };
+
+    // Universal 3D Grips — move / height / elevation handles for wall-like
+    // elements (parity with the 3D engine grips on other categories).
+    // Move diamond: offset off the dimension side so the flip arrows and the
+    // temp dimension stay untouched.
+    const moveX = mx + nx * -(DIM_OFFSET_PX + 10);
+    const moveY = my + ny * -(DIM_OFFSET_PX + 10);
+    const mv = { x: moveX, y: moveY, visible: s.visible && e.visible };
+    this.handlePos.move = mv;
+    this.polygon(this.hG,
+      `${moveX},${moveY - 7} ${moveX + 7},${moveY} ${moveX},${moveY + 7} ${moveX - 7},${moveY}`,
+      "#22d3ee", "#0b0d12", 1, { handle: "move" });
+
+    // Height grip: triangle at the top of the wall (elevation + height).
+    const topY = p.elevation + (Number(p.height) || 0);
+    const ht = this.project((sx + ex) / 2, topY, (sz + ez) / 2);
+    if (ht && ht.visible) {
+      this.handlePos.height = ht;
+      this.polygon(this.hG,
+        `${ht.x},${ht.y - 8} ${ht.x + 7},${ht.y + 5} ${ht.x - 7},${ht.y + 5}`,
+        "#34d399", "#0b0d12", 1, { handle: "height" });
+    }
+
+    // Elevation grip: orange square at the base midpoint, offset further on
+    // the move-grip side to avoid stacking.
+    const evX = mx + nx * -(DIM_OFFSET_PX + 30);
+    const evY = my + ny * -(DIM_OFFSET_PX + 30);
+    const ev = { x: evX, y: evY, visible: s.visible && e.visible };
+    this.handlePos.elev = ev;
+    this.polygon(this.hG,
+      `${evX - 6},${evY - 6} ${evX + 6},${evY - 6} ${evX + 6},${evY + 6} ${evX - 6},${evY + 6}`,
+      "#fb923c", "#0b0d12", 1, { handle: "elevation" });
 
     const ao = 15;
     for (const sign of [1, -1]) {
@@ -322,15 +365,21 @@ class WallHandlesManager {
     parent.appendChild(t);
   }
 
-  private hitTest(e: { clientX: number; clientY: number }): "start" | "end" | "flip" | null {
+  private hitTest(e: { clientX: number; clientY: number }): "start" | "end" | "flip" | "move" | "height" | "elevation" | null {
     const rect = ctx.rightHost.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
-    const { start, end, mid } = this.handlePos;
+    const { start, end, mid, move, height, elev } = this.handlePos;
     const d = (a: ScreenPt | null) => a ? Math.hypot(px - a.x, py - a.y) : Infinity;
     const ds = d(start);
     const de = d(end);
     const dm = d(mid);
+    const dmv = d(move);
+    const dh = d(height);
+    const dev = d(elev);
+    if (dh <= HANDLE_HIT_RADIUS_PX) return "height";
+    if (dmv <= HANDLE_HIT_RADIUS_PX) return "move";
+    if (dev <= HANDLE_HIT_RADIUS_PX) return "elevation";
     if (ds <= HANDLE_HIT_RADIUS_PX && ds <= de) return "start";
     if (de <= HANDLE_HIT_RADIUS_PX) return "end";
     if (dm <= FLIP_HIT_RADIUS_PX) return "flip";
@@ -346,6 +395,7 @@ class WallHandlesManager {
     if (g.kind === "drag-start" && g.button === 0) {
       const hit = this.hitTest(g.event);
       if (hit === "start" || hit === "end") return this.startDrag(hit, g.event);
+      if (hit === "move" || hit === "height" || hit === "elevation") return this.startDrag(hit, g.event);
       if (hit === "flip") {
         const w = this.activeWall();
         if (w) { this.flipWall(w); return true; }
@@ -363,15 +413,21 @@ class WallHandlesManager {
     return false;
   };
 
-  private startDrag(which: "start" | "end", e: PointerEvent): boolean {
+  private startDrag(which: "start" | "end" | "move" | "height" | "elevation", e: PointerEvent): boolean {
     const w = this.activeWall();
     if (!w) return false;
     const p = w.el.params;
     if (!p.start || !p.end) return false;
     const groundY = p.elevation;
+    const rect = ctx.rightHost.getBoundingClientRect();
+    const pointerY = e.clientY - rect.top;
+    const mid = { x: (p.start[0] + p.end[0]) / 2, z: (p.start[1] + p.end[1]) / 2 };
+    const isEndpoint = which === "start" || which === "end";
     const cur = which === "start"
       ? { x: p.start[0], z: p.start[1] }
-      : { x: p.end[0], z: p.end[1] };
+      : which === "end"
+        ? { x: p.end[0], z: p.end[1] }
+        : mid;
     const fixed = which === "start"
       ? { x: p.end[0], z: p.end[1] }
       : { x: p.start[0], z: p.start[1] };
@@ -382,9 +438,19 @@ class WallHandlesManager {
       groundY,
       currentWorld: cur,
       snapTarget: null,
-      axis: makeAxisLock(fixed, cur),
+      axis: isEndpoint ? makeAxisLock(fixed, cur) : null,
       axisLocked: false,
+      startPointerY: pointerY,
+      startScalar: which === "height" ? Number(p.height) || 0
+        : which === "elevation" ? Number(p.elevation) || 0
+        : undefined,
+      originalMid: mid,
     };
+    // Numeric entry during overlay drags too: typed distance constrains
+    // planar grips via groundPoint → accuDraw.constrain.
+    if (isEndpoint || which === "move") {
+      try { accuDraw.begin(new THREE.Vector3(cur.x, groundY, cur.z)); } catch { /* */ }
+    }
     this.updateDrag(e);
     return true;
   }
@@ -403,6 +469,11 @@ class WallHandlesManager {
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -y);
     const hit = new THREE.Vector3();
     if (!ray.ray.intersectPlane(plane, hit)) return null;
+    // Typed-distance precision (AccuDraw): digits typed during the drag pin
+    // the planar point at exactly that distance from the drag origin.
+    try {
+      if (accuDraw.isActive()) return { x: accuDraw.constrain(hit).x, z: accuDraw.constrain(hit).z };
+    } catch { /* */ }
     return { x: hit.x, z: hit.z };
   }
 
@@ -462,8 +533,50 @@ class WallHandlesManager {
     return SNAP_SCREEN_TOL_PX / pxPerUnit;
   }
 
+  /** World-units per screen pixel at a world point — vertical grip scaling. */
+  private worldPerPixelAt(y: number, x: number, z: number): number {
+    try {
+      const cam: any = ctx.world.camera.three;
+      const h = ctx.rightHost.clientHeight || 800;
+      if (cam.isOrthographicCamera) {
+        return Math.abs((cam.top - cam.bottom) / (cam.zoom || 1)) / h;
+      }
+      const fovY = THREE.MathUtils.degToRad(cam.fov ?? 60);
+      const dist = Math.max(0.1, cam.position.distanceTo(new THREE.Vector3(x, y, z)));
+      return (2 * dist * Math.tan(fovY / 2)) / h;
+    } catch { return 0.01; }
+  }
+
   private updateDrag(e: PointerEvent): void {
     if (!this.drag) return;
+    const auth: any = (ctx.features as any).authoring;
+    const el: AuthoredElement | null = auth?.getElementById?.(this.drag.wallId) ?? null;
+    if (!el) return;
+    const p = el.params;
+    if (!p.start || !p.end) return;
+    const rect = ctx.rightHost.getBoundingClientRect();
+    const pointerY = e.clientY - rect.top;
+
+    // Vertical grips — height / elevation: pointer-Y delta × world-per-pixel,
+    // up = taller/higher. Parametric: createMesh regenerates from height.
+    if (this.drag.which === "height" || this.drag.which === "elevation") {
+      if (this.drag.startPointerY === undefined) this.drag.startPointerY = pointerY;
+      const wpp = this.worldPerPixelAt(
+        p.elevation + (Number(p.height) || 0) / 2,
+        (p.start[0] + p.end[0]) / 2,
+        (p.start[1] + p.end[1]) / 2,
+      );
+      const delta = (this.drag.startPointerY - pointerY) * wpp;
+      if (this.drag.which === "height") {
+        p.height = Math.max(MIN_WALL_HEIGHT, (this.drag.startScalar ?? 0) + delta);
+      } else {
+        p.elevation = (this.drag.startScalar ?? 0) + delta;
+      }
+      auth?.rebuildAuthored?.();
+      this.schedule();
+      return;
+    }
+
     const g = this.groundPoint(e);
     if (!g) return;
     // Shift = perpendicular lock — the endpoint slides along the element's own
@@ -488,10 +601,21 @@ class WallHandlesManager {
         this.drag.currentWorld = g;
       }
     }
-    const auth: any = (ctx.features as any).authoring;
-    const el: AuthoredElement | null = auth?.getElementById?.(this.drag.wallId) ?? null;
-    if (!el) return;
-    const p = el.params;
+
+    // Move grip — translate both endpoints from the pre-drag baseline so the
+    // edit is idempotent per frame (re-planned from the baseline, not stacked).
+    if (this.drag.which === "move" && this.drag.originalMid) {
+      const dx = this.drag.currentWorld.x - this.drag.originalMid.x;
+      const dz = this.drag.currentWorld.z - this.drag.originalMid.z;
+      const b = this.drag.baseline;
+      if (!Number.isFinite(dx) || !Number.isFinite(dz)) return;
+      if (b.start) p.start = [b.start[0] + dx, b.start[1] + dz];
+      if (b.end) p.end = [b.end[0] + dx, b.end[1] + dz];
+      auth?.rebuildAuthored?.();
+      this.schedule();
+      return;
+    }
+
     if (this.drag.which === "start") {
       p.start = [this.drag.currentWorld.x, this.drag.currentWorld.z];
     } else {
@@ -504,12 +628,25 @@ class WallHandlesManager {
   private commitDrag(): void {
     const d = this.drag;
     this.drag = null;
+    try { accuDraw.end(); } catch { /* */ }
     if (!d) return;
     const auth: any = (ctx.features as any).authoring;
     const el: AuthoredElement | null = auth?.getElementById?.(d.wallId) ?? null;
     if (!el) return;
     const after = JSON.parse(JSON.stringify(el.params)) as AuthoredElement["params"];
     if (JSON.stringify(after) === JSON.stringify(d.baseline)) { this.schedule(); return; }
+    // IFC metadata sync: mark changed param keys in the source archive.
+    if (el.sourceArchive) {
+      try {
+        for (const k of Object.keys(after)) {
+          if (JSON.stringify((d.baseline as any)[k]) !== JSON.stringify((after as any)[k])) {
+            markNativeDimensionModified(el.sourceArchive, k);
+          }
+        }
+      } catch (err) {
+        console.warn("[wall-handles] source-archive sync failed", el.id, err);
+      }
+    }
     el.params = JSON.parse(JSON.stringify(d.baseline));
     auth?.rebuildAuthored?.();
     const apply = (params: AuthoredElement["params"]) => {
@@ -519,14 +656,19 @@ class WallHandlesManager {
       auth?.rebuildAuthored?.();
       try { auth?.migrateMepFittingRadii?.(); } catch { /* */ }
       try { (ctx.features as any).projects?.markDirty?.(); } catch { /* */ }
+      try { auth?.notifyAuthoringChange?.(); } catch { /* */ }
     };
+    const label = d.which === "move" ? "Move " + el.name
+      : d.which === "height" ? "Resize height " + el.name
+      : d.which === "elevation" ? "Set elevation " + el.name
+      : "Stretch " + el.name;
     history.push({
-      label: "Stretch " + el.name,
+      label,
       apply: () => apply(after),
       revert: () => apply(d.baseline),
     });
     apply(after);
-    notify("success", "Stretched " + el.name);
+    notify("success", label);
     this.schedule();
   }
 

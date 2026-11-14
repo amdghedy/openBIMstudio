@@ -251,6 +251,9 @@ class AccuDrawManager {
     return this.enabled && this.basePoint !== null;
   }
 
+  /** Current typed distance buffer (digits typed while dragging a grip). */
+  getTypedBuffer(): string { return this.typedBuffer; }
+
   /** Consume the typed distance (called by authoring on Enter). */
   consumeTypedDistance(): number | null {
     if (!this.typedBuffer) return null;
