@@ -94,7 +94,7 @@ Press **Ctrl+W** to enter Walk mode at the current camera position and heading. 
 
 **Tested in a real browser:** holding W for 4.5 s towards a 5 m IFC wall stops at the wall face plus body radius, with no shaking and a steady speed; Esc returns the camera.
 
-**Not tested:** mouse-look (the browser's pointer capture cannot be automated), stairs and multi-storey IFC floors, large models, and how smooth it feels on your hardware.
+**Not tested:** mouse-look (the browser's pointer capture cannot be automated), multi-storey IFC floors and curved stairs (a straight five-step IFC staircase is tested up and down), large models, and how smooth it feels on your hardware.
 
 ---
 
