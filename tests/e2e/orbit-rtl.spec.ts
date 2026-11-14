@@ -891,6 +891,11 @@ test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => 
     n = diff(on, off);
   }
   console.log('CAPS-AUTHORED ' + JSON.stringify({ patchedOn, changed: n, box: await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; const b = sb.getBox(); return b ? [b.min.y, b.max.y] : null; }), clip: await page.evaluate(() => (window as any).__OBS_CTX__.world.renderer.three.clippingPlanes?.length ?? 0) }));
+  if (n <= 300) {
+    const info = await page.evaluate(() => { const g = (window as any).__obsAuthoring.getGroup(); const THREE_: any = (window as any).__OBS_CTX__.world.scene.three.constructor; const out: any[] = []; g.traverse((o: any) => { if (o.isMesh) { const bb = { min: [0, 0, 0], max: [0, 0, 0] }; try { o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld); bb.min = [b.min.x, b.min.y, b.min.z]; bb.max = [b.max.x, b.max.y, b.max.z]; } catch { /* */ } const m = Array.isArray(o.material) ? o.material[0] : o.material; out.push({ vis: o.visible, type: m?.type, mvis: m?.visible, side: m?.side, clip: m?.clippingPlanes?.length ?? null, bb }); } }); return { THREE_: !!THREE_, meshes: out, cam: (window as any).__OBS_CTX__.world.camera.three.position.toArray() }; });
+    console.log('CAPS-AUTHORED-INFO ' + JSON.stringify(info));
+    await page.screenshot({ path: 'test-results/caps-authored-fail.png' });
+  }
   expect(patchedOn, 'authored materials patched').toBeGreaterThan(0);
   expect(n, 'authored cut face differs with caps on/off').toBeGreaterThan(300);
   expect(errors, errors.join('\n')).toEqual([]);
