@@ -15,7 +15,11 @@
 import { ctx } from "../core/context";
 import { fmtDateTime } from "../core/region";
 import { bulkConvertLinkedToNativeTwin, type BulkConvertResult } from "./bulk-native-twin";
-import { downloadNativeTwinIfc, downloadFederatedNativeTwinIfc } from "../modules/export/native-twin-ifc";
+import {
+  downloadNativeTwinIfc,
+  downloadFederatedNativeTwinIfc,
+  downloadFederatedNativeTwinIfcAsync,
+} from "../modules/export/native-twin-ifc";
 import {
   setupNativeIfcVersions,
   setIfcVersionChangeRecorder,
@@ -296,6 +300,15 @@ export async function makeModelEditable(modelId?: string): Promise<BulkConvertRe
           `. Export federated IFC when ready.`,
         result.failed ? "warn" : "success",
       );
+      // Critical: show the new twins in frame (source may be hidden)
+      try {
+        void import("./camera-tools").then((m) => {
+          m.computeSceneBounds?.();
+          m.fitAll?.();
+        });
+      } catch {
+        /* */
+      }
     } else if (result.failed) {
       toast(`Native IFC: no twins created (${result.failed} failed).`, "error");
     }
@@ -409,12 +422,15 @@ export function exportUpdatedIfc(opts?: { maxFiles?: number; perTwin?: boolean }
   }
   if (!opts?.perTwin) {
     try {
+      if (edits.length >= 30) {
+        void exportFederatedWithProgress(edits as any);
+        return edits.length;
+      }
       downloadFederatedNativeTwinIfc(edits as any, "openbimstudio-native.ifc");
       toast(`Exported 1 federated IFC4 with ${edits.length} element(s).`, "success");
       recordIfcChange("export-ifc", `Federated IFC4 · ${edits.length} element(s)`, {
         count: edits.length,
       });
-      // Git-for-BIM: every successful export is a version milestone.
       commitNativeIfcVersion(`Export federated IFC4 · ${edits.length} element(s)`, {
         auto: true,
         silent: true,

@@ -337,3 +337,49 @@ export function downloadFederatedNativeTwinIfc(
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2500);
 }
+
+/** Async federated write — yields every `yieldEvery` elements so large exports do not freeze the tab. */
+export async function writeFederatedNativeTwinIfcAsync(
+  edits: TwinIfcSource[],
+  projectName = "OpenBIMStudio Native IFC",
+  opts?: { yieldEvery?: number; onProgress?: (i: number, total: number) => void },
+): Promise<string> {
+  if (!edits.length) throw new Error("No Native Twins to export.");
+  const yieldEvery = Math.max(1, opts?.onProgress ? (opts.yieldEvery ?? 40) : (opts?.yieldEvery ?? 80));
+  const lines = writeHeader(projectName.replace(/[^a-z0-9._-]+/gi, "_") || "native-ifc");
+  let id = 1;
+  const next = () => id++;
+  const { owner, localOrigin, storey } = writeSpatialSkeleton(lines, next, projectName);
+  const ctx: Ctx = { lines, next, owner, localOrigin };
+  const total = edits.length;
+  for (let i = 0; i < total; i++) {
+    appendTwinElement(ctx, edits[i], storey);
+    opts?.onProgress?.(i + 1, total);
+    if ((i + 1) % yieldEvery === 0) {
+      await new Promise<void>((r) => {
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => r());
+        else setTimeout(r, 0);
+      });
+    }
+  }
+  lines.push("ENDSEC;");
+  lines.push("END-ISO-10303-21;");
+  return lines.join("\n");
+}
+
+export async function downloadFederatedNativeTwinIfcAsync(
+  edits: TwinIfcSource[],
+  filename = "openbimstudio-native.ifc",
+  opts?: { onProgress?: (i: number, total: number) => void },
+): Promise<void> {
+  const text = await writeFederatedNativeTwinIfcAsync(edits, "OpenBIMStudio Native IFC", {
+    onProgress: opts?.onProgress,
+  });
+  const blob = new Blob([text], { type: "application/x-step" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2500);
+}
