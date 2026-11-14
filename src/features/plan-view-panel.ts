@@ -34,7 +34,7 @@ import { buildTagAll, elementAnchor, leaderEnd, pointInBox, tagLabel, textBox, t
 import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan-dim-geometry";
 import { history as planHistory } from "./history";
 import { createRafCoalescer } from "../core/raf-coalescer";
-import { setOverlayRendererEnabled } from "../core/renderer-lifecycle";
+import { pauseRenderLoop } from "../core/renderer-lifecycle";
 import { buildAutoDimensions, buildRangeDimension } from "../modules/views/auto-dim-chains";
 import { resolveElementRef } from "../modules/views/element-snap-points";
 import { getNorthState, onNorthChanged, planRotationDeg, setNorthState, formatNorthAngle } from "../modules/north/north";
@@ -4682,9 +4682,21 @@ window.addEventListener("resize", () => {
  * ~28× pointer-latency regression). Pause the renderer while the plan is
  * open, resume on close. OBC SimpleRenderer renders in AUTO mode whenever
  * enabled; pausing is safe because nothing under the overlay is visible.
+ *
+ * The pause is a captured guard (core/renderer-lifecycle.ts pauseRenderLoop):
+ * if the import queue paused the loop first, the plan's pause/restore is a
+ * no-op and the import's restore decides — the 3D loop never runs under the
+ * plan overlay, and the plan never re-enables it mid-import.
  */
+let planRendererRestore: (() => void) | null = null;
 function setPlanRenderer3d(enabled: boolean): void {
-  setOverlayRendererEnabled((ctx.world as any)?.renderer, enabled);
+  if (enabled) {
+    try { planRendererRestore?.(); } catch { /* */ }
+    planRendererRestore = null;
+  } else if (!planRendererRestore) {
+    try { planRendererRestore = pauseRenderLoop((ctx.world as any)?.renderer); }
+    catch { /* */ }
+  }
 }
 
 export function togglePlanView() {

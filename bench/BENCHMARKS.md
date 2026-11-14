@@ -4,6 +4,14 @@ Reproducible, measurement-driven performance pass. **Every number in this
 report is produced by a script in `bench/` against the real production
 pipelines** — nothing is estimated or copied from another project.
 
+Three measurement generations (all reproducible from `bench/results/*.json`):
+
+| label | build | meaning |
+|---|---|---|
+| `baseline` | pre-optimization | original app, before any perf work |
+| `after` | plan/hover/render-lifecycle pass | first optimization pass |
+| `pause-queue` | + import-queue render pause | this pass (see §7) |
+
 ## How to reproduce
 
 ```bash
@@ -13,6 +21,8 @@ npm run bench:node                    # Node-level benchmarks → bench/results/
 npm run bench:browser                 # browser benchmarks → bench/results/browser-<label>.json
 npm run bench:budget                  # enforce scripts/budget.json against the latest results
 npm run bench:compare                 # before/after table from bench/results/*.json
+node bench/probe-fed.mjs              # federation import decomposition (renderer live vs paused)
+node bench/probe-reload.mjs           # reload lifecycle leak check (double reload + idle)
 ```
 
 The browser harness drives the built app through the real UI/production
@@ -143,16 +153,16 @@ the aux-object disposal in `file-interop.ts` were audited and left intact.
 - **InstancedMesh batching** stays OFF (opt-in) — fragment geometry is
   already instanced by the fragments library (17 draw calls / 30k tris
   for the large fixture — a healthy render profile).
-- **Import queue is serial** — measured per-file pipeline
-  (convert→load) means batch imports sum phases; pipelining could cut a
-  4-file federation from ~26 s toward ~10 s but requires restructuring
-  the queue. Documented as future work; not attempted (avoid risky
-  rewrites).
+- **Import queue pipelining** — the queue stays serial; the *render-loop
+  contention* that inflated it was fixed in §7 instead (a bounded,
+  measured change). Pipelining convert(N+1) with load(N) could still save
+  ~1.2 s of the remaining ~2.3 s probe wall, but requires restructuring
+  queue cancellation semantics — poor ROI, documented as future work.
 - **Properties palette open** (152–782 ms under software GL) scales with
   frame queueing, not with its own logic — the pure snapshot is 7 ms at
   5000 elements. No change.
 
-## Regression safety
+### First-pass regression safety
 
 - New unit tests: `tests/perf-harness.test.cjs` (10 assertions) —
   coalescer semantics (one callback per frame, last-wins, flush,
@@ -170,6 +180,103 @@ the aux-object disposal in `file-interop.ts` were audited and left intact.
   `ctx.features.importer.lastImportPhases()` and the existing
   `__obsPerf` object — no new window globals).
 
+## 7. Import-queue render pause (this pass)
+
+### 7.1 The measured bottleneck
+
+The first pass left one measured bottleneck documented but unclaimed: the
+serial IFC import queue. `bench/probe-fed.mjs` decomposes a 4-file
+federation import (fed-a..d, 247 elements each) **in the real bench context
+— small + medium + large already in the scene** and attributes every
+millisecond via the production phase log:
+
+| arm | wall (import → 4 models registered) | Σ convert | Σ fragLoad | per-file convert |
+|---|---|---|---|---|
+| renderer live (pre-fix production behavior) | **16862 ms** | 6880 ms | 3583 ms | 1553–1805 ms |
+| renderer paused (diagnostic ceiling) | **2410 ms** | 1572 ms | 1231 ms | 302–581 ms |
+
+The gap is main-thread contention: with the 3D loop live, every
+software-GL frame (~200 ms/frame at this scene weight) starved the
+web-ifc progress handling and the fragments chunk parsing. On a *clean*
+page (no models loaded) the same fed files import in ~8.9 s — the
+inflation grows with scene weight, i.e. exactly the "large federated
+models" case. Queue-UI fixed overhead was measured at **267 ms of the
+16862 ms** — negligible; the queue itself is not the cost.
+
+### 7.2 The fix (mechanism already proven by the plan overlay)
+
+`src/features/importer.ts`: `processQueue()` and `loadFragFiles()` now
+pause the 3D render loop while the queue mutates the scene and restore it
+in `finally` — *before* positioning/autofit so the final camera state
+renders. The pause is a captured guard, `pauseRenderLoop()` in
+`src/core/renderer-lifecycle.ts`: if the plan overlay already paused the
+loop, the import's restore is a no-op and vice versa — the two pause
+sources compose instead of fighting (6 new unit tests in
+`tests/perf-harness.test.cjs`, 16 total).
+
+### 7.3 After — reproducible numbers
+
+`node bench/probe-fed.mjs` (production path, renderer pause now built in):
+
+| run | wall | Σ convert | Σ fragLoad | renderer after settle |
+|---|---|---|---|---|
+| run 1 | 2081 ms | 1511 ms | 377 ms | enabled ✓ |
+| run 2 | 2268 ms | 1572 ms | 369 ms | enabled ✓ |
+
+Full bench suite (`npm run bench:browser`, results in
+`browser-pause-queue.json`), three generations side by side — medians,
+software-GL harness:
+
+| benchmark | baseline | after (pass 1) | pause-queue (this pass) |
+|---|---|---|---|
+| **federated 4-file load** | 16966 ms | 26220 ms (noise band 17–28 s) | **4544 ms** |
+| large load (2036 el) | 4940 ms | 5882 ms | **2758 ms** |
+| medium load (382 el) | 2312 ms | 2875 ms | **1398 ms** |
+| small load (46 el) | 2289 ms | 2331 ms | **1403 ms** |
+| 2D plan pan fps | 9 fps | 57 fps | 56 fps (no regression) |
+| 2D plan burst ×30 | 3213 ms | 112.8 ms | 111.8 ms (no regression) |
+| hover picks, 60 held moves | 1/move | 0 | 0 (no regression) |
+| boot → canvas+ribbon | 3.42 s | 3.62 s | 3.64 s (noise) |
+
+The federation win in the full bench (4544 ms) is smaller than the
+probe's ceiling (2081–2268 ms) because the bench measures wall clock to
+*registration* of the 4th model plus its own per-file repeats and settle
+windows; both numbers are honest and reproducible from their scripts.
+
+### 7.4 Memory lifecycle re-verified (no leak)
+
+`bench/probe-reload.mjs` — 7-model session (small + medium + large +
+fed×4), then two full reloads and an idle settle:
+
+| checkpoint | heap |
+|---|---|
+| session (7 models, gc) | 181.6 MB |
+| reload #1 (+3 s, gc) | 56 MB |
+| reload #2 (+3 s, gc) | 57 MB |
+| +8 s idle (gc) | 56.3 MB |
+
+Everything is reclaimable; the pause guard adds no retained memory. One
+bench run read 190 MB at the first-reload checkpoint — the double-reload
+probe shows that reading is transient post-boot settling, not retention
+(the same checkpoint measures 56–57 MB when settled).
+
+### 7.5 Regression safety (this pass)
+
+- Unit tests: `tests/perf-harness.test.cjs` extended 10 → 16 assertions
+  (pause guard state restore, no-op-on-already-paused, import × plan
+  composition both orders, missing-renderer null safety). Full CI unit
+  suite: **215/215 passing**.
+- tsc clean; `npm run build` clean; bundle 723 KB (≤ 2500 budget);
+  `npm run bench:budget` all green; `__obs` ratchet unchanged at 727;
+  confirm()/prompt() ratchet unchanged at 0.
+- E2E (chromium): smoke, native-IFC roundtrip
+  (import→editable→commit→diff→restore→export — the real paused-queue
+  path), edit-undo-save: **passing**. orbit-rtl: 19 pass + 2 unrelated
+  pre-existing issues (WALK MODE also fails on the unmodified HEAD;
+  Export→Views-to-CAD is a command-line timing flake that passes/fails
+  independently of this change — reproduced both ways on clean HEAD).
+
+
 ## File map
 
 | path | purpose |
@@ -179,6 +286,8 @@ the aux-object disposal in `file-interop.ts` were audited and left intact.
 | `bench/bench-browser.mjs` | browser benchmark suite (boot/load/fps/pick/props/memory/plan) |
 | `bench/probe-hover.mjs` | build-agnostic hover-cost probe (works on old + new builds) |
 | `bench/probe-alloc.mjs` | CDP heap-allocation sampling probe |
+| `bench/probe-fed.mjs` | federation import decomposition (renderer live vs paused arms) |
+| `bench/probe-reload.mjs` | double-reload + idle heap lifecycle probe |
 | `bench/probe-pick.mjs`, `bench/probe-load.mjs` | pick-path and load-phase diagnostics |
 | `bench/compare.mjs` | before/after table generator |
 | `bench/check-budgets.mjs` | `scripts/budget.json` enforcement |

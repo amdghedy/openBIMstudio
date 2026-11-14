@@ -22,7 +22,7 @@ execSync(
   { cwd: root, stdio: "pipe", shell: true },
 );
 const { createRafCoalescer } = require(path.join(tmpOut, "core/raf-coalescer.js"));
-const { setOverlayRendererEnabled } = require(path.join(tmpOut, "core/renderer-lifecycle.js"));
+const { setOverlayRendererEnabled, pauseRenderLoop } = require(path.join(tmpOut, "core/renderer-lifecycle.js"));
 const { hoverGate } = require(path.join(tmpOut, "core/hover-gate.js"));
 
 let pass = 0, fail = 0;
@@ -93,6 +93,66 @@ t("renderer pause: missing/malformed target is a safe no-op", () => {
   assert.strictEqual(setOverlayRendererEnabled(null, false), false);
   assert.strictEqual(setOverlayRendererEnabled(undefined, true), false);
   assert.strictEqual(setOverlayRendererEnabled({}, false), false);
+});
+
+// ── pauseRenderLoop (composable import-queue × plan-overlay pause) ──────
+t("pause guard: flips off and restores the exact prior state", () => {
+  const r = { enabled: true, needsUpdate: false };
+  const restore = pauseRenderLoop(r);
+  assert.strictEqual(typeof restore, "function");
+  assert.strictEqual(r.enabled, false, "paused while guard held");
+  restore();
+  assert.strictEqual(r.enabled, true, "restored to true");
+  assert.strictEqual(r.needsUpdate, true, "resume requests one frame");
+});
+
+t("pause guard: restore puts back false when it was already off", () => {
+  const r = { enabled: false };
+  const restore = pauseRenderLoop(r);
+  assert.strictEqual(r.enabled, false);
+  restore();
+  assert.strictEqual(r.enabled, false, "never re-enables someone else's pause");
+});
+
+t("pause guard: already-paused target returns a no-op restore", () => {
+  const r = { enabled: false };
+  const restore = pauseRenderLoop(r);
+  assert.strictEqual(typeof restore, "function");
+  restore();
+  assert.strictEqual(r.enabled, false, "no-op restore does not flip the loop");
+});
+
+t("pause guard: import × plan composition — whoever paused last-in owns restore", () => {
+  // Import queue pauses first (plan opens later).
+  const r = { enabled: true, needsUpdate: false };
+  const importRestore = pauseRenderLoop(r);
+  assert.strictEqual(r.enabled, false);
+  // Plan overlay opens: finds the loop already paused → its own flip is a no-op.
+  const planRestore = pauseRenderLoop(r);
+  assert.strictEqual(r.enabled, false);
+  planRestore(); // plan closes first — must NOT re-enable mid-import
+  assert.strictEqual(r.enabled, false, "plan restore does not fight the import pause");
+  importRestore(); // queue finishes — restores the true prior state
+  assert.strictEqual(r.enabled, true);
+  assert.strictEqual(r.needsUpdate, true);
+});
+
+t("pause guard: plan × import composition — plan pauses first, import finishes later", () => {
+  const r = { enabled: true };
+  const planRestore = pauseRenderLoop(r);
+  assert.strictEqual(r.enabled, false);
+  const importRestore = pauseRenderLoop(r); // import starts while plan is open
+  assert.strictEqual(r.enabled, false);
+  importRestore(); // queue done before plan closes — stays paused under the overlay
+  assert.strictEqual(r.enabled, false, "import restore leaves the plan's pause alone");
+  planRestore(); // plan closes
+  assert.strictEqual(r.enabled, true);
+});
+
+t("pause guard: missing renderer returns null and callers skip restore", () => {
+  assert.strictEqual(pauseRenderLoop(null), null);
+  assert.strictEqual(pauseRenderLoop(undefined), null);
+  assert.strictEqual(pauseRenderLoop({}), null);
 });
 
 // ── hover-gate ───────────────────────────────────────────────────────────

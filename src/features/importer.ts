@@ -24,6 +24,7 @@ import {
 import { refreshModelSelectionUI } from "./clash";
 import { uiAlert } from "../core/notify";
 import { fmtNumber } from "../core/region";
+import { pauseRenderLoop } from "../core/renderer-lifecycle";
 
 // Injected by vite.config.ts (define) from node_modules/web-ifc/package.json.
 // The WASM is served from /web-ifc/<version>/ so a build can never be paired
@@ -1010,11 +1011,22 @@ async function processQueue() {
 
   const loader = (ctx.features as any).appLoader;
   const total = importQueue.filter((x) => x.status === "queued").length;
+
+  // Pause the 3D render loop while the queue mutates the scene. Measured on
+  // the bench harness (bench/probe-fed.mjs): with the loop live, a 4-file
+  // federation spends 6.9 s in conversion + 3.6 s in fragments load; paused,
+  // 1.6 s + 1.2 s — the software-GL frame cost was starving the main thread
+  // on every web-ifc progress message and fragments chunk. The guard
+  // composes with the plan-overlay pause (core/renderer-lifecycle.ts).
+  let restoreRenderer: (() => void) | null = null;
   if (total) {
     loader?.begin?.(`Importing ${total} file(s)…`, {
       cancellable: true,
       onCancel: () => cancelQueueAll(),
     });
+    try {
+      restoreRenderer = pauseRenderLoop((ctx.world as any)?.renderer);
+    } catch { /* rendering is optional for import */ }
   }
 
   try {
@@ -1032,6 +1044,13 @@ async function processQueue() {
   } finally {
     processing = false;
     updateQueueSummary();
+
+    // Resume the 3D loop BEFORE positioning/fit so the final camera state
+    // actually renders (the guard restores the exact prior state — see
+    // pauseRenderLoop; when the plan overlay already paused the loop, this
+    // restore is a no-op and the plan keeps ownership).
+    try { restoreRenderer?.(); } catch { /* */ }
+    restoreRenderer = null;
 
     // Linking sequence from working OpenBIMStudio: apply positioning, then
     // origin-to-origin identity placement (no forced recenter) — same as BIM links.
@@ -1361,6 +1380,14 @@ export async function loadFragFiles(files: FileList | File[]) {
   const loader = (ctx.features as any).appLoader;
   loader?.begin?.(`Loading ${list.length} .frag file(s)…`, { cancellable: false });
 
+  // Same measured contention as the IFC queue: N main-thread fragments loads
+  // while the 3D loop keeps rasterizing the (hidden-by-loader) scene. Pause
+  // for the loop, restore before the positioning/fit section below.
+  let restoreRenderer: (() => void) | null = null;
+  try {
+    restoreRenderer = pauseRenderLoop((ctx.world as any)?.renderer);
+  } catch { /* rendering is optional */ }
+
   try {
     let i = 0;
     for (const file of list) {
@@ -1407,6 +1434,11 @@ export async function loadFragFiles(files: FileList | File[]) {
       await new Promise((r) => setTimeout(r, 0));
     }
 
+    // Restore the render loop before positioning/fit so the final camera
+    // state renders; the guard composes with the plan-overlay pause.
+    try { restoreRenderer?.(); } catch { /* */ }
+    restoreRenderer = null;
+
     // Linking sequence (old OpenBIMStudio FRAG linker): load as-is, apply mode,
     // then origin-to-origin so federated models stay coordinated.
     try { await applyPositioningMode(ifcSettings.positioning); } catch (e) { console.warn(e); }
@@ -1425,6 +1457,10 @@ export async function loadFragFiles(files: FileList | File[]) {
       try { (ctx.cam as any)?.recoverView?.(); } catch { /* */ }
     }, 400);
   } finally {
+    // Defensive: never leave the 3D loop paused if an exception escaped the
+    // try block before the normal restore point. Idempotent (null-checked).
+    try { restoreRenderer?.(); } catch { /* */ }
+    restoreRenderer = null;
     loader?.finish?.();
   }
 }
