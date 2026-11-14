@@ -1554,7 +1554,137 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       dirty = false;
       hooks.onDirty(false);
     }
+    try { captureDrawingSession(); } catch { /* */ }
   };
+
+  /* ── Per-drawing session: last view + layer visibility ── */
+  const DRAWING_SESSION_KEY = "obs.cad.drawingSession.v1";
+  type DrawingSession = {
+    fileName: string;
+    view: { cx: number; cy: number; scale: number; rot?: number; w?: number; h?: number };
+    layoutI: number;
+    /** Layers the user hid (checkbox off) or that were off/frozen when saved. */
+    hiddenLayers: string[];
+    frozenLayers: string[];
+    offLayers: string[];
+    at: number;
+  };
+  function sessionKeyFor(fileName: string): string {
+    return String(fileName || "untitled").trim().toLowerCase();
+  }
+  function loadSessionMap(): Record<string, DrawingSession> {
+    try {
+      const raw = localStorage.getItem(DRAWING_SESSION_KEY);
+      if (!raw) return {};
+      const o = JSON.parse(raw);
+      return o && typeof o === "object" ? o : {};
+    } catch {
+      return {};
+    }
+  }
+  function saveSessionMap(map: Record<string, DrawingSession>): void {
+    try {
+      // Cap map size (keep 40 most recent)
+      const entries = Object.entries(map).sort((a, b) => (b[1].at ?? 0) - (a[1].at ?? 0));
+      const trimmed: Record<string, DrawingSession> = {};
+      for (const [k, v] of entries.slice(0, 40)) trimmed[k] = v;
+      localStorage.setItem(DRAWING_SESSION_KEY, JSON.stringify(trimmed));
+    } catch {
+      /* quota */
+    }
+  }
+  function captureDrawingSession(): void {
+    if (!doc || !name) return;
+    // Sync layer.off from current hidden state so DXF/DWG and next open agree
+    for (const l of doc.layers) {
+      if (hidden.has(l.name)) {
+        // Keep frozen as frozen; mark others off
+        if (!l.frozen) l.off = true;
+      } else {
+        l.off = false;
+      }
+    }
+    const sess: DrawingSession = {
+      fileName: name,
+      view: {
+        cx: view.cx,
+        cy: view.cy,
+        scale: view.scale,
+        rot: view.rot ?? uprightRot ?? 0,
+        w: view.w,
+        h: view.h,
+      },
+      layoutI,
+      hiddenLayers: [...hidden],
+      frozenLayers: doc.layers.filter((l) => l.frozen).map((l) => l.name),
+      offLayers: doc.layers.filter((l) => l.off).map((l) => l.name),
+      at: Date.now(),
+    };
+    const map = loadSessionMap();
+    map[sessionKeyFor(name)] = sess;
+    saveSessionMap(map);
+  }
+  function restoreDrawingSession(fileName: string): boolean {
+    const map = loadSessionMap();
+    const sess = map[sessionKeyFor(fileName)];
+    if (!sess || !doc) return false;
+
+    // Layers: only shown layers stay visible; off + frozen stay hidden
+    hidden.clear();
+    const hide = new Set<string>([
+      ...(sess.hiddenLayers ?? []),
+      ...(sess.offLayers ?? []),
+      ...(sess.frozenLayers ?? []),
+    ]);
+    for (const l of doc.layers) {
+      if (sess.frozenLayers?.includes(l.name)) l.frozen = true;
+      if (sess.offLayers?.includes(l.name) || sess.hiddenLayers?.includes(l.name)) {
+        if (!l.frozen) l.off = true;
+      }
+      // If session listed this layer as hidden/off/frozen → hide
+      if (hide.has(l.name) || l.off || l.frozen) hidden.add(l.name);
+    }
+    // Also hide names that appear only in session (not in doc.layers yet)
+    for (const n of hide) hidden.add(n);
+
+    // Layout tab
+    if (typeof sess.layoutI === "number") {
+      try {
+        activate(sess.layoutI);
+      } catch {
+        /* */
+      }
+    }
+
+    // Last view (same scene position / zoom / roll)
+    if (sess.view && Number.isFinite(sess.view.cx) && Number.isFinite(sess.view.scale) && sess.view.scale > 0) {
+      uprightRot = sess.view.rot ?? 0;
+      view = {
+        cx: sess.view.cx,
+        cy: sess.view.cy,
+        scale: sess.view.scale,
+        w: view.w,
+        h: view.h,
+        rot: uprightRot || undefined,
+      };
+    }
+    buildLayers();
+    draw();
+    logCmd(
+      `Restored last view & layers (${hidden.size} hidden/frozen/off · layout ${layoutI < 0 ? "Model" : layoutI + 1}).`,
+    );
+    return true;
+  }
+  let sessionSaveTimer: number | null = null;
+  function scheduleSessionSave(): void {
+    if (sessionSaveTimer != null) window.clearTimeout(sessionSaveTimer);
+    sessionSaveTimer = window.setTimeout(() => {
+      sessionSaveTimer = null;
+      captureDrawingSession();
+    }, 400);
+  }
+
+
   const redoStack: UndoAction[] = [];
 
   // drawing workspace Command History
@@ -2767,6 +2897,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     view = M.fitView(bounds, view.w, view.h, 0.06, uprightRot);
     draw();
     logCmd("Command: _ZOOM _EXTENTS");
+    scheduleSessionSave();
   }
 
   /** Physically rotate active entities so long edges align with world axes (PLAN). */
@@ -4827,10 +4958,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       doc = r.doc;
       name = file.name;
       modelEnts = doc.entities;
+      // Skip auto-straighten when we have a saved session for this file (preserve last scene).
+      const hasSession = !!loadSessionMap()[sessionKeyFor(file.name)];
       // Physical straighten: rotate world geometry so schedules/sheets are axis-aligned
       // (view-only rotation was not enough for large DWGs with mixed edge noise).
       try {
-        const ang0 = M.estimatePrincipalAngle(modelEnts);
+        const ang0 = hasSession ? 0 : M.estimatePrincipalAngle(modelEnts);
         if (ang0 && Math.abs(ang0) >= 1.5) {
           let cx = 0, cy = 0, n = 0;
           for (const e of modelEnts) {
@@ -4906,23 +5039,30 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (bestI >= 0 && bestN > modelEnts.length * 1.25) startLayout = bestI;
       }
       activate(startLayout);
-      // Auto-upright: match typical embedded PNG / Top view orientation
-      try {
-        const ang = M.estimatePrincipalAngle(ents);
-        if (ang && bounds) {
-          uprightRot = ang;
-          view = M.fitView(bounds, view.w, view.h, 0.06, uprightRot);
-          draw();
-          logCmd(`View upright ${ang >= 0 ? "+" : ""}${ang.toFixed(1)}° (matches native preview orientation).`);
-        } else {
-          uprightRot = 0;
-        }
-      } catch { /* optional */ }
+      // Restore last view + layer visibility for this file name (same scene, off/frozen layers)
+      const restored = restoreDrawingSession(file.name);
+      if (!restored) {
+        // First open: auto-upright only when no saved session
+        try {
+          const ang = M.estimatePrincipalAngle(ents);
+          if (ang && bounds) {
+            uprightRot = ang;
+            view = M.fitView(bounds, view.w, view.h, 0.06, uprightRot);
+            draw();
+            logCmd(`View upright ${ang >= 0 ? "+" : ""}${ang.toFixed(1)}° (matches native preview orientation).`);
+          } else {
+            uprightRot = 0;
+          }
+        } catch { /* optional */ }
+      }
       setTool("select");
       showMeas();
 
       logCmd(`Loaded: ${file.name} (${doc.entities.length} entities, ${doc.layers.length} layers, ${doc.units || "mm"})`);
-      markSaved();
+      // markSaved would overwrite session with current; only mark clean
+      dirty = false;
+      hooks.onDirty(false);
+      scheduleSessionSave();
       hooks.onTitle(name);
       status(`${r.summary}`);
       setTimeout(() => status(""), 5000);
@@ -4974,6 +5114,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     showProps();
     updateStatus();
     draw();
+    scheduleSessionSave();
   }
 
   function buildTabs(): void {
@@ -5182,8 +5323,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     layersEl
       .querySelectorAll<HTMLInputElement>("input[data-l]")
       .forEach((i) => (i.onchange = () => {
-        i.checked ? hidden.delete(i.dataset.l!) : hidden.add(i.dataset.l!);
+        const ln = i.dataset.l!;
+        if (i.checked) {
+          hidden.delete(ln);
+          const lyr = layerOf(ln);
+          if (lyr) { lyr.off = false; }
+        } else {
+          hidden.add(ln);
+          const lyr = layerOf(ln);
+          if (lyr && !lyr.frozen) lyr.off = true;
+        }
         draw();
+        scheduleSessionSave();
       }));
   }
 
@@ -5194,20 +5345,31 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   };
   $("lon").onclick = () => {
     hidden.clear();
+    if (doc) for (const l of doc.layers) { if (!l.frozen) l.off = false; }
     buildLayers();
     draw();
+    scheduleSessionSave();
   };
   $("loff").onclick = () => {
     allLayers().forEach((n) => hidden.add(n));
+    if (doc) for (const l of doc.layers) { if (!l.frozen) l.off = true; }
     buildLayers();
     draw();
+    scheduleSessionSave();
   };
   $("liso").onclick = () => {
     if (!sel.size) return;
     const keep = new Set([...sel].map((i) => ents[i].layer));
     allLayers().forEach((n) => (keep.has(n) ? hidden.delete(n) : hidden.add(n)));
+    if (doc) {
+      for (const l of doc.layers) {
+        if (l.frozen) continue;
+        l.off = !keep.has(l.name);
+      }
+    }
     buildLayers();
     draw();
+    scheduleSessionSave();
   };
 
   /** Open Full Layer Properties Manager (LA / LAYER) */
@@ -5299,20 +5461,33 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       editField("edit-lt", "lineType");
       editField("edit-lw", "lineweight");
       tr.querySelector("[data-act=toggle-on]")?.addEventListener("click", () => {
-        if (hidden.has(lname)) hidden.delete(lname);
-        else hidden.add(lname);
+        if (hidden.has(lname)) {
+          hidden.delete(lname);
+          const lyr = layerOf(lname);
+          if (lyr) lyr.off = false;
+        } else {
+          hidden.add(lname);
+          const lyr = layerOf(lname);
+          if (lyr && !lyr.frozen) lyr.off = true;
+        }
         closeOverlay();
         buildLayers();
         openLayerPropertiesManager();
         draw();
+        scheduleSessionSave();
       });
       tr.querySelector("[data-act=toggle-freeze]")?.addEventListener("click", () => {
         const lyr = layerOf(lname);
-        if (lyr) lyr.frozen = !lyr.frozen;
+        if (lyr) {
+          lyr.frozen = !lyr.frozen;
+          if (lyr.frozen) hidden.add(lname);
+          else if (!lyr.off) hidden.delete(lname);
+        }
         closeOverlay();
         buildLayers();
         openLayerPropertiesManager();
         draw();
+        scheduleSessionSave();
       });
       tr.querySelector("[data-act=toggle-lock]")?.addEventListener("click", () => {
         const lyr = layerOf(lname);
@@ -8136,6 +8311,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /* ── In-Canvas Navigation Bar & ViewCube Listeners ── */
+  window.addEventListener("beforeunload", () => {
+    try { captureDrawingSession(); } catch { /* */ }
+  });
   root.querySelector("[data-r=vc-home]")?.addEventListener("click", zoomExtents);
   root.querySelector("[data-r=vc-home-btn]")?.addEventListener("click", (e) => {
     e.stopPropagation();
