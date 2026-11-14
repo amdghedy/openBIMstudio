@@ -12,6 +12,7 @@ import * as OBC from "@thatopen/components";
 import { ctx } from "../core/context";
 import { register, tryUse, type SelectionService } from "../core/services";
 import { getSelectionPrefs } from "../core/selection-prefs";
+import { hoverGate } from "../core/hover-gate";
 
 export interface SelectionSnapshot {
   [modelId: string]: Set<number>;
@@ -636,7 +637,21 @@ export function setupClickToSelect(): void {
 
   const canvasForHover = (ctx.world.renderer.three as THREE.WebGLRenderer)?.domElement as HTMLCanvasElement | null;
   if (canvasForHover) {
-    canvasForHover.addEventListener("pointermove", () => { void updateHover(canvasForHover); }, { passive: true });
+    canvasForHover.addEventListener(
+      "pointermove",
+      (e) => {
+        // Perf gate (core/hover-gate.ts): while any pointer button is held the
+        // camera is being orbited / panned / a box-select or gizmo drag is
+        // running — each hover cast is a full GPU ID-render pass and is pure
+        // waste here. Hover recomputes on the next free move; the stale
+        // preselect highlight is cleared once at drag start.
+        const gate = hoverGate(e.buttons, hoverPending, Object.keys(hoveredMap).length);
+        if (gate.clearStale) void clearHover();
+        if (!gate.pick) return;
+        void updateHover(canvasForHover);
+      },
+      { passive: true },
+    );
     canvasForHover.addEventListener("pointerleave", () => { void clearHover(); }, { passive: true });
   }
 

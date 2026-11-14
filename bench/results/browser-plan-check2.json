@@ -1,0 +1,96 @@
+{
+  "label": "plan-check2",
+  "startedAt": "2026-11-14T09:49:38.667Z",
+  "sizes": [
+    "small"
+  ],
+  "suites": {
+    "heapAfterBootMB": 40.7,
+    "bvhInstalled": true,
+    "bootErrors": 0,
+    "boot": {
+      "runs": 2,
+      "canvasMs": 5514,
+      "platformMs": 13594
+    },
+    "ifc-load": {
+      "small": {
+        "fixtureBytes": 56015,
+        "fixtureElements": 46,
+        "importCallMs": 5.939999999478459,
+        "registerMs": 3708,
+        "loadTotalMs": 4505,
+        "elements": 46,
+        "heapBeforeMB": 55.8,
+        "heapAfterMB": 327,
+        "heapDeltaMB": 271.2,
+        "sceneMeshes": 30,
+        "fpsIdle": {
+          "frames": 11,
+          "fps": 5,
+          "p50": 183.3,
+          "p95": 316.7,
+          "max": 316.7
+        },
+        "fpsOrbit": {
+          "frames": 30,
+          "fps": 15,
+          "p50": 66.7,
+          "p95": 83.3,
+          "max": 166.7
+        },
+        "raycastMs": {
+          "n": 4,
+          "median": 741.8250000001863,
+          "min": 303.58499999996275,
+          "max": 912.125
+        },
+        "raycastAfterBvhMs": {
+          "n": 4,
+          "median": 507.8899999996647,
+          "min": 446.24500000011176,
+          "max": 521.394999999553
+        },
+        "propertiesOpenMs": 375,
+        "loadRepeatMs": 2125,
+        "heapAfterRepeatMB": 443.6,
+        "phases": [
+          {
+            "file": "small.ifc",
+            "sizeMB": 0.1,
+            "convertMs": 1972.9,
+            "fragLoadMs": 734.8,
+            "totalMs": 3758,
+            "elements": 46,
+            "schema": "IFC4"
+          }
+        ]
+      }
+    },
+    "federated-load": {
+      "files": 4,
+      "loadTotalMs": 18174,
+      "heapBeforeMB": 43.2,
+      "heapAfterMB": 447.4,
+      "heapDeltaMB": 404.2,
+      "fpsIdle": {
+        "frames": 14,
+        "fps": 7,
+        "p50": 133.3,
+        "p95": 233.3,
+        "max": 233.3
+      },
+      "totalModels": 3
+    },
+    "memory-after-reload": {
+      "heapMB": 55.2,
+      "heapReclaimedVsFederatedMB": 392.2
+    },
+    "plan-2d": {
+      "skipped": true,
+      "reason": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'frameTimes')\n    at eval (eval at evaluate (:234:30), <anonymous>:5:36)\n    at UtilityScript.evaluate (<anonymous>:236:17)\n    a"
+    }
+  },
+  "pageErrors": [],
+  "finishedAt": "2026-11-14T09:51:16.728Z"
+}

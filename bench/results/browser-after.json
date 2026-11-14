@@ -1,0 +1,228 @@
+{
+  "label": "after",
+  "startedAt": "2026-11-14T10:27:52.066Z",
+  "sizes": [
+    "small",
+    "medium",
+    "large"
+  ],
+  "suites": {
+    "heapAfterBootMB": 39.8,
+    "bvhInstalled": true,
+    "bootErrors": 0,
+    "boot": {
+      "runs": 2,
+      "canvasMs": 3617,
+      "platformMs": 7531
+    },
+    "ifc-load": {
+      "small": {
+        "fixtureBytes": 56015,
+        "fixtureElements": 46,
+        "importCallMs": 5.190000000409782,
+        "registerMs": 1809,
+        "loadTotalMs": 2331,
+        "elements": 46,
+        "heapBeforeMB": 48.6,
+        "heapAfterMB": 320.8,
+        "heapDeltaMB": 272.2,
+        "sceneMeshes": 24,
+        "fpsIdle": {
+          "frames": 23,
+          "fps": 11,
+          "p50": 83.3,
+          "p95": 133.3,
+          "max": 166.7
+        },
+        "fpsOrbit": {
+          "frames": 62,
+          "fps": 30,
+          "p50": 33.3,
+          "p95": 50,
+          "max": 50
+        },
+        "raycastMs": {
+          "n": 4,
+          "median": 374.375,
+          "min": 259.8899999996647,
+          "max": 445.2150000007823
+        },
+        "raycastAfterBvhMs": {
+          "n": 4,
+          "median": 317.70000000018626,
+          "min": 233.65500000026077,
+          "max": 406.34499999973923
+        },
+        "propertiesOpenMs": 172,
+        "loadRepeatMs": 1732,
+        "heapAfterRepeatMB": 310.3,
+        "phases": [
+          {
+            "file": "small.ifc",
+            "sizeMB": 0.1,
+            "convertMs": 826.7,
+            "fragLoadMs": 668,
+            "totalMs": 2069,
+            "elements": 46,
+            "schema": "IFC4"
+          }
+        ],
+        "hoverPicks": {
+          "heldMoves": 60,
+          "freeMoves": 10,
+          "picksDuringHeld": 0,
+          "picksDuringFree": 4
+        }
+      },
+      "medium": {
+        "fixtureBytes": 448658,
+        "fixtureElements": 382,
+        "importCallMs": 0.6699999999254942,
+        "registerMs": 2367,
+        "loadTotalMs": 2875,
+        "elements": 382,
+        "heapBeforeMB": 43.4,
+        "heapAfterMB": 318.3,
+        "heapDeltaMB": 274.9,
+        "sceneMeshes": 42,
+        "fpsIdle": {
+          "frames": 17,
+          "fps": 8,
+          "p50": 116.7,
+          "p95": 150,
+          "max": 150
+        },
+        "fpsOrbit": {
+          "frames": 36,
+          "fps": 18,
+          "p50": 66.7,
+          "p95": 83.3,
+          "max": 100
+        },
+        "raycastMs": {
+          "n": 4,
+          "median": 619.9350000005215,
+          "min": 190.30999999959022,
+          "max": 659.5250000003725
+        },
+        "raycastAfterBvhMs": {
+          "n": 4,
+          "median": 618.5599999995902,
+          "min": 385.91500000003725,
+          "max": 621.0300000002608
+        },
+        "propertiesOpenMs": 392,
+        "loadRepeatMs": 2809,
+        "heapAfterRepeatMB": 314.1,
+        "phases": [
+          {
+            "file": "medium.ifc",
+            "sizeMB": 0.4,
+            "convertMs": 1166,
+            "fragLoadMs": 554.7,
+            "totalMs": 2328,
+            "elements": 382,
+            "schema": "IFC4"
+          }
+        ],
+        "hoverPicks": {
+          "heldMoves": 60,
+          "freeMoves": 10,
+          "picksDuringHeld": 0,
+          "picksDuringFree": 3
+        }
+      },
+      "large": {
+        "fixtureBytes": 2457899,
+        "fixtureElements": 2036,
+        "importCallMs": 0.6349999997764826,
+        "registerMs": 5047,
+        "loadTotalMs": 5882,
+        "elements": 2036,
+        "heapBeforeMB": 45.9,
+        "heapAfterMB": 188.6,
+        "heapDeltaMB": 142.7,
+        "sceneMeshes": 55,
+        "fpsIdle": {
+          "frames": 9,
+          "fps": 4,
+          "p50": 233.3,
+          "p95": 266.7,
+          "max": 266.7
+        },
+        "fpsOrbit": {
+          "frames": 15,
+          "fps": 7,
+          "p50": 116.7,
+          "p95": 266.7,
+          "max": 266.7
+        },
+        "raycastMs": {
+          "n": 4,
+          "median": 914.9699999997392,
+          "min": 250,
+          "max": 1084.7549999998882
+        },
+        "raycastAfterBvhMs": {
+          "n": 4,
+          "median": 1027.3349999999627,
+          "min": 761.6750000007451,
+          "max": 1083.2450000001118
+        },
+        "propertiesOpenMs": 782,
+        "loadRepeatMs": 5996,
+        "heapAfterRepeatMB": 322.7,
+        "phases": [
+          {
+            "file": "large.ifc",
+            "sizeMB": 2.3,
+            "convertMs": 2506.9,
+            "fragLoadMs": 691.5,
+            "totalMs": 4625,
+            "elements": 2036,
+            "schema": "IFC4"
+          }
+        ],
+        "hoverPicks": {
+          "heldMoves": 60,
+          "freeMoves": 10,
+          "picksDuringHeld": 0,
+          "picksDuringFree": 3
+        }
+      }
+    },
+    "federated-load": {
+      "files": 4,
+      "loadTotalMs": 26220,
+      "heapBeforeMB": 47.6,
+      "heapAfterMB": 718.8,
+      "heapDeltaMB": 671.2,
+      "fpsIdle": {
+        "frames": 6,
+        "fps": 3,
+        "p50": 366.7,
+        "p95": 400,
+        "max": 400
+      },
+      "totalModels": 7
+    },
+    "memory-after-reload": {
+      "heapMB": 58.7,
+      "heapReclaimedVsFederatedMB": 660.1
+    },
+    "plan-2d": {
+      "wallsDrawn": 40,
+      "renderer3dPaused": true,
+      "fpsPan": {
+        "frames": 114,
+        "fps": 57,
+        "p50": 16.7,
+        "p95": 16.7,
+        "max": 83.3
+      },
+      "pointerBurst30Ms": 112.8
+    }
+  },
+  "pageErrors": [],
+  "finishedAt": "2026-11-14T10:32:20.714Z"
+}

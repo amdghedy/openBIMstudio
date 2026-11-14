@@ -1,0 +1,103 @@
+{
+  "label": "plan-check3",
+  "startedAt": "2026-11-14T09:54:25.301Z",
+  "sizes": [
+    "small"
+  ],
+  "suites": {
+    "heapAfterBootMB": 40,
+    "bvhInstalled": true,
+    "bootErrors": 0,
+    "boot": {
+      "runs": 2,
+      "canvasMs": 3511,
+      "platformMs": 8343
+    },
+    "ifc-load": {
+      "small": {
+        "fixtureBytes": 56015,
+        "fixtureElements": 46,
+        "importCallMs": 2.6299999998882413,
+        "registerMs": 2086,
+        "loadTotalMs": 2549,
+        "elements": 46,
+        "heapBeforeMB": 49.3,
+        "heapAfterMB": 320.9,
+        "heapDeltaMB": 271.6,
+        "sceneMeshes": 30,
+        "fpsIdle": {
+          "frames": 23,
+          "fps": 11,
+          "p50": 83.3,
+          "p95": 100,
+          "max": 150
+        },
+        "fpsOrbit": {
+          "frames": 59,
+          "fps": 29,
+          "p50": 33.3,
+          "p95": 50,
+          "max": 83.3
+        },
+        "raycastMs": {
+          "n": 4,
+          "median": 255.01999999955297,
+          "min": 97.29999999981374,
+          "max": 343.97499999962747
+        },
+        "raycastAfterBvhMs": {
+          "n": 4,
+          "median": 328.6150000002235,
+          "min": 241.49499999918044,
+          "max": 416.8899999996647
+        },
+        "propertiesOpenMs": 152,
+        "loadRepeatMs": 1882,
+        "heapAfterRepeatMB": 443.5,
+        "phases": [
+          {
+            "file": "small.ifc",
+            "sizeMB": 0.1,
+            "convertMs": 851.7,
+            "fragLoadMs": 517.7,
+            "totalMs": 1958,
+            "elements": 46,
+            "schema": "IFC4"
+          }
+        ]
+      }
+    },
+    "federated-load": {
+      "files": 4,
+      "loadTotalMs": 13251,
+      "heapBeforeMB": 43.1,
+      "heapAfterMB": 448.5,
+      "heapDeltaMB": 405.4,
+      "fpsIdle": {
+        "frames": 15,
+        "fps": 7,
+        "p50": 116.7,
+        "p95": 216.7,
+        "max": 216.7
+      },
+      "totalModels": 3
+    },
+    "memory-after-reload": {
+      "heapMB": 55,
+      "heapReclaimedVsFederatedMB": 393.5
+    },
+    "plan-2d": {
+      "wallsDrawn": 40,
+      "fpsPan": {
+        "frames": 19,
+        "fps": 9,
+        "p50": 83.3,
+        "p95": 300,
+        "max": 300
+      },
+      "pointerBurst30Ms": 3212.9
+    }
+  },
+  "pageErrors": [],
+  "finishedAt": "2026-11-14T09:55:46.879Z"
+}

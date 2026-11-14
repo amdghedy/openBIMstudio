@@ -1,0 +1,92 @@
+{
+  "label": "plan-check",
+  "startedAt": "2026-11-14T09:39:05.749Z",
+  "sizes": [
+    "small"
+  ],
+  "suites": {
+    "heapAfterBootMB": 40.5,
+    "bvhInstalled": true,
+    "bootErrors": 0,
+    "boot": {
+      "runs": 2,
+      "canvasMs": 3490,
+      "platformMs": 8487
+    },
+    "ifc-load": {
+      "small": {
+        "fixtureBytes": 56015,
+        "fixtureElements": 46,
+        "importCallMs": 2.444999999832362,
+        "registerMs": 1808,
+        "loadTotalMs": 2326,
+        "elements": 46,
+        "heapBeforeMB": 39.8,
+        "heapAfterMB": 311.7,
+        "heapDeltaMB": 271.9,
+        "sceneMeshes": 30,
+        "fpsIdle": {
+          "frames": 23,
+          "fps": 11,
+          "p50": 83.3,
+          "p95": 100,
+          "max": 166.7
+        },
+        "fpsOrbit": {
+          "frames": 57,
+          "fps": 28,
+          "p50": 33.3,
+          "p95": 66.7,
+          "max": 83.3
+        },
+        "raycastMs": {
+          "n": 4,
+          "median": 280.4850000003353,
+          "min": 261.70000000018626,
+          "max": 352.6099999998696
+        },
+        "raycastAfterBvhMs": {
+          "n": 4,
+          "median": 321.85000000009313,
+          "min": 227.7449999996461,
+          "max": 404.804999999702
+        },
+        "propertiesOpenMs": 174,
+        "loadRepeatMs": 1414,
+        "heapAfterRepeatMB": 443.5,
+        "phases": [
+          {
+            "file": "small.ifc",
+            "sizeMB": 0.1,
+            "convertMs": 811.5,
+            "fragLoadMs": 595.9,
+            "totalMs": 1910,
+            "elements": 46,
+            "schema": "IFC4"
+          }
+        ]
+      }
+    },
+    "federated-load": {
+      "files": 4,
+      "loadTotalMs": 13282,
+      "heapBeforeMB": 43.1,
+      "heapAfterMB": 849.3,
+      "heapDeltaMB": 806.2,
+      "fpsIdle": {
+        "frames": 14,
+        "fps": 7,
+        "p50": 116.7,
+        "p95": 233.3,
+        "max": 233.3
+      },
+      "totalModels": 3
+    },
+    "memory-after-reload": {
+      "heapMB": 55.1,
+      "heapReclaimedVsFederatedMB": 794.2
+    }
+  },
+  "pageErrors": [],
+  "finishedAt": "2026-11-14T09:40:06.007Z"
+}

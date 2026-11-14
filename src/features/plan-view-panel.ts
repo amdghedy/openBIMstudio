@@ -33,6 +33,8 @@ import { selection } from "./selection";
 import { buildTagAll, elementAnchor, leaderEnd, pointInBox, tagLabel, textBox, type TagMode } from "../modules/views/plan-tags";
 import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan-dim-geometry";
 import { history as planHistory } from "./history";
+import { createRafCoalescer } from "../core/raf-coalescer";
+import { setOverlayRendererEnabled } from "../core/renderer-lifecycle";
 import { buildAutoDimensions, buildRangeDimension } from "../modules/views/auto-dim-chains";
 import { resolveElementRef } from "../modules/views/element-snap-points";
 import { getNorthState, onNorthChanged, planRotationDeg, setNorthState, formatNorthAngle } from "../modules/north/north";
@@ -2179,6 +2181,21 @@ function renderBoundaryUi(elId: string, zoomedW: number): void {
   draw((el0.params.polygon as Array<[number, number]>).map((q) => [q[0], q[1]] as [number, number]));
 }
 
+/**
+ * rAF-coalesced plan render for pointer-driven hot paths (pan, dim/anno/
+ * region/element drags). renderPlan rebuilds the whole SVG, so at mousemove
+ * event rate (~60-120 Hz) the old direct calls produced multiple full
+ * rebuilds per displayed frame. The coalescer renders at most once per
+ * animation frame — visually identical, measurably cheaper.
+ */
+const planRenderCoalescer = createRafCoalescer();
+function schedulePlanRender(): void {
+  if (!currentPlan) return;
+  planRenderCoalescer.request(() => {
+    if (currentPlan) renderPlan(currentPlan);
+  });
+}
+
 function renderPlan(plan: PlanView) {
   svg.innerHTML = "";
 
@@ -4238,7 +4255,7 @@ window.addEventListener("mousemove", (e) => {
     const { p1, p2 } = resolvedDimPoints(m);
     moveDimLineTo(m, p1, p2, w, planViewScale);
   }
-  renderPlan(currentPlan);
+  schedulePlanRender();
 });
 window.addEventListener("mousemove", (e) => {
   const dr = planAnnoDrag;
@@ -4248,7 +4265,7 @@ window.addEventListener("mousemove", (e) => {
   if (!w) return;
   dr.moved = true;
   dr.sel.obj.x = w.x + dr.dx; dr.sel.obj.z = w.z + dr.dz;
-  renderPlan(currentPlan);
+  schedulePlanRender();
 });
 window.addEventListener("mouseup", () => {
   const dr = planAnnoDrag;
@@ -4343,7 +4360,7 @@ window.addEventListener("mousemove", (e) => {
     panX -= dx * worldPerPx;
     panY -= dy * worldPerPx;
     planViewUserAdjusted = true;
-    renderPlan(currentPlan);
+    schedulePlanRender();
     return;
   }
 
@@ -4364,7 +4381,7 @@ window.addEventListener("mousemove", (e) => {
         planRegionDrag.lastW = w;
         moveRegion(planRegionDrag.viewId, planRegionDrag.id, dx, dz);
         planRegionDrag.moved = true;
-        if (currentPlan) renderPlan(currentPlan);
+        if (currentPlan) schedulePlanRender();
       }
     }
     return;
@@ -4378,7 +4395,7 @@ window.addEventListener("mousemove", (e) => {
       const dz = w.z - planMoveLast.z;
       planMoveLast = w;
       void moveSelectedInPlan(dx, dz);
-      if (currentPlan) renderPlan(currentPlan);
+      if (currentPlan) schedulePlanRender();
     }
     return;
   }
@@ -4658,10 +4675,23 @@ window.addEventListener("resize", () => {
   if (isPlanViewVisible()) layoutUnderRibbon();
 });
 
+/**
+ * Perf/lifecycle: the plan overlay covers the whole 3D viewport, so a
+ * continuously rendered hidden scene is pure GPU/CPU waste (measured: the
+ * software-GL 3D loop monopolized the main thread and cost the 2D plan a
+ * ~28× pointer-latency regression). Pause the renderer while the plan is
+ * open, resume on close. OBC SimpleRenderer renders in AUTO mode whenever
+ * enabled; pausing is safe because nothing under the overlay is visible.
+ */
+function setPlanRenderer3d(enabled: boolean): void {
+  setOverlayRendererEnabled((ctx.world as any)?.renderer, enabled);
+}
+
 export function togglePlanView() {
   const visible = overlay.style.display === "flex";
   if (visible) {
     overlay.style.display = "none";
+    setPlanRenderer3d(true);
     try {
       window.dispatchEvent(new CustomEvent("obs-toast", {
         detail: { message: "3D View", kind: "info" },
@@ -4670,6 +4700,7 @@ export function togglePlanView() {
   } else {
     layoutUnderRibbon();
     overlay.style.display = "flex";
+    setPlanRenderer3d(false);
     populateLevels();
     planMode = "select";
     planDrawStart = null;

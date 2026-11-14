@@ -1067,10 +1067,46 @@ async function processQueue() {
   }
 }
 
+/**
+ * Import phase record for the reproducible benchmark harness
+ * (bench/bench-browser.mjs — read via __obsPerf.importPhases). Keeps the
+ * last 50 import results with per-phase timings — conversion (web-ifc →
+ * FRAG, worker) and scene load (fragments core). Read-only diagnostics;
+ * exposed through ctx.features.importer (no new window globals).
+ */
+interface ImportPhaseRecord {
+  file: string;
+  sizeMB: number;
+  convertMs: number;
+  fragLoadMs: number;
+  totalMs: number;
+  elements: number;
+  schema: string | null;
+}
+const importPhaseLog: ImportPhaseRecord[] = [];
+function recordImportPhase(t: ImportTask, convertMs: number, fragLoadMs: number, elements: number): void {
+  try {
+    importPhaseLog.push({
+      file: t.file.name,
+      sizeMB: Math.round(t.sizeMB * 10) / 10,
+      convertMs: Math.round(convertMs * 10) / 10,
+      fragLoadMs: Math.round(fragLoadMs * 10) / 10,
+      totalMs: Math.round(t.elapsedMs ?? 0),
+      elements,
+      schema: t.schema ?? null,
+    });
+    if (importPhaseLog.length > 50) importPhaseLog.shift();
+  } catch { /* diagnostics must never break the import */ }
+}
+
 async function runTask(t: ImportTask) {
   const t0 = performance.now();
   cancelRequested = false;
   const loader = (ctx.features as any).appLoader;
+  // Phase instrumentation for the reproducible benchmark harness
+  // (bench/bench-browser.mjs) — read-only record, no behavior change.
+  let convertMs = 0;
+  let fragLoadMs = 0;
 
   try {
     if (t.sizeMB > ifcSettings.browserSafeMaxMB && !ifcSettings.allowUnsafeLargeIfc) {
@@ -1125,10 +1161,12 @@ async function runTask(t: ImportTask) {
       settings.coordToPlace = [ifcSettings.coordX, ifcSettings.coordY, ifcSettings.coordZ];
     }
 
+    const convertT0 = performance.now();
     const processPromise = getImporter().process(settings);
     processPromise.catch(() => { /* handled via race */ });
     const rawResult: any = await Promise.race([processPromise, cancelPromise]);
     rejectActive = null;
+    convertMs = performance.now() - convertT0;
 
     if (cancelRequested) throw new Error("Cancelled by user");
 
@@ -1150,7 +1188,9 @@ async function runTask(t: ImportTask) {
     const modelId = await nextModelId(t.file.name);
     t.modelId = modelId;
 
+    const fragLoadT0 = performance.now();
     await ctx.fragments.core.load(fragBytes, { modelId });
+    fragLoadMs = performance.now() - fragLoadT0;
 
     registerModel(modelId);
 
@@ -1186,6 +1226,8 @@ async function runTask(t: ImportTask) {
     t.status = "done";
     t.phase = geomCount > 0 ? `done · ${geomCount} elements` : "done";
     refreshTaskRow(t);
+
+    recordImportPhase(t, convertMs, fragLoadMs, geomCount);
 
     if (geomCount < 0) {
       const model: any = ctx.fragments.list.get(modelId);
@@ -1602,6 +1644,8 @@ export function setupImporter() {
     setModelOffset, getModelOffset, setModelRotation, getModelRotation, listRegisteredModels,
     getModelBBox, getModelBBoxCenter,
     onOffsetsChanged,
+    /** Benchmark diagnostics: per-file import phase timings (read-only). */
+    lastImportPhases: (): ImportPhaseRecord[] => [...importPhaseLog],
   };
 
   console.log("[importer] ready · positioning modes + live offset control");

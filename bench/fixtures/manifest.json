@@ -1,0 +1,118 @@
+{
+  "generated": "2026-01-01T00:00:00Z",
+  "schema": "IFC4",
+  "fixtures": {
+    "small": {
+      "file": "fixtures/small.ifc",
+      "bytes": 56015,
+      "elements": 46,
+      "openings": 7,
+      "storeys": 1,
+      "byClass": {
+        "IFCWALL": 17,
+        "IFCSLAB": 6,
+        "IFCWINDOW": 4,
+        "IFCDOOR": 3,
+        "IFCCOLUMN": 12,
+        "IFCBEAM": 4
+      },
+      "sha256": "9ef23413b1b700c258c3c126f49472ee3a00f9cf77bca5fef81f21ddff1b35db"
+    },
+    "medium": {
+      "file": "fixtures/medium.ifc",
+      "bytes": 448658,
+      "elements": 382,
+      "openings": 45,
+      "storeys": 3,
+      "byClass": {
+        "IFCWALL": 147,
+        "IFCSLAB": 60,
+        "IFCWINDOW": 24,
+        "IFCDOOR": 21,
+        "IFCCOLUMN": 82,
+        "IFCBEAM": 48
+      },
+      "sha256": "fa339235c7d97e6304a02974bb3f889e3437326d83ce9e37107d08aaffcc63d4"
+    },
+    "large": {
+      "file": "fixtures/large.ifc",
+      "bytes": 2457899,
+      "elements": 2036,
+      "openings": 288,
+      "storeys": 8,
+      "byClass": {
+        "IFCWALL": 744,
+        "IFCSLAB": 320,
+        "IFCWINDOW": 112,
+        "IFCDOOR": 176,
+        "IFCCOLUMN": 404,
+        "IFCBEAM": 280
+      },
+      "sha256": "e580255a1369f2f425a36ee8645a42f4213a6557cb69ae3fab7158d3a81588a1"
+    },
+    "fed-a": {
+      "file": "fixtures/fed-a.ifc",
+      "bytes": 294794,
+      "elements": 247,
+      "openings": 39,
+      "storeys": 3,
+      "byClass": {
+        "IFCWALL": 93,
+        "IFCSLAB": 36,
+        "IFCWINDOW": 24,
+        "IFCDOOR": 15,
+        "IFCCOLUMN": 52,
+        "IFCBEAM": 27
+      },
+      "sha256": "638a6d3e1f521e0c5601276b9e54282323bc1aa379a1664637835dccab15cc5d"
+    },
+    "fed-b": {
+      "file": "fixtures/fed-b.ifc",
+      "bytes": 294903,
+      "elements": 247,
+      "openings": 39,
+      "storeys": 3,
+      "byClass": {
+        "IFCWALL": 93,
+        "IFCSLAB": 36,
+        "IFCWINDOW": 24,
+        "IFCDOOR": 15,
+        "IFCCOLUMN": 52,
+        "IFCBEAM": 27
+      },
+      "sha256": "2eb6bc859004ee55729063c8c5461ad1f0b6e0aa42d0e7f5dd7784499e180796"
+    },
+    "fed-c": {
+      "file": "fixtures/fed-c.ifc",
+      "bytes": 294944,
+      "elements": 247,
+      "openings": 39,
+      "storeys": 3,
+      "byClass": {
+        "IFCWALL": 93,
+        "IFCSLAB": 36,
+        "IFCWINDOW": 24,
+        "IFCDOOR": 15,
+        "IFCCOLUMN": 52,
+        "IFCBEAM": 27
+      },
+      "sha256": "d4363a161ebdf65ef8842cb4515631799b5284db7f87487b5edfef745f1e541f"
+    },
+    "fed-d": {
+      "file": "fixtures/fed-d.ifc",
+      "bytes": 294980,
+      "elements": 247,
+      "openings": 39,
+      "storeys": 3,
+      "byClass": {
+        "IFCWALL": 93,
+        "IFCSLAB": 36,
+        "IFCWINDOW": 24,
+        "IFCDOOR": 15,
+        "IFCCOLUMN": 52,
+        "IFCBEAM": 27
+      },
+      "sha256": "563f138293b342219f74b19d3fcf7fb64e91ed2f1963d6425641af4264dd97c1"
+    }
+  }
+}
