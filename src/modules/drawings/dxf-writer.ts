@@ -152,6 +152,34 @@ function common(e: DxfEntity): string {
 }
 
 /**
+ * Conformant entity prologue: type + handle + the required AcDbEntity subclass
+ * marker, then the common properties. External DXF loaders (ezdxf, desktop CAD)
+ * key their parsers off subclass markers — an entity written as bare
+ * "0/HATCH + 8/layer + 100/AcDbHatch" is rejected as structurally invalid even
+ * though lenient readers accept it.
+ */
+
+/**
+ * Extra paper-space sheets written into the BLOCKS section (DWG conversion
+ * only, `allLayouts`) keep the legacy marker-less entity form: the pinned
+ * acadrust converter maps *Paper_SpaceN blocks back to sheets with exactly
+ * that structure, and conformant prologues inside those blocks drop the last
+ * sheet and leak its content into model space (bisected against
+ * tests/cad-dwg-roundtrip). Everything in the ENTITIES section is conformant.
+ */
+let legacyPrologue = false;
+
+function entityHead(e: DxfEntity, type: string): string {
+  let s = pair(0, type);
+  if (!legacyPrologue) {
+    s += pair(5, nextHandle());
+    s += pair(100, "AcDbEntity");
+  }
+  s += common(e);
+  return s;
+}
+
+/**
  * HATCH entity for a polyline that carries fill data: solid fills and patterned fills
  * (with the real pattern lines when the entity has them). Boundaries are written as
  * closed polyline paths; the first loop is the external one. Without this a hatch was
@@ -161,8 +189,7 @@ function writeHatch(e: Extract<DxfEntity, { type: "LWPOLYLINE" }>): string {
   const h = e.hatch!;
   const loops = h.loops.filter((l) => l.length >= 3);
   const solid = h.solid || !h.pattern || h.pattern.toUpperCase() === "SOLID";
-  let s = pair(0, "HATCH");
-  s += common(e);
+  let s = entityHead(e, "HATCH");
   s += pair(100, "AcDbHatch");
   s += pair(10, 0) + pair(20, 0) + pair(30, 0);
   s += pair(210, 0) + pair(220, 0) + pair(230, 1);
@@ -204,13 +231,19 @@ function writeHatch(e: Extract<DxfEntity, { type: "LWPOLYLINE" }>): string {
   return s;
 }
 
-/** Mark an entity record as paper space (group 67 = 1 right after the type). */
+/** Mark an entity record as paper space (group 67 = 1 inside the AcDbEntity subclass). */
 function inPaperSpace(rec: string): string {
-  return rec.replace(/^(0\n[^\n]+\n)/, "$167\n1\n");
+  if (legacyPrologue) return rec.replace(/^(0\n[^\n]+\n)/, "$167\n1\n");
+  return rec.replace(/^(0\n[^\n]+\n5\n[0-9A-F]+\n100\nAcDbEntity\n)/, "$167\n1\n");
 }
 
 function writeViewport(vp: DxfViewport, id: number): string {
-  let s = pair(0, "VIEWPORT") + pair(8, "0") + pair(67, 1) + pair(100, "AcDbViewport");
+  let s = pair(0, "VIEWPORT");
+  if (legacyPrologue) {
+    s += pair(8, "0") + pair(67, 1) + pair(100, "AcDbViewport");
+  } else {
+    s += pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0") + pair(100, "AcDbViewport");
+  }
   s += pair(10, vp.center.x) + pair(20, vp.center.y) + pair(30, 0);
   s += pair(40, vp.width) + pair(41, vp.height);
   s += pair(68, 1) + pair(69, id);
@@ -233,18 +266,15 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
   let s = "";
 
   if (e.type === "LINE") {
-    s += pair(0, "LINE");
-    s += common(e);
+    s += entityHead(e, "LINE");
     s += writePoint([10, 20, 30], e.start);
     s += writePoint([11, 21, 31], e.end);
   } else if (e.type === "CIRCLE") {
-    s += pair(0, "CIRCLE");
-    s += common(e);
+    s += entityHead(e, "CIRCLE");
     s += writePoint([10, 20, 30], e.center);
     s += pair(40, e.radius);
   } else if (e.type === "ARC") {
-    s += pair(0, "ARC");
-    s += common(e);
+    s += entityHead(e, "ARC");
     s += writePoint([10, 20, 30], e.center);
     s += pair(40, e.radius);
     s += pair(50, e.startAngle);
@@ -252,8 +282,7 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
   } else if (hatchEntities && e.type === "LWPOLYLINE" && e.hatch && !e.hatch.wipeout && e.hatch.loops.some((l) => l.length >= 3)) {
     s += writeHatch(e);
   } else if (e.type === "LWPOLYLINE") {
-    s += pair(0, "LWPOLYLINE");
-    s += common(e);
+    s += entityHead(e, "LWPOLYLINE");
     s += pair(90, e.points.length);
     s += pair(70, e.closed ? 1 : 0);
     for (const p of e.points) {
@@ -266,8 +295,7 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     // on re-import. Native CAD does the same: emit one TEXT per visual line,
     // offset along the text's own baseline direction exactly as drawn.
     const emitText = (value: string, pos: DxfPoint, withValign: boolean): string => {
-      let t = pair(0, "TEXT");
-      t += common(e);
+      let t = entityHead(e, "TEXT");
       t += writePoint([10, 20, 30], pos);
       t += pair(40, e.height);
       t += pair(1, value);
@@ -309,13 +337,11 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
       });
     }
   } else if (e.type === "POINT") {
-    s += pair(0, "POINT");
-    s += common(e);
+    s += entityHead(e, "POINT");
     s += writePoint([10, 20, 30], e.position);
   } else if (e.type === "RAY" || e.type === "XLINE") {
     // Construction lines: one point on the line (10/20/30) + direction (11/21/31).
-    s += pair(0, e.type);
-    s += common(e);
+    s += entityHead(e, e.type);
     s += writePoint([10, 20, 30], e.start);
     s += writePoint([11, 21, 31], e.direction);
   }
@@ -438,6 +464,7 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   if (extraSheets.length) {
     s += pair(0, "SECTION");
     s += pair(2, "BLOCKS");
+    legacyPrologue = true; // DWG-converter block contents use the legacy entity form (see above)
     extraSheets.forEach((sheet, i) => {
       const name = `*Paper_Space${i + 1}`;
       s += pair(0, "BLOCK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0");
@@ -447,6 +474,7 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
       sheet.viewports.forEach((vp, k) => { s += writeViewport(vp, k + 2); });
       s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0") + pair(100, "AcDbBlockEnd");
     });
+    legacyPrologue = false;
     s += pair(0, "ENDSEC");
   }
 

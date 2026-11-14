@@ -87,6 +87,12 @@ jobs:
           if (failed) process.exit(1);
           SCRIPT
 
+      # Independent DXF validation (tests/dxf-independent-validation) parses the
+      # platform's export with ezdxf, a third-party DXF implementation. The test
+      # skips gracefully when ezdxf is missing (local dev), but CI runs it for real.
+      - name: Install ezdxf for independent DXF validation
+        run: python3 -m pip install --quiet ezdxf
+
       # Batched runner executes the complete unit suite (scripts/ci-unit-tests.mjs).
       # Keep these command strings: milestone verification scripts inspect this file.
       # npm run test:v70

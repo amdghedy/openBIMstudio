@@ -396,6 +396,10 @@ export function parseDxf(text: string): DxfDocument {
   const dimStyleNames: string[] = [];
   dimStyleTable = {};
   const layoutNames: Array<{ name: string; order: number }> = [];
+  /** BLOCK_RECORD table: block name (upper) -> associated LAYOUT object handle (group 340). */
+  const layoutHandleByBlock = new Map<string, string>();
+  /** OBJECTS LAYOUT records: LAYOUT object handle (group 5) -> layout name (group 1). */
+  const layoutNameByHandle = new Map<string, string>();
   let units: DxfUnits | undefined;
   let ltscale: number | undefined;
   let section = "";
@@ -461,6 +465,11 @@ export function parseDxf(text: string): DxfDocument {
             ...(d.has(143) && d.n(143) > 0 ? { linearFactor: d.n(143) } : {}),
           };
         }
+      } else if (r.type === "BLOCK_RECORD" && table === "BLOCK_RECORD") {
+        const d = new Data(r.pairs);
+        const nm = d.s(2)?.trim().toUpperCase();
+        const lay = d.s(340)?.trim().toUpperCase();
+        if (nm && lay) layoutHandleByBlock.set(nm, lay);
       } else if (r.type === "LAYER" && table === "LAYER") {
         const d = new Data(r.pairs);
         const rawColor = d.n(62, 7);
@@ -500,7 +509,12 @@ export function parseDxf(text: string): DxfDocument {
       }
       if (r.type === "LAYOUT") {
         const d = new Data(r.pairs);
-        const nm = d.s(1)?.trim();
+        // The record carries two group-1 names: AcDbPlotSettings' page setup
+        // first, the layout name last (in the AcDbLayout subclass) — so the
+        // name is the last group-1 pair, not the first.
+        const nm = d.all(1).map((v) => v.trim()).filter(Boolean).pop();
+        const h = d.s(5)?.trim().toUpperCase();
+        if (nm && h) layoutNameByHandle.set(h, nm);
         if (nm && nm.toLowerCase() !== "model") layoutNames.push({ name: nm, order: d.n(71) });
       }
       continue;
@@ -518,11 +532,18 @@ export function parseDxf(text: string): DxfDocument {
   const entities = expandRecs(modelRecs, blocks, 0, skip, null);
 
   // 3b. Paper-space layouts: the active layout lives in ENTITIES (flag 67), the others in *Paper_Space blocks.
-  const sheets: Array<{ recs: Rec[] }> = [];
-  if (paperRecs.length) sheets.push({ recs: paperRecs });
+  const sheets: Array<{ recs: Rec[]; blockName?: string }> = [];
+  if (paperRecs.length) sheets.push({ recs: paperRecs, blockName: "*Paper_Space" });
   const paperBlocks = [...blocks.entries()].filter(([n]) => /^\*paper_space\d*$/i.test(n)).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
-  for (const [n, b] of paperBlocks) { if (!b.recs.length) continue; if (n.toLowerCase() === "*paper_space" && paperRecs.length) continue; sheets.push({ recs: b.recs }); }
+  for (const [n, b] of paperBlocks) { if (!b.recs.length) continue; if (n.toLowerCase() === "*paper_space" && paperRecs.length) continue; sheets.push({ recs: b.recs, blockName: n }); }
   const orderedNames = layoutNames.sort((a, b) => a.order - b.order).map((l) => l.name);
+  // Layout names follow their owning BLOCK_RECORD (*Paper_Space is the active
+  // sheet written to ENTITIES; *Paper_SpaceN are the further sheets), falling
+  // back to tab order for files without the BLOCK_RECORD/LAYOUT link (R12).
+  const layoutNameForBlock = (blockName: string): string | undefined => {
+    const h = layoutHandleByBlock.get(blockName.toUpperCase());
+    return h ? layoutNameByHandle.get(h) : undefined;
+  };
   const layouts: DxfLayout[] = [];
   for (const sh of sheets) {
     const vps: DxfViewport[] = [];
@@ -535,7 +556,10 @@ export function parseDxf(text: string): DxfDocument {
       return false;
     });
     const ents = expandRecs(rest, blocks, 0, skip, null, true);
-    if (ents.length || vps.length) layouts.push({ name: orderedNames[layouts.length] ?? `Layout ${layouts.length + 1}`, entities: ents, viewports: vps });
+    if (ents.length || vps.length) {
+      const name = (sh.blockName ? layoutNameForBlock(sh.blockName) : undefined) ?? orderedNames[layouts.length] ?? `Layout ${layouts.length + 1}`;
+      layouts.push({ name, entities: ents, viewports: vps });
+    }
   }
 
   if (!layers.some((l) => l.name === "0")) layers.unshift({ name: "0", color: 7 });
@@ -850,7 +874,11 @@ function expandRecs(
       case "ATTDEF":
         break; // attribute definitions are placeholders; the inserted ATTRIBs carry the values
       default:
-        break; // unknown/structural records are ignored
+        // Unknown entity types must not be dropped silently: count them so the
+        // import summary and the Drawing Database Status dialog can tell the
+        // user exactly what the file contained that was not drawn.
+        skip(r.type);
+        break;
     }
     if (ocsFlip) for (let k = outStart; k < out.length; k++) out[k] = flipEntityX(out[k]);
   }

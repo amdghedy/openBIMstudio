@@ -22,10 +22,11 @@ Without it, **DXF** still works fully; for DWG convert to DXF first (any drawing
 | Import drawing | **DXF** | ✅ pure TypeScript parser |
 | Import drawing | **DWG** | ✅ if `@mlightcad/libredwg-web` installed |
 | Export drawing sketch | **DXF** | ✅ R2010 ASCII |
-| Export edited drawing drawing | **DWG** | ⚠️ local acadrust WASM writer; 2D subset, read back with the same engine in tests (not opened in desktop drafting software). Versions 2000 to 2018, chosen with `DWGVERSION` |
+| Export edited drawing drawing | **DWG** | ⚠️ local acadrust WASM writer; 2D subset, cross-validated with the independent LibreDWG reader in tests (not opened in desktop drafting software). Versions 2000 to 2018, chosen with `DWGVERSION` |
 | Load into drawing overlay | DXF/DWG | ✅ lines, circles, arcs, polylines, text |
 | Load into 3D scene | DXF/DWG | ✅ THREE.Line preview |
 | Layers | DXF | ✅ read + write |
+| Independent DXF validation | DXF | ✅ ezdxf cross-checks import fidelity + export conformance (`npm run test:dxf-independent-validation`, `docs/DXF_DWG_INTEROP.md`) |
 
 ## UI
 
