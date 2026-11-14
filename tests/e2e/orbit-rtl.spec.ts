@@ -892,3 +892,74 @@ test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => 
   expect(n, 'authored cut face differs with caps on/off').toBeGreaterThan(300);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+/** A ground slab (top at 0) plus five 0.17 m risers rising east to a landing at 0.85 m. IFC x = app x. */
+function stairsIfc(): string {
+  const head = WALL_IFC.slice(0, WALL_IFC.indexOf('#50='));
+  let n = 100; const L: string[] = [];
+  const solid = (cx: number, dx: number, h: number, zBase: number, name: string) => {
+    const a = n++, b = n++, c = n++, d = n++, e = n++, f = n++, g = n++, hh = n++, i = n++;
+    L.push(`#${a}=IFCSLAB('${'S' + a}VqzM6bXH7ugTO1ZoXR',$,'${name}',$,$,#51,#${b},$,.FLOOR.);`);
+    L.push(`#${b}=IFCPRODUCTDEFINITIONSHAPE($,$,(#${c}));`);
+    L.push(`#${c}=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#${d}));`);
+    L.push(`#${d}=IFCEXTRUDEDAREASOLID(#${e},#${f},#64,${h.toFixed(3)});`);
+    L.push(`#${e}=IFCRECTANGLEPROFILEDEF(.AREA.,$,#${g},${dx.toFixed(3)},4.);`);
+    L.push(`#${f}=IFCAXIS2PLACEMENT3D(#${hh},$,$);`);
+    L.push(`#${g}=IFCAXIS2PLACEMENT2D(#${i},$);`);
+    L.push(`#${hh}=IFCCARTESIANPOINT((0.,0.,${zBase.toFixed(3)}));`);
+    L.push(`#${i}=IFCCARTESIANPOINT((${cx.toFixed(3)},0.));`);
+    return a;
+  };
+  const ids = [solid(0, 12, 0.2, -0.2, 'Ground')];
+  for (let k = 1; k <= 5; k++) { const x0 = 0.3 * k; ids.push(solid((x0 + 6) / 2, 6 - x0, 0.17 * k, 0, 'Step' + k)); }
+  L.push(`#70=IFCRELCONTAINEDINSPATIALSTRUCTURE('4VqzM6bXH7ugTO1ZoXRFzs',$,$,$,(${ids.map((x) => '#' + x).join(',')}),#30);`);
+  return head + L.join('\n') + '\nENDSEC;\nEND-ISO-10303-21;\n';
+}
+
+test('WALK MODE: walks up a staircase onto a raised landing without clipping through or dropping', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__?.fragments), { timeout: 30000 }).toBe(true);
+  await page.evaluate(async (text) => {
+    const host = (window as any).__OBS_CTX__.rightHost as HTMLElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File([text], 'stairs.ifc', { type: 'application/octet-stream' }));
+    host.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }, stairsIfc());
+  await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), { timeout: 90000 }).toBeGreaterThanOrEqual(1);
+  await page.waitForTimeout(4000);
+  for (let i = 0; i < 6; i++) {
+    await page.evaluate(async () => { await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(-4, 1.7, 0, 4, 1.7, 0, false); });
+    await page.waitForTimeout(700);
+    await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.enable());
+    await page.waitForTimeout(600);
+    const p = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+    if (p && p.x < -3.5 && Math.abs(p.pitch) < 0.05) break;
+    await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable?.());
+    await page.waitForTimeout(300);
+  }
+  const p0 = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+  await page.evaluate(() => {
+    const w = window as any; w.__ws = []; w.__wr = true;
+    const loop = (t: number) => { const p = w.__OBS_CTX__.features.walkMode.getPose(); if (p) w.__ws.push([t, p.x, p.y, p.z]); if (w.__wr) requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  });
+  await page.keyboard.down('w');
+  await page.waitForTimeout(2600);
+  await page.keyboard.up('w');
+  await page.waitForTimeout(800);
+  const S: number[][] = await page.evaluate(() => { const w = window as any; w.__wr = false; return w.__ws; });
+  const last = S[S.length - 1];
+  let maxJump = 0; for (let i = 1; i < S.length; i++) maxJump = Math.max(maxJump, Math.abs(S[i][2] - S[i - 1][2]));
+  const diag = JSON.stringify({ start: p0, frames: S.length, lastX: +last[1].toFixed(2), lastEyeY: +last[2].toFixed(3), maxEyeJump: +maxJump.toFixed(3), minEyeY: +Math.min(...S.map((q) => q[2])).toFixed(3) });
+  console.log('STAIRS-DIAG ' + diag);
+  expect(last[1], 'walked past the staircase onto the landing. ' + diag).toBeGreaterThan(2);
+  expect(last[2], 'eye is about 1.7 m above the 0.85 m landing. ' + diag).toBeGreaterThan(2.35);
+  expect(last[2], diag).toBeLessThan(2.75);
+  expect(maxJump, 'no single-frame eye jump bigger than a riser plus margin. ' + diag).toBeLessThan(0.3);
+  expect(Math.min(...S.map((q) => q[2])), 'never sank through the floor. ' + diag).toBeGreaterThan(1.55);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
