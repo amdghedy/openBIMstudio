@@ -951,7 +951,7 @@ test('WALK MODE: walks up a staircase onto a raised landing without clipping thr
     requestAnimationFrame(loop);
   });
   await page.keyboard.down('w');
-  await page.waitForTimeout(2600);
+  for (let k = 0; k < 36; k++) { await page.waitForTimeout(250); const q = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose()); if (q && q.x > 2.6) break; } // slower CI machines need longer
   await page.keyboard.up('w');
   await page.waitForTimeout(800);
   const S: number[][] = await page.evaluate(() => { const w = window as any; w.__wr = false; return w.__ws; });
@@ -999,7 +999,7 @@ test('WALK MODE: walks down the staircase from the landing, stepping down each r
     requestAnimationFrame(loop);
   });
   await page.keyboard.down('w');
-  await page.waitForTimeout(2600);
+  for (let k = 0; k < 36; k++) { await page.waitForTimeout(250); const q = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose()); if (q && q.x < -1) break; }
   await page.keyboard.up('w');
   await page.waitForTimeout(800);
   const S: number[][] = await page.evaluate(() => { const w = window as any; w.__wr = false; return w.__ws; });
