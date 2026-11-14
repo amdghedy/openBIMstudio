@@ -820,12 +820,12 @@ test('SECTION CAPS: a cut through a solid wall shows a solid hatched cut face; o
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && /shader|WebGL|program/i.test(m.text())) logs.push(m.text().slice(0, 300)); });
   await loadWallIfc(page);
-  await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; sb.enable(0.5); const b = sb.getBox(); b.max.x = (b.min.x + b.max.x) / 2; sb.setBox(b); });
-  // Look at the cut face (normal +X) from the +X side, level with the wall.
-  await page.evaluate(async () => { const c = (window as any).__OBS_CTX__.world.camera.controls; await c.setLookAt(10, 1.5, 0, -1.2, 1.5, 0, false); });
+  await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; sb.enable(0.5); const b = sb.getBox(); b.max.y = 1.5; sb.setBox(b); });
+  // A horizontal cut at 1.5 m, looked at from straight above: the wall is a hollow strip unless it is capped.
+  await page.evaluate(async () => { const c = (window as any).__OBS_CTX__.world.camera.controls; await c.setLookAt(0, 9, 0.01, 0, 0, 0, false); });
   await page.waitForTimeout(900);
   const crop = async () => { const box = (await page.locator('canvas').first().boundingBox())!;
-    return decodePng(await page.screenshot({ clip: { x: box.x + box.width * 0.3, y: box.y + box.height * 0.25, width: box.width * 0.4, height: box.height * 0.5 } })); };
+    return decodePng(await page.screenshot({ clip: { x: box.x, y: box.y, width: box.width, height: box.height } })); };
   const diffPx = (a: ReturnType<typeof decodePng>, b: ReturnType<typeof decodePng>) => { let n = 0; for (let i = 0; i < a.data.length && i < b.data.length; i += a.bpp) if (Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 1] - b.data[i + 1]) + Math.abs(a.data[i + 2] - b.data[i + 2]) > 60) n++; return n; };
   const capsOn = await crop();
   const patchedOn = await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.patched());
