@@ -785,6 +785,16 @@ test('LIVE IFC LINK: writes edits to the linked file, never overwrites an outsid
   const s4 = await st();
   expect(s4.status.external).toBe(false);
 
+  // The file the link wrote must be a valid IFC that the app's own IFC loader accepts.
+  const before = await page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size);
+  await page.evaluate(async () => {
+    const w = window as any, host = w.__OBS_CTX__.rightHost as HTMLElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File([w.__disk.text], 'live-written.ifc', { type: 'application/octet-stream' }));
+    host.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), { timeout: 90000, message: 'the written IFC opens in the app' }).toBeGreaterThan(before);
+
   await page.locator('#obs-live-ifc-link button[data-a="stop"]').click();
   const s5 = await st();
   expect(s5.status.active).toBe(false);
