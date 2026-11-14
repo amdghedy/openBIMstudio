@@ -36,7 +36,7 @@ export function nextLevelElevation(levels: number[], groundY: number, dir: 1 | -
 }
 
 /** A wall plane the walker recently touched: a point on it and its horizontal unit normal facing the walker. */
-export interface WallContact { px: number; pz: number; nx: number; nz: number; t: number }
+export interface WallContact { px: number; pz: number; nx: number; nz: number; t: number; feet0?: number }
 
 /**
  * Keep a walker of the given radius on the free side of a wall plane.

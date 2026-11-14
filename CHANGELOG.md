@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Fixed
+- Walk mode: IFC stairs no longer block the walker. A knee-height probe taken from lower ground saw the upper risers as walls and held the walker at the third step; wall contacts are now dropped once the walker's feet have risen above where they were measured. Browser test added (five 0.17 m risers to a landing).
+
+
 ### Added
 - 3D dimensions: **Delete / Backspace** while Measure is active removes the most recent finished dimension (each XYZ/distance/angle/chain segment counts as one). Clear still removes all. Browser test added.
 

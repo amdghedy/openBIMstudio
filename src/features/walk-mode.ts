@@ -186,7 +186,7 @@ function fireSensors(wishX: number, wishZ: number, wishSpeed: number): void {
         if (Math.abs(h.normal.y) >= 0.7 || hl < 1e-6) return; // floor / ramp, not a wall
         let nx = h.normal.x / hl, nz = h.normal.z / hl;
         if (nx * dx + nz * dz > 0) { nx = -nx; nz = -nz; } // face the walker
-        const c: WallContact = { px: h.point.x, pz: h.point.z, nx, nz, t: performance.now() };
+        const c: WallContact = { px: h.point.x, pz: h.point.z, nx, nz, t: performance.now(), feet0: feetY };
         const same = wallContacts.findIndex((o) => o.nx * nx + o.nz * nz > 0.95 && Math.abs((o.px - c.px) * nx + (o.pz - c.pz) * nz) < 0.2);
         if (same >= 0) wallContacts[same] = c; else { wallContacts.push(c); if (wallContacts.length > 6) wallContacts.shift(); }
       }).finally(() => { sensorBusy[name] = false; });
@@ -394,7 +394,10 @@ function updateGroundTarget() {
 /** Wall planes measured by the fragments sensors (IFC models): applied every frame, independent of answer latency. */
 function applyWallContacts(): void {
   const nowMs = performance.now();
-  wallContacts = wallContacts.filter((c) => nowMs - c.t < 1200);
+  // A wall measured at knee height from lower ground may be a stair riser the walker has since stepped up past:
+  // once the feet have risen above where it was measured the sensors re-probe from the new height, so drop it.
+  const feetNow = state.pos.y - eyeHeight();
+  wallContacts = wallContacts.filter((c) => nowMs - c.t < 1200 && !(c.feet0 != null && feetNow - c.feet0 > 0.04));
   for (const c of wallContacts) {
     const r = constrainToWall(state.pos.x, state.pos.z, state.vel.x, state.vel.z, c, BODY_RADIUS);
     if (r.hit) { state.pos.x = r.x; state.pos.z = r.z; state.vel.x = r.vx; state.vel.z = r.vz; }
