@@ -640,10 +640,14 @@ test('WALK MODE: smooth constant-speed walking, stops at a wall without passing 
   await loadWallIfc(page);
   await page.waitForTimeout(2500); // let the automatic zoom-to-model after loading finish before taking the camera
   // Stand 6 m in front of the wall (wall at z=0, spanning x -2.5..2.5) looking at it.
-  await page.evaluate(async () => {
-    await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(0, 1.7, 6, 0, 1.7, 0, false);
-  });
-  await page.waitForTimeout(500);
+  for (let i = 0; i < 12; i++) { // the automatic zoom-to-model can overwrite the camera; re-apply until it sticks
+    const dirZ = await page.evaluate(async () => {
+      const c = (window as any).__OBS_CTX__; await c.world.camera.controls.setLookAt(0, 1.7, 6, 0, 1.7, 0, false);
+      await new Promise((r) => setTimeout(r, 400));
+      const cam = c.world.camera.three; return cam.getWorldDirection(cam.position.clone()).z as number;
+    });
+    if (dirZ < -0.99) break;
+  }
   await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.enable());
   await page.waitForTimeout(600);
   const enabled = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.isEnabled());
@@ -758,7 +762,9 @@ test('LIVE IFC LINK: writes edits to the linked file, never overwrites an outsid
       getFile: async () => new File([w.__disk.text], 'live-test.ifc', { lastModified: w.__disk.mod }),
       createWritable: async () => { let buf = ''; return { write: async (t: string) => { buf += t; }, close: async () => { w.__disk.text = buf; w.__disk.mod += 1; } }; },
     });
-    const twin = (name: string) => ({ name, nativeEntity: 'IFCWALL', modelId: 'm', position: [0, 0, 0], quaternion: [0, 0, 0, 1] });
+    const box: number[] = []; const V = [[0,0,0],[2,0,0],[2,1,0],[0,1,0],[0,0,3],[2,0,3],[2,1,3],[0,1,3]];
+    for (const f of [[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]]) for (const i of f) box.push(...V[i]);
+    const twin = (name: string) => ({ name, nativeEntity: 'IFCWALL', modelId: 'm', position: [0, 0, 0], quaternion: [0, 0, 0, 1], geometry: { positions: box } });
     w.__twins = [twin('Twin A')]; w.__mk = twin;
     c.features.fragEdit = c.features.fragEdit ?? {};
     c.features.fragEdit.getTwinsForIfcExport = () => w.__twins;
