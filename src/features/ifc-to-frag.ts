@@ -67,6 +67,11 @@ function setAutoLink(on: boolean): void {
   try { localStorage.setItem(AUTO_LINK_KEY, on ? "1" : "0"); } catch { /* */ }
 }
 
+/** Force auto-link on for recovery handoff (Link IFC → convert path). */
+export function forceAutoLink(on = true): void {
+  setAutoLink(on);
+}
+
 async function linkFragBytes(frag: Uint8Array, name: string): Promise<void> {
   const blob = new Blob([frag as BlobPart], { type: "application/octet-stream" });
   const f = new File([blob], name, { type: "application/octet-stream" });
@@ -456,6 +461,7 @@ export function setupIfcToFrag(): void {
     open: showIfcToFragPanel,
     toggle: toggleIfcToFragPanel,
     queue: queueFiles,
+    forceAutoLink,
   };
   try {
     (ctx.features as any).ifcToFrag = obsIfcToFrag;

@@ -903,6 +903,13 @@ export async function expandIfcSources(
 }
 
 
+
+/** When true, large Link-IFC skips open convert&link without the modal. */
+const LARGE_IFC_AUTO_HANDOFF_KEY = "obs.ifc.autoHandoffFrag";
+function largeIfcAutoHandoff(): boolean {
+  try { return localStorage.getItem(LARGE_IFC_AUTO_HANDOFF_KEY) === "1"; } catch { return false; }
+}
+
 /** Critical large-model path: one-click handoff to IFC→FRAG instead of a dead-end alert. */
 function offerLargeIfcRecovery(files: File[]): void {
   const names = files.map((f) => `• ${escapeHtml(f.name)} (${(f.size / (1024 * 1024)).toFixed(0)} MB)`).join("\n");
@@ -922,7 +929,7 @@ function offerLargeIfcRecovery(files: File[]): void {
       `<div style="padding:12px 14px;border-bottom:1px solid #2a2e3a;font-weight:700">Large IFC — convert to FRAG</div>` +
       `<div style="padding:12px 14px;font-size:12px;line-height:1.45;color:#c5cad6;white-space:pre-wrap">` +
       `These file(s) are above the browser-safe direct-link limit:\n\n${names}\n\n` +
-      `Direct Link IFC often leaves an empty scene (OOM). Convert to .frag first, then Link FRAG.` +
+      `Direct Link IFC often leaves an empty scene (OOM). Prefer Convert & link — builds .frag, links it, and fits the camera.` +
       `</div>`;
     const acts = document.createElement("div");
     acts.style.cssText = "padding:10px 14px 14px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end";
@@ -937,8 +944,9 @@ function offerLargeIfcRecovery(files: File[]): void {
       return b;
     };
     acts.append(
-      mk("Convert to FRAG…", true, () => {
+      mk("Convert & link now", true, () => {
         void import("./ifc-to-frag").then((m) => {
+          m.forceAutoLink?.(true);
           m.showIfcToFragPanel?.();
           void m.queueFiles?.(files);
         }).catch((err) => {
@@ -999,7 +1007,15 @@ function enqueueIfc(files: File | File[]) {
     return mb > ifcSettings.browserSafeMaxMB && mb <= ifcSettings.maxSizeMB && !ifcSettings.allowUnsafeLargeIfc;
   });
   if (skippedBig.length) {
-    offerLargeIfcRecovery(skippedBig);
+    if (largeIfcAutoHandoff()) {
+      void import("./ifc-to-frag").then((m) => {
+        m.forceAutoLink?.(true);
+        m.showIfcToFragPanel?.();
+        void m.queueFiles?.(skippedBig);
+      }).catch(() => offerLargeIfcRecovery(skippedBig));
+    } else {
+      offerLargeIfcRecovery(skippedBig);
+    }
   }
   void processQueue();
 }
@@ -1325,6 +1341,7 @@ settingsBox.innerHTML = `
       <span style="opacity:.65;font-size:10px">Above this, IFC is skipped unless "Allow unsafe large IFC" is on. Default 350 MB (covers typical ~80 MB IFCZIP after unpack). ~700 MB models still need offline FRAG.</span>
     </label>
     <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcAllowUnsafe"> Allow unsafe large IFC (may crash the tab)</label>
+    <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcAutoHandoff"> Auto convert+link large IFC (skip dialog)</label>
   </div>`;
 
 function syncSettingsUI() {
@@ -1339,6 +1356,7 @@ function syncSettingsUI() {
   $("ifcMax").value = String(ifcSettings.maxSizeMB);
   $("ifcSafeMax").value = String(ifcSettings.browserSafeMaxMB ?? 350);
   $("ifcAllowUnsafe").checked = !!ifcSettings.allowUnsafeLargeIfc;
+  try { $("ifcAutoHandoff").checked = largeIfcAutoHandoff(); } catch { /* */ }
 }
 
 settingsBox.addEventListener("change", (e) => {
@@ -1358,6 +1376,7 @@ settingsBox.addEventListener("change", (e) => {
     case "ifcMax": ifcSettings.maxSizeMB = Math.max(1, Number(el.value) || 800); break;
     case "ifcSafeMax": ifcSettings.browserSafeMaxMB = Math.max(10, Number(el.value) || 350); break;
     case "ifcAllowUnsafe": ifcSettings.allowUnsafeLargeIfc = el.checked; break;
+    case "ifcAutoHandoff": try { localStorage.setItem(LARGE_IFC_AUTO_HANDOFF_KEY, el.checked ? "1" : "0"); } catch { /* */ } break;
   }
   saveIfcSettings();
 });
