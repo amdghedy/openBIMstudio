@@ -131,7 +131,8 @@ function appendTwinElement(ctx: Ctx, edit: TwinIfcSource, storey: number): numbe
     }
     const nTris = Math.floor(nVerts / 3);
     for (let t = 0; t < nTris; t++) {
-      faceList.push(`((${t * 3 + 1},${t * 3 + 2},${t * 3 + 3}))`);
+      // IfcTriangulatedFaceSet.CoordIndex = LIST OF LIST[3] OF index: one triple per triangle (an extra pair of brackets made web-ifc abort with 'stoll: no conversion').
+      faceList.push(`(${t * 3 + 1},${t * 3 + 2},${t * 3 + 3})`);
     }
     const coords = next();
     lines.push(`#${coords}=IFCCARTESIANPOINTLIST3D((${coordList.join(",")}));`);
