@@ -868,17 +868,25 @@ test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => 
   await page.locator('#obs-hero-3d').click({ timeout: 15000 }).catch(() => {});
   const id = await page.evaluate(async () => (window as any).__obsAuthoring.createElementByType('wall', { start: [-2, 0], end: [2, 0], height: 3, thickness: 0.4 }));
   expect(id, 'authored wall created').toBeTruthy();
+  await expect.poll(() => page.evaluate(() => (window as any).__obsAuthoring.getGroup().children.length), { timeout: 15000 }).toBeGreaterThan(0);
   await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; sb.enable(0.5); const b = sb.getBox(); b.max.y = 1.5; sb.setBox(b); });
   await page.evaluate(async () => { const c = (window as any).__OBS_CTX__.world.camera.controls; await c.setLookAt(0, 9, 0.01, 0, 0, 0, false); });
   await page.waitForTimeout(900);
   const crop = async () => { const box = (await page.locator('canvas').first().boundingBox())!;
     return decodePng(await page.screenshot({ clip: { x: box.x, y: box.y, width: box.width, height: box.height } })); };
-  const on = await crop();
-  const patchedOn = await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.patched());
-  await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.set(false));
-  await page.waitForTimeout(900);
-  const off = await crop();
-  let n = 0; for (let i = 0; i < on.data.length && i < off.data.length; i += on.bpp) if (Math.abs(on.data[i] - off.data[i]) + Math.abs(on.data[i + 1] - off.data[i + 1]) + Math.abs(on.data[i + 2] - off.data[i + 2]) > 60) n++;
+  const diff = (a: ReturnType<typeof decodePng>, b: ReturnType<typeof decodePng>) => { let n = 0; for (let i = 0; i < a.data.length && i < b.data.length; i += a.bpp) if (Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 1] - b.data[i + 1]) + Math.abs(a.data[i + 2] - b.data[i + 2]) > 60) n++; return n; };
+  // Rendering is asynchronous in software WebGL: poll until the two states differ.
+  let n = 0, patchedOn = 0;
+  for (let k = 0; k < 8 && n <= 300; k++) {
+    await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.set(true));
+    await page.waitForTimeout(1200);
+    const on = await crop();
+    patchedOn = await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.patched());
+    await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.set(false));
+    await page.waitForTimeout(1200);
+    const off = await crop();
+    n = diff(on, off);
+  }
   console.log('CAPS-AUTHORED ' + JSON.stringify({ patchedOn, changed: n }));
   expect(patchedOn, 'authored materials patched').toBeGreaterThan(0);
   expect(n, 'authored cut face differs with caps on/off').toBeGreaterThan(300);
