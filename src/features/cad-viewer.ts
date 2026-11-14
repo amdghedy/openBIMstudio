@@ -2768,6 +2768,77 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     draw();
     logCmd("Command: _ZOOM _EXTENTS");
   }
+
+  /** Physically rotate active entities so long edges align with world axes (PLAN). */
+  function straightenDrawing(): void {
+    if (!doc || !ents.length) {
+      logCmd("PLAN: nothing to straighten.");
+      return;
+    }
+    const ang = M.estimatePrincipalAngle(ents);
+    if (!ang || Math.abs(ang) < 0.5) {
+      uprightRot = 0;
+      zoomExtents();
+      logCmd("PLAN: drawing is already axis-aligned.");
+      return;
+    }
+    let cx = 0, cy = 0, n = 0;
+    for (const e of ents) {
+      const eb = M.entityBBox(e);
+      if (!Number.isFinite(eb.minX + eb.maxX + eb.minY + eb.maxY)) continue;
+      cx += (eb.minX + eb.maxX) * 0.5;
+      cy += (eb.minY + eb.maxY) * 0.5;
+      n++;
+    }
+    if (!n) return;
+    cx /= n;
+    cy /= n;
+    const before = ents.slice();
+    const after = ents.map((e) => X.rotateEnt(e, cx, cy, ang));
+    if (layoutI < 0) {
+      modelEnts = after;
+      doc.entities = after;
+    } else if (doc.layouts?.[layoutI]) {
+      doc.layouts[layoutI].entities = after;
+    }
+    ents = after;
+    uprightRot = 0;
+    let b: M.BBox | null = null;
+    for (const e of ents) {
+      const eb = M.entityBBox(e);
+      if (Number.isFinite(eb.minX + eb.maxX + eb.minY + eb.maxY)) b = M.unionBBox(b, eb);
+    }
+    try {
+      const rb = M.robustEntityBounds?.(ents);
+      if (rb) b = rb;
+    } catch { /* */ }
+    bounds = b;
+    if (layoutI < 0) {
+      modelBounds = b;
+      modelIdx = M.buildIndex(modelEnts, modelBounds!);
+      idx = modelIdx;
+    } else {
+      layoutIdxCache.delete(layoutI);
+      idx = M.buildIndex(ents, bounds!);
+      layoutIdxCache.set(layoutI, idx);
+    }
+    try {
+      commitModify(before, after);
+    } catch {
+      markDirty();
+    }
+    view = M.fitView(bounds!, view.w, view.h, 0.06, 0);
+    draw();
+    logCmd(`PLAN: straightened ${ang >= 0 ? "+" : ""}${ang.toFixed(2)}° — drawing aligned to world axes.`);
+  }
+
+  /** 3D-orbit mode: drag rolls the view (view.rot) for inspection before PLAN. */
+  let orbitMode = false;
+  function setOrbitMode(on: boolean): void {
+    orbitMode = on;
+    logCmd(on ? "3DORBIT: drag on the canvas to roll the view. Esc or PLAN to exit." : "3DORBIT off.");
+  }
+
   function goTo(x: number, y: number, scale?: number) {
     pushView();
     view = { ...view, cx: x, cy: y, scale: scale ?? view.scale };
@@ -8073,14 +8144,22 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   root.querySelector("[data-r=vc-rot-ccw]")?.addEventListener("click", (e) => {
     e.stopPropagation();
     pushView();
-    // Rotate view 90 degrees CCW
+    uprightRot = (uprightRot || 0) + 90;
+    if (bounds) view = M.fitView(bounds, view.w, view.h, 0.06, uprightRot);
+    draw();
     logCmd("ViewCube: Rotate 90° CCW");
   });
   root.querySelector("[data-r=vc-rot-cw]")?.addEventListener("click", (e) => {
     e.stopPropagation();
     pushView();
-    // Rotate view 90 degrees CW
+    uprightRot = (uprightRot || 0) - 90;
+    if (bounds) view = M.fitView(bounds, view.w, view.h, 0.06, uprightRot);
+    draw();
     logCmd("ViewCube: Rotate 90° CW");
+  });
+  root.querySelector("[data-r=vc-straighten]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    straightenDrawing();
   });
 
   root.querySelector("[data-r=nav-pan]")?.addEventListener("click", () => setTool("pan"));
@@ -8099,6 +8178,30 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   });
 
   root.querySelector("[data-r=open-layer-mgr]")?.addEventListener("click", openLayerPropertiesManager);
+
+
+  // 3DORBIT: drag rolls view.rot (inspection before PLAN)
+  {
+    let orbitDrag: { x: number; y: number; rot0: number } | null = null;
+    cv.addEventListener("pointerdown", (ev) => {
+      if (!orbitMode) return;
+      if (ev.button !== 0 && ev.button !== 1) return;
+      orbitDrag = { x: ev.clientX, y: ev.clientY, rot0: view.rot ?? uprightRot ?? 0 };
+      try { cv.setPointerCapture(ev.pointerId); } catch { /* */ }
+      ev.preventDefault();
+      ev.stopPropagation();
+    }, true);
+    cv.addEventListener("pointermove", (ev) => {
+      if (!orbitDrag || !orbitMode) return;
+      const dx = ev.clientX - orbitDrag.x;
+      const next = orbitDrag.rot0 + dx * 0.25;
+      uprightRot = next;
+      if (bounds) view = M.fitView(bounds, view.w, view.h, 0.06, uprightRot);
+      draw();
+      ev.preventDefault();
+    }, true);
+    cv.addEventListener("pointerup", () => { orbitDrag = null; }, true);
+  }
 
   /* ── drawing workspace Command Line Execution & In-Canvas Dynamic Command Entry ── */
   const cmdInput = root.querySelector<HTMLInputElement>("[data-r=cmd]")!;
@@ -8470,6 +8573,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "UN" || cmd === "UNITS") {
       openUnitsDialog();
+      return;
+    }
+    if (cmd === "PLAN" || cmd === "STRAIGHTEN" || cmd === "UPRIGHT") {
+      straightenDrawing();
+      return;
+    }
+    if (cmd === "3DORBIT" || cmd === "3DO" || cmd === "ORBIT") {
+      setOrbitMode(!orbitMode);
       return;
     }
     if (cmd === "UCS") {
@@ -11126,6 +11237,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   // drawing page is the active CAD tab. Capture phase + stopImmediate so global
   // BIM Esc cannot leave CIRCLE/LINE running.
   const onCadEscCapture = (e: KeyboardEvent): void => {
+    if (orbitMode) { setOrbitMode(false); }
     if (e.key !== "Escape") return;
     if (!shell || shell.style.display === "none") return;
     // Only the active drawing page handles Esc

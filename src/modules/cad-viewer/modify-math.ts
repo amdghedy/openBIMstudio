@@ -128,6 +128,9 @@ export function rotateEnt(e: DxfEntity, cx: number, cy: number, deg: number): Dx
         },
       };
     }
+    default:
+      // SOLID, HATCH, DIMENSION, etc. — leave unhandled types unchanged
+      return e;
   }
 }
 

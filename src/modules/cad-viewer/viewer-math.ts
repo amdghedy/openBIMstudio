@@ -76,95 +76,79 @@ export function fitView(b: BBox, w: number, h: number, margin = 0.06, rot = 0): 
  * Used to upright drawings that were saved with a rotated UCS / view.
  */
 export function estimatePrincipalAngle(entities: DxfEntity[], sampleCap = 12000): number {
-  type Seg = { dx: number; dy: number; len: number; ang: number };
-  const segs: Seg[] = [];
-  for (const e of entities) {
-    if (segs.length >= sampleCap) break;
-    if (e.type === "LINE") {
-      const dx = e.end.x - e.start.x, dy = e.end.y - e.start.y;
-      const len = Math.hypot(dx, dy);
-      if (!(len > 1e-9)) continue;
-      let ang = (Math.atan2(dy, dx) * 180) / Math.PI;
-      ang = ((ang % 180) + 180) % 180;
-      segs.push({ dx, dy, len, ang });
-    } else if (e.type === "LWPOLYLINE" && e.points.length >= 2) {
-      for (let i = 1; i < e.points.length && segs.length < sampleCap; i++) {
-        const dx = e.points[i].x - e.points[i - 1].x;
-        const dy = e.points[i].y - e.points[i - 1].y;
-        const len = Math.hypot(dx, dy);
-        if (!(len > 1e-9)) continue;
-        let ang = (Math.atan2(dy, dx) * 180) / Math.PI;
-        ang = ((ang % 180) + 180) % 180;
-        segs.push({ dx, dy, len, ang });
-      }
-    }
-  }
-  if (segs.length < 8) return 0;
-
-  // Prefer longer segments (sheet borders / grid) over detail noise
-  const lens = segs.map((s) => s.len).sort((a, b) => a - b);
-  const minLen = lens[Math.floor(lens.length * 0.7)] || lens[lens.length - 1];
-  const long = segs.filter((s) => s.len >= minLen);
-  const use = long.length >= 8 ? long : segs;
-
-  // Length-weighted angle histogram (0.5° bins)
-  const bins = new Array(360).fill(0); // 0.5 deg
-  for (const s of use) {
-    const bi = Math.min(359, Math.floor(s.ang * 2));
-    bins[bi] += s.len * s.len;
-  }
-  let best = 0, bestV = -1;
-  for (let i = 0; i < 360; i++) if (bins[i] > bestV) { bestV = bins[i]; best = i; }
-  const dominant = best / 2; // degrees 0..180
-
-  let toHoriz = dominant;
-  if (toHoriz > 90) toHoriz -= 180;
-  const toVert = dominant - 90;
-  let rot = Math.abs(toHoriz) <= Math.abs(toVert) ? -toHoriz : -toVert;
-
-  // Refine with min-area search ±15° around candidate (0.5° steps)
   const samples: Pt[] = [];
   for (const e of entities) {
-    if (samples.length > 6000) break;
+    if (samples.length >= sampleCap) break;
     if (e.type === "LINE") {
       samples.push({ x: e.start.x, y: e.start.y }, { x: e.end.x, y: e.end.y });
-    } else if (e.type === "LWPOLYLINE") {
-      for (const p of e.points) {
-        samples.push({ x: p.x, y: p.y });
-        if (samples.length > 6000) break;
+    } else if (e.type === "LWPOLYLINE" && e.points?.length) {
+      for (const pt of e.points) {
+        samples.push({ x: pt.x, y: pt.y });
+        if (samples.length >= sampleCap) break;
       }
+    } else if (e.type === "CIRCLE" || e.type === "ARC") {
+      samples.push({ x: e.center.x, y: e.center.y });
+    } else if (e.type === "TEXT" || e.type === "POINT") {
+      samples.push({ x: e.position.x, y: e.position.y });
     }
   }
-  if (samples.length >= 16) {
-    let bestArea = Infinity;
-    let bestRot = rot;
-    const base = rot;
-    for (let d = -20; d <= 20; d += 0.5) {
-      const a = ((base + d) * Math.PI) / 180;
-      const c = Math.cos(a), s = Math.sin(a);
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const p of samples) {
-        const x = p.x * c - p.y * s;
-        const y = p.x * s + p.y * c;
-        if (x < minX) minX = x; if (y < minY) minY = y;
-        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
-      }
-      const area = (maxX - minX) * (maxY - minY);
-      if (area < bestArea) {
-        bestArea = area;
-        bestRot = base + d;
-      }
+  if (samples.length < 16) return 0;
+
+  // Full-circle min-area oriented bounding box (0.5° steps) — reliable for sheets
+  // drawn at an arbitrary angle (door schedules, rotated UCS, etc.).
+  let bestArea = Infinity;
+  let bestAng = 0;
+  for (let deg = 0; deg < 180; deg += 0.5) {
+    const a = (deg * Math.PI) / 180;
+    const c = Math.cos(a), s = Math.sin(a);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of samples) {
+      const x = p.x * c - p.y * s;
+      const y = p.x * s + p.y * c;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
     }
-    rot = bestRot;
+    const area = (maxX - minX) * (maxY - minY);
+    if (area < bestArea) {
+      bestArea = area;
+      bestAng = deg;
+    }
   }
 
-  // Snap near-orthogonal to exact 0
-  if (Math.abs(rot) < 1.5) return 0;
-  if (Math.abs(Math.abs(rot) - 90) < 1.5) return 0;
+  // Rotate by -bestAng so the tight box axes align with world X/Y.
+  // Prefer the orientation closer to horizontal for the long side.
+  let rot = -bestAng;
+  // Normalize to [-90, 90]
+  while (rot > 90) rot -= 180;
+  while (rot < -90) rot += 180;
+
+  // Compare area at rot vs rot±90 — pick the one with larger width (landscape schedules)
+  const areaAt = (deg: number) => {
+    const a = (deg * Math.PI) / 180;
+    const c = Math.cos(a), s = Math.sin(a);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of samples) {
+      const x = p.x * c - p.y * s;
+      const y = p.x * s + p.y * c;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    return { area: (maxX - minX) * (maxY - minY), w: maxX - minX, h: maxY - minY };
+  };
+  const a0 = areaAt(-rot);
+  const a90 = areaAt(-(rot + 90));
+  // Prefer landscape (w >= h) for typical schedule sheets
+  if (a90.w >= a90.h && a0.w < a0.h) rot = rot + 90;
+  while (rot > 90) rot -= 180;
+  while (rot < -90) rot += 180;
+
+  if (Math.abs(rot) < 0.75) return 0;
   return rot;
 }
-
-/** Zoom keeping the world point under the cursor fixed. */
 
 /** Axis-aligned bounds ignoring the farthest 2% of entity centres (outlier junk). */
 export function robustEntityBounds(entities: DxfEntity[]): BBox | null {
