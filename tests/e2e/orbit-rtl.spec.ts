@@ -793,13 +793,18 @@ test('LIVE IFC LINK: writes edits to the linked file, never overwrites an outsid
 
   // The file the link wrote must be a valid IFC that the app's own IFC loader accepts.
   const before = await page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size);
+  const msgs: string[] = []; page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) msgs.push(m.type() + ': ' + m.text().slice(0, 240)); });
+  await page.evaluate(() => { const w = window as any; w.__tt = []; window.addEventListener('obs-toast', (e: any) => w.__tt.push(e.detail?.kind + ': ' + e.detail?.message)); });
+  console.log('LIVE-IFC-TEXT ' + JSON.stringify((await st()).text.split('\n').slice(0, 60).join('\n')));
   await page.evaluate(async () => {
     const w = window as any, host = w.__OBS_CTX__.rightHost as HTMLElement;
     const dt = new DataTransfer();
     dt.items.add(new File([w.__disk.text], 'live-written.ifc', { type: 'application/octet-stream' }));
     host.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
   });
-  await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), { timeout: 90000, message: 'the written IFC opens in the app' }).toBeGreaterThan(before);
+  await page.waitForTimeout(8000);
+  console.log('LIVE-IFC-LOAD ' + JSON.stringify({ msgs: msgs.slice(0, 8), toasts: await page.evaluate(() => (window as any).__tt), models: await page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), before }));
+  await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), { timeout: 60000, message: 'the written IFC opens in the app' }).toBeGreaterThan(before);
 
   await page.locator('#obs-live-ifc-link button[data-a="stop"]').click();
   const s5 = await st();
