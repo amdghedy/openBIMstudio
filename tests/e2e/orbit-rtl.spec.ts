@@ -878,6 +878,7 @@ test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => 
   // Rendering is asynchronous in software WebGL: poll until the two states differ.
   let n = 0, patchedOn = 0;
   for (let k = 0; k < 8 && n <= 300; k++) {
+    await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; const bx = sb.getBox(); if (bx) { bx.max.y = 1.5; sb.setBox(bx); } });
     // Automatic zoom-to-model can move the camera after the wall is created: look straight down at it every round.
     await page.evaluate(async () => { const c = (window as any).__OBS_CTX__.world.camera.controls; await c.setLookAt(0, 9, 0.01, 0, 0, 0, false); });
     await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.set(true));
@@ -889,7 +890,7 @@ test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => 
     const off = await crop();
     n = diff(on, off);
   }
-  console.log('CAPS-AUTHORED ' + JSON.stringify({ patchedOn, changed: n }));
+  console.log('CAPS-AUTHORED ' + JSON.stringify({ patchedOn, changed: n, box: await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; const b = sb.getBox(); return b ? [b.min.y, b.max.y] : null; }), clip: await page.evaluate(() => (window as any).__OBS_CTX__.world.renderer.three.clippingPlanes?.length ?? 0) }));
   expect(patchedOn, 'authored materials patched').toBeGreaterThan(0);
   expect(n, 'authored cut face differs with caps on/off').toBeGreaterThan(300);
   expect(errors, errors.join('\n')).toEqual([]);
