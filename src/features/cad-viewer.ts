@@ -44,6 +44,7 @@ import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
+import * as AcadParity from "../modules/cad-viewer/acad-parity";
 import { evalExpr, isCalcExpr } from "../modules/cad-viewer/cad-cal";
 import { svgIcon, type IconName } from "./icon-set";
 import {
@@ -1490,6 +1491,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     winNow: { x: number; y: number } | null = null;
   let raf = 0;
   let uprightRot = 0;
+  const cadGroups = new Map<string, AcadParity.CadGroup>();
+  const xrefs: AcadParity.XrefRecord[] = [];
+  let drawingClock = AcadParity.createClock();
+
   let modelEnts: DxfEntity[] = [],
     modelIdx: M.SpatialIndex | null = null,
     modelBounds: M.BBox | null = null;
@@ -1548,6 +1553,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       dirty = true;
       hooks.onDirty(true);
     }
+    try { AcadParity.touchClock(drawingClock); } catch { /* */ }
   };
   const markSaved = (): void => {
     if (dirty) {
@@ -2891,6 +2897,107 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     history.push({ ...view });
     if (history.length > 50) history.shift();
   };
+
+  function openCadOptionsDialog(): void {
+    const existing = document.getElementById("obs-cad-options");
+    if (existing) existing.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "obs-cad-options";
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:100070;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font:12.5px system-ui,sans-serif";
+    const card = document.createElement("div");
+    card.style.cssText =
+      "width:min(420px,94vw);background:#161922;border:1px solid #2a2e3a;border-radius:12px;padding:14px 16px;color:#e8eaf0";
+    const row = (key: string, label: string, on: boolean) =>
+      `<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" data-o="${key}" ${on ? "checked" : ""}/> ${label}</label>`;
+    card.innerHTML =
+      `<div style="font-weight:700;margin-bottom:10px">OPTIONS — Drawing preferences</div>` +
+      row("grid", "GRID (F7)", showGrid) +
+      row("snap", "SNAP / OSNAP (F3/F9)", snapOn) +
+      row("ortho", "ORTHO (F8)", orthoOn) +
+      row("polar", "POLAR (F10)", polarOn) +
+      row("dyn", "Dynamic Input (F12)", dynOn) +
+      row("lwt", "Lineweight display", lwtOn) +
+      `<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">` +
+      `<button type="button" data-x style="padding:6px 12px;border-radius:6px;border:1px solid #3a3f4d;background:#2a2e3a;color:#e8eaf0;cursor:pointer">Close</button></div>`;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    const apply = () => {
+      const g = (id: string) => card.querySelector(`input[data-o="${id}"]`) as HTMLInputElement | null;
+      if (g("grid")) showGrid = g("grid")!.checked;
+      if (g("snap")) snapOn = g("snap")!.checked;
+      if (g("ortho")) orthoOn = g("ortho")!.checked;
+      if (g("polar")) polarOn = g("polar")!.checked;
+      if (g("dyn")) dynOn = g("dyn")!.checked;
+      if (g("lwt")) lwtOn = g("lwt")!.checked;
+      updateStatus();
+      draw();
+      scheduleSessionSave();
+    };
+    card.querySelectorAll("input").forEach((el) => el.addEventListener("change", apply));
+    card.querySelector("[data-x]")?.addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    logCmd("OPTIONS opened — changes apply immediately.");
+  }
+
+  async function attachXrefInteractive(): Promise<void> {
+    if (!doc) { logCmd("XREF: open a drawing first."); return; }
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".dwg,.dxf";
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      try {
+        status(`Attaching XREF ${f.name}…`);
+        const r = await readCadFile(f);
+        const base = f.name.replace(/\.(dwg|dxf)$/i, "").replace(/[^\w.-]+/g, "_") || "xref";
+        const { layers, entities } = AcadParity.prefixXrefLayers(r.doc.layers, r.doc.entities, base);
+        for (const l of layers) {
+          if (!doc!.layers.some((x) => x.name === l.name)) doc!.layers.push(l);
+        }
+        modelEnts = modelEnts.concat(entities);
+        doc!.entities = modelEnts;
+        let b: M.BBox | null = null;
+        for (const e of modelEnts) {
+          const eb = M.entityBBox(e);
+          if (Number.isFinite(eb.minX + eb.maxX + eb.minY + eb.maxY)) b = M.unionBBox(b, eb);
+        }
+        modelBounds = b ?? modelBounds;
+        modelIdx = M.buildIndex(modelEnts, modelBounds!);
+        if (layoutI < 0) { ents = modelEnts; idx = modelIdx; bounds = modelBounds; }
+        xrefs.push({ name: base, fileName: f.name, layerPrefix: `XREF_${base}|`, entityCount: entities.length, attachedAt: Date.now() });
+        buildLayers();
+        draw();
+        markDirty();
+        AcadParity.touchClock(drawingClock);
+        logCmd(`XREF: attached "${base}" · ${entities.length} entities on XREF_${base}|*`);
+        status("");
+      } catch (err) {
+        logCmd(`XREF failed: ${err instanceof Error ? err.message : String(err)}`);
+        status("");
+      }
+    };
+    input.click();
+  }
+
+  function detachXref(xrefName: string): void {
+    if (!doc) return;
+    const prefix = `XREF_${xrefName}|`;
+    const before = modelEnts.length;
+    modelEnts = modelEnts.filter((e) => !String(e.layer).startsWith(prefix));
+    doc.entities = modelEnts;
+    doc.layers = doc.layers.filter((l) => !l.name.startsWith(prefix));
+    const ix = xrefs.findIndex((x) => x.name === xrefName);
+    if (ix >= 0) xrefs.splice(ix, 1);
+    if (modelBounds) modelIdx = M.buildIndex(modelEnts, modelBounds);
+    if (layoutI < 0) { ents = modelEnts; idx = modelIdx; }
+    buildLayers();
+    draw();
+    markDirty();
+    logCmd(`XDETACH: removed "${xrefName}" (${before - modelEnts.length} entities).`);
+  }
+
   function zoomExtents() {
     if (!bounds) return;
     pushView();
@@ -4957,6 +5064,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const r = await readCadFile(file);
       doc = r.doc;
       name = file.name;
+      drawingClock = AcadParity.createClock();
+      cadGroups.clear();
+      xrefs.length = 0;
       modelEnts = doc.entities;
       // Skip auto-straighten when we have a saved session for this file (preserve last scene).
       const hasSession = !!loadSessionMap()[sessionKeyFor(file.name)];
@@ -8759,6 +8869,97 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "3DORBIT" || cmd === "3DO" || cmd === "ORBIT") {
       setOrbitMode(!orbitMode);
+      return;
+    }
+    if (cmd === "GROUP" || cmd === "G") {
+      if (!sel.size) { logCmd("GROUP: select objects first."); return; }
+      const gname = (parts[1] || "").trim() || `G${cadGroups.size + 1}`;
+      const members = [...sel].map((i) => ents[i]).filter(Boolean) as DxfEntity[];
+      AcadParity.ensureGroup(cadGroups, gname, members);
+      logCmd(`GROUP: "${gname}" · ${members.length} object(s).`);
+      AcadParity.touchClock(drawingClock);
+      return;
+    }
+    if (cmd === "UNGROUP" || cmd === "UNG") {
+      const gname = (parts[1] || "").trim();
+      if (gname) {
+        const n = AcadParity.ungroup(cadGroups, gname);
+        logCmd(n ? `UNGROUP: dissolved "${gname}" (${n} members).` : `UNGROUP: group "${gname}" not found.`);
+      } else if (sel.size) {
+        const members = [...sel].map((i) => ents[i]).filter(Boolean) as DxfEntity[];
+        const n = AcadParity.ungroup(cadGroups, undefined, members);
+        logCmd(`UNGROUP: removed selection from groups (${n} memberships).`);
+      } else logCmd("UNGROUP: select objects or UNGROUP <name>.");
+      return;
+    }
+    if (cmd === "GROUPEDIT" || cmd === "GEDIT") {
+      const gname = (parts[1] || "").trim();
+      if (!gname || !sel.size) { logCmd("GROUPEDIT: GROUPEDIT <name> with a selection."); return; }
+      const members = [...sel].map((i) => ents[i]).filter(Boolean) as DxfEntity[];
+      AcadParity.ensureGroup(cadGroups, gname, members);
+      logCmd(`GROUPEDIT: added ${members.length} to "${gname}".`);
+      return;
+    }
+    if (cmd === "STATUS" || cmd === "STAT") {
+      const report = AcadParity.statusReport(doc, ents, {
+        name, hidden: hidden.size, groups: cadGroups.size, xrefs: xrefs.length,
+      });
+      logCmd(report);
+      try { void uiAlert(report); } catch { /* */ }
+      return;
+    }
+    if (cmd === "TIME") {
+      const report = AcadParity.timeReport(drawingClock, name || "(unnamed)");
+      logCmd(report);
+      try { void uiAlert(report); } catch { /* */ }
+      return;
+    }
+    if (cmd === "SPELL" || cmd === "SP") {
+      const hits = AcadParity.spellCheckTexts(ents);
+      if (!hits.length) { logCmd("SPELL: no issues found in TEXT objects."); return; }
+      logCmd(`SPELL: ${hits.length} possible issue(s):`);
+      for (const h of hits.slice(0, 30)) logCmd(`  "${h.word}" in "${h.text.slice(0, 40)}"`);
+      return;
+    }
+    if (cmd === "OPTIONS" || cmd === "OP" || cmd === "PREFERENCES") {
+      openCadOptionsDialog();
+      return;
+    }
+    if (cmd === "LAYOUT" || cmd === "LO") {
+      if (!doc) { logCmd("LAYOUT: open a drawing first."); return; }
+      const sub = (parts[1] || "LIST").toUpperCase();
+      if (sub === "NEW" || sub === "N") {
+        const nm = AcadParity.addLayout(doc, parts.slice(2).join(" ") || undefined);
+        buildTabs();
+        logCmd(`LAYOUT: created "${nm}".`);
+        markDirty();
+        return;
+      }
+      const list = (doc.layouts ?? []).map((l, i) => `  ${i + 1}. ${l.name} (${l.entities.length} ents)`).join("\n") || "  (none)";
+      logCmd("LAYOUTS:\n  Model (" + modelEnts.length + " ents)\n" + list);
+      return;
+    }
+    if (cmd === "XREF" || cmd === "XR" || cmd === "XATTACH") {
+      void attachXrefInteractive();
+      return;
+    }
+    if (cmd === "XDETACH" || cmd === "XREFDETACH") {
+      const xn = (parts[1] || "").trim();
+      if (!xn) { logCmd("XDETACH: specify XREF name."); return; }
+      detachXref(xn);
+      return;
+    }
+    if (cmd === "ATTDEF" || cmd === "ATT") {
+      const tag = parts[1] || "TAG1";
+      const prompt = parts[2] || tag;
+      const def = parts.slice(3).join(" ") || "";
+      logCmd(`ATTDEF: ${tag} / ${prompt} / default "${def}" — use TEXT to place, or BLOCK after selecting attribute TEXT.`);
+      try { (window as any).__obsAttDef = { tag, prompt, default: def }; } catch { /* */ }
+      return;
+    }
+    if (cmd === "QLEADER" || cmd === "QLE") {
+      setTool("leader");
+      logCmd("QLEADER: specify leader start point.");
       return;
     }
     if (cmd === "UCS") {
