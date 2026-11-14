@@ -226,6 +226,7 @@
     "test:ai-embeddings": "node tests/ai-embeddings-config.test.cjs",
     "test:ai-evidence": "node tests/ai-evidence.test.cjs",
     "test:cad-save": "node tests/cad-save.test.cjs",
+    "test:cad-visibility-persistence": "node tests/cad-visibility-persistence.test.cjs",
     "test:cad-styles": "node tests/cad-styles.test.cjs",
     "test:cad-ribbon-collapse": "node tests/cad-ribbon-collapse.test.cjs",
     "test:plan-commands": "node tests/plan-commands.test.cjs",

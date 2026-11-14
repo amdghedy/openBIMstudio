@@ -40,6 +40,13 @@ interface DxfEntityBase {
   /** Entity transparency in percent 0-90 (DXF group 440); 0/undefined = opaque. */
   transparency?: number;
   /**
+   * DXF group 60 Invisible flag — the object-level hidden state produced by
+   * HIDEOBJECTS / ISOLATEOBJECTS. Hidden entities are skipped by rendering,
+   * picking and snapping; ENDISOLATE restores them. Persisted through QSAVE
+   * so hidden state survives the save/open round trip.
+   */
+  invisible?: boolean;
+  /**
    * In-memory grouping metadata — never written to DXF/DWG output. Dimensions
    * tag their constituent LINE/TEXT entities with a shared dimId + role so the
    * dimension can be restyled (DIMSTYLE) and re-measured associatively.

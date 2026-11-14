@@ -115,7 +115,7 @@ class Data {
   }
 }
 
-interface Common { layer: string; color?: number; rgb?: number; lineType?: string; lineweight?: number; ltScale?: number; transparency?: number }
+interface Common { layer: string; color?: number; rgb?: number; lineType?: string; lineweight?: number; ltScale?: number; transparency?: number; invisible?: boolean }
 
 function common(d: Data): Common {
   const layer = d.s(8) ?? "0";
@@ -131,7 +131,9 @@ function common(d: Data): Common {
   const lw = d.has(370) ? lineweightFromDxf(d.n(370)) : undefined;
   const ltScale = d.has(48) && d.n(48) > 0 && Math.abs(d.n(48) - 1) > 1e-9 ? d.n(48) : undefined;
   const transparency = d.has(440) ? dxfTransparency(d.n(440)) : undefined;
-  const c0: Common = { layer, color, rgb, lineType, ...(ltScale !== undefined ? { ltScale } : {}), ...(transparency ? { transparency } : {}) };
+  // Group 60 Invisible flag — object-level hidden state (HIDEOBJECTS / ISOLATEOBJECTS).
+  const invisible = d.n(60) === 1 ? true : undefined;
+  const c0: Common = { layer, color, rgb, lineType, ...(ltScale !== undefined ? { ltScale } : {}), ...(transparency ? { transparency } : {}), ...(invisible ? { invisible } : {}) };
   return lw != null ? { ...c0, lineweight: lw } : c0;
 }
 

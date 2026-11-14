@@ -143,6 +143,7 @@ function common(e: DxfEntity): string {
   let s = pair(8, e.layer || "0");
   if (e.lineType) s += pair(6, e.lineType);
   s += pair(62, e.color ?? 256); // 256 = ByLayer
+  if (e.invisible) s += pair(60, 1); // group 60 Invisible — HIDEOBJECTS/ISOLATEOBJECTS state
   if (e.lineweight != null) s += pair(370, lineweightToDxf(e.lineweight));
   if (e.rgb != null) s += pair(420, e.rgb & 0xffffff);
   if (e.ltScale != null && Math.abs(e.ltScale - 1) > 1e-9) s += pair(48, e.ltScale);

@@ -259,6 +259,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DDEDIT", aliases: ["ED", "TEXTEDIT"], description: "Edit the text content of a picked TEXT / MTEXT object" },
   { name: "LAYISO", aliases: ["LAYISOLATE"], description: "Isolate the layer of the picked object — hide every other layer (LAYUNISO restores)" },
   { name: "LAYUNISO", aliases: [], description: "Restore the layers hidden by LAYISO" },
+  { name: "HIDEOBJECTS", aliases: ["HIDEOBJ"], description: "Hide the selected objects; they are skipped by rendering, picking and snapping (ENDISOLATE restores)" },
+  { name: "ISOLATEOBJECTS", aliases: ["ISOLATE"], description: "Hide every object except the selection (ENDISOLATE restores)" },
+  { name: "ENDISOLATE", aliases: ["UNISOLATE", "SHOWALL"], description: "Restore every hidden and isolated object and layer" },
   { name: "LAYOFF", aliases: [], description: "Turn off the layer of the picked object" },
   { name: "LAYLCK", aliases: [], description: "Lock the layer of the picked object" },
   { name: "LAYUNLCK", aliases: ["LAYUNLOCK"], description: "Unlock the layer of the picked object" },
@@ -1523,6 +1526,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     orderAfter?: DxfEntity[];
   }
   const undoStack: UndoAction[] = [];
+  /**
+   * Undo depth bound for the drawing workspace — mirrors the unified
+   * EntityUndoStack (src/core/undo-stack.ts, default 100) so long sessions
+   * cannot grow the stack without limit. Each entry holds references to the
+   * orphaned before/after entity objects; dropping the oldest entry releases
+   * them for collection. UNDO beyond the bound reports "Nothing to undo",
+   * exactly like every other exhausted stack.
+   */
+  const MAX_UNDO_DEPTH = 200;
+  const pushUndoAct = (act: UndoAction): void => {
+    undoStack.push(act);
+    if (undoStack.length > MAX_UNDO_DEPTH) undoStack.shift();
+  };
   let dirty = false;
   const markDirty = (): void => {
     if (!dirty) {
@@ -2909,7 +2925,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const eb = M.entityBBox(e);
     bounds = bounds ? M.unionBBox(bounds, eb) : eb;
     idx = M.buildIndex(ents, bounds);
-    undoStack.push({ type: "add", entities: [e] });
+    pushUndoAct({ type: "add", entities: [e] });
     markDirty();
     redoStack.length = 0;
     showProps();
@@ -2932,7 +2948,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (sel.has(i)) removed.push(e);
       else keep.push(e);
     });
-    undoStack.push({ type: "delete", entities: removed });
+    pushUndoAct({ type: "delete", entities: removed });
     markDirty();
     redoStack.length = 0;
     ents = keep;
@@ -3021,27 +3037,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (act.type === "add") {
       ents.push(...(act.entities ?? []));
       if (layoutI < 0) modelEnts.push(...(act.entities ?? []));
-      undoStack.push(act);
+      pushUndoAct(act);
       markDirty();
     } else if (act.type === "delete") {
       const delSet = new Set(act.entities ?? []);
       ents = ents.filter((e) => !delSet.has(e));
       if (layoutI < 0) modelEnts = ents;
-      undoStack.push(act);
+      pushUndoAct(act);
       markDirty();
     } else if (act.type === "modify") {
       const before = act.before ?? [];
       const after = act.after ?? [];
       for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
       if (layoutI < 0) modelEnts = ents;
-      undoStack.push(act);
+      pushUndoAct(act);
       markDirty();
     } else if (act.type === "order") {
       if (act.orderAfter) {
         ents = act.orderAfter.slice();
         if (layoutI < 0) modelEnts = ents;
       }
-      undoStack.push(act);
+      pushUndoAct(act);
       markDirty();
     } else if (act.type === "replace") {
       const beforeSet = new Set(act.before ?? []);
@@ -3050,7 +3066,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       kept.push(...produced);
       ents = kept;
       if (layoutI < 0) modelEnts = ents;
-      undoStack.push(act);
+      pushUndoAct(act);
       markDirty();
     }
     rebuildIndex();
@@ -3077,7 +3093,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const moving = ents.filter((e) => picked.has(e));
     ents = mode === "front" ? [...keep, ...moving] : [...moving, ...keep];
     if (layoutI < 0) modelEnts = ents;
-    undoStack.push({ type: "order", orderBefore, orderAfter: ents.slice() });
+    pushUndoAct({ type: "order", orderBefore, orderAfter: ents.slice() });
     markDirty();
     rebuildIndex();
     draw();
@@ -3282,7 +3298,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     for (const e of list) b = b ? M.unionBBox(b, M.entityBBox(e)) : M.entityBBox(e);
     if (b) bounds = M.unionBBox(bounds ?? b, b);
     idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
-    undoStack.push({ type: "add", entities: list });
+    pushUndoAct({ type: "add", entities: list });
     markDirty();
     redoStack.length = 0;
     showProps();
@@ -3300,7 +3316,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     before = ext.before;
     after = ext.after;
     for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
-    undoStack.push({ type: "modify", before, after });
+    pushUndoAct({ type: "modify", before, after });
     markDirty();
     redoStack.length = 0;
     rebuildIndex();
@@ -3330,7 +3346,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     kept.push(...after);
     ents = kept;
     if (layoutI < 0) modelEnts = ents;
-    undoStack.push({ type: "replace", before, after });
+    pushUndoAct({ type: "replace", before, after });
     markDirty();
     redoStack.length = 0;
     rebuildIndex();
@@ -3394,7 +3410,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (yes) {
         const doomed = modTargets();
         const keep = ents.filter((e) => !doomed.includes(e));
-        undoStack.push({ type: "delete", entities: doomed });
+        pushUndoAct({ type: "delete", entities: doomed });
         markDirty();
         redoStack.length = 0;
         ents = keep;
@@ -4413,7 +4429,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           doc.layers = doc.layers.filter((l) => l.name.toUpperCase() !== lyr.toUpperCase());
           hidden.delete(lyr);
         }
-        undoStack.push({ type: "delete", entities: doomed });
+        pushUndoAct({ type: "delete", entities: doomed });
         markDirty();
         redoStack.length = 0;
         ents = keep;
@@ -4749,6 +4765,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       hidden.clear();
       fixedEnts.clear();
       for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
+      // Restore object-level visibility persisted by QSAVE (DXF group 60 Invisible).
+      hiddenEntities.clear();
+      for (const e of doc.entities) if (e.invisible) hiddenEntities.add(e);
       markups = [];
       dimRecords.clear();
       dimSeq = 0;
@@ -7355,7 +7374,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (gripDrag.moved && after && after !== gripDrag.orig) {
         const ext = withAssociativeDims([gripDrag.orig], [after]);
         for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
-        undoStack.push({ type: "modify", before: ext.before, after: ext.after });
+        pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
         markDirty();
         redoStack.length = 0;
         const nb = M.entityBBox(after);
@@ -8830,6 +8849,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       setTool(cmd === "LAYISO" || cmd === "LAYISOLATE" ? "layiso" : cmd === "LAYOFF" ? "layoff" : cmd === "LAYLCK" ? "laylck" : "layunlck");
       return;
     }
+    // Object-level visibility (same engine as the right-click menu's Hide /
+    // Isolate / Show All): hidden objects are skipped by rendering, picking
+    // and snapping; ENDISOLATE restores everything.
+    if (cmd === "HIDEOBJECTS" || cmd === "HIDEOBJ") {
+      hideCadSelection(false);
+      return;
+    }
+    if (cmd === "ISOLATEOBJECTS" || cmd === "ISOLATE") {
+      hideCadSelection(true);
+      return;
+    }
+    if (cmd === "ENDISOLATE" || cmd === "UNISOLATE" || cmd === "SHOWALL") {
+      showAllCadObjects();
+      return;
+    }
     if (cmd === "MLD" || cmd === "MLEADER" || cmd === "LE" || cmd === "LEADER") {
       setTool("mleader");
       return;
@@ -9644,6 +9678,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return (name || "drawing").replace(/\.[^.]+$/, "");
   }
 
+  /**
+   * Stamp the DXF group 60 Invisible flag onto the entities hidden in this
+   * session (HIDEOBJECTS / ISOLATEOBJECTS) without mutating the live records —
+   * visibility stays owned by the hiddenEntities set, undo/redo is untouched,
+   * and the saved file carries the state through the round trip.
+   */
+  function stampInvisibleForSave(entities: DxfEntity[]): DxfEntity[] {
+    if (!hiddenEntities.size) return entities;
+    return entities.map((e) => (hiddenEntities.has(e) && !e.invisible ? { ...e, invisible: true } : e));
+  }
+
   /** Save the edited drawing back to DXF R2010 (QSAVE / SAVE). */
   function saveDxf(): void {
     if (!doc) {
@@ -9655,7 +9700,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // serialize from modelEnts — it is kept in sync by add/erase/undo/redo.
     const entities = layoutI < 0 ? ents : modelEnts;
     const fn = `${base()}.dxf`;
-    const text = writeDxf({ ...doc, entities });
+    // Persist object-level visibility (HIDEOBJECTS / ISOLATEOBJECTS): entities
+    // hidden in this session are stamped with the DXF group 60 Invisible flag
+    // so the state survives the save/open round trip without mutating the
+    // live entity objects (visibility stays owned by hiddenEntities).
+    const text = writeDxf({ ...doc, entities: stampInvisibleForSave(entities) });
     const blob = new Blob([text], { type: "application/dxf" });
     download(blob, fn);
     // Refresh the welcome-screen drawing history with the freshly saved bytes.
@@ -9728,7 +9777,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // Real HATCH entities and the first paper-space sheet go through the converter;
       // tests/cad-dwg-roundtrip.test.cjs reads the DWG back with the real engine.
       const dwgVersion = currentDwgVersion();
-      const dxf = writeDxf({ ...doc, entities }, { version: dwgVersion, allLayouts: true });
+      const dxf = writeDxf({ ...doc, entities: stampInvisibleForSave(entities) }, { version: dwgVersion, allLayouts: true });
       await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
       const blobBuffer = new ArrayBuffer(bytes.byteLength);
@@ -9895,7 +9944,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (layoutI < 0) modelEnts.push(e);
     }
     const start = ents.length - list.length;
-    undoStack.push({ type: "add", entities: list });
+    pushUndoAct({ type: "add", entities: list });
     redoStack.length = 0;
     markDirty();
     rebuildIndex();
@@ -10823,6 +10872,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       for (const l of r.doc.layers) if (!have.has(l.name)) doc.layers.push({ ...l });
       for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
       addEntities(incoming);
+      // Carried-over invisible objects (DXF group 60) stay hidden here too.
+      for (const e of incoming) if (e.invisible) hiddenEntities.add(e);
       buildLayers();
       logCmd(`IMPORT: merged ${f.name} — ${incoming.length} entities, ${r.doc.layers.length} layer definitions.`);
       status(`${f.name} merged: ${incoming.length} entities`);
