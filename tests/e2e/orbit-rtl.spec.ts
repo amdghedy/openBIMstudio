@@ -878,6 +878,8 @@ test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => 
   // Rendering is asynchronous in software WebGL: poll until the two states differ.
   let n = 0, patchedOn = 0;
   for (let k = 0; k < 8 && n <= 300; k++) {
+    // Automatic zoom-to-model can move the camera after the wall is created: look straight down at it every round.
+    await page.evaluate(async () => { const c = (window as any).__OBS_CTX__.world.camera.controls; await c.setLookAt(0, 9, 0.01, 0, 0, 0, false); });
     await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.set(true));
     await page.waitForTimeout(1200);
     const on = await crop();
