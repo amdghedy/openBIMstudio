@@ -859,7 +859,7 @@ test('SECTION CAPS: a cut through a solid wall shows a solid hatched cut face; o
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
-test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => {
+for (let rep = 1; rep <= 5; rep++) test('SECTION CAPS: authored (non-IFC) wall is capped too (rep ' + rep + ')', async ({ page }) => {
   test.setTimeout(180000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
