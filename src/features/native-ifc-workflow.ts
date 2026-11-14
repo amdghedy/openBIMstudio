@@ -410,6 +410,25 @@ export async function makeSelectionEditable(): Promise<BulkConvertResult> {
   return result;
 }
 
+/** Large federated export: yields to the UI every few elements and reports progress. */
+async function exportFederatedWithProgress(edits: any[]): Promise<void> {
+  toast(`Exporting ${edits.length} element(s) to IFC4…`, "info");
+  try {
+    let last = 0;
+    await downloadFederatedNativeTwinIfcAsync(edits as any, "openbimstudio-native.ifc", {
+      onProgress: (i, total) => {
+        const pct = Math.floor((i / Math.max(1, total)) * 10);
+        if (pct > last) { last = pct; toast(`IFC export ${pct * 10}%`, "info"); }
+      },
+    });
+    toast(`Exported 1 federated IFC4 with ${edits.length} element(s).`, "success");
+    recordIfcChange("export-ifc", `Federated IFC4 · ${edits.length} element(s)`, { count: edits.length });
+  } catch (err) {
+    console.warn("[native-ifc] async federated export failed", err);
+    toast("IFC export failed. See the console for details.", "error");
+  }
+}
+
 /**
  * Export all Native Twin edits as one federated IFC4 (preferred write-back).
  * Pass `{ perTwin: true }` for legacy one-file-per-twin downloads.
