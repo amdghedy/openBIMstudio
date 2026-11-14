@@ -896,7 +896,7 @@ test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => 
 /** A ground slab (top at 0) plus five 0.17 m risers rising east to a landing at 0.85 m. IFC x = app x. */
 function stairsIfc(): string {
   const head = WALL_IFC.slice(0, WALL_IFC.indexOf('#50='));
-  let n = 100; const L: string[] = [];
+  let n = 100; const L: string[] = ['#51=IFCLOCALPLACEMENT(#31,#21);', '#64=IFCDIRECTION((0.,0.,1.));'];
   const solid = (cx: number, dx: number, h: number, zBase: number, name: string) => {
     const a = n++, b = n++, c = n++, d = n++, e = n++, f = n++, g = n++, hh = n++, i = n++;
     L.push(`#${a}=IFCSLAB('${'S' + a}VqzM6bXH7ugTO1ZoXR',$,'${name}',$,$,#51,#${b},$,.FLOOR.);`);
