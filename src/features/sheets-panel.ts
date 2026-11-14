@@ -5,6 +5,7 @@
 import { promptLine, confirmDialog } from "./form-modal";
 import {
   listSheets,
+  getSheet,
   createSheet,
   updateSheet,
   deleteSheet,
@@ -12,12 +13,17 @@ import {
   removeViewport,
   createDefaultSheetSet,
   ensureDefaultTitleblock,
+  bootSheetsStore,
+  insertSheet,
   onSheetsChange,
   getSheetSizeMm,
 } from "../modules/sheets/sheets";
 import { exportSheetSvg } from "../modules/sheets/sheet-composer";
 import { exportAllSheetsToPdf, downloadSingleSheetPdf } from "../modules/export/sheet-pdf";
 import type { SheetDef } from "../modules/projects/types";
+import { pushSheetChange } from "../modules/sheets/sheet-undo";
+import { cloneSheet } from "../modules/sheets/sheets";
+import { history } from "./history";
 import { uiAlert } from "../core/notify";
 
 let panel: HTMLElement | null = null;
@@ -74,17 +80,34 @@ function render() {
       if (act === "close") { setVisible(false); return; }
       if (act === "new") {
         const s = createSheet();
+        pushSheetChange("Create sheet", null, s);
         activeId = s.id;
         render();
         return;
       }
-      if (act === "defaults") { createDefaultSheetSet(); render(); return; }
+      if (act === "defaults") {
+        const beforeCount = listSheets().length;
+        createDefaultSheetSet();
+        if (listSheets().length > beforeCount) {
+          // One undo step for the whole default set.
+          const created = listSheets().slice(beforeCount);
+          history.push({
+            label: "Create default sheet set",
+            apply: () => { for (const s of created) insertSheet(s); },
+            revert: () => { for (const s of created) deleteSheet(s.id); },
+          });
+        }
+        render();
+        return;
+      }
       if (act === "export" && activeId) { exportSheetSvg(activeId); return; }
       if (act === "select" && id) { activeId = id; render(); return; }
       if (act === "del" && id) {
         void confirmDialog("Delete sheet", "Delete this sheet?").then((yes) => {
           if (!yes) return;
+          const before = getSheet(id);
           deleteSheet(id);
+          if (before) pushSheetChange("Delete sheet", before, null);
           if (activeId === id) activeId = null;
           render();
         });
@@ -92,6 +115,7 @@ function render() {
       }
       if (act === "add-vp" && activeId) {
         const size = getSheetSizeMm(active!.size, active!.orientation);
+        const before = cloneSheet(active!);
         addViewport(activeId, {
           viewId: "plan-current",
           viewType: "plan",
@@ -102,6 +126,8 @@ function render() {
           scale: "1:100",
           title: "Plan View",
         });
+        const after = getSheet(activeId);
+        pushSheetChange("Add viewport", before, after ? cloneSheet(after) : null);
         render();
         return;
       }
@@ -126,7 +152,12 @@ function render() {
       if (act === "rename" && activeId) {
         const sid = activeId, cur = active!.name;
         void promptLine("Rename sheet", "Sheet name", cur).then((name) => {
-          if (name != null) updateSheet(sid, { name: name.trim() || cur });
+          if (name != null && name.trim() && name.trim() !== cur) {
+            const before = cloneSheet(active!);
+            updateSheet(sid, { name: name.trim() });
+            const after = getSheet(sid);
+            pushSheetChange("Rename sheet", before, after ? cloneSheet(after) : null);
+          }
           render();
         });
         return;
@@ -134,7 +165,12 @@ function render() {
       if (act === "renumber" && activeId) {
         const sid = activeId, cur = active!.number;
         void promptLine("Renumber sheet", "Sheet number", cur).then((number) => {
-          if (number != null) updateSheet(sid, { number: number.trim() || cur });
+          if (number != null && number.trim() && number.trim() !== cur) {
+            const before = cloneSheet(active!);
+            updateSheet(sid, { number: number.trim() });
+            const after = getSheet(sid);
+            pushSheetChange("Renumber sheet", before, after ? cloneSheet(after) : null);
+          }
           render();
         });
         return;
@@ -241,5 +277,6 @@ export function isSheetsPanelVisible() {
 }
 
 export function setupSheetsPanel() {
+  bootSheetsStore(); // hydrate the session mirror before any panel renders
   ensurePanel();
 }

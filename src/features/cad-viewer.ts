@@ -1401,6 +1401,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     cmode: ColorMode = "layer",
     lw = 1,
     du: M.DisplayUnit = "drawing";
+  /** Coordinate-readout decimals (UNITS dialog precision, default 0.0000). */
+  let coordDigits = 4;
   const hidden = new Set<string>();
   // Per-entity temporary visibility complements layer visibility for CAD context actions.
   const hiddenEntities = new Set<DxfEntity>();
@@ -7927,7 +7929,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (c && doc) {
       const ax = M.convertLength(c.x * scaleCal, doc.units, du);
       const ay = M.convertLength(c.y * scaleCal, doc.units, du);
-      xy = `${ax.toFixed(4)}, ${ay.toFixed(4)}, 0.0000`;
+      xy = `${ax.toFixed(coordDigits)}, ${ay.toFixed(coordDigits)}, 0.0000`;
     }
 
     // Pointer movement can fire hundreds of times per second. Update only the
@@ -9385,23 +9387,44 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function openUnitsDialog(): void {
+    // Real, applied state: Length Type drives the same display-unit state the
+    // settings bar uses; Precision drives the live coordinate readout.
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">drawing workspace Drawing Units (UNITS)</b>
+      <div style="font-size:11px;color:#94a3b8;margin-top:4px">Applies to the status-bar coordinates and property readouts.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
         <div>
           <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Length Type:</label>
-          <select style="width:100%"><option>Decimal</option><option>Architectural</option><option>Engineering</option></select>
+          <select data-r="un-type" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+            <option>Decimal</option><option>Architectural</option><option>Engineering</option>
+          </select>
         </div>
         <div>
           <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Precision:</label>
-          <select style="width:100%"><option>0.0000</option><option>0.00</option><option>0.000000</option></select>
+          <select data-r="un-prec" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+            <option>0.0000</option><option>0.00</option><option>0.000000</option>
+          </select>
         </div>
       </div>
       <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px">
         <button data-r="un-close" style="padding:5px 14px;background:#0284c7;color:white;border:none;border-radius:4px">OK</button>
       </div>
     `);
-    panel.querySelector("[data-r=un-close]")?.addEventListener("click", closeOverlay);
+    const typeSel = panel.querySelector<HTMLSelectElement>("[data-r=un-type]");
+    const precSel = panel.querySelector<HTMLSelectElement>("[data-r=un-prec]");
+    if (typeSel) typeSel.value = M.lengthTypeForDisplayUnit(du);
+    if (precSel) {
+      const match = ["0.0000", "0.00", "0.000000"].find((p) => M.coordDigitsForPrecisionLabel(p) === coordDigits);
+      if (match) precSel.value = match;
+    }
+    panel.querySelector("[data-r=un-close]")?.addEventListener("click", () => {
+      if (typeSel) du = M.displayUnitForLengthType(typeSel.value);
+      if (precSel) coordDigits = M.coordDigitsForPrecisionLabel(precSel.value);
+      showProps();
+      updateStatus();
+      logCmd(`UNITS: display ${du}, coordinate precision ${coordDigits} decimals.`);
+      closeOverlay();
+    });
   }
 
   function showSelectionList(): void {

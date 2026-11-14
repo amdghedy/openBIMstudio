@@ -27,9 +27,16 @@ export function getDimensionStyle(dim: Dimension): DimensionStyle {
 }
 
 export function formatDimensionValue(meters: number, style: DimensionStyle): string {
-  const factor = style.unit === "m" ? 1 : style.unit === "cm" ? 100 : 1000;
-  const value = meters * factor;
-  return value.toFixed(style.precision);
+  // Metric factors are exact powers of ten; imperial converts through the
+  // international inch/foot. mm/cm/m keep their legacy no-suffix formatting;
+  // ft/in carry the prime/double-prime so the unit is unambiguous on paper.
+  const factor = style.unit === "m" ? 1
+    : style.unit === "cm" ? 100
+    : style.unit === "in" ? 1 / 0.0254
+    : style.unit === "ft" ? 1 / 0.3048
+    : 1000;
+  const suffix = style.unit === "in" ? '"' : style.unit === "ft" ? "'" : "";
+  return (meters * factor).toFixed(style.precision) + suffix;
 }
 
 export function resolveDimension(

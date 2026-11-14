@@ -485,6 +485,31 @@ export function formatQty(v: number, from: DxfUnits | undefined, to: DisplayUnit
   return `${n.toFixed(d)} ${unitLabel(from, to)}${power === 2 ? "²" : ""}`;
 }
 
+/**
+ * UNITS dialog — Length Type → display unit mapping (same `du` state the
+ * settings-bar selector drives, so the dialog and the toolbar cannot disagree).
+ * Decimal keeps drawing units; Architectural shows feet; Engineering inches.
+ */
+export function displayUnitForLengthType(lengthType: string): DisplayUnit {
+  const k = (lengthType || "").trim().toLowerCase();
+  if (k.startsWith("arch")) return "ft";
+  if (k.startsWith("eng")) return "in";
+  return "drawing";
+}
+
+/** Inverse of displayUnitForLengthType — preselects the dialog's Length Type. */
+export function lengthTypeForDisplayUnit(du: DisplayUnit): string {
+  if (du === "ft") return "Architectural";
+  if (du === "in") return "Engineering";
+  return "Decimal";
+}
+
+/** "0.0000" → 4 decimals, "0.00" → 2, "0.000000" → 6; unparseable keeps the 4-digit default. */
+export function coordDigitsForPrecisionLabel(precisionLabel: string): number {
+  const m = /0\.(0+)/.exec(precisionLabel || "");
+  return m ? Math.min(m[1].length, 8) : 4;
+}
+
 /* ───────────────────────── spatial index ───────────────────────── */
 
 export interface SpatialIndex { cell: number; minX: number; minY: number; cols: number; rows: number; cells: Map<number, number[]>; big: number[]; infinite: number[]; boxes: BBox[] }

@@ -49,7 +49,7 @@ function sceneEntityCount(scene: Scene2D): number {
 }
 
 /** Same pipeline as the PDF composer and the live panel: generator + annotation layer. */
-async function sceneForView(viewId: string, scaleDenom: number): Promise<Scene2D> {
+async function baseSceneForView(viewId: string): Promise<Scene2D> {
   const v = getView(viewId);
   if (!v) return emptyScene();
   let scene: Scene2D;
@@ -58,8 +58,6 @@ async function sceneForView(viewId: string, scaleDenom: number): Promise<Scene2D
   else if (v.kind === "elevation") scene = await generateElevationScene(v);
   else if (v.kind === "schedule") scene = await generateScheduleScene(v);
   else scene = emptyScene();
-  const ann = buildAnnotationLayer(v.id, scaleDenom);
-  scene.layers.annotation = ann.entities;
   return scene;
 }
 
@@ -84,15 +82,20 @@ async function viewportSvg(sheet: SheetDef, vp: SheetViewport, drawingBottomMm: 
   if (!view) {
     parts.push(missingViewportSvg(vp, "View missing: " + vp.viewId));
   } else {
-    scaleDenom = computeViewportTransform(vp, sheet, view, emptyScene()).scaleDenom;
-    const scene = await sceneForView(vp.viewId, scaleDenom);
+    // Annotations must be built at the viewport's EFFECTIVE scale (the scale
+    // the viewport actually shows), not the view's declared scale — a
+    // content-fit viewport recomputes scaleDenom from the scene bounds.
+    const base = await baseSceneForView(vp.viewId);
+    const tf = computeViewportTransform(vp, sheet, view, base);
+    scaleDenom = tf.scaleDenom;
+    const ann = buildAnnotationLayer(view.id, scaleDenom);
+    const scene: Scene2D = { ...base, layers: { ...base.layers, annotation: ann.entities } };
     if (sceneEntityCount(scene) === 0) {
       parts.push(missingViewportSvg(vp, (vp.title || view.name) + " — empty view"));
     } else {
-      const tf = computeViewportTransform(vp, sheet, view, scene);
       const clipId = "vpclip-" + vp.id.replace(/[^a-z0-9-]/gi, "_");
       const sceneSvg = renderSceneToSvg(scene, {
-        scale: view.scale,
+        scale: scaleDenom,
         padding: 0,
         widthPx: tf.widthMm,
         heightPx: tf.heightMm,
@@ -161,6 +164,14 @@ export async function renderSheetSvg(sheetId: string): Promise<string> {
     )
     .join("");
 
+  // Sheet-level notes (general notes / key labels placed outside viewports).
+  const noteSvg = (sheet.annotations ?? [])
+    .map(
+      (a) =>
+        `<text x="${escapeXml(String(a.x))}" y="${escapeXml(String(a.y))}" font-size="3.2" fill="#0f172a" font-family="sans-serif">${escapeXml(a.text)}</text>`,
+    )
+    .join("\n  ");
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">
   <defs>${vpParts.filter((p) => p.startsWith("<clipPath")).join("")}</defs>
@@ -169,6 +180,7 @@ export async function renderSheetSvg(sheetId: string): Promise<string> {
         fill="none" stroke="#0f172a" stroke-width="0.8"/>
   ${naSvg}
   ${vpParts.filter((p) => !p.startsWith("<clipPath")).join("\n")}
+  ${noteSvg}
   <!-- Titleblock -->
   <rect x="${MARGIN_MM}" y="${h - MARGIN_MM - TITLEBLOCK_H_MM}" width="${w - MARGIN_MM * 2}" height="${TITLEBLOCK_H_MM}"
         fill="#f1f5f9" stroke="#0f172a" stroke-width="0.6"/>

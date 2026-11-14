@@ -102,3 +102,32 @@ export function computeViewportTransform(
 export function formatScale(denom: number): string {
   return `1:${Math.round(denom)}`;
 }
+
+/**
+ * Effective paper scale of a viewport against a concrete scene.
+ *
+ * Single source of truth for "which scale do annotations belong to" — the
+ * live panel, the SVG composer and the PDF composer must all build their
+ * annotation layer and render it at THIS value, so a 2.5 mm dimension text
+ * measures 2.5 mm on paper in every output path.
+ */
+export function effectiveViewportScale(
+  viewport: SheetViewport,
+  sheet: SheetDef,
+  view: ViewDef,
+  scene: Scene2D,
+): number {
+  return computeViewportTransform(viewport, sheet, view, scene).scaleDenom;
+}
+
+/**
+ * Scale-consistency invariant: on-paper millimeters of a world-meters size
+ * under a viewport transform. An annotation entity built with
+ * `paperToWorld(p, effectiveViewportScale(...))` must satisfy
+ * `onPaperMm(world, tf) === p` — that equality is what keeps dimension text
+ * and witness offsets at their declared print size at every viewport scale.
+ */
+export function onPaperMm(worldM: number, tf: ViewportTransform): number {
+  const worldPerPaperMm = tf.viewBox.w / Math.max(tf.widthMm, 1e-9);
+  return worldM / worldPerPaperMm;
+}

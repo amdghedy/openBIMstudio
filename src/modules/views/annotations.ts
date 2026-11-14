@@ -13,7 +13,8 @@ export type DimensionKind =
 export interface DimensionStyle {
   id: string;
   name: string;
-  unit: "mm" | "cm" | "m";
+  /** Metric paper units (mm/cm/m) or imperial (ft/in) — decimal formatting. */
+  unit: "mm" | "cm" | "m" | "ft" | "in";
   precision: number;
   textSizePt: number;
   color: string;
@@ -24,6 +25,7 @@ export const DEFAULT_DIM_STYLES: DimensionStyle[] = [
   { id: "aligned-mm", name: "Aligned 2.5 mm", unit: "mm", precision: 0, textSizePt: 2.5, color: "#1d4ed8", tick: "diagonal" },
   { id: "eng-mm", name: "Engineering 3 mm", unit: "mm", precision: 0, textSizePt: 3, color: "#1e40af", tick: "diagonal" },
   { id: "decimal-m", name: "Decimal meters", unit: "m", precision: 3, textSizePt: 2.5, color: "#1d4ed8", tick: "arrow" },
+  { id: "imperial-ft", name: "Imperial feet", unit: "ft", precision: 2, textSizePt: 2.5, color: "#1d4ed8", tick: "arrow" },
 ];
 
 export interface Dimension {

@@ -21,7 +21,7 @@ import { emptyScene, type Scene2D } from "../views/scene";
 import { createPdfDocument, drawScene2DToPdf, MM_TO_PT, downloadPdf } from "./pdf";
 import { computeViewportTransform } from "../views/sheet-layout";
 
-async function sceneForView(viewId: string): Promise<Scene2D> {
+async function baseSceneForView(viewId: string): Promise<Scene2D> {
   const v = getView(viewId);
   if (!v) return emptyScene();
   let scene: Scene2D;
@@ -30,8 +30,6 @@ async function sceneForView(viewId: string): Promise<Scene2D> {
   else if (v.kind === "elevation") scene = await generateElevationScene(v);
   else if (v.kind === "schedule") scene = await generateScheduleScene(v);
   else scene = emptyScene();
-  const ann = buildAnnotationLayer(v.id, v.scale);
-  scene.layers.annotation = ann.entities;
   return scene;
 }
 
@@ -72,9 +70,15 @@ async function drawViewportOnPage(
     return;
   }
 
-  const scene = await sceneForView(vp.viewId);
-  const tf = computeViewportTransform(vp, sheet, view, scene);
+  // Annotations must be built at the viewport's EFFECTIVE scale (the scale
+  // the viewport actually shows) — a content-fit viewport recomputes
+  // scaleDenom from the scene bounds, so the view's declared scale is wrong
+  // whenever they differ. Keep the SVG / live-panel / PDF paths identical.
+  const base = await baseSceneForView(vp.viewId);
+  const tf = computeViewportTransform(vp, sheet, view, base);
   const scaleDenom = tf.scaleDenom;
+  const ann = buildAnnotationLayer(vp.viewId, scaleDenom);
+  const scene: Scene2D = { ...base, layers: { ...base.layers, annotation: ann.entities } };
   const worldToPt = (tf.widthMm * MM_TO_PT) / Math.max(tf.viewBox.w, 1e-9);
 
   const sceneCx = tf.viewBox.x + tf.viewBox.w / 2;
@@ -271,6 +275,21 @@ function drawNorthArrow(page: PDFPage, sheet: SheetDef, sizeMm: { w: number; h: 
   });
 }
 
+/** Sheet-level notes (text placed outside viewports) — same source as the SVG composer. */
+function drawSheetAnnotations(page: PDFPage, sheet: SheetDef, regular: PDFFont): void {
+  const sheetHMm = sizeMmH(sheet);
+  for (const ann of sheet.annotations ?? []) {
+    if (typeof ann.text !== "string" || !ann.text) continue;
+    page.drawText(ann.text, {
+      x: ann.x * MM_TO_PT,
+      y: (sheetHMm - ann.y) * MM_TO_PT,
+      size: 3.2 * MM_TO_PT,
+      font: regular,
+      color: rgb(0.06, 0.09, 0.16),
+    });
+  }
+}
+
 export async function exportSheetToPdf(sheetId: string): Promise<Uint8Array | null> {
   const sheet = getSheet(sheetId);
   if (!sheet) return null;
@@ -296,6 +315,7 @@ export async function exportSheetToPdf(sheetId: string): Promise<Uint8Array | nu
   for (const vp of sheet.viewports) {
     await drawViewportOnPage(page, sheet, vp, pageH, regular, bold);
   }
+  drawSheetAnnotations(page, sheet, regular);
   drawTitleblock(page, sheet, pageW, pageH, regular, bold);
   drawNorthArrow(page, sheet, sizeMm, bold);
 
@@ -329,6 +349,7 @@ export async function exportAllSheetsToPdf(
     for (const vp of sheet.viewports) {
       await drawViewportOnPage(page, sheet, vp, pageH, regular, bold);
     }
+    drawSheetAnnotations(page, sheet, regular);
     drawTitleblock(page, sheet, pageW, pageH, regular, bold);
     drawNorthArrow(page, sheet, sizeMm, bold);
   }

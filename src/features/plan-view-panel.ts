@@ -158,7 +158,7 @@ const planSelectedIds = new Set<string>();
 let authoredCache: any[] = [];
 let authoredRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
-type DimensionUnit = "mm" | "cm" | "m";
+type DimensionUnit = "mm" | "cm" | "m" | "ft" | "in";
 type DimensionTick = "diagonal" | "dot" | "arrow";
 interface DimensionStyle {
   id: string;
@@ -802,9 +802,14 @@ async function runAutoDimension(): Promise<void> {
 }
 
 function formatPlanDimension(meters: number, style = getDimensionStyle()): string {
-  const factor = style.unit === "m" ? 1 : style.unit === "cm" ? 100 : 1000;
+  const factor = style.unit === "m" ? 1
+    : style.unit === "cm" ? 100
+    : style.unit === "in" ? 1 / 0.0254
+    : style.unit === "ft" ? 1 / 0.3048
+    : 1000;
   const value = meters * factor;
-  return value.toFixed(style.precision) + (style.unit === "mm" ? "" : ` ${style.unit}`);
+  const suffix = style.unit === "in" ? '"' : style.unit === "ft" ? "'" : (style.unit === "mm" ? "" : ` ${style.unit}`);
+  return value.toFixed(style.precision) + suffix;
 }
 
 /** BIM-like annotation paper scale: a 2.5 mm text at 1:100 is 0.25 m in model space. */
@@ -934,7 +939,7 @@ chainDimInput.onchange = () => {
 };
 chainDimLabel.append(chainDimInput, document.createTextNode("Chain"));
 
-const unitSelect = compactSelect([["mm", "mm"], ["cm", "cm"], ["m", "m"]], 60);
+const unitSelect = compactSelect([["mm", "mm"], ["cm", "cm"], ["m", "m"], ["ft", "ft"], ["in", "in"]], 60);
 unitSelect.value = getDimensionStyle().unit;
 unitSelect.title = "Dimension Units";
 unitSelect.onchange = () => {

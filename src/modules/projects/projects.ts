@@ -226,6 +226,16 @@ export async function saveProject(silent = false) {
       current.annotations = annot.serializeAll();
     } catch { /* annotations store optional */ }
 
+    // Production sheets + titleblocks: flush the live sheet store into the doc
+    // so sheets, viewports, titleblock fields and sheet annotations survive
+    // save / reload exactly like every other project datum.
+    try {
+      const sheetsMod = await import("../sheets/sheets");
+      const snap = sheetsMod.getSheetsForSave();
+      current.sheets = snap.sheets;
+      current.titleblocks = snap.titleblocks;
+    } catch (e) { console.warn("[projects] sheet snapshot failed", e); }
+
     try {
       const pd = (window as any).__obsPlanDims?.serialize?.();
       if (Array.isArray(pd)) current.planDimensions = pd;
@@ -544,6 +554,10 @@ export async function openProject(id: string) {
       const annot = await import("../views/annotation-store");
       annot.deserializeAll((doc.annotations as any) ?? null);
     } catch { /* */ }
+    try {
+      const sheetsMod = await import("../sheets/sheets");
+      sheetsMod.loadSheetsFromProject(doc.sheets, doc.titleblocks);
+    } catch (e) { console.warn("[projects] sheet restore failed", e); }
     try {
       const pdApi = (window as any).__obsPlanDims;
       if (pdApi?.load) pdApi.load(doc.planDimensions ?? []);

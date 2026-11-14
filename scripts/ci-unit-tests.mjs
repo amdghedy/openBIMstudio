@@ -22,7 +22,7 @@ const scripts = [
   "test:mep-pressure", "test:work-planes", "test:adaptive", "test:adaptive-native", "test:project-crypto", "test:secret-crypto",
   "test:server-security", "test:safe-expr", "test:mep-connectivity", "test:boundary-edit",
   "test:project-file", "test:project-journal", "test:project-persistence", "test:plan-tags", "test:filled-regions", "test:plan-poche", "test:section-elevation-doc", "test:section-authored-clip",
-  "test:schedule-sheet", "test:schedule-totals", "test:dim-geometry", "test:auto-dim", "test:sheet-furniture",
+  "test:schedule-sheet", "test:schedule-totals", "test:dim-geometry", "test:auto-dim", "test:sheet-furniture", "test:documentation-2d",
   "test:section-plane", "test:snap-points", "test:plan-draw", "test:view-lock",
   "test:wheel-zoom", "test:section-box", "test:section-box-arrows", "test:cad-tables-fidelity",
   "test:cad-ui-wiring", "test:cad-ocs-absorb", "test:cad-native-annotation", "test:cad-tabs-compatibility",

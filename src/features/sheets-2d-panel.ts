@@ -16,6 +16,9 @@ import {
   listSheets, getSheet, createSheet, deleteSheet, updateSheet,
   addViewport, removeViewport, onSheetsChange, getSheetSizeMm,
   ensureDefaultTitleblock, listTitleblocks,
+  bootSheetsStore, cloneSheet, cloneTitleblock,
+  addSheetAnnotation, updateSheetAnnotation, removeSheetAnnotation,
+  updateTitleblock,
 } from "../modules/sheets/sheets";
 import { listViews, getView } from "../modules/views/store";
 import { generatePlanScene } from "../modules/views/generators/plan";
@@ -37,7 +40,10 @@ import { getElements, getGrids, getLevels } from "./authoring";
 import { validateNativeModel, summarizeDiagnostics } from "../modules/native-bim/model-validation";
 import { validateDocumentationSet, summarizeDocumentationDiagnostics } from "../modules/native-bim/documentation-validation";
 import { uiAlert } from "../core/notify";
-import { confirmDialog } from "./form-modal";
+import { confirmDialog, promptLine, openFormModal } from "./form-modal";
+import { pushSheetChange, pushTitleblockChange } from "../modules/sheets/sheet-undo";
+import { exportSheetToPdf } from "../modules/export/sheet-pdf";
+import type { SheetAnnotation } from "../modules/sheets/sheets";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PANEL_ID = "obs-sheets-2d-panel";
@@ -49,6 +55,7 @@ let viewPicker: HTMLSelectElement | null = null;
 let statusEl: HTMLSpanElement | null = null;
 let currentSheetId: string | null = null;
 let selectedVpId: string | null = null;
+let selectedAnnId: string | null = null;
 let visible = false;
 
 const sceneCache = new Map<string, { scene: Scene2D; at: number }>();
@@ -60,6 +67,58 @@ interface DragState {
   startVpX: number;
   startVpY: number;
   sheetMmPerPx: number;
+  /** Deep sheet snapshot taken at drag start — the undo revert target. */
+  beforeSheet: SheetDef;
+}
+
+/**
+ * Sheet-level note placement: asks for the text, then drops the note at a
+ * free spot near the sheet's top-left drawing area (drag refines the place).
+ */
+async function addSheetNote(): Promise<void> {
+  if (!currentSheetId) { uiAlert("No sheet selected."); return; }
+  const sheet = getSheet(currentSheetId);
+  if (!sheet) return;
+  const text = await promptLine("Add note", "Note text", "");
+  if (text == null || !text.trim()) return;
+  const before = cloneSheet(sheet);
+  const n = (sheet.annotations ?? []).length;
+  const x = 12 + (n % 4) * 4;
+  const y = 14 + n * 6;
+  addSheetAnnotation(sheet.id, { text: text.trim(), x, y });
+  const after = getSheet(sheet.id);
+  pushSheetChange("Add note", before, after ? cloneSheet(after) : null);
+  selectedAnnId = null;
+  render();
+}
+
+/** Edit the active sheet's titleblock fields (the same TitleblockDef the exports render). */
+async function editTitleblock(): Promise<void> {
+  if (!currentSheetId) { uiAlert("No sheet selected."); return; }
+  const sheet = getSheet(currentSheetId);
+  if (!sheet) return;
+  const tb = listTitleblocks().find((t) => t.id === sheet.titleblockId);
+  if (!tb) { uiAlert("This sheet has no titleblock."); return; }
+  const values = await openFormModal({
+    title: "Edit Titleblock",
+    subtitle: sheet.number + " - " + sheet.name,
+    fields: tb.fields.map((f) => ({
+      kind: "text" as const,
+      key: f.key,
+      label: f.label,
+      default: f.value,
+    })),
+    submitLabel: "Apply",
+  });
+  if (!values) return;
+  const beforeTb = cloneTitleblock(tb);
+  const afterTb = cloneTitleblock(tb);
+  for (const f of afterTb.fields) {
+    if (typeof values[f.key] === "string") f.value = values[f.key];
+  }
+  updateTitleblock(tb.id, { fields: afterTb.fields });
+  pushTitleblockChange("Edit titleblock", beforeTb, afterTb);
+  render();
 }
 let drag: DragState | null = null;
 
@@ -75,7 +134,7 @@ function scheduleRender(): void {
 }
 
 export function setupSheets2dPanel(): void {
-  ensureDefaultTitleblock();
+  bootSheetsStore(); // hydrate sheets + default titleblock (idempotent)
 
   // The command palette ("Sheets" panel command) and drafting-bridge resolve
   // the panel under the service key "sheetsPanel" — a key nothing registered,
@@ -130,6 +189,7 @@ export function setupSheets2dPanel(): void {
   const addVpBtn = mkBtn("+ Viewport", () => addSelectedViewport());
   const newSheetBtn = mkBtn("+ Sheet", () => {
     const s = createSheet();
+    pushSheetChange("Create sheet", null, s);
     currentSheetId = s.id;
     selectedVpId = null;
     render();
@@ -141,7 +201,9 @@ export function setupSheets2dPanel(): void {
     if (!s) return;
     void confirmDialog("Delete sheet", "Delete sheet \"" + s.number + " - " + s.name + "\"?").then((ok) => {
       if (!ok) return;
+      const before = cloneSheet(s);
       deleteSheet(sheetId);
+      pushSheetChange("Delete sheet", before, null);
       if (currentSheetId === sheetId) currentSheetId = null;
       selectedVpId = null;
       render();
@@ -149,7 +211,12 @@ export function setupSheets2dPanel(): void {
   });
   const delVpBtn = mkBtn("Delete Viewport", () => {
     if (!currentSheetId || !selectedVpId) return;
+    const before = getSheet(currentSheetId);
+    if (!before) return;
+    const snapshotBefore = cloneSheet(before);
     removeViewport(currentSheetId, selectedVpId);
+    const after = getSheet(currentSheetId);
+    pushSheetChange("Delete viewport", snapshotBefore, after ? cloneSheet(after) : null);
     selectedVpId = null;
     render();
   });
@@ -174,12 +241,47 @@ export function setupSheets2dPanel(): void {
     });
   });
 
+  // Print: renders the same PDF the export produces and hands it to the
+  // browser's print preview — one code path, no re-implemented plotting.
+  const printBtn = mkBtn("Print", () => {
+    if (!currentSheetId) { uiAlert("No sheet selected."); return; }
+    void exportSheetToPdf(currentSheetId).then((bytes) => {
+      if (!bytes) { uiAlert("Nothing to print."); return; }
+      const blob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }).catch((err) => {
+      console.error("[sheets-2d] print failed", err);
+      uiAlert("Print failed: " + (err && err.message ? err.message : err));
+    });
+  });
+
+  // Sheet-level note (SheetDef.annotations): text placed on the sheet itself,
+  // outside any viewport. Drag to move, double-click to edit, Del removes.
+  const addNoteBtn = mkBtn("+ Note", () => { void addSheetNote(); });
+  const delNoteBtn = mkBtn("Delete Note", () => {
+    if (!currentSheetId || !selectedAnnId) { uiAlert("Click a note first."); return; }
+    const sheet = getSheet(currentSheetId);
+    const ann = sheet?.annotations?.find((a) => a.id === selectedAnnId);
+    if (!sheet || !ann) { selectedAnnId = null; render(); return; }
+    const before = cloneSheet(sheet);
+    removeSheetAnnotation(sheet.id, ann.id);
+    const after = getSheet(sheet.id);
+    pushSheetChange("Delete note", before, after ? cloneSheet(after) : null);
+    selectedAnnId = null;
+    render();
+  });
+
+  // Editable titleblock fields — the same TitleblockDef the exports render.
+  const tbBtn = mkBtn("Edit Titleblock", () => { void editTitleblock(); });
+
 
 
 
   const closeBtn = mkBtn("Close", () => toggleSheets2dPanel());
 
-  header.append(title, viewPicker, addVpBtn, newSheetBtn, delSheetBtn, delVpBtn, qaBtn, exportBtn, pdfBtn, pdfAllBtn, closeBtn);
+  header.append(title, viewPicker, addVpBtn, newSheetBtn, delSheetBtn, delVpBtn, addNoteBtn, delNoteBtn, tbBtn, qaBtn, exportBtn, pdfBtn, pdfAllBtn, printBtn, closeBtn);
 
   const body = document.createElement("div");
   body.style.cssText = "flex:1;display:flex;min-height:0";
@@ -215,7 +317,7 @@ export function setupSheets2dPanel(): void {
     close: () => { visible = false; if (panel) panel.style.display = "none"; },
     toggle: () => toggleSheets2dPanel(),
     isVisible: () => visible,
-    invalidateCache: () => sceneCache.clear(),
+    invalidateCache: () => invalidateSceneCaches(),
   };
   // Alias under the key drafting-bridge (and older callers) look up. The
   // facade has no addToCurrentSheet, so drafting-bridge will report the
@@ -536,6 +638,21 @@ async function drawSheet(sheet: SheetDef): Promise<void> {
     drawViewport(svg, sheet, vp, viewDef, scene);
   }
 
+  // Sheet-level notes (SheetDef.annotations) — same source the exports render.
+  for (const ann of sheet.annotations ?? []) {
+    const t = document.createElementNS(SVG_NS, "text");
+    t.setAttribute("x", String(ann.x));
+    t.setAttribute("y", String(ann.y));
+    t.setAttribute("font-size", "3.2");
+    t.setAttribute("font-family", "system-ui, sans-serif");
+    t.setAttribute("fill", selectedAnnId === ann.id ? "#0284c7" : "#111827");
+    t.setAttribute("font-weight", selectedAnnId === ann.id ? "700" : "400");
+    t.setAttribute("data-ann-id", ann.id);
+    t.style.cursor = "move";
+    t.textContent = ann.text;
+    svg.appendChild(t);
+  }
+
   canvasHost.appendChild(svg);
   installDragHandler(svg, sheet, sheetWmm);
 
@@ -577,7 +694,12 @@ function drawViewport(
   viewDef: ViewDef,
   scene: Scene2D,
 ): void {
+  // The incoming scene is the generator's BASE scene (no annotations). Build
+  // the annotation layer at the viewport's EFFECTIVE scale — the same value
+  // the SVG composer and the PDF composer use — so a 2.5 mm dimension text
+  // measures 2.5 mm on paper in all three output paths.
   const tf = computeViewportTransform(vp, sheet, viewDef, scene);
+  const scaled = getSceneAtScale(viewDef, scene, tf.scaleDenom);
 
   const clipId = "clip-" + vp.id.replace(/[^a-z0-9-]/gi, "_");
   const clipPath = document.createElementNS(SVG_NS, "clipPath");
@@ -603,8 +725,8 @@ function drawViewport(
   inner.setAttribute("clip-path", "url(#" + clipId + ")");
   inner.setAttribute("data-viewport-id", vp.id);
 
-  const sceneSvg = renderSceneToSvg(scene, {
-    scale: viewDef.scale,
+  const sceneSvg = renderSceneToSvg(scaled, {
+    scale: tf.scaleDenom,
     padding: 0,
     widthPx: tf.widthMm,
     heightPx: tf.heightMm,
@@ -667,10 +789,32 @@ async function getSceneForView(viewDef: ViewDef): Promise<Scene2D> {
   } else {
     scene = emptyScene();
   }
-  const ann = buildAnnotationLayer(viewDef.id, viewDef.scale);
-  scene.layers.annotation = ann.entities;
   sceneCache.set(viewDef.id, { scene, at: now });
   return scene;
+}
+
+/**
+ * Annotation layer rebuilt at an explicit paper scale, cached per
+ * (view, scale). Viewports whose effective scale differs from the view's
+ * declared scale (content-fit, or a viewport pinned to another scale) must
+ * build their dimensions at the scale they actually show — otherwise a
+ * 2.5 mm dimension text on screen does not match the SVG / PDF export.
+ */
+const annotationScaleCache = new Map<string, Scene2D>();
+
+function getSceneAtScale(viewDef: ViewDef, base: Scene2D, scaleDenom: number): Scene2D {
+  const key = viewDef.id + ":" + scaleDenom;
+  const hit = annotationScaleCache.get(key);
+  if (hit) return hit;
+  const ann = buildAnnotationLayer(viewDef.id, scaleDenom);
+  const scene: Scene2D = { ...base, layers: { ...base.layers, annotation: ann.entities } };
+  annotationScaleCache.set(key, scene);
+  return scene;
+}
+
+function invalidateSceneCaches(): void {
+  sceneCache.clear();
+  annotationScaleCache.clear();
 }
 
 function installDragHandler(svg: SVGSVGElement, sheet: SheetDef, sheetWmm: number): void {
@@ -680,54 +824,123 @@ function installDragHandler(svg: SVGSVGElement, sheet: SheetDef, sheetWmm: numbe
     const parent = target.parentElement as Element | null;
     const innerId = parent && parent.getAttribute ? parent.getAttribute("data-viewport-id") : null;
     const vpId = directId || innerId;
+    const annEl = target.closest("[data-ann-id]");
+    const annId = annEl ? annEl.getAttribute("data-ann-id") : null;
 
-    if (!vpId) {
-      if (selectedVpId) { selectedVpId = null; render(); }
-      return;
-    }
-    const vp = sheet.viewports.find((v) => v.id === vpId);
-    if (!vp) return;
-
-    if (selectedVpId !== vpId) {
-      selectedVpId = vpId;
-      render();
+    if (!vpId && !annId) {
+      if (selectedVpId || selectedAnnId) { selectedVpId = null; selectedAnnId = null; render(); }
       return;
     }
 
     const rect = svg.getBoundingClientRect();
     const sheetMmPerPx = sheetWmm / rect.width;
+
+    if (annId) {
+      const ann = (sheet.annotations ?? []).find((a) => a.id === annId);
+      if (!ann) return;
+      if (selectedAnnId !== annId) {
+        selectedAnnId = annId;
+        selectedVpId = null;
+        render();
+        return;
+      }
+      drag = {
+        vpId: "",
+        startMouseX: ev.clientX,
+        startMouseY: ev.clientY,
+        startVpX: ann.x,
+        startVpY: ann.y,
+        sheetMmPerPx,
+        beforeSheet: cloneSheet(sheet),
+      };
+      ev.preventDefault();
+      return;
+    }
+
+    const vp = sheet.viewports.find((v) => v.id === vpId);
+    if (!vp || !vpId) return;
+
+    if (selectedVpId !== vpId) {
+      selectedVpId = vpId;
+      selectedAnnId = null;
+      render();
+      return;
+    }
+
     drag = {
-      vpId,
+      vpId: vpId,
       startMouseX: ev.clientX,
       startMouseY: ev.clientY,
       startVpX: vp.x,
       startVpY: vp.y,
       sheetMmPerPx,
+      beforeSheet: cloneSheet(sheet),
     };
     ev.preventDefault();
+  });
+
+  svg.addEventListener("dblclick", (ev) => {
+    const target = ev.target as Element;
+    const annEl = target.closest("[data-ann-id]");
+    const annId = annEl ? annEl.getAttribute("data-ann-id") : null;
+    if (!annId || !currentSheetId) return;
+    void editSheetNoteText(currentSheetId, annId);
   });
 
   window.addEventListener("mousemove", onDragMove);
   window.addEventListener("mouseup", onDragEnd);
 }
 
+/** Double-click on a note: replace its text (undoable). */
+async function editSheetNoteText(sheetId: string, annId: string): Promise<void> {
+  const sheet = getSheet(sheetId);
+  const ann = sheet?.annotations?.find((a) => a.id === annId);
+  if (!sheet || !ann) return;
+  const text = await promptLine("Edit note", "Note text", ann.text);
+  if (text == null || !text.trim() || text.trim() === ann.text) return;
+  const before = cloneSheet(sheet);
+  updateSheetAnnotation(sheetId, annId, { text: text.trim() });
+  const after = getSheet(sheetId);
+  pushSheetChange("Edit note", before, after ? cloneSheet(after) : null);
+  render();
+}
+
 function onDragMove(ev: MouseEvent): void {
   if (!drag || !currentSheetId) return;
   const sheet = getSheet(currentSheetId);
   if (!sheet) return;
-  const vp = sheet.viewports.find((v) => v.id === drag!.vpId);
-  if (!vp) return;
   const dx = (ev.clientX - drag.startMouseX) * drag.sheetMmPerPx;
   const dy = (ev.clientY - drag.startMouseY) * drag.sheetMmPerPx;
-  vp.x = Math.round((drag.startVpX + dx) * 10) / 10;
-  vp.y = Math.round((drag.startVpY + dy) * 10) / 10;
+  if (drag.vpId) {
+    const vp = sheet.viewports.find((v) => v.id === drag!.vpId);
+    if (!vp) return;
+    vp.x = Math.round((drag.startVpX + dx) * 10) / 10;
+    vp.y = Math.round((drag.startVpY + dy) * 10) / 10;
+  } else {
+    const ann = (sheet.annotations ?? []).find((a) => a.id === selectedAnnId);
+    if (!ann) return;
+    ann.x = Math.round((drag.startVpX + dx) * 10) / 10;
+    ann.y = Math.round((drag.startVpY + dy) * 10) / 10;
+  }
   scheduleRender();
 }
 
 function onDragEnd(): void {
   if (!drag) return;
+  const state = drag;
   drag = null;
-  if (currentSheetId) updateSheet(currentSheetId, {});
+  if (!currentSheetId) return;
+  const after = getSheet(currentSheetId);
+  if (!after) return;
+  const afterSnap = cloneSheet(after);
+  const beforeSnap = state.beforeSheet;
+  // Push undo only when something actually moved.
+  const moved =
+    JSON.stringify(beforeSnap.viewports) !== JSON.stringify(afterSnap.viewports) ||
+    JSON.stringify(beforeSnap.annotations ?? []) !== JSON.stringify(afterSnap.annotations ?? []);
+  if (!moved) return;
+  updateSheet(currentSheetId, {}); // stamp updatedAt so the save state turns dirty
+  pushSheetChange(state.vpId ? "Move viewport" : "Move note", beforeSnap, afterSnap);
 }
 
 function addSelectedViewport(): void {
@@ -751,6 +964,7 @@ function addSelectedViewport(): void {
     : isSchedule ? "schedule"
     : "3d";
 
+  const before = cloneSheet(sheet);
   addViewport(currentSheetId, {
     viewId,
     viewType,
@@ -773,8 +987,13 @@ function addSelectedViewport(): void {
       vp2.width = Math.min(Math.max(60, wMm), sizeMm.w - 40);
       vp2.height = Math.min(Math.max(40, hMm), sizeMm.h - 60);
       updateSheet(currentSheetId!, {});
+      const after = getSheet(currentSheetId!);
+      pushSheetChange("Add viewport", before, after ? cloneSheet(after) : null);
       render();
     }).catch(() => { /* placeholder scene already renders */ });
+  } else {
+    const after = getSheet(currentSheetId);
+    pushSheetChange("Add viewport", before, after ? cloneSheet(after) : null);
   }
   render();
 }

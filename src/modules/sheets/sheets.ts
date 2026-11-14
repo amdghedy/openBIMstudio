@@ -26,8 +26,59 @@ let sheets: SheetDef[] = [];
 let titleblocks: TitleblockDef[] = [];
 const listeners = new Set<() => void>();
 
+/**
+ * Session mirror so sheets survive a reload even before a project file is
+ * saved (same pattern as the views store). Opening a project replaces this
+ * mirror with the project's authoritative copy via loadSheetsFromProject().
+ */
+const STORAGE_KEY = "obs.sheets.v1";
+
+function persist(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sheets, titleblocks }));
+  } catch {
+    /* storage full / unavailable — the ProjectDoc save path still covers it */
+  }
+}
+
 function notify() {
+  persist();
   for (const fn of listeners) fn();
+}
+
+let booted = false;
+
+/** Boot: hydrate the store from the session mirror (no-op when absent/corrupt). */
+export function bootSheetsStore(): void {
+  if (booted) return;
+  booted = true;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      ensureDefaultTitleblock();
+      return;
+    }
+    const parsed = JSON.parse(raw) as { sheets?: SheetDef[]; titleblocks?: TitleblockDef[] };
+    if (Array.isArray(parsed.sheets)) sheets = parsed.sheets.map((s) => ({ ...s }));
+    if (Array.isArray(parsed.titleblocks)) titleblocks = parsed.titleblocks.map((t) => ({ ...t }));
+    if (!titleblocks.length) ensureDefaultTitleblock();
+  } catch {
+    ensureDefaultTitleblock();
+  }
+}
+
+/** Deep-copy a sheet (undo/redo snapshots). */
+export function cloneSheet(s: SheetDef): SheetDef {
+  return {
+    ...s,
+    viewports: s.viewports.map((v) => ({ ...v })),
+    annotations: (s.annotations ?? []).map((a) => ({ ...a })),
+  };
+}
+
+/** Deep-copy a titleblock (undo/redo snapshots). */
+export function cloneTitleblock(t: TitleblockDef): TitleblockDef {
+  return { ...t, fields: t.fields.map((f) => ({ ...f })) };
 }
 
 export function onSheetsChange(fn: () => void) {
@@ -98,6 +149,78 @@ export function listTitleblocks(): TitleblockDef[] {
   return titleblocks.slice();
 }
 
+export function getTitleblock(id: string | undefined): TitleblockDef | undefined {
+  return titleblocks.find((t) => t.id === id);
+}
+
+export function updateTitleblock(id: string, patch: Partial<TitleblockDef>): TitleblockDef | null {
+  const t = titleblocks.find((x) => x.id === id);
+  if (!t) return null;
+  Object.assign(t, patch);
+  for (const s of sheets) {
+    if (s.titleblockId === id) s.updatedAt = Date.now();
+  }
+  notify();
+  return t;
+}
+
+// ── Sheet-level annotations (SheetDef.annotations: text placed on the sheet,
+//    outside any viewport — general notes, key plan labels, drawing keys) ──
+
+export interface SheetAnnotation {
+  id: string;
+  kind: string;
+  text: string;
+  x: number;
+  y: number;
+}
+
+export interface SheetAnnotationInput {
+  kind?: string;
+  text: string;
+  x: number;
+  y: number;
+}
+
+export function addSheetAnnotation(sheetId: string, input: SheetAnnotationInput): SheetAnnotation | null {
+  const s = sheets.find((x) => x.id === sheetId);
+  if (!s) return null;
+  const ann: SheetAnnotation = {
+    id: uid(),
+    kind: input.kind ?? "text",
+    text: input.text,
+    x: input.x,
+    y: input.y,
+  };
+  s.annotations = [...(s.annotations ?? []), ann];
+  s.updatedAt = Date.now();
+  notify();
+  return ann;
+}
+
+export function updateSheetAnnotation(
+  sheetId: string,
+  annId: string,
+  patch: Partial<{ text: string; x: number; y: number }>,
+): boolean {
+  const s = sheets.find((x) => x.id === sheetId);
+  const ann = s?.annotations?.find((a) => a.id === annId);
+  if (!s || !ann) return false;
+  Object.assign(ann, patch);
+  s.updatedAt = Date.now();
+  notify();
+  return true;
+}
+
+export function removeSheetAnnotation(sheetId: string, annId: string): boolean {
+  const s = sheets.find((x) => x.id === sheetId);
+  if (!s || !s.annotations?.some((a) => a.id === annId)) return false;
+  s.annotations = s.annotations.filter((a) => a.id !== annId);
+  s.updatedAt = Date.now();
+  notify();
+  return true;
+}
+
 export function ensureDefaultTitleblock(): TitleblockDef {
   if (titleblocks.length) return titleblocks[0];
   const tb: TitleblockDef = {
@@ -134,6 +257,30 @@ export function loadSheetsFromProject(list: SheetDef[] | undefined, tbs?: Titleb
   sheets = list ? list.map((s) => ({ ...s })) : [];
   titleblocks = tbs ? tbs.map((t) => ({ ...t })) : [];
   if (!titleblocks.length) ensureDefaultTitleblock();
+  notify();
+}
+
+/** Replace one sheet in place after an undo/redo snapshot swap. */
+export function replaceSheet(id: string, snapshot: SheetDef): boolean {
+  const i = sheets.findIndex((s) => s.id === id);
+  if (i < 0) return false;
+  sheets[i] = cloneSheet(snapshot);
+  notify();
+  return true;
+}
+
+/** Replace a titleblock in place after an undo/redo snapshot swap. */
+export function replaceTitleblockSnapshot(id: string, snapshot: TitleblockDef): boolean {
+  const i = titleblocks.findIndex((t) => t.id === id);
+  if (i < 0) return false;
+  titleblocks[i] = cloneTitleblock(snapshot);
+  notify();
+  return true;
+}
+
+/** Insert a previously deleted sheet snapshot (undo of deleteSheet). */
+export function insertSheet(snapshot: SheetDef): void {
+  sheets.push(cloneSheet(snapshot));
   notify();
 }
 
