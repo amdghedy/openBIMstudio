@@ -1013,3 +1013,40 @@ test('WALK MODE: walks down the staircase from the landing, stepping down each r
   expect(Math.min(...S.map((q) => q[2])), 'never went below the ground. ' + diag).toBeGreaterThan(1.62);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('SECTION TOOL: a section plane cuts the IFC wall, switching it off restores it, deleting removes the plane', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  const crop = async () => { const box = (await page.locator('canvas').first().boundingBox())!;
+    return decodePng(await page.screenshot({ clip: { x: box.x, y: box.y, width: box.width, height: box.height } })); };
+  const diff = (a: ReturnType<typeof decodePng>, b: ReturnType<typeof decodePng>) => { let n = 0; for (let i = 0; i < a.data.length && i < b.data.length; i += a.bpp) if (Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 1] - b.data[i + 1]) + Math.abs(a.data[i + 2] - b.data[i + 2]) > 60) n++; return n; };
+  const aim = () => page.evaluate(async () => { await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(0, 9, 0.01, 0, 0, 0, false); });
+  await aim(); await page.waitForTimeout(900);
+  const before = await crop();
+  // Cut away everything above 1.5 m... the wall is 3 m tall, so keep only below: plane normal pointing down at y=1.5.
+  await page.evaluate(() => { const s = (window as any).__obsSection; s.setOn(true); (window as any).__OBS_CTX__.features.section.setPlanes([{ location: [0, 1.5, 0], direction: [0, -1, 0] }]); });
+  let planes: unknown[] = [], changed = 0;
+  for (let k = 0; k < 8 && changed <= 300; k++) {
+    await aim(); await page.waitForTimeout(1200);
+    planes = await page.evaluate(() => (window as any).__obsSection.getPlanes());
+    changed = diff(before, await crop());
+  }
+  const diag = JSON.stringify({ planes, changed });
+  console.log('SECTION-TOOL ' + diag);
+  expect(planes.length, 'one plane exists. ' + diag).toBe(1);
+  expect(changed, 'the cut changes the picture. ' + diag).toBeGreaterThan(300);
+  // Off restores the original picture.
+  await page.evaluate(() => (window as any).__obsSection.setOn(false));
+  let restored = Infinity;
+  for (let k = 0; k < 8 && restored > 300; k++) { await aim(); await page.waitForTimeout(1200); restored = diff(before, await crop()); }
+  console.log('SECTION-TOOL-OFF ' + restored);
+  expect(restored, 'off restores the full wall (differences vs before). ' + diag).toBeLessThan(300);
+  // Delete removes the plane.
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.section.deleteAllPlanes());
+  await page.waitForTimeout(500);
+  const left = await page.evaluate(() => (window as any).__obsSection.getPlanes().length);
+  expect(left, 'delete removes planes').toBe(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
