@@ -72,7 +72,7 @@ import {
 } from "../modules/modify";
 import { SelectionEngine, type SelectableElement } from "../modules/selection";
 import { ReferenceService } from "../modules/references";
-import { TransactionService } from "../modules/transaction";
+import { getTransactionService } from "../modules/transaction";
 import { placeOpening, type HostGeometry, type HostedOpening } from "../modules/hosting";
 import { ParameterEngine, type ParameterDefinition } from "../modules/parameter-engine";
 import type { GeometryDiagnostic } from "../modules/solid-kernel/validate";
@@ -1868,8 +1868,11 @@ export function openModelIntelligencePanel(): void {
    Reference picker (spec §2–§3).
    ═════════════════════════════════════════════════════════════════════════ */
 
-/** Persistent undo/redo stack shared by every Group 1 tool invocation. */
-const group1Txn = new TransactionService();
+/** Canonical undo/redo surface shared by every Group 1 tool invocation.
+ *  Commits land on the application-wide history stack (features/history.ts),
+ *  so Group-1 Move/Rotate/Mirror participate in the same Ctrl+Z order as
+ *  every other document edit — there is no second stack over the model. */
+const group1Txn = getTransactionService();
 
 /** Persistent ReferenceService (command-scoped references live here). */
 const group1Refs = new ReferenceService();

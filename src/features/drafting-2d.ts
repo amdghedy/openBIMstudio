@@ -1,5 +1,6 @@
 import { ctx } from "../core/context";
 import { promptLine } from "./form-modal";
+import { EntityUndoStack } from "../core/undo-stack";
 
 type Any = Record<string, any>;
 
@@ -31,7 +32,15 @@ class Drafting2DLayer {
   private preview: SVGGElement | null = null;
 
   private entities: DraftEntity[] = [];
-  private redoStack: DraftEntity[] = [];
+  /**
+   * Shared bounded command history (core/undo-stack.ts) — the same
+   * deterministic add/delete/modify algorithm the CAD quick-sketch engine
+   * uses, so the two entity surfaces do not carry divergent undo clones.
+   */
+  private hist = new EntityUndoStack<DraftEntity>(this.entities, {
+    maxDepth: 100,
+    onChange: () => {},
+  });
 
   private tool: Tool = null;
   private start: Pt | null = null;
@@ -109,39 +118,33 @@ class Drafting2DLayer {
   }
 
   loadEntities(list: DraftEntity[]): void {
-    this.entities = Array.isArray(list) ? list.map((e) => ({ ...e })) : [];
-    this.redoStack = [];
+    // Mutate in place — the EntityUndoStack holds a reference to this array.
+    this.entities.length = 0;
+    if (Array.isArray(list)) this.entities.push(...list.map((e) => ({ ...e })));
+    this.hist.clear();
     this.render();
   }
 
   clear(): void {
-    this.entities = [];
-    this.redoStack = [];
+    this.entities.length = 0;
+    this.hist.clear();
     this.render();
   }
 
   undo(): boolean {
-    const last = this.entities.pop();
-
-    if (!last) {
-      return false;
-    }
-
-    this.redoStack.push(last);
-    this.render();
-    return true;
+    return this.hist.undo();
   }
 
   redo(): boolean {
-    const next = this.redoStack.pop();
+    return this.hist.redo();
+  }
 
-    if (!next) {
-      return false;
-    }
+  canUndo(): boolean {
+    return this.hist.canUndo();
+  }
 
-    this.entities.push(next);
-    this.render();
-    return true;
+  canRedo(): boolean {
+    return this.hist.canRedo();
   }
 
   getCount(): number {
@@ -361,15 +364,16 @@ class Drafting2DLayer {
   };
 
   private add(init: Omit<DraftEntity, "id" | "color" | "strokeWidth">): void {
-    this.redoStack = [];
-
-    this.entities.push({
+    const ent: DraftEntity = {
       id: `d2d-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       color: "#2563eb",
       strokeWidth: 2,
       ...init,
-    });
-
+    };
+    this.entities.push(ent);
+    // hist.record clears the redo stack (redo invalidation) and keeps the
+    // add undoable with the exact entity payload.
+    this.hist.record("Add " + ent.kind, { kind: "add", entity: ent });
     this.render();
   }
 

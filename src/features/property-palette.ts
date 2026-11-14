@@ -35,6 +35,7 @@ import {
   getDrawSlope, setDrawSlope,
 } from "./authoring";
 import { getSchema, setLevelsProvider, type PropertyField, type FieldTarget } from "./property-schema";
+import { history } from "./history";
 import {
   getToolPanel,
   validatePanelNumber,
@@ -446,20 +447,26 @@ function makeFamilyIdentityBlock(element: AuthoredElement): HTMLElement {
     const newTypeId = selType.value || null;
     const prevType = element.familyTypeId ?? null;
     if (newTypeId === prevType) return;
-    element.familyTypeId = newTypeId ?? undefined;
-    try {
-      const auth: any = (ctx.features as any).authoring;
-      const n = auth?.syncFamilyInstances?.(fam.id, newTypeId) ?? 0;
-      if (n > 0) {
-        console.log(
-          "[property-palette] synced " + n + " instance(s) of type " + newTypeId,
-        );
+    // Deterministic command body: swapping the type and re-syncing its
+    // instances is one atomic unit, replayable in both directions so undo
+    // restores the exact previous type AND its instance assignments.
+    const applyType = (tid: string | null) => {
+      element.familyTypeId = tid ?? undefined;
+      try {
+        const auth: any = (ctx.features as any).authoring;
+        auth?.syncFamilyInstances?.(fam.id, tid);
+      } catch (err) {
+        console.warn("[property-palette] sync after type change failed", err);
       }
-    } catch (err) {
-      console.warn("[property-palette] sync after type change failed", err);
-    }
-    markAuthoringDirty();
-    render();
+      markAuthoringDirty();
+      render();
+    };
+    applyType(newTypeId);
+    history.push({
+      label: "Family type · " + (element.name || element.id),
+      apply: () => applyType(newTypeId),
+      revert: () => applyType(prevType),
+    });
   };
   rowType.append(lblType, selType);
   list.appendChild(rowType);
@@ -518,6 +525,22 @@ function makeFamilyIdentityBlock(element: AuthoredElement): HTMLElement {
                   },
                 }));
               }
+              // Deterministic command: replaying editFamilyParameter in both
+              // directions keeps type-scope re-syncs symmetric on undo/redo.
+              const before = current;
+              history.push({
+                label: "Family param " + p.name + " · " + (element.name || element.id),
+                apply: () => {
+                  try { mod.editFamilyParameter(element, p.name, v); } catch (err) { console.warn("[property-palette] redo failed", err); }
+                  markAuthoringDirty();
+                  render();
+                },
+                revert: () => {
+                  try { mod.editFamilyParameter(element, p.name, before); } catch (err) { console.warn("[property-palette] undo failed", err); }
+                  markAuthoringDirty();
+                  render();
+                },
+              });
             } catch (err) {
               console.warn("[property-palette] family param edit failed", err);
             }

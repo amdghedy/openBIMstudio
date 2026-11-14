@@ -125,17 +125,29 @@ class HistoryManager {
    * Push a command. If `coalesce` is set and matches the previous command's
    * key within the coalesce window, the previous command is discarded and
    * replaced with this one (they merge).
+   *
+   * Returns true when the command was recorded (or buffered into an active
+   * transaction) and false when it was refused — so callers that must not
+   * lose undo coverage can react instead of the drop being silent.
+   * A push is refused only while another undo/redo is mid-flight (ordering
+   * would be ambiguous) or during a project/document transition.
    */
-  push(cmd: Command, coalesce?: string): void {
-    if (this.isExecuting) return;
+  push(cmd: Command, coalesce?: string): boolean {
+    if (this.isExecuting) {
+      console.warn("[history] push refused: an undo/redo is executing —", cmd.label);
+      return false;
+    }
 
     // An active transaction may still be unwinding while a transition starts;
     // keep its savepoint buffer intact so its own rollback remains correct.
     if (this.txDepth > 0) {
       this.txCommands.push(cmd);
-      return;
+      return true;
     }
-    if (this.suspended) return;
+    if (this.suspended) {
+      console.warn("[history] push refused during project/document transition —", cmd.label);
+      return false;
+    }
 
     // Inside a transaction: buffer, don't push yet.
     if (coalesce && this.coalesceKey === coalesce) {
@@ -160,6 +172,7 @@ class HistoryManager {
     }
 
     this.emit();
+    return true;
   }
 
   /**

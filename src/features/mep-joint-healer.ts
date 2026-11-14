@@ -5,6 +5,7 @@
  */
 import { getElements, onAuthoringChange, rebuildAuthored } from "./authoring";
 import { history } from "./history";
+import { isTransitioning } from "../modules/projects/projects";
 import { planElbowConnections, type ConnElbow, type ConnRun, type ElbowPlan } from "../modules/mep/elbow-connect";
 
 // legacy module-local state (formerly on window)
@@ -86,7 +87,16 @@ export function healMepElbows(): number {
       }
     }
     for (const id of before.keys()) { const s = snap(id); if (s) after.set(id, s); }
-    if (history.depth().undo > 0) {
+    // Every user-visible modification must be a deterministic command —
+    // auto-repairs included — otherwise undo-all does not return the model
+    // to its true prior state. Record whenever the repair actually changed
+    // something; skip no-op runs and never mutate during a document
+    // transition (the model is being swapped, pushes are refused there).
+    const changed = [...before.entries()].some(([id, b]) => {
+      const a = after.get(id);
+      return a !== undefined && JSON.stringify(b) !== JSON.stringify(a);
+    });
+    if (changed && !isTransitioning()) {
       history.push({
         label: "Connect MEP elbows",
         apply: () => { for (const s of after.values()) apply(s); rebuildAuthored(); },

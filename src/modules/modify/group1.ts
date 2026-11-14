@@ -57,6 +57,15 @@ function clonePatch(el: ModifyElement, patch: ElementPatch): ElementPatch {
   return JSON.parse(JSON.stringify(patch)) as ElementPatch;
 }
 
+/**
+ * Registry of change ids whose FIRST forward replay was already performed
+ * by the tool itself (deviation D-16). Lives at module scope so re-wiring
+ * the transaction apply handler for a later commit cannot "forget" ids
+ * recorded by earlier commits — a per-call Set made the first redo of any
+ * older transaction a silent no-op.
+ */
+const txnSeenChanges = new Set<string>();
+
 /** Capture the inverse patch (current values of the fields a patch will touch). */
 function inversePatch(el: ModifyElement, patch: ElementPatch): ElementPatch {
   const inv: ElementPatch = { reason: `${patch.reason ?? "edit"}-undo` };
@@ -189,7 +198,12 @@ function recordTxn(
   // FIRST forward replay of each freshly recorded change (already applied
   // by the tool) and applies every subsequent replay (undo reverse,
   // redo forward).
-  const seenAtRecord = new Set<string>();
+  //
+  // `seenAtRecord` is intentionally PERSISTENT across recordTxn calls: the
+  // handler is re-wired per commit, and a fresh per-call Set would forget
+  // the ids recorded by earlier commits, silently skipping their first
+  // redo replay. Change ids are unique, so a module-level registry is safe.
+  const seenAtRecord = txnSeenChanges;
   const base = makeStoreApplyHandler(store);
   txn.setApplyHandler((change, reverse) => {
     if (!reverse && !seenAtRecord.has(change.id)) {

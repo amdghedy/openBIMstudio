@@ -183,31 +183,35 @@ export async function makeNativeTwin(hit: RVTHit): Promise<string | null> {
   if (!geo) { notify("error", `“${hit.info.name}” has no usable geometry to make editable.`); return null; }
   const info = hit.info;
   const sourceFile = hit.root.name.replace(/ \(RVT view\)\.glb$/i, "");
+  // Deterministic creation input, captured so REDO can re-run the exact
+  // same creation (addNativeGeometryElement is a pure function of input;
+  // it allocates a fresh id per call, tracked in currentId below).
+  const twinInput = {
+    name: info.name,
+    entity: ifcClassName(info.ifcType),
+    globalId: info.globalId,
+    sourceGlobalId: info.globalId,
+    predefinedType: info.predefinedType,
+    tag: info.elementId,
+    sourceModelId: SOURCE_PREFIX + hit.root.name,
+    sourceLocalId: hit.entityIndex,
+    sourceModelName: `${sourceFile}.rvt`,
+    propertySets: twinPropertySets(info, sourceFile),
+    quantities: { Width: geo.size[0], Height: geo.size[1], Depth: geo.size[2] },
+    positions: geo.positions,
+    position: geo.center,
+    quaternion: [0, 0, 0, 1],
+    scale: [1, 1, 1],
+    dimensions: { width: geo.size[0], height: geo.size[1], depth: geo.size[2] },
+    sourceRawItem: { source: "rvt-view", entityIndex: hit.entityIndex, info },
+    geometryProvenance: {
+      extractionPath: "rvt-view-glb", triangleCount: geo.triangleCount, meshCount: parts.length, vertexCount: geo.triangleCount * 3,
+      bounds: { min: geo.min, max: geo.max, center: geo.center },
+    },
+  } as Parameters<typeof addNativeGeometryElement>[0];
   let created: ReturnType<typeof addNativeGeometryElement>;
   try {
-    created = addNativeGeometryElement({
-      name: info.name,
-      entity: ifcClassName(info.ifcType),
-      globalId: info.globalId,
-      sourceGlobalId: info.globalId,
-      predefinedType: info.predefinedType,
-      tag: info.elementId,
-      sourceModelId: SOURCE_PREFIX + hit.root.name,
-      sourceLocalId: hit.entityIndex,
-      sourceModelName: `${sourceFile}.rvt`,
-      propertySets: twinPropertySets(info, sourceFile),
-      quantities: { Width: geo.size[0], Height: geo.size[1], Depth: geo.size[2] },
-      positions: geo.positions,
-      position: geo.center,
-      quaternion: [0, 0, 0, 1],
-      scale: [1, 1, 1],
-      dimensions: { width: geo.size[0], height: geo.size[1], depth: geo.size[2] },
-      sourceRawItem: { source: "rvt-view", entityIndex: hit.entityIndex, info },
-      geometryProvenance: {
-        extractionPath: "rvt-view-glb", triangleCount: geo.triangleCount, meshCount: parts.length, vertexCount: geo.triangleCount * 3,
-        bounds: { min: geo.min, max: geo.max, center: geo.center },
-      },
-    });
+    created = addNativeGeometryElement(twinInput);
   } catch (err) {
     console.error("[rvt-view] native twin failed", err);
     notify("error", `Could not make “${info.name}” editable: ${err instanceof Error ? err.message : String(err)}`);
@@ -218,11 +222,22 @@ export async function makeNativeTwin(hit: RVTHit): Promise<string | null> {
   setSelectedAuthored([id], "replace");
   selectRVTElement(null);
   notify("success", `Editable native twin created: ${info.name}. The RVT source is hidden while the twin exists.`);
+  // Deterministic command: undo removes the twin, redo re-creates it from
+  // the captured input. Each redo allocates a fresh element id, tracked in
+  // currentId so repeated undo/redo cycles always target the right twin.
+  let currentId = id;
   history.push({
     label: `Make native twin · ${info.name}`,
-    apply: () => { /* redo is not offered: run Make editable native twin again */ },
-    revert: () => { removeElementById(id); syncTwinVisibility(); },
-  } as any);
+    apply: () => {
+      const el = addNativeGeometryElement(twinInput);
+      currentId = el.id;
+      syncTwinVisibility();
+    },
+    revert: () => {
+      removeElementById(currentId);
+      syncTwinVisibility();
+    },
+  });
   return id;
 }
 

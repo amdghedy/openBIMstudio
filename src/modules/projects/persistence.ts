@@ -17,7 +17,7 @@
  * No new window globals: everything is module-scoped.
  */
 import {
-  getCurrentProject, isDirty, isTransitioning, saveProject, getSaveState,
+  getCurrentProject, isDirty, isTransitioning, markDirty, saveProject, getSaveState,
 } from "./projects";
 import { estimateStorage } from "./store";
 import { notify as toast } from "../../core/notify";
@@ -108,6 +108,16 @@ export function setupProjectPersistence(): void {
   /* ── clear the marker whenever a save lands ──────────────────────────── */
   window.addEventListener("obs:project-saved", () => {
     if (!isDirty()) clearCrashMarker();
+  });
+
+  /* ── undo/redo is a document change ─────────────────────────────────────
+   * After an undo or redo the in-memory document differs from the last
+   * saved copy. Without marking it dirty, autosave would happily restore
+   * the PRE-undo state after a refresh — the user's undo silently lost.
+   * history.ts dispatches "obs-history" after every completed undo/redo
+   * (never for pushes: the command sites already mark dirty).             */
+  window.addEventListener("obs-history", () => {
+    if (!isTransitioning()) markDirty();
   });
 
   /* ── quota observability: know exhaustion before it eats a save ──────── */

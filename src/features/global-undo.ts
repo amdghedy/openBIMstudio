@@ -10,6 +10,7 @@
  * 2026-11-13, see scripts/eliminate-local-globals.mjs).
  */
 import { history } from "./history";
+import { isCadHotkeyOwnerActive } from "../core/cad-hotkey-ownership";
 
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
@@ -88,8 +89,15 @@ async function doRedo(): Promise<void> {
 /**
  * Capture-phase keydown so undo wins over most other handlers.
  * Does not fire inside inputs / contenteditable.
+ *
+ * Single-owner rule: while a CAD drawing tab is the active screen the
+ * drawing editor owns Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z for its own entity
+ * history (cad-viewer.ts). Without this stand-down BOTH handlers ran —
+ * the app stack and the drawing stack were stepped in the same keystroke,
+ * desynchronizing the two documents.
  */
 function onKeyDown(e: KeyboardEvent): void {
+  if (isCadHotkeyOwnerActive()) return;
   if (isTypingTarget(e.target)) return;
   const ctrl = e.ctrlKey || e.metaKey;
   if (!ctrl) return;

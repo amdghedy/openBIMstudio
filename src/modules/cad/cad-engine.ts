@@ -8,6 +8,8 @@
  * by drafting-bridge.
  */
 
+import { EntityUndoStack } from "../../core/undo-stack";
+
 export type CadPt = { x: number; y: number };
 
 export type CadEntityKind =
@@ -102,9 +104,19 @@ function mirrorPoint(p: CadPt, a: CadPt, b: CadPt): CadPt {
 
 type Listener = () => void;
 
-class CadEngine {
+export class CadEngine {
   private entities: CadEntity[] = [];
-  private redoStack: CadEntity[] = [];
+  /**
+   * Deterministic command history (add / delete / modify, compound-aware).
+   * Shared implementation with the drafting-2d overlay (core/undo-stack.ts)
+   * so there is one undo/redo algorithm for entity surfaces. Every mutation
+   * records the exact before/after entity data — undo after a delete
+   * restores the DELETED entity, not whatever happens to be last.
+   */
+  private hist = new EntityUndoStack<CadEntity>(this.entities, {
+    maxDepth: 100,
+    onChange: () => this.emit(),
+  });
   private layers: CadLayer[] = [
     { id: "0", name: "0", color: "#38bdf8", visible: true, locked: false },
     { id: "defpoints", name: "Defpoints", color: "#64748b", visible: true, locked: false },
@@ -292,8 +304,7 @@ class CadEngine {
 
   private push(ent: CadEntity): void {
     this.entities.push(ent);
-    this.redoStack = [];
-    this.emit();
+    this.hist.record("Add " + ent.kind, { kind: "add", entity: ent });
   }
 
   addLine(a: CadPt, b: CadPt): CadEntity {
@@ -384,27 +395,27 @@ class CadEngine {
   }
 
   undo(): boolean {
-    const last = this.entities.pop();
-    if (!last) return false;
-    this.redoStack.push(last);
-    this.emit();
-    return true;
+    return this.hist.undo();
   }
 
   redo(): boolean {
-    const next = this.redoStack.pop();
-    if (!next) return false;
-    this.entities.push(next);
-    this.emit();
-    return true;
+    return this.hist.redo();
+  }
+
+  canUndo(): boolean {
+    return this.hist.canUndo();
+  }
+
+  canRedo(): boolean {
+    return this.hist.canRedo();
   }
 
   clear(): void {
-    this.entities = [];
-    this.redoStack = [];
+    // Mutate in place — the EntityUndoStack holds a reference to this array.
+    this.entities.length = 0;
     this.polyPoints = [];
     this.pending = null;
-    this.emit();
+    this.hist.clear(); // clears entries + redo invalidation, then emits
   }
 
   eraseLast(): boolean {
@@ -685,6 +696,7 @@ class CadEngine {
 
     // For simple lines: keep the side opposite the click (standard CAD: click side is removed)
     if (ent.kind === "line" && ent.b) {
+      const before = JSON.parse(JSON.stringify(ent)) as CadEntity;
       const clickT = target.t;
       const hitT = Math.max(0, Math.min(1, hit.u));
       if (clickT < hitT) {
@@ -693,8 +705,7 @@ class CadEngine {
       } else {
         ent.b = { x: hit.x, y: hit.y };
       }
-      this.redoStack = [];
-      this.emit();
+      this.hist.record("Trim", { kind: "modify", id: ent.id, before, after: ent });
       return true;
     }
     return false;
@@ -748,13 +759,13 @@ class CadEngine {
     const ent = this.entities[target.index];
     if (!ent || ent.kind !== "line" || !ent.b) return false;
 
+    const before = JSON.parse(JSON.stringify(ent)) as CadEntity;
     if (useStart) {
       ent.a = { x: hit2.x, y: hit2.y };
     } else {
       ent.b = { x: hit2.x, y: hit2.y };
     }
-    this.redoStack = [];
-    this.emit();
+    this.hist.record("Extend", { kind: "modify", id: ent.id, before, after: ent });
     return true;
   }
 
@@ -800,6 +811,11 @@ class CadEngine {
       return false;
     }
 
+    // Before/after snapshots so the whole FILLET is one undoable compound
+    // command (two endpoint modifications + the inserted tangent arc).
+    const before1 = JSON.parse(JSON.stringify(ent1)) as CadEntity;
+    const before2 = JSON.parse(JSON.stringify(ent2)) as CadEntity;
+
     // Tangent points roughly along each segment from intersection
     const sign1 = t1 > 0.5 ? -1 : 1;
     const sign2 = t2 > 0.5 ? -1 : 1;
@@ -817,7 +833,6 @@ class CadEngine {
     else ent1.b = tan1;
     if (t2 < 0.5) ent2.a = tan2;
     else ent2.b = tan2;
-
     // Arc center - intersection offset along angle bisector
     const bis = { x: d1.x * sign1 + d2.x * sign2, y: d1.y * sign1 + d2.y * sign2 };
     const bl = Math.hypot(bis.x, bis.y) || 1;
@@ -835,9 +850,25 @@ class CadEngine {
 
     const a0 = Math.atan2(tan1.y - center.y, tan1.x - center.x);
     const a1 = Math.atan2(tan2.y - center.y, tan2.x - center.x);
-    this.addArc(center, radius, a0, a1);
-    this.redoStack = [];
-    this.emit();
+    // Insert the tangent arc WITHOUT going through push() so the whole
+    // fillet (modify + modify + add) records as ONE compound command.
+    const arc: CadEntity = {
+      id: uid("arc"),
+      kind: "arc",
+      a: { ...center },
+      r: Math.max(0.5, radius),
+      startAngle: a0,
+      endAngle: a1,
+      color: this.color,
+      strokeWidth: this.strokeWidth,
+      layer: this.activeLayerId,
+    };
+    this.entities.push(arc);
+    this.hist.record("Fillet", [
+      { kind: "modify", id: ent1.id, before: before1, after: ent1 },
+      { kind: "modify", id: ent2.id, before: before2, after: ent2 },
+      { kind: "add", entity: arc },
+    ]);
     return true;
   }
 
@@ -846,13 +877,13 @@ class CadEngine {
     return Math.hypot(b.x - a.x, b.y - a.y);
   }
 
-  /** Delete entity by id. */
+  /** Delete entity by id. The delete is undoable: undo re-inserts the exact
+   *  removed entity at its original index (redo removes it again). */
   deleteById(id: string): boolean {
     const i = this.entities.findIndex((e) => e.id === id);
     if (i < 0) return false;
     const [removed] = this.entities.splice(i, 1);
-    this.redoStack.push(removed);
-    this.emit();
+    this.hist.record("Erase", { kind: "delete", entity: removed, index: i });
     return true;
   }
 
@@ -912,4 +943,7 @@ class CadEngine {
 
 }
 
+// App singleton. The class itself is exported above so tests (and future
+// multi-document surfaces) can build isolated engines with their own
+// deterministic command history.
 export const cadEngine = new CadEngine();
