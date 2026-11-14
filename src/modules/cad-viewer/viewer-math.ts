@@ -11,16 +11,111 @@ export interface BBox { minX: number; minY: number; maxX: number; maxY: number }
 
 /* ───────────────────────── view transform ───────────────────────── */
 
-/** World point (cx, cy) sits at the canvas centre; scale = pixels per world unit; screen Y points down. */
-export interface View { cx: number; cy: number; scale: number; w: number; h: number }
+/** World point (cx, cy) at canvas centre; scale = px per world unit; screen Y down.
+ *  `rot` (deg): extra upright rotation applied in world space before projection
+ *  so drawings saved at an angle match the embedded PNG/top view orientation. */
+export interface View { cx: number; cy: number; scale: number; w: number; h: number; rot?: number }
 
-export const worldToScreen = (v: View, x: number, y: number): Pt => ({ x: v.w / 2 + (x - v.cx) * v.scale, y: v.h / 2 - (y - v.cy) * v.scale });
-export const screenToWorld = (v: View, sx: number, sy: number): Pt => ({ x: v.cx + (sx - v.w / 2) / v.scale, y: v.cy - (sy - v.h / 2) / v.scale });
+function rotPair(v: View, x: number, y: number): Pt {
+  const a = ((v.rot ?? 0) * Math.PI) / 180;
+  if (!a) return { x, y };
+  const c = Math.cos(a), s = Math.sin(a);
+  const dx = x - v.cx, dy = y - v.cy;
+  return { x: v.cx + dx * c - dy * s, y: v.cy + dx * s + dy * c };
+}
 
-export function fitView(b: BBox, w: number, h: number, margin = 0.06): View {
-  const bw = Math.max(b.maxX - b.minX, 1e-9), bh = Math.max(b.maxY - b.minY, 1e-9);
+function invRotPair(v: View, x: number, y: number): Pt {
+  const a = (-(v.rot ?? 0) * Math.PI) / 180;
+  if (!a) return { x, y };
+  const c = Math.cos(a), s = Math.sin(a);
+  const dx = x - v.cx, dy = y - v.cy;
+  return { x: v.cx + dx * c - dy * s, y: v.cy + dx * s + dy * c };
+}
+
+export const worldToScreen = (v: View, x: number, y: number): Pt => {
+  const p = rotPair(v, x, y);
+  return { x: v.w / 2 + (p.x - v.cx) * v.scale, y: v.h / 2 - (p.y - v.cy) * v.scale };
+};
+export const screenToWorld = (v: View, sx: number, sy: number): Pt => {
+  const x = v.cx + (sx - v.w / 2) / v.scale;
+  const y = v.cy - (sy - v.h / 2) / v.scale;
+  return invRotPair(v, x, y);
+};
+
+export function fitView(b: BBox, w: number, h: number, margin = 0.06, rot = 0): View {
+  const a = (rot * Math.PI) / 180;
+  const c = Math.cos(a), s = Math.sin(a);
+  const cx0 = (b.minX + b.maxX) / 2, cy0 = (b.minY + b.maxY) / 2;
+  // Bounds of the four corners after rotation about centre
+  const corners: Pt[] = [
+    { x: b.minX, y: b.minY }, { x: b.maxX, y: b.minY },
+    { x: b.minX, y: b.maxY }, { x: b.maxX, y: b.maxY },
+  ].map((p) => {
+    const dx = p.x - cx0, dy = p.y - cy0;
+    return { x: cx0 + dx * c - dy * s, y: cy0 + dx * s + dy * c };
+  });
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of corners) {
+    if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
+  }
+  const bw = Math.max(maxX - minX, 1e-9), bh = Math.max(maxY - minY, 1e-9);
   const scale = Math.min((w * (1 - 2 * margin)) / bw, (h * (1 - 2 * margin)) / bh);
-  return { cx: (b.minX + b.maxX) / 2, cy: (b.minY + b.maxY) / 2, scale: Number.isFinite(scale) && scale > 0 ? scale : 1, w, h };
+  return {
+    cx: cx0,
+    cy: cy0,
+    scale: Number.isFinite(scale) && scale > 0 ? scale : 1,
+    w,
+    h,
+    rot: rot || undefined,
+  };
+}
+
+/**
+ * Estimate the dominant axis angle of LINE geometry (degrees, -90..90).
+ * Used to upright drawings that were saved with a rotated UCS / view.
+ */
+export function estimatePrincipalAngle(entities: DxfEntity[], sampleCap = 8000): number {
+  const bins = new Array(180).fill(0);
+  let n = 0;
+  for (const e of entities) {
+    if (n >= sampleCap) break;
+    if (e.type === "LINE") {
+      const dx = e.end.x - e.start.x, dy = e.end.y - e.start.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-9) continue;
+      let ang = (Math.atan2(dy, dx) * 180) / Math.PI; // -180..180
+      // Fold to 0..180 (undirected), then to bin
+      ang = ((ang % 180) + 180) % 180;
+      const bi = Math.min(179, Math.floor(ang));
+      bins[bi] += len;
+      n++;
+    } else if (e.type === "LWPOLYLINE" && e.points.length >= 2) {
+      for (let i = 1; i < e.points.length && n < sampleCap; i++) {
+        const dx = e.points[i].x - e.points[i - 1].x;
+        const dy = e.points[i].y - e.points[i - 1].y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-9) continue;
+        let ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+        ang = ((ang % 180) + 180) % 180;
+        bins[Math.min(179, Math.floor(ang))] += len;
+        n++;
+      }
+    }
+  }
+  if (!n) return 0;
+  let best = 0, bestV = -1;
+  for (let i = 0; i < 180; i++) if (bins[i] > bestV) { bestV = bins[i]; best = i; }
+  // Prefer nearest axis-aligned orientation: rotate so dominant angle → 0° or 90°
+  // Choose the smaller rotation to horizontal (0°)
+  let toHoriz = best;
+  if (toHoriz > 90) toHoriz -= 180;
+  // If closer to vertical, upright to 90° instead (rotation = best - 90)
+  const toVert = best - 90;
+  const rot = Math.abs(toHoriz) <= Math.abs(toVert) ? -toHoriz : -toVert;
+  // Ignore tiny tilts
+  if (Math.abs(rot) < 2) return 0;
+  return rot;
 }
 
 /** Zoom keeping the world point under the cursor fixed. */
@@ -29,11 +124,11 @@ export function zoomAt(v: View, sx: number, sy: number, factor: number, minScale
   const scale = Math.min(maxScale, Math.max(minScale, v.scale * factor));
   const next = { ...v, scale };
   const after = screenToWorld(next, sx, sy);
-  return { ...next, cx: v.cx + (before.x - after.x), cy: v.cy + (before.y - after.y) };
+  return { ...next, cx: v.cx + (before.x - after.x), cy: v.cy + (before.y - after.y), rot: v.rot };
 }
 
 export function panBy(v: View, dxPx: number, dyPx: number): View {
-  return { ...v, cx: v.cx - dxPx / v.scale, cy: v.cy + dyPx / v.scale };
+  return { ...v, cx: v.cx - dxPx / v.scale, cy: v.cy + dyPx / v.scale, rot: v.rot };
 }
 
 /** Zoom so the screen rectangle (two corners) fills the view. */

@@ -1489,6 +1489,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     winStart: { x: number; y: number } | null = null,
     winNow: { x: number; y: number } | null = null;
   let raf = 0;
+  let uprightRot = 0;
   let modelEnts: DxfEntity[] = [],
     modelIdx: M.SpatialIndex | null = null,
     modelBounds: M.BBox | null = null;
@@ -2763,7 +2764,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function zoomExtents() {
     if (!bounds) return;
     pushView();
-    view = M.fitView(bounds, view.w, view.h);
+    view = M.fitView(bounds, view.w, view.h, 0.06, uprightRot);
     draw();
     logCmd("Command: _ZOOM _EXTENTS");
   }
@@ -4786,7 +4787,30 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
       fillMenus();
       buildTabs();
-      activate(modelEnts.length ? -1 : 0);
+      // Prefer the densest paper layout when Model is empty-ish or much sparser
+      // (door schedules / title sheets often live on layouts; PNG preview matches those).
+      let startLayout = modelEnts.length ? -1 : 0;
+      if (doc.layouts?.length) {
+        let bestI = -1, bestN = modelEnts.length;
+        for (let li = 0; li < doc.layouts.length; li++) {
+          const n = doc.layouts[li].entities?.length ?? 0;
+          if (n > bestN) { bestN = n; bestI = li; }
+        }
+        if (bestI >= 0 && bestN > modelEnts.length * 1.25) startLayout = bestI;
+      }
+      activate(startLayout);
+      // Auto-upright: match typical embedded PNG / Top view orientation
+      try {
+        const ang = M.estimatePrincipalAngle(ents);
+        if (ang && bounds) {
+          uprightRot = ang;
+          view = M.fitView(bounds, view.w, view.h, 0.06, uprightRot);
+          draw();
+          logCmd(`View upright ${ang >= 0 ? "+" : ""}${ang.toFixed(1)}° (matches native preview orientation).`);
+        } else {
+          uprightRot = 0;
+        }
+      } catch { /* optional */ }
       setTool("select");
       showMeas();
 
@@ -4831,7 +4855,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       idx = ix;
     }
-    view = M.fitView(bounds!, view.w, view.h);
+    // Recompute upright for this layout's entities so paper sheets straighten too
+    try {
+      uprightRot = M.estimatePrincipalAngle(ents) || 0;
+    } catch { uprightRot = 0; }
+    view = M.fitView(bounds!, view.w, view.h, 0.06, uprightRot);
     tabsEl
       .querySelectorAll<HTMLButtonElement>("button")
       .forEach((b) => b.classList.toggle("on", Number(b.dataset.li) === layoutI));
