@@ -685,6 +685,20 @@ export function entitySegments(e: DxfEntity): Array<[Pt, Pt]> {
       for (let i = 0; i < m; i++) segs.push([e.points[i], e.points[(i + 1) % n]]);
       return segs;
     }
+    case "RAY":
+    case "XLINE": {
+      // Construction lines imported as native RAY/XLINE participate in
+      // TRIM/EXTEND/intersection math through a finite representative segment
+      // along their infinite span (they are never trim targets themselves —
+      // trimEntity/extendEntity guard on LINE/polyline only).
+      const REP = 1e5;
+      const len = Math.hypot(e.direction.x, e.direction.y) || 1;
+      const ux = e.direction.x / len, uy = e.direction.y / len;
+      if (e.type === "RAY") return [[e.start, { x: e.start.x + ux * REP, y: e.start.y + uy * REP }]];
+      return [
+        [{ x: e.start.x - ux * (REP / 2), y: e.start.y - uy * (REP / 2) }, { x: e.start.x + ux * (REP / 2), y: e.start.y + uy * (REP / 2) }],
+      ];
+    }
     default:
       return [];
   }
@@ -1247,12 +1261,16 @@ export function polygonLoop(cx: number, cy: number, r: number, n: number, startD
   return out;
 }
 
-/** Ellipse approximation as a closed polyline loop (48 segments). */
-export function ellipseLoop(cx: number, cy: number, rx: number, ry: number, steps = 48): DxfPoint[] {
+/** Parametric loop of an ellipse — supports a rotation angle so the drawn
+ *  loop honours the axes the user actually picked (major axis direction). */
+export function ellipseLoop(cx: number, cy: number, rx: number, ry: number, steps = 48, rotationDeg = 0): DxfPoint[] {
+  const rot = (rotationDeg * Math.PI) / 180;
+  const cosR = Math.cos(rot), sinR = Math.sin(rot);
   const out: DxfPoint[] = [];
   for (let i = 0; i < steps; i++) {
     const a = (2 * Math.PI * i) / steps;
-    out.push({ x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) });
+    const ex = rx * Math.cos(a), ey = ry * Math.sin(a);
+    out.push({ x: cx + ex * cosR - ey * sinR, y: cy + ex * sinR + ey * cosR });
   }
   return out;
 }

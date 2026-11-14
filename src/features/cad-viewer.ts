@@ -264,6 +264,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LAYUNLCK", aliases: ["LAYUNLOCK"], description: "Unlock the layer of the picked object" },
   { name: "MLEADER", aliases: ["MLD", "LE", "LEADER"], description: "Draw a leader line with annotation text: arrow point → landing end → type the text" },
   { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type, layer, ACI/RGB colour, linetype, lineweight, text content or all visible objects" },
+  { name: "FILTER", aliases: [], description: "Selection filter — restrict clicking and window/crossing selection to chosen entity types (FILTER CLEAR resets)" },
   { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour, linetype or lineweight" },
   { name: "SELECTIONCYCLING", aliases: ["SELCYCLE"], description: "Choose which overlapping object is selected at the cursor (Ctrl+W)" },
   { name: "ARRAYPOLAR", aliases: ["ARP"], description: "Create a polar array around a centre point; choose item count, sweep angle and whether items rotate" },
@@ -1315,21 +1316,34 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let currentDimStyleName = "ISO-25";
   const dimRecords = new Map<string, DIM.DimRecord>();
   let dimSeq = 0;
+  /** Last placed linear/aligned record — the chain root for DIMCONTINUE/DIMBASELINE. */
+  let lastLinearRecord: DIM.DimRecord | null = null;
+  /** Last placed baseline record — successive DIMBASELINE placements stagger outward from it. */
+  let lastBaselineRecord: DIM.DimRecord | null = null;
   const currentDimStyle = (): DIM.DimStyle =>
     dimStyleList.find((s) => s.name === currentDimStyleName) ?? dimStyleList[0];
-  /** Text shown on a dimension record, mirroring the DIMLINEAR tool maths. */
+  /** Text shown on a dimension record, mirroring the DIM* tool maths. */
   function dimTextFor(rec: DIM.DimRecord, style: DIM.DimStyle): string {
-    if (!doc) return DIM.formatMeasurement(DIM.measureRecord(rec), style);
+    if (rec.mode === "angular") return DIM.formatAngleMeasurement(DIM.measureRecord(rec), style);
+    const prefix = DIM.dimPrefix(rec.mode);
+    if (!doc) return prefix + DIM.formatMeasurement(DIM.measureRecord(rec), style);
     const measured = DIM.measureRecord(rec);
     const value = M.convertLength(measured * scaleCal, doc.units, du);
     const label = DIM.formatMeasurement(value, style);
     const unit = M.unitLabel(doc.units, du);
     // A style suffix is the user's explicit unit statement — don't double it.
-    return unit === "units" || style.suffix ? label : label + " " + unit;
+    return prefix + (unit === "units" || style.suffix ? label : label + " " + unit);
+  }
+  /** Registers a record and returns its tagged entities (caller commits). */
+  function commitDimRecord(rec: DIM.DimRecord): DxfEntity[] {
+    const style = dimStyleList.find((s) => s.name === rec.styleName) ?? currentDimStyle();
+    const entities = DIM.buildDimEntities(rec, style, dimTextFor(rec, style));
+    if (entities.length) dimRecords.set(rec.id, rec);
+    return entities;
   }
   /** Registers a newly placed dimension and returns its tagged entities. */
   function createDimEntities(args: {
-    first: M.Pt; second: M.Pt; placement: M.Pt; mode: "linear" | "aligned";
+    first: M.Pt; second: M.Pt; placement: M.Pt; mode: DIM.DimMode;
   }): DxfEntity[] {
     const style = currentDimStyle();
     const rec: DIM.DimRecord = {
@@ -1341,9 +1355,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       p2: { ...args.second },
       placement: { ...args.placement },
     };
-    const entities = DIM.buildDimEntities(rec, style, dimTextFor(rec, style));
-    if (entities.length) dimRecords.set(rec.id, rec);
-    return entities;
+    return commitDimRecord(rec);
   }
   /**
    * Associativity: given the before/after entity pairs of a transform commit,
@@ -4513,23 +4525,25 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
     const after: DxfEntity[] = [];
+    let hatched = 0;
     for (const e of before) {
       if (e.type === "LWPOLYLINE") {
+        if (e.hatch) hatched++;
         const n = e.points.length;
         const m = e.closed ? n : n - 1;
         for (let i = 0; i < m; i++) {
           const a = e.points[i],
             b = e.points[(i + 1) % n];
-          after.push({ type: "LINE", layer: e.layer, color: e.color, rgb: e.rgb, lineType: e.lineType, lineweight: e.lineweight, start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y } });
+          after.push({ type: "LINE", layer: e.layer, color: e.color, rgb: e.rgb, lineType: e.lineType, lineweight: e.lineweight, ltScale: e.ltScale, transparency: e.transparency, start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y } });
         }
       } else after.push(e);
     }
     if (after.length === before.length) {
-      logCmd("EXPLODE: nothing to explode in the selection.");
+      logCmd("EXPLODE: nothing to explode in the selection — polylines are the only composite objects.");
       return;
     }
     commitReplace(before, after);
-    logCmd(`EXPLODE: ${before.length} object(s) → ${after.length} entities.`);
+    logCmd(`EXPLODE: ${before.length} object(s) → ${after.length} entities.${hatched ? ` Hatch fill removed from ${hatched} boundary polyline(s).` : ""}`);
   }
 
   /** OFFSET click flow. Returns true when the click was consumed. */
@@ -4738,6 +4752,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       markups = [];
       dimRecords.clear();
       dimSeq = 0;
+      lastLinearRecord = null; // chain roots belong to the loaded drawing
+      lastBaselineRecord = null;
       results = [];
       layerFilter = "";
       origin = null;
@@ -6694,6 +6710,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           if (entities.length) {
             addEntities(entities);
             const rec = dimRecords.get(entities[0].meta?.dimId ?? "");
+            if (rec) {
+              lastLinearRecord = rec;
+              lastBaselineRecord = null; // fresh root for DIMBASELINE stacking
+            }
             const style = currentDimStyle();
             // Report exactly what the entity shows — dimTextFor honours the
             // style suffix and skips the automatic unit label when present.
@@ -6737,18 +6757,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         break;
       case "radius": {
-        // Real radial dimension (DIMRADIUS): pick a circle or arc, the dimension
-        // runs from the centre to the picked edge and reads R<radius>.
+        // DIMRADIUS: committed associative radial dimension — runs from the
+        // centre to the picked edge and reads R<radius> under the active style.
         const ri = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
         if (ri >= 0) {
           const e = ents[ri];
           if (e.type === "CIRCLE" || e.type === "ARC") {
             const len = Math.hypot(wp.x - e.center.x, wp.y - e.center.y) || 1;
             const edge = { x: e.center.x + (e.radius * (wp.x - e.center.x)) / len, y: e.center.y + (e.radius * (wp.y - e.center.y)) / len };
-            markups.push({ kind: "dimrad", pts: [e.center, edge], text: `R${fmt(e.radius)}` });
-            results.push(`Radius: ${fmt(e.radius)}`);
-            showMeas();
-            logCmd(`DIMRADIUS: R${fmt(e.radius)} placed.`);
+            const entities = createDimEntities({ first: e.center, second: edge, placement: edge, mode: "radial" });
+            if (entities.length) {
+              addEntities(entities);
+              const rec = dimRecords.get(entities[0].meta?.dimId ?? "");
+              const label = rec ? dimTextFor(rec, currentDimStyle()) : "";
+              results.push(`Radius: ${label}`);
+              showMeas();
+              logCmd(`DIMRADIUS: ${label} placed [${currentDimStyle().name}].`);
+            } else logCmd("DIMRADIUS: could not place the dimension.");
           } else logCmd("DIMRADIUS: pick a circle or arc.");
         }
         break;
@@ -6877,10 +6902,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             addDraftEntity({
               type: "LWPOLYLINE",
               layer: currentLayer, ...newObjectProps(),
-              points: X.ellipseLoop(c.x, c.y, rx, ry),
+              points: X.ellipseLoop(c.x, c.y, rx, ry, 48, (ang * 180) / Math.PI),
               closed: true,
             });
-            logCmd(`Ellipse added: ${fmt(2 * rx)} × ${fmt(2 * ry)}`);
+            logCmd(`Ellipse added: ${fmt(2 * rx)} × ${fmt(2 * ry)}, major axis at ${((ang * 180) / Math.PI).toFixed(1)}°`);
           }
           pts = [];
         }
@@ -7010,9 +7035,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         pts.push(p);
         if (pts.length === 3) {
           const [v, a, b] = pts;
-          const ang = M.angleAt(v, a, b);
-          markups.push({ kind: "dimang", pts: [v, a, b], text: `${ang.toFixed(2)}°` });
-          results.push(`Angular dimension: ${ang.toFixed(2)}°`);
+          // Committed associative dimension: angular sweep from ray v→a to ray v→b.
+          const entities = createDimEntities({ first: v, second: a, placement: b, mode: "angular" });
+          if (entities.length) {
+            addEntities(entities);
+            const label = DIM.formatAngleMeasurement(DIM.measureRecord({ mode: "angular", p1: v, p2: a, placement: b }), currentDimStyle());
+            results.push(`Angular dimension: ${label}`);
+            logCmd(`DIMANGULAR: ${label} placed [${currentDimStyle().name}].`);
+          } else logCmd("DIMANGULAR: the points must define two different rays.");
           pts = [];
           showMeas();
         }
@@ -7023,14 +7053,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (ai >= 0) {
           const e = ents[ai];
           if (e.type === "ARC") {
-            const sweep = ((e.endAngle - e.startAngle) % 360 + 360) % 360 || 360;
-            const len = (sweep * Math.PI * e.radius) / 180;
-            const mid = e.startAngle + sweep / 2;
             const sm = { x: e.center.x + e.radius * Math.cos((e.startAngle * Math.PI) / 180), y: e.center.y + e.radius * Math.sin((e.startAngle * Math.PI) / 180) };
             const em = { x: e.center.x + e.radius * Math.cos((e.endAngle * Math.PI) / 180), y: e.center.y + e.radius * Math.sin((e.endAngle * Math.PI) / 180) };
-            markups.push({ kind: "dimarc", pts: [e.center, sm, em], text: `${fmt(len)}` });
-            results.push(`Arc length: ${fmt(len)}`);
-            showMeas();
+            // Committed associative arc-length dimension along the picked arc.
+            const entities = createDimEntities({ first: e.center, second: sm, placement: em, mode: "arclen" });
+            if (entities.length) {
+              addEntities(entities);
+              const rec = dimRecords.get(entities[0].meta?.dimId ?? "");
+              const label = rec ? dimTextFor(rec, currentDimStyle()) : "";
+              results.push(`Arc length: ${label}`);
+              showMeas();
+              logCmd(`DIMARC: ${label} placed [${currentDimStyle().name}].`);
+            } else logCmd("DIMARC: could not place the dimension on this arc.");
           } else logCmd("DIMARC: pick an arc.");
         }
         break;
@@ -7042,9 +7076,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           if (e.type === "CIRCLE" || e.type === "ARC") {
             const len = Math.hypot(wp.x - e.center.x, wp.y - e.center.y) || 1;
             const edge = { x: e.center.x + (e.radius * (wp.x - e.center.x)) / len, y: e.center.y + (e.radius * (wp.y - e.center.y)) / len };
-            markups.push({ kind: "dimdia", pts: [e.center, edge], text: `⌀${fmt(2 * e.radius)}` });
-            results.push(`Diameter: ${fmt(2 * e.radius)}`);
-            showMeas();
+            // Committed associative diameter dimension through the centre.
+            const entities = createDimEntities({ first: e.center, second: edge, placement: edge, mode: "diameter" });
+            if (entities.length) {
+              addEntities(entities);
+              const rec = dimRecords.get(entities[0].meta?.dimId ?? "");
+              const label = rec ? dimTextFor(rec, currentDimStyle()) : "";
+              results.push(`Diameter: ${label}`);
+              showMeas();
+              logCmd(`DIMDIAMETER: ${label} placed [${currentDimStyle().name}].`);
+            } else logCmd("DIMDIAMETER: could not place the dimension.");
           } else logCmd("DIMDIAMETER: pick a circle or arc.");
         }
         break;
@@ -7094,30 +7135,60 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (ci >= 0) {
           const e = ents[ci];
           if (e.type === "CIRCLE" || e.type === "ARC") {
-            markups.push({ kind: "dimcenter", pts: [e.center], text: "" });
-            logCmd("DIMCENTER: center mark placed.");
+            // Committed centre mark: a real, selectable, undoable dimension group.
+            const entities = createDimEntities({ first: e.center, second: e.center, placement: e.center, mode: "center" });
+            if (entities.length) {
+              addEntities(entities);
+              logCmd(`DIMCENTER: centre mark placed on the ${e.type === "CIRCLE" ? "circle" : "arc"}.`);
+            } else logCmd("DIMCENTER: could not place the centre mark.");
           } else logCmd("DIMCENTER: pick a circle or arc.");
         }
         break;
       }
       case "dimcont": {
-        pts.push(p);
-        if (pts.length === 2) {
-          markups.push({ kind: "dim", pts: [...pts], text: fmt(M.distance(pts[0], pts[1])) });
-          results.push(`Continued dimension: ${fmt(M.distance(pts[0], pts[1]))}`);
-          pts = [p]; // chain from the last point like DIMCONTINUE
-          showMeas();
+        // AutoCAD-style chaining: the chain start is the previous dimension's
+        // second endpoint — one click places the next continued dimension.
+        const prev = lastLinearRecord;
+        if (!prev || (prev.mode !== "linear" && prev.mode !== "aligned")) {
+          logCmd("DIMCONTINUE: place a DIMLINEAR/DIMALIGNED dimension first, then click each chain point.");
+          setTool("select");
+          break;
         }
+        const style = currentDimStyle();
+        const rec = DIM.continuedDimRecord(prev, `dim-${Date.now().toString(36)}-${++dimSeq}`, p, style.name, currentLayer);
+        const entities = commitDimRecord(rec);
+        if (entities.length) {
+          addEntities(entities);
+          lastLinearRecord = rec;
+          const label = dimTextFor(rec, style);
+          results.push(`Continued dimension: ${label}`);
+          showMeas();
+          logCmd(`DIMCONTINUE: ${label}. Click the next chain point, or press Esc to end.`);
+        } else logCmd("DIMCONTINUE: the chain point must differ from the previous endpoint.");
         break;
       }
       case "dimbase": {
-        pts.push(p);
-        if (pts.length === 2) {
-          markups.push({ kind: "dim", pts: [...pts], text: fmt(M.distance(pts[0], pts[1])) });
-          results.push(`Baseline dimension: ${fmt(M.distance(pts[0], pts[1]))}`);
-          pts = [pts[0]]; // measure from the same baseline origin
-          showMeas();
+        // AutoCAD-style baseline: every click dimensions from the root origin,
+        // staggered outward so successive baseline dims do not overlap.
+        const root = lastLinearRecord;
+        if (!root || (root.mode !== "linear" && root.mode !== "aligned")) {
+          logCmd("DIMBASELINE: place a DIMLINEAR/DIMALIGNED dimension first, then click each baseline point.");
+          setTool("select");
+          break;
         }
+        const prev = lastBaselineRecord ?? root;
+        const style = currentDimStyle();
+        const spacing = Math.max(style.textHeight * 2.2, (style.arrowSize > 0 ? style.arrowSize : style.textHeight * 2.5) * 1.6);
+        const rec = DIM.baselineDimRecord(root, prev, `dim-${Date.now().toString(36)}-${++dimSeq}`, p, style.name, currentLayer, spacing);
+        const entities = commitDimRecord(rec);
+        if (entities.length) {
+          addEntities(entities);
+          lastBaselineRecord = rec;
+          const label = dimTextFor(rec, style);
+          results.push(`Baseline dimension: ${label}`);
+          showMeas();
+          logCmd(`DIMBASELINE: ${label}. Click the next baseline point, or press Esc to end.`);
+        } else logCmd("DIMBASELINE: the baseline point must differ from the origin.");
         break;
       }
       case "explode": {
@@ -8797,6 +8868,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       } else logCmd("QSELECT: use ALL · TYPE <entity> · LAYER <name> · COLOR <ACI|#RRGGBB|BYLAYER> · LINETYPE <name|BYLAYER> · LINEWEIGHT <mm|BYLAYER> · TEXT <contains>.");
       return;
     }
+    if (cmd === "FILTER") {
+      if (/^(clear|none|off|reset)$/i.test(arg.trim())) {
+        typeFilter = new Set();
+        for (const i of [...sel]) {
+          if (!ents[i]) sel.delete(i);
+        }
+        logCmd("FILTER: selection filter cleared — every object type is selectable again.");
+        updateStatus();
+        draw();
+      } else {
+        openTypeFilterDialog();
+      }
+      return;
+    }
     if (cmd === "SELECTSIMILAR" || cmd === "SELSIM") {
       const src = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
       if (!src.length) {
@@ -9164,6 +9249,55 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     };
     $("stage").appendChild(el);
     return el;
+  }
+
+  /**
+   * FILTER — selection filter dialog. The checked entity types are the only
+   * ones picking, window and crossing selection can land on (the `visible`
+   * predicate honours `typeFilter`). FILTER CLEAR resets.
+   */
+  function openTypeFilterDialog(): void {
+    const counts = new Map<string, number>();
+    for (const e of ents) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
+    const types = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Selection Filter (FILTER)</b>
+      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Only the checked types are selectable — clicking and window/crossing selection both honour the filter. Clear it to select everything again.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
+        ${types.map(([t, n]) => `<label style="display:flex;gap:8px;align-items:center;padding:7px;border:1px solid #293548;border-radius:6px"><input type="checkbox" data-filter-type="${t}" ${typeFilter.has(t) ? "checked" : ""}><span>${t} <small style="color:#94a3b8">(${n})</small></span></label>`).join("") || "<div style='color:#94a3b8;font-size:12px'>The drawing is empty — place objects first.</div>"}
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button data-r="filter-clear" style="padding:6px 10px">Clear Filter</button>
+        <button data-r="filter-apply" style="padding:6px 12px;background:#0284c7;color:white;border:0;border-radius:4px">Apply</button>
+      </div>
+    `);
+    const readChecked = (): Set<string> => {
+      const next = new Set<string>();
+      panel.querySelectorAll<HTMLInputElement>("[data-filter-type]").forEach((i) => {
+        if (i.checked && i.dataset.filterType) next.add(i.dataset.filterType);
+      });
+      return next;
+    };
+    panel.querySelector("[data-r=filter-clear]")?.addEventListener("click", () => {
+      typeFilter = new Set();
+      panel.querySelectorAll<HTMLInputElement>("[data-filter-type]").forEach((i) => { i.checked = false; });
+      logCmd("FILTER: selection filter cleared.");
+      updateStatus();
+      draw();
+    });
+    panel.querySelector("[data-r=filter-apply]")?.addEventListener("click", () => {
+      typeFilter = readChecked();
+      // Deselect anything the filter now excludes.
+      for (const i of [...sel]) {
+        if (!ents[i] || !visible(ents[i])) sel.delete(i);
+      }
+      logCmd(typeFilter.size
+        ? `FILTER: selection filter active — only ${[...typeFilter].join(", ")} selectable.`
+        : "FILTER: no types checked — every object type is selectable.");
+      closeOverlay();
+      updateStatus();
+      draw();
+    });
   }
 
   function openOsnapSettings(): void {

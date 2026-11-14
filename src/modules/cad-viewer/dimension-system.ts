@@ -23,9 +23,20 @@
  * Everything here is pure and DOM-free so it can be unit-tested headlessly.
  */
 import type { DxfEntity } from "../drawings/dxf-types";
-import { buildLinearDimension, type LinearDimensionMode } from "./dimension-tools";
+import {
+  buildLinearDimension,
+  buildRadialDimension,
+  buildDiameterDimension,
+  buildAngularDimension,
+  buildArcLengthDimension,
+  buildCenterMark,
+  type LinearDimensionMode,
+} from "./dimension-tools";
 
 export interface Pt { x: number; y: number }
+
+/** Every dimension kind the editor can place (DIMMODE union). */
+export type DimMode = LinearDimensionMode | "radial" | "diameter" | "angular" | "arclen" | "center";
 
 /** A named dimension style (subset of AutoCAD's DIMSTYLE that matters here). */
 export interface DimStyle {
@@ -47,12 +58,16 @@ export interface DimStyle {
 export interface DimRecord {
   id: string;
   styleName: string;
-  mode: LinearDimensionMode;
+  mode: DimMode;
   layer: string;
-  /** Measured endpoints (definition points, AutoCAD's defpoints). */
+  /** Definition points — meaning per mode:
+   *  linear/aligned: p1, p2 measured endpoints, placement = dim-line location.
+   *  radial/diameter: p1 = centre, p2 = picked edge point, placement = same edge.
+   *  angular: p1 = vertex, p2 = point on first ray, placement = point on second ray.
+   *  arclen: p1 = arc centre, p2 = arc start point, placement = arc end point.
+   *  center: p1 = centre (p2/placement mirror it). */
   p1: Pt;
   p2: Pt;
-  /** Dimension-line placement point. */
   placement: Pt;
 }
 
@@ -93,6 +108,22 @@ export function endpointsOf(e: DxfEntity): Pt[] {
 
 const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
 
+const norm360 = (d: number): number => ((d % 360) + 360) % 360;
+
+/** Text prefix for a dimension mode (AutoCAD DIMPOST R / ⌀ equivalents). */
+export function dimPrefix(mode: DimMode): string {
+  if (mode === "radial") return "R";
+  if (mode === "diameter") return "\u2300";
+  return "";
+}
+
+/** Formats an angular measurement (DIMDEC precision + degree sign). */
+export function formatAngleMeasurement(deg: number, style: DimStyle): string {
+  const p = Math.max(0, Math.min(6, Math.round(style.precision)));
+  const text = norm360(deg).toFixed(p);
+  return text + "\u00B0";
+}
+
 /** Formats a converted measurement value with the style's precision + suffix. */
 export function formatMeasurement(value: number, style: DimStyle): string {
   const v = value * (Number.isFinite(style.linearScale) && style.linearScale !== 0 ? style.linearScale : 1);
@@ -101,26 +132,75 @@ export function formatMeasurement(value: number, style: DimStyle): string {
   return style.suffix ? text + style.suffix : text;
 }
 
-/** Raw measurement of a record, mirroring the DIMLINEAR/DIMALIGNED tools. */
-export function measureRecord(rec: Pick<DimRecord, "mode" | "p1" | "p2">): number {
+/** Raw measurement of a record, mirroring the DIM* tool maths. */
+export function measureRecord(rec: Pick<DimRecord, "mode" | "p1" | "p2" | "placement">): number {
   const dx = Math.abs(rec.p2.x - rec.p1.x);
   const dy = Math.abs(rec.p2.y - rec.p1.y);
-  return rec.mode === "linear" ? Math.max(dx, dy) : Math.hypot(dx, dy);
+  switch (rec.mode) {
+    case "linear":
+      return Math.max(dx, dy);
+    case "radial":
+      return dist(rec.p1, rec.p2);
+    case "diameter":
+      return 2 * dist(rec.p1, rec.p2);
+    case "angular": {
+      // Counter-clockwise sweep from ray p1→p2 to ray p1→placement (0–360°).
+      const a1 = Math.atan2(rec.p2.y - rec.p1.y, rec.p2.x - rec.p1.x);
+      const a2 = Math.atan2(rec.placement.y - rec.p1.y, rec.placement.x - rec.p1.x);
+      const sweep = ((a2 - a1) * 180) / Math.PI;
+      return norm360(sweep);
+    }
+    case "arclen": {
+      // Radius × counter-clockwise sweep between the two arc defpoints.
+      const r = dist(rec.p1, rec.p2);
+      const a1 = Math.atan2(rec.p2.y - rec.p1.y, rec.p2.x - rec.p1.x);
+      const a2 = Math.atan2(rec.placement.y - rec.p1.y, rec.placement.x - rec.p1.x);
+      const sweep = ((a2 - a1) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      return r * sweep;
+    }
+    case "center":
+      return 0;
+    default:
+      return Math.hypot(dx, dy);
+  }
 }
 
 /** Builds the tagged LINE/TEXT entities for a record under a style. */
 export function buildDimEntities(rec: DimRecord, style: DimStyle, text: string): DxfEntity[] {
-  return buildLinearDimension({
-    first: rec.p1,
-    second: rec.p2,
-    placement: rec.placement,
-    mode: rec.mode,
+  const common = {
     layer: rec.layer,
     text,
     textHeight: Math.max(1e-6, style.textHeight),
     arrowSize: style.arrowSize > 0 ? style.arrowSize : undefined,
     dimId: rec.id,
-  }).map((e) => (style.colorAci !== undefined ? { ...e, color: style.colorAci } : e));
+  };
+  let built: DxfEntity[];
+  switch (rec.mode) {
+    case "radial":
+      built = buildRadialDimension({ ...common, center: rec.p1, edge: rec.p2 });
+      break;
+    case "diameter":
+      built = buildDiameterDimension({ ...common, center: rec.p1, edge: rec.p2 });
+      break;
+    case "angular":
+      built = buildAngularDimension({ ...common, vertex: rec.p1, a: rec.p2, b: rec.placement });
+      break;
+    case "arclen":
+      built = buildArcLengthDimension({ ...common, center: rec.p1, start: rec.p2, end: rec.placement });
+      break;
+    case "center":
+      built = buildCenterMark({ center: rec.p1, layer: rec.layer, size: style.arrowSize > 0 ? style.arrowSize : style.textHeight * 2.5, dimId: rec.id });
+      break;
+    default:
+      built = buildLinearDimension({
+        first: rec.p1,
+        second: rec.p2,
+        placement: rec.placement,
+        mode: rec.mode,
+        ...common,
+      });
+  }
+  return built.map((e) => (style.colorAci !== undefined ? { ...e, color: style.colorAci } : e));
 }
 
 /** Collects the entities that belong to one dimension. */
@@ -160,6 +240,12 @@ export function trackDimensionDefpoints(
 
   const changed: DimRecord[] = [];
   for (const rec of records) {
+    // Centre-anchored kinds ride rigidly with their circle/arc: the measured
+    // edge point is not an entity endpoint, so when the centre moved it must
+    // translate along (AutoCAD's defpoint model cannot see radius changes —
+    // documented limitation: scaling a circle does not update radial dims).
+    const centerAnchored = rec.mode === "radial" || rec.mode === "diameter" || rec.mode === "arclen" || rec.mode === "center";
+    const isAngular = rec.mode === "angular";
     const moves: Array<{ key: "p1" | "p2" | "placement"; delta: Pt }> = [];
     const match = (p: Pt): Pt | null => {
       let best: Pt | null = null;
@@ -177,13 +263,25 @@ export function trackDimensionDefpoints(
     const p2 = match(rec.p2);
     if (p1) moves.push({ key: "p1", delta: { x: p1.x - rec.p1.x, y: p1.y - rec.p1.y } });
     if (p2) moves.push({ key: "p2", delta: { x: p2.x - rec.p2.x, y: p2.y - rec.p2.y } });
+    // Angular: the second ray point is a geometry defpoint — it rides too.
+    if (isAngular) {
+      const p3 = match(rec.placement);
+      if (p3) moves.push({ key: "placement", delta: { x: p3.x - rec.placement.x, y: p3.y - rec.placement.y } });
+    }
     if (!moves.length) continue;
 
     const next: DimRecord = { ...rec, p1: { ...rec.p1 }, p2: { ...rec.p2 }, placement: { ...rec.placement } };
     for (const m of moves) next[m.key] = { x: next[m.key].x + m.delta.x, y: next[m.key].y + m.delta.y };
+    // Rigid follow for centre-anchored dimensions: translate the edge and
+    // placement by the centre's delta when they did not match movers of their own.
+    if (centerAnchored && p1) {
+      const d = { x: p1.x - rec.p1.x, y: p1.y - rec.p1.y };
+      if (!p2) next.p2 = { x: next.p2.x + d.x, y: next.p2.y + d.y };
+      if (!isAngular && !p2) next.placement = { x: next.placement.x + d.x, y: next.placement.y + d.y };
+    }
     // Both endpoints moved rigidly → carry the dimension line along by the
     // mean delta so the offset/leader relationship is preserved.
-    if (p1 && p2) {
+    if (!centerAnchored && !isAngular && p1 && p2) {
       const mx = (p1.x - rec.p1.x + p2.x - rec.p2.x) / 2;
       const my = (p1.y - rec.p1.y + p2.y - rec.p2.y) / 2;
       next.placement = { x: next.placement.x + mx, y: next.placement.y + my };
@@ -217,4 +315,56 @@ export function restyleBatch(
     after.push(...fresh);
   }
   return { before, after };
+}
+
+/**
+ * DIMCONTINUE — next dimension in a chain: it measures from the previous
+ * dimension's second endpoint to a new point, keeping the same style, mode
+ * and dimension-line offset (translated along the chain, AutoCAD-style).
+ * Only meaningful for linear/aligned records.
+ */
+export function continuedDimRecord(
+  prev: DimRecord,
+  id: string,
+  newPoint: Pt,
+  styleName: string,
+  layer: string,
+): DimRecord {
+  const dx = prev.p2.x - prev.p1.x, dy = prev.p2.y - prev.p1.y;
+  return {
+    id, styleName, mode: prev.mode, layer,
+    p1: { ...prev.p2 },
+    p2: { ...newPoint },
+    placement: { x: prev.placement.x + dx, y: prev.placement.y + dy },
+  };
+}
+
+/**
+ * DIMBASELINE — dimension measured from the first dimension's origin to a
+ * new point, staggered outward by `spacing` drawing units along the same
+ * side of the dimension line as the previous baseline placement.
+ * Only meaningful for linear/aligned records.
+ */
+export function baselineDimRecord(
+  root: DimRecord,
+  prev: DimRecord,
+  id: string,
+  newPoint: Pt,
+  styleName: string,
+  layer: string,
+  spacing: number,
+): DimRecord {
+  const dx = prev.p2.x - prev.p1.x, dy = prev.p2.y - prev.p1.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // Which side of the dimension line the previous placement sat on decides
+  // the stagger direction, so successive baselines keep stacking outward.
+  const cross = dx * (prev.placement.y - prev.p1.y) - dy * (prev.placement.x - prev.p1.x);
+  const sgn = cross >= 0 ? 1 : -1;
+  const nx = (-dy / len) * sgn, ny = (dx / len) * sgn;
+  return {
+    id, styleName, mode: root.mode, layer,
+    p1: { ...root.p1 },
+    p2: { ...newPoint },
+    placement: { x: prev.placement.x + nx * spacing, y: prev.placement.y + ny * spacing },
+  };
 }
