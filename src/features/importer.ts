@@ -989,12 +989,8 @@ function enqueueIfc(files: File | File[]) {
       t.phase = "skipped";
       t.error = `File is ${sizeMB.toFixed(0)} MB (hard limit ${ifcSettings.maxSizeMB} MB). Convert to .frag offline, or raise max size in Importer settings.`;
     } else if (sizeMB > ifcSettings.browserSafeMaxMB && !ifcSettings.allowUnsafeLargeIfc) {
-      t.status = "skipped";
-      t.phase = "skipped — too large for browser";
-      t.error =
-        `Extracted IFC is ${sizeMB.toFixed(0)} MB. In-browser web-ifc typically fails above ~${ifcSettings.browserSafeMaxMB} MB (tab runs out of memory). ` +
-        `Convert this model to .frag (ThatOpen / desktop) and use Insert → Link FRAG, ` +
-        `or enable "Allow unsafe large IFC" in Importer settings (may crash the tab).`;
+      // Do not pre-skip: runTask checks FRAG cache first (Convert & link may have filled it).
+      t.phase = `large file (${sizeMB.toFixed(0)} MB) — will use FRAG cache if available`;
     } else if (sizeMB > 80) {
       t.phase = `large file (${sizeMB.toFixed(0)} MB) — conversion may take several minutes / risk OOM`;
     }
@@ -1002,21 +998,8 @@ function enqueueIfc(files: File | File[]) {
     renderTaskRow(t);
   }
   updateQueueSummary();
-  const skippedBig = list.filter((f) => {
-    const mb = f.size / (1024 * 1024);
-    return mb > ifcSettings.browserSafeMaxMB && mb <= ifcSettings.maxSizeMB && !ifcSettings.allowUnsafeLargeIfc;
-  });
-  if (skippedBig.length) {
-    if (largeIfcAutoHandoff()) {
-      void import("./ifc-to-frag").then((m) => {
-        m.forceAutoLink?.(true);
-        m.showIfcToFragPanel?.();
-        void m.queueFiles?.(skippedBig);
-      }).catch(() => offerLargeIfcRecovery(skippedBig));
-    } else {
-      offerLargeIfcRecovery(skippedBig);
-    }
-  }
+  // Large files go through processQueue → runTask (cache hit loads instantly;
+  // cache miss opens Convert & link recovery there).
   void processQueue();
 }
 
@@ -1144,73 +1127,100 @@ async function runTask(t: ImportTask) {
   let fragLoadMs = 0;
 
   try {
-    if (t.sizeMB > ifcSettings.browserSafeMaxMB && !ifcSettings.allowUnsafeLargeIfc) {
+    // Critical: FRAG cache hit skips convert (and unblocks large files already converted once)
+    let fragBytes: Uint8Array | null = null;
+    let cacheKey: string | null = null;
+    try {
+      cacheKey = await hashFileKey(t.file);
+      const cached = await getCachedFrag(cacheKey);
+      if (cached && cached.byteLength > 32) {
+        fragBytes = cached;
+        t.schema = "cached";
+        t.phase = "loaded from FRAG cache";
+        t.progress = 100;
+        refreshTaskRow(t);
+        console.log(`[importer] FRAG cache hit · ${t.file.name} · ${(cached.byteLength / (1024 * 1024)).toFixed(1)} MB`);
+      }
+    } catch {
+      /* cache optional */
+    }
+
+    if (!fragBytes && t.sizeMB > ifcSettings.browserSafeMaxMB && !ifcSettings.allowUnsafeLargeIfc) {
       t.status = "skipped";
       t.phase = "skipped — too large for browser";
       t.error =
         `IFC is ${t.sizeMB.toFixed(0)} MB. Browser conversion is limited to ~${ifcSettings.browserSafeMaxMB} MB. ` +
-        `Use Link FRAG after offline conversion, or enable "Allow unsafe large IFC".`;
+        `Use Convert & link (IFC→FRAG) once — next Link IFC will use the FRAG cache — or enable "Allow unsafe large IFC".`;
       refreshTaskRow(t);
       try {
-        uiAlert(t.error);
-      } catch { /* */ }
+        offerLargeIfcRecovery([t.file]);
+      } catch {
+        try { uiAlert(t.error); } catch { /* */ }
+      }
       return;
     }
-    if (t.sizeMB > 200 && ifcSettings.allowUnsafeLargeIfc) {
+    if (!fragBytes && t.sizeMB > 200 && ifcSettings.allowUnsafeLargeIfc) {
       t.phase = `⚠️ ${t.sizeMB.toFixed(0)} MB — high risk of tab crash`;
       refreshTaskRow(t);
     }
 
-    t.status = "reading"; t.progress = 0; t.phase = "reading file…";
-    refreshTaskRow(t);
-    loader?.set?.(`Reading ${t.file.name}…`, 0.05);
+    if (!fragBytes) {
+      t.status = "reading"; t.progress = 0; t.phase = "reading file…";
+      refreshTaskRow(t);
+      loader?.set?.(`Reading ${t.file.name}…`, 0.05);
 
-    // Keep FRAG bytes out of memory for huge files
-    if (t.sizeMB > 80) ifcSettings.keepFragInMemory = false;
+      // Keep FRAG bytes out of memory for huge files
+      if (t.sizeMB > 80) ifcSettings.keepFragInMemory = false;
 
-    const buffer = await t.file.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    t.schema = detectSchema(bytes);
-    refreshTaskRow(t);
+      const buffer = await t.file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      t.schema = detectSchema(bytes);
+      refreshTaskRow(t);
 
-    t.status = "converting"; t.phase = "checking WASM…"; refreshTaskRow(t);
-    loader?.set?.("Checking WASM…", 0.1);
-    await ensureWasmAvailable();
+      t.status = "converting"; t.phase = "checking WASM…"; refreshTaskRow(t);
+      loader?.set?.("Checking WASM…", 0.1);
+      await ensureWasmAvailable();
 
-    t.phase = "starting web-ifc worker…"; refreshTaskRow(t);
-    loader?.set?.("Converting IFC → FRAG…", 0.15);
+      t.phase = "starting web-ifc worker…"; refreshTaskRow(t);
+      loader?.set?.("Converting IFC → FRAG…", 0.15);
 
-    const cancelPromise = new Promise<never>((_, rej) => { rejectActive = rej; });
+      const cancelPromise = new Promise<never>((_, rej) => { rejectActive = rej; });
 
-    const settings: any = {
-      bytes,
-      progressCallback: (progress: any, data?: any) => {
-        t.progress = normalizeProgress(progress);
-        t.phase = describePhase(data);
-        t.elapsedMs = performance.now() - t0;
-        refreshTaskRow(t);
-        loader?.set?.(`${t.phase} · ${t.progress}%`, 0.15 + 0.7 * (t.progress / 100));
-      },
-    };
-    if (ifcSettings.useCoord) {
-      settings.coordToPlace = [ifcSettings.coordX, ifcSettings.coordY, ifcSettings.coordZ];
-    }
+      const settings: any = {
+        bytes,
+        progressCallback: (progress: any, data?: any) => {
+          t.progress = normalizeProgress(progress);
+          t.phase = describePhase(data);
+          t.elapsedMs = performance.now() - t0;
+          refreshTaskRow(t);
+          loader?.set?.(`${t.phase} · ${t.progress}%`, 0.15 + 0.7 * (t.progress / 100));
+        },
+      };
+      if (ifcSettings.useCoord) {
+        settings.coordToPlace = [ifcSettings.coordX, ifcSettings.coordY, ifcSettings.coordZ];
+      }
 
-    const convertT0 = performance.now();
-    const processPromise = getImporter().process(settings);
-    processPromise.catch(() => { /* handled via race */ });
-    const rawResult: any = await Promise.race([processPromise, cancelPromise]);
-    rejectActive = null;
-    convertMs = performance.now() - convertT0;
+      const convertT0 = performance.now();
+      const processPromise = getImporter().process(settings);
+      processPromise.catch(() => { /* handled via race */ });
+      const rawResult: any = await Promise.race([processPromise, cancelPromise]);
+      rejectActive = null;
+      convertMs = performance.now() - convertT0;
 
-    if (cancelRequested) throw new Error("Cancelled by user");
+      if (cancelRequested) throw new Error("Cancelled by user");
 
-    const fragBytes: Uint8Array = snapshotBytes(rawResult);
-    if (!fragBytes.byteLength) {
-      throw new Error(
-        "Converter returned empty data. For large IFCZIP/IFC this often means the browser ran out of memory " +
-        "during web-ifc conversion — try a machine with more RAM, split the model, or pre-convert to .frag.",
-      );
+      fragBytes = snapshotBytes(rawResult);
+      if (!fragBytes.byteLength) {
+        throw new Error(
+          "Converter returned empty data. For large IFCZIP/IFC this often means the browser ran out of memory " +
+          "during web-ifc conversion — try a machine with more RAM, split the model, or pre-convert to .frag.",
+        );
+      }
+      try {
+        if (cacheKey) await setCachedFrag(cacheKey, fragBytes);
+      } catch {
+        /* */
+      }
     }
 
     const projectBytes: Uint8Array = snapshotBytes(fragBytes);
