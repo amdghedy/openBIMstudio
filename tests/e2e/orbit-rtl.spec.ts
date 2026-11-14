@@ -844,3 +844,29 @@ test('SECTION CAPS: a cut through a solid wall shows a solid hatched cut face; o
   expect(logs, 'no shader compile errors').toEqual([]);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.waitForFunction(() => !!(window as any).__obsAuthoring, null, { timeout: 60000 }).catch(() => {});
+  await page.locator('#obs-hero-3d').click({ timeout: 15000 }).catch(() => {});
+  const id = await page.evaluate(async () => (window as any).__obsAuthoring.createElementByType('wall', { start: [-2, 0], end: [2, 0], height: 3, thickness: 0.4 }));
+  expect(id, 'authored wall created').toBeTruthy();
+  await page.evaluate(() => { const sb = (window as any).__OBS_CTX__.features.sectionBox; sb.enable(0.5); const b = sb.getBox(); b.max.y = 1.5; sb.setBox(b); });
+  await page.evaluate(async () => { const c = (window as any).__OBS_CTX__.world.camera.controls; await c.setLookAt(0, 9, 0.01, 0, 0, 0, false); });
+  await page.waitForTimeout(900);
+  const crop = async () => { const box = (await page.locator('canvas').first().boundingBox())!;
+    return decodePng(await page.screenshot({ clip: { x: box.x, y: box.y, width: box.width, height: box.height } })); };
+  const on = await crop();
+  const patchedOn = await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.patched());
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.sectionCaps.set(false));
+  await page.waitForTimeout(900);
+  const off = await crop();
+  let n = 0; for (let i = 0; i < on.data.length && i < off.data.length; i += on.bpp) if (Math.abs(on.data[i] - off.data[i]) + Math.abs(on.data[i + 1] - off.data[i + 1]) + Math.abs(on.data[i + 2] - off.data[i + 2]) > 60) n++;
+  console.log('CAPS-AUTHORED ' + JSON.stringify({ patchedOn, changed: n }));
+  expect(patchedOn, 'authored materials patched').toBeGreaterThan(0);
+  expect(n, 'authored cut face differs with caps on/off').toBeGreaterThan(300);
+  expect(errors, errors.join('\n')).toEqual([]);
+});

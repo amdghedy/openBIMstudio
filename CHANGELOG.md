@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Changed
+- Section cut caps now also apply to authored (non-IFC) elements, so a mixed model cuts consistently. Elements created while the box is already on are capped after the next box edit. Browser test added; not yet checked on large models.
+
+
 ### Added: unified undo/redo & command transaction architecture
 - **Section cut caps.** A Section Box cut through a closed solid (wall, slab, column) now shows a solid hatched cut face instead of a hollow inside. The renderer has no stencil buffer, so the inside faces of the clipped solid are drawn in a flat hatched colour by a small shader change on the model's own materials (no extra geometry or draw calls). Toggle: Ctrl+P → "View: Section cut caps". Applies to IFC models; open single-sided surfaces show the same colour on their back side; transparent materials are left alone. Verified in real Chromium: a horizontal cut viewed from above changes about 7,100 pixels with caps on vs off, materials are restored when off, no shader errors.
 Consolidated the eleven previously independent history systems into one architecture with a single canonical stack for the BIM document, one shared algorithm for entity surfaces, and deterministic commands everywhere (37-assertion regression suite `test:undo-transaction` against the real compiled modules).

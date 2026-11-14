@@ -110,7 +110,7 @@ Use the Section Box to look inside a building. It clips the model to a box you c
 **Tested in a real browser:** the box clips a loaded IFC wall; halving the box removes half of it from the picture; dragging an arrow with a real mouse moves that face and leaves the camera free afterwards; editing the box never leaves stray clipping planes behind, and switching it off removes all of them.
 
 **Known limits:**
-- Cut faces are not capped or hatched yet. A cut through a solid wall looks hollow.
+- Cut faces are capped with a hatched face on IFC and authored elements (toggle: "Section cut caps" in Ctrl+P). Transparent materials are not capped.
 - Section planes made with the separate **Section** tool have not been covered by the same browser tests.
 - Sectioning on very large models and on multi-level models has not been measured.
 

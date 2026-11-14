@@ -7203,6 +7203,7 @@ export function setupAuthoring() {
       }
     },
   };
+  (api as any).getGroup = () => group;
   ctx.features.authoring = api;
   register("authoring", api);
   try { (window as any).__obsAuthoring = api; } catch { /* */ }

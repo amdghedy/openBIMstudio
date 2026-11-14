@@ -48,14 +48,17 @@ function restoreAll(): void {
 
 function modelMaterials(): THREE.Material[] {
   const out: THREE.Material[] = [];
+  const visit = (root: any) => root?.traverse?.((o: any) => {
+    if (!o.isMesh || !o.material) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (m.visible === false) continue; // hole cutters etc. are never drawn
+      out.push(m);
+    }
+  });
   const list = (ctx as any).fragments?.list as Iterable<[unknown, any]> | undefined;
-  if (!list) return out;
-  for (const [, model] of list) {
-    model?.object?.traverse?.((o: any) => {
-      if (!o.isMesh || !o.material) return;
-      for (const m of Array.isArray(o.material) ? o.material : [o.material]) out.push(m);
-    });
-  }
+  if (list) for (const [, model] of list) visit(model?.object);
+  // Authored (non-IFC) elements are plain meshes in the authoring group.
+  try { visit((ctx as any).features?.authoring?.getGroup?.()); } catch { /* */ }
   return out;
 }
 
