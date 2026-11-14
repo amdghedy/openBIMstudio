@@ -117,7 +117,13 @@ async function reloadFromFile(): Promise<void> {
   render();
 }
 
-function keepMine(): void { if (!link) return; link.external = false; link.forceNext = true; void tick(); }
+async function keepMine(): Promise<void> {
+  const l = link; if (!l) return;
+  // Accept the file's current state as "seen", otherwise the very next tick reports the same outside change again.
+  try { l.knownModified = await modified(l.handle); } catch { /* the write below reports the problem */ }
+  l.external = false; l.forceNext = true;
+  await tick();
+}
 
 function render(): void {
   if (!link) { panel?.remove(); panel = null; return; }
@@ -141,7 +147,7 @@ function render(): void {
       const a = b.dataset.a;
       if (a === "stop") stopLiveIfcLink();
       else if (a === "reload") void reloadFromFile();
-      else if (a === "keep") keepMine();
+      else if (a === "keep") void keepMine();
       else if (a === "now" && link) { link.forceNext = true; void tick(); }
     };
   });
