@@ -896,46 +896,6 @@ export function setupWalkMode(): void {
     enable: enableWalkMode,
     disable: disableWalkMode,
     toggle: toggleWalkMode,
-    /** Diagnostic: the fragments model's own raycast API, fired from (x,y,z) along (dx,dy,dz) through a temporary camera. */
-    probeModelRaycast: async (x: number, y: number, z: number, dx: number, dy: number, dz: number) => {
-      const out: any = { names: [], results: [] };
-      const cam = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
-      cam.position.set(x, y, z); cam.lookAt(x + dx, y + dy, z + dz); cam.updateMatrixWorld(true); cam.updateProjectionMatrix();
-      const dom = ctx.world.renderer?.three.domElement as HTMLElement;
-      for (const [, m] of ctx.fragments.list as any) {
-        const names = new Set<string>();
-        for (let o = m; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) for (const k of Object.getOwnPropertyNames(o)) if (/ray|pick|hit|snap|geometry/i.test(k)) names.add(k);
-        out.names = [...names];
-        for (const fn of ["raycast", "rawRaycast"]) {
-          if (typeof m[fn] !== "function") continue;
-          const t0 = performance.now();
-          try {
-            const rect = dom.getBoundingClientRect();
-            const px = new THREE.Vector2(rect.left + rect.width / 2, rect.top + rect.height / 2);
-            const r = await m[fn]({ camera: cam, mouse: px, dom });
-            out.results.push({ fn, mode: "client-px-centre", ms: Math.round(performance.now() - t0), r: r ? { keys: Object.keys(r), distance: r.distance, point: r.point ? [r.point.x, r.point.y, r.point.z] : null, normal: r.normal ? [r.normal.x, r.normal.y, r.normal.z] : null, localId: r.localId } : null });
-          } catch (e) { out.results.push({ fn, err: String(e).slice(0, 200) }); }
-        }
-      }
-      return out;
-    },
-    /** Diagnostic: what a collision ray from (x,y,z) along (dx,dy,dz) hits, using exactly the walker's targets. */
-    probe: (x: number, y: number, z: number, dx: number, dy: number, dz: number) => {
-      const targets = getCollisionTargets();
-      groundRay.set(new THREE.Vector3(x, y, z), new THREE.Vector3(dx, dy, dz).normalize());
-      groundRay.far = 50;
-      let n = 0, first: number | null = null, kinds: string[] = [];
-      try { const hits = groundRay.intersectObjects(targets, true); n = hits.length; first = hits[0]?.distance ?? null; kinds = hits.slice(0, 3).map((h) => h.object.type + (h.face ? "+face" : "")); } catch (e) { kinds = [String(e)]; }
-      const per: Array<{ type: string; name: string; ok: boolean; err?: string; geo?: string; inst?: number; raycastSrc?: string; plain?: unknown; mat?: string; groups?: number; bvh?: boolean }> = [];
-      for (const t of targets) t.traverse((o: any) => {
-        if (!o.isMesh && !o.isLine && !o.isPoints) return;
-        if (per.length >= 12) return;
-        const rc = new THREE.Raycaster(new THREE.Vector3(x, y, z), new THREE.Vector3(dx, dy, dz).normalize(), 0, 50);
-        try { rc.intersectObject(o, false); per.push({ type: o.type, name: o.name, ok: true, geo: o.geometry?.type + ":" + (o.geometry?.index ? "idx" : "noidx") + ":" + (o.geometry?.attributes?.position?.count ?? "?"), inst: o.count }); }
-        catch (e) { per.push({ type: o.type, name: o.name, ok: false, err: String((e as Error)?.stack ?? e).slice(0, 700), plain: (() => { try { const h: THREE.Intersection[] = []; THREE.Mesh.prototype.raycast.call(o, rc, h); return h.length; } catch (e2) { return "plain-throws " + String(e2).slice(0, 60); } })(), mat: Array.isArray(o.material) ? "array" + o.material.length : typeof o.material, groups: o.geometry?.groups?.length, bvh: !!o.geometry?.boundsTree, geo: o.geometry?.type + ":" + (o.geometry?.index ? "idx" : "noidx") + ":" + (o.geometry?.attributes?.position?.count ?? "?"), inst: o.count, raycastSrc: String(o.raycast).slice(0, 160) }); }
-      });
-      return { targets: targets.length, hits: n, first, kinds, per };
-    },
   };
 }
 /** Slide the camera (and its target) horizontally before walk mode starts. */
