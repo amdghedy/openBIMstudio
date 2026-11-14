@@ -7,6 +7,7 @@
  * Revit .rvt files. External changes are detected by the file's modified time and offered back as "Reload from file".
  */
 import { ctx } from "../core/context";
+import { fmtDateTime } from "../core/region";
 import { registerCommand } from "./command-palette";
 import { writeFederatedNativeTwinIfc } from "../modules/export/native-twin-ifc";
 import { hashString, detectExternalChange, nextLinkAction } from "../modules/export/live-link-core";
@@ -127,7 +128,7 @@ function render(): void {
     document.body.appendChild(panel);
   }
   const l = link;
-  const when = l.lastWriteAt ? new Date(l.lastWriteAt).toLocaleTimeString() : "not yet";
+  const when = l.lastWriteAt ? fmtDateTime(new Date(l.lastWriteAt)) : "not yet";
   const state = l.external ? "Changed outside the app - auto-save paused" : l.error ? `Problem: ${l.error}` : "Following your edits";
   const btn = (a: string, t: string) => `<button data-a="${a}" style="margin:4px 4px 0 0;padding:3px 8px;background:#1d2533;color:inherit;border:1px solid #33405a;border-radius:5px;cursor:pointer">${t}</button>`;
   panel.innerHTML = `<div style="font-weight:600;margin-bottom:4px">● Live IFC link</div>
