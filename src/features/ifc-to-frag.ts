@@ -1,9 +1,9 @@
 /**
- * IFC → FRAG converter (download only, no scene load).
+ * IFC → FRAG converter for large models.
  *
- * Workflow for large models:
- *   1. Convert IFC / IFCZIP → .frag (this tool)
- *   2. Insert → Link FRAG
+ * Workflow:
+ *   1. Convert IFC / IFCZIP → .frag
+ *   2. Auto-link FRAG into the scene (default) + optional download
  *
  * Conversion still runs in the browser via web-ifc; files above the
  * browser-safe limit need "Allow unsafe large IFC" and may OOM.
@@ -51,6 +51,34 @@ function toast(msg: string, kind: "info" | "warn" | "success" = "info") {
 
 /** Session-only: user accepted risk for large IFC→FRAG conversions. */
 let allowLargeThisSession = false;
+
+const AUTO_LINK_KEY = "obs.ifcToFrag.autoLink";
+function readAutoLink(): boolean {
+  try {
+    const v = localStorage.getItem(AUTO_LINK_KEY);
+    if (v === "0") return false;
+    if (v === "1") return true;
+  } catch { /* */ }
+  return true; // default on — closes the empty-scene gap after convert
+}
+let autoLinkAfterConvert = readAutoLink();
+function setAutoLink(on: boolean): void {
+  autoLinkAfterConvert = on;
+  try { localStorage.setItem(AUTO_LINK_KEY, on ? "1" : "0"); } catch { /* */ }
+}
+
+async function linkFragBytes(frag: Uint8Array, name: string): Promise<void> {
+  const blob = new Blob([frag as BlobPart], { type: "application/octet-stream" });
+  const f = new File([blob], name, { type: "application/octet-stream" });
+  await loadFragFiles([f]);
+  try {
+    void import("./camera-tools").then((m) => {
+      m.computeSceneBounds?.();
+      m.fitAll?.();
+    });
+  } catch { /* */ }
+}
+
 
 async function confirmLargeConvert(sizeMB: number, name: string): Promise<boolean> {
   if (allowLargeThisSession) return true;
@@ -122,8 +150,7 @@ function ensurePanel(): HTMLDivElement {
   body.style.cssText = "padding:12px;display:flex;flex-direction:column;gap:10px;overflow:auto;flex:1";
   body.innerHTML =
     `<div style="color:#94a3b8;line-height:1.45;font-size:12px">
-      Convert <b style="color:#e2e8f0">IFC / IFCZIP</b> to ThatOpen <b style="color:#38bdf8">.frag</b> without loading the 3D scene.
-      Then use <b style="color:#e2e8f0">Insert → Link FRAG</b> — much lighter for big models.
+      Convert <b style="color:#e2e8f0">IFC / IFCZIP</b> to ThatOpen <b style="color:#38bdf8">.frag</b>. With <b>Auto-link</b> on, the model is linked into the scene after convert (recommended for large files).
     </div>`;
 
   const actions = document.createElement("div");
@@ -182,6 +209,22 @@ function ensurePanel(): HTMLDivElement {
   body.appendChild(tip);
 
   root.appendChild(body);
+
+  const prefs = document.createElement("label");
+  prefs.style.cssText =
+    "display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:11px;color:#94a3b8;" +
+    "border-bottom:1px solid #2a2e3a;cursor:pointer;background:#12141c";
+  prefs.innerHTML =
+    `<input type="checkbox" data-autolink ${autoLinkAfterConvert ? "checked" : ""}/> ` +
+    `Auto-link FRAG into the scene after convert`;
+  prefs.querySelector("input")?.addEventListener("change", (e) => {
+    setAutoLink(!!(e.target as HTMLInputElement).checked);
+  });
+  // Prefer under header
+  const headEl = root.firstElementChild;
+  if (headEl && headEl.nextSibling) root.insertBefore(prefs, headEl.nextSibling);
+  else root.insertBefore(prefs, body);
+
   document.body.appendChild(root);
   panel = root;
   return root;
@@ -353,9 +396,25 @@ async function processJobs() {
         j.status = "done";
         j.progress = 100;
         j.phase = `done · ${(result.frag.byteLength / (1024 * 1024)).toFixed(1)} MB FRAG · ${result.schema}`;
-        // Auto-download so the user always gets the file even if they close the panel
+        // Always keep a downloadable copy
         downloadBytes(result.frag, result.fileName);
-        toast(`Saved ${result.fileName}`, "success");
+        if (autoLinkAfterConvert) {
+          j.phase += " · linking…";
+          renderList();
+          try {
+            await linkFragBytes(result.frag, result.fileName);
+            j.phase = `done · linked · ${(result.frag.byteLength / (1024 * 1024)).toFixed(1)} MB FRAG · ${result.schema}`;
+            toast(`Converted & linked ${result.fileName}`, "success");
+          } catch (linkErr: any) {
+            console.warn("[ifc→frag] auto-link failed", linkErr);
+            toast(
+              `Saved ${result.fileName} — auto-link failed: ${linkErr?.message || linkErr}. Use Link FRAG now.`,
+              "warn",
+            );
+          }
+        } else {
+          toast(`Saved ${result.fileName} — use Link FRAG now`, "success");
+        }
       } catch (err: any) {
         j.status = "failed";
         j.error = err?.message || String(err);
