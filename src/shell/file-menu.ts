@@ -207,6 +207,7 @@ function build() {
     zitem("3d", "📂", "Open Project…", () => showHome()),
     zitem("3d", "🧬", "Open File… (any format)", () => pickAndImport(), "IFC · GLB · OBJ · FBX …"),
     zitem("3d", "📑", "Open Project File…", () => importProjectFile(), ".obs.json"),
+    zitem("3d", "🔗", "Live IFC link…", () => { closeFileMenu(); void import("../features/live-ifc-link").then((m) => m.startLiveIfcLink()); }, "IFC file follows your edits"),
     zitem("3d", "💾", "Save", () => void saveProject(), "Ctrl+S"),
     zitem("3d", "📝", "Save As…", () => void saveAs()),
     zitem("3d", "🛟", "Recovery checkpoints…", () => void import("../features/project-recovery").then((m) => m.showProjectRecovery()), "restore an earlier state of this project"),

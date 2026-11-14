@@ -134,6 +134,7 @@
     "test:view-to-cad": "node tests/view-to-cad.test.cjs",
     "test:model-to-dxf3d": "node tests/model-to-dxf3d.test.cjs",
     "test:export-cad-dwg": "node tests/export-cad-dwg.test.cjs",
+    "test:live-ifc-link": "node tests/live-ifc-link.test.cjs",
     "test:pdf-to-dwg": "node tests/pdf-to-dwg.test.cjs",
     "test:rtl-css": "node tests/rtl-css.test.cjs",
     "test:region-format": "node tests/region-format.test.cjs",

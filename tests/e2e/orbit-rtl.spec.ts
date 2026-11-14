@@ -741,3 +741,53 @@ test('PDF -> DWG: one step in the browser - real PDF in, real binary DWG downloa
   expect(bytes.length, 'a non-trivial DWG').toBeGreaterThan(500);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('LIVE IFC LINK: writes edits to the linked file, never overwrites an outside change, Keep-mine resolves it', async ({ page }) => {
+  test.setTimeout(120000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__?.features?.liveIfcLink), { timeout: 30000 }).toBe(true);
+  // An in-memory stand-in for the browser's file picker (the real one needs a human), driving the REAL link code.
+  await page.evaluate(() => {
+    const w = window as any, c = w.__OBS_CTX__;
+    w.__disk = { text: '', mod: 1000 };
+    w.showSaveFilePicker = async () => ({
+      name: 'live-test.ifc',
+      getFile: async () => new File([w.__disk.text], 'live-test.ifc', { lastModified: w.__disk.mod }),
+      createWritable: async () => { let buf = ''; return { write: async (t: string) => { buf += t; }, close: async () => { w.__disk.text = buf; w.__disk.mod += 1; } }; },
+    });
+    const twin = (name: string) => ({ name, nativeEntity: 'IFCWALL', modelId: 'm', position: [0, 0, 0], quaternion: [0, 0, 0, 1] });
+    w.__twins = [twin('Twin A')]; w.__mk = twin;
+    c.features.fragEdit = c.features.fragEdit ?? {};
+    c.features.fragEdit.getTwinsForIfcExport = () => w.__twins;
+  });
+  const st = () => page.evaluate(() => { const w = window as any; return { status: w.__OBS_CTX__.features.liveIfcLink.status(), text: w.__disk.text as string, panel: !!document.getElementById('obs-live-ifc-link') }; });
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.liveIfcLink.start());
+  const s1 = await st();
+  expect(s1.status.active, JSON.stringify(s1.status)).toBe(true);
+  expect(s1.text, 'first write contains the element').toContain('Twin A');
+  expect(s1.panel, 'status panel is shown').toBe(true);
+
+  await page.evaluate(async () => { const w = window as any; w.__twins = [...w.__twins, w.__mk('Twin B')]; await w.__OBS_CTX__.features.liveIfcLink.tick(); });
+  const s2 = await st();
+  expect(s2.text, 'an edit is written without any export step').toContain('Twin B');
+  expect(s2.status.writes).toBe(2);
+
+  await page.evaluate(async () => { const w = window as any; w.__disk.text = 'EDITED BY ANOTHER PROGRAM'; w.__disk.mod += 5; w.__twins = [...w.__twins, w.__mk('Twin C')]; await w.__OBS_CTX__.features.liveIfcLink.tick(); });
+  const s3 = await st();
+  expect(s3.status.external, 'outside change detected').toBe(true);
+  expect(s3.text, 'the outside change is NOT overwritten').toBe('EDITED BY ANOTHER PROGRAM');
+
+  await page.locator('#obs-live-ifc-link button[data-a="keep"]').click();
+  await expect.poll(async () => (await st()).text, { timeout: 8000 }).toContain('Twin C');
+  const s4 = await st();
+  expect(s4.status.external).toBe(false);
+
+  await page.locator('#obs-live-ifc-link button[data-a="stop"]').click();
+  const s5 = await st();
+  expect(s5.status.active).toBe(false);
+  expect(s5.panel, 'panel removed after stop').toBe(false);
+  expect(errors, errors.join('\n')).toEqual([]);
+});

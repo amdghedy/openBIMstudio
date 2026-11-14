@@ -26,6 +26,7 @@ import "./features/batch-plot-panel";
 import { setupExportCadViews } from "./features/export-cad-views";
 import { setupPdfToDwg } from "./features/pdf-to-dwg";
 import { setupNavLowRes } from "./features/nav-lowres";
+import { setupLiveIfcLink } from "./features/live-ifc-link";
 import "./features/hatch-panel";
 import "./features/arc-wall-tool";
 import "./features/gltf-export-tool";
@@ -110,6 +111,7 @@ export async function bootStrengtheningModules(): Promise<void> {
   await safeStep("strength:export-cad-views", () => setupExportCadViews());
   await safeStep("strength:pdf-to-dwg", () => setupPdfToDwg());
   await safeStep("strength:nav-lowres", () => setupNavLowRes());
+  await safeStep("strength:live-ifc-link", () => setupLiveIfcLink());
   const txn = getTransactionService();
   const txnBox: Record<string, any> = { txn };
   await safeStep("strength:parametric-regen", () => { txnBox.regen = getParametricRegenService(); });
