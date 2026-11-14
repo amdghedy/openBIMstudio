@@ -126,9 +126,25 @@ export function toggleSectionBox(): boolean {
   return enabled;
 }
 
+/** Bounds of loaded models plus authored (non-IFC) elements, so an authored-only project can be sectioned too. */
+function sectionSceneBox(): THREE.Box3 | null {
+  const out = new THREE.Box3();
+  const base = getSceneBox();
+  if (base && !base.isEmpty()) out.union(base);
+  try {
+    const g = (ctx as any).features?.authoring?.getGroup?.();
+    if (g && g.children.length) {
+      g.updateWorldMatrix(true, true);
+      const ab = new THREE.Box3().setFromObject(g);
+      if (!ab.isEmpty()) out.union(ab);
+    }
+  } catch { /* */ }
+  return out.isEmpty() ? null : out;
+}
+
 export function enableSectionBox(padding = 1.0): void {
   if (enabled) return;
-  const scene = getSceneBox();
+  const scene = sectionSceneBox();
   if (!scene || scene.isEmpty()) {
     window.dispatchEvent(new CustomEvent("obs-toast", {
       detail: { message: "Load a model first.", kind: "warn" },
@@ -205,7 +221,7 @@ export function disableSectionBox(): void {
 
 export function resetSectionBox(): void {
   if (!enabled) return;
-  const scene = getSceneBox();
+  const scene = sectionSceneBox();
   if (scene && !scene.isEmpty()) box = scene.clone().expandByScalar(1.0);
   if (helper && box) {
     helper.box.copy(box);

@@ -13,6 +13,7 @@ file — the project adopted a written changelog at 0.73.0.
 
 ### Changed
 - Section cut caps now also apply to authored (non-IFC) elements, so a mixed model cuts consistently. Elements created while the box is already on are capped after the next box edit. Browser test added; not yet checked on large models.
+- Section Box no longer says "Load a model first" in a project that only has authored elements; its bounds now include authored elements.
 
 
 ### Added: unified undo/redo & command transaction architecture
