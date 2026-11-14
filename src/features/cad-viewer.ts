@@ -4756,12 +4756,48 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       doc = r.doc;
       name = file.name;
       modelEnts = doc.entities;
+      // Physical straighten: rotate world geometry so schedules/sheets are axis-aligned
+      // (view-only rotation was not enough for large DWGs with mixed edge noise).
+      try {
+        const ang0 = M.estimatePrincipalAngle(modelEnts);
+        if (ang0 && Math.abs(ang0) >= 1.5) {
+          let cx = 0, cy = 0, n = 0;
+          for (const e of modelEnts) {
+            const eb = M.entityBBox(e);
+            if (!Number.isFinite(eb.minX + eb.maxX + eb.minY + eb.maxY)) continue;
+            cx += (eb.minX + eb.maxX) * 0.5;
+            cy += (eb.minY + eb.maxY) * 0.5;
+            n++;
+          }
+          if (n > 0) {
+            cx /= n; cy /= n;
+            modelEnts = modelEnts.map((e) => X.rotateEnt(e, cx, cy, ang0));
+            doc.entities = modelEnts;
+            if (doc.layouts?.length) {
+              for (const L of doc.layouts) {
+                if (L.entities?.length) {
+                  L.entities = L.entities.map((e) => X.rotateEnt(e, cx, cy, ang0));
+                }
+              }
+            }
+            uprightRot = 0; // world is already upright
+            logCmd(`Straightened drawing ${ang0 >= 0 ? "+" : ""}${ang0.toFixed(1)}° to match native preview orientation.`);
+          }
+        }
+      } catch (err) {
+        console.warn("[cad] straighten failed", err);
+      }
       let b: M.BBox | null = null;
       for (const e of modelEnts) {
         const eb = M.entityBBox(e);
         if (Number.isFinite(eb.minX + eb.maxX + eb.minY + eb.maxY)) b = M.unionBBox(b, eb);
       }
       if (!b && !doc.layouts?.length) throw new Error("The file has no drawable geometry");
+      // Robust extents: drop far outliers that explode the scale bar (georef junk)
+      try {
+        const rb = M.robustEntityBounds?.(modelEnts) ?? null;
+        if (rb) b = rb;
+      } catch { /* */ }
       modelBounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 };
       modelIdx = M.buildIndex(modelEnts, modelBounds);
       layoutIdxCache.clear();

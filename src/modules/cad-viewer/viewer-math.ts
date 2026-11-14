@@ -75,50 +75,126 @@ export function fitView(b: BBox, w: number, h: number, margin = 0.06, rot = 0): 
  * Estimate the dominant axis angle of LINE geometry (degrees, -90..90).
  * Used to upright drawings that were saved with a rotated UCS / view.
  */
-export function estimatePrincipalAngle(entities: DxfEntity[], sampleCap = 8000): number {
-  const bins = new Array(180).fill(0);
-  let n = 0;
+export function estimatePrincipalAngle(entities: DxfEntity[], sampleCap = 12000): number {
+  type Seg = { dx: number; dy: number; len: number; ang: number };
+  const segs: Seg[] = [];
   for (const e of entities) {
-    if (n >= sampleCap) break;
+    if (segs.length >= sampleCap) break;
     if (e.type === "LINE") {
       const dx = e.end.x - e.start.x, dy = e.end.y - e.start.y;
       const len = Math.hypot(dx, dy);
-      if (len < 1e-9) continue;
-      let ang = (Math.atan2(dy, dx) * 180) / Math.PI; // -180..180
-      // Fold to 0..180 (undirected), then to bin
+      if (!(len > 1e-9)) continue;
+      let ang = (Math.atan2(dy, dx) * 180) / Math.PI;
       ang = ((ang % 180) + 180) % 180;
-      const bi = Math.min(179, Math.floor(ang));
-      bins[bi] += len;
-      n++;
+      segs.push({ dx, dy, len, ang });
     } else if (e.type === "LWPOLYLINE" && e.points.length >= 2) {
-      for (let i = 1; i < e.points.length && n < sampleCap; i++) {
+      for (let i = 1; i < e.points.length && segs.length < sampleCap; i++) {
         const dx = e.points[i].x - e.points[i - 1].x;
         const dy = e.points[i].y - e.points[i - 1].y;
         const len = Math.hypot(dx, dy);
-        if (len < 1e-9) continue;
+        if (!(len > 1e-9)) continue;
         let ang = (Math.atan2(dy, dx) * 180) / Math.PI;
         ang = ((ang % 180) + 180) % 180;
-        bins[Math.min(179, Math.floor(ang))] += len;
-        n++;
+        segs.push({ dx, dy, len, ang });
       }
     }
   }
-  if (!n) return 0;
+  if (segs.length < 8) return 0;
+
+  // Prefer longer segments (sheet borders / grid) over detail noise
+  const lens = segs.map((s) => s.len).sort((a, b) => a - b);
+  const minLen = lens[Math.floor(lens.length * 0.7)] || lens[lens.length - 1];
+  const long = segs.filter((s) => s.len >= minLen);
+  const use = long.length >= 8 ? long : segs;
+
+  // Length-weighted angle histogram (0.5° bins)
+  const bins = new Array(360).fill(0); // 0.5 deg
+  for (const s of use) {
+    const bi = Math.min(359, Math.floor(s.ang * 2));
+    bins[bi] += s.len * s.len;
+  }
   let best = 0, bestV = -1;
-  for (let i = 0; i < 180; i++) if (bins[i] > bestV) { bestV = bins[i]; best = i; }
-  // Prefer nearest axis-aligned orientation: rotate so dominant angle → 0° or 90°
-  // Choose the smaller rotation to horizontal (0°)
-  let toHoriz = best;
+  for (let i = 0; i < 360; i++) if (bins[i] > bestV) { bestV = bins[i]; best = i; }
+  const dominant = best / 2; // degrees 0..180
+
+  let toHoriz = dominant;
   if (toHoriz > 90) toHoriz -= 180;
-  // If closer to vertical, upright to 90° instead (rotation = best - 90)
-  const toVert = best - 90;
-  const rot = Math.abs(toHoriz) <= Math.abs(toVert) ? -toHoriz : -toVert;
-  // Ignore tiny tilts
-  if (Math.abs(rot) < 2) return 0;
+  const toVert = dominant - 90;
+  let rot = Math.abs(toHoriz) <= Math.abs(toVert) ? -toHoriz : -toVert;
+
+  // Refine with min-area search ±15° around candidate (0.5° steps)
+  const samples: Pt[] = [];
+  for (const e of entities) {
+    if (samples.length > 6000) break;
+    if (e.type === "LINE") {
+      samples.push({ x: e.start.x, y: e.start.y }, { x: e.end.x, y: e.end.y });
+    } else if (e.type === "LWPOLYLINE") {
+      for (const p of e.points) {
+        samples.push({ x: p.x, y: p.y });
+        if (samples.length > 6000) break;
+      }
+    }
+  }
+  if (samples.length >= 16) {
+    let bestArea = Infinity;
+    let bestRot = rot;
+    const base = rot;
+    for (let d = -20; d <= 20; d += 0.5) {
+      const a = ((base + d) * Math.PI) / 180;
+      const c = Math.cos(a), s = Math.sin(a);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of samples) {
+        const x = p.x * c - p.y * s;
+        const y = p.x * s + p.y * c;
+        if (x < minX) minX = x; if (y < minY) minY = y;
+        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+      }
+      const area = (maxX - minX) * (maxY - minY);
+      if (area < bestArea) {
+        bestArea = area;
+        bestRot = base + d;
+      }
+    }
+    rot = bestRot;
+  }
+
+  // Snap near-orthogonal to exact 0
+  if (Math.abs(rot) < 1.5) return 0;
+  if (Math.abs(Math.abs(rot) - 90) < 1.5) return 0;
   return rot;
 }
 
 /** Zoom keeping the world point under the cursor fixed. */
+
+/** Axis-aligned bounds ignoring the farthest 2% of entity centres (outlier junk). */
+export function robustEntityBounds(entities: DxfEntity[]): BBox | null {
+  const centers: Pt[] = [];
+  const boxes: BBox[] = [];
+  for (const e of entities) {
+    const b = entityBBox(e);
+    if (!Number.isFinite(b.minX + b.maxX + b.minY + b.maxY)) continue;
+    if (b.maxX - b.minX > 1e15 || b.maxY - b.minY > 1e15) continue;
+    centers.push({ x: (b.minX + b.maxX) * 0.5, y: (b.minY + b.maxY) * 0.5 });
+    boxes.push(b);
+  }
+  if (!boxes.length) return null;
+  if (boxes.length < 20) {
+    return boxes.reduce((a, b) => unionBBox(a, b)!, boxes[0]);
+  }
+  const mx = centers.map((c) => c.x).sort((a, b) => a - b);
+  const my = centers.map((c) => c.y).sort((a, b) => a - b);
+  const med = (a: number[]) => a[Math.floor(a.length / 2)]!;
+  const cx = med(mx), cy = med(my);
+  const dist = centers.map((c) => Math.hypot(c.x - cx, c.y - cy)).sort((a, b) => a - b);
+  const limit = dist[Math.floor(dist.length * 0.98)]! * 1.05 + 1e-6;
+  let out: BBox | null = null;
+  for (let i = 0; i < boxes.length; i++) {
+    if (Math.hypot(centers[i].x - cx, centers[i].y - cy) > limit) continue;
+    out = unionBBox(out, boxes[i]);
+  }
+  return out ?? boxes.reduce((a, b) => unionBBox(a, b)!, boxes[0]);
+}
+
 export function zoomAt(v: View, sx: number, sy: number, factor: number, minScale = 1e-9, maxScale = 1e9): View {
   const before = screenToWorld(v, sx, sy);
   const scale = Math.min(maxScale, Math.max(minScale, v.scale * factor));
