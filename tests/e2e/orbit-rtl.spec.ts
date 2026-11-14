@@ -813,3 +813,19 @@ test('LIVE IFC LINK: writes edits to the linked file, never overwrites an outsid
   expect(s5.panel, 'panel removed after stop').toBe(false);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('PROBE: how are IFC fragments drawn (for section caps)?', async ({ page }) => {
+  test.setTimeout(120000);
+  await loadWallIfc(page);
+  const r = await page.evaluate(() => {
+    const ctx = (window as any).__OBS_CTX__; const kinds: Record<string, number> = {}; const mats: Record<string, number> = {}; const sample: any[] = [];
+    for (const [, m] of ctx.fragments.list) m.object.traverse((o: any) => {
+      kinds[o.type] = (kinds[o.type] ?? 0) + 1;
+      if (o.isMesh) { const mm = Array.isArray(o.material) ? o.material : [o.material]; for (const x of mm) mats[x.type + ':' + (x.side) + ':' + !!x.transparent] = (mats[x.type + ':' + (x.side) + ':' + !!x.transparent] ?? 0) + 1;
+        if (sample.length < 3) sample.push({ type: o.type, count: o.count, geo: o.geometry?.type, pos: o.geometry?.attributes?.position?.count, idx: o.geometry?.index?.count, hasInst: !!o.instanceMatrix, drawRange: o.geometry?.drawRange, groups: o.geometry?.groups?.length, frustumCulled: o.frustumCulled, renderOrder: o.renderOrder, layers: o.layers.mask }); }
+    });
+    const r = ctx.world.renderer.three;
+    return { kinds, mats, sample, stencil: r.getContextAttributes?.().stencil, localClip: r.localClippingEnabled, autoClear: r.autoClear, clipPlanes: (r.clippingPlanes ?? []).length };
+  });
+  console.log('FRAG-PROBE ' + JSON.stringify(r));
+});
