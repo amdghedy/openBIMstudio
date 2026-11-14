@@ -11,6 +11,9 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Added
+- **Live IFC link** (File → Live IFC link…): edits to Native Twins are written automatically to a linked IFC4 file you choose, and changes made to that file by another program are detected and never overwritten (Reload from file / Keep mine). See `docs/LIVE-IFC-LINK.md`. Does not read or write Revit files. Verified by unit tests and a real-browser test using an in-memory file stand-in.
+
 ### Changed: boot architecture — one tracked, retryable, observable startup path
 This round closed the P0 stability findings from the architecture audit: startup was only half-observable (two of three boot chains reported status, the biggest one did not), "boot complete" was claimed by whichever side module finished first, and three separate systems handled the undo keys.
 
