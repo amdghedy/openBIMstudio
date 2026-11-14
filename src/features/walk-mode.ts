@@ -495,6 +495,9 @@ function enableWalkModeInner(): void {
 
   // ── Save camera + controls state ──
   const savedPos = cam.position.clone();
+  // Heading comes from what the camera actually looks at: the controls' target can lag right after a programmatic camera move.
+  const seenDir = new THREE.Vector3();
+  cam.getWorldDirection(seenDir);
   let savedTarget = new THREE.Vector3();
   if (readControlsTarget(controls, savedTarget)) {
     /* real controls target */
@@ -532,7 +535,7 @@ function enableWalkModeInner(): void {
   if (controls) controls.enabled = false;
 
   // ── Orientation from the CURRENT camera view ──
-  const viewDir = savedTarget.clone().sub(savedPos);
+  const viewDir = seenDir.clone();
   if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, -1);
   else viewDir.normalize();
   state.pitch = THREE.MathUtils.clamp(
