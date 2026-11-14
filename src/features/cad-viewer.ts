@@ -8953,8 +8953,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const tag = parts[1] || "TAG1";
       const prompt = parts[2] || tag;
       const def = parts.slice(3).join(" ") || "";
-      logCmd(`ATTDEF: ${tag} / ${prompt} / default "${def}" — use TEXT to place, or BLOCK after selecting attribute TEXT.`);
-      try { (window as any).__obsAttDef = { tag, prompt, default: def }; } catch { /* */ }
+      logCmd(`ATTDEF: ${tag} / ${prompt} / default "${def}" — definition is not yet persisted or linked to block attributes.`);
       return;
     }
     if (cmd === "QLEADER" || cmd === "QLE") {
