@@ -45,6 +45,8 @@ import { resolveDblClick } from "../shell/ribbon-collapse";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import * as AcadParity from "../modules/cad-viewer/acad-parity";
+import * as PolyBool from "../modules/cad-viewer/poly-boolean";
+import * as AcadAdv from "../modules/cad-viewer/acad-advanced";
 import { evalExpr, isCalcExpr } from "../modules/cad-viewer/cad-cal";
 import { svgIcon, type IconName } from "./icon-set";
 import {
@@ -1501,6 +1503,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let mlineWidth = 50;
   let layerVisStack: string[][] = [];
   let refEditName: string | null = null;
+  const xrefManager = new AcadAdv.XrefManager();
+  const dynBlocks = new AcadAdv.DynBlockStore();
+  let sheetSet = AcadAdv.loadSheetSet();
+  const solidMeshes: Array<{ id: string; positions: number[]; indices: number[]; height: number }> = [];
+
 
 
   let modelEnts: DxfEntity[] = [],
@@ -2979,6 +2986,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         modelIdx = M.buildIndex(modelEnts, modelBounds!);
         if (layoutI < 0) { ents = modelEnts; idx = modelIdx; bounds = modelBounds; }
         xrefs.push({ name: base, fileName: f.name, layerPrefix: `XREF_${base}|`, entityCount: entities.length, attachedAt: Date.now() });
+        xrefManager.add(base, f.name);
         buildLayers();
         draw();
         markDirty();
@@ -3008,6 +3016,90 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     draw();
     markDirty();
     logCmd(`XDETACH: removed "${xrefName}" (${before - modelEnts.length} entities).`);
+  }
+
+
+  function closedPolyPoints(e: DxfEntity): PolyBool.Pt[] | null {
+    if (!AcadParity.isClosedPoly(e) || e.type !== "LWPOLYLINE") return null;
+    return e.points.map((p) => ({ x: p.x, y: p.y }));
+  }
+
+  function booleanTwoSelected(op: "union" | "intersect" | "subtract"): void {
+    const idxs = [...sel];
+    if (idxs.length < 2) {
+      logCmd(`${op.toUpperCase()}: select two closed polylines.`);
+      return;
+    }
+    const a = ents[idxs[0]], b = ents[idxs[1]];
+    const pa = closedPolyPoints(a), pb = closedPolyPoints(b);
+    if (!pa || !pb) {
+      logCmd(`${op.toUpperCase()}: both objects must be closed LWPOLYLINE regions.`);
+      return;
+    }
+    const result = PolyBool.booleanPoly(pa, pb, op);
+    if (result.length < 3) {
+      logCmd(`${op.toUpperCase()}: empty result.`);
+      return;
+    }
+    const poly: DxfEntity = {
+      type: "LWPOLYLINE",
+      layer: currentLayer,
+      ...newObjectProps(),
+      points: result.map((p) => ({ x: p.x, y: p.y })),
+      closed: true,
+    } as DxfEntity;
+    addEntities([poly]);
+    logCmd(`${op.toUpperCase()}: created region (${result.length} vertices).`);
+  }
+
+  function openXrefManagerDialog(): void {
+    const existing = document.getElementById("obs-xref-man");
+    if (existing) existing.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "obs-xref-man";
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:100080;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font:12.5px system-ui,sans-serif";
+    const card = document.createElement("div");
+    card.style.cssText =
+      "width:min(520px,94vw);max-height:80vh;overflow:auto;background:#161922;border:1px solid #2a2e3a;border-radius:12px;padding:14px 16px;color:#e8eaf0";
+    const rows = xrefManager.list();
+    card.innerHTML =
+      `<div style="font-weight:700;margin-bottom:8px">XREF Manager</div>` +
+      `<div style="opacity:.7;margin-bottom:10px">Nested path registry + detach. Attach via XREF.</div>` +
+      (rows.length
+        ? `<table style="width:100%;border-collapse:collapse;font-size:12px">` +
+          `<tr style="text-align:left;opacity:.65"><th>Name</th><th>Path</th><th>Parent</th><th></th></tr>` +
+          rows
+            .map(
+              (n) =>
+                `<tr style="border-top:1px solid #2a2e3a"><td style="padding:6px 4px">${n.name}</td><td style="padding:6px 4px;opacity:.85">${n.path}</td><td style="padding:6px 4px">${n.parent || "—"}</td>` +
+                `<td style="padding:6px 4px"><button type="button" data-detach="${n.name}" style="padding:3px 8px;border-radius:4px;border:1px solid #3a3f4d;background:#2a2e3a;color:#e8eaf0;cursor:pointer">Detach</button></td></tr>`,
+            )
+            .join("") +
+          `</table>`
+        : `<div style="opacity:.7">No XREFs loaded.</div>`) +
+      `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">` +
+      `<button type="button" data-attach style="padding:6px 12px;border-radius:6px;border:1px solid #38bdf8;background:#0284c7;color:#fff;cursor:pointer">Attach…</button>` +
+      `<button type="button" data-x style="padding:6px 12px;border-radius:6px;border:1px solid #3a3f4d;background:#2a2e3a;color:#e8eaf0;cursor:pointer">Close</button></div>`;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    card.querySelector("[data-x]")?.addEventListener("click", () => overlay.remove());
+    card.querySelector("[data-attach]")?.addEventListener("click", () => {
+      overlay.remove();
+      void attachXrefInteractive();
+    });
+    card.querySelectorAll("[data-detach]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const name = (btn as HTMLElement).getAttribute("data-detach")!;
+        const removed = xrefManager.detach(name);
+        for (const n of removed) detachXref(n);
+        overlay.remove();
+        openXrefManagerDialog();
+      });
+    });
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
   }
 
   function zoomExtents() {
@@ -7084,6 +7176,54 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         pts = [];
         break;
       }
+      case "box3d": {
+        const dim = (window as any).__obsBox3d || { w: 1000, d: 1000, h: 1000 };
+        const w = dim.w, d = dim.d, h = dim.h;
+        const poly: DxfEntity = {
+          type: "LWPOLYLINE",
+          layer: currentLayer,
+          ...newObjectProps(),
+          closed: true,
+          points: [
+            { x: p.x, y: p.y },
+            { x: p.x + w, y: p.y },
+            { x: p.x + w, y: p.y + d },
+            { x: p.x, y: p.y + d },
+          ],
+          meta: { solid: true, extrudeHeight: h, solidKind: "box" },
+        } as DxfEntity;
+        addDraftEntity(poly);
+        const mesh = PolyBool.extrudeMesh(poly.points as any, h);
+        solidMeshes.push({ id: `box_${Date.now()}`, ...mesh, height: h });
+        logCmd(`BOX solid ${w}×${d}×${h} placed.`);
+        setTool("select");
+        pts = [];
+        break;
+      }
+      case "cyl3d": {
+        const dim = (window as any).__obsCyl3d || { r: 500, h: 1000 };
+        const r = dim.r, h = dim.h;
+        const ptsC: { x: number; y: number }[] = [];
+        for (let i = 0; i < 32; i++) {
+          const a = (i / 32) * Math.PI * 2;
+          ptsC.push({ x: p.x + r * Math.cos(a), y: p.y + r * Math.sin(a) });
+        }
+        const poly: DxfEntity = {
+          type: "LWPOLYLINE",
+          layer: currentLayer,
+          ...newObjectProps(),
+          closed: true,
+          points: ptsC,
+          meta: { solid: true, extrudeHeight: h, solidKind: "cylinder" },
+        } as DxfEntity;
+        addDraftEntity(poly);
+        const mesh = PolyBool.extrudeMesh(ptsC, h);
+        solidMeshes.push({ id: `cyl_${Date.now()}`, ...mesh, height: h });
+        logCmd(`CYLINDER solid r=${r} h=${h} placed.`);
+        setTool("select");
+        pts = [];
+        break;
+      }
       case "pasteblock": {
         try {
           const raw = localStorage.getItem("obs.cad.copybase") || localStorage.getItem("obs.cad.clipboard");
@@ -9168,11 +9308,109 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "EXPORT" || cmd === "EXP") {
       const kind = (parts[1] || "PDF").toUpperCase();
-      if (kind === "SVG") { /* fall through to existing if any */ logCmd("EXPORT SVG: use SVGSAVE."); return; }
+      if (kind === "SVG") { logCmd("EXPORT SVG: use SVGSAVE."); return; }
       if (kind === "PNG") { logCmd("EXPORT PNG: use SHAREVIEW."); return; }
       logCmd("EXPORT PDF: use PLOT.");
       return;
     }
+    if (cmd === "UNION" || cmd === "UNI") { booleanTwoSelected("union"); return; }
+    if (cmd === "SUBTRACT" || cmd === "SU") { booleanTwoSelected("subtract"); return; }
+    if (cmd === "INTERSECT" || cmd === "IN") { booleanTwoSelected("intersect"); return; }
+    if (cmd === "EXTRUDE" || cmd === "EXT") {
+      const h = Number(parts[1]);
+      if (!Number.isFinite(h) || h <= 0) { logCmd("EXTRUDE: EXTRUDE <height> with a closed polyline selected."); return; }
+      if (!sel.size) { logCmd("EXTRUDE: select a closed polyline."); return; }
+      let n = 0;
+      for (const i of sel) {
+        const e = ents[i];
+        const ring = closedPolyPoints(e);
+        if (!ring) continue;
+        const mesh = PolyBool.extrudeMesh(ring, h);
+        solidMeshes.push({ id: `S${Date.now()}_${n}`, ...mesh, height: h });
+        // Store height on entity meta for round-trip awareness
+        (e as any).meta = { ...(e as any).meta, extrudeHeight: h, solid: true };
+        n++;
+      }
+      logCmd(n ? `EXTRUDE: ${n} solid(s) height=${h} (3D mesh stored for preview).` : "EXTRUDE: no closed poly in selection.");
+      markDirty();
+      return;
+    }
+    if (cmd === "BOX") {
+      const w = Number(parts[1]) || 1000;
+      const d = Number(parts[2]) || 1000;
+      const h = Number(parts[3]) || 1000;
+      setTool("box3d");
+      (window as any).__obsBox3d = { w, d, h };
+      logCmd(`BOX ${w}×${d}×${h}: specify insertion corner.`);
+      return;
+    }
+    if (cmd === "CYLINDER" || cmd === "CYL") {
+      const r = Number(parts[1]) || 500;
+      const h = Number(parts[2]) || 1000;
+      setTool("cyl3d");
+      (window as any).__obsCyl3d = { r, h };
+      logCmd(`CYLINDER r=${r} h=${h}: specify center.`);
+      return;
+    }
+    if (cmd === "SHEETSET" || cmd === "SSM" || cmd === "SHEETSETMANAGER") {
+      const sub = (parts[1] || "LIST").toUpperCase();
+      if (sub === "ADD") {
+        const nm = parts.slice(2).join(" ") || `Sheet ${sheetSet.sheets.length + 1}`;
+        const layoutName = layoutI >= 0 && doc?.layouts?.[layoutI] ? doc.layouts[layoutI].name : "Model";
+        const sh = AcadAdv.addSheet(sheetSet, nm, layoutName);
+        logCmd(`SHEETSET: added ${sh.number} — ${sh.name} (${layoutName})`);
+        return;
+      }
+      if (sub === "NAME" && parts[2]) {
+        sheetSet.name = parts.slice(2).join(" ");
+        AcadAdv.saveSheetSet(sheetSet);
+        logCmd(`SHEETSET: renamed to "${sheetSet.name}"`);
+        return;
+      }
+      logCmd(`Sheet set: ${sheetSet.name}`);
+      if (!sheetSet.sheets.length) logCmd("  (empty — SHEETSET ADD <name>)");
+      for (const s of sheetSet.sheets) logCmd(`  ${s.number}  ${s.name}  [${s.layoutName || "—"}]`);
+      return;
+    }
+    if (cmd === "XREFMAN" || cmd === "XREFMANAGER" || cmd === "XRMAN") {
+      openXrefManagerDialog();
+      return;
+    }
+    if (cmd === "LISP" || cmd === "LSP") {
+      const src = parts.slice(1).join(" ");
+      if (!src) {
+        logCmd('LISP: example → LISP (command "CIRCLE")');
+        logCmd('Or: LISP (command "PLAN")');
+        return;
+      }
+      const logs = AcadAdv.runMinimalLisp(src, (line) => {
+        executeDrawingCommand(line);
+      });
+      for (const L of logs) logCmd(L);
+      return;
+    }
+    if (cmd === "DYNBLOCK" || cmd === "DB") {
+      const bn = parts[1];
+      const st = parts[2];
+      if (!bn) { logCmd("DYNBLOCK: DYNBLOCK <block> [state]"); return; }
+      if (!st) {
+        const d = dynBlocks.get(bn);
+        if (!d) {
+          dynBlocks.define(bn, [
+            { name: "Default", visibleLayers: ["*"] },
+            { name: "Simple", visibleLayers: ["0"] },
+          ]);
+          logCmd(`DYNBLOCK: defined Default/Simple states for "${bn}". DYNBLOCK ${bn} Simple`);
+          return;
+        }
+        logCmd(`DYNBLOCK "${bn}" current=${d.current} states=${d.states.map((s) => s.name).join(",")}`);
+        return;
+      }
+      if (dynBlocks.setState(bn, st)) logCmd(`DYNBLOCK: "${bn}" → state "${st}"`);
+      else logCmd(`DYNBLOCK: unknown block/state. Define first with DYNBLOCK ${bn}`);
+      return;
+    }
+
 
     if (cmd === "UCS") {
       setTool("origin");
