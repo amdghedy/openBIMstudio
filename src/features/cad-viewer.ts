@@ -3073,6 +3073,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (layoutI < 0) { ents = modelEnts; idx = modelIdx; bounds = modelBounds; }
         xrefs.push({ name: base, fileName: f.name, layerPrefix: `XREF_${base}|`, entityCount: entities.length, attachedAt: Date.now() });
         xrefManager.add(base, f.name);
+        try {
+          const ab = await f.arrayBuffer();
+          await AcadAdv.xrefCachePut(base, ab, { path: f.name });
+          logCmd(`XREF cache stored for nested reload (${(ab.byteLength / 1024).toFixed(0)} KB).`);
+        } catch (err) { console.warn("[xref-cache]", err); }
         buildLayers();
         draw();
         markDirty();
@@ -3096,6 +3101,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     doc.layers = doc.layers.filter((l) => !l.name.startsWith(prefix));
     const ix = xrefs.findIndex((x) => x.name === xrefName);
     if (ix >= 0) xrefs.splice(ix, 1);
+    void AcadAdv.xrefCacheDelete(xrefName);
+    xrefManager.detach(xrefName);
     if (modelBounds) modelIdx = M.buildIndex(modelEnts, modelBounds);
     if (layoutI < 0) { ents = modelEnts; idx = modelIdx; }
     buildLayers();
@@ -3108,6 +3115,33 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function closedPolyPoints(e: DxfEntity): PolyBool.Pt[] | null {
     if (!AcadParity.isClosedPoly(e) || e.type !== "LWPOLYLINE") return null;
     return e.points.map((p) => ({ x: p.x, y: p.y }));
+  }
+
+  function solidBooleanSelected(op: "union" | "intersect" | "subtract"): void {
+    const idxs = [...sel];
+    if (idxs.length < 2) { logCmd("SOLID boolean: select two extruded closed polylines."); return; }
+    const a = ents[idxs[0]], b = ents[idxs[1]];
+    const pa = closedPolyPoints(a), pb = closedPolyPoints(b);
+    const ha = Number((a as any)?.meta?.extrudeHeight) || 0;
+    const hb = Number((b as any)?.meta?.extrudeHeight) || 0;
+    if (!pa || !pb || ha <= 0 || hb <= 0) {
+      logCmd("SOLID boolean: both must be closed polylines with extrude height (BOX/EXTRUDE).");
+      return;
+    }
+    const res = PolyBool.booleanSolid({ ring: pa, height: ha }, { ring: pb, height: hb }, op);
+    if (!res) { logCmd("SOLID boolean: empty result."); return; }
+    const poly: DxfEntity = {
+      type: "LWPOLYLINE",
+      layer: currentLayer,
+      ...newObjectProps(),
+      points: res.ring.map((p) => ({ x: p.x, y: p.y })),
+      closed: true,
+      meta: { solid: true, extrudeHeight: res.height, solidKind: "boolean" },
+    } as DxfEntity;
+    addEntities([poly]);
+    const mesh = PolyBool.extrudeMesh(res.ring, res.height);
+    solidMeshes.push({ id: `sbool_${Date.now()}`, ...mesh, height: res.height });
+    logCmd(`SOLID${op.toUpperCase()}: height=${res.height}, volume≈${PolyBool.solidVolume(res).toFixed(2)}`);
   }
 
   function booleanTwoSelected(op: "union" | "intersect" | "subtract"): void {
@@ -9464,35 +9498,132 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "LISP" || cmd === "LSP") {
       const src = parts.slice(1).join(" ");
       if (!src) {
-        logCmd('LISP: example → LISP (command "CIRCLE")');
-        logCmd('Or: LISP (command "PLAN")');
+        logCmd('LISP: (command "CIRCLE")  (setq a 10)  (defun sq (x) (* x x))  (princ (sq 4))');
         return;
       }
-      const logs = AcadAdv.runMinimalLisp(src, (line) => {
-        executeDrawingCommand(line);
+      // Allow multi-token: LISP (setq a 1)(command "STATUS")
+      const logs = AcadAdv.runLispProgram(src, {
+        command: (args) => executeDrawingCommand(args.join(" ")),
+        getvar: (n) => {
+          const k = n.toUpperCase();
+          if (k === "ORTHOMODE") return orthoOn ? 1 : 0;
+          if (k === "SNAPMODE") return snapOn ? 1 : 0;
+          if (k === "GRIDMODE") return showGrid ? 1 : 0;
+          if (k === "CLAYER") return currentLayer;
+          return null;
+        },
+        setvar: (n, v) => {
+          const k = n.toUpperCase();
+          if (k === "ORTHOMODE") orthoOn = Number(v) !== 0;
+          if (k === "SNAPMODE") snapOn = Number(v) !== 0;
+          if (k === "GRIDMODE") showGrid = Number(v) !== 0;
+          if (k === "CLAYER") currentLayer = String(v);
+          updateStatus();
+          draw();
+        },
       });
       for (const L of logs) logCmd(L);
       return;
     }
     if (cmd === "DYNBLOCK" || cmd === "DB") {
       const bn = parts[1];
-      const st = parts[2];
-      if (!bn) { logCmd("DYNBLOCK: DYNBLOCK <block> [state]"); return; }
-      if (!st) {
-        const d = dynBlocks.get(bn);
-        if (!d) {
-          dynBlocks.define(bn, [
-            { name: "Default", visibleLayers: ["*"] },
-            { name: "Simple", visibleLayers: ["0"] },
-          ]);
-          logCmd(`DYNBLOCK: defined Default/Simple states for "${bn}". DYNBLOCK ${bn} Simple`);
-          return;
-        }
-        logCmd(`DYNBLOCK "${bn}" current=${d.current} states=${d.states.map((s) => s.name).join(",")}`);
+      if (!bn) { logCmd("DYNBLOCK: DYNBLOCK <block> [state|STRETCH dx dy|FLIP X|Y]"); return; }
+      const sub = (parts[2] || "").toUpperCase();
+      if (sub === "STRETCH") {
+        const dx = Number(parts[3]) || 0;
+        const dy = Number(parts[4]) || 0;
+        AcadAdv.defineDynBlockStretchFlip(dynBlocks, bn, { stretch: { dx, dy } });
+        logCmd(`DYNBLOCK: "${bn}" stretch action dx=${dx} dy=${dy}`);
         return;
       }
-      if (dynBlocks.setState(bn, st)) logCmd(`DYNBLOCK: "${bn}" → state "${st}"`);
-      else logCmd(`DYNBLOCK: unknown block/state. Define first with DYNBLOCK ${bn}`);
+      if (sub === "FLIP") {
+        const axis = (parts[3] || "X").toLowerCase() === "y" ? "y" : "x";
+        AcadAdv.defineDynBlockStretchFlip(dynBlocks, bn, { flip: axis as "x" | "y" });
+        logCmd(`DYNBLOCK: "${bn}" flip ${axis}`);
+        return;
+      }
+      if (!sub) {
+        const rich = AcadAdv.loadDynBlockRich(bn);
+        const d = dynBlocks.get(bn);
+        if (!d && !rich) {
+          AcadAdv.defineDynBlockStretchFlip(dynBlocks, bn, { stretch: { dx: 100, dy: 0 }, flip: "x" });
+          logCmd(`DYNBLOCK: defined Default/Stretched/Flipped + stretch/flip for "${bn}"`);
+          return;
+        }
+        logCmd(`DYNBLOCK "${bn}" states=${(d?.states.map((s) => s.name) || rich?.states || []).join(",")}`);
+        return;
+      }
+      if (dynBlocks.setState(bn, parts[2])) {
+        // Apply stretch/flip to selected block instances if any
+        const rich = AcadAdv.loadDynBlockRich(bn);
+        if (rich && sel.size) {
+          for (const i of sel) {
+            const e = ents[i];
+            if (e?.type === "LWPOLYLINE" && e.points) {
+              const pts = AcadAdv.applyDynActionsToPoints(e.points, rich.actions, parts[2]);
+              (e as any).points = pts;
+            }
+          }
+          draw();
+        }
+        logCmd(`DYNBLOCK: "${bn}" → "${parts[2]}"`);
+      } else logCmd(`DYNBLOCK: unknown state. DYNBLOCK ${bn} STRETCH 100 0`);
+      return;
+    }
+    if (cmd === "SOLIDUNION" || cmd === "SUNION") { solidBooleanSelected("union"); return; }
+    if (cmd === "SOLIDSUBTRACT" || cmd === "SSUB") { solidBooleanSelected("subtract"); return; }
+    if (cmd === "SOLIDINTERSECT" || cmd === "SINT") { solidBooleanSelected("intersect"); return; }
+    if (cmd === "MASSPROP" || cmd === "VOLUME") {
+      let vol = 0, n = 0;
+      for (const i of sel) {
+        const e = ents[i];
+        const ring = closedPolyPoints(e);
+        const h = Number((e as any)?.meta?.extrudeHeight) || 0;
+        if (!ring || h <= 0) continue;
+        vol += PolyBool.solidVolume({ ring, height: h });
+        n++;
+      }
+      logCmd(n ? `MASSPROP: ${n} solid(s), volume ≈ ${vol.toFixed(3)}` : "MASSPROP: select extruded solids (EXTRUDE/BOX/CYLINDER).");
+      return;
+    }
+    if (cmd === "XRELOAD" || cmd === "XREFRELOAD") {
+      const xn = (parts[1] || "").trim();
+      if (!xn) { logCmd("XRELOAD: XRELOAD <name>"); return; }
+      void (async () => {
+        const cached = await AcadAdv.xrefCacheGet(xn);
+        if (!cached) { logCmd(`XRELOAD: no cache for "${xn}". Attach with XREF first.`); return; }
+        logCmd(`XRELOAD: cache hit for "${xn}" (${cached.bytes.byteLength} bytes, path ${cached.path}). Re-attach via XREF to refresh geometry.`);
+        // Re-parse from cache if possible
+        try {
+          const blob = new Blob([cached.bytes]);
+          const file = new File([blob], cached.path || `${xn}.dwg`);
+          detachXref(xn);
+          // temporary attach path: reuse file picker path by reading cached file
+          const r = await readCadFile(file);
+          const base = xn;
+          const { layers, entities } = AcadParity.prefixXrefLayers(r.doc.layers, r.doc.entities, base);
+          for (const l of layers) {
+            if (!doc!.layers.some((x) => x.name === l.name)) doc!.layers.push(l);
+          }
+          modelEnts = modelEnts.concat(entities);
+          doc!.entities = modelEnts;
+          modelIdx = M.buildIndex(modelEnts, modelBounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+          if (layoutI < 0) { ents = modelEnts; idx = modelIdx; }
+          xrefManager.add(base, cached.path);
+          xrefs.push({ name: base, fileName: cached.path, layerPrefix: `XREF_${base}|`, entityCount: entities.length, attachedAt: Date.now() });
+          buildLayers();
+          draw();
+          logCmd(`XRELOAD: reloaded "${xn}" · ${entities.length} entities from nested cache.`);
+        } catch (err) {
+          logCmd(`XRELOAD failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      })();
+      return;
+    }
+    if (cmd === "XOPEN" || cmd === "XREFOPEN") {
+      const list = xrefManager.list();
+      if (!list.length) logCmd("XOPEN: no XREFs in registry.");
+      for (const n of list) logCmd(`  ${n.name}  path=${n.path}  parent=${n.parent || "—"}  nested=[${n.nested.join(",")}]  ${n.status}`);
       return;
     }
 

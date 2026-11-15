@@ -165,3 +165,45 @@ export function extrudeMesh(
   }
   return { positions, indices };
 }
+
+export interface SolidFootprint {
+  ring: Pt[];
+  height: number;
+  z0?: number;
+}
+
+/** Boolean two extruded footprints → new footprint solid (height rules: max for union, min for intersect). */
+export function booleanSolid(
+  a: SolidFootprint,
+  b: SolidFootprint,
+  op: "union" | "intersect" | "subtract",
+): SolidFootprint | null {
+  const ring = booleanPoly(a.ring, b.ring, op);
+  if (ring.length < 3) return null;
+  let height = a.height;
+  if (op === "union") height = Math.max(a.height, b.height);
+  else if (op === "intersect") height = Math.min(a.height, b.height);
+  else height = a.height;
+  return { ring, height, z0: a.z0 ?? 0 };
+}
+
+/** Simple box corners as ring. */
+export function boxRing(x: number, y: number, w: number, d: number): Pt[] {
+  return [
+    { x, y },
+    { x: x + w, y },
+    { x: x + w, y: y + d },
+    { x, y: y + d },
+  ];
+}
+
+/** Approximate mesh volume (prism). */
+export function solidVolume(s: SolidFootprint): number {
+  let a = 0;
+  const r = s.ring;
+  for (let i = 0; i < r.length; i++) {
+    const p = r[i], q = r[(i + 1) % r.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(a) * 0.5 * s.height;
+}
