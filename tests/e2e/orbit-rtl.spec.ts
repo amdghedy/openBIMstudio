@@ -1295,3 +1295,57 @@ test('WALK MODE: Space raises and the height stays fixed after release; C lowers
   await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('REFERENCE PERSON (M): a 1.7 m figure can be placed in the view and in Walk mode, and removed again', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  const info = () => page.evaluate(() => {
+    const ctx = (window as any).__OBS_CTX__;
+    const g = ctx.world.scene.three.getObjectByName('obs-reference-person');
+    if (!g) return null;
+    let minY = Infinity, maxY = -Infinity; g.updateWorldMatrix(true, true);
+    g.traverse((o: any) => { if (o.isMesh) { o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld); minY = Math.min(minY, b.min.y); maxY = Math.max(maxY, b.max.y); } });
+    return { x: g.position.x, y: g.position.y, z: g.position.z, height: maxY - minY, feetY: minY };
+  });
+  // Orbit view: stands at the view centre on the ground, 1.7 m tall; the same call hides it.
+  await page.evaluate(async () => { await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(0, 4, 9, 0, 0, 3, false); });
+  await page.waitForTimeout(700);
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.toggleReference());
+  const a = await info();
+  console.log('REFPERSON-ORBIT ' + JSON.stringify(a));
+  expect(a, 'figure placed').toBeTruthy();
+  expect(Math.abs(a!.height - 1.7), 'figure is 1.7 m tall').toBeLessThan(0.03);
+  expect(Math.abs(a!.feetY), 'stands on the ground').toBeLessThan(0.1);
+  expect(Math.abs(a!.z - 3), 'at the middle of the view').toBeLessThan(0.6);
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.toggleReference());
+  expect(await info(), 'second toggle hides it').toBeNull();
+  // Walk mode: key M drops it 2 m ahead, facing you; it stays put when you walk on.
+  let p0: any = null;
+  for (let i = 0; i < 6; i++) {
+    await page.evaluate(async () => { await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(0, 1.7, 8, 0, 1.7, 0, false); });
+    await page.waitForTimeout(700);
+    await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.enable());
+    await page.waitForTimeout(600);
+    p0 = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+    if (p0 && Math.abs(p0.z - 8) < 0.3 && Math.abs(p0.pitch) < 0.1) break;
+    await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
+    await page.waitForTimeout(300);
+  }
+  await page.keyboard.press('m');
+  await page.waitForTimeout(500);
+  const b = await info();
+  console.log('REFPERSON-WALK ' + JSON.stringify({ walker: p0, fig: b }));
+  expect(b, 'M places the figure in Walk mode').toBeTruthy();
+  expect(Math.abs(b!.z - (p0.z - 2)), '2 m in front of the walker').toBeLessThan(0.4);
+  expect(Math.abs(b!.feetY - (p0.y - 1.7)), 'on the same floor').toBeLessThan(0.15);
+  await page.keyboard.down('w'); await page.waitForTimeout(1000); await page.keyboard.up('w');
+  const c = await info();
+  expect(Math.abs(c!.z - b!.z), 'the figure stays where it was placed').toBeLessThan(0.01);
+  await page.keyboard.press('m');
+  await page.waitForTimeout(300);
+  expect(await info(), 'M again removes it').toBeNull();
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
+  expect(errors, errors.join('\n')).toEqual([]);
+});

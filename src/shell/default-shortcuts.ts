@@ -22,7 +22,7 @@ import { saveProject, createProject, getCurrentProject } from "../modules/projec
 import { pickAndImport } from "../features/file-interop";
 import { showHome } from "../shell/home-screen";
 import { runElementClashDetection } from "../features/clash";
-import { toggleWalkMode, isWalkModeEnabled } from "../features/walk-mode";
+import { toggleWalkMode, isWalkModeEnabled, toggleReferencePerson } from "../features/walk-mode";
 
 export function registerDefaultShortcuts(): void {
   const setGizmo = (m: GizmoMode) => {
@@ -73,6 +73,11 @@ export function registerDefaultShortcuts(): void {
     id: "app-toggle-walk", label: "Toggle walk mode", keys: "ctrl+w", category: "app",
     when: () => true,
     handler: () => { try { toggleWalkMode(); } catch { /* */ } },
+  });
+  shortcuts.register({
+    id: "view-reference-person", label: "Show / hide a 1.7 m reference person (scale check)", keys: "m", category: "view",
+    when: () => !isWalkModeEnabled() && !isCadHotkeyOwnerActive(),
+    handler: () => { void toggleReferencePerson(); },
   });
   shortcuts.register({
     id: "app-exit-walk", label: "Exit walk mode", keys: "shift+escape", category: "app",

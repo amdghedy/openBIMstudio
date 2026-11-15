@@ -119,7 +119,7 @@ const OWNED_KEYS = new Set([
   "arrowup", "arrowdown", "arrowleft", "arrowright",
   "shift", "control",
   " ", "c", "pageup", "pagedown",
-  "n", "p", "l", "r",
+  "n", "p", "l", "r", "m",
 ]);
 
 /** User options for walking. Saved in this browser. */
@@ -172,6 +172,56 @@ function buildHuman(): THREE.Group {
   add(new THREE.SphereGeometry(0.115, 18, 14), skin, 0, 1.585, 0); // crown at 1.70
   return g;
 }
+/* ── Reference person (key M): a 1.7 m figure left standing in the model to check scale and clearances ── */
+let refPerson: THREE.Group | null = null;
+function makeLabel(text: string): THREE.Sprite {
+  const c = document.createElement("canvas"); c.width = 256; c.height = 96;
+  const g = c.getContext("2d");
+  if (g) { g.fillStyle = "rgba(15,23,42,.85)"; g.fillRect(0, 0, 256, 96); g.strokeStyle = "#38bdf8"; g.lineWidth = 4; g.strokeRect(2, 2, 252, 92); g.fillStyle = "#e8eaf0"; g.font = "bold 44px system-ui,sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(text, 128, 50); }
+  const tex = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sp.scale.set(0.5, 0.1875, 1); sp.position.set(0, HUMAN_HEIGHT + 0.22, 0); sp.renderOrder = 10; sp.userData.walkIgnore = true;
+  return sp;
+}
+export function isReferencePersonShown(): boolean { return !!refPerson?.parent; }
+export function removeReferencePerson(): void { if (refPerson?.parent) refPerson.parent.remove(refPerson); refPerson = null; }
+/** Show / hide a 1.7 m person. In Walk mode it stands 2 m in front of you, facing you; otherwise it stands on the floor at the middle of the view, facing the camera. */
+export async function toggleReferencePerson(): Promise<boolean> {
+  if (refPerson?.parent) { removeReferencePerson(); try { notify("info", "Reference person hidden (M)"); } catch { /* */ } return false; }
+  const scene = ctx.world.scene.three as THREE.Scene;
+  const cam = ctx.world.camera.three as THREE.Camera;
+  let x: number, z: number, y: number, face: number;
+  if (state.enabled) {
+    const fx = -Math.sin(state.yaw), fz = -Math.cos(state.yaw);
+    x = state.pos.x + fx * 2; z = state.pos.z + fz * 2;
+    const feet = state.pos.y - eyeHeight() - (opts.keepRaise ? state.lift : 0);
+    y = raycastGround(x, z, feet + MAX_STEP + 0.3) ?? feet;
+    face = state.yaw; // front (+Z) turned back towards the walker
+  } else {
+    const t = new THREE.Vector3();
+    const controls: any = ctx.world.camera.controls;
+    if (!readControlsTarget(controls, t)) { cam.getWorldDirection(t); t.multiplyScalar(8).add(cam.position); }
+    x = t.x; z = t.z;
+    const from = Math.max(t.y, 0) + 3;
+    let gy = raycastGround(x, z, from);
+    try {
+      const m = await modelRay(x, from, z, 0, -1, 0, 400);
+      if (m && (gy == null || m.point.y > gy)) gy = m.point.y;
+    } catch { /* */ }
+    y = gy ?? 0;
+    face = Math.atan2(cam.position.x - x, cam.position.z - z);
+  }
+  removeReferencePerson();
+  refPerson = buildHuman();
+  refPerson.name = "obs-reference-person";
+  refPerson.add(makeLabel("1.70 m"));
+  refPerson.position.set(x, y, z);
+  refPerson.rotation.y = face;
+  scene.add(refPerson);
+  try { notify("info", "Reference person 1.70 m shown (press M to hide)"); } catch { /* */ }
+  return true;
+}
+
 function syncHuman(): void {
   const scene = ctx.world.scene.three as THREE.Scene;
   if (opts.human && state.enabled) {
@@ -280,7 +330,7 @@ function hintHtml(): string {
     `${kbd("Space")}/${kbd("C")} up/down ${on(opts.keepRaise)} ${kbd("R")} keep height · ` +
     `${kbd("PgUp")}/${kbd("PgDn")} level · wheel speed · ` +
     `${kbd("Esc")} exit<br>` +
-    `${kbd("L")} hold my height ${on(opts.holdLevel)} · ${kbd("N")} through walls ${on(opts.noClip)} · ${kbd("P")} human 1.7 m ${on(opts.human)}`;
+    `${kbd("L")} hold my height ${on(opts.holdLevel)} · ${kbd("N")} through walls ${on(opts.noClip)} · ${kbd("P")} human 1.7 m ${on(opts.human)} · ${kbd("M")} place / remove a 1.7 m person`;
 }
 function refreshHint(): void { if (hint) hint.innerHTML = hintHtml(); }
 
@@ -791,6 +841,7 @@ function onKeyDown(e: KeyboardEvent) {
   if (OWNED_KEYS.has(k)) {
     e.preventDefault();
     e.stopImmediatePropagation();
+    if (k === "m") { if (!e.repeat) void toggleReferencePerson(); return; }
     if (k === "n" || k === "p" || k === "l" || k === "r") {
       const key = k === "n" ? "noClip" : k === "p" ? "human" : k === "r" ? "keepRaise" : "holdLevel";
       if (!e.repeat) setWalkOption(key, !opts[key]);
@@ -1013,6 +1064,8 @@ export function setupWalkMode(): void {
     enable: enableWalkMode,
     disable: disableWalkMode,
     toggle: toggleWalkMode,
+    toggleReference: toggleReferencePerson,
+    isReferenceShown: isReferencePersonShown,
     getOptions: getWalkOptions,
     setOption: setWalkOption,
   };

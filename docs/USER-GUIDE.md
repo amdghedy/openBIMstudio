@@ -68,6 +68,10 @@ Open the address shown in the terminal (usually http://localhost:3000).
 
 **If orbiting feels slow on a large model**, turn on **View: Smooth navigation** (search it in Ctrl+P). While you orbit, pan or zoom, the view is drawn at lower resolution and becomes sharp again about a fifth of a second after you stop. It is off by default and the choice is remembered. A browser test confirms that it switches the render resolution and restores it, but I have not measured the speed-up on your model or graphics card.
 
+### Reference person (scale check)
+
+Press **M** to stand a 1.7 m person in the model, labelled "1.70 m". In the normal 3D view the person stands on the floor at the middle of the view and faces the camera. In Walk mode the person is placed 2 m in front of you and stays there while you walk on, so you can check door heights, corridor widths and clearances. Press **M** again to remove it. (The key waits a moment in case you are typing a two-letter command such as MV.) The figure is a simple stand-in with no moving parts.
+
 ### Visibility
 
 - **Isolate selection:** Ctrl+I. **Reset isolation:** Ctrl+Shift+I.
@@ -92,6 +96,7 @@ Press **Ctrl+W** to enter Walk mode at the current camera position and heading. 
 | **L** | Hold my height on/off (default on) |
 | **R** | Keep raised height (Space/C) on/off |
 | **N** | Walk through walls on/off |
+| **M** | Place / remove a 1.7 m reference person |
 | **P** | Human figure (1.7 m, third person) on/off |
 
 **Walk options** (also in Ctrl+P, saved in your browser):

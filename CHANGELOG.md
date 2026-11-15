@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Added
+- **M** places a 1.7 m reference person (labelled 1.70 m) in the 3D view for scale and clearance checks: at the middle of the view facing the camera, or 2 m ahead of you in Walk mode where it stays while you walk on; M again removes it. Also in Ctrl+P. Browser test added. A simple stand-in figure; not checked against loaded IFC floors beyond the plain ground.
+
+
 ### Changed
 - Walk mode: **Keep raised height** (key R, default on). Space raises the eye and the raised distance stays fixed after you release it (it also follows stairs and survives walking); C lowers you straight down, never below standing height. Turn it off for the old behaviour (free nudge, then gravity). Browser test added.
 
