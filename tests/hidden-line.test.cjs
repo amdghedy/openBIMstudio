@@ -41,6 +41,11 @@ try {
   const f = 1 / Math.tan(Math.PI / 8), pn = 0.1, pf = 100;
   const persp = [f/1.5,0,0,0, 0,f,0,0, 0,0,(pf+pn)/(pn-pf),-1, 0,0,2*pf*pn/(pn-pf),0];
   const pr = H.hiddenLineProject([box(-0.5,-0.5,-0.5, 0.5,0.5,0.5, "A"), box(-0.5,-0.5,25,0.5,0.5,26, "B")], { view, proj: persp, distance: 20 }, { width: 600 });
-  ok(pr.stats.perspective && pr.visible.length > 0 && pr.stats.droppedNearPlane > 0, "perspective: visible lines and behind-camera triangles dropped");
+  ok(pr.stats.perspective && pr.visible.length > 0, "perspective: visible lines");
+  ok(!pr.visible.some((e) => e.layer === "B"), "a cube entirely behind the camera contributes nothing");
+  // 8) Geometry crossing the camera plane is clipped, not dropped: a long wall from z=-10 to z=+30 seen from z=20 still draws its front part.
+  const wall = H.hiddenLineProject([box(-3, -1, -10, -2.8, 1, 30, "A-WALL")], { view, proj: persp, distance: 10 }, { width: 600 });
+  ok(wall.stats.droppedNearPlane > 0 && wall.visible.length > 0, "wall crossing the camera plane keeps its front part, clipped=" + wall.stats.droppedNearPlane + " lines=" + wall.visible.length);
+  ok(wall.visible.every((e) => [e.x1, e.y1, e.x2, e.y2].every(Number.isFinite)), "all clipped coordinates are finite");
   console.log(`hidden-line: ${n} assertions passed`);
 } finally { fs.rmSync(out, { recursive: true, force: true }); }

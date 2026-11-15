@@ -219,7 +219,7 @@ export function openExportCadDialog(): void {
         if (dwg) { const { exportDxfToDwg } = await import("../modules/drawings/acad-engine"); download("openbimstudio-view-lines.dwg", await exportDxfToDwg(dxf), "application/acad"); }
         else download("openbimstudio-view-lines.dxf", new TextEncoder().encode(dxf), "application/dxf");
         msg.style.color = "#86efac";
-        msg.textContent = `Exported ${fmtNumber(lines)} lines on ${layers.length} layer(s) from the ${res.stats.perspective ? "perspective" : "orthographic"} view.` + (res.stats.droppedNearPlane ? `\n${fmtNumber(res.stats.droppedNearPlane)} triangle(s) crossing the camera were left out.` : "") + (ifc.capped ? "\nImported models were capped; export a section for the rest." : "") + "\nHidden-line removal is sampled at about 1/1600 of the view width, and perspective views are sized at the model's distance.";
+        msg.textContent = `Exported ${fmtNumber(lines)} lines on ${layers.length} layer(s) from the ${res.stats.perspective ? "perspective" : "orthographic"} view.` + (res.stats.droppedNearPlane ? `\n${fmtNumber(res.stats.droppedNearPlane)} triangle(s) crossing the camera were clipped at a 2 cm near plane.` : "") + (ifc.capped ? "\nImported models were capped; export a section for the rest." : "") + "\nHidden-line removal is sampled at about 1/1600 of the view width, and perspective views are sized at the model's distance.";
       } catch (e) { msg.style.color = "#fca5a5"; msg.textContent = "View export failed: " + (e instanceof Error ? e.message : String(e)); }
       finally { btn.disabled = false; }
     });
