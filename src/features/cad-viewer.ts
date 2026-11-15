@@ -1405,6 +1405,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let view: M.View = { cx: 0, cy: 0, scale: 1, w: 800, h: 600 };
   const history: M.View[] = [];
   let tool: Tool = "select";
+  // Pending primitive dimensions stay inside this engine instance; avoid cross-feature window globals.
+  let box3dDimensions = { w: 1000, d: 1000, h: 1000 };
+  let cylinder3dDimensions = { r: 500, h: 1000 };
   let bg = "drafting",
     cmode: ColorMode = "layer",
     lw = 1,
@@ -7179,8 +7182,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         break;
       }
       case "box3d": {
-        const dim = (window as any).__obsBox3d || { w: 1000, d: 1000, h: 1000 };
-        const w = dim.w, d = dim.d, h = dim.h;
+        const { w, d, h } = box3dDimensions;
         const boxPoints: { x: number; y: number }[] = [
           { x: p.x, y: p.y },
           { x: p.x + w, y: p.y },
@@ -7204,8 +7206,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         break;
       }
       case "cyl3d": {
-        const dim = (window as any).__obsCyl3d || { r: 500, h: 1000 };
-        const r = dim.r, h = dim.h;
+        const { r, h } = cylinder3dDimensions;
         const ptsC: { x: number; y: number }[] = [];
         for (let i = 0; i < 32; i++) {
           const a = (i / 32) * Math.PI * 2;
@@ -9343,7 +9344,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const d = Number(parts[2]) || 1000;
       const h = Number(parts[3]) || 1000;
       setTool("box3d");
-      (window as any).__obsBox3d = { w, d, h };
+      box3dDimensions = { w, d, h };
       logCmd(`BOX ${w}×${d}×${h}: specify insertion corner.`);
       return;
     }
@@ -9351,7 +9352,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const r = Number(parts[1]) || 500;
       const h = Number(parts[2]) || 1000;
       setTool("cyl3d");
-      (window as any).__obsCyl3d = { r, h };
+      cylinder3dDimensions = { r, h };
       logCmd(`CYLINDER r=${r} h=${h}: specify center.`);
       return;
     }
