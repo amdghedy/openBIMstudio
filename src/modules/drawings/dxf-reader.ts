@@ -904,6 +904,23 @@ function expandRecs(
  * available; binary DXF without the engine raises a clear error instead of
  * mojibake.
  */
+/** Saved model view ($VIEWCTR/$VIEWSIZE) from the HEADER of an ASCII DXF, without a full parse. */
+export function dxfHeaderView(text: string): { cx: number; cy: number; height: number; twist?: number } | undefined {
+  const end = text.search(/\r?\n\s*0\r?\n\s*ENDSEC/);
+  const lines = (end > 0 ? text.slice(0, end) : text.slice(0, 200000)).split(/\r?\n/);
+  const val = (name: string, code: string): number | undefined => {
+    const i = lines.findIndex((l) => l.trim().toUpperCase() === name);
+    if (i < 0) return undefined;
+    for (let k = i + 1; k < Math.min(i + 8, lines.length - 1); k += 2) {
+      if (lines[k].trim() === "9") break;
+      if (lines[k].trim() === code) { const n = parseFloat(lines[k + 1]); return Number.isFinite(n) ? n : undefined; }
+    }
+    return undefined;
+  };
+  const cx = val("$VIEWCTR", "10"), cy = val("$VIEWCTR", "20"), h = val("$VIEWSIZE", "40"), tw = val("$VIEWTWIST", "50");
+  return cx != null && cy != null && h != null && h > 0 ? { cx, cy, height: h, ...(tw ? { twist: tw } : {}) } : undefined;
+}
+
 export async function parseDxfFile(file: File | Blob): Promise<DxfDocument> {
   const name = file instanceof File ? file.name : "drawing.dxf";
   const buf = await file.arrayBuffer();
@@ -914,6 +931,10 @@ export async function parseDxfFile(file: File | Blob): Promise<DxfDocument> {
     const acad = await parseWithAcadEngine(bytes, name);
     if (acad && acad.entityCount > 0) {
       acad.doc.sourceFormat = acad.format === "dwg" ? "dwg" : "dxf";
+      // The engine's JSON carries no saved view; read it from the ASCII DXF header ourselves.
+      if (!acad.doc.savedView && acad.format !== "dwg" && !isBinary) {
+        try { const sv = dxfHeaderView(new TextDecoder("latin1").decode(bytes)); if (sv) acad.doc.savedView = sv; } catch { /* optional */ }
+      }
       return acad.doc;
     }
     if (acad) {
