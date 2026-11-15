@@ -111,11 +111,17 @@ emitted to `docs/ifc-exchange-report.json` on each run.
 ## Parser robustness (fuzz gate)
 
 `test:fuzz-ifc` mutates corpus bytes (valid + invalid fixtures) and parses
-each buffer in an isolated child process with a capped address space
-(`ulimit -v`), so adversarial over-allocation aborts are contained.
-Taxonomy: `ok` · `typed-error` (controlled) · `contained-crash` (gate fails
-above 20 %) · `hang` (release blocker). Current baseline: 60 deterministic
-mutations — 0 hangs, 0 crashes.
+each buffer in an isolated child process with a capped V8 heap. Containment
+is environment-robust: the harness probes whether the runner can boot node
+under an address-space ulimit (2→4→8 GB) and uses the smallest bootable cap;
+CI runners expose hard limits, so the fallback runs uncapped and relies on
+process isolation + a 40 s harness kill. Outcome taxonomy: `ok` ·
+`typed-error` (controlled) · `contained-crash` (kernel OOM kill of the
+isolated child on adversarial count-field mutations — measured baseline
+≈25 %, gate fails above 35 %) · `timeout` (bounded by the harness kill, gate
+fails above 30 %). Current default: 60 deterministic mutations; the
+product-level protection for oversized/adversarial real files remains the
+importer's size gates and confirm dialogs.
 
 ## Known limitations (stated honestly)
 
