@@ -2612,7 +2612,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
 
     // Reference tracking lines (OTRACK) — axes through chain points + snap marker
-    if (withUi && otrackOn && pts.length >= 1 && (tool === "line" || tool === "poly" || tool === "mline" || tool === "wall")) {
+    if (withUi && otrackOn && pts.length >= 1 && (tool === "line" || tool === "poly" || tool === "mline")) {
       const span = Math.max(view.w, view.h) / Math.max(view.scale, 1e-9) * 2;
       c.save();
       c.setLineDash([6, 5]);
