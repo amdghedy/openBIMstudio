@@ -12,6 +12,7 @@ file — the project adopted a written changelog at 0.73.0.
 ## [Unreleased]
 
 ### Added
+- **DWG import keeps text and dimensions on very large drawings.** When the 1.2 M-entity geometry budget was spent, the remaining entities were dropped, including labels, which is why big drawings showed lines without text. TEXT, MTEXT, ATTRIB, DIMENSION, LEADER and MLEADER now draw from a separate 300 k reserve; remaining geometry is still skipped and reported. Unit test added. Not checked against the original 580 k-entity drawing, and font/presentation differences from the native viewer are not addressed by this change.
 - **M** places a 1.7 m reference person (labelled 1.70 m) in the 3D view for scale and clearance checks: at the middle of the view facing the camera, or 2 m ahead of you in Walk mode where it stays while you walk on; M again removes it. Also in Ctrl+P. Browser test added. A simple stand-in figure; not checked against loaded IFC floors beyond the plain ground.
 
 

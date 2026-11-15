@@ -73,6 +73,17 @@ t("oversized hatch boundary converts without RangeError", () => {
   assert.strictEqual(r.doc.entities[0].points.length >= 79000, true, "boundary points preserved");
 });
 
+t("annotation reserve keeps text/dimensions after the geometry budget is spent", () => {
+  const TX = (i) => ({ type: "TEXT", layer: "0", text: "L" + i, startPoint: { x: i, y: 0 }, height: 2 });
+  const ents = [...Array.from({ length: 200 }, (_, i) => LN(i)), ...Array.from({ length: 200 }, (_, i) => LN(i + 500)), ...Array.from({ length: 20 }, (_, i) => TX(i))];
+  const r = dwgDatabaseToDxfDocument(mkDb(ents), { entityBudget: 100, annotationReserve: 50 });
+  const texts = r.doc.entities.filter((e) => e.type === "TEXT").length;
+  const lines = r.doc.entities.filter((e) => e.type === "LINE").length;
+  assert.strictEqual(texts, 20, "all labels must still be drawn, got " + texts);
+  assert.ok(lines <= 100, "geometry stays capped, got " + lines);
+  assert.ok(Object.keys(r.doc.skipped ?? {}).some((k) => k.includes("entity budget")), "truncation still reported");
+});
+
 t("normal drawings are unaffected by the guard rails", () => {
   const blk = { name: "SMALL", entities: [LN(0)] };
   const ents = Array.from({ length: 500 }, (_, i) => ins("SMALL", { insertionPoint: { x: i, y: 0 } }));

@@ -75,6 +75,8 @@ interface Ctx {
   skip: (t: string) => void;
   /** Remaining drawable entities this conversion may still emit (shared, mutable). */
   budget: number;
+  /** extra allowance for cheap annotation entities after the geometry budget is spent */
+  reserve: number;
   /** Epoch ms after which conversion stops and returns what it has so far. */
   deadline: number;
 }
@@ -196,17 +198,28 @@ function viewportOf(e: Any): DxfViewport | null {
   return { center: toPt(centre), width, height, viewCenter: toPt(pick(e, ["viewCenter", "viewCenterPoint", "viewTarget"])), viewHeight: vh, twist: toNum(pick(e, ["twistAngle", "viewTwistAngle"])) || undefined };
 }
 
+const ANNOTATION_RESERVE = 300_000;
+const ANNOTATION_TYPES = new Set(["TEXT", "MTEXT", "ATTRIB", "DIMENSION", "LEADER", "MLEADER"]);
+
 function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | null): DxfEntity[] {
   const out: DxfEntity[] = [];
+  let budgetNoted = false;
 
   for (let i = 0; i < list.length; i++) {
     const e = list[i];
-    if (cx.budget <= 0) { cx.skip("(entity budget reached — remaining entities not drawn)"); return out; }
     if ((i & 511) === 511 && Date.now() > cx.deadline) {
       cx.skip("(time budget reached — remaining entities not drawn)");
       return out;
     }
     const type = String(e?.type ?? e?.entityType ?? "").toUpperCase();
+    if (cx.budget <= 0) {
+      // Geometry budget spent: keep drawing cheap annotation (text, dimensions,
+      // leaders) from a separate reserve so labels survive on huge drawings.
+      if (!ANNOTATION_TYPES.has(type) || cx.reserve <= 0) {
+        if (!budgetNoted) { cx.skip("(entity budget reached — remaining geometry not drawn)"); budgetNoted = true; }
+        continue;
+      }
+    }
     if (!type) continue;
     if (e.inPaperSpace === true || e.paperSpace === true) continue;
 
@@ -424,7 +437,7 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
           cx.skip(type);
       }
       if (ocsFlip) for (let k = outStart; k < out.length; k++) out[k] = flipEntityX(out[k]);
-      cx.budget -= out.length - outStart;
+      if (cx.budget > 0) cx.budget -= out.length - outStart; else cx.reserve -= out.length - outStart;
     } catch {
       cx.skip(`${type} (unreadable)`);
     }
@@ -453,7 +466,7 @@ function dwgTextStyle(e: Any, cx: { toDeg: number }): { style?: string; widthFac
 
 export function dwgDatabaseToDxfDocument(
   db: Any,
-  opts?: { deadlineMs?: number; entityBudget?: number },
+  opts?: { deadlineMs?: number; entityBudget?: number; annotationReserve?: number },
 ): DwgConvertResult {
   const blocks = new Map<string, Any>();
   for (const b of entriesOf(db?.tables?.BLOCK_RECORD ?? db?.blocks)) {
@@ -489,6 +502,7 @@ export function dwgDatabaseToDxfDocument(
     toRad: deg ? DEG : 1,
     fullTurn: deg ? 360 : TWO_PI,
     budget: opts?.entityBudget ?? ENTITY_BUDGET,
+    reserve: opts?.annotationReserve ?? ANNOTATION_RESERVE,
     deadline: opts?.deadlineMs ?? Number.POSITIVE_INFINITY,
   };
 
