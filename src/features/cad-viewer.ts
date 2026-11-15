@@ -106,6 +106,8 @@ type Tool =
   | "mline"
   | "copybase"
   | "pasteblock"
+  | "box3d"
+  | "cyl3d"
   | "circle"
   | "rect"
   | "arc"
@@ -7129,7 +7131,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const anchor = pts.length >= 1 ? pts[pts.length - 1] : null;
     p = constrainInputPoint(p, anchor, !!snapPoint);
 
-    switch (tool) {
+    switch (tool as Tool) {
       case "line": {
         pts.push(p);
         if (pts.length === 2) {
@@ -7179,21 +7181,22 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       case "box3d": {
         const dim = (window as any).__obsBox3d || { w: 1000, d: 1000, h: 1000 };
         const w = dim.w, d = dim.d, h = dim.h;
+        const boxPoints: { x: number; y: number }[] = [
+          { x: p.x, y: p.y },
+          { x: p.x + w, y: p.y },
+          { x: p.x + w, y: p.y + d },
+          { x: p.x, y: p.y + d },
+        ];
         const poly: DxfEntity = {
           type: "LWPOLYLINE",
           layer: currentLayer,
           ...newObjectProps(),
           closed: true,
-          points: [
-            { x: p.x, y: p.y },
-            { x: p.x + w, y: p.y },
-            { x: p.x + w, y: p.y + d },
-            { x: p.x, y: p.y + d },
-          ],
+          points: boxPoints,
           meta: { solid: true, extrudeHeight: h, solidKind: "box" },
         } as DxfEntity;
         addDraftEntity(poly);
-        const mesh = PolyBool.extrudeMesh(poly.points as any, h);
+        const mesh = PolyBool.extrudeMesh(boxPoints, h);
         solidMeshes.push({ id: `box_${Date.now()}`, ...mesh, height: h });
         logCmd(`BOX solid ${w}×${d}×${h} placed.`);
         setTool("select");
