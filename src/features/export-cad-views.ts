@@ -178,6 +178,13 @@ export function openExportCadDialog(): void {
         <label style="margin-right:12px">Format <select data-3d-fmt style="${inp}"><option value="dxf">DXF</option><option value="dwg">DWG</option></select></label>
         <button data-go3d style="${inp};cursor:pointer">Export 3D model</button>
       </div>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155">
+        <div style="font-weight:600;margin-bottom:4px">Current 3D view → 2D lines (hidden lines removed)</div>
+        <div style="opacity:.75;margin-bottom:6px">Draws the model as you see it now (the camera you are using) as 2D linework: outlines and sharp edges, with edges behind other geometry removed. Layers follow the 3D export. Uses the units above.</div>
+        <label style="margin-right:12px"><input type="checkbox" data-hl-hidden> Also keep hidden edges (dashed layers)</label>
+        <label style="margin-right:12px">Format <select data-hl-fmt style="${inp}"><option value="dxf">DXF</option><option value="dwg">DWG</option></select></label>
+        <button data-gohl style="${inp};cursor:pointer">Export current view as lines</button>
+      </div>
       <div data-msg style="min-height:18px;margin-top:12px;font-size:12px;white-space:pre-wrap"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
         <button data-close style="${inp};cursor:pointer">Cancel</button>
@@ -185,6 +192,37 @@ export function openExportCadDialog(): void {
       </div>`;
     const q = <T extends Element>(s: string) => card.querySelector(s) as T;
     card.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
+    q<HTMLButtonElement>("[data-gohl]").addEventListener("click", async () => {
+      const msg = q<HTMLElement>("[data-msg]"), btn = q<HTMLButtonElement>("[data-gohl]");
+      btn.disabled = true; msg.style.color = "#cbd5e1"; msg.textContent = "Collecting geometry…";
+      try {
+        const cam = (ctx as any).world?.camera?.three as any;
+        if (!cam) throw new Error("No 3D camera is available.");
+        cam.updateMatrixWorld(true);
+        let meshes = collectModelMeshes({ selectedOnly: false, visibleOnly: true }).meshes;
+        const ifc = await collectIfcMeshes((d, t) => { msg.textContent = `Reading imported models… ${d}/${t}`; });
+        meshes = meshes.concat(ifc.meshes);
+        if (!meshes.length) { msg.style.color = "#fbbf24"; msg.textContent = "No 3D geometry to export."; return; }
+        // Distance from the eye to the middle of the model sizes a perspective drawing at that depth.
+        const eye = cam.getWorldPosition(new (cam.position.constructor)());
+        let sx = 0, sy = 0, sz = 0, cnt = 0;
+        for (const m of meshes) { const P = m.positions; const mat = m.matrix; for (let i = 0; i + 2 < P.length; i += Math.max(3, Math.floor(P.length / 300 / 3) * 3)) { const x = P[i], y = P[i + 1], z = P[i + 2]; if (mat) { sx += mat[0] * x + mat[4] * y + mat[8] * z + mat[12]; sy += mat[1] * x + mat[5] * y + mat[9] * z + mat[13]; sz += mat[2] * x + mat[6] * y + mat[10] * z + mat[14]; } else { sx += x; sy += y; sz += z; } cnt++; } }
+        const distance = cnt ? Math.hypot(sx / cnt - eye.x, sy / cnt - eye.y, sz / cnt - eye.z) : 10;
+        const { hiddenLineProject, hlrToDxf } = await import("../modules/export/hidden-line");
+        const unitsScale = q<HTMLSelectElement>("[data-units]").value === "mm" ? 1000 : 1;
+        msg.textContent = "Removing hidden lines…";
+        await new Promise((r) => setTimeout(r, 30));
+        const res = hiddenLineProject(meshes, { view: cam.matrixWorldInverse.elements, proj: cam.projectionMatrix.elements, distance }, { width: 1600, includeHidden: q<HTMLInputElement>("[data-hl-hidden]").checked, unitsScale });
+        const { dxf, lines, layers } = hlrToDxf(res);
+        if (!lines) { msg.style.color = "#fbbf24"; msg.textContent = "Nothing is in front of the camera, so no lines were written. Frame the model (press F) and try again."; return; }
+        const dwg = q<HTMLSelectElement>("[data-hl-fmt]").value === "dwg";
+        if (dwg) { const { exportDxfToDwg } = await import("../modules/drawings/acad-engine"); download("openbimstudio-view-lines.dwg", await exportDxfToDwg(dxf), "application/acad"); }
+        else download("openbimstudio-view-lines.dxf", new TextEncoder().encode(dxf), "application/dxf");
+        msg.style.color = "#86efac";
+        msg.textContent = `Exported ${fmtNumber(lines)} lines on ${layers.length} layer(s) from the ${res.stats.perspective ? "perspective" : "orthographic"} view.` + (res.stats.droppedNearPlane ? `\n${fmtNumber(res.stats.droppedNearPlane)} triangle(s) crossing the camera were left out.` : "") + (ifc.capped ? "\nImported models were capped; export a section for the rest." : "") + "\nHidden-line removal is sampled at about 1/1600 of the view width, and perspective views are sized at the model's distance.";
+      } catch (e) { msg.style.color = "#fca5a5"; msg.textContent = "View export failed: " + (e instanceof Error ? e.message : String(e)); }
+      finally { btn.disabled = false; }
+    });
     q<HTMLButtonElement>("[data-go3d]").addEventListener("click", async () => {
       const msg = q<HTMLElement>("[data-msg]"), btn = q<HTMLButtonElement>("[data-go3d]");
       btn.disabled = true;

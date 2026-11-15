@@ -1137,3 +1137,32 @@ test('WALK MODE: climbs a full storey (18 risers, 3 m) to an upper deck', async 
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
+test('Export current 3D view as hidden-line 2D lines: an IFC wall seen from the front gives a 5 m x 3 m outline', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  await page.evaluate(async () => { await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(0, 1.5, 12, 0, 1.5, 0, false); });
+  await page.waitForTimeout(900);
+  await page.keyboard.press('Control+p');
+  await page.keyboard.type('Views to CAD');
+  await page.keyboard.press('Enter');
+  const dlg = page.locator('#obs-export-cad');
+  await expect(dlg).toBeVisible({ timeout: 10000 });
+  const dl = page.waitForEvent('download', { timeout: 90000 });
+  await dlg.locator('[data-gohl]').click();
+  const d = await dl;
+  const text = (await import('fs')).readFileSync((await d.path())!, 'utf8');
+  const msg = await dlg.locator('[data-msg]').innerText();
+  const xs = Array.from(text.matchAll(/\n1[01]\n(-?[\d.]+)\n/g)).map((m) => parseFloat(m[1]));
+  const ys = Array.from(text.matchAll(/\n2[01]\n(-?[\d.]+)\n/g)).map((m) => parseFloat(m[1]));
+  const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+  console.log('HLR ' + JSON.stringify({ lines: (text.match(/\nLINE\n/g) || []).length, w, h, msg }));
+  expect(d.suggestedFilename()).toBe('openbimstudio-view-lines.dxf');
+  expect(text, msg).toContain('A-WALL');
+  expect(w, 'front elevation width in mm (5 m wall, perspective sized at the model centre). ' + msg).toBeGreaterThan(4300);
+  expect(w, msg).toBeLessThan(5800);
+  expect(h, 'front elevation height in mm (3 m wall). ' + msg).toBeGreaterThan(2500);
+  expect(h, msg).toBeLessThan(3500);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
