@@ -59,16 +59,22 @@ if (!seeds.length) {
 
 const tmp = mkdtempSync(join(tmpdir(), "obs-fuzz-"));
 
-function runChild(bytes) {
+function runChild(bytes, cap) {
   return new Promise((resolve) => {
     const file = join(tmp, "buf.ifc");
     writeFileSync(file, bytes);
     // ulimit -v caps TOTAL address space (including the wasm heap that
     // --max-old-space-size cannot reach), turning adversarial over-allocation
-    // into a catchable emscripten abort instead of a kernel OOM kill.
+    // into a catchable emscripten abort instead of a kernel OOM kill. The cap
+    // is selected by a boot PROBE (see below) because node's own startup
+    // reservation differs per machine/runner — a too-small cap kills the
+    // child before it prints any outcome token (seen on CI with 2 GB).
+    const cmd = cap
+      ? `ulimit -v ${cap}; exec "$0" --max-old-space-size=256 "$1" "$2"`
+      : `exec "$0" --max-old-space-size=256 "$1" "$2"`;
     const child = spawn(
       "bash",
-      ["-c", 'ulimit -v 2097152; exec "$0" --max-old-space-size=256 "$1" "$2"', process.execPath, CHILD, file],
+      ["-c", cmd, process.execPath, CHILD, file],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
     let out = "";
@@ -91,7 +97,27 @@ function runChild(bytes) {
   });
 }
 
+/**
+ * Pick the smallest address-space cap the runner can actually boot node
+ * under: probe an UNMUTATED corpus file (which must parse ok) with candidate
+ * caps; fall back to no ulimit when none boots. Deterministic per runner.
+ */
+async function pickCap() {
+  const probeBytes = seeds[0].bytes;
+  for (const cap of [2097152, 4194304, 8388608, null]) {
+    const r = await runChild(probeBytes, cap);
+    if (r.outcome === "ok") {
+      console.log(`fuzz: child cap probe — using ${cap ? `${(cap / 1024 / 1024).toFixed(0)} GB ulimit` : "no ulimit"}`);
+      return cap;
+    }
+    console.log(`fuzz: child cap probe — ${(cap ? `${(cap / 1024 / 1024).toFixed(0)} GB` : "no ulimit")} not bootable (${r.outcome})`);
+  }
+  return null;
+}
+
 let ok = 0, typedError = 0, containedCrash = 0, hang = 0;
+
+const CAP = await pickCap();
 
 for (let i = 0; i < ITER; i++) {
   const src = seeds[rand(seeds.length)];
@@ -101,7 +127,7 @@ for (let i = 0; i < ITER; i++) {
     const pos = rand(bytes.length);
     bytes[pos] ^= 1 << rand(8);
   }
-  const r = await runChild(bytes);
+  const r = await runChild(bytes, CAP);
   if (r.outcome === "ok") ok++;
   else if (r.outcome === "typed-error") typedError++;
   else if (r.outcome === "hang") { hang++; console.error(`fuzz: HANG at iteration ${i} (seed ${src.name}) — release blocker`); break; }
