@@ -160,6 +160,16 @@ function headerNumber(pairs: Pair[], name: string): number | undefined {
   return undefined;
 }
 
+function headerPoint(pairs: Pair[], name: string): { x: number; y: number } | undefined {
+  for (let i = 0; i < pairs.length - 1; i++) {
+    if (pairs[i].code === 9 && pairs[i].value.trim().toUpperCase() === name) {
+      const x = num(pairs[i + 1]?.value, NaN), y = pairs[i + 2]?.code === 20 ? num(pairs[i + 2].value, NaN) : NaN;
+      return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
+    }
+  }
+  return undefined;
+}
+
 /** HATCH record -> boundary loops + pattern info. Returns null when no loop could be read. */
 export function parseHatch(P: Pair[]): DxfHatch | null {
   let i = P.findIndex((p) => p.code === 91);
@@ -407,12 +417,13 @@ export function parseDxf(text: string): DxfDocument {
   let curBlock: Block | null = null;
   imageDefs = new Map();
   textStyles = new Map();
+  let savedView: { cx: number; cy: number; height: number; twist?: number } | undefined;
 
   for (const r of recs) {
     if (r.type === "EOF") break;
     if (r.type === "SECTION") {
       section = r.pairs.find((p) => p.code === 2)?.value.trim() ?? "";
-      if (section === "HEADER") { units = headerUnits(r.pairs); const ls = headerNumber(r.pairs, "$LTSCALE"); if (ls != null && Number.isFinite(ls) && ls > 0) ltscale = ls; }
+      if (section === "HEADER") { units = headerUnits(r.pairs); const ls = headerNumber(r.pairs, "$LTSCALE"); if (ls != null && Number.isFinite(ls) && ls > 0) ltscale = ls; const vc = headerPoint(r.pairs, "$VIEWCTR"), vs = headerNumber(r.pairs, "$VIEWSIZE"), vt = headerNumber(r.pairs, "$VIEWTWIST"); savedView = vc && vs != null && Number.isFinite(vs) && vs > 0 ? { cx: vc.x, cy: vc.y, height: vs, ...(vt ? { twist: vt } : {}) } : undefined; }
       continue;
     }
     if (r.type === "ENDSEC") { section = ""; curBlock = null; continue; }
@@ -573,6 +584,7 @@ export function parseDxf(text: string): DxfDocument {
     layers,
     entities,
     extents: computeExtents(entities),
+    ...(savedView ? { savedView } : {}),
     units: units ?? "unitless",
     sourceFormat: "dxf",
     layouts: layouts.length ? layouts : undefined,

@@ -255,6 +255,8 @@ export interface DxfDocument {
   dimStyles?: string[];
   /** DIMSTYLE table by upper-case name, with the values needed for native dimension drawing. */
   dimStyleTable?: Record<string, DxfDimStyle>;
+  /** Model-space view stored in the file (active viewport / $VIEWCTR): what the native app shows on open. */
+  savedView?: { cx: number; cy: number; height: number; twist?: number };
   /** Entity types that were present but not drawn, with counts. */
   skipped?: Record<string, number>;
 }

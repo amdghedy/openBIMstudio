@@ -14,6 +14,8 @@ const out = fs.mkdtempSync(path.join(os.tmpdir(), "dwglimit-"));
 execSync(`npx tsc src/modules/drawings/dwg-convert.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`, { stdio: "pipe" });
 const find = (d, n) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = find(p, n); if (r) return r } else if (f.name === n) return p } };
 const { dwgDatabaseToDxfDocument } = require(find(out, "dwg-convert.js"));
+execSync(`npx tsc src/modules/cad-viewer/viewer-math.ts --outDir ${out}/vm --module commonjs --target es2020 --skipLibCheck`, { stdio: "pipe" });
+const { savedViewToView } = require(find(out + "/vm", "viewer-math.js"));
 let pass = 0, fail = 0; const t = (n, f) => { try { f(); pass++; console.log("  PASS " + n) } catch (e) { fail++; console.log("  FAIL " + n + ": " + e.message) } };
 
 const LN = (i) => ({ type: "LINE", layer: "0", startPoint: { x: i, y: 0 }, endPoint: { x: i + 1, y: 1 } });
@@ -82,6 +84,28 @@ t("annotation reserve keeps text/dimensions after the geometry budget is spent",
   assert.strictEqual(texts, 20, "all labels must still be drawn, got " + texts);
   assert.ok(lines <= 100, "geometry stays capped, got " + lines);
   assert.ok(Object.keys(r.doc.skipped ?? {}).some((k) => k.includes("entity budget")), "truncation still reported");
+});
+
+t("saved active viewport is carried to the document (plan view only)", () => {
+  const db = mkDb([LN(0)]);
+  db.tables.VPORT = { entries: [{ name: "*Active", center: { x: 50, y: 25 }, viewHeight: 80, viewDirectionFromTarget: { x: 0, y: 0, z: 1 } }] };
+  const sv = dwgDatabaseToDxfDocument(db).doc.savedView;
+  assert.deepStrictEqual([sv.cx, sv.cy, sv.height], [50, 25, 80]);
+  db.tables.VPORT.entries[0].viewDirectionFromTarget = { x: 1, y: 1, z: 1 };
+  assert.strictEqual(dwgDatabaseToDxfDocument(db).doc.savedView, undefined, "3D views are not a 2D window");
+  const h = mkDb([LN(0)]); h.header = { VIEWCTR: { x: 5, y: 6 }, VIEWSIZE: 12 };
+  assert.deepStrictEqual(dwgDatabaseToDxfDocument(h).doc.savedView, { cx: 5, cy: 6, height: 12 }, "falls back to header");
+  assert.strictEqual(dwgDatabaseToDxfDocument(mkDb([LN(0)])).doc.savedView, undefined);
+});
+
+t("saved view maps to a screen view and stale ones are rejected", () => {
+  const b = { minX: 0, minY: 0, maxX: 1000, maxY: 500 };
+  const v = savedViewToView({ cx: 200, cy: 100, height: 250 }, b, 800, 500);
+  assert.strictEqual(v.scale, 2); assert.strictEqual(v.cx, 200);
+  assert.strictEqual(savedViewToView({ cx: 9e6, cy: 0, height: 100 }, b, 800, 500), null, "centre far outside drawing");
+  assert.strictEqual(savedViewToView({ cx: 200, cy: 100, height: 1e7 }, b, 800, 500), null, "absurd height");
+  assert.strictEqual(savedViewToView({ cx: 200, cy: 100, height: 100, twist: 30 }, b, 800, 500), null, "twisted view");
+  assert.strictEqual(savedViewToView(undefined, b, 800, 500), null);
 });
 
 t("normal drawings are unaffected by the guard rails", () => {

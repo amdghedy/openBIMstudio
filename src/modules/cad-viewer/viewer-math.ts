@@ -72,6 +72,22 @@ export function fitView(b: BBox, w: number, h: number, margin = 0.06, rot = 0): 
 }
 
 /**
+ * View saved in the file (centre + model-space height shown) -> screen view, or null when it is
+ * unusable (non-finite, zero size, twisted, or nowhere near the drawing).
+ */
+export function savedViewToView(sv: { cx: number; cy: number; height: number; twist?: number } | undefined, b: BBox | null, w: number, h: number): View | null {
+  if (!sv || !b || !(w > 0) || !(h > 0)) return null;
+  if (![sv.cx, sv.cy, sv.height].every(Number.isFinite) || !(sv.height > 0)) return null;
+  if (sv.twist && Math.abs(sv.twist % 360) > 0.01) return null;
+  const bw = b.maxX - b.minX, bh = b.maxY - b.minY, pad = Math.max(bw, bh) * 0.25;
+  if (sv.cx < b.minX - pad || sv.cx > b.maxX + pad || sv.cy < b.minY - pad || sv.cy > b.maxY + pad) return null;
+  // A saved view hundreds of times larger/smaller than the drawing is a stale default, not a real view.
+  const dim = Math.max(bh, 1e-9);
+  if (sv.height > dim * 20 || sv.height < dim / 5000) return null;
+  return { cx: sv.cx, cy: sv.cy, scale: h / sv.height, w, h };
+}
+
+/**
  * Estimate the dominant axis angle of LINE geometry (degrees, -90..90).
  * Used to upright drawings that were saved with a rotated UCS / view.
  */

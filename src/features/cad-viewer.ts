@@ -5293,7 +5293,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       xrefs.length = 0;
       modelEnts = doc.entities;
       // Skip auto-straighten when we have a saved session for this file (preserve last scene).
-      const hasSession = !!loadSessionMap()[sessionKeyFor(file.name)];
+      const hasSession = !!loadSessionMap()[sessionKeyFor(file.name)] || !!doc.savedView;
       // Physical straighten: rotate world geometry so schedules/sheets are axis-aligned
       // (view-only rotation was not enough for large DWGs with mixed edge noise).
       try {
@@ -5374,7 +5374,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       activate(startLayout);
       // Restore last view + layer visibility for this file name (same scene, off/frozen layers)
-      const restored = restoreDrawingSession(file.name);
+      let restored = restoreDrawingSession(file.name);
+      if (!restored && startLayout < 0) {
+        // No session of ours: open on the view saved inside the file (what the native app shows).
+        const sv = M.savedViewToView(doc.savedView, modelBounds, view.w, view.h);
+        if (sv) { uprightRot = 0; view = sv; draw(); restored = true; logCmd("Opened on the view saved in the drawing."); }
+      }
       if (!restored) {
         // First open: auto-upright only when no saved session
         try {

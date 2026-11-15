@@ -201,6 +201,23 @@ function viewportOf(e: Any): DxfViewport | null {
 const ANNOTATION_RESERVE = 300_000;
 const ANNOTATION_TYPES = new Set(["TEXT", "MTEXT", "ATTRIB", "DIMENSION", "LEADER", "MLEADER", "MULTILEADER"]);
 
+/** Active model viewport (VPORT *Active, else $VIEWCTR/$VIEWSIZE): centre + height shown on open. */
+function savedViewOf(db: Any): { cx: number; cy: number; height: number; twist?: number } | undefined {
+  try {
+    const vp = entriesOf(db?.tables?.VPORT).find((v: Any) => String(v?.name ?? "").toLowerCase() === "*active");
+    const h = db?.header ?? {};
+    const c = vp ? pick(vp, ["center", "viewCenter", "viewCenterPoint"]) : pick(h, ["VIEWCTR", "$VIEWCTR"]);
+    const height = vp ? toNum(pick(vp, ["viewHeight", "height", "viewSize"]), 0) : toNum(pick(h, ["VIEWSIZE", "$VIEWSIZE"]), 0);
+    if (!c || !(height > 0)) return undefined;
+    // Only plan views: a tilted/3D view direction is not a 2D window.
+    const dir = vp ? pick(vp, ["viewDirectionFromTarget", "viewDirection", "viewDir"]) : undefined;
+    if (dir && (Math.abs(toNum(dir.x, 0)) > 1e-6 || Math.abs(toNum(dir.y, 0)) > 1e-6)) return undefined;
+    const pt = toPt(c);
+    const tw = toNum(vp ? pick(vp, ["viewTwistAngle", "twistAngle", "twist"]) : pick(h, ["VIEWTWIST", "$VIEWTWIST"]), 0);
+    return { cx: pt.x, cy: pt.y, height, ...(tw ? { twist: tw * (tw > 6.3 ? 1 : 180 / Math.PI) } : {}) };
+  } catch { return undefined; }
+}
+
 function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | null): DxfEntity[] {
   const out: DxfEntity[] = [];
   let budgetNoted = false;
@@ -549,6 +566,7 @@ export function dwgDatabaseToDxfDocument(
     if (!known.has(e.layer)) { known.add(e.layer); layers.push({ name: e.layer, color: 7 }); }
   }
 
+  const savedView = savedViewOf(db);
   const insUnits = db?.header?.INSUNITS ?? db?.header?.$INSUNITS ?? db?.header?.insUnits;
   const lts = linetypesOf(db);
   const doc: DxfDocument = {
@@ -557,6 +575,7 @@ export function dwgDatabaseToDxfDocument(
     extents: computeExtents(entities),
     units: insUnitsToUnits(toNum(insUnits)),
     sourceFormat: "dwg",
+    ...(savedView ? { savedView } : {}),
     layouts: layouts.length ? layouts : undefined,
     linetypes: Object.keys(lts).length ? lts : undefined,
     ltscale: toNum(db?.header?.LTSCALE ?? db?.header?.$LTSCALE, 0) > 0 ? toNum(db?.header?.LTSCALE ?? db?.header?.$LTSCALE) : undefined,
