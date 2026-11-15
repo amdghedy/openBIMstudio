@@ -3411,9 +3411,25 @@ function updatePill() {
     pill.innerHTML = "";
 
     const status = document.createElement("span");
-    status.className = `obs-ribbon__project-status ${isDirty() ? "is-dirty" : "is-saved"}`;
-    status.textContent = isDirty() ? "UNSAVED" : "SAVED";
-    status.title = isDirty() ? "Project has unsaved changes" : "Project saved";
+    // Honest save state. With no project open, isDirty() is false (the dirty
+    // flag tracks the *current project document*), so the old code rendered a
+    // green "SAVED" chip next to "No project" while every authored element
+    // lived only in memory and died on reload — the pill claimed the exact
+    // opposite of the truth. Report unprojected content as UNSAVED.
+    if (!p) {
+      const unprojected = (() => {
+        try { return getElements().length > 0; } catch { return false; }
+      })();
+      status.className = `obs-ribbon__project-status ${unprojected ? "is-dirty" : ""}`;
+      status.textContent = unprojected ? "NO PROJECT — UNSAVED" : "NO PROJECT";
+      status.title = unprojected
+        ? "You are modeling without a project — this data lives only in memory and will be lost on reload. Create a project (File → New Project) and save."
+        : "No project is open. Create one via File → New Project.";
+    } else {
+      status.className = `obs-ribbon__project-status ${isDirty() ? "is-dirty" : "is-saved"}`;
+      status.textContent = isDirty() ? "UNSAVED" : "SAVED";
+      status.title = isDirty() ? "Project has unsaved changes" : "Project saved";
+    }
 
     const name = document.createElement("span");
     name.className = "obs-ribbon__project-name";

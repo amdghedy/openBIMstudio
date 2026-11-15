@@ -154,10 +154,11 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Modeling",
     status: "verified",
     source: ["src/features/authoring.ts", "src/features/plan-view-panel.ts"],
-    evidence: ["tests/", "tests/openings-chain.test.cjs", "npm run verify:v68", "npm run verify:v73", "real browser: plan wall → hosted door + window → door/window schedules 1 row each → 3D mesh volume drops by the punched openings (10.384 vs 11.098 solid m³)"],
+    evidence: ["tests/", "tests/openings-chain.test.cjs", "npm run verify:v68", "npm run verify:v73", "real browser: plan wall → hosted door + window → door/window schedules 1 row each → 3D mesh volume drops by the punched openings (10.384 vs 11.098 solid m³)", "real browser (v54 re-run after +354 commits): Wall tool → 2 chained walls → Door tool click on wall → door element with hostId + offsetAlongHost + swing panel"],
     limitations: [
       "Doors/windows host on in-app walls (straight and curved); openings cut compound layers; linked-IFC hosts still limited",
       "Plan-placed doors/windows used to be authored as unhosted 'equipment' (schedules 0 rows, no 3D cut) — fixed and guarded; projects saved before the fix are repaired on load only when a wall lies under the old point",
+      "The ribbon 'Hosted Opening' dialog (engine-ui.ts) is validation-only: it runs placeOpening() checks and shows a success report card, but discards the result — no opening is written to the model. The real hosted path is the Door/Window tools; the dialog must not be presented as a placement feature",
     ],
     affirmedIn: APP_VERSION,
   },
@@ -299,7 +300,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Documentation",
     status: "limited",
     source: ["src/modules/views/", "src/modules/export/pdf.ts", "src/modules/export/sheet-pdf.ts", "src/features/sheets-2d-panel.ts"],
-    evidence: ["tests/", "real browser: + Sheet → + Viewport renders the authored plan into the viewport; Export SVG issues a real download (A-001.svg); 'Place on sheet' from the Schedules panel lands on sheet A-001"],
+    evidence: ["tests/", "real browser: + Sheet → + Viewport renders the authored plan into the viewport; Export SVG issues a real download (A-001.svg); 'Place on sheet' from the Schedules panel lands on sheet A-001", "real browser (v54 re-run): saved Wall Schedule E2E → 'Placed ... on sheet A-001' → Export SVG (9.9 KB) + Export PDF (PDF 1.7) both contain the full 4-row table (Wall 001–004, grand totals 264.793 m / 1588.758 m² / 202.566 m³) — PDF text-extraction verified"],
     limitations: [
       "Sheet composition covers the v M3 scope; not a full drawing-sheet editor",
       "Viewport fit is extent-based, not content-tight — an 18 m wall renders small on a 40 × 28 m default window",
@@ -312,7 +313,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Documentation",
     status: "limited",
     source: ["src/modules/schedules/", "src/modules/cost/"],
-    evidence: ["tests/", "tests/schedule-totals.test.cjs", "tests/openings-chain.test.cjs", "real browser: Door/Window/Wall schedules return 1 row for authored geometry and the wall take-off equals the cut-mesh volume"],
+    evidence: ["tests/", "tests/schedule-totals.test.cjs", "tests/openings-chain.test.cjs", "real browser: Door/Window/Wall schedules return 1 row for authored geometry and the wall take-off equals the cut-mesh volume", "real browser (v54 re-run): Wall Schedule over 4 authored walls → Length/Area/Volume per row, Volume = L×H×t exact (30.420 × 3 × 0.255 ≈ 23.271 m³), Area = both faces, grand total row rendered; Snapshot/Diff and 'Save the schedule first' guardrail live"],
     limitations: [
       "Quantity take-off relies on element parameters, not true 5D rules engine",
       "Wall volume/area now deducts hosted door/window openings (matches the cut 3D mesh); curtain/arc-wall take-offs stay chord-based approximations",
@@ -399,6 +400,21 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     source: ["src/modules/projects/project-crypto.ts"],
     evidence: ["tests/"],
     limitations: [],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "project-persistence",
+    area: "Platform",
+    status: "limited",
+    source: ["src/modules/projects/projects.ts", "src/modules/projects/store.ts", "src/shell/status-bar.ts", "src/shell/ribbon.ts"],
+    evidence: [
+      "tests/",
+      "real browser (v54): project created → Wall tool + Door tool → Ctrl+S → IndexedDB 'projects' store holds the doc → reload → reopen from the welcome screen recents restores wall + door (getElementCount 2)",
+    ],
+    limitations: [
+      "No auto-reopen: a fresh boot enters an empty session even when a saved project exists; the user must reopen from the welcome screen (one click) — easy to misread as data loss",
+      "Ribbon pill used to render a green 'SAVED' next to 'No project' while unprojected modeling lived only in memory and died on reload — fixed: unprojected content now reads 'NO PROJECT — UNSAVED' (verified live)",
+    ],
     affirmedIn: APP_VERSION,
   },
   {
