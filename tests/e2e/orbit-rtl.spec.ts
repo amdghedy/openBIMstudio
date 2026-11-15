@@ -902,8 +902,8 @@ test('SECTION CAPS: authored (non-IFC) wall is capped too', async ({ page }) => 
 });
 
 /** A ground slab (top at 0) plus five 0.17 m risers rising east to a landing at 0.85 m. IFC x = app x. */
-function stairsIfc(n = 5, rise = 0.17, tread = 0.3): string {
-  const end = tread * n + 4.5;
+function stairsIfc(count = 5, rise = 0.17, tread = 0.3): string {
+  const end = tread * count + 4.5;
   const head = WALL_IFC.slice(0, WALL_IFC.indexOf('#50='));
   let n = 100; const L: string[] = ['#51=IFCLOCALPLACEMENT(#31,#21);', '#64=IFCDIRECTION((0.,0.,1.));'];
   const solid = (cx: number, dx: number, h: number, zBase: number, name: string) => {
@@ -920,7 +920,7 @@ function stairsIfc(n = 5, rise = 0.17, tread = 0.3): string {
     return a;
   };
   const ids = [solid(0, 12, 0.2, -0.2, 'Ground')];
-  for (let k = 1; k <= n; k++) { const x0 = tread * k; ids.push(solid((x0 + end) / 2, end - x0, rise * k, 0, 'Step' + k)); }
+  for (let k = 1; k <= count; k++) { const x0 = tread * k; ids.push(solid((x0 + end) / 2, end - x0, rise * k, 0, 'Step' + k)); }
   L.push(`#70=IFCRELCONTAINEDINSPATIALSTRUCTURE('4VqzM6bXH7ugTO1ZoXRFzs',$,$,$,(${ids.map((x) => '#' + x).join(',')}),#30);`);
   return head + L.join('\n') + '\nENDSEC;\nEND-ISO-10303-21;\n';
 }
