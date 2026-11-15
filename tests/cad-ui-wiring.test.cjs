@@ -305,7 +305,7 @@ t("polar tracking, snap mode configuration and live quick measure are wired", ()
     'data-a="polar-angle"',
     'data-s=quick-readout',
     'function openOsnapSettings()',
-    'M.polarConstrain(anchor, point, polarAngle)',
+    'M.polarConstrain(anchor, p, polarAngle)',
     'setQuickMeasure(!quick)',
   ]) assert.ok(viewer.includes(marker), `CAD mode feature missing: ${marker}`);
   assert.ok(viewer.includes('statusEl.querySelector("[data-s=polar]")'), "Polar status toggle missing");
