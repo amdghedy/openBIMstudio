@@ -187,3 +187,69 @@ export function prefixXrefLayers(
   }));
   return { layers: newLayers, entities: newEnts };
 }
+
+/** Build a double-line (MLINE) as two parallel LINE entities + optional center. */
+export function mlinePair(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  width: number,
+  layer: string,
+  props?: Partial<DxfEntity>,
+): DxfEntity[] {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * (width / 2);
+  const ny = (dx / len) * (width / 2);
+  const base = { layer, ...(props as object) };
+  return [
+    { type: "LINE", ...base, start: { x: a.x + nx, y: a.y + ny }, end: { x: b.x + nx, y: b.y + ny } } as DxfEntity,
+    { type: "LINE", ...base, start: { x: a.x - nx, y: a.y - ny }, end: { x: b.x - nx, y: b.y - ny } } as DxfEntity,
+  ];
+}
+
+/** Find/replace in TEXT entities. Returns number of replacements. */
+export function replaceText(
+  ents: DxfEntity[],
+  find: string,
+  replace: string,
+  opts?: { all?: boolean; caseSensitive?: boolean },
+): { count: number; entities: DxfEntity[] } {
+  if (!find) return { count: 0, entities: ents };
+  const all = opts?.all !== false;
+  const cs = !!opts?.caseSensitive;
+  let count = 0;
+  const out = ents.map((e) => {
+    if (e.type !== "TEXT") return e;
+    const v = String((e as any).value ?? "");
+    const hay = cs ? v : v.toLowerCase();
+    const needle = cs ? find : find.toLowerCase();
+    if (!hay.includes(needle)) return e;
+    const next = cs
+      ? (all ? v.split(find).join(replace) : v.replace(find, replace))
+      : v.replace(new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), all ? "gi" : "i"), replace);
+    if (next === v) return e;
+    count++;
+    return { ...e, value: next } as DxfEntity;
+  });
+  return { count, entities: out };
+}
+
+/** Closed polyline area via shoelace (for REGION report). */
+export function polylineArea(pts: Array<{ x: number; y: number }>): number {
+  if (pts.length < 3) return 0;
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(a) * 0.5;
+}
+
+export function isClosedPoly(e: DxfEntity): boolean {
+  if (e.type !== "LWPOLYLINE") return false;
+  const p = e.points;
+  if (!p || p.length < 3) return false;
+  if ((e as any).closed) return true;
+  const a = p[0], b = p[p.length - 1];
+  return Math.hypot(a.x - b.x, a.y - b.y) < 1e-6 * (1 + Math.hypot(a.x, a.y));
+}

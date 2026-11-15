@@ -1494,6 +1494,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const cadGroups = new Map<string, AcadParity.CadGroup>();
   const xrefs: AcadParity.XrefRecord[] = [];
   let drawingClock = AcadParity.createClock();
+  let copyBasePt: M.Pt | null = null;
+  let mlineWidth = 50;
+  let layerVisStack: string[][] = [];
+  let refEditName: string | null = null;
+
 
   let modelEnts: DxfEntity[] = [],
     modelIdx: M.SpatialIndex | null = null,
@@ -1682,6 +1687,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return true;
   }
   let sessionSaveTimer: number | null = null;
+  function pushLayerVis(): void {
+    layerVisStack.push([...hidden]);
+    if (layerVisStack.length > 20) layerVisStack.shift();
+  }
   function scheduleSessionSave(): void {
     if (sessionSaveTimer != null) window.clearTimeout(sessionSaveTimer);
     sessionSaveTimer = window.setTimeout(() => {
@@ -5454,6 +5463,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     buildLayers();
   };
   $("lon").onclick = () => {
+    pushLayerVis();
     hidden.clear();
     if (doc) for (const l of doc.layers) { if (!l.frozen) l.off = false; }
     buildLayers();
@@ -5461,6 +5471,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     scheduleSessionSave();
   };
   $("loff").onclick = () => {
+    pushLayerVis();
     allLayers().forEach((n) => hidden.add(n));
     if (doc) for (const l of doc.layers) { if (!l.frozen) l.off = true; }
     buildLayers();
@@ -5469,6 +5480,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   };
   $("liso").onclick = () => {
     if (!sel.size) return;
+    pushLayerVis();
     const keep = new Set([...sel].map((i) => ents[i].layer));
     allLayers().forEach((n) => (keep.has(n) ? hidden.delete(n) : hidden.add(n)));
     if (doc) {
@@ -7036,6 +7048,60 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           pts = [p]; // Chain next line like drawing workspace
         }
         showAcadPrompt();
+        break;
+      }
+      case "mline": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const pair = AcadParity.mlinePair(pts[0], pts[1], mlineWidth, currentLayer, newObjectProps());
+          addEntities(pair);
+          logCmd(`MLINE: width=${mlineWidth}, length=${fmt(M.distance(pts[0], pts[1]))}`);
+          pts = [p];
+        }
+        showAcadPrompt();
+        break;
+      }
+      case "copybase": {
+        copyBasePt = { x: p.x, y: p.y };
+        // Snapshot selection to clipboard with base
+        try {
+          const members = [...sel].map((i) => ents[i]).filter(Boolean) as DxfEntity[];
+          if (members.length) {
+            const payload = JSON.stringify({
+              base: copyBasePt,
+              entities: members,
+            });
+            localStorage.setItem("obs.cad.copybase", payload);
+            logCmd(`COPYBASE: ${members.length} object(s), base (${fmt(p.x)},${fmt(p.y)}). Use PASTE / PASTEBLOCK.`);
+          } else logCmd("COPYBASE: nothing selected.");
+        } catch (err) {
+          logCmd(`COPYBASE failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        setTool("select");
+        pts = [];
+        break;
+      }
+      case "pasteblock": {
+        try {
+          const raw = localStorage.getItem("obs.cad.copybase") || localStorage.getItem("obs.cad.clipboard");
+          if (!raw) { logCmd("PASTEBLOCK: clipboard empty — use COPYBASE or COPYCLIP first."); setTool("select"); break; }
+          const data = JSON.parse(raw);
+          const list = (data.entities || data) as DxfEntity[];
+          const base = data.base || { x: 0, y: 0 };
+          const dx = p.x - base.x, dy = p.y - base.y;
+          const moved = list.map((e) => X.translateEnt(e, dx, dy));
+          const nm = `PasteBlock_${Date.now().toString(36)}`;
+          const def = makeBlock(nm, moved, { x: p.x, y: p.y }, doc?.layers as any, "PASTEBLOCK");
+          blockLib.add(def, true);
+          try { localStorage.setItem(BLOCK_LIB_KEY, JSON.stringify(blockLib.toJSON())); } catch { /* */ }
+          const placed = instantiateBlock(def, def.base, { scale: 1, rotation: 0 });
+          addEntities(placed);
+          logCmd(`PASTEBLOCK: created block "${nm}" and inserted at pick.`);
+        } catch (err) {
+          logCmd(`PASTEBLOCK failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        setTool("select");
+        pts = [];
         break;
       }
       case "circle": {
@@ -8961,6 +9027,150 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("QLEADER: specify leader start point.");
       return;
     }
+    if (cmd === "MLINE" || cmd === "ML") {
+      const w = Number(parts[1]);
+      if (Number.isFinite(w) && w > 0) mlineWidth = w;
+      pts = [];
+      setTool("mline");
+      logCmd(`MLINE: width=${mlineWidth} — specify first point.`);
+      return;
+    }
+    if (cmd === "REPLACE" || cmd === "FINDREPLACE") {
+      const find = parts[1];
+      const rep = parts.slice(2).join(" ");
+      if (!find) { logCmd("REPLACE: REPLACE <find> <replace>"); return; }
+      const { count, entities } = AcadParity.replaceText(ents, find, rep ?? "");
+      if (!count) { logCmd("REPLACE: 0 matches."); return; }
+      const before = ents.slice();
+      ents = entities;
+      if (layoutI < 0) { modelEnts = ents; doc!.entities = ents; }
+      else if (doc?.layouts?.[layoutI]) doc.layouts[layoutI].entities = ents;
+      try { commitModify(before, ents); } catch { markDirty(); }
+            draw();
+      logCmd(`REPLACE: ${count} text object(s) updated.`);
+      return;
+    }
+    if (cmd === "COPYBASE" || cmd === "CB") {
+      if (!sel.size) { logCmd("COPYBASE: select objects first."); return; }
+      setTool("copybase");
+      logCmd("COPYBASE: specify base point.");
+      return;
+    }
+    if (cmd === "PASTEBLOCK" || cmd === "PB") {
+      setTool("pasteblock");
+      logCmd("PASTEBLOCK: specify insertion point for clipboard as block.");
+      return;
+    }
+    if (cmd === "REFEDIT") {
+      // RE also = REGEN in some sets — only REFEDIT name and RE when unique
+      const bn = parts[1] || "";
+      if (!bn) {
+        const names = blockLib.names();
+        logCmd(names.length ? `REFEDIT: REFEDIT <blockname>. Blocks: ${names.slice(0, 20).join(", ")}` : "REFEDIT: no blocks in library.");
+        return;
+      }
+      const def = blockLib.get(bn);
+      if (!def) { logCmd(`REFEDIT: block "${bn}" not found.`); return; }
+      refEditName = bn;
+      // Load definition entities into model for editing
+      const inst = instantiateBlock(def, def.base, { scale: 1, rotation: 0 });
+      addEntities(inst);
+      logCmd(`REFEDIT: editing "${bn}" — ${inst.length} entities added. Modify, then REFCLOSE.`);
+      return;
+    }
+    if (cmd === "REFCLOSE" || cmd === "RCLOSE") {
+      if (!refEditName) { logCmd("REFCLOSE: no REFEDIT session active."); return; }
+      if (!sel.size) { logCmd("REFCLOSE: select the edited entities to save back into the block."); return; }
+      const members = [...sel].map((i) => ents[i]).filter(Boolean) as DxfEntity[];
+      const base = { x: 0, y: 0 };
+      const def = makeBlock(refEditName, members, base, doc?.layers as any, "REFEDIT");
+      blockLib.add(def, true);
+            logCmd(`REFCLOSE: block "${refEditName}" redefined (${members.length} entities).`);
+      refEditName = null;
+      markDirty();
+      return;
+    }
+    if (cmd === "REGION" || cmd === "REG") {
+      const closed = ents.filter((e) => AcadParity.isClosedPoly(e));
+      if (!closed.length) { logCmd("REGION: no closed polylines found."); return; }
+      let total = 0;
+      for (const e of closed) {
+        if (e.type !== "LWPOLYLINE") continue;
+        const a = AcadParity.polylineArea(e.points);
+        total += a;
+        logCmd(`  region area = ${a.toFixed(4)}`);
+      }
+      logCmd(`REGION: ${closed.length} closed poly(s), total area ${total.toFixed(4)}`);
+      return;
+    }
+    if (cmd === "DSETTINGS" || cmd === "DS" || cmd === "SE" || cmd === "SETTINGS") {
+      openCadOptionsDialog();
+      return;
+    }
+    if (cmd === "LAYERP" || cmd === "LAYERPREV") {
+      const prev = layerVisStack.pop();
+      if (!prev) { logCmd("LAYERP: no previous layer state."); return; }
+      hidden.clear();
+      prev.forEach((n) => hidden.add(n));
+      buildLayers();
+      draw();
+      logCmd("LAYERP: restored previous layer visibility.");
+      scheduleSessionSave();
+      return;
+    }
+    if (cmd === "ATTEDIT" || cmd === "ATE") {
+      if (!sel.size) { logCmd("ATTEDIT: select TEXT first."); return; }
+      const e = ents[[...sel][0]];
+      if (!e || e.type !== "TEXT") { logCmd("ATTEDIT: select a TEXT object."); return; }
+      void (async () => {
+        const nv = await promptLine("ATTEDIT", "New text", String((e as any).value ?? ""), "value");
+        if (nv == null) return;
+        const before = [e];
+        const after = [{ ...e, value: nv } as DxfEntity];
+        commitModify(before, after);
+        draw();
+        logCmd("ATTEDIT: text updated.");
+      })();
+      return;
+    }
+    if (cmd === "PAGESETUP" || cmd === "PAGE") {
+      const size = (parts[1] || "A3").toUpperCase();
+      const orient = (parts[2] || "LANDSCAPE").toUpperCase();
+      logCmd(`PAGESETUP: paper=${size} orientation=${orient} (used on PLOT / PDF).`);
+      try {
+        localStorage.setItem("obs.cad.pageSetup", JSON.stringify({ size, orient }));
+      } catch { /* */ }
+      return;
+    }
+    if (cmd === "HATCHBOUNDARY" || cmd === "HB") {
+      if (!sel.size) { logCmd("HATCHBOUNDARY: select a hatch polyline."); return; }
+      const out: DxfEntity[] = [];
+      for (const i of sel) {
+        const e = ents[i];
+        if (!e || e.type !== "LWPOLYLINE") continue;
+        const loops = (e as any).hatch?.loops as Array<Array<{x:number;y:number}>> | undefined;
+        const pts = loops?.[0] ?? e.points;
+        if (!pts?.length) continue;
+        out.push({
+          type: "LWPOLYLINE",
+          layer: currentLayer,
+          points: pts.map((p: any) => ({ x: p.x, y: p.y })),
+          closed: true,
+        } as DxfEntity);
+      }
+      if (!out.length) { logCmd("HATCHBOUNDARY: no hatch boundary found on selection."); return; }
+      addEntities(out);
+      logCmd(`HATCHBOUNDARY: created ${out.length} boundary polyline(s).`);
+      return;
+    }
+    if (cmd === "EXPORT" || cmd === "EXP") {
+      const kind = (parts[1] || "PDF").toUpperCase();
+      if (kind === "SVG") { /* fall through to existing if any */ logCmd("EXPORT SVG: use SVGSAVE."); return; }
+      if (kind === "PNG") { logCmd("EXPORT PNG: use SHAREVIEW."); return; }
+      logCmd("EXPORT PDF: use PLOT.");
+      return;
+    }
+
     if (cmd === "UCS") {
       setTool("origin");
       logCmd("Specify origin of UCS <0,0,0>:");
