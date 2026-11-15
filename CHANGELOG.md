@@ -12,6 +12,10 @@ file — the project adopted a written changelog at 0.73.0.
 ## [Unreleased]
 
 ### Added
+- Export → 3D model can now write **DWG** as well as DXF. After a DWG export the dialog re-reads the written file and reports the entity count. Browser test: an IFC wall exports to a real AC1009 DWG and all 12 3D faces are found on re-read. Not opened in AutoCAD, BricsCAD or Revit.
+
+
+### Added
 - `docs/USER-GUIDE.ar.md`: Arabic translation of the user guide (English stays authoritative); the English guide gained PDF → DWG and Live IFC link sections. Documentation only; not reviewed by a native-speaking technical editor.
 
 

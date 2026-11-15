@@ -170,7 +170,7 @@ export function openExportCadDialog(): void {
         <label>View title</label><label><input type="checkbox" data-title checked> Add the view name and scale under the drawing</label>
       </div>
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155">
-        <div style="font-weight:600;margin-bottom:4px">3D model → DXF (3D faces)</div>
+        <div style="font-weight:600;margin-bottom:4px">3D model → DXF / DWG (3D faces)</div>
         <div style="opacity:.75;margin-bottom:6px">The authored 3D model as 3DFACE triangles on layers by element type (wall, slab, column…), Z up. Uses the units above. DXF or DWG.</div>
         <label style="margin-right:12px"><input type="checkbox" data-3d-sel> Selected elements only</label>
         <label style="margin-right:12px"><input type="checkbox" data-3d-vis checked> Visible only</label>

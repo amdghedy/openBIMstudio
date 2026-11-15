@@ -204,12 +204,12 @@ These workflows are covered by unit tests but have not been exercised by the bro
 Choose **File → Views → CAD (DWG / DXF)…** (the same idea as Revit's Export → CAD Formats).
 
 - **2D views to CAD:** select one or more views, choose DXF or DWG, and export. Several views are delivered together as a zip.
-- **3D model to DXF:** the Export dialog can also write the authored 3D model, and loaded IFC models, as a 3D DXF.
+- **3D model to DXF or DWG:** the Export dialog can also write the authored 3D model, and loaded IFC models, as 3D faces in a DXF or DWG. Pick the format in the *3D model* box. After a DWG export the message reports how many entities the app found when it re-read the file.
 - Axes: the app's up axis is Y; CAD output uses Z up.
 
 **Verified:** DXF files are generated and downloaded in a real browser, an IFC wall exports on the expected layer with about 5 m × 3 m extents, and the DWG writer round-trips in the CAD engine in an automated test.
 
-**Not verified:** opening the exported files in AutoCAD, BricsCAD or Revit; exporting very large IFC models; 3D export to DWG (3D is DXF only).
+**Not verified:** opening the exported files in AutoCAD, BricsCAD or Revit; exporting very large IFC models; very large 3D exports to DWG.
 
 ### PDF to DWG (2D CAD)
 
