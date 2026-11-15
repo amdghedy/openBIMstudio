@@ -89,6 +89,14 @@ Press **Ctrl+W** to enter Walk mode at the current camera position and heading. 
 | **Mouse wheel** | Change walking speed |
 | **Mouse** | Look around (the browser asks to capture the pointer) |
 | **Esc** | Leave Walk mode and return to the orbit camera |
+| **L** | Hold my height on/off (default on) |
+| **N** | Walk through walls on/off |
+| **P** | Human figure (1.7 m, third person) on/off |
+
+**Walk options** (also in Ctrl+P, saved in your browser):
+- **Hold my height (L, on by default).** Walking starts exactly at the camera's height. If there is no floor under you (for example you started in the air above a model) you stay at that level instead of dropping to the lowest level. Turn it off to fall through openings and gaps as before.
+- **Walk through walls (N).** Walls and other obstacles no longer stop you. Floors and stairs still carry you.
+- **Human figure (P).** Shows a simple 1.7 m figure standing at your feet and follows it from 2.6 m behind. The figure is a plain stand-in, and the third-person camera does not avoid walls behind it.
 
 **Collision.** You stop at walls and stand on floors, including walls and floors from loaded IFC models. IFC doors count as solid, because the model shows them closed.
 

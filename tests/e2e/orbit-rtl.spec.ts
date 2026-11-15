@@ -1166,3 +1166,83 @@ test('Export current 3D view as hidden-line 2D lines: an IFC wall seen from the 
   expect(h, msg).toBeLessThan(3500);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('WALK MODE options: holds the starting height, walks through walls on request, shows a 1.7 m human', async ({ page }) => {
+  test.setTimeout(240000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  const W = () => (window as any).__OBS_CTX__.features.walkMode;
+  const stand = async (x: number, y: number, z: number, tx: number, ty: number, tz: number) => {
+    for (let i = 0; i < 6; i++) {
+      await page.evaluate(async (a) => { await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(a[0], a[1], a[2], a[3], a[4], a[5], false); }, [x, y, z, tx, ty, tz]);
+      await page.waitForTimeout(700);
+      await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.enable());
+      await page.waitForTimeout(500);
+      const p = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+      if (p && Math.abs(p.z - z) < 0.3 && Math.abs(p.pitch) < 0.1) return p;
+      await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
+      await page.waitForTimeout(300);
+    }
+    return await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+  };
+  const pose = () => page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+  const setOpt = (k: string, v: boolean) => page.evaluate(([kk, vv]) => (window as any).__OBS_CTX__.features.walkMode.setOption(kk, vv), [k, v] as [string, boolean]);
+
+  // 1) Hold my height: start 6.5 m above the ground; the walker stays at that eye height instead of falling to the lowest level.
+  await setOpt('holdLevel', true);
+  const p0 = await stand(0, 6.5, 6, 0, 6.5, 0);
+  await page.waitForTimeout(2500);
+  const held = await pose();
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
+  console.log('WALK-HOLD ' + JSON.stringify({ start: p0?.y, after: held?.y }));
+  expect(Math.abs(p0.y - 6.5), 'starts at the camera height').toBeLessThan(0.05);
+  expect(Math.abs(held.y - 6.5), 'stays at the starting height (no fall to the lowest level)').toBeLessThan(0.15);
+  // With the option off the old behaviour returns: the walker falls to the ground.
+  await setOpt('holdLevel', false);
+  await stand(0, 6.5, 6, 0, 6.5, 0);
+  let fell = 99;
+  for (let k = 0; k < 24 && fell > 1.9; k++) { await page.waitForTimeout(500); fell = (await pose()).y; }
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
+  console.log('WALK-FALL ' + fell);
+  expect(fell, 'without the option it falls to standing height').toBeLessThan(2.1);
+  await setOpt('holdLevel', true);
+
+  // 2) Through walls: the 5 m wall at z = 0 blocks the walker unless the option is on.
+  await setOpt('noClip', true);
+  await stand(0, 1.7, 3, 0, 1.7, -5);
+  await page.keyboard.down('w');
+  let z = 99;
+  for (let k = 0; k < 40 && z > -1.5; k++) { await page.waitForTimeout(250); z = (await pose()).z; }
+  await page.keyboard.up('w');
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
+  console.log('WALK-NOCLIP z=' + z);
+  expect(z, 'walked through the wall').toBeLessThan(-1);
+  await setOpt('noClip', false);
+
+  // 3) Human figure: 1.7 m tall, standing at the feet, with the camera behind it.
+  await setOpt('human', true);
+  await stand(0, 1.7, 3, 0, 1.7, -5);
+  await page.waitForTimeout(800);
+  const h = await page.evaluate(() => {
+    const ctx = (window as any).__OBS_CTX__;
+    const g = ctx.world.scene.three.getObjectByName('obs-walk-human');
+    if (!g) return null;
+    const THREE_Box = (ctx.world.camera.three.position.constructor as any);
+    let minY = Infinity, maxY = -Infinity;
+    g.updateWorldMatrix(true, true);
+    g.traverse((o: any) => { if (o.isMesh) { o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld); minY = Math.min(minY, b.min.y); maxY = Math.max(maxY, b.max.y); } });
+    const cam = ctx.world.camera.three.position, pose = ctx.features.walkMode.getPose();
+    return { height: maxY - minY, feetY: minY, camDist: Math.hypot(cam.x - g.position.x, cam.z - g.position.z), eyeY: pose.y, ok: !!THREE_Box };
+  });
+  console.log('WALK-HUMAN ' + JSON.stringify(h));
+  expect(h, 'figure exists while walking').toBeTruthy();
+  expect(Math.abs(h!.height - 1.7), 'figure is 1.7 m tall').toBeLessThan(0.03);
+  expect(Math.abs(h!.feetY - (h!.eyeY - 1.7)), 'figure stands on the walker\'s floor').toBeLessThan(0.1);
+  expect(h!.camDist, 'camera follows behind the figure').toBeGreaterThan(1.8);
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
+  const gone = await page.evaluate(() => !(window as any).__OBS_CTX__.world.scene.three.getObjectByName('obs-walk-human'));
+  expect(gone, 'figure is removed when walk mode ends').toBe(true);
+  await setOpt('human', false);
+  expect(errors, errors.join('\n')).toEqual([]);
+});

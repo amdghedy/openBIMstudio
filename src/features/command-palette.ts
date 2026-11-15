@@ -29,7 +29,7 @@ import { toggleIdsPanel, isIdsPanelVisible } from "./ids-panel";
 import { toggleModelTreePanel, isModelTreePanelVisible } from "./model-tree-panel";
 import { togglePlanView, isPlanViewVisible } from "./plan-view-panel";
 import { toggleSchedules, isSchedulesVisible } from "./schedules-panel";
-import { toggleWalkMode, isWalkModeEnabled } from "./walk-mode";
+import { toggleWalkMode, isWalkModeEnabled, getWalkOptions, setWalkOption } from "./walk-mode";
 import { toggleSavedViewsPanel, isSavedViewsPanelVisible } from "./saved-views";
 import {
   setAuthoringTool, getActiveTool,
@@ -449,6 +449,9 @@ function bootstrapCommands(): void {
   registerCommand({ id: "ifc.to-frag", label: "Convert IFC → FRAG (download)", category: "Insert", run: () => { void import("./ifc-to-frag").then((m) => m.showIfcToFragPanel()); } });
   registerCommand({ id: "cad.query", label: "Query linked drawings (layer / type / name)", category: "Insert", run: () => { void import("./cad-query-panel").then((m) => m.showCadQueryPanel()); } });
   registerCommand({ id: "file.export-frag", label: "Export model(s) as ThatOpen FRAG (.frag)", category: "File", run: () => { void import("../modules/export/frag").then((m) => m.exportFragFromMenu()); } });
+  registerCommand({ id: "tools.walk.holdLevel", label: `Walk: hold my height (do not drop to the lowest level) — ${getWalkOptions().holdLevel ? "on" : "off"}`, category: "Tools", run: () => setWalkOption("holdLevel", !getWalkOptions().holdLevel) });
+  registerCommand({ id: "tools.walk.noClip", label: `Walk: walk through walls — ${getWalkOptions().noClip ? "on" : "off"}`, category: "Tools", run: () => setWalkOption("noClip", !getWalkOptions().noClip) });
+  registerCommand({ id: "tools.walk.human", label: `Walk: show human figure 1.7 m (third person) — ${getWalkOptions().human ? "on" : "off"}`, category: "Tools", run: () => setWalkOption("human", !getWalkOptions().human) });
   registerCommand({ id: "tools.walk", label: toggleLabel("Walk mode", isWalkModeEnabled), category: "Tools", run: () => toggleWalkMode() });
   registerCommand({
     id: "tools.moveConnectedMep",

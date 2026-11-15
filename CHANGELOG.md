@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Added
+- Walk mode options: **Hold my height** (default on: start exactly at the camera height and do not fall to the lowest level when no floor is under you), **Walk through walls** (no-clip, floors and stairs still carry you) and **Human figure** (1.7 m figure, third-person chase camera). Keys L / N / P, Ctrl+P commands, saved in the browser. Browser test covers all three; the third-person camera does not avoid walls behind the figure.
+
+
 ### Changed
 - Hidden-line export: unit tests (18 assertions) now cover a wall with an opening in front of two cubes (the one behind the opening shows, the one behind solid wall is hidden). Known limit found: elements built from several touching pieces show seam lines where the pieces meet.
 

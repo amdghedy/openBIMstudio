@@ -116,7 +116,64 @@ const OWNED_KEYS = new Set([
   "arrowup", "arrowdown", "arrowleft", "arrowright",
   "shift", "control",
   " ", "c", "pageup", "pagedown",
+  "n", "p", "l",
 ]);
+
+/** User options for walking. Saved in this browser. */
+export interface WalkOptions {
+  /** Start at the camera's current height and stay at that level when there is no floor under you (instead of falling to the lowest level). */
+  holdLevel: boolean;
+  /** Walk through walls and other obstacles (floors and stairs still carry you). */
+  noClip: boolean;
+  /** Show a 1.7 m human figure and view it from behind (third person). */
+  human: boolean;
+}
+const OPT_KEY = "obs-walk-options";
+const opts: WalkOptions = (() => {
+  const d: WalkOptions = { holdLevel: true, noClip: false, human: false };
+  try { const r = JSON.parse(localStorage.getItem(OPT_KEY) || "{}"); for (const k of Object.keys(d) as (keyof WalkOptions)[]) if (typeof r[k] === "boolean") d[k] = r[k]; } catch { /* */ }
+  return d;
+})();
+export function getWalkOptions(): WalkOptions { return { ...opts }; }
+export function setWalkOption(k: keyof WalkOptions, v: boolean): void {
+  opts[k] = !!v;
+  try { localStorage.setItem(OPT_KEY, JSON.stringify(opts)); } catch { /* */ }
+  if (k === "noClip") { resetSensors(); }
+  if (k === "human") syncHuman();
+  if (state.enabled) { updateStatus(); refreshHint(); }
+  try { window.dispatchEvent(new CustomEvent("obs:walk-options-changed", { detail: { ...opts } })); } catch { /* */ }
+  try { notify("info", `Walk: ${k === "holdLevel" ? "hold my height" : k === "noClip" ? "walk through walls" : "human figure"} ${v ? "on" : "off"}`); } catch { /* */ }
+}
+
+const HUMAN_HEIGHT = 1.7;
+const CHASE_DISTANCE = 2.6;
+let human: THREE.Group | null = null;
+/** Simple standing figure, 1.7 m from sole to crown (built from primitives, no assets). */
+function buildHuman(): THREE.Group {
+  const g = new THREE.Group();
+  g.name = "obs-walk-human";
+  g.userData.walkIgnore = true;
+  const skin = new THREE.MeshLambertMaterial({ color: 0xe0b896 });
+  const cloth = new THREE.MeshLambertMaterial({ color: 0x3b6ea8 });
+  const legs = new THREE.MeshLambertMaterial({ color: 0x2f3542 });
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.userData.walkIgnore = true; g.add(m); return m; };
+  // Heights add up to 1.70: legs 0.80, torso 0.58 (to 1.38 + shoulders), neck/head to 1.70.
+  add(new THREE.CylinderGeometry(0.075, 0.065, 0.80, 14), legs, -0.1, 0.40, 0);
+  add(new THREE.CylinderGeometry(0.075, 0.065, 0.80, 14), legs, 0.1, 0.40, 0);
+  add(new THREE.BoxGeometry(0.40, 0.58, 0.22), cloth, 0, 1.09, 0);
+  add(new THREE.CylinderGeometry(0.045, 0.04, 0.60, 12), cloth, -0.26, 1.08, 0);
+  add(new THREE.CylinderGeometry(0.045, 0.04, 0.60, 12), cloth, 0.26, 1.08, 0);
+  add(new THREE.CylinderGeometry(0.05, 0.055, 0.07, 12), skin, 0, 1.425, 0);
+  add(new THREE.SphereGeometry(0.115, 18, 14), skin, 0, 1.585, 0); // crown at 1.70
+  return g;
+}
+function syncHuman(): void {
+  const scene = ctx.world.scene.three as THREE.Scene;
+  if (opts.human && state.enabled) {
+    if (!human) human = buildHuman();
+    if (!human.parent) scene.add(human);
+  } else if (human?.parent) human.parent.remove(human);
+}
 
 const groundRay = new THREE.Raycaster();
 
@@ -208,6 +265,20 @@ let hint: HTMLDivElement | null = null;
 let exitBtn: HTMLButtonElement | null = null;
 let statusEl: HTMLDivElement | null = null;
 
+function hintHtml(): string {
+  const kbd = (t: string) =>
+    `<kbd style="padding:1px 5px;border:1px solid #3d4250;border-radius:3px;font:10px monospace">${t}</kbd>`;
+  const on = (v: boolean) => (v ? `<b style="color:#4ade80">on</b>` : `<span style="opacity:.6">off</span>`);
+  return `<b style="color:#38bdf8">WALK</b> · ` +
+    `${kbd("W")}${kbd("A")}${kbd("S")}${kbd("D")} move · ` +
+    `${kbd("Shift")} run · ${kbd("Ctrl")} crouch · ` +
+    `${kbd("Space")}/${kbd("C")} up/down · ` +
+    `${kbd("PgUp")}/${kbd("PgDn")} level · wheel speed · ` +
+    `${kbd("Esc")} exit<br>` +
+    `${kbd("L")} hold my height ${on(opts.holdLevel)} · ${kbd("N")} through walls ${on(opts.noClip)} · ${kbd("P")} human 1.7 m ${on(opts.human)}`;
+}
+function refreshHint(): void { if (hint) hint.innerHTML = hintHtml(); }
+
 function ensureOverlay(): HTMLDivElement {
   if (overlay) return overlay;
 
@@ -235,18 +306,9 @@ function ensureOverlay(): HTMLDivElement {
     "position:absolute;left:50%;top:14px;transform:translateX(-50%);" +
     "background:rgba(20,22,30,.85);border:1px solid rgba(56,189,248,.35);" +
     "border-radius:6px;padding:7px 14px;font:11.5px/1.4 system-ui,sans-serif;" +
-    "color:#e8eaf0;white-space:nowrap;backdrop-filter:blur(6px);" +
+    "color:#e8eaf0;text-align:center;white-space:nowrap;backdrop-filter:blur(6px);" +
     "box-shadow:0 6px 20px rgba(0,0,0,.4)";
-  const kbd = (t: string) =>
-    `<kbd style="padding:1px 5px;border:1px solid #3d4250;border-radius:3px;font:10px monospace">${t}</kbd>`;
-  hint.innerHTML =
-    `<b style="color:#38bdf8">WALK</b> · ` +
-    `${kbd("W")}${kbd("A")}${kbd("S")}${kbd("D")} move · ` +
-    `${kbd("Shift")} run · ${kbd("Ctrl")} crouch · ` +
-    `${kbd("Space")}/${kbd("C")} up/down · ` +
-    `${kbd("PgUp")}/${kbd("PgDn")} level · wheel speed · ` +
-    `${kbd("Esc")} exit · ` +
-    `<span style="opacity:.65">Ctrl+S / Ctrl+Z still work</span>`;
+  hint.innerHTML = hintHtml();
 
   exitBtn = document.createElement("button");
   exitBtn.textContent = "Exit walk mode  (Esc)";
@@ -363,6 +425,7 @@ function updateGroundTarget() {
 
   if (found == null) {
     // Nothing below — open void / outside the model.
+    if (opts.holdLevel) return; // stay on the level you are on
     state.airborne = true;
     return;
   }
@@ -375,7 +438,8 @@ function updateGroundTarget() {
   }
 
   if (drop > FALL_TRIGGER) {
-    // Opening / missing slab / deep stair run: fall to the lower floor.
+    // Opening / missing slab / deep stair run: fall to the lower floor (unless the walker holds its level).
+    if (opts.holdLevel) return;
     state.targetGroundY = found;
     state.airborne = true;
     return;
@@ -457,7 +521,7 @@ function updateStatus(): void {
   statusEl.textContent =
     `X ${f(state.pos.x)} m   Z ${f(state.pos.z)} m   Eye ${f(state.pos.y)} m\n` +
     `Heading ${heading.toFixed(0).padStart(3)}\u00b0   Speed \u00d7${state.speedFactor.toFixed(2)}` +
-    (state.airborne ? "   FALLING" : "   GROUNDED") +
+    (state.airborne ? "   FALLING" : "   GROUNDED") + (opts.noClip ? "   NO-CLIP" : "") +
     (levelName ? `   Level ${levelName}` : "");
 }
 
@@ -561,7 +625,15 @@ function enableWalkModeInner(): void {
   state.airborne = false;
   const standingEye = floorY + EYE_HEIGHT;
   // Keep the camera's actual eye height when it is already near a valid standing pose.
-  const eyeY = Math.abs(savedPos.y - standingEye) < 2.5 ? savedPos.y : standingEye;
+  // With "hold my height" the walker always starts exactly where the camera is: on a floor if one is within a step of the feet,
+  // otherwise on an imaginary level at that height (no drop to the lowest level).
+  let eyeY = Math.abs(savedPos.y - standingEye) < 2.5 ? savedPos.y : standingEye;
+  if (opts.holdLevel) {
+    eyeY = savedPos.y;
+    const feet0 = savedPos.y - EYE_HEIGHT;
+    state.targetGroundY = floorY != null && Math.abs(floorY - feet0) <= MAX_STEP + 0.1 ? floorY : feet0;
+    if (state.targetGroundY !== floorY) eyeY = state.targetGroundY + EYE_HEIGHT;
+  }
   state.pos.set(startX, eyeY, startZ);
   state.vel.set(0, 0, 0);
   state.keys.clear();
@@ -582,6 +654,8 @@ function enableWalkModeInner(): void {
     );
   } catch { /* */ }
 
+  syncHuman();
+  refreshHint();
   state.rafId = requestAnimationFrame(tick);
 
   try { window.dispatchEvent(new CustomEvent("obs:walk-mode-changed", { detail: true })); } catch { /* */ }
@@ -591,6 +665,7 @@ export function disableWalkMode(): void {
   if (!state.enabled) return;
   state.enabled = false;
   resetSensors();
+  syncHuman();
 
   if (state.rafId != null) {
     cancelAnimationFrame(state.rafId);
@@ -709,6 +784,10 @@ function onKeyDown(e: KeyboardEvent) {
   if (OWNED_KEYS.has(k)) {
     e.preventDefault();
     e.stopImmediatePropagation();
+    if (k === "n" || k === "p" || k === "l") {
+      if (!e.repeat) setWalkOption(k === "n" ? "noClip" : k === "p" ? "human" : "holdLevel", !opts[k === "n" ? "noClip" : k === "p" ? "human" : "holdLevel"]);
+      return;
+    }
     state.keys.add(k === " " ? "space" : k);
   }
 }
@@ -813,13 +892,13 @@ function tickBody(now: number) {
   const alpha = 1 - Math.exp(-ACCEL * dt);
   state.vel.lerp(targetVel, alpha);
 
-  fireSensors(targetVel.x / (speed || 1), targetVel.z / (speed || 1), speed);
+  if (!opts.noClip) fireSensors(targetVel.x / (speed || 1), targetVel.z / (speed || 1), speed);
   state.collideTick = (state.collideTick + 1) % COLLIDE_INTERVAL;
-  if (state.collideTick === 0) applyCollision(dt);
+  if (state.collideTick === 0 && !opts.noClip) applyCollision(dt);
 
   state.pos.x += state.vel.x * dt;
   state.pos.z += state.vel.z * dt;
-  applyWallContacts(); // resolve this frame's step too, so the drawn pose never dips into the wall
+  if (!opts.noClip) applyWallContacts(); // resolve this frame's step too, so the drawn pose never dips into the wall
   if (!Number.isFinite(state.pos.x) || !Number.isFinite(state.pos.y) || !Number.isFinite(state.pos.z)) {
     // never hand NaN to the camera: recover to the position walk mode started from
     const sv = state.saved?.position;
@@ -874,7 +953,25 @@ function tickBody(now: number) {
   );
   const target = state.pos.clone().add(look.clone().multiplyScalar(TARGET_DISTANCE));
 
-  driveCamera(state.pos, target);
+  if (opts.human) {
+    // Third person: the figure stands at the walker's feet and the camera follows 2.6 m behind and a little above.
+    if (!human) syncHuman();
+    const feet = state.pos.y - eyeH;
+    if (human) {
+      human.position.set(state.pos.x, feet, state.pos.z);
+      human.rotation.y = state.yaw + Math.PI; // the figure's front (+Z) faces the walking direction (-Z at yaw 0)
+      human.scale.y = eyeH / EYE_HEIGHT;
+      human.updateMatrixWorld(true);
+    }
+    const chase = new THREE.Vector3(
+      state.pos.x + Math.sin(state.yaw) * Math.cos(state.pitch) * CHASE_DISTANCE,
+      state.pos.y + 0.35 - Math.sin(state.pitch) * CHASE_DISTANCE,
+      state.pos.z + Math.cos(state.yaw) * Math.cos(state.pitch) * CHASE_DISTANCE,
+    );
+    driveCamera(chase, state.pos.clone().add(new THREE.Vector3(0, -0.1, 0)));
+  } else {
+    driveCamera(state.pos, target);
+  }
 
   // Keep Fragments in sync with the new camera.
   try { ctx.fragments.core.update(false); } catch { /* */ }
@@ -899,6 +996,8 @@ export function setupWalkMode(): void {
     enable: enableWalkMode,
     disable: disableWalkMode,
     toggle: toggleWalkMode,
+    getOptions: getWalkOptions,
+    setOption: setWalkOption,
   };
 }
 /** Slide the camera (and its target) horizontally before walk mode starts. */
