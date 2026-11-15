@@ -175,6 +175,12 @@ const gripGroup = new THREE.Group();
 
 let chainStart: THREE.Vector3 | null = null;
 let chainStartDir: number | null = null;   // ← direction of last completed segment
+/** Corner history for reference-line tracking (close rectangle / perpendicular guides). */
+let chainCorners: THREE.Vector3[] = [];
+let refGuideGroup: THREE.Group | null = null;
+let refSnapActive: THREE.Vector3 | null = null;
+const REF_SNAP_TOL = 0.35; // metres — attract cursor to axis intersections
+
 let poly: THREE.Vector3[] = [];
 let pendingOp: PendingOp = { kind: "none" };
 
@@ -3289,6 +3295,158 @@ function wallAtPoint(e: MouseEvent): { wallId: string; offset: number; point: TH
   return null;
 }
 
+
+/** Ensure ref guide group exists in the scene. */
+function ensureRefGuideGroup(): THREE.Group {
+  if (refGuideGroup) return refGuideGroup;
+  refGuideGroup = new THREE.Group();
+  refGuideGroup.name = "obs-ref-guides";
+  try { ctx.world.scene.three.add(refGuideGroup); } catch { /* */ }
+  return refGuideGroup;
+}
+
+function clearRefGuides(): void {
+  if (!refGuideGroup) return;
+  while (refGuideGroup.children.length) {
+    const c = refGuideGroup.children[0];
+    refGuideGroup.remove(c);
+    try {
+      (c as any).geometry?.dispose?.();
+      (c as any).material?.dispose?.();
+    } catch { /* */ }
+  }
+}
+
+/**
+ * Axis-aligned reference lines through every chain corner + live base.
+ * Intersection snap helps close the 4th wall perpendicular to the 1st.
+ */
+function applyReferenceTracking(
+  p: THREE.Vector3,
+  base: THREE.Vector3 | null,
+): THREE.Vector3 {
+  const origins: THREE.Vector3[] = [];
+  for (const c of chainCorners) origins.push(c);
+  if (base) origins.push(base);
+  // First corner of the chain is critical for closing a rectangle
+  if (chainCorners.length) origins.push(chainCorners[0]);
+  if (!origins.length) {
+    refSnapActive = null;
+    return p;
+  }
+
+  const candidates: THREE.Vector3[] = [];
+  for (let i = 0; i < origins.length; i++) {
+    for (let j = 0; j < origins.length; j++) {
+      if (i === j) continue;
+      const a = origins[i], b = origins[j];
+      candidates.push(new THREE.Vector3(a.x, 0, b.z));
+      candidates.push(new THREE.Vector3(b.x, 0, a.z));
+    }
+  }
+  // Also pure ortho from base to match first corner X or Z
+  if (base && chainCorners.length) {
+    const o0 = chainCorners[0];
+    candidates.push(new THREE.Vector3(o0.x, 0, base.z));
+    candidates.push(new THREE.Vector3(base.x, 0, o0.z));
+    candidates.push(new THREE.Vector3(o0.x, 0, p.z));
+    candidates.push(new THREE.Vector3(p.x, 0, o0.z));
+  }
+
+  let best = p;
+  let bestD = REF_SNAP_TOL;
+  for (const c of candidates) {
+    const d = Math.hypot(c.x - p.x, c.z - p.z);
+    if (d < bestD) {
+      bestD = d;
+      best = c.clone();
+    }
+  }
+  refSnapActive = bestD < REF_SNAP_TOL ? best.clone() : null;
+  return refSnapActive ? refSnapActive.clone() : p;
+}
+
+function paintReferenceGuides(cursor: THREE.Vector3 | null, base: THREE.Vector3 | null): void {
+  const g = ensureRefGuideGroup();
+  clearRefGuides();
+  const origins: THREE.Vector3[] = [];
+  for (const c of chainCorners) origins.push(c);
+  if (base) origins.push(base);
+  if (!origins.length) return;
+
+  // Span large enough for a site
+  const SPAN = 500;
+  const mat = new THREE.LineDashedMaterial({
+    color: 0x38bdf8,
+    dashSize: 0.4,
+    gapSize: 0.25,
+    transparent: true,
+    opacity: 0.55,
+    depthTest: false,
+  });
+  const matHot = new THREE.LineDashedMaterial({
+    color: 0xfbbf24,
+    dashSize: 0.35,
+    gapSize: 0.2,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
+  });
+
+  const addAxis = (o: THREE.Vector3, hot: boolean) => {
+    const m = hot ? matHot : mat;
+    // X direction (world X, constant Z)
+    {
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(o.x - SPAN, 0.02, o.z),
+        new THREE.Vector3(o.x + SPAN, 0.02, o.z),
+      ]);
+      const line = new THREE.Line(geo, m.clone());
+      line.computeLineDistances();
+      g.add(line);
+    }
+    // Z direction (world Z, constant X)
+    {
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(o.x, 0.02, o.z - SPAN),
+        new THREE.Vector3(o.x, 0.02, o.z + SPAN),
+      ]);
+      const line = new THREE.Line(geo, m.clone());
+      line.computeLineDistances();
+      g.add(line);
+    }
+  };
+
+  for (const o of origins) addAxis(o, false);
+
+  // Highlight snap point
+  if (refSnapActive) {
+    addAxis(refSnapActive, true);
+    const mk = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 12, 12),
+      new THREE.MeshBasicMaterial({ color: 0xfbbf24, depthTest: false }),
+    );
+    mk.position.copy(refSnapActive);
+    mk.position.y = 0.05;
+    g.add(mk);
+  }
+
+  // Rubber extension from base to cursor along constrained path
+  if (base && cursor) {
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      base.clone().setY(0.03),
+      cursor.clone().setY(0.03),
+    ]);
+    const line = new THREE.Line(
+      geo,
+      new THREE.LineBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.85, depthTest: false }),
+    );
+    g.add(line);
+  }
+
+  void mat; void matHot;
+}
+
 /**
  * Hold Shift while modeling → lock to perpendicular / ortho mode.
  * - With a previous segment direction: nearest of parallel or perpendicular to it.
@@ -3346,6 +3504,11 @@ function groundPoint(e: MouseEvent): THREE.Vector3 | null {
   } catch { /* */ }
 
   p = applyShiftPerpendicular(p, e, chainStart, chainStartDir);
+
+  // Reference-line tracking: snap to axis intersections from prior wall corners
+  if (chainStart || chainCorners.length) {
+    p = applyReferenceTracking(p, chainStart);
+  }
 
   return p;
 }
@@ -3950,6 +4113,8 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
       if (!chainStart) {
         chainStart = pt.clone();
         chainStartDir = null;
+        chainCorners = [pt.clone()];
+        refSnapActive = null;
         try { accuDraw.begin(chainStart); } catch { /* */ }
       } else {
         if (Math.hypot(pt.x - chainStart.x, pt.z - chainStart.z) >= 0.1) {
@@ -4018,6 +4183,7 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
           // Chain continues along the REFERENCE path (the justified face
           // stays bound to it), matching BIM chain drawing.
           chainStart = endPt.clone();
+          chainCorners.push(endPt.clone());
           try { accuDraw.begin(chainStart); } catch { /* */ }
         }
       }
@@ -4428,6 +4594,47 @@ function updateAlignmentGuides(start: THREE.Vector3, end: THREE.Vector3) {
   const dz = e.z - s.z;
   const len = Math.hypot(dx, dz);
   if (len < 0.01) return;
+
+  // ── Reference lines from prior chain corners (close 4th wall / 90° chains) ──
+  // Through each corner: long X and Z dashed tracks so the user sees where the
+  // next segment should stop to stay perpendicular to the first wall.
+  const SPAN = 200;
+  const cornerOrigins = chainCorners.length ? chainCorners : [];
+  for (const o of cornerOrigins) {
+    guideGroup.add(dashedLine(
+      new THREE.Vector3(o.x - SPAN, y, o.z),
+      new THREE.Vector3(o.x + SPAN, y, o.z),
+      0x38bdf8, 0.55, 0.28,
+    ));
+    guideGroup.add(dashedLine(
+      new THREE.Vector3(o.x, y, o.z - SPAN),
+      new THREE.Vector3(o.x, y, o.z + SPAN),
+      0x38bdf8, 0.55, 0.28,
+    ));
+  }
+  // Closing-point marker: intersection of first-corner axes with current cursor axes
+  if (chainCorners.length >= 1) {
+    const o0 = chainCorners[0];
+    const closeA = new THREE.Vector3(o0.x, y, end.z);
+    const closeB = new THREE.Vector3(end.x, y, o0.z);
+    for (const c of [closeA, closeB]) {
+      const d = Math.hypot(c.x - end.x, c.z - end.z);
+      if (d < 2.5) {
+        guideGroup.add(dashedLine(new THREE.Vector3(o0.x, y, o0.z), c, 0xfbbf24, 0.4, 0.2));
+        guideGroup.add(dashedLine(c, e.clone(), 0xfbbf24, 0.4, 0.2));
+      }
+    }
+    if (refSnapActive) {
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0xfbbf24, depthTest: false }),
+      );
+      m.position.set(refSnapActive.x, y + 0.02, refSnapActive.z);
+      m.renderOrder = 1000;
+      guideGroup.add(m);
+    }
+  }
+
 
   const dir = new THREE.Vector3(dx / len, 0, dz / len);
   const ang = Math.abs(Math.atan2(dz, dx));
@@ -5300,6 +5507,9 @@ export function setAuthoringTool(tool: Tool | string | null) {
 
   chainStart = null;
   chainStartDir = null;
+  chainCorners = [];
+  refSnapActive = null;
+  clearRefGuides();
   poly = [];
           pendingOp = { kind: "none" };
   clearPreviews();

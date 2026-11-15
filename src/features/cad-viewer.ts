@@ -1504,8 +1504,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let snapOn = true;
   const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
   let orthoOn = false;
-  let polarOn = false;
+  let polarOn = true; // on by default for accurate orthogonal chains
   let polarAngle = 90;
+  let otrackOn = true; // object/reference line tracking for wall-like chains
+  let refTrackSnap: M.Pt | null = null;
+
   let dynOn = true; // Dynamic Input HUD F12
   let lwtOn = true; // Lineweight display
   let showGrid = true;
@@ -2605,6 +2608,41 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.fillStyle = "#facc15";
       c.globalAlpha = 0.85;
       for (const e of modGhost) drawEntity(c, e, v);
+      c.restore();
+    }
+
+    // Reference tracking lines (OTRACK) — axes through chain points + snap marker
+    if (withUi && otrackOn && pts.length >= 1 && (tool === "line" || tool === "poly" || tool === "mline" || tool === "wall")) {
+      const span = Math.max(view.w, view.h) / Math.max(view.scale, 1e-9) * 2;
+      c.save();
+      c.setLineDash([6, 5]);
+      c.lineWidth = 1;
+      c.strokeStyle = "rgba(56,189,248,0.55)";
+      for (const o of pts) {
+        const s = M.worldToScreen(v, o.x, o.y);
+        c.beginPath();
+        c.moveTo(s.x - 4000, s.y);
+        c.lineTo(s.x + 4000, s.y);
+        c.moveTo(s.x, s.y - 4000);
+        c.lineTo(s.x, s.y + 4000);
+        c.stroke();
+      }
+      if (refTrackSnap) {
+        const s = M.worldToScreen(v, refTrackSnap.x, refTrackSnap.y);
+        c.setLineDash([]);
+        c.strokeStyle = "#fbbf24";
+        c.fillStyle = "#fbbf24";
+        c.lineWidth = 1.5;
+        c.beginPath();
+        c.arc(s.x, s.y, 5, 0, Math.PI * 2);
+        c.stroke();
+        c.beginPath();
+        c.moveTo(s.x - 8, s.y);
+        c.lineTo(s.x + 8, s.y);
+        c.moveTo(s.x, s.y - 8);
+        c.lineTo(s.x, s.y + 8);
+        c.stroke();
+      }
       c.restore();
     }
 
@@ -7151,9 +7189,40 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const constrainInputPoint = (point: M.Pt, anchor: M.Pt | null, hasObjectSnap: boolean): M.Pt => {
     if (!anchor) return point;
-    if (orthoOn) return M.orthoConstrain(anchor, point);
-    if (polarOn && !hasObjectSnap) return M.polarConstrain(anchor, point, polarAngle);
-    return point;
+    let p = point;
+    if (orthoOn) p = M.orthoConstrain(anchor, p);
+    else if (polarOn && !hasObjectSnap) p = M.polarConstrain(anchor, p, polarAngle);
+    // Reference-line tracking: snap to axis intersections from earlier points in the chain
+    if (otrackOn && pts.length >= 1 && !hasObjectSnap) {
+      const origins = pts.slice();
+      const candidates: M.Pt[] = [];
+      for (let i = 0; i < origins.length; i++) {
+        for (let j = 0; j < origins.length; j++) {
+          if (i === j) continue;
+          candidates.push({ x: origins[i].x, y: origins[j].y });
+          candidates.push({ x: origins[j].x, y: origins[i].y });
+        }
+      }
+      // Also vs current anchor polar point
+      for (const o of origins) {
+        candidates.push({ x: o.x, y: p.y });
+        candidates.push({ x: p.x, y: o.y });
+        candidates.push({ x: o.x, y: anchor.y });
+        candidates.push({ x: anchor.x, y: o.y });
+      }
+      const tol = 12 / Math.max(view.scale, 1e-9); // ~12 px
+      let best: M.Pt | null = null;
+      let bestD = tol;
+      for (const c of candidates) {
+        const d = Math.hypot(c.x - p.x, c.y - p.y);
+        if (d < bestD) { bestD = d; best = c; }
+      }
+      refTrackSnap = best;
+      if (best) p = best;
+    } else {
+      refTrackSnap = null;
+    }
+    return p;
   };
 
   cv.addEventListener("pointerdown", (ev) => {
@@ -8713,6 +8782,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <button class="obs-status-btn ${snapOn ? "active" : ""}" data-s="snap" title="Object Snap (F3)">OSNAP</button>
       <button class="obs-status-btn ${orthoOn ? "active" : ""}" data-s="ortho" title="Ortho (F8)">ORTHO</button>
       <button class="obs-status-btn ${polarOn ? "active" : ""}" data-s="polar" title="Polar Tracking (F10)">POLAR</button>
+      <button class="obs-status-btn ${otrackOn ? "active" : ""}" data-s="otrack" title="Reference line tracking (axis guides while drawing)">OTRACK</button>
       <button class="obs-status-btn ${dynOn ? "active" : ""}" data-s="dyn" title="Dynamic Input (F12)">DYN</button>
       <button class="obs-status-btn ${lwtOn ? "active" : ""}" data-s="lwt" title="Lineweight">LWT</button>
       <button class="obs-status-btn ${quick ? "active" : ""}" data-s="quick" title="Quick Measure">QUICK</button>
@@ -8740,6 +8810,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       draw();
     });
     statusEl.querySelector("[data-s=polar]")?.addEventListener("click", () => setPolarTracking(!polarOn));
+    statusEl.querySelector("[data-s=otrack]")?.addEventListener("click", () => {
+      otrackOn = !otrackOn;
+      logCmd(`OTRACK: <${otrackOn ? "ON" : "OFF"}> · reference lines while drawing`);
+      updateStatus();
+      draw();
+    });
     statusEl.querySelector("[data-s=quick]")?.addEventListener("click", () => setQuickMeasure(!quick));
     statusEl.querySelector("[data-s=dyn]")?.addEventListener("click", () => {
       dynOn = !dynOn;
