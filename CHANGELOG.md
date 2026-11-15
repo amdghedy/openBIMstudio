@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Changed
+- Hidden-line export: unit tests (18 assertions) now cover a wall with an opening in front of two cubes (the one behind the opening shows, the one behind solid wall is hidden). Known limit found: elements built from several touching pieces show seam lines where the pieces meet.
+
+
 ### Added
 - Export → **Current 3D view → 2D lines** (hidden lines removed), as DXF or DWG with optional dashed hidden-edge layers. Pure-logic module `src/modules/export/hidden-line.ts` (12 unit assertions on cubes/occluders) and a browser test: an IFC wall seen from the front exports as 5.04 m × 3.03 m of linework. Geometry crossing the camera is clipped at a 2 cm near plane (unit-tested, 15 assertions) instead of dropped. Limits: accuracy about one pixel of a 1600-px depth buffer; not compared with a CAD package's own output.
 

@@ -205,7 +205,7 @@ Choose **File → Views → CAD (DWG / DXF)…** (the same idea as Revit's Expor
 
 - **2D views to CAD:** select one or more views, choose DXF or DWG, and export. Several views are delivered together as a zip.
 - **3D model to DXF or DWG:** the Export dialog can also write the authored 3D model, and loaded IFC models, as 3D faces in a DXF or DWG. Pick the format in the *3D model* box. After a DWG export the message reports how many entities the app found when it re-read the file.
-- **Current 3D view as 2D lines:** *Current 3D view → 2D lines* draws the model as you see it now (your camera) as flat linework with hidden edges removed, as DXF or DWG. Set the view first (for example the Front view, then press F). Perspective views are sized at the model's distance, so use an orthographic view when you need true scale.
+- **Current 3D view as 2D lines:** *Current 3D view → 2D lines* draws the model as you see it now (your camera) as flat linework with hidden edges removed, as DXF or DWG. Set the view first (for example the Front view, then press F). Perspective views are sized at the model's distance, so use an orthographic view when you need true scale. Elements made of several touching pieces show seam lines where the pieces meet.
 - Axes: the app's up axis is Y; CAD output uses Z up.
 
 **Verified:** DXF files are generated and downloaded in a real browser, an IFC wall exports on the expected layer with about 5 m × 3 m extents, and the DWG writer round-trips in the CAD engine in an automated test.

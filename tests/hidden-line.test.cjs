@@ -47,5 +47,14 @@ try {
   const wall = H.hiddenLineProject([box(-3, -1, -10, -2.8, 1, 30, "A-WALL")], { view, proj: persp, distance: 10 }, { width: 600 });
   ok(wall.stats.droppedNearPlane > 0 && wall.visible.length > 0, "wall crossing the camera plane keeps its front part, clipped=" + wall.stats.droppedNearPlane + " lines=" + wall.visible.length);
   ok(wall.visible.every((e) => [e.x1, e.y1, e.x2, e.y2].every(Number.isFinite)), "all clipped coordinates are finite");
+  // 9) A wall with a window opening (four slabs around a 1x1 hole) in front of a cube: edges show through the hole and are hidden behind the wall.
+  const holeWall = [box(-2,-2,2, -0.5,2,2.2, "A-WALL"), box(0.5,-2,2, 2,2,2.2, "A-WALL"), box(-0.5,0.5,2, 0.5,2,2.2, "A-WALL"), box(-0.5,-2,2, 0.5,-0.5,2.2, "A-WALL")];
+  const behind = box(-0.25,-0.25,-1, 0.25,0.25,0, "A-PROXY"); // seen through the opening
+  const behindWall = box(1,-0.25,-1, 1.5,0.25,0, "A-DOOR"); // hidden behind the solid part of the wall
+  const op = H.hiddenLineProject([...holeWall, behind, behindWall], cam, { includeHidden: true, width: 800 });
+  const vis = (layer) => len(op.visible.filter((e) => e.layer === layer)), hid = (layer) => len(op.hidden.filter((e) => e.layer === layer));
+  ok(vis("A-PROXY") > 1.5, "cube seen through the opening has visible edges, got " + vis("A-PROXY"));
+  ok(vis("A-DOOR") < 0.1 && hid("A-DOOR") > 1.5, "cube behind solid wall is hidden, visible=" + vis("A-DOOR") + " hidden=" + hid("A-DOOR"));
+  ok(vis("A-WALL") > 9, "wall outline and opening edge are drawn, got " + vis("A-WALL"));
   console.log(`hidden-line: ${n} assertions passed`);
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
