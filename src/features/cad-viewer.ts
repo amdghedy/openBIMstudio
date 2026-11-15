@@ -787,6 +787,80 @@ function openAppMenu(anchor: HTMLElement): void {
   }, 0);
 }
 
+/** Quick Access Toolbar preferences are shell-level and shared by all open drawings. */
+const CAD_QAT_PREF_KEY = "obs.cad.qat.hidden.v1";
+const CAD_QAT_LABELS: Readonly<Record<string, string>> = {
+  open: "Open drawing", "save-dxf": "Save DXF", plot: "Plot / PDF",
+  undo: "Undo", redo: "Redo", ext: "Zoom extents", ai: "AI Copilot",
+};
+function readCadQatHidden(): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CAD_QAT_PREF_KEY) ?? "[]");
+    if (Array.isArray(raw)) return new Set(raw.filter((v): v is string => typeof v === "string" && v in CAD_QAT_LABELS));
+  } catch { /* storage unavailable or corrupt preferences */ }
+  return new Set();
+}
+function applyCadQatPreferences(): void {
+  if (!shell) return;
+  const hidden = readCadQatHidden();
+  shell.querySelectorAll<HTMLButtonElement>(".cad-qat [data-qat]").forEach((button) => {
+    button.hidden = hidden.has(button.dataset.qat ?? "");
+  });
+}
+/** Right-click the Quick Access Toolbar to choose which shortcuts remain visible. */
+function openCadQatCustomization(anchor: HTMLElement): void {
+  shell?.querySelectorAll(".cadmenu").forEach((node) => node.remove());
+  const menu = document.createElement("div");
+  menu.className = "cadmenu";
+  menu.setAttribute("role", "menu");
+  menu.style.cssText = "position:fixed;z-index:10070;min-width:220px;padding:8px";
+  const heading = document.createElement("div");
+  heading.textContent = "Quick Access Toolbar";
+  heading.style.cssText = "font-weight:700;padding:5px 8px 8px;color:#cbd5e1";
+  menu.appendChild(heading);
+  const hidden = readCadQatHidden();
+  for (const [action, label] of Object.entries(CAD_QAT_LABELS)) {
+    const row = document.createElement("label");
+    row.style.cssText = "display:flex;align-items:center;gap:9px;padding:6px 8px;cursor:pointer";
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.checked = !hidden.has(action);
+    check.addEventListener("change", () => {
+      if (check.checked) hidden.delete(action); else hidden.add(action);
+      try { localStorage.setItem(CAD_QAT_PREF_KEY, JSON.stringify([...hidden])); } catch {
+        cadToast("warning", "Toolbar preference could not be saved in this browser.");
+      }
+      applyCadQatPreferences();
+    });
+    const text = document.createElement("span");
+    text.textContent = label;
+    row.append(check, text);
+    menu.appendChild(row);
+  }
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.textContent = "Restore default toolbar";
+  reset.style.cssText = "display:block;width:100%;margin-top:7px;padding:7px 9px";
+  reset.addEventListener("click", () => {
+    try { localStorage.removeItem(CAD_QAT_PREF_KEY); } catch { /* storage blocked */ }
+    applyCadQatPreferences();
+    menu.remove();
+  });
+  menu.appendChild(reset);
+  shell?.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - bounds.height - 8))}px`;
+  const close = (event: MouseEvent) => {
+    if (!menu.contains(event.target as Node) && event.target !== anchor) {
+      menu.remove();
+      document.removeEventListener("mousedown", close);
+    }
+  };
+  setTimeout(() => document.addEventListener("mousedown", close), 0);
+}
+
 function ensureShell(): void {
   if (shell) return;
   shell = document.createElement("div");
@@ -826,6 +900,13 @@ function ensureShell(): void {
   pagesEl = shell.querySelector<HTMLDivElement>("[data-r=pages]")!;
   ribbonStrip = shell.querySelector<HTMLDivElement>("[data-r=ribbonstrip]")!;
   ribbonTabsRow = shell.querySelector<HTMLDivElement>("[data-r=ribbontabs]")!;
+  applyCadQatPreferences();
+  const qat = shell.querySelector<HTMLDivElement>(".cad-qat");
+  qat?.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openCadQatCustomization(qat);
+  });
   applyRibbonTab();
   shell.classList.toggle("cad-ribbon--min", ribbonMinimized);
   installCadFullscreen();
