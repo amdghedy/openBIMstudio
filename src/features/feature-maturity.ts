@@ -570,6 +570,24 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "plan-annotations",
+    area: "Drawings",
+    status: "limited",
+    source: ["src/features/plan-view-panel.ts", "src/modules/views/tools.ts", "src/modules/views/plan-dim-geometry.ts"],
+    evidence: [
+      "tests/openings-chain.test.cjs",
+      "tests/parametric-wiring.test.cjs",
+      "real browser (v54 chain check): Wall tool draws a wall that renders with two parallel face lines (poché) on a fresh boot; Aligned dimension completes the 3-pick flow (pick1 → pick2 → place) and renders the measured value 11024 with architectural tick marks and extension lines; Section Line drawn from the main plan canvas creates a section view listed in the Views panel; Wall schedule over the drawn wall returns 1 row with Volume = L×H×t exact (18.50 × 3.0 × 0.2 = 11.10 m³)",
+      "four breaks found by the same browser pass and fixed: plan footer status was wiped by every re-render (multi-pick prompts like 'Click to place the dimension line' disappeared instantly), the Annotate ▸ Section Line tool accepted canvas clicks only in the Views panel preview (the main plan canvas never forwarded picks), the section-line state machine gated every pick behind a model-reference hit (an empty model could never produce a section), and the plan footer/status strings carried U+FFFD tofu from a historical byte corruption (795 occurrences across the plan panel and all 9 i18n catalogs, restored to house-style separators)",
+    ],
+    limitations: [
+      "Dimension text is paper-scaled (2.5 mm at 1:100 = 0.25 m world) and therefore tiny at fit-to-window zoom; it grows when zooming in but has no minimum on-screen size",
+      "The section cut line is stored on the created view but is not yet drawn as a section marker in the plan; opening the section view routes through the Views panel",
+      "Tag creation pushes to the annotation store and re-renders, but the tag symbol render was not pixel-confirmed in this pass",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "plan-command-line",
     area: "Drawings",
     status: "limited",
@@ -580,7 +598,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     ],
     evidence: ["tests/plan-commands.test.cjs"],
     limitations: [
-      "Command table, aliases and coordinate parsing (x,z  @dx,dz  d<angle  length) are unit-tested; the command line and Esc cancel-all have not been tried in a browser",
+      "Command table, aliases and coordinate parsing (x,z  @dx,dz  d<angle  length) are unit-tested; the command bar is visible in the plan workspace (WA/L/DI/Z/O/P hints) and Esc cancel-all was observed live ('Cancelled — all commands ended'), but typed command execution has not been driven in a browser",
       "Direct coordinates are metres and only drive Place tools (linear paths and point elements), not dimensions, tags or Move",
       "Esc no longer closes the plan view; use the Close button or the CLOSE command",
       "SELECTALL and box selection pick authored elements on every level, not only the level shown in the plan",

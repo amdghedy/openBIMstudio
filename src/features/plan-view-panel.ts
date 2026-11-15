@@ -39,6 +39,7 @@ import { buildAutoDimensions, buildRangeDimension } from "../modules/views/auto-
 import { resolveElementRef } from "../modules/views/element-snap-points";
 import { getNorthState, onNorthChanged, planRotationDeg, setNorthState, formatNorthAngle } from "../modules/north/north";
 import { edgeMidpoint, insertVertex, removeVertex, moveVertex, isValidBoundary } from "../modules/views/boundary-edit";
+import { toolState } from "../modules/views/tools";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
 import {
   generatePlanView,
@@ -107,7 +108,7 @@ loading.style.cssText =
   "flex-direction:column;gap:12px;background:rgba(11,13,18,0.85);color:#e8eaf0;z-index:10";
 const loadingText = document.createElement("div");
 loadingText.style.cssText = "font:14px system-ui";
-loadingText.textContent = "Generating plan�";
+loadingText.textContent = "Generating plan…";
 const loadingBar = document.createElement("div");
 loadingBar.style.cssText =
   "width:300px;height:6px;background:#1e2029;border-radius:3px;overflow:hidden";
@@ -171,8 +172,8 @@ interface DimensionStyle {
 }
 
 const DEFAULT_DIMENSION_STYLES: DimensionStyle[] = [
-  { id: "bim-aligned", name: "Aligned � 2.5 mm", unit: "mm", precision: 0, textSize: 2.5, color: "#1d4ed8", tick: "diagonal" },
-  { id: "bim-engineering", name: "Engineering � 3 mm", unit: "mm", precision: 0, textSize: 3, color: "#1e40af", tick: "diagonal" },
+  { id: "bim-aligned", name: "Aligned · 2.5 mm", unit: "mm", precision: 0, textSize: 2.5, color: "#1d4ed8", tick: "diagonal" },
+  { id: "bim-engineering", name: "Engineering · 3 mm", unit: "mm", precision: 0, textSize: 3, color: "#1e40af", tick: "diagonal" },
   { id: "decimal-m", name: "Decimal Meters", unit: "m", precision: 3, textSize: 2.5, color: "#1d4ed8", tick: "arrow" },
 ];
 const DIM_STYLE_KEY = "obs.bim.dimension-styles.v1";
@@ -229,7 +230,7 @@ function planFieldValue(field: PropertyField, el: any, typeKey: string): string 
 
 function renderPlanViewProperties() {
   planPropsBody.innerHTML = "";
-  planPropsHeader.innerHTML = `<span style="flex:1">Floor Plan � View Properties</span>`;
+  planPropsHeader.innerHTML = `<span style="flex:1">Floor Plan · View Properties</span>`;
 
   const section = (title: string) => {
     const h = document.createElement("div");
@@ -300,7 +301,7 @@ function renderPlanProperties() {
   if (planMode === "dim" || planMode === "tag" || planMode === "text") typeKey = "wall";
   if (planSelectedId) {
     try {
-      // dynamic import avoided � getElements from window cache via async earlier
+      // dynamic import avoided — getElements from window cache via async earlier
     } catch { /* */ }
   }
   // Use sync path via stored selection. Multi-select shows a compact summary.
@@ -326,7 +327,7 @@ function renderPlanProperties() {
 
   const schema = getSchema(typeKey);
   const title = el
-    ? `${schema?.label ?? typeKey} � ${el.name ?? el.id}`
+    ? `${schema?.label ?? typeKey} · ${el.name ?? el.id}`
     : `${schema?.label ?? typeKey} (type defaults)`;
   planPropsHeader.innerHTML = `<span style="flex:1">${escapeHtml(title)}</span>`;
 
@@ -498,7 +499,7 @@ obsAuthoredSelectionBridge = (ids: string[]) => {
 function nearestAuthoredAt(hit: { x: number; z: number }): { element: any | null; distance: number } {
   const els = authoredCache as any[];
   let best: any = null;
-  let bestD = 1.25; // meters � generous so thick ducts/walls are easy to click
+  let bestD = 1.25; // meters — generous so thick ducts/walls are easy to click
   for (const el of els) {
     if (!selection.matchesAuthoredCategoryFilter(el?.type ?? "", el?.properties)) continue;
     const p = el?.params ?? {};
@@ -910,7 +911,7 @@ scaleSelect.onchange = () => {
   try { localStorage.setItem(PLAN_SCALE_KEY, String(planViewScale)); } catch {}
   renderPlanProperties();
   if (currentPlan) renderPlan(currentPlan);
-  footerStatus(`View Scale 1:${planViewScale} � annotation/dimension graphics updated`);
+  footerStatus(`View Scale 1:${planViewScale} · annotation/dimension graphics updated`);
 };
 
 const dimTypeSelect = compactSelect(DEFAULT_DIMENSION_STYLES.map((d) => [d.id, d.name]), 190);
@@ -988,16 +989,16 @@ let planPointType: PointKind = "column";
 let planPointPreset: string | null = null;
 let planDrawStart: { x: number; z: number } | null = null;
 let planDimStartRef: PlanDimensionRef | null = null;
-/** Continuous path like BIM Place Duct / Wall (click�click�click�). */
+/** Continuous path like BIM Place Duct / Wall (click—click—click—). */
 let planChain: { x: number; z: number }[] = [];
 let planCursor: { x: number; z: number } | null = null;
 let __planCursorOverlay: HTMLDivElement | null = null;
 let __planCursorSvg: SVGSVGElement | null = null;
 let __lastSnapKind = "";
 let planSnap: { x: number; z: number; kind: string; label?: string; ref?: PlanDimensionRef } | null = null;
-/** Placement options bar (BIM Modify | Place �). */
-let planWidth = 0.3;   // m � duct/wall thickness in plan
-let planHeight = 0.3;  // m � extrusion height
+/** Placement options bar (BIM Modify | Place —). */
+let planWidth = 0.3;   // m — duct/wall thickness in plan
+let planHeight = 0.3;  // m — extrusion height
 let planElevOffset = 0; // m above level
 
 type PlanBoundaryKind = "linear-side" | "linear-cap" | "point-edge" | "point-corner" | "static-boundary" | "polygon-vertex" | "hosted";
@@ -1018,13 +1019,13 @@ export interface PlanDimensionRef {
   /** polygon-vertex: vertex index; hosted: -1 left jamb, 0 centre, 1 right jamb. */
   index?: number;
 }
-/** BIM dimension kinds � placement sequence differs per style. */
+/** BIM dimension kinds — placement sequence differs per style. */
 type PlanDimKind =
   | "aligned"      // 2 refs: distance along connecting line
   | "linear"       // 2 refs: force H or V
   | "angular"      // 2 segments: interior angle at intersection
-  | "radial"       // center + edge: R = �
-  | "diameter"     // edge through center: ? = �
+  | "radial"       // center + edge: R = radius
+  | "diameter"     // edge through center: Ø = 2R
   | "arc"          // 2 points along arc length
   | "auto"         // pick first + last edge: dimension every wall / column / door / window between
   | "elevation"    // 1 click: spot elevation
@@ -1530,7 +1531,7 @@ spacer.style.cssText = "flex:1";
 
 const toolHint = document.createElement("span");
 toolHint.style.cssText = "font:11px system-ui;color:#94a3b8;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
-toolHint.textContent = "Use Architecture / Annotate tabs to model � snaps ON";
+toolHint.textContent = "Use Architecture / Annotate tabs to model · snaps ON";
 
 /* BIM-like placement options: Width / Height / Elevation */
 function numInput(label: string, value: number, onChange: (v: number) => void, step = 0.05) {
@@ -1613,7 +1614,7 @@ function applyPlanOrientation(): void {
 onNorthChanged(applyPlanOrientation);
 applyPlanOrientation();
 
-/* Wall options � Location Line + Join (BIM Place Wall) */
+/* Wall options — Location Line + Join (BIM Place Wall) */
 const locSelect = document.createElement("select");
 locSelect.title = "Location Line";
 locSelect.style.cssText =
@@ -1674,7 +1675,7 @@ wallOptsWrap.style.cssText = "display:none;align-items:center;gap:6px";
 wallOptsWrap.append(locSelect, joinSelect, chainChk);
 locSelect.title = "Location Line (BIM)";
 joinSelect.title = "Wall Join Status";
-chainChk.title = "Chain � continuous wall path";
+chainChk.title = "Chain · continuous wall path";
 
 function showWallOpts(on: boolean) {
   wallOptsWrap.style.display = on ? "flex" : "none";
@@ -1705,7 +1706,7 @@ header.style.cssText =
 const titleEl = document.createElement("div");
 titleEl.style.cssText = "font:700 12px system-ui;color:var(--text-primary,#e8eaf0);padding:0 10px 0 4px;white-space:nowrap;border-right:1px solid var(--border-subtle,#2a2e3a);height:100%;display:flex;align-items:center;";
 titleEl.textContent = "Floor Plan";
-titleEl.title = "2D Floor Plan � international BIM drafting environment";
+titleEl.title = "2D Floor Plan · international BIM drafting environment";
 
 header.append(
   titleEl,
@@ -1952,7 +1953,21 @@ function dxfToSvgUnderlay(dxf: string): string {
   </svg>`;
 }
 
+/**
+ * Last message handed to footerStatus, so the plan renderer can restore it.
+ *
+ * renderPlan rebuilds the footer (footer.innerHTML = "") on every frame; without
+ * this, a status written immediately before a re-render — e.g. the aligned
+ * dimension's "Click to place the dimension line (third point = position)"
+ * after the second boundary pick, whose handler calls renderPlan right after
+ * footerStatus — is wiped before the user can read it, making multi-pick tools
+ * appear to silently exit. Persisted across rebuilds and consumed only by a
+ * new footerStatus or an explicit clear.
+ */
+let lastFooterStatus = "";
+
 function footerStatus(msg: string) {
+  lastFooterStatus = msg;
   try {
     const el = footer.querySelector("[data-status]") as HTMLElement | null;
     if (el) el.textContent = msg;
@@ -2643,7 +2658,7 @@ function renderPlan(plan: PlanView) {
     }
   }
 
-  // -- Plan dimensions � BIM style (all kinds) --
+  // -- Plan dimensions — BIM style (all kinds) --
   const dimStyle = getDimensionStyle();
   const sw = dimensionWorldStroke(dimStyle);
   for (const d of planDims) {
@@ -2677,7 +2692,7 @@ function renderPlan(plan: PlanView) {
       arc.setAttribute("stroke", dimStyle.color);
       arc.setAttribute("stroke-width", String(sw));
       g.appendChild(arc);
-      g.appendChild(makeSvgText(c.x + r * 0.3, c.y - r * 0.3, d.label ?? `${(d.value ?? 0).toFixed(1)}�`, dimStyle, dimScale));
+      g.appendChild(makeSvgText(c.x + r * 0.3, c.y - r * 0.3, d.label ?? `${(d.value ?? 0).toFixed(1)} m`, dimStyle, dimScale));
       continue;
     }
     // Radial / Diameter
@@ -2694,7 +2709,7 @@ function renderPlan(plan: PlanView) {
       g.appendChild(makeSvgText(mid.x, mid.y - paperMmToWorld(2), d.label ?? "", dimStyle, dimScale));
       continue;
     }
-    // Arc length � curved-looking chord with arc mark
+    // Arc length — curved-looking chord with arc mark
     if (d.style === "arc") {
       const a = screen(d.x1, d.z1);
       const b = screen(d.x2, d.z2);
@@ -2909,7 +2924,7 @@ function renderPlan(plan: PlanView) {
     tip.setAttribute("font-size", String(0.4 * dimScale));
     tip.setAttribute("text-anchor", "middle");
     tip.setAttribute("font-family", "system-ui,sans-serif");
-    tip.textContent = "Floor Plan � use Wall tool to draw � Link drawing to trace � or load an IFC model";
+    tip.textContent = "Floor Plan · use Wall tool to draw · Link drawing to trace · or load an IFC model";
     g.appendChild(tip);
   }
 
@@ -3083,7 +3098,7 @@ function renderPlan(plan: PlanView) {
   tt.setAttribute("fill", "#333");
   tt.setAttribute("font-family", "system-ui, sans-serif");
   tt.setAttribute("text-anchor", "end");
-  tt.textContent = `Plan: ${plan.level.name}  �  Cut +${plan.cutElevation.toFixed(2)} m`;
+  tt.textContent = `Plan: ${plan.level.name}  ·  Cut +${plan.cutElevation.toFixed(2)} m`;
   g.appendChild(tt);
 
   // -- Footer --
@@ -3091,21 +3106,29 @@ function renderPlan(plan: PlanView) {
   const info = document.createElement("span");
   info.style.cssText = "opacity:.7";
   info.textContent =
-    `${plan.stats.authoredElements} authored � ` +
-    `${plan.stats.fragmentElements} fragments � ` +
-    `${plan.segments.length} segments � ` +
+    `${plan.stats.authoredElements} authored · ` +
+    `${plan.stats.fragmentElements} fragments · ` +
+    `${plan.segments.length} segments · ` +
     `zoom ${(currentZoom * 100).toFixed(0)}%` +
-    (plan.truncated ? " � ? truncated" : "");
+    (plan.truncated ? " · truncated" : "");
   const hint = document.createElement("span");
   hint.style.cssText = "margin-left:auto;opacity:.55";
-  hint.textContent = "Wheel: zoom � MMB pan � Shift+LMB pan � Dbl-click: fit � Esc: cancel";
+  hint.textContent = "Wheel: zoom · MMB pan · Shift+LMB pan · Dbl-click: fit · Esc: cancel";
   footer.append(info, hint);
-  updateSnapOverlay();
+  // Restore the live tool status across this rebuild so multi-pick flows
+  // (dimension third point, section ends, tag target) keep their prompt.
+  if (lastFooterStatus) {
+    const s = document.createElement("span");
+    s.dataset.status = "1";
+    s.style.cssText = "color:#94a3b8;margin-left:8px";
+    s.textContent = lastFooterStatus;
+    footer.appendChild(s);
+  }
   updateSnapOverlay();
 }
 
 /* -------------------------------------------------------------------------
-   Interaction � zoom + pan
+   Interaction · zoom + pan
    ------------------------------------------------------------------------- */
 let panning = false;
 let lastMouse = { x: 0, y: 0 };
@@ -3118,7 +3141,7 @@ async function placeWallInPlan(x1: number, z1: number, x2: number, z2: number) {
     auth.setLevel(selected.elevation);
     auth.setAuthoringTool("wall");
     // Direct create via synthetic clicks is hard; use public API if available
-    // Fallback: set tool and rely on 3D � here we push geometry via internal rebuild path
+    // Fallback: set tool and rely on 3D — here we push geometry via internal rebuild path
     const els = auth.getElements();
     const before = els.length;
     // Use history-free direct injection through setAuthoringTool + programmatic create
@@ -3129,7 +3152,7 @@ async function placeWallInPlan(x1: number, z1: number, x2: number, z2: number) {
     } else {
       // Minimal: activate wall tool in 3D at this level and toast guidance
       auth.setAuthoringTool("wall");
-      footerStatus(`Wall tool ready at ${selected.name} � draw in 3D or click two points again in plan`);
+      footerStatus(`Wall tool ready at ${selected.name} · draw in 3D or click two points again in plan`);
     }
     void before;
   } catch (err) {
@@ -3171,11 +3194,11 @@ async function createAuthoredLinear(x1: number, z1: number, x2: number, z2: numb
       await regenerate();
     }
     footerStatus(
-      `${t} � ${Math.hypot(x2 - x1, z2 - z1).toFixed(2)} m � click next point (Enter/Esc to finish)`,
+      `${t} · ${Math.hypot(x2 - x1, z2 - z1).toFixed(2)} m · click next point (Enter/Esc to finish)`,
     );
   } catch (err) {
     console.error("[plan] create linear failed", err);
-    footerStatus("Could not place element � see console");
+    footerStatus("Could not place element · see console");
   }
 }
 
@@ -3223,8 +3246,8 @@ function computeOverlayViewBox(): string {
 }
 
 /* -------------------------------------------------------------------------
-   Snap marker symbols � identical visual language to the 3D viewer.
-   These are the same 32�32 SVG paths used by features/snapping.ts, so
+   Snap marker symbols · identical visual language to the 3D viewer.
+   These are the same 32×32 SVG paths used by features/snapping.ts, so
    the user sees consistent feedback in 2D and 3D. Keep in sync.
    ------------------------------------------------------------------------- */
 const SNAP_MARKERS_LOCAL: Record<string, string> = {
@@ -3502,8 +3525,8 @@ function finishPlanChain() {
   void import("./authoring").then((m) => m.clearLastPlanLinear?.()).catch(() => {});
   // BIM behavior: path finished but tool stays active for next chain until Esc
   if (planMode === "linear") {
-    footerStatus(`${planLinearType} path finished � click start of next path � Esc = Modify`);
-    toolHint.textContent = `Place ${planLinearType} � continuous path � Enter finish � Esc cancel`;
+    footerStatus(`${planLinearType} path finished · click start of next path · Esc = Modify`);
+    toolHint.textContent = `Place ${planLinearType} · continuous path · Enter finish · Esc cancel`;
   } else {
     footerStatus(`${planLinearType} path finished`);
   }
@@ -3571,7 +3594,7 @@ async function createAuthoredPoint(x: number, z: number) {
     }
     auth.setAuthoringTool("select");
     await regenerate();
-    footerStatus(`${planPointPreset || planPointType} placed � synced to 3D`);
+    footerStatus(`${planPointPreset || planPointType} placed · synced to 3D`);
   } catch (err) {
     console.error("[plan] create point failed", err);
     footerStatus("Could not place point element");
@@ -3587,7 +3610,7 @@ function ensurePlanBoxOverlay(): SVGRectElement {
   planBoxOverlay.setAttribute("stroke-width", "1");
   planBoxOverlay.setAttribute("pointer-events", "none");
   planBoxOverlay.style.display = "none";
-  // Append to svg after render � store and re-attach in drawPlanBox
+  // Append to svg after render — store and re-attach in drawPlanBox
   return planBoxOverlay;
 }
 
@@ -3697,10 +3720,10 @@ async function commitPlanBoxSelect(additive: boolean) {
       }
       if (best) {
         setPlanSelectedElement(best, additive ? "toggle" : "replace");
-        footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} selected` : `Selected ${best.type}${best.name ? " � " + best.name : ""}`);
+        footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} selected` : `Selected ${best.type}${best.name ? " · " + best.name : ""}`);
       } else if (!additive) {
         setPlanSelectedElement(null);
-        footerStatus("Nothing selected � click a wall, duct, or object");
+        footerStatus("Nothing selected · click a wall, duct, or object");
       }
     } catch (err) {
       console.warn("[plan] click select", err);
@@ -3725,7 +3748,7 @@ async function commitPlanBoxSelect(additive: boolean) {
     setSelectedAuthored(ids, additive ? "add" : "replace");
     footerStatus(
       `${crossing ? "Crossing" : "Window"}: ${ids.length} element(s)` +
-      (planSelectedIds.size > ids.length ? ` � total ${planSelectedIds.size}` : ""),
+      (planSelectedIds.size > ids.length ? ` · total ${planSelectedIds.size}` : ""),
     );
     renderPlanProperties();
   } catch (err) {
@@ -3814,6 +3837,32 @@ canvasWrap.addEventListener("contextmenu", (e) => {
 canvasWrap.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
 
+  // Ribbon annotation tools (Annotate ▸ Section Line) drive the
+  // modules/views/tools state machine. That machine used to receive clicks
+  // only from the Views panel's own preview SVG, so the ribbon's advertised
+  // "click two points in the plan view" flow silently dead-ended: every pick
+  // on this canvas fell through to select mode. Forward the picks here while
+  // such a tool is active, mirroring the Views panel's contract (world coords
+  // + world tolerance, feedback string back to the footer).
+  if (toolState.active !== "select") {
+    const w = clientToWorld(e.clientX, e.clientY);
+    if (w) {
+      const vb = svg.viewBox.baseVal;
+      const tol = vb.width && svg.clientWidth ? (vb.width / svg.clientWidth) * 8 : 0.3;
+      const result = toolState.click(w.x, w.z, "", planViewScale, tol, "plan");
+      if (result.newSectionViewId) {
+        toolState.setTool("select");
+        footerStatus("Section created · open it from the Views panel");
+        try { window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Section created — find it in the Views panel", kind: "success" } })); } catch { /* */ }
+      } else if (result.feedback) {
+        footerStatus(`${result.feedback} · ${toolState.getHint()}`);
+      }
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+
   // Modeling / annotation tools only (select / navigate / move handled below)
   if (planMode === "linear" || planMode === "point" || planMode === "dim" || planMode === "tag" || planMode === "text" || planMode === "region") {
     let w = clientToWorld(e.clientX, e.clientY);
@@ -3889,7 +3938,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
           label, value: planDimStyle === "elevation" ? pt.elev : undefined,
         });
         if (currentPlan) renderPlan(currentPlan);
-        footerStatus(`${planDimStyle === "elevation" ? "Spot Elevation" : "Spot Coordinate"}: ${label} � click next � Esc = Select`);
+        footerStatus(`${planDimStyle === "elevation" ? "Spot Elevation" : "Spot Coordinate"}: ${label} · click next · Esc = Select`);
         return;
       }
 
@@ -3912,13 +3961,13 @@ canvasWrap.addEventListener("mousedown", (e) => {
             x2: s2.x1, z2: s2.z1,
             style: "angular", offsetMm: DIM_OFFSET_MM,
             value: deg, vx, vz,
-            label: `${deg.toFixed(1)}�`,
+            label: `${deg.toFixed(1)}°`,
           });
           planDimSeg1 = null;
           planDrawStart = null;
           planDimStartRef = null;
           if (currentPlan) renderPlan(currentPlan);
-          footerStatus(`Angular ${deg.toFixed(1)}� � click next first edge � Esc = Select`);
+          footerStatus(`Angular ${deg.toFixed(1)}° · click next first edge · Esc = Select`);
         }
         return;
       }
@@ -3932,7 +3981,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
         } else {
           const r = Math.hypot(w.x - planDrawStart.x, w.z - planDrawStart.z);
           if (r < 0.001) {
-            footerStatus("Radius is zero � pick a different point");
+            footerStatus("Radius is zero · pick a different point");
             return;
           }
           const isRad = planDimStyle === "radial";
@@ -3948,7 +3997,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
           });
           planDrawStart = null;
           if (currentPlan) renderPlan(currentPlan);
-          footerStatus(`${label} � click next center � Esc = Select`);
+          footerStatus(`${label} · click next center · Esc = Select`);
         }
         return;
       }
@@ -3973,7 +4022,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
         } else {
           const len = Math.hypot(pt.x - planDrawStart.x, pt.z - planDrawStart.z);
           if (len < 0.001) {
-            footerStatus("Arc length is zero � pick a different point");
+            footerStatus("Arc length is zero · pick a different point");
             return;
           }
           planDims.push({
@@ -3985,7 +4034,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
           planDrawStart = null;
           planDimStartRef = null;
           if (currentPlan) renderPlan(currentPlan);
-          footerStatus(`Arc ${formatPlanDimension(len, getDimensionStyle())} � click next � Esc = Select`);
+          footerStatus(`Arc ${formatPlanDimension(len, getDimensionStyle())} · click next · Esc = Select`);
         }
         return;
       }
@@ -4159,7 +4208,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
     planMoveDragging = true;
     planMoveLast = hit;
     e.preventDefault();
-    footerStatus(`Moving ${planSelectedIds.size} element(s)�`);
+    footerStatus(`Moving ${planSelectedIds.size} element(s)·`);
     return;
   }
 
@@ -4238,7 +4287,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
         if (best) {
           const mode = e.ctrlKey || e.metaKey ? "toggle" : "replace";
           setPlanSelectedElement(best, mode);
-          footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} elements selected` : `Selected ${best.type} � ${best.name ?? best.id}`);
+          footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} elements selected` : `Selected ${best.type} · ${best.name ?? best.id}`);
         } else {
           if (!e.ctrlKey && !e.metaKey && !e.shiftKey) setPlanSelectedElement(null);
           footerStatus(planSelectedIds.size ? `${planSelectedIds.size} elements selected` : "Nothing selected");
@@ -4464,7 +4513,7 @@ window.addEventListener("mouseup", (e) => {
   if (planMoveDragging) {
     planMoveDragging = false;
     planMoveLast = null;
-    footerStatus(planSelectedIds.size ? `Moved � ${planSelectedIds.size} selected � Ctrl+Z undo` : "Move done");
+    footerStatus(planSelectedIds.size ? `Moved · ${planSelectedIds.size} selected · Ctrl+Z undo` : "Move done");
     void regenerate(); // sync 3D; zoom/pan preserved
   }
 });
@@ -4476,7 +4525,7 @@ canvasWrap.addEventListener(
     e.preventDefault();
     e.stopPropagation();
 
-    // Zoom toward cursor (drawing / BIM plan behavior � not fixed to center)
+    // Zoom toward cursor (drawing / BIM plan behavior — not fixed to center)
     const rect = canvasWrap.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return;
     const ratioX = (e.clientX - rect.left) / rect.width;
@@ -4578,7 +4627,7 @@ async function regenerateNow() {
       const { getElements } = await import("./authoring");
       authoredCache = getElements();
     } catch { /* authored layer optional */ }
-    // Preserve zoom/pan (BIM: regenerating plan does NOT fit � only explicit Fit / first open)
+    // Preserve zoom/pan (BIM: regenerating plan does NOT fit — only explicit Fit / first open)
     if (!planViewUserAdjusted) {
       currentZoom = 1;
       panX = 0;
@@ -4588,7 +4637,7 @@ async function regenerateNow() {
     applyCadUnderlay();
   } catch (err) {
     console.error("[plan] generation failed", err);
-    uiAlert("Plan generation failed � see console. Check model is loaded.");
+    uiAlert("Plan generation failed · see console. Check model is loaded.");
   } finally {
     generating = false;
     loading.style.display = "none";
@@ -4616,7 +4665,7 @@ function printPlan() {
   }
   const svgMarkup = svg.outerHTML;
   const html = `
-    <!doctype html><html><head><title>Plan � ${currentPlan.level.name}</title>
+    <!doctype html><html><head><title>Plan · ${currentPlan.level.name}</title>
     <style>
       body { margin:0; padding:16px; font:12px system-ui; background:#fff; }
       svg { width:100%; height:auto; max-height:calc(100vh - 60px); }
@@ -4723,14 +4772,14 @@ export function togglePlanView() {
     planDrawStart = null;
     planChain = [];
     canvasWrap.style.cursor = "default";
-    toolHint.textContent = "Modify | Select � click object � drag box � Delete � Ctrl+Z";
+    toolHint.textContent = "Modify | Select · click object · drag box · Delete · Ctrl+Z";
     // Sync from 3D model into 2D
     void regenerate();
     renderPlanProperties();
     try {
       window.dispatchEvent(new CustomEvent("obs-toast", {
         detail: {
-          message: "Floor Plan � Properties on the left � ribbon tools model in plan",
+          message: "Floor Plan · Properties on the left · ribbon tools model in plan",
           kind: "success",
         },
       }));
@@ -4802,8 +4851,8 @@ export function setPlanToolFromRibbon(tool: string) {
     applyDefaultSizeForTool(tool === "brace" || tool === "truss" ? "beam" : tool);
     canvasWrap.style.cursor = "crosshair";
     // BIM Place order: Type active ? click start ? click end ? continue chain
-    toolHint.textContent = `Modify | Place ${tool} � Enter finish path � Esc cancel � Space repeat`;
-    footerStatus(`Place ${tool}: click to enter start point � snaps ON`);
+    toolHint.textContent = `Modify | Place ${tool} · Enter finish path · Esc cancel · Space repeat`;
+    footerStatus(`Place ${tool}: click to enter start point · snaps ON`);
     setPlanSelectedElement(null);
     renderPlanProperties();
     try {
@@ -4817,8 +4866,8 @@ export function setPlanToolFromRibbon(tool: string) {
     canvasWrap.style.cursor = "crosshair";
     const hosted = planPointType === "door" || planPointType === "window";
     toolHint.textContent = hosted
-      ? `${tool} � click ON a wall to insert (hosted) � Esc cancel`
-      : `${tool} � click to place � Esc cancel � Backspace repeat`;
+      ? `${tool} · click ON a wall to insert (hosted) · Esc cancel`
+      : `${tool} · click to place · Esc cancel · Backspace repeat`;
     footerStatus(hosted
       ? `Plan ${tool}: click on a wall to insert`
       : `Plan ${tool}: click to place`);
@@ -4826,13 +4875,13 @@ export function setPlanToolFromRibbon(tool: string) {
     renderPlanProperties();
     try { showWallOpts(false); } catch { /* */ }
   } else if (tool === "pan" || tool === "navigate") {
-    // BIM Pan: only changes navigation mode � NEVER resets zoom/fit
+    // BIM Pan: only changes navigation mode — NEVER resets zoom/fit
     planMode = "navigate";
     planChain = [];
     planDrawStart = null;
     canvasWrap.style.cursor = "grab";
-    toolHint.textContent = "Pan � drag to pan � wheel zoom � view kept";
-    footerStatus("Pan mode � view is not reset");
+    toolHint.textContent = "Pan · drag to pan · wheel zoom · view kept";
+    footerStatus("Pan mode · view is not reset");
     try { showWallOpts(false); } catch { /* */ }
     setPlanSelectedElement(null);
     renderPlanProperties();
@@ -4841,16 +4890,16 @@ export function setPlanToolFromRibbon(tool: string) {
     planChain = [];
     planDrawStart = null;
     canvasWrap.style.cursor = "default";
-    toolHint.textContent = "Modify | Select � click � drag box � Ctrl add � Delete remove";
-    footerStatus("Select � ready � L?R window � R?L crossing");
+    toolHint.textContent = "Modify | Select · click · drag box · Ctrl add · Delete remove";
+    footerStatus("Select · ready · L?R window · R?L crossing");
     try { showWallOpts(false); } catch { /* */ }
   } else if (tool === "move") {
     planMode = "move";
     planChain = [];
     planDrawStart = null;
     canvasWrap.style.cursor = "move";
-    toolHint.textContent = "Modify | Move � drag selected elements in plan";
-    footerStatus(planSelectedIds.size ? `Move ${planSelectedIds.size} element(s) � drag` : "Select elements first, then Move");
+    toolHint.textContent = "Modify | Move · drag selected elements in plan";
+    footerStatus(planSelectedIds.size ? `Move ${planSelectedIds.size} element(s) · drag` : "Select elements first, then Move");
     try { showWallOpts(false); } catch { /* */ }
   } else if (
     tool === "dim-aligned" || tool === "measure" ||
@@ -4872,35 +4921,35 @@ export function setPlanToolFromRibbon(tool: string) {
 
     if (tool === "dim-linear" || tool === "dim-horizontal" || tool === "dim-vertical") {
       planDimStyle = "linear";
-      toolHint.textContent = "Modify | Place Linear Dimension � 2 boundaries � H/V";
+      toolHint.textContent = "Modify | Place Linear Dimension · 2 boundaries · H/V";
       footerStatus("Linear: pick first model boundary");
     } else if (tool === "dim-angular") {
       planDimStyle = "angular";
-      toolHint.textContent = "Modify | Place Angular Dimension � 2 edges";
+      toolHint.textContent = "Modify | Place Angular Dimension · 2 edges";
       footerStatus("Angular: pick first line / wall edge");
     } else if (tool === "dim-radial") {
       planDimStyle = "radial";
-      toolHint.textContent = "Modify | Place Radial Dimension � center then edge";
+      toolHint.textContent = "Modify | Place Radial Dimension · center then edge";
       footerStatus("Radial: pick center point");
     } else if (tool === "dim-diameter") {
       planDimStyle = "diameter";
-      toolHint.textContent = "Modify | Place Diameter Dimension � center then edge";
+      toolHint.textContent = "Modify | Place Diameter Dimension · center then edge";
       footerStatus("Diameter: pick center point");
     } else if (tool === "dim-arc" || tool === "arc-length") {
       planDimStyle = "arc";
-      toolHint.textContent = "Modify | Place Arc Length Dimension � 2 points on arc";
+      toolHint.textContent = "Modify | Place Arc Length Dimension · 2 points on arc";
       footerStatus("Arc length: pick first point on edge");
     } else if (tool === "spot-elev" || tool === "elevation") {
       planDimStyle = "elevation";
-      toolHint.textContent = "Modify | Spot Elevation � click a point";
+      toolHint.textContent = "Modify | Spot Elevation · click a point";
       footerStatus("Spot Elevation: click model point or free location");
     } else if (tool === "spot-coord" || tool === "coordinate") {
       planDimStyle = "coordinate";
-      toolHint.textContent = "Modify | Spot Coordinate � click a point";
+      toolHint.textContent = "Modify | Spot Coordinate · click a point";
       footerStatus("Spot Coordinate: click to place X / Z label");
     } else {
       planDimStyle = "aligned";
-      toolHint.textContent = "Modify | Place Aligned Dimension � 2 boundaries � snaps ON";
+      toolHint.textContent = "Modify | Place Aligned Dimension · 2 boundaries · snaps ON";
       footerStatus("Aligned: pick first model boundary");
     }
   } else if (tool === "auto-dim" || tool === "dim-auto") {
@@ -4922,11 +4971,11 @@ export function setPlanToolFromRibbon(tool: string) {
     planMode = "tag";
     obsPlanTagMode = tool === "room-tag" ? "room" : tool === "material-tag" ? "material" : "category";
     canvasWrap.style.cursor = "crosshair";
-    toolHint.textContent = `${tool === "room-tag" ? "Room Tag" : tool === "material-tag" ? "Material Tag" : "Tag"} � click near element`;
+    toolHint.textContent = `${tool === "room-tag" ? "Room Tag" : tool === "material-tag" ? "Material Tag" : "Tag"} · click near element`;
   } else if (tool === "text" || tool === "model-text" || tool === "text-3d") {
     planMode = "text";
     canvasWrap.style.cursor = "crosshair";
-    toolHint.textContent = "Text � click to place note";
+    toolHint.textContent = "Text · click to place note";
   } else if (tool === "filled-region" || tool === "masking-region" || tool === "region") {
     planMode = "region";
     regionDraft = { type: tool === "masking-region" ? "masking" : "filled", pts: [] };
@@ -5007,6 +5056,10 @@ export function cancelAllPlan(): boolean {
   planMode = "select";
   canvasWrap.style.cursor = "default";
   toolHint.textContent = "Modify | Select \u00b7 click \u00b7 box \u00b7 Delete \u00b7 Ctrl+Z";
+  // Esc also disarms the Views-panel annotation tools (Section Line): the plan
+  // canvas forwards picks to that state machine, so it must be released here
+  // or the tool stays armed after the user cancels.
+  try { toolState.cancel(); toolState.setTool("select"); } catch { /* */ }
   try { showWallOpts(false); } catch { /* */ }
 
   planSelectedIds.clear();
@@ -5258,7 +5311,7 @@ try {
       return;
     }
 
-    // Enter � finish continuous path
+    // Enter — finish continuous path
     if (e.key === "Enter" && planMode === "linear" && planChain.length > 0) {
       finishPlanChain();
       e.preventDefault();
@@ -5266,7 +5319,7 @@ try {
       return;
     }
 
-    // Space � repeat last command (BIM). Backspace repeats only if nothing selected.
+    // Space — repeat last command (BIM). Backspace repeats only if nothing selected.
     if (e.key === " " || (e.key === "Backspace" && planSelectedIds.size === 0)) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -5352,9 +5405,9 @@ try {
       }
     }
 
-    // Delete / Backspace on selection � remove selected authored elements
+    // Delete / Backspace on selection — remove selected authored elements
     if ((e.key === "Delete" || e.key === "Backspace") && planSelectedIds.size > 0 && planMode !== "linear") {
-      // Backspace also used for repeat when nothing selected � handled above when size==0
+      // Backspace also used for repeat when nothing selected — handled above when size==0
       if (e.key === "Backspace" && planSelectedIds.size === 0) {
         /* fall through to repeat */
       } else {
@@ -5369,7 +5422,7 @@ try {
             deleteSelectedElement();
             planSelectedIds.clear();
             renderPlanProperties();
-            footerStatus(`Deleted ${n} element(s) � Ctrl+Z undo`);
+            footerStatus(`Deleted ${n} element(s) · Ctrl+Z undo`);
             void regenerate();
           } catch (err) {
             console.warn("[plan] delete", err);

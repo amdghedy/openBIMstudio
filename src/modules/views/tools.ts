@@ -77,12 +77,10 @@ class ToolStateImpl {
       return { feedback: this.getHint() };
     }
 
-    const elements = getElements();
-    const ref = pickReference(elements, worldX, worldZ, { tolerance: toleranceWorld });
-    if (!ref) {
-      return { feedback: "No reference nearby — click closer to an element." };
-    }
-
+    // Section cut lines take free points — Revit lets a section run through
+    // empty space and be drawn on an empty model. Only dimension and tag
+    // tools need a model reference, so the reference gate below must not
+    // apply here (previously an empty model could never produce a section).
     if (this.active === "section-line") {
       if (viewKind !== "plan" && viewKind !== "rcp") {
         return { feedback: "Switch to a plan view first, then draw the section line." };
@@ -91,23 +89,30 @@ class ToolStateImpl {
         this.pendingPoint = [worldX, worldZ];
         return { feedback: "Click second point of section cut line." };
       }
-      const [x1, z1] = this.pendingPoint;
-      const x2 = worldX;
-      const z2 = worldZ;
-      if (Math.hypot(x2 - x1, z2 - z1) < 0.5) {
+      const [sx1, sz1] = this.pendingPoint;
+      const sx2 = worldX;
+      const sz2 = worldZ;
+      if (Math.hypot(sx2 - sx1, sz2 - sz1) < 0.5) {
         return { feedback: "Section line is too short - click further away." };
       }
-      const v = createView("section", "Section " + new Date().toLocaleTimeString());
-      if (v.section) {
-        v.section.cutLine = { x1, z1, x2, z2 };
+      const sv = createView("section", "Section " + new Date().toLocaleTimeString());
+      if (sv.section) {
+        sv.section.cutLine = { x1: sx1, z1: sz1, x2: sx2, z2: sz2 };
       }
-      updateView(v.id, { section: v.section });
+      updateView(sv.id, { section: sv.section });
       this.pendingPoint = null;
       return {
-        newSectionViewId: v.id,
+        newSectionViewId: sv.id,
         feedback: "Section created - opening view.",
       };
     }
+
+    const elements = getElements();
+    const ref = pickReference(elements, worldX, worldZ, { tolerance: toleranceWorld });
+    if (!ref) {
+      return { feedback: "No reference nearby — click closer to an element." };
+    }
+
     if (this.active === "tag-category") {
       const tag: Tag = {
         id: `tag-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
