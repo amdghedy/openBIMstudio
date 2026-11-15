@@ -199,7 +199,7 @@ function viewportOf(e: Any): DxfViewport | null {
 }
 
 const ANNOTATION_RESERVE = 300_000;
-const ANNOTATION_TYPES = new Set(["TEXT", "MTEXT", "ATTRIB", "DIMENSION", "LEADER", "MLEADER"]);
+const ANNOTATION_TYPES = new Set(["TEXT", "MTEXT", "ATTRIB", "DIMENSION", "LEADER", "MLEADER", "MULTILEADER"]);
 
 function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | null): DxfEntity[] {
   const out: DxfEntity[] = [];
