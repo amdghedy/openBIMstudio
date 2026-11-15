@@ -84,12 +84,13 @@ Press **Ctrl+W** to enter Walk mode at the current camera position and heading. 
 | **W A S D** | Walk forward, left, back, right |
 | **Shift** | Run (about 9 m/s; normal walking is about 3.2 m/s) |
 | **Ctrl** | Crouch (slower) |
-| **Space / C** | Move up / down (overrides gravity while held) |
+| **Space / C** | Raise / lower yourself straight up and down. The new height stays fixed when you let go (option **R**, on by default); C stops at standing height. |
 | **Page Up / Page Down** | Jump to the next level above or below |
 | **Mouse wheel** | Change walking speed |
 | **Mouse** | Look around (the browser asks to capture the pointer) |
 | **Esc** | Leave Walk mode and return to the orbit camera |
 | **L** | Hold my height on/off (default on) |
+| **R** | Keep raised height (Space/C) on/off |
 | **N** | Walk through walls on/off |
 | **P** | Human figure (1.7 m, third person) on/off |
 

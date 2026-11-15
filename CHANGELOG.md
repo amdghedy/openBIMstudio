@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Changed
+- Walk mode: **Keep raised height** (key R, default on). Space raises the eye and the raised distance stays fixed after you release it (it also follows stairs and survives walking); C lowers you straight down, never below standing height. Turn it off for the old behaviour (free nudge, then gravity). Browser test added.
+
+
 ### Added
 - Walk mode options: **Hold my height** (default on: start exactly at the camera height and do not fall to the lowest level when no floor is under you), **Walk through walls** (no-clip, floors and stairs still carry you) and **Human figure** (1.7 m figure, third-person chase camera). Keys L / N / P, Ctrl+P commands, saved in the browser. Browser test covers all three; the third-person camera does not avoid walls behind the figure.
 

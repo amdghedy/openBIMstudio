@@ -89,6 +89,8 @@ interface WalkState {
   collideTick: number;
   dragging: boolean;
   hudTick: number;
+  /** Extra height above the standing eye level, set with Space / C when `keepRaise` is on. */
+  lift: number;
 }
 
 const state: WalkState = {
@@ -108,6 +110,7 @@ const state: WalkState = {
   collideTick: 0,
   dragging: false,
   hudTick: 0,
+  lift: 0,
 };
 
 /** Keys walk mode owns exclusively — captured before the shortcut registry. */
@@ -116,7 +119,7 @@ const OWNED_KEYS = new Set([
   "arrowup", "arrowdown", "arrowleft", "arrowright",
   "shift", "control",
   " ", "c", "pageup", "pagedown",
-  "n", "p", "l",
+  "n", "p", "l", "r",
 ]);
 
 /** User options for walking. Saved in this browser. */
@@ -127,10 +130,12 @@ export interface WalkOptions {
   noClip: boolean;
   /** Show a 1.7 m human figure and view it from behind (third person). */
   human: boolean;
+  /** Space raises you and the new height stays fixed when you let go; C lowers you straight down (never below standing height). */
+  keepRaise: boolean;
 }
 const OPT_KEY = "obs-walk-options";
 const opts: WalkOptions = (() => {
-  const d: WalkOptions = { holdLevel: true, noClip: false, human: false };
+  const d: WalkOptions = { holdLevel: true, noClip: false, human: false, keepRaise: true };
   try { const r = JSON.parse(localStorage.getItem(OPT_KEY) || "{}"); for (const k of Object.keys(d) as (keyof WalkOptions)[]) if (typeof r[k] === "boolean") d[k] = r[k]; } catch { /* */ }
   return d;
 })();
@@ -142,7 +147,7 @@ export function setWalkOption(k: keyof WalkOptions, v: boolean): void {
   if (k === "human") syncHuman();
   if (state.enabled) { updateStatus(); refreshHint(); }
   try { window.dispatchEvent(new CustomEvent("obs:walk-options-changed", { detail: { ...opts } })); } catch { /* */ }
-  try { notify("info", `Walk: ${k === "holdLevel" ? "hold my height" : k === "noClip" ? "walk through walls" : "human figure"} ${v ? "on" : "off"}`); } catch { /* */ }
+  try { notify("info", `Walk: ${k === "holdLevel" ? "hold my height" : k === "noClip" ? "walk through walls" : k === "keepRaise" ? "keep raised height" : "human figure"} ${v ? "on" : "off"}`); } catch { /* */ }
 }
 
 const HUMAN_HEIGHT = 1.7;
@@ -272,7 +277,7 @@ function hintHtml(): string {
   return `<b style="color:#38bdf8">WALK</b> · ` +
     `${kbd("W")}${kbd("A")}${kbd("S")}${kbd("D")} move · ` +
     `${kbd("Shift")} run · ${kbd("Ctrl")} crouch · ` +
-    `${kbd("Space")}/${kbd("C")} up/down · ` +
+    `${kbd("Space")}/${kbd("C")} up/down ${on(opts.keepRaise)} ${kbd("R")} keep height · ` +
     `${kbd("PgUp")}/${kbd("PgDn")} level · wheel speed · ` +
     `${kbd("Esc")} exit<br>` +
     `${kbd("L")} hold my height ${on(opts.holdLevel)} · ${kbd("N")} through walls ${on(opts.noClip)} · ${kbd("P")} human 1.7 m ${on(opts.human)}`;
@@ -521,7 +526,7 @@ function updateStatus(): void {
   statusEl.textContent =
     `X ${f(state.pos.x)} m   Z ${f(state.pos.z)} m   Eye ${f(state.pos.y)} m\n` +
     `Heading ${heading.toFixed(0).padStart(3)}\u00b0   Speed \u00d7${state.speedFactor.toFixed(2)}` +
-    (state.airborne ? "   FALLING" : "   GROUNDED") + (opts.noClip ? "   NO-CLIP" : "") +
+    (state.airborne ? "   FALLING" : "   GROUNDED") + (opts.noClip ? "   NO-CLIP" : "") + (opts.keepRaise && state.lift > 0.01 ? `   RAISED +${state.lift.toFixed(2)} m` : "") +
     (levelName ? `   Level ${levelName}` : "");
 }
 
@@ -636,6 +641,7 @@ function enableWalkModeInner(): void {
   }
   state.pos.set(startX, eyeY, startZ);
   state.vel.set(0, 0, 0);
+  state.lift = 0;
   state.keys.clear();
 
   // ── Show HUD, lock pointer ──
@@ -774,6 +780,7 @@ function onKeyDown(e: KeyboardEvent) {
       const next = nextLevelElevation(elevs, state.targetGroundY, k === "pageup" ? 1 : -1);
       if (next != null) {
         state.targetGroundY = next;
+        state.lift = 0;
         state.pos.y = next + EYE_HEIGHT;
         state.vel.y = 0;
       }
@@ -784,8 +791,9 @@ function onKeyDown(e: KeyboardEvent) {
   if (OWNED_KEYS.has(k)) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    if (k === "n" || k === "p" || k === "l") {
-      if (!e.repeat) setWalkOption(k === "n" ? "noClip" : k === "p" ? "human" : "holdLevel", !opts[k === "n" ? "noClip" : k === "p" ? "human" : "holdLevel"]);
+    if (k === "n" || k === "p" || k === "l" || k === "r") {
+      const key = k === "n" ? "noClip" : k === "p" ? "human" : k === "r" ? "keepRaise" : "holdLevel";
+      if (!e.repeat) setWalkOption(key, !opts[key]);
       return;
     }
     state.keys.add(k === " " ? "space" : k);
@@ -907,23 +915,31 @@ function tickBody(now: number) {
     if (!Number.isFinite(state.targetGroundY)) state.targetGroundY = 0;
   }
 
-  // Manual vertical (Space / C) overrides gravity / ground-follow this frame.
-  const manualVertical = state.keys.has("space") || state.keys.has("c");
-  if (state.keys.has("space")) {
-    state.pos.y += 2.4 * dt;
-    state.vel.y = Math.max(state.vel.y, 0);
-    state.airborne = true;
-  }
-  if (state.keys.has("c")) {
-    state.pos.y -= 2.4 * dt;
-    state.vel.y = Math.min(state.vel.y, 0);
+  // Space / C. With "keep raised height" the change is stored as a lift above the floor, so the new height stays fixed
+  // when the key is released (and follows stairs); without it the old behaviour applies (free nudge, then gravity).
+  let manualVertical = false;
+  if (opts.keepRaise) {
+    if (state.keys.has("space")) state.lift = Math.min(60, state.lift + 2.4 * dt);
+    if (state.keys.has("c")) state.lift = Math.max(0, state.lift - 2.4 * dt);
+  } else {
+    manualVertical = state.keys.has("space") || state.keys.has("c");
+    if (state.keys.has("space")) {
+      state.pos.y += 2.4 * dt;
+      state.vel.y = Math.max(state.vel.y, 0);
+      state.airborne = true;
+    }
+    if (state.keys.has("c")) {
+      state.pos.y -= 2.4 * dt;
+      state.vel.y = Math.min(state.vel.y, 0);
+    }
+    state.lift = 0;
   }
 
   state.raycastTick = (state.raycastTick + 1) % RAYCAST_INTERVAL;
   if (state.raycastTick === 0) updateGroundTarget();
 
   const eyeH = crouching ? CROUCH_HEIGHT : EYE_HEIGHT;
-  const targetY = state.targetGroundY + eyeH;
+  const targetY = state.targetGroundY + eyeH + (opts.keepRaise ? state.lift : 0);
 
   if (manualVertical) {
     // free vertical nudge
@@ -939,6 +955,7 @@ function tickBody(now: number) {
   } else {
     state.vel.y = 0;
     state.pos.y += (targetY - state.pos.y) * Math.min(1, GROUND_SMOOTH * dt);
+    if (opts.keepRaise && state.lift > 0) state.airborne = false; // a raised walker hovers: it does not fall back
     if (state.pos.y - targetY > FALL_TRIGGER) state.airborne = true;
   }
 

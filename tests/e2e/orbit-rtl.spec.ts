@@ -1246,3 +1246,52 @@ test('WALK MODE options: holds the starting height, walks through walls on reque
   await setOpt('human', false);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('WALK MODE: Space raises and the height stays fixed after release; C lowers straight down', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  const pose = () => page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.setOption('keepRaise', true));
+  let p0: any = null;
+  for (let i = 0; i < 6; i++) {
+    await page.evaluate(async () => { await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(0, 1.7, 6, 0, 1.7, 0, false); });
+    await page.waitForTimeout(700);
+    await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.enable());
+    await page.waitForTimeout(600);
+    p0 = await pose();
+    if (p0 && Math.abs(p0.y - 1.7) < 0.1 && Math.abs(p0.z - 6) < 0.3) break;
+    await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
+    await page.waitForTimeout(300);
+  }
+  await page.keyboard.down(' ');
+  await page.waitForTimeout(1500);
+  await page.keyboard.up(' ');
+  await page.waitForTimeout(400);
+  const up1 = await pose();
+  await page.waitForTimeout(2500);
+  const up2 = await pose();
+  console.log('WALK-RAISE ' + JSON.stringify({ start: p0.y, afterRelease: up1.y, 2.5: up2.y }));
+  expect(up1.y - p0.y, 'Space raised the eye').toBeGreaterThan(1.5);
+  expect(Math.abs(up2.y - up1.y), 'the raised height stays fixed after releasing Space (no fall back)').toBeLessThan(0.05);
+  // Walking keeps the raised height too.
+  await page.keyboard.down('w'); await page.waitForTimeout(800); await page.keyboard.up('w');
+  const mv = await pose();
+  expect(Math.abs(mv.y - up2.y), 'raised height survives walking').toBeLessThan(0.1);
+  // C lowers vertically and the lower height stays too, never below standing height.
+  await page.keyboard.down('c'); await page.waitForTimeout(900); await page.keyboard.up('c');
+  await page.waitForTimeout(400);
+  const dn1 = await pose();
+  await page.waitForTimeout(1500);
+  const dn2 = await pose();
+  expect(mv.y - dn1.y, 'C lowers').toBeGreaterThan(1.2);
+  expect(Math.abs(dn2.y - dn1.y), 'the lowered height stays fixed').toBeLessThan(0.05);
+  await page.keyboard.down('c'); await page.waitForTimeout(3500); await page.keyboard.up('c');
+  await page.waitForTimeout(400);
+  const floor = await pose();
+  expect(floor.y, 'C stops at standing height').toBeGreaterThan(1.6);
+  expect(floor.y, 'C stops at standing height').toBeLessThan(1.8);
+  await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
+  expect(errors, errors.join('\n')).toEqual([]);
+});

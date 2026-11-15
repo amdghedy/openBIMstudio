@@ -450,6 +450,7 @@ function bootstrapCommands(): void {
   registerCommand({ id: "cad.query", label: "Query linked drawings (layer / type / name)", category: "Insert", run: () => { void import("./cad-query-panel").then((m) => m.showCadQueryPanel()); } });
   registerCommand({ id: "file.export-frag", label: "Export model(s) as ThatOpen FRAG (.frag)", category: "File", run: () => { void import("../modules/export/frag").then((m) => m.exportFragFromMenu()); } });
   registerCommand({ id: "tools.walk.holdLevel", label: `Walk: hold my height (do not drop to the lowest level) — ${getWalkOptions().holdLevel ? "on" : "off"}`, category: "Tools", run: () => setWalkOption("holdLevel", !getWalkOptions().holdLevel) });
+  registerCommand({ id: "tools.walk.keepRaise", label: `Walk: keep raised height (Space up, C down) — ${getWalkOptions().keepRaise ? "on" : "off"}`, category: "Tools", run: () => setWalkOption("keepRaise", !getWalkOptions().keepRaise) });
   registerCommand({ id: "tools.walk.noClip", label: `Walk: walk through walls — ${getWalkOptions().noClip ? "on" : "off"}`, category: "Tools", run: () => setWalkOption("noClip", !getWalkOptions().noClip) });
   registerCommand({ id: "tools.walk.human", label: `Walk: show human figure 1.7 m (third person) — ${getWalkOptions().human ? "on" : "off"}`, category: "Tools", run: () => setWalkOption("human", !getWalkOptions().human) });
   registerCommand({ id: "tools.walk", label: toggleLabel("Walk mode", isWalkModeEnabled), category: "Tools", run: () => toggleWalkMode() });
