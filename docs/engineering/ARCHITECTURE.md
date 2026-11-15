@@ -177,6 +177,7 @@ Site components/topography plus daylight, energy and generative-design analysis.
     "directories": [
       "bim-gaps",
       "families",
+      "ifc-semantics",
       "material-assignment",
       "materials",
       "native-bim",

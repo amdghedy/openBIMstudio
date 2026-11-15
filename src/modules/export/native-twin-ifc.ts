@@ -6,6 +6,8 @@
  * - Many twins → one federated IFC4 (single Project/Site/Building/Storey)
  */
 
+import { newIfcGuid, stableIfcGuid, isValidIfcGuid } from "../bim-gaps/ifc-guid";
+
 /** Minimal twin shape needed for IFC export (avoids cycle with frag-edit). */
 export interface TwinIfcSource {
   name?: string;
@@ -28,12 +30,23 @@ function esc(s: string): string {
     .replace(/'/g, "\\'");
 }
 
+/**
+ * Fresh valid IFC GlobalId (22-char buildingSMART base64).
+ *
+ * openbim-fix: the previous implementation truncated a random UUID hex to 22
+ * chars, which is NOT the compressed-GUID encoding — consumers and validators
+ * rejected such files. All relationship/pset/opening instances now use the
+ * real codec from modules/bim-gaps/ifc-guid.
+ */
 function guid(): string {
-  const raw =
-    typeof crypto !== "undefined" && (crypto as any).randomUUID
-      ? (crypto as any).randomUUID().replace(/-/g, "")
-      : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
-  return raw.slice(0, 22).padEnd(22, "0");
+  return newIfcGuid();
+}
+
+/** Valid GlobalId for an element: keep a real source GUID, else derive one. */
+function elementGuid(edit: TwinIfcSource): string {
+  const candidate = edit.sourceGlobalId || edit.nativeId || "";
+  if (isValidIfcGuid(candidate)) return candidate;
+  return stableIfcGuid(`native-twin|${edit.modelId}|${edit.nativeId || edit.name || guid()}`);
 }
 
 function num(n: number): string {
@@ -81,7 +94,7 @@ type Ctx = {
 function appendTwinElement(ctx: Ctx, edit: TwinIfcSource, storey: number): number {
   const { lines, next, owner, localOrigin } = ctx;
   const name = esc(edit.name || "NativeTwin");
-  const globalId = esc(edit.sourceGlobalId || edit.nativeId || guid());
+  const globalId = esc(elementGuid(edit));
   const description = esc(edit.description || `Native twin of ${edit.sourceEntity || "element"}`);
   // safeEntity reserved for future typed writers; proxy form is universal today
   void safeEntityName(edit);

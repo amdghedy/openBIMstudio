@@ -274,7 +274,10 @@
     "test:grips-engine": "node tests/grips-engine.test.cjs",
     "test:schedule-totals": "node tests/schedule-totals.test.cjs",
     "test:openings-chain": "node tests/openings-chain.test.cjs",
-    "test:cad-draw-order": "node tests/cad-draw-order-tools.test.cjs"
+    "test:cad-draw-order": "node tests/cad-draw-order-tools.test.cjs",
+    "test:ifc-semantics": "node tests/ifc-semantics.test.cjs",
+    "test:ifc-exchange": "node tests/ifc-roundtrip-compare.test.cjs",
+    "test:fuzz-ifc": "node scripts/fuzz-ifc-corpus.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",

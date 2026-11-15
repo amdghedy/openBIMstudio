@@ -74,6 +74,21 @@ export interface IfcSpaceInput {
   department?: string;
 }
 
+export interface IfcClassificationInput {
+  /** Stable key for deterministic GlobalIds (e.g. "uniclass-2015"). */
+  id: string;
+  /** Classification system name, e.g. "Uniclass 2015". */
+  name: string;
+  source?: string;
+  edition?: string;
+  /** URI reference shared by the classification and its references. */
+  location?: string;
+  /** IFC4 only (7-attr IfcClassification carries Description). */
+  description?: string;
+  /** element-id → classification code (and optional reference name). */
+  items: Array<{ elementId: string; code: string; name?: string }>;
+}
+
 export interface IfcExportOptions {
   schema?: IfcSchema;
   projectName?: string;
@@ -85,6 +100,9 @@ export interface IfcExportOptions {
   timestamp?: string;
   levels?: IfcLevelInput[];
   spaces?: IfcSpaceInput[];
+  /** Classification systems + per-element codes, serialized as
+   *  IfcClassification / IfcClassificationReference / IfcRelAssociatesClassification. */
+  classifications?: IfcClassificationInput[];
 }
 
 export interface IfcExportStats {
@@ -820,6 +838,43 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
   }
   for (const [mat, objs] of materialPending) {
     if (objs.length) f.add("IFCRELASSOCIATESMATERIAL", [S(guid("mat:" + mat)), ref(oh), "$", "$", L(objs.map(ref)), ref(mat)]);
+  }
+
+  /* classifications — IfcClassification + IfcClassificationReference +
+   * IfcRelAssociatesClassification per classified element. Attribute order
+   * per vendored schema: IFC4 Classification (Source, Edition, EditionDate,
+   * Name, Description, Location, ReferenceTokens); IFC2X3 (Source, Edition,
+   * EditionDate, Name). Reference IFC4 (Location, Identification, Name,
+   * ReferencedSource, Description, Sort); IFC2X3 (Location, ItemReference,
+   * Name, ReferencedSource). */
+  for (const c of opts.classifications ?? []) {
+    try {
+      if (!c.items?.length) continue;
+      const clsAttrs = v4
+        ? [c.source ? S(c.source) : "$", c.edition ? S(c.edition) : "$", "$", S(c.name), c.description ? S(c.description) : "$", c.location ? S(c.location) : "$", "$"]
+        : [c.source ? S(c.source) : "$", c.edition ? S(c.edition) : "$", "$", S(c.name)];
+      const clsId = f.add("IFCCLASSIFICATION", clsAttrs);
+      bump("IFCCLASSIFICATION");
+      let classified = 0;
+      for (const item of c.items) {
+        const target = emitted.get(item.elementId);
+        if (!target) {
+          stats.skipped.push({ id: item.elementId, type: "classification-item", reason: `element not exported (classification "${c.name}")` });
+          continue;
+        }
+        const refAttrs = v4
+          ? [c.location ? S(c.location) : "$", S(item.code), item.name ? S(item.name) : "$", ref(clsId), "$", "$"]
+          : [c.location ? S(c.location) : "$", S(item.code), item.name ? S(item.name) : "$", ref(clsId)];
+        const refId = f.add("IFCCLASSIFICATIONREFERENCE", refAttrs);
+        bump("IFCCLASSIFICATIONREFERENCE");
+        f.add("IFCRELASSOCIATESCLASSIFICATION", [S(guid(`class:${c.id}:${item.elementId}`)), ref(oh), "$", "$", L([ref(target.id)]), ref(refId)]);
+        bump("IFCRELASSOCIATESCLASSIFICATION");
+        classified++;
+      }
+      if (!classified) continue;
+    } catch (e) {
+      stats.skipped.push({ id: c.id, type: "classification", reason: "exception: " + (e instanceof Error ? e.message : String(e)) });
+    }
   }
 
   const ts = (opts.timestamp || new Date().toISOString().slice(0, 19)).replace(/Z$/, "");

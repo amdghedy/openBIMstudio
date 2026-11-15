@@ -145,16 +145,25 @@ async function readElementData(
 // ═══════════════════════════════════════════════════════════════════════════
 // Spatial structure attempts
 // ═══════════════════════════════════════════════════════════════════════════
-function tryNativeSpatialStructure(model: any): any[] | null {
+/**
+ * openbim-fix: @thatopen/fragments v3 `getSpatialStructure()` returns a
+ * Promise of SpatialTreeItem { category, localId, children } — the old code
+ * checked Array.isArray on the un-awaited promise, so the native spatial
+ * path never fired and the tree always fell back to flat categories.
+ * The promise is now awaited and the item shape adapted; legacy array-shaped
+ * payloads (older SDKs) still work.
+ */
+async function tryNativeSpatialStructure(model: any): Promise<any[] | null> {
   try {
     const m = model as any;
     if (typeof m.getSpatialStructure === "function") {
-      const r = m.getSpatialStructure();
+      const r = await m.getSpatialStructure();
       if (Array.isArray(r)) return r;
+      if (r && typeof r === "object") return [r];
     }
     if (Array.isArray(m.spatialStructure)) return m.spatialStructure;
   } catch {
-    /* */
+    /* fall back to category grouping */
   }
   return null;
 }
@@ -289,7 +298,7 @@ async function buildOneTree(modelId: string, model: any): Promise<ModelTree | nu
   const modelName =
     (model as any).name || (model as any).modelName || modelId;
 
-  const native = tryNativeSpatialStructure(model);
+  const native = await tryNativeSpatialStructure(model);
   if (native && native.length) {
     const rootChildren: TreeItem[] = [];
     for (const n of native) {
@@ -297,6 +306,27 @@ async function buildOneTree(modelId: string, model: any): Promise<ModelTree | nu
       if (norm) rootChildren.push(norm);
     }
     if (rootChildren.length) {
+      // Enrich node names from element data (fragments SpatialTreeItem has
+      // only category + localId — no name field).
+      const namelessIds: number[] = [];
+      const collect = (it: TreeItem) => {
+        if (it.localId > 0) namelessIds.push(it.localId);
+        for (const c of it.children) collect(c);
+      };
+      for (const c of rootChildren) collect(c);
+      const names = await readElementData(model, namelessIds, categoryMap);
+      const applyNames = (it: TreeItem) => {
+        if (it.localId > 0) {
+          const d = names.get(it.localId);
+          if (d?.name && d.name !== `#${it.localId}`) {
+            it.name = d.name;
+            if (d.category && it.category === "Unknown") it.category = d.category;
+          }
+        }
+        for (const c of it.children) applyNames(c);
+      };
+      for (const c of rootChildren) applyNames(c);
+
       let total = 0;
       const byLocalId = new Map<number, TreeItem>();
       const walk = (it: TreeItem) => {

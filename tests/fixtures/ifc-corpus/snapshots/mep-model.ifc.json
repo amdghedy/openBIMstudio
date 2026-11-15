@@ -1,0 +1,166 @@
+{
+  "schema": "IFC4",
+  "classes": [
+    {
+      "name": "IFCAPPLICATION",
+      "count": 1
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT2D",
+      "count": 8
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT3D",
+      "count": 21
+    },
+    {
+      "name": "IFCBUILDING",
+      "count": 1
+    },
+    {
+      "name": "IFCBUILDINGELEMENTPROXY",
+      "count": 1
+    },
+    {
+      "name": "IFCBUILDINGSTOREY",
+      "count": 2
+    },
+    {
+      "name": "IFCCABLECARRIERSEGMENT",
+      "count": 2
+    },
+    {
+      "name": "IFCCARTESIANPOINT",
+      "count": 12
+    },
+    {
+      "name": "IFCCIRCLEPROFILEDEF",
+      "count": 2
+    },
+    {
+      "name": "IFCCOLOURRGB",
+      "count": 6
+    },
+    {
+      "name": "IFCDIRECTION",
+      "count": 3
+    },
+    {
+      "name": "IFCDUCTSEGMENT",
+      "count": 2
+    },
+    {
+      "name": "IFCELEMENTQUANTITY",
+      "count": 8
+    },
+    {
+      "name": "IFCEXTRUDEDAREASOLID",
+      "count": 8
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONCONTEXT",
+      "count": 1
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
+      "count": 1
+    },
+    {
+      "name": "IFCLOCALPLACEMENT",
+      "count": 12
+    },
+    {
+      "name": "IFCORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCOWNERHISTORY",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSON",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSONANDORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCPIPESEGMENT",
+      "count": 1
+    },
+    {
+      "name": "IFCPRODUCTDEFINITIONSHAPE",
+      "count": 8
+    },
+    {
+      "name": "IFCPROJECT",
+      "count": 1
+    },
+    {
+      "name": "IFCPROPERTYSET",
+      "count": 8
+    },
+    {
+      "name": "IFCPROPERTYSINGLEVALUE",
+      "count": 16
+    },
+    {
+      "name": "IFCQUANTITYLENGTH",
+      "count": 12
+    },
+    {
+      "name": "IFCQUANTITYVOLUME",
+      "count": 3
+    },
+    {
+      "name": "IFCRECTANGLEPROFILEDEF",
+      "count": 6
+    },
+    {
+      "name": "IFCRELAGGREGATES",
+      "count": 3
+    },
+    {
+      "name": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "count": 2
+    },
+    {
+      "name": "IFCRELDEFINESBYPROPERTIES",
+      "count": 16
+    },
+    {
+      "name": "IFCSHAPEREPRESENTATION",
+      "count": 8
+    },
+    {
+      "name": "IFCSITE",
+      "count": 1
+    },
+    {
+      "name": "IFCSIUNIT",
+      "count": 4
+    },
+    {
+      "name": "IFCSTYLEDITEM",
+      "count": 8
+    },
+    {
+      "name": "IFCSURFACESTYLE",
+      "count": 6
+    },
+    {
+      "name": "IFCSURFACESTYLERENDERING",
+      "count": 6
+    },
+    {
+      "name": "IFCUNITASSIGNMENT",
+      "count": 1
+    },
+    {
+      "name": "IFCWALL",
+      "count": 2
+    }
+  ],
+  "geomHash": "5ecbf8544386f594"
+}
