@@ -171,11 +171,12 @@ export function openExportCadDialog(): void {
       </div>
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155">
         <div style="font-weight:600;margin-bottom:4px">3D model → DXF (3D faces)</div>
-        <div style="opacity:.75;margin-bottom:6px">The authored 3D model as 3DFACE triangles on layers by element type (wall, slab, column…), Z up. Uses the units above. DXF only.</div>
+        <div style="opacity:.75;margin-bottom:6px">The authored 3D model as 3DFACE triangles on layers by element type (wall, slab, column…), Z up. Uses the units above. DXF or DWG.</div>
         <label style="margin-right:12px"><input type="checkbox" data-3d-sel> Selected elements only</label>
         <label style="margin-right:12px"><input type="checkbox" data-3d-vis checked> Visible only</label>
         <label style="margin-right:12px" title="Every geometric element of the loaded IFC / Revit models (all of them; the selected/visible filters apply to authored elements only)"><input type="checkbox" data-3d-ifc checked> Include imported IFC models</label>
-        <button data-go3d style="${inp};cursor:pointer">Export 3D model DXF</button>
+        <label style="margin-right:12px">Format <select data-3d-fmt style="${inp}"><option value="dxf">DXF</option><option value="dwg">DWG</option></select></label>
+        <button data-go3d style="${inp};cursor:pointer">Export 3D model</button>
       </div>
       <div data-msg style="min-height:18px;margin-top:12px;font-size:12px;white-space:pre-wrap"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
@@ -199,9 +200,19 @@ export function openExportCadDialog(): void {
         } else if (selOnly) ifcNote = "\nSelected-only applies to authored elements; imported models were not included.";
         const r = meshesToDxf3d(meshes, { units: q<HTMLSelectElement>("[data-units]").value as CadUnits, layerPrefix: q<HTMLInputElement>("[data-prefix]").value.replace(/[^A-Za-z0-9_\-$]/g, "").slice(0, 20) });
         if (!r.faces) { msg.style.color = "#fbbf24"; msg.textContent = "No 3D elements to export." + ifcNote; return; }
-        download("openbimstudio-model-3d.dxf", new TextEncoder().encode(r.dxf), "application/dxf");
+        const asDwg = q<HTMLSelectElement>("[data-3d-fmt]").value === "dwg";
+        let dwgNote = "";
+        if (asDwg) {
+          msg.textContent = "Converting to DWG…";
+          const { exportDxfToDwg, parseWithAcadEngine } = await import("../modules/drawings/acad-engine");
+          const bytes = await exportDxfToDwg(r.dxf);
+          download("openbimstudio-model-3d.dwg", bytes, "application/acad");
+          // Re-read what was written so the message reports what actually survived the conversion.
+          const back = await parseWithAcadEngine(bytes, "openbimstudio-model-3d.dwg").catch(() => null);
+          dwgNote = back ? `\nDWG re-read: ${fmtNumber(back.entityCount)} entities (${back.version}).` : "\nDWG written; it could not be re-read here to verify its contents.";
+        } else download("openbimstudio-model-3d.dxf", new TextEncoder().encode(r.dxf), "application/dxf");
         msg.style.color = "#86efac";
-        msg.textContent = `Exported ${fmtNumber(r.faces)} 3D faces from ${elements} element(s) on ${Object.keys(r.byLayer).length} layer(s).` + (r.skippedDegenerate ? `\n${r.skippedDegenerate} degenerate triangle(s) skipped.` : "") + ifcNote;
+        msg.textContent = `Exported ${fmtNumber(r.faces)} 3D faces from ${elements} element(s) on ${Object.keys(r.byLayer).length} layer(s).` + (r.skippedDegenerate ? `\n${r.skippedDegenerate} degenerate triangle(s) skipped.` : "") + dwgNote + ifcNote;
       } catch (e) { msg.style.color = "#fca5a5"; msg.textContent = "3D export failed: " + (e instanceof Error ? e.message : String(e)); }
       finally { btn.disabled = false; }
     });

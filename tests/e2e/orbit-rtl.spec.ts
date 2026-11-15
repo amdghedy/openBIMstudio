@@ -1061,3 +1061,29 @@ test('SECTION TOOL: a section plane cuts the IFC wall, switching it off restores
   expect(left, 'delete removes planes').toBe(0);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('Export 3D model to DWG: a real DWG is written and re-read with its 3D faces', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await loadWallIfc(page);
+  await page.keyboard.press('Control+p');
+  await page.keyboard.type('Views to CAD');
+  await page.keyboard.press('Enter');
+  const dlg = page.locator('#obs-export-cad');
+  await expect(dlg).toBeVisible({ timeout: 10000 });
+  await dlg.locator('[data-3d-fmt]').selectOption('dwg');
+  const dl = page.waitForEvent('download', { timeout: 90000 });
+  await dlg.locator('[data-go3d]').click();
+  const d = await dl;
+  const bytes = (await import('fs')).readFileSync((await d.path())!);
+  const msg = await dlg.locator('[data-msg]').innerText();
+  console.log('DWG3D ' + JSON.stringify({ name: d.suggestedFilename(), size: bytes.length, magic: bytes.subarray(0, 6).toString('latin1'), msg }));
+  expect(d.suggestedFilename()).toBe('openbimstudio-model-3d.dwg');
+  expect(bytes.subarray(0, 4).toString('latin1'), 'DWG magic. ' + msg).toBe('AC10');
+  expect(bytes.length, 'non-trivial DWG. ' + msg).toBeGreaterThan(2000);
+  const m = /DWG re-read: ([\d,.]+) entities/.exec(msg);
+  expect(m, 'DWG re-read reported. ' + msg).toBeTruthy();
+  expect(parseInt(m![1].replace(/[^\d]/g, ''), 10), '3D faces survive the DWG conversion. ' + msg).toBeGreaterThanOrEqual(12);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
