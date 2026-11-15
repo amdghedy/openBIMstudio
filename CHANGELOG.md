@@ -11,6 +11,10 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## [Unreleased]
 
+### Added
+- `docs/USER-GUIDE.ar.md`: Arabic translation of the user guide (English stays authoritative); the English guide gained PDF → DWG and Live IFC link sections. Documentation only; not reviewed by a native-speaking technical editor.
+
+
 ### Fixed
 - Walk mode: IFC stairs no longer block the walker. A knee-height probe taken from lower ground saw the upper risers as walls and held the walker at the third step; wall contacts are now dropped once the walker's feet have risen above where they were measured. Browser test added (five 0.17 m risers to a landing).
 

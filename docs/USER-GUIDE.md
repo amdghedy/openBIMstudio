@@ -211,6 +211,19 @@ Choose **File → Views → CAD (DWG / DXF)…** (the same idea as Revit's Expor
 
 **Not verified:** opening the exported files in AutoCAD, BricsCAD or Revit; exporting very large IFC models; 3D export to DWG (3D is DXF only).
 
+### PDF to DWG (2D CAD)
+
+In the 2D CAD editor choose **PDF → DWG…** (File menu or ribbon), or type PDFTODWG. Vector PDFs (lines, arcs and text from CAD or drawing exports) become editable DWG geometry.
+
+**Tested in a real browser:** a vector PDF converts to a real DWG file. **Not tested:** scanned PDFs (they hold pictures, not lines), multi-page PDFs in the browser, and opening the result in AutoCAD or BricsCAD.
+
+### Live IFC link
+
+Choose **File → Live IFC link…** to write your editable (Native Twin) elements to an IFC file you pick and keep it up to date as you edit. Changes are recorded in the change history, and a conflict prompt appears if the file changed outside the app. It needs a Chromium browser (Chrome or Edge) because it uses the File System Access API. Details: `docs/LIVE-IFC-LINK.md`.
+
+**Tested in a real browser** with a stand-in file picker; the IFC it writes reloads correctly. **Not tested:** the real file picker and disk, a Revit round trip, other IFC viewers.
+
+
 ---
 
 ## 11. Quick reference
@@ -250,6 +263,7 @@ Choose **File → Views → CAD (DWG / DXF)…** (the same idea as Revit's Expor
 
 ## 13. Where to get more detail
 
+- An Arabic translation of this guide is in `docs/USER-GUIDE.ar.md`.
 - `docs/` has a document for each area (navigation, families, export, drawings, plugins and more).
 - `CHANGELOG.md` lists what changed and what was verified.
 - Report problems and ideas at github.com/amdghedy/openBIMstudio/issues.
