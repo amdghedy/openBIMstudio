@@ -12,6 +12,10 @@ file — the project adopted a written changelog at 0.73.0.
 ## [Unreleased]
 
 ### Added
+- Export → **Current 3D view → 2D lines** (hidden lines removed), as DXF or DWG with optional dashed hidden-edge layers. Pure-logic module `src/modules/export/hidden-line.ts` (12 unit assertions on cubes/occluders) and a browser test: an IFC wall seen from the front exports as 5.04 m × 3.03 m of linework. Limits: triangles crossing the camera are dropped; accuracy about one pixel of a 1600-px depth buffer; not compared with a CAD package's own output.
+
+
+### Added
 - Export → 3D model can now write **DWG** as well as DXF. After a DWG export the dialog re-reads the written file and reports the entity count. Browser test: an IFC wall exports to a real AC1009 DWG and all 12 3D faces are found on re-read. Not opened in AutoCAD, BricsCAD or Revit.
 
 
