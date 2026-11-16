@@ -292,6 +292,8 @@
     "test:feature-registry": "node tests/feature-registry.test.cjs",
     "test:review-links": "tsx tests/review-links.test.ts",
     "test:escape-all": "node tests/escape-all.test.cjs",
+    "test:autocad-parity": "node tests/autocad-parity.test.cjs",
+    "test:cad-dim-tools": "node tests/cad-dim-tools.test.cjs",
     "test:spatial-index": "node tests/spatial-index.test.cjs",
     "test:csg-spatial-index": "node tests/csg-spatial-index.test.cjs",
     "test:perf-harness": "node tests/perf-harness.test.cjs",

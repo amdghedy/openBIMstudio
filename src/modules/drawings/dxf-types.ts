@@ -53,7 +53,7 @@ interface DxfEntityBase {
    * tag their constituent LINE/TEXT entities with a shared dimId + role so the
    * dimension can be restyled (DIMSTYLE) and re-measured associatively.
    */
-  meta?: { dimId?: string; role?: "ext" | "dimline" | "arrow" | "text" };
+  meta?: { dimId?: string; role?: "ext" | "dimline" | "arrow" | "text"; hyperlink?: string };
 }
 
 /** Hatch data carried on a closed polyline (`points` is the outer loop). */
