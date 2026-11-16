@@ -178,6 +178,15 @@ let chainStartDir: number | null = null;   // ← direction of last completed se
 /** Corner history for reference-line tracking (close rectangle / perpendicular guides). */
 let chainCorners: THREE.Vector3[] = [];
 let refSnapActive: THREE.Vector3 | null = null;
+/** Reference lines on/off (remembered). */
+const REF_LINES_KEY = "obs-ref-lines";
+let refLinesOn = (() => { try { return localStorage.getItem(REF_LINES_KEY) !== "0"; } catch { return true; } })();
+export function getReferenceTracking() { return refLinesOn; }
+export function setReferenceTracking(v: boolean) {
+  refLinesOn = !!v; refSnapActive = null;
+  try { localStorage.setItem(REF_LINES_KEY, v ? "1" : "0"); } catch { /* */ }
+  try { clearGuides(); } catch { /* */ }
+}
 const REF_SNAP_TOL = 0.35; // metres — attract cursor to axis intersections
 
 let poly: THREE.Vector3[] = [];
@@ -3316,6 +3325,7 @@ function applyReferenceTracking(
   p: THREE.Vector3,
   base: THREE.Vector3 | null,
 ): THREE.Vector3 {
+  if (!refLinesOn) { refSnapActive = null; return p; }
   try {
     const origins: THREE.Vector3[] = [];
     const seen = new Set<string>();
@@ -4538,7 +4548,7 @@ function updateAlignmentGuides(start: THREE.Vector3, end: THREE.Vector3) {
   // Through each corner: long X and Z dashed tracks so the user sees where the
   // next segment should stop to stay perpendicular to the first wall.
   const SPAN = 200;
-  const cornerOrigins = chainCorners.slice(-8);
+  const cornerOrigins = refLinesOn ? chainCorners.slice(-8) : [];
   try {
     for (const o of cornerOrigins) {
       if (!o || !Number.isFinite(o.x) || !Number.isFinite(o.z)) continue;
@@ -4555,7 +4565,7 @@ function updateAlignmentGuides(start: THREE.Vector3, end: THREE.Vector3) {
     }
   } catch { /* guide paint optional */ }
   // Closing-point marker: intersection of first-corner axes with current cursor axes
-  if (chainCorners.length >= 1) {
+  if (refLinesOn && chainCorners.length >= 1) {
     const o0 = chainCorners[0];
     const closeA = new THREE.Vector3(o0.x, y, end.z);
     const closeB = new THREE.Vector3(end.x, y, o0.z);
@@ -7635,6 +7645,9 @@ export function setupAuthoring() {
     },
   };
   (api as any).getGroup = () => group;
+  (api as any).getReferenceTracking = getReferenceTracking;
+  (api as any).setReferenceTracking = setReferenceTracking;
+  (api as any).getRefSnap = () => (refSnapActive ? [refSnapActive.x, refSnapActive.z] : null);
   ctx.features.authoring = api;
   register("authoring", api);
   try { (window as any).__obsAuthoring = api; } catch { /* */ }

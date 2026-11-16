@@ -33,7 +33,7 @@ import { toggleWalkMode, isWalkModeEnabled, getWalkOptions, setWalkOption, toggl
 import { toggleSavedViewsPanel, isSavedViewsPanelVisible } from "./saved-views";
 import {
   setAuthoringTool, getActiveTool,
-  deleteSelectedElement, clearAllElements,
+  deleteSelectedElement, clearAllElements, getReferenceTracking, setReferenceTracking,
 } from "./authoring";
 import {
   runElementClashDetection, clearClash,
@@ -449,6 +449,7 @@ function bootstrapCommands(): void {
   registerCommand({ id: "ifc.to-frag", label: "Convert IFC → FRAG (download)", category: "Insert", run: () => { void import("./ifc-to-frag").then((m) => m.showIfcToFragPanel()); } });
   registerCommand({ id: "cad.query", label: "Query linked drawings (layer / type / name)", category: "Insert", run: () => { void import("./cad-query-panel").then((m) => m.showCadQueryPanel()); } });
   registerCommand({ id: "file.export-frag", label: "Export model(s) as ThatOpen FRAG (.frag)", category: "File", run: () => { void import("../modules/export/frag").then((m) => m.exportFragFromMenu()); } });
+  registerCommand({ id: "tools.refLines", label: `Reference lines while modelling (guides + snap to close square) — ${getReferenceTracking() ? "on" : "off"}`, category: "Tools", run: () => setReferenceTracking(!getReferenceTracking()) });
   registerCommand({ id: "tools.refPerson", label: `${isReferencePersonShown() ? "Hide" : "Show"} reference person 1.7 m (M)`, category: "Tools", run: () => { void toggleReferencePerson(); } });
   registerCommand({ id: "tools.walk.holdLevel", label: `Walk: hold my height (do not drop to the lowest level) — ${getWalkOptions().holdLevel ? "on" : "off"}`, category: "Tools", run: () => setWalkOption("holdLevel", !getWalkOptions().holdLevel) });
   registerCommand({ id: "tools.walk.keepRaise", label: `Walk: keep raised height (Space up, C down) — ${getWalkOptions().keepRaise ? "on" : "off"}`, category: "Tools", run: () => setWalkOption("keepRaise", !getWalkOptions().keepRaise) });

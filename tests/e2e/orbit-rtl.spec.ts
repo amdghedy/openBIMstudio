@@ -1349,3 +1349,45 @@ test('REFERENCE PERSON (M): a 1.7 m figure can be placed in the view and in Walk
   await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('reference lines: the 3rd wall of a room closes square to the 1st, guides show, and the switch turns it off', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await page.waitForFunction(() => !!(window as any).__obsAuthoring && !!(window as any).__OBS_CTX__?.world?.camera?.three, null, { timeout: 30000 });
+  // Look straight down so screen offsets map cleanly onto the ground.
+  await page.evaluate(() => {
+    const c = (window as any).__OBS_CTX__.world; const cam = c.camera.three;
+    cam.position.set(3, 22, 2.001); cam.lookAt(3, 0, 2); cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
+    try { c.camera.controls.setLookAt(3, 22, 2.001, 3, 0, 2, false); } catch { /* */ }
+  });
+  const scr = (x: number, z: number) => page.evaluate(([x, z]) => {
+    const cam = (window as any).__OBS_CTX__.world.camera.three; const v = new cam.position.constructor(x, 0, z).project(cam);
+    const r = document.querySelector('canvas')!.getBoundingClientRect();
+    return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
+  }, [x, z]);
+  await page.evaluate(() => (window as any).__obsAuthoring.setAuthoringTool('wall'));
+  // A(0,0) -> B(6,0) -> C(6,4): the room's first two walls.
+  for (const [x, z] of [[0, 0], [6, 0], [6, 4]]) { const p = await scr(x, z); await page.mouse.move(p.x, p.y); await page.mouse.click(p.x, p.y); }
+  // Cursor a few pixels off "above A" while level with C: should be pulled to (0, 4) with two guide lines.
+  const near = await scr(0, 4);
+  await page.mouse.move(near.x + 40, near.y + 2); await page.mouse.move(near.x + 6, near.y + 4);
+  await page.waitForTimeout(400);
+  const hit = await page.evaluate(() => (window as any).__obsAuthoring.getRefSnap());
+  expect(hit, 'tracking should engage').not.toBeNull();
+  expect(Math.abs(hit[0]), 'x lined up with the 1st wall start').toBeLessThan(1e-6);
+  expect(Math.abs(hit[1] - 4), 'z level with the 3rd corner').toBeLessThan(1e-6);
+  const guides = await page.evaluate(() => (window as any).__OBS_CTX__.world.scene.three.getObjectByName('obs-alignment-guides')?.children.length ?? 0);
+  expect(guides, 'dashed guide lines are drawn').toBeGreaterThan(3);
+  await page.mouse.click(near.x + 6, near.y + 4);
+  const end = await page.evaluate(() => { const w = (window as any).__obsAuthoring.getElements().filter((e: any) => e.type === 'wall'); return w[w.length - 1].params.end; });
+  expect(Math.abs(end[0]), '3rd wall ends exactly above the 1st wall start').toBeLessThan(1e-6);
+  // Toggle off: no pull, no hit.
+  await page.evaluate(() => (window as any).__obsAuthoring.setReferenceTracking(false));
+  await page.mouse.move(near.x + 40, near.y + 2); await page.mouse.move(near.x + 6, near.y + 4);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => (window as any).__obsAuthoring.getRefSnap())).toBeNull();
+  await page.evaluate(() => (window as any).__obsAuthoring.setReferenceTracking(true));
+  expect(errors, errors.join('\n')).toEqual([]);
+});
