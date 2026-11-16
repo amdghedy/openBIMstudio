@@ -18,13 +18,14 @@ import {
 } from "./visibility-bridge";
 import { setupRoomTool, startRoomTool, placeRoomAt, placeRoomsAutomatically, refreshRoomOverlay } from "./room-tool";
 import { setupFloorFromWalls, createFloorsFromWalls } from "./floor-from-walls";
+import { setupRoofCeilingFromWalls, createRoofsFromWalls, createCeilingsFromWalls } from "./roof-ceiling-from-walls";
 import { setupM2Register } from "./m2-register";
 import { installM2Redirects, startM2Tool, ceilingsFromRooms, createM2Element } from "./m2-tools";
 import { setupM3, togglePlanOption, refreshViews } from "./m3-register";
 
 type Any = Record<string, any>;
 export interface StepStatus { name: string; ok: boolean; detail: string }
-export const BIM_GAPS_VERSION = "1.2.0-m3";
+export const BIM_GAPS_VERSION = "1.3.0-enclosure";
 const status: StepStatus[] = [];
 
 const authoring = (): Any | null => ((ctx.features as Any).authoring ?? null);
@@ -87,6 +88,7 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
   await step("visibility-bridge", setupVisibilityBridge);
   await step("room-tool", setupRoomTool);
   await step("floor-from-walls", setupFloorFromWalls);
+  await step("roof-ceiling-from-walls", setupRoofCeilingFromWalls);
   await step("m2-elements", () => {
     const r = setupM2Register();
     installM2Redirects();
@@ -100,6 +102,8 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
       ["rg-room-place", "Room: place (click inside walls)", "Rooms", startRoomTool],
       ["rg-room-auto", "Room: place rooms automatically", "Rooms", () => placeRoomsAutomatically()],
       ["rg-floor-walls", "Floor: create from wall loops", "Architecture", () => void createFloorsFromWalls()],
+      ["rg-roof-walls", "Roof: create from wall loops", "Architecture", () => void createRoofsFromWalls()],
+      ["rg-ceiling-walls", "Ceiling: create from wall loops", "Architecture", () => void createCeilingsFromWalls()],
       ["rg-stairs", "Stairs: straight run", "Architecture", () => startM2Tool("stairs", "straight")],
       ["rg-stairs-l", "Stairs: L-shape (quarter turn)", "Architecture", () => startM2Tool("stairs", "L")],
       ["rg-stairs-u", "Stairs: U-shape (half turn)", "Architecture", () => startM2Tool("stairs", "U")],

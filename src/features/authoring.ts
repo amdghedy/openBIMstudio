@@ -327,6 +327,9 @@ export function markAuthoringDirty(): void {
 const DEFAULTS: Record<string, { height: number; thickness: number; width?: number; depth?: number; rotation?: number }> = {
   wall: { height: 3.0, thickness: 0.255 },
   slab: { height: 0.2, thickness: 0.2 },
+  roof: { height: 0.25, thickness: 0.25 },
+  ceiling: { height: 0.12, thickness: 0.12 },
+  terrain: { height: 0.05, thickness: 0.05 },
   column: { height: 3.0, thickness: 0.3 },
   beam: { height: 0.5, thickness: 0.25 },
   brace: { height: 1.5, thickness: 0.15 },
