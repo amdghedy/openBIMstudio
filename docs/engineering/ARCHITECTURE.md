@@ -176,6 +176,7 @@ Site components/topography plus daylight, energy and generative-design analysis.
     "purpose": "Native-model validation and twin reconstruction, families, object identity, material/property definitions and classification.",
     "directories": [
       "bim-gaps",
+      "classification",
       "families",
       "ifc-semantics",
       "material-assignment",

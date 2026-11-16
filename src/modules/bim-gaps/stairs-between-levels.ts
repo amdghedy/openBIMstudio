@@ -137,31 +137,11 @@ export function placeRailingsOnStair(stairId?: string): number {
 }
 
 export function setupStairsBetweenLevels(): void {
-  (window as Any).__obsStairsBetweenLevels = {
+  // Published as a service key, not a window global: bim-gaps-boot imports the
+  // functions directly and registers the command-palette entries itself.
+  (ctx.features as Any).stairsBetweenLevels = {
     placeStairsBetweenLevels,
     placeRailingsOnStair,
   };
-  try {
-    window.dispatchEvent(
-      new CustomEvent("obs-register-command", {
-        detail: {
-          id: "stairs-between-levels",
-          label: "Stairs between levels",
-          category: "Architecture",
-          run: () => placeStairsBetweenLevels(),
-        },
-      }),
-    );
-    window.dispatchEvent(
-      new CustomEvent("obs-register-command", {
-        detail: {
-          id: "rail-on-stair",
-          label: "Railings on stair",
-          category: "Architecture",
-          run: () => placeRailingsOnStair(),
-        },
-      }),
-    );
-  } catch { /* */ }
   console.log("[stairs-between-levels] STAIRSBETWEENLEVELS / RAILONSTAIR ready");
 }
