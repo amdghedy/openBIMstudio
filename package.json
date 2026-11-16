@@ -138,6 +138,7 @@
     "test:model-to-dxf3d": "node tests/model-to-dxf3d.test.cjs",
     "test:hidden-line": "node tests/hidden-line.test.cjs",
     "test:no-gpl-shipped": "node tests/no-gpl-shipped.test.cjs",
+    "test:acad-extra-entities": "node tests/acad-extra-entities.test.cjs",
     "test:export-cad-dwg": "node tests/export-cad-dwg.test.cjs",
     "test:live-ifc-link": "node tests/live-ifc-link.test.cjs",
     "test:pdf-to-dwg": "node tests/pdf-to-dwg.test.cjs",

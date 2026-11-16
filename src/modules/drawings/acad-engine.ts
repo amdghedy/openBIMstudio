@@ -35,6 +35,7 @@ import {
   type InsertXform,
 } from "./dxf-geometry";
 import { cleanText, mtextFont, mtextWidthFactor, mtextExtras } from "./mtext";
+import { convertMleader, convertTable, convertMline, convertImage, convertTolerance } from "./acad-extra-entities";
 
 type Any = Record<string, any>;
 
@@ -385,6 +386,8 @@ interface Ctx {
   skip: (t: string) => void;
 }
 
+const extraCtx = (cx: Ctx) => ({ pt, clean: cleanText, deg: DEG, note: cx.skip });
+
 /** Convert one engine entity into platform entities (may expand blocks). */
 function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | null): DxfEntity[] {
   if (!e || typeof e !== "object") return [];
@@ -565,6 +568,16 @@ function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | nul
       return convertInsert(e, c, cx, depth, insertLayer);
     case "DIMENSION":
       return convertDimension(e, c, cx, depth, insertLayer);
+    case "MLEADER":
+      return convertMleader(e, c, extraCtx(cx));
+    case "TABLE":
+      return convertTable(e, c, extraCtx(cx));
+    case "MLINE":
+      return convertMline(e, c, extraCtx(cx));
+    case "IMAGE":
+      return convertImage(e, c, extraCtx(cx));
+    case "TOLERANCE":
+      return convertTolerance(e, c, extraCtx(cx));
     case "ATTRIB_ATTACHED":
       return [];
     default:

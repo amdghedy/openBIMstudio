@@ -9,7 +9,7 @@ use acadrust::entities::hatch::{BoundaryEdge, BoundaryPath, Hatch, HatchPatternL
 use acadrust::entities::polyline::{Polyline, Polyline2D};
 use acadrust::entities::{
     EntityCommon, EntityType, LwPolyline,
-    MText, Spline, Text,
+    MText, MultiLeader, Spline, Table, Text,
 };
 use acadrust::tables::{BlockRecord, DimStyle, Layer, LineType, TextStyle};
 use acadrust::types::{Color, LineWeight, Transparency};
@@ -445,6 +445,12 @@ fn write_entity(w: &mut W, e: &EntityType) {
             w.kv_point("position", &x.start_point);
             w.kv_num("scale", x.scale_factor);
             w.kv_int("justification", x.justification as i64);
+            w.begin_arr("vertices");
+            for v in &x.vertices {
+                w.sep();
+                w.point(&v.position);
+            }
+            w.end_arr();
             w.end_obj();
         }
         EntityType::Mesh(x) => {
@@ -466,6 +472,12 @@ fn write_entity(w: &mut W, e: &EntityType) {
             w.kv_point("position", &x.insertion_point);
             w.kv_num("width", x.width());
             w.kv_num("height", x.height());
+            w.kv_point("u", &x.u_vector);
+            w.kv_point("v", &x.v_vector);
+            w.key("size");
+            w.point2(x.size.x, x.size.y);
+            w.awaiting_value = false;
+            w.kv_str("file", &x.file_path);
             w.end_obj();
         }
         EntityType::Shape(x) => {
@@ -504,6 +516,8 @@ fn write_entity(w: &mut W, e: &EntityType) {
             write_common(w, &x.common);
             w.end_obj();
         }
+        EntityType::MultiLeader(x) => write_mleader(w, x),
+        EntityType::Table(x) => write_table(w, x),
         EntityType::Unknown(x) => {
             w.begin_obj();
             w.kv_str("type", "UNKNOWN");
@@ -521,6 +535,92 @@ fn write_entity(w: &mut W, e: &EntityType) {
             w.end_obj();
         }
     }
+}
+
+/// MLEADER: text plus every leader line (arrow-to-landing polyline) of every root.
+fn write_mleader(w: &mut W, x: &MultiLeader) {
+    let c = &x.context;
+    w.begin_obj();
+    w.kv_str("type", "MLEADER");
+    write_common(w, &x.common);
+    w.kv_str("text", &c.text_string);
+    w.kv_point("textLocation", &c.text_location);
+    w.kv_num("textHeight", c.text_height);
+    w.kv_num("textRotation", c.text_rotation);
+    w.kv_num("textWidth", c.text_width);
+    w.kv_point("contentBase", &c.content_base_point);
+    w.begin_arr("lines");
+    for root in &c.leader_roots {
+        for ln in &root.lines {
+            if ln.points.len() < 2 {
+                continue;
+            }
+            w.sep();
+            w.out.push('[');
+            for (i, p) in ln.points.iter().enumerate() {
+                if i > 0 {
+                    w.out.push(',');
+                }
+                w.point(p);
+            }
+            w.out.push(']');
+            w.awaiting_value = false;
+        }
+    }
+    w.end_arr();
+    w.end_obj();
+}
+
+/// TABLE: insertion, direction, column widths, row heights and the text of every cell.
+fn write_table(w: &mut W, x: &Table) {
+    w.begin_obj();
+    w.kv_str("type", "TABLE");
+    write_common(w, &x.common);
+    w.kv_point("position", &x.insertion_point);
+    w.kv_point("dir", &x.horizontal_direction);
+    w.kv_str("block", &x.block_name);
+    w.begin_arr("colWidths");
+    for c in &x.columns {
+        w.sep();
+        w.out.push_str(&num(c.width));
+        w.awaiting_value = false;
+    }
+    w.end_arr();
+    w.begin_arr("rowHeights");
+    for r in &x.rows {
+        w.sep();
+        w.out.push_str(&num(r.height));
+        w.awaiting_value = false;
+    }
+    w.end_arr();
+    let mut text_height = 0.0_f64;
+    w.begin_arr("cells");
+    for r in &x.rows {
+        w.sep();
+        w.out.push('[');
+        for (i, cell) in r.cells.iter().enumerate() {
+            if i > 0 {
+                w.out.push(',');
+            }
+            let mut t: &str = "";
+            if let Some(c0) = cell.contents.first() {
+                t = if !c0.value.formatted_value.is_empty() {
+                    c0.value.formatted_value.as_str()
+                } else {
+                    c0.value.text.as_str()
+                };
+                if text_height == 0.0 && c0.text_height > 0.0 {
+                    text_height = c0.text_height;
+                }
+            }
+            w.str_val(t);
+        }
+        w.out.push(']');
+        w.awaiting_value = false;
+    }
+    w.end_arr();
+    w.kv_num("textHeight", text_height);
+    w.end_obj();
 }
 
 fn write_lwpolyline(w: &mut W, x: &LwPolyline) {
