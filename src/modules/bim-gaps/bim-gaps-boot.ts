@@ -20,13 +20,14 @@ import { setupRoomTool, startRoomTool, placeRoomAt, placeRoomsAutomatically, ref
 import { buildIfcClassifications } from "../classification";
 import { setupFloorFromWalls, createFloorsFromWalls } from "./floor-from-walls";
 import { setupRoofCeilingFromWalls, createRoofsFromWalls, createCeilingsFromWalls } from "./roof-ceiling-from-walls";
+import { setupStairsBetweenLevels, placeStairsBetweenLevels, placeRailingsOnStair } from "./stairs-between-levels";
 import { setupM2Register } from "./m2-register";
 import { installM2Redirects, startM2Tool, ceilingsFromRooms, createM2Element } from "./m2-tools";
 import { setupM3, togglePlanOption, refreshViews } from "./m3-register";
 
 type Any = Record<string, any>;
 export interface StepStatus { name: string; ok: boolean; detail: string }
-export const BIM_GAPS_VERSION = "1.3.0-enclosure";
+export const BIM_GAPS_VERSION = "1.4.0-circulation";
 const status: StepStatus[] = [];
 
 const authoring = (): Any | null => ((ctx.features as Any).authoring ?? null);
@@ -92,6 +93,7 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
   await step("room-tool", setupRoomTool);
   await step("floor-from-walls", setupFloorFromWalls);
   await step("roof-ceiling-from-walls", setupRoofCeilingFromWalls);
+  await step("stairs-between-levels", setupStairsBetweenLevels);
   await step("m2-elements", () => {
     const r = setupM2Register();
     installM2Redirects();
@@ -107,6 +109,8 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
       ["rg-floor-walls", "Floor: create from wall loops", "Architecture", () => void createFloorsFromWalls()],
       ["rg-roof-walls", "Roof: create from wall loops", "Architecture", () => void createRoofsFromWalls()],
       ["rg-ceiling-walls", "Ceiling: create from wall loops", "Architecture", () => void createCeilingsFromWalls()],
+      ["rg-stairs-levels", "Stairs: between levels (auto)", "Architecture", () => placeStairsBetweenLevels()],
+      ["rg-rail-stair", "Railing: on last stair", "Architecture", () => placeRailingsOnStair()],
       ["rg-stairs", "Stairs: straight run", "Architecture", () => startM2Tool("stairs", "straight")],
       ["rg-stairs-l", "Stairs: L-shape (quarter turn)", "Architecture", () => startM2Tool("stairs", "L")],
       ["rg-stairs-u", "Stairs: U-shape (half turn)", "Architecture", () => startM2Tool("stairs", "U")],

@@ -3534,11 +3534,26 @@ async function createElement(
       ...(baseDefaults.width !== undefined ? { width: baseDefaults.width } : {}),
       ...userDefaults.params,
       ...params,
-      ...((type === "wall" || type === "column") && activeLevelId
+      ...((type === "wall" || type === "column" || type === "curtain-wall") && activeLevelId
         ? (() => {
             const lv = levels.find((l) => l.id === activeLevelId);
             const elev = Number(params?.elevation ?? level) || 0;
-            return lv ? { baseLevelId: lv.id, baseOffset: +(elev - lv.elevation).toFixed(6) } : {};
+            if (!lv) return {};
+            const sorted = levels.slice().sort((a, b) => a.elevation - b.elevation);
+            const idx = sorted.findIndex((l) => l.id === lv.id);
+            const above = idx >= 0 ? sorted[idx + 1] : undefined;
+            const out: Record<string, unknown> = {
+              baseLevelId: lv.id,
+              baseOffset: +(elev - lv.elevation).toFixed(6),
+            };
+            // Multi-storey gap: walls span base → next level unless height was explicit
+            if (above && params?.height == null && userDefaults.params?.height == null) {
+              const span = Math.max(0.5, above.elevation - elev);
+              out.height = +span.toFixed(6);
+              out.topLevelId = above.id;
+              out.topOffset = 0;
+            }
+            return out;
           })()
         : {}),
     },
