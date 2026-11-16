@@ -316,7 +316,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     evidence: ["tests/", "tests/schedule-totals.test.cjs", "tests/openings-chain.test.cjs", "Rule-engine unit suite tests/qto-rules.test.cjs — 26 assertions", "real browser: Door/Window/Wall schedules return 1 row for authored geometry and the wall take-off equals the cut-mesh volume", "real browser (v54 re-run): Wall Schedule over 4 authored walls → Length/Area/Volume per row, Volume = L×H×t exact (30.420 × 3 × 0.255 ≈ 23.271 m³), Area = both faces, grand total row rendered; Snapshot/Diff and 'Save the schedule first' guardrail live", "browser chain spec (document-chain.spec.ts, production bundle): out-of-box default is now the all-elements Quantity Takeoff (tpl-qto) — a single authored wall renders Wall 001 with Length/Area/Volume (84.683 m / 508.099 m² / 64.783 m³) on FIRST open, where it previously fell back to the Door Schedule and showed '0 rows · 0 authored'; after inserting a door + window the panel regenerates on reopen (authored-count staleness trigger) and the wall recuts to 63.872 m³ — 0.911 m³ of real geometry removed", "5D QTO rules engine (src/modules/cost/qto-rules.ts): 12 built-in work-item rules (concrete per class net of openings, wall formwork = both faces, paint +5% waste, rebar at a generic 100 kg/m³ → kg, door/window counts, centreline length) that FILTER takeoff rows, DERIVE quantities through the same safe AST formula compiler schedules use (no eval), apply waste factors, roll up by classification code and price against the rate book by cost CODE with strict unit matching — unit mismatch is an error, never silently-wrong money; one broken rule lands in run.errors and cannot abort the batch", "Rule editor UI (cost panel → QTO Rules tab): create/edit/delete custom rules and copy built-ins as starting points; 10-field form (name, formula with live validation, unit, waste %, classification, source, match/exclude tokens, level filter, cost code, description) validated by the pure normalizeQtoRuleInput — every problem reported at once, invalid rules never reach localStorage; draft state survives panel re-renders; takeoff rows now carry height/thickness/width dims and the level name, so rule formulas can reference Height/Thickness/Width (0 where the type or IFC has none — never estimated) and filters can pin a rule to level names"],
     limitations: [
       "5D rules v2: formulas see the base quantities plus Height/Thickness/Width dims and filters pin match/exclude tokens, source and level names — but per-property filters (pset values, fire rating, material layers) are still not exposed to rules, and IFC rows carry no dims (dim-based rules evaluate them as 0)",
-      "Rebar built-in uses a generic 100 kg/m³ ratio and classification codes are a fixed UniFormat-style string — no Uniclass/OmniClass mapping tables; unit-price escalation, per-level cost totals and cost-essay download formats (CostX etc.) are absent",
+      "Rebar built-in uses a generic 100 kg/m³ ratio and rule classification strings stay free text — published systems (UniFormat II / Uniclass 2015 EF / OmniClass Table 21) live in the classification-systems feature and their codes are offered in the rule editor datalist, but element assignments do not yet drive rule roll-up; unit-price escalation, per-level cost totals and cost-essay download formats (CostX etc.) are absent",
       "Wall volume/area now deducts hosted door/window openings (matches the cut 3D mesh); curtain/arc-wall take-offs stay chord-based approximations",
       "Hosted door/window rows show 0 for the all-elements take-off's Length/Area/Volume columns (host geometry quantities are carried by the wall row); dedicated Door/Window templates still expose width/height",
     ],
@@ -355,6 +355,24 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
       "Hard clash ignores contact up to the tolerance (default 5 mm): a wall resting on a slab is 'touching', not a clash",
       "Native (authored) elements are tested from their render meshes; hidden ones are still included",
       "Clashes cannot be guaranteed 100% complete: the report states how many elements were tested and which were not",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "classification-systems",
+    area: "Modeling",
+    status: "limited",
+    source: ["src/modules/classification/index.ts", "src/features/property-palette.ts", "src/modules/bim-gaps/bim-gaps-boot.ts", "src/features/cost-panel.ts"],
+    evidence: [
+      "tests/classification.test.cjs",
+      "tests/ifc.test.cjs",
+      "Seed tables are verified starter subsets, not invented: UniFormat II ships the full Level 1-3 list from NISTIR 6389 (Charette & Marshall, NIST 1999, implementing ASTM E1557) including the Building Sitework chart — 108 codes (7 groups, 22 level-2, 79 elements, e.g. B2010 Exterior Walls, C1010 Partitions, A1010 Standard Foundations, G2030 Pedestrian Paving); Uniclass 2015 table EF ships a 35-code subset checked against the published NBS table (EF_25_10_25 External walls, EF_25_30_97 Windows, EF_30_20_93 Upper floors, EF_35_10_40 Internal stairs) with the buildingsmart identifier URI; OmniClass Table 21 ships an 11-code verified subset (21-02 20 10 Exterior Walls, 21-01 10 10 10 Wall Foundations)",
+      "ifc.test.cjs locks the export contract: assignments render as IfcClassification (7 attrs IFC4 / 4 attrs IFC2X3) + IfcClassificationReference + IfcRelAssociatesClassification, non-exported classified elements land in stats.skipped, and no option means zero classification entities",
+    ],
+    limitations: [
+      "Bundled tables are starter subsets — full Uniclass (all 12 tables) and OmniClass (all 15 tables) editions are not redistributed; importCodesFromCsv extends the built-in systems from 'Code,Title' rows at runtime with a 2000-code-per-system cap",
+      "One classification code per (element, system): assignments are per element instance with no type-level inheritance and no multi-code assignment within one system",
+      "Assignments travel to IFC export and are visible in the property palette, but schedules and the QTO rules engine still group by their own free-text rule/category strings — they do not yet resolve element classification codes",
     ],
     affirmedIn: APP_VERSION,
   },

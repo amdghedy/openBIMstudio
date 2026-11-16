@@ -17,6 +17,7 @@ import {
   promptAssignPhase, promptAssignDesignOption, tagSelection, getSelectedKeys, applyAuthored,
 } from "./visibility-bridge";
 import { setupRoomTool, startRoomTool, placeRoomAt, placeRoomsAutomatically, refreshRoomOverlay } from "./room-tool";
+import { buildIfcClassifications } from "../classification";
 import { setupFloorFromWalls, createFloorsFromWalls } from "./floor-from-walls";
 import { setupRoofCeilingFromWalls, createRoofsFromWalls, createCeilingsFromWalls } from "./roof-ceiling-from-walls";
 import { setupM2Register } from "./m2-register";
@@ -42,11 +43,13 @@ export async function buildModelIfc(schema: IfcSchema = "IFC4") {
     holes: (r.properties?.holes as Array<Array<{ x: number; z: number }>> | undefined) ?? [],
     height: r.height, area: r.area, department: r.department,
   }));
+  const elements = a.getElements?.() ?? [];
   const opts: IfcExportOptions = {
     schema, projectName: name, projectId: project?.id, levels: a.getLevels?.() ?? [], spaces,
+    classifications: buildIfcClassifications(elements),
     fileName: `${name.replace(/[^\w.-]+/g, "_")}_${schema}.ifc`,
   };
-  return { opts, ...exportAuthoredToIfc(a.getElements?.() ?? [], opts) };
+  return { opts, ...exportAuthoredToIfc(elements, opts) };
 }
 
 /** Export the authored model to an .ifc download. */

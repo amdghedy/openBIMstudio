@@ -10,6 +10,7 @@
  * `dockable.ts` controller. Position and size persist per panel ID.
  */
 import { ctx } from "../core/context";
+import * as classificationModule from "../modules/classification";
 import {
   getActiveTool,
   getSelectedIds,
@@ -985,6 +986,12 @@ function render() {
     try { body.appendChild(makeWallTypeIdentityBlock(element)); }
     catch (err) { console.warn("[property-palette] wall type identity failed", err); }
   }
+
+  // Classification — UniFormat II / Uniclass 2015 EF / OmniClass Table 21
+  if (element) {
+    try { body.appendChild(makeClassificationBlock(element)); }
+    catch (err) { console.warn("[property-palette] classification block failed", err); }
+  }
 }
 
 /** Element types that carry a BIM-style "Base Constraint" (level). */
@@ -1481,9 +1488,139 @@ function installPaletteTheme(): void {
   ].join("\n");
   document.head.appendChild(style);
 }
+/**
+ * Classification — assign published codes (UniFormat II / Uniclass 2015 EF /
+ * OmniClass Table 21) to the selected element, one code per system. Codes are
+ * validated against the module's tables, persist with the project and are
+ * emitted into IFC export as IfcClassificationReference.
+ */
+function makeClassificationBlock(element: AuthoredElement): HTMLElement {
+  const { listSystems, setAssignment, getElementAssignments } = classificationModule;
+
+  const block = document.createElement("div");
+  block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
+
+  const headerRow = document.createElement("div");
+  headerRow.style.cssText =
+    "display:flex;align-items:center;gap:6px;padding:7px 12px;" +
+    "background:var(--bg-elevated,#181a23);user-select:none";
+  const caret = document.createElement("span");
+  caret.textContent = "▾";
+  caret.style.cssText = "width:10px;font-size:9px;color:var(--text-tertiary,#6b7280)";
+  const title = document.createElement("span");
+  title.textContent = "Classification";
+  title.style.cssText = "font-weight:600;font-size:11.5px;letter-spacing:.2px";
+  headerRow.append(caret, title);
+
+  const list = document.createElement("div");
+  list.style.cssText = "padding:6px 12px 10px;display:grid;gap:8px";
+
+  const INP =
+    "width:100%;box-sizing:border-box;padding:4px 6px;background:var(--bg-inset,#0e1017);" +
+    "border:1px solid var(--border-default,#2a2e3a);border-radius:4px;" +
+    "color:var(--text-primary,#e8eaf0);font:12px system-ui";
+  const BTN =
+    "padding:4px 8px;border:1px solid var(--border-default,#2a2e3a);border-radius:4px;" +
+    "background:var(--bg-elevated,#181a23);color:var(--text-primary,#e8eaf0);" +
+    "font:11px system-ui;cursor:pointer;white-space:nowrap";
+
+  const render = () => {
+    list.innerHTML = "";
+    const assigned = new Map(
+      getElementAssignments(element.id).map((a) => [a.systemId, a.code] as const),
+    );
+
+    for (const sys of listSystems()) {
+      const sysBox = document.createElement("div");
+      sysBox.style.cssText = "display:grid;gap:4px";
+
+      const top = document.createElement("div");
+      top.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:6px;align-items:baseline";
+      const name = document.createElement("span");
+      name.textContent = sys.name;
+      name.style.cssText = "font-size:11px;color:var(--text-secondary,#a0a6b5)";
+      const cur = assigned.get(sys.id);
+      const value = document.createElement("span");
+      const hit = cur ? sys.codes.find((c) => c.code === cur) : null;
+      value.textContent = hit ? `${hit.code} — ${hit.title}` : "Not assigned";
+      value.style.cssText =
+        "font-size:10.5px;text-align:right;" +
+        (hit ? "color:#7dd3fc" : "color:var(--text-tertiary,#6b7280)");
+      top.append(name, value);
+      sysBox.appendChild(top);
+
+      const pick = document.createElement("div");
+      pick.style.cssText = "display:grid;grid-template-columns:1fr auto auto;gap:4px";
+      const dlId = `obs-classif-dl-${sys.id}`;
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.value = cur ?? "";
+      inp.placeholder = `search ${sys.codes.length} codes…`;
+      inp.style.cssText = INP;
+      inp.setAttribute("list", dlId);
+      const dl = document.createElement("datalist");
+      dl.id = dlId;
+      for (const c of sys.codes) {
+        const opt = document.createElement("option");
+        opt.value = c.code;
+        opt.label = `${c.title} (L${c.level})`;
+        dl.appendChild(opt);
+      }
+      const setBtn = document.createElement("button");
+      setBtn.textContent = "Set";
+      setBtn.style.cssText = BTN;
+      const rmBtn = document.createElement("button");
+      rmBtn.textContent = "×";
+      rmBtn.title = "Remove this assignment";
+      rmBtn.style.cssText = BTN;
+      const err = document.createElement("div");
+      err.style.cssText = "font-size:10px;color:var(--obs-pp-warn-fg,#fca5a5);display:none";
+
+      setBtn.onclick = () => {
+        const r = setAssignment(element.id, sys.id, inp.value);
+        if (!r.ok) {
+          err.textContent = r.reason ?? "Assignment rejected";
+          err.style.display = "block";
+          return;
+        }
+        err.style.display = "none";
+        render();
+      };
+      rmBtn.onclick = () => {
+        setAssignment(element.id, sys.id, null);
+        render();
+      };
+
+      pick.append(inp, setBtn, rmBtn, dl);
+      sysBox.append(pick, err);
+      list.appendChild(sysBox);
+    }
+
+    const hint = document.createElement("div");
+    hint.textContent = "One code per system · validated against the table · exported to IFC as IfcClassificationReference";
+    hint.style.cssText = "font-size:9.5px;color:var(--text-tertiary,#6b7280)";
+    list.appendChild(hint);
+  };
+  render();
+
+  block.append(headerRow, list);
+  return block;
+}
+
 export function setupPropertyPalette(): void {
   setLevelsProvider(() => ((ctx.features as any).authoring?.getLevels?.() ?? []) as any);
   installPaletteTheme();
+  // Classification service — assign published classification codes to the
+  // selected element (UniFormat II / Uniclass 2015 EF / OmniClass Table 21);
+  // assignments travel with the model into IFC export.
+  try {
+    const { listSystems, setAssignment, getElementAssignments, searchCodes, importCodesFromCsv, buildIfcClassifications } =
+      classificationModule;
+    (ctx.features as any).classification = {
+      listSystems, setAssignment, getElementAssignments, searchCodes, importCodesFromCsv, buildIfcClassifications,
+    };
+    console.log("[property-palette] classification service + palette section ready");
+  } catch (err) { console.warn("[property-palette] classification service failed", err); }
   ctx.rightHost.appendChild(panel);
 
   dockHandle = makeDockable(panel, {

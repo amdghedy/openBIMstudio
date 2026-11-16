@@ -265,4 +265,45 @@ t("IFC M2: stair geometry sits at the storey-relative level and rises by exactly
   const y = list.map((p) => p[1]); assert.ok(Math.abs(Math.min(...y) + 0.5) < 1e-5 && Math.abs(Math.max(...y) - 0.5) < 1e-5); // width 1 centred on the run line
 });
 
+t("classifications: assignments export as IfcClassification/Reference/Rel per schema, skipped items reported", () => {
+  const classifs = [{
+    id: "uniformat-ii", name: "UniFormat II",
+    edition: "ASTM E1557-97 / NISTIR 6389 (1999)",
+    source: "NISTIR 6389 (Charette & Marshall, NIST), ASTM E1557",
+    items: [
+      { elementId: "w1", code: "B2010", name: "Exterior Walls" },
+      { elementId: "s1", code: "B1010" },
+      { elementId: "ghost-x", code: "A1010" }, // not exported → skipped entry
+    ],
+  }];
+  const v4 = exportAuthoredToIfc(model, { schema: "IFC4", levels, classifications: classifs });
+  assert.strictEqual(v4.stats.byClass.IFCCLASSIFICATION, 1);
+  assert.strictEqual(v4.stats.byClass.IFCCLASSIFICATIONREFERENCE, 2);
+  assert.strictEqual(v4.stats.byClass.IFCRELASSOCIATESCLASSIFICATION, 2);
+  const sk = v4.stats.skipped.find((s) => s.type === "classification-item" && s.id === "ghost-x");
+  assert.ok(sk, "non-exported classified element is reported in skipped");
+  const e4 = parse(v4.text);
+  const cls4 = [...e4.values()].find((v) => v.name === "IFCCLASSIFICATION");
+  assert.strictEqual(cls4.args.length, 7, "IFC4 IfcClassification carries 7 attributes");
+  assert.ok(cls4.raw.includes("UniFormat II"));
+  const ref4 = [...e4.values()].filter((v) => v.name === "IFCCLASSIFICATIONREFERENCE");
+  assert.ok(ref4.some((v) => v.raw.includes("'B2010'") && v.raw.includes("'Exterior Walls'")), "reference carries code + name");
+  const rel4 = [...e4.values()].filter((v) => v.name === "IFCRELASSOCIATESCLASSIFICATION");
+  assert.strictEqual(rel4.length, 2);
+
+  const v3 = exportAuthoredToIfc(model, { schema: "IFC2X3", levels, classifications: classifs });
+  assert.strictEqual(v3.stats.byClass.IFCCLASSIFICATIONREFERENCE, 2);
+  const e3 = parse(v3.text);
+  const cls3 = [...e3.values()].find((v) => v.name === "IFCCLASSIFICATION");
+  assert.strictEqual(cls3.args.length, 4, "IFC2X3 IfcClassification carries 4 attributes");
+  const ref3 = [...e3.values()].filter((v) => v.name === "IFCCLASSIFICATIONREFERENCE");
+  assert.ok(ref3.every((v) => v.args.length === 4), "IFC2X3 IfcClassificationReference carries 4 attributes");
+});
+
+t("no classifications option → no classification entities at all", () => {
+  const r = exportAuthoredToIfc(model, { schema: "IFC4", levels });
+  assert.strictEqual(r.stats.byClass.IFCCLASSIFICATION, undefined);
+  assert.ok(!r.text.includes("IFCRELASSOCIATESCLASSIFICATION"));
+});
+
 console.log(`${passed} passed`);

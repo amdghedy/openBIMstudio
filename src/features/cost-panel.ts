@@ -13,6 +13,7 @@ import {
   type QtoRun, type QtoRule, type QtoRuleInput,
 } from "../modules/cost/qto-rules";
 import { validateFormula } from "../modules/schedules/schedule-formula";
+import { listSystems } from "../modules/classification";
 import { uiAlert } from "../core/notify";
 import { confirmDialog } from "./form-modal";
 
@@ -351,7 +352,29 @@ function renderRuleEditor() {
     return inp;
   };
 
-  for (const [key, label, ph] of EDITOR_FIELDS) field(key, label, ph, key === "formula");
+  let classifInput: HTMLInputElement | null = null;
+  for (const [key, label, ph] of EDITOR_FIELDS) {
+    const inp = field(key, label, ph, key === "formula");
+    if (key === "classification") classifInput = inp;
+  }
+
+  // Classification codes from the built-in systems (UniFormat II, Uniclass 2015
+  // EF, OmniClass Table 21) as type-ahead suggestions for the rule's roll-up
+  // code. Free text is still allowed — the datalist only suggests.
+  try {
+    const dl = document.createElement("datalist");
+    dl.id = "obs-qto-classif-dl";
+    for (const sys of listSystems()) {
+      for (const c of sys.codes.slice(0, 400)) {
+        const opt = document.createElement("option");
+        opt.value = c.code;
+        opt.label = `${c.title} (${sys.name})`;
+        dl.appendChild(opt);
+      }
+    }
+    box.appendChild(dl);
+    if (classifInput) classifInput.setAttribute("list", "obs-qto-classif-dl");
+  } catch { /* datalist is a suggestion, never a blocker */ }
 
   // Unit select
   {

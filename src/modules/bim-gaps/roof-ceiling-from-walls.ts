@@ -110,46 +110,14 @@ export const createCeilingsFromWalls = (opts?: { thickness?: number }) =>
   createEnclosureFromWalls("ceiling", opts);
 
 export function setupRoofCeilingFromWalls(): void {
-  (window as Any).__obsRoofCeilingFromWalls = {
+  // Published as a service key, not a window global: the create functions are
+  // imported directly by bim-gaps-boot (rg-roof-walls / rg-ceiling-walls /
+  // rg-ceiling-rooms command-palette entries) and reachable via ctx.features.
+  (ctx.features as Any).roofCeilingFromWalls = {
     createRoofsFromWalls,
     createCeilingsFromWalls,
     createEnclosureFromWalls,
   };
-  try {
-    window.dispatchEvent(
-      new CustomEvent("obs-register-command", {
-        detail: {
-          id: "roof-from-walls",
-          label: "Roof from walls",
-          category: "Architecture",
-          run: () => void createRoofsFromWalls({ pitchPct: 0 }),
-        },
-      }),
-    );
-    window.dispatchEvent(
-      new CustomEvent("obs-register-command", {
-        detail: {
-          id: "ceiling-from-walls",
-          label: "Ceiling from walls",
-          category: "Architecture",
-          run: () => void createCeilingsFromWalls(),
-        },
-      }),
-    );
-  } catch { /* */ }
-
-  // Command palette / ribbon aliases
-  try {
-    const reg = (window as Any).__obsRegisterCommands;
-    if (typeof reg === "function") {
-      reg([
-        ["ROOFFROMWALLS", () => void createRoofsFromWalls()],
-        ["CEILINGFROMWALLS", () => void createCeilingsFromWalls()],
-        ["ROOFBYFOOTPRINT", () => void createRoofsFromWalls()],
-        ["CEILINGBYFOOTPRINT", () => void createCeilingsFromWalls()],
-      ]);
-    }
-  } catch { /* */ }
 
   console.log("[roof-ceiling-from-walls] ROOFFROMWALLS / CEILINGFROMWALLS ready");
 }
