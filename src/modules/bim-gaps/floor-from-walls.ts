@@ -61,23 +61,12 @@ export async function createFloorsFromWalls(opts?: {
 }
 
 export function setupFloorFromWalls(): void {
-  try {
-    const cmds = (ctx as Any).commands ?? (window as Any).__obsCommands;
-    cmds?.register?.("FLOORFROMWALLS", () => void createFloorsFromWalls());
-    cmds?.register?.("SLABFROMWALLS", () => void createFloorsFromWalls());
-  } catch { /* */ }
-  (window as Any).__obsFloorFromWalls = { createFloorsFromWalls };
-  try {
-    window.dispatchEvent(
-      new CustomEvent("obs-register-command", {
-        detail: {
-          id: "floor-from-walls",
-          label: "Floor from walls",
-          category: "Architecture",
-          run: () => void createFloorsFromWalls(),
-        },
-      }),
-    );
-  } catch { /* */ }
-  console.log("[floor-from-walls] FLOORFROMWALLS / SLABFROMWALLS ready");
+  // Publish via the house service-key pattern (ctx.features.<name>), not a
+  // window global: the command palette entry (rg-floor-walls) is already
+  // registered by bim-gaps-boot.ts through features/command-palette. The
+  // previous registrations here were dead code — ctx.commands does not
+  // exist, the legacy window command registry has no backing, and the
+  // "obs-register-command" CustomEvent had no listener.
+  (ctx.features as Any).floorFromWalls = { createFloorsFromWalls };
+  console.log("[floor-from-walls] rg-floor-walls command + features.floorFromWalls service ready");
 }
