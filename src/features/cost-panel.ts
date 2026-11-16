@@ -7,10 +7,11 @@ import {
 } from "../modules/cost/cost";
 import { computeTakeoff, getRows } from "../modules/cost/quantities";
 import type { CostItem, CostUnit, TakeoffRow } from "../modules/cost/types";
+import { evaluateQtoRules, getActiveQtoRules, type QtoRun } from "../modules/cost/qto-rules";
 import { uiAlert } from "../core/notify";
 import { confirmDialog } from "./form-modal";
 
-const UNITS: CostUnit[] = ["m", "m2", "m3", "pcs"];
+const UNITS: CostUnit[] = ["m", "m2", "m3", "pcs", "kg"];
 
 const panel = document.createElement("div");
 panel.style.cssText = "position:absolute;left:394px;top:14px;bottom:14px;width:680px;z-index:36;display:none;flex-direction:column;background:#171821;border:1px solid #2a2a35;border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.55);font:12px system-ui,sans-serif;color:#e2e8f0;overflow:hidden";
@@ -33,7 +34,7 @@ const num = (n: number) => (n || 0).toLocaleString(undefined, { maximumFractionD
 function getCurrency() { try { return localStorage.getItem("obs.currency") ?? "$"; } catch { return "$"; } }
 function setCurrency(s: string) { try { localStorage.setItem("obs.currency", s || "$"); } catch { /* */ } }
 
-let activeTab: "takeoff" | "items" | "summary" = "takeoff";
+let activeTab: "takeoff" | "items" | "summary" | "rules" = "takeoff";
 let recalculating = false;
 
 function miniBtn(label: string, onclick: () => void, title = "") {
@@ -58,7 +59,7 @@ function renderHeader() {
 
 function renderTabs() {
   tabRow.innerHTML = "";
-  const tabs: [typeof activeTab, string][] = [["takeoff", "Takeoff"], ["items", "Cost Items"], ["summary", "Summary"]];
+  const tabs: [typeof activeTab, string][] = [["takeoff", "Takeoff"], ["items", "Cost Items"], ["summary", "Summary"], ["rules", "QTO Rules"]];
   for (const [id, label] of tabs) {
     const b = document.createElement("button");
     b.textContent = label;
@@ -281,9 +282,152 @@ function renderSummary() {
   barSection("By cost item", totals.byItem.map((x) => ({ name: `${x.item.code} · ${x.item.name}`, total: x.total })));
 }
 
+// ── QTO Rules tab (5D rules engine) ──
+function buildRateBook(): Record<string, { code: string; name: string; unit: CostUnit; rate: number }> {
+  const rates: Record<string, { code: string; name: string; unit: CostUnit; rate: number }> = {};
+  for (const it of getItems()) {
+    if (it.code && rates[it.code] == null) {
+      rates[it.code] = { code: it.code, name: it.name, unit: it.unit, rate: it.rate };
+    }
+  }
+  return rates;
+}
+
+let lastQtoRun: QtoRun | null = null;
+
+function runQtoRules(): QtoRun {
+  lastQtoRun = evaluateQtoRules(getRows(), getActiveQtoRules(), { rates: buildRateBook() });
+  return lastQtoRun;
+}
+
+function renderRules() {
+  const run = runQtoRules();
+  body.innerHTML = "";
+
+  const bar = document.createElement("div");
+  bar.style.cssText = "display:flex;gap:6px;align-items:center;margin-bottom:8px";
+  const info = document.createElement("span");
+  info.style.cssText = "flex:1;font-size:10px;opacity:.55";
+  info.textContent = "Rules derive work-item quantities from the takeoff (variables: Count · Length · Area · Volume), apply waste factors, roll up by classification and price against the rate book by cost code.";
+  bar.append(info, miniBtn("⬇ Rules CSV", () => exportQtoRulesCsv(run), "Export rule results as CSV"));
+  body.appendChild(bar);
+
+  if (run.errors.length) {
+    const errBox = document.createElement("div");
+    errBox.style.cssText = "padding:8px 10px;margin-bottom:10px;border:1px solid #7f1d1d;background:#2a1518;border-radius:8px;font-size:11px;color:#fca5a5";
+    errBox.innerHTML = run.errors
+      .map((e) => `<div>⚠ ${escapeHtml(e.ruleName)}: ${escapeHtml(e.error)}</div>`)
+      .join("");
+    body.appendChild(errBox);
+  }
+
+  if (!run.results.length) {
+    body.innerHTML += `<div style="opacity:.55;text-align:center;padding:16px;border:1px dashed #34353f;border-radius:8px">No rule matched the current takeoff. Draw objects or import a model, click <b>Recalculate</b>, then reopen this tab.</div>`;
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%;border-collapse:collapse;font-size:11px";
+  table.innerHTML = `<thead><tr style="position:sticky;top:0;background:#1b1c26">
+    ${["Rule", "Classification", "Matched", "Unit", "Net", "Waste %", "Quantity", "Cost code", "Rate", "Total"].map((h) =>
+      `<th style="text-align:left;padding:5px 6px;border-bottom:1px solid #2a2a35;font-weight:600">${h}</th>`).join("")}
+  </tr></thead>`;
+  const tbody = document.createElement("tbody");
+
+  for (const r of run.results) {
+    const tr = document.createElement("tr");
+    tr.style.cssText = "border-bottom:1px solid #20212b";
+    const cellText = (v: string, extra = "") => {
+      const d = document.createElement("td");
+      d.style.cssText = "padding:4px 6px" + (extra ? ";" + extra : "");
+      d.textContent = v;
+      return d;
+    };
+    const ruleCell = cellText(r.ruleName, "font-weight:600");
+    ruleCell.title = (getActiveQtoRules().find((x) => x.id === r.ruleId)?.formula ?? "") +
+      (getActiveQtoRules().find((x) => x.id === r.ruleId)?.description ? `\n${getActiveQtoRules().find((x) => x.id === r.ruleId)!.description}` : "");
+    tr.append(
+      ruleCell,
+      cellText(r.classification, "opacity:.7;font-size:10px"),
+      cellText(String(r.matchedRows)),
+      cellText(r.unit),
+      cellText(num(r.netQuantity)),
+      cellText(r.wasteFactorPct ? `+${r.wasteFactorPct}%` : "—", "opacity:.6"),
+      cellText(num(r.quantity), "font-weight:700;color:#38bdf8"),
+      cellText(r.cost ? r.cost.code : "—", "opacity:.7"),
+      cellText(r.cost ? money(r.cost.rate) : "—"),
+      cellText(r.cost ? money(r.cost.total) : "—", "font-weight:700;color:#22c55e"),
+    );
+    tbody.appendChild(tr);
+  }
+
+  const trTotal = document.createElement("tr");
+  trTotal.style.cssText = "background:#1b1c26;font-weight:700;border-top:1px solid #2a2a35";
+  const tdL = document.createElement("td");
+  tdL.colSpan = 9;
+  tdL.style.cssText = "padding:8px 6px;text-align:right";
+  tdL.textContent = "Rules cost total:";
+  const tdV = document.createElement("td");
+  tdV.style.cssText = "padding:8px 6px;color:#22c55e;font-size:13px";
+  tdV.textContent = money(run.costTotal);
+  trTotal.append(tdL, tdV);
+  tbody.appendChild(trTotal);
+
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  const cls = run.byClassification;
+  if (cls.length) {
+    const sec = document.createElement("div");
+    sec.style.cssText = "margin-top:12px";
+    sec.innerHTML = `<div style="font-weight:700;margin-bottom:6px">By classification</div>`;
+    for (const c of cls) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:8px;margin:3px 0;font-size:11px";
+      const name = document.createElement("span");
+      name.style.cssText = "flex:1;opacity:.8";
+      name.textContent = c.classification;
+      const qty = document.createElement("span");
+      qty.style.cssText = "color:#38bdf8;font-weight:600";
+      qty.textContent = `${num(c.quantity)} ${c.unit}`;
+      row.append(name, qty);
+      sec.appendChild(row);
+    }
+    body.appendChild(sec);
+  }
+
+  const legend = document.createElement("div");
+  legend.style.cssText = "margin-top:8px;font-size:10px;opacity:.5";
+  legend.textContent = "Cost prices only when the rate book has a cost item whose CODE matches the rule's cost code with the SAME unit. Rebar uses a generic 100 kg/m³ ratio — override with custom rules for real projects.";
+  body.appendChild(legend);
+}
+
+function exportQtoRulesCsv(run: QtoRun) {
+  const q = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines: string[] = ["RuleId,Rule,Classification,MatchedRows,Unit,NetQuantity,WastePercent,Quantity,CostCode,Rate,Total"];
+  for (const r of run.results) {
+    lines.push([
+      r.ruleId, q(r.ruleName), q(r.classification), r.matchedRows, r.unit,
+      r.netQuantity.toFixed(3), r.wasteFactorPct, r.quantity.toFixed(3),
+      r.cost?.code ?? "", r.cost ? r.cost.rate.toFixed(2) : "", r.cost ? r.cost.total.toFixed(2) : "",
+    ].join(","));
+  }
+  for (const e of run.errors) {
+    lines.push(`${q(e.ruleId)},${q(e.ruleName)},,0,,,,,,ERROR: ${q(e.error)}`);
+  }
+  lines.push(`,,,,,,,,RULES_TOTAL,${run.costTotal.toFixed(2)}`);
+  const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "open-bim-studio-qto-rules.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+}
+
 function renderBody() {
   if (activeTab === "takeoff") renderTakeoff();
   else if (activeTab === "items") renderItems();
+  else if (activeTab === "rules") renderRules();
   else renderSummary();
 }
 

@@ -1,4 +1,10 @@
-export type CostUnit = "m" | "m2" | "m3" | "pcs";
+/**
+ * Billable units for cost items and QTO rules.
+ * "kg" exists for weight-based rules (rebar estimates etc.) — raw takeoff
+ * rows carry no mass, so row-level assignments with a kg item yield qty 0
+ * unless overridden, while rule-based lines compute their own quantity.
+ */
+export type CostUnit = "m" | "m2" | "m3" | "pcs" | "kg";
 
 export interface CostItem {
   id: string;
