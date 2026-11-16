@@ -7,7 +7,12 @@ import {
 } from "../modules/cost/cost";
 import { computeTakeoff, getRows } from "../modules/cost/quantities";
 import type { CostItem, CostUnit, TakeoffRow } from "../modules/cost/types";
-import { evaluateQtoRules, getActiveQtoRules, type QtoRun } from "../modules/cost/qto-rules";
+import {
+  evaluateQtoRules, getActiveQtoRules, getCustomQtoRules, setCustomQtoRules,
+  normalizeQtoRuleInput, slugifyQtoRuleName, QTO_FORMULA_VARIABLES,
+  type QtoRun, type QtoRule, type QtoRuleInput,
+} from "../modules/cost/qto-rules";
+import { validateFormula } from "../modules/schedules/schedule-formula";
 import { uiAlert } from "../core/notify";
 import { confirmDialog } from "./form-modal";
 
@@ -300,6 +305,205 @@ function runQtoRules(): QtoRun {
   return lastQtoRun;
 }
 
+// Rule editor state — kept across re-renders so typing survives a refresh.
+let editorOpen = false;
+let editingRuleId: string | null = null; // null = create/copy
+let editorDraft: Record<string, string> = {};
+let editorErrors: string[] = [];
+
+const EDITOR_FIELDS: Array<[string, string, string]> = [
+  ["name", "Name", 'e.g. Wall render both faces'],
+  ["formula", "Formula", 'e.g. 2 * Length * Height'],
+  ["waste", "Waste %", '0–100'],
+  ["classification", "Classification", 'e.g. 09 90 00 Painting'],
+  ["matchTokens", "Match tokens (comma-sep)", 'all must appear in label + detail'],
+  ["excludeTokens", "Exclude tokens (comma-sep)", 'dropped if in the label'],
+  ["levels", "Levels (comma-sep)", 'e.g. Level 1, Level 2'],
+  ["costCode", "Cost code", 'rate-book code to price the result'],
+  ["description", "Description", 'shown as the tooltip assumption'],
+];
+
+function renderRuleEditor() {
+  const box = document.createElement("div");
+  box.style.cssText = "padding:10px;margin-bottom:12px;border:1px solid #26466b;background:#141a26;border-radius:8px";
+  const title = document.createElement("div");
+  title.style.cssText = "font-weight:700;margin-bottom:8px;color:#38bdf8";
+  title.textContent = editingRuleId ? "Edit rule" : "New rule";
+  box.appendChild(title);
+
+  const grid = document.createElement("div");
+  grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px 10px";
+
+  const field = (key: string, labelText: string, ph: string, wide = false) => {
+    const wrap = document.createElement("div");
+    if (wide) wrap.style.gridColumn = "1 / 3";
+    const lab = document.createElement("div");
+    lab.style.cssText = "font-size:10px;opacity:.6;margin-bottom:2px";
+    lab.textContent = labelText;
+    const inp = document.createElement("input");
+    inp.type = key === "waste" ? "number" : "text";
+    inp.value = editorDraft[key] ?? "";
+    inp.placeholder = ph;
+    inp.style.cssText = INP + ";width:100%";
+    inp.oninput = () => { editorDraft[key] = inp.value; };
+    wrap.append(lab, inp);
+    grid.appendChild(wrap);
+    return inp;
+  };
+
+  for (const [key, label, ph] of EDITOR_FIELDS) field(key, label, ph, key === "formula");
+
+  // Unit select
+  {
+    const wrap = document.createElement("div");
+    const lab = document.createElement("div");
+    lab.style.cssText = "font-size:10px;opacity:.6;margin-bottom:2px";
+    lab.textContent = "Unit";
+    const sel = document.createElement("select");
+    sel.style.cssText = INP + ";width:100%";
+    sel.innerHTML = UNITS.map((u) => `<option ${u === (editorDraft.unit || "m3") ? "selected" : ""}>${escapeHtml(u)}</option>`).join("");
+    sel.onchange = () => { editorDraft.unit = sel.value; };
+    wrap.append(lab, sel);
+    grid.appendChild(wrap);
+  }
+
+  // Source select
+  {
+    const wrap = document.createElement("div");
+    const lab = document.createElement("div");
+    lab.style.cssText = "font-size:10px;opacity:.6;margin-bottom:2px";
+    lab.textContent = "Source";
+    const sel = document.createElement("select");
+    sel.style.cssText = INP + ";width:100%";
+    const cur = editorDraft.source || "any";
+    sel.innerHTML = ["any", "authored", "ifc"].map((s) => `<option ${s === cur ? "selected" : ""}>${s}</option>`).join("");
+    sel.onchange = () => { editorDraft.source = sel.value; };
+    wrap.append(lab, sel);
+    grid.appendChild(wrap);
+  }
+
+  box.appendChild(grid);
+
+  const vars = document.createElement("div");
+  vars.style.cssText = "font-size:10px;opacity:.55;margin-top:8px";
+  vars.textContent = `Variables: ${QTO_FORMULA_VARIABLES.join(" \u00b7 ")}. Height/Thickness/Width come from authored element dimensions and are 0 when the type (or IFC) has none.`;
+  box.appendChild(vars);
+
+  // Live formula validation
+  const fStatus = document.createElement("div");
+  fStatus.style.cssText = "font-size:10px;margin-top:4px";
+  const fv = (editorDraft.formula ?? "").trim();
+  if (fv) {
+    const v = validateFormula(fv);
+    if (v.ok) { fStatus.style.color = "#22c55e"; fStatus.textContent = "Formula OK"; }
+    else { fStatus.style.color = "#fca5a5"; fStatus.textContent = `Formula error: ${v.error}`; }
+  } else { fStatus.textContent = ""; }
+  box.appendChild(fStatus);
+
+  if (editorErrors.length) {
+    const errBox = document.createElement("div");
+    errBox.style.cssText = "margin-top:8px;padding:6px 8px;border:1px solid #7f1d1d;background:#2a1518;border-radius:6px;font-size:11px;color:#fca5a5";
+    errBox.innerHTML = editorErrors.map((e) => `<div>${escapeHtml(e)}</div>`).join("");
+    box.appendChild(errBox);
+  }
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:6px;margin-top:10px";
+  const save = document.createElement("button");
+  save.textContent = "Save rule";
+  save.style.cssText = "padding:6px 14px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:11px";
+  save.onclick = (e) => { e.stopPropagation(); saveRuleFromEditor(); };
+  const cancel = miniBtn("Cancel", () => { editorOpen = false; editingRuleId = null; editorDraft = {}; editorErrors = []; renderRules(); });
+  btnRow.append(save, cancel);
+  box.appendChild(btnRow);
+  body.appendChild(box);
+}
+
+function draftFromRule(r: QtoRule): Record<string, string> {
+  return {
+    name: r.name,
+    formula: r.formula,
+    unit: r.unit,
+    waste: r.wasteFactorPct != null ? String(r.wasteFactorPct) : "",
+    classification: r.classification ?? "",
+    source: r.filter.sources?.[0] ?? "any",
+    matchTokens: r.filter.matchAll?.join(", ") ?? "",
+    excludeTokens: r.filter.excludeAny?.join(", ") ?? "",
+    levels: r.filter.levels?.join(", ") ?? "",
+    costCode: r.costCode ?? "",
+    description: r.description ?? "",
+  };
+}
+
+function saveRuleFromEditor() {
+  const input: QtoRuleInput = {
+    id: editingRuleId ?? undefined,
+    name: editorDraft.name ?? "",
+    description: editorDraft.description,
+    classification: editorDraft.classification,
+    sources: editorDraft.source || "any",
+    matchTokens: editorDraft.matchTokens,
+    excludeTokens: editorDraft.excludeTokens,
+    levels: editorDraft.levels,
+    formula: editorDraft.formula ?? "",
+    unit: editorDraft.unit || "m3",
+    wasteFactorPct: editorDraft.waste,
+    costCode: editorDraft.costCode,
+  };
+  const customs = getCustomQtoRules();
+  const otherIds = new Set(customs.map((c) => c.id).filter((id) => id !== editingRuleId));
+  let res = normalizeQtoRuleInput(input, otherIds);
+  // Creating (or copying) a rule whose auto id collides: propose suffixed ids
+  // instead of making the user rename it.
+  if (!res.ok && !editingRuleId && res.errors.length === 1 && res.errors[0].startsWith("duplicate id:")) {
+    const base = `custom-${slugifyQtoRuleName(input.name)}`;
+    for (let n = 2; ; n++) {
+      const candidate = n === 2 ? base : `${base}-${n - 1}`;
+      if (!otherIds.has(candidate)) {
+        res = normalizeQtoRuleInput({ ...input, id: candidate }, otherIds);
+        break;
+      }
+    }
+  }
+  if (!res.ok) { editorErrors = res.errors; renderRules(); return; }
+  const next = editingRuleId
+    ? customs.map((c) => (c.id === editingRuleId ? res.rule : c))
+    : [...customs, res.rule];
+  setCustomQtoRules(next);
+  editorOpen = false;
+  editingRuleId = null;
+  editorDraft = {};
+  editorErrors = [];
+  renderRules();
+}
+
+function ruleActionButtons(ruleId: string, isCustom: boolean): HTMLElement[] {
+  const btns: HTMLElement[] = [];
+  if (isCustom) {
+    btns.push(miniBtn("✎", () => {
+      const r = getCustomQtoRules().find((c) => c.id === ruleId);
+      if (!r) return;
+      editorOpen = true; editingRuleId = r.id; editorDraft = draftFromRule(r); editorErrors = [];
+      renderRules();
+    }, "Edit this rule"));
+    btns.push(miniBtn("🗑", async () => {
+      const r = getCustomQtoRules().find((c) => c.id === ruleId);
+      if (r && await confirmDialog("Delete rule", `Delete rule "${r.name}"?`)) {
+        setCustomQtoRules(getCustomQtoRules().filter((c) => c.id !== ruleId));
+        renderRules();
+      }
+    }, "Delete this rule"));
+  } else {
+    const r = getActiveQtoRules().find((c) => c.id === ruleId);
+    btns.push(miniBtn("⧉", () => {
+      if (!r) return;
+      editorOpen = true; editingRuleId = null; editorDraft = draftFromRule(r); editorErrors = [];
+      renderRules();
+    }, "Copy as a custom rule (edits here never touch the built-in)"));
+  }
+  return btns;
+}
+
 function renderRules() {
   const run = runQtoRules();
   body.innerHTML = "";
@@ -308,28 +512,42 @@ function renderRules() {
   bar.style.cssText = "display:flex;gap:6px;align-items:center;margin-bottom:8px";
   const info = document.createElement("span");
   info.style.cssText = "flex:1;font-size:10px;opacity:.55";
-  info.textContent = "Rules derive work-item quantities from the takeoff (variables: Count · Length · Area · Volume), apply waste factors, roll up by classification and price against the rate book by cost code.";
-  bar.append(info, miniBtn("⬇ Rules CSV", () => exportQtoRulesCsv(run), "Export rule results as CSV"));
+  info.textContent = "Rules derive work-item quantities from the takeoff, apply waste factors, roll up by classification and price against the rate book by cost code.";
+  bar.append(
+    info,
+    miniBtn("＋ New rule", () => { editorOpen = true; editingRuleId = null; editorDraft = {}; editorErrors = []; renderRules(); }, "Create a custom QTO rule"),
+    miniBtn("⬇ Rules CSV", () => exportQtoRulesCsv(run), "Export rule results as CSV"),
+  );
   body.appendChild(bar);
+
+  if (editorOpen) renderRuleEditor();
 
   if (run.errors.length) {
     const errBox = document.createElement("div");
     errBox.style.cssText = "padding:8px 10px;margin-bottom:10px;border:1px solid #7f1d1d;background:#2a1518;border-radius:8px;font-size:11px;color:#fca5a5";
-    errBox.innerHTML = run.errors
-      .map((e) => `<div>⚠ ${escapeHtml(e.ruleName)}: ${escapeHtml(e.error)}</div>`)
-      .join("");
+    for (const e of run.errors) {
+      const line = document.createElement("div");
+      line.textContent = `⚠ ${e.ruleName}: ${e.error}`;
+      const custom = getCustomQtoRules().find((c) => c.id === e.ruleId);
+      if (custom) line.append(" ", ...ruleActionButtons(e.ruleId, true));
+      errBox.appendChild(line);
+    }
     body.appendChild(errBox);
   }
 
   if (!run.results.length) {
-    body.innerHTML += `<div style="opacity:.55;text-align:center;padding:16px;border:1px dashed #34353f;border-radius:8px">No rule matched the current takeoff. Draw objects or import a model, click <b>Recalculate</b>, then reopen this tab.</div>`;
+    if (!editorOpen) {
+      body.innerHTML += `<div style="opacity:.55;text-align:center;padding:16px;border:1px dashed #34353f;border-radius:8px">No rule matched the current takeoff. Draw objects or import a model, click <b>Recalculate</b>, or create a rule above.</div>`;
+    }
     return;
   }
 
+  const customIds = new Set(getCustomQtoRules().map((c) => c.id));
+  const activeById = new Map(getActiveQtoRules().map((r) => [r.id, r] as const));
   const table = document.createElement("table");
   table.style.cssText = "width:100%;border-collapse:collapse;font-size:11px";
   table.innerHTML = `<thead><tr style="position:sticky;top:0;background:#1b1c26">
-    ${["Rule", "Classification", "Matched", "Unit", "Net", "Waste %", "Quantity", "Cost code", "Rate", "Total"].map((h) =>
+    ${["Rule", "Classification", "Matched", "Unit", "Net", "Waste %", "Quantity", "Cost code", "Rate", "Total", ""].map((h) =>
       `<th style="text-align:left;padding:5px 6px;border-bottom:1px solid #2a2a35;font-weight:600">${h}</th>`).join("")}
   </tr></thead>`;
   const tbody = document.createElement("tbody");
@@ -344,8 +562,9 @@ function renderRules() {
       return d;
     };
     const ruleCell = cellText(r.ruleName, "font-weight:600");
-    ruleCell.title = (getActiveQtoRules().find((x) => x.id === r.ruleId)?.formula ?? "") +
-      (getActiveQtoRules().find((x) => x.id === r.ruleId)?.description ? `\n${getActiveQtoRules().find((x) => x.id === r.ruleId)!.description}` : "");
+    const ruleDef = activeById.get(r.ruleId);
+    ruleCell.title = (ruleDef?.formula ?? "") + (ruleDef?.description ? `\n${ruleDef.description}` : "") +
+      (customIds.has(r.ruleId) ? "\n(custom rule)" : "\n(built-in — use the copy button to override it)");
     tr.append(
       ruleCell,
       cellText(r.classification, "opacity:.7;font-size:10px"),
@@ -358,13 +577,17 @@ function renderRules() {
       cellText(r.cost ? money(r.cost.rate) : "—"),
       cellText(r.cost ? money(r.cost.total) : "—", "font-weight:700;color:#22c55e"),
     );
+    const tdAct = document.createElement("td");
+    tdAct.style.cssText = "padding:4px 6px;white-space:nowrap";
+    for (const b of ruleActionButtons(r.ruleId, customIds.has(r.ruleId))) tdAct.appendChild(b);
+    tr.appendChild(tdAct);
     tbody.appendChild(tr);
   }
 
   const trTotal = document.createElement("tr");
   trTotal.style.cssText = "background:#1b1c26;font-weight:700;border-top:1px solid #2a2a35";
   const tdL = document.createElement("td");
-  tdL.colSpan = 9;
+  tdL.colSpan = 10;
   tdL.style.cssText = "padding:8px 6px;text-align:right";
   tdL.textContent = "Rules cost total:";
   const tdV = document.createElement("td");

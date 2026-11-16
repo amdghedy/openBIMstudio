@@ -36,6 +36,9 @@ export interface QtoRuleFilter {
   matchAny?: string[];
   /** Case-sensitive substring the label must NOT contain (exclusions). */
   excludeAny?: string[];
+  /** Level names (authored rows carry the level name; case-insensitive,
+   *  at least one must match). Rows without a level never match. */
+  levels?: string[];
 }
 
 export interface QtoRule {
@@ -135,6 +138,11 @@ function rowMatches(row: TakeoffRow, filter: QtoRuleFilter): boolean {
       if (row.label.toLowerCase().includes(token.toLowerCase())) return false;
     }
   }
+  if (filter.levels?.length) {
+    if (!row.level) return false;
+    const lvl = row.level.toLowerCase();
+    if (!filter.levels.some((l) => l.toLowerCase() === lvl)) return false;
+  }
   return true;
 }
 
@@ -204,6 +212,9 @@ export function evaluateQtoRules(
             Length: row.length,
             Area: row.area,
             Volume: row.volume,
+            Height: row.height ?? 0,
+            Thickness: row.thickness ?? 0,
+            Width: row.width ?? 0,
           },
         });
       } catch (err) {
@@ -295,8 +306,129 @@ export function rollupByClassification(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Custom rules — persisted in localStorage, edited via API (rule editor UI
-// is future scope). Invalid rules are rejected with a reason.
+// Rule input normalization (shared by the rule-editor UI and tests)
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Variables a rule formula may reference. Height/Thickness/Width come from
+ *  authored element dimensions and are 0 when the type (or IFC) has none. */
+export const QTO_FORMULA_VARIABLES = [
+  "Count", "Length", "Area", "Volume", "Height", "Thickness", "Width",
+] as const;
+
+export interface QtoRuleInput {
+  /** Auto-generated (custom-<slug>) when absent. */
+  id?: string;
+  name: string;
+  description?: string;
+  classification?: string;
+  /** "any" (default) | "authored" | "ifc". */
+  sources?: string;
+  /** Comma-separated substrings, all must appear in label+detail. */
+  matchTokens?: string;
+  /** Comma-separated substrings excluded from the label. */
+  excludeTokens?: string;
+  /** Comma-separated level names, any must match. */
+  levels?: string;
+  formula: string;
+  unit: string;
+  wasteFactorPct?: string | number;
+  costCode?: string;
+}
+
+function parseList(s: string | undefined): string[] {
+  if (!s) return [];
+  return s.split(",").map((t) => t.trim()).filter(Boolean);
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "rule";
+}
+
+/** Same id-slug the normalizer generates — the editor uses it to propose
+ *  collision-free ids when copying a built-in rule. */
+export function slugifyQtoRuleName(s: string): string {
+  return slugify(s);
+}
+
+/**
+ * Validate + normalize a rule from editor-style raw input. Pure — the UI
+ * calls this before persisting, tests call it directly. Returns every
+ * problem at once (not just the first) so the editor can show all fields
+ * that need fixing.
+ */
+export function normalizeQtoRuleInput(
+  input: QtoRuleInput,
+  existingIds?: ReadonlySet<string>,
+): { ok: true; rule: QtoRule } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  const name = String(input.name ?? "").trim();
+  if (!name) errors.push("name is required");
+
+  const formula = String(input.formula ?? "").trim();
+  if (!formula) {
+    errors.push("formula is required");
+  } else {
+    const v = validateFormula(formula);
+    if (!v.ok) errors.push(`formula: ${v.error}`);
+  }
+
+  const unit = String(input.unit ?? "").trim() as CostUnit;
+  if (!ALL_UNITS.includes(unit)) {
+    errors.push(`unit must be one of: ${ALL_UNITS.join(", ")}`);
+  }
+
+  let waste = 0;
+  if (input.wasteFactorPct != null && input.wasteFactorPct !== "") {
+    waste = Number(input.wasteFactorPct);
+    if (!Number.isFinite(waste) || waste < 0 || waste > 100) {
+      errors.push("waste % must be a number between 0 and 100");
+      waste = 0;
+    }
+  }
+
+  const sourcesRaw = String(input.sources ?? "any").toLowerCase();
+  const filter: QtoRuleFilter = {};
+  if (sourcesRaw === "authored" || sourcesRaw === "ifc") filter.sources = [sourcesRaw];
+  else if (sourcesRaw !== "any") errors.push('source must be any, authored or ifc');
+
+  const matchAll = parseList(input.matchTokens);
+  if (matchAll.length) filter.matchAll = matchAll;
+  const excludeAny = parseList(input.excludeTokens);
+  if (excludeAny.length) filter.excludeAny = excludeAny;
+  const levels = parseList(input.levels);
+  if (levels.length) filter.levels = levels;
+  // A source restriction IS a filter, but only when it is a valid one —
+  // an invalid source must not slip a filterless rule through validation.
+  if (!matchAll.length && !excludeAny.length && !levels.length &&
+      sourcesRaw !== "authored" && sourcesRaw !== "ifc") {
+    errors.push("a rule needs at least one filter: match, exclude, level or source");
+  }
+
+  let id = String(input.id ?? "").trim();
+  if (!id) id = `custom-${slugify(name)}`;
+  if (existingIds?.has(id)) errors.push(`duplicate id: ${id}`);
+
+  if (errors.length) return { ok: false, errors };
+  return {
+    ok: true,
+    rule: {
+      id,
+      name,
+      description: input.description?.trim() || undefined,
+      classification: input.classification?.trim() || undefined,
+      filter,
+      formula,
+      unit,
+      wasteFactorPct: waste || undefined,
+      costCode: input.costCode?.trim() || undefined,
+    },
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Custom rules — persisted in localStorage, edited via the rule editor UI
+// (cost panel → QTO Rules tab) or via API. Invalid rules are rejected with
+// reasons.
 // ══════════════════════════════════════════════════════════════════════════
 
 const CUSTOM_KEY = "obs.qto.customRules";

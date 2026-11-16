@@ -11,7 +11,7 @@
  */
 import * as THREE from "three";
 import { ctx } from "../../core/context";
-import { getElements } from "../../features/authoring";
+import { getElements, getLevels } from "../../features/authoring";
 import { getElementTriangles, type Tri } from "../clash/geometry";
 import type { TakeoffRow } from "./types";
 
@@ -192,9 +192,14 @@ function shoelaceArea(poly: [number, number][]): number {
 
 function authoredRows(): TakeoffRow[] {
   const out: TakeoffRow[] = [];
+  const levelName = new Map<string, string>();
+  try {
+    for (const lv of getLevels() ?? []) levelName.set(lv.id, lv.name);
+  } catch { /* levels not ready */ }
   for (const el of getElements()) {
     const p = el.params;
     let length = 0, area = 0, volume = 0;
+    let height: number | undefined, thickness: number | undefined, width: number | undefined;
     let detailSuffix = "exact";
 
     if ((el.type === "wall" || el.type === "strip") && p.start && p.end) {
@@ -218,21 +223,29 @@ function authoredRows(): TakeoffRow[] {
       const gross = L * H;
       area = Math.max(0, (gross - cutArea) * 2);
       volume = Math.max(0, (gross - cutArea) * T);
+      height = r3(H);
+      thickness = r3(T);
     } else if (el.type === "slab" && p.polygon && p.polygon.length >= 3) {
       const A = shoelaceArea(p.polygon);
       area = A;
       volume = A * p.height;
+      thickness = r3(p.height);
     } else if (el.type === "column" && p.point) {
       const w = p.thickness;
       const d = p.depth ?? p.thickness;
       length = p.height;
       area = 2 * (w + d) * p.height;
       volume = w * d * p.height;
+      width = r3(w);
+      thickness = r3(d);
+      height = r3(p.height);
     } else if (el.type === "beam" && p.start && p.end) {
       const L = Math.hypot(p.end[0] - p.start[0], p.end[1] - p.start[1]);
       length = L;
       volume = L * p.height * p.thickness;
       area = 2 * L * (p.height + p.thickness);
+      height = r3(p.height);
+      thickness = r3(p.thickness);
     } else if (el.type === "brace" && p.start && p.end) {
       const L = Math.hypot(
         p.end[0] - p.start[0],
@@ -241,6 +254,7 @@ function authoredRows(): TakeoffRow[] {
       );
       length = L;
       volume = L * p.thickness * p.thickness;
+      thickness = r3(p.thickness);
     } else if (el.type === "truss" && p.start && p.end) {
       const L = Math.hypot(p.end[0] - p.start[0], p.end[1] - p.start[1]);
       const t = p.thickness;
@@ -250,11 +264,15 @@ function authoredRows(): TakeoffRow[] {
       const totalLen = L + topChord + posts;
       length = totalLen;
       volume = totalLen * t * t;
+      thickness = r3(t);
     } else if (el.type === "footing" && p.point) {
       const w = p.thickness;
       const d = p.depth ?? p.thickness;
       volume = w * d * p.height;
       area = 2 * (w * d) + 2 * (w + d) * p.height;
+      width = r3(w);
+      thickness = r3(d);
+      height = r3(p.height);
     } else if (el.type === "adaptive-component") {
       // Native adaptive definitions are the source of truth. Derive quantities
       // from the stored profile and point path, not from display tessellation.
@@ -295,6 +313,8 @@ function authoredRows(): TakeoffRow[] {
     } else if (el.type === "door" || el.type === "window") {
       // Doors and windows are counted by the piece.
       detailSuffix = `unit (${p.width ?? 0.9} × ${p.height} m)`;
+      width = r3(Number(p.width ?? 0.9));
+      height = r3(Number(p.height));
     } else if (el.type === "fitting") {
       // Fittings are counted by the piece — they inherit their parent's
       // profile but the profile itself is not a separately billable
@@ -316,6 +336,10 @@ function authoredRows(): TakeoffRow[] {
       length: r3(length),
       area: r3(area),
       volume: r3(volume),
+      height,
+      thickness,
+      width,
+      level: el.levelId ? levelName.get(el.levelId) : undefined,
       primarySource: "authored",
     });
   }

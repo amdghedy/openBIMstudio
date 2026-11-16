@@ -48,14 +48,23 @@ const row = (label, detail, q = {}, source = "authored") => ({
   length: q.l ?? 0,
   area: q.a ?? 0,
   volume: q.v ?? 0,
+  height: q.h,
+  thickness: q.t,
+  width: q.w,
 });
 
 const ROWS = [
-  row("Wall 001", "exact", { l: 10, a: 51, v: 12.75 }),
-  row("Slab 001", "exact", { l: 0, a: 40, v: 8 }),
-  row("Door 001", "unit (0.9 × 2.1 m)", { c: 1 }),
-  row("Window 001", "unit (1.2 × 1.2 m)", { c: 1 }),
+  row("Wall 001", "exact", { l: 10, a: 51, v: 12.75, h: 3, t: 0.255 }),
+  row("Slab 001", "exact", { l: 0, a: 40, v: 8, t: 0.2 }),
+  row("Door 001", "unit (0.9 × 2.1 m)", { c: 1, w: 0.9, h: 2.1 }),
+  row("Window 001", "unit (1.2 × 1.2 m)", { c: 1, w: 1.2, h: 1.2 }),
 ];
+
+// Levels: wall/slab/door sit on Level 1, window on Level 2.
+ROWS[0].level = "Level 1";
+ROWS[1].level = "Level 1";
+ROWS[2].level = "Level 1";
+ROWS[3].level = "Level 2";
 
 const RATES = {
   "C-CONC": { code: "C-CONC", name: "Ready-mix concrete C30", unit: "m3", rate: 120 },
@@ -259,6 +268,112 @@ t("IFC category rows match by category name", () => {
   const run = m.evaluateQtoRules(ifcRows, m.BUILT_IN_QTO_RULES);
   approx(byId(run, "qto-wall-concrete").netQuantity, 24);
   assert.strictEqual(byId(run, "qto-wall-concrete").matchedRows, 1);
+});
+
+// ── dimension variables ──────────────────────────────────────────────────
+t("rules can reference Height/Thickness/Width from authored dims", () => {
+  const formworkV2 = { id: "fw", name: "FW", filter: { matchAll: ["wall"] }, formula: "2 * Length * Height", unit: "m2" };
+  const run = m.evaluateQtoRules(ROWS, [formworkV2]);
+  approx(run.results[0].netQuantity, 2 * 10 * 3);
+
+  const box = { id: "bx", name: "BX", filter: { matchAll: ["wall"] }, formula: "Length * Height * Thickness", unit: "m3" };
+  const run2 = m.evaluateQtoRules(ROWS, [box]);
+  approx(run2.results[0].netQuantity, 10 * 3 * 0.255);
+
+  const doorArea = { id: "da", name: "DA", filter: { matchAll: ["door"] }, formula: "Width * Height", unit: "m2" };
+  const run3 = m.evaluateQtoRules(ROWS, [doorArea]);
+  approx(run3.results[0].netQuantity, 0.9 * 2.1);
+});
+
+t("dimension variables are 0 where the type (or IFC) has none — never estimated", () => {
+  const rule = { id: "h", name: "H", filter: { matchAll: ["wall"] }, formula: "Height * 100", unit: "m" };
+  const ifcWall = row("IfcWall", "geometry", { l: 5, a: 30, v: 7.5 }, "ifc"); // no height
+  const run = m.evaluateQtoRules([ifcWall], [rule]);
+  approx(run.results[0].netQuantity, 0);
+  approx(m.evaluateQtoRules(ROWS, [rule]).results[0].netQuantity, 3 * 100);
+});
+
+// ── level filter ─────────────────────────────────────────────────────
+t("level filter matches by level name, rows without a level never match", () => {
+  const rule = { id: "l1", name: "L1", filter: { levels: ["Level 1"], matchAll: ["wall"] }, formula: "Length", unit: "m" };
+  const run = m.evaluateQtoRules(ROWS, [rule]);
+  assert.strictEqual(run.results[0].matchedRows, 1);
+
+  const both = { id: "l2", name: "L2", filter: { levels: ["level 1", "LEVEL 2"] }, formula: "Count", unit: "pcs" };
+  const run2 = m.evaluateQtoRules(ROWS, [both]);
+  assert.strictEqual(run2.results[0].matchedRows, 4); // case-insensitive
+
+  const noLevel = row("Roof 001", "exact", { a: 50, v: 10 });
+  const run3 = m.evaluateQtoRules([noLevel], [both]);
+  assert.strictEqual(run3.results[0].matchedRows, 0);
+});
+
+// ── rule input normalization (editor path) ─────────────────────────────
+t("normalizeQtoRuleInput accepts valid editor input and parses everything", () => {
+  const res = m.normalizeQtoRuleInput({
+    name: "Wall render both faces",
+    formula: "Area * 1.05",
+    unit: "m2",
+    wasteFactorPct: "10",
+    classification: "09 90 00 Painting",
+    sources: "authored",
+    matchTokens: "wall, block",
+    excludeTokens: "curtain",
+    levels: "Level 1, Level 2",
+    costCode: "C-PAINT",
+  });
+  assert.ok(res.ok, res.ok ? "" : res.errors.join(" | "));
+  assert.strictEqual(res.rule.id, "custom-wall-render-both-faces");
+  assert.deepStrictEqual(res.rule.filter.matchAll, ["wall", "block"]);
+  assert.deepStrictEqual(res.rule.filter.excludeAny, ["curtain"]);
+  assert.deepStrictEqual(res.rule.filter.levels, ["Level 1", "Level 2"]);
+  assert.deepStrictEqual(res.rule.filter.sources, ["authored"]);
+  assert.strictEqual(res.rule.wasteFactorPct, 10);
+  assert.strictEqual(res.rule.costCode, "C-PAINT");
+});
+
+t("normalizeQtoRuleInput reports every problem at once", () => {
+  const res = m.normalizeQtoRuleInput({ name: "", formula: "Area +", unit: "m9", sources: "weird" });
+  assert.ok(!res.ok);
+  assert.ok(res.errors.some((e) => e.includes("name is required")));
+  assert.ok(res.errors.some((e) => e.includes("formula:")));
+  assert.ok(res.errors.some((e) => e.includes("unit must be")));
+  assert.ok(res.errors.some((e) => e.includes("source must be")));
+  assert.ok(res.errors.some((e) => e.includes("at least one filter")));
+});
+
+t("normalizeQtoRuleInput waste bounds and duplicate ids", () => {
+  const res = m.normalizeQtoRuleInput({ name: "X", formula: "Area", unit: "m2", wasteFactorPct: "150" });
+  assert.ok(!res.ok);
+  assert.ok(res.errors.some((e) => e.includes("waste")));
+
+  const dup = m.normalizeQtoRuleInput({ id: "custom-taken", name: "X", formula: "Area", unit: "m2", matchTokens: "wall" }, new Set(["custom-taken"]));
+  assert.ok(!dup.ok);
+  assert.ok(dup.errors.some((e) => e.includes("duplicate id")));
+
+  const explicit = m.normalizeQtoRuleInput({ id: "my-id", name: "X", formula: "Area", unit: "m2", matchTokens: "wall" });
+  assert.ok(explicit.ok);
+  assert.strictEqual(explicit.rule.id, "my-id");
+});
+
+t("editor path end-to-end: normalize → persist → evaluate", () => {
+  globalThis.localStorage.removeItem("obs.qto.customRules");
+  const res = m.normalizeQtoRuleInput({
+    name: "Skirting L1",
+    formula: "Length * 0.1",
+    unit: "m",
+    matchTokens: "wall",
+    levels: "Level 1",
+  });
+  assert.ok(res.ok, res.ok ? "" : res.errors.join(" | "));
+  m.setCustomQtoRules([res.rule]);
+  const active = m.getActiveQtoRules();
+  const custom = active.find((r) => r.id === res.rule.id);
+  assert.ok(custom, "editor rule active");
+  const run = m.evaluateQtoRules(ROWS, [custom]);
+  assert.strictEqual(run.results[0].matchedRows, 1); // only the L1 wall
+  approx(run.results[0].netQuantity, 10 * 0.1);
+  globalThis.localStorage.removeItem("obs.qto.customRules");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

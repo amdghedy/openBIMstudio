@@ -38,6 +38,19 @@ export interface TakeoffRow {
   area: number;
   volume: number;
 
+  /**
+   * Element dimensions where the type has a clear one (m, authored rows
+   * only). QTO rules can reference them as the Height / Thickness / Width
+   * formula variables; absent (undefined) = the type has no such dimension
+   * or the row came from IFC, and a formula referencing it evaluates it
+   * as 0 — visible in the rule tooltip, never silently estimated.
+   */
+  height?: number;
+  thickness?: number;
+  width?: number;
+  /** Level name the element sits on (authored rows only), for level filters. */
+  level?: string;
+
   /** Author-provided quantities from Qto_*BaseQuantities psets (IFC only). */
   qto?: QtoBundle;
   /** Geometric extraction from triangle soups (IFC only). */
