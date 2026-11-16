@@ -214,9 +214,9 @@ assert.ok(corePath, "compiled dwg-parse-core.js not found");
     t("worker chunk emitted in production build", () => {
       assert.ok(assets.some((n) => n.startsWith("dwg-reader-worker") && n.endsWith(".js")), "dwg-reader-worker chunk missing");
     });
-    t("libredwg wasm emitted as a local asset", () => {
-      assert.ok(assets.some((n) => n.startsWith("libredwg-web") && n.endsWith(".wasm")), "wasm asset missing");
-      assert.ok(fs.existsSync(path.join(ROOT, "dist", "libredwg", "libredwg-web.wasm")), "public /libredwg fallback missing");
+    t("GPL libredwg wasm is NOT shipped (optional plug-in only)", () => {
+      assert.ok(!assets.some((n) => n.startsWith("libredwg-web")), "libredwg asset must not be emitted into the build");
+      assert.ok(!fs.existsSync(path.join(ROOT, "dist", "libredwg")), "dist/libredwg must not exist in a commercial build");
     });
     t("shipped main chunks do not contain the embind reader", () => {
       const mainChunks = assets.filter((n) => n.endsWith(".js") && !n.startsWith("dwg-reader-worker") && !n.startsWith("libredwg-web"));
