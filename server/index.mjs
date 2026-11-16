@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { parseAllowedOrigins, originAllowed, corsHeaders, SECURITY_HEADERS, validId, tokenOk, safeUploadName } from "./security.mjs";
+import { parseAllowedOrigins, originAllowed, corsHeaders, SECURITY_HEADERS, validId, validClientId, safeDisplayName, boundedJsonValue, tokenOk, safeUploadName } from "./security.mjs";
 import { resolveStartupConfig } from "./startup-config.mjs";
 import { createRateLimiter, clientKey, correlationId, securityLog, redactFileName } from "./rate-limit.mjs";
 import { issueSseToken, verifySseToken } from "./sse-tokens.mjs";
@@ -40,6 +40,7 @@ const ALLOWED_ORIGINS = CFG.origins
 const MAX_BODY = Number(process.env.OBS_MAX_BODY || 200 * 1024 * 1024);
 const PRESENCE_TIMEOUT_MS = 45000;
 const MAX_CHANGES_PER_ROOM = 500;
+const MAX_CHANGE_PAYLOAD = Number(process.env.OBS_MAX_CHANGE_PAYLOAD || 2 * 1024 * 1024);
 
 /* Rate budgets (per IP). Tunable for tests via env. */
 const RATE_WINDOW_MS = Number(process.env.OBS_RATE_WINDOW_MS || 60_000);
@@ -496,16 +497,16 @@ const server = http.createServer(async (req, res) => {
     }
 
     const room = getRoom(roomId);
-    const clientId = String(body.clientId || "").trim();
+    const clientId = typeof body.clientId === "string" ? body.clientId.trim() : "";
 
-    if (!clientId) {
-      return send(res, 400, { error: "clientId required" });
+    if (!validClientId(clientId)) {
+      return send(res, 400, { error: "clientId must be a safe identifier (1-96 characters)", requestId: reqId });
     }
 
     if (action === "join" || action === "heartbeat") {
       room.clients[clientId] = {
         clientId,
-        name: String(body.name || "Guest"),
+        name: safeDisplayName(body.name),
         cursor: body.cursor ?? null,
         updatedAt: Date.now(),
       };
@@ -525,11 +526,16 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (action === "change") {
+      const payloadCheck = boundedJsonValue(body.payload ?? {}, MAX_CHANGE_PAYLOAD);
+      if (!payloadCheck.ok) {
+        return send(res, 413, { error: "Change payload too large or not JSON-serializable", requestId: reqId });
+      }
+      const type = typeof body.type === "string" ? body.type.trim().slice(0, 120) : "unknown";
       const change = addChange(roomId, {
         id: body.id,
         clientId,
-        type: body.type,
-        payload: body.payload,
+        type,
+        payload: payloadCheck.value,
       });
 
       return send(res, 200, { ok: true, change });
@@ -964,3 +970,9 @@ server.listen(PORT, HOST, () => {
   console.log(`[collab] Live SSE API:   /api/rooms/:room/events`);
   console.log(`[collab] Convert API:    /api/convert (RVT/NWD → IFC)`);
 });
+
+// Protect the HTTP parser from slow-client and idle-connection exhaustion.
+// Uploads are still bounded by MAX_BODY and can use the full request timeout.
+server.requestTimeout = Number(process.env.OBS_REQUEST_TIMEOUT_MS || 120_000);
+server.headersTimeout = Number(process.env.OBS_HEADERS_TIMEOUT_MS || 15_000);
+server.keepAliveTimeout = Number(process.env.OBS_KEEPALIVE_TIMEOUT_MS || 5_000);

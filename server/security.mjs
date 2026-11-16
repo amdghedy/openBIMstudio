@@ -43,6 +43,34 @@ export function validId(id) {
   return typeof id === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id) && !RESERVED.has(id);
 }
 
+/** Collaboration client ids are object keys and are echoed through SSE. */
+export function validClientId(id) {
+  return typeof id === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/.test(id) && !RESERVED.has(id);
+}
+
+/** Keep user-controlled presence labels bounded and free of control characters. */
+export function safeDisplayName(name, fallback = "Guest") {
+  const value = String(name ?? fallback)
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim()
+    .slice(0, 120);
+  return value || fallback;
+}
+
+/** Reject oversized or non-JSON change payloads before they enter room state. */
+export function boundedJsonValue(value, maxBytes = 2 * 1024 * 1024) {
+  if (value === undefined) return { ok: true, value: null, bytes: 0 };
+  try {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined) return { ok: false, reason: "payload must be JSON-serializable" };
+    const bytes = Buffer.byteLength(encoded, "utf8");
+    if (bytes > maxBytes) return { ok: false, reason: "payload too large" };
+    return { ok: true, value, bytes };
+  } catch {
+    return { ok: false, reason: "payload must be JSON-serializable" };
+  }
+}
+
 /** Constant-time bearer token check. `token` empty = auth disabled. SSE may pass ?token= . */
 export function tokenOk(authHeader, queryToken, token) {
   if (!token) return true;

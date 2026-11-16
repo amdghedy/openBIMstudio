@@ -9,6 +9,9 @@ t("env list replaces defaults",()=>{const a=m.parseAllowedOrigins("https://studi
 t("CORS echoes only an allowed origin, never *",()=>{const h=m.corsHeaders("http://localhost:3000",allowed);assert.strictEqual(h["Access-Control-Allow-Origin"],"http://localhost:3000");assert.deepStrictEqual(m.corsHeaders("https://evil.example",allowed),{})});
 t("ids: plain names pass",()=>{for(const id of ["proj1","a-b_c.d","Room-42"])assert.ok(m.validId(id),id)});
 t("ids: traversal / prototype keys / junk rejected",()=>{for(const id of ["__proto__","constructor","../x","a/b","","-lead"," a","a".repeat(65),"a;b","a%2fb",null,5])assert.ok(!m.validId(id),String(id))});
+t("client ids reject prototype keys and unsafe characters",()=>{for(const id of ["client-1","a:b_2"])assert.ok(m.validClientId(id),id);for(const id of ["__proto__","constructor","../x","a/b","","-lead","a".repeat(97),null,5])assert.ok(!m.validClientId(id),String(id))});
+t("display names are bounded and control characters are removed",()=>{assert.strictEqual(m.safeDisplayName("  A\nB\t "),"AB");assert.strictEqual(m.safeDisplayName(""),"Guest");assert.ok(m.safeDisplayName("x".repeat(200)).length<=120)});
+t("change payloads are bounded and JSON serializable",()=>{assert.ok(m.boundedJsonValue({a:1}).ok);assert.ok(!m.boundedJsonValue("x".repeat(100),50).ok);const circular={};circular.self=circular;assert.ok(!m.boundedJsonValue(circular).ok)});
 t("token disabled when unset",()=>assert.ok(m.tokenOk("",undefined,"")));
 t("bearer token accepted, wrong/missing rejected",()=>{assert.ok(m.tokenOk("Bearer s3cret",undefined,"s3cret"));assert.ok(!m.tokenOk("Bearer nope",undefined,"s3cret"));assert.ok(!m.tokenOk("",undefined,"s3cret"))});
 t("query token works for SSE",()=>assert.ok(m.tokenOk("", "s3cret","s3cret")));
