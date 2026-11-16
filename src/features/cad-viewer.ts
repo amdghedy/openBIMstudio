@@ -75,6 +75,7 @@ import { collectHatchGeometry, detectLoopAt, type BoundaryResult } from "../modu
 import * as P from "./cad-params";
 import * as DIM from "../modules/cad-viewer/dimension-system";
 import { fmtTime } from "../core/region";
+import { strokeFontFor, strokeLinePolylines, strokeLineWidth, CAP_UNITS, type StrokeFont } from "../modules/drawings/stroke-font";
 
 type Tool =
   | "pan"
@@ -1896,6 +1897,40 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── drawing workspace Rendering Engine ── */
 
+  /* SHX text is drawn as thin single strokes (Hershey equivalents) like the native viewer; see stroke-font.ts. */
+  let strokeBudget = 0;
+  const strokePaths = new Map<string, Path2D>();
+  function drawStrokeLine(c: CanvasRenderingContext2D, font: StrokeFont, text: string, px: number, align: string, y: number): boolean {
+    if (strokeBudget <= 0 || !text) return false;
+    const w = strokeLineWidth(font, text);
+    if (w == null) return false;
+    strokeBudget -= text.length;
+    const key = font.id + "|" + text;
+    let path = strokePaths.get(key);
+    if (!path) {
+      const polys = strokeLinePolylines(font, text);
+      if (!polys) return false;
+      path = new Path2D();
+      for (const pl of polys) {
+        pl.forEach(([gx, gy], i) => (i ? path!.lineTo(gx, gy) : path!.moveTo(gx, gy)));
+        if (pl.length === 1) path.lineTo(pl[0][0] + 0.01, pl[0][1]);
+      }
+      if (strokePaths.size > 4000) strokePaths.clear();
+      strokePaths.set(key, path);
+    }
+    const sc = px / CAP_UNITS;
+    c.save();
+    c.translate(align === "center" ? (-w * sc) / 2 : align === "right" ? -w * sc : 0, y);
+    c.scale(sc, sc);
+    c.strokeStyle = c.fillStyle;
+    c.lineWidth = 1.1 / sc;
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    c.stroke(path);
+    c.restore();
+    return true;
+  }
+
   function drawEntity(c: CanvasRenderingContext2D, e: DxfEntity, v: M.View, flipY = true): void {
     const P = (x: number, y: number) => M.worldToScreen(v, x, y);
     c.beginPath();
@@ -1998,8 +2033,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           }
           const styled = !!e.runs?.some((r) => r.color != null || r.rgb != null || r.bold || r.italic);
           if (!styled) {
-            for (let li = 0; li < lines.length; li++)
-              c.fillText(lines[li].map((r) => r.text).join(""), 0, -bl[li] * v.scale);
+            const shx = px >= 5 ? strokeFontFor(e.font) : undefined;
+            for (let li = 0; li < lines.length; li++) {
+              const lineText = lines[li].map((r) => r.text).join("");
+              if (shx && drawStrokeLine(c, shx, lineText, Math.min(px, 600), e.align ?? "left", -bl[li] * v.scale)) continue;
+              c.fillText(lineText, 0, -bl[li] * v.scale);
+            }
           } else {
             // Inline \\C / \\f codes: paint run by run with its own colour and
             // weight, aligned by the canvas' own measurements like native CAD.
@@ -2466,6 +2505,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function render(c: CanvasRenderingContext2D, v: M.View, withUi: boolean): void {
+    strokeBudget = 60000; // stroke-glyph budget per render (huge drawings fall back to normal fonts)
     c.save();
     c.fillStyle = BG[bg] || BG.drafting;
     c.fillRect(0, 0, v.w, v.h);
