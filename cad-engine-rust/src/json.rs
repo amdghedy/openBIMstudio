@@ -1203,6 +1203,19 @@ pub fn document_json(doc: &CadDocument) -> String {
     w.key("header");
     write_header(&mut w, &doc.header);
 
+    // Saved model view (active viewport): what the native app shows when the file is opened.
+    if let Some(vp) = doc.vports.iter().find(|v| v.name.eq_ignore_ascii_case("*Active")) {
+        w.key("savedView");
+        w.begin_obj();
+        w.key("center");
+        w.point2(vp.view_center.x, vp.view_center.y);
+        w.awaiting_value = false;
+        w.kv_num("height", vp.view_height);
+        w.kv_num("twist", vp.view_twist);
+        w.kv_point("dir", &vp.view_direction);
+        w.end_obj();
+    }
+
     w.begin_arr("layers");
     for l in doc.layers.iter() {
         write_layer(&mut w, l);

@@ -182,6 +182,14 @@ console.log("== hatch pattern math (exact DXF families) ==");
       assert.strictEqual(r2018.doc.sourceFormat, "dwg");
     });
 
+    t("saved view (active viewport) is exported by the engine when the file has a plan view", () => {
+      for (const r of [r2018]) {
+        const sv = r.doc.savedView;
+        console.log("    savedView(AC1032) = " + JSON.stringify(sv));
+        if (sv) { assert.ok([sv.cx, sv.cy, sv.height].every(Number.isFinite) && sv.height > 0, "numbers must be finite, height > 0"); }
+      }
+    });
+
     const r2000 = await read("sample_2000.dwg");
     t("AC1015: same model coverage", () => {
       assert.strictEqual(r2000.version, "AC1015");

@@ -915,6 +915,15 @@ function mapDocument(raw: Any, format: "dwg" | "dxf"): DxfDocument {
     doc.dimStyleTable = dimStyleTable as DxfDocument["dimStyleTable"];
   }
 
+  {
+    // Active viewport -> saved view (plan views only; the converter in the viewer sanity-checks it).
+    const sv = raw.savedView;
+    const dir = sv?.dir ? pt(sv.dir) : null;
+    if (sv && Array.isArray(sv.center) && Number(sv.height) > 0 && (!dir || (Math.abs(dir.x) < 1e-6 && Math.abs(dir.y) < 1e-6))) {
+      const tw = Number(sv.twist ?? 0);
+      doc.savedView = { cx: Number(sv.center[0]), cy: Number(sv.center[1]), height: Number(sv.height), ...(tw ? { twist: tw * (tw > 6.3 ? 1 : 180 / Math.PI) } : {}) };
+    }
+  }
   const units: DxfUnits = insUnitsToUnits(Number(raw.header?.insunits ?? 0));
   if (units !== "unitless") doc.units = units;
 
