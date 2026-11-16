@@ -125,7 +125,17 @@ export default defineConfig({
 // the worker has no DOM or BIM state (bytes in -> geometry JSON out).
 const DWG_READER_WORKER_CSP =
   "default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'";
+// Solid readers additionally import their classic-script glue as a blob module
+// (module workers have no importScripts), so this one scoped policy also allows
+// blob: scripts — still confined to the isolated reader-worker document.
+const SOLID_READER_WORKER_CSP =
+  "default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'";
 const DWG_READER_WORKER_URL = /dwg-reader-worker/;
+const SOLID_READER_WORKER_URL = /solid-reader-worker/;
+const readerWorkerCsp = (url: string | undefined) =>
+  url && SOLID_READER_WORKER_URL.test(url) ? SOLID_READER_WORKER_CSP
+    : url && DWG_READER_WORKER_URL.test(url) ? DWG_READER_WORKER_CSP
+    : undefined;
 
 function crossOriginIsolation() {
   return {
@@ -135,7 +145,7 @@ function crossOriginIsolation() {
         res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
         res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
         res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-        applySecurityHeaders(res, req.url && DWG_READER_WORKER_URL.test(req.url) ? DWG_READER_WORKER_CSP : undefined);
+        applySecurityHeaders(res, readerWorkerCsp(req.url));
         next();
       });
     },
@@ -144,7 +154,7 @@ function crossOriginIsolation() {
         res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
         res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
         res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-        applySecurityHeaders(res, req.url && DWG_READER_WORKER_URL.test(req.url) ? DWG_READER_WORKER_CSP : undefined);
+        applySecurityHeaders(res, readerWorkerCsp(req.url));
         next();
       });
     },

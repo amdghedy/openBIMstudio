@@ -3,3 +3,9 @@
 # CSP lives in index.html and stays strict - no 'unsafe-eval' there.
 /assets/dwg-reader-worker-*
   Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'
+
+# Scoped CSP for the isolated solid reader worker (occt-import-js / rhino3dm
+# glue also needs dynamic execution inside this one worker document). The main
+# app CSP lives in index.html and stays strict - no 'unsafe-eval' there.
+/assets/solid-reader-worker-*
+  Content-Security-Policy: default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'
