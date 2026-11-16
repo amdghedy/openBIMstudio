@@ -17,3 +17,7 @@ description, not legal advice; have counsel confirm it before a commercial relea
 **rhino3dm:** MIT; the npm package ships no licence file, so `NOTICE.txt` points to the upstream licence.
 
 Every entry has `VERSION.json` recording the exact version and declared licence.
+
+## Not vendored, but loaded at run time
+
+`@mlightcad/libredwg-web` (LibreDWG, **GPL-3.0**) is installed from npm and copied to `public/libredwg/` by `scripts/copy-libredwg-wasm.mjs`; it is the DWG fallback reader. Its licence is incompatible with a closed-source release without a decision: see `docs/COMMERCIAL-READINESS.md` (L1). acadrust (MPL-2.0) is compiled into `public/cad-engine/obim-cad-engine.wasm`. This is an engineering note, not legal advice.
