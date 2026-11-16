@@ -1,6 +1,12 @@
 // Copies the libredwg WASM next to the app (public/libredwg/) so the DWG reader
 // can load it from "/libredwg/" regardless of how the bundler rewrites asset URLs.
 // Never fails the install/build: the reader also tries its own default location.
+// Commercial builds do NOT ship LibreDWG (GPL-3.0). This copy only runs when a developer
+// explicitly opts in (OBS_BUNDLE_LIBREDWG=1) for a private/GPL-compliant build.
+if (process.env.OBS_BUNDLE_LIBREDWG !== "1") {
+  console.log("[libredwg] not bundled (GPL-3.0 reader is an optional plug-in); set OBS_BUNDLE_LIBREDWG=1 to copy it for a private build.");
+  process.exit(0);
+}
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

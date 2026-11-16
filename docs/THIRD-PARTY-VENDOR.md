@@ -18,6 +18,6 @@ description, not legal advice; have counsel confirm it before a commercial relea
 
 Every entry has `VERSION.json` recording the exact version and declared licence.
 
-## Not vendored, but loaded at run time
+## Optional plug-in (not shipped)
 
-`@mlightcad/libredwg-web` (LibreDWG, **GPL-3.0**) is installed from npm and copied to `public/libredwg/` by `scripts/copy-libredwg-wasm.mjs`; it is the DWG fallback reader. Its licence is incompatible with a closed-source release without a decision: see `docs/COMMERCIAL-READINESS.md` (L1). acadrust (MPL-2.0) is compiled into `public/cad-engine/obim-cad-engine.wasm`. This is an engineering note, not legal advice.
+`@mlightcad/libredwg-web` (LibreDWG, **GPL-3.0**) is installed from npm and copied to `public/libredwg/` by `scripts/copy-libredwg-wasm.mjs`; it was the DWG fallback reader. As of 2026-11-16 it is a **devDependency only** and is not copied into builds (set `OBS_BUNDLE_LIBREDWG=1` for a private build); in a browser it loads only from a user-supplied `/plugins/libredwg/libredwg-web.js`. See `docs/COMMERCIAL-READINESS.md` (L1). acadrust (MPL-2.0) is compiled into `public/cad-engine/obim-cad-engine.wasm`. This is an engineering note, not legal advice.

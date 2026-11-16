@@ -164,7 +164,7 @@ function buildPanel(): void {
       <div class="dw-list"></div>
       <div class="dw-note">
         <b>DXF</b> is fully supported (read + write).<br/>
-        <b>DWG</b> import works when <code>@mlightcad/libredwg-web</code> is installed;
+        <b>DWG</b> import uses the built-in engine;
         otherwise convert DWG-DXF in any CAD and import the DXF.
       </div>
     </div>

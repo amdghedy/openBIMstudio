@@ -358,7 +358,7 @@ export async function importDrawingFile(file: File): Promise<DrawingDocument | n
     if (result) return result;
     toast(
       "warn",
-      "DWG needs @mlightcad/libredwg-web - export DXF from CAD, or: npm i @mlightcad/libredwg-web",
+      "This DWG could not be read by the built-in engine - export it as DXF from your CAD program and open the DXF",
     );
     return null;
   }
