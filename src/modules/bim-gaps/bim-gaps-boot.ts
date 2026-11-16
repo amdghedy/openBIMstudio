@@ -17,6 +17,7 @@ import {
   promptAssignPhase, promptAssignDesignOption, tagSelection, getSelectedKeys, applyAuthored,
 } from "./visibility-bridge";
 import { setupRoomTool, startRoomTool, placeRoomAt, placeRoomsAutomatically, refreshRoomOverlay } from "./room-tool";
+import { setupFloorFromWalls, createFloorsFromWalls } from "./floor-from-walls";
 import { setupM2Register } from "./m2-register";
 import { installM2Redirects, startM2Tool, ceilingsFromRooms, createM2Element } from "./m2-tools";
 import { setupM3, togglePlanOption, refreshViews } from "./m3-register";
@@ -85,6 +86,7 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
   await step("project-scope", setupProjectScope);
   await step("visibility-bridge", setupVisibilityBridge);
   await step("room-tool", setupRoomTool);
+  await step("floor-from-walls", setupFloorFromWalls);
   await step("m2-elements", () => {
     const r = setupM2Register();
     installM2Redirects();
@@ -97,6 +99,7 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
     const cmds: Array<[string, string, string, () => unknown]> = [
       ["rg-room-place", "Room: place (click inside walls)", "Rooms", startRoomTool],
       ["rg-room-auto", "Room: place rooms automatically", "Rooms", () => placeRoomsAutomatically()],
+      ["rg-floor-walls", "Floor: create from wall loops", "Architecture", () => void createFloorsFromWalls()],
       ["rg-stairs", "Stairs: straight run", "Architecture", () => startM2Tool("stairs", "straight")],
       ["rg-stairs-l", "Stairs: L-shape (quarter turn)", "Architecture", () => startM2Tool("stairs", "L")],
       ["rg-stairs-u", "Stairs: U-shape (half turn)", "Architecture", () => startM2Tool("stairs", "U")],

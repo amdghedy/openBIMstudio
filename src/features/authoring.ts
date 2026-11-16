@@ -171,6 +171,8 @@ const counters: Record<string, number> = {};
 const group = new THREE.Group();
 const datumGroup = new THREE.Group();
 const previewGroup = new THREE.Group();
+let tempDimEl: HTMLDivElement | null = null;
+
 const gripGroup = new THREE.Group();
 
 let chainStart: THREE.Vector3 | null = null;
@@ -781,7 +783,7 @@ function projectOntoSegment(
  */
 export function autoJoinWallToNeighbors(wallId: string): void {
   const wall = elements.find((e) => e.id === wallId);
-  if (!wall || wall.type !== "wall" || !wall.params.start || !wall.params.end) return;
+  if (!wall || (wall.type !== "wall" && wall.type !== "curtain-wall") || !wall.params.start || !wall.params.end) return;
 
   const thick = wall.params.thickness ?? 0.2;
   // Snap tolerance ≈ half thickness + small slack (BIM endpoint snap feel)
@@ -794,7 +796,7 @@ export function autoJoinWallToNeighbors(wallId: string): void {
     let best: { x: number; z: number; score: number } | null = null;
 
     for (const other of elements) {
-      if (other.id === wallId || other.type !== "wall") continue;
+      if (other.id === wallId || (other.type !== "wall" && other.type !== "curtain-wall")) continue;
       if (!other.params.start || !other.params.end) continue;
       // Skip if other is extremely short
       const [ax, az] = other.params.start;
@@ -3448,6 +3450,7 @@ function groundPoint(e: MouseEvent): THREE.Vector3 | null {
       LINEAR_CHAIN_TOOLS.has(String(activeTool))
     ) {
       p = applyReferenceTracking(p, chainStart);
+      p = applyParallelTracking(p, chainStart, activeTool);
     }
   } catch { /* never break picking */ }
 
@@ -4502,6 +4505,103 @@ function clearPreviews() {
   hoveredWall = null;
   clearGuides();
   refSnapActive = null;
+  hideTempDim();
+}
+
+
+function ensureTempDim(): HTMLDivElement {
+  if (tempDimEl && document.body.contains(tempDimEl)) return tempDimEl;
+  const el = document.createElement("div");
+  el.className = "obs-temp-dim";
+  el.style.cssText =
+    "position:fixed;z-index:9200;pointer-events:none;padding:3px 8px;border-radius:4px;" +
+    "background:rgba(15,23,42,.92);border:1px solid #38bdf8;color:#e0f2fe;font:600 12px/1.3 system-ui,sans-serif;" +
+    "box-shadow:0 4px 14px rgba(0,0,0,.35);display:none;transform:translate(-50%,-120%);";
+  document.body.appendChild(el);
+  tempDimEl = el;
+  return el;
+}
+
+function hideTempDim(): void {
+  if (tempDimEl) tempDimEl.style.display = "none";
+}
+
+function showTempDimWorld(a: THREE.Vector3, b: THREE.Vector3, extra?: string): void {
+  try {
+    const el = ensureTempDim();
+    const mid = new THREE.Vector3((a.x + b.x) / 2, (a.y + b.y) / 2 + 0.05, (a.z + b.z) / 2);
+    const cam = ctx.world.camera.three;
+    const renderer = ctx.world.renderer?.three ?? (ctx.world as any).renderer;
+    const canvas = renderer?.domElement as HTMLCanvasElement | undefined;
+    if (!canvas || !cam) return;
+    const v = mid.clone().project(cam);
+    const rect = canvas.getBoundingClientRect();
+    const sx = (v.x * 0.5 + 0.5) * rect.width + rect.left;
+    const sy = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
+    if (v.z > 1) { el.style.display = "none"; return; }
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const ang = ((Math.atan2(b.z - a.z, b.x - a.x) * 180) / Math.PI + 360) % 360;
+    el.textContent = extra ? `${len.toFixed(3)} m  ·  ${ang.toFixed(1)}°  ·  ${extra}` : `${len.toFixed(3)} m  ·  ${ang.toFixed(1)}°`;
+    el.style.left = `${sx}px`;
+    el.style.top = `${sy}px`;
+    el.style.display = "block";
+  } catch {
+    /* */
+  }
+}
+
+/** Attract cursor to parallel alignment with nearby existing linear elements. */
+function applyParallelTracking(
+  p: THREE.Vector3,
+  base: THREE.Vector3 | null,
+  tool: string | null,
+): THREE.Vector3 {
+  if (!base || !tool || !LINEAR_CHAIN_TOOLS.has(String(tool))) return p;
+  try {
+    const dx = p.x - base.x, dz = p.z - base.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.05) return p;
+    const ux = dx / len, uz = dz / len;
+    let best: { pt: THREE.Vector3; dist: number } | null = null;
+    const types = new Set(["wall", "curtain-wall", "beam", "strip", "duct", "pipe", "cable-tray", "conduit"]);
+    for (const o of elements) {
+      if (!types.has(o.type) || !o.params?.start || !o.params?.end) continue;
+      const [ax, az] = o.params.start;
+      const [bx, bz] = o.params.end;
+      const olx = bx - ax, olz = bz - az;
+      const oL = Math.hypot(olx, olz);
+      if (oL < 0.05) continue;
+      const oux = olx / oL, ouz = olz / oL;
+      // parallel if cross product small
+      const cross = Math.abs(ux * ouz - uz * oux);
+      if (cross > 0.08) continue;
+      // distance from base to the infinite line of other
+      const toB = (base.x - ax) * (-ouz) + (base.z - az) * oux;
+      // Prefer staying parallel at same offset
+      if (Math.abs(toB) > 8) continue;
+      // Project current length along other's direction from base, keep offset
+      const along = (p.x - base.x) * oux + (p.z - base.z) * ouz;
+      const cand = new THREE.Vector3(
+        base.x + oux * along,
+        0,
+        base.z + ouz * along,
+      );
+      // Also snap length endpoints to align with other ends along axis
+      for (const ep of [[ax, az], [bx, bz]] as [number, number][]) {
+        const tAlong = (ep[0] - base.x) * oux + (ep[1] - base.z) * ouz;
+        if (tAlong > 0.1) {
+          const c2 = new THREE.Vector3(base.x + oux * tAlong, 0, base.z + ouz * tAlong);
+          const d2 = Math.hypot(c2.x - p.x, c2.z - p.z);
+          if (d2 < 0.4 && (!best || d2 < best.dist)) best = { pt: c2, dist: d2 };
+        }
+      }
+      const d = Math.hypot(cand.x - p.x, cand.z - p.z);
+      if (d < 0.35 && (!best || d < best.dist)) best = { pt: cand, dist: d };
+    }
+    return best ? best.pt.clone() : p;
+  } catch {
+    return p;
+  }
 }
 
 /** Dashed construction line (BIM-style). */
@@ -4762,6 +4862,7 @@ function updatePreview(e: MouseEvent | null) {
       // reference path (light), offset ties (yellow) to the justified face.
       try {
         updateAlignmentGuides(a, pt);
+        showTempDimWorld(a, pt);
         const moved = Math.hypot(ax - a.x, az - a.z) + Math.hypot(bx - pt.x, bz - pt.z);
         if (moved > 1e-4) {
           const gy = level + 0.02;
@@ -4788,7 +4889,7 @@ function updatePreview(e: MouseEvent | null) {
     const b = new THREE.Vector3(pt.x, level + DEFAULTS.brace.height, pt.z);
     preview = memberMesh(a, b, DEFAULTS.brace.thickness, DEFAULTS.brace.thickness, pm);
     previewGroup.add(preview);
-    try { updateAlignmentGuides(chainStart, pt); } catch { /* */ }
+    try { updateAlignmentGuides(chainStart, pt); showTempDimWorld(chainStart, pt); } catch { /* */ }
   } else if (pt && activeTool === "truss" && chainStart) {
     const tmp: AuthoredElement = {
       id: "preview", type: "truss", name: "", color: "#38bdf8",
@@ -4800,7 +4901,7 @@ function updatePreview(e: MouseEvent | null) {
     preview = buildTruss(tmp);
     preview.traverse((m: any) => { if (m.isMesh) m.material = pm; });
     previewGroup.add(preview);
-    try { updateAlignmentGuides(chainStart, pt); } catch { /* */ }
+    try { updateAlignmentGuides(chainStart, pt); showTempDimWorld(chainStart, pt); } catch { /* */ }
   } else if (pt && activeTool === "grid" && chainStart) {
     try { updateAlignmentGuides(chainStart, pt); } catch { /* */ }
   } else if (activeTool === "slab") {
