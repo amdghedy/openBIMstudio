@@ -514,6 +514,19 @@ fn write_entity(w: &mut W, e: &EntityType) {
             w.begin_obj();
             w.kv_str("type", "WIPEOUT");
             write_common(w, &x.common);
+            w.kv_point("position", &x.insertion_point);
+            w.kv_point("u", &x.u_vector);
+            w.kv_point("v", &x.v_vector);
+            w.key("size");
+            w.point2(x.size.x, x.size.y);
+            w.kv_bool("clipEnabled", x.clipping_enabled);
+            w.kv_int("clipType", x.clip_type as i16 as i64);
+            w.begin_arr("clip");
+            for c in &x.clip_boundary_vertices {
+                w.sep();
+                w.point2(c.x, c.y);
+            }
+            w.end_arr();
             w.end_obj();
         }
         EntityType::MultiLeader(x) => write_mleader(w, x),

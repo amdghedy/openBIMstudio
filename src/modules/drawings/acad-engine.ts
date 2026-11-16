@@ -35,7 +35,7 @@ import {
   type InsertXform,
 } from "./dxf-geometry";
 import { cleanText, mtextFont, mtextWidthFactor, mtextExtras } from "./mtext";
-import { convertMleader, convertTable, convertMline, convertImage, convertTolerance } from "./acad-extra-entities";
+import { convertMleader, convertTable, convertMline, convertImage, convertTolerance, convertWipeout } from "./acad-extra-entities";
 
 type Any = Record<string, any>;
 
@@ -576,6 +576,8 @@ function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | nul
       return convertMline(e, c, extraCtx(cx));
     case "IMAGE":
       return convertImage(e, c, extraCtx(cx));
+    case "WIPEOUT":
+      return convertWipeout(e, c, extraCtx(cx));
     case "TOLERANCE":
       return convertTolerance(e, c, extraCtx(cx));
     case "ATTRIB_ATTACHED":

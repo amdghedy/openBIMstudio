@@ -104,3 +104,23 @@ export function convertTolerance(e: Any, c: Any, x: ExtraCtx): DxfEntity[] {
   if (!t.trim()) return [];
   return [{ ...c, type: "TEXT", position: x.pt(e.position), height: 2.5, value: t, rotation: 0 } as DxfEntity];
 }
+
+/**
+ * WIPEOUT: a masking region. The clip boundary is in image space (pixel centres, so +0.5 maps the
+ * unit square onto the u/v frame); a 2-vertex rectangular clip means opposite corners.
+ * Drawn as a solid fill with the drawing background, like the platform's own Wipeout tool.
+ */
+export function convertWipeout(e: Any, c: Any, x: ExtraCtx): DxfEntity[] {
+  const p = x.pt(e.position), u = x.pt(e.u), v = x.pt(e.v);
+  const clip: number[][] = Array.isArray(e.clip) ? e.clip.filter((q: any) => Array.isArray(q) && q.length >= 2) : [];
+  let img: Array<[number, number]>;
+  if (e.clipEnabled && clip.length >= 3) img = clip.map((q) => [Number(q[0]), Number(q[1])] as [number, number]);
+  else if (e.clipEnabled && clip.length === 2) {
+    const [a, b] = clip; img = [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]];
+  } else img = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
+  const pts: DxfPoint[] = img.map(([a, b]) => ({
+    x: p.x + u.x * (a + 0.5) + v.x * (b + 0.5), y: p.y + u.y * (a + 0.5) + v.y * (b + 0.5), z: p.z ?? 0,
+  }));
+  if (pts.some((q) => !Number.isFinite(q.x) || !Number.isFinite(q.y))) { x.note("WIPEOUT (bad boundary)"); return []; }
+  return [{ ...c, type: "LWPOLYLINE", points: pts, closed: true, hatch: { solid: true, loops: [pts], wipeout: true } } as DxfEntity];
+}

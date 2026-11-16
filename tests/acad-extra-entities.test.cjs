@@ -44,4 +44,15 @@ t("IMAGE: frame uses the u/v vectors and says pixels are not drawn", () => {
   assert.deepStrictEqual(r[0].points.map((p) => [p.x, p.y]), [[0, 0], [40, 0], [40, 20], [0, 20]]); assert.ok(r[0].closed); assert.ok(notes.some((n) => n.includes("pixels not drawn")));
 });
 t("TOLERANCE becomes text", () => { assert.strictEqual(X.convertTolerance({ position: [1, 2, 0], text: "{\\Fgdt;j}%%v0.1" }, c, cx).length, 1); });
+t("WIPEOUT: polygonal clip maps through the u/v frame and fills with the background", () => {
+  const r = X.convertWipeout({ position: [10, 20, 0], u: [100, 0, 0], v: [0, 50, 0], clipEnabled: true, clipType: 2, clip: [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]] }, c, cx);
+  assert.strictEqual(r.length, 1); assert.ok(r[0].hatch.wipeout && r[0].hatch.solid && r[0].closed);
+  assert.deepStrictEqual(r[0].points.map((p) => [p.x, p.y]), [[10, 20], [110, 20], [110, 70], [10, 70]]);
+});
+t("WIPEOUT: 2-vertex rectangular clip and unclipped default both give a rectangle", () => {
+  const a = X.convertWipeout({ position: [0, 0, 0], u: [10, 0, 0], v: [0, 10, 0], clipEnabled: true, clipType: 1, clip: [[-0.5, -0.5], [0, 0.5]] }, c, cx);
+  assert.deepStrictEqual(a[0].points.map((p) => [p.x, p.y]), [[0, 0], [5, 0], [5, 10], [0, 10]]);
+  const b = X.convertWipeout({ position: [0, 0, 0], u: [10, 0, 0], v: [0, 10, 0], clipEnabled: false, clip: [] }, c, cx);
+  assert.strictEqual(b[0].points.length, 4);
+});
 console.log(`acad-extra-entities: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
