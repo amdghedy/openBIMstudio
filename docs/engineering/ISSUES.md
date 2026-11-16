@@ -84,14 +84,15 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 **Problem:** A crash mid-save or a bad migration can corrupt the only copy of a project. Until journaling lands (P2-01), rotating backups are the cheap 90% fix.
 
 **Tasks**
-- [ ] Add `src/core/backup.ts` (server/Node form; OPFS equivalent for the browser build)
-- [ ] `backupBeforeWrite(path)`: timestamped `.bak` copy before migration loads and destructive writes
-- [ ] Keep last 5 backups; prune older on each write
-- [ ] Wire into project open (when a version migration will run) and into any "delete/reset" flows
+- [x] Add the live server/Node backup implementation in `server/backup.mjs` (the browser/OPFS adapter remains open)
+- [x] `backupBeforeWrite(path)`: timestamped `.bak` copy before server project/room replacement
+- [x] Keep last 5 backups; prune older on each server write
+- [ ] Wire the browser project-file migration/open path and destructive delete/reset flows
 
 **Acceptance criteria**
-- [ ] Test: corrupt a project mid-save, recover from the newest `.bak`
-- [ ] Rotation never exceeds 5 backups per file; backup failure never blocks the primary write path
+- [x] Server regression test covers first save, prior-state recovery copies, atomic replacement, and five-file rotation (`tests/server-backup.test.cjs`)
+- [x] Server backup failure is non-fatal to the primary write; atomic replacement cleans temporary files
+- [ ] Browser/OPFS corruption-recovery test and migration-time backup remain
 
 ---
 

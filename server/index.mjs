@@ -8,6 +8,7 @@ import { resolveStartupConfig } from "./startup-config.mjs";
 import { createRateLimiter, clientKey, correlationId, securityLog, redactFileName } from "./rate-limit.mjs";
 import { issueSseToken, verifySseToken } from "./sse-tokens.mjs";
 import { sniffSignature, storeUpload, sweepExpired } from "./upload-store.mjs";
+import { writeJsonWithBackup } from "./backup.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -95,7 +96,13 @@ function loadJson(file, fallback) {
 
 function saveJson(file, value) {
   ensureStore();
-  fs.writeFileSync(file, JSON.stringify(value, null, 2), "utf8");
+  const result = writeJsonWithBackup(file, value);
+  if (result.backup.error) {
+    securityLog(console.log, "backup_failed", {
+      file: path.basename(file),
+      error: result.backup.error?.code || "unknown",
+    });
+  }
 }
 
 let projects = loadJson(projectsFile, {});
