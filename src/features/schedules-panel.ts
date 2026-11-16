@@ -63,7 +63,15 @@ import { fmtDateTime, fmtTime } from "../core/region";
 /* ═════════════════════════════════════════════════════════════════════════
    State
    ═════════════════════════════════════════════════════════════════════════ */
-let currentDefinition: ScheduleDefinition = cloneTemplate(BUILT_IN_TEMPLATES[0]);
+let currentDefinition: ScheduleDefinition = cloneTemplate(
+  // Out-of-box default = the all-elements Quantity Takeoff (tpl-qto), NOT a
+  // category-specific template. BUILT_IN_TEMPLATES[0] happens to be tpl-qto,
+  // but name the template explicitly: the default must keep working even if
+  // the template list is reordered. Previously this fell back to the Door
+  // Schedule, so a fresh authoring session with one wall opened Schedules on
+  // "0 rows" — the model's real quantities were one hidden dropdown away.
+  getTemplate("tpl-qto") ?? BUILT_IN_TEMPLATES[0],
+);
 let currentRun: ScheduleRun | null = null;
 let sortKey: string | null = null;
 let sortDir: 1 | -1 = 1;
@@ -72,10 +80,31 @@ let running = false;
 let cancelHandle: { cancelled: boolean } | null = null;
 let currentDiff: ScheduleDiff | null = null;
 
+/**
+ * Cheap staleness signal: how many authored elements are currently in the
+ * scene. Regenerating on every panel open would be simplest, but a large IFC
+ * model makes that visibly slow — so we remember the count at last run and
+ * only regenerate when the authored model changed shape (element added or
+ * removed, e.g. a door inserted into the wall re-cuts its volume).
+ */
+let lastRunAuthored = -1;
+function authoredSignal(): number {
+  try {
+    let n = 0;
+    ctx.world?.scene?.three?.traverse?.((o: { userData?: { elementId?: unknown } }) => {
+      if (o?.userData?.elementId) n++;
+    });
+    return n;
+  } catch {
+    return -1;
+  }
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    DOM
    ═════════════════════════════════════════════════════════════════════════ */
 const overlay = document.createElement("div");
+overlay.className = "obs-schedules-overlay";
 overlay.style.cssText =
   "position:fixed;inset:0;z-index:340;display:none;flex-direction:column;" +
   "background:var(--bg-base,#0b0d12);color:var(--text-primary,#e8eaf0);" +
@@ -745,6 +774,7 @@ async function regenerate(): Promise<void> {
     });
     if (cancelHandle.cancelled) return;
     currentRun = run;
+    lastRunAuthored = authoredSignal();
     sortKey = currentDefinition.sortBy ?? null;
     sortDir = 1;
     currentDiff = null;
@@ -902,7 +932,10 @@ export function toggleSchedules() {
     renderHeader();
     renderControls();
     renderFooter();
-    if (!currentRun) void regenerate();
+    // Fresh data every open: first open, a changed authored model (new wall,
+    // inserted door/window, deletion), or a definition swap must not show the
+    // previous run. The authored count is the cheap staleness trigger.
+    if (!currentRun || lastRunAuthored !== authoredSignal()) void regenerate();
     else renderTable();
   }
 }

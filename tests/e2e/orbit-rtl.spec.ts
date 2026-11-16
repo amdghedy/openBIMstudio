@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import zlib from 'node:zlib';
 
 // Real-browser checks for two things that were only unit-tested: Shift+drag orbit, and Arabic (right-to-left) boot.
-// Run on CI by .github/workflows/browser-smoke.yml (not part of the unit-test job).
+// Run on CI by the browser-smoke job in .github/workflows/unit-tests.yml (not part of the unit-test job).
 
 test('Shift+drag orbit restores an upright camera and never applies more camera updates than pointer events', async ({ page }) => {
   const errors: string[] = [];

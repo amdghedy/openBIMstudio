@@ -154,7 +154,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Modeling",
     status: "verified",
     source: ["src/features/authoring.ts", "src/features/plan-view-panel.ts"],
-    evidence: ["tests/", "tests/openings-chain.test.cjs", "npm run verify:v68", "npm run verify:v73", "real browser: plan wall → hosted door + window → door/window schedules 1 row each → 3D mesh volume drops by the punched openings (10.384 vs 11.098 solid m³)", "real browser (v54 re-run after +354 commits): Wall tool → 2 chained walls → Door tool click on wall → door element with hostId + offsetAlongHost + swing panel"],
+    evidence: ["tests/", "tests/openings-chain.test.cjs", "npm run verify:v68", "npm run verify:v73", "real browser: plan wall → hosted door + window → door/window schedules 1 row each → 3D mesh volume drops by the punched openings (10.384 vs 11.098 solid m³)", "real browser (v54 re-run after +354 commits): Wall tool → 2 chained walls → Door tool click on wall → door element with hostId + offsetAlongHost + swing panel", "browser chain spec (document-chain.spec.ts, production bundle): ribbon Wall click → 2 canvas points → Enter authors a wall (authored elements 0→1); Door/Window tools insert on the wall with zero page errors"],
     limitations: [
       "Doors/windows host on in-app walls (straight and curved); openings cut compound layers; linked-IFC hosts still limited",
       "Plan-placed doors/windows used to be authored as unhosted 'equipment' (schedules 0 rows, no 3D cut) — fixed and guarded; projects saved before the fix are repaired on load only when a wall lies under the old point",
@@ -300,7 +300,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Documentation",
     status: "limited",
     source: ["src/modules/views/", "src/modules/export/pdf.ts", "src/modules/export/sheet-pdf.ts", "src/features/sheets-2d-panel.ts"],
-    evidence: ["tests/", "real browser: + Sheet → + Viewport renders the authored plan into the viewport; Export SVG issues a real download (A-001.svg); 'Place on sheet' from the Schedules panel lands on sheet A-001", "real browser (v54 re-run): saved Wall Schedule E2E → 'Placed ... on sheet A-001' → Export SVG (9.9 KB) + Export PDF (PDF 1.7) both contain the full 4-row table (Wall 001–004, grand totals 264.793 m / 1588.758 m² / 202.566 m³) — PDF text-extraction verified"],
+    evidence: ["tests/", "real browser: + Sheet → + Viewport renders the authored plan into the viewport; Export SVG issues a real download (A-001.svg); 'Place on sheet' from the Schedules panel lands on sheet A-001", "real browser (v54 re-run): saved Wall Schedule E2E → 'Placed ... on sheet A-001' → Export SVG (9.9 KB) + Export PDF (PDF 1.7) both contain the full 4-row table (Wall 001–004, grand totals 264.793 m / 1588.758 m² / 202.566 m³) — PDF text-extraction verified", "browser chain spec (document-chain.spec.ts, production bundle): Sheets panel '+ Sheet' creates a sheet row, and Export IFC4 from the File tab downloads a real 7,694-byte ISO-10303-21 STEP file of the authored model"],
     limitations: [
       "Sheet composition covers the v M3 scope; not a full drawing-sheet editor",
       "Viewport fit is extent-based, not content-tight — an 18 m wall renders small on a 40 × 28 m default window",
@@ -313,10 +313,11 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Documentation",
     status: "limited",
     source: ["src/modules/schedules/", "src/modules/cost/"],
-    evidence: ["tests/", "tests/schedule-totals.test.cjs", "tests/openings-chain.test.cjs", "real browser: Door/Window/Wall schedules return 1 row for authored geometry and the wall take-off equals the cut-mesh volume", "real browser (v54 re-run): Wall Schedule over 4 authored walls → Length/Area/Volume per row, Volume = L×H×t exact (30.420 × 3 × 0.255 ≈ 23.271 m³), Area = both faces, grand total row rendered; Snapshot/Diff and 'Save the schedule first' guardrail live"],
+    evidence: ["tests/", "tests/schedule-totals.test.cjs", "tests/openings-chain.test.cjs", "real browser: Door/Window/Wall schedules return 1 row for authored geometry and the wall take-off equals the cut-mesh volume", "real browser (v54 re-run): Wall Schedule over 4 authored walls → Length/Area/Volume per row, Volume = L×H×t exact (30.420 × 3 × 0.255 ≈ 23.271 m³), Area = both faces, grand total row rendered; Snapshot/Diff and 'Save the schedule first' guardrail live", "browser chain spec (document-chain.spec.ts, production bundle): out-of-box default is now the all-elements Quantity Takeoff (tpl-qto) — a single authored wall renders Wall 001 with Length/Area/Volume (84.683 m / 508.099 m² / 64.783 m³) on FIRST open, where it previously fell back to the Door Schedule and showed '0 rows · 0 authored'; after inserting a door + window the panel regenerates on reopen (authored-count staleness trigger) and the wall recuts to 63.872 m³ — 0.911 m³ of real geometry removed"],
     limitations: [
       "Quantity take-off relies on element parameters, not true 5D rules engine",
       "Wall volume/area now deducts hosted door/window openings (matches the cut 3D mesh); curtain/arc-wall take-offs stay chord-based approximations",
+      "Hosted door/window rows show 0 for the all-elements take-off's Length/Area/Volume columns (host geometry quantities are carried by the wall row); dedicated Door/Window templates still expose width/height",
     ],
     affirmedIn: APP_VERSION,
   },
@@ -414,6 +415,25 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     limitations: [
       "No auto-reopen: a fresh boot enters an empty session even when a saved project exists; the user must reopen from the welcome screen (one click) — easy to misread as data loss",
       "Ribbon pill used to render a green 'SAVED' next to 'No project' while unprojected modeling lived only in memory and died on reload — fixed: unprojected content now reads 'NO PROJECT — UNSAVED' (verified live)",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
+    id: "browser-e2e-chain",
+    area: "Platform",
+    status: "verified",
+    source: ["tests/e2e/document-chain.spec.ts", "playwright.config.ts", "src/features/drawing.ts", "src/modules/schedules/schedule-templates.ts"],
+    evidence: [
+      "tests/e2e/document-chain.spec.ts — the full document chain in a REAL browser against the PRODUCTION vite preview bundle (chromium, 35–38 s): boot with zero page errors → Authoring workspace card closes the home overlay → Wall ribbon click activates the tool (contextual strip swaps to Chain) → 2 canvas clicks + Enter author a wall (authored elements 0 → 1) → Schedules opens with the all-elements Quantity Takeoff (Wall 001: Length 84.683 m / Area 508.099 m² / Volume 64.783 m³) → Door + Window inserted on the wall → Schedules regenerate on reopen (authored-count staleness trigger) → Door 001 + Window 001 rows appear and the wall recuts to Volume 63.872 m³ (0.911 m³ of real geometry removed) → Sheets panel '+ Sheet' creates sheet (1 row) → Export IFC4 downloads a real 7,694-byte ISO-10303-21 STEP file. Uncaught page errors asserted at every step",
+      "Dev-mode white-screen boot bug found and fixed during this check: authoring.ts ↔ drawing.ts form an import cycle, and drawing.ts eagerly snapshotted authoring's activeToolLabel at module-evaluation time — when the entry graph reached drawing.ts while authoring.ts was still mid-evaluation the read hit the TDZ ('Cannot access activeToolLabel before initialization' → blank page). Fixed as a pure lazy re-export (`export { activeToolLabel } from \"./authoring\"`), which is cycle-safe and always live. Unit tests could not catch this; only a real browser boot could — the reason this spec exists",
+      "Schedules out-of-box default fixed: the panel cloned BUILT_IN_TEMPLATES[0] (Door Schedule) and reused a stale run on reopen, so a wall-only model opened on '0 rows · 0 authored' with no volume column. The default is now the all-elements Quantity Takeoff (tpl-qto) and reopening regenerates when the authored element count changed (verified by the chain spec's 64.783 → 63.872 m³ assertion)",
+      "Ribbon File tab rendered two identical Issues buttons (copy-paste duplicate) — removed",
+      "All 6 affected unit suites re-run green after the schedules changes: schedule-totals 8, schedule-sheet 16, schedule-4d 55, schedule-4d-ui 27, schedule-import 35, ribbon-collapse 24 assertions",
+    ],
+    limitations: [
+      "Chain spec covers the happy path of the core chain; edit/undo/parametric-change branches remain covered by unit tests and the other e2e specs",
+      "Two WALK MODE specs in orbit-rtl.spec.ts fail on slow headless renderers (frame-pacing sensitive: 'no shaking while pressed against the wall' reproduces on a pristine checkout; 'Space raised the eye' is flaky) — pre-existing, unrelated to the chain; browser-smoke CI is continue-on-error so they do not block",
+      "browser-smoke CI job is non-blocking by design; a red chain does not fail the pipeline yet",
     ],
     affirmedIn: APP_VERSION,
   },

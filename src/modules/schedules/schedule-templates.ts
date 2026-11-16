@@ -78,6 +78,18 @@ const T = (
    Templates
    ═════════════════════════════════════════════════════════════════════════ */
 export const BUILT_IN_TEMPLATES: ScheduleDefinition[] = [
+  // ── All elements ───────────────────────────────────────────────────
+  // FIRST template = the Schedules panel's out-of-box default
+  // (schedules-panel.ts clones BUILT_IN_TEMPLATES[0] on boot). It must
+  // surface the authored model immediately: geometry quantities for every
+  // element, not a category-specific sheet that reads "0 rows" on a
+  // wall-only model. Browser E2E (tests/e2e/document-chain.spec.ts)
+  // asserts wall volume rows appear here right after authoring.
+  T("tpl-qto", "Quantity Takeoff (All elements)", null,
+    [C("mark"), C("type"), C("level"), C("length"), C("area"), C("volume")],
+    [G("type")], "type",
+    { description: "Every authored or imported element with computed length, area, and volume — the default takeoff." }),
+
   // ── Architectural ─────────────────────────────────────────────────
   T("tpl-door", "Door Schedule", "IFCDOOR",
     [C("mark"), C("type"), C("level"), C("width"), C("height"), C("fireRating"), C("panel"), C("costItem"), C("lineCost")],

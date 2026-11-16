@@ -153,11 +153,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Install Playwright and Chromium
-        run: npm i --no-save @playwright/test@1.49.1 && npx playwright install --with-deps chromium
+        run: npm i --no-save @playwright/test@1.57.0 && npx playwright install --with-deps chromium
       - name: Build production app for browser tests
         run: npm run build
       - name: Run browser specs
-        run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts --reporter=list
+        # document-chain = the core authoring→documentation→export chain in a
+        # real browser (production bundle); edit-undo-save = state round-trip.
+        # orbit-rtl/native-ifc/smoke stay from the original smoke set.
+        run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts tests/e2e/edit-undo-save.spec.ts tests/e2e/document-chain.spec.ts --reporter=list
       - name: Upload report and screenshots
         if: always()
         uses: actions/upload-artifact@v4

@@ -847,7 +847,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }),
       b("cost-takeoff", "Cost", safe(() => recalculateTakeoff(), "Cost")),
       b("issues", "Issues", safe(() => toggleIssuesPanel(), "Issues"), { active: isIssuesPanelVisible() }),
-      b("issues", "Issues", safe(() => toggleIssuesPanel(), "Issues"), { active: isIssuesPanelVisible() }),
       sep(),
       groupLabel("Doc"),
       b("new-sheet", "Sheets", safe(() => toggleSheetsPanel(), "Sheets"), { active: isSheetsPanelVisible() }),
