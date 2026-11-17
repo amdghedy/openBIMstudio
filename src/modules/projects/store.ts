@@ -12,6 +12,8 @@ import {
   type ProjectRecoverySnapshot,
 } from "./project-journal";
 import { normalizeProjectDoc, repairProjectDocInPlace } from "./project-schema";
+import { buildProjectFile, suggestedFileName } from "./project-file";
+import { backupProjectFile } from "./browser-recovery";
 
 const DB_NAME = "open-bim-studio";
 const DB_VERSION = 2;
@@ -261,6 +263,17 @@ export async function listProjectDocs(): Promise<ProjectDoc[]> {
  * half-deleted project behind.
  */
 export async function deleteProjectRecord(id: string): Promise<void> {
+  const current = await getProject(id);
+  if (current) {
+    const blobs = await getModelBlobs(id);
+    await backupProjectFile({
+      projectId: current.id,
+      projectName: current.name,
+      fileName: suggestedFileName(current),
+      reason: "before-delete",
+      blob: buildProjectFile(current, blobs),
+    });
+  }
   const db = await openDb();
   const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
   const done = transactionDone(tx);

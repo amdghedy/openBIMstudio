@@ -15,6 +15,7 @@ import { buildProjectFile, parseProjectFile, ProjectFileError, PROJECT_FILE_EXT,
 import { getCurrentProject, openProject, saveProject } from "./projects";
 import { decryptProjectBlob, encryptProjectBlob, isEncryptedProjectBlob, WrongPasswordError } from "./project-crypto";
 import { askPassword } from "./password-dialog";
+import { backupExistingFileHandle, backupProjectFile } from "./browser-recovery";
 
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
@@ -120,6 +121,7 @@ export async function saveProjectToFile(asNew = false): Promise<boolean> {
       l = { projectId: doc.id, handle, name: handle.name };
       link = l; void saveLink(l);               // Ctrl+S now keeps this file up to date (Save As re-points it)
     }
+    await backupExistingFileHandle(l.handle, doc.id, doc.name);
     await writeHandle(l.handle, blob);
     lastFileWrite = Date.now();
     toast("success", `Saved to file: ${l.name}`);
@@ -235,6 +237,16 @@ export async function importProjectFile(file: Blob, handle: Handle | null = null
     }
   }
   clean.updatedAt = Date.now();
+  if (replace && existing) {
+    const existingBlobs = await store.getModelBlobs(existing.id);
+    await backupProjectFile({
+      projectId: existing.id,
+      projectName: existing.name,
+      fileName: suggestedFileName(existing),
+      reason: "before-import-replace",
+      blob: buildProjectFile(existing, existingBlobs),
+    });
+  }
   // ONE transaction for the document and every model payload: an interrupted
   // import can no longer leave metadata whose payloads were never written.
   await store.importProjectWithBlobs(clean, blobs, replace);
@@ -270,6 +282,7 @@ async function onProjectSaved(ev: Event): Promise<void> {
   try {
     const doc = (await store.getProject(cur.id)) ?? cur;
     const blobs = await store.getModelBlobs(cur.id);
+    await backupExistingFileHandle(l.handle, doc.id, doc.name);
     await writeHandle(l.handle, buildProjectFile(doc, blobs));
     lastFileWrite = Date.now();
     if (!silent) toast("success", `Saved to ${l.name}`);

@@ -20,6 +20,7 @@ const assert = require("node:assert/strict");
 
 const root = path.resolve(__dirname, "..");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-project-persist-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction");
 
 /* ── compile the real production implementations ───────────────────────── */
 execSync(
@@ -332,6 +333,18 @@ const t = (label, fn) => { n += 1; fn(); console.log(`  ok ${n} — ${label}`); 
   console.log("project-persistence: file IO & menus (real sources)");
 
   const fileIo = src("src/modules/projects/project-file-io.ts");
+  const browserRecovery = src("src/modules/projects/browser-recovery.ts");
+  t("browser file overwrite and replacement paths retain bounded recovery copies", () => {
+    assert.match(browserRecovery, /BROWSER_RECOVERY_KEEP = 5/);
+    assert.match(browserRecovery, /BROWSER_RECOVERY_MAX_BYTES/);
+    assert.match(browserRecovery, /before-file-overwrite/);
+    assert.match(browserRecovery, /before-delete/);
+    assert.match(browserRecovery, /slice\(BROWSER_RECOVERY_KEEP - 1\)/);
+    assert.match(fileIo, /backupExistingFileHandle\(l\.handle, doc\.id, doc\.name\)/);
+    assert.match(fileIo, /reason: "before-import-replace"/);
+    assert.match(fileIo, /backupProjectFile\(/);
+    assert.match(src("src/modules/projects/store.ts"), /reason: "before-delete"/);
+  });
   t("import validates the file's document before touching storage and imports atomically", () => {
     const imp = fileIo.slice(fileIo.indexOf("export async function importProjectFile"), fileIo.indexOf("export async function openProjectFromFile"));
     assert.match(imp, /normalizeProjectDoc\(doc\)/);
