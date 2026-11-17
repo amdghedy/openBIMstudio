@@ -1,14 +1,27 @@
 /**
- * System Browser — MEP systems tree.
+ * System Browser — MEP systems tree, v2.
  *
- * Scans the loaded fragment models for MEP categories and groups them
- * into systems (Supply Air, Return Air, Domestic Cold Water, Sanitary,
- * Power, Lighting, Fire). Clicking a system selects all its elements.
+ * v1 grouped elements by IFC category regex and showed counts: every duct
+ * was "Supply Air" whether or not it touched anything, disconnected runs
+ * looked like one system, and unconnected elements were invisible.
+ *
+ * v2 renders the REAL model tree for authored MEP elements:
+ *   - every connected cluster is ONE named system (Supply Air 1, …),
+ *     built from geometry-derived connectivity (mep/system-tree.ts)
+ *   - equipment heads the member list; members expand and are individually
+ *     selectable; clicking a system selects all of its members
+ *   - isolated elements are flagged as unconnected, per system browser
+ *     convention, instead of being silently folded into a category count
+ *   - imported IFC files keep their category grouping, honestly labelled:
+ *     connectivity is not re-derived for imported geometry.
  */
 
 import { ctx } from "../core/context";
 import { selection } from "./selection";
-import { getElements } from "./authoring";
+import { getElements, setSelectedAuthored } from "./authoring";
+import { computeMepSystemTree } from "../modules/mep/system-tree";
+import { colorFor } from "../modules/mep/types";
+import type { MepLike } from "../modules/mep/connectivity";
 
 interface SystemDef {
   id: string;
@@ -18,6 +31,7 @@ interface SystemDef {
   categories: RegExp;
 }
 
+/** Imported-IFC grouping (category based — see the honest section label). */
 const SYSTEMS: SystemDef[] = [
   { id: "supply-air",     label: "Supply Air",           icon: "\u2191", color: "#38bdf8", categories: /^IFC(DuctSegment|DuctFitting|AirTerminal|AirTerminalBox)/i },
   { id: "return-air",     label: "Return Air",           icon: "\u21BB", color: "#22d3ee", categories: /^IFC(DuctSegment|DuctFitting|AirTerminal)/i },
@@ -34,12 +48,13 @@ const SYSTEMS: SystemDef[] = [
 let panel: HTMLDivElement | null = null;
 let listHost: HTMLDivElement | null = null;
 let visible = false;
+const expanded = new Set<string>();
 
 export function setupSystemBrowser(): void {
   panel = document.createElement("div");
   panel.id = "obs-system-browser";
   panel.style.cssText =
-    "position:fixed;left:16px;top:200px;width:280px;max-height:60vh;z-index:33;" +
+    "position:fixed;left:16px;top:200px;width:300px;max-height:62vh;z-index:33;" +
     "display:none;flex-direction:column;background:#1a1d27;color:#e8eaf0;" +
     "border:1px solid #2a2e3a;border-radius:10px;" +
     "box-shadow:0 12px 36px rgba(0,0,0,.5);font:12px system-ui,sans-serif;overflow:hidden";
@@ -53,7 +68,7 @@ export function setupSystemBrowser(): void {
 
   const refreshBtn = document.createElement("button");
   refreshBtn.textContent = "\u21BB";
-  refreshBtn.title = "Refresh";
+  refreshBtn.title = "Rebuild the tree from the current model";
   refreshBtn.style.cssText =
     "padding:2px 8px;background:transparent;color:#94a3b8;" +
     "border:1px solid #2a2e3a;border-radius:4px;cursor:pointer;font-size:12px";
@@ -75,13 +90,100 @@ export function setupSystemBrowser(): void {
   };
 }
 
-async function renderTree(): Promise<void> {
-  if (!listHost) return;
-  listHost.innerHTML = "<div style='padding:16px;text-align:center;color:#6b7280'>Scanning models\u2026</div>";
+function toast(message: string, kind: "success" | "warn"): void {
+  window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message, kind } }));
+}
 
+function sectionTitle(text: string, subtitle: string): HTMLDivElement {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "padding:7px 6px 3px";
+  const t = document.createElement("div");
+  t.textContent = text;
+  t.style.cssText = "font-weight:700;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#7dd3fc";
+  const s = document.createElement("div");
+  s.textContent = subtitle;
+  s.style.cssText = "font-size:10px;color:#6b7280;margin-top:1px";
+  wrap.append(t, s);
+  return wrap;
+}
+
+function rowBase(): HTMLDivElement {
+  const row = document.createElement("div");
+  row.style.cssText =
+    "display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:5px;" +
+    "cursor:pointer;margin-bottom:2px;background:#0e1017;border:1px solid #2a2e3a";
+  row.onmouseenter = () => { row.style.background = "#181a23"; };
+  row.onmouseleave = () => { row.style.background = "#0e1017"; };
+  return row;
+}
+
+/** Authored model: real systems from connectivity. */
+function renderAuthoredSection(host: HTMLDivElement): { systems: number; elements: number; unconnected: number } {
+  const els = getElements() as unknown as MepLike[];
+  const tree = computeMepSystemTree(els);
+  if (!tree.totalMep) return { systems: 0, elements: 0, unconnected: 0 };
+
+  host.appendChild(sectionTitle(
+    "Model systems",
+    "built from real connectivity \u00B7 click a system to select it",
+  ));
+
+  for (const c of tree.clusters) {
+    const row = rowBase();
+    const dot = document.createElement("span");
+    dot.textContent = "\u25CF";
+    dot.style.cssText = "color:" + (c.system ? colorFor(c.system) : "#6b7280") + ";font-size:14px;flex-shrink:0";
+    const label = document.createElement("span");
+    label.textContent = c.label + (c.unconnected ? " \u2014 not connected" : "");
+    label.style.cssText = "flex:1;font-weight:600;font-size:11.5px" + (c.unconnected ? ";color:#fbbf24" : "");
+    const badge = document.createElement("span");
+    badge.textContent = String(c.memberIds.length);
+    badge.style.cssText =
+      "font:600 10px ui-monospace,monospace;color:#94a3b8;background:#1a1d27;" +
+      "padding:2px 7px;border-radius:10px;flex-shrink:0";
+    const chev = document.createElement("span");
+    chev.textContent = expanded.has(c.id) ? "\u25BE" : "\u25B8";
+    chev.style.cssText = "color:#6b7280;font-size:10px;flex-shrink:0";
+    row.append(dot, label, badge, chev);
+    row.onclick = () => {
+      setSelectedAuthored(c.memberIds);
+      toast("Selected " + c.memberIds.length + " element(s) in " + c.label, "success");
+    };
+    host.appendChild(row);
+
+    if (expanded.has(c.id)) {
+      for (const id of c.memberIds) {
+        const el = els.find((e) => e.id === id);
+        const mrow = rowBase();
+        mrow.style.marginLeft = "18px";
+        mrow.style.padding = "4px 9px";
+        const mlabel = document.createElement("span");
+        mlabel.textContent = (el?.type ?? "?") + " \u00B7 " + id;
+        mlabel.style.cssText = "flex:1;font-size:10.5px;color:#cbd5e1";
+        mrow.appendChild(mlabel);
+        mrow.onclick = (ev) => {
+          ev.stopPropagation();
+          setSelectedAuthored([id]);
+          toast("Selected " + id, "success");
+        };
+        host.appendChild(mrow);
+      }
+    }
+
+    chev.onclick = (ev) => {
+      ev.stopPropagation();
+      if (expanded.has(c.id)) expanded.delete(c.id);
+      else expanded.add(c.id);
+      renderTree();
+    };
+  }
+  return { systems: tree.clusters.length, elements: tree.totalMep, unconnected: tree.unconnectedCount };
+}
+
+/** Imported IFC: category groups (honest label — connectivity not re-derived). */
+async function renderImportedSection(host: HTMLDivElement): Promise<{ groups: number; elements: number }> {
   const counts = new Map<string, number>();
   for (const s of SYSTEMS) counts.set(s.id, 0);
-
   for (const [, model] of ctx.fragments.list) {
     try {
       const cats = await (model as any).getItemsOfCategories([/.+/]);
@@ -96,61 +198,51 @@ async function renderTree(): Promise<void> {
       }
     } catch { /* */ }
   }
+  const groups = SYSTEMS.filter((s) => (counts.get(s.id) ?? 0) > 0);
+  if (!groups.length) return { groups: 0, elements: 0 };
 
-  // Authored elements
-  for (const el of getElements()) {
-    const type = el.type;
-    if (type === "duct" || type === "fitting") counts.set("supply-air", (counts.get("supply-air") ?? 0) + 1);
-    else if (type === "pipe") counts.set("cold-water", (counts.get("cold-water") ?? 0) + 1);
-    else if (type === "cable-tray" || type === "conduit") counts.set("power", (counts.get("power") ?? 0) + 1);
-    else if (type === "equipment") counts.set("controls", (counts.get("controls") ?? 0) + 1);
-  }
-
-  listHost.innerHTML = "";
-  let totalSystems = 0;
-  let totalElements = 0;
-
-  for (const sys of SYSTEMS) {
+  host.appendChild(sectionTitle(
+    "Imported (IFC)",
+    "grouped by IFC category \u2014 connectivity is not re-derived for imported files",
+  ));
+  for (const sys of groups) {
     const count = counts.get(sys.id) ?? 0;
-    if (count === 0) continue;
-    totalSystems++;
-    totalElements += count;
-
-    const row = document.createElement("div");
-    row.style.cssText =
-      "display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:5px;" +
-      "cursor:pointer;margin-bottom:2px;background:#0e1017;border:1px solid #2a2e3a";
-    row.onmouseenter = () => { row.style.background = "#181a23"; };
-    row.onmouseleave = () => { row.style.background = "#0e1017"; };
-
+    const row = rowBase();
     const dot = document.createElement("span");
     dot.textContent = "\u25CF";
     dot.style.cssText = "color:" + sys.color + ";font-size:14px;flex-shrink:0";
-
     const icon = document.createElement("span");
     icon.textContent = sys.icon;
     icon.style.cssText = "font-size:12px;opacity:.7;flex-shrink:0";
-
     const label = document.createElement("span");
     label.textContent = sys.label;
     label.style.cssText = "flex:1;font-weight:600;font-size:11.5px";
-
     const badge = document.createElement("span");
     badge.textContent = String(count);
     badge.style.cssText =
       "font:600 10px ui-monospace,monospace;color:#94a3b8;background:#1a1d27;" +
       "padding:2px 7px;border-radius:10px;flex-shrink:0";
-
     row.append(dot, icon, label, badge);
-    row.onclick = () => void selectSystem(sys);
-
-    listHost.appendChild(row);
+    row.onclick = () => void selectImportedGroup(sys);
+    host.appendChild(row);
   }
+  return { groups: groups.length, elements: groups.reduce((a, s) => a + (counts.get(s.id) ?? 0), 0) };
+}
 
-  if (!totalSystems) {
+async function renderTree(): Promise<void> {
+  if (!listHost) return;
+  listHost.innerHTML = "";
+
+  const authored = renderAuthoredSection(listHost);
+  const imported = await renderImportedSection(listHost);
+
+  if (!authored.systems && !imported.groups) {
     const empty = document.createElement("div");
     empty.style.cssText = "padding:20px;text-align:center;color:#6b7280;font:11.5px system-ui;line-height:1.6";
-    empty.innerHTML = "No MEP systems detected.<br>Load an IFC with ducts, pipes, or cable trays.";
+    empty.innerHTML =
+      "No MEP systems detected.<br>" +
+      "Draw ducts, pipes, cable trays or conduit with the MEP tools,<br>" +
+      "or load an IFC with MEP elements.";
     listHost.appendChild(empty);
     return;
   }
@@ -159,11 +251,17 @@ async function renderTree(): Promise<void> {
   summary.style.cssText =
     "padding:8px 10px;border-top:1px solid #2a2e3a;font:10.5px ui-monospace,monospace;" +
     "color:#6b7280;text-align:center";
-  summary.textContent = totalSystems + " system(s) \u00B7 " + totalElements + " element(s)";
+  const parts: string[] = [];
+  if (authored.systems) {
+    parts.push(authored.systems + " model system(s) \u00B7 " + authored.elements + " element(s)");
+    if (authored.unconnected) parts.push(authored.unconnected + " unconnected");
+  }
+  if (imported.groups) parts.push(imported.groups + " imported group(s) \u00B7 " + imported.elements + " element(s)");
+  summary.textContent = parts.join("  \u00B7  ");
   listHost.appendChild(summary);
 }
 
-async function selectSystem(sys: SystemDef): Promise<void> {
+async function selectImportedGroup(sys: SystemDef): Promise<void> {
   const map: Record<string, Set<number>> = {};
   for (const [modelId, model] of ctx.fragments.list) {
     try {
@@ -177,14 +275,10 @@ async function selectSystem(sys: SystemDef): Promise<void> {
     } catch { /* */ }
   }
   if (!Object.keys(map).length) {
-    window.dispatchEvent(new CustomEvent("obs-toast", {
-      detail: { message: "No federated elements in " + sys.label, kind: "warn" },
-    }));
+    toast("No federated elements in " + sys.label, "warn");
     return;
   }
   selection.replace(map);
   await selection.applyToHighlighter();
-  window.dispatchEvent(new CustomEvent("obs-toast", {
-    detail: { message: "Selected " + sys.label, kind: "success" },
-  }));
+  toast("Selected " + sys.label, "success");
 }
