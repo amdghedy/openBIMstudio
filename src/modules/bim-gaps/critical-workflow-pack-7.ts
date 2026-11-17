@@ -86,7 +86,8 @@ export async function runFormalModelChecker(): Promise<Any> {
     const mod = await import("../model-checker/model-checker");
     const els = elements();
     const result = mod.runModelChecker(els as any, {});
-    (window as Any).__obsModelChecker = result;
+    // checker API is exposed by module-globals for the ribbon;
+    // storing the result here would clobber that API and break the ribbon handler.
     const count =
       (result?.summary?.errors ?? 0) +
       (result?.summary?.warnings ?? 0) +
@@ -107,7 +108,6 @@ export async function runFormalModelChecker(): Promise<Any> {
         if (L < 0.05) findings.push({ severity: "error", code: "SHORT_WALL", id: el.id, message: "Wall too short" });
       }
     }
-    (window as Any).__obsModelChecker = findings;
     notify(findings.length ? "warn" : "success", `Checker: ${findings.length} finding(s)`);
     return findings;
   }
@@ -134,8 +134,11 @@ export async function ensureMaterials(): Promise<number> {
     mod.ensureDefaultMaterials?.();
     const list = mod.listMaterials?.() ?? [];
     if (!list.length) {
-      for (const name of ["Concrete", "Glass", "Steel", "Gypsum", "Wood", "Brick"]) {
-        mod.addMaterial?.({ name, category: "Generic" });
+      for (const [name, category] of [
+        ["Concrete", "concrete"], ["Glass", "glass"], ["Steel", "steel"],
+        ["Gypsum", "finish"], ["Wood", "timber"], ["Brick", "other"],
+      ] as const) {
+        mod.addMaterial?.({ name, category });
       }
     }
     const n = mod.listMaterials?.()?.length ?? 0;
@@ -200,7 +203,6 @@ export async function createFilledRegion(): Promise<boolean> {
         JSON.stringify({ polygon: poly, pattern: "solid", at: Date.now() }),
       );
     }
-    (window as Any).__obsFilledRegion = { polygon: poly };
     notify("success", "Filled region created");
     return true;
   } catch (e) {
@@ -258,17 +260,11 @@ export async function placeBoundingMass(): Promise<string | null> {
         minZ = Math.min(minZ, pt[1]); maxZ = Math.max(maxZ, pt[1]);
       }
     }
-    const mass = mod.createMass?.({
-      name: "Building Mass",
-      profile: [
-        { x: minX, z: minZ },
-        { x: maxX, z: minZ },
-        { x: maxX, z: maxZ },
-        { x: minX, z: maxZ },
-      ],
-      height: maxY,
-      elevation: 0,
-    } as any);
+    const mass = mod.createMass?.(
+      [[minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ]],
+      maxY,
+      "Building Mass",
+    );
     notify("success", `Mass created${mass?.id ? `: ${mass.id}` : ""}`);
     return mass?.id ?? "mass-local";
   } catch (e) {
@@ -282,19 +278,14 @@ export async function placeBoundingMass(): Promise<string | null> {
 export async function federationStatus(): Promise<Any[]> {
   const links: Any[] = [];
   try {
-    const fed = (ctx.features as Any).federation ?? (window as Any).__obsFederation;
+    const fed = (ctx.features as Any).federation;
     if (fed?.list) links.push(...(fed.list() ?? []));
   } catch { /* */ }
   try {
-    const cad = (ctx.features as Any).cadLinks ?? (window as Any).__obsCadLinks;
+    const cad = (ctx.features as Any).cadLinks;
     if (cad?.list) links.push(...(cad.list() ?? []));
   } catch { /* */ }
-  // IFC models from importer cache
-  try {
-    const models = (window as Any).__obsLinkedModels ?? [];
-    if (Array.isArray(models)) links.push(...models);
-  } catch { /* */ }
-  (window as Any).__obsFederationStatus = links;
+  // IFC models: no importer cache global exists; linked IFC surfaces via ctx.features.federation when present
   console.table(links);
   notify("info", `Federation: ${links.length} linked model(s)`);
   return links;
@@ -325,7 +316,6 @@ export function exportModelTree(): Any {
     levels: tree,
     totalElements: elements().length,
   };
-  (window as Any).__obsModelTree = payload;
   try {
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -354,7 +344,6 @@ export function setupCriticalWorkflowPack7(): void {
     federationStatus,
     exportModelTree,
   };
-  (window as Any).__obsWorkflowPack7 = api;
   (ctx.features as Any).workflowPack7 = api;
 
   const cmds: Array<[string, string, string, () => void]> = [
