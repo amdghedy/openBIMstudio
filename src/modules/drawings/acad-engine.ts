@@ -325,8 +325,12 @@ interface JsonColor {
   b?: number;
 }
 
-function colorOf(c: JsonColor | undefined): { color?: number; rgb?: number } {
+/** Properties of the INSERT currently being expanded, used to resolve ByBlock inside its block. */
+export interface BlockInherit { color?: number; rgb?: number; lineType?: string; lineweight?: number; transparency?: number }
+
+function colorOf(c: JsonColor | undefined, inh?: BlockInherit): { color?: number; rgb?: number } {
   if (!c) return {};
+  if (c.t === "byBlock") return inh ? (inh.rgb !== undefined ? { rgb: inh.rgb } : inh.color !== undefined ? { color: inh.color } : {}) : {};
   if (c.t === "rgb") return { rgb: ((c.r! << 16) | (c.g! << 8) | c.b!) & 0xffffff };
   if (c.t === "index") {
     const v = c.v ?? 7;
@@ -360,15 +364,17 @@ interface CommonOut {
   transparency?: number;
 }
 
-function commonOf(e: Any): CommonOut {
-  const { color, rgb } = colorOf(e.color as JsonColor | undefined);
+export function commonOf(e: Any, inh?: BlockInherit): CommonOut {
+  const { color, rgb } = colorOf(e.color as JsonColor | undefined, inh);
   const out: CommonOut = { layer: String(e.layer ?? "0") };
   if (color !== undefined) out.color = color;
   if (rgb !== undefined) out.rgb = rgb;
-  if (typeof e.lineType === "string" && e.lineType && e.lineType !== "ByLayer") {
-    out.lineType = e.lineType;
+  if (typeof e.lineType === "string" && e.lineType && e.lineType.toLowerCase() !== "bylayer") {
+    if (e.lineType.toLowerCase() === "byblock") {
+      if (inh?.lineType) out.lineType = inh.lineType; // inside a block: the INSERT's linetype; otherwise continuous
+    } else out.lineType = e.lineType;
   }
-  const lw = lineWeightMm(e.lineWeight);
+  const lw = e.lineWeight === "byBlock" ? inh?.lineweight : lineWeightMm(e.lineWeight);
   if (lw !== undefined) out.lineweight = lw;
   if (typeof e.ltScale === "number" && e.ltScale !== 1) out.ltScale = e.ltScale;
   const tr = transparencyPct(e.transparency);
@@ -387,6 +393,17 @@ interface Ctx {
   blocks: Map<string, { base: DxfPoint; entities: Any[] }>;
   skip: (t: string) => void;
   mlineStyles?: Map<string, MlineStyle>;
+  /** ByBlock resolution for the INSERT being expanded (innermost last). */
+  inherit?: BlockInherit;
+}
+
+/** Expand a block's entities with ByBlock colour / linetype / lineweight taken from the INSERT's own (resolved) properties. */
+function expandBlock(cx: Ctx, ents: Any[], c: CommonOut, depth: number, insertLayer: string | null): DxfEntity[] {
+  const prev = cx.inherit;
+  cx.inherit = { color: c.color, rgb: c.rgb, lineType: c.lineType, lineweight: c.lineweight, transparency: c.transparency };
+  try {
+    return ents.flatMap((ent) => convertEntity(ent, cx, depth + 1, insertLayer ?? (c.layer === "0" ? null : c.layer)));
+  } finally { cx.inherit = prev; }
 }
 
 const extraCtx = (cx: Ctx) => ({
@@ -398,7 +415,7 @@ const extraCtx = (cx: Ctx) => ({
 function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | null): DxfEntity[] {
   if (!e || typeof e !== "object") return [];
   if (e.invisible) return [];
-  const c = commonOf(e);
+  const c = commonOf(e, cx.inherit);
   if (insertLayer && depth > 0 && c.layer === "0") c.layer = insertLayer;
   const type = String(e.type ?? "");
   switch (type) {
@@ -617,7 +634,7 @@ function convertInsert(
     cx.skip(blk ? "INSERT (too deeply nested)" : `INSERT (missing block ${name})`);
     return [];
   }
-  const inner = blk.entities.flatMap((ent) => convertEntity(ent, cx, depth + 1, insertLayer ?? (c.layer === "0" ? null : c.layer)));
+  const inner = expandBlock(cx, blk.entities, c, depth, insertLayer);
   let rows = Math.max(1, Math.round(Number(e.rowCount ?? 1)));
   let cols = Math.max(1, Math.round(Number(e.colCount ?? 1)));
   if (rows * cols > 64) {
@@ -677,9 +694,7 @@ function convertDimension(
   const blkName = String(e.block ?? "");
   const blk = blkName ? cx.blocks.get(blkName) : undefined;
   if (blk && depth < 8) {
-    const inner = blk.entities.flatMap((ent) =>
-      convertEntity(ent, cx, depth + 1, insertLayer ?? (c.layer === "0" ? null : c.layer)),
-    );
+    const inner = expandBlock(cx, blk.entities, c, depth, insertLayer);
     if (inner.length) return inner;
   }
   cx.skip("DIMENSION (no geometry block)");
@@ -773,7 +788,7 @@ function hatchOf(e: Any, cx: Ctx): DxfHatch | null {
 }
 
 /** Map the whole engine document onto the platform model. */
-function mapDocument(raw: Any, format: "dwg" | "dxf"): DxfDocument {
+export function mapDocument(raw: Any, format: "dwg" | "dxf"): DxfDocument {
   const cx: Ctx = {
     byHandle: new Map(),
     blocks: new Map(),

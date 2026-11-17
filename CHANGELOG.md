@@ -50,6 +50,7 @@ file — the project adopted a written changelog at 0.73.0.
 
 
 ### Fixed
+- **CAD: block content now keeps its lineweight, linetype scale and transparency, and ByBlock resolves to the INSERT.** Inserting a block silently dropped every entity's lineweight, `ltScale` and transparency (so block symbols drew and plotted with default weight/pattern scale). Separately, geometry inside a block with ByBlock colour, linetype or lineweight now takes the INSERT's resolved values (it was drawn ByLayer / by a literal "ByBlock" linetype). Unit-tested on engine-shaped JSON; not checked on a real AutoCAD drawing. Nested blocks use the innermost INSERT; dimension-block and viewport-frozen layer cases are untested.
 - Walk mode: IFC stairs no longer block the walker. A knee-height probe taken from lower ground saw the upper risers as walls and held the walker at the third step; wall contacts are now dropped once the walker's feet have risen above where they were measured. Browser test added (five 0.17 m risers to a landing).
 
 

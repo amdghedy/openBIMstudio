@@ -181,7 +181,14 @@ export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
   const uniform = Math.abs(Math.abs(m.sx) - Math.abs(m.sy)) < 1e-9 * Math.max(1, Math.abs(m.sx));
   const flip = m.sx < 0 && m.sy < 0 ? 180 : 0; // (-s,-s) is a rotation by 180
   const mirrored = m.sx * m.sy < 0;
-  const base = { layer: e.layer, color: e.color, rgb: e.rgb, lineType: e.lineType };
+  // Keep every display property through an INSERT: dropping lineweight / ltScale / transparency made block content
+  // print and draw with the wrong weight and pattern scale.
+  const base = {
+    layer: e.layer, color: e.color, rgb: e.rgb, lineType: e.lineType,
+    ...(e.lineweight !== undefined ? { lineweight: e.lineweight } : {}),
+    ...(e.ltScale !== undefined ? { ltScale: e.ltScale } : {}),
+    ...(e.transparency !== undefined ? { transparency: e.transparency } : {}),
+  };
 
   switch (e.type) {
     case "LINE":
