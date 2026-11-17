@@ -5,14 +5,15 @@
  *   public/plugins/libredwg/   ← primary (dwg-parse-core OPTIONAL_READER_URL)
  *   public/libredwg/           ← secondary
  *
- * Set OBS_BUNDLE_LIBREDWG=0 to skip. Default is to copy whenever the npm package exists.
+ * OPT-IN ONLY: set OBS_BUNDLE_LIBREDWG=1. LibreDWG is GPL-3.0, so the default product build must not ship it
+ * (docs/COMMERCIAL-READINESS.md, tests/no-gpl-shipped.test.cjs). The acadrust engine is the shipped DWG reader.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-if (process.env.OBS_BUNDLE_LIBREDWG === "0") {
-  console.log("[libredwg] skipped (OBS_BUNDLE_LIBREDWG=0)");
+if (process.env.OBS_BUNDLE_LIBREDWG !== "1") {
+  console.log("[libredwg] not bundled (GPL-3.0; opt in with OBS_BUNDLE_LIBREDWG=1)");
   process.exit(0);
 }
 
