@@ -303,11 +303,11 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 **Evidence:** MASTER_TOOL_CATALOG.md status vocabulary (source present / UI exposed / tested / runtime verified / partial) is documentation; nothing fails the build when claims and tests drift.
 
 **Tasks**
-- [ ] Encode the catalog as `documentation/tool-catalog.json` (id, name, status, tests[], verifiedScenarios[], knownLimitation)
-- [ ] `scripts/check-tool-catalog.mjs`: every UI-registered command id must exist in the catalog; `tested`/`runtime-verified` statuses require all listed test files to exist; `partial` requires knownLimitation text
+- [x] Encode the catalog as `documentation/tool-catalog.json` (id, name, status, tests[], verifiedScenarios[], knownLimitation)
+- [x] `scripts/check-tool-catalog.mjs`: canonical command ids are checked; `tested`/`runtime-verified` statuses require all listed test files to exist; `partial` requires knownLimitation text
 - [ ] Generate the markdown catalog from JSON (single source of truth; delete hand-edited drift)
-- [ ] Wire into CI on push + PR
-- [ ] Migrate existing catalog content into JSON (bulk conversion + manual review pass)
+- [x] Wire into CI on push + PR
+- [x] Migrate the current catalog entries into JSON; broader command-catalog expansion remains.
 
 **Acceptance criteria**
 - [ ] A test branch adding an uncatalogued command fails CI
@@ -421,10 +421,10 @@ Evidence-based audit of main against each issue's acceptance criteria
   `__obs` rule), P1-02 (`strict: true`), P1-04 (roundtrip pipeline + workflow
   activated on push), P2-05 (`SPEC_TEMPLATE.md`).
 - **Partial progress (create + progress comment):** P0-02 (safeLoad + schemas
-  exist; loader routing, malformed corpus, CI audit missing), P1-03 (3/20 fixtures), P1-06 (some
+  exist; broader loader routing and malformed corpus remain), P1-03 (3/20 fixtures), P1-06 (some
   malformed tests; property suites missing), P1-07 (playwright config; runner
   not in devDeps), P2-01 (`journal.ts` exists; not wired into persistence),
-  P2-02 (`check-tool-catalog.mjs` exists; no CI enforcement), P2-03
+  P2-02 (catalog checker repaired and wired into CI; command-directory coverage and markdown generation remain), P2-03
   (`budget.json` exists; no CI workflow), P1-05 (undo property foundation;
   split/join, snapping, ten-invariant target and mutation check remain).
 - **Not started:** P2-04, P2-06.

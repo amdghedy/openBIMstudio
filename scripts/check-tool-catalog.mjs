@@ -1,23 +1,53 @@
 #!/usr/bin/env node
-// Every UI command must be catalogued; every status claim must have real test files.
-import { readFileSync, existsSync, readdirSync } from 'fs';
+// Every command in the canonical command directory must be catalogued; every
+// status claim must have real test files.
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const catalog = JSON.parse(readFileSync('documentation/tool-catalog.json', 'utf8'));
-const commandIds = scanCommandRegistry('src/commands');  // parse registerCommand ids
-const errors = [];
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const fromRoot = (file) => path.join(root, file);
+const catalog = JSON.parse(readFileSync(fromRoot("documentation/tool-catalog.json"), "utf8"));
 
-for (const id of commandIds)
-  if (!catalog.tools.some((t) => t.id === id))
-    errors.push('UI command not in catalog: ' + id);
-
-for (const tool of catalog.tools) {
-  if (['tested', 'runtime-verified'].includes(tool.status))
-    for (const t of tool.tests ?? [])
-      if (!existsSync(t))
-        errors.push(tool.id + ' claims ' + tool.status + ' but missing test: ' + t);
-  if (tool.status === 'partial' && !tool.knownLimitation)
-    errors.push(tool.id + ' is partial but has no knownLimitation text');
+function scanCommandRegistry(relativeDir) {
+  const absoluteDir = fromRoot(relativeDir);
+  if (!existsSync(absoluteDir)) return [];
+  const ids = new Set();
+  function visit(dir) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(file);
+      else if (/\.(ts|tsx|js|mjs)$/.test(entry.name)) {
+        const source = readFileSync(file, "utf8");
+        for (const match of source.matchAll(/registerCommand\s*\(\s*\{\s*id\s*:\s*["']([^"']+)["']/g)) {
+          ids.add(match[1]);
+        }
+      }
+    }
+  }
+  visit(absoluteDir);
+  return [...ids].sort();
 }
 
-if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
-console.log('tool catalog consistent: ' + commandIds.length + ' commands checked');
+const catalogTools = Array.isArray(catalog.tools) ? catalog.tools : [];
+const commandIds = scanCommandRegistry("src/commands");
+const catalogIds = new Set(catalogTools.map((tool) => tool.id));
+const errors = [];
+for (const id of commandIds) {
+  if (!catalogIds.has(id)) errors.push(`UI command not in catalog: ${id}`);
+}
+for (const tool of catalogTools) {
+  if (["tested", "runtime-verified"].includes(tool.status)) {
+    for (const test of tool.tests ?? []) {
+      if (!existsSync(fromRoot(test))) errors.push(`${tool.id} claims ${tool.status} but missing test: ${test}`);
+    }
+  }
+  if (tool.status === "partial" && !tool.knownLimitation) {
+    errors.push(`${tool.id} is partial but has no knownLimitation text`);
+  }
+}
+if (errors.length) {
+  console.error(errors.join("\n"));
+  process.exit(1);
+}
+console.log(`tool catalog consistent: ${commandIds.length} canonical commands checked, ${catalogTools.length} catalog entries verified`);
