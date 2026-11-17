@@ -14,6 +14,7 @@
 import * as THREE from "three";
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { registerCommand } from "../../features/command-palette";
 
 type Any = Record<string, any>;
 
@@ -25,6 +26,26 @@ function elements(): Any[] {
 }
 function selectedIds(): string[] {
   return authoring()?.getSelectedIds?.() ?? [];
+}
+
+/* ── Results live on the module — no window globals (same repair
+   packs 3–7 went through) — exposed via getters. ────────────── */
+let lastCdeProviders: Any[] = [];
+let lastNlQuery: Any | null = null;
+let lastHierarchyReport: Any | null = null;
+let lastTwinCaps: Any[] = [];
+
+export function getLastCdeProviders(): Any[] {
+  return lastCdeProviders;
+}
+export function getLastNlQuery(): Any | null {
+  return lastNlQuery;
+}
+export function getLastHierarchyReport(): Any | null {
+  return lastHierarchyReport;
+}
+export function getLastTwinCaps(): Any[] {
+  return lastTwinCaps;
 }
 
 /* ── 1–2. Automation ─────────────────────────────────────────────── */
@@ -79,8 +100,7 @@ export async function listCdeProvidersCmd(): Promise<Any[]> {
       prov.registerCdeProviders?.();
     } catch { /* */ }
     const list = reg.listCdeProviders?.() ?? [];
-    (window as Any).__obsCdeProviders = list;
-    console.table(list);
+    lastCdeProviders = list;
     notify("success", `CDE providers: ${list.length}`);
     return list;
   } catch (e) {
@@ -145,24 +165,28 @@ export async function frameSelection(): Promise<boolean> {
 
 export async function runNlQuery(text = "select all walls"): Promise<Any> {
   try {
-    const parser = await import("../nl-query/parser");
+    // Real API: executeNLQuery(rawQuery: string, elements?: {id, category,
+    // properties?}[]) — it parses internally; the parsed object is in the result.
     const exec = await import("../nl-query/executor");
-    const parsed = parser.parseNLQuery(text);
-    const result = exec.executeNLQuery(parsed, {
-      elements: elements(),
-      levels: authoring()?.getLevels?.() ?? [],
-    } as any);
-    const ids = result?.ids ?? result?.elementIds ?? [];
-    if (Array.isArray(ids) && ids.length) {
-      authoring()?.setSelectedAuthored?.(ids.map(String));
+    const result = exec.executeNLQuery(
+      text,
+      elements().map((e) => ({
+        id: String(e.id),
+        category: String(e.category ?? e.type ?? "").toUpperCase(),
+        properties: (e.properties ?? {}) as Record<string, any>,
+      })),
+    );
+    const ids = result.matchedIds;
+    if (ids.length) {
+      authoring()?.setSelectedAuthored?.(ids);
     }
     try {
       const saved = await import("../nl-query/saved-queries");
       saved.saveQuery?.(text);
     } catch { /* */ }
-    (window as Any).__obsNlQuery = { text, parsed, result };
-    notify("success", `NL query: ${Array.isArray(ids) ? ids.length : 0} hit(s)`);
-    return result;
+    lastNlQuery = { text, result, at: Date.now() };
+    notify("success", `NL query: ${result.matchedCount} hit(s)`);
+    return { text, matchedCount: result.matchedCount, matchedIds: ids, parsed: result.parsed };
   } catch (e) {
     // fallback: select by type keyword
     const m = text.toLowerCase().match(/\b(wall|door|window|column|slab|beam|duct|pipe)s?\b/);
@@ -174,7 +198,7 @@ export async function runNlQuery(text = "select all walls"): Promise<Any> {
       return { ids };
     }
     notify("warn", `NL query failed: ${e instanceof Error ? e.message : e}`);
-    return null;
+    return { ids: [] };
   }
 }
 
@@ -197,8 +221,7 @@ export function hierarchyReport(): Any {
     levels: authoring()?.getLevels?.()?.length ?? 0,
     grids: authoring()?.getGrids?.()?.length ?? 0,
   };
-  (window as Any).__obsHierarchy = report;
-  console.log("[hierarchy]", report);
+  lastHierarchyReport = report;
   notify("success", `Hierarchy: ${report.total} elements · ${Object.keys(byType).length} types`);
   return report;
 }
@@ -208,30 +231,28 @@ export function hierarchyReport(): Any {
 export async function placeAxisModelCurves(): Promise<number> {
   try {
     const mod = await import("../model-curves/types");
-    let n = 0;
-    const axes = [
-      { name: "Axis X", points: [[-50, 0], [50, 0]] },
-      { name: "Axis Z", points: [[0, -50], [0, 50]] },
+    const els = elements();
+    if (!els.length) {
+      notify("warn", "Model curves need a host element — the model is empty.");
+      return 0;
+    }
+    // Real API: addModelCurve(hostElementId, faceIndex, points (UV metres on
+    // the face), closed?, color?) — curves are strictly host-bound, so the
+    // original "axes at ±50 m with no host" concept cannot exist here.
+    const host = els.find((e) => e.type === "slab") ?? els[0];
+    const axes: Array<Array<[number, number]>> = [
+      [[-0.5, 0], [0.5, 0]], // U leg
+      [[0, -0.5], [0, 0.5]], // V leg
     ];
-    for (const ax of axes) {
+    let n = 0;
+    for (const points of axes) {
       try {
-        mod.addModelCurve?.({
-          name: ax.name,
-          points: ax.points,
-          kind: "reference",
-        } as any);
+        mod.addModelCurve(String(host.id), 0, points, false, "#f59e0b");
         n++;
-      } catch { /* */ }
+      } catch { /* per-curve */ }
     }
-    // Also stamp as grids-like helpers if API different
-    if (!n) {
-      localStorage.setItem(
-        "obs.modelCurves",
-        JSON.stringify(axes.map((a) => ({ ...a, id: `mc-${a.name}` }))),
-      );
-      n = axes.length;
-    }
-    notify("success", `Model curves: ${n}`);
+    if (n) notify("success", `Model curves: ${n} reference axes on host ${String(host.id)}`);
+    else notify("warn", "Model curves: host rejected the reference curves");
     return n;
   } catch (e) {
     notify("warn", `Model curves: ${e instanceof Error ? e.message : e}`);
@@ -243,41 +264,33 @@ export async function placeAxisModelCurves(): Promise<number> {
 
 export async function seedSharedParams(): Promise<number> {
   try {
-    const mod = await import("../shared-params/index").catch(() =>
-      import("../shared-params/shared-params").catch(() => null),
-    );
-    const defs = [
-      { name: "FireRating", dataType: "text", group: "Identity" },
-      { name: "Mark", dataType: "text", group: "Identity" },
-      { name: "Comments", dataType: "text", group: "Identity" },
-      { name: "Cost", dataType: "number", group: "Data" },
-      { name: "Area", dataType: "number", group: "Dimensions" },
+    // Real module + store API: sharedParamsStore.addShared({ name, type,
+    // group, instance, description? }) — no dead localStorage channel.
+    const mod = await import("../shared-params/shared-params");
+    const defs: Array<{ name: string; type: "text" | "number"; group: string }> = [
+      { name: "FireRating", type: "text", group: "Identity" },
+      { name: "Mark", type: "text", group: "Identity" },
+      { name: "Comments", type: "text", group: "Identity" },
+      { name: "Cost", type: "number", group: "Data" },
+      { name: "Area", type: "number", group: "Dimensions" },
     ];
-    let n = 0;
-    if (mod && (mod as Any).addSharedParam) {
-      for (const d of defs) {
-        try {
-          (mod as Any).addSharedParam(d);
-          n++;
-        } catch { /* */ }
-      }
-    } else {
-      localStorage.setItem("obs.sharedParams", JSON.stringify(defs));
-      n = defs.length;
+    const store = (mod as Any).sharedParamsStore;
+    if (!store?.addShared) {
+      notify("warn", "Shared parameters: store unavailable");
+      return 0;
     }
-    notify("success", `Shared parameters: ${n}`);
+    const existing = new Set((store.listShared?.() ?? []).map((p: Any) => p.name));
+    let n = 0;
+    for (const d of defs) {
+      if (existing.has(d.name)) continue;
+      store.addShared({ name: d.name, type: d.type, group: d.group, instance: true });
+      n++;
+    }
+    notify("success", `Shared parameters: ${n} added`);
     return n;
   } catch (e) {
-    localStorage.setItem(
-      "obs.sharedParams",
-      JSON.stringify([
-        { name: "FireRating" },
-        { name: "Mark" },
-        { name: "Comments" },
-      ]),
-    );
-    notify("success", "Shared parameters seeded (local)");
-    return 3;
+    notify("warn", `Shared parameters: ${e instanceof Error ? e.message : e}`);
+    return 0;
   }
 }
 
@@ -285,15 +298,27 @@ export async function seedSharedParams(): Promise<number> {
 
 export async function parameterEnginePing(): Promise<boolean> {
   try {
-    const mod = await import("../parameter-engine/index").catch(() =>
-      import("../parameter-engine/engine").catch(() => null),
+    // Real API: the parameter engine parses/formats values and resolves
+    // formula symbols — it has no free-form evaluate(); the ping exercises
+    // the real parse → format roundtrip and the symbol resolver.
+    const mod = await import("../parameter-engine/index");
+    const def: Any = {
+      id: "qa.number",
+      name: "Number",
+      symbol: "num",
+      dataType: "number",
+      scope: "instance",
+      origin: "builtin",
+    };
+    const parsed = mod.parseParameterValue(def as any, "42.5");
+    const okParse = parsed.problem === null && parsed.value === 42.5;
+    const back = mod.formatParameterValue(def as any, parsed.value);
+    const symbols = mod.referencedSymbols("2 * (3 + 1)", []);
+    notify(
+      "success",
+      `Parameter engine: parse "42.5" → ${back}${symbols.length ? "" : " · no free symbols in closed formula"}`,
     );
-    const expr = "2 * (3 + 1)";
-    let value: Any = 8;
-    if (mod && (mod as Any).evaluate) value = (mod as Any).evaluate(expr, {});
-    else if (mod && (mod as Any).evaluateFormula) value = (mod as Any).evaluateFormula(expr, {});
-    notify("success", `Parameter engine: ${expr} = ${value}`);
-    return true;
+    return okParse;
   } catch (e) {
     notify("warn", `Parameter engine: ${e instanceof Error ? e.message : e}`);
     return false;
@@ -306,8 +331,7 @@ export async function twinCapabilityMatrix(): Promise<Any> {
   try {
     const mod = await import("../native-twin/capabilities");
     const rows = mod.capabilityMatrixRows?.() ?? [];
-    (window as Any).__obsTwinCaps = rows;
-    console.table(rows.slice(0, 30));
+    lastTwinCaps = rows;
     notify("success", `Native twin capabilities: ${rows.length} type(s)`);
     return rows;
   } catch (e) {
@@ -330,8 +354,11 @@ export function setupCriticalWorkflowPack8(): void {
     seedSharedParams,
     parameterEnginePing,
     twinCapabilityMatrix,
+    getLastCdeProviders,
+    getLastNlQuery,
+    getLastHierarchyReport,
+    getLastTwinCaps,
   };
-  (window as Any).__obsWorkflowPack8 = api;
   (ctx.features as Any).workflowPack8 = api;
 
   const cmds: Array<[string, string, string, () => void]> = [
@@ -347,14 +374,12 @@ export function setupCriticalWorkflowPack8(): void {
     ["rg-twin-caps", "Native twin: capability matrix", "Data", () => void twinCapabilityMatrix()],
   ];
 
+  // Register into the REAL palette — the window CustomEvent channel this
+  // pack originally used has no listener anywhere in the repo (the exact
+  // dead channel bug class packs 1–7 were repaired from).
   for (const [id, label, category, run] of cmds) {
     try {
-      window.dispatchEvent(
-        new CustomEvent("obs-register-command", {
-          detail: { id, label, category, run },
-        }),
-      );
+      registerCommand({ id, label, category, run });
     } catch { /* */ }
   }
-  console.log("[workflow-pack-8] automation / CDE / navigation / query commands ready");
 }

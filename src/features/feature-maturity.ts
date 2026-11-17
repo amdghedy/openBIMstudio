@@ -796,6 +796,26 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     ],
     affirmedIn: APP_VERSION,
   },
+  {
+    id: "critical-workflow-pack-8",
+    area: "Platform",
+    status: "limited",
+    source: [
+      "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "tests/critical-workflow-pack-8.test.cjs",
+    ],
+    evidence: [
+      "Unit suite tests/critical-workflow-pack-8.test.cjs — 13 assertions over the 10 automation/nav/query commands: every command registers into the REAL command palette, the dead window CustomEvent channel is gone from source AND compiled output, zero window-global mentions, runNlQuery passes the RAW STRING to the real executor contract and selects executor hits through setSelectedAuthored + saves the query, hierarchy totals/byType/hosted counts on a fixture (3 doors → 2 hosted + 1 unhosted), model curves draw through the real host-bound addModelCurve(hostId, faceIndex 0, 2-point polyline) with slab preferred, shared parameters seed exactly the 5 BIM params through the real store (idempotent), parameter engine ping drives the real parse→format roundtrip plus the symbol resolver, CDE providers and twin capability rows land on module getters, automation seeds/runs through the real rules module",
+      "The pack originally shipped broken: 5 window globals (honesty-ratchet violations), all 10 commands on the listener-less CustomEvent channel, calls to module paths that do not exist (../shared-params/index, ../parameter-engine/engine) and an evaluate() the parameter engine has no such export of, an addModelCurve options bag instead of the positional (host, face, points) signature, and 8 compile errors that turned CI + the production build red — every one repaired against the real signatures",
+    ],
+    limitations: [
+      "Frame selection is proven only at registration level; its camera path needs a live scene and has not been driven in a browser",
+      "The parameter-engine ping exercises parse/format/symbols — the engine deliberately has no free-form evaluate()",
+      "Model-curve axes are reference curves on a host face (the module is host-bound by design); the original 'axes at ±50 m with no host' concept cannot exist in this model",
+    ],
+    affirmedIn: APP_VERSION,
+  },
 ] as const;
 
 /** Look up a feature's maturity by id. */
