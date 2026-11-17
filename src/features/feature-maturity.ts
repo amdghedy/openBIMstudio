@@ -737,6 +737,25 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     ],
     affirmedIn: APP_VERSION,
   },
+  {
+    id: "critical-workflow-pack-2",
+    area: "Drawings",
+    status: "limited",
+    source: [
+      "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "src/features/command-palette.ts",
+    ],
+    evidence: [
+      "Unit suite tests/critical-workflow-pack-2.test.cjs — 10 assertions: zero window globals in the compiled pack, all 11 commands (rg-modelcheck, rg-softclash, rg-ifc-export, rg-json-dump, rg-ortho-walls, rg-align-x, rg-align-z, rg-split-mid, rg-mirror-x, rg-select-sim, rg-purge) register into the REAL command palette, zero-length/unhosted model-check heuristics, merged validation diagnostics, duct-through-wall soft clash, select-similar, purge-degenerate",
+      "The pack originally published results on dead window globals and dispatched its commands through a CustomEvent nobody listens to; it now registers directly into the palette and surfaces MODELCHECK/SOFTCLASH results on the workflowPack2 service getters",
+    ],
+    limitations: [
+      "Soft clash is AABB pair-of-interest only (duct/pipe vs wall/beam/column and wall/beam self-overlap) — the mesh-level clash engine lives in the clash-detection feature",
+      "MODELCHECK heuristics cover zero-length elements and unhosted doors/windows plus the native-model validation rules; it is not a full IFC validation suite",
+      "Palette interaction has not been driven in a browser; registration is proven by unit test",
+    ],
+    affirmedIn: APP_VERSION,
+  },
 ] as const;
 
 /** Look up a feature's maturity by id. */

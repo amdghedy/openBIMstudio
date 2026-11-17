@@ -15,8 +15,14 @@ import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
 import { exportAuthoredToIfc } from "./authored-ifc";
 import { validateNativeModel } from "../native-bim/model-validation";
+import { registerCommand } from "../../features/command-palette";
+import type { AuthoredElement } from "../projects/types";
 
 type Any = Record<string, any>;
+
+/** Latest MODELCHECK / SOFTCLASH results, surfaced on the workflowPack2 service. */
+let lastModelCheck: Any | null = null;
+let lastSoftClash: Any[] = [];
 
 function authoring(): Any | null {
   return (ctx.features as Any)?.authoring ?? null;
@@ -45,7 +51,8 @@ export function modelQualityCheck(): { errors: number; warnings: number; issues:
   const grids = a?.getGrids?.() ?? [];
   let issues: Any[] = [];
   try {
-    issues = validateNativeModel({ elements: els, levels, grids }) ?? [];
+    // els is the same authored document, held as loose Any[] for the heuristics below
+    issues = validateNativeModel({ elements: els as unknown as readonly AuthoredElement[], levels, grids }) ?? [];
   } catch (e) {
     console.warn("[modelcheck]", e);
   }
@@ -65,11 +72,11 @@ export function modelQualityCheck(): { errors: number; warnings: number; issues:
   }
   const errors = issues.filter((i) => i.severity === "error").length;
   const warnings = issues.filter((i) => i.severity === "warning").length;
-  (window as Any).__obsModelCheck = { issues, errors, warnings, at: Date.now() };
+  lastModelCheck = { issues, errors, warnings, at: Date.now() };
   console.table(issues.slice(0, 50));
   notify(
     errors ? "warn" : "success",
-    `Model check: ${errors} error(s), ${warnings} warning(s) — see console / __obsModelCheck`,
+    `Model check: ${errors} error(s), ${warnings} warning(s) — see console / command palette`,
   );
   return { errors, warnings, issues };
 }
@@ -146,7 +153,7 @@ export function softClashCheck(): Array<{ a: string; b: string; types: string }>
       }
     }
   }
-  (window as Any).__obsSoftClash = hits;
+  lastSoftClash = hits;
   console.table(hits.slice(0, 40));
   notify(hits.length ? "warn" : "success", `Soft clash: ${hits.length} pair(s)`);
   return hits;
@@ -302,10 +309,7 @@ export function selectSimilar(): number {
   const same = elements().filter((e) => e.type === src.type).map((e) => e.id);
   try {
     if (typeof a?.setSelectedAuthored === "function") a.setSelectedAuthored(same);
-    else if (typeof a?.selectAllAuthored === "function") {
-      /* fallback: store */
-      (window as Any).__obsSelection = same;
-    }
+    else notify("warn", "Selection service unavailable — cannot apply 'select similar'");
   } catch { /* */ }
   notify("success", `Selected ${same.length} × ${src.type}`);
   return same.length;
@@ -353,8 +357,9 @@ export function setupCriticalWorkflowPack2(): void {
     mirrorSelection,
     selectSimilar,
     purgeUnused,
+    get lastModelCheck() { return lastModelCheck; },
+    get lastSoftClash() { return lastSoftClash; },
   };
-  (window as Any).__obsWorkflowPack2 = api;
   (ctx.features as Any).workflowPack2 = api;
 
   const cmds: Array<[string, string, string, () => void]> = [
@@ -371,14 +376,12 @@ export function setupCriticalWorkflowPack2(): void {
     ["rg-purge", "Purge zero-length elements", "QA", () => void purgeUnused()],
   ];
 
+  // Register directly into the palette — the legacy registration event has
+  // no listener anywhere in the app, so dispatched commands never appeared.
   for (const [id, label, category, run] of cmds) {
     try {
-      window.dispatchEvent(
-        new CustomEvent("obs-register-command", {
-          detail: { id, label, category, run },
-        }),
-      );
+      registerCommand({ id, label, category, run });
     } catch { /* */ }
   }
-  console.log("[workflow-pack-2] QA / exchange / modify commands ready");
+  console.log("[workflow-pack-2] QA / exchange / modify commands registered in the palette");
 }
