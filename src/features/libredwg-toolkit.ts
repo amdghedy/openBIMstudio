@@ -27,7 +27,9 @@
  *   plus command-palette entries (dwg.*) and dialogs. No window.__obs* globals —
  *   state flows through imports and ctx.features (ui-honesty budget).
  */
-import { ctx } from "../core/context";
+import { toast } from "../core/notify";
+import { z } from "zod";
+import { safeLoad } from "../core/safeLoad";
 import { escapeHtml } from "../core/html-escape";
 import { registerCommand } from "./command-palette";
 import {
@@ -157,13 +159,18 @@ export function exportDwgPs(): void {
 /* ── JSON dump re-import (round trip) ───────────────────────────────────── */
 
 export async function importJsonDumpFile(file: File): Promise<void> {
-  let parsed: Any;
-  try {
-    parsed = JSON.parse(await file.text());
-  } catch {
-    toast("error", `${file.name} is not valid JSON.`);
+  const loaded = safeLoad(
+    file.name,
+    await file.text(),
+    z.object({ entities: z.array(z.unknown()) }).passthrough(),
+    32 * 1024 * 1024,
+  );
+  if (!loaded.ok) {
+    const failure = loaded as { ok: false; error: { stage: string; issues: string[] } };
+    toast("error", `${file.name} is not a valid LibreDWG JSON dump (${failure.error.stage}).`);
     return;
   }
+  const parsed = loaded.value as Any;
   const doc = parsed?.entities && Array.isArray(parsed.entities)
     ? {
         layers: Array.isArray(parsed.layers) ? parsed.layers : [{ name: "0", color: 7 }],

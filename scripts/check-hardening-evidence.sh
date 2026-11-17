@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Evidence check: for each hardening issue, test whether its deliverables exist on main.
-cd /home/z/my-project/openBIMstudio || exit 1
+# Resolve the repository from this script so the audit works locally, in CI, and
+# from any caller working directory.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT" || exit 1
 chk() { # chk <label> <test...>
   local label="$1"; shift
   if eval "$@" >/dev/null 2>&1; then echo "  YES  $label"; else echo "  no   $label"; fi
@@ -14,15 +17,16 @@ echo "P0-02 safeLoad:"
 chk "src/core/safeLoad.ts"                    "[ -f src/core/safeLoad.ts ]"
 chk "schema definitions"                      "grep -rln 'ProjectFileSchema\|BcfManifestSchema' src | grep -q ."
 chk "loaders routed through safeLoad"         "grep -rln 'safeLoad(' src --include='*.ts*' | grep -v 'core/safeLoad' | grep -q ."
-chk "malformed fixtures corpus"               "[ -d tests/fixtures/malformed ]"
+chk "malformed fixtures corpus"               "[ -d tests/fixtures/malformed ] || [ -d tests/fixtures/ifc-corpus/invalid ]"
 chk "CI grep audit for safeLoad"              "grep -rn 'safeLoad' .github/workflows/*.yml scripts/check*.mjs 2>/dev/null | grep -q ."
 echo "P0-03 backup-on-load:"
-chk "src/core/backup.ts"                      "[ -f src/core/backup.ts ]"
-chk "backupBeforeWrite wired"                 "grep -rn 'backupBeforeWrite' src --include='*.ts*' | grep -q ."
+chk "server backup module"                    "[ -f server/backup.mjs ]"
+chk "browser recovery vault"                  "[ -f src/modules/projects/browser-recovery.ts ]"
+chk "backup wiring"                           "grep -rn 'backupProjectFile\|backupExistingFileHandle\|writeJsonWithBackup' src server --include='*.ts' --include='*.mjs' | grep -q ."
 echo "P0-04 fail-closed server:"
-chk "api/ server code"                        "[ -d api ] && [ -n \"$(ls api 2>/dev/null)\" ]"
-chk "origin allow-list"                       "grep -rn 'ALLOWED_ORIGIN\|allowedOrigins\|origin' api/*.ts api/*.js 2>/dev/null | grep -qi allow"
-chk "rate limiting"                           "grep -rni 'rate.?limit' api 2>/dev/null | grep -q ."
+chk "server code"                             "[ -f server/index.mjs ]"
+chk "origin allow-list"                       "grep -rni 'allowedOrigins\|originAllowed\|OBS_ALLOWED_ORIGINS' server --include='*.mjs' | grep -q ."
+chk "rate limiting"                           "grep -rni 'rate.?limit\|createRateLimiter' server --include='*.mjs' | grep -q ."
 echo "P0-05 deps hygiene:"
 chk "jsonpath-plus removed"                   "! grep -q 'jsonpath-plus' package.json"
 chk "npm audit CI gate"                       "grep -rn 'npm audit\|audit_ci' .github/workflows/*.yml | grep -q ."
@@ -38,7 +42,7 @@ chk "scripts/golden-roundtrip.mjs"            "[ -f scripts/golden-roundtrip.mjs
 chk "CI workflow activated on push"           "grep -A2 '^on:' .github/workflows/golden-roundtrip.yml | grep -q 'push'"
 echo "P1-05 property-based invariants:"
 chk "fast-check in devDeps"                   "grep -q 'fast-check' package.json"
-chk "property test files"                     "find src tests test -name '*.prop.test.*' -o -name '*.property.*' 2>/dev/null | grep -q ."
+chk "property test files"                     "find tests -type f \( -name '*.prop.test.*' -o -name '*property*.test.*' -o -path '*/property/*' \) 2>/dev/null | grep -q ."
 echo "P1-06 malformed property tests:"
 chk "malformed input tests"                   "grep -rln 'truncated\|malformed' tests test src --include='*.test.*' 2>/dev/null | grep -q ."
 echo "P1-07 Playwright E2E:"

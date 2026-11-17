@@ -48,6 +48,9 @@ jobs:
       - name: Production build (includes TypeScript typecheck)
         run: npm run build
 
+      - name: Safe-load file boundary audit
+        run: node scripts/check-safe-load-coverage.mjs
+
       - name: Type-check Cloudflare Worker sources
         run: npx tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM worker/index.ts worker/linkedin.ts
 

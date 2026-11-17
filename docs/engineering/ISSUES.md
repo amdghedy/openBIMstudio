@@ -71,6 +71,7 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 **Acceptance criteria**
 - [ ] All corpus inputs produce typed `LoadError` results with human-readable issues; zero uncaught exceptions
 - [ ] Every JSON loader in `src/` goes through `safeLoad` (saved views, project files, and plugin manifests are now covered; broader audit remains)
+- [x] CI boundary audit (`scripts/check-safe-load-coverage.mjs`) rejects direct `JSON.parse(File.text())` and verifies required file loaders remain wired.
 
 ---
 
