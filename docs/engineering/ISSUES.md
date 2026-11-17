@@ -11,7 +11,7 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 | P0-01 | Global crash containment: error boundaries per panel + crash log | Critical | Phase 0 | 1d | ✅ satisfied |
 | P0-02 | Zod validation at all file-load boundaries (`safeLoad`) | Critical | Phase 0 | 1d | 🔶 partial |
 | P0-03 | Backup-on-load with rotating timestamps | High | Phase 0 | 0.5d | ✅ satisfied |
-| P0-04 | Fail-closed server: origin allow-list, header-only tokens, rate limit | Critical | Phase 0 | 1d | 🔶 partial |
+| P0-04 | Fail-closed server: origin allow-list, header-only tokens, rate limit | Critical | Phase 0 | 1d | ✅ satisfied |
 | P0-05 | Remove `jsonpath-plus`; add npm audit CI gate | Critical | Phase 0 | 0.5d | ✅ satisfied |
 | P1-01 | Freeze `__obs*` globals with ESLint; typed service registry | High | Phase 1 | 2d | ✅ satisfied |
 | P1-02 | TypeScript strictification wave 1 (src/modules, src/core) | High | Phase 1 | 3d | ✅ satisfied |
@@ -104,14 +104,14 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 **Evidence (BASELINE risks):** "Fail-open startup when no OBS_SERVER_TOKEN"; "Query-string tokens accepted on all /api/ routes"; "No rate limiting or request correlation IDs"; "No origin allow-list for non-loopback deployments."
 
 **Tasks**
-- [ ] `server/middleware/failClosed.ts`: origin allow-list (`OBS_ALLOWED_ORIGINS`), reject `?token=` with 401, require `Authorization: Bearer <OBS_SERVER_TOKEN>`, per-IP fixed-window rate limit (60 req/min) with 429
-- [ ] Boot rule: if HOST is not loopback and `OBS_SERVER_TOKEN` is unset, exit(1) with a clear message
-- [ ] Add request correlation id middleware (uuid per request, echoed in logs and error responses)
-- [ ] Integration tests for each rejection path (403 / 401 / 429)
+- [x] Origin allow-list (`OBS_ALLOWED_ORIGINS`), reject `?token=` with 401, require `Authorization: Bearer <OBS_SERVER_TOKEN>`, per-IP fixed-window rate limit with 429
+- [x] Boot rule: if HOST is not loopback and `OBS_SERVER_TOKEN` is unset, exit(1) with a clear message
+- [x] Add request correlation id middleware (uuid per request, echoed in logs and error responses)
+- [x] Integration tests for each rejection path (403 / 401 / 429)
 
 **Acceptance criteria**
-- [ ] All four BASELINE risk items demonstrably closed by tests
-- [ ] Local-first default is unchanged: loopback usage without token still works for dev (`OBS_ALLOWED_ORIGINS` defaults to localhost)
+- [x] All four BASELINE risk items demonstrably closed by tests (`tests/server-security.test.cjs`, `tests/server-hardening.test.cjs`)
+- [x] Local-first default is unchanged: loopback usage without token still works for dev (`OBS_ALLOWED_ORIGINS` defaults to localhost)
 
 ---
 
@@ -413,14 +413,14 @@ gh label create process     --description "Process / documentation"          --c
 Evidence-based audit of main against each issue's acceptance criteria
 (`scripts/check-hardening-evidence.sh` reproduces this check):
 
-- **Satisfied on main (close on issue creation):** P0-01 crash containment
+- **Satisfied on main (close on issue creation):** P0-01 crash containment,
+  P0-03 browser/server recovery backups, P0-04 fail-closed server security,
   (`src/core/crashLog.ts`, `AppErrorBoundary`, `window.onerror` + crash viewer),
   P0-05 (`jsonpath-plus` gone + npm audit gate), P1-01 (`registry.ts` + ESLint
   `__obs` rule), P1-02 (`strict: true`), P1-04 (roundtrip pipeline + workflow
   activated on push), P2-05 (`SPEC_TEMPLATE.md`).
 - **Partial progress (create + progress comment):** P0-02 (safeLoad + schemas
-  exist; loader routing, malformed corpus, CI audit missing), P0-04 (origin
-  allow-list done; rate limiting missing), P1-03 (3/20 fixtures), P1-06 (some
+  exist; loader routing, malformed corpus, CI audit missing), P1-03 (3/20 fixtures), P1-06 (some
   malformed tests; property suites missing), P1-07 (playwright config; runner
   not in devDeps), P2-01 (`journal.ts` exists; not wired into persistence),
   P2-02 (`check-tool-catalog.mjs` exists; no CI enforcement), P2-03
