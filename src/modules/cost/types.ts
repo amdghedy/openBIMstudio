@@ -51,6 +51,14 @@ export interface TakeoffRow {
   /** Level name the element sits on (authored rows only), for level filters. */
   level?: string;
 
+  /**
+   * Stringified properties for QTO rule property filters. Authored rows:
+   * the element's property bag. IFC rows: pset properties that are uniform
+   * across the whole category aggregate (divergent values are omitted, so a
+   * rule clause can only match what is true for every element in the row).
+   */
+  properties?: Record<string, string>;
+
   /** Author-provided quantities from Qto_*BaseQuantities psets (IFC only). */
   qto?: QtoBundle;
   /** Geometric extraction from triangle soups (IFC only). */

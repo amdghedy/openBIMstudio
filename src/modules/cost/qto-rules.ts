@@ -39,6 +39,25 @@ export interface QtoRuleFilter {
   /** Level names (authored rows carry the level name; case-insensitive,
    *  at least one must match). Rows without a level never match. */
   levels?: string[];
+  /** Per-property clauses — every clause must match (AND). Authored rows
+   *  carry their element properties; IFC rows carry pset properties that are
+   *  uniform across the whole category aggregate (mixed values are omitted,
+   *  so a clause can only match what is true for every element in the row).
+   *  Rows without properties never match a property clause. */
+  properties?: QtoPropertyFilter[];
+}
+
+/** One property condition. `name` is matched case-insensitively; the value
+ *  conditions are case-insensitive too. A clause with none of equals/contains
+ *  behaves as exists=true. */
+export interface QtoPropertyFilter {
+  name: string;
+  /** Exact value equality (case-insensitive, trimmed). */
+  equals?: string;
+  /** Substring match on the stringified value (case-insensitive). */
+  contains?: string;
+  /** Property must be present on the row (any value). */
+  exists?: boolean;
 }
 
 export interface QtoRule {
@@ -143,7 +162,145 @@ function rowMatches(row: TakeoffRow, filter: QtoRuleFilter): boolean {
     const lvl = row.level.toLowerCase();
     if (!filter.levels.some((l) => l.toLowerCase() === lvl)) return false;
   }
+  if (filter.properties?.length) {
+    if (!row.properties) return false;
+    for (const clause of filter.properties) {
+      if (!propertyClauseMatches(row.properties, clause)) return false;
+    }
+  }
   return true;
+}
+
+/** Case-insensitive property lookup: returns the stored value or undefined. */
+function lookupProperty(
+  props: Record<string, string>,
+  name: string,
+): string | undefined {
+  const want = name.toLowerCase();
+  for (const [k, v] of Object.entries(props)) {
+    if (k.toLowerCase() === want) return v;
+  }
+  return undefined;
+}
+
+function propertyClauseMatches(
+  props: Record<string, string>,
+  clause: QtoPropertyFilter,
+): boolean {
+  const value = lookupProperty(props, clause.name);
+  if (value === undefined) return false;
+  if (clause.equals != null && value.toLowerCase() !== clause.equals.trim().toLowerCase()) return false;
+  if (clause.contains != null && !value.toLowerCase().includes(clause.contains.trim().toLowerCase())) return false;
+  // equals/contains absent → exists semantics; present value is enough.
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Row property shaping (pure — quantities.ts reuses these)
+// ══════════════════════════════════════════════════════════════════════════
+
+const MAX_ROW_PROPERTIES = 40;
+const MAX_PROPERTY_VALUE_CHARS = 120;
+
+function stringifyPropertyValue(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === "string") {
+    const s = v.trim();
+    return s ? (s.length > MAX_PROPERTY_VALUE_CHARS ? s.slice(0, MAX_PROPERTY_VALUE_CHARS) : s) : null;
+  }
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : null;
+  if (typeof v === "boolean") return v ? "true" : "false";
+  try {
+    const s = JSON.stringify(v);
+    if (!s || s === "{}" || s === "[]") return null;
+    return s.length > MAX_PROPERTY_VALUE_CHARS ? s.slice(0, MAX_PROPERTY_VALUE_CHARS) : s;
+  } catch {
+    return null;
+  }
+}
+
+/** Flatten authored element properties into string form for takeoff rows.
+ *  null/undefined/empty values are skipped; objects become truncated JSON;
+ *  at most 40 properties survive (insertion order). */
+export function flattenElementProperties(
+  props: unknown,
+  max: number = MAX_ROW_PROPERTIES,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!props || typeof props !== "object") return out;
+  for (const [k, v] of Object.entries(props as Record<string, unknown>)) {
+    if (!k) continue;
+    const s = stringifyPropertyValue(v);
+    if (s == null) continue;
+    out[k] = s;
+    if (Object.keys(out).length >= max) break;
+  }
+  return out;
+}
+
+/** Flatten IFC psets ({ setName: { propName: value } }) into bare property
+ *  names for takeoff rows. Qto_* sets are skipped — their content is already
+ *  exposed as the row's quantity columns. Same bare name in two sets with
+ *  different values diverges and is dropped by the caller's uniformity
+ *  check, so bare names stay honest. */
+export function flattenPsets(
+  psets: unknown,
+  max: number = MAX_ROW_PROPERTIES,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!psets || typeof psets !== "object") return out;
+  for (const [setName, props] of Object.entries(psets as Record<string, unknown>)) {
+    if (/^Qto_/i.test(setName)) continue;
+    if (!props || typeof props !== "object") continue;
+    for (const [k, v] of Object.entries(props as Record<string, unknown>)) {
+      if (!k || k in out) continue;
+      const s = stringifyPropertyValue(v);
+      if (s == null) continue;
+      out[k] = s;
+      if (Object.keys(out).length >= max) break;
+    }
+    if (Object.keys(out).length >= max) break;
+  }
+  return out;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Property filter text format (editor input)
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Parse the editor's property-filter text into clauses:
+ *  "FireRating = 2 hr; IsExternal = true; Mark ~ D; LoadBearing"
+ *  — clauses separated by ';' → equals with '=', contains with '~',
+ *  a bare name means exists. Empty clauses are skipped; an empty NAME
+ *  is returned as { name: "" } so the validator can report it. */
+export function parsePropertyFilterTokens(s: string | undefined): QtoPropertyFilter[] {
+  if (!s) return [];
+  const clauses: QtoPropertyFilter[] = [];
+  for (const raw of s.split(";")) {
+    const part = raw.trim();
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    const tilde = part.indexOf("~");
+    if (eq >= 0 && (tilde < 0 || eq < tilde)) {
+      const name = part.slice(0, eq).trim();
+      const value = part.slice(eq + 1).trim();
+      clauses.push(value ? { name, equals: value } : { name, exists: true });
+    } else if (tilde >= 0) {
+      const name = part.slice(0, tilde).trim();
+      const value = part.slice(tilde + 1).trim();
+      clauses.push(value ? { name, contains: value } : { name, exists: true });
+    } else {
+      clauses.push({ name: part, exists: true });
+    }
+  }
+  return clauses;
+}
+
+/** Render a clause back to editor text (round-trip through the editor). */
+export function propertyClauseToString(c: QtoPropertyFilter): string {
+  if (c.contains != null) return `${c.name} ~ ${c.contains}`;
+  if (c.equals != null) return `${c.name} = ${c.equals}`;
+  return c.name;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -329,6 +486,9 @@ export interface QtoRuleInput {
   excludeTokens?: string;
   /** Comma-separated level names, any must match. */
   levels?: string;
+  /** Property clauses: "Name = value; Name ~ text; Name" (see
+   *  parsePropertyFilterTokens). Every clause must match the row. */
+  propertyFilters?: string;
   formula: string;
   unit: string;
   wasteFactorPct?: string | number;
@@ -397,11 +557,22 @@ export function normalizeQtoRuleInput(
   if (excludeAny.length) filter.excludeAny = excludeAny;
   const levels = parseList(input.levels);
   if (levels.length) filter.levels = levels;
+  const propertyClauses = parsePropertyFilterTokens(input.propertyFilters);
+  let propertyClauseBad = false;
+  for (const c of propertyClauses) {
+    if (!c.name.trim()) {
+      errors.push("property filter: every clause needs a name before '=' / '~'");
+      propertyClauseBad = true;
+      break;
+    }
+  }
+  if (!propertyClauseBad && propertyClauses.length) filter.properties = propertyClauses;
   // A source restriction IS a filter, but only when it is a valid one —
   // an invalid source must not slip a filterless rule through validation.
   if (!matchAll.length && !excludeAny.length && !levels.length &&
+      !filter.properties?.length &&
       sourcesRaw !== "authored" && sourcesRaw !== "ifc") {
-    errors.push("a rule needs at least one filter: match, exclude, level or source");
+    errors.push("a rule needs at least one filter: match, exclude, level, property or source");
   }
 
   let id = String(input.id ?? "").trim();

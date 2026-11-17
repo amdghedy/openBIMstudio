@@ -10,6 +10,7 @@ import type { CostItem, CostUnit, TakeoffRow } from "../modules/cost/types";
 import {
   evaluateQtoRules, getActiveQtoRules, getCustomQtoRules, setCustomQtoRules,
   normalizeQtoRuleInput, slugifyQtoRuleName, QTO_FORMULA_VARIABLES,
+  propertyClauseToString,
   type QtoRun, type QtoRule, type QtoRuleInput,
 } from "../modules/cost/qto-rules";
 import { validateFormula } from "../modules/schedules/schedule-formula";
@@ -320,6 +321,7 @@ const EDITOR_FIELDS: Array<[string, string, string]> = [
   ["matchTokens", "Match tokens (comma-sep)", 'all must appear in label + detail'],
   ["excludeTokens", "Exclude tokens (comma-sep)", 'dropped if in the label'],
   ["levels", "Levels (comma-sep)", 'e.g. Level 1, Level 2'],
+  ["propertyFilters", "Property filters (name = value; name ~ text; bare = exists)", 'e.g. FireRating = 2 hr; IsExternal = true; Mark ~ D'],
   ["costCode", "Cost code", 'rate-book code to price the result'],
   ["description", "Description", 'shown as the tooltip assumption'],
 ];
@@ -453,6 +455,7 @@ function draftFromRule(r: QtoRule): Record<string, string> {
     matchTokens: r.filter.matchAll?.join(", ") ?? "",
     excludeTokens: r.filter.excludeAny?.join(", ") ?? "",
     levels: r.filter.levels?.join(", ") ?? "",
+    propertyFilters: r.filter.properties?.map(propertyClauseToString).join("; ") ?? "",
     costCode: r.costCode ?? "",
     description: r.description ?? "",
   };
@@ -468,6 +471,7 @@ function saveRuleFromEditor() {
     matchTokens: editorDraft.matchTokens,
     excludeTokens: editorDraft.excludeTokens,
     levels: editorDraft.levels,
+    propertyFilters: editorDraft.propertyFilters,
     formula: editorDraft.formula ?? "",
     unit: editorDraft.unit || "m3",
     wasteFactorPct: editorDraft.waste,

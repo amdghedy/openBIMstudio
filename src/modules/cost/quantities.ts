@@ -13,6 +13,7 @@ import * as THREE from "three";
 import { ctx } from "../../core/context";
 import { getElements, getLevels } from "../../features/authoring";
 import { getElementTriangles, type Tri } from "../clash/geometry";
+import { flattenElementProperties, flattenPsets } from "./qto-rules";
 import type { TakeoffRow } from "./types";
 
 let rows: TakeoffRow[] = [];
@@ -327,6 +328,9 @@ function authoredRows(): TakeoffRow[] {
       detailSuffix = `${parent} fitting (${profileLabel})`;
     }
 
+    // Stringified element properties so QTO rules can filter on them
+    // (e.g. FireRating = 2 hr). Empty property bags attach nothing.
+    const rowProps = flattenElementProperties(el.properties);
     out.push({
       key: `authored:${el.id}`,
       source: "authored",
@@ -340,6 +344,7 @@ function authoredRows(): TakeoffRow[] {
       thickness,
       width,
       level: el.levelId ? levelName.get(el.levelId) : undefined,
+      properties: Object.keys(rowProps).length ? rowProps : undefined,
       primarySource: "authored",
     });
   }
@@ -358,13 +363,18 @@ interface Agg {
   qto: { length: number; area: number; volume: number; elements: number };
   geom: { length: number; area: number; volume: number; elements: number };
   bboxOnly: number;
+  /** Per bare property name: first seen (original-case name, value, count of
+   *  elements carrying the same value). Uniform-across-aggregate properties
+   *  survive to the row; divergent ones are dropped into propDiverged. */
+  props: Map<string, { name: string; value: string; count: number }>;
+  propDiverged: Set<string>;
 }
 
 async function readQtoBatches(
   model: any,
   ids: number[],
-): Promise<Map<number, QtoData>> {
-  const out = new Map<number, QtoData>();
+): Promise<Map<number, { qto: QtoData | null; props: Record<string, string> }>> {
+  const out = new Map<number, { qto: QtoData | null; props: Record<string, string> }>();
   const CHUNK = 500;
   for (let i = 0; i < ids.length; i += CHUNK) {
     const batch = ids.slice(i, i + CHUNK);
@@ -378,7 +388,8 @@ async function readQtoBatches(
         const psets = d?.psets;
         if (!psets || typeof psets !== "object") continue;
         const q = extractQtoFromPsets(psets);
-        if (q) out.set(batch[j], q);
+        const props = flattenPsets(psets);
+        if (q || Object.keys(props).length) out.set(batch[j], { qto: q, props });
       }
     } catch {
       /* */
@@ -427,17 +438,36 @@ async function ifcRows(): Promise<TakeoffRow[]> {
             qto: { length: 0, area: 0, volume: 0, elements: 0 },
             geom: { length: 0, area: 0, volume: 0, elements: 0 },
             bboxOnly: 0,
+            props: new Map(),
+            propDiverged: new Set(),
           };
           agg.set(key, a);
         }
         a.count++;
 
-        const q = qtoMap.get(localId);
+        const entry = qtoMap.get(localId);
+        const q = entry?.qto ?? null;
         if (q?.found) {
           a.qto.elements++;
           a.qto.length += q.length;
           a.qto.area += q.area;
           a.qto.volume += q.volume;
+        }
+        // Accumulate property uniformity: first value wins, any divergence
+        // drops the property for the whole aggregate (conservative — a rule
+        // property clause must be true for EVERY element in the row).
+        if (entry?.props) {
+          for (const [pname, pvalue] of Object.entries(entry.props)) {
+            const lower = pname.toLowerCase();
+            if (a.propDiverged.has(lower)) continue;
+            const prev = a.props.get(lower);
+            if (!prev) a.props.set(lower, { name: pname, value: pvalue, count: 1 });
+            else if (prev.value === pvalue) prev.count++;
+            else {
+              a.props.delete(lower);
+              a.propDiverged.add(lower);
+            }
+          }
         }
 
         b.getSize(s);
@@ -492,6 +522,13 @@ async function ifcRows(): Promise<TakeoffRow[]> {
           `${a.count} elements · model "${modelId}" · ${precision}` +
           (a.qto.elements ? ` · Qto ${a.qto.elements}/${a.count}` : "");
 
+        const uniform: Record<string, string> = {};
+        if (a.count > 0) {
+          for (const { name, value, count } of a.props.values()) {
+            if (count === a.count) uniform[name] = value;
+          }
+        }
+
         out.push({
           key,
           source: "ifc",
@@ -501,6 +538,7 @@ async function ifcRows(): Promise<TakeoffRow[]> {
           length: r3(primary.length),
           area: r3(primary.area),
           volume: r3(primary.volume),
+          properties: Object.keys(uniform).length ? uniform : undefined,
           qto: a.qto.elements
             ? {
                 length: r3(a.qto.length),
