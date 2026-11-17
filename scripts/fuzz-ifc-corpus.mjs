@@ -30,8 +30,8 @@
  * Env: FUZZ_ITER (default 60), FUZZ_SEED (default 42).
  */
 import { spawn } from "child_process";
-import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from "fs";
-import { join, dirname } from "path";
+import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync, mkdirSync } from "fs";
+import { join, dirname, resolve } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 
@@ -40,7 +40,8 @@ const CORPUS = join(root, "..", "tests/fixtures/ifc-corpus");
 const CHILD = join(root, "fuzz-child.mjs");
 const ITER = Math.max(1, Number(process.env.FUZZ_ITER) || 60);
 const SEED = Number(process.env.FUZZ_SEED) || 42;
-const CHILD_TIMEOUT_MS = 40000;
+const ARTIFACT_DIR = process.env.FUZZ_ARTIFACT_DIR ? resolve(process.cwd(), process.env.FUZZ_ARTIFACT_DIR) : null;
+const CHILD_TIMEOUT_MS = Math.max(1000, Number(process.env.FUZZ_CHILD_TIMEOUT_MS) || 40000);
 const TIMEOUT_RATE_MAX = 0.3;
 /**
  * Baseline measured on adversarial mutations: without an address-space cap,
@@ -74,6 +75,7 @@ if (!seeds.length) {
 }
 
 const tmp = mkdtempSync(join(tmpdir(), "obs-fuzz-"));
+if (ARTIFACT_DIR) mkdirSync(ARTIFACT_DIR, { recursive: true });
 
 function runChild(bytes) {
   return new Promise((resolve) => {
@@ -106,6 +108,7 @@ function runChild(bytes) {
 }
 
 let ok = 0, typedError = 0, containedCrash = 0, timeout = 0;
+const failures = [];
 
 for (let i = 0; i < ITER; i++) {
   const src = seeds[rand(seeds.length)];
@@ -120,11 +123,17 @@ for (let i = 0; i < ITER; i++) {
   else if (r.outcome === "typed-error") typedError++;
   else if (r.outcome === "timeout") { timeout++; console.warn(`fuzz: timeout at iteration ${i} (seed ${src.name}) — bounded by harness kill`); }
   else containedCrash++;
+  if (r.outcome === "timeout" || r.outcome === "contained-crash") {
+    const failure = { iteration: i, seed: src.name, outcome: r.outcome, code: r.code ?? null, signal: r.signal ?? null };
+    failures.push(failure);
+    if (ARTIFACT_DIR) writeFileSync(join(ARTIFACT_DIR, `failure-${String(i).padStart(4, "0")}.ifc`), bytes);
+  }
 }
 
 rmSync(tmp, { recursive: true, force: true });
 
 const total = ok + typedError + containedCrash + timeout;
+if (ARTIFACT_DIR) writeFileSync(join(ARTIFACT_DIR, "summary.json"), JSON.stringify({ seed: SEED, iterations: ITER, total, ok, typedError, containedCrash, timeout, failures }, null, 2) + "\n");
 console.log(`fuzz: ${ITER} mutations over ${seeds.length} seeds — ok: ${ok}, typed-error: ${typedError}, contained-crash: ${containedCrash}, timeout: ${timeout}`);
 
 let failed = false;

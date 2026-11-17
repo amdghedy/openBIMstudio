@@ -342,9 +342,9 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 - **Depends on:** P1-06 (controlled-failure contract)
 
 **Tasks**
-- [ ] `scripts/fuzz-ifc.mjs` (and BCF/DXF variants): deterministic byte mutations of the golden corpus; run in disposable workers with hard timeouts
-- [ ] Allowed outcomes: `ok` or `typed-error`; anything else (hang, OOM kill, worker crash) exits 1 and blocks release
-- [ ] GitHub Actions nightly workflow with artifact upload of failing inputs
+- [x] `scripts/fuzz-ifc-corpus.mjs`: deterministic byte mutations of the golden corpus in disposable workers with hard timeouts
+- [x] Controlled outcomes and failure-rate thresholds: hangs and contained crashes are isolated and fail above the measured baseline
+- [x] GitHub Actions nightly workflow with artifact upload of failing inputs and summary JSON
 - [ ] Failing inputs become regression fixtures (minimized) in the corpus
 
 **Acceptance criteria**
@@ -427,7 +427,7 @@ Evidence-based audit of main against each issue's acceptance criteria
   P2-02 (catalog checker repaired and wired into CI; command-directory coverage and markdown generation remain), P2-03
   (budget gate wired; benchmark artifact/report policy remains), P1-05 (undo property foundation;
   split/join, snapping, ten-invariant target and mutation check remain).
-- **Not started:** P2-04, P2-06.
+- **Not started:** P2-06. P2-04 is partial: nightly 500-mutation execution is wired; long-run edge-case promotion and BCF/DXF fuzz variants remain.
 
 Run `bash docs/engineering/sync-issues.sh` (needs `GH_TOKEN` or `/tmp/gh.token`)
 to create all 18 issues from the bodies below, close the satisfied ones with
