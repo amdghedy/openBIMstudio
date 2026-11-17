@@ -14,6 +14,7 @@
 import * as THREE from "three";
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { registerCommand } from "../../features/command-palette";
 import { designOptionsStore } from "../design-options/design-options";
 
 type Any = Record<string, any>;
@@ -372,14 +373,8 @@ export function zoomExtents(): boolean {
         cam.lookAt?.(cx, cy, cz);
       }
     }
-    // Broadcast for camera-tools listeners
-    try {
-      window.dispatchEvent(
-        new CustomEvent("obs-zoom-extents", {
-          detail: { center: [cx, cy, cz], size },
-        }),
-      );
-    } catch { /* */ }
+    // No broadcast: there are no camera-tools listeners for a custom event;
+    // the camera move above is the real behavior.
     notify("success", `Zoom extents · span ${size.toFixed(1)} m`);
     return true;
   } catch (e) {
@@ -465,11 +460,7 @@ export function setupCriticalWorkflowPack4(): void {
 
   for (const [id, label, category, run] of cmds) {
     try {
-      window.dispatchEvent(
-        new CustomEvent("obs-register-command", {
-          detail: { id, label, category, run },
-        }),
-      );
+      registerCommand({ id, label, category, run });
     } catch { /* */ }
   }
   console.log("[workflow-pack-4] environment / view / site commands ready");

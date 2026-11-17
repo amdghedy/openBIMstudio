@@ -13,6 +13,7 @@
  */
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { registerCommand } from "../../features/command-palette";
 import { groupsStore } from "../groups/groups";
 import { copyMonitorStore } from "../copy-monitor/copy-monitor";
 
@@ -407,11 +408,7 @@ export function setupCriticalWorkflowPack5(): void {
 
   for (const [id, label, category, run] of cmds) {
     try {
-      window.dispatchEvent(
-        new CustomEvent("obs-register-command", {
-          detail: { id, label, category, run },
-        }),
-      );
+      registerCommand({ id, label, category, run });
     } catch { /* */ }
   }
   console.log("[workflow-pack-5] cost / groups / site / analysis commands ready");

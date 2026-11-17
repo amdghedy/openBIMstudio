@@ -765,6 +765,30 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     ],
     affirmedIn: APP_VERSION,
   },
+  {
+    id: "critical-workflow-packs-3-7",
+    area: "Platform",
+    status: "limited",
+    source: [
+      "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "tests/critical-workflow-packs-34567.test.cjs",
+    ],
+    evidence: [
+      "Unit suite tests/critical-workflow-packs-34567.test.cjs — 32 assertions over packs 3–7 (51 commands): every pack registers its commands into the REAL command palette (11+10+10+10+10), cost takeoff priced on fixtures (63 m² walls ×45 + 80 m² slab ×120 + 3 doors + 1 window + 0.945 m³ columns), flat topo pads model bounds by 5 m and places a terrain slab, matchline runs through bounds centre, generative grid study scores spacings (best 7.5 m on the fixture), group/ungroup stamps groupId, GIS origin is the exact element centroid, fine snaps drive the real snapping engine at 50 mm, wall justification sets exterior face with a thickness/2 shift, workshare locks stamp selection, Uniclass stamps per-type codes (11 on the fixture), materials seed six valid categories, mass uses the positional createMass(basePolygon, height, name) signature, model tree payload complete, zero window.__obs* globals",
+      "Packs 3–7 originally shipped all 51 commands through a window CustomEvent (\"obs-register-command\") that no code in the repo listens to — the commands were invisible in the palette. They now register directly via registerCommand(), the same correction pack 1 and pack 2 went through",
+      "Three shipped-defect repairs are pinned by this suite: pack-7's checker writes used to clobber the module-globals checker API the ribbon calls, materials used an invalid \"Generic\" category, and placeBoundingMass passed an object to a positional signature",
+    ],
+    limitations: [
+      "Pack 3/4 behaviour is pinned at registration level plus the round-14 repairs (phases/issues/COBie/worksets/keynotes wiring, real (scheme, rooms) autoAssignColors); the full command bodies of packs 3 and 4 are not exercised on fixtures yet",
+      "Pack-6 module fallbacks (families/fabrication/daylight/GIS/locks/details/justification/marketplace stubs) are exercised against stubbed engines; the real engines' own behaviour is covered by their module suites where those exist",
+      "Palette interaction has not been driven in a browser; registration is proven by unit test",
+    ],
+    affirmedIn: APP_VERSION,
+  },
 ] as const;
 
 /** Look up a feature's maturity by id. */

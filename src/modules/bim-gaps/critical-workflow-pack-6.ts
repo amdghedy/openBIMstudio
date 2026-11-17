@@ -13,6 +13,7 @@
  */
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { registerCommand } from "../../features/command-palette";
 import { BIM_GAPS_VERSION } from "./bim-gaps-boot";
 
 type Any = Record<string, any>;
@@ -366,11 +367,7 @@ export function setupCriticalWorkflowPack6(): void {
 
   for (const [id, label, category, run] of cmds) {
     try {
-      window.dispatchEvent(
-        new CustomEvent("obs-register-command", {
-          detail: { id, label, category, run },
-        }),
-      );
+      registerCommand({ id, label, category, run });
     } catch { /* */ }
   }
   console.log("[workflow-pack-6] families / analysis / collab commands ready");
