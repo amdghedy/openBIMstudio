@@ -10,14 +10,14 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 |----|-------|----------|-------|----------|
 | P0-01 | Global crash containment: error boundaries per panel + crash log | Critical | Phase 0 | 1d | ✅ satisfied |
 | P0-02 | Zod validation at all file-load boundaries (`safeLoad`) | Critical | Phase 0 | 1d | 🔶 partial |
-| P0-03 | Backup-on-load with rotating timestamps | High | Phase 0 | 0.5d | ⬜ open |
+| P0-03 | Backup-on-load with rotating timestamps | High | Phase 0 | 0.5d | ✅ satisfied |
 | P0-04 | Fail-closed server: origin allow-list, header-only tokens, rate limit | Critical | Phase 0 | 1d | 🔶 partial |
 | P0-05 | Remove `jsonpath-plus`; add npm audit CI gate | Critical | Phase 0 | 0.5d | ✅ satisfied |
 | P1-01 | Freeze `__obs*` globals with ESLint; typed service registry | High | Phase 1 | 2d | ✅ satisfied |
 | P1-02 | TypeScript strictification wave 1 (src/modules, src/core) | High | Phase 1 | 3d | ✅ satisfied |
 | P1-03 | Assemble 20-fixture IFC golden corpus (licensed, snapshotted) | High | Phase 1 | 2d | 🔶 partial (3/20) |
 | P1-04 | Golden round-trip pipeline + interop report + CI workflow | High | Phase 1 | 3d | ✅ satisfied |
-| P1-05 | Property-based kernel invariants (fast-check) | High | Phase 1 | 2d | ⬜ open |
+| P1-05 | Property-based kernel invariants (fast-check) | High | Phase 1 | 2d | 🔶 partial (undo foundation) |
 | P1-06 | Malformed-input rejection property tests (IFC, BCF, DXF) | Medium | Phase 1 | 1d | 🔶 partial |
 | P1-07 | Playwright E2E smoke suite on Chromium, WebKit, Firefox | High | Phase 1 | 3d | 🔶 partial |
 | P2-01 | Append-only journal persistence with snapshot recovery | High | Phase 2 | 4d | 🔶 partial |
@@ -87,12 +87,12 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 - [x] Add the live server/Node backup implementation in `server/backup.mjs` (the browser/OPFS adapter remains open)
 - [x] `backupBeforeWrite(path)`: timestamped `.bak` copy before server project/room replacement
 - [x] Keep last 5 backups; prune older on each server write
-- [ ] Wire the browser project-file migration/open path and destructive delete/reset flows
+- [x] Wire the browser project-file migration/open path and destructive delete/reset flows
 
 **Acceptance criteria**
 - [x] Server regression test covers first save, prior-state recovery copies, atomic replacement, and five-file rotation (`tests/server-backup.test.cjs`)
 - [x] Server backup failure is non-fatal to the primary write; atomic replacement cleans temporary files
-- [ ] Browser/OPFS corruption-recovery test and migration-time backup remain
+- [x] Browser recovery-vault wiring and migration-time backup regression coverage (`tests/project-persistence.test.cjs`)
 
 ---
 
@@ -221,8 +221,8 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 **Rationale:** Hand-written tests cover imagined cases; properties search the unimagined ones.
 
 **Tasks**
-- [ ] Add `fast-check`; build `tests/helpers/testEngine` (seeded model, `applyOp`, `undo`, `hashState`)
-- [ ] Undo invariant: arbitrary op sequence + N undos restores the exact start hash (Listing 11 of the plan)
+- [x] Add `fast-check`; build `tests/helpers/testEngine` (seeded model, `applyOp`, `undo`, `hashState`)
+- [x] Undo invariant: arbitrary op sequence + N undos restores the exact start hash (500 runs, `npm run test:property`)
 - [ ] Split/join conservation: wall area/volume conserved across split + join
 - [ ] Snap tolerance: post-snap endpoints within tolerance; justification offset preserved
 - [ ] Target 10 invariants total; 500 runs each in CI, seeded shrink failures reported as issues
@@ -424,8 +424,9 @@ Evidence-based audit of main against each issue's acceptance criteria
   malformed tests; property suites missing), P1-07 (playwright config; runner
   not in devDeps), P2-01 (`journal.ts` exists; not wired into persistence),
   P2-02 (`check-tool-catalog.mjs` exists; no CI enforcement), P2-03
-  (`budget.json` exists; no CI workflow).
-- **Not started:** P0-03, P1-05, P2-04, P2-06.
+  (`budget.json` exists; no CI workflow), P1-05 (undo property foundation;
+  split/join, snapping, ten-invariant target and mutation check remain).
+- **Not started:** P2-04, P2-06.
 
 Run `bash docs/engineering/sync-issues.sh` (needs `GH_TOKEN` or `/tmp/gh.token`)
 to create all 18 issues from the bodies below, close the satisfied ones with

@@ -253,6 +253,7 @@
     "test:architecture-map": "node tests/architecture-map.test.cjs",
     "test:project-journal": "node tests/project-journal.test.cjs",
     "test:project-persistence": "node tests/project-persistence.test.cjs",
+    "test:property": "tsx tests/property/undo-invariant.test.ts",
     "test:cad-dwg-export": "node tests/cad-dwg-export.test.cjs",
     "test:kb-bim-csd": "node tests/kb-bim-csd-packing.test.cjs",
     "test:kb-bim-rules": "node tests/kb-bim-rules.test.cjs",
@@ -326,6 +327,8 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.2.1",
+    "fast-check": "^4.10.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.3",
     "vite": "^8.3.6"
   },
