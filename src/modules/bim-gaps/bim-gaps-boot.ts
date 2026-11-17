@@ -21,13 +21,14 @@ import { buildIfcClassifications } from "../classification";
 import { setupFloorFromWalls, createFloorsFromWalls } from "./floor-from-walls";
 import { setupRoofCeilingFromWalls, createRoofsFromWalls, createCeilingsFromWalls } from "./roof-ceiling-from-walls";
 import { setupStairsBetweenLevels, placeStairsBetweenLevels, placeRailingsOnStair } from "./stairs-between-levels";
+import { setupCriticalWorkflowPack } from "./critical-workflow-pack";
 import { setupM2Register } from "./m2-register";
 import { installM2Redirects, startM2Tool, ceilingsFromRooms, createM2Element } from "./m2-tools";
 import { setupM3, togglePlanOption, refreshViews } from "./m3-register";
 
 type Any = Record<string, any>;
 export interface StepStatus { name: string; ok: boolean; detail: string }
-export const BIM_GAPS_VERSION = "1.4.0-circulation";
+export const BIM_GAPS_VERSION = "1.5.0-docs-pack";
 const status: StepStatus[] = [];
 
 const authoring = (): Any | null => ((ctx.features as Any).authoring ?? null);
@@ -94,6 +95,7 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
   await step("floor-from-walls", setupFloorFromWalls);
   await step("roof-ceiling-from-walls", setupRoofCeilingFromWalls);
   await step("stairs-between-levels", setupStairsBetweenLevels);
+  await step("critical-workflow-pack", setupCriticalWorkflowPack);
   await step("m2-elements", () => {
     const r = setupM2Register();
     installM2Redirects();
