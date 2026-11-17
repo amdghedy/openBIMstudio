@@ -25,6 +25,8 @@ import {
   summarizeGroups,
   type ClashGroup,
 } from "../modules/clash/grouping";
+import { serializeScenarios, parseScenarios } from "../modules/clash/scenario-io";
+import { markDirty } from "../modules/projects/projects";
 import { fmtDateTime } from "../core/region";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1070,6 +1072,14 @@ export function exportClashCsv() {
 // ═══════════════════════════════════════════════════════════════════════════
 const SCENARIO_KEY = "obs-clash-scenarios-v1";
 
+/**
+ * In-memory working copy of the scenario list. Filled from localStorage on
+ * first read, kept authoritative thereafter — so restores from the project
+ * document and private-mode sessions (where localStorage writes throw) still
+ * see a consistent list.
+ */
+let scenarioCache: ClashScenario[] | null = null;
+
 export type ClashScenario = {
   id: string;
   name: string;
@@ -1095,11 +1105,13 @@ function scenarioUid() {
 }
 
 export function listScenarios(): ClashScenario[] {
+  if (scenarioCache) return scenarioCache;
   try {
     const raw = localStorage.getItem(SCENARIO_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    scenarioCache = Array.isArray(arr) ? arr : [];
+    return scenarioCache;
   } catch { return []; }
 }
 
@@ -1108,8 +1120,12 @@ function notifyScenariosChanged() {
 }
 
 function persistScenarios(list: ClashScenario[]) {
+  scenarioCache = list;
   try { localStorage.setItem(SCENARIO_KEY, JSON.stringify(list)); }
   catch (e) { console.warn("[clash] scenario save failed", e); clashToast("Could not save scenarios.", "warn"); }
+  // Scenarios travel with the project: flag the document dirty so autosave
+  // and Ctrl+S flush them into the project payload (clashScenarios).
+  markDirty();
 }
 
 export function createScenario(name?: string): ClashScenario {
@@ -1462,6 +1478,19 @@ export function setupClash() {
 
     serializeStates: serializeClashStates,
     deserializeStates: deserializeClashStates,
+
+    // Project-document persistence for saved scenarios (the localStorage
+    // copy above is only the live working set).
+    serializeScenarios: () => serializeScenarios(listScenarios()),
+    restoreScenarios: (raw: unknown) => {
+      const list = parseScenarios(raw) as unknown as ClashScenario[];
+      // A restore is not an edit: seed the cache and the localStorage working
+      // copy without flagging the freshly opened project dirty.
+      scenarioCache = list;
+      try { localStorage.setItem(SCENARIO_KEY, JSON.stringify(list)); }
+      catch { /* private mode: in-memory copy is enough */ }
+      renderScenarioList();
+    },
   };
   ctx.features.clash = svc;
   register("clash", svc);

@@ -220,6 +220,9 @@ export async function saveProject(silent = false) {
     try {
       const clash = services.tryUse("clash");
       (current as any).clashStates = clash?.serializeStates?.() ?? [];
+      // Saved scenarios travel with the project (previously localStorage-only,
+      // so a project moved between machines lost every saved clash test).
+      (current as any).clashScenarios = clash?.serializeScenarios?.() ?? [];
     } catch { /* */ }
 
     try {
@@ -596,6 +599,11 @@ export async function openProject(id: string) {
     try {
       const clash = services.tryUse("clash");
       clash?.deserializeStates?.((doc as any).clashStates ?? []);
+      // Only when the document carries scenarios: legacy projects keep their
+      // localStorage working copy instead of being wiped.
+      if ((doc as any).clashScenarios != null) {
+        clash?.restoreScenarios?.((doc as any).clashScenarios);
+      }
     } catch { /* */ }
 
     loader?.set?.("Rebuilding panels…", 0.96);

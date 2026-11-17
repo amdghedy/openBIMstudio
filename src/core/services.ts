@@ -282,6 +282,11 @@ export interface ClashService {
     updatedAt: number;
   }>;
   deserializeStates(list: unknown): void;
+
+  /** Saved scenarios for the project document (clashScenarios payload). */
+  serializeScenarios(): unknown[];
+  /** Restore scenarios saved in a project document (tolerant parse). */
+  restoreScenarios(raw: unknown): void;
 }
 
 /* ══════════════════════════════════════════════════════════════════════

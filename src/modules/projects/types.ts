@@ -358,6 +358,11 @@ export interface ProjectDoc {
     updatedAt?: number;
   }>;
 
+  /** Saved clash scenarios (named tests): A/B selections, method, tolerances,
+   *  per-clash review snapshot and last-run summary. Tolerantly parsed on
+   *  restore (see src/modules/clash/scenario-io.ts). */
+  clashScenarios?: unknown[];
+
   /** Plan-view dimensions (aligned / linear / chains) drawn in the 2D floor plan. */
   planDimensions?: unknown[];
   /** Plan-view tags and text notes. */

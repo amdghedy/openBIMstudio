@@ -12,6 +12,7 @@ import {
   getClashState,
   type ClashStatus,
 } from "./clash";
+import { buildClashMatrix, type ClashMatrix } from "../modules/clash/scenario-io";
 import { getCurrentProject } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
 import { fmtDateTime } from "../core/region";
@@ -219,11 +220,59 @@ export function buildClashReportHtml(): string {
 
   html += `</tbody></table>
 
+${buildMatrixHtml(buildClashMatrix(rows.map((r) => ({ a: { category: r.catA }, b: { category: r.catB } }))))}
+
 <div class="footer">
   Open BIM Studio · Clash Detective report · generated ${fmtDate(Date.now())}
 </div>
 </body></html>`;
 
+  return html;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Clash matrix (category × category counts)
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/** Grid cap: beyond 15 categories the N×N table stops being readable in print. */
+const MATRIX_GRID_CAP = 15;
+
+function buildMatrixHtml(m: ClashMatrix): string {
+  if (!m.total) return "";
+  const count = (a: string, b: string): number => {
+    const [lo, hi] = a <= b ? [a, b] : [b, a];
+    const cell = m.cells.find((c) => c.a === lo && c.b === hi);
+    return cell?.count ?? 0;
+  };
+
+  if (m.categories.length <= MATRIX_GRID_CAP) {
+    let html = `<h2>Clash matrix</h2>
+<table><thead><tr><th>A \ B</th>`;
+    for (const c of m.categories) html += `<th style="writing-mode:vertical-rl;max-height:90px">${esc(c)}</th>`;
+    html += `</tr></thead><tbody>`;
+    for (const a of m.categories) {
+      html += `<tr><th style="background:#f0f2f5">${esc(a)}</th>`;
+      for (const b of m.categories) {
+        const n = count(a, b);
+        const heat = n === 0 ? "" : n < 3 ? "background:#fef3c7;" : n < 10 ? "background:#fde68a;" : "background:#fecaca;";
+        html += `<td class="num" style="${heat}${n === 0 ? "color:#d1d5db" : "font-weight:700"}">${n || "·"}</td>`;
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table>
+<div class="meta" style="margin-top:8px">Category × category clash counts, order-normalized (A×B = B×A). Same-category pairs sit on the diagonal.</div>`;
+    return html;
+  }
+
+  // Compact pair list for wide models.
+  const top = m.cells.slice(0, 20);
+  let html = `<h2>Clash matrix</h2>
+<table><thead><tr><th>Category pair</th><th>Clashes</th></tr></thead><tbody>`;
+  for (const c of top) {
+    html += `<tr><td>${esc(c.a)} × ${esc(c.b)}</td><td class="num" style="font-weight:700">${c.count}</td></tr>`;
+  }
+  html += `</tbody></table>
+<div class="meta" style="margin-top:8px">Top ${top.length} of ${m.cells.length} category pairs (${m.categories.length} categories involved) — grid suppressed beyond ${MATRIX_GRID_CAP} categories.</div>`;
   return html;
 }
 
