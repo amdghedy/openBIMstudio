@@ -325,8 +325,8 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 
 **Tasks**
 - [ ] `scripts/bench-large-model.mjs`: headless import of a 50-100 MB reference IFC (committed as checksum + download script, or generated synthetically); record wall time + peak heap with `--expose-gc`
-- [ ] `scripts/budget.json`: maxSeconds 60, maxPeakMB 1500, main JS bundle <= 2500 KB, e2e smoke <= 180 s
-- [ ] `scripts/check-budget.mjs` gate in CI on release candidates
+- [x] `scripts/budget.json`: maxSeconds 60, maxPeakMB 1500, main JS bundle <= 2500 KB, e2e smoke <= 180 s
+- [x] `bench/check-budgets.mjs` gate in blocking CI after the production build
 - [ ] Policy: tighten only after 3 consecutive green runs; loosening requires a linked issue
 
 **Acceptance criteria**
@@ -425,7 +425,7 @@ Evidence-based audit of main against each issue's acceptance criteria
   malformed tests; property suites missing), P1-07 (playwright config; runner
   not in devDeps), P2-01 (`journal.ts` exists; not wired into persistence),
   P2-02 (catalog checker repaired and wired into CI; command-directory coverage and markdown generation remain), P2-03
-  (`budget.json` exists; no CI workflow), P1-05 (undo property foundation;
+  (budget gate wired; benchmark artifact/report policy remains), P1-05 (undo property foundation;
   split/join, snapping, ten-invariant target and mutation check remain).
 - **Not started:** P2-04, P2-06.
 

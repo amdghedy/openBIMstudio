@@ -50,6 +50,12 @@ t("legacy project JSON import routes text through safeLoad before storage", () =
   assert.match(source, /safeLoad\("legacy project JSON"/);
   assert.doesNotMatch(source, /const doc = JSON\.parse\(text\)/);
 });
+t("LibreDWG JSON dump import is bounded and schema-gated", () => {
+  const source = fs.readFileSync(path.join(root, "src/features/libredwg-toolkit.ts"), "utf8");
+  assert.match(source, /safeLoad\(/);
+  assert.match(source, /entities: z\.array/);
+  assert.doesNotMatch(source, /JSON\.parse\(await file\.text\(\)\)/);
+});
 t("project parser rejects a structurally invalid header through the safe loader", async () => {
   const header = JSON.stringify({ format: "obsproj", version: 1, savedAt: Date.now(), app: "Open BIM Studio", doc: {}, blobs: [{ modelId: "m1", name: "m.ifc", size: "5", type: "" }] });
   const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, new TextEncoder().encode(header).length, true);

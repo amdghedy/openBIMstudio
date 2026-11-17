@@ -54,6 +54,9 @@ jobs:
       - name: Tool catalog maturity gate
         run: node scripts/check-tool-catalog.mjs
 
+      - name: Performance budget gate
+        run: npm run bench:budget
+
       - name: Type-check Cloudflare Worker sources
         run: npx tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM worker/index.ts worker/linkedin.ts
 

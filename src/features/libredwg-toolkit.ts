@@ -27,9 +27,9 @@
  *   plus command-palette entries (dwg.*) and dialogs. No window.__obs* globals —
  *   state flows through imports and ctx.features (ui-honesty budget).
  */
-import { toast } from "../core/notify";
 import { z } from "zod";
 import { safeLoad } from "../core/safeLoad";
+import { ctx } from "../core/context";
 import { escapeHtml } from "../core/html-escape";
 import { registerCommand } from "./command-palette";
 import {
