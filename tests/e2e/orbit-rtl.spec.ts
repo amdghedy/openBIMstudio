@@ -1441,3 +1441,34 @@ test('CAD viewer: SHX-styled text is drawn as thin strokes (lighter than the sam
   expect(m.left, `SHX text (thin strokes) should light fewer pixels than the TrueType text: ${JSON.stringify(m)}`).toBeLessThan(m.right * 0.75);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('reference lines: a new chain lines up with the end of a wall drawn earlier', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await page.waitForFunction(() => !!(window as any).__obsAuthoring && !!(window as any).__OBS_CTX__?.world?.camera?.three, null, { timeout: 30000 });
+  await page.evaluate(() => {
+    const c = (window as any).__OBS_CTX__.world; const cam = c.camera.three;
+    cam.position.set(5, 22, 2.001); cam.lookAt(5, 0, 2); cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
+    try { c.camera.controls.setLookAt(5, 22, 2.001, 5, 0, 2, false); } catch { /* */ }
+  });
+  const scr = (x: number, z: number) => page.evaluate(([x, z]) => {
+    const cam = (window as any).__OBS_CTX__.world.camera.three; const v = new cam.position.constructor(x, 0, z).project(cam);
+    const r = document.querySelector('canvas')!.getBoundingClientRect();
+    return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
+  }, [x, z]);
+  await page.evaluate(() => (window as any).__obsAuthoring.setAuthoringTool('wall'));
+  // First chain: one wall A(0,0) -> B(6,0), then Esc ends the chain.
+  for (const [x, z] of [[0, 0], [6, 0]]) { const p = await scr(x, z); await page.mouse.move(p.x, p.y); await page.mouse.click(p.x, p.y); }
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => (window as any).__obsAuthoring.setAuthoringTool('wall'));
+  // Second chain starts far away; hovering level with B's X (6) should pull the cursor onto B's vertical line.
+  const s = await scr(10, 4); await page.mouse.move(s.x, s.y); await page.mouse.click(s.x, s.y);
+  const t = await scr(6, 2.5); await page.mouse.move(t.x + 40, t.y + 3); await page.mouse.move(t.x + 6, t.y + 3);
+  await page.waitForTimeout(400);
+  const hit = await page.evaluate(() => (window as any).__obsAuthoring.getRefSnap());
+  expect(hit, 'tracking should engage from the earlier wall').not.toBeNull();
+  expect(Math.abs(hit[0] - 6), 'x lined up with the earlier wall end').toBeLessThan(1e-6);
+  expect(errors, errors.join('\n')).toEqual([]);
+});

@@ -101,6 +101,7 @@ import {
   type SmartPerpSnapResult,
 } from "../modules/snapping/smart-perp-snap";
 import { snapFeedback } from "./snap-feedback";
+import { computeTracking, type TrackAnchor, type TrackHit } from "../modules/snapping/reference-tracking";
 import type { MepConnector } from "../modules/mep/connectors";
 import { deriveFamilyInstanceConnectors } from "../modules/mep/family-connectors";
 import { lengthKeepRight, thicknessKeepFace, openingWidthKeepRight, heightKeepBase } from "../modules/native-bim/dimension-edit";
@@ -189,7 +190,41 @@ export function setReferenceTracking(v: boolean) {
   try { localStorage.setItem(REF_LINES_KEY, v ? "1" : "0"); } catch { /* */ }
   try { clearGuides(); } catch { /* */ }
 }
-const REF_SNAP_TOL = 0.35; // metres — attract cursor to axis intersections
+const REF_SNAP_TOL = 0.35;
+/** Extra reference lines from walls drawn earlier (axis / in-line / square to a wall); zoom-aware capture. */
+let extTrack: TrackHit | null = null;
+const EXT_TOOLS = new Set(["wall", "beam", "strip", "mline", "duct", "pipe", "cable-tray", "conduit"]);
+function extTrackTolerance(at: THREE.Vector3): number {
+  try {
+    const cam: any = ctx.world.camera.three;
+    const hPx = Math.max(1, ctx.rightHost?.clientHeight || 800);
+    const wpp = cam.isOrthographicCamera
+      ? Math.abs((cam.top - cam.bottom) / (cam.zoom || 1)) / hPx
+      : (2 * Math.max(0.01, cam.position.distanceTo(at)) * Math.tan(THREE.MathUtils.degToRad(cam.fov ?? 50) / 2)) / hPx;
+    return Math.min(0.6, Math.max(0.03, wpp * 12));
+  } catch { return 0.15; }
+}
+function extTrackAnchors(tool: string, base: THREE.Vector3): TrackAnchor[] {
+  const out: TrackAnchor[] = [];
+  const byKey = new Map<string, TrackAnchor>();
+  const add = (x: number, z: number, dir: number | null) => {
+    const k = `${Math.round(x * 1000)}|${Math.round(z * 1000)}`;
+    let a = byKey.get(k);
+    if (!a) { a = { x, z, dirs: [] }; byKey.set(k, a); out.push(a); }
+    if (dir != null && Number.isFinite(dir)) a.dirs!.push(dir);
+  };
+  const levelSensitive = tool === "wall" || tool === "strip";
+  for (const el of elements) {
+    if (el.type !== tool || !el.params.start || !el.params.end) continue;
+    if (levelSensitive && Math.abs((el.params.elevation ?? 0) - level) > 0.3) continue;
+    const [ax, az] = el.params.start, [bx, bz] = el.params.end;
+    if (Math.hypot(bx - ax, bz - az) < 0.05) continue;
+    const d = Math.atan2(bz - az, bx - ax);
+    add(ax, az, d); add(bx, bz, d);
+  }
+  add(base.x, base.z, chainStartDir);
+  return out;
+} // metres — attract cursor to axis intersections
 
 let poly: THREE.Vector3[] = [];
 let pendingOp: PendingOp = { kind: "none" };
@@ -3330,6 +3365,7 @@ function applyReferenceTracking(
   p: THREE.Vector3,
   base: THREE.Vector3 | null,
 ): THREE.Vector3 {
+  extTrack = null;
   if (!refLinesOn) { refSnapActive = null; return p; }
   try {
     const origins: THREE.Vector3[] = [];
@@ -3378,6 +3414,15 @@ function applyReferenceTracking(
     if (bestD < REF_SNAP_TOL) {
       refSnapActive = best.clone();
       return best.clone();
+    }
+    // Nothing from the chain corners: try lines from walls drawn earlier and squares to them.
+    if (base && activeTool && EXT_TOOLS.has(String(activeTool))) {
+      const hit = computeTracking([p.x, p.z], extTrackAnchors(String(activeTool), base), extTrackTolerance(p));
+      if (hit) {
+        extTrack = hit;
+        refSnapActive = new THREE.Vector3(hit.point[0], 0, hit.point[1]);
+        return refSnapActive.clone();
+      }
     }
     refSnapActive = null;
     return p;
@@ -4682,6 +4727,19 @@ function updateAlignmentGuides(start: THREE.Vector3, end: THREE.Vector3) {
       ));
     }
   } catch { /* guide paint optional */ }
+  // Extended tracking lines (from earlier walls): anchor -> snapped point, coloured by kind.
+  if (refLinesOn && extTrack) {
+    try {
+      const col = { axis: 0x22d3ee, colinear: 0xfbbf24, perpendicular: 0xf472b6 } as const;
+      const [hx, hz] = extTrack.point;
+      for (const l of extTrack.lines) {
+        const len2 = Math.hypot(hx - l.from[0], hz - l.from[1]);
+        if (len2 < 0.01) continue;
+        const ux = (hx - l.from[0]) / len2, uz = (hz - l.from[1]) / len2, over = Math.min(0.6, len2 * 0.15);
+        guideGroup.add(dashedLine(new THREE.Vector3(l.from[0], y, l.from[1]), new THREE.Vector3(hx + ux * over, y, hz + uz * over), col[l.kind], 0.5, 0.25));
+      }
+    } catch { /* guide paint optional */ }
+  }
   // Closing-point marker: intersection of first-corner axes with current cursor axes
   if (refLinesOn && chainCorners.length >= 1) {
     const o0 = chainCorners[0];
