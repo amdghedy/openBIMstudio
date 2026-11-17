@@ -44,7 +44,18 @@ import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
-import * as AcadParity from "../modules/cad-viewer/acad-parity";
+import * as AcadParity from "../modules/cad-viewer/acad-parity"
+import {
+  centerMarkEntities,
+  centerLineBetween,
+  purgeEmptyLayers,
+  selectIdsByLayer,
+  selectIdsByType,
+  selectionBounds,
+  countByType,
+  drawingPropsSummary,
+  CAD_2D_GAP_COMMANDS,
+} from "../modules/cad-viewer/cad-2d-critical-gaps";;
 import * as PolyBool from "../modules/cad-viewer/poly-boolean";
 import * as AcadAdv from "../modules/cad-viewer/acad-advanced";
 import { evalExpr, isCalcExpr } from "../modules/cad-viewer/cad-cal";
@@ -287,6 +298,16 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "VIEW", aliases: ["V"], description: "Named views: VIEW S <name> saves, VIEW R <name> restores" },
   { name: "LAYERSTATE", aliases: ["LAS", "LAYSTATE"], description: "Layer states: LAYERSTATE S|R <name>" },
   { name: "OVERKILL", aliases: ["OVERKILL"], description: "Remove duplicate / overlapping entities" },
+  { name: "CENTERMARK", aliases: ["CMARK"], description: "Center mark on selected circles" },
+  { name: "CENTERLINE", aliases: ["CLINE"], description: "Centerline between two selected parallel lines" },
+  { name: "PURGELAYERS", aliases: ["PURLAY"], description: "Purge unused empty layers" },
+  { name: "LAYSEL", aliases: ["SELLAYER"], description: "Select all on current/given layer" },
+  { name: "TYPESEL", aliases: ["SELTYPE"], description: "Select all of a type (TYPESEL CIRCLE)" },
+  { name: "EXPORTSEL", aliases: ["WBLOCKSEL"], description: "Export selection bounds to clipboard JSON" },
+  { name: "DWGPROPS", aliases: ["DRAWINGPROPS"], description: "Drawing properties summary" },
+  { name: "CENSUS", aliases: ["ENTCOUNT"], description: "Entity counts by type" },
+  { name: "REGENALL", aliases: ["REA"], description: "Force full regen/redraw" },
+  { name: "CLRSEL", aliases: ["SELCLR"], description: "Clear selection set" },
   { name: "DIMALIGNED", aliases: ["DAL"], description: "Place an aligned dimension with two measured points and a line location" },
   { name: "DIMLINEAR", aliases: ["DLI"], description: "Place a horizontal or vertical dimension" },
   { name: "DIMANGULAR", aliases: ["DAN", "DIMANG"], description: "Angular dimension from a vertex and two rays" },
@@ -10404,6 +10425,103 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "ARCTEXT" || cmd === "ARCALIGNEDTEXT") { setTool("arctext"); return; }
     if (cmd === "TEXTMASK" || cmd === "TMASK") { setTool("textmask"); return; }
     if (cmd === "FLATTEN" || cmd === "FLAT") { runFlatten(); return; }
+
+    /* ── 2D critical gaps pack ── */
+    if (cmd === "CENTERMARK" || cmd === "CMARK") {
+      if (!doc) { logCmd("CENTERMARK: no drawing."); return; }
+      const idxs = [...sel];
+      const src = idxs.length ? idxs : ents.map((_, i) => i);
+      const add: DxfEntity[] = [];
+      for (const i of src) {
+        const e = ents[i];
+        if (!e || e.type !== "CIRCLE") continue;
+        add.push(...centerMarkEntities(e as any, currentLayer));
+      }
+      if (!add.length) { logCmd("CENTERMARK: select circle(s) first."); return; }
+      addEntities(add); draw();
+      logCmd(`CENTERMARK: ${add.length / 4} circle(s).`);
+      return;
+    }
+    if (cmd === "CENTERLINE" || cmd === "CLINE") {
+      if (!doc) { logCmd("CENTERLINE: no drawing."); return; }
+      const idxs = [...sel].filter((i) => ents[i]?.type === "LINE");
+      if (idxs.length < 2) { logCmd("CENTERLINE: select two parallel lines."); return; }
+      const cl = centerLineBetween(ents[idxs[0]] as any, ents[idxs[1]] as any, currentLayer);
+      if (!cl) { logCmd("CENTERLINE: could not build centerline."); return; }
+      addEntities([cl]); draw();
+      logCmd("CENTERLINE: 1 line created.");
+      return;
+    }
+    if (cmd === "PURGELAYERS" || cmd === "PURLAY") {
+      if (!doc) return;
+      const removed = purgeEmptyLayers(doc);
+      logCmd(removed.length ? `PURGELAYERS: removed ${removed.length} — ${removed.join(", ")}` : "PURGELAYERS: no empty layers.");
+      draw();
+      return;
+    }
+    if (cmd === "LAYSEL" || cmd === "SELLAYER") {
+      if (!doc) return;
+      const layer = (arg || currentLayer || "0").trim();
+      const ids = selectIdsByLayer(ents, layer);
+      sel.clear();
+      for (const i of ids) sel.add(i);
+      logCmd(`LAYSEL: ${ids.length} on layer "${layer}".`);
+      draw();
+      return;
+    }
+    if (cmd === "TYPESEL" || cmd === "SELTYPE") {
+      if (!doc) return;
+      const typ = (arg || "").trim();
+      if (!typ) { logCmd("TYPESEL: specify a type, e.g. TYPESEL CIRCLE"); return; }
+      const ids = selectIdsByType(ents, typ);
+      sel.clear();
+      for (const i of ids) sel.add(i);
+      logCmd(`TYPESEL: ${ids.length} × ${typ.toUpperCase()}.`);
+      draw();
+      return;
+    }
+    if (cmd === "EXPORTSEL" || cmd === "WBLOCKSEL") {
+      if (!doc) return;
+      const idxs = [...sel];
+      if (!idxs.length) { logCmd("EXPORTSEL: nothing selected."); return; }
+      const b = selectionBounds(ents, idxs);
+      const payload = {
+        count: idxs.length,
+        bounds: b,
+        types: countByType(idxs.map((i) => ents[i]).filter(Boolean) as any),
+      };
+      try {
+        void navigator.clipboard?.writeText?.(JSON.stringify(payload, null, 2));
+        logCmd(`EXPORTSEL: ${idxs.length} object(s) summary copied to clipboard.`);
+      } catch {
+        logCmd(`EXPORTSEL: ${JSON.stringify(payload)}`);
+      }
+      return;
+    }
+    if (cmd === "DWGPROPS" || cmd === "DRAWINGPROPS") {
+      if (!doc) { logCmd("DWGPROPS: no drawing."); return; }
+      logCmd(drawingPropsSummary(doc, (doc as any).name || undefined));
+      return;
+    }
+    if (cmd === "CENSUS" || cmd === "ENTCOUNT") {
+      if (!doc) return;
+      const by = countByType(ents);
+      logCmd("CENSUS: " + (Object.entries(by).map(([k, v]) => `${k}=${v}`).join(", ") || "(empty)"));
+      return;
+    }
+    if (cmd === "REGENALL" || cmd === "REA") {
+      try { (window as any).__obsCadForceRegen?.(); } catch { /* */ }
+      draw();
+      logCmd("REGENALL: redraw complete.");
+      return;
+    }
+    if (cmd === "CLRSEL" || cmd === "SELCLR") {
+      sel.clear();
+      draw();
+      logCmd("CLRSEL: selection cleared.");
+      return;
+    }
+
     if (cmd === "BREAKLINE" || cmd === "BRKLN") { setTool("breakline"); return; }
     if (cmd === "LAYMRG" || cmd === "LAYMERGE") { setTool("laymrg"); return; }
     if (cmd === "LAYDEL" || cmd === "LAYDELETE") { setTool("laydel"); return; }
