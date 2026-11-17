@@ -82,6 +82,8 @@ type ImportStatus =
   | "queued" | "reading" | "converting" | "loading"
   | "done" | "failed" | "cancelled" | "skipped";
 
+import { buildInteropReport, formatInteropReport, type IfcInteropReport } from "../modules/ifc-semantics/interop-report";
+
 interface ImportTask {
   uid: number;
   file: File;
@@ -95,6 +97,8 @@ interface ImportTask {
   fragBytes?: Uint8Array;
   modelId?: string;
   elements?: number;
+  /** Per-entity STEP inventory (ifc-import-export Phase 4 report). */
+  interop?: IfcInteropReport;
 }
 
 export type IfcSettings = {
@@ -710,6 +714,13 @@ function refreshTaskRow(t: ImportTask) {
          <div style="height:100%;width:${t.progress}%;background:${col};transition:width .25s"></div>
        </div>` : "";
 
+  const interopHtml = t.interop
+    ? `<details style="margin-top:4px">
+         <summary style="cursor:pointer;opacity:.7;font-size:10px">Entity inventory — ${escapeHtml(t.interop.schema)} · ${t.interop.totalEntities.toLocaleString()} entities · ${t.interop.types.length} type(s)</summary>
+         <pre style="margin:4px 0 0;font-size:10px;opacity:.75;white-space:pre-wrap">${escapeHtml(formatInteropReport(t.interop).join("\n"))}</pre>
+       </details>`
+    : "";
+
   row.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px">
       <span style="width:8px;height:8px;border-radius:50%;background:${col};flex:none"></span>
@@ -718,6 +729,7 @@ function refreshTaskRow(t: ImportTask) {
     </div>
     <div style="opacity:.6;margin:2px 0">${t.schema !== "—" ? escapeHtml(t.schema) + " · " : ""}${escapeHtml(t.phase)}${elements}</div>
     ${bar}
+    ${interopHtml}
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       <span style="color:${col};font-weight:700;font-size:10px;letter-spacing:.4px">${t.status.toUpperCase()}</span>
       ${t.elapsedMs > 0 ? `<span style="opacity:.55">${fmtDur(t.elapsedMs)}</span>` : ""}
@@ -1138,6 +1150,8 @@ async function runTask(t: ImportTask) {
         t.schema = "cached";
         t.phase = "loaded from FRAG cache";
         t.progress = 100;
+        // Inventory even on cache hits: the source file is still on hand.
+        try { t.interop = buildInteropReport(t.file.name, new Uint8Array(await t.file.arrayBuffer())) ?? undefined; } catch { /* optional */ }
         refreshTaskRow(t);
         console.log(`[importer] FRAG cache hit · ${t.file.name} · ${(cached.byteLength / (1024 * 1024)).toFixed(1)} MB`);
       }
@@ -1175,6 +1189,8 @@ async function runTask(t: ImportTask) {
       const buffer = await t.file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       t.schema = detectSchema(bytes);
+      // Per-entity interop report: one linear scan of the STEP instance table.
+      try { t.interop = buildInteropReport(t.file.name, bytes) ?? undefined; } catch { /* optional */ }
       refreshTaskRow(t);
 
       t.status = "converting"; t.phase = "checking WASM…"; refreshTaskRow(t);
@@ -1711,6 +1727,9 @@ export function setupImporter() {
     onOffsetsChanged,
     /** Benchmark diagnostics: per-file import phase timings (read-only). */
     lastImportPhases: (): ImportPhaseRecord[] => [...importPhaseLog],
+    /** Interop reports of the last 50 imported IFC files (read-only). */
+    interopReports: (): IfcInteropReport[] =>
+      importQueue.map((t) => t.interop).filter(Boolean) as IfcInteropReport[],
   };
 
   console.log("[importer] ready · positioning modes + live offset control");

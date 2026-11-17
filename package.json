@@ -80,6 +80,7 @@
     "test:critical-workflow-pack": "node tests/critical-workflow-pack.test.cjs",
     "test:project-auto-reopen": "node tests/project-auto-reopen.test.cjs",
     "test:qto-property-filters": "node tests/qto-property-filters.test.cjs",
+    "test:ifc-interop-report": "node tests/ifc-interop-report.test.cjs",
     "test:filled-regions": "node tests/filled-regions.test.cjs",
     "test:plan-poche": "node tests/plan-poche.test.cjs",
     "test:section-elevation-doc": "node tests/section-elevation-doc.test.cjs",

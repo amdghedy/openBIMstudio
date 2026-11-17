@@ -217,9 +217,11 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     area: "Interoperability",
     status: "limited",
     source: ["src/features/importer.ts", "src/modules/export/native-twin-ifc.ts"],
-    evidence: ["tests/", "docs/CSP.md (end-to-end import verified under CSP, v0.74.0)"],
+    evidence: ["tests/", "docs/CSP.md (end-to-end import verified under CSP, v0.74.0)",
+      "Interop-report unit suite tests/ifc-interop-report.test.cjs — 9 assertions: instance counting, whitespace tolerance, cap/truncated flag, FILE_SCHEMA extraction, latin1 byte decoding, non-STEP rejection, format lines with the honest caveat",
+      "The report is a single linear scan of the STEP instance table (src/modules/ifc-semantics/interop-report.ts) — no extra web-ifc WASM pass; it runs on fresh conversions AND FRAG-cache hits, and the import queue row exposes it as an expandable Entity inventory block"],
     limitations: [
-      "Schema coverage per web-ifc 0.0.77 (IFC2x3/IFC4); no per-entity interop report yet (Phase 4)",
+      "Schema coverage per web-ifc 0.0.77 (IFC2x3/IFC4); per-entity interop report v1 ships a STEP instance inventory per imported file (entity types + counts + FILE_SCHEMA, shown per import-queue row and via the importer service) — counts come from the STEP table and are NOT a per-type conversion guarantee: the FRAG conversion is monolithic, so which types rendered is not yet itemised per type",
       "Round-trip fidelity measured only for the native-twin path, not arbitrary third-party IFC",
     ],
     affirmedIn: APP_VERSION,
