@@ -27,13 +27,14 @@ import { setupCriticalWorkflowPack3 } from "./critical-workflow-pack-3";
 import { setupCriticalWorkflowPack4 } from "./critical-workflow-pack-4";
 import { setupCriticalWorkflowPack5 } from "./critical-workflow-pack-5";
 import { setupCriticalWorkflowPack6 } from "./critical-workflow-pack-6";
+import { setupCriticalWorkflowPack7 } from "./critical-workflow-pack-7";
 import { setupM2Register } from "./m2-register";
 import { installM2Redirects, startM2Tool, ceilingsFromRooms, createM2Element } from "./m2-tools";
 import { setupM3, togglePlanOption, refreshViews } from "./m3-register";
 
 type Any = Record<string, any>;
 export interface StepStatus { name: string; ok: boolean; detail: string }
-export const BIM_GAPS_VERSION = "2.0.0-families-collab";
+export const BIM_GAPS_VERSION = "2.1.0-data-qa";
 const status: StepStatus[] = [];
 
 const authoring = (): Any | null => ((ctx.features as Any).authoring ?? null);
@@ -106,6 +107,7 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
   await step("critical-workflow-pack-4", setupCriticalWorkflowPack4);
   await step("critical-workflow-pack-5", setupCriticalWorkflowPack5);
   await step("critical-workflow-pack-6", setupCriticalWorkflowPack6);
+  await step("critical-workflow-pack-7", setupCriticalWorkflowPack7);
   await step("m2-elements", () => {
     const r = setupM2Register();
     installM2Redirects();
