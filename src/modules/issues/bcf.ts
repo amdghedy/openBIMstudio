@@ -26,6 +26,11 @@ import type {
   IssueViewpoint,
 } from "./types";
 import { getIssues, setIssues } from "./issues";
+import {
+  buildBcfMarkup,
+  parseBcfMarkup,
+  bcfGuid,
+} from "./bcf-markup";
 import { uiAlert } from "../../core/notify";
 
 const xmlEsc = (s: string) =>
@@ -36,7 +41,6 @@ const xmlEsc = (s: string) =>
 const guid = () =>
   (crypto as any).randomUUID?.() ??
   `g-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const iso = (t: number) => new Date(t || Date.now()).toISOString();
 const v = (x: number) => (Number.isFinite(x) ? x.toFixed(6) : "0");
 
 const STATUS_OUT: Record<IssueStatus, string> = {
@@ -234,7 +238,7 @@ export async function exportBCF(
 
   for (const issue of issueList) {
     const folder = zip.folder(issue.id)!;
-    const vpGuid = guid();
+    const vpGuid = bcfGuid();
 
     // Prepare selection GUIDs for the viewpoint
     const selectionGuids = await resolveGuids(issue.viewpoint.selection);
@@ -253,33 +257,29 @@ export async function exportBCF(
     }
     (issue.viewpoint as any)._bcfComponentsXml = componentsXml;
 
-    // markup.bcf (Topic + Comments)
-    const prioAttr = ` Priority="${PRIORITY_OUT[issue.priority] ?? "Medium"}"`;
-    const assigneeAttr = issue.assignee
-      ? ` AssignedTo="${xmlEsc(issue.assignee)}"`
-      : "";
-    const dueAttr = issue.dueDate
-      ? ` DueDate="${iso(issue.dueDate)}"`
-      : "";
-
-    let markup = `<?xml version="1.0" encoding="UTF-8"?>
-<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-<Topic Guid="${issue.id}" TopicType="Issue" TopicStatus="${xmlEsc(
-      STATUS_OUT[issue.status] ?? issue.status,
-    )}"${prioAttr}${assigneeAttr}${dueAttr} Title="${xmlEsc(
-      issue.title,
-    )}" CreationDate="${iso(issue.createdAt)}" ModifiedDate="${iso(
-      issue.updatedAt,
-    )}" Author="${xmlEsc(issue.author)}">
-<DescriptionText>${xmlEsc(issue.description ?? "")}</DescriptionText>
-</Topic>
-`;
-    for (const c of issue.comments) {
-      markup += `<Comment Guid="${c.id}" Date="${iso(c.date)}" Author="${xmlEsc(
-        c.author,
-      )}"><Text>${xmlEsc(c.text)}</Text></Comment>\n`;
-    }
-    markup += `</Markup>`;
+    // markup.bcf (Topic + Comments) — one BCF 2.1-conformant dialect for
+    // every writer (Title/Priority/dates/author as child elements, comment
+    // text in a nested <Comment>, RFC 4122 topic Guid — internal ids like
+    // "issue-…" are not valid BCF GuidType values).
+    const markup = buildBcfMarkup({
+      guid: bcfGuid(),
+      topicType: "Issue",
+      topicStatus: STATUS_OUT[issue.status] ?? issue.status,
+      title: issue.title,
+      priority: PRIORITY_OUT[issue.priority] ?? "Medium",
+      createdAt: issue.createdAt,
+      createdBy: issue.author || "Open BIM Studio",
+      modifiedAt: issue.updatedAt,
+      dueDate: issue.dueDate,
+      assignedTo: issue.assignee,
+      description: issue.description ?? "",
+      comments: issue.comments.map((c) => ({
+        guid: c.id,
+        author: c.author,
+        date: c.date,
+        text: c.text,
+      })),
+    });
     folder.file("markup.bcf", markup);
 
     // viewpoint.bcfv
@@ -393,11 +393,12 @@ export async function importBCF(file: File): Promise<number> {
     const folder = path.split("/")[0];
     try {
       const markupXml = await zip.file(path)!.async("string");
-      const doc = new DOMParser().parseFromString(markupXml, "text/xml");
-      const topic = doc.querySelector("Topic");
-      if (!topic) continue;
+      // Dual-dialect reader (bcf-markup.ts): element-first with legacy
+      // attribute fallbacks, so both old builds' exports and the conformant
+      // writer round-trip. Nested comment text is resolved there too.
+      const parsed = parseBcfMarkup(markupXml);
 
-      let id = topic.getAttribute("Guid") || folder;
+      let id = parsed.guid || folder;
       while (existing.has(id)) id = guid();
       existing.add(id);
 
@@ -476,28 +477,26 @@ export async function importBCF(file: File): Promise<number> {
         viewpoint.thumbnail = bytesToDataUrl(await snapFile.async("uint8array"));
       }
 
-      // ── Comments ──
-      const comments: IssueComment[] = [];
-      for (const ce of Array.from(doc.querySelectorAll("Comment"))) {
-        comments.push({
-          id: ce.getAttribute("Guid") || guid(),
-          author: ce.getAttribute("Author") || "Unknown",
-          date: Date.parse(ce.getAttribute("Date") ?? "") || Date.now(),
-          text: ce.querySelector("Text")?.textContent ?? "",
-        });
-      }
+      // ── Comments ── (from the parsed markup — direct Topic children only,
+      // so the nested <Comment> text element is never double-counted)
+      const comments: IssueComment[] = parsed.comments.map((c) => ({
+        id: c.guid || guid(),
+        author: c.author,
+        date: c.date,
+        text: c.text,
+      }));
 
       imported.push({
         id,
-        title: topic.getAttribute("Title") || "Imported issue",
-        description: doc.querySelector("DescriptionText")?.textContent ?? "",
-        status: statusIn(topic.getAttribute("TopicStatus")),
-        priority: priorityIn(topic.getAttribute("Priority")),
-        author: topic.getAttribute("Author") || "Imported",
-        assignee: topic.getAttribute("AssignedTo") || undefined,
-        dueDate: Date.parse(topic.getAttribute("DueDate") ?? "") || undefined,
-        createdAt: Date.parse(topic.getAttribute("CreationDate") ?? "") || Date.now(),
-        updatedAt: Date.parse(topic.getAttribute("ModifiedDate") ?? "") || Date.now(),
+        title: parsed.title,
+        description: parsed.description,
+        status: statusIn(parsed.topicStatus),
+        priority: priorityIn(parsed.priority),
+        author: parsed.author,
+        assignee: parsed.assignee,
+        dueDate: parsed.dueDate,
+        createdAt: parsed.createdAt,
+        updatedAt: parsed.updatedAt,
         viewpoint,
         comments,
       });

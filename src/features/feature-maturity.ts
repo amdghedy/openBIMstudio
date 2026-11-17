@@ -283,9 +283,18 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     id: "bcf-21",
     area: "Interoperability",
     status: "limited",
-    source: ["src/modules/issues/bcf.ts", "src/modules/export/bcf21.ts"],
-    evidence: ["tests/"],
-    limitations: ["Two-application round-trip validation pending (Phase 4 fixtures)"],
+    source: ["src/modules/issues/bcf-markup.ts", "src/modules/issues/bcf.ts", "src/modules/export/bcf21.ts"],
+    evidence: [
+      "tests/",
+      "BCF 2.1 markup round-trip suite tests/bcf21-roundtrip.test.cjs — 22 assertions: the shared writer (src/modules/issues/bcf-markup.ts, used by BOTH the issues panel exportBCF and the clash/standards bcf21 writer) emits the spec dialect — Topic carries only Guid/TopicType/TopicStatus as attributes while Title/Priority/Labels/CreationDate/CreationAuthor/ModifiedDate/ModifiedAuthor/DueDate/AssignedTo/Description are child elements, comments are Guid attribute + Date/Author children + nested <Comment> text, labels are <Labels><Label> children, and topic guids are RFC 4122 UUIDs (internal \"issue-…\" ids are regenerated to keep GuidType valid); XML escaping, optional-element omission, header/viewpoint placement and parseBcfMarkup round-trip of every field to second precision are all asserted",
+      "Dual-dialect reader: files written by older builds in the legacy attribute dialect (Title=…/Priority=… attributes, <DescriptionText>, comment Date/Author attributes with <Text> text) still import unchanged, and malformed markup throws per topic folder while importBCF keeps the rest of the batch",
+      "Honesty note: before this suite the repo shipped two writers in two dialects with one reader — the issues writer's markup was not BCF 2.1 markup.xsd-conformant (external consumers drop or reject attribute titles and <Text> comments) and the conformant clash writer's output could not be re-imported by our own importer (which read attributes), so titles, priorities, descriptions and comment text/authors were silently lost in both directions; both writers now share one canonical dialect and the round trip is unit-verified",
+    ],
+    limitations: [
+      "The round trip is unit-verified at the markup.xml level in Node with an injected minimal parser shim; the full-zip importBCF path (JSZip + viewpoint.bcfv camera/components/clipping parsing) and both panels are exercised only in the browser, not in this suite",
+      "No third-party application round trip yet — Navisworks/Solibri/BIMcollab fixtures are still pending, so the Header provenance and IfcGuid → local-fragment viewpoint resolution remain untested against another tool's writer/reader",
+      "The writer emits BCF 2.1 only (the BCF 3.0 schema reference in src/modules/bcf/bcf3-schema.ts is not implemented on the write side), and snapshot.png is written without a thumbnail reference in markup (consumers read it by folder convention)",
+    ],
     affirmedIn: APP_VERSION,
   },
   {

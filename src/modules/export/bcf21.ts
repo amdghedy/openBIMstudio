@@ -15,6 +15,7 @@ import JSZip from "jszip";
 import type { ElementClash, ClashKind } from "../../features/clash-engine";
 import { getClashState, listClashes, testNameInput, type ClashStatus } from "../../features/clash";
 import { getAuthor } from "../issues/issues";
+import { buildBcfMarkup } from "../issues/bcf-markup";
 import { uiAlert } from "../../core/notify";
 
 const BCF_VERSION = "2.1";
@@ -303,45 +304,36 @@ function writeExtensions(): string {
 }
 
 function writeMarkupBcf(t: BcfTopic, viewpointFile?: string): string {
-  const comments = (t.comments ?? []).map((c) => `
-    <Comment Guid="${xmlEscape(c.guid ?? uid())}">
-      <Date>${isoDate(c.date)}</Date>
-      <Author>${xmlEscape(c.author)}</Author>
-      <Comment>${xmlEscape(c.text)}</Comment>
-    </Comment>`).join("");
-
-  const labels = (t.labels ?? []).length
-    ? `<Labels>${t.labels!.map((l) => xmlEscape(l)).join(", ")}</Labels>`
-    : "";
-
-  const viewpoint = viewpointFile
-    ? `<Viewpoints Guid="${xmlEscape(uid())}">${xmlEscape(viewpointFile)}</Viewpoints>`
-    : "";
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="markup.xsd">
-  <Header>
+  // One shared BCF 2.1 writer (src/modules/issues/bcf-markup.ts) — the clash
+  // writer keeps its Header provenance and viewpoint reference; topic and
+  // comment elements come from the canonical dialect.
+  return buildBcfMarkup({
+    guid: t.guid,
+    topicType: t.topicType,
+    topicStatus: t.topicStatus,
+    title: t.title,
+    priority: t.priority,
+    labels: t.labels,
+    createdAt: t.createdAt,
+    createdBy: t.createdBy,
+    modifiedAt: t.modifiedAt,
+    modifiedBy: t.modifiedBy,
+    assignedTo: t.assignedTo,
+    description: t.description,
+    headerXml: `
     <File IfcProject="" IfcSpatialStructureElement="" IsExternal="false">
       <Filename>Open BIM Studio</Filename>
       <Date>${isoDate(t.createdAt)}</Date>
       <Reference>Open BIM Studio coordination</Reference>
-    </File>
-  </Header>
-  <Topic Guid="${xmlEscape(t.guid)}" TopicType="${xmlEscape(t.topicType)}" TopicStatus="${xmlEscape(t.topicStatus)}">
-    <Title>${xmlEscape(t.title)}</Title>
-    ${t.priority ? `<Priority>${xmlEscape(t.priority)}</Priority>` : ""}
-    ${labels}
-    <CreationDate>${isoDate(t.createdAt)}</CreationDate>
-    <CreationAuthor>${xmlEscape(t.createdBy)}</CreationAuthor>
-    ${t.modifiedAt ? `<ModifiedDate>${isoDate(t.modifiedAt)}</ModifiedDate>` : ""}
-    ${t.modifiedBy ? `<ModifiedAuthor>${xmlEscape(t.modifiedBy)}</ModifiedAuthor>` : ""}
-    ${t.assignedTo ? `<AssignedTo>${xmlEscape(t.assignedTo)}</AssignedTo>` : ""}
-    ${t.description ? `<Description>${xmlEscape(t.description)}</Description>` : ""}
-    ${comments}
-    ${viewpoint}
-  </Topic>
-</Markup>
-`;
+    </File>`,
+    viewpointFile,
+    comments: (t.comments ?? []).map((c) => ({
+      guid: c.guid ?? uid(),
+      author: c.author,
+      date: c.date,
+      text: c.text,
+    })),
+  });
 }
 
 function writeViewpointBcfv(t: BcfTopic): string | null {
