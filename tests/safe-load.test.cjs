@@ -32,6 +32,19 @@ t("safeLoad rejects oversized JSON before parsing", () => {
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.error.stage, "size");
 });
+t("saved-view schema rejects malformed camera data and caps the list", () => {
+  const valid = { id: "v1", name: "Plan", pos: [0, 1, 2], target: [0, 0, 0], projection: "perspective", createdAt: 1 };
+  assert.strictEqual(safe.safeLoad("saved views", JSON.stringify([valid]), safe.SavedViewsSchema).ok, true);
+  const bad = safe.safeLoad("saved views", JSON.stringify([{ ...valid, pos: [0, "bad", 2] }]), safe.SavedViewsSchema);
+  assert.strictEqual(bad.ok, false);
+  assert.strictEqual(bad.error.stage, "schema");
+  assert.strictEqual(safe.safeLoad("saved views", JSON.stringify(Array.from({ length: 65 }, () => valid)), safe.SavedViewsSchema).ok, false);
+});
+t("saved-view feature routes localStorage JSON through safeLoad", () => {
+  const source = fs.readFileSync(path.join(root, "src/features/saved-views.ts"), "utf8");
+  assert.match(source, /safeLoad\("saved views"/);
+  assert.match(source, /SavedViewsSchema/);
+});
 t("project parser rejects a structurally invalid header through the safe loader", async () => {
   const header = JSON.stringify({ format: "obsproj", version: 1, savedAt: Date.now(), app: "Open BIM Studio", doc: {}, blobs: [{ modelId: "m1", name: "m.ifc", size: "5", type: "" }] });
   const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, new TextEncoder().encode(header).length, true);

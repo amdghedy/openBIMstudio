@@ -48,3 +48,13 @@ export const PluginManifestSchema = z.object({
   capabilities: z.array(z.string().min(1)),
   integrity: z.string().optional(),
 });
+
+export const SavedViewsSchema = z.array(z.object({
+  id: z.string().min(1).max(128),
+  name: z.string().min(1).max(160),
+  pos: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
+  target: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
+  projection: z.enum(["perspective", "orthographic"]),
+  orthoZoom: z.number().finite().positive().optional(),
+  createdAt: z.number().finite().nonnegative(),
+})).max(64);

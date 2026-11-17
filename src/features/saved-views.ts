@@ -14,6 +14,7 @@ import { getProjection, setProjection, updateClipping } from "./camera-tools";
 import { getCurrentProject, onProjectChanged } from "../modules/projects/projects";
 import { syncOrthoZoom } from "../core/ortho-zoom";
 import { fmtDateTime } from "../core/region";
+import { safeLoad, SavedViewsSchema } from "../core/safeLoad";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Types + storage
@@ -40,8 +41,8 @@ function loadViews(): SavedView[] {
   try {
     const raw = localStorage.getItem(storageKey());
     if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    const loaded = safeLoad("saved views", raw, SavedViewsSchema, 256 * 1024);
+    return loaded.ok ? loaded.value : [];
   } catch { return []; }
 }
 

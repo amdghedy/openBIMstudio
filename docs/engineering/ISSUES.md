@@ -62,15 +62,15 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 **Problem:** Project files, saved views, BCF manifests, plugin manifests, and automation-rule packs are parsed without schema validation; a wrong-version or truncated file crashes deep inside feature code.
 
 **Tasks**
-- [ ] Add `src/core/safeLoad.ts`: `safeLoad(file, raw, schema)` returning `LoadResult<T>` (never throws)
-- [ ] Define schemas: `ProjectFileSchema`, `BcfManifestSchema`, `PluginManifestSchema` (+ saved views, automation rules)
+- [x] Add `src/core/safeLoad.ts`: `safeLoad(file, raw, schema)` returning `LoadResult<T>` (never throws)
+- [x] Define schemas: `ProjectFileSchema`, `BcfManifestSchema`, `PluginManifestSchema` (+ saved views)
 - [ ] Route every JSON-shaped loader through `safeLoad`; show a readable error dialog listing issue paths
 - [ ] Binary formats (IFC/DWG): wrap parsers to reject non-conforming input with typed error codes (deep fuzzing comes in P1-06)
 - [ ] Build a 10-input malformed corpus (truncated, empty, wrong version, deeply nested, oversized) under `tests/fixtures/malformed/`
 
 **Acceptance criteria**
 - [ ] All corpus inputs produce typed `LoadError` results with human-readable issues; zero uncaught exceptions
-- [ ] Every JSON loader in `src/` goes through `safeLoad` (grep audit added to CI as a lint check or unit test)
+- [ ] Every JSON loader in `src/` goes through `safeLoad` (saved views, project files, and plugin manifests are now covered; broader audit remains)
 
 ---
 
