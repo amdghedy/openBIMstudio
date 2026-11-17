@@ -388,6 +388,18 @@ await step("new-feature-badges", () => setupNewFeatureBadges());
 // the viewport's initial render completes first.
 await step("plugins", () => setupPluginSystem());
 
+// Auto-reopen the last opened project AFTER every setup step: the scene,
+// importer, panels and loader are all live by now, so the reopen runs the
+// normal hydration pipeline and the welcome overlay hides itself on success.
+await step("project-auto-reopen", async () => {
+  try {
+    const { autoReopenLastProject } = await import("./modules/projects/auto-reopen");
+    await autoReopenLastProject();
+  } catch (e) {
+    console.warn("[boot] project auto-reopen failed; welcome screen stays", e);
+  }
+});
+
 window.dispatchEvent(new Event("resize"));
 computeSceneBounds();
 

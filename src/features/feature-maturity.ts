@@ -430,9 +430,11 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     evidence: [
       "tests/",
       "real browser (v54): project created → Wall tool + Door tool → Ctrl+S → IndexedDB 'projects' store holds the doc → reload → reopen from the welcome screen recents restores wall + door (getElementCount 2)",
+      "Auto-reopen: boot step 'project-auto-reopen' reopens the last opened/created project after every setup step — unit suite tests/project-auto-reopen.test.cjs — 12 assertions (decision matrix, pointer round-trip, stale-pointer silent clear, live-session guard, missing-service and storage-failure bail-outs)",
     ],
     limitations: [
-      "No auto-reopen: a fresh boot enters an empty session even when a saved project exists; the user must reopen from the welcome screen (one click) — easy to misread as data loss",
+      "Auto-reopen matches intent because there is no 'close project' action — a session always ends with its last project; if you delete that project the pointer is cleared and the welcome screen shows",
+      "Auto-reopen is decision-matrix unit-tested; the live boot → reopen → overlay-hides path has not been driven in a browser yet",
       "Ribbon pill used to render a green 'SAVED' next to 'No project' while unprojected modeling lived only in memory and died on reload — fixed: unprojected content now reads 'NO PROJECT — UNSAVED' (verified live)",
     ],
     affirmedIn: APP_VERSION,

@@ -27,6 +27,7 @@ import { getCostData, setCostData, onCostChanged } from "../cost/cost";
 import { uiAlert, notify as toast } from "../../core/notify";
 import { history } from "../../features/history";
 import { isQuotaError } from "./project-schema";
+import { recordLastProjectId, clearLastProjectId, readLastProjectId as readLastProjectIdSafe } from "./auto-reopen";
 
 let current: ProjectDoc | null = null;
 let dirty = false;
@@ -407,6 +408,7 @@ export async function createProject(name: string, options: CreateProjectOptions 
     resetNorth();
     resetToDefaultView();     // empty scene: fitAll has nothing to frame, so never keep the old project's camera
     fitAll();
+    recordLastProjectId(current.id); // so the next boot can auto-reopen
     loader?.set?.("Done.", 1);
     notify();
   } finally {
@@ -616,6 +618,7 @@ export async function openProject(id: string) {
 
     if (missingModels.length) showMissingModelsBanner(missingModels);
 
+    recordLastProjectId(id); // so the next boot can auto-reopen
     loader?.set?.("Done.", 1);
     notify();
     // Surface every repair made while loading — never a silent fix.
@@ -667,6 +670,7 @@ function showMissingModelsBanner(models: string[]) {
    Delete
    ═════════════════════════════════════════════════════════════════════════ */
 export async function deleteProjectById(id: string) {
+  if (readLastProjectIdSafe() === id) clearLastProjectId(); // never auto-reopen a deleted project
   // The store deletes the project document and all model blobs atomically.
   await store.deleteProjectRecord(id);
   if (current?.id === id) { current = null; notify(); }
