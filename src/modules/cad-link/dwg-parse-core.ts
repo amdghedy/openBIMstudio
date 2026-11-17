@@ -36,25 +36,83 @@ let readerPromise: Promise<{ lib: Any; FileType: Any }> | null = null;
  * Without it the acadrust engine (MPL-2.0) is the only DWG reader.
  */
 const OPTIONAL_READER_NODE = "@mlightcad/libredwg-web";
-const OPTIONAL_READER_URL = "/plugins/libredwg/libredwg-web.js";
-const OPTIONAL_READER_DIR = "/plugins/libredwg/";
+/** Candidate browser URLs (copy script writes both trees). */
+const OPTIONAL_READER_URLS = [
+  "/plugins/libredwg/libredwg-web.js",
+  "/libredwg/libredwg-web.js",
+  "/plugins/libredwg/index.js",
+  "/libredwg/index.js",
+];
+const OPTIONAL_READER_DIRS = ["/plugins/libredwg/", "/libredwg/"];
 
 async function loadReaderModule(): Promise<{ LibreDwg: Any; FileType: Any }> {
-  let mod: Any;
-  const inBrowser = typeof window !== "undefined" || typeof (globalThis as Any).WorkerGlobalScope !== "undefined";
-  try {
-    const spec = inBrowser ? OPTIONAL_READER_URL : OPTIONAL_READER_NODE;
-    mod = await import(/* @vite-ignore */ spec);
-  } catch {
+  const inBrowser =
+    typeof window !== "undefined" ||
+    typeof (globalThis as Any).WorkerGlobalScope !== "undefined";
+  const errors: string[] = [];
+  const tryImport = async (spec: string): Promise<Any | null> => {
+    try {
+      return await import(/* @vite-ignore */ spec);
+    } catch (e) {
+      errors.push(`${spec}: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  };
+
+  let mod: Any | null = null;
+
+  // 1) Prefer the npm package (bundler / worker can resolve it when present)
+  mod = await tryImport(OPTIONAL_READER_NODE);
+
+  // 2) Browser/worker: try public plugin URLs
+  if (!mod && inBrowser) {
+    for (const url of OPTIONAL_READER_URLS) {
+      mod = await tryImport(url);
+      if (mod) break;
+    }
+  }
+
+  // 3) Absolute same-origin last resort via fetch+blob (CSP-friendly workers)
+  if (!mod && inBrowser) {
+    for (const url of OPTIONAL_READER_URLS) {
+      try {
+        const res = await fetch(url, { credentials: "same-origin" });
+        if (!res.ok) {
+          errors.push(`${url}: HTTP ${res.status}`);
+          continue;
+        }
+        const text = await res.text();
+        const blob = new Blob([text], { type: "text/javascript" });
+        const obj = URL.createObjectURL(blob);
+        try {
+          mod = await import(/* @vite-ignore */ obj);
+        } finally {
+          try { URL.revokeObjectURL(obj); } catch { /* */ }
+        }
+        if (mod) break;
+      } catch (e) {
+        errors.push(`${url} fetch: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
+
+  if (!mod) {
     throw new DwgParseError(
       "init-failed",
-      "this DWG could not be read by the built-in engine, and the optional fallback reader (a GPL-licensed plug-in that is not shipped with the product) is not installed",
+      "this DWG could not be read by the built-in engine, and the optional fallback reader is not installed. " +
+        "Fix: run `npm install` then rebuild (prebuild copies LibreDWG into /plugins/libredwg). " +
+        "Or in AutoCAD/BricsCAD use SAVEAS → DXF (ASCII, R2013/R2018) and link the DXF. " +
+        `(tried: ${errors.slice(0, 3).join(" | ") || "no sources"})`,
     );
   }
-  const LibreDwg = mod.LibreDwg ?? mod.default?.LibreDwg;
-  const FileType = mod.Dwg_File_Type ?? mod.default?.Dwg_File_Type;
+
+  const LibreDwg = mod.LibreDwg ?? mod.default?.LibreDwg ?? mod.default;
+  const FileType = mod.Dwg_File_Type ?? mod.default?.Dwg_File_Type ?? mod.FileType;
   if (!LibreDwg?.create) {
-    throw new DwgParseError("init-failed", "the optional fallback reader has an unexpected API (LibreDwg.create missing)");
+    throw new DwgParseError(
+      "init-failed",
+      "the optional fallback reader loaded but LibreDwg.create is missing — check /plugins/libredwg assets",
+    );
   }
   return { LibreDwg, FileType };
 }
@@ -62,7 +120,7 @@ async function loadReaderModule(): Promise<{ LibreDwg: Any; FileType: Any }> {
 async function startReader(LibreDwg: Any): Promise<Any> {
   const attempts: Array<() => Promise<Any>> = [
     () => LibreDwg.create(),
-    () => LibreDwg.create(OPTIONAL_READER_DIR),
+    ...OPTIONAL_READER_DIRS.map((dir) => () => LibreDwg.create(dir)),
   ];
   let last: unknown;
   for (const a of attempts) {
@@ -70,7 +128,8 @@ async function startReader(LibreDwg: Any): Promise<Any> {
   }
   throw new DwgParseError(
     "init-failed",
-    `could not start the DWG reader (WASM failed to load): ${last instanceof Error ? last.message : String(last)}`,
+    `could not start the DWG reader (WASM failed to load): ${last instanceof Error ? last.message : String(last)}. ` +
+      "Ensure .wasm files sit next to libredwg-web.js under /plugins/libredwg/",
   );
 }
 
@@ -117,9 +176,9 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
         entityCount: acad.entityCount,
       };
     }
-    if (acad && acad.entityCount === 0 && acad.stats?.entities === 0 && !acad.stats.streamCompleted) {
-      // Engine started but could not decode the stream at all — fall through.
-      console.warn("[dwg-reader] acadrust produced no entities, falling back to libredwg", acad.summary);
+    // Partial / empty decode — try LibreDWG before giving up
+    if (acad) {
+      console.warn("[dwg-reader] acadrust produced no drawable entities, falling back to libredwg", acad.summary);
     }
   } catch (e) {
     console.warn("[dwg-reader] acadrust path failed, falling back to libredwg:", e);
