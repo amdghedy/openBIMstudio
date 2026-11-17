@@ -36,6 +36,7 @@ import {
 } from "./dxf-geometry";
 import { cleanText, mtextFont, mtextWidthFactor, mtextExtras } from "./mtext";
 import { convertMleader, convertTable, convertMline, convertImage, convertTolerance, convertWipeout } from "./acad-extra-entities";
+import { convertHelix, convertMesh, convertPolyface, convertPolygonMesh, convertSolidWire } from "./acad-solid-entities";
 
 type Any = Record<string, any>;
 
@@ -580,6 +581,16 @@ function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | nul
       return convertWipeout(e, c, extraCtx(cx));
     case "TOLERANCE":
       return convertTolerance(e, c, extraCtx(cx));
+    case "SOLIDWIRE":
+      return convertSolidWire(e, c, extraCtx(cx));
+    case "MESH":
+      return convertMesh(e, c, extraCtx(cx));
+    case "POLYGONMESH":
+      return convertPolygonMesh(e, c, extraCtx(cx));
+    case "POLYFACE":
+      return convertPolyface(e, c, extraCtx(cx));
+    case "HELIX":
+      return convertHelix(e, c, extraCtx(cx));
     case "ATTRIB_ATTACHED":
       return [];
     default:

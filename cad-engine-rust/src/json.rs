@@ -110,6 +110,12 @@ impl W {
         self.awaiting_value = false;
     }
 
+    /// Verbatim, already-valid JSON text (compact numeric rows).
+    fn raw(&mut self, t: &str) {
+        self.out.push_str(t);
+        self.awaiting_value = false;
+    }
+
     fn point2(&mut self, x: f64, y: f64) {
         self.out.push_str(&format!("[{},{}]", num(x), num(y)));
         self.awaiting_value = false;
@@ -463,8 +469,58 @@ fn write_entity(w: &mut W, e: &EntityType) {
                 w.point(v);
             }
             w.end_arr();
+            w.begin_arr("faces");
+            for f in &x.faces {
+                w.sep();
+                w.raw("[");
+                for (i, ix) in f.vertices.iter().enumerate() {
+                    if i > 0 {
+                        w.raw(",");
+                    }
+                    w.raw(&ix.to_string());
+                }
+                w.raw("]");
+            }
+            w.end_arr();
             w.end_obj();
         }
+        EntityType::PolygonMesh(x) => {
+            w.begin_obj();
+            w.kv_str("type", "POLYGONMESH");
+            write_common(w, &x.common);
+            w.kv_int("m", x.m_vertex_count as i64);
+            w.kv_int("n", x.n_vertex_count as i64);
+            w.kv_bool("closedM", x.is_closed_m());
+            w.kv_bool("closedN", x.is_closed_n());
+            w.begin_arr("vertices");
+            for v in &x.vertices {
+                w.sep();
+                w.point(&v.location);
+            }
+            w.end_arr();
+            w.end_obj();
+        }
+        EntityType::PolyfaceMesh(x) => {
+            w.begin_obj();
+            w.kv_str("type", "POLYFACE");
+            write_common(w, &x.common);
+            w.begin_arr("vertices");
+            for v in &x.vertices {
+                w.sep();
+                w.point(&v.location);
+            }
+            w.end_arr();
+            w.begin_arr("faces");
+            for f in &x.faces {
+                w.sep();
+                w.raw(&format!("[{},{},{},{}]", f.index1, f.index2, f.index3, f.index4));
+            }
+            w.end_arr();
+            w.end_obj();
+        }
+        EntityType::Solid3D(x) => write_solid_wires(w, "3DSOLID", &x.common, &x.wires),
+        EntityType::Region(x) => write_solid_wires(w, "REGION", &x.common, &x.wires),
+        EntityType::Body(x) => write_solid_wires(w, "BODY", &x.common, &x.wires),
         EntityType::RasterImage(x) => {
             w.begin_obj();
             w.kv_str("type", "IMAGE");
@@ -508,6 +564,11 @@ fn write_entity(w: &mut W, e: &EntityType) {
             write_common(w, &x.common);
             w.kv_point("start", &x.start_point);
             w.kv_point("axis", &x.axis_vector);
+            w.kv_point("base", &x.axis_base_point);
+            w.kv_num("radius", x.radius);
+            w.kv_num("turns", x.turns);
+            w.kv_num("turnHeight", x.turn_height);
+            w.kv_bool("handedness", x.handedness);
             w.end_obj();
         }
         EntityType::Wipeout(x) => {
@@ -548,6 +609,32 @@ fn write_entity(w: &mut W, e: &EntityType) {
             w.end_obj();
         }
     }
+}
+
+/// 3DSOLID / REGION / BODY: AutoCAD stores the wireframe edges (and, for solids, isolines) of the body with the entity.
+/// Those wires are what a 2D viewer can draw without an ACIS kernel.
+fn write_solid_wires(w: &mut W, kind: &str, common: &EntityCommon, wires: &[acadrust::entities::Wire]) {
+    w.begin_obj();
+    w.kv_str("type", "SOLIDWIRE");
+    write_common(w, common);
+    w.kv_str("kind", kind);
+    w.begin_arr("wires");
+    for wire in wires {
+        if wire.points.len() < 2 {
+            continue;
+        }
+        w.sep();
+        w.raw("[");
+        for (i, p) in wire.points.iter().enumerate() {
+            if i > 0 {
+                w.raw(",");
+            }
+            w.raw(&format!("[{},{},{}]", num(p.x), num(p.y), num(p.z)));
+        }
+        w.raw("]");
+    }
+    w.end_arr();
+    w.end_obj();
 }
 
 /// MLEADER: text plus every leader line (arrow-to-landing polyline) of every root.
