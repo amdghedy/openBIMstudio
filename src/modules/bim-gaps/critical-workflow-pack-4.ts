@@ -14,8 +14,12 @@
 import * as THREE from "three";
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { designOptionsStore } from "../design-options/design-options";
 
 type Any = Record<string, any>;
+
+/** Module state — last energy report (console/test inspection, no window global). */
+export const pack4 = { lastEnergyReport: [] as Any[] };
 
 function authoring(): Any | null {
   return (ctx.features as Any)?.authoring ?? null;
@@ -96,7 +100,7 @@ export async function runEnergyReport(): Promise<Any[]> {
         solarGain: (wallArea / 4) * 5,
       });
     }
-    (window as Any).__obsEnergyReport = zones;
+    pack4.lastEnergyReport = zones;
     console.table(zones);
     try {
       const gbxml = mod.exportGbXML?.(zones as any, "OpenBIMStudio");
@@ -104,7 +108,7 @@ export async function runEnergyReport(): Promise<Any[]> {
         localStorage.setItem("obs.energy.gbxml", gbxml.slice(0, 50000));
       }
     } catch { /* */ }
-    notify("success", `Energy report: ${zones.length} zone(s) — console / __obsEnergyReport`);
+    notify("success", `Energy report: ${zones.length} zone(s) — console.table / pack4.lastEnergyReport`);
     return zones;
   } catch (e) {
     notify("warn", `Energy report failed: ${e instanceof Error ? e.message : e}`);
@@ -133,13 +137,22 @@ export async function applyAreaColorFill(): Promise<number> {
       notify("warn", "No rooms with area — place rooms first");
       return 0;
     }
-    const colored = mod.autoAssignColors?.(rooms as any) ?? rooms;
+    const scheme = ((mod as Any).DEFAULT_SCHEMES?.[0] ?? null) as Any | null;
+    if (!scheme) {
+      notify("warn", "No color scheme available");
+      return 0;
+    }
+    const colored = (mod as Any).autoAssignColors?.(scheme, rooms) as Any | undefined;
+    const colorByValue = new Map<string, string>();
+    for (const e of colored?.entries ?? []) colorByValue.set(String(e.value), e.color);
     let n = 0;
-    for (const r of colored as Any[]) {
+    for (const r of rooms) {
+      const value = (mod as Any).getRoomValue?.(r, scheme);
+      const color = value != null ? colorByValue.get(String(value)) : undefined;
       const el = elements().find((e) => e.id === r.id);
-      if (el && r.color) {
-        el.color = r.color;
-        el.properties = { ...(el.properties ?? {}), areaColor: r.color };
+      if (el && color) {
+        el.color = color;
+        el.properties = { ...(el.properties ?? {}), areaColor: color };
         n++;
       }
     }
@@ -168,7 +181,7 @@ export async function applyAreaColorFill(): Promise<number> {
 export async function ensureArchViewTemplate(): Promise<void> {
   try {
     const mod = await import("../view-templates/view-templates-store");
-    const svc = (mod as Any).getViewTemplatesService?.() ?? (window as Any).__obsViewTemplates;
+    const svc = (mod as Any).getViewTemplatesService?.() ?? (mod as Any).viewTemplatesStore;
     if (svc?.createTemplate) {
       svc.createTemplate({
         name: "Architectural",
@@ -268,7 +281,7 @@ export async function ensureGridBubbles(): Promise<number> {
 
 export function ensurePrimaryDesignOption(): void {
   try {
-    const store = (ctx.features as Any).designOptions ?? (window as Any).__obsDesignOptions;
+    const store = (ctx.features as Any).designOptions ?? designOptionsStore;
     if (!store) {
       localStorage.setItem(
         "obs.designOptions",
@@ -435,7 +448,6 @@ export function setupCriticalWorkflowPack4(): void {
     zoomExtents,
     createBuildingPadFromWalls,
   };
-  (window as Any).__obsWorkflowPack4 = api;
   (ctx.features as Any).workflowPack4 = api;
 
   const cmds: Array<[string, string, string, () => void]> = [

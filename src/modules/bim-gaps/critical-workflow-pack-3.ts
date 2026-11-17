@@ -13,6 +13,7 @@
  */
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { phasesStore } from "../phases/phases";
 
 type Any = Record<string, any>;
 
@@ -32,7 +33,7 @@ function selectedIds(): string[] {
 
 export function ensureDefaultPhases(): number {
   try {
-    const store = (ctx.features as Any).phases ?? (window as Any).__obsPhases;
+    const store = (ctx.features as Any).phases ?? phasesStore;
     if (!store?.create && !store?.add && !store?.list) {
       notify("warn", "Phases store not ready");
       return 0;
@@ -61,7 +62,7 @@ export function ensureDefaultPhases(): number {
 
 export function issueFromSelection(): string | null {
   try {
-    const issues = (ctx.features as Any).issues ?? (window as Any).__obsIssues;
+    const issues = (ctx.features as Any).issues;
     const ids = selectedIds();
     const title = ids.length
       ? `Issue on ${ids.length} element(s)`
@@ -371,7 +372,6 @@ export function setupCriticalWorkflowPack3(): void {
     lockSelection,
     duplicateSelection,
   };
-  (window as Any).__obsWorkflowPack3 = api;
   (ctx.features as Any).workflowPack3 = api;
 
   const cmds: Array<[string, string, string, () => void]> = [
