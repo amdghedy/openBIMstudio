@@ -25,6 +25,14 @@ execSync(
 );
 const compiled = path.join(out, "interop-report.js");
 assert.ok(fs.existsSync(compiled), "expected compiled module at interop-report.js");
+const Module = require("module");
+const originalLoad = Module._load;
+Module._load = function (request, parent, isMain) {
+  if (request === "../../core/region") {
+    return { fmtNumber: (v) => String(Math.round(Number(v) || 0)) };
+  }
+  return originalLoad.call(this, request, parent, isMain);
+};
 const m = require(compiled);
 const { parseStepEntities, buildInteropReport, formatInteropReport } = m;
 

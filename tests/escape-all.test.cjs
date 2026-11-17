@@ -97,7 +97,8 @@ if (esbuild) {
     assert.deepStrictEqual(calls.sort(), ["a", "b"], "both scopes must cancel");
     assert.ok(ev.defaultPrevented, "key consumed when something canceled");
     assert.ok(ev.propagStopped, "legacy listeners must not double-handle");
-    assert.strictEqual(win.dispatched.length, 1, "obs:operation-cancelled fired once");
+    const cancelEvents = win.dispatched.filter((e) => e.type === "obs:operation-cancelled");
+    assert.strictEqual(cancelEvents.length, 1, "obs:operation-cancelled fired once (obs-toast aside)");
   });
 
   t("higher priority scope cancels first", () => {

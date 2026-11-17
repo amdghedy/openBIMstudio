@@ -212,7 +212,7 @@ function builtinScopes(getMods: () => Any): EscapeScope[] {
     },
     {
       // Pending measure picks + OBC creation, then exit measure tool.
-      id: "measure-tool", priority: 720,
+      id: "measure-creation", priority: 720,
       cancel: () => {
         const m: Any = F()?.measure ?? W().__obsMeasure;
         if (!m) {

@@ -14,6 +14,8 @@
  *  the UI says exactly that.
  */
 
+import { fmtNumber } from "../../core/region";
+
 export interface IfcInteropReport {
   fileName: string;
   /** FILE_SCHEMA from the STEP header ("IFC4", "IFC2X3", …). */
@@ -98,15 +100,15 @@ export function buildInteropReport(
 /** Display lines for the queue row / details block (no console pointing). */
 export function formatInteropReport(r: IfcInteropReport): string[] {
   const lines: string[] = [];
-  lines.push(`${r.fileName} — ${r.schema} · ${r.totalEntities.toLocaleString()} entities · ${r.types.length} type(s)`);
+  lines.push(`${r.fileName} — ${r.schema} · ${fmtNumber(r.totalEntities)} entities · ${r.types.length} type(s)`);
   if (r.truncated) lines.push(`inventory capped — counts cover the scanned prefix only`);
   for (const t of r.types.slice(0, 12)) {
-    lines.push(`  ${t.type}: ${t.count.toLocaleString()}`);
+    lines.push(`  ${t.type}: ${fmtNumber(t.count)}`);
   }
   if (r.types.length > 12) {
     const rest = r.types.slice(12);
     const restCount = rest.reduce((s, t) => s + t.count, 0);
-    lines.push(`  … ${rest.length} more type(s), ${restCount.toLocaleString()} entities`);
+    lines.push(`  … ${rest.length} more type(s), ${fmtNumber(restCount)} entities`);
   }
   lines.push(`inventory from the STEP instance table — not a per-type conversion guarantee`);
   return lines;

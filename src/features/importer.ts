@@ -716,7 +716,7 @@ function refreshTaskRow(t: ImportTask) {
 
   const interopHtml = t.interop
     ? `<details style="margin-top:4px">
-         <summary style="cursor:pointer;opacity:.7;font-size:10px">Entity inventory — ${escapeHtml(t.interop.schema)} · ${t.interop.totalEntities.toLocaleString()} entities · ${t.interop.types.length} type(s)</summary>
+         <summary style="cursor:pointer;opacity:.7;font-size:10px">Entity inventory — ${escapeHtml(t.interop.schema)} · ${fmtNumber(t.interop.totalEntities)} entities · ${t.interop.types.length} type(s)</summary>
          <pre style="margin:4px 0 0;font-size:10px;opacity:.75;white-space:pre-wrap">${escapeHtml(formatInteropReport(t.interop).join("\n"))}</pre>
        </details>`
     : "";
