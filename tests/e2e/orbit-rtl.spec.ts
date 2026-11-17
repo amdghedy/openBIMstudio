@@ -1391,3 +1391,53 @@ test('reference lines: the 3rd wall of a room closes square to the 1st, guides s
   await page.evaluate(() => (window as any).__obsAuthoring.setReferenceTracking(true));
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+const SHX_DXF = [
+  '0','SECTION','2','TABLES',
+  '0','TABLE','2','STYLE','70','2',
+  '0','STYLE','2','SHXSTYLE','70','0','40','0.0','41','1.0','50','0.0','71','0','42','2.5','3','romans.shx','4','',
+  '0','STYLE','2','TTSTYLE','70','0','40','0.0','41','1.0','50','0.0','71','0','42','2.5','3','arial.ttf','4','',
+  '0','ENDTAB','0','ENDSEC',
+  '0','SECTION','2','ENTITIES',
+  '0','TEXT','8','0','7','SHXSTYLE','10','0.0','20','0.0','30','0.0','40','10.0','1','HELLO WORLD 123',
+  '0','TEXT','8','0','7','TTSTYLE','10','200.0','20','0.0','30','0.0','40','10.0','1','HELLO WORLD 123',
+  '0','ENDSEC','0','EOF',
+].join('\n');
+
+test('CAD viewer: SHX-styled text is drawn as thin strokes (lighter than the same TrueType text)', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__?.rightHost), { timeout: 30000 }).toBe(true);
+  await page.evaluate((text) => {
+    const host = (window as any).__OBS_CTX__.rightHost as HTMLElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File([text], 'shx-text.dxf', { type: 'application/octet-stream' }));
+    host.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }, SHX_DXF);
+  // Lit pixels (differing from the canvas background) in the left/right thirds of a central band.
+  const measure = () => page.evaluate(() => {
+    const vc = document.querySelector('.obs-cad-viewcube');
+    let n: Element | null = vc;
+    while (n && !n.querySelector('canvas')) n = n.parentElement;
+    const cv = n?.querySelector('canvas') as HTMLCanvasElement | null;
+    if (!cv) return null;
+    const g = cv.getContext('2d')!;
+    const W = cv.width, H = cv.height;
+    const bg = g.getImageData(Math.floor(W * 0.05), Math.floor(H * 0.5), 1, 1).data;
+    const count = (x0: number, x1: number) => {
+      const d = g.getImageData(Math.floor(W * x0), Math.floor(H * 0.35), Math.floor(W * (x1 - x0)), Math.floor(H * 0.3)).data;
+      let k = 0;
+      for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) > 60) k++;
+      return k;
+    };
+    return { left: count(0.08, 0.45), right: count(0.55, 0.92) };
+  });
+  await expect.poll(async () => { const m = await measure(); return m ? Math.min(m.left, m.right) : 0; }, { timeout: 40000, message: 'both texts drawn' }).toBeGreaterThan(150);
+  await page.waitForTimeout(500);
+  const m = (await measure())!;
+  console.log('shx vs truetype lit pixels', JSON.stringify(m));
+  expect(m.left, `SHX text (thin strokes) should light fewer pixels than the TrueType text: ${JSON.stringify(m)}`).toBeLessThan(m.right * 0.75);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
