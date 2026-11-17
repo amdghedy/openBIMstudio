@@ -8,6 +8,7 @@
  *   then          every model blob, back to back, in header order
  */
 import type { ProjectDoc } from "./types";
+import { ProjectFileSchema, safeLoad } from "../../core/safeLoad";
 
 export const PROJECT_FILE_EXT = ".obsproj";
 export const PROJECT_FILE_MIME = "application/vnd.openbimstudio.project";
@@ -54,17 +55,17 @@ export async function parseProjectFile(file: Blob): Promise<{ doc: ProjectDoc; b
   if (magic !== MAGIC) throw new ProjectFileError("This is not an Open BIM Studio project file.");
   const hlen = new DataView(head.buffer, head.byteOffset + 8, 4).getUint32(0, true);
   if (hlen <= 0 || 12 + hlen > file.size) throw new ProjectFileError("The project file is damaged (bad header).");
-  let header: Header;
-  try {
-    header = JSON.parse(new TextDecoder().decode(new Uint8Array(await file.slice(12, 12 + hlen).arrayBuffer())));
-  } catch {
-    throw new ProjectFileError("The project file is damaged (unreadable header).");
+  const rawHeader = new TextDecoder().decode(new Uint8Array(await file.slice(12, 12 + hlen).arrayBuffer()));
+  const loaded = safeLoad(".obsproj header", rawHeader, ProjectFileSchema, Math.min(Math.max(hlen, 1), 8 * 1024 * 1024));
+  if ("error" in loaded) {
+    throw new ProjectFileError(`The project file is damaged (invalid header, ${loaded.error.stage}).\n${loaded.error.issues.join("\n")}`);
   }
-  if (header.format !== "obsproj" || !header.doc || !Array.isArray(header.blobs)) throw new ProjectFileError("Unrecognised project file.");
+  const header = loaded.value as unknown as Header;
   if (header.version > VERSION) throw new ProjectFileError(`This project was saved by a newer version (file v${header.version}). Update the app to open it.`);
   const blobs: ProjectBlob[] = [];
   let off = 12 + hlen;
   for (const b of header.blobs) {
+    if (!Number.isSafeInteger(b.size)) throw new ProjectFileError(`The project file contains an invalid model size for "${b.name}".`);
     if (off + b.size > file.size) throw new ProjectFileError(`The project file is truncated (model "${b.name}" is incomplete).`);
     blobs.push({ modelId: b.modelId, name: b.name, blob: file.slice(off, off + b.size, b.type || undefined) });
     off += b.size;

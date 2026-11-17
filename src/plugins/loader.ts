@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import { validateManifest, parseSemver, isSemverCompatible } from "./types";
 import { buildPluginAPI, releasePluginAPI, SDK_VERSION } from "./api";
+import { PluginManifestSchema, safeLoad } from "../core/safeLoad";
 
 interface LoadedPlugin {
   manifest: PluginManifest;
@@ -104,7 +105,13 @@ async function fetchManifest(id: string): Promise<PluginManifest | null> {
       console.warn(`[plugins] ${id}: plugin.json returned ${res.status}`);
       return null;
     }
-    const manifest = await res.json();
+    const raw = await res.text();
+    const loadedManifest = safeLoad(`/plugins/${id}/plugin.json`, raw, PluginManifestSchema, 256 * 1024);
+    if (!loadedManifest.ok) {
+      console.warn(`[plugins] ${id}: invalid manifest JSON — ${loadedManifest.error.issues.join("; ")}`);
+      return null;
+    }
+    const manifest = loadedManifest.value;
     const err = validateManifest(manifest);
     if (err) {
       console.warn(`[plugins] ${id}: invalid manifest — ${err}`);
