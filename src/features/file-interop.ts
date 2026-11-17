@@ -5,6 +5,8 @@ import { computeSceneBounds, fitAll } from "./camera-tools";
 import { loadIfcFiles, loadFragFiles } from "./importer";
 import { markDirty } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
+import { z } from "zod";
+import { safeLoad } from "../core/safeLoad";
 
 export const ACCEPT_ALL =
   ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp,.geojson,.shp,.dbf,.step,.stp,.iges,.igs,.brep,.3dm";
@@ -251,11 +253,16 @@ export async function importFiles(files: File[]) {
         if (text.includes("\"elements\"") && text.includes("\"models\"")) {
           const { putProject } = await import("../modules/projects/store");
           const { openProject } = await import("../modules/projects/projects");
-          const doc = JSON.parse(text);
-          if (!doc?.id || !Array.isArray(doc.elements)) throw new Error("Not a valid Open BIM Studio project file.");
-          await putProject(doc);
-          await openProject(doc.id);
-          continue;
+          const loaded = safeLoad("legacy project JSON", text, z.record(z.string(), z.unknown()), 20 * 1024 * 1024);
+          if (loaded.ok) {
+            const doc = loaded.value as any;
+            if (!doc?.id || !Array.isArray(doc.elements)) throw new Error("Not a valid Open BIM Studio project file.");
+            await putProject(doc);
+            await openProject(doc.id);
+            continue;
+          }
+          const failure = loaded as { ok: false; error: { stage: string; issues: string[] } };
+          throw new Error(`Invalid project JSON (${failure.error.stage}): ${failure.error.issues.join("; ")}`);
         }
       }
 
@@ -368,4 +375,3 @@ export function setupFileInterop() {
   }
   console.log("[file-interop] Autodesk dialog bridge installed.");
 }
-

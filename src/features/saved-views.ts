@@ -42,7 +42,7 @@ function loadViews(): SavedView[] {
     const raw = localStorage.getItem(storageKey());
     if (!raw) return [];
     const loaded = safeLoad("saved views", raw, SavedViewsSchema, 256 * 1024);
-    return loaded.ok ? loaded.value : [];
+    return loaded.ok ? loaded.value as SavedView[] : [];
   } catch { return []; }
 }
 

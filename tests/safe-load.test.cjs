@@ -45,6 +45,11 @@ t("saved-view feature routes localStorage JSON through safeLoad", () => {
   assert.match(source, /safeLoad\("saved views"/);
   assert.match(source, /SavedViewsSchema/);
 });
+t("legacy project JSON import routes text through safeLoad before storage", () => {
+  const source = fs.readFileSync(path.join(root, "src/features/file-interop.ts"), "utf8");
+  assert.match(source, /safeLoad\("legacy project JSON"/);
+  assert.doesNotMatch(source, /const doc = JSON\.parse\(text\)/);
+});
 t("project parser rejects a structurally invalid header through the safe loader", async () => {
   const header = JSON.stringify({ format: "obsproj", version: 1, savedAt: Date.now(), app: "Open BIM Studio", doc: {}, blobs: [{ modelId: "m1", name: "m.ifc", size: "5", type: "" }] });
   const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, new TextEncoder().encode(header).length, true);
