@@ -77,6 +77,7 @@
     "test:auto-dim": "node tests/auto-dim-chains.test.cjs",
     "test:dim-geometry": "node tests/plan-dim-geometry.test.cjs",
     "test:plan-tags": "node tests/plan-tags.test.cjs",
+    "test:critical-workflow-pack": "node tests/critical-workflow-pack.test.cjs",
     "test:filled-regions": "node tests/filled-regions.test.cjs",
     "test:plan-poche": "node tests/plan-poche.test.cjs",
     "test:section-elevation-doc": "node tests/section-elevation-doc.test.cjs",

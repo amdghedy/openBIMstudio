@@ -16,6 +16,12 @@ import { notify } from "../../core/notify";
 import { buildTagAll } from "../views/plan-tags";
 import { createSheet, listSheets } from "../sheets/sheets";
 import { createView, listViews } from "../views/store";
+import { registerCommand } from "../../features/command-palette";
+
+/* ── Module-local result state (retrieved via ctx.features.workflowPack) ── */
+let lastTags: Any[] = [];
+let lastSchedule: { title: string; rows: ScheduleRow[]; at: number } | null = null;
+let lastTakeoff: Array<{ category: string; qty: number; unit: string }> = [];
 
 type Any = Record<string, any>;
 
@@ -59,7 +65,7 @@ export function autoTagAll(): number {
   try {
     localStorage.setItem(TAG_KEY, JSON.stringify(tags));
   } catch { /* */ }
-  (window as Any).__obsAutoTags = tags;
+  lastTags = tags;
   try {
     authoring()?.rebuildAuthored?.() ?? authoring()?.rebuild?.();
   } catch { /* */ }
@@ -124,12 +130,12 @@ function wallRows(): ScheduleRow[] {
 }
 
 function emitSchedule(title: string, rows: ScheduleRow[]): ScheduleRow[] {
-  (window as Any).__obsLastSchedule = { title, rows, at: Date.now() };
+  lastSchedule = { title, rows, at: Date.now() };
   console.table(rows);
   notify(
     "success",
     rows.length
-      ? `${title}: ${rows.length} row(s) — see console / __obsLastSchedule`
+      ? `${title}: ${rows.length} row(s)`
       : `${title}: no matching elements`,
   );
   try {
@@ -180,7 +186,7 @@ export function createStandardViews(): number {
     const name = `Plan — ${lv.name ?? lv.id}`;
     if (existing.has(name)) continue;
     try {
-      const def = createView("plan", name, "ARCH");
+      const def = createView("plan", name, "ARC");
       if (def?.plan) {
         def.plan.levelElevation = Number(lv.elevation) || 0;
         def.plan.cutHeight = 1.2;
@@ -194,7 +200,7 @@ export function createStandardViews(): number {
     const name = `Elevation — ${dir}`;
     if (existing.has(name)) continue;
     try {
-      const def = createView("elevation", name, "ARCH");
+      const def = createView("elevation", name, "ARC");
       if (def?.elevation) def.elevation.direction = dir;
       n++;
     } catch (e) {
@@ -203,7 +209,7 @@ export function createStandardViews(): number {
   }
   if (!existing.has("Section — A")) {
     try {
-      createView("section", "Section — A", "ARCH");
+      createView("section", "Section — A", "ARC");
       n++;
     } catch { /* */ }
   }
@@ -248,8 +254,8 @@ export function materialTakeoff(): Array<{ category: string; qty: number; unit: 
     { category: "Columns", qty: colN, unit: "ea" },
   );
   console.table(out);
-  (window as Any).__obsTakeoff = out;
-  notify("success", "Material takeoff ready — console / __obsTakeoff");
+  lastTakeoff = out;
+  notify("success", `Material takeoff ready — ${out.length} categories`);
   return out;
 }
 
@@ -347,7 +353,6 @@ export function matchPropertiesFromSelection(): number {
   const ids: string[] =
     a?.getSelectedIds?.() ??
     a?.getSelection?.() ??
-    (window as Any).__obsSelection ??
     [];
   if (!ids.length) {
     notify("warn", "Select source then targets (source = first)");
@@ -403,8 +408,10 @@ export function setupCriticalWorkflowPack(): void {
     matchProperties,
     matchPropertiesFromSelection,
     spaceElementsEvenly,
+    getAutoTags: () => lastTags,
+    getLastSchedule: () => lastSchedule,
+    getLastTakeoff: () => lastTakeoff,
   };
-  (window as Any).__obsWorkflowPack = api;
   (ctx.features as Any).workflowPack = api;
 
   const cmds: Array<[string, string, string, () => void]> = [
@@ -420,20 +427,15 @@ export function setupCriticalWorkflowPack(): void {
     ["rg-space", "Space elements evenly", "Modify", () => void spaceElementsEvenly()],
   ];
 
-  try {
-    const boot = (window as Any).__obsBIMGaps;
-    if (boot?.registerCommands) boot.registerCommands(cmds);
-  } catch { /* */ }
-
+  // Register into the real command palette (the legacy window registry and the
+  // CustomEvent channel had no backing — commands registered there never appeared).
   for (const [id, label, category, run] of cmds) {
     try {
-      window.dispatchEvent(
-        new CustomEvent("obs-register-command", {
-          detail: { id, label, category, run },
-        }),
-      );
-    } catch { /* */ }
+      registerCommand({ id, label, category, run });
+    } catch (e) {
+      console.warn("[workflow-pack] register failed", id, e);
+    }
   }
 
-  console.log("[workflow-pack] 10 critical documentation/production commands ready");
+  console.log("[workflow-pack] 10 critical documentation/production commands registered");
 }

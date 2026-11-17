@@ -644,6 +644,27 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     ],
     affirmedIn: APP_VERSION,
   },
+  {
+    id: "critical-workflow-pack",
+    area: "Drawings",
+    status: "limited",
+    source: [
+      "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "src/features/command-palette.ts",
+    ],
+    evidence: [
+      "Unit suite tests/critical-workflow-pack.test.cjs — 15 assertions: 10 palette registrations, zero window globals, fixture math for schedules/takeoff/match-prop/space/column-grid/sheet-pack/view-pack",
+      "The 10 commands were originally wired through dead channels (a window registry method that did not exist plus an event with no listener); they now register directly into the command palette, which the unit suite captures",
+    ],
+    limitations: [
+      "The three schedules and the material takeoff print via console.table and persist under the obs.schedule.* localStorage keys; there is no dedicated viewer panel for them — sheet-based schedules use the separate schedule feature",
+      "matchProperties copies only wallTypeId/family/layers/Material and thickness/height between same-category elements; other instance parameters are not matched",
+      "columnsOnGrid intersects grid segments only (needs 2+ grids); no wall-face or manual override placement",
+      "spaceElementsEvenly spaces point elements along the implicit x-then-z sorted line between first and last; arbitrary paths are not supported",
+      "Palette interaction (searching the 10 commands and running them live) has not been driven in a browser; registration is proven by unit test",
+    ],
+    affirmedIn: APP_VERSION,
+  },
 ] as const;
 
 /** Look up a feature's maturity by id. */
