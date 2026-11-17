@@ -35,6 +35,31 @@ t("TABLE: rotated tables rotate their text and grid", () => {
 t("TABLE without rows is reported, not silently dropped", () => {
   notes.length = 0; assert.strictEqual(X.convertTable({ position: [0, 0, 0], colWidths: [], rowHeights: [] }, c, cx).length, 0); assert.ok(notes.length);
 });
+const wallStyle = { offsets: [-0.5, 0.5], startCap: true, endCap: true };
+const cxs = { ...cx, mlineStyle: () => wallStyle };
+t("MLINE with a style: two parallel lines 1 apart plus square end caps", () => {
+  const r = X.convertMline({ style: "WALL", scale: 1, vertices: [[0, 0, 0], [10, 0, 0]], miters: [[0, 1, 0], [0, 1, 0]] }, c, cxs);
+  const pl = r.filter((e) => e.type === "LWPOLYLINE");
+  assert.strictEqual(pl.length, 2); assert.strictEqual(r.filter((e) => e.type === "LINE").length, 2);
+  const ys = pl.map((e) => e.points[0].y).sort((a, b) => a - b);
+  assert.ok(Math.abs(ys[0] + 0.5) < 1e-9 && Math.abs(ys[1] - 0.5) < 1e-9, ys.join());
+});
+t("MLINE scale factor multiplies the offsets", () => {
+  const r = X.convertMline({ scale: 200, vertices: [[0, 0, 0], [1000, 0, 0]], miters: [[0, 1, 0], [0, 1, 0]] }, c, cxs);
+  const ys = r.filter((e) => e.type === "LWPOLYLINE").map((e) => e.points[0].y).sort((a, b) => a - b);
+  assert.ok(Math.abs(ys[1] - ys[0] - 200) < 1e-9, ys.join());
+});
+t("MLINE right-angle corner: offset lines meet at a true mitre (constant distance from both segments)", () => {
+  const s2 = Math.SQRT1_2;
+  const r = X.convertMline({ scale: 1, vertices: [[0, 0, 0], [10, 0, 0], [10, 10, 0]], miters: [[0, 1, 0], [-s2, s2, 0], [-1, 0, 0]] }, c, cxs);
+  const outer = r.filter((e) => e.type === "LWPOLYLINE").map((e) => e.points[1]);
+  const p = outer.find((q) => q.y < 0); // the line on the outside of the turn
+  assert.ok(Math.abs(p.x - 10.5) < 1e-9 && Math.abs(p.y + 0.5) < 1e-9, JSON.stringify(p));
+});
+t("MLINE without style data falls back to the centre path and says so", () => {
+  notes.length = 0; const r = X.convertMline({ vertices: [[0, 0, 0], [10, 0, 0]], miters: [] }, c, cx);
+  assert.strictEqual(r.length, 1); assert.ok(notes.some((n) => n.includes("centre path only")));
+});
 t("MLINE: centre path drawn and the limitation is reported", () => {
   notes.length = 0; const r = X.convertMline({ vertices: [[0, 0, 0], [10, 0, 0], [10, 5, 0]] }, c, cx);
   assert.strictEqual(r.length, 1); assert.ok(notes.some((n) => n.includes("centre path only")));

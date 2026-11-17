@@ -36,6 +36,7 @@ import {
 } from "./dxf-geometry";
 import { cleanText, mtextFont, mtextWidthFactor, mtextExtras } from "./mtext";
 import { convertMleader, convertTable, convertMline, convertImage, convertTolerance, convertWipeout } from "./acad-extra-entities";
+import type { MlineStyle } from "./acad-extra-entities";
 import { convertHelix, convertMesh, convertPolyface, convertPolygonMesh, convertSolidWire } from "./acad-solid-entities";
 
 type Any = Record<string, any>;
@@ -385,9 +386,13 @@ interface Ctx {
   byHandle: Map<string, Any>;
   blocks: Map<string, { base: DxfPoint; entities: Any[] }>;
   skip: (t: string) => void;
+  mlineStyles?: Map<string, MlineStyle>;
 }
 
-const extraCtx = (cx: Ctx) => ({ pt, clean: cleanText, deg: DEG, note: cx.skip });
+const extraCtx = (cx: Ctx) => ({
+  pt, clean: cleanText, deg: DEG, note: cx.skip,
+  mlineStyle: (h?: string, nm?: string) => cx.mlineStyles?.get(String(h ?? "").toLowerCase()) ?? cx.mlineStyles?.get(`n:${String(nm ?? "").toLowerCase()}`),
+});
 
 /** Convert one engine entity into platform entities (may expand blocks). */
 function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | null): DxfEntity[] {
@@ -774,6 +779,12 @@ function mapDocument(raw: Any, format: "dwg" | "dxf"): DxfDocument {
     blocks: new Map(),
     skip: () => {},
   };
+  cx.mlineStyles = new Map();
+  for (const ms of (Array.isArray(raw.mlineStyles) ? raw.mlineStyles : []) as Any[]) {
+    const st: MlineStyle = { offsets: (ms.offsets ?? []).map(Number), startCap: !!ms.startCap, endCap: !!ms.endCap, fill: !!ms.fill };
+    cx.mlineStyles.set(String(ms.handle ?? "").toLowerCase(), st);
+    cx.mlineStyles.set(`n:${String(ms.name ?? "").toLowerCase()}`, st);
+  }
   const skipped: Record<string, number> = {};
   cx.skip = (t: string) => {
     skipped[t] = (skipped[t] ?? 0) + 1;

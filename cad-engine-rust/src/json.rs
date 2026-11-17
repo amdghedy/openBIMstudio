@@ -451,10 +451,22 @@ fn write_entity(w: &mut W, e: &EntityType) {
             w.kv_point("position", &x.start_point);
             w.kv_num("scale", x.scale_factor);
             w.kv_int("justification", x.justification as i64);
+            w.kv_bool("closed", x.is_closed());
+            w.kv_bool("noStartCap", x.flags.contains(acadrust::entities::MLineFlags::NO_START_CAPS));
+            w.kv_bool("noEndCap", x.flags.contains(acadrust::entities::MLineFlags::NO_END_CAPS));
+            if let Some(h) = x.style_handle {
+                w.kv_str("styleHandle", &format!("{:x}", h.value()));
+            }
             w.begin_arr("vertices");
             for v in &x.vertices {
                 w.sep();
                 w.point(&v.position);
+            }
+            w.end_arr();
+            w.begin_arr("miters");
+            for v in &x.vertices {
+                w.sep();
+                w.point(&v.miter);
             }
             w.end_arr();
             w.end_obj();
@@ -1315,6 +1327,28 @@ pub fn document_json(doc: &CadDocument) -> String {
         w.kv_point("dir", &vp.view_direction);
         w.end_obj();
     }
+
+    // MLINE styles: the parallel-line offsets an MLINE needs to be drawn as more than its centre path.
+    w.begin_arr("mlineStyles");
+    for (h, o) in doc.objects.iter() {
+        if let acadrust::objects::ObjectType::MLineStyle(st) = o {
+            w.sep();
+            w.begin_obj();
+            w.kv_str("handle", &format!("{:x}", h.value()));
+            w.kv_str("name", &st.name);
+            w.kv_bool("fill", st.flags.fill_on);
+            w.kv_bool("startCap", st.flags.start_square_cap);
+            w.kv_bool("endCap", st.flags.end_square_cap);
+            w.begin_arr("offsets");
+            for el in &st.elements {
+                w.sep();
+                w.raw(&num(el.offset));
+            }
+            w.end_arr();
+            w.end_obj();
+        }
+    }
+    w.end_arr();
 
     w.begin_arr("layers");
     for l in doc.layers.iter() {

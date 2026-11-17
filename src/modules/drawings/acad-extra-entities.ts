@@ -15,7 +15,10 @@ export interface ExtraCtx {
   /** radians -> degrees factor used by the engine converter */
   deg: number;
   note: (msg: string) => void;
+  /** MLINE style lookup (by style handle, else by name) from the engine's `mlineStyles`. */
+  mlineStyle?: (handle?: string, name?: string) => MlineStyle | undefined;
 }
+export interface MlineStyle { offsets: number[]; startCap?: boolean; endCap?: boolean; fill?: boolean }
 
 const MAX_TABLE_CELLS = 20000;
 
@@ -83,10 +86,42 @@ export function convertTable(e: Any, c: Any, x: ExtraCtx): DxfEntity[] {
 }
 
 export function convertMline(e: Any, c: Any, x: ExtraCtx): DxfEntity[] {
-  const pts = (e.vertices ?? []).map(x.pt);
+  const pts = (e.vertices ?? []).map(x.pt) as DxfPoint[];
   if (pts.length < 2) { x.note("MLINE (<2 vertices)"); return []; }
-  x.note("MLINE (centre path only, parallel lines not drawn)");
-  return [{ ...c, type: "LWPOLYLINE", points: pts, closed: false } as DxfEntity];
+  const centre = (): DxfEntity[] => [{ ...c, type: "LWPOLYLINE", points: pts, closed: !!e.closed && pts.length > 2 } as DxfEntity];
+  const st = x.mlineStyle?.(e.styleHandle, e.style);
+  const miters = (e.miters ?? []).map(x.pt) as DxfPoint[];
+  const offs = (st?.offsets ?? []).map(Number).filter((n) => Number.isFinite(n));
+  if (!offs.length || miters.length !== pts.length) {
+    x.note("MLINE (centre path only, style offsets unavailable)");
+    return centre();
+  }
+  const scale = Number.isFinite(Number(e.scale)) && Number(e.scale) !== 0 ? Number(e.scale) : 1;
+  const n = pts.length, closed = !!e.closed && n > 2, segs = closed ? n : n - 1;
+  // Unit miter at each vertex, and the factor 1/cos that keeps the element a constant distance from the centre path
+  // on both adjoining segments (a true mitred corner). Falls back to the plain segment normal if no miter is stored.
+  const dirOf = (i: number) => { const a = pts[i], b = pts[(i + 1) % n]; const l = Math.hypot(b.x - a.x, b.y - a.y) || 1; return { x: (b.x - a.x) / l, y: (b.y - a.y) / l }; };
+  const mit = pts.map((_, i) => {
+    const prev = closed ? dirOf((i - 1 + n) % n) : dirOf(Math.max(0, i - 1));
+    const next = closed || i < n - 1 ? dirOf(i) : prev;
+    let mx = miters[i].x, my = miters[i].y; const l = Math.hypot(mx, my);
+    if (l > 1e-9) { mx /= l; my /= l; } else { const bx = prev.x + next.x, by = prev.y + next.y; mx = -by; my = bx; const bl = Math.hypot(mx, my) || 1; mx /= bl; my /= bl; if (bl === 1 && !bx && !by) { mx = -next.y; my = next.x; } }
+    const k = Math.min(Math.abs(mx * -prev.y + my * prev.x), Math.abs(mx * -next.y + my * next.x));
+    return { x: mx, y: my, f: k > 0.2 ? 1 / k : 5 };
+  });
+  const out: DxfEntity[] = [];
+  const at = (i: number, o: number): DxfPoint => ({ x: pts[i].x + mit[i].x * o * scale * mit[i].f, y: pts[i].y + mit[i].y * o * scale * mit[i].f, z: pts[i].z ?? 0 });
+  for (const o of offs) {
+    const line: DxfPoint[] = []; for (let i = 0; i < n; i++) line.push(at(i, o));
+    out.push({ ...c, type: "LWPOLYLINE", points: line, closed } as DxfEntity);
+  }
+  const lo = Math.min(...offs), hi = Math.max(...offs);
+  if (!closed && offs.length >= 2 && hi > lo) {
+    if (st?.startCap && !e.noStartCap) out.push({ ...c, type: "LINE", start: at(0, lo), end: at(0, hi) } as DxfEntity);
+    if (st?.endCap && !e.noEndCap) out.push({ ...c, type: "LINE", start: at(n - 1, lo), end: at(n - 1, hi) } as DxfEntity);
+  }
+  if (st?.fill) x.note("MLINE (fill not drawn)");
+  return out;
 }
 
 export function convertImage(e: Any, c: Any, x: ExtraCtx): DxfEntity[] {
