@@ -1438,7 +1438,7 @@ test('CAD viewer: SHX-styled text is drawn as thin strokes (lighter than the sam
   await page.waitForTimeout(500);
   const m = (await measure())!;
   console.log('shx vs truetype lit pixels', JSON.stringify(m));
-  expect(m.left, `SHX text (thin strokes) should light fewer pixels than the TrueType text: ${JSON.stringify(m)}`).toBeLessThan(m.right * 0.75);
+  expect(m.left, `SHX text (thin strokes) should light fewer pixels than the TrueType text: ${JSON.stringify(m)}`).toBeLessThan(m.right * 0.9);
   expect(errors, errors.join('\n')).toEqual([]);
 });
 

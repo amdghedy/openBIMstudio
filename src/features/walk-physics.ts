@@ -56,3 +56,14 @@ export function constrainToWall(
   const push = radius - d;
   return { x: x + c.nx * push, z: z + c.nz * push, vx: nvx, vz: nvz, hit: true };
 }
+
+/**
+ * Third-person camera distance after obstacle avoidance. `hit` is the distance from the eye to the nearest obstacle
+ * along the line back to the camera (null = nothing there). The camera stays CHASE_MARGIN short of it, never closer than
+ * `minDist`, and never farther than `want`. Moving closer is immediate; moving back out is eased so the view does not pop.
+ */
+export function chaseDistance(want: number, hit: number | null, prev: number, dt: number, minDist = 0.45, margin = 0.2): number {
+  const limit = hit === null ? want : Math.max(minDist, Math.min(want, hit - margin));
+  if (limit <= prev) return limit;
+  return Math.min(limit, prev + Math.max(0, dt) * 4); // ease out at 4 m/s
+}

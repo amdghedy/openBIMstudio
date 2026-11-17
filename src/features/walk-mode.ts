@@ -34,7 +34,7 @@ import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getLevel, getLevels, getAuthoredGroup, getElements } from "./authoring";
-import { clampSpeedFactor, constrainToWall, isBlockingHit, nextLevelElevation, slideVelocity, yawFromDirection } from "./walk-physics";
+import { chaseDistance, clampSpeedFactor, constrainToWall, isBlockingHit, nextLevelElevation, slideVelocity, yawFromDirection } from "./walk-physics";
 import type { WallContact } from "./walk-physics";
 import { getProjection, setProjection } from "./camera-tools";
 import { notify } from "../core/notify";
@@ -249,7 +249,13 @@ let wallContacts: WallContact[] = [];
 let fragGround: { x: number; z: number; y: number; t: number } | null = null;
 const sensorBusy = { chest: false, knee: false, ground: false };
 
+/* Third-person camera: nearest obstacle between the walker and the camera (model-side answer arrives later). */
+let chaseModelHit: number | null = null;
+let chaseDist = CHASE_DISTANCE;
+let chaseBusy = false;
+
 function resetSensors(): void {
+  chaseModelHit = null; chaseDist = CHASE_DISTANCE; chaseBusy = false;
   wallContacts = []; fragGround = null;
   sensorBusy.chest = sensorBusy.knee = sensorBusy.ground = false;
 }
@@ -1031,11 +1037,39 @@ function tickBody(now: number) {
       human.scale.y = eyeH / EYE_HEIGHT;
       human.updateMatrixWorld(true);
     }
-    const chase = new THREE.Vector3(
-      state.pos.x + Math.sin(state.yaw) * Math.cos(state.pitch) * CHASE_DISTANCE,
-      state.pos.y + 0.35 - Math.sin(state.pitch) * CHASE_DISTANCE,
-      state.pos.z + Math.cos(state.yaw) * Math.cos(state.pitch) * CHASE_DISTANCE,
+    const back = new THREE.Vector3(
+      Math.sin(state.yaw) * Math.cos(state.pitch) * CHASE_DISTANCE,
+      0.35 - Math.sin(state.pitch) * CHASE_DISTANCE,
+      Math.cos(state.yaw) * Math.cos(state.pitch) * CHASE_DISTANCE,
     );
+    const want = back.length();
+    const dirBack = back.clone().divideScalar(want || 1);
+    // Keep the camera out of walls: nearest obstacle on the line from the head back to the camera.
+    let hit: number | null = opts.noClip ? null : chaseModelHit;
+    if (!opts.noClip) {
+      const models = getCollisionTargets();
+      if (models.length) {
+        groundRay.set(state.pos.clone(), dirBack);
+        groundRay.far = want;
+        const passable = passableIds();
+        for (const h of safeIntersect(groundRay, models)) {
+          if (!h.object.visible) continue;
+          const hid = hitElementId(h.object);
+          if (hid && passable.has(hid)) continue;
+          if (hit === null || h.distance < hit) hit = h.distance;
+          break;
+        }
+      }
+      if (!chaseBusy) {
+        chaseBusy = true;
+        void modelRay(state.pos.x, state.pos.y, state.pos.z, dirBack.x, dirBack.y, dirBack.z, want)
+          .then((r) => { chaseModelHit = r ? r.distance : null; })
+          .catch(() => { chaseModelHit = null; })
+          .finally(() => { chaseBusy = false; });
+      }
+    }
+    chaseDist = chaseDistance(want, hit, chaseDist > want ? want : chaseDist, dt);
+    const chase = state.pos.clone().addScaledVector(dirBack, chaseDist);
     driveCamera(chase, state.pos.clone().add(new THREE.Vector3(0, -0.1, 0)));
   } else {
     driveCamera(state.pos, target);

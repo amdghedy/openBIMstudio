@@ -54,5 +54,10 @@ t("constrainToWall does not cancel motion away from the wall", () => {
   const r = w.constrainToWall(0, 0.2, 0, 2, wall, 0.32);
   near(r.vz, 2); near(r.z, 0.32);
 });
+t("chaseDistance: free space keeps the full distance", () => near(w.chaseDistance(2.6, null, 2.6, 0.016), 2.6));
+t("chaseDistance: a wall behind pulls the camera in at once, with a margin", () => near(w.chaseDistance(2.6, 1.5, 2.6, 0.016), 1.3));
+t("chaseDistance: never closer than the minimum (wall right behind the head)", () => near(w.chaseDistance(2.6, 0.2, 2.6, 0.016), 0.45));
+t("chaseDistance: moving back out is eased, not instant", () => { const d = w.chaseDistance(2.6, null, 1.0, 0.1); near(d, 1.4); });
+t("chaseDistance: easing never overshoots the limit", () => near(w.chaseDistance(2.6, 1.5, 1.29, 1), 1.3));
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
