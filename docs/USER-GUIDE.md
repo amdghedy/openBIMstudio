@@ -168,6 +168,10 @@ Type the two letters in sequence (not held together):
 
 Press **Esc** to cancel the active tool, and **Delete** to delete the selection.
 
+### Reference lines while modelling
+
+When you draw a wall (or a beam, pipe or other linear element), long dashed guide lines pass through every corner of the wall chain you are drawing, and the cursor is pulled onto them. Near the crossing of two lines it snaps to the crossing, so the last wall of a room closes at a right angle to the first. Switch it on or off with "Reference lines while modelling" in Ctrl+P (your choice is remembered). **Limits:** only corners of the current chain are used, not walls drawn earlier; the lines run along the X and Z axes only; the capture distance is a fixed 0.35 m. Shift and AccuDraw override it. The room case is tested in a real browser; the feel with a real mouse on a large model is not.
+
 ### Precision
 
 - **Shift+S** toggles snapping.
