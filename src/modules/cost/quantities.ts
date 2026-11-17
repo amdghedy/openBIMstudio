@@ -14,6 +14,7 @@ import { ctx } from "../../core/context";
 import { getElements, getLevels } from "../../features/authoring";
 import { getElementTriangles, type Tri } from "../clash/geometry";
 import { flattenElementProperties, flattenPsets } from "./qto-rules";
+import { getElementAssignments, listSystems } from "../classification";
 import type { TakeoffRow } from "./types";
 
 let rows: TakeoffRow[] = [];
@@ -197,6 +198,11 @@ function authoredRows(): TakeoffRow[] {
   try {
     for (const lv of getLevels() ?? []) levelName.set(lv.id, lv.name);
   } catch { /* levels not ready */ }
+  // Classification system names (id → display name) for row classification codes.
+  const systemName = new Map<string, string>();
+  try {
+    for (const sys of listSystems()) systemName.set(sys.id, sys.name);
+  } catch { /* classification not ready */ }
   for (const el of getElements()) {
     const p = el.params;
     let length = 0, area = 0, volume = 0;
@@ -331,6 +337,16 @@ function authoredRows(): TakeoffRow[] {
     // Stringified element properties so QTO rules can filter on them
     // (e.g. FireRating = 2 hr). Empty property bags attach nothing.
     const rowProps = flattenElementProperties(el.properties);
+    // Resolve the element's first classification assignment into
+    // "SystemName: code" so QTO roll-ups can group by real industry codes.
+    let classificationCode: string | undefined;
+    try {
+      const asg = getElementAssignments(el.id)?.[0];
+      if (asg) {
+        const sys = systemName.get(asg.systemId) ?? asg.systemId;
+        classificationCode = `${sys}: ${asg.code}`;
+      }
+    } catch { /* classification is optional */ }
     out.push({
       key: `authored:${el.id}`,
       source: "authored",
@@ -345,6 +361,7 @@ function authoredRows(): TakeoffRow[] {
       width,
       level: el.levelId ? levelName.get(el.levelId) : undefined,
       properties: Object.keys(rowProps).length ? rowProps : undefined,
+      classification: classificationCode,
       primarySource: "authored",
     });
   }

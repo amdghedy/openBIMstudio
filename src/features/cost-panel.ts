@@ -646,6 +646,27 @@ function renderRules() {
     body.appendChild(sec);
   }
 
+  const elc = run.byElementClassification;
+  if (elc.length) {
+    const sec = document.createElement("div");
+    sec.style.cssText = "margin-top:12px";
+    sec.innerHTML = `<div style="font-weight:700;margin-bottom:6px">By element classification</div>` +
+      `<div style="font-size:10px;opacity:.5;margin-bottom:4px">rules without their own classification, grouped by the element's assigned code</div>`;
+    for (const c of elc) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:8px;margin:3px 0;font-size:11px";
+      const name = document.createElement("span");
+      name.style.cssText = "flex:1;opacity:.8";
+      name.textContent = c.code;
+      const qty = document.createElement("span");
+      qty.style.cssText = "color:#38bdf8;font-weight:600";
+      qty.textContent = `${num(c.quantity)} ${c.unit}`;
+      row.append(name, qty);
+      sec.appendChild(row);
+    }
+    body.appendChild(sec);
+  }
+
   const legend = document.createElement("div");
   legend.style.cssText = "margin-top:8px;font-size:10px;opacity:.5";
   legend.textContent = "Cost prices only when the rate book has a cost item whose CODE matches the rule's cost code with the SAME unit. Rebar uses a generic 100 kg/m³ ratio — override with custom rules for real projects.";
@@ -661,6 +682,9 @@ function exportQtoRulesCsv(run: QtoRun) {
       r.netQuantity.toFixed(3), r.wasteFactorPct, r.quantity.toFixed(3),
       r.cost?.code ?? "", r.cost ? r.cost.rate.toFixed(2) : "", r.cost ? r.cost.total.toFixed(2) : "",
     ].join(","));
+  }
+  for (const c of run.byElementClassification ?? []) {
+    lines.push([q(c.code), "", q("by element classification"), "", c.unit, "", "", c.quantity.toFixed(3), "", "", ""].join(","));
   }
   for (const e of run.errors) {
     lines.push(`${q(e.ruleId)},${q(e.ruleName)},,0,,,,,,ERROR: ${q(e.error)}`);

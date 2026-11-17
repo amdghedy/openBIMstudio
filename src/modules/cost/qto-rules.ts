@@ -96,6 +96,11 @@ export interface QtoRuleResult {
   /** netQuantity × (1 + wasteFactorPct / 100). */
   quantity: number;
   lines: QtoRuleLine[];
+  /** Per-element-classification decomposition of `quantity` — present only
+   *  when the rule has no explicit classification AND at least one matched
+   *  row carries an assignment. Buckets are waste-scaled so they sum to
+   *  `quantity`. */
+  byElementClassification?: Array<{ code: string; quantity: number }>;
   /** Present when the rule carries a costCode AND the rate book has it. */
   cost?: { code: string; name: string; rate: number; total: number };
 }
@@ -121,6 +126,17 @@ export interface QtoRun {
   /** Sum of every priced rule's total. Rules without a resolvable
    *  costCode contribute quantity but not cost. */
   costTotal: number;
+  /** Quantities regrouped by the ELEMENT's assigned classification code
+   *  ("SystemName: code", from TakeoffRow.classification). Only rules
+   *  WITHOUT an explicit classification contribute here — a rule that
+   *  declares its own roll-up code keeps byClassification semantics.
+   *  Rows without an assignment are not part of this roll-up. */
+  byElementClassification: Array<{
+    code: string;
+    unit: CostUnit;
+    quantity: number;
+    ruleIds: string[];
+  }>;
   evaluatedAt: number;
 }
 
@@ -359,6 +375,9 @@ export function evaluateQtoRules(
     const lines: QtoRuleLine[] = [];
     let net = 0;
     let runtimeError: string | undefined;
+    // Per-element-code decomposition (used when the rule has no explicit
+    // classification of its own).
+    const codeQty = new Map<string, number>();
     for (const row of rows) {
       if (!rowMatches(row, rule.filter)) continue;
       let q = 0;
@@ -381,6 +400,9 @@ export function evaluateQtoRules(
       if (Number.isFinite(q) && q !== 0) {
         lines.push({ rowKey: row.key, label: row.label, quantity: q });
         net += q;
+        if (row.classification) {
+          codeQty.set(row.classification, (codeQty.get(row.classification) ?? 0) + q);
+        }
       }
     }
 
@@ -391,6 +413,11 @@ export function evaluateQtoRules(
 
     const waste = Math.max(0, Number(rule.wasteFactorPct ?? 0) || 0);
     const quantity = net * (1 + waste / 100);
+    // Waste scales the per-code buckets too, so they always sum to the
+    // rule's quantity (within float noise).
+    const decomposition = [...codeQty.entries()]
+      .map(([code, raw]) => ({ code, quantity: raw * (1 + waste / 100) }))
+      .sort((a, b) => b.quantity - a.quantity || a.code.localeCompare(b.code));
 
     const result: QtoRuleResult = {
       ruleId: rule.id,
@@ -402,6 +429,11 @@ export function evaluateQtoRules(
       netQuantity: net,
       quantity,
       lines,
+      // Only rules WITHOUT their own classification decompose onto the
+      // element codes — a rule-owned code keeps byClassification semantics.
+      byElementClassification: !rule.classification?.trim() && decomposition.length
+        ? decomposition
+        : undefined,
     };
 
     if (rule.costCode && opts.rates) {
@@ -435,6 +467,7 @@ export function evaluateQtoRules(
     errors,
     byUnit,
     byClassification: rollupByClassification(results),
+    byElementClassification: rollupByElementClassification(results),
     costTotal,
     evaluatedAt: Date.now(),
   };
@@ -458,6 +491,33 @@ export function rollupByClassification(
   return [...map.values()].sort(
     (a, b) =>
       a.classification.localeCompare(b.classification) ||
+      ALL_UNITS.indexOf(a.unit) - ALL_UNITS.indexOf(b.unit),
+  );
+}
+
+/** Group rule results by the ELEMENT's classification code. Only results
+ *  that actually carry a decomposition (rules without an explicit
+ *  classification, rows with assignments) contribute. */
+export function rollupByElementClassification(
+  results: QtoRuleResult[],
+): QtoRun["byElementClassification"] {
+  const map = new Map<string, { code: string; unit: CostUnit; quantity: number; ruleIds: string[] }>();
+  for (const r of results) {
+    if (!r.byElementClassification) continue;
+    for (const d of r.byElementClassification) {
+      const key = `${d.code}\u0000${r.unit}`;
+      let entry = map.get(key);
+      if (!entry) {
+        entry = { code: d.code, unit: r.unit, quantity: 0, ruleIds: [] };
+        map.set(key, entry);
+      }
+      entry.quantity += d.quantity;
+      if (!entry.ruleIds.includes(r.ruleId)) entry.ruleIds.push(r.ruleId);
+    }
+  }
+  return [...map.values()].sort(
+    (a, b) =>
+      a.code.localeCompare(b.code) ||
       ALL_UNITS.indexOf(a.unit) - ALL_UNITS.indexOf(b.unit),
   );
 }

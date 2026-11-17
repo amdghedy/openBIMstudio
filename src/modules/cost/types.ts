@@ -59,6 +59,14 @@ export interface TakeoffRow {
    */
   properties?: Record<string, string>;
 
+  /**
+   * Classification code assigned to the element (authored rows only),
+   * formatted "SystemName: code" — resolved from the classification module's
+   * assignments so QTO roll-ups can group by real industry codes, not just
+   * free-text rule names. Absent = the element has no assignment.
+   */
+  classification?: string;
+
   /** Author-provided quantities from Qto_*BaseQuantities psets (IFC only). */
   qto?: QtoBundle;
   /** Geometric extraction from triangle soups (IFC only). */
