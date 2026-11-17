@@ -1332,8 +1332,7 @@ pub fn document_json(doc: &CadDocument) -> String {
     w.begin_arr("mlineStyles");
     for (h, o) in doc.objects.iter() {
         if let acadrust::objects::ObjectType::MLineStyle(st) = o {
-            w.sep();
-            w.begin_obj();
+            w.begin_obj(); // begin_obj writes the separator itself
             w.kv_str("handle", &format!("{:x}", h.value()));
             w.kv_str("name", &st.name);
             w.kv_bool("fill", st.flags.fill_on);
