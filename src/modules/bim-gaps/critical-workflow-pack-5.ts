@@ -13,8 +13,19 @@
  */
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { groupsStore } from "../groups/groups";
+import { copyMonitorStore } from "../copy-monitor/copy-monitor";
 
 type Any = Record<string, any>;
+
+/** Module state — last run results for console/tests inspection (no window globals). */
+export const pack5 = {
+  lodWireframe: false,
+  costTakeoff: null as Any | null,
+  topo: null as Any | null,
+  matchline: null as Any | null,
+  genStudy: null as Any | null,
+};
 
 function authoring(): Any | null {
   return (ctx.features as Any)?.authoring ?? null;
@@ -107,7 +118,7 @@ export async function runCostTakeoff(): Promise<Any> {
       total += line;
       lines.push({ key: r.key, qty: +r.qty.toFixed(2), rate: r.item.rate, line: +line.toFixed(2), item: r.item.name });
     }
-    (window as Any).__obsCostTakeoff = { lines, total: +total.toFixed(2) };
+    pack5.costTakeoff = { lines, total: +total.toFixed(2) };
     console.table(lines);
     notify("success", `Cost takeoff total ≈ ${total.toFixed(0)} (see console)`);
     return { lines, total };
@@ -121,7 +132,7 @@ export async function runCostTakeoff(): Promise<Any> {
 
 export function groupSelection(name?: string): string | null {
   try {
-    const store = (ctx.features as Any).groups ?? (window as Any).__obsGroups;
+    const store = (ctx.features as Any).groups ?? groupsStore;
     const ids = selectedIds();
     if (ids.length < 2) {
       notify("warn", "Select 2+ elements to group");
@@ -182,7 +193,7 @@ export async function setLodMedium(): Promise<void> {
         if (o.isMesh && o.material) {
           const mats = Array.isArray(o.material) ? o.material : [o.material];
           for (const m of mats) {
-            if (m.wireframe != null && (window as Any).__obsLodWire) m.wireframe = false;
+            if (m.wireframe != null && pack5.lodWireframe) m.wireframe = false;
           }
         }
       });
@@ -225,7 +236,7 @@ export async function createFlatTopo(): Promise<boolean> {
       { x: (minX + maxX) / 2, y: 0, z: (minZ + maxZ) / 2 },
     ];
     const result = mod.buildToposurface({ points } as any);
-    (window as Any).__obsTopo = result;
+    pack5.topo = result;
     // Place a thin terrain slab if possible
     const a = authoring();
     await a?.createElementByType?.("terrain", {
@@ -271,7 +282,7 @@ export async function createMatchline(): Promise<boolean> {
       ],
       labels: { left: "ML-1", right: "ML-1" },
     });
-    (window as Any).__obsMatchline = result;
+    pack5.matchline = result;
     notify("success", "Matchline ML-1 created");
     return true;
   } catch (e) {
@@ -299,7 +310,7 @@ export async function runGridSpacingStudy(): Promise<Any> {
         step: 1.5,
         objective: "minimize-columns",
       });
-      (window as Any).__obsGenStudy = result;
+      pack5.genStudy = result;
       notify("success", "Grid spacing study complete");
       return result;
     }
@@ -312,7 +323,7 @@ export async function runGridSpacingStudy(): Promise<Any> {
     return { spacing, columns: cols, score: cols * spacing };
   });
   candidates.sort((a, b) => a.score - b.score);
-  (window as Any).__obsGenStudy = candidates;
+  pack5.genStudy = candidates;
   console.table(candidates);
   notify("success", `Best spacing ≈ ${candidates[0]?.spacing} m`);
   return candidates;
@@ -322,7 +333,7 @@ export async function runGridSpacingStudy(): Promise<Any> {
 
 export function ensureCopyMonitorRule(): void {
   try {
-    const store = (ctx.features as Any).copyMonitor ?? (window as Any).__obsCopyMonitor;
+    const store = (ctx.features as Any).copyMonitor ?? copyMonitorStore;
     if (store?.addRule) {
       store.addRule({
         name: "Grids & Levels",
@@ -379,7 +390,6 @@ export function setupCriticalWorkflowPack5(): void {
     ensureCopyMonitorRule,
     pinSimilarToSelection,
   };
-  (window as Any).__obsWorkflowPack5 = api;
   (ctx.features as Any).workflowPack5 = api;
 
   const cmds: Array<[string, string, string, () => void]> = [

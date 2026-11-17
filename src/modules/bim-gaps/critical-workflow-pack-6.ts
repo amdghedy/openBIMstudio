@@ -13,8 +13,20 @@
  */
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { BIM_GAPS_VERSION } from "./bim-gaps-boot";
 
 type Any = Record<string, any>;
+
+/** Module state — last run results for console/tests inspection (no window globals). */
+export const pack6 = {
+  families: null as Any | null,
+  fabPart: null as Any | null,
+  daylight: null as Any | null,
+  gisOrigin: null as Any | null,
+  details: null as Any | null,
+  marketplace: null as Any | null,
+  diagnostics: null as Any | null,
+};
 
 function authoring(): Any | null {
   return (ctx.features as Any)?.authoring ?? null;
@@ -32,7 +44,7 @@ export async function loadBuiltinFamilies(): Promise<number> {
   try {
     const mod = await import("../families/builtin-families");
     const list = mod.createBuiltInFamilies();
-    (window as Any).__obsFamilies = list;
+    pack6.families = list;
     try {
       localStorage.setItem(
         "obs.families.builtin",
@@ -57,7 +69,7 @@ export async function placeFabElbow(): Promise<boolean> {
       diameter: 0.2,
       angle: 90,
     } as any);
-    (window as Any).__obsFabPart = part;
+    pack6.fabPart = part;
     // Place as equipment proxy at origin-ish
     const a = authoring();
     await a?.createElementByType?.("fitting", {
@@ -98,14 +110,14 @@ export async function runDaylightStudy(): Promise<Any | null> {
       workplaneHeight: 0.8,
       gridSpacing: 0.5,
     } as any);
-    (window as Any).__obsDaylight = result;
+    pack6.daylight = result;
     console.log("[daylight]", result);
-    const avg = result?.averageDF ?? result?.dfAverage;
+    const avg = result?.averageDF;
     notify(
       "success",
       avg != null
         ? `Daylight DF avg ${Number(avg).toFixed(1)}% · sDA ${result?.sDA ?? "—"}`
-        : "Daylight analysis complete — see __obsDaylight",
+        : "Daylight analysis complete — see pack6.daylight",
     );
     return result;
   } catch (e) {
@@ -137,7 +149,7 @@ export function setGisProjectOrigin(): void {
     updatedAt: Date.now(),
   };
   localStorage.setItem("obs.gis.origin", JSON.stringify(origin));
-  (window as Any).__obsGisOrigin = origin;
+  pack6.gisOrigin = origin;
   (ctx as Any).gisOrigin = origin;
   notify("success", `GIS origin @ local (${origin.localX}, ${origin.localZ}) → ${origin.lat}, ${origin.lon}`);
 }
@@ -185,7 +197,7 @@ export async function seedDetailCatalog(): Promise<number> {
     const mod = await import("../detail-components/types");
     const list = mod.listComponents?.() ?? [];
     if (list.length) {
-      (window as Any).__obsDetails = list;
+      pack6.details = list;
       notify("success", `Detail components: ${list.length}`);
       return list.length;
     }
@@ -198,7 +210,7 @@ export async function seedDetailCatalog(): Promise<number> {
     { id: "dt-foundation", name: "Foundation detail", category: "Structure" },
   ];
   localStorage.setItem("obs.details.catalog", JSON.stringify(seed));
-  (window as Any).__obsDetails = seed;
+  pack6.details = seed;
   notify("success", `Detail catalog seeded (${seed.length})`);
   return seed.length;
 }
@@ -207,7 +219,7 @@ export async function seedDetailCatalog(): Promise<number> {
 
 export function enableFineSnaps(): void {
   try {
-    const snapping = (ctx.features as Any)?.snapping ?? (window as Any).__obsSnapping;
+    const snapping = (ctx.features as Any)?.snappingEngine;
     if (snapping) {
       snapping.setEnabled?.(true);
       snapping.enableAllTypes?.();
@@ -266,7 +278,7 @@ export async function listPlugins(): Promise<Any[]> {
   try {
     const mod = await import("../plugin-marketplace/types");
     const list = mod.listMarketplace?.() ?? [];
-    (window as Any).__obsMarketplace = list;
+    pack6.marketplace = list;
     console.table(list.slice(0, 20));
     notify("success", `Marketplace: ${list.length} plugin(s)`);
     return list;
@@ -276,7 +288,7 @@ export async function listPlugins(): Promise<Any[]> {
       { id: "cost-plus", name: "Cost Plus", status: "available" },
       { id: "clash-pro", name: "Clash Pro", status: "available" },
     ];
-    (window as Any).__obsMarketplace = seed;
+    pack6.marketplace = seed;
     notify("success", `Marketplace seed: ${seed.length}`);
     return seed;
   }
@@ -296,13 +308,13 @@ export function diagnosticsReport(): Any {
     levels: a?.getLevels?.()?.length ?? 0,
     grids: a?.getGrids?.()?.length ?? 0,
     selected: selectedIds().length,
-    bimGaps: (window as Any).__obsBIMGaps?.version ?? null,
+    bimGaps: BIM_GAPS_VERSION,
     packs: {
-      pack1: !!(window as Any).__obsWorkflowPack,
-      pack2: !!(window as Any).__obsWorkflowPack2,
-      pack3: !!(window as Any).__obsWorkflowPack3,
-      pack4: !!(window as Any).__obsWorkflowPack4,
-      pack5: !!(window as Any).__obsWorkflowPack5,
+      pack1: !!(ctx.features as Any).workflowPack,
+      pack2: !!(ctx.features as Any).workflowPack2,
+      pack3: !!(ctx.features as Any).workflowPack3,
+      pack4: !!(ctx.features as Any).workflowPack4,
+      pack5: !!(ctx.features as Any).workflowPack5,
       pack6: true,
     },
     memory:
@@ -313,11 +325,11 @@ export function diagnosticsReport(): Any {
           }
         : null,
   };
-  (window as Any).__obsDiagnostics = report;
+  pack6.diagnostics = report;
   console.log("[diagnostics]", report);
   notify(
     "success",
-    `Diagnostics: ${report.elements} elements · ${report.levels} levels · see __obsDiagnostics`,
+    `Diagnostics: ${report.elements} elements · ${report.levels} levels · see pack6.diagnostics`,
   );
   return report;
 }
@@ -337,7 +349,6 @@ export function setupCriticalWorkflowPack6(): void {
     listPlugins,
     diagnosticsReport,
   };
-  (window as Any).__obsWorkflowPack6 = api;
   (ctx.features as Any).workflowPack6 = api;
 
   const cmds: Array<[string, string, string, () => void]> = [
