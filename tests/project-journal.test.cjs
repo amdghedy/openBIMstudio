@@ -9,7 +9,9 @@ execSync(`npx tsc src/modules/projects/project-journal.ts --outDir "${out}" --mo
 const find = (dir, name) => { for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { const file = path.join(dir, entry.name); if (entry.isDirectory()) { const nested = find(file, name); if (nested) return nested; } else if (entry.name === name) return file; } };
 const journal = require(find(out, "project-journal.js"));
 const storeSource = fs.readFileSync(path.join(root, "src/modules/projects/store.ts"), "utf8");
-assert.match(storeSource, /const DB_VERSION = 2;/);
+assert.match(storeSource, /const DB_VERSION = 3;/);
+assert.match(storeSource, /createObjectStore\(S_OPERATION_JOURNAL/);
+assert.match(storeSource, /createObjectStore\(S_OPERATION_SNAPSHOTS/);
 assert.match(storeSource, /createObjectStore\(S_JOURNAL_BLOBS/);
 assert.match(storeSource, /function appendProjectSnapshot/);
 assert.match(storeSource, /getModelBlobVersionKey\(doc\.id, model\.modelId, version\)/);

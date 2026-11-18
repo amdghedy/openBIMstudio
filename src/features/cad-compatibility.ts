@@ -519,9 +519,11 @@ function updatePanelActive(): void {
       .listLayers()
       .map(
         (l) =>
-          `<button class="cad-btn" type="button" data-cad-layer="${l.id}" data-active="${
+          `<div class="cad-layer-row"><button class="cad-btn" type="button" data-cad-layer="${l.id}" data-active="${
             l.id === active ? "1" : "0"
-          }" title="${l.name}">${l.visible ? "-" : "-"} ${l.name}</button>`,
+          }" title="Select layer ${l.name}">${l.name}</button><button class="cad-btn cad-layer-eye" type="button" data-cad-layer-visibility="${l.id}" aria-label="${
+            l.visible ? "Hide" : "Show"
+          } layer ${l.name}" title="${l.visible ? "Hide" : "Show"} entire layer">${l.visible ? "◉" : "○"}</button></div>`,
       )
       .join("");
   }
@@ -575,6 +577,9 @@ function buildPanel(): void {
 #obs-cad-panel .cad-btn[data-active="1"] {
   background:rgba(251,191,36,.14);border-color:#fbbf24;color:#fbbf24;
 }
+#obs-cad-panel [data-cad-layers] { display:flex;flex-direction:column;gap:4px;padding:6px; }
+#obs-cad-panel .cad-layer-row { display:grid;grid-template-columns:1fr 34px;gap:4px; }
+#obs-cad-panel .cad-layer-eye { padding:7px 4px; }
 #obs-cad-panel .cad-status {
   margin:4px 6px 0;padding:6px 8px;border-radius:6px;
   background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);
@@ -709,6 +714,18 @@ function buildPanel(): void {
         input.click();
       }
       updatePanelActive();
+      return;
+    }
+    const visibilityBtn = t.closest("[data-cad-layer-visibility]") as HTMLElement | null;
+    if (visibilityBtn) {
+      const id = visibilityBtn.getAttribute("data-cad-layer-visibility");
+      const layer = id ? cadEngine.listLayers().find((l) => l.id === id) : null;
+      if (id && layer) {
+        cadEngine.setLayerVisible(id, !layer.visible);
+        toast("info", `${layer.visible ? "Layer hidden" : "Layer shown"}: ${layer.name}`);
+        render();
+        updatePanelActive();
+      }
       return;
     }
     const layerBtn = t.closest("[data-cad-layer]") as HTMLElement | null;

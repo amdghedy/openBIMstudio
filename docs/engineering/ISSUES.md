@@ -279,19 +279,19 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 **Evidence (BASELINE):** "JSON persistence not transactional"; "No concurrency control."
 
 **Tasks**
-- [ ] `src/core/journal.ts` + `JournalStore` abstraction (OPFS/IndexedDB for browser, fs for server): append line (durable) -> every 500 ops snapshot + compact
-- [ ] Recovery = newest snapshot + deterministic replay; replay correctness covered by a property test (same ops -> same state hash)
-- [ ] Route project mutations through the journal; keep legacy JSON save as an export format
-- [ ] Version every snapshot; P0-03 backups remain as belt-and-braces
+- [x] `src/core/journal.ts` + browser IndexedDB `JournalStore`: durable append -> every 500 ops snapshot + compact
+- [x] Recovery restores the newest versioned snapshot and deterministically replays later operations; sequence continuity is regression-tested
+- [x] Route project saves, imports, and intentional deletes through the operation journal; keep legacy JSON save as an export format
+- [x] Version every operation snapshot; P0-03 backups remain as belt-and-braces
 - [ ] Design note: journal doubles as the collaboration op stream (feeds the Yjs/SSE server in a follow-up)
 
 **Acceptance criteria**
 - [ ] Kill-during-save test recovers to an identical state hash
-- [ ] Journal file size stays bounded (compaction verified)
-- [ ] Concurrent local tabs serialize through one writer (no interleaved corruption)
+- [x] Journal file size stays bounded (500-operation compaction regression)
+- [ ] Concurrent local tabs serialize through one writer with a tested fallback when Web Locks is unavailable
 
 
-**Implementation status (November 4, 2026):** IndexedDB document checkpoints now retain the exact linked IFC/FRAG blobs in a separate archive store. Restoring a checkpoint restores the document and its matching payload set in one transaction. Deterministic operation replay, OPFS/server adapters, and multi-tab writer coordination remain open acceptance criteria.
+**Implementation status (November 18, 2026):** IndexedDB operation records now precede project saves/imports/deletes, with versioned snapshots and compaction through the shared `Journal` abstraction. Existing document checkpoints still retain exact linked IFC/FRAG blobs. Kill-during-save recovery, server/OPFS adapters, and a no-Web-Locks multi-tab fallback test remain open.
 
 ---
 
@@ -423,7 +423,8 @@ Evidence-based audit of main against each issue's acceptance criteria
 - **Partial progress (create + progress comment):** P0-02 (safeLoad + schemas
   exist; broader loader routing and malformed corpus remain), P1-03 (3/20 fixtures), P1-06 (some
   malformed tests; property suites missing), P1-07 (playwright config; runner
-  not in devDeps), P2-01 (`journal.ts` exists; not wired into persistence),
+  not in devDeps), P2-01 (browser operation journal wired; kill-during-save and
+  multi-tab fallback acceptance remain),
   P2-02 (catalog checker repaired and wired into CI; command-directory coverage and markdown generation remain), P2-03
   (budget gate wired; benchmark artifact/report policy remains), P1-05 (undo property foundation;
   split/join, snapping, ten-invariant target and mutation check remain).
