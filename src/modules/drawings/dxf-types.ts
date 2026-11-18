@@ -64,6 +64,8 @@ export interface DxfHatch {
   scale?: number;
   /** All boundary loops, outer first (even-odd fill). */
   loops: DxfPoint[][];
+  /** Gradient fill (solid hatch with a colour ramp). Angle in radians; stop colours as 0xRRGGBB. */
+  gradient?: { name: string; angle: number; shift: number; single: boolean; tint: number; stops: Array<{ pos: number; rgb: number }> };
   /**
    * Real pattern definition read from the file (acadrust engine): one entry
    * per pattern line family. Angles are radians in pattern space; `offset`

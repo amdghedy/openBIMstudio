@@ -1423,3 +1423,35 @@ export function applyGripDrag(e: DxfEntity, gi: number, to: Pt): DxfEntity | nul
       return null;
   }
 }
+
+
+export interface GradientRamp { x0: number; y0: number; x1: number; y1: number; stops: Array<{ o: number; rgb: number }> }
+/**
+ * Geometry of an AutoCAD gradient hatch in world space: the ramp runs along the gradient angle across the loops' bounding box
+ * (centre +/- half the box's extent projected on that direction). LINEAR is exact; CYLINDER / INVCYLINDER mirror the ramp about
+ * the centre; the spherical / hemispherical / curved families are approximated by the linear ramp. Single-colour gradients
+ * with only one stop ramp to white by the tint.
+ */
+export function gradientRamp(
+  g: { name: string; angle: number; single: boolean; tint: number; stops: Array<{ pos: number; rgb: number }> },
+  box: BBox,
+): GradientRamp | null {
+  if (!g.stops.length || !(box.maxX >= box.minX) || !(box.maxY >= box.minY)) return null;
+  const w = box.maxX - box.minX, h = box.maxY - box.minY;
+  const dx = Math.cos(g.angle), dy = Math.sin(g.angle);
+  const half = (Math.abs(w * dx) + Math.abs(h * dy)) / 2;
+  const cx = (box.minX + box.maxX) / 2, cy = (box.minY + box.maxY) / 2;
+  let stops = g.stops.slice().sort((a, b) => a.pos - b.pos).map((s) => ({ o: s.pos, rgb: s.rgb }));
+  if (stops.length === 1) {
+    const c = stops[0].rgb, t = Math.min(1, Math.max(0, Number.isFinite(g.tint) ? g.tint : 1));
+    const mix = (a: number) => Math.round(a + (255 - a) * (1 - t));
+    stops = [{ o: 0, rgb: c }, { o: 1, rgb: (mix((c >> 16) & 255) << 16) | (mix((c >> 8) & 255) << 8) | mix(c & 255) }];
+  }
+  const nm = g.name.toUpperCase();
+  if (nm === "CYLINDER" || nm === "INVCYLINDER") {
+    const a = nm === "CYLINDER" ? stops[0].rgb : stops[stops.length - 1].rgb;
+    const b = nm === "CYLINDER" ? stops[stops.length - 1].rgb : stops[0].rgb;
+    stops = [{ o: 0, rgb: a }, { o: 0.5, rgb: b }, { o: 1, rgb: a }];
+  }
+  return { x0: cx - dx * half, y0: cy - dy * half, x1: cx + dx * half, y1: cy + dy * half, stops };
+}

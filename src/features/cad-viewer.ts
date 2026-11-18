@@ -2129,6 +2129,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           ).map((f) => ({ angle: (f.angle * 180) / Math.PI, spacing: Math.hypot(f.offset[0], f.offset[1]) }))
         : M.hatchFamilies(h.pattern, h.angle, h.scale);
     if (h.wipeout) { c.fillStyle = BG[bg] || BG.drafting; c.fill("evenodd"); }
+    else if (h.solid && h.gradient) {
+      const bb = M.entityBBox(e), ramp = M.gradientRamp(h.gradient, bb);
+      if (ramp) {
+        const a = M.worldToScreen(v, ramp.x0, ramp.y0), b = M.worldToScreen(v, ramp.x1, ramp.y1);
+        const gr = c.createLinearGradient(a.x, a.y, b.x, b.y);
+        for (const st of ramp.stops) gr.addColorStop(Math.min(1, Math.max(0, st.o)), "#" + (st.rgb & 0xffffff).toString(16).padStart(6, "0"));
+        c.fillStyle = gr;
+      }
+      c.fill("evenodd");
+    }
     else if (h.solid) c.fill("evenodd");
     else if (Math.min(...fams.map((f) => f.spacing)) * v.scale < 3) {
       c.globalAlpha = 0.35;

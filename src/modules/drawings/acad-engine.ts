@@ -36,6 +36,7 @@ import {
 } from "./dxf-geometry";
 import { cleanText, mtextFont, mtextWidthFactor, mtextExtras } from "./mtext";
 import { convertMleader, convertTable, convertMline, convertImage, convertTolerance, convertWipeout } from "./acad-extra-entities";
+import { aciToRgb } from "./aci";
 import type { MlineStyle } from "./acad-extra-entities";
 import { convertHelix, convertMesh, convertPolyface, convertPolygonMesh, convertSolidWire } from "./acad-solid-entities";
 
@@ -763,6 +764,19 @@ function hatchOf(e: Any, cx: Ctx): DxfHatch | null {
     scale: Number(e.patternScale ?? 1) || 1,
     loops,
   };
+  const g = e.gradient as Any | undefined;
+  if (g && Array.isArray(g.colors) && g.colors.length) {
+    const stops: Array<{ pos: number; rgb: number }> = [];
+    for (const ce of g.colors as Any[]) {
+      const cc = colorOf(ce.color as JsonColor | undefined);
+      const rgb = cc.rgb !== undefined ? cc.rgb : cc.color !== undefined ? aciToRgb(cc.color) : undefined;
+      if (rgb !== undefined) stops.push({ pos: Math.min(1, Math.max(0, Number(ce.value ?? 0))), rgb });
+    }
+    if (stops.length) {
+      out.solid = true;
+      out.gradient = { name: String(g.name ?? "LINEAR").toUpperCase(), angle: Number(g.angle ?? 0), shift: Number(g.shift ?? 0), single: g.single === true, tint: Number(g.tint ?? 1), stops };
+    } else cx.skip("HATCH gradient (colours by layer/block, drawn solid)");
+  }
   // Real pattern definition lines — lets the renderer draw the actual
   // ANSI/ISO pattern instead of a placeholder. The file stores the definition
   // in pattern space; apply the hatch's pattern angle and scale here so the

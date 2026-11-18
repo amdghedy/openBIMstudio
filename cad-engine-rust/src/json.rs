@@ -1063,6 +1063,26 @@ fn write_hatch(w: &mut W, x: &Hatch) {
         write_boundary_path(w, p);
     }
     w.end_arr();
+    if x.gradient_color.enabled {
+        let g = &x.gradient_color;
+        w.key("gradient");
+        w.begin_obj();
+        w.kv_str("name", &g.name);
+        w.kv_num("angle", g.angle);
+        w.kv_num("shift", g.shift);
+        w.kv_bool("single", g.is_single_color);
+        w.kv_num("tint", g.color_tint);
+        w.begin_arr("colors");
+        for ce in &g.colors {
+            w.begin_obj();
+            w.kv_num("value", ce.value);
+            w.key("color");
+            color_json(w, &ce.color);
+            w.end_obj();
+        }
+        w.end_arr();
+        w.end_obj();
+    }
     if !x.pattern.lines.is_empty() {
         w.begin_arr("patternLines");
         for l in &x.pattern.lines {
