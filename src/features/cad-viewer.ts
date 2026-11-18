@@ -334,7 +334,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "EXPORTSEL", aliases: ["WBLOCKSEL"], description: "Export selection bounds to clipboard JSON" },
   { name: "DWGPROPS", aliases: ["DRAWINGPROPS"], description: "Drawing properties summary" },
   { name: "CENSUS", aliases: ["ENTCOUNT"], description: "Entity counts by type" },
-  { name: "REGENALL", aliases: ["REA"], description: "Force full regen/redraw" },
+  { name: "REGENALL", aliases: [], description: "Force full regen/redraw" },
   { name: "CLRSEL", aliases: ["SELCLR"], description: "Clear selection set" },
   { name: "SELECTALL", aliases: ["SELALL"], description: "Select every visible object" },
   { name: "LAYCUR", aliases: ["SETCURLAYER"], description: "Set current layer from selection" },
