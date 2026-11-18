@@ -10,6 +10,7 @@
  * `dockable.ts` controller. Position and size persist per panel ID.
  */
 import { ctx } from "../core/context";
+import { markDirty } from "../modules/projects/projects";
 import * as classificationModule from "../modules/classification";
 import {
   getActiveTool,
@@ -1584,10 +1585,14 @@ function makeClassificationBlock(element: AuthoredElement): HTMLElement {
           return;
         }
         err.style.display = "none";
+        // Assignments travel with the project document — flag the change so
+        // the next save flushes them (they used to be browser-storage-only).
+        try { markDirty(); } catch { /* */ }
         render();
       };
       rmBtn.onclick = () => {
         setAssignment(element.id, sys.id, null);
+        try { markDirty(); } catch { /* */ }
         render();
       };
 

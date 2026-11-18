@@ -225,6 +225,14 @@ export async function saveProject(silent = false) {
       (current as any).clashScenarios = clash?.serializeScenarios?.() ?? [];
     } catch { /* */ }
 
+    // Classification assignments (UniFormat II / Uniclass 2015 EF / OmniClass
+    // Table 21) travel with the project — they drive IFC export, the QTO
+    // classification roll-up and schedules grouped by classification code.
+    try {
+      const cl = await import("../classification");
+      (current as any).classificationAssignments = cl.serializeAssignments();
+    } catch { /* classification optional */ }
+
     try {
       const annot = await import("../views/annotation-store");
       current.annotations = annot.serializeAll();
@@ -605,6 +613,15 @@ export async function openProject(id: string) {
         clash?.restoreScenarios?.((doc as any).clashScenarios);
       }
     } catch { /* */ }
+
+    // Same legacy guard as scenarios: a document without the field (older
+    // project) keeps the working classification assignments it has.
+    try {
+      if ((doc as any).classificationAssignments != null) {
+        const cl = await import("../classification");
+        cl.restoreAssignments((doc as any).classificationAssignments);
+      }
+    } catch { /* classification optional */ }
 
     loader?.set?.("Rebuilding panels…", 0.96);
     setTimeout(() => { try { void refreshModelSelectionUI(); } catch { /* */ } }, 300);

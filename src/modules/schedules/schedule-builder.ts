@@ -43,6 +43,18 @@ const COLUMN_TEMPLATES: Record<string, ScheduleColumn> = {
   panel: { key: "panel", header: "Panel", format: "text", width: 100 },
   glazing: { key: "glazing", header: "Glazing", format: "text", width: 100 },
   systemType: { key: "systemType", header: "System", format: "text", width: 120 },
+  classification: {
+    key: "classification", header: "Classification code", format: "text", width: 130,
+    help: "Assigned industry classification code (UniFormat II / Uniclass 2015 EF / OmniClass Table 21) — empty when the element is uncoded",
+  },
+  classificationTitle: {
+    key: "classificationTitle", header: "Classification title", format: "text", width: 180,
+    help: "Published title of the assigned classification code",
+  },
+  classificationSystem: {
+    key: "classificationSystem", header: "Classification system", format: "text", width: 150,
+    help: "Which classification system the code comes from",
+  },
   costItem: { key: "costItem", header: "Cost item", format: "text", width: 160 },
   unitRate: { key: "unitRate", header: "Rate", format: "currency", unit: "$", width: 90 },
   lineCost: { key: "lineCost", header: "Total", format: "currency", unit: "$", width: 110 },

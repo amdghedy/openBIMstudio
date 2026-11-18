@@ -37,7 +37,13 @@ export interface GroupLevel {
     | "thousands"
     | "level"
     | "firstLetter"
-    | "ifcPrefix";
+    | "ifcPrefix"
+    // Classification hierarchy cuts (see schedule-classification.ts):
+    // full code → 2-level prefix (e.g. "EF_25" / "B2" / "21-01 10") →
+    // 3-level prefix (e.g. "EF_25_10" / "B2010" / "21-01 10 10").
+    | "classification"
+    | "classificationGroup"
+    | "classificationSub";
   /** Show a subtotal row after each group. */
   subtotal?: boolean;
   /** Collapsed by default when the schedule opens. */

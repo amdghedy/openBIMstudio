@@ -450,7 +450,7 @@ function renderControls(): void {
   addGroup.onclick = async () => {
     const key = await promptLine(
       "Add grouping level",
-      "Group by column key (e.g. level, category, systemType, material, type):",
+      "Group by column key (e.g. level, category, systemType, material, type, classification, classificationSystem):",
       "level",
     );
     if (!key) return;

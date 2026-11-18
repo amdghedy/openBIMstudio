@@ -548,3 +548,51 @@ export function buildIfcClassifications(
   }
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Project persistence — assignments travel with the project document
+
+   Assignments used to live only in browser storage, so a project opened
+   on another machine lost every classification assignment (and with it
+   the IFC export payload and the schedules grouped by classification).
+   saveProject flushes serializeAssignments() into the document;
+   openProject calls restoreAssignments() with the stored rows.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The current assignments as plain JSON rows, sorted and validated.
+ * Writer and reader share one dialect — a serialize → JSON → restore
+ * round trip is lossless for valid data.
+ */
+export function serializeAssignments(): ClassificationAssignment[] {
+  return getAssignments();
+}
+
+/**
+ * Replace the working assignment set with rows from a project document.
+ * Tolerant: non-object rows, rows with missing/blank fields, unknown
+ * systems and codes not present in their system table are dropped;
+ * duplicates collapse; never throws. `null`/`undefined` clears nothing —
+ * legacy documents without the field keep their working copy.
+ */
+export function restoreAssignments(raw: unknown): void {
+  if (raw == null) return;
+  const rows = Array.isArray(raw) ? raw : [];
+  const seen = new Set<string>();
+  const out: ClassificationAssignment[] = [];
+  for (const it of rows) {
+    if (!it || typeof it !== "object") continue;
+    const a = it as Partial<ClassificationAssignment>;
+    const eid = typeof a.elementId === "string" ? a.elementId.trim() : "";
+    const sid = typeof a.systemId === "string" ? a.systemId.trim() : "";
+    const code = typeof a.code === "string" ? a.code.trim() : "";
+    if (!eid || !sid || !code) continue;
+    const sys = getSystem(sid);
+    if (!sys || !sys.codes.some((c) => c.code === code)) continue;
+    const key = `${eid}\u0000${sid}\u0000${code}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ elementId: eid, systemId: sid, code });
+  }
+  persistAssignments(out);
+}

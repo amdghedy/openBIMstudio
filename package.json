@@ -131,6 +131,7 @@
     "test:schedule-4d": "node tests/schedule-4d.test.cjs",
     "test:schedule-4d-ui": "node tests/schedule-4d-ui.test.cjs",
     "test:schedule-import": "node tests/schedule-import.test.cjs",
+    "test:schedule-classification": "node tests/schedule-classification.test.cjs",
     "test:gis": "node tests/gis-core.test.cjs",
     "test:solids": "node tests/solids.test.cjs",
     "test:solid-kernel-weld": "node tests/solid-kernel-weld.test.cjs",

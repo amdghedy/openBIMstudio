@@ -363,6 +363,13 @@ export interface ProjectDoc {
    *  restore (see src/modules/clash/scenario-io.ts). */
   clashScenarios?: unknown[];
 
+  /** Classification assignments (UniFormat II / Uniclass 2015 EF / OmniClass
+   *  Table 21): {elementId, systemId, code} rows. Tolerantly parsed on
+   *  restore (see src/modules/classification/index.ts restoreAssignments) —
+   *  unknown systems or codes are dropped, legacy documents keep their
+   *  working copy. */
+  classificationAssignments?: unknown[];
+
   /** Plan-view dimensions (aligned / linear / chains) drawn in the 2D floor plan. */
   planDimensions?: unknown[];
   /** Plan-view tags and text notes. */

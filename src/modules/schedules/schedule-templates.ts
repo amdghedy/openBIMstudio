@@ -29,6 +29,12 @@ const C = (key: string, overrides: Record<string, any> = {}) => {
 };
 
 const G = (key: string, subtotal = true): GroupLevel => ({ key, subtotal });
+/** Grouping level with a bucket function (e.g. classification prefix cuts). */
+const GB = (key: string, bucket: GroupLevel["bucket"], subtotal = true): GroupLevel => ({
+  key,
+  bucket,
+  subtotal,
+});
 
 const RULE = {
   fireRed: (): ConditionalRule => ({
@@ -89,6 +95,16 @@ export const BUILT_IN_TEMPLATES: ScheduleDefinition[] = [
     [C("mark"), C("type"), C("level"), C("length"), C("area"), C("volume")],
     [G("type")], "type",
     { description: "Every authored or imported element with computed length, area, and volume — the default takeoff." }),
+
+  // ── Classification ─────────────────────────────────────────────────
+  // Rows without an assignment land in the "Uncoded" group; per-code and
+  // per-group subtotal rows roll quantities up the published hierarchy
+  // (Uniclass EF_25 → EF_25_10 → EF_25_10_25, UniFormat B → B2 → B2010).
+  T("tpl-classification", "Classification Takeoff", null,
+    [C("mark"), C("type"), C("classificationSystem"), C("classification"), C("classificationTitle"), C("length"), C("area"), C("volume")],
+    [G("classificationSystem"), GB("classification", "classificationGroup"), GB("classification", "classification")],
+    "classification",
+    { description: "Every element rolled up by its assigned industry classification code (Uniclass 2015 EF / UniFormat II / OmniClass) with hierarchical group subtotals; uncoded elements collect under 'Uncoded'." }),
 
   // ── Architectural ─────────────────────────────────────────────────
   T("tpl-door", "Door Schedule", "IFCDOOR",

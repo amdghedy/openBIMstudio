@@ -25,6 +25,12 @@ import type {
 } from "./schedule-types";
 import { compileFormula, validateFormula } from "./schedule-formula";
 import { summableColumnKeys } from "./schedule-totals";
+import {
+  classificationRowValues,
+  classificationGroup,
+  UNCODED_LABEL,
+} from "./schedule-classification";
+import { getAssignments, listSystems } from "../classification";
 
 /* ═════════════════════════════════════════════════════════════════════════
    Geometry math (shared with quantities.ts)
@@ -139,6 +145,13 @@ function authoredRow(el: AuthoredElement, def: ScheduleDefinition): ScheduleRow 
     systemType: String((el.properties as any)?.systemType ?? ""),
     count: 1,
   };
+
+  // Classification (UniFormat II / Uniclass 2015 EF / OmniClass Table 21):
+  // the element's first assigned code, its published title and the system
+  // name — empty strings when the element carries no assignment.
+  try {
+    Object.assign(values, classificationRowValues(el.id, getAssignments(), listSystems()));
+  } catch { /* classification optional */ }
 
   // Live quantities — pull from the takeoff engine when enabled.
   if (def.useLiveQuantities && takeoffCache) {
@@ -455,6 +468,15 @@ function bucketValue(value: any, bucket: GroupLevel["bucket"]): string | number 
   }
   if (bucket === "level") {
     return String(value ?? "—") || "—";
+  }
+  if (bucket === "classification") {
+    const s = String(value ?? "").trim();
+    return s || UNCODED_LABEL;
+  }
+  if (bucket === "classificationGroup" || bucket === "classificationSub") {
+    const s = String(value ?? "").trim();
+    if (!s) return UNCODED_LABEL;
+    return classificationGroup(s, bucket === "classificationGroup" ? 2 : 3) || UNCODED_LABEL;
   }
   return String(value ?? "—") || "—";
 }
