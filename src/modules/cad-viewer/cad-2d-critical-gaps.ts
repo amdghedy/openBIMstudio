@@ -433,6 +433,170 @@ export function intersectionMarkers(entities: DxfEntity[], indices: number[], la
   return out;
 }
 
+
+export function moveEntitiesBy(entities: DxfEntity[], indices: number[], dx: number, dy: number): number {
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    if (e.start) { e.start.x += dx; e.start.y += dy; }
+    if (e.end) { e.end.x += dx; e.end.y += dy; }
+    if (e.center) { e.center.x += dx; e.center.y += dy; }
+    if (e.position) { e.position.x += dx; e.position.y += dy; }
+    if (Array.isArray(e.points)) {
+      for (const p of e.points) { p.x += dx; p.y += dy; }
+    }
+    n++;
+  }
+  return n;
+}
+
+export function scaleEntitiesAbout(
+  entities: DxfEntity[],
+  indices: number[],
+  ox: number,
+  oy: number,
+  factor: number,
+): number {
+  if (!(factor > 0)) return 0;
+  const sc = (p: { x: number; y: number }) => {
+    p.x = ox + (p.x - ox) * factor;
+    p.y = oy + (p.y - oy) * factor;
+  };
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    if (e.start) sc(e.start);
+    if (e.end) sc(e.end);
+    if (e.center) sc(e.center);
+    if (e.position) sc(e.position);
+    if (e.radius != null) e.radius *= factor;
+    if (e.height != null) e.height *= factor;
+    if (Array.isArray(e.points)) for (const p of e.points) sc(p);
+    n++;
+  }
+  return n;
+}
+
+export function rotateEntitiesAbout(
+  entities: DxfEntity[],
+  indices: number[],
+  ox: number,
+  oy: number,
+  deg: number,
+): number {
+  const rad = (deg * Math.PI) / 180;
+  const c = Math.cos(rad), s = Math.sin(rad);
+  const rt = (p: { x: number; y: number }) => {
+    const x = p.x - ox, y = p.y - oy;
+    p.x = ox + x * c - y * s;
+    p.y = oy + x * s + y * c;
+  };
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    if (e.start) rt(e.start);
+    if (e.end) rt(e.end);
+    if (e.center) rt(e.center);
+    if (e.position) rt(e.position);
+    if (Array.isArray(e.points)) for (const p of e.points) rt(p);
+    if (e.rotation != null) e.rotation = (Number(e.rotation) || 0) + deg;
+    if (e.startAngle != null) e.startAngle = (Number(e.startAngle) || 0) + deg;
+    if (e.endAngle != null) e.endAngle = (Number(e.endAngle) || 0) + deg;
+    n++;
+  }
+  return n;
+}
+
+export function mirrorEntities(
+  entities: DxfEntity[],
+  indices: number[],
+  axis: "x" | "y",
+  at: number,
+): number {
+  const mir = (p: { x: number; y: number }) => {
+    if (axis === "x") p.y = at - (p.y - at);
+    else p.x = at - (p.x - at);
+  };
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    if (e.start) mir(e.start);
+    if (e.end) mir(e.end);
+    if (e.center) mir(e.center);
+    if (e.position) mir(e.position);
+    if (Array.isArray(e.points)) {
+      for (const p of e.points) mir(p);
+      e.points.reverse();
+    }
+    n++;
+  }
+  return n;
+}
+
+export function selectionCentroid(entities: DxfEntity[], indices: number[]): { x: number; y: number } | null {
+  const b = selectionBounds(entities, indices);
+  if (!b) return null;
+  return { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 };
+}
+
+export function alignSelection(
+  entities: DxfEntity[],
+  indices: number[],
+  mode: "left" | "right" | "top" | "bottom" | "centerx" | "centery",
+): number {
+  const b = selectionBounds(entities, indices);
+  if (!b) return 0;
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    const eb = selectionBounds(entities, [i]);
+    if (!eb) continue;
+    let dx = 0, dy = 0;
+    if (mode === "left") dx = b.minX - eb.minX;
+    else if (mode === "right") dx = b.maxX - eb.maxX;
+    else if (mode === "bottom") dy = b.minY - eb.minY;
+    else if (mode === "top") dy = b.maxY - eb.maxY;
+    else if (mode === "centerx") dx = (b.minX + b.maxX) / 2 - (eb.minX + eb.maxX) / 2;
+    else if (mode === "centery") dy = (b.minY + b.maxY) / 2 - (eb.minY + eb.maxY) / 2;
+    if (dx || dy) {
+      moveEntitiesBy(entities, [i], dx, dy);
+      n++;
+    }
+  }
+  return n;
+}
+
+export function distributeSelection(
+  entities: DxfEntity[],
+  indices: number[],
+  axis: "x" | "y",
+): number {
+  if (indices.length < 3) return 0;
+  const items = indices.map((i) => {
+    const b = selectionBounds(entities, [i]);
+    return { i, b, c: b ? (axis === "x" ? (b.minX + b.maxX) / 2 : (b.minY + b.maxY) / 2) : 0 };
+  }).filter((x) => x.b);
+  items.sort((a, b) => a.c - b.c);
+  if (items.length < 3) return 0;
+  const first = items[0].c, last = items[items.length - 1].c;
+  const step = (last - first) / (items.length - 1);
+  let n = 0;
+  for (let k = 1; k < items.length - 1; k++) {
+    const target = first + step * k;
+    const delta = target - items[k].c;
+    if (Math.abs(delta) < 1e-12) continue;
+    if (axis === "x") moveEntitiesBy(entities, [items[k].i], delta, 0);
+    else moveEntitiesBy(entities, [items[k].i], 0, delta);
+    n++;
+  }
+  return n;
+}
+
 export const CAD_2D_GAP_COMMANDS = [
   { name: "CENTERMARK", aliases: ["CMARK"], description: "Center mark on selected circles" },
   { name: "CENTERLINE", aliases: ["CLINE"], description: "Centerline between two selected parallel lines" },
@@ -464,4 +628,14 @@ export const CAD_2D_GAP_COMMANDS = [
   { name: "OPENPL", aliases: ["PLOPEN"], description: "Open selected polylines" },
   { name: "MARKMID", aliases: ["MIDPTS"], description: "Place POINT at midpoints of selected segments" },
   { name: "MARKINT", aliases: ["INTPTS"], description: "Place POINT at intersections of selected segments" },
+  { name: "MOVEBY", aliases: ["MVD"], description: "MOVEBY <dx> <dy> — nudge selection" },
+  { name: "SCALEBY", aliases: ["SCBY"], description: "SCALEBY <factor> — scale about selection center" },
+  { name: "ROTATEBY", aliases: ["ROBY"], description: "ROTATEBY <degrees> — rotate about selection center" },
+  { name: "MIRRORX", aliases: ["MX"], description: "Mirror selection about horizontal axis through center" },
+  { name: "MIRRORY", aliases: ["MY"], description: "Mirror selection about vertical axis through center" },
+  { name: "ALIGNL", aliases: ["ALLEFT"], description: "Align selection left edges" },
+  { name: "ALIGNR", aliases: ["ALRIGHT"], description: "Align selection right edges" },
+  { name: "ALIGNT", aliases: ["ALTOP"], description: "Align selection top edges" },
+  { name: "ALIGNB", aliases: ["ALBOTTOM"], description: "Align selection bottom edges" },
+  { name: "DISTRIBUTE", aliases: ["DISTR"], description: "DISTRIBUTE X|Y — even spacing" },
 ] as const;

@@ -69,6 +69,13 @@ import {
   setPolylineClosed,
   midpointMarkers,
   intersectionMarkers,
+  moveEntitiesBy,
+  scaleEntitiesAbout,
+  rotateEntitiesAbout,
+  mirrorEntities,
+  selectionCentroid,
+  alignSelection,
+  distributeSelection,
   CAD_2D_GAP_COMMANDS,
 } from "../modules/cad-viewer/cad-2d-critical-gaps";;
 import * as PolyBool from "../modules/cad-viewer/poly-boolean";
@@ -343,6 +350,16 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "OPENPL", aliases: ["PLOPEN"], description: "Open selected polylines" },
   { name: "MARKMID", aliases: ["MIDPTS"], description: "POINT at segment midpoints" },
   { name: "MARKINT", aliases: ["INTPTS"], description: "POINT at segment intersections" },
+  { name: "MOVEBY", aliases: ["MVD"], description: "MOVEBY <dx> <dy> nudge selection" },
+  { name: "SCALEBY", aliases: ["SCBY"], description: "SCALEBY <factor> about selection center" },
+  { name: "ROTATEBY", aliases: ["ROBY"], description: "ROTATEBY <deg> about selection center" },
+  { name: "MIRRORX", aliases: ["MX"], description: "Mirror about horizontal through center" },
+  { name: "MIRRORY", aliases: ["MY"], description: "Mirror about vertical through center" },
+  { name: "ALIGNL", aliases: ["ALLEFT"], description: "Align left edges" },
+  { name: "ALIGNR", aliases: ["ALRIGHT"], description: "Align right edges" },
+  { name: "ALIGNT", aliases: ["ALTOP"], description: "Align top edges" },
+  { name: "ALIGNB", aliases: ["ALBOTTOM"], description: "Align bottom edges" },
+  { name: "DISTRIBUTE", aliases: ["DISTR"], description: "DISTRIBUTE X|Y even spacing" },
   { name: "DIMALIGNED", aliases: ["DAL"], description: "Place an aligned dimension with two measured points and a line location" },
   { name: "DIMLINEAR", aliases: ["DLI"], description: "Place a horizontal or vertical dimension" },
   { name: "DIMANGULAR", aliases: ["DAN", "DIMANG"], description: "Angular dimension from a vertex and two rays" },
@@ -10765,6 +10782,94 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (!pts.length) { logCmd("MARKINT: no intersections found."); return; }
       addEntities(pts); draw();
       logCmd(`MARKINT: ${pts.length} intersection(s)`);
+      return;
+    }
+    if (cmd === "MOVEBY" || cmd === "MVD") {
+      if (!sel.size) { logCmd("MOVEBY: select objects first."); return; }
+      const parts = (arg || "").trim().split(/\s+/).map(Number);
+      if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) {
+        logCmd("MOVEBY: specify dx dy, e.g. MOVEBY 10 0");
+        return;
+      }
+      const n = moveEntitiesBy(ents, [...sel], parts[0], parts[1]);
+      markDirty(); draw();
+      logCmd(`MOVEBY: ${n} object(s) by ${parts[0]}, ${parts[1]}`);
+      return;
+    }
+    if (cmd === "SCALEBY" || cmd === "SCBY") {
+      if (!sel.size) { logCmd("SCALEBY: select objects first."); return; }
+      const f = Number(arg);
+      if (!(f > 0)) { logCmd("SCALEBY: specify factor, e.g. SCALEBY 2"); return; }
+      const c = selectionCentroid(ents, [...sel]);
+      if (!c) { logCmd("SCALEBY: no bounds."); return; }
+      const n = scaleEntitiesAbout(ents, [...sel], c.x, c.y, f);
+      markDirty(); draw();
+      logCmd(`SCALEBY: ${n} × ${f} about ${c.x.toFixed(3)},${c.y.toFixed(3)}`);
+      return;
+    }
+    if (cmd === "ROTATEBY" || cmd === "ROBY") {
+      if (!sel.size) { logCmd("ROTATEBY: select objects first."); return; }
+      const deg = Number(arg);
+      if (!Number.isFinite(deg)) { logCmd("ROTATEBY: specify degrees, e.g. ROTATEBY 90"); return; }
+      const c = selectionCentroid(ents, [...sel]);
+      if (!c) { logCmd("ROTATEBY: no bounds."); return; }
+      const n = rotateEntitiesAbout(ents, [...sel], c.x, c.y, deg);
+      markDirty(); draw();
+      logCmd(`ROTATEBY: ${n} by ${deg}°`);
+      return;
+    }
+    if (cmd === "MIRRORX" || cmd === "MX") {
+      if (!sel.size) { logCmd("MIRRORX: select objects first."); return; }
+      const c = selectionCentroid(ents, [...sel]);
+      if (!c) return;
+      const n = mirrorEntities(ents, [...sel], "x", c.y);
+      markDirty(); draw();
+      logCmd(`MIRRORX: ${n} object(s)`);
+      return;
+    }
+    if (cmd === "MIRRORY" || cmd === "MY") {
+      if (!sel.size) { logCmd("MIRRORY: select objects first."); return; }
+      const c = selectionCentroid(ents, [...sel]);
+      if (!c) return;
+      const n = mirrorEntities(ents, [...sel], "y", c.x);
+      markDirty(); draw();
+      logCmd(`MIRRORY: ${n} object(s)`);
+      return;
+    }
+    if (cmd === "ALIGNL" || cmd === "ALLEFT") {
+      if (sel.size < 2) { logCmd("ALIGNL: select 2+ objects."); return; }
+      const n = alignSelection(ents, [...sel], "left");
+      markDirty(); draw();
+      logCmd(`ALIGNL: ${n} adjusted`);
+      return;
+    }
+    if (cmd === "ALIGNR" || cmd === "ALRIGHT") {
+      if (sel.size < 2) { logCmd("ALIGNR: select 2+ objects."); return; }
+      const n = alignSelection(ents, [...sel], "right");
+      markDirty(); draw();
+      logCmd(`ALIGNR: ${n} adjusted`);
+      return;
+    }
+    if (cmd === "ALIGNT" || cmd === "ALTOP") {
+      if (sel.size < 2) { logCmd("ALIGNT: select 2+ objects."); return; }
+      const n = alignSelection(ents, [...sel], "top");
+      markDirty(); draw();
+      logCmd(`ALIGNT: ${n} adjusted`);
+      return;
+    }
+    if (cmd === "ALIGNB" || cmd === "ALBOTTOM") {
+      if (sel.size < 2) { logCmd("ALIGNB: select 2+ objects."); return; }
+      const n = alignSelection(ents, [...sel], "bottom");
+      markDirty(); draw();
+      logCmd(`ALIGNB: ${n} adjusted`);
+      return;
+    }
+    if (cmd === "DISTRIBUTE" || cmd === "DISTR") {
+      if (sel.size < 3) { logCmd("DISTRIBUTE: select 3+ objects."); return; }
+      const axis = (arg || "X").trim().toUpperCase() === "Y" ? "y" : "x";
+      const n = distributeSelection(ents, [...sel], axis as "x" | "y");
+      markDirty(); draw();
+      logCmd(`DISTRIBUTE ${axis.toUpperCase()}: ${n} adjusted`);
       return;
     }
 
