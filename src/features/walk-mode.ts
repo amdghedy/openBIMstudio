@@ -252,8 +252,18 @@ const sensorBusy = { chest: false, knee: false, ground: false };
 /* Head clearance: nearest obstacle straight above the eye (the model-side answer arrives later, stored as a world height). */
 let ceilModelY: number | null = null;
 let ceilBusy = false;
+let ceilSample: { t: number; y: number; d: number | null } | null = null;
 function ceilingDistance(): number | null {
   if (opts.noClip) return null;
+  // Throttled: ray-casting every frame against the whole model is costly on big models / slow GPUs. Sample at most every
+  // ~90 ms and correct the cached distance by the height gained since the sample, so the stop stays accurate.
+  const now = performance.now();
+  if (ceilSample && now - ceilSample.t < 90) return ceilSample.d === null ? null : Math.max(0, ceilSample.d - (state.pos.y - ceilSample.y));
+  const d = ceilingDistanceNow();
+  ceilSample = { t: now, y: state.pos.y, d };
+  return d;
+}
+function ceilingDistanceNow(): number | null {
   let best: number | null = null;
   const models = getCollisionTargets();
   if (models.length) {
@@ -286,7 +296,7 @@ let chaseDist = CHASE_DISTANCE;
 let chaseBusy = false;
 
 function resetSensors(): void {
-  chaseModelHit = null; chaseDist = CHASE_DISTANCE; chaseBusy = false; ceilModelY = null; ceilBusy = false;
+  chaseModelHit = null; chaseDist = CHASE_DISTANCE; chaseBusy = false; ceilModelY = null; ceilBusy = false; ceilSample = null;
   wallContacts = []; fragGround = null;
   sensorBusy.chest = sensorBusy.knee = sensorBusy.ground = false;
 }
