@@ -66,6 +66,11 @@ export function getCurrent(): CurrentProps {
 function setCurrentTextStyle(st: TextStyle): void { current.textStyle = st; writeJson(CUR_KEY, st.name); }
 
 /** Properties a newly drawn object should carry (only the non-default ones). */
+export function setCurrentColor(aci: number | undefined): void { current.color = aci; }
+export function setCurrentLineType(name: string | undefined): void { current.lineType = name || undefined; }
+export function setCurrentLineweight(mm: number | undefined): void { current.lineweight = mm; }
+export function getCurrentDrawingProps(): CurrentProps { return { ...current }; }
+
 export function newObjectProps(): { lineType?: string; lineweight?: number; color?: number } {
   const out: { lineType?: string; lineweight?: number; color?: number } = {};
   if (current.lineType) out.lineType = current.lineType;

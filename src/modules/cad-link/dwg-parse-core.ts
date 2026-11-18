@@ -42,6 +42,9 @@ const OPTIONAL_READER_URLS = [
   "/libredwg/libredwg-web.js",
   "/plugins/libredwg/index.js",
   "/libredwg/index.js",
+  // CDN last-resort when the deploy did not copy public/plugins/libredwg
+  "https://cdn.jsdelivr.net/npm/@mlightcad/libredwg-web@0.8.4/dist/libredwg-web.js",
+  "https://cdn.jsdelivr.net/npm/@mlightcad/libredwg-web@0.8.4/libredwg-web.js",
 ];
 const OPTIONAL_READER_DIRS = ["/plugins/libredwg/", "/libredwg/"];
 

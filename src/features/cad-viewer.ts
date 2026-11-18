@@ -90,7 +90,7 @@ import { promptLine, confirmDialog, pickFromList, openFormModal, showTableDialog
 import { loadCadAliases, resolveCadToken, openCadAliasEditor, effectiveAliases, registerCadAliasEditorOpener } from "./command-aliases";
 import {
   renderAppearanceEditor, openLinetypeManager, openTextStyleManager, placeText, editLayerProperty,
-  matchProperties, newObjectProps, lineweightPx, type CadStyleApi,
+  matchProperties, newObjectProps, lineweightPx, setCurrentColor, setCurrentLineType, setCurrentLineweight, getCurrentDrawingProps, type CadStyleApi,
 } from "./cad-style-ui";
 import { lineweightLabel } from "../modules/drawings/cad-styles";
 import { readDwgPreview, type DwgPreviewImage } from "../modules/drawings/dwg-preview";
@@ -10912,6 +10912,125 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const n = distributeSelection(ents, [...sel], axis as "x" | "y");
       markDirty(); draw();
       logCmd(`DISTRIBUTE ${axis.toUpperCase()}: ${n} adjusted`);
+      return;
+    }
+    if (cmd === "LAYHIDEM" || cmd === "LAYHIDEMULTI" || cmd === "HM") {
+      if (!sel.size) { logCmd("LAYHIDEM: select objects first (hides every layer in the selection)."); return; }
+      const names = hideLayersOfSelection(ents, [...sel], hidden);
+      // also mark layer table off when present
+      for (const n of names) {
+        const ly = doc?.layers?.find((l) => l.name === n);
+        if (ly) ly.off = true;
+      }
+      logCmd(`LAYHIDEM: hid ${names.length} layer(s): ${names.join(", ")}`);
+      try { buildLayers(); } catch { /* */ }
+      draw();
+      return;
+    }
+    if (cmd === "LAYSHOWM" || cmd === "LAYSHOWMULTI" || cmd === "SM") {
+      if (!sel.size) { logCmd("LAYSHOWM: select objects first."); return; }
+      const names = showLayersOfSelection(ents, [...sel], hidden);
+      for (const n of names) {
+        const ly = doc?.layers?.find((l) => l.name === n);
+        if (ly) { ly.off = false; ly.frozen = false; }
+      }
+      logCmd(`LAYSHOWM: showed ${names.length} layer(s): ${names.join(", ")}`);
+      try { buildLayers(); } catch { /* */ }
+      draw();
+      return;
+    }
+    if (cmd === "LAYINV" || cmd === "LAYINVERT") {
+      const all = (doc?.layers ?? []).map((l) => l.name).filter(Boolean);
+      invertLayerVisibility(all, hidden);
+      for (const l of doc?.layers ?? []) l.off = hidden.has(l.name);
+      logCmd(`LAYINV: inverted ${all.length} layer(s).`);
+      try { buildLayers(); } catch { /* */ }
+      draw();
+      return;
+    }
+    if (cmd === "LAYFILTER" || cmd === "LAYHIDEPAT") {
+      const pat = (arg || "").trim();
+      if (!pat) { logCmd("LAYFILTER: specify pattern, e.g. LAYFILTER A-* or LAYFILTER *WALL*"); return; }
+      const all = (doc?.layers ?? []).map((l) => l.name);
+      const hit = hideLayersByPattern(all, pat, hidden);
+      for (const n of hit) {
+        const ly = doc?.layers?.find((l) => l.name === n);
+        if (ly) ly.off = true;
+      }
+      logCmd(hit.length ? `LAYFILTER: hid ${hit.length} — ${hit.join(", ")}` : `LAYFILTER: no layers match "${pat}"`);
+      try { buildLayers(); } catch { /* */ }
+      draw();
+      return;
+    }
+    if (cmd === "LAYLIST" || cmd === "LAYLS") {
+      const rows = (doc?.layers ?? []).map((l) => {
+        const state = hidden.has(l.name) || l.off ? "OFF" : l.frozen ? "FROZEN" : "ON";
+        return `${l.name}=${state}`;
+      });
+      logCmd(rows.length ? `LAYLIST: ${rows.join(" · ")}` : "LAYLIST: no layers");
+      return;
+    }
+    if (cmd === "COLOR" || cmd === "COL") {
+      if (!arg) {
+        const cur = getCurrentDrawingProps().color;
+        logCmd(`COLOR = ${cur ?? "ByLayer"}. Set with COLOR <aci 1-255> or COLOR BYLAYER`);
+        return;
+      }
+      if (/^bylayer$/i.test(arg.trim())) {
+        setCurrentColor(undefined);
+        logCmd("COLOR = ByLayer");
+        return;
+      }
+      const aci = Number(arg);
+      if (!Number.isFinite(aci) || aci < 1 || aci > 255) {
+        logCmd("COLOR: use ACI 1–255 or BYLAYER");
+        return;
+      }
+      setCurrentColor(aci);
+      logCmd(`COLOR = ${aci}`);
+      return;
+    }
+    if (cmd === "LWEIGHT" || cmd === "LW") {
+      if (!arg) {
+        const cur = getCurrentDrawingProps().lineweight;
+        logCmd(`LWEIGHT = ${cur ?? "ByLayer"} mm`);
+        return;
+      }
+      if (/^bylayer$/i.test(arg.trim())) {
+        setCurrentLineweight(undefined);
+        logCmd("LWEIGHT = ByLayer");
+        return;
+      }
+      const mm = Number(arg);
+      if (!(mm >= 0)) { logCmd("LWEIGHT: specify mm, e.g. LWEIGHT 0.25"); return; }
+      setCurrentLineweight(mm);
+      logCmd(`LWEIGHT = ${mm} mm`);
+      return;
+    }
+    if (cmd === "CELTYPE" || cmd === "CELLT") {
+      const name = (arg || "").trim();
+      if (!name) {
+        logCmd(`CELTYPE = ${getCurrentDrawingProps().lineType ?? "ByLayer"}`);
+        return;
+      }
+      if (/^bylayer$/i.test(name)) {
+        setCurrentLineType(undefined);
+        logCmd("CELTYPE = ByLayer");
+        return;
+      }
+      setCurrentLineType(name);
+      logCmd(`CELTYPE = ${name}`);
+      return;
+    }
+    if (cmd === "SELBYLAYER" || cmd === "SBL") {
+      if (!sel.size) { logCmd("SELBYLAYER: select a seed object first."); return; }
+      const layers = new Set(layersOfSelection(ents, [...sel]));
+      sel.clear();
+      for (let i = 0; i < ents.length; i++) {
+        if (ents[i]?.layer && layers.has(ents[i].layer)) sel.add(i);
+      }
+      logCmd(`SELBYLAYER: ${sel.size} on ${[...layers].join(", ")}`);
+      draw();
       return;
     }
 

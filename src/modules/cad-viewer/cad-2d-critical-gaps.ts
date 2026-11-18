@@ -597,6 +597,67 @@ export function distributeSelection(
   return n;
 }
 
+
+/** Layer names used by the selection. */
+export function layersOfSelection(entities: DxfEntity[], indices: number[]): string[] {
+  const s = new Set<string>();
+  for (const i of indices) {
+    const e = entities[i];
+    if (e?.layer) s.add(e.layer);
+  }
+  return [...s];
+}
+
+export function hideLayersOfSelection(
+  entities: DxfEntity[],
+  indices: number[],
+  hidden: Set<string>,
+): string[] {
+  const names = layersOfSelection(entities, indices);
+  for (const n of names) hidden.add(n);
+  return names;
+}
+
+export function showLayersOfSelection(
+  entities: DxfEntity[],
+  indices: number[],
+  hidden: Set<string>,
+): string[] {
+  const names = layersOfSelection(entities, indices);
+  for (const n of names) hidden.delete(n);
+  return names;
+}
+
+export function invertLayerVisibility(allLayers: string[], hidden: Set<string>): void {
+  const next = new Set<string>();
+  for (const n of allLayers) {
+    if (!hidden.has(n)) next.add(n);
+  }
+  hidden.clear();
+  for (const n of next) hidden.add(n);
+}
+
+export function hideLayersByPattern(allLayers: string[], pattern: string, hidden: Set<string>): string[] {
+  const raw = pattern.trim();
+  if (!raw) return [];
+  let re: RegExp;
+  try {
+    // support * wildcards
+    const esc = raw.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
+    re = new RegExp(`^${esc}$`, "i");
+  } catch {
+    return [];
+  }
+  const hit: string[] = [];
+  for (const n of allLayers) {
+    if (re.test(n)) {
+      hidden.add(n);
+      hit.push(n);
+    }
+  }
+  return hit;
+}
+
 export const CAD_2D_GAP_COMMANDS = [
   { name: "CENTERMARK", aliases: ["CMARK"], description: "Center mark on selected circles" },
   { name: "CENTERLINE", aliases: ["CLINE"], description: "Centerline between two selected parallel lines" },
@@ -638,4 +699,14 @@ export const CAD_2D_GAP_COMMANDS = [
   { name: "ALIGNT", aliases: ["ALTOP"], description: "Align selection top edges" },
   { name: "ALIGNB", aliases: ["ALBOTTOM"], description: "Align selection bottom edges" },
   { name: "DISTRIBUTE", aliases: ["DISTR"], description: "DISTRIBUTE X|Y — even spacing" },
+  { name: "LAYHIDEM", aliases: ["LAYHIDEMULTI", "HM"], description: "Hide all layers of the selection at once" },
+  { name: "LAYSHOWM", aliases: ["LAYSHOWMULTI", "SM"], description: "Show all layers of the selection" },
+  { name: "LAYINV", aliases: ["LAYINVERT"], description: "Invert on/off visibility of every layer" },
+  { name: "LAYFILTER", aliases: ["LAYHIDEPAT"], description: "Hide layers matching a name pattern (e.g. LAYFILTER A-*)" },
+  { name: "LAYLIST", aliases: ["LAYLS"], description: "List layers and on/off state" },
+  { name: "COLOR", aliases: ["COL"], description: "Set current drawing colour ACI (COLOR 1)" },
+  { name: "LWEIGHT", aliases: ["LW"], description: "Set current lineweight mm (LWEIGHT 0.25)" },
+  { name: "CELTYPE", aliases: ["CELLT"], description: "Set current linetype name" },
+  { name: "QSAVEAS", aliases: ["SAVEDXF"], description: "Quick save DXF under a new name prompt" },
+  { name: "SELBYLAYER", aliases: ["SBL"], description: "Select every object on layers of the current selection" },
 ] as const;
