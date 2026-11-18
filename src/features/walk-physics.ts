@@ -67,3 +67,13 @@ export function chaseDistance(want: number, hit: number | null, prev: number, dt
   if (limit <= prev) return limit;
   return Math.min(limit, prev + Math.max(0, dt) * 4); // ease out at 4 m/s
 }
+
+/**
+ * Raising with Space: the new lift after one step, stopped so the head stays `clearance` below a ceiling.
+ * `ceilDist` is the distance from the eye straight up to the nearest obstacle (null = nothing above). Lowering and
+ * already-too-high states are never pushed further up; they just stop rising.
+ */
+export function raiseWithCeiling(lift: number, step: number, ceilDist: number | null, maxLift = 60, clearance = 0.15): number {
+  const room = ceilDist === null ? step : Math.min(step, Math.max(0, ceilDist - clearance));
+  return Math.min(maxLift, lift + Math.max(0, room));
+}

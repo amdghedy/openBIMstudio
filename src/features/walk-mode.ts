@@ -34,7 +34,7 @@ import { readControlsTarget } from "../core/controls-target";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { getLevel, getLevels, getAuthoredGroup, getElements } from "./authoring";
-import { chaseDistance, clampSpeedFactor, constrainToWall, isBlockingHit, nextLevelElevation, slideVelocity, yawFromDirection } from "./walk-physics";
+import { raiseWithCeiling, chaseDistance, clampSpeedFactor, constrainToWall, isBlockingHit, nextLevelElevation, slideVelocity, yawFromDirection } from "./walk-physics";
 import type { WallContact } from "./walk-physics";
 import { getProjection, setProjection } from "./camera-tools";
 import { notify } from "../core/notify";
@@ -249,13 +249,44 @@ let wallContacts: WallContact[] = [];
 let fragGround: { x: number; z: number; y: number; t: number } | null = null;
 const sensorBusy = { chest: false, knee: false, ground: false };
 
+/* Head clearance: nearest obstacle straight above the eye (the model-side answer arrives later, stored as a world height). */
+let ceilModelY: number | null = null;
+let ceilBusy = false;
+function ceilingDistance(): number | null {
+  if (opts.noClip) return null;
+  let best: number | null = null;
+  const models = getCollisionTargets();
+  if (models.length) {
+    groundRay.set(state.pos.clone(), new THREE.Vector3(0, 1, 0));
+    groundRay.far = 14;
+    const passable = passableIds();
+    for (const h of safeIntersect(groundRay, models)) {
+      if (!h.object.visible) continue;
+      const hid = hitElementId(h.object);
+      if (hid && passable.has(hid)) continue;
+      best = h.distance;
+      break;
+    }
+  }
+  if (!ceilBusy) {
+    ceilBusy = true;
+    const y0 = state.pos.y;
+    void modelRay(state.pos.x, y0, state.pos.z, 0, 1, 0, 14)
+      .then((r) => { ceilModelY = r ? y0 + r.distance : null; })
+      .catch(() => { ceilModelY = null; })
+      .finally(() => { ceilBusy = false; });
+  }
+  if (ceilModelY !== null) { const d = ceilModelY - state.pos.y; if (d >= 0 && (best === null || d < best)) best = d; }
+  return best;
+}
+
 /* Third-person camera: nearest obstacle between the walker and the camera (model-side answer arrives later). */
 let chaseModelHit: number | null = null;
 let chaseDist = CHASE_DISTANCE;
 let chaseBusy = false;
 
 function resetSensors(): void {
-  chaseModelHit = null; chaseDist = CHASE_DISTANCE; chaseBusy = false;
+  chaseModelHit = null; chaseDist = CHASE_DISTANCE; chaseBusy = false; ceilModelY = null; ceilBusy = false;
   wallContacts = []; fragGround = null;
   sensorBusy.chest = sensorBusy.knee = sensorBusy.ground = false;
 }
@@ -976,12 +1007,12 @@ function tickBody(now: number) {
   // when the key is released (and follows stairs); without it the old behaviour applies (free nudge, then gravity).
   let manualVertical = false;
   if (opts.keepRaise) {
-    if (state.keys.has("space")) state.lift = Math.min(60, state.lift + 2.4 * dt);
+    if (state.keys.has("space")) state.lift = raiseWithCeiling(state.lift, 2.4 * dt, ceilingDistance());
     if (state.keys.has("c")) state.lift = Math.max(0, state.lift - 2.4 * dt);
   } else {
     manualVertical = state.keys.has("space") || state.keys.has("c");
     if (state.keys.has("space")) {
-      state.pos.y += 2.4 * dt;
+      state.pos.y += raiseWithCeiling(0, 2.4 * dt, ceilingDistance());
       state.vel.y = Math.max(state.vel.y, 0);
       state.airborne = true;
     }
