@@ -149,7 +149,7 @@ jobs:
   browser-smoke:
     name: Browser smoke (blocking, Chromium + Firefox + WebKit)
     needs: quality
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     # ubuntu-latest resolved to 26.04, which Playwright does not support yet
     # ("Playwright does not support chromium on ubuntu26.04-x64"); pin 24.04.
     runs-on: ubuntu-24.04
