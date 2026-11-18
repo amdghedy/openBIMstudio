@@ -67,32 +67,13 @@ async function loadReaderModule(): Promise<{ LibreDwg: Any; FileType: Any }> {
   // 2) Browser/worker: try public plugin URLs
   if (!mod && inBrowser) {
     for (const url of OPTIONAL_READER_URLS) {
-      mod = await tryImport(url);
-      if (mod) break;
-    }
-  }
-
-  // 3) Absolute same-origin last resort via fetch+blob (CSP-friendly workers)
-  if (!mod && inBrowser) {
-    for (const url of OPTIONAL_READER_URLS) {
+      // A missing plug-in URL answers with the SPA's HTML page; importing that only produces console errors, so check first.
       try {
         const res = await fetch(url, { credentials: "same-origin" });
-        if (!res.ok) {
-          errors.push(`${url}: HTTP ${res.status}`);
-          continue;
-        }
-        const text = await res.text();
-        const blob = new Blob([text], { type: "text/javascript" });
-        const obj = URL.createObjectURL(blob);
-        try {
-          mod = await import(/* @vite-ignore */ obj);
-        } finally {
-          try { URL.revokeObjectURL(obj); } catch { /* */ }
-        }
-        if (mod) break;
-      } catch (e) {
-        errors.push(`${url} fetch: ${e instanceof Error ? e.message : String(e)}`);
-      }
+        if (!res.ok || !/javascript|ecmascript/i.test(res.headers.get("content-type") ?? "")) { errors.push(`${url}: not installed`); continue; }
+      } catch (e) { errors.push(`${url}: ${e instanceof Error ? e.message : String(e)}`); continue; }
+      mod = await tryImport(url);
+      if (mod) break;
     }
   }
 
