@@ -11,7 +11,7 @@
  */
 import type { DxfDocument } from "../drawings/dxf-types";
 import { dwgDatabaseToDxfDocument } from "../drawings/dwg-convert";
-import { parseWithAcadEngine } from "../drawings/acad-engine";
+import { acadEngineVersion, parseWithAcadEngine } from "../drawings/acad-engine";
 import { DwgParseError, sniffDwgVersion, type DwgReaderErrorCode } from "./dwg-reader-protocol";
 
 type Any = Record<string, any>;
@@ -194,6 +194,9 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
     reader = await getReader();
   } catch (e) {
     if (e instanceof DwgParseError && e.code === "init-failed") {
+      let engineId = "";
+      try { engineId = (await acadEngineVersion()) ?? ""; } catch { /* diagnostics only */ }
+      if (engineId) engineWhy += ` [engine ${engineId}]`;
       // Say WHY the built-in engine gave up (it was only logged to the console before) and what to do next.
       throw new DwgParseError(
         "parse-failed",

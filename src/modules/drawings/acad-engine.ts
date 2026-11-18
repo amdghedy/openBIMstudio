@@ -151,7 +151,8 @@ async function fetchEngineBytes(): Promise<ArrayBuffer | null> {
   const urls = [CAD_ENGINE_URL, "./cad-engine/obim-cad-engine.wasm"];
   for (const url of urls) {
     try {
-      const res = await fetch(url);
+      // no-cache = always revalidate with the server (a cheap 304 when unchanged), so a redeployed engine is never shadowed by a stale copy
+      const res = await fetch(url, { cache: "no-cache" });
       if (res.ok) {
         const buf = await res.arrayBuffer();
         if (buf.byteLength > 4) return buf;

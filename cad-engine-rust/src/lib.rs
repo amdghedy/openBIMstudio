@@ -53,7 +53,7 @@ fn sniff(b: &[u8]) -> &'static str {
 #[no_mangle]
 pub extern "C" fn obim_engine_version() -> *mut u8 {
     let json = format!(
-        "{{\"engine\":\"acadrust\",\"bridge\":\"{}\",\"format\":\"json\"}}",
+        "{{\"engine\":\"acadrust\",\"bridge\":\"{}\",\"format\":\"json\",\"dwgRead\":\"failsafe\"}}",
         env!("CARGO_PKG_VERSION")
     );
     frame(json.as_bytes())
