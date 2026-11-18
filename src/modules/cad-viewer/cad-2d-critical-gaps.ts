@@ -162,6 +162,112 @@ export function drawingPropsSummary(doc: DxfDocument, fileName?: string): string
   return lines.join("\n");
 }
 
+
+export function totalLinearLength(entities: DxfEntity[], indices: number[]): number {
+  let sum = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    if (e.type === "LINE" && e.start && e.end) {
+      sum += Math.hypot(e.end.x - e.start.x, e.end.y - e.start.y);
+    } else if (e.type === "LWPOLYLINE" && Array.isArray(e.points) && e.points.length >= 2) {
+      for (let k = 1; k < e.points.length; k++) {
+        sum += Math.hypot(e.points[k].x - e.points[k - 1].x, e.points[k].y - e.points[k - 1].y);
+      }
+      if (e.closed && e.points.length > 2) {
+        const a = e.points[e.points.length - 1], b = e.points[0];
+        sum += Math.hypot(b.x - a.x, b.y - a.y);
+      }
+    } else if (e.type === "ARC" && e.center != null && e.radius != null) {
+      const a0 = ((e.startAngle ?? 0) * Math.PI) / 180;
+      const a1 = ((e.endAngle ?? 360) * Math.PI) / 180;
+      let d = a1 - a0;
+      while (d < 0) d += Math.PI * 2;
+      while (d > Math.PI * 2) d -= Math.PI * 2;
+      sum += Math.abs(e.radius) * d;
+    } else if (e.type === "CIRCLE" && e.radius != null) {
+      sum += 2 * Math.PI * Math.abs(e.radius);
+    }
+  }
+  return sum;
+}
+
+export function solidFillEntity(
+  pts: Array<{ x: number; y: number }>,
+  layer: string,
+): DxfEntity | null {
+  if (pts.length < 3) return null;
+  const poly = pts.length >= 4 ? pts.slice(0, 4) : [...pts, pts[0]];
+  return {
+    type: "LWPOLYLINE",
+    layer,
+    closed: true,
+    points: poly,
+    hatch: { pattern: "SOLID", scale: 1, angle: 0 } as any,
+  } as DxfEntity;
+}
+
+/** Axis-aligned bounding rectangle as closed LWPOLYLINE. */
+export function bboxPolyline(
+  bounds: { minX: number; minY: number; maxX: number; maxY: number },
+  layer: string,
+): DxfEntity {
+  const { minX, minY, maxX, maxY } = bounds;
+  return {
+    type: "LWPOLYLINE",
+    layer,
+    closed: true,
+    points: [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY },
+    ],
+  } as DxfEntity;
+}
+
+export function applyByLayer(entities: DxfEntity[], indices: number[]): number {
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    e.color = undefined;
+    e.rgb = undefined;
+    e.lineType = undefined;
+    e.lineweight = undefined;
+    n++;
+  }
+  return n;
+}
+
+export function setTextRotation(entities: DxfEntity[], indices: number[], deg: number): number {
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e || (e.type !== "TEXT" && e.type !== "MTEXT")) continue;
+    e.rotation = deg;
+    n++;
+  }
+  return n;
+}
+
+export function chpropSelection(
+  entities: DxfEntity[],
+  indices: number[],
+  patch: { layer?: string; color?: number; lineType?: string },
+): number {
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    if (patch.layer != null) e.layer = patch.layer;
+    if (patch.color != null) e.color = patch.color;
+    if (patch.lineType != null) e.lineType = patch.lineType;
+    n++;
+  }
+  return n;
+}
+
 export const CAD_2D_GAP_COMMANDS = [
   { name: "CENTERMARK", aliases: ["CMARK"], description: "Center mark on selected circles" },
   { name: "CENTERLINE", aliases: ["CLINE"], description: "Centerline between two selected parallel lines" },
@@ -173,4 +279,14 @@ export const CAD_2D_GAP_COMMANDS = [
   { name: "CENSUS", aliases: ["ENTCOUNT"], description: "Entity counts by type" },
   { name: "REGENALL", aliases: ["REA"], description: "Force full redraw / regen" },
   { name: "CLRSEL", aliases: ["SELCLR"], description: "Clear the selection set" },
+  { name: "SELECTALL", aliases: ["SELALL"], description: "Select every visible object" },
+  { name: "LAYCUR", aliases: ["SETCURLAYER"], description: "Set current layer from selection" },
+  { name: "CHPROP", aliases: ["CHANGEPROP"], description: "CHPROP LA <layer> | C <aci> | LT <linetype>" },
+  { name: "SOLID", aliases: ["SO"], description: "Solid fill from 3–4 picked corners (or selection bbox)" },
+  { name: "LENGTH", aliases: ["TOTALLEN"], description: "Total length of selected linear objects" },
+  { name: "COUNT", aliases: ["SELCOUNT"], description: "Count selected objects by type" },
+  { name: "BBOX", aliases: ["BOUNDINGBOX"], description: "Draw bounding box of selection" },
+  { name: "TORIENT", aliases: ["TEXTROT"], description: "Set rotation of selected TEXT/MTEXT (degrees)" },
+  { name: "SETBYLAYER", aliases: ["BYLAYER"], description: "Reset color/linetype/lineweight of selection to ByLayer" },
+  { name: "MULTIPLE", aliases: ["MULTI"], description: "Repeat the previous command continuously until Esc" },
 ] as const;

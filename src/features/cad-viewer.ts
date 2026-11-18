@@ -54,6 +54,12 @@ import {
   selectionBounds,
   countByType,
   drawingPropsSummary,
+  totalLinearLength,
+  solidFillEntity,
+  bboxPolyline,
+  applyByLayer,
+  setTextRotation,
+  chpropSelection,
   CAD_2D_GAP_COMMANDS,
 } from "../modules/cad-viewer/cad-2d-critical-gaps";;
 import * as PolyBool from "../modules/cad-viewer/poly-boolean";
@@ -308,6 +314,16 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "CENSUS", aliases: ["ENTCOUNT"], description: "Entity counts by type" },
   { name: "REGENALL", aliases: ["REA"], description: "Force full regen/redraw" },
   { name: "CLRSEL", aliases: ["SELCLR"], description: "Clear selection set" },
+  { name: "SELECTALL", aliases: ["SELALL"], description: "Select every visible object" },
+  { name: "LAYCUR", aliases: ["SETCURLAYER"], description: "Set current layer from selection" },
+  { name: "CHPROP", aliases: ["CHANGEPROP"], description: "CHPROP LA <layer> | C <aci> | LT <linetype>" },
+  { name: "SOLID", aliases: ["SO"], description: "Solid fill from selection bbox or 3–4 points" },
+  { name: "LENGTH", aliases: ["TOTALLEN"], description: "Total length of selected linear objects" },
+  { name: "COUNT", aliases: ["SELCOUNT"], description: "Count selected objects by type" },
+  { name: "BBOX", aliases: ["BOUNDINGBOX"], description: "Draw bounding box of selection" },
+  { name: "TORIENT", aliases: ["TEXTROT"], description: "Set rotation of selected TEXT (degrees)" },
+  { name: "SETBYLAYER", aliases: ["BYLAYER"], description: "Reset selection properties to ByLayer" },
+  { name: "MULTIPLE", aliases: ["MULTI"], description: "Repeat previous command until Esc" },
   { name: "DIMALIGNED", aliases: ["DAL"], description: "Place an aligned dimension with two measured points and a line location" },
   { name: "DIMLINEAR", aliases: ["DLI"], description: "Place a horizontal or vertical dimension" },
   { name: "DIMANGULAR", aliases: ["DAN", "DIMANG"], description: "Angular dimension from a vertex and two rays" },
@@ -1635,6 +1651,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const layoutIdxCache = new Map<number, M.SpatialIndex>();
   let press: { x: number; y: number; moved: boolean; id: number; band?: boolean; add?: boolean } | null = null;
   const sel = new Set<number>();
+  let multipleMode = false;
+  let lastCommandRaw = "";
   let selectionCyclingOn = true;
   let selectionCycleEl: HTMLDivElement | null = null;
   let selectionCycleOutside: ((event: PointerEvent) => void) | null = null;
@@ -4137,6 +4155,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     clearModState();
     if (had) {
       setTool("select");
+      multipleMode = false; // pack
       logCmd("*Cancel*");
       draw();
     }
@@ -9109,6 +9128,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function executeDrawingCommand(rawInput: string): void {
+    if (rawInput && !/^MULTIPLE\b/i.test(rawInput.trim())) lastCommandRaw = rawInput.trim();
     const trimmed = rawInput.trim();
     if (!trimmed) return;
     // DDEDIT / MLEADER: the typed line is annotation text, not a command.
@@ -10530,6 +10550,119 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       draw();
       logCmd("CLRSEL: selection cleared.");
+      return;
+    }
+    if (cmd === "SELECTALL" || cmd === "SELALL") {
+      if (!doc) return;
+      sel.clear();
+      for (let i = 0; i < ents.length; i++) {
+        const e = ents[i];
+        if (!e) continue;
+        if (hidden.has(e.layer)) continue;
+        sel.add(i);
+      }
+      logCmd(`SELECTALL: ${sel.size} object(s).`);
+      draw();
+      return;
+    }
+    if (cmd === "LAYCUR" || cmd === "SETCURLAYER") {
+      if (!sel.size) { logCmd("LAYCUR: select an object first."); return; }
+      const i = [...sel][0];
+      const ly = ents[i]?.layer || "0";
+      currentLayer = ly;
+      logCmd(`LAYCUR: current layer = "${ly}".`);
+      return;
+    }
+    if (cmd === "CHPROP" || cmd === "CHANGEPROP") {
+      if (!sel.size) { logCmd("CHPROP: select objects first."); return; }
+      const parts = (arg || "").trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) {
+        logCmd("CHPROP: CHPROP LA <layer> · CHPROP C <aci> · CHPROP LT <linetype>");
+        return;
+      }
+      const patch: { layer?: string; color?: number; lineType?: string } = {};
+      for (let k = 0; k < parts.length; k++) {
+        const t0 = parts[k].toUpperCase();
+        const v = parts[k + 1];
+        if ((t0 === "LA" || t0 === "LAYER") && v) { patch.layer = v; k++; }
+        else if ((t0 === "C" || t0 === "COLOR") && v) { patch.color = Number(v); k++; }
+        else if ((t0 === "LT" || t0 === "LTYPE") && v) { patch.lineType = v; k++; }
+      }
+      const n = chpropSelection(ents, [...sel], patch);
+      markDirty();
+      draw();
+      logCmd(`CHPROP: ${n} object(s) updated.`);
+      return;
+    }
+    if (cmd === "SOLID" || cmd === "SO") {
+      if (!doc) return;
+      const idxs = [...sel];
+      const b = idxs.length ? selectionBounds(ents, idxs) : null;
+      if (b) {
+        const solid = solidFillEntity(
+          [
+            { x: b.minX, y: b.minY },
+            { x: b.maxX, y: b.minY },
+            { x: b.maxX, y: b.maxY },
+            { x: b.minX, y: b.maxY },
+          ],
+          currentLayer,
+        );
+        if (solid) addEntities([solid]);
+        draw();
+        logCmd("SOLID: filled region from selection bounds.");
+      } else {
+        logCmd("SOLID: select objects first (uses selection bounding box).");
+      }
+      return;
+    }
+    if (cmd === "LENGTH" || cmd === "TOTALLEN") {
+      if (!sel.size) { logCmd("LENGTH: select linear objects first."); return; }
+      const len = totalLinearLength(ents, [...sel]);
+      logCmd(`LENGTH: ${len.toFixed(4)} (drawing units) · ${sel.size} object(s)`);
+      return;
+    }
+    if (cmd === "COUNT" || cmd === "SELCOUNT") {
+      if (!sel.size) { logCmd("COUNT: nothing selected."); return; }
+      const list = [...sel].map((i) => ents[i]).filter(Boolean) as any[];
+      const by = countByType(list);
+      logCmd(`COUNT: ${sel.size} total — ` + Object.entries(by).map(([k, v]) => `${k}=${v}`).join(", "));
+      return;
+    }
+    if (cmd === "BBOX" || cmd === "BOUNDINGBOX") {
+      if (!sel.size) { logCmd("BBOX: select objects first."); return; }
+      const b = selectionBounds(ents, [...sel]);
+      if (!b) { logCmd("BBOX: no measurable bounds."); return; }
+      addEntities([bboxPolyline(b, currentLayer)]);
+      draw();
+      logCmd(`BBOX: ${b.minX.toFixed(3)},${b.minY.toFixed(3)} → ${b.maxX.toFixed(3)},${b.maxY.toFixed(3)}`);
+      return;
+    }
+    if (cmd === "TORIENT" || cmd === "TEXTROT") {
+      if (!sel.size) { logCmd("TORIENT: select TEXT/MTEXT first."); return; }
+      const deg = Number(arg);
+      if (!Number.isFinite(deg)) { logCmd("TORIENT: specify angle in degrees, e.g. TORIENT 45"); return; }
+      const n = setTextRotation(ents, [...sel], deg);
+      markDirty();
+      draw();
+      logCmd(n ? `TORIENT: ${n} text object(s) → ${deg}°` : "TORIENT: no TEXT/MTEXT in selection.");
+      return;
+    }
+    if (cmd === "SETBYLAYER" || cmd === "BYLAYER") {
+      if (!sel.size) { logCmd("SETBYLAYER: select objects first."); return; }
+      const n = applyByLayer(ents, [...sel]);
+      markDirty();
+      draw();
+      logCmd(`SETBYLAYER: ${n} object(s) set to ByLayer.`);
+      return;
+    }
+    if (cmd === "MULTIPLE" || cmd === "MULTI") {
+      multipleMode = true;
+      logCmd("MULTIPLE: on — previous command will repeat until Esc. Run a command, or Esc to cancel.");
+      if (lastCommandRaw && !/^MULTIPLE\b/i.test(lastCommandRaw)) {
+        // immediately re-run last command once to start the loop feel
+        executeDrawingCommand(lastCommandRaw);
+      }
       return;
     }
 
