@@ -60,6 +60,15 @@ import {
   applyByLayer,
   setTextRotation,
   chpropSelection,
+  scaleTextHeight,
+  justifyText,
+  setEntitiesLayer,
+  cloneEntitiesToLayer,
+  selectionArea,
+  reversePolyline,
+  setPolylineClosed,
+  midpointMarkers,
+  intersectionMarkers,
   CAD_2D_GAP_COMMANDS,
 } from "../modules/cad-viewer/cad-2d-critical-gaps";;
 import * as PolyBool from "../modules/cad-viewer/poly-boolean";
@@ -324,6 +333,16 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "TORIENT", aliases: ["TEXTROT"], description: "Set rotation of selected TEXT (degrees)" },
   { name: "SETBYLAYER", aliases: ["BYLAYER"], description: "Reset selection properties to ByLayer" },
   { name: "MULTIPLE", aliases: ["MULTI"], description: "Repeat previous command until Esc" },
+  { name: "SCALETEXT", aliases: ["STEXT"], description: "Scale height of selected TEXT/MTEXT" },
+  { name: "JUSTIFYTEXT", aliases: ["JTEXT"], description: "JUSTIFYTEXT L|C|R" },
+  { name: "COPYTOLAYER", aliases: ["COPY2LAY"], description: "Copy selection onto another layer" },
+  { name: "LAYMOV", aliases: ["MOVETOLAYER"], description: "Move selection to a layer" },
+  { name: "AREASEL", aliases: ["AREASEL"], description: "Area of selected closed shapes" },
+  { name: "REVERSEPL", aliases: ["REVPL"], description: "Reverse selected polylines" },
+  { name: "CLOSEPL", aliases: ["PLCLOSE"], description: "Close selected polylines" },
+  { name: "OPENPL", aliases: ["PLOPEN"], description: "Open selected polylines" },
+  { name: "MARKMID", aliases: ["MIDPTS"], description: "POINT at segment midpoints" },
+  { name: "MARKINT", aliases: ["INTPTS"], description: "POINT at segment intersections" },
   { name: "DIMALIGNED", aliases: ["DAL"], description: "Place an aligned dimension with two measured points and a line location" },
   { name: "DIMLINEAR", aliases: ["DLI"], description: "Place a horizontal or vertical dimension" },
   { name: "DIMANGULAR", aliases: ["DAN", "DIMANG"], description: "Angular dimension from a vertex and two rays" },
@@ -10663,6 +10682,89 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         // immediately re-run last command once to start the loop feel
         executeDrawingCommand(lastCommandRaw);
       }
+      return;
+    }
+    if (cmd === "SCALETEXT" || cmd === "STEXT") {
+      if (!sel.size) { logCmd("SCALETEXT: select TEXT/MTEXT first."); return; }
+      const f = Number(arg);
+      if (!(f > 0)) { logCmd("SCALETEXT: specify factor, e.g. SCALETEXT 2"); return; }
+      const n = scaleTextHeight(ents, [...sel], f);
+      markDirty(); draw();
+      logCmd(n ? `SCALETEXT: ${n} text × ${f}` : "SCALETEXT: no TEXT/MTEXT in selection.");
+      return;
+    }
+    if (cmd === "JUSTIFYTEXT" || cmd === "JTEXT") {
+      if (!sel.size) { logCmd("JUSTIFYTEXT: select TEXT first."); return; }
+      const a = (arg || "").trim().toUpperCase();
+      const map: Record<string, "left" | "center" | "right"> = {
+        L: "left", LEFT: "left", C: "center", CENTER: "center", R: "right", RIGHT: "right",
+      };
+      const align = map[a];
+      if (!align) { logCmd("JUSTIFYTEXT: use L, C or R"); return; }
+      const n = justifyText(ents, [...sel], align);
+      markDirty(); draw();
+      logCmd(n ? `JUSTIFYTEXT: ${n} → ${align}` : "JUSTIFYTEXT: no TEXT in selection.");
+      return;
+    }
+    if (cmd === "COPYTOLAYER" || cmd === "COPY2LAY") {
+      if (!sel.size) { logCmd("COPYTOLAYER: select objects first."); return; }
+      const layer = (arg || "").trim();
+      if (!layer) { logCmd("COPYTOLAYER: specify target layer, e.g. COPYTOLAYER Annot"); return; }
+      const clones = cloneEntitiesToLayer(ents, [...sel], layer);
+      addEntities(clones); draw();
+      logCmd(`COPYTOLAYER: ${clones.length} → "${layer}"`);
+      return;
+    }
+    if (cmd === "LAYMOV" || cmd === "MOVETOLAYER") {
+      if (!sel.size) { logCmd("LAYMOV: select objects first."); return; }
+      const layer = (arg || "").trim();
+      if (!layer) { logCmd("LAYMOV: specify layer, e.g. LAYMOV Walls"); return; }
+      const n = setEntitiesLayer(ents, [...sel], layer);
+      markDirty(); draw();
+      logCmd(`LAYMOV: ${n} → "${layer}"`);
+      return;
+    }
+    if (cmd === "AREASEL" || cmd === "AREASEL") {
+      if (!sel.size) { logCmd("AREASEL: select closed polylines/circles."); return; }
+      const a = selectionArea(ents, [...sel]);
+      logCmd(`AREASEL: ${a.toFixed(4)} (drawing units²)`);
+      return;
+    }
+    if (cmd === "REVERSEPL" || cmd === "REVPL") {
+      if (!sel.size) { logCmd("REVERSEPL: select polylines first."); return; }
+      const n = reversePolyline(ents, [...sel]);
+      markDirty(); draw();
+      logCmd(n ? `REVERSEPL: ${n} polyline(s)` : "REVERSEPL: no polylines in selection.");
+      return;
+    }
+    if (cmd === "CLOSEPL" || cmd === "PLCLOSE") {
+      if (!sel.size) { logCmd("CLOSEPL: select polylines first."); return; }
+      const n = setPolylineClosed(ents, [...sel], true);
+      markDirty(); draw();
+      logCmd(n ? `CLOSEPL: ${n} closed` : "CLOSEPL: no polylines.");
+      return;
+    }
+    if (cmd === "OPENPL" || cmd === "PLOPEN") {
+      if (!sel.size) { logCmd("OPENPL: select polylines first."); return; }
+      const n = setPolylineClosed(ents, [...sel], false);
+      markDirty(); draw();
+      logCmd(n ? `OPENPL: ${n} opened` : "OPENPL: no polylines.");
+      return;
+    }
+    if (cmd === "MARKMID" || cmd === "MIDPTS") {
+      if (!sel.size) { logCmd("MARKMID: select lines/polylines first."); return; }
+      const pts = midpointMarkers(ents, [...sel], currentLayer);
+      if (!pts.length) { logCmd("MARKMID: no segments found."); return; }
+      addEntities(pts); draw();
+      logCmd(`MARKMID: ${pts.length} point(s)`);
+      return;
+    }
+    if (cmd === "MARKINT" || cmd === "INTPTS") {
+      if (sel.size < 2) { logCmd("MARKINT: select at least two linear objects."); return; }
+      const pts = intersectionMarkers(ents, [...sel], currentLayer);
+      if (!pts.length) { logCmd("MARKINT: no intersections found."); return; }
+      addEntities(pts); draw();
+      logCmd(`MARKINT: ${pts.length} intersection(s)`);
       return;
     }
 

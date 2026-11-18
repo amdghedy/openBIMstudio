@@ -268,6 +268,171 @@ export function chpropSelection(
   return n;
 }
 
+
+export function scaleTextHeight(entities: DxfEntity[], indices: number[], factor: number): number {
+  if (!(factor > 0)) return 0;
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e || (e.type !== "TEXT" && e.type !== "MTEXT")) continue;
+    e.height = (Number(e.height) || 2.5) * factor;
+    n++;
+  }
+  return n;
+}
+
+export function justifyText(
+  entities: DxfEntity[],
+  indices: number[],
+  align: "left" | "center" | "right",
+): number {
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e || (e.type !== "TEXT" && e.type !== "MTEXT")) continue;
+    e.align = align;
+    n++;
+  }
+  return n;
+}
+
+export function setEntitiesLayer(entities: DxfEntity[], indices: number[], layer: string): number {
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    e.layer = layer;
+    n++;
+  }
+  return n;
+}
+
+export function cloneEntitiesToLayer(entities: DxfEntity[], indices: number[], layer: string): DxfEntity[] {
+  const out: DxfEntity[] = [];
+  for (const i of indices) {
+    const e = entities[i];
+    if (!e) continue;
+    const c = JSON.parse(JSON.stringify(e)) as any;
+    c.layer = layer;
+    delete c.handle;
+    out.push(c);
+  }
+  return out;
+}
+
+export function selectionArea(entities: DxfEntity[], indices: number[]): number {
+  let area = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    if (e.type === "CIRCLE" && e.radius != null) {
+      area += Math.PI * e.radius * e.radius;
+    } else if (e.type === "LWPOLYLINE" && Array.isArray(e.points) && e.points.length >= 3 && e.closed) {
+      const pts = e.points as Array<{ x: number; y: number }>;
+      let a = 0;
+      for (let k = 0; k < pts.length; k++) {
+        const p = pts[k], q = pts[(k + 1) % pts.length];
+        a += p.x * q.y - q.x * p.y;
+      }
+      area += Math.abs(a) * 0.5;
+    }
+  }
+  return area;
+}
+
+export function reversePolyline(entities: DxfEntity[], indices: number[]): number {
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e || e.type !== "LWPOLYLINE" || !Array.isArray(e.points)) continue;
+    e.points = [...e.points].reverse();
+    n++;
+  }
+  return n;
+}
+
+export function setPolylineClosed(entities: DxfEntity[], indices: number[], closed: boolean): number {
+  let n = 0;
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e || e.type !== "LWPOLYLINE") continue;
+    e.closed = closed;
+    n++;
+  }
+  return n;
+}
+
+export function midpointMarkers(entities: DxfEntity[], indices: number[], layer: string): DxfEntity[] {
+  const out: DxfEntity[] = [];
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e) continue;
+    if (e.type === "LINE" && e.start && e.end) {
+      out.push({
+        type: "POINT",
+        layer,
+        position: { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2 },
+      } as DxfEntity);
+    } else if (e.type === "LWPOLYLINE" && Array.isArray(e.points)) {
+      for (let k = 1; k < e.points.length; k++) {
+        const a = e.points[k - 1], b = e.points[k];
+        out.push({
+          type: "POINT",
+          layer,
+          position: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        } as DxfEntity);
+      }
+    }
+  }
+  return out;
+}
+
+function segIntersect(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  c: { x: number; y: number },
+  d: { x: number; y: number },
+): { x: number; y: number } | null {
+  const den = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / den;
+  const u = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / den;
+  if (t < -1e-9 || t > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) return null;
+  return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+}
+
+function entitySegments(e: any): Array<[{ x: number; y: number }, { x: number; y: number }]> {
+  if (e.type === "LINE" && e.start && e.end) return [[e.start, e.end]];
+  if (e.type === "LWPOLYLINE" && Array.isArray(e.points) && e.points.length >= 2) {
+    const segs: Array<[{ x: number; y: number }, { x: number; y: number }]> = [];
+    for (let k = 1; k < e.points.length; k++) segs.push([e.points[k - 1], e.points[k]]);
+    if (e.closed && e.points.length > 2) segs.push([e.points[e.points.length - 1], e.points[0]]);
+    return segs;
+  }
+  return [];
+}
+
+export function intersectionMarkers(entities: DxfEntity[], indices: number[], layer: string): DxfEntity[] {
+  const segs: Array<[{ x: number; y: number }, { x: number; y: number }]> = [];
+  for (const i of indices) {
+    const e = entities[i];
+    if (e) segs.push(...entitySegments(e));
+  }
+  const out: DxfEntity[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const p = segIntersect(segs[i][0], segs[i][1], segs[j][0], segs[j][1]);
+      if (!p) continue;
+      const key = `${p.x.toFixed(6)},${p.y.toFixed(6)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ type: "POINT", layer, position: p } as DxfEntity);
+    }
+  }
+  return out;
+}
+
 export const CAD_2D_GAP_COMMANDS = [
   { name: "CENTERMARK", aliases: ["CMARK"], description: "Center mark on selected circles" },
   { name: "CENTERLINE", aliases: ["CLINE"], description: "Centerline between two selected parallel lines" },
@@ -289,4 +454,14 @@ export const CAD_2D_GAP_COMMANDS = [
   { name: "TORIENT", aliases: ["TEXTROT"], description: "Set rotation of selected TEXT/MTEXT (degrees)" },
   { name: "SETBYLAYER", aliases: ["BYLAYER"], description: "Reset color/linetype/lineweight of selection to ByLayer" },
   { name: "MULTIPLE", aliases: ["MULTI"], description: "Repeat the previous command continuously until Esc" },
+  { name: "SCALETEXT", aliases: ["STEXT"], description: "Scale height of selected TEXT/MTEXT" },
+  { name: "JUSTIFYTEXT", aliases: ["JTEXT"], description: "JUSTIFYTEXT L|C|R" },
+  { name: "COPYTOLAYER", aliases: ["COPY2LAY"], description: "Copy selection onto another layer" },
+  { name: "LAYMOV", aliases: ["MOVETOLAYER"], description: "Move selection to a layer" },
+  { name: "AREASEL", aliases: ["AREASEL"], description: "Area of selected closed polylines/circles" },
+  { name: "REVERSEPL", aliases: ["REVPL"], description: "Reverse selected polyline vertex order" },
+  { name: "CLOSEPL", aliases: ["PLCLOSE"], description: "Close selected polylines" },
+  { name: "OPENPL", aliases: ["PLOPEN"], description: "Open selected polylines" },
+  { name: "MARKMID", aliases: ["MIDPTS"], description: "Place POINT at midpoints of selected segments" },
+  { name: "MARKINT", aliases: ["INTPTS"], description: "Place POINT at intersections of selected segments" },
 ] as const;
