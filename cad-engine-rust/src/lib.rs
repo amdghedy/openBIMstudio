@@ -215,7 +215,13 @@ pub fn read_bytes_to_json(bytes: &[u8]) -> Result<String, String> {
 }
 
 fn read_dwg(bytes: &[u8]) -> Result<String, String> {
-    let mut reader = acadrust::DwgReader::from_stream(Cursor::new(bytes.to_vec()));
+    // Failsafe: one unreadable record (e.g. a custom-class object some third-party application wrote) must not
+    // abort the whole drawing. Such records are skipped / recovered and counted in `stats.recoveredErrors`, which the
+    // viewer shows in the load summary. Strict mode failed real drawings with "Invalid record at handle ...".
+    let mut reader = acadrust::DwgReader::from_stream_with_options(
+        Cursor::new(bytes.to_vec()),
+        acadrust::DwgReadOptions::failsafe(),
+    );
     let outcome = reader
         .read_with_stats()
         .map_err(|e| format!("dwg-read-failed: {e}"))?;
