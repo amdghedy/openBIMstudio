@@ -5,6 +5,8 @@
  * along their projection and split into visible and hidden runs. Pure logic, no DOM or three.js.
  *
  * Geometry behind the camera is clipped at a 2 cm near plane (so zooming into a model keeps what is in front).
+ * Joint lines: an edge between two pieces of the same layer that lie in one plane (separate meshes whose vertices do not meet) is
+ * not drawn; a joint between different layers, or across a height step, is.
  * Limits (reported by the caller): visibility is decided per pixel sample, so lines are accurate to about one pixel of the chosen resolution; curved
  * surfaces show only their silhouette and creases, not tessellation edges below creaseDeg.
  */
@@ -81,8 +83,9 @@ export function hiddenLineProject(meshes: MeshInput[], cam: HlrCamera, opts: Hlr
 
   // Depth buffer (nearest view distance), perspective-correct via 1/depth interpolation.
   const buf = new Float32Array(W * H).fill(Infinity);
+  const idBuf = new Int32Array(W * H).fill(-1); // nearest triangle per pixel, for seam detection
   let clippedTris = 0, drawn = 0;
-  const raster = (p0: P2, p1: P2, p2: P2) => {
+  const raster = (p0: P2, p1: P2, p2: P2, ti: number) => {
     const x0 = p0.sx, y0 = p0.sy, x1 = p1.sx, y1 = p1.sy, x2 = p2.sx, y2 = p2.sy;
     const minX = Math.max(0, Math.floor(Math.min(x0, x1, x2))), maxX = Math.min(W - 1, Math.ceil(Math.max(x0, x1, x2)));
     const minY = Math.max(0, Math.floor(Math.min(y0, y1, y2))), maxY = Math.min(H - 1, Math.ceil(Math.max(y0, y1, y2)));
@@ -97,13 +100,14 @@ export function hiddenLineProject(meshes: MeshInput[], cam: HlrCamera, opts: Hlr
       if (l0 < -1e-6 || l1 < -1e-6 || l2 < -1e-6) continue;
       const d = 1 / (l0 * i0 + l1 * i1 + l2 * i2);
       const k = py * W + px;
-      if (d < buf[k]) buf[k] = d;
+      if (d < buf[k]) { buf[k] = d; idBuf[k] = ti; }
     }
   };
-  for (const t of tris) {
+  for (let ti = 0; ti < tris.length; ti++) {
+    const t = tris[ti];
     const ids = [t.a, t.b, t.c];
     const front = ids.map((i) => -VZ[i] > NEAR);
-    if (front[0] && front[1] && front[2]) { drawn++; raster(project(VX[t.a], VY[t.a], VZ[t.a]), project(VX[t.b], VY[t.b], VZ[t.b]), project(VX[t.c], VY[t.c], VZ[t.c])); continue; }
+    if (front[0] && front[1] && front[2]) { drawn++; raster(project(VX[t.a], VY[t.a], VZ[t.a]), project(VX[t.b], VY[t.b], VZ[t.b]), project(VX[t.c], VY[t.c], VZ[t.c]), ti); continue; }
     if (!front[0] && !front[1] && !front[2]) continue;
     // Clip the polygon against depth = NEAR (Sutherland–Hodgman) and fan-triangulate the result.
     const poly: number[][] = [];
@@ -115,7 +119,7 @@ export function hiddenLineProject(meshes: MeshInput[], cam: HlrCamera, opts: Hlr
     if (poly.length < 3) continue;
     clippedTris++; drawn++;
     const pp = poly.map((q) => project(q[0], q[1], q[2]));
-    for (let k = 1; k + 1 < pp.length; k++) raster(pp[0], pp[k], pp[k + 1]);
+    for (let k = 1; k + 1 < pp.length; k++) raster(pp[0], pp[k], pp[k + 1], ti);
   }
 
   // Feature edges.
@@ -175,25 +179,42 @@ export function hiddenLineProject(meshes: MeshInput[], cam: HlrCamera, opts: Hlr
     const px = bx - ax, py = by - ay, plen = Math.hypot(px, py);
     const steps = Math.max(1, Math.min(4000, Math.ceil(plen / 1.5)));
     const ia = 1 / pa.d, ib = 1 / pb.d;
+    // Seam suppression: an edge (open, non-manifold or a crease of either piece) between two pieces of the SAME layer that lie in one plane (T-junctions or
+    // different subdivision keep their vertices apart, so the shared boundary is not detected as an interior edge) is not a
+    // real line. Decided per sample from the triangles found one pixel to either side of the edge.
+    const seamCheck = plen > 1e-6;
+    const sdx = -py / (plen || 1), sdy = px / (plen || 1);
+    const planeDist = (t: Tri, i: number) => t.nx * (V[i * 3] - V[t.a * 3]) + t.ny * (V[i * 3 + 1] - V[t.a * 3 + 1]) + t.nz * (V[i * 3 + 2] - V[t.a * 3 + 2]);
+    const isSeam = (sx: number, sy: number): boolean => {
+      const l = idBuf[Math.max(0, Math.min(H - 1, Math.floor(sy + sdy * 1.6))) * W + Math.max(0, Math.min(W - 1, Math.floor(sx + sdx * 1.6)))];
+      const r = idBuf[Math.max(0, Math.min(H - 1, Math.floor(sy - sdy * 1.6))) * W + Math.max(0, Math.min(W - 1, Math.floor(sx - sdx * 1.6)))];
+      if (l < 0 || r < 0) return false;
+      const tl = tris[l], tr = tris[r];
+      if (tl.layer !== tr.layer || tl.layer !== e.layer) return false;
+      if (Math.abs(tl.nx * tr.nx + tl.ny * tr.ny + tl.nz * tr.nz) < 0.9995) return false;
+      return Math.abs(planeDist(tl, e.a)) < 2e-3 && Math.abs(planeDist(tl, e.b)) < 2e-3 && Math.abs(planeDist(tr, e.a)) < 2e-3 && Math.abs(planeDist(tr, e.b)) < 2e-3;
+    };
     let runStart = 0, runVis = true;
-    const emit = (s0: number, s1: number, vis: boolean) => {
-      if (s1 <= s0) return;
+    const emit = (s0: number, s1: number, vis: boolean, seam = false) => {
+      if (s1 <= s0 || seam) return;
       const n0x = pa.nx + (pb.nx - pa.nx) * s0, n0y = pa.ny + (pb.ny - pa.ny) * s0;
       const n1x = pa.nx + (pb.nx - pa.nx) * s1, n1y = pa.ny + (pb.ny - pa.ny) * s1;
       // NDC is affine in screen space, so s is the same parameter for both.
       const [x1, y1] = toDraw(n0x, n0y), [x2, y2] = toDraw(n1x, n1y);
       (vis ? visible : hidden).push({ x1, y1, x2, y2, layer: e.layer });
     };
+    let runSeam = false;
     for (let s = 0; s <= steps; s++) {
       const u = s / steps;
       const sx = ax + px * u, sy = ay + py * u;
       const d = 1 / (ia + (ib - ia) * u);
       const b = bufAt(Math.floor(sx), Math.floor(sy));
       const vis = d <= b * 1.004 + 0.002;
-      if (s === 0) { runVis = vis; runStart = 0; continue; }
-      if (vis !== runVis) { emit(runStart / steps, (s - 0.5) / steps, runVis); runStart = (s - 0.5) / steps; runVis = vis; }
+      const seam = seamCheck && vis && isSeam(sx, sy);
+      if (s === 0) { runVis = vis; runSeam = seam; runStart = 0; continue; }
+      if (vis !== runVis || seam !== runSeam) { emit(runStart / steps, (s - 0.5) / steps, runVis, runSeam); runStart = (s - 0.5) / steps; runVis = vis; runSeam = seam; }
     }
-    emit(runStart, 1, runVis);
+    emit(runStart, 1, runVis, runSeam);
   }
   const keepHidden = opts.includeHidden ? hidden : [];
   return { visible, hidden: keepHidden, stats: { triangles: drawn, edges: edgeCount, droppedNearPlane: clippedTris, width: W, height: H, perspective: persp } };

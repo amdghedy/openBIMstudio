@@ -56,5 +56,16 @@ try {
   ok(vis("A-PROXY") > 1.5, "cube seen through the opening has visible edges, got " + vis("A-PROXY"));
   ok(vis("A-DOOR") < 0.1 && hid("A-DOOR") > 1.5, "cube behind solid wall is hidden, visible=" + vis("A-DOOR") + " hidden=" + hid("A-DOOR"));
   ok(vis("A-WALL") > 9, "wall outline and opening edge are drawn, got " + vis("A-WALL"));
+  // 10) Seams: two pieces of one layer in one plane whose vertices do not meet (a T-junction) leave no line between them;
+  //     the real outline beyond the joint stays; a different layer or a height step keeps the joint line.
+  const along = (res, layer, x, y0, y1) => len(res.visible.filter((e) => e.layer === layer && Math.abs(e.x1 - x) < 0.03 && Math.abs(e.x2 - x) < 0.03 && Math.min(e.y1, e.y2) >= y0 - 0.03 && Math.max(e.y1, e.y2) <= y1 + 0.03));
+  const pieceA = (layer) => box(-2, -1.5, 0, 0, 1.5, 1, layer), pieceB = (layer, top = 1) => box(0, -1.5, 0, 2, 0.5, top, layer);
+  const seam = H.hiddenLineProject([pieceA("A-SLAB"), pieceB("A-SLAB")], cam, { width: 900 });
+  ok(along(seam, "A-SLAB", 0, -1.5, 0.5) < 0.1, "no seam line where two coplanar same-layer pieces meet, got " + along(seam, "A-SLAB", 0, -1.5, 0.5));
+  ok(along(seam, "A-SLAB", 0, 0.5, 1.5) > 0.8, "the real outline beyond the joint is kept, got " + along(seam, "A-SLAB", 0, 0.5, 1.5));
+  const diff = H.hiddenLineProject([pieceA("A-SLAB"), pieceB("A-WALL")], cam, { width: 900 });
+  ok(along(diff, "A-SLAB", 0, -1.5, 0.5) + along(diff, "A-WALL", 0, -1.5, 0.5) > 1.2, "joint between different layers stays drawn");
+  const step = H.hiddenLineProject([pieceA("A-SLAB"), pieceB("A-SLAB", 1.5)], cam, { width: 900 });
+  ok(along(step, "A-SLAB", 0, -1.5, 0.5) > 1.2, "a height step is a real edge and stays drawn, got " + along(step, "A-SLAB", 0, -1.5, 0.5));
   console.log(`hidden-line: ${n} assertions passed`);
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
