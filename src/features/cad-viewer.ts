@@ -10510,7 +10510,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "REGENALL" || cmd === "REA") {
-      try { (window as any).__obsCadForceRegen?.(); } catch { /* */ }
+      // Full redraw IS the regen: draw() rebuilds every cached layer from the
+      // document (the old window-global "force regen" hook never existed).
       draw();
       logCmd("REGENALL: redraw complete.");
       return;
