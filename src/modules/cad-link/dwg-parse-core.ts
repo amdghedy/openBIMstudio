@@ -166,6 +166,7 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
 
   // Primary path: the acadrust engine reads every DWG version R12–R2018+ with
   // full entity coverage and returns structured read statistics.
+  let engineWhy = "";
   try {
     const acad = await parseWithAcadEngine(bytes, fileName);
     if (acad && acad.entityCount > 0) {
@@ -178,13 +179,34 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
     }
     // Partial / empty decode — try LibreDWG before giving up
     if (acad) {
+      engineWhy = acad.summary;
       console.warn("[dwg-reader] acadrust produced no drawable entities, falling back to libredwg", acad.summary);
+    } else {
+      engineWhy = "the CAD engine (obim-cad-engine.wasm) could not be loaded";
     }
   } catch (e) {
+    engineWhy = e instanceof Error ? e.message : String(e);
     console.warn("[dwg-reader] acadrust path failed, falling back to libredwg:", e);
   }
 
-  const { lib, FileType } = await getReader();
+  let reader: { lib: Any; FileType: Any };
+  try {
+    reader = await getReader();
+  } catch (e) {
+    if (e instanceof DwgParseError && e.code === "init-failed") {
+      // Say WHY the built-in engine gave up (it was only logged to the console before) and what to do next.
+      throw new DwgParseError(
+        "parse-failed",
+        `the built-in engine could not read this ${sniff.label} (${sniff.code}) drawing: ${engineWhy || "no reason reported"}. ` +
+          "The optional fallback reader is not installed in this build. " +
+          "Workaround: in AutoCAD/BricsCAD/ZWCAD use SAVEAS -> DXF (ASCII, R2013 or R2018) and link the DXF; " +
+          "if the same drawing also fails as DXF, send that DXF so the engine can be fixed.",
+        `engine: ${engineWhy || "none"} | fallback: ${e.message}`,
+      );
+    }
+    throw e;
+  }
+  const { lib, FileType } = reader;
 
   let dwg: Any | null = null;
   const errors: string[] = [];
