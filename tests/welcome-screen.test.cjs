@@ -177,10 +177,12 @@ t("showcase: three pages numbered 01/02/03 with distinct accents", () => {
   for (const n of ['num: "01"', 'num: "02"', 'num: "03"']) assert.ok(home.includes(n), `missing ${n}`);
 });
 
-t(`showcase: command-count claims match the real engine (${N} commands)`, () => {
-  assert.ok(home.includes(`${N} keyboard-first commands`), "showcase copy must state the real command count");
-  assert.ok(home.includes(`${N}-command line`), "feature card must state the real command count");
-  assert.ok(home.includes(`${N} COMMANDS`), "hero specs must state the real command count");
+t(`showcase: command-count claims are true (${N} commands; claimed as a floor so it does not go stale every batch)`, () => {
+  const F = Math.floor(N / 100) * 100; // "200+" stays true until 300 commands exist
+  assert.ok(F >= 100, "claim floor");
+  assert.ok(home.includes(`${F}+ keyboard-first commands`), `showcase copy must claim ${F}+ commands (real count ${N})`);
+  assert.ok(home.includes(`${F}+ command line`), "feature card must claim the floor of the real command count");
+  assert.ok(home.includes(`${F}+ COMMANDS`), "hero specs must claim the floor of the real command count");
   for (const stale of ["118 COMMANDS", "118 command", "118-commands", "118 keyboard", "106 COMMANDS", "106 command", "106 keyboard"]) {
     assert.ok(!home.includes(stale), `stale claim "${stale}" must be gone`);
   }
