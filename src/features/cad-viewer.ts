@@ -77,8 +77,13 @@ import {
   selectionCentroid,
   alignSelection,
   distributeSelection,
+  layersOfSelection,
+  hideLayersOfSelection,
+  showLayersOfSelection,
+  invertLayerVisibility,
+  hideLayersByPattern,
   CAD_2D_GAP_COMMANDS,
-} from "../modules/cad-viewer/cad-2d-critical-gaps";;
+} from "../modules/cad-viewer/cad-2d-critical-gaps";
 import * as PolyBool from "../modules/cad-viewer/poly-boolean";
 import * as AcadAdv from "../modules/cad-viewer/acad-advanced";
 import { evalExpr, isCalcExpr } from "../modules/cad-viewer/cad-cal";

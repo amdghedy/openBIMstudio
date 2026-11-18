@@ -12,10 +12,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Default ON so DWG fallback works in production (openBIMstudio workers deploy).
-// Set OBS_BUNDLE_LIBREDWG=0 to skip (commercial builds that must not ship GPL).
-if (process.env.OBS_BUNDLE_LIBREDWG === "0") {
-  console.log("[libredwg] skipped (OBS_BUNDLE_LIBREDWG=0)");
+// OPT-IN ONLY (OBS_BUNDLE_LIBREDWG=1). LibreDWG is GPL-3.0; the product owner requires a build with no licence
+// restrictions for commercial / mass distribution, enforced by tests/no-gpl-shipped.test.cjs. Do NOT flip this default
+// without an explicit decision from the owner (docs/COMMERCIAL-READINESS.md, L1).
+if (process.env.OBS_BUNDLE_LIBREDWG !== "1") {
+  console.log("[libredwg] not bundled (GPL-3.0; opt in with OBS_BUNDLE_LIBREDWG=1)");
   process.exit(0);
 }
 
