@@ -42,6 +42,7 @@ import type { DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-t
 import { escapeHtml } from "../core/html-escape";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
+import { sanitizeSessionUi, sessionUiSignature, type SessionUi } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import * as AcadParity from "../modules/cad-viewer/acad-parity"
@@ -1753,6 +1754,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     hiddenLayers: string[];
     frozenLayers: string[];
     offLayers: string[];
+    /** Working settings: background, colour mode, snaps, grid, filters, locked layers, current layer. */
+    ui?: SessionUi;
     at: number;
   };
   function sessionKeyFor(fileName: string): string {
@@ -1779,6 +1782,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       /* quota */
     }
   }
+  function currentUi(): SessionUi {
+    return {
+      bg, cmode, snapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, showGrid, showText, showHatch, showLt,
+      snapModes: [...snapModes], typeFilter: [...typeFilter], currentLayer,
+      lockedLayers: doc ? doc.layers.filter((l) => l.locked).map((l) => l.name) : [],
+    };
+  }
   function captureDrawingSession(): void {
     if (!doc || !name) return;
     // Sync layer.off from current hidden state so DXF/DWG and next open agree
@@ -1804,6 +1814,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       hiddenLayers: [...hidden],
       frozenLayers: doc.layers.filter((l) => l.frozen).map((l) => l.name),
       offLayers: doc.layers.filter((l) => l.off).map((l) => l.name),
+      ui: currentUi(),
       at: Date.now(),
     };
     const map = loadSessionMap();
@@ -1832,6 +1843,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     // Also hide names that appear only in session (not in doc.layers yet)
     for (const n of hide) hidden.add(n);
+
+    // Working settings (validated; anything unknown or malformed is ignored)
+    try {
+      const u = sanitizeSessionUi(sess.ui, Object.keys(BG), M.ALL_SNAPS as readonly string[]);
+      if (u.bg !== undefined) { bg = u.bg; const sel = document.querySelector<HTMLSelectElement>("[data-a=bg]"); if (sel) sel.value = bg; }
+      if (u.cmode !== undefined) cmode = u.cmode;
+      if (u.snapOn !== undefined) snapOn = u.snapOn;
+      if (u.orthoOn !== undefined) orthoOn = u.orthoOn;
+      if (u.polarOn !== undefined) polarOn = u.polarOn;
+      if (u.polarAngle !== undefined) polarAngle = u.polarAngle;
+      if (u.otrackOn !== undefined) otrackOn = u.otrackOn;
+      if (u.dynOn !== undefined) dynOn = u.dynOn;
+      if (u.lwtOn !== undefined) lwtOn = u.lwtOn;
+      if (u.showGrid !== undefined) showGrid = u.showGrid;
+      if (u.showText !== undefined) showText = u.showText;
+      if (u.showHatch !== undefined) showHatch = u.showHatch;
+      if (u.showLt !== undefined) showLt = u.showLt;
+      if (u.snapModes && u.snapModes.length) { snapModes.clear(); for (const k of u.snapModes) snapModes.add(k as M.SnapKind); }
+      if (u.typeFilter) typeFilter = new Set(u.typeFilter);
+      if (u.currentLayer && doc.layers.some((l) => l.name === u.currentLayer)) currentLayer = u.currentLayer;
+      if (u.lockedLayers) { const lk = new Set(u.lockedLayers); for (const l of doc.layers) l.locked = lk.has(l.name); }
+      updateStatus();
+    } catch { /* settings are a convenience; never block opening */ }
 
     // Layout tab
     if (typeof sess.layoutI === "number") {
@@ -1866,6 +1900,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     layerVisStack.push([...hidden]);
     if (layerVisStack.length > 20) layerVisStack.shift();
   }
+  // Save settings changes (snaps, grid, background, locks, ...) shortly after they happen, even if no drawing edit follows.
+  let lastUiSig = "";
+  window.setInterval(() => {
+    if (!doc || !name) return;
+    const sig = sessionUiSignature(currentUi());
+    if (sig !== lastUiSig) { lastUiSig = sig; scheduleSessionSave(); }
+  }, 2500);
+  window.addEventListener("pagehide", () => { try { captureDrawingSession(); } catch { /* */ } });
   function scheduleSessionSave(): void {
     if (sessionSaveTimer != null) window.clearTimeout(sessionSaveTimer);
     sessionSaveTimer = window.setTimeout(() => {

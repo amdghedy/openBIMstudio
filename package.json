@@ -148,6 +148,7 @@
     "test:acad-solid-entities": "node tests/acad-solid-entities.test.cjs",
     "test:acad-byblock": "node tests/acad-byblock.test.cjs",
     "test:gradient-hatch": "node tests/gradient-hatch.test.cjs",
+    "test:session-state": "node tests/session-state.test.cjs",
     "test:reference-tracking": "node tests/reference-tracking.test.cjs",
     "test:stroke-font": "node tests/stroke-font.test.cjs",
     "test:acad-extra-entities": "node tests/acad-extra-entities.test.cjs",
