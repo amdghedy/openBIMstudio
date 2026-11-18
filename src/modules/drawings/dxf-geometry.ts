@@ -66,7 +66,7 @@ export function expandBulges(
     const last = i === n - 1;
     if (last && !closed) break;
     const b = verts[(i + 1) % n];
-    if (a.bulge) out.push(...bulgePoints(a, b, a.bulge));
+    if (a.bulge) { const bp = bulgePoints(a, b, a.bulge); for (let q = 0; q < bp.length; q++) out.push(bp[q]); }
   }
   return out;
 }

@@ -328,6 +328,11 @@ interface JsonColor {
 }
 
 /** Properties of the INSERT currently being expanded, used to resolve ByBlock inside its block. */
+/** Append `src` to `dst` without spreading it into call arguments (a spread of ~100k+ items overflows the JS stack). */
+function pushAll<T>(dst: T[], src: ArrayLike<T>): void {
+  for (let i = 0; i < src.length; i++) dst.push(src[i]);
+}
+
 export interface BlockInherit { color?: number; rgb?: number; lineType?: string; lineweight?: number; transparency?: number }
 
 function colorOf(c: JsonColor | undefined, inh?: BlockInherit): { color?: number; rgb?: number } {
@@ -665,7 +670,7 @@ function convertInsert(
           z: ins.z,
         },
       };
-      for (const ent of inner) out.push(...transformEntity(ent, xf));
+      for (const ent of inner) pushAll(out, transformEntity(ent, xf));
     }
   }
   // Attribute values attached to this insert render as absolute text.
@@ -724,7 +729,7 @@ function hatchOf(e: Any, cx: Ctx): DxfHatch | null {
         const arc = ccw
           ? arcPoints(ctr.x, ctr.y, r, a0, a1raw <= a0 ? a1raw + full : a1raw, 0)
           : arcPoints(ctr.x, ctr.y, r, a1raw, a0 <= a1raw ? a0 + full : a0, 0).reverse();
-        pts.push(...arc);
+        pushAll(pts, arc);
       } else if (kind === "ellipse") {
         const ctr = pt(ed.c);
         const maj = pt(ed.maj);
@@ -735,20 +740,20 @@ function hatchOf(e: Any, cx: Ctx): DxfHatch | null {
         const full = Math.PI * 2;
         const s = ccw ? a0 : a1raw;
         const t = ccw ? (a1raw <= a0 ? a1raw + full : a1raw) : a0 <= a1raw ? a0 + full : a0;
-        pts.push(...ellipsePoints(ctr, maj, ratio, s, t));
+        pushAll(pts, ellipsePoints(ctr, maj, ratio, s, t));
       } else if (kind === "spline") {
         const deg = Math.max(1, Math.round(Number(ed.degree ?? 3)));
         const ctrl = (ed.ctrl ?? []).map(pt);
         const knots = (ed.knots ?? []).map(Number);
         const fit = (ed.fit ?? []).map(pt);
-        pts.push(...(ctrl.length >= deg + 1 ? evalBSpline(ctrl, knots, deg) : fit.length ? fit : ctrl));
+        pushAll(pts, ctrl.length >= deg + 1 ? evalBSpline(ctrl, knots, deg) : fit.length ? fit : ctrl);
       } else if (kind === "poly") {
         const raw = (ed.pts ?? []).map((p: Any, i: number) => ({
           ...pt(p),
           bulge: Number(((ed.bulges ?? [])[i] as number) ?? 0) || undefined,
         }));
         const closed = ed.closed !== false;
-        pts.push(...(raw.some((p: Any) => p.bulge) ? expandBulges(raw, closed) : raw));
+        pushAll(pts, raw.some((p: Any) => p.bulge) ? expandBulges(raw, closed) : raw);
       }
     }
     const clean = pts.filter((p, i) => i === 0 || Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) > 1e-12);
@@ -1025,7 +1030,7 @@ function convertList(list: Any[], cx: Ctx): DxfEntity[] {
   const out: DxfEntity[] = [];
   for (const e of list) {
     try {
-      out.push(...convertEntity(e, cx, 0, null));
+      pushAll(out, convertEntity(e, cx, 0, null));
     } catch (err) {
       cx.skip(`${e?.type ?? "?"} (unreadable)`);
       if (err instanceof RangeError) throw err; // stack exhaustion is real

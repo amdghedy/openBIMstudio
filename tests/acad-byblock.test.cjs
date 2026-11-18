@@ -36,4 +36,10 @@ t("explicit lineweight, linetype scale and transparency inside a block survive t
   const b = ents(r).filter((e) => e.type === "LINE").find((e) => e.start.y === 1);
   assert.strictEqual(b.lineweight, 0.25); assert.strictEqual(b.ltScale, 2); assert.ok(b.transparency > 0);
 });
+t("one INSERT that expands to 150 000 entities converts without a stack overflow", () => {
+  const n = 150000, hs = [], ents = [{ handle: "1", type: "INSERT", block: "BIG", layer: "A", position: [0, 0, 0], rotation: 0, scale: [1, 1, 1], color: { t: "byLayer" }, lineType: "ByLayer", lineWeight: "byLayer" }];
+  for (let i = 0; i < n; i++) { const h = String(100 + i); hs.push(h); ents.push({ handle: h, type: "LINE", layer: "0", start: [i, 0, 0], end: [i, 1, 0], color: { t: "byLayer" }, lineType: "ByLayer", lineWeight: "byLayer" }); }
+  const d = E.mapDocument({ entities: ents, blockRecords: [{ name: "BIG", entityHandles: hs }], layers: [], linetypes: [] }, "dwg");
+  assert.strictEqual((d.entities ?? []).filter((e) => e.type === "LINE").length, n);
+});
 console.log(`acad-byblock: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
