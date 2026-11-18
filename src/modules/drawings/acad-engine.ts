@@ -110,24 +110,45 @@ export async function acadEngineVersion(): Promise<string | null> {
 export async function loadAcadEngine(): Promise<AcadInstance | null> {
   if (!instancePromise) {
     instancePromise = (async () => {
-      const bytes = await fetchEngineBytes();
-      if (!bytes) return null;
-      try {
-        const { instance } = await WebAssembly.instantiate(bytes, {});
-        const ex = instance.exports as AcadInstance["exports"];
-        // Smoke-test the ABI so a truncated artifact falls back cleanly.
-        ex.obim_engine_version();
-        return { exports: ex };
-      } catch (e) {
-        console.warn("[acad-engine] wasm instantiation failed:", e);
-        return null;
-      }
+      const first = await instantiateEngine(await fetchEngineBytes(false));
+      if (first && engineIsCurrent(first)) return first;
+      // Older engine than this app expects (a cached copy from before a redeploy): fetch it again, bypassing every cache.
+      const fresh = await instantiateEngine(await fetchEngineBytes(true));
+      if (fresh && (engineIsCurrent(fresh) || !first)) return fresh;
+      if (first) console.warn("[acad-engine] loaded engine lacks the expected capabilities even after a cache-busting reload");
+      return first ?? fresh;
     })();
     instancePromise.catch(() => {
       instancePromise = null;
     });
   }
   return instancePromise;
+}
+
+/** The engine must report the capabilities this app relies on (DWG reads in failsafe mode). */
+export const REQUIRED_ENGINE_DWG_READ = "failsafe";
+
+function engineIsCurrent(inst: AcadInstance): boolean {
+  try {
+    const id = JSON.parse(readFrame(inst, inst.exports.obim_engine_version())) as Any;
+    return id?.dwgRead === REQUIRED_ENGINE_DWG_READ;
+  } catch {
+    return false;
+  }
+}
+
+async function instantiateEngine(bytes: ArrayBuffer | null): Promise<AcadInstance | null> {
+  if (!bytes) return null;
+  try {
+    const { instance } = await WebAssembly.instantiate(bytes, {});
+    const ex = instance.exports as AcadInstance["exports"];
+    // Smoke-test the ABI so a truncated artifact falls back cleanly.
+    ex.obim_engine_version();
+    return { exports: ex };
+  } catch (e) {
+    console.warn("[acad-engine] wasm instantiation failed:", e);
+    return null;
+  }
 }
 
 /**
@@ -147,12 +168,13 @@ export async function setAcadEngineForTests(bytes: ArrayBuffer): Promise<boolean
   }
 }
 
-async function fetchEngineBytes(): Promise<ArrayBuffer | null> {
-  const urls = [CAD_ENGINE_URL, "./cad-engine/obim-cad-engine.wasm"];
+async function fetchEngineBytes(bust: boolean): Promise<ArrayBuffer | null> {
+  const q = bust ? `?cb=${Date.now()}` : "";
+  const urls = [CAD_ENGINE_URL + q, "./cad-engine/obim-cad-engine.wasm" + q];
   for (const url of urls) {
     try {
       // no-cache = always revalidate with the server (a cheap 304 when unchanged), so a redeployed engine is never shadowed by a stale copy
-      const res = await fetch(url, { cache: "no-cache" });
+      const res = await fetch(url, { cache: bust ? "reload" : "no-cache" });
       if (res.ok) {
         const buf = await res.arrayBuffer();
         if (buf.byteLength > 4) return buf;
