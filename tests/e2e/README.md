@@ -5,11 +5,11 @@ and `@playwright/test` is not a dependency yet (adding it needs a lockfile updat
 
 ```bash
 npm i -D @playwright/test
-npx playwright install chromium
-npx playwright test --project=chromium tests/e2e/smoke.spec.ts
+npx playwright install chromium firefox webkit
+npx playwright test tests/e2e/smoke.spec.ts
 ```
 
 - `smoke.spec.ts` - boots the app, opens the 2D plan, and checks the command line and Esc. Uses visible UI only.
 - `edit-undo-save.spec.ts` - `fixme`: it needs `data-testid` hooks the app does not have yet.
 
-CI runs `smoke.spec.ts` and `orbit-rtl.spec.ts` in Chromium via `.github/workflows/browser-smoke.yml` (informational, non-blocking). Nothing else in the UI has been verified in a browser.
+CI runs the smoke, orbit/RTL, native IFC, document-chain and save-flow specs in Chromium, Firefox and WebKit through `.github/workflows/unit-tests.yml`. The browser gate is blocking; traces, screenshots and reports are retained on every run.
