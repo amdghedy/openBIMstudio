@@ -20,4 +20,16 @@ t("lists are capped so a corrupted store cannot balloon", () => {
 t("signature changes with the settings and not otherwise", () => {
   assert.strictEqual(S.sessionUiSignature({ snapOn: true }), S.sessionUiSignature({ snapOn: true })); assert.notStrictEqual(S.sessionUiSignature({ snapOn: true }), S.sessionUiSignature({ snapOn: false }));
 });
+t("hidden objects round-trip by position and are dropped if the drawing changed", () => {
+  const ents = [{}, {}, {}, {}]; const h = new Set([ents[1], ents[3]]);
+  const saved = JSON.parse(JSON.stringify(S.hiddenEntityIndexes(ents, h)));
+  assert.deepStrictEqual(saved, { n: 4, idx: [1, 3] });
+  assert.deepStrictEqual(S.sanitizeHiddenEntities(saved, 4), [1, 3]);
+  assert.deepStrictEqual(S.sanitizeHiddenEntities(saved, 5), []);
+  assert.strictEqual(S.hiddenEntityIndexes(ents, new Set()), undefined);
+});
+t("hidden-object junk is ignored", () => {
+  assert.deepStrictEqual(S.sanitizeHiddenEntities({ n: 3, idx: [0, 0, -1, 9, 1.5, "2", 2] }, 3), [0, 2]);
+  for (const v of [null, 5, "x", { n: 3 }, { n: 3, idx: "no" }]) assert.deepStrictEqual(S.sanitizeHiddenEntities(v, 3), []);
+});
 console.log(`session-state: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

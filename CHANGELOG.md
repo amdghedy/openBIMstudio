@@ -11,6 +11,7 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## Unreleased
 
+- 2D: objects hidden one by one (Hide Objects) are remembered per drawing and stay hidden on reopen, as long as the drawing has the same number of entities.
 - CI: only Chromium gates the release; Firefox/WebKit moved to cross-browser.yml (nightly, advisory) because Firefox timeouts blocked every deploy.
 
 ## [Unreleased]

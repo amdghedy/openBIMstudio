@@ -42,7 +42,7 @@ import type { DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-t
 import { escapeHtml } from "../core/html-escape";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
-import { sanitizeSessionUi, sessionUiSignature, type SessionUi } from "../modules/cad-viewer/session-state";
+import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
 import * as AcadParity from "../modules/cad-viewer/acad-parity"
@@ -1761,6 +1761,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     offLayers: string[];
     /** Working settings: background, colour mode, snaps, grid, filters, locked layers, current layer. */
     ui?: SessionUi;
+    /** Objects hidden one by one (Hide Objects), by entity-list position. */
+    hiddenEnts?: SessionHiddenEntities;
     at: number;
   };
   function sessionKeyFor(fileName: string): string {
@@ -1820,6 +1822,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       frozenLayers: doc.layers.filter((l) => l.frozen).map((l) => l.name),
       offLayers: doc.layers.filter((l) => l.off).map((l) => l.name),
       ui: currentUi(),
+      hiddenEnts: hiddenEntityIndexes(doc.entities, hiddenEntities),
       at: Date.now(),
     };
     const map = loadSessionMap();
@@ -1848,6 +1851,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     // Also hide names that appear only in session (not in doc.layers yet)
     for (const n of hide) hidden.add(n);
+
+    // Objects hidden one by one (only when the drawing has the same number of entities as when saved)
+    try { for (const i of sanitizeHiddenEntities(sess.hiddenEnts, doc.entities.length)) hiddenEntities.add(doc.entities[i]); } catch { /* */ }
 
     // Working settings (validated; anything unknown or malformed is ignored)
     try {
@@ -1909,7 +1915,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let lastUiSig = "";
   window.setInterval(() => {
     if (!doc || !name) return;
-    const sig = sessionUiSignature(currentUi());
+    const sig = sessionUiSignature(currentUi()) + "|" + hiddenEntities.size;
     if (sig !== lastUiSig) { lastUiSig = sig; scheduleSessionSave(); }
   }, 2500);
   window.addEventListener("pagehide", () => { try { captureDrawingSession(); } catch { /* */ } });

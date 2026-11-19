@@ -53,3 +53,23 @@ export function sanitizeSessionUi(raw: unknown, bgOptions: readonly string[], sn
 export function sessionUiSignature(ui: SessionUi): string {
   return JSON.stringify(ui);
 }
+
+/** Objects the user hid one by one, remembered by position in the drawing's entity list. `n` is the list length when saved. */
+export interface SessionHiddenEntities { n: number; idx: number[] }
+
+export function hiddenEntityIndexes(entities: readonly unknown[], hidden: ReadonlySet<unknown>, max = 20000): SessionHiddenEntities | undefined {
+  if (!hidden.size) return undefined;
+  const idx: number[] = [];
+  for (let i = 0; i < entities.length && idx.length < max; i++) if (hidden.has(entities[i])) idx.push(i);
+  return idx.length ? { n: entities.length, idx } : undefined;
+}
+
+/** Returns the indexes to hide, or [] when the stored value is malformed or the drawing changed (different entity count). */
+export function sanitizeHiddenEntities(raw: unknown, entityCount: number): number[] {
+  if (!raw || typeof raw !== "object") return [];
+  const r = raw as { n?: unknown; idx?: unknown };
+  if (r.n !== entityCount || !Array.isArray(r.idx)) return [];
+  const seen = new Set<number>();
+  for (const v of r.idx) if (Number.isInteger(v) && (v as number) >= 0 && (v as number) < entityCount) seen.add(v as number);
+  return [...seen];
+}
