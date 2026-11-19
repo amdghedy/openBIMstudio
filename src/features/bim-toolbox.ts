@@ -381,8 +381,35 @@ graphics.content.append(
     action("Reveal / Show All", () => { try { (ctx.hider as any)?.show?.(); } catch {} }),
   ),
   row(
-    action("Section Box / Cut", () => { void import("./section-box").then((m) => m.toggleSectionBox()); }),
+    action("Section Box / Cut", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.toggleSectionBox3d());
+    }),
+    action("Reset Section Box", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.resetSectionBox3d());
+    }),
+  ),
+  row(
+    action("Section Plane", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.toggleSectionPlane3d());
+    }),
     action("View Templates", () => { window.dispatchEvent(new CustomEvent("obs:bim-command", { detail: { id: "view.templates" } })); }),
+  ),
+  row(
+    action("Zoom Extents", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.zoomExtents3d(false));
+    }),
+    action("Zoom Selection", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.zoomExtents3d(true));
+    }),
+  ),
+  row(
+    action("Camera Home", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.cameraHome3d());
+    }),
+    action("Reveal / Show All", () => {
+      try { (ctx.hider as any)?.show?.(); } catch {}
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.resetVisibility3d());
+    }),
   ),
 );
 
@@ -393,8 +420,26 @@ visibility.content.append(
     action("Clear Selection", () => { void clearAllSelection(); }),
   ),
   row(
-    action("Isolate Selection", () => { const snap = selection.snapshot(); if (Object.keys(snap).length) { try { (ctx.hider as any)?.isolate?.(snap); } catch {} } else toast("Nothing selected.", "warn"); }),
-    action("Show All", () => { try { (ctx.hider as any)?.show?.(); } catch {} }),
+    action("Isolate Selection", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.isolateSelection3d());
+    }),
+    action("Hide Selection", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.hideSelection3d());
+    }),
+  ),
+  row(
+    action("Reset Visibility", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.resetVisibility3d());
+    }),
+    action("Show All", () => { try { (ctx.hider as any)?.show?.(); } catch {} void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.resetVisibility3d()); }),
+  ),
+  row(
+    action("Hide Category", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.hideSelectedCategory3d());
+    }),
+    action("Selection Report", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.selectionReport3d());
+    }),
   ),
   row(
     action("Properties", () => { if (!isPropertyPaletteVisible()) togglePropertyPalette(); }),
