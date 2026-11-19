@@ -143,33 +143,18 @@ function applyGhostToObject(obj: THREE.Object3D, key: string, opacity: number): 
 
 /* 5 */ export async function cycleWireframe3d(): Promise<string> {
   try {
-    const mod = await import("../../features/bim-experience");
-    // experience may re-export from graphics module
-  } catch { /* */ }
-  try {
-    const gfx = await import("../../features/graphics-display");
-    const get = (gfx as Any).getVisualPreset;
-    const set = (gfx as Any).setVisualPreset;
-    if (get && set) {
-      const cur = get();
-      const next = cur === "wireframe" ? "shaded" : "wireframe";
-      set(next);
-      notify("success", `Visual: ${next}`);
-      return next;
-    }
-  } catch { /* */ }
-  try {
+    // Visual preset controls are owned by the BIM experience layer.
     const exp = await import("../../features/bim-experience");
     const get = (exp as Any).getVisualPreset;
     const set = (exp as Any).setVisualPreset;
-    if (get && set) {
+    if (typeof get === "function" && typeof set === "function") {
       const cur = get();
       const next = cur === "wireframe" ? "shaded" : "wireframe";
-      set(next);
+      await set(next);
       notify("success", `Visual: ${next}`);
       return next;
     }
-  } catch { /* */ }
+  } catch { /* Keep the command resilient when the view API is unavailable. */ }
   notify("warn", "Visual preset API not available");
   return "unknown";
 }
