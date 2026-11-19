@@ -586,6 +586,54 @@ function renderVisits(): void {
   });
 }
 
+const SHOWCASE_EXPANSION_KEY = "obs-home-showcase-expanded-v1";
+type ShowcaseExpansion = Record<string, number | null>;
+
+function readShowcaseExpansion(): ShowcaseExpansion {
+  try {
+    const raw = window.localStorage.getItem(SHOWCASE_EXPANSION_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const state: ShowcaseExpansion = {};
+    for (const topic of ["01", "02", "03"]) {
+      const value = parsed[topic];
+      if (value === null || (Number.isInteger(value) && Number(value) >= 0 && Number(value) < 6)) {
+        state[topic] = value as number | null;
+      }
+    }
+    return state;
+  } catch {
+    return {};
+  }
+}
+
+function persistShowcaseExpansion(topic: string, cardIndex: number | null): void {
+  if (!["01", "02", "03"].includes(topic)) return;
+  try {
+    const state = readShowcaseExpansion();
+    state[topic] = cardIndex;
+    window.localStorage.setItem(SHOWCASE_EXPANSION_KEY, JSON.stringify(state));
+  } catch {
+    // Storage may be disabled or full; the current interaction still works.
+  }
+}
+
+function setShowcaseCardState(card: HTMLElement, open: boolean): void {
+  card.classList.toggle("is-expanded", open);
+  card.setAttribute("aria-expanded", String(open));
+  const panel = card.querySelector<HTMLElement>(".obs-fcard__expand");
+  if (panel) panel.hidden = !open;
+}
+
+function restoreShowcaseExpansion(): void {
+  const state = readShowcaseExpansion();
+  inner.querySelectorAll<HTMLElement>(".obs-fcard[data-accordion]").forEach((card) => {
+    const topic = card.dataset.topic ?? "";
+    const index = Number(card.dataset.card);
+    setShowcaseCardState(card, Number.isInteger(index) && state[topic] === index);
+  });
+}
+
 function buildStatic() {
   inner.innerHTML = `
     <header class="obs-center-header">
@@ -718,15 +766,15 @@ function buildStatic() {
           <p class="obs-page__copy">${esc(p.copy)}</p>
           <div class="obs-fgrid">
             ${p.cards.map((c, i) => `
-            <div class="obs-fcard" data-topic="${p.num}" data-card="${i}" data-accordion="1" role="button" tabindex="0" aria-expanded="false">
+            <div class="obs-fcard" data-topic="${p.num}" data-card="${i}" data-accordion="1" role="button" tabindex="0" aria-expanded="false" aria-controls="obs-fcard-panel-${p.num}-${i}">
               <div class="obs-fcard__toggle">
                 <span class="obs-fcard__icon" aria-hidden="true">${esc(c.icon)}</span>
                 <span class="obs-fcard__body"><b>${esc(c.title)}</b><small>${esc(c.desc)}</small></span>
                 <span class="obs-fcard__chev" aria-hidden="true"></span>
               </div>
-              <div class="obs-fcard__expand">
+              <div class="obs-fcard__expand" id="obs-fcard-panel-${p.num}-${i}" hidden>
                 <p class="obs-fcard__brief">${esc(c.detailBody)}</p>
-                <ul class="obs-fcard__bullets">${c.bullets.slice(0, 4).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
+                <ul class="obs-fcard__bullets">${c.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
                 <p class="obs-fcard__howto"><strong>Try it:</strong> ${esc(c.howTo)}</p>
               </div>
             </div>`).join("")}
@@ -745,6 +793,8 @@ function buildStatic() {
       <span class="obs-home__visits" id="obs-visits" aria-live="polite"></span>
       <span><kbd>Ctrl</kbd> <kbd>O</kbd> Open &nbsp;·&nbsp; <kbd>Ctrl</kbd> <kbd>S</kbd> Save &nbsp;·&nbsp; <kbd>Ctrl</kbd> <kbd>P</kbd> Commands</span>
     </footer>`;
+
+  restoreShowcaseExpansion();
 
   mountLanguageButton(inner.querySelector(".obs-center-header"));
   mountAccountButton(inner.querySelector(".obs-center-header") as HTMLElement);
@@ -814,8 +864,8 @@ function buildStatic() {
   /* Feature cards: delegated click — expand / collapse (works on mobile + desktop) */
   const toggleFcard = (card: HTMLElement): void => {
     const open = !card.classList.contains("is-expanded");
-    card.classList.toggle("is-expanded", open);
-    card.setAttribute("aria-expanded", String(open));
+    setShowcaseCardState(card, open);
+    persistShowcaseExpansion(card.dataset.topic ?? "", open ? Number(card.dataset.card) : null);
   };
 
   // Capture-phase on the home root so nothing can swallow the click
@@ -833,13 +883,11 @@ function buildStatic() {
       if (!page) return;
       const cards = [...page.querySelectorAll<HTMLElement>(".obs-fcard")];
       const anyOpen = cards.some((c) => c.classList.contains("is-expanded"));
-      cards.forEach((c) => {
-        c.classList.remove("is-expanded");
-        c.setAttribute("aria-expanded", "false");
-      });
-      if (!anyOpen && cards[0]) {
-        cards[0].classList.add("is-expanded");
-        cards[0].setAttribute("aria-expanded", "true");
+      cards.forEach((c) => setShowcaseCardState(c, false));
+      const selected = !anyOpen && cards[0] ? 0 : null;
+      persistShowcaseExpansion(num ?? "", selected);
+      if (selected === 0 && cards[0]) {
+        setShowcaseCardState(cards[0], true);
         cards[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
       return;
