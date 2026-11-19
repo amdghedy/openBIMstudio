@@ -90,6 +90,8 @@ t("legacy project and clash scenario File.text imports use safeLoad before mutat
   assert.match(clash, /if \(file\.size > 2 \* 1024 \* 1024\)/);
   assert.doesNotMatch(menu, /JSON\.parse\(await f\.text\(\)\)/);
   assert.doesNotMatch(clash, /JSON\.parse\(text\)/);
+  assert.ok(menu.indexOf("safeLoad(f.name") < menu.indexOf("store.putProject(parsed.doc)"), "project state must not mutate before validation");
+  assert.ok(clash.indexOf("safeLoad(file.name") < clash.indexOf("persistScenarios([...byId.values()])"), "scenario state must not mutate before validation");
 });
 t("safe-load coverage audit includes shell and rejects assigned File.text bypasses", () => {
   const audit = fs.readFileSync(path.join(root, "scripts/check-safe-load-coverage.mjs"), "utf8");
