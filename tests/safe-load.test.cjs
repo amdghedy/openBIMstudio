@@ -99,6 +99,24 @@ t("safe-load coverage audit includes shell and rejects assigned File.text bypass
   assert.match(audit, /sourceRoots = \["src"\]/);
 });
 
+t("10 malformed import fixtures are rejected before any importer can consume them", () => {
+  const dir = path.join(root, "tests/fixtures/malformed");
+  const names = fs.readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
+  assert.strictEqual(names.length, 10, "malformed fixture corpus must contain exactly 10 named cases");
+  const schemaFor = (name) => {
+    if (name === "07-wrong-project-envelope.json") return safe.ProjectFileSchema;
+    if (name === "10-wrong-scenarios-envelope.json") return safe.ClashScenarioImportSchema;
+    return safe.LegacyProjectJsonSchema;
+  };
+  for (const name of names) {
+    const raw = fs.readFileSync(path.join(dir, name), "utf8");
+    const limits = name === "08-deeply-nested.json" ? { maxDepth: 32, maxNodes: 5000 } : {};
+    const maxBytes = name === "09-oversized.json" ? 512 : 20 * 1024 * 1024;
+    const result = safe.safeLoad(name, raw, schemaFor(name), maxBytes, limits);
+    assert.strictEqual(result.ok, false, name + " must be rejected");
+  }
+});
+
 (async () => {
   const doc = { id: "p", name: "P", createdAt: 1, updatedAt: 1, elements: [], models: [] };
   const blob = file.buildProjectFile(doc, [{ modelId: "m", name: "m.ifc", blob: new Blob(["abc"]) }]);
