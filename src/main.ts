@@ -1,3 +1,4 @@
+import "./core/webgpu-compat";
 import { APP_VERSION } from "./version";
 import "./features/usage-boot";
 import { setupManageLinks } from "./features/manage-links";
