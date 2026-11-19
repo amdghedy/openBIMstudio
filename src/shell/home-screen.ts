@@ -450,6 +450,55 @@ const VISUAL_DEL = `
   <text x="122" y="208" fill="#6B7280" font-family="monospace" font-size="9">SAME VAULT · EVERY DEVICE</text>
 </svg>`;
 
+const SHOWCASE_EXPANSION_KEY = "obs-home-showcase-expanded-v1";
+
+type ShowcaseExpansion = Record<string, number | null>;
+
+function readShowcaseExpansion(): ShowcaseExpansion {
+  try {
+    const raw = localStorage.getItem(SHOWCASE_EXPANSION_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const state: ShowcaseExpansion = {};
+    for (const topic of ["01", "02", "03"]) {
+      const value = parsed[topic];
+      if (value === null || (Number.isInteger(value) && Number(value) >= 0 && Number(value) < 6)) {
+        state[topic] = value as number | null;
+      }
+    }
+    return state;
+  } catch { return {}; }
+}
+
+function writeShowcaseExpansion(topic: string, cardIndex: number | null): void {
+  if (!["01", "02", "03"].includes(topic)) return;
+  try {
+    const state = readShowcaseExpansion();
+    state[topic] = cardIndex;
+    localStorage.setItem(SHOWCASE_EXPANSION_KEY, JSON.stringify(state));
+  } catch { /* storage can be disabled or full; this session still works */ }
+}
+
+async function copyShowcaseSteps(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch { /* use the selection-based fallback */ }
+  const field = document.createElement("textarea");
+  field.value = value;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  document.body.appendChild(field);
+  field.select();
+  let copied = false;
+  try { copied = document.execCommand("copy"); } catch { copied = false; }
+  field.remove();
+  return copied;
+}
+
 function emitWorkspace(id: string) {
   window.dispatchEvent(new CustomEvent("obs-workspace", { detail: { id } }));
   hideHome();
@@ -725,9 +774,14 @@ function buildStatic() {
                 <span class="obs-fcard__chev" aria-hidden="true"></span>
               </button>
               <div class="obs-fcard__expand" hidden>
+                <h4 class="obs-fcard__detail-title">${esc(c.detailTitle)}</h4>
                 <p class="obs-fcard__brief">${esc(c.detailBody)}</p>
-                <ul class="obs-fcard__bullets">${c.bullets.slice(0, 4).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
-                <p class="obs-fcard__howto"><strong>Try it:</strong> ${esc(c.howTo)}</p>
+                <ul class="obs-fcard__bullets">${c.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
+                <p class="obs-fcard__howto"><strong>Workflow:</strong> ${esc(c.howTo)}</p>
+                <div class="obs-fcard__actions">
+                  <button type="button" class="obs-fcard__action obs-fcard__action--primary" data-card-launch="${p.num}">${p.num === "01" ? "Launch 2D engine" : "Enter 3D platform"}</button>
+                  <button type="button" class="obs-fcard__action" data-card-copy="${esc(c.howTo)}">Copy steps</button>
+                </div>
               </div>
             </div>`).join("")}
           </div>
@@ -811,30 +865,64 @@ function buildStatic() {
   });
 
 
-  /* Feature cards: click to expand brief · click again to collapse */
+  /* Feature cards: accessible accordion with refresh-persistent state. */
   inner.querySelectorAll<HTMLElement>(".obs-fcard").forEach((card) => {
     const btn = card.querySelector<HTMLButtonElement>(".obs-fcard__toggle");
     const panel = card.querySelector<HTMLElement>(".obs-fcard__expand");
     if (!btn || !panel) return;
     btn.addEventListener("click", () => {
       const open = card.classList.contains("is-expanded");
-      // accordion within the same topic page: close siblings
+      const topic = card.dataset.topic ?? "";
       const page = card.closest(".obs-page");
       page?.querySelectorAll<HTMLElement>(".obs-fcard.is-expanded").forEach((other) => {
         if (other === card) return;
         other.classList.remove("is-expanded");
-        other.querySelector(".obs-fcard__expand")?.setAttribute("hidden", "");
-        other.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "false");
+        const otherPanel = other.querySelector<HTMLElement>(".obs-fcard__expand");
+        const otherButton = other.querySelector<HTMLButtonElement>(".obs-fcard__toggle");
+        if (otherPanel) otherPanel.hidden = true;
+        otherButton?.setAttribute("aria-expanded", "false");
       });
       if (open) {
         card.classList.remove("is-expanded");
         panel.hidden = true;
         btn.setAttribute("aria-expanded", "false");
+        writeShowcaseExpansion(topic, null);
       } else {
         card.classList.add("is-expanded");
         panel.hidden = false;
         btn.setAttribute("aria-expanded", "true");
+        writeShowcaseExpansion(topic, Number(card.dataset.card));
       }
+    });
+  });
+
+  // Restore the last expanded card in each topic after refresh.
+  for (const [topic, cardIndex] of Object.entries(readShowcaseExpansion())) {
+    if (cardIndex === null) continue;
+    const page = [...inner.querySelectorAll<HTMLElement>(".obs-page")]
+      .find((candidate) => candidate.querySelector(".obs-page__num")?.textContent === topic);
+    const card = page?.querySelectorAll<HTMLElement>(".obs-fcard")[cardIndex];
+    if (!card) continue;
+    card.classList.add("is-expanded");
+    const panel = card.querySelector<HTMLElement>(".obs-fcard__expand");
+    const button = card.querySelector<HTMLButtonElement>(".obs-fcard__toggle");
+    if (panel) panel.hidden = false;
+    button?.setAttribute("aria-expanded", "true");
+  }
+
+  inner.querySelectorAll<HTMLButtonElement>("[data-card-launch]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (button.dataset.cardLaunch === "01") open2dEngine();
+      else open3dPlatform();
+    });
+  });
+  inner.querySelectorAll<HTMLButtonElement>("[data-card-copy]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const copied = await copyShowcaseSteps(button.dataset.cardCopy ?? "");
+      button.textContent = copied ? "Copied" : "Copy unavailable";
+      window.setTimeout(() => { button.textContent = "Copy steps"; }, 1800);
     });
   });
   // Section header 01/02/03: expand first card or toggle all closed
@@ -848,6 +936,7 @@ function buildStatic() {
       if (!host) return;
       const cards = [...host.querySelectorAll<HTMLElement>(".obs-fcard")];
       const anyOpen = cards.some((c) => c.classList.contains("is-expanded"));
+      writeShowcaseExpansion(num ?? "", anyOpen ? null : 0);
       cards.forEach((c) => {
         const btn = c.querySelector<HTMLButtonElement>(".obs-fcard__toggle");
         const panel = c.querySelector<HTMLElement>(".obs-fcard__expand");
