@@ -658,6 +658,112 @@ export function hideLayersByPattern(allLayers: string[], pattern: string, hidden
   return hit;
 }
 
+
+/** Delete entities fully outside the selection bounding box (crop helper). */
+export function eraseOutsideBounds(
+  entities: DxfEntity[],
+  bounds: { minX: number; minY: number; maxX: number; maxY: number },
+): number[] {
+  const remove: number[] = [];
+  for (let i = 0; i < entities.length; i++) {
+    const b = selectionBounds(entities, [i]);
+    if (!b) continue;
+    if (b.maxX < bounds.minX || b.minX > bounds.maxX || b.maxY < bounds.minY || b.minY > bounds.maxY) {
+      remove.push(i);
+    }
+  }
+  return remove;
+}
+
+export function duplicateSelection(entities: DxfEntity[], indices: number[], dx: number, dy: number): DxfEntity[] {
+  const out: DxfEntity[] = [];
+  for (const i of indices) {
+    const e = entities[i];
+    if (!e) continue;
+    const c = JSON.parse(JSON.stringify(e)) as any;
+    delete c.handle;
+    if (c.start) { c.start.x += dx; c.start.y += dy; }
+    if (c.end) { c.end.x += dx; c.end.y += dy; }
+    if (c.center) { c.center.x += dx; c.center.y += dy; }
+    if (c.position) { c.position.x += dx; c.position.y += dy; }
+    if (Array.isArray(c.points)) for (const p of c.points) { p.x += dx; p.y += dy; }
+    out.push(c);
+  }
+  return out;
+}
+
+export function setFilletRadiusStore(r: number): void {
+  try { localStorage.setItem("obs.cad.filletR", String(r)); } catch { /* */ }
+}
+export function getFilletRadiusStore(def = 0): number {
+  try {
+    const v = Number(localStorage.getItem("obs.cad.filletR"));
+    return Number.isFinite(v) && v >= 0 ? v : def;
+  } catch { return def; }
+}
+export function setChamferDistStore(d1: number, d2?: number): void {
+  try { localStorage.setItem("obs.cad.chamferD", JSON.stringify([d1, d2 ?? d1])); } catch { /* */ }
+}
+export function getChamferDistStore(): [number, number] {
+  try {
+    const v = JSON.parse(localStorage.getItem("obs.cad.chamferD") || "null");
+    if (Array.isArray(v) && v.length >= 1) return [Number(v[0]) || 0, Number(v[1] ?? v[0]) || 0];
+  } catch { /* */ }
+  return [0, 0];
+}
+
+export function explodePolylines(entities: DxfEntity[], indices: number[]): DxfEntity[] {
+  const out: DxfEntity[] = [];
+  for (const i of indices) {
+    const e: any = entities[i];
+    if (!e || e.type !== "LWPOLYLINE" || !Array.isArray(e.points) || e.points.length < 2) continue;
+    for (let k = 1; k < e.points.length; k++) {
+      out.push({
+        type: "LINE",
+        layer: e.layer,
+        color: e.color,
+        lineType: e.lineType,
+        lineweight: e.lineweight,
+        start: { ...e.points[k - 1] },
+        end: { ...e.points[k] },
+      } as DxfEntity);
+    }
+    if (e.closed && e.points.length > 2) {
+      out.push({
+        type: "LINE",
+        layer: e.layer,
+        color: e.color,
+        lineType: e.lineType,
+        lineweight: e.lineweight,
+        start: { ...e.points[e.points.length - 1] },
+        end: { ...e.points[0] },
+      } as DxfEntity);
+    }
+  }
+  return out;
+}
+
+export function countZeroLength(entities: DxfEntity[]): number {
+  let n = 0;
+  for (const e of entities as any[]) {
+    if (e.type === "LINE" && e.start && e.end) {
+      if (Math.hypot(e.end.x - e.start.x, e.end.y - e.start.y) < 1e-9) n++;
+    }
+  }
+  return n;
+}
+
+export function removeZeroLength(entities: DxfEntity[]): number[] {
+  const rm: number[] = [];
+  for (let i = 0; i < entities.length; i++) {
+    const e: any = entities[i];
+    if (e?.type === "LINE" && e.start && e.end) {
+      if (Math.hypot(e.end.x - e.start.x, e.end.y - e.start.y) < 1e-9) rm.push(i);
+    }
+  }
+  return rm;
+}
+
 export const CAD_2D_GAP_COMMANDS = [
   { name: "CENTERMARK", aliases: ["CMARK"], description: "Center mark on selected circles" },
   { name: "CENTERLINE", aliases: ["CLINE"], description: "Centerline between two selected parallel lines" },
@@ -709,4 +815,14 @@ export const CAD_2D_GAP_COMMANDS = [
   { name: "CELTYPE", aliases: ["CELLT"], description: "Set current linetype name" },
   { name: "QSAVEAS", aliases: ["SAVEDXF"], description: "Quick save DXF under a new name prompt" },
   { name: "SELBYLAYER", aliases: ["SBL"], description: "Select every object on layers of the current selection" },
+  { name: "COPYBY", aliases: ["COBY"], description: "COPYBY <dx> <dy> — duplicate selection offset" },
+  { name: "ERASEOUT", aliases: ["CROPDEL"], description: "Erase objects outside selection bounds" },
+  { name: "FILLETRAD", aliases: ["FILLETR"], description: "Set default fillet radius" },
+  { name: "CHAMFERD", aliases: ["CHAMFERDIST"], description: "Set default chamfer distances" },
+  { name: "XPLODEPL", aliases: ["XPL"], description: "Explode selected polylines to lines" },
+  { name: "AUDITZL", aliases: ["PURGEZL"], description: "Remove zero-length lines" },
+  { name: "SNAPUNIT", aliases: ["SNAPU"], description: "Set snap grid spacing" },
+  { name: "GRIDUNIT", aliases: ["GRIDU"], description: "Set display grid spacing" },
+  { name: "DWGHELP", aliases: ["DWGTIP"], description: "DWG open troubleshooting tip" },
+  { name: "LAYERSTATS", aliases: ["LAYSTAT"], description: "Per-layer entity counts" },
 ] as const;

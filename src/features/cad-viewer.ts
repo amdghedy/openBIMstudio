@@ -1582,6 +1582,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   // Drawing status toggles
   let snapOn = true;
+  let userGridStep: number | null = null;
+  let userSnapStep: number | null = null;
   const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
   let orthoOn = false;
   let polarOn = true; // on by default for accurate orthogonal chains
@@ -2353,7 +2355,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /** Paints the drawing workspace major/minor grid and red/green axes through (0,0) */
   function paintGrid(c: CanvasRenderingContext2D, v: M.View): void {
-    const st = M.gridStep(v.scale),
+    const st = userGridStep && userGridStep > 0 ? userGridStep : M.gridStep(v.scale),
       tl = M.screenToWorld(v, 0, 0),
       br = M.screenToWorld(v, v.w, v.h);
     c.save();
@@ -11042,6 +11044,130 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       logCmd(`SELBYLAYER: ${sel.size} on ${[...layers].join(", ")}`);
       draw();
+      return;
+    }
+    if (cmd === "COPYBY" || cmd === "COBY") {
+      if (!sel.size) { logCmd("COPYBY: select objects first."); return; }
+      const parts = (arg || "").trim().split(/\s+/).map(Number);
+      if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) {
+        logCmd("COPYBY: specify dx dy, e.g. COPYBY 10 0");
+        return;
+      }
+      const clones = duplicateSelection(ents, [...sel], parts[0], parts[1]);
+      addEntities(clones); draw();
+      logCmd(`COPYBY: ${clones.length} copy(ies) offset ${parts[0]},${parts[1]}`);
+      return;
+    }
+    if (cmd === "ERASEOUT" || cmd === "CROPDEL") {
+      if (!sel.size) { logCmd("ERASEOUT: select the keep region objects first."); return; }
+      const b = selectionBounds(ents, [...sel]);
+      if (!b) { logCmd("ERASEOUT: no bounds."); return; }
+      const rm = new Set(eraseOutsideBounds(ents, b));
+      if (!rm.size) { logCmd("ERASEOUT: nothing outside selection bounds."); return; }
+      const removed: DxfEntity[] = [];
+      const keep: DxfEntity[] = [];
+      ents.forEach((e, i) => { if (rm.has(i)) removed.push(e); else keep.push(e); });
+      pushUndoAct({ type: "delete", entities: removed });
+      ents = keep;
+      if (layoutI < 0) modelEnts = keep;
+      sel.clear();
+      markDirty();
+      idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+      draw();
+      logCmd(`ERASEOUT: deleted ${removed.length} outside bounds`);
+      return;
+    }
+    if (cmd === "FILLETRAD" || cmd === "FILLETR") {
+      if (!arg) { logCmd(`FILLETRAD = ${getFilletRadiusStore()}`); return; }
+      const r = Number(arg);
+      if (!(r >= 0)) { logCmd("FILLETRAD: specify radius ≥ 0"); return; }
+      setFilletRadiusStore(r);
+      try { (window as any).__obsFilletR = r; } catch { /* */ }
+      logCmd(`FILLETRAD = ${r}`);
+      return;
+    }
+    if (cmd === "CHAMFERD" || cmd === "CHAMFERDIST") {
+      if (!arg) {
+        const [a, b] = getChamferDistStore();
+        logCmd(`CHAMFERD = ${a}, ${b}`);
+        return;
+      }
+      const parts = arg.trim().split(/\s+/).map(Number);
+      if (!Number.isFinite(parts[0])) { logCmd("CHAMFERD: CHAMFERD <d1> [d2]"); return; }
+      setChamferDistStore(parts[0], parts[1]);
+      logCmd(`CHAMFERD = ${parts[0]}, ${parts[1] ?? parts[0]}`);
+      return;
+    }
+    if (cmd === "XPLODEPL" || cmd === "XPL") {
+      if (!sel.size) { logCmd("XPLODEPL: select polylines first."); return; }
+      const lines = explodePolylines(ents, [...sel]);
+      if (!lines.length) { logCmd("XPLODEPL: no polylines in selection."); return; }
+      // erase selected polylines then add lines
+      const plIdx = new Set([...sel].filter((i) => ents[i]?.type === "LWPOLYLINE"));
+      const removed: DxfEntity[] = [];
+      const keep: DxfEntity[] = [];
+      ents.forEach((e, i) => { if (plIdx.has(i)) removed.push(e); else keep.push(e); });
+      pushUndoAct({ type: "delete", entities: removed });
+      ents = keep;
+      if (layoutI < 0) modelEnts = keep;
+      sel.clear();
+      addEntities(lines);
+      draw();
+      logCmd(`XPLODEPL: ${removed.length} polyline(s) → ${lines.length} line(s)`);
+      return;
+    }
+    if (cmd === "AUDITZL" || cmd === "PURGEZL") {
+      const rm = new Set(removeZeroLength(ents));
+      if (!rm.size) { logCmd(`AUDITZL: no zero-length lines (${countZeroLength(ents)} found).`); return; }
+      const removed: DxfEntity[] = [];
+      const keep: DxfEntity[] = [];
+      ents.forEach((e, i) => { if (rm.has(i)) removed.push(e); else keep.push(e); });
+      pushUndoAct({ type: "delete", entities: removed });
+      ents = keep;
+      if (layoutI < 0) modelEnts = keep;
+      sel.clear();
+      markDirty();
+      draw();
+      logCmd(`AUDITZL: removed ${removed.length} zero-length line(s)`);
+      return;
+    }
+    if (cmd === "SNAPUNIT" || cmd === "SNAPU") {
+      if (!arg) { logCmd(`SNAPUNIT = ${userSnapStep ?? "(auto)"}`); return; }
+      if (/^auto$/i.test(arg.trim())) { userSnapStep = null; logCmd("SNAPUNIT = auto"); return; }
+      const v = Number(arg);
+      if (!(v > 0)) { logCmd("SNAPUNIT: specify spacing > 0"); return; }
+      userSnapStep = v;
+      try { localStorage.setItem("obs.cad.snapUnit", String(v)); } catch { /* */ }
+      logCmd(`SNAPUNIT = ${v}`);
+      return;
+    }
+    if (cmd === "GRIDUNIT" || cmd === "GRIDU") {
+      if (!arg) { logCmd(`GRIDUNIT = ${userGridStep ?? "(auto)"}`); return; }
+      if (/^auto$/i.test(arg.trim())) { userGridStep = null; draw(); logCmd("GRIDUNIT = auto"); return; }
+      const v = Number(arg);
+      if (!(v > 0)) { logCmd("GRIDUNIT: specify spacing > 0"); return; }
+      userGridStep = v;
+      try { localStorage.setItem("obs.cad.gridUnit", String(v)); } catch { /* */ }
+      draw();
+      logCmd(`GRIDUNIT = ${v}`);
+      return;
+    }
+    if (cmd === "DWGHELP" || cmd === "DWGTIP") {
+      logCmd(
+        "DWGHELP: If DWG fails — (1) redeploy so prebuild copies LibreDWG to /plugins/libredwg " +
+        "(2) or SAVEAS DXF ASCII R2013/R2018 and open the DXF " +
+        "(3) large AC1032 files may overflow the built-in reader; DXF is the reliable path.",
+      );
+      return;
+    }
+    if (cmd === "LAYERSTATS" || cmd === "LAYSTAT") {
+      const counts: Record<string, number> = {};
+      for (const e of ents) {
+        const ly = e.layer || "0";
+        counts[ly] = (counts[ly] || 0) + 1;
+      }
+      const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`);
+      logCmd(rows.length ? `LAYERSTATS: ${rows.join(" · ")}` : "LAYERSTATS: empty");
       return;
     }
 
