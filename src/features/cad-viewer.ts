@@ -7112,7 +7112,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (f) b.onclick = f;
     });
 
-    const importIn = tools.querySelector<HTMLInputElement>("[data-r=importfile]")!;
+    const importIn = tools.querySelector<HTMLInputElement>("[data-r=importfile]") ?? (console.warn("[cad] ribbon control missing: [data-r=importfile]"), document.createElement("input"));
     importIn.onchange = () => {
       const files = [...(importIn.files ?? [])];
       void (async () => {
@@ -7134,7 +7134,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (f) void importSvgFile(f);
     };
 
-    const sel = (a: string) => tools.querySelector<HTMLSelectElement>(`[data-a=${a}]`)!;
+    // A missing ribbon control must never stop the drawing from opening: warn which one and use a detached stand-in.
+    const sel = (a: string) => tools.querySelector<HTMLSelectElement>(`[data-a=${a}]`) ?? (console.warn(`[cad] ribbon control missing: [data-a=${a}]`), document.createElement("select"));
     sel("bg").onchange = (e) => {
       bg = (e.target as HTMLSelectElement).value;
       draw();
