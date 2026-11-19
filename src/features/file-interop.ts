@@ -5,7 +5,6 @@ import { computeSceneBounds, fitAll } from "./camera-tools";
 import { loadIfcFiles, loadFragFiles } from "./importer";
 import { markDirty } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
-import { z } from "zod";
 import { safeLoad, LegacyProjectJsonSchema } from "../core/safeLoad";
 
 export const ACCEPT_ALL =
@@ -251,7 +250,7 @@ export async function importFiles(files: File[]) {
       if (file.name.endsWith(".obs.json") || e === "json") {
         if (file.size > 20 * 1024 * 1024) throw new Error("Project JSON exceeds the 20 MB import limit.");
         const text = await file.text();
-        if (text.includes("\"elements\"") && text.includes("\"models\"")) {
+        if (file.name.endsWith(".obs.json") || (text.includes("\"elements\"") && text.includes("\"models\""))) {
           const { putProject } = await import("../modules/projects/store");
           const { openProject } = await import("../modules/projects/projects");
           const loaded = safeLoad("legacy project JSON", text, LegacyProjectJsonSchema, 20 * 1024 * 1024,
