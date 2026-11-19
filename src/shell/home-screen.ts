@@ -718,12 +718,12 @@ function buildStatic() {
           <p class="obs-page__copy">${esc(p.copy)}</p>
           <div class="obs-fgrid">
             ${p.cards.map((c, i) => `
-            <div class="obs-fcard" data-topic="${p.num}" data-card="${i}" data-accordion="1">
-              <button type="button" class="obs-fcard__toggle" aria-expanded="false" title="${esc(c.title)}">
+            <div class="obs-fcard" data-topic="${p.num}" data-card="${i}" data-accordion="1" role="button" tabindex="0" aria-expanded="false">
+              <div class="obs-fcard__toggle">
                 <span class="obs-fcard__icon" aria-hidden="true">${esc(c.icon)}</span>
                 <span class="obs-fcard__body"><b>${esc(c.title)}</b><small>${esc(c.desc)}</small></span>
                 <span class="obs-fcard__chev" aria-hidden="true"></span>
-              </button>
+              </div>
               <div class="obs-fcard__expand">
                 <p class="obs-fcard__brief">${esc(c.detailBody)}</p>
                 <ul class="obs-fcard__bullets">${c.bullets.slice(0, 4).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
@@ -813,58 +813,57 @@ function buildStatic() {
 
   /* Feature cards: delegated click — expand / collapse (works on mobile + desktop) */
   const toggleFcard = (card: HTMLElement): void => {
-    const open = card.classList.contains("is-expanded");
-    const page = card.closest(".obs-page");
-    page?.querySelectorAll<HTMLElement>(".obs-fcard.is-expanded").forEach((other) => {
-      if (other === card) return;
-      other.classList.remove("is-expanded");
-      other.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "false");
-    });
-    if (open) {
-      card.classList.remove("is-expanded");
-      card.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "false");
-    } else {
-      card.classList.add("is-expanded");
-      card.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "true");
-    }
+    (window as any).__obsToggleFcard?.(card);
   };
 
   // Capture-phase on the home root so nothing can swallow the click
-  inner.addEventListener(
-    "click",
-    (ev) => {
-      const t = ev.target as HTMLElement | null;
-      if (!t) return;
-      const overviewBtn = t.closest<HTMLElement>("[data-topic-overview]");
-      if (overviewBtn && inner.contains(overviewBtn)) {
-        ev.preventDefault();
-        const num = overviewBtn.dataset.topicOverview;
-        const page = [...inner.querySelectorAll(".obs-page")].find(
-          (el) => el.querySelector(".obs-page__num")?.textContent?.trim() === num,
-        );
-        if (!page) return;
-        const cards = [...page.querySelectorAll<HTMLElement>(".obs-fcard")];
-        const anyOpen = cards.some((c) => c.classList.contains("is-expanded"));
-        cards.forEach((c) => {
-          c.classList.remove("is-expanded");
-          c.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "false");
-        });
-        if (!anyOpen && cards[0]) {
-          cards[0].classList.add("is-expanded");
-          cards[0].querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "true");
-          cards[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }
-        return;
+  const onCardActivate = (ev: Event) => {
+    const t = ev.target as HTMLElement | null;
+    if (!t || !inner.contains(t)) return;
+    const overviewBtn = t.closest<HTMLElement>("[data-topic-overview]");
+    if (overviewBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const num = overviewBtn.dataset.topicOverview;
+      const page = [...inner.querySelectorAll(".obs-page")].find(
+        (el) => el.querySelector(".obs-page__num")?.textContent?.trim() === num,
+      );
+      if (!page) return;
+      const cards = [...page.querySelectorAll<HTMLElement>(".obs-fcard")];
+      const anyOpen = cards.some((c) => c.classList.contains("is-expanded"));
+      cards.forEach((c) => {
+        c.classList.remove("is-expanded");
+        c.setAttribute("aria-expanded", "false");
+      });
+      if (!anyOpen && cards[0]) {
+        cards[0].classList.add("is-expanded");
+        cards[0].setAttribute("aria-expanded", "true");
+        cards[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
-      const card = t.closest<HTMLElement>(".obs-fcard[data-accordion]");
-      if (card && inner.contains(card)) {
-        // only toggle when clicking the card chrome / toggle (not nested CTAs)
-        ev.preventDefault();
-        toggleFcard(card);
-      }
-    },
-    true,
-  );
+      return;
+    }
+    const card = t.closest<HTMLElement>(".obs-fcard[data-accordion]");
+    if (!card) return;
+    // avoid double-fire: pointerup then click
+    if (ev.type === "click" && (ev as PointerEvent).pointerType === "touch") return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const fn = (window as any).__obsToggleFcard as ((el: HTMLElement) => void) | undefined;
+    if (fn) fn(card);
+    else toggleFcard(card);
+  };
+  // pointerup is more reliable than click on many Android browsers
+  inner.addEventListener("pointerup", onCardActivate, true);
+  inner.addEventListener("click", onCardActivate, true);
+  inner.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const t = ev.target as HTMLElement | null;
+    const card = t?.closest?.(".obs-fcard[data-accordion]") as HTMLElement | null;
+    if (!card || !inner.contains(card)) return;
+    ev.preventDefault();
+    (window as any).__obsToggleFcard?.(card);
+  }, true);
+
 
   /* Welcome-screen headline CTAs + showcase page CTAs */
   (inner.querySelector("#obs-hero-2d") as HTMLButtonElement | null)?.addEventListener("click", open2dEngine);
