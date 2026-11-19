@@ -1762,7 +1762,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   pointer-events: none; /* parent card receives the click */
 }
@@ -1771,8 +1771,8 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   width: 8px;
   height: 8px;
   margin-top: 6px;
-  margin-left: auto;
-  border-right: 2px solid var(--text-tertiary, #8b93a7);
+  margin-inline-start: auto;
+  border-inline-end: 2px solid var(--text-tertiary, #8b93a7);
   border-bottom: 2px solid var(--text-tertiary, #8b93a7);
   transform: rotate(45deg);
   transition: transform .18s ease;
@@ -1809,7 +1809,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 }
 .obs-fcard__bullets {
   margin: 0 0 8px;
-  padding-left: 1.1rem;
+  padding-inline-start: 1.1rem;
   color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.45;
