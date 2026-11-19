@@ -82,6 +82,15 @@ import {
   showLayersOfSelection,
   invertLayerVisibility,
   hideLayersByPattern,
+  duplicateSelection,
+  eraseOutsideBounds,
+  getFilletRadiusStore,
+  setFilletRadiusStore,
+  getChamferDistStore,
+  setChamferDistStore,
+  explodePolylines,
+  removeZeroLength,
+  countZeroLength,
   CAD_2D_GAP_COMMANDS,
 } from "../modules/cad-viewer/cad-2d-critical-gaps";
 import * as PolyBool from "../modules/cad-viewer/poly-boolean";
@@ -6441,8 +6450,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("mirror", "Mirror Y", `data-a="mirrory"`, "Mirror about vertical through center (MIRRORY)") +
           rb("align", "Align L", `data-a="alignl"`, "Align left edges (ALIGNL)") +
           rb("align", "Align R", `data-a="alignr"`, "Align right edges (ALIGNR)") +
-          rb("distribute", "Distribute", `data-a="distribute"`, "Even spacing X or Y (DISTRIBUTE)") +
-          rb("bounding-box", "BBox", `data-a="bbox"`, "Draw bounding box of selection (BBOX)") +
+          rb("align", "Distribute", `data-a="distribute"`, "Even spacing X or Y (DISTRIBUTE)") +
+          rb("area", "BBox", `data-a="bbox"`, "Draw bounding box of selection (BBOX)") +
           rb("measure", "Length", `data-a="length"`, "Total length of selected linear objects (LENGTH)") +
           rb("area", "Area Sel", `data-a="areasel"`, "Area of selected closed shapes (AREASEL)") +
           rb("point", "CenterMark", `data-a="centermark"`, "Center marks on selected circles (CENTERMARK)") +
@@ -6450,7 +6459,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("point", "Int Pts", `data-a="markint"`, "Points at intersections (MARKINT)") +
           rb("explode", "Xplode PL", `data-a="xplodepl"`, "Explode polylines to lines (XPLODEPL)") +
           rb("audit", "Purge 0-Len", `data-a="auditzl"`, "Remove zero-length lines (AUDITZL)") +
-          rb("help", "DWG Help", `data-a="dwghelp"`, "DWG open troubleshooting (DWGHELP)"),
+          rb("issues", "DWG Help", `data-a="dwghelp"`, "DWG open troubleshooting (DWGHELP)"),
         "",
         "",
         "home",
