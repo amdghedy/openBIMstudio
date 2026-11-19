@@ -442,6 +442,46 @@ visibility.content.append(
     }),
   ),
   row(
+    action("Select Similar", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.selectSimilar3d());
+    }),
+    action("Invert Selection", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.invertSelection3d());
+    }),
+  ),
+  row(
+    action("Ghost Selection", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.ghostSelection3d());
+    }),
+    action("Clear Ghost", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.unghostAll3d());
+    }),
+  ),
+  row(
+    action("Measure Selection", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.measureSelection3d());
+    }),
+    action("Clear Selection", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.clearSelection3d());
+    }),
+  ),
+  row(
+    action("Toggle Wireframe", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.cycleWireframe3d());
+    }),
+    action("Toggle Ortho", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.toggleOrtho3d());
+    }),
+  ),
+  row(
+    action("Toggle Grids", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.toggleGrids3d());
+    }),
+    action("Toggle Levels", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-10").then((m) => m.toggleLevels3d());
+    }),
+  ),
+  row(
     action("Properties", () => { if (!isPropertyPaletteVisible()) togglePropertyPalette(); }),
     action("Category / Filters", () => { if (!isModelTreePanelVisible()) toggleModelTreePanel(); }),
   ),
