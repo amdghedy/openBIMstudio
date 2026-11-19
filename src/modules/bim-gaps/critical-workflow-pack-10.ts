@@ -147,16 +147,7 @@ function applyGhostToObject(obj: THREE.Object3D, key: string, opacity: number): 
     // experience may re-export from graphics module
   } catch { /* */ }
   try {
-    const gfx = await import("../../features/graphics-display");
-    const get = (gfx as Any).getVisualPreset;
-    const set = (gfx as Any).setVisualPreset;
-    if (get && set) {
-      const cur = get();
-      const next = cur === "wireframe" ? "shaded" : "wireframe";
-      set(next);
-      notify("success", `Visual: ${next}`);
-      return next;
-    }
+
   } catch { /* */ }
   try {
     const exp = await import("../../features/bim-experience");
@@ -304,7 +295,7 @@ function applyGhostToObject(obj: THREE.Object3D, key: string, opacity: number): 
     diagonal: size.length(),
     center: center.toArray(),
   };
-  (window as Any).__obsMeasure3d = report;
+  (ctx.features as Any).lastMeasure3d = report;
   notify(
     "info",
     `Size ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m · diag ${size.length().toFixed(2)} m`,
@@ -340,7 +331,6 @@ export function setupCriticalWorkflowPack10(): void {
     measureSelection3d,
     clearSelection3d,
   };
-  (window as Any).__obsWorkflowPack10 = api;
   (ctx.features as Any).workflowPack10 = api;
 
   const cmds: Array<[string, string, () => void]> = [
