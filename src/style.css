@@ -1739,3 +1739,85 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   .obs-topic-detail__grid { grid-template-columns: 1fr; }
   .obs-topic-detail__visual { order: -1; max-width: 420px; }
 }
+
+
+/* Accordion feature cards on welcome (01/02/03) */
+.obs-fcard {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  cursor: default;
+}
+.obs-fcard__toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.obs-fcard__toggle:hover { background: rgba(255,255,255,.03); }
+.obs-fcard__chev {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  margin-left: auto;
+  border-right: 2px solid var(--text-tertiary, #8b93a7);
+  border-bottom: 2px solid var(--text-tertiary, #8b93a7);
+  transform: rotate(45deg);
+  transition: transform .18s ease;
+  opacity: .7;
+}
+.obs-fcard.is-expanded .obs-fcard__chev {
+  transform: rotate(225deg);
+  margin-top: 10px;
+  border-color: var(--pg, #38bdf8);
+  opacity: 1;
+}
+.obs-fcard.is-expanded {
+  border-color: var(--pg-line, rgba(56,189,248,.35));
+  box-shadow: 0 10px 28px rgba(0,0,0,.28);
+}
+.obs-fcard__expand {
+  padding: 0 12px 12px 54px;
+  border-top: 1px solid rgba(255,255,255,.04);
+  animation: obsFcardIn .18s ease;
+}
+.obs-fcard__expand[hidden] { display: none !important; }
+@keyframes obsFcardIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.obs-fcard__brief {
+  margin: 8px 0 8px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.obs-fcard__bullets {
+  margin: 0 0 8px;
+  padding-left: 1.1rem;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.obs-fcard__bullets li { margin: 3px 0; }
+.obs-fcard__howto {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0,0,0,.22);
+  border: 1px solid var(--border-default, #2a2e3a);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.obs-fcard__howto strong { color: var(--pg, #38bdf8); }
+.obs-fcard__more { display: none; }

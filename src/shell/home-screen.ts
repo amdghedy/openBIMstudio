@@ -718,11 +718,18 @@ function buildStatic() {
           <p class="obs-page__copy">${esc(p.copy)}</p>
           <div class="obs-fgrid">
             ${p.cards.map((c, i) => `
-            <button type="button" class="obs-fcard" data-topic="${p.num}" data-card="${i}" title="Learn more: ${esc(c.title)}">
-              <span class="obs-fcard__icon" aria-hidden="true">${esc(c.icon)}</span>
-              <span class="obs-fcard__body"><b>${esc(c.title)}</b><small>${esc(c.desc)}</small></span>
-              <span class="obs-fcard__more" aria-hidden="true">Learn more →</span>
-            </button>`).join("")}
+            <div class="obs-fcard" data-topic="${p.num}" data-card="${i}">
+              <button type="button" class="obs-fcard__toggle" aria-expanded="false" title="${esc(c.title)}">
+                <span class="obs-fcard__icon" aria-hidden="true">${esc(c.icon)}</span>
+                <span class="obs-fcard__body"><b>${esc(c.title)}</b><small>${esc(c.desc)}</small></span>
+                <span class="obs-fcard__chev" aria-hidden="true"></span>
+              </button>
+              <div class="obs-fcard__expand" hidden>
+                <p class="obs-fcard__brief">${esc(c.detailBody)}</p>
+                <ul class="obs-fcard__bullets">${c.bullets.slice(0, 4).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
+                <p class="obs-fcard__howto"><strong>Try it:</strong> ${esc(c.howTo)}</p>
+              </div>
+            </div>`).join("")}
           </div>
           <div class="obs-chiprow">${p.chips.map((c) => `<span class="obs-chip">${esc(c)}</span>`).join("")}</div>
           <button class="obs-page__cta" ${p.cta[0]} type="button">${esc(p.cta[1])} <span aria-hidden="true">→</span></button>
@@ -732,8 +739,6 @@ function buildStatic() {
         </div>
       </article>`).join("")}
     </div>
-
-    <div id="obs-topic-detail" class="obs-topic-detail" hidden></div>
 
     <footer class="obs-home__footer">
       <span>Open BIM Studio · local-first · <a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;text-decoration:none">GitHub</a> · <a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" style="color:#fbbf24;text-decoration:none">⭐ Star</a> · <a href="https://github.com/amdghedy/openBIMstudio/issues/new/choose" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;text-decoration:none">Report issue</a></span>
@@ -806,70 +811,60 @@ function buildStatic() {
   });
 
 
-  /* Topic explain pages — 01 / 02 / 03 cards & section headers */
-  const topicHost = inner.querySelector("#obs-topic-detail") as HTMLElement | null;
-  function closeTopicPage(): void {
-    if (!topicHost) return;
-    topicHost.hidden = true;
-    topicHost.innerHTML = "";
-    topicHost.classList.remove("is-open");
-  }
-  function openTopicPage(num: string, cardIndex: number | null): void {
-    if (!topicHost) return;
-    const page = SHOWCASE.find((s) => s.num === num);
-    if (!page) return;
-    const card = cardIndex != null ? page.cards[cardIndex] : null;
-    const title = card ? card.detailTitle : page.overviewTitle;
-    const body = card ? card.detailBody : page.overviewBody;
-    const bullets = card ? card.bullets : page.cards.map((c) => `${c.title}: ${c.desc}`);
-    const howTo = card ? card.howTo : "Pick a feature card on the welcome page for a step-by-step guide.";
-    const visual = page.cls === "obs-page--2d" ? VISUAL_2D : page.cls === "obs-page--3d" ? VISUAL_3D : VISUAL_DEL;
-    topicHost.hidden = false;
-    topicHost.classList.add("is-open");
-    topicHost.innerHTML = `
-      <div class="obs-topic-detail__panel ${page.cls}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-        <div class="obs-topic-detail__bar">
-          <button type="button" class="obs-btn" data-topic-back>← Back to welcome</button>
-          <span class="obs-topic-detail__num">${esc(page.num)}</span>
-          <span class="obs-topic-detail__eye">${esc(page.eyebrow)}</span>
-        </div>
-        <div class="obs-topic-detail__grid">
-          <div class="obs-topic-detail__text">
-            <h2 class="obs-topic-detail__title">${esc(title)}</h2>
-            <p class="obs-topic-detail__body">${esc(body)}</p>
-            <ul class="obs-topic-detail__bullets">${bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
-            <div class="obs-topic-detail__how"><strong>How to try it</strong><span>${esc(howTo)}</span></div>
-            <div class="obs-topic-detail__actions">
-              <button type="button" class="obs-page__cta" ${page.cta[0]}>${esc(page.cta[1])} <span aria-hidden="true">→</span></button>
-              ${cardIndex == null ? page.cards.map((c, i) =>
-                `<button type="button" class="obs-btn" data-topic="${page.num}" data-card="${i}">${esc(c.title)}</button>`
-              ).join("") : `<button type="button" class="obs-btn" data-topic-overview="${page.num}">All of topic ${page.num}</button>`}
-            </div>
-          </div>
-          <div class="obs-topic-detail__visual" aria-hidden="true">${visual}</div>
-        </div>
-      </div>`;
-    topicHost.querySelector("[data-topic-back]")?.addEventListener("click", () => closeTopicPage());
-    topicHost.querySelectorAll<HTMLElement>("[data-topic][data-card]").forEach((b) => {
-      b.addEventListener("click", () => openTopicPage(b.dataset.topic!, Number(b.dataset.card)));
+  /* Feature cards: click to expand brief · click again to collapse */
+  inner.querySelectorAll<HTMLElement>(".obs-fcard").forEach((card) => {
+    const btn = card.querySelector<HTMLButtonElement>(".obs-fcard__toggle");
+    const panel = card.querySelector<HTMLElement>(".obs-fcard__expand");
+    if (!btn || !panel) return;
+    btn.addEventListener("click", () => {
+      const open = card.classList.contains("is-expanded");
+      // accordion within the same topic page: close siblings
+      const page = card.closest(".obs-page");
+      page?.querySelectorAll<HTMLElement>(".obs-fcard.is-expanded").forEach((other) => {
+        if (other === card) return;
+        other.classList.remove("is-expanded");
+        other.querySelector(".obs-fcard__expand")?.setAttribute("hidden", "");
+        other.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "false");
+      });
+      if (open) {
+        card.classList.remove("is-expanded");
+        panel.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      } else {
+        card.classList.add("is-expanded");
+        panel.hidden = false;
+        btn.setAttribute("aria-expanded", "true");
+      }
     });
-    topicHost.querySelectorAll<HTMLElement>("[data-topic-overview]").forEach((b) => {
-      b.addEventListener("click", () => openTopicPage(b.dataset.topicOverview!, null));
-    });
-    // re-bind CTA launchers inside detail
-    topicHost.querySelectorAll<HTMLElement>("[data-open2d]").forEach((el) => {
-      el.addEventListener("click", () => { closeTopicPage(); open2dEngine(); });
-    });
-    topicHost.querySelectorAll<HTMLElement>("[data-open3d]").forEach((el) => {
-      el.addEventListener("click", () => { closeTopicPage(); open3dPlatform(); });
-    });
-    topicHost.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-  inner.querySelectorAll<HTMLElement>("[data-topic][data-card]").forEach((b) => {
-    b.addEventListener("click", () => openTopicPage(b.dataset.topic!, Number(b.dataset.card)));
   });
+  // Section header 01/02/03: expand first card or toggle all closed
   inner.querySelectorAll<HTMLElement>("[data-topic-overview]").forEach((b) => {
-    b.addEventListener("click", () => openTopicPage(b.dataset.topicOverview!, null));
+    b.addEventListener("click", () => {
+      const num = b.dataset.topicOverview;
+      const page = inner.querySelector(`.obs-page__num`)
+        ? [...inner.querySelectorAll(".obs-page")].find((el) => el.querySelector(".obs-page__num")?.textContent === num)
+        : null;
+      const host = page ?? b.closest(".obs-page");
+      if (!host) return;
+      const cards = [...host.querySelectorAll<HTMLElement>(".obs-fcard")];
+      const anyOpen = cards.some((c) => c.classList.contains("is-expanded"));
+      cards.forEach((c) => {
+        const btn = c.querySelector<HTMLButtonElement>(".obs-fcard__toggle");
+        const panel = c.querySelector<HTMLElement>(".obs-fcard__expand");
+        if (anyOpen) {
+          c.classList.remove("is-expanded");
+          if (panel) panel.hidden = true;
+          btn?.setAttribute("aria-expanded", "false");
+        }
+      });
+      if (!anyOpen && cards[0]) {
+        cards[0].classList.add("is-expanded");
+        const panel = cards[0].querySelector<HTMLElement>(".obs-fcard__expand");
+        if (panel) panel.hidden = false;
+        cards[0].querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "true");
+        cards[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
   });
 
     /* Welcome-screen headline CTAs + showcase page CTAs */
