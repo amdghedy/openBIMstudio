@@ -147,7 +147,7 @@ function applyGhostToObject(obj: THREE.Object3D, key: string, opacity: number): 
     // experience may re-export from graphics module
   } catch { /* */ }
   try {
-    const gfx = await import("../../features/graphics-display");
+    const gfx = await import("../../features/view-graphics");
     const get = (gfx as Any).getVisualPreset;
     const set = (gfx as Any).setVisualPreset;
     if (get && set) {
