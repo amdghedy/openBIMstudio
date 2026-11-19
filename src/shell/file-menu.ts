@@ -148,7 +148,8 @@ async function importProjectFile() {
     const f = input.files?.[0]; if (!f) return;
     try {
       if (f.size > 20 * 1024 * 1024) throw new Error("Project JSON exceeds the 20 MB import limit.");
-      const loaded = safeLoad(f.name, await f.text(), LegacyProjectJsonSchema, 20 * 1024 * 1024);
+      const loaded = safeLoad(f.name, await f.text(), LegacyProjectJsonSchema, 20 * 1024 * 1024,
+        { maxDepth: 64, maxNodes: 2_000_000 });
       if (!loaded.ok) {
         throw new Error(`Project JSON rejected (${loaded.error.stage}): ${loaded.error.issues.join("; ")}`);
       }
