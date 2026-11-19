@@ -12,6 +12,10 @@ This inventory covers JSON files imported into application state. It does not cl
 | `src/features/clash.ts` | Clash-scenario JSON | `safeLoad` + `ClashScenarioImportSchema` + `parseScenarios` normalizer | 2 MB; depth 32; 50,000 nodes; 200 scenarios | `tests/safe-load.test.cjs`, clash scenario tests |
 | `src/features/libredwg-toolkit.ts` | LibreDWG JSON dump | `safeLoad` + entities envelope schema | 32 MB | `tests/safe-load.test.cjs`, DWG tests |
 
+## Malformed input corpus
+
+`tests/fixtures/malformed/` contains ten fixtures: empty, truncated, array root, missing identity, blank identity, wrong collection type, invalid project envelope/version, excessive nesting, oversized payload, and invalid clash-scenario envelope. The safe-load regression suite asserts every fixture is rejected with a typed result.
+
 ## Binary and text import boundaries
 
 These are not JSON payloads and must not be routed through `safeLoad`. They require format-specific parsing and resource limits:
