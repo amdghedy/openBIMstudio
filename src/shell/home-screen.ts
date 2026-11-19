@@ -813,7 +813,9 @@ function buildStatic() {
 
   /* Feature cards: delegated click — expand / collapse (works on mobile + desktop) */
   const toggleFcard = (card: HTMLElement): void => {
-    (window as any).__obsToggleFcard?.(card);
+    const open = !card.classList.contains("is-expanded");
+    card.classList.toggle("is-expanded", open);
+    card.setAttribute("aria-expanded", String(open));
   };
 
   // Capture-phase on the home root so nothing can swallow the click
@@ -848,9 +850,7 @@ function buildStatic() {
     if (ev.type === "click" && (ev as PointerEvent).pointerType === "touch") return;
     ev.preventDefault();
     ev.stopPropagation();
-    const fn = (window as any).__obsToggleFcard as ((el: HTMLElement) => void) | undefined;
-    if (fn) fn(card);
-    else toggleFcard(card);
+    toggleFcard(card);
   };
   // pointerup is more reliable than click on many Android browsers
   inner.addEventListener("pointerup", onCardActivate, true);
@@ -861,7 +861,7 @@ function buildStatic() {
     const card = t?.closest?.(".obs-fcard[data-accordion]") as HTMLElement | null;
     if (!card || !inner.contains(card)) return;
     ev.preventDefault();
-    (window as any).__obsToggleFcard?.(card);
+    toggleFcard(card);
   }, true);
 
 
