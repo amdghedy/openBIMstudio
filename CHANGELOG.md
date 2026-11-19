@@ -9,6 +9,10 @@ Versions before 0.73.0 are summarized by the commit history and the milestone
 verification scripts (`npm run verify:v50` … `verify:v67`) rather than this
 file — the project adopted a written changelog at 0.73.0.
 
+## Unreleased
+
+- CI: browser smoke now runs per browser; Chromium blocks the release, Firefox/WebKit are advisory (all Firefox tests timed out in CI and blocked every deploy).
+
 ## [Unreleased]
 
 ### Added
