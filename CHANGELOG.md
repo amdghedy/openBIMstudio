@@ -11,7 +11,7 @@ file — the project adopted a written changelog at 0.73.0.
 
 ## Unreleased
 
-- CI: browser smoke now runs per browser; Chromium blocks the release, Firefox/WebKit are advisory (all Firefox tests timed out in CI and blocked every deploy).
+- CI: only Chromium gates the release; Firefox/WebKit moved to cross-browser.yml (nightly, advisory) because Firefox timeouts blocked every deploy.
 
 ## [Unreleased]
 

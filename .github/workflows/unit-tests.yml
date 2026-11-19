@@ -147,17 +147,9 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
   browser-smoke:
-    name: Browser smoke (${{ matrix.browser }}${{ matrix.browser == 'chromium' && ', blocking' || ', advisory' }})
+    name: Browser smoke (blocking, Chromium)
     needs: quality
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [chromium, firefox, webkit]
-    # Chromium gates the release. Firefox/WebKit run in their own jobs (no more
-    # CPU starvation from three browsers sharing one runner) but are advisory
-    # until headless Firefox/WebKit WebGL passes on CI: in run 276fcd9 every
-    # Firefox test timed out at ~31 s, which blocked every deploy.
-    continue-on-error: ${{ matrix.browser != 'chromium' }}
+    # Chromium gates the release. Firefox/WebKit: see cross-browser.yml (advisory).
     if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     # ubuntu-latest resolved to 26.04, which Playwright does not support yet
     # ("Playwright does not support chromium on ubuntu26.04-x64"); pin 24.04.
@@ -172,18 +164,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Install Playwright and supported browsers
-        run: npm i --no-save @playwright/test@1.57.0 && npx playwright install --with-deps ${{ matrix.browser }}
+        run: npm i --no-save @playwright/test@1.57.0 && npx playwright install --with-deps chromium
       - name: Build production app for browser tests
         run: npm run build
       - name: Run browser specs
         # document-chain = the core authoring→documentation→export chain in a
         # real browser (production bundle); edit-undo-save = state round-trip.
         # orbit-rtl/native-ifc/smoke stay from the original smoke set.
-        run: npx playwright test --project=${{ matrix.browser }} tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts tests/e2e/edit-undo-save.spec.ts tests/e2e/document-chain.spec.ts --reporter=list
+        run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts tests/e2e/edit-undo-save.spec.ts tests/e2e/document-chain.spec.ts --reporter=list
       - name: Upload report and screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-smoke-results-${{ matrix.browser }}
+          name: browser-smoke-results-chromium
           path: test-results/
           if-no-files-found: ignore
