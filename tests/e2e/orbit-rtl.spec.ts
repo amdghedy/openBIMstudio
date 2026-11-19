@@ -1405,6 +1405,9 @@ const SHX_DXF = [
 ].join('\n');
 
 test('CAD viewer: SHX-styled text is drawn as thin strokes (lighter than the same TrueType text)', async ({ page }) => {
+  const consoleMsgs: string[] = [];
+  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') consoleMsgs.push(`${m.type()}: ${m.text().slice(0, 240)}`); });
+  await page.addInitScript(() => window.addEventListener('unhandledrejection', (e) => console.error('UNHANDLED', String((e.reason && (e.reason.stack || e.reason.message)) || e.reason).slice(0, 400))));
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
@@ -1444,6 +1447,7 @@ test('CAD viewer: SHX-styled text is drawn as thin strokes (lighter than the sam
   try {
     await expect.poll(async () => { const m = await measure(); return m ? Math.min(m.left, m.right) : 0; }, { timeout: 40000, message: 'both texts drawn' }).toBeGreaterThan(150);
   } catch (e) {
+    console.log('SHX DIAG console:', JSON.stringify(consoleMsgs.slice(0, 12)));
     console.log('SHX DIAG canvases:', await diag(), '| measure:', JSON.stringify(await measure().catch((x) => String(x))));
     throw e;
   }
