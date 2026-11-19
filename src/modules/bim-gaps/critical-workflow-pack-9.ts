@@ -15,6 +15,7 @@
  */
 import * as THREE from "three";
 import { ctx } from "../../core/context";
+import { recoverView } from "../../features/camera-tools";
 import { notify } from "../../core/notify";
 
 type Any = Record<string, any>;
@@ -217,14 +218,12 @@ export async function hideSelectedCategory3d(): Promise<number> {
 
 export function cameraHome3d(): void {
   try {
-    const tools = (window as Any).__obsCameraTools;
-    if (tools?.recoverView) {
-      tools.recoverView();
-      notify("success", "Camera recovered");
-      return;
-    }
-  } catch { /* */ }
-  zoomExtents3d(false);
+    recoverView();
+    notify("success", "Camera recovered");
+  } catch {
+    // The camera service may not be initialized in an isolated test or early boot.
+    zoomExtents3d(false);
+  }
 }
 
 /* ── 10 Selection report ─────────────────────────────────────────── */
@@ -248,7 +247,7 @@ export async function selectionReport3d(): Promise<Any> {
       }
     }
     const report = { total: keys.length, authored, frag, byType };
-    (window as Any).__obsSelReport3d = report;
+    (ctx.features as Any).lastSelectionReport3d = report;
     console.log("[3d-sel]", report);
     notify(
       "info",
@@ -278,7 +277,6 @@ export function setupCriticalWorkflowPack9(): void {
     cameraHome3d,
     selectionReport3d,
   };
-  (window as Any).__obsWorkflowPack9 = api;
   (ctx.features as Any).workflowPack9 = api;
 
   const cmds: Array<[string, string, string, () => void]> = [
