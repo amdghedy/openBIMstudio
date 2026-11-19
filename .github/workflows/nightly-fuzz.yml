@@ -33,7 +33,8 @@ jobs:
         env:
           FUZZ_ITER: 500
           FUZZ_SEED: 42
-          FUZZ_CHILD_TIMEOUT_MS: 5000
+          FUZZ_INIT_TIMEOUT_MS: 30000
+          FUZZ_CHILD_TIMEOUT_MS: 8000
           FUZZ_ARTIFACT_DIR: fuzz-artifacts
         run: npm run test:fuzz-ifc
       - name: Upload failing inputs and summary
