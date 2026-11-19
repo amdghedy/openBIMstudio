@@ -28,6 +28,7 @@ import {
 import { serializeScenarios, parseScenarios } from "../modules/clash/scenario-io";
 import { markDirty } from "../modules/projects/projects";
 import { fmtDateTime } from "../core/region";
+import { safeLoad, ClashScenarioImportSchema } from "../core/safeLoad";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Toast
@@ -1204,10 +1205,15 @@ export function exportScenariosJson() {
 
 export async function importScenariosJson(file: File) {
   try {
-    const text = await file.text();
-    const data = JSON.parse(text);
-    const incoming: ClashScenario[] = Array.isArray(data) ? data : data?.scenarios || [];
-    if (!incoming.length) { clashToast("No scenarios in file.", "warn"); return; }
+    if (file.size > 2 * 1024 * 1024) throw new Error("Clash scenario JSON exceeds the 2 MB import limit.");
+    const loaded = safeLoad(file.name, await file.text(), ClashScenarioImportSchema, 2 * 1024 * 1024,
+      { maxDepth: 32, maxNodes: 50_000 });
+    if (!loaded.ok) {
+      throw new Error(`Scenario JSON rejected (${loaded.error.stage}): ${loaded.error.issues.join("; ")}`);
+    }
+    const rawScenarios = Array.isArray(loaded.value) ? loaded.value : loaded.value.scenarios;
+    const incoming: ClashScenario[] = parseScenarios(rawScenarios) as ClashScenario[];
+    if (!incoming.length) { clashToast("No valid scenarios found in the file.", "warn"); return; }
     const list = listScenarios();
     const byId = new Map(list.map((s) => [s.id, s]));
     for (const s of incoming) {
