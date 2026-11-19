@@ -1437,7 +1437,16 @@ test('CAD viewer: SHX-styled text is drawn as thin strokes (lighter than the sam
     };
     return { left: count(0.08, 0.45), right: count(0.55, 0.92) };
   });
-  await expect.poll(async () => { const m = await measure(); return m ? Math.min(m.left, m.right) : 0; }, { timeout: 40000, message: 'both texts drawn' }).toBeGreaterThan(150);
+  const diag = () => page.evaluate(() => Array.from(document.querySelectorAll('canvas')).map((c) => {
+    const r = c.getBoundingClientRect();
+    return `${c.className || c.id || 'canvas'}:${c.width}x${c.height} css ${Math.round(r.width)}x${Math.round(r.height)}`;
+  }).join(' | '));
+  try {
+    await expect.poll(async () => { const m = await measure(); return m ? Math.min(m.left, m.right) : 0; }, { timeout: 40000, message: 'both texts drawn' }).toBeGreaterThan(150);
+  } catch (e) {
+    console.log('SHX DIAG canvases:', await diag(), '| measure:', JSON.stringify(await measure().catch((x) => String(x))));
+    throw e;
+  }
   await page.waitForTimeout(500);
   const m = (await measure())!;
   console.log('shx vs truetype lit pixels', JSON.stringify(m));
