@@ -115,7 +115,7 @@ export async function loadAcadEngine(): Promise<AcadInstance | null> {
       // Older engine than this app expects (a cached copy from before a redeploy): fetch it again, bypassing every cache.
       const fresh = await instantiateEngine(await fetchEngineBytes(true));
       if (fresh && (engineIsCurrent(fresh) || !first)) return fresh;
-      if (first) console.warn("[acad-engine] loaded engine lacks the expected capabilities even after a cache-busting reload");
+      if (first) console.warn(`[acad-engine] loaded engine lacks the expected capabilities even after a cache-busting reload (reports ${engineIdentity(first)}; need dwgRead=${REQUIRED_ENGINE_DWG_READ})`);
       return first ?? fresh;
     })();
     instancePromise.catch(() => {
@@ -127,6 +127,11 @@ export async function loadAcadEngine(): Promise<AcadInstance | null> {
 
 /** The engine must report the capabilities this app relies on (DWG reads in failsafe mode). */
 export const REQUIRED_ENGINE_DWG_READ = "failsafe";
+
+/** The engine's self-reported identity JSON (for diagnostics), or why it could not be read. */
+export function engineIdentity(inst: AcadInstance): string {
+  try { return readFrame(inst, inst.exports.obim_engine_version()); } catch (e) { return `unreadable: ${(e as Error)?.message ?? e}`; }
+}
 
 function engineIsCurrent(inst: AcadInstance): boolean {
   try {

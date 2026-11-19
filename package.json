@@ -148,6 +148,7 @@
     "test:no-gpl-shipped": "node tests/no-gpl-shipped.test.cjs",
     "test:acad-solid-entities": "node tests/acad-solid-entities.test.cjs",
     "test:acad-byblock": "node tests/acad-byblock.test.cjs",
+    "test:acad-engine-identity": "node tests/acad-engine-identity.test.cjs",
     "test:gradient-hatch": "node tests/gradient-hatch.test.cjs",
     "test:session-state": "node tests/session-state.test.cjs",
     "test:reference-tracking": "node tests/reference-tracking.test.cjs",
