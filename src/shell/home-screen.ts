@@ -718,13 +718,13 @@ function buildStatic() {
           <p class="obs-page__copy">${esc(p.copy)}</p>
           <div class="obs-fgrid">
             ${p.cards.map((c, i) => `
-            <div class="obs-fcard" data-topic="${p.num}" data-card="${i}">
+            <div class="obs-fcard" data-topic="${p.num}" data-card="${i}" data-accordion="1">
               <button type="button" class="obs-fcard__toggle" aria-expanded="false" title="${esc(c.title)}">
                 <span class="obs-fcard__icon" aria-hidden="true">${esc(c.icon)}</span>
                 <span class="obs-fcard__body"><b>${esc(c.title)}</b><small>${esc(c.desc)}</small></span>
                 <span class="obs-fcard__chev" aria-hidden="true"></span>
               </button>
-              <div class="obs-fcard__expand" hidden>
+              <div class="obs-fcard__expand">
                 <p class="obs-fcard__brief">${esc(c.detailBody)}</p>
                 <ul class="obs-fcard__bullets">${c.bullets.slice(0, 4).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
                 <p class="obs-fcard__howto"><strong>Try it:</strong> ${esc(c.howTo)}</p>
@@ -811,63 +811,62 @@ function buildStatic() {
   });
 
 
-  /* Feature cards: click to expand brief · click again to collapse */
-  inner.querySelectorAll<HTMLElement>(".obs-fcard").forEach((card) => {
-    const btn = card.querySelector<HTMLButtonElement>(".obs-fcard__toggle");
-    const panel = card.querySelector<HTMLElement>(".obs-fcard__expand");
-    if (!btn || !panel) return;
-    btn.addEventListener("click", () => {
-      const open = card.classList.contains("is-expanded");
-      // accordion within the same topic page: close siblings
-      const page = card.closest(".obs-page");
-      page?.querySelectorAll<HTMLElement>(".obs-fcard.is-expanded").forEach((other) => {
-        if (other === card) return;
-        other.classList.remove("is-expanded");
-        other.querySelector(".obs-fcard__expand")?.setAttribute("hidden", "");
-        other.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "false");
-      });
-      if (open) {
-        card.classList.remove("is-expanded");
-        panel.hidden = true;
-        btn.setAttribute("aria-expanded", "false");
-      } else {
-        card.classList.add("is-expanded");
-        panel.hidden = false;
-        btn.setAttribute("aria-expanded", "true");
-      }
+  /* Feature cards: delegated click — expand / collapse (works on mobile + desktop) */
+  const toggleFcard = (card: HTMLElement): void => {
+    const open = card.classList.contains("is-expanded");
+    const page = card.closest(".obs-page");
+    page?.querySelectorAll<HTMLElement>(".obs-fcard.is-expanded").forEach((other) => {
+      if (other === card) return;
+      other.classList.remove("is-expanded");
+      other.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "false");
     });
-  });
-  // Section header 01/02/03: expand first card or toggle all closed
-  inner.querySelectorAll<HTMLElement>("[data-topic-overview]").forEach((b) => {
-    b.addEventListener("click", () => {
-      const num = b.dataset.topicOverview;
-      const page = inner.querySelector(`.obs-page__num`)
-        ? [...inner.querySelectorAll(".obs-page")].find((el) => el.querySelector(".obs-page__num")?.textContent === num)
-        : null;
-      const host = page ?? b.closest(".obs-page");
-      if (!host) return;
-      const cards = [...host.querySelectorAll<HTMLElement>(".obs-fcard")];
-      const anyOpen = cards.some((c) => c.classList.contains("is-expanded"));
-      cards.forEach((c) => {
-        const btn = c.querySelector<HTMLButtonElement>(".obs-fcard__toggle");
-        const panel = c.querySelector<HTMLElement>(".obs-fcard__expand");
-        if (anyOpen) {
-          c.classList.remove("is-expanded");
-          if (panel) panel.hidden = true;
-          btn?.setAttribute("aria-expanded", "false");
-        }
-      });
-      if (!anyOpen && cards[0]) {
-        cards[0].classList.add("is-expanded");
-        const panel = cards[0].querySelector<HTMLElement>(".obs-fcard__expand");
-        if (panel) panel.hidden = false;
-        cards[0].querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "true");
-        cards[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }
-    });
-  });
+    if (open) {
+      card.classList.remove("is-expanded");
+      card.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "false");
+    } else {
+      card.classList.add("is-expanded");
+      card.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "true");
+    }
+  };
 
-    /* Welcome-screen headline CTAs + showcase page CTAs */
+  // Capture-phase on the home root so nothing can swallow the click
+  inner.addEventListener(
+    "click",
+    (ev) => {
+      const t = ev.target as HTMLElement | null;
+      if (!t) return;
+      const overviewBtn = t.closest<HTMLElement>("[data-topic-overview]");
+      if (overviewBtn && inner.contains(overviewBtn)) {
+        ev.preventDefault();
+        const num = overviewBtn.dataset.topicOverview;
+        const page = [...inner.querySelectorAll(".obs-page")].find(
+          (el) => el.querySelector(".obs-page__num")?.textContent?.trim() === num,
+        );
+        if (!page) return;
+        const cards = [...page.querySelectorAll<HTMLElement>(".obs-fcard")];
+        const anyOpen = cards.some((c) => c.classList.contains("is-expanded"));
+        cards.forEach((c) => {
+          c.classList.remove("is-expanded");
+          c.querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "false");
+        });
+        if (!anyOpen && cards[0]) {
+          cards[0].classList.add("is-expanded");
+          cards[0].querySelector(".obs-fcard__toggle")?.setAttribute("aria-expanded", "true");
+          cards[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+        return;
+      }
+      const card = t.closest<HTMLElement>(".obs-fcard[data-accordion]");
+      if (card && inner.contains(card)) {
+        // only toggle when clicking the card chrome / toggle (not nested CTAs)
+        ev.preventDefault();
+        toggleFcard(card);
+      }
+    },
+    true,
+  );
+
+  /* Welcome-screen headline CTAs + showcase page CTAs */
   (inner.querySelector("#obs-hero-2d") as HTMLButtonElement | null)?.addEventListener("click", open2dEngine);
   (inner.querySelector("#obs-hero-3d") as HTMLButtonElement | null)?.addEventListener("click", open3dPlatform);
   inner.querySelectorAll<HTMLButtonElement>("[data-open2d]").forEach((b) => { b.onclick = open2dEngine; });
