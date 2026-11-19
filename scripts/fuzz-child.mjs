@@ -1,11 +1,10 @@
 /**
  * Fuzz child: parse one (possibly mutated) IFC buffer in an isolated process.
  *
- * The parent (scripts/fuzz-ifc-corpus.mjs) runs this with a capped heap
- * (--max-old-space-size=512) so parser over-allocation on adversarial bytes
- * kills ONLY this process, not the gate. Prints exactly one outcome token:
- *   ok | typed-error
- * A kill/signal/crash leaves the token missing — the parent classifies it.
+ * The parent runs this with a capped 256 MB V8 heap so parser over-allocation
+ * kills ONLY this process, not the gate. Emits "ready" after WASM initialization
+ * so the parent can apply a separate, accurate timeout to the untrusted parse.
+ * Result tokens: ready, then exactly one of ok | typed-error.
  */
 import { IfcAPI } from "web-ifc";
 import { readFileSync } from "fs";
@@ -15,6 +14,7 @@ if (!file) process.exit(2);
 
 const ifc = new IfcAPI();
 await ifc.Init();
+console.log("ready");
 
 let model = -1;
 try {
