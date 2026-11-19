@@ -1759,7 +1759,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 .obs-fcard__toggle:hover { background: rgba(255,255,255,.03); }
@@ -1768,9 +1768,9 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   width: 8px;
   height: 8px;
   margin-top: 6px;
-  margin-left: auto;
-  border-right: 2px solid var(--text-tertiary, #8b93a7);
-  border-bottom: 2px solid var(--text-tertiary, #8b93a7);
+  margin-inline-start: auto;
+  border-inline-end: 2px solid var(--text-tertiary, #8b93a7);
+  border-block-end: 2px solid var(--text-tertiary, #8b93a7);
   transform: rotate(45deg);
   transition: transform .18s ease;
   opacity: .7;
@@ -1786,7 +1786,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   box-shadow: 0 10px 28px rgba(0,0,0,.28);
 }
 .obs-fcard__expand {
-  padding: 0 12px 12px 54px;
+  padding: 0 12px 12px 54px; padding-inline-start: 54px;
   border-top: 1px solid rgba(255,255,255,.04);
   animation: obsFcardIn .18s ease;
 }
@@ -1803,7 +1803,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 }
 .obs-fcard__bullets {
   margin: 0 0 8px;
-  padding-left: 1.1rem;
+  padding-inline-start: 1.1rem;
   color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.45;
@@ -1821,3 +1821,41 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 }
 .obs-fcard__howto strong { color: var(--pg, #38bdf8); }
 .obs-fcard__more { display: none; }
+
+.obs-fcard__detail-title {
+  margin: 10px 0 4px;
+  color: var(--text-primary);
+  font: 700 12px/1.35 var(--font-sans);
+}
+.obs-fcard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.obs-fcard__action {
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+  font: 600 10px/1.2 var(--font-sans);
+  cursor: pointer;
+}
+.obs-fcard__action:hover { border-color: var(--pg); color: var(--text-primary); }
+.obs-fcard__action:focus-visible,
+.obs-fcard__toggle:focus-visible {
+  outline: 2px solid var(--pg);
+  outline-offset: 2px;
+}
+.obs-fcard__action--primary {
+  border-color: var(--pg-line);
+  background: var(--pg-dim);
+  color: var(--pg);
+}
+.obs-fcard__action--primary:hover { background: var(--pg-dim); color: var(--text-primary); }
+@media (max-width: 680px) {
+  .obs-fcard__expand { padding-inline-start: 12px; }
+}
+
