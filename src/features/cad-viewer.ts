@@ -7034,8 +7034,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       layhidem: () => executeDrawingCommand("LAYHIDEM"),
       layshowm: () => executeDrawingCommand("LAYSHOWM"),
       layinv: () => executeDrawingCommand("LAYINV"),
-      layfilter: () => {
-        const pat = window.prompt("Hide layers matching pattern (e.g. A-* or *WALL*):", "A-*");
+      layfilter: async () => {
+        const pat = await promptLine("Hide layers by pattern", "Pattern (e.g. A-* or *WALL*)", "A-*");
         if (pat) executeDrawingCommand(`LAYFILTER ${pat}`);
       },
       laylist: () => executeDrawingCommand("LAYLIST"),
@@ -7043,28 +7043,28 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       layerstats: () => executeDrawingCommand("LAYERSTATS"),
       selectall: () => executeDrawingCommand("SELECTALL"),
       clrsel: () => executeDrawingCommand("CLRSEL"),
-      copyby: () => {
-        const v = window.prompt("Copy offset dx dy:", "10 0");
+      copyby: async () => {
+        const v = await promptLine("Copy by offset", "Offset dx dy", "10 0");
         if (v) executeDrawingCommand(`COPYBY ${v}`);
       },
-      moveby: () => {
-        const v = window.prompt("Move offset dx dy:", "10 0");
+      moveby: async () => {
+        const v = await promptLine("Move by offset", "Offset dx dy", "10 0");
         if (v) executeDrawingCommand(`MOVEBY ${v}`);
       },
-      rotateby: () => {
-        const v = window.prompt("Rotate degrees:", "90");
+      rotateby: async () => {
+        const v = await promptLine("Rotate by angle", "Degrees", "90");
         if (v) executeDrawingCommand(`ROTATEBY ${v}`);
       },
-      scaleby: () => {
-        const v = window.prompt("Scale factor:", "2");
+      scaleby: async () => {
+        const v = await promptLine("Scale by factor", "Factor", "2");
         if (v) executeDrawingCommand(`SCALEBY ${v}`);
       },
       mirrorx: () => executeDrawingCommand("MIRRORX"),
       mirrory: () => executeDrawingCommand("MIRRORY"),
       alignl: () => executeDrawingCommand("ALIGNL"),
       alignr: () => executeDrawingCommand("ALIGNR"),
-      distribute: () => {
-        const v = window.prompt("Distribute axis X or Y:", "X");
+      distribute: async () => {
+        const v = await promptLine("Distribute", "Axis (X or Y)", "X");
         if (v) executeDrawingCommand(`DISTRIBUTE ${v}`);
       },
       bbox: () => executeDrawingCommand("BBOX"),
@@ -11182,7 +11182,6 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const r = Number(arg);
       if (!(r >= 0)) { logCmd("FILLETRAD: specify radius ≥ 0"); return; }
       setFilletRadiusStore(r);
-      try { (window as any).__obsFilletR = r; } catch { /* */ }
       logCmd(`FILLETRAD = ${r}`);
       return;
     }

@@ -72,7 +72,7 @@ t("every ribbon group is tagged with exactly one of the nine tabs", () => {
     // Home
     Clipboard: "home", Select: "home", Draw: "home", "Draw II": "home", Modify: "home", "Modify II": "home",
     Annotation: "home", Properties: "home", Utilities: "home", History: "home", Layers: "home", Styles: "home",
-    "AI Copilot": "home",
+    "AI Copilot": "home", "Power Tools": "home",
     // Insert
     Block: "insert", "Open Drawing": "insert", "PDF Import": "insert", Import: "insert", Fields: "insert", Data: "insert",
     // Annotate
