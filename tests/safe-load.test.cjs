@@ -49,6 +49,8 @@ t("legacy project JSON import routes text through safeLoad before storage", () =
   const source = fs.readFileSync(path.join(root, "src/features/file-interop.ts"), "utf8");
   assert.match(source, /safeLoad\("legacy project JSON"/);
   assert.doesNotMatch(source, /const doc = JSON\.parse\(text\)/);
+  assert.ok(source.indexOf("file.size > 20 * 1024 * 1024") < source.indexOf("await file.text()"), "size must be checked before reading the file");
+  assert.ok(source.includes("LegacyProjectJsonSchema"), "all project JSON import routes share the same schema");
 });
 t("LibreDWG JSON dump import is bounded and schema-gated", () => {
   const source = fs.readFileSync(path.join(root, "src/features/libredwg-toolkit.ts"), "utf8");
