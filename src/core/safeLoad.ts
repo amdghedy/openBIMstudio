@@ -42,10 +42,18 @@ export function safeLoad<T>(file: string, raw: string,
       return { ok: false, error: { stage: "complexity", file, issues: [`JSON input exceeds the ${maxDepth}-level nesting limit.`] } };
     }
     if (Array.isArray(current.value)) {
+      if (pending.length + visited + current.value.length > maxNodes) {
+        return { ok: false, error: { stage: "complexity", file, issues: [`JSON input exceeds the ${maxNodes}-node complexity limit.`] } };
+      }
       for (const child of current.value) pending.push({ value: child, depth: current.depth + 1 });
     } else if (current.value !== null && typeof current.value === "object") {
-      for (const child of Object.values(current.value as Record<string, unknown>)) {
-        pending.push({ value: child, depth: current.depth + 1 });
+      const record = current.value as Record<string, unknown>;
+      for (const key in record) {
+        if (!Object.hasOwn(record, key)) continue;
+        if (pending.length + visited >= maxNodes) {
+          return { ok: false, error: { stage: "complexity", file, issues: [`JSON input exceeds the ${maxNodes}-node complexity limit.`] } };
+        }
+        pending.push({ value: record[key], depth: current.depth + 1 });
       }
     }
   }
