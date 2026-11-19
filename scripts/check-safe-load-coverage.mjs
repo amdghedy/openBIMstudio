@@ -49,23 +49,24 @@ function collect(dir) {
 }
 for (const dir of sourceRoots) collect(dir);
 
-// Detect the two common bypass forms: JSON.parse(await file.text()) and
-// assigning await file.text() to a variable before JSON.parse(variable).
-const directFileText = /JSON\\.parse\\(\\s*(?:await\\s+)?(?:file|f)\\.text\\(\\s*\\)\\s*\\)/;\nconst textAssignment = /\\b(?:const|let|var)\\s+(\\w+)\\s*=\\s*await\\s+(?:file|f)\\.text\\(\\s*\\)\\s*;/g;\nfor (const relative of files) {
+// Detect direct JSON.parse(File.text()) and assigned File.text() values.
+const directFileText = /JSON\.parse\(\s*(?:await\s+)?(?:file|f)\.text\(\s*\)\s*\)/;
+const textAssignment = /\b(?:const|let|var)\s+(\w+)\s*=\s*await\s+(?:file|f)\.text\(\s*\)\s*;/g;
+for (const relative of files) {
   const source = fs.readFileSync(path.join(root, relative), "utf8");
   if (directFileText.test(source)) {
-    console.error(`FAIL ${relative}: direct JSON.parse(File.text()) bypasses safeLoad`);
+    console.error(\`FAIL \${relative}: direct JSON.parse(File.text()) bypasses safeLoad\`);
     failed = true;
   }
   for (const match of source.matchAll(textAssignment)) {
     const variable = match[1];
     const tail = source.slice(match.index + match[0].length);
-    const parse = new RegExp(`JSON\\.parse\\(\\s*${variable}\\s*\\)`);
+    const parse = new RegExp(\`JSON\\\\.parse\\\\(\\\\s*\${variable}\\\\s*\\\\)\`);
     const parsed = parse.exec(tail);
     if (parsed) {
       const beforeParse = tail.slice(0, parsed.index);
       if (!beforeParse.includes("safeLoad(")) {
-        console.error(`FAIL ${relative}: File.text() value "${variable}" reaches JSON.parse without safeLoad`);
+        console.error(\`FAIL \${relative}: File.text() value "\${variable}" reaches JSON.parse without safeLoad\`);
         failed = true;
       }
     }
