@@ -1422,8 +1422,9 @@ test('CAD viewer: SHX-styled text is drawn as thin strokes (lighter than the sam
     let n: Element | null = vc;
     while (n && !n.querySelector('canvas')) n = n.parentElement;
     // The drawing canvas is the largest non-empty one in this container (other 0-size canvases may precede it).
-    const cvs = Array.from(n?.querySelectorAll('canvas') ?? []) as HTMLCanvasElement[];
-    const cv = cvs.filter((c) => c.width > 0 && c.height > 0 && c.getContext('2d')).sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? null;
+    const cvs = Array.from(document.querySelectorAll('canvas')) as HTMLCanvasElement[];
+    void n;
+    const cv = cvs.filter((c) => c.width >= 100 && c.height >= 100 && c.getContext('2d')).sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? null;
     if (!cv) return null;
     const g = cv.getContext('2d')!;
     const W = cv.width, H = cv.height;
