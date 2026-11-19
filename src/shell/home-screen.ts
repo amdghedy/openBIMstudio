@@ -51,15 +51,105 @@ const SHOWCASE = [
       "200+ keyboard-first commands, file-faithful layer and style handling, and a LibreDWG-grade " +
       "DWG/DXF pipeline that reads r13–r2018 and writes back in the version you choose.",
     cards: [
-      ["C>_", "200+ command line", "standard drafting commands, type-ahead, custom aliases and dynamic input at the cursor."],
-      ["LAY", "Layers, linetypes & styles", "Layer manager, linetype scale, and text/dim styles adopted straight from the file."],
-      ["HAT", "Hatches & dimensions", "Associative hatches, dimension chains, leaders and automatic dimensioning."],
-      ["DWG", "DWG & DXF, r13–r2018", "Open legacy and current drawings; export DXF or native DWG 2000–2018."],
-      ["AUD", "Audit, tables & census", "Drawing audit, layer/table browser, entity census and thumbnail previews."],
-      ["PLT", "Batch plot & register", "Plot sets to PDF in batch and track issues in the drawing register."],
+      {
+        icon: "C>_", title: "200+ command line",
+        desc: "standard drafting commands, type-ahead, custom aliases and dynamic input at the cursor.",
+        detailTitle: "Command-line drafting engine",
+        detailBody:
+          "Open BIM Studio’s 2D engine is keyboard-first, like AutoCAD. Type a command anywhere on the canvas, " +
+          "use aliases (L, PL, TR, F…), and press Esc to cancel. Dynamic input and OSNAP keep geometry accurate " +
+          "without leaving the drawing.",
+        bullets: [
+          "200+ commands with type-ahead and customizable aliases (KS)",
+          "Direct distance entry and polar / ortho tracking",
+          "Enter ends the command; Space repeats the last one",
+          "Esc cancels tools; double-Esc resets the editor",
+        ],
+        howTo: "Launch the 2D engine → start typing LINE or L → pick points → Enter.",
+      },
+      {
+        icon: "LAY", title: "Layers, linetypes & styles",
+        desc: "Layer manager, linetype scale, and text/dim styles adopted straight from the file.",
+        detailTitle: "Layers, linetypes & text styles",
+        detailBody:
+          "Layers control visibility, colour, freeze and lock — just like a production CAD workflow. " +
+          "Linetypes and text styles travel with the DWG/DXF so drawings stay file-faithful when you reopen them.",
+        bullets: [
+          "Layer Properties Manager (LA) with on/off, freeze, lock, colour",
+          "Hide Multi / Isolate / Filter patterns for multi-layer review",
+          "Linetype Manager and global LTSCALE",
+          "Text Style Manager for fonts, heights and presets",
+        ],
+        howTo: "Open a DWG → Home → Layers → Manager, or type LA / LAYHIDEM.",
+      },
+      {
+        icon: "HAT", title: "Hatches & dimensions",
+        desc: "Associative hatches, dimension chains, leaders and automatic dimensioning.",
+        detailTitle: "Hatches, dimensions & markup",
+        detailBody:
+          "Document drawings with hatches, linear and aligned dimensions, leaders and revision clouds. " +
+          "Dimension styles control tick size, precision and suffixes for consistent sheets.",
+        bullets: [
+          "HATCH with pattern scale/angle and boundary pick",
+          "DIMLINEAR, DIMALIGNED, DIMANGULAR, diameter and radius",
+          "MLEADER / QLEADER annotation leaders",
+          "REVCLOUD for review markups",
+        ],
+        howTo: "In 2D engine type HATCH or DIMALIGNED, or use the Annotate ribbon.",
+      },
+      {
+        icon: "DWG", title: "DWG & DXF, r13–r2018",
+        desc: "Open legacy and current drawings; export DXF or native DWG 2000–2018.",
+        detailTitle: "DWG / DXF read & write",
+        detailBody:
+          "OpenBIM Studio reads DWG and DXF across common AutoCAD versions and can write DXF or DWG back. " +
+          "When a large or complex DWG fails the built-in reader, SAVEAS to DXF (ASCII R2013/R2018) is the reliable path; " +
+          "LibreDWG is used as an optional fallback when bundled.",
+        bullets: [
+          "Open DWG/DXF from the welcome page or DWGOPEN",
+          "QSAVE (DXF) and DWGSAVE for round-trip edits",
+          "Session restore: last view, off and frozen layers",
+          "Batch publish of open drawings",
+        ],
+        howTo: "Welcome → Open DWG / DXF / PDF… or 2D engine → File → Open.",
+      },
+      {
+        icon: "AUD", title: "Audit, tables & census",
+        desc: "Drawing audit, layer/table browser, entity census and thumbnail previews.",
+        detailTitle: "Audit, tables & drawing health",
+        detailBody:
+          "Keep drawings clean with audit tools, layer statistics, entity census and table browsers. " +
+          "Purge empty layers and zero-length geometry before handoff.",
+        bullets: [
+          "AUDIT and OVERKILL for cleanup",
+          "LAYERSTATS / DWGCENSUS for counts by type and layer",
+          "PURGELAYERS and AUDITZL (zero-length lines)",
+          "Embedded DWG thumbnail while parsing large files",
+        ],
+        howTo: "Type AUDIT, LAYERSTATS or OVERKILL in the 2D command line.",
+      },
+      {
+        icon: "PLT", title: "Batch plot & register",
+        desc: "Plot sets to PDF in batch and track issues in the drawing register.",
+        detailTitle: "Plot, publish & drawing register",
+        detailBody:
+          "Plot the current view or sheet to PDF, run batch publish across open tabs, and keep a drawing register " +
+          "for issue tracking during documentation.",
+        bullets: [
+          "PLOT / PRINT to PDF with lineweight floor for readable sheets",
+          "PUBLISH all open drawings",
+          "Page setup and layout support",
+          "Drawing register for coordination notes",
+        ],
+        howTo: "Type PLOT or use File → Plot… in the 2D engine.",
+      },
     ],
     chips: ["LINE", "PLINE", "OFFSET", "TRIM", "FILLET", "ARRAY", "HATCH", "MTEXT", "OSNAP", "ORTHO", "MATCHPROP", "PURGE", "QSAVE", "PLOT"],
     cta: ["data-open2d", "Launch the 2D engine"],
+    overviewTitle: "Topic 01 — 2D Drawing & Drafting",
+    overviewBody:
+      "This topic is the full CAD drafting workspace: open DWG/DXF, draw and edit with AutoCAD-like commands, " +
+      "manage layers and styles, dimension and hatch, then plot or export. Click any card below for a deeper guide.",
   },
   {
     cls: "obs-page--3d",
@@ -71,15 +161,103 @@ const SHOWCASE = [
       "fabrication, federation, clash detection and issue round-trips — with 4D sequencing and 5D " +
       "quantities tied directly to the model you are looking at.",
     cards: [
-      ["BLD", "Author everything", "Walls, slabs, stairs, roofs, curtain wall, railings, ramps, rooms and site topography."],
-      ["REB", "Rebar & structure", "Rebar authoring with lap splices, structural connections, loads and trusses."],
-      ["MEP", "MEP systems", "Duct, pipe, tray and fabrication parts with sizing and balance reviews."],
-      ["CLS", "Clash detection & BCF", "BVH/GJK clash engine with reports and BCF issue round-trip to other tools."],
-      ["4D5", "4D & 5D delivery", "Sequencing timelines and cost takeoff computed from model elements."],
-      ["ENV", "Analysis & environment", "Sun settings, daylighting and energy analysis on the analytical model."],
+      {
+        icon: "BLD", title: "Author everything",
+        desc: "Walls, slabs, stairs, roofs, curtain wall, railings, ramps, rooms and site topography.",
+        detailTitle: "Architectural & site authoring",
+        detailBody:
+          "Model buildings directly in the browser: walls with hosts and openings, floors, roofs, stairs, " +
+          "curtain systems, rooms and topography. Reference tracking helps close rectangular wall chains accurately.",
+        bullets: [
+          "Walls, slabs, columns, beams, doors and windows",
+          "Stairs between levels, roofs and ceilings from walls",
+          "Rooms / spaces with detection helpers",
+          "Grids, levels and work planes for control",
+        ],
+        howTo: "Enter 3D → BIM Toolbox → Wall / Floor / Level, or use authoring tools on the ribbon.",
+      },
+      {
+        icon: "REB", title: "Rebar & structure",
+        desc: "Rebar authoring with lap splices, structural connections, loads and trusses.",
+        detailTitle: "Structure & reinforcement",
+        detailBody:
+          "Structural framing, connections, loads and rebar tools support concrete and steel workflows " +
+          "alongside architectural models in the same federated view.",
+        bullets: [
+          "Structural members and trusses",
+          "Connections and load placement",
+          "Rebar with lap awareness",
+          "Align and constraint helpers for frames",
+        ],
+        howTo: "3D platform → structural tools in the authoring toolbox.",
+      },
+      {
+        icon: "MEP", title: "MEP systems",
+        desc: "Duct, pipe, tray and fabrication parts with sizing and balance reviews.",
+        detailTitle: "MEP systems & fabrication",
+        detailBody:
+          "Route duct, pipe, cable tray and conduit; review system colours and fabrication parts. " +
+          "MEP sits in the same 3D scene as architecture for coordination.",
+        bullets: [
+          "Duct, pipe, tray, conduit tools",
+          "MEP discipline colouring",
+          "Fabrication-oriented parts",
+          "Clash against architecture and structure",
+        ],
+        howTo: "BIM Toolbox → Duct / Pipe / Cable Tray.",
+      },
+      {
+        icon: "CLS", title: "Clash detection & BCF",
+        desc: "BVH/GJK clash engine with reports and BCF issue round-trip to other tools.",
+        detailTitle: "Clashes, issues & BCF",
+        detailBody:
+          "Run clash detection on federated models, review hits in context, and exchange issues via BCF " +
+          "with other BIM tools on the project.",
+        bullets: [
+          "BVH/GJK clash tests between categories/models",
+          "Clash review UI in the 3D view",
+          "BCF import/export for issue round-trips",
+          "Isolate and section around clash locations",
+        ],
+        howTo: "3D → Clash tools / Issues panel; open BCF from collaboration menus.",
+      },
+      {
+        icon: "4D5", title: "4D & 5D delivery",
+        desc: "Sequencing timelines and cost takeoff computed from model elements.",
+        detailTitle: "4D sequencing & 5D quantities",
+        detailBody:
+          "Link model elements to time and cost: simulate construction sequences and extract quantities " +
+          "for takeoff without leaving the federated model.",
+        bullets: [
+          "4D timeline / simulation panel",
+          "Element phasing and visibility by phase",
+          "Quantity takeoff and schedules from the model",
+          "Export tables for cost workflows",
+        ],
+        howTo: "Open 4D Simulation and Schedules from the BIM Toolbox or Project Browser.",
+      },
+      {
+        icon: "ENV", title: "Analysis & environment",
+        desc: "Sun settings, daylighting and energy analysis on the analytical model.",
+        detailTitle: "Environment & analysis",
+        detailBody:
+          "Study sun position, shading and environmental context on the model. Visual styles (shaded, " +
+          "wireframe, hidden line) and section box support design review.",
+        bullets: [
+          "Sun / lighting controls",
+          "Visual styles: shaded, edges, wireframe",
+          "Section box and section plane",
+          "Walk mode for experiential review",
+        ],
+        howTo: "View bar → visual style; Section Box / Walk from tools or Command Center (3D:).",
+      },
     ],
     chips: ["IFC", "FEDERATION", "SECTION BOX", "WALK MODE", "VIEWCUBE", "SCHEDULES", "SHEETS", "IDS", "WORKSETS", "DESIGN OPTIONS", "POINT CLOUD"],
     cta: ["data-open3d", "Enter the 3D BIM platform"],
+    overviewTitle: "Topic 02 — 3D BIM & Coordination",
+    overviewBody:
+      "Author, link IFC/FRAG models, coordinate disciplines, run clashes and deliver 4D/5D views. " +
+      "Click a card for a focused explanation of each capability.",
   },
   {
     cls: "obs-page--del",
@@ -91,17 +269,105 @@ const SHOWCASE = [
       "same project vault, exchange every AEC format, automate the repetitive work and run the whole " +
       "interface in ten languages including right-to-left Arabic.",
     cards: [
-      ["CLD", "Cloud projects", "Email or Google sign-in; the same vault opens from desktop, tablet or phone."],
-      ["FMT", "Every format in, out", "IFC, BCF, IDS, DWG/DXF, NWC bridge, SVG, JSON, GeoJSON and PostScript."],
-      ["SCH", "Schedules & sheets", "Live schedules, sheet sets and drawing production with batch plot."],
-      ["AUT", "Automation & plugins", "Generative design, automation pipelines and an installable plugin marketplace."],
-      ["AI", "AI command bar", "Ask about the model in plain language — query, filter and navigate results."],
-      ["L10", "10 languages · offline", "Full UI translation incl. RTL Arabic; installable PWA that works offline."],
+      {
+        icon: "CLD", title: "Cloud projects",
+        desc: "Email or Google sign-in; the same vault opens from desktop, tablet or phone.",
+        detailTitle: "Cloud projects & account",
+        detailBody:
+          "Stay local-first for files on disk, or sign in to open the same project vault from another device. " +
+          "Projects and recent drawings stay within your control.",
+        bullets: [
+          "Account button on the welcome header",
+          "Open the same vault across devices when signed in",
+          "Local-first storage when offline",
+          "Recent projects list on the home screen",
+        ],
+        howTo: "Use the account control on the welcome page, then create or open a project.",
+      },
+      {
+        icon: "FMT", title: "Every format in, out",
+        desc: "IFC, BCF, IDS, DWG/DXF, NWC bridge, SVG, JSON, GeoJSON and PostScript.",
+        detailTitle: "Interoperability formats",
+        detailBody:
+          "Exchange open and industry formats without locking the team to one desktop suite. " +
+          "IFC for BIM, DWG/DXF for CAD, BCF for issues, IDS for information requirements.",
+        bullets: [
+          "IFC link / native twin and federated export",
+          "DWG/DXF 2D engine round-trip",
+          "BCF and IDS validation",
+          "SVG, JSON, GeoJSON and more export paths",
+        ],
+        howTo: "Link IFC from 3D; open DWG from 2D; use Output / Collaborate menus for BCF and exports.",
+      },
+      {
+        icon: "SCH", title: "Schedules & sheets",
+        desc: "Live schedules, sheet sets and drawing production with batch plot.",
+        detailTitle: "Schedules, sheets & documentation",
+        detailBody:
+          "Produce documentation from the live model: schedules update with elements, sheets organize views, " +
+          "and batch plot pushes sets to PDF.",
+        bullets: [
+          "Live schedules panel",
+          "Sheets / documentation browser",
+          "Batch plot and publish",
+          "Drawing production tied to model views",
+        ],
+        howTo: "BIM Toolbox → Schedules / Sheets, or Project Browser.",
+      },
+      {
+        icon: "AUT", title: "Automation & plugins",
+        desc: "Generative design, automation pipelines and an installable plugin marketplace.",
+        detailTitle: "Automation & plugins",
+        detailBody:
+          "Extend the platform with plugins and automation pipelines for repetitive tasks and generative design experiments.",
+        bullets: [
+          "Plugin system bootstrapped at startup",
+          "Marketplace-style install path for extensions",
+          "Automation hooks for batch workflows",
+          "Agent bridge for external AI clients",
+        ],
+        howTo: "Manage plugins from the app shell; open Agent Bridge for external AI control.",
+      },
+      {
+        icon: "AI", title: "AI command bar",
+        desc: "Ask about the model in plain language — query, filter and navigate results.",
+        detailTitle: "AI command bar & copilot",
+        detailBody:
+          "Ask questions in plain language about the open model or drawing. The AI panel helps query, " +
+          "summarize and navigate without memorizing every command id.",
+        bullets: [
+          "AI chat panel docked in the shell",
+          "Model-aware prompts for summaries and filters",
+          "Command Center search for every registered tool",
+          "Agent bridge for AlphaCLI-style external control",
+        ],
+        howTo: "Open the AI panel from the shell or type in the command palette (Ctrl+P).",
+      },
+      {
+        icon: "L10", title: "10 languages · offline",
+        desc: "Full UI translation incl. RTL Arabic; installable PWA that works offline.",
+        detailTitle: "Languages & offline PWA",
+        detailBody:
+          "Switch the UI language from the welcome header. Arabic uses right-to-left layout. " +
+          "Install as a PWA to keep working with local projects offline.",
+        bullets: [
+          "Ten UI languages including Arabic (RTL)",
+          "Language button on the home header",
+          "Installable progressive web app",
+          "Local-first projects when the network is down",
+        ],
+        howTo: "Click the language control on the welcome page; use the browser install/PWA prompt if available.",
+      },
     ],
-    chips: ["IFC", "BCF", "IDS", "DWG/DXF", "NWC", "SVG", "JSON", "GeoJSON", "PS", ".obsproj", "PWA"],
-    cta: ["data-focus-create", "Start a project below"],
+    chips: ["IFC", "BCF", "IDS", "CLOUD", "PWA", "PLUGINS", "AI", "SCHEDULES", "SHEETS", "i18n"],
+    cta: ["data-open3d", "Open the full platform"],
+    overviewTitle: "Topic 03 — Deliver, Automate & Scale",
+    overviewBody:
+      "Handover, formats, cloud, automation, AI and localization. Click any card for a guided explanation " +
+      "of how that capability fits your delivery workflow.",
   },
 ] as const;
+
 
 /* Decorative product visuals, pure inline SVG (no assets, aria-hidden). */
 const VISUAL_2D = `
@@ -445,15 +711,18 @@ function buildStatic() {
       ${SHOWCASE.map((p) => `
       <article class="obs-page ${p.cls}">
         <div class="obs-page__text">
-          <div class="obs-page__head"><span class="obs-page__num">${p.num}</span><span class="obs-page__eyebrow">${esc(p.eyebrow)}</span></div>
+          <button type="button" class="obs-page__head obs-page__head--btn" data-topic-overview="${p.num}" title="Open topic ${p.num} overview">
+            <span class="obs-page__num">${p.num}</span><span class="obs-page__eyebrow">${esc(p.eyebrow)}</span>
+          </button>
           <h3 class="obs-page__title">${esc(p.title)}</h3>
           <p class="obs-page__copy">${esc(p.copy)}</p>
           <div class="obs-fgrid">
-            ${p.cards.map(([icon, title, desc]) => `
-            <div class="obs-fcard">
-              <span class="obs-fcard__icon" aria-hidden="true">${esc(icon)}</span>
-              <span class="obs-fcard__body"><b>${esc(title)}</b><small>${esc(desc)}</small></span>
-            </div>`).join("")}
+            ${p.cards.map((c, i) => `
+            <button type="button" class="obs-fcard" data-topic="${p.num}" data-card="${i}" title="Learn more: ${esc(c.title)}">
+              <span class="obs-fcard__icon" aria-hidden="true">${esc(c.icon)}</span>
+              <span class="obs-fcard__body"><b>${esc(c.title)}</b><small>${esc(c.desc)}</small></span>
+              <span class="obs-fcard__more" aria-hidden="true">Learn more →</span>
+            </button>`).join("")}
           </div>
           <div class="obs-chiprow">${p.chips.map((c) => `<span class="obs-chip">${esc(c)}</span>`).join("")}</div>
           <button class="obs-page__cta" ${p.cta[0]} type="button">${esc(p.cta[1])} <span aria-hidden="true">→</span></button>
@@ -463,6 +732,8 @@ function buildStatic() {
         </div>
       </article>`).join("")}
     </div>
+
+    <div id="obs-topic-detail" class="obs-topic-detail" hidden></div>
 
     <footer class="obs-home__footer">
       <span>Open BIM Studio · local-first · <a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;text-decoration:none">GitHub</a> · <a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" style="color:#fbbf24;text-decoration:none">⭐ Star</a> · <a href="https://github.com/amdghedy/openBIMstudio/issues/new/choose" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;text-decoration:none">Report issue</a></span>
@@ -534,7 +805,74 @@ function buildStatic() {
     });
   });
 
-  /* Welcome-screen headline CTAs + showcase page CTAs */
+
+  /* Topic explain pages — 01 / 02 / 03 cards & section headers */
+  const topicHost = inner.querySelector("#obs-topic-detail") as HTMLElement | null;
+  function closeTopicPage(): void {
+    if (!topicHost) return;
+    topicHost.hidden = true;
+    topicHost.innerHTML = "";
+    topicHost.classList.remove("is-open");
+  }
+  function openTopicPage(num: string, cardIndex: number | null): void {
+    if (!topicHost) return;
+    const page = SHOWCASE.find((s) => s.num === num);
+    if (!page) return;
+    const card = cardIndex != null ? page.cards[cardIndex] : null;
+    const title = card ? card.detailTitle : page.overviewTitle;
+    const body = card ? card.detailBody : page.overviewBody;
+    const bullets = card ? card.bullets : page.cards.map((c) => `${c.title}: ${c.desc}`);
+    const howTo = card ? card.howTo : "Pick a feature card on the welcome page for a step-by-step guide.";
+    const visual = page.cls === "obs-page--2d" ? VISUAL_2D : page.cls === "obs-page--3d" ? VISUAL_3D : VISUAL_DEL;
+    topicHost.hidden = false;
+    topicHost.classList.add("is-open");
+    topicHost.innerHTML = `
+      <div class="obs-topic-detail__panel ${page.cls}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <div class="obs-topic-detail__bar">
+          <button type="button" class="obs-btn" data-topic-back>← Back to welcome</button>
+          <span class="obs-topic-detail__num">${esc(page.num)}</span>
+          <span class="obs-topic-detail__eye">${esc(page.eyebrow)}</span>
+        </div>
+        <div class="obs-topic-detail__grid">
+          <div class="obs-topic-detail__text">
+            <h2 class="obs-topic-detail__title">${esc(title)}</h2>
+            <p class="obs-topic-detail__body">${esc(body)}</p>
+            <ul class="obs-topic-detail__bullets">${bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
+            <div class="obs-topic-detail__how"><strong>How to try it</strong><span>${esc(howTo)}</span></div>
+            <div class="obs-topic-detail__actions">
+              <button type="button" class="obs-page__cta" ${page.cta[0]}>${esc(page.cta[1])} <span aria-hidden="true">→</span></button>
+              ${cardIndex == null ? page.cards.map((c, i) =>
+                `<button type="button" class="obs-btn" data-topic="${page.num}" data-card="${i}">${esc(c.title)}</button>`
+              ).join("") : `<button type="button" class="obs-btn" data-topic-overview="${page.num}">All of topic ${page.num}</button>`}
+            </div>
+          </div>
+          <div class="obs-topic-detail__visual" aria-hidden="true">${visual}</div>
+        </div>
+      </div>`;
+    topicHost.querySelector("[data-topic-back]")?.addEventListener("click", () => closeTopicPage());
+    topicHost.querySelectorAll<HTMLElement>("[data-topic][data-card]").forEach((b) => {
+      b.addEventListener("click", () => openTopicPage(b.dataset.topic!, Number(b.dataset.card)));
+    });
+    topicHost.querySelectorAll<HTMLElement>("[data-topic-overview]").forEach((b) => {
+      b.addEventListener("click", () => openTopicPage(b.dataset.topicOverview!, null));
+    });
+    // re-bind CTA launchers inside detail
+    topicHost.querySelectorAll<HTMLElement>("[data-open2d]").forEach((el) => {
+      el.addEventListener("click", () => { closeTopicPage(); open2dEngine(); });
+    });
+    topicHost.querySelectorAll<HTMLElement>("[data-open3d]").forEach((el) => {
+      el.addEventListener("click", () => { closeTopicPage(); open3dPlatform(); });
+    });
+    topicHost.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  inner.querySelectorAll<HTMLElement>("[data-topic][data-card]").forEach((b) => {
+    b.addEventListener("click", () => openTopicPage(b.dataset.topic!, Number(b.dataset.card)));
+  });
+  inner.querySelectorAll<HTMLElement>("[data-topic-overview]").forEach((b) => {
+    b.addEventListener("click", () => openTopicPage(b.dataset.topicOverview!, null));
+  });
+
+    /* Welcome-screen headline CTAs + showcase page CTAs */
   (inner.querySelector("#obs-hero-2d") as HTMLButtonElement | null)?.addEventListener("click", open2dEngine);
   (inner.querySelector("#obs-hero-3d") as HTMLButtonElement | null)?.addEventListener("click", open3dPlatform);
   inner.querySelectorAll<HTMLButtonElement>("[data-open2d]").forEach((b) => { b.onclick = open2dEngine; });
