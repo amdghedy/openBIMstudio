@@ -1665,12 +1665,12 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 .obs-page__head--btn {
   display: flex; align-items: baseline; gap: 10px;
   background: transparent; border: 0; padding: 0; cursor: pointer;
-  text-align: left; color: inherit; font: inherit;
+  text-align: start; color: inherit; font: inherit;
 }
 .obs-page__head--btn:hover .obs-page__num,
 .obs-page__head--btn:hover .obs-page__eyebrow { filter: brightness(1.15); }
 .obs-fcard {
-  cursor: pointer; text-align: left; width: 100%;
+  cursor: pointer; text-align: start; width: 100%;
   font: inherit; color: inherit;
   position: relative;
 }
@@ -1716,7 +1716,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   margin: 0 0 12px; color: var(--text-secondary); font-size: 12.5px; line-height: 1.65;
 }
 .obs-topic-detail__bullets {
-  margin: 0 0 14px; padding-left: 1.15rem;
+  margin: 0 0 14px; padding-inline-start: 1.15rem;
   color: var(--text-secondary); font-size: 12px; line-height: 1.55;
 }
 .obs-topic-detail__bullets li { margin: 4px 0; }
@@ -1759,7 +1759,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 .obs-fcard__toggle:hover { background: rgba(255,255,255,.03); }
@@ -1768,8 +1768,8 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   width: 8px;
   height: 8px;
   margin-top: 6px;
-  margin-left: auto;
-  border-right: 2px solid var(--text-tertiary, #8b93a7);
+  margin-inline-start: auto;
+  border-inline-end: 2px solid var(--text-tertiary, #8b93a7);
   border-bottom: 2px solid var(--text-tertiary, #8b93a7);
   transform: rotate(45deg);
   transition: transform .18s ease;
@@ -1803,7 +1803,7 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
 }
 .obs-fcard__bullets {
   margin: 0 0 8px;
-  padding-left: 1.1rem;
+  padding-inline-start: 1.1rem;
   color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.45;

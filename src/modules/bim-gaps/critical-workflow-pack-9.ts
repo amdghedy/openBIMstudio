@@ -216,14 +216,6 @@ export async function hideSelectedCategory3d(): Promise<number> {
 /* ── 9 Camera home ───────────────────────────────────────────────── */
 
 export function cameraHome3d(): void {
-  try {
-    const tools = (window as Any).__obsCameraTools;
-    if (tools?.recoverView) {
-      tools.recoverView();
-      notify("success", "Camera recovered");
-      return;
-    }
-  } catch { /* */ }
   zoomExtents3d(false);
 }
 
@@ -248,7 +240,6 @@ export async function selectionReport3d(): Promise<Any> {
       }
     }
     const report = { total: keys.length, authored, frag, byType };
-    (window as Any).__obsSelReport3d = report;
     console.log("[3d-sel]", report);
     notify(
       "info",
@@ -278,7 +269,6 @@ export function setupCriticalWorkflowPack9(): void {
     cameraHome3d,
     selectionReport3d,
   };
-  (window as Any).__obsWorkflowPack9 = api;
   (ctx.features as Any).workflowPack9 = api;
 
   const cmds: Array<[string, string, string, () => void]> = [

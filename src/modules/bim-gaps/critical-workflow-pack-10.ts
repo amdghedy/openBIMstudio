@@ -304,7 +304,6 @@ function applyGhostToObject(obj: THREE.Object3D, key: string, opacity: number): 
     diagonal: size.length(),
     center: center.toArray(),
   };
-  (window as Any).__obsMeasure3d = report;
   notify(
     "info",
     `Size ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m · diag ${size.length().toFixed(2)} m`,
@@ -340,7 +339,6 @@ export function setupCriticalWorkflowPack10(): void {
     measureSelection3d,
     clearSelection3d,
   };
-  (window as Any).__obsWorkflowPack10 = api;
   (ctx.features as Any).workflowPack10 = api;
 
   const cmds: Array<[string, string, () => void]> = [
