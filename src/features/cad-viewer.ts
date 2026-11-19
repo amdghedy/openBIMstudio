@@ -6417,7 +6417,40 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         rb("schedules", "Manager", `data-a="lyr-mgr"`, "drawing workspace Layer Properties Manager (LA)") +
           rb("isolate", "LayIso", `data-a="layiso"`, "Isolate the layer of a picked object — hide every other layer (LAYISO)") +
           rb("show-all", "LayUniso", `data-a="layuniso"`, "Restore the layers hidden by LAYISO (LAYUNISO)") +
-          rb("masking-region", "LayOff", `data-a="layoff"`, "Turn off the layer of a picked object (LAYOFF)"),
+          rb("masking-region", "LayOff", `data-a="layoff"`, "Turn off the layer of a picked object (LAYOFF)") +
+          rb("clear", "Hide Multi", `data-a="layhidem"`, "Hide ALL layers of the current selection at once (LAYHIDEM / HM)") +
+          rb("show-all", "Show Multi", `data-a="layshowm"`, "Show all layers of the selection (LAYSHOWM)") +
+          rb("refresh", "Invert", `data-a="layinv"`, "Invert on/off visibility of every layer (LAYINV)") +
+          rb("find", "Filter", `data-a="layfilter"`, "Hide layers by name pattern (LAYFILTER A-*)") +
+          rb("report", "Lay List", `data-a="laylist"`, "List layers and ON/OFF state (LAYLIST)") +
+          rb("select-all", "SelByLayer", `data-a="selbylayer"`, "Select every object on the layers of the selection (SELBYLAYER)") +
+          rb("table", "Lay Stats", `data-a="layerstats"`, "Entity count per layer (LAYERSTATS)"),
+        "",
+        "",
+        "home",
+      )
+      rg(
+        "Power Tools",
+        rb("select-all", "Select All", `data-a="selectall"`, "Select every visible object (SELECTALL)") +
+          rb("clear", "Clear Sel", `data-a="clrsel"`, "Clear the selection set (CLRSEL)") +
+          rb("copy", "Copy By", `data-a="copyby"`, "Duplicate selection by dx,dy (COPYBY)") +
+          rb("move", "Move By", `data-a="moveby"`, "Nudge selection by dx,dy (MOVEBY)") +
+          rb("rotate", "Rotate By", `data-a="rotateby"`, "Rotate selection about its center (ROTATEBY)") +
+          rb("scale", "Scale By", `data-a="scaleby"`, "Scale selection about its center (SCALEBY)") +
+          rb("mirror", "Mirror X", `data-a="mirrorx"`, "Mirror about horizontal through center (MIRRORX)") +
+          rb("mirror", "Mirror Y", `data-a="mirrory"`, "Mirror about vertical through center (MIRRORY)") +
+          rb("align", "Align L", `data-a="alignl"`, "Align left edges (ALIGNL)") +
+          rb("align", "Align R", `data-a="alignr"`, "Align right edges (ALIGNR)") +
+          rb("distribute", "Distribute", `data-a="distribute"`, "Even spacing X or Y (DISTRIBUTE)") +
+          rb("bounding-box", "BBox", `data-a="bbox"`, "Draw bounding box of selection (BBOX)") +
+          rb("measure", "Length", `data-a="length"`, "Total length of selected linear objects (LENGTH)") +
+          rb("area", "Area Sel", `data-a="areasel"`, "Area of selected closed shapes (AREASEL)") +
+          rb("point", "CenterMark", `data-a="centermark"`, "Center marks on selected circles (CENTERMARK)") +
+          rb("point", "Mid Pts", `data-a="markmid"`, "Points at segment midpoints (MARKMID)") +
+          rb("point", "Int Pts", `data-a="markint"`, "Points at intersections (MARKINT)") +
+          rb("explode", "Xplode PL", `data-a="xplodepl"`, "Explode polylines to lines (XPLODEPL)") +
+          rb("audit", "Purge 0-Len", `data-a="auditzl"`, "Remove zero-length lines (AUDITZL)") +
+          rb("help", "DWG Help", `data-a="dwghelp"`, "DWG open troubleshooting (DWGHELP)"),
         "",
         "",
         "home",
@@ -6686,7 +6719,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "Modify",
         rb("slab", "Flatten", `data-a="flatten"`, "Set every object to Z = 0 (FLATTEN)") +
           rb("purge", "Overkill", `data-a="overkill"`, "Delete duplicate / overlapping objects (OVERKILL)") +
-          tb("breakline", "break", "Break-line"),
+          tb("breakline", "break", "Break-line") +
+          rb("copy", "Copy By", `data-a="copyby"`, "COPYBY dx dy") +
+          rb("move", "Move By", `data-a="moveby"`, "MOVEBY dx dy") +
+          rb("rotate", "Rotate By", `data-a="rotateby"`, "ROTATEBY degrees") +
+          rb("scale", "Scale By", `data-a="scaleby"`, "SCALEBY factor") +
+          rb("explode", "Xplode PL", `data-a="xplodepl"`, "Explode polylines (XPLODEPL)") +
+          rb("audit", "Purge 0-Len", `data-a="auditzl"`, "Remove zero-length lines (AUDITZL)"),
         "",
         "",
         "express",
@@ -6698,7 +6737,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("walk", "LayWalk", `data-a="laywalk"`, "Walk the drawing layer by layer (LAYWALK)") +
           rb("clear", "LayFrz", `data-a="layfrz"`, "Freeze the layers of the selected objects (LAYFRZ)") +
           rb("refresh", "LayThw", `data-a="laythw"`, "Thaw every frozen layer (LAYTHW)") +
-          tb("matchlayer", "matchprop", "Layer Match"),
+          tb("matchlayer", "matchprop", "Layer Match") +
+          rb("clear", "Hide Multi", `data-a="layhidem"`, "Hide all layers of selection (LAYHIDEM)") +
+          rb("show-all", "Show Multi", `data-a="layshowm"`, "Show layers of selection (LAYSHOWM)") +
+          rb("refresh", "Invert Vis", `data-a="layinv"`, "Invert layer visibility (LAYINV)") +
+          rb("find", "Filter", `data-a="layfilter"`, "Hide layers by pattern (LAYFILTER)") +
+          rb("table", "Lay Stats", `data-a="layerstats"`, "Per-layer entity counts (LAYERSTATS)"),
         "",
         "",
         "express",
@@ -6976,6 +7020,53 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       "ribbon-min": () => applyCadRibbonMinimized(!ribbonMinimized),
       cleanscreen: () => executeDrawingCommand("CLEANSCREEN"),
       // panel buttons that forward to existing commands
+
+      // Critical gap tools — multi-layer + power tools (UI accessible)
+      layhidem: () => executeDrawingCommand("LAYHIDEM"),
+      layshowm: () => executeDrawingCommand("LAYSHOWM"),
+      layinv: () => executeDrawingCommand("LAYINV"),
+      layfilter: () => {
+        const pat = window.prompt("Hide layers matching pattern (e.g. A-* or *WALL*):", "A-*");
+        if (pat) executeDrawingCommand(`LAYFILTER ${pat}`);
+      },
+      laylist: () => executeDrawingCommand("LAYLIST"),
+      selbylayer: () => executeDrawingCommand("SELBYLAYER"),
+      layerstats: () => executeDrawingCommand("LAYERSTATS"),
+      selectall: () => executeDrawingCommand("SELECTALL"),
+      clrsel: () => executeDrawingCommand("CLRSEL"),
+      copyby: () => {
+        const v = window.prompt("Copy offset dx dy:", "10 0");
+        if (v) executeDrawingCommand(`COPYBY ${v}`);
+      },
+      moveby: () => {
+        const v = window.prompt("Move offset dx dy:", "10 0");
+        if (v) executeDrawingCommand(`MOVEBY ${v}`);
+      },
+      rotateby: () => {
+        const v = window.prompt("Rotate degrees:", "90");
+        if (v) executeDrawingCommand(`ROTATEBY ${v}`);
+      },
+      scaleby: () => {
+        const v = window.prompt("Scale factor:", "2");
+        if (v) executeDrawingCommand(`SCALEBY ${v}`);
+      },
+      mirrorx: () => executeDrawingCommand("MIRRORX"),
+      mirrory: () => executeDrawingCommand("MIRRORY"),
+      alignl: () => executeDrawingCommand("ALIGNL"),
+      alignr: () => executeDrawingCommand("ALIGNR"),
+      distribute: () => {
+        const v = window.prompt("Distribute axis X or Y:", "X");
+        if (v) executeDrawingCommand(`DISTRIBUTE ${v}`);
+      },
+      bbox: () => executeDrawingCommand("BBOX"),
+      length: () => executeDrawingCommand("LENGTH"),
+      areasel: () => executeDrawingCommand("AREASEL"),
+      centermark: () => executeDrawingCommand("CENTERMARK"),
+      markmid: () => executeDrawingCommand("MARKMID"),
+      markint: () => executeDrawingCommand("MARKINT"),
+      xplodepl: () => executeDrawingCommand("XPLODEPL"),
+      auditzl: () => executeDrawingCommand("AUDITZL"),
+      dwghelp: () => executeDrawingCommand("DWGHELP"),
       overkill: () => executeDrawingCommand("OVERKILL"),
       props: () => executeDrawingCommand("PROPERTIES"),
       cal: () => executeDrawingCommand("CAL"),
