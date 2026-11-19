@@ -203,6 +203,27 @@ t("showcase: every claim maps to a real module surface", () => {
   for (const c of claims) assert.ok(home.includes(c), `missing showcase claim: ${c}`);
 });
 
+t("showcase cards: expanded state is saved and restored after refresh", () => {
+  assert.ok(home.includes('SHOWCASE_EXPANSION_KEY = "obs-home-showcase-expanded-v1"'), "stable storage key missing");
+  assert.ok(home.includes("function readShowcaseExpansion()"), "saved accordion state must be read");
+  assert.ok(home.includes("function writeShowcaseExpansion(topic: string, cardIndex: number | null)"), "accordion state must be persisted");
+  assert.ok(home.includes("localStorage.setItem(SHOWCASE_EXPANSION_KEY"), "expanded/collapsed changes must be saved");
+  assert.ok(home.includes("Object.entries(readShowcaseExpansion())"), "saved state must be restored during welcome build");
+  assert.ok(home.includes('button?.setAttribute("aria-expanded", "true")'), "restored card must expose the correct accessibility state");
+  assert.ok(home.includes("writeShowcaseExpansion(num ?? \"\", anyOpen ? null : 0)"), "topic overview expand/collapse must persist too");
+});
+
+t("showcase cards: expanded content includes full details and working actions", () => {
+  assert.ok(home.includes('class="obs-fcard__detail-title"'), "detail title must be visible");
+  assert.ok(home.includes("c.bullets.map((b) =>"), "all feature bullets should be rendered");
+  assert.ok(!home.includes("c.bullets.slice(0, 4)"), "feature details must not be truncated to four bullets");
+  assert.ok(home.includes('data-card-launch="${p.num}"'), "cards need a contextual launch action");
+  assert.ok(home.includes('data-card-copy="${esc(c.howTo)}"'), "cards need a copy-workflow action");
+  assert.ok(home.includes('button.dataset.cardLaunch === "01"'), "2D cards must launch the CAD engine");
+  assert.ok(home.includes("else open3dPlatform()"), "3D/delivery cards must open the BIM platform");
+  assert.ok(home.includes("copyShowcaseSteps(button.dataset.cardCopy"), "copy action must copy the actual workflow steps");
+});
+
 t("showcase: page CTAs are wired", () => {
   for (const attr of ["data-open2d", "data-open3d", "data-focus-create"]) {
     assert.ok(home.includes(attr), `missing CTA ${attr}`);
@@ -234,6 +255,16 @@ t("css: showcase pages + feature cards + chips + visuals", () => {
     ".obs-chiprow", ".obs-page__visual", ".obsp-caret", ".obsp-clash", ".obsp-float"]) {
     assert.ok(css.includes(sel), `missing css: ${sel}`);
   }
+});
+
+t("css: expanded feature cards have readable actions and RTL-safe layout", () => {
+  for (const sel of [".obs-fcard__detail-title", ".obs-fcard__actions", ".obs-fcard__action", ".obs-fcard__action--primary"]) {
+    assert.ok(css.includes(sel), `missing feature-card detail style: ${sel}`);
+  }
+  assert.ok(css.includes("text-align: start;"), "welcome-card controls must respect RTL");
+  assert.ok(css.includes("margin-inline-start: auto;"), "card chevron alignment must be logical");
+  assert.ok(css.includes("border-inline-end:"), "card chevron border must be logical");
+  assert.ok(css.includes("padding-inline-start:"), "expanded content indentation must be logical");
 });
 
 t("css: responsive + reduced-motion respected", () => {
