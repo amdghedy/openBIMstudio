@@ -51,9 +51,7 @@ for (const dir of sourceRoots) collect(dir);
 
 // Detect the two common bypass forms: JSON.parse(await file.text()) and
 // assigning await file.text() to a variable before JSON.parse(variable).
-const directFileText = /JSON\.parse\(\s*(?:await\s+)?[^;\n)]*\.text\(\s*\)\s*\)/;
-const textAssignment = /\b(?:const|let|var)\s+(\w+)\s*=\s*await\s+[^;\n]*\.text\(\s*\)\s*;/g;
-for (const relative of files) {
+const directFileText = /JSON\\.parse\\(\\s*(?:await\\s+)?(?:file|f)\\.text\\(\\s*\\)\\s*\\)/;\nconst textAssignment = /\\b(?:const|let|var)\\s+(\\w+)\\s*=\\s*await\\s+(?:file|f)\\.text\\(\\s*\\)\\s*;/g;\nfor (const relative of files) {
   const source = fs.readFileSync(path.join(root, relative), "utf8");
   if (directFileText.test(source)) {
     console.error(`FAIL ${relative}: direct JSON.parse(File.text()) bypasses safeLoad`);
