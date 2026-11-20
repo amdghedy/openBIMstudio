@@ -1,0 +1,36 @@
+/* Structural STEP pre-flight: accepts every corpus fixture, rejects structurally corrupt files, stays linear-time. */
+const { execSync } = require("child_process"); const fs = require("fs"), os = require("os"), path = require("path"), assert = require("assert");
+const out = fs.mkdtempSync(path.join(os.tmpdir(), "spf-"));
+execSync(`npx tsc src/modules/ifc-semantics/step-preflight.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck${process.env.TSC_IGNORE_CONFIG ? " --ignoreConfig" : ""}`, { stdio: "pipe" });
+const find = (d, n) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = find(p, n); if (r) return r } else if (f.name === n) return p } };
+const { preflightStep } = require(find(out, "step-preflight.js"));
+let pass = 0, fail = 0; const t = (n, f) => { try { f(); pass++; console.log("  PASS " + n) } catch (e) { fail++; console.log("  FAIL " + n + ": " + e.message) } };
+const enc = (s) => new Uint8Array(Buffer.from(s, "latin1"));
+const dir = path.join(__dirname, "fixtures/ifc-corpus");
+const good = fs.readdirSync(dir).filter((f) => f.endsWith(".ifc"));
+for (const f of good) t(`valid fixture accepted: ${f}`, () => { const r = preflightStep(new Uint8Array(fs.readFileSync(path.join(dir, f)))); assert.ok(r.ok, JSON.stringify(r)); });
+const MIN = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('a',$,'It''s',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+t("minimal file accepted", () => assert.ok(preflightStep(enc(MIN)).ok));
+t("escaped quotes, comments and CRLF accepted", () => assert.ok(preflightStep(enc(MIN.replace("#1=", "/* c */ #1 = ").replace(/\n/g, "\r\n"))).ok));
+t("raw UTF-8 inside a string accepted", () => assert.ok(preflightStep(new Uint8Array(Buffer.from(MIN.replace("It''s", "Café ''x''"), "utf8"))).ok));
+const bad = {
+  "empty": "", "not step": "hello", "truncated before tail": MIN.replace("END-ISO-10303-21;\n", ""),
+  "truncated mid record": MIN.slice(0, MIN.indexOf("'It")),
+  "unterminated string": MIN.replace("'It''s'", "'It''s"), "unterminated comment": MIN.replace("DATA;", "DATA; /* x"),
+  "unbalanced close": MIN.replace("$,$,$);", "$,$,$));"), "unbalanced open": MIN.replace("$,$,$);\nENDSEC", "$,$,$;\nENDSEC"),
+  "record without id": MIN.replace("#1=", "1="), "record without equals": MIN.replace("#1=IFC", "#1 IFC"),
+  "control byte": MIN.replace("IFCPROJECT", "IFC\u0001PROJECT"), "high byte outside string": MIN.replace("IFCPROJECT", "IFCéPROJECT"),
+  "content after tail": MIN + "#2=X();", "no DATA": MIN.replace("DATA;\n#1=IFCPROJECT('a',$,'It''s',$,$,$,$,$,$);\n", ""),
+  "deep nesting": "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=X(" + "(".repeat(300) + ")".repeat(300) + ");\nENDSEC;\nEND-ISO-10303-21;\n",
+};
+for (const [name, text] of Object.entries(bad)) t(`rejected: ${name}`, () => { const r = preflightStep(enc(text)); assert.strictEqual(r.ok, false); assert.ok(r.reason); });
+t("deterministic mutations: never throws; linear time on a 20 MB file", () => {
+  let s = 12345; const rnd = (m) => (s = (1103515245 * s + 12345) & 0x7fffffff) % m;
+  const seed = fs.readFileSync(path.join(dir, good[0]));
+  for (let i = 0; i < 300; i++) { const b = Buffer.from(seed); for (let k = 0; k < 12; k++) b[rnd(b.length)] ^= 1 << rnd(8); preflightStep(new Uint8Array(b)); }
+  const rec = "#1=IFCWALL('0',$,$,$,$,$,$,$);\n"; const body = rec.repeat(Math.ceil(20e6 / rec.length));
+  const big = enc("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n" + body + "ENDSEC;\nEND-ISO-10303-21;\n");
+  const t0 = Date.now(); const r = preflightStep(big); const ms = Date.now() - t0;
+  assert.ok(r.ok); assert.ok(ms < 3000, `took ${ms} ms`);
+});
+console.log(`step-preflight: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
