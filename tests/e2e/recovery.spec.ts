@@ -205,6 +205,13 @@ test('crash mid-edit: banner appears and the saved edits are back', async ({ pag
   // and the primary write leaves behind.
   await idbDeleteProjectRecord(page, projectId);
   expect(await primaryProject(page), 'primary record must be gone before the crash').toBeNull();
+  // A real crash in that window leaves the crash marker behind: the
+  // marker is written when the document first goes dirty and cleared
+  // only when the save completes. The clean save above cleared it, so
+  // go dirty again (this wall is in-memory only and must be lost) and
+  // wait for the eager marker before crashing.
+  await placeWall(page);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
   const state = await page.context().storageState();
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
@@ -255,6 +262,10 @@ test('crash with a corrupt journal tail: recovers up to the last good entry and 
   // the journal alone.
   const corruptSeq = await idbCorruptLastOp(page, projectId);
   await idbDeleteProjectRecord(page, projectId);
+  // Go dirty again so the crash leaves its marker (see test 1): this
+  // wall is in-memory only and must be lost along with the corrupt entry.
+  await placeWall(page);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
   const state = await page.context().storageState();
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
@@ -324,6 +335,9 @@ test('replay is idempotent: two crash-recovery cycles, same state', async ({ pag
   await placeWall(page);
   await saveProject(page);
   await idbDeleteProjectRecord(page, projectId);
+  // Go dirty again so the crash leaves its marker (see test 1).
+  await placeWall(page);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
   const state1 = await page.context().storageState();
   await crashRenderer(page);
   const { ctx: ctx2, page: page2 } = await freshBoot(browser, state1);
