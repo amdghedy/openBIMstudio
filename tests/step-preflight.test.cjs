@@ -24,6 +24,10 @@ const bad = {
   "deep nesting": "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=X(" + "(".repeat(300) + ")".repeat(300) + ");\nENDSEC;\nEND-ISO-10303-21;\n",
 };
 for (const [name, text] of Object.entries(bad)) t(`rejected: ${name}`, () => { const r = preflightStep(enc(text)); assert.strictEqual(r.ok, false); assert.ok(r.reason); });
+const mdir = path.join(dir, "malformed");
+for (const f of fs.readdirSync(mdir).filter((x) => x.endsWith(".ifc"))) {
+  t(`malformed regression fixture rejected before the parser: ${f}`, () => { const r = preflightStep(new Uint8Array(fs.readFileSync(path.join(mdir, f)))); assert.strictEqual(r.ok, false); assert.ok(r.reason); });
+}
 t("deterministic mutations: never throws; linear time on a 20 MB file", () => {
   let s = 12345; const rnd = (m) => (s = (1103515245 * s + 12345) & 0x7fffffff) % m;
   const seed = fs.readFileSync(path.join(dir, good[0]));
