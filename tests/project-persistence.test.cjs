@@ -340,7 +340,7 @@ const t = (label, fn) => { n += 1; fn(); console.log(`  ok ${n} — ${label}`); 
     assert.match(browserRecovery, /BROWSER_RECOVERY_MAX_BYTES/);
     assert.match(browserRecovery, /before-file-overwrite/);
     assert.match(browserRecovery, /before-delete/);
-    assert.match(browserRecovery, /slice\(BROWSER_RECOVERY_KEEP - 1\)/);
+    assert.match(browserRecovery, /slice\(Math\.max\(0, keep - 1\)\)/); // keep defaults to BROWSER_RECOVERY_KEEP; behaviour is tested in browser-recovery.test.cjs
     assert.match(fileIo, /backupExistingFileHandle\(l\.handle, doc\.id, doc\.name\)/);
     assert.match(fileIo, /reason: "before-import-replace"/);
     assert.match(fileIo, /backupProjectFile\(/);
