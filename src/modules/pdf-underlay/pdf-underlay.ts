@@ -9,6 +9,7 @@
  * browser's built-in PDF.js (loaded lazily) or a fallback canvas snapshot.
  */
 
+import { assertFileAllowed } from "../../core/file-guard";
 import * as THREE from "three";
 
 export interface PdfUnderlayParams {
@@ -51,7 +52,9 @@ const DEFAULTS = {
 /** Load a PDF and create an underlay mesh. */
 export async function loadPdfUnderlay(input: PdfUnderlayParams): Promise<PdfUnderlayResult> {
   const p = { ...DEFAULTS, ...input };
+  const fname = input.file instanceof Uint8Array ? "PDF" : (input.file as File).name ?? "PDF";
   const bytes = input.file instanceof Uint8Array ? input.file : new Uint8Array(await input.file.arrayBuffer());
+  assertFileAllowed("pdf", fname, bytes.length, bytes.subarray(0, 32));
 
   // Lazy-load pdf-lib to read page count + size.
   const { PDFDocument } = await import("pdf-lib");

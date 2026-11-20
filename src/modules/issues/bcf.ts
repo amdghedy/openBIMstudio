@@ -14,6 +14,7 @@
  * and ClippingPlanes. Local fragment IDs are resolved from IfcGuids via a
  * per-model GUID → localId map built lazily and cached.
  */
+import { assertFileAllowed, guardZipDirectory } from "../../core/file-guard";
 import JSZip from "jszip";
 import * as THREE from "three";
 import { ctx } from "../../core/context";
@@ -417,7 +418,11 @@ export async function importBCF(file: File): Promise<number> {
     uiAlert(`BCF archive is too large (maximum ${MAX_BCF_BYTES} bytes).`);
     return 0;
   }
-  const zip = await JSZip.loadAsync(file);
+  const bcfBytes = new Uint8Array(await file.arrayBuffer());
+  assertFileAllowed("bcf", file.name, bcfBytes.length, bcfBytes.subarray(0, 32));
+  const dirGuard = guardZipDirectory(bcfBytes);
+  if (!dirGuard.ok) throw new Error(`${file.name}: ${dirGuard.reason} The file was not imported and your issues are unchanged.`);
+  const zip = await JSZip.loadAsync(bcfBytes);
   validateBcfArchive(file, zip);
   const imported: Issue[] = [];
   const existing = new Set(getIssues().map((i) => i.id));

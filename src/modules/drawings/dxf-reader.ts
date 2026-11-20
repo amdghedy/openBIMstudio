@@ -13,6 +13,7 @@
  *
  * Pure TypeScript, no dependencies.
  */
+import { assertFileAllowed, readHead } from "../../core/file-guard";
 import { lineweightFromDxf } from "./cad-styles";
 import { parseWithAcadEngine } from "./acad-engine";
 import type { DxfDimStyle, DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport } from "./dxf-types";
@@ -923,6 +924,7 @@ export function dxfHeaderView(text: string): { cx: number; cy: number; height: n
 
 export async function parseDxfFile(file: File | Blob): Promise<DxfDocument> {
   const name = file instanceof File ? file.name : "drawing.dxf";
+  assertFileAllowed("dxf", name, file.size, await readHead(file, 256));
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
   const head = new TextDecoder("latin1").decode(bytes.slice(0, 22));

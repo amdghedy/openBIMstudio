@@ -1,5 +1,6 @@
 /** Point-cloud file parsers (pure, no DOM / three). Output positions are in PROJECT axes
  *  (X east, Y up, Z north) and relative to `origin` so large survey coordinates keep float precision. */
+import { guardLasHeader } from "../../core/file-guard";
 export interface ParsedCloud {
   format: "las" | "ptx";
   /** x,y,z triples relative to `origin`. */
@@ -40,8 +41,9 @@ function chooseOrigin(min: [number, number, number], max: [number, number, numbe
 /** LAS 1.0 - 1.4, point data record formats 0-10 (uncompressed). Source axes: X east, Y north, Z up. */
 export function parseLas(buf: ArrayBuffer, maxPoints = MAX_DEFAULT): ParsedCloud {
   const dv = new DataView(buf);
-  if (buf.byteLength < 227 || String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== "LASF") {
-    throw new Error("Not a LAS file (missing LASF signature).");
+  const lasGuard = guardLasHeader(new Uint8Array(buf, 0, Math.min(buf.byteLength, 4096)));
+  if (!lasGuard.ok) {
+    throw new Error(lasGuard.reason);
   }
   const vMajor = dv.getUint8(24), vMinor = dv.getUint8(25);
   const offsetToPoints = dv.getUint32(96, true);

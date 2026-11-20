@@ -1,4 +1,5 @@
 /** IDS validation floating panel. */
+import { assertFileAllowed, guardXmlText } from "../core/file-guard";
 import { escapeHtml } from "../core/html-escape";
 import { ctx } from "../core/context";
 import {
@@ -244,7 +245,10 @@ fileInput.onchange = async () => {
   fileInput.value = "";
   if (!f) return;
   try {
+    assertFileAllowed("ids", f.name, f.size);
     const xml = await f.text();
+    const xmlGuard = guardXmlText(xml);
+    if (!xmlGuard.ok) throw new Error(`${f.name}: ${xmlGuard.reason} The file was not opened and your IDS is unchanged.`);
     currentDoc = parseIdsXml(xml);
     currentReport = null;
     clearLastReport();

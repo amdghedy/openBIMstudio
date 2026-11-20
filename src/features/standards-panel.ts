@@ -5,6 +5,7 @@
  * Right column: run button + results table with severity filter.
  * Bottom: export to CSV / HTML report.
  */
+import { guardSize } from "../core/file-guard";
 import { ctx } from "../core/context";
 import { makeDockable, type DockHandle } from "./dockable";
 import { t, scoped, i18n } from "../core/i18n";
@@ -100,6 +101,8 @@ async function loadPackFiles(files: File[]): Promise<void> {
   const out: string[] = [];
   for (const f of files) {
     if (!/\.json$/i.test(f.name)) { out.push(`${f.name}: not a .json file`); continue; }
+    const sz = guardSize("standards-pack", f.size);
+    if (!sz.ok) { out.push(`${f.name}: ${sz.reason} Not loaded.`); continue; }
     const r = loadPackText(await f.text());
     if (!r.pack) { out.push(`${f.name}: not loaded\n  - ` + r.errors.slice(0, 8).join("\n  - ")); continue; }
     registerPack(r.pack);

@@ -9,6 +9,7 @@
  * to GPU as they arrive, so files of several hundred MB are workable.
  */
 
+import { assertFileAllowed } from "../../core/file-guard";
 import * as THREE from "three";
 
 export interface PointCloudHeader {
@@ -57,6 +58,7 @@ function detectFormat(file: File | string): PointCloudHeader["format"] {
 
 /** Parse a PLY file into a position + colour buffer. */
 async function parsePly(file: File): Promise<{ positions: Float32Array; colors: Float32Array | null; count: number; bounds: PointCloudHeader["bounds"] }> {
+  assertFileAllowed("point-cloud", file.name, file.size);
   const buf = await file.arrayBuffer();
   const text = new TextDecoder().decode(new Uint8Array(buf));
   const lines = text.split(/\r?\n/);
@@ -100,6 +102,7 @@ async function parsePly(file: File): Promise<{ positions: Float32Array; colors: 
 
 /** Parse a PCD ASCII file. */
 async function parsePcd(file: File): Promise<{ positions: Float32Array; colors: Float32Array | null; count: number; bounds: PointCloudHeader["bounds"] }> {
+  assertFileAllowed("point-cloud", file.name, file.size);
   const buf = await file.arrayBuffer();
   const text = new TextDecoder().decode(new Uint8Array(buf));
   const lines = text.split(/\r?\n/);
