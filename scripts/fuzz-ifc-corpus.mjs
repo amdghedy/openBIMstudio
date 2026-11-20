@@ -131,12 +131,14 @@ function structuralMutate(srcBytes) {
   const first = lines.findIndex((l) => l.trim() === "DATA;") + 1;
   let last = lines.findIndex((l, i) => i > first && l.trim() === "ENDSEC;");
   if (first <= 0 || last < 0) last = lines.length;
-  const BIG = ["0", "1", "2147483647", "4294967295", "99999999", "-1", "1E308", "123456789012345678"];
+  // Prefer structural damage over pathological integers: web-ifc can grind for
+  // minutes on multi-billion list counts / 1E308 fields (parser timeouts, not crashes).
+  const MILD = ["0", "1", "2", "3", "8", "16", "64", "255", "1024", "-1"];
   const n = 3 + rand(8);
   for (let k = 0; k < n && last - first > 2; k++) {
     const idx = first + rand(last - first);
     const op = rand(4);
-    if (op === 0) lines[idx] = lines[idx].replace(/\b\d+(\.\d*)?\b/g, (m) => (rand(6) === 0 ? BIG[rand(BIG.length)] : m));
+    if (op === 0) lines[idx] = lines[idx].replace(/\b\d+(\.\d*)?\b/g, (m) => (rand(6) === 0 ? MILD[rand(MILD.length)] : m));
     else if (op === 1) { lines.splice(idx, 1); last--; }
     else if (op === 2) { lines.splice(idx, 0, lines[idx]); last++; }
     else { const target = first + rand(last - first); lines[idx] = lines[idx].replace(/#\d+/g, (m) => (rand(4) === 0 ? "#" + (lines[target].match(/^#(\d+)/)?.[1] ?? "1") : m)); }

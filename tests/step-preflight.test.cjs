@@ -33,4 +33,11 @@ t("deterministic mutations: never throws; linear time on a 20 MB file", () => {
   const t0 = Date.now(); const r = preflightStep(big); const ms = Date.now() - t0;
   assert.ok(r.ok); assert.ok(ms < 3000, `took ${ms} ms`);
 });
+t("rejects pathological integer tokens (>18 digits)", () => {
+  const text = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=IFCCARTESIANPOINT((1234567890123456789,0.,0.));\nENDSEC;\nEND-ISO-10303-21;\n";
+  const r = preflightStep(enc(text));
+  assert.strictEqual(r.ok, false, JSON.stringify(r));
+  assert.match(String(r.reason), /Integer token longer/i);
+});
+
 console.log(`step-preflight: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

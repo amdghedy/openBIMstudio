@@ -21,6 +21,10 @@ export interface StepPreflightResult {
 }
 
 const MAX_DEPTH = 256;
+/** Long pure-digit tokens in DATA usually mean adversarial list counts; valid IFC stays well below this. */
+const MAX_DIGIT_RUN = 18;
+/** Hard cap on DATA entity instances for browser-side parse safety. */
+const MAX_DATA_RECORDS = 1_000_000;
 const HEADER_MAGIC = "ISO-10303-21;";
 const TAIL_MAGIC = "END-ISO-10303-21;";
 
@@ -51,6 +55,8 @@ export function preflightStep(bytes: Uint8Array): StepPreflightResult {
   let sawData = false;
   let sawTail = false;
   let stmtStart = i;
+  let dataRecords = 0;
+  let digitRun = 0;
 
   while (i < n) {
     const c = bytes[i];
@@ -91,6 +97,14 @@ export function preflightStep(bytes: Uint8Array): StepPreflightResult {
 
     if (c < 0x20 || c >= 0x7f) return fail(`Unexpected byte 0x${c.toString(16)} outside a string`);
 
+    // Extreme integer tokens (e.g. 1e18-wide counts) are a common hang vector for WASM parsers.
+    if (isDigit(c)) {
+      digitRun++;
+      if (digitRun > MAX_DIGIT_RUN) return fail(`Integer token longer than ${MAX_DIGIT_RUN} digits`);
+    } else {
+      digitRun = 0;
+    }
+
     if (!inRecord) {
       inRecord = true;
       stmtStart = i;
@@ -100,6 +114,8 @@ export function preflightStep(bytes: Uint8Array): StepPreflightResult {
         while (j < n && isDigit(bytes[j])) j++;
         while (j < n && isWs(bytes[j])) { if (bytes[j] === 0x0a) line++; j++; }
         if (j >= n || bytes[j] !== 0x3d /* = */) return fail("DATA record is missing '=' after its #<id>");
+        dataRecords++;
+        if (dataRecords > MAX_DATA_RECORDS) return fail(`DATA section exceeds ${MAX_DATA_RECORDS} entity records`);
       } else if (section === "data" && c !== 0x45 /* E: ENDSEC */) {
         return fail("DATA section contains a statement that is not an entity instance");
       }
