@@ -24,6 +24,7 @@ import {
 import { refreshModelSelectionUI } from "./clash";
 import { uiAlert } from "../core/notify";
 import { fmtNumber } from "../core/region";
+import { validateIfcStepSyntax } from "../modules/ifc-semantics/step-preflight";
 import { pauseRenderLoop } from "../core/renderer-lifecycle";
 
 // Injected by vite.config.ts (define) from node_modules/web-ifc/package.json.
@@ -1188,6 +1189,10 @@ async function runTask(t: ImportTask) {
 
       const buffer = await t.file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
+      const syntaxErrors = validateIfcStepSyntax(bytes);
+      if (syntaxErrors.length) {
+        throw new Error(`IFC STEP syntax preflight failed: ${syntaxErrors.slice(0, 3).join("; ")}`);
+      }
       t.schema = detectSchema(bytes);
       // Per-entity interop report: one linear scan of the STEP instance table.
       try { t.interop = buildInteropReport(t.file.name, bytes) ?? undefined; } catch { /* optional */ }
@@ -1561,6 +1566,10 @@ export async function convertIfcToFragBytes(
   onProgress(2, "reading file…");
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
+  const syntaxErrors = validateIfcStepSyntax(bytes);
+  if (syntaxErrors.length) {
+    throw new Error(`IFC STEP syntax preflight failed: ${syntaxErrors.slice(0, 3).join("; ")}`);
+  }
   const schema = detectSchema(bytes);
 
   onProgress(8, "checking WASM…");
