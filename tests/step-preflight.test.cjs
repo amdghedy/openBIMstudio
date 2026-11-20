@@ -43,5 +43,33 @@ t("rejects pathological integer tokens (>18 digits)", () => {
   assert.strictEqual(r.ok, false, JSON.stringify(r));
   assert.match(String(r.reason), /Integer token longer/i);
 });
+// Issue #231: a '.' outside strings/comments is a real number or a
+// well-formed '.NAME.' enumeration. A leading-dot-less enum name is read by
+// web-ifc as a LABEL and the following '.' as an ENUM start that swallows
+// ';' terminators up to the next '.' — OpenModel never terminates.
+const ENUM_REC = (arg) => `ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=IFCSIUNIT(*,${arg},$,.METRE.);\nENDSEC;\nEND-ISO-10303-21;\n`;
+for (const [name, arg] of [
+  ["well-formed enumeration", ".LENGTHUNIT."],
+  ["single-letter enumeration", ".T."],
+  ["real with exponent, no fraction digits", "1.E-05"],
+]) t(`accepted: ${name}`, () => assert.ok(preflightStep(enc(ENUM_REC(arg))).ok, arg));
+for (const [name, arg] of [
+  ["leading dot replaced by slash", "/MODEL_VIEW."],
+  ["leading dot replaced by comma", ",MODEL_VIEW."],
+  ["leading dot replaced by star", "*MODEL_VIEW."],
+  ["leading dot replaced by letter", "nMODEL_VIEW."],
+  ["leading dot replaced by ampersand", "&MODEL_VIEW."],
+  ["trailing dot replaced by comma", ".MODEL_VIEW,"],
+  ["label followed by dot, no opening dot", "MODEL_VIEW."],
+  ["lone E, neither exponent nor enum", ".E,"],
+]) t(`rejected: malformed enumeration (${name})`, () => {
+  const r = preflightStep(enc(ENUM_REC(arg)));
+  assert.strictEqual(r.ok, false, `${arg}: ${JSON.stringify(r)}`);
+  assert.match(String(r.reason), /enumeration/i);
+});
+t("accepted: leading-dot real and trailing-dot real", () => {
+  const text = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=IFCCARTESIANPOINT((.5,1.,1.5));\nENDSEC;\nEND-ISO-10303-21;\n";
+  assert.ok(preflightStep(enc(text)).ok);
+});
 
 console.log(`step-preflight: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

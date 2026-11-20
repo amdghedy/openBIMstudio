@@ -8,7 +8,13 @@
  *   - 'strings' (with '' escapes) and block comments are terminated;
  *   - parentheses balance within a record, nesting stays below MAX_DEPTH, `;` never appears inside open parens;
  *   - every DATA record is `#<id> = …;`;
- *   - no control bytes or raw non-ASCII bytes outside strings and comments.
+ *   - no control bytes or raw non-ASCII bytes outside strings and comments;
+ *   - every `.` is part of a real number or a well-formed `.NAME.` enumeration
+ *     (issue #231: web-ifc's tokenizer reads a leading-dot-less enum name as a
+ *     LABEL and the following `.` as an ENUM start that swallows everything —
+ *     including `;` record terminators — up to the next `.` in the file, so
+ *     OpenModel never terminates; a lone `.` after a label that is not an
+ *     enumeration close is the same defect).
  * It does NOT validate the schema, entity names or references — that remains the parser's job.
  */
 
@@ -30,6 +36,11 @@ const TAIL_MAGIC = "END-ISO-10303-21;";
 
 const isWs = (c: number): boolean => c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
 const isDigit = (c: number): boolean => c >= 0x30 && c <= 0x39;
+/** Letters, digits and `_`: the characters of an enumeration name or label. */
+const isEnumName = (c: number): boolean =>
+  (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || isDigit(c) || c === 0x5f;
+const isLetter = (c: number): boolean =>
+  (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a);
 
 function startsWithAt(b: Uint8Array, i: number, s: string): boolean {
   if (i + s.length > b.length) return false;
@@ -103,6 +114,47 @@ export function preflightStep(bytes: Uint8Array): StepPreflightResult {
       if (digitRun > MAX_DIGIT_RUN) return fail(`Integer token longer than ${MAX_DIGIT_RUN} digits`);
     } else {
       digitRun = 0;
+    }
+
+    if (c === 0x2e /* . */) {
+      // A '.' is either part of a real number or an enumeration delimiter.
+      // A '.' followed by a letter can only open an enumeration, so it must
+      // be a well-formed '.NAME.' (name = letters/digits/'_', optional
+      // whitespace, closing '.'). Otherwise the parser reads the name as a
+      // bare LABEL and the next '.' as an ENUM start that swallows the rest
+      // of the file up to the following '.' — including ';' terminators —
+      // and OpenModel never terminates (issue #231).
+      const next = i + 1 < n ? bytes[i + 1] : -1;
+      if (isLetter(next)) {
+        let j = i + 1;
+        while (j < n && isEnumName(bytes[j])) j++;
+        // '1.E-05' is a real number, not an enumeration: a lone 'E'/'e'
+        // followed by an optional sign and a digit is an exponent.
+        const loneE = j === i + 2 && (next === 0x45 || next === 0x65);
+        let e = j;
+        if (loneE && e < n && (bytes[e] === 0x2b || bytes[e] === 0x2d)) e++;
+        if (loneE && e < n && isDigit(bytes[e])) {
+          // Real-number exponent — not an enumeration, nothing to check.
+        } else {
+          while (j < n && isWs(bytes[j])) j++;
+          if (j >= n || bytes[j] !== 0x2e) return fail("Malformed enumeration: '.' must close with '.' after the name");
+        }
+      } else {
+        // A '.' right after a label must be the closing dot of an
+        // enumeration opened by a '.' (e.g. '.MODEL_VIEW.'). A '.' after a
+        // pure number is a decimal point ('1.', '0.') and anything else is
+        // a statement boundary — both fine. The run is scanned back over
+        // letters/digits/'_'; only a run containing a letter (a label, not
+        // a number) needs the opening '.'.
+        let k = i - 1;
+        while (k >= 0 && isWs(bytes[k])) k--;
+        if (k >= 0 && isEnumName(bytes[k])) {
+          let s = k;
+          let hasLetter = false;
+          while (s >= 0 && isEnumName(bytes[s])) { if (isLetter(bytes[s]) || bytes[s] === 0x5f) hasLetter = true; s--; }
+          if (hasLetter && (s < 0 || bytes[s] !== 0x2e)) return fail("'.' after a label that is not an enumeration");
+        }
+      }
     }
 
     if (!inRecord) {
