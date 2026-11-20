@@ -113,6 +113,110 @@ export function areConnected(a: MepLike, b: MepLike): boolean {
   return false;
 }
 
+// ── Indexed pair search (uniform grid over plan cells) ────────────────────
+//
+// The old callers scanned every pair (O(n²)) on every recompute. The
+// geometry gate in areConnected/pointTouches is LOCAL: a connection needs
+// an attach point of one element to land inside the other element's touch
+// region (segment body ± CONNECT_TOL, fitting disc of fittingReach +
+// CONNECT_TOL, equipment box + CONNECT_TOL). Two elements whose touch
+// regions do not overlap in plan CANNOT be connected, so a uniform grid
+// over touch-region bounding boxes finds exactly the same pairs as the
+// brute-force scan — average O(n + k) for k true neighbours — while
+// areConnected stays the sole connection predicate. Vertical filtering
+// stays inside areConnected; the grid is plan-only by design (multi-storey
+// models still compare across floors, but only within the same plan cell).
+// Oversize regions (long runs) fall back to a global list so no element
+// can blow up the cell count. Equivalence with the brute-force scan is
+// pinned by tests/mep-connectivity-index.test.cjs on seeded random models.
+
+const INDEX_CELL_M = 2;
+const INDEX_MAX_CELLS_PER_ELEMENT = 256;
+
+/** Plan bounding box (m) of the region in which `e` can be touched. */
+function touchRegion(e: MepLike): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+  const p = e.params;
+  if (LINEAR_MEP.has(e.type)) {
+    const ends = linearEnds(e);
+    if (!ends) return null;
+    const [a, b] = ends;
+    return {
+      minX: Math.min(a.x, b.x) - CONNECT_TOL, maxX: Math.max(a.x, b.x) + CONNECT_TOL,
+      minZ: Math.min(a.z, b.z) - CONNECT_TOL, maxZ: Math.max(a.z, b.z) + CONNECT_TOL,
+    };
+  }
+  if (e.type === "fitting" && p.point) {
+    const r = fittingReach(p) + CONNECT_TOL;
+    return { minX: p.point[0] - r, maxX: p.point[0] + r, minZ: p.point[1] - r, maxZ: p.point[1] + r };
+  }
+  if (e.type === "equipment" && p.point) {
+    const half = Math.max(p.thickness, p.depth ?? p.thickness) / 2 + CONNECT_TOL;
+    return { minX: p.point[0] - half, maxX: p.point[0] + half, minZ: p.point[1] - half, maxZ: p.point[1] + half };
+  }
+  return null;
+}
+
+/**
+ * All connected pairs in `elements`, in input order (i < j), using the
+ * grid index. Returns EXACTLY the pairs the O(n²) double loop over
+ * areConnected would return — the index only prunes pairs that cannot
+ * touch; every surviving candidate is still decided by areConnected.
+ */
+export function connectedPairs(elements: MepLike[]): Array<[MepLike, MepLike]> {
+  const n = elements.length;
+  const cells = new Map<string, number[]>();
+  const oversize: number[] = [];
+  const cellOf = (v: number): number => Math.floor(v / INDEX_CELL_M);
+  for (let i = 0; i < n; i++) {
+    const region = touchRegion(elements[i]);
+    if (!region) continue;
+    const x0 = cellOf(region.minX), x1 = cellOf(region.maxX);
+    const z0 = cellOf(region.minZ), z1 = cellOf(region.maxZ);
+    const count = (x1 - x0 + 1) * (z1 - z0 + 1);
+    if (count > INDEX_MAX_CELLS_PER_ELEMENT) { oversize.push(i); continue; }
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cz = z0; cz <= z1; cz++) {
+        const key = cx + "," + cz;
+        const list = cells.get(key);
+        if (list) list.push(i);
+        else cells.set(key, [i]);
+      }
+    }
+  }
+  const seen = new Set<string>();
+  const idxPairs: Array<[number, number]> = [];
+  const consider = (i: number, j: number): void => {
+    if (i === j) return;
+    const a = Math.min(i, j), b = Math.max(i, j);
+    const key = a + ":" + b;
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (areConnected(elements[a], elements[b])) idxPairs.push([a, b]);
+  };
+  for (const list of cells.values()) {
+    for (let x = 0; x < list.length; x++) {
+      for (let y = x + 1; y < list.length; y++) consider(list[x], list[y]);
+    }
+  }
+  for (const i of oversize) {
+    for (let j = 0; j < n; j++) consider(i, j);
+  }
+  // Deterministic input order regardless of cell iteration order.
+  idxPairs.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  return idxPairs.map(([a, b]) => [elements[a], elements[b]] as [MepLike, MepLike]);
+}
+
+/** Adjacency (element id → neighbour ids) built once from connectedPairs. */
+export function connectivityAdjacency(elements: MepLike[]): Map<string, string[]> {
+  const adj = new Map<string, string[]>();
+  for (const e of elements) adj.set(e.id, []);
+  for (const [a, b] of connectedPairs(elements)) {
+    adj.get(a.id)!.push(b.id);
+    adj.get(b.id)!.push(a.id);
+  }
+  return adj;
+}
+
 /**
  * Everything that should move with `startIds`: the connected network, spreading through
  * runs and fittings. Equipment that is reached moves too but does not spread further.
@@ -121,6 +225,7 @@ export function areConnected(a: MepLike, b: MepLike): boolean {
 export function expandConnected(startIds: Iterable<string>, elements: MepLike[]): string[] {
   const byId = new Map(elements.map((e) => [e.id, e]));
   const mep = elements.filter((e) => isMepElement(e) && !e.properties?.pinned);
+  const adj = connectivityAdjacency(mep);
   const seen = new Set<string>();
   const queue: MepLike[] = [];
   for (const id of startIds) {
@@ -131,9 +236,10 @@ export function expandConnected(startIds: Iterable<string>, elements: MepLike[])
   }
   while (queue.length) {
     const cur = queue.pop()!;
-    for (const other of mep) {
-      if (seen.has(other.id) || !areConnected(cur, other)) continue;
-      seen.add(other.id);
+    for (const nid of adj.get(cur.id) ?? []) {
+      if (seen.has(nid)) continue;
+      const other = byId.get(nid)!;
+      seen.add(nid);
       if (other.type !== "equipment") queue.push(other);
     }
   }
@@ -148,15 +254,18 @@ export function expandConnected(startIds: Iterable<string>, elements: MepLike[])
  */
 export function connectedSelection(startId: string, elements: MepLike[], mode: "branch" | "network"): string[] {
   const mep = elements.filter(isMepElement);
-  const start = mep.find((e) => e.id === startId);
+  const byId = new Map(mep.map((e) => [e.id, e]));
+  const start = byId.get(startId);
   if (!start) return [startId];
+  const adj = connectivityAdjacency(mep);
   const seen = new Set<string>([startId]);
   const queue: MepLike[] = [start];
   const isJunction = (e: MepLike) => e.type === "fitting" && fittingPortAngles(e.params).length >= 3;
   while (queue.length) {
     const cur = queue.pop()!;
-    for (const o of mep) {
-      if (seen.has(o.id) || !areConnected(cur, o)) continue;
+    for (const nid of adj.get(cur.id) ?? []) {
+      const o = byId.get(nid)!;
+      if (seen.has(o.id)) continue;
       // Two runs meeting at a tee also touch each other directly; in branch mode they only
       // count as connected THROUGH the junction, which ends the branch.
       if (mode === "branch" && !isJunction(cur) && !isJunction(o) &&

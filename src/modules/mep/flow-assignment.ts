@@ -11,8 +11,8 @@
  * as connectivity.ts (no stored links, works on existing models).
  *
  * Method:
- *   1. Pairwise connectivity (areConnected) over linear runs, fittings and
- *      equipment — O(n²), fine for the run sizes of a visual audit.
+ *   1. Grid-indexed connectivity (connectedPairs) over linear runs,
+ *      fittings and equipment — exactly the old O(n²) scan, pruned.
  *   2. Union-find merges element endpoints that touch the same fitting /
  *      equipment / another run's end into one graph node.
  *   3. Terminal flows are read from equipment properties (`flowRate` or
@@ -26,7 +26,7 @@
  * Pure module: no DOM, no three.js, no ctx. Safe to unit-test in Node.
  */
 
-import { areConnected, isMepElement, LINEAR_MEP, linearEnds, pointTouches, type MepLike, type Pt3 } from "./connectivity";
+import { areConnected, connectedPairs, isMepElement, LINEAR_MEP, linearEnds, pointTouches, type MepLike, type Pt3 } from "./connectivity";
 import { auditNetwork, isAirSystem } from "./network";
 import type { NetworkSegmentInput, NetworkAuditReport, AuditOptions } from "./network";
 import type { MepSystem } from "./types";
@@ -173,10 +173,8 @@ export function buildNetworkFromElements(elements: MepLike[], options: FlowBuild
     // pointTouches from connectivity is the geometry gate.
     return pointTouchesSafe(pt, e);
   };
-  for (let i = 0; i < mep.length; i++) {
-    for (let j = i + 1; j < mep.length; j++) {
-      const a = mep[i], b = mep[j];
-      if (!areConnected(a, b)) continue;
+  for (const [a, b] of connectedPairs(mep)) {
+    {
       const pa = touchPoint(a, b);
       const pb = touchPoint(b, a);
       if (pa && ends3(a) && pb && ends3(b)) {

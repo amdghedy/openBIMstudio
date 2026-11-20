@@ -27,11 +27,12 @@
  *   4. Otherwise null — the cluster renders as "Unclassified N".
  *
  * Pure module: no DOM, no three.js, no ctx. Safe to unit-test in Node.
- * Pairwise connectivity is O(n²) — the same audit-size trade-off the rest
- * of the MEP module documents; built for authored-model run counts.
+ * Connectivity pairs come from the grid index in connectivity.ts
+ * (connectedPairs — exactly the old O(n²) scan, pruned); the tree build
+ * itself is union-find over those pairs.
  */
 
-import { areConnected, isMepElement, LINEAR_MEP, type MepLike } from "./connectivity";
+import { connectedPairs, isMepElement, LINEAR_MEP, type MepLike } from "./connectivity";
 import type { MepSystem } from "./types";
 
 /** Human labels for every typed system (browser + tests share this). */
@@ -152,7 +153,8 @@ function systemForLinearType(type: string): MepSystem | null {
 export function computeMepSystemTree(elements: MepLike[]): MepSystemTree {
   const mep = elements.filter(isMepElement);
 
-  // Union-find over indices; pairwise geometric connectivity.
+  // Union-find over indices; grid-indexed connectivity (connectedPairs is
+  // exactly the O(n²) scan, pruned — see connectivity.ts).
   const parent = mep.map((_, i) => i);
   const find = (x: number): number => {
     while (parent[x] !== x) {
@@ -165,11 +167,8 @@ export function computeMepSystemTree(elements: MepLike[]): MepSystemTree {
     const ra = find(a), rb = find(b);
     if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb);
   };
-  for (let i = 0; i < mep.length; i++) {
-    for (let j = i + 1; j < mep.length; j++) {
-      if (areConnected(mep[i], mep[j])) union(i, j);
-    }
-  }
+  const indexOf = new Map(mep.map((e, i) => [e.id, i]));
+  for (const [a, b] of connectedPairs(mep)) union(indexOf.get(a.id)!, indexOf.get(b.id)!);
 
   // Gather clusters in first-appearance order of their smallest member index.
   const groups = new Map<number, number[]>();
