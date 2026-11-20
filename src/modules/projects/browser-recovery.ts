@@ -46,6 +46,18 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
+
+/** Which stored backup ids to delete so at most `keep` newest remain (after a pending add). */
+export function selectBrowserRecoveryDeletes(
+  existing: Array<{ id?: number; createdAt: number }>,
+  keep: number = BROWSER_RECOVERY_KEEP,
+): number[] {
+  if (keep < 1) return [];
+  const sorted = [...existing].sort((a, b) => (b.createdAt - a.createdAt) || ((b.id ?? 0) - (a.id ?? 0)));
+  // After adding one new record, drop from index keep-1 onward among the previous set.
+  return sorted.slice(Math.max(0, keep - 1)).map((r) => r.id).filter((id): id is number => id !== undefined);
+}
+
 /** Store a recovery copy and retain only the newest five copies per project. */
 export async function backupProjectFile(copy: Omit<BrowserRecoveryCopy, "id" | "createdAt">): Promise<boolean> {
   if (!copy.projectId || !copy.projectName || !copy.fileName || !copy.blob.size || copy.blob.size > BROWSER_RECOVERY_MAX_BYTES) return false;
@@ -58,7 +70,7 @@ export async function backupProjectFile(copy: Omit<BrowserRecoveryCopy, "id" | "
     existing.onsuccess = () => {
       const records = (existing.result as BrowserRecoveryCopy[]).sort((a, b) => (b.createdAt - a.createdAt) || ((b.id ?? 0) - (a.id ?? 0)));
       store.add({ ...copy, createdAt: Date.now() });
-      for (const old of records.slice(BROWSER_RECOVERY_KEEP - 1)) if (old.id !== undefined) store.delete(old.id);
+      for (const id of selectBrowserRecoveryDeletes(records, BROWSER_RECOVERY_KEEP)) store.delete(id);
     };
     await transactionDone(tx);
     return true;

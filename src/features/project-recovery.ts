@@ -16,6 +16,7 @@ import {
   getCurrentProject, openProject,
 } from "../modules/projects/projects";
 import type { ProjectRecoverySnapshot } from "../modules/projects/project-journal";
+import { listBrowserRecoveryCopies, BROWSER_RECOVERY_KEEP } from "../modules/projects/browser-recovery";
 import { confirmDialog } from "./form-modal";
 import { notify as toast } from "../core/notify";
 import { fmtDateTime } from "../core/region";
@@ -114,8 +115,7 @@ export function showProjectRecovery(): void {
     }
     list.innerHTML = "";
     if (!snapshots.length) {
-      list.innerHTML = `<div style="opacity:.6;padding:10px;border:1px dashed #34353f;border-radius:6px">No checkpoints yet. One is written automatically before each save that changes the document, before each model import, and before each restore.</div>`;
-      return;
+      list.innerHTML = `<div style="opacity:.6;padding:10px;border:1px dashed #34353f;border-radius:6px">No journal checkpoints yet. One is written automatically before each save that changes the document, before each model import, and before each restore.</div>`;
     }
     for (const s of snapshots) {
       const row = document.createElement("div");
@@ -159,6 +159,44 @@ export function showProjectRecovery(): void {
       };
       row.appendChild(btn);
       list.appendChild(row);
+    }
+
+    // Linked .obsproj browser backups (File System Access / Save As path)
+    const fileBackups = await listBrowserRecoveryCopies(cur.id);
+    const sep = document.createElement("div");
+    sep.style.cssText = "margin-top:12px;padding-top:10px;border-top:1px solid #34353f;font-weight:600;font-size:12px";
+    sep.textContent = `File backups in this browser (newest ${BROWSER_RECOVERY_KEEP})`;
+    list.appendChild(sep);
+    if (!fileBackups.length) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "opacity:.6;padding:8px 0;font-size:11px";
+      empty.textContent = "No .obsproj recovery copies yet. They are written before overwriting a linked project file (Save).";
+      list.appendChild(empty);
+    } else {
+      for (const b of fileBackups) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #34353f;border-radius:6px;background:#12131a";
+        const meta = document.createElement("div");
+        meta.style.cssText = "flex:1;min-width:0";
+        const when = new Date(b.createdAt).toLocaleString();
+        const kb = Math.max(1, Math.round(b.blob.size / 1024));
+        meta.innerHTML = `<div style="font-weight:600">${esc(b.fileName)}</div>` +
+          `<div style="opacity:.65;font-size:11px">${esc(when)} · ${kb} KB · ${esc(b.reason)}</div>`;
+        const dl = document.createElement("button");
+        dl.textContent = "Download";
+        dl.style.cssText = "padding:5px 10px;background:#2a2b36;color:inherit;border:1px solid #454655;border-radius:6px;cursor:pointer;font-size:11px;flex:none";
+        dl.onclick = () => {
+          const url = URL.createObjectURL(b.blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = b.fileName || "project-recovery.obsproj";
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        };
+        row.appendChild(meta);
+        row.appendChild(dl);
+        list.appendChild(row);
+      }
     }
   })();
 }
