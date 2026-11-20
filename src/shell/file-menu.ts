@@ -5,6 +5,7 @@ import { ctx } from "../core/context";
 import * as store from "../modules/projects/store";
 import { getCurrentProject, saveProject, openProject, deleteProjectById, isDirty } from "../modules/projects/projects";
 import { normalizeProjectDoc } from "../modules/projects/project-schema";
+import { safeLoad, LegacyProjectJsonSchema } from "../core/safeLoad";
 import { showHome } from "./home-screen";
 import { captureThumbnail } from "../modules/issues/issues";
 import { exportBCF } from "../modules/issues/bcf";
@@ -146,9 +147,14 @@ async function importProjectFile() {
   input.onchange = async () => {
     const f = input.files?.[0]; if (!f) return;
     try {
-      const raw = JSON.parse(await f.text());
-      if (!raw?.id || !Array.isArray(raw.elements)) throw new Error("Not a valid Open BIM Studio project file.");
-      // Same triage as .obsproj imports: validate before anything is stored.
+      if (f.size > 20 * 1024 * 1024) throw new Error("Project JSON exceeds the 20 MB import limit.");
+      const loaded = safeLoad(f.name, await f.text(), LegacyProjectJsonSchema, 20 * 1024 * 1024,
+        { maxDepth: 64, maxNodes: 2_000_000 });
+      if (!loaded.ok) {
+        throw new Error(`Project JSON rejected (${loaded.error.stage}): ${loaded.error.issues.join("; ")}`);
+      }
+      // The schema gate runs before the migration/normalization layer and before storage.
+      const raw = loaded.value;
       const parsed = normalizeProjectDoc(raw);
       if (!parsed.ok) {
         throw new Error(`The file contains invalid project data and was not imported. ${parsed.fatal}` +

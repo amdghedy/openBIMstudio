@@ -56,7 +56,8 @@ export async function parseProjectFile(file: Blob): Promise<{ doc: ProjectDoc; b
   const hlen = new DataView(head.buffer, head.byteOffset + 8, 4).getUint32(0, true);
   if (hlen <= 0 || 12 + hlen > file.size) throw new ProjectFileError("The project file is damaged (bad header).");
   const rawHeader = new TextDecoder().decode(new Uint8Array(await file.slice(12, 12 + hlen).arrayBuffer()));
-  const loaded = safeLoad(".obsproj header", rawHeader, ProjectFileSchema, Math.min(Math.max(hlen, 1), 8 * 1024 * 1024));
+  const loaded = safeLoad(".obsproj header", rawHeader, ProjectFileSchema, Math.min(Math.max(hlen, 1), 8 * 1024 * 1024),
+    { maxDepth: 64, maxNodes: 1_000_000 });
   if ("error" in loaded) {
     throw new ProjectFileError(`The project file is damaged (invalid header, ${loaded.error.stage}).\n${loaded.error.issues.join("\n")}`);
   }

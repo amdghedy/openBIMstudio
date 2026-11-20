@@ -5,8 +5,7 @@ import { computeSceneBounds, fitAll } from "./camera-tools";
 import { loadIfcFiles, loadFragFiles } from "./importer";
 import { markDirty } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
-import { z } from "zod";
-import { safeLoad } from "../core/safeLoad";
+import { safeLoad, LegacyProjectJsonSchema } from "../core/safeLoad";
 import { normalizeProjectDoc } from "../modules/projects/project-schema";
 
 export const ACCEPT_ALL =
@@ -249,12 +248,14 @@ export async function importFiles(files: File[]) {
         continue;
       }
 
-      if (file.name.endsWith(".obs.json") || (e === "json" && file.size < 20_000_000)) {
+      if (file.name.endsWith(".obs.json") || e === "json") {
+        if (file.size > 20 * 1024 * 1024) throw new Error("Project JSON exceeds the 20 MB import limit.");
         const text = await file.text();
-        if (text.includes("\"elements\"") && text.includes("\"models\"")) {
+        if (file.name.endsWith(".obs.json") || (text.includes("\"elements\"") && text.includes("\"models\""))) {
           const { putProject } = await import("../modules/projects/store");
           const { openProject } = await import("../modules/projects/projects");
-          const loaded = safeLoad("legacy project JSON", text, z.record(z.string(), z.unknown()), 20 * 1024 * 1024);
+          const loaded = safeLoad("legacy project JSON", text, LegacyProjectJsonSchema, 20 * 1024 * 1024,
+            { maxDepth: 64, maxNodes: 2_000_000 });
           if (loaded.ok) {
             // The permissive JSON boundary only proves that the root is an
             // object. Normalize the complete legacy document before it can

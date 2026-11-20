@@ -302,7 +302,8 @@
     "test:cad-workspace": "node tests/cad-workspace-customization.test.cjs",
     "test:solid-reader-isolation": "node tests/solid-reader-isolation.test.cjs",
     "test:critical-workflow-packs-34567": "node tests/critical-workflow-packs-34567.test.cjs",
-    "test:critical-workflow-pack-8": "node tests/critical-workflow-pack-8.test.cjs"
+    "test:critical-workflow-pack-8": "node tests/critical-workflow-pack-8.test.cjs",
+    "test:safe-load": "node tests/safe-load.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
