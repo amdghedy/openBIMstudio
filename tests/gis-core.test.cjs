@@ -1,12 +1,17 @@
 // GeoJSON / Shapefile / DBF readers and local projection (pure, no DOM).
+// gis-core now parses GeoJSON through src/core/safeLoad (zod), so safeLoad
+// is compiled alongside it and node_modules is linked for the zod import.
 const { execSync } = require("child_process");
 const fs = require("fs"), path = require("path"), assert = require("assert");
 const out = fs.mkdtempSync(path.join(require("os").tmpdir(), "gis-"));
+fs.writeFileSync(path.join(out, "package.json"), '{"type":"commonjs"}');
+try { fs.symlinkSync(path.join(__dirname, "..", "node_modules"), path.join(out, "node_modules"), "junction"); } catch { /* already linked */ }
+const TSC_FILES = "src/modules/gis/gis-core.ts src/core/safeLoad.ts";
 try {
-  execSync(`npx tsc src/modules/gis/gis-core.ts --outDir ${out} --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck --strict`, { stdio: "pipe" });
+  execSync(`npx tsc ${TSC_FILES} --outDir ${out} --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck --strict`, { stdio: "pipe" });
 } catch (e) {
   // Fallback without --strict so unit suite is not blocked by isolated tsc flags
-  execSync(`npx tsc src/modules/gis/gis-core.ts --outDir ${out} --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck`, { stdio: "pipe" });
+  execSync(`npx tsc ${TSC_FILES} --outDir ${out} --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck`, { stdio: "pipe" });
 }
 const find = (n) => { const w = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = w(p); if (r) return r; } else if (f.name === n) return p; } }; return w(out); };
 const G = require(find("gis-core.js"));

@@ -92,6 +92,7 @@
     "test:native-curves": "node tests/native-curves.test.cjs",
     "test:native-twin-ifc-entities": "node tests/native-twin-ifc-entities.test.cjs",
     "test:perf-budget-gate": "node tests/perf-budget-gate.test.cjs",
+    "test:file-import-boundaries": "node tests/file-import-boundaries.test.cjs",
     "test:step-preflight": "node tests/step-preflight.test.cjs",
     "test:import-timeout": "node tests/import-timeout.test.cjs",
     "test:ifc-interop-report": "node tests/ifc-interop-report.test.cjs",
