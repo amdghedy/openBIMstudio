@@ -10,14 +10,19 @@
  *   - the crash marker: a synchronous localStorage note written while the
  *     project is dirty, cleared on every successful save and on a clean
  *     unload. Its presence at boot means the previous session ended
- *     without a clean save — surfaced as a recovery notice;
+ *     without a clean save — surfaced as a recovery notice. It is
+ *     written EAGERLY, the moment the document first goes dirty in a
+ *     save cycle (see setupProjectPersistence): beforeunload /
+ *     visibilitychange never fire on a renderer crash, a killed browser
+ *     process, or power loss, so a marker written only at unload is
+ *     absent exactly when it matters most — after a real crash.
  *   - the storage-quota watch (estimate + persist request) so exhaustion
  *     is visible before it eats a save.
  *
  * No new window globals: everything is module-scoped.
  */
 import {
-  getCurrentProject, isDirty, isTransitioning, markDirty, saveProject, getSaveState,
+  getCurrentProject, isDirty, isTransitioning, markDirty, saveProject, getSaveState, onProjectChanged,
 } from "./projects";
 import { estimateStorage } from "./store";
 import { notify as toast } from "../../core/notify";
@@ -67,6 +72,25 @@ const AUTOSAVE_MS = 25_000;
 const QUOTA_WARN_RATIO = 0.9;
 
 export function setupProjectPersistence(): void {
+  /* ── crash marker, written eagerly (#91) ───────────────────────────────
+   * beforeunload / visibilitychange never fire on a renderer crash, a
+   * killed browser process, or power loss — so a marker written only at
+   * unload is absent exactly when it matters most. The marker is
+   * therefore written the moment the document first goes dirty in a
+   * save cycle (one localStorage write per cycle: after a clean save
+   * clears it, the next edit writes it again). A crash at any point
+   * after the first edit leaves the marker behind, and the next boot
+   * surfaces the recovery notice. */
+  let markerProjectId: string | null = null;
+  const ensureCrashMarker = () => {
+    const cur = getCurrentProject();
+    if (!cur || !isDirty()) return;
+    if (markerProjectId === cur.id) return;
+    writeCrashMarker();
+    markerProjectId = cur.id;
+  };
+  onProjectChanged(ensureCrashMarker);
+
   /* ── crash-recovery notice from the previous session ─────────────────── */
   const marker = readCrashMarker();
   if (marker) {
@@ -90,24 +114,35 @@ export function setupProjectPersistence(): void {
   window.addEventListener("beforeunload", (e) => {
     if (isDirty()) {
       writeCrashMarker(); // synchronous; survives the reload even if the user stays
+      markerProjectId = getCurrentProject()?.id ?? null;
       // Standard browser-native confirmation (not window.confirm).
       e.preventDefault();
       e.returnValue = "The project has unsaved changes.";
       return e.returnValue;
     }
     clearCrashMarker();
+    markerProjectId = null;
     return undefined;
   });
   // Mobile / instant-refresh path: beforeunload is not guaranteed to fire.
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      if (isDirty()) writeCrashMarker(); else clearCrashMarker();
+      if (isDirty()) {
+        writeCrashMarker();
+        markerProjectId = getCurrentProject()?.id ?? null;
+      } else {
+        clearCrashMarker();
+        markerProjectId = null;
+      }
     }
   });
 
   /* ── clear the marker whenever a save lands ──────────────────────────── */
   window.addEventListener("obs:project-saved", () => {
-    if (!isDirty()) clearCrashMarker();
+    if (!isDirty()) {
+      clearCrashMarker();
+      markerProjectId = null;
+    }
   });
 
   /* ── undo/redo is a document change ─────────────────────────────────────

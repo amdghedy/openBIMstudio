@@ -17,6 +17,7 @@ import {
 } from "../modules/projects/projects";
 import type { ProjectRecoverySnapshot } from "../modules/projects/project-journal";
 import { listBrowserRecoveryCopies, BROWSER_RECOVERY_KEEP } from "../modules/projects/browser-recovery";
+import { readCrashMarker } from "../modules/projects/persistence";
 import { confirmDialog } from "./form-modal";
 import { notify as toast } from "../core/notify";
 import { fmtDateTime } from "../core/region";
@@ -203,6 +204,14 @@ export function showProjectRecovery(): void {
 
 export function setupProjectRecovery(): void {
   window.addEventListener("obs:recovery-available", () => showRecoveryBanner());
+  // Boot-ordering guard (#91): the persistence step runs BEFORE this one
+  // in main.ts, so it dispatches `obs:recovery-available` before this
+  // listener exists — without this check the banner would never appear
+  // after a real crash, and the (auto-dismissing) toast would be the
+  // only notice. Check for a pending crash marker at setup time too.
+  try {
+    if (readCrashMarker()) showRecoveryBanner();
+  } catch { /* marker unreadable: no banner, boot continues */ }
   void import("./command-palette").then(({ registerCommand }) => {
     registerCommand({
       id: "project.recovery",
