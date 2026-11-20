@@ -1,0 +1,59 @@
+{
+  "title": "i18n catalogue sources — provenance",
+  "generatedBy": "scripts/gen-catalogs.mjs",
+  "sources": "scripts/i18n-work/<lang>.json",
+  "extracted": "2026-11-20",
+  "baseSha": "e8e5afba0eab04ce54768674cef32fd94ae3f810",
+  "provenance": "The 9 machine catalogues in src/core/i18n-catalogs/*.gen.ts cited scripts/gen-catalogs.mjs and scripts/i18n-work/<lang>.json in their headers, but neither existed in the repo, so the catalogues could not be regenerated. On 2026-11-20 the checked-in catalogue contents were reverse-extracted into these JSON files, restoring a regenerable pipeline. The translations themselves are UNCHANGED from the frozen snapshot: no translation was invented, corrected, or re-translated in the extraction.",
+  "knownIssues": [
+    "No record survives of which machine-translation provider/model produced the snapshot, and there was no glossary enforcement or human review (ROADMAP Phase 2 requires both). Treat every entry as unreviewed MT until reviewed.",
+    "Hindi was 832 keys behind the other catalogues at extraction (2603 vs 3435). The generator fills missing keys with the English source string (value == key); scripts/i18n-audit.mjs reports those as untranslated. Real Hindi translations for those keys are still owed.",
+    "5 CSS-fragment keys were dropped at extraction as extractor noise (see quarantinedCssKeys). They were never UI text.",
+    "value == key entries are mostly legitimate (IFC entity names, acronyms, key names) but are counted by the audit so genuine gaps are visible."
+  ],
+  "quarantinedCssKeys": [
+    "padding:14px 18px",
+    "padding:4px 0",
+    "padding:4px 12px 6px",
+    "padding:6px 10px 10px",
+    "padding:8px 18px 18px"
+  ],
+  "extractedCounts": {
+    "ar": {
+      "extracted": 3430,
+      "droppedCss": 5
+    },
+    "de": {
+      "extracted": 3430,
+      "droppedCss": 5
+    },
+    "es": {
+      "extracted": 3397,
+      "droppedCss": 5
+    },
+    "fr": {
+      "extracted": 3430,
+      "droppedCss": 5
+    },
+    "hi": {
+      "extracted": 2598,
+      "droppedCss": 5
+    },
+    "ja": {
+      "extracted": 3397,
+      "droppedCss": 5
+    },
+    "pt": {
+      "extracted": 3397,
+      "droppedCss": 5
+    },
+    "ru": {
+      "extracted": 3397,
+      "droppedCss": 5
+    },
+    "zh": {
+      "extracted": 3397,
+      "droppedCss": 5
+    }
+  }
+}
