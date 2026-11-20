@@ -37,11 +37,26 @@ jobs:
           FUZZ_CHILD_TIMEOUT_MS: 8000
           FUZZ_ARTIFACT_DIR: fuzz-artifacts
         run: npm run test:fuzz-ifc
+      # Retest the original failing distribution (issue #231): FUZZ_KIND=bitflip
+      # reproduces the exact mutation sequence of the 2026-11-19 nightly run
+      # that reported 165/500 parser timeouts, so a regression in the
+      # structural pre-flight is caught even if the mixed campaign stays green.
+      - name: Re-run original all-bitflip 500-mutation campaign
+        env:
+          FUZZ_ITER: 500
+          FUZZ_SEED: 42
+          FUZZ_KIND: bitflip
+          FUZZ_INIT_TIMEOUT_MS: 30000
+          FUZZ_CHILD_TIMEOUT_MS: 8000
+          FUZZ_ARTIFACT_DIR: fuzz-artifacts-bitflip
+        run: npm run test:fuzz-ifc
       - name: Upload failing inputs and summary
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: nightly-ifc-fuzz-${{ github.run_id }}
-          path: fuzz-artifacts/
+          path: |
+            fuzz-artifacts/
+            fuzz-artifacts-bitflip/
           if-no-files-found: warn
           retention-days: 30

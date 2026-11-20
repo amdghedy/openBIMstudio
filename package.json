@@ -314,6 +314,7 @@
     "test:ifc-semantics": "node tests/ifc-semantics.test.cjs",
     "test:ifc-exchange": "node tests/ifc-roundtrip-compare.test.cjs",
     "test:fuzz-ifc": "node scripts/fuzz-ifc-corpus.mjs",
+    "test:fuzz-kind": "node tests/fuzz-kind.test.cjs",
     "test:cad-workspace": "node tests/cad-workspace-customization.test.cjs",
     "test:solid-reader-isolation": "node tests/solid-reader-isolation.test.cjs",
     "test:critical-workflow-packs-34567": "node tests/critical-workflow-packs-34567.test.cjs",

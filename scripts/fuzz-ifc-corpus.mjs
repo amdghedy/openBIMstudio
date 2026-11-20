@@ -20,6 +20,14 @@
  * or no outcomes are recorded. Each mutation remains process-isolated.
  *
  * Env: FUZZ_ITER (default 60), FUZZ_SEED (default 42).
+ *   FUZZ_KIND (default "mixed"): "mixed" alternates the two families;
+ *   "bitflip" forces the raw bit-flip family only — the exact mutation
+ *   distribution of the 2026-11-19 nightly run that reported 165/500 parser
+ *   timeouts (issue #231), so the pre-flight fix can be retested against the
+ *   original failing cases; "structural" forces structure-preserving
+ *   mutations only. Forcing a kind skips the per-iteration family draw, so
+ *   the LCG stream (and therefore the mutation sequence) matches the
+ *   original all-bitflip campaign for FUZZ_KIND=bitflip.
  */
 import { spawn } from "child_process";
 import ts from "typescript";
@@ -33,6 +41,11 @@ const CORPUS = join(root, "..", "tests/fixtures/ifc-corpus");
 const CHILD = join(root, "fuzz-child.mjs");
 const ITER = Math.max(1, Number(process.env.FUZZ_ITER) || 60);
 const SEED = Number(process.env.FUZZ_SEED) || 42;
+const KIND = (process.env.FUZZ_KIND || "mixed").toLowerCase();
+if (!["mixed", "bitflip", "structural"].includes(KIND)) {
+  console.error(`fuzz: FUZZ_KIND must be mixed, bitflip or structural (got ${process.env.FUZZ_KIND})`);
+  process.exit(2);
+}
 const ARTIFACT_DIR = process.env.FUZZ_ARTIFACT_DIR ? resolve(process.cwd(), process.env.FUZZ_ARTIFACT_DIR) : null;
 const INIT_TIMEOUT_MS = Math.max(1000, Number(process.env.FUZZ_INIT_TIMEOUT_MS) || 30000);
 const CHILD_TIMEOUT_MS = Math.max(1000, Number(process.env.FUZZ_CHILD_TIMEOUT_MS) || 40000);
@@ -156,7 +169,9 @@ for (let i = 0; i < ITER; i++) {
   const src = seeds[rand(seeds.length)];
   // Two mutation families: raw bit flips (mostly rejected by the structural pre-flight) and
   // structure-preserving token mutations that pass it and therefore really exercise web-ifc.
-  const kind = rand(1000) < 500 ? "bitflip" : "structural"; // not rand(2): the LCG low bit has a period of 2
+  // FUZZ_KIND=bitflip reproduces the original all-bitflip campaign exactly:
+  // skipping the family draw keeps the LCG stream identical to the 2026-11-19 run.
+  const kind = KIND === "mixed" ? (rand(1000) < 500 ? "bitflip" : "structural") : KIND; // not rand(2): the LCG low bit has a period of 2
   let bytes;
   if (kind === "bitflip") {
     bytes = Buffer.from(src.bytes);
@@ -196,7 +211,7 @@ rmSync(tmp, { recursive: true, force: true });
 const total = ok + typedError + containedCrash + timeout + startupTimeout;
 if (ARTIFACT_DIR) {
   writeFileSync(join(ARTIFACT_DIR, "summary.json"), JSON.stringify({
-    seed: SEED, iterations: ITER, total, ok, typedError, preflightRejected, containedCrash, timeout, startupTimeout, timeoutsByOp, timeoutsBySeed, byKind, failures,
+    seed: SEED, iterations: ITER, kind: KIND, total, ok, typedError, preflightRejected, containedCrash, timeout, startupTimeout, timeoutsByOp, timeoutsBySeed, byKind, failures,
   }, null, 2) + "\n");
 }
 console.log(`fuzz: outcomes by mutation kind ${JSON.stringify(byKind)}`);
