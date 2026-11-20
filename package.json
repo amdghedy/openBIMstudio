@@ -208,6 +208,8 @@
     "test:project-crypto": "node tests/project-crypto.test.cjs",
     "test:secret-crypto": "node tests/secret-crypto.test.cjs",
     "test:server-security": "node tests/server-security.test.cjs",
+    "test:server-backup": "node tests/server-backup.test.cjs",
+    "test:server-backup-on-load": "node tests/server-backup-on-load.test.cjs",
     "test:safe-expr": "node tests/safe-expr.test.cjs",
     "test:mep-connectivity": "node tests/mep-connectivity.test.cjs",
     "test:boundary-edit": "node tests/boundary-edit.test.cjs",

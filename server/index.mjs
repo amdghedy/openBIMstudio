@@ -8,7 +8,7 @@ import { resolveStartupConfig } from "./startup-config.mjs";
 import { createRateLimiter, clientKey, correlationId, securityLog, redactFileName } from "./rate-limit.mjs";
 import { issueSseToken, verifySseToken } from "./sse-tokens.mjs";
 import { sniffSignature, storeUpload, sweepExpired } from "./upload-store.mjs";
-import { writeJsonWithBackup, readJsonWithRecovery } from "./backup.mjs";
+import { findLastVerifiedBackup, quarantineFile, restoreBackup, snapshotOnLoad, writeJsonWithBackup } from "./backup.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -72,34 +72,159 @@ function broadcastAgent(event, data) {
   }
 }
 
+/* Files quarantined as corrupt during this process lifetime (#91). */
+const quarantinedThisBoot = new Set();
+
 function ensureStore() {
   fs.mkdirSync(dataDir, { recursive: true });
 
-  if (!fs.existsSync(projectsFile)) {
+  // A file quarantined during this boot (#91) stays gone until the next
+  // successful save recreates it: re-creating it here as "{}" would
+  // silently undo the quarantine one loadJson call later (the rooms load
+  // runs after the projects load, and vice versa for saves).
+  if (!quarantinedThisBoot.has(projectsFile) && !fs.existsSync(projectsFile)) {
     fs.writeFileSync(projectsFile, "{}", "utf8");
   }
 
-  if (!fs.existsSync(roomsFile)) {
+  if (!quarantinedThisBoot.has(roomsFile) && !fs.existsSync(roomsFile)) {
     fs.writeFileSync(roomsFile, "{}", "utf8");
   }
 }
 
+/* ── Backup-on-load (#91) ───────────────────────────────────────────────
+ * A corrupt store must never be silently discarded: the old `loadJson`
+ * returned `{}` on ANY failure, and the next save then backed up the
+ * corrupt file and overwrote the good copy — irreversible data loss.
+ * The load path now:
+ *   1. snapshots the exact bytes about to be parsed (verified on
+ *      read-back; an unverifiable snapshot is deleted, never retained);
+ *   2. on parse/shape failure logs LOUDLY and serves the last VERIFIED
+ *      backup, restoring the live file from it;
+ *   3. with no verified backup, quarantines the corrupt bytes aside
+ *      (never deletes them, never backs them up as if good) and starts
+ *      from the empty fallback — the next save then writes a fresh file
+ *      instead of overwriting the only copy of anything.
+ */
 function loadJson(file, fallback) {
+  const existed = fs.existsSync(file);
   ensureStore();
 
-  const r = readJsonWithRecovery(file, fallback);
-  if (r.source !== "file") securityLog(console.log, "store_recovered", { file: path.basename(file), source: r.source });
-  return r.value;
+  // Fresh store: nothing on disk to preserve — unless backups survive a
+  // deleted live file (#244): recover the newest verified backup first,
+  // exactly as readJsonWithRecovery did for a missing live file.
+  if (!existed) {
+    const good = findLastVerifiedBackup(file);
+    if (good) {
+      const restored = restoreBackup(file, good.path);
+      if (restored.ok) {
+        console.error(`[collab] RESTORED ${path.basename(file)} from verified backup ${path.basename(good.path)} (live file was missing).`);
+        return restored.value;
+      }
+      securityLog(console.error, "restore_failed", {
+        file: path.basename(file),
+        backup: path.basename(good.path),
+        error: restored.error?.code || "unknown",
+      });
+    }
+    return fallback;
+  }
+
+  // 1. Snapshot-on-load, before parsing.
+  const snapshot = snapshotOnLoad(file);
+  if (snapshot.error) {
+    securityLog(console.error, "backup_on_load_failed", {
+      file: path.basename(file),
+      error: snapshot.error?.code || "unknown",
+    });
+    console.error(
+      `[collab] BACKUP-ON-LOAD FAILED for ${path.basename(file)}: ${snapshot.error?.message || snapshot.error} — ` +
+        `continuing with the load, but no new snapshot was taken.`,
+    );
+  }
+
+  // 2. Parse. Anything unparseable, unreadable or wrong-shaped is corrupt.
+  let value;
+  try {
+    value = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    return loadFromBackupOrFallback(file, fallback, error);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return loadFromBackupOrFallback(file, fallback, new Error("store is not a JSON object"));
+  }
+  return value;
+}
+
+function loadFromBackupOrFallback(file, fallback, error) {
+  const name = path.basename(file);
+  securityLog(console.error, "load_corrupt", {
+    file: name,
+    error: String(error?.message || error).slice(0, 120),
+  });
+  console.error(
+    `[collab] CORRUPT ${name}: ${error?.message || error} — the live file is NOT trusted. ` +
+      `Trying the last verified backup; the store is NEVER silently emptied.`,
+  );
+  const good = findLastVerifiedBackup(file);
+  if (good) {
+    const restored = restoreBackup(file, good.path);
+    if (restored.ok) {
+      console.error(`[collab] RESTORED ${name} from verified backup ${path.basename(good.path)}.`);
+      return restored.value;
+    }
+    securityLog(console.error, "restore_failed", {
+      file: name,
+      backup: path.basename(good.path),
+      error: restored.error?.code || "unknown",
+    });
+    console.error(
+      `[collab] RESTORE FAILED for ${name} from ${path.basename(good.path)}: ` +
+        `${restored.error?.message || restored.error} — starting from an empty store.`,
+    );
+  } else {
+    console.error(`[collab] NO VERIFIED BACKUP for ${name} — starting from an empty store.`);
+  }
+  // No recoverable backup (or the restore failed): quarantine the corrupt
+  // bytes so the next save cannot back them up as if they were good.
+  const quarantined = quarantineFile(file);
+  if (quarantined.quarantined) {
+    quarantinedThisBoot.add(file);
+    console.error(
+      `[collab] QUARANTINED corrupt ${name} as ${path.basename(quarantined.target)} — ` +
+        `it was not deleted; restore it manually if it holds anything (see docs/engineering/SERVER-BACKUP-RECOVERY.md).`,
+    );
+  } else if (quarantined.error) {
+    console.error(
+      `[collab] WARNING: could not quarantine corrupt ${name}: ${quarantined.error?.message || quarantined.error} — ` +
+        `the corrupt file is still in place and the next write to it will be refused until it is moved aside.`,
+    );
+  }
+  return fallback;
 }
 
 function saveJson(file, value) {
   ensureStore();
-  const result = writeJsonWithBackup(file, value);
-  if (result.backup.error) {
-    securityLog(console.log, "backup_failed", {
+  try {
+    writeJsonWithBackup(file, value);
+    return { ok: true };
+  } catch (error) {
+    // Fail closed (#91): the destructive write did NOT happen. The last
+    // known-good file on disk is untouched; the new state stays in memory
+    // only and is lost on restart. Loud on purpose — silence here is the
+    // bug that destroyed projects. Callers check the result: the project
+    // PUT returns 503, presence writes keep serving from memory.
+    const backupFailed = error?.code === "backup_failed";
+    securityLog(console.error, backupFailed ? "backup_failed_blocks_write" : "save_failed", {
       file: path.basename(file),
-      error: result.backup.error?.code || "unknown",
+      error: error?.code || "unknown",
     });
+    console.error(
+      `[collab] WRITE BLOCKED for ${path.basename(file)}: ` +
+        (backupFailed
+          ? `pre-write backup failed (${error?.message || error}). The last known-good file on disk was NOT overwritten; the new state is in memory only.`
+          : `write failed (${error?.message || error}). The live file was not replaced.`),
+    );
+    return { ok: false, error };
   }
 }
 
@@ -183,6 +308,11 @@ function getRoom(roomId) {
 
 function touchRoom(room) {
   room.updatedAt = new Date().toISOString();
+  // Fail-closed (#91) is enforced inside saveJson: on backup failure the
+  // rooms file is NOT overwritten and the failure is logged loudly there.
+  // Presence is ephemeral — the in-memory room stays authoritative — so
+  // there is no client-visible error to return here; the last known-good
+  // rooms.json on disk is what a restart will load.
   saveJson(roomsFile, rooms);
 }
 
@@ -401,7 +531,15 @@ const server = http.createServer(async (req, res) => {
         };
 
         projects[id] = project;
-        saveJson(projectsFile, projects);
+        const saved = saveJson(projectsFile, projects);
+        if (!saved.ok) {
+          // Fail closed (#91): the write was refused to protect the last
+          // known-good copy on disk. The change is kept in memory only.
+          return send(res, 503, {
+            error: "Project could not be persisted: backup failed, so the write was refused to protect the last known-good copy on disk. The change is kept in memory only.",
+            requestId: reqId,
+          });
+        }
 
         return send(res, 200, project);
       } catch (e) {

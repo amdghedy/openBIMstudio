@@ -36,26 +36,139 @@ export function readJsonWithRecovery(filePath, fallback) {
 }
 
 /**
- * Copy the current file to a timestamped recovery file before replacement.
- * A first-ever write has no source to copy and is intentionally successful.
- * Backup failures are returned to the caller so the primary write policy can
- * decide whether to continue; callers should not expose filesystem details.
+ * Rotating, verified backups for the collaboration server's JSON stores
+ * (`projects.json`, `rooms.json`) — issue #91.
+ *
+ * Contract:
+ * - Names are timestamped AND collision-safe: an ISO stamp plus a random
+ *   8-hex suffix, so two backups taken in the same millisecond never
+ *   collide (`<base>.<stamp>.<uuid8>.bak`).
+ * - Retention is bounded: at most BACKUP_KEEP (5) backups per file, pruned
+ *   whenever a new verified backup is taken.
+ * - A backup only counts as recoverable after read-back verification: the
+ *   copy must be byte-identical to the source AND re-parse as a JSON
+ *   object (the store shape). An unverifiable copy is deleted on the spot
+ *   and never consumes a retention slot, so a corrupt live file can never
+ *   evict the last known-good backup.
+ * - Backup failure is fail-closed: `writeJsonWithBackup()` throws a coded
+ *   `backup_failed` error BEFORE touching the live file, so a failed
+ *   backup never lets a destructive write through. Callers must surface
+ *   that failure (server `saveJson()` logs it loudly and returns
+ *   `{ ok: false }`) instead of writing anyway.
+ * - Interrupted writes cannot replace the last known-good copy: the live
+ *   file is only ever replaced by an atomic temp-file + rename on the
+ *   same filesystem. A crash leaves a stale `.tmp` file (inert litter —
+ *   each write uses a unique temp name) and the previous live file intact.
  */
-export function backupBeforeWrite(filePath, keep = BACKUP_KEEP) {
+function backupTarget(filePath) {
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const target = path.join(dir, `${base}.${stamp}.${randomUUID().slice(0, 8)}.bak`);
+  return path.join(dir, `${base}.${stamp}.${randomUUID().slice(0, 8)}.bak`);
+}
+
+function backupError(message, code) {
+  return Object.assign(new Error(message), { code });
+}
+
+/**
+ * Verify a backup (or live store file) by read-back: it must exist, be
+ * non-empty, parse as JSON, and hold a JSON object — the shape of both
+ * server stores. Returns `{ ok: true, value }` or `{ ok: false, error }`.
+ * Never throws.
+ */
+export function verifyBackup(backupPath) {
+  let raw;
+  try {
+    raw = fs.readFileSync(backupPath, "utf8");
+  } catch (error) {
+    return { ok: false, error };
+  }
+  if (!raw.trim()) {
+    return { ok: false, error: backupError(`backup is empty: ${backupPath}`, "backup_empty") };
+  }
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch (error) {
+    return { ok: false, error };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: backupError(`backup is not a JSON object: ${backupPath}`, "backup_not_object") };
+  }
+  return { ok: true, value };
+}
+
+/**
+ * Copy the current file to a timestamped recovery file before replacement.
+ * A first-ever write has no source to copy and is intentionally successful.
+ * The copy is verified by read-back (byte-identical to the source AND
+ * re-parses as a JSON object) BEFORE retention pruning runs, so a bad copy
+ * never evicts a good backup. Backup failures are returned to the caller
+ * so the primary write policy can decide whether to continue — and the
+ * policy is fail-closed (see `writeJsonWithBackup`).
+ */
+export function backupBeforeWrite(filePath, keep = BACKUP_KEEP) {
+  const target = backupTarget(filePath);
   if (!fs.existsSync(filePath)) return { created: false, target, error: null };
   // Never rotate a corrupt file into the backups: it would evict the last known-good copy.
-  if (!isValidJsonFile(filePath)) return { created: false, target, error: null, skippedCorrupt: quarantineCorrupt(filePath) };
+  // Fail closed (#91): report the corrupt live file as a verification failure
+  // instead of backing it up. writeJsonWithBackup() then throws `backup_failed`
+  // BEFORE touching the live file, so the corrupt bytes stay exactly in place
+  // for the load path to quarantine (quarantineFile) — they are never deleted,
+  // never backed up as if good, and never silently replaced. #244 quarantined
+  // the corrupt file here and let the write proceed; refusing preserves its
+  // intent (a corrupt file never evicts the last known-good backup) more
+  // strongly, and keeps the refused write visible (503) instead of silent.
+  // Quarantine still happens at the recovery layer: readJsonWithRecovery()
+  // (quarantineCorrupt) and the server load/restore path (quarantineFile).
+  if (!isValidJsonFile(filePath)) {
+    return {
+      created: false,
+      target,
+      error: backupError(`live file is not valid JSON, refusing to back it up: ${filePath}`, "backup_verification_failed"),
+    };
+  }
   try {
     fs.copyFileSync(filePath, target);
-    pruneBackups(filePath, keep);
-    return { created: true, target, error: null };
   } catch (error) {
     return { created: false, target, error };
   }
+  // Verify the copy by read-back before it counts toward retention.
+  try {
+    const sourceBytes = fs.readFileSync(filePath);
+    const backupBytes = fs.readFileSync(target);
+    if (!sourceBytes.equals(backupBytes)) {
+      throw backupError(`backup copy differs from source: ${target}`, "backup_verification_failed");
+    }
+  } catch (error) {
+    try { fs.unlinkSync(target); } catch { /* best effort */ }
+    return { created: false, target, error };
+  }
+  const verified = verifyBackup(target);
+  if (!verified.ok) {
+    try { fs.unlinkSync(target); } catch { /* best effort */ }
+    return {
+      created: false,
+      target,
+      error: backupError(
+        `backup copy failed read-back verification: ${verified.error?.message || verified.error}`,
+        "backup_verification_failed",
+      ),
+    };
+  }
+  pruneBackups(filePath, keep);
+  return { created: true, target, error: null };
+}
+
+/**
+ * Snapshot-on-load (#91): preserve the exact bytes about to be parsed,
+ * before any parse or later save can touch them. Same copy + verify +
+ * prune behaviour as `backupBeforeWrite`, under the name the load path
+ * calls — a snapshot is only a snapshot if it verified.
+ */
+export function snapshotOnLoad(filePath, keep = BACKUP_KEEP) {
+  return backupBeforeWrite(filePath, keep);
 }
 
 export function listBackups(filePath) {
@@ -81,12 +194,133 @@ export function pruneBackups(filePath, keep = BACKUP_KEEP) {
 }
 
 /**
+ * Newest-first search for a backup that verifies by read-back. Corrupt,
+ * truncated or otherwise unverifiable backups are skipped, never served.
+ * Returns `{ path, value }` or `null` when no backup is recoverable.
+ */
+export function findLastVerifiedBackup(filePath) {
+  const backups = listBackups(filePath);
+  for (let i = backups.length - 1; i >= 0; i--) {
+    const verified = verifyBackup(backups[i]);
+    if (verified.ok) return { path: backups[i], value: verified.value };
+  }
+  return null;
+}
+
+/**
+ * Move a corrupt/untrusted live file aside instead of deleting it or
+ * letting the next save back it up as if it were good. The quarantined
+ * bytes are preserved for forensics/manual recovery. Returns
+ * `{ quarantined: true, target }` or `{ quarantined: false, target, error }`.
+ * A missing file is not an error: there is nothing to quarantine.
+ */
+export function quarantineFile(filePath) {
+  if (!fs.existsSync(filePath)) return { quarantined: false, target: null, error: null };
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const target = `${filePath}.corrupt.${stamp}.${randomUUID().slice(0, 8)}`;
+  try {
+    fs.renameSync(filePath, target);
+    return { quarantined: true, target, error: null };
+  } catch (error) {
+    return { quarantined: false, target, error };
+  }
+}
+
+/**
+ * Restore a store file from a backup (#91). `backupPath` may name a
+ * specific backup; when omitted the newest verified backup is used.
+ * The backup is verified by read-back before anything is touched, and
+ * the restore itself is atomic (temp file + rename) and verified by
+ * read-back afterwards.
+ *
+ * The current live file is preserved first: if it parses, it is backed
+ * up; if it does not parse, it is quarantined. If either preservation
+ * step fails, the restore is refused — fail closed — and the live file
+ * is left exactly as it was.
+ *
+ * Returns `{ ok: true, restoredFrom, value }` or `{ ok: false, restoredFrom, error }`.
+ */
+export function restoreBackup(filePath, backupPath = null) {
+  const chosen = backupPath
+    ? { path: backupPath, value: null }
+    : findLastVerifiedBackup(filePath);
+  if (!chosen) {
+    return { ok: false, restoredFrom: null, error: backupError("no verified backup available", "no_verified_backup") };
+  }
+  const verified = verifyBackup(chosen.path);
+  if (!verified.ok) {
+    return { ok: false, restoredFrom: chosen.path, error: verified.error };
+  }
+  if (fs.existsSync(filePath)) {
+    const current = verifyBackup(filePath);
+    if (current.ok) {
+      const backup = backupBeforeWrite(filePath);
+      if (backup.error) {
+        return {
+          ok: false,
+          restoredFrom: chosen.path,
+          error: backupError(
+            `refusing restore: could not back up the current live file: ${backup.error?.message || backup.error}`,
+            "backup_failed",
+          ),
+        };
+      }
+    } else {
+      const quarantined = quarantineFile(filePath);
+      if (!quarantined.quarantined) {
+        return {
+          ok: false,
+          restoredFrom: chosen.path,
+          error: backupError(
+            `refusing restore: could not quarantine the corrupt live file: ${quarantined.error?.message || quarantined.error}`,
+            "quarantine_failed",
+          ),
+        };
+      }
+    }
+  }
+  const temp = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temp, fs.readFileSync(chosen.path), "utf8");
+    fs.renameSync(temp, filePath);
+  } catch (error) {
+    try { if (fs.existsSync(temp)) fs.unlinkSync(temp); } catch { /* best effort */ }
+    return { ok: false, restoredFrom: chosen.path, error };
+  }
+  const restored = verifyBackup(filePath);
+  if (!restored.ok) {
+    return {
+      ok: false,
+      restoredFrom: chosen.path,
+      error: backupError(
+        `restored file failed read-back verification: ${restored.error?.message || restored.error}`,
+        "backup_verification_failed",
+      ),
+    };
+  }
+  return { ok: true, restoredFrom: chosen.path, value: restored.value };
+}
+
+/**
  * Backup then atomically replace a JSON file. The temp file is created beside
  * the target so rename remains atomic on the same filesystem.
+ *
+ * Fail-closed (#91): if the pre-write backup fails — copy error, or the
+ * copy fails read-back verification (e.g. the live file is already corrupt)
+ * — this throws a coded `backup_failed` error BEFORE any temp file is
+ * written and the live file is left untouched. Callers must not catch this
+ * and write anyway; `saveJson()` in `server/index.mjs` converts it into a
+ * loud log plus a `{ ok: false }` result and the caller returns 503.
  */
 export function writeJsonWithBackup(filePath, value, options = {}) {
   const keep = options.keep ?? BACKUP_KEEP;
   const backup = backupBeforeWrite(filePath, keep);
+  if (backup.error) {
+    throw backupError(
+      `pre-write backup failed, refusing to overwrite ${path.basename(filePath)}: ${backup.error?.message || backup.error}`,
+      "backup_failed",
+    );
+  }
   const temp = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     const fd = fs.openSync(temp, "w");
