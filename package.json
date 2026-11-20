@@ -291,6 +291,7 @@
     "test:architecture-map": "node tests/architecture-map.test.cjs",
     "test:project-journal": "node tests/project-journal.test.cjs",
     "test:core-journal": "node tests/core-journal.test.cjs",
+    "test:journal-replay": "node tests/journal-replay.test.cjs",
     "test:project-persistence": "node tests/project-persistence.test.cjs",
     "test:property": "tsx tests/property/undo-invariant.test.ts",
     "test:cad-dwg-export": "node tests/cad-dwg-export.test.cjs",

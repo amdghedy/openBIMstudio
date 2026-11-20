@@ -17,13 +17,14 @@ import { backupProjectFile } from "./browser-recovery";
 import { appendProjectDeletion, appendProjectState } from "./indexeddb-journal";
 
 const DB_NAME = "open-bim-studio";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const S_PROJECTS = "projects";
 const S_BLOBS = "modelBlobs";
 const S_JOURNAL = "projectJournal";
 const S_JOURNAL_BLOBS = "projectJournalBlobs";
 const S_OPERATION_JOURNAL = "projectOps";
 const S_OPERATION_SNAPSHOTS = "projectOperationSnapshots";
+const S_JOURNAL_QUARANTINE = "projectJournalQuarantine";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -55,6 +56,10 @@ function openDb(): Promise<IDBDatabase> {
         if (!db.objectStoreNames.contains(S_OPERATION_SNAPSHOTS)) {
           const snapshots = db.createObjectStore(S_OPERATION_SNAPSHOTS, { keyPath: "key" });
           snapshots.createIndex("projectId", "projectId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(S_JOURNAL_QUARANTINE)) {
+          const quarantine = db.createObjectStore(S_JOURNAL_QUARANTINE, { keyPath: "key" });
+          quarantine.createIndex("projectId", "projectId", { unique: false });
         }
       };
       req.onsuccess = () => {

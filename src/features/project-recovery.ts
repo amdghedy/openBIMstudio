@@ -18,6 +18,7 @@ import {
 import type { ProjectRecoverySnapshot } from "../modules/projects/project-journal";
 import { listBrowserRecoveryCopies, BROWSER_RECOVERY_KEEP } from "../modules/projects/browser-recovery";
 import { readCrashMarker } from "../modules/projects/persistence";
+import type { CrashRecoverySummary } from "../modules/projects/journal-recovery";
 import { confirmDialog } from "./form-modal";
 import { notify as toast } from "../core/notify";
 import { fmtDateTime } from "../core/region";
@@ -47,7 +48,8 @@ function showRecoveryBanner(): void {
     "box-shadow:0 12px 32px rgba(0,0,0,.45)";
   banner.innerHTML =
     `<div style="font-weight:700;margin-bottom:6px;color:var(--warning,#f59e0b)">⚠ Previous session ended without a clean save</div>` +
-    `<div style="font-size:11px;opacity:.85;margin-bottom:8px">Autosaved checkpoints of your project are available. Open a project first, then restore one.</div>`;
+    `<div style="font-size:11px;opacity:.85;margin-bottom:8px">Autosaved checkpoints of your project are available. Open a project first, then restore one.</div>` +
+    `<div data-recovery-outcome style="font-size:11px;opacity:.85;margin-bottom:8px">Checking the journal for unsaved work…</div>`;
   const row = document.createElement("div");
   row.style.cssText = "display:flex;gap:8px";
   const open = document.createElement("button");
@@ -69,6 +71,40 @@ function showRecoveryBanner(): void {
   banner.appendChild(row);
   document.body.appendChild(banner);
   setTimeout(() => { if (banner.isConnected) banner.remove(); }, 30_000);
+}
+
+/**
+ * Fill in the journal-replay outcome once boot recovery has run (#101).
+ * The banner is shown before recovery runs (it is the crash notice), so
+ * the outcome line starts as "Checking…" and is replaced here with what
+ * actually happened — never a claim of full recovery when it was partial.
+ * Also exposed as data attributes so the browser spec can assert the
+ * outcome without parsing prose.
+ */
+export function updateRecoveryBanner(summary: CrashRecoverySummary): void {
+  const banner = document.getElementById("obs-recovery-banner");
+  if (!banner) return;
+  banner.dataset.recoveryStatus = summary.status;
+  banner.dataset.replayedCount = String(summary.appliedSeqs.length);
+  banner.dataset.quarantinedCount = String(summary.quarantined.length);
+  banner.dataset.restoredFrom = summary.restoredFrom;
+  const line = banner.querySelector("[data-recovery-outcome]");
+  if (!line) return;
+  const n = summary.appliedSeqs.length;
+  const q = summary.quarantined.length;
+  if (summary.status === "full") {
+    line.textContent = `Journal replay recovered ${n} change${n === 1 ? "" : "s"} (up to entry #${summary.lastAppliedSeq}) — your work is back.`;
+  } else if (summary.status === "partial") {
+    line.textContent = n > 0
+      ? `Journal replay recovered up to entry #${summary.lastAppliedSeq}; ${q} damaged ${q === 1 ? "entry was" : "entries were"} set aside (quarantined), not silently dropped.`
+      : `No journal entries could be replayed; ${q} damaged ${q === 1 ? "entry was" : "entries were"} set aside (quarantined). The last saved project was opened instead.`;
+  } else if (summary.status === "deleted") {
+    line.textContent = "The journal shows this project was deleted before the crash — nothing was restored.";
+  } else {
+    line.textContent = summary.journalAbsent
+      ? "No journal entries to replay — opened the last saved project."
+      : "Nothing to replay from the journal — opened the last saved project.";
+  }
 }
 
 function rowLabel(s: ProjectRecoverySnapshot): string {
@@ -204,6 +240,11 @@ export function showProjectRecovery(): void {
 
 export function setupProjectRecovery(): void {
   window.addEventListener("obs:recovery-available", () => showRecoveryBanner());
+  // #101: boot recovery (main.ts) reports its outcome after the banner is
+  // already up; fill in the honest result (full / partial / none).
+  window.addEventListener("obs:recovery-replayed", (event) => {
+    try { updateRecoveryBanner((event as CustomEvent<CrashRecoverySummary>).detail); } catch { /* best-effort */ }
+  });
   // Boot-ordering guard (#91): the persistence step runs BEFORE this one
   // in main.ts, so it dispatches `obs:recovery-available` before this
   // listener exists — without this check the banner would never appear

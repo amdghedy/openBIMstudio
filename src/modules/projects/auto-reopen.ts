@@ -16,6 +16,13 @@
  *    - otherwise the project is reopened through the normal openProject
  *      pipeline (same hydration, same repairs report, same loader progress);
  *      the welcome overlay hides itself via the existing project-changed hook.
+ *  · Crash recovery (#101) runs in main.ts BEFORE this step, so by the time
+ *    this runs the journal has already been replayed into the primary
+ *    store when the previous session crashed. One exception is honoured
+ *    here: when recovery found the journal ends with an intentional
+ *    deletion, the recorded outcome (`obs.recovery.last`) says
+ *    `suppressReopen`, and this step must NOT resurrect the project —
+ *    the pointer is cleared as stale instead.
  *  · The decision is a pure function so the boot behaviour is unit-tested;
  *    stale pointers are silently cleared (never an alert at boot).
  *  · There is no "close project" action in the app, so a session always ends
@@ -68,6 +75,22 @@ export async function autoReopenLastProject(): Promise<boolean> {
   if (feats.getCurrentProject?.()) return false;
   const lastId = readLastProjectId();
   if (!lastId) return false;
+  // #101: the journal recorded an intentional deletion before the crash —
+  // do not resurrect the project by reopening a stale primary copy left
+  // behind by a crash mid-delete. (Read straight from localStorage: this
+  // module is imported by projects.ts, so it cannot import the recovery
+  // module without an import cycle.)
+  try {
+    const raw = localStorage.getItem("obs.recovery.last");
+    if (raw) {
+      const outcome = JSON.parse(raw) as { projectId?: unknown; suppressReopen?: unknown };
+      if (outcome?.projectId === lastId && outcome?.suppressReopen === true) {
+        console.log(`[auto-reopen] not reopening ${lastId}: journal shows it was deleted before the crash`);
+        clearLastProjectId();
+        return false;
+      }
+    }
+  } catch { /* unreadable outcome: proceed with the normal reopen path */ }
   let docs: Array<{ id: string }> = [];
   try {
     docs = await store.listProjectDocs();

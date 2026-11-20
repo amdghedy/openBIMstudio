@@ -2,9 +2,12 @@ import { Journal, type JournalStore, type Op } from "../../core/journal";
 import type { ProjectDoc } from "./types";
 
 const DB_NAME = "open-bim-studio";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const S_OPS = "projectOps";
 const S_SNAPSHOTS = "projectOperationSnapshots";
+/** Quarantined journal entries: the tail replay stopped at, kept as evidence — never silently dropped. */
+const S_QUARANTINE = "projectJournalQuarantine";
+export const PROJECT_JOURNAL_QUARANTINE_KEEP = 50;
 
 type StoredOp = Op & { key: string; projectId: string };
 type StoredSnapshot = { key: string; projectId: string; seq: number; state: string; createdAt: number; formatVersion: 1 };
@@ -36,6 +39,10 @@ function openJournalDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(S_SNAPSHOTS)) {
         const snapshots = db.createObjectStore(S_SNAPSHOTS, { keyPath: "key" });
         snapshots.createIndex("projectId", "projectId", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(S_QUARANTINE)) {
+        const quarantine = db.createObjectStore(S_QUARANTINE, { keyPath: "key" });
+        quarantine.createIndex("projectId", "projectId", { unique: false });
       }
     };
     request.onsuccess = () => {
@@ -75,6 +82,11 @@ class ProjectJournalStore implements JournalStore {
   async latestSeq(): Promise<number> {
     const ops = await this.records<StoredOp>(S_OPS);
     return ops.reduce((max, op) => Math.max(max, op.seq), 0);
+  }
+
+  /** Every stored op for this project, unsorted, with its storage key (for validated replay + quarantine). */
+  async allOpsRaw(): Promise<StoredOp[]> {
+    return this.records<StoredOp>(S_OPS);
   }
 
   async appendLine(line: string): Promise<void> {
@@ -152,4 +164,91 @@ async function openProjectJournal(projectId: string, setLatest: (value: ProjectD
     (state) => { latest = JSON.parse(state) as ProjectDoc | null; setLatest(latest); },
   );
   return journal;
+}
+
+/* ── validated crash replay (#101) ────────────────────────────────────────
+ * `recoverProjectState()` above replays through `Journal.open`, which
+ * applies entries blindly (no payload validation, a corrupt snapshot
+ * throws). Crash recovery must not use it: the raw journal below is what
+ * `journal-replay.ts` validates, and the quarantine below is where the
+ * tail it refuses goes — preserved as evidence, removed from the live
+ * op store so the next crash boot does not stop at the same entry again.
+ */
+
+export interface RawJournalOp { seq: number; kind: string; payload: unknown; key: string }
+export interface RawJournal { snapshot: { seq: number; state: string } | null; ops: RawJournalOp[] }
+export interface QuarantinedJournalRecord {
+  key: string;
+  projectId: string;
+  seq: number;
+  kind: string;
+  reason: string;
+  raw: unknown;
+  quarantinedAt: number;
+}
+
+/** Read the whole journal for a project: newest snapshot + every op, in seq order. */
+export async function loadProjectJournalRaw(projectId: string): Promise<RawJournal> {
+  const store = new ProjectJournalStore(projectId);
+  const snapshot = await store.loadNewestSnapshot();
+  const ops = await store.allOpsRaw();
+  ops.sort((a, b) => a.seq - b.seq);
+  return {
+    snapshot,
+    ops: ops.map(({ seq, kind, payload, key }) => ({ seq, kind, payload, key })),
+  };
+}
+
+/** Which quarantine record keys to delete so at most `keep` newest remain (after a pending add). */
+export function selectQuarantinePruneKeys(
+  existing: Array<{ key: string; seq: number }>,
+  keep: number = PROJECT_JOURNAL_QUARANTINE_KEEP,
+): string[] {
+  if (keep < 1) return [];
+  const sorted = [...existing].sort((a, b) => (b.seq - a.seq) || (b.key < a.key ? 1 : -1));
+  return sorted.slice(Math.max(0, keep - 1)).map((r) => r.key);
+}
+
+/**
+ * Move the quarantined tail out of the live op store into the quarantine
+ * store, preserving each entry's raw payload and the reason replay
+ * refused it. Best-effort: a quarantine failure is logged and rethrown
+ * so the caller can report it — the entries stay in the op store, so a
+ * later boot retries the quarantine instead of losing the evidence.
+ */
+export async function quarantineProjectJournalOps(
+  projectId: string,
+  tail: Array<{ seq: number; kind: string; reason: string; raw: unknown }>,
+): Promise<void> {
+  if (!tail.length) return;
+  const db = await openJournalDb();
+  const tx = db.transaction([S_OPS, S_QUARANTINE], "readwrite");
+  const quarantine = tx.objectStore(S_QUARANTINE);
+  const existing = await requestResult(quarantine.index("projectId").getAll(projectId)) as QuarantinedJournalRecord[];
+  for (const entry of tail) {
+    quarantine.put({
+      key: `${projectId}:${entry.seq}`,
+      projectId,
+      seq: entry.seq,
+      kind: entry.kind,
+      reason: entry.reason,
+      raw: entry.raw,
+      quarantinedAt: Date.now(),
+    } satisfies QuarantinedJournalRecord);
+  }
+  for (const key of selectQuarantinePruneKeys(existing, PROJECT_JOURNAL_QUARANTINE_KEEP)) quarantine.delete(key);
+  const ops = tx.objectStore(S_OPS);
+  for (const entry of tail) ops.delete(`${projectId}:${entry.seq}`);
+  await transactionDone(tx);
+  db.close();
+}
+
+/** Quarantined entries for a project, newest first — the evidence of what replay refused. */
+export async function listQuarantinedJournalOps(projectId: string): Promise<QuarantinedJournalRecord[]> {
+  const db = await openJournalDb();
+  const tx = db.transaction(S_QUARANTINE, "readonly");
+  const result = await requestResult(tx.objectStore(S_QUARANTINE).index("projectId").getAll(projectId)) as QuarantinedJournalRecord[];
+  await transactionDone(tx);
+  db.close();
+  return result.sort((a, b) => b.seq - a.seq);
 }

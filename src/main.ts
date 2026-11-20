@@ -389,6 +389,42 @@ await step("new-feature-badges", () => setupNewFeatureBadges());
 // the viewport's initial render completes first.
 await step("plugins", () => setupPluginSystem());
 
+// Crash recovery (#101) runs BEFORE auto-reopen, never after it — and
+// never on a clean boot (no marker, no replay). The order matters twice:
+// a crash that lost the primary write makes the project invisible to the
+// project list, so recovering after that check would conclude "project
+// not found" and clear the auto-reopen pointer; and openProject refuses
+// a corrupt primary record outright, so replaying after the open would
+// be too late on both counts. Recovery restores the primary record
+// first; auto-reopen then opens whatever is there through the normal
+// pipeline. The outcome is dispatched for the recovery banner.
+await step("project-crash-recovery", async () => {
+  try {
+    const { readCrashMarker } = await import("./modules/projects/persistence");
+    const { recoverCrashedProject } = await import("./modules/projects/journal-recovery");
+    const marker = readCrashMarker();
+    if (!marker) return;
+    const outcome = await recoverCrashedProject(marker.projectId);
+    try {
+      window.dispatchEvent(new CustomEvent("obs:recovery-replayed", {
+        detail: {
+          projectId: outcome.projectId, status: outcome.status,
+          appliedSeqs: outcome.appliedSeqs, lastAppliedSeq: outcome.lastAppliedSeq,
+          stoppedAtSeq: outcome.stoppedAtSeq, stoppedReason: outcome.stoppedReason,
+          snapshotCorrupt: outcome.snapshotCorrupt, seqGaps: outcome.seqGaps,
+          quarantined: outcome.quarantined, unreplayed: outcome.unreplayed,
+          primaryState: outcome.primaryState, primaryUpdatedAt: outcome.primaryUpdatedAt,
+          journalAbsent: outcome.journalAbsent,
+          restored: outcome.restored, restoredFrom: outcome.restoredFrom,
+          suppressReopen: outcome.suppressReopen,
+        },
+      }));
+    } catch { /* banner update is best-effort; the outcome is in obs.recovery.last */ }
+  } catch (e) {
+    console.warn("[boot] crash recovery failed; continuing with the primary record", e);
+  }
+});
+
 // Auto-reopen the last opened project AFTER every setup step: the scene,
 // importer, panels and loader are all live by now, so the reopen runs the
 // normal hydration pipeline and the welcome overlay hides itself on success.
