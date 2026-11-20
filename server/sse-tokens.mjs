@@ -1,9 +1,11 @@
 /** Short-lived signed SSE tokens (pure, unit-tested). Remediation Phase 1.2.
  *
  * Query-string bearer tokens leak into logs, proxies, and browser history.
- * The server keeps accepting `?token=` ONLY on the SSE events route for
- * EventSource (which cannot set headers), and prefers these short-lived
- * HMAC tokens instead:
+ * The room SSE route accepts these short-lived HMAC tokens as `?sse=` (or a
+ * Bearer header) — the long-lived `?token=` form is refused there. Mint one
+ * from POST /api/rooms/:id/sse-token. The agent relay SSE route
+ * (/api/agent/events) is the one remaining `?token=` exception: it has no
+ * room to bind a token to (see docs/engineering/SERVER-ROUTE-AUDIT.md).
  *
  *   token = base64url(payloadJson) + "." + base64url(HMAC-SHA256(payloadJson, secret))
  *   payloadJson = { room, sub, exp }   (exp = epoch ms)

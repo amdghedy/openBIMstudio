@@ -21,15 +21,18 @@ export function getCollabApiBase(): string {
   return API_BASE;
 }
 
-/* Optional auth for network deployments (remediation Phase 1.2).
+/* Optional auth for network deployments (remediation Phase 1.2; #92 item 5).
  *  __OPENBIM_COLLAB_TOKEN__             → long-lived token; sent as Bearer on
- *                                         POSTs and as ?token= on the SSE URL
- *                                         (EventSource cannot set headers).
+ *                                         POSTs only — NEVER in a URL.
  *  __OPENBIM_COLLAB_SSE_TOKEN_PROVIDER__ → optional async () => string returning
- *                                         a SHORT-LIVED signed SSE token
- *                                         (preferred over ?token=; the server
- *                                         mints these via /server/sse-tokens.mjs).
- * Local-first default (loopback, no token) needs neither.
+ *                                         a SHORT-LIVED signed SSE token;
+ *                                         overrides the built-in mint below.
+ *  Built-in mint: POST /api/rooms/:id/sse-token (Bearer) returns a 5-minute,
+ *  room-bound token; the EventSource opens with ?sse=<that token> because
+ *  EventSource cannot set headers. If a long-lived token is configured and
+ *  the mint fails, join() fails closed (no stream, no ?token= fallback —
+ *  the server refuses ?token= on the room events route). Local-first
+ *  default (loopback, no token) needs neither and opens the stream bare.
  */
 function collabToken(): string {
   return String((globalThis as any).__OPENBIM_COLLAB_TOKEN__ || "");
@@ -126,17 +129,31 @@ class RealtimeClient {
         const sse = await provider();
         if (sse) sseQuery = `?sse=${encodeURIComponent(String(sse))}`;
       }
-    } catch { /* fall through to unauthenticated/local behavior */ }
+    } catch { /* fall through to the built-in mint below */ }
     if (!sseQuery && this.shareToken) {
       // Share links authenticate the event stream with ?share= (the server
       // verifies the token + the revocation registry per connection).
       sseQuery = `?share=${encodeURIComponent(this.shareToken)}`;
     }
     if (!sseQuery && collabToken()) {
-      // Documented trade-off: long-lived token in the SSE URL (EventSource
-      // limitation). Prefer the short-lived signed provider above.
-      sseQuery = `?token=${encodeURIComponent(collabToken())}`;
+      // Mint a short-lived, room-bound token (Bearer auth). The long-lived
+      // token never goes in the URL — it would leak into history, server
+      // logs and proxies — and the server refuses ?token= on this route.
+      const minted = await fetch(`${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/sse-token`, {
+        method: "POST",
+        headers: authHeaders(),
+      }).catch(() => null);
+      const data = minted && minted.ok ? await minted.json().catch(() => null) : null;
+      const sse = data && typeof data.sseToken === "string" ? data.sseToken : "";
+      if (!sse) {
+        // Fail closed: no short-lived token, no stream. The room join above
+        // is rolled back so presence does not claim a live client.
+        this.stop();
+        return false;
+      }
+      sseQuery = `?sse=${encodeURIComponent(sse)}`;
     }
+    // No long-lived token configured: loopback default, open the stream bare.
 
     const url = `${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/events${sseQuery}`;
 

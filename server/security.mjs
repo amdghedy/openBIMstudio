@@ -71,7 +71,47 @@ export function boundedJsonValue(value, maxBytes = 2 * 1024 * 1024) {
   }
 }
 
-/** Constant-time bearer token check. `token` empty = auth disabled. SSE may pass ?token= . */
+const MAX_PROJECT_NAME_CHARS = 200;
+/** Project PUT bodies (#92): must be a JSON object, with a bounded name and
+ * a size-bounded data payload. Returns { ok, reason?, name?, data? }. The
+ * stored shape is unchanged: `data` is `body.data`, or the whole body when
+ * the caller PUTs the project inline. */
+export function validateProjectBody(body, maxBytes = 8 * 1024 * 1024) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { ok: false, reason: "project body must be a JSON object" };
+  }
+  if (body.name !== undefined && (typeof body.name !== "string" || body.name.length > MAX_PROJECT_NAME_CHARS)) {
+    return { ok: false, reason: "project name must be a string of at most 200 characters" };
+  }
+  const data = body.data ?? body;
+  const check = boundedJsonValue(data, maxBytes);
+  if (!check.ok) return { ok: false, reason: check.reason };
+  return {
+    ok: true,
+    name: typeof body.name === "string" && body.name ? body.name : undefined,
+    data: check.value,
+  };
+}
+
+const MAX_CURSOR_BYTES = 64 * 1024;
+/** Room action bodies (join/heartbeat/leave/change, #92): must be a JSON
+ * object; the presence cursor (join/heartbeat) is bounded. The change
+ * payload has its own bound (MAX_CHANGE_PAYLOAD) and is checked by the
+ * caller, not here. */
+export function validateRoomActionBody(body, action) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { ok: false, reason: "room action body must be a JSON object" };
+  }
+  if ((action === "join" || action === "heartbeat") && body.cursor !== undefined && body.cursor !== null) {
+    const check = boundedJsonValue(body.cursor, MAX_CURSOR_BYTES);
+    if (!check.ok) return { ok: false, reason: "cursor too large or not JSON-serializable" };
+  }
+  return { ok: true };
+}
+
+/** Constant-time bearer token check. `token` empty = auth disabled. The agent
+ * relay SSE route may pass ?token= (see server/index.mjs); every other route
+ * must pass the token as a Bearer header. */
 export function tokenOk(authHeader, queryToken, token) {
   if (!token) return true;
   // Linear parsing — a backtracking regex over attacker-controlled headers

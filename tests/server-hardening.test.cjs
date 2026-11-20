@@ -16,15 +16,31 @@ const os = require("os");
 const path = require("path");
 
 let pass = 0, fail = 0;
+/* Every test — sync or async — is collected as a promise and awaited by the
+ * runner before it prints the result. (Previously this helper branched on
+ * f.length, which is 0 for `async () => {}` callbacks, so every async
+ * integration test "passed" before its body ran and the suite exited in
+ * ~0.3 s without ever spawning a server. Do not reintroduce the arity
+ * branch: a test that is not awaited is not a test.)
+ * Tests run SEQUENTIALLY through one chain: each integration test spawns a
+ * real server, and 20+ simultaneous servers on a small CI runner starve
+ * each other (observed: connection resets and start timeouts under load). */
+const pending = [];
+let chain = Promise.resolve();
 const t = (n, f) => {
-  if (f.length) { // async test
-    f().then(() => { pass++; console.log("  PASS " + n); runNext(); })
-      .catch((e) => { fail++; console.log("  FAIL " + n + ": " + e.message); runNext(); });
-  } else {
-    try { f(); pass++; console.log("  PASS " + n); }
-    catch (e) { fail++; console.log("  FAIL " + n + ": " + e.message); }
-  }
+  const p = chain.then(async () => {
+    try { await f(); pass++; console.log("  PASS " + n); }
+    catch (e) { fail++; console.log("  FAIL " + n + ": " + (e && e.message)); }
+  });
+  chain = p;
+  pending.push(p);
 };
+
+/* Spawned servers + their data dirs. A test that fails mid-body skips its
+ * own child.kill(), so the runner kills stragglers and removes their data
+ * dirs after the run instead of leaking a server (and ~18 MB of /tmp)
+ * per failure. */
+const spawned = [];
 
 /* ── Pure: startup config (fail-closed) ─────────────────────────────── */
 const cfgTests = (m) => {
@@ -107,6 +123,16 @@ const rateTests = (m) => {
     assert.ok(rl.check("a").allowed);
     assert.ok(rl.check("b").allowed);
     assert.strictEqual(rl.check("a").allowed, false);
+  });
+
+  t("limiter keeps answering under a key flood (no backend to fail)", () => {
+    // A key flood must not throw or wedge the limiter: it keeps deciding.
+    // (maxKeys only sweeps expired entries, so this pins liveness, not a
+    // hard memory bound — the per-IP general budget is what caps one client.)
+    const rl = m.createRateLimiter({ windowMs: 1000, max: 2, maxKeys: 3 });
+    for (let i = 0; i < 500; i++) assert.doesNotThrow(() => rl.check(`k${i}`));
+    assert.strictEqual(rl.check("fresh").allowed, true);
+    assert.strictEqual(rl.peek("fresh"), 1);
   });
 
   t("correlation ids: honour safe incoming id, mint otherwise", () => {
@@ -258,6 +284,7 @@ function startServer(env) {
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    spawned.push({ child, dataDir });
     let out = "";
     const timer = setTimeout(() => reject(new Error("server start timeout: " + out)), 10_000);
     const onData = (d) => {
@@ -305,6 +332,8 @@ const integrationTests = async () => {
       ["GET", "/api/projects/p1"], ["PUT", "/api/projects/p1"],
       ["GET", "/api/rooms/r1"], ["POST", "/api/rooms/r1/join"], ["POST", "/api/rooms/r1/heartbeat"],
       ["POST", "/api/rooms/r1/leave"], ["POST", "/api/rooms/r1/change"],
+      ["POST", "/api/rooms/r1/sse-token"], ["GET", "/api/rooms/r1/sse-token"],
+      ["GET", "/api/rooms/r1/events"],
       ["POST", "/api/agent/exec"], ["POST", "/api/agent/result"], ["GET", "/api/agent/status"],
       ["POST", "/api/convert"], ["GET", "/api/convert/x/status"], ["GET", "/api/convert/x/download"],
       ["GET", "/api/does-not-exist"], ["POST", "/api/anything"], ["DELETE", "/api/projects/p1"],
@@ -414,7 +443,7 @@ const integrationTests = async () => {
   t("signed short-lived SSE token authenticates the events route", async () => {
     const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
     const base = `http://127.0.0.1:${s.port}`;
-    const sseMod = require("./helpers/sse-tokens-loader.cjs");
+    const sseMod = await require("./helpers/sse-tokens-loader.cjs");
     const tok = sseMod.issueSseToken(TOKEN, { room: "r1", ttlMs: 60_000 });
     const good = await fetch(`${base}/api/rooms/r1/events?sse=${encodeURIComponent(tok)}`);
     assert.strictEqual(good.status, 200);
@@ -422,6 +451,179 @@ const integrationTests = async () => {
     const forged = await fetch(`${base}/api/rooms/r1/events?sse=${encodeURIComponent(tok.slice(0, -4) + "AAAA")}`);
     assert.strictEqual(forged.status, 401);
     forged.body?.cancel?.();
+    s.child.kill();
+  });
+
+  t("SSE: room events rejects ?token=; Bearer and ?sse= accepted", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const ac = new AbortController();
+    // The long-lived token in the URL is refused even when it is valid.
+    const q = await fetch(`${base}/api/rooms/r1/events?token=${encodeURIComponent(TOKEN)}`, { signal: ac.signal });
+    assert.strictEqual(q.status, 401, "?token= must not open the room stream");
+    q.body?.cancel?.();
+    const sseMod = await require("./helpers/sse-tokens-loader.cjs");
+    const tok = sseMod.issueSseToken(TOKEN, { room: "r1", ttlMs: 60_000 });
+    const good = await fetch(`${base}/api/rooms/r1/events?sse=${encodeURIComponent(tok)}`, { signal: ac.signal });
+    assert.strictEqual(good.status, 200);
+    const bearer = await fetch(`${base}/api/rooms/r1/events`, {
+      headers: { Authorization: `Bearer ${TOKEN}` }, signal: ac.signal,
+    });
+    assert.strictEqual(bearer.status, 200);
+    ac.abort();
+    s.child.kill();
+  });
+
+  t("SSE: expired, wrong-room, malformed and tampered ?sse= tokens rejected", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const sseMod = await require("./helpers/sse-tokens-loader.cjs");
+    const valid = sseMod.issueSseToken(TOKEN, { room: "r1", ttlMs: 60_000 });
+    const cases = [
+      ["expired", sseMod.issueSseToken(TOKEN, { room: "r1", ttlMs: 1_000, now: 1_000_000 })],
+      ["wrong-room", sseMod.issueSseToken(TOKEN, { room: "r2", ttlMs: 60_000 })],
+      ["malformed", "not-a-token"],
+      ["tampered", valid.slice(0, -4) + "AAAA"],
+    ];
+    for (const [name, tok] of cases) {
+      const r = await fetch(`${base}/api/rooms/r1/events?sse=${encodeURIComponent(tok)}`);
+      assert.strictEqual(r.status, 401, name);
+      r.body?.cancel?.();
+    }
+    s.child.kill();
+  });
+
+  t("SSE: agent events keeps ?token= (the documented exception — no room to bind to)", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const ac = new AbortController();
+    const q = await fetch(`${base}/api/agent/events?token=${encodeURIComponent(TOKEN)}`, { signal: ac.signal });
+    assert.strictEqual(q.status, 200, "agent relay still accepts ?token= by design");
+    ac.abort();
+    s.child.kill();
+  });
+
+  t("mint: POST /api/rooms/:id/sse-token mints a room-bound token (Bearer only)", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}` };
+    const noAuth = await fetch(`${base}/api/rooms/r1/sse-token`, { method: "POST" });
+    assert.strictEqual(noAuth.status, 401);
+    const queryTok = await fetch(`${base}/api/rooms/r1/sse-token?token=${encodeURIComponent(TOKEN)}`, { method: "POST" });
+    assert.strictEqual(queryTok.status, 401, "?token= must not mint");
+    const wrongMethod = await fetch(`${base}/api/rooms/r1/sse-token`, { method: "GET", headers: H });
+    assert.strictEqual(wrongMethod.status, 405);
+    const badRoom = await fetch(`${base}/api/rooms/__proto__/sse-token`, { method: "POST", headers: H });
+    assert.strictEqual(badRoom.status, 400);
+    const ok = await fetch(`${base}/api/rooms/r1/sse-token`, { method: "POST", headers: H });
+    assert.strictEqual(ok.status, 200);
+    const body = await ok.json();
+    assert.strictEqual(body.room, "r1");
+    assert.strictEqual(body.ttlMs, 5 * 60_000);
+    assert.ok(typeof body.sseToken === "string" && body.sseToken.includes("."));
+    assert.ok(Math.abs(body.expiresAt - (Date.now() + 5 * 60_000)) < 5_000);
+    // The minted token opens the stream for its room and no other.
+    const ac = new AbortController();
+    const stream = await fetch(`${base}/api/rooms/r1/events?sse=${encodeURIComponent(body.sseToken)}`, { signal: ac.signal });
+    assert.strictEqual(stream.status, 200);
+    const other = await fetch(`${base}/api/rooms/r2/events?sse=${encodeURIComponent(body.sseToken)}`);
+    assert.strictEqual(other.status, 401, "room-bound token must not open another room");
+    other.body?.cancel?.();
+    ac.abort();
+    s.child.kill();
+  });
+
+  t("mint: tokenless (loopback) server answers 503 — nothing to mint from", async () => {
+    const s = await startServer({});
+    const base = `http://127.0.0.1:${s.port}`;
+    const r = await fetch(`${base}/api/rooms/r1/sse-token`, { method: "POST" });
+    assert.strictEqual(r.status, 503);
+    // ...and the stream itself opens without any credential in that mode.
+    const ac = new AbortController();
+    const stream = await fetch(`${base}/api/rooms/r1/events`, { signal: ac.signal });
+    assert.strictEqual(stream.status, 200);
+    ac.abort();
+    s.child.kill();
+  });
+
+  t("failed-auth budget: repeated bad tokens on one route → 429, other routes unaffected", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN, OBS_AUTH_FAIL_MAX: "3" });
+    const base = `http://127.0.0.1:${s.port}`;
+    const codes = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await fetch(`${base}/api/projects/p1`, { headers: { Authorization: "Bearer wrong" } });
+      codes.push(r.status);
+    }
+    assert.deepStrictEqual(codes, [401, 401, 401, 429]);
+    const retry = await fetch(`${base}/api/projects/p1`, { headers: { Authorization: "Bearer wrong" } });
+    assert.strictEqual(retry.status, 429);
+    assert.ok(retry.headers.get("retry-after"), "429 carries Retry-After");
+    // Per-route isolation: a different route still answers 401, not 429.
+    const other = await fetch(`${base}/api/rooms/r1`, { headers: { Authorization: "Bearer wrong" } });
+    assert.strictEqual(other.status, 401);
+    s.child.kill();
+  });
+
+  t("project PUT: schema + size bound (bad shape → 400, oversize → 413, valid PUT persists)", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN, OBS_MAX_PROJECT_BODY: "1024" });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+    const arrayBody = await fetch(`${base}/api/projects/p1`, { method: "PUT", headers: H, body: JSON.stringify([1, 2]) });
+    assert.strictEqual(arrayBody.status, 400);
+    const badName = await fetch(`${base}/api/projects/p1`, { method: "PUT", headers: H, body: JSON.stringify({ name: 42 }) });
+    assert.strictEqual(badName.status, 400);
+    const longName = await fetch(`${base}/api/projects/p1`, { method: "PUT", headers: H, body: JSON.stringify({ name: "x".repeat(201) }) });
+    assert.strictEqual(longName.status, 400);
+    const big = await fetch(`${base}/api/projects/p1`, { method: "PUT", headers: H, body: JSON.stringify({ data: { blob: "x".repeat(4096) } }) });
+    assert.strictEqual(big.status, 413);
+    const ok = await fetch(`${base}/api/projects/p1`, { method: "PUT", headers: H, body: JSON.stringify({ name: "Tower", data: { a: 1 } }) });
+    assert.strictEqual(ok.status, 200);
+    const got = await fetch(`${base}/api/projects/p1`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    assert.strictEqual(got.status, 200);
+    const proj = await got.json();
+    assert.strictEqual(proj.name, "Tower");
+    assert.deepStrictEqual(proj.data, { a: 1 });
+    s.child.kill();
+  });
+
+  t("room actions: non-object body → 400; oversized cursor → 413; valid join still works", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+    const arr = await fetch(`${base}/api/rooms/r1/join`, { method: "POST", headers: H, body: JSON.stringify([1]) });
+    assert.strictEqual(arr.status, 400);
+    const bigCursor = await fetch(`${base}/api/rooms/r1/join`, {
+      method: "POST", headers: H,
+      body: JSON.stringify({ clientId: "c1", cursor: { blob: "x".repeat(100 * 1024) } }),
+    });
+    assert.strictEqual(bigCursor.status, 413);
+    const ok = await fetch(`${base}/api/rooms/r1/join`, {
+      method: "POST", headers: H,
+      body: JSON.stringify({ clientId: "c1", name: "Ada" }),
+    });
+    assert.strictEqual(ok.status, 200);
+    s.child.kill();
+  });
+
+  t("default MAX_BODY is 16 MB for JSON, uploads keep their own 200 MB bound", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+    const big = "x".repeat(17 * 1024 * 1024);
+    const res = await fetch(`${base}/api/projects/p1`, {
+      method: "PUT", headers: H,
+      body: JSON.stringify({ data: { blob: big } }),
+    });
+    assert.strictEqual(res.status, 413, "17 MB JSON body exceeds the 16 MB default");
+    // ...but a 17 MB file still uploads: the upload path is bounded separately.
+    const up = await fetch(`${base}/api/convert`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TOKEN}`, "x-file-name": "big.ifc" },
+      body: "ISO-10303-21;\n" + " ".repeat(17 * 1024 * 1024),
+    });
+    assert.strictEqual(up.status, 200);
+    const upBody = await up.json();
+    assert.strictEqual(upBody.mode, "manual");
     s.child.kill();
   });
 
@@ -442,7 +644,7 @@ const integrationTests = async () => {
     assert.strictEqual(good.status, 200);
     const body = await good.json();
     assert.strictEqual(body.mode, "manual");
-    assert.ok(body.uploadId && /^[0-9a-z]{10,32}$/i.test(body.uploadId), "opaque id");
+    assert.ok(body.uploadId && /^[0-9a-z_-]{10,32}$/i.test(body.uploadId), "opaque id");
     assert.strictEqual(body.savedPath, undefined, "no storage layout disclosure");
     assert.strictEqual(body.fileName, undefined, "client name not echoed as key");
     s.child.kill();
@@ -476,6 +678,17 @@ const load = async (n) => {
   uploadTests(await load("upload-store-loader.cjs"));
   await new Promise((r) => setImmediate(r));
   await integrationTests();
+  // Await every collected test — sync and async alike — before reporting.
+  // Without this the process can exit while integration bodies are still
+  // waiting on their spawned servers (see the `t` note above).
+  await Promise.all(pending);
+  // Backstop: kill any server a failing test left behind and remove its
+  // data dir (a passing test already killed its own child; double-kill
+  // and double-remove are harmless).
+  for (const { child, dataDir } of spawned) {
+    try { child.kill(); } catch { /* already dead */ }
+    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
   console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error("HARNESS ERROR", e); process.exit(1); });

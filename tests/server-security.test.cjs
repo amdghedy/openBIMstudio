@@ -12,9 +12,29 @@ t("ids: traversal / prototype keys / junk rejected",()=>{for(const id of ["__pro
 t("client ids reject prototype keys and unsafe characters",()=>{for(const id of ["client-1","a:b_2"])assert.ok(m.validClientId(id),id);for(const id of ["__proto__","constructor","../x","a/b","","-lead","a".repeat(97),null,5])assert.ok(!m.validClientId(id),String(id))});
 t("display names are bounded and control characters are removed",()=>{assert.strictEqual(m.safeDisplayName("  A\nB\t "),"AB");assert.strictEqual(m.safeDisplayName(""),"Guest");assert.ok(m.safeDisplayName("x".repeat(200)).length<=120)});
 t("change payloads are bounded and JSON serializable",()=>{assert.ok(m.boundedJsonValue({a:1}).ok);assert.ok(!m.boundedJsonValue("x".repeat(100),50).ok);const circular={};circular.self=circular;assert.ok(!m.boundedJsonValue(circular).ok)});
+t("project bodies: object required; name bounded; data size-bounded",()=>{
+  assert.ok(m.validateProjectBody({name:"A",data:{x:1}}).ok);
+  assert.ok(m.validateProjectBody({name:"A"}).ok, "data defaults to the body itself");
+  for(const bad of [[1,2],"nope",null,undefined,42]) assert.ok(!m.validateProjectBody(bad).ok, String(bad));
+  assert.ok(!m.validateProjectBody({name:42}).ok);
+  assert.ok(!m.validateProjectBody({name:"x".repeat(201)}).ok);
+  assert.ok(!m.validateProjectBody({data:{blob:"x".repeat(100)}},50).ok);
+  const v=m.validateProjectBody({name:"Tower",data:{a:1}});
+  assert.strictEqual(v.name,"Tower"); assert.deepStrictEqual(v.data,{a:1});
+  const unnamed=m.validateProjectBody({data:{a:1}});
+  assert.strictEqual(unnamed.name, undefined, "no name → caller falls back to the id");
+});
+t("room action bodies: object required; cursor bounded on join/heartbeat",()=>{
+  assert.ok(m.validateRoomActionBody({clientId:"c1"}, "join").ok);
+  assert.ok(m.validateRoomActionBody({clientId:"c1", cursor:{x:1,y:2}}, "join").ok);
+  assert.ok(!m.validateRoomActionBody([1], "join").ok);
+  assert.ok(!m.validateRoomActionBody(null, "join").ok);
+  assert.ok(!m.validateRoomActionBody({clientId:"c1", cursor:{blob:"x".repeat(100 * 1024)}}, "join").ok);
+  assert.ok(m.validateRoomActionBody({clientId:"c1", cursor:{blob:"x".repeat(100 * 1024)}}, "change").ok, "change payload has its own bound, checked by the caller");
+});
 t("token disabled when unset",()=>assert.ok(m.tokenOk("",undefined,"")));
 t("bearer token accepted, wrong/missing rejected",()=>{assert.ok(m.tokenOk("Bearer s3cret",undefined,"s3cret"));assert.ok(!m.tokenOk("Bearer nope",undefined,"s3cret"));assert.ok(!m.tokenOk("",undefined,"s3cret"))});
-t("query token works for SSE",()=>assert.ok(m.tokenOk("", "s3cret","s3cret")));
+t("tokenOk still accepts a query token when the caller passes one (agent SSE only)",()=>assert.ok(m.tokenOk("", "s3cret","s3cret")));
 t("upload names: traversal and header injection are neutralised",()=>{
   assert.strictEqual(m.safeUploadName("../../etc/passwd.rvt"),"passwd.rvt");
   assert.strictEqual(m.safeUploadName("..\\..\\win.ini.ifc"),"win.ini.ifc");

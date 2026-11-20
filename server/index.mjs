@@ -3,10 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { parseAllowedOrigins, originAllowed, corsHeaders, SECURITY_HEADERS, validId, validClientId, safeDisplayName, boundedJsonValue, tokenOk, safeUploadName } from "./security.mjs";
+import { parseAllowedOrigins, originAllowed, corsHeaders, SECURITY_HEADERS, validId, validClientId, safeDisplayName, boundedJsonValue, validateProjectBody, validateRoomActionBody, tokenOk, safeUploadName } from "./security.mjs";
 import { resolveStartupConfig } from "./startup-config.mjs";
 import { createRateLimiter, clientKey, correlationId, securityLog, redactFileName } from "./rate-limit.mjs";
-import { issueSseToken, verifySseToken } from "./sse-tokens.mjs";
+import { issueSseToken, verifySseToken, SSE_TOKEN_DEFAULT_TTL_MS } from "./sse-tokens.mjs";
 import { CentralStore } from "./central-store.mjs";
 import {
   joinRoom, leaveRoom, setRole, submitUpsert, submitDelete, createWorkset,
@@ -47,7 +47,16 @@ const AUTH_TOKEN = CFG.token;
 const ALLOWED_ORIGINS = CFG.origins
   ? new Set(CFG.origins)
   : parseAllowedOrigins();
-const MAX_BODY = Number(process.env.OBS_MAX_BODY || 200 * 1024 * 1024);
+/* Body limits (#92 item 5). JSON API bodies and binary uploads no longer
+ * share one budget: the largest legitimate JSON body is a project PUT,
+ * schema-bounded to OBS_MAX_PROJECT_BODY (8 MB default), and room changes are
+ * capped at 2 MB, so a 16 MB JSON cap leaves 2x headroom. Uploads keep a
+ * separate 200 MB bound because RVT/NWD/NWC files routinely exceed 100 MB;
+ * that path already sniffs signatures, uses opaque ids, caps concurrency
+ * at 3 and sweeps after 24 h. Both bounds stay overridable via env. */
+const MAX_BODY = Number(process.env.OBS_MAX_BODY || 16 * 1024 * 1024);
+const MAX_UPLOAD_BODY = Number(process.env.OBS_MAX_UPLOAD_BODY || 200 * 1024 * 1024);
+const MAX_PROJECT_BODY = Number(process.env.OBS_MAX_PROJECT_BODY || 8 * 1024 * 1024);
 const PRESENCE_TIMEOUT_MS = 45000;
 const MAX_CHANGES_PER_ROOM = 500;
 const MAX_CHANGE_PAYLOAD = Number(process.env.OBS_MAX_CHANGE_PAYLOAD || 2 * 1024 * 1024);
@@ -62,6 +71,12 @@ const MAX_CONCURRENT_CONVERSIONS = Number(process.env.OBS_MAX_CONCURRENT_CONVERS
 
 const httpRate = createRateLimiter({ windowMs: RATE_WINDOW_MS, max: RATE_MAX_GENERAL });
 const mutationRate = createRateLimiter({ windowMs: RATE_WINDOW_MS, max: RATE_MAX_MUTATION });
+/* Failed-auth budget (#92 item 5): tighter than the general budget, and
+ * keyed per route + IP, so credential guessing on one route is throttled
+ * without blocking legitimate traffic on other routes. */
+const AUTH_FAIL_WINDOW_MS = Number(process.env.OBS_AUTH_FAIL_WINDOW_MS || 60_000);
+const AUTH_FAIL_MAX = Number(process.env.OBS_AUTH_FAIL_MAX || 20);
+const failedAuthRate = createRateLimiter({ windowMs: AUTH_FAIL_WINDOW_MS, max: AUTH_FAIL_MAX });
 const ssePerIp = new Map(); // ip -> active SSE connection count
 let activeConversions = 0;
 
@@ -351,8 +366,13 @@ function readBody(req) {
       size += chunk.length;
 
       if (size > MAX_BODY) {
+        // Stop consuming (paused stream = no more buffering) and reject.
+        // The handler answers 413 and Node closes the connection because
+        // the request stream is incomplete — the client sees the 413 instead
+        // of a reset. (Destroying the socket here used to kill the response
+        // too, so the documented 413 never arrived.)
+        req.removeAllListeners("data");
         reject(Object.assign(new Error("Payload too large"), { code: "payload_too_large" }));
-        req.destroy();
         return;
       }
 
@@ -368,17 +388,17 @@ function readBody(req) {
 }
 
 /** Streaming size-limited binary body read (uploads). Rejects early — the
- * connection is destroyed as soon as the limit is exceeded, not after the
- * full body has been buffered. */
+ * connection stops being consumed as soon as the limit is exceeded, and the
+ * handler answers 413 (see readBody); the socket is not destroyed first. */
 function readBodyBuffer(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on("data", (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY) {
+      if (size > MAX_UPLOAD_BODY) {
+        req.removeAllListeners("data");
         reject(Object.assign(new Error("Payload too large"), { code: "payload_too_large" }));
-        req.destroy();
         return;
       }
       chunks.push(chunk);
@@ -594,16 +614,18 @@ const server = http.createServer(async (req, res) => {
   const isSseEvents = /^\/api\/rooms\/[^/]+\/events$/.test(url.pathname);
   const isAgentEvents = url.pathname === "/api/agent/events";
 
-  /* Token policy (remediation Phase 1.2, extended for share links):
+  /* Token policy (remediation Phase 1.2, extended for share links; #92 item 5):
    *  - Non-SSE /api/ routes: Authorization: Bearer only. Query-string tokens
    *    are refused (they leak into logs, proxies and history).
-   *  - SSE events route only: EventSource cannot set headers, so a signed
-   *    short-lived ?sse= token is preferred; the long-lived ?token= form is
-   *    still accepted there (documented URL-leakage trade-off). A share link
-   *    authenticates the same route with ?share= (role-scoped, revocable).
-   *  - Agent relay SSE (/api/agent/events): EventSource cannot set headers,
-   *    so Bearer OR the long-lived ?token= form is accepted there (same
-   *    documented trade-off as the room events route).
+   *  - Room SSE events route only: Bearer (master token, or a share token
+   *    resolved per room), a signed short-lived ?sse= token minted from
+   *    POST /api/rooms/:id/sse-token, or a ?share= share token. The
+   *    long-lived ?token= form is NOT accepted here any more — EventSource
+   *    cannot set headers, so the short-lived token travels as ?sse=.
+   *  - Agent relay SSE (/api/agent/events): EventSource cannot set headers
+   *    and the relay has no room to bind a short-lived token to, so Bearer
+   *    OR the long-lived ?token= form is accepted there. This is the one
+   *    remaining ?token= exception; see docs/engineering/SERVER-ROUTE-AUDIT.md.
    *  - Share tokens: single-room, role-scoped (view/edit). A presented
    *    Bearer is tried as the master token first, then as a share token for
    *    the room in the path. When a share token authenticates, reqShare is
@@ -641,9 +663,9 @@ const server = http.createServer(async (req, res) => {
           return send(res, 401, { error: "Invalid or expired SSE token", requestId: reqId });
         }
         authed = true;
-      } else if (url.searchParams.get("token")) {
-        authed = tokenOk(req.headers.authorization, url.searchParams.get("token"), AUTH_TOKEN);
       } else {
+        // No ?token= fallback: the long-lived token must never appear in a
+        // URL. Bearer (master or share) or a minted short-lived ?sse= token only.
         const r = resolveRoomAuth(bearerToken(req.headers.authorization), roomId);
         authed = r.authed;
         reqShare = r.share || null;
@@ -661,6 +683,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (!authed) {
       securityLog(console.log, "auth_failed", { requestId: reqId, route: url.pathname, sse: isSseEvents });
+      // Tighter budget for failed authentications than for traffic in
+      // general: credential guessing is per route + IP, so a flood of bad
+      // tokens on one route is throttled without blocking other routes.
+      const authFail = failedAuthRate.check(`${url.pathname}|${key}`);
+      if (!authFail.allowed) {
+        securityLog(console.log, "auth_rate_limited", { requestId: reqId, route: url.pathname });
+        res.setHeader("Retry-After", Math.ceil(authFail.retryAfterMs / 1000));
+        return send(res, 429, { error: "Too many failed authentication attempts", requestId: reqId });
+      }
       return send(res, 401, { error: "Missing or invalid access token", requestId: reqId });
     }
   }
@@ -773,11 +804,20 @@ const server = http.createServer(async (req, res) => {
       try {
         const raw = await readBody(req);
         const body = raw ? JSON.parse(raw) : {};
+        const v = validateProjectBody(body, MAX_PROJECT_BODY);
+        if (!v.ok) {
+          const tooLarge = /too large/.test(v.reason);
+          if (tooLarge) securityLog(console.log, "body_too_large", { requestId: reqId, route: "project_put" });
+          return send(res, tooLarge ? 413 : 400, {
+            error: tooLarge ? "Project body too large" : "Invalid project body",
+            requestId: reqId,
+          });
+        }
 
         const project = {
           id,
-          name: body.name || id,
-          data: body.data ?? body,
+          name: v.name || id,
+          data: v.data,
           updatedAt: new Date().toISOString(),
         };
 
@@ -844,6 +884,42 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  /* POST /api/rooms/:id/sse-token — mint a short-lived, room-bound SSE
+   * token (#92 item 5). Bearer-authenticated (the /api/ gate above refuses
+   * ?token= here); the client fetches this before opening the EventSource,
+   * so the long-lived token never appears in a URL. */
+  const sseTokenMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/sse-token$/);
+
+  if (sseTokenMatch) {
+    if (req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+    const roomId = decodeURIComponent(sseTokenMatch[1]);
+    if (!validId(roomId)) return send(res, 400, { error: "Invalid room id", requestId: reqId });
+
+    // Minting issues credentials: same per-IP mutation budget as the other
+    // room writes, so a token holder cannot mint in a loop.
+    const mut = mutationRate.check(`sse-token|${key}`);
+    if (!mut.allowed) {
+      securityLog(console.log, "rate_limited", { requestId: reqId, scope: "mutation", action: "sse-token" });
+      res.setHeader("Retry-After", Math.ceil(mut.retryAfterMs / 1000));
+      return send(res, 429, { error: "Too many requests", requestId: reqId });
+    }
+
+    // No server secret, no short-lived tokens: a tokenless (loopback) server
+    // authenticates nothing, so there is nothing to mint from. The client
+    // opens the stream without a credential in that mode.
+    if (!AUTH_TOKEN) {
+      return send(res, 503, { error: "SSE tokens unavailable: server runs without a token", requestId: reqId });
+    }
+
+    const token = issueSseToken(AUTH_TOKEN, { room: roomId });
+    return send(res, 200, {
+      sseToken: token,
+      room: roomId,
+      ttlMs: SSE_TOKEN_DEFAULT_TTL_MS,
+      expiresAt: Date.now() + SSE_TOKEN_DEFAULT_TTL_MS,
+    });
+  }
+
   const roomBaseMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)$/);
 
   if (roomBaseMatch && req.method === "GET") {
@@ -891,6 +967,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     const room = getRoom(roomId);
+    const v = validateRoomActionBody(body, action);
+    if (!v.ok) {
+      const tooLarge = /too large/.test(v.reason);
+      return send(res, tooLarge ? 413 : 400, {
+        error: tooLarge ? "Room action body too large" : "Invalid room action body",
+        requestId: reqId,
+      });
+    }
     const clientId = typeof body.clientId === "string" ? body.clientId.trim() : "";
 
     if (!validClientId(clientId)) {
@@ -1219,7 +1303,7 @@ const server = http.createServer(async (req, res) => {
 
   return send(res, 404, {
     error:
-      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/join or /api/shares or /api/convert or /api/agent/exec or /api/agent/status or /api/central/:room/{state,sync,history,audit,join,leave,role,op,workset,workset-owner,borrow,relinquish,borrow-request,borrow-respond,resolve,restore}",
+      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/sse-token or /api/rooms/:room/join or /api/shares or /api/convert or /api/agent/exec or /api/agent/status or /api/central/:room/{state,sync,history,audit,join,leave,role,op,workset,workset-owner,borrow,relinquish,borrow-request,borrow-respond,resolve,restore}",
   });
 });
 
@@ -1280,7 +1364,7 @@ async function handleConvert(req, res, url, reqId) {
     }
     const fileSize = parseInt(req.headers["content-length"] || "0", 10);
 
-    if (fileSize > MAX_BODY) return send(res, 413, { error: "File too large", requestId: reqId });
+    if (fileSize > MAX_UPLOAD_BODY) return send(res, 413, { error: "File too large", requestId: reqId });
 
     // Conversion concurrency cap — conversion is expensive (memory + APS quota).
     if (activeConversions >= MAX_CONCURRENT_CONVERSIONS) {
@@ -1531,7 +1615,7 @@ server.listen(PORT, HOST, () => {
 });
 
 // Protect the HTTP parser from slow-client and idle-connection exhaustion.
-// Uploads are still bounded by MAX_BODY and can use the full request timeout.
+// Uploads are still bounded by MAX_UPLOAD_BODY and can use the full request timeout.
 server.requestTimeout = Number(process.env.OBS_REQUEST_TIMEOUT_MS || 120_000);
 server.headersTimeout = Number(process.env.OBS_HEADERS_TIMEOUT_MS || 15_000);
 server.keepAliveTimeout = Number(process.env.OBS_KEEPALIVE_TIMEOUT_MS || 5_000);
