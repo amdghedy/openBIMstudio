@@ -49,6 +49,8 @@ _backup/
 !tests/fixtures/ifc-corpus/*.ifc
 # ...and the invalid-model fixtures used by the semantics/fuzz gates
 !tests/fixtures/ifc-corpus/invalid/*.ifc
+# ...and the minimal malformed-input regression fixtures (issue #231)
+!tests/fixtures/ifc-corpus/malformed/*.ifc
 obs-*.txt
 
 # Generated build-time WASM copy (scripts/copy-libredwg-wasm.mjs)
