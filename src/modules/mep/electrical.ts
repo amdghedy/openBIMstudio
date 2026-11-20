@@ -140,7 +140,9 @@ function add(
 /**
  * Validate circuit assignments, panel compatibility, circuit protection,
  * conductor ampacity and panel capacity. Does not replace local electrical
- * code calculations, fault-current/interrupting-rating checks or coordination.
+ * code calculations. Fault-current/interrupting-rating checks and breaker
+ * coordination live in protection-coordination.ts (screening checks only —
+ * selectivity is proven by manufacturer time-current curves).
  */
 export function validateElectricalDistribution(
   panels: readonly ElectricalPanel[],
