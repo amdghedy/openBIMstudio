@@ -6,6 +6,7 @@
  * Pure maths lives in ./core.ts; this file owns the THREE group, the link
  * registry, file reading and the link dialog.
  */
+import { assertFileAllowed, readHead } from "../../core/file-guard";
 import * as THREE from "three";
 import { ctx } from "../../core/context";
 import type { DxfDocument } from "../drawings/dxf-types";
@@ -181,6 +182,7 @@ function ensureReaderWorker(): Worker {
 
 /** Read a DWG through the isolated reader worker; converts to a DxfDocument. */
 export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: string }> {
+  assertFileAllowed("dwg", file.name, file.size, await readHead(file, 32));
   const bytes = await file.arrayBuffer();
   const id = ++nextParseId;
   const run = (): Promise<{ doc: DxfDocument; summary: string }> =>
@@ -215,6 +217,7 @@ export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: 
  * (LibreDWG thumbnail extraction) — no geometry conversion, just the thumbnail.
  */
 export async function readDwgThumbnail(file: File): Promise<DwgThumbSuccess> {
+  assertFileAllowed("dwg", file.name, file.size, await readHead(file, 32));
   const bytes = await file.arrayBuffer();
   const id = ++nextParseId;
   const run = (): Promise<DwgThumbSuccess> =>
@@ -254,6 +257,7 @@ export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summa
     return { ...r, summary: `${r.summary}${suffix}`, format: "dwg" };
   }
   if (e === "dxf") {
+    assertFileAllowed("dxf", file.name, file.size, await readHead(file, 256));
     const doc = parseDxf(await file.text());
     const skipped = doc.skipped
       ? Object.entries(doc.skipped).map(([k, v]) => `${v}×${k}`).join(", ") : "";

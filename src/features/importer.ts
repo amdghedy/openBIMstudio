@@ -1,4 +1,5 @@
 import { preflightStep } from "../modules/ifc-semantics/step-preflight";
+import { assertFileAllowed, guardZipDirectory } from "../core/file-guard";
 import { getCachedFrag, setCachedFrag, hashFileKey } from "./rvt-trust-gates";
 /**
  * IFC importer with 5 BIM-style positioning modes + live offset control.
@@ -881,7 +882,10 @@ export async function expandIfcSources(
     onProgress?.(`Unpacking ${name} (${(file.size / (1024 * 1024)).toFixed(0)} MB)…`);
     try {
       const JSZip = (await import("jszip")).default;
-      const archive = await JSZip.loadAsync(file, { createFolders: false });
+      const zipBytes = new Uint8Array(await file.arrayBuffer());
+      const zipGuard = guardZipDirectory(zipBytes);
+      if (!zipGuard.ok) throw new Error(`${name}: ${zipGuard.reason}`);
+      const archive = await JSZip.loadAsync(zipBytes, { createFolders: false });
       const entries: string[] = [];
       archive.forEach((path, entry) => {
         if (!entry.dir && /\.ifc$/i.test(path)) entries.push(path);
@@ -1190,6 +1194,7 @@ async function runTask(t: ImportTask) {
       const buffer = await t.file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       // Bounded structural check BEFORE the WASM parser: corrupt STEP can make web-ifc spin for minutes.
+      assertFileAllowed("ifc", t.file.name, bytes.length);
       const pre = preflightStep(bytes);
       if (!pre.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${pre.reason}${pre.line ? ` (line ${pre.line})` : ""}. It was not opened.`);
       t.schema = detectSchema(bytes);

@@ -1,8 +1,9 @@
 const { execSync } = require("child_process");
 const fs = require("fs"), path = require("path"), assert = require("assert");
 const out = fs.mkdtempSync(path.join(require("os").tmpdir(), "pc-"));
-execSync(`npx tsc src/modules/point-cloud/parsers.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`, { stdio: "pipe" });
-const m = require(path.join(out, "parsers.js"));
+execSync(`npx tsc src/modules/point-cloud/parsers.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck${process.env.TSC_IGNORE_CONFIG ? " --ignoreConfig" : ""}`, { stdio: "pipe" });
+const find = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const q = path.join(d, e.name); if (e.isDirectory()) { const r = find(q); if (r) return r; } else if (e.name === "parsers.js") return q; } };
+const m = require(find(out)); // parsers.ts imports ../../core/file-guard, so tsc nests the output
 let n = 0; const ok = (c, s) => { assert.ok(c, s); n++; };
 const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
 
