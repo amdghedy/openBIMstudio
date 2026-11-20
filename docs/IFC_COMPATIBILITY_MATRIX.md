@@ -77,10 +77,14 @@ Validation codes (all additive — findings, never mutations):
 | `IFC-W-CLASSIF-DANGLING` | warning | classification reference without a parent classification |
 | `IFC-I-UNKNOWN-CLASS` | info | unknown classes preserved (never dropped) |
 
-Evidence: `test:ifc-semantics` (30 checks) — including the four invalid
+Evidence: `test:ifc-semantics` (30 checks) — including the invalid
 fixtures below producing exactly the codes above.
 
 ## Test corpus (`tests/fixtures/ifc-corpus/`)
+
+The full list lives in `manifest.json` (24 source fixtures); this table
+summarises it. `test:ifc-corpus-manifest` enforces manifest ↔ file
+agreement.
 
 | Fixture | Schema | Content | Gate |
 |---|---|---|---|
@@ -89,15 +93,27 @@ fixtures below producing exactly the codes above.
 | `generated-structural.ifc` | IFC4 | beam + column | golden round-trip |
 | `mep-model.ifc` | IFC4 | 2 ducts, pipe, cable tray, conduit, AHU equipment, 2 storeys | golden round-trip + `test:ifc-semantics` |
 | `arch-classified.ifc` | IFC4 | arch model + Uniclass-style classification of 4 elements | golden round-trip + `test:ifc-semantics` |
+| `spatial-hierarchy.ifc` | IFC4 | 3 storeys, 4 IfcSpace rooms | golden round-trip |
+| `structural-2x3.ifc` | IFC2X3 | columns, beams, footings, brace | golden round-trip |
+| `mep-systems.ifc` | IFC4 | 3 ducts, 2 pipes, tray, conduit, 2 AHUs, 2 storeys | golden round-trip |
+| `property-sets.ifc` | IFC4 | per-element properties, materials, quantities | golden round-trip |
+| `units-imperial.ifc` | IFC4 | length unit FOOT (0.3048 m) | golden round-trip |
+| `geometry-complex.ifc` | IFC4 | L-stair, ramp, railing, curtain wall, gable roof, sweep, slab void | golden round-trip |
+| `relationships.ifc` | IFC4 | voids/fills, space aggregate, materials, classification | golden round-trip |
+| `arch-2x3.ifc` | IFC2X3 | walls, hosted door + window, slab, column, space | golden round-trip |
+| `scale-grid.ifc` | IFC4 | 4 storeys x 8 bays, 100 elements | golden round-trip |
+| `model.ifczip` | IFC4 | STORE zip of `spatial-hierarchy.ifc` | `test:ifc-corpus-manifest` |
 | `invalid/bad-guid.ifc` | IFC4 | GlobalId outside the base64 alphabet | must yield `IFC-E-BAD-GUID` |
 | `invalid/dangling-ref.ifc` | IFC4 | relationship → missing `#99999` | must yield `IFC-E-DANGLING-REF` |
 | `invalid/missing-units.ifc` | IFC4 | unit assignment removed | must yield `IFC-W-UNITS-MISSING` |
 | `invalid/truncated.ifc` | IFC4 | file cut mid-DATA | must stay readable, no crash |
+| `invalid/duplicate-guid.ifc` | IFC4 | two walls share one GlobalId | must yield `IFC-W-DUP-GUID` |
+| `malformed/*.ifc` (4) | IFC4 | parser-hang regressions (#231) | `test:step-preflight` must reject |
 
 Golden snapshots live in `snapshots/` and must be committed together with
 fixtures (`unit-tests.yml` fails if CI regenerates them). Regenerate via
 `node scripts/generate-ifc-corpus.mjs` then `node scripts/golden-roundtrip.mjs`
-(currently **5/5 pass**).
+(currently **14/14 pass**).
 
 ## Cross-exchange comparison
 

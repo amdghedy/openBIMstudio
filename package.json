@@ -313,6 +313,7 @@
     "test:cad-draw-order": "node tests/cad-draw-order-tools.test.cjs",
     "test:ifc-semantics": "node tests/ifc-semantics.test.cjs",
     "test:ifc-exchange": "node tests/ifc-roundtrip-compare.test.cjs",
+    "test:ifc-corpus-manifest": "node tests/ifc-corpus-manifest.test.mjs",
     "test:fuzz-ifc": "node scripts/fuzz-ifc-corpus.mjs",
     "test:fuzz-kind": "node tests/fuzz-kind.test.cjs",
     "test:cad-workspace": "node tests/cad-workspace-customization.test.cjs",
