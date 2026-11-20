@@ -87,7 +87,7 @@ export function validateIfcStepSyntax(input: string | Uint8Array): string[] {
   };
 
   const preamble = findMarker("ISO-10303-21", offset);
-  if (!preamble || !/^\s*ISO-10303-21\s*;$/i.test(sliceText(0, preamble.end))) {
+  if (!preamble || !/^\s*ISO-10303-21\s*;$/i.test(sliceText(offset, preamble.end))) {
     return ["Missing ISO-10303-21; preamble"];
   }
   const headerStart = findMarker("HEADER", preamble.end);
