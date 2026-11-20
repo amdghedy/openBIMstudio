@@ -126,7 +126,7 @@ async function createProject(page: Page, name: string): Promise<string> {
   return (await page.evaluate(() => localStorage.getItem('obs.projects.lastId'))) as string;
 }
 
-async function placeWall(page: Page): Promise<void> {
+async function placeWall(page: Page, yFrac = 0.05): Promise<void> {
   const box = await page.evaluate(() => {
     const cs = [...document.querySelectorAll('canvas')].filter((c) => c.offsetWidth > 200 && c.offsetHeight > 200);
     cs.sort((a, b) => b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight);
@@ -137,15 +137,24 @@ async function placeWall(page: Page): Promise<void> {
   expect(box, 'a large viewport canvas must be visible').toBeTruthy();
   const cx = box!.x + box!.width / 2;
   const cy = box!.y + box!.height / 2;
-  const wallY = cy + box!.height * 0.05;
+  const wallY = cy + box!.height * yFrac;
   await page.locator('button.obs-ribbon__tab[data-tab="architecture"]').click();
   await page.waitForTimeout(350);
   await page.getByRole('button', { name: 'Wall', exact: true }).first().click();
   await page.waitForTimeout(700);
+  await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__?.features?.authoring?.getActiveTool?.() ?? null), { timeout: 15000 }).toBe('wall');
+  const authoredCount = () => page.evaluate(() => {
+    const seen = new Set<string>();
+    const ctx: any = (window as any).__OBS_CTX__;
+    ctx?.world?.scene?.three?.traverse?.((o: any) => { if (o?.userData?.elementId) seen.add(String(o.userData.elementId)); });
+    return seen.size;
+  });
+  const before = await authoredCount();
   await page.mouse.click(cx - box!.width * 0.2, wallY);
   await page.mouse.click(cx + box!.width * 0.2, wallY);
   await page.keyboard.press('Enter');
   await page.waitForTimeout(900);
+  await expect.poll(authoredCount, { timeout: 15000 }).toBeGreaterThan(before);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(400);
   await page.keyboard.press('Escape');
@@ -274,7 +283,7 @@ test('crash with a corrupt journal tail: recovers up to the last good entry and 
   const projectId = await createProject(page, 'Corrupt tail test');
   await placeWall(page);
   await saveProject(page); // op 1: 1 wall
-  await placeWall(page);
+  await placeWall(page, 0.25); // a different row — the same coordinates twice would overlap the first wall
   await saveProject(page); // op 2: 2 walls
   let doc = await primaryProject(page);
   expect(doc?.elements?.length, 'two walls must be saved before the crash').toBe(2);
@@ -315,7 +324,14 @@ test('crash with a corrupt journal tail: recovers up to the last good entry and 
   expect(quarantine.length, 'one entry must be quarantined').toBe(1);
   expect(quarantine[0].seq).toBe(corruptSeq);
   const opsAfter = (await idbGetAll(page2, 'projectOps')).filter((o: any) => o.projectId === projectId);
-  expect(opsAfter.some((o: any) => o.seq === corruptSeq), 'quarantined entry must leave the live op store').toBe(false);
+  // The quarantined seq may be reused by recovery's own re-append (the
+  // live max drops when the tail is removed), so what must hold is that
+  // no TORN entry remains: every op at that seq now carries a valid doc.
+  const atCorruptSeq = opsAfter.filter((o: any) => o.seq === corruptSeq);
+  expect(atCorruptSeq.length, 'at most the recovery re-append may hold the freed seq').toBeLessThanOrEqual(1);
+  for (const o of atCorruptSeq) {
+    expect(o.payload && typeof o.payload === 'object' && Array.isArray(o.payload.elements), 'no torn entry may remain in the live op store').toBe(true);
+  }
   expect(errors, errors.join('\n')).toEqual([]);
   await closeCrashedContext(page);
   stamp(t0, 'teardown done');
