@@ -6,6 +6,7 @@ import { loadIfcFiles, loadFragFiles } from "./importer";
 import { markDirty } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
 import { safeLoad, LegacyProjectJsonSchema } from "../core/safeLoad";
+import { normalizeProjectDoc } from "../modules/projects/project-schema";
 
 export const ACCEPT_ALL =
   ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp,.geojson,.shp,.dbf,.step,.stp,.iges,.igs,.brep,.3dm";
@@ -256,7 +257,16 @@ export async function importFiles(files: File[]) {
           const loaded = safeLoad("legacy project JSON", text, LegacyProjectJsonSchema, 20 * 1024 * 1024,
             { maxDepth: 64, maxNodes: 2_000_000 });
           if (loaded.ok) {
-            const doc = loaded.value;
+            // The permissive JSON boundary only proves that the root is an
+            // object. Normalize the complete legacy document before it can
+            // touch IndexedDB or replace the active project. This preserves
+            // backward-compatible migrations while making malformed imports
+            // fail closed and state-preserving.
+            const normalized = normalizeProjectDoc(loaded.value);
+            if (!normalized.ok) {
+              throw new Error(`Not a valid Open BIM Studio project file: ${normalized.fatal}`);
+            }
+            const doc = normalized.doc;
             await putProject(doc);
             await openProject(doc.id);
             continue;

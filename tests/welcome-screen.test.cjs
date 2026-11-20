@@ -249,5 +249,29 @@ t("version badge bumped to v54", () => {
   assert.ok(!home.includes("v53"), "stale v53 badge must be gone");
 });
 
+// ── 7. Showcase accordion persistence and accessible panel state ─────────
+t("showcase: expansion state is restored from guarded local storage", () => {
+  assert.ok(home.includes('const SHOWCASE_EXPANSION_KEY = "obs-home-showcase-expanded-v1"'));
+  assert.ok(home.includes("function readShowcaseExpansion()"));
+  assert.ok(home.includes("window.localStorage.getItem(SHOWCASE_EXPANSION_KEY)"));
+  assert.ok(home.includes("window.localStorage.setItem(SHOWCASE_EXPANSION_KEY"));
+  assert.ok(home.includes("function restoreShowcaseExpansion()"));
+  assert.ok(home.includes("restoreShowcaseExpansion();"));
+  assert.ok(home.includes("persistShowcaseExpansion(card.dataset.topic"));
+});
+
+t("showcase: accordion state, ARIA and hidden panel stay synchronized", () => {
+  assert.ok(home.includes("function setShowcaseCardState(card: HTMLElement, open: boolean)"));
+  assert.ok(home.includes('card.setAttribute("aria-expanded", String(open))'));
+  assert.ok(home.includes("if (panel) panel.hidden = !open"));
+  assert.ok(home.includes('aria-controls="obs-fcard-panel-${p.num}-${i}"'));
+  assert.ok(home.includes('id="obs-fcard-panel-${p.num}-${i}" hidden'));
+});
+
+t("showcase: all documented detail bullets are rendered", () => {
+  assert.ok(home.includes("c.bullets.map((b) =>"));
+  assert.ok(!home.includes("c.bullets.slice(0, 4)"), "detail bullets must not be truncated");
+});
+
 console.log(`\nwelcome-screen: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

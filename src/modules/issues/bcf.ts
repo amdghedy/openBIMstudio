@@ -33,6 +33,43 @@ import {
 } from "./bcf-markup";
 import { uiAlert } from "../../core/notify";
 
+const MAX_BCF_BYTES = 64 * 1024 * 1024;
+const MAX_BCF_ENTRIES = 1000;
+const MAX_BCF_UNCOMPRESSED_BYTES = 128 * 1024 * 1024;
+const MAX_BCF_MARKUP_BYTES = 2 * 1024 * 1024;
+const MAX_BCF_VIEWPOINT_BYTES = 4 * 1024 * 1024;
+const MAX_BCF_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+
+function validateBcfArchive(file: File, zip: JSZip): void {
+  if (file.size > MAX_BCF_BYTES) {
+    throw new Error(`BCF archive exceeds the ${MAX_BCF_BYTES} byte limit.`);
+  }
+  const entries = Object.values(zip.files);
+  if (entries.length > MAX_BCF_ENTRIES) {
+    throw new Error(`BCF archive contains too many entries (maximum ${MAX_BCF_ENTRIES}).`);
+  }
+  let total = 0;
+  for (const entry of entries) {
+    const path = String(entry.name ?? "");
+    const parts = path.split("/");
+    if (!path || path.startsWith("/") || parts.includes("..") || /^[A-Za-z]:/.test(path)) {
+      throw new Error(`BCF archive contains an unsafe path: ${path || "<empty>"}`);
+    }
+    const size = Number((entry as any)._data?.uncompressedSize ?? 0);
+    if (Number.isFinite(size) && size > 0) total += size;
+    const lower = path.toLowerCase();
+    const limit = lower.endsWith("markup.bcf") ? MAX_BCF_MARKUP_BYTES
+      : lower.endsWith("viewpoint.bcfv") ? MAX_BCF_VIEWPOINT_BYTES
+      : lower.endsWith("snapshot.png") ? MAX_BCF_SNAPSHOT_BYTES : MAX_BCF_UNCOMPRESSED_BYTES;
+    if (Number.isFinite(size) && size > limit) {
+      throw new Error(`BCF entry "${path}" exceeds its ${limit} byte limit.`);
+    }
+  }
+  if (total > MAX_BCF_UNCOMPRESSED_BYTES) {
+    throw new Error(`BCF archive expands beyond the ${MAX_BCF_UNCOMPRESSED_BYTES} byte limit.`);
+  }
+}
+
 const xmlEsc = (s: string) =>
   String(s ?? "").replace(
     /[&<>"']/g,
@@ -376,7 +413,12 @@ async function resolveGuidsToModels(
 }
 
 export async function importBCF(file: File): Promise<number> {
+  if (file.size > MAX_BCF_BYTES) {
+    uiAlert(`BCF archive is too large (maximum ${MAX_BCF_BYTES} bytes).`);
+    return 0;
+  }
   const zip = await JSZip.loadAsync(file);
+  validateBcfArchive(file, zip);
   const imported: Issue[] = [];
   const existing = new Set(getIssues().map((i) => i.id));
 
@@ -387,6 +429,9 @@ export async function importBCF(file: File): Promise<number> {
   if (!markupPaths.length) {
     uiAlert("No markup.bcf found in this BCF file.");
     return 0;
+  }
+  if (markupPaths.length > MAX_BCF_ENTRIES) {
+    throw new Error(`BCF archive contains too many topic files (maximum ${MAX_BCF_ENTRIES}).`);
   }
 
   for (const path of markupPaths) {
