@@ -1265,8 +1265,10 @@ test('WALK MODE: Space raises and the height stays fixed after release; C lowers
     await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.disable());
     await page.waitForTimeout(300);
   }
+  // Hold Space until the eye has risen (bounded wait): the rise per second is frame-rate dependent on a slow CI
+  // runner, so a fixed 1.5 s hold measures the runner, not the feature.
   await page.keyboard.down(' ');
-  await page.waitForTimeout(1500);
+  for (let i = 0; i < 40; i++) { await page.waitForTimeout(250); const q = await pose(); if (q && q.y - p0.y > 1.8) break; }
   await page.keyboard.up(' ');
   await page.waitForTimeout(400);
   const up1 = await pose();
@@ -1280,14 +1282,19 @@ test('WALK MODE: Space raises and the height stays fixed after release; C lowers
   const mv = await pose();
   expect(Math.abs(mv.y - up2.y), 'raised height survives walking').toBeLessThan(0.1);
   // C lowers vertically and the lower height stays too, never below standing height.
-  await page.keyboard.down('c'); await page.waitForTimeout(900); await page.keyboard.up('c');
+  await page.keyboard.down('c');
+  for (let i = 0; i < 40; i++) { await page.waitForTimeout(250); const q = await pose(); if (q && mv.y - q.y > 1.3) break; }
+  await page.keyboard.up('c');
   await page.waitForTimeout(400);
   const dn1 = await pose();
   await page.waitForTimeout(1500);
   const dn2 = await pose();
   expect(mv.y - dn1.y, 'C lowers').toBeGreaterThan(1.2);
   expect(Math.abs(dn2.y - dn1.y), 'the lowered height stays fixed').toBeLessThan(0.05);
-  await page.keyboard.down('c'); await page.waitForTimeout(3500); await page.keyboard.up('c');
+  await page.keyboard.down('c');
+  for (let i = 0; i < 60; i++) { await page.waitForTimeout(250); const q = await pose(); if (q && q.y < 1.75) break; }
+  await page.waitForTimeout(1200); // keep holding C: it must STOP at standing height, not pass below it
+  await page.keyboard.up('c');
   await page.waitForTimeout(400);
   const floor = await pose();
   expect(floor.y, 'C stops at standing height').toBeGreaterThan(1.6);
