@@ -177,7 +177,7 @@ export function validateIfcStepSyntax(input: string | Uint8Array): string[] {
   }
 
   // Validate record boundaries without decoding/allocating the full DATA body.
-  let statementStart = dataStart.end, statementCount = 0, q = 0, inComment = false, nested = 0;
+  let statementStart = dataStart.end, statementCount = 0, q = 0, inComment = false, nested = 0, topLevelEntityStarted = false;
   const validStart = (start: number, end: number): boolean => {
     let i = start, prefix = "";
     while (i < end) {
@@ -209,10 +209,14 @@ export function validateIfcStepSyntax(input: string | Uint8Array): string[] {
     if (c === 39 || c === 34) { q = c; continue; }
     if (c === 40) nested++;
     else if (c === 41) nested--;
-    else if (c === 59 && nested === 0) {
+    else if (c === 35 && nested === 0) {
+      if (topLevelEntityStarted) fail("DATA contains a second entity start before the previous record terminator");
+      topLevelEntityStarted = true;
+    } else if (c === 59 && nested === 0) {
       if (!validStart(statementStart, i)) fail(`DATA statement ${statementCount + 1} is not a #id=ENTITY(...) record`);
       statementCount++;
       statementStart = i + 1;
+      topLevelEntityStarted = false;
       if (errors.length) break;
     }
   }
