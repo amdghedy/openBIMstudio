@@ -32,6 +32,10 @@ const FONT_STACKS: Record<string, string> = {
   default: `system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
   ar:      `"Noto Naskh Arabic", "Segoe UI", "Geeza Pro", system-ui, sans-serif`,
   he:      `"Noto Sans Hebrew", "Segoe UI", system-ui, sans-serif`,
+  // Persian and Urdu had no stack and fell back to system sans: Persian
+  // reads in Naskh Arabic; Urdu needs Nastaliq (falling back to Naskh).
+  fa:      `"Noto Naskh Arabic", "Tahoma", "Segoe UI", system-ui, sans-serif`,
+  ur:      `"Noto Nastaliq Urdu", "Noto Naskh Arabic", "Segoe UI", system-ui, sans-serif`,
   ja:      `"Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", "Meiryo", system-ui, sans-serif`,
   "zh-CN": `"PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif`,
   "zh-TW": `"PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif`,
@@ -68,7 +72,11 @@ function registerLocaleOptions(): void {
     default: i18n.getLocale(),
     choices: i18n.listLocales().map((l) => ({
       value: l.id,
-      label: `${l.meta.nativeName}  ·  ${l.meta.name}`,
+      // Untranslated locales are labelled as such instead of being offered
+      // alongside translated ones with no indication the UI stays English.
+      label: l.translated
+        ? `${l.meta.nativeName}  ·  ${l.meta.name}`
+        : `${l.meta.nativeName}  ·  ${l.meta.name}  (untranslated — English UI)`,
     })),
     apply: (v) => i18n.setLocale(v as Locale),
   });
@@ -234,6 +242,7 @@ export function setupLocale(): LocaleBootResult {
     getDirection: () => i18n.getDirection(),
     isRTL: () => i18n.isRTL(),
     listLocales: () => i18n.listLocales(),
+    translationStatus: (l) => i18n.translationStatus(l as Locale),
     onChange: (cb) => i18n.onChange(cb as (l: Locale) => void),
     register: (locale, catalog) =>
       i18n.register(locale as Locale, catalog as Partial<Catalog>),

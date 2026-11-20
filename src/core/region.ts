@@ -183,6 +183,15 @@ type ChangeListener = (resolved: ResolvedRegion, profileId: string) => void;
 export interface ResolvedRegion extends RegionProfile {
   /** True when at least one field was manually overridden. */
   customized: boolean;
+  /**
+   * Text direction for the resolved locale, derived from the i18n service
+   * (issue #141's proposal was to "drive direction from RegionService.dir";
+   * the i18n service remains the single owner of direction — region only
+   * exposes it, resolved for the profile's locale, so panels that read the
+   * region profile don't need a second direction lookup. Untranslated RTL
+   * locales resolve to "ltr"; see i18n.getDirectionFor().
+   */
+  dir: "ltr" | "rtl";
 }
 
 class RegionService {
@@ -211,14 +220,18 @@ class RegionService {
   getResolved(): ResolvedRegion {
     const base = this.getProfile();
     const o = this.overrides;
+    const locale = o.locale ?? base.locale;
+    let dir: "ltr" | "rtl" = "ltr";
+    try { dir = i18n.getDirectionFor(locale); } catch { /* service not ready */ }
     const resolved: ResolvedRegion = {
       ...base,
-      locale: o.locale ?? base.locale,
+      locale,
       unitSystem: o.unitSystem ?? base.unitSystem,
       currency: o.currency ?? base.currency,
       paper: o.paper ?? base.paper,
       dateFormat: o.dateFormat ?? base.dateFormat,
       customized: Object.keys(o).length > 0,
+      dir,
     };
     return resolved;
   }

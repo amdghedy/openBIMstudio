@@ -414,7 +414,9 @@ export interface ServiceMap {
     getLocale: () => string;
     getDirection: () => "ltr" | "rtl";
     isRTL: () => boolean;
-    listLocales: () => Array<{ id: string; meta: { name: string; nativeName: string; dir: "ltr" | "rtl" } }>;
+    listLocales: () => Array<{ id: string; meta: { name: string; nativeName: string; dir: "ltr" | "rtl" }; translated: boolean }>;
+    /** "translated" when the UI renders in the locale, else "untranslated". */
+    translationStatus?: (l: string) => "translated" | "untranslated";
     onChange: (cb: (l: string) => void) => () => void;
     register: (locale: string, catalog: Record<string, unknown>) => void;
     listMissing: () => string[];

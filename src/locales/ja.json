@@ -1,4 +1,7 @@
 {
+  "standards": {
+    "title": "規格"
+  },
   "meta": { "name": "Japanese", "nativeName": "日本語", "dir": "ltr" },
   "app": {
     "name": "Open BIM Studio",
@@ -98,5 +101,11 @@
     "diagnostics": "診断",
     "units": "単位",
     "currency": "通貨"
+  },
+  "counts": {
+    "elements": "{n, plural, other{# 個の要素}}",
+    "selected": "{n, plural, other{# 個選択中}}",
+    "authoredSelected": "{n, plural, other{作成した要素 # 個を選択中}}",
+    "clashes": "{n, plural, other{# 件の干渉が見つかりました。}}"
   }
 }

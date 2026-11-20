@@ -1,8 +1,26 @@
 /**
  * Locale-aware formatting for numbers, dates, currency, and file sizes.
  * Delegates unit formatting to units.ts — this module is for everything else.
+ *
+ * The locale for every Intl call below comes from the active REGION profile
+ * (region.getResolved().locale), not from the i18n service directly: the
+ * region profile is what a team sets for a country (language + units +
+ * currency), and numeric/date output must respect it. Falls back to the
+ * i18n service locale when the region service is not ready. The duplicate
+ * thin formatters in region.ts (fmtNumber/fmtDate/…) share the same source
+ * — region.getResolved().locale — so both surfaces agree.
  */
 import { i18n, type Locale } from "./i18n";
+import { region } from "./region";
+
+/** Locale for Intl output: active region profile, else the i18n locale. */
+function activeLocale(): Locale {
+  try {
+    const r = region.getResolved().locale;
+    if (r) return r;
+  } catch { /* region service not ready (tests, early boot) */ }
+  return i18n.getLocale();
+}
 
 /* ── Numbers ─────────────────────────────────────────────────────── */
 
@@ -17,7 +35,7 @@ export interface NumberFormatOptions {
 
 export function fmtNumber(value: number, opts: NumberFormatOptions = {}): string {
   if (!Number.isFinite(value)) return "—";
-  const locale = i18n.getLocale();
+  const locale = activeLocale();
   try {
     return new Intl.NumberFormat(locale, {
       minimumFractionDigits: 0,
@@ -33,7 +51,7 @@ export function fmtNumber(value: number, opts: NumberFormatOptions = {}): string
 export function fmtInteger(value: number): string {
   if (!Number.isFinite(value)) return "—";
   try {
-    return new Intl.NumberFormat(i18n.getLocale(), {
+    return new Intl.NumberFormat(activeLocale(), {
       maximumFractionDigits: 0,
     }).format(value);
   } catch {
@@ -44,7 +62,7 @@ export function fmtInteger(value: number): string {
 export function fmtPercent(ratio: number, precision = 1): string {
   if (!Number.isFinite(ratio)) return "—";
   try {
-    return new Intl.NumberFormat(i18n.getLocale(), {
+    return new Intl.NumberFormat(activeLocale(), {
       style: "percent",
       minimumFractionDigits: 0,
       maximumFractionDigits: precision,
@@ -64,7 +82,7 @@ export function getCurrency(): string {
     if (raw) return raw;
   } catch { /* */ }
   // Default by locale
-  const locale = i18n.getLocale();
+  const locale = activeLocale();
   switch (locale) {
     case "en": return "USD";
     case "ar": return "AED";
@@ -77,6 +95,9 @@ export function getCurrency(): string {
     case "pl": return "PLN";
     case "nl": return "EUR";
     case "hi": return "INR";
+    case "he": return "ILS";
+    case "fa": return "IRR";
+    case "ur": return "PKR";
     default: return "USD";
   }
 }
@@ -96,7 +117,7 @@ export interface CurrencyFormatOptions {
 export function fmtCurrency(value: number, opts: CurrencyFormatOptions = {}): string {
   if (!Number.isFinite(value)) return "—";
   const code = opts.currency ?? getCurrency();
-  const locale = i18n.getLocale();
+  const locale = activeLocale();
   try {
     const optsObj: Intl.NumberFormatOptions = {
       style: "currency",
@@ -119,7 +140,7 @@ export function fmtDate(value: Date | number | string, style: DateStyle = "short
   const d = toDate(value);
   if (!d) return "—";
   if (style === "iso") return d.toISOString().slice(0, 10);
-  const locale = i18n.getLocale();
+  const locale = activeLocale();
   try {
     return new Intl.DateTimeFormat(locale, { dateStyle: style }).format(d);
   } catch {
@@ -131,7 +152,7 @@ export function fmtTime(value: Date | number | string): string {
   const d = toDate(value);
   if (!d) return "—";
   try {
-    return new Intl.DateTimeFormat(i18n.getLocale(), {
+    return new Intl.DateTimeFormat(activeLocale(), {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -145,7 +166,7 @@ export function fmtDateTime(value: Date | number | string): string {
   const d = toDate(value);
   if (!d) return "—";
   try {
-    return new Intl.DateTimeFormat(i18n.getLocale(), {
+    return new Intl.DateTimeFormat(activeLocale(), {
       dateStyle: "short",
       timeStyle: "short",
     }).format(d);
@@ -180,7 +201,7 @@ const DIVISIONS: Array<{ amount: number; unit: Intl.RelativeTimeFormatUnit }> = 
 export function fmtRelative(value: Date | number | string): string {
   const d = toDate(value);
   if (!d) return "—";
-  const locale = i18n.getLocale();
+  const locale = activeLocale();
   let rtf = _rtfCache.get(locale);
   if (!rtf) {
     try {

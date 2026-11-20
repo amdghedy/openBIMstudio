@@ -1,18 +1,27 @@
 /**
- * DOM translation layer — makes the hardcoded-English UI multilingual.
+ * DOM translation layer — COMPATIBILITY SHIM over the key-based i18n
+ * service (./i18n.ts), not a second i18n system (consolidation 2026-11-20,
+ * issues #140/#141).
  *
- * The i18n service (./i18n.ts) is a key-based catalog system; most shell UI
- * strings (Project Center, ribbon tabs, File menu …) predate it and are
- * plain English literals. This layer closes that gap: dictionaries keyed by
- * the exact English source string are swapped into the live DOM (text nodes
- * + placeholder/title/aria-label attributes), and a debounced
+ * Most shell UI strings predate the key service and are plain English
+ * literals. This layer closes that gap: dictionaries keyed by the exact
+ * English source string are swapped into the live DOM (text nodes +
+ * placeholder/title/aria-label attributes), and a debounced
  * MutationObserver keeps re-rendered surfaces translated.
  *
  * Locale state stays in ONE place — the i18n service (`obs.locale`). This
  * module only maps service locale ⇄ dictionary code and applies the DOM.
+ * Formatted output (counts, plurals) is NOT done here: runtime-built
+ * "N <fragment>" strings resolve through the key service's ICU messages
+ * (counts.* in src/locales/*.json), so plural rules are real CLDR rules
+ * instead of the old hand-curated "{n} element(s)" templates.
+ *
+ * New code must use t()/scoped() from ./i18n — never add entries to the
+ * dictionaries below. The dictionaries are a frozen legacy fallback for
+ * hardcoded shell strings until those strings migrate to keys.
  */
-import { i18n, type Locale } from "./i18n";
-import { DICTS, ensureGenDicts, hasGenDict, NUM_TEMPLATES } from "./i18n-dicts";
+import { i18n, t, type Locale } from "./i18n";
+import { DICTS, ensureGenDicts, hasGenDict } from "./i18n-dicts";
 
 export interface DomLangDef {
   code: string;
@@ -57,23 +66,30 @@ export function langDef(code: string): DomLangDef {
   return LANGS.find((l) => l.code === code) ?? LANGS[0];
 }
 
-/** Inline helper for new code — English fallback. */
-export function domT(s: string): string {
-  if (current === "en" || !dict) return s;
-  return dict[s] ?? s;
-}
-
 function skipSubtree(el: Element | null): boolean {
   return !!el && (!!el.closest("[data-i18n-skip]") || SKIP_TAGS.has(el.tagName));
 }
 
-/** Runtime-built "N <fragment>" text ("3 element(s)") → localized template. */
+/** Runtime-built "N <fragment>" text ("3 element(s)") → ICU count message. */
+const COUNT_KEYS: Record<string, string> = {
+  "element(s)": "counts.elements",
+  "selected": "counts.selected",
+  "authored selected": "counts.authoredSelected",
+};
+
 function tryNumTemplate(text: string): string | null {
   const m = text.match(/^(\s*)([\d][\d,]*(?:\s*[+×]\s*[\d][\d,]*)*)(\s+)(.+?)(\s*)$/);
   if (!m) return null;
-  const tpl = NUM_TEMPLATES[m[4]]?.[current];
-  if (!tpl || !tpl.includes("{n}")) return null;
-  return m[1] + tpl.replace("{n}", m[2]) + m[5];
+  const key = COUNT_KEYS[m[4]];
+  if (!key) return null;
+  // A chained count ("3 + 4") is one total for plural selection.
+  const n = m[2].split(/[+×]/).reduce((a, p) => a + Number(p.replace(/,/g, "").trim()), 0);
+  if (!Number.isFinite(n)) return null;
+  // ICU via the key service: real CLDR plural rules per locale (Arabic six
+  // forms, Russian/Polish paucal, French 0-is-singular) and a
+  // locale-formatted number. Falls back to the English ICU string when the
+  // active locale has no counts.* entry (untranslated locales render English).
+  return m[1] + t(key, { n }) + m[5];
 }
 
 function translateTextNode(node: Text): void {

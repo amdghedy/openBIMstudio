@@ -15,5 +15,11 @@
     "close": "Fechar",
     "save": "Salvar",
     "delete": "Excluir"
+  },
+  "counts": {
+    "elements": "{n, plural, one{# elemento} other{# elementos}}",
+    "selected": "{n, plural, one{# selecionado} other{# selecionados}}",
+    "authoredSelected": "{n, plural, one{# elemento criado selecionado} other{# elementos criados selecionados}}",
+    "clashes": "{n, plural, one{# conflito encontrado.} other{# conflitos encontrados.}}"
   }
 }

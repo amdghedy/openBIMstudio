@@ -8,7 +8,7 @@
 import { guardSize } from "../core/file-guard";
 import { ctx } from "../core/context";
 import { makeDockable, type DockHandle } from "./dockable";
-import { t, scoped, i18n } from "../core/i18n";
+import { scoped, i18n } from "../core/i18n";
 import { register } from "../core/services";
 import { listPacks, registerStandardPacks } from "../modules/standards/rules";
 import { registerPack } from "../modules/standards/rules/registry";
@@ -39,7 +39,7 @@ header.innerHTML =
 // (calling t() now logged a spurious "missing key" warning) and again whenever the language changes.
 {
   const titleEl = header.querySelector("#obs-standards-title") as HTMLElement;
-  const setTitle = () => { titleEl.textContent = i18n.has("standards.title") ? t("standards.title") : "Standards"; };
+  const setTitle = () => { titleEl.textContent = i18n.has("standards.title") ? tr("title") : "Standards"; };
   setTitle();
   i18n.onChange(setTitle);
 }

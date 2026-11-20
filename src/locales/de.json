@@ -1,4 +1,7 @@
 {
+  "standards": {
+    "title": "Normen"
+  },
   "meta": { "name": "German", "nativeName": "Deutsch", "dir": "ltr" },
   "app": {
     "name": "Open BIM Studio",
@@ -98,5 +101,11 @@
     "diagnostics": "Diagnose",
     "units": "Einheiten",
     "currency": "Währung"
+  },
+  "counts": {
+    "elements": "{n, plural, one{# Element} other{# Elemente}}",
+    "selected": "{n, plural, one{# ausgewählt} other{# ausgewählt}}",
+    "authoredSelected": "{n, plural, one{# erstelltes Element ausgewählt} other{# erstellte Elemente ausgewählt}}",
+    "clashes": "{n, plural, one{# Kollision gefunden.} other{# Kollisionen gefunden.}}"
   }
 }

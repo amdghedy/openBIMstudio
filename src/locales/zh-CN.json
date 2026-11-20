@@ -1,4 +1,7 @@
 {
+  "standards": {
+    "title": "标准"
+  },
   "meta": { "name": "Chinese (Simplified)", "nativeName": "简体中文", "dir": "ltr" },
   "app": {
     "name": "Open BIM Studio",
@@ -98,5 +101,11 @@
     "diagnostics": "诊断",
     "units": "单位",
     "currency": "货币"
+  },
+  "counts": {
+    "elements": "{n, plural, other{# 个元素}}",
+    "selected": "{n, plural, other{已选择 #}}",
+    "authoredSelected": "{n, plural, other{已选择 # 个创建的元素}}",
+    "clashes": "{n, plural, other{发现 # 个冲突。}}"
   }
 }

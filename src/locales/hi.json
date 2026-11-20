@@ -15,5 +15,11 @@
     "close": "बंद करें",
     "save": "सहेजें",
     "delete": "हटाएँ"
+  },
+  "counts": {
+    "elements": "{n, plural, one{# तत्व} other{# तत्व}}",
+    "selected": "{n, plural, one{# चयनित} other{# चयनित}}",
+    "authoredSelected": "{n, plural, one{# निर्मित तत्व चयनित} other{# निर्मित तत्व चयनित}}",
+    "clashes": "{n, plural, one{# टकराव मिला।} other{# टकराव मिले।}}"
   }
 }

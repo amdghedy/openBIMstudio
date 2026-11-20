@@ -45,7 +45,7 @@ function ensureSegment(
   el.style.cssText =
     "padding:0 8px;font-size:10.5px;color:var(--text-tertiary,#6b7280);" +
     "cursor:pointer;user-select:none;white-space:nowrap;display:inline-flex;" +
-    "align-items:center;gap:4px;border-left:1px solid rgba(148,163,184,.15)";
+    "align-items:center;gap:4px;border-inline-start:1px solid rgba(148,163,184,.15)";
   bar.appendChild(el);
   return el;
 }
@@ -141,9 +141,13 @@ function installSegments(bar: HTMLElement): void {
       if (!i18n?.listLocales || !i18n?.setLocale) return;
       const list = i18n.listLocales();
       if (list.length < 2) return;
+      // Cycle translated locales only: cycling into an untranslated locale
+      // silently leaves the UI in English, which reads as a broken switch.
+      const translated = list.filter((l: any) => l.translated !== false);
+      const pool = translated.length > 1 ? translated : list;
       const cur = i18n.getLocale();
-      const i = list.findIndex((l: any) => l.id === cur);
-      const next = list[(i + 1) % list.length];
+      const i = pool.findIndex((l: any) => l.id === cur);
+      const next = pool[(i + 1) % pool.length];
       i18n.setLocale(next.id);
     } catch { /* */ }
   });

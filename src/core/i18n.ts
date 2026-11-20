@@ -1,5 +1,17 @@
 /**
- * Locale-aware translation service.
+ * Locale-aware translation service — the SINGLE system of record for i18n
+ * (issues #140, #141; consolidation 2026-11-20).
+ *
+ * Before this change there were two half-finished systems: this key-based
+ * service (plural rules, ICU subset, RTL detection) with exactly one live
+ * call site, and a DOM-rewriting layer (./dom-translate.ts) keyed by exact
+ * English strings, which is what the UI actually used. The DOM layer is
+ * now a compatibility SHIM over this service, not a second system: it
+ * resolves through this service where a key exists (notably the ICU
+ * `counts.*` messages) and keeps its exact-string dictionaries only as the
+ * legacy fallback for hardcoded shell strings until those strings are
+ * migrated to keys. New code must use t()/scoped() — never add to the
+ * DOM dictionaries. See docs/engineering/I18N_CONSOLIDATION.md.
  *
  * Design goals:
  *   - Zero dependencies — works with plain JSON catalogs
@@ -20,6 +32,17 @@
  *       }
  *     }
  *   }
+ *
+ * Translation status: only the locales in TRANSLATED_LOCALES have a DOM
+ * dictionary + generated catalogue, i.e. a UI that actually renders in
+ * that language. The other registered locales have an 11-leaf JSON stub
+ * (seven generic words + language name) and NO translation. They are
+ * still listed — so a user can pick them and get the generic words — but
+ * they are marked untranslated wherever they are offered, and they do NOT
+ * flip the layout to RTL: an RTL flip with an English UI is worse than
+ * LTR English, and bidi hazards in an untranslated RTL shell were never
+ * tested. A locale becomes translated only when a dictionary + catalogue
+ * land for it (see scripts/i18n-audit.mjs).
  */
 import { diagnostics } from "./diagnostics";
 
@@ -36,6 +59,25 @@ export type TextDirection = "ltr" | "rtl";
 const RTL_LOCALES: ReadonlySet<Locale> = new Set<Locale>([
   "ar", "he", "fa", "ur",
 ]);
+
+/**
+ * Locales whose UI genuinely renders translated: a DOM dictionary in
+ * i18n-dicts.ts AND a generated catalogue in i18n-catalogs/*.gen.ts.
+ * Every other registered locale is an 11-leaf JSON stub — the UI stays
+ * English. Keep this list in sync with LANGS in dom-translate.ts and
+ * GEN_LANGS in scripts/gen-catalogs.mjs; scripts/i18n-audit.mjs fails
+ * CI if they drift apart.
+ */
+export const TRANSLATED_LOCALES: ReadonlySet<Locale> = new Set<Locale>([
+  "en", "ar", "de", "es", "fr", "hi", "ja", "pt-BR", "ru", "zh-CN",
+]);
+
+export type TranslationStatus = "translated" | "untranslated";
+
+/** True when the UI renders translated strings in this locale. */
+export function isTranslatedLocale(locale: Locale): boolean {
+  return TRANSLATED_LOCALES.has(locale);
+}
 
 export interface CatalogMeta {
   name: string;
@@ -117,6 +159,11 @@ class I18nService {
 
       // Special case for Chinese: "zh" → "zh-CN"
       if (baseStr === "zh") return "zh-CN";
+
+      // Special case for Portuguese: "pt" (incl. pt-PT) → "pt-BR".
+      // The catalogues carry pt-BR only; without this a pt-PT browser
+      // fell through to English instead of Portuguese.
+      if (baseStr === "pt") return "pt-BR";
     }
     return FALLBACK_LOCALE;
   }
@@ -125,19 +172,35 @@ class I18nService {
     return this.current;
   }
 
+  /** Translation status of a locale ("translated" = UI renders in it). */
+  translationStatus(locale: Locale): TranslationStatus {
+    return isTranslatedLocale(locale) ? "translated" : "untranslated";
+  }
+
+  /**
+   * Direction for a locale. An RTL locale flips to RTL only when it is
+   * actually translated: he/fa/ur have meta.dir "rtl" but no translation,
+   * and an RTL layout with an English UI (untested bidi, wrong fonts) is
+   * worse than LTR English. They stay LTR until dictionaries land.
+   */
+  getDirectionFor(locale: Locale): TextDirection {
+    if (!isTranslatedLocale(locale)) return "ltr";
+    const cat = this.catalogs.get(locale);
+    return cat?.meta?.dir ?? (RTL_LOCALES.has(locale) ? "rtl" : "ltr");
+  }
+
   getDirection(): TextDirection {
-    const cat = this.catalogs.get(this.current);
-    return cat?.meta?.dir ?? (RTL_LOCALES.has(this.current) ? "rtl" : "ltr");
+    return this.getDirectionFor(this.current);
   }
 
   isRTL(): boolean {
     return this.getDirection() === "rtl";
   }
 
-  listLocales(): Array<{ id: Locale; meta: CatalogMeta }> {
-    const out: Array<{ id: Locale; meta: CatalogMeta }> = [];
+  listLocales(): Array<{ id: Locale; meta: CatalogMeta; translated: boolean }> {
+    const out: Array<{ id: Locale; meta: CatalogMeta; translated: boolean }> = [];
     for (const [id, cat] of this.catalogs) {
-      out.push({ id, meta: cat.meta });
+      out.push({ id, meta: cat.meta, translated: isTranslatedLocale(id) });
     }
     out.sort((a, b) => a.meta.name.localeCompare(b.meta.name));
     return out;

@@ -98,5 +98,11 @@
     "diagnostics": "Diagnostics",
     "units": "Units",
     "currency": "Currency"
+  },
+  "counts": {
+    "elements": "{n, plural, one{# element} other{# elements}}",
+    "selected": "{n, plural, one{# selected} other{# selected}}",
+    "authoredSelected": "{n, plural, one{# authored element selected} other{# authored elements selected}}",
+    "clashes": "{n, plural, =0{No clashes found.} one{# clash found.} other{# clashes found.}}"
   }
 }
