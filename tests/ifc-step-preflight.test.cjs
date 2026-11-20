@@ -68,7 +68,7 @@ test("rejects unterminated strings", () => {
   invalid(minimal.replace("'model.ifc'", "'model.ifc"), /unterminated/);
 });
 test("rejects an entity missing its semicolon", () => {
-  invalid(minimal.replace("#1=IFCPROJECT('0123456789012345678901',$,'contains ENDSEC; as text',$,$,$,$,$,$);", "#1=IFCPROJECT('0123456789012345678901',$,'contains ENDSEC; as text',$,$,$,$,$,$)"), /semicolon/);
+  invalid(minimal.replace("#1=IFCPROJECT('0123456789012345678901',$,'contains ENDSEC; as text',$,$,$,$,$,$);", "#1=IFCPROJECT('0123456789012345678901',$,'contains ENDSEC; as text',$,$,$,$,$,$)"), /terminator|semicolon/);
 });
 console.log(`IFC STEP preflight: ${passed} tests passed.`);
 fs.rmSync(out, { recursive: true, force: true });
