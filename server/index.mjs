@@ -8,7 +8,7 @@ import { resolveStartupConfig } from "./startup-config.mjs";
 import { createRateLimiter, clientKey, correlationId, securityLog, redactFileName } from "./rate-limit.mjs";
 import { issueSseToken, verifySseToken } from "./sse-tokens.mjs";
 import { sniffSignature, storeUpload, sweepExpired } from "./upload-store.mjs";
-import { writeJsonWithBackup } from "./backup.mjs";
+import { writeJsonWithBackup, readJsonWithRecovery } from "./backup.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -87,11 +87,9 @@ function ensureStore() {
 function loadJson(file, fallback) {
   ensureStore();
 
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch {
-    return fallback;
-  }
+  const r = readJsonWithRecovery(file, fallback);
+  if (r.source !== "file") securityLog(console.log, "store_recovered", { file: path.basename(file), source: r.source });
+  return r.value;
 }
 
 function saveJson(file, value) {

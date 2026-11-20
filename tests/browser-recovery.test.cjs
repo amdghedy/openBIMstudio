@@ -46,3 +46,13 @@ const persist = fs.readFileSync(path.join(__dirname, "../src/modules/projects/pe
 assert.match(persist, /setupProjectPersistence/);
 assert.match(persist, /CRASH_MARKER_KEY/);
 console.log("PASS browser-recovery retention + recovery UI wiring");
+
+// Integrity gate: corrupt existing files must never become the newest "good" copy
+const u = (str) => new Uint8Array(Buffer.from(str));
+assert.equal(mod.backupBytesLookIntact(u('{"a":1}'), u('{"a":1}')), true);
+assert.equal(mod.backupBytesLookIntact(u('{"a":[1,2,'), u('{"a":[1,2,')), false, "truncated JSON rejected");
+assert.equal(mod.backupBytesLookIntact(new Uint8Array(64), new Uint8Array(64)), false, "zeroed file rejected");
+assert.equal(mod.backupBytesLookIntact(new Uint8Array(), new Uint8Array()), false, "empty rejected");
+assert.equal(mod.backupBytesLookIntact(u("PK\x03\x04abc"), u("xyz")), true, "zip/other formats pass");
+assert.equal(mod.backupBytesLookIntact(u('\ufeff  {"a":1}\n'), u('{"a":1}\n')), true, "BOM + whitespace tolerated");
+console.log("browser-recovery integrity checks passed");
