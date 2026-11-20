@@ -1,3 +1,4 @@
+import { preflightStep } from "../modules/ifc-semantics/step-preflight";
 import { getCachedFrag, setCachedFrag, hashFileKey } from "./rvt-trust-gates";
 /**
  * IFC importer with 5 BIM-style positioning modes + live offset control.
@@ -1188,6 +1189,9 @@ async function runTask(t: ImportTask) {
 
       const buffer = await t.file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
+      // Bounded structural check BEFORE the WASM parser: corrupt STEP can make web-ifc spin for minutes.
+      const pre = preflightStep(bytes);
+      if (!pre.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${pre.reason}${pre.line ? ` (line ${pre.line})` : ""}. It was not opened.`);
       t.schema = detectSchema(bytes);
       // Per-entity interop report: one linear scan of the STEP instance table.
       try { t.interop = buildInteropReport(t.file.name, bytes) ?? undefined; } catch { /* optional */ }

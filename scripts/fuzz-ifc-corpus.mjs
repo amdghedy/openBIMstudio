@@ -22,6 +22,7 @@
  * Env: FUZZ_ITER (default 60), FUZZ_SEED (default 42).
  */
 import { spawn } from "child_process";
+import ts from "typescript";
 import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync, mkdirSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { tmpdir } from "os";
@@ -68,6 +69,11 @@ if (!seeds.length) {
 }
 
 const tmp = mkdtempSync(join(tmpdir(), "obs-fuzz-"));
+// The application's structural pre-flight, transpiled so the harness exercises the real source (no copy).
+const PREFLIGHT = join(tmp, "step-preflight.mjs");
+writeFileSync(PREFLIGHT, ts.transpileModule(readFileSync(join(root, "..", "src/modules/ifc-semantics/step-preflight.ts"), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 },
+}).outputText);
 if (ARTIFACT_DIR) mkdirSync(ARTIFACT_DIR, { recursive: true });
 
 function runChild(bytes) {
@@ -76,12 +82,13 @@ function runChild(bytes) {
     writeFileSync(file, bytes);
     const child = spawn(
       process.execPath,
-      ["--max-old-space-size=256", CHILD, file],
+      ["--max-old-space-size=256", CHILD, file, PREFLIGHT],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
     let out = "";
     let stage = "startup";
     let timedOutStage = null;
+    let lastMarker = "startup";
     let timer;
 
     const armTimeout = (ms, timeoutStage) => {
@@ -95,6 +102,7 @@ function runChild(bytes) {
     armTimeout(INIT_TIMEOUT_MS, "startup");
     child.stdout.on("data", (d) => {
       out += d.toString();
+      for (const m of ["opening", "opened"]) if (out.includes(m)) lastMarker = m;
       if (stage === "startup" && out.includes("ready")) {
         stage = "parse";
         armTimeout(CHILD_TIMEOUT_MS, "parse");
@@ -103,9 +111,10 @@ function runChild(bytes) {
     child.on("close", (code, signal) => {
       clearTimeout(timer);
       if (out.includes("ok")) resolve({ outcome: "ok" });
+      else if (out.includes("preflight-rejected")) resolve({ outcome: "typed-error", preflight: true });
       else if (out.includes("typed-error")) resolve({ outcome: "typed-error" });
       else if (timedOutStage === "startup") resolve({ outcome: "startup-timeout" });
-      else if (timedOutStage === "parse") resolve({ outcome: "timeout" });
+      else if (timedOutStage === "parse") resolve({ outcome: "timeout", op: lastMarker === "opened" ? "GetModelSchema" : "OpenModel" });
       else resolve({ outcome: "contained-crash", code, signal });
     });
     child.on("error", () => {
@@ -115,6 +124,8 @@ function runChild(bytes) {
   });
 }
 
+let preflightRejected = 0;
+const timeoutsByOp = {}, timeoutsBySeed = {};
 let ok = 0, typedError = 0, containedCrash = 0, timeout = 0, startupTimeout = 0;
 const failures = [];
 
@@ -128,17 +139,19 @@ for (let i = 0; i < ITER; i++) {
   }
   const r = await runChild(bytes);
   if (r.outcome === "ok") ok++;
-  else if (r.outcome === "typed-error") typedError++;
+  else if (r.outcome === "typed-error") { typedError++; if (r.preflight) preflightRejected++; }
   else if (r.outcome === "timeout") {
     timeout++;
-    console.warn(`fuzz: parser timeout at iteration ${i} (seed ${src.name}) — bounded by harness kill`);
+    timeoutsByOp[r.op] = (timeoutsByOp[r.op] || 0) + 1;
+    timeoutsBySeed[src.name] = (timeoutsBySeed[src.name] || 0) + 1;
+    console.warn(`fuzz: parser timeout at iteration ${i} in ${r.op} (seed ${src.name}) — bounded by harness kill`);
   } else if (r.outcome === "startup-timeout") {
     startupTimeout++;
     console.warn(`fuzz: startup timeout at iteration ${i} (seed ${src.name}) — WASM initialization exceeded its separate budget`);
   } else containedCrash++;
 
   if (["timeout", "startup-timeout", "contained-crash"].includes(r.outcome)) {
-    const failure = { iteration: i, seed: src.name, outcome: r.outcome, code: r.code ?? null, signal: r.signal ?? null };
+    const failure = { iteration: i, seed: src.name, outcome: r.outcome, op: r.op ?? null, code: r.code ?? null, signal: r.signal ?? null };
     failures.push(failure);
     if (ARTIFACT_DIR) writeFileSync(join(ARTIFACT_DIR, `failure-${String(i).padStart(4, "0")}.ifc`), bytes);
   }
@@ -149,10 +162,11 @@ rmSync(tmp, { recursive: true, force: true });
 const total = ok + typedError + containedCrash + timeout + startupTimeout;
 if (ARTIFACT_DIR) {
   writeFileSync(join(ARTIFACT_DIR, "summary.json"), JSON.stringify({
-    seed: SEED, iterations: ITER, total, ok, typedError, containedCrash, timeout, startupTimeout, failures,
+    seed: SEED, iterations: ITER, total, ok, typedError, preflightRejected, containedCrash, timeout, startupTimeout, timeoutsByOp, timeoutsBySeed, failures,
   }, null, 2) + "\n");
 }
-console.log(`fuzz: ${ITER} mutations over ${seeds.length} seeds — ok: ${ok}, typed-error: ${typedError}, parser-timeout: ${timeout}, startup-timeout: ${startupTimeout}, contained-crash: ${containedCrash}`);
+console.log(`fuzz: timeouts by operation ${JSON.stringify(timeoutsByOp)}, by seed ${JSON.stringify(timeoutsBySeed)}`);
+console.log(`fuzz: ${ITER} mutations over ${seeds.length} seeds — ok: ${ok}, typed-error: ${typedError} (of which pre-flight rejections: ${preflightRejected}), parser-timeout: ${timeout}, startup-timeout: ${startupTimeout}, contained-crash: ${containedCrash}`);
 
 let failed = false;
 if (total === 0) {
