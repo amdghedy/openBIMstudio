@@ -1,0 +1,158 @@
+{
+  "schema": "IFC2X3",
+  "classes": [
+    {
+      "name": "IFCAPPLICATION",
+      "count": 1
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT2D",
+      "count": 9
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT3D",
+      "count": 23
+    },
+    {
+      "name": "IFCBEAM",
+      "count": 2
+    },
+    {
+      "name": "IFCBUILDING",
+      "count": 1
+    },
+    {
+      "name": "IFCBUILDINGSTOREY",
+      "count": 2
+    },
+    {
+      "name": "IFCCARTESIANPOINT",
+      "count": 8
+    },
+    {
+      "name": "IFCCOLOURRGB",
+      "count": 3
+    },
+    {
+      "name": "IFCCOLUMN",
+      "count": 3
+    },
+    {
+      "name": "IFCDIRECTION",
+      "count": 4
+    },
+    {
+      "name": "IFCELEMENTQUANTITY",
+      "count": 8
+    },
+    {
+      "name": "IFCEXTRUDEDAREASOLID",
+      "count": 9
+    },
+    {
+      "name": "IFCFOOTING",
+      "count": 3
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONCONTEXT",
+      "count": 1
+    },
+    {
+      "name": "IFCLOCALPLACEMENT",
+      "count": 13
+    },
+    {
+      "name": "IFCMEMBER",
+      "count": 1
+    },
+    {
+      "name": "IFCORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCOWNERHISTORY",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSON",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSONANDORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCPRESENTATIONSTYLEASSIGNMENT",
+      "count": 3
+    },
+    {
+      "name": "IFCPRODUCTDEFINITIONSHAPE",
+      "count": 9
+    },
+    {
+      "name": "IFCPROJECT",
+      "count": 1
+    },
+    {
+      "name": "IFCPROPERTYSET",
+      "count": 9
+    },
+    {
+      "name": "IFCPROPERTYSINGLEVALUE",
+      "count": 18
+    },
+    {
+      "name": "IFCQUANTITYLENGTH",
+      "count": 8
+    },
+    {
+      "name": "IFCQUANTITYVOLUME",
+      "count": 5
+    },
+    {
+      "name": "IFCRECTANGLEPROFILEDEF",
+      "count": 9
+    },
+    {
+      "name": "IFCRELAGGREGATES",
+      "count": 3
+    },
+    {
+      "name": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "count": 2
+    },
+    {
+      "name": "IFCRELDEFINESBYPROPERTIES",
+      "count": 17
+    },
+    {
+      "name": "IFCSHAPEREPRESENTATION",
+      "count": 9
+    },
+    {
+      "name": "IFCSITE",
+      "count": 1
+    },
+    {
+      "name": "IFCSIUNIT",
+      "count": 4
+    },
+    {
+      "name": "IFCSTYLEDITEM",
+      "count": 9
+    },
+    {
+      "name": "IFCSURFACESTYLE",
+      "count": 3
+    },
+    {
+      "name": "IFCSURFACESTYLERENDERING",
+      "count": 3
+    },
+    {
+      "name": "IFCUNITASSIGNMENT",
+      "count": 1
+    }
+  ],
+  "geomHash": "dc26871b4ceafaa0"
+}

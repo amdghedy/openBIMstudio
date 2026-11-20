@@ -1,52 +1,13 @@
 {
   "version": 1,
-  "note": "Every *.ifc under tests/fixtures/ifc-corpus must be listed. 'independent:false' = produced by this project's own writer; real third-party models are still missing (#96).",
+  "note": "Every *.ifc under tests/fixtures/ifc-corpus must be listed. 'independent:false' = produced by this project's own writer; real third-party models are still missing (#96) \u2014 the Duplex fixtures land in a later commit of this branch. '.ifczip' archives are not listed here (the manifest test walks *.ifc only) and are covered by test:step-preflight.",
   "files": [
     {
-      "file": "generated-small.ifc",
-      "kind": "valid",
-      "schema": "IFC4",
-      "purpose": "walls + hosted door + slab, golden snapshot",
-      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
-      "licence": "MIT (project)",
-      "independent": false,
-      "expect": {
-        "preflight": "ok",
-        "semanticErrors": 0
-      }
-    },
-    {
-      "file": "generated-2x3.ifc",
+      "file": "arch-2x3.ifc",
       "kind": "valid",
       "schema": "IFC2X3",
-      "purpose": "same model under IFC2X3",
-      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
-      "licence": "MIT (project)",
-      "independent": false,
-      "expect": {
-        "preflight": "ok",
-        "semanticErrors": 0
-      }
-    },
-    {
-      "file": "generated-structural.ifc",
-      "kind": "valid",
-      "schema": "IFC4",
-      "purpose": "beam + column",
-      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
-      "licence": "MIT (project)",
-      "independent": false,
-      "expect": {
-        "preflight": "ok",
-        "semanticErrors": 0
-      }
-    },
-    {
-      "file": "mep-model.ifc",
-      "kind": "valid",
-      "schema": "IFC4",
-      "purpose": "duct/pipe/tray/conduit + equipment, 2 storeys",
-      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "purpose": "architecture under IFC2X3: walls, hosted door + window, slab, column, one IfcSpace",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
       "licence": "MIT (project)",
       "independent": false,
       "expect": {
@@ -263,6 +224,58 @@
       }
     },
     {
+      "file": "generated-2x3.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "same model under IFC2X3",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "generated-small.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "walls + hosted door + slab, golden snapshot",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "generated-structural.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "beam + column",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "geometry-complex.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "geometry variety: L-stair, ramp, railing, curtain wall, gable roof (IfcSlab .ROOF.), baseboard sweep (IfcCovering), vertical opening voiding a slab",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
       "file": "invalid/bad-guid.ifc",
       "kind": "invalid",
       "schema": "IFC4",
@@ -284,6 +297,18 @@
       "independent": false,
       "expect": {
         "finding": "IFC-E-DANGLING-REF"
+      }
+    },
+    {
+      "file": "invalid/duplicate-guid.ifc",
+      "kind": "invalid",
+      "schema": "IFC4",
+      "purpose": "two walls share one GlobalId: flagged IFC-W-DUP-GUID; identity joins must not trust it",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "finding": "IFC-W-DUP-GUID"
       }
     },
     {
@@ -311,11 +336,23 @@
       }
     },
     {
-      "file": "malformed/unterminated-string-min.ifc",
+      "file": "malformed/broken-enum-min.ifc",
       "kind": "malformed",
       "schema": "IFC4",
-      "purpose": "unterminated STEP string: raw web-ifc OpenModel never returns (#231)",
-      "source": "hand-minimised from a fuzz/hang probe (see malformed/README.md)",
+      "purpose": "enumeration .MODEL_VIEW. with its leading dot flipped to '/': hangs raw web-ifc OpenModel; pre-flight must reject as a malformed enumeration",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "reject"
+      }
+    },
+    {
+      "file": "malformed/broken-enum-shift-min.ifc",
+      "kind": "malformed",
+      "schema": "IFC4",
+      "purpose": "same broken enumeration plus quote flips shifting string boundaries (minimised fuzz failure-0463, seed 42 iter 463): pre-flight must reject",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
       "licence": "MIT (project)",
       "independent": false,
       "expect": {
@@ -332,6 +369,122 @@
       "independent": false,
       "expect": {
         "preflight": "reject"
+      }
+    },
+    {
+      "file": "malformed/unterminated-string-min.ifc",
+      "kind": "malformed",
+      "schema": "IFC4",
+      "purpose": "unterminated STEP string: raw web-ifc OpenModel never returns (#231)",
+      "source": "hand-minimised from a fuzz/hang probe (see malformed/README.md)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "reject"
+      }
+    },
+    {
+      "file": "mep-model.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "duct/pipe/tray/conduit + equipment, 2 storeys",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "mep-systems.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "extended MEP: 3 ducts, 2 pipes, tray + conduit, 2 AHUs across 2 storeys. NOTE: the writer emits no IfcSystem grouping, so system membership is not covered here",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "property-sets.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "rich property sets on every element (incl. typed values: label, number, boolean), material associations, element quantities",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "relationships.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "relationship coverage in one file: voids/fills (door + window), space aggregate, material associations, Uniclass classification",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "scale-grid.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "scale: 4 storeys x 8 bays, 100 elements (walls, columns, beams, slabs); the corpus's largest fixture by element count",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "spatial-hierarchy.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "spatial tree depth: site\u2192building\u21923 storeys\u21924 IfcSpace rooms with departments",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "structural-2x3.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "structural model under IFC2X3: columns, beams, pad + strip footings, diagonal brace",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "units-imperial.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "non-SI units: conversion-based FOOT length unit (0.3048 m); the independent reader must report factor 0.3048 and validation must stay error-free",
+      "source": "project writer (scripts/generate-ifc-corpus.mjs)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
       }
     }
   ]
