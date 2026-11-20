@@ -166,9 +166,46 @@ export function backupBeforeWrite(filePath, keep = BACKUP_KEEP) {
  * before any parse or later save can touch them. Same copy + verify +
  * prune behaviour as `backupBeforeWrite`, under the name the load path
  * calls — a snapshot is only a snapshot if it verified.
+ *
+ * Dedup: when the newest verified backup is already byte-identical to
+ * the live file, the bytes are already preserved and no new snapshot is
+ * taken. Without this, every server boot consumes a retention slot with
+ * a duplicate copy — five boots with no intervening save would evict
+ * every distinct older state from the 5-slot rotation. Returns
+ * `{ created, target, error, deduped }`.
  */
 export function snapshotOnLoad(filePath, keep = BACKUP_KEEP) {
-  return backupBeforeWrite(filePath, keep);
+  try {
+    const liveBytes = fs.readFileSync(filePath);
+    const backups = listBackups(filePath);
+    if (backups.length) {
+      const newest = backups[backups.length - 1];
+      if (verifyBackup(newest).ok) {
+        try {
+          if (fs.readFileSync(newest).equals(liveBytes)) {
+            return { created: false, target: newest, error: null, deduped: true };
+          }
+        } catch { /* unreadable newest backup: fall through and snapshot */ }
+      }
+    }
+  } catch { /* unreadable live file: backupBeforeWrite reports the failure */ }
+  const result = backupBeforeWrite(filePath, keep);
+  return { ...result, deduped: false };
+}
+
+/** Best-effort fsync of a directory after an atomic rename, so the rename
+ * itself (not just the file bytes) survives an OS crash / power loss.
+ * A process kill cannot lose a rename — the page cache survives it — so
+ * this guards the harder failure, which no process-level test can
+ * simulate; it must never fail a write on filesystems that reject it. */
+function fsyncDir(dir) {
+  let fd = null;
+  try {
+    fd = fs.openSync(dir, "r");
+    fs.fsyncSync(fd);
+  } catch { /* best effort durability only */ } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch { /* ignore */ } }
+  }
 }
 
 export function listBackups(filePath) {
@@ -283,6 +320,7 @@ export function restoreBackup(filePath, backupPath = null) {
   try {
     fs.writeFileSync(temp, fs.readFileSync(chosen.path), "utf8");
     fs.renameSync(temp, filePath);
+    fsyncDir(path.dirname(filePath));
   } catch (error) {
     try { if (fs.existsSync(temp)) fs.unlinkSync(temp); } catch { /* best effort */ }
     return { ok: false, restoredFrom: chosen.path, error };
@@ -326,6 +364,7 @@ export function writeJsonWithBackup(filePath, value, options = {}) {
     const fd = fs.openSync(temp, "w");
     try { fs.writeSync(fd, JSON.stringify(value, null, 2), null, "utf8"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     fs.renameSync(temp, filePath);
+    fsyncDir(path.dirname(filePath));
     return { backup, atomic: true };
   } catch (error) {
     try { if (fs.existsSync(temp)) fs.unlinkSync(temp); } catch { /* best effort */ }

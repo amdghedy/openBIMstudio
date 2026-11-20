@@ -202,6 +202,52 @@ function check(name, fn) {
     assert.ok(!fs.existsSync(bad.target), "unverifiable snapshot copy must be deleted");
   });
 
+  check("snapshotOnLoad skips a duplicate when the newest verified backup already holds the live bytes", () => {
+    const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "obs-backup-dedup-"));
+    const f2 = path.join(d2, "projects.json");
+    // Five distinct states, each snapshot the pre-write state of the next.
+    for (let v = 1; v <= 6; v++) writeJsonWithBackup(f2, { version: v });
+    const before = listBackups(f2).map((b) => JSON.parse(fs.readFileSync(b, "utf8")).version);
+    assert.deepStrictEqual(before, [1, 2, 3, 4, 5], "retention holds five distinct pre-write states");
+    // The first boot snapshots the live {version:6} state (the newest
+    // backup holds {version:5}, so the bytes genuinely differ) — one
+    // legitimate snapshot, evicting only the oldest state.
+    const first = snapshotOnLoad(f2);
+    assert.strictEqual(first.error, null);
+    assert.strictEqual(first.created, true);
+    assert.strictEqual(first.deduped, false);
+    assert.deepStrictEqual(
+      listBackups(f2).map((b) => JSON.parse(fs.readFileSync(b, "utf8")).version),
+      [2, 3, 4, 5, 6],
+    );
+    // Six further boots with no intervening save: without dedup, six
+    // identical snapshots of {version:6} would evict every distinct
+    // older state from the 5-slot rotation.
+    for (let boot = 0; boot < 6; boot++) {
+      const snap = snapshotOnLoad(f2);
+      assert.strictEqual(snap.error, null);
+      assert.strictEqual(snap.created, false, "identical live bytes must not take a new snapshot");
+      assert.strictEqual(snap.deduped, true);
+    }
+    const after = listBackups(f2).map((b) => JSON.parse(fs.readFileSync(b, "utf8")).version);
+    assert.deepStrictEqual(after, [2, 3, 4, 5, 6], "repeated boots must not evict distinct history");
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(f2, "utf8")), { version: 6 });
+    // A changed live file snapshots again (dedup is byte-equality, not a latch).
+    writeJsonWithBackup(f2, { version: 7 });
+    const changed = snapshotOnLoad(f2);
+    assert.strictEqual(changed.created, true, "changed bytes must snapshot");
+    assert.strictEqual(changed.deduped, false);
+    assert.strictEqual(listBackups(f2).length, 5, "retention stays bounded after the new snapshot");
+    // A corrupt newest backup does not block the snapshot: the live bytes
+    // are still preserved (the corrupt copy is skipped, never served).
+    const newest = listBackups(f2).slice(-1)[0];
+    fs.writeFileSync(newest, "{broken", "utf8");
+    const afterCorrupt = snapshotOnLoad(f2);
+    assert.strictEqual(afterCorrupt.error, null);
+    assert.strictEqual(afterCorrupt.created, true, "snapshot still taken when newest backup is corrupt");
+    assert.deepStrictEqual(verifyBackup(afterCorrupt.target), { ok: true, value: { version: 7 } });
+  });
+
   /* ── Quarantine ───────────────────────────────────────────────────────── */
   check("quarantineFile preserves corrupt bytes aside and is a no-op for a missing file", () => {
     const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "obs-backup-quar-"));

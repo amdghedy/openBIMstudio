@@ -35,10 +35,22 @@ Backups live next to the store file:
   known-good backup. `findLastVerifiedBackup()` walks backups
   newest-first and returns the first one that verifies; corrupt,
   truncated or empty backups are skipped, never served.
+- **Snapshot dedup.** A load snapshot is skipped when the newest
+  verified backup is already byte-identical to the live file — the
+  bytes are already preserved, and taking another copy would consume a
+  retention slot with a duplicate. Without this, repeated server boots
+  with no intervening save would evict every distinct older state
+  from the 5-slot rotation. (The write path does not dedup: each write
+  genuinely changes the pre-write state, `updatedAt` at minimum.)
 - **Interrupted writes cannot replace the last known-good copy.** The
   live file is only ever replaced by temp-file + rename. A crash
   mid-write leaves a stale `.tmp` file (inert litter — each write uses
-  a unique temp name) and the previous live file intact.
+  a unique temp name) and the previous live file intact. The temp file
+  is fsynced before the rename, and the containing directory is
+  fsynced after it, so the rename itself survives an OS crash — a
+  process kill cannot lose a rename (the page cache survives it), so
+  the directory fsync guards the harder failure, which no
+  process-level test can simulate.
 
 ## Fail-closed rule
 
@@ -61,6 +73,16 @@ This is a deliberate reversal of the old behaviour (log `backup_failed`
 and write anyway). The old behaviour is what destroyed projects: a
 corrupt store was silently emptied on load and the next save backed up
 the corruption over the good copy.
+
+Note on reachability: the project PUT's only in-app client is
+`workshareClient.syncProject()` (`src/modules/collaboration/
+workshare-client.ts`), which currently has no callers — the browser
+app's own project save path is IndexedDB (see #101), and the
+cloud-account vault talks to the same-origin deployment API, not this
+server. The 503 is therefore surfaced to API clients (scripts, agent
+tooling) today, not to the app UI. Wiring the collab PUT into the app's
+save flow is a worksharing design decision, not a backup change, and
+is deliberately not done here.
 
 ## Corrupt load: what the server does on boot
 
@@ -141,14 +163,21 @@ triggered remotely or race a running server.
 - `tests/server-backup.test.cjs` (`test:server-backup`): rotation to
   exactly 5, timestamped collision-safe names, duplicate timestamps,
   read-back verification, corrupt backups, interrupted writes (stale
-  temp, corrupt live file), snapshot-on-load, quarantine, restore /
-  rollback including refusal cases.
+  temp, corrupt live file), snapshot-on-load, snapshot dedup across
+  repeated boots, quarantine, restore / rollback including refusal
+  cases. **14 assertion groups.**
 - `tests/server-backup-on-load.test.cjs`
   (`test:server-backup-on-load`): spawned-server integration —
-  snapshot on load, corrupt boot serves the last verified backup,
+  snapshot on load; boot churn (repeated boots keep distinct history);
+  corrupt boot serves the last verified backup; corrupt newest backup
+  skipped; multiple corrupt backups fall through to the oldest
+  verified one (and a new save works after recovery); all backups
+  corrupt starts empty with bytes quarantined; stale temp files inert
+  at boot; SIGKILL mid-write burst restarts to a complete state, never
+  partial; corrupt `rooms.json` recovers like `projects.json`;
   simulated failed write refused with 503 with the last known-good
-  recoverable across restarts, corrupt store with no backup starts
-  empty with the bytes quarantined.
+  recoverable across restarts; corrupt store with no backup starts
+  empty with the bytes quarantined. **11 tests.**
 - Both run in CI via `scripts/ci-unit-tests.mjs`. Note the pre-existing
   `tests/server-backup.test.cjs` had no npm script and was not in CI
   before this change; it is wired in here.
