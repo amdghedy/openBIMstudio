@@ -8,9 +8,18 @@
  */
 import { IfcAPI } from "web-ifc";
 import { readFileSync } from "fs";
+import { validateIfcStepSyntax } from "../src/modules/ifc-semantics/step-preflight.ts";
 
 const file = process.argv[2];
 if (!file) process.exit(2);
+
+const bytes = readFileSync(file);
+const syntaxErrors = validateIfcStepSyntax(bytes);
+if (syntaxErrors.length) {
+  console.log("ready");
+  console.log("typed-error");
+  process.exit(0);
+}
 
 const ifc = new IfcAPI();
 await ifc.Init();
@@ -18,7 +27,7 @@ console.log("ready");
 
 let model = -1;
 try {
-  model = ifc.OpenModel(new Uint8Array(readFileSync(file)));
+  model = ifc.OpenModel(bytes);
   ifc.GetModelSchema(model);
   console.log("ok");
 } catch {
