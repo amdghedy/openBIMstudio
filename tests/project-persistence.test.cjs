@@ -326,7 +326,8 @@ const t = (label, fn) => { n += 1; fn(); console.log(`  ok ${n} — ${label}`); 
     for (const fn of ["putProject", "getProject", "listProjectDocs", "deleteProjectRecord", "putModelBlob", "putImportedModel", "getModelBlobs", "deleteModelBlobs", "listProjectRecoverySnapshots", "restoreProjectSnapshot", "summarize"]) {
       assert.match(store, new RegExp(`export (async )?function ${fn}\\b`), fn);
     }
-    assert.match(store, /const DB_VERSION = 3;/, "DB version must include the operation-journal migration");
+    assert.match(store, /const DB_VERSION = 4;/, "DB version must include the operation-journal migration and the #101 quarantine store");
+    assert.match(store, /createObjectStore\(S_JOURNAL_QUARANTINE/);
     assert.match(store, /await appendProjectState\(doc\)/, "project writes must enter the durable operation journal first");
     assert.match(store, /createObjectStore\(S_PROJECTS, \{ keyPath: "id" \}\)/);
   });
