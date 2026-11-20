@@ -28,6 +28,8 @@ export type RelKind =
   | "properties"
   | "material"
   | "classification"
+  | "connects-ports"
+  | "nests"
   | "other";
 
 export interface RelationshipRecord {
@@ -156,6 +158,14 @@ const REL_SHAPES: Record<string, { kind: RelKind; relatedIdx: number; relatingId
   IFCRELDEFINESBYPROPERTIES: { kind: "properties", relatedIdx: 4, relatingIdx: 5 },
   IFCRELASSOCIATESMATERIAL: { kind: "material", relatedIdx: 4, relatingIdx: 5 },
   IFCRELASSOCIATESCLASSIFICATION: { kind: "classification", relatedIdx: 4, relatingIdx: 5 },
+  // MEP connectivity: IfcRelConnectsPorts (RelatingPort #4, RelatedPort #5)
+  // joins two IfcDistributionPorts; IfcRelNests (RelatingObject #4,
+  // RelatedObjects #5) nests ports under their owning distribution element
+  // (IFC2x3/IFC4 both express port ownership this way). Together they let
+  // the MEP layer reconstruct connected networks from an imported file
+  // instead of grouping by category (see modules/mep/ifc-reconstruction).
+  IFCRELCONNECTSPORTS: { kind: "connects-ports", relatedIdx: 5, relatingIdx: 4 },
+  IFCRELNESTS: { kind: "nests", relatedIdx: 5, relatingIdx: 4 },
 };
 
 /**
@@ -184,6 +194,7 @@ const KNOWN_CLASSES = new Set([
   "IFCFURNISHINGELEMENT", "IFCBUILDINGELEMENTPROXY", "IFCCOVERING",
   "IFCFLOWSEGMENT", "IFCFLOWTERMINAL", "IFCFLOWFITTING", "IFCFLOWCONTROLLER",
   "IFCFLOWMOVINGDEVICE", "IFCFLOWSTORAGEDEVICE", "IFCDISTRIBUTIONELEMENT",
+  "IFCDISTRIBUTIONPORT",
   "IFCDUCTSEGMENT", "IFCPIPESEGMENT", "IFCCABLECARRIERSEGMENT", "IFCCABLESEGMENT", "IFCCONDUITSEGMENT",
   "IFCDUCTFITTING", "IFCPIPEFITTING", "IFCCABLECARRIERFITTING", "IFCCONDUITFITTING",
   "IFCELEMENTQUANTITY", "IFCPROPERTYSET", "IFCPROPERTYSINGLEVALUE",
@@ -199,7 +210,7 @@ const KNOWN_CLASSES = new Set([
   "IFCOWNERHISTORY", "IFCPERSON", "IFCORGANIZATION", "IFCPERSONANDORGANIZATION", "IFCAPPLICATION",
   "IFCRELAGGREGATES", "IFCRELCONTAINEDINSPATIALSTRUCTURE", "IFCRELVOIDSELEMENT",
   "IFCRELFILLSELEMENT", "IFCRELDEFINESBYPROPERTIES", "IFCRELASSOCIATESMATERIAL",
-  "IFCRELASSOCIATESCLASSIFICATION", "IFCMATERIAL", "IFCMATERIALLAYERSET", "IFCMATERIALLAYERSETUSAGE",
+  "IFCRELASSOCIATESCLASSIFICATION", "IFCRELCONNECTSPORTS", "IFCRELNESTS", "IFCMATERIAL", "IFCMATERIALLAYERSET", "IFCMATERIALLAYERSETUSAGE",
   "IFCMATERIALCONSTITUENTSET", "IFCMATERIALCONSTITUENT",
   "IFCCLASSIFICATION", "IFCCLASSIFICATIONREFERENCE",
   "IFCPROPERTYBOUNDEDVALUE", "IFCPROPERTYLISTVALUE", "IFCPROPERTYENUMERATION",

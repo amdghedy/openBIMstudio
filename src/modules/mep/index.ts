@@ -33,6 +33,7 @@ import * as mepDrainage from "./drainage";
 import * as mepDistribution from "./distribution";
 import * as mepHvacLoads from "./hvac-loads";
 import * as mepFlowAssignment from "./flow-assignment";
+import * as mepIfcReconstruction from "./ifc-reconstruction";
 import * as mepLighting from "./lighting";
 import * as mepHostedElements from "./hosted-elements";
 import * as mepDemandFactors from "./demand-factors";
@@ -65,6 +66,7 @@ export * from "./drainage";
 export * from "./distribution";
 export * from "./hvac-loads";
 export * from "./flow-assignment";
+export * from "./ifc-reconstruction";
 export * from "./lighting";
 export * from "./hosted-elements";
 export * from "./demand-factors";
@@ -140,6 +142,9 @@ export function setupMep(): MepService {
   // terminal flow assignment feeding the network audit.
   svcAny.hvacLoads = mepHvacLoads;
   svcAny.flowAssignment = mepFlowAssignment;
+  // IFC import: port-graph reconstruction of connected MEP networks from
+  // IfcRelConnectsPorts / IfcRelNests (reconstructIfcMepNetworks).
+  svcAny.ifcReconstruction = mepIfcReconstruction;
 
   // MEP final-gap pack: lumen-method lighting design, the hosted-element
   // (host relationship) engine and NEC 220 code demand factors.
