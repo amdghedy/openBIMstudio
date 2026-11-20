@@ -154,7 +154,8 @@ async function importProjectFile() {
         throw new Error(`Project JSON rejected (${loaded.error.stage}): ${loaded.error.issues.join("; ")}`);
       }
       // The schema gate runs before the migration/normalization layer and before storage.
-      const parsed = normalizeProjectDoc(loaded.value);
+      const raw = loaded.value;
+      const parsed = normalizeProjectDoc(raw);
       if (!parsed.ok) {
         throw new Error(`The file contains invalid project data and was not imported. ${parsed.fatal}` +
           (parsed.issues.length ? `\n· ${parsed.issues.join("\n· ")}` : ""));

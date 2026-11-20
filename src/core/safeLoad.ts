@@ -49,7 +49,7 @@ export function safeLoad<T>(file: string, raw: string,
     } else if (current.value !== null && typeof current.value === "object") {
       const record = current.value as Record<string, unknown>;
       for (const key in record) {
-        if (!Object.hasOwn(record, key)) continue;
+        if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
         if (pending.length + visited >= maxNodes) {
           return { ok: false, error: { stage: "complexity", file, issues: [`JSON input exceeds the ${maxNodes}-node complexity limit.`] } };
         }
