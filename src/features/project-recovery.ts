@@ -11,7 +11,6 @@
  * Restore semantics live in the store: the current document + payloads are
  * snapshotted first ("before-restore"), so a restore is itself reversible.
  */
-import { fmtDateTime } from "../core/format";
 import {
   listProjectRecoverySnapshots, restoreProjectRecoverySnapshot,
   getCurrentProject, openProject,
