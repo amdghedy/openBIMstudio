@@ -173,7 +173,7 @@ export function setupViewsPanel(): void {
   }
   toolbarHint = document.createElement("span");
   toolbarHint.style.cssText =
-    "font:11px system-ui;color:#94a3b8;margin-left:auto;white-space:nowrap;" +
+    "font:11px system-ui;color:#94a3b8;margin-inline-start:auto;white-space:nowrap;" +
     "overflow:hidden;text-overflow:ellipsis;max-width:60%";
   toolbar.appendChild(toolbarHint);
 
@@ -182,7 +182,7 @@ export function setupViewsPanel(): void {
 
   sidebar = document.createElement("div");
   sidebar.style.cssText =
-    "width:220px;flex:none;border-right:1px solid #2a2e3a;overflow-y:auto;background:#0e1017";
+    "width:220px;flex:none;border-inline-end:1px solid #2a2e3a;overflow-y:auto;background:#0e1017";
 
   canvasHost = document.createElement("div");
   canvasHost.style.cssText =
@@ -277,7 +277,7 @@ function render(): void {
     const del = document.createElement("button");
     del.textContent = "x";
     del.style.cssText =
-      "float:right;background:transparent;color:#fca5a5;border:none;cursor:pointer;font-size:13px;padding:0 4px";
+      "float:inline-end;background:transparent;color:#fca5a5;border:none;cursor:pointer;font-size:13px;padding:0 4px";
     del.onclick = (e) => {
       e.stopPropagation();
       void confirmDialog("Delete view", 'Delete "' + v.name + '"?').then((yes) => {

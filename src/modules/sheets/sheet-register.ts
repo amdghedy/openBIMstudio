@@ -69,7 +69,7 @@ export function registerToHTML(rows: DrawingRegisterRow[], projectName: string =
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 30px; color: #0f172a; }
     h1 { font-size: 20px; border-bottom: 2px solid #0284c7; padding-bottom: 8px; }
     table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
-    th, td { padding: 8px 12px; border: 1px solid #cbd5e1; text-align: left; }
+    th, td { padding: 8px 12px; border: 1px solid #cbd5e1; text-align: start; }
     th { background: #f1f5f9; font-weight: 600; }
     tr:nth-child(even) { background: #f8fafc; }
     .status { text-transform: uppercase; font-size: 11px; font-weight: 600; }

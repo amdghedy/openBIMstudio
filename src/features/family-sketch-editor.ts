@@ -58,7 +58,7 @@ export function openFamilySketchEditor(opts: SketchEditorOptions = {}): void {
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px">
       <span style="opacity:.7">Tool</span>
       <button data-tool="polygon" type="button">Polygon</button><button data-tool="rect" type="button">Rectangle</button><button data-tool="circle" type="button">Circle</button>
-      <span style="opacity:.7;margin-left:8px">Grid</span>
+      <span style="opacity:.7;margin-inline-start:8px">Grid</span>
       <select data-grid><option>0.05</option><option>0.1</option><option selected>0.25</option><option>0.5</option><option>1</option></select> m
       <label style="display:flex;gap:3px;align-items:center"><input data-snap type="checkbox" checked> Snap</label>
       <button data-zoom="-1" type="button" title="Zoom out">−</button><button data-zoom="1" type="button" title="Zoom in">+</button>

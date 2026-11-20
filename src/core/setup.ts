@@ -23,7 +23,7 @@ export async function setupViewer() {
   appEl.style.cssText = "display:flex;width:100%;height:100%;overflow:hidden;margin:0";
 
   const leftHost = document.createElement("div");
-  leftHost.style.cssText = "min-width:320px;height:100%;overflow:auto;background:#1D1E24;border-right:1px solid #2a2a35";
+  leftHost.style.cssText = "min-width:320px;height:100%;overflow:auto;background:#1D1E24;border-inline-end:1px solid #2a2a35";
   const rightHost = document.createElement("div");
   rightHost.style.cssText = "flex:1;height:100%;position:relative;overflow:hidden";
   rightHost.id = "viewport";

@@ -120,7 +120,7 @@ export function openModelQADialog(): void {
           : report.issues
               .map(
                 (iss) => `
-            <div style="padding: 10px 14px; background: #0f172a; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid ${
+            <div style="padding: 10px 14px; background: #0f172a; border-radius: 6px; margin-bottom: 8px; border-inline-start: 3px solid ${
               iss.severity === "error" ? "#ef4444" : iss.severity === "warning" ? "#f59e0b" : "#38bdf8"
             }; font-size: 13px;">
               <div style="font-weight: 600; color: white;">${iss.rule}</div>

@@ -133,7 +133,7 @@ planBody.style.cssText = "flex:1;display:flex;min-height:0;overflow:hidden";
 const planProps = document.createElement("div");
 planProps.style.cssText =
   "width:280px;flex:none;display:flex;flex-direction:column;" +
-  "background:#f3f4f6;color:#111827;border-right:1px solid #d1d5db;" +
+  "background:#f3f4f6;color:#111827;border-inline-end:1px solid #d1d5db;" +
   "font:12px system-ui,sans-serif";
 const planPropsHeader = document.createElement("div");
 planPropsHeader.style.cssText =
@@ -1686,13 +1686,13 @@ function showWallOpts(on: boolean) {
  */
 function makeGroupLabel(text: string): HTMLElement {
   const w = document.createElement("span");
-  w.style.cssText = "font:600 10px system-ui;letter-spacing:.4px;text-transform:uppercase;color:var(--text-tertiary,#6b7280);margin-right:2px;";
+  w.style.cssText = "font:600 10px system-ui;letter-spacing:.4px;text-transform:uppercase;color:var(--text-tertiary,#6b7280);margin-inline-end:2px;";
   w.textContent = text;
   return w;
 }
 function makeGroup(label: string, ...els: (HTMLElement | null)[]): HTMLElement {
   const g = document.createElement("div");
-  g.style.cssText = "display:flex;align-items:center;gap:6px;padding:0 8px;border-right:1px solid var(--border-subtle,#2a2e3a);height:100%;";
+  g.style.cssText = "display:flex;align-items:center;gap:6px;padding:0 8px;border-inline-end:1px solid var(--border-subtle,#2a2e3a);height:100%;";
   if (label) g.appendChild(makeGroupLabel(label));
   for (const el of els) if (el) g.appendChild(el);
   return g;
@@ -1704,7 +1704,7 @@ header.style.cssText =
   "height:40px;flex:none;overflow-x:auto;overflow-y:hidden;";
 
 const titleEl = document.createElement("div");
-titleEl.style.cssText = "font:700 12px system-ui;color:var(--text-primary,#e8eaf0);padding:0 10px 0 4px;white-space:nowrap;border-right:1px solid var(--border-subtle,#2a2e3a);height:100%;display:flex;align-items:center;";
+titleEl.style.cssText = "font:700 12px system-ui;color:var(--text-primary,#e8eaf0);padding:0 10px 0 4px;white-space:nowrap;border-inline-end:1px solid var(--border-subtle,#2a2e3a);height:100%;display:flex;align-items:center;";
 titleEl.textContent = "Floor Plan";
 titleEl.title = "2D Floor Plan · international BIM drafting environment";
 
@@ -1974,7 +1974,7 @@ function footerStatus(msg: string) {
     else {
       const s = document.createElement("span");
       s.dataset.status = "1";
-      s.style.cssText = "color:#94a3b8;margin-left:8px";
+      s.style.cssText = "color:#94a3b8;margin-inline-start:8px";
       s.textContent = msg;
       footer.appendChild(s);
     }
@@ -3112,7 +3112,7 @@ function renderPlan(plan: PlanView) {
     `zoom ${(currentZoom * 100).toFixed(0)}%` +
     (plan.truncated ? " · truncated" : "");
   const hint = document.createElement("span");
-  hint.style.cssText = "margin-left:auto;opacity:.55";
+  hint.style.cssText = "margin-inline-start:auto;opacity:.55";
   hint.textContent = "Wheel: zoom · MMB pan · Shift+LMB pan · Dbl-click: fit · Esc: cancel";
   footer.append(info, hint);
   // Restore the live tool status across this rebuild so multi-pick flows
@@ -3120,7 +3120,7 @@ function renderPlan(plan: PlanView) {
   if (lastFooterStatus) {
     const s = document.createElement("span");
     s.dataset.status = "1";
-    s.style.cssText = "color:#94a3b8;margin-left:8px";
+    s.style.cssText = "color:#94a3b8;margin-inline-start:8px";
     s.textContent = lastFooterStatus;
     footer.appendChild(s);
   }

@@ -51,7 +51,7 @@ function createRecoveryBanner(): HTMLDivElement {
   banner.style.cssText =
     "position:fixed;right:16px;bottom:52px;z-index:9000;max-width:420px;" +
     "background:var(--bg-floating,#1c1e28);color:var(--text-primary,#e8eaf0);" +
-    "border:1px solid var(--warning,#f59e0b);border-left:3px solid var(--warning,#f59e0b);" +
+    "border:1px solid var(--warning,#f59e0b);border-inline-start:3px solid var(--warning,#f59e0b);" +
     "border-radius:6px;padding:12px 14px;font:12px/1.5 system-ui,sans-serif;" +
     "box-shadow:0 12px 32px rgba(0,0,0,.45)";
   banner.innerHTML =

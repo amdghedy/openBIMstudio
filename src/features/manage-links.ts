@@ -42,7 +42,7 @@ export function openManageLinks() {
   const renderTable = () => {
     contentArea.innerHTML = "";
     const table = document.createElement("table");
-    table.style.cssText = "width:100%;border-collapse:collapse;text-align:left;";
+    table.style.cssText = "width:100%;border-collapse:collapse;text-align:start;";
     
     table.innerHTML = `
       <thead>
@@ -50,7 +50,7 @@ export function openManageLinks() {
           <th style="padding:8px;font-weight:600;">Link Name</th>
           <th style="padding:8px;font-weight:600;">Status</th>
           <th style="padding:8px;font-weight:600;">Type</th>
-          <th style="padding:8px;font-weight:600;text-align:right;">Action</th>
+          <th style="padding:8px;font-weight:600;text-align:end;">Action</th>
         </tr>
       </thead>
       <tbody id="obs-manage-links-body"></tbody>
@@ -65,7 +65,7 @@ export function openManageLinks() {
       const btn = (label: string, fn: () => void | Promise<void>, danger = false) => {
         const b = document.createElement("button");
         b.textContent = label;
-        b.style.cssText = `margin-left:4px;padding:4px 8px;background:${danger ? "#3b0d0d" : "#2a2e3a"};color:${danger ? "#fca5a5" : "#e8eaf0"};border:1px solid ${danger ? "#7f1d1d" : "#3a3f4d"};border-radius:4px;cursor:pointer;font:12px system-ui;`;
+        b.style.cssText = `margin-inline-start:4px;padding:4px 8px;background:${danger ? "#3b0d0d" : "#2a2e3a"};color:${danger ? "#fca5a5" : "#e8eaf0"};border:1px solid ${danger ? "#7f1d1d" : "#3a3f4d"};border-radius:4px;cursor:pointer;font:12px system-ui;`;
         b.onclick = () => { void Promise.resolve(fn()).catch((e) => notify("error", e instanceof Error ? e.message : String(e))); };
         return b;
       };
@@ -89,7 +89,7 @@ export function openManageLinks() {
         typeTd.textContent = "Point cloud";
 
         const actionTd = document.createElement("td");
-        actionTd.style.cssText = "padding:8px;text-align:right;white-space:nowrap;";
+        actionTd.style.cssText = "padding:8px;text-align:end;white-space:nowrap;";
         actionTd.append(
           btn(cloud.visible ? "Hide" : "Show", () => {
             cloud.visible = !cloud.visible;
@@ -138,7 +138,7 @@ export function openManageLinks() {
       const btn = (t: string, fn: () => void, danger = false) => {
         const b = document.createElement("button");
         b.textContent = t;
-        b.style.cssText = `margin-left:4px;padding:4px 8px;background:${danger ? "#3b0d0d" : "#2a2e3a"};color:${danger ? "#fca5a5" : "#e8eaf0"};border:1px solid ${danger ? "#7f1d1d" : "#3a3f4d"};border-radius:4px;cursor:pointer;font:12px system-ui;`;
+        b.style.cssText = `margin-inline-start:4px;padding:4px 8px;background:${danger ? "#3b0d0d" : "#2a2e3a"};color:${danger ? "#fca5a5" : "#e8eaf0"};border:1px solid ${danger ? "#7f1d1d" : "#3a3f4d"};border-radius:4px;cursor:pointer;font:12px system-ui;`;
         b.onclick = fn;
         return b;
       };
@@ -168,7 +168,7 @@ export function openManageLinks() {
         ty.style.cssText = "padding:8px;color:#8b949e;";
         ty.textContent = `CAD (${l.format.toUpperCase()})`;
         const ac = document.createElement("td");
-        ac.style.cssText = "padding:8px;text-align:right;white-space:nowrap;";
+        ac.style.cssText = "padding:8px;text-align:end;white-space:nowrap;";
         ac.append(
           btn(l.visible ? "Hide" : "Show", () => { api.setVisible(l.id, !l.visible); renderTable(); }),
           btn("Zoom", () => { modalEl?.remove(); modalEl = null; void api.zoomTo(l.id); }),
@@ -215,7 +215,7 @@ export function openManageLinks() {
       typeTd.textContent = "IFC Model";
 
       const actionTd = document.createElement("td");
-      actionTd.style.cssText = "padding:8px;text-align:right;";
+      actionTd.style.cssText = "padding:8px;text-align:end;";
       
       const unloadBtn = document.createElement("button");
       unloadBtn.textContent = "Unload";
@@ -239,7 +239,7 @@ export function openManageLinks() {
       const mini = (t: string, tip: string, fn: () => void | Promise<void>) => {
         const b = document.createElement("button");
         b.textContent = t; b.title = tip;
-        b.style.cssText = "margin-right:4px;padding:4px 8px;background:#2a2e3a;color:#e8eaf0;border:1px solid #3a3f4d;border-radius:4px;cursor:pointer;font:12px system-ui;";
+        b.style.cssText = "margin-inline-end:4px;padding:4px 8px;background:#2a2e3a;color:#e8eaf0;border:1px solid #3a3f4d;border-radius:4px;cursor:pointer;font:12px system-ui;";
         b.onclick = async () => { try { await fn(); renderTable(); } catch (e) { notify("error", e instanceof Error ? e.message : String(e)); } };
         return b;
       };

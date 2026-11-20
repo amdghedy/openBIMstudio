@@ -153,13 +153,13 @@ export function openExportCadDialog(): void {
   const render = () => {
     const views = listViews().filter((v) => EXPORTABLE.has(v.kind));
     const layerChecks = (Object.keys(SCENE_LAYER_NAMES) as Array<keyof typeof SCENE_LAYER_NAMES>)
-      .map((k) => `<label style="display:inline-flex;gap:4px;margin-right:10px"><input type="checkbox" data-layer="${k}" checked> ${SCENE_LAYER_NAMES[k].name}</label>`).join("");
+      .map((k) => `<label style="display:inline-flex;gap:4px;margin-inline-end:10px"><input type="checkbox" data-layer="${k}" checked> ${SCENE_LAYER_NAMES[k].name}</label>`).join("");
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0;font-size:16px">Export › CAD Formats</h2><button data-close style="${inp};cursor:pointer">✕</button></div>
       <p style="opacity:.75;margin:6px 0 12px">Export plan, section and elevation views as DXF or DWG drawings, one file per view.</p>
       <div style="font-weight:600;margin-bottom:4px">Views to export</div>
       ${views.length ? `<div style="max-height:190px;overflow:auto;border:1px solid #334155;border-radius:6px;padding:6px">${views.map((v: ViewDef) =>
-        `<label style="display:flex;gap:8px;padding:3px 2px"><input type="checkbox" data-view="${v.id}" checked> <span>${esc(v.name)}</span><span style="opacity:.55;margin-left:auto">${v.kind} · 1:${v.scale}</span></label>`).join("")}</div>` :
+        `<label style="display:flex;gap:8px;padding:3px 2px"><input type="checkbox" data-view="${v.id}" checked> <span>${esc(v.name)}</span><span style="opacity:.55;margin-inline-start:auto">${v.kind} · 1:${v.scale}</span></label>`).join("")}</div>` :
         `<div style="padding:12px;border:1px dashed #475569;border-radius:6px;text-align:center">This project has no plan, section or elevation views yet.<br><button data-make style="${inp};margin-top:8px;cursor:pointer">Create a plan per level + 4 elevations</button></div>`}
       <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:center;margin-top:14px">
         <label>Format</label><select data-format style="${inp}"><option value="dwg">DWG (AutoCAD drawing)</option><option value="dxf">DXF (exchange format)</option></select>
@@ -172,17 +172,17 @@ export function openExportCadDialog(): void {
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155">
         <div style="font-weight:600;margin-bottom:4px">3D model → DXF / DWG (3D faces)</div>
         <div style="opacity:.75;margin-bottom:6px">The authored 3D model as 3DFACE triangles on layers by element type (wall, slab, column…), Z up. Uses the units above. DXF or DWG.</div>
-        <label style="margin-right:12px"><input type="checkbox" data-3d-sel> Selected elements only</label>
-        <label style="margin-right:12px"><input type="checkbox" data-3d-vis checked> Visible only</label>
-        <label style="margin-right:12px" title="Every geometric element of the loaded IFC / Revit models (all of them; the selected/visible filters apply to authored elements only)"><input type="checkbox" data-3d-ifc checked> Include imported IFC models</label>
-        <label style="margin-right:12px">Format <select data-3d-fmt style="${inp}"><option value="dxf">DXF</option><option value="dwg">DWG</option></select></label>
+        <label style="margin-inline-end:12px"><input type="checkbox" data-3d-sel> Selected elements only</label>
+        <label style="margin-inline-end:12px"><input type="checkbox" data-3d-vis checked> Visible only</label>
+        <label style="margin-inline-end:12px" title="Every geometric element of the loaded IFC / Revit models (all of them; the selected/visible filters apply to authored elements only)"><input type="checkbox" data-3d-ifc checked> Include imported IFC models</label>
+        <label style="margin-inline-end:12px">Format <select data-3d-fmt style="${inp}"><option value="dxf">DXF</option><option value="dwg">DWG</option></select></label>
         <button data-go3d style="${inp};cursor:pointer">Export 3D model</button>
       </div>
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155">
         <div style="font-weight:600;margin-bottom:4px">Current 3D view → 2D lines (hidden lines removed)</div>
         <div style="opacity:.75;margin-bottom:6px">Draws the model as you see it now (the camera you are using) as 2D linework: outlines and sharp edges, with edges behind other geometry removed. Layers follow the 3D export. Uses the units above.</div>
-        <label style="margin-right:12px"><input type="checkbox" data-hl-hidden> Also keep hidden edges (dashed layers)</label>
-        <label style="margin-right:12px">Format <select data-hl-fmt style="${inp}"><option value="dxf">DXF</option><option value="dwg">DWG</option></select></label>
+        <label style="margin-inline-end:12px"><input type="checkbox" data-hl-hidden> Also keep hidden edges (dashed layers)</label>
+        <label style="margin-inline-end:12px">Format <select data-hl-fmt style="${inp}"><option value="dxf">DXF</option><option value="dwg">DWG</option></select></label>
         <button data-gohl style="${inp};cursor:pointer">Export current view as lines</button>
       </div>
       <div data-msg style="min-height:18px;margin-top:12px;font-size:12px;white-space:pre-wrap"></div>

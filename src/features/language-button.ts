@@ -28,13 +28,13 @@ const STYLE = `
   letter-spacing:.08em;text-transform:uppercase;color:#64748b}
 .obs-lang__item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border:0;
   border-radius:7px;background:transparent;color:#cbd5e1;font:13px/1.2 system-ui,sans-serif;
-  text-align:left;cursor:pointer}
+  text-align:start;cursor:pointer}
 .obs-lang__item:hover{background:rgba(56,189,248,.12)}
 .obs-lang__item[aria-checked="true"]{background:rgba(56,189,248,.18);color:#f0f9ff}
-.obs-lang__item .code{margin-left:auto;font:600 10px/1 ui-monospace,monospace;color:#64748b}
+.obs-lang__item .code{margin-inline-start:auto;font:600 10px/1 ui-monospace,monospace;color:#64748b}
 .obs-lang__item .tick{width:12px;color:#38bdf8;font-weight:700}
-html[dir="rtl"] .obs-lang__item{text-align:right}
-html[dir="rtl"] .obs-lang__item .code{margin-left:0;margin-right:auto}
+html[dir="rtl"] .obs-lang__item{text-align:end}
+html[dir="rtl"] .obs-lang__item .code{margin-inline-start:0;margin-inline-end:auto}
 `
 
 /** The ribbon tab row clips overflow (overflow-y:hidden), so the dropdown is

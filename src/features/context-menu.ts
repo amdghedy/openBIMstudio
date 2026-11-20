@@ -58,7 +58,7 @@ function renderMenuItems(container: HTMLElement, items: MenuItem[]) {
     row.innerHTML =
       `<span style="width:18px;text-align:center">${it.icon ?? ""}</span>` +
       `<span style="flex:1${it.type === "action" && it.danger ? ";color:#f87171" : ""}">${it.text}</span>` +
-      (it.type === "action" && it.kbd ? `<span style="opacity:.45;font-size:10px;margin-left:14px">${it.kbd}</span>` : "") +
+      (it.type === "action" && it.kbd ? `<span style="opacity:.45;font-size:10px;margin-inline-start:14px">${it.kbd}</span>` : "") +
       (it.type === "sub" ? `<span style="opacity:.6">▸</span>` : "") +
       (it.type === "action" && it.checked ? `<span style="color:#22c55e;font-weight:700">✓</span>` : "");
     if (it.type === "action") {

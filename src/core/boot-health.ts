@@ -287,7 +287,7 @@ function renderPanel(): void {
     row.innerHTML =
       `<span style="color:${rowColor(r)};font-weight:700">${r.ok ? "OK" : "FAIL"}</span>` +
       `<span style="font-family:ui-monospace,monospace">${r.name.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</span>` +
-      `<span style="margin-left:auto;color:#64748b;font-size:10px">${r.ms}ms${r.retried ? " · retried" : ""}</span>` +
+      `<span style="margin-inline-start:auto;color:#64748b;font-size:10px">${r.ms}ms${r.retried ? " · retried" : ""}</span>` +
       (r.error
         ? `<div style="color:#f87171;font-size:10px;word-break:break-word">${String(r.error).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div>`
         : "");

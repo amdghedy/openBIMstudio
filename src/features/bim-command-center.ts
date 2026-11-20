@@ -63,7 +63,7 @@ function installCss(): void {
 #obs-bim-cc .rcc-btn {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
   padding: 7px 8px; border-radius: 6px; border: 1px solid transparent;
-  background: transparent; color: #cbd5e1; cursor: pointer; text-align: left;
+  background: transparent; color: #cbd5e1; cursor: pointer; text-align: start;
   font: 600 11px/1.2 Inter, system-ui; transition: background .1s, border-color .1s;
 }
 #obs-bim-cc .rcc-btn:hover {
@@ -83,7 +83,7 @@ function installCss(): void {
   color: #7dd3fc; font: 500 10.5px/1.35 Inter, system-ui;
 }
 #obs-bim-cc .rcc-kbd {
-  display: inline-block; padding: 0 4px; margin-left: 4px;
+  display: inline-block; padding: 0 4px; margin-inline-start: 4px;
   border: 1px solid #343847; border-radius: 3px; background: #1a1d28;
   font: 9px ui-monospace, monospace; color: #94a3b8;
 }

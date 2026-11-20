@@ -307,7 +307,7 @@ function render(): void {
     ${state.comments.length ? `
       <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
         color:#6b7280;margin-bottom:6px">Comments (${state.comments.length})</div>
-      <div style="border-left:2px solid var(--border-subtle,#1e2029);padding-left:8px;
+      <div style="border-inline-start:2px solid var(--border-subtle,#1e2029);padding-inline-start:8px;
         margin-bottom:12px;display:flex;flex-direction:column;gap:6px">
         ${state.comments.map((cm) => `
           <div style="background:var(--bg-inset,#0e1017);border-radius:5px;padding:6px 8px">

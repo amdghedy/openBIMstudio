@@ -137,7 +137,7 @@ export function buildClashReportHtml(): string {
   table { width: 100%; border-collapse: collapse; background: #fff;
           border: 1px solid #e3e6ea; border-radius: 8px; overflow: hidden;
           font-size: 11px; }
-  th { background: #f0f2f5; text-align: left; padding: 8px 10px;
+  th { background: #f0f2f5; text-align: start; padding: 8px 10px;
        font-size: 10px; font-weight: 600; text-transform: uppercase;
        letter-spacing: .4px; color: #4b5563; border-bottom: 1px solid #e3e6ea;
        white-space: nowrap; }
@@ -147,8 +147,8 @@ export function buildClashReportHtml(): string {
   .badge { display: inline-block; padding: 2px 7px; border-radius: 3px;
            font-size: 9px; font-weight: 700; letter-spacing: .3px;
            text-transform: uppercase; }
-  .num { text-align: right; font-family: ui-monospace, monospace; }
-  .comment { border-left: 2px solid #e5e7eb; padding: 3px 8px; margin: 3px 0;
+  .num { text-align: end; font-family: ui-monospace, monospace; }
+  .comment { border-inline-start: 2px solid #e5e7eb; padding: 3px 8px; margin: 3px 0;
              background: #f9fafb; font-size: 10px; color: #4b5563; }
   .footer { margin-top: 40px; color: #9ca3af; font-size: 10px; text-align: center; }
   @media print {

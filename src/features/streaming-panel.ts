@@ -60,7 +60,7 @@ export function openStreamingOptimizerPanel(): void {
         <div style="display: flex; align-items: center; gap: 12px;">
           <label style="font-size: 12px; color: #94a3b8; white-space: nowrap;">Max Budget Limit:</label>
           <input type="range" id="obs-stream-budget-slider" min="128" max="2048" step="64" value="${metrics.maxMemoryMb}" style="flex: 1; cursor: pointer;" />
-          <span id="obs-stream-budget-label" style="font-size: 13px; font-weight: 600; min-width: 60px; text-align: right;">${metrics.maxMemoryMb} MB</span>
+          <span id="obs-stream-budget-label" style="font-size: 13px; font-weight: 600; min-width: 60px; text-align: end;">${metrics.maxMemoryMb} MB</span>
         </div>
       </div>
 

@@ -118,7 +118,7 @@ function injectCss(): void {
   border: 1px solid ${TOKENS.BorderBrush}; border-radius: 8px; overflow: hidden;
 }
 #obs-vg-dialog table.vg-table th {
-  text-align: left; padding: 8px 10px; font: 600 11px ${TOKENS.Font};
+  text-align: start; padding: 8px 10px; font: 600 11px ${TOKENS.Font};
   color: ${TOKENS.TextMutedBrush}; background: #FAF9F8;
   border-bottom: 1px solid ${TOKENS.BorderBrush}; text-transform: uppercase;
   letter-spacing: 0.04em;

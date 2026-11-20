@@ -202,7 +202,7 @@ function renderFilters(host: HTMLElement): void {
     row.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #242734";
     const info = document.createElement("div");
     info.style.flex = "1";
-    const colorChip = `<span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#${(vf.overrides.projectionColor ?? 0).toString(16).padStart(6, "0")};vertical-align:middle;margin-right:4px"></span>`;
+    const colorChip = `<span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#${(vf.overrides.projectionColor ?? 0).toString(16).padStart(6, "0")};vertical-align:middle;margin-inline-end:4px"></span>`;
     info.innerHTML = `
       <div style="font-weight:600;color:#e8eaf0">${colorChip}${escapeHtml(vf.name)}</div>
       <div style="font-size:11px;color:#94a3b8;margin-top:2px">
@@ -241,7 +241,7 @@ function renderCropRegions(host: HTMLElement): void {
     const sizeY = (cr.maxY - cr.minY).toFixed(1);
     info.innerHTML = `
       <div style="font-weight:600;color:#e8eaf0">${escapeHtml(cr.viewId)}
-        <span style="font-size:11px;color:${cr.enabled ? "#22c55e" : "#94a3b8"};font-weight:normal;margin-left:8px">${cr.enabled ? "● enabled" : "○ disabled"}</span>
+        <span style="font-size:11px;color:${cr.enabled ? "#22c55e" : "#94a3b8"};font-weight:normal;margin-inline-start:8px">${cr.enabled ? "● enabled" : "○ disabled"}</span>
       </div>
       <div style="font-size:11px;color:#94a3b8;margin-top:2px">
         ${sizeX}×${sizeY} m · center (${(cr.minX + cr.maxX) / 2}, ${(cr.minY + cr.maxY) / 2})

@@ -186,7 +186,7 @@ function ensureDialog(): HTMLDivElement {
   const sidebar = document.createElement("div");
   sidebar.dataset.role = "sidebar";
   sidebar.style.cssText =
-    "width:200px;flex:none;border-right:1px solid #1e2029;padding:10px 6px;overflow-y:auto;background:#181a23";
+    "width:200px;flex:none;border-inline-end:1px solid #1e2029;padding:10px 6px;overflow-y:auto;background:#181a23";
 
   const content = document.createElement("div");
   content.dataset.role = "content";
@@ -236,7 +236,7 @@ function renderOptions(group?: string): void {
     b.textContent = g;
     const active = g === currentGroup;
     b.style.cssText =
-      "display:block;width:100%;padding:7px 10px;margin-bottom:2px;text-align:left;" +
+      "display:block;width:100%;padding:7px 10px;margin-bottom:2px;text-align:start;" +
       `background:${active ? "rgba(56,189,248,.14)" : "transparent"};` +
       `color:${active ? "#38bdf8" : "#e8eaf0"};border:none;border-radius:6px;cursor:pointer;font:inherit`;
     b.onclick = () => {

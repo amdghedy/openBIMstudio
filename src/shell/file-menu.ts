@@ -21,7 +21,7 @@ const menu = document.createElement("div");
 menu.style.cssText = "position:fixed;top:100px;left:10px;width:760px;max-width:calc(100vw - 20px);z-index:250;display:none;background:#1b1c26;border:1px solid #34353f;border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.6);color:#e2e8f0;font:12px system-ui,sans-serif;overflow:hidden";
 menu.addEventListener("mousedown", (e) => e.stopPropagation());
 
-const BTN = "display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;background:transparent;color:#dbe2ea;border:none;border-radius:6px;cursor:pointer;font:500 12.5px system-ui,sans-serif;text-align:left";
+const BTN = "display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;background:transparent;color:#dbe2ea;border:none;border-radius:6px;cursor:pointer;font:500 12.5px system-ui,sans-serif;text-align:start";
 const BTN_H = BTN + ";background:#24252f";
 const SECTION = "font:700 10px system-ui,sans-serif;color:#64748b;text-transform:uppercase;letter-spacing:.6px;padding:10px 12px 4px";
 
@@ -57,7 +57,9 @@ function zitem(zone: Zone, icon: string, label: string, onclick: () => void, hin
   const b = item(icon, label, onclick, hint, danger);
   const c = ZONE_COLOR[zone];
   // item() resets cssText on hover — re-own the handlers so the zone accent survives.
-  const accent = `;border-left:2px solid ${zone === "app" ? "transparent" : c}55;border-radius:0 6px 6px 0;margin-left:8px`;
+  // Logical corner radii: the accent sits on the inline-start edge, so the
+  // rounded corners are the inline-end ones (mirrors under dir="rtl").
+  const accent = `;border-inline-start:2px solid ${zone === "app" ? "transparent" : c}55;border-start-start-radius:0;border-start-end-radius:6px;border-end-end-radius:6px;border-end-start-radius:0;margin-inline-start:8px`;
   const base = BTN + (danger ? ";color:#fca5a5" : "") + accent;
   const hover = BTN_H + (danger ? ";color:#fca5a5" : "") + accent;
   b.style.cssText = base;
@@ -206,7 +208,7 @@ function build() {
   const openSheets = () => { const svc = (ctx.features as any).sheets2dPanel; if (svc?.toggle) svc.toggle(); else uiAlert("Sheets 2D is still loading — try again in a moment."); };
 
   const left = document.createElement("div");
-  left.style.cssText = "width:320px;flex:none;border-right:1px solid #24252f;padding:4px 6px 10px";
+  left.style.cssText = "width:320px;flex:none;border-inline-end:1px solid #24252f;padding:4px 6px 10px";
   left.append(
     zoneHeader("3d", "3D Model Zone — files · options · info"),
     zitem("3d", "🆕", "New", () => showHome(), "Ctrl+N"),

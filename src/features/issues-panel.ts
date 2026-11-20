@@ -91,7 +91,7 @@ function renderNewForm(container: HTMLElement) {
 
 function commentNode(c: IssueComment) {
   const el = document.createElement("div");
-  el.style.cssText = "border-left:2px solid #34353f;padding:4px 8px;margin-left:4px;background:#15161d;border-radius:4px";
+  el.style.cssText = "border-inline-start:2px solid #34353f;padding:4px 8px;margin-inline-start:4px;background:#15161d;border-radius:4px";
   el.innerHTML = `<div style="display:flex;gap:6px;font-size:10px;opacity:.65"><b>${esc(c.author)}</b><span>${fmtDate(c.date)}</span></div>
     <div style="margin-top:2px;white-space:pre-wrap">${esc(c.text)}</div>`;
   if (c.viewpoint) {
@@ -134,7 +134,7 @@ function issueNode(issue: Issue) {
   if (issue.viewpoint.thumbnail) {
     const img = document.createElement("img");
     img.src = issue.viewpoint.thumbnail;
-    img.style.cssText = "width:44px;height:30px;object-fit:cover;border-radius:4px;border:1px solid #34353f;margin-left:auto;cursor:pointer";
+    img.style.cssText = "width:44px;height:30px;object-fit:cover;border-radius:4px;border:1px solid #34353f;margin-inline-start:auto;cursor:pointer";
     img.title = "Go to viewpoint";
     img.onclick = (e) => { e.stopPropagation(); goToViewpoint(issue.viewpoint); };
     meta.appendChild(img);

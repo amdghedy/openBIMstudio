@@ -354,7 +354,7 @@ function installHelpStyle(): void {
 }
 #obs-input-help td:first-child {
   width: 42%; color: #7dd3fc; font: 600 11px/1.3 ui-monospace, monospace;
-  white-space: nowrap; padding-right: 8px;
+  white-space: nowrap; padding-inline-end: 8px;
 }
 #obs-input-help td:last-child { color: #cbd5e1; }
 #obs-input-help .ih-note {

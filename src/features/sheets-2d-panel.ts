@@ -179,7 +179,7 @@ export function setupSheets2dPanel(): void {
 
   const title = document.createElement("div");
   title.textContent = "Sheets";
-  title.style.cssText = "font-weight:700;margin-right:8px";
+  title.style.cssText = "font-weight:700;margin-inline-end:8px";
 
   viewPicker = document.createElement("select");
   viewPicker.style.cssText =
@@ -288,7 +288,7 @@ export function setupSheets2dPanel(): void {
 
   sheetListEl = document.createElement("div");
   sheetListEl.style.cssText =
-    "width:220px;flex:none;border-right:1px solid #2a2e3a;overflow-y:auto;background:#0e1017";
+    "width:220px;flex:none;border-inline-end:1px solid #2a2e3a;overflow-y:auto;background:#0e1017";
 
   canvasHost = document.createElement("div");
   canvasHost.style.cssText =
@@ -432,7 +432,7 @@ function renderModelQa(content: HTMLDivElement): void {
     results.appendChild(clean);
   } else {
     const table = document.createElement("table");
-    table.style.cssText = "width:100%;border-collapse:collapse;text-align:left";
+    table.style.cssText = "width:100%;border-collapse:collapse;text-align:start";
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
     for (const label of ["Scope", "Severity", "Code", "Element / Viewport", "Message"]) {

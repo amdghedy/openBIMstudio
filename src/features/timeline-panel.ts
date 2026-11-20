@@ -102,7 +102,7 @@ export function openCurvesView() {
         <span style="color:#22c55e">Cost ${fmtNum(s.cost)} / ${fmtNum(s.costTotal)}</span>
         <span style="color:#f97316">Carbon ${fmtNum(s.carbonKg)} / ${fmtNum(s.carbonTotalKg)} kgCO₂e</span>
         <span style="color:#94a3b8">Click or drag the chart to move the 4D date</span>
-        <button type="button" data-x="close" style="margin-left:auto;background:#334155;border:1px solid #475569;color:#e2e8f0;border-radius:6px;padding:4px 12px;cursor:pointer">Close (Esc)</button></div>
+        <button type="button" data-x="close" style="margin-inline-start:auto;background:#334155;border:1px solid #475569;color:#e2e8f0;border-radius:6px;padding:4px 12px;cursor:pointer">Close (Esc)</button></div>
       <div data-x="chart" style="flex:1;min-height:0;padding:12px 16px;cursor:crosshair">${scurveSvg(s.costCurve, s.carbonCurve, o)}</div>`;
     (wrap.querySelector('[data-x="close"]') as HTMLElement).onclick = close;
     const host = wrap.querySelector('[data-x="chart"]') as HTMLElement;
@@ -489,7 +489,7 @@ function ensurePanel() {
     .obs-timeline__hint { font-size:11px; color:#94a3b8; margin-bottom:10px; }
     .obs-timeline__transport { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
     .obs-timeline__scrub { flex:1; }
-    .obs-timeline__pct { min-width:36px; text-align:right; font-variant-numeric:tabular-nums; }
+    .obs-timeline__pct { min-width:36px; text-align:end; font-variant-numeric:tabular-nums; }
     .obs-timeline__speed { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:12px; }
     .obs-timeline__speed input { flex:1; }
     .obs-timeline__gantt {
@@ -551,7 +551,7 @@ function ensurePanel() {
     .obs-timeline__tabs button { flex:1; background:#1e293b; border:1px solid #334155; color:#cbd5e1; border-radius:6px; padding:4px 6px; cursor:pointer; font-size:12px; }
     .obs-timeline__tabs button.on { background:#2563eb; border-color:#3b82f6; color:#fff; }
     .obs-timeline__tbl { width:100%; border-collapse:collapse; font-size:11px; margin:6px 0; }
-    .obs-timeline__tbl th, .obs-timeline__tbl td { text-align:left; padding:2px 4px; border-bottom:1px solid #1e293b; }
+    .obs-timeline__tbl th, .obs-timeline__tbl td { text-align:start; padding:2px 4px; border-bottom:1px solid #1e293b; }
     .obs-timeline__tbl input { width:70px; background:#1e293b; border:1px solid #334155; color:#e2e8f0; border-radius:4px; }
     .obs-timeline__tbl input.custom { border-color:#f59e0b; }
     .obs-timeline__unl { max-height:140px; overflow:auto; font-size:11px; color:#94a3b8; }

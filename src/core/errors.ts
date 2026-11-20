@@ -145,7 +145,7 @@ export function renderBootFailure(failure: BootFailure): void {
   const card = document.createElement("div");
   card.style.cssText =
     "max-width:640px;width:100%;background:#1c1e28;" +
-    "border:1px solid #2a2e3a;border-left:4px solid #ef4444;" +
+    "border:1px solid #2a2e3a;border-inline-start:4px solid #ef4444;" +
     "border-radius:12px;padding:24px 26px;" +
     "box-shadow:0 24px 60px rgba(0,0,0,.55)";
 

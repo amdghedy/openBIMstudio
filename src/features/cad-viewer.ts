@@ -1244,7 +1244,7 @@ const CAD_CSS = `
     .obs-cad-viewer button.on{background:#0284c7;border-color:#38bdf8;color:#ffffff}
     .obs-cad-viewer .bar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:5px 8px;background:#151a23;border-bottom:1px solid #2a3140}
     .obs-cad-viewer .sep{width:1px;height:20px;background:#2f3846;margin:0 4px}
-    .obs-cad-viewer .side{width:270px;display:flex;flex-direction:column;background:#151a23;border-left:1px solid #2a3140;min-height:0}
+    .obs-cad-viewer .side{width:270px;display:flex;flex-direction:column;background:#151a23;border-inline-start:1px solid #2a3140;min-height:0}
     .obs-cad-viewer .side h4{margin:0;padding:6px 8px;background:#1b212c;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#9aa4b2;display:flex;align-items:center;justify-content:space-between}
     .obs-cad-viewer .lyr{display:flex;align-items:center;gap:6px;padding:2px 8px}
     .obs-cad-viewer .lyr:hover{background:#1b212c}
@@ -1260,8 +1260,8 @@ const CAD_CSS = `
     .obs-cad-viewer .cadrb-strip,.obs-cad-shell .cadrb-strip{display:flex;align-items:stretch;flex:none;height:104px;padding:7px 8px;overflow-x:auto;overflow-y:hidden;background:linear-gradient(180deg,var(--bg-surface,#12141b) 0%,var(--bg-base,#0b0d12) 100%);border-bottom:1px solid var(--border-default,#2a2e3a);user-select:none;scrollbar-width:thin}
     .obs-cad-viewer .cadrb-host,.obs-cad-shell .cadrb-host{display:flex;align-items:stretch;flex:none}
     .obs-cad-viewer .cadrb-host--end,.obs-cad-shell .cadrb-host--end{flex:1 0 auto}
-    .obs-cad-viewer .cadrg,.obs-cad-shell .cadrg{display:flex;flex-direction:column;align-items:center;padding:0 4px;border-right:1px solid var(--border-subtle,#1e2029);min-width:0;flex:none;height:100%}
-    .obs-cad-viewer .cadrg--end,.obs-cad-shell .cadrg--end{margin-left:auto;border-right:none}
+    .obs-cad-viewer .cadrg,.obs-cad-shell .cadrg{display:flex;flex-direction:column;align-items:center;padding:0 4px;border-inline-end:1px solid var(--border-subtle,#1e2029);min-width:0;flex:none;height:100%}
+    .obs-cad-viewer .cadrg--end,.obs-cad-shell .cadrg--end{margin-inline-start:auto;border-inline-end:none}
     .obs-cad-viewer .cadrg__body,.obs-cad-shell .cadrg__body{flex:1;display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,var(--cadrb-h));grid-auto-columns:var(--cadrb-w);gap:var(--cadrb-gap);align-content:center;justify-content:center;min-width:0}
     .obs-cad-viewer .cadrg__body--fields,.obs-cad-shell .cadrg__body--fields{grid-auto-columns:auto;column-gap:6px}
     .obs-cad-viewer .cadrg__label,.obs-cad-shell .cadrg__label{text-align:center;font:500 9px var(--font-sans,system-ui);letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary,#6b7280);padding-top:3px;white-space:nowrap;opacity:.65;flex:none}
@@ -1272,6 +1272,13 @@ const CAD_CSS = `
     .obs-cad-viewer .cadrb--danger,.obs-cad-shell .cadrb--danger{color:#fca5a5}
     .obs-cad-viewer .cadrb--danger:hover,.obs-cad-shell .cadrb--danger:hover{background:rgba(239,68,68,.15);border-color:#ef4444;color:#fecaca}
     .obs-cad-viewer .cadrb--flip .cadrb__icon,.obs-cad-shell .cadrb--flip .cadrb__icon{transform:scaleX(-1)}
+    /* RTL (#141): directional history icons mirror. Redo reuses the undo SVG
+       via .cadrb--flip in LTR; under dir=rtl the pair swaps — undo points
+       right, redo points left (unflipped). Same for the Quick Access undo/redo. */
+    html[dir="rtl"] .obs-cad-viewer .cadrb[data-a="undo"] .cadrb__icon,html[dir="rtl"] .obs-cad-shell .cadrb[data-a="undo"] .cadrb__icon{transform:scaleX(-1)}
+    html[dir="rtl"] .obs-cad-viewer .cadrb[data-a="redo"] .cadrb__icon,html[dir="rtl"] .obs-cad-shell .cadrb[data-a="redo"] .cadrb__icon{transform:none}
+    html[dir="rtl"] .obs-cad-shell .cad-qat [data-qat="undo"] svg{transform:scaleX(-1)}
+    html[dir="rtl"] .obs-cad-shell .cad-qat [data-qat="redo"] .qat-flip{transform:none}
     .obs-cad-viewer .cadrb__icon,.obs-cad-shell .cadrb__icon{display:flex;align-items:center;justify-content:center;width:var(--cadrb-icon);height:var(--cadrb-icon);color:inherit;pointer-events:none;flex:none}
     .obs-cad-viewer .cadrb__icon svg,.obs-cad-shell .cadrb__icon svg{display:block;width:var(--cadrb-icon);height:var(--cadrb-icon);stroke:currentColor;fill:none;stroke-width:1.9}
     .obs-cad-viewer .cadrb__icon svg [fill="currentColor"],.obs-cad-shell .cadrb__icon svg [fill="currentColor"]{fill:currentColor;stroke:none}
@@ -1297,7 +1304,7 @@ const CAD_CSS = `
     .obs-cad-fs-chip{position:absolute;top:8px;right:10px;z-index:30;padding:4px 10px;background:rgba(21,26,35,.82);color:#cbd5e1;border:1px solid #334155;border-radius:5px;font:11px system-ui,sans-serif;cursor:pointer;opacity:.35;transition:opacity .15s}
     .obs-cad-fs-chip:hover{opacity:1}
     .obs-cad-shell .cad-ribtab.on{color:#f8fafc;background:#151a23;border-bottom-color:#38bdf8}
-    .obs-cad-shell .cad-qat{margin-left:auto;display:flex;align-items:center;gap:1px}
+    .obs-cad-shell .cad-qat{margin-inline-start:auto;display:flex;align-items:center;gap:1px}
     .obs-cad-shell .cad-qat button{width:26px;height:26px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#9aa4b2;cursor:pointer}
     .obs-cad-shell .cad-qat button:hover{background:#1b212c;color:#e8eaf0;border-color:#2a3140}
     .obs-cad-shell .cad-qat button svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9}
@@ -1405,7 +1412,7 @@ const CAD_CSS = `
     .obs-cad-shell .cadtab__x:hover{background:#ef4444;color:#fff}
     .obs-cad-shell .cadtab--plus{padding:6px 10px;font-size:14px}
     .obs-cad-shell .cadmenu{background:#1e293b;border:1px solid #38bdf8;border-radius:6px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:150px}
-    .obs-cad-shell .cadmenu button{display:block;width:100%;text-align:left;background:transparent;border:none;color:#f8fafc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px}
+    .obs-cad-shell .cadmenu button{display:block;width:100%;text-align:start;background:transparent;border:none;color:#f8fafc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px}
     .obs-cad-shell .cadmenu button:hover{background:#0284c7}
   `;
 
@@ -3438,7 +3445,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       `<div style="opacity:.7;margin-bottom:10px">Nested path registry + detach. Attach via XREF.</div>` +
       (rows.length
         ? `<table style="width:100%;border-collapse:collapse;font-size:12px">` +
-          `<tr style="text-align:left;opacity:.65"><th>Name</th><th>Path</th><th>Parent</th><th></th></tr>` +
+          `<tr style="text-align:start;opacity:.65"><th>Name</th><th>Path</th><th>Parent</th><th></th></tr>` +
           rows
             .map(
               (n) =>
@@ -3999,7 +4006,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const button = document.createElement("button");
       button.type = "button";
       button.setAttribute("role", "option");
-      button.style.cssText = "display:block;width:100%;text-align:left;border:0;border-radius:5px;padding:7px 8px;margin:2px 0;background:#1f2937;color:#f8fafc;cursor:pointer;font:inherit";
+      button.style.cssText = "display:block;width:100%;text-align:start;border:0;border-radius:5px;padding:7px 8px;margin:2px 0;background:#1f2937;color:#f8fafc;cursor:pointer;font:inherit";
       const detail = entity.type === "TEXT" ? " · " + String(entity.value ?? "").slice(0, 28) : "";
       button.textContent = (position + 1) + ".  " + entity.type + " · Layer " + entity.layer + detail;
       button.addEventListener("mouseenter", () => { button.style.background = "#334155"; });
@@ -5807,8 +5814,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const addLabel = (label: string) => { const d=document.createElement("div"); d.textContent=label; d.style.cssText="padding:5px 11px 3px;color:#8fa0b4;font-size:9px;font-weight:700;letter-spacing:.08em"; menu.appendChild(d); };
     const addItem = (label: string, run: () => void, disabled = false, danger = false, shortcut = "") => {
       const b=document.createElement("button"); b.type="button"; b.disabled=disabled; b.textContent=label;
-      b.style.cssText="display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:left;color:"+(danger?"#f87171":"inherit")+";font:inherit;cursor:"+(disabled?"default":"pointer")+";opacity:"+(disabled?".38":"1");
-      if(shortcut){const k=document.createElement("span");k.textContent=shortcut;k.style.cssText="margin-left:auto;color:#8291a5;font-size:10px";b.appendChild(k);}
+      b.style.cssText="display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:start;color:"+(danger?"#f87171":"inherit")+";font:inherit;cursor:"+(disabled?"default":"pointer")+";opacity:"+(disabled?".38":"1");
+      if(shortcut){const k=document.createElement("span");k.textContent=shortcut;k.style.cssText="margin-inline-start:auto;color:#8291a5;font-size:10px";b.appendChild(k);}
       b.onmouseenter=()=>{if(!disabled)b.style.background="#263447";}; b.onmouseleave=()=>b.style.background="transparent";
       b.onclick=()=>{menu.remove();run();}; menu.appendChild(b);
     };
@@ -5999,7 +6006,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           <td style="text-align:center;cursor:pointer" data-act="toggle-on">${isOff ? "💡❌" : "💡"}</td>
           <td style="text-align:center;cursor:pointer" data-act="toggle-freeze">${isFrozen ? "❄️" : "☀️"}</td>
           <td style="text-align:center;cursor:pointer" data-act="toggle-lock">${isLocked ? "🔒" : "🔓"}</td>
-          <td style="cursor:pointer" data-act="edit-color" title="Click to change colour${lyr?.rgb != null ? ` (true colour #${lyr.rgb.toString(16).padStart(6, "0").toUpperCase()})` : ""}"><span class="sw" style="display:inline-block;background:${col};vertical-align:middle;margin-right:4px"></span>${lyr?.color ?? 7}${lyr?.rgb != null ? " ᵀ" : ""}</td>
+          <td style="cursor:pointer" data-act="edit-color" title="Click to change colour${lyr?.rgb != null ? ` (true colour #${lyr.rgb.toString(16).padStart(6, "0").toUpperCase()})` : ""}"><span class="sw" style="display:inline-block;background:${col};vertical-align:middle;margin-inline-end:4px"></span>${lyr?.color ?? 7}${lyr?.rgb != null ? " ᵀ" : ""}</td>
           <td style="cursor:pointer" data-act="edit-lt" title="Click to change linetype">${escapeHtml(lyr?.lineType ?? "Continuous")}</td>
           <td style="cursor:pointer" data-act="edit-lw" title="Click to change lineweight">${lyr?.lineweight != null ? escapeHtml(lineweightLabel(lyr.lineweight)) : "Default"}</td>
           <td style="text-align:center">${transp ? `${transp}%` : "—"}</td>
@@ -6019,7 +6026,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <div style="max-height:60vh;overflow-y:auto">
         <table style="width:100%;font-size:12px;border-collapse:collapse">
           <thead>
-            <tr style="color:#9aa4b2;text-align:left;border-bottom:1px solid #334155">
+            <tr style="color:#9aa4b2;text-align:start;border-bottom:1px solid #334155">
               <th>Status</th><th>Name</th><th>On</th><th>Freeze</th><th>Lock</th><th>Color</th><th>Linetype</th><th>Lineweight</th><th>Transp.</th><th>Plot</th>
             </tr>
           </thead>
@@ -11551,7 +11558,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       doc.layers.map((l) => `<button data-lw="${escapeHtml(l.name)}" style="padding:5px 10px">${escapeHtml(l.name)}</button>`).join("") +
       `</div>` +
       `<div style="margin-top:12px;font-size:11px;color:#9aa4b2">Click layers to show only that layer (toggle = add / remove). Close restores what was visible before.</div>` +
-      `<div style="margin-top:12px;text-align:right"><button data-r="lw-close" style="padding:6px 14px">Close — restore all</button></div>`,
+      `<div style="margin-top:12px;text-align:end"><button data-r="lw-close" style="padding:6px 14px">Close — restore all</button></div>`,
     );
     const walking = new Set<string>();
     panel.querySelectorAll<HTMLButtonElement>("[data-lw]").forEach((b) => {
@@ -11585,7 +11592,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       `<b style="font-size:15px;color:#38bdf8">DWGHISTORY — session command history</b>` +
       `<div style="font-size:11px;color:#9aa4b2;margin-top:4px">${escapeHtml(name || "Drawing")} · last ${Math.min(300, lines.length)} entries · ${undoStack.length} undo step(s) deep</div>` +
       `<pre style="white-space:pre-wrap;font:11px/1.5 ui-monospace,monospace;background:#0b0d12;border:1px solid #2a3140;border-radius:8px;padding:12px;margin-top:12px;max-height:320px;overflow:auto">${escapeHtml(tail)}</pre>` +
-      `<div style="margin-top:12px;text-align:right"><button data-r="h-close" style="padding:6px 14px">Close</button></div>`,
+      `<div style="margin-top:12px;text-align:end"><button data-r="h-close" style="padding:6px 14px">Close</button></div>`,
     );
     panel.querySelector("[data-r=h-close]")?.addEventListener("click", closeOverlay);
   }
@@ -11608,7 +11615,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       `<b style="font-size:15px;color:#38bdf8">CHECKSTANDARDS — drawing standards audit</b>` +
       `<div style="font-size:11px;color:#9aa4b2;margin-top:4px">${escapeHtml(name || "Drawing")} · ${doc.layers.length} layers · ${ents.length} objects · ${issues.length} issue(s)</div>` +
       `<div style="margin-top:12px;font-size:12px">${body}</div>` +
-      `<div style="margin-top:14px;text-align:right"><button data-r="s-close" style="padding:6px 14px">Close</button></div>`,
+      `<div style="margin-top:14px;text-align:end"><button data-r="s-close" style="padding:6px 14px">Close</button></div>`,
     );
     panel.querySelector("[data-r=s-close]")?.addEventListener("click", closeOverlay);
     logCmd(`CHECKSTANDARDS: ${issues.length} issue(s) found — ${issues.filter((i) => i.severity === "error").length} error(s), ${issues.filter((i) => i.severity === "warning").length} warning(s).`);
@@ -11781,7 +11788,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const met = M.entityMetrics(e);
       if (met.length != null) totalLen += met.length;
       rows.push(
-        `<tr><td>${i}</td><td>${escapeHtml(e.type)}</td><td>${escapeHtml(e.layer)}</td><td style="text-align:right">${
+        `<tr><td>${i}</td><td>${escapeHtml(e.type)}</td><td>${escapeHtml(e.layer)}</td><td style="text-align:end">${
           met.length != null ? escapeHtml(fmt(met.length)) : "—"
         }</td></tr>`,
       );
@@ -11790,7 +11797,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <b style="font-size:14px;color:#38bdf8">drawing workspace Database Entity List (LIST)</b><br>
       <span style="color:#9aa4b2">${sel.size} objects selected · Total length: ${escapeHtml(fmt(totalLen))}</span>
       <table style="width:100%;margin-top:10px;font-size:12px">
-        <thead><tr style="color:#9aa4b2;text-align:left"><th>#</th><th>Type</th><th>Layer</th><th style="text-align:right">Length</th></tr></thead>
+        <thead><tr style="color:#9aa4b2;text-align:start"><th>#</th><th>Type</th><th>Layer</th><th style="text-align:end">Length</th></tr></thead>
         <tbody>${rows.join("")}</tbody>
       </table>
       <div style="margin-top:14px"><button data-r="rep-close" style="padding:6px 14px">Close</button></div>
@@ -11831,7 +11838,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           • <b>LA / LAYER</b> — Layer Properties Manager<br>
         </div>
       </div>
-      <div style="margin-top:14px;text-align:right"><button data-r="help-close" style="padding:6px 14px">OK</button></div>
+      <div style="margin-top:14px;text-align:end"><button data-r="help-close" style="padding:6px 14px">OK</button></div>
     `);
     panel.querySelector("[data-r=help-close]")?.addEventListener("click", closeOverlay);
   }
@@ -11843,18 +11850,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const rows = dimStyleList.map((s) =>
       `<tr data-style="${s.name}" style="cursor:pointer;background:${s.name === currentDimStyleName ? "#0e3a4a" : "transparent"}">
         <td style="padding:4px 8px;${s.name === currentDimStyleName ? "color:#38bdf8;font-weight:700" : ""}">${s.name}${s.name === currentDimStyleName ? " ◀ current" : ""}</td>
-        <td style="padding:4px 8px;text-align:right">${s.textHeight}</td>
-        <td style="padding:4px 8px;text-align:right">${s.arrowSize || "auto"}</td>
-        <td style="padding:4px 8px;text-align:right">${s.precision}</td>
+        <td style="padding:4px 8px;text-align:end">${s.textHeight}</td>
+        <td style="padding:4px 8px;text-align:end">${s.arrowSize || "auto"}</td>
+        <td style="padding:4px 8px;text-align:end">${s.precision}</td>
         <td style="padding:4px 8px">${s.suffix || "—"}</td>
-        <td style="padding:4px 8px;text-align:right">${s.linearScale}</td>
+        <td style="padding:4px 8px;text-align:end">${s.linearScale}</td>
       </tr>`,
     ).join("");
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">Dimension Style Manager</b>
       <div style="font-size:11px;color:#9aa4b2;margin-top:2px">Styles drive every associative dimension — applying a style re-renders and re-measures its dimensions.</div>
       <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;border:1px solid #2a3340">
-        <thead><tr style="color:#9aa4b2;text-align:left"><th style="padding:4px 8px">Style</th><th style="padding:4px 8px;text-align:right">Text ht</th><th style="padding:4px 8px;text-align:right">Tick</th><th style="padding:4px 8px;text-align:right">Dec</th><th style="padding:4px 8px">Suffix</th><th style="padding:4px 8px;text-align:right">Factor</th></tr></thead>
+        <thead><tr style="color:#9aa4b2;text-align:start"><th style="padding:4px 8px">Style</th><th style="padding:4px 8px;text-align:end">Text ht</th><th style="padding:4px 8px;text-align:end">Tick</th><th style="padding:4px 8px;text-align:end">Dec</th><th style="padding:4px 8px">Suffix</th><th style="padding:4px 8px;text-align:end">Factor</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-top:12px;align-items:center;font-size:12px">

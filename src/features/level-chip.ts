@@ -80,7 +80,7 @@ elevEl.style.cssText =
 
 const caret = document.createElement("span");
 caret.textContent = GLYPH_CARET;
-caret.style.cssText = "opacity:.6;font-size:10px;margin-left:2px";
+caret.style.cssText = "opacity:.6;font-size:10px;margin-inline-start:2px";
 
 chip.append(icon, labelEl, sep, elevEl, caret);
 

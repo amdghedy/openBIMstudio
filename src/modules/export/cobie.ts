@@ -544,7 +544,7 @@ export function cobieToWorkbookHtml(ds: CobieDataset, projectName: string): stri
   h1 { font-size: 16px; }
   h2 { font-size: 13px; margin-top: 22px; }
   table { border-collapse: collapse; font-size: 11px; margin: 6px 0 20px; }
-  th { background: #f0f2f5; text-align: left; padding: 4px 8px;
+  th { background: #f0f2f5; text-align: start; padding: 4px 8px;
        border: 1px solid #cbd5e1; font-weight: 700; white-space: nowrap; }
   td { padding: 3px 8px; border: 1px solid #e3e6ea; }
   .meta { color: #6b7280; font-size: 11px; margin-bottom: 12px; }

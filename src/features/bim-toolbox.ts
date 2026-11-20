@@ -93,7 +93,7 @@ function makeSection(id: string, label: string, subtitle?: string, open = true):
     "border:1px solid var(--border-subtle);border-radius:8px;background:rgba(255,255,255,.015);overflow:hidden";
   const button = document.createElement("button");
   button.style.cssText =
-    "width:100%;display:flex;align-items:center;gap:7px;padding:7px 9px;text-align:left;" +
+    "width:100%;display:flex;align-items:center;gap:7px;padding:7px 9px;text-align:start;" +
     "background:var(--bg-elevated);color:var(--text-primary);border-bottom:1px solid var(--border-subtle);" +
     "font-weight:700;cursor:pointer";
   const caret = document.createElement("span");
@@ -102,7 +102,7 @@ function makeSection(id: string, label: string, subtitle?: string, open = true):
   name.textContent = label;
   const note = document.createElement("span");
   note.textContent = subtitle ?? "";
-  note.style.cssText = "margin-left:auto;font-size:9px;color:var(--text-tertiary);font-weight:500";
+  note.style.cssText = "margin-inline-start:auto;font-size:9px;color:var(--text-tertiary);font-weight:500";
   button.append(caret, name, note);
   const content = document.createElement("div");
   content.style.cssText = "padding:7px;display:grid;gap:6px";
@@ -128,7 +128,7 @@ function action(label: string, run: () => void | Promise<void>, accent = false):
     "min-height:28px;padding:5px 8px;border:1px solid var(--border-default);border-radius:6px;" +
     `background:${accent ? "var(--accent-dim)" : "var(--bg-inset)"};` +
     `color:${accent ? "var(--accent)" : "var(--text-secondary)"};` +
-    "font-weight:650;font-size:10.5px;cursor:pointer;text-align:left;transition:.14s ease";
+    "font-weight:650;font-size:10.5px;cursor:pointer;text-align:start;transition:.14s ease";
   b.onmouseenter = () => { b.style.background = accent ? "var(--accent-glow)" : "var(--bg-hover)"; b.style.color = "var(--text-primary)"; };
   b.onmouseleave = () => { b.style.background = accent ? "var(--accent-dim)" : "var(--bg-inset)"; b.style.color = accent ? "var(--accent)" : "var(--text-secondary)"; };
   b.onclick = async () => {

@@ -602,7 +602,7 @@ function userInterfaceButton(): HTMLButtonElement {
   btn.innerHTML =
     `<span class="obs-rb__icon">${svgIcon("tools-panel" as IconName)}</span>` +
     `<span class="obs-rb__label">User Interface` +
-      `<span style="margin-left:3px;font-size:8px;opacity:.75">\u25BE</span>` +
+      `<span style="margin-inline-start:3px;font-size:8px;opacity:.75">\u25BE</span>` +
     `</span>`;
   btn.onclick = (ev) => {
     ev.stopPropagation();
@@ -3648,7 +3648,7 @@ export function setupRibbon() {
 
   ctx.leftHost.style.cssText =
     "height:100%;overflow-y:auto;overflow-x:hidden;" +
-    "background:var(--bg-base);border-right:1px solid var(--border-default);" +
+    "background:var(--bg-base);border-inline-end:1px solid var(--border-default);" +
     "display:flex;flex-direction:column;";
   // Wheel over left dock scrolls the panel — never zooms 3D
   ctx.leftHost.addEventListener("wheel", (e) => { e.stopPropagation(); }, { passive: true });

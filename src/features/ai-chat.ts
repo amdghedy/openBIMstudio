@@ -274,7 +274,7 @@ sendBtn.textContent = "Send";
 sendBtn.style.cssText =
   "padding:8px 18px;background:var(--accent,#38bdf8);color:#0b0d12;border:none;" +
   "border-radius:6px;cursor:pointer;font:600 12px system-ui;height:34px;" +
-  "min-width:72px;margin-left:auto";
+  "min-width:72px;margin-inline-start:auto";
 
 inputTools.append(autoScrollLbl, sendBtn);
 inputRow.append(input, inputTools);
@@ -594,7 +594,7 @@ function renderHeader(): void {
     const dockLabel = document.createElement("span");
     dockLabel.textContent = "Dock";
     dockLabel.style.cssText =
-      "font-size:10px;color:var(--text-tertiary,#6b7280);margin-right:4px;flex-shrink:0";
+      "font-size:10px;color:var(--text-tertiary,#6b7280);margin-inline-end:4px;flex-shrink:0";
 
     const dockBar = document.createElement("div");
     dockBar.style.cssText = "display:flex;gap:3px;flex:1";
@@ -1480,7 +1480,7 @@ function showConfirmationCard(
     const wrap = document.createElement("div");
     wrap.style.cssText =
       "max-width:92%;align-self:flex-start;border:1px solid #f59e0b;" +
-      "border-left:3px solid #f59e0b;border-radius:6px;padding:10px 12px;" +
+      "border-inline-start:3px solid #f59e0b;border-radius:6px;padding:10px 12px;" +
       "background:rgba(245,158,11,.08);font-size:11.5px;line-height:1.5";
     wrap.onmousedown = (e) => e.stopPropagation();
 

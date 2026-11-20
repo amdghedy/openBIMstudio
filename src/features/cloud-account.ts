@@ -59,9 +59,9 @@ const STYLE = `
   letter-spacing:.08em;text-transform:uppercase;color:#64748b;white-space:nowrap}
 .obs-acct__item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border:0;
   border-radius:7px;background:transparent;color:#cbd5e1;font:13px/1.2 system-ui,sans-serif;
-  text-align:left;cursor:pointer}
+  text-align:start;cursor:pointer}
 .obs-acct__item:hover{background:rgba(56,189,248,.12)}
-.obs-acct__item .k{margin-left:auto;font:600 10px/1 ui-monospace,monospace;color:#64748b}
+.obs-acct__item .k{margin-inline-start:auto;font:600 10px/1 ui-monospace,monospace;color:#64748b}
 /* ── dialogs ── */
 .obs-acct-overlay{position:fixed;inset:0;z-index:9700;display:flex;align-items:center;
   justify-content:center;background:rgba(4,6,10,.62);backdrop-filter:blur(3px);padding:16px}

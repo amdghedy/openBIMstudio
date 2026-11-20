@@ -316,7 +316,7 @@ function buildPanel(): HTMLDivElement {
   const tableWrap = el("div", CSS.tableWrap);
   const table = el("table", CSS.table);
   table.innerHTML =
-    `<thead><tr style="background:#22242e;color:#94a3b8;text-align:left">` +
+    `<thead><tr style="background:#22242e;color:#94a3b8;text-align:start">` +
     `<th style="padding:5px 6px">File</th><th style="padding:5px 6px">Layer</th>` +
     `<th style="padding:5px 6px">Type</th><th style="padding:5px 6px">Name</th></tr></thead>`;
   const tbody = document.createElement("tbody");

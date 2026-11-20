@@ -416,7 +416,7 @@ function buildSelectionTree(
   modelWrap.appendChild(modelRow);
 
   const catBox = document.createElement("div");
-  catBox.style.cssText = "display:none;margin-left:18px;margin-top:2px";
+  catBox.style.cssText = "display:none;margin-inline-start:18px;margin-top:2px";
 
   const catNames = Object.keys(cats).sort((a, b) => a.localeCompare(b));
   for (const cat of catNames) {
@@ -750,7 +750,7 @@ function renderMemberRow(c: ElementClash, group: ClashGroup): HTMLElement {
   const row = document.createElement("div");
   row.style.cssText =
     "margin:3px 0 3px 20px;padding:8px;background:#252530;border-radius:5px;" +
-    `border-left:3px solid ${KIND_COLOR[c.kind]};font-size:11px`;
+    `border-inline-start:3px solid ${KIND_COLOR[c.kind]};font-size:11px`;
 
   const top = document.createElement("div");
   top.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap";
@@ -776,7 +776,7 @@ function renderMemberRow(c: ElementClash, group: ClashGroup): HTMLElement {
   const isolateOneBtn = document.createElement("button");
   isolateOneBtn.textContent = "Isolate";
   isolateOneBtn.style.cssText =
-    "margin-left:auto;padding:2px 8px;background:#24252f;color:#cbd5e1;" +
+    "margin-inline-start:auto;padding:2px 8px;background:#24252f;color:#cbd5e1;" +
     "border:1px solid #34353f;border-radius:4px;cursor:pointer;font-size:10px";
   isolateOneBtn.onclick = (e) => { e.stopPropagation(); void isolateClashPair(c); };
 

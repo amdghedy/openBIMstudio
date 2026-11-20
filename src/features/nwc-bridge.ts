@@ -332,7 +332,7 @@ function openBridgeStatusModal(fileName: string): BridgeStatusModal {
   body.appendChild(folderBox);
 
   const steps = document.createElement("div");
-  steps.style.cssText = "display:none;color:#c6d2e2;padding:11px 12px;border-left:3px solid #38bdf8;background:#101d2c;border-radius:4px;";
+  steps.style.cssText = "display:none;color:#c6d2e2;padding:11px 12px;border-inline-start:3px solid #38bdf8;background:#101d2c;border-radius:4px;";
   steps.innerHTML =
     `<strong style="display:block;margin-bottom:6px">In the Navisworks window that just opened:</strong>` +
     `BIMCamel tab ▸ <strong>IFC exporter</strong> ▸ Export ▸ save into the folder above.`;
@@ -470,7 +470,7 @@ export function showNwcConvertWizard(
 
     // Diagnosis banner
     const banner = document.createElement("div");
-    banner.style.cssText = "padding:11px 12px;border-left:3px solid #e0a33a;background:#2a2418;color:#f4dfb5;border-radius:4px;";
+    banner.style.cssText = "padding:11px 12px;border-inline-start:3px solid #e0a33a;background:#2a2418;color:#f4dfb5;border-radius:4px;";
     if (!health) {
       banner.textContent =
         "The openBIM NWC bridge is not running on this PC (127.0.0.1:8424 did not answer). Start it once — Route A below.";
@@ -513,7 +513,7 @@ export function showNwcConvertWizard(
       title.style.cssText = "font-weight:700;font-size:14px;margin-bottom:8px;";
       title.textContent = route === "bridge" ? "Route A — automatic via the local bridge (recommended)" : "Route B — manual export, then pick the IFC";
       const list = document.createElement("ol");
-      list.style.cssText = "margin:0;padding-left:20px;color:#c6d2e2;display:grid;gap:7px;";
+      list.style.cssText = "margin:0;padding-inline-start:20px;color:#c6d2e2;display:grid;gap:7px;";
       for (const step of route === "bridge" ? bridgeSteps : manualSteps) {
         const li = document.createElement("li");
         li.textContent = step;

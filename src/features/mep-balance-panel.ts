@@ -64,7 +64,7 @@ export function openMepBalancePanel(): void {
     <div style="flex: 1; overflow-y: auto; padding: 16px 20px;">
       <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
         <thead>
-          <tr style="border-bottom: 1px solid #475569; text-align: left; color: #94a3b8;">
+          <tr style="border-bottom: 1px solid #475569; text-align: start; color: #94a3b8;">
             <th style="padding: 8px;">Branch</th>
             <th style="padding: 8px;">From &rarr; To</th>
             <th style="padding: 8px;">Size</th>

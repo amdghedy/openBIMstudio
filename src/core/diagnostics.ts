@@ -197,7 +197,7 @@ function renderPanel(): void {
     const color = e.level === "error" ? "#ef4444" : e.level === "warn" ? "#f59e0b" : "#38bdf8";
     row.style.cssText =
       "padding:7px 9px;margin-bottom:5px;border-radius:6px;" +
-      `border-left:3px solid ${color};background:rgba(255,255,255,.02);font-size:11px;line-height:1.4`;
+      `border-inline-start:3px solid ${color};background:rgba(255,255,255,.02);font-size:11px;line-height:1.4`;
     const time = new Date(e.ts).toLocaleTimeString();
     const msg = String(e.message)
       .replace(/&/g, "&amp;")
@@ -207,7 +207,7 @@ function renderPanel(): void {
       `<div style="display:flex;gap:6px;align-items:baseline;font-size:10px;color:#6b7280">` +
       `<b style="color:${color}">${e.level.toUpperCase()}</b>` +
       `<span style="font-family:monospace">${e.scope}</span>` +
-      `<span style="margin-left:auto">${time}</span></div>` +
+      `<span style="margin-inline-start:auto">${time}</span></div>` +
       `<div style="margin-top:3px;word-break:break-word">${msg}</div>`;
     body.appendChild(row);
   }

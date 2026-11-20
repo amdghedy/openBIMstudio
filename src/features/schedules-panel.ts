@@ -551,7 +551,7 @@ function renderTable(): void {
   for (const col of cols) {
     const th = document.createElement("th");
     th.style.cssText =
-      "padding:8px 10px;text-align:left;font-weight:600;font-size:11px;" +
+      "padding:8px 10px;text-align:start;font-weight:600;font-size:11px;" +
       "color:var(--text-secondary,#a0a6b5);text-transform:uppercase;letter-spacing:0.5px;" +
       "border-bottom:1px solid var(--border-default,#2a2e3a);cursor:pointer;white-space:nowrap;" +
       `width:${col.width ?? 120}px`;
@@ -598,7 +598,7 @@ function renderTable(): void {
       const padLeft = i === 0 ? 10 + (r.depth ?? 0) * 16 : 10;
       td.style.cssText =
         `padding:6px 10px 6px ${padLeft}px;font-size:12px;` +
-        (isNum ? "text-align:right;font-family:var(--font-mono,monospace);" : "");
+        (isNum ? "text-align:end;font-family:var(--font-mono,monospace);" : "");
 
       let value: any;
       if (isSubtotal && r.subtotalValues && col.key in r.subtotalValues) {
@@ -670,7 +670,7 @@ function renderDiffView(): void {
   banner.innerHTML =
     `<b>Diff against "${escapeHtml(diff.snapshotLabel)}"</b> ` +
     `<span style="opacity:.6">(${fmtDateTime(diff.snapshotAt)})</span>` +
-    `<span style="margin-left:auto;opacity:.7">${summarizeDiff(diff)}</span>`;
+    `<span style="margin-inline-start:auto;opacity:.7">${summarizeDiff(diff)}</span>`;
 
   const back = document.createElement("button");
   back.textContent = "← Back to table";
@@ -710,7 +710,7 @@ function renderDiffView(): void {
     section("Added", "#22c55e", diff.added, (e) => {
       const row = document.createElement("div");
       row.style.cssText =
-        "padding:6px 8px;background:rgba(34,197,94,.08);border-left:3px solid #22c55e;" +
+        "padding:6px 8px;background:rgba(34,197,94,.08);border-inline-start:3px solid #22c55e;" +
         "border-radius:4px;margin:3px 0;font-size:11px";
       row.textContent = `${e.rowId} — ${describeValues(e.values)}`;
       return row;
@@ -721,7 +721,7 @@ function renderDiffView(): void {
     section("Removed", "#ef4444", diff.removed, (e) => {
       const row = document.createElement("div");
       row.style.cssText =
-        "padding:6px 8px;background:rgba(239,68,68,.08);border-left:3px solid #ef4444;" +
+        "padding:6px 8px;background:rgba(239,68,68,.08);border-inline-start:3px solid #ef4444;" +
         "border-radius:4px;margin:3px 0;font-size:11px";
       row.textContent = `${e.rowId} — ${describeValues(e.values)}`;
       return row;
@@ -732,7 +732,7 @@ function renderDiffView(): void {
     section("Changed", "#f59e0b", diff.changed, (e) => {
       const row = document.createElement("div");
       row.style.cssText =
-        "padding:6px 8px;background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;" +
+        "padding:6px 8px;background:rgba(245,158,11,.08);border-inline-start:3px solid #f59e0b;" +
         "border-radius:4px;margin:3px 0;font-size:11px";
       const lines = (e.changedColumns ?? []).slice(0, 8).map(
         (c: any) =>
@@ -872,13 +872,13 @@ function renderFooter(): void {
   placeBtn.textContent = "Place on sheet";
   placeBtn.title = "Create a schedule view and drop it on a drawing sheet at 1:1 paper scale";
   placeBtn.style.cssText =
-    "margin-left:auto;padding:3px 10px;background:var(--bg-elevated,#181a23);" +
+    "margin-inline-start:auto;padding:3px 10px;background:var(--bg-elevated,#181a23);" +
     "color:var(--text-primary,#e8eaf0);border:1px solid var(--border-default,#2a2e3a);" +
     "border-radius:4px;cursor:pointer;font-size:11px";
   placeBtn.onclick = () => void placeOnSheet();
 
   const hint = document.createElement("span");
-  hint.style.cssText = "margin-left:auto;opacity:.55";
+  hint.style.cssText = "margin-inline-start:auto;opacity:.55";
   hint.textContent =
     `${savedCount} saved · ƒ = formula · Esc to close`;
   footer.append(info, placeBtn, hint);

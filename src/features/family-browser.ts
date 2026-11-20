@@ -100,7 +100,7 @@ body.style.cssText = "display:flex;flex:1;min-height:0;height:520px";
 
 const treePane = document.createElement("div");
 treePane.style.cssText =
-  "width:230px;flex:none;overflow-y:auto;padding:6px 4px;border-right:1px solid var(--border-subtle,#1e2029);" +
+  "width:230px;flex:none;overflow-y:auto;padding:6px 4px;border-inline-end:1px solid var(--border-subtle,#1e2029);" +
   "background:#0b0d12";
 
 const detailPane = document.createElement("div");
@@ -364,10 +364,10 @@ function renderDetail(): void {
   const pHead = document.createElement("thead");
   pHead.innerHTML =
     `<tr style="background:#12141b">` +
-    `<th style="text-align:left;padding:4px 6px;font-weight:600;color:#94a3b8">Name</th>` +
-    `<th style="text-align:left;padding:4px 6px;font-weight:600;color:#94a3b8">Type</th>` +
-    `<th style="text-align:left;padding:4px 6px;font-weight:600;color:#94a3b8">Scope</th>` +
-    `<th style="text-align:right;padding:4px 6px;font-weight:600;color:#94a3b8">Value</th>` +
+    `<th style="text-align:start;padding:4px 6px;font-weight:600;color:#94a3b8">Name</th>` +
+    `<th style="text-align:start;padding:4px 6px;font-weight:600;color:#94a3b8">Type</th>` +
+    `<th style="text-align:start;padding:4px 6px;font-weight:600;color:#94a3b8">Scope</th>` +
+    `<th style="text-align:end;padding:4px 6px;font-weight:600;color:#94a3b8">Value</th>` +
     `</tr>`;
   pTable.appendChild(pHead);
   const pBody = document.createElement("tbody");
@@ -391,7 +391,7 @@ function renderDetail(): void {
       `<td style="padding:4px 6px">` + esc(p.label ?? p.name) + `</td>` +
       `<td style="padding:4px 6px;color:#94a3b8">` + esc(p.type) + (p.unit ? " (" + esc(p.unit) + ")" : "") + `</td>` +
       `<td style="padding:4px 6px;color:#94a3b8">` + esc(p.scope) + `</td>` +
-      `<td style="padding:4px 6px;text-align:right;font-family:ui-monospace,monospace;color:#7dd3fc">` + esc(formatted) + `</td>`;
+      `<td style="padding:4px 6px;text-align:end;font-family:ui-monospace,monospace;color:#7dd3fc">` + esc(formatted) + `</td>`;
     pBody.appendChild(tr);
   }
   pTable.appendChild(pBody);
@@ -801,7 +801,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
       pitchControl.input.addEventListener("input", applyOrientation);
       const orientationHint = document.createElement("span");
       orientationHint.textContent = "Yaw: +X → +Z · Pitch: −90° to +90°";
-      orientationHint.style.cssText = "align-self:center;color:#64748b;font-size:9px;margin-left:4px";
+      orientationHint.style.cssText = "align-self:center;color:#64748b;font-size:9px;margin-inline-start:4px";
       orientation.append(yawControl.field, pitchControl.field, orientationHint);
       card.append(identity, coords, orientation);
       list.appendChild(card);
@@ -1060,7 +1060,7 @@ function buildFormulaDiagnosticsBlock(
   for (const e of errors.values()) {
     const row = document.createElement("div");
     row.style.cssText =
-      "margin-top:6px;padding:5px 8px;border-left:2px solid #ef4444;" +
+      "margin-top:6px;padding:5px 8px;border-inline-start:2px solid #ef4444;" +
       "background:rgba(239,68,68,.07);font-size:10.5px;line-height:1.5;color:#fca5a5";
     const strong = document.createElement("b");
     strong.textContent = e.parameter + ": ";

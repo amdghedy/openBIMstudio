@@ -274,7 +274,7 @@ function renderNode(node: BrowserNode, depth: number): string {
 
   let html = `
     <div class="pb-row ${isSel ? "is-sel" : ""}" data-id="${esc(node.id)}" data-kind="${esc(node.kind)}"
-         style="padding-left:${pad}px" title="${esc(node.label)}">
+         style="padding-inline-start:${pad}px" title="${esc(node.label)}">
       <span class="pb-chev" data-toggle="${esc(node.id)}">${chevron}</span>
       <span class="pb-icon">${node.icon}</span>
       <span class="pb-label">${esc(node.label)}</span>
@@ -394,15 +394,17 @@ function ensurePanel() {
     }
     .obs-project-browser .pb-row {
       display:flex;align-items:center;gap:6px;padding:4px 8px 4px 8px;
-      cursor:pointer;border-left:2px solid transparent;
+      cursor:pointer;border-inline-start:2px solid transparent;
     }
     .obs-project-browser .pb-row:hover { background:#222533; }
     .obs-project-browser .pb-row.is-sel {
-      background:#1e3a5f;border-left-color:#38bdf8;
+      background:#1e3a5f;border-inline-start-color:#38bdf8;
     }
     .obs-project-browser .pb-chev {
       width:12px;font-size:9px;color:#64748b;text-align:center;flex-shrink:0;
     }
+    /* RTL (#141): the expand chevron "▶" points the other way (scaleX of "▼" is still "▼"). */
+    html[dir="rtl"] .obs-project-browser .pb-chev { display:inline-block;transform:scaleX(-1); }
     .obs-project-browser .pb-icon { flex-shrink:0;font-size:12px; }
     .obs-project-browser .pb-label {
       flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;

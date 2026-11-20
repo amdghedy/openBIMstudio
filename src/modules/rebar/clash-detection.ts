@@ -186,7 +186,7 @@ export function clashReportToHTML(report: ClashReport): string {
     .critical { background: #fee2e2; color: #991b1b; }
     .warning { background: #fef3c7; color: #92400e; }
     table { width: 100%; border-collapse: collapse; margin-top: 16px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+    th, td { padding: 10px 14px; text-align: start; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
     th { background: #f1f5f9; font-weight: 600; }
   </style>
 </head>

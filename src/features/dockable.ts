@@ -417,7 +417,7 @@ const handleEls: HTMLDivElement[] = [];
     const b = document.createElement("button");
     b.type = "button"; b.textContent = label; b.title = title;
     b.style.cssText =
-      "width:24px;height:22px;padding:0;margin-left:2px;border:1px solid rgba(148,163,184,.25);" +
+      "width:24px;height:22px;padding:0;margin-inline-start:2px;border:1px solid rgba(148,163,184,.25);" +
       "border-radius:4px;background:rgba(15,23,42,.35);color:#cbd5e1;cursor:pointer;font:12px system-ui";
     b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
     b.onmouseenter = () => { b.style.background = "rgba(56,189,248,.14)"; };
@@ -464,7 +464,7 @@ const handleEls: HTMLDivElement[] = [];
       if (!controlsHost || controlsHost.parentElement !== header) {
         controlsHost = document.createElement("div");
         controlsHost.style.cssText =
-          "display:flex;align-items:center;gap:2px;flex:none;margin-left:auto";
+          "display:flex;align-items:center;gap:2px;flex:none;margin-inline-start:auto";
         controlsHost.dataset.obsWindowControls = "1";
         header.appendChild(controlsHost);
       }

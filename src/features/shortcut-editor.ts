@@ -95,7 +95,7 @@ export function openShortcutEditor(): void {
     "<div style='flex:1'><div style='font-weight:700;font-size:15px'>Keyboard Shortcuts</div>" +
     "<div style='font-size:11px;color:#94a3b8;margin-top:2px'>Click a shortcut box, then type 1–3 letters (e.g. WA) or press a combination (e.g. Ctrl+Shift+K). Enter saves, Backspace clears, Esc cancels.</div></div></div>";
   const close = document.createElement("button");
-  close.textContent = "✕"; close.style.cssText = "margin-left:10px;width:28px;height:28px;border-radius:4px;background:transparent;color:#94a3b8;border:1px solid #2a2e3a;cursor:pointer";
+  close.textContent = "✕"; close.style.cssText = "margin-inline-start:10px;width:28px;height:28px;border-radius:4px;background:transparent;color:#94a3b8;border:1px solid #2a2e3a;cursor:pointer";
   close.onclick = closeShortcutEditor;
   card.firstElementChild!.appendChild(close);
 

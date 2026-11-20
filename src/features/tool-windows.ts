@@ -52,7 +52,7 @@ function btnCss(active = false): string {
 
 function buildDockBar(dock: DockHandle, onChange: () => void): HTMLDivElement {
   const bar = document.createElement("div");
-  bar.style.cssText = "display:flex;align-items:center;gap:3px;margin-left:auto;margin-right:6px";
+  bar.style.cssText = "display:flex;align-items:center;gap:3px;margin-inline-start:auto;margin-inline-end:6px";
   const sides: Array<{ side: DockSide; label: string; title: string }> = [
     { side: "left", label: "Left", title: "Dock left" },
     { side: "right", label: "Right", title: "Dock right" },

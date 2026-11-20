@@ -164,7 +164,7 @@ const STYLE = `
 .obs-usage-badge.light .obs-usage-num{color:#0284c7}
 .obs-usage-label{opacity:.75;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
 .obs-usage-flag{font-size:14px}
-.obs-usage-badge .obs-usage-reset{margin-left:auto;background:none;border:none;color:#64748b;cursor:pointer;font-size:10px;padding:0;text-decoration:underline}
+.obs-usage-badge .obs-usage-reset{margin-inline-start:auto;background:none;border:none;color:#64748b;cursor:pointer;font-size:10px;padding:0;text-decoration:underline}
 `;
 
 function injectStyle(): void {

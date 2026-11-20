@@ -51,7 +51,7 @@ export function showTrimbleImportAssistant(
     body.appendChild(source);
 
     const warning = document.createElement("div");
-    warning.style.cssText = "padding:11px 12px;border-left:3px solid #e0a33a;background:#2a2418;color:#f4dfb5;border-radius:4px;";
+    warning.style.cssText = "padding:11px 12px;border-inline-start:3px solid #e0a33a;background:#2a2418;color:#f4dfb5;border-radius:4px;";
     warning.textContent =
       "RWCX is not decoded by the browser. Keep the original Trimble work-order / Scan Data folder intact; companion files may be required for registration and project coordinates.";
     body.appendChild(warning);
@@ -82,7 +82,7 @@ export function showTrimbleImportAssistant(
       const title = document.createElement("div");
       title.style.cssText = "font-weight:700;font-size:14px;margin-bottom:8px;";
       const list = document.createElement("ol");
-      list.style.cssText = "margin:0;padding-left:20px;color:#c6d2e2;display:grid;gap:7px;";
+      list.style.cssText = "margin:0;padding-inline-start:20px;color:#c6d2e2;display:grid;gap:7px;";
       const steps = route === "tbc"
         ? [
             "Open Trimble Business Center (TBC 5.80 or later with Scanning support).",

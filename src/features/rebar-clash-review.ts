@@ -55,7 +55,7 @@ export function openRebarClashReview(bars?: RebarBar[]): void {
       <button id="obs-rebar-html-btn" style="background: #334155; color: #f8fafc; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;">Export HTML Report</button>
       <div style="flex: 1;"></div>
       <label style="font-size: 13px; color: #94a3b8;">Filter:
-        <select id="obs-rebar-filter" style="background: #1e293b; color: white; border: 1px solid #475569; padding: 4px 8px; border-radius: 4px; margin-left: 6px;">
+        <select id="obs-rebar-filter" style="background: #1e293b; color: white; border: 1px solid #475569; padding: 4px 8px; border-radius: 4px; margin-inline-start: 6px;">
           <option value="all">All (${currentReport.summary.total})</option>
           <option value="critical">Hard Clashes (${currentReport.summary.hard})</option>
           <option value="warning">Clearance Warnings (${currentReport.summary.clearance})</option>
@@ -69,7 +69,7 @@ export function openRebarClashReview(bars?: RebarBar[]): void {
           ? `<div style="padding: 40px; text-align: center; color: #94a3b8;">No rebar clashes detected in the current layout. All bars satisfy minimum standard clearances!</div>`
           : `<table style="width: 100%; border-collapse: collapse; font-size: 13px;">
               <thead>
-                <tr style="border-bottom: 1px solid #475569; text-align: left; color: #94a3b8;">
+                <tr style="border-bottom: 1px solid #475569; text-align: start; color: #94a3b8;">
                   <th style="padding: 8px;">Severity</th>
                   <th style="padding: 8px;">Bar 1</th>
                   <th style="padding: 8px;">Bar 2</th>

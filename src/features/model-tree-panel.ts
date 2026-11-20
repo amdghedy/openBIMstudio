@@ -211,7 +211,7 @@ function renderRow(
     label.textContent = item.name;
     const cat = document.createElement("span");
     cat.style.cssText =
-      "opacity:.5;font-size:10px;margin-left:6px;font-family:var(--font-mono,monospace)";
+      "opacity:.5;font-size:10px;margin-inline-start:6px;font-family:var(--font-mono,monospace)";
     cat.textContent = prettyCategoryName(item.category);
     label.appendChild(cat);
   } else {

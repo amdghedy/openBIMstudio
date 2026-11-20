@@ -102,7 +102,7 @@ function update() {
   const levelVal = getLevel();
   
   const elevHtml = tool && tool !== "select" 
-    ? `<span class="bb-status__seg" style="background:#38bdf8;color:#0b0d12;padding:2px 6px;border-radius:4px;margin-right:8px;font-weight:700;display:inline-block">Elev: ${levelVal.toFixed(2)}m</span>` 
+    ? `<span class="bb-status__seg" style="background:#38bdf8;color:#0b0d12;padding:2px 6px;border-radius:4px;margin-inline-end:8px;font-weight:700;display:inline-block">Elev: ${levelVal.toFixed(2)}m</span>` 
     : "";
 
   const toolHtml = tool

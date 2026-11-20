@@ -28,7 +28,7 @@ function installStyle(): void {
   width: auto; min-width: 108px; min-height: 32px; padding: 6px 9px;
   border-radius: 7px; border: 1px solid #2a2e3a; background: #1e2029;
   color: #cbd5e1; font: 600 11px/1.2 Inter, system-ui, sans-serif;
-  cursor: pointer; text-align: left;
+  cursor: pointer; text-align: start;
   box-shadow: 0 2px 8px rgba(0,0,0,.22);
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }

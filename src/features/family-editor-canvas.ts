@@ -72,7 +72,7 @@ function buildDialog() {
   toolbar.innerHTML = `
     <button data-tool="rect" style="background:#2563eb;color:#fff;border:none;border-radius:4px;padding:6px 14px;cursor:pointer;">▭ Rectangle</button>
     <button data-tool="circle" style="background:#334155;color:#fff;border:none;border-radius:4px;padding:6px 14px;cursor:pointer;">○ Circle</button>
-    <button id="clear-btn" style="margin-left:auto;background:#dc2626;color:#fff;border:none;border-radius:4px;padding:6px 14px;cursor:pointer;">Clear</button>
+    <button id="clear-btn" style="margin-inline-start:auto;background:#dc2626;color:#fff;border:none;border-radius:4px;padding:6px 14px;cursor:pointer;">Clear</button>
   `;
 
   card.append(header, body, toolbar);
