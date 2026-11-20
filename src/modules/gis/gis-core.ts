@@ -13,25 +13,70 @@ export interface GisLayer { name: string; features: GisFeature[]; warnings: stri
 export interface LocalFeature { kind: GisKind; parts: Array<Array<[number, number]>>; props: GisFeature["props"] }
 export interface LocalLayer { name: string; features: LocalFeature[]; warnings: string[]; crsNote: string; origin: { x: number; y: number }; geographic: boolean; widthM: number; heightM: number }
 
+import { safeLoad, GeoJsonSchema } from "../../core/safeLoad";
+
 /* ───────────────────────────── GeoJSON ───────────────────────────── */
 
+/**
+ * Bounds for a GeoJSON import (issue #90). The file is JSON.parsed, so the
+ * size / depth / node limits are enforced by safeLoad BEFORE the walker runs;
+ * the feature / vertex caps stop a hostile-but-valid file from building an
+ * unbounded scene (the shapefile reader uses the same 5M-vertex ceiling).
+ */
+export const GEOJSON_MAX_BYTES = 20 * 1024 * 1024;
+export const GEOJSON_MAX_DEPTH = 32;
+export const GEOJSON_MAX_NODES = 2_000_000;
+export const GEOJSON_MAX_FEATURES = 100_000;
+export const GEOJSON_MAX_VERTICES = 5_000_000;
+
+/**
+ * Parse already-validated GeoJSON text through the shared safeLoad pipeline:
+ * size, JSON syntax and nesting/complexity are bounded before the document
+ * is walked. Error messages keep the pre-existing wording ("Not valid JSON",
+ * "Not GeoJSON") so callers and tests do not change.
+ */
 export function parseGeoJson(text: string, name = "GeoJSON"): GisLayer {
+  const cleaned = text.replace(/^﻿/, "");
+  const loaded = safeLoad("GeoJSON", cleaned, GeoJsonSchema, GEOJSON_MAX_BYTES,
+    { maxDepth: GEOJSON_MAX_DEPTH, maxNodes: GEOJSON_MAX_NODES });
+  if (!loaded.ok) {
+    const detail = loaded.error.issues.join("; ");
+    if (loaded.error.stage === "size") throw new Error(`GeoJSON exceeds the ${GEOJSON_MAX_BYTES / 1024 / 1024} MB import limit.`);
+    if (loaded.error.stage === "parse") throw new Error("Not valid JSON: " + detail);
+    if (loaded.error.stage === "complexity") throw new Error("GeoJSON is too deeply nested or too large to import safely: " + detail);
+    throw new Error("Not GeoJSON: expected a FeatureCollection, Feature or geometry object. " + detail);
+  }
+  return parseGeoJsonDoc(loaded.value, name);
+}
+
+/** Walk a parsed GeoJSON document into features. Pure; no I/O, no re-parse. */
+export function parseGeoJsonDoc(doc: unknown, name = "GeoJSON"): GisLayer {
   const warnings: string[] = [];
-  let doc: any;
-  try { doc = JSON.parse(text.replace(/^﻿/, "")); } catch (e) { throw new Error("Not valid JSON: " + (e instanceof Error ? e.message : String(e))); }
   const features: GisFeature[] = [];
   let unsupported = 0;
+  let totalVertices = 0;
+  let stopped = false;
+  const stop = (why: string) => { if (!stopped) { stopped = true; warnings.push(why); } };
   const pt = (c: unknown): number[] | null => (Array.isArray(c) && c.length >= 2 && Number.isFinite(+c[0]) && Number.isFinite(+c[1]) ? [+c[0], +c[1]] : null);
   const line = (c: unknown): number[][] => (Array.isArray(c) ? (c.map(pt).filter(Boolean) as number[][]) : []);
+  const push = (kind: GisKind, parts: number[][][], props: GisFeature["props"]): void => {
+    if (stopped) return;
+    const verts = parts.reduce((s, p) => s + p.length, 0);
+    if (features.length >= GEOJSON_MAX_FEATURES) { stop(`Stopped after ${GEOJSON_MAX_FEATURES.toLocaleString()} features.`); return; }
+    if (totalVertices + verts > GEOJSON_MAX_VERTICES) { stop(`Stopped after ${GEOJSON_MAX_VERTICES.toLocaleString()} vertices.`); return; }
+    totalVertices += verts;
+    features.push({ kind, parts, props });
+  };
   const add = (g: any, props: GisFeature["props"], depth = 0) => {
+    if (stopped) return;
     if (!g || typeof g !== "object" || depth > 8) { unsupported++; return; }
     switch (g.type) {
-      case "Point": { const p = pt(g.coordinates); if (p) features.push({ kind: "point", parts: [[p]], props }); break; }
-      case "MultiPoint": { const l = line(g.coordinates); if (l.length) features.push({ kind: "point", parts: [l], props }); break; }
-      case "LineString": { const l = line(g.coordinates); if (l.length > 1) features.push({ kind: "line", parts: [l], props }); break; }
-      case "MultiLineString": { const p = (g.coordinates ?? []).map(line).filter((l: number[][]) => l.length > 1); if (p.length) features.push({ kind: "line", parts: p, props }); break; }
-      case "Polygon": { const p = (g.coordinates ?? []).map(line).filter((l: number[][]) => l.length > 2); if (p.length) features.push({ kind: "polygon", parts: p, props }); break; }
-      case "MultiPolygon": { const p = (g.coordinates ?? []).flatMap((poly: unknown[]) => poly.map(line)).filter((l: number[][]) => l.length > 2); if (p.length) features.push({ kind: "polygon", parts: p, props }); break; }
+      case "Point": { const p = pt(g.coordinates); if (p) push("point", [[p]], props); break; }
+      case "MultiPoint": { const l = line(g.coordinates); if (l.length) push("point", [l], props); break; }
+      case "LineString": { const l = line(g.coordinates); if (l.length > 1) push("line", [l], props); break; }
+      case "MultiLineString": { const p = (g.coordinates ?? []).map(line).filter((l: number[][]) => l.length > 1); if (p.length) push("line", p, props); break; }
+      case "Polygon": { const p = (g.coordinates ?? []).map(line).filter((l: number[][]) => l.length > 2); if (p.length) push("polygon", p, props); break; }
+      case "MultiPolygon": { const p = (g.coordinates ?? []).flatMap((poly: unknown[]) => poly.map(line)).filter((l: number[][]) => l.length > 2); if (p.length) push("polygon", p, props); break; }
       case "GeometryCollection": for (const sub of g.geometries ?? []) add(sub, props, depth + 1); break;
       default: unsupported++;
     }
@@ -41,12 +86,13 @@ export function parseGeoJson(text: string, name = "GeoJSON"): GisLayer {
     if (p && typeof p === "object") for (const [k, v] of Object.entries(p)) o[k] = v == null || typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? (v as any) : JSON.stringify(v);
     return o;
   };
-  if (doc?.type === "FeatureCollection" && Array.isArray(doc.features)) for (const f of doc.features) add(f?.geometry, clean(f?.properties));
-  else if (doc?.type === "Feature") add(doc.geometry, clean(doc.properties));
-  else if (doc && typeof doc === "object" && typeof doc.type === "string") add(doc, {});
+  const d: any = doc;
+  if (d?.type === "FeatureCollection" && Array.isArray(d.features)) for (const f of d.features) add(f?.geometry, clean(f?.properties));
+  else if (d?.type === "Feature") add(d.geometry, clean(d.properties));
+  else if (d && typeof d === "object" && typeof d.type === "string") add(d, {});
   else throw new Error("Not GeoJSON: expected a FeatureCollection, Feature or geometry.");
   if (unsupported) warnings.push(`${unsupported} feature(s) had missing or unsupported geometry and were skipped.`);
-  if (doc?.crs) warnings.push("The file declares a CRS; GeoJSON should be WGS84 and the declaration is ignored.");
+  if (d?.crs) warnings.push("The file declares a CRS; GeoJSON should be WGS84 and the declaration is ignored.");
   return { name, features, warnings };
 }
 

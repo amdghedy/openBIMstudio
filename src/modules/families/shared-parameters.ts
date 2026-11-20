@@ -32,6 +32,15 @@ export interface SharedParameterManagerService {
 }
 
 const STORAGE_KEY = "openbimstudio.shared-parameters";
+
+/**
+ * Bounds for a shared-parameter import (issue #90). The import() entry point
+ * currently has no file-input caller in src/ (definitions are created and
+ * edited through the families panel); the caps apply if one is ever wired
+ * up, so an imported file cannot grow the parameter registry without bound.
+ */
+export const SHARED_PARAMETERS_MAX_BYTES = 1 * 1024 * 1024;
+export const SHARED_PARAMETERS_MAX_COUNT = 10_000;
 const PARAMETER_TYPES = new Set<SharedParameterType>([
   "number", "string", "boolean", "length", "area",
 ]);
@@ -202,6 +211,9 @@ export class SharedParameterManager implements SharedParameterManagerService {
   import(source: string | unknown): SharedParameter[] {
     let decoded: unknown = source;
     if (typeof source === "string") {
+      if (new TextEncoder().encode(source).byteLength > SHARED_PARAMETERS_MAX_BYTES) {
+        throw new Error(`Shared parameter import exceeds the ${SHARED_PARAMETERS_MAX_BYTES / 1024 / 1024} MB limit.`);
+      }
       try {
         decoded = JSON.parse(source) as unknown;
       } catch (error) {
@@ -209,6 +221,9 @@ export class SharedParameterManager implements SharedParameterManagerService {
       }
     }
     if (!Array.isArray(decoded)) throw new Error("Shared parameter import must be a JSON array.");
+    if (decoded.length > SHARED_PARAMETERS_MAX_COUNT) {
+      throw new Error(`Shared parameter import has more than ${SHARED_PARAMETERS_MAX_COUNT.toLocaleString()} parameters.`);
+    }
     const current = this.readAll();
     const byGuid = new Map(current.map((parameter) => [parameter.guid, parameter]));
     for (const raw of decoded as unknown[]) {

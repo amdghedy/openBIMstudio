@@ -129,6 +129,7 @@ import {
   type PlotStyleTable,
 } from "../modules/drawings/plot-styles";
 import { isLandXml, parseLandXmlPoints } from "../modules/drawings/landxml";
+import { assertFileAllowed, guardSize, guardXmlText, readHead } from "../core/file-guard";
 import { HATCH_PATTERN_NAMES, DEFAULT_HATCH_PATTERN, isKnownHatchPattern, patternDefinition, transformToDrawingSpace, type HatchFamilyDef } from "../modules/drawings/hatch-patterns";
 import { collectHatchGeometry, detectLoopAt, type BoundaryResult } from "../modules/drawings/hatch-boundary";
 import * as P from "./cad-params";
@@ -1208,6 +1209,9 @@ function openPdfImportPicker(): void {
 async function importPdfAsDrawing(file: File, page = 1): Promise<void> {
   cadToast("info", `PDF import: parsing ${file.name} locally — the PDF is not uploaded to the cloud.`);
   try {
+    // Size + %PDF- signature BEFORE the whole file is buffered (issue #90);
+    // the underlay loader guards again, but PDFIN converts here.
+    assertFileAllowed("pdf", file.name, file.size, await readHead(file, 32));
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { pdfToDxfDocument } = await import("../modules/drawings/pdf-vector");
     const res = await pdfToDxfDocument(bytes, { page });
@@ -3613,7 +3617,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   /** LandXML CgPoints → POINT entities + name labels on a "LandXML Points" layer. */
   async function importLandXml(f: File): Promise<void> {
     try {
+      // Size bound + entity-declaration ban BEFORE the text is read and
+      // regex-parsed (issue #90). The parser itself caps CgPoints at
+      // LANDXML_MAX_POINTS; a file over either bound is refused, not
+      // truncated, so the drawing is never half-imported.
+      const sizeGuard = guardSize("landxml", f.size);
+      if (!sizeGuard.ok) { logCmd(`LandXML import: ${sizeGuard.reason}`); return; }
       const text = await f.text();
+      const xmlGuard = guardXmlText(text);
+      if (!xmlGuard.ok) { logCmd(`LandXML import: ${xmlGuard.reason}`); return; }
       if (!isLandXml(text)) {
         logCmd("LandXML import: not a LandXML file (expected <LandXML> with CgPoints).");
         return;

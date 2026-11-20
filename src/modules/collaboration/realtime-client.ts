@@ -7,6 +7,14 @@ const API_BASE = String(
     "http://localhost:4000/api",
 );
 
+/**
+ * Largest SSE event payload accepted before parsing (issue #90). Mirrors the
+ * server's OBS_MAX_CHANGE_PAYLOAD (2 MB, server/index.mjs): the relay
+ * bounds what it forwards, and the client drops anything larger rather than
+ * parsing an unbounded event into project state.
+ */
+export const MAX_SSE_EVENT_BYTES = 2 * 1024 * 1024;
+
 /* Optional auth for network deployments (remediation Phase 1.2).
  *  __OPENBIM_COLLAB_TOKEN__             → long-lived token; sent as Bearer on
  *                                         POSTs and as ?token= on the SSE URL
@@ -112,7 +120,13 @@ class RealtimeClient {
 
     this.es.addEventListener("presence", (ev: MessageEvent) => {
       try {
-        const presence = JSON.parse(String(ev.data || "[]")) as PresenceUser[];
+        // Size bound before parse (issue #90): the server caps change
+        // payloads at 2 MB (OBS_MAX_CHANGE_PAYLOAD); anything larger from
+        // the relay is dropped, and a non-array presence payload is ignored.
+        const raw = String(ev.data || "[]");
+        if (raw.length > MAX_SSE_EVENT_BYTES) return;
+        const presence = JSON.parse(raw) as PresenceUser[];
+        if (!Array.isArray(presence)) return;
         this.dispatch("obs:presence", { presence, roomId: this.roomId });
       } catch {
         // ignore malformed event
@@ -121,7 +135,11 @@ class RealtimeClient {
 
     this.es.addEventListener("change", (ev: MessageEvent) => {
       try {
-        const change = JSON.parse(String(ev.data || "{}")) as RemoteChange;
+        const raw = String(ev.data || "{}");
+        if (raw.length > MAX_SSE_EVENT_BYTES) return;
+        const change = JSON.parse(raw) as RemoteChange;
+        if (!change || typeof change !== "object" || Array.isArray(change)) return;
+        if (typeof change.clientId !== "string" || typeof change.type !== "string") return;
 
         if (change.clientId === this.clientId) {
           return;

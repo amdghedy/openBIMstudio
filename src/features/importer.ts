@@ -1,5 +1,5 @@
 import { preflightStep } from "../modules/ifc-semantics/step-preflight";
-import { assertFileAllowed, guardZipDirectory } from "../core/file-guard";
+import { assertFileAllowed, guardSize, guardZipDirectory } from "../core/file-guard";
 import { getCachedFrag, setCachedFrag, hashFileKey } from "./rvt-trust-gates";
 /**
  * IFC importer with 5 BIM-style positioning modes + live offset control.
@@ -949,6 +949,10 @@ export async function expandIfcSources(
 
     onProgress?.(`Unpacking ${name} (${(file.size / (1024 * 1024)).toFixed(0)} MB)…`);
     try {
+      // Size bound BEFORE the whole archive is buffered (issue #90): a
+      // multi-GB .ifczip used to be fully read before any guard ran.
+      const sizeGuard = guardSize("ifc", file.size);
+      if (!sizeGuard.ok) throw new Error(`${name}: ${sizeGuard.reason} The file was not opened and your project is unchanged.`);
       const JSZip = (await import("jszip")).default;
       const zipBytes = new Uint8Array(await file.arrayBuffer());
       const zipGuard = guardZipDirectory(zipBytes);
@@ -1269,6 +1273,9 @@ async function runTask(t: ImportTask) {
       // Keep FRAG bytes out of memory for huge files
       if (t.sizeMB > 80) ifcSettings.keepFragInMemory = false;
 
+      // Size bound BEFORE the whole file is buffered (issue #90); the
+      // post-read assert below stays as defence in depth.
+      assertFileAllowed("ifc", t.file.name, t.file.size);
       const buffer = await t.file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       // Bounded structural check BEFORE the WASM parser: corrupt STEP can make web-ifc spin for minutes.
@@ -1563,6 +1570,11 @@ export async function loadFragFiles(files: FileList | File[]) {
           uiAlert(`"${file.name}" is empty (0 bytes).`);
           continue;
         }
+        // Size bound before the FRAG bytes are buffered or handed to the
+        // fragments parser (issue #90). FRAG has no public magic to check;
+        // the parser itself rejects corrupt content, and a 0-element model
+        // is disposed again below.
+        assertFileAllowed("frag", file.name, file.size);
         const buffer = await file.arrayBuffer();
         const projectBytes = new Uint8Array(buffer.slice(0));
 
@@ -1679,8 +1691,15 @@ export async function convertIfcToFragBytes(
   }
 
   onProgress(2, "reading file…");
+  // Same pre-parse validation as the queued import path (issue #90): size
+  // bound before the read, STEP preflight before the WASM parser, so a
+  // corrupt file cannot make web-ifc spin (issue #231). The FRAG-cache hit
+  // above returns first: that file was validated when it was converted.
+  assertFileAllowed("ifc", file.name, file.size);
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
+  const pre = preflightStep(bytes);
+  if (!pre.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${pre.reason}${pre.line ? ` (line ${pre.line})` : ""}. It was not opened.`);
   const schema = detectSchema(bytes);
 
   onProgress(8, "checking WASM…");

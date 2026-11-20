@@ -6,6 +6,7 @@ import { loadIfcFiles, loadFragFiles } from "./importer";
 import { markDirty } from "../modules/projects/projects";
 import { uiAlert } from "../core/notify";
 import { safeLoad, LegacyProjectJsonSchema } from "../core/safeLoad";
+import { FILE_LIMITS, guardSize, guardZipDirectory } from "../core/file-guard";
 import { normalizeProjectDoc } from "../modules/projects/project-schema";
 
 export const ACCEPT_ALL =
@@ -141,6 +142,16 @@ function geometryToMesh(geo: THREE.BufferGeometry, label: string): THREE.Mesh {
   return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0xb9c2cc }));
 }
 
+/** Size bound for a persisted aux blob, by extension (issue #90). These are
+ * the app's own stored blobs, but a corrupt or oversized entry must not DoS
+ * project reopen. DWG/DXF restore goes through readCadFile, which guards. */
+function assertAuxSize(name: string, size: number): void {
+  const kind = /\.geojson$/i.test(name) ? "geojson" : /\.(shp|dbf)$/i.test(name) ? "shapefile"
+    : /\.(step|stp|iges|igs|brep|brp|3dm)$/i.test(name) ? "solid" : "mesh";
+  const r = guardSize(kind, size);
+  if (!r.ok) throw new Error(`"${name}": ${r.reason} The stored file was not restored.`);
+}
+
 /** Re-load a persisted aux blob (called by projects.openProject). */
 export async function restoreAux(blob: Blob, name: string, modelId?: string) {
   if (/\.(dwg|dxf)$/i.test(name)) {
@@ -149,6 +160,7 @@ export async function restoreAux(blob: Blob, name: string, modelId?: string) {
     await m.restoreCadLinkFromBlob(blob, name, modelId);
     return;
   }
+  assertAuxSize(name, blob.size);
   const buf = await blob.arrayBuffer();
   if (/\.(geojson|shp)$/i.test(name)) {
     const { openGis } = await import("./gis-import");
@@ -234,14 +246,26 @@ export async function importFiles(files: File[]) {
       if (e === "frag") { loadFragFiles([file]); continue; }
 
       if (e === "ifczip" || (e === "zip" && /\.ifczip$|\.zip$/i.test(file.name))) {
+        // Same ZIP discipline as expandIfcSources (issue #90): size bound
+        // before the read, central-directory audit (entry count, declared
+        // sizes, compression ratio, unsafe paths) before JSZip inflates
+        // anything. Previously this branch called JSZip.loadAsync(file)
+        // with no guard at all — a zip bomb or traversal archive went
+        // straight into the inflater.
+        const zipSize = guardSize("ifc", file.size);
+        if (!zipSize.ok) throw new Error(`"${file.name}": ${zipSize.reason} The file was not opened and your project is unchanged.`);
+        const zipBytes = new Uint8Array(await file.arrayBuffer());
+        const zipGuard = guardZipDirectory(zipBytes);
+        if (!zipGuard.ok) throw new Error(`"${file.name}": ${zipGuard.reason} The file was not opened and your project is unchanged.`);
         const JSZip = (await import("jszip")).default;
-        const zip = await JSZip.loadAsync(file);
+        const zip = await JSZip.loadAsync(zipBytes);
         const ifcPaths: string[] = [];
         zip.forEach((p) => { if (/\.ifc$/i.test(p)) ifcPaths.push(p); });
         if (!ifcPaths.length) { uiAlert(`No .ifc entries inside "${file.name}".`); continue; }
         const converted: File[] = [];
         for (const p of ifcPaths) {
           const bytes = await zip.file(p)!.async("uint8array");
+          if (bytes.byteLength > FILE_LIMITS.ifc) throw new Error(`"${p}" inside "${file.name}" exceeds the ${FILE_LIMITS.ifc / 1024 / 1024} MB IFC limit.`);
           converted.push(new File([bytes as any], p.split("/").pop() || `from-${file.name}.ifc`));
         }
         loadIfcFiles(converted);
@@ -291,9 +315,18 @@ export async function importFiles(files: File[]) {
 
       if (e === "geojson" || e === "shp") {
         // Site context (GeoJSON / Shapefile): flat overlay, see docs/COMPATIBILITY.md. A .dbf with the same base name is picked up for attributes.
+        // Size bound before the read (issue #90): GeoJSON is JSON.parsed via
+        // safeLoad in gis-core (20 MB / depth 32 / 2M nodes); shapefiles are
+        // binary record streams with their own 5M-vertex cap.
+        const gisSize = guardSize(e === "geojson" ? "geojson" : "shapefile", file.size);
+        if (!gisSize.ok) throw new Error(`"${file.name}": ${gisSize.reason} The file was not opened and your project is unchanged.`);
         const { openGis } = await import("./gis-import");
         const base = file.name.replace(/\.[^.]+$/, "").toLowerCase();
         const sib = e === "shp" ? files.find((f) => ext(f.name) === "dbf" && f.name.replace(/\.[^.]+$/, "").toLowerCase() === base) : undefined;
+        if (sib) {
+          const dbfSize = guardSize("shapefile", sib.size);
+          if (!dbfSize.ok) throw new Error(`"${sib.name}": ${dbfSize.reason} The file was not opened and your project is unchanged.`);
+        }
         const buf = await file.arrayBuffer();
         const r = openGis(buf, file.name, sib ? await sib.arrayBuffer() : undefined);
         if (r.object) {
@@ -305,6 +338,11 @@ export async function importFiles(files: File[]) {
       }
       if (e === "step" || e === "stp" || e === "iges" || e === "igs" || e === "brep" || e === "brp" || e === "3dm") {
         // Tessellated view of solid models via vendored WebAssembly readers (docs/COMPATIBILITY.md).
+        // Size bound before the read (issue #90); openSolid re-checks the
+        // buffer length (200 MB) and the reader worker runs isolated with a
+        // 180 s timeout.
+        const solidSize = guardSize("solid", file.size);
+        if (!solidSize.ok) throw new Error(`"${file.name}": ${solidSize.reason} The file was not opened and your project is unchanged.`);
         const { openSolid } = await import("./solid-import");
         const buf = await file.arrayBuffer();
         const r = await openSolid(buf, file.name);
@@ -323,7 +361,11 @@ export async function importFiles(files: File[]) {
 
       if (DESKTOP_ONLY[e]) { uiAlert(DESKTOP_ONLY[e]); continue; }
 
-      // Everything else → try as a 3D model (glb/gltf/obj/stl/ply/fbx/dae/3ds)
+      // Everything else → try as a 3D model (glb/gltf/obj/stl/ply/fbx/dae/3ds).
+      // Size bound before the read (issue #90): the three.js loaders parse
+      // the whole file on the main thread with no limit of their own.
+      const meshSize = guardSize("mesh", file.size);
+      if (!meshSize.ok) throw new Error(`"${file.name}": ${meshSize.reason} The file was not opened and your project is unchanged.`);
       const buf = await file.arrayBuffer();
       const obj = await parseModelBytes(buf, file.name);
       if (obj) {

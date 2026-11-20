@@ -10,7 +10,8 @@
  * state untouched (callers invoke the guard before any state mutation).
  */
 
-export type GuardedKind = "ifc" | "dxf" | "dwg" | "bcf" | "pdf" | "ids" | "standards-pack" | "point-cloud";
+export type GuardedKind = "ifc" | "dxf" | "dwg" | "bcf" | "pdf" | "ids" | "standards-pack" | "point-cloud"
+  | "frag" | "geojson" | "shapefile" | "mesh" | "solid" | "landxml" | "factors" | "type-catalog";
 
 const MiB = 1024 * 1024;
 /** Hard upper bounds per kind. Browser tabs cannot hold more than this in memory with a parser's working set anyway. */
@@ -23,6 +24,22 @@ export const FILE_LIMITS: Record<GuardedKind, number> = {
   ids: 5 * MiB,
   "standards-pack": 5 * MiB,
   "point-cloud": 2048 * MiB,
+  // FRAG is the binary cache of a converted IFC: same ceiling as the IFC it came from.
+  frag: 1536 * MiB,
+  // GeoJSON is JSON.parsed by gis-core (via safeLoad): 20 MB keeps the parse + projection cheap.
+  geojson: 20 * MiB,
+  // Shapefile (.shp + .dbf) is a binary record stream with its own 5M-vertex cap; 256 MB bounds the read.
+  shapefile: 256 * MiB,
+  // Three.js mesh formats (glb/gltf/obj/stl/ply/fbx/dae/3ds): whole-file parse on the main thread.
+  mesh: 200 * MiB,
+  // STEP / IGES / BREP / 3DM via the isolated solid reader worker (mirrors openSolid MAX_BYTES).
+  solid: 200 * MiB,
+  // LandXML is regex-parsed text (no XML parser, so no XXE), but the scan is linear in file size.
+  landxml: 5 * MiB,
+  // Carbon-factor CSV/JSON imports: small reference data, never a model.
+  factors: 5 * MiB,
+  // Family type catalogs: small TSV/CSV reference data.
+  "type-catalog": 5 * MiB,
 };
 
 export interface GuardResult { ok: boolean; reason?: string }

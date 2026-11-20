@@ -27,6 +27,7 @@ import {
   getTaskRows, exportReportCsvText, getUnlinkedTasks, linkSelectionToTask, getCarbonFactorRows, setCarbonFactor, resetCarbonFactors, getScheduleState,
   importCarbonFactorsText, exportCarbonFactorsCsv, seekToDate,
 } from "../modules/schedule-4d/controller";
+import { FACTORS_MAX_BYTES } from "../modules/schedule-4d/factor-import";
 import { selection } from "./selection";
 import { uiAlert } from "../core/notify";
 
@@ -63,6 +64,12 @@ export function pickAndImportFactors() {
   input.onchange = async () => {
     const f = input.files?.[0];
     if (!f) return;
+    // Size bound before the text is read (issue #90); parseFactors re-checks
+    // the decoded text, so a lying size still cannot slip through.
+    if (f.size > FACTORS_MAX_BYTES) {
+      window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Factor file exceeds the ${FACTORS_MAX_BYTES / 1024 / 1024} MB import limit.`, kind: "error" } }));
+      return;
+    }
     const r = importCarbonFactorsText(await f.text());
     const msg = r.count
       ? `Imported ${r.count} carbon factor(s) from ${f.name}.` + (r.errors.length ? ` ${r.errors.length} row(s) skipped: ${r.errors[0]}` : "")

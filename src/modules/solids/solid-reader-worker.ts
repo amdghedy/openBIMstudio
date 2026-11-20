@@ -29,6 +29,8 @@ import {
 import type { SolidReaderRequest, SolidReaderResponse } from "./solid-reader-protocol";
 
 const DIRS = { occt: "/vendor/occt/", rhino: "/vendor/rhino3dm/" } as const;
+/** Largest file the reader worker accepts in one request (mirrors openSolid MAX_BYTES, 200 MB). */
+export const SOLID_READER_MAX_BYTES = 200 * 1024 * 1024;
 /** Glue file → the global its classic script defines. NOT derivable from the file name: "occt-import-js.js" defines `occtimportjs` (hyphens are not identifiers). */
 const GLOBAL_NAMES = { "occt-import-js.js": "occtimportjs", "rhino3dm.js": "rhino3dm" } as const;
 
@@ -163,6 +165,16 @@ self.addEventListener("message", (ev: MessageEvent<SolidReaderRequest>) => {
   const req = ev.data;
   if (!req || typeof req.id !== "number" || (req.kind !== "occt" && req.kind !== "rhino")) return;
   const post = (res: SolidReaderResponse, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(res, transfer);
+  // Validate the request payload before the readers touch it (issue #90).
+  // The worker is same-origin and created by the app, so this guards
+  // against a buggy caller, not a remote attacker — but a malformed
+  // payload must fail as a typed reader error, never crash the worker or
+  // hang the main thread's 180 s timeout. Mirrors openSolid MAX_BYTES.
+  if (!(req.bytes instanceof ArrayBuffer) || req.bytes.byteLength === 0 || req.bytes.byteLength > SOLID_READER_MAX_BYTES) {
+    post({ id: req.id, kind: "done", ok: false, code: "invalid-file",
+      message: "The reader received an invalid file payload (expected file bytes up to 200 MB)." });
+    return;
+  }
   post({ id: req.id, kind: "started" });
   (req.kind === "occt" ? readOcct(req) : read3dm(req))
     .then((res): SolidReaderResponse => res)

@@ -11,11 +11,28 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** If true, body is sent as-is (Blob/FormData). */
   raw?: boolean;
+  /**
+   * Largest JSON response accepted (bytes). CDE API calls return metadata,
+   * never files — file downloads use requestRaw. A provider that answers
+   * with an unbounded body is rejected before it is parsed (issue #90).
+   */
+  maxBytes?: number;
 }
+
+/** Default cap for a CDE JSON response: 10 MB. */
+export const MAX_JSON_RESPONSE_BYTES = 10 * 1024 * 1024;
 
 export async function requestJson<T>(url: string, opts: RequestOptions = {}): Promise<T> {
   const res = await requestRaw(url, opts);
+  const maxBytes = opts.maxBytes ?? MAX_JSON_RESPONSE_BYTES;
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error(`Response from ${hostOf(url)} exceeds the ${(maxBytes / 1024 / 1024).toFixed(0)} MB JSON limit.`);
+  }
   const text = await res.text();
+  if (new TextEncoder().encode(text).byteLength > maxBytes) {
+    throw new Error(`Response from ${hostOf(url)} exceeds the ${(maxBytes / 1024 / 1024).toFixed(0)} MB JSON limit.`);
+  }
   try {
     return JSON.parse(text) as T;
   } catch (err) {

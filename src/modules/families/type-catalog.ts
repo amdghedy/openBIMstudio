@@ -1,4 +1,15 @@
 /** BIM type catalog CSV parser and serializer. */
+
+/**
+ * Bounds for a type-catalog import (issue #90). Catalogs are small reference
+ * data; the caps keep a hostile CSV from building an unbounded parameter /
+ * type map in family state. loadFromFile checks file.size before reading;
+ * parseCSV re-checks the decoded text so a lying size cannot slip through.
+ */
+export const TYPE_CATALOG_MAX_BYTES = 5 * 1024 * 1024;
+export const TYPE_CATALOG_MAX_ROWS = 10_000;
+export const TYPE_CATALOG_MAX_PARAMETERS = 500;
+
 export type CatalogParameterType =
   | "length" | "area" | "volume" | "angle" | "number" | "string" | "yesno" | "integer";
 
@@ -123,8 +134,14 @@ export class TypeCatalogManager {
     if (typeof csvContent !== "string" || !csvContent.trim()) {
       throw new Error("Type catalog content is empty or not a string.");
     }
+    if (new TextEncoder().encode(csvContent).byteLength > TYPE_CATALOG_MAX_BYTES) {
+      throw new Error(`Type catalog exceeds the ${TYPE_CATALOG_MAX_BYTES / 1024 / 1024} MB import limit.`);
+    }
     const records = parseCsvRecords(csvContent.replace(/^\uFEFF/, ""));
     if (records.length < 2) throw new Error("Type catalog must include ##TYPE and a header row.");
+    if (records.length - 2 > TYPE_CATALOG_MAX_ROWS) {
+      throw new Error(`Type catalog has more than ${TYPE_CATALOG_MAX_ROWS.toLocaleString()} type rows.`);
+    }
     if (records[0][0]?.trim().toUpperCase() !== "##TYPE") {
       throw new Error(`Type catalog must start with "##TYPE". Found: "${records[0][0] ?? ""}".`);
     }
@@ -134,6 +151,9 @@ export class TypeCatalogManager {
     }
     const familyName = header[0].trim();
     const parameters = header.slice(1).map((field, index) => parseParameterHeader(field, index + 2));
+    if (parameters.length > TYPE_CATALOG_MAX_PARAMETERS) {
+      throw new Error(`Type catalog has more than ${TYPE_CATALOG_MAX_PARAMETERS} parameters.`);
+    }
     const seen = new Set<string>();
     for (const parameter of parameters) {
       const normalized = parameter.name.toLocaleLowerCase();
@@ -190,6 +210,9 @@ export class TypeCatalogManager {
   /** Reads and parses a browser File or Blob; errors are wrapped with context. */
   static async loadFromFile(file: File | Blob): Promise<TypeCatalog> {
     try {
+      if (file.size > TYPE_CATALOG_MAX_BYTES) {
+        throw new Error(`Type catalog exceeds the ${TYPE_CATALOG_MAX_BYTES / 1024 / 1024} MB import limit.`);
+      }
       return TypeCatalogManager.parseCSV(await file.text());
     } catch (error) {
       throw new Error(`Failed to load type catalog: ${error instanceof Error ? error.message : String(error)}`);

@@ -134,3 +134,14 @@ export const MarkupsFileSchema = z.object({
     text: z.string().max(10_000).optional(),
   })).max(10_000),
 });
+
+/**
+ * GeoJSON envelope: deliberately permissive — the gis-core walker validates
+ * geometry types, coerces coordinates to finite numbers and skips the rest.
+ * The schema's job is only to prove the root is a GeoJSON-shaped object; the
+ * size / depth / node bounds come from the safeLoad call site
+ * (20 MB, depth 32, 2,000,000 nodes in parseGeoJson).
+ */
+export const GeoJsonSchema = z.object({
+  type: z.string().min(1),
+}).passthrough();

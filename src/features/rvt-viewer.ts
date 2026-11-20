@@ -6,7 +6,7 @@
  * See src/modules/rvt/rvt-core.ts and docs/RVT-VIEWER.md.
  */
 import { notify } from "../core/notify";
-import { RVT_JS_URL, RVT_WASM_URL, isRVTName, isWasmBytes, preflight, summarizeDiagnostics, viewFileName, type RvtDiagnostics } from "../modules/rvt/rvt-core";
+import { RVT_JS_URL, RVT_MAX_BYTES, RVT_WASM_URL, isRVTName, isWasmBytes, preflight, summarizeDiagnostics, viewFileName, type RvtDiagnostics } from "../modules/rvt/rvt-core";
 
 let availability: Promise<{ ok: boolean; why: string }> | null = null;
 
@@ -42,7 +42,12 @@ function decodeInWorker(bytes: Uint8Array, onProgress: (t: string) => void, larg
       const m = ev.data;
       if (m?.type === "progress") onProgress(m.text);
       else if (m?.type === "stage") onProgress(`Decoding: ${m.stage}${m.total ? ` ${Math.round((m.done / m.total) * 100)}%` : ""}`);
-      else if (m?.type === "ready") { done(); resolve({ glb: m.glb, diagnostics: m.diagnostics, propertyCount: m.propertyCount ?? 0 }); }
+      else if (m?.type === "ready") {
+        // The decoder worker is same-origin, but a malformed reply must
+        // not reach the GLTF loader as a non-binary payload (issue #90).
+        if (!(m.glb instanceof Uint8Array) || !m.glb.byteLength) { done(); reject(new Error("The model decoder returned an invalid result.")); return; }
+        done(); resolve({ glb: m.glb, diagnostics: m.diagnostics, propertyCount: m.propertyCount ?? 0 });
+      }
       else if (m?.type === "error") { done(); reject(new Error(m.message)); }
     };
     w.onerror = (e) => { done(); reject(new Error(e.message || "The model decoder stopped unexpectedly.")); };
@@ -56,6 +61,13 @@ export async function openRVTFile(file: File): Promise<boolean> {
   if (!isRVTName(file.name)) { notify("error", `"${file.name}" is not a supported RVT or RFA file.`); return false; }
   const st = await rvtDecoderStatus();
   if (!st.ok) { console.warn("[rvt] decoder unavailable:", st.why); notify("error", `${UNAVAILABLE} (Detail: ${st.why}.)`, { timeout: 16000 }); return false; }
+  // Size bound BEFORE the whole file is buffered (issue #90): preflight()
+  // below re-checks the bytes, but a multi-GB file used to be fully read
+  // first. RVT_MAX_BYTES is 1.5 GB.
+  if (file.size > RVT_MAX_BYTES) {
+    notify("error", `The file is ${(file.size / 1073741824).toFixed(1)} GB; the in-browser reader supports up to ${(RVT_MAX_BYTES / 1073741824).toFixed(1)} GB. Export it to IFC from RVT instead.`, { timeout: 12000 });
+    return false;
+  }
   const bytes = new Uint8Array(await file.arrayBuffer());
   const pre = preflight(file.name, bytes);
   if (!pre.ok) { notify("error", pre.reason, { timeout: 12000 }); return false; }

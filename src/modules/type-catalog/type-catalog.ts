@@ -12,6 +12,16 @@
 import { ctx } from "../../core/context";
 import type { FamilyType } from "../families/types";
 
+/**
+ * Bounds for a type-catalog import (issue #90) — same limits as the live
+ * families/type-catalog parser. Note: this tab-separated parser currently
+ * has no file-input caller in src/ (the live catalog path is
+ * families/type-catalog.ts); the caps apply if it is ever wired to one.
+ */
+export const TYPE_CATALOG_MAX_BYTES = 5 * 1024 * 1024;
+export const TYPE_CATALOG_MAX_ROWS = 10_000;
+export const TYPE_CATALOG_MAX_COLUMNS = 500;
+
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
 let obsTypeCatalog: any;
@@ -63,10 +73,17 @@ function coerce(raw: string, col: CatalogColumn): number | string | boolean {
  * Parse a BIM-compatible type catalog text.
  */
 export function parseTypeCatalog(text: string, familyName = ""): TypeCatalog {
+  if (new TextEncoder().encode(text).byteLength > TYPE_CATALOG_MAX_BYTES) {
+    throw new Error(`Type catalog exceeds the ${TYPE_CATALOG_MAX_BYTES / 1024 / 1024} MB import limit.`);
+  }
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length && !l.startsWith("#"));
+
+  if (lines.length - 1 > TYPE_CATALOG_MAX_ROWS) {
+    throw new Error(`Type catalog has more than ${TYPE_CATALOG_MAX_ROWS.toLocaleString()} type rows.`);
+  }
 
   if (!lines.length) {
     return { familyName, columns: [], rows: [] };
@@ -78,6 +95,9 @@ export function parseTypeCatalog(text: string, familyName = ""): TypeCatalog {
   for (let i = 1; i < headerCells.length; i++) {
     const col = parseHeaderCell(headerCells[i]);
     if (col) columns.push(col);
+  }
+  if (columns.length > TYPE_CATALOG_MAX_COLUMNS) {
+    throw new Error(`Type catalog has more than ${TYPE_CATALOG_MAX_COLUMNS} parameters.`);
   }
 
   const rows: TypeCatalog["rows"] = [];

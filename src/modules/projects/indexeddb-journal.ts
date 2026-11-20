@@ -78,7 +78,15 @@ class ProjectJournalStore implements JournalStore {
   }
 
   async appendLine(line: string): Promise<void> {
-    const op = JSON.parse(line) as Op;
+    let op: Op;
+    try {
+      op = JSON.parse(line) as Op;
+    } catch (e) {
+      // A corrupt journal line is the app's own stored data gone bad, not a
+      // caller bug — fail with a typed error instead of crashing the caller
+      // (issue #90: recovery paths must not throw raw parse errors).
+      throw new Error(`Corrupt journal entry (not valid JSON): ${e instanceof Error ? e.message : String(e)}`);
+    }
     const db = await openJournalDb();
     const tx = db.transaction(S_OPS, "readwrite");
     tx.objectStore(S_OPS).put({ ...op, projectId: this.projectId, key: `${this.projectId}:${op.seq}` } satisfies StoredOp);

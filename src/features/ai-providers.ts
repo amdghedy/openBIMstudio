@@ -33,6 +33,14 @@ export const DEFAULT_CONFIG: ProviderConfig = {
 
 const KEY_NAME = "ai.apiKey";
 const CONFIG_KEY = "obs.ai.provider";
+/**
+ * Longest single SSE line accepted from an AI provider (issue #90). The
+ * streaming loops append decoded chunks to `buffer` until a newline
+ * arrives; without a cap, a provider (or a man-in-the-middle on a
+ * user-configured endpoint) that never sends a newline grows the buffer
+ * without limit. A line over the cap is dropped, not parsed.
+ */
+export const MAX_SSE_LINE_BYTES = 1024 * 1024;
 const GEMINI_THOUGHT_SIGNATURE_BYPASS = "skip_thought_signature_validator";
 
 /* ── Persistence ─────────────────────────────────────────────────────── */
@@ -311,6 +319,7 @@ async function callAnthropicStream(cfg: ProviderConfig, req: ChatRequest, onToke
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
+      if (buffer.indexOf("\n") < 0 && buffer.length > MAX_SSE_LINE_BYTES) buffer = "";
       let nl: number;
       while ((nl = buffer.indexOf("\n")) >= 0) {
         const line = buffer.slice(0, nl).trim();
@@ -449,6 +458,7 @@ async function callOllamaStream(cfg: ProviderConfig, req: ChatRequest, onToken: 
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
+      if (buffer.indexOf("\n") < 0 && buffer.length > MAX_SSE_LINE_BYTES) buffer = "";
       let nl: number;
       while ((nl = buffer.indexOf("\n")) >= 0) {
         const line = buffer.slice(0, nl).trim();
@@ -523,6 +533,7 @@ async function callOpenAIStream(cfg: ProviderConfig, req: ChatRequest, onToken: 
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
+      if (buffer.indexOf("\n") < 0 && buffer.length > MAX_SSE_LINE_BYTES) buffer = "";
       let nl: number;
       while ((nl = buffer.indexOf("\n")) >= 0) {
         const line = buffer.slice(0, nl).trim();

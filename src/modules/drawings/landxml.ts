@@ -24,6 +24,16 @@ export interface LandXmlPoint {
   z: number;
 }
 
+/**
+ * Bounds for a LandXML import (issue #90). The parser is regex-based (no XML
+ * parser, so no XXE), but the scan is linear in file size and every point
+ * becomes two drawing entities — cap both. The caller (cad-viewer
+ * importLandXml) enforces the size bound and the <!ENTITY ban before the
+ * text reaches this parser.
+ */
+export const LANDXML_MAX_BYTES = 5 * 1024 * 1024;
+export const LANDXML_MAX_POINTS = 100_000;
+
 const stripNum = (s: string): number => {
   // Strip thousands separators and trailing units; tolerate "1,234.567".
   const v = Number(s.replace(/,/g, "").trim());
@@ -40,6 +50,8 @@ function attrs(tag: string): Record<string, string> {
 /**
  * Parse CgPoints from LandXML text. Returns every parseable point; entries
  * with unparsable coordinates are skipped rather than failing the import.
+ * Throws when the file carries more than LANDXML_MAX_POINTS points — a
+ * survey file that large is imported in chunks, not as one drawing edit.
  */
 export function parseLandXmlPoints(text: string): LandXmlPoint[] {
   const out: LandXmlPoint[] = [];
@@ -56,6 +68,9 @@ export function parseLandXmlPoints(text: string): LandXmlPoint[] {
     const z = nums.length > 2 ? stripNum(nums[2]) : NaN;
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
     out.push({ name: a.name ?? "", desc: a.desc ?? "", x, y, z });
+    if (out.length > LANDXML_MAX_POINTS) {
+      throw new Error(`LandXML has more than ${LANDXML_MAX_POINTS.toLocaleString()} CgPoints. Split the file and import it in parts.`);
+    }
   }
   return out;
 }

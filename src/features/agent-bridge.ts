@@ -53,6 +53,11 @@ export type AgentListener = (entry: AgentLogEntry) => void;
 
 const BRIDGE_VERSION = 1;
 const LOG_LIMIT = 100;
+/**
+ * Largest relay SSE event accepted before parsing (issue #90). Mirrors the
+ * server's 2 MB change-payload bound; a larger order event is dropped.
+ */
+export const MAX_SSE_EVENT_BYTES = 2 * 1024 * 1024;
 /** Origins allowed to postMessage orders into the studio, beyond same-origin.
     The owner's platform client is allowed by default; more can be added at
     runtime via localStorage "obs.agent.allowedOrigins" (JSON array). */
@@ -298,7 +303,20 @@ export function connectRelay(): { ok: boolean; error?: string } {
     });
     es.addEventListener("agent-order", (ev) => {
       let data: { orderId?: string; cmd?: string; ask?: string } = {};
-      try { data = JSON.parse((ev as MessageEvent).data as string); } catch { return; }
+      try {
+        // Size bound + shape check before the order is acted on (issue
+        // #90): the relay is token-authenticated, but a malformed or
+        // oversized event must be dropped, not coerced into a command.
+        const raw = String((ev as MessageEvent).data ?? "");
+        if (raw.length > MAX_SSE_EVENT_BYTES) return;
+        const parsed: unknown = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+        const o = parsed as Record<string, unknown>;
+        if ((o.orderId !== undefined && typeof o.orderId !== "string") ||
+            (o.cmd !== undefined && typeof o.cmd !== "string") ||
+            (o.ask !== undefined && typeof o.ask !== "string")) return;
+        data = parsed as typeof data;
+      } catch { return; }
       relayLastOrderAt = Date.now();
       const orderId = String(data.orderId || "");
       const done = (ok: boolean, extra?: { error?: string; state?: AgentEngineState }): void => {
