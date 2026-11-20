@@ -52,11 +52,46 @@ t("declared properties.system wins over the type default", () => {
   assert.strictEqual(tree.clusters[0].system, "hot-water");
   assert.strictEqual(tree.clusters[0].label, "Hot Water 1");
 });
-t("system tie breaks to the earliest member", () => {
+t("two declared systems in one cluster are REJECTED as a conflict, not majority-voted", () => {
   const p1 = run("p1", "pipe", [0, 0], [1, 0]); p1.properties = { system: "domestic-cold" };
   const p2 = run("p2", "pipe", [1, 0], [2, 0]); p2.properties = { system: "domestic-hot" };
   const tree = m.computeMepSystemTree([p1, p2]);
-  assert.strictEqual(tree.clusters[0].system, "domestic-cold");
+  assert.strictEqual(tree.clusters.length, 1);
+  const c = tree.clusters[0];
+  assert.strictEqual(c.system, null); // rejected, not resolved
+  assert.strictEqual(c.label, "System Conflict 1");
+  assert.strictEqual(c.id, "system-conflict-1");
+  assert.deepStrictEqual([...c.conflicts].sort(), ["domestic-cold", "domestic-hot"]);
+  assert.strictEqual(c.diagnostics.length, 1);
+  assert.ok(c.diagnostics[0].includes("domestic-cold") || c.diagnostics[0].includes("Domestic Cold Water"));
+  assert.ok(c.diagnostics[0].includes("p1") && c.diagnostics[0].includes("p2"));
+  assert.strictEqual(tree.conflictCount, 1);
+});
+t("a 3-to-1 declared majority still conflicts — no majority vote", () => {
+  const mk = (id, x0, sys) => { const r = run(id, "pipe", [x0, 0], [x0 + 1, 0]); r.properties = { system: sys }; return r; };
+  const tree = m.computeMepSystemTree([mk("a", 0, "domestic-cold"), mk("b", 1, "domestic-cold"), mk("c", 2, "domestic-cold"), mk("d", 3, "domestic-hot")]);
+  assert.strictEqual(tree.clusters.length, 1);
+  assert.strictEqual(tree.clusters[0].system, null);
+  assert.strictEqual(tree.conflictCount, 1);
+});
+t("a conflict cluster does not poison a separate clean cluster", () => {
+  const p1 = run("p1", "pipe", [0, 0], [1, 0]); p1.properties = { system: "domestic-cold" };
+  const p2 = run("p2", "pipe", [1, 0], [2, 0]); p2.properties = { system: "domestic-hot" };
+  const q1 = run("q1", "duct", [20, 20], [25, 20]);
+  const tree = m.computeMepSystemTree([p1, p2, q1]);
+  assert.strictEqual(tree.clusters.length, 2);
+  assert.strictEqual(tree.conflictCount, 1);
+  const clean = tree.clusters.find((c) => c.memberIds.includes("q1"));
+  assert.strictEqual(clean.system, "supply-air");
+  assert.strictEqual(clean.label, "Supply Air 1");
+  assert.deepStrictEqual(clean.conflicts, []);
+});
+t("one declared system plus undeclared members is not a conflict", () => {
+  const p1 = run("p1", "pipe", [0, 0], [1, 0]); p1.properties = { system: "hot-water" };
+  const p2 = run("p2", "pipe", [1, 0], [2, 0]); // undeclared
+  const tree = m.computeMepSystemTree([p1, p2]);
+  assert.strictEqual(tree.clusters[0].system, "hot-water");
+  assert.strictEqual(tree.conflictCount, 0);
 });
 t("invalid properties.system values are ignored (fall to type default)", () => {
   const p = run("p", "pipe", [0, 0], [1, 0]); p.properties = { system: "steam" };
@@ -146,7 +181,7 @@ t("cluster ids are unique across a mixed tree", () => {
   assert.deepStrictEqual(ids, [...new Set(ids)]);
 });
 t("empty and non-MEP inputs yield an empty tree", () => {
-  assert.deepStrictEqual(m.computeMepSystemTree([]), { clusters: [], unconnectedCount: 0, totalMep: 0 });
+  assert.deepStrictEqual(m.computeMepSystemTree([]), { clusters: [], unconnectedCount: 0, conflictCount: 0, totalMep: 0 });
   const tree = m.computeMepSystemTree([wall, door]);
   assert.strictEqual(tree.totalMep, 0);
   assert.strictEqual(tree.clusters.length, 0);

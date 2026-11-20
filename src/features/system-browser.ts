@@ -118,10 +118,10 @@ function rowBase(): HTMLDivElement {
 }
 
 /** Authored model: real systems from connectivity. */
-function renderAuthoredSection(host: HTMLDivElement): { systems: number; elements: number; unconnected: number } {
+function renderAuthoredSection(host: HTMLDivElement): { systems: number; elements: number; unconnected: number; conflicts: number } {
   const els = getElements() as unknown as MepLike[];
   const tree = computeMepSystemTree(els);
-  if (!tree.totalMep) return { systems: 0, elements: 0, unconnected: 0 };
+  if (!tree.totalMep) return { systems: 0, elements: 0, unconnected: 0, conflicts: 0 };
 
   host.appendChild(sectionTitle(
     "Model systems",
@@ -130,12 +130,13 @@ function renderAuthoredSection(host: HTMLDivElement): { systems: number; element
 
   for (const c of tree.clusters) {
     const row = rowBase();
+    const conflict = c.conflicts.length > 0;
     const dot = document.createElement("span");
-    dot.textContent = "\u25CF";
-    dot.style.cssText = "color:" + (c.system ? colorFor(c.system) : "#6b7280") + ";font-size:14px;flex-shrink:0";
+    dot.textContent = conflict ? "\u26A0" : "\u25CF";
+    dot.style.cssText = "color:" + (conflict ? "#ef4444" : c.system ? colorFor(c.system) : "#6b7280") + ";font-size:14px;flex-shrink:0";
     const label = document.createElement("span");
-    label.textContent = c.label + (c.unconnected ? " \u2014 not connected" : "");
-    label.style.cssText = "flex:1;font-weight:600;font-size:11.5px" + (c.unconnected ? ";color:#fbbf24" : "");
+    label.textContent = c.label + (conflict ? " \u2014 " + c.conflicts.map((s) => s).join(" vs ") : c.unconnected ? " \u2014 not connected" : "");
+    label.style.cssText = "flex:1;font-weight:600;font-size:11.5px" + (conflict ? ";color:#fca5a5" : c.unconnected ? ";color:#fbbf24" : "");
     const badge = document.createElement("span");
     badge.textContent = String(c.memberIds.length);
     badge.style.cssText =
@@ -150,6 +151,16 @@ function renderAuthoredSection(host: HTMLDivElement): { systems: number; element
       toast("Selected " + c.memberIds.length + " element(s) in " + c.label, "success");
     };
     host.appendChild(row);
+
+    // A rejected mixed-system cluster explains itself under its row.
+    if (conflict) {
+      for (const d of c.diagnostics) {
+        const drow = document.createElement("div");
+        drow.textContent = d;
+        drow.style.cssText = "padding:2px 9px 6px 27px;font-size:10.5px;color:#fca5a5;line-height:1.5";
+        host.appendChild(drow);
+      }
+    }
 
     if (expanded.has(c.id)) {
       for (const id of c.memberIds) {
@@ -177,7 +188,7 @@ function renderAuthoredSection(host: HTMLDivElement): { systems: number; element
       renderTree();
     };
   }
-  return { systems: tree.clusters.length, elements: tree.totalMep, unconnected: tree.unconnectedCount };
+  return { systems: tree.clusters.length, elements: tree.totalMep, unconnected: tree.unconnectedCount, conflicts: tree.conflictCount };
 }
 
 /** Imported IFC: category groups (honest label — connectivity not re-derived). */
@@ -255,6 +266,7 @@ async function renderTree(): Promise<void> {
   if (authored.systems) {
     parts.push(authored.systems + " model system(s) \u00B7 " + authored.elements + " element(s)");
     if (authored.unconnected) parts.push(authored.unconnected + " unconnected");
+    if (authored.conflicts) parts.push(authored.conflicts + " system conflict(s) \u2014 resolve before audit");
   }
   if (imported.groups) parts.push(imported.groups + " imported group(s) \u00B7 " + imported.elements + " element(s)");
   summary.textContent = parts.join("  \u00B7  ");

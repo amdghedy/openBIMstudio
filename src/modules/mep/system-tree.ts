@@ -10,11 +10,18 @@
  * equipment elements head the member list, isolated elements are reported
  * as unconnected, and system classification resolves in a fixed order:
  *
- *   1. Majority of valid `properties.system` values on members
- *      (tie → the value carried by the earliest member in input order).
+ *   1. Declared `properties.system` values on members. Exactly one distinct
+ *      declared system → the cluster takes it. TWO OR MORE distinct
+ *      declared systems in one connected cluster is a MODELLING ERROR:
+ *      the cluster is reported as a system conflict (system null,
+ *      label "System Conflict N", conflicts + diagnostics naming the
+ *      offending members) and is NOT silently resolved by majority vote.
+ *      A connected run cannot carry two systems; the modeller must
+ *      re-classify or disconnect before the system can be audited.
  *   2. Dominant linear member type — duct → supply-air, pipe → domestic-cold,
  *      cable-tray → cable-tray, conduit → conduit (the same defaults
- *      flow-assignment uses; tie → earliest).
+ *      flow-assignment uses; tie → earliest). This is a DEFAULT HEURISTIC
+ *      for undeclared members only, not a resolution of declared systems.
  *   3. Dominant fitting `parentType` through the same mapping (clusters made
  *      only of fittings).
  *   4. Otherwise null — the cluster renders as "Unclassified N".
@@ -58,22 +65,33 @@ const DEFAULT_SYSTEM_BY_TYPE: Record<string, MepSystem> = {
 };
 
 export interface MepSystemCluster {
-  /** Stable id: `${system ?? "unclassified"}-${sequence}`. */
+  /** Stable id: `${system ?? "unclassified"}-${sequence}`; conflicts use `system-conflict-${sequence}`. */
   id: string;
-  /** Resolved system; null when nothing in the cluster classifies it. */
+  /** Resolved system; null when nothing in the cluster classifies it, or when the cluster is a system conflict. */
   system: MepSystem | null;
-  /** Human label with per-system sequence, e.g. "Supply Air 1". */
+  /** Human label with per-system sequence, e.g. "Supply Air 1". Conflicts render as "System Conflict N". */
   label: string;
   /** Member element ids — equipment heads first, then linear, then fittings. */
   memberIds: string[];
   /** True when this cluster is a single isolated element. */
   unconnected: boolean;
+  /**
+   * Distinct DECLARED systems found in this connected cluster. Non-empty
+   * (≥2 entries) exactly when the cluster is a system conflict: two or
+   * more declared systems were physically connected and the cluster was
+   * rejected rather than resolved by majority vote.
+   */
+  conflicts: MepSystem[];
+  /** Human-readable diagnostics for this cluster (empty when healthy). */
+  diagnostics: string[];
 }
 
 export interface MepSystemTree {
   clusters: MepSystemCluster[];
   /** Clusters with exactly one member. */
   unconnectedCount: number;
+  /** Clusters rejected as mixed-system conflicts. */
+  conflictCount: number;
   /** Number of MEP elements considered (non-MEP input is ignored). */
   totalMep: number;
 }
@@ -171,18 +189,53 @@ export function computeMepSystemTree(elements: MepLike[]): MepSystemTree {
     const idxs = groups.get(root) ?? [];
     const members = idxs.map((i) => mep[i]);
 
-    // 1. Declared properties.system majority (invalid values already dropped).
-    let system = majorityByFirstAppearance(members.map((m) => declaredSystems(m)[0] ?? null)) as MepSystem | null;
+    // Member ordering: equipment heads first, then linear, then fittings,
+    // stable by input order within each group.
+    const ordered = idxs
+      .map((i) => ({ i, k: KIND_ORDER[memberKind(mep[i])] }))
+      .sort((a, b) => (a.k - b.k) || (a.i - b.i))
+      .map(({ i }) => mep[i].id);
 
-    // 2. Dominant linear member type.
-    if (!system) {
+    // 1. Declared properties.system: exactly one distinct declared system
+    // wins; two or more distinct declared systems in ONE connected cluster
+    // is a modelling error and is REJECTED (never majority-voted).
+    const declaredByMember = members.map((m) => declaredSystems(m));
+    const distinctDeclared: MepSystem[] = [];
+    const membersBySystem = new Map<MepSystem, string[]>();
+    for (let mi = 0; mi < members.length; mi++) {
+      for (const s of declaredByMember[mi]) {
+        if (!membersBySystem.has(s)) {
+          membersBySystem.set(s, []);
+          distinctDeclared.push(s);
+        }
+        membersBySystem.get(s)!.push(members[mi].id);
+      }
+    }
+    const diagnostics: string[] = [];
+    let conflicts: MepSystem[] = [];
+    let system: MepSystem | null = null;
+    if (distinctDeclared.length >= 2) {
+      conflicts = distinctDeclared;
+      const parts = distinctDeclared.map(
+        (s) => `${MEP_SYSTEM_LABELS[s]} (${(membersBySystem.get(s) ?? []).join(", ")})`,
+      );
+      diagnostics.push(
+        `Mixed declared systems in one connected cluster — ${parts.join(" vs ")}. ` +
+        `A connected run cannot carry two systems; re-classify the members or disconnect them.`,
+      );
+    } else if (distinctDeclared.length === 1) {
+      system = distinctDeclared[0];
+    }
+
+    // 2. Dominant linear member type (default heuristic, undeclared only).
+    if (!system && conflicts.length === 0) {
       const linearValues = members.map((m) => (LINEAR_MEP.has(m.type) ? m.type : null));
       const dom = majorityByFirstAppearance(linearValues);
       system = dom ? systemForLinearType(dom) : null;
     }
 
     // 3. Fitting parentType through the same mapping.
-    if (!system) {
+    if (!system && conflicts.length === 0) {
       const parentValues = members.map((m) => {
         const pt = m.params?.parentType;
         return typeof pt === "string" ? pt : null;
@@ -191,19 +244,14 @@ export function computeMepSystemTree(elements: MepLike[]): MepSystemTree {
       system = dom ? systemForLinearType(dom) : null;
     }
 
-    // 4. null → Unclassified.
+    // 4. null → Unclassified (or System Conflict when rejected above).
 
-    // Member ordering: equipment heads first, then linear, then fittings,
-    // stable by input order within each group.
-    const ordered = idxs
-      .map((i) => ({ i, k: KIND_ORDER[memberKind(mep[i])] }))
-      .sort((a, b) => (a.k - b.k) || (a.i - b.i))
-      .map(({ i }) => mep[i].id);
-
-    const key = system ?? "unclassified";
+    const key = conflicts.length > 0 ? "system-conflict" : (system ?? "unclassified");
     const n = (sequence.get(key) ?? 0) + 1;
     sequence.set(key, n);
-    const label = system ? `${MEP_SYSTEM_LABELS[system]} ${n}` : `Unclassified ${n}`;
+    const label = conflicts.length > 0
+      ? `System Conflict ${n}`
+      : system ? `${MEP_SYSTEM_LABELS[system]} ${n}` : `Unclassified ${n}`;
 
     clusters.push({
       id: `${key}-${n}`,
@@ -211,12 +259,15 @@ export function computeMepSystemTree(elements: MepLike[]): MepSystemTree {
       label,
       memberIds: ordered,
       unconnected: ordered.length === 1,
+      conflicts,
+      diagnostics,
     });
   }
 
   return {
     clusters,
     unconnectedCount: clusters.filter((c) => c.unconnected).length,
+    conflictCount: clusters.filter((c) => c.conflicts.length > 0).length,
     totalMep: mep.length,
   };
 }
