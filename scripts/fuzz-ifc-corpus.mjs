@@ -154,7 +154,7 @@ for (let i = 0; i < ITER; i++) {
   const src = seeds[rand(seeds.length)];
   // Two mutation families: raw bit flips (mostly rejected by the structural pre-flight) and
   // structure-preserving token mutations that pass it and therefore really exercise web-ifc.
-  const kind = rand(2) === 0 ? "bitflip" : "structural";
+  const kind = rand(1000) < 500 ? "bitflip" : "structural"; // not rand(2): the LCG low bit has a period of 2
   let bytes;
   if (kind === "bitflip") {
     bytes = Buffer.from(src.bytes);
