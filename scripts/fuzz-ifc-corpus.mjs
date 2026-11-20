@@ -76,7 +76,7 @@ function runChild(bytes) {
     writeFileSync(file, bytes);
     const child = spawn(
       process.execPath,
-      ["--max-old-space-size=256", CHILD, file],
+      ["--import=tsx", "--max-old-space-size=256", CHILD, file],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
     let out = "";
