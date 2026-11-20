@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Automatic journal replay — issue #101.
@@ -176,11 +176,31 @@ async function crashRenderer(page: Page): Promise<void> {
   await Promise.race([crashed, page.waitForTimeout(10000)]);
 }
 
-async function freshBoot(browser: Browser, state: any): Promise<{ ctx: any; page: Page }> {
-  const ctx = await browser.newContext({ storageState: state });
-  const page = await ctx.newPage();
+/**
+ * Reboot after a genuine crash, the way a user relaunches the browser:
+ * a NEW page in the SAME browser context, so the same profile (and its
+ * IndexedDB) is read back. A fresh context from storageState does NOT
+ * carry IndexedDB in this Playwright setup — a reboot there sees an
+ * empty journal and an empty project list, which is a test artefact,
+ * not a recovery result. (Verified by probe: same-context reboot keeps
+ * the journal; storageState reboot does not.)
+ */
+async function rebootAfterCrash(crashedPage: Page): Promise<Page> {
+  const page = await crashedPage.context().newPage();
   await boot(page);
-  return { ctx, page };
+  // The crash-recovery step runs near the END of boot (after every setup
+  // step), long after the canvas is visible — wait for it to record its
+  // outcome before reading any state.
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('obs.recovery.last')), { timeout: 60000 }).not.toBeNull();
+  return page;
+}
+
+/** Bounded teardown for a crashed context (closing it can hang the runner). */
+async function closeCrashedContext(crashedPage: Page): Promise<void> {
+  await Promise.race([
+    crashedPage.context().close().catch(() => {}),
+    new Promise((r) => setTimeout(r, 5000)),
+  ]);
 }
 
 async function recoveryOutcome(page: Page): Promise<any> {
@@ -195,7 +215,7 @@ async function primaryProject(page: Page): Promise<any> {
   return projects[0] ?? null;
 }
 
-test('crash mid-edit: banner appears and the saved edits are back', async ({ page, browser }) => {
+test('crash mid-edit: banner appears and the saved edits are back', async ({ page }) => {
   test.setTimeout(300000);
   const t0 = Date.now();
   const errors: string[] = [];
@@ -219,11 +239,10 @@ test('crash mid-edit: banner appears and the saved edits are back', async ({ pag
   // only when the save completes. The clean save above cleared it, so
   // go dirty again before crashing.
   await makeDirty(page);
-  const state = await page.context().storageState();
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
 
-  const { ctx: ctx2, page: page2 } = await freshBoot(browser, state);
+  const page2 = await rebootAfterCrash(page);
   stamp(t0, 'fresh boot, canvas visible');
   const banner = page2.locator('#obs-recovery-banner');
   await expect(banner).toBeVisible({ timeout: 60000 });
@@ -242,12 +261,11 @@ test('crash mid-edit: banner appears and the saved edits are back', async ({ pag
   // The project was auto-reopened through the normal pipeline.
   await expect(page2.locator('.obs-home.is-open')).toHaveCount(0, { timeout: 30000 });
   expect(errors, errors.join('\n')).toEqual([]);
-  await ctx2.close().catch(() => {});
-  await Promise.race([page.context().close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
+  await closeCrashedContext(page);
   stamp(t0, 'teardown done');
 });
 
-test('crash with a corrupt journal tail: recovers up to the last good entry and says so', async ({ page, browser }) => {
+test('crash with a corrupt journal tail: recovers up to the last good entry and says so', async ({ page }) => {
   test.setTimeout(300000);
   const t0 = Date.now();
   const errors: string[] = [];
@@ -271,11 +289,10 @@ test('crash with a corrupt journal tail: recovers up to the last good entry and 
   await idbDeleteProjectRecord(page, projectId);
   // Go dirty again so the crash leaves its marker (see test 1).
   await makeDirty(page);
-  const state = await page.context().storageState();
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
 
-  const { ctx: ctx2, page: page2 } = await freshBoot(browser, state);
+  const page2 = await rebootAfterCrash(page);
   const banner = page2.locator('#obs-recovery-banner');
   await expect(banner).toBeVisible({ timeout: 60000 });
   // Text first: toContainText polls until the replay outcome has landed;
@@ -300,8 +317,7 @@ test('crash with a corrupt journal tail: recovers up to the last good entry and 
   const opsAfter = (await idbGetAll(page2, 'projectOps')).filter((o: any) => o.projectId === projectId);
   expect(opsAfter.some((o: any) => o.seq === corruptSeq), 'quarantined entry must leave the live op store').toBe(false);
   expect(errors, errors.join('\n')).toEqual([]);
-  await ctx2.close().catch(() => {});
-  await Promise.race([page.context().close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
+  await closeCrashedContext(page);
   stamp(t0, 'teardown done');
 });
 
@@ -330,7 +346,7 @@ test('clean boot does not replay and shows no banner', async ({ page }) => {
   stamp(t0, 'clean boot left the journal alone');
 });
 
-test('replay is idempotent: two crash-recovery cycles, same state', async ({ page, browser }) => {
+test('replay is idempotent: two crash-recovery cycles, same state', async ({ page }) => {
   test.setTimeout(300000);
   const t0 = Date.now();
   const errors: string[] = [];
@@ -342,9 +358,8 @@ test('replay is idempotent: two crash-recovery cycles, same state', async ({ pag
   await idbDeleteProjectRecord(page, projectId);
   // Go dirty again so the crash leaves its marker (see test 1).
   await makeDirty(page);
-  const state1 = await page.context().storageState();
   await crashRenderer(page);
-  const { ctx: ctx2, page: page2 } = await freshBoot(browser, state1);
+  const page2 = await rebootAfterCrash(page);
   const banner1 = page2.locator('#obs-recovery-banner');
   await expect(banner1).toBeVisible({ timeout: 60000 });
   await expect(banner1).toContainText('Journal replay recovered');
@@ -361,10 +376,9 @@ test('replay is idempotent: two crash-recovery cycles, same state', async ({ pag
   page2.on('pageerror', (e) => errors.push(e.message));
   await placeWall(page2);
   await expect.poll(() => page2.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
-  const state2 = await page2.context().storageState();
   await crashRenderer(page2);
   stamp(t0, 'second renderer crash');
-  const { ctx: ctx3, page: page3 } = await freshBoot(browser, state2);
+  const page3 = await rebootAfterCrash(page2);
   const banner2 = page3.locator('#obs-recovery-banner');
   await expect(banner2).toBeVisible({ timeout: 60000 });
   await expect(banner2).toContainText('Journal replay recovered');
@@ -375,13 +389,11 @@ test('replay is idempotent: two crash-recovery cycles, same state', async ({ pag
   const outcome2 = await recoveryOutcome(page3);
   expect(outcome2?.status).toBe('full');
   expect(errors, errors.join('\n')).toEqual([]);
-  await ctx3.close().catch(() => {});
-  await ctx2.close().catch(() => {});
-  await Promise.race([page.context().close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
+  await closeCrashedContext(page);
   stamp(t0, 'teardown done');
 });
 
-test('recovery from the last saved record when the journal is absent still works', async ({ page, browser }) => {
+test('recovery from the last saved record when the journal is absent still works', async ({ page }) => {
   test.setTimeout(300000);
   const t0 = Date.now();
   const errors: string[] = [];
@@ -398,11 +410,10 @@ test('recovery from the last saved record when the journal is absent still works
   expect((await idbGetAll(page, 'projectOps')).filter((o: any) => o.projectId === projectId)).toEqual([]);
   // Make it dirty (no new save) so the crash leaves a marker.
   await makeDirty(page);
-  const state = await page.context().storageState();
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
 
-  const { ctx: ctx2, page: page2 } = await freshBoot(browser, state);
+  const page2 = await rebootAfterCrash(page);
   const banner = page2.locator('#obs-recovery-banner');
   await expect(banner).toBeVisible({ timeout: 60000 });
   await expect(banner).toContainText('No journal entries to replay');
@@ -417,7 +428,6 @@ test('recovery from the last saved record when the journal is absent still works
   expect(doc?.id).toBe(projectId);
   await expect(page2.locator('.obs-home.is-open')).toHaveCount(0, { timeout: 30000 });
   expect(errors, errors.join('\n')).toEqual([]);
-  await ctx2.close().catch(() => {});
-  await Promise.race([page.context().close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
+  await closeCrashedContext(page);
   stamp(t0, 'teardown done');
 });
