@@ -2,6 +2,15 @@
  * Enterprise BIM Worksharing Engine — Multi-user worksets, element borrowing,
  * permissions, and sync-with-central reconcile protocol.
  *
+ * LOCAL-ONLY ENGINE. Everything in this class lives in process memory: its
+ * "central journal" is a local array and `syncWithCentral()` moves
+ * transactions between local arrays — it never talks to a server, and two
+ * browser tabs using this engine do NOT see each other's state. The durable
+ * multi-user path is server/central-model.mjs (server-authoritative journal,
+ * field-level merge, borrowing enforcement) + src/modules/collaboration/
+ * central-client.ts. Keep this engine for local workset/borrowing rules and
+ * UI state; do not present it as collaboration.
+ *
  * Provides model-based worksharing mechanics:
  * 1. Workset Management: Named element partitions (Architecture, Structure, MEP, etc.)
  * 2. Granular Borrowing: Check out individual elements without locking whole worksets.

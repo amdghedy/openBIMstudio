@@ -318,7 +318,7 @@ MEP domain code lives under `src/modules/mep/` and includes connector, connectiv
 
 ### Collaboration and project persistence
 
-The browser has project-scoped stores and `.obsproj` file import/export under `src/modules/projects/`. The optional `server/` exposes project/room APIs and server-sent event endpoints; the collaboration client and worksharing modules live under `src/modules/collaboration/`. Do not infer multi-user transactional safety from the presence of a WebSocket/Yjs dependency or a worksharing class: verify the actual configured transport, conflict policy, authorization and persistence path before claiming deployment-grade collaboration.
+The browser has project-scoped stores and `.obsproj` file import/export under `src/modules/projects/`. The optional `server/` exposes project/room APIs and server-sent event endpoints; the collaboration client and worksharing modules live under `src/modules/collaboration/`. Do not infer multi-user transactional safety from the presence of a WebSocket/Yjs dependency or a worksharing class: verify the actual configured transport, conflict policy, authorization and persistence path before claiming deployment-grade collaboration. The durable multi-user path is the central model (`server/central-model.mjs`, `server/central-store.mjs`, `src/modules/collaboration/central-client.ts`, documented in `docs/engineering/COLLABORATION_SYNC.md`): server-sequenced ops over a fsynced journal, not the in-memory `WorksharingEngine` and not Yjs (declared but unimported).
 
 ### Export and interoperability
 
