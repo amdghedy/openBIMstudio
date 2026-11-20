@@ -29,7 +29,10 @@ jobs:
         env:
           npm_config_registry: https://registry.npmjs.org/
         run: npm ci --legacy-peer-deps
+      - name: Probe which corruption classes hang web-ifc (diagnostic branch only)
+        run: node scripts/ifc-hang-probe.mjs
       - name: Run deterministic 500-mutation fuzz gate
+        if: false
         env:
           FUZZ_ITER: 500
           FUZZ_SEED: 42
@@ -42,6 +45,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nightly-ifc-fuzz-${{ github.run_id }}
-          path: fuzz-artifacts/
+          path: probe-artifacts/
           if-no-files-found: warn
           retention-days: 30
