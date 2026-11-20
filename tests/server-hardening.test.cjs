@@ -298,6 +298,39 @@ const integrationTests = async () => {
     s.child.kill();
   });
 
+  t("ROUTE MATRIX: every /api route (rooms, agent, convert, upload, unknown) is 401 without a token and with a wrong/query token", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const routes = [
+      ["GET", "/api/projects/p1"], ["PUT", "/api/projects/p1"],
+      ["GET", "/api/rooms/r1"], ["POST", "/api/rooms/r1/join"], ["POST", "/api/rooms/r1/heartbeat"],
+      ["POST", "/api/rooms/r1/leave"], ["POST", "/api/rooms/r1/change"],
+      ["POST", "/api/agent/exec"], ["POST", "/api/agent/result"], ["GET", "/api/agent/status"],
+      ["POST", "/api/convert"], ["GET", "/api/convert/x/status"], ["GET", "/api/convert/x/download"],
+      ["GET", "/api/does-not-exist"], ["POST", "/api/anything"], ["DELETE", "/api/projects/p1"],
+    ];
+    const leaks = [];
+    for (const [method, route] of routes) {
+      for (const hdr of [{}, { Authorization: "Bearer wrong" }, { Authorization: "Basic " + TOKEN }]) {
+        const r = await fetch(base + route, { method, headers: hdr, body: method === "GET" || method === "DELETE" ? undefined : "{}" });
+        if (r.status !== 401) leaks.push(`${method} ${route} [${Object.keys(hdr).join("") || "no auth"}] → ${r.status}`);
+      }
+      const q = await fetch(`${base}${route}?token=${encodeURIComponent(TOKEN)}`, { method, body: method === "GET" || method === "DELETE" ? undefined : "{}" });
+      if (q.status !== 401) leaks.push(`${method} ${route} [?token=] → ${q.status}`);
+    }
+    s.child.kill();
+    assert.deepStrictEqual(leaks, [], "unauthenticated access:\n" + leaks.join("\n"));
+  });
+
+  t("unauthenticated request leaves server state untouched (no project written)", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    await fetch(`${base}/api/projects/evil`, { method: "PUT", body: JSON.stringify({ name: "x" }) });
+    const ok = await fetch(`${base}/api/projects/evil`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    assert.strictEqual(ok.status, 404, "unauthenticated PUT must not persist");
+    s.child.kill();
+  });
+
   t("bearer token works; valid config serves requests", async () => {
     const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
     const base = `http://127.0.0.1:${s.port}`;
