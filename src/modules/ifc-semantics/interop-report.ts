@@ -15,6 +15,7 @@
  */
 
 import { fmtNumber } from "../../core/region";
+import type { ImportFidelityReport } from "./per-entity-report";
 
 export interface IfcInteropReport {
   fileName: string;
@@ -26,6 +27,14 @@ export interface IfcInteropReport {
   parsedAt: number;
   /** Scan stopped at the entity cap — counts then cover the scanned prefix only. */
   truncated: boolean;
+  /**
+   * Per-entity conversion fidelity (#106), attached by the importer when the
+   * semantic-model pass succeeds. Absent when the fidelity pass was skipped
+   * or failed — the inventory above is still valid on its own. Type-only
+   * import: no runtime dependency from the inventory module to the fidelity
+   * module.
+   */
+  fidelity?: ImportFidelityReport;
 }
 
 /** Entity-name pattern: `#12 = IFCWALL(...)` (STEP instance statements). */
@@ -111,5 +120,24 @@ export function formatInteropReport(r: IfcInteropReport): string[] {
     lines.push(`  … ${rest.length} more type(s), ${fmtNumber(restCount)} entities`);
   }
   lines.push(`inventory from the STEP instance table — not a per-type conversion guarantee`);
+  if (r.fidelity) {
+    const f = r.fidelity;
+    const t = f.totals;
+    lines.push(
+      `per-entity fidelity: ${fmtNumber(f.totalProducts)} products — ` +
+      `preserved ${fmtNumber(t.preserved)} (${t.preservedPct}%), ` +
+      `degraded ${fmtNumber(t.transformed + t.approximated)} (${t.degradedPct}%), ` +
+      `lost ${fmtNumber(t.unsupported + t.skipped + t.failed)} (${t.lostPct}%)`,
+    );
+    for (const a of f.byType) {
+      if (a.preserved !== a.total) {
+        lines.push(
+          `  ${a.type}: ${fmtNumber(a.total)} — preserved ${fmtNumber(a.preserved)}, ` +
+          `degraded ${fmtNumber(a.transformed + a.approximated)}, lost ${fmtNumber(a.unsupported + a.skipped + a.failed)}`,
+        );
+      }
+    }
+    lines.push(`  ${f.scope}`);
+  }
   return lines;
 }

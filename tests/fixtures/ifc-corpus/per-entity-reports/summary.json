@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "generator": "scripts/ifc-per-entity-report.mjs (per-entity-report v1)",
+  "corpus": "tests/fixtures/ifc-corpus",
+  "webIfc": {
+    "available": true,
+    "version": "0.0.77"
+  },
+  "files": [
+    {
+      "file": "arch-classified.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "arch-classified.ifc.json",
+      "totalProducts": 10,
+      "totals": {
+        "preserved": 10,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 35,
+        "globalIdsMatched": 10,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "generated-2x3.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "report": "generated-2x3.ifc.json",
+      "totalProducts": 9,
+      "totals": {
+        "preserved": 7,
+        "transformed": 2,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 77.8,
+        "degradedPct": 22.2,
+        "lostPct": 0
+      },
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 30,
+        "globalIdsMatched": 9,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "generated-small.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "generated-small.ifc.json",
+      "totalProducts": 9,
+      "totals": {
+        "preserved": 9,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 30,
+        "globalIdsMatched": 9,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "generated-structural.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "generated-structural.ifc.json",
+      "totalProducts": 5,
+      "totals": {
+        "preserved": 5,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 13,
+        "globalIdsMatched": 5,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "invalid/bad-guid.ifc",
+      "kind": "invalid",
+      "schema": "IFC4",
+      "report": "invalid/bad-guid.ifc.json",
+      "totalProducts": 6,
+      "totals": {
+        "preserved": 5,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 1,
+        "preservedPct": 83.3,
+        "degradedPct": 0,
+        "lostPct": 16.7
+      },
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 14,
+        "globalIdsMatched": 6,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "invalid/dangling-ref.ifc",
+      "kind": "invalid",
+      "schema": "IFC4",
+      "report": "invalid/dangling-ref.ifc.json",
+      "totalProducts": 6,
+      "totals": {
+        "preserved": 5,
+        "transformed": 0,
+        "approximated": 1,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 83.3,
+        "degradedPct": 16.7,
+        "lostPct": 0
+      },
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 14,
+        "globalIdsMatched": 6,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "invalid/missing-units.ifc",
+      "kind": "invalid",
+      "schema": "IFC4",
+      "report": "invalid/missing-units.ifc.json",
+      "totalProducts": 6,
+      "totals": {
+        "preserved": 6,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 14,
+        "globalIdsMatched": 6,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "invalid/truncated.ifc",
+      "kind": "invalid",
+      "schema": "IFC4",
+      "report": "invalid/truncated.ifc.json",
+      "totalProducts": 5,
+      "totals": {
+        "preserved": 5,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 8,
+        "globalIdsMatched": 5,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "malformed/truncated-in-string-min.ifc",
+      "kind": "malformed",
+      "schema": "UNKNOWN",
+      "report": null,
+      "reason": "no product entities readable (not STEP-shaped, empty, or unreadable)",
+      "totalProducts": 0,
+      "totals": null,
+      "webIfc": null
+    },
+    {
+      "file": "malformed/unterminated-string-min.ifc",
+      "kind": "malformed",
+      "schema": "UNKNOWN",
+      "report": null,
+      "reason": "no product entities readable (not STEP-shaped, empty, or unreadable)",
+      "totalProducts": 0,
+      "totals": null,
+      "webIfc": null
+    },
+    {
+      "file": "mep-model.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "mep-model.ifc.json",
+      "totalProducts": 13,
+      "totals": {
+        "preserved": 13,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 50,
+        "globalIdsMatched": 13,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    }
+  ],
+  "totals": {
+    "files": 11,
+    "reported": 9,
+    "unreported": 2,
+    "products": 69,
+    "preserved": 65,
+    "transformed": 2,
+    "approximated": 1,
+    "unsupported": 0,
+    "skipped": 0,
+    "failed": 1
+  }
+}

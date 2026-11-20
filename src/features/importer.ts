@@ -85,6 +85,22 @@ type ImportStatus =
   | "done" | "failed" | "cancelled" | "skipped";
 
 import { buildInteropReport, formatInteropReport, type IfcInteropReport } from "../modules/ifc-semantics/interop-report";
+import { buildImportFidelityReport } from "../modules/ifc-semantics/per-entity-report";
+
+/**
+ * Attach the per-entity fidelity report (#106) to an inventory report.
+ * Best-effort and isolated: a fidelity failure must never take down the
+ * inventory or the import — the semantic-model pass is a second, heavier
+ * parse of the same bytes, so it runs inside its own try/catch.
+ */
+function attachFidelity(report: IfcInteropReport | null, bytes: Uint8Array): IfcInteropReport | undefined {
+  if (!report) return undefined;
+  try {
+    const fidelity = buildImportFidelityReport(report.fileName, bytes);
+    if (fidelity) report.fidelity = fidelity;
+  } catch { /* fidelity optional */ }
+  return report;
+}
 
 interface ImportTask {
   uid: number;
@@ -1156,7 +1172,10 @@ async function runTask(t: ImportTask) {
         t.phase = "loaded from FRAG cache";
         t.progress = 100;
         // Inventory even on cache hits: the source file is still on hand.
-        try { t.interop = buildInteropReport(t.file.name, new Uint8Array(await t.file.arrayBuffer())) ?? undefined; } catch { /* optional */ }
+        try {
+          const cacheBytes = new Uint8Array(await t.file.arrayBuffer());
+          t.interop = attachFidelity(buildInteropReport(t.file.name, cacheBytes), cacheBytes);
+        } catch { /* optional */ }
         refreshTaskRow(t);
         console.log(`[importer] FRAG cache hit · ${t.file.name} · ${(cached.byteLength / (1024 * 1024)).toFixed(1)} MB`);
       }
@@ -1198,8 +1217,9 @@ async function runTask(t: ImportTask) {
       const pre = preflightStep(bytes);
       if (!pre.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${pre.reason}${pre.line ? ` (line ${pre.line})` : ""}. It was not opened.`);
       t.schema = detectSchema(bytes);
-      // Per-entity interop report: one linear scan of the STEP instance table.
-      try { t.interop = buildInteropReport(t.file.name, bytes) ?? undefined; } catch { /* optional */ }
+      // Per-entity interop report: one linear scan of the STEP instance table,
+      // plus the per-entity fidelity pass (#106) attached to the same report.
+      try { t.interop = attachFidelity(buildInteropReport(t.file.name, bytes), bytes); } catch { /* optional */ }
       refreshTaskRow(t);
 
       t.status = "converting"; t.phase = "checking WASM…"; refreshTaskRow(t);
