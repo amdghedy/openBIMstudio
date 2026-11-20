@@ -193,5 +193,104 @@ t("labels cover every typed system (no missing key)", () => {
   for (const s of systems) assert.ok(typeof m.MEP_SYSTEM_LABELS[s] === "string" && m.MEP_SYSTEM_LABELS[s].length > 0, s);
 });
 
+// ── Persisted named systems (MepSystemRegistry + stampSystemNames) ───────
+
+t("registry: names survive recompute after stamping (no renumbering)", () => {
+  const reg = new m.MepSystemRegistry();
+  const tree1 = m.computeMepSystemTree([A, E, B], { registry: reg });
+  assert.strictEqual(tree1.clusters[0].label, "Supply Air 1");
+  assert.ok(tree1.clusters[0].persistentId);
+  assert.strictEqual(m.stampSystemNames([A, E, B], tree1), 3);
+  const tree2 = m.computeMepSystemTree([A, E, B], { registry: reg });
+  assert.strictEqual(tree2.clusters[0].label, "Supply Air 1");
+  assert.strictEqual(tree2.clusters[0].persistentId, tree1.clusters[0].persistentId);
+  assert.strictEqual(tree2.clusters[0].id, tree1.clusters[0].id);
+});
+t("registry: adding an unrelated system does not renumber the first", () => {
+  const reg = new m.MepSystemRegistry();
+  const a1 = run("a1", "duct", [0, 0], [4, 0]);
+  const b1 = run("b1", "duct", [20, 20], [24, 20]);
+  const t1 = m.computeMepSystemTree([a1], { registry: reg });
+  m.stampSystemNames([a1], t1);
+  const t2 = m.computeMepSystemTree([a1, b1], { registry: reg });
+  m.stampSystemNames([a1, b1], t2);
+  const first = t2.clusters.find((c) => c.memberIds.includes("a1"));
+  const second = t2.clusters.find((c) => c.memberIds.includes("b1"));
+  assert.strictEqual(first.label, "Supply Air 1");
+  assert.strictEqual(second.label, "Supply Air 2");
+  // And a third refresh still keeps both names.
+  const t3 = m.computeMepSystemTree([a1, b1], { registry: reg });
+  assert.deepStrictEqual(t3.clusters.map((c) => c.label).sort(), ["Supply Air 1", "Supply Air 2"]);
+});
+t("registry: removing a member keeps the system name", () => {
+  const reg = new m.MepSystemRegistry();
+  const a1 = run("a1", "duct", [0, 0], [4, 0]);
+  const a2 = run("a2", "duct", [4, 0], [8, 0]);
+  const t1 = m.computeMepSystemTree([a1, a2], { registry: reg });
+  m.stampSystemNames([a1, a2], t1);
+  const t2 = m.computeMepSystemTree([a1], { registry: reg });
+  assert.strictEqual(t2.clusters[0].label, "Supply Air 1");
+  assert.strictEqual(t2.clusters[0].persistentId, t1.clusters[0].persistentId);
+});
+t("registry: joining two named systems keeps the earliest name and reports the merge", () => {
+  const reg = new m.MepSystemRegistry();
+  const a1 = run("a1", "duct", [0, 0], [4, 0]);
+  const b1 = run("b1", "duct", [20, 20], [24, 20]);
+  const t1 = m.computeMepSystemTree([a1, b1], { registry: reg });
+  m.stampSystemNames([a1, b1], t1);
+  assert.deepStrictEqual(t1.clusters.map((c) => c.label).sort(), ["Supply Air 1", "Supply Air 2"]);
+  // Move b1 to touch a1, joining the two systems.
+  b1.params.start = [4, 0]; b1.params.end = [8, 0];
+  const t2 = m.computeMepSystemTree([a1, b1], { registry: reg });
+  assert.strictEqual(t2.clusters.length, 1);
+  assert.strictEqual(t2.clusters[0].label, "Supply Air 1");
+  assert.ok(t2.clusters[0].diagnostics.some((d) => d.includes("Supply Air 2") && d.includes("Merged")));
+  // Stamping overwrites the retired name on b1.
+  m.stampSystemNames([a1, b1], t2);
+  assert.strictEqual(b1.properties.mepSystemName, "Supply Air 1");
+});
+t("registry: re-classifying a system invalidates its old stamp", () => {
+  const reg = new m.MepSystemRegistry();
+  const a1 = run("a1", "duct", [0, 0], [4, 0]);
+  const t1 = m.computeMepSystemTree([a1], { registry: reg });
+  m.stampSystemNames([a1], t1);
+  assert.strictEqual(t1.clusters[0].label, "Supply Air 1");
+  a1.properties = { ...(a1.properties ?? {}), system: "return-air" };
+  const t2 = m.computeMepSystemTree([a1], { registry: reg });
+  assert.strictEqual(t2.clusters[0].label, "Return Air 1");
+  assert.notStrictEqual(t2.clusters[0].persistentId, t1.clusters[0].persistentId);
+});
+t("registry: conflict clusters get no persistent identity and stamp nothing", () => {
+  const reg = new m.MepSystemRegistry();
+  const p1 = run("p1", "pipe", [0, 0], [1, 0]); p1.properties = { system: "domestic-cold" };
+  const p2 = run("p2", "pipe", [1, 0], [2, 0]); p2.properties = { system: "domestic-hot" };
+  const tree = m.computeMepSystemTree([p1, p2], { registry: reg });
+  assert.strictEqual(tree.clusters[0].persistentId, null);
+  assert.strictEqual(m.stampSystemNames([p1, p2], tree), 0);
+  assert.strictEqual(p1.properties.mepSystemId, undefined);
+});
+t("registry: a fresh registry rehydrates names from stamps alone", () => {
+  const reg1 = new m.MepSystemRegistry();
+  const a1 = run("a1", "duct", [0, 0], [4, 0]);
+  const a2 = run("a2", "duct", [20, 20], [24, 20]);
+  const t1 = m.computeMepSystemTree([a1, a2], { registry: reg1 });
+  m.stampSystemNames([a1, a2], t1);
+  // Simulate a reload: brand-new registry, same stamped elements.
+  const reg2 = new m.MepSystemRegistry();
+  const t2 = m.computeMepSystemTree([a1, a2], { registry: reg2 });
+  assert.deepStrictEqual(t2.clusters.map((c) => c.label).sort(), ["Supply Air 1", "Supply Air 2"]);
+  // A new third system mints past the stamped maximum, never colliding.
+  const a3 = run("a3", "duct", [40, 40], [44, 40]);
+  const t3 = m.computeMepSystemTree([a1, a2, a3], { registry: reg2 });
+  assert.strictEqual(t3.clusters.find((c) => c.memberIds.includes("a3")).label, "Supply Air 3");
+});
+t("without a registry the tree is unchanged (derived ids, no stamps)", () => {
+  const x1 = run("x1", "duct", [0, 0], [4, 0]);
+  const tree = m.computeMepSystemTree([x1]);
+  assert.strictEqual(tree.clusters[0].id, "supply-air-1");
+  assert.strictEqual(tree.clusters[0].persistentId, null);
+  assert.strictEqual(x1.properties, undefined);
+});
+
 console.log(`\nmep-system-tree: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

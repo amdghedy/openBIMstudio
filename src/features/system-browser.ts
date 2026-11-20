@@ -8,6 +8,11 @@
  * v2 renders the REAL model tree for authored MEP elements:
  *   - every connected cluster is ONE named system (Supply Air 1, …),
  *     built from geometry-derived connectivity (mep/system-tree.ts)
+ *   - system names are PERSISTED: the registry stamps mepSystemId /
+ *     mepSystemName onto member properties, so names survive refreshes
+ *     and project reloads instead of renumbering per refresh
+ *   - a cluster mixing two declared systems is a conflict (red row +
+ *     diagnostic), not a majority-vote resolution
  *   - equipment heads the member list; members expand and are individually
  *     selectable; clicking a system selects all of its members
  *   - isolated elements are flagged as unconnected, per system browser
@@ -19,9 +24,14 @@
 import { ctx } from "../core/context";
 import { selection } from "./selection";
 import { getElements, setSelectedAuthored } from "./authoring";
-import { computeMepSystemTree } from "../modules/mep/system-tree";
+import { computeMepSystemTree, MepSystemRegistry, stampSystemNames } from "../modules/mep/system-tree";
 import { colorFor } from "../modules/mep/types";
 import type { MepLike } from "../modules/mep/connectivity";
+
+/** Session registry: names minted here survive refreshes via the stamps
+ * written onto member properties (stampSystemNames); the stamps in turn
+ * rehydrate a fresh registry after a project reload. */
+const systemRegistry = new MepSystemRegistry();
 
 interface SystemDef {
   id: string;
@@ -120,7 +130,10 @@ function rowBase(): HTMLDivElement {
 /** Authored model: real systems from connectivity. */
 function renderAuthoredSection(host: HTMLDivElement): { systems: number; elements: number; unconnected: number; conflicts: number } {
   const els = getElements() as unknown as MepLike[];
-  const tree = computeMepSystemTree(els);
+  const tree = computeMepSystemTree(els, { registry: systemRegistry });
+  // Persist the names just assigned so the next refresh (and, via the
+  // project save, the next reload) keeps them instead of renumbering.
+  stampSystemNames(els, tree);
   if (!tree.totalMep) return { systems: 0, elements: 0, unconnected: 0, conflicts: 0 };
 
   host.appendChild(sectionTitle(

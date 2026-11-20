@@ -85,6 +85,15 @@ export interface MepSystemCluster {
   conflicts: MepSystem[];
   /** Human-readable diagnostics for this cluster (empty when healthy). */
   diagnostics: string[];
+  /**
+   * Stable instance id for this system (e.g. "mep-sys-3"), present only
+   * when the tree was computed with a MepSystemRegistry. It survives
+   * refreshes and model edits: the registry reuses the id stamped on
+   * member properties, so a system keeps its name ("Supply Air 1") instead
+   * of renumbering per refresh. Null for conflicts (rejected clusters get
+   * no persistent identity) and when no registry was supplied.
+   */
+  persistentId: string | null;
 }
 
 export interface MepSystemTree {
@@ -150,8 +159,133 @@ function systemForLinearType(type: string): MepSystem | null {
   return DEFAULT_SYSTEM_BY_TYPE[type] ?? null;
 }
 
-export function computeMepSystemTree(elements: MepLike[]): MepSystemTree {
+// ── Persisted named systems ───────────────────────────────────────────────
+//
+// Problem: cluster names were derived per refresh ("Supply Air 1, 2, …"),
+// so adding one duct renumbered every system in the browser. The fix is a
+// small stateful registry plus stamps on the elements themselves:
+//
+//   - computeMepSystemTree(elements, { registry }) reuses the
+//     `properties.mepSystemId` / `properties.mepSystemName` stamped on any
+//     member (the id is the identity, the name is the display label).
+//   - stampSystemNames(elements, tree) writes the assignment back onto
+//     member properties. Properties serialize with the element at project
+//     save (src/modules/projects/projects.ts: `current.elements =
+//     getElements()`), so names survive reload — the same mechanism
+//     `properties.system` already relies on. Stamping happens on render;
+//     it rides along with the next save and never marks the project dirty
+//     by itself.
+//   - A compute+stamp pair is the unit of work: the registry mints fresh
+//     names for unstamped clusters and remembers its counters, so a second
+//     compute without an intervening stamp would mint a new name. Callers
+//     must stamp after every compute (system-browser.ts does).
+//   - Joining two formerly separate named systems keeps the earliest
+//     member's name and reports the merge as a diagnostic; the retired
+//     name is overwritten on the next stamp. Re-classifying a member to a
+//     different system invalidates its old stamp (a "Supply Air 1" stamp
+//     never follows a cluster that now resolves to return-air).
+//   - Conflict clusters get no persistent identity.
+
+export interface MepSystemAssignment {
+  id: string;
+  name: string;
+  /** Set when the cluster merged two formerly separate named systems. */
+  mergeNote: string | null;
+}
+
+export interface MepSystemTreeOptions {
+  registry?: MepSystemRegistry;
+}
+
+const STAMPED_ID_RE = /^mep-sys-(\d+)$/;
+
+function stampedAssignment(e: MepLike): { id: string; name: string } | null {
+  const id = e.properties?.mepSystemId;
+  const name = e.properties?.mepSystemName;
+  if (typeof id !== "string" || !STAMPED_ID_RE.test(id)) return null;
+  if (typeof name !== "string" || !name.trim()) return null;
+  return { id, name: name.trim() };
+}
+
+/** System key a stamped display name belongs to, or null when it matches none. */
+function systemKeyForName(name: string): string | null {
+  for (const [sys, label] of Object.entries(MEP_SYSTEM_LABELS)) {
+    const m = name.match(new RegExp("^" + label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " (\\d+)$"));
+    if (m) return sys;
+  }
+  if (/^Unclassified (\d+)$/.test(name)) return "unclassified";
+  return null;
+}
+
+export class MepSystemRegistry {
+  private nextGlobal = 1;
+  private nextByKey = new Map<string, number>();
+
+  /** Raise counters past every stamped id/name in the input (never lowers). */
+  seedFrom(elements: MepLike[]): void {
+    for (const e of elements) {
+      const stamp = stampedAssignment(e);
+      if (!stamp) continue;
+      const g = STAMPED_ID_RE.exec(stamp.id);
+      if (g) this.nextGlobal = Math.max(this.nextGlobal, Number(g[1]) + 1);
+      const key = systemKeyForName(stamp.name);
+      if (key) {
+        const n = Number(stamp.name.split(" ").pop());
+        if (Number.isFinite(n)) this.nextByKey.set(key, Math.max(this.nextByKey.get(key) ?? 1, n + 1));
+      }
+    }
+  }
+
+  assignFor(members: MepLike[], system: MepSystem | null, conflicts: MepSystem[]): MepSystemAssignment | null {
+    if (conflicts.length > 0) return null;
+    const key = system ?? "unclassified";
+    // Reuse a stamp only when it still names THIS system.
+    const stamped: Array<{ id: string; name: string }> = [];
+    for (const m of members) {
+      const s = stampedAssignment(m);
+      if (s && systemKeyForName(s.name) === key && !stamped.some((x) => x.id === s.id)) stamped.push(s);
+    }
+    if (stamped.length === 1) return { id: stamped[0].id, name: stamped[0].name, mergeNote: null };
+    if (stamped.length > 1) {
+      const retired = stamped.slice(1).map((s) => s.name).join(", ");
+      return {
+        id: stamped[0].id,
+        name: stamped[0].name,
+        mergeNote: `Merged formerly separate systems (${retired}) into '${stamped[0].name}' — keeping '${stamped[0].name}'.`,
+      };
+    }
+    const n = this.nextByKey.get(key) ?? 1;
+    this.nextByKey.set(key, n + 1);
+    const name = system ? `${MEP_SYSTEM_LABELS[system]} ${n}` : `Unclassified ${n}`;
+    return { id: `mep-sys-${this.nextGlobal++}`, name, mergeNote: null };
+  }
+}
+
+/**
+ * Write a computed tree's persistent assignments back onto member element
+ * properties (`properties.mepSystemId` / `properties.mepSystemName`).
+ * Mutates the live element objects in place; returns how many elements
+ * were stamped. Conflict clusters stamp nothing.
+ */
+export function stampSystemNames(elements: MepLike[], tree: MepSystemTree): number {
+  const byId = new Map(elements.map((e) => [e.id, e]));
+  let stamped = 0;
+  for (const c of tree.clusters) {
+    if (!c.persistentId) continue;
+    for (const id of c.memberIds) {
+      const el = byId.get(id);
+      if (!el) continue;
+      el.properties = { ...(el.properties ?? {}), mepSystemId: c.persistentId, mepSystemName: c.label };
+      stamped++;
+    }
+  }
+  return stamped;
+}
+
+export function computeMepSystemTree(elements: MepLike[], options: MepSystemTreeOptions = {}): MepSystemTree {
   const mep = elements.filter(isMepElement);
+  const registry = options.registry ?? null;
+  if (registry) registry.seedFrom(mep);
 
   // Union-find over indices; grid-indexed connectivity (connectedPairs is
   // exactly the O(n²) scan, pruned — see connectivity.ts).
@@ -248,18 +382,32 @@ export function computeMepSystemTree(elements: MepLike[]): MepSystemTree {
     const key = conflicts.length > 0 ? "system-conflict" : (system ?? "unclassified");
     const n = (sequence.get(key) ?? 0) + 1;
     sequence.set(key, n);
-    const label = conflicts.length > 0
+    const derivedLabel = conflicts.length > 0
       ? `System Conflict ${n}`
       : system ? `${MEP_SYSTEM_LABELS[system]} ${n}` : `Unclassified ${n}`;
 
+    // Persistent identity: reuse a stamp, or mint one. The persistent name
+    // is the label when a registry is in play (no per-refresh renumbering).
+    let persistentId: string | null = null;
+    let label = derivedLabel;
+    if (registry) {
+      const assignment = registry.assignFor(members, system, conflicts);
+      if (assignment) {
+        persistentId = assignment.id;
+        label = assignment.name;
+        if (assignment.mergeNote) diagnostics.push(assignment.mergeNote);
+      }
+    }
+
     clusters.push({
-      id: `${key}-${n}`,
+      id: persistentId ?? `${key}-${n}`,
       system,
       label,
       memberIds: ordered,
       unconnected: ordered.length === 1,
       conflicts,
       diagnostics,
+      persistentId,
     });
   }
 
