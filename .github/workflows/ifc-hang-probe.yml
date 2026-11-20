@@ -1,0 +1,27 @@
+name: IFC hang probe (diagnostic)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Probe which corruption classes hang web-ifc
+        run: node scripts/ifc-hang-probe.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ifc-hang-probe-${{ github.run_id }}
+          path: probe-artifacts/
+          retention-days: 30
