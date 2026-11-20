@@ -178,7 +178,7 @@ export function showProjectRecovery(): void {
         row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #34353f;border-radius:6px;background:#12131a";
         const meta = document.createElement("div");
         meta.style.cssText = "flex:1;min-width:0";
-        const when = new Date(b.createdAt).toLocaleString();
+        const when = fmtDateTime(b.createdAt);
         const kb = Math.max(1, Math.round(b.blob.size / 1024));
         meta.innerHTML = `<div style="font-weight:600">${esc(b.fileName)}</div>` +
           `<div style="opacity:.65;font-size:11px">${esc(when)} · ${kb} KB · ${esc(b.reason)}</div>`;
