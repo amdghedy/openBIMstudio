@@ -84,6 +84,14 @@ for (const seed of seeds) {
     if (result.startsWith("hang")) writeFileSync(join(OUT, `${seed}.${cls}.ifc`), bytes);
   }
 }
+// The checked-in minimal regression fixtures must really be the problem inputs (raw, no pre-flight).
+import { readdirSync } from "fs";
+const MAL = join(CORPUS, "malformed");
+for (const f of readdirSync(MAL).filter((x) => x.endsWith(".ifc"))) {
+  const result = await run(readFileSync(join(MAL, f)));
+  report.push({ seed: `malformed/${f}`, cls: "(fixture, raw)", result });
+  console.log(`malformed/${f.padEnd(34)} raw web-ifc: ${result}`);
+}
 const hangClasses = [...new Set(report.filter((r) => r.result.startsWith("hang")).map((r) => r.cls))];
 for (const cls of hangClasses) {
   const r = report.find((x) => x.cls === cls && x.result.startsWith("hang"));
