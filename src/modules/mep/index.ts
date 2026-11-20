@@ -35,6 +35,7 @@ import * as mepHvacLoads from "./hvac-loads";
 import * as mepFlowAssignment from "./flow-assignment";
 import * as mepIfcReconstruction from "./ifc-reconstruction";
 import * as mepProtectionCoordination from "./protection-coordination";
+import * as mepCalculationBasis from "./calculation-basis";
 import * as mepLighting from "./lighting";
 import * as mepHostedElements from "./hosted-elements";
 import * as mepDemandFactors from "./demand-factors";
@@ -69,6 +70,7 @@ export * from "./hvac-loads";
 export * from "./flow-assignment";
 export * from "./ifc-reconstruction";
 export * from "./protection-coordination";
+export * from "./calculation-basis";
 export * from "./lighting";
 export * from "./hosted-elements";
 export * from "./demand-factors";
@@ -150,6 +152,9 @@ export function setupMep(): MepService {
   // Electrical protection: breaker selectivity + breaking-capacity
   // screening (checkBreakerSelectivity / auditProtectionChain).
   svcAny.protectionCoordination = mepProtectionCoordination;
+  // Calculation basis: method / standard / units / assumptions /
+  // limitations / validation status per area (calculationBasisFor).
+  svcAny.calculationBasis = mepCalculationBasis;
 
   // MEP final-gap pack: lumen-method lighting design, the hosted-element
   // (host relationship) engine and NEC 220 code demand factors.
