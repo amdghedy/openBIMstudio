@@ -12,6 +12,8 @@ export function validateIfcStepSyntax(input: string | Uint8Array): string[] {
     if (errors.length < 8 && !errors.includes(message)) errors.push(message);
   };
   const length = input.length;
+  const bom = (typeof input === "string" ? input.charCodeAt(0) : input[0]) === 0xfeff;
+  const offset = bom ? 1 : 0;
   const codeAt = (i: number) => typeof input === "string" ? input.charCodeAt(i) : input[i];
   const charAt = (i: number) => String.fromCharCode(codeAt(i) || 0);
   const white = (c: number) => c === 9 || c === 10 || c === 13 || c === 32;
@@ -19,7 +21,7 @@ export function validateIfcStepSyntax(input: string | Uint8Array): string[] {
 
   // Lexical pass: strings use doubled apostrophes, comments use /* ... */.
   let quote = 0, comment = false, depth = 0;
-  for (let i = 0; i < length; i++) {
+  for (let i = offset; i < length; i++) {
     const n = codeAt(i + 1), c = codeAt(i);
     if (comment) {
       if (c === 42 && n === 47) { comment = false; i++; }
@@ -84,7 +86,7 @@ export function validateIfcStepSyntax(input: string | Uint8Array): string[] {
     return null;
   };
 
-  const preamble = findMarker("ISO-10303-21", 0);
+  const preamble = findMarker("ISO-10303-21", offset);
   if (!preamble || !/^\s*ISO-10303-21\s*;$/i.test(sliceText(0, preamble.end))) {
     return ["Missing ISO-10303-21; preamble"];
   }
@@ -215,8 +217,17 @@ export function validateIfcStepSyntax(input: string | Uint8Array): string[] {
     }
   }
   if (!errors.length) {
-    for (let i = statementStart; i < dataEnd.start; i++) {
-      if (!white(codeAt(i))) { fail("DATA contains a record without its terminating semicolon"); break; }
+    let i = statementStart;
+    while (i < dataEnd.start) {
+      if (white(codeAt(i))) { i++; continue; }
+      if (codeAt(i) === 47 && codeAt(i + 1) === 42) {
+        i += 2;
+        while (i + 1 < dataEnd.start && !(codeAt(i) === 42 && codeAt(i + 1) === 47)) i++;
+        i += 2;
+        continue;
+      }
+      fail("DATA contains a record without its terminating semicolon");
+      break;
     }
   }
   if (statementCount === 0) fail("DATA section contains no entity instances");
