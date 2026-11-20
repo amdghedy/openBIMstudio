@@ -159,6 +159,15 @@ async function saveProject(page: Page): Promise<void> {
   await expect.poll(async () => (await idbGetAll(page, 'projectOps')).length, { timeout: 30000 }).toBeGreaterThan(before);
 }
 
+/** Mark the open document dirty through the app's own API (what any edit
+ *  does) and wait for the eager crash marker. Used instead of placing a
+ *  second wall for dirtiness: a wall placement takes seconds, and the
+ *  25 s autosave tick can save it and clear the marker before the crash. */
+async function makeDirty(page: Page): Promise<void> {
+  await page.evaluate(() => { (window as any).__OBS_CTX__?.features?.projects?.markDirty?.(); });
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
+}
+
 /** Genuine renderer crash: no beforeunload, no cleanup handlers run. */
 async function crashRenderer(page: Page): Promise<void> {
   const crashed = new Promise<void>((resolve) => page.once('crash', () => resolve()));
@@ -208,10 +217,8 @@ test('crash mid-edit: banner appears and the saved edits are back', async ({ pag
   // A real crash in that window leaves the crash marker behind: the
   // marker is written when the document first goes dirty and cleared
   // only when the save completes. The clean save above cleared it, so
-  // go dirty again (this wall is in-memory only and must be lost) and
-  // wait for the eager marker before crashing.
-  await placeWall(page);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
+  // go dirty again before crashing.
+  await makeDirty(page);
   const state = await page.context().storageState();
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
@@ -262,10 +269,8 @@ test('crash with a corrupt journal tail: recovers up to the last good entry and 
   // the journal alone.
   const corruptSeq = await idbCorruptLastOp(page, projectId);
   await idbDeleteProjectRecord(page, projectId);
-  // Go dirty again so the crash leaves its marker (see test 1): this
-  // wall is in-memory only and must be lost along with the corrupt entry.
-  await placeWall(page);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
+  // Go dirty again so the crash leaves its marker (see test 1).
+  await makeDirty(page);
   const state = await page.context().storageState();
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
@@ -336,8 +341,7 @@ test('replay is idempotent: two crash-recovery cycles, same state', async ({ pag
   await saveProject(page);
   await idbDeleteProjectRecord(page, projectId);
   // Go dirty again so the crash leaves its marker (see test 1).
-  await placeWall(page);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
+  await makeDirty(page);
   const state1 = await page.context().storageState();
   await crashRenderer(page);
   const { ctx: ctx2, page: page2 } = await freshBoot(browser, state1);
@@ -392,9 +396,8 @@ test('recovery from the last saved record when the journal is absent still works
   // gone, but the last saved primary record remains.
   await idbClearJournal(page, projectId);
   expect((await idbGetAll(page, 'projectOps')).filter((o: any) => o.projectId === projectId)).toEqual([]);
-  // Make it dirty (in-memory-only wall) so the crash leaves a marker.
-  await placeWall(page);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
+  // Make it dirty (no new save) so the crash leaves a marker.
+  await makeDirty(page);
   const state = await page.context().storageState();
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
