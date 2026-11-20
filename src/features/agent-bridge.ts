@@ -287,13 +287,47 @@ export function relayStatus(): RelayStatus {
   return { enabled: relayEnabled(), connected: relayConnected, lastOrderAt: relayLastOrderAt, base: collabApiBase() };
 }
 
-/** Connect to the local collab server agent relay (opt-in; enables the flag). */
-export function connectRelay(): { ok: boolean; error?: string } {
+/** Connect to the local collab server agent relay (opt-in; enables the flag).
+ * When a long-lived token is configured, the stream is opened with a
+ * short-lived agent-scoped token minted from POST /api/agent/sse-token
+ * (Bearer) — never with the long-lived token in the URL: the server
+ * refuses ?token= on every route now (#92). If minting fails, the relay
+ * fails closed (no stream, no fallback) and reports why. Tokenless
+ * (loopback) servers open the stream bare, as before. Async: callers that
+ * fire-and-forget (panel toggle, boot auto-connect, window API) are
+ * unaffected — the returned promise carries the outcome. */
+export async function connectRelay(): Promise<{ ok: boolean; error?: string }> {
   try { localStorage.setItem(RELAY_FLAG_KEY, "1"); } catch { /* */ }
   if (relayEs) return { ok: true };
   const base = collabApiBase();
   const token = collabToken();
-  const url = `${base}/agent/events${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  let sseQuery = "";
+  if (token) {
+    try {
+      const mint = await fetch(`${base}/agent/sse-token`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!mint.ok) {
+        const error = `Agent relay failed: could not mint a stream token (${mint.status}).`;
+        notify("error", error);
+        return { ok: false, error };
+      }
+      const minted = (await mint.json()) as { sseToken?: unknown };
+      if (!minted || typeof minted.sseToken !== "string" || !minted.sseToken) {
+        const error = "Agent relay failed: server returned no stream token.";
+        notify("error", error);
+        return { ok: false, error };
+      }
+      sseQuery = `?sse=${encodeURIComponent(minted.sseToken)}`;
+    } catch (err) {
+      relayConnected = false;
+      const error = err instanceof Error ? err.message : String(err);
+      notify("error", "Agent relay failed: " + error);
+      return { ok: false, error };
+    }
+  }
+  const url = `${base}/agent/events${sseQuery}`;
   try {
     const es = new EventSource(url);
     es.addEventListener("hello", () => {

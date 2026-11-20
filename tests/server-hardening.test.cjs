@@ -135,6 +135,19 @@ const rateTests = (m) => {
     assert.strictEqual(rl.peek("fresh"), 1);
   });
 
+  t("safeRateCheck fails CLOSED when the limiter throws (never un-limits)", () => {
+    const throwing = { check() { throw new Error("backend down"); } };
+    const r = m.safeRateCheck(throwing, "ip1");
+    assert.strictEqual(r.allowed, false);
+    assert.ok(r.retryAfterMs > 0);
+    // A limiter returning garbage is also refused, not admitted.
+    const garbage = { check() { return null; } };
+    assert.strictEqual(m.safeRateCheck(garbage, "ip1").allowed, false);
+    // And a healthy limiter passes straight through.
+    const rl = m.createRateLimiter({ windowMs: 1000, max: 3 });
+    assert.strictEqual(m.safeRateCheck(rl, "ip1").allowed, true);
+  });
+
   t("correlation ids: honour safe incoming id, mint otherwise", () => {
     const good = m.correlationId({ headers: { "x-request-id": "abc-DEF_123.9" } });
     assert.strictEqual(good, "abc-DEF_123.9");
@@ -207,6 +220,44 @@ const sseTests = (m) => {
 
   t("issuing without a secret is refused", () => {
     assert.throws(() => m.issueSseToken("", { room: "r" }), /secret/i);
+  });
+
+  t("agent scope: issue → verify happy path; room scope cannot open it", () => {
+    const tok = m.issueSseToken(secret, { room: m.AGENT_SSE_ROOM, scope: m.AGENT_SSE_SCOPE, ttlMs: 60_000, now: 1_000_000 });
+    const v = m.verifySseToken(tok, secret, { room: m.AGENT_SSE_ROOM, scope: m.AGENT_SSE_SCOPE, now: 1_000_001 });
+    assert.ok(v.ok, JSON.stringify(v));
+    assert.strictEqual(v.payload.scope, "agent");
+    // Same token presented as a room token is refused by scope …
+    const asRoom = m.verifySseToken(tok, secret, { room: m.AGENT_SSE_ROOM, scope: "room", now: 1_000_001 });
+    assert.strictEqual(asRoom.ok, false);
+    assert.strictEqual(asRoom.reason, "wrong-scope");
+    // … and a room token presented as an agent token is refused the same way.
+    const roomTok = m.issueSseToken(secret, { room: "room1", ttlMs: 60_000, now: 1_000_000 });
+    const asAgent = m.verifySseToken(roomTok, secret, { room: m.AGENT_SSE_ROOM, scope: m.AGENT_SSE_SCOPE, now: 1_000_001 });
+    assert.strictEqual(asAgent.ok, false);
+    assert.strictEqual(asAgent.reason, "wrong-room");
+  });
+
+  t("agent scope cannot be minted for a real room id", () => {
+    // The reserved agent subject is not a valid room id, and the room mint
+    // endpoint validates ids — but the pure issuer must also refuse a
+    // scope/room combination that would cross the boundary.
+    assert.throws(() => m.issueSseToken(secret, { room: "room1", scope: "agent" }), /room/i);
+    assert.throws(() => m.issueSseToken(secret, { room: m.AGENT_SSE_ROOM, scope: "room" }), /room/i);
+    assert.throws(() => m.issueSseToken(secret, { room: "room1", scope: "bogus" }), /scope/i);
+  });
+
+  t("legacy token without a scope field still verifies as room scope", () => {
+    // Tokens minted before scopes existed carry {room, sub, exp} only.
+    // They must keep working for their 5-minute lifetime on room routes
+    // and must never open the agent route.
+    const crypto = require("crypto");
+    const payloadStr = JSON.stringify({ room: "room1", sub: "client", exp: Date.now() + 60_000 });
+    const sig = crypto.createHmac("sha256", secret).update(payloadStr).digest().toString("base64url");
+    const legacy = `${Buffer.from(payloadStr).toString("base64url")}.${sig}`;
+    assert.ok(m.verifySseToken(legacy, secret, { room: "room1", scope: "room" }).ok);
+    const asAgent = m.verifySseToken(legacy, secret, { room: m.AGENT_SSE_ROOM, scope: m.AGENT_SSE_SCOPE });
+    assert.strictEqual(asAgent.ok, false);
   });
 };
 
@@ -335,6 +386,7 @@ const integrationTests = async () => {
       ["POST", "/api/rooms/r1/sse-token"], ["GET", "/api/rooms/r1/sse-token"],
       ["GET", "/api/rooms/r1/events"],
       ["POST", "/api/agent/exec"], ["POST", "/api/agent/result"], ["GET", "/api/agent/status"],
+      ["POST", "/api/agent/sse-token"], ["GET", "/api/agent/sse-token"], ["GET", "/api/agent/events"],
       ["POST", "/api/convert"], ["GET", "/api/convert/x/status"], ["GET", "/api/convert/x/download"],
       ["GET", "/api/does-not-exist"], ["POST", "/api/anything"], ["DELETE", "/api/projects/p1"],
     ];
@@ -493,13 +545,67 @@ const integrationTests = async () => {
     s.child.kill();
   });
 
-  t("SSE: agent events keeps ?token= (the documented exception — no room to bind to)", async () => {
+  t("SSE: agent events rejects ?token=; Bearer and minted agent ?sse= accepted, room ?sse= refused", async () => {
     const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
     const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}` };
     const ac = new AbortController();
+    // The long-lived token in the URL is refused even when it is valid —
+    // the agent relay was the last ?token= exception and is now closed.
     const q = await fetch(`${base}/api/agent/events?token=${encodeURIComponent(TOKEN)}`, { signal: ac.signal });
-    assert.strictEqual(q.status, 200, "agent relay still accepts ?token= by design");
+    assert.strictEqual(q.status, 401, "?token= must not open the agent stream");
+    q.body?.cancel?.();
+    // Bearer still opens it.
+    const bearer = await fetch(`${base}/api/agent/events`, { headers: H, signal: ac.signal });
+    assert.strictEqual(bearer.status, 200);
+    // A minted agent-scoped token opens it …
+    const sseMod = await require("./helpers/sse-tokens-loader.cjs");
+    const agentTok = sseMod.issueSseToken(TOKEN, { room: sseMod.AGENT_SSE_ROOM, scope: sseMod.AGENT_SSE_SCOPE, ttlMs: 60_000 });
+    const good = await fetch(`${base}/api/agent/events?sse=${encodeURIComponent(agentTok)}`, { signal: ac.signal });
+    assert.strictEqual(good.status, 200);
+    // … but a room-scoped token does not, and the agent token does not open
+    // a room stream either (scopes never cross).
+    const roomTok = sseMod.issueSseToken(TOKEN, { room: "r1", ttlMs: 60_000 });
+    const cross1 = await fetch(`${base}/api/agent/events?sse=${encodeURIComponent(roomTok)}`);
+    assert.strictEqual(cross1.status, 401, "room token must not open the agent stream");
+    cross1.body?.cancel?.();
+    const cross2 = await fetch(`${base}/api/rooms/r1/events?sse=${encodeURIComponent(agentTok)}`);
+    assert.strictEqual(cross2.status, 401, "agent token must not open a room stream");
+    cross2.body?.cancel?.();
     ac.abort();
+    s.child.kill();
+  });
+
+  t("mint: POST /api/agent/sse-token mints an agent-scoped token (Bearer only)", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}` };
+    const noAuth = await fetch(`${base}/api/agent/sse-token`, { method: "POST" });
+    assert.strictEqual(noAuth.status, 401);
+    const queryTok = await fetch(`${base}/api/agent/sse-token?token=${encodeURIComponent(TOKEN)}`, { method: "POST" });
+    assert.strictEqual(queryTok.status, 401, "?token= must not mint");
+    const wrongMethod = await fetch(`${base}/api/agent/sse-token`, { method: "GET", headers: H });
+    assert.strictEqual(wrongMethod.status, 405);
+    const ok = await fetch(`${base}/api/agent/sse-token`, { method: "POST", headers: H });
+    assert.strictEqual(ok.status, 200);
+    const body = await ok.json();
+    assert.strictEqual(body.scope, "agent");
+    assert.strictEqual(body.ttlMs, 5 * 60_000);
+    assert.ok(typeof body.sseToken === "string" && body.sseToken.includes("."));
+    assert.ok(Math.abs(body.expiresAt - (Date.now() + 5 * 60_000)) < 5_000);
+    // The minted token opens the agent stream.
+    const ac = new AbortController();
+    const stream = await fetch(`${base}/api/agent/events?sse=${encodeURIComponent(body.sseToken)}`, { signal: ac.signal });
+    assert.strictEqual(stream.status, 200);
+    ac.abort();
+    s.child.kill();
+  });
+
+  t("mint: tokenless (loopback) agent mint answers 503 — nothing to mint from", async () => {
+    const s = await startServer({});
+    const base = `http://127.0.0.1:${s.port}`;
+    const r = await fetch(`${base}/api/agent/sse-token`, { method: "POST" });
+    assert.strictEqual(r.status, 503);
     s.child.kill();
   });
 
@@ -561,6 +667,145 @@ const integrationTests = async () => {
     // Per-route isolation: a different route still answers 401, not 429.
     const other = await fetch(`${base}/api/rooms/r1`, { headers: { Authorization: "Bearer wrong" } });
     assert.strictEqual(other.status, 401);
+    s.child.kill();
+  });
+
+  t("UNSAFE startup variants refuse: weak token, missing origins, wildcard loopback origins", async () => {
+    // Fail-closed proof (spawned server, not just the pure config helper):
+    // every misconfiguration that would leave the server exposed refuses
+    // to start, with a named reason on stderr.
+    const cases = [
+      [{ HOST: "0.0.0.0", OBS_SERVER_TOKEN: "short", OBS_ALLOWED_ORIGINS: "https://x.example" }, /weak/],
+      [{ HOST: "0.0.0.0", OBS_SERVER_TOKEN: TOKEN }, /origin allow-list/i],
+      [{ OBS_ALLOWED_ORIGINS: "*" }, /must not contain/],
+    ];
+    for (const [env, reason] of cases) {
+      const r = await startServer(env);
+      await new Promise((r2) => setTimeout(r2, 300));
+      assert.ok(r.exited, `server must refuse to start with ${JSON.stringify(env)}`);
+      assert.notStrictEqual(r.code, 0);
+      assert.match(r.log(), /STARTUP REFUSED/);
+      assert.match(r.log(), reason);
+      if (r.child) r.child.kill();
+    }
+  });
+
+  t("mutation budgets cover agent/result, convert uploads and project PUTs", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN, OBS_RATE_MAX_MUTATION: "3" });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+    // agent/result had no budget at all before this change: flood it.
+    const resultCodes = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await fetch(`${base}/api/agent/result`, { method: "POST", headers: H, body: JSON.stringify({ orderId: "nope" }) });
+      resultCodes.push(r.status);
+    }
+    assert.deepStrictEqual(resultCodes, [404, 404, 404, 429], "agent/result must be mutation-budgeted");
+    // convert uploads: same budget class, its own key.
+    const convertCodes = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await fetch(`${base}/api/convert`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${TOKEN}`, "x-file-name": "tower.ifc" },
+        body: "ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;\n",
+      });
+      convertCodes.push(r.status);
+    }
+    assert.deepStrictEqual(convertCodes, [200, 200, 200, 429], "convert uploads must be mutation-budgeted");
+    // project PUTs rewrite a whole file + backup per call: budget them too.
+    const putCodes = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await fetch(`${base}/api/projects/p1`, { method: "PUT", headers: H, body: JSON.stringify({ name: "T", data: {} }) });
+      putCodes.push(r.status);
+    }
+    assert.deepStrictEqual(putCodes, [200, 200, 200, 429], "project PUTs must be mutation-budgeted");
+    s.child.kill();
+  });
+
+  t("error responses never echo the token (no credential leakage in bodies)", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}` };
+    const probes = [
+      fetch(`${base}/api/projects/p1?token=${encodeURIComponent(TOKEN)}`),
+      fetch(`${base}/api/rooms/r1/events?token=${encodeURIComponent(TOKEN)}`),
+      fetch(`${base}/api/agent/events?token=${encodeURIComponent(TOKEN)}`),
+      fetch(`${base}/api/agent/events?sse=bad.token.here`),
+      fetch(`${base}/api/does-not-exist`, { headers: H }),
+      fetch(`${base}/api/projects/p1`, { headers: { Authorization: "Bearer wrong" } }),
+    ];
+    for (const p of probes) {
+      const r = await p;
+      const text = await r.text();
+      assert.ok(!text.includes(TOKEN), `response body leaks the token (${r.status}): ${text.slice(0, 120)}`);
+      assert.ok(!text.includes(encodeURIComponent(TOKEN)), "encoded token leaked");
+    }
+    s.child.kill();
+  });
+
+  t("malformed percent-encoding in a path is a 400, not a crash", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}` };
+    // decodeURIComponent throws URIError on these; the server must answer
+    // a client error, not die (and still serve the next request).
+    const bad = await fetch(`${base}/api/projects/%E0%A4%A`, { headers: H });
+    assert.strictEqual(bad.status, 400);
+    assert.strictEqual((await bad.json()).error, "Invalid URL encoding");
+    const good = await fetch(`${base}/api/rooms/r1`, { headers: H });
+    assert.strictEqual(good.status, 200, "server must survive the malformed request");
+    s.child.kill();
+  });
+
+  t("handler guard: an internal failure answers generic 500 and the server stays up", async () => {
+    // Regression test for a live crash found by this work: a throw inside a
+    // route handler (here, storeUpload's mkdir over a blocking file) used
+    // to kill the whole process — one bad request was a DoS for everyone.
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}` };
+    fs.writeFileSync(path.join(s.dataDir, "uploads"), "blocking file");
+    const failed = await fetch(`${base}/api/convert`, {
+      method: "POST",
+      headers: { ...H, "x-file-name": "tower.ifc" },
+      body: "ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;\n",
+    });
+    assert.strictEqual(failed.status, 500);
+    const body = await failed.json();
+    assert.strictEqual(body.error, "Internal error");
+    assert.ok(!/ReferenceError|mkdir|uploads|Error:/.test(JSON.stringify(body)), "no internals leaked");
+    // Remove the block: the same server answers normally — it never died.
+    fs.rmSync(path.join(s.dataDir, "uploads"), { force: true });
+    const ok = await fetch(`${base}/api/convert`, {
+      method: "POST",
+      headers: { ...H, "x-file-name": "tower.ifc" },
+      body: "ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;\n",
+    });
+    assert.strictEqual(ok.status, 200);
+    s.child.kill();
+  });
+
+  t("agent relay: pending-order cap (503) and duplicate orderId (409)", async () => {
+    const s = await startServer({ OBS_SERVER_TOKEN: TOKEN, OBS_AGENT_MAX_PENDING: "2", OBS_AGENT_ORDER_TIMEOUT_MS: "300" });
+    const base = `http://127.0.0.1:${s.port}`;
+    const H = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+    // A studio must be connected or exec answers 503 no-studio before any
+    // pending order exists.
+    const ac = new AbortController();
+    const studio = await fetch(`${base}/api/agent/events`, { headers: { Authorization: `Bearer ${TOKEN}` }, signal: ac.signal });
+    assert.strictEqual(studio.status, 200);
+    // Three concurrent orders against a cap of 2: two pend (and time out
+    // after 300 ms), the third is refused.
+    const exec = (id) => fetch(`${base}/api/agent/exec`, { method: "POST", headers: H, body: JSON.stringify({ orderId: id, cmd: "LINE 0,0 1,1" }) });
+    const [a, b, c] = await Promise.all([exec("cap-1"), exec("cap-2"), exec("cap-3")].map((p) => p.then((r) => r.status)));
+    assert.deepStrictEqual([a, b, c].sort(), [200, 200, 503]);
+    // A duplicate orderId cannot hijack the earlier waiter's result.
+    const first = exec("dup-1");
+    await new Promise((r) => setTimeout(r, 50)); // let the first register
+    const dup = await exec("dup-1");
+    assert.strictEqual(dup.status, 409);
+    assert.strictEqual(await first.then((r) => r.status), 200);
+    ac.abort();
     s.child.kill();
   });
 

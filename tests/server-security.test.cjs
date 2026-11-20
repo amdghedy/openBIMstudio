@@ -34,7 +34,7 @@ t("room action bodies: object required; cursor bounded on join/heartbeat",()=>{
 });
 t("token disabled when unset",()=>assert.ok(m.tokenOk("",undefined,"")));
 t("bearer token accepted, wrong/missing rejected",()=>{assert.ok(m.tokenOk("Bearer s3cret",undefined,"s3cret"));assert.ok(!m.tokenOk("Bearer nope",undefined,"s3cret"));assert.ok(!m.tokenOk("",undefined,"s3cret"))});
-t("tokenOk still accepts a query token when the caller passes one (agent SSE only)",()=>assert.ok(m.tokenOk("", "s3cret","s3cret")));
+t("tokenOk primitive still compares a supplied query token (no server route forwards one any more — see ROUTE MATRIX)",()=>assert.ok(m.tokenOk("", "s3cret","s3cret")));
 t("upload names: traversal and header injection are neutralised",()=>{
   assert.strictEqual(m.safeUploadName("../../etc/passwd.rvt"),"passwd.rvt");
   assert.strictEqual(m.safeUploadName("..\\..\\win.ini.ifc"),"win.ini.ifc");

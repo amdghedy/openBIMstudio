@@ -42,6 +42,24 @@ export function createRateLimiter({ windowMs = 60_000, max = 120, maxKeys = 10_0
   };
 }
 
+/**
+ * Fail-closed rate-limit check (#92). The in-memory limiter has no backend
+ * to fail, but a limiter that throws (bug, corrupted state, out-of-memory
+ * guard) must refuse traffic, not silently un-limit it: an exception here
+ * used to propagate out of the request handler and crash the process, or —
+ * if ever caught upstream — could have admitted unlimited requests. Callers
+ * use this instead of calling `limiter.check` directly.
+ */
+export function safeRateCheck(limiter, key, retryAfterMs = 1000) {
+  try {
+    const r = limiter.check(key);
+    if (r && typeof r.allowed === "boolean") return r;
+    return { allowed: false, count: 0, retryAfterMs };
+  } catch {
+    return { allowed: false, count: 0, retryAfterMs };
+  }
+}
+
 /** Stable, non-reversible rate-limit key for a request. Never log the token itself. */
 export function clientKey(req, { route = "" } = {}) {
   const ip = req.socket?.remoteAddress || "unknown";

@@ -85,6 +85,12 @@ t("local relay client: opt-in flag, SSE subscribe, result POST-back", () => {
   assert.ok(bridge.includes('"agent-order"'), "order event listener missing");
   assert.ok(bridge.includes("Authorization: `Bearer ${token}`"), "relay result POST must carry the auth token");
   assert.ok(bridge.includes("__OPENBIM_COLLAB_API__"), "collab API base override missing");
+  // #92: the stream opens with a minted short-lived agent ?sse= token, never
+  // with the long-lived token in the URL; a failed mint fails closed.
+  assert.ok(bridge.includes('`${base}/agent/sse-token`'), "relay must mint an agent SSE token first");
+  assert.ok(bridge.includes('`?sse=${encodeURIComponent(minted.sseToken)}`'), "stream must open with ?sse=");
+  assert.ok(!bridge.includes('`?token=${encodeURIComponent(token)}`'), "long-lived token must never be put in the SSE URL");
+  assert.ok(bridge.includes("could not mint a stream token"), "failed mint must fail closed with a reason");
 });
 
 t("every order lands in the audited bridge log with source + result", () => {
@@ -114,11 +120,19 @@ t("server relay: exec / result / status / events endpoints with hardening", () =
   assert.ok(server.includes("broadcastAgent(\"agent-order\""), "order broadcast missing");
   assert.ok(server.includes("AGENT_ORDER_TIMEOUT_MS"), "pending-order timeout missing");
   assert.ok(server.includes("No openBIMstudio session is connected to the relay"), "no-studio 503 guard missing");
-  assert.ok(server.includes("mutationRate.check(`agent-exec|${key}`)"), "exec rate budget missing");
-  // Auth: agent SSE accepts Bearer or ?token= (EventSource cannot set headers);
-  // result/exec stay Bearer-only through the generic /api/ gate.
+  assert.ok(server.includes("mutationRate.check(`agent-exec|${key}`)") || server.includes("safeRateCheck(mutationRate, `agent-exec|${key}`)"), "exec rate budget missing");
+  // Auth (#92): the agent stream accepts Bearer or a minted short-lived
+  // agent-scoped ?sse= token; the long-lived ?token= form is refused on
+  // every route now. result/exec stay Bearer-only through the generic
+  // /api/ gate, and result has its own mutation budget.
   assert.ok(server.includes("const isAgentEvents = url.pathname === \"/api/agent/events\";"), "agent events auth branch missing");
-  assert.ok(server.includes("authed = tokenOk(req.headers.authorization, url.searchParams.get(\"token\"), AUTH_TOKEN);"), "agent SSE token policy missing");
+  assert.ok(!server.includes("url.searchParams.get(\"token\")"), "no route may read a ?token= credential any more");
+  assert.ok(server.includes("url.pathname === \"/api/agent/sse-token\""), "agent SSE mint endpoint missing");
+  assert.ok(server.includes("AGENT_SSE_SCOPE"), "agent tokens must be scope-bound");
+  assert.ok(server.includes("safeRateCheck(mutationRate, `agent-result|${key}`)"), "result rate budget missing");
+  // Pending orders are bounded and single-use (no hijack via reused orderId).
+  assert.ok(server.includes("AGENT_MAX_PENDING"), "pending-order cap missing");
+  assert.ok(server.includes("orderId already pending"), "duplicate orderId guard missing");
   // Orders are size-capped before reaching the browser.
   assert.ok(server.includes("slice(0, 4000)"), "order size cap missing");
 });

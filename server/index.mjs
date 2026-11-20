@@ -5,8 +5,8 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { parseAllowedOrigins, originAllowed, corsHeaders, SECURITY_HEADERS, validId, validClientId, safeDisplayName, boundedJsonValue, validateProjectBody, validateRoomActionBody, tokenOk, safeUploadName } from "./security.mjs";
 import { resolveStartupConfig } from "./startup-config.mjs";
-import { createRateLimiter, clientKey, correlationId, securityLog, redactFileName } from "./rate-limit.mjs";
-import { issueSseToken, verifySseToken, SSE_TOKEN_DEFAULT_TTL_MS } from "./sse-tokens.mjs";
+import { createRateLimiter, safeRateCheck, clientKey, correlationId, securityLog, redactFileName } from "./rate-limit.mjs";
+import { issueSseToken, verifySseToken, SSE_TOKEN_DEFAULT_TTL_MS, AGENT_SSE_ROOM, AGENT_SSE_SCOPE, ROOM_SSE_SCOPE } from "./sse-tokens.mjs";
 import { CentralStore } from "./central-store.mjs";
 import {
   joinRoom, leaveRoom, setRole, submitUpsert, submitDelete, createWorkset,
@@ -68,6 +68,11 @@ const RATE_MAX_MUTATION = Number(process.env.OBS_RATE_MAX_MUTATION || 120);
 const SSE_MAX_PER_IP = Number(process.env.OBS_SSE_MAX_PER_IP || 5);
 const UPLOAD_RETENTION_MS = Number(process.env.OBS_UPLOAD_RETENTION_MS || 24 * 60 * 60_000);
 const MAX_CONCURRENT_CONVERSIONS = Number(process.env.OBS_MAX_CONCURRENT_CONVERSIONS || 3);
+/* Pending agent orders (#92): each exec long-polls up to
+ * OBS_AGENT_ORDER_TIMEOUT_MS waiting for a studio. Without a cap, a token
+ * holder could open an unbounded number of 20 s holds. 20 is far above any
+ * legitimate use (one terminal agent issues orders serially). */
+const AGENT_MAX_PENDING = Number(process.env.OBS_AGENT_MAX_PENDING || 20);
 
 const httpRate = createRateLimiter({ windowMs: RATE_WINDOW_MS, max: RATE_MAX_GENERAL });
 const mutationRate = createRateLimiter({ windowMs: RATE_WINDOW_MS, max: RATE_MAX_MUTATION });
@@ -578,13 +583,19 @@ setInterval(() => {
   }
 }, 15000);
 
-const server = http.createServer(async (req, res) => {
+/* Top-level handler guard (#92): an uncaught throw in any route used to
+ * crash the whole server process — one bad request was a denial of service
+ * for every client (found live: a ReferenceError in the convert handler
+ * killed the process mid-test). A handler failure now answers a generic
+ * 500 and logs the error class, never a stack or request detail. */
+async function handleRequest(req, res) {
   const origin = req.headers.origin;
   const allowedOrigin = originAllowed(origin, ALLOWED_ORIGINS);
   res.obsCors = corsHeaders(origin, ALLOWED_ORIGINS);
 
   // Correlation id — every response carries it; every security log cites it.
   const reqId = correlationId(req);
+  res.obsReqId = reqId;
   res.setHeader("X-Request-Id", reqId);
   const key = clientKey(req);
 
@@ -595,7 +606,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Per-IP request budget (general). Floods get 429 + Retry-After.
-  const general = httpRate.check(key);
+  // safeRateCheck fails CLOSED: a throwing limiter refuses, never un-limits.
+  const general = safeRateCheck(httpRate, key);
   if (!general.allowed) {
     securityLog(console.log, "rate_limited", { requestId: reqId, scope: "general", count: general.count });
     res.setHeader("Retry-After", Math.ceil(general.retryAfterMs / 1000));
@@ -614,18 +626,19 @@ const server = http.createServer(async (req, res) => {
   const isSseEvents = /^\/api\/rooms\/[^/]+\/events$/.test(url.pathname);
   const isAgentEvents = url.pathname === "/api/agent/events";
 
-  /* Token policy (remediation Phase 1.2, extended for share links; #92 item 5):
+  /* Token policy (remediation Phase 1.2, extended for share links; #92 items 5 + security hardening):
    *  - Non-SSE /api/ routes: Authorization: Bearer only. Query-string tokens
    *    are refused (they leak into logs, proxies and history).
-   *  - Room SSE events route only: Bearer (master token, or a share token
-   *    resolved per room), a signed short-lived ?sse= token minted from
-   *    POST /api/rooms/:id/sse-token, or a ?share= share token. The
-   *    long-lived ?token= form is NOT accepted here any more — EventSource
-   *    cannot set headers, so the short-lived token travels as ?sse=.
-   *  - Agent relay SSE (/api/agent/events): EventSource cannot set headers
-   *    and the relay has no room to bind a short-lived token to, so Bearer
-   *    OR the long-lived ?token= form is accepted there. This is the one
-   *    remaining ?token= exception; see docs/engineering/SERVER-ROUTE-AUDIT.md.
+   *  - SSE routes (room events + agent events): EventSource cannot set
+   *    headers, so a signed short-lived ?sse= token is accepted — minted
+   *    from POST /api/rooms/:id/sse-token (room scope, 5-min TTL, room-
+   *    bound) or POST /api/agent/sse-token (agent scope, bound to the
+   *    reserved "__agent__" subject, no room). Bearer also accepted.
+   *    The long-lived ?token= form is NOT accepted on ANY route any more:
+   *    the agent relay was the last exception and is closed by the
+   *    agent-scoped token above (see docs/security/SECURITY_GAP_CLOSURE.md).
+   *    A token minted for one scope never opens the other route.
+   *  - Room SSE also accepts a ?share= share token (role-scoped, revocable).
    *  - Share tokens: single-room, role-scoped (view/edit). A presented
    *    Bearer is tried as the master token first, then as a share token for
    *    the room in the path. When a share token authenticates, reqShare is
@@ -642,11 +655,11 @@ const server = http.createServer(async (req, res) => {
     const shareRoomId = roomPathMatch
       ? safeDecode(roomPathMatch[1])
       : projectPathMatch ? safeDecode(projectPathMatch[1]) : null;
-    if (isAgentEvents) {
-      authed = tokenOk(req.headers.authorization, url.searchParams.get("token"), AUTH_TOKEN);
-    } else if (isSseEvents) {
-      const roomId = safeDecode((url.pathname.match(/^\/api\/rooms\/([^/]+)\/events$/) || [])[1] || "");
-      const shareParam = url.searchParams.get("share");
+    if (isAgentEvents || isSseEvents) {
+      const roomId = isSseEvents
+        ? safeDecode((url.pathname.match(/^\/api\/rooms\/([^/]+)\/events$/) || [])[1] || "")
+        : null;
+      const shareParam = isSseEvents ? url.searchParams.get("share") : null;
       const sseToken = url.searchParams.get("sse");
       if (shareParam) {
         const s = authenticateShareToken(shareParam, roomId);
@@ -657,9 +670,12 @@ const server = http.createServer(async (req, res) => {
         authed = true;
         reqShare = s;
       } else if (sseToken) {
-        const v = verifySseToken(sseToken, AUTH_TOKEN, { room: roomId });
+        const scope = isAgentEvents
+          ? { room: AGENT_SSE_ROOM, scope: AGENT_SSE_SCOPE }
+          : { room: roomId, scope: ROOM_SSE_SCOPE };
+        const v = verifySseToken(sseToken, AUTH_TOKEN, scope);
         if (!v.ok) {
-          securityLog(console.log, "sse_token_rejected", { requestId: reqId, reason: v.reason });
+          securityLog(console.log, "sse_token_rejected", { requestId: reqId, reason: v.reason, route: url.pathname });
           return send(res, 401, { error: "Invalid or expired SSE token", requestId: reqId });
         }
         authed = true;
@@ -682,11 +698,11 @@ const server = http.createServer(async (req, res) => {
       }
     }
     if (!authed) {
-      securityLog(console.log, "auth_failed", { requestId: reqId, route: url.pathname, sse: isSseEvents });
+      securityLog(console.log, "auth_failed", { requestId: reqId, route: url.pathname, sse: isSseEvents || isAgentEvents });
       // Tighter budget for failed authentications than for traffic in
       // general: credential guessing is per route + IP, so a flood of bad
       // tokens on one route is throttled without blocking other routes.
-      const authFail = failedAuthRate.check(`${url.pathname}|${key}`);
+      const authFail = safeRateCheck(failedAuthRate, `${url.pathname}|${key}`);
       if (!authFail.allowed) {
         securityLog(console.log, "auth_rate_limited", { requestId: reqId, route: url.pathname });
         res.setHeader("Retry-After", Math.ceil(authFail.retryAfterMs / 1000));
@@ -696,6 +712,15 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Malformed percent-encoding in the path is a client error (400), not a
+  // crash: decodeURIComponent throws URIError, which the handler guard
+  // would otherwise turn into a generic 500. Checked after the auth gate
+  // so unauthenticated requests still answer 401 first.
+  try {
+    decodeURIComponent(url.pathname);
+  } catch {
+    return send(res, 400, { error: "Invalid URL encoding", requestId: reqId });
+  }
   /* ── Share links ────────────────────────────────────────────────────
    * A share link opens one model (one room) in any browser with no account
    * and no licence. Creation/revocation require the master token (in
@@ -797,6 +822,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "PUT") {
+      // Mutation budget: a PUT rewrites the whole project file (+ backup),
+      // so a flood is write amplification, not just traffic.
+      const mut = safeRateCheck(mutationRate, `project-put|${key}`);
+      if (!mut.allowed) {
+        securityLog(console.log, "rate_limited", { requestId: reqId, scope: "mutation", action: "project-put" });
+        res.setHeader("Retry-After", Math.ceil(mut.retryAfterMs / 1000));
+        return send(res, 429, { error: "Too many requests", requestId: reqId });
+      }
       // A view-only share link may read the snapshot but never overwrite it.
       if (reqShare && reqShare.role === "view") {
         return send(res, 403, { error: "View-only share link cannot save the model", requestId: reqId });
@@ -897,7 +930,7 @@ const server = http.createServer(async (req, res) => {
 
     // Minting issues credentials: same per-IP mutation budget as the other
     // room writes, so a token holder cannot mint in a loop.
-    const mut = mutationRate.check(`sse-token|${key}`);
+    const mut = safeRateCheck(mutationRate, `sse-token|${key}`);
     if (!mut.allowed) {
       securityLog(console.log, "rate_limited", { requestId: reqId, scope: "mutation", action: "sse-token" });
       res.setHeader("Retry-After", Math.ceil(mut.retryAfterMs / 1000));
@@ -945,7 +978,7 @@ const server = http.createServer(async (req, res) => {
     const action = roomActionMatch[2];
 
     // Mutation budget (join/heartbeat/leave/change) — per IP.
-    const mut = mutationRate.check(`${action}|${key}`);
+    const mut = safeRateCheck(mutationRate, `${action}|${key}`);
     if (!mut.allowed) {
       securityLog(console.log, "rate_limited", { requestId: reqId, scope: "mutation", action });
       res.setHeader("Retry-After", Math.ceil(mut.retryAfterMs / 1000));
@@ -1031,7 +1064,7 @@ const server = http.createServer(async (req, res) => {
      the engine and POSTs the result back; the original request resolves with
      that result. Browsers subscribe over SSE (opt-in from the Agent Bridge). */
   if (url.pathname === "/api/agent/exec" && req.method === "POST") {
-    const budget = mutationRate.check(`agent-exec|${key}`);
+    const budget = safeRateCheck(mutationRate, `agent-exec|${key}`);
     if (!budget.allowed) {
       securityLog(console.log, "rate_limited", { requestId: reqId, scope: "agent-exec" });
       res.setHeader("Retry-After", Math.ceil(budget.retryAfterMs / 1000));
@@ -1059,6 +1092,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     const orderId = typeof body.orderId === "string" && body.orderId ? body.orderId.slice(0, 128) : randomUUID();
+    // A pending orderId is single-use: reusing one would overwrite the
+    // earlier waiter's resolver and let a second caller hijack its result.
+    if (agentPendingOrders.has(orderId)) {
+      return send(res, 409, { error: "orderId already pending", requestId: reqId });
+    }
+    // Bound the long-poll holds: each pending order waits up to
+    // AGENT_ORDER_TIMEOUT_MS for a studio to answer.
+    if (agentPendingOrders.size >= AGENT_MAX_PENDING) {
+      securityLog(console.log, "agent_pending_full", { requestId: reqId, pending: agentPendingOrders.size });
+      res.setHeader("Retry-After", "5");
+      return send(res, 503, { error: "Too many pending agent orders — retry shortly", requestId: reqId });
+    }
     securityLog(console.log, "agent_order", { requestId: reqId, orderId, kind: cmd ? "cmd" : "ask" });
     broadcastAgent("agent-order", {
       orderId,
@@ -1078,6 +1123,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/agent/result" && req.method === "POST") {
+    // Mutation budget: result delivery resolves someone else's long-poll,
+    // so it must not be floodable (and a flood must not evict the exec
+    // budget — it has its own key).
+    const budget = safeRateCheck(mutationRate, `agent-result|${key}`);
+    if (!budget.allowed) {
+      securityLog(console.log, "rate_limited", { requestId: reqId, scope: "agent-result" });
+      res.setHeader("Retry-After", Math.ceil(budget.retryAfterMs / 1000));
+      return send(res, 429, { error: "Too many agent results", requestId: reqId });
+    }
     let body = {};
     try {
       const raw = await readBody(req);
@@ -1090,14 +1144,51 @@ const server = http.createServer(async (req, res) => {
     if (!pending) {
       return send(res, 404, { error: "Unknown or already-resolved orderId", requestId: reqId });
     }
+    // The state snapshot is relayed verbatim to the waiting exec caller, so
+    // it gets its own bound instead of riding the 16 MB body cap through.
+    let state;
+    if (body.state != null) {
+      const stateCheck = boundedJsonValue(body.state, MAX_CHANGE_PAYLOAD);
+      if (!stateCheck.ok) {
+        return send(res, 413, { error: "Result state too large or not JSON-serializable", requestId: reqId });
+      }
+      state = stateCheck.value;
+    }
     clearTimeout(pending.timer);
     agentPendingOrders.delete(orderId);
     pending.resolve({
       ok: body.ok === true,
       ...(body.error != null ? { error: String(body.error).slice(0, 2000) } : {}),
-      ...(body.state != null ? { state: body.state } : {}),
+      ...(state !== undefined ? { state } : {}),
     });
     return send(res, 200, { ok: true });
+  }
+
+  /* POST /api/agent/sse-token — mint a short-lived, agent-scoped SSE token
+   * (#92). Bearer-authenticated (the /api/ gate above refuses ?token=
+   * here); the Agent Bridge fetches this before opening its EventSource,
+   * so the long-lived token never appears in a URL. The token is bound to
+   * the reserved "__agent__" subject, not to a room, and cannot open any
+   * room events route (wrong-scope). Tokenless servers answer 503: there
+   * is no secret to mint from, and the bridge opens the stream bare. */
+  if (url.pathname === "/api/agent/sse-token") {
+    if (req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+    const mut = safeRateCheck(mutationRate, `agent-sse-token|${key}`);
+    if (!mut.allowed) {
+      securityLog(console.log, "rate_limited", { requestId: reqId, scope: "mutation", action: "agent-sse-token" });
+      res.setHeader("Retry-After", Math.ceil(mut.retryAfterMs / 1000));
+      return send(res, 429, { error: "Too many requests", requestId: reqId });
+    }
+    if (!AUTH_TOKEN) {
+      return send(res, 503, { error: "SSE tokens unavailable: server runs without a token", requestId: reqId });
+    }
+    const token = issueSseToken(AUTH_TOKEN, { room: AGENT_SSE_ROOM, scope: AGENT_SSE_SCOPE });
+    return send(res, 200, {
+      sseToken: token,
+      scope: AGENT_SSE_SCOPE,
+      ttlMs: SSE_TOKEN_DEFAULT_TTL_MS,
+      expiresAt: Date.now() + SSE_TOKEN_DEFAULT_TTL_MS,
+    });
   }
 
   if (url.pathname === "/api/agent/status" && req.method === "GET") {
@@ -1303,7 +1394,19 @@ const server = http.createServer(async (req, res) => {
 
   return send(res, 404, {
     error:
-      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/sse-token or /api/rooms/:room/join or /api/shares or /api/convert or /api/agent/exec or /api/agent/status or /api/central/:room/{state,sync,history,audit,join,leave,role,op,workset,workset-owner,borrow,relinquish,borrow-request,borrow-respond,resolve,restore}",
+      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/sse-token or /api/rooms/:room/join or /api/shares or /api/convert or /api/agent/exec or /api/agent/result or /api/agent/status or /api/agent/sse-token or /api/central/:room/{state,sync,history,audit,join,leave,role,op,workset,workset-owner,borrow,relinquish,borrow-request,borrow-respond,resolve,restore}",
+  });
+}
+
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((e) => {
+    // The request id lives on the response once assigned; without it the
+    // error is still answered generically — never with the exception.
+    securityLog(console.log, "handler_error", { requestId: res.obsReqId || "unknown", error: String((e && e.name) || "Error") });
+    try {
+      if (!res.headersSent) send(res, 500, { error: "Internal error", requestId: res.obsReqId });
+      else res.destroy();
+    } catch { /* response already gone */ }
   });
 });
 
@@ -1356,8 +1459,18 @@ function isConvertRoute(url, req) {
 }
 
 async function handleConvert(req, res, url, reqId) {
+  const key = clientKey(req);
   // POST /api/convert — upload RVT/NWD/NWC file and start conversion
   if (url.pathname === "/api/convert" && req.method === "POST") {
+    // Mutation budget: an upload buffers up to 200 MB in memory before the
+    // signature check, so the per-IP rate is the first line of defence
+    // against upload floods (the conversion concurrency cap is the second).
+    const budget = safeRateCheck(mutationRate, `convert|${key}`);
+    if (!budget.allowed) {
+      securityLog(console.log, "rate_limited", { requestId: reqId, scope: "convert" });
+      res.setHeader("Retry-After", Math.ceil(budget.retryAfterMs / 1000));
+      return send(res, 429, { error: "Too many conversion uploads", requestId: reqId });
+    }
     const fileName = safeUploadName(req.headers["x-file-name"]);
     if (!fileName) {
       return send(res, 400, { error: "Unsupported or missing file name (accepted: .rvt .nwd .nwc .ifc .dwg .dxf)", requestId: reqId });
