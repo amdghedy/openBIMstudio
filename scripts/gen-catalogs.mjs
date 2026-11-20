@@ -28,7 +28,7 @@
  *   node scripts/gen-catalogs.mjs --check  exit 1 if any file is out of sync
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -146,4 +146,6 @@ function main() {
   console.log(check ? "gen-catalogs: all catalogues in sync" : "gen-catalogs: regenerated");
 }
 
-main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}
