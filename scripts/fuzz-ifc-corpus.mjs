@@ -124,20 +124,52 @@ function runChild(bytes) {
   });
 }
 
+
+/** Structure-preserving mutations on the DATA section: they keep the file legal STEP so they reach web-ifc. */
+function structuralMutate(srcBytes) {
+  const lines = srcBytes.toString("latin1").split("\n");
+  const first = lines.findIndex((l) => l.trim() === "DATA;") + 1;
+  let last = lines.findIndex((l, i) => i > first && l.trim() === "ENDSEC;");
+  if (first <= 0 || last < 0) last = lines.length;
+  const BIG = ["0", "1", "2147483647", "4294967295", "99999999", "-1", "1E308", "123456789012345678"];
+  const n = 3 + rand(8);
+  for (let k = 0; k < n && last - first > 2; k++) {
+    const idx = first + rand(last - first);
+    const op = rand(4);
+    if (op === 0) lines[idx] = lines[idx].replace(/\b\d+(\.\d*)?\b/g, (m) => (rand(6) === 0 ? BIG[rand(BIG.length)] : m));
+    else if (op === 1) { lines.splice(idx, 1); last--; }
+    else if (op === 2) { lines.splice(idx, 0, lines[idx]); last++; }
+    else { const target = first + rand(last - first); lines[idx] = lines[idx].replace(/#\d+/g, (m) => (rand(4) === 0 ? "#" + (lines[target].match(/^#(\d+)/)?.[1] ?? "1") : m)); }
+  }
+  return Buffer.from(lines.join("\n"), "latin1");
+}
+
 let preflightRejected = 0;
+const byKind = {};
 const timeoutsByOp = {}, timeoutsBySeed = {};
 let ok = 0, typedError = 0, containedCrash = 0, timeout = 0, startupTimeout = 0;
 const failures = [];
 
 for (let i = 0; i < ITER; i++) {
   const src = seeds[rand(seeds.length)];
-  const bytes = Buffer.from(src.bytes);
-  const nMut = 8 + rand(17);
-  for (let k = 0; k < nMut; k++) {
-    const pos = rand(bytes.length);
-    bytes[pos] ^= 1 << rand(8);
+  // Two mutation families: raw bit flips (mostly rejected by the structural pre-flight) and
+  // structure-preserving token mutations that pass it and therefore really exercise web-ifc.
+  const kind = rand(2) === 0 ? "bitflip" : "structural";
+  let bytes;
+  if (kind === "bitflip") {
+    bytes = Buffer.from(src.bytes);
+    const nMut = 8 + rand(17);
+    for (let k = 0; k < nMut; k++) {
+      const pos = rand(bytes.length);
+      bytes[pos] ^= 1 << rand(8);
+    }
+  } else {
+    bytes = structuralMutate(src.bytes);
   }
   const r = await runChild(bytes);
+  byKind[kind] = byKind[kind] || { n: 0, preflight: 0, ok: 0, typed: 0, timeout: 0, crash: 0 };
+  byKind[kind].n++;
+  if (r.outcome === "ok") byKind[kind].ok++; else if (r.outcome === "typed-error") { byKind[kind].typed++; if (r.preflight) byKind[kind].preflight++; } else if (r.outcome === "timeout") byKind[kind].timeout++; else byKind[kind].crash++;
   if (r.outcome === "ok") ok++;
   else if (r.outcome === "typed-error") { typedError++; if (r.preflight) preflightRejected++; }
   else if (r.outcome === "timeout") {
@@ -151,7 +183,7 @@ for (let i = 0; i < ITER; i++) {
   } else containedCrash++;
 
   if (["timeout", "startup-timeout", "contained-crash"].includes(r.outcome)) {
-    const failure = { iteration: i, seed: src.name, outcome: r.outcome, op: r.op ?? null, code: r.code ?? null, signal: r.signal ?? null };
+    const failure = { iteration: i, seed: src.name, kind, outcome: r.outcome, op: r.op ?? null, code: r.code ?? null, signal: r.signal ?? null };
     failures.push(failure);
     if (ARTIFACT_DIR) writeFileSync(join(ARTIFACT_DIR, `failure-${String(i).padStart(4, "0")}.ifc`), bytes);
   }
@@ -162,9 +194,10 @@ rmSync(tmp, { recursive: true, force: true });
 const total = ok + typedError + containedCrash + timeout + startupTimeout;
 if (ARTIFACT_DIR) {
   writeFileSync(join(ARTIFACT_DIR, "summary.json"), JSON.stringify({
-    seed: SEED, iterations: ITER, total, ok, typedError, preflightRejected, containedCrash, timeout, startupTimeout, timeoutsByOp, timeoutsBySeed, failures,
+    seed: SEED, iterations: ITER, total, ok, typedError, preflightRejected, containedCrash, timeout, startupTimeout, timeoutsByOp, timeoutsBySeed, byKind, failures,
   }, null, 2) + "\n");
 }
+console.log(`fuzz: outcomes by mutation kind ${JSON.stringify(byKind)}`);
 console.log(`fuzz: timeouts by operation ${JSON.stringify(timeoutsByOp)}, by seed ${JSON.stringify(timeoutsBySeed)}`);
 console.log(`fuzz: ${ITER} mutations over ${seeds.length} seeds — ok: ${ok}, typed-error: ${typedError} (of which pre-flight rejections: ${preflightRejected}), parser-timeout: ${timeout}, startup-timeout: ${startupTimeout}, contained-crash: ${containedCrash}`);
 
