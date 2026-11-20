@@ -7,6 +7,13 @@ import { parseAllowedOrigins, originAllowed, corsHeaders, SECURITY_HEADERS, vali
 import { resolveStartupConfig } from "./startup-config.mjs";
 import { createRateLimiter, clientKey, correlationId, securityLog, redactFileName } from "./rate-limit.mjs";
 import { issueSseToken, verifySseToken } from "./sse-tokens.mjs";
+import { CentralStore } from "./central-store.mjs";
+import {
+  joinRoom, leaveRoom, setRole, submitUpsert, submitDelete, createWorkset,
+  setWorksetOwner, borrowElement, relinquishBorrow, submitBorrowRequest,
+  respondBorrowRequest, resolveConflict, restoreToRevision, publicState,
+  sweepExpiredBorrows,
+} from "./central-model.mjs";
 import { sniffSignature, storeUpload, sweepExpired } from "./upload-store.mjs";
 import { findLastVerifiedBackup, quarantineFile, restoreBackup, snapshotOnLoad, writeJsonWithBackup } from "./backup.mjs";
 
@@ -401,6 +408,39 @@ function addChange(roomId, change) {
 
   return item;
 }
+
+/* ── Central model (server-authoritative worksharing) ─────────────────
+ * One durable CentralStore per room (snapshot + fsynced journal + audit).
+ * Commit order per mutation: append journal + fsync → apply effects →
+ * rewrite snapshot → broadcast over the room SSE channel → ack. See
+ * server/central-model.mjs (consistency model) and
+ * docs/engineering/COLLABORATION_SYNC.md.
+ */
+const centralStores = new Map();
+function centralStore(roomId) {
+  if (!centralStores.has(roomId)) {
+    centralStores.set(roomId, new CentralStore(dataDir, roomId));
+  }
+  return centralStores.get(roomId);
+}
+
+/** Expire stale borrows. The removal is itself a journal entry, so a
+ * restart replays the same outcome instead of resurrecting the borrow. */
+function sweepCentral(store) {
+  const effects = sweepExpiredBorrows(store.state);
+  if (!effects.length) return;
+  const seq = store.state.revision + 1;
+  const entry = {
+    seq, opId: null, actor: "system", kind: "borrow-expire", at: Date.now(),
+    payload: { elementIds: effects.map((e) => e.elementId) },
+    effects: [...effects, { type: "set-revision", revision: seq }],
+    applied: { expired: effects.length }, conflicts: [],
+  };
+  store.commit(entry);
+  store.audit("borrow_expired", { count: effects.length });
+}
+
+const CENTRAL_MAX_BODY = 1024 * 1024; // central ops are small element edits, not file uploads
 
 setInterval(() => {
   let changed = false;
@@ -797,6 +837,164 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  /* ═══════════ Central model — server-authoritative worksharing ═══
+     POST /api/central/:room/join|leave|role|op|workset|workset-owner|
+       borrow|relinquish|borrow-request|borrow-respond|resolve|restore
+     GET  /api/central/:room/state|sync?since=N|history|audit
+     All routes are behind the /api/ Bearer gate above. Ops are sequenced
+     by the server, journalled (fsync) before ack, and broadcast as
+     `central-op` events on the room's existing SSE channel. */
+  const centralMatch = url.pathname.match(/^\/api\/central\/([^/]+)(?:\/(state|sync|history|audit|join|leave|role|op|workset|workset-owner|borrow|relinquish|borrow-request|borrow-respond|resolve|restore))?$/);
+  if (centralMatch) {
+    const roomId = decodeURIComponent(centralMatch[1]);
+    if (!validId(roomId)) return send(res, 400, { error: "Invalid room id", requestId: reqId });
+    const sub = centralMatch[2] || "";
+    const store = centralStore(roomId);
+    sweepCentral(store);
+    getRoom(roomId); // legacy room record so SSE broadcast has a channel
+
+    const centralErr = (status, error) => send(res, status, { error, requestId: reqId });
+    const commitAndBroadcast = (r, auditAction, auditDetail = {}) => {
+      if (r.error) {
+        store.audit("rejected", { kind: auditAction, actor: auditDetail.actor, error: r.error.error, status: r.error.status });
+        return centralErr(r.error.status || 400, r.error.error);
+      }
+      store.commit(r.entry);
+      store.audit(auditAction, { actor: r.entry.actor, seq: r.entry.seq, ...auditDetail });
+      broadcast(roomId, "central-op", store.publicEntry(r.entry));
+      return send(res, 200, {
+        ok: true, revision: store.state.revision,
+        entry: store.publicEntry(r.entry),
+        applied: r.entry.applied || {},
+        rejected: r.entry.rejected || {},
+        conflicts: r.entry.conflicts || [],
+      });
+    };
+
+    if (req.method === "GET" && (sub === "state" || sub === "sync" || sub === "history" || sub === "audit" || sub === "")) {
+      if (sub === "state" || sub === "") {
+        return send(res, 200, { ok: true, ...publicState(store.state) });
+      }
+      if (sub === "sync") {
+        const since = Number(url.searchParams.get("since") || "0");
+        if (!Number.isInteger(since) || since < 0) return centralErr(400, "since must be a non-negative integer");
+        const { entries, oldestRetainedSeq, truncated } = store.entriesSince(since);
+        const out = { ok: true, revision: store.state.revision, oldestRetainedSeq, truncated, entries: entries.map((e) => store.publicEntry(e)) };
+        if (truncated) out.state = publicState(store.state);
+        return send(res, 200, out);
+      }
+      if (sub === "history") {
+        const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") || "100") || 100));
+        const list = store.entries.slice(-limit).map((e) => store.publicEntry(e));
+        return send(res, 200, { ok: true, revision: store.state.revision, entries: list });
+      }
+      if (sub === "audit") {
+        const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") || "200") || 200));
+        return send(res, 200, { ok: true, entries: store.readAudit(limit) });
+      }
+    }
+
+    if (req.method === "POST") {
+      const mut = mutationRate.check(`central|${key}`);
+      if (!mut.allowed) {
+        securityLog(console.log, "rate_limited", { requestId: reqId, scope: "central" });
+        res.setHeader("Retry-After", Math.ceil(mut.retryAfterMs / 1000));
+        return send(res, 429, { error: "Too many requests", requestId: reqId });
+      }
+      let body = {};
+      try {
+        const raw = await readBody(req);
+        if (raw.length > CENTRAL_MAX_BODY) {
+          securityLog(console.log, "body_too_large", { requestId: reqId, route: "central" });
+          return send(res, 413, { error: "Payload too large", requestId: reqId });
+        }
+        body = raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        return send(res, 400, { error: "Invalid JSON", requestId: reqId });
+      }
+      const clientId = typeof body.clientId === "string" ? body.clientId.trim() : "";
+      if (!validClientId(clientId)) {
+        return send(res, 400, { error: "clientId must be a safe identifier (1-96 characters)", requestId: reqId });
+      }
+      const actor = clientId;
+
+      if (sub === "join") {
+        const r = joinRoom(store.state, { clientId, name: body.name });
+        return commitAndBroadcast(r, "join", { actor });
+      }
+      if (sub === "leave") {
+        const r = leaveRoom(store.state, { clientId });
+        return commitAndBroadcast(r, "leave", { actor });
+      }
+      if (sub === "role") {
+        const target = typeof body.targetClientId === "string" ? body.targetClientId.trim() : "";
+        if (!validClientId(target)) return centralErr(400, "targetClientId must be a safe identifier");
+        const r = setRole(store.state, { actor, clientId: target, role: body.role });
+        return commitAndBroadcast(r, "set_role", { actor, target });
+      }
+      if (sub === "op") {
+        if (body.type !== "upsert" && body.type !== "delete") {
+          return centralErr(400, "type must be 'upsert' or 'delete'");
+        }
+        const op = {
+          opId: body.opId, actor,
+          elementId: body.elementId, worksetId: body.worksetId,
+          fields: body.fields, baseRevision: body.baseRevision,
+        };
+        const r = body.type === "delete"
+          ? submitDelete(store.state, op)
+          : submitUpsert(store.state, op);
+        if (r.duplicate) {
+          const orig = store.entries.find((e) => e.opId === body.opId);
+          return send(res, 200, {
+            ok: true, duplicate: true, revision: store.state.revision,
+            entry: orig ? store.publicEntry(orig) : null,
+            applied: orig ? orig.applied || {} : {},
+            conflicts: orig ? orig.conflicts || [] : [],
+          });
+        }
+        return commitAndBroadcast(r, body.type === "delete" ? "delete_element" : "upsert_element", { actor, elementId: body.elementId });
+      }
+      if (sub === "workset") {
+        const r = createWorkset(store.state, { actor, name: body.name, kind: body.kind });
+        return commitAndBroadcast(r, "create_workset", { actor });
+      }
+      if (sub === "workset-owner") {
+        const owner = body.owner === null ? null : (typeof body.owner === "string" ? body.owner.trim() : "");
+        if (owner !== null && !validClientId(owner)) return centralErr(400, "owner must be a member clientId or null");
+        const r = setWorksetOwner(store.state, { actor, worksetId: body.worksetId, owner });
+        return commitAndBroadcast(r, "set_workset_owner", { actor });
+      }
+      if (sub === "borrow") {
+        const r = borrowElement(store.state, { actor, elementId: body.elementId, actorName: body.name });
+        return commitAndBroadcast(r, "borrow", { actor, elementId: body.elementId });
+      }
+      if (sub === "relinquish") {
+        const r = relinquishBorrow(store.state, { actor, elementId: body.elementId });
+        return commitAndBroadcast(r, "relinquish", { actor, elementId: body.elementId });
+      }
+      if (sub === "borrow-request") {
+        const r = submitBorrowRequest(store.state, { actor, elementId: body.elementId });
+        return commitAndBroadcast(r, "borrow_request", { actor, elementId: body.elementId });
+      }
+      if (sub === "borrow-respond") {
+        const r = respondBorrowRequest(store.state, { actor, requestId: body.requestId, grant: body.grant === true, message: body.message });
+        return commitAndBroadcast(r, "borrow_respond", { actor, requestId: body.requestId });
+      }
+      if (sub === "resolve") {
+        const r = resolveConflict(store.state, { actor, conflictId: body.conflictId, choice: body.choice });
+        return commitAndBroadcast(r, "resolve_conflict", { actor, conflictId: body.conflictId });
+      }
+      if (sub === "restore") {
+        const r = restoreToRevision(store.state, store.entries, { actor, revision: body.revision });
+        return commitAndBroadcast(r, "restore", { actor, revision: body.revision });
+      }
+      return send(res, 404, { error: "Unknown central action", requestId: reqId });
+    }
+
+    return send(res, 405, { error: "Method not allowed", requestId: reqId });
+  }
+
   if (isConvertRoute(url, req)) {
     await handleConvert(req, res, url, reqId);
     return;
@@ -804,7 +1002,7 @@ const server = http.createServer(async (req, res) => {
 
   return send(res, 404, {
     error:
-      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/join or /api/convert or /api/agent/exec or /api/agent/status",
+      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/join or /api/convert or /api/agent/exec or /api/agent/status or /api/central/:room/{state,sync,history,audit,join,leave,role,op,workset,workset-owner,borrow,relinquish,borrow-request,borrow-respond,resolve,restore}",
   });
 });
 
