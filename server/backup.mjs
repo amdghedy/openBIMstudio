@@ -3,6 +3,37 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 export const BACKUP_KEEP = 5;
+export const CORRUPT_KEEP = 3;
+
+/** True when the file exists and parses as JSON. */
+export function isValidJsonFile(filePath) {
+  try { JSON.parse(fs.readFileSync(filePath, "utf8")); return true; } catch { return false; }
+}
+
+/** Move an unreadable file aside (never into the .bak rotation) so it can be inspected but cannot evict a known-good backup. */
+export function quarantineCorrupt(filePath) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const target = `${filePath}.${stamp}.${randomUUID().slice(0, 8)}.corrupt`;
+  try { fs.renameSync(filePath, target); } catch { return null; }
+  const dir = path.dirname(filePath), base = path.basename(filePath);
+  const old = fs.readdirSync(dir).filter((n) => n.startsWith(`${base}.`) && n.endsWith(".corrupt")).sort();
+  for (const n of old.slice(0, Math.max(0, old.length - CORRUPT_KEEP))) { try { fs.unlinkSync(path.join(dir, n)); } catch { /* best effort */ } }
+  return target;
+}
+
+/**
+ * Read JSON; if the live file is missing/corrupt (e.g. an interrupted write), fall back to the newest VALID backup.
+ * The corrupt file is quarantined, never deleted. Returns { value, source: "file"|"backup"|"fallback", recoveredFrom? }.
+ */
+export function readJsonWithRecovery(filePath, fallback) {
+  try { return { value: JSON.parse(fs.readFileSync(filePath, "utf8")), source: "file" }; } catch { /* try recovery */ }
+  const existed = fs.existsSync(filePath);
+  if (existed) quarantineCorrupt(filePath);
+  for (const b of listBackups(filePath).reverse()) {
+    try { return { value: JSON.parse(fs.readFileSync(b, "utf8")), source: "backup", recoveredFrom: b }; } catch { /* next */ }
+  }
+  return { value: fallback, source: "fallback" };
+}
 
 /**
  * Copy the current file to a timestamped recovery file before replacement.
@@ -16,6 +47,8 @@ export function backupBeforeWrite(filePath, keep = BACKUP_KEEP) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const target = path.join(dir, `${base}.${stamp}.${randomUUID().slice(0, 8)}.bak`);
   if (!fs.existsSync(filePath)) return { created: false, target, error: null };
+  // Never rotate a corrupt file into the backups: it would evict the last known-good copy.
+  if (!isValidJsonFile(filePath)) return { created: false, target, error: null, skippedCorrupt: quarantineCorrupt(filePath) };
   try {
     fs.copyFileSync(filePath, target);
     pruneBackups(filePath, keep);
@@ -56,7 +89,8 @@ export function writeJsonWithBackup(filePath, value, options = {}) {
   const backup = backupBeforeWrite(filePath, keep);
   const temp = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    fs.writeFileSync(temp, JSON.stringify(value, null, 2), "utf8");
+    const fd = fs.openSync(temp, "w");
+    try { fs.writeSync(fd, JSON.stringify(value, null, 2), null, "utf8"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     fs.renameSync(temp, filePath);
     return { backup, atomic: true };
   } catch (error) {

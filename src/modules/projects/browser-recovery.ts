@@ -58,10 +58,40 @@ export function selectBrowserRecoveryDeletes(
   return sorted.slice(Math.max(0, keep - 1)).map((r) => r.id).filter((id): id is number => id !== undefined);
 }
 
+/**
+ * Cheap integrity gate for a file about to become a "known-good" recovery copy. A truncated or zeroed existing file
+ * must not be stored, or five bad overwrites would evict the last good backup.
+ * JSON-looking files must end with "}"; all-NUL heads are rejected; other formats (zip, encrypted) pass unchanged.
+ */
+export function backupBytesLookIntact(head: Uint8Array, tail: Uint8Array): boolean {
+  if (!head.length) return false;
+  if (head.every((b) => b === 0)) return false;
+  let i = 0;
+  if (head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf) i = 3;
+  while (i < head.length && (head[i] === 0x20 || head[i] === 0x0a || head[i] === 0x0d || head[i] === 0x09)) i++;
+  if (head[i] === 0x7b /* { */) {
+    let j = tail.length - 1;
+    while (j >= 0 && (tail[j] === 0x20 || tail[j] === 0x0a || tail[j] === 0x0d || tail[j] === 0x09 || tail[j] === 0)) j--;
+    return j >= 0 && tail[j] === 0x7d /* } */;
+  }
+  return true;
+}
+
+async function blobLooksIntact(blob: Blob): Promise<boolean> {
+  const n = Math.min(4096, blob.size);
+  const head = new Uint8Array(await blob.slice(0, n).arrayBuffer());
+  const tail = new Uint8Array(await blob.slice(Math.max(0, blob.size - n)).arrayBuffer());
+  return backupBytesLookIntact(head, tail);
+}
+
 /** Store a recovery copy and retain only the newest five copies per project. */
 export async function backupProjectFile(copy: Omit<BrowserRecoveryCopy, "id" | "createdAt">): Promise<boolean> {
   if (!copy.projectId || !copy.projectName || !copy.fileName || !copy.blob.size || copy.blob.size > BROWSER_RECOVERY_MAX_BYTES) return false;
   try {
+    if (!(await blobLooksIntact(copy.blob))) {
+      console.warn("[project-recovery] not backing up a truncated/corrupt file; last known-good copies are kept");
+      return false;
+    }
     const db = await openDb();
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
