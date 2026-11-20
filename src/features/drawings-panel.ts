@@ -60,7 +60,7 @@ function installStyle(): void {
 #obs-drawings-panel .dw-btn {
   padding:10px 12px;border-radius:8px;border:1px solid #2a2e3a;
   background:#1e2029;color:#e8eaf0;cursor:pointer;font:600 12px Inter,system-ui;
-  text-align:left;
+  text-align:start;
 }
 #obs-drawings-panel .dw-btn:hover { border-color:#a78bfa;background:#232633; }
 #obs-drawings-panel .dw-btn small { display:block;color:#6b7280;font-weight:400;margin-top:2px; }

@@ -238,7 +238,7 @@ function fieldRow(
       if (field.min != null) i.min = String(field.min);
       if (field.max != null) i.max = String(field.max);
       i.value = String(getValue() ?? "");
-      i.style.cssText = INPUT_CSS + ";text-align:right";
+      i.style.cssText = INPUT_CSS + ";text-align:end";
       i.onchange = () => {
         let v = Number(i.value);
         if (!Number.isFinite(v)) v = 0;
@@ -508,7 +508,7 @@ function makeFamilyIdentityBlock(element: AuthoredElement): HTMLElement {
         if (typeof current === "number") inp.step = String(p.step ?? 0.01);
         inp.value = String(current);
         inp.style.cssText =
-          "width:100%;box-sizing:border-box;padding:4px 6px;text-align:right;" +
+          "width:100%;box-sizing:border-box;padding:4px 6px;text-align:end;" +
           "background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);" +
           "border-radius:4px;color:var(--text-primary,#e8eaf0);font:12px system-ui";
         inp.onchange = () => {
@@ -743,7 +743,7 @@ function renderToolField(field: ToolPanelField, elementType: string): HTMLElemen
       i.type = "text";
       i.inputMode = "decimal";
       i.value = formatPanelNumber(field, readToolFieldValue(field, elementType));
-      i.style.cssText = INPUT_CSS + ";text-align:right";
+      i.style.cssText = INPUT_CSS + ";text-align:end";
       i.onchange = () => {
         const raw = i.value.trim();
         if (!raw) { setErr(null); return; }
@@ -1337,7 +1337,7 @@ function makeLevelConstraintsBlock(element: AuthoredElement): HTMLElement {
   inpOff.value = offsetVal.toFixed(3);
   inpOff.disabled = !activeLevel;
   inpOff.style.cssText =
-    "flex:1;box-sizing:border-box;padding:4px 6px;text-align:right;" +
+    "flex:1;box-sizing:border-box;padding:4px 6px;text-align:end;" +
     "background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);" +
     "border-radius:4px;color:var(--text-primary,#e8eaf0);font:12px system-ui";
   if (!activeLevel) inpOff.style.opacity = "0.5";
@@ -1422,7 +1422,7 @@ function renderViewProperties() {
       const val = document.createElement("span");
       val.style.cssText =
         "color:#e2e8f0;background:#12141b;border:1px solid #2a2e3a;border-radius:4px;" +
-        "padding:2px 8px;min-width:72px;text-align:right;font-variant-numeric:tabular-nums";
+        "padding:2px 8px;min-width:72px;text-align:end;font-variant-numeric:tabular-nums";
       val.textContent = r.value;
       row.append(lab, val);
       wrap.appendChild(row);
@@ -1545,7 +1545,7 @@ function makeClassificationBlock(element: AuthoredElement): HTMLElement {
       const hit = cur ? sys.codes.find((c) => c.code === cur) : null;
       value.textContent = hit ? `${hit.code} — ${hit.title}` : "Not assigned";
       value.style.cssText =
-        "font-size:10.5px;text-align:right;" +
+        "font-size:10.5px;text-align:end;" +
         (hit ? "color:#7dd3fc" : "color:var(--text-tertiary,#6b7280)");
       top.append(name, value);
       sysBox.appendChild(top);

@@ -571,8 +571,8 @@ function btn(label: string, primary: boolean, onClick: () => void): HTMLButtonEl
   b.type = "button";
   b.textContent = label;
   b.style.cssText = primary
-    ? "padding:8px 10px;border-radius:6px;border:1px solid #0284c7;background:#0369a1;color:#fff;font-weight:600;cursor:pointer;text-align:left"
-    : "padding:8px 10px;border-radius:6px;border:1px solid #3a3f4d;background:#2a2e3a;color:#e8eaf0;cursor:pointer;text-align:left";
+    ? "padding:8px 10px;border-radius:6px;border:1px solid #0284c7;background:#0369a1;color:#fff;font-weight:600;cursor:pointer;text-align:start"
+    : "padding:8px 10px;border-radius:6px;border:1px solid #3a3f4d;background:#2a2e3a;color:#e8eaf0;cursor:pointer;text-align:start";
   b.onclick = () => {
     try {
       onClick();

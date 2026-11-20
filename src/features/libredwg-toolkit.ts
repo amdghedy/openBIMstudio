@@ -73,7 +73,7 @@ const STYLE = `
 #obs-ldwg-overlay .verdict.err{border:1px solid rgba(248,113,113,.45);background:rgba(248,113,113,.08);color:#fca5a5}
 #obs-ldwg-overlay h4{margin:14px 0 6px;font:600 10.5px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#64748b}
 #obs-ldwg-overlay table{width:100%;border-collapse:collapse;font:12px/1.4 system-ui,sans-serif}
-#obs-ldwg-overlay th{text-align:left;padding:6px 9px;background:#0a0e14;border-bottom:1px solid rgba(148,163,184,.2);color:#94a3b8;font:600 10px/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;position:sticky;top:0}
+#obs-ldwg-overlay th{text-align:start;padding:6px 9px;background:#0a0e14;border-bottom:1px solid rgba(148,163,184,.2);color:#94a3b8;font:600 10px/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;position:sticky;top:0}
 #obs-ldwg-overlay td{padding:5px 9px;border-bottom:1px solid rgba(148,163,184,.09)}
 #obs-ldwg-overlay .sev-error{color:#fca5a5;font-weight:600}
 #obs-ldwg-overlay .sev-warning{color:#fcd34d}

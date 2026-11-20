@@ -359,7 +359,7 @@ function renderPlaneList(): void {
     row.type = "button";
     const active = item === currentItem;
     row.style.cssText =
-      "text-align:left;padding:6px 8px;border-radius:6px;border:1px solid " +
+      "text-align:start;padding:6px 8px;border-radius:6px;border:1px solid " +
       (active ? "#ef4444" : "#2a2e3a") +
       ";background:" +
       (active ? "rgba(239,68,68,.12)" : "#12141c") +

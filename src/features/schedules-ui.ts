@@ -33,7 +33,7 @@ export function openSchedulesModal() {
   const renderTable = () => {
     contentArea.innerHTML = "";
     const table = document.createElement("table");
-    table.style.cssText = "width:100%;border-collapse:collapse;text-align:left;font-size:12px;";
+    table.style.cssText = "width:100%;border-collapse:collapse;text-align:start;font-size:12px;";
     
     table.innerHTML = `
       <thead>
@@ -42,7 +42,7 @@ export function openSchedulesModal() {
           <th style="padding:10px;font-weight:600;">Count</th>
           <th style="padding:10px;font-weight:600;">Total Area / Length</th>
           <th style="padding:10px;font-weight:600;">Total Volume</th>
-          <th style="padding:10px;font-weight:600;text-align:right;">Action</th>
+          <th style="padding:10px;font-weight:600;text-align:end;">Action</th>
         </tr>
       </thead>
       <tbody id="obs-schedule-body"></tbody>
@@ -103,7 +103,7 @@ export function openSchedulesModal() {
         <td style="padding:10px;color:#22c55e;font-weight:bold;">${data.count}</td>
         <td style="padding:10px;color:#8b949e;">${data.areaLength.toFixed(2)} m / m²</td>
         <td style="padding:10px;color:#8b949e;">${data.volume.toFixed(2)} m³</td>
-        <td style="padding:10px;text-align:right;">
+        <td style="padding:10px;text-align:end;">
           <button style="padding:4px 8px;background:#2563eb;color:#fff;border:none;border-radius:4px;cursor:pointer;" onclick="window.dispatchEvent(new CustomEvent('obs-select-category', {detail: '${type}'}))">Select</button>
         </td>
       `;

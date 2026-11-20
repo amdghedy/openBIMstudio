@@ -399,7 +399,7 @@ export function showTableDialog(
     if (!rows.length) {
       body.innerHTML = `<div style="padding:18px;color:#94a3b8">Nothing to show.</div>`;
     } else {
-      const th = columns.map((c) => `<th style="text-align:left;padding:7px 12px;position:sticky;top:0;background:#222637;border-bottom:1px solid #2a2e3a;font-weight:600">${escHtml(c)}</th>`).join("");
+      const th = columns.map((c) => `<th style="text-align:start;padding:7px 12px;position:sticky;top:0;background:#222637;border-bottom:1px solid #2a2e3a;font-weight:600">${escHtml(c)}</th>`).join("");
       const tr = rows.map((r) => `<tr>${r.map((v) => `<td style="padding:6px 12px;border-bottom:1px solid #232736">${escHtml(String(v))}</td>`).join("")}</tr>`).join("");
       body.innerHTML = `<table style="width:100%;border-collapse:collapse"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
     }

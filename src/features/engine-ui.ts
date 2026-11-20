@@ -315,7 +315,7 @@ export function showReportCard(title: string, rows: Array<[string, string | numb
   const el = document.createElement("div");
   const body = rows
     .map(([k, v]) => `<tr><td style="padding:3px 10px 3px 0;color:var(--text-secondary,#9aa3b5)">${esc(String(k))}</td>` +
-      `<td style="padding:3px 0;text-align:right;font-variant-numeric:tabular-nums">${esc(String(v))}</td></tr>`)
+      `<td style="padding:3px 0;text-align:end;font-variant-numeric:tabular-nums">${esc(String(v))}</td></tr>`)
     .join("");
   el.style.cssText =
     "position:fixed;top:120px;right:24px;width:330px;z-index:8600;" +

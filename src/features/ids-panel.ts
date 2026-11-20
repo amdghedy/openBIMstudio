@@ -194,11 +194,11 @@ function renderBody() {
   const table = document.createElement("table");
   table.style.cssText = "width:100%;border-collapse:collapse;font-size:11px";
   table.innerHTML = `<thead><tr style="position:sticky;top:0;background:var(--bg-elevated,#181a23)">
-    <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Severity</th>
-    <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Specification</th>
-    <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Element</th>
-    <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Facet</th>
-    <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Message</th>
+    <th style="text-align:start;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Severity</th>
+    <th style="text-align:start;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Specification</th>
+    <th style="text-align:start;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Element</th>
+    <th style="text-align:start;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Facet</th>
+    <th style="text-align:start;padding:6px;border-bottom:1px solid var(--border-subtle,#1e2029)">Message</th>
   </tr></thead>`;
   const tbody = document.createElement("tbody");
   const SEV_COLOR: Record<IdsSeverity, string> = {

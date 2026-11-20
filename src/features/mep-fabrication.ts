@@ -376,7 +376,7 @@ export function showResultDialog(title: string, rows: ResultRow[], notes: string
     l.style.color = "#9ca3af";
     const v = document.createElement("div");
     v.textContent = r.value;
-    v.style.cssText = "font-family:ui-monospace,monospace;text-align:right" +
+    v.style.cssText = "font-family:ui-monospace,monospace;text-align:end" +
       (r.strong ? ";color:#22d3ee;font-weight:700" : "");
     row.append(l, v);
     body.appendChild(row);

@@ -144,7 +144,7 @@ function renderDesignOptions(): string {
       <div style="margin-top:6px">`;
     for (const o of s.options) {
       const active = s.activeOptionId === o.id;
-      html += `<button data-set="${s.id}" data-opt="${o.id}" style="display:block;width:100%;text-align:left;
+      html += `<button data-set="${s.id}" data-opt="${o.id}" style="display:block;width:100%;text-align:start;
         padding:5px 8px;margin-bottom:3px;border-radius:5px;cursor:pointer;
         background:${active ? "var(--accent-dim)" : "var(--bg-inset)"};
         border:1px solid ${active ? "var(--accent)" : "var(--border-subtle)"};

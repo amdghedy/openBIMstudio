@@ -111,7 +111,7 @@ function render(items: CtxMenuItem[]) {
     row.disabled = !!it.disabled;
     row.style.cssText =
       "display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;" +
-      "padding:7px 12px;text-align:left;cursor:pointer;font:inherit;color:inherit" +
+      "padding:7px 12px;text-align:start;cursor:pointer;font:inherit;color:inherit" +
       (it.disabled ? ";opacity:.4;cursor:default" : "") +
       (it.danger ? ";color:#d13438" : "");
     row.innerHTML = `<span style="width:18px;text-align:center">${it.icon ?? ""}</span><span style="flex:1">${it.label}</span>` +

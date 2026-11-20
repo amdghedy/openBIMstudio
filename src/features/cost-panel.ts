@@ -90,7 +90,7 @@ function renderTakeoff() {
   table.style.cssText = "width:100%;border-collapse:collapse;font-size:11px";
   table.innerHTML = `<thead><tr style="position:sticky;top:0;background:#1b1c26">
     ${["Element / Category", "Info", "Pcs", "m", "m²", "m³", "Cost item", "Rate", "Override qty", "Line"].map((h) =>
-      `<th style="text-align:left;padding:5px 6px;border-bottom:1px solid #2a2a35;font-weight:600">${h}</th>`).join("")}
+      `<th style="text-align:start;padding:5px 6px;border-bottom:1px solid #2a2a35;font-weight:600">${h}</th>`).join("")}
   </tr></thead>`;
   const tbody = document.createElement("tbody");
   let grandTotal = 0;
@@ -161,7 +161,7 @@ function renderTakeoff() {
   trTotal.style.cssText = "background:#1b1c26;font-weight:700;border-top:1px solid #2a2a35";
   const tdTotalLabel = document.createElement("td");
   tdTotalLabel.colSpan = 9;
-  tdTotalLabel.style.cssText = "padding:8px 6px;text-align:right;color:#e2e8f0";
+  tdTotalLabel.style.cssText = "padding:8px 6px;text-align:end;color:#e2e8f0";
   tdTotalLabel.textContent = "Grand Total:";
   const tdTotalVal = document.createElement("td");
   tdTotalVal.style.cssText = "padding:8px 6px;color:#22c55e;font-size:13px";
@@ -201,7 +201,7 @@ function renderItems() {
   table.style.cssText = "width:100%;border-collapse:collapse;font-size:11px";
   table.innerHTML = `<thead><tr style="background:#1b1c26">
     ${["Code", "Name", "Unit", "Rate", "Category", ""].map((h) =>
-      `<th style="text-align:left;padding:5px 6px;border-bottom:1px solid #2a2a35">${h}</th>`).join("")}
+      `<th style="text-align:start;padding:5px 6px;border-bottom:1px solid #2a2a35">${h}</th>`).join("")}
   </tr></thead>`;
   const tbody = document.createElement("tbody");
   for (const it of items) {
@@ -277,7 +277,7 @@ function renderSummary() {
       bar.style.cssText = `height:100%;width:${Math.max(2, (d.total / max) * 100)}%;background:linear-gradient(90deg,#38bdf8,#818cf8)`;
       track.appendChild(bar);
       const val = document.createElement("div");
-      val.style.cssText = "width:110px;text-align:right;font-size:11px;color:#22c55e;font-weight:600";
+      val.style.cssText = "width:110px;text-align:end;font-size:11px;color:#22c55e;font-weight:600";
       val.textContent = money(d.total);
       row.append(label, track, val);
       sec.appendChild(row);
@@ -575,7 +575,7 @@ function renderRules() {
   table.style.cssText = "width:100%;border-collapse:collapse;font-size:11px";
   table.innerHTML = `<thead><tr style="position:sticky;top:0;background:#1b1c26">
     ${["Rule", "Classification", "Matched", "Unit", "Net", "Waste %", "Quantity", "Cost code", "Rate", "Total", ""].map((h) =>
-      `<th style="text-align:left;padding:5px 6px;border-bottom:1px solid #2a2a35;font-weight:600">${h}</th>`).join("")}
+      `<th style="text-align:start;padding:5px 6px;border-bottom:1px solid #2a2a35;font-weight:600">${h}</th>`).join("")}
   </tr></thead>`;
   const tbody = document.createElement("tbody");
 
@@ -615,7 +615,7 @@ function renderRules() {
   trTotal.style.cssText = "background:#1b1c26;font-weight:700;border-top:1px solid #2a2a35";
   const tdL = document.createElement("td");
   tdL.colSpan = 10;
-  tdL.style.cssText = "padding:8px 6px;text-align:right";
+  tdL.style.cssText = "padding:8px 6px;text-align:end";
   tdL.textContent = "Rules cost total:";
   const tdV = document.createElement("td");
   tdV.style.cssText = "padding:8px 6px;color:#22c55e;font-size:13px";

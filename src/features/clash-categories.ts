@@ -35,7 +35,7 @@ export function openClashCategoriesModal() {
   
   const btnRefresh = document.createElement("button");
   btnRefresh.textContent = "⟳ Refresh List";
-  btnRefresh.style.cssText = "padding:4px 8px; font-size:11px; background:#2a2e3a; color:#a5b4fc; border:1px solid #3a3e4a; border-radius:4px; cursor:pointer; margin-bottom:10px; float:right;";
+  btnRefresh.style.cssText = "padding:4px 8px; font-size:11px; background:#2a2e3a; color:#a5b4fc; border:1px solid #3a3e4a; border-radius:4px; cursor:pointer; margin-bottom:10px; float:inline-end;";
   
   const lblA = document.createElement("div");
   lblA.textContent = "Selection A (e.g. Structure)";

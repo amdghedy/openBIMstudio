@@ -221,7 +221,7 @@ export function buildCoordinationReportHtml(standards: StandardsResult | null): 
   table { width:100%; border-collapse:collapse; background:#fff;
           border:1px solid #e3e6ea; border-radius:8px; overflow:hidden;
           font-size:11px; margin-bottom:14px; }
-  th { background:#f0f2f5; text-align:left; padding:8px 10px;
+  th { background:#f0f2f5; text-align:start; padding:8px 10px;
        font-size:10px; font-weight:600; text-transform:uppercase;
        letter-spacing:.4px; color:#4b5563; border-bottom:1px solid #e3e6ea;
        white-space:nowrap; }
@@ -231,7 +231,7 @@ export function buildCoordinationReportHtml(standards: StandardsResult | null): 
   .badge { display:inline-block; padding:2px 7px; border-radius:3px;
            font-size:9px; font-weight:700; letter-spacing:.3px;
            text-transform:uppercase; }
-  .num { text-align:right; font-family:ui-monospace,monospace; }
+  .num { text-align:end; font-family:ui-monospace,monospace; }
   .dim { color:#9ca3af; font-size:10px; }
   .empty { padding:20px; color:#9ca3af; text-align:center; background:#fff;
            border:1px dashed #d5d8de; border-radius:8px; font-size:12px; }
