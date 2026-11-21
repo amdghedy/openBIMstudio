@@ -23,7 +23,7 @@
  * the user's own local collab server.
  */
 import { notify } from "../core/notify";
-import { fmtTime } from "../core/format";
+import { fmtTime } from "../core/region";
 
 export interface AgentEngineState {
   open: boolean;

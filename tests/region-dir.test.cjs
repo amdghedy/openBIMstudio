@@ -32,6 +32,7 @@ compile("src/core/format.ts");
 
 global.localStorage = { _s: {}, getItem(k) { return this._s[k] ?? null; }, setItem(k, v) { this._s[k] = String(v); }, removeItem(k) { delete this._s[k]; } };
 const { region } = require(path.join(out, "region.js"));
+const R = require(path.join(out, "region.js"));
 const F = require(path.join(out, "format.js"));
 
 let n = 0;
@@ -54,16 +55,26 @@ eq(region.getResolved().dir, "rtl", "ar override is RTL");
 region.clearOverrides();
 
 // ---- numbers/dates follow the active region profile, not the browser
+// Consolidation (issue #140, 2026-11-21): region.ts is canonical for
+// fmtNumber/fmtDate/fmtTime/fmtDateTime/fmtCurrency. format.ts no longer
+// exports those names — the same assertions now run against R, with
+// identical expected values (no weakened assertions).
+for (const name of ["fmtNumber", "fmtCurrency", "fmtDate", "fmtTime", "fmtDateTime"]) {
+  assert.ok(!(name in F), `format.ts must not export the duplicate ${name} (region.ts is canonical)`);
+  n++;
+}
 assert.ok(region.setProfile("de"));
-eq(F.fmtNumber(1234567.891, { precision: 2 }), "1.234.567,89", "de-DE number via region profile");
+eq(R.fmtNumber(1234567.891, { maximumFractionDigits: 2 }), "1.234.567,89", "de-DE number via region profile");
 eq(F.fmtInteger(1234567), "1.234.567", "de-DE integer via region profile");
 assert.ok(region.setProfile("ae"));
-assert.ok(/٣|3/.test(F.fmtNumber(123)), "ar number renders: " + F.fmtNumber(123));
+assert.ok(/٣|3/.test(R.fmtNumber(123)), "ar number renders: " + R.fmtNumber(123));
 eq(F.getCurrency(), "AED", "ae profile currency default is AED (region locale)");
 assert.ok(region.setProfile("us"));
-eq(F.fmtNumber(1234567.891, { precision: 2 }), "1,234,567.89", "en-US number via region profile");
+eq(R.fmtNumber(1234567.891, { maximumFractionDigits: 2 }), "1,234,567.89", "en-US number via region profile");
+eq(F.fmtPercent(0.123, 1), "12.3%", "en-US percent via format.ts delegating to region.ts");
+eq(F.fmtBytes(1536, 1), "1.5 KB", "file size via format.ts delegating to region.ts");
 const d = new Date(Date.UTC(2026, 10, 9, 14, 5, 7));
 assert.ok(region.setProfile("de"));
-assert.ok(/^0?9\.11\.(20)?26/.test(F.fmtDate(d)), "de-DE date order: " + F.fmtDate(d));
+assert.ok(/^0?9\.11\.(20)?26/.test(R.fmtDate(d)), "de-DE date order: " + R.fmtDate(d));
 
 console.log(`region-dir: ${n} assertions passed`);

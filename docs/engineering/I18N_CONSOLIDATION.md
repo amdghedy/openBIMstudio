@@ -18,11 +18,19 @@ strings until those strings migrate to keys. New code must use `t()` /
 this change: `domT()` (zero call sites) and `NUM_TEMPLATES` (replaced by
 ICU counts).
 
-**`src/core/format.ts` and `src/core/region.ts` share one locale source.**
-`format.ts` takes its `Intl` locale from the active region profile
-(`region.getResolved().locale`, falling back to the i18n locale); the thin
-`region.ts` formatters use the same source. Two API surfaces remain for
-compatibility, one locale source.
+**`src/core/region.ts` is canonical for number/date/currency formatting
+(fmtNumber/fmtCurrency/fmtDate/fmtTime/fmtDateTime).** `src/core/format.ts`
+used to export its own copies of those five names with different defaults
+(non-finite → "—", grouping only for |value| ≥ 10000, short time styles),
+so a caller got a different answer depending on which module it imported.
+Consolidated 2026-11-21 (item 15): the duplicates are deleted and
+`format.ts` keeps only the formatters `region.ts` does not have
+(fmtInteger/fmtPercent/fmtRelative/fmtBytes, plus the
+getCurrency/setCurrency preference), implemented on the region
+primitives. The one visible change: the agent log timestamp in
+`agent-bridge.ts` now uses the region `fmtTime` (medium time style)
+instead of the old 2-digit format. `format.ts` and `region.ts` share one
+locale source throughout: the active region profile.
 
 **Direction ownership resolved (#141's open question).** Direction stays
 owned by the i18n service. The region service exposes it as a derived
@@ -50,10 +58,12 @@ were unregenerable. Both now exist:
   es/ja/pt/ru/zh 34 each, ar/de/fr 1 each. All catalogues now hold the
   same 3,431 keys.
 - `scripts/i18n-audit.mjs` (`npm run i18n:audit`, `--check` in CI via
-  `tests/i18n-audit.test.cjs`) reports per-locale status and fails CI if
-  the three "supported locale" lists drift, a catalogue goes out of sync,
-  a translated locale loses its ICU strings, CSS keys reappear, or the
-  RTL gate is removed.
+  `tests/i18n-audit.test.cjs`) reports per-locale status, coverage %
+  per language, the dead-key report (JSON namespaces with no call site),
+  and the CSS-fragment-key count — and fails CI if the three "supported
+  locale" lists drift, a catalogue goes out of sync (the failure names
+  the stale keys: added/removed/changed), a translated locale loses its
+  ICU strings, CSS keys reappear, or the RTL gate is removed.
 
 ## Per-locale status (measured by `scripts/i18n-audit.mjs --check`)
 
@@ -151,10 +161,12 @@ UI; the audit reports both separately.
   translated by the DOM layer, and the language switcher is keyboard
   reachable, but no dedicated RTL keyboard-navigation or panel-responsiveness
   audit was done in this workstream — it needs a browser pass.
-- **Full key migration:** the JSON `clash`/`authoring`/`camera`/`cost`/
-  `options` namespaces are still dead except `standards.title` and
-  `counts.*`; the UI still runs on the DOM shim. Migrating shell strings
-  to keys is a multi-PR effort.
+- **Full key migration:** the JSON `app`/`clash`/`authoring`/`camera`/
+  `cost`/`options` namespaces are still dead except `standards.title`
+  and `counts.*`; the UI still runs on the DOM shim. Migrating shell
+  strings to keys is a multi-PR effort. `scripts/i18n-audit.mjs`
+  re-measures the dead set on every run (dead-key report), so a
+  namespace that gains a call site drops off the list automatically.
 - **No human review of the MT catalogues.** 3,431 entries per language
   are unreviewed machine translation; Hindi still has 849 untranslated
   entries (reported, not hidden). Real Hindi translations for those keys

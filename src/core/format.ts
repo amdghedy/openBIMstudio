@@ -1,17 +1,30 @@
 /**
- * Locale-aware formatting for numbers, dates, currency, and file sizes.
- * Delegates unit formatting to units.ts — this module is for everything else.
+ * Extra locale-aware formatters built on the canonical region formatters.
  *
- * The locale for every Intl call below comes from the active REGION profile
- * (region.getResolved().locale), not from the i18n service directly: the
- * region profile is what a team sets for a country (language + units +
- * currency), and numeric/date output must respect it. Falls back to the
- * i18n service locale when the region service is not ready. The duplicate
- * thin formatters in region.ts (fmtNumber/fmtDate/…) share the same source
- * — region.getResolved().locale — so both surfaces agree.
+ * Canonical home of fmtNumber / fmtCurrency / fmtDate / fmtTime /
+ * fmtDateTime is ./region.ts (consolidation 2026-11-21, issue #140):
+ * the region service owns the active locale, ~20 call sites use its
+ * functions, and tests/region-format.test.cjs pins their semantics
+ * (Intl passthrough, NaN -> 0, invalid date -> ""). This module used to
+ * export its own copies of those five names with different defaults
+ * (non-finite -> "—", grouping only for |value| >= 10000, short time
+ * styles), so a caller got a different answer depending on which module
+ * it imported. The duplicates are deleted; what remains here are the
+ * formatters region.ts does not have — fmtInteger, fmtPercent,
+ * fmtRelative, fmtBytes — implemented on region.ts primitives, plus the
+ * currency preference (getCurrency/setCurrency, a localStorage override
+ * on top of the region profile's currency).
+ *
+ * The locale for every Intl call below comes from the active REGION
+ * profile (region.getResolved().locale) via the region formatters, not
+ * from the i18n service directly: the region profile is what a team sets
+ * for a country (language + units + currency), and numeric/date output
+ * must respect it. fmtRelative and getCurrency keep a direct i18n-locale
+ * fallback for the not-yet-booted window (region.getResolved() never
+ * throws after construction, so this is defensive only).
  */
 import { i18n, type Locale } from "./i18n";
-import { region } from "./region";
+import { region, fmtNumber as regionFmtNumber, fmtDate as regionFmtDate } from "./region";
 
 /** Locale for Intl output: active region profile, else the i18n locale. */
 function activeLocale(): Locale {
@@ -24,52 +37,18 @@ function activeLocale(): Locale {
 
 /* ── Numbers ─────────────────────────────────────────────────────── */
 
-export interface NumberFormatOptions {
-  /** Fixed decimal places. Omit for auto. */
-  precision?: number;
-  /** Force thousands separators on/off. Default: on for |value| ≥ 1000. */
-  grouping?: boolean;
-  /** Sign display: "auto" | "always" | "never" | "exceptZero". */
-  sign?: "auto" | "always" | "never" | "exceptZero";
-}
-
-export function fmtNumber(value: number, opts: NumberFormatOptions = {}): string {
-  if (!Number.isFinite(value)) return "—";
-  const locale = activeLocale();
-  try {
-    return new Intl.NumberFormat(locale, {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: opts.precision ?? 3,
-      useGrouping: opts.grouping ?? Math.abs(value) >= 10000,
-      signDisplay: opts.sign ?? "auto",
-    }).format(value);
-  } catch {
-    return value.toFixed(opts.precision ?? 3);
-  }
-}
-
 export function fmtInteger(value: number): string {
   if (!Number.isFinite(value)) return "—";
-  try {
-    return new Intl.NumberFormat(activeLocale(), {
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return Math.round(value).toString();
-  }
+  return regionFmtNumber(value, { maximumFractionDigits: 0 });
 }
 
 export function fmtPercent(ratio: number, precision = 1): string {
   if (!Number.isFinite(ratio)) return "—";
-  try {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: "percent",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: precision,
-    }).format(ratio);
-  } catch {
-    return `${(ratio * 100).toFixed(precision)}%`;
-  }
+  return regionFmtNumber(ratio, {
+    style: "percent",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: precision,
+  });
 }
 
 /* ── Currency ────────────────────────────────────────────────────── */
@@ -106,85 +85,6 @@ export function setCurrency(code: string): void {
   try { localStorage.setItem(DEFAULT_CURRENCY_KEY, code); } catch { /* */ }
 }
 
-export interface CurrencyFormatOptions {
-  precision?: number;
-  /** Show the currency code suffix instead of the symbol. Default false. */
-  showCode?: boolean;
-  /** Override currency symbol. */
-  currency?: string;
-}
-
-export function fmtCurrency(value: number, opts: CurrencyFormatOptions = {}): string {
-  if (!Number.isFinite(value)) return "—";
-  const code = opts.currency ?? getCurrency();
-  const locale = activeLocale();
-  try {
-    const optsObj: Intl.NumberFormatOptions = {
-      style: "currency",
-      currency: code,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: opts.precision ?? 2,
-    };
-    if (opts.showCode) optsObj.currencyDisplay = "code";
-    return new Intl.NumberFormat(locale, optsObj).format(value);
-  } catch {
-    return `${code} ${value.toFixed(opts.precision ?? 2)}`;
-  }
-}
-
-/* ── Dates ───────────────────────────────────────────────────────── */
-
-export type DateStyle = "short" | "medium" | "long" | "full" | "iso";
-
-export function fmtDate(value: Date | number | string, style: DateStyle = "short"): string {
-  const d = toDate(value);
-  if (!d) return "—";
-  if (style === "iso") return d.toISOString().slice(0, 10);
-  const locale = activeLocale();
-  try {
-    return new Intl.DateTimeFormat(locale, { dateStyle: style }).format(d);
-  } catch {
-    return d.toISOString().slice(0, 10);
-  }
-}
-
-export function fmtTime(value: Date | number | string): string {
-  const d = toDate(value);
-  if (!d) return "—";
-  try {
-    return new Intl.DateTimeFormat(activeLocale(), {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }).format(d);
-  } catch {
-    return d.toTimeString().slice(0, 8);
-  }
-}
-
-export function fmtDateTime(value: Date | number | string): string {
-  const d = toDate(value);
-  if (!d) return "—";
-  try {
-    return new Intl.DateTimeFormat(activeLocale(), {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(d);
-  } catch {
-    return d.toISOString().replace("T", " ").slice(0, 16);
-  }
-}
-
-function toDate(value: Date | number | string): Date | null {
-  if (value instanceof Date) return value;
-  if (typeof value === "number") return new Date(value);
-  if (typeof value === "string") {
-    const d = new Date(value);
-    return Number.isFinite(d.getTime()) ? d : null;
-  }
-  return null;
-}
-
 /* ── Relative time (e.g. "3 minutes ago") ────────────────────────── */
 
 const _rtfCache = new Map<string, Intl.RelativeTimeFormat>();
@@ -218,7 +118,17 @@ export function fmtRelative(value: Date | number | string): string {
     }
     duration /= div.amount;
   }
-  return fmtDate(d);
+  return regionFmtDate(d);
+}
+
+function toDate(value: Date | number | string): Date | null {
+  if (value instanceof Date) return value;
+  if (typeof value === "number") return new Date(value);
+  if (typeof value === "string") {
+    const d = new Date(value);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+  return null;
 }
 
 /* ── File size ───────────────────────────────────────────────────── */
@@ -229,5 +139,8 @@ export function fmtBytes(bytes: number, precision = 1): string {
   let i = 0;
   let v = bytes;
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-  return `${fmtNumber(v, { precision })} ${units[i]}`;
+  // Same rendering the deleted format.ts fmtNumber gave this call:
+  // minimum 0 / maximum `precision` fraction digits, no grouping
+  // (the scaled value is always < 1024).
+  return `${regionFmtNumber(v, { minimumFractionDigits: 0, maximumFractionDigits: precision, useGrouping: false })} ${units[i]}`;
 }

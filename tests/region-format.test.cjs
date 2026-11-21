@@ -24,4 +24,20 @@ for (const f of [...walk(path.join(__dirname, "../src/features")), ...walk(path.
   const t = fs.readFileSync(f, "utf8"); if (/new Date\([^()]*\)\.toLocale(Time)?String\(\)/.test(t) || /(?<![\w.)\]])[A-Za-z_]\w*(?:\??\.[A-Za-z_]\w*)*\.toLocaleString\(\)/.test(t)) offenders.push(path.relative(path.join(__dirname, ".."), f));
 }
 eq(offenders.join(", "), "", "UI code uses fmtNumber/fmtDateTime, not browser-locale toLocaleString()");
+// Consolidation gate (issue #140, 2026-11-21): region.ts is the only module
+// that defines fmtNumber/fmtCurrency/fmtDate/fmtTime/fmtDateTime, and no
+// file imports those names from format.ts. format.ts keeps only its
+// extras (fmtInteger/fmtPercent/fmtRelative/fmtBytes/getCurrency) built
+// on the region primitives.
+const formatSrc = fs.readFileSync(path.join(__dirname, "../src/core/format.ts"), "utf8");
+for (const name of ["fmtNumber", "fmtCurrency", "fmtDate", "fmtTime", "fmtDateTime"]) {
+  eq(new RegExp(`export (function|const) ${name}\\b`).test(formatSrc), false, `format.ts must not define ${name}`);
+}
+const badImports = [];
+for (const f of [...walk(path.join(__dirname, "../src"))].filter((f) => f.endsWith(".ts"))) {
+  const t = fs.readFileSync(f, "utf8");
+  const m = t.match(/import\s*\{([^}]*)\}\s*from\s*["']\.\.?\/core\/format["']/);
+  if (m && /(fmtNumber|fmtCurrency|fmtDate|fmtTime|fmtDateTime)/.test(m[1])) badImports.push(path.relative(path.join(__dirname, ".."), f));
+}
+eq(badImports.join(", "), "", "no file imports the consolidated formatters from format.ts");
 console.log(`region-format: ${n} assertions passed`);
