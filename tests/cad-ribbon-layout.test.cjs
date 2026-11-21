@@ -86,7 +86,7 @@ t("every ribbon group is tagged with exactly one of the nine tabs", () => {
     // Output
     Plot: "output", "DWG Data": "output", Export: "output", Window: "output",
     // Express Tools
-    "Text": "express", Modify: "express", Layers: "express", Tools: "express",
+    "Text": "express", Modify: "express", Layers: "express", Tools: "express", "Text Tools": "express", "Geometry Tools": "express",
     // Collaborate
     Publish: "collaborate", Share: "collaborate", History: "collaborate", Standards: "collaborate",
   };
