@@ -51,6 +51,13 @@ function isParameterType(value: unknown): value is SharedParameterType {
  */
 export class SharedParameterManager implements SharedParameterManagerService {
   private readonly storage: Pick<Storage, "getItem" | "setItem"> | null;
+  /**
+   * Session-only copy, used when there is no storage or when storage throws
+   * (private browsing, quota, blocked access). Definitions then work for the
+   * session but are not persisted.
+   */
+  private memory: SharedParameter[] = [];
+  private useMemory = false;
 
   /**
    * Construct the manager. Supplying storage is useful for tests and embedding;
@@ -88,8 +95,16 @@ export class SharedParameterManager implements SharedParameterManagerService {
 
   /** Reads and validates the stored definitions; corrupt data is ignored safely. */
   private readAll(): SharedParameter[] {
+    if (!this.storage || this.useMemory) return this.memory.map((item) => ({ ...item }));
+    let raw: string | null | undefined;
     try {
-      const raw = this.storage?.getItem(STORAGE_KEY);
+      raw = this.storage.getItem(STORAGE_KEY);
+    } catch (error) {
+      console.warn("[shared-parameters] storage read failed, using session memory:", error);
+      this.useMemory = true;
+      return this.memory.map((item) => ({ ...item }));
+    }
+    try {
       if (!raw) return [];
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
@@ -104,11 +119,16 @@ export class SharedParameterManager implements SharedParameterManagerService {
 
   /** Writes definitions, logging quota/security failures instead of crashing. */
   private writeAll(parameters: SharedParameter[]): void {
-    try {
-      this.storage?.setItem(STORAGE_KEY, JSON.stringify(parameters));
-    } catch (error) {
-      console.warn("[shared-parameters] unable to persist parameters:", error);
+    if (this.storage && !this.useMemory) {
+      try {
+        this.storage.setItem(STORAGE_KEY, JSON.stringify(parameters));
+        return;
+      } catch (error) {
+        console.warn("[shared-parameters] unable to persist parameters, using session memory:", error);
+        this.useMemory = true;
+      }
     }
+    this.memory = parameters.map((item) => ({ ...item }));
   }
 
   private normalize(value: unknown): SharedParameter | null {
