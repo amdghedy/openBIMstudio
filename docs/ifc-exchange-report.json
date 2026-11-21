@@ -6,15 +6,15 @@
   "exchanges": {
     "IFC4": {
       "schema": "IFC4",
-      "entities": 203,
-      "globalIds": 46,
+      "entities": 215,
+      "globalIds": 58,
       "invalidGlobalIds": 0,
       "units": true
     },
     "IFC2X3": {
       "schema": "IFC2X3",
-      "entities": 742,
-      "globalIds": 46,
+      "entities": 752,
+      "globalIds": 56,
       "invalidGlobalIds": 0,
       "units": true
     }
