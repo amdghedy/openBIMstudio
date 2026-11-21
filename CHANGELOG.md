@@ -9,12 +9,10 @@ Versions before 0.73.0 are summarized by the commit history and the milestone
 verification scripts (`npm run verify:v50` … `verify:v67`) rather than this
 file — the project adopted a written changelog at 0.73.0.
 
-## Unreleased
+## [Unreleased]
 
 - 2D: objects hidden one by one (Hide Objects) are remembered per drawing and stay hidden on reopen, as long as the drawing has the same number of entities.
 - CI: only Chromium gates the release; Firefox/WebKit moved to cross-browser.yml (nightly, advisory) because Firefox timeouts blocked every deploy.
-
-## [Unreleased]
 
 ### Added
 - **CAD 2D: the viewer remembers more of your last session per drawing.** Besides view, layout and layer visibility (hidden / off / frozen layers stay hidden next time, as before), it now also restores the background, colour mode, OSNAP / ORTHO / POLAR / OTRACK / DYN / LWT / grid toggles and polar angle, the chosen snap kinds, the text / hatch / linetype display switches, the entity-type filter, the current layer and which layers are locked. Saved when you change them (checked every ~2.5 s) and when the page is hidden or closed; keyed by drawing file name in this browser (localStorage), most recent 40 drawings. Settings are validated one by one, so a corrupted or older saved session is ignored rather than breaking the open. Unit-tested (validation); the viewer wiring is not covered by a browser test and has not been tried on your drawing. Not remembered: entities hidden one by one (no stable id), per-layer colour changes, selection.
@@ -357,7 +355,7 @@ run in a browser yet (see `tests/e2e/README.md`).
   empty corpus (0 files). The corpus folder is documented in its README; see
   `docs/engineering/ISSUES.md` (P1-03) for the rebuild plan.
 
-## [0.74.0] — 2026-11
+## [0.74.0] — 2026-11-03
 
 ### Added
 
@@ -379,9 +377,7 @@ run in a browser yet (see `tests/e2e/README.md`).
   (level, dimensions, location line, join, chain, offset, justification,
   slope) for every placement tool.
 
-## [0.73.0]
-
-> Earlier release — exact date not tracked here; see the commit history.
+## [0.73.0] — 2026-10-26
 
 ### Added
 
@@ -394,5 +390,5 @@ run in a browser yet (see `tests/e2e/README.md`).
   (`tests/v73-just`, `v73-mag`, `v73-panels`, `v73-rel` suites).
 
 [Unreleased]: https://github.com/amdghedy/openBIMstudio/commits/main
-[0.74.0]: https://github.com/amdghedy/openBIMstudio/releases
+[0.74.0]: https://github.com/amdghedy/openBIMstudio/releases/tag/v0.74.0
 [0.73.0]: https://github.com/amdghedy/openBIMstudio/commits/main
