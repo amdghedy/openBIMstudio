@@ -23,7 +23,7 @@ import { extractInstanceOverrides } from "./parametric-engine";
 export const GEOMETRY_KEYS: readonly string[] = [
   "height", "thickness", "width", "depth",
   "elevation", "sillHeight", "frameThickness",
-  "offsetAlongHost",
+  "offsetAlongHost", "rotation",
 ];
 
 export interface PlacementParams {

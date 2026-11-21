@@ -502,5 +502,14 @@
     "ifcEntity": "IfcBeam",
     "typeCount": 2,
     "path": "Structural/steel-beam-i.json"
+  },
+  {
+    "id": "seed-generic-plinth-001",
+    "name": "Parametric Rectangular Plinth",
+    "group": "Generic",
+    "category": "generic",
+    "ifcEntity": "IfcBuildingElementProxy",
+    "typeCount": 2,
+    "path": "Generic/parametric-rectangular-plinth.json"
   }
 ]

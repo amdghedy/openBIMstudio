@@ -163,6 +163,7 @@
     "test:family-sketch": "node tests/family-sketch.test.cjs",
     "test:sketch-arcs-constraints": "node tests/sketch-arcs-constraints.test.cjs",
     "test:parametric-type-propagation": "node tests/parametric-type-propagation.test.cjs",
+    "test:parametric-rectangular-family": "node tests/parametric-rectangular-family.test.cjs",
     "test:parametric-family-hosting": "node tests/parametric-family-hosting.test.cjs",
     "test:orbit-frame": "node tests/orbit-frame.test.cjs",
     "test:view-to-cad": "node tests/view-to-cad.test.cjs",
