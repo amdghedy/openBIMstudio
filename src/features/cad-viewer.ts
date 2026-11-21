@@ -94,6 +94,16 @@ import {
   countZeroLength,
   CAD_2D_GAP_COMMANDS,
 } from "../modules/cad-viewer/cad-2d-critical-gaps";
+import {
+  changeTextCase,
+  replaceInText,
+  numberTexts,
+  snapToGrid,
+  alignCenters,
+  circlesToPolylines,
+  verticesToPoints,
+  type TextCase,
+} from "../modules/cad-viewer/cad-2d-extras";
 import * as PolyBool from "../modules/cad-viewer/poly-boolean";
 import * as AcadAdv from "../modules/cad-viewer/acad-advanced";
 import { evalExpr, isCalcExpr } from "../modules/cad-viewer/cad-cal";
@@ -357,6 +367,14 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "SETBYLAYER", aliases: ["BYLAYER"], description: "Reset selection properties to ByLayer" },
   { name: "MULTIPLE", aliases: ["MULTI"], description: "Repeat previous command until Esc" },
   { name: "SCALETEXT", aliases: ["STEXT"], description: "Scale height of selected TEXT/MTEXT" },
+  { name: "TCASE", aliases: ["TEXTCASE"], description: "Change selected text case: TCASE UPPER | LOWER | TITLE | SENTENCE" },
+  { name: "TREPLACE", aliases: ["TEXTREPLACE"], description: "Find and replace inside selected text: TREPLACE old|new" },
+  { name: "TCOUNT", aliases: ["TEXTNUMBER"], description: "Number selected text in reading order: TCOUNT [start] [step] [prefix] [suffix]" },
+  { name: "SNAPSEL", aliases: ["SNAPTOGRID"], description: "Round the selection's coordinates to a grid step: SNAPSEL [step]" },
+  { name: "ALIGNCX", aliases: [], description: "Centre selected objects on the selection's vertical centre line" },
+  { name: "ALIGNCY", aliases: [], description: "Centre selected objects on the selection's horizontal centre line" },
+  { name: "CIRCLE2PL", aliases: ["CIRCLETOPL"], description: "Convert selected circles to closed polylines: CIRCLE2PL [segments]" },
+  { name: "PL2POINTS", aliases: ["VERTEXPOINTS"], description: "Place POINT objects at every vertex of the selected polylines/lines" },
   { name: "JUSTIFYTEXT", aliases: ["JTEXT"], description: "JUSTIFYTEXT L|C|R" },
   { name: "COPYTOLAYER", aliases: ["COPY2LAY"], description: "Copy selection onto another layer" },
   { name: "LAYMOV", aliases: ["MOVETOLAYER"], description: "Move selection to a layer" },
@@ -6758,6 +6776,26 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "express",
       ) +
       rg(
+        "Text Tools",
+        rb("text", "Text Case", `data-a="tcase"`, "Change case of selected text (TCASE)") +
+          rb("find", "Replace", `data-a="treplace"`, "Find and replace inside selected text (TREPLACE)") +
+          rb("schedules", "Number", `data-a="tcount"`, "Number selected text in reading order (TCOUNT)"),
+        "",
+        "",
+        "express",
+      ) +
+      rg(
+        "Geometry Tools",
+        rb("align", "Centre X", `data-a="aligncx"`, "Centre selection on a vertical line (ALIGNCX)") +
+          rb("align", "Centre Y", `data-a="aligncy"`, "Centre selection on a horizontal line (ALIGNCY)") +
+          rb("point", "Snap Sel", `data-a="snapsel"`, "Round coordinates to a grid step (SNAPSEL)") +
+          rb("model-curve", "Circle→PL", `data-a="circle2pl"`, "Convert circles to polylines (CIRCLE2PL)") +
+          rb("point", "Vertex Pts", `data-a="pl2points"`, "Points at every vertex (PL2POINTS)"),
+        "",
+        "",
+        "express",
+      ) +
+      rg(
         "Tools",
         rb("settings", "Command Aliases", `data-a="aliases"`, "Edit the command alias list (ALIASEDIT / KS)") +
           rb("insulation", "Linetypes", `data-a="lt-mgr"`, "Linetype Manager (LT)"),
@@ -7072,6 +7110,26 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       length: () => executeDrawingCommand("LENGTH"),
       areasel: () => executeDrawingCommand("AREASEL"),
       centermark: () => executeDrawingCommand("CENTERMARK"),
+      tcase: async () => {
+        const v = await promptLine("Text case", "UPPER, LOWER, TITLE or SENTENCE", "UPPER");
+        if (v) executeDrawingCommand(`TCASE ${v}`);
+      },
+      treplace: async () => {
+        const v = await promptLine("Replace in text", "Find|Replace", "old|new");
+        if (v) executeDrawingCommand(`TREPLACE ${v}`);
+      },
+      tcount: async () => {
+        const v = await promptLine("Number text", "Start Step Prefix Suffix", "1 1");
+        if (v) executeDrawingCommand(`TCOUNT ${v}`);
+      },
+      aligncx: () => executeDrawingCommand("ALIGNCX"),
+      aligncy: () => executeDrawingCommand("ALIGNCY"),
+      snapsel: async () => {
+        const v = await promptLine("Snap selection", "Grid step", "1");
+        if (v) executeDrawingCommand(`SNAPSEL ${v}`);
+      },
+      circle2pl: () => executeDrawingCommand("CIRCLE2PL"),
+      pl2points: () => executeDrawingCommand("PL2POINTS"),
       markmid: () => executeDrawingCommand("MARKMID"),
       markint: () => executeDrawingCommand("MARKINT"),
       xplodepl: () => executeDrawingCommand("XPLODEPL"),
@@ -10878,6 +10936,68 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const n = justifyText(ents, [...sel], align);
       markDirty(); draw();
       logCmd(n ? `JUSTIFYTEXT: ${n} → ${align}` : "JUSTIFYTEXT: no TEXT in selection.");
+      return;
+    }
+    if (cmd === "TCASE" || cmd === "TEXTCASE") {
+      if (!sel.size) { logCmd("TCASE: select TEXT/MTEXT first."); return; }
+      const m = ((arg || "").trim().toLowerCase()) as TextCase;
+      if (!["upper", "lower", "title", "sentence"].includes(m)) { logCmd("TCASE: use UPPER, LOWER, TITLE or SENTENCE"); return; }
+      const n = changeTextCase(ents, [...sel], m);
+      if (n) { markDirty(); draw(); }
+      logCmd(n ? `TCASE: ${n} text object(s) → ${m}` : "TCASE: no TEXT/MTEXT in selection.");
+      return;
+    }
+    if (cmd === "TREPLACE" || cmd === "TEXTREPLACE") {
+      if (!sel.size) { logCmd("TREPLACE: select TEXT/MTEXT first."); return; }
+      const k = (arg || "").indexOf("|");
+      if (k < 1) { logCmd("TREPLACE: use TREPLACE old|new"); return; }
+      const n = replaceInText(ents, [...sel], arg.slice(0, k), arg.slice(k + 1));
+      if (n) { markDirty(); draw(); }
+      logCmd(n ? `TREPLACE: changed ${n} text object(s).` : "TREPLACE: no matches in the selected text.");
+      return;
+    }
+    if (cmd === "TCOUNT" || cmd === "TEXTNUMBER") {
+      if (!sel.size) { logCmd("TCOUNT: select TEXT/MTEXT first."); return; }
+      const [a = "1", b = "1", pre = "", suf = ""] = (arg || "").trim().split(/\s+/);
+      const start = Number(a), step = Number(b);
+      if (!Number.isFinite(start) || !Number.isFinite(step)) { logCmd("TCOUNT: use TCOUNT [start] [step] [prefix] [suffix]"); return; }
+      const n = numberTexts(ents, [...sel], start, step, pre, suf);
+      if (n) { markDirty(); draw(); }
+      logCmd(n ? `TCOUNT: numbered ${n} text object(s) from ${start} by ${step}.` : "TCOUNT: no TEXT/MTEXT in selection.");
+      return;
+    }
+    if (cmd === "SNAPSEL" || cmd === "SNAPTOGRID") {
+      if (!sel.size) { logCmd("SNAPSEL: select objects first."); return; }
+      const step = (arg || "").trim() ? Number(arg) : 1;
+      if (!(step > 0)) { logCmd("SNAPSEL: specify a positive grid step, e.g. SNAPSEL 0.5"); return; }
+      const n = snapToGrid(ents, [...sel], step);
+      markDirty(); draw();
+      logCmd(`SNAPSEL: ${n} object(s) snapped to ${step}.`);
+      return;
+    }
+    if (cmd === "ALIGNCX" || cmd === "ALIGNCY") {
+      if (sel.size < 2) { logCmd(`${cmd}: select two or more objects.`); return; }
+      const n = alignCenters(ents, [...sel], cmd === "ALIGNCX" ? "x" : "y");
+      if (n) { markDirty(); draw(); }
+      logCmd(`${cmd}: ${n} object(s) centred.`);
+      return;
+    }
+    if (cmd === "CIRCLE2PL" || cmd === "CIRCLETOPL") {
+      if (!sel.size) { logCmd("CIRCLE2PL: select circles first."); return; }
+      const segs = (arg || "").trim() ? Number(arg) : 36;
+      if (!(segs >= 3)) { logCmd("CIRCLE2PL: segments must be 3 or more."); return; }
+      const out = circlesToPolylines(ents, [...sel], segs);
+      if (!out.length) { logCmd("CIRCLE2PL: no circles in selection."); return; }
+      addEntities(out); draw();
+      logCmd(`CIRCLE2PL: ${out.length} polyline(s) created (${Math.floor(segs)} segments each).`);
+      return;
+    }
+    if (cmd === "PL2POINTS" || cmd === "VERTEXPOINTS") {
+      if (!sel.size) { logCmd("PL2POINTS: select polylines or lines first."); return; }
+      const out = verticesToPoints(ents, [...sel], currentLayer);
+      if (!out.length) { logCmd("PL2POINTS: no vertices found."); return; }
+      addEntities(out); draw();
+      logCmd(`PL2POINTS: ${out.length} point(s) placed.`);
       return;
     }
     if (cmd === "COPYTOLAYER" || cmd === "COPY2LAY") {
