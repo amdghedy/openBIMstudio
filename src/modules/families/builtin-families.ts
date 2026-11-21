@@ -24,7 +24,10 @@ export function createBuiltInFamilies(): FamilyDefinition[] {
     builtIn: true,
     parameters: [
       { name: "height",    type: "length", scope: "instance", default: 3.0, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
-      { name: "thickness", type: "length", scope: "instance", default: 0.2, editable: true, step: 0.01, unit: "m", group: "Dimensions" },
+      // openbim-families:parameter-scope — thickness is a type parameter:
+      // every wall type sets it, so it must be declared scope "type" or
+      // scope enforcement in resolution would (correctly) ignore it.
+      { name: "thickness", type: "length", scope: "type",     default: 0.2, editable: true, step: 0.01, unit: "m", group: "Dimensions" },
       { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
       // openbim-families:formula-editor
       { name: "areaPerMeter", type: "area",   scope: "instance", default: 0, editable: false, unit: "m2", group: "Computed", formula: "= thickness * height" },
@@ -54,7 +57,11 @@ export function createBuiltInFamilies(): FamilyDefinition[] {
     sourceElementType: "slab",
     builtIn: true,
     parameters: [
-      { name: "height", label: "Thickness", type: "length", scope: "instance", default: 0.2, editable: true, step: 0.01, unit: "m", group: "Dimensions" },
+      // openbim-families:parameter-scope — thickness is a type parameter:
+      // every slab type sets it, so it must be declared scope "type" or
+      // scope enforcement in resolution would (correctly) ignore it and
+      // slab type selection would stop changing the thickness (see wall).
+      { name: "height", label: "Thickness", type: "length", scope: "type", default: 0.2, editable: true, step: 0.01, unit: "m", group: "Dimensions" },
       { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
     ],
     geometry: {
@@ -82,8 +89,10 @@ export function createBuiltInFamilies(): FamilyDefinition[] {
     builtIn: true,
     parameters: [
       { name: "height",    type: "length", scope: "instance", default: 3.0, editable: true, step: 0.1, unit: "m", group: "Dimensions" },
-      { name: "thickness", type: "length", scope: "instance", default: 0.3, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
-      { name: "depth",     type: "length", scope: "instance", default: 0.3, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      // openbim-families:parameter-scope — cross-section dimensions are
+      // type parameters: both column types set them (see wall thickness).
+      { name: "thickness", type: "length", scope: "type",     default: 0.3, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "depth",     type: "length", scope: "type",     default: 0.3, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
       { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
       // openbim-families:formula-editor
       { name: "concreteVolume", type: "volume", scope: "instance", default: 0, editable: false, unit: "m3", group: "Computed", formula: "= thickness * depth * height" },
@@ -112,8 +121,10 @@ export function createBuiltInFamilies(): FamilyDefinition[] {
     sourceElementType: "beam",
     builtIn: true,
     parameters: [
-      { name: "height",    type: "length", scope: "instance", default: 0.5, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
-      { name: "thickness", type: "length", scope: "instance", default: 0.25, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      // openbim-families:parameter-scope — section dimensions are type
+      // parameters: both beam types set them (see wall thickness).
+      { name: "height",    type: "length", scope: "type",     default: 0.5, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
+      { name: "thickness", type: "length", scope: "type",     default: 0.25, editable: true, step: 0.05, unit: "m", group: "Dimensions" },
       { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
       // openbim-families:formula-editor
       { name: "sectionArea",    type: "area",   scope: "instance", default: 0, editable: false, unit: "m2", group: "Computed", formula: "= thickness * height" },

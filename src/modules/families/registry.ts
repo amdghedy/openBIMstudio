@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { familyStore } from "./store";
 import { buildParametricGeometry, registerCustomBuilder } from "./parametric-geometry";
 import { evaluateParameters } from "./formula-engine";
+import { applyTypeValues } from "./parameter-scope";
 import type {
   CustomGeometryBuilder,
   FamilyDefinition,
@@ -26,9 +27,16 @@ function resolveParameters(
     values[p.name] = p.default;
   }
 
-  // 2. Type-scope overrides.
+  // 2. Type-scope overrides (scope-enforced: type-scope parameters only;
+  //    a type value for an instance-scope or undeclared parameter is
+  //    ignored and warned about, never silently applied — see
+  //    parameter-scope.ts). Warnings are logged like formula errors below.
   if (type) {
-    for (const [k, v] of Object.entries(type.values)) {
+    const { applied, warnings } = applyTypeValues(family, type);
+    for (const w of warnings) {
+      console.warn("[families] parameter scope -- " + w);
+    }
+    for (const [k, v] of Object.entries(applied)) {
       values[k] = v;
     }
   }

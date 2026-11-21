@@ -40,6 +40,7 @@ import {
   type Constraint,
   type ConstraintResult,
 } from "./constraint-graph";
+import { applyTypeValues } from "./parameter-scope";
 import {
   expandArrays,
   type ArraySpec,
@@ -157,13 +158,20 @@ export interface ParametricBuildResult {
 /**
  * Full parameter resolution pipeline matching BIM's order of operations:
  *   defaults - shared/project - type - instance overrides - formulas - constraints
+ *
+ * The type layer is scope-enforced: a type value only applies to a
+ * parameter declared with scope "type". A type value targeting an
+ * instance-scope parameter, or a parameter the family does not declare,
+ * is ignored and reported in the returned `warnings` (see
+ * parameter-scope.ts) — it must never silently set an instance value.
  */
 export function resolveParametricValues(
   family: FamilyDefinition,
   type: FamilyType | null,
   options: ParametricBuildOptions = {},
-): { values: Record<string, any>; formula: FormulaResult; constraints: ConstraintResult | null; errors: string[] } {
+): { values: Record<string, any>; formula: FormulaResult; constraints: ConstraintResult | null; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
+  const warnings: string[] = [];
   const values: Record<string, any> = {};
 
   // 1. Family defaults
@@ -180,9 +188,11 @@ export function resolveParametricValues(
     }
   }
 
-  // 3. Type overrides
+  // 3. Type overrides (scope-enforced: type-scope parameters only)
   if (type) {
-    for (const [k, v] of Object.entries(type.values)) {
+    const { applied, warnings: scopeWarnings } = applyTypeValues(family, type);
+    warnings.push(...scopeWarnings);
+    for (const [k, v] of Object.entries(applied)) {
       values[k] = v;
     }
   }
@@ -232,7 +242,7 @@ export function resolveParametricValues(
     }
   }
 
-  return { values, formula, constraints, errors };
+  return { values, formula, constraints, errors, warnings };
 }
 
 /* ---------------------------------------------------------------------------
@@ -985,11 +995,16 @@ export function buildParametricFamily(
   // result instead of being dropped with the nested call's fresh array
   // (that is how the circular-nesting warning was lost before).
   const warnings: string[] = options.warnings ?? [];
-  const { values, formula, constraints, errors } = resolveParametricValues(
+  const { values, formula, constraints, errors, warnings: resolvedWarnings } =
+    resolveParametricValues(
     family,
     type,
     options,
   );
+
+  // Scope warnings from this level's resolution join the caller's
+  // array, so they reach the top-level result (and nested callers).
+  warnings.push(...resolvedWarnings);
 
   let object: THREE.Object3D | null = null;
   try {
@@ -1143,6 +1158,7 @@ export {
   solveConstraints,
   expandArrays,
   resolveNested,
+  applyTypeValues,
 };
 
 export type {

@@ -44,7 +44,7 @@
     {
       "name": "elevation",
       "type": "length",
-      "scope": "instance",
+      "scope": "type",
       "default": 0,
       "editable": true,
       "step": 0.05,
