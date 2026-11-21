@@ -1,5 +1,6 @@
 import { Journal, type JournalStore, type Op } from "../../core/journal";
 import type { ProjectDoc } from "./types";
+import { normalizeProjectDoc } from "./project-schema";
 
 const DB_NAME = "open-bim-studio";
 const DB_VERSION = 4;
@@ -142,11 +143,26 @@ export async function appendProjectDeletion(projectId: string): Promise<void> {
   });
 }
 
-/** Recover the latest journal state, if the project was not intentionally deleted. */
-export async function recoverProjectState(projectId: string): Promise<ProjectDoc | null> {
-  let latest: ProjectDoc | null = null;
-  await openProjectJournal(projectId, (value) => { latest = value; });
-  return latest;
+/**
+ * Parse a stored operation-journal snapshot state tolerantly. The snapshot
+ * is the base the append path replays onto, and it is written by an
+ * earlier run — a torn or schema-invalid snapshot must fall back to
+ * replaying the ops from empty, never throw: a throw here would break
+ * every subsequent save (`putProject` appends first, then writes the
+ * primary record). The caller logs the fallback loudly; the validated
+ * crash-replay core reports the same condition as `snapshotCorrupt`.
+ * Returns the normalized document, or null when nothing usable is there.
+ */
+export function parseJournalSnapshotState(state: string): ProjectDoc | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(state);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const normalized = normalizeProjectDoc(parsed);
+  return normalized.ok ? normalized.doc : null;
 }
 
 async function withProjectJournalLock<T>(projectId: string, task: () => Promise<T>): Promise<T> {
@@ -159,20 +175,40 @@ async function openProjectJournal(projectId: string, setLatest: (value: ProjectD
   let latest: ProjectDoc | null = null;
   const journal = await Journal.open(
     new ProjectJournalStore(projectId),
-    (op) => { if (op.kind === "replace-state") latest = op.payload as ProjectDoc; else if (op.kind === "delete") latest = null; setLatest(latest); },
+    (op) => {
+      // Append-path only: a torn op payload must never poison the base
+      // state a later snapshot serializes. Only object payloads count.
+      if (op.kind === "replace-state" && op.payload && typeof op.payload === "object") latest = op.payload as ProjectDoc;
+      else if (op.kind === "delete") latest = null;
+      setLatest(latest);
+    },
     () => JSON.stringify(latest),
-    (state) => { latest = JSON.parse(state) as ProjectDoc | null; setLatest(latest); },
+    (state) => {
+      const restored = parseJournalSnapshotState(state);
+      if (restored === null) {
+        // The snapshot is corrupt (or empty): replay the ops from empty
+        // instead of throwing and breaking every future save. The
+        // validated crash-replay core reports this as `snapshotCorrupt`.
+        console.error("[project-journal] stored journal snapshot is corrupt; replaying ops from empty", projectId);
+      }
+      latest = restored;
+      setLatest(latest);
+    },
   );
   return journal;
 }
 
 /* ── validated crash replay (#101) ────────────────────────────────────────
- * `recoverProjectState()` above replays through `Journal.open`, which
- * applies entries blindly (no payload validation, a corrupt snapshot
- * throws). Crash recovery must not use it: the raw journal below is what
- * `journal-replay.ts` validates, and the quarantine below is where the
- * tail it refuses goes — preserved as evidence, removed from the live
- * op store so the next crash boot does not stop at the same entry again.
+ * There is deliberately NO blind `recoverProjectState()` helper any more:
+ * it replayed through `Journal.open` with no payload validation (a
+ * corrupt snapshot threw), had no callers, and crash recovery must use
+ * the validated core in `journal-replay.ts` instead. The raw journal
+ * below is what that core validates, and the quarantine below is where
+ * the tail it refuses goes — preserved as evidence, removed from the
+ * live op store so the next crash boot does not stop at the same entry
+ * again. `Journal.open` above is append-only (writes), and its restore
+ * callback is the tolerant `parseJournalSnapshotState`, never a bare
+ * `JSON.parse`.
  */
 
 export interface RawJournalOp { seq: number; kind: string; payload: unknown; key: string }

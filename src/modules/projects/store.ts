@@ -1,20 +1,25 @@
 /** Raw IndexedDB persistence — no dependencies, local-first. */
 import type { ProjectDoc, ProjectSummary } from "./types";
-export type { ProjectRecoverySnapshot } from "./project-journal";
+export type { ProjectRecoverySnapshot, QuarantinedCheckpointSummary } from "./project-journal";
 import {
   getModelBlobVersionKey,
   getUnreferencedModelBlobVersionKeys,
   getProjectJournalPruneIds,
   prepareRecoveredProjectDocument,
   summarizeProjectJournalRecord,
+  validateRecoveryCheckpointRecord,
+  getCheckpointQuarantineKey,
+  selectCheckpointQuarantinePruneKeys,
+  PROJECT_CHECKPOINT_QUARANTINE_KEEP,
   type ProjectJournalReason,
   type ProjectJournalRecord,
   type ProjectRecoverySnapshot,
+  type QuarantinedCheckpointSummary,
 } from "./project-journal";
 import { normalizeProjectDoc, repairProjectDocInPlace } from "./project-schema";
 import { buildProjectFile, suggestedFileName } from "./project-file";
 import { backupProjectFile } from "./browser-recovery";
-import { appendProjectDeletion, appendProjectState } from "./indexeddb-journal";
+import { appendProjectDeletion, appendProjectState, type QuarantinedJournalRecord } from "./indexeddb-journal";
 
 const DB_NAME = "open-bim-studio";
 const DB_VERSION = 4;
@@ -424,20 +429,75 @@ export async function deleteModelBlobs(projectId: string): Promise<void> {
   await done;
 }
 
-/** List retained recovery checkpoints, newest first. */
-export async function listProjectRecoverySnapshots(projectId: string): Promise<ProjectRecoverySnapshot[]> {
+/**
+ * List retained recovery checkpoints, newest first — and quarantine the
+ * damaged ones. A record whose document fails validation is moved to
+ * the quarantine store (raw record + reason kept as evidence, newest 50
+ * per project) and excluded from the list, so one corrupt checkpoint can
+ * never hide the good ones or be offered as restorable. The newest
+ * verified checkpoint is always first: the offer is the last known-good.
+ */
+export async function listProjectRecoverySnapshots(projectId: string): Promise<{ snapshots: ProjectRecoverySnapshot[]; quarantined: QuarantinedCheckpointSummary[] }> {
   const db = await openDb();
   const tx = db.transaction(S_JOURNAL, "readonly");
   const done = transactionDone(tx);
   const records = await reqAs(tx.objectStore(S_JOURNAL).index("projectId").getAll(projectId)) as ProjectJournalRecord[];
   await done;
-  return records.sort((a, b) => b.id - a.id).map(summarizeProjectJournalRecord);
+  const snapshots: ProjectRecoverySnapshot[] = [];
+  const corrupt: Array<{ record: ProjectJournalRecord; reason: string }> = [];
+  for (const record of records.sort((a, b) => b.id - a.id)) {
+    const checked = validateRecoveryCheckpointRecord(record);
+    if (checked.ok) snapshots.push(summarizeProjectJournalRecord(record));
+    else corrupt.push({ record, reason: checked.reason });
+  }
+  const quarantined: QuarantinedCheckpointSummary[] = [];
+  if (corrupt.length) {
+    // Repair in a second transaction: move each corrupt record out of
+    // the live journal into the quarantine store (shared with the
+    // op-journal quarantine, namespaced key, pruned independently).
+    const qtx = db.transaction([S_JOURNAL, S_JOURNAL_QUARANTINE], "readwrite");
+    const qdone = transactionDone(qtx);
+    const quarantine = qtx.objectStore(S_JOURNAL_QUARANTINE);
+    const existing = await reqAs(quarantine.index("projectId").getAll(projectId)) as QuarantinedJournalRecord[];
+    const existingCheckpoints = existing.filter((r) => r.kind === "checkpoint").map((r) => ({ key: r.key, seq: r.seq }));
+    const now = Date.now();
+    for (const { record, reason } of corrupt) {
+      console.error("[projects] recovery checkpoint is corrupt; quarantining it", projectId, record.id, reason);
+      quarantine.put({
+        key: getCheckpointQuarantineKey(projectId, record.id),
+        projectId, seq: record.id, kind: "checkpoint", reason,
+        raw: record, quarantinedAt: now,
+      } satisfies QuarantinedJournalRecord);
+      qtx.objectStore(S_JOURNAL).delete(record.id);
+      quarantined.push({ id: record.id, createdAt: record.createdAt, reason, quarantinedAt: now });
+    }
+    for (const key of selectCheckpointQuarantinePruneKeys(existingCheckpoints, corrupt.length)) quarantine.delete(key);
+    await qdone;
+  }
+  return { snapshots, quarantined };
+}
+
+/** Quarantined checkpoints for a project, newest first — the evidence of what listing or restore refused. */
+export async function listQuarantinedRecoverySnapshots(projectId: string): Promise<QuarantinedCheckpointSummary[]> {
+  const db = await openDb();
+  const tx = db.transaction(S_JOURNAL_QUARANTINE, "readonly");
+  const done = transactionDone(tx);
+  const records = await reqAs(tx.objectStore(S_JOURNAL_QUARANTINE).index("projectId").getAll(projectId)) as QuarantinedJournalRecord[];
+  await done;
+  return records
+    .filter((r) => r.kind === "checkpoint")
+    .sort((a, b) => b.seq - a.seq)
+    .map((r) => ({
+      id: r.seq,
+      createdAt: (r.raw as ProjectJournalRecord | null)?.createdAt ?? r.quarantinedAt,
+      reason: r.reason, quarantinedAt: r.quarantinedAt,
+    }));
 }
 
 /** Restore a document and its matching archived model blobs in one transaction. */
-export async function restoreProjectSnapshot(projectId: string, snapshotId: number): Promise<{ restored: boolean; missingModelIds: string[] }> {
+export async function restoreProjectSnapshot(projectId: string, snapshotId: number): Promise<{ restored: boolean; missingModelIds: string[]; quarantined?: boolean; refusedReason?: string }> {
   const db = await openDb();
-  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS], "readwrite");
+  const tx = db.transaction([S_PROJECTS, S_BLOBS, S_JOURNAL, S_JOURNAL_BLOBS, S_JOURNAL_QUARANTINE], "readwrite");
   const done = transactionDone(tx);
   const projects = tx.objectStore(S_PROJECTS);
   const blobs = tx.objectStore(S_BLOBS);
@@ -447,7 +507,7 @@ export async function restoreProjectSnapshot(projectId: string, snapshotId: numb
   const currentRequest = projects.get(projectId);
   const currentBlobsRequest = blobs.index("projectId").getAll(projectId);
   const archivedBlobsRequest = archive.index("projectId").getAll(projectId);
-  const result = { restored: false, missingModelIds: [] as string[] };
+  const result = { restored: false, missingModelIds: [] as string[], quarantined: false as boolean | undefined, refusedReason: undefined as string | undefined };
   let ready = 0;
   let applied = false;
   const apply = () => {
@@ -456,6 +516,24 @@ export async function restoreProjectSnapshot(projectId: string, snapshotId: numb
     const snapshot = snapshotRequest.result as ProjectJournalRecord | undefined;
     const current = currentRequest.result as ProjectDoc | undefined;
     if (!snapshot || snapshot.projectId !== projectId || !current) return;
+    // Validate BEFORE touching the live document: a corrupt checkpoint
+    // must never overwrite the last known-good. Refuse, quarantine the
+    // record (raw + reason kept as evidence), and leave the live
+    // document and its blobs exactly as they were — no "before-restore"
+    // snapshot is taken, because nothing was overwritten.
+    const checked = validateRecoveryCheckpointRecord(snapshot);
+    if (!checked.ok) {
+      console.error("[projects] refusing to restore a corrupt checkpoint; quarantining it", projectId, snapshotId, checked.reason);
+      tx.objectStore(S_JOURNAL_QUARANTINE).put({
+        key: getCheckpointQuarantineKey(projectId, snapshotId),
+        projectId, seq: snapshotId, kind: "checkpoint", reason: checked.reason,
+        raw: snapshot, quarantinedAt: Date.now(),
+      } satisfies QuarantinedJournalRecord);
+      journal.delete(snapshotId);
+      result.quarantined = true;
+      result.refusedReason = checked.reason;
+      return;
+    }
     const currentBlobs = currentBlobsRequest.result as Array<{ key: string; projectId: string; modelId: string; name: string; blob: Blob; version?: string }>;
     appendProjectSnapshot(tx, current, "before-restore", currentBlobs);
     const archived = archivedBlobsRequest.result as Array<{ key: string; modelId: string; version: string; name: string; blob: Blob }>;
@@ -465,7 +543,7 @@ export async function restoreProjectSnapshot(projectId: string, snapshotId: numb
       .map(([modelId, version]) => archivedByKey.get(getModelBlobVersionKey(projectId, modelId, version)))
       .filter((x): x is NonNullable<typeof x> => !!x);
     const available = new Set(restoredBlobs.map((x) => x.modelId));
-    const recovered = prepareRecoveredProjectDocument(snapshot.doc, available, Date.now());
+    const recovered = prepareRecoveredProjectDocument(checked.doc, available, Date.now());
     for (const blob of currentBlobs) blobs.delete(blob.key);
     for (const blob of restoredBlobs) {
       const key = `${projectId}::${blob.modelId}`;

@@ -241,7 +241,36 @@ check("boot runs crash recovery before auto-reopen, and only when a crash marker
   assert.ok(recoveryAt > 0 && reopenAt > recoveryAt, "crash-recovery step must precede auto-reopen in main.ts");
   assert.match(main, /const marker = readCrashMarker\(\);\s*if \(!marker\) return;/);
   assert.match(main, /await recoverCrashedProject\(marker\.projectId\)/);
-  assert.match(main, /obs:recovery-replayed/);
+  assert.match(main, /dispatchRecoveryOutcome\(outcome\)/);
+  // The event itself is dispatched by the shared helper, not inline in
+  // main.ts — assert it there, so a refactor cannot silently drop the
+  // banner update.
+  const helper = read("src/modules/projects/journal-recovery.ts");
+  assert.match(helper, /window\.dispatchEvent\(new CustomEvent\("obs:recovery-replayed"/);
+});
+check("manual open replays a never-triaged crash, gated on that project's marker", () => {
+  const projects = read("src/modules/projects/projects.ts");
+  const openAt = projects.indexOf("export async function openProject");
+  assert.ok(openAt > 0, "openProject must exist");
+  const body = projects.slice(openAt, projects.indexOf("const load = await store.loadProjectDoc", openAt));
+  assert.match(body, /readCrashMarker\(\)/);
+  assert.match(body, /marker\.projectId === id/);
+  assert.match(body, /await recoverCrashedProject\(id\)/);
+  assert.match(body, /dispatchRecoveryOutcome\(outcome\)/);
+  assert.match(body, /suppressReopen/);
+  // The replay must run BEFORE the primary record is loaded: a corrupt
+  // primary is refused outright by loadProjectDoc, so replaying after
+  // it would be too late.
+  assert.ok(body.indexOf("recoverCrashedProject") < projects.indexOf("const load = await store.loadProjectDoc", openAt));
+});
+check("manual open never touches the journal without a marker for that project", () => {
+  const projects = read("src/modules/projects/projects.ts");
+  // No static import of the recovery module: the journal read is
+  // dynamic and marker-gated, so a clean open never pays for it — and
+  // the persistence cycle (persistence imports projects) stays out of
+  // the static graph.
+  assert.doesNotMatch(projects, /^import .* from "\.\/journal-recovery";/m);
+  assert.doesNotMatch(projects, /^import .* from "\.\/persistence";/m);
 });
 check("auto-reopen never resurrects a journal-deleted project", () => {
   const reopen = read("src/modules/projects/auto-reopen.ts");

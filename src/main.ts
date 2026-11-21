@@ -401,25 +401,11 @@ await step("plugins", () => setupPluginSystem());
 await step("project-crash-recovery", async () => {
   try {
     const { readCrashMarker } = await import("./modules/projects/persistence");
-    const { recoverCrashedProject } = await import("./modules/projects/journal-recovery");
+    const { recoverCrashedProject, dispatchRecoveryOutcome } = await import("./modules/projects/journal-recovery");
     const marker = readCrashMarker();
     if (!marker) return;
     const outcome = await recoverCrashedProject(marker.projectId);
-    try {
-      window.dispatchEvent(new CustomEvent("obs:recovery-replayed", {
-        detail: {
-          projectId: outcome.projectId, status: outcome.status,
-          appliedSeqs: outcome.appliedSeqs, lastAppliedSeq: outcome.lastAppliedSeq,
-          stoppedAtSeq: outcome.stoppedAtSeq, stoppedReason: outcome.stoppedReason,
-          snapshotCorrupt: outcome.snapshotCorrupt, seqGaps: outcome.seqGaps,
-          quarantined: outcome.quarantined, unreplayed: outcome.unreplayed,
-          primaryState: outcome.primaryState, primaryUpdatedAt: outcome.primaryUpdatedAt,
-          journalAbsent: outcome.journalAbsent,
-          restored: outcome.restored, restoredFrom: outcome.restoredFrom,
-          suppressReopen: outcome.suppressReopen,
-        },
-      }));
-    } catch { /* banner update is best-effort; the outcome is in obs.recovery.last */ }
+    dispatchRecoveryOutcome(outcome);
   } catch (e) {
     console.warn("[boot] crash recovery failed; continuing with the primary record", e);
   }

@@ -1,10 +1,11 @@
 /**
  * Boot-time crash recovery — automatic journal replay (#101).
  *
- * Called ONLY from the boot path (`autoReopenLastProject`), and ONLY
- * when a crash marker exists for the project being reopened. A clean
- * boot never reaches this module, so replay can never rewrite a healthy
- * primary record.
+ * Called from the boot path (`main.ts`, before auto-reopen) and from a
+ * manual `openProject` — in both cases ONLY when a crash marker exists
+ * for the project being opened. A clean boot / a marker-less open never
+ * reaches this module, so replay can never rewrite a healthy primary
+ * record.
  *
  * Order of operations (the hook-point decision — see
  * docs/engineering/JOURNAL-RECOVERY.md):
@@ -99,6 +100,31 @@ export function readLastRecoveryOutcome(): CrashRecoverySummary | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Dispatch a recovery outcome for the banner (`obs:recovery-replayed`).
+ * Single construction site for the event detail: the boot step in
+ * `main.ts` and the manual-open path in `projects.ts` both report through
+ * here, so the banner always sees the same shape. Best-effort — the
+ * outcome is already recorded in `obs.recovery.last`.
+ */
+export function dispatchRecoveryOutcome(outcome: CrashRecoverySummary): void {
+  try {
+    window.dispatchEvent(new CustomEvent("obs:recovery-replayed", {
+      detail: {
+        projectId: outcome.projectId, status: outcome.status,
+        appliedSeqs: outcome.appliedSeqs, lastAppliedSeq: outcome.lastAppliedSeq,
+        stoppedAtSeq: outcome.stoppedAtSeq, stoppedReason: outcome.stoppedReason,
+        snapshotCorrupt: outcome.snapshotCorrupt, seqGaps: outcome.seqGaps,
+        quarantined: outcome.quarantined, unreplayed: outcome.unreplayed,
+        primaryState: outcome.primaryState, primaryUpdatedAt: outcome.primaryUpdatedAt,
+        journalAbsent: outcome.journalAbsent,
+        restored: outcome.restored, restoredFrom: outcome.restoredFrom,
+        suppressReopen: outcome.suppressReopen,
+      },
+    }));
+  } catch { /* banner update is best-effort; the outcome is in obs.recovery.last */ }
 }
 
 export async function recoverCrashedProject(projectId: string): Promise<CrashRecoveryOutcome> {

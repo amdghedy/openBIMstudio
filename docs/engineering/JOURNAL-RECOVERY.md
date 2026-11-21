@@ -1,12 +1,19 @@
 # Journal replay — recovery contract (#101)
 
-**Status:** implemented on `fix/recovery-journal-replay` (base `e8e5afb`).
-Proven by `tests/e2e/recovery.spec.ts` (5 scenarios, Chromium) and
-`tests/journal-replay.test.cjs` (21 checks). The server-side backup
-contract lives in `docs/engineering/SERVER-BACKUP-RECOVERY.md`; this
-document is the browser-side twin. Neither is a substitute for the
-other: the server backup guards the file on disk, the journal guards
-the save that never reached the primary record.
+**Status:** implemented on `fix/recovery-journal-replay` (base `e8e5afb`),
+completed on `fix/revit-rank4-backup-recovery` (base `eabab92`):
+manual-open replay, corrupt-checkpoint quarantine, and deletion of the
+blind `recoverProjectState()` helper. Proven by
+`tests/e2e/recovery.spec.ts` (5 scenarios, Chromium),
+`tests/e2e/recovery-manual-open.spec.ts` and
+`tests/e2e/recovery-checkpoints.spec.ts` (Chromium),
+`tests/journal-replay.test.cjs` (23 checks) and
+`tests/project-checkpoint-quarantine.test.cjs` (23 checks). The
+server-side backup contract lives in
+`docs/engineering/SERVER-BACKUP-RECOVERY.md`; this document is the
+browser-side twin. Neither is a substitute for the other: the server
+backup guards the file on disk, the journal guards the save that never
+reached the primary record.
 
 ## The journal
 
@@ -23,10 +30,10 @@ the save that never reached the primary record.
 
 ## When replay runs
 
-- **Only on boot, only when a crash marker exists**
-  (`localStorage obs.session.unsaved`) for the project being reopened.
-  A clean boot never replays, even when the journal is ahead of the
-  primary store — a journal-ahead state on a clean boot is left
+- **Only when a crash marker exists** (`localStorage
+  obs.session.unsaved`) for the project being opened. A clean boot /
+  a marker-less open never replays, even when the journal is ahead of
+  the primary store — a journal-ahead state without a marker is left
   exactly alone (proven by `recovery.spec.ts`, "clean boot").
 - The marker is written eagerly when the document first goes dirty
   in a save cycle and cleared on a clean save / clean unload, so a
@@ -37,9 +44,15 @@ the save that never reached the primary record.
   lost the primary write makes the project invisible to the project
   list, and `openProject` refuses a corrupt primary record outright,
   so replaying later would be too late on both counts.
+- **Manual open replays too** (rank 4): `openProject` checks the
+  marker for the project being opened and replays before loading the
+  primary record — the retry path for a crash boot recovery failed to
+  triage (marker kept). No marker for that project, no journal read:
+  a clean open never touches the journal. Proven by
+  `tests/e2e/recovery-manual-open.spec.ts`.
 - The crash marker is cleared after triage. The two exceptions keep
-  it, so the next boot retries: a restore write that failed, and a
-  journal that could not be read at all.
+  it, so the next boot (or the next manual open) retries: a restore
+  write that failed, and a journal that could not be read at all.
 
 ## What replay does
 
@@ -112,23 +125,51 @@ the save that never reached the primary record.
 
 ## Known limitations (not fixed here)
 
-- **Manual open after a crash does not replay.** Only the boot
-  auto-reopen path runs recovery. Opening a different project from
-  the welcome screen after a crash loads its primary record as-is;
-  the banner points at the checkpoints. Wiring replay into
-  `openProject` itself is a follow-up, not done here because it would
-  put an IndexedDB journal read on every open.
 - **No quota-exhaustion or stale-tab scenario.** Filling storage to
   quota cannot be done deterministically in the test environment, and
   the stale-tab (`onblocked`) path needs a database version upgrade
   with another tab holding the old connection — no upgrade ships in
   this change. Both are recorded as not covered, not faked.
-- **`recoverProjectState()` still uses the blind `Journal.open`
-  replay** (no payload validation, corrupt snapshot throws). It has
-  no callers; a follow-up should route it through the validated core
-  or delete it.
 - **Ctrl+S did not save in the E2E probe runs** when a modelling tool
   was still mid-placement (the keypress never reached the shortcut
   handler); saving through the feature registry worked every time.
   The specs save through the registry. Whether Ctrl+S is genuinely
   broken or focus-dependent needs a separate look, outside #101.
+
+## Corrupt checkpoints — quarantine, last known-good (rank 4)
+
+Recovery checkpoints (`projectJournal`, newest 10 per project) are
+validated before they are listed or restored
+(`validateRecoveryCheckpointRecord` in
+`src/modules/projects/project-journal.ts`: the stored document must
+normalize and its `id` must match the owning project). A checkpoint
+that fails is moved to the `projectJournalQuarantine` store (same
+store the op-journal quarantine uses, key
+`<projectId>:checkpoint:<id>`, raw record + reason kept as evidence,
+newest 50 per project, pruned independently of op quarantines) and
+excluded from the restorable list — so one corrupt checkpoint can
+never hide the good ones or be offered as restorable, and the newest
+verified checkpoint is always first: the offer is the last
+known-good. Restore validates again before touching the live
+document: a corrupt checkpoint is refused, quarantined, and the live
+document and its blobs are left exactly as they were (no
+"before-restore" snapshot is taken, because nothing was overwritten).
+The Recovery UI names the quarantined checkpoints with their reason
+instead of silently dropping them. A checkpoint with torn
+collections (non-array `elements` etc.) is repaired by normalization
+and still offered, not quarantined. Proven by
+`tests/project-checkpoint-quarantine.test.cjs` (23 checks) and
+`tests/e2e/recovery-checkpoints.spec.ts` (Chromium).
+
+## Closed in rank 4 (were limitations of the #101 pass)
+
+- **Manual open after a crash now replays.** `openProject` runs the
+  validated recovery for the project being opened when its crash
+  marker exists — see "When replay runs" above.
+- **`recoverProjectState()` is deleted.** The blind `Journal.open`
+  replay helper had no callers and could throw on a corrupt snapshot.
+  Crash recovery uses the validated core only. The append path's
+  snapshot restore is the tolerant `parseJournalSnapshotState`
+  (`indexeddb-journal.ts`): a corrupt snapshot falls back to replaying
+  the ops from empty (logged loudly) instead of breaking every future
+  save — a throw there would have failed `putProject` on every save.

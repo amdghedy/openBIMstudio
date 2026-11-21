@@ -15,7 +15,7 @@ import {
   listProjectRecoverySnapshots, restoreProjectRecoverySnapshot,
   getCurrentProject, openProject,
 } from "../modules/projects/projects";
-import type { ProjectRecoverySnapshot } from "../modules/projects/project-journal";
+import type { ProjectRecoverySnapshot, QuarantinedCheckpointSummary } from "../modules/projects/project-journal";
 import { listBrowserRecoveryCopies, BROWSER_RECOVERY_KEEP } from "../modules/projects/browser-recovery";
 import { readCrashMarker } from "../modules/projects/persistence";
 import type { CrashRecoverySummary } from "../modules/projects/journal-recovery";
@@ -144,15 +144,42 @@ export function showProjectRecovery(): void {
 
   void (async () => {
     let snapshots: ProjectRecoverySnapshot[] = [];
-    try { snapshots = await listProjectRecoverySnapshots(); }
+    let quarantined: QuarantinedCheckpointSummary[] = [];
+    try {
+      const listed = await listProjectRecoverySnapshots();
+      snapshots = listed.snapshots;
+      quarantined = listed.quarantined;
+    }
     catch (e) {
       list.textContent = "Could not read the recovery journal — see the console for details.";
       console.error("[project-recovery] listing failed", e);
       return;
     }
     list.innerHTML = "";
+    // Damaged checkpoints are set aside, never silently dropped and
+    // never offered as restorable: the notice names them, and the
+    // newest good checkpoint below is the last known-good offer.
+    if (quarantined.length) {
+      const notice = document.createElement("div");
+      notice.setAttribute("data-quarantined-notice", String(quarantined.length));
+      notice.style.cssText = "padding:9px 10px;border:1px solid #6b4d16;border-radius:8px;background:#2a2113;color:#f5c86b;font-size:11px";
+      notice.textContent = `${quarantined.length} checkpoint${quarantined.length === 1 ? " was" : "s were"} damaged and ${quarantined.length === 1 ? "has" : "have"} been set aside (quarantined) — kept as evidence, not deleted. The newest good checkpoint below is the last known-good state.`;
+      list.appendChild(notice);
+      for (const q of quarantined) {
+        const qrow = document.createElement("div");
+        qrow.setAttribute("data-quarantined-checkpoint", String(q.id));
+        qrow.style.cssText = "display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid #2a2e3a;border-radius:8px;background:#17181f;opacity:.65";
+        const qinfo = document.createElement("div");
+        qinfo.style.cssText = "flex:1;min-width:0";
+        qinfo.innerHTML =
+          `<div style="font-weight:600">Damaged checkpoint — set aside</div>` +
+          `<div style="opacity:.7;font-size:11px;margin-top:2px">${esc(fmtDateTime(q.createdAt))} · ${esc(q.reason)}</div>`;
+        qrow.appendChild(qinfo);
+        list.appendChild(qrow);
+      }
+    }
     if (!snapshots.length) {
-      list.innerHTML = `<div style="opacity:.6;padding:10px;border:1px dashed #34353f;border-radius:6px">No journal checkpoints yet. One is written automatically before each save that changes the document, before each model import, and before each restore.</div>`;
+      list.innerHTML += `<div style="opacity:.6;padding:10px;border:1px dashed #34353f;border-radius:6px">No journal checkpoints yet. One is written automatically before each save that changes the document, before each model import, and before each restore.</div>`;
     }
     for (const s of snapshots) {
       const row = document.createElement("div");
@@ -177,7 +204,11 @@ export function showProjectRecovery(): void {
           try {
             const result = await restoreProjectRecoverySnapshot(s.id);
             if (!result.restored) {
-              toast("error", "Checkpoint could not be restored (no longer retained).");
+              if (result.quarantined) {
+                toast("error", `That checkpoint was damaged and has been set aside — your current state was not touched. (${result.refusedReason ?? "validation failed"})`);
+              } else {
+                toast("error", "Checkpoint could not be restored (no longer retained).");
+              }
               btn.disabled = false; btn.textContent = "Restore";
               return;
             }

@@ -130,14 +130,29 @@ function snapshotAppState() {
   };
 }
 
-/** List retained recovery checkpoints for the active project. */
-export async function listProjectRecoverySnapshots(): Promise<store.ProjectRecoverySnapshot[]> {
-  if (!current) return [];
-  return store.listProjectRecoverySnapshots(current.id);
+/** List retained recovery checkpoints for the active project, plus the
+ *  checkpoints that were damaged and set aside (quarantined) — the
+ *  newest verified checkpoint is always listed first, so the user is
+ *  offered the last known-good, never a corrupt entry. Quarantined
+ *  entries found by this listing are merged with ones quarantined by
+ *  earlier sessions, newest first. */
+export async function listProjectRecoverySnapshots(): Promise<{ snapshots: store.ProjectRecoverySnapshot[]; quarantined: store.QuarantinedCheckpointSummary[] }> {
+  if (!current) return { snapshots: [], quarantined: [] };
+  const listed = await store.listProjectRecoverySnapshots(current.id);
+  const previous = await store.listQuarantinedRecoverySnapshots(current.id);
+  const seen = new Set<number>();
+  const quarantined: store.QuarantinedCheckpointSummary[] = [];
+  for (const q of [...listed.quarantined, ...previous]) {
+    if (seen.has(q.id)) continue;
+    seen.add(q.id);
+    quarantined.push(q);
+  }
+  quarantined.sort((a, b) => b.id - a.id);
+  return { snapshots: listed.snapshots, quarantined };
 }
 
 /** Restore a checkpoint and its linked model bytes; the scene must then be reopened. */
-export async function restoreProjectRecoverySnapshot(snapshotId: number): Promise<{ restored: boolean; missingModelIds: string[]; reopenRequired: boolean }> {
+export async function restoreProjectRecoverySnapshot(snapshotId: number): Promise<{ restored: boolean; missingModelIds: string[]; reopenRequired: boolean; quarantined?: boolean; refusedReason?: string }> {
   if (!current) return { restored: false, missingModelIds: [], reopenRequired: false };
   const projectId = current.id;
   const result = await store.restoreProjectSnapshot(projectId, snapshotId);
@@ -435,6 +450,42 @@ export async function createProject(name: string, options: CreateProjectOptions 
 export async function openProject(id: string) {
   const loader = (ctx.features as any).appLoader;
   if (loader?.isActive?.()) return;
+
+  // Crash triage for a manual open (#101 follow-up, rank 4): the boot
+  // step only recovers the auto-reopen target, and only when it runs — a
+  // crash whose marker was never triaged (boot recovery failed and kept
+  // the marker) must be replayed HERE, before loadProjectDoc refuses a
+  // corrupt primary record or concludes "project not found". Gated on
+  // the marker for THIS project only: no marker, no journal read — a
+  // clean open never touches the journal. Dynamic imports keep the
+  // persistence cycle (persistence imports projects) out of the static
+  // graph; both modules are loaded by the time any open runs.
+  try {
+    const { readCrashMarker } = await import("./persistence");
+    const marker = readCrashMarker();
+    if (marker && marker.projectId === id) {
+      const { recoverCrashedProject, dispatchRecoveryOutcome } = await import("./journal-recovery");
+      const outcome = await recoverCrashedProject(id);
+      dispatchRecoveryOutcome(outcome);
+      if (outcome.suppressReopen) {
+        toast("warn", "This project was deleted before the crash — it will not be reopened.");
+        return;
+      }
+      if (outcome.error) {
+        console.warn("[projects] crash recovery reported an error; opening the last saved record", outcome.error);
+        toast("warn", `Crash recovery ran into a problem — opening the last saved project instead. (${outcome.error})`);
+      } else if (outcome.restored) {
+        const n = outcome.appliedSeqs.length;
+        toast("success", outcome.status === "partial"
+          ? `Journal replay recovered ${n} change${n === 1 ? "" : "s"} up to entry #${outcome.lastAppliedSeq}; ${outcome.quarantined.length} damaged ${outcome.quarantined.length === 1 ? "entry was" : "entries were"} set aside.`
+          : `Journal replay recovered ${n} change${n === 1 ? "" : "s"} — your work is back.`);
+      }
+    }
+  } catch (e) {
+    // Recovery must never block opening: fall through to the normal
+    // load, which reports a corrupt primary honestly.
+    console.warn("[projects] manual-open crash recovery failed; opening the last saved record", e);
+  }
 
   // Triage the stored document BEFORE touching the scene: a corrupted or
   // newer-schema record is reported here, never silently discarded.
