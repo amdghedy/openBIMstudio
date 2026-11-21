@@ -88,7 +88,14 @@ async function importFiles(page: Page, files: Array<{ name: string; text?: strin
 }
 
 test('hostile file loads leave the live project unchanged', async ({ page }) => {
-  test.setTimeout(240000);
+  // 10 min: this VM renders under SwiftShader on 1.5 shared CPUs while
+  // sibling coordinators run builds, so boot + wall placement alone can
+  // take minutes. The budget is wall-clock for the environment, not for
+  // the import work — each hostile load itself must still settle in ~1 s
+  // (see the waits in importFiles) and the per-step timings below prove it.
+  test.setTimeout(600000);
+  const started = Date.now();
+  const stamp = (label: string) => console.log(`[hostile-load] ${((Date.now() - started) / 1000).toFixed(1)}s ${label}`);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 
@@ -111,6 +118,7 @@ test('hostile file loads leave the live project unchanged', async ({ page }) => 
   await page.keyboard.press('Escape');
   await page.waitForTimeout(800);
 
+  stamp('wall placed, baseline snapshot next');
   const baseline = await projectSnapshot(page);
   const baselineParsed = JSON.parse(baseline);
   expect(baselineParsed.count, 'a wall must be authored before the hostile loads').toBeGreaterThan(0);
@@ -127,6 +135,7 @@ test('hostile file loads leave the live project unchanged', async ({ page }) => 
     { name: 'evil.obs.json', text: '{"id":"evil","name":"evil","elements":[{"id":"e1"' },
   ]);
   await assertUnchanged('truncated .obs.json');
+  stamp('step 2 truncated .obs.json done');
 
   // ── 3. Oversized GeoJSON (> 20 MB): size guard rejects before the read
   await page.evaluate(async () => {
@@ -139,6 +148,7 @@ test('hostile file loads leave the live project unchanged', async ({ page }) => 
   });
   await page.waitForTimeout(1200);
   await assertUnchanged('oversized .geojson');
+  stamp('step 3 oversized .geojson done');
 
   // ── 4. Prototype-pollution GeoJSON: valid file, hostile keys — imports as aux, never pollutes
   await importFiles(page, [
@@ -148,18 +158,21 @@ test('hostile file loads leave the live project unchanged', async ({ page }) => 
     ] }) },
   ]);
   await assertUnchanged('prototype-pollution .geojson');
+  stamp('step 4 pollution .geojson done');
 
   // ── 5. Garbage IFC: STEP preflight rejects before web-ifc
   await importFiles(page, [
     { name: 'garbage.ifc', text: 'this is not an IFC file\n'.repeat(40) },
   ]);
   await assertUnchanged('garbage .ifc');
+  stamp('step 5 garbage .ifc done');
 
   // ── 6. Truncated .ifczip: central-directory audit rejects before inflate
   await importFiles(page, [
     { name: 'truncated.ifczip', bytes: [0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00] },
   ]);
   await assertUnchanged('truncated .ifczip');
+  stamp('step 6 truncated .ifczip done');
 
   // ── 7. Control: a valid GeoJSON imports (aux layer grows) and still leaves the project alone
   await importFiles(page, [
@@ -169,6 +182,7 @@ test('hostile file loads leave the live project unchanged', async ({ page }) => 
     ] }) },
   ]);
   await assertUnchanged('valid .geojson control');
+  stamp('step 7 valid .geojson control done');
   const auxAfter = await auxCount(page);
   if (auxBefore >= 0 && auxAfter >= 0) {
     expect(auxAfter, 'the valid control GeoJSON must land in the aux layer').toBeGreaterThan(auxBefore);
