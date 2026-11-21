@@ -252,6 +252,43 @@ async function waitFor(fn, timeoutMs = 10000, label = "condition") {
       assert.strictEqual(s.openConflictCount, 0);
     });
 
+    await t("stale concurrent fetchState responses never clobber newer state (regression)", async () => {
+      // fetchState is fired concurrently by the SSE entry handler, the
+      // onopen sync and the heartbeat, and the responses can resolve out
+      // of order. A stale (older-revision) response must be dropped, not
+      // applied. Found by the browser E2E: Bob's wall flipped 3.3 -> 3
+      // when a slow pre-edit fetch resolved after the post-edit one.
+      const current = await api("/state");
+      assert.strictEqual(current.elements["wall-1"].fields.height, 3900);
+      await bob.fetchState();
+      assert.strictEqual(bob.revision, current.revision);
+      const fresh = JSON.parse(JSON.stringify(current));
+      const stale = JSON.parse(JSON.stringify(current));
+      stale.revision = current.revision - 1;
+      stale.elements["wall-1"].fields.height = 3300;
+      const realFetch = globalThis.fetch;
+      let calls = 0;
+      globalThis.fetch = (url, opts) => {
+        if (String(url).includes("/state")) {
+          calls++;
+          if (calls > 2) return realFetch(url, opts);
+          const mine = calls === 1 ? stale : fresh;
+          const delay = calls === 1 ? 300 : 50;
+          return new Promise((resolve) =>
+            setTimeout(() => resolve({ ok: true, json: async () => mine }), delay),
+          );
+        }
+        return realFetch(url, opts);
+      };
+      try {
+        await Promise.all([bob.fetchState(), bob.fetchState()]);
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+      assert.strictEqual(bob.revision, current.revision, "revision did not rewind");
+      assert.strictEqual(bob.state.elements["wall-1"].fields.height, 3900, "stale 3300 response was dropped");
+    });
+
     await t("duplicate transaction delivery applies exactly once", async () => {
       const before = await api("/state");
       const r1 = await op(alice.clientId, "op-dup-1", "wall-3", { height: 2800 }, before.revision);

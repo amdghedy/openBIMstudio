@@ -185,6 +185,15 @@ export class CentralClient {
       );
       if (!r.ok) return null;
       const state = (await r.json()) as CentralState;
+      // Several callers fire fetchState concurrently (SSE entry, onopen
+      // sync, heartbeat, explicit syncNow) and the responses can resolve
+      // out of order. Revisions are monotonic per room, so a response
+      // older than what we already hold is stale: dropping it (not
+      // emitting it) is the only correct choice — applying it would
+      // rewind the local model to pre-edit values. Found by the browser
+      // E2E: Bob's wall flipped 3.3 -> 3 when a slow pre-edit fetch
+      // resolved after the post-edit one.
+      if (typeof state.revision === "number" && state.revision < this.revision) return null;
       this.state = state;
       this.revision = state.revision;
       this.emitState();
@@ -204,6 +213,9 @@ export class CentralClient {
       if (!r.ok) return false;
       const data = await r.json();
       if (data.truncated && data.state) {
+        // Same staleness guard as fetchState (see there): a sync that
+        // started before a newer state landed must not rewind us.
+        if (typeof data.state.revision === "number" && data.state.revision < this.revision) return true;
         this.state = data.state;
         this.revision = data.state.revision;
         this.emitState();
