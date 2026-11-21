@@ -49,6 +49,12 @@ export interface AuthoredElement {
   color?: string;
   /** For hosted elements (door/window) — the id of the host wall. */
   hostId?: string;
+  /** Generic family host attachment (Slice 9): the parametric host
+   *  relationship for an arbitrary family instance — wall (curve
+   *  parameter s) or face (u, v) — from which its placement is
+   *  re-derived. Serialised with the element, so it travels with
+   *  the project document. */
+  hostAttachment?: import("../families/family-hosting").FamilyHostAttachment;
   /** BIM-style: the level this element was placed on. */
   levelId?: string;
   /** BIM-style: the family this element instantiates (optional). */

@@ -131,3 +131,84 @@ export function editFamilyParameter(
 
   return { applied: "none", instancesSynced: 0 };
 }
+
+// ── Generic family hosting (Slice 9) ───────────────────────────────────────
+// Thin wiring over `family-hosting.ts`: the family-to-instance bridge is
+// where a placed element gets its host link. Placement itself is always
+// re-derived from the host, never stored as a world point.
+
+import {
+  attachFamilyToFace,
+  attachFamilyToWall,
+  evaluateHostedFamiliesAfterHostChange,
+  hostedFamilyPlacement,
+  applyHostPlacementToElement,
+  detachFamilyFromHost,
+  type FamilyHostAttachment,
+  type FamilyHostGeometry,
+  type FamilyHostPlacement,
+} from "./family-hosting";
+
+export type { FamilyHostAttachment, FamilyHostGeometry, FamilyHostPlacement };
+
+/**
+ * Host an element on a wall or face from a world point
+ * ([x plan, y plan, z elevation]). Derives the attachment AND the
+ * placement from the host's current geometry and writes both onto the
+ * element. Throws when the point does not fit the host.
+ */
+export function attachElementToHost(
+  element: AuthoredElement,
+  host: FamilyHostGeometry,
+  point: [number, number, number],
+): FamilyHostPlacement {
+  const attachment =
+    host.kind === "wall" ? attachFamilyToWall(host, point) : attachFamilyToFace(host, point);
+  const placement = hostedFamilyPlacement(host, attachment);
+  applyHostPlacementToElement(element, attachment, placement);
+  return placement;
+}
+
+export interface RehostResult {
+  /** "moved" when the placement was re-derived and applied, "invalid"
+   *  when the attachment no longer fits the edited host, "detached"
+   *  when the host is gone (the element keeps its last placement and
+   *  loses its host link), "unchanged" when the host did not change. */
+  outcome: "moved" | "invalid" | "detached" | "unchanged";
+  placement?: FamilyHostPlacement;
+  reason?: string;
+}
+
+/**
+ * Re-evaluate a hosted element after its host was edited (or deleted).
+ * The element's attachment keeps its host parameters; only the world
+ * placement is re-derived. A host that no longer fits leaves the
+ * element where it was and reports invalid; a deleted host detaches
+ * it (the element is kept, the audit reports it as orphaned only if
+ * the caller keeps the stale link — here the link is dropped).
+ */
+export function rehostElementAfterHostChange(
+  element: AuthoredElement,
+  previous: FamilyHostGeometry,
+  next: FamilyHostGeometry | null,
+): RehostResult {
+  const attachment = element.hostAttachment;
+  if (!attachment) return { outcome: "unchanged" };
+  const result = evaluateHostedFamiliesAfterHostChange(previous, next, [attachment]);
+  if (result.kind === "host-deleted") {
+    detachFamilyFromHost(element);
+    return { outcome: "detached", reason: result.invalid[0]?.reason };
+  }
+  if (result.invalid.length > 0) {
+    return { outcome: "invalid", reason: result.invalid[0].reason };
+  }
+  if (result.kind === "unchanged") return { outcome: "unchanged" };
+  const moved = result.moved[0];
+  if (!moved) return { outcome: "unchanged" };
+  const fresh: FamilyHostAttachment = {
+    ...moved.attachment,
+    hostVersion: next!.version,
+  } as FamilyHostAttachment;
+  applyHostPlacementToElement(element, fresh, moved.placement);
+  return { outcome: "moved", placement: moved.placement };
+}

@@ -6,6 +6,7 @@ import { PARAMETRIC_DOOR_CONSTRAINTS } from "./sample-parametric-door";
 import { register } from "../../core/services";
 import { sharedParameterManager } from "./shared-parameters";
 import { typeCatalogService } from "./type-catalog";
+import { familyHostingService } from "./family-hosting";
 
 type Any = Record<string, any>;
 
@@ -42,7 +43,9 @@ export function setupParametricFamilies(): void {
     register("family", svc);
     register("sharedParameters", sharedParameterManager);
     register("typeCatalog", typeCatalogService);
+    register("familyHosting", familyHostingService);
     (ctx.features as Any).family = svc;
+    (ctx.features as Any).familyHosting = familyHostingService;
     (window as Any).__obsFamily = svc;
     (window as Any).__obsFamilyParametric = svc;
 
