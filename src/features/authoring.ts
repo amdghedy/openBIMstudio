@@ -46,6 +46,7 @@ import { setSectionOn } from "./section";
 import { markDirty } from "../modules/projects/projects";
 import { history } from "./history";
 import { snapping } from "./snapping";
+import { isSnapFreshForEvent, SnapGeneration } from "./snap-freshness";
 import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
 import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP, type MepLike } from "../modules/mep/connectivity";
@@ -273,6 +274,16 @@ let gripDrag: {
 
 let lastSnapValid = false;
 let lastSnapResult: import("./snapping").SnapResult | null = null;
+/** Client position the cached snap was computed for. A snap is only
+ *  usable for a click at (nearly) the same pointer position — see
+ *  `currentSnapForEvent`. Without this, a click landing in the same frame
+ *  as its preceding pointermove commits the PREVIOUS hover's snap (the
+ *  async snap race: two instant clicks co-locate both instances). */
+let lastSnapEvent: { x: number; y: number } | null = null;
+/** Generation guard for in-flight snap queries: only the newest hover's
+ *  query may write the cache back, so an older query resolving late can
+ *  never overwrite a newer result. */
+const snapGeneration = new SnapGeneration();
 /** Last hover event — used by refreshPreview() to redraw the ghost after
  *  a parameter change in the modeling panel (Design spec §2.3). */
 let lastHoverEvent: MouseEvent | null = null;
@@ -2985,7 +2996,7 @@ function startGripDrag(g: GripSpec, worldPt: THREE.Vector3, pointerY?: number) {
     if (js.length) follow = js.map((j) => ({ ...j, before: JSON.parse(JSON.stringify(elements.find((q) => q.id === j.id)!.params)) }));
   }
   // The snap result left over from hovering is the grip's own position; using it would pin the drag in place.
-  lastSnapValid = false; lastSnapResult = null;
+  lastSnapValid = false; lastSnapResult = null; lastSnapEvent = null;
   // Engine drags: capture vertical + angular baselines for height/elevation/rotate/scale.
   let startScalar: number | undefined;
   let startAngle: number | undefined;
@@ -3587,8 +3598,9 @@ function groundPoint(e: MouseEvent): THREE.Vector3 | null {
   if (!hits.length) return null;
 
   let p = hits[0].point.clone();
-  if (snapping.isEnabled() && lastSnapValid && lastSnapResult) {
-    p = lastSnapResult.point.clone();
+  const snapResult = currentSnapForEvent(e);
+  if (snapResult) {
+    p = snapResult.point.clone();
   } else {
     p.x = snap(p.x, snapping.getGridSize());
     p.z = snap(p.z, snapping.getGridSize());
@@ -3616,19 +3628,43 @@ function groundPoint(e: MouseEvent): THREE.Vector3 | null {
   return p;
 }
 
+/**
+ * The cached snap result, but only when it was computed for (nearly) the
+ * pointer position of `e`. The snap cache is updated asynchronously on
+ * hover (rAF-throttled), while clicks are dispatched synchronously — so
+ * at click time the cache may still hold a previous hover's result. Using
+ * it unconditionally lets an instant click commit the previous position.
+ * Returns null when there is no event, no valid result, or the result is
+ * stale for this pointer position; callers then fall back to grid snap
+ * of the ray hit at the actual click position.
+ */
+function currentSnapForEvent(e: MouseEvent | undefined | null): import("./snapping").SnapResult | null {
+  if (!e) return null;
+  if (!snapping.isEnabled() || !lastSnapValid || !lastSnapResult) return null;
+  if (!isSnapFreshForEvent(lastSnapEvent, { x: e.clientX, y: e.clientY })) return null;
+  return lastSnapResult;
+}
+
 async function updateSnapAsync(e: MouseEvent, cursorWorld: THREE.Vector3 | null) {
+  const gen = snapGeneration.next();
   lastSnapValid = false;
   lastSnapResult = null;
+  lastSnapEvent = null;
   if (!snapping.isEnabled() || (snapping as any).isSuspended?.()) {
     snapping.hideIndicator();
     return;
   }
   try {
     const s = await snapping.query(e, cursorWorld);
+    // A newer hover may have started while this query was in flight; a
+    // stale result must never overwrite the newer one.
+    if (!snapGeneration.isCurrent(gen)) return;
     lastSnapResult = s;
     lastSnapValid = !!s;
+    lastSnapEvent = s ? { x: e.clientX, y: e.clientY } : null;
     snapping.showIndicator(s);
   } catch {
+    if (!snapGeneration.isCurrent(gen)) return;
     snapping.hideIndicator();
   }
 }
@@ -4285,7 +4321,7 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
             drawProps.joinStatus = wallJoinStatus;
             drawProps.chain = wallChain;
           }
-          const snapAtClick = lastSnapResult;
+          const snapAtClick = currentSnapForEvent(e);
           void createElement(tool, {
             start: placed.start,
             end: placed.end,
