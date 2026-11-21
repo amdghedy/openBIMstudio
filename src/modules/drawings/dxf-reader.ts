@@ -21,6 +21,7 @@ import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
   insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
 } from "./dxf-geometry";
+import { attachNative } from "./native-curves";
 
 /** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
 let imageDefs = new Map<string, string>();
@@ -788,7 +789,18 @@ function expandRecs(
         let pts: DxfPoint[] | null = null;
         if (ctrl.length >= degree + 1) pts = evalBSpline(ctrl, knots, degree);
         if (!pts) pts = fit.length >= 2 ? fit : ctrl;
-        if (pts.length >= 2) push({ ...c, type: "LWPOLYLINE", points: pts, closed });
+        if (pts.length >= 2) {
+          const w = d.all(41).map((x) => num(x));
+          const ent: any = { ...c, type: "LWPOLYLINE", points: pts, closed };
+          if (ctrl.length >= 2 && knots.length === ctrl.length + degree + 1) {
+            attachNative(ent, {
+              kind: "SPLINE", degree, closed, controlPoints: ctrl, knots,
+              ...(w.length === ctrl.length ? { weights: w } : {}),
+              ...(fit.length ? { fitPoints: fit } : {}),
+            });
+          }
+          push(ent);
+        }
         break;
       }
 
@@ -797,7 +809,12 @@ function expandRecs(
         const t0 = d.n(41, 0);
         const t1 = d.n(42, full);
         const pts = ellipsePoints(d.pt(10, 20, 30), d.pt(11, 21, 31), d.n(40, 1), t0, t1);
-        push({ ...c, type: "LWPOLYLINE", points: pts, closed: Math.abs(t1 - t0 - full) < 1e-6 });
+        const ent: any = { ...c, type: "LWPOLYLINE", points: pts, closed: Math.abs(t1 - t0 - full) < 1e-6 };
+        const cen = d.pt(10, 20, 30), maj = d.pt(11, 21, 31), ratio = d.n(40, 1);
+        if (Number.isFinite(cen.x + cen.y + maj.x + maj.y + ratio + t0 + t1) && ratio > 0) {
+          attachNative(ent, { kind: "ELLIPSE", center: cen, majorAxis: maj, ratio, startParam: t0, endParam: t1 });
+        }
+        push(ent);
         break;
       }
 
