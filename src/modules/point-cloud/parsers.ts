@@ -41,7 +41,11 @@ function chooseOrigin(min: [number, number, number], max: [number, number, numbe
 /** LAS 1.0 - 1.4, point data record formats 0-10 (uncompressed). Source axes: X east, Y north, Z up. */
 export function parseLas(buf: ArrayBuffer, maxPoints = MAX_DEFAULT): ParsedCloud {
   const dv = new DataView(buf);
-  const lasGuard = guardLasHeader(new Uint8Array(buf, 0, Math.min(buf.byteLength, 4096)));
+  // The guard checks the declared point count against the size of the buffer it receives,
+  // so it must see the whole file: a 4 KiB window falsely rejects any LAS declaring more
+  // than floor((4096 - offset) / recLen) points (~193 for format 0). `buf` is already the
+  // whole file in memory (the caller passes file.arrayBuffer()) and this is a zero-copy view.
+  const lasGuard = guardLasHeader(new Uint8Array(buf));
   if (!lasGuard.ok) {
     throw new Error(lasGuard.reason);
   }

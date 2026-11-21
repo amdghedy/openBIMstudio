@@ -37,6 +37,16 @@ t("LAS header: valid, wrong magic, lying point count, bad record length, bad off
   assert.ok(!G.guardLasHeader(las({ offset: 10_000 })).ok);
   assert.ok(!G.guardLasHeader(new Uint8Array(100)).ok);
 });
+t("LAS header: 1000-point file accepted when the guard sees the whole file", () => {
+  // Regression (refs #90): parseLas used to pass only the first 4096 bytes to the guard,
+  // which falsely rejects any file declaring more than floor((4096 - 227) / recLen) points.
+  const b = new Uint8Array(227 + 1000 * 20); b.set(u8("LASF"), 0);
+  const dv = new DataView(b.buffer); dv.setUint32(96, 227, true); dv.setUint16(105, 20, true); dv.setUint32(107, 1000, true);
+  assert.ok(G.guardLasHeader(b).ok);
+  // …while the same header over a 4 KiB window is (correctly, for a truncated buffer) rejected —
+  // this is why the caller must pass the full buffer, not a window.
+  assert.ok(!G.guardLasHeader(b.subarray(0, 4096)).ok);
+});
 // ---- XML ----
 t("XML: entity declarations and inline DOCTYPE subsets rejected", () => {
   assert.ok(G.guardXmlText('<ids xmlns="http://standards.buildingsmart.org/IDS"><info/></ids>').ok);

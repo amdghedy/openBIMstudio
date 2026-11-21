@@ -37,6 +37,14 @@ r = m.parseLas(las(pts.map((p) => ({ ...p })), 0));
 ok(r.colors === null, "format 0 has no colour");
 // decimation
 r = m.parseLas(las(pts), 2); ok(r.kept === 2 && r.total === 3, "decimated to budget");
+// regression: LAS files larger than the old 4 KiB guard window must parse (refs #90 —
+// parseLas used to hand guardLasHeader only the first 4096 bytes, so any file declaring
+// more than floor((4096 - 227) / recLen) points was falsely rejected as "declares more
+// points than the file can contain"). Format 2, recLen 26: 1000 points = 26,227 bytes
+// (old threshold for format 2 was 148 points).
+const many = Array.from({ length: 1000 }, (_, i) => ({ x: 500000 + i * 0.01, y: 3000000 + i * 0.01, z: 100 + (i % 10), r: 0, g: 0, b: 0 }));
+r = m.parseLas(las(many, 2));
+ok(r.total === 1000 && r.kept === 1000, "1000-point LAS (format 2) accepted (beyond 4 KiB guard window)");
 // errors
 let e1 = ""; try { m.parseLas(new ArrayBuffer(300)); } catch (e) { e1 = e.message; }
 ok(/LASF/.test(e1), "not a LAS");
