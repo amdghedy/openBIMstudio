@@ -6,6 +6,8 @@ test('2D drawing editor: every ribbon control the wiring code looks up exists in
   test.setTimeout(120000);
   const warnings: string[] = [];
   page.on('console', (m) => { if (m.type() === 'warning' || m.type() === 'error') warnings.push(m.text()); });
+  const pageErrors: string[] = [];
+  page.on('pageerror', (e) => pageErrors.push(String(e && (e as Error).stack || e)));
   await page.goto('/');
   await page.locator('#obs-hero-3d').click({ timeout: 30000 });
   await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__), { timeout: 30000 }).toBe(true);
@@ -22,6 +24,9 @@ test('2D drawing editor: every ribbon control the wiring code looks up exists in
       tabs: [...new Set([...document.querySelectorAll('.cadrg')].map((g) => (g as HTMLElement).dataset.cadtab))],
     };
   });
+  const hosts = await page.evaluate(() => [...document.querySelectorAll('[data-r=tools],[data-r=tools2]')].map((h) => ({ r: (h as HTMLElement).dataset.r, kids: h.children.length, len: h.innerHTML.length, inShell: !!h.closest('.obs-cad-shell'), head: h.innerHTML.slice(0, 160) })));
+  console.log('RIBBON-HOSTS', JSON.stringify(hosts));
+  console.log('RIBBON-PAGEERRORS', JSON.stringify(pageErrors.slice(0, 5)));
   console.log('RIBBON-PROBE', JSON.stringify(present), JSON.stringify(warnings.filter((w) => /ribbon control missing|\[cad\]/.test(w))));
   const missing = warnings.filter((w) => /ribbon control missing/.test(w));
   expect(missing, 'ribbon controls missing: ' + missing.join(' | ')).toEqual([]);
