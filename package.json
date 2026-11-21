@@ -166,6 +166,7 @@
     "test:parametric-type-propagation": "node tests/parametric-type-propagation.test.cjs",
     "test:parametric-rectangular-family": "node tests/parametric-rectangular-family.test.cjs",
     "test:parametric-family-hosting": "node tests/parametric-family-hosting.test.cjs",
+    "test:parametric-type-swap": "node tests/parametric-type-swap.test.cjs",
     "test:orbit-frame": "node tests/orbit-frame.test.cjs",
     "test:view-to-cad": "node tests/view-to-cad.test.cjs",
     "test:model-to-dxf3d": "node tests/model-to-dxf3d.test.cjs",

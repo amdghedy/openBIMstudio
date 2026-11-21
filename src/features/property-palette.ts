@@ -57,6 +57,7 @@ import {
   inferWallTypeId,
 } from "../modules/architecture-depth";
 import { linkEqualParam } from "../modules/parametric/wire-authoring";
+import { swapFamilyType } from "../modules/families/placement";
 import type { AuthoredElement } from "../modules/projects/types";
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -385,8 +386,9 @@ function sectionBlock(
 //
 // Writes:
 //   element.familyTypeId = selected type id
-//   then authoring.syncFamilyInstances(famId, newTypeId) re-resolves
-//   params for every element carrying that type.
+//   then placement.swapFamilyType captures every affected instance's
+//   overrides against the type it is leaving and re-syncs the new type,
+//   so a swap no longer wipes instance overrides (Slice 1 follow-up).
 function makeFamilyIdentityBlock(element: AuthoredElement): HTMLElement {
   const block = document.createElement("div");
   block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
@@ -452,13 +454,14 @@ function makeFamilyIdentityBlock(element: AuthoredElement): HTMLElement {
     // Deterministic command body: swapping the type and re-syncing its
     // instances is one atomic unit, replayable in both directions so undo
     // restores the exact previous type AND its instance assignments.
+    // swapFamilyType captures overrides against the type being left
+    // before the swap, so an instance override survives the swap (and
+    // its revert) instead of being wiped by the re-sync.
     const applyType = (tid: string | null) => {
-      element.familyTypeId = tid ?? undefined;
       try {
-        const auth: any = (ctx.features as any).authoring;
-        auth?.syncFamilyInstances?.(fam.id, tid);
+        swapFamilyType(element, tid);
       } catch (err) {
-        console.warn("[property-palette] sync after type change failed", err);
+        console.warn("[property-palette] swap after type change failed", err);
       }
       markAuthoringDirty();
       render();

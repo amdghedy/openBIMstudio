@@ -256,3 +256,102 @@ export function rehostElementAfterHostChange(
   applyHostPlacementToElement(element, fresh, moved.placement);
   return { outcome: "moved", placement: moved.placement };
 }
+export interface SwapResult {
+  /** False when nothing changed (same type, or no family/service). */
+  swapped: boolean;
+  instancesSynced: number;
+}
+
+/**
+ * Swap one element's family type, preserving instance overrides.
+ *
+ * This is the type-swap counterpart of the Slice 1 type-edit fix: the
+ * property palette used to set `element.familyTypeId` and call
+ * `syncFamilyInstances(familyId, newTypeId)` with no override map, so a
+ * swap wiped the swapped element's overrides (and, for instances already
+ * on the new type, their overrides too — the sync re-resolved them from
+ * the type alone).
+ *
+ * Overrides are captured BEFORE the type changes, against the type each
+ * instance was last synced against: the swapped element against the
+ * PREVIOUS type's resolution (comparing after the swap would misread its
+ * stale inherited values as overrides and freeze them), every other
+ * sibling against its own current type's resolution. A swapped element
+ * with no previous type had nothing to inherit from, so an override is
+ * a stored value that differs from the family default.
+ * The re-sync then re-resolves each instance of the new type from the
+ * new type values with its own overrides on top.
+ *
+ * Undo is the same operation in reverse: `applyType(prevType)` captures
+ * against the type being left, so an override survives a swap and its
+ * revert.
+ */
+export function swapFamilyType(
+  element: AuthoredElement,
+  newTypeId: string | null,
+): SwapResult {
+  const svc = familyService();
+  if (!svc || !element.familyId) return { swapped: false, instancesSynced: 0 };
+
+  const family = svc.get(element.familyId);
+  if (!family) return { swapped: false, instancesSynced: 0 };
+
+  const prevTypeId = element.familyTypeId ?? null;
+  if (newTypeId === prevTypeId) return { swapped: false, instancesSynced: 0 };
+
+  const auth: any = (ctx.features as any).authoring;
+  const siblings: AuthoredElement[] = auth?.getElements?.() ?? [];
+
+  const overridesByElement = new Map<string, Record<string, any>>();
+  const prevResolved = prevTypeId ? svc.resolveParams(family.id, prevTypeId) : null;
+  for (const sibling of siblings) {
+    if (sibling.familyId !== family.id) continue;
+    if (sibling.id === element.id) {
+      if (prevResolved) {
+        const ov = extractInstanceOverrides(
+          prevResolved,
+          (sibling.params ?? {}) as Record<string, any>,
+          GEOMETRY_KEYS,
+        );
+        if (Object.keys(ov).length) overridesByElement.set(sibling.id, ov);
+      } else {
+        // Typeless element: nothing was inherited, so an override is a
+        // stored value that differs from the family default — values
+        // equal to the defaults are not user-set and must adopt the new
+        // type instead of being frozen in place.
+        const defaults: Record<string, any> = {};
+        for (const p of family.parameters) {
+          if (typeof p.default === "number") defaults[p.name] = p.default;
+        }
+        const ov = extractInstanceOverrides(
+          defaults,
+          (sibling.params ?? {}) as Record<string, any>,
+          GEOMETRY_KEYS,
+        );
+        if (Object.keys(ov).length) overridesByElement.set(sibling.id, ov);
+      }
+      continue;
+    }
+    // Any other instance that the sync will touch (same family, on the
+    // new type — or every family instance when swapping to no type) keeps
+    // its overrides against its own current type.
+    const ownTypeId = sibling.familyTypeId ?? null;
+    if (newTypeId !== null && ownTypeId !== newTypeId) continue;
+    const ownResolved = ownTypeId ? svc.resolveParams(family.id, ownTypeId) : null;
+    if (!ownResolved) continue;
+    const ov = extractInstanceOverrides(
+      ownResolved,
+      (sibling.params ?? {}) as Record<string, any>,
+      GEOMETRY_KEYS,
+    );
+    if (Object.keys(ov).length) overridesByElement.set(sibling.id, ov);
+  }
+
+  element.familyTypeId = newTypeId ?? undefined;
+  const instancesSynced = auth?.syncFamilyInstances?.(
+    family.id,
+    newTypeId,
+    overridesByElement,
+  ) ?? 0;
+  return { swapped: true, instancesSynced };
+}
