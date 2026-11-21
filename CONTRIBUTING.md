@@ -58,12 +58,26 @@ setup, not an optional extra.
 ## AI-assisted contributions
 
 AI tooling may be used for drafting, refactors and test scaffolding. The
-contributor remains responsible for the result:
+contributor remains responsible for the result — the tool is never the author
+of record for the *decision*, even when it writes the diff:
 
-- **You are the author.** Commits carry your own git identity; do not attach
-  auto-generated attribution trailers or push commits authored by the tool.
-- Review every line as if you wrote it, run the checks below, and be able to
-  defend the design in review.
+- **You are responsible.** Review every line as if you wrote it, run the
+  checks below, and be able to defend the design in review. A commit you did
+  not review is a commit you did not write.
+- **Attribute honestly.** Commits written substantially by an AI tool carry
+  the tool's identity as author (or as a `Co-Authored-By:` trailer alongside
+  your own identity). Do not re-attribute tool-written work to a human
+  identity, and do not strip the trailer: the history is the audit trail.
+  358 commits on `main` are authored `Claude <noreply@anthropic.com>`
+  (verified 2026-11-21 over 1,472 commits), alongside other tool identities
+  (`Z User`, `obs-agent`, `Manus`, `qwen.ai[bot]`). This policy was rewritten
+  on 2026-11-21 to match that audited practice: the previous text ("commits
+  carry your own git identity; do not attach auto-generated attribution
+  trailers or push commits authored by the tool") described the opposite of
+  what the history shows, and rewriting the history to a human identity would
+  falsify the record and break every clone, tag, and deploy. What did not
+  change is the accountability: a human reviews, defends, and answers for
+  every line, whoever typed it.
 - If AI generated a substantial portion of the change, say so in the PR
   description — it changes what reviewers should focus on.
 

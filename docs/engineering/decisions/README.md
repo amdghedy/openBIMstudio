@@ -16,6 +16,7 @@ notes here, plus the fuzz gate — five notes, not three.
 | [Fail-closed server (#92)](2026-11-20-fail-closed-server.md) | 2026-11-20 | Residual SSE-token gap still present in code |
 | [safeLoad / file guard (#90)](2026-11-20-safeload-file-guard.md) | 2026-11-20 | PR #240 merged (`52e0ef01`); markups fix landed |
 | [IFC fuzz containment gate (#231)](2026-11-20-ifc-fuzz-containment-gate.md) | 2026-11-20 | Gate wired; post-fix timeout rate unproven |
+| [AI attribution policy rewritten](2026-11-21-ai-attribution-policy.md) | 2026-11-21 | Policy now matches audited history (358 Claude-authored commits) |
 | [Installer-patch mechanism retired](2026-11-21-installer-patch-retired.md) | 2026-11-21 | Retired in the same change that adds this index |
 
 **Convention:** a note records the decision date (when the decision was made),
