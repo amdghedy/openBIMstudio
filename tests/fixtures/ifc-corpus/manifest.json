@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "note": "Every *.ifc under tests/fixtures/ifc-corpus must be listed. 'independent:false' = produced by this project's own writer; real third-party models are still missing (#96).",
+  "files": [
+    {
+      "file": "generated-small.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "walls + hosted door + slab, golden snapshot",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "generated-2x3.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "same model under IFC2X3",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "generated-structural.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "beam + column",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "mep-model.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "duct/pipe/tray/conduit + equipment, 2 storeys",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "arch-classified.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "classification references",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc2x3-classified.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "IfcClassification on IFC2X3",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc2x3-mep-systems.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "duct/pipe/tray/conduit/equipment",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc2x3-multi-storey.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "4 storeys, walls+slabs per level",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc2x3-single-room.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "closed room: 4 walls + slab",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc2x3-structural-frame.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "columns, beams, footing grid",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-envelope-roof-curtain.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "curtain wall, roof, ceiling covering",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-mep-systems.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "duct/pipe/tray/conduit/equipment",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-multi-storey.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "4 storeys, walls+slabs per level",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-openings-doors-windows.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "hosted doors/windows with openings",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-single-room.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "closed room: 4 walls + slab",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-spaces-rooms.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "IfcSpace with numbers",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-stress-400-walls.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "400 walls over 2 storeys (size/perf)",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-structural-frame.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "columns, beams, footing grid",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-unicode-and-quotes.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "STEP string encoding (apostrophe, backslash, \\X2\\ unicode)",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "extended/ifc4-vertical-circulation.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "purpose": "stair, railing, ramp",
+      "source": "project-authored (scripts/generate-ifc-corpus-extended.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "invalid/bad-guid.ifc",
+      "kind": "invalid",
+      "schema": "IFC4",
+      "purpose": "GlobalId outside the base64 alphabet",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "finding": "IFC-E-BAD-GUID"
+      }
+    },
+    {
+      "file": "invalid/dangling-ref.ifc",
+      "kind": "invalid",
+      "schema": "IFC4",
+      "purpose": "relationship to a missing entity",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "finding": "IFC-E-DANGLING-REF"
+      }
+    },
+    {
+      "file": "invalid/missing-units.ifc",
+      "kind": "invalid",
+      "schema": "IFC4",
+      "purpose": "no unit assignment",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "finding": "IFC-W-UNITS-MISSING"
+      }
+    },
+    {
+      "file": "invalid/truncated.ifc",
+      "kind": "invalid",
+      "schema": "IFC4",
+      "purpose": "file cut mid-DATA",
+      "source": "project-authored (scripts/generate-ifc-corpus.mjs, platform writer)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "reject"
+      }
+    },
+    {
+      "file": "malformed/unterminated-string-min.ifc",
+      "kind": "malformed",
+      "schema": "IFC4",
+      "purpose": "unterminated STEP string: raw web-ifc OpenModel never returns (#231)",
+      "source": "hand-minimised from a fuzz/hang probe (see malformed/README.md)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "reject"
+      }
+    },
+    {
+      "file": "malformed/truncated-in-string-min.ifc",
+      "kind": "malformed",
+      "schema": "IFC4",
+      "purpose": "file ends inside a string: raw web-ifc OpenModel never returns (#231)",
+      "source": "hand-minimised from a fuzz/hang probe (see malformed/README.md)",
+      "licence": "MIT (project)",
+      "independent": false,
+      "expect": {
+        "preflight": "reject"
+      }
+    }
+  ]
+}

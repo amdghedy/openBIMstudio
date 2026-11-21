@@ -81,6 +81,7 @@
     "test:project-auto-reopen": "node tests/project-auto-reopen.test.cjs",
     "test:qto-property-filters": "node tests/qto-property-filters.test.cjs",
     "test:file-guard": "node tests/file-guard.test.cjs",
+    "test:ifc-corpus-manifest": "node tests/ifc-corpus-manifest.test.cjs",
     "test:property-invariants": "node tests/property-invariants.test.cjs",
     "test:tool-catalog-gate": "node tests/tool-catalog-gate.test.cjs",
     "test:native-twin-ifc-entities": "node tests/native-twin-ifc-entities.test.cjs",

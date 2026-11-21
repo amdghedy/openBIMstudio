@@ -51,6 +51,7 @@ _backup/
 !tests/fixtures/ifc-corpus/invalid/*.ifc
 # ...and the minimal malformed-input regression fixtures (issue #231)
 !tests/fixtures/ifc-corpus/malformed/*.ifc
+!tests/fixtures/ifc-corpus/extended/*.ifc
 obs-*.txt
 
 # Generated build-time WASM copy (scripts/copy-libredwg-wasm.mjs)
