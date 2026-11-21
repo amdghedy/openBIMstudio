@@ -977,18 +977,32 @@ export function goHome() {
   } else fitAll();
 }
 
-export function fitAll() {
+/** A model can be registered a moment before its geometry exists, so an empty box is retried — but BOUNDEDLY:
+ *  the old unconditional 200 ms loop never ended for a model that is genuinely empty (e.g. a drawing-only or
+ *  placeholder model) and every extra fitAll() call started another chain (hundreds of console lines per minute). */
+export const FIT_ALL_MAX_RETRIES = 10;
+let fitAllRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let fitAllRetries = 0;
+let fitAllWarned = false;
+
+export function fitAll(isRetry = false) {
   if (!worldReady()) return;
+  if (isRetry !== true) { fitAllRetries = 0; }
+  if (fitAllRetryTimer) { clearTimeout(fitAllRetryTimer); fitAllRetryTimer = null; }
   computeSceneBounds();
 
   if (lastSceneBox.isEmpty()) {
     const modelCount = (() => { try { return ctx.fragments.list.size; } catch { return 0; } })();
-    if (modelCount > 0) {
-      console.warn(`[camera] fitAll: ${modelCount} model(s) present but scene bounds are empty — retrying in 200 ms.`);
-      setTimeout(() => { try { fitAll(); } catch { /* */ } }, 200);
+    if (modelCount > 0 && fitAllRetries < FIT_ALL_MAX_RETRIES) {
+      fitAllRetries++;
+      fitAllRetryTimer = setTimeout(() => { fitAllRetryTimer = null; try { fitAll(true); } catch { /* */ } }, 200);
+    } else if (modelCount > 0 && !fitAllWarned) {
+      fitAllWarned = true;
+      console.warn(`[camera] fitAll: ${modelCount} model(s) present but their geometry has no extent after ${FIT_ALL_MAX_RETRIES} retries — not retrying again until the next model change.`);
     }
     return;
   }
+  fitAllWarned = false;
 
   const cam = ctx.world.camera.three;
   const controls: any = ctx.world.camera.controls;
