@@ -55,32 +55,63 @@ function num(n: number): string {
   return s.replace(/\.?0+$/, "") || "0";
 }
 
-const SAFE_ENTITIES = new Set([
-  "IfcBuildingElementProxy",
-  "IfcWall",
-  "IfcSlab",
-  "IfcBeam",
-  "IfcColumn",
-  "IfcDoor",
-  "IfcWindow",
-  "IfcMember",
-  "IfcPlate",
-  "IfcFooting",
-  "IfcPile",
-  "IfcRailing",
-  "IfcStair",
-  "IfcRamp",
-  "IfcFurnishingElement",
-  "IfcFlowSegment",
-  "IfcFlowTerminal",
-  "IfcFlowFitting",
-  "IfcDistributionElement",
-]);
+/**
+ * Explicit IFC4 entity map for Native Twin export.
+ * `tail` = the attributes AFTER the eight IfcElement attributes
+ * (GlobalId, OwnerHistory, Name, Description, ObjectType, ObjectPlacement, Representation, Tag), in schema order.
+ * Optional attributes are written as `$`; only IfcBuildingElementProxy carries an explicit PredefinedType.
+ * Anything not listed falls back to IfcBuildingElementProxy and is REPORTED as a fallback (never silent).
+ */
+const IFC4_TAILS: Record<string, string> = {
+  IfcWall: "$", IfcSlab: "$", IfcBeam: "$", IfcColumn: "$", IfcMember: "$", IfcPlate: "$",
+  IfcFooting: "$", IfcPile: "$,$", IfcRailing: "$", IfcStair: "$", IfcRamp: "$",
+  IfcDoor: "$,$,$,$,$", IfcWindow: "$,$,$,$,$",       // OverallHeight, OverallWidth, PredefinedType, Operation/PartitioningType, UserDefined…
+  IfcFurnishingElement: "", IfcFlowSegment: "", IfcFlowTerminal: "", IfcFlowFitting: "", IfcDistributionElement: "",
+  IfcBuildingElementProxy: ".NOTDEFINED.",
+};
+/** Case-insensitive lookup + documented aliases (deprecated IFC2x3/IFC4 subtypes that are geometrically a plain parent). */
+const ENTITY_LOOKUP = new Map<string, string>(Object.keys(IFC4_TAILS).map((k) => [k.toUpperCase(), k]));
+const ENTITY_ALIASES: Record<string, string> = {
+  IFCWALLSTANDARDCASE: "IfcWall", IFCSLABSTANDARDCASE: "IfcSlab", IFCBEAMSTANDARDCASE: "IfcBeam",
+  IFCCOLUMNSTANDARDCASE: "IfcColumn", IFCMEMBERSTANDARDCASE: "IfcMember", IFCPLATESTANDARDCASE: "IfcPlate",
+  IFCDOORSTANDARDCASE: "IfcDoor", IFCWINDOWSTANDARDCASE: "IfcWindow", IFCSTAIRFLIGHT: "IfcStair",
+};
 
-function safeEntityName(edit: TwinIfcSource): string {
-  const entity = edit.nativeEntity || edit.sourceEntity || "IfcBuildingElementProxy";
-  const ifcEntity = entity.startsWith("Ifc") ? entity : `Ifc${entity}`;
-  return SAFE_ENTITIES.has(ifcEntity) ? ifcEntity : "IfcBuildingElementProxy";
+export interface TwinEntityDecision {
+  /** Entity the source asked for (nativeEntity || sourceEntity), as given. */
+  requested: string;
+  /** IFC4 entity that will be written. */
+  entity: string;
+  /** "exact" | "alias" (documented parent) | "fallback" (IfcBuildingElementProxy, semantic information is lost). */
+  mapping: "exact" | "alias" | "fallback";
+}
+
+/** Decide which IFC4 entity a twin is written as. Pure. */
+export function decideTwinEntity(edit: TwinIfcSource): TwinEntityDecision {
+  const requested = String(edit.nativeEntity || edit.sourceEntity || "");
+  const up = (requested.toUpperCase().startsWith("IFC") ? requested : requested ? `Ifc${requested}` : "").toUpperCase();
+  const exact = ENTITY_LOOKUP.get(up);
+  if (exact && exact !== "IfcBuildingElementProxy") return { requested, entity: exact, mapping: "exact" };
+  if (exact) return { requested, entity: exact, mapping: "exact" };
+  const alias = ENTITY_ALIASES[up];
+  if (alias) return { requested, entity: alias, mapping: "alias" };
+  return { requested, entity: "IfcBuildingElementProxy", mapping: "fallback" };
+}
+
+/** Entity-level conversion report: what was requested vs what was written. */
+export function twinConversionReport(edits: TwinIfcSource[]): {
+  total: number; exact: number; alias: number; fallback: number;
+  byRequested: Record<string, { entity: string; mapping: TwinEntityDecision["mapping"]; count: number }>;
+} {
+  const byRequested: Record<string, { entity: string; mapping: TwinEntityDecision["mapping"]; count: number }> = {};
+  let exact = 0, alias = 0, fallback = 0;
+  for (const e of edits) {
+    const d = decideTwinEntity(e);
+    const k = d.requested || "(none)";
+    (byRequested[k] ??= { entity: d.entity, mapping: d.mapping, count: 0 }).count++;
+    if (d.mapping === "exact") exact++; else if (d.mapping === "alias") alias++; else fallback++;
+  }
+  return { total: edits.length, exact, alias, fallback, byRequested };
 }
 
 type Ctx = {
@@ -96,8 +127,7 @@ function appendTwinElement(ctx: Ctx, edit: TwinIfcSource, storey: number): numbe
   const name = esc(edit.name || "NativeTwin");
   const globalId = esc(elementGuid(edit));
   const description = esc(edit.description || `Native twin of ${edit.sourceEntity || "element"}`);
-  // safeEntity reserved for future typed writers; proxy form is universal today
-  void safeEntityName(edit);
+  const decision = decideTwinEntity(edit);
 
   const [px, py, pz] = edit.position;
   const [qx, qy, qz, qw] = edit.quaternion;
@@ -160,8 +190,9 @@ function appendTwinElement(ctx: Ctx, edit: TwinIfcSource, storey: number): numbe
 
   const el = next();
   const shapeArg = shapeRepRef ? `#${shapeRepRef}` : "$";
+  const tail = IFC4_TAILS[decision.entity];
   lines.push(
-    `#${el}=IFCBUILDINGELEMENTPROXY('${globalId}',#${owner},'${name}','${description}',$,#${elPlace},${shapeArg},$,.NOTDEFINED.);`,
+    `#${el}=${decision.entity.toUpperCase()}('${globalId}',#${owner},'${name}','${description}',$,#${elPlace},${shapeArg},$${tail ? "," + tail : ""});`,
   );
 
   const relCont = next();

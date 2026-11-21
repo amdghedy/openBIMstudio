@@ -23,7 +23,7 @@ try {
   ok(C.nextLinkAction({ ...base, lastWrittenSig: "s1", force: true }) === "write", "force writes unchanged edits");
   const ifc = W.writeFederatedNativeTwinIfc([{ name: "Wall A", nativeEntity: "IFCWALL", modelId: "m", position: [1, 2, 3], quaternion: [0, 0, 0, 1], geometry: { positions: [0,0,0, 1,0,0, 0,1,0, 0,0,1, 1,0,1, 0,1,1] } }], "Live");
   ok(ifc.startsWith("ISO-10303-21;") && ifc.includes("END-ISO-10303-21;") && ifc.includes("FILE_SCHEMA(('IFC4'))"), "valid IFC4 envelope");
-  ok(/IFCBUILDINGELEMENTPROXY\(/.test(ifc) && ifc.includes("Wall A"), "the edited element is in the file (the writer emits building-element proxies)");
+  ok(/IFCWALL\(/.test(ifc) && !/IFCBUILDINGELEMENTPROXY\(/.test(ifc) && ifc.includes("Wall A"), "the edited IFCWALL is written as an IFCWALL, not a proxy");
   const faceSet = /IFCTRIANGULATEDFACESET\(#\d+,\$,\.F\.,\(([^;]*)\),\$\);/.exec(ifc);
   ok(faceSet && /^\(\d+,\d+,\d+\)(,\(\d+,\d+,\d+\))*$/.test(faceSet[1]), "CoordIndex is a list of index triples (no extra nesting): " + (faceSet && faceSet[1]));
   console.log(`live-ifc-link: ${n} assertions passed`);
