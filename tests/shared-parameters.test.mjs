@@ -124,3 +124,43 @@ test("reports malformed rows and unclosed CSV quotes", () => {
   assert.throws(() => catalogModule.TypeCatalogManager.parseCSV("##TYPE\nDoor,Width##length\nSingle,1,extra"), /expected 2/);
   assert.throws(() => catalogModule.TypeCatalogManager.parseCSV('##TYPE\nDoor,Label##string\nSingle,"broken'), /not closed/);
 });
+
+test("works without storage: create, find, list, get and delete", () => {
+  const manager = new sharedModule.SharedParameterManager(null);
+  const a = manager.create({ name: "Width", group: "Dimensions", type: "length", defaultValue: 1, isInstance: false });
+  const b = manager.create({ name: "Height", group: "Dimensions", type: "length", defaultValue: 2, isInstance: false });
+  assert.equal(manager.list().length, 2);
+  assert.equal(manager.get(b.guid)?.name, "Height");
+  assert.equal(manager.findByName("WIDTH")?.guid, a.guid);
+  assert.equal(manager.listByGroup("dimensions").length, 2);
+  assert.throws(() => manager.create({ name: "width", group: "x", type: "length", defaultValue: 0, isInstance: false }), /already exists/);
+  assert.equal(manager.delete(a.guid), true);
+  assert.equal(manager.delete(a.guid), false);
+  assert.equal(manager.list().length, 1);
+  assert.notEqual(manager.list()[0], manager.list()[0], "reads return copies, not shared references");
+});
+
+test("falls back to session memory when storage setItem throws, keeping earlier saved definitions", () => {
+  const data = new Map();
+  let failWrites = false;
+  const storage = {
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => { if (failWrites) throw new Error("QuotaExceededError"); data.set(key, value); },
+  };
+  const manager = new sharedModule.SharedParameterManager(storage);
+  const kept = manager.create({ name: "Persisted", group: "G", type: "string", defaultValue: "a", isInstance: true });
+  failWrites = true;
+  const session = manager.create({ name: "SessionOnly", group: "G", type: "string", defaultValue: "b", isInstance: true });
+  assert.equal(manager.get(kept.guid)?.name, "Persisted");
+  assert.equal(manager.findByName("sessiononly")?.guid, session.guid);
+  assert.equal(manager.list().length, 2);
+});
+
+test("falls back to session memory when storage getItem throws", () => {
+  const storage = { getItem: () => { throw new Error("SecurityError"); }, setItem: () => { throw new Error("SecurityError"); } };
+  const manager = new sharedModule.SharedParameterManager(storage);
+  const created = manager.create({ name: "Blocked", group: "G", type: "string", defaultValue: "x", isInstance: true });
+  assert.equal(manager.get(created.guid)?.name, "Blocked");
+  assert.equal(manager.delete(created.guid), true);
+  assert.equal(manager.list().length, 0);
+});
