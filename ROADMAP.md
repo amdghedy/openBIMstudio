@@ -3,7 +3,7 @@
 **Project:** [github.com/amdghedy/openBIMstudio](https://github.com/amdghedy/openBIMstudio) · v0.74.0 · MIT · local-first browser BIM workspace
 **Goal:** evolve the existing functions/tools into a truly **international platform** — multi-language, multi-region, multi-standard, multi-deployment.
 
-> Audit basis (verified against the repo): 138 feature modules under `src/modules`, i18n boot in `src/main.ts` (`setupLocale`, `setupDomTranslate`, `registerSwitcherLocales`), catalogs in `src/core/i18n-catalogs/*.gen.ts` (ar, de, es, fr, hi, ja, pt, ru, zh), JSON locales in `src/locales` (en, ar, de, ja, zh-CN only), unit handling in `src/core/format.ts` + `src/core/locale-boot.ts`, server in `server/` (Node, SSE, rate-limit, uploads), Cloudflare/Vercel deploy targets (`wrangler.jsonc`, `vercel.json`), CI: `deploy.yml`, `golden-roundtrip.yml`, `native-bim-validation.yml`, `unit-tests.yml`, bridge tool `tools/navisworks-bridge`.
+> Audit basis (verified against the repo 2026-11-20): 128 top-level directories under `src/modules`, i18n boot in `src/main.ts` (`setupLocale`, `setupDomTranslate`, `registerSwitcherLocales`), catalogs in `src/core/i18n-catalogs/*.gen.ts` (ar, de, es, fr, hi, ja, pt, ru, zh), JSON locales in `src/locales` (19 locales), unit handling in `src/core/format.ts` + `src/core/locale-boot.ts`, server in `server/` (Node, SSE, rate-limit, uploads), Cloudflare/Vercel deploy targets (`wrangler.jsonc`, `vercel.json`), CI: `deploy.yml`, `unit-tests.yml` (which runs the golden-roundtrip step; no `golden-roundtrip.yml` or `native-bim-validation.yml` workflow exists), bridge tool `tools/navisworks-bridge`.
 
 ---
 
@@ -24,7 +24,7 @@
 **Objective:** make i18n measurable before scaling it.
 
 - [ ] **String extraction audit**: scan `src/**` for hardcoded UI strings (menus, tooltips, ribbons, dialogs, `docs/` links); produce `scripts/i18n-audit.mjs` reporting coverage % per module; wire into CI as a non-blocking report.
-- [ ] **Single translation key registry**: consolidate `src/locales/*.json` (5 langs) and `src/core/i18n-catalogs/*.gen.ts` (9 langs) into one pipeline so no language is missing a catalog half (today `es/pt/ru/hi` have `.gen.ts` but no `locales/*.json`).
+- [ ] **Single translation key registry**: consolidate `src/locales/*.json` (19 langs) and `src/core/i18n-catalogs/*.gen.ts` (9 langs) into one pipeline so no language is missing a catalog half (today every `.gen.ts` language also has a `locales/*.json`; the two pipelines still differ in coverage — 9 catalogues vs 19 JSON locales).
 - [ ] **Translation memory format**: adopt standard XLIFF 2.0 / gettext PO files exported from JSON → enables Crowdin/Weblate/POEditor import.
 - [ ] **Pseudo-localization mode**: `?locale=xx-PS` build flag that stretches/accents strings to reveal un-localized spots (incl. canvas-dimension text, sheet title blocks).
 - [ ] **Definition of Done update** in `CONTRIBUTING.md`: no new user-facing string without a key.

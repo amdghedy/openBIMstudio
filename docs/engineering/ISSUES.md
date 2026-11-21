@@ -10,13 +10,13 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 |----|-------|----------|-------|----------|
 | P0-01 | Global crash containment: error boundaries per panel + crash log | Critical | Phase 0 | 1d | ✅ satisfied |
 | P0-02 | Zod validation at all file-load boundaries (`safeLoad`) | Critical | Phase 0 | 1d | 🔶 partial |
-| P0-03 | Backup-on-load with rotating timestamps | High | Phase 0 | 0.5d | ✅ satisfied |
+| P0-03 | Backup-on-load with rotating timestamps | High | Phase 0 | 0.5d | ⬜ open — backup-on-load not wired: `loadJson()` still returns `{}` on parse failure; see [#91](https://github.com/amdghedy/openBIMstudio/issues/91) (corrected 2026-11-20) |
 | P0-04 | Fail-closed server: origin allow-list, header-only tokens, rate limit | Critical | Phase 0 | 1d | ✅ satisfied |
 | P0-05 | Remove `jsonpath-plus`; add npm audit CI gate | Critical | Phase 0 | 0.5d | ✅ satisfied |
-| P1-01 | Freeze `__obs*` globals with ESLint; typed service registry | High | Phase 1 | 2d | ✅ satisfied |
-| P1-02 | TypeScript strictification wave 1 (src/modules, src/core) | High | Phase 1 | 3d | ✅ satisfied |
+| P1-01 | Freeze `__obs*` globals with ESLint; typed service registry | High | Phase 1 | 2d | ⬜ open — ESLint freeze never wired in: no eslint dep, no lint script, no CI step; `registry.ts` has no importers (corrected 2026-11-20) |
+| P1-02 | TypeScript strictification wave 1 (src/modules, src/core) | High | Phase 1 | 3d | ⬜ open — `tsconfig.strict.json` is referenced nowhere outside docs; main tsconfig has `noUnusedLocals: false`; ~2,723 explicit `any`s in `src/` (corrected 2026-11-20) |
 | P1-03 | Assemble 20-fixture IFC golden corpus (licensed, snapshotted) | High | Phase 1 | 2d | 🔶 partial (3/20) |
-| P1-04 | Golden round-trip pipeline + interop report + CI workflow | High | Phase 1 | 3d | ✅ satisfied |
+| P1-04 | Golden round-trip pipeline + interop report + CI workflow | High | Phase 1 | 3d | ⬜ open — the "export" leg is a second independent parse, not a round-trip, and there is no dedicated `golden-roundtrip.yml` workflow (corrected 2026-11-20) |
 | P1-05 | Property-based kernel invariants (fast-check) | High | Phase 1 | 2d | 🔶 partial (undo foundation) |
 | P1-06 | Malformed-input rejection property tests (IFC, BCF, DXF) | Medium | Phase 1 | 1d | 🔶 partial |
 | P1-07 | Playwright E2E smoke suite on Chromium, WebKit, Firefox | High | Phase 1 | 3d | 🔶 partial |
@@ -77,6 +77,8 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 
 ## P0-03 — Backup-on-load with rotating timestamps
 
+> **Status correction (2026-11-20):** open — see [#91](https://github.com/amdghedy/openBIMstudio/issues/91). Backup-on-write exists (`server/backup.mjs`); backup-on-load does not: `loadJson()` in `server/index.mjs` returns `{}` on parse failure, with no snapshot and no loud failure.
+
 - **Labels:** `hardening`, `P0`, `high`
 - **Phase / Estimate:** Phase 0 / 0.5 day
 
@@ -136,6 +138,8 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 
 ## P1-01 — Freeze `__obs*` globals with ESLint; typed service registry
 
+> **Status correction (2026-11-20):** open — the ESLint freeze was never wired in: `hardening.eslintrc.json` exists, but there is no eslint dependency, no lint script and no CI lint step; `src/core/registry.ts` has no importers.
+
 - **Labels:** `hardening`, `P1`, `high`
 - **Phase / Estimate:** Phase 1 / 2 days
 
@@ -156,6 +160,8 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 ---
 
 ## P1-02 — TypeScript strictification wave 1 (src/modules, src/core)
+
+> **Status correction (2026-11-20):** open — `tsconfig.strict.json` is referenced nowhere outside docs; the main tsconfig has `noUnusedLocals: false`; `src/` has ~2,723 explicit `any`s and no any-count ratchet runs in CI.
 
 - **Labels:** `hardening`, `P1`, `high`
 - **Phase / Estimate:** Phase 1 / 3 days (spread over weeks; convert-on-touch)
@@ -194,6 +200,8 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 ---
 
 ## P1-04 — Golden round-trip pipeline + interop report + CI workflow
+
+> **Status correction (2026-11-20):** open — `scripts/golden-roundtrip.mjs` states its export leg is a second independent parse (no general web-ifc exporter in that harness), there is no dedicated `golden-roundtrip.yml` workflow (the step runs inside `unit-tests.yml`), and there is no per-entity interop report yet.
 
 - **Labels:** `hardening`, `P1`, `high`
 - **Phase / Estimate:** Phase 1 / 3 days
@@ -414,12 +422,25 @@ gh label create process     --description "Process / documentation"          --c
 Evidence-based audit of main against each issue's acceptance criteria
 (`scripts/check-hardening-evidence.sh` reproduces this check):
 
-- **Satisfied on main (close on issue creation):** P0-01 crash containment,
-  P0-03 browser/server recovery backups, P0-04 fail-closed server security,
+- **Satisfied on main (close on issue creation):** P0-01 crash containment
   (`src/core/crashLog.ts`, `AppErrorBoundary`, `window.onerror` + crash viewer),
-  P0-05 (`jsonpath-plus` gone + npm audit gate), P1-01 (`registry.ts` + ESLint
-  `__obs` rule), P1-02 (`strict: true`), P1-04 (roundtrip pipeline + workflow
-  activated on push), P2-05 (`SPEC_TEMPLATE.md`).
+  P0-04 fail-closed server security, P0-05 (`jsonpath-plus` gone + npm audit
+  gate), P2-05 (`SPEC_TEMPLATE.md`).
+
+> **Correction (2026-11-20, HEAD `d19735f`):** the "Satisfied on main" list above
+> was wrong for four items, which are open on the tracker and unmarked in the
+> table above: **P0-03** — backup-on-load is not wired (`server/index.mjs`
+> `loadJson()` still returns `{}` on parse failure; backup exists only on
+> write), see [#91](https://github.com/amdghedy/openBIMstudio/issues/91);
+> **P1-01** — the ESLint freeze was never wired in (no eslint dep, no lint
+> script, no CI step; `src/core/registry.ts` has no importers);
+> **P1-02** — `tsconfig.strict.json` is referenced nowhere outside docs, the
+> main tsconfig has `noUnusedLocals: false`, and `src/` still has ~2,723
+> explicit `any`s; **P1-04** — the golden "export" leg is a second independent
+> parse (`scripts/golden-roundtrip.mjs`), not a true round-trip, and there is
+> no dedicated `golden-roundtrip.yml` workflow. P0-04 stays listed as
+> satisfied here pending the #92 follow-up (its SSE-token gap is tracked in
+> [#92](https://github.com/amdghedy/openBIMstudio/issues/92)).
 - **Partial progress (create + progress comment):** P0-02 (safeLoad + schemas
   exist; broader loader routing and malformed corpus remain), P1-03 (3/20 fixtures), P1-06 (some
   malformed tests; property suites missing), P1-07 (playwright config; runner

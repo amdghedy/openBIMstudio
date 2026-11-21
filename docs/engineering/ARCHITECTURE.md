@@ -346,7 +346,7 @@ The APS integration is explicitly experimental in `src/features/feature-maturity
 
 ## Current structural debt and explicit limitations
 
-- The source contains 116 top-level directories under `src/modules/`; this is a broad, historically grown domain surface, not proof of 116 independently bounded packages.
+- The source contains 128 top-level directories under `src/modules/`; this is a broad, historically grown domain surface, not proof of 128 independently bounded packages.
 - Several legacy registration modules still expose `window.__obs*` globals; `src/core/services.ts` and the service migration are the intended direction. The current UI-honesty test uses a non-increasing count as a ratchet, so the count itself remains debt.
 - `src/main.ts` is a large composition root with many sequential setup steps. The per-step error containment improves resilience but can leave a feature unavailable while the rest of the viewer continues; boot diagnostics must remain visible and actionable.
 - Browser-level tests are materially fewer than logic-level tests. Important editing, IFC, drawing and MEP workflows need end-to-end tests against the production build and representative models.

@@ -310,7 +310,7 @@ run in a browser yet (see `tests/e2e/README.md`).
   Clash Review is dockable; every blocking prompt/confirm/alert is a dialog.
 - **Honesty and structure.** Feature Status registry, UI-honesty guard tests, an
   architecture document, release-specific names removed, and the number of
-  `window.__obs*` references reduced from 901 to 818 behind a ratchet test.
+  `window.__obs*` references reduced from 901 to 727 behind a ratchet test.
 
 ### Known gaps
 
@@ -340,9 +340,9 @@ run in a browser yet (see `tests/e2e/README.md`).
 ### Changed
 
 - Repository governance: squash-only merges with branch auto-deletion,
-  linear-history branch protection on `main`, required CI status checks,
   Discussions enabled, curated issue backlog (#140–#144), stale branches
-  pruned.
+  pruned. Branch protection on `main` and required CI status checks are not
+  yet enabled (tracked in #142).
 - Repository hygiene pass: disabled one-shot recovery workflows removed;
   23 single-use fix/repair scripts moved to `scripts/archive/`; test fixtures
   consolidated under `tests/`; README de-duplicated (release notes now live
