@@ -25,11 +25,7 @@ export default defineConfig({
   // browser HTTP cache, edge cache) — the source of web-ifc BindingErrors
   // like "StreamMeshes called with 4 arguments, expected 3".
   define: {
-    __WEB_IFC_VERSION__: JSON.stringify((() => {
-      try {
-        return JSON.parse(readFileSync(join(process.cwd(), "node_modules", "web-ifc", "package.json"), "utf8")).version;
-      } catch { return ""; }
-    })()),
+    __WEB_IFC_VERSION__: JSON.stringify(webIfcVersion()),
   },
   build: {
     target: "esnext",
@@ -161,6 +157,12 @@ function crossOriginIsolation() {
   };
 }
 // --- OpenBIMStudio :: PWA — list every built file in the service worker so the app runs offline ---
+function webIfcVersion(): string {
+  try {
+    return JSON.parse(readFileSync(join(process.cwd(), "node_modules", "web-ifc", "package.json"), "utf8")).version || "";
+  } catch { return ""; }
+}
+
 function pwaPrecache() {
   let outDir = "dist";
   return {
@@ -179,10 +181,17 @@ function pwaPrecache() {
         }
       };
       walk(outDir);
-      const list = files.filter((f) => f !== "/sw.js" && !f.endsWith(".map") && !f.endsWith(".html"));
+      // Versioned web-ifc WASM is NOT precached into the per-build cache:
+      // it lives in the version-keyed cache (obs-webifc-<version>) populated
+      // on first IFC import, so it survives app rebuilds instead of being
+      // re-downloaded with every redeploy. Root /web-ifc/* files stay in the
+      // precache — they are the same-build fallback the importer uses when
+      // the versioned folder is unavailable.
+      const list = files.filter((f) => f !== "/sw.js" && !f.endsWith(".map") && !f.endsWith(".html") && !/^\/web-ifc\/\d+\.\d+\.\d+\//.test(f));
       const hash = createHash("sha1").update(list.join("|")).update(String(Date.now())).digest("hex").slice(0, 10);
       const src = readFileSync(swPath, "utf8")
         .replace("__OBS_BUILD__", hash)
+        .replaceAll("__OBS_WEB_IFC_VERSION__", webIfcVersion())
         .replace("/*__OBS_PRECACHE__*/ []", JSON.stringify(list));
       writeFileSync(swPath, src);
     },

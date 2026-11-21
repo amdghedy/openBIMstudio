@@ -73,7 +73,11 @@ export function setupPwa(): void {
   try { void navigator.storage?.persist?.(); } catch { /* */ }
 
   if (!("serviceWorker" in navigator) || !(import.meta as any).env?.PROD) return;
-  window.addEventListener("load", () => {
+  // The boot steps run long after window load on a cold start, so a bare
+  // load listener misses its event and the worker never registers (proven
+  // 2026-11-21: no registration 20 s after load in the production preview).
+  // Register immediately when the document is already complete.
+  const register = () => {
     // updateViaCache:"none" — /sw.js must never be resolved from the browser HTTP
     // cache, otherwise a new deploy can ship while the old worker keeps serving
     // stale (mismatched) assets like the web-ifc WASM.
@@ -86,6 +90,18 @@ export function setupPwa(): void {
           }
         });
       });
+      // The browser's automatic update check on navigation is throttled (up
+      // to 24 h between checks), so a redeploy can sit unnoticed for a day
+      // in an installed PWA — proven 2026-11-21: a rebuilt sw.js was served
+      // for minutes with no automatic install, while an explicit update()
+      // installed it at once. Check on every return to the tab, and once at
+      // boot so the next visit after a deploy picks it up immediately.
+      const checkForUpdate = () => { reg.update().catch(() => { /* offline: keep the current worker */ }); };
+      checkForUpdate();
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });
+      window.addEventListener("focus", checkForUpdate);
     }).catch((e) => console.warn("[pwa] service worker not registered", e));
-  });
+  };
+  if (document.readyState === "complete") register();
+  else window.addEventListener("load", register);
 }
