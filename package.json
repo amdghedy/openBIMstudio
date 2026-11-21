@@ -342,6 +342,8 @@
     "test:critical-workflow-pack-8": "node tests/critical-workflow-pack-8.test.cjs",
     "test:safe-load": "node tests/safe-load.test.cjs",
     "test:safe-load-audit": "node tests/safe-load-coverage-audit.test.cjs"  },
+    "test:mass-to-elements": "node tests/mass-to-elements.test.cjs",
+    "test:family-migration": "node tests/family-migration.test.cjs",
   "dependencies": {
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",

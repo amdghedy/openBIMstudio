@@ -2,6 +2,8 @@ import { services } from "../core/services";
 import { openFormModal } from "./form-modal";
 import type { SharedParameterType } from "../modules/families/shared-parameters";
 import type { TypeCatalog } from "../modules/families/type-catalog";
+import { catalogFromFamily, syncCatalogToFamily } from "../modules/families/catalog-sync";
+import { familyStore } from "../modules/families/store";
 
 let observer: MutationObserver | null = null;
 let installed = false;
@@ -12,6 +14,34 @@ function notify(message: string, kind: "success" | "error" | "warn" = "success")
   } catch (error) {
     console.warn("[family-catalog] notification unavailable:", error);
   }
+}
+
+function downloadText(filename: string, text: string, mime = "text/plain"): void {
+  const blob = new Blob([text], { type: `${mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function safeFilename(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, "_").trim() || "family";
+}
+
+/** The family currently selected in the Parametric Families panel, if any. */
+function selectedFamilyId(): string | null {
+  const select = document.querySelector<HTMLSelectElement>("#obs-param-family-panel [data-family]");
+  return select?.value || null;
+}
+
+/** Re-run the panel's family-select handler so its type list and parameter rows refresh. */
+function refreshPanelFamily(): void {
+  const select = document.querySelector<HTMLSelectElement>("#obs-param-family-panel [data-family]");
+  select?.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function createButton(label: string, action: string): HTMLButtonElement {
@@ -89,6 +119,41 @@ function renderSharedParameterManager(root: HTMLElement): void {
     });
   });
   root.append(heading, addButton);
+  const importSpButton = document.createElement("button");
+  importSpButton.type = "button";
+  importSpButton.textContent = "Import .txt";
+  importSpButton.title = "Import Revit shared-parameter definitions from a .txt file";
+  const exportSpButton = document.createElement("button");
+  exportSpButton.type = "button";
+  exportSpButton.textContent = "Export .txt";
+  exportSpButton.title = "Export the shared-parameter definitions as a Revit .txt file";
+  const spFileInput = document.createElement("input");
+  spFileInput.type = "file";
+  spFileInput.accept = ".txt,text/plain";
+  spFileInput.hidden = true;
+  spFileInput.addEventListener("change", () => {
+    const file = spFileInput.files?.[0];
+    if (!file) return;
+    void file.text().then((text) => {
+      const imported = services.use("sharedParameters").importText(text);
+      renderSharedParameterManager(root);
+      notify(`Imported ${imported.length} shared parameter(s) from ${file.name}.`);
+    }).catch((error: unknown) => {
+      console.warn("[family-catalog] shared-parameter import failed:", error);
+      notify(error instanceof Error ? error.message : String(error), "error");
+    }).finally(() => { spFileInput.value = ""; });
+  });
+  importSpButton.addEventListener("click", () => spFileInput.click());
+  exportSpButton.addEventListener("click", () => {
+    try {
+      const text = services.use("sharedParameters").exportText();
+      downloadText("shared-parameters.txt", text);
+      notify("Exported shared parameters to shared-parameters.txt.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error), "error");
+    }
+  });
+  root.append(importSpButton, exportSpButton, spFileInput);
   try {
     for (const parameter of services.use("sharedParameters").list()) {
       const row = document.createElement("div");
@@ -143,17 +208,58 @@ function mountControls(): void {
     if (!file) return;
     void services.use("typeCatalog").loadFromFile(file).then((catalog: TypeCatalog) => {
       window.dispatchEvent(new CustomEvent("obs:type-catalog-imported", { detail: catalog }));
+      // Slice 8 left the parsed catalog at the event with no listener,
+      // so an import changed nothing. Sync it into the family selected
+      // in the Parametric Families panel (types matched by name).
+      const familyId = selectedFamilyId();
       const status = document.querySelector<HTMLElement>("#obs-param-family-panel [data-status]");
-      if (status) status.textContent = `Imported ${catalog.types.length} type(s) for ${catalog.familyName}.`;
-      notify(`Imported ${catalog.types.length} type(s) for ${catalog.familyName}.`);
+      if (!familyId) {
+        const msg = `Imported ${catalog.types.length} type(s) for ${catalog.familyName}, but no family is selected in the Parametric Families panel — select a family and import again.`;
+        if (status) status.textContent = msg;
+        notify(msg, "warn");
+        return;
+      }
+      try {
+        const report = syncCatalogToFamily(catalog, familyId, familyStore);
+        const parts = [`Catalog applied to ${report.familyName}: ${report.created.length} type(s) created, ${report.updated.length} updated.`];
+        if (report.unknownParameters.length) parts.push(`Unknown parameters: ${report.unknownParameters.join(", ")}.`);
+        if (report.skippedValues.length) parts.push(`${report.skippedValues.length} value(s) skipped (type mismatch).`);
+        const msg = parts.join(" ");
+        if (status) status.textContent = msg;
+        notify(msg, report.skippedValues.length || report.unknownParameters.length ? "warn" : "success");
+        refreshPanelFamily();
+      } catch (error) {
+        console.warn("[family-catalog] catalog sync failed:", error);
+        notify(error instanceof Error ? error.message : String(error), "error");
+      }
     }).catch((error: unknown) => {
       console.warn("[family-catalog] type catalog import failed:", error);
       notify(error instanceof Error ? error.message : String(error), "error");
     }).finally(() => { fileInput.value = ""; });
   });
+  const exportButton = createButton("Export Type Catalog", "export-type-catalog");
+  exportButton.addEventListener("click", () => {
+    const familyId = selectedFamilyId();
+    if (!familyId) {
+      notify("Select a family in the Parametric Families panel first.", "warn");
+      return;
+    }
+    const family = familyStore.get(familyId);
+    if (!family) {
+      notify(`Selected family "${familyId}" no longer exists.`, "error");
+      return;
+    }
+    try {
+      const catalog = catalogFromFamily(family);
+      downloadText(`${safeFilename(family.name)}.txt`, services.use("typeCatalog").toCSV(catalog));
+      notify(`Exported ${catalog.types.length} type(s) of ${family.name} to ${safeFilename(family.name)}.txt.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error), "error");
+    }
+  });
   manage.addEventListener("click", openSharedParameters);
   importButton.addEventListener("click", () => fileInput.click());
-  controls.append(manage, importButton, fileInput);
+  controls.append(manage, importButton, exportButton, fileInput);
   familyPanel.appendChild(controls);
 }
 

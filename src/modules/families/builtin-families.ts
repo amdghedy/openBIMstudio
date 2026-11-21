@@ -65,9 +65,9 @@ export function createBuiltInFamilies(): FamilyDefinition[] {
       transform: { translate: [CONST(0), { ref: "elevation" }, CONST(0)] },
     },
     types: [
-      { id: id("slab-150"), name: "Concrete 150 mm", values: { thickness: 0.15 } },
-      { id: id("slab-200"), name: "Concrete 200 mm", values: { thickness: 0.2 } },
-      { id: id("slab-250"), name: "Concrete 250 mm", values: { thickness: 0.25 } },
+      { id: id("slab-150"), name: "Concrete 150 mm", values: { height: 0.15 } },
+      { id: id("slab-200"), name: "Concrete 200 mm", values: { height: 0.2 } },
+      { id: id("slab-250"), name: "Concrete 250 mm", values: { height: 0.25 } },
     ],
   });
 
