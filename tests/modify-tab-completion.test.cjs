@@ -187,7 +187,13 @@ t("Select Previous ignores unchanged snapshots and normalises order/duplicates",
 const ribbon = fs.readFileSync(path.join(ROOT, "src/shell/ribbon.ts"), "utf8");
 const modifyOptions = fs.readFileSync(path.join(ROOT, "src/features/modify-options.ts"), "utf8");
 const filterDialog = fs.readFileSync(path.join(ROOT, "src/features/selection-filter-dialog.ts"), "utf8");
-const selectPrevious = fs.readFileSync(path.join(ROOT, "src/features/select-previous.ts"), "utf8");
+// G4 convergence (2026-11-22): G2's select-previous.ts store is retired;
+// the previous-selection stores now live in selection-semantics.ts (pure
+// PreviousSelectionStore), authoring.ts (authored side) and selection.ts
+// (fragment manager side), composed by selectPreviousCombined().
+const selectionSemantics = fs.readFileSync(path.join(ROOT, "src/features/selection-semantics.ts"), "utf8");
+const selectionManager = fs.readFileSync(path.join(ROOT, "src/features/selection.ts"), "utf8");
+const authoringSrc = fs.readFileSync(path.join(ROOT, "src/features/authoring.ts"), "utf8");
 
 t("ribbon renders the model for authored + linked selections", () => {
   assert.ok(/buildModifyTabModel\(elements\)/.test(ribbon), "ribbon must build the tab from the model");
@@ -204,14 +210,13 @@ t("ribbon shows the linked tab when only linked elements are selected", () => {
 
 t("ribbon subscribes to fragment selection changes (authoring change alone never fires for linked picks)", () => {
   assert.ok(/ensureFragmentSelectionSubscription\(\)/.test(ribbon));
-  assert.ok(/selection\?\.onChange/.test(ribbon) || /\.onChange\(\(\) => \{ noteSelectionChange\(\); syncContextTab\(\); \}\)/.test(ribbon));
+  assert.ok(/sel\?\.onChange/.test(ribbon));
 });
 
-t("ribbon records every selection change for Select Previous", () => {
-  assert.ok(/noteSelectionChange\(\);/.test(ribbon));
-  assert.ok(/restorePreviousSelection\(\)/.test(ribbon), "Select Previous button must call the restore");
-  assert.ok(!/ctrl\+left/i.test(ribbon) || /binding pending/i.test(ribbon),
-    "Ctrl+Left must not be advertised as a working binding");
+t("ribbon Select Previous button calls the shared combined restore (G4 convergence)", () => {
+  assert.ok(/selectPreviousCombined\(\)/.test(ribbon), "Select Previous button must call the shared restore");
+  assert.ok(/Ctrl\+Left/.test(ribbon), "Ctrl+Left is a real binding now (G4) and must be advertised");
+  assert.ok(!/binding pending/.test(ribbon), "the G2 'binding pending' note is retired by G4");
 });
 
 t("Measure panel is wired into both contextual tab modes (selection + placement)", () => {
@@ -231,17 +236,20 @@ t("disabled ribbon buttons exist and carry the reason as tooltip", () => {
 t("Filter dialog is a real one-shot filter, not a persistent profile", () => {
   assert.ok(/openFormModal\(\{/.test(filterDialog));
   assert.ok(/kind: "checkbox"/.test(filterDialog));
-  assert.ok(/selectAllAuthored\(keptIds\)/.test(filterDialog), "authored Filter must narrow via selectAllAuthored");
-  assert.ok(/sel\?\.replace\?\.\(next\)/.test(filterDialog), "linked Filter must narrow via fragment replace");
+  assert.ok(/applySelectionItems\(kept\)/.test(filterDialog), "Filter must apply the kept items via the shared applier");
+  assert.ok(/setSelectedAuthored\(authoredIds, "replace"\)/.test(filterDialog), "authored Filter must narrow via setSelectedAuthored");
+  assert.ok(/selection\.replace\(snap\)/.test(filterDialog), "linked Filter must narrow via the fragment manager replace");
   assert.ok(!/setFilter\(/.test(filterDialog), "Filter must not set the persistent category filter");
-  assert.ok(/withSelectionRecordingPaused/.test(filterDialog), "Filter must not corrupt the previous-selection slot mid-apply");
 });
 
-t("Select Previous restore covers authored + linked and skips deleted elements", () => {
-  assert.ok(/selectAllAuthored\(authoredIds\)/.test(selectPrevious));
-  assert.ok(/sel\?\.replace\?\.\(map\)/.test(selectPrevious));
-  assert.ok(/droppedAuthored/.test(selectPrevious));
-  assert.ok(/withSelectionRecordingPaused/.test(selectPrevious));
+t("Select Previous restore covers authored + linked (G4 shared stores)", () => {
+  assert.ok(/export class PreviousSelectionStore/.test(selectionSemantics), "shared store must exist");
+  assert.ok(/restore\(current: readonly T\[\]\)/.test(selectionSemantics), "restore must swap (toggle-back)");
+  assert.ok(/export function selectPreviousAuthored/.test(authoringSrc), "authored side must expose selectPreviousAuthored");
+  assert.ok(/export function hasPreviousAuthoredSelection/.test(authoringSrc));
+  assert.ok(/async selectPrevious\(\)/.test(selectionManager), "fragment manager must expose selectPrevious");
+  assert.ok(/hasPreviousSelection\(\)/.test(selectionManager));
+  assert.ok(/export async function selectPreviousCombined/.test(filterDialog), "combined restore must compose both sides");
 });
 
 t("modify-options exposes the linked half of the selection", () => {
@@ -250,10 +258,11 @@ t("modify-options exposes the linked half of the selection", () => {
   assert.ok(/selection\?\.snapshot/.test(modifyOptions));
 });
 
-t("no Ctrl+Left shortcut is registered anywhere for Select Previous", () => {
+t("Ctrl+Left is registered for Select Previous (G4 binding)", () => {
   const shortcuts = fs.readFileSync(path.join(ROOT, "src/shell/default-shortcuts.ts"), "utf8");
-  assert.ok(!/select-previous|Select Previous/i.test(shortcuts),
-    "Ctrl+Left binding belongs to G8 — this branch must not register it");
+  assert.ok(/id: "select-previous"/.test(shortcuts), "G4 registers the select-previous shortcut");
+  assert.ok(/keys: "ctrl\+arrowleft"/.test(shortcuts), "binding must be Ctrl+Left");
+  assert.ok(/selectPreviousCombined\(\)/.test(shortcuts), "shortcut must run the shared combined restore");
 });
 
 console.log(`\nmodify-tab-completion: ${pass} assertions passed`);

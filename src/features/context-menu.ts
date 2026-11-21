@@ -9,6 +9,7 @@ import {
   setSelectedAuthored,
   pickAuthoredElementAt,
   pickAuthoredHitAt,
+  hasPreviousAuthoredSelection,
 } from "./authoring";
 import { beginEdit, beginEditFromSelection, openFragEditPanel } from "./frag-edit";
 import { buildContextMenu, type MenuItem } from "./context-menu-model";
@@ -151,6 +152,7 @@ async function openCtxMenu(e: MouseEvent) {
     authoredCount: authoredIds.length,
     linkedCount: actionCount,
     clipboardCount: getModifyClipboardCount(),
+    hasPreviousSelection: hasPreviousAuthoredSelection() || selection.hasPreviousSelection(),
     modifyDefs: listModifyActions(),
     activeModifyTool: (id) => isModifyToolActive(id as any),
     runModify: (id) => runModifyAction(id as any),

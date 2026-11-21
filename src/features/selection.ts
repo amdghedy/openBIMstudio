@@ -25,6 +25,12 @@ import { ctx } from "../core/context";
 import { register, tryUse, type SelectionService } from "../core/services";
 import { getSelectionPrefs } from "../core/selection-prefs";
 import { hoverGate } from "../core/hover-gate";
+import {
+  normalizeSelectionCategory,
+  PreviousSelectionStore,
+  resolveClickMode,
+  type SelectionItem,
+} from "./selection-semantics";
 
 export interface SelectionSnapshot {
   [modelId: string]: Set<number>;
@@ -40,8 +46,31 @@ export interface SelectionSet {
 
 const SETS_KEY = "obs.selection-sets.v1";
 
-function normalizeSelectionCategory(value: string): string {
-  return value.trim().toLowerCase().replace(/^ifc/, "").replace(/[^a-z0-9]/g, "");
+/** Encode a fragment snapshot as sorted `modelId:localId` keys (previous-selection store). */
+function encodeSelectionSnapshot(snap: SelectionSnapshot): string[] {
+  const out: string[] = [];
+  for (const [m, s] of Object.entries(snap)) for (const id of s) out.push(`${m}:${id}`);
+  return out.sort();
+}
+
+function decodeSelectionSnapshot(keys: readonly string[]): SelectionSnapshot {
+  const out: SelectionSnapshot = {};
+  for (const key of keys) {
+    const i = key.lastIndexOf(":");
+    if (i < 0) continue;
+    const m = key.slice(0, i);
+    const id = Number(key.slice(i + 1));
+    if (!Number.isFinite(id)) continue;
+    if (!out[m]) out[m] = new Set();
+    out[m].add(id);
+  }
+  return out;
+}
+
+function snapshotsEqual(a: SelectionSnapshot, b: SelectionSnapshot): boolean {
+  const ea = encodeSelectionSnapshot(a);
+  const eb = encodeSelectionSnapshot(b);
+  return ea.length === eb.length && ea.every((v, i) => v === eb[i]);
 }
 
 function categoryMatchesFilter(filter: Iterable<string> | null, category: string): boolean {
@@ -59,6 +88,31 @@ class SelectionManager {
   private filter: Set<string> | null = null;
   private filterRevision = 0;
   private highlightStyle = "select";
+  /** Selection before the last change (Revit "Select Previous", Ctrl+Left). */
+  private previousStore = new PreviousSelectionStore<string>();
+
+  /**
+   * Remember the current selection as the previous one, ahead of a change.
+   * No-op when the selection is unchanged, so no-op commits (a Shift-click
+   * on an unselected element, clearing an empty selection) cannot overwrite
+   * a meaningful previous set.
+   */
+  private notePrevious(): void {
+    this.previousStore.note(encodeSelectionSnapshot(this.map));
+  }
+
+  hasPreviousSelection(): boolean {
+    return this.previousStore.hasPrevious();
+  }
+
+  /** Restore the previous selection (swap: a second press toggles back). */
+  async selectPrevious(): Promise<boolean> {
+    const prev = this.previousStore.restore(encodeSelectionSnapshot(this.map));
+    if (!prev) return false;
+    this.replaceInternal(decodeSelectionSnapshot(prev), false, false);
+    await this.applyToHighlighter();
+    return true;
+  }
 
   onChange(cb: () => void): () => void {
     this.listeners.add(cb);
@@ -95,19 +149,26 @@ class SelectionManager {
   }
 
   // ── Mutate ──
+  // The previous-selection note fires only when the selection really
+  // changes; the emit behaviour below is unchanged (a redundant emit is
+  // harmless, a lost "previous" is not).
   add(modelId: string, localId: number): void {
+    if (!this.has(modelId, localId)) this.notePrevious();
     if (!this.map[modelId]) this.map[modelId] = new Set();
     this.map[modelId].add(localId);
     this.emit();
     if (this.filter) void this.reconcileFilter();
   }
   addMany(modelId: string, ids: Iterable<number>): void {
+    const list = [...ids];
+    if (list.some((id) => !this.has(modelId, id))) this.notePrevious();
     if (!this.map[modelId]) this.map[modelId] = new Set();
-    for (const id of ids) this.map[modelId].add(id);
+    for (const id of list) this.map[modelId].add(id);
     this.emit();
     if (this.filter) void this.reconcileFilter();
   }
   remove(modelId: string, localId: number): void {
+    if (this.has(modelId, localId)) this.notePrevious();
     this.map[modelId]?.delete(localId);
     if (this.map[modelId]?.size === 0) delete this.map[modelId];
     this.emit();
@@ -115,6 +176,7 @@ class SelectionManager {
   removeMany(modelId: string, ids: Iterable<number>): void {
     const s = this.map[modelId];
     if (!s) return;
+    if ([...ids].some((id) => s.has(id))) this.notePrevious();
     for (const id of ids) s.delete(id);
     if (s.size === 0) delete this.map[modelId];
     this.emit();
@@ -124,6 +186,11 @@ class SelectionManager {
     else this.add(modelId, localId);
   }
   replace(snap: SelectionSnapshot, reconcile = true): void {
+    this.replaceInternal(snap, reconcile, true);
+  }
+  /** Inner replace: `note=false` for filter reconciliation / Select Previous restore. */
+  private replaceInternal(snap: SelectionSnapshot, reconcile = true, note = true): void {
+    if (note && !snapshotsEqual(this.map, snap)) this.notePrevious();
     this.map = {};
     for (const [m, s] of Object.entries(snap)) {
       if (s.size) this.map[m] = new Set(s);
@@ -132,6 +199,7 @@ class SelectionManager {
     if (reconcile && this.filter) void this.reconcileFilter();
   }
   clear(): void {
+    if (!this.isEmpty()) this.notePrevious();
     this.map = {};
     this.emit();
   }
@@ -141,18 +209,16 @@ class SelectionManager {
     localId: number,
     mods: { ctrl?: boolean; shift?: boolean; alt?: boolean },
   ): void {
-    // BIM-style selection modifiers:
+    // Revit selection modifiers (shared rule in selection-semantics.ts):
     //   plain click  = replace
     //   Ctrl/Cmd     = add
-    //   Shift        = remove
-    //   Alt          = remove (kept as a useful accessibility/legacy alias)
-    if (mods.alt || mods.shift) {
-      this.remove(modelId, localId);
-    } else if (mods.ctrl) {
-      this.add(modelId, localId);
-    } else {
-      this.replace({ [modelId]: new Set([localId]) });
-    }
+    //   Shift / Alt  = remove
+    // (Shift-remove was already the behaviour here; the rule is now shared
+    // with the plan view instead of living in two places.)
+    const mode = resolveClickMode(mods);
+    if (mode === "remove") this.remove(modelId, localId);
+    else if (mode === "add") this.add(modelId, localId);
+    else this.replace({ [modelId]: new Set([localId]) });
   }
 
   // ── Filter ──
@@ -211,7 +277,9 @@ class SelectionManager {
       }
       if (keep.size) next[modelId] = keep;
     }
-    this.replace(next, false);
+    // Filter reconciliation is not a user selection change: it must not
+    // overwrite the previous-selection snapshot.
+    this.replaceInternal(next, false, false);
     await this.applyToHighlighter();
   }
   getFilter(): string[] | null {
@@ -294,6 +362,57 @@ class SelectionManager {
     } catch (e) {
       console.warn("[selection] selectSimilar failed", e);
     }
+  }
+
+  /** Category index for one fragment model, cached per model instance. */
+  private async categoryIndex(modelId: string): Promise<Map<number, string> | null> {
+    const model: any = ctx.fragments.list.get(modelId);
+    if (!model?.getItemsOfCategories) return null;
+    let cached = categoryCache.get(modelId);
+    // Model IDs can be reused after unload/reload. Never apply a stale category
+    // index to a different model instance with the same ID.
+    if (!cached || cached.model !== model) {
+      const categories = await model.getItemsOfCategories([/.+/]);
+      const byId = new Map<number, string>();
+      for (const [category, ids] of Object.entries(categories ?? {})) {
+        for (const id of (ids as number[]) ?? []) byId.set(id, category);
+      }
+      cached = { model, byId };
+      categoryCache.set(modelId, cached);
+    }
+    return cached.byId;
+  }
+
+  /**
+   * Every element with geometry in every loaded fragment model, as
+   * SelectionItems (category = IFC class; a fragment has no family type
+   * of its own, so Select All Instances matches the same IFC class).
+   * Used by the Filter dialog and Select All Instances over a mixed
+   * authored + fragment selection.
+   */
+  async fragmentCatalog(): Promise<SelectionItem[]> {
+    const out: SelectionItem[] = [];
+    for (const [modelId, model] of ctx.fragments.list) {
+      try {
+        const ids = (await (model as any).getItemsIdsWithGeometry()) as number[];
+        if (!ids?.length) continue;
+        const byId = await this.categoryIndex(modelId);
+        for (const id of ids) {
+          const category = byId?.get(id) ?? "unknown";
+          out.push({ key: `${modelId}:${id}`, source: "fragment", category, type: category, modelId, localId: id });
+        }
+      } catch (err) {
+        console.warn("[selection] fragment catalog failed", err);
+      }
+    }
+    return out;
+  }
+
+  /** The current fragment selection, as SelectionItems with categories. */
+  async selectionItems(): Promise<SelectionItem[]> {
+    const catalog = await this.fragmentCatalog();
+    const selected = new Set(encodeSelectionSnapshot(this.snapshot()));
+    return catalog.filter((item) => selected.has(item.key));
   }
 
   async invert(): Promise<void> {
@@ -463,6 +582,10 @@ export const selection = new SelectionManager();
     selectAll: () => selection.selectAll(),
     invert: () => selection.invert(),
     selectSimilar: (m, id) => selection.selectSimilar(m, id),
+    selectPrevious: () => selection.selectPrevious(),
+    hasPreviousSelection: () => selection.hasPreviousSelection(),
+    fragmentCatalog: () => selection.fragmentCatalog(),
+    selectionItems: () => selection.selectionItems(),
     applyClick: (m, id, mods) => selection.applyClick(m, id, mods),
     adoptFromHighlighter: () => selection.adoptFromHighlighter(),
     applyToHighlighter: () => selection.applyToHighlighter(),

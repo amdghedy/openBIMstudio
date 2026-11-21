@@ -22,6 +22,8 @@ export interface MenuDeps {
   /** Run a registered BIM command (view.*, review.*, global.*, modify.*). */
   command: (id: string) => void;
   hasCommand: (id: string) => boolean;
+  /** Whether a previous selection exists (Select Previous enablement). */
+  hasPreviousSelection?: boolean;
   openDialog: (kind: "move" | "rotate" | "array" | "mirror") => void;
   setTool: (tool: string) => void;
   copyToClipboard: () => void;
@@ -121,6 +123,12 @@ export function buildContextMenu(d: MenuDeps): MenuItem[] {
   const sel: MenuItem[] = [];
   push2(sel, cmd("global.selectAll", "Select All", undefined, "Ctrl+A"));
   sel.push({ type: "action", text: "Select Similar", disabled: d.authoredCount < 1, onclick: () => d.runModify("select-similar") });
+  // G4/G15: Select All Instances (entire project — the 3D viewport has no
+  // per-view visibility query for fragments) and Select Previous (Ctrl+Left).
+  // Both are command-routed so they only appear once registered.
+  const sai = cmd("selection.selectAllInstances", "Select All Instances", undefined, undefined, total === 0);
+  if (sai && sai.type === "action") push2(sel, { ...sai, title: "All instances of the selected element's type, in the entire project" });
+  push2(sel, cmd("selection.selectPrevious", "Select Previous", undefined, "Ctrl+Left", !d.hasPreviousSelection));
   push2(sel, cmd("global.clearSelection", "Clear Selection", undefined, undefined, total === 0));
   items.push({ type: "sub", text: "Select", icon: "▢", items: sel });
 

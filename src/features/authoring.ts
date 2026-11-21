@@ -37,6 +37,7 @@ import { ctx } from "../core/context";
 import { register, type AuthoringService } from "../core/services";
 import { getSelectionPrefs } from "../core/selection-prefs";
 import { selection } from "./selection";
+import { PreviousSelectionStore } from "./selection-semantics";
 import { inputRouter, type Gesture, type Mods } from "../core/input-router";
 import { notify } from "../core/notify";
 import { checkEditAllowed } from "../modules/collaboration/edit-guard";
@@ -172,6 +173,10 @@ let activeFamilyId: string | null = null;
 let activeFamilyTypeId: string | null = null;
 
 const selectedIds = new Set<string>();
+/** Authored ids before the last selection change (Revit "Select Previous"). */
+const previousAuthoredStore = new PreviousSelectionStore<string>();
+/** True while Select Previous is applying, so the restore is not re-noted as a new change. */
+let restoringPreviousAuthored = false;
 /** Currently selected datum (grid line or level), if any. Mutually exclusive with element selection. */
 let selectedDatum: { kind: "grid" | "level"; id: string } | null = null;
 const elements: AuthoredElement[] = [];
@@ -6615,19 +6620,31 @@ export function deleteSelectedElement() {
  * Used by select-all.ts to combine fragment + authored selection.
  */
 export function selectAllAuthored(ids: string[]): void {
-  selectedIds.clear();
-  for (const id of ids) selectedIds.add(id);
-  applySelection();
-  refreshGrips();
-  updateLabel();
-  // Sync the property palette.
-  if (selectedIds.size === 1) {
-    const el = elements.find((e) => e.id === [...selectedIds][0]);
-    paletteTarget = el ? { mode: "edit", elementId: el.id, type: el.type } : null;
-  } else {
-    paletteTarget = null;
+  // Same replace as setSelectedAuthored, routed through it so Select All
+  // also records the previous selection for Select Previous.
+  setSelectedAuthored(ids, "replace");
+}
+
+/** Whether an authored previous selection exists to restore. */
+export function hasPreviousAuthoredSelection(): boolean {
+  return previousAuthoredStore.hasPrevious();
+}
+
+/**
+ * Revit "Select Previous" for authored elements: restore the authored ids
+ * in place before the last selection change (swap, so a second press
+ * toggles back). Returns false when there is nothing to restore.
+ */
+export function selectPreviousAuthored(): boolean {
+  const prev = previousAuthoredStore.restore([...selectedIds]);
+  if (!prev) return false;
+  restoringPreviousAuthored = true;
+  try {
+    setSelectedAuthored(prev, "replace");
+  } finally {
+    restoringPreviousAuthored = false;
   }
-  notifyAuthoringChange();
+  return true;
 }
 
 export async function clearAllElements(force = false): Promise<void> {
@@ -6765,6 +6782,16 @@ export function setSelectedAuthored(
   ids: string[],
   mode: "replace" | "add" | "remove" = "replace",
 ): void {
+  // Remember the selection before this change, so Select Previous
+  // (Ctrl+Left) can restore it. No-op when nothing actually changes.
+  if (!restoringPreviousAuthored) {
+    const next = mode === "replace" ? new Set(ids) : new Set(selectedIds);
+    if (mode === "add") for (const id of ids) next.add(id);
+    if (mode === "remove") for (const id of ids) next.delete(id);
+    const changed =
+      next.size !== selectedIds.size || [...next].some((id) => !selectedIds.has(id));
+    if (changed) previousAuthoredStore.note([...selectedIds]);
+  }
   if (mode === "replace") {
     selectedIds.clear();
     for (const id of ids) selectedIds.add(id);
@@ -7894,12 +7921,15 @@ export function setupAuthoring() {
     // ── Arrow-key nudge of selection (objects, annotations, dims, grids) ──
     // Base step = grid size (default 0.1 m). Hold Shift → 10× larger step.
     // Alt+Up/Down moves elevation (Y) instead of plan.
+    // Ctrl/Cmd + Arrow is NOT a nudge: it is Select Previous (Ctrl+Left,
+    // Revit) / reserved, so a held Ctrl/Cmd must not move the selection.
     {
       const isArrow =
         e.key === "ArrowLeft" || e.key === "ArrowRight" ||
         e.key === "ArrowUp" || e.key === "ArrowDown";
       const canNudge =
         isArrow &&
+        !e.ctrlKey && !e.metaKey &&
         (!activeTool || activeTool === "select") &&
         (selectedIds.size > 0 || !!selectedDatum);
       if (canNudge) {

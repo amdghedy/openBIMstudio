@@ -80,6 +80,15 @@ export interface SelectionService {
   /** Push the manager state into the OBC highlighter. */
   applyToHighlighter(): Promise<void>;
 
+  /** Restore the previous selection (Revit "Select Previous", Ctrl+Left). */
+  selectPrevious?(): Promise<boolean>;
+  /** Whether a previous selection exists to restore. */
+  hasPreviousSelection?(): boolean;
+  /** Every element with geometry in every loaded fragment model, with categories. */
+  fragmentCatalog?(): Promise<Array<{ key: string; source: "authored" | "fragment"; category: string; type: string; modelId?: string; localId?: number }>>;
+  /** The current fragment selection, with categories. */
+  selectionItems?(): Promise<Array<{ key: string; source: "authored" | "fragment"; category: string; type: string; modelId?: string; localId?: number }>>;
+
   /** Fit the camera to the current selection. */
   focus(): Promise<void>;
   /** World-space AABB of the current selection, or null. */

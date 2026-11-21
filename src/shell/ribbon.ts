@@ -56,8 +56,7 @@ import {
   type ModifyTabElement,
   type ModifyTabModel,
 } from "./modify-tab-model";
-import { openSelectionFilterDialog, applySelectionFilter } from "../features/selection-filter-dialog";
-import { noteSelectionChange, restorePreviousSelection } from "../features/select-previous";
+import { openSelectionFilterDialog, selectPreviousCombined } from "../features/selection-filter-dialog";
 import {
   getCurrentProject, saveProject, isDirty, onProjectChanged,
 } from "../modules/projects/projects";
@@ -3378,14 +3377,14 @@ function modifyTabItems(model: ModifyTabModel): HTMLElement[] {
     "select-all": (button) => b("select-all", "Select All", safe(() => { try { selectAllAuthored(getElements().map((e: any) => e.id)); } catch { /* */ } }, "Select all"), dis(button, { kbd: "Ctrl+A" })),
     "clear": (button) => b("clear", "Clear", cmd("global.clearSelection"), dis(button)),
     "filter": (button) => b("select-all", "Filter", safe(async () => {
-      const chosen = await openSelectionFilterDialog();
-      if (chosen) await applySelectionFilter(chosen);
+      // G4 convergence: the shared dialog module does the whole flow
+      // (dialog + apply + toast) — see selection-filter-dialog.ts.
+      await openSelectionFilterDialog();
     }, "Filter"), dis(button, { title: "Keep only the checked categories in the current selection" })),
-    // G2 note: Revit's binding is Ctrl+Left, but that key is contested —
-    // the arrow-key nudge handler fires on ANY arrow key (no ctrlKey guard)
-    // whenever a selection exists — so no keyboard binding is registered
-    // here. The command + button ship now; the binding is G8's follow-up.
-    "select-previous": (button) => b("undo", "Select Previous", safe(async () => { await restorePreviousSelection(); }, "Select previous"), dis(button, { title: "Restore the previous selection (Revit: Ctrl+Left — binding pending, see G8)" })),
+    // G4: Ctrl+Left is now a real binding (selection.selectPrevious in
+    // default-shortcuts.ts); the nudge handler no longer fires on
+    // Ctrl+Arrow, so the contested-key note from G2 is retired.
+    "select-previous": (button) => b("undo", "Select Previous", safe(async () => { await selectPreviousCombined(); }, "Select previous"), dis(button, { title: "Restore the previous selection (Revit: Ctrl+Left)", kbd: "Ctrl+Left" })),
     "properties": (button) => b("settings", "Properties", safe(() => { try { (ctx.features as any).propertyPalette?.open?.(); } catch { /* */ } }, "Properties"), dis(button)),
     "type-properties": (button) => b("settings", "Type Properties", cmd("modify.typeProperties"), dis(button)),
     "copy": (button) => b("copy", "Copy", safe(() => { void import("../features/modify-actions").then((m) => { const n = m.copySelectionToClipboard(); toast(n ? `Copied ${n} element(s)` : "Nothing to copy", n ? "success" : "warn"); }); }, "Copy"), dis(button, { kbd: "Ctrl+C" })),
@@ -3458,7 +3457,7 @@ function ensureFragmentSelectionSubscription(): void {
   try {
     const sel = (ctx.features as any).selection;
     if (sel?.onChange) {
-      sel.onChange(() => { noteSelectionChange(); syncContextTab(); });
+      sel.onChange(() => { syncContextTab(); });
       fragmentSelectionSubscribed = true;
     }
   } catch { /* retry on the next sync */ }
@@ -3466,11 +3465,10 @@ function ensureFragmentSelectionSubscription(): void {
 
 function syncContextTab() {
   ensureFragmentSelectionSubscription();
-  // Record the selection for Select Previous BEFORE the early return below:
-  // the tab key only tracks types/counts, but a same-type re-selection is
-  // still a new previous selection. noteSelectionChange shifts the stored
-  // slot only when the snapshot actually changed.
-  noteSelectionChange();
+  // G4: the previous selection is recorded at mutation time by the two
+  // stores (authoring.setSelectedAuthored and the selection manager's
+  // replace/clear/add/remove), so no ribbon-side recording call is needed
+  // here anymore — G2's select-previous.ts store is retired.
   const t = getActiveTool();
   const place = t && PLACE_TOOLS.has(t) ? t : null;
   let key: string | null = null;

@@ -122,6 +122,16 @@ export function registerDefaultShortcuts(): void {
     handler: () => { void selection.selectAll(); },
   });
   shortcuts.register({
+    // Revit "Select Previous" (Ctrl+Left). No conflict: the authoring
+    // arrow-nudge handler ignores Ctrl/Cmd+Arrow, and the registry runs
+    // in the capture phase ahead of it. When the plan view is open the
+    // combined restore delegates to the plan's own previous-selection store.
+    id: "select-previous", label: "Select Previous", keys: "ctrl+arrowleft", category: "select",
+    handler: () => {
+      void import("../features/selection-filter-dialog").then((m) => void m.selectPreviousCombined());
+    },
+  });
+  shortcuts.register({
     id: "cancel-or-clear",
     label: "Cancel tool / Clear selection",
     keys: "escape",

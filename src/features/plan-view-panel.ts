@@ -30,6 +30,12 @@ import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } fr
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
 import { ctx } from "../core/context";
 import { selection } from "./selection";
+import {
+  applyClickToMany,
+  applyClickToSet,
+  PreviousSelectionStore,
+  resolveClickMode,
+} from "./selection-semantics";
 import { buildTagAll, elementAnchor, leaderEnd, pointInBox, tagLabel, textBox, type TagMode } from "../modules/views/plan-tags";
 import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan-dim-geometry";
 import { history as planHistory } from "./history";
@@ -153,9 +159,23 @@ applyBtn.style.cssText =
 planPropsFooter.appendChild(applyBtn);
 planProps.append(planPropsHeader, planPropsBody, planPropsFooter);
 
-/** Active Floor Plan selection. Ctrl+LeftClick adds/toggles without clearing prior items. */
+/** Active Floor Plan selection. Ctrl+LeftClick adds without clearing prior items; Shift+LeftClick removes. */
 let planSelectedId: string | null = null;
 const planSelectedIds = new Set<string>();
+/** Selection before the last plan change (Revit "Select Previous", Ctrl+Left). */
+const planPreviousSelection = new PreviousSelectionStore<string>();
+/** True while Select Previous is applying, so the restore is not re-noted. */
+let restoringPlanPrevious = false;
+
+/** The authored elements rendered in the current plan (Visible-in-View set for Select All Instances). */
+function planVisibleAuthoredIds(): Set<string> {
+  const out = new Set<string>();
+  if (!currentPlan) return out;
+  for (const s of currentPlan.segments ?? []) if (s.source) out.add(s.source);
+  for (const a of currentPlan.arcs ?? []) if (a.source) out.add(a.source);
+  for (const f of currentPlan.fills ?? []) if (f.source) out.add(f.source);
+  return out;
+}
 /** Snapshot of the authored elements used for snapping and tagging (refreshed on regenerate and on a timer). */
 let authoredCache: any[] = [];
 let authoredRefreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -469,19 +489,17 @@ applyBtn.onclick = () => {
   footerStatus("Properties applied");
 };
 
-function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggle" = "replace") {
-  // The plan canvas shares the same category policy as 3D picking.
-  if (el && !selection.matchesAuthoredCategoryFilter(el.type, el.properties)) el = null;
-  if (el) { planDimSel = null; planAnnoSel = null; }
-  if (mode === "replace") {
-    planSelectedIds.clear();
-    if (el?.id) planSelectedIds.add(el.id);
-  } else if (el?.id && mode === "add") {
-    planSelectedIds.add(el.id);
-  } else if (el?.id && mode === "toggle") {
-    if (planSelectedIds.has(el.id)) planSelectedIds.delete(el.id);
-    else planSelectedIds.add(el.id);
+/** Replace the plan selection with `ids` and sync it to the authored selection. */
+function setPlanSelectedIds(ids: readonly string[]): void {
+  // Remember the selection before this change for Select Previous.
+  // No-op when nothing actually changes, and never while a restore is applying.
+  if (!restoringPlanPrevious) {
+    const changed =
+      ids.length !== planSelectedIds.size || ids.some((id) => !planSelectedIds.has(id));
+    if (changed) planPreviousSelection.note([...planSelectedIds]);
   }
+  planSelectedIds.clear();
+  for (const id of ids) planSelectedIds.add(id);
   planSelectedId = planSelectedIds.size === 1 ? [...planSelectedIds][0] : null;
   const selected = (authoredCache as any[]).filter((x) => planSelectedIds.has(x.id));
   obsPlanSelectedEl = selected.length === 1 ? selected[0] : null;
@@ -491,6 +509,100 @@ function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggl
   } catch { /* selection bridge optional */ }
   renderPlanProperties();
   if (currentPlan) renderPlan(currentPlan);
+}
+
+function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggle" | "remove" = "replace") {
+  // The plan canvas shares the same category policy as 3D picking.
+  if (el && !selection.matchesAuthoredCategoryFilter(el.type, el.properties)) el = null;
+  if (el) { planDimSel = null; planAnnoSel = null; }
+  // Revit click semantics (shared rule): Ctrl/Cmd adds, Shift removes,
+  // plain click replaces. Ctrl no longer toggles off an already-selected
+  // element — that now belongs to Shift, matching Revit and the 3D path.
+  if (mode === "replace") {
+    setPlanSelectedIds(el?.id ? [el.id] : []);
+  } else if (el?.id) {
+    setPlanSelectedIds([...applyClickToSet(planSelectedIds, el.id, mode)]);
+  }
+}
+
+/**
+ * Revit "Select Previous" for the plan: restore the plan selection in
+ * place before the last change (swap, so a second press toggles back).
+ * Returns false when there is nothing to restore. Exposed as
+ * `__obsPlanSelectPrevious` so the global Ctrl+Left command delegates here
+ * while the plan is open.
+ */
+function selectPlanPrevious(): boolean {
+  const prev = planPreviousSelection.restore([...planSelectedIds]);
+  if (!prev) {
+    footerStatus("Select Previous: no previous selection");
+    return false;
+  }
+  restoringPlanPrevious = true;
+  try {
+    setPlanSelectedIds(prev);
+  } finally {
+    restoringPlanPrevious = false;
+  }
+  footerStatus(
+    planSelectedIds.size > 1
+      ? `Previous selection restored · ${planSelectedIds.size} elements selected`
+      : planSelectedIds.size === 1
+        ? `Previous selection restored · 1 element selected`
+        : "Previous selection restored · nothing selected",
+  );
+  return true;
+}
+
+/** Mirror the current authored selection back into the plan set (after Filter / Select All Instances). */
+async function syncPlanSelectionFromAuthored(): Promise<void> {
+  try {
+    const m = await import("./authoring");
+    const ids = m.getSelectedIds().filter((id) => (authoredCache as any[]).some((x) => x.id === id));
+    setPlanSelectedIds(ids);
+  } catch { /* authoring bridge is optional */ }
+}
+
+/** Filter dialog over the current (mixed) selection; mirrors the result into the plan. */
+async function openPlanFilterDialog(): Promise<void> {
+  try {
+    const { openSelectionFilterDialog } = await import("./selection-filter-dialog");
+    const kept = await openSelectionFilterDialog();
+    if (kept == null) return;
+    await syncPlanSelectionFromAuthored();
+    footerStatus(
+      planSelectedIds.size > 1 ? `Filter applied · ${planSelectedIds.size} elements selected`
+      : planSelectedIds.size === 1 ? "Filter applied · 1 element selected"
+      : "Filter applied · nothing selected",
+    );
+  } catch (err) {
+    console.warn("[plan] filter dialog failed", err);
+  }
+}
+
+/** Select All Instances, restricted to the elements visible in this plan view when known. */
+async function selectPlanAllInstances(): Promise<void> {
+  try {
+    const { selectAllInstancesCombined } = await import("./selection-filter-dialog");
+    const visible = planVisibleAuthoredIds();
+    const authoredIds = new Set((authoredCache as any[]).map((x) => x.id));
+    const visibleAuthored = new Set([...visible].filter((id) => authoredIds.has(id)));
+    const visibleFragments = new Set([...visible].filter((id) => !authoredIds.has(id)));
+    // No rendered-source ids (e.g. before the first render): fall back to
+    // entire-project scope rather than selecting nothing.
+    const n = visibleAuthored.size || visibleFragments.size
+      ? await selectAllInstancesCombined({ scope: "view", visibleAuthoredIds: visibleAuthored, visibleFragmentKeys: visibleFragments })
+      : await selectAllInstancesCombined({ scope: "project" });
+    if (!n) return;
+    await syncPlanSelectionFromAuthored();
+    footerStatus(
+      planSelectedIds.size > 1 ? `Select All Instances · ${planSelectedIds.size} elements selected`
+      : planSelectedIds.size === 1 ? "Select All Instances · 1 element selected"
+      : "Select All Instances · nothing selected",
+    );
+  } catch (err) {
+    console.warn("[plan] select all instances failed", err);
+  }
 }
 
 obsAuthoredSelectionBridge = (ids: string[]) => {
@@ -990,6 +1102,12 @@ const btn = (label: string, onclick: () => void, primary = false) => {
 };
 
 const renderBtn = btn("? Regenerate", () => void regenerate(), true);
+const filterSelBtn = btn("Filter…", () => { void openPlanFilterDialog(); });
+const prevSelBtn = btn("Select Previous", () => { selectPlanPrevious(); });
+const allInstBtn = btn("Select All Instances", () => { void selectPlanAllInstances(); });
+filterSelBtn.title = "Filter the current selection by category";
+prevSelBtn.title = "Restore the previous selection (Ctrl+Left)";
+allInstBtn.title = "Select all instances of the selected element's type visible in this view";
 const cadBtn = btn("?? Link drawing", () => void linkCadUnderlay());
 const clearCadBtn = btn("Clear CAD", () => clearCadUnderlay());
 const printBtn = btn("?? Print", () => printPlan());
@@ -1744,6 +1862,7 @@ header.append(
   makeGroup("North", orientSelect, trueNorthBtn),
   makeGroup("", toolHint),
   makeGroup("Params", widthInp, heightInp, elevInp, slopeInp, wallOptsWrap),
+  makeGroup("Select", filterSelBtn, prevSelBtn, allInstBtn),
   spacer,
   makeGroup("", cadBtn, clearCadBtn, renderBtn, printBtn, exportBtn, closeBtn),
 );
@@ -3729,7 +3848,7 @@ function elementInPlanBox(el: any, minX: number, maxX: number, minZ: number, max
   return pts.every((q) => q.x >= minX && q.x <= maxX && q.z >= minZ && q.z <= maxZ);
 }
 
-async function commitPlanBoxSelect(additive: boolean) {
+async function commitPlanBoxSelect(mods: { ctrl?: boolean; meta?: boolean; shift?: boolean; alt?: boolean }) {
   if (!planBoxStart || !planBoxCur) return;
   const a = clientToWorld(planBoxStart.x, planBoxStart.y);
   const b = clientToWorld(planBoxCur.x, planBoxCur.y);
@@ -3773,9 +3892,10 @@ async function commitPlanBoxSelect(additive: boolean) {
         if (bestD > 0.9) best = null;
       }
       if (best) {
-        setPlanSelectedElement(best, additive ? "toggle" : "replace");
+        // Revit click semantics: Ctrl/Cmd adds, Shift removes, plain replaces.
+        setPlanSelectedElement(best, resolveClickMode(mods));
         footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} selected` : `Selected ${best.type}${best.name ? " · " + best.name : ""}`);
-      } else if (!additive) {
+      } else if (resolveClickMode(mods) === "replace") {
         setPlanSelectedElement(null);
         footerStatus("Nothing selected · click a wall, duct, or object");
       }
@@ -3792,16 +3912,17 @@ async function commitPlanBoxSelect(additive: boolean) {
   const minZ = Math.min(a.z, b.z), maxZ = Math.max(a.z, b.z);
   const crossing = planBoxCur.x < planBoxStart.x;
   try {
-    const { getElements, setSelectedAuthored } = await import("./authoring");
+    const { getElements } = await import("./authoring");
     const els = getElements();
     const hits = els.filter((el: any) =>
       selection.matchesAuthoredCategoryFilter(el?.type ?? "", el?.properties) &&
       elementInPlanBox(el, minX, maxX, minZ, maxZ, crossing),
     );
     const ids = hits.map((el: any) => el.id);
-    if (!additive) planSelectedIds.clear();
-    for (const id of ids) planSelectedIds.add(id);
-    setSelectedAuthored(ids, additive ? "add" : "replace");
+    // Revit box modifiers: Ctrl/Cmd adds, Shift removes, plain replaces.
+    // setPlanSelectedIds syncs the authored selection via the bridge.
+    const mode = resolveClickMode(mods);
+    setPlanSelectedIds([...applyClickToMany(planSelectedIds, ids, mode)]);
     footerStatus(
       `${crossing ? "Crossing" : "Window"}: ${ids.length} element(s)` +
       (planSelectedIds.size > ids.length ? ` · total ${planSelectedIds.size}` : ""),
@@ -3863,12 +3984,13 @@ async function moveSelectedInPlan(dx: number, dz: number) {
 
 
 // Right-click while placing (BIM authoring convention): Finish chain / Cancel / Repeat. Never the browser menu.
+// Right-click in select mode with a selection: selection commands (G4/G15).
 canvasWrap.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   e.stopPropagation();
   const placing = planMode === "linear" || planMode === "point" || planMode === "dim" || planMode === "tag" || planMode === "text";
   document.getElementById("obs-plan-ctx")?.remove();
-  if (!placing) return;
+  if (!placing && !planSelectedIds.size) return;
   const m = document.createElement("div");
   m.id = "obs-plan-ctx";
   m.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:100001;background:#fff;border:1px solid #cbd5e1;border-radius:4px;box-shadow:0 6px 18px rgba(0,0,0,.25);font:12px system-ui;min-width:190px;padding:3px 0;color:#111827`;
@@ -3884,6 +4006,16 @@ canvasWrap.addEventListener("contextmenu", (e) => {
     }
     m.appendChild(d);
   };
+  if (!placing) {
+    item("Select All Instances", () => { void selectPlanAllInstances(); });
+    item("Select Previous  (Ctrl+Left)", () => { selectPlanPrevious(); }, planPreviousSelection.hasPrevious());
+    item("Filter Selection…", () => { void openPlanFilterDialog(); });
+    item("Clear Selection  (Esc)", () => { setPlanSelectedIds([]); });
+    document.body.appendChild(m);
+    const close = (ev: Event) => { if (!m.contains(ev.target as Node)) { m.remove(); window.removeEventListener("pointerdown", close, true); } };
+    window.addEventListener("pointerdown", close, true);
+    return;
+  }
   item("Finish chain  (Enter)", () => finishPlanChain(), planMode === "linear" && planChain.length > 0);
   item("Cancel  (Esc)", () => key("Escape"));
   item("Repeat last command  (Space)", () => key(" "));
@@ -4343,7 +4475,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
           }
         }
         if (best) {
-          const mode = e.ctrlKey || e.metaKey ? "toggle" : "replace";
+          const mode = resolveClickMode({ ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, alt: e.altKey });
           setPlanSelectedElement(best, mode);
           footerStatus(planSelectedIds.size > 1 ? `${planSelectedIds.size} elements selected` : `Selected ${best.type} · ${best.name ?? best.id}`);
         } else {
@@ -4573,8 +4705,7 @@ window.addEventListener("mouseup", (e) => {
     canvasWrap.style.cursor = planMode === "navigate" ? "grab" : planMode === "move" ? "move" : planMode === "select" || planMode === "pan" ? "default" : "crosshair";
   }
   if (planBoxDragging) {
-    const additive = !!(e && (e.ctrlKey || e.metaKey || e.shiftKey));
-    void commitPlanBoxSelect(additive);
+    void commitPlanBoxSelect({ ctrl: !!e?.ctrlKey, meta: !!e?.metaKey, shift: !!e?.shiftKey, alt: !!e?.altKey });
   }
   if (planRegionDrag) {
     const d = planRegionDrag;
@@ -5324,6 +5455,9 @@ try {
 
   // Flag for 3D handlers to defer when plan is open
   (window as any).__obsPlanVisible = () => isPlanViewVisible();
+  // Global Select Previous (Ctrl+Left) delegates to the plan's own
+  // previous-selection store while the plan is open.
+  (window as any).__obsPlanSelectPrevious = () => isPlanViewVisible() && selectPlanPrevious();
 
   window.addEventListener("keydown", (e) => {
     if (!isPlanViewVisible()) return;

@@ -853,6 +853,13 @@ function createCommandCatalog() {
   registerBimCommand({ id: "global.cancel", label: "Cancel Current Command", ribbon: "Modify", group: "Selection", shortcut: "Esc", run: () => setAuthoringTool("select") });
   registerBimCommand({ id: "global.selectAll", label: "Select All", ribbon: "Modify", group: "Selection", shortcut: "Ctrl+A", run: () => { try { selectAllAuthored(getElements().map((e) => e.id)); } catch { /* */ } void selection.selectAll(); } });
   registerBimCommand({ id: "global.clearSelection", label: "Clear Selection", ribbon: "Modify", group: "Selection", run: clearSelection });
+  // G4 selection semantics (shared module: selection-filter-dialog.ts).
+  // Lazy imports keep the command registry free of the dialog's authoring weight.
+  registerBimCommand({ id: "selection.selectPrevious", label: "Select Previous", ribbon: "Modify", group: "Selection", shortcut: "Ctrl+Left", run: () => { void import("./selection-filter-dialog").then((m) => void m.selectPreviousCombined()); } });
+  registerBimCommand({ id: "selection.filter", label: "Filter Selection", ribbon: "Modify", group: "Selection", run: () => { void import("./selection-filter-dialog").then((m) => void m.openSelectionFilterDialog()); } });
+  // Entire-project scope: the 3D viewport has no per-view visibility query
+  // for fragments (the plan view passes its rendered ids for "Visible in View").
+  registerBimCommand({ id: "selection.selectAllInstances", label: "Select All Instances", ribbon: "Modify", group: "Selection", run: () => { void import("./selection-filter-dialog").then((m) => void m.selectAllInstancesCombined({ scope: "project" })); } });
   registerBimCommand({ id: "global.undo", label: "Undo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Z", run: () => void history.undo() });
   registerBimCommand({ id: "global.redo", label: "Redo", ribbon: "File", group: "Edit", shortcut: "Ctrl+Y", run: () => void history.redo() });
 }
