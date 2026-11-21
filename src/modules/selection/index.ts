@@ -14,6 +14,17 @@
  *
  * Diagnostic codes: MOD-SEL-nnn (spec §2.6).
  * Pure module: no DOM — safe to unit-test in Node.
+ *
+ * Boundary (hardening item 20): this engine selects AUTHORED elements
+ * (string ids + plan geometry) for the Selection Inspector dialog in
+ * src/features/engine-ui.ts — its only live consumer. It is NOT the live
+ * viewport selection, which is the SelectionManager in
+ * src/features/selection.ts (fragment modelId/localId, highlighter
+ * bridge, click-to-select, registered as the services SelectionService).
+ * The two share the word "selection" but serve disjoint element
+ * universes; neither subsumes the other, so neither may be deleted as
+ * "the duplicate". Which copy runs where is pinned by
+ * tests/selection-generations.test.cjs.
  */
 
 import type { RelationshipRegistry } from "../relationships";

@@ -5,6 +5,17 @@
  * Two-way bridge to the OBC highlighter (source of truth for rendering).
  * Named selection sets, persisted in localStorage.
  * Click-to-select for fragments wired via setupClickToSelect().
+ *
+ * Boundary (hardening item 20): this is the LIVE viewport selection for
+ * fragment (IFC) models — modelId -> Set<number> local ids, registered as
+ * the canonical services SelectionService and published on
+ * ctx.features.selection by main.ts. It is NOT the authored-element
+ * selection engine in src/modules/selection/index.ts (pure SelectionEngine:
+ * plan hit-testing over authored elements by string id, reachable only
+ * from the Selection Inspector dialog). The two share the word "selection"
+ * but serve disjoint element universes; neither subsumes the other, so
+ * neither may be deleted as "the duplicate". Which copy runs where is
+ * pinned by tests/selection-generations.test.cjs.
  */
 import { authoredOwnsClick } from "./pick-arbiter";
 import * as THREE from "three";
