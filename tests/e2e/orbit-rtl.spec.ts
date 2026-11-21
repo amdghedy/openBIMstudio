@@ -676,7 +676,18 @@ test('WALK MODE: smooth constant-speed walking, stops at a wall without passing 
     requestAnimationFrame(loop);
   });
   await page.keyboard.down('w');
-  await page.waitForTimeout(4500);
+  // Hold W until the walker has reached the wall AND settled (bounded wait). The simulation step is capped per frame, so
+  // on a slow CI runner the walk takes several times longer in wall-clock time; a fixed 4.5 s hold measured the runner.
+  {
+    let prevZ = Infinity, still = 0;
+    for (let i = 0; i < 60 && still < 3; i++) {
+      await page.waitForTimeout(500);
+      const q = await page.evaluate(() => (window as any).__OBS_CTX__.features.walkMode.getPose());
+      if (q && q.z < 2 && Math.abs(prevZ - q.z) < 0.01) still++; else still = 0;
+      prevZ = q ? q.z : prevZ;
+    }
+    await page.waitForTimeout(1500); // keep pressing against the wall: the last second is what is measured
+  }
   await page.keyboard.up('w');
   await page.waitForTimeout(700);
   const samples: number[][] = await page.evaluate(() => { const w = window as any; w.__walkRec = false; return w.__walkSamples; });
