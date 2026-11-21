@@ -48,6 +48,20 @@ jobs:
       - name: Production build (includes TypeScript typecheck)
         run: npm run build
 
+      # Hardening lint (item 17): warn-level __obs freeze + explicit-any
+      # counts. Report-only — findings never fail this step; a red run
+      # means the lint tooling itself broke. Baseline 2026-11-21: 3,585
+      # warnings / 0 errors (any 3,017, __obs 568).
+      - name: Hardening lint (report-only)
+        continue-on-error: true
+        run: npm run lint:hardening
+
+      # Structural report (item 17): file sizes, __obs count, import
+      # cycles, dead-file scan. Report-only, never fails the build.
+      - name: Structural report (non-blocking)
+        continue-on-error: true
+        run: npm run report:structural
+
       - name: Safe-load file boundary audit
         run: node scripts/check-safe-load-coverage.mjs
 

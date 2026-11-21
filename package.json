@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:strict": "tsc -p tsconfig.strict.json",
     "lint:hardening": "node scripts/lint-hardening.mjs",
+    "report:structural": "node scripts/check-structural-report.mjs",
     "verify:v50": "node scripts/verify-v50.mjs",
     "verify:v52": "node scripts/verify-v52.mjs",
     "verify:v54": "node scripts/verify-v54.mjs",
