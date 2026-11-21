@@ -46,10 +46,18 @@ import {
   setLevel, getLevel, getLastCommand, pinSelected,
   onAuthoringChange, getWallChain, setWallChain, reverseSelected, addWallSweepToSelected, clearWallSweepsSelected, cycleMepSelection, selectAllAuthored, getElements,
 } from "../features/authoring";
-import { selectedAuthored, selectionCategory } from "../features/modify-options";
+import { selectedAuthored, selectedLinked } from "../features/modify-options";
 import { PLACE_TOOLS } from "../features/place-options";
 import { runModifyAction, type ModifyActionId } from "../features/modify-actions";
 import { getModifyCommandDefinition } from "../modules/modify/registry";
+import {
+  buildModifyTabModel,
+  type ModifyTabButton,
+  type ModifyTabElement,
+  type ModifyTabModel,
+} from "./modify-tab-model";
+import { openSelectionFilterDialog, applySelectionFilter } from "../features/selection-filter-dialog";
+import { noteSelectionChange, restorePreviousSelection } from "../features/select-previous";
 import {
   getCurrentProject, saveProject, isDirty, onProjectChanged,
 } from "../modules/projects/projects";
@@ -305,6 +313,10 @@ interface BtnOpts {
   title?: string;
   planned?: boolean;
   kbd?: string;
+  /** Rendered as a native disabled button (used by the linked-selection
+   *  Modify tab: transforms are shown but disabled, with the reason as
+   *  the tooltip). */
+  disabled?: boolean;
 }
 
 type Action = () => void | Promise<void>;
@@ -320,11 +332,12 @@ function b(
     typeof activeOrOpts === "boolean" ? { active: activeOrOpts, title } : activeOrOpts;
   const el = document.createElement("button");
   el.className = "obs-rb";
-  const tip = opts.kbd ? `${label}  (${opts.kbd})` : (opts.title || label);
+  const tip = opts.disabled ? (opts.title || label) : (opts.kbd ? `${label}  (${opts.kbd})` : (opts.title || label));
   el.title = tip;
   el.setAttribute("aria-label", label);
   if (opts.active) el.dataset.active = "1";
   if (opts.planned) el.dataset.planned = "1";
+  if (opts.disabled) { el.disabled = true; el.dataset.disabled = "1"; }
   el.innerHTML =
     `<span class="obs-rb__icon">${svgIcon(icon)}</span>` +
     `<span class="obs-rb__label">${esc(label)}</span>`;
@@ -3321,68 +3334,143 @@ function ctxItems(tool: string): HTMLElement[] {
     b("check" as IconName, "Finish", safe(() => pressKey("Enter"), "Finish"), { kbd: "Enter", title: "Finish the current chain and keep the tool" }),
     b("close", "Cancel", safe(() => pressKey("Escape"), "Cancel"), { kbd: "Esc", title: "Cancel the current segment / chain" }),
     b("check" as IconName, "Chain", safe(() => setWallChain(!getWallChain()), "Chain"), { active: getWallChain(), title: "Continue drawing from the last end point" }),
+    sep(),
+    groupLabel("Measure"),
+    b("measure", "Measure", safe(() => toggleMeasure(), "Measure"), {
+      active: isMeasureEnabled(),
+      title: "Double-click point A then point B. Red = X, green = Y, blue = Z, cyan = total",
+    }),
+    b("clear", "Clear Meas.", safe(() => clearMeasurements(), "Clear measurements"), { title: "Remove every measurement from the view" }),
   ];
   if (tool === "wall") items.push(mod("join-walls", "wall", undefined, { title: "Join the selected walls" }));
   return items;
 }
-/** RVT "Modify | Walls": every modification tool for the current selection, with category-specific extras. */
-function selectionItems(types: Set<string>): HTMLElement[] {
+/**
+ * RVT "Modify | Walls": every modification tool for the current selection.
+ *
+ * G2: the panel/button STRUCTURE comes from `buildModifyTabModel`
+ * (`src/shell/modify-tab-model.ts`) — this function only maps button ids to
+ * their (unchanged) handlers, so the node test pins the real tab contents.
+ * Disabled model buttons (linked selection: transforms) render disabled
+ * with the model's reason as tooltip; the note line is rendered as a
+ * strip hint. `selectionItems` is kept as the authored/mixed entry point;
+ * `linkedSelectionItems` renders the linked-only honest subset.
+ */
+function modifyTabItems(model: ModifyTabModel): HTMLElement[] {
   const act = (id: string) => safe(() => { void runModifyAction(id as ModifyActionId); }, id);
-  const mod = (id: ModifyActionId, icon: IconName, label?: string, options: any = {}) => {
+  const mod = (button: ModifyTabButton, id: ModifyActionId, icon: IconName, label?: string, options: any = {}) => {
     const definition = getModifyCommandDefinition(id);
     const displayLabel = label ?? definition?.label ?? id;
-    return b(icon, displayLabel, act(id), { ...options, kbd: options.kbd ?? definition?.commandAlias });
+    return b(icon, displayLabel, act(id), {
+      ...options,
+      kbd: options.kbd ?? definition?.commandAlias,
+      disabled: !button.enabled,
+      title: button.reason ?? options.title,
+    });
   };
   const cmd = (id: string) => safe(() => { (window as any).__obsBIMExperience?.execute?.(id); }, id);
-  const has = (...t: string[]) => t.some((x) => types.has(x));
-  const items: HTMLElement[] = [
-    groupLabel("Select"),
-    b("modify" as IconName, "Modify", safe(() => setAuthoringTool("select"), "Modify"), { kbd: "Esc" }),
-    mod("select-similar", "select-all", undefined, { title: "Select every element of the same type" }),
-    b("select-all", "Select All", safe(() => { try { selectAllAuthored(getElements().map((e: any) => e.id)); } catch { /* */ } }, "Select all"), { kbd: "Ctrl+A" }),
-    b("clear", "Clear", cmd("global.clearSelection")),
-    sep(),
-    groupLabel("Properties"),
-    b("settings", "Properties", safe(() => { try { (ctx.features as any).propertyPalette?.open?.(); } catch { /* */ } }, "Properties")),
-    b("settings", "Type Properties", cmd("modify.typeProperties")),
-    sep(),
-    groupLabel("Clipboard"),
-    b("copy", "Copy", safe(() => { void import("../features/modify-actions").then((m) => { const n = m.copySelectionToClipboard(); toast(n ? `Copied ${n} element(s)` : "Nothing to copy", n ? "success" : "warn"); }); }, "Copy"), { kbd: "Ctrl+C" }),
-    mod("paste", "copy", undefined, { kbd: "Ctrl+V" }),
-    sep(),
-    groupLabel("Modify"),
-    mod("move", "move"), mod("copy", "copy", "Copy Move", { title: "Copy: place copies at new points" }),
-    mod("rotate", "rotate"), mod("mirror", "mirror"),
-    mod("array", "array"), mod("offset", "move"),
-    mod("scale", "scale"),
-    mod("align-x", "move", "Align H", { title: "Align the selected elements on X" }), mod("align-z", "move", "Align V", { title: "Align the selected elements on Z" }),
-    mod("delete", "delete"),
-    sep(),
-    groupLabel("Geometry"),
-    b("move", "Trim/Extend", cmd("modify.trimExtend"), { kbd: "TR", title: "Trim or extend two line elements to a corner" }),
-    mod("split-mid", "move"),
-    b("move", "Flip", safe(() => { const n = reverseSelected(); toast(n ? `Flipped ${n} element(s)` : "Select linear elements", n ? "success" : "warn"); }, "Flip"), { title: "Reverse the drawing direction" }),
-  ];
-  if (has("wall", "curtain-wall")) items.push(mod("join-walls", "wall", undefined, { title: "Join walls that meet at a corner" }));
-  if (has("duct", "pipe", "cable-tray", "conduit")) {
-    items.push(b("connection", "Branch / Network", safe(() => { cycleMepSelection(); }, "Select branch"), { kbd: "Tab", title: "Tab: select the branch, then the whole network, then back to one run" }));
+  /** Pass-through for enabled buttons; disabled buttons get the model's reason as tooltip. */
+  const dis = (button: ModifyTabButton, options: BtnOpts = {}): BtnOpts =>
+    button.enabled ? options : { ...options, disabled: true, title: button.reason ?? options.title };
+  const handlers: Record<string, (button: ModifyTabButton) => HTMLElement> = {
+    "modify": (button) => b("modify" as IconName, "Modify", safe(() => setAuthoringTool("select"), "Modify"), dis(button, { kbd: "Esc" })),
+    "select-similar": (button) => mod(button, "select-similar", "select-all", undefined, { title: "Select every element of the same type" }),
+    "select-all": (button) => b("select-all", "Select All", safe(() => { try { selectAllAuthored(getElements().map((e: any) => e.id)); } catch { /* */ } }, "Select all"), dis(button, { kbd: "Ctrl+A" })),
+    "clear": (button) => b("clear", "Clear", cmd("global.clearSelection"), dis(button)),
+    "filter": (button) => b("select-all", "Filter", safe(async () => {
+      const chosen = await openSelectionFilterDialog();
+      if (chosen) await applySelectionFilter(chosen);
+    }, "Filter"), dis(button, { title: "Keep only the checked categories in the current selection" })),
+    // G2 note: Revit's binding is Ctrl+Left, but that key is contested —
+    // the arrow-key nudge handler fires on ANY arrow key (no ctrlKey guard)
+    // whenever a selection exists — so no keyboard binding is registered
+    // here. The command + button ship now; the binding is G8's follow-up.
+    "select-previous": (button) => b("undo", "Select Previous", safe(async () => { await restorePreviousSelection(); }, "Select previous"), dis(button, { title: "Restore the previous selection (Revit: Ctrl+Left — binding pending, see G8)" })),
+    "properties": (button) => b("settings", "Properties", safe(() => { try { (ctx.features as any).propertyPalette?.open?.(); } catch { /* */ } }, "Properties"), dis(button)),
+    "type-properties": (button) => b("settings", "Type Properties", cmd("modify.typeProperties"), dis(button)),
+    "copy": (button) => b("copy", "Copy", safe(() => { void import("../features/modify-actions").then((m) => { const n = m.copySelectionToClipboard(); toast(n ? `Copied ${n} element(s)` : "Nothing to copy", n ? "success" : "warn"); }); }, "Copy"), dis(button, { kbd: "Ctrl+C" })),
+    "paste": (button) => mod(button, "paste", "copy", undefined, { kbd: "Ctrl+V" }),
+    "move": (button) => mod(button, "move", "move"),
+    "copy-move": (button) => mod(button, "copy", "copy", "Copy Move", { title: "Copy: place copies at new points" }),
+    "rotate": (button) => mod(button, "rotate", "rotate"),
+    "mirror": (button) => mod(button, "mirror", "mirror"),
+    "array": (button) => mod(button, "array", "array"),
+    "offset": (button) => mod(button, "offset", "move"),
+    "scale": (button) => mod(button, "scale", "scale"),
+    "align-h": (button) => mod(button, "align-x", "move", "Align H", { title: "Align the selected elements on X" }),
+    "align-v": (button) => mod(button, "align-z", "move", "Align V", { title: "Align the selected elements on Z" }),
+    "delete": (button) => mod(button, "delete", "delete"),
+    "trim-extend": (button) => b("move", "Trim/Extend", cmd("modify.trimExtend"), dis(button, { title: "Trim or extend two line elements to a corner" })),
+    "split-mid": (button) => mod(button, "split-mid", "move"),
+    "flip": (button) => b("move", "Flip", safe(() => { const n = reverseSelected(); toast(n ? `Flipped ${n} element(s)` : "Select linear elements", n ? "success" : "warn"); }, "Flip"), dis(button, { title: "Reverse the drawing direction" })),
+    "join-walls": (button) => mod(button, "join-walls", "wall", undefined, { title: "Join walls that meet at a corner" }),
+    "branch-network": (button) => b("connection", "Branch / Network", safe(() => { cycleMepSelection(); }, "Select branch"), dis(button, { kbd: "Tab", title: "Tab: select the branch, then the whole network, then back to one run" })),
+    "pin": (button) => mod(button, "pin", "origin"),
+    "unpin": (button) => mod(button, "unpin", "origin"),
+    "create-similar": (button) => mod(button, "create-similar", "component"),
+    "match-props": (button) => mod(button, "match-props", "copy"),
+    "isolate": (button) => b("isolate", "Isolate", cmd("review.isolate"), dis(button, { title: "Temporary isolate" })),
+    "hide": (button) => b("clear", "Hide", cmd("review.hide"), dis(button, { title: "Temporary hide" })),
+    "reveal": (button) => b("show-all", "Reveal", cmd("review.reveal"), dis(button)),
+    "zoom": (button) => b("fit", "Zoom", cmd("review.focus"), dis(button, { title: "Zoom to selection" })),
+    "measure": (button) => b("measure", "Measure", safe(() => toggleMeasure(), "Measure"), dis(button, {
+      active: isMeasureEnabled(),
+      title: "Double-click point A then point B. Red = X, green = Y, blue = Z, cyan = total",
+    })),
+    "clear-measurements": (button) => b("clear", "Clear Meas.", safe(() => clearMeasurements(), "Clear measurements"), dis(button, { title: "Remove every measurement from the view" })),
+    "make-editable": (button) => b("move", "Make Editable", safe(async () => {
+      const n = await beginEditFromSelection();
+      if (!n) toast("Nothing selected — pick elements in the viewport first.", "warn");
+      else toast(`Editing ${n} element(s). Drag the gizmo.`, "success");
+    }, "Edit selected"), dis(button, { title: "Create professional Native Twins from linked IFC/FRAG elements while preserving the source object, exact geometry, dimensions and BIM metadata" })),
+  };
+  const items: HTMLElement[] = [];
+  for (const panel of model.panels) {
+    if (items.length) items.push(sep());
+    items.push(groupLabel(panel.label));
+    for (const button of panel.buttons) {
+      const make = handlers[button.id];
+      if (make) items.push(make(button));
+      else console.warn(`[ribbon] no handler for Modify tab button "${button.id}"`);
+    }
   }
-  items.push(
-    sep(),
-    groupLabel("Constraints"),
-    mod("pin", "origin"), mod("unpin", "origin"),
-    sep(),
-    groupLabel("Create"),
-    mod("create-similar", "component"), mod("match-props", "copy"),
-    sep(),
-    groupLabel("View"),
-    b("isolate", "Isolate", cmd("review.isolate"), { title: "Temporary isolate" }), b("clear", "Hide", cmd("review.hide"), { title: "Temporary hide" }),
-    b("show-all", "Reveal", cmd("review.reveal")), b("fit", "Zoom", cmd("review.focus"), { title: "Zoom to selection" }),
-  );
+  if (model.note) items.push(hint(model.note));
   return items;
 }
 
+/** Authored (or mixed authored + linked) selection: the full Modify tab. */
+function selectionItems(elements: ModifyTabElement[]): HTMLElement[] {
+  return modifyTabItems(buildModifyTabModel(elements));
+}
+
+/** Linked / fragment selection only: the view-only honest subset (G2). */
+function linkedSelectionItems(elements: ModifyTabElement[]): HTMLElement[] {
+  return modifyTabItems(buildModifyTabModel(elements));
+}
+
+// Fragment (linked) selection changes do not emit authoring changes, so
+// the ribbon subscribes to the fragment selection service directly. The
+// service may not be registered when the ribbon first mounts — retry on
+// every sync until the subscription lands.
+let fragmentSelectionSubscribed = false;
+function ensureFragmentSelectionSubscription(): void {
+  if (fragmentSelectionSubscribed) return;
+  try {
+    const sel = (ctx.features as any).selection;
+    if (sel?.onChange) {
+      sel.onChange(() => { noteSelectionChange(); syncContextTab(); });
+      fragmentSelectionSubscribed = true;
+    }
+  } catch { /* retry on the next sync */ }
+}
+
 function syncContextTab() {
+  ensureFragmentSelectionSubscription();
+  // Record the selection for Select Previous BEFORE the early return below:
+  // the tab key only tracks types/counts, but a same-type re-selection is
+  // still a new previous selection. noteSelectionChange shifts the stored
+  // slot only when the snapshot actually changed.
+  noteSelectionChange();
   const t = getActiveTool();
   const place = t && PLACE_TOOLS.has(t) ? t : null;
   let key: string | null = null;
@@ -3391,11 +3479,18 @@ function syncContextTab() {
   if (place) {
     key = `place:${place}`; label = `Modify | Place ${CTX_LABEL[place] ?? place}`; build = () => ctxItems(place);
   } else if (!t || t === "select") {
-    const els = selectedAuthored();
-    if (els.length) {
-      const types = new Set<string>(els.map((e) => e.type));
-      const cat = selectionCategory(els);
-      key = `sel:${[...types].sort().join(",")}`; label = `Modify | ${cat}`; build = () => selectionItems(types);
+    const authored = selectedAuthored();
+    const linked = selectedLinked();
+    if (authored.length || linked.length) {
+      const elements: ModifyTabElement[] = [
+        ...authored.map((e) => ({ id: e.id, category: e.type, sourceKind: "native" as const })),
+        ...linked,
+      ];
+      const model = buildModifyTabModel(elements);
+      const authoredTypes = [...new Set(authored.map((e) => e.type))].sort().join(",");
+      key = authored.length ? `sel:${authoredTypes}:L${linked.length}` : `linked:L${linked.length}`;
+      label = model.title;
+      build = () => (authored.length ? selectionItems(elements) : linkedSelectionItems(elements));
     }
   }
   if (key === ctxTool) return;

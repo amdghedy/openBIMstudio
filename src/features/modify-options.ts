@@ -1,6 +1,8 @@
 /** Options bar for a selection (RVT "Modify | Walls" options row): edit the dimensions of ALL selected
  *  elements at once. A value shown blank ("-") means the selection has different values. Units: metres. */
 import { getSelectedIds, getElementById, editSelectedParams } from "./authoring";
+import { ctx } from "../core/context";
+import type { ModifyTabElement, SelectionSnapshotData } from "../shell/modify-tab-model";
 
 type El = NonNullable<ReturnType<typeof getElementById>>;
 const ROUND = new Set(["pipe", "conduit"]);
@@ -16,6 +18,43 @@ export function selectedAuthored(): El[] {
   const out: El[] = [];
   for (const id of getSelectedIds()) { const e = getElementById(id); if (e) out.push(e); }
   return out;
+}
+
+/**
+ * Selected linked / fragment (IFC/FRAG) elements, from the fragment
+ * selection manager — the counterpart of `selectedAuthored()` for the
+ * linked half of the selection. Category names are not available
+ * synchronously (they come from the async per-model `getItemsOfCategories`
+ * index), so linked elements report category "Linked" here; the Filter
+ * dialog resolves real categories asynchronously.
+ */
+export function selectedLinked(): ModifyTabElement[] {
+  const out: ModifyTabElement[] = [];
+  try {
+    const snap = (ctx.features as any).selection?.snapshot?.() as Record<string, Set<number>> | undefined;
+    if (!snap) return out;
+    for (const [modelId, ids] of Object.entries(snap)) {
+      for (const id of ids ?? []) {
+        out.push({ id: `${modelId}:${id}`, category: "Linked", sourceKind: "linked" });
+      }
+    }
+  } catch { /* selection service not ready yet */ }
+  return out;
+}
+
+/** Combined authored + linked snapshot for Select Previous recording. */
+export function currentSelectionSnapshot(): SelectionSnapshotData {
+  const authoredIds = getSelectedIds();
+  const linked: Record<string, number[]> = {};
+  try {
+    const snap = (ctx.features as any).selection?.snapshot?.() as Record<string, Set<number>> | undefined;
+    if (snap) {
+      for (const [modelId, ids] of Object.entries(snap)) {
+        if (ids?.size) linked[modelId] = [...ids];
+      }
+    }
+  } catch { /* selection service not ready yet */ }
+  return { authoredIds, linked };
 }
 
 export function selectionCategory(els: El[]): string {
