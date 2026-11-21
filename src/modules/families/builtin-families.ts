@@ -233,8 +233,8 @@ export function createBuiltInFamilies(): FamilyDefinition[] {
       { name: "thickness", label: "Diameter",  type: "length", scope: "type",     default: 0.1, editable: true, step: 0.005, unit: "m", group: "Dimensions" },
       { name: "elevation", type: "length", scope: "instance", default: 0.0, editable: true, step: 0.1, unit: "m", group: "Constraints" },
       // openbim-families:formula-editor
-      { name: "circumference",    type: "length", scope: "instance", default: 0, editable: false, unit: "m",  group: "Computed", formula: "= pi() * diameter" },
-      { name: "crossSectionArea", type: "area",   scope: "instance", default: 0, editable: false, unit: "m2", group: "Computed", formula: "= pi() * (diameter / 2) * (diameter / 2)" },
+      { name: "circumference",    type: "length", scope: "instance", default: 0, editable: false, unit: "m",  group: "Computed", formula: "= pi() * thickness" },
+      { name: "crossSectionArea", type: "area",   scope: "instance", default: 0, editable: false, unit: "m2", group: "Computed", formula: "= pi() * (thickness / 2) * (thickness / 2)" },
     ],
     geometry: {
       kind: "cylinder",

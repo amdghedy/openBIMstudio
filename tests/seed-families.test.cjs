@@ -31,7 +31,7 @@ for (const e of entries) {
   const params = new Set(f.parameters.map((p) => p.name));
   const used = names(f.geometry); used.delete("const");
   for (const u of used) ok(params.has(u) || /^(sin|cos|min|max|abs|sqrt|pi|PI)$/i.test(u) || /^\d/.test(u), `${e.path}: geometry refers to unknown parameter "${u}"`);
-  for (const t of f.types ?? []) for (const k of Object.keys(t.parameters ?? {})) ok(params.has(k), `${e.path}: type "${t.name}" sets unknown parameter "${k}"`);
+  for (const t of f.types ?? []) for (const k of Object.keys(t.values ?? {})) ok(params.has(k), `${e.path}: type "${t.name}" sets unknown parameter "${k}"`);
 }
 // The two structural families specifically
 const col = JSON.parse(fs.readFileSync(path.join(root, "Structural/concrete-column-rectangular.json"), "utf8"));
