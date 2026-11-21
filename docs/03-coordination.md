@@ -1,7 +1,7 @@
 # Coordination & Clash Detection
 
 ## Clash Detective
-OpenBIMStudio features a Web Worker-based clash detection engine that can handle millions of triangle intersections without locking the UI.
+OpenBIMStudio features a Web Worker-based clash detection engine that runs off the UI thread, so a test does not lock the UI while it runs. Exact triangle-triangle testing is capped at 120,000 triangles per element (`MAX_TRIS_PER_ITEM`, `src/modules/clash/geometry.ts`); elements above that are tested by bounding box only, and the coverage line says so. The clash suite tests up to 200 elements — triangle counts in the millions have not been measured.
 
 ![Clash Results](assets/clash-results.png)
 

@@ -15,7 +15,10 @@
  * 1. BVH raycasting: uses three-mesh-bvh to build a Bounding Volume
  *    Hierarchy on every mesh's geometry. This makes raycast queries
  *    (selection, snapping, picking) O(log n) instead of O(n) — critical
- *    for large models with thousands of elements.
+ *    for models with thousands of elements on the authored/aux mesh
+ *    paths. (Fragment picking rides the GPU fast-pick and never
+ *    traverses these meshes — see bench/BENCHMARKS.md §6; BVH benefit
+ *    at scale is unmeasured beyond the 2,036-element fixture.)
  *
  * 2. InstancedMesh batching: groups authored elements of the same type
  *    into a single THREE.InstancedMesh, reducing draw calls.

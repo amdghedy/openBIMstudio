@@ -11,6 +11,10 @@
  *   medium.ifc   ~ 3 storeys, ≈ 450 elements
  *   large.ifc    ~ 8 storeys, ≈ 2000 elements
  *   fed-a..d.ifc 4 separate medium buildings (federation corpus)
+ *   xlarge.ifc   ~ 18 storeys, ≈ 20,000 elements — the scale target
+ *                (bench/BENCHMARKS.md §9). Generated on demand like the
+ *                rest; NOT checked in (see §9 for why), so a fresh clone
+ *                lists it in the manifest only after `npm run bench:fixtures`.
  *
  * Output: bench/fixtures/*.ifc + bench/fixtures/manifest.json
  * Deterministic: fixed grid layout, fixed names, fixed timestamp.
@@ -193,6 +197,10 @@ const fixtures = {
   "fed-b": building({ name: "fb", floors: 3, colsX: 4, colsY: 3, offsetX: 80, offsetY: 0 }),
   "fed-c": building({ name: "fc", floors: 3, colsX: 4, colsY: 3, offsetX: 0, offsetY: 80 }),
   "fed-d": building({ name: "fd", floors: 3, colsX: 4, colsY: 3, offsetX: 80, offsetY: 80 }),
+  // Scale target (BENCHMARKS.md §9): ~20,000 elements, ~10x the large tier.
+  // 18 floors x 16x12 room grid; exact element count is recorded in the
+  // manifest + §9 after generation (deterministic generator, fixed timestamp).
+  xlarge: building({ name: "x", floors: 18, colsX: 16, colsY: 12 }),
 };
 
 const manifest = { generated: TIMESTAMP, schema: "IFC4", fixtures: {} };

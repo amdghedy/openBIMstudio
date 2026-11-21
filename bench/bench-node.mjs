@@ -14,7 +14,7 @@
  * Output: bench/results/node-<label>.json
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,7 +77,15 @@ console.log(`[bench-node] label=${label} repeats=${repeats} node=${process.versi
     const suite = {};
     for (const [key, meta] of Object.entries(manifest.fixtures)) {
       if (key === "large-reference") continue;
-      const bytes = readFileSync(path.join(fixtureDir, `${key}.ifc`));
+      // The xlarge scale target is generated on demand (BENCHMARKS.md §9)
+      // and not checked in: skip it with a warning when the file is absent
+      // instead of crashing the whole suite on a fresh clone.
+      const fixtureFile = path.join(fixtureDir, `${key}.ifc`);
+      if (!existsSync(fixtureFile)) {
+        console.warn(`[suite] ifc-parse ${key} skipped: ${key}.ifc not present (run npm run bench:fixtures first)`);
+        continue;
+      }
+      const bytes = readFileSync(fixtureFile);
       const samples = [];
       let modelId = null;
       let elementCount = 0;

@@ -27,9 +27,9 @@
 | Site / Topo | ✅ v1 | `site-topo` |
 | Detailing | ✅ v1 | `detailing` |
 | Validation | ✅ Interactive | `validation` |
-| Worksharing & Central Sync | ✅ Enterprise | `collaboration/worksharing-engine` + `features/worksharing-panel` |
-| Out-of-Core Streaming & Octree | ✅ Enterprise | `streaming/spatial-octree` + `streaming/memory-budget-manager` |
-| High-Fidelity Batch Vector PDF | ✅ Enterprise | `export/batch-plotter` + `features/batch-plot-panel` |
+| Worksharing & Central Sync | ✅ v1 — small-team only | `collaboration/worksharing-engine` + `features/worksharing-panel` — server-sequenced merge, no CRDT; multi-user worksharing at Revit scale unproven (Revit parity rank 7) |
+| Out-of-Core Streaming & Octree | ⚠️ Library only — not wired into the load path | `streaming/spatial-octree` + `streaming/memory-budget-manager` — modules + monitoring panel exist, but nothing in the importer or render loop calls them; no automatic LOD / unloading; unmeasured on any large model |
+| High-Fidelity Batch Vector PDF | ✅ v1 — scale unmeasured | `export/batch-plotter` + `features/batch-plot-panel` — wired into the app, but no dedicated test and no measurement at enterprise volume |
 | Modify Engine Expansion (Group 2) | ✅ Production | `modify/group2` + `features/modify-group2-tool` (AxisAlign with lock, Split with gap, Wall corner miter/trim/extend) |
 | 2D Detail Hatching | ✅ Production | `detail-patterns/hatch-patterns` + `features/hatch-panel` (ANSI31, Concrete, Earth, Brick, Insulation) |
 | glTF / GLB 3D Exporter | ✅ Production | `export/gltf-native-twin` + `features/gltf-export-tool` (Direct glTF 2.0 binary serializer, IFC property extras, PBR) |
@@ -59,4 +59,4 @@
 - ~~UI wiring of the v0.68 authoring engines into the plan-view tools~~ ✅ v0.69 — `src/features/engine-ui.ts` (ribbon groups on Analyze / Architecture / Edit / Manage; see `docs/UI_WIRING_V69.md`)
 - ~~Structural design / rebar~~ ✅ v0.67 (2D frame FEM + steel/RC checks) — `src/modules/analytical-model`; rebar standards, clashes & lap splices closed
 - ~~High-fidelity print/PDF~~ ✅ v0.74+ — `src/modules/export/batch-plotter.ts` (Multi-sheet vector transmittal, watermarks, cover sheet & revision schedule)
-- ~~Large-model out-of-core loading~~ ✅ v0.74+ — `src/modules/streaming/spatial-octree.ts` + `src/modules/streaming/memory-budget-manager.ts` (Spatial 3D Octree, SSE calculation, dynamic LOD culling, memory threshold enforcement)
+- ~~Large-model out-of-core loading~~ ⚠️ Library only, not a loading path — `src/modules/streaming/spatial-octree.ts` + `src/modules/streaming/memory-budget-manager.ts` exist (octree, SSE calculation, LOD evaluation, budget enforcement as a module + monitoring panel), but no importer or render-loop caller uses them and no large-model measurement exists; do not claim out-of-core loading until the path is wired and measured (scale target: `bench/BENCHMARKS.md` §9).

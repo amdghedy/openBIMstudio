@@ -175,6 +175,13 @@ try {
   // ═════════════════════════════════════════════════════════════════════
   const loadSuite = {};
   for (const size of sizes) {
+    // The xlarge scale target is generated on demand (BENCHMARKS.md §9):
+    // fail with a usable message instead of a TypeError when the fixture
+    // (or its manifest entry) is not present.
+    if (!manifest.fixtures[size]) {
+      console.error(`[suite] ifc-load ${size}: no such fixture in bench/fixtures/manifest.json — run \`npm run bench:fixtures\` first (xlarge is generated on demand, not checked in).`);
+      process.exit(2);
+    }
     console.log(`[suite] ifc-load ${size} (${manifest.fixtures[size].elements} elements, ${(manifest.fixtures[size].bytes / 1024).toFixed(0)} KB)`);
     const entry = { fixtureBytes: manifest.fixtures[size].bytes, fixtureElements: manifest.fixtures[size].elements };
 

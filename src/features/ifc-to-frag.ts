@@ -1,5 +1,6 @@
 /**
- * IFC → FRAG converter for large models.
+ * IFC → FRAG converter for large models (tested to 2,036 elements;
+ * the 20,398-element scale target is bench/BENCHMARKS.md §9, UNMEASURED).
  *
  * Workflow:
  *   1. Convert IFC / IFCZIP → .frag

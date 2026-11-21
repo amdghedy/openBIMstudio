@@ -570,10 +570,10 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
   {
     id: "performance-budgets",
     area: "Platform",
-    status: "planned",
-    source: [],
-    evidence: ["docs/engineering/BASELINE.md §5"],
-    limitations: ["Large-model performance budgets and benchmarks are Phase 6 scope"],
+    status: "limited",
+    source: ["bench/check-budgets.mjs", "scripts/budget.json"],
+    evidence: ["bench/BENCHMARKS.md §9", "docs/engineering/BASELINE.md §5"],
+    limitations: ["Only the bundle budget is enforced in CI on main; import/parse budgets are measured but not gated until item 11 lands (branch fix/perf-budgets-fail-on-missing, unmerged)", "Largest tested fixture is 2,036 elements / 2.4 MB; the 20,398-element scale target (bench/BENCHMARKS.md §9) is UNMEASURED on real hardware"],
     affirmedIn: APP_VERSION,
   },
   {
