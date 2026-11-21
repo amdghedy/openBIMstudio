@@ -112,3 +112,25 @@ export const SavedViewsSchema = z.array(z.object({
   orthoZoom: z.number().finite().positive().optional(),
   createdAt: z.number().finite().nonnegative(),
 })).max(64);
+
+/**
+ * Markups sidecar (`.markups.json`, written by the drawing editor's Save and
+ * read back by its Load). Mirrors the `Markup` interface in
+ * `src/features/cad-viewer.ts`: `kind` is the closed set the renderer
+ * switches on, `pts` are finite drawing-plane coordinates, `text` is the
+ * optional annotation. Unknown keys are stripped by zod's default object
+ * behaviour, so a file carrying extra fields cannot smuggle state into the
+ * editor. `version` is the writer's envelope version (1 today); it is
+ * type-checked but not otherwise interpreted, as the legacy loader ignored it.
+ */
+export const MarkupsFileSchema = z.object({
+  version: z.number().int().min(1).optional(),
+  markups: z.array(z.object({
+    kind: z.enum(["line", "note", "dim", "cloud", "stamp", "leader", "dimang", "dimarc", "dimdia", "dimrad", "dimcenter"]),
+    pts: z.array(z.object({
+      x: z.number().finite(),
+      y: z.number().finite(),
+    })).max(10_000),
+    text: z.string().max(10_000).optional(),
+  })).max(10_000),
+});

@@ -40,6 +40,7 @@ import {
 } from "../modules/cad-viewer/clipboard";
 import type { DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
+import { safeLoad, MarkupsFileSchema } from "../core/safeLoad";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
@@ -13211,16 +13212,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const f = inp.files?.[0];
         if (!f) return;
         void f.text().then((txt) => {
-          try {
-            const data = JSON.parse(txt) as { markups?: Markup[] };
-            if (Array.isArray(data.markups)) {
-              markups = data.markups;
-              draw();
-              logCmd("Loaded " + markups.length + " markup(s) from " + f.name);
-            }
-          } catch (e) {
-            logCmd("Failed to load markups: " + (e as Error).message);
+          // `.markups.json` is untrusted file input (#90): size, depth and
+          // schema are enforced by safeLoad before anything reaches state.
+          // A rejected file leaves the current markups untouched.
+          const loaded = safeLoad(f.name, txt, MarkupsFileSchema);
+          if (!loaded.ok) {
+            logCmd(`Failed to load markups from ${f.name}: rejected (${loaded.error.stage}): ${loaded.error.issues.join("; ")} — your markups are unchanged.`);
+            return;
           }
+          markups = loaded.value.markups;
+          draw();
+          logCmd("Loaded " + markups.length + " markup(s) from " + f.name);
+        }).catch((e) => {
+          logCmd("Failed to read markups file: " + (e as Error).message);
         });
       };
       inp.click();

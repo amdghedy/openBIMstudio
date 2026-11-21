@@ -121,6 +121,51 @@ t("10 malformed import fixtures are rejected before any importer can consume the
   }
 });
 
+t("markups sidecar schema accepts the writer envelope and strips unknown keys", () => {
+  const valid = { version: 1, markups: [
+    { kind: "line", pts: [{ x: 0, y: 0 }, { x: 10, y: 5 }] },
+    { kind: "note", pts: [{ x: 1, y: 2 }], text: "check this" },
+    { kind: "dim", pts: [{ x: 0, y: 0 }, { x: 3, y: 4 }], text: "5.00" },
+  ] };
+  const r = safe.safeLoad("a.markups.json", JSON.stringify(valid), safe.MarkupsFileSchema);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.value.markups.length, 3);
+  assert.strictEqual(r.value.markups[0].kind, "line");
+  // Files without the version envelope (hand-written) still load; extra keys are stripped, never stored.
+  const bare = safe.safeLoad("b.markups.json", JSON.stringify({ markups: [] }), safe.MarkupsFileSchema);
+  assert.strictEqual(bare.ok, true);
+  const stripped = safe.safeLoad("c.markups.json", JSON.stringify({ version: 1, markups: [{ kind: "cloud", pts: [{ x: 0, y: 0 }], evil: "drop me" }], extra: 1 }), safe.MarkupsFileSchema);
+  assert.strictEqual(stripped.ok, true);
+  assert.strictEqual("evil" in stripped.value.markups[0], false);
+  assert.strictEqual("extra" in stripped.value, false);
+});
+t("markups sidecar schema rejects bad kinds, non-finite coordinates and oversized files", () => {
+  const badKind = safe.safeLoad("m.json", JSON.stringify({ markups: [{ kind: "explode", pts: [] }] }), safe.MarkupsFileSchema);
+  assert.strictEqual(badKind.ok, false);
+  assert.strictEqual(badKind.error.stage, "schema");
+  // 1e999 parses to Infinity in JSON: coordinates must stay finite or the renderer gets NaN geometry.
+  const nonFinite = safe.safeLoad("m.json", '{"markups":[{"kind":"line","pts":[{"x":1e999,"y":0}]}]}', safe.MarkupsFileSchema);
+  assert.strictEqual(nonFinite.ok, false);
+  assert.strictEqual(nonFinite.error.stage, "schema");
+  const tooMany = safe.safeLoad("m.json", JSON.stringify({ markups: Array.from({ length: 10_001 }, () => ({ kind: "line", pts: [] })) }), safe.MarkupsFileSchema);
+  assert.strictEqual(tooMany.ok, false);
+  const wrongRoot = safe.safeLoad("m.json", JSON.stringify([{ kind: "line", pts: [] }]), safe.MarkupsFileSchema);
+  assert.strictEqual(wrongRoot.ok, false);
+  const oversized = safe.safeLoad("m.json", JSON.stringify({ markups: [{ kind: "note", pts: [{ x: 0, y: 0 }], text: "x".repeat(100) }] }), safe.MarkupsFileSchema, 64);
+  assert.strictEqual(oversized.ok, false);
+  assert.strictEqual(oversized.error.stage, "size");
+});
+t("cad-viewer markups loader routes .markups.json through safeLoad (#90)", () => {
+  const viewer = fs.readFileSync(path.join(root, "src/features/cad-viewer.ts"), "utf8");
+  assert.match(viewer, /safeLoad\(f\.name, txt, MarkupsFileSchema\)/);
+  assert.match(viewer, /MarkupsFileSchema/);
+  assert.doesNotMatch(viewer, /JSON\.parse\(txt\)/);
+  assert.ok(viewer.indexOf("safeLoad(f.name, txt, MarkupsFileSchema)") < viewer.indexOf("markups = loaded.value.markups"),
+    "markups state must not mutate before validation");
+  const audit = fs.readFileSync(path.join(root, "scripts/check-safe-load-coverage.mjs"), "utf8");
+  assert.match(audit, /src\/features\/cad-viewer\.ts/);
+});
+
 (async () => {
   const doc = { id: "p", name: "P", createdAt: 1, updatedAt: 1, elements: [], models: [] };
   const blob = file.buildProjectFile(doc, [{ modelId: "m", name: "m.ifc", blob: new Blob(["abc"]) }]);
