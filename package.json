@@ -81,6 +81,7 @@
     "test:project-auto-reopen": "node tests/project-auto-reopen.test.cjs",
     "test:qto-property-filters": "node tests/qto-property-filters.test.cjs",
     "test:file-guard": "node tests/file-guard.test.cjs",
+    "test:ifc-type-objects": "node tests/ifc-type-objects.test.cjs",
     "test:dxf-malformed": "node tests/dxf-malformed.test.cjs",
     "test:ifc-corpus-manifest": "node tests/ifc-corpus-manifest.test.cjs",
     "test:property-invariants": "node tests/property-invariants.test.cjs",
