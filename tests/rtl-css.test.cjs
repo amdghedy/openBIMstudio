@@ -5,7 +5,17 @@
 // gap — the count is now zero, and any new physical property fails the test.
 const fs = require("fs"), path = require("path"), assert = require("assert");
 let n = 0; const ok = (c, m) => { assert.ok(c, m); n++; };
-const PHYSICAL = /(?<![\w-])(margin|padding|border)-(left|right)\b|border-(left|right)-color|text-align:\s*(left|right)\b|float:\s*(left|right)\b/;
+const PHYSICAL = /(?<![\w-])(margin|padding|border)-(left|right)\b|border-(left|right)-color|text-align:\s*(left|right)\b|float:\s*(left|right)\b|\.(margin|padding|border)(Left|Right)([A-Z]\w*)?\b|\.cssFloat\b/;
+// Item 16: the camelCase alternatives above close the hole the first version
+// of this gate had — .style.marginLeft / .borderRight / .borderLeft in
+// system-browser.ts, plan-view-panel.ts and ribbon.ts:3542 escaped the
+// kebab-case scan (they are real direction properties, now logical).
+// Deliberately NOT gated: `style.left`/`style.right` pixel assignments
+// (drag/canvas screen coordinates, not layout) and two reviewed `textAlign`
+// cases — cad-viewer.ts:2194 sets a CanvasRenderingContext2D textAlign for
+// CAD drawing text (entity alignment, not UI chrome) and
+// schedules-panel.ts:645 right-aligns numeric total cells (a data
+// convention that holds in RTL: numbers stay right-aligned).
 for (const f of ["src/style.css", "src/styles.css"]) {
   const css = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
   const bad = css.split("\n").map((l, i) => [l, i + 1]).filter(([l]) => PHYSICAL.test(l));
@@ -29,6 +39,14 @@ for (const f of tsFiles) {
   lines.forEach((l, i) => { if (PHYSICAL.test(l)) offenders.push(`${path.relative(path.join(__dirname, ".."), f)}:${i + 1}: ${l.trim()}`); });
 }
 ok(offenders.length === 0, `physical-direction properties in TS inline styles (${offenders.length}):\n` + offenders.slice(0, 10).join("\n"));
+
+// Item 16: the three camelCase leftovers now use logical properties.
+const sysBrowser = fs.readFileSync(path.join(__dirname, "../src/features/system-browser.ts"), "utf8");
+ok(/mrow\.style\.marginInlineStart = "18px"/.test(sysBrowser), "system browser child-row indent is margin-inline-start");
+const planPanel = fs.readFileSync(path.join(__dirname, "../src/features/plan-view-panel.ts"), "utf8");
+ok(/lastG\.style\.borderInlineEnd = "none"/.test(planPanel), "plan header last group clears border-inline-end (the separator is logical)");
+const ribbon = fs.readFileSync(path.join(__dirname, "../src/shell/ribbon.ts"), "utf8");
+ok(/borderInlineEnd = "1px solid var\(--border-default\)"/.test(ribbon) && /borderInlineStart = "1px solid var\(--border-default\)"/.test(ribbon), "left-host dock divider uses logical borders on both dock sides");
 
 // ---- the named views from #141 are covered by the scan above; assert each explicitly ----
 for (const f of [

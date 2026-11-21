@@ -39,6 +39,7 @@ import { selection } from "./selection";
 import { inputRouter, type Gesture, type Mods } from "../core/input-router";
 import { notify } from "../core/notify";
 import { checkEditAllowed } from "../modules/collaboration/edit-guard";
+import { t as i18nT } from "../core/i18n";
 import { setMeasureEnabled } from "./measure";
 import { setSectionOn } from "./section";
 import { markDirty } from "../modules/projects/projects";
@@ -3795,7 +3796,7 @@ function deleteElements(ids: string[]) {
   const indices = allTargets.map((t) => elements.indexOf(t));
 
   history.push({
-    label: `Delete ${allTargets.length} element(s)`,
+    label: i18nT("counts.deleteElements", { n: allTargets.length }),
     apply: () => {
       for (const t of allTargets) {
         const i = elements.indexOf(t);
@@ -4512,7 +4513,7 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
         const before = targets.map((t) => JSON.parse(JSON.stringify(t.params)));
         const after = candidates.map((candidate) => JSON.parse(JSON.stringify(candidate.params)));
         history.push({
-          label: `Rotate ${targets.length} element(s)`,
+          label: i18nT("counts.rotateElements", { n: targets.length }),
           apply: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(after[i])))); rebuild(); markDirty(); },
           revert: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(before[i])))); rebuild(); markDirty(); },
         });
@@ -4544,7 +4545,7 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
           window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: "Mirror axis must have a non-zero length.", kind: "error" } }));
         } else if (!rejectInvalidOperation([...elements, ...clones], new Set(clones.map((clone) => clone.id)), "mirror selected elements")) {
           history.exec({
-            label: `Mirror ${clones.length} element(s)`,
+            label: i18nT("counts.mirrorElements", { n: clones.length }),
             apply: () => { for (const c of clones) elements.push(c); rebuild(); markDirty(); },
             revert: () => { for (const c of clones) { const i = elements.indexOf(c); if (i >= 0) elements.splice(i, 1); } rebuild(); markDirty(); },
           });
@@ -4615,7 +4616,7 @@ function onModifyClick(pt: THREE.Vector3, e: MouseEvent) {
         }));
       } else if (!rejectInvalidOperation([...elements, ...clones], new Set(clones.map((clone) => clone.id)), "array selected elements")) {
         history.exec({
-          label: `Array ${targets.length} element(s) × ${count}`,
+          label: i18nT("counts.arrayElements", { n: targets.length, count }),
           apply: () => { for (const c of clones) elements.push(c); rebuild(); markDirty(); },
           revert: () => { for (const c of clones) { const i = elements.indexOf(c); if (i >= 0) elements.splice(i, 1); } rebuild(); markDirty(); },
         });
@@ -6364,7 +6365,7 @@ function withParamHistory<T>(label: string, fn: () => T, didChange: (r: T) => bo
 export function editSelectedParams(patch: Record<string, number>): { changed: number; failed: string[] } {
   const ids = [...selectedIds].filter((id) => !elements.find((e) => e.id === id)?.properties?.pinned);
   if (!ids.length) return { changed: 0, failed: [] };
-  return withParamHistory(`Edit ${ids.length} element(s)`, () => {
+  return withParamHistory(i18nT("counts.editElements", { n: ids.length }), () => {
     let changed = 0; const failed: string[] = [];
     for (const id of ids) {
       const el = elements.find((e) => e.id === id)!;
@@ -6383,7 +6384,7 @@ export function editSelectedParams(patch: Record<string, number>): { changed: nu
 export function addWallSweepToSelected(placement: Omit<WallSweepPlacement, "wallId">): number {
   const walls = [...selectedIds].map((id) => elements.find((e) => e.id === id)).filter((e): e is AuthoredElement => !!e && e.type === "wall");
   if (!walls.length) return 0;
-  return withParamHistory(`Add wall sweep to ${walls.length} wall(s)`, () => {
+  return withParamHistory(i18nT("counts.addWallSweep", { n: walls.length }), () => {
     for (const w of walls) {
       const list = (((w.params as any).sweeps ?? []) as WallSweepPlacement[]).slice();
       list.push({ ...placement, wallId: w.id });
@@ -6408,7 +6409,7 @@ export function clearWallSweepsSelected(): number {
 export function reverseSelected(): number {
   const targets = elements.filter((e) => selectedIds.has(e.id) && !e.properties?.pinned && e.params.start && e.params.end);
   if (!targets.length) return 0;
-  return withParamHistory(`Flip ${targets.length} element(s)`, () => {
+  return withParamHistory(i18nT("counts.flipElements", { n: targets.length }), () => {
     for (const el of targets) {
       const p: any = el.params;
       [p.start, p.end] = [p.end, p.start];
@@ -6434,7 +6435,7 @@ export function pinSelected(pinned = true): number {
   if (!changed) return 0;
   const after = targets.map((el) => JSON.parse(JSON.stringify(el.properties ?? {})));
   history.push({
-    label: `${pinned ? "Pin" : "Unpin"} ${changed} element(s)`,
+    label: i18nT(pinned ? "counts.pinElements" : "counts.unpinElements", { n: changed }),
     apply: () => { targets.forEach((el, i) => { el.properties = JSON.parse(JSON.stringify(after[i])); }); markDirty(); notifyAuthoringChange(); },
     revert: () => { targets.forEach((el, i) => { el.properties = JSON.parse(JSON.stringify(before[i])); }); markDirty(); notifyAuthoringChange(); },
   });
@@ -6496,7 +6497,7 @@ export function splitSelectedAtMidpoint(): number {
   elements.push(...clones);
   rebuild();
   history.push({
-    label: `Split ${targets.length} element(s)`,
+    label: i18nT("counts.splitElements", { n: targets.length }),
     apply: () => {
       originals.forEach(({ el }, i) => { el.params = JSON.parse(JSON.stringify(splitParams[i])); });
       for (const c of clones) if (!elements.includes(c)) elements.push(c);
@@ -7199,7 +7200,7 @@ export function transformElements(
   followPending.clear();
   const after = targets.map((t) => JSON.parse(JSON.stringify(t.params)));
   history.push({
-    label: `Transform ${targets.length} element(s)`,
+    label: i18nT("counts.transformElements", { n: targets.length }),
     apply: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(after[i])))); rebuild(); markDirty(); },
     revert: () => { targets.forEach((t, i) => (t.params = JSON.parse(JSON.stringify(before[i])))); rebuild(); markDirty(); },
   });
@@ -7461,7 +7462,7 @@ export function setupAuthoring() {
       }
       rebuild();
       history.push({
-        label: `Transform ${Object.keys(after).length} element(s)`,
+        label: i18nT("counts.transformElements", { n: Object.keys(after).length }),
         apply: () => {
           for (const el of elements) if (after[el.id]) el.params = JSON.parse(JSON.stringify(after[el.id]));
           for (const p of depPatches) p.el.params = JSON.parse(JSON.stringify(p.after));
@@ -8215,7 +8216,7 @@ export function translateSelected(dx: number, dz: number): number {
   }
   for (const u of follow) { const fe = elements.find((e) => e.id === u.id); if (fe && !ids.includes(fe.id)) Object.assign(fe.params, u.patch); }
   if (n) {
-    if (follow.length) pushMepParamsHistory(`Move ${n} element(s)`, beforeSnap, snapshotMepParams());
+    if (follow.length) pushMepParamsHistory(i18nT("counts.moveElements", { n }), beforeSnap, snapshotMepParams());
     rebuild(); markDirty(); notifyAuthoringChange();
   }
   return n;

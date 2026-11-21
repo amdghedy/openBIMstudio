@@ -202,7 +202,7 @@ function renderAuthoredSection(host: HTMLDivElement): { systems: number; element
       for (const id of c.memberIds) {
         const el = els.find((e) => e.id === id);
         const mrow = rowBase();
-        mrow.style.marginLeft = "18px";
+        mrow.style.marginInlineStart = "18px";
         mrow.style.padding = "4px 9px";
         const mlabel = document.createElement("span");
         mlabel.textContent = (el?.type ?? "?") + " \u00B7 " + id;

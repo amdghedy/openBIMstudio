@@ -8,6 +8,7 @@
 
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
+import { t as i18nT } from "../core/i18n";
 
 type Any = Record<string, any>;
 
@@ -174,7 +175,7 @@ export function alignSelection(
       else if (typeof auth.rebuild === "function") auth.rebuild();
       if (typeof auth.markAuthoringDirty === "function") auth.markAuthoringDirty();
     } catch { /* */ }
-    notify("success", `Aligned ${moved} element(s) on ${axis.toUpperCase()}`, { timeout: 1600 });
+    notify("success", i18nT("counts.alignElements", { n: moved, axis: axis.toUpperCase() }), { timeout: 1600 });
   }
 
   return moved;
@@ -223,7 +224,7 @@ export function distributeSelection(axis: AlignAxis): number {
       if (typeof auth.rebuildAuthored === "function") auth.rebuildAuthored();
       else if (typeof auth.rebuild === "function") auth.rebuild();
     } catch { /* */ }
-    notify("success", `Distributed ${moved} element(s)`, { timeout: 1600 });
+    notify("success", i18nT("counts.distributeElements", { n: moved }), { timeout: 1600 });
   }
   return moved;
 }

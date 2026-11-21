@@ -146,4 +146,75 @@ for (const [loc, want] of [["ar", "المعايير"], ["de", "Normen"], ["ja", 
   eq(i18n.t("standards.title"), want, `${loc} standards.title`);
 }
 
+// ---- item 16: the highest-traffic embedded plurals are ICU now (#140)
+// The 21 sentence keys below replaced English-shaped "Delete 3 element(s)"
+// undo labels / toasts in authoring.ts, align-tool.ts, modify-actions.ts,
+// bim-compatibility-bridge.ts and constraint-tools.ts. They exist in en
+// only: other locales fall back to the English ICU string through t()
+// (documented fallback — no translations invented), but plural selection
+// still uses the ACTIVE locale's rules, so e.g. fr n=0 takes the "one"
+// branch and ar n=2 takes "other".
+const SENTENCES = [
+  "deleteElements", "transformElements", "rotateElements", "mirrorElements",
+  "arrayElements", "editElements", "flipElements", "moveElements",
+  "addWallSweep", "pinElements", "unpinElements", "splitElements",
+  "alignElements", "distributeElements", "copyElements", "pasteElements",
+  "matchElements", "hideElements", "isolateElements",
+  "solveAdjusted", "solveCompleteAdjusted",
+];
+for (const key of SENTENCES) {
+  const s = catalogs.en.counts[key];
+  assert.ok(typeof s === "string" && /,\s*(plural|select)\b/.test(s), `en.counts.${key} is not an ICU message: ${s}`);
+  n++;
+  for (const loc of ["ar", "de", "es", "fr", "hi", "ja", "pt-BR", "ru", "zh-CN", "pl"]) {
+    eq(catalogs[loc].counts[key], undefined, `${loc} must NOT carry an invented translation of counts.${key}`);
+  }
+}
+i18n.setLocale("en");
+eq(i18n.t("counts.deleteElements", { n: 1 }), "Delete 1 element", "en delete 1");
+eq(i18n.t("counts.deleteElements", { n: 3 }), "Delete 3 elements", "en delete 3");
+eq(i18n.t("counts.arrayElements", { n: 1, count: 4 }), "Array 1 element × 4", "en array 1 x4");
+eq(i18n.t("counts.arrayElements", { n: 6, count: 2 }), "Array 6 elements × 2", "en array 6 x2");
+eq(i18n.t("counts.alignElements", { n: 2, axis: "X" }), "Aligned 2 elements on X", "en align X");
+eq(i18n.t("counts.alignElements", { n: 1, axis: "Z" }), "Aligned 1 element on Z", "en align Z 1");
+eq(i18n.t("counts.addWallSweep", { n: 1 }), "Add wall sweep to 1 wall", "en wall sweep 1");
+eq(i18n.t("counts.addWallSweep", { n: 2 }), "Add wall sweep to 2 walls", "en wall sweep 2");
+eq(i18n.t("counts.solveAdjusted", { what: "Equal length", n: 1 }), "Equal length: solved, 1 element adjusted", "en solveAdjusted 1");
+eq(i18n.t("counts.solveAdjusted", { what: "Equal length", n: 4 }), "Equal length: solved, 4 elements adjusted", "en solveAdjusted 4");
+eq(i18n.t("counts.solveCompleteAdjusted", { n: 1 }), "Solve complete — 1 element adjusted", "en solveComplete 1");
+eq(i18n.t("counts.pinElements", { n: 1 }), "Pin 1 element", "en pin 1");
+eq(i18n.t("counts.unpinElements", { n: 5 }), "Unpin 5 elements", "en unpin 5");
+// Fallback renderings: English words, active-locale plural rules.
+i18n.setLocale("ar");
+eq(i18n.t("counts.deleteElements", { n: 2 }), "Delete 2 elements", "ar fallback delete 2 (two -> other)");
+i18n.setLocale("ru");
+eq(i18n.t("counts.deleteElements", { n: 5 }), "Delete 5 elements", "ru fallback delete 5 (many -> other)");
+i18n.setLocale("pl");
+eq(i18n.t("counts.deleteElements", { n: 2 }), "Delete 2 elements", "pl fallback delete 2 (few -> other)");
+i18n.setLocale("fr");
+eq(i18n.t("counts.deleteElements", { n: 0 }), "Delete 0 element", "fr fallback delete 0 (0-is-singular -> one)");
+
+// ---- item 16: setLocale's early return still applies document attributes
+// A boot in the default locale (current already "en") returned before
+// applyDocumentAttributes, leaving dir/lang/data-dir unset in en while ar
+// set them — the "direction follows the locale" invariant held only by
+// browser default. The stub document proves both paths set the attributes.
+{
+  const attrs = {};
+  const docStub = {
+    documentElement: { lang: "", dir: "" },
+    body: { setAttribute(k, v) { attrs[k] = v; }, getAttribute(k) { return attrs[k] ?? null; } },
+  };
+  global.document = docStub;
+  i18n.setLocale("en");
+  i18n.setLocale("en"); // second call takes the early return (same locale)
+  eq(docStub.documentElement.dir, "ltr", "en (early return) still sets dir=ltr");
+  eq(docStub.documentElement.lang, "en", "en (early return) still sets lang=en");
+  eq(attrs["data-dir"], "ltr", "en (early return) still sets body data-dir");
+  i18n.setLocale("ar");
+  eq(docStub.documentElement.dir, "rtl", "ar sets dir=rtl");
+  eq(attrs["data-dir"], "rtl", "ar sets body data-dir=rtl");
+  delete global.document;
+}
+
 console.log(`icu-catalog: ${n} assertions passed`);

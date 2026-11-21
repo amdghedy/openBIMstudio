@@ -218,7 +218,14 @@ class I18nService {
       );
       locale = FALLBACK_LOCALE;
     }
-    if (this.current === locale && this.booted) return;
+    if (this.current === locale && this.booted) {
+      // Item 16: still apply the document attributes. A fresh boot in the
+      // default locale (current already "en") took this return and left
+      // dir/lang/data-dir unset — the browser defaulted to ltr, but the
+      // "direction follows the locale" invariant was only true by luck.
+      this.applyDocumentAttributes();
+      return;
+    }
     this.current = locale;
 
     try {

@@ -13,6 +13,7 @@ import { promptLine } from "./form-modal";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { notify } from "../core/notify";
+import { t as i18nT } from "../core/i18n";
 
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
@@ -176,7 +177,7 @@ function matchPropertiesApply(): number {
     n++;
   }
   rebuild();
-  notify("success", `Matched properties onto ${n} element(s)`, { timeout: 1800 });
+  notify("success", i18nT("counts.matchElements", { n }), { timeout: 1800 });
   return n;
 }
 
@@ -334,7 +335,7 @@ async function registerCommands(): Promise<void> {
       run: () => {
         const ids = getSelectionIds();
         (ctx.features as any).visibility?.hideElements?.(ids);
-        notify("info", `Hidden ${ids.length} element(s)`, { timeout: 1400 });
+        notify("info", i18nT("counts.hideElements", { n: ids.length }), { timeout: 1400 });
       },
     },
     {
@@ -345,7 +346,7 @@ async function registerCommands(): Promise<void> {
       run: () => {
         const ids = getSelectionIds();
         (ctx.features as any).visibility?.isolateElements?.(ids);
-        notify("info", `Isolated ${ids.length} element(s)`, { timeout: 1400 });
+        notify("info", i18nT("counts.isolateElements", { n: ids.length }), { timeout: 1400 });
       },
     },
     {

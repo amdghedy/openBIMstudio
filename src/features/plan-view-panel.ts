@@ -1719,9 +1719,10 @@ header.append(
   spacer,
   makeGroup("", cadBtn, clearCadBtn, renderBtn, printBtn, exportBtn, closeBtn),
 );
-// Remove trailing border on last group
+// Remove trailing border on last group. The separator is border-inline-end,
+// so clearing the physical right border did nothing under RTL.
 const lastG = header.lastElementChild as HTMLElement | null;
-if (lastG) lastG.style.borderRight = "none";
+if (lastG) lastG.style.borderInlineEnd = "none";
 
 canvasWrap.style.background = "#ffffff";
 overlay.style.background = "#1a1d27";

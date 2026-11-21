@@ -20,6 +20,7 @@ import {
 import { gizmo, type GizmoMode } from "./gizmo";
 import { listModifyCommandDefinitions, resolveModifyCapability, type ModifyCommandId } from "../modules/modify/registry";
 import { ctx } from "../core/context";
+import { t as i18nT } from "../core/i18n";
 
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
@@ -74,7 +75,7 @@ export function copySelectionToClipboard(): number {
     } catch { /* skip */ }
   }
   clipboard = els;
-  if (els.length) toast(`Copied ${els.length} element(s)`, "success");
+  if (els.length) toast(i18nT("counts.copyElements", { n: els.length }), "success");
   else toast("Nothing to copy — select authored element(s).", "warn");
   return els.length;
 }
@@ -92,7 +93,7 @@ export function pasteFromClipboard(): number {
     const auth = (window as Any).__obsAuthoring;
     if (typeof auth?.pasteClipboard === "function") {
       const n = auth.pasteClipboard(clipboard);
-      toast(`Pasted ${n} element(s)`, "success");
+      toast(i18nT("counts.pasteElements", { n }), "success");
       return n;
     }
   } catch { /* */ }
@@ -183,27 +184,27 @@ export function runModifyAction(id: ModifyActionId): void {
       break;
     case "align-x": {
       const n = alignSelectedAxis("x");
-      toast(n ? `Aligned ${n} element(s) on X` : "Select at least two authored elements.", n ? "success" : "warn");
+      toast(n ? i18nT("counts.alignElements", { n, axis: "X" }) : "Select at least two authored elements.", n ? "success" : "warn");
       break;
     }
     case "align-z": {
       const n = alignSelectedAxis("z");
-      toast(n ? `Aligned ${n} element(s) on Z` : "Select at least two authored elements.", n ? "success" : "warn");
+      toast(n ? i18nT("counts.alignElements", { n, axis: "Z" }) : "Select at least two authored elements.", n ? "success" : "warn");
       break;
     }
     case "pin": {
       const n = pinSelected(true);
-      toast(n ? `Pinned ${n} element(s)` : "Select authored element(s).", n ? "success" : "warn");
+      toast(n ? i18nT("counts.pinElements", { n }) : "Select authored element(s).", n ? "success" : "warn");
       break;
     }
     case "unpin": {
       const n = pinSelected(false);
-      toast(n ? `Unpinned ${n} element(s)` : "No authored selection.", n ? "success" : "warn");
+      toast(n ? i18nT("counts.unpinElements", { n }) : "No authored selection.", n ? "success" : "warn");
       break;
     }
     case "split-mid": {
       const n = splitSelectedAtMidpoint();
-      toast(n ? `Split ${n} element(s)` : "Select wall / beam / MEP run(s).", n ? "success" : "warn");
+      toast(n ? i18nT("counts.splitElements", { n }) : "Select wall / beam / MEP run(s).", n ? "success" : "warn");
       break;
     }
     case "join-walls": {

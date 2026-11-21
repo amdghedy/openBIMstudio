@@ -103,6 +103,27 @@
     "elements": "{n, plural, one{# element} other{# elements}}",
     "selected": "{n, plural, one{# selected} other{# selected}}",
     "authoredSelected": "{n, plural, one{# authored element selected} other{# authored elements selected}}",
-    "clashes": "{n, plural, =0{No clashes found.} one{# clash found.} other{# clashes found.}}"
+    "clashes": "{n, plural, =0{No clashes found.} one{# clash found.} other{# clashes found.}}",
+    "deleteElements": "{n, plural, one{Delete # element} other{Delete # elements}}",
+    "transformElements": "{n, plural, one{Transform # element} other{Transform # elements}}",
+    "rotateElements": "{n, plural, one{Rotate # element} other{Rotate # elements}}",
+    "mirrorElements": "{n, plural, one{Mirror # element} other{Mirror # elements}}",
+    "arrayElements": "{n, plural, one{Array # element} other{Array # elements}} × {count}",
+    "editElements": "{n, plural, one{Edit # element} other{Edit # elements}}",
+    "flipElements": "{n, plural, one{Flip # element} other{Flip # elements}}",
+    "moveElements": "{n, plural, one{Move # element} other{Move # elements}}",
+    "addWallSweep": "{n, plural, one{Add wall sweep to # wall} other{Add wall sweep to # walls}}",
+    "pinElements": "{n, plural, one{Pin # element} other{Pin # elements}}",
+    "unpinElements": "{n, plural, one{Unpin # element} other{Unpin # elements}}",
+    "splitElements": "{n, plural, one{Split # element} other{Split # elements}}",
+    "alignElements": "{n, plural, one{Aligned # element} other{Aligned # elements}} on {axis}",
+    "distributeElements": "{n, plural, one{Distributed # element} other{Distributed # elements}}",
+    "copyElements": "{n, plural, one{Copied # element} other{Copied # elements}}",
+    "pasteElements": "{n, plural, one{Pasted # element} other{Pasted # elements}}",
+    "matchElements": "{n, plural, one{Matched properties onto # element} other{Matched properties onto # elements}}",
+    "hideElements": "{n, plural, one{Hidden # element} other{Hidden # elements}}",
+    "isolateElements": "{n, plural, one{Isolated # element} other{Isolated # elements}}",
+    "solveAdjusted": "{what}: solved, {n, plural, one{# element} other{# elements}} adjusted",
+    "solveCompleteAdjusted": "{n, plural, one{Solve complete — # element adjusted} other{Solve complete — # elements adjusted}}"
   }
 }

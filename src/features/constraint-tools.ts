@@ -33,6 +33,7 @@ import {
 } from "../modules/parametric-constraints/types";
 import { nearestEndpointDistance, solveStoredConstraints, type ElementLike } from "../modules/parametric-constraints/solver-bridge";
 import { notify } from "../core/notify";
+import { t as i18nT } from "../core/i18n";
 
 type Any = Record<string, any>;
 
@@ -84,7 +85,7 @@ function solveAndReport(what: string): { changed: number; errors: string[] } {
   if (errors.length) {
     notify("warn", `${what}: ${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}`);
   } else if (changed > 0) {
-    notify("success", `${what}: solved, ${changed} element(s) adjusted`);
+    notify("success", i18nT("counts.solveAdjusted", { what, n: changed }));
   } else {
     notify("success", `${what}: constraint stored — geometry already satisfies it`);
   }
@@ -158,7 +159,7 @@ export function solveConstraintsNow(): number {
     const n = typeof f.constraintSolver?.solve === "function"
       ? f.constraintSolver.solve()
       : 0;
-    notify(n > 0 ? "success" : "info", n > 0 ? `Solve complete — ${n} element(s) adjusted` : "Solve complete — model already satisfies all constraints");
+    notify(n > 0 ? "success" : "info", n > 0 ? i18nT("counts.solveCompleteAdjusted", { n }) : "Solve complete — model already satisfies all constraints");
     return n;
   } catch (err) {
     notify("warn", `Solve failed: ${err instanceof Error ? err.message : String(err)}`);

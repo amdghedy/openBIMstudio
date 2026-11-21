@@ -3603,14 +3603,17 @@ function setupLeftDock(mainRow: HTMLElement) {
   });
 
   function applyDock(side: "left" | "right") {
+    // Logical borders: the divider faces the content on either dock side,
+    // in either direction (row-reverse under RTL puts the panel on the
+    // opposite visual side, and the inline side follows it).
     if (side === "right") {
       mainRow.style.flexDirection = "row-reverse";
-      ctx.leftHost.style.borderRight = "none";
-      ctx.leftHost.style.borderLeft = "1px solid var(--border-default)";
+      ctx.leftHost.style.borderInlineEnd = "none";
+      ctx.leftHost.style.borderInlineStart = "1px solid var(--border-default)";
     } else {
       mainRow.style.flexDirection = "row";
-      ctx.leftHost.style.borderLeft = "none";
-      ctx.leftHost.style.borderRight = "1px solid var(--border-default)";
+      ctx.leftHost.style.borderInlineStart = "none";
+      ctx.leftHost.style.borderInlineEnd = "1px solid var(--border-default)";
     }
     window.dispatchEvent(new Event("resize"));
   }
