@@ -59,6 +59,12 @@ t("injection: entity names cannot smuggle STEP text", () => {
   const evil = W.writeNativeTwinIfc(tw("IfcWall');#999=IFCPROJECT($", 1));
   assert.ok(!/#999=/.test(evil)); assert.ok(P.preflightStep(new TextEncoder().encode(evil)).ok);
 });
+t("REGRESSION: apostrophes, backslashes, unicode and newlines are STEP-encoded (old \\' form corrupted the file)", () => {
+  const ifc = W.writeNativeTwinIfc(tw("IfcWall", 1, { name: "Owner's room \\ é\n" }));
+  assert.ok(ifc.includes("'Owner''s room \\\\ \\X2\\00E9000A\\X0\\'"), ifc.split("\n").find((l) => l.includes("IFCWALL")));
+  assert.ok(!/(?<!X0)(?<!\\)\\'(?!')/.test(ifc.replace(/\\\\/g, "")), "no backslash-apostrophe escapes");
+  assert.ok(P.preflightStep(new TextEncoder().encode(ifc)).ok);
+});
 t("independent parser (web-ifc) opens the file, when installed", () => {
   let wi; try { wi = require("web-ifc"); } catch { console.log("    (web-ifc not installed here — skipped; CI installs it)"); return; }
   void wi; // opening requires async WASM init; covered by the CI round-trip fuzz harness
