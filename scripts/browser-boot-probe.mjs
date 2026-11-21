@@ -3,8 +3,8 @@
 import { chromium, firefox, webkit } from "@playwright/test";
 const name = process.argv[2] || "firefox";
 const type = { chromium, firefox, webkit }[name];
-const launchOptions = name === "firefox" ? { firefoxUserPrefs: { "webgl.disabled": false, "webgl.force-enabled": true, "webgl.enable-webgl2": true, "layers.acceleration.disabled": true } } : {};
-const browser = await type.launch(launchOptions);
+const launchOptions = name === "firefox" ? { firefoxUserPrefs: { 'webgl.disabled': false, 'webgl.force-enabled': true, 'webgl.enable-webgl2': true, 'webgl.forbid-software': false, 'webgl.out-of-process': false, 'webgl.disable-fail-if-major-performance-caveat': true, 'gfx.webrender.software': true, 'gfx.webrender.all': false, 'layers.acceleration.disabled': true, 'gfx.canvas.accelerated': false } } : {};
+const browser = await type.launch({ ...launchOptions, headless: process.env.PROBE_HEADED ? false : true });
 const page = await browser.newPage();
 page.on("console", (m) => console.log(`[console.${m.type()}]`, m.text().slice(0, 400)));
 page.on("pageerror", (e) => console.log("[pageerror]", String(e.stack || e.message).slice(0, 800)));

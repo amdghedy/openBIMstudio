@@ -16,8 +16,8 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'],
       launchOptions: { args: ['--use-gl=swiftshader'] } } },
     { name: 'webkit',   use: { ...devices['Desktop Safari'] } },
-    { name: 'firefox',  use: { ...devices['Desktop Firefox'],
+    { name: 'firefox',  use: { ...devices['Desktop Firefox'], headless: !process.env.PW_HEADED,
       // Headless Firefox on a GPU-less runner needs WebGL forced on (software rendering); without it the 3D canvas never appears.
-      launchOptions: { firefoxUserPrefs: { 'webgl.disabled': false, 'webgl.force-enabled': true, 'webgl.enable-webgl2': true, 'layers.acceleration.disabled': true } } } },
+      launchOptions: { firefoxUserPrefs: { 'webgl.disabled': false, 'webgl.force-enabled': true, 'webgl.enable-webgl2': true, 'webgl.forbid-software': false, 'webgl.out-of-process': false, 'webgl.disable-fail-if-major-performance-caveat': true, 'gfx.webrender.software': true, 'gfx.webrender.all': false, 'layers.acceleration.disabled': true, 'gfx.canvas.accelerated': false } } } },
   ],
 });
