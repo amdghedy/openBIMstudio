@@ -158,6 +158,23 @@ const REL_SHAPES: Record<string, { kind: RelKind; relatedIdx: number; relatingId
   IFCRELASSOCIATESCLASSIFICATION: { kind: "classification", relatedIdx: 4, relatingIdx: 5 },
 };
 
+/**
+ * Entity families that are NOT IfcRoot subtypes: their first argument is a
+ * Name (or a measure), never a GlobalId. Only IfcRoot subtypes carry a
+ * GlobalId as argument 0, and the old class-blind rule ("any quoted 22-char
+ * first argument is a GlobalId candidate") misread 22-char property names
+ * as GlobalIds — 'Top Extension Distance' and 'Actual Exhaust Airflow' in
+ * the buildingSMART Duplex files — and flagged them IFC-E-BAD-GUID, which
+ * made real Revit files fail semantic validation (107 + 429 false errors).
+ * Roots inside these families are spelled out as exceptions: IfcPropertySet
+ * and IfcPropertyTemplate ARE roots (negative lookahead on IFCPROPERTY);
+ * IfcMaterialLayerSet / ProfileSet / ConstituentSet ARE roots (lookaheads
+ * on IFCMATERIAL); IfcDoorStyle / IfcWindowStyle ARE type objects, so only
+ * presentation styles are listed under STYLE.
+ */
+const NON_ROOT_NAME_FIRST_RE =
+  /^(IFCPROPERTY(?!SET|TEMPLATE)|IFCQUANTITY|IFCPRESENTATIONSTYLE|IFCSURFACESTYLE|IFCCURVESTYLE|IFCFILLAREASTYLE|IFCTEXTSTYLE|IFCCONVERSIONBASEDUNIT|IFCMATERIAL$|IFCMATERIALPROFILE(?!SET)|IFCMATERIALCONSTITUENT(?!SET)|IFCDOCUMENTREFERENCE|IFCLIBRARYREFERENCE)|PROFILEDEF$/;
+
 /** Classes the platform intentionally handles; anything else is "unknown" but preserved. */
 const KNOWN_CLASSES = new Set([
   "IFCPROJECT", "IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE",
@@ -485,10 +502,11 @@ export function buildSemanticModel(text: string): SemanticModel {
   const dupGlobalIds = new Map<string, number[]>();
   for (const e of file.entities.values()) {
     const g = unquote(e.args[0]);
-    // Any quoted 22-char first argument is a GlobalId candidate — invalid
-    // charsets (including ones containing parentheses) must be captured so
-    // validation can flag them.
-    if (g && g.length === 22) {
+    // Any quoted 22-char first argument of an IfcRoot subtype is a GlobalId
+    // candidate — invalid charsets (including ones containing parentheses)
+    // must be captured so validation can flag them. Non-root families are
+    // excluded first: their argument 0 is a Name (see NON_ROOT_NAME_FIRST_RE).
+    if (g && g.length === 22 && !NON_ROOT_NAME_FIRST_RE.test(e.name)) {
       globalIds.set(e.id, g);
       const arr = dupGlobalIds.get(g);
       if (arr) arr.push(e.id); else dupGlobalIds.set(g, [e.id]);

@@ -132,6 +132,32 @@ t("semantic-model: all GlobalIds valid + unique on valid corpus", () => {
   }
 });
 
+t("semantic-model: a 22-char property NAME is not a GlobalId (Duplex regression)", () => {
+  // 'Top Extension Distance' and 'Actual Exhaust Airflow' are exactly 22
+  // characters — the old class-blind rule read them as GlobalId candidates
+  // and flagged IFC-E-BAD-GUID (107 false errors in duplex-a, 429 in
+  // duplex-mep). Only IfcRoot subtypes carry a GlobalId as argument 0.
+  const text = [
+    "ISO-10303-21;", "HEADER;", "ENDSEC;", "DATA;",
+    "#1=IFCPROJECT('0xScRe4drE$QuCcyMkXutA',#2,'P',$,$,$,$,$,$);",
+    "#2=IFCOWNERHISTORY(#3,#4,$,.ADDED.,$,#3,#4,1794586356);",
+    "#3=IFCPERSON($,'A',$,$,$,$,$,$);",
+    "#4=IFCORGANIZATION($,'O',$,$,$);",
+    "#5=IFCPROPERTYSINGLEVALUE('Top Extension Distance',$,IFCLENGTHMEASURE(0.),$);",
+    "#6=IFCPROPERTYSINGLEVALUE('Actual Exhaust Airflow',$,IFCREAL(0.),$);",
+    "#7=IFCQUANTITYLENGTH('Gross Floor Area Calcs',$,0.,$);",
+    "#8=IFCSURFACESTYLE('TwentyTwoCharStyleName',(#9));",
+    "#9=IFCCOLOURRGB($,0.5,0.5,0.5);",
+    "ENDSEC;", "END-ISO-10303-21;",
+  ].join("\n");
+  const model = M.buildSemanticModel(text);
+  assert.strictEqual(model.invalidGlobalIds.length, 0, JSON.stringify(model.invalidGlobalIds));
+  assert.strictEqual(model.globalIds.size, 1, "only the project root carries a GlobalId");
+  assert.strictEqual(model.globalIds.get(1), "0xScRe4drE$QuCcyMkXutA");
+  const errors = V.validateSemanticModel(model).filter((x) => x.severity === "error");
+  assert.strictEqual(errors.length, 0, JSON.stringify(errors));
+});
+
 t("semantic-model: spatial tree Project→Site→Building→Storey", () => {
   const p = small.spatial.project;
   assert.ok(p, "project present");

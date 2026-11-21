@@ -27,7 +27,10 @@ export interface StepPreflightResult {
 }
 
 const MAX_DEPTH = 256;
-/** Long pure-digit tokens in DATA usually mean adversarial list counts; valid IFC stays well below this. */
+/** Long pure-digit INTEGER tokens in DATA usually mean adversarial list counts; valid IFC stays well below this.
+ *  Only the integer part counts: Revit writes coordinates with 19–22
+ *  FRACTIONAL digits (e.g. -0.0009000000000002357 in Duplex_A_20110907.ifc),
+ *  and a fraction is not an integer token. */
 const MAX_DIGIT_RUN = 18;
 /** Hard cap on DATA entity instances for browser-side parse safety. */
 const MAX_DATA_RECORDS = 1_000_000;
@@ -68,6 +71,7 @@ export function preflightStep(bytes: Uint8Array): StepPreflightResult {
   let stmtStart = i;
   let dataRecords = 0;
   let digitRun = 0;
+  let inFraction = false;
 
   while (i < n) {
     const c = bytes[i];
@@ -109,11 +113,15 @@ export function preflightStep(bytes: Uint8Array): StepPreflightResult {
     if (c < 0x20 || c >= 0x7f) return fail(`Unexpected byte 0x${c.toString(16)} outside a string`);
 
     // Extreme integer tokens (e.g. 1e18-wide counts) are a common hang vector for WASM parsers.
+    // Digits after a decimal point are a fraction, not an integer token.
     if (isDigit(c)) {
-      digitRun++;
-      if (digitRun > MAX_DIGIT_RUN) return fail(`Integer token longer than ${MAX_DIGIT_RUN} digits`);
+      if (!inFraction) {
+        digitRun++;
+        if (digitRun > MAX_DIGIT_RUN) return fail(`Integer token longer than ${MAX_DIGIT_RUN} digits`);
+      }
     } else {
       digitRun = 0;
+      inFraction = false;
     }
 
     if (c === 0x2e /* . */) {
@@ -125,6 +133,9 @@ export function preflightStep(bytes: Uint8Array): StepPreflightResult {
       // of the file up to the following '.' — including ';' terminators —
       // and OpenModel never terminates (issue #231).
       const next = i + 1 < n ? bytes[i + 1] : -1;
+      // A '.' followed by a digit is a decimal point: the digits after it
+      // are fractional and must not count toward the integer cap.
+      if (isDigit(next)) inFraction = true;
       if (isLetter(next)) {
         let j = i + 1;
         while (j < n && isEnumName(bytes[j])) j++;

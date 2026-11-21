@@ -43,6 +43,26 @@ t("rejects pathological integer tokens (>18 digits)", () => {
   assert.strictEqual(r.ok, false, JSON.stringify(r));
   assert.match(String(r.reason), /Integer token longer/i);
 });
+t("accepted: real numbers with >18 fractional digits (Revit coordinates)", () => {
+  // buildingSMART Duplex files, Revit 2011: coordinates like
+  // -0.0009000000000002357 (19 fractional digits) and
+  // 0.0005690557380592822 (22 fractional digits) used to trip the integer
+  // cap and reject a real-world file at import.
+  for (const coords of [
+    "(-0.0009000000000002357,0.9798000000000015)",
+    "(0.0005690557380592822,0.6787250124093189,0.02102290746273472)",
+  ]) {
+    const text = `ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=IFCCARTESIANPOINT(${coords});\nENDSEC;\nEND-ISO-10303-21;\n`;
+    const r = preflightStep(enc(text));
+    assert.ok(r.ok, `${coords}: ${JSON.stringify(r)}`);
+  }
+});
+t("rejected: >18-digit integer part of a real is still an extreme integer", () => {
+  const text = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=IFCCARTESIANPOINT((1234567890123456789.5,0.,0.));\nENDSEC;\nEND-ISO-10303-21;\n";
+  const r = preflightStep(enc(text));
+  assert.strictEqual(r.ok, false, JSON.stringify(r));
+  assert.match(String(r.reason), /Integer token longer/i);
+});
 // Issue #231: a '.' outside strings/comments is a real number or a
 // well-formed '.NAME.' enumeration. A leading-dot-less enum name is read by
 // web-ifc as a LABEL and the following '.' as an ENUM start that swallows
