@@ -459,10 +459,33 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
     ...tail,
   ];
 
+  /* IFC type objects. Revit (and most BIM tools) map IFC occurrences to family TYPES through IfcRelDefinesByType; without
+   * them every wall/slab imports as an anonymous generic. Occurrences that share class + type name + thickness + material
+   * share one IfcXxxType. Door/window types (extra attributes) and 2x3 flow segments are not typed. */
+  const TYPE_OF: Record<string, string> = {
+    IFCWALL: "IFCWALLTYPE", IFCWALLSTANDARDCASE: "IFCWALLTYPE", IFCSLAB: "IFCSLABTYPE", IFCBEAM: "IFCBEAMTYPE", IFCCOLUMN: "IFCCOLUMNTYPE",
+    IFCMEMBER: "IFCMEMBERTYPE", IFCFOOTING: "IFCFOOTINGTYPE", IFCCOVERING: "IFCCOVERINGTYPE", IFCRAILING: "IFCRAILINGTYPE",
+    IFCSTAIR: "IFCSTAIRTYPE", IFCRAMP: "IFCRAMPTYPE", IFCCURTAINWALL: "IFCCURTAINWALLTYPE", IFCBUILDINGELEMENTPROXY: "IFCBUILDINGELEMENTPROXYTYPE",
+    ...(v4 ? { IFCDUCTSEGMENT: "IFCDUCTSEGMENTTYPE", IFCPIPESEGMENT: "IFCPIPESEGMENTTYPE", IFCCABLECARRIERSEGMENT: "IFCCABLECARRIERSEGMENTTYPE" } : {}),
+  };
+  const typeGroups = new Map<string, { typeCls: string; name: string; ids: number[] }>();
+  const recordForType = (el: IfcElementInput, id: number, cls: string) => {
+    const typeCls = TYPE_OF[cls];
+    if (!typeCls) return;
+    const mat = typeof el.properties?.material === "string" ? String(el.properties.material).trim() : "";
+    const th = typeof el.params?.thickness === "number" ? Math.round(el.params.thickness * 1000) : 0;
+    const base = (el.familyTypeId || el.type || cls).toString().slice(0, 60);
+    const key = `${typeCls}|${base}|${th}|${mat}`;
+    let g = typeGroups.get(key);
+    if (!g) { g = { typeCls, name: th ? `${base} ${th}mm${mat ? " " + mat : ""}` : base, ids: [] }; typeGroups.set(key, g); }
+    g.ids.push(id);
+  };
+
   const finishProduct = (el: IfcElementInput, id: number, storey: (typeof storeys)[number], cls: string, rgb: [number, number, number] | null, solids: number[]) => {
     storey.contained.push(id);
     bump(cls);
     stats.elements++;
+    recordForType(el, id, cls);
     if (rgb) for (const s of solids) styled(s, rgb);
     propertySet(id, "OpenBIMStudio", customProps(el), el.id);
     const mat = el.properties?.material;
@@ -835,6 +858,12 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
   for (const s of storeys) {
     if (s.contained.length) f.add("IFCRELCONTAINEDINSPATIALSTRUCTURE", [S(guid("contain:" + s.lv.id)), ref(oh), "$", "$", L(s.contained.map(ref)), ref(s.id)]);
     if (s.spaces.length) f.add("IFCRELAGGREGATES", [S(guid("spaces:" + s.lv.id)), ref(oh), "$", "$", ref(s.id), L(s.spaces.map(ref))]);
+  }
+  for (const [key, g] of typeGroups) {
+    // IfcTypeProduct: GlobalId, OwnerHistory, Name, Description, ApplicableOccurrence, HasPropertySets, RepresentationMaps, Tag, ElementType; then PredefinedType
+    const t = f.add(g.typeCls, [S(guid("type:" + key)), ref(oh), S(g.name), "$", "$", "$", "$", "$", S(g.name), ".NOTDEFINED."]);
+    f.add("IFCRELDEFINESBYTYPE", [S(guid("deftype:" + key)), ref(oh), "$", "$", L(g.ids.map(ref)), ref(t)]);
+    bump(g.typeCls);
   }
   for (const [mat, objs] of materialPending) {
     if (objs.length) f.add("IFCRELASSOCIATESMATERIAL", [S(guid("mat:" + mat)), ref(oh), "$", "$", L(objs.map(ref)), ref(mat)]);
