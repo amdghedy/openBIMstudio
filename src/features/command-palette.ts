@@ -95,7 +95,14 @@ function fuzzyScore(query: string, target: string): number {
    ═════════════════════════════════════════════════════════════════════════ */
 const commands = new Map<string, PaletteCommand>();
 
+const duplicateIds = new Set<string>();
+/** Ids registered more than once in this session (a later registration silently replaced an earlier one). */
+export function duplicateCommandIds(): string[] { return [...duplicateIds]; }
 export function registerCommand(cmd: PaletteCommand): void {
+  if (commands.has(cmd.id) && !duplicateIds.has(cmd.id)) {
+    duplicateIds.add(cmd.id);
+    console.warn(`[command-palette] command id registered more than once; the later registration replaces the earlier: ${cmd.id}`);
+  }
   commands.set(cmd.id, cmd);
 }
 export function unregisterCommand(id: string): void {
