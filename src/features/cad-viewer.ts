@@ -6438,7 +6438,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "",
         "",
         "home",
-      )
+      ) +
       rg(
         "Power Tools",
         rb("select-all", "Select All", `data-a="selectall"`, "Select every visible object (SELECTALL)") +
