@@ -23,11 +23,13 @@
  *     (when web-ifc is installed; skipped gracefully otherwise, like the
  *     §5 independent-validation test skips without IfcOpenShell).
  *
- * What is NOT asserted: a fixed preserved/proxied count. On main the twin
- * writer emits IfcBuildingElementProxy for every element (native-twin-ifc.ts
- * discards safeEntityName()'s result); the measured count is printed and
- * recorded in docs/engineering/PER_ENTITY_IFC_REPORT.md, not pinned here.
- * Pinning it would break the moment fix/native-ifc-entities (§5) lands.
+ * What is NOT asserted: a fixed preserved/proxied count. The twin writer
+ * used to emit IfcBuildingElementProxy for every element (native-twin-ifc.ts
+ * discarded safeEntityName()'s result); fix/native-ifc-entities (#246,
+ * main eabab92) made it emit typed entities, and the measured count on
+ * eabab92 is 1/5 sources proxied. The count is printed and recorded in
+ * docs/engineering/PER_ENTITY_IFC_REPORT.md, not pinned here — pinning it
+ * would break the moment the writer improves again.
  *
  * Run: `node tests/ifc-per-entity-roundtrip.test.cjs`
  */
@@ -214,7 +216,7 @@ async function main() {
 
   await t("round-trip: every proxied row is flagged + reasoned, never hidden", () => {
     const proxied = rt.export.rows.filter((r) => r.proxyFallback);
-    console.log(`    measured on main: ${proxied.length}/${rt.export.rows.length} sources proxied (proxy-for-all writer)`);
+    console.log(`    measured on main: ${proxied.length}/${rt.export.rows.length} sources proxied`);
     for (const r of rt.export.rows) {
       const isProxy = perEntity.normaliseIfcType(r.emittedType) === "BUILDINGELEMENTPROXY"
         && perEntity.normaliseIfcType(r.sourceType) !== "BUILDINGELEMENTPROXY";

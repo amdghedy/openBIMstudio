@@ -146,6 +146,7 @@ export const PHYSICAL_PRODUCT_TYPES = new Set([
   "IFCCABLESEGMENT", "IFCCONDUITSEGMENT",
   "IFCDUCTFITTING", "IFCPIPEFITTING", "IFCCABLECARRIERFITTING",
   "IFCCONDUITFITTING",
+  "IFCSTAIRFLIGHT", "IFCENERGYCONVERSIONDEVICE", "IFCDISTRIBUTIONCONTROLELEMENT",
 ]);
 
 export const PRODUCT_TYPES = new Set([
@@ -167,6 +168,28 @@ export const NORMALISED_TYPE_MAP: Record<string, string> = {
 
 /** Root classes that carry a GlobalId but are not products (never rows). */
 const NON_PRODUCT_ROOT_RE = /^(IFCREL|IFCPROPERTYSET|IFCELEMENTQUANTITY|IFCCLASSIFICATION|IFCMATERIAL)/;
+
+/**
+ * Type objects and property definitions carry a GlobalId and are
+ * product-shaped (22-char first argument, 6+ arguments), but they define
+ * types — they are not placed products. Before this exclusion they became
+ * `unsupported` rows, which made the first real-world file report a third
+ * of its entities "lost": duplex-mep.ifc carries 407 IfcPipeSegmentType
+ * definitions, and its lostPct was 35.7% on definitions alone. Definitions
+ * are counted in `ImportFidelityReport.definitions`, never in rows or
+ * totals. The suffix rule is safe: no IfcProduct subtype ends in TYPE,
+ * STYLE or PROPERTIES (checked against PRODUCT_TYPES above).
+ */
+const DEFINITION_SUFFIX_RE = /(TYPE|STYLE|PROPERTIES)$/;
+export function isDefinitionEntity(e: { name: string }): boolean {
+  // IFCRELDEFINESBYTYPE / IFCRELDEFINESBYPROPERTIES are relationships, not
+  // definitions — the suffix alone over-matches them (generated-small.ifc
+  // carries 7 IfcRelDefinesByProperties). Presentation styles
+  // (IfcSurfaceStyle, …) are definitions: they carry no GlobalId, but a
+  // 22-char style name would otherwise trip the product heuristic.
+  if (e.name.startsWith("IFCREL")) return false;
+  return DEFINITION_SUFFIX_RE.test(e.name);
+}
 
 /** Normalise a type label for comparison: case-insensitive, `Ifc` prefix optional. */
 export function normaliseIfcType(t: string | null | undefined): string {
@@ -278,6 +301,14 @@ export interface ImportFidelityReport {
    *  inventory report (interop-report.ts), not here. */
   totalProducts: number;
   totals: FidelityTotals;
+  /**
+   * Type objects / styles / property definitions in the file (IfcTypeObject
+   * and property-definition roots). Counted here, never rows: they define
+   * types, they are not placed products, and counting them as "lost" was
+   * wrong (duplex-mep.ifc: 407 IfcPipeSegmentType). Sorted by count
+   * descending, then type ascending.
+   */
+  definitions: { total: number; byType: Array<{ type: string; count: number }> };
   byType: TypeFidelityAggregate[];
   rows: EntityFidelityRow[];
   /** Semantic-model warnings (capped), e.g. dangling relationships. */
@@ -295,6 +326,9 @@ export const IMPORT_SCOPE =
 
 function isProductEntity(e: { name: string; args: string[] }): boolean {
   if (PRODUCT_TYPES.has(e.name)) return true;
+  // Definitions first: a type object is product-shaped (GlobalId + 6+
+  // arguments) and the heuristic below would otherwise claim it.
+  if (isDefinitionEntity(e)) return false;
   if (NON_PRODUCT_ROOT_RE.test(e.name)) return false;
   // Product-shaped unknown: a quoted 22-char first argument (GlobalId) and
   // at least 6 arguments (IfcProduct has 7+; property values have 4).
@@ -379,6 +413,19 @@ export function buildImportFidelityReportFromText(
   const products = [...model.entities.values()]
     .filter(isProductEntity)
     .sort((a, b) => a.id - b.id);
+  // Definitions are tallied, never rows (see isDefinitionEntity).
+  const definitionsByType = new Map<string, number>();
+  for (const e of model.entities.values()) {
+    if (isDefinitionEntity(e) && !PRODUCT_TYPES.has(e.name)) {
+      definitionsByType.set(e.name, (definitionsByType.get(e.name) ?? 0) + 1);
+    }
+  }
+  const definitions = {
+    total: [...definitionsByType.values()].reduce((a, b) => a + b, 0),
+    byType: [...definitionsByType.entries()]
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type)),
+  };
 
   for (const e of products) {
     const isSpatial = SPATIAL_PRODUCT_TYPES.has(e.name);
@@ -517,6 +564,7 @@ export function buildImportFidelityReportFromText(
     schema,
     totalProducts: rows.length,
     totals,
+    definitions,
     byType: aggregateByType(rows),
     rows,
     warnings,
@@ -858,6 +906,11 @@ export function formatFidelitySummary(report: ImportFidelityReport | ExportFidel
   if (report.kind === "import") {
     lines.push(`per-entity fidelity (${report.schema} · ${report.fileName}):`);
     lines.push(`  ${totalsLine("import", report.totalProducts, report.totals)}`);
+    const defTotal = report.definitions?.total ?? 0;
+    if (defTotal > 0) {
+      const top = (report.definitions?.byType ?? []).slice(0, 3).map((d) => `${d.type} ${d.count}`).join(", ");
+      lines.push(`  definitions (type objects/styles/property definitions — counted, not products): ${defTotal}${top ? ` — ${top}` : ""}`);
+    }
     for (const a of report.byType) {
       if (a.preserved !== a.total) {
         lines.push(

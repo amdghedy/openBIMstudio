@@ -16,6 +16,15 @@
     "degradedPct": 0,
     "lostPct": 0
   },
+  "definitions": {
+    "total": 1,
+    "byType": [
+      {
+        "type": "IFCSURFACESTYLE",
+        "count": 1
+      }
+    ]
+  },
   "byType": [
     {
       "type": "IFCBEAM",

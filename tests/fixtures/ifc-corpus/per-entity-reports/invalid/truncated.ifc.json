@@ -16,6 +16,10 @@
     "degradedPct": 0,
     "lostPct": 0
   },
+  "definitions": {
+    "total": 0,
+    "byType": []
+  },
   "byType": [
     {
       "type": "IFCBUILDINGSTOREY",

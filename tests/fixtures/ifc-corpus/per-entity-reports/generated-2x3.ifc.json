@@ -16,6 +16,15 @@
     "degradedPct": 22.2,
     "lostPct": 0
   },
+  "definitions": {
+    "total": 3,
+    "byType": [
+      {
+        "type": "IFCSURFACESTYLE",
+        "count": 3
+      }
+    ]
+  },
   "byType": [
     {
       "type": "IFCWALLSTANDARDCASE",

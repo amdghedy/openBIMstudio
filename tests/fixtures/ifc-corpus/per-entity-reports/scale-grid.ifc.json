@@ -1,0 +1,3483 @@
+{
+  "schemaVersion": 1,
+  "kind": "import",
+  "generator": "src/modules/ifc-semantics/per-entity-report.ts (per-entity-report v1)",
+  "fileName": "scale-grid.ifc",
+  "schema": "IFC4",
+  "totalProducts": 107,
+  "totals": {
+    "preserved": 107,
+    "transformed": 0,
+    "approximated": 0,
+    "unsupported": 0,
+    "skipped": 0,
+    "failed": 0,
+    "preservedPct": 100,
+    "degradedPct": 0,
+    "lostPct": 0
+  },
+  "definitions": {
+    "total": 4,
+    "byType": [
+      {
+        "type": "IFCSURFACESTYLE",
+        "count": 4
+      }
+    ]
+  },
+  "byType": [
+    {
+      "type": "IFCBEAM",
+      "total": 32,
+      "preserved": 32,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCCOLUMN",
+      "total": 32,
+      "preserved": 32,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCWALL",
+      "total": 32,
+      "preserved": 32,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBUILDINGSTOREY",
+      "total": 4,
+      "preserved": 4,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCSLAB",
+      "total": 4,
+      "preserved": 4,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBUILDING",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCPROJECT",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCSITE",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    }
+  ],
+  "rows": [
+    {
+      "expressId": 15,
+      "globalId": "2Qll1sG3sidsPsStYyzI_H",
+      "ifcType": "IFCPROJECT",
+      "name": "Scale Grid Corpus",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "not-applicable",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 18,
+      "globalId": "3yxSVpB_gC5IfiZ9VvQyTn",
+      "ifcType": "IFCSITE",
+      "name": "Site",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 21,
+      "globalId": "3SZ$qAC7Wc0R77xIzTC3Oa",
+      "ifcType": "IFCBUILDING",
+      "name": "Building",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 26,
+      "globalId": "2wF4p2UNaleL3lKjIJgZ6t",
+      "ifcType": "IFCBUILDINGSTOREY",
+      "name": "Ground",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates",
+        "containment"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 30,
+      "globalId": "0NnLxneRDC7Qveo18O7jh_",
+      "ifcType": "IFCBUILDINGSTOREY",
+      "name": "First",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates",
+        "containment"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 34,
+      "globalId": "1Us1c7YicGFQOSDv5o3Ruh",
+      "ifcType": "IFCBUILDINGSTOREY",
+      "name": "Second",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates",
+        "containment"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 38,
+      "globalId": "1LPHOX1cmjKy53SEUIIakL",
+      "ifcType": "IFCBUILDINGSTOREY",
+      "name": "Third",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates",
+        "containment"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 51,
+      "globalId": "3xyMs5OqU4tVicbJ5Za7nf",
+      "ifcType": "IFCWALL",
+      "name": "Wall 0-0",
+      "objectType": "wall",
+      "tag": "w0x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 75,
+      "globalId": "3NuaeYVFHp5szIUQF4H42M",
+      "ifcType": "IFCWALL",
+      "name": "Wall 0-1",
+      "objectType": "wall",
+      "tag": "w0x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 96,
+      "globalId": "0YponwODQM91s_ryXVfssM",
+      "ifcType": "IFCWALL",
+      "name": "Wall 0-2",
+      "objectType": "wall",
+      "tag": "w0x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 117,
+      "globalId": "1CGdZyP4TFusnA_ZT4Jyqe",
+      "ifcType": "IFCWALL",
+      "name": "Wall 0-3",
+      "objectType": "wall",
+      "tag": "w0x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 138,
+      "globalId": "3UPBSV_6xs5s8KAK147cX8",
+      "ifcType": "IFCWALL",
+      "name": "Wall 0-4",
+      "objectType": "wall",
+      "tag": "w0x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 159,
+      "globalId": "38kUZr7ubCjwEpoPfqWstO",
+      "ifcType": "IFCWALL",
+      "name": "Wall 0-5",
+      "objectType": "wall",
+      "tag": "w0x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 180,
+      "globalId": "1OLtlOP8sKJDRQ3nlg0E2F",
+      "ifcType": "IFCWALL",
+      "name": "Wall 0-6",
+      "objectType": "wall",
+      "tag": "w0x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 201,
+      "globalId": "2b$gnzsEVKgrPXJNKhU3MZ",
+      "ifcType": "IFCWALL",
+      "name": "Wall 0-7",
+      "objectType": "wall",
+      "tag": "w0x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 221,
+      "globalId": "0Q9eUiTGWlCC_paPIWdJa8",
+      "ifcType": "IFCWALL",
+      "name": "Wall 1-0",
+      "objectType": "wall",
+      "tag": "w1x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 241,
+      "globalId": "1iJpxtAQ7YGm2DiPv5Osqg",
+      "ifcType": "IFCWALL",
+      "name": "Wall 1-1",
+      "objectType": "wall",
+      "tag": "w1x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 261,
+      "globalId": "1tau5HOOPbKAvAw8MuNmo4",
+      "ifcType": "IFCWALL",
+      "name": "Wall 1-2",
+      "objectType": "wall",
+      "tag": "w1x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 281,
+      "globalId": "3WVgEssZVn225RmmSR4f6v",
+      "ifcType": "IFCWALL",
+      "name": "Wall 1-3",
+      "objectType": "wall",
+      "tag": "w1x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 301,
+      "globalId": "3O$orum$k_kllHDrNWrQIN",
+      "ifcType": "IFCWALL",
+      "name": "Wall 1-4",
+      "objectType": "wall",
+      "tag": "w1x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 321,
+      "globalId": "31m94EyzyGCSBP_OZmndYt",
+      "ifcType": "IFCWALL",
+      "name": "Wall 1-5",
+      "objectType": "wall",
+      "tag": "w1x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 341,
+      "globalId": "1sra$j9Eqa2eKqt7BN3xUL",
+      "ifcType": "IFCWALL",
+      "name": "Wall 1-6",
+      "objectType": "wall",
+      "tag": "w1x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 361,
+      "globalId": "19Ev3qYvaOLBYV99HwFQmq",
+      "ifcType": "IFCWALL",
+      "name": "Wall 1-7",
+      "objectType": "wall",
+      "tag": "w1x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 381,
+      "globalId": "3ABS8fhGmAwiLfhV6YI6Ko",
+      "ifcType": "IFCWALL",
+      "name": "Wall 2-0",
+      "objectType": "wall",
+      "tag": "w2x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 401,
+      "globalId": "3Rcztj_b8ILqFPW5DY44$f",
+      "ifcType": "IFCWALL",
+      "name": "Wall 2-1",
+      "objectType": "wall",
+      "tag": "w2x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 421,
+      "globalId": "2HFhY9zdyWFNl16LaSW87j",
+      "ifcType": "IFCWALL",
+      "name": "Wall 2-2",
+      "objectType": "wall",
+      "tag": "w2x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 441,
+      "globalId": "1mJ3PMVAYF7mAgOZmEJjjr",
+      "ifcType": "IFCWALL",
+      "name": "Wall 2-3",
+      "objectType": "wall",
+      "tag": "w2x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 461,
+      "globalId": "2EzORrIqyTmI2L29VbBvEZ",
+      "ifcType": "IFCWALL",
+      "name": "Wall 2-4",
+      "objectType": "wall",
+      "tag": "w2x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 481,
+      "globalId": "1sc_$W1Fd96KG6x18sPChh",
+      "ifcType": "IFCWALL",
+      "name": "Wall 2-5",
+      "objectType": "wall",
+      "tag": "w2x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 501,
+      "globalId": "18vVk82zDVZZP5sBXrSto_",
+      "ifcType": "IFCWALL",
+      "name": "Wall 2-6",
+      "objectType": "wall",
+      "tag": "w2x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 521,
+      "globalId": "3KK2GlqtEd$H32bEONuHSq",
+      "ifcType": "IFCWALL",
+      "name": "Wall 2-7",
+      "objectType": "wall",
+      "tag": "w2x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 541,
+      "globalId": "2Du7iHzUKgOQKyxEBTERsI",
+      "ifcType": "IFCWALL",
+      "name": "Wall 3-0",
+      "objectType": "wall",
+      "tag": "w3x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 561,
+      "globalId": "19vd0pTIctIN2qJT1CUugg",
+      "ifcType": "IFCWALL",
+      "name": "Wall 3-1",
+      "objectType": "wall",
+      "tag": "w3x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 581,
+      "globalId": "0DgXR_5MR1ZQ61klkvJMs8",
+      "ifcType": "IFCWALL",
+      "name": "Wall 3-2",
+      "objectType": "wall",
+      "tag": "w3x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 601,
+      "globalId": "1nbSn9CHxavJYpz5HuEDpu",
+      "ifcType": "IFCWALL",
+      "name": "Wall 3-3",
+      "objectType": "wall",
+      "tag": "w3x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 621,
+      "globalId": "3ircX42fHFCo2SidN6tfK2",
+      "ifcType": "IFCWALL",
+      "name": "Wall 3-4",
+      "objectType": "wall",
+      "tag": "w3x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 641,
+      "globalId": "27EO3$HwHkTVTVk5OtmbRS",
+      "ifcType": "IFCWALL",
+      "name": "Wall 3-5",
+      "objectType": "wall",
+      "tag": "w3x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 661,
+      "globalId": "2R3QCU5UbQancNgFcNSr5q",
+      "ifcType": "IFCWALL",
+      "name": "Wall 3-6",
+      "objectType": "wall",
+      "tag": "w3x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 681,
+      "globalId": "2XMl_Swjzckc68QhCg3VEL",
+      "ifcType": "IFCWALL",
+      "name": "Wall 3-7",
+      "objectType": "wall",
+      "tag": "w3x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 703,
+      "globalId": "0hw8DXy6U35y2kK90R8L3c",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 0-0",
+      "objectType": "column",
+      "tag": "c0x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 725,
+      "globalId": "3pW8tClQK2EQRo$2$ertFQ",
+      "ifcType": "IFCBEAM",
+      "name": "B 0-0",
+      "objectType": "beam",
+      "tag": "b0x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 746,
+      "globalId": "2W8gkHrKNbjrfNJ0ilC08j",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 0-1",
+      "objectType": "column",
+      "tag": "c0x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 765,
+      "globalId": "10QAVXOJtl0yaIe6ZeH_YA",
+      "ifcType": "IFCBEAM",
+      "name": "B 0-1",
+      "objectType": "beam",
+      "tag": "b0x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 783,
+      "globalId": "3kxqb$bCF8odwtTTS4c$HY",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 0-2",
+      "objectType": "column",
+      "tag": "c0x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 802,
+      "globalId": "1tiBRj8VsbRQWrKOR_U486",
+      "ifcType": "IFCBEAM",
+      "name": "B 0-2",
+      "objectType": "beam",
+      "tag": "b0x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 820,
+      "globalId": "13uvtpXCeE1yEjiru4X22g",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 0-3",
+      "objectType": "column",
+      "tag": "c0x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 839,
+      "globalId": "1yIoNPIMQfwvtJwsoe$cTU",
+      "ifcType": "IFCBEAM",
+      "name": "B 0-3",
+      "objectType": "beam",
+      "tag": "b0x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 857,
+      "globalId": "3k9oKIM89A4ME0XuRL9UY5",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 0-4",
+      "objectType": "column",
+      "tag": "c0x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 876,
+      "globalId": "3Jch6vvAki80yYGL4u4rp8",
+      "ifcType": "IFCBEAM",
+      "name": "B 0-4",
+      "objectType": "beam",
+      "tag": "b0x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 894,
+      "globalId": "3N8ZqRxnQ4FxqKQFo58D7O",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 0-5",
+      "objectType": "column",
+      "tag": "c0x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 913,
+      "globalId": "2W27wSWAur0eMvjqUb7$pP",
+      "ifcType": "IFCBEAM",
+      "name": "B 0-5",
+      "objectType": "beam",
+      "tag": "b0x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 931,
+      "globalId": "2zFbT$4uVwIjZNAyrsReRu",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 0-6",
+      "objectType": "column",
+      "tag": "c0x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 950,
+      "globalId": "0U2XIxFzODlBEITrsIJcvQ",
+      "ifcType": "IFCBEAM",
+      "name": "B 0-6",
+      "objectType": "beam",
+      "tag": "b0x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 968,
+      "globalId": "2V0oqUA5gDv_sXdajQ_3wo",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 0-7",
+      "objectType": "column",
+      "tag": "c0x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 987,
+      "globalId": "3zxOavJ5oOwkHAGDvL_r4D",
+      "ifcType": "IFCBEAM",
+      "name": "B 0-7",
+      "objectType": "beam",
+      "tag": "b0x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1008,
+      "globalId": "3dzLVw$s71Ya7QPDfPJlAg",
+      "ifcType": "IFCSLAB",
+      "name": "Floor 0",
+      "objectType": "slab",
+      "tag": "s0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 26,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Ground"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1030,
+      "globalId": "1iSlO7nPguBRaDTvGGvJc_",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 1-0",
+      "objectType": "column",
+      "tag": "c1x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1048,
+      "globalId": "20OoJcVKxbhgV$u6jQqY4Z",
+      "ifcType": "IFCBEAM",
+      "name": "B 1-0",
+      "objectType": "beam",
+      "tag": "b1x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1065,
+      "globalId": "0D3zSQzVD7vHzS_b7de6gk",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 1-1",
+      "objectType": "column",
+      "tag": "c1x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1083,
+      "globalId": "35NG6UmhMvv$m1I4txwV0q",
+      "ifcType": "IFCBEAM",
+      "name": "B 1-1",
+      "objectType": "beam",
+      "tag": "b1x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1100,
+      "globalId": "13JrzO4R3VbO09vVFIzcK_",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 1-2",
+      "objectType": "column",
+      "tag": "c1x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1118,
+      "globalId": "3QOd_dmSB6qnXv5Xe3sQzk",
+      "ifcType": "IFCBEAM",
+      "name": "B 1-2",
+      "objectType": "beam",
+      "tag": "b1x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1135,
+      "globalId": "3czwNsZ4HtJP72OQNxSRCU",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 1-3",
+      "objectType": "column",
+      "tag": "c1x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1153,
+      "globalId": "0BpN71HI7_etzrqHGncLvs",
+      "ifcType": "IFCBEAM",
+      "name": "B 1-3",
+      "objectType": "beam",
+      "tag": "b1x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1170,
+      "globalId": "3adtX4af2a1cDXvE4LRZYZ",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 1-4",
+      "objectType": "column",
+      "tag": "c1x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1188,
+      "globalId": "1hivKjmJ3T$j0N4jHwb5e7",
+      "ifcType": "IFCBEAM",
+      "name": "B 1-4",
+      "objectType": "beam",
+      "tag": "b1x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1205,
+      "globalId": "3iaSmMPKy5DX_XDZEMV$yJ",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 1-5",
+      "objectType": "column",
+      "tag": "c1x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1223,
+      "globalId": "279tuiCWlAQ$NYBMf0pfaj",
+      "ifcType": "IFCBEAM",
+      "name": "B 1-5",
+      "objectType": "beam",
+      "tag": "b1x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1240,
+      "globalId": "3y$cZuzX7FdWRUf3KCCGDJ",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 1-6",
+      "objectType": "column",
+      "tag": "c1x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1258,
+      "globalId": "0BbM2SFRq_NH8$hyia5$4A",
+      "ifcType": "IFCBEAM",
+      "name": "B 1-6",
+      "objectType": "beam",
+      "tag": "b1x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1275,
+      "globalId": "00PS164FMl3jPBJVB6soAw",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 1-7",
+      "objectType": "column",
+      "tag": "c1x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1293,
+      "globalId": "2noVIiJAlgMydMxcOqjF2H",
+      "ifcType": "IFCBEAM",
+      "name": "B 1-7",
+      "objectType": "beam",
+      "tag": "b1x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1310,
+      "globalId": "1P9FI8Qjo$7fZ0pkYhE8L_",
+      "ifcType": "IFCSLAB",
+      "name": "Floor 1",
+      "objectType": "slab",
+      "tag": "s1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 30,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "First"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1329,
+      "globalId": "2APSE2XYP_WAIx6j2e_AVI",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 2-0",
+      "objectType": "column",
+      "tag": "c2x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1347,
+      "globalId": "2fTB18A2yS_9Jrm5CLhcpZ",
+      "ifcType": "IFCBEAM",
+      "name": "B 2-0",
+      "objectType": "beam",
+      "tag": "b2x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1364,
+      "globalId": "2Tsn5x5Nwuu5rzWshLs2hn",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 2-1",
+      "objectType": "column",
+      "tag": "c2x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1382,
+      "globalId": "2SZU8CwYqISXdhh2XlIrnM",
+      "ifcType": "IFCBEAM",
+      "name": "B 2-1",
+      "objectType": "beam",
+      "tag": "b2x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1399,
+      "globalId": "3DJdqbFlAP5yoK8Ry$ACMD",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 2-2",
+      "objectType": "column",
+      "tag": "c2x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1417,
+      "globalId": "2k1mgvWdqWGT9G5Tl_AZyZ",
+      "ifcType": "IFCBEAM",
+      "name": "B 2-2",
+      "objectType": "beam",
+      "tag": "b2x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1434,
+      "globalId": "1rJzy2d6o81xCF725QB4ia",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 2-3",
+      "objectType": "column",
+      "tag": "c2x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1452,
+      "globalId": "0H0m81VUz31a$6ziKZAhV2",
+      "ifcType": "IFCBEAM",
+      "name": "B 2-3",
+      "objectType": "beam",
+      "tag": "b2x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1469,
+      "globalId": "1kFWxsvhoKHeLdK4SDvSht",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 2-4",
+      "objectType": "column",
+      "tag": "c2x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1487,
+      "globalId": "2RmEDsCGK2Ppy3g1YLnaa9",
+      "ifcType": "IFCBEAM",
+      "name": "B 2-4",
+      "objectType": "beam",
+      "tag": "b2x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1504,
+      "globalId": "1bIthKH$91Z8Tsbgobpwtq",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 2-5",
+      "objectType": "column",
+      "tag": "c2x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1522,
+      "globalId": "15WjBCJwdPlG3MXpeA$OnB",
+      "ifcType": "IFCBEAM",
+      "name": "B 2-5",
+      "objectType": "beam",
+      "tag": "b2x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1539,
+      "globalId": "1rmb0wFUIGNYfNE_9YSVk6",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 2-6",
+      "objectType": "column",
+      "tag": "c2x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1557,
+      "globalId": "1zq_DvFK_Tuydvt469PQBR",
+      "ifcType": "IFCBEAM",
+      "name": "B 2-6",
+      "objectType": "beam",
+      "tag": "b2x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1574,
+      "globalId": "1bBPrcRRD4HYjaINyZ_f1V",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 2-7",
+      "objectType": "column",
+      "tag": "c2x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1592,
+      "globalId": "2smbqZEqOtfJr3PMkmnm$j",
+      "ifcType": "IFCBEAM",
+      "name": "B 2-7",
+      "objectType": "beam",
+      "tag": "b2x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1609,
+      "globalId": "09w9yDKJRHfye95y6Irrbh",
+      "ifcType": "IFCSLAB",
+      "name": "Floor 2",
+      "objectType": "slab",
+      "tag": "s2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 34,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Second"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1628,
+      "globalId": "0joZTMKTWfkuCwQ3x$A7RJ",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 3-0",
+      "objectType": "column",
+      "tag": "c3x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1646,
+      "globalId": "3WCbsaLYjlx6ttoutRxld5",
+      "ifcType": "IFCBEAM",
+      "name": "B 3-0",
+      "objectType": "beam",
+      "tag": "b3x0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1663,
+      "globalId": "2mzWIUcvf0OTRA0NZzfaM7",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 3-1",
+      "objectType": "column",
+      "tag": "c3x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1681,
+      "globalId": "1MDqwq3YXTP4G0D$WS7oGe",
+      "ifcType": "IFCBEAM",
+      "name": "B 3-1",
+      "objectType": "beam",
+      "tag": "b3x1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1698,
+      "globalId": "14dh8xSHTQspsNp5S87YIt",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 3-2",
+      "objectType": "column",
+      "tag": "c3x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1716,
+      "globalId": "2vxkqrYqKI3E4MSZhJlOq3",
+      "ifcType": "IFCBEAM",
+      "name": "B 3-2",
+      "objectType": "beam",
+      "tag": "b3x2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1733,
+      "globalId": "0AeLtwYeE1pHOgsAIM20IJ",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 3-3",
+      "objectType": "column",
+      "tag": "c3x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1751,
+      "globalId": "1gqmknMfM6B8fPn0cw7qcK",
+      "ifcType": "IFCBEAM",
+      "name": "B 3-3",
+      "objectType": "beam",
+      "tag": "b3x3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1768,
+      "globalId": "0icMLrbUuBn9VD8fikkamg",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 3-4",
+      "objectType": "column",
+      "tag": "c3x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1786,
+      "globalId": "34z0CtdpOejUtENJYs37Qw",
+      "ifcType": "IFCBEAM",
+      "name": "B 3-4",
+      "objectType": "beam",
+      "tag": "b3x4",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1803,
+      "globalId": "1hGQw2qppJDkfrYGrI2FIv",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 3-5",
+      "objectType": "column",
+      "tag": "c3x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1821,
+      "globalId": "3SO19W_95UXKkhFVflMd4V",
+      "ifcType": "IFCBEAM",
+      "name": "B 3-5",
+      "objectType": "beam",
+      "tag": "b3x5",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1838,
+      "globalId": "0mYB9UA8gj14g21wnIW1Zs",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 3-6",
+      "objectType": "column",
+      "tag": "c3x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1856,
+      "globalId": "3W7Tum$rk7PNYCnk5dof_q",
+      "ifcType": "IFCBEAM",
+      "name": "B 3-6",
+      "objectType": "beam",
+      "tag": "b3x6",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1873,
+      "globalId": "1NOWxkSqXP4YceD4ODWcEw",
+      "ifcType": "IFCCOLUMN",
+      "name": "C 3-7",
+      "objectType": "column",
+      "tag": "c3x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1891,
+      "globalId": "0BJ2zGB2J_2PT8at_m848c",
+      "ifcType": "IFCBEAM",
+      "name": "B 3-7",
+      "objectType": "beam",
+      "tag": "b3x7",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 1908,
+      "globalId": "0IgKYj_k9GoV7665iPZG0$",
+      "ifcType": "IFCSLAB",
+      "name": "Floor 3",
+      "objectType": "slab",
+      "tag": "s3",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 38,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Third"
+      },
+      "notes": []
+    }
+  ],
+  "warnings": [],
+  "warningCount": 0,
+  "scope": "STEP/semantic-model fidelity: what the independent STEP reader recovers from the file. Not a per-entity web-ifc FRAG-conversion claim — the live import is monolithic and exposes no per-entity callback."
+}

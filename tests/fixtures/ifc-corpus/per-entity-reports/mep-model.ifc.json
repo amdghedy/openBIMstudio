@@ -16,6 +16,15 @@
     "degradedPct": 0,
     "lostPct": 0
   },
+  "definitions": {
+    "total": 6,
+    "byType": [
+      {
+        "type": "IFCSURFACESTYLE",
+        "count": 6
+      }
+    ]
+  },
   "byType": [
     {
       "type": "IFCBUILDINGSTOREY",

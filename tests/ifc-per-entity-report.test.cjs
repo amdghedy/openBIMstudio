@@ -141,6 +141,58 @@ t("import: truncated.ifc — prefix products reported, truncation warned", () =>
   assert.strictEqual(rowByType(rep, "IFCWALL").length, 0, "wall is past the cut and must not be invented");
 });
 
+t("import: type objects are definitions, not products — never counted as lost", () => {
+  // The first real-world file exposed this: duplex-mep.ifc carries 407
+  // IfcPipeSegmentType definitions, which the old heuristic counted as
+  // `unsupported` product rows (lostPct 35.7% on definitions alone).
+  const text = read("generated-small.ifc").replace(
+    "ENDSEC;\nEND-ISO-10303-21;",
+    "#9001=IFCPIPESEGMENTTYPE('0A1B2C3D4E5F6G7H8I9J0K',#5,'Pipe type',$,$,$,$,$,$);\n" +
+    "#9004=IFCWINDOWSTYLE('3A1B2C3D4E5F6G7H8I9J0K',#5,'Window style',$,$,$,$,$);\n" +
+    "#9005=IFCDOORLININGPROPERTIES('4A1B2C3D4E5F6G7H8I9J0K',#5,'Door lining',$,$,$,$,$,$,$);\n" +
+    "ENDSEC;\nEND-ISO-10303-21;",
+  );
+  const rep = buildImportFidelityReportFromText("defs.ifc", text);
+  assert.ok(rep);
+  assert.strictEqual(rep.totalProducts, 9, "definitions must not become product rows");
+  assert.strictEqual(rep.totals.unsupported, 0);
+  assert.strictEqual(rep.totals.lostPct, 0);
+  // 3 injected definitions + the 3 IfcSurfaceStyle records the base file
+  // already carries (presentation styles are definitions, not products).
+  assert.strictEqual(rep.definitions.total, 6);
+  assert.deepStrictEqual(
+    rep.definitions.byType.map((d) => [d.type, d.count]),
+    [["IFCSURFACESTYLE", 3], ["IFCDOORLININGPROPERTIES", 1], ["IFCPIPESEGMENTTYPE", 1], ["IFCWINDOWSTYLE", 1]],
+  );
+  for (const type of ["IFCPIPESEGMENTTYPE", "IFCWINDOWSTYLE", "IFCDOORLININGPROPERTIES"]) {
+    assert.strictEqual(rowByType(rep, type).length, 0, `${type} must not be a row`);
+  }
+});
+
+t("import: real product classes outside the old known set are rows (stair flight, energy conversion device)", () => {
+  const text = read("generated-small.ifc")
+    .replace(
+      "ENDSEC;\nEND-ISO-10303-21;",
+      "#9002=IFCSTAIRFLIGHT('1A1B2C3D4E5F6G7H8I9J0K',#5,'Stair flight',$,$,#36,#38);\n" +
+      "#9003=IFCENERGYCONVERSIONDEVICE('2A1B2C3D4E5F6G7H8I9J0K',#5,'AHU',$,$,#36,#38);\n" +
+      "ENDSEC;\nEND-ISO-10303-21;",
+    )
+    .replace("(#39,#67,#99,#121)", "(#39,#67,#99,#121,#9002,#9003)");
+  const rep = buildImportFidelityReportFromText("realprods.ifc", text);
+  assert.ok(rep);
+  assert.strictEqual(rep.totalProducts, 11);
+  for (const [type, id] of [["IFCSTAIRFLIGHT", 9002], ["IFCENERGYCONVERSIONDEVICE", 9003]]) {
+    const row = rep.rows.find((r) => r.expressId === id);
+    assert.ok(row, `${type} row missing`);
+    assert.strictEqual(row.ifcType, type);
+    assert.strictEqual(row.typeMapping, "typed", `${type} must be a known product class`);
+    assert.strictEqual(row.status, "preserved", `${type} row: ${JSON.stringify(row.reasonCodes)}`);
+  }
+  assert.strictEqual(rep.totals.unsupported, 0);
+  // The base file's 3 IfcSurfaceStyle records are the only definitions here.
+  assert.strictEqual(rep.definitions.total, 3);
+});
+
 t("import: unknown product-shaped type is unsupported, never dropped", () => {
   const text = read("generated-small.ifc").replace(
     "ENDSEC;\nEND-ISO-10303-21;",

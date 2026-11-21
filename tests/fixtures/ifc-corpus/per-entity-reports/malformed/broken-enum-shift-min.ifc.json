@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "kind": "import",
+  "generator": "src/modules/ifc-semantics/per-entity-report.ts (per-entity-report v1)",
+  "fileName": "malformed/broken-enum-shift-min.ifc",
+  "schema": "IFC4",
+  "totalProducts": 1,
+  "totals": {
+    "preserved": 0,
+    "transformed": 0,
+    "approximated": 1,
+    "unsupported": 0,
+    "skipped": 0,
+    "failed": 0,
+    "preservedPct": 0,
+    "degradedPct": 100,
+    "lostPct": 0
+  },
+  "definitions": {
+    "total": 0,
+    "byType": []
+  },
+  "byType": [
+    {
+      "type": "IFCBUILDING",
+      "total": 1,
+      "preserved": 0,
+      "transformed": 0,
+      "approximated": 1,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 0,
+      "degradedPct": 100,
+      "lostPct": 0
+    }
+  ],
+  "rows": [
+    {
+      "expressId": 21,
+      "globalId": "1qNFsAkCE5yepN1jH0I7wi",
+      "ifcType": "IFCBUILDING",
+      "name": null,
+      "objectType": null,
+      "tag": null,
+      "status": "approximated",
+      "reasonCodes": [
+        "PLACEMENT_MISSING"
+      ],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "absent",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [],
+      "containedIn": null,
+      "notes": []
+    }
+  ],
+  "warnings": [],
+  "warningCount": 0,
+  "scope": "STEP/semantic-model fidelity: what the independent STEP reader recovers from the file. Not a per-entity web-ifc FRAG-conversion claim — the live import is monolithic and exposes no per-entity callback."
+}

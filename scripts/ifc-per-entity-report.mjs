@@ -168,6 +168,7 @@ export async function generateCorpusReports({ corpusDir, useWebIfc = true } = {}
   };
   let totalProducts = 0;
   let reported = 0;
+  let totalDefinitions = 0;
 
   for (const fx of fixtures) {
     const raw = readFileSync(fx.full);
@@ -200,6 +201,7 @@ export async function generateCorpusReports({ corpusDir, useWebIfc = true } = {}
     reported++;
     totalProducts += report.totalProducts;
     for (const k of Object.keys(totals)) totals[k] += report.totals[k];
+    totalDefinitions += report.definitions?.total ?? 0;
     const outRel = fx.rel.replace(/\.ifczip$/i, ".ifc") + ".json";
     files.set(outRel, reporter.fidelityReportToJson(report));
 
@@ -215,6 +217,7 @@ export async function generateCorpusReports({ corpusDir, useWebIfc = true } = {}
       file: fx.rel, kind: kindOf(fx.rel), schema: report.schema,
       report: outRel, ...(zipNote ? { note: zipNote } : {}),
       totalProducts: report.totalProducts, totals: report.totals,
+      definitions: report.definitions?.total ?? 0,
       webIfc: webAvailable ? webCheck : { available: false },
     });
   }
@@ -229,7 +232,7 @@ export async function generateCorpusReports({ corpusDir, useWebIfc = true } = {}
     files: summaryFiles,
     totals: {
       files: fixtures.length, reported, unreported: fixtures.length - reported,
-      products: totalProducts, ...totals,
+      products: totalProducts, definitions: totalDefinitions, ...totals,
     },
   };
   return { files, summary };
