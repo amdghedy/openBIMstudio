@@ -14,6 +14,7 @@ import {
   respondBorrowRequest, resolveConflict, restoreToRevision, publicState,
   sweepExpiredBorrows,
 } from "./central-model.mjs";
+import { issueShareToken, verifyShareToken, isShareRole, clampShareTtlMs, SHARE_TOKEN_DEFAULT_TTL_MS } from "./share-tokens.mjs";
 import { sniffSignature, storeUpload, sweepExpired } from "./upload-store.mjs";
 import { findLastVerifiedBackup, quarantineFile, restoreBackup, snapshotOnLoad, writeJsonWithBackup } from "./backup.mjs";
 
@@ -37,6 +38,7 @@ if (!CFG.ok) {
 const dataDir = process.env.OBS_DATA_DIR || path.join(__dirname, "data");
 const projectsFile = path.join(dataDir, "projects.json");
 const roomsFile = path.join(dataDir, "rooms.json");
+const sharesFile = path.join(dataDir, "shares.json");
 const uploadsDir = path.join(dataDir, "uploads");
 
 const PORT = Number(process.env.PORT || 4000);
@@ -95,6 +97,10 @@ function ensureStore() {
 
   if (!quarantinedThisBoot.has(roomsFile) && !fs.existsSync(roomsFile)) {
     fs.writeFileSync(roomsFile, "{}", "utf8");
+  }
+
+  if (!fs.existsSync(sharesFile)) {
+    fs.writeFileSync(sharesFile, "{}", "utf8");
   }
 }
 
@@ -237,6 +243,88 @@ function saveJson(file, value) {
 
 let projects = loadJson(projectsFile, {});
 let rooms = loadJson(roomsFile, {});
+let shares = loadJson(sharesFile, {});
+
+/* Share links (differentiation item 1) — signed, single-room, role-scoped
+ * tokens; see server/share-tokens.mjs. The registry is the revocation list:
+ * a token whose sid has no live registry record does not authenticate.
+ * The signing secret is the master token when one is configured; in
+ * tokenless loopback mode it is an ephemeral per-process secret, so shares
+ * created there do not survive a server restart (documented in the share
+ * PR description — the loopback server has no durable secret to sign with).
+ */
+const SHARE_SECRET = AUTH_TOKEN || randomUUID();
+
+function saveShares() {
+  saveJson(sharesFile, shares);
+}
+
+/** @returns the live registry record for sid, or null when revoked/expired/absent. */
+function shareIsLive(sid) {
+  const s = shares[sid];
+  if (!s || s.revoked) return null;
+  if (typeof s.expiresAt !== "number" || s.expiresAt <= Date.now()) return null;
+  return s;
+}
+
+/** Drop expired registry records (revoked ones are kept so a revoke is auditable). */
+function pruneExpiredShares() {
+  let changed = false;
+  const now = Date.now();
+  for (const sid of Object.keys(shares)) {
+    const s = shares[sid];
+    if (s && !s.revoked && typeof s.expiresAt === "number" && s.expiresAt <= now) {
+      delete shares[sid];
+      changed = true;
+    }
+  }
+  if (changed) saveShares();
+}
+
+function safeDecode(s) {
+  try { return decodeURIComponent(s); } catch { return ""; }
+}
+
+function bearerToken(header) {
+  const h = String(header || "");
+  if (h.length >= 7 && h.slice(0, 7).toLowerCase() === "bearer ") return h.slice(7).trim();
+  return "";
+}
+
+/**
+ * Verify a presented share token for one room. Returns the session
+ * { ok: true, role, room, sid } when the token is cryptographically valid
+ * AND its sid is live in the registry, or { ok: false, reason } otherwise.
+ */
+function authenticateShareToken(candidate, roomId) {
+  const v = verifyShareToken(candidate, SHARE_SECRET, { room: roomId });
+  if (!v.ok) return { ok: false, reason: v.reason };
+  const live = shareIsLive(v.payload.sid);
+  if (!live) return { ok: false, reason: "revoked-or-expired" };
+  if (live.room !== roomId || live.role !== v.payload.role) return { ok: false, reason: "mismatch" };
+  return { ok: true, role: v.payload.role, room: roomId, sid: v.payload.sid };
+}
+
+/**
+ * Resolve credentials for a room-scoped route. A presented Bearer is the
+ * master token (owner) or a share token (role-scoped session); when no
+ * credential is presented, the loopback default applies (authed iff no
+ * server token is configured). Share tokens never authenticate non-room
+ * routes — callers only pass a roomId for room/project paths.
+ */
+function resolveRoomAuth(bearer, roomId) {
+  if (bearer) {
+    if (AUTH_TOKEN && tokenOk(`Bearer ${bearer}`, undefined, AUTH_TOKEN)) {
+      return { authed: true, share: null };
+    }
+    if (!roomId) return { authed: false, share: null };
+    const s = authenticateShareToken(bearer, roomId);
+    return s.ok
+      ? { authed: true, share: s }
+      : { authed: false, share: null, reason: s.reason };
+  }
+  return { authed: !AUTH_TOKEN, share: null };
+}
 
 function send(res, status, body) {
   const data =
@@ -506,40 +594,159 @@ const server = http.createServer(async (req, res) => {
   const isSseEvents = /^\/api\/rooms\/[^/]+\/events$/.test(url.pathname);
   const isAgentEvents = url.pathname === "/api/agent/events";
 
-  /* Token policy (remediation Phase 1.2):
+  /* Token policy (remediation Phase 1.2, extended for share links):
    *  - Non-SSE /api/ routes: Authorization: Bearer only. Query-string tokens
    *    are refused (they leak into logs, proxies and history).
    *  - SSE events route only: EventSource cannot set headers, so a signed
    *    short-lived ?sse= token is preferred; the long-lived ?token= form is
-   *    still accepted there (documented URL-leakage trade-off).
+   *    still accepted there (documented URL-leakage trade-off). A share link
+   *    authenticates the same route with ?share= (role-scoped, revocable).
    *  - Agent relay SSE (/api/agent/events): EventSource cannot set headers,
    *    so Bearer OR the long-lived ?token= form is accepted there (same
    *    documented trade-off as the room events route).
+   *  - Share tokens: single-room, role-scoped (view/edit). A presented
+   *    Bearer is tried as the master token first, then as a share token for
+   *    the room in the path. When a share token authenticates, reqShare is
+   *    set and the route handlers enforce the role (view may read, join and
+   *    lock; only edit may POST changes or PUT the project snapshot).
+   *    Share tokens never authenticate non-room routes.
    */
+  let reqShare = null;
   if (url.pathname.startsWith("/api/")) {
     let authed = false;
+    // Room id for share-token auth (share tokens are single-room scoped).
+    const roomPathMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)(?:\/.*)?$/);
+    const projectPathMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+    const shareRoomId = roomPathMatch
+      ? safeDecode(roomPathMatch[1])
+      : projectPathMatch ? safeDecode(projectPathMatch[1]) : null;
     if (isAgentEvents) {
       authed = tokenOk(req.headers.authorization, url.searchParams.get("token"), AUTH_TOKEN);
     } else if (isSseEvents) {
+      const roomId = safeDecode((url.pathname.match(/^\/api\/rooms\/([^/]+)\/events$/) || [])[1] || "");
+      const shareParam = url.searchParams.get("share");
       const sseToken = url.searchParams.get("sse");
-      if (sseToken) {
-        const roomId = decodeURIComponent((url.pathname.match(/^\/api\/rooms\/([^/]+)\/events$/) || [])[1] || "");
+      if (shareParam) {
+        const s = authenticateShareToken(shareParam, roomId);
+        if (!s.ok) {
+          securityLog(console.log, "share_token_rejected", { requestId: reqId, reason: s.reason });
+          return send(res, 401, { error: "Invalid or expired share token", requestId: reqId });
+        }
+        authed = true;
+        reqShare = s;
+      } else if (sseToken) {
         const v = verifySseToken(sseToken, AUTH_TOKEN, { room: roomId });
         if (!v.ok) {
           securityLog(console.log, "sse_token_rejected", { requestId: reqId, reason: v.reason });
           return send(res, 401, { error: "Invalid or expired SSE token", requestId: reqId });
         }
         authed = true;
-      } else {
+      } else if (url.searchParams.get("token")) {
         authed = tokenOk(req.headers.authorization, url.searchParams.get("token"), AUTH_TOKEN);
+      } else {
+        const r = resolveRoomAuth(bearerToken(req.headers.authorization), roomId);
+        authed = r.authed;
+        reqShare = r.share || null;
+        if (!authed && r.reason) {
+          securityLog(console.log, "share_token_rejected", { requestId: reqId, reason: r.reason });
+        }
       }
     } else {
-      authed = tokenOk(req.headers.authorization, undefined, AUTH_TOKEN);
+      const r = resolveRoomAuth(bearerToken(req.headers.authorization), shareRoomId || null);
+      authed = r.authed;
+      reqShare = r.share || null;
+      if (!authed && r.reason) {
+        securityLog(console.log, "share_token_rejected", { requestId: reqId, reason: r.reason });
+      }
     }
     if (!authed) {
       securityLog(console.log, "auth_failed", { requestId: reqId, route: url.pathname, sse: isSseEvents });
       return send(res, 401, { error: "Missing or invalid access token", requestId: reqId });
     }
+  }
+
+  /* ── Share links ────────────────────────────────────────────────────
+   * A share link opens one model (one room) in any browser with no account
+   * and no licence. Creation/revocation require the master token (in
+   * loopback mode there is none, so anyone on the machine can create one —
+   * same trust model as the rest of the loopback server). The issued token
+   * is single-room, role-scoped and revocable; see server/share-tokens.mjs.
+   * Share tokens never authenticate these management routes (the gate only
+   * resolves them for room/project paths), so a link holder cannot mint
+   * further links or revoke other people's.
+   */
+  if (url.pathname === "/api/shares" && req.method === "POST") {
+    let body = {};
+    try {
+      const raw = await readBody(req);
+      body = raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      const tooLarge = e && e.code === "payload_too_large";
+      if (tooLarge) securityLog(console.log, "body_too_large", { requestId: reqId, route: "share_create" });
+      return send(res, tooLarge ? 413 : 400, {
+        error: tooLarge ? "Payload too large" : "Invalid JSON body",
+        requestId: reqId,
+      });
+    }
+    const room = typeof body.room === "string" ? body.room.trim() : "";
+    if (!validId(room)) return send(res, 400, { error: "Invalid room id", requestId: reqId });
+    const role = typeof body.role === "string" ? body.role.trim() : "";
+    if (!isShareRole(role)) return send(res, 400, { error: "role must be 'view' or 'edit'", requestId: reqId });
+    const ttlMs = clampShareTtlMs(body.ttlMs ?? SHARE_TOKEN_DEFAULT_TTL_MS);
+    const now = Date.now();
+    const sid = randomUUID();
+    pruneExpiredShares();
+    shares[sid] = {
+      sid,
+      room,
+      role,
+      createdAt: now,
+      expiresAt: now + ttlMs,
+      revoked: false,
+    };
+    saveShares();
+    const token = issueShareToken(SHARE_SECRET, { room, role, sid, ttlMs, now });
+    securityLog(console.log, "share_created", { requestId: reqId, sid, room, role });
+    return send(res, 201, {
+      sid,
+      room,
+      role,
+      createdAt: now,
+      expiresAt: now + ttlMs,
+      token,
+    });
+  }
+
+  if (url.pathname === "/api/shares" && req.method === "GET") {
+    pruneExpiredShares();
+    const list = Object.values(shares)
+      .filter((s) => s && !s.revoked && typeof s.expiresAt === "number" && s.expiresAt > Date.now())
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      .map((s) => ({
+        sid: s.sid,
+        room: s.room,
+        role: s.role,
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+      }));
+    return send(res, 200, { shares: list });
+  }
+
+  const shareRevokeMatch = url.pathname.match(/^\/api\/shares\/([^/]+)\/revoke$/);
+  if (shareRevokeMatch && req.method === "POST") {
+    const sid = safeDecode(shareRevokeMatch[1]);
+    const entry = shares[sid];
+    if (!entry) return send(res, 404, { error: "Unknown share", requestId: reqId });
+    if (!entry.revoked) {
+      entry.revoked = true;
+      saveShares();
+      securityLog(console.log, "share_revoked", { requestId: reqId, sid, room: entry.room });
+    }
+    return send(res, 200, { ok: true, sid, revoked: true });
+  }
+
+  if ((url.pathname === "/api/shares" || shareRevokeMatch) && req.method !== "GET" && req.method !== "POST") {
+    return send(res, 405, { error: "Method not allowed" });
   }
 
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
@@ -559,6 +766,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "PUT") {
+      // A view-only share link may read the snapshot but never overwrite it.
+      if (reqShare && reqShare.role === "view") {
+        return send(res, 403, { error: "View-only share link cannot save the model", requestId: reqId });
+      }
       try {
         const raw = await readBody(req);
         const body = raw ? JSON.parse(raw) : {};
@@ -709,6 +920,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (action === "change") {
+      // A view-only share link may still send selection locks (presence), but
+      // no model change of any other type — the server is the authority, the
+      // client's disabled tools are only a mirror of this rule.
+      if (reqShare && reqShare.role === "view" && body.type !== "lock" && body.type !== "unlock") {
+        return send(res, 403, { error: "View-only share link cannot change the model", requestId: reqId });
+      }
       const payloadCheck = boundedJsonValue(body.payload ?? {}, MAX_CHANGE_PAYLOAD);
       if (!payloadCheck.ok) {
         return send(res, 413, { error: "Change payload too large or not JSON-serializable", requestId: reqId });
@@ -1002,7 +1219,7 @@ const server = http.createServer(async (req, res) => {
 
   return send(res, 404, {
     error:
-      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/join or /api/convert or /api/agent/exec or /api/agent/status or /api/central/:room/{state,sync,history,audit,join,leave,role,op,workset,workset-owner,borrow,relinquish,borrow-request,borrow-respond,resolve,restore}",
+      "Not found. Use /api/projects/:id or /api/rooms/:room or /api/rooms/:room/events or /api/rooms/:room/join or /api/shares or /api/convert or /api/agent/exec or /api/agent/status or /api/central/:room/{state,sync,history,audit,join,leave,role,op,workset,workset-owner,borrow,relinquish,borrow-request,borrow-respond,resolve,restore}",
   });
 });
 
@@ -1309,6 +1526,7 @@ server.listen(PORT, HOST, () => {
   console.log(`[collab] Projects API:   /api/projects/:id`);
   console.log(`[collab] Rooms API:      /api/rooms/:room`);
   console.log(`[collab] Live SSE API:   /api/rooms/:room/events`);
+  console.log(`[collab] Shares API:     /api/shares (create/list/revoke; ?share= opens a room)`);
   console.log(`[collab] Convert API:    /api/convert (RVT/NWD → IFC)`);
 });
 

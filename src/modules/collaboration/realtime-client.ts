@@ -2,6 +2,8 @@
 // eslint-disable-next-line no-unused-vars
 let obsRealtimeClient: any;
 
+import { decodeShareToken } from "./share-session";
+
 const API_BASE = String(
   (globalThis as any).__OPENBIM_COLLAB_API__ ||
     "http://localhost:4000/api",
@@ -14,6 +16,10 @@ const API_BASE = String(
  * parsing an unbounded event into project state.
  */
 export const MAX_SSE_EVENT_BYTES = 2 * 1024 * 1024;
+/** The collab-server base URL (overridable for tests / deployments). */
+export function getCollabApiBase(): string {
+  return API_BASE;
+}
 
 /* Optional auth for network deployments (remediation Phase 1.2).
  *  __OPENBIM_COLLAB_TOKEN__             → long-lived token; sent as Bearer on
@@ -31,6 +37,11 @@ function collabToken(): string {
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const t = collabToken();
   return t ? { Authorization: `Bearer ${t}`, ...extra } : { ...extra };
+}
+
+/** Master-token headers for calls that a share token must never make (e.g. minting shares). */
+export function collabAuthHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return authHeaders(extra);
 }
 
 type Any = Record<string, any>;
@@ -55,11 +66,21 @@ class RealtimeClient {
   clientId = "";
   name = "Guest";
   connected = false;
+  /** "owner" when joined with the master token (or none); "view"/"edit" under a share link. */
+  role: "owner" | "view" | "edit" = "owner";
 
   private es: EventSource | null = null;
   private hb: number | null = null;
+  private shareToken = "";
 
-  async join(roomId: string, name = "Guest"): Promise<boolean> {
+  /** Headers for room calls: the share token when under a link, else the master token. */
+  private roomHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    return this.shareToken
+      ? { Authorization: `Bearer ${this.shareToken}`, ...extra }
+      : authHeaders(extra);
+  }
+
+  async join(roomId: string, name = "Guest", opts: { shareToken?: string } = {}): Promise<boolean> {
     this.stop();
 
     this.roomId = String(roomId || "").trim();
@@ -68,6 +89,19 @@ class RealtimeClient {
       this.clientId ||
       `u-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+    // Share-link join: the token is the credential and the role. The server
+    // verifies it; the decoded role here only drives client-side mirrors.
+    this.shareToken = String(opts.shareToken || "");
+    this.role = "owner";
+    if (this.shareToken) {
+      const decoded = decodeShareToken(this.shareToken);
+      if (!decoded || decoded.room !== this.roomId) {
+        this.shareToken = "";
+        return false;
+      }
+      this.role = decoded.role;
+    }
+
     if (!this.roomId) {
       return false;
     }
@@ -75,7 +109,7 @@ class RealtimeClient {
     try {
       await fetch(`${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/join`, {
         method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
+        headers: this.roomHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           clientId: this.clientId,
           name: this.name,
@@ -93,6 +127,11 @@ class RealtimeClient {
         if (sse) sseQuery = `?sse=${encodeURIComponent(String(sse))}`;
       }
     } catch { /* fall through to unauthenticated/local behavior */ }
+    if (!sseQuery && this.shareToken) {
+      // Share links authenticate the event stream with ?share= (the server
+      // verifies the token + the revocation registry per connection).
+      sseQuery = `?share=${encodeURIComponent(this.shareToken)}`;
+    }
     if (!sseQuery && collabToken()) {
       // Documented trade-off: long-lived token in the SSE URL (EventSource
       // limitation). Prefer the short-lived signed provider above.
@@ -156,7 +195,7 @@ class RealtimeClient {
         `${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/heartbeat`,
         {
           method: "POST",
-          headers: authHeaders({ "Content-Type": "application/json" }),
+          headers: this.roomHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             clientId: this.clientId,
             name: this.name,
@@ -191,7 +230,7 @@ class RealtimeClient {
         `${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/leave`,
         {
           method: "POST",
-          headers: authHeaders({ "Content-Type": "application/json" }),
+          headers: this.roomHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ clientId: this.clientId }),
         },
       ).catch(() => {
@@ -200,6 +239,8 @@ class RealtimeClient {
     }
 
     this.connected = false;
+    this.shareToken = "";
+    this.role = "owner";
     this.dispatch("obs:live-disconnected", { roomId: this.roomId });
   }
 
@@ -208,12 +249,19 @@ class RealtimeClient {
       return false;
     }
 
+    // Client mirror of the server rule: a view-only link may still send
+    // selection locks (presence), but no model change. The server enforces
+    // this with 403; refusing here keeps the UI honest before the round trip.
+    if (this.role === "view" && type !== "lock" && type !== "unlock") {
+      return false;
+    }
+
     try {
       const res = await fetch(
         `${API_BASE}/rooms/${encodeURIComponent(this.roomId)}/change`,
         {
           method: "POST",
-          headers: authHeaders({ "Content-Type": "application/json" }),
+          headers: this.roomHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             clientId: this.clientId,
             type,

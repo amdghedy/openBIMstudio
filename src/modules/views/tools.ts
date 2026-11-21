@@ -14,6 +14,7 @@
  */
 
 import { getElements } from "../../features/authoring";
+import { isViewOnly } from "../collaboration/share-session";
 import { pickReference } from "./hit-test";
 import { addDimension, addTag, DEFAULT_DIM_STYLES } from "./annotations";
 import { createView, updateView } from "./store";
@@ -34,6 +35,16 @@ class ToolStateImpl {
   pendingPoint: [number, number] | null = null;
 
   setTool(t: ActiveTool): void {
+    // View-only share link: annotation tools write the document (dimensions,
+    // tags, section views). Selection stays available.
+    if (t !== "select" && isViewOnly()) {
+      try {
+        window.dispatchEvent(new CustomEvent("obs-toast", {
+          detail: { message: "View-only share link — editing is disabled for this link.", kind: "error" },
+        }));
+      } catch { /* */ }
+      return;
+    }
     this.active = t;
     this.pendingRef = null;
   }

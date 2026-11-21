@@ -254,6 +254,7 @@
     "test:webifc-abi": "node tests/webifc-abi.test.cjs",
     "test:ribbon-collapse": "node tests/ribbon-collapse.test.cjs",
     "test:server-hardening": "node tests/server-hardening.test.cjs",
+    "test:share-links": "node tests/share-links.test.cjs",
     "test:plugins": "node tests/plugins-api.test.cjs",
     "test:feature-registry": "node tests/feature-registry.test.cjs",
     "test:escape-all": "node tests/escape-all.test.cjs",

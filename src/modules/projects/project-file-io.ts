@@ -190,7 +190,11 @@ export async function saveEncryptedCopy(): Promise<boolean> {
 }
 
 /** Import a parsed project into this browser and open it. */
-export async function importProjectFile(file: Blob, handle: Handle | null = null): Promise<boolean> {
+export async function importProjectFile(
+  file: Blob,
+  handle: Handle | null = null,
+  opts: { replaceExisting?: boolean } = {},
+): Promise<boolean> {
   if (await isEncryptedProjectBlob(file)) {
     // Password-protected: ask, decrypt in memory, and never link the file for plain-text autosave.
     handle = null;
@@ -224,16 +228,23 @@ export async function importProjectFile(file: Blob, handle: Handle | null = null
   let id = clean.id;
   let replace = false;
   if (existing) {
-    const when = new Date(existing.updatedAt).toLocaleString();
-    const { confirmDialog } = await import("../../features/form-modal");
-    replace = await confirmDialog(
-      "Project already exists",
-      `"${existing.name}" already exists in this browser (last saved ${when}).\n\n` +
-      `Confirm = replace it with the file's version.\nCancel = open the file as a separate copy.`);
-    if (!replace) {
-      id = (crypto as any).randomUUID?.() ?? `${clean.id}-copy-${Date.now()}`;
-      clean.id = id;
-      clean.name = `${clean.name} (copy)`;
+    if (opts.replaceExisting) {
+      // Caller already decided: the file IS the newer version of this same
+      // project (a published share snapshot), so replace without asking.
+      // The pre-replace backup below still runs — nothing is lost silently.
+      replace = true;
+    } else {
+      const when = new Date(existing.updatedAt).toLocaleString();
+      const { confirmDialog } = await import("../../features/form-modal");
+      replace = await confirmDialog(
+        "Project already exists",
+        `"${existing.name}" already exists in this browser (last saved ${when}).\n\n` +
+        `Confirm = replace it with the file's version.\nCancel = open the file as a separate copy.`);
+      if (!replace) {
+        id = (crypto as any).randomUUID?.() ?? `${clean.id}-copy-${Date.now()}`;
+        clean.id = id;
+        clean.name = `${clean.name} (copy)`;
+      }
     }
   }
   clean.updatedAt = Date.now();

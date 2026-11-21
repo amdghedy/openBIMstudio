@@ -452,6 +452,40 @@ export async function createProject(name: string, options: CreateProjectOptions 
   }
 }
 
+/**
+ * Adopt the live scene as a project without clearing it.
+ *
+ * A fresh authoring session has no project: the user can draw and import
+ * (detached) before ever creating one, and createProject() clears the scene,
+ * so "create a project, then share" would destroy the very model being
+ * shared. Adopting builds the same project record createProject() builds,
+ * then saveProject() flushes the live elements / grids / levels into it and
+ * persists it. Model files imported while detached were never stored (their
+ * bytes are dropped by onModelImported), so an adopted project carries the
+ * authored elements, not those model blobs.
+ */
+export async function adoptSceneAsProject(name = "Untitled project"): Promise<ProjectDoc> {
+  if (current) return current;
+  const now = Date.now();
+  current = {
+    id: (crypto as any).randomUUID?.() ?? `p-${now}`,
+    name: name || "Untitled project",
+    createdAt: now,
+    updatedAt: now,
+    status: "active",
+    units: "metric",
+    template: "blank",
+    elements: [], models: [], issues: [], cost: undefined,
+    grids: [], levels: [], appState: {},
+    positioningMode: "origin-to-origin",
+  } as ProjectDoc;
+  detachedModels = 0;
+  await saveProject(true);
+  recordLastProjectId(current.id); // so the next boot can auto-reopen
+  notify();
+  return current;
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    Open project
    ═════════════════════════════════════════════════════════════════════════ */

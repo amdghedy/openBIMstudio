@@ -48,6 +48,7 @@ import { snapping } from "./snapping";
 import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
 import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP, type MepLike } from "../modules/mep/connectivity";
+import { isViewOnly } from "../modules/collaboration/share-session";
 import { planMepStretch, planMepMove } from "../modules/mep/stretch";
 import { planLinearFollow, FOLLOW_LINEAR, magnetSameTypeEnd, joinedEnds } from "../modules/native-bim/linear-follow";
 import { generateWallSweep, generateRevealCutter } from "../modules/wall-sweeps/geometry";
@@ -5737,6 +5738,17 @@ export function refreshPreview(): void {
  * (e.g. "outlet", "sprinkler", "pile") which map via TOOL_ALIASES.
  */
 export function setAuthoringTool(tool: Tool | string | null) {
+  // View-only share link: no modelling tool may activate. Selection stays
+  // available (tool "select"/null); the server is the authority for the
+  // role, this only keeps the UI from pretending an edit is possible.
+  if (tool !== null && tool !== "select" && isViewOnly()) {
+    try {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: { message: "View-only share link — editing is disabled for this link.", kind: "error" },
+      }));
+    } catch { /* */ }
+    return;
+  }
   // Selection at the moment the tool starts: Move/Copy/Rotate/Mirror/Array/Offset act on it directly
   // (it is cleared below for every non-select tool, which used to leave them with nothing).
   const preSelected = [...selectedIds];
@@ -7592,6 +7604,11 @@ export function setupAuthoring() {
   /* ── Gesture dispatch ──────────────────────────────────────────────── */
 
   function handleAuthoringGesture(g: Gesture): boolean {
+    // View-only share link: grip drags move elements, so they fall through
+    // to navigation (orbit) instead of starting a drag here.
+    if (isViewOnly() && (g.kind === "drag-start" || g.kind === "drag-move" || g.kind === "drag-end")) {
+      return false;
+    }
     // Grip drag owns its own gesture from drag-start to drag-end.
     if (g.kind === "drag-start") {
       const grip = (g.button === 0 ? pressGrip : null) ?? gripAt(g.event);
@@ -7643,6 +7660,10 @@ export function setupAuthoring() {
       if (!activeTool || activeTool === "select") return true;
       // Fall through to tool placement when force-select found no element.
     }
+
+    // View-only share link: selection still works above, but no tool may
+    // place or modify. Swallow the click so it does not reach a tool.
+    if (isViewOnly()) return true;
 
     if (!activeTool) return true;
 

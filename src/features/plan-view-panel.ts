@@ -54,6 +54,7 @@ import {
   serializeRegions, loadRegions, regionsToEntities, type Region2D,
 } from "../modules/filled-regions/types";
 import { getPattern } from "../modules/detail-patterns/hatch-patterns";
+import { isViewOnly } from "../modules/collaboration/share-session";
 
 /* -------------------------------------------------------------------------
    State
@@ -4795,6 +4796,17 @@ export function isPlanViewVisible() {
 /** Called when user picks Architecture Wall etc. while plan is open. */
 export function setPlanToolFromRibbon(tool: string) {
   if (!isPlanViewVisible()) return;
+  // View-only share link: only navigation and selection may start. Every
+  // other branch below writes the document (walls, points, dimensions,
+  // tags, moves). The server enforces the role; this keeps the UI honest.
+  if (isViewOnly() && tool !== "select" && tool !== "pan" && tool !== "navigate") {
+    try {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: { message: "View-only share link — editing is disabled for this link.", kind: "error" },
+      }));
+    } catch { /* */ }
+    return;
+  }
   planDrawStart = null;
   planSnap = null;
   const linear = [

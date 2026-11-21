@@ -474,6 +474,21 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "share-links",
+    area: "Platform",
+    status: "limited",
+    source: ["server/index.mjs", "server/share-tokens.mjs", "src/modules/collaboration/share-links.ts", "src/modules/collaboration/share-session.ts", "src/modules/collaboration/realtime-client.ts"],
+    evidence: ["tests/share-links.test.cjs", "tests/e2e/share-link.spec.ts"],
+    limitations: [
+      "Live updates are snapshot-based: the newest published version wins; concurrent edits to the same model are last-publish-wins, not merged — there is no CRDT here",
+      "A share link works wherever the collab server is reachable from the joiner's browser; on localhost it is localhost-only — a public link needs the collab server on a public URL with a strong token and an origin allow-list",
+      "In tokenless loopback mode the signing secret is ephemeral per process, so shares do not survive a server restart",
+      "Sharing an encrypted project requires the joiner to know the project password",
+      "View-only is enforced server-side; the client mirrors it with a banner and disabled tools",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "ai-assistant",
     area: "Platform",
     status: "limited",

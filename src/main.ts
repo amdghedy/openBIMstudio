@@ -236,6 +236,7 @@ await step("saved-views", () => setupSavedViews());
 await step("cursor-tracker", () => setupCursorTracker());
 await step("command-palette", () => setupCommandPalette());
 await step("collaboration-panel", () => setupCollaborationPanel());
+await step("share-links", async () => (await import("./modules/collaboration/share-links")).setupShareLinks());
 await step("workshare-locks", () => setupWorkshareLocks());
 await step("walk-mode", () => setupWalkMode());
 await step("walk-minimap", () => setupWalkMinimap());
