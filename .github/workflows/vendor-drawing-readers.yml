@@ -1,7 +1,8 @@
 name: Vendor drawing-format readers
 
 # Downloads the prebuilt WebAssembly readers for STEP/IGES/BREP (occt-import-js) and Rhino .3dm (rhino3dm)
-# from npm, smoke-tests them in Node, and pushes them on branch vendor-cad-build (main needs a pull request)
+# from npm, smoke-tests them in Node, and pushes them on branch vendor-cad-build (main is not yet
+# branch-protected, #142, so merge by pull request anyway)
 # so they can be committed under public/vendor/. Nothing is added to package.json or package-lock.json.
 # Run manually, and automatically whenever the vendor smoke harness or vendored readers change.
 on:
@@ -61,7 +62,7 @@ jobs:
           git clone --depth 1 https://github.com/mcneel/rhino3dm /tmp/rh-src
           find /tmp/rh-src -type f -iname '*.3dm' -size -8M | sort | head -10
           for f in $(find /tmp/rh-src -type f -iname '*.3dm' -size -8M | head -4); do node scripts/vendor-smoke.mjs rhino "$f" || echo "FAILED on $f"; done
-      - name: Commit to a side branch (main is protected; merge it by pull request)
+      - name: Commit to a side branch (main is not yet protected, #142; merge it by pull request anyway)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

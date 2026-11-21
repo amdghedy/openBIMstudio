@@ -1,9 +1,10 @@
 name: Build RVT model reader
 
 # Builds the rvt-rs WebAssembly decoder (scripts/build-rvt-wasm.mjs), smoke-tests it on
-# the upstream sample files, and pushes it on branch rvt-decoder-build (main needs a pull
-# request) so it can be committed to public/rvt/ and served by every host (including ones
-# with no Rust toolchain, such as Vercel). Run manually.
+# the upstream sample files, and pushes it on branch rvt-decoder-build (main is not yet
+# branch-protected, #142, so merge by pull request anyway) so it can be committed to
+# public/rvt/ and served by every host (including ones with no Rust toolchain, such as
+# Vercel). Run manually.
 on:
   workflow_dispatch:
 
@@ -32,7 +33,7 @@ jobs:
             ls -l "/tmp/$f.rvt"
             node scripts/rvt-smoke.mjs "/tmp/$f.rvt" --expect-glb
           done
-      - name: Commit the built decoder to a side branch (main is protected; merge it by pull request)
+      - name: Commit the built decoder to a side branch (main is not yet protected, #142; merge it by pull request anyway)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

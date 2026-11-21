@@ -35,7 +35,7 @@ View-only, decoded inside the browser tab. Nothing is uploaded.
 
 The built decoder (`public/rvt/rvt.js` and `rvt_bg.wasm`, about 10 MB) is committed, so every host (Cloudflare, Vercel, any static host) serves it with no Rust toolchain. If it is ever missing, the app says "not installed on this deployment" and names the exact file and HTTP status it could not load.
 
-To rebuild or upgrade it: change `RVT_RS_COMMIT` in `scripts/build-rvt-wasm.mjs`, then run the **Build external BIM authoring software reader** workflow (Actions tab). It builds, runs `scripts/rvt-smoke.mjs` on three upstream sample files, and pushes the result to the branch `rvt-decoder-build`; open a pull request from it (main is protected). Locally: `rustup target add wasm32-unknown-unknown`, `cargo install wasm-pack --locked`, `npm run build:rvt`.
+To rebuild or upgrade it: change `RVT_RS_COMMIT` in `scripts/build-rvt-wasm.mjs`, then run the **Build external BIM authoring software reader** workflow (Actions tab). It builds, runs `scripts/rvt-smoke.mjs` on three upstream sample files, and pushes the result to the branch `rvt-decoder-build`; open a pull request from it (main is not yet branch-protected — see #142 — so merge by pull request anyway). Locally: `rustup target add wasm32-unknown-unknown`, `cargo install wasm-pack --locked`, `npm run build:rvt`.
 
 The Content-Security-Policy needs nothing new: the decoder is same-origin, and `'wasm-unsafe-eval'` and `worker-src 'self'` were already allowed.
 
@@ -45,8 +45,8 @@ The Content-Security-Policy needs nothing new: the decoder is same-origin, and `
 
 ## Verification status
 
-`tests/rvt-viewer.test.cjs` covers file checks, the decode sequence and the honesty of the summary with a fake decoder, and (when `public/rvt/` is present) runs the **real WebAssembly** on a synthetic 20 KB fixture from the rvt-rs corpus: it decodes, produces a glTF binary, is reported as "nothing to draw" (scaffold, 25%), and garbage input throws. The workflow's smoke test did the same on three upstream samples in Node.
+`tests/rvt-model-viewer.test.cjs` covers file checks, the decode sequence and the honesty of the summary with a fake decoder, and (when `public/rvt/` is present) runs the **real WebAssembly** on a synthetic 20 KB fixture from the rvt-rs corpus: it decodes, produces a glTF binary, is reported as "nothing to draw" (scaffold, 25%), and garbage input throws. The workflow's smoke test did the same on three upstream samples in Node.
 
-`tests/rvt-viewer.test.cjs` also checks, against the real decoder, that the extracted properties agree with the decoder's own info panel on a synthetic wall, and (where `three` is installed, e.g. CI) that the real glTF loader keeps the properties and that the twin geometry has the right size, units and orientation (Y up).
+`tests/rvt-model-viewer.test.cjs` also checks, against the real decoder, that the extracted properties agree with the decoder's own info panel on a synthetic wall, and (where `three` is installed, e.g. CI) that the real glTF loader keeps the properties and that the twin geometry has the right size, units and orientation (Y up).
 
 Not verified: opening a **real project** `.rvt` (the fixtures have no geometry), the worker and the display in a real browser, orientation, units and geometry quality. Try it with one of your own files.

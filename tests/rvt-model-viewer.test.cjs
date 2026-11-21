@@ -1,5 +1,7 @@
-// View-only RVT support: pure logic with a FAKE decoder, plus wiring checks.
-// NOT tested with the real rvt-rs wasm or a real .rvt file (neither can be built/obtained in this environment).
+// View-only RVT support: pure logic with a FAKE decoder, plus wiring checks,
+// plus (when public/rvt/ is present) the REAL rvt-rs wasm on a synthetic
+// 20 KB fixture and a synthetic wall. NOT tested on a real project .rvt file:
+// no real .rvt has ever been available in this environment.
 const { execSync } = require("child_process"); const fs=require("fs"); const os=require("os"); const path=require("path");
 const out=fs.mkdtempSync(path.join(os.tmpdir(),"rvt-"));
 execSync(`npx tsc src/modules/rvt/rvt-core.ts --outDir ${out} --module commonjs --target es2022 --lib es2022,dom --skipLibCheck --ignoreDeprecations 5.0`,{stdio:"inherit"});
