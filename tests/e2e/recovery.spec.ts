@@ -196,6 +196,14 @@ async function crashRenderer(page: Page): Promise<void> {
  */
 async function rebootAfterCrash(crashedPage: Page): Promise<Page> {
   const page = await crashedPage.context().newPage();
+  // The outcome key survives across reboots in the same context, so a
+  // previous cycle's outcome would make the poll below return
+  // immediately — before THIS boot's recovery step has run — and the
+  // banner would still say "Checking…" (the idempotency scenario's
+  // second cycle failed exactly this way). Clear the stale value on
+  // navigation so the poll waits for the fresh outcome. The try/catch
+  // covers about:blank, which has no storage.
+  await page.addInitScript(() => { try { localStorage.removeItem('obs.recovery.last'); } catch { /* no storage on about:blank */ } });
   await boot(page);
   // The crash-recovery step runs near the END of boot (after every setup
   // step), long after the canvas is visible — wait for it to record its
