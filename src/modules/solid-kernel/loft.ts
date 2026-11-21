@@ -3,10 +3,14 @@
  *
  * RVT's loft-through-sections technique: N >= 2 closed sections at
  * explicit or evenly spaced levels, connected by ruled side bands with
- * capped ends. Section correspondence uses the same polar-angle
- * resampling as `blend`, so a 2-section loft is volume-identical to a
- * blend (asserted to 1e-9 by tests) and rectangular-to-round sections
- * remain watertight.
+ * capped ends. Section correspondence is the same as `blend`, so a
+ * 2-section loft is volume-identical to a blend (asserted to 1e-9 by
+ * tests) and rectangular-to-round sections remain watertight: sections
+ * with equal vertex counts pair vertices in order (exact linear
+ * interpolation — intermediate sections are the interpolated profiles),
+ * otherwise all sections are re-sampled at one polar-angle set shared
+ * by all of them (even grid plus every vertex angle), so profile corners
+ * survive resampling exactly instead of being chamfered by a fixed grid.
  *
  * Validation per the forms discipline: every section validated
  * (closed, >= 3 points, simple), levels strictly increasing and finite,
@@ -18,7 +22,7 @@
  */
 
 import type { IndexedMesh, ProfilePt, Pt3 } from "../adaptive";
-import { validateProfile, signedArea, resampleByAngle } from "./forms";
+import { validateProfile, signedArea, resampleByAngles, sharedSampleAngles } from "./forms";
 import { COINCIDENT_TOL } from "./brep";
 
 export type LoftErrorCode =
@@ -102,14 +106,31 @@ export function loftSections(params: LoftParams): IndexedMesh {
   }
 
   const count = Math.max(...rings.map((r) => r.length), 16);
-  const resampled = rings.map((r) => resampleByAngle(r, ringCentroid(r), count));
+  // Correspondence between sections. When every section has the same
+  // vertex count, pair vertices in order (index correspondence): the
+  // loft is then the exact linear interpolation of the profiles, so
+  // intermediate sections are the interpolated shapes (a 2x2 -> 4x1
+  // loft passes through the 3x1.5 rectangle at mid-height) and the volume
+  // is the exact integral of the interpolated area. Polar-angle sampling
+  // cannot do that for non-similar profiles: an intermediate corner sits
+  // at an angle neither end profile has, so the fixed angle grid cuts it
+  // (a 2x2 -> 4x1 loft came out ~4% low). When counts differ there is no
+  // vertex pairing to use, so fall back to one angle set shared by all
+  // sections (grid + every vertex angle) — see sharedSampleAngles.
+  let resampled: ProfilePt[][];
+  if (rings.every((r) => r.length === rings[0].length)) {
+    resampled = rings;
+  } else {
+    const angles = sharedSampleAngles(rings, count);
+    resampled = rings.map((r) => resampleByAngles(r, ringCentroid(r), angles));
+  }
 
   const vertices: Pt3[] = [];
   for (let i = 0; i < k; i++) {
     for (const p of resampled[i]) vertices.push({ x: p.u, y: p.v, z: levels[i] });
   }
   const faces: [number, number, number][] = [];
-  const n = count;
+  const n = resampled[0].length;
   // Bottom cap (normal −z; levels are strictly increasing).
   for (let i = 1; i < n - 1; i++) faces.push([0, i + 1, i]);
   // Top cap (normal +z).

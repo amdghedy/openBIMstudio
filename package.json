@@ -217,6 +217,7 @@
     "test:parametric-revolve": "node tests/parametric-revolve.test.cjs",
     "test:catalog-shared-parameters": "node tests/catalog-shared-parameters.test.cjs",
     "test:shared-parameters": "node --test tests/shared-parameters.test.mjs",
+    "test:parametric-loft": "node tests/parametric-loft.test.cjs",
     "test:structural": "node tests/structural.test.cjs",
     "test:structural-3d": "node tests/structural-3d.test.cjs",
     "test:no-cdn": "node tests/no-cdn-imports.test.cjs",

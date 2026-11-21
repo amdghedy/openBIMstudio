@@ -50,6 +50,8 @@ import {
   resolveNested,
   type NestedFamilyRef,
 } from "./nested-families";
+import { loftSections } from "../solid-kernel/loft";
+import type { IndexedMesh, ProfilePt } from "../adaptive";
 
 /* ---------------------------------------------------------------------------
    Extended geometry kinds (additive - existing kinds still work)
@@ -78,7 +80,20 @@ export type ExtendedGeometrySpec =
   | {
       kind: "loft";
       profiles: ProfileSpec[];
+      /**
+       * Circumferential sampling for curved profiles (circles): how many
+       * points a circle is sampled to before the kernel re-samples every
+       * profile to a common vertex count. Rounded up to a multiple of 8
+       * (minimum 16) so rectangular corners land exactly on the resampled
+       * end rings. Default 4 (=> 16). No longer a slice count: the loft is
+       * one ruled solid, not stacked slices.
+       */
       segments?: number;
+      /**
+       * Loft length along +z in metres (profiles evenly spaced from z=0
+       * to z=length). Default 1, the span the old stacked-slice loft used.
+       */
+      length?: NumberRef;
       transform?: TransformSpec;
       visibleWhen?: string;
     }
@@ -569,98 +584,126 @@ function buildRevolve(
   return mesh;
 }
 
+/**
+ * Convert a family profile to a closed ring for the solid kernel
+ * (`validateProfile` requires first == last point). Returns null for a
+ * degenerate profile (non-positive / non-finite size, fewer than 3 polygon
+ * points). Rings are centred on the origin, matching `profileToShapeLocal`.
+ */
+function profileToLoftRing(
+  profile: ProfileSpec,
+  ringPoints: number,
+  params: Record<string, any>,
+): ProfilePt[] | null {
+  if (profile.kind === "rect") {
+    const w = resolveNumber(profile.w, params);
+    const h = resolveNumber(profile.h, params);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+    const x = w / 2;
+    const y = h / 2;
+    return [
+      { u: -x, v: -y },
+      { u: x, v: -y },
+      { u: x, v: y },
+      { u: -x, v: y },
+      { u: -x, v: -y },
+    ];
+  }
+  if (profile.kind === "circle") {
+    const r = resolveNumber(profile.r, params);
+    if (!Number.isFinite(r) || r <= 0) return null;
+    const pts: ProfilePt[] = [];
+    for (let i = 0; i < ringPoints; i++) {
+      const a = (2 * Math.PI * i) / ringPoints;
+      pts.push({ u: r * Math.cos(a), v: r * Math.sin(a) });
+    }
+    pts.push({ ...pts[0] });
+    return pts;
+  }
+  // polygon — the only remaining closed profile kind. An `arc` profile
+  // (a circular sector, added by slice 5 after this function was written)
+  // is an open curve, not a closed ring, so it cannot loft; treat it as
+  // degenerate rather than reading a `points` field it does not have.
+  if (profile.kind !== "polygon") return null;
+  const raw = profile.points;
+  if (!Array.isArray(raw) || raw.length < 3) return null;
+  const ring: ProfilePt[] = raw.map(([u, v]) => ({ u, v }));
+  if (!ring.every((p) => Number.isFinite(p.u) && Number.isFinite(p.v))) return null;
+  // Strip a caller-supplied closing repeat; the kernel wants exactly one.
+  if (ring.length > 1) {
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first.u === last.u && first.v === last.v) ring.pop();
+    if (ring.length < 3) return null;
+  }
+  ring.push({ ...ring[0] });
+  return ring;
+}
+
+/**
+ * True loft: ruled interpolation between the given profiles.
+ *
+ * The previous implementation stacked extruded slices, each a prism with a
+ * constant cross-section, so the side wall was stepped and the volume was
+ * a left-Riemann sum (with the default 4 segments, ~16% low for a
+ * 2x2 -> 4x4 loft). This version delegates to the solid kernel's
+ * `loftSections`, which re-samples every profile to a common vertex count
+ * by polar angle (shared correspondence) and connects corresponding
+ * vertices with ruled side bands, capped exactly at the first and last
+ * profiles. An intermediate cross-section at height z is therefore the
+ * linear interpolation of the two neighbouring profiles, and the volume
+ * is the exact integral of the interpolated area — not a stepped sum.
+ * This is a ruled loft, not a NURBS loft: interpolation between profiles
+ * is linear, so e.g. a rect-to-rect loft has planar side faces.
+ *
+ * The loft spans z = 0 .. `length` with profiles evenly spaced along it,
+ * and returns a single watertight mesh (one BufferGeometry), not a group
+ * of slice prisms. Returns null for degenerate input (< 2 profiles,
+ * non-positive length, an unusable profile, or a kernel validation
+ * failure such as a self-intersecting polygon).
+ */
 function buildLoft(
   profiles: ProfileSpec[],
   segments: number,
   params: Record<string, any>,
+  length: number,
 ): THREE.Object3D | null {
   if (profiles.length < 2) return null;
-  // Honest loft: every profile is resampled to the SAME point count,
-  // uniform by arc length, so point k of one profile corresponds to
-  // point k of the next (the old code paired getPoints() output by
-  // index, which gave a rect 132 points and a circle 33 — the first 33
-  // rect points cover only a quarter of the outline). Consecutive
-  // rings are stitched with quads, so the solid is the exact linear
-  // interpolation between profiles instead of a stepped stack that
-  // over-estimates it with the slice-start section (a 2x2 -> 1x1
-  // taper used to measure 2.719 for a true 2.333).
-  // Total height is 1 (z in [0, 1]); place/scale with `transform`.
-  const COUNT = 64;
-  const rings = profiles.map((p) => resampleRing(profileRing(p, params, 256), COUNT));
-  if (rings.some((r) => r.length < 3)) return null;
-  // Align the rings' starting points by polar angle about each ring's
-  // centroid, so point k of one profile corresponds to point k of the
-  // next in the same DIRECTION. Without this the correspondence is
-  // whatever getPoints() happened to start with — a rect starts at its
-  // (-1,-1) corner while a circle starts at (1,0) — and the loft
-  // twists through 135 degrees, collapsing the middle (a rect->circle
-  // loft measured 1.53 instead of ~3.5).
-  for (const ring of rings) {
-    let cx = 0, cy = 0;
-    for (const p of ring) { cx += p.x; cy += p.y; }
-    cx /= ring.length; cy /= ring.length;
-    let best = 0, bestAngle = Infinity;
-    ring.forEach((p, k) => {
-      let a = Math.atan2(p.y - cy, p.x - cx);
-      if (a < 0) a += 2 * Math.PI;
-      if (a < bestAngle) { bestAngle = a; best = k; }
-    });
-    if (best > 0) {
-      const rotated = [...ring.slice(best), ...ring.slice(0, best)];
-      ring.splice(0, ring.length, ...rotated);
-    }
+  if (!Number.isFinite(length) || length <= 0) return null;
+  // Multiple of 8 (min 16): rectangular corners then land exactly on the
+  // kernel's resampled end rings, so endpoints are exact, not approximate.
+  const ringPoints = Math.max(16, Math.ceil(segments / 8) * 8);
+  const sections: ProfilePt[][] = [];
+  for (const profile of profiles) {
+    const ring = profileToLoftRing(profile, ringPoints, params);
+    if (!ring) return null;
+    sections.push(ring);
   }
-  // Exact linear interpolation: for each profile pair, build rings at
-  // t = 0, 1/n, ..., 1 and stitch consecutive rings with quads, so the
-  // solid really starts at the first profile and ends at the last
-  // (midpoint prisms never reach the end profiles). End caps close the
-  // first and last profiles.
-  const group = new THREE.Group();
-  const n = Math.max(1, segments);
-  const span = profiles.length - 1;
-  const positions: number[] = [];
-  const centroid = new THREE.Vector3();
-  const pushTri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => {
-    positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-  };
-  const ringAt = (pair: number, t: number): THREE.Vector3[] =>
-    rings[pair].map((p, k) => {
-      const q = rings[pair + 1][k];
-      return new THREE.Vector3(
-        p.x * (1 - t) + q.x * t,
-        p.y * (1 - t) + q.y * t,
-        (pair + t) / span,
-      );
-    });
-  const cap = (ring: THREE.Vector3[], flip: boolean) => {
-    centroid.set(0, 0, 0);
-    for (const p of ring) centroid.add(p);
-    centroid.divideScalar(ring.length);
-    for (let k = 0; k < ring.length; k++) {
-      const k1 = (k + 1) % ring.length;
-      if (flip) pushTri(centroid, ring[k1], ring[k]);
-      else pushTri(centroid, ring[k], ring[k1]);
-    }
-  };
-  for (let i = 0; i < span; i++) {
-    const pairRings: THREE.Vector3[][] = [];
-    for (let s = 0; s <= n; s++) pairRings.push(ringAt(i, s / n));
-    for (let s = 0; s < n; s++) {
-      const r0 = pairRings[s], r1 = pairRings[s + 1];
-      for (let k = 0; k < COUNT; k++) {
-        const k1 = (k + 1) % COUNT;
-        pushTri(r0[k], r1[k1], r1[k]);
-        pushTri(r0[k], r0[k1], r1[k1]);
-      }
-    }
-    if (i === 0) cap(pairRings[0], true);
-    if (i === span - 1) cap(pairRings[n], false);
+  let mesh: IndexedMesh;
+  try {
+    mesh = loftSections({ sections, height: length });
+  } catch {
+    return null;
   }
+  const positions = new Float32Array(mesh.vertices.length * 3);
+  mesh.vertices.forEach((v, i) => {
+    positions[i * 3] = v.x;
+    positions[i * 3 + 1] = v.y;
+    positions[i * 3 + 2] = v.z;
+  });
+  const index = new Uint32Array(mesh.faces.length * 3);
+  mesh.faces.forEach((f, i) => {
+    index[i * 3] = f[0];
+    index[i * 3 + 1] = f[1];
+    index[i * 3 + 2] = f[2];
+  });
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.setIndex(new THREE.BufferAttribute(index, 1));
   geo.computeVertexNormals();
-  group.add(new THREE.Mesh(geo));
-  return group.children.length ? group : null;
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+  return new THREE.Mesh(geo);
 }
 
 function profileToShapeLocal(profile: ProfileSpec, params: Record<string, any>): THREE.Shape {
@@ -845,7 +888,8 @@ export function buildExtendedGeometry(
     }
 
     case "loft": {
-      const obj = buildLoft(spec.profiles, spec.segments ?? 4, params);
+      const length = spec.length !== undefined ? resolveNumber(spec.length, params) : 1;
+      const obj = buildLoft(spec.profiles, spec.segments ?? 4, params, length);
       if (!obj) return null;
       const wrap = resolveTransform(spec.transform, params);
       wrap.add(obj);

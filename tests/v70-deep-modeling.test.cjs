@@ -247,6 +247,23 @@ t("loftSections: 2 sections volume-identical to blend (shared correspondence pat
   near(sk.meshVolume(loft), sk.meshVolume(bl), 1e-9);
 });
 
+t("loftSections: non-square rects loft exactly, still identical to blend", () => {
+  // Regression: a plain polar-angle grid chamfers corners that do not fall
+  // on it, so a 2x3 rect lost ~3% of its area and a 2x2 -> 4x1 loft came
+  // out ~4% low. Equal vertex counts now pair vertices in order (exact
+  // linear interpolation), so the volume is the exact area integral.
+  const a = rect(2, 3);
+  const b = rect(4, 1);
+  const h = 2;
+  // A(t) = (2+2t)(3-2t); V = h * (6 + 1 - 4/3) = 34/3.
+  const m = sk.loftSections({ sections: [a, b], height: h });
+  near(sk.meshVolume(m), 34 / 3, 1e-6);
+  const bl = sk.blend({ startProfile: a, endProfile: b, height: h });
+  near(sk.meshVolume(m), sk.meshVolume(bl), 1e-9);
+  // Same-profile non-square rect is an exact prism.
+  near(sk.meshVolume(sk.loftSections({ sections: [a, a], height: h })), 2 * 3 * h, 1e-9);
+});
+
 t("loftSections: explicit levels honored (prismatic volume uses the level span)", () => {
   const sq = rect(1, 1);
   const m = sk.loftSections({ sections: [sq, sq, sq], height: 99, levels: [1, 1.5, 4] });

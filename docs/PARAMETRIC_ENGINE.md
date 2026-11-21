@@ -166,7 +166,7 @@ for (const [elementId, params] of updated) {
 | Voids (boolean cut) | ⚠️ marked; CSG subtraction still approximate |
 | Reference planes / dims in sketch | ❌ UI not yet |
 | Adaptive components / points | ❌ |
-| Full NURBS loft | ⚠️ linear slice approximation |
+| Full NURBS loft | ⚠️ ruled (linear) loft via the solid kernel — true profile interpolation, not NURBS |
 | Family types catalog (.txt) | ❌ import/export next |
 | Shared parameter file (.txt) | ⚠️ data model only |
 

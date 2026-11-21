@@ -44,7 +44,20 @@ export interface RevolveSpec {
 export interface LoftSpec {
   kind: "loft";
   profiles: ProfileSpec[];
+  /**
+   * Circumferential sampling for curved profiles (circles): how many
+   * points a circle is sampled to before the kernel re-samples every
+   * profile to a common vertex count. Rounded up to a multiple of 8
+   * (minimum 16) so rectangular corners land exactly on the resampled
+   * end rings. Default 4 (=> 16). No longer a slice count: the loft is
+   * one ruled solid, not stacked slices.
+   */
   segments?: number;
+  /**
+   * Loft length along +z in metres (profiles evenly spaced from z=0 to
+   * z=length). Default 1, the span the old stacked-slice loft used.
+   */
+  length?: NumberRef;
   transform?: TransformSpec;
   visibleWhen?: string;
 }

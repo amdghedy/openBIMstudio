@@ -264,9 +264,11 @@ export interface BlendParams {
 
 /**
  * Blend two validated profiles (loft). Degenerate handling (spec 2.8):
- * sections are re-sampled to a common vertex count by polar-angle
- * parameterisation when counts differ, so rectangular-to-round blends
- * remain watertight.
+ * equal vertex counts pair vertices in order (exact linear
+ * interpolation); when counts differ, sections are re-sampled to a
+ * common vertex count by polar-angle parameterisation at one angle set
+ * shared by both profiles, so rectangular-to-round blends remain
+ * watertight and no corner is chamfered away.
  */
 export function blend(params: BlendParams): IndexedMesh {
   const a = validateProfile(params.startProfile);
@@ -280,13 +282,27 @@ export function blend(params: BlendParams): IndexedMesh {
   const ca = centroid(a);
   const cb = centroid(b);
   const targetCount = Math.max(a.length, b.length, 16);
-  const ra = resampleByAngle(a, ca, targetCount);
-  const rb = resampleByAngle(b, cb, targetCount);
+  // Same correspondence rule as loftSections (which must stay
+  // volume-identical to blend): equal vertex counts pair vertices in
+  // order — exact linear interpolation — otherwise one angle set shared
+  // by both profiles (grid + every vertex angle), so no corner is
+  // chamfered away. See loftSections for why a plain per-profile grid
+  // is not enough.
+  let ra: ProfilePt[];
+  let rb: ProfilePt[];
+  if (a.length === b.length) {
+    ra = a;
+    rb = b;
+  } else {
+    const angles = sharedSampleAngles([a, b], targetCount);
+    ra = resampleByAngles(a, ca, angles);
+    rb = resampleByAngles(b, cb, angles);
+  }
 
   const vertices: Pt3[] = [];
   for (const p of ra) vertices.push({ x: p.u, y: p.v, z: 0 });
   for (const p of rb) vertices.push({ x: p.u, y: p.v, z: params.height });
-  const n = targetCount;
+  const n = ra.length;
   const faces: [number, number, number][] = [];
   for (let i = 1; i < n - 1; i++) faces.push([0, i + 1, i]); // bottom cap
   for (let i = 1; i < n - 1; i++) faces.push([n, n + i, n + i + 1]); // top cap
@@ -309,13 +325,31 @@ function centroid(ring: ProfilePt[]): ProfilePt {
  * `c`, preserving shape. Linear interpolation between the two bracketing
  * vertices per ray (O(n·count)). Exported for the v0.70 N-section loft,
  * which must share blend()'s exact correspondence path.
+ *
+ * NOTE: a fixed even grid alone chamfers any profile corner that does
+ * not fall on it — e.g. a 2x3 rectangle loses ~3% of its area, and its
+ * corners never appear in the resampled ring. Lofts/blends therefore
+ * sample at the shared angle set from `sharedSampleAngles` (grid plus
+ * every vertex angle), which keeps every original vertex. This function
+ * on its own is kept for callers that only need the plain grid.
  */
 export function resampleByAngle(ring: ProfilePt[], c: ProfilePt, count: number): ProfilePt[] {
+  const angles: number[] = [];
+  for (let i = 0; i < count; i++) angles.push(-Math.PI + (2 * Math.PI * i) / count);
+  return resampleByAngles(ring, c, angles);
+}
+
+/**
+ * Re-sample a closed ring at the given polar angles (sorted, in
+ * [-pi, pi)) around `c`. Sampling exactly at a vertex angle returns
+ * that vertex, so an angle set containing every vertex angle preserves
+ * the ring's corners exactly.
+ */
+export function resampleByAngles(ring: ProfilePt[], c: ProfilePt, angles: number[]): ProfilePt[] {
   const pts = ring.map((p) => ({ p, ang: Math.atan2(p.v - c.v, p.u - c.u) }));
   // Ensure the ring angles are monotonic starting at the first point.
   const out: ProfilePt[] = [];
-  for (let i = 0; i < count; i++) {
-    const target = -Math.PI + (2 * Math.PI * i) / count;
+  for (const target of angles) {
     let k = -1;
     for (let j = 0; j < pts.length; j++) {
       const a1 = pts[j].ang;
@@ -335,6 +369,31 @@ export function resampleByAngle(ring: ProfilePt[], c: ProfilePt, count: number):
     out.push({ u: p1.u + (p2.u - p1.u) * t, v: p1.v + (p2.v - p1.v) * t });
   }
   return out;
+}
+
+/**
+ * One sample-angle set shared by every ring of a loft/blend: the even
+ * `count` grid plus the polar angle of every vertex of every ring (each
+ * about its own centroid), sorted and de-duplicated. Resampling all
+ * rings at this one set keeps the vertex correspondence across sections
+ * (vertex i is at the same angle on every ring) while preserving every
+ * original vertex — so rectangular corners survive resampling exactly
+ * and the interpolated area integral is exact, not chamfered.
+ */
+export function sharedSampleAngles(rings: ProfilePt[][], count: number): number[] {
+  const angles: number[] = [];
+  for (let i = 0; i < count; i++) angles.push(-Math.PI + (2 * Math.PI * i) / count);
+  const has = (a: number) => angles.some((x) => Math.abs(x - a) < 1e-9);
+  for (const ring of rings) {
+    const c = centroid(ring);
+    for (const p of ring) {
+      let a = Math.atan2(p.v - c.v, p.u - c.u);
+      if (a >= Math.PI) a -= 2 * Math.PI; // atan2 can return +pi; -pi is the same ray
+      if (!has(a)) angles.push(a);
+    }
+  }
+  angles.sort((a, b) => a - b);
+  return angles;
 }
 
 /** Parameter t along segment p1→p2 where the polar angle equals target. */
