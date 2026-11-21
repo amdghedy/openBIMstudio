@@ -42,6 +42,14 @@ export const PLAN_COMMANDS: readonly PlanCommand[] = [
   c("Annotate", "DIMANGULAR", ["DAN"], "Angular dimension", { tool: "dim-angular" }),
   c("Annotate", "DIMRADIUS", ["DRA", "RADIUS"], "Radial dimension", { tool: "dim-radial" }),
   c("Annotate", "DIMDIAMETER", ["DDI"], "Diameter dimension", { tool: "dim-diameter" }),
+  // G7: Continuous / Baseline are distinct chain kinds; Slope is its own
+  // dimension type; Multi-Category / Area tags are their own tag modes.
+  c("Annotate", "DIMCONTINUOUS", ["DCO"], "Continuous dimension chain (end-to-end)", { tool: "dim-continuous" }),
+  c("Annotate", "DIMBASELINE", ["DBA"], "Baseline dimension chain (common origin)", { tool: "dim-baseline" }),
+  c("Annotate", "DIMSLOPE", ["DSL"], "Slope dimension (click a sloped run)", { tool: "dim-slope" }),
+  c("Annotate", "TAGMULTI", ["TGM"], "Multi-Category tag", { tool: "tag-multi" }),
+  c("Annotate", "TAGAREA", ["TGA"], "Tag areas", { tool: "tag-area" }),
+  c("Annotate", "INSULATION", ["INS"], "Insulation line (batting in plan)", { tool: "insulation" }),
   c("Annotate", "AUTODIM", ["AD"], "Dimension a run of edges", { tool: "auto-dim" }),
   c("Annotate", "AUTODIMALL", ["ADA"], "Auto-dimension the whole plan", { tool: "auto-dim-all" }),
   c("Annotate", "TAG", ["TG"], "Tag elements by category", { tool: "tag" }),

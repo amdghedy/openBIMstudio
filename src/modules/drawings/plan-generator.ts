@@ -585,9 +585,20 @@ function emitAuthoredSymbol(
     }
 
     case "truss":
-    case "mline":
       emitLinearThick(push, el, elevKind, p.thickness ?? 0.2);
       break;
+
+    case "mline": {
+      // G7: insulation runs keep their centreline and render as batting in
+      // the plan view (lineStyle on the segment); detail lines keep the
+      // plain thick outline.
+      if ((el.properties as any)?.lineStyle === "insulation" && p.start && p.end) {
+        push({ x1: p.start[0], z1: p.start[1], x2: p.end[0], z2: p.end[1], kind: elevKind, source: el.id, lineStyle: "insulation" });
+      } else {
+        emitLinearThick(push, el, elevKind, p.thickness ?? 0.2);
+      }
+      break;
+    }
 
     // MEP categories — flat thickness, fitting covers the corner
     case "duct":

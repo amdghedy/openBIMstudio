@@ -685,6 +685,15 @@ export function getWallLocationLine() { return wallLocationLine; }
 export function setWallLocationLine(v: WallLocationLine) { wallLocationLine = v; }
 export function getWallChain() { return wallChain; }
 export function setWallChain(v: boolean) { wallChain = v; }
+
+/** G7: line style for the next mline the user draws in 3D (Detail Line vs
+ *  Insulation). Set by the ribbon before starting the mline tool; consumed
+ *  once, when the run is committed, so a later plain detail line is not
+ *  mis-styled. The plan renderer draws "insulation" runs as batting. */
+let nextMlineLineStyle: "detail" | "insulation" | null = null;
+export function setNextMlineLineStyle(style: "detail" | "insulation" | null): void {
+  nextMlineLineStyle = style;
+}
 export function getWallOffset() { return wallOffset; }
 export function setWallOffset(v: number) { wallOffset = v; }
 export function getWallJoinStatus() { return wallJoinStatus; }
@@ -4327,7 +4336,13 @@ function onDrawClick(pt: THREE.Vector3, e?: MouseEvent) {
             drawProps.joinStatus = wallJoinStatus;
             drawProps.chain = wallChain;
           }
-          const snapAtClick = currentSnapForEvent(e);
+           // G7: a pending insulation style (set by the ribbon) rides on the
+           // mline run's properties so the plan view renders it as batting.
+           if (tool === "mline" && nextMlineLineStyle) {
+             drawProps.lineStyle = nextMlineLineStyle;
+             nextMlineLineStyle = null;
+           }
+           const snapAtClick = currentSnapForEvent(e);
           void createElement(tool, {
             start: placed.start,
             end: placed.end,
@@ -6920,20 +6935,25 @@ export async function addLinearElement(
   z2: number,
   elev?: number,
   size?: { thickness?: number; height?: number },
+  /** Extra element properties, e.g. { lineStyle: "insulation" } for G7 insulation runs. */
+  extraProps?: Record<string, unknown>,
 ): Promise<void> {
   if (elev != null) level = elev;
   const d = DEFAULTS[type] ?? { height: 3, thickness: 0.2 };
   const thick = size?.thickness ?? d.thickness;
   const height = size?.height ?? d.height;
   let sx = x1, sz = z1, ex = x2, ez = z2;
-  const props: Record<string, unknown> = type === "wall"
-    ? {
-        locationLine: wallLocationLine,
-        joinStatus: wallJoinStatus,
-        chain: wallChain,
-        offset: wallOffset,
-      }
-    : {};
+  const props: Record<string, unknown> = {
+    ...(type === "wall"
+      ? {
+          locationLine: wallLocationLine,
+          joinStatus: wallJoinStatus,
+          chain: wallChain,
+          offset: wallOffset,
+        }
+      : {}),
+    ...(extraProps ?? {}),
+  };
   // Location-line offset is wall-only. MEP runs stay on the drawn centerline.
   if (type === "wall") {
     const off = applyWallLocationOffset(x1, z1, x2, z2, thick);

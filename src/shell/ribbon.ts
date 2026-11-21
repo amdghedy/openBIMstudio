@@ -43,7 +43,7 @@ import {
 
 import {
   setAuthoringTool, getActiveTool, deleteSelectedElement, clearAllElements,
-  setLevel, getLevel, getLastCommand, pinSelected,
+  setLevel, getLevel, getLastCommand, pinSelected, setNextMlineLineStyle,
   onAuthoringChange, getWallChain, setWallChain, reverseSelected, addWallSweepToSelected, clearWallSweepsSelected, cycleMepSelection, selectAllAuthored, getElements,
 } from "../features/authoring";
 import { selectedAuthored, selectedLinked } from "../features/modify-options";
@@ -1619,27 +1619,35 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Spot coordinate"), {
         title: "Spot Coordinate: click for X / Z",
       }),
+      // G7: Diameter is its own dimension type in the plan engine
+      // (style "diameter": Ø = 2R, solid line) — it used to alias Radial.
       b("dim-radial", "Diameter", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
-        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-radial"), 40);
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-diameter"), 40);
         toast("Diameter: pick a circle or arc", "info");
       }, "Diameter dimension")),
+      // G7: Slope is its own dimension type (style "slope"): click a sloped
+      // run and it shows the run's slope (% + 1:N) — not a spot elevation.
       b("spot-elev", "Slope", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
-        setTimeout(() => (ctx.features as any).planView?.setTool?.("spot-elev"), 40);
-        toast("Spot Slope: click a sloping edge", "info");
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-slope"), 40);
+        toast("Slope: click a sloped duct / pipe / tray / conduit run", "info");
       }, "Spot slope")),
       sep(),
       groupLabel("Chain"),
+      // G7: Continuous and Baseline are distinct chain kinds on the aligned
+      // dimension tool — Continuous chains segments end-to-end, Baseline
+      // measures every target from the first picked boundary. They used to
+      // both just activate dim-aligned + a toast.
       b("dim-aligned", "Continuous", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
-        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-aligned"), 40);
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-continuous"), 40);
         toast("Continuous dimension: click multiple points in sequence", "info");
       }, "Continuous dimension"), { title: "Chain of dimensions placed end-to-end" }),
       b("dim-aligned", "Baseline", safe(() => {
         if (!isPlanViewVisible()) togglePlanView();
-        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-aligned"), 40);
-        toast("Baseline dimension: click baseline, then multiple targets", "info");
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-baseline"), 40);
+        toast("Baseline dimension: pick the origin, then targets — all measured from the origin", "info");
       }, "Baseline dimension"), { title: "Multiple dimensions from a common baseline" }),
       sep(),
       groupLabel("Keynotes"),
@@ -1668,7 +1676,14 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Keynote legend"), { title: "Export keynote legend as CSV" }),
       sep(),
       groupLabel("Detail"),
+      // G7: Detail Line and Insulation are distinct line styles. In the plan
+      // view Insulation draws as batting (sine wave along the run) while a
+      // detail line stays a plain line; both are mline runs, distinguished
+      // by properties.lineStyle. In 3D the style rides on the next run.
       b("detail-line", "Detail Line", safe(() => {
+        const pv = (ctx.features as any).planView;
+        if (pv?.isVisible?.()) { pv.setTool?.("mline"); return; }
+        setNextMlineLineStyle("detail");
         setAuthoringTool("mline");
         toast("Detail line — click points to draw", "success");
       }, "Detail line")),
@@ -1707,8 +1722,11 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(`Model curve mode: click on face of "${ids[0]}" to draw curves`, "success");
       }, "Model curve"), { title: "Draw 2D curves on element faces for push-pull or hosted placement" }),
       b("insulation", "Insulation", safe(() => {
+        const pv = (ctx.features as any).planView;
+        if (pv?.isVisible?.()) { pv.setTool?.("insulation"); return; }
+        setNextMlineLineStyle("insulation");
         setAuthoringTool("mline");
-        toast("Insulation line — draw along hosts", "success");
+        toast("Insulation line — draw along hosts (renders as batting in plan)", "success");
       }, "Insulation")),
       b("section", "Section Line", safe(() => {
         const pv = (ctx.features as any).viewsPanel;
@@ -1769,33 +1787,36 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Tag all: open the plan view to tag every element, or use Schedules", "info");
         try { toggleSchedules(); } catch { /* */ }
       }, "Tag all")),
+      // G7: each tag mode is now its own plan tool — the mode filters which
+      // categories the tag accepts and which label it renders. They used to
+      // all call setTool("tag").
       b("material-tag", "Material", safe(() => {
         const pv = (ctx.features as any).planView;
-        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
+        if (pv?.isVisible?.()) { pv.setTool?.("tag-material"); return; }
         openFamilyLibrary();
         toast("Material tags — assign from materials library", "info");
       }, "Material tag")),
       b("room-tag", "Room tag", safe(() => {
         const pv = (ctx.features as any).planView;
-        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
+        if (pv?.isVisible?.()) { pv.setTool?.("room-tag"); return; }
         setAuthoringTool("equipment");
         toast("Room tag — place a marker; name it in Properties", "success");
       }, "Room tag")),
       b("tag", "Multi-Cat", safe(() => {
         const pv = (ctx.features as any).planView;
-        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
+        if (pv?.isVisible?.()) { pv.setTool?.("tag-multi"); return; }
         toast("Multi-Category tag: click elements", "info");
       }, "Multi-Category tag")),
       b("area", "Area", safe(() => {
         const pv = (ctx.features as any).planView;
-        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
+        if (pv?.isVisible?.()) { pv.setTool?.("tag-area"); return; }
         toast("Area tag: place an area marker", "info");
       }, "Area tag")),
-      b("room-tag", "Space", safe(() => {
-        const pv = (ctx.features as any).planView;
-        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
-        toast("Space tag: place a space marker", "info");
-      }, "Space tag")),
+      // G7: Space tags are NOT wired to the generic tag tool any more —
+      // there is no space model in the repo, so a Space tag would have
+      // tagged any element with a wrong label. Honest stub until a space
+      // model exists.
+      planned("room-tag", "Space", "Space tags need a space model — rooms and areas are tagged separately; no MEP space model exists yet."),
       // Honest placeholders: these annotate actions had toast-only handlers
       // that pretended success. planned() labels them truthfully until the
       // capability ships (see the feature-maturity table in the UI menu).

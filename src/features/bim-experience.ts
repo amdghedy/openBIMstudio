@@ -57,6 +57,7 @@ import {
   markAuthoringDirty,
   getWallChain,
   setWallChain,
+  setNextMlineLineStyle,
   getWallOffset,
   setWallOffset,
   onAuthoringChange,
@@ -806,12 +807,22 @@ function createCommandCatalog() {
   // Annotation family — every entry maps to the plan tool where supported.
   const annotate: [string, string][] = [
     ["dim-aligned", "Aligned Dimension"], ["dim-linear", "Linear Dimension"], ["dim-angular", "Angular Dimension"],
+    ["dim-diameter", "Diameter Dimension"], ["dim-continuous", "Continuous Dimension"], ["dim-baseline", "Baseline Dimension"],
+    ["dim-slope", "Slope Dimension"],
     ["spot-elev", "Spot Elevation"], ["tag", "Tag by Category"], ["room-tag", "Room Tag"],
-    ["material-tag", "Material Tag"], ["text", "Text Note"], ["mline", "Detail Line"],
+    ["material-tag", "Material Tag"], ["tag-multi", "Multi-Category Tag"], ["tag-area", "Area Tag"],
+    ["text", "Text Note"], ["mline", "Detail Line"], ["insulation", "Insulation Line"],
   ];
   for (const [tool, label] of annotate) registerBimCommand({
     id: `annotate.${tool}`, label, ribbon: "Annotate", group: "Annotation", keywords: ["annotation", label],
-    run: () => { const pv = (ctx.features as any).planView; if (pv?.isVisible?.()) pv.setTool?.(tool); else activateTool(tool); },
+    run: () => {
+      const pv = (ctx.features as any).planView;
+      if (pv?.isVisible?.()) { pv.setTool?.(tool); return; }
+      // G7: insulation is not an authoring tool — in 3D it is an mline run
+      // carrying the insulation style, as on the ribbon.
+      if (tool === "insulation") { setNextMlineLineStyle("insulation"); activateTool("mline"); return; }
+      activateTool(tool);
+    },
   });
 
   // View / review.

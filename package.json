@@ -64,6 +64,7 @@
     "test:snap-points": "node tests/element-snap-points.test.cjs",
     "test:section-plane": "node tests/section-plane-math.test.cjs",
     "test:auto-dim": "node tests/auto-dim-chains.test.cjs",
+    "test:annotate-distinctions": "node tests/annotate-distinctions.test.cjs",
     "test:dim-geometry": "node tests/plan-dim-geometry.test.cjs",
     "test:plan-tags": "node tests/plan-tags.test.cjs",
     "test:critical-workflow-pack": "node tests/critical-workflow-pack.test.cjs",

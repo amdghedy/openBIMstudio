@@ -15,6 +15,9 @@ export interface PlanSegment {
   source?: string;
   /** True when the source element's view VG marks its category halftone. */
   halftone?: boolean;
+  /** Detail-line style for mline runs (G7): "insulation" renders as batting
+   *  in the plan view instead of the plain thick outline. Absent = plain. */
+  lineStyle?: "insulation" | "detail";
 }
 
 export interface PlanArc {

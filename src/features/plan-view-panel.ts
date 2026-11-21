@@ -37,6 +37,11 @@ import {
   resolveClickMode,
 } from "./selection-semantics";
 import { buildTagAll, elementAnchor, leaderEnd, pointInBox, tagLabel, textBox, type TagMode } from "../modules/views/plan-tags";
+import {
+  areaAtPoint, areaTagLabel, chainLineForPoints, chainSegments, insulationBattingPoints,
+  roomAtPoint, roomTagLabel, slopeLabel, slopeOfElement, tagModeLabel,
+  TAG_MODE_DEFS, type AnnotateTagMode, type ChainKind,
+} from "../modules/views/annotate-distinctions";
 import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan-dim-geometry";
 import { history as planHistory } from "./history";
 import { createRafCoalescer } from "../core/raf-coalescer";
@@ -1075,6 +1080,7 @@ chainDimInput.checked = false;
 chainDimInput.style.cssText = "margin:0;cursor:pointer;accent-color:#38bdf8";
 chainDimInput.onchange = () => {
   planDimChain = chainDimInput.checked;
+  planDimChainKind = "continuous";
   planDimChainPts = [];
   planDrawStart = null; planDimStartRef = null; planDimPendingRefs = null;
   footerStatus(planDimChain ? "Chain dimension ON - pick all boundaries, then click empty space to place the chain" : "Chain dimension OFF");
@@ -1117,7 +1123,7 @@ const closeBtn = btn("? Close", () => togglePlanView());
 
 /* -- Plan modeling state (tools come from ribbon tabs only) -- */
 type PlanMode = "pan" | "select" | "navigate" | "move" | "linear" | "point" | "dim" | "tag" | "text" | "region";
-type LinearKind = "wall" | "beam" | "strip" | "duct" | "pipe" | "cable-tray" | "conduit" | "mline" | "brace" | "truss";
+type LinearKind = "wall" | "beam" | "strip" | "duct" | "pipe" | "cable-tray" | "conduit" | "mline" | "brace" | "truss" | "insulation";
 type PointKind = "column" | "footing" | "equipment" | "door" | "window";
 
 let planMode: PlanMode = "select";
@@ -1176,7 +1182,8 @@ type PlanDimKind =
   | "arc"          // 2 points along arc length
   | "auto"         // pick first + last edge: dimension every wall / column / door / window between
   | "elevation"    // 1 click: spot elevation
-  | "coordinate";  // 1 click: spot X / Z
+  | "coordinate"   // 1 click: spot X / Z
+  | "slope";       // 1 click on a sloped run: slope % + 1:N (G7 — distinct from spot elevation)
 
 interface PlanDimension {
   x1: number; z1: number; x2: number; z2: number;
@@ -1293,6 +1300,10 @@ function dimMembers(d: PlanDimension): PlanDimension[] {
 }
 let planDimStyle: PlanDimKind = "aligned";
 let planDimChain = false;
+/** G7: which chain the Chain checkbox / Continuous / Baseline buttons build —
+// Continuous chains segments end-to-end; Baseline measures every target
+// from the first picked boundary (the common origin). */
+let planDimChainKind: ChainKind = "continuous";
 interface PlanDimPending {
   ref1: PlanDimensionRef;
   ref2: PlanDimensionRef;
@@ -1313,41 +1324,27 @@ function finishDimChain(at?: { x: number; z: number }): void {
   const pts = planDimChainPts;
   if (pts.length < 2) { footerStatus("Chain: pick at least two boundaries first"); return; }
   const linear = planDimStyle === "linear";
-  const a = pts[0], b = pts[1];
-  let line: { ox: number; oz: number; ux: number; uz: number };
-  if (linear) {
-    const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.z - a.z);
-    if (horizontal) {
-      const z = at ? at.z : Math.min(...pts.map((q) => q.z)) - paperMmToWorld(DIM_OFFSET_MM);
-      line = { ox: 0, oz: z, ux: 1, uz: 0 };
-    } else {
-      const x = at ? at.x : Math.min(...pts.map((q) => q.x)) - paperMmToWorld(DIM_OFFSET_MM);
-      line = { ox: x, oz: 0, ux: 0, uz: 1 };
-    }
-  } else {
-    const L = Math.hypot(b.x - a.x, b.z - a.z) || 1;
-    const ux = (b.x - a.x) / L, uz = (b.z - a.z) / L, nx = -uz, nz = ux;
-    const off = at ? (at.x - a.x) * nx + (at.z - a.z) * nz : paperMmToWorld(DIM_OFFSET_MM);
-    line = { ox: a.x + nx * off, oz: a.z + nz * off, ux, uz };
-  }
+  // G7: the line + segment pairing come from the shared chain model —
+  // Continuous chains end-to-end, Baseline measures all targets from the
+  // first picked boundary.
+  const line = chainLineForPoints(pts, linear, at, paperMmToWorld(DIM_OFFSET_MM));
+  const segs = chainSegments(pts, planDimChainKind, line);
   let made = 0;
   const beforeSnap = dimSnapshot();
   const chainId = newChainId();
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const p = pts[i], q = pts[i + 1];
-    const len = Math.abs((q.x - p.x) * line.ux + (q.z - p.z) * line.uz);
-    if (len < 0.001) continue;
+  for (const s of segs) {
+    const p = pts[s.i1], q = pts[s.i2];
     planDims.push({
-      x1: p.x, z1: p.z, x2: q.x, z2: q.z, style: linear ? "linear" : "aligned",
+      x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2, style: linear ? "linear" : "aligned",
       offsetMm: DIM_OFFSET_MM, ref1: p.ref, ref2: q.ref, fixedLine: { ...line }, chainId,
     });
     made++;
   }
-  recordDims("Chain dimension", beforeSnap);
+  recordDims(planDimChainKind === "baseline" ? "Baseline dimension" : "Chain dimension", beforeSnap);
   planDimChainPts = [];
   planDrawStart = null; planDimStartRef = null; planDimPendingRefs = null;
   if (currentPlan) renderPlan(currentPlan);
-  footerStatus(`Chain: ${made} dimension(s) placed - pick the first boundary of the next chain (Esc = Select)`);
+  footerStatus(`${planDimChainKind === "baseline" ? "Baseline" : "Chain"}: ${made} dimension(s) placed - pick the first boundary of the next chain (Esc = Select)`);
 }
 /** Angular placement: first segment endpoints */
 let planDimSeg1: { x1: number; z1: number; x2: number; z2: number } | null = null;
@@ -2548,6 +2545,29 @@ function renderPlan(plan: PlanView) {
     const detailWeight = planDetailLevel === "Coarse" ? 0.8 : planDetailLevel === "Fine" ? 1.15 : 1;
     const p1 = screen(s.x1, s.z1);
     const p2 = screen(s.x2, s.z2);
+    // G7: insulation runs render as batting (sine wave along the centreline)
+    // instead of a plain line — the visible difference from a detail line.
+    if (s.lineStyle === "insulation") {
+      const scale = zoomedW / 1200;
+      const center = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      center.setAttribute("x1", String(p1.x)); center.setAttribute("y1", String(p1.y));
+      center.setAttribute("x2", String(p2.x)); center.setAttribute("y2", String(p2.y));
+      center.setAttribute("stroke", st.stroke);
+      center.setAttribute("stroke-width", String(Math.max(st.width * scale * detailWeight * 0.45, 0.002)));
+      center.setAttribute("stroke-linecap", "round");
+      center.setAttribute("data-obs-insulation", "center");
+      g.appendChild(center);
+      const wave = insulationBattingPoints(s.x1, s.z1, s.x2, s.z2);
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", wave.map((q, i) => { const sp = screen(q.x, q.z); return `${i === 0 ? "M" : "L"}${sp.x} ${sp.y}`; }).join(" "));
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", st.stroke);
+      path.setAttribute("stroke-width", String(Math.max(st.width * scale * detailWeight * 0.6, 0.002)));
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("data-obs-insulation", "batting");
+      g.appendChild(path);
+      continue;
+    }
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
     line.setAttribute("x1", String(p1.x));
     line.setAttribute("y1", String(p1.y));
@@ -2563,6 +2583,44 @@ function renderPlan(plan: PlanView) {
     }
     line.setAttribute("stroke-linecap", "round");
     g.appendChild(line);
+  }
+
+  // -- Room / Area boundaries (G7): rooms and areas are not authored
+  // elements, so the plan generator never emits them — but a Room / Area tag
+  // has to be clickable somewhere. Boundaries draw as faint dashed outlines
+  // with the room / area name, so the tag tool has a visible target.
+  // Limit: no level filtering — the rooms store's levelId does not match
+  // the plan's level list, so every room / area on the project is shown.
+  if (planDisplayModel) {
+    const store: any = (window as any).__obsRooms ?? (ctx.features as any).rooms;
+    const rooms = store?.listRooms?.() ?? [];
+    const areas = store?.listAreas?.() ?? [];
+    const drawBoundary = (pts: Array<{ x: number; z: number }>, label: string, kind: string, color: string) => {
+      if (!pts || pts.length < 3) return;
+      const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      poly.setAttribute("points", pts.map((q) => { const sp = screen(q.x, q.z); return `${sp.x},${sp.y}`; }).join(" "));
+      poly.setAttribute("fill", "none");
+      poly.setAttribute("stroke", color);
+      poly.setAttribute("stroke-width", String(Math.max(zoomedW / 1200, 0.004)));
+      poly.setAttribute("stroke-dasharray", `${0.35 * (zoomedW / 1200)} ${0.2 * (zoomedW / 1200)}`);
+      poly.setAttribute("pointer-events", "none");
+      poly.setAttribute("data-obs-spatial-boundary", kind);
+      g.appendChild(poly);
+      const cx = pts.reduce((a, q) => a + q.x, 0) / pts.length;
+      const cz = pts.reduce((a, q) => a + q.z, 0) / pts.length;
+      const cp = screen(cx, cz);
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.setAttribute("x", String(cp.x)); text.setAttribute("y", String(cp.y));
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("font-size", String(Math.max(0.25, 0.35 * (zoomedW / 30))));
+      text.setAttribute("fill", color);
+      text.setAttribute("pointer-events", "none");
+      text.setAttribute("data-obs-spatial-boundary", kind);
+      text.textContent = label;
+      g.appendChild(text);
+    };
+    for (const r of rooms) drawBoundary(r.boundary, `${r.number} ${r.name}`, "room", "#2563eb");
+    for (const a of areas) drawBoundary(a.boundary, `${a.number} ${a.name}`, "area", "#059669");
   }
 
   // -- Arcs (door swings + MEP elbows) --
@@ -2876,6 +2934,22 @@ function renderPlan(plan: PlanView) {
       line.setAttribute("x2", String(b.x)); line.setAttribute("y2", String(b.y));
       line.setAttribute("stroke", dimStyle.color); line.setAttribute("stroke-width", String(sw));
       if (d.style === "radial") line.setAttribute("stroke-dasharray", `${paperMmToWorld(2)} ${paperMmToWorld(1.5)}`);
+      g.appendChild(line);
+      const mid = screen((d.x1 + d.x2) / 2, (d.z1 + d.z2) / 2);
+      g.appendChild(makeSvgText(mid.x, mid.y - paperMmToWorld(2), d.label ?? "", dimStyle, dimScale));
+      continue;
+    }
+    // Slope (G7): the sloped run with its slope label at the midpoint —
+    // a solid line like a diameter (not dashed like a radius), with the
+    // slope % + 1:N instead of a length.
+    if (d.style === "slope") {
+      const a = screen(d.x1, d.z1);
+      const b = screen(d.x2, d.z2);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", String(a.x)); line.setAttribute("y1", String(a.y));
+      line.setAttribute("x2", String(b.x)); line.setAttribute("y2", String(b.y));
+      line.setAttribute("stroke", dimStyle.color); line.setAttribute("stroke-width", String(sw));
+      line.setAttribute("data-obs-dim-style", "slope");
       g.appendChild(line);
       const mid = screen((d.x1 + d.x2) / 2, (d.z1 + d.z2) / 2);
       g.appendChild(makeSvgText(mid.x, mid.y - paperMmToWorld(2), d.label ?? "", dimStyle, dimScale));
@@ -3340,11 +3414,18 @@ async function createAuthoredLinear(x1: number, z1: number, x2: number, z2: numb
     const selected = levels[Number(levelSelect.value) || 0] ?? levels[0];
     const elev = selected.elevation + planElevOffset;
     setLevel(elev);
-    const t = (planLinearType === "brace" || planLinearType === "truss") ? "beam" : planLinearType;
+    // G7: insulation is drawn as an mline run carrying lineStyle so the
+    // plan generator emits it as batting; detail lines are plain mlines.
+    const t = (planLinearType === "brace" || planLinearType === "truss") ? "beam"
+      : planLinearType === "insulation" ? "mline" : planLinearType;
     await addLinearElement(t, x1, z1, x2, z2, elev, {
       thickness: planWidth,
       height: planHeight,
-    });
+    }, planLinearType === "insulation" ? { lineStyle: "insulation" } : undefined);
+    // The soft refresh below skips regenerate(), so refresh the tag / snap
+    // cache here — otherwise a just-drawn run cannot be tagged until the
+    // next regenerate.
+    try { authoredCache = (await import("./authoring")).getElements(); } catch { /* */ }
     // Soft refresh without full loading flash when chaining
     try {
       const plan = await generatePlanView({
@@ -3366,7 +3447,7 @@ async function createAuthoredLinear(x1: number, z1: number, x2: number, z2: numb
       await regenerate();
     }
     footerStatus(
-      `${t} · ${Math.hypot(x2 - x1, z2 - z1).toFixed(2)} m · click next point (Enter/Esc to finish)`,
+      `${planLinearType} · ${Math.hypot(x2 - x1, z2 - z1).toFixed(2)} m · click next point (Enter/Esc to finish)`,
     );
   } catch (err) {
     console.error("[plan] create linear failed", err);
@@ -3714,6 +3795,7 @@ const DEFAULT_SIZES: Record<string, { w: number; h: number }> = {
   "cable-tray": { w: 0.3, h: 0.1 },
   conduit: { w: 0.025, h: 0.025 },
   mline: { w: 0.05, h: 0.05 },
+  insulation: { w: 0.05, h: 0.05 },
 };
 
 function applyDefaultSizeForTool(tool: string) {
@@ -4163,6 +4245,28 @@ canvasWrap.addEventListener("mousedown", (e) => {
         return;
       }
 
+      // -- Slope (G7): one click on a sloped run places a slope dimension.
+      // Distinct from Spot Elevation, which labels any point: a slope
+      // dimension only exists where the element itself is sloped, and it
+      // shows the run's slope (% + 1:N) along the run.
+      if (planDimStyle === "slope") {
+        const hit = nearestAuthoredAt(w);
+        const slope = hit.element ? slopeOfElement(hit.element) : null;
+        if (!slope) {
+          footerStatus("Slope: click a sloped run (duct / pipe / tray / conduit with a slope, or a sloped floor) — this element is flat");
+          return;
+        }
+        const label = slopeLabel(slope.percent);
+        { const beforeSnap = dimSnapshot(); planDims.push({
+          x1: slope.x1, z1: slope.z1, x2: slope.x2, z2: slope.z2,
+          style: "slope", offsetMm: DIM_OFFSET_MM,
+          value: slope.percent, label,
+        }); recordDims("Place slope dimension", beforeSnap); }
+        if (currentPlan) renderPlan(currentPlan);
+        footerStatus(`Slope ${label} · click next sloped run · Esc = Select`);
+        return;
+      }
+
       // -- Radial / Diameter: center then edge (or edge of round element) --
       if (planDimStyle === "radial" || planDimStyle === "diameter") {
         if (!planDrawStart) {
@@ -4341,18 +4445,36 @@ canvasWrap.addEventListener("mousedown", (e) => {
     }
 
     if (planMode === "tag") {
+      const mode = (obsPlanTagMode ?? "category") as AnnotateTagMode;
+      // G7: each tag mode filters what it accepts and which label it renders.
+      // Room / Area tags hit-test the rooms store (rooms and areas are not
+      // authored elements); Space has no model and places nothing.
+      if (mode === "room" || mode === "area") {
+        const store: any = (window as any).__obsRooms ?? (ctx.features as any).rooms;
+        const list = mode === "room" ? store?.listRooms?.() ?? [] : store?.listAreas?.() ?? [];
+        const hit = mode === "room" ? roomAtPoint(list, w.x, w.z) : areaAtPoint(list, w.x, w.z);
+        if (hit) {
+          const label = mode === "room" ? roomTagLabel(hit as any) : areaTagLabel(hit as any);
+          { const beforeAnno = annoSnapshot(); planTags.push({ x: w.x, z: w.z, text: label, elementId: hit.id, leader: true, mode }); recordAnno("Place tag", beforeAnno); }
+          if (currentPlan) renderPlan(currentPlan);
+          footerStatus(`${mode === "room" ? "Room" : "Area"} tag: ${label}`);
+        } else {
+          footerStatus(`${mode === "room" ? "Room" : "Area"} tag: click inside a ${mode} boundary — no ${mode} here`);
+        }
+        return;
+      }
+      if (mode === "space") {
+        footerStatus(`Space tag: ${TAG_MODE_DEFS.space.notDoneReason}`);
+        return;
+      }
       const hit = nearestAuthoredAt(w);
       if (hit.element) {
-        const mode = obsPlanTagMode ?? "category";
-        const p = hit.element.params ?? {};
-        const mark = hit.element.properties?.Mark ?? hit.element.properties?.mark ?? hit.element.name ?? hit.element.type;
-        const material = hit.element.properties?.Material ?? hit.element.properties?.material ?? "Material";
-        const label = mode === "material" ? String(material) : mode === "room" ? `Room ${hit.element.name ?? hit.element.id}` : String(mark);
+        const label = tagModeLabel(mode, hit.element);
         { const beforeAnno = annoSnapshot(); planTags.push({ x:w.x, z:w.z, text:label, elementId:hit.element.id, leader:true, mode }); recordAnno("Place tag", beforeAnno); }
         if (currentPlan) renderPlan(currentPlan);
         setPlanSelectedElement(hit.element);
-        footerStatus(`${mode === "room" ? "Room" : "Tag"}: ${label}`);
-      } else {
+        footerStatus(`${TAG_MODE_DEFS[mode]?.label ?? "Tag"}: ${label}`);
+      } else if (mode === "category") {
         const tx = w.x, tz = w.z;
         void promptLine("Tag", "Tag text", "TAG").then((label) => {
           if (label != null && label.trim()) {
@@ -4361,6 +4483,8 @@ canvasWrap.addEventListener("mousedown", (e) => {
             footerStatus(`Tag: ${label.trim()}`);
           }
         });
+      } else {
+        footerStatus(`${TAG_MODE_DEFS[mode]?.label ?? "Tag"}: click an element — nothing here to tag`);
       }
       return;
     }
@@ -5058,7 +5182,7 @@ export function setPlanToolFromRibbon(tool: string) {
   planSnap = null;
   const linear = [
     "wall", "beam", "strip", "duct", "pipe", "cable-tray", "conduit", "mline",
-    "brace", "truss",
+    "brace", "truss", "insulation",
   ];
   const points: Record<string, { type: PointKind; preset?: string }> = {
     column: { type: "column" },
@@ -5167,7 +5291,8 @@ export function setPlanToolFromRibbon(tool: string) {
     tool === "dim-angular" || tool === "dim-radial" || tool === "dim-diameter" ||
     tool === "dim-arc" || tool === "arc-length" ||
     tool === "spot-elev" || tool === "elevation" ||
-    tool === "spot-coord" || tool === "coordinate"
+    tool === "spot-coord" || tool === "coordinate" ||
+    tool === "dim-continuous" || tool === "dim-baseline" || tool === "dim-slope"
   ) {
     planMode = "dim";
     planDimChainPts = [];
@@ -5207,6 +5332,22 @@ export function setPlanToolFromRibbon(tool: string) {
       planDimStyle = "coordinate";
       toolHint.textContent = "Modify | Spot Coordinate · click a point";
       footerStatus("Spot Coordinate: click to place X / Z label");
+    } else if (tool === "dim-slope") {
+      planDimStyle = "slope";
+      toolHint.textContent = "Modify | Slope Dimension · click a sloped run";
+      footerStatus("Slope: click a sloped duct / pipe / tray / conduit run, or a sloped floor");
+    } else if (tool === "dim-continuous" || tool === "dim-baseline") {
+      // G7: Continuous and Baseline are distinct chain kinds on the aligned
+      // dimension tool — they share the chain picker, but Continuous chains
+      // segments end-to-end while Baseline measures every target from the
+      // first picked boundary. The header Chain checkbox follows the mode.
+      planDimStyle = "aligned";
+      planDimChain = true;
+      planDimChainKind = tool === "dim-baseline" ? "baseline" : "continuous";
+      try { chainDimInput.checked = true; } catch { /* */ }
+      const kindName = tool === "dim-baseline" ? "Baseline" : "Continuous";
+      toolHint.textContent = `Modify | Place ${kindName} Dimension · pick boundaries in sequence`;
+      footerStatus(`${kindName}: pick boundaries in sequence, then click empty space to place the chain`);
     } else {
       planDimStyle = "aligned";
       toolHint.textContent = "Modify | Place Aligned Dimension · 2 boundaries · snaps ON";
@@ -5227,11 +5368,17 @@ export function setPlanToolFromRibbon(tool: string) {
     void runAutoDimension();
   } else if (tool === "tag-all") {
     void runTagAll();
-  } else if (tool === "tag" || tool === "room-tag" || tool === "material-tag") {
+  } else if (tool === "tag" || tool === "room-tag" || tool === "material-tag" || tool === "tag-multi" || tool === "tag-area" || tool === "tag-space") {
+    // G7: each tag mode filters what the tool accepts and which label it
+    // renders (annotate-distinctions.ts). "space" has no model — the click
+    // handler says so honestly instead of placing a fake tag.
     planMode = "tag";
-    obsPlanTagMode = tool === "room-tag" ? "room" : tool === "material-tag" ? "material" : "category";
+    const tagModes: Record<string, AnnotateTagMode> = {
+      "room-tag": "room", "material-tag": "material", "tag-multi": "multi", "tag-area": "area", "tag-space": "space",
+    };
+    obsPlanTagMode = tagModes[tool] ?? "category";
     canvasWrap.style.cursor = "crosshair";
-    toolHint.textContent = `${tool === "room-tag" ? "Room Tag" : tool === "material-tag" ? "Material Tag" : "Tag"} · click near element`;
+    toolHint.textContent = `${TAG_MODE_DEFS[obsPlanTagMode as AnnotateTagMode]?.label ?? "Tag"} · click near element`;
   } else if (tool === "text" || tool === "model-text" || tool === "text-3d") {
     planMode = "text";
     canvasWrap.style.cursor = "crosshair";

@@ -5,6 +5,7 @@
 
 import { generatePlanView } from "../../drawings/plan-generator";
 import type { PlanView } from "../../drawings/plan-types";
+import { insulationBattingPoints } from "../annotate-distinctions";
 import { POCHE_PATTERN_LINE } from "../../drawings/plan-poche";
 import type { ViewDef } from "../types";
 import type { Scene2D, SceneEntity, StrokeStyle } from "../scene";
@@ -104,6 +105,16 @@ export async function generatePlanScene(def: ViewDef): Promise<Scene2D> {
 
   for (const seg of planView.segments) {
     const style = seg.halftone ? HALFTONE_STYLE : ((STYLE as any)[seg.kind] ?? STYLE.cut);
+    // G7: insulation runs export as batting polylines, not plain lines.
+    if (seg.lineStyle === "insulation") {
+      const pts = insulationBattingPoints(seg.x1, seg.z1, seg.x2, seg.z2);
+      const entity: SceneEntity = {
+        kind: "polyline", points: pts.map((q) => [q.x, q.z] as [number, number]),
+        closed: false, stroke: style,
+      };
+      scene.layers.cut.push(entity);
+      continue;
+    }
     const entity: SceneEntity = {
       kind: "line", x1: seg.x1, z1: seg.z1, x2: seg.x2, z2: seg.z2, stroke: style,
     };

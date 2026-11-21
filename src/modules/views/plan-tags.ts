@@ -2,18 +2,22 @@
  * Plan tags: labels, anchors, automatic placement ("Tag All") and hit boxes.
  * Pure module - no DOM. World coords: x east, z north.
  */
-export type TagMode = "category" | "room" | "material" | "size" | "elevation" | "custom";
+/** Tag label modes. "multi" is the Multi-Category tag (category + mark); "area" tags areas from the rooms store, never authored elements. */
+export type TagMode = "category" | "room" | "material" | "size" | "elevation" | "custom" | "multi" | "area";
 
 export interface TagLike {
   x: number; z: number; text: string;
   elementId?: string; leader?: boolean; mode?: TagMode;
 }
 
-const NAME: Record<string, string> = {
+/** Display names for element categories (shared with annotate-distinctions). */
+export const TAG_CATEGORY_NAMES: Record<string, string> = {
   wall: "Wall", column: "Column", beam: "Beam", slab: "Slab", door: "Door", window: "Window", duct: "Duct",
   pipe: "Pipe", "cable-tray": "Cable Tray", conduit: "Conduit", equipment: "Equipment", fitting: "Fitting",
   room: "Room", roof: "Roof", ceiling: "Ceiling", stairs: "Stairs", railing: "Railing", footing: "Footing",
 };
+
+const NAME: Record<string, string> = TAG_CATEGORY_NAMES;
 
 const mm = (m: number) => `${Math.round(m * 1000)}`;
 
@@ -24,6 +28,8 @@ export function tagLabel(el: any, mode: TagMode = "category"): string {
   switch (mode) {
     case "material": return String(pr.Material ?? pr.material ?? "Material");
     case "room": return `Room ${el?.name ?? el?.id}`;
+    case "multi": return `${NAME[el?.type] ?? el?.type ?? "Element"}: ${mark ?? el?.name ?? el?.id ?? ""}`;
+    case "area": return `Area ${el?.name ?? el?.id}`;
     case "elevation": return `${Number(pa.elevation ?? 0) >= 0 ? "+" : ""}${Number(pa.elevation ?? 0).toFixed(2)}`;
     case "size": {
       const w = Number(pa.width ?? pa.thickness), h = Number(pa.height);
