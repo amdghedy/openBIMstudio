@@ -118,7 +118,7 @@ self.addEventListener("message", (event: MessageEvent<InMessage>) => {
   // an unbounded or NaN item list would otherwise OOM or hang the worker.
   // A rejected request is a typed error reply, never a crash or a hang.
   const checked = validateClashWorkerRequest(data);
-  if (!checked.ok) {
+  if (checked.ok === false) {
     if (checked.requestId !== null) {
       post({ type: "error", requestId: checked.requestId, message: checked.message });
     }

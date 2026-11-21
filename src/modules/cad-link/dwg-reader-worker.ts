@@ -20,7 +20,7 @@ self.addEventListener("message", (ev: MessageEvent<DwgReaderRequest>) => {
   // instead of crashing the worker or hanging the main thread's timeout.
   // Without a numeric id there is no pending entry to answer, so drop it.
   const checked = validateDwgReaderRequest(req);
-  if (!checked.ok) {
+  if (checked.ok === false) {
     if (checked.id !== null) {
       post((req as { kind?: unknown } | null)?.kind === "thumbnail"
         ? { id: checked.id, kind: "thumbnail", ok: false, code: "invalid-file", message: checked.message }

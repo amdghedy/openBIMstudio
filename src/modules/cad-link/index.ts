@@ -170,22 +170,22 @@ function ensureReaderWorker(): Worker {
         // garbage to the caller. A malformed reply distrusts the worker, so
         // the next parse gets a fresh one.
         const checked = validateDwgThumbSuccess(res);
-        if (!checked.ok) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
+        if (checked.ok === false) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
         p.resolve({ mime: checked.data.mime, dataB64: checked.data.dataB64 });
       } else {
         const checked = validateDwgFailure(res);
-        if (!checked.ok) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
+        if (checked.ok === false) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
         p.reject(new Error(describeDwgError({ code: checked.code, message: checked.message, detail: checked.detail })));
       }
       return;
     }
     if (res.ok) {
       const checked = validateDwgParseSuccess(res);
-      if (!checked.ok) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
+      if (checked.ok === false) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
       p.resolve({ doc: checked.data.doc as DxfDocument, summary: checked.data.summary, version: checked.data.version, entityCount: checked.data.entityCount });
     } else {
       const checked = validateDwgFailure(res);
-      if (!checked.ok) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
+      if (checked.ok === false) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
       p.reject(new Error(describeDwgError({ code: checked.code, message: checked.message, detail: checked.detail })));
     }
   });

@@ -154,7 +154,7 @@ function onWorkerMessage(e: MessageEvent<InMessage>): void {
   // reply rejects the pending request and terminates the worker, so the
   // next run gets a fresh one (fail-closed, like the error path).
   const checked = validateClashWorkerReply(e.data);
-  if (!checked.ok) {
+  if (checked.ok === false) {
     console.error("[clash-worker] malformed reply from worker", checked.message);
     if (checked.requestId) {
       const p = pending.get(checked.requestId);
