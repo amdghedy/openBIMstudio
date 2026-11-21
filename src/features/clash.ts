@@ -29,6 +29,13 @@ import { serializeScenarios, parseScenarios } from "../modules/clash/scenario-io
 import { markDirty } from "../modules/projects/projects";
 import { fmtDateTime } from "../core/region";
 import { safeLoad, ClashScenarioImportSchema } from "../core/safeLoad";
+import type {
+  ClashComment,
+  ClashScenario,
+  ClashScope,
+  ClashState,
+  ClashStatus,
+} from "./clash-types";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Toast
@@ -55,25 +62,12 @@ function clashToast(msg: string, kind: "info" | "warn" | "success" = "info", ms 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Scope + status types
+// Scope + status types — moved to ./clash-types.ts (types-only module) so
+// core/services.ts can reference them without importing this implementation
+// module; see that file. Re-exported here so existing importers are
+// unaffected.
 // ═══════════════════════════════════════════════════════════════════════════
-export type ClashScope = "all" | "viewport" | "aOnly" | "bOnly" | "both";
-
-export type ClashStatus = "new" | "active" | "reviewed" | "approved" | "resolved";
-
-export interface ClashComment {
-  id: string;
-  author: string;
-  date: number;
-  text: string;
-}
-
-export interface ClashState {
-  status: ClashStatus;
-  comments: ClashComment[];
-  assignee?: string;
-  updatedAt: number;
-}
+export type { ClashComment, ClashScenario, ClashScope, ClashState, ClashStatus };
 
 const STATUS_ORDER: ClashStatus[] = ["new", "active", "reviewed", "approved", "resolved"];
 
@@ -1080,23 +1074,6 @@ const SCENARIO_KEY = "obs-clash-scenarios-v1";
  * see a consistent list.
  */
 let scenarioCache: ClashScenario[] | null = null;
-
-export type ClashScenario = {
-  id: string;
-  name: string;
-  createdAt: number;
-  updatedAt: number;
-  testName: string;
-  tolerance: number;
-  clearance: number;
-  cropMargin: number;
-  scope?: ClashScope;
-  method?: ClashMethod;
-  selectionA: string[];
-  selectionB: string[];
-  clashStates?: Record<string, ClashState>;
-  lastRun?: { total: number; intersect: number; touching: number; clearance: number; duplicate: number; at: number };
-};
 
 function scenarioUid() {
   return (

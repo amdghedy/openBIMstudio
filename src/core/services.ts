@@ -30,8 +30,8 @@ import type {
   ClashScenario,
   ClashStatus,
   ClashState,
-} from "../features/clash";
-import type { FragEdit } from "../features/frag-edit";
+} from "../features/clash-types";
+import type { FragEdit } from "../features/frag-edit-types";
 import type { FamilyService } from "../modules/families/types";
 import type { NotifyKind, NotifyOptions } from "./notify";
 import { ctx } from "./context";

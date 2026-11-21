@@ -326,7 +326,8 @@ The APS integration is explicitly experimental in `src/features/feature-maturity
 
 ## Service contracts and dependency direction
 
-- Use `src/core/services.ts` for typed cross-feature services where a contract exists. Its registry currently mirrors registered objects into `ctx.features` for migration compatibility.
+- `src/core/services.ts` is the canonical service registry (typed `ServiceMap`, `register()` / `tryUse()` / `use()` / `ready()`). It currently mirrors registered objects into `ctx.features` for migration compatibility. The stub `src/core/registry.ts` was deleted in hardening item 18 — it had zero importers and was never wired in.
+- `ctx.features` (`Record<string, any>`) is deprecated: it is load-bearing (563 occurrences in 168 files; `register()` itself mirrors into it), so it cannot be deleted, but new code must use `services.ts` and must not add new `ctx.features.*` entries.
 - `ctx` in `src/core/context.ts` is a shared runtime context, not a general-purpose domain service locator. Avoid adding new untyped global bridges.
 - Keep dependencies flowing from UI adapters toward domain contracts. Domain modules should not import ribbon/panel code.
 - Avoid circular feature-to-feature imports and duplicated domain rules. Promote a shared rule into a domain module with explicit tests.

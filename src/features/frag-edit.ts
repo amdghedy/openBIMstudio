@@ -25,6 +25,7 @@ import { markDirty } from "../modules/projects/projects";
 import { getItemMeta } from "./item-meta";
 import { addNativeGeometryElement, updateNativeGeometryElement, removeElementById, getElementById, getAuthoredGroup } from "./authoring";
 import { downloadNativeTwinIfc, type NativeIfcExportReport } from "../modules/export/native-twin-ifc";
+import type { FragEdit } from "./frag-edit-types";
 
 /** modelId::localId keys for sources that must stay hidden while a twin exists. */
 const hiddenTwinSources = new Set<string>();
@@ -47,44 +48,11 @@ function withHiderTimeout<T>(p: Promise<T>, ms = 5000): Promise<T | undefined> {
   ]);
 }
 
-
-export interface FragEdit {
-  id: string;
-  modelId: string;
-  localId: number;
-  name: string;
-  category: string;
-  position: [number, number, number];
-  quaternion: [number, number, number, number];
-  scale: [number, number, number];
-  createdAt: number;
-  updatedAt: number;
-  sourceType?: "IFC" | "FRAG" | "openBIM";
-  sourceFormat?: string;
-  nativeId?: string;
-  nativeElementId?: string;
-  nativeEntity?: string;
-  sourceGlobalId?: string;
-  sourceEntity?: string;
-  sourceModelName?: string;
-  sourceTag?: string;
-  predefinedType?: string;
-  description?: string;
-  dimensions?: {
-    width: number; height: number; depth: number;
-    min: [number, number, number];
-    max: [number, number, number];
-    center: [number, number, number];
-  };
-  objectPlacement?: number[];
-  sourceData?: Record<string, unknown>;
-  /** Unflattened getItemsData record for lossless archive. */
-  sourceRaw?: unknown;
-  propertySets?: Record<string, unknown>;
-  quantities?: Record<string, unknown>;
-  overrides?: Record<string, unknown>;
-  geometry?: { positions: number[] };
-}
+// FragEdit moved to ./frag-edit-types.ts (types-only module) so
+// core/services.ts can reference it without importing this implementation
+// module; see that file. Re-exported here so existing importers are
+// unaffected.
+export type { FragEdit };
 
 interface EditRuntime {
   edit: FragEdit;

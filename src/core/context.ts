@@ -44,6 +44,14 @@ export const ctx = {
     screenshot: () => {},
   },
 
-  /** Feature registry: ctx.features.measure.isEnabled() etc. */
+  /**
+   * Feature registry: ctx.features.measure.isEnabled() etc.
+   *
+   * @deprecated Use the typed registry in `core/services.ts`
+   * (`register()` / `tryUse()` / `services.*`) for new code. This bag
+   * is load-bearing — `register()` mirrors into it and ~170 files
+   * still read it — so it cannot be deleted yet; it is populated only
+   * as a migration mirror, never written to directly by new code.
+   */
   features: {} as Record<string, any>,
 };
