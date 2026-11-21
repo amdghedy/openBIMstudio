@@ -29,6 +29,7 @@ import {
   type OpeningLike as VerticalOpeningLike,
 } from "../modules/vertical-openings/vertical-openings";
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
+import { applyResolvedParams } from "../modules/families/placement";
 import * as THREE from "three";
 import { CSG } from "three-csg-ts";
 import { ctx } from "../core/context";
@@ -5735,11 +5736,24 @@ export function setActiveFamily(familyId: string | null, familyTypeId: string | 
  * parameters. Placement coordinates, elevation, x/z, hostId are never
  * touched -- only the parametric size fields are synced.
  *
+ * Instance overrides survive a type change: when `overridesByElement` is
+ * supplied (captured by the caller against the type *before* it changed),
+ * each instance is re-resolved with its own overrides on top of the new
+ * type values. Without it, instances are re-resolved from the type alone
+ * (the previous behaviour — used by the manual "Sync instances" action
+ * and by type swaps, where no pre-change capture exists).
+ *
+ * Syncs exactly the geometry-key set `placement.ts` defines
+ * (`GEOMETRY_KEYS`), via `applyResolvedParams` — not a second hard-coded
+ * list. `elevation` and `offsetAlongHost` are therefore synced too, which
+ * the old six-key list never did.
+ *
  * Returns the number of instances whose params actually changed.
  */
 export function syncFamilyInstances(
   familyId: string,
   familyTypeId: string | null,
+  overridesByElement?: Map<string, Record<string, any>> | null,
 ): number {
   const familyService: any = (ctx.features as any).family;
   if (!familyService) return 0;
@@ -5755,23 +5769,15 @@ export function syncFamilyInstances(
 
   let changed = 0;
   for (const el of targets) {
+    const overrides = overridesByElement?.get(el.id);
     const resolved = familyService.resolveParams(
       familyId,
       el.familyTypeId ?? familyTypeId,
-      undefined,
+      overrides,
     ) as Record<string, any> | null;
     if (!resolved) continue;
 
-    const before = JSON.stringify(el.params);
-    // Only adopt the well-known dimensional keys. A family could expose
-    // arbitrary parameters; we do not blindly overwrite the element.
-    if (typeof resolved.thickness === "number") el.params.thickness = resolved.thickness;
-    if (typeof resolved.height === "number")    el.params.height    = resolved.height;
-    if (typeof resolved.width === "number")     el.params.width     = resolved.width;
-    if (typeof resolved.depth === "number")     el.params.depth     = resolved.depth;
-    if (typeof resolved.sillHeight === "number") el.params.sillHeight = resolved.sillHeight;
-    if (typeof resolved.frameThickness === "number") el.params.frameThickness = resolved.frameThickness;
-    if (before !== JSON.stringify(el.params)) changed++;
+    if (applyResolvedParams(el, resolved)) changed++;
   }
 
   if (changed > 0) {

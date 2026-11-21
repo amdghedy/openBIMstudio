@@ -879,6 +879,54 @@ export interface InstanceParamBinding {
 }
 
 /**
+ * Re-resolve one instance after a type change, with that instance's
+ * overrides applied on top of the (new) type values. Pure: the same
+ * inputs always produce the same resolved map. This is the single
+ * per-instance re-resolution used by `propagateTypeChange` and by the
+ * authoring sync path — overrides are never silently dropped here.
+ */
+export function resolveInstanceAfterTypeChange(
+  family: FamilyDefinition,
+  type: FamilyType,
+  instanceOverrides: Record<string, any> = {},
+  options: ParametricBuildOptions = {},
+): { values: Record<string, any>; formula: FormulaResult; constraints: ConstraintResult | null; errors: string[] } {
+  return resolveParametricValues(family, type, {
+    ...options,
+    overrides: instanceOverrides,
+  });
+}
+
+/**
+ * Recover the instance overrides an element is carrying, from its stored
+ * parameters alone. An override is a stored finite-number value for one
+ * of `keys` that differs from what the given type resolves to on its own
+ * (or a stored value for a key the type resolution does not produce at
+ * all, e.g. placement-level values such as `elevation`, which are
+ * per-instance by nature). Values that match the type resolution are
+ * inherited, not overrides, and are left out.
+ *
+ * Pure map diff — it does not touch the scene, the store, or the type.
+ * Callers must pass the resolution of the type the element was last
+ * synced against; comparing against a *changed* type would misread stale
+ * inherited values as overrides.
+ */
+export function extractInstanceOverrides(
+  typeResolvedValues: Record<string, any>,
+  storedParams: Record<string, any>,
+  keys: readonly string[],
+): Record<string, any> {
+  const overrides: Record<string, any> = {};
+  for (const key of keys) {
+    const stored = storedParams[key];
+    if (typeof stored !== "number" || !Number.isFinite(stored)) continue;
+    const base = typeResolvedValues[key];
+    if (base === undefined || stored !== base) overrides[key] = stored;
+  }
+  return overrides;
+}
+
+/**
  * Given a type parameter change, recompute every bound instance's effective
  * parameter map. Does not touch the scene - caller applies geometry rebuild.
  */
@@ -892,10 +940,12 @@ export function propagateTypeChange(
   for (const inst of instances) {
     if (inst.familyId !== family.id) continue;
     if (inst.typeId !== type.id) continue;
-    const { values } = resolveParametricValues(family, type, {
-      ...options,
-      overrides: inst.overrides,
-    });
+    const { values } = resolveInstanceAfterTypeChange(
+      family,
+      type,
+      inst.overrides,
+      options,
+    );
     out.set(inst.elementId, values);
   }
   return out;
