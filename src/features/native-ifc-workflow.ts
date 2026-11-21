@@ -19,6 +19,7 @@ import {
   downloadNativeTwinIfc,
   downloadFederatedNativeTwinIfc,
   downloadFederatedNativeTwinIfcAsync,
+  type NativeIfcExportReport,
 } from "../modules/export/native-twin-ifc";
 import {
   setupNativeIfcVersions,
@@ -47,6 +48,11 @@ export interface IfcChangeRecord {
   summary: string;
   modelId?: string;
   count?: number;
+  /** Typed vs proxied elements of the last export (conversion report, GAP-05). */
+  typed?: number;
+  proxied?: number;
+  /** Source entity labels that fell back to IfcBuildingElementProxy on export. */
+  proxiedTypes?: string[];
 }
 
 function toast(msg: string, kind: "success" | "warn" | "error" | "info" = "info"): void {
@@ -415,18 +421,43 @@ async function exportFederatedWithProgress(edits: any[]): Promise<void> {
   toast(`Exporting ${edits.length} element(s) to IFC4…`, "info");
   try {
     let last = 0;
-    await downloadFederatedNativeTwinIfcAsync(edits as any, "openbimstudio-native.ifc", {
+    const report = await downloadFederatedNativeTwinIfcAsync(edits as any, "openbimstudio-native.ifc", {
       onProgress: (i, total) => {
         const pct = Math.floor((i / Math.max(1, total)) * 10);
         if (pct > last) { last = pct; toast(`IFC export ${pct * 10}%`, "info"); }
       },
     });
-    toast(`Exported 1 federated IFC4 with ${edits.length} element(s).`, "success");
-    recordIfcChange("export-ifc", `Federated IFC4 · ${edits.length} element(s)`, { count: edits.length });
+    const conv = conversionSummary(report);
+    toast(
+      `Exported 1 federated IFC4 with ${edits.length} element(s) · ${conv.detail}.`,
+      report.counts.proxied > 0 ? "warn" : "success",
+    );
+    recordIfcChange(
+      "export-ifc",
+      `Federated IFC4 · ${edits.length} element(s) · ${conv.detail}`,
+      { count: edits.length, typed: conv.typed, proxied: conv.proxied, proxiedTypes: conv.proxiedTypes },
+    );
   } catch (err) {
     console.warn("[native-ifc] async federated export failed", err);
     toast("IFC export failed. See the console for details.", "error");
   }
+}
+
+/**
+ * Summarise a native-IFC conversion report for the toast + change history.
+ * The report is the export's own account of what was emitted: typed counts
+ * and, for every proxy fallback, the source type that had no typed writer.
+ * It is surfaced here (and recorded) instead of being computed and dropped.
+ */
+function conversionSummary(report: NativeIfcExportReport): {
+  detail: string; typed: number; proxied: number; proxiedTypes: string[];
+} {
+  const proxiedTypes = [...new Set(
+    report.elements.filter((e) => e.status === "proxied").map((e) => e.sourceEntity ?? "(no type)"),
+  )];
+  const detail = `${report.counts.typed} typed, ${report.counts.proxied} proxied` +
+    (proxiedTypes.length ? ` (${proxiedTypes.join(", ")})` : "");
+  return { detail, typed: report.counts.typed, proxied: report.counts.proxied, proxiedTypes };
 }
 
 /**
@@ -445,11 +476,17 @@ export function exportUpdatedIfc(opts?: { maxFiles?: number; perTwin?: boolean }
         void exportFederatedWithProgress(edits as any);
         return edits.length;
       }
-      downloadFederatedNativeTwinIfc(edits as any, "openbimstudio-native.ifc");
-      toast(`Exported 1 federated IFC4 with ${edits.length} element(s).`, "success");
-      recordIfcChange("export-ifc", `Federated IFC4 · ${edits.length} element(s)`, {
-        count: edits.length,
-      });
+      const report = downloadFederatedNativeTwinIfc(edits as any, "openbimstudio-native.ifc");
+      const conv = conversionSummary(report);
+      toast(
+        `Exported 1 federated IFC4 with ${edits.length} element(s) · ${conv.detail}.`,
+        report.counts.proxied > 0 ? "warn" : "success",
+      );
+      recordIfcChange(
+        "export-ifc",
+        `Federated IFC4 · ${edits.length} element(s) · ${conv.detail}`,
+        { count: edits.length, typed: conv.typed, proxied: conv.proxied, proxiedTypes: conv.proxiedTypes },
+      );
       commitNativeIfcVersion(`Export federated IFC4 · ${edits.length} element(s)`, {
         auto: true,
         silent: true,
@@ -461,16 +498,28 @@ export function exportUpdatedIfc(opts?: { maxFiles?: number; perTwin?: boolean }
   }
   const max = Math.max(1, opts?.maxFiles ?? 40);
   let n = 0;
+  const proxiedTypes: string[] = [];
   for (const e of edits.slice(0, max)) {
     try {
-      downloadNativeTwinIfc(e as any);
+      const r = downloadNativeTwinIfc(e as any);
+      for (const el of r.elements) {
+        if (el.status === "proxied") proxiedTypes.push(el.sourceEntity ?? "(no type)");
+      }
       n++;
     } catch (err) {
       console.warn("[native-ifc] export twin failed", e?.id, err);
     }
   }
-  toast(`Exported ${n} IFC4 file(s) from Native Twins.`, n ? "success" : "warn");
-  recordIfcChange("export-ifc", `Exported ${n} IFC4 twin file(s)`, { count: n });
+  const convDetail = proxiedTypes.length
+    ? ` · ${n - proxiedTypes.length} typed, ${proxiedTypes.length} proxied (${[...new Set(proxiedTypes)].join(", ")})`
+    : "";
+  toast(`Exported ${n} IFC4 file(s) from Native Twins${convDetail}.`, proxiedTypes.length ? "warn" : n ? "success" : "warn");
+  recordIfcChange("export-ifc", `Exported ${n} IFC4 twin file(s)${convDetail}`, {
+    count: n,
+    typed: n - proxiedTypes.length,
+    proxied: proxiedTypes.length,
+    proxiedTypes: [...new Set(proxiedTypes)],
+  });
   if (n > 0) {
     commitNativeIfcVersion(`Export ${n} IFC4 twin file(s)`, { auto: true, silent: true });
   }

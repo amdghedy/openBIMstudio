@@ -57,7 +57,13 @@ t("conversion report distinguishes exact / alias / fallback", () => {
 });
 t("injection: entity names cannot smuggle STEP text", () => {
   const evil = W.writeNativeTwinIfc(tw("IfcWall');#999=IFCPROJECT($", 1));
-  assert.ok(!/#999=/.test(evil)); assert.ok(P.preflightStep(new TextEncoder().encode(evil)).ok);
+  // The writer legitimately echoes the source label (escaped) into the
+  // Description and the lineage SourceEntity pset, so the raw "#999="
+  // substring DOES appear — inside quoted strings, where it is inert.
+  // The security property is that no #999 instance is created and the
+  // file still preflights (a string breakout would fail the preflight).
+  assert.ok(!/^#999=/m.test(evil), "no injected #999 instance");
+  assert.ok(P.preflightStep(new TextEncoder().encode(evil)).ok);
 });
 t("REGRESSION: apostrophes, backslashes, unicode and newlines are STEP-encoded (old \\' form corrupted the file)", () => {
   const ifc = W.writeNativeTwinIfc(tw("IfcWall", 1, { name: "Owner's room \\ é\n" }));

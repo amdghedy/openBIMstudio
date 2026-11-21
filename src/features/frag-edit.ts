@@ -24,7 +24,7 @@ import { updateClipping } from "./camera-tools";
 import { markDirty } from "../modules/projects/projects";
 import { getItemMeta } from "./item-meta";
 import { addNativeGeometryElement, updateNativeGeometryElement, removeElementById, getElementById, getAuthoredGroup } from "./authoring";
-import { downloadNativeTwinIfc } from "../modules/export/native-twin-ifc";
+import { downloadNativeTwinIfc, type NativeIfcExportReport } from "../modules/export/native-twin-ifc";
 
 /** modelId::localId keys for sources that must stay hidden while a twin exists. */
 const hiddenTwinSources = new Set<string>();
@@ -144,8 +144,15 @@ function flattenSourceData(data: any): {
     sourceData,
     propertySets: (sourceData as any).psets && typeof (sourceData as any).psets === "object" ? (sourceData as any).psets : undefined,
     quantities: (sourceData as any).qtos && typeof (sourceData as any).qtos === "object" ? (sourceData as any).qtos : undefined,
-    globalId: scalarFrom(data, "GlobalId", "globalId"),
-    entity: scalarFrom(data, "Entity", "Type", "ObjectType"),
+    globalId: scalarFrom(data, "GlobalId", "globalId", "_guid"),
+    // FRAG items carry their IFC class and GUID under the runtime's
+    // underscore-prefixed metadata keys (_category / _guid) — the plain
+    // "GlobalId" / "Entity" attribute names are not present in Fragments
+    // 3.x item data, so reading only those silently dropped both the type
+    // and the GUID, and every twin exported as a proxy with a fresh GUID.
+    // _category is the authoritative IFC class; ObjectType stays last
+    // because in IFC it is a free-text label, not the entity type.
+    entity: scalarFrom(data, "Entity", "_category", "Type", "ObjectType"),
     tag: scalarFrom(data, "Tag"),
     predefinedType: scalarFrom(data, "PredefinedType"),
     description: scalarFrom(data, "Description"),
@@ -1036,6 +1043,20 @@ export function setNativeOverride(id: string, key: string, value: unknown): bool
   return true;
 }
 
+/** Surface a proxy fallback when a single twin is exported as IFC: the conversion report's only UI surface on this path. */
+function toastIfProxied(report: NativeIfcExportReport, name: string): void {
+  if (!report.counts.proxied) return;
+  const types = [...new Set(report.elements.filter((e) => e.status === "proxied").map((e) => e.sourceEntity ?? "(no type)"))];
+  try {
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: {
+        message: `IFC export: ${name} has no typed IFC4 writer (${types.join(", ")}) — written as IFCBUILDINGELEMENTPROXY.`,
+        kind: "warn",
+      },
+    }));
+  } catch { /* */ }
+}
+
 export function exportNativeTwin(id: string): boolean {
   const rt = runtime.get(id);
   if (!rt) return false;
@@ -1071,7 +1092,9 @@ export function exportNativeTwin(id: string): boolean {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   // Also emit a minimal IFC4 for interoperability with external IFC tools.
   try {
-    downloadNativeTwinIfc(rt.edit as any);
+    downloadNativeTwinIfc(rt.edit as any, undefined, {
+      onReport: (report) => toastIfProxied(report, rt.edit.name || "Native Twin"),
+    });
   } catch (e) {
     console.warn("[frag-edit] IFC export failed", e);
   }
@@ -1362,7 +1385,11 @@ function renderPanel(): void {
       exportIfc.textContent = "Export as IFC4";
       exportIfc.style.cssText = exportTwin.style.cssText;
       exportIfc.onclick = () => {
-        try { downloadNativeTwinIfc(e as any); } catch (err) { console.warn(err); }
+        try {
+          downloadNativeTwinIfc(e as any, undefined, {
+            onReport: (report) => toastIfProxied(report, e.name || "Native Twin"),
+          });
+        } catch (err) { console.warn(err); }
       };
       detail.appendChild(exportIfc);
       detail.appendChild(exportTwin);

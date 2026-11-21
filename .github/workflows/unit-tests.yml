@@ -102,6 +102,12 @@ jobs:
       - name: Install ezdxf for independent DXF validation
         run: python3 -m pip install --quiet ezdxf
 
+      # Independent native-IFC validation (tests/native-ifc-independent-validation)
+      # parses the Native Twin export with IfcOpenShell, a third-party IFC
+      # implementation. Same skip-gracefully-locally rule as ezdxf above.
+      - name: Install IfcOpenShell for independent native-IFC validation
+        run: python3 -m pip install --quiet ifcopenshell
+
       # Batched runner executes the complete unit suite (scripts/ci-unit-tests.mjs).
       # Keep these command strings: milestone verification scripts inspect this file.
       # npm run test:v70

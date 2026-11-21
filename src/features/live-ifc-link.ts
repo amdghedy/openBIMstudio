@@ -9,7 +9,7 @@
 import { ctx } from "../core/context";
 import { fmtDateTime } from "../core/region";
 import { registerCommand } from "./command-palette";
-import { writeFederatedNativeTwinIfc } from "../modules/export/native-twin-ifc";
+import { writeFederatedNativeTwinIfcWithReport } from "../modules/export/native-twin-ifc";
 import { hashString, detectExternalChange, nextLinkAction } from "../modules/export/live-link-core";
 import { loadIfcFiles } from "./importer";
 import { recordIfcChange } from "./native-ifc-workflow";
@@ -54,7 +54,7 @@ async function modified(h: any): Promise<number> { return (await h.getFile()).la
 
 async function writeNow(l: Link): Promise<void> {
   const edits = twinEdits();
-  const text = writeFederatedNativeTwinIfc(edits as any, l.name.replace(/\.ifc$/i, "") || "Live IFC");
+  const { ifc: text, report } = writeFederatedNativeTwinIfcWithReport(edits as any, l.name.replace(/\.ifc$/i, "") || "Live IFC");
   const w = await l.handle.createWritable();
   await w.write(text);
   await w.close();
@@ -64,7 +64,19 @@ async function writeNow(l: Link): Promise<void> {
   l.writes++;
   l.elements = edits.length;
   l.error = null;
-  if (l.writes === 1 || l.writes % 10 === 0) recordIfcChange("export-ifc", `Live link wrote ${edits.length} element(s) to ${l.name}`, { count: edits.length });
+  if (l.writes === 1 || l.writes % 10 === 0) {
+    // The live link silently rewrites the file on every tick; the conversion
+    // report is the only place a proxy fallback is visible, so record its
+    // counts with the write instead of dropping them.
+    const proxiedTypes = [...new Set(
+      report.elements.filter((e) => e.status === "proxied").map((e) => e.sourceEntity ?? "(no type)"),
+    )];
+    const detail = ` · ${report.counts.typed} typed, ${report.counts.proxied} proxied` +
+      (proxiedTypes.length ? ` (${proxiedTypes.join(", ")})` : "");
+    recordIfcChange("export-ifc", `Live link wrote ${edits.length} element(s) to ${l.name}${detail}`, {
+      count: edits.length, typed: report.counts.typed, proxied: report.counts.proxied, proxiedTypes,
+    });
+  }
 }
 
 async function tick(): Promise<void> {
