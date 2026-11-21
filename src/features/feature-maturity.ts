@@ -325,6 +325,21 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "open-audit",
+    area: "Interoperability",
+    status: "limited",
+    source: ["src/modules/audit/open-audit.ts", "src/modules/audit/open-audit-core.ts"],
+    evidence: ["tests/open-audit.test.ts", "tests/e2e/open-audit.spec.ts"],
+    limitations: [
+      "IDS runs over imported IFC models only (runIdsValidation reads ctx.fragments); authored elements are not covered and the report says so instead of passing them",
+      "Property facets fail when a required property is absent from a readable model; they report unverifiable only when the model cannot expose properties at all — unverifiable checks are listed, never issued as BCF topics",
+      "Clash always runs all-vs-all with the live rules; saved clash scenarios are not honoured by the audit pass",
+      "One BCF 2.1 topic per clash and per failed IDS check (no clustering into one topic per group); BCF 3.0 write side not implemented",
+      "The audit's BCF has no viewpoint camera or snapshot (topics carry component references only)",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "sheets-views-pdf",
     area: "Documentation",
     status: "limited",

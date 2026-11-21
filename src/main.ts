@@ -339,6 +339,7 @@ await step("standards-panel", () => setupStandardsPanel());
 await step("panel-wiring", () => setupPanelWiring());
 
 await step("ids-panel", () => setupIdsPanel());
+await step("open-audit", async () => (await import("./modules/audit/open-audit")).setupOpenAudit());
 await step("model-tree", () => setupModelTree());
 await step("model-tree-panel", () => setupModelTreePanel());
 await step("plan-view", () => setupPlanViewPanel());

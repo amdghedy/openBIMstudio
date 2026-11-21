@@ -36,6 +36,11 @@ let currentDoc: IdsDocument | null = null;
 let currentReport: IdsRunReport | null = null;
 let activeFilter: IdsSeverity | "all" = "all";
 
+/** The IDS document currently loaded in the panel, if any (open-audit reads it). */
+export function getCurrentIdsDocument(): IdsDocument | null {
+  return currentDoc;
+}
+
 const fileInput = document.createElement("input");
 fileInput.type = "file";
 fileInput.accept = ".ids,.xml";
