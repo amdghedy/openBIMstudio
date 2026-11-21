@@ -38,6 +38,7 @@ import { getSelectionPrefs } from "../core/selection-prefs";
 import { selection } from "./selection";
 import { inputRouter, type Gesture, type Mods } from "../core/input-router";
 import { notify } from "../core/notify";
+import { checkEditAllowed } from "../modules/collaboration/edit-guard";
 import { setMeasureEnabled } from "./measure";
 import { setSectionOn } from "./section";
 import { markDirty } from "../modules/projects/projects";
@@ -305,6 +306,37 @@ function notifyAuthoringChange(): void {
 export function onAuthoringChange(cb: () => void): () => void {
   authoringListeners.add(cb);
   return () => authoringListeners.delete(cb);
+}
+
+/**
+ * Central-worksharing edit guard (see src/modules/collaboration/edit-guard.ts).
+ * While joined to a central room, elements borrowed by another user (or in a
+ * workset owned by another user) refuse edits/deletes/transforms with a
+ * reason naming the holder. The helpers below are the single place the
+ * authoring path consults the guard, so the palette, modify bar, parametric
+ * tools, keyboard nudge and align all refuse the same way.
+ */
+function guardRefusals(ids: string[]): Array<{ id: string; name: string; reason: string }> {
+  const out: Array<{ id: string; name: string; reason: string }> = [];
+  for (const id of ids) {
+    const g = checkEditAllowed(id);
+    if (!g.allowed) {
+      const el = elements.find((e) => e.id === id);
+      out.push({ id, name: el?.name || id, reason: (g as { reason: string }).reason });
+    }
+  }
+  return out;
+}
+
+function toastGuardRefusals(action: string, refused: Array<{ name: string; reason: string }>): void {
+  if (!refused.length) return;
+  const first = refused[0];
+  const msg =
+    `Cannot ${action}: ${first.name} — ${first.reason}` +
+    (refused.length > 1 ? ` (+${refused.length - 1} more)` : "");
+  try {
+    window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: msg, kind: "error" } }));
+  } catch { /* toast is cosmetic */ }
 }
 
 export function getTypeDefaults(type: string): TypeDefaults {
@@ -3742,6 +3774,15 @@ function deleteElements(ids: string[]) {
     cascadeSummary = result.summary;
   } catch { /* cascade is best-effort; fall back to the seed set */ }
 
+  // Central worksharing: refusing any member of the delete cascade (host or
+  // hosted child) refuses the whole delete — deleting a host must not kill
+  // a borrowed child.
+  const refused = guardRefusals([...cascade]);
+  if (refused.length) {
+    toastGuardRefusals("delete", refused);
+    return;
+  }
+
   if (cascadeSummary) {
     try {
       window.dispatchEvent(new CustomEvent("obs-toast", {
@@ -5940,6 +5981,10 @@ export function applyElementParamChange(
 ): { ok: boolean; reason?: string } {
   const el = elements.find((e) => e.id === elementId);
   if (!el) return { ok: false, reason: "element_not_found" };
+  // Central worksharing: an element borrowed by another user (or in a
+  // workset owned by another user) refuses the edit with a named reason.
+  const guard = checkEditAllowed(elementId);
+  if (!guard.allowed) return { ok: false, reason: guard.reason };
   ensureNativeBaseDimensions(el);
   const before = JSON.parse(JSON.stringify(el.params));
   const candidateParams = JSON.parse(JSON.stringify(el.params));
@@ -6271,6 +6316,13 @@ export function updateNativeGeometryElement(
 export function removeElementById(id: string): boolean {
   const idx = elements.findIndex((el) => el.id === id);
   if (idx < 0) return false;
+  // Central worksharing: a borrowed element refuses removal (deleteElements
+  // re-checks the full host→child cascade as well).
+  const refused = guardRefusals([id]);
+  if (refused.length) {
+    toastGuardRefusals("delete", refused);
+    return false;
+  }
   deleteElements([id]);
   return true;
 }
@@ -7130,6 +7182,17 @@ export function transformElements(
       if (fe && !targets.includes(fe)) { targets.push(fe); followPending.set(fe.id, u.patch); }
     }
   }
+  // Central worksharing: borrowed targets stay put; the rest still move.
+  const refused = guardRefusals(targets.map((t) => t.id));
+  if (refused.length) {
+    toastGuardRefusals("move", refused);
+    const refusedIds = new Set(refused.map((r) => r.id));
+    for (const id of refusedIds) followPending.delete(id);
+    const kept = targets.filter((t) => !refusedIds.has(t.id));
+    if (!kept.length) return;
+    targets.length = 0;
+    targets.push(...kept);
+  }
   const before = targets.map((t) => JSON.parse(JSON.stringify(t.params)));
   let i = 0;
   for (const el of targets) { if (followPending.has(el.id)) Object.assign(el.params, followPending.get(el.id)); else transform(el, i++); }
@@ -7842,7 +7905,7 @@ export function setupAuthoring() {
     getElementWorldBox,
     getAuthoredGroup,
 
-    pinSelected, editSelectedParams, reverseSelected, addWallSweepToSelected, clearWallSweepsSelected,
+    pinSelected, editSelectedParams, applyElementParamChange, reverseSelected, addWallSweepToSelected, clearWallSweepsSelected,
     createSimilarFromSelection,
     splitSelectedAtMidpoint,
     joinSelectedWalls,

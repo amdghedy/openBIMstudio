@@ -315,6 +315,7 @@ await step("project-file", async () => (await import("./modules/projects/project
 await step("project-recovery", async () => (await import("./features/project-recovery")).setupProjectRecovery());
 await step("authoring", () => setupAuthoring());
 await step("plan-authoring-bridge", () => setupPlanAuthoringBridge());
+await step("central-binding", async () => (await import("./modules/collaboration/central-binding-setup")).setupCentralBinding());
 await step("families", () => setupFamilies());
 await step("family-browser", () => setupFamilyBrowser());
 await step("issues", () => setupIssues());
