@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import zlib from 'node:zlib';
+import { openPaletteWith } from './palette';
 
 // Real-browser checks for two things that were only unit-tested: Shift+drag orbit, and Arabic (right-to-left) boot.
 // Run on CI by the browser-smoke job in .github/workflows/unit-tests.yml (not part of the unit-test job).
@@ -120,8 +121,7 @@ test('Export > Views to CAD: dialog creates standard views and downloads real DX
   await page.mouse.move(cx + 100, cy); await page.mouse.click(cx + 100, cy);
   await page.keyboard.press('Enter'); await page.keyboard.press('Escape');
 
-  await page.keyboard.press('Control+p');
-  await page.keyboard.type('Views to CAD');
+  await openPaletteWith(page, 'Views to CAD');
   await page.keyboard.press('Enter');
   const dlg = page.locator('#obs-export-cad');
   await expect(dlg).toBeVisible({ timeout: 10000 });
@@ -192,8 +192,7 @@ test('3D export includes an imported IFC model, with the wall on layer A-WALL', 
   await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), { timeout: 90000, message: 'IFC model loaded into the scene' }).toBeGreaterThanOrEqual(1);
   await page.waitForTimeout(1500);
 
-  await page.keyboard.press('Control+p');
-  await page.keyboard.type('Views to CAD');
+  await openPaletteWith(page, 'Views to CAD');
   await page.keyboard.press('Enter');
   const dlg = page.locator('#obs-export-cad');
   await expect(dlg).toBeVisible({ timeout: 10000 });
@@ -341,8 +340,7 @@ test('Family sketch window: a parametric rectangle and a polygon with a hole cre
   await page.locator('#obs-hero-3d').click({ timeout: 30000 });
   await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__?.features?.family), { timeout: 30000 }).toBe(true);
   const open = async () => {
-    await page.keyboard.press('Control+p');
-    await page.keyboard.type('Family sketch: new family');
+    await openPaletteWith(page, 'Family sketch: new family');
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-sketch-editor]')).toBeVisible({ timeout: 10000 });
   };
@@ -1068,8 +1066,7 @@ test('Export 3D model to DWG: a real DWG is written and re-read with its 3D face
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await loadWallIfc(page);
-  await page.keyboard.press('Control+p');
-  await page.keyboard.type('Views to CAD');
+  await openPaletteWith(page, 'Views to CAD');
   await page.keyboard.press('Enter');
   const dlg = page.locator('#obs-export-cad');
   await expect(dlg).toBeVisible({ timeout: 10000 });
@@ -1144,8 +1141,7 @@ test('Export current 3D view as hidden-line 2D lines: an IFC wall seen from the 
   await loadWallIfc(page);
   await page.evaluate(async () => { await (window as any).__OBS_CTX__.world.camera.controls.setLookAt(0, 1.5, 12, 0, 1.5, 0, false); });
   await page.waitForTimeout(900);
-  await page.keyboard.press('Control+p');
-  await page.keyboard.type('Views to CAD');
+  await openPaletteWith(page, 'Views to CAD');
   await page.keyboard.press('Enter');
   const dlg = page.locator('#obs-export-cad');
   await expect(dlg).toBeVisible({ timeout: 10000 });
