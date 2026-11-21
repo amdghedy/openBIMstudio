@@ -61,7 +61,14 @@ export type NumberRef =
 export type ProfileSpec =
   | { kind: "rect"; w: NumberRef; h: NumberRef }
   | { kind: "circle"; r: NumberRef; segments?: number }
-  | { kind: "polygon"; points: [number, number][] };
+  | { kind: "polygon"; points: [number, number][] }
+  | {
+      /** Circular sector (pie slice) centred on the profile origin.
+       *  Angles are in DEGREES, measured counter-clockwise from +X;
+       *  the sector runs from `startAngle` to `endAngle` (sweep in
+       *  (0, 360]). A 360° sweep is a full circle. */
+      kind: "arc"; r: NumberRef; startAngle: NumberRef; endAngle: NumberRef; segments?: number
+    };
 
 export interface TransformSpec {
   /** Translation in metres, [x, y, z]. */

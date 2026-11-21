@@ -18,7 +18,7 @@ At least 3 distinct points, at most 500, non-zero area, and no self-crossing edg
 
 ## Limits (first version)
 
-Straight edges only (a circle is a 48-sided polygon); one outer outline per extrusion; holes are fixed polygons inside a polygon (or rectangle/circle turned polygon) outline; no arcs, splines, sweeps or revolves;
-no dimension or reference-plane constraints in the sketch; the outline's shape is fixed data (only depth and elevation are parameters for free polygons). **Rectangles and circles drawn with “Size as parameters”** instead create `sketchWidth`/`sketchLength`/`sketchRadius` parameters and resize with them (centred on the drawn centre).
+Straight edges plus arc sectors (a circle is a 48-sided polygon); one outer outline per extrusion; holes are fixed polygons inside a polygon (or rectangle/circle/arc turned polygon) outline; no splines, sweeps or revolves;
+sketch constraints (equality / offset / ratio / sum / difference / fixed / distance / symmetric, solved by the family constraint graph) and reference planes (`plane_<id>` offsets usable as constraint centres) are supported via `solveSketchDimensions` / `validateSketchConstraints` in `sketch-core.ts`; the outline's shape is fixed data for free polygons (only depth and elevation are parameters), while rectangles, circles and arc sectors drawn with “Size as parameters” create `sketchWidth`/`sketchLength`/`sketchRadius`/`sketchStartAngle`/`sketchEndAngle` parameters and resize with them (centred on the drawn centre).
 Verification: `tests/family-sketch.test.cjs` checks the maths and, where real three.js is installed (CI), the built geometry.
 The drawing window itself has not been used in a real browser yet.

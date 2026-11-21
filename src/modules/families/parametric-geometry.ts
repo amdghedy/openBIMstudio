@@ -89,6 +89,16 @@ function profileToShape(profile: ProfileSpec, params: Record<string, any>): THRE
   } else if (profile.kind === "circle") {
     const r = resolveNumber(profile.r, params);
     shape.absarc(0, 0, r, 0, Math.PI * 2, false);
+  } else if (profile.kind === "arc") {
+    const r = resolveNumber(profile.r, params);
+    const a0 = resolveNumber(profile.startAngle, params) * Math.PI / 180;
+    const a1 = resolveNumber(profile.endAngle, params) * Math.PI / 180;
+    if (r > 0 && a1 > a0) {
+      shape.absarc(0, 0, r, a0, a1, false);
+      // A full circle needs no closing radii; a sector closes through
+      // the centre (pie slice).
+      if (a1 - a0 < Math.PI * 2 - 1e-9) { shape.lineTo(0, 0); shape.closePath(); }
+    }
   } else if (profile.kind === "polygon") {
     const pts = profile.points;
     if (pts.length < 3) return shape;

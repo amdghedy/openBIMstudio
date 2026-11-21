@@ -163,6 +163,7 @@
     "test:standards-json-pack": "node tests/standards-json-pack.test.cjs",
     "test:icu-lite": "node tests/icu-lite.test.cjs",
     "test:family-sketch": "node tests/family-sketch.test.cjs",
+    "test:sketch-arcs-constraints": "node tests/sketch-arcs-constraints.test.cjs",
     "test:orbit-frame": "node tests/orbit-frame.test.cjs",
     "test:view-to-cad": "node tests/view-to-cad.test.cjs",
     "test:model-to-dxf3d": "node tests/model-to-dxf3d.test.cjs",

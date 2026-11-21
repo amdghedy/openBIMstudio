@@ -5,11 +5,12 @@
  * Sketch plane: the PLAN. The outline is drawn as seen from above (x right, y up the screen = +Z / north in the app) and
  * extruded upwards from an elevation. In family space that is an `extrusion` rotated +90° about X (profile XY -> plan XZ,
  * extrusion axis Z -> vertical) and translated so the solid's base sits at the elevation.
- * Shapes: a free polygon (optionally with polygon holes), or a PARAMETRIC rectangle / circle whose width, length or radius are
- * family parameters (so it resizes). Limits (docs/FAMILY-SKETCH.md): one outer outline per extrusion, straight edges only (a free
- * circle is a polygon), no arcs/splines, no sweep/revolve, holes are fixed polygons inside a polygon outline.
+ * Shapes: a free polygon (optionally with polygon holes), or a PARAMETRIC rectangle / circle / arc-sector whose width, length, radius or
+ * angles are family parameters (so it resizes). Limits (docs/FAMILY-SKETCH.md): one outer outline per extrusion, straight edges only
+ * except arc sectors (a free circle is a polygon), no splines, no sweep/revolve, holes are fixed polygons inside a polygon outline.
  */
 import type { FamilyCategory, FamilyDefinition, FamilyGeometrySpec, FamilyParameter } from "./types";
+import { solveConstraints, validateConstraints, type Constraint, type ConstraintResult } from "./constraint-graph";
 
 export type Pt = [number, number];
 
@@ -85,6 +86,142 @@ export function circlePoints(cx: number, cy: number, r: number, segments = 48): 
   return out;
 }
 
+/** Sweep of an arc in degrees, from start to end (counter-clockwise from +X). */
+export const arcSweepDeg = (startDeg: number, endDeg: number): number => endDeg - startDeg;
+
+/** Area of a circular sector: ½·r²·sweep (sweep in degrees). */
+export const arcSectorArea = (r: number, sweepDeg: number): number =>
+  0.5 * r * r * (sweepDeg * Math.PI / 180);
+
+/** Points along a circular arc, start to end inclusive (degrees, CCW from +X). */
+export function arcPoints(cx: number, cy: number, r: number, startDeg: number, endDeg: number, segments = 48): Pt[] {
+  const sweep = arcSweepDeg(startDeg, endDeg);
+  const n = Math.max(2, Math.min(256, Math.floor(segments)));
+  const out: Pt[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = (startDeg + (sweep * i) / n) * Math.PI / 180;
+    out.push([cx + r * Math.cos(t), cy + r * Math.sin(t)]);
+  }
+  return out;
+}
+
+/** Closed outline of a circular sector: the arc plus the centre point (pie slice). */
+export function sectorPoints(cx: number, cy: number, r: number, startDeg: number, endDeg: number, segments = 48): Pt[] {
+  return [...arcPoints(cx, cy, r, startDeg, endDeg, segments), [cx, cy] as Pt];
+}
+
+export interface ArcCheck { ok: boolean; errors: string[]; area: number; sweepDeg: number; points: Pt[] }
+
+/** Validate an arc sector and return its closed outline (arc + centre). */
+export function validateArc(cx: number, cy: number, r: number, startDeg: number, endDeg: number, segments = 48): ArcCheck {
+  const errors: string[] = [];
+  if (![cx, cy, r, startDeg, endDeg].every(Number.isFinite)) errors.push("Arc centre, radius and angles must be numbers.");
+  if (Number.isFinite(r) && !(r > 0)) errors.push("Arc radius must be positive.");
+  const sweep = arcSweepDeg(startDeg, endDeg);
+  if (Number.isFinite(sweep) && !(sweep > 0 && sweep <= 360)) errors.push("Arc sweep must be between 0 and 360 degrees (end angle after start angle).");
+  const points = errors.length === 0 ? sectorPoints(cx, cy, r, startDeg, endDeg, segments) : [];
+  return { ok: errors.length === 0, errors, area: errors.length === 0 ? arcSectorArea(r, sweep) : 0, sweepDeg: sweep, points };
+}
+
+/* ───────────── reference planes ───────────── */
+
+/**
+ * A reference plane is a named datum line in the sketch plane that
+ * sketch constraints can be solved against: `axis: "x"` is the vertical
+ * line x = offset, `axis: "y"` the horizontal line y = offset. Its
+ * offset is exposed as a parameter named `plane_<id>` so a
+ * `symmetric` constraint can mirror two sketch dimensions about it.
+ */
+export interface ReferencePlane {
+  /** [A-Za-z_][A-Za-z0-9_]* — also the parameter suffix. */
+  id: string;
+  name: string;
+  axis: "x" | "y";
+  /** Offset in metres from the sketch origin along the plane's axis. */
+  offset: number;
+}
+
+export const referencePlaneParamName = (plane: ReferencePlane): string => `plane_${plane.id}`;
+
+/** Validation errors for one reference plane (empty = valid). */
+export function validateReferencePlane(plane: unknown, existingIds: Set<string> = new Set()): string[] {
+  const errors: string[] = [];
+  if (!plane || typeof plane !== "object") return ["Reference plane must be an object."];
+  const p = plane as ReferencePlane;
+  if (typeof p.id !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(p.id)) errors.push("Reference plane id must be a valid parameter name.");
+  else if (existingIds.has(p.id)) errors.push(`Duplicate reference plane id "${p.id}".`);
+  if (typeof p.name !== "string" || !p.name.trim()) errors.push("Reference plane needs a name.");
+  if (p.axis !== "x" && p.axis !== "y") errors.push("Reference plane axis must be \"x\" or \"y\".");
+  if (typeof p.offset !== "number" || !Number.isFinite(p.offset)) errors.push("Reference plane offset must be a number.");
+  return errors;
+}
+
+/** Parameter values for a set of reference planes (`plane_<id>` -> offset). */
+export function referencePlaneValues(planes: ReferencePlane[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const p of planes) out[referencePlaneParamName(p)] = p.offset;
+  return out;
+}
+
+/** Mirror a sketch point across a reference plane. */
+export function mirrorPointAcrossPlane(p: Pt, plane: ReferencePlane): Pt {
+  return plane.axis === "x" ? [2 * plane.offset - p[0], p[1]] : [p[0], 2 * plane.offset - p[1]];
+}
+
+/** Perpendicular distance from a sketch point to a reference plane. */
+export function distanceToPlane(p: Pt, plane: ReferencePlane): number {
+  return Math.abs(plane.axis === "x" ? p[0] - plane.offset : p[1] - plane.offset);
+}
+
+/* ───────────── sketch constraints (dimension-driven) ───────────── */
+
+/**
+ * A set of dimension constraints over a family's sketch parameters,
+ * solved by the family constraint graph (`constraint-graph.ts`).
+ * Constraints are NOT stored on the family definition — they travel
+ * with the sketch operation and are solved at build time, with the
+ * solved values passed as overrides to `buildParametricFamily`
+ * (see `ParametricBuildOptions.constraints`, which the engine solves
+ * after formula evaluation). Reference planes in the set contribute
+ * their `plane_<id>` offset parameters to the solve.
+ */
+export interface SketchConstraintSet {
+  constraints: Constraint[];
+  referencePlanes?: ReferencePlane[];
+}
+
+/** Validation errors for a constraint set against a family (empty = valid). */
+export function validateSketchConstraints(family: FamilyDefinition, set: SketchConstraintSet): string[] {
+  const errors: string[] = [];
+  const names = new Set(family.parameters.map((p) => p.name));
+  const ids = new Set<string>();
+  for (const plane of set.referencePlanes ?? []) {
+    for (const e of validateReferencePlane(plane, ids)) errors.push(e);
+    ids.add((plane as ReferencePlane).id);
+    names.add(referencePlaneParamName(plane as ReferencePlane));
+  }
+  errors.push(...validateConstraints(set.constraints, names));
+  return errors;
+}
+
+/**
+ * Solve a sketch constraint set over a family's parameter defaults
+ * (plus `seed` overrides). Returns the constraint-graph result:
+ * solved values, errors (including cycle diagnostics), applied count
+ * and iteration count. The caller passes `result.values` as overrides
+ * when building, so a driven sketch dimension follows its driver.
+ */
+export function solveSketchDimensions(
+  family: FamilyDefinition,
+  set: SketchConstraintSet,
+  seed: Record<string, any> = {},
+): ConstraintResult {
+  const values: Record<string, any> = {};
+  for (const p of family.parameters) values[p.name] = p.default;
+  Object.assign(values, referencePlaneValues(set.referencePlanes ?? []), seed);
+  return solveConstraints(values, set.constraints);
+}
+
 /* ───────────── family building ───────────── */
 
 function uniqueName(existing: Set<string>, base: string): string {
@@ -140,7 +277,8 @@ export function validateHoles(outer: Pt[], holes: Pt[][]): { ok: boolean; errors
 export type ShapeInput =
   | { kind: "polygon"; points: Pt[]; holes?: Pt[][] }
   | { kind: "rect"; cx: number; cy: number; width: number; length: number }
-  | { kind: "circle"; cx: number; cy: number; radius: number };
+  | { kind: "circle"; cx: number; cy: number; radius: number }
+  | { kind: "arc"; cx: number; cy: number; radius: number; startAngle: number; endAngle: number };
 
 const poly = (points: Pt[]) => ({ kind: "polygon" as const, points: points.map((p) => [round6(p[0]), round6(p[1])] as Pt) });
 
@@ -164,6 +302,9 @@ export type SketchResult = { ok: true; family: FamilyDefinition; depthParam: str
 
 const lengthParam = (name: string, label: string, value: number, min = 0.001): FamilyParameter =>
   ({ name, label, type: "length", scope: "type", default: value, editable: true, min, step: 0.05, unit: "m", group: "Sketch" });
+
+const angleParam = (name: string, label: string, value: number): FamilyParameter =>
+  ({ name, label, type: "angle", scope: "type", default: value, editable: true, step: 5, unit: "deg", group: "Sketch" });
 
 /** Add a shape to a family as a new extrusion (the original definition is not mutated). */
 export function addShapeToFamily(def: FamilyDefinition, shape: ShapeInput, opts: SketchOptions): SketchResult {
@@ -192,12 +333,23 @@ export function addShapeToFamily(def: FamilyDefinition, shape: ShapeInput, opts:
     params.push(lengthParam(w, "Sketch width" + label, round6(shape.width)), lengthParam(l, "Sketch length" + label, round6(shape.length)));
     sizeParams.push(w, l); area = shape.width * shape.length;
     part = { kind: "extrusion", profile: { kind: "rect", w: { ref: w }, h: { ref: l } }, depth: { ref: depthParam }, transform: { rotate: rot as any, translate: [{ const: round6(shape.cx) }, lift, { const: round6(shape.cy) }] } } as FamilyGeometrySpec;
-  } else {
+  } else if (shape.kind === "circle") {
     if (!(shape.radius > 0) || !Number.isFinite(shape.radius + shape.cx + shape.cy)) return { ok: false, errors: ["Radius must be positive."] };
     const r = take("sketchRadius");
     params.push(lengthParam(r, "Sketch radius" + label, round6(shape.radius)));
     sizeParams.push(r); area = Math.PI * shape.radius * shape.radius;
     part = { kind: "extrusion", profile: { kind: "circle", r: { ref: r }, segments: 64 }, depth: { ref: depthParam }, transform: { rotate: rot as any, translate: [{ const: round6(shape.cx) }, lift, { const: round6(shape.cy) }] } } as FamilyGeometrySpec;
+  } else {
+    // Arc sector: radius + start/end angles are all sketch parameters,
+    // so the sector reshapes when any of them changes.
+    const v = validateArc(shape.cx, shape.cy, shape.radius, shape.startAngle, shape.endAngle);
+    if (!v.ok) return { ok: false, errors: v.errors };
+    const r = take("sketchRadius"), a0 = take("sketchStartAngle"), a1 = take("sketchEndAngle");
+    params.push(lengthParam(r, "Sketch radius" + label, round6(shape.radius)));
+    params.push(angleParam(a0, "Sketch start angle" + label, round6(shape.startAngle)));
+    params.push(angleParam(a1, "Sketch end angle" + label, round6(shape.endAngle)));
+    sizeParams.push(r, a0, a1); area = v.area;
+    part = { kind: "extrusion", profile: { kind: "arc", r: { ref: r }, startAngle: { ref: a0 }, endAngle: { ref: a1 }, segments: 64 }, depth: { ref: depthParam }, transform: { rotate: rot as any, translate: [{ const: round6(shape.cx) }, lift, { const: round6(shape.cy) }] } } as FamilyGeometrySpec;
   }
   const geometry: FamilyGeometrySpec = def.geometry && !(def.geometry.kind === "custom" && !def.geometry.builder)
     ? (def.geometry.kind === "composed" ? { kind: "composed", parts: [...def.geometry.parts, part] } : { kind: "composed", parts: [def.geometry, part] })
