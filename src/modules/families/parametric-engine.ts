@@ -434,22 +434,118 @@ function resampleRing(points: THREE.Vector2[], count: number): THREE.Vector2[] {
   return out;
 }
 
+/**
+ * Revolve a profile around the Y axis of shape space (radius = shape x,
+ * height = shape y), then rotate the mesh for the requested axis.
+ *
+ * Hand-built, mirroring the Slice 6 sweep/loft rebuild: THREE's
+ * LatheGeometry was measured to produce a mesh whose volume is silently
+ * ZERO when the profile crosses the axis (a rect straddling the axis, or
+ * a circle profile centred on it — the two halves cancel exactly while
+ * the bounding box still looks right), silently accepts angles > 2π, and
+ * leaves partial revolutions open (no end caps), so the result is not a
+ * solid. This builder:
+ * - rejects a profile that crosses the axis (any outline point with
+ *   radius < 0) with a warning, as Revit does — a sphere is a 0–90°
+ *   arc sector revolved, not a full circle on the axis;
+ * - rejects angles outside (0, 2π] with a warning;
+ * - stitches the side surface with outward-facing quads and closes
+ *   partial revolutions with triangulated end caps
+ *   (THREE.ShapeUtils.triangulateShape, so concave profiles cap
+ *   correctly), oriented by the outward tangent at each end.
+ * The side surface is still faceted by `segments` (an N-gon prism
+ * approximation of the circular path), so volumes carry the analytic
+ * faceting factor N·sin(2π/N)/2π — see the revolve test suite.
+ */
 function buildRevolve(
   profile: ProfileSpec,
   axis: "x" | "y" | "z",
   angle: NumberRef,
   segments: number,
   params: Record<string, any>,
+  warnings: string[] = [],
 ): THREE.Object3D | null {
-  const shape = profileToShapeLocal(profile, params);
   const theta = resolveNumber(angle, params);
-  if (!Number.isFinite(theta) || Math.abs(theta) < 1e-6) return null;
-  const geo = new THREE.LatheGeometry(
-    shape.getPoints(64).map((p) => new THREE.Vector2(p.x, p.y)),
-    Math.max(3, segments),
-    0,
-    theta,
-  );
+  if (!Number.isFinite(theta) || theta <= 1e-9 || theta > Math.PI * 2 + 1e-9) {
+    warnings.push(`revolve angle must be in (0, 2π], got ${theta}`);
+    return null;
+  }
+  const ring = profileRing(profile, params, 64);
+  if (ring.length < 3) {
+    warnings.push("revolve profile has fewer than 3 outline points");
+    return null;
+  }
+  for (const p of ring) {
+    if (p.x < -1e-9) {
+      warnings.push(
+        `revolve profile crosses the revolution axis (radius ${p.x.toFixed(3)} < 0); ` +
+        "move the profile to one side of the axis — a sphere is a 0–90° arc sector, not a circle on the axis",
+      );
+      return null;
+    }
+    if (p.x < 0) p.x = 0;
+  }
+  // Enforce a CCW ring so the side winding below faces outward.
+  let area2 = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length];
+    area2 += a.x * b.y - b.x * a.y;
+  }
+  if (area2 < 0) ring.reverse();
+
+  const segs = Math.max(3, Math.floor(segments));
+  const closed = Math.abs(theta - Math.PI * 2) < 1e-9;
+  const positions: number[] = [];
+  const at = (s: number, i: number): [number, number, number] => {
+    const p = ring[i];
+    // For a full revolve the last section is the first one again: wrap
+    // the index instead of evaluating sin/cos at 2π, so the seam
+    // vertices are bit-identical (sin(2π) is -2.4e-16, not 0) and the
+    // solid is watertight by construction.
+    const ss = closed ? s % segs : s;
+    const phi = (theta * ss) / segs;
+    return [p.x * Math.sin(phi), p.y, p.x * Math.cos(phi)];
+  };
+  const tri = (a: [number, number, number], b: [number, number, number], c: [number, number, number]) => {
+    positions.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+  };
+  const n = ring.length;
+  // Side surface: A = P_s(i), B = P_s(j), C = P_{s+1}(j), D = P_{s+1}(i);
+  // (A, C, B) and (A, D, C) face outward for a CCW ring.
+  for (let s = 0; s < segs; s++) {
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const A = at(s, i), B = at(s, j), C = at(s + 1, j), D = at(s + 1, i);
+      tri(A, C, B);
+      tri(A, D, C);
+    }
+  }
+  // End caps for partial revolutions. The cap at phi is the profile ring
+  // in the plane through the axis at that angle; its outward normal is
+  // the tangent direction d/dphi (cos phi, 0, -sin phi), negated at the
+  // start cap (the solid lies toward increasing phi) and kept at the end.
+  if (!closed) {
+    const faces = THREE.ShapeUtils.triangulateShape(ring, []);
+    for (const [phi, outward] of [[0, -1], [theta, 1]] as const) {
+      const dir: [number, number, number] = [Math.cos(phi), 0, -Math.sin(phi)];
+      for (const f of faces) {
+        const pts = f.map((k) => {
+          const p = ring[k];
+          return [p.x * Math.sin(phi), p.y, p.x * Math.cos(phi)] as [number, number, number];
+        });
+        const [a, b, c] = pts;
+        const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+        const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        const dot = (nx * dir[0] + ny * dir[1] + nz * dir[2]) * outward;
+        if (dot < 0) tri(pts[0], pts[2], pts[1]);
+        else tri(pts[0], pts[1], pts[2]);
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo);
   if (axis === "x") mesh.rotation.z = Math.PI / 2;
   if (axis === "z") mesh.rotation.x = Math.PI / 2;
@@ -723,6 +819,7 @@ export function buildExtendedGeometry(
         spec.angle,
         spec.segments ?? 32,
         params,
+        options.warnings ?? [],
       );
       if (!mesh) return null;
       const wrap = resolveTransform(spec.transform, params);

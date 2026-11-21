@@ -202,6 +202,7 @@
     "test:constraints": "node tests/constraint-solver.test.cjs",
     "test:parametric-closure": "node tests/parametric-closure.test.cjs",
     "test:parametric-voids-sweeps-lofts": "node tests/parametric-voids-sweeps-lofts.test.cjs",
+    "test:parametric-revolve": "node tests/parametric-revolve.test.cjs",
     "test:catalog-shared-parameters": "node tests/catalog-shared-parameters.test.cjs",
     "test:shared-parameters": "node --test tests/shared-parameters.test.mjs",
     "test:structural": "node tests/structural.test.cjs",
