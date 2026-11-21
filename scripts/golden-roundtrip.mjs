@@ -9,11 +9,24 @@
 // rest of the harness stays unchanged.
 import { IfcAPI } from 'web-ifc';
 import * as W from 'web-ifc';
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { dirname } from 'path';
 import { createHash } from 'crypto';
 
 const CORPUS = 'tests/fixtures/ifc-corpus';
 const SNAPSHOTS = CORPUS + '/snapshots';
+
+/**
+ * The file list comes from the manifest (kind "valid" only), not from a
+ * directory walk: the manifest is the source of truth, so the gate and the
+ * manifest can never disagree about which files are golden-gated. A naive
+ * recursive walk would also pick up invalid/ (intentionally broken) and
+ * malformed/ (parser-hang regressions) — files this gate must never open.
+ * That is exactly what the first recursive version did; it is fixed here.
+ */
+import { readFileSync as readManifest } from 'fs';
+const MANIFEST = JSON.parse(readManifest(CORPUS + '/manifest.json', 'utf8'));
+const VALID_FILES = MANIFEST.fixtures.filter((f) => f.kind === 'valid').map((f) => f.file).sort();
 
 const TYPE_IDS = Object.entries(W)
   .filter(([k, v]) => typeof v === 'number' && /^IFC[A-Z0-9_]+$/.test(k));
@@ -55,7 +68,7 @@ mkdirSync(SNAPSHOTS, { recursive: true });
 
 let failures = 0;
 const report = [];
-for (const name of readdirSync(CORPUS).filter((f) => f.endsWith('.ifc')).sort()) {
+for (const name of VALID_FILES) {
   const bytes = new Uint8Array(readFileSync(CORPUS + '/' + name));
   const m1 = ifc.OpenModel(bytes.slice(), {});
   const met1 = metrics(ifc, m1);
@@ -71,6 +84,7 @@ for (const name of readdirSync(CORPUS).filter((f) => f.endsWith('.ifc')).sort())
 
   const snap = SNAPSHOTS + '/' + name + '.json';
   if (!existsSync(snap)) {
+    mkdirSync(dirname(snap), { recursive: true });
     writeFileSync(snap, JSON.stringify(met1, null, 2));
     entry.snapshot = 'created';
   } else {

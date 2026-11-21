@@ -4,9 +4,11 @@
  *
  * Every fixture is either emitted by the project's own IFC writer
  * (src/modules/bim-gaps/authored-ifc.ts), derived from writer output by a
- * deterministic, documented STEP transform, or hand-authored for this
- * repository (the malformed/ regression fixtures). No third-party content:
- * licence is MIT throughout (the project licence).
+ * deterministic, documented STEP transform, hand-authored for this
+ * repository (the malformed/ regression fixtures), or vendored verbatim
+ * from a third-party dataset under an open licence (the third-party/
+ * fixtures — CC BY 4.0, see below). Licence is MIT throughout except the
+ * two third-party files, which stay CC BY 4.0 with attribution.
  *
  * Valid fixtures (top level, scanned by scripts/golden-roundtrip.mjs):
  *   generated-small.ifc           IFC4  — 2 walls + 1 door (hosted opening) + 1 slab
@@ -41,6 +43,31 @@
  *   (hand-authored; see malformed/README.md — the generator only verifies
  *   they are present and records their hashes in the manifest, it does not
  *   regenerate them.)
+ *
+ * Third-party fixtures (vendored verbatim, never regenerated — the generator
+ * only verifies they are present and records their hashes in the manifest,
+ * exactly like malformed/):
+ *   third-party/duplex-a.ifc       IFC2X3 — Revit Architecture 2011 export
+ *     of the Duplex Apartment ("Hello World" Coordination MVD model)
+ *   third-party/duplex-mep.ifc     IFC2X3 — Revit MEP 2011 export of the
+ *     same building's MEP systems (ducts, pipes, equipment, spaces)
+ *   Source: buildingsmart-community/Community-Sample-Test-Files,
+ *   "IFC 2.3.0.1 (IFC 2x3)/Duplex Apartment" (Git LFS; the vendored bytes
+ *   are byte-identical to the LFS objects — sha256 equals the LFS oid).
+ *   Licence: CC BY 4.0. Attribution required by the source README:
+ *   BSI (2020) "Duplex Apartment Test Files," buildingSMART International,
+ *   https://github.com/buildingsmart-community/Community-Sample-Test-Files
+ *   — recorded per fixture in the manifest and in
+ *   tests/fixtures/ifc-corpus/third-party/README.md. The files are kept in
+ *   third-party/ (not top level) deliberately: the fuzz gate seeds on
+ *   top-level valid fixtures, and a 17.9 MB seed would make every nightly
+ *   run pay a real-world parse per mutation. They are still covered by the
+ *   manifest test (pre-flight + web-ifc + error-free semantic validation +
+ *   golden snapshot), the per-entity fidelity report (recursive walk), and
+ *   the browser import-timeout spec. Known limit, measured: neither file
+ *   carries an IfcSystem grouping (Revit 2011 Coordination View did not
+ *   emit one), so MEP *system membership* is still uncovered anywhere in
+ *   the corpus — the writer gap noted in the manifest stands.
  *
  * The generator also writes tests/fixtures/ifc-corpus/manifest.json — the
  * machine-readable source of truth (source, licence, schema, expected
@@ -410,6 +437,8 @@ const META = {
   "arch-2x3.ifc": { kind: "valid", schema: "IFC2X3", source: "project writer (this script)", testPurpose: "architecture under IFC2X3: walls, hosted door + window, slab, column, one IfcSpace", coverage: ["ifc2x3", "architecture", "spatial-hierarchy"], expectedResult: "parse-ok" },
   "scale-grid.ifc": { kind: "valid", schema: "IFC4", source: "project writer (this script)", testPurpose: "scale: 4 storeys x 8 bays, 100 elements (walls, columns, beams, slabs); the corpus's largest fixture by element count", coverage: ["ifc4", "architecture", "structural", "scale", "geometry-complexity"], expectedResult: "parse-ok" },
   "model.ifczip": { kind: "archive", schema: "IFC4", source: "project writer output packaged by this script (§13, STORE zip, fixed timestamp)", testPurpose: ".ifczip packaging: exactly one .ifc entry (spatial-hierarchy.ifc) that parses identically to the loose file", coverage: ["ifc4", "architecture", "spatial-hierarchy", "ifczip"], expectedResult: "unzip-and-parse-ok", innerFile: "spatial-hierarchy.ifc" },
+  "third-party/duplex-a.ifc": { kind: "valid", schema: "IFC2X3", license: "CC BY 4.0", source: "buildingSMART Community Sample Test Files, Duplex Apartment — https://github.com/buildingsmart-community/Community-Sample-Test-Files (IFC 2.3.0.1 (IFC 2x3)/Duplex Apartment/Duplex_A_20110907.ifc); vendored verbatim, attribution: BSI (2020) \"Duplex Apartment Test Files,\" buildingSMART International", testPurpose: "real-world Revit Architecture 2011 export (Coordination View): 2-storey duplex apartment, 21 IfcSpace, 4 storeys; the corpus's only non-synthetic model", coverage: ["ifc2x3", "architecture", "spatial-hierarchy", "real-world"], expectedResult: "parse-ok" },
+  "third-party/duplex-mep.ifc": { kind: "valid", schema: "IFC2X3", license: "CC BY 4.0", source: "buildingSMART Community Sample Test Files, Duplex Apartment — https://github.com/buildingsmart-community/Community-Sample-Test-Files (IFC 2.3.0.1 (IFC 2x3)/Duplex Apartment/Duplex_MEP_20110907.ifc); vendored verbatim, attribution: BSI (2020) \"Duplex Apartment Test Files,\" buildingSMART International", testPurpose: "real-world Revit MEP 2011 export of the same building: ducts, pipes, equipment, 42 IfcSpace; the corpus's largest fixture (311k records). NOTE: carries no IfcSystem grouping, so MEP system membership is still uncovered", coverage: ["ifc2x3", "mep", "spatial-hierarchy", "real-world", "scale"], expectedResult: "parse-ok" },
   "invalid/bad-guid.ifc": { kind: "invalid", schema: "IFC4", source: "project writer + deterministic STEP transform (this script §12a)", testPurpose: "GlobalId outside the base64 alphabet must be flagged, model stays readable", coverage: ["invalid"], expectedResult: "semantic-findings", expectedFindingCodes: ["IFC-E-BAD-GUID"] },
   "invalid/dangling-ref.ifc": { kind: "invalid", schema: "IFC4", source: "project writer + deterministic STEP transform (this script §12b)", testPurpose: "relationship references a missing entity (#99999) must be flagged with attribution", coverage: ["invalid"], expectedResult: "semantic-findings", expectedFindingCodes: ["IFC-E-DANGLING-REF"] },
   "invalid/truncated.ifc": { kind: "invalid", schema: "IFC4", source: "project writer output cut mid-DATA (this script §12c)", testPurpose: "truncated file: readable prefix preserved, truncation warned, no crash", coverage: ["invalid"], expectedResult: "graceful-prefix", expectedFindingCodes: [] },
@@ -443,7 +472,7 @@ for (const [file, meta] of Object.entries(META)) {
     entities = countEntities(inner);
   }
   fixtures.push({
-    file, kind: meta.kind, schema: meta.schema, license: "MIT", source: meta.source,
+    file, kind: meta.kind, schema: meta.schema, license: meta.license ?? "MIT", source: meta.source,
     testPurpose: meta.testPurpose, coverage: meta.coverage, expectedResult: meta.expectedResult,
     ...(meta.expectedFindingCodes ? { expectedFindingCodes: meta.expectedFindingCodes } : {}),
     ...(meta.expectedReason ? { expectedReason: meta.expectedReason } : {}),
@@ -455,7 +484,7 @@ for (const [file, meta] of Object.entries(META)) {
 const manifest = {
   version: 1,
   generatedBy: "scripts/generate-ifc-corpus.mjs",
-  license: "MIT — all fixtures generated by the project's own writer/tests or hand-authored for this repository; no third-party content. JSON snapshots under snapshots/ are derived artifacts and are NOT source fixtures.",
+  license: "MIT for all project-generated/hand-authored fixtures; CC BY 4.0 for third-party/duplex-a.ifc and third-party/duplex-mep.ifc (attribution: BSI (2020) \"Duplex Apartment Test Files,\" buildingSMART International — see scripts/generate-ifc-corpus.mjs). JSON snapshots under snapshots/ are derived artifacts and are NOT source fixtures.",
   sourceFixtureCount: fixtures.length,
   fixtures,
 };

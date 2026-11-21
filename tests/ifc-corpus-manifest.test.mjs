@@ -90,7 +90,13 @@ t("manifest: every entry is a real .ifc/.ifczip source (never a snapshot)", () =
     assert.ok(!f.file.includes("snapshots/"), f.file);
     assert.ok(!f.file.endsWith(".json"), f.file);
     assert.ok(f.file.endsWith(".ifc") || f.file.endsWith(".ifczip"), f.file);
-    assert.strictEqual(f.license, "MIT", f.file);
+    assert.ok(["MIT", "CC BY 4.0"].includes(f.license), `${f.file}: unexpected license ${f.license}`);
+    if (f.license === "CC BY 4.0") {
+      // Third-party content stays under its own licence: the manifest must
+      // carry the attribution the source requires, not just a licence tag.
+      assert.ok(f.source.includes("BSI (2020)"), `${f.file}: CC BY 4.0 fixture without the required BSI attribution in its source`);
+      assert.ok(f.source.includes("github.com/buildingsmart-community/Community-Sample-Test-Files"), `${f.file}: CC BY 4.0 fixture without its source URL`);
+    }
     assert.ok(f.source && f.source.length > 10, f.file);
     assert.ok(Array.isArray(f.coverage) && f.coverage.length > 0, f.file);
     assert.ok(f.testPurpose && f.testPurpose.length > 10, f.file);
@@ -238,6 +244,31 @@ t("spatial: spatial-hierarchy.ifc has 3 storeys and 4 spaces", () => {
   const model = M.buildSemanticModel(fs.readFileSync(path.join(CORPUS, "spatial-hierarchy.ifc"), "utf8"));
   assert.strictEqual(model.spatial.storeys, 3);
   assert.strictEqual((model.byClass.get("IFCSPACE") || []).length, 4);
+});
+
+t("third-party: duplex files are CC BY 4.0, attributed, and real Revit exports", () => {
+  for (const f of ["third-party/duplex-a.ifc", "third-party/duplex-mep.ifc"]) {
+    const m = manifest.fixtures.find((x) => x.file === f);
+    assert.ok(m, `${f} missing from manifest`);
+    assert.strictEqual(m.license, "CC BY 4.0", f);
+    assert.strictEqual(m.schema, "IFC2X3", f);
+    assert.strictEqual(m.kind, "valid", f);
+  }
+  const arch = M.buildSemanticModel(fs.readFileSync(path.join(CORPUS, "third-party/duplex-a.ifc"), "utf8"));
+  assert.strictEqual((arch.byClass.get("IFCSPACE") || []).length, 21, "duplex-a: expected 21 IfcSpace");
+  // Revit 2011 exports walls as IfcWallStandardCase (56) plus one IfcWall.
+  const walls = (arch.byClass.get("IFCWALL") || []).length + (arch.byClass.get("IFCWALLSTANDARDCASE") || []).length;
+  assert.strictEqual(walls, 57, `duplex-a: expected 57 walls, got ${walls}`);
+  const mep = M.buildSemanticModel(fs.readFileSync(path.join(CORPUS, "third-party/duplex-mep.ifc"), "utf8"));
+  assert.strictEqual((mep.byClass.get("IFCSPACE") || []).length, 42, "duplex-mep: expected 42 IfcSpace");
+  assert.ok(mep.entities.size > 300_000, `duplex-mep: expected 300k+ STEP records, got ${mep.entities.size}`);
+  const segments = ["IFCFLOWSEGMENT", "IFCDUCTSEGMENT", "IFCPIPESEGMENT"]
+    .reduce((n, c) => n + (mep.byClass.get(c) || []).length, 0);
+  assert.ok(segments >= 400, `duplex-mep: expected 400+ MEP segments, got ${segments}`);
+  // Neither Revit 2011 Coordination View file carries IfcSystem: the known
+  // MEP-system-membership gap is real and still open (see manifest).
+  assert.strictEqual((arch.byClass.get("IFCSYSTEM") || []).length, 0, "duplex-a unexpectedly carries IfcSystem");
+  assert.strictEqual((mep.byClass.get("IFCSYSTEM") || []).length, 0, "duplex-mep unexpectedly carries IfcSystem");
 });
 
 t("relationships: relationships.ifc has voids, fills, material and classification links", () => {

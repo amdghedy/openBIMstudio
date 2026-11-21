@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Every *.ifc under tests/fixtures/ifc-corpus must be listed. 'independent:false' = produced by this project's own writer; real third-party models are still missing (#96) \u2014 the Duplex fixtures land in a later commit of this branch. '.ifczip' archives are not listed here (the manifest test walks *.ifc only) and are covered by test:step-preflight.",
+  "note": "Every *.ifc under tests/fixtures/ifc-corpus must be listed. 'independent:false' = produced by this project's own writer; 'independent:true' = real third-party model (the two Duplex files, CC BY 4.0 \u2014 see third-party/README.md). '.ifczip' archives are not listed here (the manifest test walks *.ifc only) and are covered by test:step-preflight.",
   "files": [
     {
       "file": "arch-2x3.ifc",
@@ -469,6 +469,32 @@
       "source": "project writer (scripts/generate-ifc-corpus.mjs)",
       "licence": "MIT (project)",
       "independent": false,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "third-party/duplex-a.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "real-world Revit Architecture 2011 export, 2-storey duplex, 21 spaces",
+      "source": "buildingSMART International \u2014 Duplex Apartment Test Files (BSI, 2020); see third-party/README.md",
+      "licence": "CC BY 4.0",
+      "independent": true,
+      "expect": {
+        "preflight": "ok",
+        "semanticErrors": 0
+      }
+    },
+    {
+      "file": "third-party/duplex-mep.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "purpose": "real-world Revit MEP 2011 export, same building, 42 spaces, 311k records (largest corpus fixture)",
+      "source": "buildingSMART International \u2014 Duplex Apartment Test Files (BSI, 2020); see third-party/README.md",
+      "licence": "CC BY 4.0",
+      "independent": true,
       "expect": {
         "preflight": "ok",
         "semanticErrors": 0

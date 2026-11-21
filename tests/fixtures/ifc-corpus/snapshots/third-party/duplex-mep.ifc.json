@@ -1,0 +1,354 @@
+{
+  "schema": "IFC2X3",
+  "classes": [
+    {
+      "name": "IFCAPPLICATION",
+      "count": 1
+    },
+    {
+      "name": "IFCARBITRARYCLOSEDPROFILEDEF",
+      "count": 21
+    },
+    {
+      "name": "IFCARBITRARYOPENPROFILEDEF",
+      "count": 264
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT2D",
+      "count": 60
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT3D",
+      "count": 3132
+    },
+    {
+      "name": "IFCBOILERTYPE",
+      "count": 1
+    },
+    {
+      "name": "IFCBUILDING",
+      "count": 1
+    },
+    {
+      "name": "IFCBUILDINGSTOREY",
+      "count": 3
+    },
+    {
+      "name": "IFCCABLESEGMENTTYPE",
+      "count": 12
+    },
+    {
+      "name": "IFCCARTESIANPOINT",
+      "count": 63434
+    },
+    {
+      "name": "IFCCARTESIANTRANSFORMATIONOPERATOR3D",
+      "count": 942
+    },
+    {
+      "name": "IFCCIRCLE",
+      "count": 19
+    },
+    {
+      "name": "IFCCIRCLEPROFILEDEF",
+      "count": 8
+    },
+    {
+      "name": "IFCCLOSEDSHELL",
+      "count": 14
+    },
+    {
+      "name": "IFCCOLOURRGB",
+      "count": 5
+    },
+    {
+      "name": "IFCCONNECTEDFACESET",
+      "count": 682
+    },
+    {
+      "name": "IFCCONNECTIONSURFACEGEOMETRY",
+      "count": 314
+    },
+    {
+      "name": "IFCCONTROLLERTYPE",
+      "count": 1
+    },
+    {
+      "name": "IFCCONVERSIONBASEDUNIT",
+      "count": 1
+    },
+    {
+      "name": "IFCCURVEBOUNDEDPLANE",
+      "count": 50
+    },
+    {
+      "name": "IFCDIMENSIONALEXPONENTS",
+      "count": 1
+    },
+    {
+      "name": "IFCDIRECTION",
+      "count": 106
+    },
+    {
+      "name": "IFCDISTRIBUTIONCONTROLELEMENT",
+      "count": 2
+    },
+    {
+      "name": "IFCDUCTFITTINGTYPE",
+      "count": 1
+    },
+    {
+      "name": "IFCDUCTSEGMENTTYPE",
+      "count": 2
+    },
+    {
+      "name": "IFCELECTRICAPPLIANCETYPE",
+      "count": 7
+    },
+    {
+      "name": "IFCELEMENTQUANTITY",
+      "count": 42
+    },
+    {
+      "name": "IFCENERGYCONVERSIONDEVICE",
+      "count": 16
+    },
+    {
+      "name": "IFCEXTRUDEDAREASOLID",
+      "count": 62
+    },
+    {
+      "name": "IFCFACE",
+      "count": 64260
+    },
+    {
+      "name": "IFCFACEBASEDSURFACEMODEL",
+      "count": 492
+    },
+    {
+      "name": "IFCFACEBOUND",
+      "count": 70
+    },
+    {
+      "name": "IFCFACEOUTERBOUND",
+      "count": 64260
+    },
+    {
+      "name": "IFCFACETEDBREP",
+      "count": 14
+    },
+    {
+      "name": "IFCFANTYPE",
+      "count": 2
+    },
+    {
+      "name": "IFCFLOWCONTROLLER",
+      "count": 14
+    },
+    {
+      "name": "IFCFLOWFITTING",
+      "count": 358
+    },
+    {
+      "name": "IFCFLOWMOVINGDEVICE",
+      "count": 4
+    },
+    {
+      "name": "IFCFLOWSEGMENT",
+      "count": 427
+    },
+    {
+      "name": "IFCFLOWTERMINAL",
+      "count": 105
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONCONTEXT",
+      "count": 2
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
+      "count": 1
+    },
+    {
+      "name": "IFCGEOMETRICSET",
+      "count": 7
+    },
+    {
+      "name": "IFCHEATEXCHANGERTYPE",
+      "count": 6
+    },
+    {
+      "name": "IFCLIGHTFIXTURETYPE",
+      "count": 3
+    },
+    {
+      "name": "IFCLOCALPLACEMENT",
+      "count": 973
+    },
+    {
+      "name": "IFCMAPPEDITEM",
+      "count": 942
+    },
+    {
+      "name": "IFCMEASUREWITHUNIT",
+      "count": 1
+    },
+    {
+      "name": "IFCORGANIZATION",
+      "count": 2
+    },
+    {
+      "name": "IFCOUTLETTYPE",
+      "count": 1
+    },
+    {
+      "name": "IFCOWNERHISTORY",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSON",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSONANDORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCPIPEFITTINGTYPE",
+      "count": 59
+    },
+    {
+      "name": "IFCPIPESEGMENTTYPE",
+      "count": 407
+    },
+    {
+      "name": "IFCPLANE",
+      "count": 50
+    },
+    {
+      "name": "IFCPOLYLINE",
+      "count": 370
+    },
+    {
+      "name": "IFCPOLYLOOP",
+      "count": 64330
+    },
+    {
+      "name": "IFCPOSTALADDRESS",
+      "count": 1
+    },
+    {
+      "name": "IFCPRESENTATIONLAYERASSIGNMENT",
+      "count": 13
+    },
+    {
+      "name": "IFCPRESENTATIONSTYLEASSIGNMENT",
+      "count": 45
+    },
+    {
+      "name": "IFCPRODUCTDEFINITIONSHAPE",
+      "count": 968
+    },
+    {
+      "name": "IFCPROJECT",
+      "count": 1
+    },
+    {
+      "name": "IFCPROPERTYSET",
+      "count": 6438
+    },
+    {
+      "name": "IFCPROPERTYSINGLEVALUE",
+      "count": 28129
+    },
+    {
+      "name": "IFCPROTECTIVEDEVICETYPE",
+      "count": 1
+    },
+    {
+      "name": "IFCPUMPTYPE",
+      "count": 1
+    },
+    {
+      "name": "IFCQUANTITYAREA",
+      "count": 42
+    },
+    {
+      "name": "IFCRECTANGLEPROFILEDEF",
+      "count": 33
+    },
+    {
+      "name": "IFCRELAGGREGATES",
+      "count": 6
+    },
+    {
+      "name": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "count": 24
+    },
+    {
+      "name": "IFCRELDEFINESBYPROPERTIES",
+      "count": 6480
+    },
+    {
+      "name": "IFCRELDEFINESBYTYPE",
+      "count": 513
+    },
+    {
+      "name": "IFCRELSPACEBOUNDARY",
+      "count": 8
+    },
+    {
+      "name": "IFCREPRESENTATIONMAP",
+      "count": 520
+    },
+    {
+      "name": "IFCSANITARYTERMINALTYPE",
+      "count": 6
+    },
+    {
+      "name": "IFCSHAPEREPRESENTATION",
+      "count": 1504
+    },
+    {
+      "name": "IFCSITE",
+      "count": 1
+    },
+    {
+      "name": "IFCSIUNIT",
+      "count": 5
+    },
+    {
+      "name": "IFCSPACE",
+      "count": 42
+    },
+    {
+      "name": "IFCSTYLEDITEM",
+      "count": 45
+    },
+    {
+      "name": "IFCSURFACEOFLINEAREXTRUSION",
+      "count": 264
+    },
+    {
+      "name": "IFCSURFACESTYLE",
+      "count": 5
+    },
+    {
+      "name": "IFCSURFACESTYLERENDERING",
+      "count": 5
+    },
+    {
+      "name": "IFCTRIMMEDCURVE",
+      "count": 9
+    },
+    {
+      "name": "IFCUNITASSIGNMENT",
+      "count": 1
+    },
+    {
+      "name": "IFCVALVETYPE",
+      "count": 3
+    }
+  ],
+  "geomHash": "2d717e2f6f68d98a"
+}

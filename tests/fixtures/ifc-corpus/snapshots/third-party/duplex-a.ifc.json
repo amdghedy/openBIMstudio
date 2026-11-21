@@ -1,0 +1,418 @@
+{
+  "schema": "IFC2X3",
+  "classes": [
+    {
+      "name": "IFCAPPLICATION",
+      "count": 1
+    },
+    {
+      "name": "IFCARBITRARYCLOSEDPROFILEDEF",
+      "count": 102
+    },
+    {
+      "name": "IFCARBITRARYOPENPROFILEDEF",
+      "count": 184
+    },
+    {
+      "name": "IFCARBITRARYPROFILEDEFWITHVOIDS",
+      "count": 18
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT2D",
+      "count": 397
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT3D",
+      "count": 1279
+    },
+    {
+      "name": "IFCBEAM",
+      "count": 8
+    },
+    {
+      "name": "IFCBOOLEANCLIPPINGRESULT",
+      "count": 7
+    },
+    {
+      "name": "IFCBUILDING",
+      "count": 1
+    },
+    {
+      "name": "IFCBUILDINGSTOREY",
+      "count": 4
+    },
+    {
+      "name": "IFCCARTESIANPOINT",
+      "count": 8520
+    },
+    {
+      "name": "IFCCARTESIANTRANSFORMATIONOPERATOR3D",
+      "count": 167
+    },
+    {
+      "name": "IFCCIRCLE",
+      "count": 96
+    },
+    {
+      "name": "IFCCIRCLEPROFILEDEF",
+      "count": 8
+    },
+    {
+      "name": "IFCCOLOURRGB",
+      "count": 43
+    },
+    {
+      "name": "IFCCOMPOSITECURVE",
+      "count": 44
+    },
+    {
+      "name": "IFCCOMPOSITECURVESEGMENT",
+      "count": 322
+    },
+    {
+      "name": "IFCCONNECTEDFACESET",
+      "count": 235
+    },
+    {
+      "name": "IFCCONNECTIONSURFACEGEOMETRY",
+      "count": 265
+    },
+    {
+      "name": "IFCCONVERSIONBASEDUNIT",
+      "count": 1
+    },
+    {
+      "name": "IFCCOVERING",
+      "count": 13
+    },
+    {
+      "name": "IFCCURVEBOUNDEDPLANE",
+      "count": 81
+    },
+    {
+      "name": "IFCCURVESTYLE",
+      "count": 31
+    },
+    {
+      "name": "IFCCURVESTYLEFONT",
+      "count": 19
+    },
+    {
+      "name": "IFCCURVESTYLEFONTPATTERN",
+      "count": 57
+    },
+    {
+      "name": "IFCDIMENSIONALEXPONENTS",
+      "count": 1
+    },
+    {
+      "name": "IFCDIRECTION",
+      "count": 134
+    },
+    {
+      "name": "IFCDOOR",
+      "count": 14
+    },
+    {
+      "name": "IFCDOORLININGPROPERTIES",
+      "count": 6
+    },
+    {
+      "name": "IFCDOORSTYLE",
+      "count": 6
+    },
+    {
+      "name": "IFCDRAUGHTINGPREDEFINEDCURVEFONT",
+      "count": 1
+    },
+    {
+      "name": "IFCELEMENTQUANTITY",
+      "count": 21
+    },
+    {
+      "name": "IFCEXTRUDEDAREASOLID",
+      "count": 421
+    },
+    {
+      "name": "IFCFACE",
+      "count": 4486
+    },
+    {
+      "name": "IFCFACEBASEDSURFACEMODEL",
+      "count": 40
+    },
+    {
+      "name": "IFCFACEBOUND",
+      "count": 60
+    },
+    {
+      "name": "IFCFACEOUTERBOUND",
+      "count": 4486
+    },
+    {
+      "name": "IFCFILLAREASTYLE",
+      "count": 10
+    },
+    {
+      "name": "IFCFILLAREASTYLEHATCHING",
+      "count": 31
+    },
+    {
+      "name": "IFCFOOTING",
+      "count": 7
+    },
+    {
+      "name": "IFCFURNISHINGELEMENT",
+      "count": 61
+    },
+    {
+      "name": "IFCFURNITURETYPE",
+      "count": 25
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONCONTEXT",
+      "count": 2
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
+      "count": 1
+    },
+    {
+      "name": "IFCGEOMETRICSET",
+      "count": 25
+    },
+    {
+      "name": "IFCLOCALPLACEMENT",
+      "count": 295
+    },
+    {
+      "name": "IFCMAPPEDITEM",
+      "count": 167
+    },
+    {
+      "name": "IFCMATERIAL",
+      "count": 18
+    },
+    {
+      "name": "IFCMATERIALDEFINITIONREPRESENTATION",
+      "count": 18
+    },
+    {
+      "name": "IFCMATERIALLAYER",
+      "count": 41
+    },
+    {
+      "name": "IFCMATERIALLAYERSET",
+      "count": 15
+    },
+    {
+      "name": "IFCMATERIALLAYERSETUSAGE",
+      "count": 91
+    },
+    {
+      "name": "IFCMEASUREWITHUNIT",
+      "count": 1
+    },
+    {
+      "name": "IFCMEMBER",
+      "count": 4
+    },
+    {
+      "name": "IFCOPENINGELEMENT",
+      "count": 50
+    },
+    {
+      "name": "IFCORGANIZATION",
+      "count": 2
+    },
+    {
+      "name": "IFCOWNERHISTORY",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSON",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSONANDORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCPLANE",
+      "count": 88
+    },
+    {
+      "name": "IFCPOLYGONALBOUNDEDHALFSPACE",
+      "count": 7
+    },
+    {
+      "name": "IFCPOLYLINE",
+      "count": 864
+    },
+    {
+      "name": "IFCPOLYLOOP",
+      "count": 4546
+    },
+    {
+      "name": "IFCPOSTALADDRESS",
+      "count": 1
+    },
+    {
+      "name": "IFCPRESENTATIONLAYERASSIGNMENT",
+      "count": 13
+    },
+    {
+      "name": "IFCPRESENTATIONSTYLEASSIGNMENT",
+      "count": 267
+    },
+    {
+      "name": "IFCPRODUCTDEFINITIONSHAPE",
+      "count": 286
+    },
+    {
+      "name": "IFCPROJECT",
+      "count": 1
+    },
+    {
+      "name": "IFCPROPERTYSET",
+      "count": 1459
+    },
+    {
+      "name": "IFCPROPERTYSINGLEVALUE",
+      "count": 5213
+    },
+    {
+      "name": "IFCQUANTITYAREA",
+      "count": 21
+    },
+    {
+      "name": "IFCRAILING",
+      "count": 4
+    },
+    {
+      "name": "IFCRECTANGLEPROFILEDEF",
+      "count": 293
+    },
+    {
+      "name": "IFCRELAGGREGATES",
+      "count": 9
+    },
+    {
+      "name": "IFCRELASSOCIATESMATERIAL",
+      "count": 92
+    },
+    {
+      "name": "IFCRELCONNECTSPATHELEMENTS",
+      "count": 82
+    },
+    {
+      "name": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "count": 15
+    },
+    {
+      "name": "IFCRELDEFINESBYPROPERTIES",
+      "count": 1480
+    },
+    {
+      "name": "IFCRELDEFINESBYTYPE",
+      "count": 37
+    },
+    {
+      "name": "IFCRELFILLSELEMENT",
+      "count": 38
+    },
+    {
+      "name": "IFCRELSPACEBOUNDARY",
+      "count": 265
+    },
+    {
+      "name": "IFCRELVOIDSELEMENT",
+      "count": 50
+    },
+    {
+      "name": "IFCREPRESENTATIONMAP",
+      "count": 60
+    },
+    {
+      "name": "IFCROOF",
+      "count": 1
+    },
+    {
+      "name": "IFCSHAPEREPRESENTATION",
+      "count": 483
+    },
+    {
+      "name": "IFCSITE",
+      "count": 1
+    },
+    {
+      "name": "IFCSIUNIT",
+      "count": 5
+    },
+    {
+      "name": "IFCSLAB",
+      "count": 21
+    },
+    {
+      "name": "IFCSPACE",
+      "count": 21
+    },
+    {
+      "name": "IFCSTAIR",
+      "count": 2
+    },
+    {
+      "name": "IFCSTAIRFLIGHT",
+      "count": 2
+    },
+    {
+      "name": "IFCSTYLEDITEM",
+      "count": 267
+    },
+    {
+      "name": "IFCSTYLEDREPRESENTATION",
+      "count": 18
+    },
+    {
+      "name": "IFCSURFACEOFLINEAREXTRUSION",
+      "count": 184
+    },
+    {
+      "name": "IFCSURFACESTYLE",
+      "count": 33
+    },
+    {
+      "name": "IFCSURFACESTYLERENDERING",
+      "count": 33
+    },
+    {
+      "name": "IFCTRIMMEDCURVE",
+      "count": 96
+    },
+    {
+      "name": "IFCUNITASSIGNMENT",
+      "count": 1
+    },
+    {
+      "name": "IFCWALL",
+      "count": 1
+    },
+    {
+      "name": "IFCWALLSTANDARDCASE",
+      "count": 56
+    },
+    {
+      "name": "IFCWINDOW",
+      "count": 24
+    },
+    {
+      "name": "IFCWINDOWLININGPROPERTIES",
+      "count": 6
+    },
+    {
+      "name": "IFCWINDOWSTYLE",
+      "count": 6
+    }
+  ],
+  "geomHash": "6d01fd843d5c3f68"
+}
