@@ -25,7 +25,7 @@ export const PLAN_COMMANDS: readonly PlanCommand[] = [
   c("Place", "WALL", ["WA"], "Place walls (click start, click end, Enter to finish)", { tool: "wall" }),
   c("Place", "BEAM", ["BM"], "Place beams", { tool: "beam" }),
   c("Place", "BRACE", ["BR"], "Place braces", { tool: "brace" }),
-  c("Place", "TRUSS", ["TR"], "Place trusses", { tool: "truss" }),
+  c("Place", "TRUSS", ["TS"], "Place trusses", { tool: "truss" }),
   c("Place", "STRIP", ["SF", "STRIPFOOTING"], "Place wall (strip) foundations", { tool: "strip" }),
   c("Place", "DUCT", ["DU"], "Place ducts", { tool: "duct" }),
   c("Place", "PIPE", ["PP"], "Place pipes", { tool: "pipe" }),

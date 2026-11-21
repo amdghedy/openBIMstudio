@@ -1085,7 +1085,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("beam", "Beam", "beam", "BM"),
       toolBtn("column", "Column", "column", "CM"),
       toolBtn("brace", "Brace", "brace", "BR"),
-      toolBtn("truss", "Truss", "truss", "TR"),
+      toolBtn("truss", "Truss", "truss", "TS"),
       toolBtn("wall", "Wall", "wall"),
       toolBtn("floor", "Floor", "slab"),
       sep(),
@@ -3286,7 +3286,7 @@ function selectionItems(types: Set<string>): HTMLElement[] {
     mod("delete", "delete"),
     sep(),
     groupLabel("Geometry"),
-    b("move", "Trim/Extend", cmd("modify.trimExtend"), { title: "Trim or extend two line elements to a corner" }),
+    b("move", "Trim/Extend", cmd("modify.trimExtend"), { kbd: "TR", title: "Trim or extend two line elements to a corner" }),
     mod("split-mid", "move"),
     b("move", "Flip", safe(() => { const n = reverseSelected(); toast(n ? `Flipped ${n} element(s)` : "Select linear elements", n ? "success" : "warn"); }, "Flip"), { title: "Reverse the drawing direction" }),
   ];

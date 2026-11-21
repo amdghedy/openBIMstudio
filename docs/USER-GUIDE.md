@@ -163,8 +163,20 @@ Type the two letters in sequence (not held together):
 | **CM** | Column | **DU** | Duct |
 | **BM** | Beam | **PP** | Pipe |
 | **BR** | Brace | **GR** | Grid |
-| **TR** | Truss | **LV** | Level |
+| **TS** | Truss | **LV** | Level |
 | **FT** | Footing | | |
+
+### Modify & view shortcuts
+
+| Keys | Action | Keys | Action |
+|---|---|---|---|
+| **TR** | Trim / Extend to corner (select exactly two line elements) | **DI** | Aligned Dimension (opens the plan view) |
+| **CO** | Copy | **MI** | Mirror |
+| **AR** | Array | **OF** | Offset |
+| **SC** | Scale (gizmo) | **VG** | Visibility / Graphics |
+| **TL** | Thin Lines on/off | | |
+
+TR used to place a truss; trusses moved to **TS**. **WT** (Tile Views) and **WC** (Close Hidden) are not bound — views cannot tile yet.
 
 Press **Esc** to cancel the active tool, and **Delete** to delete the selection.
 

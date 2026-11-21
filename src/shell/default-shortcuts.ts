@@ -217,7 +217,7 @@ export function registerDefaultShortcuts(): void {
     { id: "tool-column",  label: "Column",        keys: "cm", tool: "column" },
     { id: "tool-beam",    label: "Beam",          keys: "bm", tool: "beam" },
     { id: "tool-brace",   label: "Brace",         keys: "br", tool: "brace" },
-    { id: "tool-truss",   label: "Truss",         keys: "tr", tool: "truss" },
+    { id: "tool-truss",   label: "Truss",         keys: "ts", tool: "truss" }, // G8: TR is Trim/Extend (Revit); Truss moved to TS
     { id: "tool-footing", label: "Footing",       keys: "ft", tool: "footing" },
     { id: "tool-strip",   label: "Strip footing", keys: "sf", tool: "strip" },
     { id: "tool-duct",    label: "Duct",          keys: "du", tool: "duct" },

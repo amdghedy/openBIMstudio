@@ -16,8 +16,11 @@ t("names and aliases are unique across all commands", () => {
 });
 t("every command has a tool or an action", () => { for (const c of P.PLAN_COMMANDS) assert.ok(!!c.tool !== !!c.action, c.name); });
 t("the default shortcut sequences resolve to the same tools", () => {
-  const map = { wa: "wall", sl: null, cm: "column", bm: "beam", br: "brace", tr: "truss", ft: "footing", sf: "strip", du: "duct", pp: "pipe", dr: "door", wn: "window" };
+  const map = { wa: "wall", sl: null, cm: "column", bm: "beam", br: "brace", ts: "truss", ft: "footing", sf: "strip", du: "duct", pp: "pipe", dr: "door", wn: "window" };
   for (const [k, tool] of Object.entries(map)) if (tool) assert.strictEqual(P.resolveCommand(k).command.tool, tool, k);
+  // G8: TR is Trim/Extend now, not a plan place command — the plan command
+  // line falls back to the shortcut registry for it (see runPlanCommand).
+  assert.strictEqual(P.resolveCommand("tr"), null, "TR must not resolve to Truss");
 });
 t("resolve is case-insensitive and keeps the argument", () => {
   assert.strictEqual(P.resolveCommand("wall").command.name, "WALL");

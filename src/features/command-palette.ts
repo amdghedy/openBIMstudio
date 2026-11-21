@@ -367,7 +367,7 @@ function bootstrapCommands(): void {
   tool("Column", "column", "CM");
   tool("Beam", "beam", "BM");
   tool("Brace", "brace", "BR");
-  tool("Truss", "truss", "TR");
+  tool("Truss", "truss", "TS");
   tool("Isolated Footing", "footing", "FT");
   tool("Strip Footing", "strip", "SF");
   tool("Door", "door", "DR");
@@ -542,7 +542,7 @@ function prettyToolLabel(id: string): string {
 function registerAuthoringCommands(): void {
   const toolAliases: Record<string, string> = {
     wall: "WA", slab: "SL", column: "CM", beam: "BM", brace: "BR",
-    truss: "TR", footing: "FT", strip: "SF", mline: "ML",
+    truss: "TS", footing: "FT", strip: "SF", mline: "ML",
     door: "DR", window: "WN",
     stairs: "ST", railing: "RL", ramp: "RP",
     grid: "GR", level: "LV",

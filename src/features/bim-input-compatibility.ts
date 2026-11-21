@@ -11,6 +11,7 @@
 
 import { promptLine } from "./form-modal";
 import { ctx } from "../core/context";
+import { REVIT_G8_BINDINGS, runG8Binding, type RevitG8Env } from "../modules/shortcuts/revit-g8-keys";
 
 type Any = Record<string, any>;
 
@@ -250,6 +251,59 @@ async function registerBIMShortcuts(): Promise<void> {
     },
   });
 
+  // -- Modify (BIM TR CO MI AR OF SC DI) — audit gap G8 -----------------
+  // TR is Trim/Extend (Revit); Truss moved to TS in default-shortcuts.ts.
+  // The binding table lives in modules/shortcuts/revit-g8-keys.ts so the
+  // key -> command mapping is unit-testable without booting the app.
+  // WT/WC are deliberately absent: views cannot tile until gap G12 lands.
+  const g8Env: RevitG8Env = {
+    executeBimCommand: (id) => {
+      (window as any).__obsBIMExperience?.execute?.(id);
+    },
+    setAuthoringTool: (tool) => {
+      const a = getAuthoring();
+      if (a?.setAuthoringTool) {
+        a.setAuthoringTool(tool);
+        notify("info", tool === "copy" ? "Copy — pick base point" : `${tool[0].toUpperCase()}${tool.slice(1)} mode`);
+      } else {
+        notify("warn", "Authoring not ready");
+      }
+    },
+    setGizmoMode: (mode) => {
+      try {
+        const gizmo = (ctx.features as Any)?.gizmo;
+        gizmo?.setMode?.(mode);
+        notify("info", "Scale mode");
+      } catch { /* */ }
+    },
+    openPlanTool: (tool) => {
+      // Same path as the Annotate ribbon buttons: open the plan if needed,
+      // then arm the tool once the view exists.
+      void import("./plan-view-panel").then((pv) => {
+        try {
+          if (!pv.isPlanViewVisible()) pv.togglePlanView();
+          setTimeout(() => (ctx.features as Any).planView?.setTool?.(tool), 40);
+        } catch { /* */ }
+      }).catch(() => notify("warn", "Plan view not available"));
+    },
+    toggleThinLines: () => {
+      void import("./view-graphics").then((vg) => {
+        const on = !vg.isThinLines();
+        vg.setThinLines(on);
+        notify("info", on ? "Thin lines ON" : "Thin lines OFF");
+      }).catch(() => notify("warn", "View graphics not available"));
+    },
+  };
+  for (const binding of REVIT_G8_BINDINGS) {
+    reg({
+      id: binding.id,
+      label: binding.label,
+      keys: binding.keys,
+      category: binding.category,
+      handler: () => runG8Binding(binding, g8Env),
+    });
+  }
+
   // -- Architecture extras (BIM-like) -----------------------------------
   const tool = (keys: string, id: string, label: string, type: string) => {
     reg({
@@ -398,6 +452,8 @@ function buildHelpHtml(): string {
             <tr><td>F</td><td>Fit to view</td></tr>
             <tr><td>H</td><td>Home view</td></tr>
             <tr><td>HH / HI / HR</td><td>Hide / Isolate / Reset</td></tr>
+            <tr><td>VG</td><td>Visibility / Graphics</td></tr>
+            <tr><td>TL</td><td>Thin lines on / off</td></tr>
             <tr><td>Ctrl + W</td><td>Walk mode</td></tr>
             <tr><td>Ctrl + /</td><td>This help</td></tr>
           </table>
@@ -407,7 +463,13 @@ function buildHelpHtml(): string {
           <table>
             <tr><td>MV / G</td><td>Move</td></tr>
             <tr><td>RO / R</td><td>Rotate</td></tr>
-            <tr><td>S</td><td>Scale gizmo</td></tr>
+            <tr><td>S / SC</td><td>Scale gizmo</td></tr>
+            <tr><td>TR</td><td>Trim / Extend (2 walls)</td></tr>
+            <tr><td>CO</td><td>Copy</td></tr>
+            <tr><td>MI</td><td>Mirror</td></tr>
+            <tr><td>AR</td><td>Array</td></tr>
+            <tr><td>OF</td><td>Offset</td></tr>
+            <tr><td>DI</td><td>Aligned dimension</td></tr>
             <tr><td>AL</td><td>Align</td></tr>
             <tr><td>MA</td><td>Match properties</td></tr>
             <tr><td>CS</td><td>Create similar</td></tr>
@@ -424,6 +486,7 @@ function buildHelpHtml(): string {
             <tr><td>SL</td><td>Slab / floor</td></tr>
             <tr><td>CM</td><td>Column</td></tr>
             <tr><td>BM</td><td>Beam</td></tr>
+            <tr><td>TS</td><td>Truss (was TR)</td></tr>
             <tr><td>DR / WN</td><td>Door / Window</td></tr>
             <tr><td>GR / LV</td><td>Grid / Level</td></tr>
             <tr><td>ST / RA</td><td>Stairs / Railing</td></tr>
