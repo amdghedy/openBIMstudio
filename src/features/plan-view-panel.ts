@@ -74,6 +74,18 @@ import {
   generatePlanView,
   listAvailableLevels,
 } from "../modules/drawings/plan-generator";
+import {
+  computePlanDockLayout,
+  parsePlanDockMode,
+  planDockSideLabel,
+  planDockToggleLabel,
+  togglePlanDockMode,
+  togglePlanDockSide,
+  PLAN_DOCK_DEFAULT_WIDTH_PX,
+  PLAN_DOCK_MODE_KEY,
+  type PlanDockMode,
+} from "../modules/views/plan-dock";
+import { PlanLiveSync } from "../modules/views/plan-live-sync";
 import type { PlanView } from "../modules/drawings/plan-types";
 import { POCHE_PATTERN_LINE } from "../modules/drawings/plan-poche";
 import { getPattern as getTilePattern } from "../modules/views/hatch-patterns";
@@ -1293,6 +1305,13 @@ const clearCadBtn = btn("Clear CAD", () => clearCadUnderlay());
 const printBtn = btn("?? Print", () => printPlan());
 const exportBtn = btn("? SVG", () => exportSvg());
 const closeBtn = btn("? Close", () => togglePlanView());
+/** G12 (a) — dock the plan beside the 3D view instead of a full overlay. */
+const dockBtn = btn("Dock", () => setPlanDockMode(togglePlanDockMode(planDockMode)));
+dockBtn.setAttribute("data-obs-plan-dock", "true");
+dockBtn.title = "Dock the plan beside the 3D view";
+const dockSideBtn = btn("Bottom", () => setPlanDockMode(togglePlanDockSide(planDockMode)));
+dockSideBtn.setAttribute("data-obs-plan-dock-side", "true");
+dockSideBtn.title = "Move the docked plan to the bottom edge";
 
 /* -- Plan modeling state (tools come from ribbon tabs only) -- */
 type PlanMode = "pan" | "select" | "navigate" | "move" | "linear" | "point" | "dim" | "tag" | "text" | "region";
@@ -2035,7 +2054,7 @@ header.append(
   makeGroup("Params", widthInp, heightInp, elevInp, slopeInp, wallOptsWrap),
   makeGroup("Select", filterSelBtn, prevSelBtn, allInstBtn),
   spacer,
-  makeGroup("", cadBtn, clearCadBtn, renderBtn, printBtn, exportBtn, closeBtn),
+  makeGroup("", cadBtn, clearCadBtn, renderBtn, printBtn, exportBtn, dockBtn, dockSideBtn, closeBtn),
 );
 // Remove trailing border on last group. The separator is border-inline-end,
 // so clearing the physical right border did nothing under RTL.
@@ -5220,6 +5239,17 @@ async function refreshUnderlayAndRender(): Promise<void> {
  * Plan regeneration is coalesced: a burst of edits (drawing a chain of segments) triggers one rebuild,
  * and edits made while a rebuild is running trigger exactly one follow-up instead of being dropped.
  */
+/**
+ * G12 (b) — live-sync coalescer. Model changes regenerate the open plan on
+ * their own, debounced 400 ms after the last change; a change that lands
+ * while a regeneration is running queues exactly one follow-up via
+ * markIdle() instead of being dropped.
+ */
+const planLiveSync = new PlanLiveSync({
+  delayMs: 400,
+  isBusy: () => generating,
+  onRegenerate: () => void regenerate(),
+});
 function regenerate(): Promise<void> {
   return new Promise<void>((resolve) => {
     regenWaiters.push(resolve);
@@ -5235,6 +5265,9 @@ async function runRegenerate(): Promise<void> {
     await regenerateNow();
   } finally {
     for (const w of waiters) w();
+    // G12 (b): a model change that arrived mid-regeneration is owed one
+    // follow-up — fire it now instead of dropping it.
+    planLiveSync.markIdle();
     if (regenPending || regenWaiters.length) {
       regenPending = false;
       if (regenTimer) clearTimeout(regenTimer);
@@ -5356,18 +5389,139 @@ function exportSvg() {
 /* -------------------------------------------------------------------------
    Public
    ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------
+   G12 (a) — dockable plan. The plan stays an SVG projection regenerated
+   from the model, not a live view of the Three.js scene; docking only
+   decides where the panel sits and how much screen the 3D viewport keeps.
+   Geometry comes from src/modules/views/plan-dock.ts (pure, node-tested);
+   this section applies it to the DOM. Tiled views (Revit WT) remain out of
+   reach — there is no multi-view window system — so no WT control is added.
+   ------------------------------------------------------------------------- */
+let planDockMode: PlanDockMode = (() => {
+  try {
+    return parsePlanDockMode(localStorage.getItem(PLAN_DOCK_MODE_KEY));
+  } catch {
+    return "modal";
+  }
+})();
+
+function persistPlanDockMode(): void {
+  try {
+    localStorage.setItem(PLAN_DOCK_MODE_KEY, planDockMode);
+  } catch {
+    /* storage unavailable — mode just does not persist */
+  }
+}
+
+/** The 3D viewport host (`#viewport`, flex:1 in `#app`). */
+function viewportHost(): HTMLElement | null {
+  return (
+    ((ctx as any).rightHost as HTMLElement | undefined) ??
+    (document.getElementById("viewport") as HTMLElement | null)
+  );
+}
+
+/** Resize the 3D renderer/camera to the (possibly margin-reserved) viewport. */
+function resizeViewportForDock(): void {
+  try {
+    const world: any = (ctx as any).world;
+    world?.renderer?.resize?.();
+    world?.camera?.updateAspect?.();
+    (ctx as any).cam?.updateClipping?.();
+  } catch {
+    /* renderer not ready yet — the resize listener covers it */
+  }
+}
+
+function updateDockButtons(): void {
+  dockBtn.textContent = planDockToggleLabel(planDockMode);
+  dockBtn.title =
+    planDockMode === "modal"
+      ? "Dock the plan beside the 3D view"
+      : "Return the plan to a full overlay";
+  dockSideBtn.style.display = planDockMode === "modal" ? "none" : "";
+  dockSideBtn.textContent = planDockSideLabel(planDockMode);
+  dockSideBtn.title =
+    planDockMode === "docked-right"
+      ? "Move the docked plan to the bottom edge"
+      : "Move the docked plan to the right edge";
+}
+
+/**
+ * Apply the current dock mode: position the overlay and reserve the same
+ * space as a margin on the 3D viewport host, so 3D resizes to share the
+ * screen instead of being covered by the panel.
+ */
+function applyPlanDockLayout(): void {
+  const ribbon = document.querySelector(".obs-ribbon") as HTMLElement | null;
+  const ribbonH = ribbon ? ribbon.getBoundingClientRect().height : 88;
+  const g = computePlanDockLayout(
+    planDockMode,
+    { width: window.innerWidth, height: window.innerHeight },
+    ribbonH,
+    PLAN_DOCK_DEFAULT_WIDTH_PX,
+  );
+  const o = g.overlay;
+  overlay.style.top = o.top == null ? "" : `${o.top}px`;
+  overlay.style.bottom = o.bottom == null ? "" : `${o.bottom}px`;
+  overlay.style.left = o.left == null ? "" : `${o.left}px`;
+  overlay.style.right = o.right == null ? "" : `${o.right}px`;
+  overlay.style.width = o.width == null ? "" : `${o.width}px`;
+  overlay.style.height = o.height == null ? "" : `${o.height}px`;
+  overlay.dataset.planDockMode = planDockMode;
+  const host = viewportHost();
+  if (host) {
+    host.style.marginRight = g.viewportMargin.right
+      ? `${g.viewportMargin.right}px`
+      : "";
+    host.style.marginBottom = g.viewportMargin.bottom
+      ? `${g.viewportMargin.bottom}px`
+      : "";
+    // Bottom reservation needs an explicit height as well: the host carries
+    // height:100% (src/core/setup.ts), which defeats a bottom margin on the
+    // flex cross axis — without this the 3D canvas stays full-height under
+    // the docked plan instead of sharing the screen. (Right reservation
+    // works by margin alone: the host is flex:1 with no explicit width.)
+    // Measure from the host's real top: a percentage height resolves
+    // against the middle workspace row, which stops at the 24 px status
+    // bar, while the bottom-docked overlay runs to the viewport bottom —
+    // calc(100% - X) left exactly that 24 px strip of canvas under the
+    // plan (measured: viewport bottom 372 vs plan top 396).
+    const hostTop = host.getBoundingClientRect().top;
+    host.style.height = g.viewportMargin.bottom
+      ? `${Math.max(120, Math.round(window.innerHeight - hostTop - g.viewportMargin.bottom))}px`
+      : "";
+  }
+  updateDockButtons();
+  resizeViewportForDock();
+}
+
+function clearDockViewportMargins(): void {
+  const host = viewportHost();
+  if (host) {
+    host.style.marginRight = "";
+    host.style.marginBottom = "";
+    host.style.height = "";
+  }
+  resizeViewportForDock();
+}
+
+function setPlanDockMode(mode: PlanDockMode): void {
+  planDockMode = parsePlanDockMode(mode);
+  persistPlanDockMode();
+  if (isPlanViewVisible()) {
+    applyPlanDockLayout();
+    updatePlanRendererPause();
+  } else {
+    updateDockButtons();
+  }
+}
+
 function layoutUnderRibbon() {
   // Measure ribbon so plan viewport sits exactly under tabs (like BIM).
   // Respects minimized (flat) ribbon: only tabs height remains.
-  try {
-    const ribbon = document.querySelector(".obs-ribbon") as HTMLElement | null;
-    const h = ribbon ? ribbon.getBoundingClientRect().height : 88;
-    // When minimized, height is ~32px (tabs only); keep a small minimum
-    overlay.style.top = `${Math.max(28, Math.round(h))}px`;
-    overlay.style.left = "0";
-  } catch {
-    overlay.style.top = "88px";
-  }
+  // Docked modes keep the same ribbon offset; the dock model owns the rest.
+  applyPlanDockLayout();
 }
 
 // Keep plan aligned when ribbon is minimized / restored
@@ -5402,11 +5556,21 @@ function setPlanRenderer3d(enabled: boolean): void {
   }
 }
 
+/**
+ * G12 (a): pause the 3D loop only while the plan COVERS the 3D viewport
+ * (modal mode). Docked, the 3D view stays visible beside the plan, so the
+ * loop must keep running.
+ */
+function updatePlanRendererPause(): void {
+  setPlanRenderer3d(!(isPlanViewVisible() && planDockMode === "modal"));
+}
+
 export function togglePlanView() {
   const visible = overlay.style.display === "flex";
   if (visible) {
     overlay.style.display = "none";
-    setPlanRenderer3d(true);
+    clearDockViewportMargins();
+    updatePlanRendererPause();
     try {
       window.dispatchEvent(new CustomEvent("obs-toast", {
         detail: { message: "3D View", kind: "info" },
@@ -5415,7 +5579,7 @@ export function togglePlanView() {
   } else {
     layoutUnderRibbon();
     overlay.style.display = "flex";
-    setPlanRenderer3d(false);
+    updatePlanRendererPause();
     populateLevels();
     // G9: the open plan is the active view, so the View tab Crop buttons
     // (which follow the active view) act on this plan.
@@ -6193,17 +6357,17 @@ try {
     if (isPlanViewVisible()) layoutUnderRibbon();
   });
 
-  // 3D ? 2D live sync when authored geometry changes
+  // 3D → 2D live sync (G12 b): model changes regenerate the open plan on
+  // their own, debounced and coalesced by PlanLiveSync — no Regenerate
+  // press needed. A change that lands mid-regeneration queues one
+  // follow-up instead of being dropped (the old handler returned early on
+  // `generating`). The plan stays an SVG projection regenerated from the
+  // model, not a live view of the 3D scene.
   try {
     import("./authoring").then(({ onAuthoringChange }) => {
       onAuthoringChange(() => {
-        if (!isPlanViewVisible() || generating) return;
-        // Debounce regenerate
-        const t = obsPlanSyncTimer;
-        if (t) clearTimeout(t);
-        obsPlanSyncTimer = setTimeout(() => {
-          void regenerate();
-        }, 400);
+        if (!isPlanViewVisible()) return;
+        planLiveSync.notify();
       });
     }).catch(() => {});
   } catch { /* */ }
@@ -6218,6 +6382,10 @@ try {
     toggle: togglePlanView,
     isVisible: isPlanViewVisible,
     regenerate: () => void regenerate(),
+    /** G12 (a): current dock mode ("modal" | "docked-right" | "docked-bottom"). */
+    dockMode: () => planDockMode,
+    isDocked: () => planDockMode !== "modal",
+    setDockMode: (mode: PlanDockMode) => setPlanDockMode(mode),
     setTool: setPlanToolFromRibbon,
     /** Start the filled/masking region tool, optionally priming the hatch pattern (from the hatch panel or ribbon). */
     startRegion: (type: "filled" | "masking", pattern?: string, scale?: number, rotation?: number) => {

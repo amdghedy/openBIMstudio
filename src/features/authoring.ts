@@ -3810,6 +3810,11 @@ async function createElement(
       markDirty();
     },
   });
+  // G12 (b): element creation is a model change — notify so the open plan
+  // (and every other onAuthoringChange subscriber) refreshes on its own.
+  // history.exec dispatches no obs-history and no authoring notification,
+  // so without this a wall added in 3D never reached the plan's live sync.
+  notifyAuthoringChange();
   return el;
 }
 
