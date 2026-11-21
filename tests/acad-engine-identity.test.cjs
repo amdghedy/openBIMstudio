@@ -1,5 +1,5 @@
 /* The wasm staged for this build must report the DWG failsafe capability the app requires.
-   Strict only in CI (where the engine is freshly built); locally a stale checked-in copy only warns. */
+   STRICT everywhere: hosts that do not run cargo (Vercel, Cloudflare Workers Builds) serve the checked-in wasm, so a stale copy here reaches users (user console: bridge 0.1.0 without dwgRead). */
 const { execSync } = require("child_process"); const fs = require("fs"), os = require("os"), path = require("path"), assert = require("assert");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "acid-"));
 execSync(`npx tsc src/modules/drawings/acad-engine.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck${process.env.TSC_IGNORE_CONFIG ? " --ignoreConfig" : ""}`, { stdio: "pipe" });
@@ -11,6 +11,6 @@ const E = require(find(out, "acad-engine.js"));
   const id = E.engineIdentity({ exports: instance.exports });
   console.log("  engine identity:", id, "size KiB", Math.round(bytes.length / 1024));
   const ok = JSON.parse(id).dwgRead === E.REQUIRED_ENGINE_DWG_READ;
-  if (!ok && process.env.CI) { console.log("  FAIL staged engine lacks dwgRead=" + E.REQUIRED_ENGINE_DWG_READ); process.exit(1); }
+  if (!ok) { console.log("  FAIL staged engine lacks dwgRead=" + E.REQUIRED_ENGINE_DWG_READ); process.exit(1); }
   console.log(ok ? "acad-engine-identity: 1 passed" : "acad-engine-identity: stale local wasm (not enforced outside CI)");
 })();
