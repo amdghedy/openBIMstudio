@@ -153,13 +153,21 @@ function expect(cond, msg) {
 
   check("catalog: ARRAYPATH, DRAWORDER and DIMRADIUS registered with fresh aliases", () => {
     const i = src.indexOf("const CAD_COMMANDS");
-    const blk = src.slice(i, i + 36000);
+    const end = src.indexOf("\n];", i);
+    expect(i > 0 && end > i, "CAD_COMMANDS array bounds not found");
+    const blk = src.slice(i, end);
     for (const [name, alias] of [["ARRAYPATH", "ARPATH"], ["DRAWORDER", "DORD"], ["DIMRADIUS", "DIMRAD"], ["DIMRADIUS", "DRA"]]) {
       const re = new RegExp(`name: "${name}"[\\s\\S]{0,160}?aliases: \\[[^\\]]*"${alias}"`);
       expect(re.test(blk), `catalog ${name} alias ${alias}`);
     }
     const names = [...blk.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]);
-    expect(names.length === 168, `catalog size ${names.length} (want 168)`); // tracks the real CAD_COMMANDS size (PDFTODWG added the 168th)
+    const aliasLists = [...blk.matchAll(/aliases: \[([^\]]*)\]/g)].map((m) => [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]));
+    // Invariant: every entry is well formed and no command name or alias is registered twice
+    // (a duplicate silently shadows an earlier command in the palette).
+    expect(names.length > 0 && aliasLists.length === names.length, `every command has an aliases list (${names.length} names, ${aliasLists.length} alias lists)`);
+    expect(new Set(names).size === names.length, "duplicate command names in CAD_COMMANDS");
+    const aliases = aliasLists.flat();
+    expect(new Set(aliases).size === aliases.length, "duplicate command aliases in CAD_COMMANDS");
   });
 
   check("dispatcher arms: ARRAYPATH, DRAWORDER and DIMRADIUS all routable", () => {
@@ -182,11 +190,12 @@ function expect(cond, msg) {
   check("DIMRADIUS click flow: entity-based radial dimension, not a 2-point probe", () => {
     const i = src.indexOf('case "radius"');
     expect(i > 0, "case radius missing");
-    const flow = src.slice(i, i + 900);
+    const nextCase = src.indexOf("\n      case \"", i + 10);
+    const flow = src.slice(i, nextCase > 0 ? nextCase : i + 1400);
     expect(flow.includes("M.pickEntity"), "flow must pick an entity");
     expect(flow.includes('e.type === "CIRCLE" || e.type === "ARC"'), "flow must accept circle/arc");
-    expect(flow.includes('kind: "dimrad"'), "flow must push a dimrad markup");
-    expect(flow.includes("R${fmt(e.radius)}"), "flow must label R<radius>");
+    expect(flow.includes('mode: "radial"'), "flow must create a radial dimension");
+    expect(flow.includes("dimTextFor"), "flow must label from the dimension text");
     expect(!flow.includes("pts.push(p)"), "old 2-point probe still present");
   });
 
@@ -201,7 +210,7 @@ function expect(cond, msg) {
     expect(src.includes("orderBefore?: DxfEntity[]") && src.includes("orderAfter?: DxfEntity[]"), "order fields");
     expect(/act\.type === "order"[\s\S]{0,200}act\.orderBefore/.test(src), "undo order branch");
     expect(/act\.type === "order"[\s\S]{0,200}act\.orderAfter/.test(src), "redo order branch");
-    expect(src.includes('undoStack.push({ type: "order", orderBefore, orderAfter: ents.slice() })'), "undo entry pushed");
+    expect(src.includes('pushUndoAct({ type: "order", orderBefore, orderAfter: ents.slice() })'), "undo entry pushed");
   });
 
   check("draw order surfaces: ribbon buttons, act handlers, context-menu items", () => {
