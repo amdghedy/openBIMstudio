@@ -166,6 +166,7 @@
     "test:icu-lite": "node tests/icu-lite.test.cjs",
     "test:icu-catalog": "node tests/icu-catalog.test.cjs",
     "test:i18n-audit": "node tests/i18n-audit.test.cjs",
+    "test:i18n-dropdown": "node tests/i18n-dropdown.test.cjs",
     "test:region-dir": "node tests/region-dir.test.cjs",
     "test:family-sketch": "node tests/family-sketch.test.cjs",
     "test:sketch-arcs-constraints": "node tests/sketch-arcs-constraints.test.cjs",

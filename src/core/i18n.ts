@@ -36,10 +36,14 @@
  * Translation status: only the locales in TRANSLATED_LOCALES have a DOM
  * dictionary + generated catalogue, i.e. a UI that actually renders in
  * that language. The other registered locales have an 11-leaf JSON stub
- * (seven generic words + language name) and NO translation. They are
- * still listed — so a user can pick them and get the generic words — but
- * they are marked untranslated wherever they are offered, and they do NOT
- * flip the layout to RTL: an RTL flip with an English UI is worse than
+ * (seven generic words + language name) and NO translation. They are NOT
+ * offered in the Options language list (locale-boot.ts filters to
+ * translated locales only): listing one advertised a language the UI
+ * does not speak — worst case he/fa/ur, an RTL flip around an English
+ * UI. They return to the list when a dictionary + catalogue land for
+ * them. listLocales() still reports them with translated: false so other
+ * surfaces can state the status honestly, and they do NOT flip the
+ * layout to RTL: an RTL flip with an English UI is worse than
  * LTR English, and bidi hazards in an untranslated RTL shell were never
  * tested. A locale becomes translated only when a dictionary + catalogue
  * land for it (see scripts/i18n-audit.mjs).

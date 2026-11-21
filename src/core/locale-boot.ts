@@ -70,14 +70,23 @@ function registerLocaleOptions(): void {
       "stay in their original form.",
     type: "select",
     default: i18n.getLocale(),
-    choices: i18n.listLocales().map((l) => ({
-      value: l.id,
-      // Untranslated locales are labelled as such instead of being offered
-      // alongside translated ones with no indication the UI stays English.
-      label: l.translated
-        ? `${l.meta.nativeName}  ·  ${l.meta.name}`
-        : `${l.meta.nativeName}  ·  ${l.meta.name}  (untranslated — English UI)`,
-    })),
+    choices: i18n.listLocales()
+      // Only translated locales are offered. An untranslated locale in
+      // this list advertised a language the UI does not speak — worst
+      // case he/fa/ur, an RTL flip around an English UI. They return
+      // here when a dictionary + catalogue land for them (the audit
+      // gates the translated set; see scripts/i18n-audit.mjs).
+      .filter((l) => l.translated)
+      .map((l) => ({
+        value: l.id,
+        // Every translated locale other than English is still partial:
+        // each generated catalogue carries untranslated entries
+        // (measured per locale by scripts/i18n-audit.mjs). Say so in
+        // the list instead of implying a complete translation.
+        label: l.id === "en"
+          ? `${l.meta.nativeName}  ·  ${l.meta.name}`
+          : `${l.meta.nativeName}  ·  ${l.meta.name}  (partial translation)`,
+      })),
     apply: (v) => i18n.setLocale(v as Locale),
   });
 
