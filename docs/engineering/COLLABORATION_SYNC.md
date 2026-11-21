@@ -1,9 +1,12 @@
 # Collaboration & Worksharing — Central Sync Design
 
-**Status:** implemented on branch `fix/collaboration-worksharing` (base `e8e5afb`).
-**Scope:** the server-authoritative sync protocol. The browser UI binding of
-remote ops into the live ModelGraph is explicitly *not* in this change (see
-"Remaining work").
+**Status:** implemented on branch `fix/collaboration-worksharing` (base `e8e5afb`);
+ModelGraph binding + enforced locks + two-user browser proof added on branch
+`feat/revit-7-collaboration` (base `eabab92`, Revit parity rank 7 — see §9).
+**Scope:** the server-authoritative sync protocol and its binding into the
+live authoring model. The browser UI binding of remote ops into the live
+ModelGraph is implemented in §9 (it was the remaining work of the first
+change, now done).
 
 ## 1. Audit verdict (revalidated 2026-11-20 against main `e8e5afb`)
 
@@ -167,6 +170,26 @@ remaining UI work below.
 - `tests/central-model.test.cjs` (new) — 16 pure-model tests.
 - `tests/central-sync.test.cjs` (new) — 16 integration tests, two real
   clients vs. a real spawned server (see §6).
+- `src/modules/collaboration/central-binding.ts` (new, rank 7) — binds the
+  central model to the live authoring model (§9).
+- `src/modules/collaboration/authoring-adapter.ts` (new, rank 7) — browser
+  adapter: validated `applyElementParamChange` path, level-skip, remote
+  creation via `createElementByType`.
+- `src/modules/collaboration/edit-guard.ts` (new, rank 7) — the choke point
+  the authoring path consults; `withGuardSuspended` for remote applies.
+- `src/modules/collaboration/central-binding-setup.ts` (new, rank 7) — boot
+  wiring, `ctx.features.centralSync`.
+- `src/features/authoring.ts` (rank 7) — guard consulted in
+  `applyElementParamChange`, `deleteElements` / `removeElementById`,
+  `transformElements`; `applyElementParamChange` exported on the authoring
+  feature.
+- `src/features/worksharing-panel.ts` (rank 7) — central section: join,
+  sync, leave, borrow/relinquish, open-conflict list with mine/theirs
+  resolve.
+- `tests/central-binding.test.cjs` (new, rank 7) — 13 integration tests,
+  two real bindings vs. a real spawned server (see §9).
+- `tests/e2e/central-worksharing.spec.ts` (new, rank 7) — two-user Chromium
+  E2E (see §9).
 - `src/features/feature-maturity.ts` — `collaboration` entry corrected:
   the Yjs last-writer-wins claim is removed; the entry now describes the
   central sync, its limits and the shared-token identity caveat. Status
@@ -177,7 +200,7 @@ remaining UI work below.
   states it is local-only and points at the durable path (no behaviour
   change).
 - `package.json`, `scripts/ci-unit-tests.mjs` — `test:central-model`,
-  `test:central-sync` registered in CI.
+  `test:central-sync`, `test:central-binding` registered in CI.
 
 ## 6. Test evidence
 
@@ -188,6 +211,8 @@ Run on this VM (1.5 shared CPUs), work repo at
 |---|---|
 | `node tests/central-model.test.cjs` | **16 passed, 0 failed** |
 | `node tests/central-sync.test.cjs` | **16 passed, 0 failed** (~13 s) |
+| `node tests/central-binding.test.cjs` (rank 7) | **13 passed, 0 failed** — two real bindings (fake in-memory authoring models) vs. a real spawned server: field mapping, join/roles, create materialisation, edit propagation, different-field merge, borrow guard + 409 revert, workset-owner guard, genuine offline-replay conflict + `mine` resolve, offline queue exactly-once, remote delete, join divergence (central wins), pinned level constraint, unpushed-edit preservation (regression, see §9) |
+| `npx playwright test tests/e2e/central-worksharing.spec.ts --project=chromium` (rank 7) | **1 passed, 0 failed** (5.0 min on this VM) — two real browser pages (Alice + Bob) vs. a real spawned server and the production bundle: wall propagates, borrow refuses via the property palette with a toast naming Bob, offline edit conflicts and resolves from the panel, both converge, zero page errors. The run forced two real fixes (see §9): a `waitForFunction` arg-misuse in the spec itself, and a stale-`fetchState` race in the client. Local-run note: on this shared VM port 3000 was held by another workstream's preview server, so the proof run used a temporary port-3001 config (deleted after the run); CI uses the committed port-3000 config. |
 | `node tests/enterprise-collaboration.test.cjs` (`test:collab`) | **10 passed, 0 failed** (unchanged — local engine still covered) |
 | `node tests/server-hardening.test.cjs` | **39 passed, 0 failed** (unchanged from the `e8e5afb` baseline) |
 | `node tests/server-security.test.cjs` | **14 passed, 0 failed** (unchanged) |
@@ -257,14 +282,13 @@ ephemeral loopback port with an isolated data dir; clients are compiled
 
 ## 8. Remaining work (for the user / follow-ups)
 
-1. **Bind the central element model to the live ModelGraph.** The server
-   syncs generic field maps; nothing yet translates a `central-op` into a
-   wall/door edit in the running app, and nothing yet turns a local authoring
-   edit into a central op. That binding (element-id mapping, applying remote
-   fields, surfacing conflicts in the worksharing panel) is the next step
-   and needs the §8 core-model work to be stable first.
-2. **Browser E2E proof.** Two-browser (or two-tab) test driving the real
-   UI through a join → concurrent edit → conflict → resolve flow.
+1. ~~**Bind the central element model to the live ModelGraph.**~~ Done in
+   rank 7 (§9): `central-binding.ts` + `authoring-adapter.ts` +
+   `edit-guard.ts`, panel surface, 13 integration tests + two-user
+   Chromium E2E.
+2. ~~**Browser E2E proof.**~~ Done in rank 7 (§9):
+   `tests/e2e/central-worksharing.spec.ts` (Chromium; two pages through
+   join → propagate → borrow-refuse → offline conflict → panel resolve).
 3. **Per-user authentication** (#92): replace the shared token + self-
    asserted `clientId` with real identities before treating roles as a
    security boundary.
@@ -275,6 +299,135 @@ ephemeral loopback port with an isolated data dir; clients are compiled
    and `SERVER-ROUTE-AUDIT.md` previously described signed SSE tokens as
    shipped; on main `issueSseToken` is still never called and there is no
    mint endpoint. The item-5 patch (`fix/fail-closed-sse`) addresses that;
-   this change does not depend on it and does not duplicate it. The central
+   this change does not depend on it or duplicate it. The central
    client reuses the existing SSE token-provider hook when one is
    registered.
+6. **Join-time central-wins discards pre-join local edits.** At join,
+   central wins on every field of an element that exists on both sides
+   (documented, tested by the Carol case). Edits made locally while not
+   joined are lost for shared elements; only local-only elements push up.
+   The offline queue covers ops submitted while joined-but-offline, not
+   edits made before ever joining.
+7. **Sync field set is explicit, not the whole model.** Only the 18 keys
+   in `SYNC_PARAM_KEYS` travel; sweeps, hosted-opening cuts, `properties`,
+   families and anything outside the set stays local-only. Growing the
+   set means teaching the adapter each new field's validation path.
+
+## 9. ModelGraph binding — Revit parity rank 7
+
+**Branch:** `feat/revit-7-collaboration` (base `eabab92`).
+**Rank scope:** central model + enforced locks + proven merge, and the Yjs
+question resolved (correction, not wiring — see below).
+
+### What the binding does
+
+- **Local → central.** `CentralBinding` subscribes to authoring changes
+  (`onAuthoringChange`) and pushes a debounced (400 ms) diff against
+  `lastKnown` — the last field map agreed between local model and central.
+  New local elements push up with the active workset; deletes push a
+  central delete. `elementToCentralFields` carries only `type`/`name`/
+  `hostId` + the 18 `SYNC_PARAM_KEYS` (scalar params, plan geometry,
+  level constraints; `length` is derived and never travels).
+- **Central → local.** On SSE state updates (and on join), remote elements
+  materialise via the history-wrapped `createElementByType` under a fresh
+  local id (central id = the creating client's local id; the mapping is
+  rebuilt on every join), remote deletes remove the local element, and
+  remote field updates go through the validated
+  `applyElementParamChange` path (anchor field + companion `extra`
+  params), so a remote update gets the same validation, geometry rebuild
+  and undo behaviour as a local edit. Level constraints apply only when
+  the level exists locally; otherwise the field is reported skipped and
+  the binding **pins** it (never echoes the stale local value back over
+  the server's). Hosted elements are ordered after their host.
+- **Enforced locks.** `edit-guard.ts` is the single choke point, consulted
+  synchronously in `applyElementParamChange`, `deleteElements` /
+  `removeElementById` and `transformElements` — so the property palette,
+  modify bar, parametric tools, keyboard nudge and align all refuse the
+  same way. While joined, an element borrowed by another user, or in a
+  workset owned by another user, refuses with a reason naming the holder
+  (e.g. `borrowed by Bob — borrow it (or request it) before editing`);
+  the legacy local selection locks are consulted as a fallback. A delete
+  cascade refuses as a whole if any member (host or hosted child) is
+  refused; a transform moves the unrefused targets and leaves the refused
+  ones in place. Remote application of authoritative central state
+  bypasses the guards via `withGuardSuspended` (a server decision is not
+  a user edit). The server enforces the same rule at acceptance time
+  (409), so an edit that bypasses the guard (e.g. a stale UI) is still
+  refused and reverted locally.
+- **Merge, proven.** The merge itself stays on the server (§3). The
+  binding proves it end to end: two clients editing different fields of
+  the same element merge with zero conflicts; a genuine conflict (offline
+  edit replayed after the other side landed) keeps the server value, both
+  clients converge, the conflict is listed in the worksharing panel with
+  both values, and resolving `mine`/`theirs` converges both clients on
+  the chosen value.
+- **Offline queue & replay.** Ops submitted while offline queue with
+  their original `opId` and replay exactly once on reconnect
+  (`syncNow` → `sync` + `flushQueue` + push); the server dedupes by
+  `opId`. Verified in both the integration suite (one journal entry per
+  replayed op) and the browser E2E (offline context → edit → reconnect →
+  conflict → resolve).
+- **Unpushed edits are never overwritten by a remote update.** This was a
+  real bug found by the rank-7 test run, not a hypothetical: the first
+  `central-binding` run failed 1/12 — a remote op touching an unrelated
+  field (a level constraint) reverted Bob's pending height edit to the
+  stale central value, because the remote apply diffed local-vs-central.
+  The fix (`remoteChangedFields` + a `force` flag for the 409-revert
+  paths): the steady-state apply only touches fields the server changed
+  since `lastKnown` AND the local user has not changed since then. A
+  both-sides change keeps the local value; the push then carries it with
+  a stale `baseRevision` and the server records a real conflict. The
+  409 paths keep central-wins (the server has ruled on that edit). Pinned
+  by a regression test (12 → 13 tests); sensitivity-checked — the new
+  test fails on the pre-fix code.
+- **Stale `fetchState` responses never clobber newer state.** A second
+  real race, also found by the rank-7 runs: `fetchState` is fired
+  concurrently by the SSE entry handler, the onopen sync and the
+  heartbeat, and the responses can resolve out of order. The client
+  assigned every response unconditionally, so a slow pre-edit fetch
+  could rewind the local model. The fix is a monotonic-revision guard
+  in `fetchState` (and in `sync`'s truncated branch): a response with a
+  revision older than the one already held is dropped, never emitted.
+  Pinned by a `central-sync` regression test (16 → 17) that interleaves
+  a slow stale response with a fast fresh one; sensitivity-checked.
+- **The spec's own `waitForFunction` misuse.** Five height-convergence
+  waits in the E2E passed the expected height as `waitForFunction`'s
+  second argument — which Playwright treats as the function *argument*,
+  not the expected value — so each wait returned as soon as the wall
+  existed at any height. The symptom (Bob reading 3 right after the
+  wait "for 3.3" passed) looked like a product bug; server-side polling
+  proved the product was converging correctly and the wait was vacuous.
+  All five waits are now real boolean predicates. The 90 s home-card
+  wait, the DOM-click (instead of Playwright's stability-checked click)
+  and the 600 s test timeout are timing tolerances for a loaded VM, not
+  weakened assertions — the post-conditions are still asserted.
+
+### The Yjs question — resolved by correction
+
+`yjs@^13.6.14` / `y-websocket@^3.1.0` remain declared in `package.json`
+but are imported nowhere in `src/`, `server/` or `tests/` (re-verified by
+grep on this branch: the only matches are the two `package.json` lines
+and the registry limitation that documents the fact). No CRDT is in use
+and none is claimed. The registry's false "last-writer-wins via Yjs
+updates" claim was corrected in the first collaboration change and the
+correction stands: the consistency model is server-sequenced
+deterministic merge (§3). Wiring Yjs in was rejected on purpose — a CRDT
+solves peer-to-peer convergence with no ordering authority, and this
+server already *is* a single ordering authority; Yjs would add vector
+clocks/tombstones without changing the human-resolution step that matters
+in BIM. The declared-but-unused dependencies are left in place (removing
+them is lockfile churn with no behaviour change) and documented in the
+registry limitation.
+
+### Honest ceiling (Revit parity §10)
+
+Small-team co-authoring works: a central model with revision counters
+that mean something across clients, enforced locks with named reasons, a
+proven merge with explicit conflict resolution, offline queue + replay,
+restart recovery. What it is not: Revit-scale worksharing. No load test
+has been run; the server is a single Node process with whole-state
+snapshots; identity is a shared token with self-asserted `clientId`
+(roles are coordination, not access control — #92); only 18 fields sync;
+there is no element-level permission model, no enterprise audit beyond
+the server `audit.jsonl`, and no multi-server story. The registry status
+stays `limited` for exactly these reasons.
