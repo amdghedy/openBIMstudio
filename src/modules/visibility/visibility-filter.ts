@@ -6,6 +6,7 @@
 import { ctx } from "../../core/context";
 import { phasesStore, type PhaseAssignment } from "../phases/phases";
 import { designOptionsStore } from "../design-options/design-options";
+import { toVgCategory } from "../view-templates/category-map";
 
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
@@ -79,20 +80,28 @@ class VisibilityFilter {
   }
 
   // -- Category overrides --------------------------------------------
+  //
+  // Keys are canonical VG category ids ("Walls", "Ducts"). Callers pass
+  // either a category id or an authored element type ("wall", "duct");
+  // both normalize to the same key, so a template that hides "Walls"
+  // actually hides wall elements. Before this, setCategoryOverride("Walls")
+  // and getCategoryOverride("wall") addressed different map entries and
+  // template category overrides never hid anything.
 
   setCategoryOverride(category: string, override: Partial<CategoryOverride>): void {
-    const cur = this.categoryOverrides.get(category) ?? {
+    const key = toVgCategory(category);
+    const cur = this.categoryOverrides.get(key) ?? {
       visible: true,
       halftone: false,
       transparent: false,
     };
-    this.categoryOverrides.set(category, { ...cur, ...override });
+    this.categoryOverrides.set(key, { ...cur, ...override });
     this.emit();
   }
 
   getCategoryOverride(category: string): CategoryOverride {
     return (
-      this.categoryOverrides.get(category) ?? {
+      this.categoryOverrides.get(toVgCategory(category)) ?? {
         visible: true,
         halftone: false,
         transparent: false,

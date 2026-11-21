@@ -263,6 +263,14 @@ export async function saveProject(silent = false) {
       current.titleblocks = snap.titleblocks;
     } catch (e) { console.warn("[projects] sheet snapshot failed", e); }
 
+    // Documentation system: view templates + view bindings, revisions +
+    // clouds travel with the project (previously localStorage-only, so a
+    // project moved between machines lost all of them).
+    try {
+      const docMod = await import("../documentation/documentation-persistence");
+      current.documentation = docMod.serializeDocumentation();
+    } catch (e) { console.warn("[projects] documentation snapshot failed", e); }
+
     try {
       const pd = (window as any).__obsPlanDims?.serialize?.();
       if (Array.isArray(pd)) current.planDimensions = pd;
@@ -622,6 +630,18 @@ export async function openProject(id: string) {
       const sheetsMod = await import("../sheets/sheets");
       sheetsMod.loadSheetsFromProject(doc.sheets, doc.titleblocks);
     } catch (e) { console.warn("[projects] sheet restore failed", e); }
+    // Documentation system: view templates + bindings, revisions + clouds
+    // back into their stores. A malformed section is repaired entry by
+    // entry (never throws); drops are logged, not silently swallowed.
+    try {
+      const docMod = await import("../documentation/documentation-persistence");
+      const restored = docMod.restoreDocumentation((doc as any).documentation ?? null);
+      if (restored.applied && restored.issues.length) {
+        console.warn("[projects] documentation restore issues:", restored.issues);
+      } else if (restored.applied) {
+        console.log(`[projects] restored documentation: ${restored.counts.templates} template(s), ${restored.counts.revisions} revision(s), ${restored.counts.clouds} cloud(s)`);
+      }
+    } catch (e) { console.warn("[projects] documentation restore failed", e); }
     try {
       const pdApi = (window as any).__obsPlanDims;
       if (pdApi?.load) pdApi.load(doc.planDimensions ?? []);

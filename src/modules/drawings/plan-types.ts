@@ -13,6 +13,8 @@ export interface PlanSegment {
   x2: number; z2: number;
   kind: PlanLineKind;
   source?: string;
+  /** True when the source element's view VG marks its category halftone. */
+  halftone?: boolean;
 }
 
 export interface PlanArc {
@@ -25,6 +27,8 @@ export interface PlanArc {
   kind: "door-swing" | "fitting";
   /** Authored element that produced this arc (for selection highlight). */
   source?: string;
+  /** True when the source element's view VG marks its category halftone. */
+  halftone?: boolean;
 }
 
 /**
@@ -40,6 +44,8 @@ export interface PlanFill {
   pattern?: string | null;
   /** Background tint / solid color. */
   color: string;
+  /** True when the source element's view VG marks its category halftone. */
+  halftone?: boolean;
 }
 
 export interface PlanText {
@@ -70,6 +76,23 @@ export interface PlanView {
   };
 }
 
+import type { AuthoredElement } from "../projects/types";
+
+/**
+ * Per-element visibility supplied by the calling view. When present, the
+ * generator skips elements the view hides and stamps halftone on the
+ * geometry of elements the view marks halftone. When absent, every element
+ * draws as before (no behaviour change for callers that do not pass it).
+ *
+ * The plan scene generator builds this from the view's effective VG
+ * (template + local overrides) via view-templates/vg-apply; it is an
+ * explicit option here so the generator stays testable without the stores.
+ */
+export interface PlanVisibility {
+  isVisible(el: AuthoredElement): boolean;
+  halftone(el: AuthoredElement): boolean;
+}
+
 export interface PlanGenerationOptions {
   levelName: string;
   levelElevation: number;
@@ -87,6 +110,8 @@ export interface PlanGenerationOptions {
   includeBelow: boolean;
   /** Hard cap on generated segments; stops extraction if exceeded. */
   maxSegments: number;
+  /** Optional per-view visibility (templates / VG). See PlanVisibility. */
+  visibility?: PlanVisibility;
   onProgress?: (p: { phase: string; current: number; total: number }) => void;
   signal?: { cancelled: boolean };
 }

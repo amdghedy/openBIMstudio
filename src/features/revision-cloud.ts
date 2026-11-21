@@ -1,7 +1,30 @@
 // BIM-style revisions + revision clouds.
+//
+// The UI in this file (Revision Settings panel, Annotate > Revision Cloud
+// placement) used to keep its own localStorage copy (`obs.revisions.v1`)
+// while the titleblock, the sheet register and the sheet PDF read the
+// production store in modules/revisions/model.ts (`obs.revisions.records.v2`).
+// A revision created in the panel therefore never reached a sheet, and a
+// cloud placed here never rendered anywhere. This file now delegates all
+// storage to the production store; the v1 keys are migrated once on setup
+// when the v2 store is empty, then removed.
+
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
 import { confirmDialog } from "./form-modal";
+import {
+  listAllRevisions,
+  listAllClouds,
+  addRevisionRecord,
+  updateRevisionRecord,
+  removeRevisionRecord,
+  addRevisionCloudDef,
+  removeCloudDef,
+  replaceAllRevisions,
+  onRevisionStoreChange,
+  type RevisionRecord,
+  type RevisionCloudDef,
+} from "../modules/revisions/model";
 
 export interface RevisionEntry {
   id: string;
@@ -20,99 +43,145 @@ export interface RevCloud {
   viewId: string | null;
 }
 
-const STORAGE_REV = "obs.revisions.v1";
-const STORAGE_CLOUD = "obs.revisionClouds.v1";
+const STORAGE_REV_LEGACY = "obs.revisions.v1";
+const STORAGE_CLOUD_LEGACY = "obs.revisionClouds.v1";
 
-let revisions: RevisionEntry[] = [];
-let clouds: RevCloud[] = [];
-const listeners = new Set<() => void>();
-
-function load(): void {
-  try {
-    revisions = JSON.parse(localStorage.getItem(STORAGE_REV) || "[]") || [];
-    clouds = JSON.parse(localStorage.getItem(STORAGE_CLOUD) || "[]") || [];
-  } catch (e) {
-    revisions = [];
-    clouds = [];
-  }
+function toEntry(r: RevisionRecord): RevisionEntry {
+  return {
+    id: r.id,
+    sequence: r.sequence,
+    description: r.description,
+    date: r.date,
+    issuedTo: r.issuedTo,
+    issuedBy: r.issuedBy,
+    visible: r.visible !== false,
+  };
 }
 
-function save(): void {
-  try {
-    localStorage.setItem(STORAGE_REV, JSON.stringify(revisions));
-    localStorage.setItem(STORAGE_CLOUD, JSON.stringify(clouds));
-  } catch (e) { /* ignore */ }
-  listeners.forEach(function (cb) {
-    try { cb(); } catch (e) { /* ignore */ }
-  });
+function toCloud(c: RevisionCloudDef): RevCloud {
+  return { id: c.id, revisionId: c.revisionId, points: c.points, viewId: c.viewId };
 }
 
-export function listRevisions(): RevisionEntry[] { return revisions.slice(); }
-export function listClouds(): RevCloud[] { return clouds.slice(); }
+export function listRevisions(): RevisionEntry[] {
+  return listAllRevisions().map(toEntry);
+}
+
+export function listClouds(): RevCloud[] {
+  return listAllClouds().map(toCloud);
+}
 
 export function onRevisionsChange(cb: () => void): () => void {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
+  return onRevisionStoreChange(cb);
 }
 
 export function addRevision(partial?: Partial<RevisionEntry>): RevisionEntry {
-  const lastSeq = revisions.length ? revisions[revisions.length - 1].sequence : 0;
-  const seq = (partial && partial.sequence) ? partial.sequence : lastSeq + 1;
-  const rev: RevisionEntry = {
-    id: "rev-" + Date.now() + "-" + Math.random().toString(16).slice(2, 6),
-    sequence: seq,
-    description: (partial && partial.description) || "",
-    date: (partial && partial.date) || new Date().toISOString().slice(0, 10),
-    issuedTo: (partial && partial.issuedTo) || "",
-    issuedBy: (partial && partial.issuedBy) || "",
-    visible: partial && partial.visible !== undefined ? partial.visible : true,
-  };
-  revisions.push(rev);
-  save();
-  return rev;
+  const rec = addRevisionRecord({
+    sequence: partial?.sequence,
+    description: partial?.description,
+    date: partial?.date,
+    issuedTo: partial?.issuedTo,
+    issuedBy: partial?.issuedBy,
+    visible: partial?.visible,
+  });
+  return toEntry(rec);
 }
 
 export function updateRevision(id: string, patch: Partial<RevisionEntry>): void {
-  const r = revisions.filter(function (x) { return x.id === id; })[0];
-  if (!r) return;
-  Object.keys(patch).forEach(function (k) {
-    (r as any)[k] = (patch as any)[k];
-  });
-  save();
+  updateRevisionRecord(id, patch);
 }
 
 export function removeRevision(id: string): void {
-  revisions = revisions.filter(function (r) { return r.id !== id; });
-  clouds = clouds.filter(function (c) { return c.revisionId !== id; });
-  save();
+  removeRevisionRecord(id);
 }
 
 export function placeCloud(revisionId: string, points: [number, number][]): RevCloud | null {
   if (!points || points.length < 3) return null;
-  const cl: RevCloud = {
-    id: "cloud-" + Date.now() + "-" + Math.random().toString(16).slice(2, 6),
-    revisionId: revisionId,
-    points: points,
-    viewId: null,
-  };
-  clouds.push(cl);
-  save();
-  return cl;
+  const c = addRevisionCloudDef({ revisionId, points, viewId: null, sheetId: null });
+  return toCloud(c);
 }
 
 export function removeCloud(id: string): void {
-  clouds = clouds.filter(function (c) { return c.id !== id; });
-  save();
+  removeCloudDef(id);
+}
+
+/**
+ * One-time migration of the legacy v1 store (used by this panel before the
+ * unification) into the production v2 store. Runs only when the v2 store
+ * is empty and v1 data exists; the v1 keys are removed after a successful
+ * import so the migration never runs twice and never resurrects old data.
+ */
+export function migrateLegacyRevisionStore(): { revisions: number; clouds: number } {
+  if (listAllRevisions().length > 0 || listAllClouds().length > 0) {
+    return { revisions: 0, clouds: 0 };
+  }
+  let legacyRevs: unknown = null;
+  let legacyClouds: unknown = null;
+  try {
+    legacyRevs = JSON.parse(localStorage.getItem(STORAGE_REV_LEGACY) || "null");
+    legacyClouds = JSON.parse(localStorage.getItem(STORAGE_CLOUD_LEGACY) || "null");
+  } catch {
+    return { revisions: 0, clouds: 0 };
+  }
+  if (!Array.isArray(legacyRevs) && !Array.isArray(legacyClouds)) {
+    return { revisions: 0, clouds: 0 };
+  }
+  const revs: RevisionRecord[] = [];
+  if (Array.isArray(legacyRevs)) {
+    for (const raw of legacyRevs) {
+      if (!raw || typeof raw !== "object") continue;
+      const r = raw as Record<string, unknown>;
+      if (typeof r.id !== "string" || typeof r.sequence !== "number") continue;
+      revs.push({
+        id: r.id,
+        sequence: r.sequence,
+        sequenceLabel: `Rev ${String(r.sequence).padStart(2, "0")}`,
+        description: typeof r.description === "string" ? r.description : "",
+        date: typeof r.date === "string" ? r.date : new Date().toISOString().slice(0, 10),
+        issuedTo: typeof r.issuedTo === "string" ? r.issuedTo : "",
+        issuedBy: typeof r.issuedBy === "string" ? r.issuedBy : "",
+        checkedBy: "",
+        approvedBy: "",
+        status: "draft",
+        sheetIds: [],
+        elementIds: [],
+        visible: r.visible !== false,
+      });
+    }
+  }
+  const clouds: RevisionCloudDef[] = [];
+  if (Array.isArray(legacyClouds)) {
+    for (const raw of legacyClouds) {
+      if (!raw || typeof raw !== "object") continue;
+      const c = raw as Record<string, unknown>;
+      if (typeof c.id !== "string" || typeof c.revisionId !== "string") continue;
+      if (!Array.isArray(c.points) || c.points.length < 3) continue;
+      clouds.push({
+        id: c.id,
+        revisionId: c.revisionId,
+        points: c.points as [number, number][],
+        viewId: typeof c.viewId === "string" ? c.viewId : null,
+        sheetId: null,
+      });
+    }
+  }
+  if (!revs.length && !clouds.length) return { revisions: 0, clouds: 0 };
+  replaceAllRevisions(revs, clouds);
+  try {
+    localStorage.removeItem(STORAGE_REV_LEGACY);
+    localStorage.removeItem(STORAGE_CLOUD_LEGACY);
+  } catch { /* ignore */ }
+  return { revisions: revs.length, clouds: clouds.length };
 }
 
 export async function beginCloudPlacement(): Promise<void> {
-  const visible = revisions.filter(function (r) { return r.visible; });
+  const visible = listRevisions().filter(function (r) { return r.visible; });
   if (!visible.length) {
     const ok = await confirmDialog("Revision cloud", "No revisions defined. Create Revision 1 now?");
     if (!ok) return;
     addRevision({ description: "Initial revision" });
   }
-  const active = revisions[revisions.length - 1];
+  const all = listRevisions();
+  const active = all[all.length - 1];
 
   window.dispatchEvent(new CustomEvent("obs-toast", {
     detail: {
@@ -148,6 +217,8 @@ export function openRevisionPanel(): void {
   ov.onmousedown = function (e) { if (e.target === ov) closeFn(); };
 
   const render = function () {
+    const revisions = listRevisions();
+    const clouds = listClouds();
     card.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
         '<b style="font-size:14px">Revision Settings</b>' +
@@ -208,7 +279,14 @@ export function openRevisionPanel(): void {
 }
 
 export function setupRevisionCloud(): void {
-  load();
+  try {
+    const migrated = migrateLegacyRevisionStore();
+    if (migrated.revisions || migrated.clouds) {
+      console.log(`[revision-cloud] migrated ${migrated.revisions} revision(s), ${migrated.clouds} cloud(s) from the legacy store`);
+    }
+  } catch (e) {
+    console.warn("[revision-cloud] legacy migration failed", e);
+  }
   try {
     registerCommand({
       id: "annotate.revisionCloud",

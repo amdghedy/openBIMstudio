@@ -10,6 +10,7 @@ import { getPropertiesPanelService } from "./modules/properties-panel";
 import { getJoinsCleanupService } from "./modules/joins-cleanup";
 import { getLODPerformanceService } from "./modules/lod-performance";
 import { getViewTemplatesService } from "./modules/view-templates";
+import { viewTemplatesStore } from "./modules/view-templates/view-templates-store";
 import { getSiteTopoService } from "./modules/site-topo";
 import { getDetailingService } from "./modules/detailing";
 import { getValidationService } from "./modules/validation";
@@ -84,7 +85,17 @@ declare global {
     __obsProperties?: ReturnType<typeof getPropertiesPanelService>;
     __obsJoins?: ReturnType<typeof getJoinsCleanupService>;
     __obsLOD?: ReturnType<typeof getLODPerformanceService>;
-    __obsViewTemplates?: ReturnType<typeof getViewTemplatesService>;
+    // NOTE: window.__obsViewTemplates is the persisted, seeded store
+    // (view-templates-store.ts), NOT the legacy ViewTemplatesService in
+    // modules/view-templates/index.ts. The service is a second, empty,
+    // unseeded template system (its own Map, no persistence, no
+    // getEffectiveVg/getViewBinding); pointing the global at it made every
+    // global consumer see zero templates and no effective VG even after a
+    // template was applied through the Views panel. Keep the service
+    // instantiation above for its (unused) legacy API, but the global
+    // is the store that the panel, the VG dialog and the plan generator
+    // actually use.
+    __obsViewTemplates?: typeof viewTemplatesStore;
     __obsSiteTopo?: ReturnType<typeof getSiteTopoService>;
     __obsDetailing?: ReturnType<typeof getDetailingService>;
     __obsValidation?: ReturnType<typeof getValidationService>;
@@ -134,7 +145,9 @@ export async function bootStrengtheningModules(): Promise<void> {
     const props = txnBox.props ?? getPropertiesPanelService();
     const joins = txnBox.joins ?? getJoinsCleanupService();
     const lod = txnBox.lod ?? getLODPerformanceService();
-    const views = txnBox.views ?? getViewTemplatesService();
+    // NOTE: the legacy ViewTemplatesService is NOT assigned to the global
+    // (see the __obsViewTemplates declaration above); it is only
+    // instantiated by the strength:view-templates step for its legacy API.
     const site = txnBox.site ?? getSiteTopoService();
     const detail = txnBox.detail ?? getDetailingService();
     const validation = txnBox.validation ?? getValidationService();
@@ -145,7 +158,7 @@ export async function bootStrengtheningModules(): Promise<void> {
     window.__obsProperties = props;
     obsJoins = joins;
     obsLOD = lod;
-    window.__obsViewTemplates = views;
+    window.__obsViewTemplates = viewTemplatesStore;
     obsSiteTopo = site;
     obsDetailing = detail;
     obsValidation = validation;

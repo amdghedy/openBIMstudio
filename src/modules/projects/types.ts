@@ -2,6 +2,7 @@ import type { WorkPlaneSnapshot } from "../work-planes/types";
 import type { Issue } from "../issues/types";
 import type { CostData } from "../cost/types";
 import type { MepModelSnapshot } from "../mep/model-lifecycle";
+import type { DocumentationSnapshot } from "../documentation/documentation-persistence";
 
 // ── Geometry / authored element types ─────────────────────────────────────
 export type Vec2 = [number, number];
@@ -333,6 +334,8 @@ export interface ProjectDoc {
   /** Production sheets. */
   sheets?: SheetDef[];
   titleblocks?: TitleblockDef[];
+  /** View templates + bindings, revisions + clouds (documentation system). */
+  documentation?: DocumentationSnapshot;
   /** Automation rules. */
   automationRules?: AutomationRule[];
 

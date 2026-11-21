@@ -28,6 +28,8 @@ import {
   northArrowPlacement, northArrowSvg, scaleBarLayout, scaleBarSvg, sheetIdentityText,
   titleblockRows, viewTitleText, viewportCaptionY,
 } from "./sheet-furniture";
+import { getSheetRevisions } from "../revisions/model";
+import { injectRevisionTableIntoSvg } from "../revisions/titleblock";
 
 const MARGIN_MM = 10;
 const TITLEBLOCK_H_MM = 40;
@@ -172,7 +174,7 @@ export async function renderSheetSvg(sheetId: string): Promise<string> {
     )
     .join("\n  ");
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">
   <defs>${vpParts.filter((p) => p.startsWith("<clipPath")).join("")}</defs>
   <rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>
@@ -192,6 +194,11 @@ export async function renderSheetSvg(sheetId: string): Promise<string> {
   </text>
   ${fields}
 </svg>`;
+
+  // Revision history table above the titleblock (same placement as the
+  // PDF). Only when the sheet actually has revisions.
+  const revs = getSheetRevisions(sheetId);
+  return revs.length ? injectRevisionTableIntoSvg(svg, revs, w, h) : svg;
 }
 
 /** Export the composed sheet as an .svg download. */

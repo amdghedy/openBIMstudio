@@ -9,6 +9,10 @@ import { POCHE_PATTERN_LINE } from "../../drawings/plan-poche";
 import type { ViewDef } from "../types";
 import type { Scene2D, SceneEntity, StrokeStyle } from "../scene";
 import { emptyScene } from "../scene";
+import { viewTemplatesStore } from "../../view-templates/view-templates-store";
+import { resolveElementVisibility } from "../../view-templates/vg-apply";
+import { phasesStore } from "../../phases/phases";
+import { designOptionsStore } from "../../design-options/design-options";
 
 function stroke(color: string, widthPt: number, dash: number[] | null = null): StrokeStyle {
   return { color, widthPt, dash };
@@ -21,8 +25,31 @@ const STYLE = {
   grid:     stroke("#b91c1c", 0.20, [3, 0.6, 0.6, 0.6]),
 };
 
+/** Revit-style halftone: light grey, thin — the element reads as background. */
+const HALFTONE_STYLE = stroke("#9ca3af", 0.15, null);
+
 export async function generatePlanScene(def: ViewDef): Promise<Scene2D> {
   if (!def.plan) return emptyScene();
+
+  // Per-view Visibility/Graphics: the view's effective VG (applied template
+  // + local overrides) decides which elements draw and which draw halftone.
+  // With no template and no local overrides this resolves to the default VG
+  // (everything visible, nothing halftone), so existing views render
+  // exactly as before. Phase / design-option predicates come from the real
+  // stores, so the plan honours the same combined filter as the 3D bridge.
+  const vg = viewTemplatesStore.getEffectiveVg(def.id, def.templateId ?? null);
+  const resolved = new Map<string, { visible: boolean; halftone: boolean }>();
+  const resolve = (el: { id: string; type?: string; category?: string; phaseCreated?: string | null; phaseDemolished?: string | null; designOptionId?: string | null; properties?: Record<string, unknown> }) => {
+    let r = resolved.get(el.id);
+    if (!r) {
+      r = resolveElementVisibility(el, vg, {
+        phaseVisible: (a) => phasesStore.isVisible(a),
+        designOptionVisible: (id) => designOptionsStore.isVisible(id),
+      });
+      resolved.set(el.id, r);
+    }
+    return r;
+  };
 
   const planView: PlanView = await generatePlanView({
     levelName: def.name,
@@ -35,6 +62,10 @@ export async function generatePlanScene(def: ViewDef): Promise<Scene2D> {
     includeOverhead: true,
     includeBelow: true,
     maxSegments: 250_000,
+    visibility: {
+      isVisible: (el) => resolve(el).visible,
+      halftone: (el) => resolve(el).halftone,
+    },
   });
 
   const scene = emptyScene();
@@ -55,7 +86,7 @@ export async function generatePlanScene(def: ViewDef): Promise<Scene2D> {
         kind: "hatch",
         polygon: f.points,
         pattern: f.pattern,
-        color: POCHE_PATTERN_LINE,
+        color: f.halftone ? "#9ca3af" : POCHE_PATTERN_LINE,
         scale: Math.max(1, def.scale),
       });
     } else {
@@ -63,14 +94,16 @@ export async function generatePlanScene(def: ViewDef): Promise<Scene2D> {
         kind: "polyline",
         points: f.points,
         closed: true,
-        stroke: { color: POCHE_PATTERN_LINE, widthPt: 0.12, dash: null },
-        fill: { color: f.color, opacity: 1 },
+        stroke: f.halftone
+          ? { color: "#9ca3af", widthPt: 0.12, dash: null }
+          : { color: POCHE_PATTERN_LINE, widthPt: 0.12, dash: null },
+        fill: { color: f.color, opacity: f.halftone ? 0.35 : 1 },
       });
     }
   }
 
   for (const seg of planView.segments) {
-    const style = (STYLE as any)[seg.kind] ?? STYLE.cut;
+    const style = seg.halftone ? HALFTONE_STYLE : ((STYLE as any)[seg.kind] ?? STYLE.cut);
     const entity: SceneEntity = {
       kind: "line", x1: seg.x1, z1: seg.z1, x2: seg.x2, z2: seg.z2, stroke: style,
     };
@@ -82,7 +115,7 @@ export async function generatePlanScene(def: ViewDef): Promise<Scene2D> {
 
   for (const arc of planView.arcs) {
     scene.layers.cut.push({
-      kind: "arc", cx: arc.cx, cz: arc.cz, r: arc.r, a0: arc.start, a1: arc.end, stroke: STYLE.cut,
+      kind: "arc", cx: arc.cx, cz: arc.cz, r: arc.r, a0: arc.start, a1: arc.end, stroke: arc.halftone ? HALFTONE_STYLE : STYLE.cut,
     });
   }
 

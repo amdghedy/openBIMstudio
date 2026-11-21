@@ -20,6 +20,7 @@ import { buildAnnotationLayer } from "../views/annotation-layer";
 import { emptyScene, type Scene2D } from "../views/scene";
 import { createPdfDocument, drawScene2DToPdf, MM_TO_PT, downloadPdf } from "./pdf";
 import { computeViewportTransform } from "../views/sheet-layout";
+import { getSheetRevisions } from "../revisions/model";
 
 async function baseSceneForView(viewId: string): Promise<Scene2D> {
   const v = getView(viewId);
@@ -290,6 +291,61 @@ function drawSheetAnnotations(page: PDFPage, sheet: SheetDef, regular: PDFFont):
   }
 }
 
+/**
+ * Revision history table, drawn directly above the titleblock (same
+ * placement as the SVG titleblock injection). Only revisions that apply
+ * to this sheet (or project-wide ones) appear; hidden revisions are
+ * excluded by getSheetRevisions. No table is drawn when the sheet has no
+ * revisions, so existing sheets render exactly as before.
+ */
+function drawRevisionTable(
+  page: PDFPage,
+  sheet: SheetDef,
+  pageW: number,
+  regular: PDFFont,
+  bold: PDFFont,
+): void {
+  const revs = getSheetRevisions(sheet.id).slice(-6);
+  if (!revs.length) return;
+  const tbW = 180 * MM_TO_PT;
+  const margin = 6 * MM_TO_PT;
+  const tbX = pageW - margin - tbW;
+  const tbY = margin;
+  const tbH = 40 * MM_TO_PT;
+  const rowH = 5 * MM_TO_PT;
+  const tableH = rowH * (revs.length + 1);
+  // Bottom-up PDF coords: table sits 2 mm above the titleblock.
+  const tableY = tbY + tbH + 2 * MM_TO_PT;
+  const colRev = tbX + 2 * MM_TO_PT;
+  const colDate = tbX + 20 * MM_TO_PT;
+  const colDesc = tbX + 46 * MM_TO_PT;
+  const colBy = tbX + tbW - 16 * MM_TO_PT;
+
+  // Header row.
+  page.drawRectangle({
+    x: tbX, y: tableY + tableH - rowH, width: tbW, height: rowH,
+    borderWidth: 0.4, borderColor: rgb(0.06, 0.09, 0.16), color: rgb(0.89, 0.91, 0.94),
+  });
+  const headerY = tableY + tableH - rowH + 1.6 * MM_TO_PT;
+  for (const [text, x] of [["REV", colRev], ["DATE", colDate], ["DESCRIPTION", colDesc], ["BY", colBy]] as [string, number][]) {
+    page.drawText(text, { x, y: headerY, size: 4.5, font: bold, color: rgb(0.06, 0.09, 0.16) });
+  }
+  revs.forEach((rev, i) => {
+    const y = tableY + (revs.length - 1 - i) * rowH;
+    page.drawRectangle({
+      x: tbX, y, width: tbW, height: rowH,
+      borderWidth: 0.3, borderColor: rgb(0.8, 0.83, 0.88),
+      color: i % 2 === 0 ? rgb(1, 1, 1) : rgb(0.97, 0.98, 0.99),
+    });
+    const textY = y + 1.6 * MM_TO_PT;
+    const desc = rev.description.length > 60 ? rev.description.slice(0, 58) + ".." : rev.description;
+    page.drawText(rev.sequenceLabel, { x: colRev, y: textY, size: 4.5, font: bold, color: rgb(0.06, 0.09, 0.16) });
+    page.drawText(rev.date, { x: colDate, y: textY, size: 4.5, font: regular, color: rgb(0.28, 0.33, 0.4) });
+    page.drawText(desc, { x: colDesc, y: textY, size: 4.5, font: regular, color: rgb(0.06, 0.09, 0.16) });
+    page.drawText(rev.issuedBy || "AU", { x: colBy, y: textY, size: 4.5, font: regular, color: rgb(0.28, 0.33, 0.4) });
+  });
+}
+
 export async function exportSheetToPdf(sheetId: string): Promise<Uint8Array | null> {
   const sheet = getSheet(sheetId);
   if (!sheet) return null;
@@ -317,6 +373,7 @@ export async function exportSheetToPdf(sheetId: string): Promise<Uint8Array | nu
   }
   drawSheetAnnotations(page, sheet, regular);
   drawTitleblock(page, sheet, pageW, pageH, regular, bold);
+  drawRevisionTable(page, sheet, pageW, regular, bold);
   drawNorthArrow(page, sheet, sizeMm, bold);
 
   return await doc.save();
@@ -351,6 +408,7 @@ export async function exportAllSheetsToPdf(
     }
     drawSheetAnnotations(page, sheet, regular);
     drawTitleblock(page, sheet, pageW, pageH, regular, bold);
+    drawRevisionTable(page, sheet, pageW, regular, bold);
     drawNorthArrow(page, sheet, sizeMm, bold);
   }
 

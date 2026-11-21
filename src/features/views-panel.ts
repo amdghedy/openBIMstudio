@@ -120,7 +120,15 @@ export function setupViewsPanel(): void {
   
   templateSelectEl.onchange = () => {
     if (!currentViewId) return;
-    updateView(currentViewId, { templateId: templateSelectEl!.value || undefined });
+    const templateId = templateSelectEl!.value || undefined;
+    updateView(currentViewId, { templateId });
+    // The ViewDef is the record, but the template store owns the binding
+    // the renderers read: write both, then push the effective VG into the
+    // global visibility filter so the 3D bridge reflects the template too.
+    // (Before this, the dropdown only set the record and re-rendered, so
+    // the template visibly did nothing.)
+    viewTemplatesStore.setViewTemplate(currentViewId, templateId ?? null);
+    viewTemplatesStore.syncToVisibilityFilter(currentViewId);
     void renderCurrent();
   };
 
@@ -210,6 +218,16 @@ export function setupViewsPanel(): void {
 
   onViewsChange(() => { if (visible) render(); });
   onAnnotationChange(() => { if (visible) void renderCurrent(); });
+  // VG dialog saves (template applied / local overrides changed) re-render
+  // the affected view. Without this the dialog's obs:vg-changed event had
+  // no listener and the plan kept showing the old graphics until the next
+  // unrelated re-render.
+  window.addEventListener("obs:vg-changed", (ev) => {
+    if (!visible || !currentViewId) return;
+    const detail = (ev as CustomEvent).detail as { viewId?: string } | undefined;
+    if (detail?.viewId && detail.viewId !== currentViewId) return;
+    void renderCurrent();
+  });
 
   refreshToolbar();
 
@@ -225,6 +243,14 @@ function render(): void {
   if (!panel || !sidebar) return;
   const views = listViews();
   sidebar.innerHTML = "";
+
+  // Default to the first view BEFORE populating the template dropdown:
+  // the dropdown is gated on currentViewId, and on first open it was
+  // still null here, so the select stayed empty (no template assignable)
+  // until the user clicked a view row. Default first, then populate.
+  if (!currentViewId && views.length) {
+    currentViewId = views[0].id;
+  }
 
   // Update template dropdown for the active view
   if (templateSelectEl && currentViewId) {
@@ -264,10 +290,7 @@ function render(): void {
     row.appendChild(del);
     sidebar.appendChild(row);
   }
-  if (!currentViewId && views.length) {
-    currentViewId = views[0].id;
-    void renderCurrent();
-  } else if (currentViewId) {
+  if (currentViewId) {
     void renderCurrent();
   }
 }

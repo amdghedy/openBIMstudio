@@ -17,6 +17,13 @@ import { resolveDimension } from "./dimension-engine";
 import { resolveTag } from "./tag-engine";
 import type { SceneEntity } from "./scene";
 import { paperToWorld } from "./scene";
+import { viewTemplatesStore } from "../view-templates/view-templates-store";
+import { annotationsVisible } from "../view-templates/vg-apply";
+import { listCloudsVisibleInView } from "../revisions/model";
+import { cloudPolygonToPolyline } from "../revisions/cloud-renderer";
+
+/** Revision-cloud stroke (red) — matches the SVG cloud renderer. */
+const CLOUD_COLOR = "#ef4444";
 
 export interface AnnotationStats {
   dimensions: number;
@@ -46,6 +53,13 @@ export function buildAnnotationLayer(
     notes: 0,
     callouts: 0,
   };
+
+  // View templates / VG: a template (or local override) can switch
+  // annotations off for a view. With no template this resolves to the
+  // default VG (showAnnotations: true), so existing views are unaffected.
+  if (!annotationsVisible(viewTemplatesStore.getEffectiveVg(viewId))) {
+    return { entities, stats };
+  }
 
   for (const dim of getDimensions(viewId)) {
     const r = resolveDimension(dim, elements, viewScale);
@@ -129,6 +143,21 @@ export function buildAnnotationLayer(
       sizePt: 3,
       rotation: 0,
       color: callout.color,
+    });
+  }
+
+  // Revision clouds bound to this view (or unassigned): scalloped closed
+  // polylines in revision red. Because this layer feeds the Views-panel
+  // plan SVG, the sheet SVG composer and the sheet PDF alike, one wiring
+  // point renders clouds on all three documentation surfaces.
+  for (const cloud of listCloudsVisibleInView(viewId)) {
+    const pts = cloudPolygonToPolyline(cloud.points, paperToWorld(2.5, viewScale));
+    if (pts.length < 3) continue;
+    entities.push({
+      kind: "polyline",
+      points: pts,
+      closed: true,
+      stroke: { color: CLOUD_COLOR, widthPt: 0.25, dash: null },
     });
   }
 

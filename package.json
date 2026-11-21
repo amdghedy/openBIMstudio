@@ -111,6 +111,8 @@
     "test:project-file": "node tests/project-file.test.cjs",
     "test:sheet-furniture": "node tests/sheet-furniture.test.cjs",
     "test:documentation-2d": "node tests/documentation-2d.test.cjs",
+    "test:view-templates": "node tests/view-templates.test.cjs",
+    "test:revisions": "node tests/revisions.test.cjs",
     "test:fitting-outline": "node tests/fitting-outline.test.cjs",
     "test:slope": "node tests/slope.test.cjs",
     "test:cad-viewer": "node tests/cad-viewer.test.cjs",

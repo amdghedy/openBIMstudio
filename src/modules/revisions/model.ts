@@ -26,6 +26,8 @@ export interface RevisionRecord {
   status: RevisionStatus;
   sheetIds: string[]; // Specific sheets affected (or empty for project-wide)
   elementIds: string[]; // IDs of elements altered in this revision
+  /** False hides the revision from tables/panels (kept, not deleted). */
+  visible?: boolean;
 }
 
 export interface RevisionCloudDef {
@@ -42,6 +44,13 @@ const STORAGE_KEY_CLOUDS = "obs.revisions.clouds.v2";
 
 let currentRevisions: RevisionRecord[] = [];
 let currentClouds: RevisionCloudDef[] = [];
+/**
+ * True once the store has been read (from localStorage or a project file).
+ * The old `if (!currentRevisions.length) load()` check re-read localStorage
+ * after every intentional emptying — including a project restore with zero
+ * revisions — resurrecting stale data. The flag makes "empty" a real state.
+ */
+let loaded = false;
 const changeListeners = new Set<() => void>();
 
 export function loadRevisionStore(): void {
@@ -54,6 +63,7 @@ export function loadRevisionStore(): void {
     currentRevisions = [];
     currentClouds = [];
   }
+  loaded = true;
 }
 
 export function saveRevisionStore(): void {
@@ -74,13 +84,18 @@ export function onRevisionStoreChange(cb: () => void): () => void {
 }
 
 export function listAllRevisions(): RevisionRecord[] {
-  if (!currentRevisions.length) loadRevisionStore();
+  if (!loaded) loadRevisionStore();
   return currentRevisions.slice();
+}
+
+export function listAllClouds(): RevisionCloudDef[] {
+  if (!loaded) loadRevisionStore();
+  return currentClouds.slice();
 }
 
 export function getSheetRevisions(sheetId: string): RevisionRecord[] {
   return listAllRevisions().filter(
-    (r) => !r.sheetIds.length || r.sheetIds.includes(sheetId)
+    (r) => r.visible !== false && (!r.sheetIds.length || r.sheetIds.includes(sheetId))
   );
 }
 
@@ -101,6 +116,7 @@ export function addRevisionRecord(data: Partial<RevisionRecord>): RevisionRecord
     status: data.status || "draft",
     sheetIds: data.sheetIds || [],
     elementIds: data.elementIds || [],
+    visible: data.visible ?? true,
   };
 
   currentRevisions.push(rec);
@@ -132,6 +148,52 @@ export function addRevisionCloudDef(cloud: Omit<RevisionCloudDef, "id">): Revisi
 }
 
 export function listCloudsForView(viewId: string | null): RevisionCloudDef[] {
-  if (!currentClouds.length) loadRevisionStore();
+  if (!loaded) loadRevisionStore();
   return currentClouds.filter((c) => c.viewId === viewId);
+}
+
+/**
+ * Clouds that draw in a view: clouds bound to that view, plus unassigned
+ * clouds (viewId null — placed before any view was active, e.g. from the
+ * plan-view polygon capture). A cloud bound to a *different* view stays
+ * hidden here.
+ */
+export function listCloudsVisibleInView(viewId: string): RevisionCloudDef[] {
+  if (!loaded) loadRevisionStore();
+  return currentClouds.filter((c) => c.viewId === viewId || c.viewId === null);
+}
+
+export function removeCloudDef(id: string): void {
+  currentClouds = currentClouds.filter((c) => c.id !== id);
+  saveRevisionStore();
+}
+
+// ---------- Project persistence ----------
+//
+// Revisions and clouds travel with the project file (ProjectDoc.
+// documentation) so a project moved to another machine keeps its revision
+// history. The caller (documentation-persistence) validates the snapshot;
+// replaceAll trusts already-normalized data but still drops non-objects.
+
+/** Plain-data snapshot for the project file. */
+export function serializeRevisions(): { revisions: RevisionRecord[]; clouds: RevisionCloudDef[] } {
+  if (!loaded) loadRevisionStore();
+  return {
+    revisions: JSON.parse(JSON.stringify(currentRevisions)) as RevisionRecord[],
+    clouds: JSON.parse(JSON.stringify(currentClouds)) as RevisionCloudDef[],
+  };
+}
+
+/** Replace store contents from a project-file snapshot. Never throws. */
+export function replaceAllRevisions(
+  revisions: unknown,
+  clouds: unknown,
+): { revisions: number; clouds: number } {
+  const revs = Array.isArray(revisions) ? revisions.filter((r) => r && typeof r === "object") : [];
+  const cls = Array.isArray(clouds) ? clouds.filter((c) => c && typeof c === "object") : [];
+  currentRevisions = JSON.parse(JSON.stringify(revs)) as RevisionRecord[];
+  currentClouds = JSON.parse(JSON.stringify(cls)) as RevisionCloudDef[];
+  loaded = true;
+  saveRevisionStore();
+  return { revisions: currentRevisions.length, clouds: currentClouds.length };
 }

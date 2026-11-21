@@ -119,7 +119,12 @@ class ToolStateImpl {
         viewId,
         ref,
         kind: "category",
-        offsetMm: [150, 150],
+        // 10 mm on paper (1 m world at 1:100): a normal tag standoff. The
+        // old 150 mm put the bubble 15 m from the element at 1:100, outside
+        // the plan SVG viewBox (model bounds + 3 m padding) and outside
+        // sheet viewports, so a tag created by this tool never rendered on
+        // any documentation surface. Tags stay draggable to any offset.
+        offsetMm: [10, 10],
         leader: true,
         leaderShape: "straight",
         rotation: 0,

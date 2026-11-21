@@ -25,7 +25,7 @@ import {
 } from "../../features/authoring";
 import type { AuthoredElement } from "../projects/types";
 import type {
-  PlanArc, PlanFill, PlanGenerationOptions, PlanSegment, PlanText, PlanView,
+  PlanArc, PlanFill, PlanGenerationOptions, PlanSegment, PlanText, PlanView, PlanVisibility,
 } from "./plan-types";
 import {
   pocheStyleFor, rectQuad, spanQuad,
@@ -110,7 +110,19 @@ export async function generatePlanView(
 
   for (const el of authoredInBand) {
     if (opts.signal?.cancelled) break;
-    emitAuthoredSymbol(el, segments, arcs, texts, pushSeg, pushFill, hostedByWall, cutElevation, bandLow, bandHigh);
+    // Per-view visibility (templates / VG): a hidden category contributes
+    // no plan geometry at all. Halftone is stamped onto everything this
+    // element emits so the scene generator can restyle it.
+    if (opts.visibility && !opts.visibility.isVisible(el)) continue;
+    const segBefore = segments.length;
+    const arcBefore = arcs.length;
+    const fillBefore = fills.length;
+    emitAuthoredSymbol(el, segments, arcs, texts, pushSeg, pushFill, hostedByWall, cutElevation, bandLow, bandHigh, opts.visibility);
+    if (opts.visibility?.halftone(el)) {
+      for (let i = segBefore; i < segments.length; i++) segments[i].halftone = true;
+      for (let i = arcBefore; i < arcs.length; i++) arcs[i].halftone = true;
+      for (let i = fillBefore; i < fills.length; i++) fills[i].halftone = true;
+    }
   }
 
   // ── 2. Fragments (triangle edge extraction) ──────────────────────────
@@ -357,6 +369,7 @@ function emitAuthoredSymbol(
   cutElevation: number,
   bandLow = 0,
   bandHigh = 3,
+  visibility?: PlanVisibility,
 ): void {
   const p = el.params;
   const elev = p.elevation ?? 0;
@@ -413,7 +426,7 @@ function emitAuthoredSymbol(
       const endFaces = faceEndsAt(bx, bz, false);
 
       const hosts = (hostedByWall.get(el.id) ?? []).filter(
-        (h) => h.type === "door" || h.type === "window",
+        (h) => (h.type === "door" || h.type === "window") && (!visibility || visibility.isVisible(h)),
       );
       const openings: { start: number; end: number; el: AuthoredElement }[] = [];
       for (const h of hosts) {

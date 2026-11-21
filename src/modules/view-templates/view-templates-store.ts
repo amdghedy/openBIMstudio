@@ -44,12 +44,84 @@ function mergeVg(
   if (local.underlay) out.underlay = { ...out.underlay!, ...local.underlay };
   out.filters = local.filters?.length ? deepClone(local.filters) : out.filters;
   for (const [cat, ov] of Object.entries(local.categoryOverrides || {})) {
+    // Never let a category key rewrite the object prototype.
+    if (cat === "__proto__" || cat === "constructor" || cat === "prototype") continue;
     out.categoryOverrides[cat] = {
       ...(out.categoryOverrides[cat] ?? defaultCategoryOverride()),
       ...ov,
     };
   }
   return out;
+}
+
+/**
+ * Validate a VG state read back from a project file. Returns a repaired
+ * copy, or null when the value is not a VG-shaped object at all. Never
+ * throws; hostile keys (e.g. `__proto__`) are copied as plain data via the
+ * JSON round-trip in deepClone, never assigned onto a live object.
+ */
+function normalizeVg(raw: unknown): VisibilityGraphicsState | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const v = raw as Record<string, unknown>;
+  const out = createDefaultVg();
+  if (v.categoryOverrides && typeof v.categoryOverrides === "object" && !Array.isArray(v.categoryOverrides)) {
+    for (const [cat, ov] of Object.entries(v.categoryOverrides as Record<string, unknown>)) {
+      // A project file is untrusted input: never let a category key rewrite
+      // the object prototype.
+      if (cat === "__proto__" || cat === "constructor" || cat === "prototype") continue;
+      if (!ov || typeof ov !== "object" || Array.isArray(ov)) continue;
+      const o = ov as Record<string, unknown>;
+      out.categoryOverrides[cat] = {
+        visible: typeof o.visible === "boolean" ? o.visible : true,
+        halftone: o.halftone === true,
+        transparent: o.transparent === true,
+        lineColor: typeof o.lineColor === "string" ? o.lineColor : null,
+        surfaceColor: typeof o.surfaceColor === "string" ? o.surfaceColor : null,
+        lineWeight: typeof o.lineWeight === "number" ? o.lineWeight : null,
+        surfacePattern: typeof o.surfacePattern === "string" ? o.surfacePattern : null,
+        cutPattern: typeof o.cutPattern === "string" ? o.cutPattern : null,
+      };
+    }
+  }
+  if (typeof v.showAnnotations === "boolean") out.showAnnotations = v.showAnnotations;
+  if (typeof v.showModel === "boolean") out.showModel = v.showModel;
+  if (v.detailLevel === "coarse" || v.detailLevel === "medium" || v.detailLevel === "fine") out.detailLevel = v.detailLevel;
+  if (v.modelDisplay === "wireframe" || v.modelDisplay === "hiddenLine" || v.modelDisplay === "shaded" || v.modelDisplay === "realistic") out.modelDisplay = v.modelDisplay;
+  if (Array.isArray(v.filters)) out.filters = deepClone(v.filters as never[]);
+  return out;
+}
+
+/** Validate a view template read back from a project file; null if unusable. */
+function normalizeTemplate(raw: unknown): ViewTemplate | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const t = raw as Record<string, unknown>;
+  if (typeof t.id !== "string" || !t.id) return null;
+  if (typeof t.name !== "string" || !t.name) return null;
+  const vg = normalizeVg(t.vg);
+  if (!vg) return null;
+  const appliesTo = Array.isArray(t.appliesTo)
+    ? (t.appliesTo as unknown[]).filter((k): k is ViewKind => typeof k === "string")
+    : ["plan", "section", "elevation", "3d"] as ViewKind[];
+  const includes = (t.includes && typeof t.includes === "object" && !Array.isArray(t.includes))
+    ? t.includes as Record<string, unknown>
+    : {};
+  return {
+    id: t.id,
+    name: t.name,
+    description: typeof t.description === "string" ? t.description : "",
+    appliesTo: appliesTo.length ? appliesTo : (["plan"] as ViewKind[]),
+    vg,
+    locked: t.locked === true,
+    includes: {
+      modelCategories: includes.modelCategories !== false,
+      annotationCategories: includes.annotationCategories !== false,
+      filters: includes.filters !== false,
+      detailLevel: includes.detailLevel !== false,
+      modelDisplay: includes.modelDisplay !== false,
+    },
+    createdAt: typeof t.createdAt === "string" ? t.createdAt : nowIso(),
+    updatedAt: typeof t.updatedAt === "string" ? t.updatedAt : nowIso(),
+  };
 }
 
 class ViewTemplatesStore {
@@ -293,10 +365,17 @@ class ViewTemplatesStore {
     this.emit();
   }
 
-  /** Effective VG for a view (template + local, respecting lock). */
-  getEffectiveVg(viewId: string): VisibilityGraphicsState {
+  /**
+   * Effective VG for a view (template + local, respecting lock).
+   * `fallbackTemplateId` covers views whose ViewDef carries a templateId
+   * but which have no store binding yet (e.g. views created before the
+   * binding was written, or restored from a project file before the
+   * documentation section is applied). The binding wins when present.
+   */
+  getEffectiveVg(viewId: string, fallbackTemplateId?: string | null): VisibilityGraphicsState {
     const b = this.getViewBinding(viewId);
-    const tmpl = b.templateId ? this.templates.get(b.templateId) : null;
+    const templateId = b.templateId ?? fallbackTemplateId ?? null;
+    const tmpl = templateId ? this.templates.get(templateId) : null;
     if (!tmpl) {
       return b.localVg ? deepClone(b.localVg) : createDefaultVg();
     }
@@ -342,6 +421,76 @@ class ViewTemplatesStore {
         hasLocalOverrides: !!b.localVg,
       };
     });
+  }
+
+  // ---------- Project persistence ----------
+  //
+  // Templates and bindings travel with the project file (ProjectDoc.
+  // documentation) so a project moved to another machine keeps its view
+  // templates. localStorage remains the session cache; the project doc is
+  // the portable copy and wins on open.
+
+  /** Plain-data snapshot for the project file. */
+  serialize(): {
+    templates: ViewTemplate[];
+    bindings: Record<string, { templateId: string | null; localVg: VisibilityGraphicsState | null }>;
+  } {
+    return {
+      templates: deepClone(this.listTemplates()),
+      bindings: deepClone(Object.fromEntries(this.bindings)),
+    };
+  }
+
+  /**
+   * Replace store contents from a project-file snapshot. Validates every
+   * entry, drops what is malformed, and never throws. Returns human-
+   * readable issues for the dropped entries (empty when clean).
+   */
+  restoreSnapshot(data: unknown): string[] {
+    const issues: string[] = [];
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return ["view templates snapshot is not an object — kept current templates"];
+    }
+    const snap = data as Record<string, unknown>;
+    const templates: ViewTemplate[] = [];
+    if (Array.isArray(snap.templates)) {
+      for (const raw of snap.templates) {
+        const t = normalizeTemplate(raw);
+        if (t) templates.push(t);
+        else issues.push("dropped a malformed view template entry");
+      }
+    } else if (snap.templates !== undefined) {
+      issues.push("view templates list is not an array — kept current templates");
+    }
+    const bindings = new Map<string, { templateId: string | null; localVg: VisibilityGraphicsState | null }>();
+    if (snap.bindings && typeof snap.bindings === "object" && !Array.isArray(snap.bindings)) {
+      for (const [viewId, raw] of Object.entries(snap.bindings as Record<string, unknown>)) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          issues.push(`dropped malformed view binding for "${viewId}"`);
+          continue;
+        }
+        const b = raw as Record<string, unknown>;
+        const rawTemplateId: unknown = b.templateId;
+        const templateId: string | null =
+          typeof rawTemplateId === "string" ? rawTemplateId : null;
+        if (rawTemplateId !== undefined && rawTemplateId !== null && typeof rawTemplateId !== "string") {
+          issues.push(`dropped non-string template id in view binding for "${viewId}"`);
+        }
+        const localVg = b.localVg === null || b.localVg === undefined ? null : normalizeVg(b.localVg);
+        if ((b.localVg !== null && b.localVg !== undefined) && !localVg) {
+          issues.push(`dropped malformed local VG in view binding for "${viewId}"`);
+        }
+        bindings.set(viewId, { templateId, localVg });
+      }
+    } else if (snap.bindings !== undefined) {
+      issues.push("view bindings are not an object — kept current bindings");
+    }
+    this.templates = new Map(templates.map((t) => [t.id, t]));
+    this.bindings = bindings;
+    this.seeded = true;
+    this.persist();
+    this.emit();
+    return issues;
   }
 
   /** Push effective category overrides into the existing VisibilityFilter if present. */
