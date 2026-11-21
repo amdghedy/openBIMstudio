@@ -107,3 +107,61 @@ export function collectNestedFamilyIds(
   }
   return out;
 }
+
+/**
+ * One row of a schedule: a family instance that is counted on its own.
+ * The root (the built family itself) is always a row with
+ * `shared: false`; each `shared` nested child is an additional row
+ * with its own family, type and resolved parameters, so it schedules
+ * independently of the parent. A non-shared nested child is part of
+ * the parent and produces no row — but a shared grandchild inside it
+ * still does, so the walk descends through non-shared wraps too.
+ */
+export interface SchedulableInstance {
+  familyId: string;
+  typeId: string | null;
+  label: string;
+  params: Record<string, any>;
+  /** True for a shared nested child, false for the root family. */
+  shared: boolean;
+}
+
+/** Minimal shape of a built object tree (structurally satisfied by THREE.Object3D). */
+export interface SchedulableNode {
+  userData: Record<string, any>;
+  children: SchedulableNode[];
+}
+
+export function collectSchedulableInstances(
+  root: SchedulableNode | null | undefined,
+): SchedulableInstance[] {
+  if (!root || typeof root !== "object") return [];
+  const rows: SchedulableInstance[] = [];
+  const ud = root.userData ?? {};
+  if (typeof ud.familyId === "string") {
+    rows.push({
+      familyId: ud.familyId,
+      typeId: ud.familyTypeId ?? null,
+      label: typeof ud.familyName === "string" ? ud.familyName : ud.familyId,
+      params: { ...(ud.familyParams ?? {}) },
+      shared: false,
+    });
+  }
+  const walk = (node: SchedulableNode) => {
+    for (const child of node.children ?? []) {
+      const shared = child.userData?.sharedNested;
+      if (shared && typeof shared.familyId === "string") {
+        rows.push({
+          familyId: shared.familyId,
+          typeId: shared.typeId ?? null,
+          label: typeof shared.label === "string" ? shared.label : shared.familyId,
+          params: { ...(shared.params ?? {}) },
+          shared: true,
+        });
+      }
+      walk(child);
+    }
+  };
+  walk(root);
+  return rows;
+}

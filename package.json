@@ -206,6 +206,7 @@
     "test:nl-query-authored": "tsx tests/nl-query-authored.test.ts",
     "test:constraints": "node tests/constraint-solver.test.cjs",
     "test:parametric-closure": "node tests/parametric-closure.test.cjs",
+    "test:parametric-nested-families": "node tests/parametric-nested-families.test.cjs",
     "test:parametric-voids-sweeps-lofts": "node tests/parametric-voids-sweeps-lofts.test.cjs",
     "test:parametric-revolve": "node tests/parametric-revolve.test.cjs",
     "test:catalog-shared-parameters": "node tests/catalog-shared-parameters.test.cjs",

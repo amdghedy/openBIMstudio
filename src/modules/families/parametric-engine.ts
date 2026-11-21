@@ -102,6 +102,8 @@ export type ExtendedGeometrySpec =
       paramMap?: Record<string, NumberRef | string>;
       transform?: TransformSpec;
       visibleWhen?: string;
+      /** When true, the nested instance schedules as its own type. */
+      shared?: boolean;
     }
   | {
       kind: "array";
@@ -132,6 +134,11 @@ export interface ParametricBuildOptions {
   /** Collected build warnings (void CSG failures, etc.). Internal:
    *  `buildParametricFamily` passes its own array in. */
   warnings?: string[];
+  /** Family ids on the current nesting chain (root first). Internal:
+   *  `buildParametricFamily` appends its own id; the "nested" case
+   *  rejects a reference to an id already on the chain (circular
+   *  nesting) instead of recursing into it. */
+  nestingStack?: string[];
 }
 
 export interface ParametricBuildResult {
@@ -862,19 +869,51 @@ export function buildExtendedGeometry(
         console.warn("[parametric-engine] nested family requires familyLookup");
         return null;
       }
+      const warnings = options.warnings ?? [];
+      // Circular nesting is rejected, not recursed into: A -> B -> A
+      // would otherwise recurse until the stack overflows and the only
+      // evidence would be "Maximum call stack size exceeded".
+      const stack = options.nestingStack ?? [];
+      if (stack.includes(spec.familyId)) {
+        const chain = [...stack, spec.familyId].join(" -> ");
+        const msg = `circular nesting rejected: ${chain}`;
+        warnings.push(msg);
+        console.warn("[parametric-engine] " + msg);
+        return null;
+      }
       const nestedFam = options.familyLookup(spec.familyId);
-      if (!nestedFam) return null;
+      if (!nestedFam) {
+        const msg = `nested family not found: ${spec.familyId}`;
+        warnings.push(msg);
+        console.warn("[parametric-engine] " + msg);
+        return null;
+      }
       const nestedType = spec.typeId
         ? options.typeLookup?.(spec.familyId, spec.typeId) ?? null
         : null;
 
-      // Map parent params - nested overrides
+      // Map parent params - nested overrides. A binding that names a
+      // parent parameter which does not exist is skipped (with a
+      // warning) instead of writing `undefined` into the child, which
+      // would poison its resolution with NaN geometry.
       const nestedOverrides: Record<string, any> = {};
       if (spec.paramMap) {
         for (const [childKey, ref] of Object.entries(spec.paramMap)) {
           if (typeof ref === "string") {
+            if (!(ref in params)) {
+              const msg = `paramMap '${childKey}' references missing parent parameter '${ref}' (family ${spec.familyId})`;
+              warnings.push(msg);
+              console.warn("[parametric-engine] " + msg);
+              continue;
+            }
             nestedOverrides[childKey] = params[ref];
           } else {
+            if ("ref" in ref && !(ref.ref in params)) {
+              const msg = `paramMap '${childKey}' references missing parent parameter '${ref.ref}' (family ${spec.familyId})`;
+              warnings.push(msg);
+              console.warn("[parametric-engine] " + msg);
+              continue;
+            }
             nestedOverrides[childKey] = resolveNumber(ref, params);
           }
         }
@@ -887,6 +926,22 @@ export function buildExtendedGeometry(
       if (!nested.object) return null;
       const wrap = resolveTransform(spec.transform, params);
       wrap.add(nested.object);
+      // Identity for scheduling: every nested child is findable by
+      // family id; a `shared` child additionally carries its own
+      // schedule row (family, type, resolved params) on the wrap, so
+      // `collectSchedulableInstances` can list it independently of
+      // the parent. A non-shared child is part of the parent and
+      // produces no row of its own.
+      wrap.userData.nestedFamilyId = spec.familyId;
+      wrap.userData.nestedTypeId = nestedType?.id ?? null;
+      if (spec.shared) {
+        wrap.userData.sharedNested = {
+          familyId: spec.familyId,
+          typeId: nestedType?.id ?? null,
+          label: nestedFam.name,
+          params: { ...nested.params },
+        };
+      }
       return wrap;
     }
 
@@ -925,7 +980,11 @@ export function buildParametricFamily(
   type: FamilyType | null,
   options: ParametricBuildOptions = {},
 ): ParametricBuildResult {
-  const warnings: string[] = [];
+  // Use the caller's warnings array when one is provided, so warnings
+  // raised in a nested (recursive) build accumulate into the top-level
+  // result instead of being dropped with the nested call's fresh array
+  // (that is how the circular-nesting warning was lost before).
+  const warnings: string[] = options.warnings ?? [];
   const { values, formula, constraints, errors } = resolveParametricValues(
     family,
     type,
@@ -937,7 +996,7 @@ export function buildParametricFamily(
     object = buildExtendedGeometry(
       family.geometry as ExtendedGeometrySpec,
       values,
-      { ...options, warnings },
+      { ...options, warnings, nestingStack: [...(options.nestingStack ?? []), family.id] },
     );
   } catch (err) {
     errors.push(
@@ -947,6 +1006,7 @@ export function buildParametricFamily(
 
   if (object) {
     object.userData.familyId = family.id;
+    object.userData.familyName = family.name;
     object.userData.familyTypeId = type?.id ?? null;
     object.userData.familyParams = { ...values };
     object.userData.ifcEntity = family.ifcEntity;
