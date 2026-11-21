@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { openPaletteWith } from './palette';
 
 /**
  * Native IFC round-trip — the “git for BIM” core workflow, end to end:
@@ -47,10 +48,8 @@ async function enterPlatform(page: Page): Promise<void> {
 
 /** Run a command palette entry: type a fragment, then click the exact row. */
 async function runCommand(page: Page, query: string, label: string): Promise<void> {
-  await page.keyboard.press('Control+p');
+  await openPaletteWith(page, query);
   const palette = page.locator('#obs-command-palette');
-  await expect(palette).toBeVisible({ timeout: 10000 });
-  await page.keyboard.type(query);
   const row = palette.getByText(label, { exact: false }).first();
   await expect(row).toBeVisible({ timeout: 10000 });
   await row.click();
