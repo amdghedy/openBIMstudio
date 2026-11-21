@@ -113,9 +113,8 @@ check("package.json: test:v72 script", () => has(/"test:v72":\s*"node tests\/v72
 check("package.json: verify:v72 script", () => has(/"verify:v72":\s*"node scripts\/verify-v72\.mjs"/, "package.json"));
 // Forward-compatible (v71/v70 convention): any 0.72+ or 0.8x/0.9x version passes.
 check("package.json: version >= 0.72 (forward-compatible)", () => has(/"version":\s*"0\.(7[2-9]|[89]\d|\d{3})\.\d+"/, "package.json"));
-check("CI: unit-tests workflow runs test:v72", () => has(/npm run test:v72/, ".github/workflows/unit-tests.yml"));
-check("CI: unit-tests workflow runs verify:v72", () => has(/npm run verify:v72/, ".github/workflows/unit-tests.yml"));
 check("CI: batched runner includes test:v72", () => has(/test:v72/, "scripts/ci-unit-tests.mjs"));
+check("CI: batched runner includes verify:v72", () => has(/verify:v72/, "scripts/ci-unit-tests.mjs"));
 check("docs: NAVIGATION_V72.md exists", () => has(/ViewCube|NavigationController/, "docs/NAVIGATION_V72.md"));
 check("docs: acceptance criteria mapped", () => has(/Acceptance|acceptance/, "docs/NAVIGATION_V72.md"));
 check("README documents navigation", () => has(/ViewCube/i, "README.md"));

@@ -218,9 +218,9 @@ The package manifest declares development/build/verification commands including:
 - npm run preview
 - npm run server
 - npm run verify
-- npm run verify:v50
-- npm run verify:v52
-- npm run verify:v54
+- npm run verify:v68
+- npm run verify:v70
+- npm run verify:v73
 - npm run test:native-bim
 - npm run test:mep, test:hip, test:hatch, test:stairs, test:rebar, test:v40, test:view-crop, test:selection-box
 - node tests/run-tests.mjs (bim-gaps suites)

@@ -179,8 +179,8 @@ only restores the mapping.
 - performance budgets: 1000 cube projections < 500 ms, full transition
   simulation < 200 ms
 
-Run: `npm run test:v72` · Shape checks: `npm run verify:v72` (40 checks).
-Both are wired into the Unit tests CI workflow.
+Run: `npm run test:v72` · Shape checks: `npm run verify:v72` (38 checks).
+Both are wired into the CI batch runner (`scripts/ci-unit-tests.mjs`).
 
 ---
 

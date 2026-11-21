@@ -38,8 +38,8 @@ World axes: X east, Y up, Z north. Element params such as `start`, `end` and `po
 
 ## Known structural debt
 
-- Several generations of the same feature exist in places (the per-release `scripts/verify-v*.mjs` gates and some parallel panels; the old `v40/v67/v68-register` files are now `module-globals`, `engineering-engines`, `authoring-core`). New work should reuse the current implementation rather than adding another.
-- `window.__obs*` globals (727 references by the `tests/ui-honesty.test.cjs` measure, one below its ratchet ceiling — verified 2026-11-21: baseline 727, now 726 (dead-file deletions in hardening item 17 removed one reference)) are still used for cross-feature calls; the test only lets the count go down.
+- Several generations of the same feature exist in places (the per-release `scripts/verify-v*.mjs` gates — v50–v67 retired 2026-11-21 to `scripts/archive/`, v68/v70–v73 still live via the CI batch runner; see `docs/PROCESS_SURFACE.md` — and some parallel panels; the old `v40/v67/v68-register` files are now `module-globals`, `engineering-engines`, `authoring-core`). New work should reuse the current implementation rather than adding another.
+- `window.__obs*` globals (733 references by the `tests/ui-honesty.test.cjs` measure — six above its ratchet ceiling of 727, the ratchet being over baseline on current main since the Revit/i18n landings; see hardening item 17's note) are still used for cross-feature calls; the test only lets the count go down.
 - No native `prompt()`/`confirm()`/`alert()` calls remain; `tests/ui-honesty.test.cjs` keeps it that way.
 - Unit tests cover logic. Browser-level coverage is one Playwright spec (`tests/e2e/edit-undo-save.spec.ts`) and needs to grow.
 

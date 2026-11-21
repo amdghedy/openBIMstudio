@@ -175,6 +175,8 @@ After wiring:
 
 ```bash
 npm run typecheck
-# optional: extend scripts/verify-v54.mjs to assert
+# optional: extend the parametric test suite to assert
 #   evaluateParameters + buildParametricFamily on a door with formulas
+#   (verify-v54.mjs was retired 2026-11-21 to scripts/archive/;
+#   see docs/PROCESS_SURFACE.md — assert in the real suite instead)
 ```

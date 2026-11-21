@@ -177,5 +177,6 @@ installation is attached (inherited from the v0.68 registers).
 - `tests/v70-deep-modeling.test.cjs` (23 closed-form tests) wired as
   `npm run test:v70` in the Unit tests workflow.
 - `scripts/verify-v70.mjs` (32 shape checks) wired as
-  `npm run verify:v70` in the Unit tests workflow.
+  `npm run verify:v70` in the CI batch runner
+  (`scripts/ci-unit-tests.mjs`).
 - Version 0.70.0; `package-lock.json` re-synced.

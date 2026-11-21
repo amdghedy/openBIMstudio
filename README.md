@@ -485,8 +485,10 @@ npm run test:native-bim          # native BIM validation checks
 node scripts/ci-unit-tests.mjs   # the full batched suite (what CI runs)
 ```
 
-Per-version milestone checks (`npm run verify:v50` … `npm run verify:v73`) remain
-available from earlier releases; run the one matching the milestone you touched.
+Per-version milestone checks for the live gates (`npm run verify:v68`,
+`verify:v70`–`verify:v73`) run in CI via the batched suite
+(`node scripts/ci-unit-tests.mjs`); the v50–v67 gates were retired
+2026-11-21 to `scripts/archive/` — see `docs/PROCESS_SURFACE.md`.
 
 **Stack:** React · TypeScript · Vite · Three.js · That Open (web-ifc / Fragments) · MUI · LibreDWG (WASM) · Yjs (optional real-time collaboration)
 

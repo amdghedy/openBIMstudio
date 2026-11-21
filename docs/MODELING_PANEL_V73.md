@@ -123,10 +123,11 @@ Integration in `features/authoring.ts`:
 | `tests/v73-snap-magnetic.test.cjs` | 22 | perpendicular/parallel/intersection closed forms, priority ranking, hysteresis, cycling, screen↔world tolerance, prefilter |
 | `tests/v73-tool-panels.test.cjs` | 15 | per-tool coverage, binding completeness, core gating, validation |
 | `tests/v73-relationships.test.cjs` | 12 | registry validation, follow-source propagation, wall-column bind + re-resolution + honest refusal |
-| `scripts/verify-v73.mjs` | 46 | wiring shape: every feature exists in the real source path |
+| `scripts/verify-v73.mjs` | 43 | wiring shape: every feature exists in the real source path |
 
 `npm run typecheck`, the full historical test set, and `npm run build` all pass;
-the four suites + verify script are wired into `.github/workflows/unit-tests.yml`.
+the four suites + verify script are wired into the CI batch runner
+(`scripts/ci-unit-tests.mjs`).
 
 ## 6. Documented deviations & scope decisions
 

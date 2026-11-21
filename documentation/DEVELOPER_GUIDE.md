@@ -91,9 +91,9 @@ The package declares commands including:
 npm run typecheck
 npm run build
 npm run verify
-npm run verify:v50
-npm run verify:v52
-npm run verify:v54
+npm run verify:v68
+npm run verify:v70
+npm run verify:v73
 npm run test:native-bim
 \`\`\`
 
