@@ -18,6 +18,7 @@
  * pinned by tests/selection-generations.test.cjs.
  */
 import { authoredOwnsClick } from "./pick-arbiter";
+import { hoverPreselectCycle, emitTabCycleStatus } from "../modules/selection/selection-cycle";
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import { ctx } from "../core/context";
@@ -698,7 +699,18 @@ export function setupClickToSelect(): void {
       if ((ctx.features as any).gizmo?.isDragging?.()) return;
       if (anyBlockingToolActive()) return;
 
-      let hit = await pickFragmentAtPointer();
+      // G3: a Tab-cycled candidate owns the click. An authored candidate is
+      // selected by the authoring gesture handler (registered before this
+      // listener, same host), so this handler must not also pick a fragment
+      // underneath it. A fragment candidate replaces the topmost pick below.
+      const cycled3d = hoverPreselectCycle.cycled ? hoverPreselectCycle.current() : null;
+      if (cycled3d?.kind === "authored") return;
+      const cycledFragment = cycled3d?.kind === "fragment" && cycled3d.modelId != null &&
+        cycled3d.localId != null && ctx.fragments.list.has(cycled3d.modelId)
+        ? { modelId: cycled3d.modelId, localId: cycled3d.localId, distance: cycled3d.distance }
+        : null;
+
+      let hit = cycledFragment ?? await pickFragmentAtPointer();
 
       // Edit-tab "Select Links" OFF → linked federation models are not
       // selectable (the authored document stays editable).
@@ -710,15 +722,23 @@ export function setupClickToSelect(): void {
       // Depth arbitration: an authored element (e.g. a converted Native Twin) that is nearer than
       // the linked-model hit owns the click. The fragment raycaster cannot see authored meshes, so
       // without this the ray passed through the twin and selected whatever lay behind it.
-      try {
-        const authoring: any = tryUse("authoring") as any;
-        const ah = authoring?.pickAuthoredHitAt?.(e as MouseEvent) ?? null;
-        if (authoredOwnsClick(ah, hit?.distance ?? null)) return;
-      } catch { /* optional authoring bridge */ }
+      // G3: a Tab-cycled fragment candidate is an explicit user override of
+      // this arbitration — the user already cycled past the nearer authored
+      // element on purpose.
+      if (!cycledFragment) {
+        try {
+          const authoring: any = tryUse("authoring") as any;
+          const ah = authoring?.pickAuthoredHitAt?.(e as MouseEvent) ?? null;
+          if (authoredOwnsClick(ah, hit?.distance ?? null)) return;
+        } catch { /* optional authoring bridge */ }
+      }
 
       // If the authored-element handler already owns this click, do not let
       // the fragment selector clear that selection.
       if (!hit) {
+        // G3: a cycled fragment that no longer passes the pick filters must
+        // not turn the click into a deselect-all.
+        if (cycledFragment) return;
         try {
           const authoring: any = tryUse("authoring") as any;
           const authoredHit = authoring?.pickAuthoredElementAt?.(e as MouseEvent);
@@ -745,6 +765,11 @@ export function setupClickToSelect(): void {
         alt: e.altKey,
       });
       await selection.applyToHighlighter();
+      // G3: the click consumed the Tab cycle — a later click re-picks the top hit.
+      if (cycledFragment) {
+        hoverPreselectCycle.reset();
+        emitTabCycleStatus(null);
+      }
     },
     true,
   );

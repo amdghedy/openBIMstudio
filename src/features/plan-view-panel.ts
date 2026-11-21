@@ -592,6 +592,33 @@ let __synthSnapCache: { at: number; els: any[] } | null = null;
 /** Tab cycles through overlapping snap points under the cursor (reset when the cursor moves away). */
 let planSnapCycle = 0;
 let planSnapCycleAt: { x: number; z: number } | null = null;
+
+/**
+ * G3 — Tab-cycle through overlapping elements at hover in select mode.
+ * The stack is built from `authoredElementsAt` (same acceptance threshold
+ * as `nearestAuthoredAt`, so Tab cycles exactly what a click could pick).
+ * `planTabCycleId` is the amber pre-highlight drawn by renderPlan; it is
+ * not a selection until the user clicks, which then selects the cycled
+ * element instead of the topmost hit.
+ */
+const planTabCycle = createSelectionCycle();
+let planTabCyclePoint: { x: number; z: number } | null = null;
+let planTabCycleId: string | null = null;
+
+function resetPlanTabCycle(): boolean {
+  if (planTabCycle.count === 0 && !planTabCycleId) return false;
+  planTabCycle.reset();
+  planTabCyclePoint = null;
+  planTabCycleId = null;
+  return true;
+}
+
+/** The authored element the cycle currently pre-highlights, if Tab moved it off the top hit. */
+function planTabCycleCurrentElement(): any | null {
+  const cur = planTabCycle.cycled ? planTabCycle.current() : null;
+  if (!cur?.authoredId) return null;
+  return (authoredCache as any[]).find((x) => String(x.id) === cur.authoredId) ?? null;
+}
 function resetSnapCycleIfMoved(p: { x: number; z: number }): void {
   const tol = worldPerPixel() * 6;
   if (!planSnapCycleAt || Math.hypot(planSnapCycleAt.x - p.x, planSnapCycleAt.z - p.z) > tol) {
@@ -1742,6 +1769,7 @@ import { isReviewMode } from "../modules/review/review-state";
 import { promptLine, openFormModal, showTableDialog } from "./form-modal";
 import { shortcuts } from "./shortcuts";
 import { registerEscapeScope } from "../core/escape-all";
+import { createSelectionCycle, authoredElementsAt, planHitsToCandidates, formatCycleStatus } from "../modules/selection/selection-cycle";
 import { createPlanCommandLine, planHelpRows, type PlanCommandLine } from "./plan-command-line";
 import { resolveCommand, parsePointEntry } from "../modules/plan/plan-commands";
 
@@ -2448,7 +2476,7 @@ function renderPlan(plan: PlanView) {
   }
 
   // -- Selected element feedback: BIM authoring convention-style blue outline of the whole element --
-  if (planDisplayModel && planSelectedIds.size) {
+  if (planDisplayModel && (planSelectedIds.size || planTabCycleId)) {
     const SVGNS = "http://www.w3.org/2000/svg";
     const hs = Math.max(zoomedW / 1200, 1e-6);
     const hl = (ids: Set<string>, color: string, w: number, op: number) => {
@@ -2480,6 +2508,11 @@ function renderPlan(plan: PlanView) {
       }
     };
     hl(planSelectedIds, "#2563eb", 3.2, 0.9);
+    // G3: Tab-cycled pre-highlight — amber, distinct from the blue selection.
+    // A cycled element that is already selected shows blue only.
+    if (planTabCycleId && !planSelectedIds.has(planTabCycleId)) {
+      hl(new Set([planTabCycleId]), "#f59e0b", 3.2, 0.95);
+    }
   }
 
   // -- Selected element feedback (BIM-style blue selection) --
@@ -2494,6 +2527,22 @@ function renderPlan(plan: PlanView) {
     for (const [x,z] of points) {
       const sp=screen(x,z); const r=0.12*dimScale;
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle"); c.setAttribute("cx",String(sp.x));c.setAttribute("cy",String(sp.y));c.setAttribute("r",String(r));c.setAttribute("fill","none");c.setAttribute("stroke","#2563eb");c.setAttribute("stroke-width",String(Math.max(0.02,0.05*dimScale))); g.appendChild(c);
+    }
+  }
+
+  // G3: amber marker for a Tab-cycled point element (columns etc. have no
+  // cut segments for the outline above to draw over).
+  if (planTabCycleId && !planSelectedIds.has(planTabCycleId)) {
+    const cycledEl = (authoredCache as any[]).find((x) => x.id === planTabCycleId);
+    const cp = cycledEl?.params;
+    if (cp?.point) {
+      const sp = screen(cp.point[0], cp.point[1]);
+      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      c.setAttribute("cx", String(sp.x)); c.setAttribute("cy", String(sp.y));
+      c.setAttribute("r", String(0.18 * dimScale)); c.setAttribute("fill", "none");
+      c.setAttribute("stroke", "#f59e0b"); c.setAttribute("stroke-width", String(Math.max(0.03, 0.08 * dimScale)));
+      c.setAttribute("pointer-events", "none"); c.setAttribute("data-obs-cycle-hl", "1");
+      g.appendChild(c);
     }
   }
 
@@ -3696,7 +3745,9 @@ async function commitPlanBoxSelect(additive: boolean) {
       authoredCache = els;
       // Prefer thickness-aware nearest pick (ducts/walls easier to click)
       const near = nearestAuthoredAt(hit);
-      let best = near.element;
+      // G3: a Tab-cycled candidate owns the click, not the topmost hit.
+      const cycledEl = planTabCycleCurrentElement();
+      let best = cycledEl ?? near.element;
       if (!best) {
         // Fallback wider search for thin lines
         let bestD = 1.2;
@@ -3731,6 +3782,8 @@ async function commitPlanBoxSelect(additive: boolean) {
     } catch (err) {
       console.warn("[plan] click select", err);
     }
+    // G3: the click consumed the Tab cycle — a later click re-picks the top hit.
+    resetPlanTabCycle();
     clearPlanBox();
     if (currentPlan) renderPlan(currentPlan);
     return;
@@ -3757,6 +3810,8 @@ async function commitPlanBoxSelect(additive: boolean) {
   } catch (err) {
     console.warn("[plan] box select", err);
   }
+  // G3: a box drag is not a Tab-cycle click — the cycle does not survive it.
+  resetPlanTabCycle();
   clearPlanBox();
   if (currentPlan) renderPlan(currentPlan);
 }
@@ -4457,8 +4512,24 @@ window.addEventListener("mousemove", (e) => {
     return;
   }
 
-  // 4. Fast path: only update the cursor overlay (snap markers + rubber band)
-  if (planMode !== "pan" && planMode !== "select" && planMode !== "navigate" && planMode !== "move") {
+  // 3b. Select mode: track the cursor so Tab can cycle the overlapping
+  // elements under it (G3). Moving away from the cycle anchor resets it;
+  // a small tolerance keeps hand jitter from cancelling a cycle mid-press.
+  if (planMode === "select") {
+    const w = clientToWorld(e.clientX, e.clientY);
+    if (w) {
+      if (planTabCycle.count > 0 && planTabCyclePoint &&
+          Math.hypot(w.x - planTabCyclePoint.x, w.z - planTabCyclePoint.z) > worldPerPixel() * 6) {
+        if (resetPlanTabCycle() && currentPlan) renderPlan(currentPlan);
+      }
+      planCursor = w;
+    }
+    return;
+  }
+
+  // 4. Fast path: only update the cursor overlay (snap markers + rubber band).
+  // (Select mode returned above, so "select" needs no check here.)
+  if (planMode !== "pan" && planMode !== "navigate" && planMode !== "move") {
     const w = clientToWorld(e.clientX, e.clientY);
     if (w) {
       if (planMode === "dim") {
@@ -4566,6 +4637,10 @@ function fitPlanView(): void {
   footerStatus("Fit view");
 }
 canvasWrap.addEventListener("dblclick", fitPlanView);
+// G3: leaving the plan canvas drops the Tab cycle (mouse moved away).
+canvasWrap.addEventListener("mouseleave", () => {
+  if (resetPlanTabCycle() && currentPlan) renderPlan(currentPlan);
+});
 
 /* -------------------------------------------------------------------------
    Generation
@@ -4775,7 +4850,7 @@ export function togglePlanView() {
     planDrawStart = null;
     planChain = [];
     canvasWrap.style.cursor = "default";
-    toolHint.textContent = "Modify | Select · click object · drag box · Delete · Ctrl+Z";
+    toolHint.textContent = "Modify | Select · click object · drag box · Tab cycles overlapping · Delete · Ctrl+Z";
     // Sync from 3D model into 2D
     void regenerate();
     renderPlanProperties();
@@ -5071,11 +5146,13 @@ export function cancelAllPlan(): boolean {
   planAutoPick = null;
   planCursor = null;
   planSnap = null;
+  // G3: Esc resets the Tab cycle (its pre-highlight is transient state).
+  resetPlanTabCycle();
   void import("./authoring").then((m) => m.clearLastPlanLinear?.()).catch(() => {});
 
   planMode = "select";
   canvasWrap.style.cursor = "default";
-  toolHint.textContent = "Modify | Select \u00b7 click \u00b7 box \u00b7 Delete \u00b7 Ctrl+Z";
+  toolHint.textContent = "Modify | Select \u00b7 click \u00b7 box \u00b7 Tab cycles overlapping \u00b7 Delete \u00b7 Ctrl+Z";
   // Esc also disarms the Views-panel annotation tools (Section Line): the plan
   // canvas forwards picks to that state machine, so it must be released here
   // or the tool stays armed after the user cancels.
@@ -5265,6 +5342,40 @@ try {
         updateSnapOverlay();
         footerStatus(`Snap: ${h.label ?? "boundary"}${h.alt ? ` (${h.alt.index}/${h.alt.count}) - Tab for next` : ""}`);
       }
+      return;
+    }
+    // G3: Tab cycles the pre-highlight through the overlapping elements
+    // under the cursor in select mode (Shift+Tab steps backwards). Only
+    // the pre-highlight moves — a click selects the cycled element, Esc
+    // or moving the mouse away resets the cycle. The dim-mode snap cycle
+    // above is untouched: this branch runs only in select mode.
+    if (e.key === "Tab" && planMode === "select" && planCursor) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      const cursor = planCursor;
+      if (!planTabCyclePoint ||
+          Math.hypot(planTabCyclePoint.x - cursor.x, planTabCyclePoint.z - cursor.z) > worldPerPixel() * 6) {
+        planTabCyclePoint = { x: cursor.x, z: cursor.z };
+        try {
+          const auth: any = (ctx.features as any).authoring;
+          if (auth?.getElements) authoredCache = auth.getElements();
+        } catch { /* cached list is good enough */ }
+        const hits = authoredElementsAt(authoredCache as any[], cursor, {
+          allowed: (el) => selection.matchesAuthoredCategoryFilter(el?.type ?? "", (el as any)?.properties),
+        });
+        if (!hits.length) {
+          footerStatus("Nothing to cycle — no element under the cursor");
+          return;
+        }
+        planTabCycle.setStack(planHitsToCandidates(hits));
+      }
+      const current = planTabCycle.advance(e.shiftKey ? -1 : 1);
+      if (!current) {
+        footerStatus("Only one element here — nothing to cycle");
+        return;
+      }
+      planTabCycleId = current.authoredId ?? null;
+      if (currentPlan) renderPlan(currentPlan);
+      footerStatus(formatCycleStatus(current, planTabCycle.currentIndex, planTabCycle.count));
       return;
     }
     // Chain dimension: Enter places at the default offset, Esc discards the picked boundaries.

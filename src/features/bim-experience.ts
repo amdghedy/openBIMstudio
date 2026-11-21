@@ -25,7 +25,15 @@
 import { setupVisibilityBridge, hideSelection as bridgeHide, isolateSelection as bridgeIsolate, resetTemporaryVisibility as bridgeReset } from "../modules/bim-gaps/visibility-bridge";
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { selection } from "./selection";
+import { registerEscapeScope } from "../core/escape-all";
+import { selection, pickFragmentAtPointer } from "./selection";
+import {
+  hoverPreselectCycle,
+  sortHitStack,
+  formatCycleStatus,
+  emitTabCycleStatus,
+  type CycleCandidate,
+} from "../modules/selection/selection-cycle";
 import {
   getActiveTool,
   getLastCommand,
@@ -42,6 +50,7 @@ import {
   setSelectedAuthored,
   selectAllAuthored,
   cycleMepSelection,
+  pickAuthoredHitsAt,
   getTypeDefaults,
   setTypeDefault,
   rebuildAuthored,
@@ -147,7 +156,81 @@ let promptBar: HTMLDivElement | null = null;
 let hoverCard: HTMLDivElement | null = null;
 let installed = false;
 let hoveredAuthorId: string | null = null;
+/**
+ * Revit 2D audit gap G3 — hover hit-stack for Tab-cycle. `preselectionTooltip`
+ * raycasts every authored element under the cursor (not just the nearest),
+ * so Tab can cycle the pre-highlight through exactly the overlapping
+ * elements instead of the old global creation-order walk. The stack is
+ * authored-only on hover; the one top fragment hit is merged in at Tab
+ * time (the ThatOpen GPU picker returns a single top hit — overlapping
+ * fragments behind it cannot be cycled, see selection-cycle.ts).
+ */
+let hoverStack: CycleCandidate[] = [];
+let lastHoverPos: { x: number; y: number } | null = null;
 let lastSelectionCount = 0;
+
+/** Reset the 3D Tab cycle (Esc via the escape-all scope, mouse leaves, click consumes it). */
+export function resetPreselectCycle(): boolean {
+  if (hoverPreselectCycle.count === 0) return false;
+  hoverPreselectCycle.reset();
+  emitTabCycleStatus(null);
+  return true;
+}
+
+/** Render one cycle candidate in the hover card near the cursor. */
+function showPreselectCandidate(candidate: CycleCandidate): void {
+  if (!hoverCard) return;
+  const index = hoverPreselectCycle.currentIndex;
+  const count = hoverPreselectCycle.count;
+  const pos = `(${index + 1}/${count})`;
+  if (candidate.kind === "authored") {
+    const el = getElements().find((x) => x.id === candidate.authoredId);
+    hoveredAuthorId = candidate.authoredId ?? null;
+    hoverCard.innerHTML =
+      `<b>${escapeHtml(el?.name ?? candidate.label)}</b>` +
+      `<span>${escapeHtml(el?.type ?? "element")} · ${pos} — Tab for next</span>` +
+      `<em>Tab: cycle · Click: select</em>`;
+  } else {
+    hoveredAuthorId = null;
+    hoverCard.innerHTML =
+      `<b>${escapeHtml(candidate.label)}</b>` +
+      `<span>Linked model · ${pos} — Tab for next</span>` +
+      `<em>Tab: cycle · Click: select</em>`;
+  }
+  hoverCard.dataset.visible = "1";
+}
+
+/**
+ * Advance the 3D pre-highlight through the overlapping elements under the
+ * cursor. Rebuilds the stack from the latest hover plus the top fragment
+ * hit, so Tab always cycles what is actually under the cursor right now.
+ * A lone candidate cannot be cycled, so the call is a no-op then.
+ */
+async function cyclePreselect(dir: 1 | -1): Promise<void> {
+  const candidates: CycleCandidate[] = [...hoverStack];
+  try {
+    const frag = await pickFragmentAtPointer();
+    if (frag) {
+      candidates.push({
+        key: `frag:${frag.modelId}:${frag.localId}`,
+        label: `IFC element ${frag.localId}`,
+        kind: "fragment",
+        modelId: frag.modelId,
+        localId: frag.localId,
+        distance: frag.distance ?? Number.POSITIVE_INFINITY,
+      });
+    }
+  } catch { /* fragment pick is optional — the authored stack still cycles */ }
+  if (candidates.length < 2) return;
+  const topKey = sortHitStack(candidates)[0]?.key ?? null;
+  if (hoverPreselectCycle.count === 0 || hoverPreselectCycle.anchorChanged(topKey)) {
+    hoverPreselectCycle.setStack(candidates);
+  }
+  const current = hoverPreselectCycle.advance(dir);
+  if (!current) return;
+  showPreselectCandidate(current);
+  emitTabCycleStatus(formatCycleStatus(current, hoverPreselectCycle.currentIndex, hoverPreselectCycle.count));
+}
 
 function emit() {
   for (const cb of listeners) {
@@ -991,35 +1074,51 @@ async function preselectionTooltip(e: PointerEvent) {
     return;
   }
 
-  // Authored geometry is cheap to test with screen-space boxes.
-  const rect = ctx.rightHost.getBoundingClientRect();
-  const pointer = new THREE.Vector2(
-    ((e.clientX - rect.left) / rect.width) * 2 - 1,
-    -((e.clientY - rect.top) / rect.height) * 2 + 1,
-  );
-  const cam = ctx.world?.camera?.three;
-  if (!cam) return;
-  const ray = new THREE.Raycaster();
-  ray.setFromCamera(pointer, cam);
-  let best: { id: string; dist: number; name: string; type: string } | null = null;
-  for (const obj of getElements()) {
-    const node = ctx.world.scene.three.getObjectByName(obj.id);
-    if (!node) continue;
-    const hits = ray.intersectObject(node, true);
-    if (!hits.length) continue;
-    const d = hits[0].distance;
-    if (!best || d < best.dist) best = { id: obj.id, dist: d, name: obj.name, type: obj.type };
+  // G3: moving the mouse away from the cycle anchor resets the Tab cycle
+  // (a small tolerance so hand jitter does not cancel a cycle mid-press).
+  if (hoverPreselectCycle.count > 0) {
+    if (lastHoverPos && Math.hypot(e.clientX - lastHoverPos.x, e.clientY - lastHoverPos.y) > 6) {
+      resetPreselectCycle();
+    } else {
+      // Cycle still live and the cursor has not moved away: keep showing
+      // the cycled candidate, not the top hover hit.
+      lastHoverPos = { x: e.clientX, y: e.clientY };
+      return;
+    }
   }
+  lastHoverPos = { x: e.clientX, y: e.clientY };
+
+  // G3: every authored element under the cursor, nearest first — the hover
+  // hit-stack Tab cycles through. One raycast over the authoring group
+  // (pickAuthoredHitsAt): the meshes carry their id in userData.elementId
+  // and are never named by id, so the old per-element getObjectByName loop
+  // found nothing and the hover card never appeared.
+  const hits = pickAuthoredHitsAt(e);
+  const elements = getElements();
+  hoverStack = sortHitStack(hits.map((h) => {
+    const obj = elements.find((x) => x.id === h.id);
+    return {
+      key: h.id,
+      label: `${obj?.type ?? "element"} · ${obj?.name ?? h.id}`,
+      kind: "authored" as const,
+      authoredId: h.id,
+      distance: h.distance,
+    };
+  }));
+  const best = hoverStack[0] ?? null;
   if (!best) {
     hoverCard.dataset.visible = "0";
     hoveredAuthorId = null;
     return;
   }
-  hoveredAuthorId = best.id;
+  hoveredAuthorId = best.authoredId ?? null;
   hoverCard.dataset.visible = "1";
+  const rect = ctx.rightHost.getBoundingClientRect();
   hoverCard.style.left = `${Math.max(12, e.clientX - rect.left + 14)}px`;
   hoverCard.style.top = `${Math.max(12, e.clientY - rect.top + 14)}px`;
-  hoverCard.innerHTML = `<b>${escapeHtml(best.name)}</b><span>${escapeHtml(best.type)}</span><em>Tab: cycle · Click: select</em>`;
+  const el = getElements().find((x) => x.id === best.authoredId);
+  const countNote = hoverStack.length > 1 ? ` · (${1}/${hoverStack.length} — Tab cycles ${hoverStack.length})` : "";
+  hoverCard.innerHTML = `<b>${escapeHtml(el?.name ?? best.label)}</b><span>${escapeHtml(el?.type ?? "element")}${countNote}</span><em>Tab: cycle · Click: select</em>`;
 }
 
 function escapeHtml(value: string): string {
@@ -1045,19 +1144,19 @@ function keydown(e: KeyboardEvent) {
     }
   }
 
-  if (e.key === "Tab" && !e.shiftKey) {
-    if (!isPlanViewVisible() && getActiveTool() === "select" && hoveredAuthorId) {
-      const authored = getElements();
-      const idx = authored.findIndex((x) => x.id === hoveredAuthorId);
-      if (idx >= 0 && authored.length > 1) {
-        const next = authored[(idx + 1) % authored.length];
-        if (next) {
-          // Use authored selection when possible; fragment selection is handled by the native highlighter.
-          window.dispatchEvent(new CustomEvent("obs:select-authored", { detail: { id: next.id } }));
-          toast(`Preselection cycle: ${next.name}`, "info", 900);
-          e.preventDefault();
-        }
-      }
+  // G3: Tab cycles the pre-highlight through the overlapping elements under
+  // the cursor (hover hit-stack), in stack order with wrap-around; Shift+Tab
+  // steps backwards. Tab only pre-highlights — a click selects the cycled
+  // candidate (authoring pickSelect / selection pointerup consult the
+  // shared cycle). preventDefault is decided synchronously from the hover
+  // stack: the fragment pick inside the cycle is async, and a late
+  // preventDefault cannot stop the browser moving focus. MEP branch/network
+  // cycling above still owns Tab while a single MEP part is selected.
+  if (e.key === "Tab") {
+    if (!isPlanViewVisible() && getActiveTool() === "select" &&
+        (hoverStack.length > 0 || hoverPreselectCycle.count > 0)) {
+      e.preventDefault();
+      void cyclePreselect(e.shiftKey ? -1 : 1);
     }
     return;
   }
@@ -1139,9 +1238,20 @@ export function setupBimExperience() {
   onAuthoringChange(refresh);
   window.addEventListener("keydown", keydown, true);
   window.addEventListener("keyup", keyup, true);
+  // G3: Esc resets the Tab cycle (escape-all runs every scope on one Esc
+  // press, so this composes with tool-cancel / selection-clear instead of
+  // fighting them; the scope reports false when no cycle is active).
+  registerEscapeScope({
+    id: "tab-cycle",
+    priority: 800,
+    cancel: () => isPlanViewVisible() ? false : resetPreselectCycle(),
+  });
   if (ctx.rightHost) {
     ctx.rightHost.addEventListener("pointermove", preselectionTooltip, true);
-    ctx.rightHost.addEventListener("mouseleave", () => { if (hoverCard) hoverCard.dataset.visible = "0"; });
+    ctx.rightHost.addEventListener("mouseleave", () => {
+      if (hoverCard) hoverCard.dataset.visible = "0";
+      resetPreselectCycle();
+    });
   }
   window.addEventListener("obs:select-authored", (e: Event) => {
     const id = (e as CustomEvent).detail?.id as string | undefined;

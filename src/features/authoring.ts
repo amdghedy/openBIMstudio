@@ -14,6 +14,7 @@
  *   - Property palette state is published via onAuthoringChange.
  */
 import { onNavDrag } from "./navigation";
+import { hoverPreselectCycle, emitTabCycleStatus } from "../modules/selection/selection-cycle";
 import { resolveVertical, inferBase, levelChangeUpdates } from "../modules/native-bim/level-constraints";
 import { endpointForLength, rotateTransformAboutPivot, normalizeDeg, twinElevationShift } from "../modules/native-twin/twin-dimensions";
 import { escapeHtml } from "../core/html-escape";
@@ -6709,13 +6710,29 @@ export function pickAuthoredElementAt(e: MouseEvent): string | null {
 
 /** Nearest authored element under the pointer with its ray distance (for depth arbitration vs linked models). */
 export function pickAuthoredHitAt(e: MouseEvent): { id: string; distance: number; isNativeTwin: boolean } | null {
+  const hits = pickAuthoredHitsAt(e);
+  return hits.length ? hits[0] : null;
+}
+
+/**
+ * G3 — every authored element under the pointer, nearest first (one raycast
+ * over the authoring group, deduped by element id). This is the 3D hover
+ * hit-stack Tab cycles through. It must raycast the group directly: the
+ * meshes carry their element id in `userData.elementId` and are never named
+ * by id, so `scene.getObjectByName(id)` — what the old preselection tooltip
+ * used — finds nothing and the hover card never appears. Same pinned /
+ * category filtering as `elementAt`, applied per hit.
+ */
+export function pickAuthoredHitsAt(e: MouseEvent): Array<{ id: string; distance: number; isNativeTwin: boolean }> {
+  const out: Array<{ id: string; distance: number; isNativeTwin: boolean }> = [];
   try {
-    if (!ctx.world?.camera?.three || !group.children.length) return null;
+    if (!ctx.world?.camera?.three || !group.children.length) return out;
     const allowPinned = getSelectionPrefs().pinned;
     const ray = new THREE.Raycaster();
     ray.params.Line = { threshold: 0.15 };
     ray.params.Points = { threshold: 0.2 };
     ray.setFromCamera(ndcOf(e), ctx.world.camera.three);
+    const seen = new Set<string>();
     for (const h of ray.intersectObjects(group.children, true)) {
       if (!visibleChain(h.object)) continue;
       let o: THREE.Object3D | null = h.object;
@@ -6731,13 +6748,17 @@ export function pickAuthoredHitAt(e: MouseEvent): { id: string; distance: number
             o = o.parent;
             continue;
           }
-          return { id: String(id), distance: h.distance, isNativeTwin: !!(el?.properties as any)?.nativeTwin };
+          if (!seen.has(String(id))) {
+            seen.add(String(id));
+            out.push({ id: String(id), distance: h.distance, isNativeTwin: !!(el?.properties as any)?.nativeTwin });
+          }
+          break;
         }
         o = o.parent;
       }
     }
   } catch { /* */ }
-  return null;
+  return out;
 }
 
 export function setSelectedAuthored(
@@ -7566,7 +7587,16 @@ export function setupAuthoring() {
       return true;
     }
 
-    const hitId = elementAt(e);
+    // G3: a Tab-cycled pre-highlight owns the click. When the cycle points
+    // at an authored element, that element is picked even if another element
+    // is nearer; when it points at a linked fragment, this handler must not
+    // steal the click — the fragment pointerup (selection.ts) selects it, so
+    // report "handled" without touching the authored selection.
+    const cycled = hoverPreselectCycle.cycled ? hoverPreselectCycle.current() : null;
+    if (cycled?.kind === "fragment") return true;
+    const hitId = cycled?.kind === "authored" && cycled.authoredId
+      ? cycled.authoredId
+      : elementAt(e);
     // Only consume the click as selection when in select mode, or no tool,
     // or user holds Ctrl/Shift/Alt while a draw tool is active (force-select).
     const forceSelect = e.ctrlKey || e.metaKey || e.shiftKey || e.altKey;
@@ -7634,6 +7664,11 @@ export function setupAuthoring() {
         paletteTarget = null;
       }
       notifyAuthoringChange();
+    }
+    // G3: the click consumed the Tab cycle — a later click re-picks the top hit.
+    if (cycled?.kind === "authored") {
+      hoverPreselectCycle.reset();
+      emitTabCycleStatus(null);
     }
     return true;
   }
@@ -7974,7 +8009,7 @@ export function setupAuthoring() {
     getElementCount, getElements, getSelectedIds,
     getElementById,
     setElementVisibility,
-    pickAuthoredElementAt, pickAuthoredHitAt,
+    pickAuthoredElementAt, pickAuthoredHitAt, pickAuthoredHitsAt,
     deleteSelectedElement, clearAllElements, clearDatums,
     getSelectedDatum, selectDatum, deleteDatum,
     rebuildAuthored, transformElements,

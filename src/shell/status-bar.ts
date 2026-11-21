@@ -13,6 +13,18 @@ import { getActiveTool, getElementCount, getLevel } from "../features/authoring"
 const bar = document.createElement("div");
 bar.className = "bb-status";
 
+// ── Tab-cycle readout (Revit 2D audit gap G3) ─────────────────────────────
+// The 3D hover cycle (bim-experience.ts) and the plan footer report the
+// pre-highlighted candidate through this transient message; it is cleared
+// by Esc, by a click that consumes the cycle, or when the cursor moves
+// away. It is delivered as a window event (not an import) so the status
+// bar stays free of cycles with the feature modules that drive it.
+let cycleStatus: string | null = null;
+window.addEventListener("obs:tab-cycle-status", (e) => {
+  cycleStatus = (e as CustomEvent).detail?.message ?? null;
+  update();
+});
+
 const left = document.createElement("div");
 left.className = "bb-status__seg";
 
@@ -116,7 +128,11 @@ function update() {
       `${kbd("RMB")}<span>Menu</span>` +
       `${kbd("LMB drag")}<span>Window / Crossing</span>`;
 
-  left.innerHTML = elevHtml + toolHtml;
+  left.innerHTML =
+    (cycleStatus
+      ? `<span style="background:#f59e0b;color:#160909;padding:2px 6px;border-radius:4px;margin-right:8px;font-weight:700;display:inline-block">${esc(cycleStatus)}</span>`
+      : "") +
+    elevHtml + toolHtml;
 
   const models = ctx.fragments.list.size;
   const objects = getElementCount();

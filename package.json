@@ -307,6 +307,7 @@
     "test:cad-styles": "node tests/cad-styles.test.cjs",
     "test:cad-ribbon-collapse": "node tests/cad-ribbon-collapse.test.cjs",
     "test:plan-commands": "node tests/plan-commands.test.cjs",
+    "test:revit-g3-tab-cycle": "node tests/revit-g3-tab-cycle.test.cjs",
     "test:cad-dwg-roundtrip": "node tests/cad-dwg-roundtrip.test.cjs",
     "test:cad-layout-save": "node tests/cad-layout-save.test.cjs",
     "test:cad-hatch-save": "node tests/cad-hatch-save.test.cjs",
