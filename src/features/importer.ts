@@ -86,6 +86,14 @@ type ImportStatus =
 
 import { buildInteropReport, formatInteropReport, type IfcInteropReport } from "../modules/ifc-semantics/interop-report";
 import { buildImportFidelityReport } from "../modules/ifc-semantics/per-entity-report";
+import {
+  computeImportTimeoutMs,
+  IFC_IMPORT_STALL_MS_DEFAULT,
+  IFC_IMPORT_TOTAL_MS_MIN,
+  IFC_IMPORT_STALL_MS_MIN,
+  IfcImportTimeoutError,
+  ImportTimeout,
+} from "../modules/ifc-semantics/import-timeout";
 
 /**
  * Attach the per-entity fidelity report (#106) to an inventory report.
@@ -137,6 +145,18 @@ export type IfcSettings = {
   browserSafeMaxMB: number;
   /** User opts in to attempt conversion of files above browserSafeMaxMB. */
   allowUnsafeLargeIfc: boolean;
+  /**
+   * Browser conversion stall bound in ms: no progress callback for this long
+   * means the conversion is stuck. 0 disables the stall bound. Values below
+   * 10 s are clamped up (see import-timeout.ts). Default 120 s.
+   */
+  importStallTimeoutMs: number;
+  /**
+   * Browser conversion total bound in ms. 0 (default) means auto-scaled from
+   * the file size: 5 min floor, 30 s per MB, 30 min ceiling. An explicit
+   * value overrides the auto-scaling (clamped to a 1 s minimum).
+   */
+  importTotalTimeoutMs: number;
   useCoord: boolean;
   coordX: number; coordY: number; coordZ: number;
   positioning: PositioningMode;
@@ -148,6 +168,7 @@ const defaultIfcSettings: IfcSettings = {
   cdn: "local", customPath: "",
   autoFit: true, keepFragInMemory: true, replaceExisting: false,
   recenter: false, maxSizeMB: 1500, browserSafeMaxMB: 350, allowUnsafeLargeIfc: false,
+  importStallTimeoutMs: IFC_IMPORT_STALL_MS_DEFAULT, importTotalTimeoutMs: 0,
   useCoord: false, coordX: 0, coordY: 0, coordZ: 0,
   positioning: "origin-to-origin",
 };
@@ -163,6 +184,19 @@ try {
       ifcSettings.browserSafeMaxMB = 350;
     }
     if (typeof ifcSettings.allowUnsafeLargeIfc !== "boolean") ifcSettings.allowUnsafeLargeIfc = false;
+    // Import timeout bounds: fall back to defaults on garbage, clamp absurd
+    // values (a 1 s stall bound would fail every real import on a slow
+    // machine; see computeImportTimeoutMs for the full rule).
+    if (!Number.isFinite(ifcSettings.importStallTimeoutMs) || ifcSettings.importStallTimeoutMs < 0) {
+      ifcSettings.importStallTimeoutMs = IFC_IMPORT_STALL_MS_DEFAULT;
+    } else if (ifcSettings.importStallTimeoutMs > 0 && ifcSettings.importStallTimeoutMs < IFC_IMPORT_STALL_MS_MIN) {
+      ifcSettings.importStallTimeoutMs = IFC_IMPORT_STALL_MS_MIN;
+    }
+    if (!Number.isFinite(ifcSettings.importTotalTimeoutMs) || ifcSettings.importTotalTimeoutMs < 0) {
+      ifcSettings.importTotalTimeoutMs = 0;
+    } else if (ifcSettings.importTotalTimeoutMs > 0 && ifcSettings.importTotalTimeoutMs < IFC_IMPORT_TOTAL_MS_MIN) {
+      ifcSettings.importTotalTimeoutMs = IFC_IMPORT_TOTAL_MS_MIN;
+    }
     if (!Number.isFinite(ifcSettings.maxSizeMB) || ifcSettings.maxSizeMB < 500) {
       ifcSettings.maxSizeMB = Math.max(ifcSettings.maxSizeMB || 0, 1500);
     }
@@ -202,6 +236,8 @@ function snapshotBytes(src: any): Uint8Array {
 let ifcImporter: any = null;
 let cancelRequested = false;
 let cancelAllRequested = false;
+/** True when the active conversion was ended by the import timeout (not by the user). */
+let importTimedOut = false;
 let rejectActive: ((reason?: any) => void) | null = null;
 
 function getImporter(): any {
@@ -365,6 +401,22 @@ function disposeImporter() {
 function cancelActiveConversion() {
   cancelRequested = true;
   try { rejectActive?.(new Error("Cancelled by user")); } catch { /* */ }
+  disposeImporter();
+}
+
+/**
+ * End the active conversion because it exceeded its import timeout.
+ * Mirrors cancelActiveConversion but does NOT set cancelRequested: the
+ * importer's catch must classify a timeout as a failure, never as a user
+ * cancellation. Disposing the importer means the next import starts from a
+ * fresh instance instead of inheriting the timed-out conversion's state.
+ * Honest limit: this only unblocks the page for conversions that yield to
+ * the event loop. A synchronous hang inside one WASM call cannot be
+ * interrupted from the page (see import-timeout.ts).
+ */
+function timeoutActiveConversion(error: IfcImportTimeoutError) {
+  importTimedOut = true;
+  try { rejectActive?.(error); } catch { /* */ }
   disposeImporter();
 }
 
@@ -1133,9 +1185,11 @@ interface ImportPhaseRecord {
   totalMs: number;
   elements: number;
   schema: string | null;
+  /** Set when the conversion ended by the import timeout instead of completing. */
+  timedOut?: boolean;
 }
 const importPhaseLog: ImportPhaseRecord[] = [];
-function recordImportPhase(t: ImportTask, convertMs: number, fragLoadMs: number, elements: number): void {
+function recordImportPhase(t: ImportTask, convertMs: number, fragLoadMs: number, elements: number, opts?: { timedOut?: boolean }): void {
   try {
     importPhaseLog.push({
       file: t.file.name,
@@ -1145,6 +1199,7 @@ function recordImportPhase(t: ImportTask, convertMs: number, fragLoadMs: number,
       totalMs: Math.round(t.elapsedMs ?? 0),
       elements,
       schema: t.schema ?? null,
+      ...(opts?.timedOut ? { timedOut: true } : {}),
     });
     if (importPhaseLog.length > 50) importPhaseLog.shift();
   } catch { /* diagnostics must never break the import */ }
@@ -1153,11 +1208,15 @@ function recordImportPhase(t: ImportTask, convertMs: number, fragLoadMs: number,
 async function runTask(t: ImportTask) {
   const t0 = performance.now();
   cancelRequested = false;
+  importTimedOut = false;
   const loader = (ctx.features as any).appLoader;
   // Phase instrumentation for the reproducible benchmark harness
   // (bench/bench-browser.mjs) — read-only record, no behavior change.
   let convertMs = 0;
   let fragLoadMs = 0;
+  // Declared here so the catch can disarm it: a watchdog left armed after a
+  // user cancel would fire during a LATER import and kill that conversion.
+  let importTimeout: ImportTimeout | null = null;
 
   try {
     // Critical: FRAG cache hit skips convert (and unblocks large files already converted once)
@@ -1231,9 +1290,30 @@ async function runTask(t: ImportTask) {
 
       const cancelPromise = new Promise<never>((_, rej) => { rejectActive = rej; });
 
+      // Browser parse timeout (#231 follow-up): the conversion used to race
+      // only against user cancel, so a stalled conversion wedged the queue
+      // on "converting…" forever. The watchdog re-arms on every progress
+      // callback and rejects through the same rejectActive the Cancel button
+      // uses — but as a failure, never as a cancellation (see
+      // timeoutActiveConversion). Honest limit: a synchronous hang inside
+      // one WASM call cannot be interrupted from the page; that class is
+      // stopped before WASM by the structural pre-flight.
+      importTimeout = new ImportTimeout(
+        t.file.name,
+        computeImportTimeoutMs(t.sizeMB, {
+          stallMs: ifcSettings.importStallTimeoutMs,
+          totalMs: ifcSettings.importTotalTimeoutMs || undefined,
+        }),
+        { onTimeout: (error) => timeoutActiveConversion(error) },
+      );
+
       const settings: any = {
         bytes,
         progressCallback: (progress: any, data?: any) => {
+          // A conversion abandoned by timeout/cancel may still call back
+          // from WASM later; its updates belong to no live task anymore.
+          if (importTimedOut || cancelRequested) return;
+          importTimeout?.poke();
           t.progress = normalizeProgress(progress);
           t.phase = describePhase(data);
           t.elapsedMs = performance.now() - t0;
@@ -1248,7 +1328,9 @@ async function runTask(t: ImportTask) {
       const convertT0 = performance.now();
       const processPromise = getImporter().process(settings);
       processPromise.catch(() => { /* handled via race */ });
+      importTimeout.start();
       const rawResult: any = await Promise.race([processPromise, cancelPromise]);
+      importTimeout.clear();
       rejectActive = null;
       convertMs = performance.now() - convertT0;
 
@@ -1327,9 +1409,18 @@ async function runTask(t: ImportTask) {
     }
   } catch (err: any) {
     rejectActive = null;
+    try { importTimeout?.clear(); } catch { /* */ }
     const msg = errorMessage(err);
     const cancelled = cancelRequested || msg.toLowerCase().includes("cancel");
     t.elapsedMs = performance.now() - t0;
+    // A timeout is observable in the bench phase log (bench/bench-browser.mjs
+    // reads lastImportPhases): the conversion is recorded with its elapsed
+    // time and timedOut set, so the bound shows up in measurements instead
+    // of vanishing. (The error message itself contains no "cancel", so the
+    // classification above already puts it in the failed branch.)
+    if (importTimedOut || err instanceof IfcImportTimeoutError) {
+      recordImportPhase(t, t.elapsedMs, 0, -1, { timedOut: true });
+    }
     if (cancelled) { t.status = "cancelled"; t.phase = "cancelled by user"; }
     else {
       console.error("[ifc-import]", err);
@@ -1597,13 +1688,28 @@ export async function convertIfcToFragBytes(
 
   onProgress(12, "converting IFC → FRAG…");
   cancelRequested = false;
+  importTimedOut = false;
   const cancelPromise = new Promise<never>((_, rej) => {
     rejectActive = rej;
   });
 
+  // Same browser parse timeout as the queue path (see runTask): the
+  // conversion races cancel AND the watchdog, so a stalled conversion fails
+  // with the bound that fired instead of hanging the caller forever.
+  const importTimeout = new ImportTimeout(
+    file.name,
+    computeImportTimeoutMs(sizeMB, {
+      stallMs: ifcSettings.importStallTimeoutMs,
+      totalMs: ifcSettings.importTotalTimeoutMs || undefined,
+    }),
+    { onTimeout: (error) => timeoutActiveConversion(error) },
+  );
+
   const settings: any = {
     bytes,
     progressCallback: (progress: any, data?: any) => {
+      if (importTimedOut || cancelRequested) return;
+      importTimeout.poke();
       const pct = normalizeProgress(progress);
       onProgress(12 + Math.round(pct * 0.85), describePhase(data));
     },
@@ -1615,7 +1721,9 @@ export async function convertIfcToFragBytes(
   try {
     const processPromise = getImporter().process(settings);
     processPromise.catch(() => { /* raced */ });
+    importTimeout.start();
     const rawResult: any = await Promise.race([processPromise, cancelPromise]);
+    importTimeout.clear();
     if (cancelRequested) throw new Error("Cancelled by user");
 
     const frag = snapshotBytes(rawResult);
@@ -1635,6 +1743,7 @@ export async function convertIfcToFragBytes(
     }
     return { frag, fileName: `${base}.frag`, schema, sizeMB };
   } finally {
+    importTimeout.clear();
     rejectActive = null;
     // Free WASM between large conversions
     try { disposeImporter(); } catch { /* */ }

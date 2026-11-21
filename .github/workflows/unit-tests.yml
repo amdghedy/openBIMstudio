@@ -177,7 +177,11 @@ jobs:
         # document-chain = the core authoring→documentation→export chain in a
         # real browser (production bundle); edit-undo-save = state round-trip.
         # orbit-rtl/native-ifc/smoke stay from the original smoke set.
+<<<<<<< HEAD
         run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts tests/e2e/edit-undo-save.spec.ts tests/e2e/document-chain.spec.ts tests/e2e/cad-ribbon.spec.ts --reporter=list
+=======
+        run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts tests/e2e/edit-undo-save.spec.ts tests/e2e/document-chain.spec.ts tests/e2e/import-timeout.spec.ts --reporter=list
+>>>>>>> 1225c6b (feat(ifc): browser import timeout with stall + total bounds)
       - name: Upload report and screenshots
         if: always()
         uses: actions/upload-artifact@v4
