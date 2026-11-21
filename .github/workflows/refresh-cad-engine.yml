@@ -1,0 +1,31 @@
+# TEMPORARY: builds the CAD engine from cad-engine-rust/ and commits the wasm to this branch (push-triggered, branch-limited).
+name: Refresh CAD engine wasm
+on:
+  push:
+    branches: [fix/stage-fresh-cad-engine]
+    paths: [.github/workflows/refresh-cad-engine.yml]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - run: cargo build --locked --release --target wasm32-unknown-unknown --manifest-path cad-engine-rust/Cargo.toml
+      - run: node scripts/copy-cad-engine-wasm.mjs
+      - name: Identity of the fresh build
+        run: |
+          node -e "
+          const fs=require('fs');(async()=>{const b=fs.readFileSync('public/cad-engine/obim-cad-engine.wasm');const {instance}=await WebAssembly.instantiate(b,{});const ex=instance.exports;const p=ex.obim_engine_version();const dv=new DataView(ex.memory.buffer);const n=dv.getUint32(p,true);console.log('IDENTITY',Buffer.from(new Uint8Array(ex.memory.buffer).slice(p+4,p+4+n)).toString(),'size',b.length)})()"
+      - name: Commit the wasm to this branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f public/cad-engine/obim-cad-engine.wasm
+          if git diff --cached --quiet; then echo "wasm unchanged"; exit 0; fi
+          git commit -m "chore(cad): rebuild CAD engine wasm from cad-engine-rust (dwgRead=failsafe bridge)"
+          git push origin HEAD:fix/stage-fresh-cad-engine

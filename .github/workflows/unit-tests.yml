@@ -40,15 +40,6 @@ jobs:
       - name: Stage freshly built native drawing engine WebAssembly
         run: node scripts/copy-cad-engine-wasm.mjs
 
-      - name: Keep the freshly built engine as a downloadable artifact
-        # Hosts that build without cargo (Vercel, Cloudflare Workers Builds) serve the CHECKED-IN wasm; this lets the
-        # checked-in copy be refreshed from a real CI build (see public/cad-engine/README.md).
-        uses: actions/upload-artifact@v4
-        with:
-          name: obim-cad-engine-wasm
-          path: public/cad-engine/obim-cad-engine.wasm
-          retention-days: 14
-
       - name: Install dependencies
         env:
           npm_config_registry: https://registry.npmjs.org/
