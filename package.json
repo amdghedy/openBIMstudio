@@ -46,6 +46,7 @@
     "test:rebar": "node tests/rebar.test.cjs",
     "test:v40": "node tests/v40-modules.test.cjs",
     "test:view-crop": "node tests/scope-box-section-box-crop.test.cjs",
+    "test:revit-g9-view-controls": "node tests/revit-g9-view-controls.test.cjs",
     "test:selection-box": "node tests/selection-box.test.cjs",
     "test:selection-generations": "node tests/selection-generations.test.cjs",
     "test:selection-semantics": "node tests/selection-semantics.test.cjs",

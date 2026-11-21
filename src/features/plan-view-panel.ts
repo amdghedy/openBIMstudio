@@ -28,6 +28,16 @@ let obsPlanSyncTimer: any;
 import { escapeHtml } from "../core/html-escape";
 import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
+import {
+  PLAN_VIEW_SCALE_OPTIONS,
+  UNDERLAY_OPACITY,
+  UNDERLAY_STROKE,
+  UNDERLAY_STROKE_WIDTH,
+  greyUnderlaySegments,
+  normalizePlanScale,
+  paperMmToWorldForScale,
+  resolveUnderlayLevel,
+} from "../modules/views/plan-view-controls";
 import { ctx } from "../core/context";
 import { selection } from "./selection";
 import {
@@ -213,8 +223,9 @@ const getDimensionStyle = () => DEFAULT_DIMENSION_STYLES.find((d) => d.id === ac
 const PLAN_SCALE_KEY = "obs.bim.plan-scale.v1";
 let planViewScale = (() => {
   try {
-    const v = Number(localStorage.getItem(PLAN_SCALE_KEY));
-    return [50, 100, 200, 500].includes(v) ? v : 100;
+    // G9: full Revit-style scale list — only a listed scale is accepted,
+    // anything else (incl. a stale pre-G9 value) falls back to 1:100.
+    return normalizePlanScale(Number(localStorage.getItem(PLAN_SCALE_KEY)), 100);
   } catch { return 100; }
 })();
 let planDetailLevel: "Coarse" | "Medium" | "Fine" = "Medium";
@@ -231,7 +242,19 @@ const PLAN_CROP_ID = "plan-view-1";
 /** Typed length while drawing a linear element (BIM authoring convention-style temporary dimension entry). */
 let planTypedLength = "";
 let planAnnotationCrop = false;
-let planUnderlay = "None";
+/**
+ * G9 — Revit Underlay. "Below" renders the level directly beneath the
+ * current one, greyed, underneath the live plan. "None" draws nothing.
+ * (The old "Link drawing" entry was removed from this select: it never did
+ * anything — the linked drawing has its own header button + visibility
+ * toggle — and leaving a dead option in the list is what G9 is closing.)
+ * The underlay plan is generated in regenerateNow() and cached here so
+ * renderPlan() (sync) can draw it; the cache key covers level + cut params.
+ */
+let planUnderlay: "None" | "Below" = "None";
+let underlayPlan: PlanView | null = null;
+let underlayPlanKey = "";
+let underlayPlanLevelName = "";
 let planViewRangeBottom = 0;
 let planViewRangeTop = 3;
 let planViewRangeDepth = 3;
@@ -291,7 +314,7 @@ function renderPlanViewProperties() {
     liveLevel.value = levelSelect.value;
     liveLevel.onchange = () => { levelSelect.value = liveLevel.value; void regenerate(); };
   }
-  row("View Scale", select([["50","1 : 50"],["100","1 : 100"],["200","1 : 200"],["500","1 : 500"]], String(planViewScale), v=>{ planViewScale=Number(v)||100; try{localStorage.setItem(PLAN_SCALE_KEY,String(planViewScale));}catch{}; scaleSelect.value=String(planViewScale); if(currentPlan) renderPlan(currentPlan); }));
+  row("View Scale", select([...PLAN_VIEW_SCALE_OPTIONS] as [string, string][], String(planViewScale), v=>{ planViewScale=normalizePlanScale(Number(v), 100); try{localStorage.setItem(PLAN_SCALE_KEY,String(planViewScale));}catch{}; scaleSelect.value=String(planViewScale); if(currentPlan) renderPlan(currentPlan); }));
   row("Detail Level", select([["Coarse","Coarse"],["Medium","Medium"],["Fine","Fine"]], planDetailLevel, v=>{ planDetailLevel=v as any; if(currentPlan) renderPlan(currentPlan); }));
 
   section("Graphics");
@@ -299,7 +322,7 @@ function renderPlanViewProperties() {
   row("Wall Poché", check(planPocheEnabled, v=>{planPocheEnabled=v; try{localStorage.setItem(PLAN_POCHE_KEY,v?"1":"0");}catch{}; if(currentPlan) renderPlan(currentPlan);}));
   row("Crop View", check(getCropRegion(PLAN_CROP_ID).enabled, v=>{planCropView=v; setCropRegion(PLAN_CROP_ID,{enabled:v}); if(v) setCropActiveView(PLAN_CROP_ID); if(currentPlan) renderPlan(currentPlan);}));
   row("Annotation Crop", check(planAnnotationCrop, v=>{planAnnotationCrop=v; if(currentPlan) renderPlan(currentPlan);}));
-  row("Underlay", select([["None","None"],["Below","Below"],["Link drawing","Drawing underlay"]], planUnderlay, v=>{ planUnderlay=v; }));
+  row("Underlay", select([["None","None"],["Below","Below"]], planUnderlay, v=>{ planUnderlay=v as "None" | "Below"; void refreshUnderlayAndRender(); }));
 
   section("View Range");
   row("Cut Plane", num(cutHeight,0.05,v=>{ if(Number.isFinite(v)){cutHeight=v; cutSlider.value=String(v); cutLabel.textContent=`Cut: ${v.toFixed(2)} m`; void regenerate(); }}));
@@ -961,7 +984,9 @@ function formatPlanDimension(meters: number, style = getDimensionStyle()): strin
 
 /** BIM-like annotation paper scale: a 2.5 mm text at 1:100 is 0.25 m in model space. */
 function paperMmToWorld(mm: number): number {
-  return (Math.max(0.1, mm) / 1000) * Math.max(1, planViewScale);
+  // G9: single source of truth lives in plan-view-controls (unit-tested);
+  // the renderer honours every listed scale through this factor.
+  return paperMmToWorldForScale(mm, planViewScale);
 }
 
 function dimensionWorldTextSize(style = getDimensionStyle()): number {
@@ -1049,11 +1074,11 @@ function compactSelect(options: Array<[string, string]>, width = 150): HTMLSelec
   return sel;
 }
 
-const scaleSelect = compactSelect([["50", "1 : 50"], ["100", "1 : 100"], ["200", "1 : 200"], ["500", "1 : 500"]], 90);
+const scaleSelect = compactSelect([...PLAN_VIEW_SCALE_OPTIONS] as [string, string][], 90);
 scaleSelect.value = String(planViewScale);
 scaleSelect.title = "View Scale";
 scaleSelect.onchange = () => {
-  planViewScale = Number(scaleSelect.value) || 100;
+  planViewScale = normalizePlanScale(Number(scaleSelect.value), 100);
   try { localStorage.setItem(PLAN_SCALE_KEY, String(planViewScale)); } catch {}
   renderPlanProperties();
   if (currentPlan) renderPlan(currentPlan);
@@ -2474,6 +2499,56 @@ function renderPlan(plan: PlanView) {
     g.setAttribute("clip-path", "url(#obs-plan-crop-clip)");
     svg.querySelector("[data-obs-cad-link]")?.setAttribute("clip-path", "url(#obs-plan-crop-clip)");
     renderCropUi(crop, zoomedW);
+  }
+
+  // -- G9 Underlay "Below": the level underneath, greyed, beneath the live view --
+  // Geometry is kept exactly (same coordinates); only the presentation is
+  // greyed, and the layer never receives pointer events. It sits before `g`,
+  // so the live plan's poché fills and segments draw over it. When Crop View
+  // is on it is clipped by the same crop region as the live view.
+  if (planDisplayModel && planUnderlay === "Below" && underlayPlan) {
+    const NSU = "http://www.w3.org/2000/svg";
+    const ug = document.createElementNS(NSU, "g");
+    ug.setAttribute("data-obs-underlay", underlayPlanLevelName);
+    ug.setAttribute("pointer-events", "none");
+    if (crop.enabled) ug.setAttribute("clip-path", "url(#obs-plan-crop-clip)");
+    const usw = UNDERLAY_STROKE_WIDTH * (zoomedW / 1200);
+    for (const s of greyUnderlaySegments(underlayPlan.segments)) {
+      const p1 = screen(s.x1, s.z1);
+      const p2 = screen(s.x2, s.z2);
+      const line = document.createElementNS(NSU, "line");
+      line.setAttribute("x1", String(p1.x));
+      line.setAttribute("y1", String(p1.y));
+      line.setAttribute("x2", String(p2.x));
+      line.setAttribute("y2", String(p2.y));
+      line.setAttribute("stroke", s.stroke);
+      line.setAttribute("stroke-width", String(usw));
+      line.setAttribute("stroke-opacity", String(s.opacity));
+      line.setAttribute("stroke-linecap", "round");
+      line.setAttribute("pointer-events", "none");
+      line.setAttribute("data-obs-underlay-seg", "1");
+      ug.appendChild(line);
+    }
+    for (const a of underlayPlan.arcs) {
+      const steps = a.kind === "door-swing" ? 24 : 72;
+      let d = "";
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const ang = a.start + (a.end - a.start) * t;
+        const p = screen(a.cx + Math.cos(ang) * a.r, a.cz + Math.sin(ang) * a.r);
+        d += `${i === 0 ? "M" : "L"}${p.x} ${p.y} `;
+      }
+      const path = document.createElementNS(NSU, "path");
+      path.setAttribute("d", d);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", UNDERLAY_STROKE);
+      path.setAttribute("stroke-width", String(usw));
+      path.setAttribute("stroke-opacity", String(UNDERLAY_OPACITY));
+      path.setAttribute("pointer-events", "none");
+      path.setAttribute("data-obs-underlay-seg", "1");
+      ug.appendChild(path);
+    }
+    svg.insertBefore(ug, g);
   }
 
   // -- Wall poché (Revit cut-fill): filled cut faces under the outline --
@@ -4934,13 +5009,69 @@ canvasWrap.addEventListener("mouseleave", () => {
 /* -------------------------------------------------------------------------
    Generation
    ------------------------------------------------------------------------- */
+let regenTimer: ReturnType<typeof setTimeout> | null = null;
+let regenWaiters: Array<() => void> = [];
+let regenPending = false;
+/**
+ * G9 — (re)generate the cached Underlay-Below plan: the level directly
+ * under the current one, with the same cut / view-range params. Cached by
+ * level + cut params so a plain re-render (scale, pan, zoom) or an edit
+ * that does not change the level never regenerates it. Clears the cache
+ * when Underlay is None or the current level is the lowest — there is
+ * nothing below to show. Never throws: a failed underlay leaves the live
+ * plan usable, with the cache cleared.
+ */
+async function refreshUnderlayPlan(): Promise<void> {
+  if (!currentPlan || planUnderlay !== "Below") {
+    underlayPlan = null; underlayPlanKey = ""; underlayPlanLevelName = "";
+    return;
+  }
+  const levels = listAvailableLevels();
+  const currentIndex = Number(levelSelect.value) || 0;
+  const below = resolveUnderlayLevel(levels, currentIndex);
+  if (!below) {
+    underlayPlan = null; underlayPlanKey = ""; underlayPlanLevelName = "";
+    return;
+  }
+  const key = [below.name, cutHeight, planViewRangeTop, planViewRangeBottom, planViewRangeDepth].join("|");
+  if (underlayPlan && underlayPlanKey === key) return;
+  try {
+    underlayPlan = await generatePlanView({
+      levelName: below.name,
+      levelElevation: below.elevation,
+      cutHeight,
+      cutDepth: Math.max(planViewRangeDepth, Math.abs(planViewRangeBottom)),
+      viewRangeTop: planViewRangeTop,
+      viewRangeBottom: planViewRangeBottom,
+      viewDepth: planViewRangeDepth,
+      includeOverhead: true,
+      includeBelow: true,
+      maxSegments: 250_000,
+    });
+    underlayPlanKey = key;
+    underlayPlanLevelName = below.name;
+  } catch (err) {
+    console.warn("[plan] underlay generation failed", err);
+    underlayPlan = null; underlayPlanKey = ""; underlayPlanLevelName = "";
+  }
+}
+
+/** G9 — refresh the underlay cache, then re-render; used by the View Properties Underlay select. */
+async function refreshUnderlayAndRender(): Promise<void> {
+  if (!currentPlan) return;
+  await refreshUnderlayPlan();
+  renderPlan(currentPlan);
+  if (planUnderlay === "Below") {
+    footerStatus(underlayPlan
+      ? `Underlay: ${underlayPlanLevelName} below · ${underlayPlan.segments.length} segments greyed`
+      : "Underlay: Below — no level below this one");
+  }
+}
+
 /**
  * Plan regeneration is coalesced: a burst of edits (drawing a chain of segments) triggers one rebuild,
  * and edits made while a rebuild is running trigger exactly one follow-up instead of being dropped.
  */
-let regenTimer: ReturnType<typeof setTimeout> | null = null;
-let regenWaiters: Array<() => void> = [];
-let regenPending = false;
 function regenerate(): Promise<void> {
   return new Promise<void>((resolve) => {
     regenWaiters.push(resolve);
@@ -4990,6 +5121,9 @@ async function regenerateNow() {
     });
     if (cancelHandle.cancelled) return;
     currentPlan = plan;
+    // G9: Underlay "Below" — generate the level underneath (cached by
+    // level + cut params) before the render so renderPlan can draw it.
+    await refreshUnderlayPlan();
     try {
       const { getElements } = await import("./authoring");
       authoredCache = getElements();
@@ -5135,6 +5269,9 @@ export function togglePlanView() {
     overlay.style.display = "flex";
     setPlanRenderer3d(false);
     populateLevels();
+    // G9: the open plan is the active view, so the View tab Crop buttons
+    // (which follow the active view) act on this plan.
+    setCropActiveView(PLAN_CROP_ID);
     planMode = "select";
     planDrawStart = null;
     planChain = [];

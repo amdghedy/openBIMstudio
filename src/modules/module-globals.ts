@@ -86,7 +86,7 @@ import {
 // ── Crop Region + Section Box (interactive view crops) ───────────────────
 import {
   getCropRegion, setCropRegion, setCropEnabled, toggleCrop, resetCropRegion,
-  pointInCrop, setActiveView, clearActiveView, listCropRegions,
+  pointInCrop, setActiveView, clearActiveView, getActiveCropView, listCropRegions,
   deleteCropRegion, resetCropRegions,
 } from "../features/crop-region";
 import {
@@ -351,6 +351,9 @@ w.__obsCropRegion = {
   },
   setActive: setActiveView,
   clearActive: clearActiveView,
+  // G9: which view the crop buttons should follow (the plan marks itself
+  // active when it opens; null until any view does).
+  getActive: getActiveCropView,
   list: listCropRegions,
   pointIn: pointInCrop,
 };
