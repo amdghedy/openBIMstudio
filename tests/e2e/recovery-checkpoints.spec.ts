@@ -141,16 +141,20 @@ async function primaryProject(page: Page): Promise<any> {
   return projects[0] ?? null;
 }
 
-/** Two walls, two saves: the second save snapshots the one-wall state as a checkpoint. */
+/** Two walls, two saves: the second save snapshots the one-wall state as a checkpoint.
+ *  Note the count is not asserted exactly: project creation itself
+ *  persists an initial (zero-element) document, so the first save
+ *  snapshots that too — what matters is that a one-wall checkpoint
+ *  exists and is the newest good one. */
 async function twoWallsSaved(page: Page): Promise<string> {
   const projectId = await createProject(page, 'Checkpoint test');
   await placeWall(page);
   await saveProject(page);
   await placeWall(page, 0.25);
   await saveProject(page);
-  await expect.poll(async () => (await listSnapshots(page)).snapshots.length, { timeout: 30000 }).toBe(1);
+  await expect.poll(async () => (await listSnapshots(page)).snapshots.some((s: any) => s.elementCount === 1), { timeout: 30000 }).toBe(true);
   const listed = await listSnapshots(page);
-  expect(listed.snapshots[0].elementCount, 'the checkpoint must hold the one-wall state').toBe(1);
+  expect(listed.snapshots[0].elementCount, 'the newest checkpoint must hold the one-wall state').toBe(1);
   expect(listed.quarantined).toEqual([]);
   return projectId;
 }
@@ -169,10 +173,12 @@ test('corrupt checkpoint is quarantined on listing; the good one is offered and 
   const corruptId = await idbSeedCorruptCheckpoint(page, projectId);
   stamp(t0, `corrupt checkpoint seeded (id ${corruptId})`);
 
-  // Listing quarantines it: the good checkpoint stays, newest first.
+  // Listing quarantines it: the good checkpoints stay, newest first.
   let listed = await listSnapshots(page);
-  expect(listed.snapshots.length, 'the good checkpoint must still be listed').toBe(1);
+  const goodBefore = listed.snapshots.length;
+  expect(goodBefore, 'the good checkpoints must still be listed').toBeGreaterThanOrEqual(1);
   expect(listed.snapshots[0].elementCount).toBe(1);
+  expect(listed.snapshots.some((s: any) => s.elementCount === 1), 'a one-wall checkpoint must be offered').toBe(true);
   expect(listed.quarantined.length, 'the corrupt checkpoint must be reported, not dropped').toBe(1);
   expect(listed.quarantined[0].id).toBe(corruptId);
   expect(listed.quarantined[0].reason).toMatch(/no usable project document/);
@@ -194,8 +200,8 @@ test('corrupt checkpoint is quarantined on listing; the good one is offered and 
   await expect(notice).toContainText('set aside');
   await expect(page.locator('[data-quarantined-checkpoint]')).toHaveCount(1);
   await expect(page.getByText('1 element · 0 models').first(), 'the good checkpoint must be offered').toBeVisible();
-  // The quarantined row has no Restore button: only the good row does.
-  await expect(page.getByRole('button', { name: 'Restore' })).toHaveCount(1);
+  // Every good checkpoint has a Restore button; the quarantined row has none.
+  await expect(page.getByRole('button', { name: 'Restore' })).toHaveCount(goodBefore);
   stamp(t0, 'recovery UI shows the quarantine');
 
   // Restore the good checkpoint: the live doc rolls back to one wall,
@@ -206,9 +212,9 @@ test('corrupt checkpoint is quarantined on listing; the good one is offered and 
   await expect.poll(async () => currentElementCount(page), { timeout: 60000 }).toBe(1);
   expect((await primaryProject(page))?.elements?.length, 'the primary record must hold the restored state').toBe(1);
   listed = await listSnapshots(page);
-  expect(listed.snapshots.length, 'the before-restore checkpoint must join the original one').toBe(2);
+  expect(listed.snapshots.length, 'the before-restore checkpoint must join the existing ones').toBe(goodBefore + 1);
   expect(listed.snapshots[0].elementCount, 'newest checkpoint is the kept two-wall state').toBe(2);
-  expect(listed.snapshots[1].elementCount, 'the restored one-wall checkpoint is still there').toBe(1);
+  expect(listed.snapshots.some((s: any) => s.elementCount === 1), 'the restored one-wall checkpoint is still there').toBe(true);
   expect(listed.quarantined.length, 'the quarantined checkpoint is still reported').toBe(1);
   expect(errors, errors.join('\n')).toEqual([]);
   stamp(t0, 'teardown done');
@@ -242,8 +248,8 @@ test('restoring a corrupt checkpoint is refused and the live document is untouch
   expect(quarantine[0].kind).toBe('checkpoint');
   expect(quarantine[0].raw, 'the raw corrupt record must be kept as evidence').toBeTruthy();
   const listed = await listSnapshots(page);
-  expect(listed.snapshots.length, 'the good checkpoint must still be offered').toBe(1);
-  expect(listed.snapshots[0].elementCount).toBe(1);
+  expect(listed.snapshots.some((s: any) => s.elementCount === 1), 'the good checkpoint must still be offered').toBe(true);
+  expect(listed.snapshots[0].elementCount, 'the newest good checkpoint is the one-wall state').toBe(1);
   expect(listed.quarantined.length).toBe(1);
   expect(errors, errors.join('\n')).toEqual([]);
   stamp(t0, 'teardown done');
