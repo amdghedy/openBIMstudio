@@ -60,11 +60,17 @@ export function readJsonWithRecovery(filePath, fallback) {
  *   same filesystem. A crash leaves a stale `.tmp` file (inert litter —
  *   each write uses a unique temp name) and the previous live file intact.
  */
+// Orders backups written by this process within the same millisecond; the random suffix
+// alone would not. Scope: backups sort by mtime, then name (timestamp, this sequence, random).
+// Across processes or restarts a same-millisecond tie is still decided by the sequence/random
+// part and is not guaranteed chronological; the single-writer server is the supported case.
+let backupSeq = 0;
+
 function backupTarget(filePath) {
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return path.join(dir, `${base}.${stamp}.${randomUUID().slice(0, 8)}.bak`);
+  return path.join(dir, `${base}.${stamp}.${String((backupSeq = (backupSeq + 1) % 1000000)).padStart(6, "0")}.${randomUUID().slice(0, 8)}.bak`);
 }
 
 function backupError(message, code) {
