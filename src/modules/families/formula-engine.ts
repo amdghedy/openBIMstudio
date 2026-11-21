@@ -84,6 +84,9 @@ function identifiersIn(formula: string): string[] {
   let s = String(formula ?? "");
   if (s.startsWith("=")) s = s.slice(1);
   s = s.replace(/"[^"]*"|'[^']*'/g, " ");
+  // Strip numeric literals first, so the exponent marker in scientific
+  // notation (1e-7) is not mistaken for a parameter named "e" (or "e5").
+  s = s.replace(/(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/g, " ");
 
   const out = new Set<string>();
   const re = /[A-Za-z_][A-Za-z0-9_]*/g;
@@ -240,10 +243,28 @@ function tokenize(str: string): Token[] {
     const c = str[i];
     if (/\s/.test(c)) { i++; continue; }
     
-    // Numbers
+    // Numbers, including scientific notation (1e-7, 2.5e3, 1E+7, .5e2).
     if (/[0-9.]/.test(c)) {
       let num = "";
       while (i < str.length && /[0-9.]/.test(str[i])) { num += str[i]; i++; }
+      // Optional exponent: e/E, optional sign, at least one digit. The
+      // exponent marker is only consumed when it directly follows the
+      // mantissa; a bare identifier "e" (variable or the e() builtin)
+      // separated from any digits still tokenizes as an identifier.
+      if (i < str.length && (str[i] === "e" || str[i] === "E")) {
+        let exp = str[i];
+        let j = i + 1;
+        if (j < str.length && (str[j] === "+" || str[j] === "-")) { exp += str[j]; j++; }
+        if (j >= str.length || !/[0-9]/.test(str[j])) {
+          throw new Error("Invalid number: " + num + exp + " (exponent has no digits)");
+        }
+        while (j < str.length && /[0-9]/.test(str[j])) { exp += str[j]; j++; }
+        num += exp;
+        i = j;
+      }
+      if (!/^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(num)) {
+        throw new Error("Invalid number: " + num);
+      }
       tokens.push({ type: "num", value: num });
       continue;
     }
