@@ -376,6 +376,12 @@ export function openViewsPanel(): void {
   render();
 }
 
+/** G11: open the Views panel with one stored view selected and rendered. */
+export function openViewInPanel(viewId: string): void {
+  if (getView(viewId)) currentViewId = viewId;
+  openViewsPanel();
+}
+
 export function closeViewsPanel(): void {
   visible = false;
   if (dock) dock.hide();

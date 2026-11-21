@@ -277,6 +277,7 @@
     "test:ribbon-collapse": "node tests/ribbon-collapse.test.cjs",
     "test:ribbon-tab-order": "node tests/ribbon-tab-order.test.cjs",
     "test:ribbon-draw-order": "node tests/ribbon-draw-order.test.cjs",
+    "test:project-browser-g11": "node tests/project-browser-g11.test.cjs",
     "test:server-hardening": "node tests/server-hardening.test.cjs",
     "test:share-links": "node tests/share-links.test.cjs",
     "test:service-worker": "node tests/service-worker.test.cjs",

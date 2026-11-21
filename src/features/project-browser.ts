@@ -1,14 +1,19 @@
 /**
  * Project Browser — Industry-standard project organization panel.
  *
- * Hierarchy:
- *   Views (all)          → 3D, Plan, Saved views
- *   Schedules/Quantities → schedule templates
+ * Hierarchy (Revit order, audit G11):
+ *   Views (all)          → Floor Plans / Ceiling Plans / Elevations /
+ *                           Sections / 3D Views / … / Saved Views
  *   Sheets (all)         → production sheets
- *   Families             → materials / types
- *   Models & Links       → federated IFC / FRAG / aux
+ *   Schedules/Quantities → schedule templates (+ schedule-kind views)
+ *   Families             → family types + Materials
  *   Groups               → selection sets
+ *   Models & Links       → federated IFC / FRAG / aux
  *   4D Phases            → construction phases
+ *
+ * The tree itself lives in ./project-browser-tree (pure, DOM-free, node
+ * tested); this file gathers the data and owns the panel DOM, including
+ * the as-you-type filter textbox.
  *
  * Professional dark UI, expandable tree, double-click to open,
  * right-click actions. Competes with BIM Project Browser presentation.
@@ -18,6 +23,14 @@ import { listSheets, createSheet, createDefaultSheetSet } from "../modules/sheet
 import { listMaterials, ensureDefaultMaterials } from "../modules/materials/materials";
 import { listPhases, createDefaultPhases } from "../modules/timeline/timeline";
 import { listSavedViews, restoreView, saveCurrentView } from "./saved-views";
+import { bootViewsStore, listViews } from "../modules/views/store";
+import {
+  buildProjectBrowserTree,
+  filterProjectBrowserTree,
+  type ProjectBrowserNode,
+  type ProjectBrowserNodeKind,
+  type ProjectBrowserTreeInput,
+} from "./project-browser-tree";
 import { selection } from "./selection";
 import { togglePlanView } from "./plan-view-panel";
 import { toggleSchedules } from "./schedules-panel";
@@ -25,31 +38,18 @@ import { toggleSheetsPanel } from "./sheets-panel";
 import { toggleTimelinePanel } from "./timeline-panel";
 import { togglePropertyPalette, isPropertyPaletteVisible } from "./property-palette";
 import { toggleModelTreePanel } from "./model-tree-panel";
+import { openViewInPanel } from "./views-panel";
 import { fitAll, goHome } from "./camera-tools";
 
-type NodeKind =
-  | "root" | "views" | "view-3d" | "view-plan" | "view-saved"
-  | "schedules" | "schedule"
-  | "sheets" | "sheet"
-  | "families" | "material"
-  | "links" | "link"
-  | "groups" | "group"
-  | "phases" | "phase";
-
-interface BrowserNode {
-  id: string;
-  kind: NodeKind;
-  label: string;
-  icon: string;
-  count?: number;
-  children?: BrowserNode[];
-  meta?: Record<string, unknown>;
-}
+type NodeKind = ProjectBrowserNodeKind;
+type BrowserNode = ProjectBrowserNode;
 
 let panel: HTMLElement | null = null;
 let visible = false;
-let expanded = new Set<string>(["views", "sheets", "links", "schedules"]);
+let expanded = new Set<string>(["views", "views-plan", "views-3d", "sheets", "schedules"]);
 let selectedNodeId: string | null = null;
+/** As-you-type filter text; empty means no filtering. */
+let filterQuery = "";
 
 function esc(s: string) {
   return String(s).replace(/[&<>"']/g, (c) =>
@@ -58,146 +58,67 @@ function esc(s: string) {
 
 function buildTree(): BrowserNode[] {
   // Models / links
-  const links: BrowserNode[] = [];
+  const links: { id: string; label: string }[] = [];
   try {
     if (ctx.fragments?.list) {
       for (const [id, model] of ctx.fragments.list) {
         const name = (model as any)?.object?.name || (model as any)?.name || id;
-        links.push({
-          id: `link-${id}`,
-          kind: "link",
-          label: String(name).split("/").pop() || id,
-          icon: "📦",
-          meta: { modelId: id },
-        });
+        links.push({ id, label: String(name).split("/").pop() || id });
       }
     }
   } catch { /* */ }
 
-  // Saved views
-  const saved = listSavedViews().map((v) => ({
-    id: `view-${v.id}`,
-    kind: "view-saved" as const,
-    label: v.name,
-    icon: "📷",
-    meta: { viewId: v.id },
-  }));
+  // Stored views (views module) — subgrouped by kind in the tree model.
+  // bootViewsStore() is idempotent: it seeds the default plan / elevation /
+  // section views on first run and re-reads persistence afterwards.
+  try { bootViewsStore(); } catch { /* */ }
+  let views: { id: string; kind: string; name: string }[] = [];
+  try {
+    views = listViews().map((v) => ({ id: v.id, kind: v.kind, name: v.name }));
+  } catch { /* */ }
 
-  // Sheets
-  const sheets = listSheets().map((s) => ({
-    id: `sheet-${s.id}`,
-    kind: "sheet" as const,
-    label: `${s.number} — ${s.name}`,
-    icon: "📄",
-    meta: { sheetId: s.id },
-  }));
+  // Family definitions + their types, via the family service installed at
+  // boot (main.ts step "families"). If the service is not ready the
+  // Families node still lists materials below.
+  let families: ProjectBrowserTreeInput["families"] = [];
+  try {
+    const svc = (ctx.features as any)?.family;
+    const defs = svc?.list?.() ?? [];
+    families = defs.map((f: any) => ({
+      id: String(f.id),
+      name: String(f.name),
+      types: (f.types ?? []).map((t: any) => ({ id: String(t.id), name: String(t.name) })),
+    }));
+  } catch { /* */ }
 
   // Materials / families
   ensureDefaultMaterials();
-  const mats = listMaterials().map((m) => ({
-    id: `mat-${m.id}`,
-    kind: "material" as const,
-    label: m.name,
-    icon: "🧱",
-    meta: { materialId: m.id },
-  }));
+  const mats = listMaterials().map((m) => ({ id: m.id, name: m.name }));
 
   // Selection sets as groups
-  const groups: BrowserNode[] = [];
+  const groups: { id: string; name: string }[] = [];
   try {
     const sets = selection.listSets() ?? [];
-    for (const s of sets) {
-      groups.push({
-        id: `grp-${s.id}`,
-        kind: "group",
-        label: s.name,
-        icon: "🧩",
-        meta: { setId: s.id },
-      });
-    }
+    for (const s of sets) groups.push({ id: s.id, name: s.name });
   } catch { /* */ }
 
   // 4D phases
   const phases = listPhases().map((p) => ({
-    id: `phase-${p.id}`,
-    kind: "phase" as const,
-    label: p.name,
-    icon: "⏱",
-    count: p.elementIds.length,
-    meta: { phaseId: p.id },
+    id: p.id,
+    name: p.name,
+    elementCount: p.elementIds.length,
   }));
 
-  return [
-    {
-      id: "views",
-      kind: "views",
-      label: "Views (all)",
-      icon: "🗂",
-      children: [
-        { id: "view-3d", kind: "view-3d", label: "3D View", icon: "🔲" },
-        { id: "view-plan", kind: "view-plan", label: "Floor Plan", icon: "📐" },
-        ...saved,
-      ],
-    },
-    {
-      id: "schedules",
-      kind: "schedules",
-      label: "Schedules/Quantities (all)",
-      icon: "📊",
-      children: [
-        { id: "sch-open", kind: "schedule", label: "Open Schedules panel", icon: "📋" },
-        { id: "sch-cost", kind: "schedule", label: "Cost / QTO", icon: "💰" },
-      ],
-    },
-    {
-      id: "sheets",
-      kind: "sheets",
-      label: "Sheets (all)",
-      icon: "📑",
-      count: sheets.length,
-      children: sheets.length
-        ? sheets
-        : [{ id: "sheet-empty", kind: "sheet", label: "(no sheets — create default set)", icon: "＋" }],
-    },
-    {
-      id: "families",
-      kind: "families",
-      label: "Families",
-      icon: "🏗",
-      count: mats.length,
-      children: mats.slice(0, 40),
-    },
-    {
-      id: "links",
-      kind: "links",
-      label: "Models & Links",
-      icon: "🔗",
-      count: links.length,
-      children: links.length
-        ? links
-        : [{ id: "link-empty", kind: "link", label: "(no models — Insert → Link IFC)", icon: "＋" }],
-    },
-    {
-      id: "groups",
-      kind: "groups",
-      label: "Groups",
-      icon: "📁",
-      count: groups.length,
-      children: groups.length
-        ? groups
-        : [{ id: "grp-empty", kind: "group", label: "(save a selection set first)", icon: "＋" }],
-    },
-    {
-      id: "phases",
-      kind: "phases",
-      label: "4D Phases",
-      icon: "📅",
-      count: phases.length,
-      children: phases.length
-        ? phases
-        : [{ id: "phase-empty", kind: "phase", label: "(create default phases)", icon: "＋" }],
-    },
-  ];
+  return buildProjectBrowserTree({
+    links,
+    savedViews: listSavedViews().map((v) => ({ id: v.id, name: v.name })),
+    sheets: listSheets().map((s) => ({ id: s.id, number: s.number, name: s.name })),
+    materials: mats,
+    families,
+    groups,
+    phases,
+    views,
+  });
 }
 
 function onActivate(node: BrowserNode) {
@@ -210,6 +131,16 @@ function onActivate(node: BrowserNode) {
         break;
       case "view-plan":
         togglePlanView();
+        break;
+      case "view-def":
+        // Stored view (plan / section / elevation / …): open it in the
+        // Views panel, selected and rendered.
+        if (node.meta?.viewId) openViewInPanel(String(node.meta.viewId));
+        break;
+      case "view-group":
+        // Intermediate subgroup: single click expands / collapses.
+        if (expanded.has(node.id)) expanded.delete(node.id);
+        else expanded.add(node.id);
         break;
       case "view-saved":
         if (node.meta?.viewId) restoreView(String(node.meta.viewId));
@@ -236,6 +167,26 @@ function onActivate(node: BrowserNode) {
       case "material":
         ensureDefaultMaterials();
         if (!isPropertyPaletteVisible()) togglePropertyPalette();
+        break;
+      case "family":
+        // A family with types expands / collapses; a typeless family
+        // behaves like the old Families node and opens Properties.
+        if (node.children?.length) {
+          if (expanded.has(node.id)) expanded.delete(node.id);
+          else expanded.add(node.id);
+        } else {
+          ensureDefaultMaterials();
+          if (!isPropertyPaletteVisible()) togglePropertyPalette();
+        }
+        break;
+      case "family-type":
+        ensureDefaultMaterials();
+        if (!isPropertyPaletteVisible()) togglePropertyPalette();
+        break;
+      case "materials":
+        // Materials subgroup: single click expands / collapses.
+        if (expanded.has(node.id)) expanded.delete(node.id);
+        else expanded.add(node.id);
         break;
       case "links":
       case "link":
@@ -264,9 +215,9 @@ function onActivate(node: BrowserNode) {
   render();
 }
 
-function renderNode(node: BrowserNode, depth: number): string {
+function renderNode(node: BrowserNode, depth: number, forceExpand = false): string {
   const hasKids = !!(node.children && node.children.length);
-  const isExp = expanded.has(node.id);
+  const isExp = forceExpand || expanded.has(node.id);
   const isSel = selectedNodeId === node.id;
   const pad = 8 + depth * 14;
   const chevron = hasKids ? (isExp ? "▼" : "▶") : "·";
@@ -282,17 +233,20 @@ function renderNode(node: BrowserNode, depth: number): string {
     </div>`;
 
   if (hasKids && isExp) {
-    for (const c of node.children!) html += renderNode(c, depth + 1);
+    for (const c of node.children!) html += renderNode(c, depth + 1, forceExpand);
   }
   return html;
 }
 
 function render() {
   if (!panel) return;
-  const tree = buildTree();
+  // While a filter is active every matching branch is shown expanded, so a
+  // match is never hidden inside a collapsed subgroup.
+  const filtering = filterQuery.trim().length > 0;
+  const tree = filtering ? filterProjectBrowserTree(buildTree(), filterQuery) : buildTree();
   const body = panel.querySelector(".pb-body");
   if (!body) return;
-  body.innerHTML = tree.map((n) => renderNode(n, 0)).join("");
+  body.innerHTML = tree.map((n) => renderNode(n, 0, filtering)).join("");
 
   body.querySelectorAll(".pb-row").forEach((el) => {
     el.addEventListener("click", (e) => {
@@ -365,6 +319,9 @@ function ensurePanel() {
       <button type="button" data-act="new-sheet">+ Sheet</button>
       <button type="button" data-act="expand">Expand</button>
     </div>
+    <div class="pb-filter">
+      <input type="text" class="pb-filter-input" placeholder="Filter…" aria-label="Filter browser" autocomplete="off" />
+    </div>
     <div class="pb-body"></div>
     <div class="pb-footer">Open BIM Studio · Project</div>
   `;
@@ -389,6 +346,15 @@ function ensurePanel() {
       border-radius:4px;padding:4px 6px;font-size:11px;cursor:pointer;
     }
     .obs-project-browser .pb-toolbar button:hover { background:#2f3344; }
+    .obs-project-browser .pb-filter {
+      padding:6px 8px;border-bottom:1px solid #1e2029;
+    }
+    .obs-project-browser .pb-filter-input {
+      width:100%;box-sizing:border-box;background:#12141b;border:1px solid #2a2e3a;
+      color:#e8eaf0;border-radius:4px;padding:5px 8px;font-size:12px;outline:none;
+    }
+    .obs-project-browser .pb-filter-input:focus { border-color:#38bdf8; }
+    .obs-project-browser .pb-filter-input::placeholder { color:#64748b; }
     .obs-project-browser .pb-body {
       flex:1;overflow-y:auto;padding:4px 0;
     }
@@ -438,10 +404,25 @@ function ensurePanel() {
         render();
       }
       if (act === "expand") {
-        for (const n of buildTree()) expanded.add(n.id);
+        // Expand every node in the tree, including view-kind subgroups.
+        const walk = (nodes: BrowserNode[]) => {
+          for (const n of nodes) {
+            expanded.add(n.id);
+            if (n.children) walk(n.children);
+          }
+        };
+        walk(buildTree());
         render();
       }
     });
+  });
+
+  // As-you-type filter: narrows the tree by node name. The input lives
+  // outside .pb-body, so re-rendering the tree never steals focus.
+  const filterInput = panel.querySelector(".pb-filter-input") as HTMLInputElement | null;
+  filterInput?.addEventListener("input", () => {
+    filterQuery = filterInput.value;
+    render();
   });
 
   return panel;
