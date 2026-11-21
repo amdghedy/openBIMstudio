@@ -40,12 +40,24 @@ t("every record discloses method, standard, units, assumptions, limitations, val
   }
 });
 
-t("no area claims validation stronger than unit tests", () => {
-  // Nothing in MEP has been validated against a reference implementation,
-  // a code, or measured data for any jurisdiction. If that changes, this
-  // test must be updated deliberately, with evidence, not by editing prose.
-  assert.deepStrictEqual(m.validatedAreas(), []);
+t("no area claims validation stronger than unit tests, except the one deliberate ASHRAE check", () => {
+  // ONE area has been validated against a reference: duct-pressure is
+  // checked against published ASHRAE friction-chart values
+  // (Fundamentals Ch. 21, Fig. 12) by
+  // tests/mep-code-reference-checks.test.cjs — three published points,
+  // deviations −1.6% / −7.9% (chart band ±10%) / +0.6% (hand-worked,
+  // ±2%), plus an independent hand iteration of the Colebrook solver
+  // (<1%). That evidence, and only that evidence, justifies the
+  // "checked-against-published-tables" status below. Every other area
+  // is still unit-tested-only, and no area claims code compliance.
+  // If another area is ever upgraded, update this test deliberately,
+  // with evidence, not by editing prose.
+  const validated = m.validatedAreas();
+  assert.strictEqual(validated.length, 1, "exactly one area validated beyond unit tests");
+  assert.strictEqual(validated[0].area, "duct-pressure");
+  assert.strictEqual(validated[0].validation, "checked-against-published-tables");
   for (const b of m.MEP_CALCULATION_BASIS) {
+    if (b.area === "duct-pressure") continue;
     assert.strictEqual(b.validation, "unit-tested-only", b.area);
   }
 });
