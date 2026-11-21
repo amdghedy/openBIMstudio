@@ -14,6 +14,7 @@
 import { ctx } from "../../core/context";
 import type { AuthoredElement } from "../projects/types";
 import type { FamilyService, FamilyParameter } from "./types";
+import { extractInstanceOverrides } from "./parametric-engine";
 
 /**
  * Keys that AuthoredElement.params actually stores. Anything outside
@@ -80,6 +81,8 @@ export function applyResolvedParams(
 export interface EditResult {
   applied: "instance" | "type" | "none";
   instancesSynced: number;
+  /** Why the edit did not apply, when `applied` is "none". */
+  reason?: string;
 }
 
 /**
@@ -112,19 +115,60 @@ export function editFamilyParameter(
   if (param.scope === "type") {
     const typeId = element.familyTypeId;
     if (!typeId) {
-      (element.params as Record<string, any>)[paramName] = value;
-      return { applied: "instance", instancesSynced: 0 };
+      // No type to edit: report it instead of silently degrading to an
+      // instance write. Nothing is written.
+      return {
+        applied: "none",
+        instancesSynced: 0,
+        reason: "no family type assigned to this element",
+      };
     }
 
     const familyType = family.types.find((t) => t.id === typeId);
-    if (!familyType) return { applied: "none", instancesSynced: 0 };
+    if (!familyType) {
+      return {
+        applied: "none",
+        instancesSynced: 0,
+        reason: "family type not found",
+      };
+    }
+
+    // Capture every target instance's stored overrides BEFORE the type
+    // changes. An override is a stored geometry value that differs from
+    // what the type currently resolves to; comparing after the update
+    // would misread stale inherited values as overrides and freeze them.
+    // The re-sync below then re-resolves each instance from the new type
+    // values with its own overrides on top, so overrides survive the
+    // type edit (A3).
+    const auth: any = (ctx.features as any).authoring;
+    let overridesByElement: Map<string, Record<string, any>> | null = null;
+    const currentResolved = svc.resolveParams(family.id, typeId);
+    const siblings: AuthoredElement[] = auth?.getElements?.() ?? [];
+    if (currentResolved && siblings.length) {
+      const captured = new Map<string, Record<string, any>>();
+      for (const sibling of siblings) {
+        if (sibling.familyId !== family.id) continue;
+        if (sibling.familyTypeId !== typeId) continue;
+        const ov = extractInstanceOverrides(
+          currentResolved,
+          (sibling.params ?? {}) as Record<string, any>,
+          GEOMETRY_KEYS,
+        );
+        if (Object.keys(ov).length) captured.set(sibling.id, ov);
+      }
+      overridesByElement = captured;
+    }
 
     const nextValues = { ...(familyType.values ?? {}), [paramName]: value };
     svc.updateType(family.id, typeId, { values: nextValues });
 
-    // Re-resolve every instance of this type.
-    const auth: any = (ctx.features as any).authoring;
-    const instancesSynced = auth?.syncFamilyInstances?.(family.id, typeId) ?? 0;
+    // Re-resolve every instance of this type, preserving the overrides
+    // captured above.
+    const instancesSynced = auth?.syncFamilyInstances?.(
+      family.id,
+      typeId,
+      overridesByElement,
+    ) ?? 0;
 
     return { applied: "type", instancesSynced };
   }
