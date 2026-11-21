@@ -151,7 +151,7 @@ import {
   openModifyMoveDialog, openModifyRotateDialog, openModifyArrayDialog, openModifyMirrorDialog,
   openGroup1MoveDialog, openGroup1RotateDialog, openGroup1MirrorDialog,
   openSelectionInspectorDialog, openReferencePickerDialog, group1Undo, group1Redo,
-  openHostedOpeningDialog, openParameterManagerDialog, openModelIntelligencePanel,
+  openHostedOpeningDialog, openHostFamilyDialog, openParameterManagerDialog, openModelIntelligencePanel,
 } from "../features/engine-ui";
 
 // legacy module-local state (formerly on window)
@@ -880,6 +880,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("shaft", "Shaft", "shaft"),
       b("opening", "Hosted Opening", safe(() => void openHostedOpeningDialog(), "Hosted opening (v68)"), {
         title: "Place a validated opening on a wall via the v68 hosting engine (overlap checks, layer offsets)",
+      }),
+      b("component", "Host Family", safe(() => void openHostFamilyDialog(), "Host family (Slice 9)"), {
+        title: "Host a family instance on a wall or a face — it follows the host when the host moves",
       }),
       sep(),
       groupLabel("Adaptive"),

@@ -316,5 +316,96 @@ t("H18 detach removes the host link and is a no-op on a freestanding element", (
   assert(fh.familyHostingService.detach(el) === false, "second detach is a no-op");
 });
 
+// ═══ Host geometry derived from authored elements (ribbon follow-up) ═══
+// The dialog and the authoring rebuild derive the host from the live
+// element, so these closed forms pin the derivation itself.
+
+const wallEl = {
+  id: "wall-el",
+  type: "wall",
+  name: "Wall 1",
+  params: { start: [0, 0], end: [8, 0], height: 3, thickness: 0.2, elevation: 0.5 },
+};
+const slabEl = {
+  id: "slab-el",
+  type: "slab",
+  name: "Floor 1",
+  params: {
+    polygon: [[0, 0], [6, 0], [6, 4], [0, 4]],
+    height: 0.2,
+    thickness: 0.2,
+    elevation: 3,
+  },
+};
+
+t("H19 wall element derives a wall host: curve, baseZ, height, thickness, version 1", () => {
+  const h = fh.wallHostGeometryFromElement(wallEl);
+  assert(h !== null, "a wall derives a host");
+  assert(h.id === "wall-el" && h.kind === "wall", "id/kind");
+  nearPoint(h.curve.start, [0, 0]); nearPoint(h.curve.end, [8, 0]);
+  near(h.baseZ, 0.5); near(h.height, 3); near(h.thickness, 0.2);
+  assert(h.version === 1, "derivation stamps version 1");
+  assert(fh.wallHostGeometryFromElement({ ...wallEl, type: "column" }) === null, "non-wall derives nothing");
+  assert(fh.wallHostGeometryFromElement({ ...wallEl, params: { height: 3 } }) === null, "wall without a plan curve derives nothing");
+});
+
+t("H20 wall element derives its normal-side face: offset by half thickness, u along the wall, v up", () => {
+  const f = fh.faceHostGeometryFromElement(wallEl);
+  assert(f !== null, "a wall derives a face");
+  assert(f.id === "wall-el" && f.kind === "face", "id/kind");
+  // Normal is left of the +x tangent: +y. Face plane is half thickness off the location line.
+  nearPoint([f.origin[0], f.origin[1]], [0, 0.1]);
+  near(f.origin[2], 0.5);
+  nearPoint([f.normal[0], f.normal[1]], [0, 1]);
+  nearPoint([f.uAxis[0], f.uAxis[1]], [1, 0]);
+  near(f.uMin, 0); near(f.uMax, 8); near(f.vMin, 0); near(f.vMax, 3);
+  // A point on that face attaches with the wall's own s as u.
+  const a = fh.attachFamilyToFace(f, [2, 0.1, 1.5]);
+  near(a.u, 2); near(a.v, 1); near(a.offset, 0);
+  const p = fh.hostedFamilyPlacement(f, a);
+  nearPoint(p.point, [2, 0.1]); near(p.elevation, 1.5); near(p.rotation, 90);
+});
+
+t("H21 slab element derives its top face: origin at the first vertex, normal +z, bounds from the polygon", () => {
+  const f = fh.faceHostGeometryFromElement(slabEl);
+  assert(f !== null, "a slab derives a face");
+  // Origin is the corner (u, v) runs from: vAxis = u x n = (0, -1, 0), so
+  // v runs from y = 4 back toward y = 0 and the origin sits at y = 4.
+  nearPoint([f.origin[0], f.origin[1]], [0, 4]);
+  near(f.origin[2], 3.2); // elevation + height: the TOP face
+  nearPoint([f.normal[0], f.normal[1]], [0, 0]); near(f.normal[2], 1);
+  nearPoint([f.uAxis[0], f.uAxis[1]], [1, 0]);
+  near(f.uMin, 0); near(f.uMax, 6); near(f.vMin, 0); near(f.vMax, 4);
+  const a = fh.attachFamilyToFace(f, [2, 1, 4.2]); // 1 m above the slab, over (u=2, v=3)
+  near(a.u, 2); near(a.v, 3); near(a.offset, 1);
+  assert(fh.faceHostGeometryFromElement({ ...slabEl, type: "column" }) === null, "non-slab, non-wall derives no face");
+  assert(fh.faceHostGeometryFromElement({ ...slabEl, params: { height: 0.2, elevation: 3 } }) === null, "slab without a polygon derives no face");
+});
+
+t("H22 hostGeometryFromElement dispatches on kind; hostGeometryEquals ignores the version stamp", () => {
+  const w = fh.hostGeometryFromElement(wallEl, "wall");
+  const f = fh.hostGeometryFromElement(wallEl, "face");
+  assert(w !== null && w.kind === "wall", "wall dispatch");
+  assert(f !== null && f.kind === "face", "face dispatch");
+  assert(fh.hostGeometryFromElement(slabEl, "wall") === null, "a slab is not a wall host");
+  const moved = { ...w, curve: { kind: "line", start: [0, 1], end: [8, 1] } };
+  assert(fh.hostGeometryEquals(w, { ...w, version: 7 }) === true, "same geometry, different version: equal");
+  assert(fh.hostGeometryEquals(w, moved) === false, "moved wall: not equal");
+  assert(fh.hostGeometryEquals(w, f) === false, "different kind: not equal");
+});
+
+t("H23 end-to-end through the dialog's seam: derive the host from the element, attach the instance at its point", () => {
+  const el = element("el-1");
+  el.params = { point: [2, 0.3], elevation: 1.2 };
+  const host = fh.hostGeometryFromElement(wallEl, "wall");
+  assert(host !== null, "host derived");
+  const p = placement.attachElementToHost(el, host, [el.params.point[0], el.params.point[1], el.params.elevation]);
+  assert(el.hostId === "wall-el", "host link written");
+  assert(el.hostAttachment.hostKind === "wall", "wall attachment");
+  near(el.hostAttachment.s, 2); near(el.hostAttachment.elevation, 0.7); // 1.2 - baseZ 0.5
+  near(el.hostAttachment.offset, 0.3);
+  nearPoint(p.point, [2, 0.3]); near(p.elevation, 1.2);
+});
+
 console.log(`\nparametric-family-hosting: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

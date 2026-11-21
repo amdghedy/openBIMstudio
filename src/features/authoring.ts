@@ -51,6 +51,11 @@ import { generateWallSweep, generateRevealCutter } from "../modules/wall-sweeps/
 import type { WallSweepPlacement } from "../modules/wall-sweeps/types";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { pointFootprintHandles, resizePointFootprint, type FootprintGrip } from "../modules/views/grip-geometry";
+import {
+  hostGeometryFromElement, hostGeometryEquals, detachFamilyFromHost,
+  type FamilyHostGeometry,
+} from "../modules/families/family-hosting";
+import { rehostElementAfterHostChange } from "../modules/families/placement";
 import { endElevationFromSlope, slopePercent, slopedRun } from "../modules/mep/slope";
 import { makeAxisLock, projectOnAxis } from "./grip-axis-lock";
 import type { AxisLock } from "./grip-axis-lock";
@@ -2454,6 +2459,68 @@ function syncHostedPositions(): void {
     if ("hostAngle" in el.params) (el.params as any).hostAngle = Math.round(hostAngle * 10000) / 10000;
     if ("rotation" in el.params)  (el.params as any).rotation  = Math.round(hostAngle * 10000) / 10000;
     if ("angle" in el.params)     (el.params as any).angle     = Math.round(hostAngle * 10000) / 10000;
+  }
+  syncHostedFamilyPositions();
+}
+
+/**
+ * Generic family hosting (Slice 9 + ribbon follow-up): re-derive the
+ * placement of every hosted family instance from its host's CURRENT
+ * geometry, once per rebuild — the same "only place hosted params are
+ * mutated" rule as the door/window sync above. A host whose geometry did
+ * not change is skipped; a changed host bumps the tracked version and
+ * rehosts (moved / invalid); a deleted host detaches the element, which
+ * survives freestanding at its last placement.
+ *
+ * Last-seen host geometry is tracked per host id. On first sight the
+ * snapshot takes the attachment's own host version — as far as this
+ * session knows, the geometry is the one the attachment was computed
+ * against — so loading a project does not spuriously re-derive or
+ * re-version anything.
+ */
+const lastSeenFamilyHostGeometry = new Map<string, FamilyHostGeometry>();
+
+function syncHostedFamilyPositions(): void {
+  // Group hosted elements by host first: a changed host must rehost ALL
+  // of its dependents, not just the first one the loop reaches. Snapshots
+  // are keyed by host id + host kind — one wall element can be both a
+  // wall host and a face host, with different geometries.
+  const byHost = new Map<string, AuthoredElement[]>();
+  for (const el of elements) {
+    if (!el.hostAttachment) continue;
+    const list = byHost.get(el.hostAttachment.hostId) ?? [];
+    list.push(el);
+    byHost.set(el.hostAttachment.hostId, list);
+  }
+  for (const [hostId, hosted] of byHost) {
+    const host = elements.find((e) => e.id === hostId);
+    if (!host) {
+      const prev = lastSeenFamilyHostGeometry.get(`${hostId}:wall`)
+        ?? lastSeenFamilyHostGeometry.get(`${hostId}:face`);
+      for (const el of hosted) {
+        if (prev) rehostElementAfterHostChange(el, prev, null);
+        else detachFamilyFromHost(el);
+      }
+      lastSeenFamilyHostGeometry.delete(`${hostId}:wall`);
+      lastSeenFamilyHostGeometry.delete(`${hostId}:face`);
+      continue;
+    }
+    for (const kind of ["wall", "face"] as const) {
+      const kindHosted = hosted.filter((el) => el.hostAttachment?.hostKind === kind);
+      if (!kindHosted.length) continue;
+      const next = hostGeometryFromElement(host, kind);
+      if (!next) continue; // host element no longer offers this host kind
+      const key = `${host.id}:${kind}`;
+      const prev = lastSeenFamilyHostGeometry.get(key);
+      if (!prev) {
+        lastSeenFamilyHostGeometry.set(key, { ...next, version: kindHosted[0].hostAttachment!.hostVersion });
+        continue;
+      }
+      if (hostGeometryEquals(prev, next)) continue;
+      const versioned: FamilyHostGeometry = { ...next, version: prev.version + 1 };
+      for (const el of kindHosted) rehostElementAfterHostChange(el, prev, versioned);
+      lastSeenFamilyHostGeometry.set(key, versioned);
+    }
   }
 }
 

@@ -512,6 +512,132 @@ export function auditHostedFamilies(
   return audit;
 }
 
+// ── Host geometry from authored elements ───────────────────────────────────
+// The ribbon hosting dialog (and the authoring rebuild) derive the host
+// geometry from the LIVE authored element — never from a cached copy —
+// so a host edit is visible to the next attach / rehost with no extra
+// bookkeeping. Version is always 1 here: the caller that tracks host
+// edits (authoring.ts, last-seen snapshots) owns version bumps.
+
+/** Build a wall host geometry from an authored wall element. Null when
+ *  the element is not a wall with a plan curve. */
+export function wallHostGeometryFromElement(el: AuthoredElement): WallHostGeometry | null {
+  const p = el.params;
+  if (el.type !== "wall" || !p?.start || !p?.end) return null;
+  return {
+    id: el.id,
+    kind: "wall",
+    curve: {
+      kind: "line",
+      start: [...p.start] as [number, number],
+      end: [...p.end] as [number, number],
+    },
+    baseZ: typeof p.elevation === "number" ? p.elevation : 0,
+    height: typeof p.height === "number" ? p.height : 3,
+    version: 1,
+    thickness: typeof p.thickness === "number" ? p.thickness : 0.2,
+  };
+}
+
+/**
+ * Build a face host geometry from an authored element. A wall contributes
+ * its normal-side face (the plane through the location line offset by half
+ * the thickness along the host normal; u runs along the wall, v runs up
+ * from the base). A slab contributes its top face (u along the first edge,
+ * origin at the corner (u, v) runs from, bounds from the polygon extent).
+ * Null when the element offers no face.
+ */
+export function faceHostGeometryFromElement(el: AuthoredElement): FaceHostGeometry | null {
+  const p = el.params;
+  if (el.type === "wall" && p?.start && p?.end) {
+    const [ax, ay] = p.start;
+    const [bx, by] = p.end;
+    const dx = bx - ax, dy = by - ay;
+    const L = Math.hypot(dx, dy);
+    if (L < TOL) return null;
+    const tx = dx / L, ty = dy / L;
+    // Left of the tangent — the host normal (same convention as
+    // projectPointToWallCurve's offset sign).
+    const nx = -ty, ny = tx;
+    const half = (typeof p.thickness === "number" ? p.thickness : 0.2) / 2;
+    const baseZ = typeof p.elevation === "number" ? p.elevation : 0;
+    const height = typeof p.height === "number" ? p.height : 3;
+    return {
+      id: el.id,
+      kind: "face",
+      origin: [ax + nx * half, ay + ny * half, baseZ],
+      normal: [nx, ny, 0],
+      uAxis: [tx, ty, 0],
+      uMin: 0,
+      uMax: L,
+      vMin: 0,
+      vMax: height,
+      version: 1,
+    };
+  }
+  if (el.type === "slab" && Array.isArray(p?.polygon) && p.polygon.length >= 3) {
+    const poly = p.polygon as Array<[number, number]>;
+    const [x0, y0] = poly[0];
+    const [x1, y1] = poly[1];
+    let ux = x1 - x0, uy = y1 - y0;
+    const len = Math.hypot(ux, uy);
+    if (len < TOL) return null;
+    ux /= len; uy /= len;
+    const uAxis: [number, number, number] = [ux, uy, 0];
+    const normal: [number, number, number] = [0, 0, 1];
+    // vAxis = uAxis x normal (same convention as validateFaceHost).
+    const vAxis = cross(uAxis, normal);
+    const top = (typeof p.elevation === "number" ? p.elevation : 0)
+      + (typeof p.height === "number" ? p.height : 0.2);
+    let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+    for (const [x, y] of poly) {
+      const rx = x - x0, ry = y - y0;
+      const u = rx * ux + ry * uy;
+      const v = rx * vAxis[0] + ry * vAxis[1];
+      if (u < uMin) uMin = u;
+      if (u > uMax) uMax = u;
+      if (v < vMin) vMin = v;
+      if (v > vMax) vMax = v;
+    }
+    // Shift the origin to the corner (u, v) runs from, so the bounds
+    // start at 0 — the same convention as the module's floor fixture
+    // (origin at the far edge when v runs back toward it).
+    return {
+      id: el.id,
+      kind: "face",
+      origin: [x0 + uMin * ux + vMin * vAxis[0], y0 + uMin * uy + vMin * vAxis[1], top],
+      normal,
+      uAxis,
+      uMin: 0,
+      uMax: uMax - uMin,
+      vMin: 0,
+      vMax: vMax - vMin,
+      version: 1,
+    };
+  }
+  return null;
+}
+
+/** Derive the host geometry of the requested kind from an authored element. */
+export function hostGeometryFromElement(
+  el: AuthoredElement,
+  kind: FamilyHostKind,
+): FamilyHostGeometry | null {
+  return kind === "wall"
+    ? wallHostGeometryFromElement(el)
+    : faceHostGeometryFromElement(el);
+}
+
+/**
+ * Host-geometry equality ignoring the version stamp (Slice 9 convention:
+ * the host-change kind is computed from the geometry diff, not the
+ * version bump).
+ */
+export function hostGeometryEquals(a: FamilyHostGeometry, b: FamilyHostGeometry): boolean {
+  if (a.id !== b.id || a.kind !== b.kind) return false;
+  return JSON.stringify(stripVersion(a)) === JSON.stringify(stripVersion(b));
+}
+
 // ── Service object (registered by the app boot for browser access) ─────────
 
 export interface FamilyHostingService {
