@@ -88,6 +88,7 @@
     "test:property-invariants": "node tests/property-invariants.test.cjs",
     "test:tool-catalog-gate": "node tests/tool-catalog-gate.test.cjs",
     "test:cad-ribbon-asi": "node tests/cad-ribbon-asi.test.cjs",
+    "test:cad-ribbon-wiring": "node tests/cad-ribbon-wiring.test.cjs",
     "test:native-twin-ifc-entities": "node tests/native-twin-ifc-entities.test.cjs",
     "test:perf-budget-gate": "node tests/perf-budget-gate.test.cjs",
     "test:step-preflight": "node tests/step-preflight.test.cjs",

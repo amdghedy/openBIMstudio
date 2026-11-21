@@ -28,6 +28,18 @@ test('2D drawing editor: every ribbon control the wiring code looks up exists in
   console.log('RIBBON-HOSTS', JSON.stringify(hosts));
   console.log('RIBBON-PAGEERRORS', JSON.stringify(pageErrors.slice(0, 5)));
   console.log('RIBBON-PROBE', JSON.stringify(present), JSON.stringify(warnings.filter((w) => /ribbon control missing|\[cad\]/.test(w))));
+  // Every ribbon tab must show at least one visible group with visible buttons.
+  for (const id of ['home', 'insert', 'annotate', 'parametric', 'view', 'manage', 'output', 'express', 'collaborate']) {
+    await page.locator(`[data-ribtab="${id}"]`).first().click();
+    const vis = await page.evaluate((tab) => {
+      const groups = [...document.querySelectorAll(`.cadrg[data-cadtab="${tab}"]`)].filter((g) => (g as HTMLElement).offsetParent !== null);
+      const btns = groups.flatMap((g) => [...g.querySelectorAll('button')]).filter((b) => (b as HTMLElement).offsetParent !== null);
+      return { groups: groups.length, buttons: btns.length };
+    }, id);
+    console.log('RIBBON-TAB', id, JSON.stringify(vis));
+    expect(vis.groups, `tab ${id} has no visible groups`).toBeGreaterThan(0);
+    expect(vis.buttons, `tab ${id} has no visible buttons`).toBeGreaterThan(0);
+  }
   const missing = warnings.filter((w) => /ribbon control missing/.test(w));
   expect(missing, 'ribbon controls missing: ' + missing.join(' | ')).toEqual([]);
   expect(present.importfile && present.bg && present.du && present.polar).toBe(true);
