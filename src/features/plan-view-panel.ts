@@ -25,6 +25,7 @@ let obsPlanSyncTimer: any;
  * - Wheel zoom, middle-mouse (or Shift+left) pan, left click selection/placement
  * - Print / Export SVG / Close
  */
+import * as THREE from "three";
 import { escapeHtml } from "../core/html-escape";
 import { constrainOrtho, pointAtLength, angleDeg, parseLength, isLengthChar } from "./plan-draw-math";
 import { getCropRegion, setCropRegion, setActiveView as setCropActiveView, onCropChanged, getActiveCropView, dragCropHandle, snapCrop } from "./crop-region";
@@ -53,6 +54,12 @@ import {
   TAG_MODE_DEFS, type AnnotateTagMode, type ChainKind,
 } from "../modules/views/annotate-distinctions";
 import { dimLineEnds, distToSegment, moveDimLineTo } from "../modules/views/plan-dim-geometry";
+import {
+  computePlanTempDims,
+  formatPlanTempDim,
+  parsePlanTempDimInput,
+  type PlanTempDim,
+} from "./plan-temp-dimensions";
 import { history as planHistory } from "./history";
 import { createRafCoalescer } from "../core/raf-coalescer";
 import { pauseRenderLoop } from "../core/renderer-lifecycle";
@@ -1010,12 +1017,121 @@ function makeSvgText(x: number, y: number, text: string, style: DimensionStyle, 
   return lab;
 }
 
+/** G13 — the HTML input for an in-progress plan temp-dim edit (lives in
+ *  canvasWrap, not in the SVG, so a plan re-render cannot destroy it). */
+let planTempDimEdit: { spec: PlanTempDim; input: HTMLInputElement } | null = null;
+
+function cancelPlanTempDimEdit(): void {
+  if (!planTempDimEdit) return;
+  const { input } = planTempDimEdit;
+  // Clear state FIRST: removing a focused input fires blur synchronously,
+  // which re-enters cancelPlanTempDimEdit (same guard as temp-dimensions-edit.ts).
+  planTempDimEdit = null;
+  input.onblur = null;
+  try { input.remove(); } catch { /* already detached */ }
+}
+
+/**
+ * G13 — open the in-place editor for a plan temp-dim label. The label shows
+ * its value with explicit units ("4.000 m"), so the typed value round-trips
+ * through parsePlanTempDimInput. Commit routes through
+ * authoring.commitTempDimEdit — the same function the 3D editable overlay
+ * calls — so the edit gets validation, one history step and constraint
+ * re-solve instead of a second edit path.
+ */
+function beginPlanTempDimEdit(lab: SVGTextElement, spec: PlanTempDim): void {
+  cancelPlanTempDimEdit();
+  const wrapRect = canvasWrap.getBoundingClientRect();
+  const r = lab.getBoundingClientRect();
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "obs-plan-temp-dim-input";
+  input.setAttribute("data-obs-plan-temp-dim-input", spec.id);
+  input.value = spec.label;
+  input.style.cssText =
+    `position:absolute;left:${r.left - wrapRect.left + r.width / 2}px;` +
+    `top:${r.top - wrapRect.top + r.height / 2}px;transform:translate(-50%,-50%);width:110px;` +
+    `background:#0c0e13;border:1px solid #38bdf8;border-radius:4px;color:#f8fafc;` +
+    `font:600 11px/1.2 var(--font-mono,monospace);padding:3px 6px;z-index:30;`;
+  input.onkeydown = async (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      const v = parsePlanTempDimInput(input.value);
+      if (v === null) {
+        input.style.borderColor = "#ef4444";
+        input.focus(); input.select();
+        window.setTimeout(() => { input.style.borderColor = "#38bdf8"; }, 450);
+        return;
+      }
+      let ok = false;
+      try {
+        const auth = await import("./authoring");
+        const elev = Number((obsPlanSelectedEl?.params as any)?.elevation ?? 0);
+        ok = auth.commitTempDimEdit?.({
+          id: spec.id,
+          elementId: spec.elementId,
+          param: spec.param,
+          kind: spec.param === "length" ? "length" : spec.param === "width" ? "width" : "offset",
+          a: new THREE.Vector3(spec.a.x, elev, spec.a.z),
+          b: new THREE.Vector3(spec.b.x, elev, spec.b.z),
+          value: spec.value,
+          label: spec.label,
+          editable: true,
+        }, v) ?? false;
+      } catch (err) {
+        console.warn("[plan] temp-dim commit failed", err);
+      }
+      if (!ok) {
+        input.style.borderColor = "#ef4444";
+        input.focus(); input.select();
+        window.setTimeout(() => { input.style.borderColor = "#38bdf8"; }, 450);
+        return;
+      }
+      cancelPlanTempDimEdit();
+      footerStatus(`Temporary dimension ${spec.label} → ${formatPlanTempDim(v)}`);
+      await regenerate();
+      renderPlanProperties();
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      cancelPlanTempDimEdit();
+    }
+  };
+  input.onblur = () => cancelPlanTempDimEdit();
+  canvasWrap.appendChild(input);
+  input.focus(); input.select();
+  planTempDimEdit = { spec, input };
+  footerStatus(`Temporary dimension ${spec.label} — type a value + Enter, Esc cancels`);
+}
+
+/**
+ * G13 — make a plan temp-dim SVG label click-to-edit. The label must swallow
+ * its own mouse events: without stopPropagation the canvasWrap mousedown
+ * handler would start a box selection (and the mouseup would deselect the
+ * element, since the label sits ~1.6 m off the wall at 1:100 and
+ * nearestAuthoredAt finds nothing there).
+ */
+function attachPlanTempDimLabel(lab: SVGTextElement, spec: PlanTempDim): void {
+  lab.setAttribute("data-obs-plan-temp-dim", spec.id);
+  lab.setAttribute("data-temp-dim-param", spec.param);
+  lab.setAttribute("data-temp-dim-element", String(spec.elementId));
+  lab.style.cursor = "text";
+  lab.style.pointerEvents = "all";
+  const swallow = (e: Event) => { e.preventDefault(); e.stopPropagation(); };
+  lab.addEventListener("mousedown", swallow);
+  lab.addEventListener("pointerdown", swallow);
+  lab.addEventListener("dblclick", swallow);
+  lab.addEventListener("click", (e) => { swallow(e); beginPlanTempDimEdit(lab, spec); });
+  // NOTE: no <title> child here on purpose — a <title> inside the <text>
+  // concatenates into its textContent ("4.000 mTemporary dimension…"),
+  // which breaks exact label assertions and screen-reader text.
+}
+
 function renderTemporaryDimensions(g: SVGGElement, dimScale: number, b: any) {
   const el = obsPlanSelectedEl;
   if (!el || !el.params) return;
   const style = getDimensionStyle();
   const p = el.params;
-  const drawTemp = (x1:number,z1:number,x2:number,z2:number,offset:number) => {
+  const drawTemp = (x1:number,z1:number,x2:number,z2:number,offset:number,spec?: PlanTempDim) => {
     const dx=x2-x1, dz=z2-z1, len=Math.hypot(dx,dz); if(len<1e-6)return;
     const ux=dx/len, uz=dz/len, nx=-uz, nz=ux;
     const a0x=x1+nx*offset,a0z=z1+nz*offset,a1x=x2+nx*offset,a1z=z2+nz*offset;
@@ -1028,15 +1144,47 @@ function renderTemporaryDimensions(g: SVGGElement, dimScale: number, b: any) {
     wl2.setAttribute("x1",String(p1.x));wl2.setAttribute("y1",String(p1.y));wl2.setAttribute("x2",String(q1.x));wl2.setAttribute("y2",String(q1.y)); g.appendChild(wl2);
     const dl=document.createElementNS("http://www.w3.org/2000/svg","line"); dl.setAttribute("x1",String(a.x));dl.setAttribute("y1",String(a.y));dl.setAttribute("x2",String(bb.x));dl.setAttribute("y2",String(bb.y));dl.setAttribute("stroke",style.color);dl.setAttribute("stroke-width",String(sw));dl.setAttribute("stroke-dasharray","0.16 0.12");dl.setAttribute("opacity","0.72");g.appendChild(dl);
     const mid=screen((a0x+a1x)/2+nx*0.14,(a0z+a1z)/2+nz*0.14);
-    g.appendChild(makeSvgText(mid.x,mid.y,formatPlanDimension(len),style,dimScale));
+    // G13: editable temp dims carry explicit units ("4.000 m") so the label
+    // round-trips through the edit parser; the 3D overlay labels do the
+    // same. Non-editable (depth) keeps the plan dimension style.
+    const lab = makeSvgText(mid.x, mid.y, spec ? spec.label : formatPlanDimension(len), style, dimScale);
+    if (spec) attachPlanTempDimLabel(lab, spec);
+    g.appendChild(lab);
   };
   if(p.start && p.end){
-    drawTemp(p.start[0],p.start[1],p.end[0],p.end[1],paperMmToWorld(16));
+    const len = Math.hypot(p.end[0] - p.start[0], p.end[1] - p.start[1]);
+    const lengthSpec: PlanTempDim = {
+      id: `${el.id}:plan-length`, elementId: el.id, param: "length", kind: "length",
+      a: { x: p.start[0], z: p.start[1] }, b: { x: p.end[0], z: p.end[1] },
+      value: len, label: formatPlanTempDim(len), editable: true,
+    };
+    drawTemp(p.start[0],p.start[1],p.end[0],p.end[1],paperMmToWorld(16),lengthSpec);
   } else if (p.point) {
     const x=p.point[0],z=p.point[1];
     const w=Number(p.width ?? p.thickness ?? 0.3), d=Number(p.depth ?? p.thickness ?? 0.3);
-    drawTemp(x-w/2,z,x+w/2,z,paperMmToWorld(16));
+    const widthSpec: PlanTempDim = {
+      id: `${el.id}:plan-width`, elementId: el.id, param: "width", kind: "width",
+      a: { x: x - w / 2, z }, b: { x: x + w / 2, z },
+      value: w, label: formatPlanTempDim(w), editable: true,
+    };
+    drawTemp(x-w/2,z,x+w/2,z,paperMmToWorld(16),widthSpec);
     drawTemp(x,z-d/2,x,z+d/2,paperMmToWorld(20));
+  }
+  // G13 — dimensions to the nearest references (Revit: shown on selection,
+  // editable in place). The length/width above are the element's own dims;
+  // these are the witness dims to neighbouring elements. End gaps sit on a
+  // second offset line so they cannot collide with the length dim.
+  try {
+    const gaps = computePlanTempDims(el, authoredEls().filter((o: any) => o?.id !== el.id))
+      .filter((d) => d.param === "gapStart" || d.param === "gapEnd" || d.param === "gapPerp" || d.param === "gapPoint");
+    for (const d of gaps) {
+      const offset = d.param === "gapPerp" || d.param === "gapPoint"
+        ? paperMmToWorld(6)
+        : paperMmToWorld(28);
+      drawTemp(d.a.x, d.a.z, d.b.x, d.b.z, offset, d);
+    }
+  } catch (err) {
+    console.warn("[plan] temp-dim references", err);
   }
   void b;
 }

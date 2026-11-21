@@ -119,6 +119,7 @@ import { deriveRunConnectors, syncStoredConnections } from "../modules/mep/store
 import { deriveFamilyInstanceConnectors } from "../modules/mep/family-connectors";
 import { lengthKeepRight, thicknessKeepFace, openingWidthKeepRight, heightKeepBase } from "../modules/native-bim/dimension-edit";
 import { registerTempDimProvider, type TempDimSpec, setupEditableTempDims } from "./temp-dimensions-edit";
+import { applyPlanTempDimEdit } from "./plan-temp-dimensions";
 import { setupOptionsBar } from "./options-bar";
 import { promptLine, confirmDialog } from "./form-modal";
 import { scheduleAutoSolve } from "./constraint-solver";
@@ -8252,13 +8253,35 @@ function buildEditableTempDims(): TempDimSpec[] {
 
 function commitEditableTempDim(spec: TempDimSpec, value: number): boolean {
   const el = elements.find((e) => e.id === spec.elementId);
-  if (!el || !Number.isFinite(value) || value <= 0) return false;
+  if (!el || !Number.isFinite(value) || value < 0) return false;
   const p = el.params as any;
   let key = spec.param;
   let val: any = value;
   let extra: Record<string, unknown> | undefined;
   const beforeSnap = snapshotMepParams(el);
-  if (spec.param === "length") {
+  // G13 — plan temporary dimensions to the nearest reference. The plan panel
+  // builds these specs from src/features/plan-temp-dimensions.ts and routes
+  // the edit here so it gets the same validation, history step and
+  // constraint re-solve as a 3D temp-dim edit. A gap may legitimately be
+  // 0 (flush against the reference), so these params skip the value > 0
+  // guard the size params below enforce.
+  if (
+    spec.param === "gapStart" || spec.param === "gapEnd" ||
+    spec.param === "gapPerp" || spec.param === "gapPoint"
+  ) {
+    const r = applyPlanTempDimEdit(
+      el as any,
+      { param: spec.param as any, a: { x: spec.a.x, z: spec.a.z }, b: { x: spec.b.x, z: spec.b.z }, value: spec.value },
+      value,
+    );
+    if (!r) return false;
+    if (r.start) { key = "start"; val = r.start; if (r.end) extra = { end: r.end }; }
+    else if (r.point) { key = "point"; val = r.point; }
+    else if (r.width !== undefined) { key = "width"; val = r.width; }
+    else return false;
+  } else if (value <= 0) {
+    return false;
+  } else if (spec.param === "length") {
     // Right (or bottom) end stays fixed, the left (or top) end moves.
     const r = p.start && p.end ? lengthKeepRight(p.start, p.end, value) : null;
     if (!r) return false;
@@ -8297,6 +8320,16 @@ function commitEditableTempDim(spec: TempDimSpec, value: number): boolean {
   // The edited element is the anchor.
   scheduleAutoSolve([spec.elementId]);
   return true;
+}
+
+/**
+ * G13 — commit an edited temporary dimension from the plan view. This is the
+ * same function the 3D editable overlay calls, exported so the plan panel
+ * can route its click-to-edit labels through it (same validation, history
+ * step and constraint re-solve — not a second edit path).
+ */
+export function commitTempDimEdit(spec: TempDimSpec, value: number): boolean {
+  return commitEditableTempDim(spec, value);
 }
 
 function toggleDimLock(spec: TempDimSpec): boolean {

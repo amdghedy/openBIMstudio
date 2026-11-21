@@ -62,6 +62,7 @@
     "test:view-lock": "node tests/view-lock.test.cjs",
     "test:wheel-zoom": "node tests/wheel-zoom-orientation.test.cjs",
     "test:plan-draw": "node tests/plan-draw.test.cjs",
+    "test:plan-temp-dims": "node tests/plan-temp-dimensions.test.cjs",
     "test:snap-points": "node tests/element-snap-points.test.cjs",
     "test:section-plane": "node tests/section-plane-math.test.cjs",
     "test:auto-dim": "node tests/auto-dim-chains.test.cjs",
