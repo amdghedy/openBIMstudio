@@ -41,11 +41,17 @@ export function readJsonWithRecovery(filePath, fallback) {
  * Backup failures are returned to the caller so the primary write policy can
  * decide whether to continue; callers should not expose filesystem details.
  */
+// Orders backups written by this process within the same millisecond; the random suffix
+// alone would not. Scope: backups sort by mtime, then name (timestamp, this sequence, random).
+// Across processes or restarts a same-millisecond tie is still decided by the sequence/random
+// part and is not guaranteed chronological; the single-writer server is the supported case.
+let backupSeq = 0;
+
 export function backupBeforeWrite(filePath, keep = BACKUP_KEEP) {
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const target = path.join(dir, `${base}.${stamp}.${randomUUID().slice(0, 8)}.bak`);
+  const target = path.join(dir, `${base}.${stamp}.${String((backupSeq = (backupSeq + 1) % 1000000)).padStart(6, "0")}.${randomUUID().slice(0, 8)}.bak`);
   if (!fs.existsSync(filePath)) return { created: false, target, error: null };
   // Never rotate a corrupt file into the backups: it would evict the last known-good copy.
   if (!isValidJsonFile(filePath)) return { created: false, target, error: null, skippedCorrupt: quarantineCorrupt(filePath) };
