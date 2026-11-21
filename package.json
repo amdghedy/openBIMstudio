@@ -198,6 +198,7 @@
     "test:ai-modeling": "node tests/ai-native-modeling.test.cjs",
     "test:constraints": "node tests/constraint-solver.test.cjs",
     "test:parametric-closure": "node tests/parametric-closure.test.cjs",
+    "test:parametric-voids-sweeps-lofts": "node tests/parametric-voids-sweeps-lofts.test.cjs",
     "test:structural": "node tests/structural.test.cjs",
     "test:structural-3d": "node tests/structural-3d.test.cjs",
     "test:no-cdn": "node tests/no-cdn-imports.test.cjs",
