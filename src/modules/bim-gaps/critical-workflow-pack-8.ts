@@ -5,6 +5,7 @@
  *  3. CDEPROVIDERS         list CDE providers
  *  4. FRAMESELECTION       camera frame selected elements
  *  5. NLQUERYDEMO          natural-language element query
+ *  5b. NLMODEL             natural-language modelling (words to a room)
  *  6. HIERARCHYREPORT      object hierarchy summary
  *  7. MODELCURVEAXES       model curves along X/Z axes
  *  8. SHAREDPARAMS         seed shared parameters
@@ -32,6 +33,7 @@ function selectedIds(): string[] {
    packs 3–7 went through) — exposed via getters. ────────────── */
 let lastCdeProviders: Any[] = [];
 let lastNlQuery: Any | null = null;
+let lastNlModel: Any | null = null;
 let lastHierarchyReport: Any | null = null;
 let lastTwinCaps: Any[] = [];
 
@@ -40,6 +42,10 @@ export function getLastCdeProviders(): Any[] {
 }
 export function getLastNlQuery(): Any | null {
   return lastNlQuery;
+}
+
+export function getLastNlModel(): Any | null {
+  return lastNlModel;
 }
 export function getLastHierarchyReport(): Any | null {
   return lastHierarchyReport;
@@ -167,14 +173,23 @@ export async function runNlQuery(text = "select all walls"): Promise<Any> {
   try {
     // Real API: executeNLQuery(rawQuery: string, elements?: {id, category,
     // properties?}[]) — it parses internally; the parsed object is in the result.
+    // Authored elements carry geometry in params, not properties, so the
+    // mapping goes through authoredToQueryElement — otherwise a criterion
+    // such as "taller than 3 m" finds no Height and is silently skipped.
     const exec = await import("../nl-query/executor");
     const result = exec.executeNLQuery(
       text,
-      elements().map((e) => ({
-        id: String(e.id),
-        category: String(e.category ?? e.type ?? "").toUpperCase(),
-        properties: (e.properties ?? {}) as Record<string, any>,
-      })),
+      elements().map((e) =>
+        exec.authoredToQueryElement(
+          e as {
+            id: unknown;
+            type?: unknown;
+            category?: unknown;
+            params?: Record<string, any>;
+            properties?: Record<string, any>;
+          },
+        ),
+      ),
     );
     const ids = result.matchedIds;
     if (ids.length) {
@@ -199,6 +214,50 @@ export async function runNlQuery(text = "select all walls"): Promise<Any> {
     }
     notify("warn", `NL query failed: ${e instanceof Error ? e.message : e}`);
     return { ids: [] };
+  }
+}
+
+/* ── 5b. NL modelling — words to a real room ─────────────────────── */
+/**
+ * Models a room from a plain sentence — keyless: the parser, planner and
+ * executor use only the local authoring engine, so this works with no API
+ * key and no server. The cloud AI chat drives the same path through the
+ * `create_room` tool (ai-tools.ts); this is the palette / scriptable entry.
+ */
+export async function runNlModel(
+  text = "draw a 4×6 room with a door and two windows",
+): Promise<Any> {
+  try {
+    const auth = authoring();
+    if (!auth?.createElementByType) {
+      notify("warn", "NL modelling: the authoring engine is not ready.");
+      return { text, ok: false, error: "authoring engine not ready" };
+    }
+    const mod = await import("../nl-model/index");
+    const request = mod.parseRoomCommand(text);
+    const plan = mod.planRoom(request);
+    // authoring() is the untyped feature bag; the executor only needs the
+    // one creation call, so name that shape instead of casting to any.
+    const authoringApi = auth as unknown as {
+      createElementByType: (
+        type: string,
+        params: Record<string, unknown>,
+        hostId?: string,
+      ) => Promise<string | null>;
+    };
+    const built = await mod.executeRoomPlan(authoringApi, plan);
+    const doors = plan.openings.filter((o) => o.type === "door").length;
+    const windows = plan.openings.filter((o) => o.type === "window").length;
+    lastNlModel = { text, request, plan, ...built, at: Date.now() };
+    notify(
+      "success",
+      `Modelled a ${request.width} × ${request.depth} m room: 4 walls, ${doors} door(s), ${windows} window(s)`,
+    );
+    return { text, ok: true, request, plan, ...built };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    notify("warn", `NL modelling: ${message}`);
+    return { text, ok: false, error: message };
   }
 }
 
@@ -349,6 +408,7 @@ export function setupCriticalWorkflowPack8(): void {
     listCdeProvidersCmd,
     frameSelection,
     runNlQuery,
+    runNlModel,
     hierarchyReport,
     placeAxisModelCurves,
     seedSharedParams,
@@ -356,6 +416,7 @@ export function setupCriticalWorkflowPack8(): void {
     twinCapabilityMatrix,
     getLastCdeProviders,
     getLastNlQuery,
+    getLastNlModel,
     getLastHierarchyReport,
     getLastTwinCaps,
   };
@@ -367,6 +428,7 @@ export function setupCriticalWorkflowPack8(): void {
     ["rg-cde-list", "CDE: list providers", "Collaboration", () => void listCdeProvidersCmd()],
     ["rg-frame-sel", "Navigate: frame selection", "View", () => void frameSelection()],
     ["rg-nl-walls", "NL query: select all walls", "Query", () => void runNlQuery("select all walls")],
+    ["rg-nl-room", "Model: draw a 4×6 room with a door and two windows", "Model", () => void runNlModel()],
     ["rg-hierarchy", "Hierarchy: summary report", "Data", () => void hierarchyReport()],
     ["rg-curves", "Model curves: X/Z axes", "Architecture", () => void placeAxisModelCurves()],
     ["rg-shared-p", "Shared parameters: seed", "Data", () => void seedSharedParams()],

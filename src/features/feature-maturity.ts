@@ -502,6 +502,21 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "ai-modelling",
+    area: "Platform",
+    status: "limited",
+    source: ["src/modules/nl-model/parse.ts", "src/modules/nl-model/plan.ts", "src/modules/nl-model/execute.ts", "src/modules/bim-gaps/critical-workflow-pack-8.ts", "src/features/ai-tools.ts", "src/modules/nl-query/executor.ts"],
+    evidence: ["tests/nl-model.test.ts", "tests/nl-query-authored.test.ts", "tests/critical-workflow-pack-8.test.cjs", "tests/ai-native-modeling.test.cjs", "tests/e2e/ai-models.spec.ts"],
+    limitations: [
+      "Natural-language modelling is keyless and local, but the room grammar is small: one rectangular room per sentence, doors on the south wall, windows filling north/east/west; anything outside the grammar is refused, not guessed.",
+      "The cloud AI chat that can call create_room still needs the user's own provider API key (see ai-assistant); only the words-to-model path itself needs no key.",
+      "NL query over authored elements maps live params (Height/Width/Length) — IFC property criteria (FireRating, Material, LoadBearing) still need real IFC properties and stay soft-matched when absent.",
+      "The generative grid study scores five spacings deterministically (best 7.5 m on the fixture); it does not drive the evolutionary engine in generative-design.ts (runGridSpacingStudy passes it a mismatched config, so the engine throws and the inline scoring runs instead), and it does not lay out rooms — there is no generative room-layout study yet.",
+      "Packs 5 and 8 are wired into main.ts boot by this change — before it, setupBimGaps() was never invoked anywhere (docs/engineering/BASELINE.md:83), so runNlQuery, runNlModel and the grid study existed only in node tests, not in the shipped app. Packs 1–4, 6, 7, 9, 10 and the rest of setupBimGaps are still unwired.",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "plugin-system",
     area: "Platform",
     status: "limited",

@@ -45,6 +45,7 @@ const DESTRUCTIVE_TOOLS = new Set<string>([
 /** Operations that write to the project or create persistent artifacts. */
 const WRITE_TOOLS = new Set<string>([
   "create_linear_elements",
+  "create_room",
   "create_walls_from_cad",
   "create_issue",
   "create_schedule",
@@ -351,6 +352,23 @@ export const TOOLS: ToolDef[] = [
     }
   },
 
+  // ── Natural-language modelling: words to a real room ───────────────
+  // Keyless path — the parser, planner and executor are local-only, so
+  // this works with no API key; the chat itself still needs its provider
+  // key, and the user approves the write first (WRITE_TOOLS).
+  {
+    name: "create_room",
+    description:
+      "Models a rectangular room from a plain sentence, using the platform's authoring engine and undo/redo history — four native walls plus hosted doors and windows. Say e.g. \"draw a 4×6 room with a door and two windows\". Dimensions are metres (x, × or by; m/mm/cm units work). Openings take counts in words or digits (\"two windows\", \"3 doors\") and optional widths (\"1.2 m wide windows\", \"0.9 m door\"); wall height is \"3 m high\" (default 3.0 m). Doors go on the south wall, windows fill north, then east, then west. The tool reports the elements actually committed, or a clear error naming what the sentence was missing — it never invents a room. Use this instead of create_linear_elements when the user describes a room in words.",
+    parameters: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "The room description in plain words, e.g. \"draw a 4×6 room with a door and two windows\"." },
+      },
+      required: ["text"],
+    },
+  },
+
   // ── Auto-modelling from linked drawing ─────────────────────────────────
   {
     name: "list_cad_links",
@@ -460,6 +478,7 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       case "run_saved_schedule": return await runSavedScheduleTool(call.args);
 
       case "create_linear_elements": return await createLinearElementsTool(call.args);
+      case "create_room": return await createRoomTool(call.args);
       case "list_cad_links": return await listCadLinksTool();
       case "create_walls_from_cad": return await createWallsFromCadTool(call.args);
 
@@ -1345,6 +1364,44 @@ async function createLinearElementsTool(args: Record<string, any>): Promise<Tool
     },
     ...(failures.length ? { error: `${createdCount} of ${segments.length} elements were confirmed; ${failures.length} segment(s) failed.` } : {}),
   };
+}
+
+async function createRoomTool(args: Record<string, any>): Promise<ToolResult> {
+  const text = String(args.text ?? "").trim();
+  if (!text) {
+    return { ok: false, error: "Describe the room in words, e.g. \"draw a 4×6 room with a door and two windows\"." };
+  }
+  const service = services.tryUse("authoring");
+  const authoring = service as unknown as {
+    createElementByType?: (type: string, params: Record<string, unknown>, hostId?: string) => Promise<string | null>;
+  } | null;
+  // Pull the creation call into a local: narrowing a property access does
+  // not survive the await below, narrowing a local does.
+  const createElementByType = authoring?.createElementByType;
+  if (typeof createElementByType !== "function") {
+    return { ok: false, error: "The native authoring engine is not ready; room modelling is unavailable." };
+  }
+  try {
+    const mod = await import("../modules/nl-model/index");
+    const request = mod.parseRoomCommand(text);
+    const plan = mod.planRoom(request);
+    const built = await mod.executeRoomPlan({ createElementByType }, plan);
+    return {
+      ok: true,
+      data: {
+        text,
+        room: { width: request.width, depth: request.depth, wallHeight: request.wallHeight, origin: request.origin },
+        walls: built.wallIds,
+        doors: plan.openings.filter((o) => o.type === "door").length,
+        windows: plan.openings.filter((o) => o.type === "window").length,
+        openingIds: built.openingIds,
+        units: "metres",
+        coordinatePlane: "X/Z plan; Y elevation",
+      },
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 async function createWallsFromCadTool(args: Record<string, any>): Promise<ToolResult> {

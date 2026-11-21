@@ -315,6 +315,16 @@ await step("north-compass", async () => (await import("./features/north-ui")).se
 await step("project-file", async () => (await import("./modules/projects/project-file-io")).setupProjectFileIO());
 await step("project-recovery", async () => (await import("./features/project-recovery")).setupProjectRecovery());
 await step("authoring", () => setupAuthoring());
+// Critical workflow packs 5 and 8 — NL query, NL modelling and the
+// generative grid study. These were registered but never invoked: the
+// only caller, setupBimGaps() (bim-gaps-boot.ts), is itself never called
+// (docs/engineering/BASELINE.md:83 — the whole M2 boot stays unwired as a
+// separate task). Packs 5 and 8 are wired directly here because the AI
+// surface depends on them; packs 1–4, 6, 7, 9, 10 and the rest of
+// setupBimGaps remain unwired. Both setups only register palette commands
+// and expose a features api — they read authoring lazily per call.
+await step("critical-workflow-pack-5", async () => (await import("./modules/bim-gaps/critical-workflow-pack-5")).setupCriticalWorkflowPack5());
+await step("critical-workflow-pack-8", async () => (await import("./modules/bim-gaps/critical-workflow-pack-8")).setupCriticalWorkflowPack8());
 await step("plan-authoring-bridge", () => setupPlanAuthoringBridge());
 await step("central-binding", async () => (await import("./modules/collaboration/central-binding-setup")).setupCentralBinding());
 await step("families", () => setupFamilies());

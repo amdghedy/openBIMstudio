@@ -2,10 +2,10 @@
  * tests/critical-workflow-pack-8.test.cjs
  *
  * Regression tests for critical workflow pack 8
- * (src/modules/bim-gaps/critical-workflow-pack-8.ts — 10 commands).
+ * (src/modules/bim-gaps/critical-workflow-pack-8.ts — 11 commands).
  *
  * Why this file exists: pack 8 shipped (a) with 5 window.__obs* globals —
- * the honesty ratchet forbids new ones, (b) registering its 10 commands
+ * the honesty ratchet forbids new ones, (b) registering its 11 commands
  * through the window CustomEvent "obs-register-command" channel that has no
  * listener anywhere in the repo — the exact dead-channel bug class packs 1–7
  * were repaired from, (c) calling APIs that do not exist (nl-query executor
@@ -69,6 +69,22 @@ execSync(
 const compiledFile = path.join(tmp, "critical-workflow-pack-8.js");
 const compiledSrc = fs.readFileSync(compiledFile, "utf8");
 
+/* ── Compile the REAL nl-model (parser/planner/executor) too ──────────
+   runNlModel is tested against the real words-to-room code, not a stub
+   of it — only the authoring engine behind it is faked (see ctxMock). */
+const nlModelDir = path.join(repoRoot, "src/modules/nl-model");
+execSync(
+  `npx tsc ${JSON.stringify(path.join(nlModelDir, "index.ts"))} ` +
+  `${JSON.stringify(path.join(nlModelDir, "parse.ts"))} ` +
+  `${JSON.stringify(path.join(nlModelDir, "plan.ts"))} ` +
+  `${JSON.stringify(path.join(nlModelDir, "execute.ts"))} ` +
+  `--outDir ${JSON.stringify(path.join(tmp, "nl-model"))} ` +
+  `--module commonjs --target es2020 --lib es2020 --skipLibCheck --strict ` +
+  `--ignoreDeprecations 5.0 --noResolve --noCheck`,
+  { cwd: repoRoot, stdio: "pipe" },
+);
+const nlModel = require(path.join(tmp, "nl-model", "index.js"));
+
 /* ── Fixtures ───────────────────────────────────────────────────────── */
 const authored = [
   { id: "d1", type: "door", hostId: "wa1", params: {}, properties: {} },
@@ -90,6 +106,7 @@ let sharedList = [];
 const paramCalls = { parse: [], format: [], symbols: [] };
 const twinRows = [{ type: "wall", canResize: true }, { type: "door", canResize: false }];
 
+const createdElements = [];
 const ctxMock = {
   ctx: {
     features: {
@@ -99,6 +116,15 @@ const ctxMock = {
         getGrids: () => [{ id: "A", start: [-1, 0], end: [12, 0] }],
         getSelectedIds: () => [...selection],
         setSelectedAuthored: (ids) => { selection = ids.map(String); },
+        // Real createElementByType contract: (type, params, hostId?) → id | null.
+        // The fake commits into the fixture so later reads see the room.
+        createElementByType: async (type, params, hostId) => {
+          const id = `new-${type}-${createdElements.length + 1}`;
+          const el = { id, type, params: { ...(params ?? {}) }, ...(hostId ? { hostId } : {}), properties: {} };
+          createdElements.push(el);
+          authored.push(el);
+          return id;
+        },
       },
     },
   },
@@ -153,6 +179,19 @@ const stubs = {
   "../nl-query/executor": {
     // Real contract: executeNLQuery(rawQuery: string, elements?: {id, category,
     // properties?}[]) → { parsed, matchedCount, matchedIds, durationMs }.
+    // authoredToQueryElement maps an authored element (geometry in params)
+    // to that shape — Height/Width/Length come from the live params.
+    authoredToQueryElement: (el) => {
+      const params = el.params ?? {};
+      const properties = { ...(el.properties ?? {}) };
+      if (typeof params.height === "number") properties.Height = params.height;
+      if (typeof params.thickness === "number") properties.Width = params.thickness;
+      else if (typeof params.width === "number") properties.Width = params.width;
+      if (Array.isArray(params.start) && Array.isArray(params.end)) {
+        properties.Length = Math.hypot(params.end[0] - params.start[0], params.end[1] - params.start[1]);
+      }
+      return { id: String(el.id), category: String(el.category ?? el.type ?? "").toUpperCase(), properties };
+    },
     executeNLQuery: (rawQuery, elements) => {
       nlCalls.push({ rawQuery, elements });
       assert.strictEqual(typeof rawQuery, "string", "executor must receive the RAW STRING, not a parsed object");
@@ -215,6 +254,7 @@ const stubs = {
     },
   },
   "../native-twin/capabilities": { capabilityMatrixRows: () => twinRows },
+  "../nl-model/index": nlModel,
 };
 
 const originalLoad = Module._load;
@@ -231,12 +271,12 @@ const pack = mod.exports;
 
 /* ── A. registration ────────────────────────────────────────────────── */
 
-t("A1 boot registers exactly 10 commands into the REAL palette", () => {
+t("A1 boot registers exactly 11 commands into the REAL palette", () => {
   registered.length = 0;
   pack.setupCriticalWorkflowPack8();
-  assert.strictEqual(registered.length, 10);
+  assert.strictEqual(registered.length, 11);
   const ids = registered.map((c) => c.id);
-  for (const want of ["rg-auto-seed", "rg-auto-run", "rg-cde-list", "rg-frame-sel", "rg-nl-walls", "rg-hierarchy", "rg-curves", "rg-shared-p", "rg-param-eng", "rg-twin-caps"]) {
+  for (const want of ["rg-auto-seed", "rg-auto-run", "rg-cde-list", "rg-frame-sel", "rg-nl-walls", "rg-nl-room", "rg-hierarchy", "rg-curves", "rg-shared-p", "rg-param-eng", "rg-twin-caps"]) {
     assert.ok(ids.includes(want), `missing command ${want}`);
   }
   assert.ok(registered.every((c) => typeof c.label === "string" && typeof c.run === "function"));
@@ -262,16 +302,60 @@ t("A3 zero window.__obs* mentions in pack-8 source (ratchet guard)", () => {
 
 t("B1 runNlQuery passes the RAW STRING to the executor and selects hits", () => {
   nlCalls.length = 0; selection = [];
+  // Capture the fixture size now: later async tests append elements to the
+  // shared fixture while this query is in flight.
+  const beforeCount = authored.length;
   return Promise.resolve().then(async () => {
     const r = await pack.runNlQuery("select all walls");
     assert.strictEqual(nlCalls.length, 1);
     assert.strictEqual(nlCalls[0].rawQuery, "select all walls");
     // 2 walls in the fixture (wa1 + the IFC-wall categories from types)
-    assert.strictEqual(nlCalls[0].elements.length, authored.length);
+    assert.strictEqual(nlCalls[0].elements.length, beforeCount);
     assert.deepStrictEqual(r.matchedIds, ["wa1"]);
     assert.deepStrictEqual(selection, ["wa1"]);
     assert.ok(savedCalls.includes("select all walls"), "query saved for reuse");
     assert.ok(pack.getLastNlQuery()?.text === "select all walls");
+  });
+});
+
+t("B1b runNlModel models the 4×6 room through the REAL nl-model code", () => {
+  createdElements.length = 0;
+  notices.length = 0;
+  const baseline = authored.length;
+  return Promise.resolve().then(async () => {
+    const r = await pack.runNlModel("draw a 4×6 room with a door and two windows");
+    assert.strictEqual(r.ok, true, `runNlModel failed: ${r.error ?? ""}`);
+    assert.strictEqual(r.wallIds.length, 4);
+    assert.strictEqual(r.openingIds.length, 3);
+    // 4 walls form the 4×6 rectangle, origin (0,0).
+    const walls = createdElements.filter((e) => e.type === "wall");
+    assert.strictEqual(walls.length, 4);
+    assert.deepStrictEqual(walls[0].params.start, [0, 0]);
+    assert.deepStrictEqual(walls[0].params.end, [4, 0]);
+    assert.deepStrictEqual(walls[2].params.start, [4, 6]);
+    // 1 door + 2 windows, each hosted on a real wall id from this run.
+    const doors = createdElements.filter((e) => e.type === "door");
+    const windows = createdElements.filter((e) => e.type === "window");
+    assert.strictEqual(doors.length, 1);
+    assert.strictEqual(windows.length, 2);
+    for (const o of [...doors, ...windows]) {
+      assert.ok(r.wallIds.includes(o.hostId), `${o.type} hosted on an unknown wall`);
+      assert.ok(o.params.offsetAlongHost > 0, "hosted offset must be on the wall");
+    }
+    assert.strictEqual(doors[0].params.width, 0.9);
+    assert.strictEqual(windows[0].params.width, 1.2);
+    assert.ok(pack.getLastNlModel()?.text === "draw a 4×6 room with a door and two windows");
+    assert.ok(notices.some((n) => n.kind === "success" && /4 × 6 m room/.test(n.msg)));
+
+    // An unparseable sentence is an honest failure, not a hallucinated room.
+    const before = createdElements.length;
+    const bad = await pack.runNlModel("draw something nice");
+    assert.strictEqual(bad.ok, false);
+    assert.ok(/does not describe a room|no room size/.test(bad.error), `unexpected error: ${bad.error}`);
+    assert.strictEqual(createdElements.length, before, "a failed parse must not create elements");
+    // The room was committed into the shared fixture by the fake engine —
+    // take it back out so later tests still see the original 6 elements.
+    authored.length = baseline;
   });
 });
 
@@ -355,10 +439,11 @@ t("B8 automation commands drive the real rules module", async () => {
 
 /* ── C. getter surface ─────────────────────────────────────────────── */
 
-t("C1 the pack api exposes the four result getters", () => {
+t("C1 the pack api exposes the five result getters", () => {
   pack.setupCriticalWorkflowPack8();
   const feats = ctxMock.ctx.features;
   assert.strictEqual(typeof feats.workflowPack8.getLastNlQuery, "function");
+  assert.strictEqual(typeof feats.workflowPack8.getLastNlModel, "function");
   assert.strictEqual(typeof feats.workflowPack8.getLastHierarchyReport, "function");
   assert.strictEqual(typeof feats.workflowPack8.getLastCdeProviders, "function");
   assert.strictEqual(typeof feats.workflowPack8.getLastTwinCaps, "function");

@@ -196,6 +196,8 @@
     "test:clash-selection": "node tests/clash-selection-plan.test.cjs",
     "test:clash-scenarios": "node tests/clash-scenarios.test.cjs",
     "test:ai-modeling": "node tests/ai-native-modeling.test.cjs",
+    "test:nl-model": "tsx tests/nl-model.test.ts",
+    "test:nl-query-authored": "tsx tests/nl-query-authored.test.ts",
     "test:constraints": "node tests/constraint-solver.test.cjs",
     "test:parametric-closure": "node tests/parametric-closure.test.cjs",
     "test:parametric-voids-sweeps-lofts": "node tests/parametric-voids-sweeps-lofts.test.cjs",

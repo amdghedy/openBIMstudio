@@ -18,6 +18,59 @@ export interface QueryExecutionResult {
   durationMs: number;
 }
 
+/**
+ * UI side effect of a query (selection / toast). Guarded so the query
+ * engine itself runs outside a DOM — node tests, workers — where there
+ * is no window to dispatch to; in the browser this changes nothing.
+ */
+function dispatchUiEvent(name: string, detail: unknown): void {
+  if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return;
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+export interface QueryableElement {
+  id: string;
+  category: string;
+  properties?: Record<string, any>;
+}
+
+/**
+ * Map one authored element to the shape the query executor matches on.
+ *
+ * Before this, callers passed `properties` only — and authored elements
+ * carry their geometry in `params`, not `properties` — so a criterion
+ * such as "taller than 3 m" found no `Height` property and was silently
+ * skipped, matching every wall regardless of height. The live geometry
+ * now feeds the criteria the parser emits: Height ← params.height,
+ * Width ← params.thickness (walls) or params.width, Length ← the
+ * start/end span for linear elements, Elevation ← params.elevation.
+ * IFC-style properties, when present, are kept underneath; the live
+ * params win for the geometric keys because they are the current model.
+ */
+export function authoredToQueryElement(el: {
+  id: unknown;
+  type?: unknown;
+  category?: unknown;
+  params?: Record<string, any>;
+  properties?: Record<string, any>;
+}): QueryableElement {
+  const params = (el.params ?? {}) as Record<string, any>;
+  const properties: Record<string, any> = { ...(el.properties ?? {}) };
+  if (typeof params.height === "number") properties.Height = params.height;
+  if (typeof params.thickness === "number") properties.Width = params.thickness;
+  else if (typeof params.width === "number") properties.Width = params.width;
+  if (Array.isArray(params.start) && Array.isArray(params.end)) {
+    const length = Math.hypot(params.end[0] - params.start[0], params.end[1] - params.start[1]);
+    if (Number.isFinite(length)) properties.Length = Math.round(length * 1000) / 1000;
+  }
+  if (typeof params.elevation === "number") properties.Elevation = params.elevation;
+  return {
+    id: String(el.id),
+    category: String(el.category ?? el.type ?? "").toUpperCase(),
+    properties,
+  };
+}
+
 export function executeNLQuery(
   rawQuery: string,
   modelElements?: Array<{ id: string; category: string; properties?: Record<string, any> }>
@@ -64,27 +117,15 @@ export function executeNLQuery(
 
   // Dispatch appropriate action
   if (parsed.action === "select" || parsed.action === "isolate") {
-    window.dispatchEvent(
-      new CustomEvent("obs-select", {
-        detail: { ids: matchedIds },
-      })
-    );
+    dispatchUiEvent("obs-select", { ids: matchedIds });
   } else if (parsed.action === "highlight") {
-    window.dispatchEvent(
-      new CustomEvent("obs-highlight", {
-        detail: { ids: matchedIds, color: "#f59e0b" },
-      })
-    );
+    dispatchUiEvent("obs-highlight", { ids: matchedIds, color: "#f59e0b" });
   }
 
-  window.dispatchEvent(
-    new CustomEvent("obs-toast", {
-      detail: {
-        message: `${parsed.interpretedSummary} &rarr; Found ${matchedIds.length} element(s)`,
-        kind: "info",
-      },
-    })
-  );
+  dispatchUiEvent("obs-toast", {
+    message: `${parsed.interpretedSummary} &rarr; Found ${matchedIds.length} element(s)`,
+    kind: "info",
+  });
 
   return {
     parsed,

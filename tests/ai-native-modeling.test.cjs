@@ -32,14 +32,50 @@ const servicesMock = {
   tryUse: (name) => name === "authoring" ? {
     getElements: () => authored,
     getElementCount: () => authored.length,
+    // Real createElementByType contract: (type, params, hostId?) → id | null.
+    createElementByType: async (type, params, hostId) => {
+      const el = {
+        id: `native-${authored.length + 1}`,
+        type, params: { ...(params ?? {}) },
+        ...(hostId ? { hostId } : {}),
+      };
+      authored.push(el);
+      return el.id;
+    },
   } : undefined,
 };
+
+/* ── Load the REAL nl-model (parser/planner/executor) from TS ──────────
+   create_room is tested against the real words-to-room code, not a stub
+   of it — only the authoring engine behind it is faked (above). */
+const nlModelCache = new Map();
+function loadTsModule(filePath) {
+  if (nlModelCache.has(filePath)) return nlModelCache.get(filePath);
+  const text = fs.readFileSync(filePath, "utf8");
+  const js = ts.transpileModule(text, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const m = new Module(filePath, module);
+  m.filename = filePath;
+  m.paths = Module._nodeModulePaths(path.dirname(filePath));
+  m._compile(js, filePath);
+  nlModelCache.set(filePath, m.exports);
+  return m.exports;
+}
+const nlModelDir = path.resolve("src/modules/nl-model");
+
 const originalLoad = Module._load;
 Module._load = function(request, parent, isMain) {
   if (request === "../core/context") return { ctx: { fragments: { list: new Map() }, features: {} } };
   if (request === "../core/services") return { services: servicesMock };
   if (request === "./command-palette") return { listCommands: () => [], registerCommand: () => {} };
   if (request === "./authoring") return authoringMock;
+  // Lazy: the hook must exist before the first nl-model file loads, because
+  // index.ts requires ./parse, ./plan and ./execute relatively.
+  if (request === "../modules/nl-model/index") return loadTsModule(path.join(nlModelDir, "index.ts"));
+  if (request === "./parse") return loadTsModule(path.join(nlModelDir, "parse.ts"));
+  if (request === "./plan") return loadTsModule(path.join(nlModelDir, "plan.ts"));
+  if (request === "./execute") return loadTsModule(path.join(nlModelDir, "execute.ts"));
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -63,8 +99,15 @@ async function test(name, fn) {
   });
 
 
+  await test("registers a create_room tool that takes a plain sentence", () => {
+    const tool = TOOLS.find((item) => item.name === "create_room");
+    assert.ok(tool, "tool is missing");
+    assert.deepEqual(tool.parameters.required, ["text"]);
+  });
+
+
   await test("requires approval for every model-writing operation", () => {
-    for (const name of ["create_linear_elements", "create_walls_from_cad", "create_issue", "create_schedule"]) {
+    for (const name of ["create_linear_elements", "create_room", "create_walls_from_cad", "create_issue", "create_schedule"]) {
       assert.equal(requiresUserApproval(name), true, name + " must require approval");
     }
     for (const name of ["get_app_state", "get_model_categories", "get_element_properties", "run_clash_test"]) {
@@ -135,6 +178,38 @@ async function test(name, fn) {
     });
     assert.equal(result.ok, false);
     assert.match(result.error, /shorter than 1 mm/);
+    assert.equal(authored.length, before);
+  });
+
+  await test("create_room models a 4×6 room with a door and two windows", async () => {
+    const before = authored.length;
+    const result = await executeTool({
+      id: "test-room", name: "create_room",
+      args: { text: "draw a 4×6 room with a door and two windows" },
+    });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.data.room.width, 4);
+    assert.equal(result.data.room.depth, 6);
+    assert.equal(result.data.walls.length, 4);
+    assert.equal(result.data.doors, 1);
+    assert.equal(result.data.windows, 2);
+    const made = authored.slice(before);
+    assert.equal(made.filter((e) => e.type === "wall").length, 4);
+    assert.equal(made.filter((e) => e.type === "door").length, 1);
+    assert.equal(made.filter((e) => e.type === "window").length, 2);
+    for (const o of made.filter((e) => e.type === "door" || e.type === "window")) {
+      assert.ok(result.data.walls.includes(o.hostId), `${o.type} hosted on an unknown wall`);
+    }
+  });
+
+  await test("create_room rejects an unparseable sentence without mutating the model", async () => {
+    const before = authored.length;
+    const result = await executeTool({
+      id: "bad-room", name: "create_room",
+      args: { text: "draw something nice" },
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /does not describe a room/);
     assert.equal(authored.length, before);
   });
 
