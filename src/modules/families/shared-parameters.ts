@@ -1,7 +1,21 @@
 /**
  * Local-first registry of reusable family parameters.
+ *
+ * Two serialisations are supported:
+ * - JSON (`export` / `import`): the manager's native snapshot.
+ * - Revit shared-parameter text (`.txt`, `exportText` / `importText`):
+ *   the tab-separated format Revit reads and writes —
+ *   `#` comment, `*META`, `*GROUP`, `*PARAM` sections, `PARAM` rows
+ *   of GUID, NAME, DATACATEGORY, DATATYPE, GROUP, VISIBLE,
+ *   DESCRIPTION, USERMODIFIABLE, HIDEWHENNOVALUE. The `.txt` format
+ *   does not record instance/type binding, so imported parameters
+ *   default to instance (`isInstance: true`); it also has no default
+ *   value column. DATACATEGORY is authoritative for the type;
+ *   DATATYPE must be a known token and is written out identical.
  */
-export type SharedParameterType = "number" | "string" | "boolean" | "length" | "area";
+export type SharedParameterType =
+  | "number" | "string" | "boolean" | "length" | "area"
+  | "integer" | "volume" | "angle" | "material";
 
 export interface SharedParameter {
   /** Stable RFC4122 version 4 identifier. */
@@ -18,6 +32,12 @@ export interface SharedParameter {
   defaultValue: unknown;
   /** True for per-instance values, false for type-level values. */
   isInstance: boolean;
+  /** Revit `.txt` VISIBLE flag (default true when absent). */
+  visible?: boolean;
+  /** Revit `.txt` USERMODIFIABLE flag (default true when absent). */
+  userModifiable?: boolean;
+  /** Revit `.txt` HIDEWHENNOVALUE flag (default false when absent). */
+  hideWhenNoValue?: boolean;
 }
 
 export interface SharedParameterManagerService {
@@ -29,12 +49,169 @@ export interface SharedParameterManagerService {
   delete(guid: string): boolean;
   export(): string;
   import(source: string | unknown): SharedParameter[];
+  /** Serialise all definitions as a Revit shared-parameter `.txt` file. */
+  exportText(): string;
+  /** Import definitions from a Revit shared-parameter `.txt` file. */
+  importText(source: string): SharedParameter[];
 }
 
 const STORAGE_KEY = "openbimstudio.shared-parameters";
 const PARAMETER_TYPES = new Set<SharedParameterType>([
   "number", "string", "boolean", "length", "area",
+  "integer", "volume", "angle", "material",
 ]);
+
+/** Revit `.txt` DATACATEGORY / DATATYPE token -> manager type. */
+const REVIT_TYPE_MAP: Record<string, SharedParameterType> = {
+  TEXT: "string",
+  INTEGER: "integer",
+  NUMBER: "number",
+  LENGTH: "length",
+  AREA: "area",
+  VOLUME: "volume",
+  ANGLE: "angle",
+  YESNO: "boolean",
+  MATERIAL: "material",
+};
+
+/** Manager type -> Revit `.txt` DATACATEGORY / DATATYPE token. */
+const REVIT_TYPE_REVERSE: Record<SharedParameterType, string> = {
+  string: "TEXT",
+  integer: "INTEGER",
+  number: "NUMBER",
+  length: "LENGTH",
+  area: "AREA",
+  volume: "VOLUME",
+  angle: "ANGLE",
+  boolean: "YESNO",
+  material: "MATERIAL",
+};
+
+const GUID_RE = /^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/i;
+
+/**
+ * Parse a Revit shared-parameter `.txt` file into definitions.
+ * Throws with a line number on malformed input; duplicate GUIDs or
+ * names inside one file are malformed (merging against EXISTING
+ * definitions is the manager's `importText`, which follows the same
+ * rules as `import`: existing GUIDs are updated, duplicate names with
+ * different GUIDs are skipped).
+ */
+export function parseSharedParameterText(source: string): SharedParameter[] {
+  if (typeof source !== "string" || !source.trim()) {
+    throw new Error("Shared parameter text is empty or not a string.");
+  }
+  const groups = new Map<number, string>();
+  const parameters: SharedParameter[] = [];
+  const seenGuids = new Set<string>();
+  const seenNames = new Set<string>();
+  let section: "meta" | "group" | "param" | null = null;
+  const lines = source.replace(/^\uFEFF/, "").split(/\r\n|\n|\r/);
+  for (let i = 0; i < lines.length; i++) {
+    const lineNo = i + 1;
+    const raw = lines[i];
+    if (!raw.trim() || raw.trimStart().startsWith("#")) continue;
+    const cells = raw.split("\t");
+    const head = cells[0]?.trim();
+    if (head === "*META") { section = "meta"; continue; }
+    if (head === "*GROUP") { section = "group"; continue; }
+    if (head === "*PARAM") { section = "param"; continue; }
+    if (head === "META") {
+      if (section !== "meta") throw new Error(`Line ${lineNo}: META row outside the *META section.`);
+      continue;
+    }
+    if (head === "GROUP") {
+      if (section !== "group") throw new Error(`Line ${lineNo}: GROUP row outside the *GROUP section.`);
+      const id = Number(cells[1]);
+      const name = cells[2]?.trim();
+      if (!Number.isInteger(id) || id <= 0) throw new Error(`Line ${lineNo}: GROUP id must be a positive integer, got "${cells[1] ?? ""}".`);
+      if (!name) throw new Error(`Line ${lineNo}: GROUP row is missing a name.`);
+      if (groups.has(id)) throw new Error(`Line ${lineNo}: duplicate GROUP id ${id}.`);
+      groups.set(id, name);
+      continue;
+    }
+    if (head === "PARAM") {
+      if (section !== "param") throw new Error(`Line ${lineNo}: PARAM row outside the *PARAM section.`);
+      if (cells.length < 6) {
+        throw new Error(`Line ${lineNo}: PARAM row has ${cells.length - 1} field(s); expected at least GUID, NAME, DATACATEGORY, DATATYPE and GROUP.`);
+      }
+      const [, guidRaw, nameRaw, categoryRaw, datatypeRaw, groupRaw, visibleRaw, descriptionRaw, modifiableRaw, hideRaw] = cells;
+      const guid = guidRaw?.trim().replace(/^\{|\}$/g, "").toLowerCase();
+      if (!guid || !GUID_RE.test(guidRaw?.trim() ?? "")) {
+        throw new Error(`Line ${lineNo}: PARAM GUID "${guidRaw ?? ""}" is not a valid GUID.`);
+      }
+      const name = nameRaw?.trim();
+      if (!name) throw new Error(`Line ${lineNo}: PARAM row is missing a name.`);
+      const category = categoryRaw?.trim().toUpperCase();
+      const type = category ? REVIT_TYPE_MAP[category] : undefined;
+      if (!type) throw new Error(`Line ${lineNo}: unknown DATACATEGORY "${categoryRaw ?? ""}".`);
+      const datatype = datatypeRaw?.trim().toUpperCase();
+      if (!datatype || !(datatype in REVIT_TYPE_MAP)) {
+        throw new Error(`Line ${lineNo}: unknown DATATYPE "${datatypeRaw ?? ""}".`);
+      }
+      const groupId = Number(groupRaw);
+      const group = groups.get(groupId);
+      if (!group) throw new Error(`Line ${lineNo}: PARAM references unknown GROUP id "${groupRaw ?? ""}".`);
+      const flag = (rawFlag: string | undefined, field: string, fallback: boolean): boolean => {
+        if (rawFlag === undefined || rawFlag.trim() === "") return fallback;
+        if (rawFlag.trim() === "1") return true;
+        if (rawFlag.trim() === "0") return false;
+        throw new Error(`Line ${lineNo}: ${field} must be 0 or 1, got "${rawFlag}".`);
+      };
+      if (seenGuids.has(guid)) throw new Error(`Line ${lineNo}: duplicate GUID ${guid}.`);
+      if (seenNames.has(name.toLowerCase())) throw new Error(`Line ${lineNo}: duplicate parameter name "${name}".`);
+      seenGuids.add(guid);
+      seenNames.add(name.toLowerCase());
+      parameters.push({
+        guid,
+        name,
+        group,
+        type,
+        ...(descriptionRaw?.trim() ? { description: descriptionRaw.trim() } : {}),
+        defaultValue: undefined,
+        isInstance: true,
+        visible: flag(visibleRaw, "VISIBLE", true),
+        userModifiable: flag(modifiableRaw, "USERMODIFIABLE", true),
+        hideWhenNoValue: flag(hideRaw, "HIDEWHENNOVALUE", false),
+      });
+      continue;
+    }
+    throw new Error(`Line ${lineNo}: unexpected content "${raw.trim().slice(0, 40)}".`);
+  }
+  if (!groups.size && !parameters.length) {
+    throw new Error("Shared parameter text contains no GROUP or PARAM rows.");
+  }
+  return parameters;
+}
+
+/** Serialise definitions as a Revit shared-parameter `.txt` file. */
+export function serializeSharedParameterText(parameters: SharedParameter[]): string {
+  const groupIds = new Map<string, number>();
+  for (const p of parameters) {
+    if (!groupIds.has(p.group)) groupIds.set(p.group, groupIds.size + 1);
+  }
+  const lines: string[] = [
+    "# This is a Revit shared parameter file. Do not edit manually.",
+    "*META\tVERSION\tMINVERSION",
+    "META\t2\t1",
+    "*GROUP\tID\tNAME",
+    ...[...groupIds.entries()].map(([name, id]) => `GROUP\t${id}\t${name}`),
+    "*PARAM\tGUID\tNAME\tDATACATEGORY\tDATATYPE\tGROUP\tVISIBLE\tDESCRIPTION\tUSERMODIFIABLE\tHIDEWHENNOVALUE",
+    ...parameters.map((p) => [
+      "PARAM",
+      p.guid,
+      p.name,
+      REVIT_TYPE_REVERSE[p.type],
+      REVIT_TYPE_REVERSE[p.type],
+      String(groupIds.get(p.group) ?? 1),
+      p.visible === false ? "0" : "1",
+      p.description ?? "",
+      p.userModifiable === false ? "0" : "1",
+      p.hideWhenNoValue ? "1" : "0",
+    ].join("\t")),
+  ];
+  return lines.join("\r\n");
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -51,6 +228,15 @@ function isParameterType(value: unknown): value is SharedParameterType {
  */
 export class SharedParameterManager implements SharedParameterManagerService {
   private readonly storage: Pick<Storage, "getItem" | "setItem"> | null;
+  /**
+   * In-memory copy of the definitions. The manager used to be
+   * storage-only: with a null storage handle every write was silently
+   * dropped and every read returned empty, so `create` followed by
+   * `findByName` failed. The cache is now the source of truth once
+   * loaded; storage is write-through persistence plus the initial
+   * load (a fresh manager instance still reloads from shared storage).
+   */
+  private cache: SharedParameter[] | null = null;
 
   /**
    * Construct the manager. Supplying storage is useful for tests and embedding;
@@ -88,22 +274,30 @@ export class SharedParameterManager implements SharedParameterManagerService {
 
   /** Reads and validates the stored definitions; corrupt data is ignored safely. */
   private readAll(): SharedParameter[] {
-    try {
-      const raw = this.storage?.getItem(STORAGE_KEY);
-      if (!raw) return [];
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map((item: unknown) => this.normalize(item)).filter(
-        (item): item is SharedParameter => item !== null,
-      );
-    } catch (error) {
-      console.warn("[shared-parameters] unable to read stored parameters:", error);
-      return [];
+    if (this.cache === null) {
+      try {
+        const raw = this.storage?.getItem(STORAGE_KEY);
+        if (!raw) this.cache = [];
+        else {
+          const parsed: unknown = JSON.parse(raw);
+          if (!Array.isArray(parsed)) this.cache = [];
+          else {
+            this.cache = parsed.map((item: unknown) => this.normalize(item)).filter(
+              (item): item is SharedParameter => item !== null,
+            );
+          }
+        }
+      } catch (error) {
+        console.warn("[shared-parameters] unable to read stored parameters:", error);
+        this.cache = [];
+      }
     }
+    return [...this.cache];
   }
 
   /** Writes definitions, logging quota/security failures instead of crashing. */
   private writeAll(parameters: SharedParameter[]): void {
+    this.cache = [...parameters];
     try {
       this.storage?.setItem(STORAGE_KEY, JSON.stringify(parameters));
     } catch (error) {
@@ -115,6 +309,8 @@ export class SharedParameterManager implements SharedParameterManagerService {
     if (!isRecord(value)) return null;
     const name = typeof value.name === "string" ? value.name.trim() : "";
     if (!name) return null;
+    const flag = (key: string): boolean | undefined =>
+      typeof value[key] === "boolean" ? (value[key] as boolean) : undefined;
     return {
       guid: typeof value.guid === "string" && value.guid.trim() ? value.guid : this.generateGuid(),
       name,
@@ -125,6 +321,9 @@ export class SharedParameterManager implements SharedParameterManagerService {
         : {}),
       defaultValue: value.defaultValue,
       isInstance: typeof value.isInstance === "boolean" ? value.isInstance : true,
+      ...(flag("visible") !== undefined ? { visible: flag("visible") as boolean } : {}),
+      ...(flag("userModifiable") !== undefined ? { userModifiable: flag("userModifiable") as boolean } : {}),
+      ...(flag("hideWhenNoValue") !== undefined ? { hideWhenNoValue: flag("hideWhenNoValue") as boolean } : {}),
     };
   }
 
@@ -149,6 +348,9 @@ export class SharedParameterManager implements SharedParameterManagerService {
       ...(input.description?.trim() ? { description: input.description.trim() } : {}),
       defaultValue: input.defaultValue,
       isInstance: input.isInstance,
+      ...(typeof input.visible === "boolean" ? { visible: input.visible } : {}),
+      ...(typeof input.userModifiable === "boolean" ? { userModifiable: input.userModifiable } : {}),
+      ...(typeof input.hideWhenNoValue === "boolean" ? { hideWhenNoValue: input.hideWhenNoValue } : {}),
     };
     parameters.push(parameter);
     this.writeAll(parameters);
@@ -214,6 +416,31 @@ export class SharedParameterManager implements SharedParameterManagerService {
     for (const raw of decoded as unknown[]) {
       const parameter = this.normalize(raw);
       if (!parameter) continue;
+      const duplicateName = [...byGuid.values()].some(
+        (existing) => existing.guid !== parameter.guid && existing.name.toLowerCase() === parameter.name.toLowerCase(),
+      );
+      if (!duplicateName) byGuid.set(parameter.guid, parameter);
+    }
+    const result = [...byGuid.values()];
+    this.writeAll(result);
+    return result;
+  }
+
+  /** Returns a Revit shared-parameter `.txt` snapshot suitable for download. */
+  exportText(): string {
+    return serializeSharedParameterText(this.list());
+  }
+
+  /**
+   * Imports parameter definitions from a Revit shared-parameter `.txt`
+   * file. Same merge rules as `import`: existing GUIDs are updated;
+   * duplicate names with different GUIDs are skipped.
+   */
+  importText(source: string): SharedParameter[] {
+    const decoded = parseSharedParameterText(source);
+    const current = this.readAll();
+    const byGuid = new Map(current.map((parameter) => [parameter.guid, parameter]));
+    for (const parameter of decoded) {
       const duplicateName = [...byGuid.values()].some(
         (existing) => existing.guid !== parameter.guid && existing.name.toLowerCase() === parameter.name.toLowerCase(),
       );
