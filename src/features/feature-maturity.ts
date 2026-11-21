@@ -286,6 +286,24 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "review-links",
+    area: "Collaboration",
+    status: "limited",
+    source: ["src/modules/review/review-links.ts", "src/modules/review/review-links-core.ts", "src/modules/review/review-state.ts"],
+    evidence: [
+      "tests/review-links.test.ts",
+      "7 assertions in tests/review-links.test.ts: link building (https model URL, encoding, non-http rejection), ?review parsing (URL, bare, absent), read-only tool sets per surface",
+      "Browser chain spec tests/e2e/review-links.spec.ts — the full loop in real Chromium against the PRODUCTION vite preview bundle: author page authors a wall and snapshots the model (the exact bytes the Save-to-file command writes, read through the review feature's snapshot — a headless browser cannot drive the native file picker that command opens); a static server hosts the .obsproj; a second browser opens the review link and the wall is in the scene with the review banner visible; activating the wall tool and createElementByType in review mode are both refused and the model is unchanged; the reviewer selects the wall, creates an issue, and exports the review as BCF; the downloaded .bcfzip re-parses (JSZip) to one topic carrying the title, author, viewpoint camera and snapshot; the author page imports that .bcfzip and the issue appears with its viewpoint",
+    ],
+    limitations: [
+      "The author hosts the .obsproj file — the app is the viewer, not the host. The host must serve the file over https when the app is https (mixed content is blocked) and must allow cross-origin reads (CORS) unless the file is served from the app's own origin",
+      "The return path is a file: the reviewer downloads the .bcfzip and sends it back. There is no live sync — that is the share-links item",
+      "Review mode gates the tool setters and the create/delete/transform choke points; it is view-only enforcement, not a sandbox — a reviewer with devtools open can poke the in-memory model, and saving in review mode writes the reviewer's own local copy only, never the author's",
+      "Encrypted projects cannot be reviewed from a link — the link fails closed with a plain message; the reviewer must open the file in the app with its password instead",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "aps-conversion",
     area: "Interoperability",
     status: "experimental",

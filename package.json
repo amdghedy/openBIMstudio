@@ -263,6 +263,7 @@
     "test:service-worker": "node tests/service-worker.test.cjs",
     "test:plugins": "node tests/plugins-api.test.cjs",
     "test:feature-registry": "node tests/feature-registry.test.cjs",
+    "test:review-links": "tsx tests/review-links.test.ts",
     "test:escape-all": "node tests/escape-all.test.cjs",
     "test:spatial-index": "node tests/spatial-index.test.cjs",
     "test:csg-spatial-index": "node tests/csg-spatial-index.test.cjs",

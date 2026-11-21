@@ -334,6 +334,7 @@ await step("family-browser", () => setupFamilyBrowser());
 await step("issues", () => setupIssues());
 await step("bcf", () => setupBcf());
 await step("issues-panel", () => setupIssuesPanel());
+await step("review-links", async () => (await import("./modules/review/review-links")).setupReviewLinks());
 await step("cost", () => setupCost());
 await step("cost-panel", () => setupCostPanel());
 await step("cde-panel", () => setupCdePanel());
@@ -447,6 +448,18 @@ await step("published-model", async () => {
     await openPublishedModel();
   } catch (e) {
     console.warn("[boot] published model auto-open failed; welcome screen stays", e);
+  }
+});
+
+// A review link (?review=<hosted .obsproj URL>) opens the model view-only:
+// after auto-reopen, so the link's model replaces whatever reopened, and
+// after every panel is live, so the review banner can use the issues panel.
+await step("review-link", async () => {
+  try {
+    const { openReviewLink } = await import("./modules/review/review-links");
+    await openReviewLink();
+  } catch (e) {
+    console.warn("[boot] review link failed; continuing in normal mode", e);
   }
 });
 

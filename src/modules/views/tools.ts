@@ -13,6 +13,8 @@
  * was created or what feedback the UI should show.
  */
 
+import { notify } from "../../core/notify";
+import { isReviewMode } from "../review/review-state";
 import { getElements } from "../../features/authoring";
 import { isViewOnly } from "../collaboration/share-session";
 import { pickReference } from "./hit-test";
@@ -43,6 +45,13 @@ class ToolStateImpl {
           detail: { message: "View-only share link — editing is disabled for this link.", kind: "error" },
         }));
       } catch { /* */ }
+      return;
+    }
+    // Review mode (differentiation item 8) is view-only: dimensions, tags
+    // and section lines write into the model, so only select is allowed —
+    // markup goes through issues, which is what travels back as BCF.
+    if (isReviewMode() && t !== "select") {
+      notify("warn", "Review mode is view-only — add an issue instead of editing the model.");
       return;
     }
     this.active = t;

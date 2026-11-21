@@ -1737,7 +1737,8 @@ let cadImageEl: SVGImageElement | null = null;
 // Import the underlay snap module to store entity data for snap querying.
 // This enables the "trace over DWG" workflow: walls snap to DWG endpoints.
 import { storeUnderlayFromDxf, clearUnderlayData, setUnderlaySnapEnabled, isUnderlaySnapEnabled } from "./cad-underlay-snap";
-import { uiAlert } from "../core/notify";
+import { notify, uiAlert } from "../core/notify";
+import { isReviewMode } from "../modules/review/review-state";
 import { promptLine, openFormModal, showTableDialog } from "./form-modal";
 import { shortcuts } from "./shortcuts";
 import { registerEscapeScope } from "../core/escape-all";
@@ -4805,6 +4806,12 @@ export function setPlanToolFromRibbon(tool: string) {
         detail: { message: "View-only share link — editing is disabled for this link.", kind: "error" },
       }));
     } catch { /* */ }
+    return;
+  }
+  // Review mode (differentiation item 8) is view-only: select / pan /
+  // navigate only. ("measure" is a dimension alias, not a read-only tool.)
+  if (isReviewMode() && tool !== "select" && tool !== "pan" && tool !== "navigate") {
+    notify("warn", "Review mode is view-only — add an issue instead of editing the model.");
     return;
   }
   planDrawStart = null;

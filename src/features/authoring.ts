@@ -40,6 +40,7 @@ import { inputRouter, type Gesture, type Mods } from "../core/input-router";
 import { notify } from "../core/notify";
 import { checkEditAllowed } from "../modules/collaboration/edit-guard";
 import { t as i18nT } from "../core/i18n";
+import { isReviewMode } from "../modules/review/review-state";
 import { setMeasureEnabled } from "./measure";
 import { setSectionOn } from "./section";
 import { markDirty } from "../modules/projects/projects";
@@ -3761,6 +3762,11 @@ async function createElement(
 }
 
 function deleteElements(ids: string[]) {
+  // Review mode (differentiation item 8) is view-only.
+  if (isReviewMode()) {
+    notify("warn", "Review mode is view-only — add an issue instead of editing the model.");
+    return;
+  }
   if (!ids.length) return;
   const targets = elements.filter((e) => ids.includes(e.id));
   if (!targets.length) return;
@@ -5749,6 +5755,13 @@ export function setAuthoringTool(tool: Tool | string | null) {
     } catch { /* */ }
     return;
   }
+  // Review mode (differentiation item 8) is view-only: only select (or
+  // clearing the tool) is allowed; every edit tool is refused with a toast
+  // pointing at issues instead of silently doing nothing.
+  if (isReviewMode() && tool !== null && String(tool) !== "select") {
+    notify("warn", "Review mode is view-only — add an issue instead of editing the model.");
+    return;
+  }
   // Selection at the moment the tool starts: Move/Copy/Rotate/Mirror/Array/Offset act on it directly
   // (it is cleared below for every non-select tool, which used to leave them with nothing).
   const preSelected = [...selectedIds];
@@ -7185,6 +7198,11 @@ export function transformElements(
   /** When the transform is a translation, connected MEP parts follow (fittings move, runs stretch). */
   follow?: { dx: number; dz: number; dy?: number },
 ): void {
+  // Review mode (differentiation item 8) is view-only.
+  if (isReviewMode()) {
+    notify("warn", "Review mode is view-only — add an issue instead of editing the model.");
+    return;
+  }
   const targets = elements.filter((el) => ids.includes(el.id));
   if (!targets.length) return;
   if (follow) {
@@ -7976,6 +7994,13 @@ export function setupAuthoring() {
     // (type defaults, family overrides, hosting, snap relationships), with a
     // strict whitelist so unknown types are an honest rejection, not a stub.
     createElementByType: async (type: string, params: Record<string, unknown>, hostId?: string) => {
+      // Review mode (differentiation item 8) is view-only: the programmatic
+      // creation path is refused here so palette commands cannot bypass the
+      // tool gates either.
+      if (isReviewMode()) {
+        notify("warn", "Review mode is view-only — add an issue instead of editing the model.");
+        return null;
+      }
       const t = String(type || "").trim();
       if (!Object.prototype.hasOwnProperty.call(DEFAULTS, t)) return null;
       try {

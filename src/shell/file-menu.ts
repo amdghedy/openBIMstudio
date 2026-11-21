@@ -225,6 +225,7 @@ function build() {
     zitem("3d", "🖼", "Project → JSON", () => exportProjectJson(), "backup"),
     zitem("3d", "🌐", "Publish as web page…", () => { closeFileMenu(); void import("../modules/publish/publish-web").then((m) => m.publishAsWebPage()); }, "model + viewer as a static page"),
     zitem("3d", "🗣", "Issues → BCF", () => exportBCF()),
+    zitem("3d", "🔍", "Review link…", () => void import("../modules/review/review-links").then((m) => m.createReviewLink()), "view-only link, markup returns as BCF"),
     zitem("3d", "💰", "Cost → CSV", () => exportCostCsv()),
     zitem("3d", "⚙️", "Options", () => openOptions(), "3D settings"),
     zoneHeader("2d", "2D Docs Zone — plan · sheets · print"),

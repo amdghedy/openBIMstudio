@@ -11,7 +11,7 @@
  */
 
 export type GuardedKind = "ifc" | "dxf" | "dwg" | "bcf" | "pdf" | "ids" | "standards-pack" | "point-cloud"
-  | "frag" | "geojson" | "shapefile" | "mesh" | "solid" | "landxml" | "factors" | "type-catalog";
+  | "frag" | "geojson" | "shapefile" | "mesh" | "solid" | "landxml" | "factors" | "type-catalog" | "obsproj";
 
 const MiB = 1024 * 1024;
 /** Hard upper bounds per kind. Browser tabs cannot hold more than this in memory with a parser's working set anyway. */
@@ -40,6 +40,8 @@ export const FILE_LIMITS: Record<GuardedKind, number> = {
   factors: 5 * MiB,
   // Family type catalogs: small TSV/CSV reference data.
   "type-catalog": 5 * MiB,
+  // A project file embeds model blobs, so it shares the IFC bound.
+  obsproj: 1536 * MiB,
 };
 
 export interface GuardResult { ok: boolean; reason?: string }
@@ -75,6 +77,12 @@ export function guardSignature(kind: GuardedKind, head: Uint8Array): GuardResult
     }
     case "point-cloud":
       return ok; // LAS is checked by guardLasHeader; PLY/PCD/PTX are text and bounded by their parsers' point-count caps
+    case "obsproj":
+      // Project files start with the 8-byte magic "OBSPROJ1" (see project-file.ts).
+      // Encrypted project files start with a different envelope ("OBSPROJE")
+      // and are refused here; callers that can explain it (review links) check
+      // for that magic first and say so plainly.
+      return h.startsWith("OBSPROJ1") ? ok : bad("Not an Open BIM Studio project file (missing the OBSPROJ1 magic).");
     default:
       return ok;
   }

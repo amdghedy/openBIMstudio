@@ -78,7 +78,7 @@ async function ensurePermission(handle: Handle, prompt: boolean): Promise<boolea
   } catch { return false; }
 }
 
-/** The current project as an exact .obsproj file (same bytes as File → Save). */
+/** The exact snapshot `saveProjectToFile` writes — exported so review links and publish flows can reuse it. */
 export async function snapshotProjectFile(): Promise<{ blob: Blob; doc: ProjectDoc } | null> {
   const cur = getCurrentProject();
   if (!cur) { toast("warn", "Open or create a project first."); return null; }
@@ -110,7 +110,7 @@ export async function saveProjectToFile(asNew = false): Promise<boolean> {
   if (writing) return false;
   writing = true;
   try {
-    const snap = await snapshotFile();
+    const snap = await snapshotProjectFile();
     if (!snap) return false;
     const { blob, doc } = snap;
     const name = suggestedFileName(doc);
@@ -165,7 +165,7 @@ export async function saveEncryptedCopy(): Promise<boolean> {
   if (writing) return false;
   writing = true;
   try {
-    const snap = await snapshotFile();
+    const snap = await snapshotProjectFile();
     if (!snap) return false;
     const pw = await askPassword({
       title: "Encrypt project file",
@@ -194,7 +194,11 @@ export async function saveEncryptedCopy(): Promise<boolean> {
   }
 }
 
-/** Import a parsed project into this browser and open it. */
+/** Import a parsed project into this browser and open it.
+ * `replaceExisting` skips the "Project already exists" confirm and replaces
+ * the stored copy — used by review links and published pages, where the
+ * incoming file is the intended version by definition. The pre-replace
+ * backup still runs, so the replaced copy is recoverable. */
 export async function importProjectFile(
   file: Blob,
   handle: Handle | null = null,
