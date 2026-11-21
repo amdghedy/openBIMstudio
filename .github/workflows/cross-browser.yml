@@ -44,7 +44,7 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:3000/ >/dev/null && break; sleep 1; done
           node scripts/browser-boot-probe.mjs ${{ matrix.browser }}
           if [ "${{ matrix.browser }}" = firefox ]; then echo '--- headed under xvfb ---'; PROBE_HEADED=1 xvfb-run -a -s '-screen 0 1280x1024x24' node scripts/browser-boot-probe.mjs firefox; fi
-          kill %1 || true
+          kill %1 || true; pkill -f "vite" || true; sleep 2
       - name: Run browser specs
         # document-chain = the core authoring→documentation→export chain in a
         # real browser (production bundle); edit-undo-save = state round-trip.
