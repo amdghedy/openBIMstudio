@@ -20,6 +20,7 @@ import {
 } from "../modules/sheets/sheets";
 import { exportSheetSvg } from "../modules/sheets/sheet-composer";
 import { exportAllSheetsToPdf, downloadSingleSheetPdf } from "../modules/export/sheet-pdf";
+import { createView, listViewsByKind } from "../modules/views/store";
 import type { SheetDef } from "../modules/projects/types";
 import { pushSheetChange } from "../modules/sheets/sheet-undo";
 import { cloneSheet } from "../modules/sheets/sheets";
@@ -116,8 +117,15 @@ function render() {
       if (act === "add-vp" && activeId) {
         const size = getSheetSizeMm(active!.size, active!.orientation);
         const before = cloneSheet(active!);
+        // The viewport must reference a view that actually exists. The
+        // seeded store always has plan-level-0/1, but a fresh/empty store
+        // would leave a dangling "plan-current" id (which renders as the
+        // red dashed missing-view box) — so create a plan view if none
+        // exists. Found by hardening-plan item 13 while generating the
+        // leg-6 sheet PDF: every placed viewport was dangling.
+        const plan = listViewsByKind("plan")[0] ?? createView("plan", "Level 0 Plan");
         addViewport(activeId, {
-          viewId: "plan-current",
+          viewId: plan.id,
           viewType: "plan",
           x: 20,
           y: 20,

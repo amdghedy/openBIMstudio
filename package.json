@@ -309,6 +309,7 @@
     "test:checkpoint-quarantine": "node tests/project-checkpoint-quarantine.test.cjs",
     "test:project-persistence": "node tests/project-persistence.test.cjs",
     "test:property": "tsx tests/property/undo-invariant.test.ts",
+    "test:pdf-svg-fill": "tsx tests/pdf-svg-fill.test.ts",
     "test:cad-dwg-export": "node tests/cad-dwg-export.test.cjs",
     "test:kb-bim-csd": "node tests/kb-bim-csd-packing.test.cjs",
     "test:kb-bim-rules": "node tests/kb-bim-rules.test.cjs",

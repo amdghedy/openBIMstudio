@@ -65,6 +65,24 @@ function worldToPdf(ctx: PdfPageContext, worldX: number, worldY: number): [numbe
   ];
 }
 
+/**
+ * Build an SVG path `d` from PDF y-up page points for `drawSvgPath`.
+ *
+ * pdf-lib's drawSvgPath assumes SVG coordinates (y-down) and applies
+ * scale(1, -1), so a `d` point (px, py) renders at (px, -py). Our points
+ * are PDF y-up page coordinates, so the y in `d` must be negated to land
+ * on-page. (Without this, every SVG-path fill rendered at y = -py, below
+ * the page and invisible, while drawLine outlines at the same coordinates
+ * were correct. See tests/pdf-svg-fill.test.ts.)
+ */
+function svgPathFromPdfPoints(pts: Array<[number, number]>, closed: boolean): string {
+  return (
+    pts
+      .map((p, i) => (i === 0 ? "M " : "L ") + p[0].toFixed(3) + " " + (-p[1]).toFixed(3))
+      .join(" ") + (closed ? " Z" : "")
+  );
+}
+
 export function drawScene2DToPdf(
   page: PDFPage,
   font: PDFFont,
@@ -123,9 +141,7 @@ function drawEntity(ctx: PdfPageContext, e: SceneEntity): void {
       // Fill first (if any) - draw as a filled SVG path
       if (e.fill && pts.length >= 3) {
         const c = hexToRgb(e.fill.color);
-        const d =
-          pts.map((p, i) => (i === 0 ? "M " : "L ") + p[0].toFixed(3) + " " + p[1].toFixed(3)).join(" ") +
-          (e.closed ? " Z" : "");
+        const d = svgPathFromPdfPoints(pts, e.closed);
         ctx.page.drawSvgPath(d, {
           x: 0,
           y: 0,
@@ -164,10 +180,10 @@ function drawEntity(ctx: PdfPageContext, e: SceneEntity): void {
       if (!poly || poly.length < 3) break;
       const hc = hexToRgb(e.color);
       if (e.pattern === "poche") {
-        const d = poly.map(([x, z], i) => {
-          const [px, py] = worldToPdf(ctx, x, -z);
-          return (i === 0 ? "M " : "L ") + px.toFixed(3) + " " + py.toFixed(3);
-        }).join(" ") + " Z";
+        const d = svgPathFromPdfPoints(
+          poly.map(([x, z]) => worldToPdf(ctx, x, -z)),
+          true,
+        );
         ctx.page.drawSvgPath(d, { x: 0, y: 0, color: rgb(hc.r, hc.g, hc.b) });
         break;
       }
