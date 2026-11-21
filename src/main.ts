@@ -313,6 +313,7 @@ await step("cloud-account", async () => (await import("./features/cloud-account"
 await step("pwa", async () => (await import("./core/pwa")).setupPwa());
 await step("north-compass", async () => (await import("./features/north-ui")).setupNorthCompass());
 await step("project-file", async () => (await import("./modules/projects/project-file-io")).setupProjectFileIO());
+await step("publish-web", async () => (await import("./modules/publish/publish-web")).setupPublishWeb());
 await step("project-recovery", async () => (await import("./features/project-recovery")).setupProjectRecovery());
 await step("authoring", () => setupAuthoring());
 // Critical workflow packs 5 and 8 — NL query, NL modelling and the
@@ -433,6 +434,18 @@ await step("project-auto-reopen", async () => {
     await autoReopenLastProject();
   } catch (e) {
     console.warn("[boot] project auto-reopen failed; welcome screen stays", e);
+  }
+});
+
+// A published page always opens its own bundled model (replacing any local
+// copy): the published snapshot wins on every load, so a returning visitor
+// sees the published model, not their own earlier edits.
+await step("published-model", async () => {
+  try {
+    const { openPublishedModel } = await import("./modules/publish/publish-web");
+    await openPublishedModel();
+  } catch (e) {
+    console.warn("[boot] published model auto-open failed; welcome screen stays", e);
   }
 });
 

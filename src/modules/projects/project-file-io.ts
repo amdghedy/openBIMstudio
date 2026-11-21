@@ -78,13 +78,18 @@ async function ensurePermission(handle: Handle, prompt: boolean): Promise<boolea
   } catch { return false; }
 }
 
-async function snapshotFile(): Promise<{ blob: Blob; doc: ProjectDoc } | null> {
+/** The current project as an exact .obsproj file (same bytes as File → Save). */
+export async function snapshotProjectFile(): Promise<{ blob: Blob; doc: ProjectDoc } | null> {
   const cur = getCurrentProject();
   if (!cur) { toast("warn", "Open or create a project first."); return null; }
   await saveProject(true);                       // flush live state into the project database
   const doc = (await store.getProject(cur.id)) ?? cur;
   const blobs = await store.getModelBlobs(cur.id);
   return { blob: buildProjectFile(doc, blobs), doc };
+}
+
+async function snapshotFile(): Promise<{ blob: Blob; doc: ProjectDoc } | null> {
+  return snapshotProjectFile();
 }
 
 async function writeHandle(handle: Handle, blob: Blob): Promise<void> {

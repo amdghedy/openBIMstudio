@@ -615,6 +615,20 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "publish-web",
+    area: "Platform",
+    status: "limited",
+    source: ["src/modules/publish/publish-web.ts", "src/modules/publish/publish-web-core.ts", "vite.config.ts"],
+    evidence: ["tests/publish-web.test.ts", "tests/e2e/publish-web.spec.ts"],
+    limitations: [
+      "A published page is a frozen snapshot, not a live model — edits made in it are local-only and are replaced by the published model on the next load (a backup is kept by the app's recovery)",
+      "Publish runs from the app's own production build; in dev (no asset-list.json) it refuses rather than building a broken page",
+      "Encrypted projects cannot be published — publish needs an unencrypted snapshot",
+      "The published page registers no service worker, so it is not installable/offline beyond the browser cache",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "performance-budgets",
     area: "Platform",
     status: "limited",

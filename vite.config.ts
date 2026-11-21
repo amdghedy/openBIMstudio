@@ -194,6 +194,19 @@ function pwaPrecache() {
         .replaceAll("__OBS_WEB_IFC_VERSION__", webIfcVersion())
         .replace("/*__OBS_PRECACHE__*/ []", JSON.stringify(list));
       writeFileSync(swPath, src);
+      // Publish-as-web-page needs the same enumeration at runtime: the
+      // publish flow fetches /asset-list.json and downloads every built
+      // file into the published zip. Same walk, same filters, plus sizes
+      // so the UI can show the download size honestly. sw.js is excluded
+      // (a published page is a static snapshot; it does not register the
+      // app's service worker) and .map files are excluded (debug only).
+      // asset-list.json itself is excluded — it describes the build, it
+      // is not part of the published page.
+      const publishable = files
+        .filter((f) => f !== "/sw.js" && f !== "/asset-list.json" && !f.endsWith(".map"))
+        .map((f) => ({ path: f.slice(1), bytes: statSync(join(outDir, f.slice(1))).size }))
+        .sort((a, b) => (a.path < b.path ? -1 : 1));
+      writeFileSync(join(outDir, "asset-list.json"), JSON.stringify({ files: publishable }, null, 2));
     },
   };
 }

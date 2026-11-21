@@ -73,6 +73,10 @@ export function setupPwa(): void {
   try { void navigator.storage?.persist?.(); } catch { /* */ }
 
   if (!("serviceWorker" in navigator) || !(import.meta as any).env?.PROD) return;
+  // A published page is a static snapshot hosted anywhere: it carries no
+  // sw.js and must not register the app's service worker (which would
+  // 404 and spam the console on every load).
+  if ((window as any).__OBS_PUBLISHED__) return;
   // The boot steps run long after window load on a cold start, so a bare
   // load listener misses its event and the worker never registers (proven
   // 2026-11-21: no registration 20 s after load in the production preview).

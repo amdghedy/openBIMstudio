@@ -222,6 +222,7 @@ function build() {
     zitem("3d", "🧊", "Scene → GLB", () => void exportGlb(), "3D mesh export"),
     zitem("3d", "🧱", "Model → FRAG (ThatOpen)", () => void exportFragFromMenu(), ".frag"),
     zitem("3d", "🖼", "Project → JSON", () => exportProjectJson(), "backup"),
+    zitem("3d", "🌐", "Publish as web page…", () => { closeFileMenu(); void import("../modules/publish/publish-web").then((m) => m.publishAsWebPage()); }, "model + viewer as a static page"),
     zitem("3d", "🗣", "Issues → BCF", () => exportBCF()),
     zitem("3d", "💰", "Cost → CSV", () => exportCostCsv()),
     zitem("3d", "⚙️", "Options", () => openOptions(), "3D settings"),

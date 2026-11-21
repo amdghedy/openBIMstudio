@@ -92,6 +92,7 @@
     "test:qto-classification-rollup": "node tests/qto-classification-rollup.test.cjs",
     "test:bcf21": "node tests/bcf21-roundtrip.test.cjs",
     "test:open-audit": "npx tsx tests/open-audit.test.ts",
+    "test:publish-web": "npx tsx tests/publish-web.test.ts",
     "test:filled-regions": "node tests/filled-regions.test.cjs",
     "test:plan-poche": "node tests/plan-poche.test.cjs",
     "test:section-elevation-doc": "node tests/section-elevation-doc.test.cjs",
