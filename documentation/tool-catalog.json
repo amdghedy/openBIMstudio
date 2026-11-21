@@ -1,11 +1,1671 @@
 {
   "tools": [
-    { "id": "clash.detect", "name": "Clash Detection", "status": "tested",
-      "tests": ["tests/clash-engine.test.cjs"], "verifiedScenarios": [] },
-    { "id": "wall.create", "name": "Wall Tool", "status": "runtime-verified",
-      "tests": ["tests/stacked-wall.test.cjs", "tests/wall-sweep-ifc.test.cjs"],
-      "verifiedScenarios": ["fixtures/ifc-corpus/wall-demo.ifc"] },
-    { "id": "rooms.edit", "name": "Rooms", "status": "partial",
-      "knownLimitation": "non-associative; plan panel unwired" }
+    {
+      "id": "acct.forgot",
+      "name": "Account — Forgot password (reset link)",
+      "discipline": "Account",
+      "module": "src/features/cloud-account.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "acct.projects",
+      "name": "Cloud — My projects (open from any device)",
+      "discipline": "Account",
+      "module": "src/features/cloud-account.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "acct.save",
+      "name": "Cloud — Save current project",
+      "discipline": "Account",
+      "module": "src/features/cloud-account.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "acct.signin",
+      "name": "Account — Sign in / Create account",
+      "discipline": "Account",
+      "module": "src/features/cloud-account.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.buildIndex",
+      "name": "AI · Build semantic index",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.clearIndex",
+      "name": "AI · Clear semantic index",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.focusSelection",
+      "name": "AI · Focus on selection",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.listSavedSchedules",
+      "name": "AI · List saved schedules",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.nlQuery",
+      "name": "AI — Natural Language Model Query (Spotlight)",
+      "discipline": "AI",
+      "module": "src/features/nl-query-bar.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.runCostSummary",
+      "name": "AI · Run cost summary",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.runDoorSchedule",
+      "name": "AI · Run door schedule",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.runWallSchedule",
+      "name": "AI · Run wall schedule",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.selectDoors",
+      "name": "AI · Select all doors",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.selectPipes",
+      "name": "AI · Select all pipes",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ai.selectWalls",
+      "name": "AI · Select all walls",
+      "discipline": "AI",
+      "module": "src/features/ai-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "annotate.auto-dim",
+      "name": "Auto Dimension (pick first and last edge)",
+      "discipline": "Annotate",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "annotate.revisionCloud",
+      "name": "Annotate: Revision Cloud",
+      "discipline": "Annotation",
+      "module": "src/features/revision-cloud.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "annotate.revisions.panel",
+      "name": "Annotate: Revision Settings...",
+      "discipline": "Annotation",
+      "module": "src/features/revision-cloud.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "app.install",
+      "name": "Install as desktop app (works offline)",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "arch.stacked-wall",
+      "name": "Stacked Wall — Place Member Chain",
+      "discipline": "Architecture",
+      "module": "src/modules/architecture-depth/index.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.fragEditPanel",
+      "name": "Open Native Twin panel",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.nativeIfc.commit",
+      "name": "Native IFC: Commit version",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.nativeIfc.diff",
+      "name": "Native IFC: Diff last versions",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.nativeIfc.export",
+      "name": "Native IFC: Export updated IFC",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.nativeIfc.makeEditable",
+      "name": "Native IFC: Make model editable",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.nativeIfc.panel",
+      "name": "Native IFC: Workflow panel",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.nativeIfc.restore",
+      "name": "Native IFC: Restore previous version",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.nativeIfc.resume",
+      "name": "Native IFC: Resume convert",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.nativeIfc.versions",
+      "name": "Native IFC: Version log",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.contextualBar.toggle",
+      "name": "Toggle Modify Bar (contextual ribbon)",
+      "discipline": "BIM Experience",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.optionsBar.toggle",
+      "name": "Toggle Options Bar",
+      "discipline": "BIM Experience",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.viewBar.toggle",
+      "name": "Toggle View Control Bar",
+      "discipline": "BIM Experience",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "cad.query",
+      "name": "Query linked drawings (layer / type / name)",
+      "discipline": "Insert",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "cad.viewer",
+      "name": "Drawing Editor: open DWG / DXF…",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash-categories",
+      "name": "Category Clash Rules",
+      "discipline": "Clash",
+      "module": "src/main.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.clear",
+      "name": "Clear clash results",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.cycleStatus",
+      "name": "Cycle active clash status",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.exportCsv",
+      "name": "Export clash CSV",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.groups.next",
+      "name": "Next clash group",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.markAllResolved",
+      "name": "Mark all clashes resolved",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.markAllReviewed",
+      "name": "Mark all clashes reviewed",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.next",
+      "name": "Next clash",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.prev",
+      "name": "Previous clash",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.review.open",
+      "name": "Open Clash Review window",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.review.toggle",
+      "name": "Toggle Clash Review window",
+      "discipline": "Clash",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "clash.run",
+      "name": "Run clash detection",
+      "discipline": "Coordination",
+      "module": "src/features/command-palette.ts",
+      "status": "tested",
+      "tests": [
+        "tests/clash-engine.test.cjs"
+      ],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "collab.worksharing",
+      "name": "Collaboration: Worksets & Central Model",
+      "discipline": "Collaboration",
+      "module": "src/features/worksharing-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "command.ks",
+      "name": "KS — Command aliases / keyboard shortcuts",
+      "discipline": "App",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "coords.origin",
+      "name": "Origin to origin (shared coords)",
+      "discipline": "Coordinates",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "coords.recenter",
+      "name": "Recenter scene at origin",
+      "discipline": "Coordinates",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "coords.reset",
+      "name": "Reset placement offsets",
+      "discipline": "Coordinates",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "cost.recalculate",
+      "name": "Recalculate takeoff",
+      "discipline": "5D Cost",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "drafting.hatch_pattern",
+      "name": "Drafting: 2D Detail Hatch Pattern Selector",
+      "discipline": "Drafting",
+      "module": "src/features/hatch-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "drawings.register",
+      "name": "Sheets — Drawing Register & Transmittal",
+      "discipline": "Drawings",
+      "module": "src/features/drawing-register-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "dwg.audit",
+      "name": "LibreDWG — Drawing audit report (dwg_audit)",
+      "discipline": "General",
+      "module": "src/features/libredwg-toolkit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "dwg.census",
+      "name": "LibreDWG — Entity census",
+      "discipline": "General",
+      "module": "src/features/libredwg-toolkit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "dwg.geojson",
+      "name": "LibreDWG — Export GeoJSON (dwg2geojson)",
+      "discipline": "General",
+      "module": "src/features/libredwg-toolkit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "dwg.importjson",
+      "name": "LibreDWG — Import a JSON database dump",
+      "discipline": "General",
+      "module": "src/features/libredwg-toolkit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "dwg.json",
+      "name": "LibreDWG — Export JSON database dump (dwg2json)",
+      "discipline": "General",
+      "module": "src/features/libredwg-toolkit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "dwg.ps",
+      "name": "LibreDWG — Export PostScript/EPS (dwg2ps)",
+      "discipline": "General",
+      "module": "src/features/libredwg-toolkit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "dwg.svg",
+      "name": "LibreDWG — Export SVG (dwg2SVG)",
+      "discipline": "General",
+      "module": "src/features/libredwg-toolkit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "dwg.tables",
+      "name": "LibreDWG — Browse tables (layers/linetypes/styles)",
+      "discipline": "General",
+      "module": "src/features/libredwg-toolkit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "dwg.thumbnail",
+      "name": "LibreDWG — Extract DWG thumbnail (dwg_bmp)",
+      "discipline": "General",
+      "module": "src/features/libredwg-toolkit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "edit.clearAll",
+      "name": "Clear all authored elements",
+      "discipline": "Edit",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "edit.clearSelection",
+      "name": "Clear selection",
+      "discipline": "Edit",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "edit.delete",
+      "name": "Delete selected authored elements",
+      "discipline": "Edit",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "edit.redo",
+      "name": "Redo",
+      "discipline": "Edit",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "edit.selectAll",
+      "name": "Select all elements",
+      "discipline": "Edit",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "edit.undo",
+      "name": "Undo",
+      "discipline": "Edit",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "export.batch_plot_pdf",
+      "name": "Export: Enterprise Multi-Sheet Batch Plot (PDF)",
+      "discipline": "Export",
+      "module": "src/features/batch-plot-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "export.cad_views",
+      "name": "Export: Views to CAD (DWG / DXF)",
+      "discipline": "Export",
+      "module": "src/features/export-cad-views.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "export.native_twin_glb",
+      "name": "Export: Native Twin Model to glTF / GLB 3D",
+      "discipline": "Export",
+      "module": "src/features/gltf-export-tool.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "family.sketch-new",
+      "name": "Family sketch: new family from an outline…",
+      "discipline": "Families",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "familyBrowser.close",
+      "name": "Close Family Browser",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "familyBrowser.open",
+      "name": "Open Family Browser",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "familyBrowser.toggle",
+      "name": "Toggle Family Browser",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "file.export-frag",
+      "name": "Export model(s) as ThatOpen FRAG (.frag)",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "file.open-file",
+      "name": "Open project from file (.obsproj)",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "file.save-as-file",
+      "name": "Save project as new file (copy / backup)",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "file.save-encrypted",
+      "name": "Save project to file, encrypted with a password",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "file.save-to-file",
+      "name": "Save project to file (.obsproj)",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "file.view-rvt",
+      "name": "View an RVT model (.rvt / .rfa), view only, decoded in your browser",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ifc.live_link.start",
+      "name": "IFC: Live link - keep an IFC file in sync with my edits",
+      "discipline": "IFC",
+      "module": "src/features/live-ifc-link.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ifc.live_link.stop",
+      "name": "IFC: Stop live link",
+      "discipline": "IFC",
+      "module": "src/features/live-ifc-link.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ifc.semantics.validate",
+      "name": "IFC: Validate semantics of the authored model",
+      "discipline": "IFC",
+      "module": "src/features/ifc-semantics-service.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "ifc.to-frag",
+      "name": "Convert IFC → FRAG (download)",
+      "discipline": "Insert",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "level.activate.",
+      "name": "Level: ",
+      "discipline": "Levels",
+      "module": "src/features/level-chip.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "level.delete",
+      "name": "Level: Delete current",
+      "discipline": "Levels",
+      "module": "src/features/level-chip.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "level.new",
+      "name": "Level: New...",
+      "discipline": "Levels",
+      "module": "src/features/level-chip.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "level.rename",
+      "name": "Level: Rename current...",
+      "discipline": "Levels",
+      "module": "src/features/level-chip.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "link.many",
+      "name": "Link many files at once (any formats)…",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.drainage-dfu",
+      "name": "Drainage Size (DFU, IPC 710)",
+      "discipline": "MEP",
+      "module": "src/features/mep-fabrication.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.drainage-direct",
+      "name": "DFU \\u2192 Pipe Size (direct)",
+      "discipline": "MEP",
+      "module": "src/features/mep-fabrication.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.fixture-demand",
+      "name": "Fixture-Unit Demand (Hunter curve)",
+      "discipline": "MEP",
+      "module": "src/features/mep-fabrication.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.flowBalance",
+      "name": "MEP — System Flow Balance & Pressure Drop",
+      "discipline": "MEP",
+      "module": "src/features/mep-balance-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.nativeDiagnostics",
+      "name": "MEP — Connection Diagnostics & Panel Schedules",
+      "discipline": "MEP",
+      "module": "src/features/mep-lifecycle-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.network-audit",
+      "name": "MEP Network Audit \\u2014 Pressure Loss Report",
+      "discipline": "MEP",
+      "module": "src/features/mep-fabrication.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.panel-wire",
+      "name": "Panel Schedule \\u2014 Wire Size & Voltage Drop",
+      "discipline": "MEP",
+      "module": "src/features/mep-fabrication.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.sprinkler-demand",
+      "name": "Sprinkler Design Demand",
+      "discipline": "MEP",
+      "module": "src/features/mep-fabrication.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.toolkit",
+      "name": "MEP Design Toolkit\\u2026",
+      "discipline": "MEP",
+      "module": "src/features/mep-fabrication.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.voltage-drop",
+      "name": "Voltage Drop Check",
+      "discipline": "MEP",
+      "module": "src/features/mep-fabrication.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "mep.zone-loads",
+      "name": "Zone Heating & Cooling Loads (CLTD)",
+      "discipline": "MEP",
+      "module": "src/features/mep-fabrication.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "model.arc_wall",
+      "name": "Modeling: Curved / Arc Wall Tool",
+      "discipline": "Modeling",
+      "module": "src/features/arc-wall-tool.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "modify.align_lock",
+      "name": "Modify: Align with Lock Constraints",
+      "discipline": "Modify",
+      "module": "src/features/modify-group2-tool.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "modify.split_with_gap",
+      "name": "Modify: Split with Gap",
+      "discipline": "Modify",
+      "module": "src/features/modify-group2-tool.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "modify.wall_corner",
+      "name": "Modify: Wall Corner Trim / Extend",
+      "discipline": "Modify",
+      "module": "src/features/modify-group2-tool.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "north.orient-project",
+      "name": "Plan orientation: Project North",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "north.orient-true",
+      "name": "Plan orientation: True North",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "north.true",
+      "name": "Rotate True North…",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.cde.open",
+      "name": "Open Common Data Environment",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.cde.toggle",
+      "name": "Toggle Common Data Environment",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.cost",
+      "name": "Toggle Family Browser",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.ids",
+      "name": "Import P6 schedule (.xer / .xml)",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.issues",
+      "name": "Toggle Family Browser",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.modelHealth.toggle",
+      "name": "Toggle Model Health",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.plan",
+      "name": "Import P6 schedule (.xer / .xml)",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.savedViews",
+      "name": "Toggle Family Browser",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.schedules",
+      "name": "Import P6 schedule (.xer / .xml)",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.standards.open",
+      "name": "Open Standards",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.standards.toggle",
+      "name": "Toggle Standards",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.tree",
+      "name": "panel.tree",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "parametric.constraints",
+      "name": "Parametric Constraint Store Report",
+      "discipline": "Modeling",
+      "module": "src/features/parametric-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "parametric.curtain-grid",
+      "name": "Curtain Grid Editor\\u2026",
+      "discipline": "Modeling",
+      "module": "src/features/parametric-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "parametric.join-doctor",
+      "name": "Wall Join Doctor",
+      "discipline": "Modeling",
+      "module": "src/features/parametric-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "parametric.join-status",
+      "name": "Apply Wall Join Status\\u2026",
+      "discipline": "Modeling",
+      "module": "src/features/parametric-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "parametric.stack-heal",
+      "name": "Stacked Wall Heal\\u2026",
+      "discipline": "Modeling",
+      "module": "src/features/parametric-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "parametric.toolkit",
+      "name": "Parametric Modeling Toolkit\\u2026",
+      "discipline": "Modeling",
+      "module": "src/features/parametric-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "privacy.forget-secrets",
+      "name": "Privacy: forget saved API keys, tokens and AI approvals",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "project.home",
+      "name": "Home screen",
+      "discipline": "Project",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "project.new",
+      "name": "New project",
+      "discipline": "Project",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "project.open",
+      "name": "Open any file…",
+      "discipline": "Project",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "project.recovery",
+      "name": "Recovery checkpoints",
+      "discipline": "Project",
+      "module": "src/features/project-recovery.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "project.save",
+      "name": "Save project",
+      "discipline": "Project",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "qa.summary",
+      "name": "QA — Model Health & Integrity Diagnostic",
+      "discipline": "Standards",
+      "module": "src/features/model-qa-summary.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rvt.browser",
+      "name": "RVT model: open the element browser (search, group, select, hide)",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rvt.export-csv",
+      "name": "RVT model: export all elements to CSV",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rvt.show-all",
+      "name": "RVT model: show all hidden elements",
+      "discipline": "File",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.4d",
+      "name": "4D simulation",
+      "discipline": "4D / 5D / 6D",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.5d",
+      "name": "5D cost by activity",
+      "discipline": "4D / 5D / 6D",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.6d",
+      "name": "6D embodied carbon",
+      "discipline": "4D / 5D / 6D",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.curves",
+      "name": "Cost & carbon curves (large view)",
+      "discipline": "4D / 5D / 6D",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.importFactors",
+      "name": "Import carbon factors (EPD CSV / JSON)",
+      "discipline": "4D / 5D / 6D",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.importP6",
+      "name": "Import P6 schedule (.xer / .xml)",
+      "discipline": "4D / 5D / 6D",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.links",
+      "name": "Link activities to elements",
+      "discipline": "4D / 5D / 6D",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedules-ui",
+      "name": "Element Schedule",
+      "discipline": "View",
+      "module": "src/main.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "section-modal",
+      "name": "Section Cut",
+      "discipline": "View",
+      "module": "src/main.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.none",
+      "name": "Cancel active tool",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.clash",
+      "name": "Run clash detection",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.clashClear",
+      "name": "Clear clash results",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.measure",
+      "name": "Auto Dimension (pick first and last edge)",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.moveConnectedMep",
+      "name": "tools.moveConnectedMep",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.refLines",
+      "name": "tools.refLines",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.refPerson",
+      "name": "tools.refPerson",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.section",
+      "name": "Auto Dimension (pick first and last edge)",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.walk",
+      "name": "tools.walk",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.walk.holdLevel",
+      "name": "tools.walk.holdLevel",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.walk.human",
+      "name": "tools.walk.human",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.walk.keepRaise",
+      "name": "tools.walk.keepRaise",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tools.walk.noClip",
+      "name": "tools.walk.noClip",
+      "discipline": "Tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.consistent",
+      "name": "Display: Consistent Colors",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.fit",
+      "name": "Fit to view",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.front",
+      "name": "Front view",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.graphic-options",
+      "name": "Graphic Display Options…",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.hidden-line",
+      "name": "Display: Hidden Line",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.home",
+      "name": "Go to home view",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.isoNE",
+      "name": "Isometric NE",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.isoNW",
+      "name": "Isometric NW",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.ortho",
+      "name": "Orthographic view",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.perspective",
+      "name": "Perspective view",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.ray-trace",
+      "name": "Display: Ray Trace",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.realistic",
+      "name": "Display: Realistic",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.screenshot",
+      "name": "Take screenshot",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.sectionBox",
+      "name": "View: Section Box (on/off)",
+      "discipline": "View",
+      "module": "src/features/section-box.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.sectionBox.caps",
+      "name": "View: Section cut caps (solid hatched cut faces on/off)",
+      "discipline": "View",
+      "module": "src/features/section-caps.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.sectionBox.grow",
+      "name": "View: Section Box Grow (+0.5 m)",
+      "discipline": "View",
+      "module": "src/features/section-box.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.sectionBox.reset",
+      "name": "View: Reset Section Box",
+      "discipline": "View",
+      "module": "src/features/section-box.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.sectionBox.shrink",
+      "name": "View: Section Box Shrink (−0.5 m)",
+      "discipline": "View",
+      "module": "src/features/section-box.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.shaded",
+      "name": "Display: Shaded",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.smooth_nav",
+      "name": "View: Smooth navigation (lower resolution while moving)",
+      "discipline": "View",
+      "module": "src/features/nav-lowres.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.streaming_optimizer",
+      "name": "Performance: Model Streaming & Memory Budget",
+      "discipline": "Performance",
+      "module": "src/features/streaming-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.top",
+      "name": "Top view",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.wireframe",
+      "name": "Display: Wireframe",
+      "discipline": "View",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "workspace.reset",
+      "name": "Reset Workspace Layout",
+      "discipline": "View",
+      "module": "src/features/workspace-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "workspace.save",
+      "name": "Save Workspace Layout",
+      "discipline": "View",
+      "module": "src/features/workspace-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "workspace.showAll",
+      "name": "Show All Panels",
+      "discipline": "View",
+      "module": "src/features/workspace-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    }
   ]
 }
