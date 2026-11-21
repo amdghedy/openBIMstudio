@@ -28,6 +28,7 @@ const REASON_LABEL: Record<string, string> = {
   "project-save": "before an overwrite",
   "model-import": "before a model import",
   "before-restore": "before a restore",
+  "manual-version": "manual version",
 };
 
 let bannerShown = false;
@@ -215,7 +216,7 @@ export function showProjectRecovery(): void {
       const info = document.createElement("div");
       info.style.cssText = "flex:1;min-width:0";
       info.innerHTML =
-        `<div style="font-weight:600">${esc(fmtDateTime(s.createdAt))} <span style="opacity:.55;font-weight:400">· ${esc(REASON_LABEL[s.reason] ?? s.reason)}</span></div>` +
+        `<div style="font-weight:600">${esc(fmtDateTime(s.createdAt))} <span style="opacity:.55;font-weight:400">· ${esc(REASON_LABEL[s.reason] ?? s.reason)}${s.label ? ` — “${esc(s.label)}”` : ""}</span></div>` +
         `<div style="opacity:.7;font-size:11px;margin-top:2px">${esc(rowLabel(s))}</div>`;
       row.appendChild(info);
       const btn = document.createElement("button");

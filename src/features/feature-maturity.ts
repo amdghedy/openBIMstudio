@@ -601,6 +601,20 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     affirmedIn: APP_VERSION,
   },
   {
+    id: "model-history",
+    area: "Platform",
+    status: "limited",
+    source: ["src/modules/history/model-timeline.ts", "src/modules/history/model-timeline-core.ts", "src/modules/projects/project-journal.ts"],
+    evidence: ["tests/model-timeline.test.ts", "tests/e2e/model-timeline.spec.ts"],
+    limitations: [
+      "Versions are the last 10 journal checkpoints (saves, autosaves every 25 s while dirty, model imports, restores) plus manual versions — history.ts itself is undo/redo only, not a version store",
+      "A checkpoint records the state BEFORE the save/import/restore, so the newest version is always one step behind the live state; the live state itself is shown as the 'Current' row, not a version",
+      "Restoring clears the undo/redo stacks (a project transition); the current state is kept as a version first, so a restore is reversible",
+      "Diffs compare element records by id and content only — a moved element with identical parameters shows as unchanged",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "pwa-offline",
     area: "Platform",
     status: "limited",

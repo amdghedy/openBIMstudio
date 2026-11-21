@@ -315,6 +315,7 @@ await step("north-compass", async () => (await import("./features/north-ui")).se
 await step("project-file", async () => (await import("./modules/projects/project-file-io")).setupProjectFileIO());
 await step("publish-web", async () => (await import("./modules/publish/publish-web")).setupPublishWeb());
 await step("project-recovery", async () => (await import("./features/project-recovery")).setupProjectRecovery());
+await step("model-timeline", async () => (await import("./modules/history/model-timeline")).setupModelTimeline());
 await step("authoring", () => setupAuthoring());
 // Critical workflow packs 5 and 8 — NL query, NL modelling and the
 // generative grid study. These were registered but never invoked: the

@@ -219,6 +219,7 @@ function build() {
     zitem("3d", "💾", "Save", () => void saveProject(), "Ctrl+S"),
     zitem("3d", "📝", "Save As…", () => void saveAs()),
     zitem("3d", "🛟", "Recovery checkpoints…", () => void import("../features/project-recovery").then((m) => m.showProjectRecovery()), "restore an earlier state of this project"),
+    zitem("3d", "🕰", "Model history…", () => void import("../modules/history/model-timeline").then((m) => m.showModelTimeline()), "timeline of versions, with restore"),
     zitem("3d", "🧊", "Scene → GLB", () => void exportGlb(), "3D mesh export"),
     zitem("3d", "🧱", "Model → FRAG (ThatOpen)", () => void exportFragFromMenu(), ".frag"),
     zitem("3d", "🖼", "Project → JSON", () => exportProjectJson(), "backup"),

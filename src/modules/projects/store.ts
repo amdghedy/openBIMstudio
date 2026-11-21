@@ -137,6 +137,7 @@ function appendProjectSnapshot(
   doc: ProjectDoc,
   reason: ProjectJournalReason,
   suppliedBlobs?: Array<{ key: string; projectId: string; modelId: string; name: string; blob: Blob; version?: string }>,
+  label?: string,
 ): void {
   const journal = tx.objectStore(S_JOURNAL);
   const archive = tx.objectStore(S_JOURNAL_BLOBS);
@@ -161,7 +162,7 @@ function appendProjectSnapshot(
     });
     const available = new Set(modelVersions.map((x) => x.modelId));
     const missingModelIds = (doc.models ?? []).map((x) => x.id).filter((id) => !available.has(id));
-    const request = journal.add({ projectId: doc.id, createdAt: Date.now(), reason, doc, modelVersions, archivedModelIds: [...available].sort(), missingModelIds });
+    const request = journal.add({ projectId: doc.id, createdAt: Date.now(), reason, label, doc, modelVersions, archivedModelIds: [...available].sort(), missingModelIds });
     request.onsuccess = () => {
       const pruneIds = getProjectJournalPruneIds([...existingIds, Number(request.result)]);
       for (const id of pruneIds) journal.delete(id);
@@ -492,6 +493,41 @@ export async function listQuarantinedRecoverySnapshots(projectId: string): Promi
       createdAt: (r.raw as ProjectJournalRecord | null)?.createdAt ?? r.quarantinedAt,
       reason: r.reason, quarantinedAt: r.quarantinedAt,
     }));
+}
+
+/** Read the full journal records (with documents, for timeline diffs), newest first. */
+export async function listProjectJournalRecords(projectId: string): Promise<ProjectJournalRecord[]> {
+  const db = await openDb();
+  const tx = db.transaction(S_JOURNAL, "readonly");
+  const done = transactionDone(tx);
+  const records = await reqAs(tx.objectStore(S_JOURNAL).index("projectId").getAll(projectId)) as ProjectJournalRecord[];
+  await done;
+  return records.sort((a, b) => b.id - a.id);
+}
+
+/**
+ * Record an explicit timeline version of the given document (a manual
+ * "Save version" or any caller that already flushed live state). Unlike
+ * putProject this touches only the journal: no save-state change, no
+ * updatedAt bump, no "project-save" side effect. Retention (10) and
+ * model-blob archiving are the same as every other checkpoint.
+ */
+export async function recordProjectVersion(
+  doc: ProjectDoc,
+  reason: ProjectJournalReason,
+  label?: string,
+): Promise<number> {
+  const db = await openDb();
+  const tx = db.transaction([S_JOURNAL, S_JOURNAL_BLOBS, S_BLOBS], "readwrite");
+  const done = transactionDone(tx);
+  // appendProjectSnapshot writes via callbacks and returns nothing, so the
+  // new record's id is read back as the newest record for this project.
+  // Manual versions are user-initiated and serialized through the panel,
+  // so no concurrent writer can interleave here.
+  appendProjectSnapshot(tx, doc, reason, undefined, label);
+  await done;
+  const records = await listProjectJournalRecords(doc.id);
+  return records[0]?.id ?? -1;
 }
 
 /** Restore a document and its matching archived model blobs in one transaction. */

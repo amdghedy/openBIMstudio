@@ -2,13 +2,13 @@ import type { ProjectDoc } from "./types";
 import { normalizeProjectDoc } from "./project-schema";
 
 export const PROJECT_RECOVERY_RETENTION = 10;
-export type ProjectJournalReason = "project-save" | "model-import" | "before-restore";
+export type ProjectJournalReason = "project-save" | "model-import" | "before-restore" | "manual-version";
 
 /** Quarantined checkpoint retention: same newest-50 rule as the op-journal quarantine. */
 export const PROJECT_CHECKPOINT_QUARANTINE_KEEP = 50;
 
-export interface ProjectJournalRecord { id: number; projectId: string; createdAt: number; reason: ProjectJournalReason; doc: ProjectDoc; modelVersions: Array<{ modelId: string; version: string }>; archivedModelIds: string[]; missingModelIds: string[]; }
-export interface ProjectRecoverySnapshot { id: number; createdAt: number; reason: ProjectJournalReason; projectName: string; updatedAt: number; elementCount: number; modelCount: number; archivedModelCount: number; missingModelCount: number; }
+export interface ProjectJournalRecord { id: number; projectId: string; createdAt: number; reason: ProjectJournalReason; label?: string; doc: ProjectDoc; modelVersions: Array<{ modelId: string; version: string }>; archivedModelIds: string[]; missingModelIds: string[]; }
+export interface ProjectRecoverySnapshot { id: number; createdAt: number; reason: ProjectJournalReason; label?: string; projectName: string; updatedAt: number; elementCount: number; modelCount: number; archivedModelCount: number; missingModelCount: number; }
 /** A checkpoint that failed validation and was moved to the quarantine
  *  store: kept as evidence with its reason, never silently dropped, and
  *  never offered as restorable. */
@@ -37,7 +37,7 @@ export function summarizeProjectJournalRecord(record: ProjectJournalRecord): Pro
   // that already passed validation.
   const doc = (record?.doc && typeof record.doc === "object" ? record.doc : null) as ProjectDoc | null;
   return {
-    id: record.id, createdAt: record.createdAt, reason: record.reason,
+    id: record.id, createdAt: record.createdAt, reason: record.reason, label: record.label,
     projectName: doc?.name ?? "Untitled project", updatedAt: doc?.updatedAt ?? record.createdAt,
     elementCount: doc?.elements?.length ?? 0, modelCount: doc?.models?.length ?? 0,
     archivedModelCount: record.archivedModelIds?.length ?? 0,
