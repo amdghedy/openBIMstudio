@@ -44,6 +44,51 @@ test("finds parameters by name and group and deletes by GUID", () => {
   assert.equal(manager.get(created.guid), null);
 });
 
+test("exports and imports parameters without storage", () => {
+  const first = new sharedModule.SharedParameterManager(null);
+  const saved = first.create({ name: "Exported", group: "Identity", type: "string", defaultValue: "v", isInstance: false });
+  const second = new sharedModule.SharedParameterManager(null);
+  const imported = second.import(first.export());
+  assert.equal(imported.length, 1);
+  assert.deepEqual(second.get(saved.guid), saved);
+});
+
+test("live managers sharing one storage handle see each other's writes", () => {
+  const data = new Map();
+  const storage = { getItem: (key) => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) };
+  const first = new sharedModule.SharedParameterManager(storage);
+  const second = new sharedModule.SharedParameterManager(storage);
+  assert.equal(second.list().length, 0);
+  const saved = first.create({ name: "Shared", group: "General", type: "string", defaultValue: "x", isInstance: true });
+  assert.equal(second.get(saved.guid)?.name, "Shared");
+});
+
+test("falls back to the cache when stored data becomes corrupt", () => {
+  let raw = null;
+  const storage = { getItem: () => raw, setItem: (_key, value) => { raw = value; } };
+  const manager = new sharedModule.SharedParameterManager(storage);
+  const saved = manager.create({ name: "Cached", group: "General", type: "string", defaultValue: "y", isInstance: true });
+  raw = "{not valid json";
+  assert.equal(manager.get(saved.guid)?.name, "Cached");
+  assert.equal(manager.list().length, 1);
+});
+
+test("writes survive when persisting to storage throws", () => {
+  const storage = { getItem: () => null, setItem: () => { throw new Error("quota exceeded"); } };
+  const manager = new sharedModule.SharedParameterManager(storage);
+  const saved = manager.create({ name: "Unpersisted", group: "General", type: "string", defaultValue: "z", isInstance: true });
+  assert.equal(manager.get(saved.guid)?.name, "Unpersisted");
+  assert.equal(manager.list().length, 1);
+});
+
+test("mutating a returned parameter does not corrupt the cache", () => {
+  const manager = new sharedModule.SharedParameterManager(null);
+  const saved = manager.create({ name: "Stable", group: "General", type: "string", defaultValue: "a", isInstance: true });
+  const fetched = manager.get(saved.guid);
+  fetched.name = "Mutated";
+  assert.equal(manager.get(saved.guid)?.name, "Stable");
+});
+
 test("parses a typed type catalog into family parameters and rows", () => {
   const catalog = catalogModule.TypeCatalogManager.parseCSV(validCatalog);
   assert.equal(catalog.familyName, "Door");

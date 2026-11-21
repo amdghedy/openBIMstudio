@@ -232,8 +232,15 @@ function isParameterType(value: unknown): value is SharedParameterType {
 
 /**
  * Manages shared parameter definitions, persisting changes in localStorage.
- * Storage failures are logged and handled gracefully so callers can still use
- * the manager in memory-restricted or non-browser environments.
+ * An in-memory cache is the authoritative working set: writes update the
+ * cache first (and persist to storage when available), so the manager keeps
+ * working when storage is absent or a persist fails. With a working storage
+ * handle, reads re-check storage first, so a fresh manager still reloads
+ * previously persisted definitions and live managers sharing one handle
+ * keep seeing each other's writes; only a corrupt or unreadable store falls
+ * back to the cache. Storage failures are logged and handled gracefully so
+ * callers can still use the manager in memory-restricted or non-browser
+ * environments.
  */
 export class SharedParameterManager implements SharedParameterManagerService {
   private readonly storage: Pick<Storage, "getItem" | "setItem"> | null;
@@ -246,6 +253,8 @@ export class SharedParameterManager implements SharedParameterManagerService {
    * load (a fresh manager instance still reloads from shared storage).
    */
   private cache: SharedParameter[] | null = null;
+  /** True when the last persist failed, so stale storage cannot clobber cached writes. */
+  private persistFailed = false;
 
   /**
    * Construct the manager. Supplying storage is useful for tests and embedding;
@@ -281,36 +290,63 @@ export class SharedParameterManager implements SharedParameterManagerService {
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   }
 
-  /** Reads and validates the stored definitions; corrupt data is ignored safely. */
-  private readAll(): SharedParameter[] {
-    if (this.cache === null) {
-      try {
-        const raw = this.storage?.getItem(STORAGE_KEY);
-        if (!raw) this.cache = [];
-        else {
-          const parsed: unknown = JSON.parse(raw);
-          if (!Array.isArray(parsed)) this.cache = [];
-          else {
-            this.cache = parsed.map((item: unknown) => this.normalize(item)).filter(
-              (item): item is SharedParameter => item !== null,
-            );
-          }
-        }
-      } catch (error) {
-        console.warn("[shared-parameters] unable to read stored parameters:", error);
-        this.cache = [];
-      }
-    }
-    return [...this.cache];
+  /** Shallow-copies definitions so callers cannot mutate the cached working set. */
+  private snapshot(parameters: SharedParameter[]): SharedParameter[] {
+    return parameters.map((parameter) => ({ ...parameter }));
   }
 
-  /** Writes definitions, logging quota/security failures instead of crashing. */
+  /**
+   * Reads and validates the stored definitions. A missing key is a valid
+   * empty store; corrupt or unreadable data reports failure instead so the
+   * caller can fall back to the cache rather than silently discarding it.
+   */
+  private readFromStorage(): { ok: true; parameters: SharedParameter[] } | { ok: false } {
+    try {
+      const raw = this.storage?.getItem(STORAGE_KEY);
+      if (!raw) return { ok: true, parameters: [] };
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return { ok: false };
+      return {
+        ok: true,
+        parameters: parsed
+          .map((item: unknown) => this.normalize(item))
+          .filter((item): item is SharedParameter => item !== null),
+      };
+    } catch (error) {
+      console.warn("[shared-parameters] unable to read stored parameters:", error);
+      return { ok: false };
+    }
+  }
+
+  /**
+   * Returns the working set. Without storage the cache is authoritative;
+   * with storage the store is re-checked on every read (so a new manager
+   * reloads persisted definitions) and the cache is only a fallback for a
+   * corrupt or unreadable store, or while a failed persist is outstanding.
+   */
+  private readAll(): SharedParameter[] {
+    if (this.storage === null || this.persistFailed) {
+      if (this.cache === null) this.cache = [];
+      return this.snapshot(this.cache);
+    }
+    const stored = this.readFromStorage();
+    if (stored.ok) {
+      this.cache = stored.parameters;
+      return this.snapshot(this.cache);
+    }
+    if (this.cache === null) this.cache = [];
+    return this.snapshot(this.cache);
+  }
+
+  /** Updates the cache, then writes definitions, logging quota/security failures instead of crashing. */
   private writeAll(parameters: SharedParameter[]): void {
-    this.cache = [...parameters];
+    this.cache = this.snapshot(parameters);
     try {
       this.storage?.setItem(STORAGE_KEY, JSON.stringify(parameters));
+      this.persistFailed = false;
     } catch (error) {
       console.warn("[shared-parameters] unable to persist parameters:", error);
+      this.persistFailed = true;
     }
   }
 
